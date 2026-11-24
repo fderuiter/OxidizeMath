@@ -82,6 +82,8 @@ struct AttractorSaveState {
     #[serde(skip_serializing_if = "is_default_fixed_callout_offsets")]
     fixed_callout_offsets: [[f32; 2]; 2],
     camera: Camera3D,
+    #[serde(skip_serializing_if = "crate::audio::AcousticSettings::is_default")]
+    audio: crate::audio::AcousticSettings,
     #[serde(skip_serializing_if = "AttractorMode::is_lorenz")]
     mode: AttractorMode,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -123,6 +125,8 @@ struct AttractorState {
     #[serde(default)]
     zoom: Option<f32>,
     #[serde(default)]
+    audio: crate::audio::AcousticSettings,
+    #[serde(default)]
     mode: AttractorMode,
     #[serde(default)]
     custom_exprs: Option<[String; 3]>,
@@ -137,6 +141,18 @@ struct AttractorState {
 }
 
 impl AttractorPlotter {
+    #[cfg(test)]
+    pub fn reset_parameters(&mut self) {
+        self.system.sigma = 10.0;
+        self.system.rho = 28.0;
+        self.system.beta = 8.0 / 3.0;
+        self.flow_bank = super::default_flow_bank();
+        self.dt = 0.01;
+        self.tube_radius = super::export::DEFAULT_TUBE_RADIUS;
+        self.fixed_callout_offsets = DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from);
+        self.reset();
+    }
+
     pub(super) fn compute_state_revision(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -173,6 +189,8 @@ impl AttractorPlotter {
             (xb, yb).hash(&mut h);
         }
         self.camera.hash_state(&mut h);
+        self.audio_settings.gain.to_bits().hash(&mut h);
+        self.audio_settings.pitch_scale.to_bits().hash(&mut h);
         if let Some(ref twin) = self.twin {
             (
                 true,
@@ -220,6 +238,7 @@ impl AttractorPlotter {
             show_annotations: self.show_annotations,
             fixed_callout_offsets: self.fixed_callout_offsets.map(|v| [v.x, v.y]),
             camera: self.camera,
+            audio: self.audio_settings,
             mode: self.mode,
             custom_exprs,
             custom_params,
@@ -252,6 +271,7 @@ impl AttractorPlotter {
         self.tube_radius = s.tube_radius;
         self.simulation_speed = s.simulation_speed;
         self.show_annotations = s.show_annotations;
+        self.audio_settings = s.audio;
         self.fixed_callout_offsets = offsets.map(egui::Vec2::from);
         self.camera.apply_pose(camera);
         self.dragged_callout = None;
@@ -300,6 +320,7 @@ impl AttractorPlotter {
 }
 
 fn validate_attractor_state(s: &AttractorState) -> Result<[[f32; 2]; 2], String> {
+    s.audio.validate()?;
     if !s.sigma.is_finite()
         || !s.rho.is_finite()
         || !s.beta.is_finite()

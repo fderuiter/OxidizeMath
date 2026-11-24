@@ -1,15 +1,23 @@
-use crate::accessibility::AccessibleHoverText;
-use crate::app::dataflow_bus::MAX_DATAFLOW_GRAPH_NODES;
-use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
-use eframe::egui;
-use egui::Color32;
-use math_explorer::biology::neuroscience::{HodgkinHuxleyNeuron, KuramotoNetwork};
-use std::collections::VecDeque;
-use std::f32::consts::TAU;
+#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 #[path = "kuramoto_ui.rs"]
 mod kuramoto_ui;
+#[path = "neural_network_viz/topology.rs"]
+mod topology;
+#[path = "neural_network_viz/ui.rs"]
+mod ui;
 
+use crate::app::dataflow_bus::MAX_DATAFLOW_GRAPH_NODES;
+use crate::app::{TopologySource, MAX_NEURAL_SHARED_NODES};
+use crate::framework::InteractiveTool;
+use eframe::egui;
+use math_explorer::biology::neuroscience::{
+    step_csr_hodgkin_huxley_network, HodgkinHuxleyNeuron, KuramotoNetwork,
+};
+use std::collections::VecDeque;
+use std::f32::consts::TAU;
+
+const SYNAPTIC_GAIN: f64 = 50.0;
 pub(crate) const MAX_ORDER_HISTORY: usize = 200;
 
 /// Selectable dynamical regime in [`NeuralNetworkVizTool`].
@@ -34,45 +42,66 @@ pub struct NeuralNetworkVizTool {
     pub(crate) positions: Vec<[f32; 2]>,
     pub(crate) weights: Vec<Vec<f64>>,
     pub(crate) external_input: Vec<f64>,
-    pub(crate) scratch_inputs: Vec<f64>,
+    pub(super) local_preset_inputs: Vec<f64>,
+    pub(super) local_preset_weights: Vec<Vec<f64>>,
+    pub(super) next_inputs: Vec<f64>,
+    pub(crate) csr_row_ptr: Vec<usize>,
+    pub(crate) csr_col_idx: Vec<usize>,
+    pub(crate) csr_weights: Vec<f64>,
+    pub topology_source: TopologySource,
+    pub(crate) synced_bus_revision: Option<u64>,
+    pub(super) clamped_source_nodes: Option<usize>,
     pub(crate) mode: NeuralDynamicsMode,
     pub(crate) kuramoto: KuramotoNetwork,
     pub(crate) order_history: VecDeque<[f64; 2]>,
     pub(crate) is_running: bool,
     pub(crate) dt: f64,
     prev_ring_v: [f64; 5],
-    sonification: crate::audio::SonificationFrame,
+    pub(crate) sonification: crate::audio::SonificationFrame,
     pub(crate) last_upstream_graph_rev: u64,
     pub(crate) upstream_linked: bool,
     revision: u64,
 }
 
+fn dense_weights_to_csr(weights: &[Vec<f64>]) -> (Vec<usize>, Vec<usize>, Vec<f64>) {
+    let n = weights.len();
+    let mut row_ptr = Vec::with_capacity(n + 1);
+    let mut col_idx = Vec::new();
+    let mut csr_weights = Vec::new();
+    row_ptr.push(0);
+    for pre in 0..n {
+        for (post, row) in weights.iter().enumerate().take(n) {
+            if let Some(&w) = row.get(pre) {
+                if w != 0.0 && w.is_finite() {
+                    col_idx.push(post);
+                    csr_weights.push(w);
+                }
+            }
+        }
+        row_ptr.push(col_idx.len());
+    }
+    (row_ptr, col_idx, csr_weights)
+}
+
 impl Default for NeuralNetworkVizTool {
     fn default() -> Self {
-        let num_neurons = 5;
-        let mut neurons = Vec::with_capacity(num_neurons);
-        let mut positions = Vec::with_capacity(num_neurons);
-        let mut weights = vec![vec![0.0; num_neurons]; num_neurons];
-        let mut external_input = vec![0.0; num_neurons];
-        let radius = 100.0;
-        for i in 0..num_neurons {
-            neurons.push(HodgkinHuxleyNeuron::new(-65.0));
-            let angle = i as f32 * TAU / num_neurons as f32;
-            positions.push([angle.cos() * radius, angle.sin() * radius]);
-            weights[(i + 1) % num_neurons][i] = 2.0;
-            weights[(i + num_neurons - 1) % num_neurons][i] = -1.0;
-        }
-        external_input[0] = 10.0;
-        let kuramoto = KuramotoNetwork::new(num_neurons, 3.0);
+        let kuramoto = KuramotoNetwork::new(5, 3.0);
         let mut order_history = VecDeque::with_capacity(MAX_ORDER_HISTORY + 16);
         order_history.push_back([0.0, kuramoto.order_parameter().0]);
-
-        Self {
-            neurons,
-            positions,
-            weights,
-            external_input,
-            scratch_inputs: vec![0.0; num_neurons],
+        let mut tool = Self {
+            neurons: Vec::new(),
+            positions: Vec::new(),
+            weights: Vec::new(),
+            external_input: Vec::new(),
+            local_preset_inputs: Vec::new(),
+            local_preset_weights: Vec::new(),
+            next_inputs: vec![0.0; MAX_NEURAL_SHARED_NODES],
+            csr_row_ptr: Vec::new(),
+            csr_col_idx: Vec::new(),
+            csr_weights: Vec::new(),
+            topology_source: TopologySource::SharedBus,
+            synced_bus_revision: None,
+            clamped_source_nodes: None,
             mode: NeuralDynamicsMode::HodgkinHuxley,
             kuramoto,
             order_history,
@@ -83,13 +112,55 @@ impl Default for NeuralNetworkVizTool {
             last_upstream_graph_rev: 0,
             upstream_linked: false,
             revision: 1,
-        }
+        };
+        tool.build_default_ring();
+        tool
     }
 }
 
 impl NeuralNetworkVizTool {
     pub(crate) fn bump_revision(&mut self) {
         self.revision = self.revision.wrapping_add(1).max(1);
+    }
+
+    pub(super) fn build_default_ring(&mut self) {
+        let num_neurons = 5;
+        self.neurons = (0..num_neurons)
+            .map(|_| HodgkinHuxleyNeuron::new(-65.0))
+            .collect();
+        let radius = 100.0;
+        self.positions = (0..num_neurons)
+            .map(|i| {
+                let angle = i as f32 * TAU / num_neurons as f32;
+                [angle.cos() * radius, angle.sin() * radius]
+            })
+            .collect();
+        let mut weights = vec![vec![0.0; num_neurons]; num_neurons];
+        for (col, next) in (0..num_neurons).map(|i| (i, (i + 1) % num_neurons)) {
+            let prev = (col + num_neurons - 1) % num_neurons;
+            weights[next][col] = 2.0;
+            weights[prev][col] = -1.0;
+        }
+        let mut external_input = vec![0.0; num_neurons];
+        external_input[0] = 10.0;
+        self.local_preset_inputs = external_input.clone();
+        self.local_preset_weights = weights.clone();
+        self.external_input = external_input;
+        self.weights = weights;
+        self.rebuild_csr_from_dense();
+        self.prev_ring_v = [-65.0; 5];
+        self.sonification = crate::audio::SonificationFrame::silent();
+    }
+
+    pub(super) fn rebuild_csr_from_dense(&mut self) {
+        let n = self.neurons.len();
+        if self.next_inputs.len() < n {
+            self.next_inputs.resize(n.max(MAX_NEURAL_SHARED_NODES), 0.0);
+        }
+        let (rp, ci, cw) = dense_weights_to_csr(&self.weights);
+        self.csr_row_ptr = rp;
+        self.csr_col_idx = ci;
+        self.csr_weights = cw;
     }
 
     pub(crate) fn reset(&mut self) {
@@ -99,6 +170,7 @@ impl NeuralNetworkVizTool {
         for neuron in &mut self.neurons {
             *neuron = HodgkinHuxleyNeuron::new(-65.0);
         }
+        self.rebuild_csr_from_dense();
         self.kuramoto.reset_phases();
         self.order_history.clear();
         self.record_kuramoto_history_zero_alloc();
@@ -116,29 +188,23 @@ impl NeuralNetworkVizTool {
             self.record_kuramoto_history_zero_alloc();
             return;
         }
-        let num_neurons = self.neurons.len();
-        if num_neurons == 0 || self.scratch_inputs.len() < num_neurons {
-            return;
-        }
-        self.scratch_inputs[..num_neurons].fill(0.0);
-        for (i, input) in self.scratch_inputs.iter_mut().enumerate().take(num_neurons) {
-            for (j, neuron) in self.neurons.iter().enumerate().take(num_neurons) {
-                if neuron.v() > 0.0 {
-                    *input += self.weights[i][j] * 50.0;
-                }
-            }
-        }
-
         let mut before = [-65.0; 5];
         for (idx, slot) in before.iter_mut().enumerate() {
             if let Some(neuron) = self.neurons.get(idx) {
                 *slot = neuron.v();
             }
         }
-        for (i, &synaptic) in self.scratch_inputs.iter().enumerate().take(num_neurons) {
-            let total_i_ext = self.external_input[i] + synaptic;
-            self.neurons[i].update(self.dt, total_i_ext);
-        }
+        step_csr_hodgkin_huxley_network(
+            &mut self.neurons,
+            &self.external_input,
+            &mut self.next_inputs,
+            &self.csr_row_ptr,
+            &self.csr_col_idx,
+            &self.csr_weights,
+            SYNAPTIC_GAIN,
+            0.0,
+            self.dt,
+        );
         let mut after = [-65.0; 5];
         for (idx, slot) in after.iter_mut().enumerate() {
             if let Some(neuron) = self.neurons.get(idx) {
@@ -147,131 +213,6 @@ impl NeuralNetworkVizTool {
         }
         self.prev_ring_v = before;
         self.sonification = crate::audio::mappings::neural_ring_frame(&after, &before, 0.0);
-    }
-
-    fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
-        let panel_id = crate::framework::scoped_panel_id(parent_ui, "nn_viz_controls");
-        crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Controls");
-            ui.separator();
-
-            if let Some(action) = PlaybackTransport::in_thread(
-                "nn_viz_transport",
-                "Neural Network Viz",
-                self.is_running,
-            )
-            .show(ui)
-            {
-                match action {
-                    PlaybackAction::Play => self.is_running = true,
-                    PlaybackAction::Pause => self.is_running = false,
-                    PlaybackAction::Step => self.step_once(),
-                    PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
-                    PlaybackAction::Reset => self.reset(),
-                }
-                self.bump_revision();
-            }
-
-            ui.separator();
-            self.draw_mode_and_kuramoto_controls(ui);
-
-            if self.mode == NeuralDynamicsMode::HodgkinHuxley {
-                ui.separator();
-                crate::audio::render_sonification_panel(
-                    ui,
-                    "neural_network_viz",
-                    &self.sonification,
-                    !self.is_running,
-                );
-                ui.separator();
-                ui.heading("External Current (uA/cm^2)");
-                let max_sliders = self.external_input.len().min(12);
-                for i in 0..max_sliders {
-                    if ui
-                        .add(
-                            egui::Slider::new(&mut self.external_input[i], -10.0..=50.0)
-                                .text(format!("Neuron {i}")),
-                        )
-                        .changed()
-                    {
-                        self.bump_revision();
-                    }
-                }
-            }
-        });
-    }
-
-    pub(super) fn draw_synaptic_edges(
-        &self,
-        painter: &egui::Painter,
-        center: egui::Pos2,
-        palette: &crate::app::SemanticPalette,
-    ) {
-        let num_neurons = self.neurons.len();
-        for i in 0..num_neurons {
-            for j in 0..num_neurons {
-                let weight = self.weights[i][j];
-                if weight != 0.0 {
-                    let p1 = center + egui::vec2(self.positions[j][0], self.positions[j][1]);
-                    let p2 = center + egui::vec2(self.positions[i][0], self.positions[i][1]);
-                    let base = if weight > 0.0 {
-                        palette.success
-                    } else {
-                        palette.error
-                    };
-                    let color = Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 170);
-                    painter.line_segment([p2, p1], ((1.0 + weight.abs()).min(4.0) as f32, color));
-                }
-            }
-        }
-    }
-
-    fn draw_network(&self, parent_ui: &mut egui::Ui) {
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            if self.mode == NeuralDynamicsMode::Kuramoto {
-                self.draw_kuramoto_view(ui);
-                return;
-            }
-            ui.heading("Network Visualization");
-            let (response, painter) =
-                ui.allocate_painter(ui.available_size(), egui::Sense::focusable_noninteractive());
-            let label = "Neural Network Visualization: Showing interconnected neurons";
-            let _ = response.clone().accessible_hover_text(label);
-            let summary = format!("{} interconnected neurons", self.neurons.len());
-            crate::accessibility::register_canvas_accessibility(
-                ui,
-                &response,
-                egui::accesskit::Role::GraphicsDocument,
-                label,
-                Some(&summary),
-            );
-            crate::accessibility::paint_canvas_focus_ring(ui, &response);
-            let center = response.rect.center();
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            self.draw_synaptic_edges(&painter, center, &palette);
-            for (i, neuron) in self.neurons.iter().enumerate() {
-                let v = neuron.v() as f32;
-                let pos = center + egui::vec2(self.positions[i][0], self.positions[i][1]);
-                let norm_v = ((v + 65.0) / 105.0).clamp(0.0, 1.0);
-                let (low, high) = (palette.axis_z, palette.axis_x);
-                let lerp = |a: u8, b: u8| {
-                    (f32::from(a) + (f32::from(b) - f32::from(a)) * norm_v).round() as u8
-                };
-                let color = Color32::from_rgb(
-                    lerp(low.r(), high.r()),
-                    lerp(low.g(), high.g()),
-                    lerp(low.b(), high.b()),
-                );
-                painter.circle(pos, 15.0, color, (1.0, palette.node_stroke));
-                painter.text(
-                    pos,
-                    egui::Align2::CENTER_CENTER,
-                    format!("N{i}\n{v:.0}mV"),
-                    egui::FontId::proportional(10.0),
-                    crate::app::contrasting_text_color(color),
-                );
-            }
-        });
     }
 }
 
@@ -283,6 +224,8 @@ struct NeuralNetworkVizState {
     weights: Vec<Vec<f64>>,
     dt: f64,
     is_running: bool,
+    #[serde(default, skip_serializing_if = "TopologySource::is_default")]
+    topology_source: TopologySource,
     #[serde(default, skip_serializing_if = "NeuralDynamicsMode::is_default")]
     mode: NeuralDynamicsMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -308,13 +251,48 @@ impl InteractiveTool for NeuralNetworkVizTool {
         self.revision
     }
 
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        vec![
+            ("neuron_count", self.neurons.len() as f64),
+            ("synapse_count", self.csr_weights.len() as f64),
+            (
+                "clamped_source_nodes",
+                self.clamped_source_nodes.unwrap_or(0) as f64,
+            ),
+            (
+                "synced_bus_revision",
+                self.synced_bus_revision.unwrap_or(0) as f64,
+            ),
+        ]
+    }
+
     fn save_state(&self) -> Option<String> {
+        let on_external = self.synced_bus_revision.is_some() || self.upstream_linked;
         let include_kuramoto = self.mode == NeuralDynamicsMode::Kuramoto;
         serde_json::to_string(&NeuralNetworkVizState {
-            external_input: self.external_input.clone(),
-            weights: self.weights.clone(),
+            external_input: if on_external && !self.local_preset_inputs.is_empty() {
+                self.local_preset_inputs.clone()
+            } else {
+                self.external_input.clone()
+            },
+            weights: if on_external && !self.local_preset_weights.is_empty() {
+                self.local_preset_weights.clone()
+            } else {
+                self.weights.clone()
+            },
             dt: self.dt,
             is_running: self.is_running,
+            topology_source: self.topology_source,
             mode: self.mode,
             kuramoto_coupling: include_kuramoto.then(|| self.kuramoto.coupling()),
             frequency_spread: include_kuramoto.then(|| self.kuramoto.frequency_spread()),
@@ -342,16 +320,16 @@ impl InteractiveTool for NeuralNetworkVizTool {
         {
             return Err("NeuralNetworkViz parameters or dimensions out of bounds".into());
         }
+        self.synced_bus_revision = None;
+        self.clamped_source_nodes = None;
+        self.last_upstream_graph_rev = 0;
+        self.upstream_linked = false;
+        self.topology_source = s.topology_source;
         if s.weights.is_empty() && n == 5 {
-            let defaults = Self::default();
-            self.neurons = defaults.neurons;
-            self.scratch_inputs = defaults.scratch_inputs;
-            self.positions = defaults.positions;
-            self.weights = defaults.weights;
+            self.build_default_ring();
         } else {
             let radius = 100.0;
             self.neurons = (0..n).map(|_| HodgkinHuxleyNeuron::new(-65.0)).collect();
-            self.scratch_inputs = vec![0.0; n];
             self.positions = (0..n)
                 .map(|i| {
                     let angle = i as f32 * TAU / n as f32;
@@ -365,6 +343,9 @@ impl InteractiveTool for NeuralNetworkVizTool {
             };
         }
         self.external_input = s.external_input;
+        self.local_preset_inputs = self.external_input.clone();
+        self.local_preset_weights = self.weights.clone();
+        self.rebuild_csr_from_dense();
         self.dt = s.dt;
         self.is_running = s.is_running;
         self.prev_ring_v = [-65.0; 5];
@@ -383,7 +364,11 @@ impl InteractiveTool for NeuralNetworkVizTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        self.poll_upstream_graph(ui.ctx());
+        let ctx = ui.ctx().clone();
+        self.poll_upstream_graph(&ctx);
+        if !self.upstream_linked {
+            self.sync_shared_topology(&ctx);
+        }
         if self.is_running {
             let substeps = if self.mode == NeuralDynamicsMode::Kuramoto {
                 2
@@ -393,20 +378,10 @@ impl InteractiveTool for NeuralNetworkVizTool {
             for _ in 0..substeps {
                 self.step();
             }
-            ui.ctx().request_repaint();
+            ctx.request_repaint();
         }
         self.draw_controls(ui);
         self.draw_network(ui);
-    }
-
-    #[cfg(test)]
-    fn as_any(&self) -> Option<&dyn std::any::Any> {
-        Some(self)
-    }
-
-    #[cfg(test)]
-    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
-        Some(self)
     }
 }
 

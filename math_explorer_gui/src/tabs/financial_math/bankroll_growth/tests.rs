@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+use math_explorer::pure_math::statistics::kelly::{DrawdownConstraint, PushWager};
 
 #[test]
 fn test_bankroll_growth_omits_local_reset_and_restores_via_framework() {
@@ -42,6 +43,7 @@ fn test_bankroll_growth_omits_local_reset_and_restores_via_framework() {
     assert_eq!(verify.odds, 2.0);
     assert_eq!(verify.num_bets, 100);
     assert_eq!(verify.full_kelly_points.len(), 101);
+    assert_eq!(verify.risk_constrained_points.len(), 101);
     assert!(verify.error_msg.is_none());
 }
 
@@ -139,6 +141,56 @@ fn test_f_030_overbetting_divergence_callout_and_zero_allocation() {
             .any(|c| c.tag.as_deref() == Some("ruin_warning")),
         "Ruin warning callout must be set when f > 2 * f*"
     );
+    assert!(lab.last_empirical_median_ci_lower.is_finite());
+    assert!(lab.last_empirical_median_ci_upper.is_finite());
+    assert!(lab.last_empirical_median_ci_lower <= lab.last_empirical_median_ci_upper);
+}
+
+#[test]
+fn test_push_quarter_line_and_slate_bankroll_models_and_zero_alloc_push_ensemble() {
+    let mut tool = BankrollGrowthTool {
+        probability: 0.50,
+        push_probability: 0.10,
+        odds: 10.0 / 11.0,
+        num_bets: 60,
+        ..Default::default()
+    };
+    tool.recalculate();
+    assert!(tool.error_msg.is_none());
+    assert_eq!(tool.full_kelly_points.len(), 61);
+    assert_eq!(tool.risk_constrained_points.len(), 61);
+
+    tool.wager_model = BankrollWagerModel::QuarterLine;
+    tool.probability = 0.44;
+    tool.half_win_probability = 0.12;
+    tool.push_probability = 0.0;
+    tool.half_loss_probability = 0.0;
+    tool.recalculate();
+    assert!(tool.error_msg.is_none());
+    assert_eq!(tool.full_kelly_points.len(), 61);
+
+    tool.wager_model = BankrollWagerModel::SimultaneousSlate;
+    tool.probability = 0.58;
+    tool.odds = 1.0;
+    tool.slate_size = 10;
+    tool.recalculate();
+    assert!(tool.error_msg.is_none());
+    assert_eq!(tool.risk_constrained_points.len(), 61);
+
+    let mut lab = BankrollEnsembleLab::new();
+    let pw =
+        PushWager::from_win_and_push(0.50, 0.10, Odds::from_american(-110.0).unwrap()).unwrap();
+    let dc = DrawdownConstraint::new(0.70, 0.10).unwrap();
+    lab.evaluate_push_and_drawdown_in_place(1000.0, &pw, Some(&dc), 120, 0);
+    {
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            lab.evaluate_push_and_drawdown_in_place(1000.0, &pw, Some(&dc), 120, 2);
+        });
+    }
+    assert_eq!(lab.drawdown_median_points.len(), 121);
 }
 
 #[test]

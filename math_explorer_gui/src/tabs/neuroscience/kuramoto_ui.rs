@@ -40,7 +40,12 @@ impl NeuralNetworkVizTool {
     /// Polls `PaneDataflowBus` and resizes neural/Kuramoto buffers only when `revision` advances.
     pub(super) fn poll_upstream_graph(&mut self, ctx: &egui::Context) {
         let Some(payload) = poll_pane_graph(ctx) else {
-            self.upstream_linked = false;
+            if self.upstream_linked {
+                self.upstream_linked = false;
+                self.last_upstream_graph_rev = 0;
+                self.restore_local_circuit();
+                self.bump_revision();
+            }
             return;
         };
         self.upstream_linked = true;
@@ -60,7 +65,6 @@ impl NeuralNetworkVizTool {
         if self.neurons.len() != n {
             self.neurons
                 .resize_with(n, || HodgkinHuxleyNeuron::new(-65.0));
-            self.scratch_inputs.resize(n, 0.0);
             self.external_input.resize(n, 0.0);
             if self.external_input.iter().all(|&v| v == 0.0) {
                 self.external_input[0] = 10.0;
@@ -76,6 +80,9 @@ impl NeuralNetworkVizTool {
             }
         }
         self.weights = next_weights;
+        self.rebuild_csr_from_dense();
+        self.synced_bus_revision = None;
+        self.clamped_source_nodes = None;
         let spread = self.kuramoto.frequency_spread();
         self.kuramoto
             .reconfigure_topology(n, &payload.edges, payload.directed, spread);
@@ -214,43 +221,5 @@ impl NeuralNetworkVizTool {
             .show(ui, |plot_ui| {
                 plot_ui.line(Line::new("r(t)", pts).color(palette.success).width(2.0_f32));
             });
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_neural_network_viz_step_once_keeps_paused() {
-        let mut tool = NeuralNetworkVizTool::default();
-        assert!(!tool.is_running);
-        let initial_v0 = tool.neurons[0].v();
-        tool.step_once();
-        assert!(!tool.is_running);
-        assert_ne!(tool.neurons[0].v(), initial_v0);
-    }
-
-    #[test]
-    fn test_neural_network_viz_reset_preserves_sliders_and_custom_weights() {
-        let mut tool = NeuralNetworkVizTool::default();
-        let custom_inputs = vec![24.0, -5.0, 12.5, 8.0, 31.0];
-        tool.external_input = custom_inputs.clone();
-        tool.weights[1][0] = 4.25;
-        tool.weights[3][2] = -2.75;
-        let expected_weights = tool.weights.clone();
-        tool.is_running = true;
-        for _ in 0..10 {
-            tool.step();
-        }
-        assert!(tool.neurons.iter().any(|n| (n.v() + 65.0).abs() > 1e-3));
-
-        tool.reset();
-        assert!(!tool.is_running);
-        assert_eq!(tool.external_input, custom_inputs);
-        assert_eq!(tool.weights, expected_weights);
-        for neuron in &tool.neurons {
-            assert!((neuron.v() + 65.0).abs() < 1e-9);
-        }
     }
 }

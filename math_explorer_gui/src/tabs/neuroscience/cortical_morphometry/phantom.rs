@@ -16,9 +16,11 @@ use math_explorer::applied::freesurfer::{
 use nalgebra::Vector3;
 use std::f64::consts::{PI, TAU};
 use std::hash::{Hash as _, Hasher as _};
-use volume_glm::{
-    evaluate_cohort_glm, sample_gm_posteriors_on_cortex, synthesize_mri_and_truth, tissue_classes,
-};
+#[cfg(test)]
+pub(super) use volume_glm::evaluate_cohort_glm;
+#[cfg(not(test))]
+use volume_glm::evaluate_cohort_glm;
+use volume_glm::{sample_gm_posteriors_on_cortex, synthesize_mri_and_truth, tissue_classes};
 
 pub(super) const MRI_DIMS: [usize; 3] = [16, 16, 16];
 pub(super) const MRI_ORIGIN_MM: [f64; 3] = [-45.0, -45.0, -45.0];

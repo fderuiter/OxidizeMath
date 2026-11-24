@@ -1,4 +1,5 @@
 pub mod atlas_host;
+mod audio_sync;
 pub mod brush_codec;
 pub mod brush_dispatch;
 #[cfg(all(test, feature = "physics", feature = "biology"))]
@@ -34,6 +35,7 @@ mod divergence_unification_tests;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_3d;
+mod export_audio;
 mod export_dataset;
 mod export_figure;
 mod export_gif_job;
@@ -134,22 +136,13 @@ pub use story_hud::*;
 pub use trace_overlay::*;
 
 pub(super) use crate::accessibility::AccessibleHoverText;
+pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
 use eframe::egui;
+pub use overlay_sync::ToolMetadata;
 pub(super) use overlay_sync::{
     FrameworkRevisionCache, FrameworkSyncState, UntrackedUrlDigestCache,
 };
 use scientific_metadata::theory::TheoryDescribable;
-
-pub struct ToolMetadata {
-    pub id: &'static str,
-    pub display_name: &'static str,
-    pub domain: &'static str,
-    pub tags: &'static [&'static str],
-    pub build: fn() -> Box<dyn InteractiveTool>,
-}
-
-inventory::collect!(ToolMetadata);
-pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
 
 pub trait InteractiveTool {
     fn name(&self) -> &'static str;
@@ -158,9 +151,7 @@ pub trait InteractiveTool {
     fn theory(&self) -> &dyn TheoryDescribable;
     /// Show the tool at the root `egui::Context` level by delegating to [`Self::show_inside`].
     fn show(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default()
-            .frame(egui::Frame::NONE)
-            .show(ctx, |ui| self.show_inside(ui));
+        pane_scope::render_default_tool_root(self, ctx);
     }
 
     /// Show the tool inside a scoped parent `egui::Ui` (supporting multi-pane layouts).
@@ -171,14 +162,10 @@ pub trait InteractiveTool {
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         pane_scope::render_default_tool_inside(self, ui);
     }
-
     /// Optional: UI rendering for the tool's specific side-panel controls.
     fn show_ui(&mut self, _ui: &mut egui::Ui) {}
-
     /// Optional: Context-based drawing.
     fn draw(&mut self, _ui: &mut egui::Ui, _response: &egui::Response, _painter: &egui::Painter) {}
-
-    // Normalized event hooks
     #[allow(missing_docs)]
     fn on_hover(&mut self, _ctx: &InteractionContext) {}
     #[allow(missing_docs)]
@@ -196,51 +183,41 @@ pub trait InteractiveTool {
     fn state_revision(&self) -> u64 {
         0
     }
-
     /// Parameter-only revision counter for live URL synchronization (defaults to [`Self::state_revision`]).
     fn url_state_revision(&self) -> u64 {
         self.state_revision()
     }
-
     /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
     fn focused_canvas_id(&self) -> Option<egui::Id> {
         None
     }
-
     /// Direct numeric parameter finiteness hook without JSON serialization.
     fn has_finite_parameters(&self) -> bool {
         true
     }
-
     /// Structured solver divergence report (`t_diverged`, `step_index`, `variable`, `message`)
     /// surfaced to the shared framework recovery banner without wall-clock session uptime.
     fn diagnostic_report(&self) -> Option<DiagnosticReport> {
         None
     }
-
     /// Optional hook to halve or scale down numerical step size on solver divergence, returning true if handled.
     fn auto_scale_step_size(&mut self) -> bool {
         false
     }
-
     /// Named scalar observables exposed to the Challenge HUD and `math_commons::ast` evaluator.
     fn observables(&self) -> Vec<(&'static str, f64)> {
         Vec::new()
     }
-
     /// Synchronizes declarative guided story or challenge callout pins onto the tool's plot.
     fn sync_callouts(&mut self, _callouts: &[CalloutSpec]) {}
-
     /// Candidate `(x_key, y_key)` parameter pairs for the framework-hosted 2D parameter atlas.
     fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
         &[]
     }
-
     /// Current `(x_val, y_val)` coordinates of the tool on the selected `axis_keys` plane.
     fn active_atlas_coords(&self, _axis_keys: (&'static str, &'static str)) -> (f64, f64) {
         (0.0, 0.0)
     }
-
     /// Hashable signature of non-axis context parameters that invalidate cached atlas slices.
     fn atlas_context_signature(&self, _axis_keys: (&'static str, &'static str)) -> u64 {
         self.state_revision()
@@ -417,6 +394,23 @@ pub trait InteractiveTool {
     ) -> Vec<egui_plot::export::DatasetFrame> {
         export_figure::sample_tool_animation_frames(self, num_frames)
     }
+    /// Optional hook emitting a zero-allocation [`crate::audio::SonificationFrame`] for live Web Audio and `.wav` export.
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        None
+    }
+    /// Returns persisted non-mute [`crate::audio::AcousticSettings`] for presets and share URLs.
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        crate::audio::AcousticSettings::default()
+    }
+    /// Applies persisted non-mute [`crate::audio::AcousticSettings`] without unmuting playback.
+    fn set_acoustic_settings(&mut self, _settings: crate::audio::AcousticSettings) {}
+    /// Samples deterministic multi-step [`crate::audio::SonificationFrame`] trajectories for 16-bit `.wav` export.
+    fn sample_sonification_frames(
+        &mut self,
+        num_frames: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        audio_sync::sample_tool_sonification_frames(self, num_frames)
+    }
 
     /// Returns a type-erased reference for concrete tool state inspection.
     fn as_any(&self) -> Option<&dyn std::any::Any> {
@@ -480,6 +474,8 @@ pub struct SimulationFramework {
     pub branch_engine: CounterfactualBranchEngine,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
+    /// Scoped Web Audio / gain-ramp / divergence-silence controller for this framework pane.
+    pub audio_controller: crate::audio::AudioEngineController,
     /// Declarative guided story and AST challenge HUD state.
     pub challenge_hud: ChallengeHudState,
     /// Active inverse challenge contract displayed in the Challenge HUD, if any.
