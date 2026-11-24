@@ -15,6 +15,7 @@ pub mod dynamics;
 pub mod edwards_wilkinson;
 #[allow(missing_docs)]
 pub mod ensembles;
+pub mod graph_ising;
 pub mod ising;
 pub mod kpz;
 #[allow(missing_docs)]
@@ -27,9 +28,11 @@ pub use edwards_wilkinson::{
     EdwardsWilkinson1D, EdwardsWilkinson2D, interface_roughness, mean_field,
     theoretical_steady_state_roughness_sq_1d,
 };
+pub use graph_ising::GraphSpinSystem;
 pub use kpz::{KpzModel1D, KpzModel2D};
 
 // [cite:stat_mech]
+// [cite:graph_parameters_rust]
 
 use pure_math::theory_verification;
 

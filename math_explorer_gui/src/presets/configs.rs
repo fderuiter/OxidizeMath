@@ -117,93 +117,181 @@ pub struct ReplicatorPresetConfig {
     /// Shared parameter values for symbolic payoff cells (e.g. `v`, `c` in Hawk-Dove).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub symbolic_params: std::collections::BTreeMap<String, f64>,
+    /// Per-pane topology source (`SharedBus` vs `LocalPreset`).
+    #[serde(
+        default,
+        skip_serializing_if = "crate::app::TopologySource::is_default"
+    )]
+    pub topology_source: crate::app::TopologySource,
 }
 
+const MAX_REPLICATOR_STRATEGIES: usize = 16;
+const MAX_STRATEGY_NAME_BYTES: usize = 128;
+const MIN_REPLICATOR_DT: f64 = 1e-6;
+const MAX_REPLICATOR_DT: f64 = 5.0;
+const MAX_REPLICATOR_TIME_HORIZON: f64 = 10_000.0;
+const MAX_REPLICATOR_PAYOFF_ABS: f64 = 1e4;
+
 impl ReplicatorPresetConfig {
-    /// Validates matrix dimensions, strategy counts, and optional symbolic payoff formulas.
+    /// Validates matrix dimensions, numeric domain and step bounds, and optional symbolic formulas.
     pub fn validate(&self) -> Result<(), String> {
         let rows = self.payoff_matrix.len();
-        if rows == 0 {
-            return Err("Payoff matrix must not be empty".to_string());
+        if rows == 0 || rows > MAX_REPLICATOR_STRATEGIES {
+            return Err(format!(
+                "Payoff matrix strategy count ({rows}) must be in 1..={MAX_REPLICATOR_STRATEGIES}"
+            ));
         }
         for (i, row) in self.payoff_matrix.iter().enumerate() {
             if row.len() != rows {
                 return Err(format!(
-                    "Payoff matrix must be square (row {} has length {}, expected {})",
-                    i,
+                    "Payoff matrix must be square (row {i} has length {}, expected {rows})",
                     row.len(),
-                    rows
                 ));
+            }
+            for (j, &val) in row.iter().enumerate() {
+                if !val.is_finite()
+                    || !(-MAX_REPLICATOR_PAYOFF_ABS..=MAX_REPLICATOR_PAYOFF_ABS).contains(&val)
+                {
+                    return Err(format!(
+                        "Payoff matrix entry ({i}, {j}) must be finite and within [-10000, 10000]"
+                    ));
+                }
             }
         }
         if self.strategy_names.len() != rows {
             return Err(format!(
-                "Strategy names count ({}) does not match payoff matrix dimensions ({}x{})",
+                "Strategy names count ({}) does not match payoff matrix dimensions ({rows}x{rows})",
                 self.strategy_names.len(),
-                rows,
-                rows
             ));
         }
-        if self.initial_population.len() != rows {
+        if self
+            .strategy_names
+            .iter()
+            .any(|name| name.len() > MAX_STRATEGY_NAME_BYTES)
+        {
             return Err(format!(
-                "Initial population count ({}) does not match strategy count ({})",
-                self.initial_population.len(),
-                rows
+                "Strategy names must be at most {MAX_STRATEGY_NAME_BYTES} bytes"
             ));
         }
+        self.validate_population_and_time_bounds(rows)?;
         self.validate_symbolic(rows)
     }
 
+    fn validate_population_and_time_bounds(&self, rows: usize) -> Result<(), String> {
+        if self.initial_population.len() != rows {
+            return Err(format!(
+                "Initial population count ({}) does not match strategy count ({rows})",
+                self.initial_population.len(),
+            ));
+        }
+        if !self
+            .initial_population
+            .iter()
+            .all(|p| p.is_finite() && (0.0..=1.0).contains(p))
+        {
+            return Err(
+                "Initial population proportions must be finite and within [0, 1]".to_string(),
+            );
+        }
+        let pop_sum: f64 = self.initial_population.iter().copied().sum();
+        if !pop_sum.is_finite() || pop_sum <= 0.0 {
+            return Err("Initial population sum must be strictly positive".to_string());
+        }
+        if !self.dt.is_finite() || !(MIN_REPLICATOR_DT..=MAX_REPLICATOR_DT).contains(&self.dt) {
+            return Err(format!(
+                "Replicator dt ({}) must be finite and within [{MIN_REPLICATOR_DT}, {MAX_REPLICATOR_DT}]",
+                self.dt
+            ));
+        }
+        if !self.time_horizon.is_finite()
+            || self.time_horizon <= 0.0
+            || self.time_horizon > MAX_REPLICATOR_TIME_HORIZON
+        {
+            return Err(format!(
+                "Replicator time_horizon ({}) must be finite and within (0, {MAX_REPLICATOR_TIME_HORIZON}]",
+                self.time_horizon
+            ));
+        }
+        if checked_ode_step_count(self.dt, self.time_horizon).is_none() {
+            return Err(format!(
+                "Replicator ODE step count (time_horizon / dt) exceeds maximum allowed limit ({MAX_ODE_STEPS})"
+            ));
+        }
+        Ok(())
+    }
+
     fn validate_symbolic(&self, rows: usize) -> Result<(), String> {
-        match &self.symbolic_payoffs {
-            Some(sym_rows) => {
-                if sym_rows.len() != rows {
-                    return Err(format!(
-                        "Symbolic payoff matrix row count ({}) does not match dimensions ({rows}x{rows})",
-                        sym_rows.len()
-                    ));
-                }
-                for (i, row) in sym_rows.iter().enumerate() {
-                    if row.len() != rows {
-                        return Err(format!(
-                            "Symbolic payoff row {i} has length {}, expected {rows}",
-                            row.len()
-                        ));
-                    }
-                    for (j, expr_str) in row.iter().enumerate() {
-                        let trimmed = expr_str.trim();
-                        if trimmed.is_empty() || trimmed.len() > 256 {
-                            return Err(format!(
-                                "Symbolic payoff cell ({i}, {j}) must be non-empty and <= 256 chars"
-                            ));
-                        }
-                    }
-                }
-                if self.symbolic_params.len() > crate::framework::math_input::MAX_SYNTHESIZED_PARAMS
-                {
-                    return Err(format!(
-                        "Symbolic parameter count ({}) exceeds maximum ({})",
-                        self.symbolic_params.len(),
-                        crate::framework::math_input::MAX_SYNTHESIZED_PARAMS
-                    ));
-                }
-                for (name, &val) in &self.symbolic_params {
-                    if !val.is_finite() || !(-1e4..=1e4).contains(&val) {
-                        return Err(format!(
-                            "Symbolic parameter '{name}' must be finite and within [-10000, 10000]"
-                        ));
-                    }
-                }
-                Ok(())
+        let Some(sym_rows) = &self.symbolic_payoffs else {
+            if !self.symbolic_params.is_empty() {
+                return Err(
+                    "symbolic_params cannot be specified without symbolic_payoffs".to_string(),
+                );
             }
-            None => {
-                if !self.symbolic_params.is_empty() {
-                    return Err(
-                        "symbolic_params cannot be specified without symbolic_payoffs".to_string(),
-                    );
-                }
-                Ok(())
+            return Ok(());
+        };
+        if sym_rows.len() != rows {
+            return Err(format!(
+                "Symbolic payoff matrix row count ({}) does not match dimensions ({rows}x{rows})",
+                sym_rows.len()
+            ));
+        }
+        let mut free_vars = std::collections::BTreeSet::new();
+        for (i, row) in sym_rows.iter().enumerate() {
+            if row.len() != rows {
+                return Err(format!(
+                    "Symbolic payoff row {i} has length {}, expected {rows}",
+                    row.len()
+                ));
+            }
+            for (j, expr_str) in row.iter().enumerate() {
+                Self::validate_symbolic_cell(i, j, expr_str, &mut free_vars)?;
             }
         }
+        if self.symbolic_params.len() > crate::framework::math_input::MAX_SYNTHESIZED_PARAMS {
+            return Err(format!(
+                "Symbolic parameter count ({}) exceeds maximum ({})",
+                self.symbolic_params.len(),
+                crate::framework::math_input::MAX_SYNTHESIZED_PARAMS
+            ));
+        }
+        for (name, &val) in &self.symbolic_params {
+            if !val.is_finite() || !(-1e4..=1e4).contains(&val) {
+                return Err(format!(
+                    "Symbolic parameter '{name}' must be finite and within [-10000, 10000]"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_symbolic_cell(
+        i: usize,
+        j: usize,
+        expr_str: &str,
+        free_vars: &mut std::collections::BTreeSet<String>,
+    ) -> Result<(), String> {
+        let max_params = crate::framework::math_input::MAX_SYNTHESIZED_PARAMS;
+        let trimmed = expr_str.trim();
+        if trimmed.is_empty() || trimmed.len() > 256 {
+            return Err(format!(
+                "Symbolic payoff cell ({i}, {j}) must be non-empty and <= 256 chars"
+            ));
+        }
+        let (_, ast) = math_commons::ast::parse_equation(trimmed).map_err(|e| {
+            format!(
+                "Symbolic payoff cell ({i}, {j}) is invalid: {}",
+                e.user_message_for_input(trimmed)
+            )
+        })?;
+        let compiled = math_commons::ast::CompiledExpr::compile(&ast).map_err(|e| {
+            format!("Symbolic payoff cell ({i}, {j}) exceeds complexity limit: {e}")
+        })?;
+        free_vars.extend(compiled.var_names().iter().cloned());
+        if free_vars.len() > max_params {
+            return Err(format!(
+                "Symbolic payoff cell ({i}, {j}) exceeds maximum free parameters ({max_params})"
+            ));
+        }
+        Ok(())
     }
 }

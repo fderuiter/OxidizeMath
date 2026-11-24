@@ -27,6 +27,9 @@ impl diagnostics::Diagnostic for ParseError {
             Self::RecursionLimitExceeded(max_depth) => {
                 map.insert("max_depth".to_string(), max_depth.to_string());
             }
+            Self::NodeLimitExceeded(max_nodes) => {
+                map.insert("max_nodes".to_string(), max_nodes.to_string());
+            }
             Self::UnknownFunction { name, span } => {
                 map.insert("function".to_string(), name.clone());
                 map.insert("start".to_string(), span.start.to_string());
