@@ -1,18 +1,25 @@
-use super::{MathExplorerApp, ThemeMode, ViewportLayout};
+#[cfg(feature = "physics")]
+use super::ViewportLayout;
+use super::{MathExplorerApp, ThemeMode};
+#[cfg(feature = "physics")]
 use crate::url_state::{
     install_browser_history_listeners, replace_browser_url_fragment, reset_history_bridge_for_test,
 };
+#[cfg(feature = "physics")]
 use eframe::App as _;
+#[cfg(feature = "physics")]
 use std::collections::HashMap;
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 
 wasm_bindgen_test_configure!(run_in_browser);
 
+#[cfg(feature = "physics")]
 #[derive(Default)]
 struct WasmMemoryStorage {
     entries: HashMap<String, String>,
 }
 
+#[cfg(feature = "physics")]
 impl eframe::Storage for WasmMemoryStorage {
     fn get_string(&self, key: &str) -> Option<String> {
         self.entries.get(key).cloned()
@@ -46,6 +53,7 @@ fn wasm_app_as_any_mut_downcasts_and_roundtrips_recovery_snapshot() {
     assert_eq!(restored.theme, ThemeMode::Light);
 }
 
+#[cfg(feature = "physics")]
 #[wasm_bindgen_test]
 fn wasm_self_synced_reload_preserves_multi_pane_and_undo_while_external_url_pushes_undo() {
     let window = web_sys::window().expect("window");

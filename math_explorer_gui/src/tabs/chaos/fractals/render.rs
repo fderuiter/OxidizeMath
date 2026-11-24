@@ -84,7 +84,7 @@ pub fn map_escape_to_color32(
 }
 
 /// Maps an integer escape-time iteration count to an opaque `Color32` under the default cosine palette.
-#[cfg(test)]
+#[cfg(all(test, feature = "pure_math", feature = "biology"))]
 #[must_use]
 pub fn map_iter_to_color32(iter: u32, max_iter: u32, high_contrast: bool) -> egui::Color32 {
     map_escape_to_color32(

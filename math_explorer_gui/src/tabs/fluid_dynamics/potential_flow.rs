@@ -22,7 +22,7 @@ mod interact;
 mod shader;
 #[path = "potential_flow/streamlines.rs"]
 mod streamlines;
-#[cfg(test)]
+#[cfg(all(test, feature = "epidemiology", feature = "pure_math"))]
 pub(crate) use shader::MAX_SHADER_SINGULARITIES;
 
 pub(crate) const FLOW_STRENGTH_MIN: f64 = -1_000.0;

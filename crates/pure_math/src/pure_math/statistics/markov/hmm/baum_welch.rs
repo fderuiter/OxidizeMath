@@ -1,6 +1,7 @@
 //! Zero-allocation Baum-Welch Expectation-Maximization (EM) parameter estimation for HMMs.
 // [cite:clinical_trials_statistics]
 
+pub use super::baum_welch_types::BaumWelchResult;
 use super::baum_welch_types::{BaumWelchConfig, BaumWelchReport, BaumWelchWorkspace};
 use super::model::HiddenMarkovModel;
 use crate::error::MarkovError;
@@ -51,7 +52,7 @@ fn validate_bw_inputs<T: RealField + Copy + ToPrimitive>(
     Ok(())
 }
 
-fn run_forward_into<T: RealField + Copy + ToPrimitive>(
+pub(super) fn run_forward_into<T: RealField + Copy + ToPrimitive>(
     hmm: &HiddenMarkovModel<T>,
     observations: &[usize],
     ws: &mut BaumWelchWorkspace<T>,
@@ -136,7 +137,7 @@ fn init_backward_accumulators<T: RealField + Copy + ToPrimitive>(
     last_off
 }
 
-fn accumulate_backward_stats<T: RealField + Copy + ToPrimitive>(
+pub(super) fn accumulate_backward_stats<T: RealField + Copy + ToPrimitive>(
     hmm: &HiddenMarkovModel<T>,
     observations: &[usize],
     ws: &mut BaumWelchWorkspace<T>,
@@ -188,7 +189,7 @@ fn accumulate_backward_stats<T: RealField + Copy + ToPrimitive>(
     }
 }
 
-fn snapshot_parameters<T: RealField + Copy + ToPrimitive>(
+pub(super) fn snapshot_parameters<T: RealField + Copy + ToPrimitive>(
     hmm: &HiddenMarkovModel<T>,
     ws: &mut BaumWelchWorkspace<T>,
 ) {
@@ -217,7 +218,7 @@ fn snapshot_parameters<T: RealField + Copy + ToPrimitive>(
     }
 }
 
-fn restore_parameters<T: RealField + Copy + ToPrimitive>(
+pub(super) fn restore_parameters<T: RealField + Copy + ToPrimitive>(
     hmm: &mut HiddenMarkovModel<T>,
     ws: &BaumWelchWorkspace<T>,
 ) {
@@ -246,7 +247,7 @@ fn restore_parameters<T: RealField + Copy + ToPrimitive>(
     }
 }
 
-fn apply_m_step<T: RealField + Copy + ToPrimitive>(
+pub(super) fn apply_m_step<T: RealField + Copy + ToPrimitive>(
     hmm: &mut HiddenMarkovModel<T>,
     ws: &BaumWelchWorkspace<T>,
     prior: T,

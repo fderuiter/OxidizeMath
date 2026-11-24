@@ -10,7 +10,7 @@ mod staging;
 
 #[cfg(any(test, feature = "epidemiology", feature = "biology"))]
 pub use staging::poll_pane_graph;
-#[cfg(any(test, feature = "physics", feature = "biology"))]
+#[cfg(any(test, feature = "physics"))]
 pub use staging::publish_pane_landmarks;
 #[cfg(any(test, feature = "biology"))]
 pub use staging::publish_pane_scalar_field;
@@ -25,10 +25,13 @@ pub const MAX_DATAFLOW_PANES: usize = 4;
 /// Upper bound on graph vertices routed over `PaneDataflowBus` and pipeline URLs.
 pub const MAX_DATAFLOW_GRAPH_NODES: usize = 200;
 /// Upper bound on graph edges routed over `PaneDataflowBus`.
+#[cfg(any(test, feature = "pure_math"))]
 pub const MAX_DATAFLOW_GRAPH_EDGES: usize = 2_000;
 /// Upper bound on 3D landmarks routed over `PaneDataflowBus`.
+#[cfg(any(test, feature = "physics"))]
 pub const MAX_DATAFLOW_LANDMARKS: usize = 64;
 /// Upper bound per axis on 2D scalar field grids routed over `PaneDataflowBus`.
+#[cfg(any(test, feature = "biology"))]
 pub const MAX_DATAFLOW_FIELD_DIM: usize = 64;
 
 /// Typed cross-pane stream families supported by [`PaneDataflowBus`].
@@ -71,6 +74,7 @@ pub struct GraphTopologyPayload {
 
 impl GraphTopologyPayload {
     /// Builds a sanitized payload enforcing the `200`-node cap and finite coordinates/weights.
+    #[cfg(any(test, feature = "pure_math"))]
     pub fn sanitized(
         revision: u64,
         mut node_positions: Vec<[f32; 2]>,
@@ -108,6 +112,7 @@ impl GraphTopologyPayload {
     }
 
     /// Centers and scales up to `limit` vertex coordinates into `[-half_span, half_span]^2`.
+    #[cfg(any(test, feature = "biology", feature = "epidemiology"))]
     pub fn normalized_positions(&self, limit: usize, half_span: f32) -> Vec<[f32; 2]> {
         let count = self.node_positions.len().min(limit);
         let raw = &self.node_positions[..count];
@@ -149,6 +154,7 @@ pub struct LandmarkCloud3DPayload {
     pub dt: f64,
 }
 
+#[cfg(any(test, feature = "physics"))]
 impl LandmarkCloud3DPayload {
     /// Builds a sanitized 3D landmark payload capped at `MAX_DATAFLOW_LANDMARKS`.
     pub fn sanitized(
@@ -192,6 +198,7 @@ pub struct ScalarField2DPayload {
     pub v_bounds: [f64; 2],
 }
 
+#[cfg(any(test, feature = "biology"))]
 impl ScalarField2DPayload {
     /// Downsamples a row-major `src_width * src_height` grid to `<= MAX_DATAFLOW_FIELD_DIM`.
     pub fn from_grid_downsampled(

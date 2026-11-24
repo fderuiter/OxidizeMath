@@ -3,6 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use eframe::egui;
+#[cfg(any(feature = "physics", feature = "pure_math"))]
 use math_commons::ast::ShaderTarget;
 
 /// Standalone GPU fragment shader source format exported by [`super::InteractiveTool::export_shader_source`].
@@ -16,6 +17,7 @@ pub enum ShaderExportFormat {
 
 impl ShaderExportFormat {
     /// Converts this export format into the corresponding AST [`ShaderTarget`].
+    #[cfg(any(feature = "physics", feature = "pure_math"))]
     #[must_use]
     pub const fn ast_target(self) -> ShaderTarget {
         match self {

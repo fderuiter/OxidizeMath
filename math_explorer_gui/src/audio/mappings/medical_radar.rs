@@ -1,7 +1,5 @@
 //! Zero-allocation 60 GHz FMCW Doppler, sub-Rayleigh MUSIC, and LINAC `BeamState` sonification.
 
-// theory_verification!
-
 use math_explorer::physics::medical::radar_gating::{BeamState, FmcwConfig, C};
 
 use crate::audio::frame::{clamp_freq_hz, SonificationFrame, VoiceSpec, WaveformPreset};

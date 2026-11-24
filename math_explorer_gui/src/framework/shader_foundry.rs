@@ -208,6 +208,7 @@ vec2 om_resolve_julia_c() {{
     )
 }
 
+#[cfg(feature = "physics")]
 fn emit_wgsl_fractal_main(expr_code: &str, use_julia_seed: bool, smooth: bool) -> String {
     let seed_init = if use_julia_seed {
         "var z = z_pixel;\n    let c = om_resolve_julia_c();"
@@ -258,6 +259,7 @@ fn fs_main(@builtin(position) frag_coord: vec4<f32>) -> @location(0) vec4<f32> {
     )
 }
 
+#[cfg(feature = "physics")]
 fn emit_glsl_fractal_main(expr_code: &str, use_julia_seed: bool, smooth: bool) -> String {
     let seed_init = if use_julia_seed {
         "vec2 z = z_pixel;\n    vec2 c = om_resolve_julia_c();"
@@ -313,6 +315,7 @@ void main() {{ mainImage(om_fragColor, gl_FragCoord.xy); }}
 }
 
 /// Assembles a standalone WebGPU/Bevy `.wgsl` or GLSL ES 3.00 / Shadertoy `.glsl` fractal fragment shader.
+#[cfg(feature = "physics")]
 pub fn emit_fractal_shader(
     format: ShaderExportFormat,
     step_expr: &Expr,
@@ -345,6 +348,7 @@ pub fn emit_fractal_shader(
 }
 
 /// Assembles a standalone `.wgsl` or `.glsl` complex domain-coloring fragment shader.
+#[cfg(feature = "pure_math")]
 pub fn emit_domain_coloring_shader(
     format: ShaderExportFormat,
     map_expr: &Expr,
