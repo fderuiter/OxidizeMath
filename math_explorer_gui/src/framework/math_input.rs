@@ -7,16 +7,19 @@ mod preview;
 mod scope;
 
 #[cfg(test)]
+mod limit_tests;
+#[cfg(test)]
 mod tests;
 
-pub use coupled::CoupledExpressionBank;
+pub use coupled::{CoupledExpressionBank, MAX_COUPLED_BANK_INSTRUCTIONS};
+pub use math_commons::ast::{MAX_AST_NODES, MAX_COMPILED_INSTRUCTIONS, MAX_EXPR_BYTES};
 pub use params::{
     ParamSliderSpec, ParameterRangeConfig, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS,
 };
 use scope::VariableScopePolicy;
 
 use eframe::egui;
-use math_commons::ast::{parse_equation, CompiledExpr, Expr, ParseError};
+use math_commons::ast::{parse_equation, CompiledExpr, Expr, LexError, ParseError};
 use preview::{render_presets, render_status_row, update_latex_preview};
 use std::collections::{BTreeMap, HashMap};
 use std::ops::RangeInclusive;
@@ -60,6 +63,10 @@ pub struct MathExpressionInputBar {
     slider_bank: ParameterSliderBank,
     /// Optional tool-level allowed/disallowed variable validation rules.
     scope_policy: VariableScopePolicy,
+    /// Maximum compiled bytecode instructions allowed for this formula.
+    max_instructions: usize,
+    /// Original UTF-8 byte length when an oversized input was truncated on assignment.
+    oversized_byte_len: Option<usize>,
 }
 
 impl MathExpressionInputBar {
@@ -96,8 +103,10 @@ impl MathExpressionInputBar {
             last_valid_compiled: None,
             slider_bank: ParameterSliderBank::new(),
             scope_policy: VariableScopePolicy::default(),
+            max_instructions: MAX_COMPILED_INSTRUCTIONS,
+            oversized_byte_len: None,
         };
-        bar.reparse();
+        bar.set_expression(initial_expr);
         bar
     }
 
@@ -165,10 +174,32 @@ impl MathExpressionInputBar {
         self
     }
 
-    /// Updates the expression text and reparses/recompiles the AST.
-    pub fn set_expression(&mut self, text: &str) {
-        self.raw_text = text.to_string();
+    /// Configures a stricter per-expression compiled bytecode instruction ceiling.
+    #[must_use]
+    pub fn with_max_instructions(mut self, max_instructions: usize) -> Self {
+        self.max_instructions = max_instructions.clamp(1, MAX_COMPILED_INSTRUCTIONS);
         self.reparse();
+        self
+    }
+
+    /// Updates the expression text (bounding retained heap bytes) and reparses/recompiles the AST.
+    pub fn set_expression(&mut self, text: &str) {
+        if text.len() > MAX_EXPR_BYTES {
+            self.oversized_byte_len = Some(text.len());
+            let keep = text.floor_char_boundary((MAX_EXPR_BYTES + 4).min(text.len()));
+            self.raw_text = text[..keep].to_string();
+        } else {
+            self.oversized_byte_len = None;
+            self.raw_text = text.to_string();
+        }
+        self.reparse();
+    }
+
+    /// Returns the instruction count of the active (or last valid fallback) compiled formula.
+    #[must_use]
+    pub fn instruction_count(&self) -> usize {
+        self.active_compiled()
+            .map_or(0, CompiledExpr::instruction_count)
     }
 
     /// Returns a reference to the parsed AST if currently valid.
@@ -285,6 +316,15 @@ impl MathExpressionInputBar {
 
     /// Reparses `raw_text`, compiles bytecode, validates arity/scope, and syncs parameter sliders.
     pub fn reparse(&mut self) {
+        if self.raw_text.len() > MAX_EXPR_BYTES {
+            let reported_len = self.oversized_byte_len.unwrap_or(self.raw_text.len());
+            self.parsed_expr = Err(ParseError::Lex(LexError::input_too_long(reported_len)));
+            self.validation_error = None;
+            self.compiled_expr = None;
+            self.latex_cache.clear();
+            return;
+        }
+        self.oversized_byte_len = None;
         let trimmed = self.raw_text.trim();
         if trimmed.is_empty() {
             self.parsed_expr = Err(ParseError::EmptyExpression);
@@ -306,15 +346,21 @@ impl MathExpressionInputBar {
         }
     }
 
+    fn reject_parsed_candidate(&mut self, expr: Expr, err: String, clear_latex: bool) {
+        self.validation_error = Some(err);
+        self.compiled_expr = None;
+        if clear_latex {
+            self.latex_cache.clear();
+        }
+        self.parsed_expr = Ok(expr);
+    }
+
     fn finish_valid_parse(&mut self, lhs: Option<String>, expr: Expr) {
         if let Err(scope_err) = self
             .scope_policy
             .validate(&expr, &self.axes, self.complex_mode)
         {
-            self.validation_error = Some(scope_err);
-            self.compiled_expr = None;
-            self.latex_cache.clear();
-            self.parsed_expr = Ok(expr);
+            self.reject_parsed_candidate(expr, scope_err, true);
             return;
         }
 
@@ -327,13 +373,21 @@ impl MathExpressionInputBar {
 
         match compile_res {
             Ok(compiled) => {
+                if compiled.instruction_count() > self.max_instructions {
+                    let msg = format!(
+                        "Formula compiles to {} instructions (maximum {}). Simplify the expression",
+                        compiled.instruction_count(),
+                        self.max_instructions
+                    );
+                    self.reject_parsed_candidate(expr, msg, true);
+                    return;
+                }
                 if self.scope_enabled && compiled.param_names().len() > MAX_SYNTHESIZED_PARAMS {
-                    self.validation_error = Some(format!(
+                    let msg = format!(
                         "Formula defines {} free parameters (maximum {MAX_SYNTHESIZED_PARAMS})",
                         compiled.param_names().len()
-                    ));
-                    self.compiled_expr = None;
-                    self.parsed_expr = Ok(expr);
+                    );
+                    self.reject_parsed_candidate(expr, msg, false);
                     return;
                 }
                 if self.scope_enabled {
@@ -352,12 +406,7 @@ impl MathExpressionInputBar {
                 self.compiled_expr = Some(compiled);
                 self.parsed_expr = Ok(expr);
             }
-            Err(eval_err) => {
-                self.validation_error = Some(eval_err.to_string());
-                self.compiled_expr = None;
-                self.latex_cache.clear();
-                self.parsed_expr = Ok(expr);
-            }
+            Err(eval_err) => self.reject_parsed_candidate(expr, eval_err.to_string(), true),
         }
     }
 
@@ -392,6 +441,7 @@ impl MathExpressionInputBar {
                     }
                     let res = ui.add(
                         egui::TextEdit::singleline(&mut self.raw_text)
+                            .char_limit(MAX_EXPR_BYTES)
                             .hint_text("Enter mathematical expression...")
                             .desired_width((ui.available_width() - 8.0).max(48.0)),
                     );

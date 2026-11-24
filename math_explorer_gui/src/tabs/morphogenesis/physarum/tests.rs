@@ -58,6 +58,9 @@ fn test_morphogenesis_tab_switches_across_turing_lenia_and_physarum_tools() {
     assert!(tab.select_tool_by_name("LeniaTool"));
     assert_eq!(tab.active_tool_id(), Some("LeniaTool"));
 
+    assert!(tab.select_tool_by_name("PhyllotaxisLSystemTool"));
+    assert_eq!(tab.active_tool_id(), Some("PhyllotaxisLSystemTool"));
+
     assert!(tab.select_tool_by_name("PhysarumTool"));
     assert_eq!(tab.active_tool_id(), Some("PhysarumTool"));
 
@@ -318,16 +321,19 @@ fn test_physarum_compact_url_share_roundtrip_and_bounds_rejection() {
     tool.apply_wall_stroke(96, 96, false);
     assert_ne!(tool.url_state_revision(), rev_at_cap);
 
-    let bad_grid = tool
-        .save_state()
-        .unwrap()
-        .replace("\"grid_size\":128", "\"grid_size\":512");
+    let snapshot_before_bad = tool.save_state().unwrap();
+    let bad_grid = snapshot_before_bad.replace("\"grid_size\":128", "\"grid_size\":512");
     assert!(tool.try_load_state(&bad_grid).is_err());
-    let bad_agents = tool
-        .save_state()
-        .unwrap()
-        .replace("\"agent_count\":6144", "\"agent_count\":65536");
+    assert_eq!(
+        tool.save_state().as_deref(),
+        Some(snapshot_before_bad.as_str())
+    );
+    let bad_agents = snapshot_before_bad.replace("\"agent_count\":6144", "\"agent_count\":65536");
     assert!(tool.try_load_state(&bad_agents).is_err());
+    assert_eq!(
+        tool.save_state().as_deref(),
+        Some(snapshot_before_bad.as_str())
+    );
 }
 
 #[cfg(not(target_arch = "wasm32"))]

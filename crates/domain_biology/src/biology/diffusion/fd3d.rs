@@ -1,5 +1,5 @@
 //! 3D 7-Point Finite Difference Diffusion Strategy with Zero-Flux Neumann Boundaries.
-// [cite:favorite_child]
+// [cite:biology]
 
 use super::SpatialDiffusion;
 use crate::biology::morphogenesis::reaction::ReactionKinetics;
