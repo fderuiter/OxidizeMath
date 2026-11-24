@@ -90,8 +90,8 @@ impl KuramotoNetwork {
         let old_len = self.phases.len();
         if n != old_len {
             self.phases.resize(n, 0.0);
-            for (i, phase) in self.phases.iter_mut().enumerate().take(n).skip(old_len) {
-                *phase = Self::seeded_phase(i, n);
+            for i in old_len..n {
+                self.phases[i] = Self::seeded_phase(i, n);
             }
             self.natural_frequencies.resize(n, self.base_frequency);
             self.scratch_state.resize(n, 0.0);

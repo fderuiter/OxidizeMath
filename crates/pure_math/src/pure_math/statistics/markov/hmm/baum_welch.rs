@@ -71,8 +71,8 @@ fn run_forward_into<T: RealField + Copy + ToPrimitive>(
     if scale0 <= zero {
         return neg_inf;
     }
-    for alpha in &mut ws.alpha[..n] {
-        *alpha /= scale0;
+    for i in 0..n {
+        ws.alpha[i] /= scale0;
     }
     ws.scales[0] = scale0;
     let mut ll = scale0.ln();

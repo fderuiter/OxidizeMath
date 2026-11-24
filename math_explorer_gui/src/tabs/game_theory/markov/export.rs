@@ -156,10 +156,12 @@ impl MarkovSequenceWorkbenchTool {
                 "{state_i},{},{epv:.6},{steps:.6}",
                 csv_escape_field(&self.config.dtmc.state_names[state_i])
             ));
-            for &b in &self.dtmc_out.absorption_probs[row_idx][..num_a] {
+            for k in 0..num_a {
+                let b = self.dtmc_out.absorption_probs[row_idx][k];
                 out.push_str(&format!(",{b:.6}"));
             }
-            for &v in &self.dtmc_out.fundamental[row_idx][..num_t] {
+            for j in 0..num_t {
+                let v = self.dtmc_out.fundamental[row_idx][j];
                 out.push_str(&format!(",{v:.6}"));
             }
             out.push('\n');
