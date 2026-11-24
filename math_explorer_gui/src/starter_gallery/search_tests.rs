@@ -139,8 +139,18 @@ fn test_all_28_tab_slugs_map_to_matching_academic_domains_and_titles() {
         "Optics & Waves"
     );
 
+    assert_eq!(
+        card_academic_domain("stochastic_pde"),
+        AcademicDomain::Physics
+    );
+    assert_eq!(
+        crate::command_palette::format_domain_title("stochastic_pde").as_ref(),
+        "Stochastic PDEs"
+    );
+
     let tabs = crate::tabs::instantiate_tabs();
-    let expected_tabs = if cfg!(feature = "biology") { 29 } else { 28 };
+    let expected_tabs =
+        (if cfg!(feature = "biology") { 29 } else { 28 }) + usize::from(cfg!(feature = "physics"));
     assert_eq!(tabs.len(), expected_tabs);
     for tab in &tabs {
         let slug = tab.url_slug();

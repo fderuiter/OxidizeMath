@@ -147,6 +147,15 @@ mod tests {
         exercise_interactive_tool::<
             crate::tabs::geometry_topology::surface_morphogenesis::SurfaceMorphogenesisTool,
         >(ctx);
+        #[cfg(feature = "physics")]
+        {
+            exercise_interactive_tool::<crate::tabs::stochastic_pde::kpz_tool::KpzInterfaceTool>(
+                ctx,
+            );
+            exercise_interactive_tool::<
+                crate::tabs::stochastic_pde::spinodal_tool::SpinodalDecompositionTool,
+            >(ctx);
+        }
     }
 
     #[test]

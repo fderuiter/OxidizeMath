@@ -35,6 +35,7 @@ pub fn format_domain_title(domain: &str) -> Cow<'static, str> {
         "quantum" => Cow::Borrowed("Quantum Mechanics"),
         "relativity" => Cow::Borrowed("General Relativity"),
         "solid_state" => Cow::Borrowed("Solid State Physics"),
+        "stochastic_pde" => Cow::Borrowed("Stochastic PDEs"),
         "traceability" => Cow::Borrowed("Traceability Portal"),
         other => Cow::Owned(title_case_identifier(other)),
     }

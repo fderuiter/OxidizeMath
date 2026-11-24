@@ -67,8 +67,10 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
     let explicit: &[&str] = match tool_id.trim() {
         "AttentionMapsTool" => &["attention_is_all_you_need_rust"],
         "CeraTool" => &["cera_framework"],
-        "Co2ProjectionsTool" => &["isosurface_extraction"],
-        "TurbulenceTool" => &["generative_turbulence"],
+        "Co2ProjectionsTool" | "SpinodalDecompositionTool" => {
+            &["isosurface_extraction", "phase_field"]
+        }
+        "TurbulenceTool" | "KpzInterfaceTool" => &["generative_turbulence", "interface_growth"],
         "PartitionsWidget" => &["partitions_implementation"],
         "UalbfWidget" => &["ualbf_quasiperfect"],
         "EllipticCurvePlayground" | "WeierstrassPlaygroundTool" | "ModularInvariantsTool" => {
@@ -118,6 +120,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         "neuroscience" => &["biology", "computational_biology", "graph_parameters_rust"],
         "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],
         "solid_state" => &["stat_mech", "pure_math"],
+        "stochastic_pde" => &["interface_growth", "phase_field"],
         "ai" => &["graph_parameters_rust"],
         "paradox_lab" => &["paradox_lab", "game_theory", "graph_parameters_rust"],
         "relativity" => &[

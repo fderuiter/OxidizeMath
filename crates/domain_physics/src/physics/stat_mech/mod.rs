@@ -16,8 +16,12 @@ pub mod edwards_wilkinson;
 #[allow(missing_docs)]
 pub mod ensembles;
 pub mod graph_ising;
+/// Zero-allocation 1D and 2D Lam-Shin KPZ interface growth solvers and Family-Vicsek scaling telemetry.
+pub mod interface_growth;
 pub mod ising;
 pub mod kpz;
+/// Zero-allocation temperature-quenched 2D Allen-Cahn and Cahn-Hilliard solvers with radial structure-factor telemetry.
+pub mod phase_field;
 #[allow(missing_docs)]
 pub mod quantum_stats;
 pub mod sandpile;
@@ -32,6 +36,7 @@ pub use graph_ising::GraphSpinSystem;
 pub use kpz::{KpzModel1D, KpzModel2D};
 
 // [cite:stat_mech]
+// [cite:stochastic_pde]
 // [cite:graph_parameters_rust]
 
 use pure_math::theory_verification;
@@ -130,15 +135,53 @@ theory_verification!(
     module = "stat_mech",
     constants = {
         EW_BETA_EXPONENT = 0.25;
+        KPZ_BETA_EXPONENT_1D = 1.0 / 3.0;
+        KPZ_ROUGHNESS_ALPHA_1D = 0.5;
+        KPZ_DYNAMIC_Z_1D = 1.5;
         SPINODAL_MEAN_TARGET = 0.08;
     },
     test = {
+        use crate::physics::stat_mech::interface_growth::{
+            KPZ_ALPHA_1D, KPZ_BETA_1D, KPZ_DYNAMIC_Z_1D as KPZ_Z,
+        };
+        use crate::physics::stat_mech::phase_field::{
+            PhaseFieldModel, PhaseFieldParams, PhaseFieldSolver2D,
+        };
         use approx::assert_relative_eq;
         use math_commons::registry::TOLERANCE_STANDARD;
+        use oxidize_core::rng::OxidizeRng;
 
         assert_relative_eq!(EW_BETA_EXPONENT, 0.25, epsilon = TOLERANCE_STANDARD);
+        assert_relative_eq!(
+            KPZ_ROUGHNESS_ALPHA_1D + KPZ_DYNAMIC_Z_1D,
+            2.0,
+            epsilon = TOLERANCE_STANDARD
+        );
+        assert_relative_eq!(
+            KPZ_ALPHA_1D / KPZ_Z,
+            KPZ_BETA_EXPONENT_1D,
+            epsilon = TOLERANCE_STANDARD
+        );
+        assert_relative_eq!(
+            KPZ_BETA_1D,
+            KPZ_BETA_EXPONENT_1D,
+            epsilon = TOLERANCE_STANDARD
+        );
         super::verify_spinodal_coarsening_and_mass_conservation(SPINODAL_MEAN_TARGET);
         super::verify_ew_and_kpz_roughness_scaling();
+
+        let mut rng_pf = OxidizeRng::from_seed(0x57A7_4EC0);
+        let pf_params = PhaseFieldParams {
+            model: PhaseFieldModel::CahnHilliard,
+            noise_sigma: 0.0,
+            ..PhaseFieldParams::default()
+        };
+        let mut pf = PhaseFieldSolver2D::new_spinodal(16, 16, 0.05, 0.1, &mut rng_pf, pf_params);
+        let m0 = pf.mean_concentration();
+        let f0 = pf.free_energy();
+        pf.step_n(&mut rng_pf, 5);
+        assert!((pf.mean_concentration() - m0).abs() < 1e-12);
+        assert!(pf.free_energy() < f0);
     }
 );
 

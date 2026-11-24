@@ -84,6 +84,8 @@ pub mod greens;
 pub mod heat;
 #[allow(missing_docs)]
 pub mod laplace;
+/// Pre-planned 2D semi-implicit spectral PDE/SPDE solvers and radial structure-factor diagnostics.
+pub mod spde;
 /// Zero-allocation, `no_std`-compatible complex Thomas tridiagonal matrix factorization and sweeps.
 pub mod tridiagonal;
 #[allow(missing_docs)]
