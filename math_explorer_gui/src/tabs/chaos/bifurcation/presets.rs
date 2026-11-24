@@ -1,8 +1,68 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{BifurcationDiagram, BifurcationMapMode};
+use super::{
+    BifurcationDiagram, BifurcationMapMode, BifurcationState, DEFAULT_CUSTOM_EXPR, DEFAULT_X0,
+};
+use crate::framework::MathExpressionInputBar;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+
+pub(super) fn default_bifurcation_input_bar() -> MathExpressionInputBar {
+    MathExpressionInputBar::new(
+        "x_{n+1}",
+        DEFAULT_CUSTOM_EXPR,
+        vec![
+            ("Sine Map", "r * sin(pi * x)"),
+            ("Quadratic Map", "x^2 - r"),
+            ("Ricker Population", "x * exp(r * (1 - x))"),
+            ("Cubic Map", "r * x - x^3"),
+            (
+                "Perturbed Logistic",
+                "r * x * (1 - x) + a * sin(2 * pi * x)",
+            ),
+        ],
+    )
+    .with_axes(&["r", "x"])
+    .with_param_range(-2.0..=2.0, 0.05)
+}
+
+impl BifurcationDiagram {
+    pub(super) fn build_state_json(&self, include_hover_r: bool) -> Option<String> {
+        let is_custom = self.map_mode.is_custom();
+        let midpoint = (self.r_min + self.r_max) * 0.5;
+        let has_selected_r = self.r_pinned
+            || ((include_hover_r || !self.r_from_hover)
+                && (self.selected_r - midpoint).abs() > 1e-12);
+        let selected_r = has_selected_r.then_some(self.selected_r);
+        let x0 =
+            (is_custom || self.r_pinned || (self.x0 - DEFAULT_X0).abs() > 1e-12).then_some(self.x0);
+        let trimmed_expr = self.math_input.raw_text.trim();
+        let custom_expr = (is_custom || trimmed_expr != DEFAULT_CUSTOM_EXPR)
+            .then(|| self.math_input.raw_text.clone());
+        let custom_params = if is_custom {
+            self.math_input.params_map()
+        } else {
+            BTreeMap::new()
+        };
+        let (xk, yk) = self.atlas.axis_keys();
+        serde_json::to_string(&BifurcationState {
+            r_min: self.r_min,
+            r_max: self.r_max,
+            steps: self.steps,
+            map_mode: self.map_mode,
+            selected_r,
+            x0,
+            r_pinned: self.r_pinned,
+            use_custom_map: false,
+            custom_expr,
+            custom_params,
+            show_lyapunov: self.show_lyapunov,
+            atlas_visible: self.atlas.is_visible(),
+            atlas_axes: [xk.to_string(), yk.to_string()],
+        })
+        .ok()
+    }
+}
 
 /// Legacy starter preset JSON envelope for the Logistic Map Bifurcation Diagram.
 pub const STARTER_PRESET_JSON: &str = r#"{
@@ -86,12 +146,10 @@ impl TheoryDescribable for BifurcationDiagram {
     }
 
     fn available_descriptions(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert(
+        HashMap::from([(
             "default".to_string(),
             "Logistic map bifurcation diagram and maximal Lyapunov exponent λ(r)".to_string(),
-        );
-        map
+        )])
     }
 
     fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {

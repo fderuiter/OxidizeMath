@@ -12,6 +12,21 @@ pub mod hamiltonian;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
 
+/// Interactive Chaos Theory exploration suite coupling spatial parameter atlases to live
+/// dynamical state orbits across [`fractals::FractalViewer`], [`bifurcation::BifurcationDiagram`],
+/// [`attractors::AttractorPlotter`], [`hamiltonian::HamiltonianChaosTool`], and
+/// [`billiards::DynamicalBilliardsTool`].
+///
+/// - **Fractal Viewer**: Links the Mandelbrot parameter plane to live `160x120` Julia set hover
+///   insets, critical orbit overlays, and progressive click/`Enter` pinning or teleportation while preserving per-mode viewports.
+/// - **Bifurcation Diagram**: Offloads logistic sweeps into cooperative `8ms` `BackgroundWorker`
+///   slices with toggleable `logistic_lyapunov` $\lambda(r)$ stability overlays and click-linked cobweb/$x_n$ inspectors.
+/// - **Attractor Plotter**: Streams 3D Lorenz trajectories alongside live `lorenz_lyapunov` and
+///   zero-allocation `correlation_dimension_in_place` readouts plus a 2D $(\rho, \sigma)$ regime map.
+/// - **Hamiltonian Chaos Lab**: Pairs zero-allocation symplectic solvers (`StormerVerlet`,
+///   `ImplicitMidpoint`, `Yoshida4`, `GaussLegendre4`) and `ChirikovStandardMap` with cubic-Hermite Poincaré sections and `RungeKutta4` drift comparisons.
+/// - **Dynamical Billiards Lab**: Couples flat Euclidean billiard tables (`Circle`, `Ellipse`,
+///   `Stadium`, `Sinai`) to live 2D Birkhoff $(s/L, \sin\phi)$ phase portraits and ray fan ensembles.
 pub struct ChaosTab {
     framework: crate::framework::SimulationFramework,
 }
