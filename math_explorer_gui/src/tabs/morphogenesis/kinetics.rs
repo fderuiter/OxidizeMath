@@ -6,11 +6,25 @@
 use crate::presets::MorphogenesisKineticsMode;
 use math_explorer::biology::diffusion::SpatialDiffusion;
 use math_explorer::biology::morphogenesis::{
-    GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics, SpatialSchnakenbergKinetics,
-    TuringSystem,
+    FusedEulerSolver, GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics,
+    SpatialSchnakenbergKinetics, TuringSystem,
 };
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
+
+pub(crate) fn cfl_step_pair(auto_dt: bool, dt: f64, coeffs: [f64; 2]) -> (usize, f64) {
+    if auto_dt {
+        FusedEulerSolver::cfl_substeps_2d(
+            dt,
+            1.0,
+            coeffs[0],
+            coeffs[1],
+            super::runner::MAX_CFL_SUBSTEPS,
+        )
+    } else {
+        (1, dt)
+    }
+}
 
 pub(crate) fn apply_uniform_noise<K: ReactionKinetics<2>, D: SpatialDiffusion<2>>(
     system: &mut TuringSystem<2, K, D>,
@@ -36,6 +50,8 @@ pub(crate) fn apply_uniform_noise<K: ReactionKinetics<2>, D: SpatialDiffusion<2>
 pub struct MorphogenesisKineticsAdapter {
     /// Active reaction kinetics family.
     pub mode: MorphogenesisKineticsMode,
+    /// Whether 2D Forward Euler CFL substepping is active.
+    pub auto_dt: bool,
     /// Schnakenberg activator feed `a`.
     pub a: f64,
     /// Schnakenberg inhibitor feed `b`.
@@ -61,6 +77,7 @@ impl MorphogenesisKineticsAdapter {
     ) -> Self {
         Self {
             mode,
+            auto_dt: true,
             a,
             b,
             f,
@@ -136,6 +153,8 @@ impl ReactionKinetics<2> for MorphogenesisKineticsAdapter {
 pub struct MorphogenesisKineticsState {
     /// Selected kinetics regime.
     pub mode: MorphogenesisKineticsMode,
+    /// Whether 2D Forward Euler CFL substepping is active.
+    pub auto_dt: bool,
     /// Gray-Scott substrate feed rate `f`.
     pub f: f64,
     /// Gray-Scott autocatalyst kill rate `k`.
@@ -147,6 +166,7 @@ impl Default for MorphogenesisKineticsState {
         let gs = GrayScottKinetics::mitosis();
         Self {
             mode: MorphogenesisKineticsMode::Schnakenberg,
+            auto_dt: true,
             f: gs.f,
             k: gs.k,
         }

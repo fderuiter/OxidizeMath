@@ -418,7 +418,7 @@ pub(super) fn spawn_native_worker<T: SimulationRunner>(
                     &mut runner,
                     &mut ring,
                     steps_per_frame,
-                    None,
+                    Some(Duration::from_millis(16)),
                     &mut state,
                     &state_tx,
                 ) {

@@ -24,6 +24,50 @@ pub const PRESET_GRAY_SCOTT_MITOSIS: &str = r#"{
   }
 }"#;
 
+/// JSON preset envelope for Gray-Scott Coral labyrinthine branching growth.
+pub const PRESET_GRAY_SCOTT_CORAL: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Turing Morphogenesis - Gray-Scott Coral",
+    "domain": "biology",
+    "timestamp": "2026-11-23T00:00:00Z"
+  },
+  "config": {
+    "a": 0.1,
+    "b": 0.9,
+    "d_u": 0.16,
+    "d_v": 0.08,
+    "dt": 1.0,
+    "width": 100,
+    "height": 100,
+    "kinetics_mode": "GrayScott",
+    "f": 0.0545,
+    "k": 0.0620
+  }
+}"#;
+
+/// JSON preset envelope for Gray-Scott Solitons localized traveling pulses.
+pub const PRESET_GRAY_SCOTT_SOLITONS: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Turing Morphogenesis - Gray-Scott Solitons",
+    "domain": "biology",
+    "timestamp": "2026-11-23T00:00:00Z"
+  },
+  "config": {
+    "a": 0.1,
+    "b": 0.9,
+    "d_u": 0.16,
+    "d_v": 0.08,
+    "dt": 1.0,
+    "width": 100,
+    "height": 100,
+    "kinetics_mode": "GrayScott",
+    "f": 0.030,
+    "k": 0.060
+  }
+}"#;
+
 fn generate_hybrid_turing_mask_preset() -> &'static str {
     static HYBRID_PRESET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     HYBRID_PRESET
@@ -121,5 +165,31 @@ inventory::submit! {
         domain: "biology",
         tool_name: Some("MorphogenesisTool"),
         preset_generator: || PRESET_GRAY_SCOTT_MITOSIS,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "gray_scott_coral",
+        title: "Gray-Scott Coral",
+        description: "∂v/∂t = D_v∇²v + uv² - (f+k)v: Tip-splitting dendritic coral and labyrinthine branching fronts.",
+        category: "Morphogenesis",
+        icon: "🪸",
+        domain: "biology",
+        tool_name: Some("MorphogenesisTool"),
+        preset_generator: || PRESET_GRAY_SCOTT_CORAL,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "gray_scott_solitons",
+        title: "Gray-Scott Solitons",
+        description: "∂v/∂t = D_v∇²v + uv² - (f+k)v: Subcritical localized chemical pulses near the saddle-node fold.",
+        category: "Reaction-Diffusion",
+        icon: "🫧",
+        domain: "biology",
+        tool_name: Some("MorphogenesisTool"),
+        preset_generator: || PRESET_GRAY_SCOTT_SOLITONS,
     }
 }

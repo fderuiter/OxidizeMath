@@ -50,6 +50,7 @@ pub struct MorphogenesisTool {
     pub branch_engine: CounterfactualBranchEngine,
     pub(crate) theory: MorphogenesisTheory,
     pub(crate) field_stream: super::dataflow::MorphoFieldStreamState,
+    pub(crate) minimap_cache: super::minimap::AtlasCache,
 }
 
 impl Default for MorphogenesisTool {
@@ -101,6 +102,7 @@ impl Default for MorphogenesisTool {
             branch_engine: CounterfactualBranchEngine::default(),
             theory: MorphogenesisTheory::default(),
             field_stream: super::dataflow::MorphoFieldStreamState::default(),
+            minimap_cache: super::minimap::AtlasCache::default(),
         }
     }
 }
@@ -282,6 +284,7 @@ impl InteractiveTool for MorphogenesisTool {
                 .read()
                 .unwrap_or_else(|e| e.into_inner());
             ks.mode.hash(&mut h);
+            ks.auto_dt.hash(&mut h);
             ks.f.to_bits().hash(&mut h);
             ks.k.to_bits().hash(&mut h);
         }
@@ -311,12 +314,12 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let (kinetics_mode, f, k) = {
+        let (kinetics_mode, auto_dt, f, k) = {
             let ks = self
                 .kinetics_state
                 .read()
                 .unwrap_or_else(|e| e.into_inner());
-            (ks.mode, ks.f, ks.k)
+            (ks.mode, ks.auto_dt, ks.f, ks.k)
         };
         let (a, b, d_u, d_v, dt, heatmap_mode, kinetics_mask_rle) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
@@ -355,6 +358,7 @@ impl InteractiveTool for MorphogenesisTool {
             width: self.width,
             height: self.height,
             kinetics_mode,
+            auto_dt,
             f,
             k,
             state: Some(self.worker.state()),
@@ -387,7 +391,7 @@ impl InteractiveTool for MorphogenesisTool {
                 .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
         }
         self.atlas.set_visible(parsed.atlas_visible);
-        let target_state = parsed.resolve_target_state();
+        let (target_state, defer_start) = parsed.resolve_target_state(self.pending_initial_start);
         self.theory.mode = parsed.kinetics_mode;
         {
             let mut ks = self
@@ -395,6 +399,7 @@ impl InteractiveTool for MorphogenesisTool {
                 .write()
                 .unwrap_or_else(|e| e.into_inner());
             ks.mode = parsed.kinetics_mode;
+            ks.auto_dt = parsed.auto_dt;
             ks.f = parsed.f;
             ks.k = parsed.k;
         }
@@ -418,14 +423,14 @@ impl InteractiveTool for MorphogenesisTool {
                 parsed.height,
                 fork_desc,
                 target_state,
-                parsed.pending_initial_start,
+                defer_start,
             )?;
         } else {
             self.apply_dimensions_and_target_state(
                 parsed.width,
                 parsed.height,
                 target_state,
-                parsed.pending_initial_start,
+                defer_start,
             );
         }
         Ok(())
@@ -474,6 +479,7 @@ inventory::submit! {
             "gray-scott",
             "mitosis",
             "coral",
+            "solitons",
             "reaction-diffusion",
             "spots",
             "stripes",

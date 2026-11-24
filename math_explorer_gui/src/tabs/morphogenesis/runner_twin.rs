@@ -47,11 +47,12 @@ impl MorphogenesisKineticsRunner {
             let p = params.read().unwrap_or_else(|e| e.into_inner());
             (p.a, p.b, p.d_u, p.d_v, p.mask_rle.clone())
         };
-        let (mode, f, k) = {
+        let (mode, auto_dt, f, k) = {
             let ks = kinetics_state.read().unwrap_or_else(|e| e.into_inner());
-            (ks.mode, ks.f, ks.k)
+            (ks.mode, ks.auto_dt, ks.f, ks.k)
         };
         let mut kinetics = MorphogenesisKineticsAdapter::new(mode, a, b, f, k, width * height);
+        kinetics.auto_dt = auto_dt;
         super::brush::apply_mask_rle_to_kinetics(
             &mut kinetics,
             width,
@@ -156,6 +157,7 @@ impl MorphogenesisKineticsRunner {
                 .write()
                 .unwrap_or_else(|e| e.into_inner());
             ks.mode = self.system.kinetics.mode;
+            ks.auto_dt = self.system.kinetics.auto_dt;
             ks.f = self.system.kinetics.f;
             ks.k = self.system.kinetics.k;
         }

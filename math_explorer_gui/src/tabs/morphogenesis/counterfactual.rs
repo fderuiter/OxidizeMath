@@ -239,16 +239,23 @@ impl MorphogenesisTwinState {
     /// Steps frozen baseline `Branch A` by `dt` with zero heap allocations.
     #[inline]
     pub fn step_branch_a(&mut self, dt: f64, width: usize, height: usize, noise_amp: f64) {
-        self.system_a.step(dt);
+        let (substeps, sub_dt) = super::kinetics::cfl_step_pair(
+            self.system_a.kinetics.auto_dt,
+            dt,
+            self.system_a.diffusion_coeffs,
+        );
+        for _ in 0..substeps {
+            self.system_a.step(sub_dt);
+            if self.system_a.diffusion.mask.has_active_cells() {
+                super::sculpt::enforce_system_mask(&mut self.system_a, width, height);
+            }
+        }
         super::runner::apply_uniform_noise(
             &mut self.system_a,
             width * height,
             &mut self.rng_a,
             noise_amp,
         );
-        if self.system_a.diffusion.mask.has_active_cells() {
-            super::sculpt::enforce_system_mask(&mut self.system_a, width, height);
-        }
     }
 
     /// Updates spatial `L2` and `L_∞` norms after a lockstep tick with zero heap allocations.

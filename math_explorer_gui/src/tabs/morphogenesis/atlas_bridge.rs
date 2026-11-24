@@ -158,22 +158,26 @@ impl MorphogenesisTool {
     }
 
     pub(crate) fn reseed_gray_scott_if_washed_out(&mut self) -> bool {
-        let (f, k) = {
+        let (auto_dt, f, k) = {
             let ks = self
                 .kinetics_state
                 .read()
                 .unwrap_or_else(|e| e.into_inner());
-            (ks.f, ks.k)
+            (ks.auto_dt, ks.f, ks.k)
         };
         let (d_u, d_v, dt) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.d_u, p.d_v, p.dt)
         };
-        if !is_gray_scott_pattern_viable(f, k, d_u, d_v, dt) || !self.is_active_grid_washed_out() {
+        let eff_dt = super::kinetics::cfl_step_pair(auto_dt, dt, [d_u, d_v]).1;
+        if !is_gray_scott_pattern_viable(f, k, d_u, d_v, eff_dt)
+            || !self.is_active_grid_washed_out()
+        {
             return false;
         }
         if let Some(sr) = &mut self.step_runner {
             sr.system.kinetics.mode = MorphogenesisKineticsMode::GrayScott;
+            sr.system.kinetics.auto_dt = auto_dt;
             sr.system.kinetics.f = f;
             sr.system.kinetics.k = k;
             sr.system.diffusion_coeffs = [d_u, d_v];
@@ -192,11 +196,13 @@ impl MorphogenesisTool {
         if self.is_forked() {
             return false;
         }
-        let mode = self
-            .kinetics_state
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .mode;
+        let (mode, auto_dt) = {
+            let ks = self
+                .kinetics_state
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
+            (ks.mode, ks.auto_dt)
+        };
         if mode == MorphogenesisKineticsMode::GrayScott {
             return self.reseed_gray_scott_if_washed_out();
         }
@@ -204,11 +210,13 @@ impl MorphogenesisTool {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.a, p.b, p.d_u, p.d_v, p.dt)
         };
-        if !is_pattern_forming_regime(a, b, d_u, d_v, dt) || !self.is_active_grid_washed_out() {
+        let eff_dt = super::kinetics::cfl_step_pair(auto_dt, dt, [d_u, d_v]).1;
+        if !is_pattern_forming_regime(a, b, d_u, d_v, eff_dt) || !self.is_active_grid_washed_out() {
             return false;
         }
         if let Some(sr) = &mut self.step_runner {
             sr.system.kinetics.mode = MorphogenesisKineticsMode::Schnakenberg;
+            sr.system.kinetics.auto_dt = auto_dt;
             sr.system.kinetics.a = a;
             sr.system.kinetics.b = b;
             sr.system.kinetics.spatial.a = a;

@@ -62,6 +62,7 @@ fn make_gray_scott_runner(w: usize, h: usize) -> MorphoPair<MorphogenesisKinetic
     let params = shared_morpho_params(0.16, 0.08, 1.0);
     let ks = Arc::new(RwLock::new(MorphogenesisKineticsState {
         mode: MorphogenesisKineticsMode::GrayScott,
+        auto_dt: true,
         f: 0.0367,
         k: 0.0649,
     }));

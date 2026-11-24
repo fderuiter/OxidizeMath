@@ -28,6 +28,8 @@ use std::sync::Arc;
 
 /// Default PRNG seed for deterministic morphogenesis perturbation streams.
 pub const DEFAULT_MORPHOGENESIS_SEED: u64 = 0x4D4F_5250_484F_3244;
+/// Upper bound on automatic 2D Forward Euler CFL substeps per macroscopic tick.
+pub const MAX_CFL_SUBSTEPS: usize = 100;
 
 /// Multi-kinetics worker runner supporting [`super::kinetics::MorphogenesisKineticsAdapter`],
 /// [`MaskedFiniteDifference2D`] microfluidic field sculpting, `K = 16` zero-allocation
@@ -97,41 +99,45 @@ impl MorphogenesisKineticsRunner {
             (p.a, p.b, p.d_u, p.d_v, p.dt)
         };
         let ks = self.read_kinetics();
-        self.apply_explicit_params(ks.mode, a, b, ks.f, ks.k, d_u, d_v, dt)
+        self.apply_explicit_params(ks, a, b, d_u, d_v, dt)
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn apply_explicit_params(
         &mut self,
-        mode: MorphogenesisKineticsMode,
+        ks: MorphogenesisKineticsState,
         a: f64,
         b: f64,
-        f: f64,
-        k: f64,
         d_u: f64,
         d_v: f64,
         dt: f64,
     ) -> Option<f64> {
         if !a.is_finite()
             || !b.is_finite()
-            || !f.is_finite()
-            || !k.is_finite()
+            || !ks.f.is_finite()
+            || !ks.k.is_finite()
             || !d_u.is_finite()
             || !d_v.is_finite()
         {
             return None;
         }
-        self.system.kinetics.mode = mode;
+        self.system.kinetics.mode = ks.mode;
+        self.system.kinetics.auto_dt = ks.auto_dt;
         self.system.kinetics.a = a;
         self.system.kinetics.b = b;
         self.system.kinetics.spatial.a = a;
         self.system.kinetics.spatial.b = b;
-        self.system.kinetics.f = f;
-        self.system.kinetics.k = k;
+        self.system.kinetics.f = ks.f;
+        self.system.kinetics.k = ks.k;
         self.system.diffusion_coeffs[0] = d_u;
         self.system.diffusion_coeffs[1] = d_v;
+        let eff_dt = super::kinetics::cfl_step_pair(ks.auto_dt, dt, [d_u, d_v]).1;
         if !self.has_counterfactual_twin()
-            && super::gray_scott_atlas::should_reseed_washed_out_system(&self.system, d_u, d_v, dt)
+            && super::gray_scott_atlas::should_reseed_washed_out_system(
+                &self.system,
+                d_u,
+                d_v,
+                eff_dt,
+            )
         {
             MorphogenesisTool::initialize_adapter_system(&mut self.system, self.width, self.height);
             self.enforce_mask_concentrations();
@@ -167,13 +173,26 @@ impl MorphogenesisKineticsRunner {
             return None;
         }
         self.noise_amplitude = p[8];
-        let mode = Self::scalar_to_mode(p[0]);
-        self.apply_explicit_params(mode, p[1], p[2], p[3], p[4], p[5], p[6], p[7])
+        let ks = MorphogenesisKineticsState {
+            mode: Self::scalar_to_mode(p[0]),
+            auto_dt: p.get(9).is_none_or(|&v| v >= 0.5),
+            f: p[3],
+            k: p[4],
+        };
+        self.apply_explicit_params(ks, p[1], p[2], p[5], p[6], p[7])
     }
 
     fn advance_grid_step(&mut self, dt: f64, noise_amp: f64) {
         self.enforce_mask_concentrations();
-        self.system.step(dt);
+        let (substeps, sub_dt) = super::kinetics::cfl_step_pair(
+            self.system.kinetics.auto_dt,
+            dt,
+            self.system.diffusion_coeffs,
+        );
+        for _ in 0..substeps {
+            self.system.step(sub_dt);
+            self.enforce_mask_concentrations();
+        }
         apply_uniform_noise(
             &mut self.system,
             self.width * self.height,
@@ -365,6 +384,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
             p.d_v,
             p.dt,
             self.noise_amplitude,
+            if ks.auto_dt { 1.0 } else { 0.0 },
         ]))
     }
 

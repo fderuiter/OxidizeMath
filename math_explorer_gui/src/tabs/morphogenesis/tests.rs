@@ -474,6 +474,13 @@ fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
     assert_eq!(morpho_state(&tab).state, Some(SimWorkerState::Ready));
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
 
+    render_tab_frame(&ctx, &mut tab);
+    let _ = render_tool_frame(&ctx, &mut tool);
+    assert_ne!(tool.worker.state(), SimWorkerState::Faulted);
+    for t in [morpho_tool_mut(&mut tab), &mut tool] {
+        t.kinetics_state.write().unwrap().auto_dt = false;
+    }
+
     for _ in 0..400 {
         render_tab_frame(&ctx, &mut tab);
         let _ = render_tool_frame(&ctx, &mut tool);

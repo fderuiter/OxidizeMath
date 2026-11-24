@@ -349,6 +349,29 @@ fn biology_facade_exports_all_four_errors_and_botanical_submodules() {
     let (_grammar, _cfg) = BotanicalLSystemPreset::HerbaceousShoot
         .build_grammar(25.0, 0.78, 0.68)
         .expect("valid L-system grammar");
+
+    use math_explorer::biology::diffusion::FiniteDifference2D;
+    use math_explorer::biology::morphogenesis::{
+        DiffusionCoeff, FusedEulerSolver, GrayScottKinetics, ReactionKinetics,
+        SchnakenbergKinetics, TuringSystem,
+    };
+    use math_explorer::math_kernel::types::{Dimension, StepSize};
+
+    let gs = GrayScottKinetics::new(0.0367, 0.0649);
+    assert_eq!(gs.reaction([1.0, 0.0]), [0.0, 0.0]);
+    let (substeps, sub_dt) = FusedEulerSolver::cfl_substeps_2d(0.05, 1.0, 1.0, 100.0, 32);
+    assert_eq!(substeps, 25);
+    assert!((sub_dt - 0.002).abs() < 1e-15);
+    let mut sys = TuringSystem::new_with_kinetics(
+        Dimension(16),
+        DiffusionCoeff(0.16),
+        DiffusionCoeff(0.08),
+        SchnakenbergKinetics::new(0.1, 0.9),
+        FiniteDifference2D::new(Dimension(4), Dimension(4), StepSize(1.0), StepSize(1.0)),
+    );
+    sys.u_mut().fill(1.0);
+    sys.step_with_kinetics(&gs, 0.5);
+    assert!((sys.u()[0] - 1.0).abs() < 1e-12);
 }
 
 #[cfg(feature = "climate")]

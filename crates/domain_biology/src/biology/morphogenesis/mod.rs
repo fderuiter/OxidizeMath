@@ -232,32 +232,62 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
         }
     }
 
-    /// Updates the grid using the solver strategy.
+    /// Updates the grid using the configured kinetics and solver strategy.
     #[verified_engine::verified]
     pub fn step(&mut self, dt: f64) {
-        let n = self.state.len();
-        if n == 0 {
-            return;
-        }
-
-        // Ensure buffers are the right size
-        if self.next_state.len() != n {
-            self.next_state = TuringState::new(n);
-        }
-
-        let dynamics = TuringDynamics {
+        let d = TuringDynamics {
             kinetics: &self.kinetics,
             diffusion: &self.diffusion,
             diffusion_coeffs: self.diffusion_coeffs,
         };
-
-        // Delegate time-stepping to the strategy
-        self.solver
-            .step(&self.state, &mut self.next_state, &dynamics, dt);
-
-        // Swap buffers (states)
-        std::mem::swap(&mut self.state, &mut self.next_state);
+        step_bufs(
+            (&mut self.state, &mut self.next_state),
+            &mut self.solver,
+            &d,
+            dt,
+        );
     }
+
+    /// Updates the grid in place using an alternate `ReactionKinetics<N>` strategy.
+    #[verified_engine::verified]
+    pub fn step_with_kinetics<K2: ReactionKinetics<N>>(&mut self, kinetics: &K2, dt: f64) {
+        let d = TuringDynamics {
+            kinetics,
+            diffusion: &self.diffusion,
+            diffusion_coeffs: self.diffusion_coeffs,
+        };
+        step_bufs(
+            (&mut self.state, &mut self.next_state),
+            &mut self.solver,
+            &d,
+            dt,
+        );
+    }
+}
+
+#[verified_engine::verified]
+fn step_bufs<
+    'a,
+    const N: usize,
+    K: ReactionKinetics<N>,
+    D: SpatialDiffusion<N>,
+    S: TuringSolverStrategy<N>,
+>(
+    (state, next_state): (&mut TuringState<N>, &mut TuringState<N>),
+    solver: &mut S,
+    dynamics: &TuringDynamics<'a, N, K, D>,
+    dt: f64,
+) {
+    let n = state.len();
+    if n == 0 {
+        return;
+    }
+    if next_state.len() != n {
+        *next_state = TuringState::new(n);
+    }
+    assert_eq!(next_state.len(), n);
+    solver.step(state, next_state, dynamics, dt);
+    std::mem::swap(state, next_state);
 }
 
 // Convenience accessors for N=2
@@ -433,6 +463,36 @@ mod tests {
                 expected_v[i]
             );
         }
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_step_with_kinetics_reuses_buffers_and_matches_dedicated_system() {
+        use crate::biology::diffusion::FiniteDifference2D;
+        let gs = GrayScottKinetics::new(0.0367, 0.0649);
+        let fd =
+            || FiniteDifference2D::new(Dimension(8), Dimension(8), StepSize(1.0), StepSize(1.0));
+        let (du, dv, base) = (
+            DiffusionCoeff(0.16),
+            DiffusionCoeff(0.08),
+            SchnakenbergKinetics::new(0.1, 0.9),
+        );
+        let mut dual = TuringSystem::new_with_kinetics(Dimension(64), du, dv, base, fd());
+        let mut dedicated = TuringSystem::new_with_kinetics(Dimension(64), du, dv, gs, fd());
+        for sys_u in [dual.u_mut(), dedicated.u_mut()] {
+            sys_u.fill(1.0);
+            sys_u[27] = 0.5;
+        }
+        dual.v_mut()[27] = 0.25;
+        dedicated.v_mut()[27] = 0.25;
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            for _ in 0..8 {
+                dual.step_with_kinetics(&gs, 0.5);
+                dedicated.step(0.5);
+            }
+        });
+        assert_eq!(dual.u(), dedicated.u());
+        assert_eq!(dual.v(), dedicated.v());
     }
 }
 

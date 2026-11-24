@@ -8,6 +8,7 @@ use crate::framework::{
 };
 use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui;
+use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::biology::diffusion::SpatialDiffusion;
 use math_explorer::biology::morphogenesis::{
     ReactionKinetics, SpatialSchnakenbergKinetics, TuringSystem,
@@ -94,6 +95,8 @@ pub trait MorphoSpatialKinetics: ReactionKinetics<2> {
     fn erase_equilibrium(&self) -> (f64, f64);
     /// Returns `(delta, ceiling)` for chemical perturbation brush modes.
     fn seed_perturbation(&self) -> (f64, f64);
+    /// Applies a mode-aware autocatalytic activator/catalyst seed to `(u, v)`.
+    fn apply_activator_seed(&self, u: &mut f64, v: &mut f64);
 }
 
 impl MorphoSpatialKinetics for SpatialSchnakenbergKinetics {
@@ -116,6 +119,10 @@ impl MorphoSpatialKinetics for SpatialSchnakenbergKinetics {
 
     fn seed_perturbation(&self) -> (f64, f64) {
         (0.75, 8.0)
+    }
+
+    fn apply_activator_seed(&self, u: &mut f64, _v: &mut f64) {
+        *u = (*u + 0.75).clamp(0.0, 8.0);
     }
 }
 
@@ -146,6 +153,18 @@ impl MorphoSpatialKinetics for MorphogenesisKineticsAdapter {
         match self.mode {
             MorphogenesisKineticsMode::Schnakenberg => (0.75, 8.0),
             MorphogenesisKineticsMode::GrayScott => (0.25, 1.0),
+        }
+    }
+
+    fn apply_activator_seed(&self, u: &mut f64, v: &mut f64) {
+        match self.mode {
+            MorphogenesisKineticsMode::Schnakenberg => {
+                *u = (*u + 0.75).clamp(0.0, 8.0);
+            }
+            MorphogenesisKineticsMode::GrayScott => {
+                *u = (*u).min(0.50);
+                *v = (*v).max(0.25);
+            }
         }
     }
 }
@@ -187,14 +206,19 @@ pub fn apply_morpho_cells_to_system<K: MorphoSpatialKinetics, D: SpatialDiffusio
         if x >= width || y >= height {
             continue;
         }
-        let idx = y * width + x;
+        let idx = flatten_2d_index(x, y, width);
         if idx >= total {
             continue;
         }
         match mode {
             MorphoBrushMode::ActivatorSeed => {
-                let next_u = (system.u()[idx] + seed_delta).clamp(0.0, ceiling);
+                let mut next_u = system.u()[idx];
+                let mut next_v = system.v()[idx];
+                system
+                    .kinetics
+                    .apply_activator_seed(&mut next_u, &mut next_v);
                 system.u_mut()[idx] = next_u;
+                system.v_mut()[idx] = next_v;
             }
             MorphoBrushMode::InhibitorSeed => {
                 let next_v = (system.v()[idx] + seed_delta).clamp(0.0, ceiling);

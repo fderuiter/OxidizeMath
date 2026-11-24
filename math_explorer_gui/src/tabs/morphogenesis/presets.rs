@@ -69,6 +69,7 @@ impl FiniteStateGuard for MorphogenesisTool {
                 .write()
                 .unwrap_or_else(|e| e.into_inner());
             ks.mode = MorphogenesisKineticsMode::Schnakenberg;
+            ks.auto_dt = true;
             ks.f = gs.f;
             ks.k = gs.k;
         }
@@ -92,7 +93,17 @@ impl FiniteStateGuard for MorphogenesisTool {
 }
 
 #[cfg(test)]
-pub use super::starter_presets::PRESET_GRAY_SCOTT_MITOSIS;
+pub use super::starter_presets::{
+    PRESET_GRAY_SCOTT_CORAL, PRESET_GRAY_SCOTT_MITOSIS, PRESET_GRAY_SCOTT_SOLITONS,
+};
+
+const fn default_auto_dt() -> bool {
+    true
+}
+
+const fn is_true(v: &bool) -> bool {
+    *v
+}
 
 fn default_grid_dim() -> usize {
     100
@@ -140,6 +151,9 @@ pub struct MorphogenesisToolState {
     /// Reaction kinetics family (`Schnakenberg` or `GrayScott`).
     #[serde(default)]
     pub kinetics_mode: MorphogenesisKineticsMode,
+    /// Whether automatic 2D Forward Euler CFL substepping is active.
+    #[serde(default = "default_auto_dt", skip_serializing_if = "is_true")]
+    pub auto_dt: bool,
     /// Gray-Scott substrate feed rate `f` (`0.0..=0.12`).
     #[serde(default = "default_gray_scott_f")]
     pub f: f64,
@@ -238,14 +252,23 @@ impl MorphogenesisToolState {
         Ok(())
     }
 
-    pub(crate) fn resolve_target_state(&self) -> SimWorkerState {
-        self.state.unwrap_or_else(|| {
-            if self.paused.unwrap_or(false) {
-                SimWorkerState::Ready
+    pub(crate) fn resolve_target_state(&self, currently_deferred: bool) -> (SimWorkerState, bool) {
+        if let Some(explicit) = self.state {
+            let defer = explicit != SimWorkerState::Running && self.pending_initial_start;
+            return (explicit, defer);
+        }
+        if let Some(paused) = self.paused {
+            return if paused {
+                (SimWorkerState::Ready, false)
             } else {
-                SimWorkerState::Running
-            }
-        })
+                (SimWorkerState::Running, false)
+            };
+        }
+        if self.pending_initial_start || currently_deferred {
+            (SimWorkerState::Ready, true)
+        } else {
+            (SimWorkerState::Running, false)
+        }
     }
 }
 
