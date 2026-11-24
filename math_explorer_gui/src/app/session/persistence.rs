@@ -224,6 +224,7 @@ impl WorkspaceSessionManager {
                     match res {
                         Ok((path, content)) => match self.parse_envelope(&content) {
                             Ok(app_state) => {
+                                app.show_starter_gallery = false;
                                 app.apply_app_state(app_state);
                                 self.set_active_file_path(Some(path.clone()));
                                 let name = file_name_str(&path);
@@ -377,6 +378,7 @@ impl MathExplorerApp {
     pub(crate) fn try_load_state_from_json(&mut self, json_str: &str) -> bool {
         match self.session_manager.parse_envelope(json_str) {
             Ok(app_state) => {
+                self.show_starter_gallery = false;
                 self.apply_app_state(app_state);
                 true
             }

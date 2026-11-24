@@ -43,12 +43,17 @@ impl FermiGamePreset {
     }
 
     /// Canonical `[R, S, T, P]` 2x2 payoff matrix entries (`+1` Cooperator = row 0, `-1` Defector = row 1).
+    ///
+    /// `Self::HawkDove` derives its `[R, S, T, P]` entries directly from
+    /// [`math_explorer::biology::evolution::HawkDovePopulation`] (`V = 2.0, C = 4.0`, where
+    /// Cooperator = Dove and Defector = Hawk).
     #[must_use]
-    pub const fn payoffs(self) -> [f64; 4] {
+    pub fn payoffs(self) -> [f64; 4] {
         match self {
             Self::PrisonersDilemma | Self::Custom => [1.0, -0.1, 1.25, 0.0],
             Self::StagHunt => [2.0, 0.0, 1.2, 1.0],
-            Self::HawkDove => [1.0, 0.0, 2.0, -1.0],
+            Self::HawkDove => math_explorer::biology::evolution::HawkDovePopulation::new(2.0, 4.0)
+                .cooperator_defector_payoffs(),
         }
     }
 
@@ -62,7 +67,7 @@ impl FermiGamePreset {
     }
 }
 
-pub(super) const fn default_game_payoffs() -> [f64; 4] {
+pub(super) fn default_game_payoffs() -> [f64; 4] {
     FermiGamePreset::PrisonersDilemma.payoffs()
 }
 
@@ -110,6 +115,11 @@ pub(crate) struct IsingState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) running: Option<bool>,
     pub(crate) steps_per_frame: usize,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::app::TopologySource::is_default"
+    )]
+    pub(crate) topology_source: crate::app::TopologySource,
 }
 
 impl IsingState {
@@ -166,6 +176,7 @@ impl IsingModelTool {
             state: Some(self.worker.state()),
             running: None,
             steps_per_frame: self.steps_per_frame,
+            topology_source: self.topology_source,
         })
         .ok()
     }
@@ -192,7 +203,11 @@ impl IsingModelTool {
         self.defector_sea = s.defector_sea;
         self.droplet_seeds = s.droplet_seeds;
         self.steps_per_frame = s.steps_per_frame;
+        self.topology_source = s.topology_source;
         self.enforce_ising_challenge_locks();
+        if self.topology_source == crate::app::TopologySource::LocalPreset {
+            self.detach_shared_csr_graph(false);
+        }
         self.sync_shared_params();
         if self.defector_sea || !self.droplet_seeds.is_empty() {
             self.push_seed_layout_to_worker();
@@ -217,6 +232,21 @@ impl IsingModelTool {
         self.stepped_pixels = None;
         self.dirty = true;
         Ok(())
+    }
+
+    pub(super) fn record_droplet_seed(&mut self, seed: super::DropletSeed) {
+        if self.droplet_seeds.last() == Some(&seed) {
+            return;
+        }
+        let cap = if self.active_challenge.is_some() {
+            4
+        } else {
+            super::MAX_DROPLET_SEEDS
+        };
+        if self.droplet_seeds.len() >= cap {
+            self.droplet_seeds.remove(0);
+        }
+        self.droplet_seeds.push(seed);
     }
 }
 

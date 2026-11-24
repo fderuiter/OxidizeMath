@@ -62,6 +62,100 @@ pub fn estimate_diffusion_coefficient_with_rng<R: Rng + ?Sized>(
     msd / (2.0 * time_steps as f64)
 }
 
+struct OverdampedHarmonic1D {
+    stiffness: f64,
+    mobility: f64,
+    sigma: f64,
+}
+
+impl engine_diffeq::SdeSystem<f64> for OverdampedHarmonic1D {
+    fn state_dim(&self) -> usize {
+        1
+    }
+
+    fn wiener_dim(&self) -> usize {
+        1
+    }
+
+    fn drift(&self, _t: f64, y: &[f64], drift_out: &mut [f64]) {
+        drift_out[0] = -self.mobility * self.stiffness * y[0];
+    }
+
+    fn diffusion(&self, _t: f64, _y: &[f64], diff_out: &mut [f64]) {
+        diff_out[0] = self.sigma;
+    }
+}
+
+struct HarmonicPotential1D {
+    stiffness: f64,
+}
+
+impl engine_diffeq::LangevinSystem<f64> for HarmonicPotential1D {
+    fn dim(&self) -> usize {
+        1
+    }
+
+    fn grad_potential(&self, q: &[f64], grad_out: &mut [f64]) {
+        grad_out[0] = self.stiffness * q[0];
+    }
+}
+
+/// Advances a 1D overdamped Brownian particle in harmonic potential $V(x) = \frac{1}{2} k x^2$
+/// using [`engine_diffeq::EulerMaruyamaSolver`] without heap allocations.
+#[verified_engine::verified]
+pub fn step_overdamped_brownian_1d<R: rand_core::RngCore + ?Sized>(
+    x: f64,
+    stiffness: f64,
+    mobility: f64,
+    temperature_kb: f64,
+    dt: f64,
+    rng: &mut R,
+) -> f64 {
+    assert!(mobility >= 0.0 && temperature_kb >= 0.0 && dt >= 0.0);
+    let sigma = (2.0 * mobility * temperature_kb).sqrt();
+    let sys = OverdampedHarmonic1D {
+        stiffness,
+        mobility,
+        sigma,
+    };
+    let solver = engine_diffeq::EulerMaruyamaSolver::new(engine_diffeq::StochasticCalculus::Ito);
+    let mut state = [x];
+    let mut scratch = [0.0; 3];
+    let mut ws = math_commons::math_kernel::types::SolverWorkspace::new(&mut scratch);
+    solver.step(&sys, 0.0, dt, &mut state, &mut ws, rng);
+    state[0]
+}
+
+/// Advances a 1D underdamped Langevin particle $(q, p)$ in harmonic potential $V(q) = \frac{1}{2} k q^2$
+/// via [`engine_diffeq::BaoabLangevinSolver`] without heap allocations.
+#[allow(clippy::too_many_arguments)]
+#[verified_engine::verified]
+pub fn step_underdamped_langevin_1d<R: rand_core::RngCore + ?Sized>(
+    q: f64,
+    p: f64,
+    mass: f64,
+    stiffness: f64,
+    friction: f64,
+    temperature_kb: f64,
+    dt: f64,
+    rng: &mut R,
+) -> (f64, f64) {
+    assert!(mass > 0.0 && friction >= 0.0 && temperature_kb >= 0.0 && dt > 0.0);
+    let solver = engine_diffeq::BaoabLangevinSolver::new(engine_diffeq::BaoabParams {
+        mass,
+        friction,
+        temperature: temperature_kb,
+        dt,
+    });
+    let sys = HarmonicPotential1D { stiffness };
+    let mut q_arr = [q];
+    let mut p_arr = [p];
+    let mut scratch = [0.0; 2];
+    let mut ws = math_commons::math_kernel::types::SolverWorkspace::new(&mut scratch);
+    solver.step(&sys, &mut q_arr, &mut p_arr, &mut ws, rng);
+    (q_arr[0], p_arr[0])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
