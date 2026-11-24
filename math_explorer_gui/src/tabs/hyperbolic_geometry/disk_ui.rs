@@ -232,10 +232,10 @@ impl HyperbolicDiskTool {
         let avail = ui.available_size();
         let canvas_size = egui::vec2(avail.x.max(180.0), avail.y.max(180.0));
         let (response, painter) = ui.allocate_painter(canvas_size, egui::Sense::click_and_drag());
-        self.last_canvas_id = Some(response.id);
 
         let viewport = DiskViewport::from_rect(response.rect);
         self.handle_canvas_interaction(ui, &response, &viewport);
+        self.last_canvas_id = response.has_focus().then_some(response.id);
 
         let gb = gauss_bonnet_triangle(
             self.ruler_vertices[0],
@@ -307,23 +307,30 @@ impl HyperbolicDiskTool {
             self.apply_mobius_pan(delta);
         }
 
-        if response.has_focus() {
+        self.handle_canvas_keyboard(ui, response);
+    }
+
+    fn handle_canvas_keyboard(&mut self, ui: &egui::Ui, response: &egui::Response) {
+        let modal_clear = egui_plot::active_top_modal_layer(ui.ctx()).is_none()
+            && !egui::Popup::is_any_open(ui.ctx());
+        let allow_reset = crate::framework::is_pane_shortcut_allowed(ui);
+        if response.has_focus() && modal_clear {
             let step = 0.14;
             let mut key_delta = Complex64::new(0.0, 0.0);
             ui.input(|i| {
-                if i.key_pressed(egui::Key::ArrowLeft) {
+                if super::unmodified_key_pressed(i, egui::Key::ArrowLeft) {
                     key_delta.re -= step;
                 }
-                if i.key_pressed(egui::Key::ArrowRight) {
+                if super::unmodified_key_pressed(i, egui::Key::ArrowRight) {
                     key_delta.re += step;
                 }
-                if i.key_pressed(egui::Key::ArrowUp) {
+                if super::unmodified_key_pressed(i, egui::Key::ArrowUp) {
                     key_delta.im += step;
                 }
-                if i.key_pressed(egui::Key::ArrowDown) {
-                    key_delta.im -= step;
+                if super::unmodified_key_pressed(i, egui::Key::ArrowDown) {
+                    key_delta.im += step;
                 }
-                if i.key_pressed(egui::Key::R) {
+                if allow_reset && super::unmodified_key_pressed(i, egui::Key::R) {
                     key_delta = Complex64::new(f64::NAN, 0.0);
                 }
             });

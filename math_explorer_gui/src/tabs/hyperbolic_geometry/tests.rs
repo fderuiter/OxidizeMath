@@ -213,4 +213,126 @@ fn test_billiards_lyapunov_stepping_and_modal_exports() {
     }
 }
 
+fn key_input(key: egui::Key, ctrl: bool) -> egui::RawInput {
+    let modifiers = egui::Modifiers {
+        ctrl,
+        ..egui::Modifiers::NONE
+    };
+    egui::RawInput {
+        modifiers,
+        ..viewport_input(vec![egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers,
+        }])
+    }
+}
+
+#[test]
+fn test_focused_canvas_id_lifecycle_and_ctrl_r_modifier_guard() {
+    let ctx = egui::Context::default();
+    let mut tool = HyperbolicDiskTool::default();
+    let _ = ctx.run(viewport_input(Vec::new()), |ctx| tool.show(ctx));
+    assert!(tool.focused_canvas_id().is_none());
+
+    let click_pos = egui::pos2(820.0, 410.0);
+    let _ = ctx.run(
+        viewport_input(vec![
+            egui::Event::PointerMoved(click_pos),
+            egui::Event::PointerButton {
+                pos: click_pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+            egui::Event::PointerButton {
+                pos: click_pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ]),
+        |ctx| tool.show(ctx),
+    );
+    let cid = tool.focused_canvas_id().expect("canvas must hold focus");
+
+    tool.apply_mobius_pan(Complex64::new(0.24, 0.16));
+    assert!(tool.ruler_vertices[0].norm() > 0.05);
+    let _ = ctx.run(key_input(egui::Key::R, true), |ctx| tool.show(ctx));
+    assert!(tool.ruler_vertices[0].norm() > 0.05);
+
+    let _ = ctx.run(key_input(egui::Key::R, false), |ctx| tool.show(ctx));
+    assert!(tool.ruler_vertices[0].norm() < 1e-12);
+
+    let _ = ctx.run(key_input(egui::Key::Tab, false), |ctx| tool.show(ctx));
+    assert_ne!(tool.focused_canvas_id(), Some(cid));
+}
+
+fn downcast_pane_tool_mut<T: 'static>(
+    app: &mut crate::app::MathExplorerApp,
+    pane: usize,
+) -> &mut T {
+    app.pane_tab_mut(pane)
+        .and_then(|t| t.framework_mut())
+        .and_then(|f| f.active_tool.as_mut())
+        .and_then(|t| t.as_any_mut())
+        .and_then(|a| a.downcast_mut::<T>())
+        .expect("expected active pane tool downcast")
+}
+
+#[test]
+fn test_multi_pane_ws_compressed_url_roundtrip_for_hyperbolic_tools() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let mut app = crate::app::MathExplorerApp::default();
+    let hyp_idx = app
+        .tabs
+        .iter()
+        .position(|t| t.url_slug() == "hyperbolic_geometry")
+        .expect("hyperbolic_geometry tab registered");
+    app.set_layout(crate::app::ViewportLayout::SplitHorizontal);
+    app.set_pane_tab(0, hyp_idx);
+    app.set_pane_tab(1, hyp_idx);
+
+    assert!(app
+        .pane_tab_mut(0)
+        .unwrap()
+        .select_tool_by_name("HyperbolicDiskTool"));
+    let disk: &mut HyperbolicDiskTool = downcast_pane_tool_mut(&mut app, 0);
+    disk.model = HyperbolicModel::Klein;
+    let _ = disk.apply_schlafli(5, 4, 3);
+    disk.apply_mobius_pan(Complex64::new(0.18, -0.11));
+
+    assert!(app
+        .pane_tab_mut(1)
+        .unwrap()
+        .select_tool_by_name("HyperbolicBilliardsTool"));
+    let billiards: &mut HyperbolicBilliardsTool = downcast_pane_tool_mut(&mut app, 1);
+    billiards.p = 8;
+    billiards.q = 3;
+    billiards.log10_epsilon = -5.0;
+    billiards.rebuild_system(true).expect("rebuild {8,3}");
+
+    let frag = app.encode_current_share_fragment().expect("encode #ws=");
+    assert!(frag.starts_with("#ws="));
+
+    let mut restored = crate::app::MathExplorerApp::default();
+    assert!(restored
+        .apply_share_location_strings(&frag, "", None)
+        .unwrap());
+    assert_eq!(
+        restored.viewport_layout,
+        crate::app::ViewportLayout::SplitHorizontal
+    );
+    assert_eq!(
+        restored.pane_tab(0).and_then(|t| t.active_tool_id()),
+        Some("HyperbolicDiskTool")
+    );
+    assert_eq!(
+        restored.pane_tab(1).and_then(|t| t.active_tool_id()),
+        Some("HyperbolicBilliardsTool")
+    );
+}
+
 // [cite:modular_polynomials_review]

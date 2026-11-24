@@ -164,13 +164,13 @@ impl HyperbolicBilliardsTool {
         let avail = ui.available_size();
         let canvas_size = egui::vec2(avail.x.max(160.0), avail.y.max(220.0));
         let (response, painter) = ui.allocate_painter(canvas_size, egui::Sense::click_and_drag());
-        self.last_canvas_id = Some(response.id);
 
         let side = response.rect.width().min(response.rect.height());
         let radius = (0.45 * side).max(24.0);
         let center = response.rect.center();
 
         self.handle_billiard_canvas_input(ui, &response, center, radius);
+        self.last_canvas_id = response.has_focus().then_some(response.id);
 
         let latest = self.system.latest_sample();
         let summary = format!(
@@ -219,19 +219,21 @@ impl HyperbolicBilliardsTool {
             }
         }
 
-        if response.has_focus() {
+        let modal_clear = egui_plot::active_top_modal_layer(ui.ctx()).is_none()
+            && !egui::Popup::is_any_open(ui.ctx());
+        if response.has_focus() && modal_clear {
             let mut d_angle = 0.0;
             ui.input(|i| {
-                if i.key_pressed(egui::Key::ArrowLeft) {
+                if super::unmodified_key_pressed(i, egui::Key::ArrowLeft) {
                     d_angle -= 0.08;
                 }
-                if i.key_pressed(egui::Key::ArrowRight) {
+                if super::unmodified_key_pressed(i, egui::Key::ArrowRight) {
                     d_angle += 0.08;
                 }
-                if i.key_pressed(egui::Key::ArrowUp) {
+                if super::unmodified_key_pressed(i, egui::Key::ArrowUp) {
                     d_angle += 0.02;
                 }
-                if i.key_pressed(egui::Key::ArrowDown) {
+                if super::unmodified_key_pressed(i, egui::Key::ArrowDown) {
                     d_angle -= 0.02;
                 }
             });

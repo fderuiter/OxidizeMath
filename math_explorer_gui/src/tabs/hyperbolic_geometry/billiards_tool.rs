@@ -141,6 +141,10 @@ impl InteractiveTool for HyperbolicBilliardsTool {
         self.revision
     }
 
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.last_canvas_id
+    }
+
     fn state_bounds(&self) -> ToolStateBounds {
         ToolStateBounds::DEFAULT
     }
@@ -271,12 +275,10 @@ impl InteractiveTool for HyperbolicBilliardsTool {
         self.system.step(self.step_ds);
     }
 
-    #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
     }
 
-    #[cfg(test)]
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }

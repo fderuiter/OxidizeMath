@@ -13,6 +13,21 @@ mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
 
+pub(crate) fn unmodified_key_pressed(i: &egui::InputState, target: egui::Key) -> bool {
+    !i.modifiers.any()
+        && i.events.iter().any(|ev| {
+            matches!(
+                ev,
+                egui::Event::Key {
+                    key,
+                    pressed: true,
+                    modifiers,
+                    ..
+                } if *key == target && !modifiers.any()
+            )
+        })
+}
+
 /// Synchronizes the canonical URL hash route for [`HyperbolicGeometryTab`] onto `#the_canvas_id`
 /// in browser builds and returns the canonical route fragment.
 #[cfg(target_arch = "wasm32")]
