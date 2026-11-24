@@ -285,8 +285,6 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
 
 #[cfg(test)]
 mod tests {
-    #![cfg_attr(any(), verified(opt_out = "tests"))]
-
     use super::*;
     use crate::pure_math::differential_geometry::surface::Sphere;
     use std::f64::consts::PI;

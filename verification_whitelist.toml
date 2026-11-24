@@ -75,31 +75,11 @@ path = "crates/02_engines/engine_linalg/src/"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/domain_applied/src/applied/freesurfer/surface.rs"
-reason = "tests"
-
-[[verify_suite.opt_outs]]
 path = "crates/domain_applied/src/applied/freesurfer/thickness_tests.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/domain_applied/tests/test_freesurfer_zero_alloc.rs"
-reason = "tests"
-
-[[verify_suite.opt_outs]]
-path = "crates/domain_biology/src/biology/diffusion/manifold.rs"
-reason = "tests"
-
-[[verify_suite.opt_outs]]
-path = "crates/domain_biology/src/biology/neuroscience/cortical_sheet.rs"
-reason = "tests"
-
-[[verify_suite.opt_outs]]
 path = "crates/domain_biology/tests/test_kuramoto_zero_alloc.rs"
-reason = "tests"
-
-[[verify_suite.opt_outs]]
-path = "crates/domain_biology/tests/test_manifold_cortical_zero_alloc.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
@@ -143,22 +123,6 @@ path = "crates/pure_math/src/pure_math/differential_geometry/buckled_flow_tests.
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/pure_math/src/pure_math/differential_geometry/cotangent_mesh.rs"
-reason = "tests"
-
-[[verify_suite.opt_outs]]
-path = "crates/pure_math/src/pure_math/differential_geometry/heat_equation.rs"
-reason = "tests"
-
-[[verify_suite.opt_outs]]
-path = "crates/pure_math/src/pure_math/differential_geometry/mean_curvature_flow.rs"
-reason = "tests"
-
-[[verify_suite.opt_outs]]
-path = "crates/pure_math/src/pure_math/differential_geometry/operators.rs"
-reason = "tests"
-
-[[verify_suite.opt_outs]]
 path = "crates/pure_math/src/pure_math/elliptic_curves/singular_tests.rs"
 reason = "tests"
 
@@ -172,10 +136,6 @@ reason = "tests"
 
 [[verify_suite.opt_outs]]
 path = "crates/pure_math/tests/algorithmic_information.rs"
-reason = "tests"
-
-[[verify_suite.opt_outs]]
-path = "crates/pure_math/tests/test_cotangent_zero_alloc.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
@@ -368,23 +328,23 @@ min_total_density = 0.120
 
 [verification_debt.opt_out_reasons]
 "Legacy missing assertions" = 1
-"gui_tool" = 649
+"gui_tool" = 659
 "infrastructure" = 2
 "metadata" = 2
 "no_std_engine" = 13
-"tests" = 242
+"tests" = 234
 
 [verification_debt.crate_opt_out_caps]
 "crates/02_engines/engine_linalg" = 15
-"crates/domain_applied" = 3
-"crates/domain_biology" = 4
+"crates/domain_applied" = 1
+"crates/domain_biology" = 1
 "crates/domain_epidemiology" = 1
 "crates/domain_physics" = 2
 "crates/math_commons" = 2
-"crates/pure_math" = 17
+"crates/pure_math" = 12
 "crates/scientific_metadata" = 2
 "egui_plot" = 1
-"math_explorer_gui" = 862
+"math_explorer_gui" = 874
 
 [verification_debt.file_opt_out_caps]
 "math_explorer_gui/src/tabs/optics_waves/tool.rs" = 2

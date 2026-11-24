@@ -401,8 +401,6 @@ pub fn evolve_surface_deformable(
 
 #[cfg(test)]
 mod tests {
-    #![cfg_attr(any(), verified(opt_out = "tests"))]
-
     use super::*;
     use verified_engine::engine::VerifiedEngine;
 
