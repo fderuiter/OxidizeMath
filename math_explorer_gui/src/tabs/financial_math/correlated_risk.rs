@@ -175,7 +175,7 @@ impl InteractiveTool for CorrelatedRiskScenarioTool {
     }
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]
 
 inventory::submit! {
     crate::framework::ToolMetadata {

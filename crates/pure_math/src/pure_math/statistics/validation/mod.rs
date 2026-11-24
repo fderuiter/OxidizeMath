@@ -54,7 +54,7 @@ pub use significance::{
     evaluate_yield_against_closing, evaluate_yield_significance, required_bets_for_95_significance,
 };
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]
 
 #[cfg(test)]
 mod tests;

@@ -269,4 +269,4 @@ fn test_stake_multiplier_observables_and_overbet_growth_rate() {
     assert_eq!(tool.stake_multiplier, 1.0);
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

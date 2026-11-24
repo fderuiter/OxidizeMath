@@ -434,5 +434,4 @@ impl BetSizeState {
     }
 }
 
-// [cite:clinical_trials_statistics]
-// [cite:modular_polynomials_review]
+// [cite:sports_quantitative_modeling]

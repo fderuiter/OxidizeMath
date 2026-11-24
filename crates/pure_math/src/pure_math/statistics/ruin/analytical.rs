@@ -371,4 +371,4 @@ pub fn solve_single_bet_lundberg(
     solve_lundberg_ruin(&[bet], initial_surplus)
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

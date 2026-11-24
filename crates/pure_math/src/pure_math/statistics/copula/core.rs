@@ -39,6 +39,22 @@ impl Probability {
     }
 }
 
+impl From<math_commons::primitives::UnitInterval> for Probability {
+    #[inline]
+    #[verified_engine::verified]
+    fn from(interval: math_commons::primitives::UnitInterval) -> Self {
+        Self(interval.value())
+    }
+}
+
+impl From<Probability> for math_commons::primitives::UnitInterval {
+    #[inline]
+    #[verified_engine::verified]
+    fn from(prob: Probability) -> Self {
+        Self::new_clamped(prob.0)
+    }
+}
+
 /// A correlation coefficient in `[-1, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Correlation(f64);
@@ -270,5 +286,15 @@ mod tests {
             ))
             .is_err()
         );
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_probability_unit_interval_roundtrip() {
+        let unit = math_commons::primitives::UnitInterval::new(0.625).unwrap();
+        let prob = Probability::from(unit);
+        assert_eq!(prob.value(), 0.625);
+        let back: math_commons::primitives::UnitInterval = prob.into();
+        assert_eq!(back.value(), 0.625);
     }
 }

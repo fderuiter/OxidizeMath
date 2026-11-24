@@ -230,4 +230,4 @@ pub fn portfolio_kelly_barrier_risk(
     })
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

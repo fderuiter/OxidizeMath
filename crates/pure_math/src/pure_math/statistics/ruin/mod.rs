@@ -61,7 +61,7 @@ pub use ensemble::{
     wilson_interval_95, wilson_score_interval,
 };
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]
 
 #[cfg(test)]
 mod tests;

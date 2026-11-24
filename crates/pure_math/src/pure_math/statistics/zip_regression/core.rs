@@ -97,6 +97,22 @@ impl ZeroInflation {
     }
 }
 
+impl From<math_commons::primitives::UnitInterval> for ZeroInflation {
+    #[inline]
+    #[verified_engine::verified]
+    fn from(interval: math_commons::primitives::UnitInterval) -> Self {
+        Self(interval.value())
+    }
+}
+
+impl From<ZeroInflation> for math_commons::primitives::UnitInterval {
+    #[inline]
+    #[verified_engine::verified]
+    fn from(rho: ZeroInflation) -> Self {
+        Self::new_clamped(rho.0)
+    }
+}
+
 /// A count observation (non-negative integer represented as f64).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Count(u32);
@@ -267,5 +283,15 @@ mod tests {
         let params = ZipParams::from_values(0.2, 3.0).unwrap();
         assert_eq!(params.rho.value(), 0.2);
         assert_eq!(params.lambda.value(), 3.0);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_zero_inflation_unit_interval_roundtrip() {
+        let unit = math_commons::primitives::UnitInterval::new(0.35).unwrap();
+        let rho = ZeroInflation::from(unit);
+        assert_eq!(rho.value(), 0.35);
+        let back: math_commons::primitives::UnitInterval = rho.into();
+        assert_eq!(back.value(), 0.35);
     }
 }

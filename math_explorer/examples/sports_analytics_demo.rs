@@ -1,137 +1,166 @@
-//! Comprehensive demonstration of all sports analytics modules.
+//! End-to-end quantitative sports pricing, rating, parlay, execution, and Kelly sizing pipeline.
 
-use math_explorer::error::Result;
 use math_explorer::nalgebra::{DMatrix, DVector};
-use math_explorer::pure_math::statistics::{
-    copula::{
-        Correlation, CorrelationMatrix, Probability, price_correlated_parlay,
-        sgp_joint_probability, simulate_correlated_parlay,
-    },
-    glicko2::{
-        GlickoPlayer, MatchResult, Rating, RatingDeviation, SystemConstant, Volatility,
-        update_rating,
-    },
-    kelly::{Odds, UnitInterval, kelly_fraction},
-    market_pricing::{
-        DevigMethod, DutchingMode, HedgeMode, compare_outcome_ev_all_methods,
-        devig_additive_detailed_into, dutch_outcomes_into, evaluate_hedge, evaluate_middle,
-        evaluate_two_way_arbitrage,
-    },
-    markov::dtmc::{MarkovChain, StateType},
-    ou_process::{EulerMaruyama, OuParams, TimeStep},
-    zip_regression::{Count, ZipDistribution, ZipParams},
-};
-use math_explorer::rng::OxidizeRng;
+use math_explorer::prelude::*;
+use math_explorer::pure_math::statistics::markov::dtmc::{MarkovChain, StateType};
+use math_explorer::sports_quant::*;
 
-fn demo_zip_regression() -> Result<()> {
-    println!("1. ZIP REGRESSION - Player Block Modeling");
-    let zip_params = ZipParams::from_values(0.25, 1.5)?;
-    let zip_dist = ZipDistribution::new(zip_params);
-    println!("   Zero-inflation: 25%, Poisson rate: 1.5");
-    println!("   P(0 blocks) = {:.3}", zip_dist.pmf(Count::new(0)));
+fn stage_devig_and_clv() -> Result<UnitInterval> {
+    println!("1. MARKET DEVIGGING & CLV (Shin Insider Equilibrium -> Kelly)");
+    let sharp_home = Odds::new(1.80)?;
+    let sharp_away = Odds::new(2.10)?;
+    let vig = book_vigorish(&[sharp_home, sharp_away])?;
+    let [fair_home, _fair_away] = devig_two_way(sharp_home, sharp_away, DevigMethod::Shin)?;
+
+    let soft_home_odds = Odds::new(1.96)?;
+    let stake = kelly_fraction(&fair_home, &soft_home_odds)?;
+    let clv = closing_line_value(soft_home_odds, fair_home);
     println!(
-        "   Mean: {:.2}, Variance: {:.2} (overdispersed!)",
-        zip_dist.mean(),
-        zip_dist.variance()
+        "   Sharp vig: {:.2}% | Fair Home: {:.2}% | Soft 1.96 CLV: {:+.2}% | Kelly: {:.2}%",
+        vig.value() * 100.0,
+        fair_home.value() * 100.0,
+        clv * 100.0,
+        stake.value() * 100.0
     );
-    Ok(())
+
+    let sharp_1x2 = [Odds::new(1.35)?, Odds::new(4.80)?, Odds::new(8.50)?];
+    let cmp = compare_outcome_ev_all_methods(&sharp_1x2, 2, Odds::new(9.50)?)?;
+    println!(
+        "   3-Way Away (9.50 vs 8.50): Multiplicative EV = {:+.2}%, Shin EV = {:+.2}% (phantom edge filtered)",
+        cmp.for_method(DevigMethod::Multiplicative).ev_percent,
+        cmp.for_method(DevigMethod::Shin).ev_percent
+    );
+    Ok(fair_home)
 }
 
-fn demo_ou_process() -> Result<()> {
-    println!("\n2. OU PROCESS - Shooting Percentage Momentum");
-    let ou_params = OuParams::from_values(0.45, 1.0, 0.15)?;
-    let dt = TimeStep::new(0.01)?;
-    let solver = EulerMaruyama::new(ou_params, dt);
-    let mut rng = OxidizeRng::default();
-    let trajectory = solver.simulate(0.60, 100, &mut rng);
-    println!("   True skill: 45%, Currently: 60% (hot)");
+fn stage_score_matrix_pricing() -> Result<UnitInterval> {
+    println!("\n2. MATCH SCORE MATRIX (Dixon-Coles 9x9 Grid -> Over 2.5 -> Kelly)");
+    let mut grid = [0.0_f64; 81];
+    dixon_coles_matrix_into(
+        PoissonRate::new(1.65)?,
+        PoissonRate::new(1.20)?,
+        DixonColesRho::new(-0.12)?,
+        8,
+        &mut grid,
+    )?;
+    let outcomes = match_1x2_probabilities(&grid, 8)?;
+    let (over_25, _under_25) = over_under_probabilities(&grid, 8, 2.5)?;
+    let over_odds = Odds::new(2.02)?;
+    let over_stake = kelly_fraction(&over_25, &over_odds)?;
     println!(
-        "   After 100 possessions: {:.1}%",
-        trajectory.last().copied().unwrap_or(0.60) * 100.0
+        "   1X2 = ({:.1}%, {:.1}%, {:.1}%) | P(Over 2.5) = {:.2}% -> Kelly @ 2.02: {:.2}%",
+        outcomes.home_win.value() * 100.0,
+        outcomes.draw.value() * 100.0,
+        outcomes.away_win.value() * 100.0,
+        over_25.value() * 100.0,
+        over_stake.value() * 100.0
     );
-    Ok(())
+    Ok(outcomes.home_win)
 }
 
-fn demo_copula() -> Result<()> {
-    println!("\n3. GAUSSIAN COPULA - Same Game Parlay Pricing");
-    let p_star_50 = Probability::new(0.01)?;
-    let p_win = Probability::new(0.60)?;
-    let rho = Correlation::new(-0.15)?;
-    let corr_2 = CorrelationMatrix::bivariate(rho)?;
-    let joint_2 = sgp_joint_probability(&[p_star_50, p_win], &corr_2)?;
-    println!("   2-Leg Hero Ball: Star 50+ pts (1% tail) + Team win (60%)");
+fn stage_zip_and_copula_sgp(home_win_prob: UnitInterval) -> Result<()> {
+    println!("\n3. ZIP PLAYER PROP + GENZ GAUSSIAN COPULA SGP -> FRACTIONAL KELLY");
+    let rho_zero: ZeroInflation = UnitInterval::new(0.20)?.into();
+    let zip = ZipDistribution::new(ZipParams::new(rho_zero, PoissonRate::new(2.20)?));
+    let prop_over_15 = zip.over_probability_unit(Count::new(1));
+
+    let corr_2 = CorrelationMatrix::bivariate(Correlation::new(0.28)?)?;
+    let sgp_joint = sgp_joint_probability(&[home_win_prob.into(), prop_over_15.into()], &corr_2)?;
+    let sgp_unit: UnitInterval = sgp_joint.into();
+    let sgp_stake = fractional_kelly(&sgp_unit, &Odds::new(3.90)?, 0.50)?;
     println!(
-        "   Naive: {:.4}, Copula: {:.4}",
-        0.01 * 0.60,
-        joint_2.value()
+        "   2-Leg ZIP+Match SGP: {:.2}% -> Half-Kelly @ 3.90: {:.2}%",
+        sgp_unit.value() * 100.0,
+        sgp_stake.value() * 100.0
     );
 
     let legs_3 = [
-        Probability::new(0.55)?,
-        Probability::new(0.50)?,
+        home_win_prob.into(),
+        prop_over_15.into(),
         Probability::new(0.60)?,
     ];
     let corr_3 = CorrelationMatrix::new(DMatrix::from_row_slice(
         3,
         3,
-        &[1.0, 0.50, 0.25, 0.50, 1.0, 0.35, 0.25, 0.35, 1.0],
+        &[1.0, 0.28, 0.20, 0.28, 1.0, 0.35, 0.20, 0.35, 1.0],
     ))?;
     let priced = price_correlated_parlay(&legs_3, &corr_3)?;
     let smoke = std::env::var("MATH_EXPLORER_SMOKE")
         .is_ok_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
-    let trials = if smoke { 2_500 } else { 25_000 };
-    let mut rng = OxidizeRng::default();
-    let sim = simulate_correlated_parlay(&legs_3, &corr_3, trials, &mut rng)?;
+    let mut rng = OxidizeRng::new(2026);
+    let sim = simulate_correlated_parlay(
+        &legs_3,
+        &corr_3,
+        if smoke { 2_500 } else { 25_000 },
+        &mut rng,
+    )?;
+    let sgp3_unit: UnitInterval = priced.joint_probability.into();
+    let sgp3_stake = fractional_kelly(&sgp3_unit, &Odds::new(6.25)?, 0.50)?;
     println!(
-        "   3-Leg SGP: Naive={:.4}, Genz={:.4} (x{:.2}, Fair Odds={:.2}), MC={:.4} ± {:.4}",
+        "   3-Leg SGP: Naive={:.4}, Genz={:.4} (x{:.2}, Fair={:.2}), MC={:.4} ± {:.4} -> Half-Kelly: {:.2}%",
         priced.naive_probability.value(),
         priced.joint_probability.value(),
         priced.correlation_multiplier,
         priced.fair_decimal_odds,
         sim.joint_probability.value(),
-        sim.standard_error
+        sim.standard_error,
+        sgp3_stake.value() * 100.0
     );
     Ok(())
 }
 
-fn demo_glicko2() -> Result<()> {
-    println!("\n4. GLICKO-2 RATING - Team Ranking");
-    let mut player = GlickoPlayer::new(
-        Rating::new(1500.0)?,
-        RatingDeviation::new(200.0)?,
+fn stage_live_ou_momentum() -> Result<()> {
+    println!("\n4. LIVE ORNSTEIN-UHLENBECK MOMENTUM -> IN-PLAY COMEBACK KELLY");
+    let params = OuParams::from_values(2.5, 1.1, 4.5)?;
+    let analyzer = OuAnalyzer::new(params, TimeStep::new(0.02)?);
+    let mut rng = OxidizeRng::new(2026);
+    let live_comeback = analyzer.comeback_probability_unit(-3.0, 0.0, 1.0, 2_000, &mut rng);
+    let live_odds = Odds::new(2.15)?;
+    let live_stake = kelly_fraction(&live_comeback, &live_odds)?;
+    println!(
+        "   Down 3 pts (mu=+2.5): Comeback = {:.2}% -> Live Kelly @ 2.15: {:.2}%",
+        live_comeback.value() * 100.0,
+        live_stake.value() * 100.0
+    );
+    Ok(())
+}
+
+fn stage_ratings_and_ruin(devigged_ref: UnitInterval) -> Result<()> {
+    println!("\n5. ELO & GLICKO-2 RATINGS -> KELLY & RISK OF RUIN");
+    let elo_prob = elo_expected_score(
+        EloRating::new(1615.0)?,
+        EloRating::new(1530.0)?,
+        HomeAdvantage::new(45.0)?,
+    );
+    let contender = GlickoPlayer::new(
+        Rating::new(1630.0)?,
+        RatingDeviation::new(65.0)?,
         Volatility::new(0.06)?,
     );
-    let opponent_rating = Rating::new(1400.0)?;
-    let opponent_rd = RatingDeviation::new(30.0)?;
-    let opponent = GlickoPlayer::new(opponent_rating, opponent_rd, Volatility::default());
-    let results = vec![MatchResult::new(opponent, 1.0)?];
-    let tau = SystemConstant::new(0.5)?;
-    player = update_rating(&player, &results, &tau)?;
-    println!("   Before: R=1500, RD=200");
+    let opponent = GlickoPlayer::new(
+        Rating::new(1520.0)?,
+        RatingDeviation::new(75.0)?,
+        Volatility::new(0.06)?,
+    );
+    let glicko_prob = head_to_head_win_probability_unit(&contender, &opponent);
+    let market_odds = Odds::from_american(-135.0)?;
+    let full_stake = kelly_fraction(&glicko_prob, &market_odds)?;
+    let ror_40u = unit_risk_of_ruin(&glicko_prob, &market_odds, 40.0)?;
+    let dd_50 = kelly_drawdown_risk(&glicko_prob, &market_odds, &full_stake, 0.5)?;
     println!(
-        "   After win: R={:.0}, RD={:.0}",
-        player.rating.value(),
-        player.rating_deviation.value()
+        "   Elo: {:.2}% | Glicko-2: {:.2}% (Sharp ref: {:.2}%) -> Kelly: {:.2}% | 40u RoR: {:.2}% | 50% DD: {:.1}%",
+        elo_prob.value() * 100.0,
+        glicko_prob.value() * 100.0,
+        devigged_ref.value() * 100.0,
+        full_stake.value() * 100.0,
+        ror_40u.value() * 100.0,
+        dd_50.value() * 100.0
     );
     Ok(())
 }
 
-fn demo_kelly() -> Result<()> {
-    println!("\n5. KELLY CRITERION - Bet Sizing");
-    let prob = UnitInterval::new(0.55)?;
-    let odds = Odds::new(2.0)?;
-    let kelly = kelly_fraction(&prob, &odds)?;
-    println!("   Win probability: 55%, Odds: 2.0");
-    println!("   Full Kelly: {:.1}%", kelly.value() * 100.0);
-    println!(
-        "   Quarter Kelly: {:.1}% (recommended)",
-        kelly.value() * 25.0
-    );
-    Ok(())
-}
-
-fn demo_markov_chain() -> Result<()> {
-    println!("\n6. MARKOV CHAIN - Expected Possession Value");
+fn stage_markov_and_execution() -> Result<()> {
+    println!("\n6. MARKOV POSSESSION EPV & CROSS-BOOK EXECUTION");
     let states = vec![
         StateType::Transient,
         StateType::Transient,
@@ -146,23 +175,7 @@ fn demo_markov_chain() -> Result<()> {
         ],
     );
     let chain = MarkovChain::new(p, states)?;
-    let rewards = DVector::from_vec(vec![3.0, 0.0]);
-    let epv = chain.expected_possession_value(&rewards)?;
-    println!("   State 0 EPV: {:.2} points", epv[0]);
-    println!("   State 1 EPV: {:.2} points", epv[1]);
-    Ok(())
-}
-
-fn demo_market_pricing() -> Result<()> {
-    println!("\n7. MARKET PRICING & EXECUTION - Devigging, +EV, Arbitrage, Dutching & Hedge");
-    let sharp = [Odds::new(1.35)?, Odds::new(4.80)?, Odds::new(8.50)?];
-    let soft_away = Odds::new(9.50)?;
-    let cmp = compare_outcome_ev_all_methods(&sharp, 2, soft_away)?;
-    println!(
-        "   3-Way Away (9.50 vs 8.50): Multiplicative EV = {:+.2}%, Shin EV = {:+.2}% (phantom edge filtered)",
-        cmp.for_method(DevigMethod::Multiplicative).ev_percent,
-        cmp.for_method(DevigMethod::Shin).ev_percent
-    );
+    let epv = chain.expected_possession_value(&DVector::from_vec(vec![3.0, 0.0]))?;
 
     let pod = [
         Odds::new(1.90)?,
@@ -174,15 +187,6 @@ fn demo_market_pricing() -> Result<()> {
     ];
     let (mut raw, mut clamped) = ([0.0; 6], [0.0; 6]);
     let meta = devig_additive_detailed_into(&pod, &mut raw, &mut clamped)?;
-    if let Some(diag) = meta.simplex_violation {
-        println!(
-            "   6-Way Additive Guard: outcome #{} raw prob {:.2}% clamped to {:.1}%",
-            diag.worst_outcome_index + 1,
-            diag.min_raw_probability * 100.0,
-            clamped[diag.worst_outcome_index] * 100.0
-        );
-    }
-
     let (arb, _) = evaluate_two_way_arbitrage(Odds::new(2.10)?, Odds::new(1.980_392)?, 1000.0)?;
     let mut dutch_stakes = [0.0; 3];
     let dutch = dutch_outcomes_into(
@@ -199,25 +203,26 @@ fn demo_market_pricing() -> Result<()> {
         HedgeMode::EqualProfit,
     )?;
     println!(
-        "   Execution: Arb +${:.2} | Dutching +${:.2} | Middle BE {:.2}% | Hedge Stake ${:.2} (+${:.2})",
+        "   EPV=({:.2}, {:.2}) | 6-Way Guard={:?} | Arb +${:.2} | Dutch +${:.2} | Mid BE {:.2}% | Hedge ${:.2}",
+        epv[0],
+        epv[1],
+        meta.simplex_violation.map(|d| d.violated_count),
         arb.guaranteed_profit,
         dutch.profit_if_hit,
         mid.break_even_probability * 100.0,
-        hedge.hedge_stake,
-        hedge.guaranteed_floor
+        hedge.hedge_stake
     );
     Ok(())
 }
 
 fn main() -> Result<()> {
-    println!("=== Sports Analytics Framework Demo ===\n");
-    demo_zip_regression()?;
-    demo_ou_process()?;
-    demo_copula()?;
-    demo_glicko2()?;
-    demo_kelly()?;
-    demo_markov_chain()?;
-    demo_market_pricing()?;
-    println!("\n✅ All 7 sports analytics modules demonstrated successfully!");
+    println!("=== OxidizeMath Connected Sports Quant Pipeline ===\n");
+    let sharp_home = stage_devig_and_clv()?;
+    let dc_home = stage_score_matrix_pricing()?;
+    stage_zip_and_copula_sgp(dc_home)?;
+    stage_live_ou_momentum()?;
+    stage_ratings_and_ruin(sharp_home)?;
+    stage_markov_and_execution()?;
+    println!("\nConnected pricing, execution, and Kelly pipeline completed cleanly.");
     Ok(())
 }

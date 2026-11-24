@@ -101,6 +101,7 @@
 
 pub mod core;
 pub mod criterion;
+pub mod diffusion;
 pub mod drawdown;
 pub mod market;
 pub mod push;
@@ -121,8 +122,8 @@ pub use criterion::{
 };
 pub use drawdown::{
     drawdown_constrained_kelly, drawdown_constrained_push_kelly,
-    drawdown_constrained_quarter_line_kelly, solve_drawdown_constrained_slate,
-    solve_drawdown_constrained_slate_with_mode,
+    drawdown_constrained_quarter_line_kelly, kelly_drawdown_risk, solve_drawdown_constrained_slate,
+    solve_drawdown_constrained_slate_with_mode, unit_risk_of_ruin,
 };
 pub use market::{MarketAllocation, MarketOutcome, MarketScratch, solve_mutually_exclusive_market};
 pub use push::{
@@ -135,4 +136,4 @@ pub use quarter_line::{
 pub use slate::{SlateSolution, solve_simultaneous_slate, solve_simultaneous_slate_with_mode};
 pub use slate_eval::{MAX_CONVOLUTION_STATES, SlateEvalMode, SlateScratch, SlateWager};
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

@@ -11688,6 +11688,9 @@
       "signature": "impl UnitInterval { pub fn complement (& self) -> f64 }"
     },
     {
+      "signature": "impl UnitInterval { pub fn new_clamped (_ : f64) -> Self }"
+    },
+    {
       "signature": "pub fn bounded_exp (_ : f64) -> f64"
     },
     {
@@ -16347,6 +16350,24 @@
       "signature": "pub use markets :: spread_to_elo_diff"
     },
     {
+      "signature": "pub use unit :: EloKFactor"
+    },
+    {
+      "signature": "pub use unit :: HomeAdvantage"
+    },
+    {
+      "signature": "pub use unit :: elo_expected_score"
+    },
+    {
+      "signature": "pub use unit :: elo_mov_multiplier"
+    },
+    {
+      "signature": "pub use unit :: elo_update_rating"
+    },
+    {
+      "signature": "pub use unit :: elo_update_with_mov"
+    },
+    {
       "signature": "pub use update :: adjusted_rating_diff"
     },
     {
@@ -16378,6 +16399,41 @@
     },
     {
       "signature": "pub use update :: update_elo_ratings"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/elo/unit.rs": [
+    {
+      "signature": "impl EloKFactor { pub fn new (_ : f64) -> Result < Self , EloError > }"
+    },
+    {
+      "signature": "impl EloKFactor { pub fn value (self) -> f64 }"
+    },
+    {
+      "signature": "impl HomeAdvantage { pub fn neutral () -> Self }"
+    },
+    {
+      "signature": "impl HomeAdvantage { pub fn new (_ : f64) -> Result < Self , EloError > }"
+    },
+    {
+      "signature": "impl HomeAdvantage { pub fn value (self) -> f64 }"
+    },
+    {
+      "signature": "pub fn elo_expected_score (_ : EloRating , _ : EloRating , _ : HomeAdvantage ,) -> UnitInterval"
+    },
+    {
+      "signature": "pub fn elo_mov_multiplier (_ : u32 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn elo_update_rating (_ : EloRating , _ : EloRating , _ : UnitInterval , _ : EloKFactor , _ : HomeAdvantage ,) -> (EloRating , EloRating)"
+    },
+    {
+      "signature": "pub fn elo_update_with_mov (_ : EloRating , _ : EloRating , _ : UnitInterval , _ : u32 , _ : EloKFactor , _ : HomeAdvantage ,) -> (EloRating , EloRating)"
+    },
+    {
+      "signature": "pub struct EloKFactor"
+    },
+    {
+      "signature": "pub struct HomeAdvantage"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/elo/update.rs": [
@@ -16539,6 +16595,9 @@
       "signature": "pub use tournament :: head_to_head_win_probability"
     },
     {
+      "signature": "pub use tournament :: head_to_head_win_probability_unit"
+    },
+    {
       "signature": "pub use tournament :: pairwise_win_matrix"
     },
     {
@@ -16582,6 +16641,9 @@
       "signature": "pub fn head_to_head_win_probability (_ : & GlickoPlayer , _ : & GlickoPlayer) -> f64"
     },
     {
+      "signature": "pub fn head_to_head_win_probability_unit (_ : & GlickoPlayer , _ : & GlickoPlayer ,) -> math_commons :: primitives :: UnitInterval"
+    },
+    {
       "signature": "pub fn pairwise_win_matrix (_ : & [GlickoPlayer]) -> DMatrix < f64 >"
     },
     {
@@ -16591,9 +16653,6 @@
       "signature": "pub fn simulate_period_matches (_ : & [GlickoPlayer] , _ : & [Pairing] , _ : f64 , _ : & mut OxidizeRng ,) -> Result < Vec < PeriodMatch > , Glicko2Error >"
     },
     {
-      "signature": "pub fn swiss_pairings (_ : & [GlickoPlayer] , _ : & [f64] , _ : & [PeriodMatch] ,) -> Result < SwissRoundPlan , Glicko2Error >"
-    },
-    {
       "signature": "pub struct Pairing"
     },
     {
@@ -16601,6 +16660,9 @@
     },
     {
       "signature": "pub struct SwissRoundPlan"
+    },
+    {
+      "signature": "pub use super :: swiss :: swiss_pairings"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/kelly/core.rs": [
@@ -16612,21 +16674,6 @@
     },
     {
       "signature": "impl BankrollFraction { pub fn value (& self) -> f64 }"
-    },
-    {
-      "signature": "impl DrawdownConstraint { pub fn alpha (& self) -> f64 }"
-    },
-    {
-      "signature": "impl DrawdownConstraint { pub fn beta (& self) -> f64 }"
-    },
-    {
-      "signature": "impl DrawdownConstraint { pub fn gamma (& self) -> f64 }"
-    },
-    {
-      "signature": "impl DrawdownConstraint { pub fn lambda (& self) -> f64 }"
-    },
-    {
-      "signature": "impl DrawdownConstraint { pub fn new (_ : f64 , _ : f64) -> Result < Self , KellyError > }"
     },
     {
       "signature": "impl Odds { pub fn from_american (_ : f64) -> Result < Self , KellyError > }"
@@ -16642,6 +16689,9 @@
     },
     {
       "signature": "impl Odds { pub fn implied_probability (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Odds { pub fn implied_probability_unit (& self) -> UnitInterval }"
     },
     {
       "signature": "impl Odds { pub fn net_profit_multiplier (& self) -> f64 }"
@@ -16677,13 +16727,13 @@
       "signature": "pub struct BankrollFraction"
     },
     {
-      "signature": "pub struct DrawdownConstraint"
-    },
-    {
       "signature": "pub struct Odds"
     },
     {
       "signature": "pub use math_commons :: primitives :: UnitInterval"
+    },
+    {
+      "signature": "pub use super :: diffusion :: DrawdownConstraint"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/kelly/criterion.rs": [
@@ -16709,6 +16759,32 @@
       "signature": "pub mod variants { pub fn quarter_kelly (_ : & UnitInterval , _ : & Odds ,) -> Result < BankrollFraction , KellyError > }"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/kelly/diffusion.rs": [
+    {
+      "signature": "impl DrawdownConstraint { pub fn alpha (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DrawdownConstraint { pub fn beta (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DrawdownConstraint { pub fn gamma (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DrawdownConstraint { pub fn lambda (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DrawdownConstraint { pub fn new (_ : f64 , _ : f64) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "pub fn kelly_drawdown_risk (_ : & UnitInterval , _ : & Odds , _ : & BankrollFraction , _ : f64 ,) -> Result < UnitInterval , KellyError >"
+    },
+    {
+      "signature": "pub fn unit_risk_of_ruin (_ : & UnitInterval , _ : & Odds , _ : f64 ,) -> Result < UnitInterval , KellyError >"
+    },
+    {
+      "signature": "pub struct DrawdownConstraint"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/kelly/drawdown.rs": [
     {
       "signature": "pub fn drawdown_constrained_kelly (_ : & UnitInterval , _ : & Odds , _ : & DrawdownConstraint ,) -> Result < BankrollFraction , KellyError >"
@@ -16724,6 +16800,12 @@
     },
     {
       "signature": "pub fn solve_drawdown_constrained_slate_with_mode (_ : & [SlateWager] , _ : & DrawdownConstraint , _ : SlateEvalMode , _ : & mut SlateScratch ,) -> Result < SlateSolution , KellyError >"
+    },
+    {
+      "signature": "pub use super :: diffusion :: kelly_drawdown_risk"
+    },
+    {
+      "signature": "pub use super :: diffusion :: unit_risk_of_ruin"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/kelly/market.rs": [
@@ -16826,10 +16908,16 @@
       "signature": "pub use drawdown :: drawdown_constrained_quarter_line_kelly"
     },
     {
+      "signature": "pub use drawdown :: kelly_drawdown_risk"
+    },
+    {
       "signature": "pub use drawdown :: solve_drawdown_constrained_slate"
     },
     {
       "signature": "pub use drawdown :: solve_drawdown_constrained_slate_with_mode"
+    },
+    {
+      "signature": "pub use drawdown :: unit_risk_of_ruin"
     },
     {
       "signature": "pub use market :: MarketAllocation"
@@ -17059,6 +17147,29 @@
       "signature": "pub struct SlateWager"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/market_pricing/clv.rs": [
+    {
+      "signature": "pub fn book_vigorish (_ : & [Odds]) -> Result < UnitInterval , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn closing_line_edge_two_way (_ : Odds , _ : Odds , _ : Odds , _ : DevigMethod ,) -> Result < (f64 , UnitInterval) , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn closing_line_value (_ : Odds , _ : UnitInterval) -> f64"
+    },
+    {
+      "signature": "pub fn devig_three_way (_ : Odds , _ : Odds , _ : Odds , _ : DevigMethod ,) -> Result < [UnitInterval ; 3] , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn devig_two_way (_ : Odds , _ : Odds , _ : DevigMethod ,) -> Result < [UnitInterval ; 2] , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn devig_unit_into (_ : & [Odds] , _ : DevigMethod , _ : & mut [UnitInterval] ,) -> Result < DevigMetadata , MarketPricingError >"
+    },
+    {
+      "signature": "pub fn fair_odds (_ : UnitInterval) -> Result < Odds , MarketPricingError >"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/market_pricing/devig.rs": [
     {
       "signature": "pub enum DevigMethod"
@@ -17166,6 +17277,27 @@
   "crates/pure_math/src/pure_math/statistics/market_pricing/mod.rs": [
     {
       "signature": "pub const MAX_MARKET_OUTCOMES : usize"
+    },
+    {
+      "signature": "pub use clv :: book_vigorish"
+    },
+    {
+      "signature": "pub use clv :: closing_line_edge_two_way"
+    },
+    {
+      "signature": "pub use clv :: closing_line_value"
+    },
+    {
+      "signature": "pub use clv :: devig_three_way"
+    },
+    {
+      "signature": "pub use clv :: devig_two_way"
+    },
+    {
+      "signature": "pub use clv :: devig_unit_into"
+    },
+    {
+      "signature": "pub use clv :: fair_odds"
     },
     {
       "signature": "pub use crate :: error :: MarketPricingError"
@@ -18106,6 +18238,39 @@
     },
     {
       "signature": "pub use poisson :: poisson_pmf"
+    },
+    {
+      "signature": "pub use score_matrix :: DixonColesRho"
+    },
+    {
+      "signature": "pub use score_matrix :: MatchOutcomeProbs"
+    },
+    {
+      "signature": "pub use score_matrix :: ScoreModelKind"
+    },
+    {
+      "signature": "pub use score_matrix :: SharedGoalRate"
+    },
+    {
+      "signature": "pub use score_matrix :: asian_handicap_home_cover"
+    },
+    {
+      "signature": "pub use score_matrix :: bivariate_poisson_matrix_into"
+    },
+    {
+      "signature": "pub use score_matrix :: both_teams_to_score_probability"
+    },
+    {
+      "signature": "pub use score_matrix :: dixon_coles_matrix_into"
+    },
+    {
+      "signature": "pub use score_matrix :: independent_poisson_matrix_into"
+    },
+    {
+      "signature": "pub use score_matrix :: match_1x2_probabilities"
+    },
+    {
+      "signature": "pub use score_matrix :: over_under_probabilities"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/match_models/poisson.rs": [
@@ -18135,6 +18300,53 @@
     },
     {
       "signature": "pub struct IndependentPoissonParams"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/match_models/score_matrix.rs": [
+    {
+      "signature": "impl DixonColesRho { pub fn new (_ : f64) -> Result < Self , CopulaError > }"
+    },
+    {
+      "signature": "impl DixonColesRho { pub fn value (self) -> f64 }"
+    },
+    {
+      "signature": "impl SharedGoalRate { pub fn new (_ : f64) -> Result < Self , ZipError > }"
+    },
+    {
+      "signature": "impl SharedGoalRate { pub fn value (self) -> f64 }"
+    },
+    {
+      "signature": "pub enum ScoreModelKind"
+    },
+    {
+      "signature": "pub fn asian_handicap_home_cover (_ : & [f64] , _ : usize , _ : f64 ,) -> Result < UnitInterval , MathError >"
+    },
+    {
+      "signature": "pub fn bivariate_poisson_matrix_into (_ : PoissonRate , _ : PoissonRate , _ : SharedGoalRate , _ : usize , _ : & mut [f64] ,) -> Result < () , MathError >"
+    },
+    {
+      "signature": "pub fn both_teams_to_score_probability (_ : & [f64] , _ : usize ,) -> Result < UnitInterval , MathError >"
+    },
+    {
+      "signature": "pub fn dixon_coles_matrix_into (_ : PoissonRate , _ : PoissonRate , _ : DixonColesRho , _ : usize , _ : & mut [f64] ,) -> Result < () , MathError >"
+    },
+    {
+      "signature": "pub fn independent_poisson_matrix_into (_ : PoissonRate , _ : PoissonRate , _ : usize , _ : & mut [f64] ,) -> Result < () , MathError >"
+    },
+    {
+      "signature": "pub fn match_1x2_probabilities (_ : & [f64] , _ : usize ,) -> Result < MatchOutcomeProbs , MathError >"
+    },
+    {
+      "signature": "pub fn over_under_probabilities (_ : & [f64] , _ : usize , _ : f64 ,) -> Result < (UnitInterval , UnitInterval) , MathError >"
+    },
+    {
+      "signature": "pub struct DixonColesRho"
+    },
+    {
+      "signature": "pub struct MatchOutcomeProbs"
+    },
+    {
+      "signature": "pub struct SharedGoalRate"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/monte_carlo/error.rs": [
@@ -18241,6 +18453,9 @@
     },
     {
       "signature": "impl OuAnalyzer { pub fn comeback_probability < R : Rng > (& self , _ : f64 , _ : f64 , _ : f64 , _ : usize , _ : & mut R ,) -> f64 }"
+    },
+    {
+      "signature": "impl OuAnalyzer { pub fn comeback_probability_unit < R : Rng > (& self , _ : f64 , _ : f64 , _ : f64 , _ : usize , _ : & mut R ,) -> math_commons :: primitives :: UnitInterval }"
     },
     {
       "signature": "impl OuAnalyzer { pub fn momentum_type (& self) -> MomentumType }"
@@ -19216,6 +19431,9 @@
       "signature": "impl ZipDistribution { pub fn cdf (& self , _ : Count) -> f64 }"
     },
     {
+      "signature": "impl ZipDistribution { pub fn cdf_unit (& self , _ : Count) -> math_commons :: primitives :: UnitInterval }"
+    },
+    {
       "signature": "impl ZipDistribution { pub fn from_values (_ : f64 , _ : f64) -> Result < Self , ZipError > }"
     },
     {
@@ -19225,10 +19443,16 @@
       "signature": "impl ZipDistribution { pub fn new (_ : ZipParams) -> Self }"
     },
     {
+      "signature": "impl ZipDistribution { pub fn over_probability_unit (& self , _ : Count ,) -> math_commons :: primitives :: UnitInterval }"
+    },
+    {
       "signature": "impl ZipDistribution { pub fn params (& self) -> ZipParams }"
     },
     {
       "signature": "impl ZipDistribution { pub fn pmf (& self , _ : Count) -> f64 }"
+    },
+    {
+      "signature": "impl ZipDistribution { pub fn pmf_unit (& self , _ : Count) -> math_commons :: primitives :: UnitInterval }"
     },
     {
       "signature": "impl ZipDistribution { pub fn std_dev (& self) -> f64 }"
@@ -20028,6 +20252,746 @@
     },
     {
       "signature": "pub use pure_math :: math_types :: Rational"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: copula :: Correlation"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: copula :: CorrelationMatrix"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: copula :: Probability"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: elo :: EloKFactor"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: elo :: EloRating"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: elo :: HomeAdvantage"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: glicko2 :: GlickoPlayer"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: glicko2 :: Rating"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: glicko2 :: RatingDeviation"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: glicko2 :: Volatility"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: kelly :: BankrollFraction"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: kelly :: Odds"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: kelly :: fractional_kelly"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: kelly :: kelly_fraction"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: market_pricing :: DevigMethod"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: match_models :: DixonColesRho"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: match_models :: MatchOutcomeProbs"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: match_models :: ScoreModelKind"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: match_models :: SharedGoalRate"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: zip_regression :: Count"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: zip_regression :: PoissonRate"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: zip_regression :: ZeroInflation"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: zip_regression :: ZipDistribution"
+    }
+  ],
+  "math_explorer/src/sports_quant.rs": [
+    {
+      "signature": "pub use copula :: Correlation"
+    },
+    {
+      "signature": "pub use copula :: CorrelationMatrix"
+    },
+    {
+      "signature": "pub use copula :: GaussianCopula"
+    },
+    {
+      "signature": "pub use copula :: MAX_STACK_LEGS"
+    },
+    {
+      "signature": "pub use copula :: ParlayPricingReport"
+    },
+    {
+      "signature": "pub use copula :: Probability"
+    },
+    {
+      "signature": "pub use copula :: RHO_SPLIT"
+    },
+    {
+      "signature": "pub use copula :: bivariate_copula_cdf"
+    },
+    {
+      "signature": "pub use copula :: bivariate_normal_cdf"
+    },
+    {
+      "signature": "pub use copula :: parlay_simulation_scratch_len"
+    },
+    {
+      "signature": "pub use copula :: price_correlated_parlay"
+    },
+    {
+      "signature": "pub use copula :: price_correlated_parlay_with_scratch"
+    },
+    {
+      "signature": "pub use copula :: sgp_joint_probability"
+    },
+    {
+      "signature": "pub use copula :: sgp_joint_probability_with_scratch"
+    },
+    {
+      "signature": "pub use copula :: simulate_correlated_parlay"
+    },
+    {
+      "signature": "pub use copula :: simulate_correlated_parlay_into"
+    },
+    {
+      "signature": "pub use elo :: EloBatchMatch"
+    },
+    {
+      "signature": "pub use elo :: EloConfig"
+    },
+    {
+      "signature": "pub use elo :: EloKFactor"
+    },
+    {
+      "signature": "pub use elo :: EloRating"
+    },
+    {
+      "signature": "pub use elo :: HomeAdvantage"
+    },
+    {
+      "signature": "pub use elo :: MarginScaling"
+    },
+    {
+      "signature": "pub use elo :: Venue"
+    },
+    {
+      "signature": "pub use elo :: elo_expected_score"
+    },
+    {
+      "signature": "pub use elo :: elo_moneyline_odds"
+    },
+    {
+      "signature": "pub use elo :: elo_mov_multiplier"
+    },
+    {
+      "signature": "pub use elo :: elo_point_spread"
+    },
+    {
+      "signature": "pub use elo :: elo_update_rating"
+    },
+    {
+      "signature": "pub use elo :: elo_update_with_mov"
+    },
+    {
+      "signature": "pub use elo :: elo_win_probability"
+    },
+    {
+      "signature": "pub use elo :: evaluate_elo_batch"
+    },
+    {
+      "signature": "pub use elo :: evaluate_elo_sequential"
+    },
+    {
+      "signature": "pub use elo :: expected_score_with_config"
+    },
+    {
+      "signature": "pub use elo :: regress_to_mean"
+    },
+    {
+      "signature": "pub use elo :: update_elo_from_goals"
+    },
+    {
+      "signature": "pub use glicko2 :: GlickoPlayer"
+    },
+    {
+      "signature": "pub use glicko2 :: MatchResult"
+    },
+    {
+      "signature": "pub use glicko2 :: Pairing"
+    },
+    {
+      "signature": "pub use glicko2 :: PeriodMatch"
+    },
+    {
+      "signature": "pub use glicko2 :: Rating"
+    },
+    {
+      "signature": "pub use glicko2 :: RatingDeviation"
+    },
+    {
+      "signature": "pub use glicko2 :: SwissRoundPlan"
+    },
+    {
+      "signature": "pub use glicko2 :: SystemConstant"
+    },
+    {
+      "signature": "pub use glicko2 :: Volatility"
+    },
+    {
+      "signature": "pub use glicko2 :: evaluate_rating_period"
+    },
+    {
+      "signature": "pub use glicko2 :: head_to_head_win_probability"
+    },
+    {
+      "signature": "pub use glicko2 :: head_to_head_win_probability_unit"
+    },
+    {
+      "signature": "pub use glicko2 :: pairwise_win_matrix"
+    },
+    {
+      "signature": "pub use glicko2 :: update_rating"
+    },
+    {
+      "signature": "pub use kelly :: BankrollFraction"
+    },
+    {
+      "signature": "pub use kelly :: DrawdownConstraint"
+    },
+    {
+      "signature": "pub use kelly :: EXACT_CONVOLUTION_MAX_WAGERS"
+    },
+    {
+      "signature": "pub use kelly :: LAPLACE_QUADRATURE_NODES"
+    },
+    {
+      "signature": "pub use kelly :: MAX_CONVOLUTION_STATES"
+    },
+    {
+      "signature": "pub use kelly :: MAX_SLATE_WAGERS"
+    },
+    {
+      "signature": "pub use kelly :: MarketAllocation"
+    },
+    {
+      "signature": "pub use kelly :: MarketOutcome"
+    },
+    {
+      "signature": "pub use kelly :: MarketScratch"
+    },
+    {
+      "signature": "pub use kelly :: Odds"
+    },
+    {
+      "signature": "pub use kelly :: PROBABILITY_SUM_TOLERANCE"
+    },
+    {
+      "signature": "pub use kelly :: PushOutcome"
+    },
+    {
+      "signature": "pub use kelly :: PushWager"
+    },
+    {
+      "signature": "pub use kelly :: QuarterLineOutcome"
+    },
+    {
+      "signature": "pub use kelly :: QuarterLineWager"
+    },
+    {
+      "signature": "pub use kelly :: SlateEvalMode"
+    },
+    {
+      "signature": "pub use kelly :: SlateScratch"
+    },
+    {
+      "signature": "pub use kelly :: SlateSolution"
+    },
+    {
+      "signature": "pub use kelly :: SlateWager"
+    },
+    {
+      "signature": "pub use kelly :: UnitInterval"
+    },
+    {
+      "signature": "pub use kelly :: drawdown_constrained_kelly"
+    },
+    {
+      "signature": "pub use kelly :: drawdown_constrained_push_kelly"
+    },
+    {
+      "signature": "pub use kelly :: drawdown_constrained_quarter_line_kelly"
+    },
+    {
+      "signature": "pub use kelly :: expected_growth_rate"
+    },
+    {
+      "signature": "pub use kelly :: expected_value"
+    },
+    {
+      "signature": "pub use kelly :: fractional_kelly"
+    },
+    {
+      "signature": "pub use kelly :: kelly_drawdown_risk"
+    },
+    {
+      "signature": "pub use kelly :: kelly_fraction"
+    },
+    {
+      "signature": "pub use kelly :: push_expected_growth_rate"
+    },
+    {
+      "signature": "pub use kelly :: push_expected_value"
+    },
+    {
+      "signature": "pub use kelly :: push_kelly_fraction"
+    },
+    {
+      "signature": "pub use kelly :: quarter_line_expected_growth_rate"
+    },
+    {
+      "signature": "pub use kelly :: quarter_line_expected_value"
+    },
+    {
+      "signature": "pub use kelly :: quarter_line_growth_derivative"
+    },
+    {
+      "signature": "pub use kelly :: quarter_line_kelly_fraction"
+    },
+    {
+      "signature": "pub use kelly :: solve_drawdown_constrained_slate"
+    },
+    {
+      "signature": "pub use kelly :: solve_drawdown_constrained_slate_with_mode"
+    },
+    {
+      "signature": "pub use kelly :: solve_mutually_exclusive_market"
+    },
+    {
+      "signature": "pub use kelly :: solve_simultaneous_slate"
+    },
+    {
+      "signature": "pub use kelly :: solve_simultaneous_slate_with_mode"
+    },
+    {
+      "signature": "pub use kelly :: unit_risk_of_ruin"
+    },
+    {
+      "signature": "pub use kelly :: variants as kelly_variants"
+    },
+    {
+      "signature": "pub use market_pricing :: AllMethodsEvReport"
+    },
+    {
+      "signature": "pub use market_pricing :: ArbitrageReport"
+    },
+    {
+      "signature": "pub use market_pricing :: DevigMetadata"
+    },
+    {
+      "signature": "pub use market_pricing :: DevigMethod"
+    },
+    {
+      "signature": "pub use market_pricing :: DutchingMode"
+    },
+    {
+      "signature": "pub use market_pricing :: DutchingReport"
+    },
+    {
+      "signature": "pub use market_pricing :: EvEvaluation"
+    },
+    {
+      "signature": "pub use market_pricing :: HedgeMode"
+    },
+    {
+      "signature": "pub use market_pricing :: HedgeReport"
+    },
+    {
+      "signature": "pub use market_pricing :: MAX_MARKET_OUTCOMES"
+    },
+    {
+      "signature": "pub use market_pricing :: MarketOverround"
+    },
+    {
+      "signature": "pub use market_pricing :: MarketPricingError"
+    },
+    {
+      "signature": "pub use market_pricing :: MiddleReport"
+    },
+    {
+      "signature": "pub use market_pricing :: SimplexViolationDiagnostic"
+    },
+    {
+      "signature": "pub use market_pricing :: book_vigorish"
+    },
+    {
+      "signature": "pub use market_pricing :: booksum"
+    },
+    {
+      "signature": "pub use market_pricing :: closing_line_edge_two_way"
+    },
+    {
+      "signature": "pub use market_pricing :: closing_line_value"
+    },
+    {
+      "signature": "pub use market_pricing :: compare_outcome_ev_all_methods"
+    },
+    {
+      "signature": "pub use market_pricing :: devig_additive_detailed_into"
+    },
+    {
+      "signature": "pub use market_pricing :: devig_additive_into"
+    },
+    {
+      "signature": "pub use market_pricing :: devig_into"
+    },
+    {
+      "signature": "pub use market_pricing :: devig_multiplicative_into"
+    },
+    {
+      "signature": "pub use market_pricing :: devig_power_into"
+    },
+    {
+      "signature": "pub use market_pricing :: devig_shin_into"
+    },
+    {
+      "signature": "pub use market_pricing :: devig_three_way"
+    },
+    {
+      "signature": "pub use market_pricing :: devig_two_way"
+    },
+    {
+      "signature": "pub use market_pricing :: devig_unit_into"
+    },
+    {
+      "signature": "pub use market_pricing :: dutch_outcomes_into"
+    },
+    {
+      "signature": "pub use market_pricing :: dutch_subset_into"
+    },
+    {
+      "signature": "pub use market_pricing :: evaluate_arbitrage_into"
+    },
+    {
+      "signature": "pub use market_pricing :: evaluate_ev_from_probability"
+    },
+    {
+      "signature": "pub use market_pricing :: evaluate_hedge"
+    },
+    {
+      "signature": "pub use market_pricing :: evaluate_middle"
+    },
+    {
+      "signature": "pub use market_pricing :: evaluate_middle_custom_stakes"
+    },
+    {
+      "signature": "pub use market_pricing :: evaluate_outcome_ev"
+    },
+    {
+      "signature": "pub use market_pricing :: evaluate_two_way_arbitrage"
+    },
+    {
+      "signature": "pub use market_pricing :: fair_decimal_odds_into"
+    },
+    {
+      "signature": "pub use market_pricing :: fair_odds"
+    },
+    {
+      "signature": "pub use market_pricing :: fair_odds_from_probabilities_into"
+    },
+    {
+      "signature": "pub use market_pricing :: implied_probabilities_into"
+    },
+    {
+      "signature": "pub use market_pricing :: is_arbitrage"
+    },
+    {
+      "signature": "pub use market_pricing :: market_overround"
+    },
+    {
+      "signature": "pub use market_pricing :: overround"
+    },
+    {
+      "signature": "pub use market_pricing :: turnover_margin"
+    },
+    {
+      "signature": "pub use match_models :: AsianHandicapQuote"
+    },
+    {
+      "signature": "pub use match_models :: BivariatePoissonParams"
+    },
+    {
+      "signature": "pub use match_models :: BttsQuote"
+    },
+    {
+      "signature": "pub use match_models :: DixonColesMleConfig"
+    },
+    {
+      "signature": "pub use match_models :: DixonColesParams"
+    },
+    {
+      "signature": "pub use match_models :: DixonColesRho"
+    },
+    {
+      "signature": "pub use match_models :: DrawNoBetQuote"
+    },
+    {
+      "signature": "pub use match_models :: FittedDixonColes"
+    },
+    {
+      "signature": "pub use match_models :: HistoricalMatch"
+    },
+    {
+      "signature": "pub use match_models :: IndependentPoissonParams"
+    },
+    {
+      "signature": "pub use match_models :: MatchOutcomeProbs"
+    },
+    {
+      "signature": "pub use match_models :: OneXTwoQuote"
+    },
+    {
+      "signature": "pub use match_models :: OverUnderQuote"
+    },
+    {
+      "signature": "pub use match_models :: ScoreGrid"
+    },
+    {
+      "signature": "pub use match_models :: ScoreModelKind"
+    },
+    {
+      "signature": "pub use match_models :: SharedGoalRate"
+    },
+    {
+      "signature": "pub use match_models :: asian_handicap"
+    },
+    {
+      "signature": "pub use match_models :: asian_handicap_home_cover"
+    },
+    {
+      "signature": "pub use match_models :: bivariate_poisson_grid"
+    },
+    {
+      "signature": "pub use match_models :: bivariate_poisson_matrix_into"
+    },
+    {
+      "signature": "pub use match_models :: bivariate_poisson_pmf"
+    },
+    {
+      "signature": "pub use match_models :: both_teams_to_score_probability"
+    },
+    {
+      "signature": "pub use match_models :: btts"
+    },
+    {
+      "signature": "pub use match_models :: dixon_coles_grid"
+    },
+    {
+      "signature": "pub use match_models :: dixon_coles_matrix_into"
+    },
+    {
+      "signature": "pub use match_models :: dixon_coles_rho_bounds"
+    },
+    {
+      "signature": "pub use match_models :: dixon_coles_tau"
+    },
+    {
+      "signature": "pub use match_models :: draw_no_bet"
+    },
+    {
+      "signature": "pub use match_models :: fit_dixon_coles_mle"
+    },
+    {
+      "signature": "pub use match_models :: independent_poisson_grid"
+    },
+    {
+      "signature": "pub use match_models :: independent_poisson_matrix_into"
+    },
+    {
+      "signature": "pub use match_models :: match_1x2_probabilities"
+    },
+    {
+      "signature": "pub use match_models :: one_x_two"
+    },
+    {
+      "signature": "pub use match_models :: over_under"
+    },
+    {
+      "signature": "pub use match_models :: over_under_probabilities"
+    },
+    {
+      "signature": "pub use ou_process :: EulerMaruyama"
+    },
+    {
+      "signature": "pub use ou_process :: MomentumType"
+    },
+    {
+      "signature": "pub use ou_process :: OuAnalyzer"
+    },
+    {
+      "signature": "pub use ou_process :: OuParams"
+    },
+    {
+      "signature": "pub use ou_process :: TimeStep"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: copula"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: elo"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: glicko2"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: kelly"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: market_pricing"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: match_models"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: ou_process"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: ruin"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: validation"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: zip_regression"
+    },
+    {
+      "signature": "pub use ruin :: BankrollEnsembleWorkspace"
+    },
+    {
+      "signature": "pub use ruin :: DrawdownQuantiles"
+    },
+    {
+      "signature": "pub use ruin :: EnsembleSolvencyReport"
+    },
+    {
+      "signature": "pub use ruin :: GamblersRuinResult"
+    },
+    {
+      "signature": "pub use ruin :: KellyBarrierRisk"
+    },
+    {
+      "signature": "pub use ruin :: LundbergSolution"
+    },
+    {
+      "signature": "pub use ruin :: PortfolioBet"
+    },
+    {
+      "signature": "pub use ruin :: ProportionalPortfolioBet"
+    },
+    {
+      "signature": "pub use ruin :: WilsonInterval"
+    },
+    {
+      "signature": "pub use ruin :: gamblers_ruin_infinite"
+    },
+    {
+      "signature": "pub use ruin :: gamblers_ruin_with_target"
+    },
+    {
+      "signature": "pub use ruin :: kelly_barrier_risk"
+    },
+    {
+      "signature": "pub use ruin :: portfolio_kelly_barrier_risk"
+    },
+    {
+      "signature": "pub use ruin :: solve_lundberg_ruin"
+    },
+    {
+      "signature": "pub use ruin :: solve_single_bet_lundberg"
+    },
+    {
+      "signature": "pub use validation :: CalibrationComparison"
+    },
+    {
+      "signature": "pub use validation :: ClvMetrics"
+    },
+    {
+      "signature": "pub use validation :: ClvSummary"
+    },
+    {
+      "signature": "pub use validation :: SampleSize95"
+    },
+    {
+      "signature": "pub use validation :: SettledBet"
+    },
+    {
+      "signature": "pub use validation :: YieldSignificance"
+    },
+    {
+      "signature": "pub use validation :: binary_log_loss"
+    },
+    {
+      "signature": "pub use validation :: brier_score"
+    },
+    {
+      "signature": "pub use validation :: compare_calibration"
+    },
+    {
+      "signature": "pub use validation :: evaluate_yield_against_closing"
+    },
+    {
+      "signature": "pub use validation :: evaluate_yield_significance"
+    },
+    {
+      "signature": "pub use validation :: required_bets_for_95_significance"
+    },
+    {
+      "signature": "pub use validation :: settled_closing_calibration"
+    },
+    {
+      "signature": "pub use validation :: single_bet_clv"
+    },
+    {
+      "signature": "pub use validation :: single_bet_clv_two_way"
+    },
+    {
+      "signature": "pub use validation :: summarize_clv"
+    },
+    {
+      "signature": "pub use zip_regression :: Count"
+    },
+    {
+      "signature": "pub use zip_regression :: PoissonRate"
+    },
+    {
+      "signature": "pub use zip_regression :: ZeroInflation"
+    },
+    {
+      "signature": "pub use zip_regression :: ZipDistribution"
+    },
+    {
+      "signature": "pub use zip_regression :: ZipParams"
+    },
+    {
+      "signature": "pub use zip_regression :: simple_zip_fit"
     }
   ]
 }

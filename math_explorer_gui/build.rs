@@ -1,4 +1,5 @@
-//! Build script generating the scoped traceability snapshot and staged `OUT_DIR` assets for `math_explorer_gui`.
+//! Build script generating the scoped traceability snapshot, BibTeX link index, and staged `OUT_DIR` assets for `math_explorer_gui`.
+mod build_bib;
 mod build_snapshot;
 mod build_stage;
 
@@ -13,4 +14,5 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     build_stage::stage_gui_inputs_to_out_dir(out_path);
     build_snapshot::generate_traceability_snapshot(out_path);
+    build_bib::generate_bib_links_tsv(out_path);
 }

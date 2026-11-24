@@ -165,3 +165,5 @@ impl BetSizeCalculatorTool {
         }
     }
 }
+
+// [cite:sports_quantitative_modeling]

@@ -279,4 +279,4 @@ impl scientific_metadata::theory::TheoryDescribable for MarketExecutionTool {
     }
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

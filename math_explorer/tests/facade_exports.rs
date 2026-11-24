@@ -442,6 +442,10 @@ fn all_fifty_one_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
 }
 
 #[cfg(feature = "pure_math")]
+#[path = "facade_exports/sports_quant_checks.rs"]
+mod sports_quant_checks;
+
+#[cfg(feature = "pure_math")]
 #[test]
 fn pure_math_facade_exports_multi_state_and_drawdown_kelly_solvers() {
     kelly_checks::assert_multi_state_and_drawdown_kelly_solvers();

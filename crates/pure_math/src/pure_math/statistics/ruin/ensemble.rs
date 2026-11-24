@@ -439,4 +439,4 @@ fn pick_weighted_fixed_bet(portfolio: &[PortfolioBet], target_w: f64) -> &Portfo
     &portfolio[portfolio.len() - 1]
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

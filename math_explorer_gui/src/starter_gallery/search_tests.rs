@@ -140,7 +140,8 @@ fn test_all_28_tab_slugs_map_to_matching_academic_domains_and_titles() {
     );
 
     let tabs = crate::tabs::instantiate_tabs();
-    let expected_tabs = if cfg!(feature = "biology") { 29 } else { 28 };
+    let expected_tabs =
+        28 + usize::from(cfg!(feature = "biology")) + usize::from(cfg!(feature = "pure_math"));
     assert_eq!(tabs.len(), expected_tabs);
     for tab in &tabs {
         let slug = tab.url_slug();

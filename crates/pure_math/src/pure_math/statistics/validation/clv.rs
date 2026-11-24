@@ -298,4 +298,4 @@ pub fn summarize_clv(bets: &[SettledBet]) -> Result<ClvSummary, KellyError> {
     })
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

@@ -228,4 +228,18 @@ fn test_zero_allocation_verified_conversions_and_guards() {
     assert!(ok);
 }
 
-// [cite:clinical_trials_statistics]
+#[test]
+#[verified_engine::verified]
+fn test_implied_probability_unit_and_bankroll_unit_roundtrip() {
+    let odds = Odds::new(2.5).unwrap();
+    let implied = odds.implied_probability_unit();
+    assert!((implied.value() - 0.4).abs() < math_commons::registry::TOLERANCE_HIGH);
+
+    let fraction = BankrollFraction::from(implied);
+    assert!((fraction.value() - 0.4).abs() < math_commons::registry::TOLERANCE_HIGH);
+
+    let back: UnitInterval = fraction.into();
+    assert!((back.value() - 0.4).abs() < math_commons::registry::TOLERANCE_HIGH);
+}
+
+// [cite:sports_quantitative_modeling]

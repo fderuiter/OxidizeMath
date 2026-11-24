@@ -317,6 +317,22 @@ impl Odds {
     pub fn implied_probability(&self) -> f64 {
         1.0 / self.0
     }
+
+    /// Converts decimal odds to an implied probability bounded in [`UnitInterval`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::kelly::Odds;
+    ///
+    /// let odds = Odds::new(2.5).unwrap();
+    /// assert!((odds.implied_probability_unit().value() - 0.4).abs() < 1e-12);
+    /// ```
+    #[verified_engine::verified]
+    pub fn implied_probability_unit(&self) -> UnitInterval {
+        UnitInterval::new_clamped(1.0 / self.0)
+    }
 }
 
 impl<'de> Deserialize<'de> for Odds {
@@ -388,6 +404,22 @@ impl BankrollFraction {
     }
 }
 
+impl From<UnitInterval> for BankrollFraction {
+    #[inline]
+    #[verified_engine::verified]
+    fn from(interval: UnitInterval) -> Self {
+        Self(interval.value())
+    }
+}
+
+impl From<BankrollFraction> for UnitInterval {
+    #[inline]
+    #[verified_engine::verified]
+    fn from(fraction: BankrollFraction) -> Self {
+        Self::new_clamped(fraction.0)
+    }
+}
+
 impl<'de> Deserialize<'de> for BankrollFraction {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = f64::deserialize(deserializer)?;
@@ -410,80 +442,10 @@ pub const LAPLACE_QUADRATURE_NODES: usize = 128;
 /// Tolerance used when validating complete discrete probability distributions.
 pub const PROBABILITY_SUM_TOLERANCE: f64 = 1e-9;
 
-/// Busseti, Ryu, and Boyd (2016) martingale drawdown risk constraint.
-///
-/// Bounds the infinite-horizon probability that wealth falls below fraction `alpha`
-/// of initial bankroll to at most `beta`:
-/// `P(inf_{t >= 1} W_t / W_0 <= alpha) <= beta`
-/// via the convex supermartingale inequality `E[R^(-lambda)] <= 1`, where
-/// `lambda = ln(beta) / ln(alpha) > 0` (equivalently `E[R^(1 - gamma)] <= 1` with `gamma = 1 + lambda`).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct DrawdownConstraint {
-    alpha: f64,
-    beta: f64,
-    lambda: f64,
-}
-
-impl DrawdownConstraint {
-    /// Constructs a validated Busseti-Ryu-Boyd drawdown constraint for `alpha, beta in (0, 1)`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use pure_math::__doctest_facade as math_explorer;
-    /// use math_explorer::pure_math::statistics::kelly::DrawdownConstraint;
-    ///
-    /// let dc = DrawdownConstraint::new(0.70, 0.10).unwrap();
-    /// assert!((dc.lambda() - 6.455696).abs() < 1e-5);
-    /// assert!((dc.gamma() - (1.0 + dc.lambda())).abs() < 1e-12);
-    /// ```
-    #[verified_engine::verified]
-    pub fn new(alpha: f64, beta: f64) -> Result<Self, KellyError> {
-        if !alpha.is_finite()
-            || !beta.is_finite()
-            || alpha <= 0.0
-            || alpha >= 1.0
-            || beta <= 0.0
-            || beta >= 1.0
-        {
-            return Err(KellyError::InvalidDrawdownBounds { alpha, beta });
-        }
-        let lambda = beta.ln() / alpha.ln();
-        if !lambda.is_finite() || lambda <= 0.0 {
-            return Err(KellyError::InvalidDrawdownBounds { alpha, beta });
-        }
-        Ok(Self {
-            alpha,
-            beta,
-            lambda,
-        })
-    }
-
-    /// Returns the wealth floor fraction `alpha in (0, 1)`.
-    #[verified_engine::verified]
-    pub fn alpha(&self) -> f64 {
-        self.alpha
-    }
-
-    /// Returns the maximum allowable drawdown probability `beta in (0, 1)`.
-    #[verified_engine::verified]
-    pub fn beta(&self) -> f64 {
-        self.beta
-    }
-
-    /// Returns the martingale exponent `lambda = ln(beta) / ln(alpha) > 0`.
-    #[verified_engine::verified]
-    pub fn lambda(&self) -> f64 {
-        self.lambda
-    }
-
-    /// Returns the equivalent CRRA relative risk-aversion coefficient `gamma = 1 + lambda`.
-    #[verified_engine::verified]
-    pub fn gamma(&self) -> f64 {
-        1.0 + self.lambda
-    }
-}
+pub use super::diffusion::DrawdownConstraint;
 
 #[cfg(test)]
 #[path = "core_tests.rs"]
 mod tests;
+
+// [cite:sports_quantitative_modeling]

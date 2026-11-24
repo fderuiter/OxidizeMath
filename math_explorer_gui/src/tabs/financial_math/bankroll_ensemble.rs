@@ -491,4 +491,4 @@ fn sorted_quantile(sorted: &[f64], q: f64) -> f64 {
     sorted[lo] * (1.0 - frac) + sorted[hi] * frac
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

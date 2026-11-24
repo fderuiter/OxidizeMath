@@ -93,6 +93,7 @@ pub struct BetSizeCalculatorTool {
     pub(crate) calc_error: Option<String>,
     pub(crate) save_rx: Option<Receiver<Result<String, String>>>,
     pub(crate) io_status: Option<(String, bool)>,
+    pub(crate) revision: u64,
 }
 
 impl Default for BetSizeCalculatorTool {
@@ -142,6 +143,7 @@ impl Default for BetSizeCalculatorTool {
             calc_error: None,
             save_rx: None,
             io_status: None,
+            revision: 0,
         };
         tool.recalculate();
         tool
@@ -375,7 +377,12 @@ impl InteractiveTool for BetSizeCalculatorTool {
         serde_json::to_string(&self.to_serializable_state(include_imp)).ok()
     }
 
+    fn state_revision(&self) -> u64 {
+        self.revision
+    }
+
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let s: BetSizeState =
             serde_json::from_str(state).map_err(|e| format!("Invalid bet size state: {e}"))?;
         let odds = s.validate()?;
@@ -401,7 +408,15 @@ inventory::submit! {
         id: "BetSizeCalculatorTool",
         display_name: "Bet Size Calculator",
         domain: "financial_math",
-        tags: &["kelly", "kelly criterion", "wagering", "odds", "optimal fraction"],
+        tags: &[
+            "kelly",
+            "kelly criterion",
+            "wagering",
+            "odds",
+            "optimal fraction",
+            "bankroll",
+            "sports_quant",
+        ],
         build: || Box::new(BetSizeCalculatorTool::default()),
     }
 }
@@ -423,7 +438,7 @@ impl scientific_metadata::theory::TheoryDescribable for BetSizeCalculatorTool {
     }
 
     fn theory_citation(&self) -> String {
-        "Kelly (1956); Smoczynski & Tomkins (2010); Busseti, Ryu & Boyd (2016); Kaunitz et al. (2017)".into()
+        "A New Interpretation of Information Rate (Kelly, 1956); Optimal Gambling Systems for Favorable Games (Thorp, 1969); Smoczynski & Tomkins (2010); Busseti, Ryu & Boyd (2016); Beating the bookies with their own numbers (Kaunitz et al., 2017, arXiv:1710.02824)".into()
     }
 
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
@@ -459,4 +474,4 @@ inventory::submit! {
     }
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

@@ -211,4 +211,4 @@ fn render_hedge_payoff_chart(rep: &HedgeReport, ui: &mut egui::Ui, palette: &Sem
         });
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

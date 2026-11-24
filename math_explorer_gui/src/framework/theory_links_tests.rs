@@ -112,7 +112,10 @@ fn test_resolve_portal_paper_and_bibtex_links_filters_specs() {
 
     let glicko_links = resolve_portal_paper_links("Glicko2TournamentTool", "game_theory");
     assert!(!glicko_links.is_empty());
-    assert_eq!(glicko_links[0].paper_name, "graph_parameters_rust.tex");
+    assert_eq!(
+        glicko_links[0].paper_name,
+        "sports_quantitative_modeling.tex"
+    );
 
     let astro_links = resolve_portal_paper_links("GalacticOrbitSimulator", "astrophysics");
     assert!(!astro_links.is_empty());
@@ -131,7 +134,10 @@ fn test_resolve_portal_paper_and_bibtex_links_filters_specs() {
     assert!(volumetric_links
         .iter()
         .any(|l| l.paper_name == "quantum_mechanics.tex"));
+}
 
+#[test]
+fn test_resolve_citation_bibtex_reference_links() {
     let cera_ext = resolve_citation_reference_links(
         "CERA: A Framework for Improved Generalization of Machine Learning Models to Changed Climates (Liu et al., 2025)",
     );

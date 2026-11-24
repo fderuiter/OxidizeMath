@@ -357,4 +357,9 @@ fn test_pairwise_win_matrix_and_deterministic_pairings() {
     let r2 = swiss_pairings(&roster, &[1.0, 0.0, 1.0, 0.0, 1.0], &m1_a).unwrap();
     assert!(r2.bye_player.is_some());
     assert_ne!(r2.bye_player, r1.bye_player);
+
+    let h2h_unit = head_to_head_win_probability_unit(&roster[0], &roster[4]);
+    let h2h_rev = head_to_head_win_probability_unit(&roster[4], &roster[0]);
+    assert!(h2h_unit.value() > 0.5);
+    assert!((h2h_unit.value() + h2h_rev.value() - 1.0).abs() < 1e-12);
 }

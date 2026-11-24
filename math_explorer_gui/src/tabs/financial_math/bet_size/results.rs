@@ -29,6 +29,7 @@ enum MarkerSlot {
 
 impl BetSizeCalculatorTool {
     pub(crate) fn recalculate(&mut self) {
+        self.revision = self.revision.wrapping_add(1);
         self.clear_cached_outputs();
         match self.mode {
             BetSizingMode::Binary => self.recalculate_binary(),
@@ -474,5 +475,4 @@ struct SlateDisplayMetrics {
     rc_pair: Option<(f64, f64)>,
 }
 
-// [cite:clinical_trials_statistics]
-// [cite:modular_polynomials_review]
+// [cite:sports_quantitative_modeling]

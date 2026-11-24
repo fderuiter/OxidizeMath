@@ -131,4 +131,4 @@ pub use distribution::ZipDistribution;
 pub use link_functions::{LogLink, LogitLink};
 pub use regression::{ZipRegression, simple_zip_fit};
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

@@ -1,7 +1,8 @@
 //! # Sports Elo Rating System & Fair Market Converters
 //!
 //! Venue-adjusted sports Elo rating system with win-margin multipliers, between-season
-//! mean regression, zero-allocation frozen-period batch updates, and moneyline/spread converters.
+//! mean regression, zero-allocation frozen-period batch updates, [`math_commons::primitives::UnitInterval`]
+//! expectation wrappers, and fair moneyline/spread converters.
 //!
 //! ## Mathematical Framework
 //!
@@ -25,8 +26,10 @@
 //!
 //! ```rust
 //! # use pure_math::__doctest_facade as math_explorer;
+//! use math_explorer::primitives::UnitInterval;
 //! use math_explorer::pure_math::statistics::elo::{
-//!     EloConfig, EloRating, MarginScaling, Venue, elo_moneyline_odds, expected_score_with_config,
+//!     EloConfig, EloKFactor, EloRating, HomeAdvantage, MarginScaling, Venue,
+//!     elo_expected_score, elo_moneyline_odds, elo_update_rating, expected_score_with_config,
 //!     update_elo_from_goals,
 //! };
 //!
@@ -43,12 +46,25 @@
 //!
 //! let (home_odds, away_odds) = elo_moneyline_odds(new_home, new_away, Venue::Home, &config).unwrap();
 //! assert!(home_odds.value() < away_odds.value());
+//!
+//! let hfa = HomeAdvantage::new(55.0).unwrap();
+//! let win_prob = elo_expected_score(EloRating::new(1600.0).unwrap(), away, hfa);
+//! assert!(win_prob.value() > 0.65);
+//! let (updated_h, _) = elo_update_rating(
+//!     home,
+//!     away,
+//!     UnitInterval::new(1.0).unwrap(),
+//!     EloKFactor::new(24.0).unwrap(),
+//!     hfa,
+//! );
+//! assert!(updated_h.value() > home.value());
 //! ```
 
 pub mod batch;
 #[doc(hidden)]
 pub mod core;
 pub mod markets;
+pub mod unit;
 pub mod update;
 
 pub use batch::{
@@ -63,13 +79,17 @@ pub use markets::{
     elo_expected_margin, elo_moneyline_odds, elo_point_spread, elo_win_probability,
     probability_to_fair_odds, spread_to_elo_diff,
 };
+pub use unit::{
+    EloKFactor, HomeAdvantage, elo_expected_score, elo_mov_multiplier, elo_update_rating,
+    elo_update_with_mov,
+};
 pub use update::{
     adjusted_rating_diff, autocorrelated_margin_multiplier, elo_rating_delta, expected_score,
     expected_score_with_config, log_margin_multiplier, margin_multiplier, regress_roster_into,
     regress_to_mean, update_elo_from_goals, update_elo_ratings,
 };
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]
 
 #[cfg(test)]
 mod tests;

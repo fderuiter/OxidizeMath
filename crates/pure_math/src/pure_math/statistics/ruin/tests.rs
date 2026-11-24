@@ -141,4 +141,4 @@ fn test_proportional_kelly_barrier_formulas_and_wilson_width() {
     );
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

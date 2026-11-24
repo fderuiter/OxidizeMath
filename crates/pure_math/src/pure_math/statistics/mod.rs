@@ -127,3 +127,4 @@ pub mod validation;
 pub mod zip_regression;
 
 // [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

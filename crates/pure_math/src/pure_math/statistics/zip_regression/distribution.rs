@@ -120,6 +120,23 @@ impl ZipDistribution {
         }
     }
 
+    /// Computes the probability mass function $P(Y = k)$ bounded in [`math_commons::primitives::UnitInterval`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pure_math::__doctest_facade as math_explorer;
+    /// use math_explorer::pure_math::statistics::zip_regression::{Count, ZipDistribution};
+    ///
+    /// let dist = ZipDistribution::from_values(0.2, 3.0).unwrap();
+    /// let p0 = dist.pmf_unit(Count::new(0));
+    /// assert!(p0.value() > 0.2 && p0.value() <= 1.0);
+    /// ```
+    #[verified_engine::verified]
+    pub fn pmf_unit(&self, count: Count) -> math_commons::primitives::UnitInterval {
+        math_commons::primitives::UnitInterval::new_clamped(self.pmf(count))
+    }
+
     /// Computes the cumulative distribution function P(Y ≤ k).
     ///
     /// # Arguments
@@ -137,6 +154,21 @@ impl ZipDistribution {
             sum += self.pmf(Count::new(i));
         }
         sum
+    }
+
+    /// Computes the cumulative probability $P(Y \le k)$ as a [`math_commons::primitives::UnitInterval`].
+    #[verified_engine::verified]
+    pub fn cdf_unit(&self, count: Count) -> math_commons::primitives::UnitInterval {
+        math_commons::primitives::UnitInterval::new_clamped(self.cdf(count))
+    }
+
+    /// Computes the Over-prop exceedance probability $P(Y > k) = 1 - P(Y \le k)$ as a [`math_commons::primitives::UnitInterval`].
+    #[verified_engine::verified]
+    pub fn over_probability_unit(
+        &self,
+        threshold: Count,
+    ) -> math_commons::primitives::UnitInterval {
+        math_commons::primitives::UnitInterval::new_clamped(1.0 - self.cdf(threshold))
     }
 
     /// Computes the mean (expected value) of the distribution.
@@ -325,5 +357,16 @@ mod tests {
             assert!(cdf <= 1.0);
             prev_cdf = cdf;
         }
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_pmf_and_over_unit_interval_accessors() {
+        let dist = ZipDistribution::from_values(0.25, 2.5).unwrap();
+        let p0 = dist.pmf_unit(Count::new(0));
+        assert!((p0.value() - dist.pmf(Count::new(0))).abs() < 1e-12);
+        let cdf2 = dist.cdf_unit(Count::new(2));
+        let over2 = dist.over_probability_unit(Count::new(2));
+        assert!((cdf2.value() + over2.value() - 1.0).abs() < 1e-12);
     }
 }

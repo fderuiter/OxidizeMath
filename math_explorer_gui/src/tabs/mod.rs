@@ -58,6 +58,8 @@ pub mod quantum;
 pub mod relativity;
 #[cfg(feature = "physics")]
 pub mod solid_state;
+#[cfg(feature = "pure_math")]
+pub mod sports_analytics;
 pub mod traceability;
 
 /// Static registration descriptor for a GUI domain tab collected via [`inventory`].
@@ -208,6 +210,7 @@ pub trait ExplorerTab {
             | "Game Theory"
             | "Paradox Lab"
             | "Population Structure"
+            | "Sports Analytics"
             | "Traceability Portal" => "Applied Math",
 
             "Biochemical Dynamics" | "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
@@ -300,6 +303,7 @@ pub trait ExplorerTab {
             "Population Structure" => "cannibalism",
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",
+            "Sports Analytics" => "sports_analytics",
             "Traceability Portal" => "traceability",
             _ => "simulation",
         }

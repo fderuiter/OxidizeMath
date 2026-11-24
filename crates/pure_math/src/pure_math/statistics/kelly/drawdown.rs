@@ -6,6 +6,7 @@
 
 use super::core::{BankrollFraction, DrawdownConstraint, MAX_SLATE_WAGERS, Odds, UnitInterval};
 use super::criterion::kelly_fraction;
+pub use super::diffusion::{kelly_drawdown_risk, unit_risk_of_ruin};
 use super::push::{PushWager, push_kelly_fraction};
 use super::quarter_line::{QuarterLineWager, quarter_line_kelly_fraction};
 use super::slate::{SlateSolution, maximize_penalized_slate};
@@ -284,3 +285,5 @@ pub fn solve_drawdown_constrained_slate_with_mode(
         resolved_mode,
     ))
 }
+
+// [cite:sports_quantitative_modeling]

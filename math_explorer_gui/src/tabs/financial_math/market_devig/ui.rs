@@ -435,4 +435,4 @@ fn render_probability_chart(
         });
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

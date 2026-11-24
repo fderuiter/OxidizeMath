@@ -238,6 +238,17 @@ define_bounded_float!(
 );
 
 impl UnitInterval {
+    /// Creates a [`UnitInterval`] by clamping finite values to `[0.0, 1.0]`
+    /// (mapping non-finite values to `0.0`) without heap allocation.
+    #[inline]
+    pub fn new_clamped(value: f64) -> Self {
+        if value.is_finite() {
+            Self(value.clamp(0.0, 1.0))
+        } else {
+            Self(0.0)
+        }
+    }
+
     /// Returns the complementary probability (1.0 - self.value()).
     pub fn complement(&self) -> f64 {
         1.0 - self.0
@@ -257,3 +268,18 @@ define_bounded_float!(
     f64::INFINITY,
     "A floating point value bounded between 0.0 and infinity (inclusive of 0.0)."
 );
+
+#[cfg(test)]
+mod tests {
+    use super::UnitInterval;
+
+    #[test]
+    fn test_unit_interval_new_clamped() {
+        assert_eq!(UnitInterval::new_clamped(0.42).value(), 0.42);
+        assert_eq!(UnitInterval::new_clamped(-0.5).value(), 0.0);
+        assert_eq!(UnitInterval::new_clamped(1.5).value(), 1.0);
+        assert_eq!(UnitInterval::new_clamped(f64::NAN).value(), 0.0);
+        assert_eq!(UnitInterval::new_clamped(f64::INFINITY).value(), 0.0);
+        assert!((UnitInterval::new_clamped(0.25).complement() - 0.75).abs() < 1e-12);
+    }
+}

@@ -201,4 +201,4 @@ pub fn compare_outcome_ev_all_methods(
     })
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

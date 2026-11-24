@@ -36,8 +36,6 @@ fn test_two_way_longshot_bias_and_phantom_ev() {
     assert!((p_pow[0] - 0.815_012_558_921).abs() < TOLERANCE_STANDARD);
     assert!((p_pow[1] - 0.184_987_441_079).abs() < TOLERANCE_STANDARD);
 
-    // Soft book offers +400 (5.00) on the underdog:
-    // Multiplicative hallucinates +5.263158% EV, whereas Power & Shin expose negative EV.
     let soft = Odds::from_american(400.0).unwrap();
     let cmp = compare_outcome_ev_all_methods(&sharp, 1, soft).unwrap();
     assert!((cmp.multiplicative.ev_per_unit - (1.0 / 19.0)).abs() < TOLERANCE_STANDARD);
@@ -115,7 +113,6 @@ fn test_six_way_tournament_pod_additive_simplex_violation() {
 #[test]
 #[verified_engine::verified]
 fn test_arbitrage_dutching_middle_and_hedge_benchmarks() {
-    // 1. Cross-book arbitrage: 2.10 / 1.980392 on $1,000 budget -> $19.22 profit.
     let (arb, stakes) = evaluate_two_way_arbitrage(
         Odds::new(2.10).unwrap(),
         Odds::new(1.980_392).unwrap(),
@@ -126,7 +123,6 @@ fn test_arbitrage_dutching_middle_and_hedge_benchmarks() {
     assert!((stakes[0] - 485.343_565_226).abs() < 1e-6);
     assert!((stakes[1] - 514.656_434_774).abs() < 1e-6);
 
-    // 2. 3-way Dutching: 3.50 / 4.20 / 6.00 on $100 budget -> $44.83 profit.
     let contenders = [
         Odds::new(3.50).unwrap(),
         Odds::new(4.20).unwrap(),
@@ -141,7 +137,6 @@ fn test_arbitrage_dutching_middle_and_hedge_benchmarks() {
     .unwrap();
     assert!((dutch.profit_if_hit - 44.827_586_207).abs() < 1e-6);
 
-    // TargetProfit inverse check: targeting $44.827586207 requires $100.00 total stake.
     let mut target_stakes = [0.0; 3];
     let dutch_target = dutch_outcomes_into(
         &contenders,
@@ -151,7 +146,6 @@ fn test_arbitrage_dutching_middle_and_hedge_benchmarks() {
     .unwrap();
     assert!((dutch_target.total_stake - 100.0).abs() < TOLERANCE_STANDARD);
 
-    // 3. NFL -2.5 / +3.5 middle at -110 / -110 -> 4.7619% break-even hit rate.
     let minus_110 = Odds::from_american(-110.0).unwrap();
     let mid = evaluate_middle(
         minus_110,
@@ -165,7 +159,6 @@ fn test_arbitrage_dutching_middle_and_hedge_benchmarks() {
     assert!((mid.middle_profit - 200.0).abs() < TOLERANCE_STANDARD);
     assert!(mid.expected_profit.unwrap() > 0.0);
 
-    // 4. Live/futures hedge: $100 at +800 hedged at -150 -> $540.00 stake & +$260.00 profit.
     let orig = Odds::from_american(800.0).unwrap();
     let hedge_line = Odds::from_american(-150.0).unwrap();
     let hedge = evaluate_hedge(100.0, orig, hedge_line, HedgeMode::EqualProfit).unwrap();
@@ -173,7 +166,6 @@ fn test_arbitrage_dutching_middle_and_hedge_benchmarks() {
     assert!((hedge.net_profit_if_original_wins - 260.0).abs() < TOLERANCE_STANDARD);
     assert!((hedge.net_profit_if_hedge_wins - 260.0).abs() < TOLERANCE_STANDARD);
 
-    // Freeroll target floor ($0.00 worst-case) -> $150.00 hedge stake, +$650.00 upside.
     let freeroll = evaluate_hedge(100.0, orig, hedge_line, HedgeMode::TargetFloor(0.0)).unwrap();
     assert!((freeroll.hedge_stake - 150.0).abs() < TOLERANCE_STANDARD);
     assert!(freeroll.net_profit_if_hedge_wins.abs() < TOLERANCE_STANDARD);
@@ -230,6 +222,46 @@ fn test_subset_dutching_and_error_guards() {
 
 #[test]
 #[verified_engine::verified]
+fn test_unit_interval_devig_bridges_and_clv_helpers() {
+    let line = Odds::from_american(-110.0).unwrap();
+    for method in [
+        DevigMethod::Multiplicative,
+        DevigMethod::Additive,
+        DevigMethod::Power,
+        DevigMethod::Shin,
+    ] {
+        let [p1, p2] = devig_two_way(line, line, method).unwrap();
+        assert!((p1.value() - 0.5).abs() < TOLERANCE_STANDARD);
+        assert!((p2.value() - 0.5).abs() < TOLERANCE_STANDARD);
+    }
+
+    let home = Odds::new(1.40).unwrap();
+    let draw = Odds::new(4.50).unwrap();
+    let away = Odds::new(8.00).unwrap();
+    let mult = devig_three_way(home, draw, away, DevigMethod::Multiplicative).unwrap();
+    let pow = devig_three_way(home, draw, away, DevigMethod::Power).unwrap();
+    let shin = devig_three_way(home, draw, away, DevigMethod::Shin).unwrap();
+    assert!(pow[0].value() > mult[0].value() && shin[0].value() > mult[0].value());
+    assert!(pow[2].value() < mult[2].value() && shin[2].value() < mult[2].value());
+
+    let vig = book_vigorish(&[Odds::new(1.91).unwrap(), Odds::new(1.91).unwrap()]).unwrap();
+    assert!(vig.value() > 0.04 && vig.value() < 0.06);
+    assert!((fair_odds(UnitInterval::new(0.4).unwrap()).unwrap().value() - 2.5).abs() < 1e-12);
+    assert!(fair_odds(UnitInterval::new(0.0).unwrap()).is_err());
+    assert!(fair_odds(UnitInterval::new(1.0).unwrap()).is_err());
+
+    let (clv, fair_close) = closing_line_edge_two_way(
+        Odds::new(2.10).unwrap(),
+        Odds::new(1.85).unwrap(),
+        Odds::new(2.05).unwrap(),
+        DevigMethod::Shin,
+    )
+    .unwrap();
+    assert!(fair_close.value() > 0.5 && clv > 0.05);
+}
+
+#[test]
+#[verified_engine::verified]
 fn test_zero_heap_allocations_across_all_market_pricing_routines() {
     let market = [
         Odds::new(1.35).unwrap(),
@@ -262,13 +294,15 @@ fn test_zero_heap_allocations_across_all_market_pricing_routines() {
         )?;
         let mid = evaluate_middle(minus_110, minus_110, 220.0, None)?;
         let hdg = evaluate_hedge(100.0, orig, hedge_line, HedgeMode::EqualProfit)?;
+        let (clv, _) = closing_line_edge_two_way(offered, minus_110, minus_110, DevigMethod::Shin)?;
         Ok(ev.shin.ev_per_unit
             + arb.guaranteed_profit
             + dutch.profit_if_hit
             + mid.middle_profit
-            + hdg.hedge_stake)
+            + hdg.hedge_stake
+            + clv)
     });
     assert!(ok.unwrap().is_finite());
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

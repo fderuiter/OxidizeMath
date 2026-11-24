@@ -205,4 +205,4 @@ pub fn compare_calibration(
     })
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

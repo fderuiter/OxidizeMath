@@ -406,6 +406,7 @@ fn legacy_aliases_for_tool(domain: &str, tool_id: &str) -> &'static [&'static st
             "parrondo-s-paradox",
             "parrondos_paradox",
         ],
+        ("sports_analytics", "SportsMarketDeviggingTool") => &["MarketDeviggingTool"],
         _ => &[],
     }
 }

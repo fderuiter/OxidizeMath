@@ -180,4 +180,4 @@ fn test_yield_significance_heterogeneous_odds_and_250_bet_audit() {
     assert!((n95.mean_bernoulli_variance - 1.0).abs() < 1e-12);
 }
 
-// [cite:clinical_trials_statistics]
+// [cite:sports_quantitative_modeling]

@@ -327,5 +327,4 @@ fn test_theory_description_reports_live_net_multiplier_b() {
     assert!(tool.theory_description().contains("net odds $b = 1.00$"));
 }
 
-// [cite:clinical_trials_statistics]
-// [cite:modular_polynomials_review]
+// [cite:sports_quantitative_modeling]
