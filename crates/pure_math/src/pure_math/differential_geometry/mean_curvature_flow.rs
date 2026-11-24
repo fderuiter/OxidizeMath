@@ -147,8 +147,6 @@ impl MeanCurvatureFlow {
 
 #[cfg(test)]
 mod tests {
-    #![cfg_attr(any(), verified(opt_out = "tests"))]
-
     use super::*;
     use std::f64::consts::PI;
     use verified_engine::engine::VerifiedEngine;

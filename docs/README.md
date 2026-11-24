@@ -81,6 +81,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Downsampled 2D FFT Lenia Soliton Viability Atlas, Potential Histograms, and AST Rule Sandboxes](adr/20261123-lenia-viability-atlas-and-sandboxes.md)
 - [ADR 20261123: Zero-Allocation Brent Root-Finder, Market Pricing Devigging, and Execution Calculators](adr/20261123-market-pricing-brent-and-execution-calculators.md)
 - [ADR 20261123: Log-Space HMM Solvers, Zero-Allocation Baum-Welch EM, Validated Serde, and Markov Sequence Workbench](adr/20261123-markov-sequence-and-reliability-workbench.md)
+- [ADR 20261123: Modular Stochastic Engines and Dedicated Workbench Tab](adr/20261123-modular-stochastic-engines-and-workbench-tab.md)
 - [ADR 20261123: Modularize Setup and Enforce Static Documentation Gates](adr/20261123-modularize-setup-and-enforce-doc-gates.md)
 - [ADR 20261123: Multi-State, Portfolio, and Drawdown-Constrained Kelly Convex Solvers](adr/20261123-multi-state-kelly-convex-solvers.md)
 - [ADR 20261123: Myerson Mechanism-Design Auction Lab and Analytical Ising / Fermi Spatial Parameter Atlas](adr/20261123-myerson-auction-lab-and-ising-parameter-atlas.md)
