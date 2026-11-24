@@ -252,18 +252,22 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
 fn assert_expected_capability_counts(counts: [usize; 9]) {
     let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader, audio] =
         counts;
+    let has_riemannian = cfg!(feature = "pure_math");
     let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
+    let extra = usize::from(has_riemannian) + usize::from(has_surface_morpho);
     let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
+    let stochastic_extra = if cfg!(feature = "pure_math") { 3 } else { 0 };
     let expected_audio = usize::from(cfg!(feature = "biology")) * 2
         + usize::from(cfg!(feature = "physics")) * 3
-        + usize::from(cfg!(feature = "pure_math"));
+        + usize::from(cfg!(feature = "pure_math"))
+        + usize::from(has_riemannian);
     assert_eq!(
         audio, expected_audio,
         "Expected {expected_audio} WAV audio-capable tools"
     );
-    let expected_plot = (if has_surface_morpho { 76 } else { 75 }) + bio_extra;
-    let expected_solid = if has_surface_morpho { 8 } else { 7 };
-    let expected_non_shader = (if has_surface_morpho { 90 } else { 89 }) + bio_extra;
+    let expected_plot = 75 + extra + bio_extra + stochastic_extra;
+    let expected_solid = 7 + extra;
+    let expected_non_shader = 89 + extra + bio_extra + stochastic_extra;
     assert_eq!(
         plot, expected_plot,
         "Expected {expected_plot} Plot dataset+figure tools"
@@ -402,6 +406,8 @@ fn test_all_eight_3d_tools_deferred_stl_ply_payloads_and_live_region() {
     let solid_ids = [
         "SurfaceViewer",
         "CurvatureHeatmap",
+        #[cfg(feature = "pure_math")]
+        "RiemannianPdeStudio",
         #[cfg(all(feature = "pure_math", feature = "biology"))]
         "SurfaceMorphogenesisTool",
         "AttractorPlotter",
