@@ -1,6 +1,5 @@
 //! Co-stepped LatticeBoltzmannD2Q9 and TuringSystem zero-heap-allocation tests under VerifiedAllocator.
 #![cfg(all(feature = "biology", feature = "physics"))]
-#![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use math_explorer::biology::diffusion::AdvectiveFiniteDifference2D;
 use math_explorer::biology::morphogenesis::{

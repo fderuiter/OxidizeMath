@@ -4,6 +4,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::{AdvectiveKineticsPreset, AdvectiveMorphogenesisTool};
+#[cfg(feature = "physics")]
 use crate::app::{domain_bar, MathExplorerApp};
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{

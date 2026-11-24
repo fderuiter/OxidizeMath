@@ -31,6 +31,7 @@ fn handoff_slot() -> &'static Mutex<Option<AdvectiveMorphogenesisHandoff>> {
 }
 
 /// Queues a cross-tab launch into `MorphogenesisTab` -> `AdvectiveMorphogenesisTool`.
+#[cfg(feature = "physics")]
 pub fn request_open_advective_morphogenesis(
     ctx: &egui::Context,
     handoff: AdvectiveMorphogenesisHandoff,

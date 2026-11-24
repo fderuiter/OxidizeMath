@@ -1,5 +1,7 @@
+#[cfg(feature = "biology")]
 pub mod advective_handoff;
 pub mod atlas_host;
+mod audio_sync;
 pub mod brush_codec;
 pub mod brush_dispatch;
 #[cfg(all(test, feature = "physics", feature = "biology"))]
@@ -10,7 +12,7 @@ mod challenge_hud;
 #[cfg(test)]
 mod challenge_hud_tests;
 pub mod clamp;
-#[cfg(test)]
+#[cfg(all(test, feature = "climate", feature = "physics", feature = "pure_math"))]
 mod clamp_tests;
 pub mod code_export;
 pub mod code_export_modal;
@@ -27,32 +29,57 @@ pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_3d;
+mod export_audio;
 mod export_dataset;
 mod export_figure;
 mod export_gif_job;
 mod export_modal_host;
 mod export_persistence;
 mod export_queue;
-#[cfg(test)]
+#[cfg(all(test, feature = "physics"))]
 pub(crate) use export_queue::deferred_export_tests;
 #[cfg(test)]
 mod export_queue_tests;
 pub(crate) mod export_shader;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod export_shader_tests;
 pub mod export_types;
 mod export_ui;
 #[cfg(test)]
 mod export_ui_tests;
+#[cfg(any(feature = "physics", feature = "biology"))]
 pub mod fairing_mask;
 pub mod fit_bridge;
 mod history_ui;
 pub mod math_input;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod metadata_label_tests;
 mod overlay_sync;
 mod pane_scope;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod perf_guard_tests;
 mod persistence;
 pub mod playback;
@@ -68,7 +95,7 @@ mod plot_persistence_tests;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
-#[cfg(test)]
+#[cfg(all(test, any(feature = "epidemiology", feature = "pure_math")))]
 mod shared_points_perf_tests;
 pub mod side_panel;
 pub mod spatial_brush;
@@ -91,6 +118,7 @@ pub mod trace_overlay;
 mod ui;
 mod url_share;
 
+#[cfg(feature = "biology")]
 pub use advective_handoff::*;
 pub use brush_codec::*;
 pub use brush_dispatch::{PlotBrushController, PlotBrushFrame};
@@ -104,6 +132,7 @@ pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
 pub use export_types::*;
+#[cfg(any(feature = "physics", feature = "biology"))]
 pub use fairing_mask::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use history_ui::render_workspace_history_buttons;
@@ -129,22 +158,13 @@ pub use story_hud::*;
 pub use trace_overlay::*;
 
 pub(super) use crate::accessibility::AccessibleHoverText;
+pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
 use eframe::egui;
+pub use overlay_sync::ToolMetadata;
 pub(super) use overlay_sync::{
     FrameworkRevisionCache, FrameworkSyncState, UntrackedUrlDigestCache,
 };
 use scientific_metadata::theory::TheoryDescribable;
-
-pub struct ToolMetadata {
-    pub id: &'static str,
-    pub display_name: &'static str,
-    pub domain: &'static str,
-    pub tags: &'static [&'static str],
-    pub build: fn() -> Box<dyn InteractiveTool>,
-}
-
-inventory::collect!(ToolMetadata);
-pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
 
 pub trait InteractiveTool {
     fn name(&self) -> &'static str;
@@ -154,36 +174,22 @@ pub trait InteractiveTool {
 
     /// Show the tool at the root `egui::Context` level by delegating to [`Self::show_inside`].
     fn show(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default()
-            .frame(egui::Frame::NONE)
-            .show(ctx, |ui| {
-                self.show_inside(ui);
-            });
+        pane_scope::render_default_tool_root(self, ctx);
     }
 
-    /// Show the tool inside a scoped parent `egui::Ui` (supporting multi-pane layouts on a single root `Context`).
+    /// Show the tool inside a scoped parent `egui::Ui` (multi-pane layouts on a single root `Context`).
     ///
-    /// # Accessibility Requirements for Custom `show_inside` Overrides
-    ///
-    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`], [`egui::Sense::click`],
-    ///   or [`egui::Sense::click_and_drag`] instead of `Sense::hover()` so `Tab` traversal reaches the visualization.
-    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))` so `AccessKit`
-    ///   exposes `Role::Image` and non-empty alternative text.
-    /// - Populate `AccessKit` metadata via `crate::accessibility::register_canvas_accessibility` and draw a
-    ///   high-contrast focus ring when `response.has_focus()`.
-    /// - When consuming arrow keys, set `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
-    ///   strictly while `response.has_focus()` so `Tab` and `Shift+Tab` never trap keyboard users.
+    /// Custom overrides must: (1) use focusable `egui::Sense` instead of `Sense::hover()`,
+    /// (2) render raster textures via `egui::Image::new(texture).alt_text(...).sense(...)`,
+    /// (3) register `AccessKit` metadata and focus rings via `crate::accessibility`, and
+    /// (4) set `EventFilter { tab: false, .. }` only while focused so `Tab`/`Shift+Tab` never trap focus.
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         pane_scope::render_default_tool_inside(self, ui);
     }
-
     /// Optional: UI rendering for the tool's specific side-panel controls.
     fn show_ui(&mut self, _ui: &mut egui::Ui) {}
-
     /// Optional: Context-based drawing.
     fn draw(&mut self, _ui: &mut egui::Ui, _response: &egui::Response, _painter: &egui::Painter) {}
-
-    // Normalized event hooks
     #[allow(missing_docs)]
     fn on_hover(&mut self, _ctx: &InteractionContext) {}
     #[allow(missing_docs)]
@@ -411,6 +417,23 @@ pub trait InteractiveTool {
     ) -> Vec<egui_plot::export::DatasetFrame> {
         export_figure::sample_tool_animation_frames(self, num_frames)
     }
+    /// Optional hook emitting a zero-allocation [`crate::audio::SonificationFrame`] for live Web Audio and `.wav` export.
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        None
+    }
+    /// Returns persisted non-mute [`crate::audio::AcousticSettings`] for presets and share URLs.
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        crate::audio::AcousticSettings::default()
+    }
+    /// Applies persisted non-mute [`crate::audio::AcousticSettings`] without unmuting playback.
+    fn set_acoustic_settings(&mut self, _settings: crate::audio::AcousticSettings) {}
+    /// Samples deterministic multi-step [`crate::audio::SonificationFrame`] trajectories for 16-bit `.wav` export.
+    fn sample_sonification_frames(
+        &mut self,
+        num_frames: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        audio_sync::sample_tool_sonification_frames(self, num_frames)
+    }
 
     /// Returns a type-erased reference for concrete tool state inspection.
     fn as_any(&self) -> Option<&dyn std::any::Any> {
@@ -450,27 +473,17 @@ pub struct SimulationFramework {
     pub preset_dialog: crate::presets::PresetDialogState,
     pub(crate) export_queue: ExportQueue,
     gif_job: Option<export_gif_job::FrameworkGifJob>,
-    /// Cached state snapshot before divergence for step-back rollback.
     pub last_valid_snapshot: Option<StateSnapshot>,
-    /// Baseline parameters snapshot on tool load.
     pub baseline_tool_state: Option<String>,
-    /// Last validated finite plot datasets.
     pub current_valid_plot_datasets: Vec<(String, egui_plot::SharedPoints)>,
-    /// Last validated finite 3D world-coordinate plot datasets.
     pub current_valid_plot_datasets_3d: Vec<(String, Vec<[f64; 3]>)>,
-    /// Whether divergence has been detected in the active tool.
     pub is_diverged: bool,
-    /// Diagnostic report for divergence.
     pub diagnostic_report: Option<DiagnosticReport>,
-    /// Simulation frame / step counter.
     pub step_counter: usize,
-    /// Counterfactual shadow twin engine state synchronized with the active tool.
     pub branch_engine: CounterfactualBranchEngine,
-    /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
-    /// Declarative guided story and AST challenge HUD state.
+    pub audio_controller: crate::audio::AudioEngineController,
     pub challenge_hud: ChallengeHudState,
-    /// Active inverse challenge contract displayed in the Challenge HUD, if any.
     pub active_challenge: Option<&'static ChallengeMetadata>,
     pub(super) challenge_was_passed: bool,
     pub(super) instance_id: u64,

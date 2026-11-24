@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+use math_commons::math_kernel::types::{StepSize, flatten_2d_index};
 
 #[test]
 fn test_stencil_operators_precomputation() {

@@ -1,23 +1,27 @@
-use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
+use crate::framework::{ExportCapabilities, InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
 use egui_plot::{Bar, BarChart, Line, Plot, PlotPoint, Points};
 use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;
 use std::collections::VecDeque;
 
+#[path = "spike_analysis/sonification.rs"]
+mod sonification;
+
 pub struct SpikeAnalysisTool {
-    neuron: HodgkinHuxleyNeuron,
+    pub(super) neuron: HodgkinHuxleyNeuron,
     time: f64,
-    is_running: bool,
+    pub(super) is_running: bool,
     history_points: Vec<PlotPoint>,
     spike_times: Vec<f64>,
     spike_plot_points: Vec<PlotPoint>,
-    isis: VecDeque<f64>,
-    last_voltage: f64,
-    input_current: f64,
-    spike_threshold: f64,
-    simulation_speed: usize,
+    pub(super) isis: VecDeque<f64>,
+    pub(super) last_voltage: f64,
+    pub(super) input_current: f64,
+    pub(super) spike_threshold: f64,
+    pub(super) simulation_speed: usize,
     spiked_in_frame: bool,
-    sonification: crate::audio::SonificationFrame,
+    pub(super) sonification: crate::audio::SonificationFrame,
+    pub(super) audio_settings: crate::audio::AcousticSettings,
 }
 
 impl Default for SpikeAnalysisTool {
@@ -36,18 +40,9 @@ impl Default for SpikeAnalysisTool {
             simulation_speed: 10,
             spiked_in_frame: false,
             sonification: crate::audio::SonificationFrame::silent(),
+            audio_settings: crate::audio::AcousticSettings::default(),
         }
     }
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct SpikeAnalysisState {
-    input_current: f64,
-    spike_threshold: f64,
-    simulation_speed: usize,
-    #[serde(default)]
-    is_running: bool,
 }
 
 impl InteractiveTool for SpikeAnalysisTool {
@@ -64,33 +59,39 @@ impl InteractiveTool for SpikeAnalysisTool {
         "neuroscience"
     }
 
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_audio()
+    }
+
+    fn state_revision(&self) -> u64 {
+        self.compute_state_revision()
+    }
+
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        Some(self.current_sonification_frame())
+    }
+
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.get_audio_settings()
+    }
+
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.update_audio_settings(settings);
+    }
+
+    fn sample_sonification_frames(
+        &mut self,
+        frame_count: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        self.render_wav_frames(frame_count)
+    }
+
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&SpikeAnalysisState {
-            input_current: self.input_current,
-            spike_threshold: self.spike_threshold,
-            simulation_speed: self.simulation_speed,
-            is_running: self.is_running,
-        })
-        .ok()
+        self.serialize_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let parsed: SpikeAnalysisState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid spike analysis state: {e}"))?;
-        if !parsed.input_current.is_finite()
-            || !(0.0..=50.0).contains(&parsed.input_current)
-            || !parsed.spike_threshold.is_finite()
-            || !(-50.0..=20.0).contains(&parsed.spike_threshold)
-            || !(1..=100).contains(&parsed.simulation_speed)
-        {
-            return Err("Spike analysis parameters out of bounds".into());
-        }
-        self.reset();
-        self.input_current = parsed.input_current;
-        self.spike_threshold = parsed.spike_threshold;
-        self.simulation_speed = parsed.simulation_speed;
-        self.is_running = parsed.is_running;
-        Ok(())
+        self.deserialize_state(state)
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -172,7 +173,7 @@ impl SpikeAnalysisTool {
         }
     }
 
-    fn mean_firing_rate_hz(&self) -> f64 {
+    pub(super) fn mean_firing_rate_hz(&self) -> f64 {
         if self.isis.is_empty() {
             return 0.0;
         }
@@ -318,7 +319,7 @@ impl SpikeAnalysisTool {
         }
     }
 
-    fn reset(&mut self) {
+    pub(super) fn reset(&mut self) {
         self.neuron = HodgkinHuxleyNeuron::new(-65.0);
         self.time = 0.0;
         self.history_points.clear();

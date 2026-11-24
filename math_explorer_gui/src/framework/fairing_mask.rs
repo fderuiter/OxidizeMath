@@ -32,6 +32,7 @@ pub const LBM_CYLINDER_RADIUS: i32 = 5;
 /// Reference bluff-cylinder diameter `D_ref = 11.0` lattice units.
 pub const LBM_REF_DIAMETER: f64 = 11.0;
 /// Minimum required solid obstacle cells for `lbm_low_drag_fairing`.
+#[cfg(feature = "physics")]
 pub const LBM_MIN_SOLID_CELLS: usize = 65;
 
 /// Built-in keyboard-accessible obstacle fairing stamps around `(30, 25)`.
@@ -65,6 +66,7 @@ impl FairingStamp {
     }
 
     /// Worker command action string for synchronizing LBM workers.
+    #[cfg(feature = "physics")]
     #[must_use]
     pub const fn command_name(self) -> &'static str {
         match self {
@@ -75,6 +77,7 @@ impl FairingStamp {
     }
 
     /// Parses a worker custom command back into a [`FairingStamp`].
+    #[cfg(feature = "physics")]
     #[must_use]
     pub fn from_command(action: &str) -> Option<Self> {
         match action {
@@ -121,6 +124,7 @@ impl FairingStamp {
 }
 
 /// Restores fluid inlet columns (`x < 2`) and solid core (`R_core = 4`) inside `mask`.
+#[cfg(feature = "physics")]
 pub fn restore_inlet_and_core_mask(mask: &mut [bool; LBM_CELL_COUNT]) {
     for y in 0..LBM_HEIGHT {
         for x in 0..LBM_WIDTH {
@@ -172,6 +176,7 @@ pub fn apply_stroke_to_fairing_mask(
 }
 
 /// Toggles a single cell `(gx, gy)` inside `mask` while protecting inlet columns (`gx < 2`).
+#[cfg(feature = "biology")]
 pub fn toggle_fairing_cell(
     mask: &mut [bool; LBM_CELL_COUNT],
     gx: usize,
@@ -193,6 +198,7 @@ pub fn toggle_fairing_cell(
 }
 
 /// Encodes `mask` into run-length encoded `[value, count]` pairs for `SculptStatePayload`.
+#[cfg(feature = "physics")]
 #[must_use]
 pub fn encode_fairing_mask_rle(mask: &[bool; LBM_CELL_COUNT]) -> Vec<[u32; 2]> {
     let bytes: Vec<u8> = mask.iter().map(|&b| u8::from(b)).collect();
@@ -200,6 +206,7 @@ pub fn encode_fairing_mask_rle(mask: &[bool; LBM_CELL_COUNT]) -> Vec<[u32; 2]> {
 }
 
 /// Counts total solid cells and verifies every cell within `R_core = 4` of `(30, 25)` is solid.
+#[cfg(feature = "physics")]
 #[must_use]
 pub fn inspect_mask_geometry(mask: &[bool; LBM_CELL_COUNT]) -> (usize, bool) {
     let mut n_solid = 0_usize;

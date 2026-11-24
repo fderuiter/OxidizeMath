@@ -1,5 +1,4 @@
 //! Unit and zero-allocation tests for 2D upwind advective-diffusive morphogenesis and zero-flux masks.
-#![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use domain_biology::biology::diffusion::{AdvectiveFiniteDifference2D, FiniteDifference2D};
 use domain_biology::biology::morphogenesis::{

@@ -1,14 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+// [cite:biology]
 
 #[path = "hodgkin_huxley/atlas.rs"]
 pub mod atlas;
 
 #[cfg(test)]
 pub use atlas::HodgkinHuxleyRegime;
+use atlas::HodgkinHuxleyUiExtension;
 pub use atlas::{HodgkinHuxleyCartographer, HH_ATLAS_AXIS_PAIRS};
 
 use crate::async_sim::atlas::RegimeCartographer;
-use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
+use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool, UnifiedUiExtension};
 use crate::async_sim::{CheckpointParams, CheckpointPayload, StateSnapshot, TimeTravelCheckpoint};
 use math_explorer::biology::neuroscience::{
     HodgkinHuxleyModel, HodgkinHuxleyParameters, HodgkinHuxleyState,
@@ -115,6 +117,26 @@ impl HodgkinHuxleyUnified {
         self.history.push_back([self.time, self.state.v]);
     }
 
+    fn current_hh_sonification(&self, spiked: bool) -> crate::audio::SonificationFrame {
+        if self.diverged_variable().is_some() {
+            return crate::audio::SonificationFrame::silent();
+        }
+        let ref_prev_v = if spiked { -5.0 } else { self.prev_v };
+        let ref_cur_v = if spiked {
+            self.state.v.max(10.0)
+        } else {
+            self.state.v
+        };
+        crate::audio::mappings::hodgkin_huxley_frame(
+            ref_cur_v,
+            ref_prev_v,
+            self.state.m,
+            self.state.h,
+            self.state.n,
+            self.i_ext,
+        )
+    }
+
     fn record_divergence(&mut self, var: &'static str) {
         let t_div = if self.time.is_finite() {
             self.time
@@ -143,6 +165,10 @@ impl crate::framework::recovery::FiniteStateGuard for HodgkinHuxleyUnified {
 impl UnifiedModel for HodgkinHuxleyUnified {
     fn domain() -> &'static str {
         "neuroscience"
+    }
+
+    fn create_ui_extension() -> Option<Box<dyn UnifiedUiExtension>> {
+        Some(Box::new(HodgkinHuxleyUiExtension))
     }
 
     fn new(params: &HashMap<String, f64>) -> Self {
@@ -184,6 +210,11 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         self.apply_scalar_step(new_g_na, new_g_k, new_g_l, new_i_ext, self.dt);
     }
 
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        let spiked = self.spiked_since_snapshot.load(Ordering::Relaxed);
+        Some(self.current_hh_sonification(spiked))
+    }
+
     fn process_command(
         &mut self,
         cmd: crate::async_sim::SimCommand,
@@ -215,24 +246,7 @@ impl UnifiedModel for HodgkinHuxleyUnified {
             custom_data.push(self.state.v);
         }
         let spiked = self.spiked_since_snapshot.swap(false, Ordering::Relaxed);
-        let sonification = if self.diverged_variable().is_some() {
-            crate::audio::SonificationFrame::silent()
-        } else {
-            let ref_prev_v = if spiked { -5.0 } else { self.prev_v };
-            let ref_cur_v = if spiked {
-                self.state.v.max(10.0)
-            } else {
-                self.state.v
-            };
-            crate::audio::mappings::hodgkin_huxley_frame(
-                ref_cur_v,
-                ref_prev_v,
-                self.state.m,
-                self.state.h,
-                self.state.n,
-                self.i_ext,
-            )
-        };
+        let sonification = self.current_hh_sonification(spiked);
         StateSnapshot {
             width: 0,
             height: 0,
@@ -423,28 +437,6 @@ inventory::submit! {
         domain: "neuroscience",
         tags: &["action potential", "conductance", "ion channel", "membrane", "neuron"],
         build: || Box::new(UnifiedSimTool::<HodgkinHuxleyUnified>::new()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for HodgkinHuxleyUnified {
-    fn theory_description(&self) -> String {
-        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).theory_description()
-    }
-
-    fn phonetic_description(&self) -> String {
-        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).phonetic_description()
-    }
-
-    fn theory_citation(&self) -> String {
-        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).theory_citation()
-    }
-
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).available_descriptions()
-    }
-
-    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        Self::parameters()
     }
 }
 
