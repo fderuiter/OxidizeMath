@@ -190,3 +190,33 @@ fn test_ast_visitor_ignores_embed_theory_and_verified_tokens_inside_doc_comments
     assert_eq!(visitor.verified_funcs, 0);
     assert_eq!(visitor.verified_modules, vec!["win_ratio".to_string()]);
 }
+
+#[test]
+fn test_six_tier_pyramid_macro_classification_and_counts() {
+    let code = r#"
+        theory_verification!(module = "pure_math", constants = {}, test = {});
+        mms_convergence_verification!(module = "epidemiology", test = {});
+        property_invariant_verification!(module = "quantum", test = {});
+        golden_fixture_verification!(module = "pure_math_golden", test = {});
+        stochastic_signature_verification!(
+            module = "ai",
+            external_dependencies = [],
+            signatures = {},
+            statistical_bounds = {},
+            stochastic_test = { let v = 1.5; let _ = v; }
+        );
+        interval_enclosure_verification!(module = "math_commons", test = {});
+        formal_proof_verification!(module = "clinical_trials", proof = "SurvivalBounds.lean", test = {});
+    "#;
+    let file = syn::parse_file(code).unwrap();
+    let mut visitor = AstVisitor::default();
+    visitor.visit_file(&file);
+
+    assert_eq!(visitor.tier_counts.get("Tier1_Convergence"), Some(&2));
+    assert_eq!(visitor.tier_counts.get("Tier2_Property"), Some(&1));
+    assert_eq!(visitor.tier_counts.get("Tier3_Golden"), Some(&1));
+    assert_eq!(visitor.tier_counts.get("Tier4_Stochastic"), Some(&1));
+    assert_eq!(visitor.tier_counts.get("Tier5_Interval"), Some(&1));
+    assert_eq!(visitor.tier_counts.get("Tier6_Formal"), Some(&1));
+    assert_eq!(visitor.verified_funcs, 7);
+}

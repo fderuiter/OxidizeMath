@@ -272,3 +272,52 @@ mod tests {
         ));
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod proptest_suite {
+    use super::*;
+    use proptest::prelude::*;
+    use proptest::test_runner::{Config, RngAlgorithm, TestRng, TestRunner};
+
+    #[test]
+    fn proptest_gaussian_copula_frechet_and_two_increasing_invariants() {
+        let mut runner = TestRunner::new_with_rng(
+            Config::with_cases(64),
+            TestRng::deterministic_rng(RngAlgorithm::ChaCha),
+        );
+        let strategy = (
+            -0.95f64..0.95f64,
+            0.02f64..0.96f64,
+            0.02f64..0.96f64,
+            0.01f64..0.45f64,
+        );
+        runner
+            .run(&strategy, |(rho, u1, v1, delta)| {
+                let u2 = (u1 + delta).min(0.99);
+                let v2 = (v1 + delta).min(0.99);
+                let copula = GaussianCopula::bivariate(Correlation::new(rho).unwrap()).unwrap();
+                let pu1 = Probability::new(u1).unwrap();
+                let pv1 = Probability::new(v1).unwrap();
+                let pu2 = Probability::new(u2).unwrap();
+                let pv2 = Probability::new(v2).unwrap();
+                let p_one = Probability::new(1.0).unwrap();
+                let p_zero = Probability::new(0.0).unwrap();
+
+                let c11 = copula.cdf(&[pu1, pv1]).unwrap().value();
+                let c12 = copula.cdf(&[pu1, pv2]).unwrap().value();
+                let c21 = copula.cdf(&[pu2, pv1]).unwrap().value();
+                let c22 = copula.cdf(&[pu2, pv2]).unwrap().value();
+                let c_sym = copula.cdf(&[pv1, pu1]).unwrap().value();
+
+                let frechet_lo = (u1 + v1 - 1.0).max(0.0);
+                let frechet_hi = u1.min(v1);
+                prop_assert!(c11 + 1e-9 >= frechet_lo && c11 <= frechet_hi + 1e-9);
+                prop_assert!((c11 - c_sym).abs() < 1e-12);
+                prop_assert!(c22 - c12 - c21 + c11 >= -1e-9);
+                prop_assert!((copula.cdf(&[pu1, p_one]).unwrap().value() - u1).abs() < 1e-12);
+                prop_assert!(copula.cdf(&[pu1, p_zero]).unwrap().value().abs() < 1e-12);
+                Ok(())
+            })
+            .unwrap();
+    }
+}

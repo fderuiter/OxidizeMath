@@ -9,6 +9,7 @@ mod entropy_guard;
 mod manifest_cache;
 mod policy_audit;
 mod profile;
+mod pyramid_cli;
 mod records;
 mod release_tag;
 mod report;
@@ -102,6 +103,15 @@ fn main() {
         "lint-workflows" => exit_if_failed(workflow_linter::lint_workflows()),
         "check-docs" => exit_if_failed(doc_audit::run_doc_audit(&args[2..])),
         "list-examples" => exit_if_failed(doc_audit::list_registered_examples_cli()),
+        cmd if pyramid_cli::is_pyramid_command(cmd) => {
+            let mut ok = pyramid_cli::dispatch_pyramid_cmd(cmd);
+            if ok && cmd == "verify-pyramid" && args[2..].iter().any(|a| a == "--write-certificate")
+            {
+                let _root = manifest_cache::WorkspaceRootGuard::enter();
+                ok = report::refresh_certificate_from_pyramid();
+            }
+            exit_if_failed(ok);
+        }
         _ => {
             eprintln!("Unknown command: {}", args[1]);
             std::process::exit(1);
@@ -233,6 +243,9 @@ fn run_default_verify_suite_static_gates(members: &[String], auto_fix: bool) -> 
         std::process::exit(1);
     }
     if !api_drift::check_api_drift_with_cache(&mut cache) {
+        std::process::exit(1);
+    }
+    if !pyramid_cli::dispatch_pyramid_cmd("verify-pyramid") {
         std::process::exit(1);
     }
     entropy_debt

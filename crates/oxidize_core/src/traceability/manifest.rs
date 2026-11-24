@@ -2,6 +2,7 @@
 
 use super::TraceabilityReport;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// Deserializable schema matching `Verification_Certificate.json`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -18,6 +19,21 @@ pub struct VerificationCertificate {
     pub unverified_modules_density: f64,
     /// Whether all workspace verification thresholds passed.
     pub passed: bool,
+    /// Count of numerical solvers certified by Method of Manufactured Solutions (Tier 1).
+    #[serde(default)]
+    pub certified_solvers: usize,
+    /// Maximum IEEE-754 outward-rounded interval enclosure width across certified kernels (Tier 5).
+    #[serde(default)]
+    pub max_interval_width: f64,
+    /// Per-tier pass/invocation counts across all 6 scientific verification pyramid tiers.
+    #[serde(default)]
+    pub tier_counts: BTreeMap<String, usize>,
+    /// Representative outward-rounded `[lo, hi]` interval enclosures for certified kernels (Tier 5).
+    #[serde(default)]
+    pub interval_bounds: BTreeMap<String, [f64; 2]>,
+    /// Deterministic SHA-256 digests of committed `sorry`-free Lean 4 proof modules (Tier 6).
+    #[serde(default)]
+    pub lean4_proof_digests: BTreeMap<String, String>,
 }
 
 /// Deserializable web and desktop manifest envelope flattening [`TraceabilityReport`] with optional certificate metadata.
@@ -51,6 +67,11 @@ mod core_tests {
                 verified_modules_density: 0.55,
                 unverified_modules_density: 0.70,
                 passed: true,
+                certified_solvers: 47,
+                max_interval_width: 1e-14,
+                tier_counts: Default::default(),
+                interval_bounds: Default::default(),
+                lean4_proof_digests: Default::default(),
             }),
         };
         assert_eq!(payload.report.scanned_files, 2);
@@ -130,6 +151,18 @@ mod tests {
             toml::from_str(&encoded_bare).expect("deserialize bare payload");
         assert_eq!(decoded_bare, bare);
 
+        let mut tier_counts = std::collections::BTreeMap::new();
+        tier_counts.insert("Tier1_Convergence".to_string(), 47);
+        let mut interval_bounds = std::collections::BTreeMap::new();
+        interval_bounds.insert(
+            "bessel_j0_unit".to_string(),
+            [0.7651976865579664, 0.7651976865579668],
+        );
+        let mut lean4_proof_digests = std::collections::BTreeMap::new();
+        lean4_proof_digests.insert(
+            "IntervalSoundness.lean".to_string(),
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+        );
         let with_cert = TraceabilityManifestPayload {
             report,
             certificate: Some(VerificationCertificate {
@@ -139,6 +172,11 @@ mod tests {
                 verified_modules_density: 0.61,
                 unverified_modules_density: 0.83,
                 passed: true,
+                certified_solvers: 47,
+                max_interval_width: 4.44e-16,
+                tier_counts,
+                interval_bounds,
+                lean4_proof_digests,
             }),
         };
         let encoded_cert = toml::to_string(&with_cert).expect("serialize certified payload");

@@ -4,12 +4,17 @@ mod cache;
 mod manifest;
 #[cfg(feature = "ast-analysis")]
 mod module_tree;
+pub mod proof_digest;
 #[cfg(feature = "ast-analysis")]
 mod runner;
 
 #[cfg(feature = "ast-analysis")]
 pub use cache::{AstCache, CachedRustFile};
 pub use manifest::{TraceabilityManifestPayload, VerificationCertificate};
+pub use proof_digest::{
+    CANONICAL_PYRAMID_TIERS, CERTIFIED_SOLVER_COUNT, collect_lean4_proof_digests, sha256_hex,
+    validate_lean_proof_source,
+};
 #[cfg(feature = "ast-analysis")]
 pub use runner::{
     check_and_print_traceability_errors, discover_workspace_code_dirs, format_traceability_errors,
@@ -67,6 +72,9 @@ pub struct TraceabilityReport {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[allow(missing_docs)]
     pub file_verified_counts: BTreeMap<String, [usize; 2]>,
+    /// Per-tier verification macro invocation counts across the 6-tier scientific verification pyramid.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tier_counts: BTreeMap<String, usize>,
 }
 
 #[allow(missing_docs)]

@@ -349,3 +349,57 @@ mod tests {
         assert!((u_complex.matrix - expected_complex).norm() < 1e-12);
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod proptest_suite {
+    use super::*;
+    use proptest::prelude::*;
+    use proptest::test_runner::{Config, RngAlgorithm, TestRng, TestRunner};
+
+    #[test]
+    fn proptest_quantum_propagator_unitarity_and_group_law() {
+        let mut runner = TestRunner::new_with_rng(
+            Config::with_cases(64),
+            TestRng::deterministic_rng(RngAlgorithm::ChaCha),
+        );
+        let strategy = (
+            -3.0f64..3.0f64,
+            -3.0f64..3.0f64,
+            -2.0f64..2.0f64,
+            -2.0f64..2.0f64,
+            0.01f64..1.5f64,
+            0.01f64..1.5f64,
+        );
+        runner
+            .run(&strategy, |(e0, e1, v_re, v_im, t1, t2)| {
+                let h_mat = DMatrix::from_row_slice(
+                    2,
+                    2,
+                    &[
+                        Complex::new(e0, 0.0),
+                        Complex::new(v_re, v_im),
+                        Complex::new(v_re, -v_im),
+                        Complex::new(e1, 0.0),
+                    ],
+                );
+                let h = QuantumOperator::new(h_mat);
+                let u1 = time_evolution_operator(&h, t1, 1.0);
+                let u2 = time_evolution_operator(&h, t2, 1.0);
+                let u12 = time_evolution_operator(&h, t1 + t2, 1.0);
+                let id = DMatrix::<Complex<f64>>::identity(2, 2);
+
+                prop_assert!((u1.matrix.adjoint() * &u1.matrix - &id).norm() < 1e-11);
+                prop_assert!((&u1.matrix * &u2.matrix - &u12.matrix).norm() < 1e-11);
+
+                let psi0 = QuantumState::new(DVector::from_vec(vec![
+                    Complex::new(0.6, -0.2),
+                    Complex::new(-0.5, 0.6),
+                ]));
+                let n0 = state_norm_squared(&psi0);
+                let psi1 = evolve_state(&psi0, &h, t1, 1.0);
+                prop_assert!((state_norm_squared(&psi1) - n0).abs() < 1e-11);
+                Ok(())
+            })
+            .unwrap();
+    }
+}

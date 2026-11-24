@@ -1,0 +1,27 @@
+[package]
+name = "scientific_verification"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+domain_ai = { path = "../domain_ai" }
+domain_applied = { path = "../domain_applied" }
+domain_biology = { path = "../domain_biology" }
+domain_climate = { path = "../domain_climate" }
+domain_epidemiology = { path = "../domain_epidemiology" }
+domain_physics = { path = "../domain_physics" }
+math_commons = { path = "../math_commons" }
+nalgebra = { workspace = true }
+num-complex = { workspace = true }
+oxidize_core = { path = "../oxidize_core" }
+pure_math = { path = "../pure_math" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+verified_engine = { path = "../verified_engine" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true

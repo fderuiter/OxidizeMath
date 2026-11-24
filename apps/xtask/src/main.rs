@@ -2,6 +2,7 @@
 mod gates;
 mod markdown_links;
 mod papers;
+mod pyramid;
 mod setup;
 mod smoke;
 mod staged;
@@ -57,9 +58,13 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "test-wasm" => gates::test_wasm(rest),
         "lint-workflows" => gates::lint_workflows(),
         "regenerate-baseline" => gates::regenerate_baseline(),
-        _ => {
-            println!("Unknown command");
-            exit(1);
+        other => {
+            if let Some((canonical, banner)) = pyramid::resolve_pyramid_subcommand(other) {
+                pyramid::run_pyramid_gate(canonical, banner);
+            } else {
+                println!("Unknown command");
+                exit(1);
+            }
         }
     }
 }
@@ -109,7 +114,14 @@ fn print_help() {
     println!(
         "  verify-records           - Verify architectural decision records (--staged supported)"
     );
-    println!("  verify-suite             - Run high-integrity verified suite\n");
+    println!("  verify-suite             - Run high-integrity verified suite");
+    println!("  verify-tier1             - Run Tier 1 MMS & solver convergence verification");
+    println!("  verify-tier2             - Run Tier 2 deterministic property sweeps");
+    println!("  verify-tier3             - Run Tier 3 offline golden reference fixtures");
+    println!("  verify-tier4             - Run Tier 4 stochastic moment verification");
+    println!("  verify-tier5             - Run Tier 5 outward-rounded interval enclosures");
+    println!("  verify-tier6             - Run Tier 6 Lean 4 formal proof certificates");
+    println!("  verify-pyramid           - Run full 6-tier scientific verification pyramid\n");
     println!("Legacy Utility Tasks:");
     println!("  regenerate-baseline      - Regenerate public API baseline");
     println!(

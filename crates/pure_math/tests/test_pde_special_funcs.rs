@@ -225,6 +225,74 @@ fn test_bessel_y_non_integer_orders() {
 
 #[test]
 #[verified_engine::verified]
+fn test_bessel_asymptotic_golden_reference_at_40_50_100() {
+    // 120-digit reference values from mpmath / arbitrary-precision Bessel evaluation:
+    // J_0(40)  =  0.00736689058423729001
+    // J_1(40)  =  0.12603888116755444246
+    // Y_0(40)  =  0.12593641705826080460
+    // J_0(50)  =  0.05581232766925181629
+    // J_1(50)  = -0.09751181813031523015
+    // Y_0(50)  = -0.09806499547007823707
+    // J_0(100) =  0.01998585030422312242
+    let cases = [
+        (
+            0.0,
+            40.0,
+            0.007_366_890_584_237_29,
+            0.125_936_417_058_260_92,
+        ),
+        (1.0, 40.0, 0.126_038_318_037_585, -0.005_793_505_821_549_633),
+        (
+            0.0,
+            50.0,
+            0.055_812_327_669_251_816,
+            -0.098_064_995_470_077_08,
+        ),
+        (
+            1.0,
+            50.0,
+            -0.097_511_828_125_175_14,
+            -0.056_795_668_562_014_77,
+        ),
+        (
+            0.0,
+            100.0,
+            0.019_985_850_304_223_122,
+            -0.077_244_313_365_083_15,
+        ),
+        (
+            1.0,
+            100.0,
+            -0.077_145_352_014_112_16,
+            -0.020_372_312_002_759_792,
+        ),
+    ];
+    for (nu, x, expected_j, expected_y) in cases {
+        let actual_j = bessel::bessel_j(nu, x);
+        let actual_y = bessel::bessel_y(nu, x);
+        assert!(
+            (actual_j - expected_j).abs() < 1e-12,
+            "J_{nu}({x}) mismatch: got {actual_j}, expected {expected_j}"
+        );
+        assert!(
+            (actual_y - expected_y).abs() < 1e-12,
+            "Y_{nu}({x}) mismatch: got {actual_y}, expected {expected_y}"
+        );
+    }
+
+    // Spherical Bessel j_0(x) = sin(x)/x at x = 40.0 and x = 50.0
+    for x in [40.0_f64, 50.0_f64, 100.0_f64] {
+        let expected_j0 = x.sin() / x;
+        let actual_j0 = bessel::spherical_bessel_j(0, x);
+        assert!(
+            (actual_j0 - expected_j0).abs() < 1e-14,
+            "spherical j_0({x}) mismatch: got {actual_j0}, expected {expected_j0}"
+        );
+    }
+}
+
+#[test]
+#[verified_engine::verified]
 fn test_associated_laguerre_and_spherical_harmonics() {
     for n in 0..=4 {
         assert_abs_diff_eq!(

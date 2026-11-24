@@ -125,7 +125,7 @@ jobs:
                 case "$file_path" in
                   crates/markdown_tests/*|crates/unified_verification/*)
                     ;;
-                  crates/*|math_explorer_gui/*|math_explorer/*|egui_plot/*|LICENSE|papers/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|.cargo/*|.github/actions/cargo-cache/*|.github/workflows/ci.yml)
+                  crates/*|math_explorer_gui/*|math_explorer/*|egui_plot/*|proofs/*|LICENSE|papers/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|.cargo/*|.github/actions/cargo-cache/*|.github/workflows/ci.yml)
                     installer_changed="true"
                     ;;
                 esac
@@ -172,6 +172,9 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+
+      - name: Run Scientific Verification Pyramid
+        run: cargo run -p unified_verification -- verify-pyramid
 
       - name: Check Release Tag Parity
         env:
@@ -715,8 +718,13 @@ jobs:
           if ! jq -e '
             type == "object"
             and (keys | sort) == [
+              "certified_solvers",
+              "interval_bounds",
+              "lean4_proof_digests",
+              "max_interval_width",
               "native_execution_coverage_pct",
               "passed",
+              "tier_counts",
               "total_assertion_density",
               "unverified_modules_density",
               "verified_modules_density",
@@ -727,6 +735,18 @@ jobs:
             and (.total_assertion_density | type == "number" and . >= 0)
             and (.verified_modules_density | type == "number" and . >= 0)
             and (.unverified_modules_density | type == "number" and . >= 0)
+            and (.certified_solvers | type == "number" and . >= 47)
+            and (.max_interval_width | type == "number" and . >= 0 and . < 1e-9)
+            and (.tier_counts | type == "object" and (keys | sort) == [
+              "Tier1_Convergence",
+              "Tier2_Property",
+              "Tier3_Golden",
+              "Tier4_Stochastic",
+              "Tier5_Interval",
+              "Tier6_Formal"
+            ] and ([.[]] | all(type == "number" and . > 0)))
+            and (.interval_bounds | type == "object" and length > 0 and ([.[]] | all(type == "array" and length == 2 and .[0] <= .[1])))
+            and (.lean4_proof_digests | type == "object" and length >= 6 and ([.[]] | all(type == "string" and test("^[0-9a-f]{64}$"))))
             and (.passed | type == "boolean")
             and .passed == true
           ' "$CERT_FILE" >/dev/null; then

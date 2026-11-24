@@ -50,6 +50,27 @@ impl OdeSystem<SIRState> for SIRDynamics {
     }
 }
 
+struct ForcedDynamics<'a, D, F> {
+    base: &'a D,
+    forcing: F,
+}
+
+impl<'a, D: OdeSystem<SIRState>, F: Fn(f64, &SIRState) -> SIRState> OdeSystem<SIRState>
+    for ForcedDynamics<'a, D, F>
+{
+    #[verified_engine::verified]
+    fn derivative(&self, t: f64, state: &SIRState) -> SIRState {
+        self.base.derivative(t, state) + (self.forcing)(t, state)
+    }
+
+    #[verified_engine::verified]
+    fn derivative_in_place(&self, t: f64, state: &SIRState, out: &mut SIRState) {
+        self.base.derivative_in_place(t, state, out);
+        let source = (self.forcing)(t, state);
+        *out += source;
+    }
+}
+
 /// SIR Model: Susceptible, Infectious, Recovered.
 ///
 /// Equations:
@@ -69,6 +90,7 @@ pub struct SIRModel<S: Solver<SIRState> = RungeKutta4<SIRState>> {
     pub dynamics: SIRDynamics,
     /// The numerical solver strategy.
     solver: S,
+    time: f64,
 }
 
 impl<S: Solver<SIRState>> TimeStepper<SIRState> for SIRModel<S> {
@@ -83,10 +105,25 @@ impl<S: Solver<SIRState>> TimeStepper<SIRState> for SIRModel<S> {
     }
 
     #[verified_engine::verified]
+    fn current_time(&self) -> f64 {
+        self.time
+    }
+
+    #[verified_engine::verified]
+    fn advance_time(&mut self, dt: f64) {
+        self.time += dt;
+    }
+
+    #[verified_engine::verified]
     fn step(&mut self, dt: f64) {
-        // Delegate stepping to the injected solver strategy.
-        // pass &self.dynamics to avoid partial borrow of self.
-        self.solver.step(&self.dynamics, 0.0, &mut self.state, dt);
+        self.solver
+            .step(&self.dynamics, self.time, &mut self.state, dt);
+        self.time += dt;
+    }
+
+    fn step_with<OtherS: Solver<SIRState>>(&mut self, solver: &mut OtherS, dt: f64) {
+        solver.step(&self.dynamics, self.time, &mut self.state, dt);
+        self.time += dt;
     }
 }
 
@@ -159,6 +196,7 @@ impl SIRModelBuilder {
             state,
             dynamics: SIRDynamics { n, beta, gamma },
             solver: RungeKutta4::new(&state),
+            time: 0.0,
         })
     }
 }
@@ -228,12 +266,37 @@ impl<S: Solver<SIRState>> SIRModel<S> {
         <Self as TimeStepper<SIRState>>::step_with(self, solver, dt);
     }
 
+    /// Advances the state by `dt` with an explicit time-dependent source term $Q(t, \mathbf{y})$ and zero heap allocation.
+    #[verified_engine::verified]
+    pub fn step_forced<F: Fn(f64, &SIRState) -> SIRState>(&mut self, dt: f64, forcing: F) {
+        let forced = ForcedDynamics {
+            base: &self.dynamics,
+            forcing,
+        };
+        self.solver.step(&forced, self.time, &mut self.state, dt);
+        self.time += dt;
+    }
+
+    /// Returns the elapsed simulation time $t$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.time
+    }
+
+    /// Resets the simulation clock to `t`.
+    #[verified_engine::verified]
+    pub fn set_time(&mut self, t: f64) {
+        self.time = t;
+    }
+
     /// Replaces the current solver with a new one.
     pub fn with_solver<NewS: Solver<SIRState>>(self, new_solver: NewS) -> SIRModel<NewS> {
         SIRModel {
             state: self.state,
             dynamics: self.dynamics,
             solver: new_solver,
+            time: self.time,
         }
     }
 

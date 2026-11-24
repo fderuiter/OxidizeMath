@@ -273,6 +273,7 @@ impl VirtualFileSystem for RootedVfs {
 #[cfg(not(target_arch = "wasm32"))]
 const HOST_ONLY_WORKSPACE_CRATES: &[&str] = &[
     "markdown_tests",
+    "scientific_verification",
     "unified_verification",
     "verified_engine",
     "verified_engine_macros",

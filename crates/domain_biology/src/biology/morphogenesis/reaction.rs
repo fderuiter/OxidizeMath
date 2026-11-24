@@ -12,6 +12,22 @@ pub trait ReactionKinetics<const N: usize = 2> {
     /// An array `[dC_1/dt, ..., dC_N/dt]` representing the reaction terms.
     #[verified_engine::verified]
     fn reaction(&self, concentrations: [f64; N]) -> [f64; N];
+
+    /// Evaluates spatio-temporal reaction kinetics at simulation time `t` and grid cell `cell_index`.
+    ///
+    /// Defaults to autonomous [`Self::reaction`] with zero overhead.
+    #[inline(always)]
+    #[verified_engine::verified]
+    fn reaction_at(&self, _t: f64, _cell_index: usize, concentrations: [f64; N]) -> [f64; N] {
+        self.reaction(concentrations)
+    }
+
+    /// Returns `true` when [`Self::reaction_at`] depends explicitly on time `t` or cell index.
+    #[inline(always)]
+    #[verified_engine::verified]
+    fn is_time_dependent(&self) -> bool {
+        false
+    }
 }
 
 /// Schnakenberg kinetics (often used for Turing patterns).

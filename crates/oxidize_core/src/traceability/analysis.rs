@@ -308,6 +308,9 @@ pub(super) fn analyze_parsed_ast(
             [visitor.verified_asserts, visitor.verified_funcs],
         );
     }
+    for (tier, &count) in &visitor.tier_counts {
+        *report.tier_counts.entry(tier.clone()).or_insert(0) += count;
+    }
 
     record_visitor_semantic_status(&visitor, final_citations, report);
     record_visitor_violations(file, is_module, &visitor, registered_modules, report);
@@ -354,7 +357,7 @@ fn record_visitor_violations(
         }
     }
     for (module, tier) in &visitor.module_tiers {
-        if file.contains("pure_math") && tier != "Deterministic" {
+        if file.contains("pure_math") && (tier == "Tier4_Stochastic" || tier == "Stochastic") {
             let line = visitor.module_spans.get(module).copied().unwrap_or(0);
             let loc = format_path_line(file, line);
             report

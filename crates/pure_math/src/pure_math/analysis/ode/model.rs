@@ -38,6 +38,13 @@ impl<State, Dynamics, S> OdeModel<State, Dynamics, S> {
             t: 0.0,
         }
     }
+
+    /// Returns the elapsed simulation time $t$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.t
+    }
 }
 
 impl<State, Dynamics, S> OdeSystem<State> for OdeModel<State, Dynamics, S>

@@ -451,4 +451,46 @@ mod tests {
         assert!(a.is_finite() && b.is_finite());
         assert!((a.max_abs_diff(&b) - 2.25).abs() < 1e-12);
     }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_symplectic_dt_refinement_convergence_orders() {
+        let sys = QuarticOscillator;
+        let y0 = ArrayState([1.1, 0.2]);
+        let t_end = 1.0;
+        let mut exact = y0;
+        let mut ref_gl4 = GaussLegendre4::new(&y0);
+        let ref_steps = 2_000usize;
+        let ref_dt = t_end / ref_steps as f64;
+        for step in 0..ref_steps {
+            ref_gl4.step(&sys, step as f64 * ref_dt, &mut exact, ref_dt);
+        }
+
+        let eval = |steps: usize| -> (f64, f64, f64) {
+            let dt = t_end / steps as f64;
+            let (mut sv_s, mut yo_s, mut gl_s) = (y0, y0, y0);
+            let mut sv = StormerVerlet::new(&ArrayState([0.0]));
+            let mut yo = Yoshida4::new(&ArrayState([0.0]));
+            let mut gl = GaussLegendre4::new(&y0);
+            for k in 0..steps {
+                sv.step_separable(&sys, &mut sv_s, dt);
+                yo.step_separable(&sys, &mut yo_s, dt);
+                gl.step(&sys, k as f64 * dt, &mut gl_s, dt);
+            }
+            (
+                sv_s.max_abs_diff(&exact),
+                yo_s.max_abs_diff(&exact),
+                gl_s.max_abs_diff(&exact),
+            )
+        };
+
+        let (e_sv_1, e_yo_1, e_gl_1) = eval(25);
+        let (e_sv_2, e_yo_2, e_gl_2) = eval(50);
+        let p_sv = (e_sv_1 / e_sv_2).ln() / 2.0_f64.ln();
+        let p_yo = (e_yo_1 / e_yo_2).ln() / 2.0_f64.ln();
+        let p_gl = (e_gl_1 / e_gl_2).ln() / 2.0_f64.ln();
+        assert!(p_sv > 1.95, "StormerVerlet order {p_sv:.3} < 1.95");
+        assert!(p_yo > 3.90, "Yoshida4 order {p_yo:.3} < 3.90");
+        assert!(p_gl > 3.95, "GaussLegendre4 order {p_gl:.3} < 3.95");
+    }
 }

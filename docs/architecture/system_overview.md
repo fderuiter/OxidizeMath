@@ -41,13 +41,14 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 20 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 21 workspace crates:
 
 ```mermaid
 graph TD
     subgraph Developer_Tooling
         Xtask[xtask]
         Verify[unified_verification]
+        SciVerify[scientific_verification]
         MdTests[markdown_tests]
     end
 
@@ -81,7 +82,8 @@ graph TD
     end
 
     Xtask -.-> Verify
-    Verify -.-> Explorer & CoreCrate & Meta & Diag
+    Verify -.-> SciVerify & Explorer & CoreCrate & Meta & Diag
+    SciVerify -.-> AI & Phys & Bio & App & Clim & Epi & Pure & Commons & CoreCrate
     MdTests -.-> Explorer & Meta & CoreCrate & Registry
 
     GUI --> Explorer
@@ -111,7 +113,7 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 20 member crates declared in `Cargo.toml`:
+The workspace contains all 21 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
@@ -134,6 +136,7 @@ The workspace contains all 20 member crates declared in `Cargo.toml`:
 | `egui_plot` | Interactive plotting library | [egui_plot](../../egui_plot/Cargo.toml) |
 | `crates/markdown_tests` | Markdown test harness and doctest validation | [markdown_tests](../../crates/markdown_tests/README.md) |
 | `apps/xtask` | Build automation, code generation, and linting | [xtask](../../apps/xtask/README.md) |
+| `crates/scientific_verification` | 6-tier scientific verification pyramid and proof certificates | [scientific_verification](../../crates/scientific_verification/README.md) |
 | `crates/unified_verification` | Unified verification and compliance gate | [unified_verification](../../crates/unified_verification/README.md) |
 
 ## Related Documentation

@@ -196,3 +196,18 @@ fn test_collect_llvm_cov_json_cleans_only_after_parsing() {
     assert!(bad_res.is_err());
     assert!(!cleaned_on_bad_json);
 }
+
+#[test]
+fn test_build_integrity_report_populates_pyramid_certificate_schema() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let report = build_integrity_report(85.0, 72.0, 0.76, 0.61, 0.83, true);
+    assert!(report.passed);
+    assert_eq!(report.certified_solvers, 47);
+    assert_eq!(report.tier_counts.len(), 6);
+    assert!(report.tier_counts.values().all(|&c| c > 0));
+    let json = serde_json::to_string(&report).expect("IntegrityReport must serialize");
+    let parsed: oxidize_core::traceability::VerificationCertificate =
+        serde_json::from_str(&json).expect("VerificationCertificate must deserialize report");
+    assert_eq!(parsed.certified_solvers, 47);
+    assert_eq!(parsed.tier_counts.len(), 6);
+}

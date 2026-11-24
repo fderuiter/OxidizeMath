@@ -18,6 +18,7 @@ members = [
     "math_explorer_gui",
     "crates/markdown_tests",
     "apps/xtask",
+    "crates/scientific_verification",
     "crates/unified_verification",
     "egui_plot"
 ]
@@ -54,6 +55,7 @@ num-traits = "0.2.19"
 petgraph = "0.6.4"
 png = "0.18"
 proc-macro2 = { version = "1.0.106", features = ["span-locations"] }
+proptest = "1.6"
 quadrature = "0.1.2"
 quote = "1.0.45"
 rand = { version = "0.8.6", default-features = false, features = ["std", "alloc"] }
