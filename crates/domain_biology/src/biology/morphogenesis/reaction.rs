@@ -13,12 +13,19 @@ pub trait ReactionKinetics<const N: usize = 2> {
     #[verified_engine::verified]
     fn reaction(&self, concentrations: [f64; N]) -> [f64; N];
 
-    /// Calculates reaction rates at explicit simulation time `t`.
-    ///
-    /// Autonomous kinetics delegate to [`Self::reaction`] by default.
+    /// Evaluates reaction rates at linear grid cell `index`, defaulting to [`Self::reaction`].
+    #[inline]
     #[verified_engine::verified]
-    fn reaction_at(&self, _t: f64, concentrations: [f64; N]) -> [f64; N] {
+    fn reaction_at(&self, _index: usize, concentrations: [f64; N]) -> [f64; N] {
         self.reaction(concentrations)
+    }
+
+    /// Evaluates reaction rates at explicit simulation time `t` and linear grid cell `index`,
+    /// defaulting to [`Self::reaction_at`] so spatially heterogeneous kinetics preserve cell masks.
+    #[inline]
+    #[verified_engine::verified]
+    fn reaction_at_time(&self, _t: f64, index: usize, concentrations: [f64; N]) -> [f64; N] {
+        self.reaction_at(index, concentrations)
     }
 }
 

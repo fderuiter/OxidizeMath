@@ -157,8 +157,9 @@ impl IsingModelTool {
                 } else {
                     -1_i64
                 };
-                sum_u += i64::from(s);
-                sum_stag += sign * i64::from(s);
+                let unit = i64::from(s.signum());
+                sum_u += unit;
+                sum_stag += sign * unit;
             }
             (m, e, sum_u as f64 / n as f64, sum_stag as f64 / n as f64)
         } else {

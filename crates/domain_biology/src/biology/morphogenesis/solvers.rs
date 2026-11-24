@@ -94,7 +94,7 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
             let inputs: [f64; N] = std::array::from_fn(|s| state.concentrations[s][i]);
 
             // Compute Reaction
-            let rates = self.kinetics.reaction_at(t, inputs);
+            let rates = self.kinetics.reaction_at_time(t, i, inputs);
 
             // Accumulate results
             for (s, rate) in rates.iter().enumerate().take(N) {
@@ -359,9 +359,31 @@ mod tests {
             [0.0, 0.0]
         }
 
-        fn reaction_at(&self, t: f64, _state: [f64; 2]) -> [f64; 2] {
+        fn reaction_at_time(&self, t: f64, _index: usize, _state: [f64; 2]) -> [f64; 2] {
             [2.0 * t, 3.0 * t * t]
         }
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_standard_solver_adapter_preserves_spatial_mask_kinetics() {
+        let mut kin = crate::biology::morphogenesis::SpatialSchnakenbergKinetics::new(0.1, 0.9, 4);
+        kin.set_cell_rates(0, 0.25, 0.75);
+        let init_state = TuringState::<2>::new(4);
+        let adapter = StandardSolverAdapter::new(RungeKutta4::new(&init_state));
+        let mut sys = TuringSystem::new_with_solver(
+            Dimension(4),
+            [DiffusionCoeff(0.0), DiffusionCoeff(0.0)],
+            kin,
+            FiniteDifference1D::new(StepSize(1.0)),
+            adapter,
+        );
+        sys.u_mut().fill(1.0);
+        sys.v_mut().fill(0.9);
+        assert_eq!(sys, sys.clone());
+        TimeStepper::step(&mut sys, 0.05);
+        assert!((sys.solver.time() - 0.05).abs() < 1e-12);
+        assert!((sys.u()[0] - sys.u()[3]).abs() > 1e-4);
     }
 
     #[test]

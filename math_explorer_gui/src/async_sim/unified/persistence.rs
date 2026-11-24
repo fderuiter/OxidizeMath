@@ -1,10 +1,14 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::sculpt::{validate_rle_mask_entries, validate_sparse_potential_entries};
+use super::sculpt::{
+    validate_rle_mask_entries, validate_sparse_potential_entries, OBSTACLES_RLE_KEY,
+};
 use super::{CompiledFormulaPayload, UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool};
 use crate::framework::{InteractiveTool, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
+
+type FormulaExtTuple = (bool, String, BTreeMap<String, f64>);
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -29,6 +33,8 @@ struct UnifiedExtendedState {
     atlas_visible: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     atlas_axes: Option<[String; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    obstacles_rle: Option<String>,
 }
 
 pub(super) fn build_formula_bar(spec: &UnifiedFormulaSpec) -> MathExpressionInputBar {
@@ -75,13 +81,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .unwrap_or_else(|e| e.into_inner()) = payload;
     }
 
-    pub(super) fn serialize_tool_state(&self) -> Option<String> {
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        if let Some(ext) = &self.ui_extension {
-            if let Some(custom) = ext.save_extra_state(&params) {
-                return Some(custom);
-            }
-        }
+    fn formula_and_atlas_extensions(
+        &self,
+    ) -> (Option<FormulaExtTuple>, Option<(bool, [String; 2])>) {
         let formula_ext =
             M::formula_spec()
                 .zip(self.formula_bar.as_ref())
@@ -103,8 +105,31 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 (atlas.is_visible(), [xk.to_string(), yk.to_string()])
             })
         });
+        (formula_ext, atlas_ext)
+    }
+
+    pub(super) fn serialize_tool_state(&self) -> Option<String> {
+        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let obstacles_rle = self
+            .obstacle_rle
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let sculpt_empty = self
+            .sculpt_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_empty();
+        if self.active_challenge_id().is_some() || (obstacles_rle.is_none() && sculpt_empty) {
+            if let Some(ext) = &self.ui_extension {
+                if let Some(custom) = ext.save_extra_state(&params) {
+                    return Some(custom);
+                }
+            }
+        }
+        let (formula_ext, atlas_ext) = self.formula_and_atlas_extensions();
         if formula_ext.is_some() || atlas_ext.is_some() {
-            return self.serialize_extended_state(&params, formula_ext, atlas_ext);
+            return self.serialize_extended_state(&params, formula_ext, atlas_ext, obstacles_rle);
         }
         drop(params);
         self.serialize_unified_state()
@@ -115,7 +140,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         params: &HashMap<String, f64>,
         formula_ext: Option<(bool, String, BTreeMap<String, f64>)>,
         atlas_ext: Option<(bool, [String; 2])>,
+        obstacles_rle: Option<String>,
     ) -> Option<String> {
+        if params.values().any(|v| !v.is_finite()) {
+            return None;
+        }
         let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
         let sorted_params = params.iter().map(|(k, &v)| (k.clone(), v)).collect();
         let (custom_formula_enabled, custom_expr, custom_params) = match formula_ext {
@@ -141,11 +170,25 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             sparse_potential: sculpt.sparse_potential.clone(),
             atlas_visible,
             atlas_axes,
+            obstacles_rle,
         })
         .ok()
     }
 
     fn try_load_extension_state(&mut self, state: &str) -> Option<Result<(), String>> {
+        if self.active_challenge_id().is_none()
+            && serde_json::from_str::<serde_json::Value>(state)
+                .ok()
+                .is_some_and(|v| {
+                    v.as_object().is_some_and(|m| {
+                        m.contains_key(OBSTACLES_RLE_KEY)
+                            || m.contains_key("rle_mask")
+                            || m.contains_key("params")
+                    })
+                })
+        {
+            return None;
+        }
         let ext = self.ui_extension.as_mut()?;
         let mut next_params = self
             .params
@@ -154,6 +197,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .clone();
         let res = ext.try_load_extra_state(state, &mut next_params)?;
         Some(res.map(|cmds| {
+            *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = None;
+            self.local_obstacles = M::default_obstacle_mask(&next_params);
             *self.params.write().unwrap_or_else(|e| e.into_inner()) = next_params;
             self.texture = None;
             self.reset_simulation(None);
@@ -196,7 +241,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 
     fn apply_extended_state(&mut self, ext: UnifiedExtendedState) -> Result<(), String> {
-        self.validate_extended_capabilities(&ext)?;
+        let parsed_rle = self.validate_extended_capabilities(&ext)?;
         let mut map: HashMap<String, f64> = ext.params.into_iter().collect();
         let next_audio = self.resolve_extended_audio(&mut map, ext.audio)?;
         self.validate_param_map(&map)?;
@@ -208,6 +253,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
         self.audio_settings = next_audio;
+        self.apply_parsed_obstacle_rle(parsed_rle);
         self.apply_extended_formula(
             ext.custom_expr,
             &ext.custom_params,
@@ -223,7 +269,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         Ok(())
     }
 
-    fn validate_extended_capabilities(&self, ext: &UnifiedExtendedState) -> Result<(), String> {
+    fn validate_extended_capabilities(
+        &self,
+        ext: &UnifiedExtendedState,
+    ) -> Result<Option<(String, Vec<bool>)>, String> {
         let has_formula = ext.custom_formula_enabled
             || ext.custom_expr.is_some()
             || !ext.custom_params.is_empty();
@@ -245,7 +294,18 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 M::name()
             ));
         }
-        self.validate_sculpt_for_extended_state(&ext.rle_mask, &ext.sparse_potential)
+        self.validate_sculpt_for_extended_state(&ext.rle_mask, &ext.sparse_potential)?;
+        match ext.obstacles_rle.as_deref() {
+            Some(rle) if M::raster_brush_grid().is_some() => {
+                let decoded = M::validate_obstacle_rle(rle)?;
+                Ok(Some((rle.to_string(), decoded)))
+            }
+            Some(_) => Err(format!(
+                "Unknown parameter '{OBSTACLES_RLE_KEY}' for {}",
+                M::name()
+            )),
+            None => Ok(None),
+        }
     }
 
     fn apply_extended_formula(

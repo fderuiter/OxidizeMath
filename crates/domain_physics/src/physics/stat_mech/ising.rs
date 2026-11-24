@@ -81,6 +81,7 @@ pub struct SpinLattice {
     width: usize,
     height: usize,
     spins: Vec<i8>,             // Flattened 2D grid
+    pinned: Vec<bool>,          // Preallocated pin mask (true = held fixed during sweeps)
     neighbors: Vec<[usize; 4]>, // Precomputed neighbor indices [left, right, up, down]
     rng: oxidize_core::rng::OxidizeRng,
 }
@@ -122,13 +123,13 @@ impl SpinLattice {
         let spins = (0..count)
             .map(|_| if rng.gen_bool(0.5) { 1 } else { -1 })
             .collect();
+        let pinned = vec![false; count];
 
         // Precompute neighbor indices
         let mut neighbors = vec![[0; 4]; count];
         for y in 0..height {
             for x in 0..width {
                 let idx = flatten_2d_index(x, y, width);
-
                 let left = if x == 0 { idx + width - 1 } else { idx - 1 };
                 let right = if x == width - 1 {
                     idx + 1 - width
@@ -145,15 +146,14 @@ impl SpinLattice {
                 } else {
                     idx + width
                 };
-
                 neighbors[idx] = [left, right, up, down];
             }
         }
-
         SpinLattice {
             width,
             height,
             spins,
+            pinned,
             neighbors,
             rng,
         }
@@ -176,6 +176,33 @@ impl SpinLattice {
         self.spins[y * self.width + x] = val;
     }
 
+    /// Returns whether the spin site `(x, y)` is pinned against Metropolis flips.
+    #[inline]
+    #[verified_engine::verified]
+    pub fn is_pinned(&self, x: usize, y: usize) -> bool {
+        self.pinned[y * self.width + x]
+    }
+
+    /// Pins or unpins the spin site `(x, y)` in the preallocated mask.
+    #[inline]
+    #[verified_engine::verified]
+    pub fn set_pinned(&mut self, x: usize, y: usize, is_pinned: bool) {
+        self.pinned[y * self.width + x] = is_pinned;
+    }
+
+    /// Returns a slice of the flattened spin-pinning mask (`true` = pinned).
+    #[inline]
+    #[verified_engine::verified]
+    pub fn pinned(&self) -> &[bool] {
+        &self.pinned
+    }
+
+    /// Unpins all sites in place without reallocating.
+    #[verified_engine::verified]
+    pub fn clear_pinned(&mut self) {
+        self.pinned.fill(false);
+    }
+
     /// Returns a reference to the flattened spins array.
     #[inline]
     #[verified_engine::verified]
@@ -183,12 +210,13 @@ impl SpinLattice {
         &self.spins
     }
 
-    /// Resets all spins in place to `spin` (`+1` or `-1`) and reseeds the internal RNG with zero heap allocations.
+    /// Resets all spins in place to `spin` (`+1` or `-1`), clears pins, and reseeds the RNG with zero allocations.
     #[inline]
     #[verified_engine::verified]
     pub fn reset_uniform_with_seed(&mut self, spin: i8, seed: u64) {
         let val = if spin >= 0 { 1 } else { -1 };
         self.spins.fill(val);
+        self.pinned.fill(false);
         self.rng = oxidize_core::rng::OxidizeRng::new(seed);
     }
 
@@ -261,6 +289,9 @@ impl SpinLattice {
     pub fn metropolis_step(&mut self, temperature: f64, j_coupling: f64, h_field: f64) {
         let x = self.rng.gen_range(0..self.width);
         let y = self.rng.gen_range(0..self.height);
+        if self.is_pinned(x, y) {
+            return;
+        }
 
         let s = self.get(x, y);
 
@@ -331,6 +362,10 @@ impl SpinLattice {
 
         for _ in 0..steps {
             let idx = self.rng.gen_range(0..count);
+            if self.pinned[idx] {
+                continue;
+            }
+
             let s = self.spins[idx];
             let s_idx = usize::from(s > 0);
             let sum_idx = self.neighbor_cooperators(idx);
@@ -434,6 +469,9 @@ impl SpinLattice {
 
         for _ in 0..steps {
             let idx = self.rng.gen_range(0..count);
+            if self.pinned[idx] {
+                continue;
+            }
             if mu > 0.0 && self.rng.r#gen::<f64>() < mu {
                 self.spins[idx] = -self.spins[idx];
                 continue;
