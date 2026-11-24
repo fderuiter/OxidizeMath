@@ -23,19 +23,30 @@ pub struct OdeModel<State, Dynamics, S> {
     pub dynamics: Dynamics,
     /// The numerical solver.
     pub solver: S,
-    /// The current simulation time.
-    t: f64,
+    /// Current independent time variable `t` passed to `dynamics` and advanced on every step.
+    pub time: f64,
 }
 
 impl<State, Dynamics, S> OdeModel<State, Dynamics, S> {
-    /// Constructs a new OdeModel initialized at `t = 0.0`.
+    /// Constructs a new `OdeModel` initialized at `time = 0.0`.
     #[verified_engine::verified]
     pub fn new(state: State, dynamics: Dynamics, solver: S) -> Self {
         Self {
             state,
             dynamics,
             solver,
-            t: 0.0,
+            time: 0.0,
+        }
+    }
+
+    /// Constructs a new `OdeModel` starting at an explicit initial `time`.
+    #[verified_engine::verified]
+    pub fn with_time(state: State, dynamics: Dynamics, solver: S, time: f64) -> Self {
+        Self {
+            state,
+            dynamics,
+            solver,
+            time,
         }
     }
 }
@@ -74,10 +85,20 @@ where
     }
 
     #[verified_engine::verified]
+    fn current_time(&self) -> f64 {
+        self.time
+    }
+
+    #[verified_engine::verified]
+    fn advance_time(&mut self, dt: f64) {
+        self.time += dt;
+    }
+
+    #[verified_engine::verified]
     fn step(&mut self, dt: f64) {
-        self.solver
-            .step(&self.dynamics, self.t, &mut self.state, dt);
-        self.t += dt;
+        let t = self.time;
+        self.solver.step(&self.dynamics, t, &mut self.state, dt);
+        self.time += dt;
     }
 }
 

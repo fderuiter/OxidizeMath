@@ -17,6 +17,14 @@ fn default_true() -> bool {
     true
 }
 
+fn default_adaptive_tol() -> f64 {
+    super::DEFAULT_ODE_ADAPTIVE_TOL
+}
+
+fn is_default_adaptive_tol(v: &f64) -> bool {
+    (*v - super::DEFAULT_ODE_ADAPTIVE_TOL).abs() < 1e-16
+}
+
 fn is_false(val: &bool) -> bool {
     !*val
 }
@@ -104,6 +112,8 @@ struct OdeStateRef<'a> {
     snapshot_manager: Option<&'a TraceSnapshotManager>,
     callout_manager: &'a CalloutManager,
     method: IntegrationMethod,
+    #[serde(skip_serializing_if = "is_default_adaptive_tol")]
+    adaptive_tol: f64,
     comparison_mode: bool,
     show_annotations: bool,
 }
@@ -152,6 +162,8 @@ struct OdeState {
     callout_manager: CalloutManager,
     #[serde(default)]
     method: IntegrationMethod,
+    #[serde(default = "default_adaptive_tol")]
+    adaptive_tol: f64,
     #[serde(default)]
     comparison_mode: bool,
     #[serde(default = "default_true")]
@@ -163,6 +175,8 @@ fn validate_loaded_state(s: &OdeState) -> Result<(), String> {
         || s.dt <= 0.0
         || !s.total_time.is_finite()
         || s.total_time <= 0.0
+        || !s.adaptive_tol.is_finite()
+        || !(super::MIN_ODE_ADAPTIVE_TOL..=super::MAX_ODE_ADAPTIVE_TOL).contains(&s.adaptive_tol)
         || !s.param_k.is_finite()
         || !s.param_r.is_finite()
         || !s.param_cap_k.is_finite()
@@ -241,6 +255,7 @@ impl OdeSolverTool {
         for val in [
             self.dt,
             self.total_time,
+            self.adaptive_tol,
             self.param_k,
             self.param_r,
             self.param_cap_k,
@@ -349,6 +364,7 @@ impl OdeSolverTool {
             snapshot_manager: include_snapshots.then_some(&self.snapshot_manager),
             callout_manager: &self.callout_manager,
             method: self.method,
+            adaptive_tol: self.adaptive_tol,
             comparison_mode: self.comparison_mode,
             show_annotations: self.show_annotations,
         })
@@ -426,6 +442,7 @@ impl OdeSolverTool {
         }
         self.callout_manager = s.callout_manager;
         self.method = s.method;
+        self.adaptive_tol = s.adaptive_tol;
         self.comparison_mode = s.comparison_mode;
         self.show_annotations = s.show_annotations;
         self.pending_sweep_run = None;

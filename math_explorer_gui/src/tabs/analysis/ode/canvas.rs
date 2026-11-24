@@ -1,8 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::comparison::{
-    build_view_trace_series, compute_series_discrepancy, simulate_ode, OdeSimSpec,
-    SolverTrajectory, TrajectoryView,
+    build_view_trace_series, simulate_ode, OdeSimSpec, SolverTrajectory, TrajectoryView,
 };
 use super::recovery;
 use super::systems::CustomOdeSpec;
@@ -106,11 +105,27 @@ impl OdeSolverTool {
         method: IntegrationMethod,
         custom_spec: Option<&'a CustomOdeSpec>,
     ) -> OdeSimSpec<'a> {
+        self.sim_spec_with_planar(
+            method,
+            custom_spec,
+            self.planar_x_input.cached_expr(),
+            self.planar_y_input.cached_expr(),
+        )
+    }
+
+    pub(super) fn sim_spec_with_planar<'a>(
+        &self,
+        method: IntegrationMethod,
+        custom_spec: Option<&'a CustomOdeSpec>,
+        planar_x_expr: Option<&'a math_commons::ast::Expr>,
+        planar_y_expr: Option<&'a math_commons::ast::Expr>,
+    ) -> OdeSimSpec<'a> {
         OdeSimSpec {
             preset: self.preset,
             method,
             dt: self.dt,
             total_time: self.total_time,
+            adaptive_tol: self.adaptive_tol,
             param_k: self.param_k,
             param_r: self.param_r,
             param_cap_k: self.param_cap_k,
@@ -118,8 +133,8 @@ impl OdeSolverTool {
             ic_v0: self.ic_v0,
             matrix_a: self.matrix_a,
             custom_spec,
-            planar_x_expr: self.planar_x_input.cached_expr(),
-            planar_y_expr: self.planar_y_input.cached_expr(),
+            planar_x_expr,
+            planar_y_expr,
         }
     }
 
@@ -201,42 +216,24 @@ impl OdeSolverTool {
         let custom_spec = self.build_custom_ode_spec();
         let reuse_active =
             !self.has_custom_input_error() || !self.time_series.is_empty() || self.diverged;
-        let rk4_sim = self.simulate_if_inactive(
-            IntegrationMethod::RungeKutta4,
-            reuse_active,
-            custom_spec.as_ref(),
-        );
-        let euler_sim =
-            self.simulate_if_inactive(IntegrationMethod::Euler, reuse_active, custom_spec.as_ref());
-        let heun_sim =
-            self.simulate_if_inactive(IntegrationMethod::Heun, reuse_active, custom_spec.as_ref());
+        let sims = IntegrationMethod::ALL
+            .map(|m| self.simulate_if_inactive(m, reuse_active, custom_spec.as_ref()));
 
-        let (any_diverged, euler_rk4, heun_rk4, euler_heun, snapshots) = {
-            let rk4 = self.trajectory_view(IntegrationMethod::RungeKutta4, &rk4_sim);
-            let euler = self.trajectory_view(IntegrationMethod::Euler, &euler_sim);
-            let heun = self.trajectory_view(IntegrationMethod::Heun, &heun_sim);
-
-            let any_diverged = rk4.diverged || euler.diverged || heun.diverged;
-            let euler_rk4 = compute_series_discrepancy(
-                euler.y_series,
-                euler.v_series,
-                rk4.y_series,
-                rk4.v_series,
-            );
-            let heun_rk4 = compute_series_discrepancy(
-                heun.y_series,
-                heun.v_series,
-                rk4.y_series,
-                rk4.v_series,
-            );
-            let euler_heun = compute_series_discrepancy(
-                euler.y_series,
-                euler.v_series,
-                heun.y_series,
-                heun.v_series,
-            );
-            let snapshots = self.build_comparison_snapshot_series(&[rk4, euler, heun]);
-            (any_diverged, euler_rk4, heun_rk4, euler_heun, snapshots)
+        let (any_diverged, euler_rk4, heun_rk4, euler_heun, rk4_dp45, be_ros23, snapshots) = {
+            let views: [TrajectoryView<'_>; 7] = std::array::from_fn(|idx| {
+                self.trajectory_view(IntegrationMethod::ALL[idx], &sims[idx])
+            });
+            // Order matches IntegrationMethod::ALL: [RK4, Euler, Heun, DP45, BE, Trap, Ros23]
+            let snapshots = self.build_comparison_snapshot_series(&views);
+            (
+                views.iter().any(|v| v.diverged),
+                views[1].discrepancy(&views[0]),
+                views[2].discrepancy(&views[0]),
+                views[1].discrepancy(&views[2]),
+                views[0].discrepancy(&views[3]),
+                views[4].discrepancy(&views[6]),
+                snapshots,
+            )
         };
 
         if !self.has_custom_input_error() && any_diverged {
@@ -245,6 +242,8 @@ impl OdeSolverTool {
         self.discrepancy_euler_rk4 = euler_rk4;
         self.discrepancy_heun_rk4 = heun_rk4;
         self.discrepancy_euler_heun = euler_heun;
+        self.discrepancy_rk4_dp45 = rk4_dp45;
+        self.discrepancy_be_ros23 = be_ros23;
         for (label, series) in snapshots {
             self.comparison_manager.add_snapshot(label, "", series);
         }
@@ -270,6 +269,16 @@ impl OdeSolverTool {
                     &format!("{:.4e}", disc.rms_error),
                 );
             }
+            render_copyable_metric(
+                ui,
+                "RK4 vs DP45 (Max)",
+                &format!("{:.4e}", self.discrepancy_rk4_dp45.max_error),
+            );
+            render_copyable_metric(
+                ui,
+                "Backward Euler vs Ros23 (Max)",
+                &format!("{:.4e}", self.discrepancy_be_ros23.max_error),
+            );
         });
     }
 

@@ -1,4 +1,4 @@
-use super::traits::VectorOperations;
+use super::traits::{IndexedState, VectorOperations};
 use nalgebra::{DVector, Vector2, Vector3};
 use std::ops::{Add, AddAssign, Mul, MulAssign};
 
@@ -79,6 +79,23 @@ impl VectorOperations for VecState {
         for ((dst, src), oth) in self.0.iter_mut().zip(source.0.iter()).zip(other.0.iter()) {
             *dst = *src + *oth * scale;
         }
+    }
+}
+
+impl IndexedState for VecState {
+    #[verified_engine::verified]
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[verified_engine::verified]
+    fn get(&self, index: usize) -> f64 {
+        self.0[index]
+    }
+
+    #[verified_engine::verified]
+    fn set(&mut self, index: usize, value: f64) {
+        self.0[index] = value;
     }
 }
 
@@ -188,6 +205,23 @@ impl<const N: usize> VectorOperations for ArrayState<N> {
     }
 }
 
+impl<const N: usize> IndexedState for ArrayState<N> {
+    #[verified_engine::verified]
+    fn len(&self) -> usize {
+        N
+    }
+
+    #[verified_engine::verified]
+    fn get(&self, index: usize) -> f64 {
+        self.0[index]
+    }
+
+    #[verified_engine::verified]
+    fn set(&mut self, index: usize, value: f64) {
+        self.0[index] = value;
+    }
+}
+
 // Implementations for nalgebra types
 
 impl VectorOperations for Vector2<f64> {
@@ -207,6 +241,23 @@ impl VectorOperations for Vector2<f64> {
     }
 }
 
+impl IndexedState for Vector2<f64> {
+    #[verified_engine::verified]
+    fn len(&self) -> usize {
+        2
+    }
+
+    #[verified_engine::verified]
+    fn get(&self, index: usize) -> f64 {
+        self.as_slice()[index]
+    }
+
+    #[verified_engine::verified]
+    fn set(&mut self, index: usize, value: f64) {
+        self.as_mut_slice()[index] = value;
+    }
+}
+
 impl VectorOperations for Vector3<f64> {
     #[verified_engine::verified]
     fn scale_add(&mut self, other: &Self, scale: f64) {
@@ -221,6 +272,23 @@ impl VectorOperations for Vector3<f64> {
     #[verified_engine::verified]
     fn copy_from_scaled(&mut self, source: &Self, other: &Self, scale: f64) {
         *self = *source + *other * scale;
+    }
+}
+
+impl IndexedState for Vector3<f64> {
+    #[verified_engine::verified]
+    fn len(&self) -> usize {
+        3
+    }
+
+    #[verified_engine::verified]
+    fn get(&self, index: usize) -> f64 {
+        self.as_slice()[index]
+    }
+
+    #[verified_engine::verified]
+    fn set(&mut self, index: usize, value: f64) {
+        self.as_mut_slice()[index] = value;
     }
 }
 
@@ -256,5 +324,22 @@ impl VectorOperations for DVector<f64> {
         {
             *dst = *src + *oth * scale;
         }
+    }
+}
+
+impl IndexedState for DVector<f64> {
+    #[verified_engine::verified]
+    fn len(&self) -> usize {
+        self.nrows()
+    }
+
+    #[verified_engine::verified]
+    fn get(&self, index: usize) -> f64 {
+        self.as_slice()[index]
+    }
+
+    #[verified_engine::verified]
+    fn set(&mut self, index: usize, value: f64) {
+        self.as_mut_slice()[index] = value;
     }
 }

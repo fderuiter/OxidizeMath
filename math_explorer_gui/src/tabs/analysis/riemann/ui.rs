@@ -4,7 +4,7 @@ use super::*;
 use crate::framework::{bounded_drag_value, enforce_ordered_drag_range};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints, Polygon};
+use egui_plot::{Line, Plot, PlotPoints, Points, Polygon};
 
 impl RiemannIntegrationTool {
     fn draw_preset_combo(&mut self, ui: &mut egui::Ui) -> bool {
@@ -39,10 +39,7 @@ impl RiemannIntegrationTool {
         egui::ComboBox::from_id_salt("riemann_quadrature_method")
             .selected_text(self.quadrature_method.name())
             .show_ui(ui, |ui| {
-                for method in [
-                    QuadratureMethod::Trapezoidal,
-                    QuadratureMethod::ClenshawCurtis,
-                ] {
+                for method in QuadratureMethod::ALL {
                     if ui
                         .selectable_value(&mut self.quadrature_method, method, method.name())
                         .changed()
@@ -53,22 +50,26 @@ impl RiemannIntegrationTool {
             });
 
         ui.add_space(6.0);
-        let partition_label = match self.quadrature_method {
-            QuadratureMethod::Trapezoidal => "Partitions (N)",
-            QuadratureMethod::ClenshawCurtis => "Chebyshev Display Panels (N)",
-        };
-        if ui
-            .add(
-                egui::Slider::new(&mut self.steps, 1..=200)
-                    .logarithmic(true)
-                    .text(partition_label),
-            )
-            .changed()
-        {
-            changed = true;
+        if self.quadrature_method != QuadratureMethod::GaussKronrod15 {
+            let partition_label = match self.quadrature_method {
+                QuadratureMethod::Trapezoidal => "Partitions (N)",
+                QuadratureMethod::Simpson => "Subintervals (2M)",
+                QuadratureMethod::ClenshawCurtis => "Chebyshev Display Panels (N)",
+                QuadratureMethod::GaussKronrod15 => "Adaptive Panels",
+            };
+            if ui
+                .add(
+                    egui::Slider::new(&mut self.steps, 1..=200)
+                        .logarithmic(true)
+                        .text(partition_label),
+                )
+                .changed()
+            {
+                changed = true;
+            }
         }
 
-        if self.quadrature_method == QuadratureMethod::ClenshawCurtis
+        if self.quadrature_method.uses_tolerance()
             && ui
                 .add(
                     egui::Slider::new(&mut self.cc_tolerance, MIN_CC_TOLERANCE..=MAX_CC_TOLERANCE)
@@ -133,10 +134,14 @@ impl RiemannIntegrationTool {
             ui.heading("Result");
             render_copyable_metric(ui, "Area", &format!("{:.8}", self.result));
             let err_label = match self.quadrature_method {
-                QuadratureMethod::Trapezoidal => "Est. Error (Richardson)",
+                QuadratureMethod::Trapezoidal | QuadratureMethod::Simpson => {
+                    "Est. Error (Richardson)"
+                }
                 QuadratureMethod::ClenshawCurtis => "Est. Error (Clenshaw-Curtis)",
+                QuadratureMethod::GaussKronrod15 => "Est. Error (G7-K15)",
             };
             render_copyable_metric(ui, err_label, &format!("{:.3e}", self.error_estimate));
+            render_copyable_metric(ui, "Active Panels", &format!("{}", self.active_panel_count));
         });
         changed
     }
@@ -179,6 +184,21 @@ impl RiemannIntegrationTool {
                             let polygon = Polygon::new("", PlotPoints::new(poly.clone()))
                                 .fill_color(poly_fill);
                             plot_ui.polygon(polygon);
+                        }
+                        if !self.cached_gk_panels.is_empty() {
+                            let nodes: Vec<[f64; 2]> = self
+                                .cached_gk_panels
+                                .iter()
+                                .map(|p| {
+                                    let xm = 0.5 * (p.left + p.right);
+                                    [xm, self.evaluate_at(xm)]
+                                })
+                                .collect();
+                            plot_ui.points(
+                                Points::new("GK15 Panel Centers", PlotPoints::new(nodes))
+                                    .radius(3.8_f32)
+                                    .color(palette.series_color(2)),
+                            );
                         }
                     }
                     plot_ui.line(

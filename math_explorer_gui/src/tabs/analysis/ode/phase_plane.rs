@@ -156,6 +156,7 @@ impl OdeSolverTool {
                 method: self.method,
                 dt: effective_dt,
                 total_time: self.total_time,
+                adaptive_tol: self.adaptive_tol,
                 param_k: self.param_k,
                 param_r: self.param_r,
                 param_cap_k: self.param_cap_k,

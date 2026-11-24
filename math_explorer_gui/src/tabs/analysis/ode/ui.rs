@@ -255,16 +255,40 @@ impl OdeSolverTool {
                 .selected_text(self.method.name())
                 .show_ui(ui, |ui| {
                     for m in IntegrationMethod::ALL {
-                        if ui.selectable_value(&mut self.method, m, m.name()).changed() {
-                            changed = true;
-                        }
+                        changed |= ui.selectable_value(&mut self.method, m, m.name()).changed();
                     }
                 });
         });
         changed |= ui
             .checkbox(&mut self.comparison_mode, "Multi-Solver Comparison")
             .changed();
+        changed |= self.render_step_and_horizon_controls(ui);
+        ui.add_space(5.0);
+        changed |= ui
+            .checkbox(&mut self.show_annotations, "Show Annotations")
+            .changed();
+        changed
+    }
 
+    fn render_step_and_horizon_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+        if (self.method.is_adaptive() || self.comparison_mode)
+            && ui
+                .add(
+                    egui::Slider::new(
+                        &mut self.adaptive_tol,
+                        super::MIN_ODE_ADAPTIVE_TOL..=super::MAX_ODE_ADAPTIVE_TOL,
+                    )
+                    .logarithmic(true)
+                    .text("Adaptive Tol (rtol)"),
+                )
+                .changed()
+        {
+            changed = true;
+        }
+        if self.method.is_implicit() {
+            ui.small("Stiff / implicit stage solver active");
+        }
         let min_dt = (self.total_time.max(0.1) / crate::presets::MAX_ODE_STEPS as f64).max(1e-6);
         ui.horizontal(|ui| {
             ui.label("dt (Step Size):");
@@ -286,11 +310,6 @@ impl OdeSolverTool {
                 )
                 .changed();
         });
-
-        ui.add_space(5.0);
-        changed |= ui
-            .checkbox(&mut self.show_annotations, "Show Annotations")
-            .changed();
         changed
     }
 

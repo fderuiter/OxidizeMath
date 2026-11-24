@@ -80,7 +80,8 @@ pub fn optimal_reserve_price<D: ValuationDistribution>(
         Err(
             AnalysisError::RootNotBracketed { .. }
             | AnalysisError::DerivativeTooSmall { .. }
-            | AnalysisError::InvalidBracket { .. },
+            | AnalysisError::InvalidBracket { .. }
+            | AnalysisError::InvalidParameters(_),
         ) => {
             // Fallback for unbracketed roots to match legacy behavior
             let j_low = dist.virtual_valuation(lower_bound);

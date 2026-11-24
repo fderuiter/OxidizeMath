@@ -8,7 +8,8 @@ use super::OdeSolverTool;
 use crate::presets::OdePreset;
 use math_commons::ast::{CompiledExpr, Expr, Instruction};
 use math_explorer::pure_math::analysis::ode::{
-    ArrayState, Euler, Heun, IntegrationMethod, OdeSystem, RungeKutta4, Solver,
+    ArrayState, BackwardEuler, DormandPrince45, Euler, Heun, ImplicitTrapezoidal, IndexedState,
+    IntegrationMethod, OdeSystem, Rosenbrock23, RungeKutta4, Solver,
 };
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -209,6 +210,7 @@ pub fn eval_ode_final_state(
         method,
         dt,
         total_time,
+        adaptive_tol: super::DEFAULT_ODE_ADAPTIVE_TOL,
         param_k: p_map.get("k").copied().unwrap_or(1.0),
         param_r: p_map.get("r").copied().unwrap_or(1.0),
         param_cap_k: p_map
@@ -315,31 +317,62 @@ fn eval_planar_custom_final(
     step_final(ArrayState(ic), &dyn_sys, spec, steps)
 }
 
-fn step_final<const N: usize, D: OdeSystem<ArrayState<N>>>(
+fn run_solver_n_steps<const N: usize, D, S>(
+    state: &mut ArrayState<N>,
+    dyn_sys: &D,
+    solver: &mut S,
+    dt: f64,
+    steps: usize,
+) where
+    D: OdeSystem<ArrayState<N>>,
+    S: Solver<ArrayState<N>>,
+{
+    for i in 0..steps {
+        solver.step(dyn_sys, i as f64 * dt, state, dt);
+    }
+}
+
+fn step_final<const N: usize, D>(
     mut state: ArrayState<N>,
     dyn_sys: &D,
     spec: &super::comparison::OdeSimSpec<'_>,
     steps: usize,
-) -> f64 {
+) -> f64
+where
+    D: OdeSystem<ArrayState<N>>,
+    ArrayState<N>: IndexedState,
+{
     let dt = spec.dt;
+    let rtol = super::comparison::sanitize_adaptive_tol(spec.adaptive_tol);
+    let atol = (rtol * 0.01).max(1e-14);
     match spec.method {
         IntegrationMethod::RungeKutta4 => {
-            let mut solver = RungeKutta4::new(&state);
-            for i in 0..steps {
-                solver.step(dyn_sys, i as f64 * dt, &mut state, dt);
-            }
+            let mut s = RungeKutta4::new(&state);
+            run_solver_n_steps(&mut state, dyn_sys, &mut s, dt, steps);
         }
         IntegrationMethod::Euler => {
-            let mut solver = Euler::new(&state);
-            for i in 0..steps {
-                solver.step(dyn_sys, i as f64 * dt, &mut state, dt);
-            }
+            let mut s = Euler::new(&state);
+            run_solver_n_steps(&mut state, dyn_sys, &mut s, dt, steps);
         }
         IntegrationMethod::Heun => {
-            let mut solver = Heun::new(&state);
-            for i in 0..steps {
-                solver.step(dyn_sys, i as f64 * dt, &mut state, dt);
-            }
+            let mut s = Heun::new(&state);
+            run_solver_n_steps(&mut state, dyn_sys, &mut s, dt, steps);
+        }
+        IntegrationMethod::DormandPrince45 => {
+            let mut s = DormandPrince45::new(&state).with_tolerances(rtol, atol);
+            run_solver_n_steps(&mut state, dyn_sys, &mut s, dt, steps);
+        }
+        IntegrationMethod::BackwardEuler => {
+            let mut s = BackwardEuler::new(&state);
+            run_solver_n_steps(&mut state, dyn_sys, &mut s, dt, steps);
+        }
+        IntegrationMethod::ImplicitTrapezoidal => {
+            let mut s = ImplicitTrapezoidal::new(&state);
+            run_solver_n_steps(&mut state, dyn_sys, &mut s, dt, steps);
+        }
+        IntegrationMethod::Rosenbrock23 => {
+            let mut s = Rosenbrock23::new(&state).with_tolerances(rtol, atol);
+            run_solver_n_steps(&mut state, dyn_sys, &mut s, dt, steps);
         }
     }
     state.0[0]
@@ -354,6 +387,7 @@ impl OdeSolverTool {
         for val in [
             self.dt,
             self.total_time,
+            super::comparison::sanitize_adaptive_tol(self.adaptive_tol),
             self.param_k,
             self.param_r,
             self.param_cap_k,
@@ -419,32 +453,23 @@ impl OdeSolverTool {
 
         let custom_spec = self.build_custom_ode_spec();
         let baseline_hint = self.reusable_baseline_final_y(custom_spec.as_ref(), &param_refs);
-        let base_spec = super::comparison::OdeSimSpec {
-            preset: self.preset,
-            method: self.method,
-            dt: self.dt,
-            total_time: self.total_time,
-            param_k: self.param_k,
-            param_r: self.param_r,
-            param_cap_k: self.param_cap_k,
-            ic_y0: self.ic_y0,
-            ic_v0: self.ic_v0,
-            matrix_a: self.matrix_a,
-            custom_spec: custom_spec.as_ref(),
-            planar_x_expr: self.planar_x_input.cached_expr(),
-            planar_y_expr: self.planar_y_input.cached_expr(),
-        };
+        let px = self.planar_x_input.cached_expr().cloned();
+        let py = self.planar_y_input.cached_expr().cloned();
+        let base_spec =
+            self.sim_spec_with_planar(self.method, custom_spec.as_ref(), px.as_ref(), py.as_ref());
         let custom_ctx =
             (self.preset == OdePreset::Custom).then_some(CustomOdeContext(custom_spec.as_ref()));
         let planar_ctx = (self.preset == OdePreset::PlanarCustom).then_some((
             self.planar_x_input.raw_text.as_str(),
             self.planar_y_input.raw_text.as_str(),
         ));
+        let clean_tol = super::comparison::sanitize_adaptive_tol(base_spec.adaptive_tol);
         let context = (
             base_spec.preset as u8,
             base_spec.method as u8,
             canonical_f64_bits(base_spec.dt),
             canonical_f64_bits(base_spec.total_time),
+            canonical_f64_bits(clean_tol),
             custom_ctx,
             planar_ctx,
         );

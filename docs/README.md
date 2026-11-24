@@ -57,6 +57,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Coupled Electrochemical Battery Aging, Zero-Allocation CSV Calibration, and Multi-Segment Lifetime Exports](adr/20261123-coupled-battery-aging-and-lifetime-exports.md)
 - [ADR 20261123: Zero-Allocation CSR Spatial Grid and Cortical Thickness Workspace](adr/20261123-csr-spatial-grid-thickness-workspace.md)
 - [ADR 20261123: Elliptic Curve Discriminant Atlas, Singular Cubic Rendering, and Hasse-Weil Challenges](adr/20261123-elliptic-curve-atlas-singular-loci-and-challenges.md)
+- [ADR 20261123: Extend Analysis Solvers and Standalone Root Finder Tool](adr/20261123-extend-analysis-solvers-and-root-finder-tool.md)
 - [ADR 20261123: Feature-Gate Core AST Tools and Unify Workspace Crates](adr/20261123-feature-gate-core-ast-tools-and-unify-crates.md)
 - [ADR 20261123: Zero-Allocation 2D FFT Lenia Engine and Promoted Gray-Scott Kinetics](adr/20261123-fft-lenia-engine-and-gray-scott-kinetics.md)
 - [ADR 20261123: Zero-Allocation Prime-Exponent FRACTRAN VM, Kolmogorov Bounds, and Auto-Discovered `AlgorithmicInfoTab`](adr/20261123-fractran-vm-kolmogorov-and-algorithmic-info-tab.md)

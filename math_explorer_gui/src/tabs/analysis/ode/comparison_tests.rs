@@ -65,14 +65,22 @@ fn test_ode_multi_solver_comparison_mode_overlays() {
     tool.set_comparison_mode(true);
     assert!(tool.comparison_mode());
 
-    // Three solvers should be present in comparison manager
+    // All seven solvers should be present in comparison manager
     let mgr = tool.comparison_manager();
-    assert_eq!(mgr.len(), 3);
+    assert_eq!(mgr.len(), 7);
 
     let labels: Vec<String> = mgr.snapshots().iter().map(|s| s.label.clone()).collect();
-    assert!(labels.contains(&"Runge-Kutta 4".to_string()));
-    assert!(labels.contains(&"Euler".to_string()));
-    assert!(labels.contains(&"Heun (RK2)".to_string()));
+    for expected in [
+        "Runge-Kutta 4",
+        "Euler",
+        "Heun (RK2)",
+        "Dormand-Prince 4(5)",
+        "Backward Euler",
+        "Implicit Trapezoidal",
+        "Rosenbrock 2(3)",
+    ] {
+        assert!(labels.contains(&expected.to_string()), "missing {expected}");
+    }
 
     // For harmonic oscillator, both y(t) and y'(t) are present in each snapshot
     for snapshot in mgr.snapshots() {
@@ -89,15 +97,19 @@ fn test_ode_multi_solver_comparison_mode_overlays() {
     assert!(exported
         .iter()
         .any(|(name, _)| name.contains("Runge-Kutta 4")));
+    assert!(exported
+        .iter()
+        .any(|(name, _)| name.contains("Dormand-Prince")));
+    assert!(exported.iter().any(|(name, _)| name.contains("Rosenbrock")));
 
     // State persistence roundtrip preserves comparison mode and active method
-    tool.set_method(IntegrationMethod::Heun);
+    tool.set_method(IntegrationMethod::DormandPrince45);
     let state = tool.save_state().expect("save state");
     let mut restored = OdeSolverTool::default();
     restored.load_state(&state);
     assert!(restored.comparison_mode());
-    assert_eq!(restored.method(), IntegrationMethod::Heun);
-    assert_eq!(restored.comparison_manager().len(), 3);
+    assert_eq!(restored.method(), IntegrationMethod::DormandPrince45);
+    assert_eq!(restored.comparison_manager().len(), 7);
 }
 
 #[test]
@@ -136,6 +148,71 @@ fn test_ode_discrepancy_metrics_calculation() {
     );
 }
 
+#[test]
+fn test_ode_tool_non_autonomous_and_stiff_implicit_solvers() {
+    // 1. Non-autonomous y'(t) = -k * y * sin(t), y(0) = 1 => y(T) = exp(k * (cos(T) - 1))
+    let mut mod_tool = OdeSolverTool {
+        preset: OdePreset::Custom,
+        method: IntegrationMethod::DormandPrince45,
+        param_k: 1.5,
+        ic_y0: 1.0,
+        dt: 0.05,
+        total_time: 4.0,
+        ..Default::default()
+    };
+    mod_tool.math_input.set_expression("-k * y * sin(t)");
+    mod_tool.math_input.set_param("k", 1.5);
+    mod_tool.recalculate();
+    let exact_mod = (1.5 * (4.0_f64.cos() - 1.0)).exp();
+    let got_mod = *mod_tool.y_series.last().expect("modulated final");
+    assert!(
+        (got_mod - exact_mod).abs() < 1e-6,
+        "got {got_mod} vs {exact_mod}"
+    );
+
+    // 2. Non-autonomous y'(t) = cos(t) - y, y(0) = 0 => y(T) = 0.5 * (sin(T) + cos(T) - exp(-T))
+    let mut driven = OdeSolverTool {
+        preset: OdePreset::Custom,
+        method: IntegrationMethod::RungeKutta4,
+        ic_y0: 0.0,
+        dt: 0.02,
+        total_time: 5.0,
+        ..Default::default()
+    };
+    driven.math_input.set_expression("cos(t) - y");
+    driven.recalculate();
+    let exact_driven = 0.5 * (5.0_f64.sin() + 5.0_f64.cos() - (-5.0_f64).exp());
+    let got_driven = *driven.y_series.last().expect("driven final");
+    assert!((got_driven - exact_driven).abs() < 1e-6);
+
+    // 3. Stiff y' = -1000 * y at dt = 0.05 remains bounded and strictly positive for implicit solvers
+    for stiff_method in [
+        IntegrationMethod::BackwardEuler,
+        IntegrationMethod::ImplicitTrapezoidal,
+        IntegrationMethod::Rosenbrock23,
+    ] {
+        let mut stiff = OdeSolverTool {
+            preset: OdePreset::Custom,
+            method: stiff_method,
+            ic_y0: 1.0,
+            dt: 0.05,
+            total_time: 0.5,
+            ..Default::default()
+        };
+        stiff.math_input.set_expression("-1000 * y");
+        stiff.recalculate();
+        assert!(!stiff.diverged(), "{stiff_method:?} diverged");
+        assert!(
+            stiff
+                .y_series
+                .iter()
+                .all(|&y| y.is_finite() && y > 0.0 && y <= 1.0),
+            "{stiff_method:?} lost positivity or boundedness: {:?}",
+            stiff.y_series
+        );
+    }
+}
+
 fn reference_oscillator_trajectory(method: IntegrationMethod) -> comparison::SolverTrajectory {
     comparison::simulate_preset(
         OdePreset::HarmonicOscillator,
@@ -156,19 +233,18 @@ fn test_ode_comparison_reuses_active_trajectory_with_exact_parity_across_methods
     use crate::web_io::PlatformInstant;
     use comparison::{compute_discrepancy, compute_series_discrepancy};
 
-    let rk4_ref = reference_oscillator_trajectory(IntegrationMethod::RungeKutta4);
-    let euler_ref = reference_oscillator_trajectory(IntegrationMethod::Euler);
-    let heun_ref = reference_oscillator_trajectory(IntegrationMethod::Heun);
+    let refs = IntegrationMethod::ALL.map(reference_oscillator_trajectory);
     assert_eq!(
-        compute_discrepancy(&euler_ref, &rk4_ref),
+        compute_discrepancy(&refs[1], &refs[0]),
         compute_series_discrepancy(
-            &euler_ref.y_series,
-            &euler_ref.v_series,
-            &rk4_ref.y_series,
-            &rk4_ref.v_series,
+            &refs[1].y_series,
+            &refs[1].v_series,
+            &refs[0].y_series,
+            &refs[0].v_series,
         )
     );
 
+    let expected_labels = IntegrationMethod::ALL.map(|m| m.name());
     let start = PlatformInstant::now();
     for active_method in IntegrationMethod::ALL {
         let mut tool = OdeSolverTool {
@@ -186,21 +262,29 @@ fn test_ode_comparison_reuses_active_trajectory_with_exact_parity_across_methods
 
         let snaps = tool.comparison_manager().snapshots();
         let labels: Vec<&str> = snaps.iter().map(|s| s.label.as_str()).collect();
-        assert_eq!(labels, vec!["Runge-Kutta 4", "Euler", "Heun (RK2)"]);
+        assert_eq!(labels, expected_labels);
         assert_eq!(
             tool.discrepancy_euler_rk4(),
-            compute_discrepancy(&euler_ref, &rk4_ref)
+            compute_discrepancy(&refs[1], &refs[0])
         );
         assert_eq!(
             tool.discrepancy_heun_rk4(),
-            compute_discrepancy(&heun_ref, &rk4_ref)
+            compute_discrepancy(&refs[2], &refs[0])
         );
         assert_eq!(
             tool.discrepancy_euler_heun(),
-            compute_discrepancy(&euler_ref, &heun_ref)
+            compute_discrepancy(&refs[1], &refs[2])
+        );
+        assert_eq!(
+            tool.discrepancy_rk4_dp45,
+            compute_discrepancy(&refs[0], &refs[3])
+        );
+        assert_eq!(
+            tool.discrepancy_be_ros23,
+            compute_discrepancy(&refs[4], &refs[6])
         );
 
-        for (snap, expected) in snaps.iter().zip([&rk4_ref, &euler_ref, &heun_ref]) {
+        for (snap, expected) in snaps.iter().zip(&refs) {
             assert_eq!(snap.series[0].points.len(), expected.y_series.len());
             assert_eq!(snap.series[1].points.len(), expected.v_series.len());
             let last_pt = snap.series[0].points.last().expect("last y point");

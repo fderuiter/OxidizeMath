@@ -62,6 +62,7 @@ impl OdeSolverTool {
             &mut self.seeded_ic,
         );
         clamp_ode_step_settings(&mut self.dt, &mut self.total_time);
+        self.adaptive_tol = super::comparison::sanitize_adaptive_tol(self.adaptive_tol);
         self.recalculate();
     }
 
@@ -107,6 +108,7 @@ impl OdeSolverTool {
         self.seeded_ic.clear();
         self.dt = 0.05;
         self.total_time = 10.0;
+        self.adaptive_tol = super::DEFAULT_ODE_ADAPTIVE_TOL;
         self.pending_sweep_run = None;
         self.recalculate();
     }
@@ -153,6 +155,7 @@ pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
     if tool.diverged
         || !tool.dt.is_finite()
         || !tool.total_time.is_finite()
+        || !tool.adaptive_tol.is_finite()
         || !tool.ic_y0.is_finite()
         || !params_finite
         || !are_seeded_orbits_finite(tool)

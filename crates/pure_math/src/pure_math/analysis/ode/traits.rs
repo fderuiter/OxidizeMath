@@ -31,6 +31,44 @@ pub trait VectorOperations:
     }
 }
 
+/// Additive component-wise indexing extension for [`VectorOperations`] state types.
+///
+/// Enables component-wise adaptive error norms, numerical finite-difference Jacobians,
+/// and implicit/Rosenbrock linear stage solves while keeping existing [`VectorOperations`]
+/// implementations source-compatible.
+///
+/// # Examples
+///
+/// ```
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::analysis::ode::{ArrayState, IndexedState};
+///
+/// let mut state = ArrayState([1.0, 2.0]);
+/// assert_eq!(state.len(), 2);
+/// assert_eq!(state.get(0), 1.0);
+/// state.set(1, 5.0);
+/// assert_eq!(state.get(1), 5.0);
+/// ```
+pub trait IndexedState: VectorOperations {
+    /// Returns the number of scalar state components.
+    #[verified_engine::verified]
+    fn len(&self) -> usize;
+
+    /// Returns `true` when the state contains zero scalar components.
+    #[verified_engine::verified]
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Reads the scalar component at `index`.
+    #[verified_engine::verified]
+    fn get(&self, index: usize) -> f64;
+
+    /// Writes `value` into the scalar component at `index`.
+    #[verified_engine::verified]
+    fn set(&mut self, index: usize, value: f64);
+}
+
 /// A trait defining a system of Ordinary Differential Equations.
 ///
 /// $$ \frac{d\vec{y}}{dt} = f(t, \vec{y}) $$

@@ -124,6 +124,9 @@ fn test_pure_math_custom_canvases_and_rasters_receive_tab_focus_and_labels() {
         &mut chladni,
         "2D Chladni Plate & Wave Tank Visualization",
     );
+
+    let mut root_finder = crate::tabs::analysis::root_finder::RootFinderTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(&mut root_finder, "Root Finder Visualization");
 }
 
 #[cfg(feature = "biology")]

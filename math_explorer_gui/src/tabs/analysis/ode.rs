@@ -31,11 +31,16 @@ use crate::presets::OdePreset;
 use eframe::egui;
 use math_explorer::pure_math::analysis::ode::IntegrationMethod;
 
+pub(crate) const DEFAULT_ODE_ADAPTIVE_TOL: f64 = 1e-7;
+pub(crate) const MIN_ODE_ADAPTIVE_TOL: f64 = 1e-12;
+pub(crate) const MAX_ODE_ADAPTIVE_TOL: f64 = 1e-2;
+
 pub struct OdeSolverTool {
     pub(crate) preset: OdePreset,
     pub(crate) method: IntegrationMethod,
     pub(crate) dt: f64,
     pub(crate) total_time: f64,
+    pub(crate) adaptive_tol: f64,
     pub(crate) param_k: f64,
     pub(crate) param_r: f64,
     pub(crate) param_cap_k: f64,
@@ -64,6 +69,8 @@ pub struct OdeSolverTool {
     pub(crate) discrepancy_euler_rk4: SolverDiscrepancy,
     pub(crate) discrepancy_heun_rk4: SolverDiscrepancy,
     pub(crate) discrepancy_euler_heun: SolverDiscrepancy,
+    pub(crate) discrepancy_rk4_dp45: SolverDiscrepancy,
+    pub(crate) discrepancy_be_ros23: SolverDiscrepancy,
     pub snapshot_manager: TraceSnapshotManager,
     pub(crate) comparison_manager: TraceSnapshotManager,
     pub callout_manager: CalloutManager,
@@ -89,6 +96,7 @@ fn default_scalar_ode_input() -> MathExpressionInputBar {
                 "r * y * (1 - y / cap_k)",
             ),
             ("y' = -k * y^2 (Stiff Decay)", "-k * y^2"),
+            ("y' = -1000 * y (Ultra-Stiff Linear)", "-1000 * y"),
             ("y' = cos(t) - y (Forced Damped)", "cos(t) - y"),
         ],
     )
@@ -149,6 +157,7 @@ impl Default for OdeSolverTool {
             method: IntegrationMethod::RungeKutta4,
             dt: 0.05,
             total_time: 10.0,
+            adaptive_tol: DEFAULT_ODE_ADAPTIVE_TOL,
             param_k: 1.0,
             param_r: 1.0,
             param_cap_k: 10.0,
@@ -177,6 +186,8 @@ impl Default for OdeSolverTool {
             discrepancy_euler_rk4: SolverDiscrepancy::default(),
             discrepancy_heun_rk4: SolverDiscrepancy::default(),
             discrepancy_euler_heun: SolverDiscrepancy::default(),
+            discrepancy_rk4_dp45: SolverDiscrepancy::default(),
+            discrepancy_be_ros23: SolverDiscrepancy::default(),
             snapshot_manager: TraceSnapshotManager::new(),
             comparison_manager: TraceSnapshotManager::new(),
             callout_manager: CalloutManager::new(),
