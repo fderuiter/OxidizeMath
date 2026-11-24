@@ -49,11 +49,11 @@ fn test_packaged_desktop_outside_workspace_renders_embedded_28_papers() {
     ));
     super::wait_for_scan_completion(&mut tab);
     assert_eq!(tab.state, TraceabilityScanState::Ready);
-    assert_eq!(tab.papers.len(), 29);
+    assert_eq!(tab.papers.len(), 30);
     assert!(tab.orphaned_papers.is_empty());
     assert!(tab.certificate.as_ref().is_some_and(|c| c.passed));
     assert!(render_tab_text_hit(&mut tab, "100% Parity Achieved"));
-    assert!(render_tab_text_hit(&mut tab, "Total Papers: 29"));
+    assert!(render_tab_text_hit(&mut tab, "Total Papers: 30"));
     assert!(render_tab_text_hit(
         &mut tab,
         "Verification Certificate: Passed"
@@ -225,7 +225,7 @@ fn test_ci_pages_workflow_verifies_all_28_paper_pdfs_and_sw_shell_scope() {
         .flatten()
         .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("tex"))
         .count();
-    assert_eq!(tex_count, 29);
+    assert_eq!(tex_count, 30);
 
     let sw_js = std::fs::read_to_string(ws_root.join("math_explorer_gui").join("sw.js"))
         .expect("read sw.js");
