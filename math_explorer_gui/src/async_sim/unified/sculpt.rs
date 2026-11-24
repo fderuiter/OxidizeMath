@@ -61,20 +61,31 @@ pub(super) fn validate_sparse_potential_entries(
     Ok(())
 }
 
+pub(super) const OBSTACLES_RLE_KEY: &str = "obstacles_rle";
+
 impl<M: UnifiedModel> UnifiedSimTool<M> {
     pub(super) fn serialize_unified_state(&self) -> Option<String> {
         let params = self.params.read().unwrap_or_else(|e| e.into_inner());
         let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+        let obstacles_rle = self
+            .obstacle_rle
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
 
         let mut map = serde_json::Map::new();
         let sorted: BTreeMap<&String, &f64> = params.iter().collect();
         for (k, v) in sorted {
-            if let Some(num) = serde_json::Number::from_f64(*v) {
-                map.insert(k.clone(), serde_json::Value::Number(num));
-            }
+            let num = serde_json::Number::from_f64(*v)?;
+            map.insert(k.clone(), serde_json::Value::Number(num));
         }
 
-        if !sculpt.rle_mask.is_empty() {
+        if let Some(rle) = obstacles_rle {
+            map.insert(
+                OBSTACLES_RLE_KEY.to_string(),
+                serde_json::Value::String(rle),
+            );
+        } else if !sculpt.rle_mask.is_empty() {
             if let Ok(val) = serde_json::to_value(&sculpt.rle_mask) {
                 map.insert("rle_mask".to_string(), val);
             }
@@ -88,14 +99,51 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         serde_json::to_string(&map).ok()
     }
 
+    pub(super) fn apply_parsed_obstacle_rle(&mut self, parsed_rle: Option<(String, Vec<bool>)>) {
+        let p_snap = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        match parsed_rle {
+            Some((rle_str, decoded_mask)) => {
+                if let Some(ext) = &mut self.ui_extension {
+                    ext.on_obstacle_mask_loaded(Some(decoded_mask.as_slice()), &p_snap);
+                }
+                *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = Some(rle_str);
+                self.local_obstacles = Some(decoded_mask);
+            }
+            None => {
+                if let Some(ext) = &mut self.ui_extension {
+                    ext.on_obstacle_mask_loaded(None, &p_snap);
+                }
+                *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = None;
+                self.local_obstacles = M::default_obstacle_mask(&p_snap);
+            }
+        }
+    }
+
     fn parse_unified_state_entry(
         &self,
         key: String,
         val: serde_json::Value,
         parsed_params: &mut HashMap<String, f64>,
+        parsed_obs_rle: &mut Option<(String, Vec<bool>)>,
         parsed_rle: &mut Vec<[u32; 2]>,
         parsed_sparse: &mut Vec<(u16, f64)>,
     ) -> Result<(), String> {
+        if key == OBSTACLES_RLE_KEY && M::raster_brush_grid().is_some() {
+            if !val.is_null() {
+                let s = val.as_str().ok_or_else(|| {
+                    format!(
+                        "Parameter '{OBSTACLES_RLE_KEY}' in {} must be a string",
+                        M::name()
+                    )
+                })?;
+                *parsed_obs_rle = Some((s.to_string(), M::validate_obstacle_rle(s)?));
+            }
+            return Ok(());
+        }
         if key == "rle_mask" && M::supports_spatial_brush() && M::is_raster_model() {
             *parsed_rle = serde_json::from_value(val)
                 .map_err(|e| format!("Invalid rle_mask in {}: {e}", M::name()))?;
@@ -127,6 +175,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
 
         let mut parsed_params: HashMap<String, f64> = HashMap::new();
+        let mut parsed_obs_rle: Option<(String, Vec<bool>)> = None;
         let mut parsed_rle: Vec<[u32; 2]> = Vec::new();
         let mut parsed_sparse: Vec<(u16, f64)> = Vec::new();
 
@@ -135,6 +184,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 key,
                 val,
                 &mut parsed_params,
+                &mut parsed_obs_rle,
                 &mut parsed_rle,
                 &mut parsed_sparse,
             )?;
@@ -142,6 +192,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
         if !self.param_metadata.is_empty()
             && parsed_params.is_empty()
+            && parsed_obs_rle.is_none()
             && parsed_rle.is_empty()
             && parsed_sparse.is_empty()
         {
@@ -163,6 +214,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 guard.insert(key, value);
             }
         }
+        self.apply_parsed_obstacle_rle(parsed_obs_rle);
         self.reset_formula_bar_to_default();
         {
             let mut s_guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
@@ -183,6 +235,7 @@ pub struct UnifiedSimRunner<M: UnifiedModel> {
     sculpt_state: Arc<RwLock<SculptStatePayload>>,
     formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
     applied_formula_rev: Option<u64>,
+    obstacle_rle: Arc<RwLock<Option<String>>>,
     steps_per_frame: usize,
 }
 
@@ -214,13 +267,28 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
         sculpt_state: Arc<RwLock<SculptStatePayload>>,
         formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
     ) -> Self {
+        Self::with_shared_and_obstacles(params, sculpt_state, formula, Arc::new(RwLock::new(None)))
+    }
+
+    /// Creates a runner sharing `params`, `sculpt_state`, `formula`, and an optional RLE obstacle mask.
+    pub fn with_shared_and_obstacles(
+        params: Arc<RwLock<HashMap<String, f64>>>,
+        sculpt_state: Arc<RwLock<SculptStatePayload>>,
+        formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
+        obstacle_rle: Arc<RwLock<Option<String>>>,
+    ) -> Self {
         let initial_params = params.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let mut model = M::new(&initial_params);
+        if let Some(ref rle) = *obstacle_rle.read().unwrap_or_else(|e| e.into_inner()) {
+            model.apply_obstacle_rle(rle);
+        }
         let mut runner = Self {
-            model: M::new(&initial_params),
+            model,
             params,
             sculpt_state,
             formula,
             applied_formula_rev: None,
+            obstacle_rle,
             steps_per_frame: 5,
         };
         runner.sync_formula(&initial_params);
@@ -273,7 +341,13 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
     }
 
     fn sync_sculpt_from_model(&self, current_params: &HashMap<String, f64>) {
-        if M::supports_spatial_brush() {
+        if M::supports_spatial_brush()
+            && self
+                .obstacle_rle
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_none()
+        {
             let exported = self.model.export_sculpt_payload(current_params);
             let mut guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
             *guard = exported;
@@ -291,20 +365,31 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
         match cmd {
             SimCommand::SetSpeed(speed) => self.steps_per_frame = speed,
             SimCommand::Reset => {
-                let had_sculpt = !self
-                    .sculpt_state
+                let saved_rle = self
+                    .obstacle_rle
                     .read()
                     .unwrap_or_else(|e| e.into_inner())
-                    .is_empty();
-                if had_sculpt {
-                    self.apply_sculpt_if_present(&current_params);
+                    .clone();
+                if let Some(ref rle) = saved_rle {
+                    let mut rebuilt = M::new(&current_params);
+                    rebuilt.apply_obstacle_rle(rle);
+                    self.model = rebuilt;
+                } else {
+                    let had_sculpt = !self
+                        .sculpt_state
+                        .read()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .is_empty();
+                    if had_sculpt {
+                        self.apply_sculpt_if_present(&current_params);
+                    }
+                    self.model.reset_model(&current_params);
+                    if had_sculpt {
+                        self.sync_sculpt_from_model(&current_params);
+                    }
                 }
-                self.model.reset_model(&current_params);
                 self.applied_formula_rev = None;
                 self.sync_formula(&current_params);
-                if had_sculpt {
-                    self.sync_sculpt_from_model(&current_params);
-                }
             }
             SimCommand::SyncSculptState(payload) => {
                 self.sync_formula(&current_params);

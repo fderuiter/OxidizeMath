@@ -12,7 +12,7 @@ use crate::tabs::morphogenesis::{
 use crate::tabs::quantum::wave_sim::{WavePotentialPreset, WaveRunner, WaveSimConfig};
 use eframe::egui;
 use math_explorer::biology::diffusion::FiniteDifference2D;
-use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+use math_explorer::biology::morphogenesis::{SpatialSchnakenbergKinetics, TuringSystem};
 use num_complex::Complex;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -218,7 +218,7 @@ fn test_quantum_wave_sim_cached_propagator_recovery_paths() {
 fn test_morphogenesis_divergence_and_recovery() {
     let width = 20;
     let height = 20;
-    let kinetics = SchnakenbergKinetics { a: 0.1, b: 0.9 };
+    let kinetics = SpatialSchnakenbergKinetics::new(0.1, 0.9, width * height);
     let diffusion = FiniteDifference2D::new(
         math_explorer::math_kernel::types::Dimension(width),
         math_explorer::math_kernel::types::Dimension(height),
@@ -243,6 +243,7 @@ fn test_morphogenesis_divergence_and_recovery() {
         high_contrast: false,
         theme_mode: crate::app::ThemeMode::Dark,
         heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
+        mask_rle: None,
     }));
 
     let mut runner = MorphogenesisRunner {

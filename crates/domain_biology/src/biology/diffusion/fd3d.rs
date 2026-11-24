@@ -137,8 +137,8 @@ impl<const N: usize> SpatialDiffusion<N> for FiniteDifference3D {
             next_state,
             dt,
             1.0,
-            |_idx, curr, nb, ops| {
-                let react = kinetics.reaction(curr);
+            |idx, curr, nb, ops| {
+                let react = kinetics.reaction_at(idx, curr);
                 let mut rhs = [0.0; N];
                 for s in 0..N {
                     let lap = ops.central_diff_2nd_3d(

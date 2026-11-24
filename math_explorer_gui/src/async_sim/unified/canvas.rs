@@ -1,15 +1,36 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{UnifiedModel, UnifiedSimTool};
+use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::async_sim::SimCommand;
 use crate::framework::{
     BrushMode, InteractionContext, InteractiveTool, PlotBrushController, PlotBrushFrame,
+    RasterBrushCanvas,
 };
 use eframe::egui::{self, ColorImage, TextureOptions};
 use egui_plot::{HLine, Line, LineStyle, Plot, PlotImage, PlotPoint, PlotPoints, Points};
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
+    fn draw_raster_brush_canvas(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        texture: &egui::TextureHandle,
+        grid: (usize, usize, bool),
+    ) {
+        let (grid_w, grid_h, flip_y) = grid;
+        let id_salt = format!("{}_raster_canvas", M::name());
+        let label = format!("{} raster simulation canvas", M::name());
+        let (response, stroke) = RasterBrushCanvas::new(&id_salt, grid_w, grid_h, &label)
+            .flip_y(flip_y)
+            .show_texture(ui, texture, &mut self.brush_state);
+        let _ = response.accessible_theory_hover(self);
+        if let Some(stroke) = stroke {
+            self.apply_brush_stroke(stroke, ctx);
+        }
+    }
+
     fn dispatch_legacy_bresenham_frame(
         &mut self,
         ctx: &egui::Context,
@@ -57,6 +78,15 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         ctx: &egui::Context,
         texture: &egui::TextureHandle,
     ) {
+        if self.active_challenge_id().is_none()
+            && (!M::supports_spatial_brush() || self.brush_kit.is_sculpting())
+        {
+            if let Some(grid) = M::raster_brush_grid() {
+                self.draw_raster_brush_canvas(ui, ctx, texture, grid);
+                return;
+            }
+        }
+
         let width = texture.size()[0] as f32;
         let height = texture.size()[1] as f32;
         let allow_pan = !M::supports_spatial_brush() || !self.brush_kit.is_sculpting();

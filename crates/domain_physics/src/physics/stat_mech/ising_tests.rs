@@ -46,6 +46,42 @@ fn test_ising_disordered() {
 
 #[test]
 #[verified_engine::verified]
+fn test_ising_pinned_spins_stay_fixed_with_zero_allocations() {
+    let j_val = 1.0;
+    let h_val = -2.0;
+    let t_high = 50.0 * j_val / KB;
+    let payoff = MatrixPayoff::new(DMatrix::from_row_slice(2, 2, &[1.5, 0.5, 0.5, 0.0])).unwrap();
+    let mut lattice = SpinLattice::new(10, 10, Some(7));
+    for x in 0..10 {
+        lattice.set(x, 0, 1);
+        lattice.set_pinned(x, 0, true);
+        lattice.set(x, 9, -1);
+        lattice.set_pinned(x, 9, true);
+    }
+
+    let _guard = VERIFIED_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let (_, metrics) = VerifiedEngine::run_verified(|| {
+        lattice.evolve(20_000, t_high, j_val, h_val);
+        lattice.evolve_fermi_game_with_mutation(5_000, 0.1, &payoff, 0.05);
+        for _ in 0..500 {
+            lattice.metropolis_step(t_high, j_val, h_val);
+        }
+    });
+    drop(_guard);
+    assert!(metrics.function_calls > 0);
+    for x in 0..10 {
+        assert_eq!(lattice.get(x, 0), 1);
+        assert!(lattice.is_pinned(x, 0));
+        assert_eq!(lattice.get(x, 9), -1);
+        assert!(lattice.is_pinned(x, 9));
+    }
+
+    lattice.clear_pinned();
+    assert!(lattice.pinned().iter().all(|&p| !p));
+}
+
+#[test]
+#[verified_engine::verified]
 fn test_fermi_game_zero_allocations_under_verified_allocator() {
     let mut lattice = SpinLattice::new(100, 100, Some(7));
     let payoff = MatrixPayoff::new(DMatrix::from_row_slice(2, 2, &[1.0, -0.1, 1.35, 0.0])).unwrap();
@@ -56,6 +92,7 @@ fn test_fermi_game_zero_allocations_under_verified_allocator() {
         lattice.evolve_fermi_game_with_mutation(5_000, 0.08, &payoff, 0.02);
         (lattice.magnetization(), lattice.staggered_magnetization())
     });
+    drop(_guard);
     assert!(metrics.function_calls >= 4);
     assert!(m_unif.abs() <= 10_000);
     assert!(m_stag.abs() <= 10_000);
@@ -105,7 +142,6 @@ fn test_fermi_game_temperature_phase_transition() {
         "Expected phase transition: {cold_coop:.3} vs {hot_coop:.3}"
     );
 }
-
 #[test]
 #[verified_engine::verified]
 fn test_fermi_mutation_unfreezes_all_defector_lattice() {

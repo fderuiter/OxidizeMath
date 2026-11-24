@@ -49,6 +49,7 @@ async fn wasm_worker_checkpoint_step_stepback_seek_and_reset() {
         high_contrast: false,
         theme_mode: crate::app::ThemeMode::Dark,
         heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
+        mask_rle: None,
     }));
     let runner = MorphogenesisTool::create_runner(&params, 20, 20);
     let mut controller = SimulationController::new(runner);

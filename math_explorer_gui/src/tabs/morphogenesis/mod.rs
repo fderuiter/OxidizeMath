@@ -7,10 +7,12 @@ use serde::{Deserialize, Serialize};
 
 pub mod atlas;
 mod atlas_bridge;
+pub mod brush;
 pub mod counterfactual;
 mod counterfactual_tool;
 mod dataflow;
 pub mod gray_scott_atlas;
+pub mod kinetics;
 #[cfg(test)]
 mod legacy_runner;
 pub mod lenia;
@@ -19,6 +21,7 @@ pub mod runner;
 mod runner_twin;
 pub mod sculpt;
 mod seeding;
+mod starter_presets;
 pub mod tool;
 pub mod ui;
 
@@ -76,6 +79,15 @@ impl Default for MorphogenesisTab {
 }
 
 impl MorphogenesisTab {
+    #[cfg(test)]
+    pub(crate) fn create_runner(
+        params: &std::sync::Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+        width: usize,
+        height: usize,
+    ) -> MorphogenesisKineticsRunner {
+        MorphogenesisTool::create_runner(params, width, height)
+    }
+
     fn try_load_legacy_state(&mut self, state: &str) -> bool {
         let Ok(legacy) = serde_json::from_str::<LegacyMorphoState>(state) else {
             return false;
@@ -156,6 +168,8 @@ inventory::submit! {
     }
 }
 
+#[cfg(test)]
+mod brush_tests;
 #[cfg(test)]
 mod counterfactual_tests;
 #[cfg(test)]

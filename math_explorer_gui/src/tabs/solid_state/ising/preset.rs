@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::IsingModelTool;
+use super::{IsingModelTool, DEFAULT_ISING_SIZE};
+use math_commons::math_kernel::types::flatten_2d_index;
 
 /// Lattice evolution kernel selection for [`IsingModelTool`].
 #[derive(
@@ -110,6 +111,8 @@ pub(crate) struct IsingState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) running: Option<bool>,
     pub(crate) steps_per_frame: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) pinned_rle: Option<String>,
 }
 
 impl IsingState {
@@ -136,17 +139,26 @@ impl IsingState {
             && (0..=99).contains(&self.brush_radius)
             && (100..=50_000).contains(&self.steps_per_frame)
             && seeds_valid;
-        if valid {
-            Ok(())
-        } else {
-            Err("Ising parameters out of valid bounds".to_string())
+        if !valid {
+            return Err("Ising parameters out of valid bounds".to_string());
         }
+        if let Some(ref rle) = self.pinned_rle {
+            let _ =
+                crate::framework::decode_u8_grid(rle, DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, 2)?;
+        }
+        Ok(())
     }
 }
 
 impl IsingModelTool {
     pub(super) fn serialize_ising_state(&self) -> Option<String> {
         let (xk, yk) = self.atlas.axis_keys();
+        let pinned_rle = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .pinned_rle
+            .clone();
         serde_json::to_string(&IsingState {
             temperature: self.temperature,
             j_coupling: self.j_coupling,
@@ -166,17 +178,52 @@ impl IsingModelTool {
             state: Some(self.worker.state()),
             running: None,
             steps_per_frame: self.steps_per_frame,
+            pinned_rle,
         })
         .ok()
     }
 
+    fn apply_loaded_pins_and_seeds(&mut self, pinned_rle: Option<String>, decoded_pins: Vec<u8>) {
+        let effective_rle = if self.active_challenge.is_some() {
+            None
+        } else {
+            pinned_rle
+        };
+        let pins_changed = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .pinned_rle
+            != effective_rle;
+        self.pin_cells = if effective_rle.is_some() {
+            decoded_pins
+        } else {
+            vec![0; DEFAULT_ISING_SIZE * DEFAULT_ISING_SIZE]
+        };
+        self.params
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .pinned_rle = effective_rle;
+        self.sync_brush_fields_before_frame();
+        self.sync_shared_params();
+        if self.defector_sea || !self.droplet_seeds.is_empty() {
+            self.push_seed_layout_to_worker();
+        } else if pins_changed {
+            self.reset();
+        }
+    }
+
     pub(super) fn deserialize_ising_state(&mut self, state: &str) -> Result<(), String> {
         use crate::async_sim::{SimCommand, SimWorkerState};
-        use crate::framework::InteractiveTool;
+        use crate::framework::{decode_u8_grid, InteractiveTool};
         self.state_bounds().validate_json(state)?;
         let s: IsingState =
             serde_json::from_str(state).map_err(|e| format!("Invalid Ising state: {e}"))?;
         s.validate()?;
+        let decoded_pins = match s.pinned_rle.as_deref() {
+            Some(rle) => decode_u8_grid(rle, DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, 2)?,
+            None => vec![0; DEFAULT_ISING_SIZE * DEFAULT_ISING_SIZE],
+        };
         self.atlas
             .set_axis_keys(&s.atlas.axes[0], &s.atlas.axes[1])?;
         self.atlas.set_visible(s.atlas.visible);
@@ -193,10 +240,7 @@ impl IsingModelTool {
         self.droplet_seeds = s.droplet_seeds;
         self.steps_per_frame = s.steps_per_frame;
         self.enforce_ising_challenge_locks();
-        self.sync_shared_params();
-        if self.defector_sea || !self.droplet_seeds.is_empty() {
-            self.push_seed_layout_to_worker();
-        }
+        self.apply_loaded_pins_and_seeds(s.pinned_rle, decoded_pins);
         self.recompute_replicator_curve();
         self.refresh_challenge_workspace();
 
@@ -266,6 +310,51 @@ const STARTER_PRESET_JSON: &str = r#"{
   }
 }"#;
 
+fn generate_ising_pinned_domain_wall_preset() -> &'static str {
+    static DOMAIN_WALL_PRESET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DOMAIN_WALL_PRESET
+        .get_or_init(|| {
+            let mut pins = vec![0u8; DEFAULT_ISING_SIZE * DEFAULT_ISING_SIZE];
+            for y in 0..DEFAULT_ISING_SIZE {
+                for x in 0..6 {
+                    pins[flatten_2d_index(x, y, DEFAULT_ISING_SIZE)] = 1;
+                }
+                for x in (DEFAULT_ISING_SIZE - 6)..DEFAULT_ISING_SIZE {
+                    pins[flatten_2d_index(x, y, DEFAULT_ISING_SIZE)] = 2;
+                }
+            }
+            for x in 35..65 {
+                for y in 35..65 {
+                    let dx = (x as isize) - 50;
+                    let dy = (y as isize) - 50;
+                    if dx * dx + dy * dy <= 64 {
+                        pins[flatten_2d_index(x, y, DEFAULT_ISING_SIZE)] = 1;
+                    }
+                }
+            }
+            let rle =
+                crate::framework::encode_u8_grid(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, &pins, 2)
+                    .expect("valid Ising pinned RLE");
+            serde_json::json!({
+                "metadata": {
+                    "schema_version": "1.0",
+                    "title": "Ising Pinned Domain Wall",
+                    "domain": "solid_state",
+                    "timestamp": "2026-11-21T00:00:00Z"
+                },
+                "config": {
+                    "temperature": 1.85,
+                    "j_coupling": 1.0,
+                    "h_field": 0.0,
+                    "steps_per_frame": 12000,
+                    "pinned_rle": rle
+                }
+            })
+            .to_string()
+        })
+        .as_str()
+}
+
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "ising_model_starter",
@@ -276,5 +365,18 @@ inventory::submit! {
         domain: "solid_state",
         tool_name: Some("IsingModelTool"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "ising_pinned_domain_wall",
+        title: "Ising Pinned Domain Wall",
+        description: "Opposing +1/-1 pinned spin boundaries and central nucleus forcing interfacial domain-wall fluctuations.",
+        category: "Statistical Mechanics",
+        icon: "🧱",
+        domain: "solid_state",
+        tool_name: Some("IsingModelTool"),
+        preset_generator: generate_ising_pinned_domain_wall_preset,
     }
 }

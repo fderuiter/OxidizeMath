@@ -63,6 +63,7 @@ pub mod plot_persistence;
 mod plot_persistence_session_tests;
 #[cfg(test)]
 mod plot_persistence_tests;
+pub mod raster_brush;
 pub mod recovery;
 #[cfg(test)]
 mod recovery_tests;
@@ -113,6 +114,7 @@ pub use pane_scope::{
 };
 pub(crate) use persistence::framework_json_semantically_eq;
 pub use playback::*;
+pub use raster_brush::*;
 pub use recovery::*;
 pub use side_panel::{
     clear_pane_side_panel_records, pane_side_panel_records, PaneSidePanel, PaneSidePanelRecord,

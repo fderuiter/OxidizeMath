@@ -4,6 +4,7 @@ use pure_math::pure_math::analysis::pde::fused_stepper::StencilOperators;
 #[inline(always)]
 #[allow(clippy::too_many_arguments)]
 fn eval_pair_cell<const N: usize, K: ReactionKinetics<N>>(
+    idx: usize,
     uc: f64,
     ul: f64,
     ur: f64,
@@ -22,7 +23,7 @@ fn eval_pair_cell<const N: usize, K: ReactionKinetics<N>>(
     let mut curr = [0.0; N];
     curr[0] = uc;
     curr[1] = vc;
-    let rates = kinetics.reaction(curr);
+    let rates = kinetics.reaction_at(idx, curr);
     let d2u = ops.central_diff_2nd_2d(uc, ul, ur, uu, ud);
     let d2v = ops.central_diff_2nd_2d(vc, vl, vr, vu, vd);
     (
@@ -58,11 +59,11 @@ pub(super) fn step_fused_pair<const N: usize, K: ReactionKinetics<N>>(
         let (nu_r, nv_r) = (&mut nu[off..off + w], &mut nv[off..off + w]);
         let r0 = usize::from(w > 1);
         (nu_r[0], nv_r[0]) = eval_pair_cell(
-            u_mid[0], u_mid[0], u_mid[r0], u_up[0], u_dn[0], v_mid[0], v_mid[0], v_mid[r0],
+            off, u_mid[0], u_mid[0], u_mid[r0], u_up[0], u_dn[0], v_mid[0], v_mid[0], v_mid[r0],
             v_up[0], v_dn[0], dt, coeffs, ops, kinetics,
         );
         if w > 2 {
-            for (((((((&uu, um), &ud), &vu), vm), &vd), out_u), out_v) in u_up[1..w - 1]
+            for (dx, (((((((&uu, um), &ud), &vu), vm), &vd), out_u), out_v)) in u_up[1..w - 1]
                 .iter()
                 .zip(u_mid.windows(3))
                 .zip(&u_dn[1..w - 1])
@@ -71,9 +72,23 @@ pub(super) fn step_fused_pair<const N: usize, K: ReactionKinetics<N>>(
                 .zip(&v_dn[1..w - 1])
                 .zip(&mut nu_r[1..w - 1])
                 .zip(&mut nv_r[1..w - 1])
+                .enumerate()
             {
                 (*out_u, *out_v) = eval_pair_cell(
-                    um[1], um[0], um[2], uu, ud, vm[1], vm[0], vm[2], vu, vd, dt, coeffs, ops,
+                    off + 1 + dx,
+                    um[1],
+                    um[0],
+                    um[2],
+                    uu,
+                    ud,
+                    vm[1],
+                    vm[0],
+                    vm[2],
+                    vu,
+                    vd,
+                    dt,
+                    coeffs,
+                    ops,
                     kinetics,
                 );
             }
@@ -81,6 +96,7 @@ pub(super) fn step_fused_pair<const N: usize, K: ReactionKinetics<N>>(
         if w > 1 {
             let l = w - 1;
             (nu_r[l], nv_r[l]) = eval_pair_cell(
+                off + l,
                 u_mid[l],
                 u_mid[l - 1],
                 u_mid[l],

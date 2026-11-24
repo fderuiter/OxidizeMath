@@ -121,6 +121,7 @@ fn test_morphogenesis_1000_step_zero_perturbation_parity_and_zero_alloc() {
         high_contrast: false,
         theme_mode: ThemeMode::Dark,
         heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
+        mask_rle: None,
     }));
     let mut runner = MorphogenesisKineticsRunner::new_seeded(&params, 24, 24);
     for _ in 0..10 {
@@ -231,6 +232,7 @@ fn test_morphogenesis_sculpted_maze_twin_parity_and_zero_alloc() {
         high_contrast: false,
         theme_mode: ThemeMode::Dark,
         heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
+        mask_rle: None,
     }));
     let mut runner = MorphogenesisKineticsRunner::new_seeded(&params, 32, 32);
     runner.process_command(crate::async_sim::SimCommand::Custom("stamp_maze".into()));
