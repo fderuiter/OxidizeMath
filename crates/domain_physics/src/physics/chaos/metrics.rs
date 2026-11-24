@@ -270,6 +270,62 @@ where
     )
 }
 
+/// Estimates the largest Lyapunov exponent $\lambda_1$ for a 4D `ArrayState<4>` system
+/// (such as [`super::double_pendulum::DoublePendulum`]) via Wolf's renormalization method.
+#[verified_engine::verified]
+pub fn double_pendulum_lyapunov<S, Sol>(
+    system: &S,
+    solver: &mut Sol,
+    initial_state: ArrayState<4>,
+    time_step: f64,
+    iterations: usize,
+    evolution_time: f64,
+) -> Result<f64, ChaosError>
+where
+    S: OdeSystem<ArrayState<4>> + ?Sized,
+    Sol: Solver<ArrayState<4>>,
+{
+    if iterations == 0
+        || !time_step.is_finite()
+        || time_step <= 0.0
+        || !evolution_time.is_finite()
+        || evolution_time <= 0.0
+        || (evolution_time / time_step).round() as usize == 0
+        || !initial_state.is_finite()
+    {
+        return Err(ChaosError::InvalidParameter(String::new()));
+    }
+    lyapunov_exponent_4d(
+        system,
+        solver,
+        initial_state,
+        time_step,
+        iterations,
+        evolution_time,
+    )
+    .ok_or(ChaosError::Math(
+        math_commons::error::MathError::NumericalError {
+            reason: String::new(),
+        },
+    ))
+}
+
+/// Computes the windowed finite-time Lyapunov exponent
+/// $\lambda_{\text{FTLE}} = \frac{1}{\Delta t} \ln\left(\frac{\|\delta \mathbf{x}(t_1)\|}{\|\delta \mathbf{x}(t_0)\|}\right)$.
+#[verified_engine::verified]
+pub fn finite_time_lyapunov(initial_separation: f64, final_separation: f64, delta_t: f64) -> f64 {
+    if initial_separation <= 0.0
+        || final_separation <= 0.0
+        || delta_t <= 0.0
+        || !initial_separation.is_finite()
+        || !final_separation.is_finite()
+        || !delta_t.is_finite()
+    {
+        return 0.0;
+    }
+    (final_separation / initial_separation).ln() / delta_t
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

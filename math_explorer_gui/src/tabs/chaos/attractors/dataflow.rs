@@ -1,12 +1,10 @@
-//! Synchronous stepping and `PaneDataflowBus` 3D landmark publishing for [`super::AttractorPlotter`].
+//! `PaneDataflowBus` 3D landmark publishing for [`super::AttractorPlotter`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{
-    AttractorMode, AttractorPlotter, CompiledFlowJob, SolverExecutionState,
-    ATTRACTOR_RING_CAPACITY, MAX_SIMULATION_SPEED,
-};
+use super::{AttractorPlotter, AttractorRunner};
 use crate::app::dataflow_bus::{publish_pane_landmarks, LandmarkCloud3DPayload};
+use crate::app::SharedSimulationBus;
 use crate::tabs::geometry_topology::vietoris_rips::MAX_CHAOS_LANDMARKS;
 use eframe::egui;
 use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
@@ -19,65 +17,16 @@ pub(crate) struct AttractorBusCache {
 }
 
 impl AttractorPlotter {
-    fn step_single_tick(&mut self, cap: usize, custom_job: Option<&CompiledFlowJob>) -> bool {
-        let current_vec = self.system.state.vec;
-        if !current_vec.x.is_finite() || !current_vec.y.is_finite() || !current_vec.z.is_finite() {
-            self.execution_state = SolverExecutionState::Diverged {
-                invalid_vec: current_vec,
-                diverged_at_step: self.step_count,
-            };
-            return false;
+    pub(crate) fn bind_sim_bus(&self, ctx: &egui::Context) {
+        let bus = SharedSimulationBus::from_context_or_insert(ctx);
+        let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
+        let needs_update = match &guard.sim_bus {
+            Some(existing) => !existing.ptr_eq(&bus),
+            None => true,
+        };
+        if needs_update {
+            guard.sim_bus = Some(bus);
         }
-        if let Some(ref mut twin) = self.twin {
-            if !twin.step_branch_a(self.dt, cap) {
-                self.execution_state = SolverExecutionState::Diverged {
-                    invalid_vec: twin.system_a.state.vec,
-                    diverged_at_step: self.step_count,
-                };
-                return false;
-            }
-        }
-        if let Some(job) = custom_job {
-            self.system.state.vec = job.rk4_step(current_vec, self.dt);
-        } else {
-            self.system.step(self.dt);
-        }
-        self.step_count += 1;
-
-        let vec = self.system.state.vec;
-        if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
-            self.execution_state = SolverExecutionState::Diverged {
-                invalid_vec: vec,
-                diverged_at_step: self.step_count,
-            };
-            return false;
-        }
-        if self.history.len() >= cap {
-            self.history.pop_front();
-        }
-        self.history.push_back(vec);
-        if let Some(ref mut twin) = self.twin {
-            twin.observe_lockstep(self.step_count, self.dt, vec);
-        }
-        true
-    }
-
-    pub(super) fn advance_step_simulation(&mut self) {
-        if self.diverged() {
-            return;
-        }
-        if self.execution_state == SolverExecutionState::Ready {
-            self.execution_state = SolverExecutionState::Running;
-        }
-        let cap = self.max_points.clamp(1, ATTRACTOR_RING_CAPACITY);
-        let custom_job = (self.mode == AttractorMode::Custom)
-            .then(|| CompiledFlowJob::from_bank(&self.flow_bank));
-        for _ in 0..self.simulation_speed.clamp(1, MAX_SIMULATION_SPEED) {
-            if !self.step_single_tick(cap, custom_job.as_ref()) {
-                break;
-            }
-        }
-        self.sync_local_branch_engine();
     }
 
     pub(super) fn publish_bus_landmarks(&mut self, ctx: &egui::Context) {
@@ -109,6 +58,35 @@ impl AttractorPlotter {
         }
         if let Some(ref payload) = self.bus_cache.payload {
             publish_pane_landmarks(ctx, payload.clone());
+        }
+    }
+}
+
+impl AttractorRunner {
+    pub(super) fn publish_live_landmarks(&self, dt: f64) {
+        let sim_bus = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .sim_bus
+            .clone();
+        let Some(bus) = sim_bus else {
+            return;
+        };
+        let pts: Vec<Point3D> = self
+            .history
+            .iter()
+            .map(|v| Point3D::new(v.x, v.y, v.z))
+            .collect();
+        if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS) {
+            let raw_pts = landmarks.into_iter().map(|p| [p.x, p.y, p.z]).collect();
+            let _ = bus.publish_point_cloud_3d(
+                raw_pts,
+                self.system.sigma,
+                self.system.rho,
+                self.system.beta,
+                dt,
+            );
         }
     }
 }

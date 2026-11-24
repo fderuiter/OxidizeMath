@@ -268,23 +268,12 @@ fn test_attractor_runner_set_speed_and_factorization_boundary_caps() {
     {
         use crate::async_sim::{SimCommand, SimulationRunner};
         use crate::tabs::chaos::attractors::{
-            AttractorPlotter, AttractorRunner, SolverExecutionState, MAX_SIMULATION_SPEED,
+            AttractorPlotter, AttractorRunner, MAX_SIMULATION_SPEED,
         };
-        use std::collections::VecDeque;
         use std::sync::Arc;
 
         let plotter = AttractorPlotter::default();
-        let mut runner = AttractorRunner {
-            system: math_explorer::physics::chaos::lorenz::LorenzBuilder::new().build(
-                math_explorer::physics::chaos::lorenz::LorenzState::new(1.0, 1.0, 1.0),
-            ),
-            params: Arc::clone(&plotter.params),
-            history: VecDeque::with_capacity(100),
-            step_count: 0,
-            execution_state: SolverExecutionState::Ready,
-            twin: None,
-            rng: oxidize_core::rng::OxidizeRng::default(),
-        };
+        let mut runner = AttractorRunner::from_params(Arc::clone(&plotter.params));
         runner.process_command(SimCommand::SetSpeed(0));
         assert_eq!(runner.params.read().unwrap().simulation_speed, 1);
         runner.process_command(SimCommand::SetSpeed(999_999));

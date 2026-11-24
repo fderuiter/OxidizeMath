@@ -112,3 +112,33 @@ fn test_lorenz_regime_cartographer_and_atlas_teleport() {
     assert!((plotter.system.sigma - 10.0).abs() < 1e-9);
     assert!(plotter.current_lyapunov_exponent().expect("stable lyap") < 0.0);
 }
+
+#[test]
+fn test_multi_regime_invariants_and_ast_validation_guardrail() {
+    let mut plotter = AttractorPlotter::default();
+    for kind in [
+        AttractorSystemKind::Rossler,
+        AttractorSystemKind::DoublePendulum,
+    ] {
+        plotter.switch_system_kind(kind);
+        let lyap = plotter
+            .current_lyapunov_exponent()
+            .expect("finite Lyapunov for active chaos model");
+        assert!(
+            lyap > 0.0,
+            "Expected chaotic lambda_1 > 0 for {kind:?}, got {lyap}"
+        );
+        let (c_eps, d2) = plotter
+            .current_correlation_invariants()
+            .expect("finite correlation invariants");
+        assert!((0.0..=1.0).contains(&c_eps) && (0.0..=3.0).contains(&d2));
+    }
+
+    let mut capped_bar = crate::framework::MathExpressionInputBar::new("δx₀", "epsilon", vec![])
+        .with_max_instructions(3);
+    capped_bar.set_expression("epsilon * (sin(x0) + cos(y0) + sin(z0))");
+    assert!(!capped_bar.is_valid());
+    let err = super::twin_state::evaluate_perturbation_bar(&capped_bar, [1.0, 1.0, 1.0], 1e-9)
+        .expect_err("over-budget AST must be rejected");
+    assert!(err.contains("Validation Error"));
+}

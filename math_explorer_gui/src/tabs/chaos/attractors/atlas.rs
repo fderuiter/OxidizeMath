@@ -392,18 +392,24 @@ impl AttractorPlotter {
         for (key, val) in [(ev.x_key, ev.x_val), (ev.y_key, ev.y_val)] {
             match key {
                 "sigma" => {
-                    switched_mode |= self.mode != AttractorMode::Lorenz;
+                    switched_mode |= self.mode != AttractorMode::Lorenz
+                        || self.system_kind != super::AttractorSystemKind::Lorenz;
                     self.mode = AttractorMode::Lorenz;
+                    self.system_kind = super::AttractorSystemKind::Lorenz;
                     self.system.sigma = val.clamp(0.0, 50.0);
                 }
                 "rho" => {
-                    switched_mode |= self.mode != AttractorMode::Lorenz;
+                    switched_mode |= self.mode != AttractorMode::Lorenz
+                        || self.system_kind != super::AttractorSystemKind::Lorenz;
                     self.mode = AttractorMode::Lorenz;
+                    self.system_kind = super::AttractorSystemKind::Lorenz;
                     self.system.rho = val.clamp(0.0, 100.0);
                 }
                 "beta" => {
-                    switched_mode |= self.mode != AttractorMode::Lorenz;
+                    switched_mode |= self.mode != AttractorMode::Lorenz
+                        || self.system_kind != super::AttractorSystemKind::Lorenz;
                     self.mode = AttractorMode::Lorenz;
+                    self.system_kind = super::AttractorSystemKind::Lorenz;
                     self.system.beta = val.clamp(0.0, 10.0);
                 }
                 "param_0" => {

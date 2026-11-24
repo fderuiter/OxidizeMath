@@ -116,7 +116,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
             "advanced_linear_algebra",
             "pure_math",
         ],
-        "biology" | "biochemical" => &["biology", "computational_biology"],
+        "biology" | "biochemical" | "morphogenesis" => &["biology", "computational_biology"],
         "neuroscience" => &["biology", "computational_biology", "graph_parameters_rust"],
         "optics" => &["geometric_optics_and_caustics", "optics"],
         "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],

@@ -72,6 +72,29 @@ impl CompiledFlowJob {
         pos + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (dt / 6.0)
     }
 
+    /// Estimates the largest Lyapunov exponent via Wolf tangent renormalization.
+    #[must_use]
+    pub fn estimate_lyapunov(&self, initial: [f64; 3], dt: f64) -> f64 {
+        let d0 = 1e-8;
+        let mut x = Vector3::new(initial[0], initial[1], initial[2]);
+        let mut y = x + Vector3::new(d0, 0.0, 0.0);
+        let mut sum_ln = 0.0;
+        for _ in 0..40 {
+            for _ in 0..10 {
+                x = self.rk4_step(x, dt);
+                y = self.rk4_step(y, dt);
+            }
+            let diff = y - x;
+            let dist = diff.norm();
+            if !dist.is_finite() || dist <= 1e-20 {
+                return 0.0;
+            }
+            sum_ln += (dist / d0).ln();
+            y = x + diff * (d0 / dist);
+        }
+        sum_ln / (400.0 * dt)
+    }
+
     /// Creates a zero-allocation stack view overriding selected parameter slots.
     #[inline]
     #[must_use]

@@ -196,6 +196,130 @@ fn test_step_divergence_transitions_to_faulted_and_emits_diagnostic() {
         .any(|(msg, prio)| msg.contains("faulted") && prio == "polite"));
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+struct MockRingRunner {
+    ring: crate::framework::TimelineRingBuffer<usize>,
+    next_val: usize,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl SimulationRunner for MockRingRunner {
+    fn process_command(&mut self, cmd: SimCommand) {
+        if matches!(cmd, SimCommand::Reset) {
+            self.ring.clear();
+            self.next_val = 0;
+            self.ring.push(0);
+        }
+    }
+
+    fn step(&mut self) {
+        self.next_val += 1;
+        self.ring.push(self.next_val);
+    }
+
+    fn get_snapshot(&self) -> StateSnapshot {
+        StateSnapshot {
+            width: 1,
+            height: 1,
+            pixels: Arc::new(std::sync::RwLock::new(vec![eframe::egui::Color32::WHITE])),
+            custom_data: vec![self.next_val as f64, self.ring.len() as f64],
+            structured_data: None,
+            sonification: crate::audio::SonificationFrame::silent(),
+        }
+    }
+
+    fn get_steps_per_frame(&self) -> usize {
+        1
+    }
+
+    fn checkpoint_stride(&self) -> Option<usize> {
+        Some(1)
+    }
+
+    fn current_step(&self) -> usize {
+        self.ring.cursor()
+    }
+
+    fn capture_active_params(&self) -> Option<CheckpointParams> {
+        Some(CheckpointParams::scalars(&[1.0]))
+    }
+
+    fn capture_checkpoint(&self) -> Option<TimeTravelCheckpoint> {
+        Some(TimeTravelCheckpoint {
+            step: self.ring.cursor(),
+            rng: oxidize_core::rng::OxidizeRng::default(),
+            params: CheckpointParams::scalars(&[1.0]),
+            state: CheckpointPayload::scalars(&[self.next_val as f64]),
+        })
+    }
+
+    fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
+        if let Some(s) = checkpoint.state.as_scalars() {
+            if let Some(&v) = s.first() {
+                self.next_val = v as usize;
+            }
+        }
+        let _ = self.ring.seek(checkpoint.step);
+    }
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn test_step_back_and_seek_frame_pause_restore_and_truncate_on_resume() {
+    let mut ring = crate::framework::TimelineRingBuffer::with_capacity(32, 0);
+    ring.push(0);
+    let mut controller = SimulationController::new(MockRingRunner { ring, next_val: 0 });
+
+    assert!(controller.send_command(SimCommand::Step(5)).is_ok());
+    for _ in 0..400 {
+        thread::sleep(Duration::from_millis(5));
+        if controller.update().is_some() && controller.state() == SimWorkerState::Ready {
+            break;
+        }
+    }
+    assert_eq!(
+        controller.latest_snapshot().unwrap().custom_data,
+        vec![5.0, 6.0]
+    );
+
+    assert!(controller.send_command(SimCommand::StepBack(2)).is_ok());
+    for _ in 0..400 {
+        thread::sleep(Duration::from_millis(5));
+        if controller.update().is_some() && controller.state() == SimWorkerState::Ready {
+            break;
+        }
+    }
+    assert_eq!(
+        controller.latest_snapshot().unwrap().custom_data,
+        vec![3.0, 6.0]
+    );
+
+    assert!(controller.send_command(SimCommand::SeekStep(1)).is_ok());
+    for _ in 0..400 {
+        thread::sleep(Duration::from_millis(5));
+        if controller.update().is_some() && controller.state() == SimWorkerState::Ready {
+            break;
+        }
+    }
+    assert_eq!(
+        controller.latest_snapshot().unwrap().custom_data,
+        vec![1.0, 6.0]
+    );
+
+    // Stepping forward truncates frames 2..=5 and appends frame 2 -> len becomes 3.
+    assert!(controller.send_command(SimCommand::Step(1)).is_ok());
+    for _ in 0..400 {
+        thread::sleep(Duration::from_millis(5));
+        if controller.update().is_some() && controller.state() == SimWorkerState::Ready {
+            break;
+        }
+    }
+    assert_eq!(
+        controller.latest_snapshot().unwrap().custom_data,
+        vec![2.0, 3.0]
+    );
+}
+
 static COUNTING_INIT_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 struct CountingModel {

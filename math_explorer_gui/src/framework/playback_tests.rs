@@ -295,3 +295,113 @@ fn test_playback_transport_registers_frame_commands() {
         .iter()
         .any(|c| c.context == "Simulation Playback" && c.name == "Step Forward"));
 }
+
+#[test]
+fn test_non_opted_in_transport_disables_step_back_and_omits_scrubber() {
+    clear_test_announcements();
+    let ctx = egui::Context::default();
+    let mut base_id = egui::Id::NULL;
+    let mut default_action = None;
+    let _ = ctx.run(key_input(egui::Key::Comma), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            base_id = ui.make_persistent_id("legacy_sim");
+            default_action =
+                PlaybackTransport::in_thread("legacy_sim", "Legacy Sim", false).show(ui);
+        });
+    });
+    assert_eq!(default_action, None);
+    assert!(
+        !ctx.data(|d| d.get_temp::<egui::WidgetInfo>(base_id.with("step_back_button_info")))
+            .expect("step_back_button_info recorded")
+            .enabled
+    );
+    assert!(ctx
+        .data(|d| d.get_temp::<egui::WidgetInfo>(base_id.with("timeline_scrubber_info")))
+        .is_none());
+}
+
+#[test]
+fn test_opt_in_step_back_comma_shortcut_and_scrubber_metadata() {
+    use crate::async_sim::TimelineMetadata;
+    use egui_plot::commands::{CommandRegistryData, CommandTrigger};
+
+    clear_test_announcements();
+    let ctx = egui::Context::default();
+    let mut back_action = None;
+    let mut twin_id = egui::Id::NULL;
+    let meta = TimelineMetadata {
+        current_step: 42,
+        min_step: 0,
+        max_step: 119,
+        stride: 1,
+    };
+    let _ = ctx.run(key_input(egui::Key::Comma), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            twin_id = ui.make_persistent_id("twin_sim");
+            back_action = PlaybackTransport::from_worker_state(
+                "twin_sim",
+                "Attractor Plotter",
+                SimWorkerState::Ready,
+            )
+            .timeline(Some(meta))
+            .show(ui);
+        });
+    });
+    assert_eq!(back_action, Some(PlaybackAction::StepBack));
+    assert!(ctx
+        .data(|d| d.get_temp::<egui::WidgetInfo>(twin_id.with("step_back_button_info")))
+        .is_some_and(|info| info.enabled));
+    assert!(ctx
+        .data(|d| d.get_temp::<egui::WidgetInfo>(twin_id.with("timeline_scrubber_info")))
+        .is_some());
+
+    let cmds = ctx
+        .data(|d| d.get_temp::<CommandRegistryData>(egui::Id::new("CMD_REGISTRY")))
+        .unwrap_or_default()
+        .commands;
+    assert!(cmds.iter().any(|c| {
+        c.context == "Simulation Playback"
+            && c.name == "Step Back"
+            && c.trigger == CommandTrigger::Key(egui::Key::Comma)
+    }));
+    assert!(all_announcements().iter().any(|(msg, prio)| {
+        msg.contains("Stepping Attractor Plotter simulation backward to step 41")
+            && prio == "polite"
+    }));
+}
+
+#[test]
+fn test_comma_shortcut_suppressed_when_text_edit_focused() {
+    use crate::async_sim::TimelineMetadata;
+
+    let ctx = egui::Context::default();
+    let mut formula = String::from("1e-9 * cos(x0)");
+    let meta = Some(TimelineMetadata {
+        current_step: 10,
+        min_step: 0,
+        max_step: 25,
+        stride: 1,
+    });
+
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let _ = PlaybackTransport::in_thread("twin", "Attractor Plotter", false)
+                .timeline(meta)
+                .show(ui);
+            ui.add(egui::TextEdit::singleline(&mut formula))
+                .request_focus();
+        });
+    });
+
+    let mut action = None;
+    let _ = ctx.run(key_input(egui::Key::Comma), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            assert!(ctx.wants_keyboard_input());
+            action = PlaybackTransport::in_thread("twin", "Attractor Plotter", false)
+                .timeline(meta)
+                .show(ui);
+            let _ = ui.add(egui::TextEdit::singleline(&mut formula));
+        });
+    });
+    assert_eq!(action, None);
+}

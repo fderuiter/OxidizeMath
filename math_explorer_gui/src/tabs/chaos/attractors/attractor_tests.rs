@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::async_sim::SimulationRunner;
-use crate::framework::Camera3D;
+use crate::framework::{Camera3D, InteractiveTool};
 use eframe::egui;
 
 #[test]
@@ -319,15 +319,7 @@ fn test_attractor_poisoned_lock_recovery() {
     assert!(plotter.params.is_poisoned());
 
     // Runner reset, speed update, and step survive poisoned lock
-    let mut runner = AttractorRunner {
-        system: LorenzBuilder::new().build(LorenzState::new(1.0, 1.0, 1.0)),
-        params: Arc::clone(&plotter.params),
-        history: VecDeque::with_capacity(100),
-        step_count: 0,
-        execution_state: SolverExecutionState::Ready,
-        twin: None,
-        rng: oxidize_core::rng::OxidizeRng::default(),
-    };
+    let mut runner = AttractorRunner::from_params(Arc::clone(&plotter.params));
     runner.process_command(SimCommand::Reset);
     assert_eq!(runner.system.sigma, 14.0);
 

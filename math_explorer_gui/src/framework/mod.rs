@@ -116,6 +116,7 @@ pub(crate) mod theory_links;
 #[cfg(test)]
 mod theory_links_tests;
 mod theory_portal;
+pub mod timeline_buffer;
 pub mod trace_overlay;
 mod ui;
 mod url_share;
@@ -154,6 +155,7 @@ pub use spatial_brush::*;
 pub use state_bounds::*;
 pub use state_guard::*;
 pub use story_hud::*;
+pub use timeline_buffer::*;
 pub use trace_overlay::*;
 
 pub(super) use crate::accessibility::AccessibleHoverText;
