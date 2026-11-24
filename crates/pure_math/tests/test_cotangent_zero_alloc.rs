@@ -1,6 +1,5 @@
 //! Integration tests verifying zero-allocation hot-path stepping under `VerifiedAllocator`
 //! for `CotangentLaplacian` and `MeanCurvatureFlow` across 100 steps.
-#![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use nalgebra::Point3;
 use pure_math::pure_math::differential_geometry::CotangentLaplacian;
