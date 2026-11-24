@@ -1,6 +1,10 @@
 # Math Commons
 
-Standardized mathematical constants, spatial indexing, colormaps, and primitive geometry.
+![Maturity: Certified](https://img.shields.io/badge/maturity-Certified-2ea44f.svg)
+
+Standardized mathematical constants, spatial indexing, colormaps, zero-allocation curve solvers, and primitive geometry.
+
+> **Maturity Tier:** `Certified` — stack-allocated `FitModel` and `poi` solvers, non-vacuous `theory_verification!` contracts, `VerifiedAllocator` zero-heap-allocation proofs, and SemVer signature locks.
 
 ## 1. Overview & Architecture
 

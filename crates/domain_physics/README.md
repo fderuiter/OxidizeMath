@@ -1,6 +1,10 @@
 # Domain Physics
 
+![Maturity: Validated](https://img.shields.io/badge/maturity-Validated%20(Certified%20Quantum%20%2F%20Optics)-0969da.svg)
+
 Multi-scale physical simulation models from quantum states to astrophysical dynamics.
+
+> **Maturity Tier:** Crate `Validated` — `Certified` modules (`quantum`, `optics`, `astrophysics`, `fluid_dynamics`, `mri`, `medical`, `stat_mech`), `Validated` solvers (`chaos`, `high_energy`, `general_relativity`, `standard_model`), and `Experimental` prototypes (`nuclear`, `solid_state`).
 
 ## 1. Overview & Architecture
 

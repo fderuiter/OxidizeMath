@@ -50,4 +50,8 @@ impl TheoryDescribable for FavoritismTheory {
                 .to_string(),
         )
     }
+
+    fn maturity_tier(&self) -> scientific_metadata::theory::MaturityTier {
+        scientific_metadata::theory::MaturityTier::Experimental
+    }
 }

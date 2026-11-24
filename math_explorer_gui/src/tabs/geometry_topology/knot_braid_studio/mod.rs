@@ -380,6 +380,10 @@ impl scientific_metadata::theory::TheoryDescribable for KnotBraidStudioTool {
         "Kauffman (1987), State Models and the Jones Polynomial; Birman (1974), Braids, Links, and Mapping Class Groups".into()
     }
 
+    fn maturity_tier(&self) -> scientific_metadata::theory::MaturityTier {
+        scientific_metadata::theory::MaturityTier::Validated
+    }
+
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
         map.insert(

@@ -1,6 +1,10 @@
 # Domain Biology
 
+![Maturity: Validated](https://img.shields.io/badge/maturity-Validated%20(Certified%20Neuroscience%20%2F%20Morphogenesis)-0969da.svg)
+
 Computational biology models from molecular kinetics and neural firing to morphogenesis and population evolution.
+
+> **Maturity Tier:** Crate `Validated` — `Certified` excitable-membrane, enzyme-kinetics, and Turing-morphogenesis kernels (`neuroscience`, `kinetics`, `morphogenesis`) alongside `Validated` reaction-diffusion, Lenia, and evolutionary dynamics modules.
 
 ## 1. Overview & Architecture
 

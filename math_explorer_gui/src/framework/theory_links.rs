@@ -45,7 +45,7 @@ fn camel_or_space_to_snake(input: &str) -> String {
     out.trim_matches('_').to_string()
 }
 
-fn tool_module_tokens(tool_id: &str) -> Vec<String> {
+pub(crate) fn tool_module_tokens(tool_id: &str) -> Vec<String> {
     let snake = camel_or_space_to_snake(tool_id);
     let mut tokens = vec![tool_id.trim().to_ascii_lowercase(), snake.clone()];
     for suffix in ["_tool", "_widget", "_viewer", "_plotter", "_simulator"] {
@@ -57,6 +57,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
     }
     let explicit: &[&str] = match tool_id.trim() {
         "AttentionMapsTool" => &["attention_is_all_you_need_rust"],
+        "CalibrationWorkbenchTool" => &["clinical_trials_statistics", "self_calibration_paper"],
         "CeraTool" => &["cera_framework"],
         "Co2ProjectionsTool" => &["isosurface_extraction"],
         "TurbulenceTool" => &["generative_turbulence"],
@@ -95,7 +96,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
     tokens
 }
 
-fn domain_module_tokens(domain: &str) -> Vec<String> {
+pub(crate) fn domain_module_tokens(domain: &str) -> Vec<String> {
     let clean = domain.trim().to_ascii_lowercase();
     let mut tokens = Vec::new();
     if !clean.is_empty() {

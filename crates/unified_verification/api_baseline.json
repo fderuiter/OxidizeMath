@@ -632,6 +632,119 @@
       "signature": "pub fn softmax_row_wise (_ : & DMatrix < f64 >) -> DMatrix < f64 >"
     }
   ],
+  "crates/domain_ai/src/ai/calibration.rs": [
+    {
+      "signature": "pub fn evaluate_binary_classifier (_ : & DVector < f64 > , _ : & [bool] , _ : usize , _ : BinningStrategy ,) -> Result < BinaryClassifierCalibration , AIError >"
+    },
+    {
+      "signature": "pub fn fit_and_apply_platt (_ : & DVector < f64 > , _ : & [bool] , _ : & DVector < f64 > ,) -> Result < (PlattScaler , DVector < f64 >) , AIError >"
+    },
+    {
+      "signature": "pub fn fit_temperature_matrix (_ : & DMatrix < f64 > , _ : & [usize] ,) -> Result < TemperatureScaler , AIError >"
+    },
+    {
+      "signature": "pub struct BinaryClassifierCalibration"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: BinningStrategy"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: BrierDecomposition"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: CalibrationSummary"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: DEFAULT_LOG_LOSS_EPSILON"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: IsotonicCalibrator"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: PavaBlock"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: PlattConfig"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: PlattScaler"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: PrIntegration"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: PrPoint"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: ReliabilityBin"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: RocPoint"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: TemperatureScaler"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: binary_log_loss"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: brier_score"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: calibration_summary"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: dataset_gaussian_crps"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: ensemble_crps_sorted"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: expected_calibration_error"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: fit_pava_sorted_into"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: gaussian_crps"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: log_loss"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: maximum_calibration_error"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: multiclass_log_loss"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: murphy_decomposition"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: murphy_decomposition_binned"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: pr_auc"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: precision_recall_curve"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: predict_pava_blocks"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: reliability_curve"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: reliability_curve_uniform_into"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: roc_auc"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: roc_curve"
+    }
+  ],
   "crates/domain_ai/src/ai/deep_learning_theory/calculus.rs": [
     {
       "signature": "pub fn activation_backward < F > (_ : & Vector , _ : & Vector , _ : F) -> Vector where F : Fn (& Vector) -> Vector ,"
@@ -1463,7 +1576,16 @@
       "signature": "pub fn calculate_answer_entropy (_ : & [Response]) -> f64"
     },
     {
+      "signature": "pub fn fit_binary_temperature_scaling (_ : & [f64] , _ : & [bool] ,) -> Result < TemperatureScaler , AIError >"
+    },
+    {
+      "signature": "pub fn fit_multiclass_temperature_scaling (_ : & [f64] , _ : usize , _ : & [usize] ,) -> Result < TemperatureScaler , AIError >"
+    },
+    {
       "signature": "pub fn map_entropy_to_temperature (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: calibration :: TemperatureScaler"
     }
   ],
   "crates/domain_ai/src/ai/self_calibration/training.rs": [
@@ -2492,6 +2614,12 @@
   "crates/domain_applied/src/applied/clinical_trials/analysis.rs": [
     {
       "signature": "pub fn calculate_risk_metrics (_ : & ContingencyTable , _ : f64 ,) -> Result < RiskMetrics , ClinicalTrialError >"
+    },
+    {
+      "signature": "pub fn evaluate_prognostic_calibration (_ : & [f64] , _ : & [bool] , _ : usize ,) -> Result < PrognosticCalibrationMetrics , ClinicalTrialError >"
+    },
+    {
+      "signature": "pub struct PrognosticCalibrationMetrics"
     },
     {
       "signature": "pub struct RiskMetrics"
@@ -6415,6 +6543,9 @@
     },
     {
       "signature": "pub fn earth_movers_distance < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S1 > , _ : & Matrix < f32 , Dyn , Dyn , S2 > ,) -> f32"
+    },
+    {
+      "signature": "pub fn ensemble_crps_loss < S : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S > , _ : & [f32] ,) -> math_commons :: error :: MathResult < f64 >"
     },
     {
       "signature": "pub fn mse_loss < S1 : Storage < f32 , Dyn , Dyn > , S2 : Storage < f32 , Dyn , Dyn > > (_ : & Matrix < f32 , Dyn , Dyn , S1 > , _ : & Matrix < f32 , Dyn , Dyn , S2 > ,) -> f32"
@@ -13072,6 +13203,33 @@
       "signature": "pub use manifest :: VerificationCertificate"
     },
     {
+      "signature": "pub use maturity :: EXPECTED_WORKSPACE_CRATES"
+    },
+    {
+      "signature": "pub use maturity :: MaturityRegistry"
+    },
+    {
+      "signature": "pub use qualification :: MaturityEvidence"
+    },
+    {
+      "signature": "pub use qualification :: MaturityGateReport"
+    },
+    {
+      "signature": "pub use qualification :: VALIDATED_MIN_ASSERTION_DENSITY"
+    },
+    {
+      "signature": "pub use qualification :: discover_maturity_scan_files"
+    },
+    {
+      "signature": "pub use qualification :: evaluate_maturity_with_registry_and_cache"
+    },
+    {
+      "signature": "pub use qualification :: evaluate_workspace_maturity"
+    },
+    {
+      "signature": "pub use qualification :: evaluate_workspace_maturity_with_cache"
+    },
+    {
       "signature": "pub use runner :: WorkspaceAstMetrics"
     },
     {
@@ -13097,6 +13255,9 @@
     },
     {
       "signature": "pub use runner :: run_workspace_traceability_with_cache"
+    },
+    {
+      "signature": "pub use scientific_metadata :: theory :: MaturityTier"
     }
   ],
   "crates/oxidize_core/src/traceability/cache.rs": [
@@ -13154,6 +13315,70 @@
     },
     {
       "signature": "pub struct VerificationCertificate"
+    }
+  ],
+  "crates/oxidize_core/src/traceability/maturity.rs": [
+    {
+      "signature": "impl MaturityRegistry { pub fn crate_for_repo_path (_ : & str) -> Option < & str > }"
+    },
+    {
+      "signature": "impl MaturityRegistry { pub fn crate_tier (& self , _ : & str) -> Option < MaturityTier > }"
+    },
+    {
+      "signature": "impl MaturityRegistry { pub fn embedded () -> Self }"
+    },
+    {
+      "signature": "impl MaturityRegistry { pub fn load_or_embedded (_ : Option < & Path >) -> Self }"
+    },
+    {
+      "signature": "impl MaturityRegistry { pub fn module_tier (& self , _ : & str) -> Option < MaturityTier > }"
+    },
+    {
+      "signature": "impl MaturityRegistry { pub fn parse_toml_str (_ : & str) -> Self }"
+    },
+    {
+      "signature": "impl MaturityRegistry { pub fn path_owned_modules (& self , _ : & str) -> Vec < String > }"
+    },
+    {
+      "signature": "impl MaturityRegistry { pub fn tier_for_repo_path (& self , _ : & str) -> MaturityTier }"
+    },
+    {
+      "signature": "pub const EXPECTED_WORKSPACE_CRATES : & [& str]"
+    },
+    {
+      "signature": "pub struct MaturityRegistry"
+    }
+  ],
+  "crates/oxidize_core/src/traceability/qualification.rs": [
+    {
+      "signature": "impl MaturityEvidence { pub fn assertion_density (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MaturityEvidence { pub fn effective_funcs (& self) -> usize }"
+    },
+    {
+      "signature": "impl MaturityGateReport { pub fn passed (& self) -> bool }"
+    },
+    {
+      "signature": "pub const VALIDATED_MIN_ASSERTION_DENSITY : f64"
+    },
+    {
+      "signature": "pub fn discover_maturity_scan_files (_ : & Path) -> Vec < PathBuf >"
+    },
+    {
+      "signature": "pub fn evaluate_maturity_with_registry_and_cache (_ : & Path , _ : MaturityRegistry , _ : & mut AstCache ,) -> MaturityGateReport"
+    },
+    {
+      "signature": "pub fn evaluate_workspace_maturity (_ : & Path) -> MaturityGateReport"
+    },
+    {
+      "signature": "pub fn evaluate_workspace_maturity_with_cache (_ : & Path , _ : & mut AstCache ,) -> MaturityGateReport"
+    },
+    {
+      "signature": "pub struct MaturityEvidence"
+    },
+    {
+      "signature": "pub struct MaturityGateReport"
     }
   ],
   "crates/oxidize_core/src/traceability/runner.rs": [
@@ -13540,6 +13765,15 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use oxidize_core :: rng :: OxidizeRng } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use scientific_metadata :: theory :: MaturityTier } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use scientific_metadata :: theory :: ParameterConstraint } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use scientific_metadata :: theory :: TheoryDescribable } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use super :: error :: * } }"
@@ -18051,6 +18285,270 @@
       "signature": "pub struct BootstrapWorkspace"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/calibration/diagnostics.rs": [
+    {
+      "signature": "pub enum BinningStrategy"
+    },
+    {
+      "signature": "pub fn calibration_summary (_ : & [UnitInterval] , _ : & [bool] , _ : usize , _ : BinningStrategy ,) -> MathResult < CalibrationSummary >"
+    },
+    {
+      "signature": "pub fn expected_calibration_error (_ : & [UnitInterval] , _ : & [bool] , _ : usize , _ : BinningStrategy ,) -> MathResult < f64 >"
+    },
+    {
+      "signature": "pub fn maximum_calibration_error (_ : & [UnitInterval] , _ : & [bool] , _ : usize , _ : BinningStrategy ,) -> MathResult < f64 >"
+    },
+    {
+      "signature": "pub fn reliability_curve (_ : & [UnitInterval] , _ : & [bool] , _ : usize , _ : BinningStrategy ,) -> MathResult < Vec < ReliabilityBin > >"
+    },
+    {
+      "signature": "pub fn reliability_curve_uniform_into (_ : & [UnitInterval] , _ : & [bool] , _ : & mut [ReliabilityBin] ,) -> MathResult < usize >"
+    },
+    {
+      "signature": "pub struct CalibrationSummary"
+    },
+    {
+      "signature": "pub struct ReliabilityBin"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/calibration/isotonic.rs": [
+    {
+      "signature": "impl IsotonicCalibrator { pub fn blocks (& self) -> & [PavaBlock] }"
+    },
+    {
+      "signature": "impl IsotonicCalibrator { pub fn fit (_ : & [f64] , _ : & [bool]) -> MathResult < Self > }"
+    },
+    {
+      "signature": "impl IsotonicCalibrator { pub fn predict (& self , _ : f64) -> MathResult < UnitInterval > }"
+    },
+    {
+      "signature": "impl IsotonicCalibrator { pub fn predict_into (& self , _ : & [f64] , _ : & mut [UnitInterval]) -> MathResult < () > }"
+    },
+    {
+      "signature": "pub fn fit_pava_sorted_into (_ : & [f64] , _ : & [f64] , _ : Option < & [f64] > , _ : & mut [PavaBlock] ,) -> MathResult < usize >"
+    },
+    {
+      "signature": "pub fn predict_pava_blocks (_ : & [PavaBlock] , _ : f64) -> MathResult < UnitInterval >"
+    },
+    {
+      "signature": "pub struct IsotonicCalibrator"
+    },
+    {
+      "signature": "pub struct PavaBlock"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/calibration/mod.rs": [
+    {
+      "signature": "pub use diagnostics :: BinningStrategy"
+    },
+    {
+      "signature": "pub use diagnostics :: CalibrationSummary"
+    },
+    {
+      "signature": "pub use diagnostics :: ReliabilityBin"
+    },
+    {
+      "signature": "pub use diagnostics :: calibration_summary"
+    },
+    {
+      "signature": "pub use diagnostics :: expected_calibration_error"
+    },
+    {
+      "signature": "pub use diagnostics :: maximum_calibration_error"
+    },
+    {
+      "signature": "pub use diagnostics :: reliability_curve"
+    },
+    {
+      "signature": "pub use diagnostics :: reliability_curve_uniform_into"
+    },
+    {
+      "signature": "pub use ranking :: PrIntegration"
+    },
+    {
+      "signature": "pub use ranking :: PrPoint"
+    },
+    {
+      "signature": "pub use ranking :: RocPoint"
+    },
+    {
+      "signature": "pub use ranking :: pr_auc"
+    },
+    {
+      "signature": "pub use ranking :: precision_recall_curve"
+    },
+    {
+      "signature": "pub use ranking :: roc_auc"
+    },
+    {
+      "signature": "pub use ranking :: roc_curve"
+    },
+    {
+      "signature": "pub use recalibration :: IsotonicCalibrator"
+    },
+    {
+      "signature": "pub use recalibration :: PavaBlock"
+    },
+    {
+      "signature": "pub use recalibration :: PlattConfig"
+    },
+    {
+      "signature": "pub use recalibration :: PlattScaler"
+    },
+    {
+      "signature": "pub use recalibration :: TemperatureScaler"
+    },
+    {
+      "signature": "pub use recalibration :: fit_pava_sorted_into"
+    },
+    {
+      "signature": "pub use recalibration :: predict_pava_blocks"
+    },
+    {
+      "signature": "pub use scoring :: BrierDecomposition"
+    },
+    {
+      "signature": "pub use scoring :: DEFAULT_LOG_LOSS_EPSILON"
+    },
+    {
+      "signature": "pub use scoring :: binary_log_loss"
+    },
+    {
+      "signature": "pub use scoring :: brier_score"
+    },
+    {
+      "signature": "pub use scoring :: dataset_gaussian_crps"
+    },
+    {
+      "signature": "pub use scoring :: ensemble_crps_sorted"
+    },
+    {
+      "signature": "pub use scoring :: gaussian_crps"
+    },
+    {
+      "signature": "pub use scoring :: log_loss"
+    },
+    {
+      "signature": "pub use scoring :: multiclass_log_loss"
+    },
+    {
+      "signature": "pub use scoring :: murphy_decomposition"
+    },
+    {
+      "signature": "pub use scoring :: murphy_decomposition_binned"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/calibration/ranking.rs": [
+    {
+      "signature": "pub enum PrIntegration"
+    },
+    {
+      "signature": "pub fn pr_auc (_ : & [f64] , _ : & [bool] , _ : PrIntegration) -> MathResult < f64 >"
+    },
+    {
+      "signature": "pub fn precision_recall_curve (_ : & [f64] , _ : & [bool]) -> MathResult < Vec < PrPoint > >"
+    },
+    {
+      "signature": "pub fn roc_auc (_ : & [f64] , _ : & [bool]) -> MathResult < f64 >"
+    },
+    {
+      "signature": "pub fn roc_curve (_ : & [f64] , _ : & [bool]) -> MathResult < Vec < RocPoint > >"
+    },
+    {
+      "signature": "pub struct PrPoint"
+    },
+    {
+      "signature": "pub struct RocPoint"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/calibration/recalibration.rs": [
+    {
+      "signature": "impl PlattScaler { pub fn fit (_ : & [f64] , _ : & [bool]) -> MathResult < Self > }"
+    },
+    {
+      "signature": "impl PlattScaler { pub fn fit_with_config (_ : & [f64] , _ : & [bool] , _ : PlattConfig ,) -> MathResult < Self > }"
+    },
+    {
+      "signature": "impl PlattScaler { pub fn predict_into (& self , _ : & [f64] , _ : & mut [UnitInterval]) -> MathResult < () > }"
+    },
+    {
+      "signature": "impl PlattScaler { pub fn predict_proba (& self , _ : f64) -> MathResult < UnitInterval > }"
+    },
+    {
+      "signature": "impl TemperatureScaler { pub fn fit_binary (_ : & [f64] , _ : & [bool]) -> MathResult < Self > }"
+    },
+    {
+      "signature": "impl TemperatureScaler { pub fn fit_multiclass (_ : & [f64] , _ : usize , _ : & [usize] ,) -> MathResult < Self > }"
+    },
+    {
+      "signature": "impl TemperatureScaler { pub fn new (_ : PositiveFloat) -> Self }"
+    },
+    {
+      "signature": "impl TemperatureScaler { pub fn predict_binary (& self , _ : f64) -> MathResult < UnitInterval > }"
+    },
+    {
+      "signature": "impl TemperatureScaler { pub fn predict_multiclass_into (& self , _ : & [f64] , _ : & mut [UnitInterval] ,) -> MathResult < () > }"
+    },
+    {
+      "signature": "pub struct PlattConfig"
+    },
+    {
+      "signature": "pub struct PlattScaler"
+    },
+    {
+      "signature": "pub struct TemperatureScaler"
+    },
+    {
+      "signature": "pub use super :: isotonic :: IsotonicCalibrator"
+    },
+    {
+      "signature": "pub use super :: isotonic :: PavaBlock"
+    },
+    {
+      "signature": "pub use super :: isotonic :: fit_pava_sorted_into"
+    },
+    {
+      "signature": "pub use super :: isotonic :: predict_pava_blocks"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/calibration/scoring.rs": [
+    {
+      "signature": "impl BrierDecomposition { pub fn identity_residual (& self) -> f64 }"
+    },
+    {
+      "signature": "pub const DEFAULT_LOG_LOSS_EPSILON : f64"
+    },
+    {
+      "signature": "pub fn binary_log_loss (_ : & [UnitInterval] , _ : & [bool] , _ : f64) -> MathResult < f64 >"
+    },
+    {
+      "signature": "pub fn brier_score (_ : & [UnitInterval] , _ : & [bool]) -> MathResult < f64 >"
+    },
+    {
+      "signature": "pub fn dataset_gaussian_crps (_ : & [f64] , _ : & [PositiveFloat] , _ : & [f64] ,) -> MathResult < f64 >"
+    },
+    {
+      "signature": "pub fn ensemble_crps_sorted (_ : & [f64] , _ : f64) -> MathResult < f64 >"
+    },
+    {
+      "signature": "pub fn gaussian_crps (_ : f64 , _ : PositiveFloat , _ : f64) -> MathResult < f64 >"
+    },
+    {
+      "signature": "pub fn log_loss (_ : & [UnitInterval] , _ : & [bool]) -> MathResult < f64 >"
+    },
+    {
+      "signature": "pub fn multiclass_log_loss (_ : & [UnitInterval] , _ : usize , _ : & [usize] , _ : f64 ,) -> MathResult < f64 >"
+    },
+    {
+      "signature": "pub fn murphy_decomposition (_ : & [UnitInterval] , _ : & [bool] ,) -> MathResult < BrierDecomposition >"
+    },
+    {
+      "signature": "pub fn murphy_decomposition_binned (_ : & [UnitInterval] , _ : & [bool] , _ : usize , _ : BinningStrategy ,) -> MathResult < BrierDecomposition >"
+    },
+    {
+      "signature": "pub struct BrierDecomposition"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/copula/bivariate.rs": [
     {
       "signature": "pub const RHO_SPLIT : f64"
@@ -22087,6 +22585,24 @@
   ],
   "crates/scientific_metadata/src/theory.rs": [
     {
+      "signature": "impl MaturityTier { pub const fn as_str (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl MaturityTier { pub const fn badge_label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl MaturityTier { pub const fn screen_reader_label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl MaturityTier { pub const fn short_badge (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl MaturityTier { pub fn parse_label (_ : & str) -> Option < Self > }"
+    },
+    {
+      "signature": "pub enum MaturityTier"
+    },
+    {
       "signature": "pub struct ParameterConstraint"
     },
     {
@@ -22094,6 +22610,9 @@
     },
     {
       "signature": "pub trait TheoryDescribable { fn available_descriptions (& self) -> HashMap < String , String > }"
+    },
+    {
+      "signature": "pub trait TheoryDescribable { fn maturity_tier (& self) -> MaturityTier }"
     },
     {
       "signature": "pub trait TheoryDescribable { fn phonetic_description (& self) -> String }"
@@ -22584,6 +23103,15 @@
     },
     {
       "signature": "pub use pure_math :: pure_math :: differential_geometry :: CotangentLaplacian"
+    },
+    {
+      "signature": "pub use scientific_metadata :: theory :: MaturityTier"
+    },
+    {
+      "signature": "pub use scientific_metadata :: theory :: ParameterConstraint"
+    },
+    {
+      "signature": "pub use scientific_metadata :: theory :: TheoryDescribable"
     }
   ]
 }
