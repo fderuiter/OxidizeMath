@@ -65,6 +65,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         "EllipticCurvePlayground" | "WeierstrassPlaygroundTool" | "ModularInvariantsTool" => {
             &["modular_polynomials_review", "hurwitz_kronecker"]
         }
+        "HyperbolicDiskTool" | "HyperbolicBilliardsTool" => &["modular_polynomials_review"],
         "RadarGatingTool" => &["mmwave_radiotherapy_setup"],
         "OpticsWaveTool" => &["mmwave_radiotherapy_setup", "quantum_mechanics"],
         "CausticsRayBenchTool" | "FraunhoferDiffractionTool" => {
@@ -109,6 +110,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         ],
         "game_theory" => &["graph_parameters_rust"],
         "graph_theory" => &["dijkstra", "graph_parameters_rust"],
+        "hyperbolic_geometry" => &["modular_polynomials_review", "pure_math"],
         "analysis" | "geometry_topology" | "number_theory" => &["pure_math", "math_commons"],
         "financial_math" => &["clinical_trials_statistics"],
         "stochastic_processes" => &[

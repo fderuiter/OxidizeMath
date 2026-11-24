@@ -34,7 +34,7 @@ where
     facade_err
 }
 
-pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
+fn verify_core_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     vec![
         check_leaf(sample_math(), bus),
         check_leaf(error::FitError::SingularMatrix, bus),
@@ -50,6 +50,12 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         ),
         check_leaf(error::ParseError::UnexpectedEof, bus),
         check_leaf(error::ShaderEmitError::RecursionLimitExceeded(64), bus),
+    ]
+}
+
+pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
+    let mut leaves = verify_core_leaves(bus);
+    leaves.extend([
         check_leaf(error::AmbsError::ConversionError, bus),
         check_leaf(error::AnalysisError::ConvergenceError(1.0), bus),
         check_leaf(error::CopulaError::NotSymmetric, bus),
@@ -89,11 +95,16 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::PoissonError::InvalidRate { rate: -1.0 }, bus),
         check_leaf(error::QueueingError::InvalidServerCount { servers: 0 }, bus),
         check_leaf(error::StochasticError::InvalidReactionIndex(2), bus),
+        check_leaf(
+            error::Su11HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 },
+            bus,
+        ),
         check_leaf(error::TdaError::EmptyPointCloud, bus),
         check_leaf(error::TensorError::SingularMetric, bus),
         check_leaf(error::TransformError::EmptyInput, bus),
         check_leaf(error::ZipError::InvalidRate { value: 0.0 }, bus),
-    ]
+    ]);
+    leaves
 }
 
 pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
@@ -219,11 +230,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 61);
-    assert_eq!(*events.lock().unwrap(), 61);
+    assert_eq!(converted.len(), 62);
+    assert_eq!(*events.lock().unwrap(), 62);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 67);
+    assert_eq!(*events.lock().unwrap(), 68);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -320,6 +331,7 @@ pub fn verify_prelude_error_reexports() {
         p::PoissonError,
         p::QueueingError,
         p::StochasticError,
+        p::Su11HyperbolicError,
         p::TdaError,
         p::TensorError,
         p::TransformError,

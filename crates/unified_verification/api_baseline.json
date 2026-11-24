@@ -13302,6 +13302,9 @@
       "signature": "pub use crate :: pure_math :: analysis :: transforms :: TransformError"
     },
     {
+      "signature": "pub use crate :: pure_math :: differential_geometry :: hyperbolic :: Su11HyperbolicError"
+    },
+    {
       "signature": "pub use crate :: pure_math :: elliptic_curves :: EllipticCurveError"
     },
     {
@@ -13419,13 +13422,22 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: OuError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: PoissonError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: PureMathError as Error } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: PureMathError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: QueueingError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: StochasticError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: Su11HyperbolicError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: TdaError } }"
@@ -15640,6 +15652,337 @@
     },
     {
       "signature": "pub struct HeatEquationSolver < 'a , S : ParametricSurface >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/differential_geometry/hyperbolic/billiards.rs": [
+    {
+      "signature": "impl HyperbolicBilliardSystem { pub fn config (& self) -> HyperbolicBilliardConfig }"
+    },
+    {
+      "signature": "impl HyperbolicBilliardSystem { pub fn inradius_poincare (& self) -> f64 }"
+    },
+    {
+      "signature": "impl HyperbolicBilliardSystem { pub fn latest_sample (& self) -> LyapunovSample }"
+    },
+    {
+      "signature": "impl HyperbolicBilliardSystem { pub fn new (_ : HyperbolicBilliardConfig) -> Result < Self , Su11HyperbolicError > }"
+    },
+    {
+      "signature": "impl HyperbolicBilliardSystem { pub fn primary (& self) -> BilliardParticle }"
+    },
+    {
+      "signature": "impl HyperbolicBilliardSystem { pub fn primary_bounces (& self) -> u64 }"
+    },
+    {
+      "signature": "impl HyperbolicBilliardSystem { pub fn reconfigure (& mut self , _ : HyperbolicBilliardConfig ,) -> Result < () , Su11HyperbolicError > }"
+    },
+    {
+      "signature": "impl HyperbolicBilliardSystem { pub fn reset_particles (& mut self) }"
+    },
+    {
+      "signature": "impl HyperbolicBilliardSystem { pub fn sample_at (& self , _ : usize) -> Option < (Complex64 , Complex64 , LyapunovSample) > }"
+    },
+    {
+      "signature": "impl HyperbolicBilliardSystem { pub fn sample_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl HyperbolicBilliardSystem { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl HyperbolicBilliardSystem { pub fn twin (& self) -> BilliardParticle }"
+    },
+    {
+      "signature": "impl HyperbolicBilliardSystem { pub fn walls (& self) -> & [BilliardWall] }"
+    },
+    {
+      "signature": "impl HyperbolicBilliardSystem { pub fn with_history_capacity (_ : HyperbolicBilliardConfig , _ : usize ,) -> Result < Self , Su11HyperbolicError > }"
+    },
+    {
+      "signature": "pub fn circle_inversion (_ : Complex64 , _ : Complex64 , _ : f64) -> Complex64"
+    },
+    {
+      "signature": "pub struct BilliardParticle"
+    },
+    {
+      "signature": "pub struct BilliardWall"
+    },
+    {
+      "signature": "pub struct HyperbolicBilliardConfig"
+    },
+    {
+      "signature": "pub struct HyperbolicBilliardSystem"
+    },
+    {
+      "signature": "pub struct LyapunovSample"
+    }
+  ],
+  "crates/pure_math/src/pure_math/differential_geometry/hyperbolic/metrics.rs": [
+    {
+      "signature": "impl GeodesicArc { pub fn sample_into (& self , _ : HyperbolicModel , _ : & mut [Complex64]) -> usize }"
+    },
+    {
+      "signature": "impl GeodesicArc { pub fn through_points (_ : Complex64 , _ : Complex64) -> Self }"
+    },
+    {
+      "signature": "pub fn conformal_metric_factor (_ : Complex64) -> f64"
+    },
+    {
+      "signature": "pub fn gauss_bonnet_triangle (_ : Complex64 , _ : Complex64 , _ : Complex64) -> GaussBonnetSummary"
+    },
+    {
+      "signature": "pub fn gaussian_curvature () -> f64"
+    },
+    {
+      "signature": "pub fn geodesic_interior_angle (_ : Complex64 , _ : Complex64 , _ : Complex64) -> f64"
+    },
+    {
+      "signature": "pub fn intrinsic_gaussian_curvature (_ : Complex64) -> f64"
+    },
+    {
+      "signature": "pub fn klein_distance (_ : Complex64 , _ : Complex64) -> f64"
+    },
+    {
+      "signature": "pub fn poincare_distance (_ : Complex64 , _ : Complex64) -> f64"
+    },
+    {
+      "signature": "pub fn regular_polygon_gauss_bonnet_area (_ : usize , _ : usize) -> Result < f64 , Su11HyperbolicError >"
+    },
+    {
+      "signature": "pub struct GaussBonnetSummary"
+    },
+    {
+      "signature": "pub struct GeodesicArc"
+    }
+  ],
+  "crates/pure_math/src/pure_math/differential_geometry/hyperbolic/mobius.rs": [
+    {
+      "signature": "impl Su11Matrix { pub fn apply (& self , _ : Complex64) -> Complex64 }"
+    },
+    {
+      "signature": "impl Su11Matrix { pub fn apply_direction (& self , _ : Complex64 , _ : Complex64) -> Complex64 }"
+    },
+    {
+      "signature": "impl Su11Matrix { pub fn compose (& self , _ : & Self) -> Self }"
+    },
+    {
+      "signature": "impl Su11Matrix { pub fn determinant (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Su11Matrix { pub fn edge_half_turn (_ : Complex64) -> Self }"
+    },
+    {
+      "signature": "impl Su11Matrix { pub fn from_coeffs (_ : [f64 ; 4]) -> Result < Self , Su11HyperbolicError > }"
+    },
+    {
+      "signature": "impl Su11Matrix { pub fn from_unnormalized (_ : Complex64 , _ : Complex64) -> Self }"
+    },
+    {
+      "signature": "impl Su11Matrix { pub fn hyperbolic_pan (_ : Complex64) -> Self }"
+    },
+    {
+      "signature": "impl Su11Matrix { pub fn identity () -> Self }"
+    },
+    {
+      "signature": "impl Su11Matrix { pub fn inverse (& self) -> Self }"
+    },
+    {
+      "signature": "impl Su11Matrix { pub fn new (_ : Complex64 , _ : Complex64) -> Result < Self , Su11HyperbolicError > }"
+    },
+    {
+      "signature": "impl Su11Matrix { pub fn renormalize (& mut self) }"
+    },
+    {
+      "signature": "impl Su11Matrix { pub fn rotation (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl Su11Matrix { pub fn to_coeffs (& self) -> [f64 ; 4] }"
+    },
+    {
+      "signature": "impl Su11Matrix { pub fn translation_from_origin (_ : Complex64) -> Self }"
+    },
+    {
+      "signature": "impl Su11Matrix { pub fn translation_to_origin (_ : Complex64) -> Self }"
+    },
+    {
+      "signature": "pub fn clamp_to_disk (_ : Complex64) -> Complex64"
+    },
+    {
+      "signature": "pub fn klein_to_poincare (_ : Complex64) -> Complex64"
+    },
+    {
+      "signature": "pub fn poincare_to_klein (_ : Complex64) -> Complex64"
+    },
+    {
+      "signature": "pub fn poincare_to_upper_half_plane (_ : Complex64) -> Complex64"
+    },
+    {
+      "signature": "pub fn project_disk_point (_ : Complex64 , _ : HyperbolicModel) -> Complex64"
+    },
+    {
+      "signature": "pub fn unproject_disk_point (_ : Complex64 , _ : HyperbolicModel) -> Complex64"
+    },
+    {
+      "signature": "pub fn upper_half_plane_to_poincare (_ : Complex64) -> Result < Complex64 , Su11HyperbolicError >"
+    },
+    {
+      "signature": "pub struct Su11Matrix"
+    }
+  ],
+  "crates/pure_math/src/pure_math/differential_geometry/hyperbolic/mod.rs": [
+    {
+      "signature": "pub const HYPERBOLIC_CURVATURE : f64"
+    },
+    {
+      "signature": "pub const MAX_BILLIARD_HISTORY : usize"
+    },
+    {
+      "signature": "pub const MAX_POLYGON_SIDES : usize"
+    },
+    {
+      "signature": "pub const MAX_TILING_DEPTH : usize"
+    },
+    {
+      "signature": "pub const MAX_TILING_POLYGONS : usize"
+    },
+    {
+      "signature": "pub const POINCARE_DISK_RADIUS_MAX : f64"
+    },
+    {
+      "signature": "pub enum HyperbolicModel"
+    },
+    {
+      "signature": "pub enum Su11HyperbolicError"
+    },
+    {
+      "signature": "pub use billiards :: BilliardParticle"
+    },
+    {
+      "signature": "pub use billiards :: BilliardWall"
+    },
+    {
+      "signature": "pub use billiards :: HyperbolicBilliardConfig"
+    },
+    {
+      "signature": "pub use billiards :: HyperbolicBilliardSystem"
+    },
+    {
+      "signature": "pub use billiards :: LyapunovSample"
+    },
+    {
+      "signature": "pub use billiards :: circle_inversion"
+    },
+    {
+      "signature": "pub use metrics :: GaussBonnetSummary"
+    },
+    {
+      "signature": "pub use metrics :: GeodesicArc"
+    },
+    {
+      "signature": "pub use metrics :: conformal_metric_factor"
+    },
+    {
+      "signature": "pub use metrics :: gauss_bonnet_triangle"
+    },
+    {
+      "signature": "pub use metrics :: gaussian_curvature"
+    },
+    {
+      "signature": "pub use metrics :: geodesic_interior_angle"
+    },
+    {
+      "signature": "pub use metrics :: intrinsic_gaussian_curvature"
+    },
+    {
+      "signature": "pub use metrics :: klein_distance"
+    },
+    {
+      "signature": "pub use metrics :: poincare_distance"
+    },
+    {
+      "signature": "pub use metrics :: regular_polygon_gauss_bonnet_area"
+    },
+    {
+      "signature": "pub use mobius :: Su11Matrix"
+    },
+    {
+      "signature": "pub use mobius :: clamp_to_disk"
+    },
+    {
+      "signature": "pub use mobius :: klein_to_poincare"
+    },
+    {
+      "signature": "pub use mobius :: poincare_to_klein"
+    },
+    {
+      "signature": "pub use mobius :: poincare_to_upper_half_plane"
+    },
+    {
+      "signature": "pub use mobius :: project_disk_point"
+    },
+    {
+      "signature": "pub use mobius :: unproject_disk_point"
+    },
+    {
+      "signature": "pub use mobius :: upper_half_plane_to_poincare"
+    },
+    {
+      "signature": "pub use tiling :: HyperbolicPolygon"
+    },
+    {
+      "signature": "pub use tiling :: HyperbolicTilingBuffer"
+    },
+    {
+      "signature": "pub use tiling :: is_hyperbolic_schlafli"
+    },
+    {
+      "signature": "pub use tiling :: regular_polygon_inradius"
+    },
+    {
+      "signature": "pub use tiling :: regular_polygon_poincare_radius"
+    }
+  ],
+  "crates/pure_math/src/pure_math/differential_geometry/hyperbolic/tiling.rs": [
+    {
+      "signature": "impl HyperbolicPolygon { pub fn active_vertices (& self) -> & [Complex64] }"
+    },
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn apply_pan (& mut self , _ : Complex64) -> Su11Matrix }"
+    },
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn configure (& mut self , _ : usize , _ : usize , _ : usize ,) -> Result < usize , Su11HyperbolicError > }"
+    },
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn params (& self) -> (usize , usize , usize) }"
+    },
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn polygons (& self) -> & [HyperbolicPolygon] }"
+    },
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn reset_view (& mut self) }"
+    },
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn set_view_matrix (& mut self , _ : Su11Matrix) }"
+    },
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn view_matrix (& self) -> Su11Matrix }"
+    },
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn is_hyperbolic_schlafli (_ : usize , _ : usize) -> bool"
+    },
+    {
+      "signature": "pub fn regular_polygon_inradius (_ : usize , _ : usize) -> Result < f64 , Su11HyperbolicError >"
+    },
+    {
+      "signature": "pub fn regular_polygon_poincare_radius (_ : usize , _ : usize) -> Result < f64 , Su11HyperbolicError >"
+    },
+    {
+      "signature": "pub struct HyperbolicPolygon"
+    },
+    {
+      "signature": "pub struct HyperbolicTilingBuffer"
     }
   ],
   "crates/pure_math/src/pure_math/differential_geometry/mean_curvature_flow.rs": [
@@ -21509,6 +21852,9 @@
     },
     {
       "signature": "pub use pure_math :: error :: StochasticError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: Su11HyperbolicError"
     },
     {
       "signature": "pub use pure_math :: error :: TdaError"
