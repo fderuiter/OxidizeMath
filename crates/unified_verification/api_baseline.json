@@ -2946,6 +2946,9 @@
       "signature": "pub use thickness :: FlatSpatialGrid"
     },
     {
+      "signature": "pub use thickness :: SpatialGrid"
+    },
+    {
       "signature": "pub use thickness :: ThicknessWorkspace"
     },
     {
@@ -2955,10 +2958,19 @@
       "signature": "pub use thickness :: cortical_thickness_indexed"
     },
     {
+      "signature": "pub use thickness :: cortical_thickness_into"
+    },
+    {
       "signature": "pub use thickness :: cortical_thickness_map"
     },
     {
       "signature": "pub use thickness :: cortical_thickness_map_into"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_mesh"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_with_grid"
     }
   ],
   "crates/domain_applied/src/applied/freesurfer/segmentation.rs": [
@@ -3036,37 +3048,13 @@
   ],
   "crates/domain_applied/src/applied/freesurfer/thickness.rs": [
     {
-      "signature": "impl < 'a > FlatSpatialGrid < 'a > { pub const fn cell_size (& self) -> f64 }"
-    },
-    {
-      "signature": "impl < 'a > FlatSpatialGrid < 'a > { pub const fn is_empty (& self) -> bool }"
-    },
-    {
-      "signature": "impl < 'a > FlatSpatialGrid < 'a > { pub fn from_surface (_ : & Surface , _ : & 'a mut [usize] , _ : & 'a mut [[f64 ; 3]] ,) -> Option < Self > }"
-    },
-    {
-      "signature": "impl < 'a > FlatSpatialGrid < 'a > { pub fn required_offsets_len (_ : usize) -> usize }"
-    },
-    {
-      "signature": "impl < 'a > FlatSpatialGrid < 'a > { pub fn shortest_distance (& self , _ : & [f64 ; 3]) -> f64 }"
-    },
-    {
-      "signature": "impl ThicknessWorkspace { pub const fn new () -> Self }"
-    },
-    {
-      "signature": "impl ThicknessWorkspace { pub fn build_grids < 'a > (& 'a mut self , _ : & Surface , _ : & Surface ,) -> Option < (FlatSpatialGrid < 'a > , FlatSpatialGrid < 'a >) > }"
-    },
-    {
-      "signature": "impl ThicknessWorkspace { pub fn ensure_capacity (& mut self , _ : usize) }"
-    },
-    {
-      "signature": "impl ThicknessWorkspace { pub fn with_max_vertices (_ : usize) -> Self }"
-    },
-    {
       "signature": "pub fn cortical_thickness (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & Surface , _ : & Surface ,) -> f64"
     },
     {
       "signature": "pub fn cortical_thickness_indexed (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & FlatSpatialGrid < '_ > , _ : & FlatSpatialGrid < '_ > ,) -> f64"
+    },
+    {
+      "signature": "pub fn cortical_thickness_into (_ : & Surface , _ : & Surface , _ : & SpatialGrid , _ : & SpatialGrid , _ : & mut [f64] ,)"
     },
     {
       "signature": "pub fn cortical_thickness_map (_ : & Surface , _ : & Surface) -> Vec < f64 >"
@@ -3075,10 +3063,19 @@
       "signature": "pub fn cortical_thickness_map_into (_ : & Surface , _ : & Surface , _ : & mut ThicknessWorkspace , _ : & mut [f64] ,) -> usize"
     },
     {
-      "signature": "pub struct FlatSpatialGrid < 'a >"
+      "signature": "pub fn cortical_thickness_mesh (_ : & Surface , _ : & Surface) -> Vec < f64 >"
     },
     {
-      "signature": "pub struct ThicknessWorkspace"
+      "signature": "pub fn cortical_thickness_with_grid (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & SpatialGrid , _ : & SpatialGrid ,) -> f64"
+    },
+    {
+      "signature": "pub use thickness_grid :: FlatSpatialGrid"
+    },
+    {
+      "signature": "pub use thickness_grid :: SpatialGrid"
+    },
+    {
+      "signature": "pub use thickness_grid :: ThicknessWorkspace"
     }
   ],
   "crates/domain_applied/src/applied/game_theory/equilibrium.rs": [

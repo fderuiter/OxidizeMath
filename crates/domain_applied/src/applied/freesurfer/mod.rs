@@ -79,7 +79,7 @@
 //!
 //! - `segmentation`: Multi-label Bayesian classification and 6-connected Potts MRF ICM denoising.
 //! - `surface`: Triangulated deformable surface models driven by thin-plate and smoothed MRI energies.
-//! - `thickness`: Zero-allocation CSR `FlatSpatialGrid`, `ThicknessWorkspace`, and cortical thickness estimation.
+//! - `thickness`: Zero-allocation CSR `FlatSpatialGrid`, `SpatialGrid`, `ThicknessWorkspace`, and cortical thickness estimation.
 //! - `glm`: Ordinary least squares parameter estimation and contrast `t_statistic` evaluation.
 
 #[allow(missing_docs)]
@@ -102,8 +102,9 @@ pub use surface::{
     external_energy_volume, internal_energy,
 };
 pub use thickness::{
-    FlatSpatialGrid, ThicknessWorkspace, cortical_thickness, cortical_thickness_indexed,
-    cortical_thickness_map, cortical_thickness_map_into,
+    FlatSpatialGrid, SpatialGrid, ThicknessWorkspace, cortical_thickness,
+    cortical_thickness_indexed, cortical_thickness_into, cortical_thickness_map,
+    cortical_thickness_map_into, cortical_thickness_mesh, cortical_thickness_with_grid,
 };
 
 // [cite:freesurfer]
