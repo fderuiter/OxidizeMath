@@ -268,6 +268,9 @@ mod tests {
             reference_x: 0.22,
             ..DetectorConfig::default()
         };
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let (readout, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
             sample_detector_line_in_place(&field, &cfg, &mut profile)
         });
