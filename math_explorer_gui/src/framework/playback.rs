@@ -1,5 +1,7 @@
 //! Unified accessible playback transport widget for continuous and episodic simulations.
 
+#[path = "playback_audio.rs"]
+mod audio;
 #[path = "playback_helpers.rs"]
 mod helpers;
 
@@ -42,7 +44,10 @@ pub struct PlaybackTransport<'a> {
     step_back_label: &'a str,
     step_label: &'a str,
     reset_label: &'a str,
+    audio_settings: Option<&'a mut crate::audio::AcousticSettings>,
 }
+
+pub(crate) use audio::{scoped_audio_bridge_id, ScopedAudioUiBridge};
 
 impl<'a> PlaybackTransport<'a> {
     /// Constructs a transport bar synchronized with a background [`SimWorkerState`].
@@ -70,6 +75,7 @@ impl<'a> PlaybackTransport<'a> {
             step_back_label: "⏮ Step Back",
             step_label: "⏭ Step",
             reset_label: "↺ Reset",
+            audio_settings: None,
         }
     }
 
@@ -91,6 +97,7 @@ impl<'a> PlaybackTransport<'a> {
             step_back_label: "⏮ Step Back",
             step_label: "⏭ Step",
             reset_label: "↺ Reset",
+            audio_settings: None,
         }
     }
 
@@ -136,6 +143,14 @@ impl<'a> PlaybackTransport<'a> {
         self
     }
 
+    /// Attaches default-muted sonification controls (Mute/Unmute toggle and Gain slider)
+    /// bound to the tool's persisted [`crate::audio::AcousticSettings`].
+    #[must_use]
+    pub fn with_sonification(mut self, settings: &'a mut crate::audio::AcousticSettings) -> Self {
+        self.audio_settings = Some(settings);
+        self
+    }
+
     /// Controls whether the `Space` shortcut toggles playback (e.g. `false` when a focused canvas consumes `Space`).
     #[must_use]
     pub fn allow_space_shortcut(mut self, allow: bool) -> Self {
@@ -151,7 +166,7 @@ impl<'a> PlaybackTransport<'a> {
     }
 
     /// Renders the transport bar (and timeline scrubber if opted in) and returns any triggered [`PlaybackAction`].
-    pub fn show(self, ui: &mut egui::Ui) -> Option<PlaybackAction> {
+    pub fn show(mut self, ui: &mut egui::Ui) -> Option<PlaybackAction> {
         let base_id = ui.make_persistent_id(self.id_salt);
         let min_size = helpers::button_min_size(ui.ctx());
         let ui_enabled = ui.is_enabled();
@@ -186,6 +201,9 @@ impl<'a> PlaybackTransport<'a> {
         }
 
         if let Some(triggered) = action {
+            if triggered == PlaybackAction::Pause {
+                audio::notify_pause_triggered(ui.ctx());
+            }
             self.announce_action(ui.ctx(), base_id, ui_enabled, triggered, should_announce);
             ui.ctx().request_repaint();
         }
@@ -194,13 +212,19 @@ impl<'a> PlaybackTransport<'a> {
     }
 
     fn render_button_row(
-        &self,
+        &mut self,
         ui: &mut egui::Ui,
         base_id: egui::Id,
         min_size: egui::Vec2,
         ui_enabled: bool,
     ) -> Option<PlaybackAction> {
         let mut action = None;
+        let labels = (self.step_back_label, self.step_label, self.reset_label);
+        let flags = (
+            ui_enabled && self.can_step_back(),
+            ui_enabled && self.can_step,
+            ui_enabled && self.can_reset,
+        );
         ui.horizontal_wrapped(|ui| {
             if self.render_toggle_button(ui, base_id, min_size) {
                 action = Some(if self.is_playing {
@@ -209,47 +233,25 @@ impl<'a> PlaybackTransport<'a> {
                     PlaybackAction::Play
                 });
             }
-            let step_back_a11y = format!(
-                "Step {} simulation backward one step (Comma)",
-                self.tool_name
-            );
-            if helpers::render_action_button(
+            if let Some(aux) = helpers::render_step_and_reset_buttons(
                 ui,
-                base_id.with("step_back_button_info"),
-                self.step_back_label,
-                &step_back_a11y,
-                ui_enabled && self.can_step_back(),
+                base_id,
+                self.tool_name,
+                labels,
+                flags,
                 min_size,
-            ) && action.is_none()
-            {
-                action = Some(PlaybackAction::StepBack);
+            ) {
+                action.get_or_insert(aux);
             }
-            let step_a11y = format!(
-                "Step {} simulation forward one step (Period)",
-                self.tool_name
-            );
-            if helpers::render_action_button(
-                ui,
-                base_id.with("step_button_info"),
-                self.step_label,
-                &step_a11y,
-                ui_enabled && self.can_step,
-                min_size,
-            ) && action.is_none()
-            {
-                action = Some(PlaybackAction::Step);
-            }
-            let reset_a11y = format!("Reset {} simulation", self.tool_name);
-            if helpers::render_action_button(
-                ui,
-                base_id.with("reset_button_info"),
-                self.reset_label,
-                &reset_a11y,
-                ui_enabled && self.can_reset,
-                min_size,
-            ) && action.is_none()
-            {
-                action = Some(PlaybackAction::Reset);
+            if let Some(settings) = self.audio_settings.take() {
+                audio::render_audio_controls(
+                    ui,
+                    base_id,
+                    self.tool_name,
+                    ui_enabled,
+                    min_size,
+                    settings,
+                );
             }
         });
         action
@@ -294,7 +296,6 @@ impl<'a> PlaybackTransport<'a> {
         let changed = resp.accessible_hover_text(&a11y_label).changed();
         (changed && step_val != meta.current_step).then_some(PlaybackAction::ScrubTo(step_val))
     }
-
     fn is_action_applicable(&self, action: PlaybackAction) -> bool {
         match action {
             PlaybackAction::Play => self.can_toggle && !self.is_playing,
