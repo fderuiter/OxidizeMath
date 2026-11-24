@@ -105,6 +105,7 @@ impl_error_from!(@cfg "pure_math":
     MarketPricingError => MarketPricing,
     MarkovError => Markov,
     MatchModelError => MatchModel,
+    MonteCarloError => MonteCarlo,
     NumberTheoryError => NumberTheory,
     OptimizationError => Optimization,
     OuError => Ou,

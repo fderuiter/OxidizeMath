@@ -342,6 +342,19 @@ impl BifurcationDiagram {
                         .radius(2.2_f32)
                         .color(palette.series_color(2)),
                 );
+                if self.orbit_step_count > 0
+                    && self.orbit_x.is_finite()
+                    && self.orbit_x.abs() <= CUSTOM_ESCAPE_GUARD
+                {
+                    plot_ui.points(
+                        Points::new(
+                            "Active Step",
+                            vec![[self.orbit_step_count as f64, self.orbit_x]],
+                        )
+                        .radius(4.5_f32)
+                        .color(palette.accent),
+                    );
+                }
             });
     }
 }
