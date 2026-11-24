@@ -1,8 +1,8 @@
 //! Zero-allocation upwind solver for the McKendrick-von Foerster age-structured PDE.
 
-use super::death_rate::{
-    CannibalismKernel, advect_characteristic_step, sanitize_density, trapezoidal_quadrature,
-};
+use super::death_rate::{CannibalismKernel, sanitize_density, trapezoidal_quadrature};
+use engine_pde::StencilOperators;
+use math_commons::math_kernel::types::StepSize;
 
 /// Evaluates the scalar local reaction rate $-\mu n$ of the McKendrick-von Foerster equation.
 #[verified_engine::verified]
@@ -36,6 +36,7 @@ pub struct McKendrickSolver {
     next_density: Vec<f64>,
     mortality: Vec<f64>,
     da: f64,
+    ops: StencilOperators,
     time: f64,
     last_birth_rate: f64,
     last_cannibal_load: f64,
@@ -52,6 +53,7 @@ impl McKendrickSolver {
             10.0
         };
         let da = safe_max / (count - 1) as f64;
+        let ops = StencilOperators::new(StepSize(da));
         let ages: Vec<f64> = (0..count).map(|i| i as f64 * da).collect();
         Self {
             ages,
@@ -59,6 +61,7 @@ impl McKendrickSolver {
             next_density: vec![0.0; count],
             mortality: vec![0.0; count],
             da,
+            ops,
             time: 0.0,
             last_birth_rate: 0.0,
             last_cannibal_load: 0.0,
@@ -267,12 +270,11 @@ impl McKendrickSolver {
             Some(val) => sanitize_density(val),
             None => self.last_birth_rate,
         };
-        advect_characteristic_step(
+        self.ops.step_characteristic_upwind_1d(
             &self.density,
             &self.mortality,
             b_t,
             sub_dt,
-            self.da,
             &mut self.next_density,
         );
         core::mem::swap(&mut self.density, &mut self.next_density);

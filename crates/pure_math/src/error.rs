@@ -112,15 +112,15 @@ pub enum KellyError {
     /// Invalid stake or portfolio weight (must be finite and strictly positive).
     #[error("Invalid stake or weight: {value} (must be finite and > 0)")]
     InvalidStake {
-        /// The invalid stake or weight value.
+        /// Rejected stake or portfolio weight value.
         value: f64,
     },
     /// Invalid drawdown floor, target barrier, or confidence level.
     #[error("Invalid barrier configuration: floor={floor}, initial_wealth={initial_wealth}")]
     InvalidBarrier {
-        /// The requested floor, target barrier, or confidence bound.
+        /// Configured wealth floor or barrier threshold.
         floor: f64,
-        /// Reference initial wealth or upper bound.
+        /// Initial bankroll wealth.
         initial_wealth: f64,
     },
     /// Empty or insufficient bet ledger for statistical estimation.
@@ -142,8 +142,49 @@ pub enum KellyError {
     /// Root-finding or adjustment-coefficient solver failed to bracket or converge.
     #[error("Solvency root solver failed to converge: {reason}")]
     ConvergenceFailed {
-        /// Static description of the bracketing or convergence failure.
+        /// Static diagnostic describing why convergence failed.
         reason: &'static str,
+    },
+    /// Outcome probabilities for a complete multi-state wager do not sum to 1.0.
+    #[error("Invalid probability distribution: sum={sum} (must equal 1.0)")]
+    InvalidProbabilityDistribution {
+        /// Observed sum of state probabilities.
+        sum: f64,
+    },
+    /// Mutually exclusive market outcome probabilities exceed 1.0.
+    #[error("Invalid mutually exclusive market probabilities: sum={sum} (must be <= 1.0)")]
+    InvalidMarketProbabilitySum {
+        /// Observed sum of market outcome probabilities.
+        sum: f64,
+    },
+    /// Empty market or simultaneous slate provided.
+    #[error("Portfolio or market must contain at least one wager")]
+    EmptyPortfolio,
+    /// Market or simultaneous slate exceeds preallocated scratch capacity.
+    #[error("Portfolio size {count} exceeds maximum supported capacity {max}")]
+    PortfolioTooLarge {
+        /// Requested portfolio wager or outcome count.
+        count: usize,
+        /// Maximum supported preallocated capacity.
+        max: usize,
+    },
+    /// Invalid Busseti-Ryu-Boyd drawdown floor `alpha` or risk tolerance `beta`.
+    #[error(
+        "Invalid drawdown bounds: alpha={alpha}, beta={beta} (both must lie strictly in (0, 1))"
+    )]
+    InvalidDrawdownBounds {
+        /// Drawdown fraction floor `alpha`.
+        alpha: f64,
+        /// Maximum tolerated drawdown probability `beta`.
+        beta: f64,
+    },
+    /// Numerical root or convex Kelly solver failed to reach target residual within iteration cap.
+    #[error("Kelly solver failed to converge after {iterations} iterations (residual={residual})")]
+    SolverConvergenceFailed {
+        /// Iterations executed before stopping.
+        iterations: usize,
+        /// Final KKT or root residual magnitude.
+        residual: f64,
     },
 }
 
@@ -333,6 +374,7 @@ pub use crate::pure_math::{
     graph_theory::GraphTheoryError,
     hyperbolic::HyperbolicError,
     number_theory::ambs::AmbsError,
+    statistics::monte_carlo::MonteCarloError,
     tensor::types::TensorError,
 };
 pub use sports::{EloError, MatchModelError};

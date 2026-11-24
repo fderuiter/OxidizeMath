@@ -71,6 +71,50 @@ fn test_potts_mrf_denoises_heavy_t1_noise() {
 }
 
 #[test]
+fn test_evaluate_cohort_glm_preserves_well_conditioned_contrasts() {
+    use super::phantom::evaluate_cohort_glm;
+    use math_explorer::applied::freesurfer::glm::{estimate_beta, t_statistic};
+    use math_explorer::nalgebra::{DMatrix, DVector};
+
+    let thickness = [2.8_f64, 2.5, 3.1, 2.2];
+    let weights = [0.2_f64, 0.8, 0.5, 1.0];
+    let atrophy_effect = 0.45_f64;
+    let (t_map, peak_abs, warning) =
+        evaluate_cohort_glm(&thickness, &weights, atrophy_effect, false);
+    assert!(warning.is_none());
+    assert_eq!(t_map.len(), thickness.len());
+    assert!(peak_abs > 0.0);
+
+    let ages = [-1.2_f64, -0.4, 0.3, 1.1, -0.9, -0.2, 0.5, 1.0];
+    let subj_jitter = [-0.09_f64, 0.06, -0.04, 0.07, -0.08, 0.05, 0.09, -0.06];
+    let mut x_rows = Vec::with_capacity(24);
+    for (s, &age) in ages.iter().enumerate() {
+        let is_patient = if s >= 4 { 1.0 } else { 0.0 };
+        x_rows.extend_from_slice(&[1.0, is_patient, age]);
+    }
+    let x = DMatrix::from_row_slice(8, 3, &x_rows);
+    let contrast = DVector::from_vec(vec![0.0, -1.0, 0.0]);
+    for (idx, (&base_t, &w)) in thickness.iter().zip(&weights).enumerate() {
+        let phase = ((idx % 7) as f64 - 3.0) * 0.012;
+        let y = DVector::from_fn(8, |s, _| {
+            let group_loss = if s >= 4 { atrophy_effect * w } else { 0.0 };
+            (base_t - group_loss - 0.06 * ages[s] + subj_jitter[s] + phase * (s as f64 - 3.5))
+                .max(0.5)
+        });
+        let beta = estimate_beta(&x, &y).unwrap();
+        let sigma2 = ((&y - &x * &beta).norm_squared() / 5.0).max(1e-12);
+        let expected_t = t_statistic(&contrast, &beta, &x, sigma2).unwrap();
+        assert_eq!(t_map[idx], expected_t);
+
+        let xtx_inv = (x.transpose() * &x).try_inverse().unwrap();
+        let beta_ne = &xtx_inv * (x.transpose() * &y);
+        let var_ne = sigma2 * contrast.dot(&(&xtx_inv * &contrast));
+        let ne_t = contrast.dot(&beta_ne) / var_ne.sqrt();
+        assert!((t_map[idx] - ne_t).abs() < 1e-11);
+    }
+}
+
+#[test]
 fn test_singular_collinear_glm_renders_warning_banner_without_panic() {
     let mut tool = CorticalMorphometryTool {
         overlay_mode: CorticalOverlayMode::GlmTStatistic,

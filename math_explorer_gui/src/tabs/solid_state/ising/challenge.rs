@@ -156,6 +156,9 @@ impl IsingChallengeWorkspace {
 
 impl IsingModelTool {
     pub(crate) fn enforce_ising_challenge_locks(&mut self) {
+        if self.active_challenge.is_some() {
+            self.detach_shared_csr_graph(false);
+        }
         match self.active_challenge {
             Some(CHALLENGE_ISING_DROPLET_NUCLEATION) => {
                 self.mode = IsingInteractionMode::Ferromagnetic;

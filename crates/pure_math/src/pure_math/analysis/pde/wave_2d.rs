@@ -31,7 +31,7 @@ use std::f64::consts::PI;
 
 use math_commons::math_kernel::types::{StepSize, flatten_2d_index};
 
-use super::fused_stepper::StencilOperators;
+use super::fused_stepper::{BoundaryCondition, StencilOperators};
 
 /// Configuration enums, parameter structs, and analytic reference formulas.
 pub mod config;
@@ -342,23 +342,21 @@ impl Wave2DSolver {
     }
 
     #[inline]
-    fn eval_biharmonic_at(&self, x: usize, y: usize, idx: usize, boundary: BoundaryMode2D) -> f64 {
-        let w = self.width;
-        let h = self.height;
-        let on_edge = x == 0 || x == w - 1 || y == 0 || y == h - 1;
-        if on_edge && boundary != BoundaryMode2D::Neumann {
-            return 0.0;
-        }
-        let xl = if x > 0 { x - 1 } else { 1 };
-        let xr = if x + 1 < w { x + 1 } else { w - 2 };
-        let yu = if y > 0 { y - 1 } else { 1 };
-        let yd = if y + 1 < h { y + 1 } else { h - 2 };
-        self.ops.central_diff_2nd_2d(
-            self.laplacian_buf[idx],
-            self.laplacian_buf[flatten_2d_index(xl, y, w)],
-            self.laplacian_buf[flatten_2d_index(xr, y, w)],
-            self.laplacian_buf[flatten_2d_index(x, yu, w)],
-            self.laplacian_buf[flatten_2d_index(x, yd, w)],
+    #[verified_engine::verified]
+    fn eval_biharmonic_at(&self, x: usize, y: usize, _idx: usize, boundary: BoundaryMode2D) -> f64 {
+        let bc = match boundary {
+            BoundaryMode2D::Neumann => BoundaryCondition::SymmetricNeumann,
+            BoundaryMode2D::Dirichlet | BoundaryMode2D::Clamped | BoundaryMode2D::Sponge => {
+                BoundaryCondition::Dirichlet(0.0)
+            }
+        };
+        self.ops.eval_biharmonic_2d_from_laplacian(
+            &self.laplacian_buf,
+            self.width,
+            self.height,
+            x,
+            y,
+            bc,
         )
     }
 

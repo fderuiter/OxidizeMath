@@ -99,3 +99,117 @@ fn test_prisoners_dilemma_mean_fitness_decline_and_stag_hunt() {
     tool.sync_and_eval_symbolic_payoffs();
     assert!(tool.symbolic_error.is_none());
 }
+
+fn assert_replicator_payload_rejected(
+    framework: &mut crate::framework::SimulationFramework,
+    bad_cfg: &serde_json::Value,
+    baseline: &str,
+) {
+    use crate::presets::{serialize_compact_preset_envelope, PresetDialogState};
+    use federated_registry::Severity;
+    use std::sync::mpsc::channel;
+
+    let raw = bad_cfg.to_string();
+    assert!(framework
+        .active_tool
+        .as_mut()
+        .unwrap()
+        .try_load_state(&raw)
+        .is_err());
+    assert_eq!(
+        framework
+            .active_tool
+            .as_ref()
+            .unwrap()
+            .save_state()
+            .as_deref(),
+        Some(baseline)
+    );
+
+    let env = serialize_compact_preset_envelope("Replicator Dynamics", "game_theory", bad_cfg)
+        .expect("envelope");
+    let mut dialog = PresetDialogState::default();
+    let (tx, rx) = channel();
+    dialog.import_rx = Some(rx);
+    tx.send(Ok(("bad_replicator.json".to_string(), env.clone())))
+        .unwrap();
+    let loaded = dialog.poll_pending_import(|js| {
+        framework
+            .active_tool
+            .as_mut()
+            .unwrap()
+            .import_preset_json(js)
+    });
+    assert!(!loaded);
+    assert!(dialog.toast_error.is_some());
+    let events = crate::telemetry::poll_app_telemetry();
+    assert!(events
+        .iter()
+        .any(|e| e.source == "PresetSerialization" && e.severity == Severity::Warning));
+
+    assert!(framework
+        .import_url_preset_json(Some("ReplicatorDynamicsTool"), Some(&env))
+        .is_err());
+    assert_eq!(
+        framework
+            .active_tool
+            .as_ref()
+            .unwrap()
+            .save_state()
+            .as_deref(),
+        Some(baseline)
+    );
+}
+
+#[test]
+fn test_replicator_loader_and_url_preset_reject_invalid_configs_without_mutating_state() {
+    use crate::framework::SimulationFramework;
+
+    let _ = crate::telemetry::poll_app_telemetry();
+    let mut framework = SimulationFramework::new("game_theory");
+    assert!(framework.select_tool_by_name("ReplicatorDynamicsTool"));
+    let baseline = framework
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .save_state()
+        .unwrap();
+
+    for bad_cfg in [
+        serde_json::json!({
+            "payoff_matrix": [[-1.0, 2.0], [0.0, 1.0]],
+            "initial_population": [0.5, 0.5],
+            "time_horizon": 20.0,
+            "dt": 0.0,
+            "strategy_names": ["Hawk", "Dove"]
+        }),
+        serde_json::json!({
+            "payoff_matrix": [[-1.0, 2.0], [0.0, 1.0]],
+            "initial_population": [0.5, 0.5],
+            "time_horizon": 5000.0,
+            "dt": 0.00001,
+            "strategy_names": ["Hawk", "Dove"]
+        }),
+        serde_json::json!({
+            "payoff_matrix": [[-1.0, 999999.0], [0.0, 1.0]],
+            "initial_population": [0.5, 0.5],
+            "time_horizon": 20.0,
+            "dt": 0.05,
+            "strategy_names": ["Hawk", "Dove"]
+        }),
+        serde_json::json!({
+            "payoff_matrix": [[-1.0, 2.0], [0.0, 1.0]],
+            "initial_population": [0.0, 0.0],
+            "time_horizon": 20.0,
+            "dt": 0.05,
+            "strategy_names": ["Hawk", "Dove"]
+        }),
+    ] {
+        assert_replicator_payload_rejected(&mut framework, &bad_cfg, &baseline);
+    }
+    let ds = framework.active_tool.as_ref().unwrap().export_datasets();
+    let opts = egui_plot::export::ExportOptions::default();
+    if let Ok(png) = egui_plot::export::export_custom_png(&ds, &opts) {
+        let _ = std::fs::write("/tmp/replicator_bounded_trajectory.png", png);
+    }
+}

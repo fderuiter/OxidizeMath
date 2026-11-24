@@ -95,39 +95,12 @@ impl<R: Rng> GillespieSolver<R> {
         self.buffer.clear();
         system.propensities(state, &mut self.buffer);
 
-        let rates = &self.buffer;
-
-        let total_rate: f64 = rates.iter().sum();
-
-        if total_rate <= 0.0 {
+        let Some((tau, reaction_index)) =
+            engine_diffeq::ssa_sample_event(&self.buffer, &mut self.rng)
+        else {
             return Ok(f64::INFINITY);
-        }
+        };
 
-        // 1. Determine time step tau
-        // r1 in (0, 1]
-        let r1: f64 = self.rng.r#gen();
-        let r1 = if r1 <= 0.0 { f64::MIN_POSITIVE } else { r1 };
-        let tau = -r1.ln() / total_rate;
-
-        // 2. Determine which reaction mu occurred
-        let r2: f64 = self.rng.r#gen();
-        let threshold = r2 * total_rate;
-        let mut cumulative = 0.0;
-        let mut reaction_index = 0;
-
-        for (i, &rate) in rates.iter().enumerate() {
-            cumulative += rate;
-            if cumulative >= threshold {
-                reaction_index = i;
-                break;
-            }
-        }
-        // Fallback for floating point errors
-        if cumulative < threshold {
-            reaction_index = rates.len().saturating_sub(1);
-        }
-
-        // 3. Update state
         system.react(state, reaction_index)?;
 
         Ok(tau)
