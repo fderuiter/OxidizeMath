@@ -472,7 +472,10 @@ pub(crate) fn render_portal_links_for_framework(
 
     ui.add_space(4.0);
     for paper in &paper_links {
-        let stem = paper.paper_name.trim_end_matches(".tex");
+        let stem = paper
+            .paper_name
+            .strip_suffix(".tex")
+            .unwrap_or(&paper.paper_name);
         let pdf_label = format!("📄 View PDF ({stem}.pdf)");
         render_paper_links(
             ui,
