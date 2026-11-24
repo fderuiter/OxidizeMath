@@ -236,6 +236,7 @@ fn test_morphogenesis_tool_state_envelope_roundtrip() {
         mask_rle: Vec::new(),
         atlas_visible: false,
         atlas_axes: default_morpho_atlas_axes(),
+        periodic_boundary: false,
     };
 
     let json = serialize_preset_envelope("Stripes Test", "biology", &config).unwrap();

@@ -40,17 +40,32 @@ pub fn render_primitives_image_with_bounds(
     Ok(egui::ColorImage::new([width, height], pixels))
 }
 
-/// Scales `source` onto a target `width x height` canvas preserving aspect ratio over `options` background.
+/// Scales `source` onto a target `width x height` canvas preserving aspect ratio over `options` background
+/// (or edge-to-edge without border padding when `options.seamless_tile` is `true`).
 pub fn scale_color_image(
     source: &egui::ColorImage,
     width: usize,
     height: usize,
     options: &ExportOptions,
 ) -> egui::ColorImage {
-    let bg = background_pixel(options);
-    let mut pixels = vec![bg; width * height];
     let src_w = source.width().max(1);
     let src_h = source.height().max(1);
+    if options.seamless_tile {
+        if (width, height) == (src_w, src_h) && source.pixels.len() == src_w * src_h {
+            return source.clone();
+        }
+        let mut pixels = vec![background_pixel(options); width * height];
+        blit_image(
+            &mut pixels,
+            width,
+            height,
+            source,
+            (0.0, 0.0, width as f64, height as f64),
+        );
+        return egui::ColorImage::new([width, height], pixels);
+    }
+    let bg = background_pixel(options);
+    let mut pixels = vec![bg; width * height];
     let padding = (16.0 * options.scale as f64).clamp(0.0, (width.min(height) as f64) * 0.1);
     let avail_w = (width as f64 - 2.0 * padding).max(1.0);
     let avail_h = (height as f64 - 2.0 * padding).max(1.0);
@@ -108,7 +123,11 @@ fn draw_primitive(
                 *fill
             };
             let (p0, p1) = (tf.to_pixel(c0), tf.to_pixel(c1));
-            let sw = ((*stroke_width as f64) * tf.scale).max(1.0);
+            let sw = if *stroke_width <= 0.0 {
+                0.0
+            } else {
+                ((*stroke_width as f64) * tf.scale).max(1.0)
+            };
             draw_rect(pixels, tf.width, tf.height, p0, p1, fill_c, stroke, sw);
         }
         ExportPrimitive::BoxElem { .. } => draw_box_elem(pixels, tf, primitive, idx),
@@ -133,6 +152,17 @@ fn draw_primitive(
             let stroke = resolve_color(*color, idx);
             let radius = ((*stroke_width as f64) * tf.scale * 0.5).max(tf.base_stroke * 0.5);
             draw_polyline(pixels, tf, points, stroke, radius, *closed, *fill);
+        }
+        ExportPrimitive::ContourPath {
+            points,
+            closed,
+            color,
+            stroke_width,
+            ..
+        } => {
+            let stroke = resolve_color(*color, idx);
+            let radius = ((*stroke_width as f64) * tf.scale * 0.5).max(tf.base_stroke * 0.5);
+            draw_polyline(pixels, tf, points, stroke, radius, *closed, None);
         }
         ExportPrimitive::Points {
             points,

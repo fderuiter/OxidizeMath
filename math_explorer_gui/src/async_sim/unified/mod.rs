@@ -304,6 +304,25 @@ pub trait UnifiedModel:
         false
     }
 
+    /// Whether this model exposes a native 2D scalar field for vector contour, heightmap, and normal-map exports.
+    fn supports_scalar_field_2d() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+
+    /// Extracts a 2D scalar field from the latest worker or stepped [`StateSnapshot`].
+    fn extract_scalar_field_2d(
+        _snapshot: &StateSnapshot,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
     /// Whether this model supports interactive [`SpatialBrushKit`] sculpting and persistence.
     fn supports_spatial_brush() -> bool
     where

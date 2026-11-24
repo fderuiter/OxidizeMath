@@ -111,6 +111,65 @@ impl DoseState {
     /// Strict `< 4 KiB` JSON state budget matching `URL_JSON_BOUNDS` capacity.
     pub const STATE_BOUNDS: ToolStateBounds = ToolStateBounds::new(4_096, 8, 2_048);
 
+    /// Captures a serializable [`DoseState`] snapshot from `tool`.
+    pub(crate) fn from_tool(tool: &crate::tabs::medical::dose::DoseCalculationTool) -> Self {
+        use super::motion::NOMINAL_BEAM_CURRENT_MA;
+        let (ptv_rle, oar_rle) = if tool.imrt_mode && tool.active_challenge.is_none() {
+            tool.imrt_workspace.encode_custom_rle_masks()
+        } else {
+            (None, None)
+        };
+        let include_current = tool.imrt_mode
+            && (tool.gating_4d_enabled
+                || (tool.beam_current_ma - NOMINAL_BEAM_CURRENT_MA).abs() > 1.0e-6);
+        Self {
+            amplitude: tool.amplitude,
+            beta: tool.beta,
+            width: tool.width,
+            height: tool.height,
+            imrt_mode: tool.imrt_mode,
+            beam_angles_deg: tool.imrt_mode.then_some(tool.beam_angles_deg),
+            beam_weights: tool.imrt_mode.then_some(tool.beam_weights),
+            prescription_gy: tool.imrt_mode.then_some(tool.prescription_gy),
+            oar_limit_gy: tool.imrt_mode.then_some(tool.oar_limit_gy),
+            gating_4d: tool.imrt_mode && tool.gating_4d_enabled,
+            beam_current_ma: include_current.then_some(tool.beam_current_ma),
+            ptv_rle,
+            oar_rle,
+        }
+    }
+
+    /// Validates and restores `self` onto `tool`.
+    pub(crate) fn apply_to_tool(
+        self,
+        tool: &mut crate::tabs::medical::dose::DoseCalculationTool,
+    ) -> Result<(), String> {
+        use super::motion::NOMINAL_BEAM_CURRENT_MA;
+        self.validate()?;
+        tool.amplitude = self.amplitude;
+        tool.beta = self.beta;
+        tool.width = self.width;
+        tool.height = self.height;
+        tool.imrt_mode = self.imrt_mode;
+        tool.gating_4d_enabled = self.imrt_mode && self.gating_4d;
+        tool.display_mode = if tool.gating_4d_enabled {
+            DoseDisplayMode::Gated4d
+        } else {
+            DoseDisplayMode::StaticPlan
+        };
+        tool.beam_current_ma = self.beam_current_ma.unwrap_or(NOMINAL_BEAM_CURRENT_MA);
+        tool.beam_angles_deg = self.beam_angles_deg.unwrap_or(BASELINE_IMRT_ANGLES_DEG);
+        tool.beam_weights = self.beam_weights.unwrap_or(BASELINE_IMRT_WEIGHTS);
+        tool.prescription_gy = self
+            .prescription_gy
+            .unwrap_or(CHALLENGE_IMRT_PRESCRIPTION_GY);
+        tool.oar_limit_gy = self.oar_limit_gy.unwrap_or(CHALLENGE_IMRT_OAR_LIMIT_GY);
+        tool.imrt_workspace
+            .restore_rle_masks(self.ptv_rle.as_deref(), self.oar_rle.as_deref())?;
+        tool.refresh_model();
+        Ok(())
+    }
+
     /// Validates finiteness, physical parameter ranges, and RLE contour lengths.
     pub fn validate(&self) -> Result<(), String> {
         if !self.amplitude.is_finite() || !(0.1..=10.0).contains(&self.amplitude) {

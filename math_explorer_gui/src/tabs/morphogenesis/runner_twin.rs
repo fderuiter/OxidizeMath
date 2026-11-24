@@ -11,7 +11,7 @@ use super::MorphogenesisTool;
 use crate::framework::decode_rle_mask;
 use crate::framework::recovery::FiniteStateGuard;
 use math_explorer::biology::diffusion::{
-    FiniteDifference2D, MaskedFiniteDifference2D, SpatialDiffusion,
+    BoundaryMode, FiniteDifference2D, MaskedFiniteDifference2D, SpatialDiffusion,
 };
 use math_explorer::biology::morphogenesis::{DiffusionCoeff, ReactionKinetics, TuringSystem};
 use math_explorer::math_kernel::types::{Dimension, StepSize};
@@ -64,13 +64,18 @@ impl MorphogenesisKineticsRunner {
         width: usize,
         height: usize,
     ) -> Self {
-        let (a, b, d_u, d_v) = {
+        let (a, b, d_u, d_v, periodic) = {
             let p = params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v)
+            (p.a, p.b, p.d_u, p.d_v, p.periodic_boundary)
         };
         let (mode, f, k) = {
             let ks = kinetics_state.read().unwrap_or_else(|e| e.into_inner());
             (ks.mode, ks.f, ks.k)
+        };
+        let bmode = if periodic {
+            BoundaryMode::Periodic
+        } else {
+            BoundaryMode::Neumann
         };
         let diffusion = FiniteDifference2D::new(
             Dimension(width),
@@ -78,6 +83,7 @@ impl MorphogenesisKineticsRunner {
             StepSize(1.0),
             StepSize(1.0),
         )
+        .with_boundary_mode(bmode)
         .with_mask();
         let mut system = TuringSystem::new_with_kinetics(
             Dimension(width * height),

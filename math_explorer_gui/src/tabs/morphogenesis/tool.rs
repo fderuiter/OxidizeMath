@@ -59,6 +59,7 @@ impl Default for MorphogenesisTool {
             d_v: 100.0,
             dt: 0.05,
             high_contrast: false,
+            periodic_boundary: false,
             theme_mode: ThemeMode::Dark,
             heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
         }));
@@ -199,6 +200,17 @@ impl InteractiveTool for MorphogenesisTool {
         self.export_morpho_twin_datasets()
     }
 
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        self.build_scalar_field_2d()
+    }
+
     fn export_raster_image(&self) -> Option<ColorImage> {
         self.export_morpho_raster_image()
     }
@@ -281,6 +293,7 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_u.to_bits().hash(&mut h);
             p.d_v.to_bits().hash(&mut h);
             p.dt.to_bits().hash(&mut h);
+            p.periodic_boundary.hash(&mut h);
             p.heatmap_mode.hash(&mut h);
         }
         self.width.hash(&mut h);
@@ -306,9 +319,17 @@ impl InteractiveTool for MorphogenesisTool {
                 .unwrap_or_else(|e| e.into_inner());
             (ks.mode, ks.f, ks.k)
         };
-        let (a, b, d_u, d_v, dt, heatmap_mode) = {
+        let (a, b, d_u, d_v, dt, periodic_boundary, heatmap_mode) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v, p.dt, p.heatmap_mode)
+            (
+                p.a,
+                p.b,
+                p.d_u,
+                p.d_v,
+                p.dt,
+                p.periodic_boundary,
+                p.heatmap_mode,
+            )
         };
         let fork = self
             .local_runner
@@ -344,6 +365,7 @@ impl InteractiveTool for MorphogenesisTool {
             mask_rle,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes,
+            periodic_boundary,
         })
         .ok()
     }
@@ -380,6 +402,7 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_u = parsed.d_u;
             p.d_v = parsed.d_v;
             p.dt = parsed.dt;
+            p.periodic_boundary = parsed.periodic_boundary;
             p.heatmap_mode = parsed
                 .fork
                 .map_or(MorphogenesisHeatmapMode::ActiveUb, |fk| fk.heatmap_mode);

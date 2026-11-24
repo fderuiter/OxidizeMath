@@ -33,6 +33,18 @@ pub(super) fn import_tool_preset_json<T: InteractiveTool + ?Sized>(
     tool.try_load_state(config_str)
 }
 
+pub(super) fn unsupported_state_err(tool_name: &str) -> Result<(), String> {
+    Err(format!(
+        "Preset state deserialization not supported for {tool_name}"
+    ))
+}
+
+pub(super) fn load_validated_state<T: InteractiveTool + ?Sized>(tool: &mut T, state: &str) {
+    if tool.state_bounds().validate_json(state).is_ok() {
+        let _ = tool.try_load_state(state);
+    }
+}
+
 impl SimulationFramework {
     pub(super) fn complete_file_export(
         &mut self,

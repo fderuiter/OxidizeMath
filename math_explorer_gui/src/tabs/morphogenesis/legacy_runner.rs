@@ -9,7 +9,7 @@ use super::runner::{
 use super::MorphogenesisTool;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use math_explorer::biology::diffusion::FiniteDifference2D;
+use math_explorer::biology::diffusion::{BoundaryMode, FiniteDifference2D};
 use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use oxidize_core::rng::OxidizeRng;
 use std::sync::Arc;
@@ -42,9 +42,9 @@ impl FiniteStateGuard for MorphogenesisRunner {
 
 impl MorphogenesisRunner {
     fn sync_system_params(&mut self) -> Option<f64> {
-        let (a, b, d_u, d_v, dt) = {
+        let (a, b, d_u, d_v, dt, periodic) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v, p.dt)
+            (p.a, p.b, p.d_u, p.d_v, p.dt, p.periodic_boundary)
         };
         if !a.is_finite() || !b.is_finite() || !d_u.is_finite() || !d_v.is_finite() {
             return None;
@@ -53,6 +53,11 @@ impl MorphogenesisRunner {
         self.system.kinetics.b = b;
         self.system.diffusion_coeffs[0] = d_u;
         self.system.diffusion_coeffs[1] = d_v;
+        self.system.diffusion.boundary_mode = if periodic {
+            BoundaryMode::Periodic
+        } else {
+            BoundaryMode::Neumann
+        };
 
         if dt.is_finite() && dt > 0.0 && is_pattern_forming_regime(a, b, d_u, d_v, dt) {
             let var_u = grid_u_variance(self.system.u());

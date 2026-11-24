@@ -1,15 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use self::render::{inspect_solver_solid_and_core, render_lbm_snapshot_pixels};
 use super::lattice_boltzmann_sculpt::{
     apply_lbm_custom_action, apply_lbm_sculpt_payload, apply_stroke_to_lbm, draw_lbm_brush_panel,
     export_solver_rle, record_stroke_in_rle, reset_solver_preserving_obstacles,
     seed_initial_lbm_geometry, sync_lbm_parameters,
 };
 use super::lbm_atlas::{resolve_inlet_velocity, LbmCartographer, LBM_ATLAS_AXIS_PAIRS};
-use super::lbm_fairing::{
-    decode_mask_hex, FairingStamp, LBM_CELL_COUNT, LBM_INLET_COLS, LBM_REF_DIAMETER, LBM_RHO_0,
-};
+use super::lbm_export::{build_lbm_snapshot, extract_lbm_scalar_field};
+use super::lbm_fairing::{decode_mask_hex, FairingStamp, LBM_CELL_COUNT, LBM_INLET_COLS};
 use super::lbm_fairing_ui::LbmUiExtension;
 use crate::async_sim::atlas::RegimeCartographer;
 use crate::async_sim::unified::{UnifiedModel, UnifiedUiExtension};
@@ -18,8 +16,8 @@ use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{BrushMode, BrushStroke, SpatialBrushKit};
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
-    advance_wind_tunnel_step, compute_aerodynamic_coefficients, compute_drag_coefficient,
-    compute_vorticity_into, AerodynamicCoefficients, BgkCollision, LatticeBoltzmannD2Q9,
+    advance_wind_tunnel_step, compute_aerodynamic_coefficients, compute_vorticity_into,
+    AerodynamicCoefficients, BgkCollision, LatticeBoltzmannD2Q9,
 };
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
@@ -30,7 +28,7 @@ pub(crate) const LBM_HEIGHT: usize = 50;
 pub(crate) const LBM_INLET_U: f64 = 0.1;
 
 /// Live hydrodynamic force and vorticity diagnostics attached to LBM snapshots.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct LbmSnapshotMetrics {
     /// Dimensionless lift coefficient $C_L$.
     pub lift_coeff: f64,
@@ -38,6 +36,10 @@ pub struct LbmSnapshotMetrics {
     pub drag_coeff: f64,
     /// Peak vorticity magnitude $|\omega_z|$ across interior fluid cells.
     pub max_vorticity: f64,
+    /// Row-major top-down scalar field (`|u|` or `ω_z`) matching snapshot dimensions.
+    pub scalar_field: Vec<f64>,
+    /// Row-major top-down active fluid mask (`false` on solid obstacle cells).
+    pub active_mask: Vec<bool>,
 }
 
 pub struct LbmUnified {
@@ -253,44 +255,7 @@ impl UnifiedModel for LbmUnified {
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
-        let width = self.solver.width();
-        let height = self.solver.height();
-        let (pixels, max_vort) = render_lbm_snapshot_pixels(
-            &self.solver,
-            &self.vorticity_buf,
-            self.display_vorticity,
-            self.high_contrast,
-        );
-
-        let (f_drag, f_lift) = self.solver.hydrodynamic_forces();
-        let c_d = compute_drag_coefficient(
-            f_drag,
-            LBM_RHO_0,
-            self.inlet_velocity.max(1e-4),
-            LBM_REF_DIAMETER,
-        );
-        let (n_solid, core_intact) = inspect_solver_solid_and_core(&self.solver);
-        let metrics = LbmSnapshotMetrics {
-            lift_coeff: self.latest_aero.lift_coeff,
-            drag_coeff: self.latest_aero.drag_coeff,
-            max_vorticity: max_vort,
-        };
-
-        StateSnapshot {
-            width,
-            height,
-            pixels: Arc::new(RwLock::new(pixels)),
-            custom_data: vec![
-                f_drag,
-                f_lift,
-                c_d,
-                n_solid as f64,
-                f64::from(u8::from(core_intact)),
-                self.step_count as f64,
-            ],
-            structured_data: Some(Box::new(metrics)),
-            sonification: crate::audio::SonificationFrame::silent(),
-        }
+        build_lbm_snapshot(self)
     }
 
     fn process_command(&mut self, cmd: SimCommand, params: &HashMap<String, f64>) {
@@ -351,6 +316,17 @@ impl UnifiedModel for LbmUnified {
 
     fn is_raster_model() -> bool {
         true
+    }
+
+    fn supports_scalar_field_2d() -> bool {
+        true
+    }
+
+    fn extract_scalar_field_2d(
+        snapshot: &StateSnapshot,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        extract_lbm_scalar_field(snapshot)
     }
 
     fn supports_spatial_brush() -> bool {

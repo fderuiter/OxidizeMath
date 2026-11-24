@@ -33,6 +33,7 @@ fn make_morpho_runner(
         d_v,
         dt,
         high_contrast: false,
+        periodic_boundary: false,
         theme_mode: crate::app::ThemeMode::Dark,
         heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
     }));
@@ -55,6 +56,7 @@ fn make_gray_scott_runner(
         d_v: 0.08,
         dt: 1.0,
         high_contrast: false,
+        periodic_boundary: false,
         theme_mode: crate::app::ThemeMode::Dark,
         heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
     }));

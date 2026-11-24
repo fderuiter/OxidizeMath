@@ -119,6 +119,7 @@ fn test_morphogenesis_1000_step_zero_perturbation_parity_and_zero_alloc() {
         d_v: 30.0,
         dt: 0.005,
         high_contrast: false,
+        periodic_boundary: false,
         theme_mode: ThemeMode::Dark,
         heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
     }));
@@ -229,6 +230,7 @@ fn test_morphogenesis_sculpted_maze_twin_parity_and_zero_alloc() {
         d_v: 30.0,
         dt: 0.005,
         high_contrast: false,
+        periodic_boundary: false,
         theme_mode: ThemeMode::Dark,
         heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
     }));

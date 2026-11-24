@@ -380,6 +380,85 @@ fn test_export_modal_warning_and_status_colors_meet_wcag_aa() {
 }
 
 #[test]
+fn test_export_modal_scalar_field_controls_and_intercept_actions() {
+    struct ScalarStubSource {
+        actions: Vec<ExportModalAction>,
+    }
+    impl ExportDataSource for ScalarStubSource {
+        fn export_datasets(&mut self) -> Vec<ExportDataset> {
+            Vec::new()
+        }
+        fn sample_gif_frames(&mut self, _num_frames: usize) -> Vec<DatasetFrame> {
+            Vec::new()
+        }
+        fn scalar_field_capability(&self) -> (bool, &'static str) {
+            (true, "")
+        }
+        fn intercept_action(&mut self, action: ExportModalAction) -> bool {
+            self.actions.push(action);
+            true
+        }
+    }
+
+    let ctx = egui::Context::default();
+    let mut state = ExportModalState {
+        open: true,
+        ..Default::default()
+    };
+    let config = ExportModalConfig {
+        window_title: "Export Scalar Field Test",
+        id: egui::Id::new("modal_scalar_test"),
+        png_filename: "field.png",
+        svg_filename: "field.svg",
+        gif_filename: "field.gif",
+    };
+    let mut source = ScalarStubSource {
+        actions: Vec::new(),
+    };
+    let _ = ctx.run(screen_input(), |ctx| {
+        show_export_modal(ctx, state.bindings(), &config, &mut source);
+    });
+    let out = ctx.run(screen_input(), |ctx| {
+        show_export_modal(ctx, state.bindings(), &config, &mut source);
+    });
+    assert!(find_text_center(&out, "Seamless 1:1 Tile").is_some());
+    assert!(find_text_center(&out, "SVG Contour Levels:").is_some());
+    assert!(find_text_center(&out, "Normal Map Strength:").is_some());
+
+    let hm_pos =
+        find_text_center(&out, "Save 16-bit Heightmap").expect("heightmap button rendered");
+    let (down_hm, up_hm) = click_input(hm_pos);
+    let _ = ctx.run(down_hm, |ctx| {
+        show_export_modal(ctx, state.bindings(), &config, &mut source);
+    });
+    let _ = ctx.run(up_hm, |ctx| {
+        show_export_modal(ctx, state.bindings(), &config, &mut source);
+    });
+    assert!(
+        source
+            .actions
+            .contains(&ExportModalAction::SaveHeightmapPng)
+    );
+
+    let out2 = ctx.run(screen_input(), |ctx| {
+        show_export_modal(ctx, state.bindings(), &config, &mut source);
+    });
+    let nm_pos = find_text_center(&out2, "Save Normal Map").expect("normal map button rendered");
+    let (down_nm, up_nm) = click_input(nm_pos);
+    let _ = ctx.run(down_nm, |ctx| {
+        show_export_modal(ctx, state.bindings(), &config, &mut source);
+    });
+    let _ = ctx.run(up_nm, |ctx| {
+        show_export_modal(ctx, state.bindings(), &config, &mut source);
+    });
+    assert!(
+        source
+            .actions
+            .contains(&ExportModalAction::SaveNormalMapPng)
+    );
+}
+
+#[test]
 fn test_standalone_modal_gif_progress_duplicate_click_guard_and_cancel() {
     let ctx = egui::Context::default();
     let mut state = ExportModalState {

@@ -99,7 +99,11 @@ fn write_primitive_svg(
                 } else {
                     *fill
                 };
-                let sw = ((*stroke_width as f64) * layout.scale).max(1.0);
+                let sw = if *stroke_width <= 0.0 {
+                    0.0
+                } else {
+                    ((*stroke_width as f64) * layout.scale).max(1.0)
+                };
                 write_rect_svg(
                     svg,
                     name,
@@ -139,6 +143,21 @@ fn write_primitive_svg(
             let stroke = resolve_color(*color, idx);
             let sw = ((*stroke_width as f64) * layout.scale).max(layout.base_stroke);
             write_polyline_svg(svg, layout, name, idx, points, stroke, sw, *closed, *fill);
+            Ok(())
+        }
+        ExportPrimitive::ContourPath {
+            name,
+            iso_level,
+            points,
+            closed,
+            color,
+            stroke_width,
+        } => {
+            let stroke = resolve_color(*color, idx);
+            let sw = ((*stroke_width as f64) * layout.scale).max(layout.base_stroke * 0.5);
+            write_contour_path_svg(
+                svg, layout, name, idx, *iso_level, points, *closed, stroke, sw,
+            );
             Ok(())
         }
         ExportPrimitive::Points {
@@ -206,10 +225,16 @@ fn write_rect_svg(
     let escaped = escape_xml(name);
     let fill_hex = hex_rgb(fill);
     let fill_op = fill.a() as f32 / 255.0;
-    let stroke_hex = hex_rgb(stroke);
-    svg.push_str(&format!(
-        "  <g id=\"primitive-{idx}\" data-name=\"{escaped}\">\n    <rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" fill=\"{fill_hex}\" fill-opacity=\"{fill_op:.3}\" stroke=\"{stroke_hex}\" stroke-width=\"{stroke_width:.2}\" />\n  </g>\n"
-    ));
+    if stroke_width <= 0.0 || stroke.a() == 0 {
+        svg.push_str(&format!(
+            "  <g id=\"primitive-{idx}\" data-name=\"{escaped}\">\n    <rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" fill=\"{fill_hex}\" fill-opacity=\"{fill_op:.3}\" stroke=\"none\" shape-rendering=\"crispEdges\" />\n  </g>\n"
+        ));
+    } else {
+        let stroke_hex = hex_rgb(stroke);
+        svg.push_str(&format!(
+            "  <g id=\"primitive-{idx}\" data-name=\"{escaped}\">\n    <rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" fill=\"{fill_hex}\" fill-opacity=\"{fill_op:.3}\" stroke=\"{stroke_hex}\" stroke-width=\"{stroke_width:.2}\" />\n  </g>\n"
+        ));
+    }
 }
 
 fn write_box_svg(
@@ -400,6 +425,46 @@ fn write_polyline_svg(
         }
     }
     svg.push_str("  </g>\n");
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_contour_path_svg(
+    svg: &mut String,
+    layout: &PrimitiveCanvasLayout,
+    name: &str,
+    idx: usize,
+    iso_level: f64,
+    points: &[[f64; 2]],
+    closed: bool,
+    stroke: egui::Color32,
+    stroke_width: f64,
+) {
+    let valid_pts: Vec<(f64, f64)> = points
+        .iter()
+        .copied()
+        .filter(|&p| layout.is_valid_point(p))
+        .map(|p| layout.to_pixel(p))
+        .collect();
+    if valid_pts.len() < 2 {
+        return;
+    }
+    let hex = hex_rgb(stroke);
+    let escaped = escape_xml(name);
+    let safe_iso = if iso_level.is_finite() {
+        iso_level
+    } else {
+        0.0
+    };
+    let mut d_attr = format!("M {:.2} {:.2}", valid_pts[0].0, valid_pts[0].1);
+    for &(px, py) in &valid_pts[1..] {
+        d_attr.push_str(&format!(" L {px:.2} {py:.2}"));
+    }
+    if closed && valid_pts.len() == points.len() {
+        d_attr.push_str(" Z");
+    }
+    svg.push_str(&format!(
+        "  <g id=\"primitive-{idx}\" data-name=\"{escaped}\" data-iso-level=\"{safe_iso:.6}\">\n    <path d=\"{d_attr}\" fill=\"none\" stroke=\"{hex}\" stroke-width=\"{stroke_width:.2}\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />\n  </g>\n"
+    ));
 }
 
 fn write_points_svg(

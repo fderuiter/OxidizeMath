@@ -113,6 +113,11 @@ impl MorphogenesisTool {
                 .clone(),
             atlas_visible: self.atlas.is_visible(),
             atlas_axes,
+            periodic_boundary: self
+                .params
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .periodic_boundary,
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);

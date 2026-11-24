@@ -18,6 +18,8 @@ const MANIFEST_FILENAME: &str = "traceability_manifest.json";
 
 const CORE_DEP_CRATES: &[&str] = &[
     "diagnostics",
+    "engine_diffeq",
+    "engine_pde",
     "federated_registry",
     "math_commons",
     "oxidize_core",

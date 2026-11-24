@@ -242,6 +242,44 @@ impl InteractiveTool for PrimeSpiralWidget {
         Some(Self::build_spiral_image(size))
     }
 
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        let size = self.grid_size.max(2);
+        let theme = self.last_theme.unwrap_or(crate::app::ThemeMode::Dark);
+        let palette = theme.palette();
+        let cell_colors = if self.pixels_buffer.len() == size * size {
+            self.pixels_buffer.clone()
+        } else {
+            let (mut lookup, mut pixels) = (Vec::new(), Vec::new());
+            Self::populate_ulam_pixels(size, theme, &mut lookup, &mut pixels);
+            pixels
+        };
+        let values = cell_colors
+            .iter()
+            .map(|&c| {
+                if c == palette.node_stroke {
+                    1.0
+                } else if c == palette.axis_x {
+                    0.5
+                } else {
+                    0.0
+                }
+            })
+            .collect();
+        Some(crate::framework::ScalarField2D::discrete_lattice(
+            size,
+            size,
+            values,
+            cell_colors,
+        ))
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         self.advance_playhead_clock(ui.ctx());
         let theme = crate::app::ThemeMode::from_visuals(ui.visuals());

@@ -253,3 +253,38 @@ fn test_engine_pde_steppers_zero_heap_allocations_under_verified_lock() {
     assert!(height_field.iter().all(|v| v.is_finite()));
     assert!(metrics.function_calls > 0);
 }
+
+#[test]
+fn test_fused_stepper_2d_coupled_periodic_mass_conservation_and_zero_alloc() {
+    use engine_pde::FusedStencilStepper;
+    let stepper = FusedStencilStepper::new_2d(StepSize(1.0), StepSize(1.0));
+    let mut u = [0.0_f64; 16];
+    let mut v = [0.0_f64; 16];
+    let mut next_u = [0.0_f64; 16];
+    let mut next_v = [0.0_f64; 16];
+    u[0] = 4.0;
+    v[15] = 2.0;
+    let mass_u0: f64 = u.iter().sum();
+    let mass_v0: f64 = v.iter().sum();
+
+    let ((), metrics) = VerifiedEngine::run_verified(|| {
+        stepper.step_2d_coupled_periodic(
+            (4, 4),
+            [&u, &v],
+            [&mut next_u, &mut next_v],
+            0.1,
+            1.0,
+            |_idx, curr, l, r, up, down, ops| {
+                [
+                    0.5 * ops.central_diff_2nd_2d(curr[0], l[0], r[0], up[0], down[0]),
+                    0.25 * ops.central_diff_2nd_2d(curr[1], l[1], r[1], up[1], down[1]),
+                ]
+            },
+        );
+    });
+    assert!(metrics.function_calls > 0);
+    assert!(next_u[3] > 0.0 && next_u[12] > 0.0);
+    assert!(next_v[12] > 0.0 && next_v[3] > 0.0);
+    assert!((next_u.iter().sum::<f64>() - mass_u0).abs() < TOLERANCE_STANDARD);
+    assert!((next_v.iter().sum::<f64>() - mass_v0).abs() < TOLERANCE_STANDARD);
+}

@@ -282,6 +282,21 @@ impl InteractiveTool for LeniaTool {
         })
     }
 
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        let w = self.engine.width();
+        let h = self.engine.height();
+        let state = self.engine.state();
+        (w > 0 && h > 0 && state.len() == w * h)
+            .then(|| crate::framework::ScalarField2D::continuous(w, h, state.to_vec(), true))
+    }
+
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         self.collect_inspector_datasets()
     }
@@ -440,16 +455,7 @@ inventory::submit! {
         id: "LeniaTool",
         display_name: "Lenia Studio",
         domain: "biology",
-        tags: &[
-            "lenia",
-            "cellular-automata",
-            "soliton",
-            "orbium",
-            "geminium",
-            "hydrogeminium",
-            "scutium",
-            "fft",
-        ],
+        tags: &["lenia", "cellular-automata", "soliton", "orbium", "geminium", "hydrogeminium", "scutium", "fft"],
         build: || Box::new(LeniaTool::default()),
     }
 }

@@ -17,7 +17,7 @@ use crate::async_sim::{
 };
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::MorphogenesisKineticsMode;
-use math_explorer::biology::diffusion::MaskedFiniteDifference2D;
+use math_explorer::biology::diffusion::{BoundaryMode, MaskedFiniteDifference2D};
 use math_explorer::biology::morphogenesis::{
     GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics, TuringSystem,
 };
@@ -93,6 +93,8 @@ pub struct MorphogenesisSharedParams {
     pub dt: f64,
     /// Whether high-contrast palette rendering is active.
     pub high_contrast: bool,
+    /// Whether toroidal periodic boundaries are active.
+    pub periodic_boundary: bool,
     /// Active visual theme mode (`Dark`, `Light`, or `HighContrast`).
     pub theme_mode: ThemeMode,
     /// Active counterfactual spatial heatmap mode (`ActiveUb`, `SplitUaUb`, or `DifferenceAbs`).
@@ -136,10 +138,7 @@ impl FiniteStateGuard for MorphogenesisKineticsRunner {
 
 impl MorphogenesisKineticsRunner {
     fn mode_to_scalar(mode: MorphogenesisKineticsMode) -> f64 {
-        match mode {
-            MorphogenesisKineticsMode::Schnakenberg => 0.0,
-            MorphogenesisKineticsMode::GrayScott => 1.0,
-        }
+        f64::from(u8::from(mode == MorphogenesisKineticsMode::GrayScott))
     }
 
     fn scalar_to_mode(tag: f64) -> MorphogenesisKineticsMode {
@@ -162,12 +161,12 @@ impl MorphogenesisKineticsRunner {
     }
 
     pub(super) fn sync_system_params(&mut self) -> Option<f64> {
-        let (a, b, d_u, d_v, dt) = {
+        let (a, b, d_u, d_v, dt, periodic) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v, p.dt)
+            (p.a, p.b, p.d_u, p.d_v, p.dt, p.periodic_boundary)
         };
         let ks = self.read_kinetics();
-        self.apply_explicit_params(ks.mode, a, b, ks.f, ks.k, d_u, d_v, dt)
+        self.apply_explicit_params(ks.mode, a, b, ks.f, ks.k, d_u, d_v, dt, periodic)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -181,6 +180,7 @@ impl MorphogenesisKineticsRunner {
         d_u: f64,
         d_v: f64,
         dt: f64,
+        periodic: bool,
     ) -> Option<f64> {
         if !a.is_finite()
             || !b.is_finite()
@@ -198,6 +198,11 @@ impl MorphogenesisKineticsRunner {
         self.system.kinetics.k = k;
         self.system.diffusion_coeffs[0] = d_u;
         self.system.diffusion_coeffs[1] = d_v;
+        self.system.diffusion.base.boundary_mode = if periodic {
+            BoundaryMode::Periodic
+        } else {
+            BoundaryMode::Neumann
+        };
         if !self.has_counterfactual_twin()
             && super::gray_scott_atlas::should_reseed_washed_out_system(&self.system, d_u, d_v, dt)
         {
@@ -213,7 +218,15 @@ impl MorphogenesisKineticsRunner {
         }
         self.noise_amplitude = p[8];
         let mode = Self::scalar_to_mode(p[0]);
-        self.apply_explicit_params(mode, p[1], p[2], p[3], p[4], p[5], p[6], p[7])
+        let periodic = if p.len() >= 10 {
+            p[9] >= 0.5
+        } else {
+            self.params
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .periodic_boundary
+        };
+        self.apply_explicit_params(mode, p[1], p[2], p[3], p[4], p[5], p[6], p[7], periodic)
     }
 
     fn advance_grid_step(&mut self, dt: f64, noise_amp: f64) {
@@ -404,6 +417,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
             p.d_v,
             p.dt,
             self.noise_amplitude,
+            f64::from(u8::from(p.periodic_boundary)),
         ]))
     }
 

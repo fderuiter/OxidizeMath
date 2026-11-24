@@ -8,7 +8,7 @@ use crate::tabs::geometry_topology::export_utils::{
 use eframe::egui;
 use std::collections::HashSet;
 
-fn run_deferred_export_frame(
+pub(super) fn run_deferred_export_frame(
     framework: &mut SimulationFramework,
     format: ExportFormat,
     open_modal: bool,

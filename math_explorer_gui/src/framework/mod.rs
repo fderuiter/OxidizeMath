@@ -38,6 +38,7 @@ mod export_queue;
 pub(crate) use export_queue::deferred_export_tests;
 #[cfg(test)]
 mod export_queue_tests;
+pub mod export_scalar_field;
 pub(crate) mod export_shader;
 #[cfg(test)]
 mod export_shader_tests;
@@ -102,6 +103,7 @@ pub use counterfactual::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
+pub use export_scalar_field::{ScalarField2D, ScalarFieldTopology};
 pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use history_ui::render_workspace_history_buttons;
@@ -147,17 +149,8 @@ pub trait InteractiveTool {
     }
 
     /// Show the tool inside a scoped parent `egui::Ui` (supporting multi-pane layouts on a single root `Context`).
-    ///
-    /// # Accessibility Requirements for Custom `show_inside` Overrides
-    ///
-    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`], [`egui::Sense::click`],
-    ///   or [`egui::Sense::click_and_drag`] instead of `Sense::hover()` so `Tab` traversal reaches the visualization.
-    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))` so `AccessKit`
-    ///   exposes `Role::Image` and non-empty alternative text.
-    /// - Populate `AccessKit` metadata via `crate::accessibility::register_canvas_accessibility` and draw a
-    ///   high-contrast focus ring when `response.has_focus()`.
-    /// - When consuming arrow keys, set `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
-    ///   strictly while `response.has_focus()` so `Tab` and `Shift+Tab` never trap keyboard users.
+    /// Custom overrides must use focusable `Sense` (`focusable_noninteractive`/`click`/`click_and_drag`),
+    /// `Image::alt_text`, `register_canvas_accessibility`, focus rings, and non-trapping `Tab` filters.
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         pane_scope::render_default_tool_inside(self, ui);
     }
@@ -265,18 +258,12 @@ pub trait InteractiveTool {
 
     /// Fallibly deserializes and restores tool-specific parameters from a JSON state string.
     fn try_load_state(&mut self, _state: &str) -> Result<(), String> {
-        Err(format!(
-            "Preset state deserialization not supported for {}",
-            self.name()
-        ))
+        export_persistence::unsupported_state_err(self.name())
     }
 
     /// Optional hook to deserialize and restore tool-specific parameters from a String.
     fn load_state(&mut self, state: &str) {
-        if self.state_bounds().validate_json(state).is_err() {
-            return;
-        }
-        let _ = self.try_load_state(state);
+        export_persistence::load_validated_state(self, state);
     }
 
     /// Optional hook to clamp unstable parameters to safe bounds, returning true if handled.
@@ -341,6 +328,25 @@ pub trait InteractiveTool {
 
     /// Optional hook for texture-backed tools to expose their rendered 2D raster field for PNG, SVG, and GIF exports.
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        None
+    }
+    /// Optional cold-path hook to render a 2D raster field at explicit `(width, height)` target dimensions.
+    fn export_raster_image_sized(
+        &self,
+        _target_dims: (usize, usize),
+        _seamless_tile: bool,
+    ) -> Option<egui::ColorImage> {
+        self.export_raster_image()
+    }
+    /// Fast zero-allocation capability query returning `true` when [`Self::export_scalar_field_2d`] is implemented.
+    fn supports_scalar_field_2d(&self) -> bool {
+        false
+    }
+    /// Optional cold-path hook exposing a raw `f64` 2D scalar field for stitched SVG contours, 16-bit heightmaps, and PBR normal maps.
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<ScalarField2D> {
         None
     }
 

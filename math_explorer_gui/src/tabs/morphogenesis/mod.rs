@@ -18,6 +18,7 @@ pub mod phyllotaxis_lsystem;
 pub mod presets;
 pub mod runner;
 mod runner_twin;
+mod scalar_export;
 pub mod sculpt;
 mod seeding;
 pub mod tool;

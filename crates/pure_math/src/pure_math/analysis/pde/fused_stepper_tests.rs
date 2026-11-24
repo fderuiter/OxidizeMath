@@ -63,3 +63,27 @@ fn test_stencil_operator_evaluations() {
     let flux_neg_expected = (5.0 * (-2.0) - 3.0 * (-2.0)) / dx;
     assert!((flux_neg - flux_neg_expected).abs() < 1e-12);
 }
+
+#[test]
+fn test_step_2d_coupled_periodic_toroidal_wrap_and_zero_alloc() {
+    let stepper = FusedStencilStepper::new_2d(StepSize(1.0), StepSize(1.0));
+    let mut u = [0.0_f64; 16];
+    u[0] = 8.0;
+    let mut dst = [0.0_f64; 16];
+    let ((), metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        stepper.step_2d_coupled_periodic(
+            (4, 4),
+            [&u],
+            [&mut dst],
+            0.1,
+            1.0,
+            |_idx, curr, l, r, up, down, ops| {
+                [ops.central_diff_2nd_2d(curr[0], l[0], r[0], up[0], down[0])]
+            },
+        );
+    });
+    assert!(metrics.function_calls > 0);
+    assert!((dst[3] - 0.8).abs() < 1e-12);
+    assert!((dst[12] - 0.8).abs() < 1e-12);
+    assert!((dst.iter().sum::<f64>() - 8.0).abs() < 1e-12);
+}
