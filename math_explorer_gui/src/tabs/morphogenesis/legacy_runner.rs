@@ -134,6 +134,8 @@ impl SimulationRunner for MorphogenesisRunner {
                 u_data: u_vec,
                 u_a: None,
                 mask_roles: Vec::new(),
+                max_abs_ux: 0.0,
+                max_abs_uy: 0.0,
                 step_count: self.step_count,
                 divergence: None,
             })),

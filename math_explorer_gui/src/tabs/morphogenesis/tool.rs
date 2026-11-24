@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::advection::MorphogenesisAdvectionState;
 use super::atlas::MORPHO_ATLAS_AXIS_PAIRS;
 use super::counterfactual::MorphogenesisHeatmapMode;
 use super::presets::MorphogenesisTheory;
@@ -30,12 +31,14 @@ pub struct MorphogenesisTool {
     pub atlas: ParameterAtlasController,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) kinetics_state: Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+    pub(crate) advection_state: Arc<std::sync::RwLock<MorphogenesisAdvectionState>>,
     pub(crate) mask_rle: Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
     pub(crate) brush_kit: SpatialBrushKit,
     pub(crate) width: usize,
     pub(crate) height: usize,
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) pixels: Vec<egui::Color32>,
+    pub(crate) live_velocity_peaks: [f64; 2],
     pub(crate) dirty: bool,
     pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
     pub(crate) step_runner: Option<MorphogenesisKineticsRunner>,
@@ -64,12 +67,27 @@ impl Default for MorphogenesisTool {
         }));
         let kinetics_state =
             Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
+        let advection_state = Arc::new(std::sync::RwLock::new(
+            MorphogenesisAdvectionState::default(),
+        ));
 
         let mask_rle = Arc::new(std::sync::RwLock::new(Vec::new()));
-        let runner =
-            Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
-        let local_runner =
-            Self::create_kinetics_runner(&params, &kinetics_state, &mask_rle, width, height);
+        let runner = Self::create_kinetics_runner_with_advection(
+            &params,
+            &kinetics_state,
+            &advection_state,
+            &mask_rle,
+            width,
+            height,
+        );
+        let local_runner = Self::create_kinetics_runner_with_advection(
+            &params,
+            &kinetics_state,
+            &advection_state,
+            &mask_rle,
+            width,
+            height,
+        );
         let worker = BackgroundWorker::new(runner);
 
         Self {
@@ -77,12 +95,14 @@ impl Default for MorphogenesisTool {
             atlas: ParameterAtlasController::new(MORPHO_ATLAS_AXIS_PAIRS.to_vec()),
             params,
             kinetics_state,
+            advection_state,
             mask_rle,
             brush_kit: default_morpho_brush_kit(),
             width,
             height,
             texture: None,
             pixels: Vec::new(),
+            live_velocity_peaks: [0.0, 0.0],
             dirty: true,
             stepped_pixels: None,
             step_runner: None,
@@ -98,43 +118,20 @@ impl Default for MorphogenesisTool {
 
 impl MorphogenesisTool {
     #[cfg(test)]
-    pub(crate) fn create_runner(
-        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
-        width: usize,
-        height: usize,
-    ) -> MorphogenesisKineticsRunner {
-        MorphogenesisKineticsRunner::new_seeded(params, width, height)
-    }
-
-    pub(crate) fn create_kinetics_runner(
-        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
-        kinetics_state: &Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
-        mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
-        width: usize,
-        height: usize,
-    ) -> MorphogenesisKineticsRunner {
-        MorphogenesisKineticsRunner::new_with_kinetics(
-            params,
-            kinetics_state,
-            mask_rle,
-            width,
-            height,
-        )
-    }
-
-    #[cfg(test)]
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
-        self.local_runner = Self::create_kinetics_runner(
+        self.local_runner = Self::create_kinetics_runner_with_advection(
             &self.params,
             &self.kinetics_state,
+            &self.advection_state,
             &self.mask_rle,
             self.width,
             self.height,
         );
-        let runner = Self::create_kinetics_runner(
+        let runner = Self::create_kinetics_runner_with_advection(
             &self.params,
             &self.kinetics_state,
+            &self.advection_state,
             &self.mask_rle,
             self.width,
             self.height,
@@ -143,6 +140,7 @@ impl MorphogenesisTool {
         self.branch_engine.clear();
         self.stepped_pixels = None;
         self.step_runner = None;
+        self.live_velocity_peaks = [0.0, 0.0];
         self.pending_initial_start = false;
         self.dirty = true;
         self.invalidate_scalar_field_cache();
@@ -152,29 +150,6 @@ impl MorphogenesisTool {
     #[allow(missing_docs)]
     pub fn retry(&mut self) {
         self.restart_worker();
-    }
-
-    /// Resets the worker in place (or respawns if disconnected) and clears any active fork.
-    pub fn reset(&mut self) {
-        let params = Arc::clone(&self.params);
-        let ks = Arc::clone(&self.kinetics_state);
-        let mask = Arc::clone(&self.mask_rle);
-        let width = self.width;
-        let height = self.height;
-        self.local_runner = Self::create_kinetics_runner(&params, &ks, &mask, width, height);
-        self.branch_engine.clear();
-        self.worker
-            .reset_or_respawn(|| Self::create_kinetics_runner(&params, &ks, &mask, width, height));
-        self.stepped_pixels = None;
-        self.step_runner = None;
-        self.pending_initial_start = false;
-        self.dirty = true;
-        self.invalidate_scalar_field_cache();
-    }
-
-    pub(crate) fn reset_system(&mut self) {
-        self.reset();
-        let _ = self.worker.send_command(SimCommand::Start);
     }
 }
 
@@ -283,6 +258,15 @@ impl InteractiveTool for MorphogenesisTool {
             p.dt.to_bits().hash(&mut h);
             p.heatmap_mode.hash(&mut h);
         }
+        {
+            let adv = self
+                .advection_state
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
+            adv.enabled.hash(&mut h);
+            adv.inlet_u.to_bits().hash(&mut h);
+            adv.viscosity.to_bits().hash(&mut h);
+        }
         self.width.hash(&mut h);
         self.height.hash(&mut h);
         self.is_forked().hash(&mut h);
@@ -310,6 +294,10 @@ impl InteractiveTool for MorphogenesisTool {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.a, p.b, p.d_u, p.d_v, p.dt, p.heatmap_mode)
         };
+        let adv = *self
+            .advection_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
         let fork = self
             .local_runner
             .twin
@@ -344,6 +332,9 @@ impl InteractiveTool for MorphogenesisTool {
             mask_rle,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes,
+            advection_enabled: adv.enabled,
+            inlet_u: adv.inlet_u,
+            viscosity: adv.viscosity,
         })
         .ok()
     }
@@ -363,27 +354,7 @@ impl InteractiveTool for MorphogenesisTool {
         }
         self.atlas.set_visible(parsed.atlas_visible);
         let target_state = parsed.resolve_target_state();
-        self.theory.mode = parsed.kinetics_mode;
-        {
-            let mut ks = self
-                .kinetics_state
-                .write()
-                .unwrap_or_else(|e| e.into_inner());
-            ks.mode = parsed.kinetics_mode;
-            ks.f = parsed.f;
-            ks.k = parsed.k;
-        }
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.a = parsed.a;
-            p.b = parsed.b;
-            p.d_u = parsed.d_u;
-            p.d_v = parsed.d_v;
-            p.dt = parsed.dt;
-            p.heatmap_mode = parsed
-                .fork
-                .map_or(MorphogenesisHeatmapMode::ActiveUb, |fk| fk.heatmap_mode);
-        }
+        self.stage_loaded_params(&parsed);
         *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) = parsed.mask_rle;
         if let Some(fork_desc) = parsed.fork {
             self.apply_loaded_fork_state(
@@ -420,6 +391,10 @@ impl InteractiveTool for MorphogenesisTool {
             .read()
             .unwrap_or_else(|e| e.into_inner());
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let adv = self
+            .advection_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
         ks.f.is_finite()
             && ks.k.is_finite()
             && p.a.is_finite()
@@ -427,6 +402,8 @@ impl InteractiveTool for MorphogenesisTool {
             && p.d_u.is_finite()
             && p.d_v.is_finite()
             && p.dt.is_finite()
+            && adv.inlet_u.is_finite()
+            && adv.viscosity.is_finite()
     }
 
     fn clamp_parameters(&mut self) -> bool {

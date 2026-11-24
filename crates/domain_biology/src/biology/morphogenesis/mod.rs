@@ -65,6 +65,7 @@
 //! println!("Concentration of Activator at center: {:.4}", u_center);
 //! ```
 
+pub mod advection;
 #[allow(missing_docs)]
 pub mod reaction;
 #[allow(missing_docs)]

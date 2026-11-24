@@ -24,7 +24,7 @@ use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 
 impl MorphogenesisTool {
     fn render_snapshot_image(
-        &self,
+        &mut self,
         theme: ThemeMode,
         mode: MorphogenesisHeatmapMode,
     ) -> Option<ColorImage> {
@@ -38,6 +38,7 @@ impl MorphogenesisTool {
                     d.u_data.len() == num_pixels && d.step_count >= self.local_runner.step_count
                 })
             {
+                self.live_velocity_peaks = [data.max_abs_ux, data.max_abs_uy];
                 let mut img = render_morphogenesis_heatmap(
                     &data.u_data,
                     data.u_a.as_deref(),
@@ -128,20 +129,6 @@ impl MorphogenesisTool {
         });
     }
 
-    fn stabilize_cfl_step(&mut self, ctx: &egui::Context, min_dt: f64, max_dt: f64) {
-        let safe_dt = {
-            let mut params = self.params.write().unwrap_or_else(|e| e.into_inner());
-            let dt = (0.2485 / params.d_u.max(params.d_v).max(1e-6)).clamp(min_dt, max_dt);
-            params.dt = dt;
-            dt
-        };
-        self.reset_system();
-        crate::accessibility::announce_live_status(
-            ctx,
-            format!("Time step stabilized to CFL bound dt = {safe_dt:.4}"),
-        );
-    }
-
     fn draw_schnakenberg_sliders(&mut self, ui: &mut egui::Ui) {
         let constraints = self.theory.theory_parameters();
         let bound = |key: &str, min: f64, max: f64, step: f64| {
@@ -157,7 +144,7 @@ impl MorphogenesisTool {
         let cdt = bound("dt", 1e-4, 0.1, 5e-4);
 
         let mut changed = false;
-        let cfl_exceeded = {
+        {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             changed |= ui
                 .add(
@@ -194,13 +181,13 @@ impl MorphogenesisTool {
                         .text("dt"),
                 )
                 .changed();
-            4.0 * p.d_u.max(p.d_v) * p.dt >= 1.0
-        };
+        }
         if changed {
             let _ = self.reseed_if_washed_out_entering_pattern();
         }
-        if cfl_exceeded && ui.button("⚡ Stabilize Step (CFL)").clicked() {
-            self.stabilize_cfl_step(ui.ctx(), cdt.min, cdt.max);
+        let (_, _, _, combined_cfl) = self.advection_diagnostics();
+        if combined_cfl >= 1.0 && ui.button("⚡ Stabilize Step (CFL)").clicked() {
+            self.stabilize_combined_cfl_step(ui.ctx(), cdt.min, cdt.max);
         }
     }
 
@@ -238,6 +225,10 @@ impl MorphogenesisTool {
                 }
                 if changed {
                     let _ = self.reseed_if_washed_out_entering_pattern();
+                }
+                let (_, _, _, combined_cfl) = self.advection_diagnostics();
+                if combined_cfl >= 1.0 && ui.button("⚡ Stabilize Step (CFL)").clicked() {
+                    self.stabilize_combined_cfl_step(ui.ctx(), 0.1, 1.5);
                 }
             }
         }
@@ -337,6 +328,10 @@ impl MorphogenesisTool {
             }
             PlaybackAction::Step => {
                 self.local_runner.step();
+                self.live_velocity_peaks = [
+                    self.local_runner.wind_tunnel.max_abs_ux,
+                    self.local_runner.wind_tunnel.max_abs_uy,
+                ];
                 self.sync_branch_engine_from_local();
                 let _ = self.worker.send_command(SimCommand::Step(1));
                 self.dirty = true;
@@ -369,6 +364,8 @@ impl MorphogenesisTool {
             self.draw_kinetics_selector(ui);
             ui.separator();
             self.draw_parameter_sliders(ui);
+            ui.separator();
+            self.draw_wind_tunnel_controls(ui);
             ui.separator();
             self.draw_playback_transport(ui, &ctx);
 

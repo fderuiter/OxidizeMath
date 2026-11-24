@@ -45,6 +45,10 @@ impl MorphogenesisTool {
         for _ in 0..steps {
             self.local_runner.step();
         }
+        self.live_velocity_peaks = [
+            self.local_runner.wind_tunnel.max_abs_ux,
+            self.local_runner.wind_tunnel.max_abs_uy,
+        ];
         self.sync_branch_engine_from_local();
         self.respawn_worker_from_local();
         self.stepped_pixels = None;
@@ -131,6 +135,7 @@ impl MorphogenesisTool {
         else {
             return;
         };
+        self.live_velocity_peaks = [data.max_abs_ux, data.max_abs_uy];
         if data.step_count != self.local_runner.step_count
             && data.u_data.len() == self.width * self.height
         {
@@ -146,6 +151,9 @@ impl MorphogenesisTool {
                     .mask
                     .set_roles_slice(&data.mask_roles);
             }
+            self.local_runner
+                .wind_tunnel
+                .sync_from_cell_mask(&self.local_runner.system.diffusion.mask);
             if let (Some(ref mut twin), Some(ref ua)) = (&mut self.local_runner.twin, &data.u_a) {
                 if ua.len() == self.width * self.height {
                     active_morphogen_slice_mut(&mut twin.system_a).copy_from_slice(ua);
@@ -200,9 +208,10 @@ impl MorphogenesisTool {
         desc.validate()?;
         let (active_a, active_b, active_du, active_dv, dt, active_f, active_k) =
             self.stage_baseline_fork_params(&desc);
-        let mut runner = Self::create_kinetics_runner(
+        let mut runner = Self::create_kinetics_runner_with_advection(
             &self.params,
             &self.kinetics_state,
+            &self.advection_state,
             &self.mask_rle,
             self.width,
             self.height,
@@ -230,6 +239,7 @@ impl MorphogenesisTool {
         for _ in 0..desc.post_fork_steps {
             runner.step();
         }
+        self.live_velocity_peaks = [runner.wind_tunnel.max_abs_ux, runner.wind_tunnel.max_abs_uy];
         self.branch_engine.set_effective_delta(desc.delta_u);
         self.local_runner = runner;
         self.sync_branch_engine_from_local();
