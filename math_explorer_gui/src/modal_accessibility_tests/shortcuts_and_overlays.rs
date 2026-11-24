@@ -1,21 +1,38 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+#[cfg(any(
+    not(target_os = "macos"),
+    all(
+        feature = "pure_math",
+        feature = "ai",
+        feature = "epidemiology",
+        feature = "physics"
+    )
+))]
+use super::helpers::click_pos;
+#[cfg(not(target_os = "macos"))]
+use super::helpers::find_text_centers;
 use super::helpers::{
-    click_pos, cmd_mods, configure_layout_with_canary_panes, copied_texts, find_ak_nodes,
-    find_ak_nodes_exact, find_text_centers, focus_ak_node, has_close_viewport_cmd,
-    has_rendered_text, key_evt, run_app, screen_rect,
+    ak_action_evt, cmd_mods, find_ak_nodes, find_ak_nodes_exact, focus_ak_node, has_rendered_text,
+    key_evt, run_app, screen_rect,
 };
-use crate::app::{MathExplorerApp, ViewportLayout};
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
+use super::helpers::{configure_layout_with_canary_panes, copied_texts, has_close_viewport_cmd};
+use crate::app::MathExplorerApp;
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
+use crate::app::ViewportLayout;
 use eframe::egui::{self, accesskit, Context, Id, Key, Modifiers};
 use egui_plot::commands::CommandRegistryData;
 use std::collections::HashSet;
 
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 fn focus_plot_in_last_pane(ctx: &Context, app: &mut MathExplorerApp) -> Id {
     let out = run_app(ctx, app, Vec::new());
     let plots = find_ak_nodes(&out, accesskit::Role::GraphicsDocument, "Interactive Plot");
     focus_ak_node(ctx, app, plots.last().unwrap().0)
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 fn assert_shortcut_blocked_over_modal(
     ctx: &Context,
     app: &mut MathExplorerApp,
@@ -212,7 +229,12 @@ fn test_keyboard_shortcuts_displays_all_14_global_commands_from_slash_question_a
 }
 
 #[test]
-#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
+#[cfg(all(
+    feature = "pure_math",
+    feature = "ai",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 fn test_command_palette_full_app_close_button_covered_guard_and_selected_pane_focus() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let ctx = Context::default();
@@ -299,7 +321,7 @@ fn verify_theory_portal_in_tab(tab_idx: usize) {
         .unwrap_or_else(|| panic!("Tab '{tab_name}' must expose 📖 Theory toggle"))
         .0;
     let toggle_id = focus_ak_node(&ctx, &mut app, toggle_node);
-    let click_toggle = super::helpers::ak_action_evt(accesskit::Action::Click, toggle_node);
+    let click_toggle = ak_action_evt(accesskit::Action::Click, toggle_node);
 
     let _ = run_app(&ctx, &mut app, vec![click_toggle.clone()]);
     let out_open = run_app(&ctx, &mut app, Vec::new());
@@ -317,7 +339,7 @@ fn verify_theory_portal_in_tab(tab_idx: usize) {
         .last()
         .unwrap_or_else(|| panic!("Tab '{tab_name}' Theory portal Close button node"))
         .0;
-    let click_close = super::helpers::ak_action_evt(accesskit::Action::Click, close_node);
+    let click_close = ak_action_evt(accesskit::Action::Click, close_node);
     let _ = run_app(&ctx, &mut app, vec![click_close]);
     let _ = run_app(&ctx, &mut app, Vec::new());
     assert!(!app.tabs[tab_idx].framework().unwrap().show_theory_portal);
@@ -334,10 +356,19 @@ fn test_theory_context_portal_close_button_escape_and_focus_return_across_all_27
         .enumerate()
         .filter_map(|(i, t)| t.framework().map(|_| i))
         .collect();
+    #[cfg(all(
+        feature = "ai",
+        feature = "applied",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     assert_eq!(
         fw_tab_indices.len(),
-        29,
-        "Expected all 29 SimulationFramework tabs to be registered"
+        30,
+        "Expected all 30 SimulationFramework tabs to be registered"
     );
     for tab_idx in fw_tab_indices {
         verify_theory_portal_in_tab(tab_idx);

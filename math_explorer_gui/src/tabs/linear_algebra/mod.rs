@@ -71,7 +71,7 @@ impl ExplorerTab for LinearAlgebraTab {
 inventory::submit! {
     TabDescriptor {
         id: "linear_algebra",
-        order: 27,
+        order: 28,
         build: || Box::new(LinearAlgebraTab::default()),
     }
 }

@@ -175,7 +175,8 @@ pub fn card_academic_domain(domain: &str) -> AcademicDomain {
         | "graph_theory"
         | "linear_algebra"
         | "financial_math"
-        | "algorithmic_information" => AcademicDomain::PureMath,
+        | "algorithmic_information"
+        | "stochastic_processes" => AcademicDomain::PureMath,
         "biology" | "biochemical" | "morphogenesis" | "neuroscience" | "epidemiology" => {
             AcademicDomain::Biology
         }
