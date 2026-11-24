@@ -2,33 +2,35 @@
 use super::*;
 
 #[cfg(feature = "biology")]
-#[test]
-fn test_morphogenesis_runner_offload() {
+fn build_offload_morpho_runner() -> (
+    crate::tabs::morphogenesis::MorphogenesisRunner,
+    Arc<std::sync::RwLock<crate::tabs::morphogenesis::MorphogenesisSharedParams>>,
+) {
     use crate::tabs::morphogenesis::{
         MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTool,
     };
     use math_explorer::biology::diffusion::FiniteDifference2D;
-    use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
+    use math_explorer::biology::morphogenesis::{
+        DiffusionCoeff, SpatialSchnakenbergKinetics, TuringSystem,
+    };
+    use math_explorer::math_kernel::types::{Dimension, StepSize};
 
-    let width = 20;
-    let height = 20;
-    let kinetics = SchnakenbergKinetics { a: 0.1, b: 0.9 };
+    let (width, height) = (20, 20);
+    let kinetics = SpatialSchnakenbergKinetics::new(0.1, 0.9, width * height);
     let diffusion = FiniteDifference2D::new(
-        math_explorer::math_kernel::types::Dimension(width),
-        math_explorer::math_kernel::types::Dimension(height),
-        math_explorer::math_kernel::types::StepSize(1.0),
-        math_explorer::math_kernel::types::StepSize(1.0),
+        Dimension(width),
+        Dimension(height),
+        StepSize(1.0),
+        StepSize(1.0),
     );
-
     let mut system = TuringSystem::new_with_kinetics(
-        math_explorer::math_kernel::types::Dimension(width * height),
-        math_explorer::biology::morphogenesis::DiffusionCoeff(1.0),
-        math_explorer::biology::morphogenesis::DiffusionCoeff(100.0),
+        Dimension(width * height),
+        DiffusionCoeff(1.0),
+        DiffusionCoeff(100.0),
         kinetics,
         diffusion,
     );
     MorphogenesisTool::initialize_system(&mut system, width, height);
-
     let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams {
         a: 0.1,
         b: 0.9,
@@ -38,9 +40,9 @@ fn test_morphogenesis_runner_offload() {
         high_contrast: false,
         theme_mode: crate::app::ThemeMode::Dark,
         heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
+        mask_rle: None,
     }));
-
-    let mut runner = MorphogenesisRunner {
+    let runner = MorphogenesisRunner {
         system,
         params: Arc::clone(&params),
         width,
@@ -49,7 +51,13 @@ fn test_morphogenesis_runner_offload() {
         rng: oxidize_core::rng::OxidizeRng::default(),
         noise_amplitude: 0.0,
     };
+    (runner, params)
+}
 
+#[cfg(feature = "biology")]
+#[test]
+fn test_morphogenesis_runner_offload() {
+    let (mut runner, params) = build_offload_morpho_runner();
     let snap_before = runner.get_snapshot();
     assert_eq!(snap_before.width, 20);
     assert_eq!(snap_before.height, 20);
@@ -329,6 +337,7 @@ fn test_rl_runners_step_once() {
         start: GridState { x: 0, y: 0 },
         goal: GridState { x: 3, y: 3 },
         traps: vec![],
+        walls: Vec::new(),
         gamma: 0.9,
     };
     let agent = TabularQAgent::new(

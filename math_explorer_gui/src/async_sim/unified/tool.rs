@@ -38,6 +38,9 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(super) cached_param_labels: Vec<String>,
     pub(super) cached_observable_label: Option<&'static str>,
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
+    pub(super) brush_state: crate::framework::RasterBrushState,
+    pub(super) obstacle_rle: Arc<RwLock<Option<String>>>,
+    pub(super) local_obstacles: Option<Vec<bool>>,
     pub(crate) audio_settings: crate::audio::AcousticSettings,
     pub(crate) callout_manager: CalloutManager,
     pub(super) ui_extension: Option<Box<dyn UnifiedUiExtension>>,
@@ -52,32 +55,39 @@ impl<M: UnifiedModel> Default for UnifiedSimTool<M> {
 }
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
+    fn build_initial_params(
+        param_metadata: &[(String, ParameterConstraint)],
+    ) -> HashMap<String, f64> {
+        param_metadata
+            .iter()
+            .map(|(name, constraint)| {
+                let val = M::parameter_choices(name)
+                    .first()
+                    .map_or((constraint.min + constraint.max) / 2.0, |&(_, v)| v);
+                (name.clone(), val)
+            })
+            .collect()
+    }
+
     #[allow(missing_docs)]
     pub fn new() -> Self {
-        let param_map = M::parameters();
-        let mut param_metadata: Vec<_> = param_map.into_iter().collect();
+        let mut param_metadata: Vec<_> = M::parameters().into_iter().collect();
         param_metadata.sort_by(|a, b| a.0.cmp(&b.0));
-
-        let mut initial_params = HashMap::new();
-        for (name, constraint) in &param_metadata {
-            let default_val = M::parameter_choices(name)
-                .first()
-                .map_or((constraint.min + constraint.max) / 2.0, |&(_, v)| v);
-            initial_params.insert(name.clone(), default_val);
-        }
-
+        let initial_params = Self::build_initial_params(&param_metadata);
+        let local_obstacles = M::default_obstacle_mask(&initial_params);
+        let obstacle_rle = Arc::new(RwLock::new(None));
         let formula_bar = M::formula_spec().as_ref().map(build_formula_bar);
         let params = Arc::new(RwLock::new(initial_params.clone()));
         let sculpt_state = Arc::new(RwLock::new(SculptStatePayload::default()));
         let shared_formula = Arc::new(RwLock::new(None));
-        let runner = UnifiedSimRunner::<M>::with_shared(
+        let runner = UnifiedSimRunner::<M>::with_shared_and_obstacles(
             Arc::clone(&params),
             Arc::clone(&sculpt_state),
             Arc::clone(&shared_formula),
+            Arc::clone(&obstacle_rle),
         );
         let controller = BackgroundWorker::new(runner);
         let temp_model = M::new(&initial_params);
-        let brush_kit = M::default_brush_kit();
         let cached_param_labels = param_metadata
             .iter()
             .map(|(name, _)| M::parameter_label(name))
@@ -91,7 +101,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             controller,
             params,
             sculpt_state,
-            brush_kit,
+            brush_kit: M::default_brush_kit(),
             shared_formula,
             formula_bar,
             custom_formula_enabled: false,
@@ -110,6 +120,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             cached_param_labels,
             cached_observable_label: None,
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
+            brush_state: crate::framework::RasterBrushState::default(),
+            obstacle_rle,
+            local_obstacles,
             audio_settings: crate::audio::AcousticSettings::default(),
             callout_manager,
             ui_extension,
@@ -128,6 +141,19 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.stepped_snapshot = None;
     }
 
+    pub(super) fn refresh_paused_simulation(&mut self, ctx: Option<&egui::Context>) {
+        if self.controller.state().is_ready() {
+            self.clear_stepped_state();
+            let _ = self.controller.send_command(SimCommand::Custom(
+                super::SYNC_PARAMETERS_COMMAND.to_string(),
+            ));
+            self.dirty = true;
+            if let Some(c) = ctx {
+                c.request_repaint();
+            }
+        }
+    }
+
     pub(super) fn dispatch_extension_commands(
         &mut self,
         commands: Vec<SimCommand>,
@@ -136,6 +162,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         if commands.is_empty() {
             return;
         }
+        *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = None;
         self.clear_stepped_state();
         for cmd in commands {
             let _ = self.controller.send_command(cmd);
@@ -153,7 +180,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
     }
 
-    pub(super) fn reset_simulation(&mut self, ctx: Option<&egui::Context>) {
+    pub(crate) fn reset_simulation(&mut self, ctx: Option<&egui::Context>) {
         if self
             .ui_extension
             .as_ref()
@@ -177,8 +204,10 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let params = Arc::clone(&self.params);
         let sculpt = Arc::clone(&self.sculpt_state);
         let formula = Arc::clone(&self.shared_formula);
-        self.controller
-            .reset_or_respawn(|| UnifiedSimRunner::<M>::with_shared(params, sculpt, formula));
+        let obstacle_rle = Arc::clone(&self.obstacle_rle);
+        self.controller.reset_or_respawn(|| {
+            UnifiedSimRunner::<M>::with_shared_and_obstacles(params, sculpt, formula, obstacle_rle)
+        });
         self.dirty = true;
         if let Some(c) = ctx {
             c.request_repaint();
@@ -193,6 +222,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
         if M::supports_spatial_brush() {
+            *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = None;
             let params_snap = self
                 .params
                 .read()
@@ -288,7 +318,9 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.brush_kit.focused_plot_id()
+        self.brush_state
+            .focused_id
+            .or_else(|| self.brush_kit.focused_plot_id())
     }
 
     fn state_revision(&self) -> u64 {

@@ -39,6 +39,13 @@ pub enum SimCommand {
         #[allow(missing_docs)]
         is_obstacle: bool,
     },
+    /// Applies a batch of raster brush cell coordinates with a tool-specific brush mode.
+    ApplyBrushCells {
+        /// Deduplicated `(x, y)` grid coordinates stamped by the brush stroke.
+        cells: Vec<(usize, usize)>,
+        /// Tool-specific brush mode index.
+        mode: u8,
+    },
     /// Applies an interpolated plot-space [`BrushStroke`] to the simulation field or obstacle mask.
     ApplyBrushStroke(BrushStroke),
     /// Synchronizes persisted [`SculptStatePayload`] state with the simulation worker model.
@@ -62,6 +69,7 @@ impl SimCommand {
             Self::SetSpeed(_) => "SetSpeed",
             Self::TrainEpisodes(_) => "TrainEpisodes",
             Self::ApplyBrush { .. } => "ApplyBrush",
+            Self::ApplyBrushCells { .. } => "ApplyBrushCells",
             Self::ApplyBrushStroke(_) => "ApplyBrushStroke",
             Self::SyncSculptState(_) => "SyncSculptState",
             Self::ClearObstacles => "ClearObstacles",
