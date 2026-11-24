@@ -10341,6 +10341,145 @@
       "signature": "pub fn optical_dispersion (_ : f64 , _ : f64) -> f64"
     }
   ],
+  "crates/domain_physics/src/physics/solid_state/quasicrystal.rs": [
+    {
+      "signature": "impl QuasicrystalKind { pub const fn hyperlattice_dim (self) -> usize }"
+    },
+    {
+      "signature": "impl QuasicrystalKind { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl QuasicrystalKind { pub const fn rotational_order (self) -> usize }"
+    },
+    {
+      "signature": "impl QuasicrystalKind { pub const fn theoretical_ratio (self) -> f64 }"
+    },
+    {
+      "signature": "impl QuasicrystalKind { pub fn window_radius (self) -> f64 }"
+    },
+    {
+      "signature": "impl QuasicrystalParams { pub const fn new (_ : QuasicrystalKind , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl QuasicrystalWorkspace { pub const fn stats (& self) -> QuasicrystalStats }"
+    },
+    {
+      "signature": "impl QuasicrystalWorkspace { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl QuasicrystalWorkspace { pub fn positions_xy (& self) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl QuasicrystalWorkspace { pub fn project_into (& mut self , _ : & QuasicrystalParams ,) -> Result < QuasicrystalStats , SolidStateError > }"
+    },
+    {
+      "signature": "impl QuasicrystalWorkspace { pub fn tiles (& self) -> & [ProjectedTile2D] }"
+    },
+    {
+      "signature": "impl QuasicrystalWorkspace { pub fn vertices (& self) -> & [ProjectedVertex2D] }"
+    },
+    {
+      "signature": "impl QuasicrystalWorkspace { pub fn with_capacity (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub const GOLDEN_RATIO : f64"
+    },
+    {
+      "signature": "pub const SILVER_RATIO : f64"
+    },
+    {
+      "signature": "pub const STAMPFLI_RATIO : f64"
+    },
+    {
+      "signature": "pub enum QuasicrystalKind"
+    },
+    {
+      "signature": "pub enum QuasicrystalTileKind"
+    },
+    {
+      "signature": "pub struct ProjectedTile2D"
+    },
+    {
+      "signature": "pub struct ProjectedVertex2D"
+    },
+    {
+      "signature": "pub struct QuasicrystalParams"
+    },
+    {
+      "signature": "pub struct QuasicrystalStats"
+    },
+    {
+      "signature": "pub struct QuasicrystalWorkspace"
+    }
+  ],
+  "crates/domain_physics/src/physics/solid_state/reciprocal.rs": [
+    {
+      "signature": "impl BravaisLattice2D { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl BravaisLattice2D { pub const fn symmetry_order (self) -> usize }"
+    },
+    {
+      "signature": "impl BrillouinZone2D { pub const fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl BrillouinZone2D { pub const fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl BrillouinZone2D { pub fn area (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BrillouinZone2D { pub fn vertices (& self) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl Lattice2DParams { pub fn direct_basis (& self) -> [Vector2 < f64 > ; 2] }"
+    },
+    {
+      "signature": "impl Lattice2DParams { pub fn first_brillouin_zone (& self) -> BrillouinZone2D }"
+    },
+    {
+      "signature": "impl Lattice2DParams { pub fn generate_sites_into (& self , _ : f64 , _ : & mut Vec < [f64 ; 2] >) }"
+    },
+    {
+      "signature": "impl Lattice2DParams { pub fn hexagonal (_ : f64) -> Result < Self , SolidStateError > }"
+    },
+    {
+      "signature": "impl Lattice2DParams { pub fn new (_ : BravaisLattice2D , _ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , SolidStateError > }"
+    },
+    {
+      "signature": "impl Lattice2DParams { pub fn reciprocal_basis (& self) -> [Vector2 < f64 > ; 2] }"
+    },
+    {
+      "signature": "impl Lattice2DParams { pub fn signed_cell_area (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Lattice2DParams { pub fn square (_ : f64) -> Result < Self , SolidStateError > }"
+    },
+    {
+      "signature": "impl Lattice2DParams { pub fn unit_cell_area (& self) -> f64 }"
+    },
+    {
+      "signature": "pub enum BravaisLattice2D"
+    },
+    {
+      "signature": "pub struct BrillouinZone2D"
+    },
+    {
+      "signature": "pub struct Lattice2DParams"
+    },
+    {
+      "signature": "pub use diffraction :: BraggDiffractionWorkspace"
+    },
+    {
+      "signature": "pub use diffraction :: BraggPeak2D"
+    },
+    {
+      "signature": "pub use diffraction :: RotationalSymmetryReport"
+    },
+    {
+      "signature": "pub use diffraction :: kinematic_structure_factor"
+    }
+  ],
   "crates/domain_physics/src/physics/solid_state/screening.rs": [
     {
       "signature": "pub fn thomas_fermi_dielectric (_ : f64 , _ : f64) -> f64"

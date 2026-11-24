@@ -90,6 +90,7 @@ mod tests {
         {
             check_one::<crate::tabs::solid_state::band_structure::BandStructureTool>(ctx);
             check_one::<crate::tabs::solid_state::ising::IsingModelTool>(ctx);
+            check_one::<crate::tabs::solid_state::quasicrystal_studio::QuasicrystalStudio>(ctx);
             check_one::<crate::tabs::quantum::clebsch::ClebschGordanTool>(ctx);
             check_one::<crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool>(ctx);
             check_one::<crate::tabs::fluid_dynamics::turbulence::TurbulenceTool>(ctx);
@@ -205,12 +206,7 @@ mod tests {
 
             count += 1;
         }
-
-        assert!(
-            count >= 40,
-            "Expected at least 40 registered tools, got {}",
-            count
-        );
+        assert!(count >= 40, "Expected >= 40 tools, got {count}");
     }
 
     #[test]
