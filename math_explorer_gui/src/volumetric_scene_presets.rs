@@ -10,14 +10,14 @@ mod accretion_preset;
 pub use accretion_preset::{build_relativistic_accretion_disk_scene, ACCRETION_WORLD_RS};
 
 use super::{extract_voxel_splats_into, VolumetricSplatWorkspace, MAX_DYNAMIC_SPLATS};
-use math_explorer::ai::gaussian_splatting::{Gaussian3D, Scene};
+use math_explorer::ai::gaussian_splatting::{Gaussian3D, Scene, UnitQuaternion};
 use math_explorer::applied::isosurface::{Point3D, VoxelGrid};
 use math_explorer::biology::morphogenesis::{DiffusionCoeff, SchnakenbergKinetics, TuringSystem};
 use math_explorer::math_kernel::types::{flatten_2d_index, flatten_3d_index, Dimension, StepSize};
 use math_explorer::physics::quantum::{
     HydrogenicSuperposition3D, OrbitalQuantumNumbers, QuantumFieldObservable,
 };
-use nalgebra::{Point3, UnitQuaternion, Vector3};
+use nalgebra::{Point3, Vector3};
 use serde::{Deserialize, Serialize};
 
 /// Deterministic PCG-style PRNG used to seed reproducible initial perturbations across 2D/3D grids.
@@ -189,11 +189,7 @@ fn build_canonical_scene() -> (Scene, Vec<f64>) {
         gaussians.push(Gaussian3D {
             mean: Point3::new(pos[0], pos[1], pos[2]),
             scale: Vector3::new(base_scale[0], base_scale[1], base_scale[2]),
-            rotation: UnitQuaternion::new(Vector3::new(
-                axis_angle[0],
-                axis_angle[1],
-                axis_angle[2],
-            )),
+            rotation: UnitQuaternion::from_scaled_axis(axis_angle),
             opacity,
             color: Vector3::new(color[0], color[1], color[2]),
         });

@@ -5,7 +5,8 @@ use super::{
 };
 use oxidize_core::mesh::{
     build_uv_sphere, export_colored_mesh_to_ply_binary, export_mesh_to_stl_binary,
-    export_splats_to_ply_binary, ColoredMesh, GaussianSplatPly, Point3D, VertexColor,
+    export_splats_to_ply_binary, ColoredMesh, GaussianSplatPly, Point3D, UnitQuaternion,
+    VertexColor,
 };
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
@@ -111,7 +112,7 @@ fn wasm_download_browser_file_binary_stl_and_ply_blobs() {
     let splat = GaussianSplatPly {
         mean: Point3D::new(0.0, 0.0, 0.0),
         scale: Point3D::new(0.4, 0.3, 0.2),
-        rotation: [1.0, 0.0, 0.0, 0.0],
+        rotation: UnitQuaternion::identity(),
         opacity: 0.85,
         color: [0.9, 0.4, 0.2],
     };

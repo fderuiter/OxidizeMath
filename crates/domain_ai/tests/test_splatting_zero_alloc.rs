@@ -7,8 +7,9 @@ use domain_ai::ai::gaussian_splatting::{
         project_scene_lensed_into,
     },
     rendering::blend_gaussians,
+    structs::UnitQuaternion,
 };
-use nalgebra::{Matrix2, Matrix4, Point2, Point3, UnitQuaternion, Vector3};
+use nalgebra::{Matrix2, Matrix4, Point2, Point3, Vector3};
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
 
@@ -29,7 +30,7 @@ fn test_project_scene_into_and_blend_zero_allocation_hot_path() {
             Gaussian3D {
                 mean: Point3::new(0.3, -0.1, 0.4),
                 scale: Vector3::new(0.55, 0.30, 0.20),
-                rotation: UnitQuaternion::new(Vector3::new(0.1, 0.2, -0.3)),
+                rotation: UnitQuaternion::from_scaled_axis([0.1, 0.2, -0.3]),
                 opacity: 0.75,
                 color: Vector3::new(0.2, 0.7, 0.95),
             },

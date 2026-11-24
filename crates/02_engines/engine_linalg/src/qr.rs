@@ -3,7 +3,7 @@
 // [cite:advanced_linear_algebra]
 //! Householder QR with column pivoting ($A P = Q R$), contrast variance solvers, and streaming Givens QR.
 
-use crate::scalar::Scalar;
+use crate::scalar::{FieldScalar, RealScalar, Scalar};
 use crate::types::{LinalgError, SolverWorkspace, check_all_finite, mat_idx};
 
 /// Workspace scalar capacity required by [`qr_factor_pivoted`] for an `m x n` matrix.
@@ -21,7 +21,7 @@ pub const fn qr_least_squares_workspace_len(m: usize, n: usize) -> usize {
     m * n + k + m + n
 }
 
-fn swap_cols<T: Scalar>(mat: &mut [T], m: usize, n: usize, c1: usize, c2: usize) {
+fn swap_cols<T: FieldScalar>(mat: &mut [T], m: usize, n: usize, c1: usize, c2: usize) {
     if c1 == c2 {
         return;
     }
@@ -30,15 +30,21 @@ fn swap_cols<T: Scalar>(mat: &mut [T], m: usize, n: usize, c1: usize, c2: usize)
     }
 }
 
-fn col_norm_from_row<T: Scalar>(mat: &[T], m: usize, n: usize, col: usize, start_row: usize) -> T {
-    let mut scale = T::ZERO;
-    let mut ssq = T::ONE;
+fn col_norm_from_row<T: FieldScalar>(
+    mat: &[T],
+    m: usize,
+    n: usize,
+    col: usize,
+    start_row: usize,
+) -> T::Real {
+    let mut scale = T::Real::ZERO;
+    let mut ssq = T::Real::ONE;
     for r in start_row..m {
         let v = mat[mat_idx(r, col, n)].abs();
-        if v > T::ZERO {
+        if v > T::Real::ZERO {
             if scale < v {
                 let ratio = scale / v;
-                ssq = T::ONE + ssq * ratio * ratio;
+                ssq = T::Real::ONE + ssq * ratio * ratio;
                 scale = v;
             } else {
                 let ratio = v / scale;
@@ -49,14 +55,14 @@ fn col_norm_from_row<T: Scalar>(mat: &[T], m: usize, n: usize, col: usize, start
     scale * ssq.sqrt()
 }
 
-fn apply_householder_col<T: Scalar>(qr: &mut [T], m: usize, n: usize, k: usize, tau_k: T) {
+fn apply_householder_col<T: FieldScalar>(qr: &mut [T], m: usize, n: usize, k: usize, tau_k: T) {
     if tau_k == T::ZERO {
         return;
     }
     for j in (k + 1)..n {
         let mut dot = qr[mat_idx(k, j, n)];
         for i in (k + 1)..m {
-            dot += qr[mat_idx(i, k, n)] * qr[mat_idx(i, j, n)];
+            dot += qr[mat_idx(i, k, n)].conj() * qr[mat_idx(i, j, n)];
         }
         let factor = tau_k * dot;
         qr[mat_idx(k, j, n)] -= factor;
@@ -67,7 +73,7 @@ fn apply_householder_col<T: Scalar>(qr: &mut [T], m: usize, n: usize, k: usize, 
     }
 }
 
-fn qr_pivot_and_reflect<T: Scalar>(
+fn qr_pivot_and_reflect<T: FieldScalar>(
     qr: &mut [T],
     m: usize,
     n: usize,
@@ -76,10 +82,10 @@ fn qr_pivot_and_reflect<T: Scalar>(
     col_norms: &mut [T],
 ) -> T {
     let mut best_c = k;
-    let mut best_norm = col_norms[k];
+    let mut best_norm = col_norms[k].re_part();
     for (c, &cn) in col_norms.iter().enumerate().take(n).skip(k + 1) {
-        if cn > best_norm {
-            best_norm = cn;
+        if cn.re_part() > best_norm {
+            best_norm = cn.re_part();
             best_c = c;
         }
     }
@@ -92,16 +98,21 @@ fn qr_pivot_and_reflect<T: Scalar>(
     let tail_norm = if k + 1 < m {
         col_norm_from_row(qr, m, n, k, k + 1)
     } else {
-        T::ZERO
+        T::Real::ZERO
     };
-    let tau_k = if tail_norm == T::ZERO {
+    let tau_k = if tail_norm == T::Real::ZERO {
         T::ZERO
     } else {
         let norm_x = col_norm_from_row(qr, m, n, k, k);
         let x0 = qr[mat_idx(k, k, n)];
-        let alpha = -norm_x.copysign(x0);
+        let abs_x0 = x0.abs();
+        let alpha = if abs_x0 == T::Real::ZERO {
+            T::from_real(-norm_x)
+        } else {
+            -x0.scale_real(norm_x / abs_x0)
+        };
         let v0 = x0 - alpha;
-        let tk = -v0 / alpha;
+        let tk = T::from_real((abs_x0 + norm_x) / norm_x);
         qr[mat_idx(k, k, n)] = alpha;
         for i in (k + 1)..m {
             qr[mat_idx(i, k, n)] /= v0;
@@ -111,11 +122,12 @@ fn qr_pivot_and_reflect<T: Scalar>(
     };
 
     for (c, slot) in col_norms.iter_mut().enumerate().take(n).skip(k + 1) {
-        *slot = if k + 1 < m {
+        let cn = if k + 1 < m {
             col_norm_from_row(qr, m, n, c, k + 1)
         } else {
-            T::ZERO
+            T::Real::ZERO
         };
+        *slot = T::from_real(cn);
     }
     tau_k
 }
@@ -126,7 +138,7 @@ fn qr_pivot_and_reflect<T: Scalar>(
 /// on and above the diagonal, reflector scalars in `tau` (`min(m, n)`), and column permutation
 /// indices in `col_perm` (`n`). Returns the numerical rank estimated from $|R_{ii}|$.
 /// `[cite:engine_linalg]`
-pub fn qr_factor_pivoted<T: Scalar>(
+pub fn qr_factor_pivoted<T: FieldScalar>(
     qr: &mut [T],
     m: usize,
     n: usize,
@@ -142,7 +154,7 @@ pub fn qr_factor_pivoted<T: Scalar>(
     let (col_norms, _) = ws.try_split(qr_factor_workspace_len(n))?;
     for j in 0..n {
         col_perm[j] = j;
-        col_norms[j] = col_norm_from_row(qr, m, n, j, 0);
+        col_norms[j] = T::from_real(col_norm_from_row(qr, m, n, j, 0));
     }
     for (k, tau_slot) in tau.iter_mut().enumerate().take(k_max) {
         *tau_slot = qr_pivot_and_reflect(qr, m, n, k, col_perm, col_norms);
@@ -152,10 +164,10 @@ pub fn qr_factor_pivoted<T: Scalar>(
         return Ok(0);
     }
     let r00 = qr[mat_idx(0, 0, n)].abs();
-    if r00 == T::ZERO {
+    if r00 == T::Real::ZERO {
         return Ok(0);
     }
-    let rank_tol = T::from_usize(m.max(n)) * T::EPSILON * r00;
+    let rank_tol = T::Real::from_usize(m.max(n)) * T::Real::EPSILON * r00;
     let mut rank = 0;
     while rank < k_max && qr[mat_idx(rank, rank, n)].abs() > rank_tol {
         rank += 1;
@@ -163,9 +175,9 @@ pub fn qr_factor_pivoted<T: Scalar>(
     Ok(rank)
 }
 
-/// Applies $Q^T$ in-place to `y` (`len == m`) using reflectors from [`qr_factor_pivoted`].
+/// Applies $Q^H$ in-place to `y` (`len == m`) using reflectors from [`qr_factor_pivoted`].
 /// `[cite:engine_linalg]`
-pub fn qr_apply_qt<T: Scalar>(
+pub fn qr_apply_qt<T: FieldScalar>(
     qr: &[T],
     m: usize,
     n: usize,
@@ -185,7 +197,7 @@ pub fn qr_apply_qt<T: Scalar>(
         }
         let mut dot = y[k];
         for i in (k + 1)..m {
-            dot += qr[mat_idx(i, k, n)] * y[i];
+            dot += qr[mat_idx(i, k, n)].conj() * y[i];
         }
         let factor = tau_k * dot;
         y[k] -= factor;
@@ -196,9 +208,9 @@ pub fn qr_apply_qt<T: Scalar>(
     Ok(())
 }
 
-/// Solves $R_{0..\text{rank}, 0..\text{rank}} z = (Q^T b)_{0..\text{rank}}$ and unpermutes $x = P z$.
+/// Solves $R_{0..\text{rank}, 0..\text{rank}} z = (Q^H b)_{0..\text{rank}}$ and unpermutes $x = P z$.
 /// `[cite:engine_linalg]`
-pub fn qr_solve_r_pivoted<T: Scalar>(
+pub fn qr_solve_r_pivoted<T: FieldScalar>(
     qr: &[T],
     dims: (usize, usize),
     rank: usize,
@@ -280,7 +292,7 @@ pub fn qr_solve_rt_permuted<T: Scalar>(
 
 /// Solves $\min_x \|A x - b\|_2$ via Householder QR with column pivoting in `ws`, returning numerical rank.
 /// `[cite:engine_linalg]`
-pub fn qr_solve_least_squares<T: Scalar>(
+pub fn qr_solve_least_squares<T: FieldScalar>(
     a: &[T],
     m: usize,
     n: usize,

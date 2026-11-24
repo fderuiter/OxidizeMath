@@ -7,7 +7,7 @@
 
 use super::real_curve::{CurvePoint, binary_scalar_mul, populate_orbit};
 use crate::pure_math::algebra::fields::Fp;
-use crate::pure_math::algebra::traits::{Field, Ring};
+use crate::pure_math::algebra::traits::Field;
 use crate::pure_math::elliptic_curves::EllipticCurveError;
 use crate::pure_math::elliptic_curves::modular_fp::{
     mod_inv_fp, mod_mul, mod_pow_fp, tonelli_shanks_fp,
@@ -18,32 +18,40 @@ use crate::pure_math::number_theory::primes::is_prime;
 pub const MAX_LATTICE_PRIME: i64 = 997;
 
 /// Non-singular short-Weierstrass curve $y^2 = x^3 + ax + b$ over compile-time prime field [`Fp<P>`].
+///
+/// Composite moduli are rejected at compile time by [`Fp<P>`]:
+///
+/// ```compile_fail
+/// use pure_math::pure_math::elliptic_curves::FpWeierstrassCurve;
+/// let _ = FpWeierstrassCurve::<15>::new(1, 1);
+/// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct FpWeierstrassCurve<const P: i64> {
+pub struct FpWeierstrassCurve<const P: u64> {
     /// Linear coefficient $a \in \mathbb{F}_P$.
     pub a: Fp<P>,
     /// Constant coefficient $b \in \mathbb{F}_P$.
     pub b: Fp<P>,
 }
 
-impl<const P: i64> FpWeierstrassCurve<P> {
+impl<const P: u64> FpWeierstrassCurve<P> {
     /// Constructs a validated curve over [`Fp<P>`] for prime $P > 3$.
     ///
     /// # Errors
-    /// Returns [`EllipticCurveError::InvalidModulus`] when $P \le 3$ or composite, and
+    /// Returns [`EllipticCurveError::InvalidModulus`] when $P \le 3$, and
     /// [`EllipticCurveError::SingularCurve`] when $4a^3 + 27b^2 \equiv 0 \pmod P$.
     #[verified_engine::verified]
     pub fn new(a: i64, b: i64) -> Result<Self, EllipticCurveError> {
-        if P <= 3 || !is_prime(P as u64) {
-            return Err(EllipticCurveError::InvalidModulus { p: P });
+        let () = Fp::<P>::VALID_PRIME;
+        if P <= 3 || P > i64::MAX as u64 {
+            return Err(EllipticCurveError::InvalidModulus { p: P as i64 });
         }
-        let (a_fp, b_fp) = (Fp::<P>::new(a), Fp::<P>::new(b));
+        let (a_fp, b_fp) = (Fp::<P>::from_i64(a), Fp::<P>::from_i64(b));
         let core = Fp::<P>::new(4) * a_fp * a_fp * a_fp + Fp::<P>::new(27) * b_fp * b_fp;
         if core.is_zero() {
             return Err(EllipticCurveError::SingularCurve {
-                p: P,
-                a: a_fp.value,
-                b: b_fp.value,
+                p: P as i64,
+                a: a_fp.value() as i64,
+                b: b_fp.value() as i64,
             });
         }
         Ok(Self { a: a_fp, b: b_fp })
@@ -54,7 +62,7 @@ impl<const P: i64> FpWeierstrassCurve<P> {
     #[verified_engine::verified]
     pub fn discriminant(&self) -> Fp<P> {
         let core = Fp::<P>::new(4) * self.a * self.a * self.a + Fp::<P>::new(27) * self.b * self.b;
-        Fp::<P>::new(-16) * core
+        Fp::<P>::from_i64(-16) * core
     }
 
     /// Returns `true` if `point` lies on $y^2 = x^3 + ax + b$ in $\mathbb{F}_P$.

@@ -1,175 +1,76 @@
-//! # Finite Fields
+//! # Finite Fields ($\mathbb{F}_P$ and $\mathbb{F}_{P^n}$)
+// [cite:math_scalars]
+// [cite:advanced_linear_algebra]
 //!
-//! Implementation of Finite Fields (Integers Modulo Prime P).
+//! Re-exports compile-time validated prime fields [`Fp<const P: u64>`] backed by carry-safe
+//! 128-bit Montgomery reduction and stack-allocated Galois extension fields [`FpExt`] from
+//! [`math_scalars`], implementing [`Ring`] and [`Field`] for seamless integration with
+//! [`crate::pure_math::algebra::Polynomial`] and elliptic-curve arithmetic.
+//!
+//! Composite moduli are rejected at compile time:
+//!
+//! ```compile_fail
+//! use pure_math::pure_math::algebra::Fp;
+//! let _bad = Fp::<15>::new(1);
+//! ```
 
-use crate::error::NumberTheoryError;
 use crate::pure_math::algebra::traits::{Field, Ring};
-use std::fmt;
-use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
+pub use math_scalars::{Fp, FpExt, IrreducibleModulus, ScalarError, is_prime_u64};
 
-// ============================================================================
-// Finite Fields (Integers Modulo Prime P)
-// ============================================================================
-
-/// A generic finite field $\mathbb{F}_p$.
-/// P must be prime. This is not checked at compile time but expected.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct Fp<const P: i64> {
-    #[allow(missing_docs)]
-    pub value: i64,
-}
-
-impl<const P: i64> Fp<P> {
-    #[allow(missing_docs)]
-    #[verified_engine::verified]
-    pub fn new(value: i64) -> Self {
-        Fp {
-            value: value.rem_euclid(P),
-        }
-    }
-
-    /// Computes the multiplicative inverse of `self` modulo `P` without panicking.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`NumberTheoryError::ZeroModulus`] if `P <= 0`,
-    /// [`NumberTheoryError::DivisionByZeroFieldElement`] if `self` is zero, or
-    /// [`NumberTheoryError::NoModularInverse`] if `gcd(self.value, P) != 1`.
-    #[verified_engine::verified]
-    pub fn checked_inverse(&self) -> Result<Self, NumberTheoryError> {
-        if P <= 0 {
-            return Err(NumberTheoryError::ZeroModulus);
-        }
-        if self.is_zero() {
-            return Err(NumberTheoryError::DivisionByZeroFieldElement);
-        }
-        let (g, x, _) = extended_gcd(self.value, P);
-        if g != 1 {
-            return Err(NumberTheoryError::NoModularInverse);
-        }
-        Ok(Fp::new(x))
-    }
-}
-
-// Implement Operations
-impl<const P: i64> Add for Fp<P> {
-    type Output = Self;
-    #[verified_engine::verified]
-    fn add(self, other: Self) -> Self {
-        Fp::new(self.value + other.value)
-    }
-}
-
-impl<const P: i64> AddAssign for Fp<P> {
-    #[verified_engine::verified]
-    fn add_assign(&mut self, other: Self) {
-        *self = *self + other;
-    }
-}
-
-impl<const P: i64> Sub for Fp<P> {
-    type Output = Self;
-    #[verified_engine::verified]
-    fn sub(self, other: Self) -> Self {
-        Fp::new(self.value - other.value)
-    }
-}
-
-impl<const P: i64> SubAssign for Fp<P> {
-    #[verified_engine::verified]
-    fn sub_assign(&mut self, other: Self) {
-        *self = *self - other;
-    }
-}
-
-impl<const P: i64> Mul for Fp<P> {
-    type Output = Self;
-    #[verified_engine::verified]
-    fn mul(self, other: Self) -> Self {
-        Fp::new(self.value * other.value)
-    }
-}
-
-impl<const P: i64> MulAssign for Fp<P> {
-    #[verified_engine::verified]
-    fn mul_assign(&mut self, other: Self) {
-        *self = *self * other;
-    }
-}
-
-impl<const P: i64> Neg for Fp<P> {
-    type Output = Self;
-    #[verified_engine::verified]
-    fn neg(self) -> Self {
-        Fp::new(-self.value)
-    }
-}
-
-impl<const P: i64> Ring for Fp<P> {
+impl<const P: u64> Ring for Fp<P> {
     #[verified_engine::verified]
     fn zero() -> Self {
-        Fp::new(0)
+        Self::ZERO
     }
+
     #[verified_engine::verified]
     fn one() -> Self {
-        Fp::new(1)
+        Self::ONE
     }
-}
 
-impl<const P: i64> Div for Fp<P> {
-    type Output = Self;
-    #[allow(clippy::suspicious_arithmetic_impl)]
     #[verified_engine::verified]
-    fn div(self, other: Self) -> Self {
-        self * other.multiplicative_inverse()
+    fn is_zero(&self) -> bool {
+        Fp::is_zero(*self)
     }
 }
 
-impl<const P: i64> Field for Fp<P> {
+impl<const P: u64> Field for Fp<P> {
     #[verified_engine::verified]
     fn multiplicative_inverse(&self) -> Self {
-        match self.checked_inverse() {
-            Ok(inv) => inv,
-            Err(NumberTheoryError::DivisionByZeroFieldElement) => {
-                panic!("Division by zero in Fp")
-            }
-            Err(_) => panic!("Element has no inverse (P might not be prime)"),
-        }
-    }
-}
-
-// Helper for Extended Euclidean Algorithm
-#[verified_engine::verified]
-fn extended_gcd(a: i64, b: i64) -> (i64, i64, i64) {
-    let mut s = 0;
-    let mut old_s = 1;
-    let mut t = 1;
-    let mut old_t = 0;
-    let mut r = b;
-    let mut old_r = a;
-
-    while r != 0 {
-        let quotient = old_r / r;
-
-        let temp_r = r;
-        r = old_r - quotient * r;
-        old_r = temp_r;
-
-        let temp_s = s;
-        s = old_s - quotient * s;
-        old_s = temp_s;
-
-        let temp_t = t;
-        t = old_t - quotient * t;
-        old_t = temp_t;
+        self.checked_inverse().expect("Division by zero in Fp")
     }
 
-    (old_r, old_s, old_t)
-}
-
-impl<const P: i64> fmt::Display for Fp<P> {
     #[verified_engine::verified]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.value)
+    fn try_multiplicative_inverse(&self) -> Result<Self, ScalarError> {
+        self.checked_inverse()
+    }
+}
+
+impl<const P: u64, const DEG: usize, M: IrreducibleModulus<P, DEG>> Ring for FpExt<P, DEG, M> {
+    #[verified_engine::verified]
+    fn zero() -> Self {
+        Self::ZERO
+    }
+
+    #[verified_engine::verified]
+    fn one() -> Self {
+        Self::ONE
+    }
+
+    #[verified_engine::verified]
+    fn is_zero(&self) -> bool {
+        FpExt::is_zero(self)
+    }
+}
+
+impl<const P: u64, const DEG: usize, M: IrreducibleModulus<P, DEG>> Field for FpExt<P, DEG, M> {
+    #[verified_engine::verified]
+    fn multiplicative_inverse(&self) -> Self {
+        self.checked_inverse().expect("Division by zero in FpExt")
+    }
+
+    #[verified_engine::verified]
+    fn try_multiplicative_inverse(&self) -> Result<Self, ScalarError> {
+        self.checked_inverse()
     }
 }

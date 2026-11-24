@@ -3,9 +3,9 @@
 // [cite:gaussian_splatting]
 // [cite:general_relativity_geodesics]
 
-use math_explorer::ai::gaussian_splatting::{Gaussian3D, Scene};
+use math_explorer::ai::gaussian_splatting::{Gaussian3D, Scene, UnitQuaternion};
 use math_explorer::physics::high_energy::general_relativity::SchwarzschildBlackHole;
-use nalgebra::{Point3, UnitQuaternion, Vector3};
+use nalgebra::{Point3, Vector3};
 
 /// Normalized Schwarzschild radius $R_s$ in world units (`[-1.8, 1.8]^3`) for the accretion preset.
 pub const ACCRETION_WORLD_RS: f64 = 0.14;
@@ -22,7 +22,7 @@ pub fn build_relativistic_accretion_disk_scene() -> (Scene, Vec<f64>) {
 
     let mut gaussians = Vec::with_capacity(total);
     let mut grads = Vec::with_capacity(total);
-    let disk_tilt = UnitQuaternion::from_axis_angle(&Vector3::x_axis(), 0.24);
+    let disk_tilt = UnitQuaternion::from_axis_angle([1.0, 0.0, 0.0], 0.24);
 
     for ring_idx in 0..ring_count {
         let u = (ring_idx as f64) / ((ring_count - 1) as f64);
@@ -39,9 +39,8 @@ pub fn build_relativistic_accretion_disk_scene() -> (Scene, Vec<f64>) {
             let (sin_p, cos_p) = phi.sin_cos();
             let spiral_arm = 0.5 + 0.5 * (2.0 * (phi - spiral_twist)).cos();
             let y_warp = 0.018 * (phi * 2.0).sin() * u;
-            let local_pos = Vector3::new(r * cos_p, y_warp, r * sin_p);
-            let world_pos = disk_tilt * local_pos;
-            let yaw = UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -phi);
+            let world_pos = Vector3::from(disk_tilt.rotate_vec3([r * cos_p, y_warp, r * sin_p]));
+            let yaw = UnitQuaternion::from_axis_angle([0.0, 1.0, 0.0], -phi);
             let rot = disk_tilt * yaw;
             let color = Vector3::new(
                 (0.98 - 0.14 * (1.0 - temp)).clamp(0.25, 1.0),
@@ -80,8 +79,8 @@ fn append_coronal_jet_splats(
         let r_funnel = r_isco * (0.65 + 0.95 * frac);
         let phi = (k as f64) * 1.15;
         let (sin_p, cos_p) = phi.sin_cos();
-        let local_pos = Vector3::new(r_funnel * cos_p, z_jet, r_funnel * sin_p);
-        let world_pos = disk_tilt * local_pos;
+        let world_pos =
+            Vector3::from(disk_tilt.rotate_vec3([r_funnel * cos_p, z_jet, r_funnel * sin_p]));
         gaussians.push(Gaussian3D {
             mean: Point3::from(world_pos),
             scale: Vector3::new(0.075, 0.14, 0.075),

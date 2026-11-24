@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 pub(super) const ERROR_CRATE_FILES: &[&str] = &[
+    "crates/00_foundation/math_scalars/src/error.rs",
     "crates/math_commons/src/error.rs",
     "crates/pure_math/src/error.rs",
     "crates/domain_ai/src/error.rs",

@@ -2,8 +2,11 @@
 //!
 //! Implementation of polynomials with coefficients in a Ring.
 
-use crate::pure_math::algebra::traits::Ring;
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use crate::pure_math::algebra::traits::{EuclideanDomain, Field, Ring};
+pub use math_scalars::{
+    EuclideanDomain as StackEuclideanDomain, PolyCoeff, ScalarError, StackPoly,
+};
+use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Rem, Sub, SubAssign};
 
 /// A polynomial with coefficients in a Ring T.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -372,3 +375,62 @@ impl<T: Ring> Neg for &Polynomial<T> {
         Polynomial::new(self.coeffs.iter().map(|c| -c.clone()).collect())
     }
 }
+
+impl<T: Field> Polynomial<T> {
+    /// Computes Euclidean quotient and remainder $(q, r)$ satisfying `self = q * divisor + r`
+    /// with $\deg(r) < \deg(\text{divisor})$.
+    ///
+    /// # Errors
+    /// Returns [`ScalarError::DivisionByZero`] when `divisor` is the zero polynomial or its
+    /// leading coefficient is non-invertible.
+    #[verified_engine::verified]
+    pub fn checked_div_rem(&self, divisor: &Self) -> Result<(Self, Self), ScalarError> {
+        let Some(deg_d) = divisor.degree() else {
+            return Err(ScalarError::DivisionByZero);
+        };
+        let Some(deg_n) = self.degree() else {
+            return Ok((Self::zero(), Self::zero()));
+        };
+        if deg_n < deg_d {
+            return Ok((Self::zero(), self.clone()));
+        }
+        let inv_lead = divisor.coeffs[deg_d].try_multiplicative_inverse()?;
+        let mut rem = self.clone();
+        let mut quot = vec![T::zero(); deg_n - deg_d + 1];
+        while let Some(cur_deg) = rem.degree() {
+            if cur_deg < deg_d {
+                break;
+            }
+            let shift = cur_deg - deg_d;
+            let factor = rem.coeffs[cur_deg].clone() * inv_lead.clone();
+            quot[shift] = factor.clone();
+            for j in 0..=deg_d {
+                rem.coeffs[shift + j] -= factor.clone() * divisor.coeffs[j].clone();
+            }
+            rem.trim();
+        }
+        Ok((Self::new(quot), rem))
+    }
+}
+
+impl<T: Field> Div for Polynomial<T> {
+    type Output = Self;
+    #[verified_engine::verified]
+    fn div(self, rhs: Self) -> Self::Output {
+        self.checked_div_rem(&rhs)
+            .expect("Polynomial division by zero")
+            .0
+    }
+}
+
+impl<T: Field> Rem for Polynomial<T> {
+    type Output = Self;
+    #[verified_engine::verified]
+    fn rem(self, rhs: Self) -> Self::Output {
+        self.checked_div_rem(&rhs)
+            .expect("Polynomial remainder by zero")
+            .1
+    }
+}
+
+impl<T: Field> EuclideanDomain for Polynomial<T> {}

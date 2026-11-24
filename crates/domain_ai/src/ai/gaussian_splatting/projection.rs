@@ -275,8 +275,9 @@ pub fn project_scene_lensed_into<F>(
 
 #[cfg(test)]
 mod tests {
+    use super::super::structs::UnitQuaternion;
     use super::*;
-    use nalgebra::{Point3, UnitQuaternion};
+    use nalgebra::Point3;
 
     #[test]
     #[verified_engine::verified]

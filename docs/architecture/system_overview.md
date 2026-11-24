@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 23 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 24 workspace crates:
 
 ```mermaid
 graph TD
@@ -79,31 +79,34 @@ graph TD
         Engine[verified_engine]
         Macros[verified_engine_macros]
         CoreCrate[oxidize_core]
+        Scalars[math_scalars]
         Linalg[engine_linalg]
         Diag[diagnostics]
     end
 
     Xtask -.-> Verify
     Verify -.-> Explorer & CoreCrate & Meta & Diag
-    MdTests -.-> Explorer & Meta & CoreCrate & Registry & Linalg
+    MdTests -.-> Explorer & Meta & CoreCrate & Registry & Scalars & Linalg
 
     GUI --> Explorer
     GUI --> Plot
     GUI --> Meta & Registry & Diag & Linalg
     Explorer --> AI & Phys & Bio & App & Clim & Epi
-    Explorer --> Pure & Commons
+    Explorer --> Pure & Commons & Scalars
 
-    AI --> Commons & Engine & Meta & DiffEq
+    AI --> Commons & Engine & Meta & DiffEq & Scalars
     Phys --> Commons & Engine & Meta & Pure & DiffEq & Pde & Linalg
     Bio --> Commons & Engine & Meta & Pure & Pde
     App --> Commons & Engine & Meta & Pure & Pde & Linalg
     Clim --> Commons & Engine & Meta
     Epi --> Commons & Engine & Meta & Pure
 
-    Pure --> Commons & Meta & DiffEq & Pde & Linalg
+    Pure --> Commons & Meta & DiffEq & Pde & Linalg & Scalars
     DiffEq --> Commons & Engine
     Pde --> Commons & Engine
-    Commons --> CoreCrate & Linalg
+    Commons --> CoreCrate & Linalg & Scalars
+    Linalg --> Scalars
+    CoreCrate --> Scalars
     Engine --> Macros & CoreCrate
     Meta --> CoreCrate
 
@@ -116,10 +119,11 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 23 member crates declared in `Cargo.toml`:
+The workspace contains all 24 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
+| `crates/00_foundation/math_scalars` | Tier 0 `#![no_std]` scalars, hypercomplex algebras, Montgomery $\mathbb{F}_p$, $\mathbb{F}_{p^n}$, and $\mathbb{Q}_p$ | [math_scalars](../../crates/00_foundation/math_scalars/README.md) |
 | `crates/oxidize_core` | Core utilities, file systems, and traceability | [oxidize_core](../../crates/oxidize_core/README.md) |
 | `crates/02_engines/engine_linalg` | `#![no_std]` numerical linear algebra engine | [engine_linalg](../../crates/02_engines/engine_linalg/README.md) |
 | `crates/verified_engine` | Zero-allocation runtime and execution tracking | [zero_allocation_runtime](zero_allocation_runtime.md) |

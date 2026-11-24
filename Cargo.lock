@@ -944,8 +944,6 @@ checksum = "779046eff25a959dd58c8d876dc9673ef2eaebd184fadf7313e27f73a10dd9bd"
 dependencies = [
  "dashu-base",
  "dashu-int",
- "num-modular",
- "num-order",
  "num-traits",
  "rustversion",
  "static_assertions",
@@ -960,7 +958,6 @@ dependencies = [
  "cfg-if",
  "dashu-base",
  "num-modular",
- "num-order",
  "num-traits",
  "rustversion",
  "static_assertions",
@@ -991,8 +988,6 @@ dependencies = [
  "dashu-base",
  "dashu-float",
  "dashu-int",
- "num-modular",
- "num-order",
  "num-traits",
  "rustversion",
 ]
@@ -1059,6 +1054,7 @@ dependencies = [
  "diagnostics",
  "engine_diffeq",
  "math_commons",
+ "math_scalars",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -1373,6 +1369,7 @@ dependencies = [
 name = "engine_linalg"
 version = "0.4.0"
 dependencies = [
+ "math_scalars",
  "verified_engine",
 ]
 
@@ -2445,6 +2442,7 @@ dependencies = [
  "federated_registry",
  "math_commons",
  "math_explorer",
+ "math_scalars",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -2464,6 +2462,7 @@ dependencies = [
  "diagnostics",
  "engine_linalg",
  "libm",
+ "math_scalars",
  "num-complex",
  "num-traits",
  "oxidize_core",
@@ -2486,6 +2485,7 @@ dependencies = [
  "domain_epidemiology",
  "domain_physics",
  "math_commons",
+ "math_scalars",
  "nalgebra 0.34.2",
  "num-complex",
  "oxidize_core",
@@ -2530,6 +2530,15 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
  "web-sys",
+]
+
+[[package]]
+name = "math_scalars"
+version = "0.4.0"
+dependencies = [
+ "dashu",
+ "libm",
+ "verified_engine",
 ]
 
 [[package]]
@@ -2802,15 +2811,6 @@ name = "num-modular"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd8e500409e6cd603b03e477c26a6caecdc27ac58979a53e881c75eafc079f44"
-
-[[package]]
-name = "num-order"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "537b596b97c40fcf8056d153049eb22f481c17ebce72a513ec9286e4986d1bb6"
-dependencies = [
- "num-modular",
-]
 
 [[package]]
 name = "num-rational"
@@ -3193,6 +3193,7 @@ dependencies = [
  "futures",
  "getrandom 0.2.17",
  "js-sys",
+ "math_scalars",
  "proc-macro2",
  "rand",
  "rand_chacha",
@@ -3427,6 +3428,7 @@ dependencies = [
  "engine_linalg",
  "engine_pde",
  "math_commons",
+ "math_scalars",
  "nalgebra 0.34.2",
  "num-complex",
  "num-traits",

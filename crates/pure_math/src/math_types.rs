@@ -3,6 +3,7 @@ use dashu::base::Abs;
 use dashu::float::FBig;
 pub use dashu::integer::IBig;
 use dashu::rational::RBig;
+pub use math_scalars::{BigFloat, BigInt, BigRational, I256, ScalarError, U256};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, RemAssign, Sub, SubAssign};
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 #[allow(missing_docs)]
@@ -212,17 +213,50 @@ type F = dashu::float::FBig;
 #[allow(missing_docs)]
 pub struct Float(pub F);
 impl Float {
-    #[allow(missing_docs)]
-    pub fn with_val(_prec: u32, v: f64) -> Self {
-        if let Ok(f) = F::try_from(v) {
-            Float(f)
+    /// Fallibly constructs an arbitrary-precision `Float` retaining `prec` binary significand bits.
+    ///
+    /// # Errors
+    /// Returns [`ScalarError::ZeroPrecision`] when `prec == 0` and
+    /// [`ScalarError::NonFiniteFloat`] when `v` is `NaN` or `±Infinity`.
+    #[verified_engine::verified]
+    pub fn try_with_prec(prec: u32, v: f64) -> Result<Self, ScalarError> {
+        let bf = BigFloat::try_with_prec(prec as usize, v)?;
+        Ok(Float(bf.as_fbig().clone().with_rounding()))
+    }
+
+    /// Constructs a `Float` retaining `prec.max(1)` binary significand bits (falling back to `0` if `v` is non-finite).
+    pub fn with_val(prec: u32, v: f64) -> Self {
+        let bits = prec.max(1) as usize;
+        if let Ok(bf) = BigFloat::try_with_prec(bits, v) {
+            Float(bf.as_fbig().clone().with_rounding())
         } else {
-            Float(F::from(0u8))
+            Float(F::from(0u8).with_precision(bits).value())
         }
     }
+
+    /// Returns the active binary significand precision in bits.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn precision(&self) -> usize {
+        self.0.precision()
+    }
+
+    /// Converts `self` to nearest IEEE-754 `f64`.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn to_f64(&self) -> f64 {
+        self.0.to_f64().value()
+    }
+
     #[allow(missing_docs)]
     pub fn abs(self) -> Self {
-        Float(self.0.abs())
+        let p = self.0.precision();
+        let inner = self.0.abs();
+        Float(if p > 0 {
+            inner.with_precision(p).value()
+        } else {
+            inner
+        })
     }
     #[allow(missing_docs)]
     #[verified_engine::verified]
@@ -362,6 +396,39 @@ impl Rational {
         }
         Rational(RBig::from_parts(real_n, mag_d))
     }
+    /// Returns the exact reduced signed [`Integer`] numerator.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn numerator(&self) -> Integer {
+        Integer(self.0.numerator().clone())
+    }
+
+    /// Returns the exact reduced positive [`Integer`] denominator.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn denominator(&self) -> Integer {
+        Integer(IBig::from(self.0.denominator().clone()))
+    }
+
+    /// Returns `true` when `self == 0`.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn is_zero(&self) -> bool {
+        self.0.numerator() == &IBig::ZERO
+    }
+
+    /// Converts `self` into a canonical [`BigRational`].
+    #[must_use]
+    pub fn to_big_rational(&self) -> BigRational {
+        BigRational::from_rbig(self.0.clone())
+    }
+
+    /// Wraps a canonical [`BigRational`] as [`Rational`].
+    #[must_use]
+    pub fn from_big_rational(r: BigRational) -> Self {
+        Rational(r.as_rbig().clone())
+    }
+
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn numer(&self) -> f64 {
@@ -427,47 +494,5 @@ impl Add<Rational> for &Rational {
 }
 
 #[allow(missing_docs)]
-pub mod ops {
-    #[allow(missing_docs)]
-    pub trait Pow<Rhs> {
-        #[allow(missing_docs)]
-        type Output;
-        #[allow(missing_docs)]
-        fn pow(self, rhs: Rhs) -> Self::Output;
-    }
-    impl Pow<u32> for super::Integer {
-        type Output = super::Integer;
-        fn pow(self, rhs: u32) -> Self::Output {
-            super::Integer(self.0.pow(rhs as usize))
-        }
-    }
-    #[allow(missing_docs)]
-    pub trait RemRounding<Rhs> {
-        #[allow(missing_docs)]
-        type Output;
-        #[allow(missing_docs)]
-        fn rem_euc(self, rhs: Rhs) -> Self::Output;
-    }
-    impl RemRounding<super::Integer> for super::Integer {
-        type Output = super::Integer;
-        fn rem_euc(self, rhs: super::Integer) -> Self::Output {
-            let mut r = &self.0 % &rhs.0;
-            if r < dashu::integer::IBig::from(0u8) {
-                use dashu::base::Abs;
-                r += rhs.0.abs();
-            }
-            super::Integer(r)
-        }
-    }
-    impl RemRounding<&super::Integer> for super::Integer {
-        type Output = super::Integer;
-        fn rem_euc(self, rhs: &super::Integer) -> Self::Output {
-            let mut r = &self.0 % &rhs.0;
-            if r < dashu::integer::IBig::from(0u8) {
-                use dashu::base::Abs;
-                r += rhs.0.clone().abs();
-            }
-            super::Integer(r)
-        }
-    }
-}
+#[path = "math_types_ops.rs"]
+pub mod ops;

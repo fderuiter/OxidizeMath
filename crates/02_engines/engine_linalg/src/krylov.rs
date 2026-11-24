@@ -3,7 +3,7 @@
 // [cite:advanced_linear_algebra]
 //! Preallocated zero-allocation Conjugate Gradient (CG) and restarted GMRES Krylov solvers.
 
-use crate::scalar::Scalar;
+use crate::scalar::{FieldScalar, RealScalar, Scalar};
 use crate::sparse::CsrMatrixView;
 use crate::types::{LinalgError, SolverWorkspace, check_all_finite, mat_idx};
 
@@ -40,15 +40,24 @@ fn dot_vec<T: Scalar>(a: &[T], b: &[T]) -> T {
 }
 
 #[inline]
-fn norm2_vec<T: Scalar>(v: &[T]) -> T {
-    let mut scale = T::ZERO;
-    let mut ssq = T::ONE;
+fn dot_hermitian<T: FieldScalar>(u: &[T], v: &[T]) -> T {
+    let mut sum = T::ZERO;
+    for (&x, &y) in u.iter().zip(v.iter()) {
+        sum += x.conj() * y;
+    }
+    sum
+}
+
+#[inline]
+fn norm2_vec<T: FieldScalar>(v: &[T]) -> T::Real {
+    let mut scale = T::Real::ZERO;
+    let mut ssq = T::Real::ONE;
     for &x in v {
         let ax = x.abs();
-        if ax > T::ZERO {
+        if ax > T::Real::ZERO {
             if scale < ax {
                 let ratio = scale / ax;
-                ssq = T::ONE + ssq * ratio * ratio;
+                ssq = T::Real::ONE + ssq * ratio * ratio;
                 scale = ax;
             } else {
                 let ratio = ax / scale;
@@ -129,7 +138,7 @@ pub fn cg_solve<T: Scalar>(
     Err(LinalgError::NonConvergence)
 }
 
-fn arnoldi_mgs_step<T: Scalar>(
+fn arnoldi_mgs_step<T: FieldScalar>(
     a: &CsrMatrixView<'_, T>,
     v_basis: &mut [T],
     h_mat: &mut [T],
@@ -142,24 +151,25 @@ fn arnoldi_mgs_step<T: Scalar>(
     a.spmv(&v_basis[vj_start..(vj_start + n)], w)?;
     for i in 0..=j {
         let vi_start = i * n;
-        let hij = dot_vec(&w[..n], &v_basis[vi_start..(vi_start + n)]);
+        let hij = dot_hermitian(&v_basis[vi_start..(vi_start + n)], &w[..n]);
         h_mat[mat_idx(i, j, m)] = hij;
         for k in 0..n {
             w[k] -= hij * v_basis[vi_start + k];
         }
     }
     let h_next = norm2_vec(&w[..n]);
-    h_mat[mat_idx(j + 1, j, m)] = h_next;
-    if h_next > T::ZERO {
+    h_mat[mat_idx(j + 1, j, m)] = T::from_real(h_next);
+    if h_next > T::Real::ZERO {
+        let inv_h = T::Real::ONE / h_next;
         let next_start = (j + 1) * n;
         for k in 0..n {
-            v_basis[next_start + k] = w[k] / h_next;
+            v_basis[next_start + k] = w[k].scale_real(inv_h);
         }
     }
     Ok(())
 }
 
-fn apply_gmres_rotations<T: Scalar>(
+fn apply_gmres_rotations<T: FieldScalar>(
     h_mat: &mut [T],
     cs: &mut [T],
     sn: &mut [T],
@@ -171,27 +181,28 @@ fn apply_gmres_rotations<T: Scalar>(
         let h_ij = h_mat[mat_idx(i, j, m)];
         let h_next = h_mat[mat_idx(i + 1, j, m)];
         h_mat[mat_idx(i, j, m)] = cs[i] * h_ij + sn[i] * h_next;
-        h_mat[mat_idx(i + 1, j, m)] = -sn[i] * h_ij + cs[i] * h_next;
+        h_mat[mat_idx(i + 1, j, m)] = -sn[i].conj() * h_ij + cs[i].conj() * h_next;
     }
     let h_jj = h_mat[mat_idx(j, j, m)];
     let h_j1j = h_mat[mat_idx(j + 1, j, m)];
-    let denom = h_jj.hypot(h_j1j);
-    if denom == T::ZERO {
+    let denom = h_jj.abs().hypot(h_j1j.abs());
+    if denom == T::Real::ZERO {
         cs[j] = T::ONE;
         sn[j] = T::ZERO;
     } else {
-        cs[j] = h_jj / denom;
-        sn[j] = h_j1j / denom;
+        let inv_d = T::Real::ONE / denom;
+        cs[j] = h_jj.conj().scale_real(inv_d);
+        sn[j] = h_j1j.conj().scale_real(inv_d);
     }
     h_mat[mat_idx(j, j, m)] = cs[j] * h_jj + sn[j] * h_j1j;
     h_mat[mat_idx(j + 1, j, m)] = T::ZERO;
 
     let gj = g[j];
     g[j] = cs[j] * gj;
-    g[j + 1] = -sn[j] * gj;
+    g[j + 1] = -sn[j].conj() * gj;
 }
 
-fn update_gmres_x<T: Scalar>(
+fn update_gmres_x<T: FieldScalar>(
     h_mat: &[T],
     v_basis: &[T],
     g: &[T],
@@ -222,20 +233,20 @@ fn update_gmres_x<T: Scalar>(
 
 /// Solves a general nonsymmetric sparse linear system $A x = b$ via preallocated restarted $\text{GMRES}(m)$.
 /// `[cite:advanced_linear_algebra]`
-pub fn gmres_solve<T: Scalar>(
+pub fn gmres_solve<T: FieldScalar>(
     a: &CsrMatrixView<'_, T>,
     b: &[T],
     x: &mut [T],
     restart: usize,
-    tol: T,
+    tol: T::Real,
     max_restarts: usize,
     ws: &mut SolverWorkspace<'_, T>,
-) -> Result<KrylovReport<T>, LinalgError> {
+) -> Result<KrylovReport<T::Real>, LinalgError> {
     let n = a.nrows();
     if a.ncols() != n || b.len() != n || x.len() != n {
         return Err(LinalgError::DimensionMismatch);
     }
-    if restart == 0 || !tol.is_finite() || tol <= T::ZERO {
+    if restart == 0 || !tol.is_finite() || tol <= T::Real::ZERO {
         return Err(LinalgError::InvalidInput);
     }
     check_all_finite(b)?;
@@ -250,7 +261,7 @@ pub fn gmres_solve<T: Scalar>(
     let (y, mut r6) = r5.try_split(m)?;
     let (w, _) = r6.try_split(n)?;
 
-    let stop = tol * norm2_vec(b).max(T::ONE);
+    let stop = tol * norm2_vec(b).max(T::Real::ONE);
     let mut total_iters = 0;
 
     for _cycle in 0..max_restarts {
@@ -268,10 +279,11 @@ pub fn gmres_solve<T: Scalar>(
         v_basis.fill(T::ZERO);
         h_mat.fill(T::ZERO);
         g.fill(T::ZERO);
+        let inv_beta = T::Real::ONE / beta;
         for k in 0..n {
-            v_basis[k] = w[k] / beta;
+            v_basis[k] = w[k].scale_real(inv_beta);
         }
-        g[0] = beta;
+        g[0] = T::from_real(beta);
 
         let mut inner_steps = 0;
         for j in 0..m {

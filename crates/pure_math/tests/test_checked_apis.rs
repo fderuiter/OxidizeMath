@@ -4,7 +4,7 @@
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::{Dimension, StepSize};
 use num_complex::Complex64;
-use pure_math::error::NumberTheoryError;
+use pure_math::error::{NumberTheoryError, ScalarError};
 use pure_math::math_types::Integer;
 use pure_math::pure_math::algebra::fields::Fp;
 use pure_math::pure_math::algebra::group::{CyclicElement, Permutation, Zn};
@@ -69,10 +69,7 @@ fn qseries_checked_div_and_fp_checked_inverse_handle_singular_divisors() {
 
     let zero = Fp::<7>::new(0);
     let three = Fp::<7>::new(3);
-    assert_eq!(
-        zero.checked_inverse(),
-        Err(NumberTheoryError::DivisionByZeroFieldElement)
-    );
+    assert_eq!(zero.checked_inverse(), Err(ScalarError::NonInvertible));
     assert_eq!(three.checked_inverse(), Ok(three.multiplicative_inverse()));
 }
 

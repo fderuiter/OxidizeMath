@@ -32,8 +32,8 @@ fn test_singular_and_invalid_modulus_rejection() {
         Err(EllipticCurveError::InvalidModulus { p: 3 })
     );
     assert_eq!(
-        FpWeierstrassCurve::<15>::new(1, 1),
-        Err(EllipticCurveError::InvalidModulus { p: 15 })
+        FpWeierstrassCurve::<2>::new(1, 1),
+        Err(EllipticCurveError::InvalidModulus { p: 2 })
     );
     assert_eq!(
         FpWeierstrassCurve::<17>::new(-3, 2),
@@ -130,7 +130,10 @@ fn test_fp_and_runtime_prime_group_laws_agree() {
 
     assert!(fp_curve.is_on_curve(p_fp) && fp_curve.is_on_curve(q_fp));
     assert!(rt_curve.is_on_curve(p_rt) && rt_curve.is_on_curve(q_rt));
-    assert_eq!(fp_curve.discriminant().value, rt_curve.discriminant_mod_p());
+    assert_eq!(
+        fp_curve.discriminant().value() as i64,
+        rt_curve.discriminant_mod_p()
+    );
 
     // 2-torsion tangent at y = 0: on y^2 = x^3 + x + 1 mod 23, x = 4 -> 64+4+1 = 69 = 0 mod 23
     let torsion_fp = CurvePoint::Affine {
@@ -151,7 +154,8 @@ fn test_fp_and_runtime_prime_group_laws_agree() {
         let m_fp = fp_curve.scalar_mul(k, p_fp);
         let m_rt = rt_curve.scalar_mul(k, p_rt);
         assert_eq!(
-            m_fp.coords().map(|(x, y)| (x.value, y.value)),
+            m_fp.coords()
+                .map(|(x, y)| (x.value() as i64, y.value() as i64)),
             m_rt.coords()
         );
     }
@@ -202,8 +206,8 @@ fn test_verified_engine_zero_allocation_arithmetic_and_orbits() {
         let gen_rt = affine_pts[0];
         let (gx, gy) = gen_rt.coords().unwrap();
         let gen_fp = CurvePoint::Affine {
-            x: Fp::<97>::new(gx),
-            y: Fp::<97>::new(gy),
+            x: Fp::<97>::from_i64(gx),
+            y: Fp::<97>::from_i64(gy),
         };
 
         let _fp_mul = fp_curve.scalar_mul(19, gen_fp);
@@ -233,8 +237,20 @@ fn test_modular_bridge_invariants_class_numbers_and_q_series() {
 
     let fp_cm = FpWeierstrassCurve::<29>::new(-1, 0).unwrap();
     let rt_cm = PrimeWeierstrassCurve::new(-1, 0, 29).unwrap();
-    assert_eq!(j_invariant_fp(&fp_cm).value, 1728_i64.rem_euclid(29));
+    assert_eq!(
+        j_invariant_fp(&fp_cm).value() as i64,
+        1728_i64.rem_euclid(29)
+    );
     assert_eq!(j_invariant_mod_p(&rt_cm), 1728_i64.rem_euclid(29));
+
+    let padic_val = Qp::<2, 8>::from_u64(1u64 << 60);
+    assert!(satisfies_padic_valuation_bound(padic_val, Some(60)));
+    assert!(!satisfies_padic_valuation_bound(padic_val, Some(61)));
+
+    // Lift y on y^2 = x^3 + x + 1 over Q_7 at x = 2 (rhs = 11 = 4 mod 7, y_0 = 2).
+    let y_lift = lift_weierstrass_y_padic::<7, 5>(1, 1, 2, 2).unwrap();
+    let rhs = Qp::<7, 5>::from_i64(11);
+    assert_eq!(y_lift * y_lift, rhs);
 
     let mod_summary = modular_valuation_summary(&rt_cm, 5, 1, 1).unwrap();
     assert_eq!(mod_summary.psi_n, 6);

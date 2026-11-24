@@ -40,7 +40,7 @@ pub mod ualbf;
 
 // Re-exports for convenience
 pub use crate::error::NumberTheoryError;
-pub use ambs::AmbsError;
+pub use ambs::{AmbsError, Qp, ambs_prefix_padic_roots, hensel_lift_sqrt_padic};
 pub use primes::{is_prime, primes_up_to};
 
 // [cite:mmwave_radiotherapy_setup]

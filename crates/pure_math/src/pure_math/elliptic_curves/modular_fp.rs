@@ -6,6 +6,9 @@
 
 use crate::pure_math::elliptic_curves::EllipticCurveError;
 use crate::pure_math::elliptic_curves::weierstrass::{AffinePointFp, WeierstrassCurveFp};
+use math_scalars::modular::{
+    mod_inv_i64, mod_mul_i64, mod_pow_i64, mod_reduce_i64, tonelli_shanks_i64,
+};
 
 /// Geometric chord-and-tangent step metadata on the modular torus $(\mathbb{R}/p\mathbb{Z})^2$.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,128 +44,37 @@ pub struct HasseSweepEntry {
 
 #[verified_engine::verified]
 pub(crate) fn mod_reduce(val: i128, p: i64) -> i64 {
-    val.rem_euclid(p as i128) as i64
+    mod_reduce_i64(val.rem_euclid(p as i128) as i64, p)
 }
 
 #[verified_engine::verified]
 pub(crate) fn mod_mul(lhs: i64, rhs: i64, p: i64) -> i64 {
-    mod_reduce((lhs as i128) * (rhs as i128), p)
+    mod_mul_i64(lhs, rhs, p)
 }
 
 /// Computes `base^exp mod p` in `O(log exp)` operations without heap allocation.
 #[must_use]
 #[verified_engine::verified]
-pub fn mod_pow_fp(base: i64, mut exp: u64, p: i64) -> i64 {
-    let mut acc = 1_i64;
-    let mut cur = mod_reduce(base as i128, p);
-    while exp > 0 {
-        if exp & 1 == 1 {
-            acc = mod_mul(acc, cur, p);
-        }
-        cur = mod_mul(cur, cur, p);
-        exp >>= 1;
-    }
-    acc
+pub fn mod_pow_fp(base: i64, exp: u64, p: i64) -> i64 {
+    mod_pow_i64(base, exp, p)
 }
 
-/// Computes the multiplicative inverse $a^{-1} \bmod p$ via the iterative Extended Euclidean Algorithm.
+/// Computes the multiplicative inverse $a^{-1} \bmod p$ via `math_scalars::modular`.
 #[must_use]
 #[verified_engine::verified]
 pub fn mod_inv_fp(a: i64, p: i64) -> Option<i64> {
-    if p <= 1 {
-        return None;
-    }
-    let mut r0 = p as i128;
-    let mut r1 = (a as i128).rem_euclid(r0);
-    let mut t0 = 0_i128;
-    let mut t1 = 1_i128;
-    while r1 != 0 {
-        let q = r0 / r1;
-        let next_r = r0 - q * r1;
-        r0 = r1;
-        r1 = next_r;
-        let next_t = t0 - q * t1;
-        t0 = t1;
-        t1 = next_t;
-    }
-    if r0 != 1 {
-        None
-    } else {
-        Some(mod_reduce(t0, p))
-    }
+    mod_inv_i64(a, p)
 }
 
-#[verified_engine::verified]
-fn tonelli_factor_nonresidue(p: i64) -> (u64, u32, i64) {
-    let mut q = (p - 1) as u64;
-    let mut s = 0_u32;
-    while q.is_multiple_of(2) {
-        s += 1;
-        q /= 2;
-    }
-    let euler = ((p - 1) / 2) as u64;
-    let mut z = 2_i64;
-    while z < p && mod_pow_fp(z, euler, p) != p - 1 {
-        z += 1;
-    }
-    (q, s, z)
-}
-
-#[verified_engine::verified]
-fn tonelli_refine(mut m: u32, mut c: i64, mut t: i64, mut r: i64, p: i64) -> ([i64; 2], usize) {
-    while t != 1 {
-        let mut t2i = t;
-        let mut i = 0_u32;
-        for j in 1..m {
-            t2i = mod_mul(t2i, t2i, p);
-            if t2i == 1 {
-                i = j;
-                break;
-            }
-        }
-        if i == 0 {
-            return ([0, 0], 0);
-        }
-        let b = mod_pow_fp(c, 1_u64 << (m - i - 1), p);
-        m = i;
-        c = mod_mul(b, b, p);
-        t = mod_mul(t, c, p);
-        r = mod_mul(r, b, p);
-    }
-    let other = p - r;
-    if r <= other {
-        ([r, other], 2)
-    } else {
-        ([other, r], 2)
-    }
-}
-
-/// Computes modular square roots of `n mod p` ($p \ge 3$ odd prime) via Tonelli-Shanks without heap allocation.
+/// Computes modular square roots of `n mod p` ($p \ge 3$ odd prime) via `math_scalars::modular::tonelli_shanks_i64`.
 #[must_use]
 #[verified_engine::verified]
 pub fn tonelli_shanks_fp(n: i64, p: i64) -> ([i64; 2], usize) {
-    let n_mod = mod_reduce(n as i128, p);
-    if n_mod == 0 {
-        return ([0, 0], 1);
+    match tonelli_shanks_i64(n, p) {
+        None => ([0, 0], 0),
+        Some([r0, r1]) if r0 == r1 => ([r0, 0], 1),
+        Some(pair) => (pair, 2),
     }
-    let euler = ((p - 1) / 2) as u64;
-    if mod_pow_fp(n_mod, euler, p) != 1 {
-        return ([0, 0], 0);
-    }
-    if p.rem_euclid(4) == 3 {
-        let r = mod_pow_fp(n_mod, ((p + 1) / 4) as u64, p);
-        let other = p - r;
-        return if r <= other {
-            ([r, other], 2)
-        } else {
-            ([other, r], 2)
-        };
-    }
-    let (q, s, z) = tonelli_factor_nonresidue(p);
-    let c = mod_pow_fp(z, q, p);
-    let t = mod_pow_fp(n_mod, q, p);
-    let r = mod_pow_fp(n_mod, q.div_ceil(2), p);
-    tonelli_refine(s, c, t, r, p)
 }
 
 #[verified_engine::verified]

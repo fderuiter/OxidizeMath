@@ -9,6 +9,7 @@ use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
     EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
 };
+use math_scalars::ScalarError;
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -103,6 +104,9 @@ pub enum PureMathError {
     /// Foundational `math_commons` umbrella error.
     #[error("{0}")]
     MathCommons(#[from] MathCommonsError),
+    /// Foundational `#![no_std]` scalar, modular, polynomial, or $p$-adic error.
+    #[error("{0}")]
+    Scalar(#[from] ScalarError),
 }
 
 impl From<EvalError> for PureMathError {
@@ -173,6 +177,7 @@ impl PureMathError {
             Self::Transform(err) => err,
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
+            Self::Scalar(_) => unreachable!("handled in Diagnostic impl"),
         }
     }
 }
@@ -180,12 +185,23 @@ impl PureMathError {
 impl Diagnostic for PureMathError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
-        self.as_diagnostic().severity()
+        match self {
+            Self::Scalar(_) => Severity::Error,
+            _ => self.as_diagnostic().severity(),
+        }
     }
 
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
-        let mut map = self.as_diagnostic().metadata();
+        let mut map = match self {
+            Self::Scalar(err) => {
+                let mut m = HashMap::new();
+                m.insert("error_type".to_string(), "ScalarError".to_string());
+                m.insert("description".to_string(), err.to_string());
+                m
+            }
+            _ => self.as_diagnostic().metadata(),
+        };
         map.insert("umbrella_type".to_string(), "PureMathError".to_string());
         map
     }

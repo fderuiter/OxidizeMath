@@ -142,3 +142,53 @@ fn test_float_basics_and_arithmetic() {
     assert!(f1 > f2);
     assert_eq!(f1, Float::with_val(53, 2.5));
 }
+
+#[test]
+fn test_float_try_with_prec_and_precision_preservation() {
+    use pure_math::math_types::{BigFloat, BigInt, BigRational, I256, ScalarError, U256};
+
+    let f256 = Float::try_with_prec(256, 2.5).expect("valid finite f64");
+    assert_eq!(f256.precision(), 256);
+    assert!((f256.to_f64() - 2.5).abs() < 1e-15);
+
+    let w256 = Float::with_val(256, 1.25);
+    assert_eq!(w256.precision(), 256);
+
+    assert_eq!(
+        Float::try_with_prec(0, 1.0),
+        Err(ScalarError::ZeroPrecision)
+    );
+    assert_eq!(
+        Float::try_with_prec(128, f64::NAN),
+        Err(ScalarError::NonFiniteFloat)
+    );
+    assert_eq!(
+        Float::try_with_prec(128, f64::INFINITY),
+        Err(ScalarError::NonFiniteFloat)
+    );
+    assert_eq!(
+        Float::try_with_prec(128, f64::NEG_INFINITY),
+        Err(ScalarError::NonFiniteFloat)
+    );
+
+    let r = Rational::from((-14, 21));
+    assert_eq!(r.numerator(), Integer::from(-2));
+    assert_eq!(r.denominator(), Integer::from(3));
+    assert!(!r.is_zero());
+    assert!(Rational::new().is_zero());
+
+    let br = BigRational::new(BigInt::from(-14_i64), BigInt::from(21_i64)).unwrap();
+    assert_eq!(br.numerator(), BigInt::from(-2_i64));
+    assert_eq!(br.denominator(), BigInt::from(3_i64));
+
+    let bf = BigFloat::try_with_prec(192, 3.5).unwrap();
+    assert_eq!(bf.precision(), 192);
+    assert_eq!(
+        U256::from_u64(9).checked_mul(U256::from_u64(7)),
+        Ok(U256::from_u64(63))
+    );
+    assert_eq!(
+        I256::from_i64(-7).rem_euclid(I256::from_i64(4)),
+        I256::from_i64(1)
+    );
+}

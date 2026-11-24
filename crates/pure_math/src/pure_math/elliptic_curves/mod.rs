@@ -14,6 +14,7 @@ mod modular_fp;
 pub mod singular;
 pub mod weierstrass;
 
+pub use math_scalars::{Qp, ScalarError};
 pub use modular_bridge::*;
 pub use singular::*;
 pub use weierstrass::*;
@@ -270,6 +271,53 @@ pub fn theorem_1_2_bounds(n: u64, i: u64, j: u64) -> Result<Theorem12Bounds, Ell
         v3_bound: v3,
         v7_bound: v7,
     })
+}
+
+/// Checks whether a stack-allocated $p$-adic scalar `coeff` in [`Qp<P, N>`] satisfies an optional
+/// lower $p$-adic valuation bound $v_P(\text{coeff}) \ge \text{min\_bound}$ (such as Breuer's
+/// Theorems 1.1 and 1.2 modular polynomial bounds).
+#[must_use]
+#[verified_engine::verified]
+pub fn satisfies_padic_valuation_bound<const P: u64, const N: usize>(
+    coeff: Qp<P, N>,
+    min_bound: Option<u64>,
+) -> bool {
+    let Some(bound) = min_bound else {
+        return true;
+    };
+    match coeff.valuation() {
+        None => true,
+        Some(v) => v >= 0 && (v as u64) >= bound,
+    }
+}
+
+/// Lifts a non-2-torsion affine short-Weierstrass $y$-coordinate $y_0 \bmod P$ on
+/// $Y^2 = x^3 + a x + b$ into an $N$-digit $p$-adic coordinate in [`Qp<P, N>`] via
+/// zero-allocation quadratic Newton-Hensel iteration.
+///
+/// # Errors
+/// - Returns [`ScalarError::ArithmeticOverflow`] if $x^3 + a x + b$ overflows `i64`.
+/// - Returns [`ScalarError::NotARootModP`] if $y_0^2 \not\equiv x^3 + a x + b \pmod P$.
+/// - Returns [`ScalarError::SingularDerivative`] if $2 y_0 \equiv 0 \pmod P$.
+#[verified_engine::verified]
+pub fn lift_weierstrass_y_padic<const P: u64, const N: usize>(
+    a: i64,
+    b: i64,
+    x: i64,
+    y0: u64,
+) -> Result<Qp<P, N>, ScalarError> {
+    let x128 = i128::from(x);
+    let rhs128 = x128
+        .checked_mul(x128)
+        .and_then(|x2| x2.checked_mul(x128))
+        .and_then(|x3| x3.checked_add(i128::from(a) * x128))
+        .and_then(|s| s.checked_add(i128::from(b)))
+        .ok_or(ScalarError::ArithmeticOverflow)?;
+    let neg_rhs = rhs128
+        .checked_neg()
+        .and_then(|v| i64::try_from(v).ok())
+        .ok_or(ScalarError::ArithmeticOverflow)?;
+    Qp::<P, N>::hensel_lift_root(&[neg_rhs, 0, 1], y0)
 }
 
 // [cite:modular_polynomials_review]

@@ -2,6 +2,7 @@
 
 use super::export::invalid_mesh_error;
 use super::types::Point3D;
+pub use math_scalars::UnitQuaternion;
 use std::fmt::Write as _;
 use std::io::Error;
 
@@ -15,8 +16,8 @@ pub struct GaussianSplatPly {
     pub mean: Point3D,
     /// Positive principal semi-axis scales $(s_x, s_y, s_z)$ prior to log encoding.
     pub scale: Point3D,
-    /// Scalar-first quaternion $[w, x, y, z]$ corresponding to `rot_0..rot_3`.
-    pub rotation: [f32; 4],
+    /// Unit-norm 3D rotation quaternion corresponding to scalar-first `rot_0..rot_3` ($[w, x, y, z]$).
+    pub rotation: UnitQuaternion<f32>,
     /// Linear opacity $\alpha \in (0, 1)$ prior to inverse-sigmoid logit encoding.
     pub opacity: f32,
     /// Linear RGB radiance $[r, g, b] \in [0, 1]^3$ converted to DC spherical harmonics.
@@ -38,16 +39,6 @@ fn build_splat_ply_header(vertex_count: usize) -> String {
     h
 }
 
-fn normalize_quat(q: [f32; 4]) -> [f32; 4] {
-    let norm_sq = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
-    if norm_sq.is_finite() && norm_sq > 1.0e-12 {
-        let inv = 1.0 / norm_sq.sqrt();
-        [q[0] * inv, q[1] * inv, q[2] * inv, q[3] * inv]
-    } else {
-        [1.0, 0.0, 0.0, 0.0]
-    }
-}
-
 fn validate_splat(splat: &GaussianSplatPly) -> Result<(), Error> {
     if !splat.mean.is_finite() || !splat.scale.is_finite() {
         return Err(invalid_mesh_error(
@@ -60,7 +51,7 @@ fn validate_splat(splat: &GaussianSplatPly) -> Result<(), Error> {
         ));
     }
     if !splat.opacity.is_finite()
-        || !splat.rotation.iter().all(|v| v.is_finite())
+        || !splat.rotation.is_finite()
         || !splat.color.iter().all(|v| v.is_finite())
     {
         return Err(invalid_mesh_error(
@@ -94,7 +85,7 @@ pub fn export_splats_to_ply_binary(splats: &[GaussianSplatPly]) -> Result<Vec<u8
         let s0 = splat.scale.x.max(1.0e-8).ln();
         let s1 = splat.scale.y.max(1.0e-8).ln();
         let s2 = splat.scale.z.max(1.0e-8).ln();
-        let [r0, r1, r2, r3] = normalize_quat(splat.rotation);
+        let [r0, r1, r2, r3] = splat.rotation.renormalized().to_wxyz();
 
         let fields = [
             splat.mean.x,

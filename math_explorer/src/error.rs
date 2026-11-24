@@ -4,6 +4,7 @@ pub use math_commons::error::{
     EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
     ShaderEmitError,
 };
+pub use math_scalars::ScalarError;
 
 #[cfg(feature = "ai")]
 pub use domain_ai::error::AIError;
@@ -65,6 +66,8 @@ pub enum Error {
     Parse(ParseError),
     /// AST-to-WGSL/GLSL shader emission error.
     ShaderEmit(ShaderEmitError),
+    /// Foundational `#![no_std]` scalar, modular, polynomial, or $p$-adic error.
+    Scalar(ScalarError),
     /// Standard I/O error (e.g., mesh export or file serialization).
     Io(std::io::Error),
 

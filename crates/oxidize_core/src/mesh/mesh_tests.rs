@@ -189,7 +189,7 @@ fn test_3dgs_splat_ply_binary_encoding_and_validation() {
     let splat = GaussianSplatPly {
         mean: Point3D::new(1.25, -0.5, 2.0),
         scale: Point3D::new(0.25, 0.5, 1.0),
-        rotation: [2.0, 0.0, 0.0, 0.0],
+        rotation: UnitQuaternion::from_wxyz_lossy([2.0, 0.0, 0.0, 0.0]),
         opacity: 0.8,
         color: [0.5, 1.0, 0.0],
     };

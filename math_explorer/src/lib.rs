@@ -7,6 +7,7 @@ pub use diagnostics;
 pub use math_commons::{
     ast, constants, fit, math_kernel, poi, primitives, registry, series, stochastic, wigner,
 };
+pub use math_scalars;
 pub use scientific_metadata;
 pub use verified_engine;
 

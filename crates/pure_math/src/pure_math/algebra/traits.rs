@@ -66,6 +66,16 @@ pub trait Field: Ring + Div<Output = Self> {
     /// Multiplicative inverse of the element.
     #[verified_engine::verified]
     fn multiplicative_inverse(&self) -> Self;
+
+    /// Fallible multiplicative inverse returning [`math_scalars::ScalarError::NonInvertible`] when `self == 0`.
+    #[verified_engine::verified]
+    fn try_multiplicative_inverse(&self) -> Result<Self, math_scalars::ScalarError> {
+        if self.is_zero() {
+            Err(math_scalars::ScalarError::NonInvertible)
+        } else {
+            Ok(self.multiplicative_inverse())
+        }
+    }
 }
 
 // Implementations for primitives

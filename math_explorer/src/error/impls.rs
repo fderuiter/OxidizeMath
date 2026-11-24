@@ -21,6 +21,7 @@ impl<T: std::error::Error + Diagnostic + 'static> FacadeInnerError for T {
 
 enum InnerErrorRef<'a> {
     Domain(&'a dyn FacadeInnerError),
+    Scalar(&'a super::ScalarError),
     Io(&'a std::io::Error),
 }
 
@@ -167,6 +168,7 @@ impl Error {
             Self::MathCommons(err) => Some(InnerErrorRef::Domain(err)),
             Self::Parse(err) => Some(InnerErrorRef::Domain(err)),
             Self::ShaderEmit(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Scalar(err) => Some(InnerErrorRef::Scalar(err)),
             Self::Io(err) => Some(InnerErrorRef::Io(err)),
             #[cfg(any(
                 feature = "pure_math",
@@ -187,6 +189,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.classify() {
             Some(InnerErrorRef::Domain(err)) => std::fmt::Display::fmt(err.as_std_error(), f),
+            Some(InnerErrorRef::Scalar(err)) => std::fmt::Display::fmt(err, f),
             Some(InnerErrorRef::Io(err)) => std::fmt::Display::fmt(err, f),
             None => Ok(()),
         }
@@ -198,6 +201,7 @@ impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self.classify() {
             Some(InnerErrorRef::Domain(err)) => Some(err.as_std_error()),
+            Some(InnerErrorRef::Scalar(err)) => Some(err),
             Some(InnerErrorRef::Io(err)) => Some(err),
             None => None,
         }
@@ -209,7 +213,7 @@ impl Diagnostic for Error {
     fn severity(&self) -> Severity {
         match self.classify() {
             Some(InnerErrorRef::Domain(err)) => err.as_diagnostic().severity(),
-            Some(InnerErrorRef::Io(_)) | None => Severity::Error,
+            Some(InnerErrorRef::Scalar(_) | InnerErrorRef::Io(_)) | None => Severity::Error,
         }
     }
 
@@ -217,6 +221,12 @@ impl Diagnostic for Error {
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = match self.classify() {
             Some(InnerErrorRef::Domain(err)) => err.as_diagnostic().metadata(),
+            Some(InnerErrorRef::Scalar(err)) => {
+                let mut m = HashMap::new();
+                m.insert("error_type".to_string(), "ScalarError".to_string());
+                m.insert("description".to_string(), err.to_string());
+                m
+            }
             Some(InnerErrorRef::Io(err)) => {
                 let mut m = HashMap::new();
                 m.insert("error_type".to_string(), "IoError".to_string());

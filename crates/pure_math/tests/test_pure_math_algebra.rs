@@ -163,3 +163,64 @@ fn test_abelian_group_reexport_and_left_cosets() {
     let left = generate_left_coset(&subgroup, &a);
     assert_eq!(left, vec![Zn::<6>::new(2), Zn::<6>::new(5)]);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_polynomial_euclidean_division_and_stack_galois_field() {
+    use pure_math::pure_math::algebra::traits::EuclideanDomain;
+    use pure_math::pure_math::elliptic_curves::Qp;
+    use pure_math::pure_math::number_theory::ambs::{
+        ambs_prefix_padic_roots, hensel_lift_sqrt_padic,
+    };
+
+    fn assert_euclidean_domain<D: EuclideanDomain>(_elem: &D) {}
+
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+    struct ModX2Plus1;
+    impl IrreducibleModulus<3, 2> for ModX2Plus1 {
+        const MODULUS_LOW: [u64; 2] = [1, 0];
+    }
+
+    let dividend = Polynomial::new(vec![
+        Fp::<7>::new(5),
+        Fp::<7>::new(2),
+        Fp::<7>::new(0),
+        Fp::<7>::new(1),
+    ]);
+    assert_euclidean_domain(&dividend);
+    let divisor = Polynomial::new(vec![Fp::<7>::new(3), Fp::<7>::new(1)]);
+    let (q, r) = dividend.checked_div_rem(&divisor).unwrap();
+    assert_eq!(q.clone() * divisor.clone() + r.clone(), dividend);
+    assert_eq!(dividend.clone() / divisor.clone(), q);
+    assert_eq!(dividend % divisor, r);
+
+    let sp_a =
+        StackPoly::<Fp<7>, 4>::from_slice(&[Fp::<7>::new(6), Fp::<7>::new(0), Fp::<7>::new(1)])
+            .unwrap();
+    let sp_b = StackPoly::<Fp<7>, 4>::from_slice(&[Fp::<7>::new(6), Fp::<7>::new(1)]).unwrap();
+    let (g, u, v) = sp_a.xgcd(&sp_b).unwrap();
+    assert_eq!(g, sp_b);
+    assert_eq!(
+        u.checked_mul(&sp_a).unwrap() + v.checked_mul(&sp_b).unwrap(),
+        g
+    );
+
+    // F_{3^2} = F_3[x] / (x^2 + 1)
+    let elem = FpExt::<3, 2, ModX2Plus1>::from_u64_coeffs([1, 2]);
+    let inv = elem.multiplicative_inverse();
+    assert_eq!(elem * inv, FpExt::<3, 2, ModX2Plus1>::ONE);
+
+    // Newton-Hensel square root lifting in Q_7: 2 = 3^2 mod 7
+    let ([r0, r1], count) = hensel_lift_sqrt_padic::<7, 6>(2).unwrap();
+    assert_eq!(count, 2);
+    assert_eq!(r0 * r0, Qp::<7, 6>::from_u64(2));
+    assert_eq!(r1 * r1, Qp::<7, 6>::from_u64(2));
+
+    // AMBS congruence 2 * n_L * z^2 + 1 = 0 in Q_7 for n_L = 3 (6 z^2 + 1 = 0)
+    let ([z0, _], z_count) = ambs_prefix_padic_roots::<7, 4>(3).unwrap();
+    assert_eq!(z_count, 2);
+    assert_eq!(
+        Qp::<7, 4>::from_u64(6) * z0 * z0 + Qp::<7, 4>::ONE,
+        Qp::<7, 4>::ZERO
+    );
+}
