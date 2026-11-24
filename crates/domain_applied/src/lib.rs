@@ -22,7 +22,8 @@ pub mod __doctest_facade {
     }
     pub use crate::applied;
     pub use ::pure_math::__doctest_facade::{
-        ast, constants, diagnostics, fit, math_kernel, math_types, mesh, nalgebra, num_complex,
-        petgraph, poi, primitives, pure_math, rand, registry, rng, series, wigner,
+        ast, bootstrap, constants, diagnostics, fit, math_kernel, math_types, mesh, monte_carlo,
+        nalgebra, num_complex, petgraph, poi, primitives, pure_math, qmc, rand, registry, rng,
+        series, wigner,
     };
 }
