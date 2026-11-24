@@ -33,8 +33,9 @@
 //! *   **[Hénon-Heiles](henon_heiles)**: Separable 2-DOF galactic Hamiltonian with KAM islands and chaotic seas.
 //! *   **[Logistic Map](logistic)**: Discrete-time demographic model $x_{n+1} = r x_n (1 - x_n)$.
 //! *   **[Lorenz System](lorenz)**: Continuous-time atmospheric convection model (The "Butterfly" attractor).
-//! *   **[Metrics](metrics)**: Tools to quantify chaos (Lyapunov Exponents, Correlation Dimension).
-//! *   **[Poincaré Sections](poincare)**: Zero-allocation cubic-Hermite surface-of-section detector.
+//! *   **[Metrics](metrics)**: Tools to quantify chaos (3D, 4D, and 6D+ Lyapunov Exponents, Correlation Dimension).
+//! *   **[Poincaré Sections](poincare)**: Zero-allocation cubic-Hermite surface-of-section detector and ring buffer.
+//! *   **[Three-Body Choreography](three_body)**: Planar gravitational Figure-8 choreography (`ThreeBodyChoreography`).
 //!
 //! ##  Deep Dive: The Lorenz Attractor
 //!
@@ -79,12 +80,18 @@ pub mod logistic;
 pub mod lorenz;
 pub mod metrics;
 pub mod poincare;
+pub mod three_body;
+
+pub use double_pendulum::DoublePendulum;
+pub use henon_heiles::{HenonHeiles, HenonHeilesSystem};
+pub use three_body::ThreeBodyChoreography;
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
     use nalgebra as na;
+    use scientific_metadata::theory::TheoryDescribable;
 
     #[test]
     #[verified_engine::verified]
@@ -270,9 +277,86 @@ mod tests {
     }
 
     #[test]
-    fn test_lorenz_theory_description_classifies_four_regimes() {
-        use scientific_metadata::theory::TheoryDescribable;
+    #[verified_engine::verified]
+    fn test_chaos_kernels_zero_allocations_under_verified_allocator() {
+        use pure_math::pure_math::analysis::ode::RungeKutta4;
+        use verified_engine::engine::VerifiedEngine;
 
+        let chaotic =
+            lorenz::LorenzSystem::default_chaotic(lorenz::LorenzState::new(1.0, 1.0, 1.0));
+        let stable = lorenz::LorenzBuilder::new()
+            .sigma(10.0)
+            .rho(0.5)
+            .beta(8.0 / 3.0)
+            .build(lorenz::LorenzState::new(1.0, 1.0, 1.0));
+        let decoupled = lorenz::LorenzBuilder::new()
+            .sigma(0.0)
+            .rho(28.0)
+            .beta(8.0 / 3.0)
+            .build(lorenz::LorenzState::new(1.0, 1.0, 1.0));
+        let mut solver = RungeKutta4::new(&na::Vector3::zeros());
+        let mut scratch = [
+            na::Vector3::new(9.0, 0.0, 0.0),
+            na::Vector3::new(3.0, 0.0, 0.0),
+            na::Vector3::new(0.0, 0.0, 0.0),
+            na::Vector3::new(1.0, 0.0, 0.0),
+            na::Vector3::new(2.0, 0.0, 0.0),
+            na::Vector3::new(4.0, 0.0, 0.0),
+            na::Vector3::new(8.0, 0.0, 0.0),
+            na::Vector3::new(7.0, 0.0, 0.0),
+            na::Vector3::new(6.0, 0.0, 0.0),
+            na::Vector3::new(5.0, 0.0, 0.0),
+        ];
+
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let ((lam_zero, lam_sing, lam_chaos, lam_conv, lam_sig0, corr), m) =
+            VerifiedEngine::run_verified(|| {
+                let lz = metrics::logistic_lyapunov(3.9, 0.1, 0);
+                let ls = metrics::logistic_lyapunov(2.0, 0.5, 250);
+                let lc = metrics::lorenz_lyapunov(
+                    &chaotic,
+                    &mut solver,
+                    na::Vector3::new(10.0, 10.0, 10.0),
+                    0.01,
+                    24,
+                    0.25,
+                )
+                .unwrap();
+                let lconv = metrics::lorenz_lyapunov(
+                    &stable,
+                    &mut solver,
+                    na::Vector3::new(0.0, 0.0, 0.0),
+                    0.02,
+                    30,
+                    1.0,
+                )
+                .unwrap();
+                let lsig0 = metrics::lorenz_lyapunov(
+                    &decoupled,
+                    &mut solver,
+                    na::Vector3::new(0.0, 1.0, 1.0),
+                    0.05,
+                    100,
+                    2.0,
+                )
+                .unwrap();
+                let c_in_place = fractals::correlation_dimension_in_place(&mut scratch, 1.1);
+                (lz, ls, lc, lconv, lsig0, c_in_place)
+            });
+
+        assert_eq!(lam_zero, 0.0);
+        assert!(lam_sing.is_finite() && lam_sing < 0.0);
+        assert!(lam_chaos.is_finite() && lam_chaos > 0.0);
+        assert!(lam_conv.is_finite() && lam_conv < 0.0);
+        assert!(lam_sig0.is_finite() && lam_sig0 <= 0.02);
+        assert_relative_eq!(corr, 0.2);
+        assert!(m.function_calls > 0);
+    }
+
+    #[test]
+    fn test_lorenz_theory_description_classifies_four_regimes() {
         let s0 = lorenz::LorenzState::new(1.0, 1.0, 1.0);
         let origin = lorenz::LorenzBuilder::new().rho(0.5).build(s0);
         assert!(origin.theory_description().contains("Origin sink regime"));
@@ -281,6 +365,13 @@ mod tests {
         assert!(
             twin.theory_description()
                 .contains("Twin-lobe equilibrium regime")
+        );
+
+        let sigma_zero = lorenz::LorenzBuilder::new().sigma(0.0).rho(28.0).build(s0);
+        assert!(
+            !sigma_zero.theory_description().contains("Chaotic regime"),
+            "sigma = 0.0 with rho = 28.0 must not classify as Chaotic regime, got: {}",
+            sigma_zero.theory_description()
         );
 
         let chaotic = lorenz::LorenzBuilder::new().rho(28.0).build(s0);

@@ -12,6 +12,8 @@ pub mod analysis;
 pub mod astrophysics;
 #[cfg(feature = "applied")]
 pub mod battery_degradation;
+#[cfg(feature = "biology")]
+pub mod biochemical;
 #[cfg(feature = "applied")]
 pub mod cannibalism;
 #[cfg(feature = "physics")]
@@ -56,6 +58,8 @@ pub mod quantum;
 pub mod relativity;
 #[cfg(feature = "physics")]
 pub mod solid_state;
+#[cfg(feature = "pure_math")]
+pub mod stochastic_processes;
 pub mod traceability;
 
 /// Static registration descriptor for a GUI domain tab collected via [`inventory`].
@@ -188,7 +192,8 @@ pub trait ExplorerTab {
             | "Financial Math"
             | "Geometry & Topology"
             | "Graph Theory"
-            | "Number Theory" => "Pure Math",
+            | "Number Theory"
+            | "Stochastic Processes" => "Pure Math",
 
             "Astrophysics"
             | "Chaos Theory"
@@ -208,7 +213,7 @@ pub trait ExplorerTab {
             | "Population Structure"
             | "Traceability Portal" => "Applied Math",
 
-            "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
+            "Biochemical Dynamics" | "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
 
             "Climate" => "Climate",
 
@@ -275,6 +280,7 @@ pub trait ExplorerTab {
             "Analysis & Calculus" => "analysis",
             "Astrophysics" => "astrophysics",
             "Battery Degradation" => "battery_degradation",
+            "Biochemical Dynamics" => "biochemical",
             "Chaos Theory" => "chaos",
             "Climate" => "climate",
             "Clinical Trials" => "clinical_trials",
@@ -297,6 +303,7 @@ pub trait ExplorerTab {
             "Population Structure" => "cannibalism",
             "Quantum Mechanics" => "quantum",
             "Solid State Physics" => "solid_state",
+            "Stochastic Processes" => "stochastic_processes",
             "Traceability Portal" => "traceability",
             _ => "simulation",
         }

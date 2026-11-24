@@ -271,6 +271,9 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_jet_and_disk_beaming_benchmarks_and_zero_alloc() {
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let cfg = JetKnotConfig {
             bulk_beta: 0.9,
             viewing_angle_rad: 15.0_f64.to_radians(),

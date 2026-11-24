@@ -5,8 +5,6 @@
 //! file-picker helpers from [`egui_plot::export`], and centralizes `mpsc`-backed
 //! open, save-as, and direct-save file operations for native (`rfd`) and WebAssembly targets.
 
-// theory_verification!
-
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
@@ -350,6 +348,8 @@ mod tests {
         assert_eq!(infer_mime_type("plot.svg"), "image/svg+xml");
         assert_eq!(infer_mime_type("figure.png"), "image/png");
         assert_eq!(infer_mime_type("anim.gif"), "image/gif");
+        assert_eq!(infer_mime_type("clip_audio.wav"), "audio/wav");
+        assert_eq!(infer_mime_type("CLIP.WAV"), "audio/wav");
         assert_eq!(infer_mime_type("manifold.stl"), "model/stl");
         assert_eq!(infer_mime_type("splats.ply"), "model/ply");
         assert_eq!(infer_mime_type("surface.obj"), "model/obj");

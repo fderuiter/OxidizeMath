@@ -15,7 +15,7 @@ pub use domain_applied::error::{
 
 #[cfg(feature = "biology")]
 pub use domain_biology::error::{
-    BiologyError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError,
+    BiologyError, BotanicalError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError,
 };
 
 #[cfg(feature = "climate")]
@@ -36,8 +36,9 @@ pub use domain_physics::error::{
 pub use pure_math::error::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
     FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError, LinearAlgebraError,
-    MarketPricingError, MarkovError, MatchModelError, NumberTheoryError, OptimizationError,
-    OuError, PureMathError, StochasticError, TdaError, TensorError, TransformError, ZipError,
+    MarketPricingError, MarkovError, MatchModelError, MonteCarloError, NumberTheoryError,
+    OptimizationError, OuError, PoissonError, PureMathError, QueueingError, StochasticError,
+    TdaError, TensorError, TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -102,6 +103,9 @@ pub enum Error {
     /// Computational biology crate umbrella error.
     #[cfg(feature = "biology")]
     Biology(BiologyError),
+    /// Botanical morphogenesis (L-system or phyllotaxis) error.
+    #[cfg(feature = "biology")]
+    Botanical(BotanicalError),
     /// Hodgkin-Huxley cellular neuroscience error.
     #[cfg(feature = "biology")]
     HodgkinHuxley(HodgkinHuxleyError),
@@ -211,6 +215,9 @@ pub enum Error {
     /// Calibrated 2D score-grid match model error.
     #[cfg(feature = "pure_math")]
     MatchModel(MatchModelError),
+    /// Monte Carlo, quasi-Monte Carlo, and bootstrap estimation error.
+    #[cfg(feature = "pure_math")]
+    MonteCarlo(MonteCarloError),
     /// Number theory error.
     #[cfg(feature = "pure_math")]
     NumberTheory(NumberTheoryError),
@@ -220,6 +227,12 @@ pub enum Error {
     /// Ornstein-Uhlenbeck process error.
     #[cfg(feature = "pure_math")]
     Ou(OuError),
+    /// Homogeneous or inhomogeneous Poisson process error.
+    #[cfg(feature = "pure_math")]
+    Poisson(PoissonError),
+    /// Birth-death queueing model error.
+    #[cfg(feature = "pure_math")]
+    Queueing(QueueingError),
     /// Stochastic simulation error.
     #[cfg(feature = "pure_math")]
     Stochastic(StochasticError),

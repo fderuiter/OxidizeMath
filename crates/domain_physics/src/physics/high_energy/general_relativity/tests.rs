@@ -145,6 +145,9 @@ fn test_wormhole_christoffel_matches_numerical_and_transits_throat() {
 #[test]
 #[verified_engine::verified]
 fn test_schwarzschild_1000_rk4_steps_zero_heap_alloc_and_photon_sphere() {
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let bh = SchwarzschildBlackHole::from_schwarzschild_radius(2.0).unwrap();
     let rs = bh.schwarzschild_radius().unwrap();
     let r_ph = 1.5 * rs;
@@ -263,6 +266,9 @@ fn test_weak_field_light_deflection_matches_2_rs_over_b() {
 #[test]
 #[verified_engine::verified]
 fn test_64_mixed_geodesic_bundle_zero_alloc_and_killing_drift() {
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let mut bundle = SchwarzschildGeodesicBundle::new(1.0, 64, 128).unwrap();
     bundle.seed_mixed_ensemble(64);
     assert_eq!(bundle.trajectories().len(), 64);
@@ -276,6 +282,9 @@ fn test_64_mixed_geodesic_bundle_zero_alloc_and_killing_drift() {
 #[test]
 #[verified_engine::verified]
 fn test_photon_ring_deflection_6_51_rad_and_critical_impact_parameter() {
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let bh = SchwarzschildBlackHole::from_schwarzschild_radius(1.0).unwrap();
     assert_relative_eq!(
         bh.critical_impact_parameter().unwrap(),
@@ -297,6 +306,9 @@ fn test_photon_ring_deflection_6_51_rad_and_critical_impact_parameter() {
 #[test]
 #[verified_engine::verified]
 fn test_sub_isco_plunge_37_03_proper_time_vs_2_88_newtonian_periapsis() {
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     assert_relative_eq!(
         newtonian_periapsis_radius(3.0, 0.99),
         2.8829,

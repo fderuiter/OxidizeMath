@@ -1,7 +1,30 @@
+mod attrs;
+mod vacuous;
+
+use attrs::{
+    attrs_mark_test_fn, attrs_mention_cfg_test_filtered, count_block_assertions,
+    extract_opt_outs_filtered, parse_verification_macro_tokens, scan_attributes,
+};
 use std::collections::HashMap;
+use std::path::Path;
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
-use syn::{ImplItemFn, ItemFn, ItemMacro, Macro, TraitItemFn};
+use syn::{Attribute, ImplItem, ImplItemFn, Item, ItemFn, ItemMacro, TraitItem, TraitItemFn};
+use vacuous::{find_stochastic_zero_init_line, span_line};
+
+/// Returns `true` when `filepath` resides in a dedicated test, benchmark, or example path.
+pub fn is_dedicated_test_path(filepath: &Path) -> bool {
+    let stem = filepath.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    if stem == "tests" || stem.ends_with("_tests") || stem.starts_with("tests_") {
+        return true;
+    }
+    filepath.components().any(|c| {
+        matches!(
+            c.as_os_str().to_str(),
+            Some("tests" | "benches" | "examples")
+        )
+    })
+}
 
 #[allow(missing_docs)]
 pub struct AstVisitor {
@@ -15,6 +38,8 @@ pub struct AstVisitor {
     pub has_vacuous_bypass: bool,
     #[allow(missing_docs)]
     pub vacuous_bypass_line: Option<usize>,
+    /// Whether the file invokes `theory_verification!` or `stochastic_signature_verification!`.
+    pub has_verification_macro: bool,
     #[allow(missing_docs)]
     pub first_unverified_fn: Option<(String, usize)>,
     #[allow(missing_docs)]
@@ -25,13 +50,36 @@ pub struct AstVisitor {
     pub verified_funcs: usize,
     #[allow(missing_docs)]
     pub verified_asserts: usize,
+    /// Total non-test production functions visited in the file.
+    pub prod_funcs: usize,
+    /// Total assertions recorded inside non-test production functions.
+    pub prod_asserts: usize,
+    /// Count of `#[verified]` non-test production functions.
+    pub verified_prod_funcs: usize,
+    /// Assertions recorded inside `#[verified]` non-test production functions.
+    pub verified_prod_asserts: usize,
+    /// Total test-scoped functions (`#[test]`, `#[cfg(test)]`, dedicated test files, or verification macros).
+    pub test_funcs: usize,
+    /// Total assertions recorded inside test-scoped functions and verification macros.
+    pub test_asserts: usize,
+    /// Count of `#[verified]` test-scoped functions and verification macro blocks.
+    pub verified_test_funcs: usize,
+    /// Assertions recorded inside `#[verified]` test-scoped functions and verification macro blocks.
+    pub verified_test_asserts: usize,
     #[allow(missing_docs)]
     pub semantic_integrity_funcs: usize,
+    /// Count of functions explicitly exempted via `opt_out = "..."`.
+    pub opted_out_funcs: usize,
     #[allow(missing_docs)]
     pub active_submodules: Vec<String>,
     #[allow(missing_docs)]
     pub opted_out: bool,
-    file_opted_out: bool,
+    /// Ordered list of `opt_out` reason strings encountered across file and item attributes.
+    pub opt_outs: Vec<String>,
+    /// Function identifiers ending with `_legacy` discovered in the AST.
+    pub legacy_funcs: Vec<String>,
+    in_opt_out_scope: bool,
+    in_test_scope: bool,
 }
 
 impl Default for AstVisitor {
@@ -40,223 +88,42 @@ impl Default for AstVisitor {
     }
 }
 
-fn attr_has_opt_out(attr: &syn::Attribute) -> bool {
-    if attr.path().is_ident("doc") {
-        return false;
-    }
-    quote::quote!(#attr)
-        .to_string()
-        .replace(' ', "")
-        .contains("opt_out")
-}
-
-fn item_attrs(node: &syn::Item) -> &[syn::Attribute] {
-    match node {
-        syn::Item::Struct(i) => &i.attrs,
-        syn::Item::Enum(i) => &i.attrs,
-        syn::Item::Union(i) => &i.attrs,
-        syn::Item::Impl(i) => &i.attrs,
-        syn::Item::Fn(i) => &i.attrs,
-        syn::Item::Mod(i) => &i.attrs,
-        syn::Item::Trait(i) => &i.attrs,
-        syn::Item::Const(i) => &i.attrs,
-        syn::Item::Static(i) => &i.attrs,
-        syn::Item::Type(i) => &i.attrs,
-        syn::Item::Macro(i) => &i.attrs,
-        _ => &[],
-    }
-}
-
-fn span_line(span: proc_macro2::Span) -> usize {
-    span.start().line
-}
-
-fn is_zero_literal_expr(mut expr: &syn::Expr) -> bool {
-    for _ in 0..16 {
-        match expr {
-            syn::Expr::Paren(p) => expr = &p.expr,
-            syn::Expr::Group(g) => expr = &g.expr,
-            syn::Expr::Cast(c) => expr = &c.expr,
-            syn::Expr::Unary(u) if matches!(u.op, syn::UnOp::Neg(_)) => expr = &u.expr,
-            syn::Expr::Lit(syn::ExprLit { lit, .. }) => {
-                return match lit {
-                    syn::Lit::Int(li) => matches!(li.base10_parse::<u128>(), Ok(0)),
-                    syn::Lit::Float(lf) => matches!(lf.base10_parse::<f64>(), Ok(v) if v == 0.0),
-                    _ => false,
-                };
-            }
-            _ => return false,
-        }
-    }
-    false
-}
-
-fn is_zero_initializer_expr(expr: &syn::Expr) -> bool {
-    if is_zero_literal_expr(expr) {
-        return true;
-    }
-    match expr {
-        syn::Expr::Repeat(r) => is_zero_literal_expr(&r.expr),
-        syn::Expr::Array(a) => !a.elems.is_empty() && a.elems.iter().all(is_zero_literal_expr),
-        syn::Expr::Tuple(t) => !t.elems.is_empty() && t.elems.iter().all(is_zero_literal_expr),
-        _ => false,
-    }
-}
-
-fn is_zero_closure_expr(expr: &syn::Expr) -> bool {
-    matches!(expr, syn::Expr::Closure(c) if is_zero_initializer_expr(&c.body))
-}
-
-fn vec_macro_is_zero_init(mac: &Macro) -> bool {
-    mac.parse_body_with(|input: syn::parse::ParseStream<'_>| {
-        if input.is_empty() {
-            return Ok(false);
-        }
-        let first: syn::Expr = input.parse()?;
-        if input.peek(syn::Token![;]) {
-            let _: syn::Token![;] = input.parse()?;
-            let _: syn::Expr = input.parse()?;
-            return Ok(is_zero_literal_expr(&first));
-        }
-        let mut all_zero = is_zero_literal_expr(&first);
-        while input.peek(syn::Token![,]) {
-            let _: syn::Token![,] = input.parse()?;
-            if input.is_empty() {
-                break;
-            }
-            let next: syn::Expr = input.parse()?;
-            all_zero &= is_zero_literal_expr(&next);
-        }
-        Ok(all_zero)
-    })
-    .unwrap_or(false)
-}
-
-fn extract_stochastic_test_block(
-    input: syn::parse::ParseStream<'_>,
-) -> syn::Result<Option<syn::Block>> {
-    let mut found = None;
-    while !input.is_empty() {
-        if input.peek(syn::Ident) {
-            let ident: syn::Ident = input.parse()?;
-            if ident == "stochastic_test" && input.peek(syn::Token![=]) {
-                let _: syn::Token![=] = input.parse()?;
-                if input.peek(syn::token::Brace) {
-                    found = Some(input.parse::<syn::Block>()?);
-                    continue;
-                }
-            }
-            continue;
-        }
-        input.step(|cursor| {
-            cursor
-                .token_tree()
-                .map(|(_, next)| ((), next))
-                .ok_or_else(|| cursor.error("unexpected end of macro tokens"))
-        })?;
-    }
-    Ok(found)
-}
-
-struct StochasticZeroInitVisitor {
-    bypass_line: Option<usize>,
-}
-
-impl StochasticZeroInitVisitor {
-    fn flag(&mut self, line: usize) {
-        if self.bypass_line.is_none() {
-            self.bypass_line = Some(line);
-        }
-    }
-}
-
-impl<'ast> Visit<'ast> for StochasticZeroInitVisitor {
-    fn visit_local(&mut self, i: &'ast syn::Local) {
-        if let Some(init) = &i.init
-            && is_zero_initializer_expr(&init.expr)
-        {
-            self.flag(span_line(init.expr.span()));
-        }
-        visit::visit_local(self, i);
-    }
-
-    fn visit_expr_repeat(&mut self, i: &'ast syn::ExprRepeat) {
-        if is_zero_literal_expr(&i.expr) {
-            self.flag(span_line(i.span()));
-        }
-        visit::visit_expr_repeat(self, i);
-    }
-
-    fn visit_expr_array(&mut self, i: &'ast syn::ExprArray) {
-        if !i.elems.is_empty() && i.elems.iter().all(is_zero_literal_expr) {
-            self.flag(span_line(i.span()));
-        }
-        visit::visit_expr_array(self, i);
-    }
-
-    fn visit_expr_call(&mut self, i: &'ast syn::ExprCall) {
-        if let syn::Expr::Path(p) = &*i.func
-            && let Some(seg) = p.path.segments.last()
-        {
-            let name = seg.ident.to_string();
-            let is_zero_call = name == "zeros"
-                || name == "zeros_like"
-                || (name == "from_element" && i.args.last().is_some_and(is_zero_literal_expr))
-                || (name == "from_fn" && i.args.last().is_some_and(is_zero_closure_expr));
-            if is_zero_call {
-                self.flag(span_line(i.span()));
-            }
-        }
-        visit::visit_expr_call(self, i);
-    }
-
-    fn visit_expr_method_call(&mut self, i: &'ast syn::ExprMethodCall) {
-        let name = i.method.to_string();
-        if name == "zeros"
-            || name == "zeros_like"
-            || (name == "fill" && i.args.first().is_some_and(is_zero_literal_expr))
-        {
-            self.flag(span_line(i.span()));
-        }
-        visit::visit_expr_method_call(self, i);
-    }
-
-    fn visit_macro(&mut self, i: &'ast Macro) {
-        if i.path.is_ident("vec") && vec_macro_is_zero_init(i) {
-            self.flag(span_line(i.span()));
-        }
-        visit::visit_macro(self, i);
-    }
-}
-
-fn find_stochastic_zero_init_line(mac: &Macro) -> Option<usize> {
-    let block = mac
-        .parse_body_with(extract_stochastic_test_block)
-        .ok()
-        .flatten()?;
-    let mut visitor = StochasticZeroInitVisitor { bypass_line: None };
-    visitor.visit_block(&block);
-    visitor.bypass_line
-}
-
 impl AstVisitor {
     #[allow(missing_docs)]
     pub fn new() -> Self {
+        Self::with_test_scope(false)
+    }
+
+    /// Creates a new [`AstVisitor`] with an explicit initial test-scope flag.
+    pub fn with_test_scope(initial_test_scope: bool) -> Self {
         Self {
             verified_modules: Vec::new(),
             module_tiers: HashMap::new(),
             module_spans: HashMap::new(),
             has_vacuous_bypass: false,
             vacuous_bypass_line: None,
+            has_verification_macro: false,
             first_unverified_fn: None,
             total_funcs: 0,
             total_asserts: 0,
             verified_funcs: 0,
             verified_asserts: 0,
+            prod_funcs: 0,
+            prod_asserts: 0,
+            verified_prod_funcs: 0,
+            verified_prod_asserts: 0,
+            test_funcs: 0,
+            test_asserts: 0,
+            verified_test_funcs: 0,
+            verified_test_asserts: 0,
             semantic_integrity_funcs: 0,
+            opted_out_funcs: 0,
             active_submodules: Vec::new(),
             opted_out: false,
-            file_opted_out: false,
+            opt_outs: Vec::new(),
+            legacy_funcs: Vec::new(),
+            in_opt_out_scope: false,
+            in_test_scope: initial_test_scope,
         }
     }
 
@@ -267,109 +134,187 @@ impl AstVisitor {
         self.verified_modules.push(name);
     }
 
-    fn extract_embed_theory(&mut self, attr_str: &str, line: usize) {
-        let s = attr_str.replace('\\', "/");
-        if let Some((pos, end)) = s
-            .find('"')
-            .and_then(|p| s[p + 1..].find('"').map(|e| (p, e)))
-        {
-            let raw_path = &s[pos + 1..pos + 1 + end];
-            let clean_name = raw_path
-                .trim_start_matches("papers/")
-                .trim_start_matches("spec:")
-                .trim_start_matches("registry:")
-                .trim_end_matches(".tex");
-            if !clean_name.is_empty() {
-                self.record_module(clean_name.to_string(), line);
-            }
-        }
-    }
-
-    fn inspect_fn_attr(&mut self, attr: &syn::Attribute) -> (bool, bool) {
-        if attr_has_opt_out(attr) {
-            return (false, false);
-        }
-        let attr_line = span_line(attr.span());
-        if attr.path().is_ident("doc") {
-            let doc_text = quote::quote!(#attr).to_string();
-            let extracted =
-                crate::traceability::TraceabilityEngine::<crate::vfs::DefaultVfs>::extract_citations(
-                    &doc_text,
-                );
-            for cite in &extracted {
-                self.record_module(cite.clone(), attr_line);
-            }
-            return (false, !extracted.is_empty());
-        }
-
-        let attr_str = quote::quote!(#attr).to_string().replace(' ', "");
-        let mut is_verified = attr_str.contains("verified_engine::verified")
-            || attr_str.contains("#[verified]")
-            || attr_str.starts_with("#[verified(");
-        if attr_str.contains("embed_theory") {
-            is_verified = true;
-            self.extract_embed_theory(&attr_str, attr_line);
-        }
-        (is_verified, is_verified)
-    }
-
-    fn process_fn_attrs(
+    fn accumulate_fn_counts(
         &mut self,
-        attrs: &[syn::Attribute],
-        fn_ident: &syn::Ident,
         assert_count: usize,
+        effective_opt_out: bool,
+        has_semantic: bool,
+        is_verified: bool,
+        fn_in_test: bool,
     ) {
         self.total_funcs += 1;
-
-        let mut is_verified = false;
-        let mut has_semantic = false;
-        for attr in attrs {
-            let (attr_verified, attr_semantic) = self.inspect_fn_attr(attr);
-            is_verified |= attr_verified;
-            has_semantic |= attr_semantic;
-        }
-
-        if self.opted_out {
-            is_verified = false;
-        } else if !is_verified && self.first_unverified_fn.is_none() {
-            self.first_unverified_fn = Some((fn_ident.to_string(), span_line(fn_ident.span())));
-        }
-
-        if is_verified {
-            self.verified_funcs += 1;
-            self.verified_asserts += assert_count;
+        self.total_asserts += assert_count;
+        if effective_opt_out {
+            self.opted_out_funcs += 1;
         }
         if has_semantic {
             self.semantic_integrity_funcs += 1;
         }
-        self.total_asserts += assert_count;
+        if is_verified {
+            self.verified_funcs += 1;
+            self.verified_asserts += assert_count;
+        }
+        if fn_in_test {
+            self.test_funcs += 1;
+            self.test_asserts += assert_count;
+            if is_verified {
+                self.verified_test_funcs += 1;
+                self.verified_test_asserts += assert_count;
+            }
+        } else {
+            self.prod_funcs += 1;
+            self.prod_asserts += assert_count;
+            if is_verified {
+                self.verified_prod_funcs += 1;
+                self.verified_prod_asserts += assert_count;
+            }
+        }
+    }
+
+    fn record_fn_metrics(
+        &mut self,
+        fn_ident: &syn::Ident,
+        attrs: &[Attribute],
+        assert_count: usize,
+    ) -> (bool, bool) {
+        let fn_name = fn_ident.to_string();
+        if fn_name.ends_with("_legacy") {
+            self.legacy_funcs.push(fn_name.clone());
+        }
+
+        let scanned = scan_attributes(attrs);
+        let fn_has_opt_out = !scanned.opt_outs.is_empty();
+        self.opt_outs.extend(scanned.opt_outs);
+        for (module_name, line) in scanned.modules_with_lines {
+            self.record_module(module_name, line);
+        }
+
+        let fn_in_test = self.in_test_scope || attrs_mark_test_fn(attrs);
+        let effective_opt_out = self.in_opt_out_scope || fn_has_opt_out;
+        let is_verified = scanned.is_verified && !effective_opt_out;
+        if !effective_opt_out && !is_verified && self.first_unverified_fn.is_none() {
+            self.first_unverified_fn = Some((fn_name, span_line(fn_ident.span())));
+        }
+
+        self.accumulate_fn_counts(
+            assert_count,
+            effective_opt_out,
+            scanned.has_semantic,
+            is_verified,
+            fn_in_test,
+        );
+        (effective_opt_out, fn_in_test)
+    }
+}
+
+fn non_fn_item_attrs(node: &Item) -> Option<&[Attribute]> {
+    match node {
+        Item::Fn(_) => None,
+        Item::Const(i) => Some(&i.attrs),
+        Item::Enum(i) => Some(&i.attrs),
+        Item::ExternCrate(i) => Some(&i.attrs),
+        Item::ForeignMod(i) => Some(&i.attrs),
+        Item::Impl(i) => Some(&i.attrs),
+        Item::Macro(i) => Some(&i.attrs),
+        Item::Mod(i) => Some(&i.attrs),
+        Item::Static(i) => Some(&i.attrs),
+        Item::Struct(i) => Some(&i.attrs),
+        Item::Trait(i) => Some(&i.attrs),
+        Item::TraitAlias(i) => Some(&i.attrs),
+        Item::Type(i) => Some(&i.attrs),
+        Item::Union(i) => Some(&i.attrs),
+        Item::Use(i) => Some(&i.attrs),
+        _ => Some(&[]),
     }
 }
 
 impl<'ast> Visit<'ast> for AstVisitor {
     fn visit_file(&mut self, node: &'ast syn::File) {
-        if node
-            .attrs
-            .iter()
-            .any(|a| matches!(a.style, syn::AttrStyle::Inner(_)) && attr_has_opt_out(a))
-        {
-            self.file_opted_out = true;
+        let reasons = extract_opt_outs_filtered(&node.attrs, true, false);
+        if !reasons.is_empty() {
             self.opted_out = true;
+            self.in_opt_out_scope = true;
+            self.opt_outs.extend(reasons);
+        }
+        if attrs_mention_cfg_test_filtered(&node.attrs, true, false) {
+            self.in_test_scope = true;
         }
         visit::visit_file(self, node);
-        self.opted_out = self.file_opted_out;
     }
 
-    fn visit_item(&mut self, node: &'ast syn::Item) {
-        let prev = self.opted_out;
-        let allow_inner = matches!(node, syn::Item::Mod(m) if m.content.is_some());
-        if item_attrs(node).iter().any(|a| {
-            (matches!(a.style, syn::AttrStyle::Outer) || allow_inner) && attr_has_opt_out(a)
-        }) {
-            self.opted_out = true;
+    fn visit_item(&mut self, node: &'ast Item) {
+        let Some(attrs) = non_fn_item_attrs(node) else {
+            visit::visit_item(self, node);
+            return;
+        };
+        let allow_inner = matches!(node, Item::Mod(m) if m.content.is_some());
+        let reasons = extract_opt_outs_filtered(attrs, allow_inner, true);
+        let prev_opt = self.in_opt_out_scope;
+        let prev_test = self.in_test_scope;
+        if !reasons.is_empty() {
+            self.in_opt_out_scope = true;
+            self.opt_outs.extend(reasons);
+        }
+        if attrs_mention_cfg_test_filtered(attrs, allow_inner, true) {
+            self.in_test_scope = true;
         }
         visit::visit_item(self, node);
-        self.opted_out = prev;
+        self.in_opt_out_scope = prev_opt;
+        self.in_test_scope = prev_test;
+    }
+
+    fn visit_impl_item(&mut self, node: &'ast ImplItem) {
+        let attrs: Option<&[Attribute]> = match node {
+            ImplItem::Fn(_) => None,
+            ImplItem::Const(i) => Some(&i.attrs),
+            ImplItem::Type(i) => Some(&i.attrs),
+            ImplItem::Macro(i) => Some(&i.attrs),
+            _ => Some(&[]),
+        };
+        let Some(attrs) = attrs else {
+            visit::visit_impl_item(self, node);
+            return;
+        };
+        let reasons = extract_opt_outs_filtered(attrs, false, true);
+        let prev_opt = self.in_opt_out_scope;
+        let prev_test = self.in_test_scope;
+        if !reasons.is_empty() {
+            self.in_opt_out_scope = true;
+            self.opt_outs.extend(reasons);
+        }
+        if attrs_mention_cfg_test_filtered(attrs, false, true) {
+            self.in_test_scope = true;
+        }
+        visit::visit_impl_item(self, node);
+        self.in_opt_out_scope = prev_opt;
+        self.in_test_scope = prev_test;
+    }
+
+    fn visit_trait_item(&mut self, node: &'ast TraitItem) {
+        let attrs: Option<&[Attribute]> = match node {
+            TraitItem::Fn(_) => None,
+            TraitItem::Const(i) => Some(&i.attrs),
+            TraitItem::Type(i) => Some(&i.attrs),
+            TraitItem::Macro(i) => Some(&i.attrs),
+            _ => Some(&[]),
+        };
+        let Some(attrs) = attrs else {
+            visit::visit_trait_item(self, node);
+            return;
+        };
+        let reasons = extract_opt_outs_filtered(attrs, false, true);
+        let prev_opt = self.in_opt_out_scope;
+        let prev_test = self.in_test_scope;
+        if !reasons.is_empty() {
+            self.in_opt_out_scope = true;
+            self.opt_outs.extend(reasons);
+        }
+        if attrs_mention_cfg_test_filtered(attrs, false, true) {
+            self.in_test_scope = true;
+        }
+        visit::visit_trait_item(self, node);
+        self.in_opt_out_scope = prev_opt;
+        self.in_test_scope = prev_test;
     }
 
     fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
@@ -391,6 +336,7 @@ impl<'ast> Visit<'ast> for AstVisitor {
             };
 
             if let Some(tier_name) = tier {
+                self.has_verification_macro = true;
                 let macro_line = span_line(node.span());
                 if name == "stochastic_signature_verification"
                     && let Some(zero_line) = find_stochastic_zero_init_line(&node.mac)
@@ -401,22 +347,19 @@ impl<'ast> Visit<'ast> for AstVisitor {
                         self.vacuous_bypass_line = Some(recorded);
                     }
                 }
-
-                let tokens = node.mac.tokens.to_string();
-                if let Some(idx) = tokens.find("module = \"") {
-                    let start = idx + 10;
-                    if let Some(end) = tokens[start..].find('"') {
-                        let module_name = &tokens[start..start + end];
-                        self.record_module(module_name.to_string(), macro_line);
-                        self.module_tiers
-                            .insert(module_name.to_string(), tier_name.to_string());
-                        self.semantic_integrity_funcs += 1;
-                        self.total_funcs += 1;
-                        self.verified_funcs += 1;
-                        let assert_count = tokens.matches("assert").count().max(3);
-                        self.total_asserts += assert_count;
-                        self.verified_asserts += assert_count;
-                    }
+                let parsed = parse_verification_macro_tokens(&node.mac.tokens);
+                if let Some(module_name) = parsed.module_name {
+                    self.record_module(module_name.clone(), macro_line);
+                    self.module_tiers.insert(module_name, tier_name.to_string());
+                    self.semantic_integrity_funcs += 1;
+                    self.total_funcs += 1;
+                    self.verified_funcs += 1;
+                    self.test_funcs += 1;
+                    self.verified_test_funcs += 1;
+                    self.total_asserts += parsed.assert_count;
+                    self.verified_asserts += parsed.assert_count;
+                    self.test_asserts += parsed.assert_count;
+                    self.verified_test_asserts += parsed.assert_count;
                 }
             }
         }
@@ -424,65 +367,55 @@ impl<'ast> Visit<'ast> for AstVisitor {
     }
 
     fn visit_item_fn(&mut self, node: &'ast ItemFn) {
-        let prev = self.opted_out;
-        if node.attrs.iter().any(attr_has_opt_out) {
-            self.opted_out = true;
-        }
-        let mut assert_visitor = AssertVisitor { count: 0 };
-        visit::visit_item_fn(&mut assert_visitor, node);
-        self.process_fn_attrs(&node.attrs, &node.sig.ident, assert_visitor.count);
+        let asserts = count_block_assertions(&node.block);
+        let prev_opt = self.in_opt_out_scope;
+        let prev_test = self.in_test_scope;
+        let (eff_opt, eff_test) = self.record_fn_metrics(&node.sig.ident, &node.attrs, asserts);
+        self.in_opt_out_scope = eff_opt;
+        self.in_test_scope = eff_test;
         visit::visit_item_fn(self, node);
-        self.opted_out = prev;
+        self.in_opt_out_scope = prev_opt;
+        self.in_test_scope = prev_test;
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast ImplItemFn) {
-        let prev = self.opted_out;
-        if node.attrs.iter().any(attr_has_opt_out) {
-            self.opted_out = true;
-        }
-        let mut assert_visitor = AssertVisitor { count: 0 };
-        visit::visit_impl_item_fn(&mut assert_visitor, node);
-        self.process_fn_attrs(&node.attrs, &node.sig.ident, assert_visitor.count);
+        let asserts = count_block_assertions(&node.block);
+        let prev_opt = self.in_opt_out_scope;
+        let prev_test = self.in_test_scope;
+        let (eff_opt, eff_test) = self.record_fn_metrics(&node.sig.ident, &node.attrs, asserts);
+        self.in_opt_out_scope = eff_opt;
+        self.in_test_scope = eff_test;
         visit::visit_impl_item_fn(self, node);
-        self.opted_out = prev;
+        self.in_opt_out_scope = prev_opt;
+        self.in_test_scope = prev_test;
     }
 
     fn visit_trait_item_fn(&mut self, node: &'ast TraitItemFn) {
-        let prev = self.opted_out;
-        if node.attrs.iter().any(attr_has_opt_out) {
-            self.opted_out = true;
-        }
-        if node.default.is_some() {
-            let mut assert_visitor = AssertVisitor { count: 0 };
-            visit::visit_trait_item_fn(&mut assert_visitor, node);
-            self.process_fn_attrs(&node.attrs, &node.sig.ident, assert_visitor.count);
-        }
-        visit::visit_trait_item_fn(self, node);
-        self.opted_out = prev;
-    }
-}
-
-struct AssertVisitor {
-    count: usize,
-}
-
-impl<'ast> Visit<'ast> for AssertVisitor {
-    fn visit_macro(&mut self, node: &'ast Macro) {
-        if let Some(ident) = node.path.segments.last().map(|s| &s.ident) {
-            let name = ident.to_string();
-            if name == "assert"
-                || name == "assert_eq"
-                || name == "assert_ne"
-                || name == "debug_assert"
-                || name == "debug_assert_eq"
-                || name == "debug_assert_ne"
-            {
-                self.count += 1;
+        let name = node.sig.ident.to_string();
+        let Some(ref block) = node.default else {
+            if name.ends_with("_legacy") {
+                self.legacy_funcs.push(name);
             }
-        }
-        visit::visit_macro(self, node);
+            self.opt_outs
+                .extend(extract_opt_outs_filtered(&node.attrs, false, true));
+            visit::visit_trait_item_fn(self, node);
+            return;
+        };
+        let asserts = count_block_assertions(block);
+        let prev_opt = self.in_opt_out_scope;
+        let prev_test = self.in_test_scope;
+        let (eff_opt, eff_test) = self.record_fn_metrics(&node.sig.ident, &node.attrs, asserts);
+        self.in_opt_out_scope = eff_opt;
+        self.in_test_scope = eff_test;
+        visit::visit_trait_item_fn(self, node);
+        self.in_opt_out_scope = prev_opt;
+        self.in_test_scope = prev_test;
     }
 }
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+#[path = "ast_visitor_tests.rs"]
+mod pr_tests;

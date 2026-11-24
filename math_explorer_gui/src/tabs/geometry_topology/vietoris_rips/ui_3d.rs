@@ -3,7 +3,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::handoff::{
-    landmarks_from_scalar_field, take_chaos_landmark_handoff, ChaosLandmarkHandoff,
+    landmarks_from_scalar_field, poll_live_attractor_landmarks, take_chaos_landmark_handoff,
+    ChaosLandmarkHandoff,
 };
 use super::presets::GeneratorDescriptor;
 use super::state::{SculptBrush, VrSourceMode};
@@ -46,6 +47,16 @@ impl VietorisRipsTool {
                 }
             }
             return;
+        }
+        if self.mode == VrSourceMode::Lorenz3D && self.chaos.playing {
+            if let Some((seq, live)) =
+                poll_live_attractor_landmarks(ctx, self.chaos.live_stream_seq)
+            {
+                self.chaos.live_stream_seq = seq;
+                let _ = self.ingest_live_stream_landmarks(live);
+                ctx.request_repaint();
+                return;
+            }
         }
         if matches!(self.mode, VrSourceMode::Lorenz3D | VrSourceMode::Takens3D)
             && self.chaos.playing

@@ -4,14 +4,125 @@
 
 use super::{Algorithm, AlgorithmVisualizerTool};
 use crate::accessibility::AccessibleHoverText;
-use eframe::egui;
+use crate::app::{render_topology_source_bar, SharedGraphTopology, SharedSimulationBus};
+use eframe::egui::{self, Pos2};
+use math_explorer::pure_math::graph_theory::graph::Graph;
 
 impl AlgorithmVisualizerTool {
+    /// Synchronizes this tool's graph with `SharedSimulationBus` or restores the 4x4 sample grid.
+    pub fn sync_shared_topology(&mut self, ctx: &egui::Context) {
+        match SharedSimulationBus::active_graph_for(ctx, self.topology_source) {
+            Some(snap) => {
+                if self.synced_bus_revision != Some(snap.revision) {
+                    self.apply_shared_graph(&snap);
+                    self.synced_bus_revision = Some(snap.revision);
+                }
+            }
+            None => {
+                if self.synced_bus_revision.take().is_some() {
+                    self.build_sample_graph();
+                    self.bump_revision();
+                }
+            }
+        }
+    }
+
+    fn apply_shared_graph(&mut self, snap: &SharedGraphTopology) {
+        if snap.node_count() == 0 {
+            return;
+        }
+        self.graph = Graph::new();
+        self.node_indices.clear();
+        self.node_positions.clear();
+        self.edges.clear();
+        self.directed = snap.directed;
+        self.is_custom_topology = false;
+
+        let mapped = snap.map_positions_to_bounds(70.0, 70.0, 380.0, 340.0);
+        for (idx_in_snap, &orig_id) in snap.node_ids.iter().enumerate() {
+            let [x, y] = mapped[idx_in_snap];
+            let pos = Pos2::new(x, y);
+            let g_idx = self.graph.add_node(pos);
+            self.node_indices.insert(orig_id, g_idx);
+            self.node_positions.insert(orig_id, pos);
+        }
+        self.populate_shared_graph_edges(snap);
+        if self
+            .start_node
+            .is_none_or(|id| !self.node_indices.contains_key(&id))
+        {
+            let first_id = snap.node_ids[0];
+            self.start_node = Some(first_id);
+            self.focused_node = first_id;
+        }
+        self.sink_node = self
+            .sink_node
+            .filter(|id| self.node_positions.contains_key(id) && Some(*id) != self.start_node)
+            .or_else(|| self.effective_sink_node(self.start_node));
+        self.bump_revision();
+        self.run_algorithm();
+    }
+
+    fn populate_shared_graph_edges(&mut self, snap: &SharedGraphTopology) {
+        if snap.directed {
+            for u in 0..snap.node_count() {
+                let u_id = snap.node_ids[u];
+                for idx in snap.row_ptr[u]..snap.row_ptr[u + 1] {
+                    let v_id = snap.node_ids[snap.col_idx[idx]];
+                    if let (Some(&u_idx), Some(&v_idx)) =
+                        (self.node_indices.get(&u_id), self.node_indices.get(&v_id))
+                    {
+                        let safe_w = snap.weights[idx].abs().max(0.01);
+                        self.edges.push((u_id, v_id, safe_w));
+                        self.graph.add_edge(u_idx, v_idx, safe_w);
+                    }
+                }
+            }
+        } else {
+            for &(u, v, w) in &snap.undirected_edges {
+                let u_id = snap.node_ids[u];
+                let v_id = snap.node_ids[v];
+                if let (Some(&u_idx), Some(&v_idx)) =
+                    (self.node_indices.get(&u_id), self.node_indices.get(&v_id))
+                {
+                    let safe_w = w.abs().max(0.01);
+                    self.edges.push((u_id, v_id, safe_w));
+                    self.graph.add_edge(u_idx, v_idx, safe_w);
+                }
+            }
+        }
+    }
+
+    /// Returns the currently synced `SharedSimulationBus` revision, if active.
+    #[cfg(all(test, feature = "epidemiology"))]
+    #[must_use]
+    pub fn synced_bus_revision(&self) -> Option<u64> {
+        self.synced_bus_revision
+    }
+
+    /// Returns the number of vertices currently active in the visualizer.
+    #[cfg(all(test, feature = "epidemiology"))]
+    #[must_use]
+    pub fn active_node_count(&self) -> usize {
+        self.node_positions.len()
+    }
+
     pub(super) fn render_controls(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id =
             crate::framework::scoped_panel_id(parent_ui, "algorithm_visualizer_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Algorithm Visualizer");
+            let ctx = ui.ctx().clone();
+            if render_topology_source_bar(
+                ui,
+                "algorithm_visualizer",
+                &mut self.topology_source,
+                self.synced_bus_revision,
+                None,
+            ) {
+                self.bump_revision();
+                self.sync_shared_topology(&ctx);
+            }
             ui.separator();
             self.render_algorithm_radios(ui);
             ui.separator();
@@ -70,6 +181,9 @@ impl AlgorithmVisualizerTool {
                             .clicked()
                         {
                             self.start_node = Some(id);
+                            if self.synced_bus_revision.is_none() {
+                                self.local_start_node = Some(id);
+                            }
                             self.focused_node = id;
                             if self.sink_node == Some(id) {
                                 self.sink_node = self.effective_sink_node(Some(id));

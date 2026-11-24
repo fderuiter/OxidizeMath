@@ -16,6 +16,7 @@ mod pane_slots;
 pub(crate) mod session;
 mod share_link;
 pub mod shared_json;
+pub mod sim_bus;
 mod state;
 pub(crate) mod state_history;
 pub mod theme;
@@ -67,8 +68,19 @@ mod tests_session_lifecycle;
 #[cfg(test)]
 mod tests_shortcuts;
 #[cfg(test)]
-mod tests_split_view;
+mod tests_sim_bus;
 #[cfg(test)]
+mod tests_split_view;
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod tests_tab_cache_perf;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
@@ -79,6 +91,33 @@ pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
 pub use shared_json::SharedTabJson;
+#[cfg(any(
+    feature = "applied",
+    feature = "biology",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
+#[allow(unused_imports)]
+pub use sim_bus::render_topology_source_bar;
+#[cfg(feature = "biology")]
+#[allow(unused_imports)]
+pub use sim_bus::MAX_NEURAL_SHARED_NODES;
+#[cfg(any(
+    feature = "pure_math",
+    all(test, any(feature = "biology", feature = "physics"))
+))]
+#[allow(unused_imports)]
+pub use sim_bus::MAX_SHARED_GRAPH_EDGES;
+#[cfg(any(
+    feature = "pure_math",
+    feature = "epidemiology",
+    all(test, any(feature = "biology", feature = "physics"))
+))]
+#[allow(unused_imports)]
+pub use sim_bus::MAX_SHARED_GRAPH_NODES;
+#[allow(unused_imports)]
+pub use sim_bus::{SharedGraphTopology, SharedPointCloud3D, SharedSimulationBus, TopologySource};
 pub use state::{AppState, SplitLayoutMode};
 #[allow(unused_imports)]
 pub use theme::{
@@ -123,6 +162,7 @@ pub struct MathExplorerApp {
     last_frame_had_input: bool,
     pending_focus_prune: bool,
     pub compare_sync: ComparisonSyncConfig,
+    pub sim_bus: SharedSimulationBus,
     pub dataflow_bus: PaneDataflowBus,
     pub pipeline_dag: PanePipelineDag,
     pub(super) url_sync: crate::url_state::UrlSyncController,
@@ -163,6 +203,7 @@ impl Default for MathExplorerApp {
             last_frame_had_input: false,
             pending_focus_prune: false,
             compare_sync: ComparisonSyncConfig::default(),
+            sim_bus: SharedSimulationBus::new(),
             dataflow_bus: PaneDataflowBus::default(),
             pipeline_dag: PanePipelineDag::default(),
             url_sync: crate::url_state::UrlSyncController::default(),
@@ -174,7 +215,10 @@ impl MathExplorerApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
         let restored = theme::init_startup_theme(&mut app, cc);
-        app.hydrate_from_browser_url(&cc.egui_ctx, restored);
+        let hydrated = app.hydrate_from_browser_url(&cc.egui_ctx, restored);
+        if !restored && !hydrated && crate::starter_gallery::has_any_starter_presets() {
+            app.show_starter_gallery = true;
+        }
 
         #[cfg(target_os = "macos")]
         macos_menu::setup_macos_menu(&app);
@@ -330,7 +374,6 @@ impl eframe::App for MathExplorerApp {
     fn auto_save_interval(&self) -> std::time::Duration {
         std::time::Duration::from_secs(5)
     }
-
     #[cfg(target_arch = "wasm32")]
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)

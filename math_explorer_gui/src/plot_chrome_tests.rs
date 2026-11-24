@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use crate::app::MathExplorerApp;
-use crate::framework::{InteractiveTool, ToolMetadata};
+use crate::framework::ToolMetadata;
 use eframe::egui::{self, accesskit::Role};
 
 fn test_screen() -> egui::RawInput {
@@ -41,7 +41,8 @@ fn collect_role_rects(out: &egui::FullOutput, role: Role) -> Vec<(String, egui::
         .collect()
 }
 
-fn assert_no_2d_plot_chrome(tool: &mut dyn InteractiveTool, tool_label: &str) {
+#[cfg(all(feature = "physics", feature = "pure_math", feature = "ai"))]
+fn assert_no_2d_plot_chrome(tool: &mut dyn crate::framework::InteractiveTool, tool_label: &str) {
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
     let _ = ctx.run(test_screen(), |c| tool.show(c));
@@ -71,6 +72,7 @@ fn test_all_6_plot_3d_viewport_tools_hide_2d_plot_chrome() {
         "SpinVisualizer",
         "SurfaceViewer",
         "CurvatureHeatmap",
+        "RiemannianPdeStudio",
         #[cfg(feature = "biology")]
         "SurfaceMorphogenesisTool",
         "Gaussian Splatting",

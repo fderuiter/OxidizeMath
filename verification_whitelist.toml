@@ -43,6 +43,145 @@ job = "deploy-pages"
 allow_write = ["pages", "id-token"]
 reason = "Deploying to GitHub Pages requires pages: write and id-token: write"
 
+[verify_suite]
+min_verified_assertion_density = 0.40
+min_total_production_density = 0.0160
+min_verified_production_density = 0.0490
+coverage_tolerance_pct = 1.5
+unverified_modules = [
+    "apps/xtask",
+    "crates/02_engines/engine_linalg",
+    "crates/diagnostics",
+    "crates/engine_diffeq",
+    "crates/engine_pde",
+    "crates/federated_registry",
+    "crates/markdown_tests",
+    "crates/math_commons",
+    "crates/oxidize_core",
+    "crates/scientific_metadata",
+    "crates/unified_verification",
+    "crates/verified_engine",
+    "crates/verified_engine_macros",
+    "math_explorer",
+    "math_explorer_gui",
+]
+
+[[verify_suite.opt_outs]]
+path = "crates/02_engines/engine_linalg/src/"
+reason = "no_std_engine"
+
+[[verify_suite.opt_outs]]
+path = "crates/02_engines/engine_linalg/src/"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/domain_applied/src/applied/freesurfer/thickness_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/domain_biology/tests/test_kuramoto_zero_alloc.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/domain_epidemiology/tests/test_network_step_zero_alloc.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/domain_physics/src/physics/stat_mech/sandpile/tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/domain_physics/tests/test_sandpile.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/math_commons/src/ast/arity_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/math_commons/src/ast/limit_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/analysis/evolution.rs"
+reason = "infrastructure"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/analysis/pde/fused_stepper_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/analysis/pde/wave_fdtd_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/analysis/stochastic.rs"
+reason = "Legacy missing assertions"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/differential_geometry/buckled_flow_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/elliptic_curves/singular_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/hyperbolic/tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/statistics/kelly/core_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/tests/algorithmic_information.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/tests/test_hyperbolic_zero_alloc.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/tests/test_markov_zero_alloc.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/tests/test_tda_zero_alloc.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/scientific_metadata/src/citation_registry.rs"
+reason = "metadata"
+
+[[verify_suite.opt_outs]]
+path = "crates/scientific_metadata/src/theory.rs"
+reason = "metadata"
+
+[[verify_suite.opt_outs]]
+path = "egui_plot/src/sidecar_3d_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "math_explorer_gui/build_snapshot.rs"
+reason = "gui_tool"
+
+[[verify_suite.opt_outs]]
+path = "math_explorer_gui/build_stage.rs"
+reason = "gui_tool"
+
+[[verify_suite.opt_outs]]
+path = "math_explorer_gui/src/"
+reason = "gui_tool"
+
+[[verify_suite.opt_outs]]
+path = "math_explorer_gui/src/"
+reason = "infrastructure"
+
+[[verify_suite.opt_outs]]
+path = "math_explorer_gui/src/"
+reason = "tests"
+
 [adr_verification]
 # Legacy ADR filenames sharing historical 4-digit prefixes preserved to keep internal Markdown links and PR URLs intact
 allowlist = [
@@ -237,7 +376,7 @@ vendored_crates = [
 "crates/domain_biology/src/biology/evolution.rs" = 1
 "crates/domain_biology/src/biology/kinetics.rs" = 3
 "crates/domain_biology/src/biology/morphogenesis/mod.rs" = 3
-"crates/domain_biology/src/biology/morphogenesis/solvers.rs" = 7
+"crates/domain_biology/src/biology/morphogenesis/solvers.rs" = 5
 "crates/domain_biology/src/biology/reaction_diffusion/mod.rs" = 7
 "crates/domain_biology/src/biology/reaction_diffusion/model.rs" = 6
 "crates/domain_biology/src/biology/reaction_diffusion/state.rs" = 1
@@ -305,7 +444,6 @@ vendored_crates = [
 "crates/pure_math/src/pure_math/analysis/mod.rs" = 3
 "crates/pure_math/src/pure_math/analysis/ode/mod.rs" = 6
 "crates/pure_math/src/pure_math/analysis/optimization.rs" = 23
-"crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs" = 11
 "crates/pure_math/src/pure_math/analysis/pde/greens.rs" = 2
 "crates/pure_math/src/pure_math/analysis/pde/heat.rs" = 6
 "crates/pure_math/src/pure_math/analysis/pde/laplace.rs" = 4
@@ -350,7 +488,7 @@ vendored_crates = [
 "math_explorer_gui/src/accessibility.rs" = 7
 "math_explorer_gui/src/async_sim/mod.rs" = 22
 "math_explorer_gui/src/async_sim/registry.rs" = 7
-"math_explorer_gui/src/async_sim/state.rs" = 30
+"math_explorer_gui/src/async_sim/state.rs" = 29
 "math_explorer_gui/src/async_sim/unified/mod.rs" = 2
 "math_explorer_gui/src/async_sim/unified/tool.rs" = 3
 "math_explorer_gui/src/camera/mod.rs" = 1

@@ -1,8 +1,9 @@
 use super::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
     FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError, LinearAlgebraError,
-    MarketPricingError, MarkovError, MatchModelError, NumberTheoryError, OptimizationError,
-    OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
+    MarketPricingError, MarkovError, MatchModelError, MonteCarloError, NumberTheoryError,
+    OptimizationError, OuError, PoissonError, QueueingError, StochasticError, TdaError,
+    TensorError, TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -36,12 +37,21 @@ pub enum PureMathError {
     /// Calibrated 2D score-grid match model error.
     #[error("{0}")]
     MatchModel(#[from] MatchModelError),
+    /// Monte Carlo, quasi-Monte Carlo, and bootstrap estimation error.
+    #[error("{0}")]
+    MonteCarlo(#[from] MonteCarloError),
     /// Number theory error.
     #[error("{0}")]
     NumberTheory(#[from] NumberTheoryError),
     /// Ornstein-Uhlenbeck process error.
     #[error("{0}")]
     Ou(#[from] OuError),
+    /// Homogeneous or inhomogeneous Poisson process error.
+    #[error("{0}")]
+    Poisson(#[from] PoissonError),
+    /// Birth-death queueing model error.
+    #[error("{0}")]
+    Queueing(#[from] QueueingError),
     /// Topological data analysis error.
     #[error("{0}")]
     Tda(#[from] TdaError),
@@ -140,6 +150,8 @@ impl PureMathError {
             Self::MatchModel(err) => err,
             Self::NumberTheory(err) => err,
             Self::Ou(err) => err,
+            Self::Poisson(err) => err,
+            Self::Queueing(err) => err,
             Self::Tda(err) => err,
             Self::Zip(err) => err,
             Self::Ambs(err) => err,
@@ -150,6 +162,7 @@ impl PureMathError {
             Self::GraphTheory(err) => err,
             Self::Hyperbolic(err) => err,
             Self::LinearAlgebra(err) => err,
+            Self::MonteCarlo(err) => err,
             Self::Optimization(err) => err,
             Self::Stochastic(err) => err,
             Self::Tensor(err) => err,
