@@ -76,6 +76,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Modularize Setup and Enforce Static Documentation Gates](adr/20261123-modularize-setup-and-enforce-doc-gates.md)
 - [ADR 20261123: Multi-State, Portfolio, and Drawdown-Constrained Kelly Convex Solvers](adr/20261123-multi-state-kelly-convex-solvers.md)
 - [ADR 20261123: Myerson Mechanism-Design Auction Lab and Analytical Ising / Fermi Spatial Parameter Atlas](adr/20261123-myerson-auction-lab-and-ising-parameter-atlas.md)
+- [ADR 20261123: ODE Phase Portrait, Progressive 2D Regime Atlas, OdeModel Clock, and Compact URL State Hook](adr/20261123-ode-phase-atlas-clock-and-url-hook.md)
 - [ADR 20261123: Root-Owned Pane Dataflow Bus and Cycle-Checked Cross-Domain Pipelines](adr/20261123-pane-dataflow-bus-and-cross-domain-pipelines.md)
 - [ADR 20261123: Variable-Dose Pharmacokinetic Regimen Superposition and Interactive Planner](adr/20261123-pharmacokinetic-regimen-superposition-and-analytics.md)
 - [ADR 20261123: Planar ODE AST Evaluation, Poincaré Stability Maps, AST Caching, and Recovery-Based URL Sharing](adr/20261123-planar-ode-ast-poincare-and-url-recovery.md)

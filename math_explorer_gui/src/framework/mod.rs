@@ -247,6 +247,11 @@ pub trait InteractiveTool {
         self.save_recovery_state()
     }
 
+    /// Parameter-only URL preset export hook, delegating to [`Self::save_url_state`] by default.
+    fn export_url_state(&self) -> Option<String> {
+        self.save_url_state()
+    }
+
     /// Fallibly restores parameter-only recovery state without clobbering pinned comparison overlays.
     fn try_load_recovery_state(&mut self, state: &str) -> Result<(), String> {
         self.state_bounds().validate_json(state)?;

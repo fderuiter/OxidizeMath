@@ -175,7 +175,7 @@ impl SimulationFramework {
             allow_workspace_bounds,
         )?;
         base_candidate.sync_callouts(challenge.callouts);
-        let initial_state = base_candidate.save_url_state();
+        let initial_state = base_candidate.export_url_state();
         let candidate = self.validate_candidate_tool_preset(
             target_idx,
             base_json,
@@ -242,7 +242,7 @@ impl SimulationFramework {
             allow_workspace_bounds,
         )?;
         step_candidate.sync_callouts(step.callouts);
-        let step_state = step_candidate.save_url_state();
+        let step_state = step_candidate.export_url_state();
         let candidate = self.validate_candidate_tool_preset(
             target_idx,
             step_json,

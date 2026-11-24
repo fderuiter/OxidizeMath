@@ -38,6 +38,10 @@ impl InteractiveTool for OdeSolverTool {
         FiniteStateGuard::is_finite_state(self)
     }
 
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::plot_with_code()
     }
@@ -55,6 +59,10 @@ impl InteractiveTool for OdeSolverTool {
     }
 
     fn save_recovery_state(&self) -> Option<String> {
+        self.serialize_recovery_state()
+    }
+
+    fn export_url_state(&self) -> Option<String> {
         self.serialize_recovery_state()
     }
 
@@ -287,22 +295,48 @@ impl OdeSolverTool {
     pub(super) fn render_plot_canvas(&mut self, ui: &mut egui::Ui, changed: &mut bool) {
         if self.is_phase_plane_active() {
             self.render_phase_plane_canvas(ui, changed);
+            self.render_ode_atlas_panel(ui, changed);
             return;
         }
 
-        let (t1_lbl, t2_lbl, _, _) = self.active_state_labels();
-        let has_v = self.has_second_state();
-        ui.heading("Solution Trajectory");
+        let heading = match self.view_mode {
+            super::phase::PlotViewMode::TimeSeries => "Solution Trajectory",
+            super::phase::PlotViewMode::PhasePortrait if self.has_second_state() => {
+                "2D Phase Portrait"
+            }
+            super::phase::PlotViewMode::PhasePortrait => "Slope Field & Trajectory",
+        };
+        ui.heading(heading);
 
         if FiniteStateGuard::diverged(self) {
             recovery::render_recovery_ui_in_place(ui, self, changed);
         }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        if self.view_mode == super::phase::PlotViewMode::PhasePortrait {
+            self.render_phase_portrait_canvas(ui, &palette, changed);
+            self.render_ode_atlas_panel(ui, changed);
+            return;
+        }
+
+        self.render_time_series_plot(ui, &palette, changed);
+        self.render_ode_atlas_panel(ui, changed);
+    }
+
+    fn render_time_series_plot(
+        &mut self,
+        ui: &mut egui::Ui,
+        palette: &crate::app::SemanticPalette,
+        changed: &mut bool,
+    ) {
+        let (t1_lbl, t2_lbl, _, _) = self.active_state_labels();
+        let has_v = self.has_second_state();
+        self.handle_pre_plot_keyboard_seeding(ui, changed);
         let line_y = Line::new(t1_lbl, PlotPoints::from_shared(Arc::clone(&self.display_y)))
             .color(palette.series_color(0));
+        let mut hover_coord = None;
 
-        Plot::new("ode_plot")
+        let plot_resp = Plot::new("ode_plot")
             .view_aspect(2.0)
             .x_axis_label("t \\text{ (Time)}")
             .y_axis_label(t1_lbl)
@@ -324,96 +358,14 @@ impl OdeSolverTool {
                 }
                 self.snapshot_manager.render_on_plot(plot_ui);
                 self.callout_manager.render_on_plot(plot_ui);
+                hover_coord = plot_ui.pointer_coordinate().map(|pt| [pt.x, pt.y]);
             });
-    }
 
-    pub(crate) fn collect_full_xy_pairs(&self) -> (Vec<[f64; 2]>, Vec<[f64; 2]>) {
-        if self
-            .series_cache
-            .matches_series(&self.time_series, &self.y_series, &self.v_series)
-        {
-            let (py, pv) = self.series_cache.shared_points();
-            return (py.to_vec(), pv.to_vec());
-        }
-        let mut plot_points_y = Vec::with_capacity(self.time_series.len());
-        let mut plot_points_v = if self.v_series.is_empty() {
-            Vec::new()
-        } else {
-            Vec::with_capacity(self.v_series.len())
-        };
-        for (i, &t) in self.time_series.iter().enumerate() {
-            if let Some(&y) = self.y_series.get(i) {
-                plot_points_y.push([t, y]);
-            }
-            if let Some(&v) = self.v_series.get(i) {
-                plot_points_v.push([t, v]);
-            }
-        }
-        (plot_points_y, plot_points_v)
-    }
-
-    pub(crate) fn build_current_trace_series(&self) -> Vec<TraceSeries> {
-        let (t1_lbl, t2_lbl, _, _) = self.active_state_labels();
-        let (py, pv) =
-            if self
-                .series_cache
-                .matches_series(&self.time_series, &self.y_series, &self.v_series)
-            {
-                self.series_cache.shared_points()
-            } else {
-                let (y, v) = self.collect_full_xy_pairs();
-                (y.into(), v.into())
-            };
-        let mut series = vec![TraceSeries::new(t1_lbl, py)];
-        if self.has_second_state() && !pv.is_empty() {
-            series.push(TraceSeries::new(t2_lbl, pv));
-        }
-        series
-    }
-
-    pub(crate) fn build_full_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let (t1_lbl, t2_lbl, px_lbl, py_lbl) = self.active_state_labels();
-        let mut datasets = Vec::new();
-        if self.comparison_mode && !self.comparison_manager.is_empty() {
-            datasets.extend(self.comparison_manager.export_datasets());
-        } else if self.is_phase_plane_active() {
-            let phase_pts: Vec<[f64; 2]> = self
-                .y_series
-                .iter()
-                .copied()
-                .zip(self.v_series.iter().copied())
-                .map(|(x, y)| [x, y])
-                .collect();
-            datasets.push((format!("Primary ({px_lbl}, {py_lbl})"), phase_pts));
-            for (idx, traj) in self.seeded_trajectories.iter().enumerate() {
-                let pts: Vec<[f64; 2]> = traj
-                    .y_series
-                    .iter()
-                    .copied()
-                    .zip(traj.v_series.iter().copied())
-                    .filter(|(x, y)| x.is_finite() && y.is_finite())
-                    .map(|(x, y)| [x, y])
-                    .collect();
-                if let Some(&ic) = pts.first() {
-                    datasets.push((
-                        format!("Orbit {} ({:.2}, {:.2})", idx + 1, ic[0], ic[1]),
-                        pts,
-                    ));
-                }
-            }
-        } else {
-            let (plot_points_y, plot_points_v) = self.collect_full_xy_pairs();
-            datasets.push((t1_lbl.to_string(), plot_points_y));
-            if self.has_second_state() && !plot_points_v.is_empty() {
-                datasets.push((t2_lbl.to_string(), plot_points_v));
-            }
-        }
-        datasets.extend(self.snapshot_manager.export_datasets());
-        for (name, pts) in egui_plot::get_last_plot_datasets() {
-            if !datasets.iter().any(|(existing, _)| existing == &name) {
-                datasets.push((name, pts));
-            }
-        }
-        datasets
+        self.attach_ode_plot_accessibility_and_seeding(
+            ui,
+            plot_resp.response,
+            hover_coord,
+            changed,
+        );
     }
 }
