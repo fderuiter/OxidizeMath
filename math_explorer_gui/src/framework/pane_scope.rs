@@ -271,3 +271,14 @@ fn render_default_tool_canvas<T: InteractiveTool + ?Sized>(tool: &mut T, ui: &mu
         tool.draw(ui, &response, &painter);
     });
 }
+
+pub(super) fn render_default_tool_root<T: InteractiveTool + ?Sized>(
+    tool: &mut T,
+    ctx: &egui::Context,
+) {
+    egui::CentralPanel::default()
+        .frame(egui::Frame::NONE)
+        .show(ctx, |ui| {
+            tool.show_inside(ui);
+        });
+}

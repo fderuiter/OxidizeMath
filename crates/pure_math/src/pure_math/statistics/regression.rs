@@ -52,4 +52,42 @@ mod tests {
         assert!((b[1] - 2.0).abs() < math_commons::registry::TOLERANCE_FAST);
         assert!((b[2] - 3.0).abs() < math_commons::registry::TOLERANCE_FAST);
     }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_multivariate_regression_near_collinear_eps_1e8() {
+        let eps = 1e-8_f64;
+        let x = DMatrix::from_row_slice(
+            6,
+            3,
+            &[
+                1.0,
+                -1.0,
+                -1.0 + eps,
+                1.0,
+                -0.5,
+                -0.5 - eps,
+                1.0,
+                0.0,
+                2.0 * eps,
+                1.0,
+                0.4,
+                0.4 - eps,
+                1.0,
+                0.8,
+                0.8 + eps,
+                1.0,
+                1.2,
+                1.2 - 2.0 * eps,
+            ],
+        );
+        let beta_true = DVector::from_column_slice(&[1.5, -0.8, 0.4]);
+        let y = &x * &beta_true;
+        let est = multivariate_linear_regression(&x, &y).expect("QR least-squares solution");
+        assert!(
+            (est[2] - 0.4).abs() <= 2e-8,
+            "Expected beta_2 within 2e-8 of 0.4, got {}",
+            est[2]
+        );
+    }
 }
