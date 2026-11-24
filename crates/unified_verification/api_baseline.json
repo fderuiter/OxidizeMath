@@ -7576,6 +7576,9 @@
       "signature": "pub fn correlation_dimension (_ : & [Vector3 < f64 >] , _ : f64) -> f64"
     },
     {
+      "signature": "pub fn correlation_dimension_in_place (_ : & mut [Vector3 < f64 >] , _ : f64) -> f64"
+    },
+    {
       "signature": "pub fn escape_time_julia (_ : Complex < f64 > , _ : Complex < f64 > , _ : u32) -> u32"
     },
     {
