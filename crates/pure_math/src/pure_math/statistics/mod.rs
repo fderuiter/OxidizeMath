@@ -22,6 +22,8 @@
 //!     Essential for modeling state transitions in sports (e.g., possession value) or finance.
 //! *   **[Ornstein-Uhlenbeck](ou_process)**: Mean-reverting processes for modeling "momentum" or "hot hands"
 //!     where performance fluctuates around a long-term average.
+//! *   **[Poisson Arrival Processes](poisson)**: Homogeneous and thinning-based inhomogeneous Poisson arrival processes.
+//! *   **[Queueing Systems](queueing)**: Markovian $M/M/1$ and $M/M/c$ Erlang-C birth-death steady-state models.
 //!
 //! ###  Risk & Decision Theory
 //! *   **[Kelly Criterion](kelly)**: Optimal capital allocation strategy to maximize logarithmic wealth growth.
@@ -34,6 +36,9 @@
 //!     critical for pricing derivatives or "Same Game Parlays".
 //!
 //! ###  Advanced Data Analysis
+//! *   **[Monte Carlo & Variance Reduction](monte_carlo)**: Preallocated workspaces for IID, antithetic, control-variate, Kong-`ESS` importance sampling, Latin Hypercube, and randomized QMC.
+//! *   **[Quasi-Monte Carlo (QMC)](qmc)**: Prime-base Halton and Joe-Kuo Sobol low-discrepancy sequences with Cranley-Patterson shifts.
+//! *   **[Nonparametric Bootstrap](bootstrap)**: Preallocated `Percentile` and jackknife-accelerated `BCa` confidence intervals.
 //! *   **[Topological Data Analysis (TDA)](tda)**: Uses persistent homology to find structural features (holes, voids)
 //!     in high-dimensional point clouds.
 //! *   **[ZIP Regression](zip_regression)**: Zero-Inflated Poisson models for count data with excess zeros
@@ -106,6 +111,7 @@
 //! }
 //! ```
 
+pub mod bootstrap;
 pub mod copula;
 pub mod elo;
 pub mod glicko2;
@@ -113,9 +119,11 @@ pub mod kelly;
 pub mod market_pricing;
 pub mod markov;
 pub mod match_models;
+pub mod monte_carlo;
 pub mod ou_process;
 /// Homogeneous and inhomogeneous Poisson arrival processes.
 pub mod poisson;
+pub mod qmc;
 /// Markovian birth-death queueing models ($M/M/1$ and $M/M/c$ Erlang-C).
 pub mod queueing;
 pub mod regression;

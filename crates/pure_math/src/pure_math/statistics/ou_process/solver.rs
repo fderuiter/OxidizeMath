@@ -3,9 +3,31 @@
 use super::core::OuParams;
 pub use super::exact_solver::ExactOuSolver;
 use crate::error::OuError;
+use engine_diffeq::{EulerMaruyamaSolver, SdeSystem, StochasticCalculus};
+use math_commons::math_kernel::types::SolverWorkspace;
 use oxidize_core::rng::OxidizeRng;
 use rand::Rng;
-use rand_distr::{Distribution, Normal};
+
+struct ScalarOuSde {
+    mu: f64,
+    theta: f64,
+    sigma: f64,
+}
+
+impl SdeSystem<f64> for ScalarOuSde {
+    fn state_dim(&self) -> usize {
+        1
+    }
+    fn wiener_dim(&self) -> usize {
+        1
+    }
+    fn drift(&self, _t: f64, x: &[f64], out_drift: &mut [f64]) {
+        out_drift[0] = self.theta * (self.mu - x[0]);
+    }
+    fn diffusion(&self, _t: f64, _x: &[f64], out_diffusion: &mut [f64]) {
+        out_diffusion[0] = self.sigma;
+    }
+}
 
 /// Time step for numerical integration (Δt).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -44,7 +66,7 @@ impl TimeStep {
 /// X_{t+Δt} = X_t + θ(μ - X_t)Δt + σ√(Δt)Z
 /// ```
 ///
-/// where Z ~ N(0,1) is a standard normal random variable.
+/// where Z ~ N(0,1) is a standard normal random variable, delegating to [`engine_diffeq::EulerMaruyamaSolver`].
 ///
 /// # References
 ///
@@ -53,8 +75,7 @@ impl TimeStep {
 pub struct EulerMaruyama {
     params: OuParams,
     dt: TimeStep,
-    normal: Normal<f64>,
-    diffusion_factor: f64,
+    engine: EulerMaruyamaSolver,
 }
 
 impl EulerMaruyama {
@@ -64,12 +85,6 @@ impl EulerMaruyama {
     ///
     /// * `params` - The OU process parameters
     /// * `dt` - The time step for integration
-    ///
-    /// # Panics
-    ///
-    /// Panics if the standard normal distribution (`Normal::new(0.0, 1.0)`) fails to initialize.
-    /// This should theoretically never happen as 0.0 and 1.0 are valid parameters for the mean
-    /// and standard deviation.
     ///
     /// # Example
     ///
@@ -85,13 +100,11 @@ impl EulerMaruyama {
     /// ```
     #[verified_engine::verified]
     pub fn new(params: OuParams, dt: TimeStep) -> Self {
-        let normal = Normal::new(0.0, 1.0).unwrap();
-        let diffusion_factor = params.sigma.value() * dt.value().sqrt();
+        debug_assert!(dt.value() > 0.0);
         Self {
             params,
             dt,
-            normal,
-            diffusion_factor,
+            engine: EulerMaruyamaSolver::new(StochasticCalculus::Ito),
         }
     }
 
@@ -126,18 +139,18 @@ impl EulerMaruyama {
     /// ```
     #[verified_engine::verified]
     pub fn step<R: Rng>(&self, x_current: f64, rng: &mut R) -> f64 {
-        let mu = self.params.mu.value();
-        let theta = self.params.theta.value();
-        let dt = self.dt.value();
-
-        // Drift term: θ(μ - X_t)Δt
-        let drift = theta * (mu - x_current) * dt;
-
-        // Diffusion term: σ√(Δt)Z where Z ~ N(0,1)
-        let diffusion = self.normal.sample(rng) * self.diffusion_factor;
-
-        // X_{t+Δt} = X_t + drift + diffusion
-        x_current + drift + diffusion
+        let sde = ScalarOuSde {
+            mu: self.params.mu.value(),
+            theta: self.params.theta.value(),
+            sigma: self.params.sigma.value(),
+        };
+        let mut state = [x_current];
+        let mut scratch = [0.0_f64; 4];
+        let mut ws = SolverWorkspace::new(&mut scratch);
+        self.engine
+            .step(&sde, 0.0, self.dt.value(), &mut state, &mut ws, rng);
+        debug_assert!(state[0].is_finite() || !x_current.is_finite());
+        state[0]
     }
 
     /// Simulates a trajectory of the OU process.

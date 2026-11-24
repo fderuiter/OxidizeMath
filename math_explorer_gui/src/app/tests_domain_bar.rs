@@ -10,8 +10,8 @@ fn test_all_21_modules_categorized_into_academic_domains() {
     let app = MathExplorerApp::default();
     assert_eq!(
         app.tabs.len(),
-        29,
-        "Expected all 29 modules to be instantiated with default features"
+        30,
+        "Expected all 30 modules to be instantiated with default features"
     );
 
     let mut domain_counts: HashMap<AcademicDomain, Vec<&'static str>> = HashMap::new();
@@ -48,8 +48,8 @@ fn test_all_21_modules_categorized_into_academic_domains() {
     );
     assert_eq!(
         domain_counts.get(&AcademicDomain::Biology).map(|v| v.len()),
-        Some(3),
-        "Biology should have 3 modules: Morphogenesis, Neuroscience, Epidemiology"
+        Some(4),
+        "Biology should have 4 modules: Biochemical Dynamics, Morphogenesis, Neuroscience, Epidemiology"
     );
     assert_eq!(
         domain_counts.get(&AcademicDomain::Climate).map(|v| v.len()),
