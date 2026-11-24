@@ -71,7 +71,14 @@ impl IsingModelTool {
     }
 
     /// Alias for [`Self::is_graph_mode`] used by cross-domain `WorkspaceDataBus` coupling checks.
-    #[cfg(test)]
+    #[cfg(all(
+        test,
+        feature = "biology",
+        feature = "applied",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     #[must_use]
     pub fn is_graph_spin_mode(&self) -> bool {
         self.is_graph_mode()
@@ -84,14 +91,28 @@ impl IsingModelTool {
     }
 
     /// Returns whether `IsingModelTool` follows `WorkspaceDataBus` topology updates.
-    #[cfg(test)]
+    #[cfg(all(
+        test,
+        feature = "biology",
+        feature = "applied",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     #[must_use]
     pub fn follow_workspace_graph(&self) -> bool {
         self.graph_mode.follow_workspace_graph
     }
 
     /// Returns the active spin node count when in graph mode.
-    #[cfg(test)]
+    #[cfg(all(
+        test,
+        feature = "biology",
+        feature = "applied",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     #[must_use]
     pub fn graph_spin_count(&self) -> Option<usize> {
         self.active_graph_node_count()
@@ -306,5 +327,56 @@ impl IsingModelTool {
         self.refresh_graph_observables();
         self.reset_trajectory_overlays();
         true
+    }
+}
+
+const FRUSTRATED_TRIANGULAR_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Frustrated Triangular Spins",
+    "domain": "solid_state",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "temperature": 0.45,
+    "j_coupling": 1.0,
+    "h_field": 0.0,
+    "steps_per_frame": 2000,
+    "seeded_graph": {
+      "revision": 1,
+      "nodes": [
+        { "id": 0, "norm_pos": [0.50, 0.50] },
+        { "id": 1, "norm_pos": [0.50, 0.14] },
+        { "id": 2, "norm_pos": [0.84, 0.36] },
+        { "id": 3, "norm_pos": [0.72, 0.78] },
+        { "id": 4, "norm_pos": [0.28, 0.78] },
+        { "id": 5, "norm_pos": [0.16, 0.36] }
+      ],
+      "edges": [
+        [0, 1, -1.0],
+        [0, 2, -1.0],
+        [0, 3, -1.0],
+        [0, 4, -1.0],
+        [0, 5, -1.0],
+        [1, 2, -1.0],
+        [2, 3, -1.0],
+        [3, 4, -1.0],
+        [4, 5, -1.0],
+        [5, 1, -1.0]
+      ]
+    }
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "frustrated_triangular_spins",
+        title: "Frustrated Triangular Spins",
+        description: "Odd-cycle antiferromagnetic (-w) wheel graph exhibiting geometric spin frustration with no zero-frustration ground state.",
+        category: "Statistical Mechanics",
+        icon: "🔺",
+        domain: "solid_state",
+        tool_name: Some("IsingModelTool"),
+        preset_generator: || FRUSTRATED_TRIANGULAR_PRESET_JSON,
     }
 }

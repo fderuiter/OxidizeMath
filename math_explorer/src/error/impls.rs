@@ -49,6 +49,8 @@ impl Error {
             Self::NumberTheory(err) => Some(err),
             Self::Optimization(err) => Some(err),
             Self::Ou(err) => Some(err),
+            Self::Poisson(err) => Some(err),
+            Self::Queueing(err) => Some(err),
             Self::Stochastic(err) => Some(err),
             Self::Tda(err) => Some(err),
             Self::Tensor(err) => Some(err),
@@ -163,6 +165,7 @@ impl Error {
             Self::Math(err) => Some(InnerErrorRef::Domain(err)),
             Self::MathCommons(err) => Some(InnerErrorRef::Domain(err)),
             Self::Parse(err) => Some(InnerErrorRef::Domain(err)),
+            Self::ShaderEmit(err) => Some(InnerErrorRef::Domain(err)),
             Self::Io(err) => Some(InnerErrorRef::Io(err)),
             #[cfg(any(
                 feature = "pure_math",

@@ -201,6 +201,7 @@ fn dispatch_worker_command<R: SimulationRunner + ?Sized>(
             state_tx.send_status(WorkerStatusEvent::Running).is_ok()
         }
         SimCommand::ApplyBrush { .. }
+        | SimCommand::ApplyBrushCells { .. }
         | SimCommand::ApplyBrushStroke(_)
         | SimCommand::SyncSculptState(_)
         | SimCommand::ClearObstacles

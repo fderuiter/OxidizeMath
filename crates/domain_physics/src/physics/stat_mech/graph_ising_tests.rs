@@ -1,10 +1,9 @@
-#![cfg_attr(any(), verified(opt_out = "tests"))]
-
 use super::*;
 use domain_applied::applied::game_theory::evolutionary::MatrixPayoff;
 use nalgebra::DMatrix;
 use verified_engine::engine::VerifiedEngine;
 
+#[verified_engine::verified]
 fn sample_wheel_csr() -> (usize, Vec<usize>, Vec<usize>, Vec<f64>) {
     let adj: [&[usize]; 5] = [
         &[1, 2, 3, 4],
@@ -20,6 +19,7 @@ fn sample_wheel_csr() -> (usize, Vec<usize>, Vec<usize>, Vec<f64>) {
         col_idx.extend_from_slice(nbrs);
         row_ptr.push(col_idx.len());
     }
+    assert_eq!(row_ptr.len(), 6);
     let weights = vec![1.0; col_idx.len()];
     (5, row_ptr, col_idx, weights)
 }

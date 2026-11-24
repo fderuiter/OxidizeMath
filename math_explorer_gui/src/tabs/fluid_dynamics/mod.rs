@@ -8,6 +8,7 @@ pub mod lattice_boltzmann_sculpt;
 pub mod lbm_atlas;
 pub mod lbm_fairing;
 pub mod lbm_fairing_ui;
+mod lbm_presets;
 pub mod potential_flow;
 mod potential_flow_brush;
 pub mod turbulence;

@@ -44,7 +44,14 @@ pub(super) fn segments_intersect_or_near(a: Pos2, b: Pos2, c: Pos2, d: Pos2, tol
 }
 
 impl GraphEditorTool {
-    #[cfg(test)]
+    #[cfg(all(
+        test,
+        feature = "biology",
+        feature = "applied",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     pub(crate) fn with_brush_config(
         mode: EditorMode,
         hub_spokes: usize,

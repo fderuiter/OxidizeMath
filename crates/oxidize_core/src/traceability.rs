@@ -1,6 +1,8 @@
 mod analysis;
 #[cfg(feature = "ast-analysis")]
 mod cache;
+#[cfg(feature = "ast-analysis")]
+mod debt_floors;
 mod manifest;
 #[cfg(feature = "ast-analysis")]
 mod module_tree;
@@ -9,10 +11,14 @@ mod runner;
 
 #[cfg(feature = "ast-analysis")]
 pub use cache::{AstCache, CachedRustFile};
+#[cfg(feature = "ast-analysis")]
+pub use debt_floors::{DensityFloors, load_workspace_density_floors, parse_density_floors_toml};
 pub use manifest::{TraceabilityManifestPayload, VerificationCertificate};
 #[cfg(feature = "ast-analysis")]
 pub use runner::{
-    check_and_print_traceability_errors, discover_workspace_code_dirs, format_traceability_errors,
+    WorkspaceAstMetrics, check_and_print_traceability_errors,
+    collect_workspace_ast_metrics_with_cache, discover_workspace_code_dirs,
+    format_traceability_errors, format_traceability_errors_with_floors,
     print_traceability_dashboard, run_workspace_traceability,
     run_workspace_traceability_with_cache,
 };
@@ -95,7 +101,6 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
     }
 
     #[cfg(target_arch = "wasm32")]
-    // theory_verification!
     #[allow(missing_docs)]
     pub fn verify_module_registered(module_name: &str) -> bool {
         const EMBEDDED_REGISTRY: &str = include_str!("../../../traceability.toml");
@@ -197,7 +202,7 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
     }
 
     /// Discovers workspace code directories (`math_explorer/src`, `math_explorer_gui/src/tabs`,
-    /// and `crates/*/src`) and the `papers` directory relative to `base_dir`.
+    /// `crates/*/src`, and grouped `crates/*/*/src`) and the `papers` directory relative to `base_dir`.
     pub async fn discover_workspace_dirs(&self, base_dir: &str) -> (Vec<String>, String) {
         let prefix = if base_dir.is_empty() || base_dir.ends_with('/') {
             base_dir.to_string()
@@ -212,8 +217,21 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         if let Ok(mut crates) = self.vfs.list_dir(&crate_base).await {
             crates.sort();
             for crate_name in crates {
-                if !crate_name.starts_with('.') {
-                    code_dirs.push(format!("{crate_base}/{crate_name}/src"));
+                if crate_name.starts_with('.') {
+                    continue;
+                }
+                let crate_dir = format!("{crate_base}/{crate_name}");
+                if let Ok(mut sub_entries) = self.vfs.list_dir(&crate_dir).await
+                    && !sub_entries.iter().any(|e| e == "src" || e == "Cargo.toml")
+                {
+                    sub_entries.sort();
+                    for sub in sub_entries {
+                        if !sub.starts_with('.') {
+                            code_dirs.push(format!("{crate_dir}/{sub}/src"));
+                        }
+                    }
+                } else {
+                    code_dirs.push(format!("{crate_dir}/src"));
                 }
             }
         }
@@ -328,6 +346,13 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         if cache.get(&key).is_none() {
             let content = self.vfs.read_to_string(&norm_file).await?;
             cache.insert_source(key.clone(), content);
+        }
+        if cache
+            .get(&key)
+            .and_then(|entry| entry.ast.as_ref())
+            .is_some_and(|ast| crate::ast_visitor::attrs_require_cfg_test(&ast.attrs))
+        {
+            return Ok(());
         }
 
         report.scanned_files += 1;

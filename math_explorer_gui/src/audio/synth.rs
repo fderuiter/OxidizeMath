@@ -1,7 +1,5 @@
 //! Deterministic zero-allocation `OfflinePcmSynthesizer` for native verification and `.wav` export.
 
-// theory_verification!
-
 use std::f64::consts::TAU;
 
 use super::backend::{MuteReason, SonificationBackend};

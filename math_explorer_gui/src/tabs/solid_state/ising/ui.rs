@@ -2,14 +2,14 @@
 
 use super::atlas::onsager_critical_temp;
 use super::preset::{FermiGamePreset, IsingInteractionMode};
-use super::{ising_spin_color, IsingModelTool};
+use super::{ising_spin_color, IsingBrushMode, IsingModelTool, DEFAULT_ISING_SIZE};
 use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
 use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
 };
 use crate::async_sim::SimCommand;
 use crate::framework::{
-    InputMode, InteractionContext, InteractiveTool, PlaybackAction, PlaybackTransport,
+    draw_brush_palette_controls, PlaybackAction, PlaybackTransport, RasterBrushCanvas,
 };
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
@@ -227,36 +227,61 @@ impl IsingModelTool {
     }
 
     fn draw_brush_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let max_r = if self.active_challenge.is_some() {
-            10
-        } else {
-            25
-        };
-        ui.label("Droplet Brush:");
-        ui.add(egui::Slider::new(&mut self.brush_radius, 0..=max_r).text("Radius (r)"));
-        ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.brush_cooperator, true, "+1 (C / ↑)");
-            ui.selectable_value(&mut self.brush_cooperator, false, "-1 (D / ↓)");
-        });
-        if ui
-            .button("🧹 Fill -1 Defector Sea")
-            .accessible_hover_text(
-                "Set all 100x100 lattice sites to -1 so brushed +1 droplets test critical nucleation",
-            )
-            .clicked()
-        {
-            self.defector_sea = true;
-            self.droplet_seeds.clear();
-            self.sync_shared_params();
-            if self.worker.send_command(SimCommand::ClearObstacles).is_ok() {
-                self.refresh_challenge_workspace();
-                self.pending_ode_resync = true;
-                ctx.request_repaint();
+        let in_challenge = self.active_challenge.is_some();
+        let max_r = if in_challenge { 10 } else { 25 };
+        ui.label("Spin & Boundary Brush");
+        if in_challenge {
+            self.brush_state.stencil = crate::framework::BrushStencil::Circle;
+            self.brush_state.symmetry = crate::framework::SymmetryMode::None;
+            if !matches!(
+                self.brush_mode,
+                IsingBrushMode::SpinUp | IsingBrushMode::SpinDown
+            ) {
+                self.brush_mode = IsingBrushMode::SpinUp;
             }
         }
+        egui::ComboBox::from_id_salt("ising_brush_mode")
+            .selected_text(self.brush_mode.label())
+            .show_ui(ui, |ui| {
+                for mode in IsingBrushMode::ALL {
+                    if in_challenge
+                        && !matches!(mode, IsingBrushMode::SpinUp | IsingBrushMode::SpinDown)
+                    {
+                        continue;
+                    }
+                    ui.selectable_value(&mut self.brush_mode, mode, mode.label());
+                }
+            });
+        draw_brush_palette_controls(ui, "ising", &mut self.brush_state, max_r);
+        self.sync_brush_fields_from_palette();
+        ui.horizontal_wrapped(|ui| {
+            if !in_challenge && ui.button("Clear Pinned Sites").clicked() {
+                self.clear_pins(Some(ctx));
+            }
+            if ui
+                .button("🧹 Fill -1 Defector Sea")
+                .accessible_hover_text(
+                    "Set unpinned 100x100 lattice sites to -1 so brushed +1 droplets test critical nucleation",
+                )
+                .clicked()
+            {
+                self.defector_sea = true;
+                self.droplet_seeds.clear();
+                self.sync_shared_params();
+                if self.worker.send_command(SimCommand::ClearObstacles).is_ok() {
+                    self.refresh_challenge_workspace();
+                    self.pending_ode_resync = true;
+                    ctx.request_repaint();
+                }
+            }
+        });
     }
 
     fn draw_transport_and_metrics(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        let canvas_focused = self
+            .brush_state
+            .focused_id
+            .is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
         if self.is_graph_mode() {
             self.draw_graph_transport(ui, ctx);
         } else if let Some(action) = PlaybackTransport::from_worker_state(
@@ -265,6 +290,7 @@ impl IsingModelTool {
             self.worker.state(),
         )
         .can_reset(true)
+        .allow_space_shortcut(!canvas_focused)
         .show(ui)
         {
             match action {
@@ -374,41 +400,7 @@ impl IsingModelTool {
             });
     }
 
-    fn dispatch_canvas_brush(&mut self, ui: &egui::Ui, response: &egui::Response) {
-        let active_stroke = response.dragged()
-            || response.clicked()
-            || response.secondary_clicked()
-            || response.is_pointer_button_down_on();
-        if !active_stroke {
-            return;
-        }
-        let pointer_pos = response
-            .interact_pointer_pos()
-            .or_else(|| ui.input(|i| i.pointer.interact_pos()))
-            .filter(|pos| response.rect.contains(*pos) || response.dragged());
-        if pointer_pos.is_none() {
-            return;
-        }
-        let input_mode = ui.ctx().data(|d| {
-            d.get_temp(egui::Id::new("INPUT_MODE"))
-                .unwrap_or(InputMode::Mouse)
-        });
-        let interaction_ctx = InteractionContext {
-            pointer_pos,
-            delta: response.drag_delta(),
-            is_dragging: response.dragged(),
-            is_clicked: response.clicked(),
-            response,
-            input_mode,
-            multi_touch: ui.input(|i| i.multi_touch()),
-            keys_down: ui.input(|i| i.keys_down.clone()),
-            modifiers: ui.input(|i| i.modifiers),
-            brush_stroke: None,
-        };
-        self.on_brush(&interaction_ctx);
-    }
-
-    fn draw_lattice_canvas(&mut self, ui: &mut egui::Ui, side: f32) {
+    fn draw_lattice_canvas(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, side: f32) {
         let Some(texture) = self.texture.clone() else {
             return;
         };
@@ -419,37 +411,43 @@ impl IsingModelTool {
             self.energy,
             self.cooperator_fraction() * 100.0
         );
-        let response = ui
-            .add(
-                egui::Image::new(&texture)
-                    .fit_to_exact_size(egui::vec2(side, side))
-                    .alt_text(alt_label)
-                    .sense(egui::Sense::click_and_drag()),
-            )
-            .accessible_theory_hover(self);
-        ui.painter().rect_stroke(
-            response.rect,
-            0.0,
-            ui.visuals().widgets.noninteractive.bg_stroke,
-            egui::StrokeKind::Inside,
+        let pinned_count = self.pin_cells.iter().filter(|&&c| c != 0).count();
+        let summary = format!(
+            "M = {:.3}, E = {:.1}, C = {:.1}%, {pinned_count} pinned sites",
+            self.magnetization,
+            self.energy,
+            self.cooperator_fraction() * 100.0
         );
-        crate::accessibility::paint_canvas_focus_ring(ui, &response);
+        let (response, stroke) = RasterBrushCanvas::new(
+            "ising_lattice_canvas",
+            DEFAULT_ISING_SIZE,
+            DEFAULT_ISING_SIZE,
+            &alt_label,
+        )
+        .value_summary(&summary)
+        .max_canvas_size(egui::vec2(side, side))
+        .show_texture(ui, &texture, &mut self.brush_state);
+        let response = response.accessible_theory_hover(self);
         self.last_canvas_rect = Some(response.rect);
-        self.dispatch_canvas_brush(ui, &response);
+        self.sync_brush_fields_from_palette();
+        if let Some(stroke) = stroke {
+            self.apply_brush_stroke(stroke, Some(ctx));
+        }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.colored_label(ising_spin_color(1, &palette), "■ +1 (C / ↑)");
             ui.colored_label(ising_spin_color(-1, &palette), "■ -1 (D / ↓)");
-            ui.small("Click/drag to paint droplets (Shift/Right-click: invert)");
+            ui.colored_label(ising_spin_color(2, &palette), "■ Pin +1");
+            ui.colored_label(ising_spin_color(-2, &palette), "■ Pin -1");
         });
     }
 
-    fn draw_active_spin_canvas(&mut self, ui: &mut egui::Ui, side: f32) {
+    fn draw_active_spin_canvas(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, side: f32) {
         if self.is_graph_mode() {
             self.draw_graph_spin_canvas(ui, side);
         } else {
-            self.draw_lattice_canvas(ui, side);
+            self.draw_lattice_canvas(ui, ctx, side);
         }
     }
 
@@ -470,7 +468,7 @@ impl IsingModelTool {
             match self.mode {
                 IsingInteractionMode::Ferromagnetic => {
                     let side = avail.x.min((avail.y - 28.0).max(100.0)).clamp(100.0, 620.0);
-                    self.draw_active_spin_canvas(ui, side);
+                    self.draw_active_spin_canvas(ui, ctx, side);
                 }
                 IsingInteractionMode::FermiGame if avail.x >= 520.0 => {
                     let side = (avail.x * 0.46)
@@ -478,7 +476,7 @@ impl IsingModelTool {
                         .clamp(120.0, 520.0);
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
-                            self.draw_active_spin_canvas(ui, side);
+                            self.draw_active_spin_canvas(ui, ctx, side);
                         });
                         ui.separator();
                         ui.vertical(|ui| {
@@ -489,7 +487,7 @@ impl IsingModelTool {
                 }
                 IsingInteractionMode::FermiGame => {
                     let side = avail.x.min((avail.y * 0.5).max(100.0)).clamp(100.0, 360.0);
-                    self.draw_active_spin_canvas(ui, side);
+                    self.draw_active_spin_canvas(ui, ctx, side);
                     ui.separator();
                     let plot_h = (ui.available_height() - 24.0).max(140.0);
                     self.draw_replicator_overlay_plot(ui, plot_h);

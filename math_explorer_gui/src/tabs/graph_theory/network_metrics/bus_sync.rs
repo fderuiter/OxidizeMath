@@ -132,7 +132,14 @@ impl NetworkMetricsTool {
     }
 
     /// Returns the active node count in the metrics graph.
-    #[cfg(test)]
+    #[cfg(all(
+        test,
+        feature = "biology",
+        feature = "applied",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     #[must_use]
     pub fn node_count(&self) -> usize {
         self.node_positions.len()

@@ -1,7 +1,16 @@
+mod verify_suite;
+
+#[cfg(test)]
+pub use verify_suite::OptOutAllowEntry;
+pub use verify_suite::VerifySuiteConfig;
+
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+pub(crate) mod debt;
+pub(crate) use debt::VerificationDebtConfig;
 
 pub const WHITELIST_FILE_NAME: &str = "verification_whitelist.toml";
 
@@ -25,7 +34,11 @@ pub(crate) struct VerificationWhitelist {
     #[serde(default)]
     pub missing_docs: Option<MissingDocsConfig>,
     #[serde(default)]
+    pub verification_debt: Option<VerificationDebtConfig>,
+    #[serde(default)]
     pub workflow_linter: Option<WorkflowLinterConfig>,
+    #[serde(default)]
+    pub verify_suite: Option<VerifySuiteConfig>,
     #[serde(default)]
     pub dead_code: Vec<DeadCodeEntry>,
     #[serde(default)]
@@ -174,6 +187,9 @@ fn read_and_parse_whitelist(path: &Path) -> Result<VerificationWhitelist, String
     }
     if let Some(cfg) = &parsed.missing_docs {
         validate_missing_docs_config(cfg, path)?;
+    }
+    if let Some(cfg) = &parsed.verification_debt {
+        debt::validate_verification_debt_config(cfg, path)?;
     }
     if let Some(fences) = parsed
         .doc_verification
@@ -422,5 +438,25 @@ mod tests {
             "crates/demo/src/lib.rs",
             opts
         ));
+    }
+
+    #[test]
+    fn test_crate_prefix_for_file_supports_nested_multi_segment_crates() {
+        assert_eq!(
+            debt::crate_prefix_for_file("math_explorer_gui/src/tabs/tests/mod.rs"),
+            "math_explorer_gui"
+        );
+        assert_eq!(
+            debt::crate_prefix_for_file("crates/pure_math/src/pure_math/mod.rs"),
+            "crates/pure_math"
+        );
+        assert_eq!(
+            debt::crate_prefix_for_file("crates/02_engines/engine_linalg/src/lu.rs"),
+            "crates/02_engines/engine_linalg"
+        );
+        assert_eq!(
+            debt::crate_prefix_for_file("crates/02_engines/engine_linalg/src/tests.rs"),
+            "crates/02_engines/engine_linalg"
+        );
     }
 }

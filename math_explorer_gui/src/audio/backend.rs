@@ -1,7 +1,5 @@
 //! Dual-backend sonification trait and lifecycle fault reasons.
 
-// theory_verification!
-
 use super::frame::{MeterReading, SonificationFrame};
 
 /// Lifecycle event explaining why audio output is muted or suspended.

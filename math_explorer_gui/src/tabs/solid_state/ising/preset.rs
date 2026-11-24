@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::IsingModelTool;
+use super::{IsingModelTool, DEFAULT_ISING_SIZE};
+use math_commons::math_kernel::types::flatten_2d_index;
 
 /// Lattice evolution kernel selection for [`IsingModelTool`].
 #[derive(
@@ -123,6 +124,8 @@ pub(crate) struct IsingState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) running: Option<bool>,
     pub(crate) steps_per_frame: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) pinned_rle: Option<String>,
     #[serde(
         default,
         skip_serializing_if = "crate::app::TopologySource::is_default"
@@ -172,6 +175,10 @@ impl IsingState {
                 crate::app::data_bus::SESSION_MAX_BUS_EDGES,
             )?;
         }
+        if let Some(ref rle) = self.pinned_rle {
+            let _ =
+                crate::framework::decode_u8_grid(rle, DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, 2)?;
+        }
         Ok(())
     }
 }
@@ -182,6 +189,12 @@ impl IsingModelTool {
         let frozen_graph = (!self.graph_mode.follow_workspace_graph)
             .then(|| self.graph_mode.active_graph.as_ref().map(|g| (**g).clone()))
             .flatten();
+        let pinned_rle = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .pinned_rle
+            .clone();
         serde_json::to_string(&IsingState {
             temperature: self.temperature,
             j_coupling: self.j_coupling,
@@ -201,6 +214,7 @@ impl IsingModelTool {
             state: Some(self.worker.state()),
             running: None,
             steps_per_frame: self.steps_per_frame,
+            pinned_rle,
             topology_source: self.topology_source,
             follow_workspace_graph: self.graph_mode.follow_workspace_graph,
             seeded_graph: self.graph_mode.seeded_graph.clone(),
@@ -209,13 +223,47 @@ impl IsingModelTool {
         .ok()
     }
 
+    fn apply_loaded_pins_and_seeds(&mut self, pinned_rle: Option<String>, decoded_pins: Vec<u8>) {
+        let effective_rle = if self.active_challenge.is_some() {
+            None
+        } else {
+            pinned_rle
+        };
+        let pins_changed = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .pinned_rle
+            != effective_rle;
+        self.pin_cells = if effective_rle.is_some() {
+            decoded_pins
+        } else {
+            vec![0; DEFAULT_ISING_SIZE * DEFAULT_ISING_SIZE]
+        };
+        self.params
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .pinned_rle = effective_rle;
+        self.sync_brush_fields_before_frame();
+        self.sync_shared_params();
+        if self.defector_sea || !self.droplet_seeds.is_empty() {
+            self.push_seed_layout_to_worker();
+        } else if pins_changed {
+            self.reset();
+        }
+    }
+
     pub(super) fn deserialize_ising_state(&mut self, state: &str) -> Result<(), String> {
-        use crate::framework::InteractiveTool;
+        use crate::framework::{decode_u8_grid, InteractiveTool};
         use std::sync::Arc;
         self.state_bounds().validate_json(state)?;
         let s: IsingState =
             serde_json::from_str(state).map_err(|e| format!("Invalid Ising state: {e}"))?;
         s.validate()?;
+        let decoded_pins = match s.pinned_rle.as_deref() {
+            Some(rle) => decode_u8_grid(rle, DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, 2)?,
+            None => vec![0; DEFAULT_ISING_SIZE * DEFAULT_ISING_SIZE],
+        };
         self.atlas
             .set_axis_keys(&s.atlas.axes[0], &s.atlas.axes[1])?;
         self.atlas.set_visible(s.atlas.visible);
@@ -236,17 +284,17 @@ impl IsingModelTool {
         self.graph_mode.seeded_graph = s.seeded_graph.clone();
         self.graph_mode.pending_seed_publish =
             s.seeded_graph.is_some() && s.topology_source == crate::app::TopologySource::SharedBus;
-        if let Some(g) = s.frozen_graph.or(s.seeded_graph) {
-            self.apply_shared_spin_graph(&Arc::new(g));
-        } else if self.graph_mode.follow_workspace_graph
+        if s.frozen_graph.is_some()
+            || s.seeded_graph.is_some()
+            || self.graph_mode.follow_workspace_graph
             || self.topology_source == crate::app::TopologySource::LocalPreset
         {
             self.detach_shared_csr_graph(false);
         }
         self.enforce_ising_challenge_locks();
-        self.sync_shared_params();
-        if self.defector_sea || !self.droplet_seeds.is_empty() {
-            self.push_seed_layout_to_worker();
+        self.apply_loaded_pins_and_seeds(s.pinned_rle, decoded_pins);
+        if let Some(g) = s.frozen_graph.or(s.seeded_graph) {
+            self.apply_shared_spin_graph(&Arc::new(g));
         }
         self.recompute_replicator_curve();
         self.refresh_challenge_workspace();
@@ -318,6 +366,51 @@ const STARTER_PRESET_JSON: &str = r#"{
   }
 }"#;
 
+fn generate_ising_pinned_domain_wall_preset() -> &'static str {
+    static DOMAIN_WALL_PRESET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DOMAIN_WALL_PRESET
+        .get_or_init(|| {
+            let mut pins = vec![0u8; DEFAULT_ISING_SIZE * DEFAULT_ISING_SIZE];
+            for y in 0..DEFAULT_ISING_SIZE {
+                for x in 0..6 {
+                    pins[flatten_2d_index(x, y, DEFAULT_ISING_SIZE)] = 1;
+                }
+                for x in (DEFAULT_ISING_SIZE - 6)..DEFAULT_ISING_SIZE {
+                    pins[flatten_2d_index(x, y, DEFAULT_ISING_SIZE)] = 2;
+                }
+            }
+            for x in 35..65 {
+                for y in 35..65 {
+                    let dx = (x as isize) - 50;
+                    let dy = (y as isize) - 50;
+                    if dx * dx + dy * dy <= 64 {
+                        pins[flatten_2d_index(x, y, DEFAULT_ISING_SIZE)] = 1;
+                    }
+                }
+            }
+            let rle =
+                crate::framework::encode_u8_grid(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, &pins, 2)
+                    .expect("valid Ising pinned RLE");
+            serde_json::json!({
+                "metadata": {
+                    "schema_version": "1.0",
+                    "title": "Ising Pinned Domain Wall",
+                    "domain": "solid_state",
+                    "timestamp": "2026-11-21T00:00:00Z"
+                },
+                "config": {
+                    "temperature": 1.85,
+                    "j_coupling": 1.0,
+                    "h_field": 0.0,
+                    "steps_per_frame": 12000,
+                    "pinned_rle": rle
+                }
+            })
+            .to_string()
+        })
+        .as_str()
+}
+
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "ising_model_starter",
@@ -331,53 +424,15 @@ inventory::submit! {
     }
 }
 
-const FRUSTRATED_TRIANGULAR_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Frustrated Triangular Spins",
-    "domain": "solid_state",
-    "timestamp": "2026-11-21T00:00:00Z"
-  },
-  "config": {
-    "temperature": 0.45,
-    "j_coupling": 1.0,
-    "h_field": 0.0,
-    "steps_per_frame": 2000,
-    "seeded_graph": {
-      "revision": 1,
-      "nodes": [
-        { "id": 0, "norm_pos": [0.50, 0.50] },
-        { "id": 1, "norm_pos": [0.50, 0.14] },
-        { "id": 2, "norm_pos": [0.84, 0.36] },
-        { "id": 3, "norm_pos": [0.72, 0.78] },
-        { "id": 4, "norm_pos": [0.28, 0.78] },
-        { "id": 5, "norm_pos": [0.16, 0.36] }
-      ],
-      "edges": [
-        [0, 1, -1.0],
-        [0, 2, -1.0],
-        [0, 3, -1.0],
-        [0, 4, -1.0],
-        [0, 5, -1.0],
-        [1, 2, -1.0],
-        [2, 3, -1.0],
-        [3, 4, -1.0],
-        [4, 5, -1.0],
-        [5, 1, -1.0]
-      ]
-    }
-  }
-}"#;
-
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
-        id: "frustrated_triangular_spins",
-        title: "Frustrated Triangular Spins",
-        description: "Odd-cycle antiferromagnetic (-w) wheel graph exhibiting geometric spin frustration with no zero-frustration ground state.",
+        id: "ising_pinned_domain_wall",
+        title: "Ising Pinned Domain Wall",
+        description: "Opposing +1/-1 pinned spin boundaries and central nucleus forcing interfacial domain-wall fluctuations.",
         category: "Statistical Mechanics",
-        icon: "🔺",
+        icon: "🧱",
         domain: "solid_state",
         tool_name: Some("IsingModelTool"),
-        preset_generator: || FRUSTRATED_TRIANGULAR_PRESET_JSON,
+        preset_generator: generate_ising_pinned_domain_wall_preset,
     }
 }

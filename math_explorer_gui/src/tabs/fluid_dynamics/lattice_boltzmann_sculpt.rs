@@ -4,7 +4,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::lattice_boltzmann::render::draw_aerodynamic_metrics;
-use super::lattice_boltzmann::{LBM_HEIGHT, LBM_INLET_U, LBM_WIDTH};
+use super::lattice_boltzmann::{LBM_HEIGHT, LBM_WIDTH};
+use super::lbm_atlas::resolve_inlet_velocity;
 use super::lbm_fairing::{LBM_CORE_RADIUS, LBM_CORE_X, LBM_CORE_Y, LBM_INLET_COLS};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::{
@@ -42,33 +43,39 @@ pub(crate) fn seed_initial_lbm_geometry(
         }
         None
     };
-    solver.set_inlet(0, 0, LBM_INLET_COLS, solver.height(), LBM_INLET_U, 0.0);
+    solver.set_inlet(
+        0,
+        0,
+        LBM_INLET_COLS,
+        solver.height(),
+        resolve_inlet_velocity(params),
+        0.0,
+    );
     stamped
 }
 
 pub(crate) fn reset_solver_preserving_obstacles(
     solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
     viscosity: f64,
+    inlet_velocity: f64,
     restore_core: bool,
 ) {
     solver.collision_model.tau = 3.0 * viscosity + 0.5;
     solver.init_equilibrium();
-    let width = solver.width();
-    let height = solver.height();
+    let (width, height) = (solver.width(), solver.height());
     for y in 0..height {
         for x in 0..width {
             if x < LBM_INLET_COLS {
                 solver.set_obstacle(x, y, false);
             } else if restore_core {
-                let dx = x as i32 - LBM_CORE_X;
-                let dy = y as i32 - LBM_CORE_Y;
+                let (dx, dy) = (x as i32 - LBM_CORE_X, y as i32 - LBM_CORE_Y);
                 if dx * dx + dy * dy <= LBM_CORE_RADIUS * LBM_CORE_RADIUS {
                     solver.set_obstacle(x, y, true);
                 }
             }
         }
     }
-    solver.set_inlet(0, 0, LBM_INLET_COLS, height, LBM_INLET_U, 0.0);
+    solver.set_inlet(0, 0, LBM_INLET_COLS, height, inlet_velocity, 0.0);
 }
 
 pub(crate) fn build_default_obstacle_bytes(params: &HashMap<String, f64>) -> Vec<u8> {
@@ -184,19 +191,16 @@ pub(crate) fn rotate_airfoil_in_place(
     code: u16,
     old_aoa_deg: f64,
     new_aoa_deg: f64,
+    u_in: f64,
 ) {
-    let w = solver.width();
-    let h = solver.height();
-    let cx = 0.32 * w as f64;
-    let cy = 0.5 * h as f64;
+    let (w, h) = (solver.width(), solver.height());
+    let (cx, cy) = (0.32 * w as f64, 0.5 * h as f64);
     let old_af = Naca4Airfoil::from_code(code, 26.0, cx, cy, old_aoa_deg);
     let new_af = Naca4Airfoil::from_code(code, 26.0, cx, cy, new_aoa_deg);
-    let u_in = super::lattice_boltzmann::LBM_INLET_U;
 
     for y in 0..h {
         for x in 0..w {
-            let px = x as f64 + 0.5;
-            let py = y as f64 + 0.5;
+            let (px, py) = (x as f64 + 0.5, y as f64 + 0.5);
             if new_af.contains_point(px, py) {
                 solver.set_obstacle(x, y, true);
             } else if old_af.contains_point(px, py) {
@@ -221,7 +225,7 @@ pub(crate) fn sync_lbm_parameters(
     if let Some((code, prev_aoa)) = *stamped_airfoil {
         let aoa = *params.get("angle_of_attack").unwrap_or(&0.0);
         if aoa.is_finite() && (aoa - prev_aoa).abs() > 1e-6 {
-            rotate_airfoil_in_place(solver, code, prev_aoa, aoa);
+            rotate_airfoil_in_place(solver, code, prev_aoa, aoa, resolve_inlet_velocity(params));
             *stamped_airfoil = Some((code, aoa));
         }
     }
@@ -401,14 +405,8 @@ pub(crate) fn apply_lbm_custom_action(
     if action == "stamp_venturi" {
         solver.clear_obstacles();
         stamp_venturi_nozzle(solver, 0.44);
-        solver.set_inlet(
-            0,
-            0,
-            solver.width(),
-            solver.height(),
-            super::lattice_boltzmann::LBM_INLET_U,
-            0.0,
-        );
+        let u_in = resolve_inlet_velocity(params);
+        solver.set_inlet(0, 0, solver.width(), solver.height(), u_in, 0.0);
         *stamped_airfoil = None;
         return true;
     }
@@ -422,7 +420,13 @@ pub(crate) fn apply_lbm_custom_action(
         let (code, aoa) = parse_naca_action(action, params);
         match *stamped_airfoil {
             Some((prev_code, prev_aoa)) if prev_code == code => {
-                rotate_airfoil_in_place(solver, code, prev_aoa, aoa);
+                rotate_airfoil_in_place(
+                    solver,
+                    code,
+                    prev_aoa,
+                    aoa,
+                    resolve_inlet_velocity(params),
+                );
             }
             _ => stamp_airfoil_on_solver(solver, code, aoa),
         }
@@ -430,4 +434,21 @@ pub(crate) fn apply_lbm_custom_action(
         return true;
     }
     false
+}
+
+pub(crate) fn apply_lbm_brush_cells(
+    solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
+    cells: &[(usize, usize)],
+    mode: u8,
+) {
+    let (w, h) = (solver.width(), solver.height());
+    for &(x, y) in cells {
+        if x < w && y < h {
+            if mode == 2 {
+                inject_velocity_jet(solver, x as i32, y as i32, 1, 0.14, 0.0);
+            } else {
+                solver.set_obstacle(x, y, mode != 0);
+            }
+        }
+    }
 }

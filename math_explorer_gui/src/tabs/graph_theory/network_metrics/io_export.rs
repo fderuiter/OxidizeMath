@@ -91,14 +91,14 @@ impl NetworkMetricsTool {
     }
 
     /// Returns the currently synced shared bus revision, if active.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "epidemiology"))]
     #[must_use]
     pub fn synced_bus_revision(&self) -> Option<u64> {
         self.synced_bus_revision
     }
 
     /// Returns the number of nodes currently analyzed.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "epidemiology"))]
     #[must_use]
     pub fn active_node_count(&self) -> usize {
         self.node_positions.len()

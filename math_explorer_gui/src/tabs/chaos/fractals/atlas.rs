@@ -269,7 +269,7 @@ impl FractalViewer {
                 _ => {}
             }
         }
-        self.dirty = true;
+        self.mark_dirty();
     }
 
     pub(super) fn render_fractal_atlas_panel(&mut self, ui: &mut egui::Ui) {

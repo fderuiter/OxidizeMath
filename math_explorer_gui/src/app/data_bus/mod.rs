@@ -17,13 +17,13 @@ pub use types::{
     SESSION_MAX_TRACE_POINTS, URL_MAX_BUS_EDGES, URL_MAX_BUS_NODES, URL_MAX_TRACE_POINTS,
 };
 
-#[cfg(any(test, feature = "applied"))]
+#[cfg(feature = "applied")]
 pub use types::MAX_GAME_NODE_BUDGET;
-#[cfg(any(test, feature = "biology"))]
+#[cfg(feature = "biology")]
 pub use types::MAX_HH_NEURON_BUDGET;
-#[cfg(any(test, feature = "physics"))]
+#[cfg(feature = "physics")]
 pub use types::MAX_SPIN_NODE_BUDGET;
-#[cfg(any(test, feature = "epidemiology"))]
+#[cfg(feature = "epidemiology")]
 pub use types::{adjacency_degree_moments, MAX_EPIDEMIC_NODE_BUDGET};
 
 use crate::framework::ToolStateBounds;
@@ -268,7 +268,6 @@ pub fn publish_shared_graph(ctx: &egui::Context, mut graph: SharedGraph) -> Arc<
 
 /// Seeds `egui::Context` with `graph` only if no shared graph is currently published on the bus.
 #[cfg(any(
-    test,
     feature = "applied",
     feature = "biology",
     feature = "epidemiology",

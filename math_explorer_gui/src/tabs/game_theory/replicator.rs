@@ -138,21 +138,21 @@ impl ReplicatorDynamicsTool {
     }
 
     /// Returns the currently synced shared bus revision, if active.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "physics"))]
     #[must_use]
     pub fn synced_bus_revision(&self) -> Option<u64> {
         self.synced_bus_revision
     }
 
     /// Returns the active Ohtsuki-Nowak mean degree $k$ ingested from the shared graph, if `k > 2`.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "physics"))]
     #[must_use]
     pub fn active_graph_mean_degree(&self) -> Option<f64> {
         self.shared_mean_degree
     }
 
     /// Returns the final simulated strategy proportion vector $x(T)$.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "physics"))]
     #[must_use]
     pub fn final_population(&self) -> Option<&DVector<f64>> {
         self.trajectory.last().map(|(_, x)| x)

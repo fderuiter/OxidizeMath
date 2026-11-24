@@ -2,7 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-#[cfg(any(test, feature = "pure_math"))]
+#[cfg(feature = "pure_math")]
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 #[cfg(any(
@@ -15,19 +15,19 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// Maximum Hodgkin-Huxley neuron count simulated live from a shared workspace graph.
-#[cfg(any(test, feature = "biology"))]
+#[cfg(feature = "biology")]
 pub const MAX_HH_NEURON_BUDGET: usize = 32;
 
 /// Maximum contact-network node count simulated live in `NetworkPropagationTool`.
-#[cfg(any(test, feature = "epidemiology"))]
+#[cfg(feature = "epidemiology")]
 pub const MAX_EPIDEMIC_NODE_BUDGET: usize = 500;
 
 /// Maximum spatial game node count simulated live in `ReplicatorDynamicsTool`.
-#[cfg(any(test, feature = "applied"))]
+#[cfg(feature = "applied")]
 pub const MAX_GAME_NODE_BUDGET: usize = 500;
 
 /// Maximum graph spin count simulated live in `IsingModelTool`.
-#[cfg(any(test, feature = "physics"))]
+#[cfg(feature = "physics")]
 pub const MAX_SPIN_NODE_BUDGET: usize = 1_000;
 
 /// Maximum node count accepted when validating `.mws` session bus snapshots.
@@ -129,7 +129,7 @@ impl SharedGraph {
     }
 
     /// Normalizes canvas positions and arbitrary node IDs into a compact [`SharedGraph`].
-    #[cfg(any(test, feature = "pure_math"))]
+    #[cfg(feature = "pure_math")]
     #[must_use]
     pub fn from_canvas_positions(
         revision: u64,
@@ -238,7 +238,7 @@ impl SharedGraph {
 }
 
 /// Deduplicates undirected compact edges while preserving the latest finite weight.
-#[cfg(any(test, feature = "pure_math"))]
+#[cfg(feature = "pure_math")]
 fn deduplicate_compact_edges(
     raw_edges: &[(usize, usize, f64)],
     id_to_compact: &std::collections::HashMap<usize, usize>,

@@ -1,4 +1,4 @@
-//! Deferred `.frag` download, clipboard copy, and action-bar UI controls for GLSL fragment shaders.
+//! Deferred WGSL/GLSL/WebGL2/Shadertoy fragment shader export dispatch, clipboard text helpers, and action-bar UI controls.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -93,13 +93,65 @@ pub(crate) fn compile_complex_bar_glsl(
 impl ExportFormat {
     const fn clipboard_item_noun(self) -> &'static str {
         match self {
-            Self::GlslWebGl2 | Self::GlslShadertoy => "shader",
+            Self::Wgsl | Self::Glsl | Self::GlslWebGl2 | Self::GlslShadertoy => "shader",
             Self::Tex | Self::Rust | Self::Python => "model",
             _ => "dataset",
         }
     }
 }
 
+const SHADER_EXPORT_ACTIONS: [(&str, &str, ExportFormat, ExportTarget); 8] = [
+    (
+        "Export WGSL",
+        "Export standalone WebGPU WGSL fragment shader (.wgsl)",
+        ExportFormat::Wgsl,
+        ExportTarget::File,
+    ),
+    (
+        "Copy WGSL",
+        "Copy standalone WGSL fragment shader to clipboard",
+        ExportFormat::Wgsl,
+        ExportTarget::Clipboard,
+    ),
+    (
+        "Export GLSL",
+        "Export standalone GLSL ES 3.00 and Shadertoy fragment shader (.glsl)",
+        ExportFormat::Glsl,
+        ExportTarget::File,
+    ),
+    (
+        "Copy GLSL",
+        "Copy standalone GLSL fragment shader to clipboard",
+        ExportFormat::Glsl,
+        ExportTarget::Clipboard,
+    ),
+    (
+        "Export WebGL2 (.frag)",
+        "Download standalone WebGL2 (#version 300 es) fragment shader (.frag)",
+        ExportFormat::GlslWebGl2,
+        ExportTarget::File,
+    ),
+    (
+        "Copy WebGL2",
+        "Copy standalone WebGL2 (#version 300 es) fragment shader to clipboard",
+        ExportFormat::GlslWebGl2,
+        ExportTarget::Clipboard,
+    ),
+    (
+        "Export Shadertoy (.frag)",
+        "Download standalone Shadertoy (mainImage) fragment shader (.frag)",
+        ExportFormat::GlslShadertoy,
+        ExportTarget::File,
+    ),
+    (
+        "Copy Shadertoy",
+        "Copy standalone Shadertoy (mainImage) fragment shader to clipboard",
+        ExportFormat::GlslShadertoy,
+        ExportTarget::Clipboard,
+    ),
+];
+
+/// Formats a clipboard failure error with guidance toward disk export.
 fn format_clipboard_error(err: &str) -> String {
     if err.contains("Export CSV") {
         format!("Clipboard unavailable: {err}")
@@ -109,7 +161,7 @@ fn format_clipboard_error(err: &str) -> String {
 }
 
 impl SimulationFramework {
-    /// Queues a direct GLSL fragment shader clipboard copy for deferred end-of-frame dispatch.
+    /// Queues a direct fragment shader clipboard copy for deferred end-of-frame dispatch.
     pub(crate) fn queue_shader_clipboard_export(&mut self, format: ExportFormat) {
         self.export_queue
             .push_target(format, ExportTarget::Clipboard);
@@ -153,8 +205,8 @@ impl SimulationFramework {
         ctx.request_repaint();
     }
 
-    /// Renders one-click WebGL2 (`#version 300 es`) and Shadertoy (`mainImage`) `.frag` and clipboard
-    /// actions when the active tool advertises `caps.shader`.
+    /// Renders WGSL, GLSL, WebGL2 (`.frag`), and Shadertoy (`.frag`) download and clipboard actions
+    /// when the active tool advertises `caps.shader`.
     pub(super) fn render_shader_export_items(
         &mut self,
         ui: &mut egui::Ui,
@@ -164,56 +216,25 @@ impl SimulationFramework {
         if !caps.shader {
             return;
         }
-        if export_action_button(
-            ui,
-            true,
-            "Export WebGL2 (.frag)",
-            "Download standalone WebGL2 (#version 300 es) fragment shader (.frag)",
-            close_on_click,
-        ) {
-            self.queue_export(ExportFormat::GlslWebGl2);
-        }
-        if export_action_button(
-            ui,
-            true,
-            "Copy WebGL2",
-            "Copy standalone WebGL2 (#version 300 es) fragment shader to clipboard",
-            close_on_click,
-        ) {
-            self.queue_shader_clipboard_export(ExportFormat::GlslWebGl2);
-        }
-        if export_action_button(
-            ui,
-            true,
-            "Export Shadertoy (.frag)",
-            "Download standalone Shadertoy (mainImage) fragment shader (.frag)",
-            close_on_click,
-        ) {
-            self.queue_export(ExportFormat::GlslShadertoy);
-        }
-        if export_action_button(
-            ui,
-            true,
-            "Copy Shadertoy",
-            "Copy standalone Shadertoy (mainImage) fragment shader to clipboard",
-            close_on_click,
-        ) {
-            self.queue_shader_clipboard_export(ExportFormat::GlslShadertoy);
+        for (label, tip, format, target) in SHADER_EXPORT_ACTIONS {
+            if export_action_button(ui, true, label, tip, close_on_click) {
+                match target {
+                    ExportTarget::File => self.queue_export(format),
+                    ExportTarget::Clipboard => {
+                        self.queue_shader_clipboard_export(format);
+                    }
+                }
+            }
         }
     }
 
-    /// Dispatches a queued [`ExportFormat::GlslWebGl2`] or [`ExportFormat::GlslShadertoy`] request.
+    /// Dispatches a queued WGSL, GLSL, WebGL2, or Shadertoy shader export request.
     pub(super) fn dispatch_shader_export(
         &mut self,
         format: ExportFormat,
         target: ExportTarget,
         ctx: Option<&egui::Context>,
     ) {
-        let dialect = match format {
-            ExportFormat::GlslWebGl2 => ShaderDialect::WebGl2Es300,
-            ExportFormat::GlslShadertoy => ShaderDialect::Shadertoy,
-            _ => return,
-        };
         let Some(tool) = &self.active_tool else {
             return;
         };
@@ -223,12 +244,19 @@ impl SimulationFramework {
             return;
         }
         let tool_name = tool.name().to_string();
-        let shader_src = match tool.export_glsl_shader(dialect) {
+        let shader_res = match format {
+            ExportFormat::Wgsl => tool.export_shader_source(ShaderExportFormat::Wgsl),
+            ExportFormat::Glsl => tool.export_shader_source(ShaderExportFormat::Glsl),
+            ExportFormat::GlslWebGl2 => tool.export_glsl_shader(ShaderDialect::WebGl2Es300),
+            ExportFormat::GlslShadertoy => tool.export_glsl_shader(ShaderDialect::Shadertoy),
+            _ => return,
+        };
+        let shader_src = match shader_res {
             Ok(src) if !src.trim().is_empty() => src,
             Ok(_) => {
                 self.set_export_status(
                     ExportStatusSeverity::Error,
-                    format!("No GLSL shader source available to export from {tool_name}."),
+                    format!("No shader source available to export from {tool_name}."),
                 );
                 return;
             }

@@ -29,6 +29,10 @@ pub(crate) enum ExportFormat {
     Ply,
     /// Wavefront 3D mesh format (`.obj`).
     Obj,
+    /// Standalone WebGPU Shading Language fragment shader (`.wgsl`).
+    Wgsl,
+    /// Standalone GLSL ES 3.00 / Shadertoy fragment shader (`.glsl`).
+    Glsl,
     /// Standalone WebGL2 (`#version 300 es`) fragment shader (`.frag`).
     GlslWebGl2,
     /// Standalone Shadertoy (`mainImage`) fragment shader (`.frag`).
@@ -50,6 +54,8 @@ impl ExportFormat {
             Self::Stl => ("stl", "STL", "STL 3D Mesh", "mesh"),
             Self::Ply => ("ply", "PLY", "PLY 3D Model", "mesh"),
             Self::Obj => ("obj", "OBJ", "Wavefront OBJ Mesh", "mesh"),
+            Self::Wgsl => ("wgsl", "WGSL", "WGSL Shader", "shader"),
+            Self::Glsl => ("glsl", "GLSL", "GLSL Shader", "shader"),
             Self::GlslWebGl2 => (
                 "frag",
                 "WebGL2 GLSL",
@@ -287,7 +293,13 @@ impl SimulationFramework {
             (ExportFormat::Stl | ExportFormat::Ply | ExportFormat::Obj, target) => {
                 self.dispatch_3d_export(req.format, target, ctx);
             }
-            (ExportFormat::GlslWebGl2 | ExportFormat::GlslShadertoy, target) => {
+            (
+                ExportFormat::Wgsl
+                | ExportFormat::Glsl
+                | ExportFormat::GlslWebGl2
+                | ExportFormat::GlslShadertoy,
+                target,
+            ) => {
                 self.dispatch_shader_export(req.format, target, ctx);
             }
         }
@@ -298,6 +310,15 @@ impl SimulationFramework {
 #[path = "deferred_export_tests.rs"]
 pub(crate) mod deferred_export_tests;
 
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 #[path = "deferred_export_audit_tests.rs"]
 mod deferred_export_audit_tests;
