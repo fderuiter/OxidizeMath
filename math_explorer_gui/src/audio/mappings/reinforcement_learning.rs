@@ -1,7 +1,5 @@
 //! Reinforcement learning temporal-difference surprise, Bellman value, and wind-drift sonification.
 
-// theory_verification!
-
 use crate::audio::frame::{clamp_freq_hz, SonificationFrame, VoiceSpec, WaveformPreset};
 
 /// Synthesizes a zero-allocation [`SonificationFrame`] from reinforcement learning step telemetry.

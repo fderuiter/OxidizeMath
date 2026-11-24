@@ -121,7 +121,13 @@ impl GraphEditorTool {
     }
 
     /// Programmatically removes any edge connecting `u` and `v`.
-    #[cfg(test)]
+    #[cfg(all(
+        test,
+        any(
+            feature = "epidemiology",
+            all(feature = "physics", feature = "applied")
+        )
+    ))]
     pub fn remove_edge_between(&mut self, u: usize, v: usize) -> bool {
         let Some(pos) = self
             .edges

@@ -1,11 +1,34 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::wcag_contrast_on_black;
-use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
+#[cfg(any(feature = "applied", feature = "biology", feature = "physics"))]
+use crate::async_sim::atlas::AtlasTeleportEvent;
+use crate::async_sim::atlas::RegimeCartographer;
+#[cfg(any(
+    feature = "applied",
+    feature = "biology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 use crate::framework::InteractiveTool;
-use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
-use std::collections::HashMap;
+#[cfg(feature = "biology")]
+use scientific_metadata::theory::TheoryDescribable;
+#[cfg(any(
+    feature = "applied",
+    feature = "biology",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
+use {scientific_metadata::theory::ParameterConstraint, std::collections::HashMap};
 
+#[cfg(any(
+    feature = "applied",
+    feature = "biology",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 fn assert_finite_constraints(params: &HashMap<String, ParameterConstraint>, expected: &[&str]) {
     for &key in expected {
         let c = params

@@ -1,7 +1,5 @@
 //! Domain-specific zero-allocation [`super::frame::SonificationFrame`] extractors across flagship tools.
 
-// theory_verification!
-
 #[cfg(feature = "pure_math")]
 pub mod acoustics;
 pub mod medical;
