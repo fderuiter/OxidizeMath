@@ -109,15 +109,26 @@ fn test_ast_visitor_allow_recursion_preserves_verification_counts() {
         fn qualified_delegate() {
             assert_eq!(2, 2);
         }
+
+        #[cfg_attr(feature = "std", verified_engine::verified)]
+        fn nostd_feature_gated_verified() {
+            assert_eq!(3, 3);
+        }
+
+        #[cfg_attr(any(), verified)]
+        fn dead_any_not_verified() {}
+
+        #[cfg_attr(test, verified)]
+        fn test_only_attr_not_verified() {}
     "#;
     let file = syn::parse_file(code).unwrap();
     let mut visitor = AstVisitor::default();
     visitor.visit_file(&file);
 
-    assert_eq!(visitor.total_funcs, 2);
-    assert_eq!(visitor.verified_funcs, 2);
-    assert_eq!(visitor.semantic_integrity_funcs, 2);
-    assert_eq!(visitor.verified_asserts, 2);
+    assert_eq!(visitor.total_funcs, 5);
+    assert_eq!(visitor.verified_funcs, 3);
+    assert_eq!(visitor.semantic_integrity_funcs, 3);
+    assert_eq!(visitor.verified_asserts, 3);
     assert!(!visitor.opted_out);
 }
 
@@ -139,6 +150,7 @@ fn test_ast_visitor_ignores_macro_examples_in_doc_comments() {
 
     assert_eq!(visitor.total_funcs, 1);
     assert_eq!(visitor.verified_funcs, 0);
+    assert_eq!(visitor.semantic_integrity_funcs, 0);
     assert!(visitor.verified_modules.is_empty());
 }
 

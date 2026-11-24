@@ -169,18 +169,51 @@ fn extract_embed_theory_module(list: &MetaList) -> Option<String> {
     (!clean.is_empty()).then_some(clean)
 }
 
-pub(super) fn inspect_non_doc_verified_attr(attr: &Attribute) -> (bool, Option<String>) {
-    if !matches!(attr.style, syn::AttrStyle::Outer) || attr_has_opt_out(attr) {
+fn inspect_verified_meta(meta: &Meta, depth: usize) -> (bool, Option<String>) {
+    if depth == 0 {
         return (false, None);
     }
-    match &attr.meta {
+    match meta {
         Meta::Path(path) if is_verified_attr_path(path) => (true, None),
+        Meta::List(list) if list.path.is_ident("cfg_attr") => {
+            let mut nested = parse_nested_metas(list).into_iter();
+            let Some(pred) = nested.next() else {
+                return (false, None);
+            };
+            let dead_any = matches!(
+                &pred,
+                Meta::List(sub) if sub.path.is_ident("any") && parse_nested_metas(sub).is_empty()
+            );
+            if dead_any || meta_requires_cfg_test(&pred, depth - 1) {
+                return (false, None);
+            }
+            let mut is_ver = false;
+            let mut theory_mod = None;
+            for item in nested {
+                let (v, m) = inspect_verified_meta(&item, depth - 1);
+                is_ver |= v;
+                if theory_mod.is_none() {
+                    theory_mod = m;
+                }
+            }
+            (is_ver, theory_mod)
+        }
         Meta::List(list) if is_verified_attr_path(&list.path) => (true, None),
         Meta::List(list) if is_embed_theory_attr_path(&list.path) => {
             (true, extract_embed_theory_module(list))
         }
         _ => (false, None),
     }
+}
+
+pub(super) fn inspect_non_doc_verified_attr(attr: &Attribute) -> (bool, Option<String>) {
+    if attr.path().is_ident("doc")
+        || !matches!(attr.style, syn::AttrStyle::Outer)
+        || attr_has_opt_out(attr)
+    {
+        return (false, None);
+    }
+    inspect_verified_meta(&attr.meta, MAX_ATTR_NESTING_DEPTH)
 }
 
 pub(super) fn parse_verification_macro(

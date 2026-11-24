@@ -1096,6 +1096,7 @@ dependencies = [
  "pure_math",
  "rand",
  "rustfft",
+ "scientific_metadata",
  "thiserror 2.0.21",
  "verified_engine",
 ]
@@ -2426,7 +2427,9 @@ name = "math_commons"
 version = "0.4.0"
 dependencies = [
  "diagnostics",
+ "libm",
  "num-complex",
+ "num-traits",
  "thiserror 2.0.21",
  "verified_engine",
 ]
@@ -2465,6 +2468,7 @@ dependencies = [
  "eframe",
  "egui_plot",
  "federated_registry",
+ "flate2",
  "futures",
  "inventory",
  "js-sys",

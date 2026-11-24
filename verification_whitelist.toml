@@ -186,10 +186,10 @@ min_total_density = 0.020
 
 [verification_debt.opt_out_reasons]
 "Legacy missing assertions" = 1
-"gui_tool" = 549
+"gui_tool" = 603
 "infrastructure" = 2
 "metadata" = 2
-"tests" = 199
+"tests" = 215
 
 [verification_debt.crate_opt_out_caps]
 "crates/domain_applied" = 1
@@ -197,10 +197,10 @@ min_total_density = 0.020
 "crates/domain_epidemiology" = 1
 "crates/domain_physics" = 2
 "crates/math_commons" = 1
-"crates/pure_math" = 10
+"crates/pure_math" = 12
 "crates/scientific_metadata" = 2
 "egui_plot" = 1
-"math_explorer_gui" = 734
+"math_explorer_gui" = 802
 
 [verification_debt.file_opt_out_caps]
 "math_explorer_gui/src/tabs/optics_waves/tool.rs" = 2

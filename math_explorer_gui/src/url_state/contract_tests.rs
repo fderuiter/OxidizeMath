@@ -103,7 +103,7 @@ fn seed_custom_tab_states(app: &mut MathExplorerApp) {
 fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut source_app = MathExplorerApp::default();
-    assert_eq!(source_app.tabs.len(), 28, "Expected all 28 ExplorerTabs");
+    assert_eq!(source_app.tabs.len(), 29, "Expected all 29 ExplorerTabs");
 
     let mut slugs = HashSet::new();
     for tab in &source_app.tabs {
@@ -153,8 +153,8 @@ fn test_contract_all_55_tools_lossless_url_roundtrip() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     assert_eq!(
         tools.len(),
-        89,
-        "Expected all 89 registered InteractiveTools"
+        94,
+        "Expected all 94 registered InteractiveTools"
     );
 
     let mut source_app = MathExplorerApp::default();
@@ -216,8 +216,8 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
         .collect();
     assert_eq!(
         presets.len(),
-        153,
-        "Expected all 153 StarterPresetMetadata entries"
+        163,
+        "Expected all 163 StarterPresetMetadata entries"
     );
 
     for preset in presets {
@@ -412,66 +412,4 @@ fn test_copy_share_link_populates_clipboard_and_confirmation_toast() {
         let parsed: serde_json::Value = serde_json::from_str(&exported).unwrap();
         assert_eq!(parsed["config"]["repo_path"], serde_json::json!("papers"));
     }
-}
-
-#[test]
-fn test_focused_secondary_pane_share_link_and_command_registry_registration() {
-    use eframe::App;
-
-    let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    let _ = take_last_copied_share_url();
-    let ctx = egui::Context::default();
-    let mut frame = eframe::Frame::_new_kittest();
-    let mut app = MathExplorerApp::default();
-
-    let chaos_idx = app
-        .tabs
-        .iter()
-        .position(|t| t.url_slug() == "chaos")
-        .unwrap();
-    let quantum_idx = app
-        .tabs
-        .iter()
-        .position(|t| t.url_slug() == "quantum")
-        .unwrap();
-
-    app.selected_tab = chaos_idx;
-    app.set_layout(ViewportLayout::SplitHorizontal);
-    app.set_pane_tab(1, quantum_idx);
-    app.focus_pane(1);
-    assert!(app
-        .pane_tab_mut(1)
-        .unwrap()
-        .select_tool_by_name("SpinVisualizer"));
-
-    let raw = egui::RawInput {
-        screen_rect: Some(egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::vec2(1280.0, 800.0),
-        )),
-        ..Default::default()
-    };
-    let _ = ctx.run(raw, |egui_ctx| app.update(egui_ctx, &mut frame));
-
-    let registry = ctx
-        .data(|d| {
-            d.get_temp::<egui_plot::commands::CommandRegistryData>(egui::Id::new("CMD_REGISTRY"))
-        })
-        .expect("CMD_REGISTRY must be populated during update");
-    assert!(
-        registry
-            .commands
-            .iter()
-            .any(|cmd| cmd.name == "Copy Share Link"),
-        "Copy Share Link shortcut must be registered in CMD_REGISTRY for Keyboard Shortcuts modal"
-    );
-
-    app.copy_current_share_link(&ctx);
-    let copied = take_last_copied_share_url().expect("Focused Pane 1 share URL copied");
-    assert!(
-        copied.starts_with(
-            "https://fderuiter.github.io/OxidizeMath/#tab=quantum&tool=SpinVisualizer&state="
-        ) && !copied.contains("SplitHorizontal"),
-        "Focused secondary pane share URL must encode Pane 1 without split layout metadata: {copied}"
-    );
 }

@@ -416,3 +416,44 @@ pub(crate) fn audit_workspace_markdown_files(
         }
     }
 }
+
+fn parse_compiled_fence_as_file(snippet: &str) -> Option<syn::File> {
+    if snippet.trim().is_empty() {
+        return None;
+    }
+    syn::parse_file(snippet)
+        .or_else(|_| syn::parse_file(&format!("fn __doctest_wrap() {{\n{snippet}\n}}")))
+        .ok()
+}
+
+pub(crate) fn audit_staged_markdown_fences_with_whitelist(
+    staged_md_paths: &[String],
+    whitelist: &crate::whitelist::VerificationWhitelist,
+    max_fn_lines: usize,
+) -> bool {
+    let mut success = true;
+    for raw_path in staged_md_paths {
+        let md_path = Path::new(raw_path);
+        let Ok(content) = fs::read_to_string(md_path) else {
+            continue;
+        };
+        let file_label = crate::whitelist::lossy_slash_path(md_path);
+        for block in extract_compiled_rustdoc_blocks(&content) {
+            let Some(ast) = parse_compiled_fence_as_file(&block) else {
+                continue;
+            };
+            let mut dc_visitor = super::DeadCodeVisitor::new(&file_label, &whitelist.dead_code);
+            dc_visitor.visit_file(&ast);
+            if dc_visitor.has_unauthorized {
+                success = false;
+            }
+            let mut clippy_visitor =
+                super::lint_policy::ClippyBypassVisitor::new(file_label.clone(), max_fn_lines);
+            clippy_visitor.visit_file(&ast);
+            if clippy_visitor.has_unauthorized {
+                success = false;
+            }
+        }
+    }
+    success
+}
