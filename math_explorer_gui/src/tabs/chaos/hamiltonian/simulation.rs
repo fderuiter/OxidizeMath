@@ -8,9 +8,10 @@ use super::{
 };
 use crate::web_io::PlatformInstant;
 use math_explorer::physics::astrophysics::nbody::FigureEightThreeBody;
+use math_explorer::physics::chaos::metrics::{array_lyapunov_exponent, lyapunov_exponent_4d};
 use math_explorer::physics::chaos::poincare::PoincareSection;
 use math_explorer::pure_math::analysis::ode::{
-    ArrayState, HamiltonianSystem, OdeSystem, Solver, SymplecticMethod, VectorOperations,
+    ArrayState, HamiltonianSystem, OdeSystem, SymplecticMethod, VectorOperations,
 };
 use std::f64::consts::PI;
 
@@ -89,6 +90,13 @@ impl HamiltonianChaosLab {
             0.0
         };
         self.cursor_qp = [q, p];
+        if !self.three_body_perturbation.is_finite() {
+            self.three_body_perturbation = 0.0;
+        }
+        self.three_body_perturbation = self.three_body_perturbation.clamp(0.0, 0.15);
+        if !self.orbits_are_finite() {
+            self.seed_default_showcase();
+        }
     }
 
     /// Checks that all active orbit state buffers remain finite.
@@ -100,11 +108,36 @@ impl HamiltonianChaosLab {
         })
     }
 
+    /// Recomputes the finite-time largest Lyapunov exponent $\lambda_{\max}$ for the lead orbit.
+    pub(crate) fn refresh_lyapunov_estimate(&mut self) {
+        let Some(lead) = self.orbits.last() else {
+            self.lyapunov_estimate = 0.0;
+            return;
+        };
+        let s4 = lead.state4;
+        let s12 = lead.state12;
+        self.lyapunov_estimate = match self.model {
+            HamiltonianModelKind::HenonHeiles => {
+                lyapunov_exponent_4d(&self.henon, &mut self.mid4, s4, 0.025, 24, 0.25)
+                    .unwrap_or(0.0)
+            }
+            HamiltonianModelKind::DoublePendulum => {
+                lyapunov_exponent_4d(&self.pendulum, &mut self.gl4_4, s4, 0.02, 24, 0.2)
+                    .unwrap_or(0.0)
+            }
+            HamiltonianModelKind::FigureEightThreeBody => {
+                array_lyapunov_exponent(&self.three_body, &mut self.mid12, s12, 0.015, 16, 0.15)
+                    .unwrap_or(0.0)
+            }
+        };
+    }
+
     /// Switches to `new_model`, resetting default energy, solver, and showcase orbits.
     pub fn switch_model(&mut self, new_model: HamiltonianModelKind) {
         self.model = new_model;
         let (_, _, e_def) = self.energy_bounds();
         self.energy = e_def;
+        self.three_body_perturbation = 0.0;
         self.solver = match new_model {
             HamiltonianModelKind::HenonHeiles => SymplecticSolverChoice::Yoshida4,
             HamiltonianModelKind::DoublePendulum => SymplecticSolverChoice::GaussLegendre4,
@@ -137,6 +170,7 @@ impl HamiltonianChaosLab {
         for &qp in seeds {
             let _ = self.seed_orbit_no_warmup(qp);
         }
+        self.refresh_lyapunov_estimate();
         self.step_batch(WARMUP_STEPS_ON_SEED);
     }
 
@@ -145,6 +179,7 @@ impl HamiltonianChaosLab {
         self.orbits.clear();
         self.ghost = GhostComparator::default();
         self.sim_time = 0.0;
+        self.lyapunov_estimate = 0.0;
         self.poincare4 = match self.model {
             HamiltonianModelKind::DoublePendulum => PoincareSection::<4>::double_pendulum(),
             _ => PoincareSection::<4>::henon_heiles(),
@@ -156,6 +191,7 @@ impl HamiltonianChaosLab {
     /// Reconstructs and seeds a canonical orbit at `(q, p)` with an immediate warm-up burst.
     pub fn seed_orbit_at(&mut self, qp: [f64; 2]) -> Result<usize, &'static str> {
         let idx = self.seed_orbit_no_warmup(qp)?;
+        self.refresh_lyapunov_estimate();
         self.step_batch(WARMUP_STEPS_ON_SEED);
         self.state_rev = self.state_rev.wrapping_add(1);
         Ok(idx)
@@ -211,7 +247,8 @@ impl HamiltonianChaosLab {
                 self.pendulum.hamiltonian(&state4)
             }
             HamiltonianModelKind::FigureEightThreeBody => {
-                state12 = FigureEightThreeBody::figure_eight_initial_state();
+                let d = self.three_body_perturbation.clamp(0.0, 0.15);
+                state12 = FigureEightThreeBody::perturbed_figure_eight(d, 0.5 * d);
                 let dy = qp[0].clamp(-0.45, 0.45);
                 let dpy = qp[1].clamp(-0.45, 0.45);
                 state12.0[1] += dy;
@@ -236,7 +273,7 @@ impl HamiltonianChaosLab {
             state12,
             prev_deriv12: deriv12,
             deriv12,
-            section_points: Vec::with_capacity(256),
+            section_points: Vec::with_capacity(MAX_SECTION_POINTS),
             section_write_idx: 0,
             trail: Vec::with_capacity(MAX_TRAIL_POINTS),
         })
@@ -283,20 +320,27 @@ impl HamiltonianChaosLab {
         for slot in &mut self.orbits {
             slot.prev4.copy_from(&slot.state4);
             slot.prev_deriv4.copy_from(&slot.deriv4);
-            match self.solver.to_method() {
+            let ok = match self.solver.to_method() {
+                SymplecticMethod::ImplicitMidpoint => {
+                    self.mid4
+                        .try_step_array(&self.henon, t, &mut slot.state4, dt)
+                }
                 SymplecticMethod::StormerVerlet => {
                     self.verlet2
                         .step_separable(&self.henon, &mut slot.state4, dt);
+                    slot.state4.is_finite()
                 }
                 SymplecticMethod::Yoshida4 => {
                     self.yoshida2
                         .step_separable(&self.henon, &mut slot.state4, dt);
+                    slot.state4.is_finite()
                 }
                 SymplecticMethod::GaussLegendre4 => {
-                    self.gl4_4.step(&self.henon, t, &mut slot.state4, dt);
+                    self.gl4_4
+                        .try_step_array(&self.henon, t, &mut slot.state4, dt)
                 }
-            }
-            if !slot.state4.is_finite() {
+            };
+            if !ok {
                 slot.state4.copy_from(&slot.prev4);
                 continue;
             }
@@ -334,7 +378,17 @@ impl HamiltonianChaosLab {
         for slot in &mut self.orbits {
             slot.prev4.copy_from(&slot.state4);
             slot.prev_deriv4.copy_from(&slot.deriv4);
-            self.gl4_4.step(&self.pendulum, t, &mut slot.state4, dt);
+            let ok = if self.solver == SymplecticSolverChoice::ImplicitMidpoint {
+                self.mid4
+                    .try_step_array(&self.pendulum, t, &mut slot.state4, dt)
+            } else {
+                self.gl4_4
+                    .try_step_array(&self.pendulum, t, &mut slot.state4, dt)
+            };
+            if !ok {
+                slot.state4.copy_from(&slot.prev4);
+                continue;
+            }
             self.pendulum
                 .derivative_in_place(t + dt, &slot.state4, &mut slot.deriv4);
             if let Some(hit) = self.poincare4.detect_crossing(
@@ -366,18 +420,29 @@ impl HamiltonianChaosLab {
         for slot in &mut self.orbits {
             slot.prev12.copy_from(&slot.state12);
             slot.prev_deriv12.copy_from(&slot.deriv12);
-            match self.solver {
+            let ok = match self.solver {
+                SymplecticSolverChoice::ImplicitMidpoint => {
+                    self.mid12
+                        .try_step_array(&self.three_body, t, &mut slot.state12, dt)
+                }
                 SymplecticSolverChoice::StormerVerlet => {
                     self.verlet6
                         .step_separable(&self.three_body, &mut slot.state12, dt);
+                    slot.state12.is_finite()
                 }
                 SymplecticSolverChoice::Yoshida4 => {
                     self.yoshida6
                         .step_separable(&self.three_body, &mut slot.state12, dt);
+                    slot.state12.is_finite()
                 }
                 SymplecticSolverChoice::GaussLegendre4 => {
-                    self.gl4_12.step(&self.three_body, t, &mut slot.state12, dt);
+                    self.gl4_12
+                        .try_step_array(&self.three_body, t, &mut slot.state12, dt)
                 }
+            };
+            if !ok {
+                slot.state12.copy_from(&slot.prev12);
+                continue;
             }
             self.three_body
                 .derivative_in_place(t + dt, &slot.state12, &mut slot.deriv12);

@@ -485,19 +485,33 @@ def run_compressed_progress_and_aria_check(
         csp_violations: list[str] = []
         console_errors: list[str] = []
         page_errors: list[str] = []
+        aborted_assets: list[str] = []
         attach_csp_observer(page, csp_violations)
         page.on(
             "console",
             lambda msg: console_errors.append(msg.text) if msg.type == "error" else None,
         )
         page.on("pageerror", lambda exc: page_errors.append(str(exc)))
+        page.on(
+            "requestfailed",
+            lambda req: aborted_assets.append(f"{req.url}: {req.failure}")
+            if req.failure == "net::ERR_ABORTED"
+            else None,
+        )
         install_telemetry_probe(page, dist_dir)
 
         page.goto(f"{base_url}/?wasm_mode={wasm_mode}", wait_until="domcontentloaded")
-        expect(page.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
-        expect(page.locator("#error_container")).to_be_hidden()
-        expect(page.locator("#the_canvas_id")).to_be_visible()
-        expect(page.locator("#the_canvas_id")).to_be_focused()
+        try:
+            expect(page.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+            expect(page.locator("#error_container")).to_be_hidden()
+            expect(page.locator("#the_canvas_id")).to_be_visible()
+            expect(page.locator("#the_canvas_id")).to_be_focused()
+        except AssertionError as exc:
+            if aborted_assets:
+                raise TransientBrowserCrashError(
+                    f"[{scenario}] Loopback request aborted by Chromium NetworkService: {aborted_assets}"
+                ) from exc
+            raise
 
         trace = page.evaluate("() => window.__mathExplorerSmokeTrace")
         expected_mb = round(expected_wire_bytes / 1_000_000.0, 2)
@@ -766,6 +780,8 @@ def is_playwright_crash(exc: BaseException) -> bool:
 
 class TransientBrowserCrashError(RuntimeError):
     """Raised when headless Chromium's Renderer or NetworkService crashes in a container."""
+
+
 def assert_zero_csp_violations(scenario: str, csp_violations: list[str]) -> None:
     if csp_violations:
         raise AssertionError(f"[{scenario}] CSP violations detected: {csp_violations}")
