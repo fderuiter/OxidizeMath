@@ -4,11 +4,13 @@
 mod latch;
 
 use super::presets::{
-    barrier_interval_for_preset, compute_tunneling_observables_slice, evaluate_potential_grid,
-    DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_X0, GRID_POINTS, GRID_X_MAX, GRID_X_MIN, SIGMA_MAX,
-    SIGMA_MIN,
+    barrier_interval_for_preset, compute_tunneling_observables_slice, default_compiled_expr,
+    evaluate_potential_grid, sanitize_finite, WavePotentialPreset, DEFAULT_DT, DEFAULT_K0,
+    DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, GRID_POINTS,
+    GRID_X_MAX, GRID_X_MIN, SIGMA_MAX, SIGMA_MIN,
 };
 use crate::framework::recovery::DiagnosticReport;
+use math_commons::ast::Expr;
 use math_explorer::physics::quantum::{gaussian_wavepacket_into, CrankNicolson1D, QuantumState};
 use math_explorer::registry::MAX_GRID_SIZE;
 use nalgebra::DVector;
@@ -18,9 +20,49 @@ use std::sync::{Arc, RwLock};
 /// Number of unitary Crank-Nicolson substeps executed per `WaveRunner` step.
 pub const CN_SUBSTEPS: usize = 4;
 
-pub use super::presets::{
-    TunnelingObservables, WaveSimConfig, BARRIER_TRANSIT_THRESHOLD, WALL_ARRIVAL_THRESHOLD,
-};
+pub use super::presets::{TunnelingObservables, BARRIER_TRANSIT_THRESHOLD, WALL_ARRIVAL_THRESHOLD};
+
+/// Shared parameter bundle synchronized between [`super::WaveSimulatorTool`] and [`WaveRunner`].
+#[derive(Clone, Debug)]
+pub struct WaveSimConfig {
+    /// Selected potential profile or custom AST mode.
+    pub preset: WavePotentialPreset,
+    /// Initial Gaussian packet center $x_0$.
+    pub x0: f64,
+    /// Initial wave number $k_0$ ($E_0 = k_0^2 / 2$).
+    pub k0: f64,
+    /// Initial Gaussian spatial width $\sigma$.
+    pub sigma: f64,
+    /// Potential barrier scale $V_0$.
+    pub v0: f64,
+    /// Potential barrier width $w$.
+    pub width: f64,
+    /// Unitary propagation time step $\Delta t$.
+    pub dt: f64,
+    /// Worker steps executed per visual frame.
+    pub steps_per_frame: usize,
+    /// Last valid compiled AST expression for `V(x)`.
+    pub custom_expr: Expr,
+    /// Optional sparse `(index, value)` sculpted potential overrides.
+    pub sparse_potential: Vec<(u16, f64)>,
+}
+
+impl Default for WaveSimConfig {
+    fn default() -> Self {
+        Self {
+            preset: WavePotentialPreset::InfiniteWell,
+            x0: DEFAULT_X0,
+            k0: DEFAULT_K0,
+            sigma: DEFAULT_SIGMA,
+            v0: DEFAULT_V0,
+            width: DEFAULT_WIDTH,
+            dt: DEFAULT_DT,
+            steps_per_frame: DEFAULT_STEPS_PER_FRAME,
+            custom_expr: default_compiled_expr(),
+            sparse_potential: Vec::new(),
+        }
+    }
+}
 
 /// Structured snapshot payload emitted by [`WaveRunner`] to the UI thread.
 #[derive(Clone, Debug)]
@@ -194,8 +236,8 @@ impl WaveRunner {
         if n > self.prob_scratch.len() {
             self.prob_scratch.resize(n, 0.0);
         }
-        let finite_or = |v: f64, d: f64| if v.is_finite() { v } else { d };
-        (self.x0, self.k0) = (finite_or(cfg.x0, DEFAULT_X0), finite_or(cfg.k0, DEFAULT_K0));
+        self.x0 = sanitize_finite(cfg.x0, DEFAULT_X0);
+        self.k0 = sanitize_finite(cfg.k0, DEFAULT_K0);
         self.sigma = if cfg.sigma.is_finite() && cfg.sigma > 0.0 {
             cfg.sigma.clamp(SIGMA_MIN, SIGMA_MAX)
         } else {
@@ -212,15 +254,6 @@ impl WaveRunner {
         self.prev_mode_phases = [0.0; 8];
         self.update_observables_in_place();
         self.refresh_sonification(cfg.dt);
-    }
-
-    pub(crate) fn refresh_sonification(&mut self, dt: f64) {
-        let modes = self.psi.project_spatial_modes::<8>();
-        self.sonification = crate::audio::mappings::quantum_wavepacket_frame(
-            &modes,
-            &mut self.prev_mode_phases,
-            dt.max(1.0e-4),
-        );
     }
 
     pub(crate) fn refresh_propagator(&mut self, dt: f64) -> bool {

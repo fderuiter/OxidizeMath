@@ -307,6 +307,7 @@ impl SimulationFramework {
 
         self.sync_overlays_before_frame(&ctx, id_source);
         self.poll_active_gif_export(&ctx);
+        self.begin_frame_audio_bridge(&ctx);
         self.show_export_action_bar(ui, id_source);
         self.show_challenge_hud(ui, id_source);
         self.render_challenge_hud_panel(ui, &ctx, id_source);
@@ -351,6 +352,8 @@ impl SimulationFramework {
         self.show_code_export_modal_dialog(&ctx, id_source);
         self.show_starter_gallery_if_open(&ctx, id_source);
         self.sync_overlays_after_frame(&ctx, id_source);
+        self.finish_frame_audio_bridge(&ctx);
+
         self.dispatch_pending_exports_with_ctx(&ctx);
     }
 }
