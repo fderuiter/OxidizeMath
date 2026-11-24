@@ -1,5 +1,9 @@
 pub mod atlas_host;
+mod audio_sync;
 pub mod brush_codec;
+pub mod brush_dispatch;
+#[cfg(all(test, feature = "physics", feature = "biology"))]
+mod brush_dispatch_tests;
 pub mod callout_overlay;
 pub mod challenge;
 mod challenge_hud;
@@ -8,13 +12,25 @@ mod challenge_hud_tests;
 pub mod clamp;
 #[cfg(test)]
 mod clamp_tests;
+pub mod code_export;
+pub mod code_export_modal;
+#[cfg(all(
+    test,
+    feature = "pure_math",
+    feature = "physics",
+    feature = "applied",
+    feature = "epidemiology"
+))]
+mod code_export_tests;
 pub mod counterfactual;
 pub mod decimate;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_3d;
+mod export_audio;
 mod export_dataset;
 mod export_figure;
+mod export_gif_job;
 mod export_modal_host;
 mod export_persistence;
 mod export_queue;
@@ -76,9 +92,12 @@ mod ui;
 mod url_share;
 
 pub use brush_codec::*;
+pub use brush_dispatch::{PlotBrushController, PlotBrushFrame};
 pub use callout_overlay::*;
 pub use challenge::ChallengeEvaluation;
 pub use clamp::*;
+pub use code_export::*;
+pub use code_export_modal::CodeExportTab;
 pub use counterfactual::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
@@ -108,22 +127,13 @@ pub use story_hud::*;
 pub use trace_overlay::*;
 
 pub(super) use crate::accessibility::AccessibleHoverText;
+pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
 use eframe::egui;
+pub use overlay_sync::ToolMetadata;
 pub(super) use overlay_sync::{
     FrameworkRevisionCache, FrameworkSyncState, UntrackedUrlDigestCache,
 };
 use scientific_metadata::theory::TheoryDescribable;
-
-pub struct ToolMetadata {
-    pub id: &'static str,
-    pub display_name: &'static str,
-    pub domain: &'static str,
-    pub tags: &'static [&'static str],
-    pub build: fn() -> Box<dyn InteractiveTool>,
-}
-
-inventory::collect!(ToolMetadata);
-pub use crate::starter_gallery::{ChallengeMetadata, StarterPresetMetadata};
 
 pub trait InteractiveTool {
     fn name(&self) -> &'static str;
@@ -133,45 +143,28 @@ pub trait InteractiveTool {
 
     /// Show the tool at the root `egui::Context` level by delegating to [`Self::show_inside`].
     fn show(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default()
-            .frame(egui::Frame::NONE)
-            .show(ctx, |ui| {
-                self.show_inside(ui);
-            });
+        pane_scope::render_default_tool_root(self, ctx);
     }
 
     /// Show the tool inside a scoped parent `egui::Ui` (supporting multi-pane layouts on a single root `Context`).
     ///
     /// # Accessibility Requirements for Custom `show_inside` Overrides
     ///
-    /// The default implementation allocates its central canvas with [`egui::Sense::click_and_drag`]
-    /// (which includes [`egui::Sense::FOCUSABLE`]) and dispatches [`Self::on_keyboard`] when
-    /// `response.has_focus()` is true. When overriding `show_inside` directly:
-    ///
-    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`] (or
-    ///   [`egui::Sense::click`] / [`egui::Sense::click_and_drag`] for interactive canvases) instead
-    ///   of `Sense::hover()` so `Tab` traversal reaches the visualization.
-    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))`
-    ///   instead of raw `ui.image(texture)` calls so `AccessKit` exposes `Role::Image` and non-empty
-    ///   alternative text.
-    /// - Populate `AccessKit` metadata (`Role`, non-empty `label`, and dynamic `value` summary) via
-    ///   `ctx.accesskit_node_builder(response.id, ...)` (or
-    ///   `crate::accessibility::register_canvas_accessibility`) and draw a high-contrast focus ring
-    ///   when `response.has_focus()`.
-    /// - If the canvas consumes arrow keys, call `Memory::set_focus_lock_filter` with
-    ///   `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
+    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`], [`egui::Sense::click`],
+    ///   or [`egui::Sense::click_and_drag`] instead of `Sense::hover()` so `Tab` traversal reaches the visualization.
+    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))` so `AccessKit`
+    ///   exposes `Role::Image` and non-empty alternative text.
+    /// - Populate `AccessKit` metadata via `crate::accessibility::register_canvas_accessibility` and draw a
+    ///   high-contrast focus ring when `response.has_focus()`.
+    /// - When consuming arrow keys, set `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
     ///   strictly while `response.has_focus()` so `Tab` and `Shift+Tab` never trap keyboard users.
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         pane_scope::render_default_tool_inside(self, ui);
     }
-
     /// Optional: UI rendering for the tool's specific side-panel controls.
     fn show_ui(&mut self, _ui: &mut egui::Ui) {}
-
     /// Optional: Context-based drawing.
     fn draw(&mut self, _ui: &mut egui::Ui, _response: &egui::Response, _painter: &egui::Painter) {}
-
-    // Normalized event hooks
     #[allow(missing_docs)]
     fn on_hover(&mut self, _ctx: &InteractionContext) {}
     #[allow(missing_docs)]
@@ -193,6 +186,11 @@ pub trait InteractiveTool {
     /// Parameter-only revision counter for live URL synchronization (defaults to [`Self::state_revision`]).
     fn url_state_revision(&self) -> u64 {
         self.state_revision()
+    }
+
+    /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        None
     }
 
     /// Direct numeric parameter finiteness hook without JSON serialization.
@@ -308,33 +306,22 @@ pub trait InteractiveTool {
 
     /// Serializes active parameter preset state to a formatted JSON string with metadata envelope.
     fn export_preset_json(&self) -> Result<String, String> {
-        if let Some(state_str) = self.save_state() {
-            let config: serde_json::Value = serde_json::from_str(&state_str)
-                .map_err(|e| format!("Serialization error: {e}"))?;
-            crate::presets::serialize_preset_envelope(self.name(), self.domain(), config)
-        } else {
-            Err(format!("Preset export not supported for {}", self.name()))
-        }
+        export_persistence::export_tool_preset_json(self)
     }
 
     /// Parses and validates a JSON preset string against this tool's domain, applying configuration if valid.
     fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
-        let bounds = self.state_bounds();
-        let config: Box<serde_json::value::RawValue> =
-            crate::presets::deserialize_preset_envelope_bounded(
-                json_str,
-                self.domain(),
-                self.name(),
-                bounds,
-            )?;
-        let config_str = config.get();
-        bounds.validate_json(config_str)?;
-        self.try_load_state(config_str)
+        export_persistence::import_tool_preset_json(self, json_str)
     }
 
-    /// Declares which dataset and figure export formats this tool supports.
+    /// Declares which dataset, figure, and code export formats this tool supports.
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
+    }
+
+    /// Optional cold-path hook returning calibrated LaTeX, Rust, and Python code artifacts.
+    fn export_code_artifact(&self) -> Option<CodeArtifact> {
+        None
     }
 
     /// Optional hook to export tool datasets.
@@ -406,32 +393,32 @@ pub trait InteractiveTool {
         &mut self,
         num_frames: usize,
     ) -> Vec<egui_plot::export::DatasetFrame> {
-        let count = num_frames.max(1);
-        let mut frames = Vec::with_capacity(count);
-        for _ in 0..count {
-            self.step_simulation();
-            let ds = self.export_datasets();
-            if !ds.is_empty() {
-                frames.push(ds);
-            }
-        }
-        if frames.is_empty() {
-            let ds = self.export_datasets();
-            if !ds.is_empty() {
-                frames = egui_plot::export::sample_progressive_frames(&ds, count);
-            }
-        }
-        frames
+        export_figure::sample_tool_animation_frames(self, num_frames)
+    }
+    /// Optional hook emitting a zero-allocation [`crate::audio::SonificationFrame`] for live Web Audio and `.wav` export.
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        None
+    }
+    /// Returns persisted non-mute [`crate::audio::AcousticSettings`] for presets and share URLs.
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        crate::audio::AcousticSettings::default()
+    }
+    /// Applies persisted non-mute [`crate::audio::AcousticSettings`] without unmuting playback.
+    fn set_acoustic_settings(&mut self, _settings: crate::audio::AcousticSettings) {}
+    /// Samples deterministic multi-step [`crate::audio::SonificationFrame`] trajectories for 16-bit `.wav` export.
+    fn sample_sonification_frames(
+        &mut self,
+        num_frames: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        audio_sync::sample_tool_sonification_frames(self, num_frames)
     }
 
-    /// Returns a type-erased reference for test inspection of concrete tool state.
-    #[cfg(test)]
+    /// Returns a type-erased reference for concrete tool state inspection.
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         None
     }
 
-    /// Returns a mutable type-erased reference for test manipulation of concrete tool state.
-    #[cfg(test)]
+    /// Returns a mutable type-erased reference for concrete tool state updates (e.g. cross-tab handoffs).
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         None
     }
@@ -452,6 +439,8 @@ pub struct SimulationFramework {
     pub(super) last_announced_count: Option<usize>,
     pub(super) last_announced_query: String,
     pub show_export_modal: bool,
+    pub show_code_export_modal: bool,
+    pub code_export_tab: CodeExportTab,
     pub export_options: egui_plot::export::ExportOptions,
     pub export_bg_dark: bool,
     pub export_gif_fps: u32,
@@ -461,6 +450,7 @@ pub struct SimulationFramework {
     pub domain: String,
     pub preset_dialog: crate::presets::PresetDialogState,
     pub(crate) export_queue: ExportQueue,
+    gif_job: Option<export_gif_job::FrameworkGifJob>,
     /// Cached state snapshot before divergence for step-back rollback.
     pub last_valid_snapshot: Option<StateSnapshot>,
     /// Baseline parameters snapshot on tool load.
@@ -479,6 +469,8 @@ pub struct SimulationFramework {
     pub branch_engine: CounterfactualBranchEngine,
     /// Start time of current active session.
     pub start_time: crate::web_io::PlatformInstant,
+    /// Scoped Web Audio / gain-ramp / divergence-silence controller for this framework pane.
+    pub audio_controller: crate::audio::AudioEngineController,
     /// Declarative guided story and AST challenge HUD state.
     pub challenge_hud: ChallengeHudState,
     /// Active inverse challenge contract displayed in the Challenge HUD, if any.

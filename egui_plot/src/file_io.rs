@@ -36,12 +36,20 @@ pub fn infer_mime_type(filename: &str) -> &'static str {
         "text/tab-separated-values"
     } else if lower.ends_with(".txt") || lower.ends_with(".frag") || lower.ends_with(".glsl") {
         "text/plain"
+    } else if lower.ends_with(".tex") {
+        "text/x-tex"
+    } else if lower.ends_with(".rs") {
+        "text/x-rust"
+    } else if lower.ends_with(".py") {
+        "text/x-python"
     } else if lower.ends_with(".svg") {
         "image/svg+xml"
     } else if lower.ends_with(".png") {
         "image/png"
     } else if lower.ends_with(".gif") {
         "image/gif"
+    } else if lower.ends_with(".wav") {
+        "audio/wav"
     } else if lower.ends_with(".stl") {
         "model/stl"
     } else if lower.ends_with(".ply") {

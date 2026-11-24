@@ -283,6 +283,7 @@ fn mri_and_attractor_enforce_single_step_slice_budgets() {
         max_points: 200,
         mode: AttractorMode::Lorenz,
         custom_flow: None,
+        sim_bus: None,
     }));
     let mut attr = AttractorRunner::from_params(attr_params);
     attr.step_sliced(Some(Duration::ZERO));

@@ -1,7 +1,23 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::SimulationFramework;
+use super::{InteractiveTool, SimulationFramework};
 use eframe::egui;
+
+/// Compile-time inventory registration metadata for an [`InteractiveTool`] implementation.
+pub struct ToolMetadata {
+    /// Stable tool identifier used in URLs, presets, and `#[register_tool]` inventory entries.
+    pub id: &'static str,
+    /// Human-readable display title shown in the sub-tool picker and command palette.
+    pub display_name: &'static str,
+    /// Parent domain tab title owning this interactive tool.
+    pub domain: &'static str,
+    /// Searchable domain and topic keywords used by the command palette and gallery.
+    pub tags: &'static [&'static str],
+    /// Zero-argument constructor creating a default instance of the tool.
+    pub build: fn() -> Box<dyn InteractiveTool>,
+}
+
+inventory::collect!(ToolMetadata);
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct FrameworkSyncState {
@@ -287,15 +303,7 @@ impl SimulationFramework {
 
     /// Constructs a [`SimulationFramework`] populated with registered tools for `domain`.
     pub fn new(domain: &str) -> Self {
-        let mut available_tools: Vec<&'static super::ToolMetadata> =
-            inventory::iter::<super::ToolMetadata>
-                .into_iter()
-                .filter(|t| t.domain == domain)
-                .collect();
-
-        available_tools
-            .sort_by_key(|t| (default_tool_priority(domain, t.id), t.display_name, t.id));
-
+        let available_tools = sorted_domain_tools(domain);
         let mut framework = Self {
             available_tools,
             active_tool: None,
@@ -310,6 +318,8 @@ impl SimulationFramework {
             last_announced_count: None,
             last_announced_query: String::new(),
             show_export_modal: false,
+            show_code_export_modal: false,
+            code_export_tab: super::CodeExportTab::default(),
             export_options: egui_plot::export::ExportOptions::default(),
             export_bg_dark: true,
             export_gif_fps: 15,
@@ -319,6 +329,7 @@ impl SimulationFramework {
             domain: domain.to_string(),
             preset_dialog: crate::presets::PresetDialogState::default(),
             export_queue: super::ExportQueue::default(),
+            gif_job: None,
             last_valid_snapshot: None,
             baseline_tool_state: None,
             current_valid_plot_datasets: Vec::new(),
@@ -328,20 +339,19 @@ impl SimulationFramework {
             step_counter: 0,
             branch_engine: super::CounterfactualBranchEngine::default(),
             start_time: crate::web_io::PlatformInstant::now(),
+            audio_controller: crate::audio::AudioEngineController::new(),
             challenge_hud: super::ChallengeHudState::default(),
             active_challenge: None,
             challenge_was_passed: false,
             suspended: false,
             instance_id: next_framework_id(),
             sync_state: FrameworkSyncState::default(),
-            rev_cache: super::FrameworkRevisionCache::default(),
+            rev_cache: FrameworkRevisionCache::default(),
             atlas_host: super::atlas_host::FrameworkAtlasHost::default(),
         };
-
         if !framework.available_tools.is_empty() {
             framework.select_tool(0);
         }
-
         framework
     }
 
@@ -361,6 +371,16 @@ impl SimulationFramework {
     }
 }
 
+fn sorted_domain_tools(domain: &str) -> Vec<&'static super::ToolMetadata> {
+    let mut available_tools: Vec<&'static super::ToolMetadata> =
+        inventory::iter::<super::ToolMetadata>
+            .into_iter()
+            .filter(|t| t.domain == domain)
+            .collect();
+    available_tools.sort_by_key(|t| (default_tool_priority(domain, t.id), t.display_name, t.id));
+    available_tools
+}
+
 fn default_tool_priority(domain: &str, id: &str) -> u8 {
     match (domain, id) {
         ("quantum", "WaveSimulator")
@@ -371,6 +391,7 @@ fn default_tool_priority(domain: &str, id: &str) -> u8 {
         | ("elliptic_curves", "WeierstrassPlaygroundTool")
         | ("clinical_trials", "PharmacokineticsTool")
         | ("epidemiology", "SirTool")
+        | ("biochemical", "BiochemicalDynamicsTool")
         | ("ai", "LossLandscapeTool") => 0,
         _ => 1,
     }

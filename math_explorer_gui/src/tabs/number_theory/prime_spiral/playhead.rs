@@ -151,7 +151,7 @@ impl PrimeSpiralWidget {
         self.pulse_gate = true;
     }
 
-    fn max_visible_step(&self) -> usize {
+    pub(super) fn max_visible_step(&self) -> usize {
         let max_n = (self.grid_size * self.grid_size).max(16);
         match self.playhead_mode {
             UlamPlayheadMode::QuadraticRay => {
@@ -204,6 +204,7 @@ impl PrimeSpiralWidget {
                     self.is_playing = false;
                     self.cursor_step = step.min(self.max_visible_step());
                     self.pulse_gate = true;
+                    self.beat_accum_sec = 0.0;
                 }
                 PlaybackAction::Reset => {
                     self.is_playing = false;

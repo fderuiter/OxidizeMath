@@ -239,19 +239,23 @@ impl SimulationFramework {
         if let Some(baseline_state) = self.baseline_tool_state.clone() {
             if let Some(tool) = &mut self.active_tool {
                 tool.load_state(&baseline_state);
+                tool.set_suspended(self.suspended);
             } else if let Some(&meta) = self
                 .selected_tool_index
                 .and_then(|idx| self.available_tools.get(idx))
             {
                 let mut new_tool = (meta.build)();
+                new_tool.set_suspended(self.suspended);
                 new_tool.load_state(&baseline_state);
+                new_tool.set_suspended(self.suspended);
                 self.active_tool = Some(new_tool);
             }
         } else if let Some(&meta) = self
             .selected_tool_index
             .and_then(|idx| self.available_tools.get(idx))
         {
-            let new_tool = (meta.build)();
+            let mut new_tool = (meta.build)();
+            new_tool.set_suspended(self.suspended);
             self.baseline_tool_state = new_tool.save_state();
             self.active_tool = Some(new_tool);
         }
@@ -378,6 +382,7 @@ impl SimulationFramework {
             None => self.selected_tool_index,
         };
 
+        self.cancel_active_gif_export(false);
         if let Some(idx) = target_idx {
             self.activate_starter_card_tool(idx, card_title, preset_json)?;
         } else if let Some(json_str) = preset_json {
@@ -410,6 +415,7 @@ impl SimulationFramework {
     ) -> Result<(), String> {
         let meta = self.available_tools[idx];
         let mut new_tool = (meta.build)();
+        new_tool.set_suspended(self.suspended);
         if let Some(json_str) = preset_json {
             if let Err(err) = new_tool.import_preset_json(json_str) {
                 let msg = format!("Failed to launch '{card_title}': {err}");
@@ -427,6 +433,10 @@ impl SimulationFramework {
             new_tool.name().to_string(),
             new_tool.theory().theory_citation(),
         );
+        if let Some(mut old_tool) = self.active_tool.take() {
+            old_tool.set_suspended(true);
+        }
+        new_tool.set_suspended(self.suspended);
         self.active_challenge = None;
         self.challenge_was_passed = false;
         self.selected_tool_index = Some(idx);

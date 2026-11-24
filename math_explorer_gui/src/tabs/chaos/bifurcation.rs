@@ -6,12 +6,14 @@ use crate::framework::{InteractiveTool, MathExpressionInputBar};
 use eframe::egui;
 use egui_plot::PlotPoint;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, RwLock};
 
 #[path = "bifurcation/runner.rs"]
 pub mod runner;
+#[cfg(test)]
+use runner::burned_logistic_lyapunov;
 #[cfg(test)]
 pub use runner::BifurcationSweepSnapshot;
 pub use runner::{BifurcationRunner, BifurcationSweepRequest, CompiledMap1DJob};
@@ -35,6 +37,7 @@ mod ui;
 
 #[path = "bifurcation/presets.rs"]
 mod presets;
+use presets::default_bifurcation_input_bar;
 #[cfg(test)]
 use presets::{STARTER_PERIOD3_WINDOW_JSON, STARTER_PRESET_JSON};
 
@@ -72,25 +75,6 @@ impl BifurcationMapMode {
     pub const fn is_custom(&self) -> bool {
         matches!(self, Self::Custom)
     }
-}
-
-fn default_bifurcation_input_bar() -> MathExpressionInputBar {
-    MathExpressionInputBar::new(
-        "x_{n+1}",
-        DEFAULT_CUSTOM_EXPR,
-        vec![
-            ("Sine Map", "r * sin(pi * x)"),
-            ("Quadratic Map", "x^2 - r"),
-            ("Ricker Population", "x * exp(r * (1 - x))"),
-            ("Cubic Map", "r * x - x^3"),
-            (
-                "Perturbed Logistic",
-                "r * x * (1 - x) + a * sin(2 * pi * x)",
-            ),
-        ],
-    )
-    .with_axes(&["r", "x"])
-    .with_param_range(-2.0..=2.0, 0.05)
 }
 
 /// Interactive 1D bifurcation explorer with coupled Lyapunov, cobweb, orbit, and 2D atlas views.
@@ -213,6 +197,47 @@ impl BifurcationDiagram {
         }
     }
 
+    /// Selects a probe control parameter `r` clamped to `[r_min, r_max]` and refreshes live orbits.
+    #[cfg(test)]
+    pub fn select_probe_r(&mut self, r: f64) {
+        if r.is_finite() {
+            let (lo, hi) = match self.map_mode {
+                BifurcationMapMode::Logistic => (0.0, 4.0),
+                BifurcationMapMode::Custom => (-CUSTOM_R_BOUND, CUSTOM_R_BOUND),
+            };
+            let clamped = r.clamp(self.r_min, self.r_max).clamp(lo, hi);
+            self.selected_r = clamped;
+            self.probe_r = clamped;
+            self.r_from_hover = false;
+            self.recompute_coupled_views();
+        }
+    }
+
+    /// Evaluates the burned-in Lyapunov exponent $\lambda(r)$ at `probe_r`.
+    #[cfg(test)]
+    #[must_use]
+    pub fn probe_lyapunov(&self) -> Option<f64> {
+        let active_r = if (self.probe_r - self.selected_r).abs() > 1e-12 {
+            self.probe_r
+        } else {
+            self.selected_r
+        };
+        match self.map_mode {
+            BifurcationMapMode::Logistic => {
+                let seed = if (self.x0 - 0.5).abs() < 1e-9 {
+                    0.314_159
+                } else {
+                    self.x0
+                };
+                burned_logistic_lyapunov(active_r, seed, 96)
+            }
+            BifurcationMapMode::Custom => {
+                let job = CompiledMap1DJob::from_bar(&self.math_input);
+                job.lyapunov(active_r, self.x0, None, 80, 96)
+            }
+        }
+    }
+
     pub(crate) fn reset_live_orbit(&mut self) {
         self.selected_r = self.probe_r;
         self.recompute_coupled_views();
@@ -221,41 +246,6 @@ impl BifurcationDiagram {
     #[cfg(test)]
     pub(crate) fn focused_canvas_id(&self) -> Option<egui::Id> {
         self.focused_canvas
-    }
-
-    fn build_state_json(&self, include_hover_r: bool) -> Option<String> {
-        let is_custom = self.map_mode.is_custom();
-        let midpoint = (self.r_min + self.r_max) * 0.5;
-        let has_selected_r = self.r_pinned
-            || ((include_hover_r || !self.r_from_hover)
-                && (self.selected_r - midpoint).abs() > 1e-12);
-        let selected_r = has_selected_r.then_some(self.selected_r);
-        let x0 =
-            (is_custom || self.r_pinned || (self.x0 - DEFAULT_X0).abs() > 1e-12).then_some(self.x0);
-        let trimmed_expr = self.math_input.raw_text.trim();
-        let custom_expr = (is_custom || trimmed_expr != DEFAULT_CUSTOM_EXPR)
-            .then(|| self.math_input.raw_text.clone());
-        let custom_params = if is_custom {
-            self.math_input.params_map()
-        } else {
-            BTreeMap::new()
-        };
-        let (xk, yk) = self.atlas.axis_keys();
-        serde_json::to_string(&BifurcationState {
-            r_min: self.r_min,
-            r_max: self.r_max,
-            steps: self.steps,
-            map_mode: self.map_mode,
-            selected_r,
-            x0,
-            r_pinned: self.r_pinned,
-            use_custom_map: false,
-            custom_expr,
-            custom_params,
-            atlas_visible: self.atlas.is_visible(),
-            atlas_axes: [xk.to_string(), yk.to_string()],
-        })
-        .ok()
     }
 }
 
@@ -282,12 +272,10 @@ impl TheoryDescribable for BifurcationDiagram {
     }
 
     fn available_descriptions(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert(
+        HashMap::from([(
             "default".to_string(),
             "Logistic map bifurcation diagram".to_string(),
-        );
-        map
+        )])
     }
 
     fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
@@ -412,6 +400,7 @@ impl InteractiveTool for BifurcationDiagram {
             .atlas
             .set_axis_keys(&s.atlas_axes[0], &s.atlas_axes[1]);
         candidate.recompute();
+        candidate.completed_generation = candidate.request_generation;
         if candidate.custom_diverged || (mode.is_custom() && !candidate.math_input.is_valid()) {
             return Err("Custom bifurcation expression failed finite validation".into());
         }

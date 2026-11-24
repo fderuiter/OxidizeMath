@@ -57,6 +57,11 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::EvolutionError::BoundsError, bus),
         check_leaf(error::FractranError::InvalidFractionSyntax, bus),
         check_leaf(error::Glicko2Error::EmptyMatchResults, bus),
+        check_leaf(error::GraphTheoryError::UnknownEndpoint { node: 9 }, bus),
+        check_leaf(
+            error::HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 },
+            bus,
+        ),
         check_leaf(error::KellyError::InvalidBankroll { value: -1.0 }, bus),
         check_leaf(error::LinearAlgebraError::SingularMatrix, bus),
         check_leaf(
@@ -72,6 +77,7 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
             bus,
         ),
         check_leaf(error::MatchModelError::InvalidGoalRate { value: 0.0 }, bus),
+        check_leaf(error::MonteCarloError::ZeroReplicates, bus),
         check_leaf(error::NumberTheoryError::ConversionError, bus),
         check_leaf(error::OptimizationError::ConversionError, bus),
         check_leaf(error::OuError::InvalidVolatility { value: -0.1 }, bus),
@@ -110,6 +116,7 @@ pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
             bus,
         ),
         check_leaf(error::VoxelGridError::InvalidDimensions, bus),
+        check_leaf(error::BotanicalError::EmptyAxiom, bus),
         check_leaf(error::HodgkinHuxleyError::InvalidConductance(-1.0), bus),
         check_leaf(error::KineticsError::InvalidParameters, bus),
         check_leaf(error::ReactionDiffusionError::ZeroSpecies, bus),
@@ -205,11 +212,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 53);
-    assert_eq!(*events.lock().unwrap(), 53);
+    assert_eq!(converted.len(), 57);
+    assert_eq!(*events.lock().unwrap(), 57);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 59);
+    assert_eq!(*events.lock().unwrap(), 63);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -274,6 +281,7 @@ pub fn verify_prelude_error_reexports() {
         p::ParseError,
         p::AIError,
         p::ClimateError,
+        p::BotanicalError,
         p::HodgkinHuxleyError,
         p::KineticsError,
         p::ReactionDiffusionError,
@@ -289,11 +297,14 @@ pub fn verify_prelude_error_reexports() {
         p::EvolutionError,
         p::FractranError,
         p::Glicko2Error,
+        p::GraphTheoryError,
+        p::HyperbolicError,
         p::KellyError,
         p::LinearAlgebraError,
         p::MarketPricingError,
         p::MarkovError,
         p::MatchModelError,
+        p::MonteCarloError,
         p::NumberTheoryError,
         p::OptimizationError,
         p::OuError,

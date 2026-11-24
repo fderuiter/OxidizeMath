@@ -66,9 +66,11 @@ egui_plot = { version = "0.34.1", features = ["serde"] }
 nalgebra = { workspace = true }
 oxidize_core = { path = "../crates/oxidize_core" }
 math_explorer = { path = "../math_explorer", optional = true }
+engine_linalg = { path = "../crates/02_engines/engine_linalg" }
 math_commons = { path = "../crates/math_commons" }
 scientific_metadata = { path = "../crates/scientific_metadata" }
 diagnostics = { path = "../crates/diagnostics" }
+verified_engine = { path = "../crates/verified_engine" }
 num-complex = { workspace = true }
 rand = { workspace = true }
 petgraph = { workspace = true }
@@ -76,6 +78,7 @@ inventory = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["float_roundtrip"] }
 chrono = { workspace = true }
+flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 futures = { workspace = true }
@@ -130,7 +133,6 @@ wasm-bindgen-futures = { workspace = true }
 [dev-dependencies]
 png = { workspace = true }
 rustfft = { workspace = true }
-verified_engine = { path = "../crates/verified_engine" }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = { workspace = true }

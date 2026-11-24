@@ -1,10 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::persistence::truncate_utf8_bytes;
+use super::plot_ui::render_wave_plot;
 use super::presets::{
-    wave_parameter_label, WavePotentialPreset, DT_MAX, DT_MIN, GRID_X_MAX, GRID_X_MIN, K0_MAX,
-    K0_MIN, MAX_CUSTOM_EXPR_BYTES, MAX_STEPS_PER_FRAME, POTENTIAL_DISPLAY_SCALE, SIGMA_MAX,
-    SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX, WIDTH_MIN, X0_MAX, X0_MIN,
+    wave_parameter_label, WavePotentialPreset, DT_MAX, DT_MIN, K0_MAX, K0_MIN,
+    MAX_CUSTOM_EXPR_BYTES, MAX_STEPS_PER_FRAME, SIGMA_MAX, SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX,
+    WIDTH_MIN, X0_MAX, X0_MIN,
 };
 use super::runner::WaveData;
 use super::WaveSimulatorTool;
@@ -13,12 +14,9 @@ use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
 };
 use crate::async_sim::{SimCommand, SimWorkerState, StateSnapshot};
-use crate::framework::{
-    BrushMode, BrushStroke, CalloutManager, PlaybackAction, PlaybackTransport, SpatialBrushKit,
-};
+use crate::framework::{PlaybackAction, PlaybackTransport};
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
-use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints};
 
 impl WaveSimulatorTool {
     pub(super) fn draw_left_panel(&mut self, parent_ui: &mut egui::Ui) {
@@ -57,6 +55,22 @@ impl WaveSimulatorTool {
         });
     }
 
+    fn draw_worker_status_badge(ui: &mut egui::Ui, state: SimWorkerState) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        ui.horizontal(|ui| {
+            ui.label("Status:");
+            let (status_text, color) = match state {
+                SimWorkerState::Uninitialized => ("Uninitialized", palette.muted_text),
+                SimWorkerState::Ready => ("Ready", palette.success),
+                SimWorkerState::Running => ("Running", palette.info),
+                SimWorkerState::Stepping => ("Stepping", palette.warning),
+                SimWorkerState::Faulted => ("Faulted", palette.error),
+                SimWorkerState::Terminated => ("Terminated", palette.muted_text),
+            };
+            ui.colored_label(color, status_text);
+        });
+    }
+
     fn draw_status_and_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let state = self.worker.state();
         if let Some(fault_action) =
@@ -71,23 +85,18 @@ impl WaveSimulatorTool {
         }
 
         let state = self.worker.state();
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        ui.horizontal(|ui| {
-            ui.label("Status:");
-            let (status_text, color) = match state {
-                SimWorkerState::Uninitialized => ("Uninitialized", palette.muted_text),
-                SimWorkerState::Ready => ("Ready", palette.success),
-                SimWorkerState::Running => ("Running", palette.info),
-                SimWorkerState::Stepping => ("Stepping", palette.warning),
-                SimWorkerState::Faulted => ("Faulted", palette.error),
-                SimWorkerState::Terminated => ("Terminated", palette.muted_text),
-            };
-            ui.colored_label(color, status_text);
-        });
+        Self::draw_worker_status_badge(ui, state);
 
+        let canvas_sculpt_focused = !self.is_challenge_locked()
+            && self.brush_kit.is_sculpting()
+            && self
+                .brush_kit
+                .focused_plot_id()
+                .is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
         if let Some(action) =
             PlaybackTransport::from_worker_state("wave_sim_transport", "Wave Simulator", state)
                 .can_reset(true)
+                .allow_space_shortcut(!canvas_sculpt_focused)
                 .show(ui)
         {
             match action {
@@ -144,6 +153,13 @@ impl WaveSimulatorTool {
                 "Choose a built-in quantum potential profile or author a custom V(x) formula.",
             );
         });
+        ui.add_space(4.0);
+        let _ = self.atlas.show_toggle_button(ui);
+        if self.is_barrier_shape_locked() {
+            ui.small("🔒 Fabry-Pérot Challenge active: V₀ = 20.0, w = 1.0, x₀ = -2.5 locked.");
+        } else if self.is_packet_momentum_locked() {
+            ui.small("🔒 50/50 Split Challenge active: x₀ = -2.0, k₀ = 5.0, σ = 0.5 locked.");
+        }
 
         ui.add_space(4.0);
         if let Some((latex_eq, plain_eq)) = self.preset.formula_display() {
@@ -169,9 +185,11 @@ impl WaveSimulatorTool {
     fn draw_wavepacket_and_barrier_sliders(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.label("Wavepacket & Barrier Controls");
         let mut reset_needed = false;
-        let locked = self.is_challenge_locked();
+        let x0_locked = self.is_challenge_locked();
+        let pkt_locked = self.is_packet_momentum_locked();
+        let bar_locked = self.is_barrier_shape_locked();
 
-        ui.add_enabled_ui(!locked, |ui| {
+        ui.add_enabled_ui(!x0_locked, |ui| {
             reset_needed |= draw_bounded_slider(
                 ui,
                 &mut self.x0,
@@ -180,11 +198,13 @@ impl WaveSimulatorTool {
                 wave_parameter_label("x0"),
                 "Initial center x0 of the normalized Gaussian wavepacket.",
             );
+        });
+        ui.add_enabled_ui(!pkt_locked, |ui| {
             reset_needed |= draw_bounded_slider(
                 ui,
                 &mut self.k0,
                 K0_MIN..=K0_MAX,
-                0.1,
+                0.05,
                 wave_parameter_label("k0"),
                 "Initial wave number k0 setting kinetic energy E0 = k0² / 2.",
             );
@@ -199,27 +219,45 @@ impl WaveSimulatorTool {
         });
 
         if self.preset.uses_barrier_controls() {
-            reset_needed |= draw_bounded_slider(
-                ui,
-                &mut self.v0,
-                V0_MIN..=V0_MAX,
-                0.05,
-                wave_parameter_label("v0"),
-                "Potential barrier height V0 compared against kinetic energy E0.",
-            );
-            reset_needed |= draw_bounded_slider(
-                ui,
-                &mut self.width,
-                WIDTH_MIN..=WIDTH_MAX,
-                0.05,
-                wave_parameter_label("width"),
-                "Characteristic barrier width parameter w.",
-            );
+            ui.add_enabled_ui(!bar_locked, |ui| {
+                reset_needed |= draw_bounded_slider(
+                    ui,
+                    &mut self.v0,
+                    V0_MIN..=V0_MAX,
+                    0.05,
+                    wave_parameter_label("v0"),
+                    "Potential barrier height V0 compared against kinetic energy E0.",
+                );
+                reset_needed |= draw_bounded_slider(
+                    ui,
+                    &mut self.width,
+                    WIDTH_MIN..=WIDTH_MAX,
+                    0.05,
+                    wave_parameter_label("width"),
+                    "Characteristic barrier width parameter w.",
+                );
+            });
         }
 
         self.draw_dt_and_energy_summary(ui);
+        self.flush_pending_slider_reset(ctx, reset_needed);
+    }
+
+    fn flush_pending_slider_reset(&mut self, ctx: &egui::Context, reset_needed: bool) {
         if reset_needed {
-            self.sync_config_and_reset(Some(ctx));
+            self.enforce_challenge_locks();
+            self.bump_revision();
+            self.export_runner = None;
+            self.export_data = None;
+            self.pending_slider_reset = true;
+        }
+        if self.pending_slider_reset {
+            if ctx.input(|i| i.pointer.primary_down()) {
+                ctx.request_repaint();
+            } else {
+                self.pending_slider_reset = false;
+                self.sync_config_and_reset(Some(ctx));
+            }
         }
     }
 
@@ -253,6 +291,17 @@ impl WaveSimulatorTool {
 
     fn draw_tunneling_readouts(&self, ui: &mut egui::Ui) {
         ui.label("Born Tunneling Observables");
+        let (t_stat, t_wp) = self.stationary_and_wavepacket_transmission();
+        crate::reflective_ui::render_copyable_metric(
+            ui,
+            "Stationary T(k0)",
+            &format!("{:.1}% ({t_stat:.4})", t_stat * 100.0),
+        );
+        crate::reflective_ui::render_copyable_metric(
+            ui,
+            "Wavepacket <T>_σ",
+            &format!("{:.1}% ({t_wp:.4})", t_wp * 100.0),
+        );
         let Some(wave_data) = self.active_wave_data() else {
             ui.small("Awaiting initial wavepacket snapshot...");
             return;
@@ -282,7 +331,13 @@ impl WaveSimulatorTool {
             wave_data.x_right
         ));
         let scatter_text = match wave_data.latched_transmission {
-            Some(latched) if wave_data.right_wall_prob >= 0.02 => {
+            Some(latched) if wave_data.quasi_bound_latched => {
+                format!(
+                    "{:.1}% ({latched:.4}, quasi-bound pre-wall)",
+                    latched * 100.0
+                )
+            }
+            Some(latched) if wave_data.wall_arrived => {
                 format!("{:.1}% ({latched:.4}, pre-wall frozen)", latched * 100.0)
             }
             Some(latched) => format!("{:.1}% ({latched:.4})", latched * 100.0),
@@ -293,10 +348,12 @@ impl WaveSimulatorTool {
     }
 
     pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui) {
-        let ctx = parent_ui.ctx().clone();
         let locked = self.is_challenge_locked();
-        let mut pending_strokes = Vec::new();
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
+            if self.atlas.is_visible() {
+                self.render_wave_atlas_panel(ui);
+                ui.separator();
+            }
             let Some(wave_data) = self.active_wave_data().cloned() else {
                 render_empty_plot_guidance(
                     ui,
@@ -305,19 +362,19 @@ impl WaveSimulatorTool {
                 return;
             };
             self.sync_wave_callouts(&wave_data);
-            pending_strokes = render_wave_plot(
+            let (plot_resp, frame) = render_wave_plot(
                 ui,
                 &wave_data,
                 &mut self.brush_kit,
                 &mut self.callout_manager,
                 locked,
             );
-        });
-        if !locked {
-            for stroke in pending_strokes {
-                self.apply_ui_brush_stroke(stroke, Some(&ctx));
+            if !locked {
+                if let Some(brush_frame) = frame {
+                    brush_frame.dispatch(ui, &plot_resp, self);
+                }
             }
-        }
+        });
     }
 
     pub(crate) fn active_wave_data(&self) -> Option<&WaveData> {
@@ -347,105 +404,4 @@ fn draw_bounded_slider(
     let resp = ui.add(slider);
     let _ = resp.clone().accessible_hover_text(hover_desc);
     resp.changed() && (*value - prev).abs() > 1.0e-9
-}
-
-fn draw_wave_plot_header(
-    ui: &mut egui::Ui,
-    wave_data: &WaveData,
-    psi_color: egui::Color32,
-    potential_color: egui::Color32,
-    energy_color: egui::Color32,
-) {
-    ui.horizontal_wrapped(|ui| {
-        ui.label(format!("Time: {:.3}", wave_data.time));
-        ui.separator();
-        ui.colored_label(psi_color, "━ |ψ(x, t)|²");
-        ui.colored_label(potential_color, "━ V(x) (scaled)");
-        ui.colored_label(
-            energy_color,
-            format!("┅ E0 = {:.2} (scaled)", wave_data.kinetic_energy),
-        );
-    });
-}
-
-fn build_wave_plot_series(wave_data: &WaveData) -> (Vec<[f64; 2]>, Vec<[f64; 2]>, [f64; 2]) {
-    let len = wave_data
-        .x_axis
-        .len()
-        .min(wave_data.prob_density.len())
-        .min(wave_data.potential.len());
-    let mut psi_points = Vec::with_capacity(len);
-    let mut v_points = Vec::with_capacity(len);
-    for i in 0..len {
-        let x = wave_data.x_axis[i];
-        psi_points.push([x, wave_data.prob_density[i]]);
-        v_points.push([x, wave_data.potential[i] * POTENTIAL_DISPLAY_SCALE]);
-    }
-    let x_start = wave_data.x_axis.first().copied().unwrap_or(-5.0);
-    let x_end = wave_data.x_axis.last().copied().unwrap_or(5.0);
-    (psi_points, v_points, [x_start, x_end])
-}
-
-fn render_wave_plot(
-    ui: &mut egui::Ui,
-    wave_data: &WaveData,
-    brush_kit: &mut SpatialBrushKit,
-    callouts: &mut CalloutManager,
-    locked: bool,
-) -> Vec<BrushStroke> {
-    let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-    let (psi_color, potential_color, energy_color) = (
-        palette.series_color(0),
-        palette.series_color(1),
-        palette.series_color(2),
-    );
-    draw_wave_plot_header(ui, wave_data, psi_color, potential_color, energy_color);
-    let (psi_points, v_points, [x_start, x_end]) = build_wave_plot_series(wave_data);
-    let e0_scaled = wave_data.kinetic_energy * POTENTIAL_DISPLAY_SCALE;
-    let allow_pan = locked || !brush_kit.is_sculpting();
-    let mut strokes = Vec::new();
-
-    Plot::new("quantum_plot")
-        .legend(Legend::default())
-        .x_axis_label("Position (x)")
-        .y_axis_label("Probability Density |ψ|² / Scaled Energy")
-        .view_aspect(2.0)
-        .allow_drag(allow_pan)
-        .allow_zoom(allow_pan)
-        .show(ui, |plot_ui| {
-            plot_ui.line(
-                Line::new("Probability |ψ(x, t)|²", PlotPoints::new(psi_points))
-                    .color(psi_color)
-                    .width(2.0_f32),
-            );
-            plot_ui.line(
-                Line::new("Potential V(x) (scaled)", PlotPoints::new(v_points))
-                    .color(potential_color)
-                    .width(1.75_f32),
-            );
-            plot_ui.line(
-                Line::new(
-                    format!(
-                        "Kinetic Energy E0 = {:.2} (scaled)",
-                        wave_data.kinetic_energy
-                    ),
-                    PlotPoints::new(vec![[x_start, e0_scaled], [x_end, e0_scaled]]),
-                )
-                .style(LineStyle::Dashed { length: 6.0_f32 })
-                .color(energy_color),
-            );
-            let b = plot_ui.plot_bounds();
-            if b.width() > 0.0 && b.height() > 0.0 {
-                callouts.render_on_plot(plot_ui);
-            }
-            if !locked {
-                strokes = brush_kit.sample_plot(
-                    plot_ui,
-                    [GRID_X_MIN, -0.5],
-                    [GRID_X_MAX, 2.5],
-                    Some(BrushMode::Erase),
-                );
-            }
-        });
-    strokes
 }

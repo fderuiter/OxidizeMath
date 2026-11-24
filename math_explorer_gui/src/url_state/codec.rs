@@ -3,6 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::base64url;
+use super::workspace_codec::{decode_workspace_share_param, ParsedShareLocation};
 use crate::framework::{ToolStateBounds, MAX_JSON_ARRAY_LEN, MAX_JSON_NESTING_DEPTH};
 
 /// Maximum UTF-8 byte length permitted for raw URL fragments or query strings (`8 KiB`).
@@ -42,9 +43,11 @@ pub struct ShareUrlParams {
     pub challenge: Option<String>,
     /// Optional 0-based guided story step index (`&step=<idx>`).
     pub step: Option<usize>,
+    /// Optional validated multi-pane dataflow pipeline specification (`&pipe=<base64url>`).
+    pub pipeline: Option<super::pipeline::ValidatedPipelineUrl>,
 }
 
-fn percent_encode_component(raw: &str) -> String {
+pub(super) fn percent_encode_component(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     for &b in raw.as_bytes() {
         if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
@@ -153,9 +156,23 @@ pub fn encode_share_fragment_with_hud(
     Ok(fragment)
 }
 
-/// Parses `location.hash` first, falling back to `location.search` (ignoring unrelated query
-/// parameters like `stall_timeout_ms`) when no hash share parameters are present.
-pub fn parse_share_location(hash: &str, search: &str) -> Result<Option<ShareUrlParams>, String> {
+fn has_any_share_param_key(raw: &str) -> bool {
+    raw.split('&').filter(|s| !s.is_empty()).any(|pair| {
+        let key = pair.split_once('=').map_or(pair, |(k, _)| k).trim();
+        matches!(
+            key,
+            "ws" | "tab" | "tool" | "state" | "preset" | "challenge" | "step" | "pipe"
+        )
+    })
+}
+
+/// Parses `location.hash` first (supporting both `#ws=...` and `#tab=...` while ignoring
+/// non-share document anchors like `#overview` or `#utm_source=docs`), falling back to
+/// `location.search` when no share hash parameters are present.
+pub fn parse_workspace_or_share_location(
+    hash: &str,
+    search: &str,
+) -> Result<Option<ParsedShareLocation>, String> {
     if hash.len() > MAX_URL_FRAGMENT_BYTES {
         return Err(format!(
             "URL fragment length ({} bytes) exceeds maximum allowed limit ({MAX_URL_FRAGMENT_BYTES} bytes)",
@@ -163,8 +180,8 @@ pub fn parse_share_location(hash: &str, search: &str) -> Result<Option<ShareUrlP
         ));
     }
     let raw_hash = hash.strip_prefix('#').unwrap_or(hash).trim();
-    if !raw_hash.is_empty() && raw_hash != "the_canvas_id" {
-        return parse_param_pairs(raw_hash, true);
+    if !raw_hash.is_empty() && raw_hash != "the_canvas_id" && has_any_share_param_key(raw_hash) {
+        return parse_location_pairs(raw_hash, true);
     }
 
     if search.len() > MAX_URL_FRAGMENT_BYTES {
@@ -177,7 +194,24 @@ pub fn parse_share_location(hash: &str, search: &str) -> Result<Option<ShareUrlP
     if raw_search.is_empty() {
         return Ok(None);
     }
-    parse_param_pairs(raw_search, false)
+    parse_location_pairs(raw_search, false)
+}
+
+/// Parses `location.hash` first, falling back to `location.search` (ignoring unrelated query
+/// parameters like `stall_timeout_ms`) when no hash share parameters are present.
+pub fn parse_share_location(hash: &str, search: &str) -> Result<Option<ShareUrlParams>, String> {
+    match parse_workspace_or_share_location(hash, search)? {
+        None => Ok(None),
+        Some(ParsedShareLocation::SinglePane(params)) => Ok(Some(params)),
+        Some(ParsedShareLocation::Workspace(ws))
+            if ws.layout == crate::app::ViewportLayout::Single && ws.panes.len() == 1 =>
+        {
+            Ok(ws.panes.into_iter().next())
+        }
+        Some(ParsedShareLocation::Workspace(_)) => {
+            Err("Multi-pane '#ws=...' workspace URL requires workspace hydration".to_string())
+        }
+    }
 }
 
 #[derive(Default)]
@@ -188,6 +222,7 @@ struct RawParamAccum {
     preset: Option<String>,
     challenge: Option<String>,
     step_raw: Option<String>,
+    pipe_b64: Option<String>,
 }
 
 impl RawParamAccum {
@@ -198,10 +233,15 @@ impl RawParamAccum {
             && self.preset.is_none()
             && self.challenge.is_none()
             && self.step_raw.is_none()
+            && self.pipe_b64.is_none()
     }
 }
 
-fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlParams>, String> {
+fn parse_location_pairs(
+    raw: &str,
+    strict_keys: bool,
+) -> Result<Option<ParsedShareLocation>, String> {
+    let mut ws_b64: Option<String> = None;
     let mut acc = RawParamAccum::default();
 
     for pair in raw.split('&').filter(|s| !s.is_empty()) {
@@ -212,12 +252,14 @@ fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlPara
             continue;
         };
         match k_raw {
+            "ws" => set_unique_param(&mut ws_b64, v_raw, "ws")?,
             "tab" => set_unique_param(&mut acc.tab, v_raw, "tab")?,
             "tool" => set_unique_param(&mut acc.tool, v_raw, "tool")?,
             "state" => set_unique_param(&mut acc.state_b64, v_raw, "state")?,
             "preset" => set_unique_param(&mut acc.preset, v_raw, "preset")?,
             "challenge" => set_unique_param(&mut acc.challenge, v_raw, "challenge")?,
             "step" => set_unique_param(&mut acc.step_raw, v_raw, "step")?,
+            "pipe" => set_unique_param(&mut acc.pipe_b64, v_raw, "pipe")?,
             _ if strict_keys => {
                 return Err(format!("Unknown URL fragment parameter '{k_raw}'"));
             }
@@ -225,10 +267,17 @@ fn parse_param_pairs(raw: &str, strict_keys: bool) -> Result<Option<ShareUrlPara
         }
     }
 
+    if let Some(ws_raw) = ws_b64 {
+        if !acc.is_empty() {
+            return Err("Shared URL cannot combine 'ws' with single-pane parameters".to_string());
+        }
+        let ws_params = decode_workspace_share_param(&ws_raw)?;
+        return Ok(Some(ParsedShareLocation::Workspace(ws_params)));
+    }
     if acc.is_empty() {
         return Ok(None);
     }
-    build_validated_share_params(acc)
+    Ok(build_validated_share_params(acc)?.map(ParsedShareLocation::SinglePane))
 }
 
 fn set_unique_param(slot: &mut Option<String>, raw_val: &str, name: &str) -> Result<(), String> {
@@ -239,7 +288,7 @@ fn set_unique_param(slot: &mut Option<String>, raw_val: &str, name: &str) -> Res
     Ok(())
 }
 
-fn validate_url_identifier(raw: &str, label: &str) -> Result<String, String> {
+pub(super) fn validate_url_identifier(raw: &str, label: &str) -> Result<String, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return Err(format!("Shared URL contains an empty '{label}' parameter"));
@@ -305,7 +354,7 @@ fn clamp_json_u64_in_range(
     }
 }
 
-fn clamp_decoded_url_grid_state(
+pub(super) fn clamp_decoded_url_grid_state(
     tab: &str,
     tool: Option<&str>,
     json_str: &str,
@@ -348,7 +397,7 @@ fn clamp_decoded_url_grid_state(
     }
 }
 
-fn decode_optional_state_json(
+pub(super) fn decode_optional_state_json(
     tab: &str,
     tool: Option<&str>,
     state_b64: Option<String>,
@@ -392,6 +441,7 @@ fn build_validated_share_params(acc: RawParamAccum) -> Result<Option<ShareUrlPar
     }
     let step_val = parse_optional_step(acc.step_raw, preset_val.is_some())?;
     let state_json = decode_optional_state_json(&tab_val, tool_val.as_deref(), acc.state_b64)?;
+    let pipeline = super::pipeline::decode_optional_pipeline(acc.pipe_b64)?;
     Ok(Some(ShareUrlParams {
         tab: tab_val,
         tool: tool_val,
@@ -399,6 +449,7 @@ fn build_validated_share_params(acc: RawParamAccum) -> Result<Option<ShareUrlPar
         preset: preset_val,
         challenge: challenge_val,
         step: step_val,
+        pipeline,
     }))
 }
 

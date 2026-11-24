@@ -31,6 +31,14 @@ pub enum EvalError {
     #[error("Evaluation recursion limit exceeded (max depth {0})")]
     RecursionLimitExceeded(usize),
 
+    /// Compiled instruction or AST node traversal budget exceeded.
+    #[error("Compiled expression exceeds maximum limit of {0} instructions")]
+    InstructionLimitExceeded(usize),
+
+    /// Formatted string output budget exceeded.
+    #[error("Formatted expression output exceeds maximum limit of {0} bytes")]
+    OutputLimitExceeded(usize),
+
     /// Domain error (e.g. division by zero in strict mode).
     #[error("Domain evaluation error: {0}")]
     DomainError(String),
@@ -61,6 +69,12 @@ impl diagnostics::Diagnostic for EvalError {
             Self::RecursionLimitExceeded(max_depth) => {
                 map.insert("max_depth".to_string(), max_depth.to_string());
             }
+            Self::InstructionLimitExceeded(max_instructions) => {
+                map.insert("max_instructions".to_string(), max_instructions.to_string());
+            }
+            Self::OutputLimitExceeded(max_bytes) => {
+                map.insert("max_output_bytes".to_string(), max_bytes.to_string());
+            }
             Self::DomainError(reason) => {
                 map.insert("reason".to_string(), reason.clone());
             }
@@ -84,6 +98,25 @@ impl Expr {
         self.eval_fast(0, &|name| {
             if name.eq_ignore_ascii_case("t") {
                 Some(t)
+            } else if name.eq_ignore_ascii_case("y") {
+                Some(y)
+            } else {
+                lookup_var(params, name)
+            }
+        })
+    }
+
+    /// Evaluates a 2D planar ODE expression given `t` (time), `x`, `y`, and parameter map.
+    ///
+    /// Optimized for high-throughput vector-field and phase-portrait loops without per-step heap allocations.
+    /// Returns `f64::NAN` on divergence or error.
+    #[must_use]
+    pub fn eval_planar(&self, t: f64, x: f64, y: f64, params: &HashMap<String, f64>) -> f64 {
+        self.eval_fast(0, &|name| {
+            if name.eq_ignore_ascii_case("t") {
+                Some(t)
+            } else if name.eq_ignore_ascii_case("x") {
+                Some(x)
             } else if name.eq_ignore_ascii_case("y") {
                 Some(y)
             } else {

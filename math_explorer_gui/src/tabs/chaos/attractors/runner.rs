@@ -2,14 +2,12 @@
 
 use super::flow::{AttractorMode, CompiledFlowJob};
 use super::serde_vec3;
+use crate::app::SharedSimulationBus;
 use crate::async_sim::{
     CheckpointParams, SimCommand, SimulationRunner, StateSnapshot, TimeTravelCheckpoint,
 };
 use crate::framework::recovery::DiagnosticReport;
-use crate::tabs::geometry_topology::vietoris_rips::{
-    handoff::{publish_live_attractor_landmarks, ChaosLandmarkHandoff},
-    MAX_CHAOS_LANDMARKS,
-};
+use crate::tabs::geometry_topology::vietoris_rips::MAX_CHAOS_LANDMARKS;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
 use nalgebra::Vector3;
@@ -42,6 +40,21 @@ pub struct AttractorSharedParams {
     pub max_points: usize,
     pub mode: AttractorMode,
     pub custom_flow: Option<Arc<CompiledFlowJob>>,
+    pub sim_bus: Option<SharedSimulationBus>,
+}
+
+impl super::AttractorPlotter {
+    pub(crate) fn bind_sim_bus(&self, ctx: &eframe::egui::Context) {
+        let bus = SharedSimulationBus::from_context_or_insert(ctx);
+        let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
+        let needs_update = match &guard.sim_bus {
+            Some(existing) => !existing.ptr_eq(&bus),
+            None => true,
+        };
+        if needs_update {
+            guard.sim_bus = Some(bus);
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -185,19 +198,29 @@ impl AttractorRunner {
     }
 
     fn publish_live_landmarks(&self, dt: f64) {
+        let sim_bus = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .sim_bus
+            .clone();
+        let Some(bus) = sim_bus else {
+            return;
+        };
         let pts: Vec<Point3D> = self
             .history
             .iter()
             .map(|v| Point3D::new(v.x, v.y, v.z))
             .collect();
         if let Ok(landmarks) = farthest_point_landmarks(&pts, MAX_CHAOS_LANDMARKS) {
-            publish_live_attractor_landmarks(ChaosLandmarkHandoff {
-                points: landmarks,
-                sigma: self.system.sigma,
-                rho: self.system.rho,
-                beta: self.system.beta,
+            let raw_pts = landmarks.into_iter().map(|p| [p.x, p.y, p.z]).collect();
+            let _ = bus.publish_point_cloud_3d(
+                raw_pts,
+                self.system.sigma,
+                self.system.rho,
+                self.system.beta,
                 dt,
-            });
+            );
         }
     }
 }

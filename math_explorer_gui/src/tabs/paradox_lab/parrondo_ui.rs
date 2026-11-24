@@ -1,10 +1,14 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::parrondo::{ParrondoParadoxTool, ParrondoSchedule, ParrondoState, ParrondoVariant};
+use super::parrondo::{
+    ParrondoJumpRatchetTool, ParrondoParadoxTool, ParrondoSchedule, ParrondoState, ParrondoVariant,
+};
 use super::render_tool_header;
 use crate::accessibility::AccessibleHoverText;
 use crate::app::SemanticPalette;
-use crate::framework::{ExportCapabilities, InteractiveTool, StarterPresetMetadata, ToolMetadata};
+use crate::framework::{
+    CalloutSpec, ExportCapabilities, InteractiveTool, StarterPresetMetadata, ToolMetadata,
+};
 use eframe::egui;
 use egui_plot::{HLine, Legend, Line, LineStyle, Plot, PlotPoints};
 
@@ -12,18 +16,20 @@ impl ParrondoParadoxTool {
     pub(super) fn render_parrondo_inside(&mut self, parent_ui: &mut egui::Ui) {
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "parrondo_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            render_tool_header(ui, "Parrondo's Paradox");
+            render_tool_header(ui, "Parrondo's Jump Ratchet");
             self.render_controls(ui);
         });
 
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.render_drift_banner(ui);
             ui.add_space(4.0);
+            self.render_jump_atlas_panel(ui);
             self.render_trajectory_plot(ui);
         });
     }
 
     fn render_controls(&mut self, ui: &mut egui::Ui) {
+        let _ = self.atlas.show_toggle_button(ui);
         let mut changed = self.render_variant_selector(ui);
         ui.separator();
         changed |= ui
@@ -186,9 +192,19 @@ impl ParrondoParadoxTool {
         });
     }
 
-    fn render_trajectory_plot(&self, ui: &mut egui::Ui) {
+    fn render_trajectory_plot(&mut self, ui: &mut egui::Ui) {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         let end = (self.current_step + 1).min(self.traj_a.len()).max(1);
+        let Self {
+            traj_a,
+            traj_b,
+            traj_abb,
+            traj_mix,
+            traj_ssa,
+            traj_exact,
+            callouts,
+            ..
+        } = self;
 
         Plot::new(ui.id().with("parrondo_bankroll_plot"))
             .legend(Legend::default())
@@ -201,28 +217,18 @@ impl ParrondoParadoxTool {
                         .style(LineStyle::Dashed { length: 6.0_f32 }),
                 );
                 for (name, slice, color, width) in [
-                    ("Game A (Pure)", &self.traj_a[..end], palette.error, 2.0_f32),
-                    (
-                        "Game B (Pure)",
-                        &self.traj_b[..end],
-                        palette.series[1],
-                        2.0_f32,
-                    ),
-                    (
-                        "Periodic ABB",
-                        &self.traj_abb[..end],
-                        palette.success,
-                        2.5_f32,
-                    ),
+                    ("Game A (Pure)", &traj_a[..end], palette.error, 2.0_f32),
+                    ("Game B (Pure)", &traj_b[..end], palette.series[1], 2.0_f32),
+                    ("Periodic ABB", &traj_abb[..end], palette.success, 2.5_f32),
                     (
                         "Random Mixture",
-                        &self.traj_mix[..end],
+                        &traj_mix[..end],
                         palette.series[0],
                         2.0_f32,
                     ),
                     (
                         "Gillespie SSA Ratchet",
-                        &self.traj_ssa[..end],
+                        &traj_ssa[..end],
                         palette.series[4],
                         1.4_f32,
                     ),
@@ -236,22 +242,26 @@ impl ParrondoParadoxTool {
                 plot_ui.line(
                     Line::new(
                         "Markov Stationary Drift",
-                        PlotPoints::from(self.traj_exact[..end].to_vec()),
+                        PlotPoints::from(traj_exact[..end].to_vec()),
                     )
                     .color(palette.accent)
                     .style(LineStyle::Dashed { length: 8.0_f32 })
                     .width(2.2_f32),
                 );
+                callouts.render_on_plot(plot_ui);
             });
     }
 }
 
 impl InteractiveTool for ParrondoParadoxTool {
     fn name(&self) -> &'static str {
-        "Parrondo's Paradox"
+        "Parrondo's Jump Ratchet"
     }
     fn domain(&self) -> &'static str {
         "paradox_lab"
+    }
+    fn set_suspended(&mut self, suspended: bool) {
+        self.atlas.set_suspended(suspended);
     }
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
@@ -310,6 +320,17 @@ impl InteractiveTool for ParrondoParadoxTool {
         self.state.seed = self.state.seed.wrapping_add(1);
         self.rebuild_full_simulation();
     }
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        vec![
+            ("drift_a", self.metrics.drift_a),
+            ("drift_b", self.metrics.drift_b),
+            ("drift_abb", self.metrics.drift_abb),
+            ("drift_mix", self.metrics.drift_mix),
+        ]
+    }
+    fn sync_callouts(&mut self, specs: &[CalloutSpec]) {
+        self.callouts.sync_specs(specs);
+    }
 }
 
 impl ParrondoParadoxTool {
@@ -361,12 +382,43 @@ impl scientific_metadata::theory::TheoryDescribable for ParrondoParadoxTool {
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()
     }
+    fn theory_parameters(
+        &self,
+    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        use scientific_metadata::theory::ParameterConstraint;
+        std::collections::HashMap::from([
+            (
+                "bias_epsilon".to_string(),
+                ParameterConstraint {
+                    min: 0.0,
+                    max: 0.05,
+                    step: 0.0005,
+                },
+            ),
+            (
+                "mix_gamma".to_string(),
+                ParameterConstraint {
+                    min: 0.0,
+                    max: 1.0,
+                    step: 0.01,
+                },
+            ),
+            (
+                "jump_switch_rate".to_string(),
+                ParameterConstraint {
+                    min: 0.1,
+                    max: 5.0,
+                    step: 0.05,
+                },
+            ),
+        ])
+    }
 }
 
 pub const PRESET_PARRONDO_RATCHET: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
-    "title": "Parrondo's Paradox",
+    "title": "Parrondo's Jump Ratchet",
     "domain": "paradox_lab",
     "timestamp": "2026-11-21T00:00:00Z"
   },
@@ -384,11 +436,11 @@ pub const PRESET_PARRONDO_RATCHET: &str = r#"{
 
 inventory::submit! {
     ToolMetadata {
-        id: "ParrondoParadoxTool",
-        display_name: "Parrondo's Paradox",
+        id: "ParrondoJumpRatchetTool",
+        display_name: "Parrondo's Jump Ratchet",
         domain: "paradox_lab",
         tags: &["markov", "stochastic", "ratchet", "game_theory"],
-        build: || Box::new(ParrondoParadoxTool::default()),
+        build: || Box::new(ParrondoJumpRatchetTool::default()),
     }
 }
 
@@ -400,7 +452,7 @@ inventory::submit! {
         category: "Paradox Lab",
         icon: "🎲",
         domain: "paradox_lab",
-        tool_name: Some("ParrondoParadoxTool"),
+        tool_name: Some("ParrondoJumpRatchetTool"),
         preset_generator: || PRESET_PARRONDO_RATCHET,
     }
 }

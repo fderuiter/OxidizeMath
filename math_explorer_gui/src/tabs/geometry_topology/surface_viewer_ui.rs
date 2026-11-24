@@ -12,6 +12,17 @@ impl SurfaceViewer {
             ui.heading("Surface Viewer");
             ui.separator();
 
+            if let Some(summary) = self.live_stream_summary() {
+                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                ui.colored_label(palette.series_color(2), summary);
+                ui.add(
+                    egui::Slider::new(&mut self.live_feed.z_amplitude, 0.2..=4.0)
+                        .text("Field Z Amplitude"),
+                );
+                self.draw_wall_thickness_slider(ui);
+                ui.separator();
+            }
+
             ui.label("Select Surface:");
             ui.horizontal_wrapped(|ui| {
                 ui.radio_value(&mut self.surface_type, SurfaceType::Sphere, "Sphere");

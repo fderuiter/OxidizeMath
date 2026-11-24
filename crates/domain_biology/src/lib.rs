@@ -8,13 +8,13 @@ pub mod error;
 pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{
-            BiologyError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError,
+            BiologyError, BotanicalError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError,
         };
         pub use ::domain_applied::__doctest_facade::error::*;
     }
     pub mod prelude {
         pub use crate::error::{
-            BiologyError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError,
+            BiologyError, BotanicalError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError,
         };
         pub use ::domain_applied::__doctest_facade::prelude::*;
     }
@@ -25,3 +25,8 @@ pub mod __doctest_facade {
         petgraph, poi, primitives, pure_math, rand, registry, rng, series, wigner,
     };
 }
+
+#[cfg(test)]
+#[global_allocator]
+static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
+    verified_engine::allocator::VerifiedAllocator;

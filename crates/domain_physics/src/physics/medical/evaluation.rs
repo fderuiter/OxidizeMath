@@ -211,6 +211,9 @@ mod tests {
         let x = [1.0e8 + 1.0, 1.0e8 + 2.0, 1.0e8 + 3.0, 1.0e8 + 4.0];
         let y = [1.0e8 + 2.0, 1.0e8 + 3.0, 1.0e8 + 4.0, 1.0e8 + 5.0];
 
+        let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let ((r, rmse, sp_err), metrics) = VerifiedEngine::run_verified(|| {
             let r = pearson_correlation(&x, &y);
             let rmse = root_mean_square_error(&x, &y);

@@ -182,8 +182,14 @@ impl MathExplorerApp {
         }
         if active_pane_count <= 1 {
             self.focused_pane = 0;
-        } else if self.focused_pane >= active_pane_count {
-            self.focused_pane = active_pane_count - 1;
+            self.pipeline_dag.clear();
+            self.dataflow_bus.prune_inactive(1);
+        } else {
+            if self.focused_pane >= active_pane_count {
+                self.focused_pane = active_pane_count - 1;
+            }
+            self.pipeline_dag.prune_inactive(active_pane_count);
+            self.dataflow_bus.prune_inactive(active_pane_count);
         }
         self.sync_viewport_visibility();
     }
@@ -222,6 +228,8 @@ impl MathExplorerApp {
                 slot.drop_active();
             }
         }
+        self.dataflow_bus.clear_pane(pane_idx);
+        self.prune_incompatible_pipeline_links();
     }
 
     /// Returns a mutable reference to the `ExplorerTab` assigned to `pane_idx`, instantiating lazily for secondary panes.

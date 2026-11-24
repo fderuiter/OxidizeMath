@@ -1,8 +1,16 @@
 // [cite:modular_polynomials_review]
 // [cite:hurwitz_kronecker]
 
+use super::atlas::{
+    build_real_and_fp_observables, default_elliptic_atlas_axes, evaluate_hasse_weil_p23,
+    is_default_elliptic_atlas_axes, CHALLENGE_HASSE_WEIL_BOUNDARY_P23, ELLIPTIC_ATLAS_AXIS_PAIRS,
+};
 use super::modular_invariants_ui;
-use crate::framework::{scoped_panel_id, InteractiveTool, PaneSidePanel, ToolStateBounds};
+use crate::async_sim::atlas::{AtlasTeleportEvent, ParameterAtlasController};
+use crate::framework::{
+    scoped_panel_id, CalloutSpec, ChallengeEvaluation, InteractiveTool, PaneSidePanel,
+    ToolStateBounds,
+};
 use eframe::egui;
 use math_explorer::pure_math::elliptic_curves::{
     analyze_frobenius_prime, eisenstein_e4_q_series, hasse_weil_bound, hurwitz_trace_sum,
@@ -89,6 +97,15 @@ pub struct ModularInvariantsState {
     pub q_series_kind: ModularQSeriesKind,
     /// Active plot lens.
     pub view_mode: ModularPlotMode,
+    /// Whether the 2D `(a, b)` parameter regime atlas is expanded.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub atlas_visible: bool,
+    /// Selected `(x, y)` parameter axis keys for the 2D regime atlas.
+    #[serde(
+        default = "default_elliptic_atlas_axes",
+        skip_serializing_if = "is_default_elliptic_atlas_axes"
+    )]
+    pub atlas_axes: [String; 2],
 }
 
 impl Default for ModularInvariantsState {
@@ -104,6 +121,8 @@ impl Default for ModularInvariantsState {
             q_precision: 10,
             q_series_kind: ModularQSeriesKind::RamanujanDelta,
             view_mode: ModularPlotMode::HasseWeilTraces,
+            atlas_visible: false,
+            atlas_axes: default_elliptic_atlas_axes(),
         }
     }
 }
@@ -111,6 +130,9 @@ impl Default for ModularInvariantsState {
 /// Analytical visualizer bridging Frobenius traces, class numbers, Breuer valuations, and $q$-series.
 pub struct ModularInvariantsTool {
     pub(crate) state: ModularInvariantsState,
+    pub(crate) atlas: ParameterAtlasController,
+    pub(crate) active_challenge: Option<&'static str>,
+    pub(crate) callouts: Vec<CalloutSpec>,
     revision: u64,
     pub(crate) trace_pts: Vec<[f64; 2]>,
     pub(crate) hasse_upper: Vec<[f64; 2]>,
@@ -129,6 +151,9 @@ impl Default for ModularInvariantsTool {
     fn default() -> Self {
         let mut tool = Self {
             state: ModularInvariantsState::default(),
+            atlas: ParameterAtlasController::new(ELLIPTIC_ATLAS_AXIS_PAIRS.to_vec()),
+            active_challenge: None,
+            callouts: Vec::new(),
             revision: 1,
             trace_pts: Vec::new(),
             hasse_upper: Vec::new(),
@@ -169,9 +194,6 @@ fn validate_modular_state(cfg: &ModularInvariantsState) -> Result<(), String> {
     if !(-50..=50).contains(&cfg.coeff_a) || !(-50..=50).contains(&cfg.coeff_b) {
         return Err("Curve coefficients a and b must lie within [-50, 50]".into());
     }
-    if 4 * cfg.coeff_a.pow(3) + 27 * cfg.coeff_b.pow(2) == 0 {
-        return Err("Curve coefficients define a singular curve (4a^3 + 27b^2 = 0)".into());
-    }
     if !(5..=MAX_LATTICE_PRIME as u64).contains(&cfg.max_prime) {
         return Err(format!("max_prime must lie in [5, {MAX_LATTICE_PRIME}]"));
     }
@@ -190,10 +212,21 @@ fn validate_modular_state(cfg: &ModularInvariantsState) -> Result<(), String> {
     if !(4..=32).contains(&cfg.q_precision) {
         return Err("Q-series precision must lie in [4, 32]".into());
     }
+    if !ELLIPTIC_ATLAS_AXIS_PAIRS
+        .iter()
+        .any(|&(xk, yk)| xk == cfg.atlas_axes[0] && yk == cfg.atlas_axes[1])
+    {
+        return Err("Unsupported parameter atlas axis pair".into());
+    }
     Ok(())
 }
 
 impl ModularInvariantsTool {
+    pub(crate) fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
+        self.state.coeff_a = (ev.x_val.round() as i64).clamp(-50, 50);
+        self.state.coeff_b = (ev.y_val.round() as i64).clamp(-50, 50);
+        self.recompute();
+    }
     pub(crate) fn recompute(&mut self) {
         let max_deg = psi(self.state.level_n).saturating_sub(1);
         if self.state.deg_i + self.state.deg_j > max_deg {
@@ -299,12 +332,66 @@ impl InteractiveTool for ModularInvariantsTool {
         self.revision
     }
 
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        build_real_and_fp_observables(
+            false,
+            self.state.coeff_a as f64,
+            self.state.coeff_b as f64,
+            self.state.inspect_prime as i64,
+            self.state.coeff_a,
+            self.state.coeff_b,
+            1,
+        )
+    }
+
+    fn sync_callouts(&mut self, callouts: &[CalloutSpec]) {
+        self.callouts = callouts.to_vec();
+    }
+
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        match challenge_id {
+            None => {
+                self.active_challenge = None;
+                self.recompute();
+                Ok(())
+            }
+            Some(CHALLENGE_HASSE_WEIL_BOUNDARY_P23) => {
+                self.active_challenge = Some(CHALLENGE_HASSE_WEIL_BOUNDARY_P23);
+                self.state.inspect_prime = 23;
+                let _ = self.atlas.set_axis_keys("mod_a", "mod_b");
+                self.recompute();
+                Ok(())
+            }
+            Some(other) => Err(format!(
+                "Unsupported challenge '{other}' for ModularInvariantsTool"
+            )),
+        }
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        self.active_challenge.map(|_| {
+            evaluate_hasse_weil_p23(
+                self.state.coeff_a,
+                self.state.coeff_b,
+                self.state.inspect_prime as i64,
+            )
+        })
+    }
+
     fn state_bounds(&self) -> ToolStateBounds {
         MODULAR_STATE_BOUNDS
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&self.state).ok()
+        let mut out = self.state.clone();
+        let (xk, yk) = self.atlas.axis_keys();
+        out.atlas_visible = self.atlas.is_visible();
+        out.atlas_axes = [xk.to_string(), yk.to_string()];
+        serde_json::to_string(&out).ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
@@ -312,13 +399,23 @@ impl InteractiveTool for ModularInvariantsTool {
         let parsed: ModularInvariantsState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid modular invariants state: {e}"))?;
         validate_modular_state(&parsed)?;
+        self.atlas
+            .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
+        self.atlas.set_visible(parsed.atlas_visible);
         self.state = parsed;
+        if self.active_challenge.is_some() {
+            self.state.inspect_prime = 23;
+        }
         self.recompute();
         Ok(())
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         modular_invariants_ui::build_export_datasets(self)
+    }
+
+    fn set_suspended(&mut self, suspended: bool) {
+        self.atlas.set_suspended(suspended);
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -329,16 +426,14 @@ impl InteractiveTool for ModularInvariantsTool {
             modular_invariants_ui::render_controls(self, ui);
         });
         egui::CentralPanel::default().show_inside(ui, |ui| {
+            modular_invariants_ui::render_modular_atlas_split(self, ui);
             modular_invariants_ui::render_plot(self, ui);
         });
     }
 
-    #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)
     }
-
-    #[cfg(test)]
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
@@ -351,30 +446,27 @@ impl scientific_metadata::theory::TheoryDescribable for ModularInvariantsTool {
             self.state.level_n
         )
     }
-
     fn phonetic_description(&self) -> String {
         "Hasse Weil Frobenius traces, Hurwitz Kronecker class numbers, Breuer modular polynomial bounds, and modular q series".into()
     }
-
     fn theory_citation(&self) -> String {
         "Breuer, Divisibility of Coefficients of Classical Modular Polynomials; Kronecker-Hurwitz Class Number Trace Formula; Silverman, The Arithmetic of Elliptic Curves (2009)".into()
     }
-
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
-        map.insert(
-            "Hasse-Weil".into(),
-            "Frobenius trace a_p = p + 1 - #E(F_p) bounded within [-2*sqrt(p), 2*sqrt(p)]".into(),
-        );
-        map.insert(
-            "Hurwitz-Kronecker".into(),
-            "Weighted imaginary quadratic class number trace formula over prime fields".into(),
-        );
-        map.insert(
-            "Breuer Valuations".into(),
-            "Lower bounds on 2-, 3-, 5-, and 7-adic valuations of classical modular polynomial coefficients".into(),
-        );
-        map
+        std::collections::HashMap::from([
+            (
+                "Hasse-Weil".into(),
+                "Frobenius trace a_p = p + 1 - #E(F_p) bounded within [-2*sqrt(p), 2*sqrt(p)]".into(),
+            ),
+            (
+                "Hurwitz-Kronecker".into(),
+                "Weighted imaginary quadratic class number trace formula over prime fields".into(),
+            ),
+            (
+                "Breuer Valuations".into(),
+                "Lower bounds on 2-, 3-, 5-, and 7-adic valuations of classical modular polynomial coefficients".into(),
+            ),
+        ])
     }
 }
 
@@ -388,26 +480,7 @@ inventory::submit! {
     }
 }
 
-const MODULAR_STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Hasse-Weil Band & Modular Valuations",
-    "domain": "elliptic_curves",
-    "timestamp": "2026-11-21T00:00:00Z"
-  },
-  "config": {
-    "coeff_a": 1,
-    "coeff_b": 2,
-    "max_prime": 251,
-    "inspect_prime": 29,
-    "level_n": 7,
-    "deg_i": 2,
-    "deg_j": 1,
-    "q_precision": 12,
-    "q_series_kind": "RamanujanDelta",
-    "view_mode": "HasseWeilTraces"
-  }
-}"#;
+const MODULAR_STARTER_PRESET_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"Hasse-Weil Band & Modular Valuations","domain":"elliptic_curves","timestamp":"2026-11-21T00:00:00Z"},"config":{"coeff_a":1,"coeff_b":2,"max_prime":251,"inspect_prime":29,"level_n":7,"deg_i":2,"deg_j":1,"q_precision":12,"q_series_kind":"RamanujanDelta","view_mode":"HasseWeilTraces"}}"#;
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {

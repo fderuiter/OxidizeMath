@@ -28,6 +28,9 @@ impl MathExplorerApp {
         }
 
         self.apply_cloned_state_to_pane(dst_pane, src_tab_idx, &tab_name, saved_json.as_ref());
+        self.pipeline_dag.on_clone_pane(src_pane, dst_pane);
+        self.dataflow_bus.clear_pane(dst_pane);
+        self.prune_incompatible_pipeline_links();
         self.tab_state_cache.invalidate_tab(&tab_name);
         self.clear_active_pane_caches();
         self.sync_viewport_visibility();

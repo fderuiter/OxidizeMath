@@ -11,13 +11,35 @@ use nalgebra::DMatrix;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+/// Maximum persisted circular droplet seeds stored in `IsingState`.
+pub const MAX_DROPLET_SEEDS: usize = 32;
+/// Deterministic RNG seed used when auto-reseeding absorbed Fermi lattices.
+pub const FERMI_AUTO_RESEED: u64 = 0xF321_5EED;
+
+/// Bounded circular spin disk painted onto [`SpinLattice`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DropletSeed {
+    /// Horizontal lattice coordinate `0..=99`.
+    pub cx: i32,
+    /// Vertical lattice coordinate `0..=99`.
+    pub cy: i32,
+    /// Disk radius `0..=99`.
+    pub r: i32,
+    /// Spin value (`+1` or `-1`).
+    pub spin: i8,
+}
+
 #[allow(missing_docs)]
 pub struct IsingSharedParams {
     pub temperature: f64,
     pub j_coupling: f64,
     pub h_field: f64,
+    pub mutation_rate: f64,
     pub mode: IsingInteractionMode,
     pub game_payoffs: [f64; 4],
+    pub defector_sea: bool,
+    pub droplet_seeds: Vec<DropletSeed>,
     pub steps_per_frame: usize,
     pub theme: crate::app::ThemeMode,
     pub total_trials: AtomicU64,
@@ -29,8 +51,11 @@ impl Default for IsingSharedParams {
             temperature: 2.269,
             j_coupling: 1.0,
             h_field: 0.0,
+            mutation_rate: 0.0,
             mode: IsingInteractionMode::Ferromagnetic,
             game_payoffs: super::preset::default_game_payoffs(),
+            defector_sea: false,
+            droplet_seeds: Vec::new(),
             steps_per_frame: 5000,
             theme: crate::app::ThemeMode::Dark,
             total_trials: AtomicU64::new(0),
@@ -92,7 +117,7 @@ impl IsingRunner {
         if num_trials == 0 {
             return;
         }
-        let (mode, temp, j, h, payoffs) = {
+        let (mode, temp, j, h, payoffs, mutation_rate) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (
                 p.mode,
@@ -100,9 +125,10 @@ impl IsingRunner {
                 p.j_coupling,
                 p.h_field,
                 p.game_payoffs,
+                p.mutation_rate,
             )
         };
-        if !temp.is_finite() {
+        if !temp.is_finite() || !mutation_rate.is_finite() {
             return;
         }
         let completed = match mode {
@@ -110,8 +136,7 @@ impl IsingRunner {
                 if !j.is_finite() || !h.is_finite() {
                     return;
                 }
-                let j_scale = if j.abs() < 1e-6 { 1.0 } else { j.abs() };
-                let t_phys = temp.max(1e-3) * j_scale / KB;
+                let t_phys = temp.max(1e-3) / KB;
                 self.evolve_ferromagnetic_chunks(num_trials, t_phys, j, h, max_slice)
             }
             IsingInteractionMode::FermiGame => {
@@ -122,7 +147,7 @@ impl IsingRunner {
                 let Ok(payoff) = MatrixPayoff::new(mat) else {
                     return;
                 };
-                self.evolve_fermi_chunks(num_trials, temp, &payoff, max_slice)
+                self.evolve_fermi_chunks(num_trials, temp, &payoff, mutation_rate, max_slice)
             }
         };
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
@@ -162,10 +187,12 @@ impl IsingRunner {
         num_trials: usize,
         temp: f64,
         payoff: &MatrixPayoff,
+        mutation_rate: f64,
         max_slice: Option<std::time::Duration>,
     ) -> usize {
         let Some(raw_budget) = max_slice else {
-            self.lattice.evolve_fermi_game(num_trials, temp, payoff);
+            self.lattice
+                .evolve_fermi_game_with_mutation(num_trials, temp, payoff, mutation_rate);
             return num_trials;
         };
         let reserve = std::time::Duration::from_micros(150).min(raw_budget / 4);
@@ -177,10 +204,34 @@ impl IsingRunner {
                 break;
             }
             let batch = (num_trials - done).min(ISING_SLICE_TRIAL_CHUNK);
-            self.lattice.evolve_fermi_game(batch, temp, payoff);
+            self.lattice
+                .evolve_fermi_game_with_mutation(batch, temp, payoff, mutation_rate);
             done += batch;
         }
         done
+    }
+
+    fn apply_shared_seed_layout(&mut self) {
+        let (defector_sea, seeds) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            p.total_trials.store(0, Ordering::Relaxed);
+            (p.defector_sea, p.droplet_seeds.clone())
+        };
+        if defector_sea {
+            self.lattice.reset_uniform_with_seed(-1, FERMI_AUTO_RESEED);
+        } else {
+            let (w, h) = (self.lattice.width(), self.lattice.height());
+            self.lattice = SpinLattice::new(w, h, Some(FERMI_AUTO_RESEED));
+        }
+        for s in seeds.into_iter().take(MAX_DROPLET_SEEDS) {
+            apply_circular_droplet(
+                &mut self.lattice,
+                s.cx,
+                s.cy,
+                s.r,
+                if s.spin >= 0 { 1 } else { -1 },
+            );
+        }
     }
 }
 
@@ -213,16 +264,24 @@ impl SimulationRunner for IsingRunner {
                 apply_circular_droplet(&mut self.lattice, cx, cy, r, spin_val);
             }
             SimCommand::ClearObstacles => {
-                for y in 0..self.lattice.height() {
-                    for x in 0..self.lattice.width() {
-                        self.lattice.set(x, y, -1);
-                    }
-                }
+                self.lattice.reset_uniform_with_seed(-1, FERMI_AUTO_RESEED);
                 self.params
                     .read()
                     .unwrap_or_else(|e| e.into_inner())
                     .total_trials
                     .store(0, Ordering::Relaxed);
+            }
+            SimCommand::Custom(ref tag) if tag == "reseed_random" => {
+                let (w, h) = (self.lattice.width(), self.lattice.height());
+                self.lattice = SpinLattice::new(w, h, Some(FERMI_AUTO_RESEED));
+                self.params
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .total_trials
+                    .store(0, Ordering::Relaxed);
+            }
+            SimCommand::Custom(ref tag) if tag == "apply_seed_layout" => {
+                self.apply_shared_seed_layout();
             }
             _ => {}
         }
@@ -249,9 +308,9 @@ impl SimulationRunner for IsingRunner {
     fn get_snapshot(&self) -> StateSnapshot {
         let width = self.lattice.width();
         let height = self.lattice.height();
-        let (j, h, theme) = {
+        let (mode, j, h, theme) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.j_coupling, p.h_field, p.theme)
+            (p.mode, p.j_coupling, p.h_field, p.theme)
         };
         let palette = theme.palette();
         let spins_vec: Vec<i8> = self.lattice.spins().to_vec();
@@ -259,16 +318,19 @@ impl SimulationRunner for IsingRunner {
         for &s in &spins_vec {
             pixels.push(ising_spin_color(s, &palette));
         }
-        let m = self.lattice.magnetization();
-        let max_m = (width * height) as f64;
-        let m_avg = m as f64 / max_m;
+        let max_m = (width * height).max(1) as f64;
+        let m_order = if mode == IsingInteractionMode::Ferromagnetic && j < 0.0 {
+            self.lattice.staggered_magnetization() as f64 / max_m
+        } else {
+            self.lattice.magnetization() as f64 / max_m
+        };
         let energy = self.lattice.hamiltonian(j, h);
 
         StateSnapshot {
             width,
             height,
             pixels: Arc::new(std::sync::RwLock::new(pixels)),
-            custom_data: vec![m_avg, energy],
+            custom_data: vec![m_order, energy],
             structured_data: Some(Box::new(spins_vec)),
             sonification: crate::audio::SonificationFrame::silent(),
         }
@@ -283,6 +345,7 @@ impl SimulationRunner for IsingRunner {
         p.temperature.is_finite()
             && p.j_coupling.is_finite()
             && p.h_field.is_finite()
+            && p.mutation_rate.is_finite()
             && p.game_payoffs.iter().all(|v| v.is_finite())
     }
 
