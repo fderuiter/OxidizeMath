@@ -153,8 +153,8 @@ fn test_contract_all_55_tools_lossless_url_roundtrip() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
     assert_eq!(
         tools.len(),
-        100,
-        "Expected all 100 registered InteractiveTools"
+        102,
+        "Expected all 102 registered InteractiveTools"
     );
 
     let mut source_app = MathExplorerApp::default();
