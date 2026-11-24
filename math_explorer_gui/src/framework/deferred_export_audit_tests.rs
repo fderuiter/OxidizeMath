@@ -106,6 +106,21 @@ fn verify_shader_capability(
     true
 }
 
+fn verify_audio_capability(meta_id: &str, caps: ExportCapabilities) -> bool {
+    if !caps.audio {
+        assert!(
+            !caps.audio_disabled_reason.is_empty(),
+            "{meta_id} disables audio export without an explanatory reason"
+        );
+        return false;
+    }
+    assert!(
+        caps.audio_disabled_reason.is_empty(),
+        "{meta_id} advertises audio export but has non-empty disabled reason"
+    );
+    true
+}
+
 fn verify_dataset_only_tool(meta_name: &str, tool: Box<dyn InteractiveTool>) {
     let mut framework = SimulationFramework::new("__audit_dataset_only__");
     framework.active_tool = Some(tool);
@@ -185,10 +200,14 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     let (mut dataset_only_tool_count, mut unsupported_tool_count) = (0usize, 0usize);
     let (mut solid_3d_count, mut splat_3d_count) = (0usize, 0usize);
     let (mut shader_tool_count, mut non_shader_tool_count) = (0usize, 0usize);
+    let mut audio_tool_count = 0usize;
 
     for meta in inventory::iter::<crate::framework::ToolMetadata> {
         let tool = (meta.build)();
         let caps = tool.export_capabilities();
+        if verify_audio_capability(meta.id, caps) {
+            audio_tool_count += 1;
+        }
         if caps.stl && caps.ply && caps.obj {
             solid_3d_count += 1;
         } else if caps.ply {
@@ -226,13 +245,22 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         splat_3d_count,
         shader_tool_count,
         non_shader_tool_count,
+        audio_tool_count,
     ]);
 }
 
-fn assert_expected_capability_counts(counts: [usize; 8]) {
-    let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader] = counts;
+fn assert_expected_capability_counts(counts: [usize; 9]) {
+    let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader, audio] =
+        counts;
     let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
     let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
+    let expected_audio = usize::from(cfg!(feature = "biology")) * 2
+        + usize::from(cfg!(feature = "physics")) * 3
+        + usize::from(cfg!(feature = "pure_math"));
+    assert_eq!(
+        audio, expected_audio,
+        "Expected {expected_audio} WAV audio-capable tools"
+    );
     let extra_plot = usize::from(has_surface_morpho)
         + bio_extra
         + 2 * usize::from(cfg!(feature = "pure_math"))
@@ -440,38 +468,30 @@ fn verify_splat_mode_ply_and_assertive_stl_obj_warnings(tool: Box<dyn Interactiv
 #[cfg(all(feature = "pure_math", feature = "applied"))]
 #[test]
 fn test_financial_math_tools_csv_json_png_svg_exports() {
-    let tool_ids = [
+    for id in [
         "BetSizeCalculatorTool",
         "BankrollGrowthTool",
         "CorrelatedRiskScenarioTool",
         "TailRiskDrawdownTool",
         "MarkowitzFrontierTool",
-    ];
-    for id in tool_ids {
+    ] {
         let meta = inventory::iter::<crate::framework::ToolMetadata>
             .into_iter()
             .find(|m| m.id == id)
             .unwrap_or_else(|| panic!("Missing financial_math tool {id}"));
         verify_single_figure_tool(id, (meta.build)());
-
         let mut fw = SimulationFramework::new("__audit_fin_data__");
         fw.active_tool = Some((meta.build)());
         run_deferred_export_frame(&mut fw, ExportFormat::Csv, true);
         assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
-        let csv = fw
-            .export_queue
-            .last_exported_content
-            .as_deref()
-            .expect("CSV exported");
-        assert!(csv.lines().count() >= 5, "CSV too short for {id}");
-
+        let csv = fw.export_queue.last_exported_content.as_deref();
+        assert!(
+            csv.is_some_and(|s| s.lines().count() >= 5),
+            "Short CSV {id}"
+        );
         run_deferred_export_frame(&mut fw, ExportFormat::Json, true);
         assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
-        let json = fw
-            .export_queue
-            .last_exported_content
-            .as_deref()
-            .expect("JSON exported");
-        assert!(serde_json::from_str::<serde_json::Value>(json).is_ok());
+        let json = fw.export_queue.last_exported_content.as_deref();
+        assert!(json.is_some_and(|s| serde_json::from_str::<serde_json::Value>(s).is_ok()));
     }
 }

@@ -37,7 +37,49 @@ pub fn logistic_lyapunov(r: f64, x0: f64, n: usize) -> f64 {
         map.next();
     }
 
-    sum_logs / n as f64
+    sum_logs / (n as f64)
+}
+
+#[verified_engine::verified]
+fn step_and_renormalize_pair<S, Sol>(
+    system: &S,
+    solver: &mut Sol,
+    current_state: &mut Vector3<f64>,
+    shadow_state: &mut Vector3<f64>,
+    steps_per_iter: usize,
+    time_step: f64,
+    d0: f64,
+) -> Result<f64, ChaosError>
+where
+    S: OdeSystem<Vector3<f64>> + ?Sized,
+    Sol: Solver<Vector3<f64>>,
+{
+    for _ in 0..steps_per_iter {
+        *current_state = solver.solve(system, 0.0, current_state, time_step);
+        *shadow_state = solver.solve(system, 0.0, shadow_state, time_step);
+    }
+
+    let dist_vec = *shadow_state - *current_state;
+    let d_t = dist_vec.norm();
+    if !d_t.is_finite()
+        || !current_state.x.is_finite()
+        || !current_state.y.is_finite()
+        || !current_state.z.is_finite()
+    {
+        return Err(ChaosError::Math(
+            math_commons::error::MathError::NumericalError {
+                reason: String::new(),
+            },
+        ));
+    }
+
+    let unit_dir = if d_t > 1e-30 {
+        dist_vec / d_t
+    } else {
+        Vector3::new(1.0, 0.0, 0.0)
+    };
+    *shadow_state = *current_state + unit_dir * d0;
+    Ok(d_t)
 }
 
 /// Calculates the largest Lyapunov Exponent for a 3D continuous dynamical system.
@@ -73,6 +115,9 @@ where
         || !evolution_time.is_finite()
         || evolution_time <= 0.0
         || iterations == 0
+        || !initial_state.x.is_finite()
+        || !initial_state.y.is_finite()
+        || !initial_state.z.is_finite()
     {
         return Err(ChaosError::InvalidParameter(String::new()));
     }
@@ -80,43 +125,30 @@ where
     if steps_per_iter == 0 {
         return Err(ChaosError::InvalidParameter(String::new()));
     }
+    let step_duration = (steps_per_iter as f64) * time_step;
 
     let mut current_state = initial_state;
     let mut shadow_state = current_state + Vector3::new(d0, 0.0, 0.0);
     let mut sum_log_divergence = 0.0;
     let mut total_time = 0.0;
-
     for _ in 0..iterations {
-        for _ in 0..steps_per_iter {
-            current_state = solver.solve(system, 0.0, &current_state, time_step);
-            shadow_state = solver.solve(system, 0.0, &shadow_state, time_step);
-        }
-
-        let dist_vec = shadow_state - current_state;
-        let d_t = dist_vec.norm();
-        if !d_t.is_finite()
-            || !current_state.x.is_finite()
-            || !current_state.y.is_finite()
-            || !current_state.z.is_finite()
-        {
-            return Err(ChaosError::Math(
-                math_commons::error::MathError::NumericalError {
-                    reason: String::new(),
-                },
-            ));
-        }
-
+        let d_t = step_and_renormalize_pair(
+            system,
+            solver,
+            &mut current_state,
+            &mut shadow_state,
+            steps_per_iter,
+            time_step,
+            d0,
+        )?;
         let ratio = (d_t / d0).clamp(1e-15, 1e150);
         sum_log_divergence += ratio.ln();
-        total_time += evolution_time;
-
-        let unit_dir = if d_t > 1e-30 {
-            dist_vec / d_t
-        } else {
-            Vector3::new(1.0, 0.0, 0.0)
-        };
-        shadow_state = current_state + unit_dir * d0;
+        total_time += step_duration;
     }
 
-    Ok(sum_log_divergence / total_time)
+    Ok(if total_time > 0.0 {
+        sum_log_divergence / total_time
+    } else {
+        0.0
+    })
 }

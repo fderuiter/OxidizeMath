@@ -207,11 +207,7 @@ impl SimulationRunner for WaveRunner {
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
-        let sonification = if self.diverged {
-            crate::audio::SonificationFrame::silent()
-        } else {
-            self.sonification
-        };
+        let sonification = self.active_sonification_frame();
         let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
         StateSnapshot {
             width: 0,
