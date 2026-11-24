@@ -44,6 +44,9 @@ mod timeline;
 #[path = "attractors/ui.rs"]
 mod ui;
 
+#[path = "attractors/sonification.rs"]
+mod sonification;
+
 #[path = "attractors/export.rs"]
 pub mod export;
 
@@ -62,15 +65,16 @@ pub struct AttractorPlotter {
     pub(crate) max_points: usize,
     pub(crate) camera: Camera3D,
     pub(crate) scene_builder: Scene3DBuilder,
-    trajectory_scratch: Vec<Point3<f64>>,
+    pub(crate) trajectory_scratch: Vec<Point3<f64>>,
     pub(crate) params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     pub(crate) worker: BackgroundWorker<AttractorRunner>,
     pub show_annotations: bool,
     pub(crate) fixed_callout_offsets: [egui::Vec2; 2],
     pub(crate) dragged_callout: Option<usize>,
+    pub(crate) audio_settings: crate::audio::AcousticSettings,
     pub(crate) twin: Option<AttractorTwinState>,
     pub branch_engine: crate::framework::CounterfactualBranchEngine,
-    pub(super) latest_sonification: crate::audio::SonificationFrame,
+    pub(crate) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
     pub(crate) atlas: ParameterAtlasController,
     pub(crate) bus_cache: dataflow::AttractorBusCache,
@@ -115,6 +119,7 @@ impl Default for AttractorPlotter {
             show_annotations: true,
             fixed_callout_offsets: DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from),
             dragged_callout: None,
+            audio_settings: crate::audio::AcousticSettings::default(),
             twin: None,
             branch_engine: crate::framework::CounterfactualBranchEngine::default(),
             latest_sonification: crate::audio::mappings::attractor_frame(
@@ -236,17 +241,7 @@ impl AttractorPlotter {
         let params = Arc::clone(&self.params);
         self.worker
             .reset_or_respawn(|| AttractorRunner::from_params(params));
-    }
-
-    pub fn reset_parameters(&mut self) {
-        self.system.sigma = 10.0;
-        self.system.rho = 28.0;
-        self.system.beta = 8.0 / 3.0;
-        self.flow_bank = default_flow_bank();
-        self.dt = 0.01;
-        self.tube_radius = export::DEFAULT_TUBE_RADIUS;
-        self.fixed_callout_offsets = DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from);
-        self.reset();
+        self.latest_sonification = self.current_sonification_frame();
     }
 
     /// Projects 3D point to 2D screen space based on rotation, pan, zoom, and projection mode.
@@ -270,6 +265,29 @@ impl InteractiveTool for AttractorPlotter {
     }
     fn domain(&self) -> &'static str {
         "chaos"
+    }
+
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_audio().with_3d_solid()
+    }
+
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        Some(self.current_sonification_frame())
+    }
+
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.audio_settings
+    }
+
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.audio_settings = settings.sanitized();
+    }
+
+    fn sample_sonification_frames(
+        &mut self,
+        frame_count: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        self.render_wav_frames(frame_count)
     }
 
     fn state_revision(&self) -> u64 {
@@ -302,7 +320,7 @@ impl InteractiveTool for AttractorPlotter {
         &mut self,
         action: crate::framework::BranchControlAction,
     ) -> bool {
-        match action {
+        let changed = match action {
             crate::framework::BranchControlAction::ForkHere => self.fork_here(),
             crate::framework::BranchControlAction::SwapBranches => self.swap_branches(),
             crate::framework::BranchControlAction::ClearFork => self.clear_fork(),
@@ -310,11 +328,9 @@ impl InteractiveTool for AttractorPlotter {
                 self.branch_engine.set_effective_delta(delta);
                 true
             }
-        }
-    }
-
-    fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot().with_3d_solid()
+        };
+        self.latest_sonification = self.current_sonification_frame();
+        changed
     }
 
     fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {

@@ -2,9 +2,9 @@
 
 use super::presets::{
     barrier_interval_for_preset, compute_tunneling_observables_slice, default_compiled_expr,
-    evaluate_potential_grid, WavePotentialPreset, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA,
-    DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, GRID_POINTS, GRID_X_MAX,
-    GRID_X_MIN, SIGMA_MAX, SIGMA_MIN,
+    evaluate_potential_grid, sanitize_finite, WavePotentialPreset, DEFAULT_DT, DEFAULT_K0,
+    DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, GRID_POINTS,
+    GRID_X_MAX, GRID_X_MIN, SIGMA_MAX, SIGMA_MIN,
 };
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -132,7 +132,7 @@ pub struct WaveRunner {
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
     pub(crate) prev_mode_phases: [f64; 8],
-    sonification: crate::audio::SonificationFrame,
+    pub(crate) sonification: crate::audio::SonificationFrame,
 }
 
 impl WaveRunner {
@@ -237,8 +237,8 @@ impl WaveRunner {
         if n > self.prob_scratch.len() {
             self.prob_scratch.resize(n, 0.0);
         }
-        let finite_or = |v: f64, d: f64| if v.is_finite() { v } else { d };
-        (self.x0, self.k0) = (finite_or(cfg.x0, DEFAULT_X0), finite_or(cfg.k0, DEFAULT_K0));
+        self.x0 = sanitize_finite(cfg.x0, DEFAULT_X0);
+        self.k0 = sanitize_finite(cfg.k0, DEFAULT_K0);
         self.sigma = if cfg.sigma.is_finite() && cfg.sigma > 0.0 {
             cfg.sigma.clamp(SIGMA_MIN, SIGMA_MAX)
         } else {
@@ -255,15 +255,6 @@ impl WaveRunner {
         self.prev_mode_phases = [0.0; 8];
         self.update_observables_in_place();
         self.refresh_sonification(cfg.dt);
-    }
-
-    pub(crate) fn refresh_sonification(&mut self, dt: f64) {
-        let modes = self.psi.project_spatial_modes::<8>();
-        self.sonification = crate::audio::mappings::quantum_wavepacket_frame(
-            &modes,
-            &mut self.prev_mode_phases,
-            dt.max(1.0e-4),
-        );
     }
 
     pub(crate) fn refresh_propagator(&mut self, dt: f64) -> bool {
@@ -476,11 +467,7 @@ impl SimulationRunner for WaveRunner {
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
-        let sonification = if self.diverged {
-            crate::audio::SonificationFrame::silent()
-        } else {
-            self.sonification
-        };
+        let sonification = self.active_sonification_frame();
         let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
         StateSnapshot {
             width: 0,

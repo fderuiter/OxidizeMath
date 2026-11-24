@@ -113,6 +113,24 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         self.apply_scalar_step(new_g_na, new_g_k, new_g_l, new_i_ext, self.dt);
     }
 
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        let spiked = self.spiked_since_snapshot.load(Ordering::Relaxed);
+        let ref_prev_v = if spiked { -5.0 } else { self.prev_v };
+        let ref_cur_v = if spiked {
+            self.state.v.max(10.0)
+        } else {
+            self.state.v
+        };
+        Some(crate::audio::mappings::hodgkin_huxley_frame(
+            ref_cur_v,
+            ref_prev_v,
+            self.state.m,
+            self.state.h,
+            self.state.n,
+            self.i_ext,
+        ))
+    }
+
     fn sync_parameters(&mut self, params: &HashMap<String, f64>) {
         self.params.g_na = params.get("g_na").copied().unwrap_or(120.0).max(0.0);
         self.params.g_k = params.get("g_k").copied().unwrap_or(36.0).max(0.0);

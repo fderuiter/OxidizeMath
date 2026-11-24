@@ -60,6 +60,8 @@ struct WaveSimStateRef<'a> {
     dt: f64,
     steps_per_frame: usize,
     custom_expr: &'a str,
+    #[serde(skip_serializing_if = "crate::audio::AcousticSettings::is_default")]
+    audio: crate::audio::AcousticSettings,
     #[serde(skip_serializing_if = "<[_]>::is_empty")]
     sparse_potential: &'a [(u16, f64)],
     #[serde(skip_serializing_if = "super::atlas::is_false")]
@@ -91,6 +93,8 @@ struct WaveSimState {
     steps_per_frame: usize,
     #[serde(default = "default_custom_expr")]
     custom_expr: String,
+    #[serde(default)]
+    audio: crate::audio::AcousticSettings,
     #[serde(default)]
     sparse_potential: Vec<(u16, f64)>,
     #[serde(default)]
@@ -140,6 +144,7 @@ impl WaveSimState {
                 MAX_CUSTOM_EXPR_BYTES
             ));
         }
+        self.audio.validate()?;
         if self.sparse_potential.len() > GRID_POINTS
             || self.sparse_potential.iter().any(|&(idx, val)| {
                 usize::from(idx) >= GRID_POINTS
@@ -166,6 +171,8 @@ impl WaveSimulatorTool {
         self.dt.to_bits().hash(&mut hasher);
         self.steps_per_frame.hash(&mut hasher);
         self.math_input.raw_text.hash(&mut hasher);
+        self.audio_settings.gain.to_bits().hash(&mut hasher);
+        self.audio_settings.pitch_scale.to_bits().hash(&mut hasher);
         self.atlas.is_visible().hash(&mut hasher);
         self.atlas.axis_keys().hash(&mut hasher);
         self.active_challenge.hash(&mut hasher);
@@ -210,6 +217,7 @@ impl WaveSimulatorTool {
             dt: self.dt,
             steps_per_frame: self.steps_per_frame,
             custom_expr: bounded_expr,
+            audio: self.audio_settings,
             sparse_potential: &self.sparse_potential,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes: [ax_x.to_string(), ax_y.to_string()],
@@ -233,6 +241,7 @@ impl WaveSimulatorTool {
         self.width = parsed.width;
         self.dt = parsed.dt;
         self.steps_per_frame = parsed.steps_per_frame;
+        self.audio_settings = parsed.audio;
         self.sparse_potential = parsed.sparse_potential;
         self.math_input.set_expression(&parsed.custom_expr);
         if let Some(expr) = self.math_input.expr() {

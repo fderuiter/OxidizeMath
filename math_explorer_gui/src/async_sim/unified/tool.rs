@@ -30,14 +30,15 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(super) dirty: bool,
     pub(crate) step_model: Option<M>,
     pub(super) stepped_snapshot: Option<StateSnapshot>,
-    cached_theory_desc: String,
-    cached_latex_eq: Option<String>,
-    cached_phonetic: String,
-    cached_citation: String,
+    pub(super) cached_theory_desc: String,
+    pub(super) cached_latex_eq: Option<String>,
+    pub(super) cached_phonetic: String,
+    pub(super) cached_citation: String,
     pub(super) cached_descs: HashMap<String, String>,
     pub(super) cached_param_labels: Vec<String>,
     pub(super) cached_observable_label: Option<&'static str>,
     pub(crate) sensitivity_engine: crate::sensitivity::SensitivityEngine,
+    pub(crate) audio_settings: crate::audio::AcousticSettings,
     pub(crate) callout_manager: CalloutManager,
     pub(super) ui_extension: Option<Box<dyn UnifiedUiExtension>>,
     pub(crate) atlas: Option<crate::async_sim::atlas::ParameterAtlasController>,
@@ -109,6 +110,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             cached_param_labels,
             cached_observable_label: None,
             sensitivity_engine: crate::sensitivity::SensitivityEngine::new(),
+            audio_settings: crate::audio::AcousticSettings::default(),
             callout_manager,
             ui_extension,
             atlas: Self::create_optional_atlas(),
@@ -230,10 +232,15 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        if M::is_raster_model() {
+        let base = if M::is_raster_model() {
             crate::framework::ExportCapabilities::raster_only()
         } else {
             crate::framework::ExportCapabilities::plot()
+        };
+        if M::supports_sonification() {
+            base.with_audio()
+        } else {
+            base
         }
     }
 
@@ -271,32 +278,7 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn step_simulation(&mut self) {
-        if let Ok(params) = self.params.read() {
-            let custom_formula_enabled = self.custom_formula_enabled;
-            let shared_formula = &self.shared_formula;
-            let sculpt_state = &self.sculpt_state;
-            let model = self.step_model.get_or_insert_with(|| {
-                let mut m = M::new(&params);
-                if custom_formula_enabled {
-                    let payload = shared_formula
-                        .read()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .clone();
-                    m.apply_compiled_formula(payload.as_ref(), &params);
-                }
-                if M::supports_spatial_brush() {
-                    let sculpt = sculpt_state.read().unwrap_or_else(|e| e.into_inner());
-                    if !sculpt.is_empty() {
-                        m.apply_sculpt_payload(&sculpt, &params);
-                    }
-                }
-                m
-            });
-            for _ in 0..self.steps_per_frame.max(1) {
-                model.step(&params);
-            }
-            self.stepped_snapshot = Some(model.get_snapshot());
-        }
+        self.step_unified_model();
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {
@@ -310,32 +292,7 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        for (key, _) in &self.param_metadata {
-            key.hash(&mut h);
-            if let Some(val) = params.get(key) {
-                val.to_bits().hash(&mut h);
-            }
-        }
-        sculpt.hash_into(&mut h);
-        if let Some(ext) = &self.ui_extension {
-            ext.state_revision_salt().hash(&mut h);
-        }
-        if let Some(atlas) = &self.atlas {
-            atlas.is_visible().hash(&mut h);
-            atlas.axis_keys().hash(&mut h);
-        }
-        self.custom_formula_enabled.hash(&mut h);
-        if let Some(ref bar) = self.formula_bar {
-            bar.raw_text.hash(&mut h);
-            for &pv in bar.param_slice() {
-                pv.to_bits().hash(&mut h);
-            }
-        }
-        h.finish().max(1)
+        self.compute_unified_state_revision()
     }
 
     fn has_finite_parameters(&self) -> bool {
@@ -434,25 +391,23 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
             ui.ctx().request_repaint();
         }
     }
-}
 
-impl<M: UnifiedModel> scientific_metadata::theory::TheoryDescribable for UnifiedSimTool<M> {
-    fn theory_description(&self) -> String {
-        self.cached_theory_desc.clone()
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        self.current_sonification_frame()
     }
-    fn theory_latex_equation(&self) -> Option<String> {
-        self.cached_latex_eq.clone()
+
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.audio_settings
     }
-    fn phonetic_description(&self) -> String {
-        self.cached_phonetic.clone()
+
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.audio_settings = settings.sanitized();
     }
-    fn theory_citation(&self) -> String {
-        self.cached_citation.clone()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        self.cached_descs.clone()
-    }
-    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        self.param_metadata.iter().cloned().collect()
+
+    fn sample_sonification_frames(
+        &mut self,
+        num_frames: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        self.sample_model_sonification_frames(num_frames)
     }
 }
