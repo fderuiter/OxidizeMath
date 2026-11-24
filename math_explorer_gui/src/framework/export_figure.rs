@@ -253,9 +253,14 @@ fn render_tool_svg_with_fallback(
     };
     if let Some(field) = tool.export_scalar_field_2d(target) {
         let mut prims = scalar_field_to_svg_primitives(tool.name(), &field, options)?;
-        for extra in tool.export_plot_primitives() {
-            if matches!(extra, ExportPrimitive::Points { .. }) {
-                prims.push(extra);
+        if matches!(
+            field.topology,
+            super::ScalarFieldTopology::Continuous { .. }
+        ) {
+            for extra in tool.export_plot_primitives() {
+                if matches!(extra, ExportPrimitive::Points { .. }) {
+                    prims.push(extra);
+                }
             }
         }
         return export_primitives_svg(&prims, options);

@@ -142,9 +142,11 @@ fn test_all_ten_raster_tools_deferred_scalar_svg_tile_heightmap_and_normal_expor
         ("DoseCalculationTool", true),
         ("LatticeBoltzmannTool", true),
         ("MriKSpaceStudio", true),
+        ("MriKSpaceScannerTool", true),
         ("OpticsWaveTool", true),
         ("PrimeSpiralWidget", false),
         ("AttentionMapsTool", false),
+        ("AbelianSandpileStudio", false),
     ];
     for (id, is_continuous) in cases {
         verify_scalar_or_lattice_tool_exports(id, is_continuous);
@@ -182,4 +184,71 @@ fn test_all_ten_raster_tools_deferred_scalar_svg_tile_heightmap_and_normal_expor
         .export_raster_image_sized((640, 480), false)
         .expect("640x480 fractal raster");
     assert_eq!((hi_img.width(), hi_img.height()), (640, 480));
+}
+
+#[test]
+fn test_lexis_heatmap_mode_scalar_field_exports() {
+    let pop_meta = inventory::iter::<crate::framework::ToolMetadata>
+        .into_iter()
+        .find(|m| m.id == "PopulationStructureTool")
+        .expect("PopulationStructureTool registered");
+    let mut pop = (pop_meta.build)();
+    assert!(!pop.supports_scalar_field_2d());
+    let saved = pop
+        .save_state()
+        .expect("PopulationStructureTool save_state");
+    let lexis_json = saved.replace("\"Dashboard\"", "\"LexisHeatmap\"");
+    pop.try_load_state(&lexis_json)
+        .expect("load LexisHeatmap view_mode");
+    assert!(pop.supports_scalar_field_2d());
+    let l_field = pop
+        .export_scalar_field_2d(None)
+        .expect("LexisHeatmap scalar field");
+    let l_dims = (l_field.width, l_field.height);
+
+    let mut fw = SimulationFramework::new("__audit_lexis__");
+    fw.export_options.width = 320;
+    fw.export_options.height = 240;
+    fw.active_tool = Some(pop);
+    run_deferred_export_frame(&mut fw, ExportFormat::Svg, true);
+    assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+    let lexis_svg = fw.export_queue.last_exported_content.as_deref().unwrap();
+    assert!(
+        lexis_svg.contains("<path ")
+            && lexis_svg.contains("data-iso-level=")
+            && !lexis_svg.contains("<image"),
+        "LexisHeatmap SVG must emit stitched contours without base64 <image>"
+    );
+    verify_heightmap_and_normal_exports(&mut fw, "PopulationStructureTool", l_dims);
+}
+
+#[test]
+fn test_zero_base64_image_svg_across_all_figure_tools() {
+    for meta in inventory::iter::<crate::framework::ToolMetadata> {
+        let tool = (meta.build)();
+        if !tool.export_capabilities().figure {
+            continue;
+        }
+        let mut tool_fw = SimulationFramework::new("__audit_no_base64__");
+        tool_fw.export_options.width = 240;
+        tool_fw.export_options.height = 180;
+        tool_fw.active_tool = Some(tool);
+        run_deferred_export_frame(&mut tool_fw, ExportFormat::Svg, true);
+        assert_eq!(
+            tool_fw.export_status_severity,
+            ExportStatusSeverity::Success,
+            "SVG export failed for {}",
+            meta.id
+        );
+        let svg = tool_fw
+            .export_queue
+            .last_exported_content
+            .as_deref()
+            .unwrap();
+        assert!(
+            !svg.contains("data:image/png;base64,") && !svg.contains("<image"),
+            "Figure tool {} emitted raster <image> fallback in SVG",
+            meta.id
+        );
+    }
 }
