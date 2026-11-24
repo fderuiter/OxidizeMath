@@ -1,14 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::presets::{
-    barrier_interval_for_preset, compute_tunneling_observables_slice, default_compiled_expr,
-    evaluate_potential_grid, WavePotentialPreset, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA,
-    DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, GRID_POINTS, GRID_X_MAX,
-    GRID_X_MIN, SIGMA_MAX, SIGMA_MIN,
+    barrier_interval_for_preset, compute_tunneling_observables_slice, evaluate_potential_grid,
+    DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_X0, GRID_POINTS, GRID_X_MAX, GRID_X_MIN,
+    SIGMA_MAX, SIGMA_MIN,
 };
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use math_commons::ast::Expr;
 use math_explorer::physics::quantum::{
     gaussian_wavepacket_into, state_norm_squared, CrankNicolson1D, QuantumState,
 };
@@ -21,49 +19,9 @@ use std::sync::{Arc, RwLock};
 /// Number of unitary Crank-Nicolson substeps executed per `WaveRunner` step.
 pub const CN_SUBSTEPS: usize = 4;
 
-pub use super::presets::{TunnelingObservables, BARRIER_TRANSIT_THRESHOLD, WALL_ARRIVAL_THRESHOLD};
-
-/// Shared parameter bundle synchronized between [`super::WaveSimulatorTool`] and [`WaveRunner`].
-#[derive(Clone, Debug)]
-pub struct WaveSimConfig {
-    /// Selected potential profile or custom AST mode.
-    pub preset: WavePotentialPreset,
-    /// Initial Gaussian packet center $x_0$.
-    pub x0: f64,
-    /// Initial wave number $k_0$ ($E_0 = k_0^2 / 2$).
-    pub k0: f64,
-    /// Initial Gaussian spatial width $\sigma$.
-    pub sigma: f64,
-    /// Potential barrier scale $V_0$.
-    pub v0: f64,
-    /// Potential barrier width $w$.
-    pub width: f64,
-    /// Unitary propagation time step $\Delta t$.
-    pub dt: f64,
-    /// Worker steps executed per visual frame.
-    pub steps_per_frame: usize,
-    /// Last valid compiled AST expression for `V(x)`.
-    pub custom_expr: Expr,
-    /// Optional sparse `(index, value)` sculpted potential overrides.
-    pub sparse_potential: Vec<(u16, f64)>,
-}
-
-impl Default for WaveSimConfig {
-    fn default() -> Self {
-        Self {
-            preset: WavePotentialPreset::InfiniteWell,
-            x0: DEFAULT_X0,
-            k0: DEFAULT_K0,
-            sigma: DEFAULT_SIGMA,
-            v0: DEFAULT_V0,
-            width: DEFAULT_WIDTH,
-            dt: DEFAULT_DT,
-            steps_per_frame: DEFAULT_STEPS_PER_FRAME,
-            custom_expr: default_compiled_expr(),
-            sparse_potential: Vec::new(),
-        }
-    }
-}
+pub use super::presets::{
+    TunnelingObservables, WaveSimConfig, BARRIER_TRANSIT_THRESHOLD, WALL_ARRIVAL_THRESHOLD,
+};
 
 /// Structured snapshot payload emitted by [`WaveRunner`] to the UI thread.
 #[derive(Clone, Debug)]
@@ -83,9 +41,14 @@ pub struct WaveData {
     /// Live transmission probability $T(t)$.
     pub transmission: f64,
     /// Right-wall boundary probability $\sum_{x > 4.25} |\psi|^2$.
+    #[cfg(test)]
     pub right_wall_prob: f64,
     /// Latched post-scattering, pre-wall transmission readout $T_{\text{scatter}}$.
     pub latched_transmission: Option<f64>,
+    /// Whether the wavepacket has reached either Dirichlet guard wall (`|x| > 4.25`).
+    pub wall_arrived: bool,
+    /// Whether `latched_transmission` was captured from a quasi-bound resonance at pre-wall arrival.
+    pub quasi_bound_latched: bool,
     /// Left edge of the barrier integration interval.
     pub x_left: f64,
     /// Right edge of the barrier integration interval.
@@ -102,6 +65,7 @@ pub struct WaveRunner {
     pub(crate) psi: QuantumState,
     pub(crate) solver: CrankNicolson1D,
     pub(crate) cached_dt: Option<f64>,
+    pub(crate) propagator_rebuilds: Arc<std::sync::atomic::AtomicUsize>,
     pub(crate) prob_scratch: Vec<f64>,
     pub(crate) potential: DVector<f64>,
     pub(crate) base_potential: Vec<f64>,
@@ -120,6 +84,7 @@ pub struct WaveRunner {
     observables: TunnelingObservables,
     pub(crate) entered_barrier: bool,
     pub(crate) wall_arrived: bool,
+    pub(crate) quasi_bound_latched: bool,
     pub(crate) latched_transmission: Option<f64>,
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
@@ -130,8 +95,18 @@ pub struct WaveRunner {
 
 impl WaveRunner {
     /// Creates and initializes a new 1D Schrödinger runner from shared configuration.
+    #[cfg(test)]
     #[must_use]
     pub fn new(config: Arc<RwLock<WaveSimConfig>>) -> Self {
+        Self::new_with_counter(config, Arc::new(std::sync::atomic::AtomicUsize::new(0)))
+    }
+
+    /// Creates a runner sharing an external `propagator_rebuilds` counter.
+    #[must_use]
+    pub fn new_with_counter(
+        config: Arc<RwLock<WaveSimConfig>>,
+        propagator_rebuilds: Arc<std::sync::atomic::AtomicUsize>,
+    ) -> Self {
         let cfg = config.read().unwrap_or_else(|e| e.into_inner()).clone();
         let max_grid = MAX_GRID_SIZE.max(GRID_POINTS);
         let mut base_potential = Vec::with_capacity(max_grid);
@@ -141,6 +116,7 @@ impl WaveRunner {
             psi: QuantumState::new(DVector::from_element(GRID_POINTS, Complex::new(0.0, 0.0))),
             solver: CrankNicolson1D::with_capacity(max_grid),
             cached_dt: None,
+            propagator_rebuilds,
             prob_scratch: vec![0.0; max_grid],
             potential: DVector::zeros(GRID_POINTS),
             base_potential,
@@ -159,6 +135,7 @@ impl WaveRunner {
             observables: TunnelingObservables::default(),
             entered_barrier: false,
             wall_arrived: false,
+            quasi_bound_latched: false,
             latched_transmission: None,
             diverged: false,
             diagnostic_report: None,
@@ -231,6 +208,7 @@ impl WaveRunner {
         self.time = 0.0;
         self.entered_barrier = false;
         self.wall_arrived = false;
+        self.quasi_bound_latched = false;
         self.latched_transmission = None;
         self.prev_mode_phases = [0.0; 8];
         self.update_observables_in_place();
@@ -259,6 +237,8 @@ impl WaveRunner {
                 return false;
             }
             self.cached_dt = Some(dt);
+            self.propagator_rebuilds
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         self.solver.is_valid()
     }
@@ -289,29 +269,42 @@ impl WaveRunner {
         if obs.barrier_prob >= BARRIER_TRANSIT_THRESHOLD || classical_past_barrier {
             self.entered_barrier = true;
         }
-        if self.entered_barrier
-            && !self.wall_arrived
-            && obs.barrier_prob < BARRIER_TRANSIT_THRESHOLD
-        {
-            if obs.right_wall_prob < WALL_ARRIVAL_THRESHOLD {
-                self.latched_transmission = Some(obs.transmission);
-            } else if self.latched_transmission.is_none()
-                && prev.right_wall_prob < WALL_ARRIVAL_THRESHOLD
-            {
-                let alpha_b = if prev.barrier_prob < BARRIER_TRANSIT_THRESHOLD {
-                    0.0
-                } else {
-                    let denom = (prev.barrier_prob - obs.barrier_prob).max(f64::EPSILON);
-                    ((prev.barrier_prob - BARRIER_TRANSIT_THRESHOLD) / denom).clamp(0.0, 1.0)
-                };
-                let denom_w = (obs.right_wall_prob - prev.right_wall_prob).max(f64::EPSILON);
-                let alpha_w =
-                    ((WALL_ARRIVAL_THRESHOLD - prev.right_wall_prob) / denom_w).clamp(0.0, 1.0);
-                if alpha_b <= alpha_w {
-                    let t_pre =
-                        prev.transmission + alpha_w * (obs.transmission - prev.transmission);
-                    self.latched_transmission = Some(t_pre.clamp(0.0, 1.0));
+        if self.entered_barrier && !self.wall_arrived {
+            if obs.barrier_prob < BARRIER_TRANSIT_THRESHOLD {
+                if obs.right_wall_prob < WALL_ARRIVAL_THRESHOLD {
+                    self.latched_transmission = Some(obs.transmission);
+                    self.quasi_bound_latched = false;
+                } else if self.latched_transmission.is_none()
+                    && prev.right_wall_prob < WALL_ARRIVAL_THRESHOLD
+                {
+                    let alpha_b = if prev.barrier_prob < BARRIER_TRANSIT_THRESHOLD {
+                        0.0
+                    } else {
+                        let denom = (prev.barrier_prob - obs.barrier_prob).max(f64::EPSILON);
+                        ((prev.barrier_prob - BARRIER_TRANSIT_THRESHOLD) / denom).clamp(0.0, 1.0)
+                    };
+                    let denom_w = (obs.right_wall_prob - prev.right_wall_prob).max(f64::EPSILON);
+                    let alpha_w =
+                        ((WALL_ARRIVAL_THRESHOLD - prev.right_wall_prob) / denom_w).clamp(0.0, 1.0);
+                    if alpha_b <= alpha_w {
+                        let t_pre =
+                            prev.transmission + alpha_w * (obs.transmission - prev.transmission);
+                        self.latched_transmission = Some(t_pre.clamp(0.0, 1.0));
+                        self.quasi_bound_latched = false;
+                    }
                 }
+            } else if self.latched_transmission.is_none()
+                && obs.right_wall_prob >= WALL_ARRIVAL_THRESHOLD
+            {
+                let alpha_w = if prev.right_wall_prob < WALL_ARRIVAL_THRESHOLD {
+                    let denom_w = (obs.right_wall_prob - prev.right_wall_prob).max(f64::EPSILON);
+                    ((WALL_ARRIVAL_THRESHOLD - prev.right_wall_prob) / denom_w).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                let t_pre = prev.transmission + alpha_w * (obs.transmission - prev.transmission);
+                self.latched_transmission = Some(t_pre.clamp(0.0, 1.0));
+                self.quasi_bound_latched = true;
             }
         }
         if obs.right_wall_prob >= WALL_ARRIVAL_THRESHOLD
@@ -396,8 +389,11 @@ impl WaveRunner {
             reflection: obs.reflection,
             barrier_prob: obs.barrier_prob,
             transmission: obs.transmission,
+            #[cfg(test)]
             right_wall_prob: obs.right_wall_prob,
             latched_transmission: self.latched_transmission,
+            wall_arrived: self.wall_arrived,
+            quasi_bound_latched: self.quasi_bound_latched,
             x_left: self.x_left,
             x_right: self.x_right,
             kinetic_energy: self.kinetic_energy,

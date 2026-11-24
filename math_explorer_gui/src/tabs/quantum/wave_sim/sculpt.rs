@@ -287,6 +287,7 @@ impl WaveRunner {
                 self.step_count = 0;
                 self.entered_barrier = false;
                 self.wall_arrived = false;
+                self.quasi_bound_latched = false;
                 self.latched_transmission = None;
                 self.prev_mode_phases = [0.0; 8];
                 self.update_observables_in_place();
@@ -355,33 +356,10 @@ impl WaveSimulatorTool {
     fn draw_sculpt_action_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         ui.horizontal_wrapped(|ui| {
             if ui.button("⛩ Stamp Double Barrier").clicked() {
-                let (x_axis, base) = self.base_potential_vec();
-                let mut target = base.clone();
-                stamp_double_barrier_into(&mut target, &x_axis);
-                self.sparse_potential = encode_sparse_potential(&base, &target, 1e-6);
-                if let Ok(mut cfg) = self.shared_config.write() {
-                    cfg.sparse_potential = self.sparse_potential.clone();
-                }
-                self.bump_revision();
-                self.export_runner = None;
-                self.export_data = None;
-                let _ = self
-                    .worker
-                    .send_command(SimCommand::Custom("stamp_double_barrier".to_string()));
-                ctx.request_repaint();
+                self.stamp_double_barrier_edits(ctx);
             }
             if ui.button("Clear Potential Edits").clicked() {
-                self.sparse_potential.clear();
-                if let Ok(mut cfg) = self.shared_config.write() {
-                    cfg.sparse_potential.clear();
-                }
-                self.bump_revision();
-                self.export_runner = None;
-                self.export_data = None;
-                let _ = self
-                    .worker
-                    .send_command(SimCommand::Custom("Clear Potential Edits".to_string()));
-                ctx.request_repaint();
+                self.clear_sculpt_edits(ctx);
             }
             if ui.button("🚀 Re-launch ψ(x,0)").clicked() {
                 let _ = self
@@ -390,6 +368,37 @@ impl WaveSimulatorTool {
                 ctx.request_repaint();
             }
         });
+    }
+
+    fn stamp_double_barrier_edits(&mut self, ctx: &egui::Context) {
+        let (x_axis, base) = self.base_potential_vec();
+        let mut target = base.clone();
+        stamp_double_barrier_into(&mut target, &x_axis);
+        self.sparse_potential = encode_sparse_potential(&base, &target, 1e-6);
+        if let Ok(mut cfg) = self.shared_config.write() {
+            cfg.sparse_potential = self.sparse_potential.clone();
+        }
+        self.bump_revision();
+        self.export_runner = None;
+        self.export_data = None;
+        let _ = self
+            .worker
+            .send_command(SimCommand::Custom("stamp_double_barrier".to_string()));
+        ctx.request_repaint();
+    }
+
+    fn clear_sculpt_edits(&mut self, ctx: &egui::Context) {
+        self.sparse_potential.clear();
+        if let Ok(mut cfg) = self.shared_config.write() {
+            cfg.sparse_potential.clear();
+        }
+        self.bump_revision();
+        self.export_runner = None;
+        self.export_data = None;
+        let _ = self
+            .worker
+            .send_command(SimCommand::Custom("Clear Potential Edits".to_string()));
+        ctx.request_repaint();
     }
 
     pub(crate) fn draw_sculpt_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {

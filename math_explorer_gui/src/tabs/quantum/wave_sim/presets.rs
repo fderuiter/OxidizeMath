@@ -181,6 +181,48 @@ pub fn default_compiled_expr() -> Expr {
         .unwrap_or(Expr::Number(0.0))
 }
 
+/// Shared parameter bundle synchronized between [`super::WaveSimulatorTool`] and [`super::WaveRunner`].
+#[derive(Clone, Debug)]
+pub struct WaveSimConfig {
+    /// Selected potential profile or custom AST mode.
+    pub preset: WavePotentialPreset,
+    /// Initial Gaussian packet center $x_0$.
+    pub x0: f64,
+    /// Initial wave number $k_0$ ($E_0 = k_0^2 / 2$).
+    pub k0: f64,
+    /// Initial Gaussian spatial width $\sigma$.
+    pub sigma: f64,
+    /// Potential barrier scale $V_0$.
+    pub v0: f64,
+    /// Potential barrier width $w$.
+    pub width: f64,
+    /// Unitary propagation time step $\Delta t$.
+    pub dt: f64,
+    /// Worker steps executed per visual frame.
+    pub steps_per_frame: usize,
+    /// Last valid compiled AST expression for `V(x)`.
+    pub custom_expr: Expr,
+    /// Optional sparse `(index, value)` sculpted potential overrides.
+    pub sparse_potential: Vec<(u16, f64)>,
+}
+
+impl Default for WaveSimConfig {
+    fn default() -> Self {
+        Self {
+            preset: WavePotentialPreset::InfiniteWell,
+            x0: DEFAULT_X0,
+            k0: DEFAULT_K0,
+            sigma: DEFAULT_SIGMA,
+            v0: DEFAULT_V0,
+            width: DEFAULT_WIDTH,
+            dt: DEFAULT_DT,
+            steps_per_frame: DEFAULT_STEPS_PER_FRAME,
+            custom_expr: default_compiled_expr(),
+            sparse_potential: Vec::new(),
+        }
+    }
+}
+
 /// Clamps any evaluated potential value to `[-500.0, 500.0]`, replacing `NaN` with `0.0`.
 #[must_use]
 pub fn clamp_potential_sample(value: f64) -> f64 {
