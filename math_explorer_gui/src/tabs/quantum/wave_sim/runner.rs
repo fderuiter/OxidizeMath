@@ -9,9 +9,7 @@ use super::presets::{
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use math_commons::ast::Expr;
-use math_explorer::physics::quantum::{
-    gaussian_wavepacket_into, state_norm_squared, CrankNicolson1D, QuantumState,
-};
+use math_explorer::physics::quantum::{gaussian_wavepacket_into, CrankNicolson1D, QuantumState};
 use math_explorer::registry::MAX_GRID_SIZE;
 use nalgebra::DVector;
 use num_complex::Complex;
@@ -132,7 +130,7 @@ pub struct WaveRunner {
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
     pub(crate) prev_mode_phases: [f64; 8],
-    pub(crate) sonification: crate::audio::SonificationFrame,
+    sonification: crate::audio::SonificationFrame,
 }
 
 impl WaveRunner {
@@ -189,17 +187,29 @@ impl WaveRunner {
         runner
     }
 
+    pub(crate) fn record_divergence(&mut self, param: &'static str, message: impl Into<String>) {
+        self.diverged = true;
+        self.sonification = crate::audio::SonificationFrame::silent();
+        self.diagnostic_report = Some(DiagnosticReport::new(
+            self.time,
+            self.step_count,
+            param,
+            message.into(),
+        ));
+    }
+
     /// Rebuilds the spatial grid, clamped potential, Hamiltonian, and initial Gaussian wavepacket.
     pub fn init_from_config(&mut self, cfg: &WaveSimConfig) {
         let n = self.n_points;
-        let Some(dx) = self.checked_dx() else {
-            let span = self.x_max - self.x_min;
+        let span = self.x_max - self.x_min;
+        if n < 2 || !span.is_finite() || span <= 0.0 {
             self.record_divergence(
                 "dx",
                 format!("Invalid spatial grid (n={n}, span={span}): requires n >= 2 and dx > 0."),
             );
             return;
-        };
+        }
+        let dx = span / (n as f64 - 1.0);
         self.x_axis.resize(n, 0.0);
         for (i, slot) in self.x_axis.iter_mut().enumerate() {
             *slot = self.x_min + i as f64 * dx;
@@ -243,6 +253,15 @@ impl WaveRunner {
         self.prev_mode_phases = [0.0; 8];
         self.update_observables_in_place();
         self.refresh_sonification(cfg.dt);
+    }
+
+    pub(crate) fn refresh_sonification(&mut self, dt: f64) {
+        let modes = self.psi.project_spatial_modes::<8>();
+        self.sonification = crate::audio::mappings::quantum_wavepacket_frame(
+            &modes,
+            &mut self.prev_mode_phases,
+            dt.max(1.0e-4),
+        );
     }
 
     pub(crate) fn refresh_propagator(&mut self, dt: f64) -> bool {
@@ -378,55 +397,6 @@ impl WaveRunner {
         }
         self.update_observables_in_place();
         self.refresh_sonification(dt);
-    }
-
-    /// Builds a structured [`WaveData`] snapshot integrating [`QuantumState::probability_density_in_place`].
-    #[must_use]
-    pub fn build_wave_data(&self) -> WaveData {
-        let mut safe_prob = vec![0.0; self.psi.vector.len()];
-        self.psi.probability_density_in_place(&mut safe_prob);
-        let obs = compute_tunneling_observables_slice(
-            &self.x_axis,
-            &safe_prob,
-            self.x_left,
-            self.x_right,
-        );
-        for p in &mut safe_prob {
-            if !p.is_finite() {
-                *p = 0.0;
-            }
-        }
-        let safe_potential: Vec<f64> = self
-            .potential
-            .iter()
-            .map(|&v| if v.is_finite() { v } else { 0.0 })
-            .collect();
-
-        WaveData {
-            time: self.time,
-            x_axis: self.x_axis.clone(),
-            prob_density: safe_prob,
-            potential: safe_potential,
-            reflection: obs.reflection,
-            barrier_prob: obs.barrier_prob,
-            transmission: obs.transmission,
-            #[cfg(test)]
-            right_wall_prob: obs.right_wall_prob,
-            latched_transmission: self.latched_transmission,
-            wall_arrived: self.wall_arrived,
-            quasi_bound_latched: self.quasi_bound_latched,
-            x_left: self.x_left,
-            x_right: self.x_right,
-            kinetic_energy: self.kinetic_energy,
-            norm_sq: state_norm_squared(&self.psi),
-        }
-    }
-
-    /// Current latched pre-wall transmission readout $T_{\text{scatter}}$, if latched.
-    #[cfg(test)]
-    #[must_use]
-    pub fn latched_transmission(&self) -> Option<f64> {
-        self.latched_transmission
     }
 }
 
