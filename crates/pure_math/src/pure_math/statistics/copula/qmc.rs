@@ -7,7 +7,6 @@ use super::transforms::{fast_norm_cdf, fast_norm_inv};
 use crate::error::CopulaError;
 use crate::pure_math::statistics::qmc::{FIRST_64_PRIMES, radical_inverse};
 use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
 
 /// Maximum copula dimension handled purely on the stack with zero heap allocations.
 pub const MAX_INLINE_COPULA_LEGS: usize = 12;
@@ -60,10 +59,7 @@ fn quasi_uniform_coord(sample_idx: usize, dim_idx: usize, shift: f64) -> f64 {
 
 fn fill_cranley_patterson_shifts(shifts: &mut [f64], seed: u64) {
     let mut rng = OxidizeRng::new(seed);
-    let scale = 1.0 / ((u64::MAX as f64) + 1.0);
-    for slot in shifts.iter_mut() {
-        *slot = (rng.next_u64() as f64) * scale;
-    }
+    math_rng::fill_cranley_patterson_shifts(shifts, &mut rng);
 }
 
 #[inline]

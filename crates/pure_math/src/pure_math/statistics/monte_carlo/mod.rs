@@ -7,7 +7,7 @@
 //! - Optimal-$\hat{\beta}^*$ control variates
 //! - Self-normalized importance sampling with Kong's exact Effective Sample Size (`ESS`)
 //! - Stratified Latin Hypercube sampling (LHS)
-//! - Cranley-Patterson randomized Halton and Joe-Kuo Sobol quasi-Monte Carlo
+//! - Cranley-Patterson & Owen-scrambled 64D Halton, Joe-Kuo Sobol, and base-2 Niederreiter QMC
 //!
 //! ## Example
 //!

@@ -3,12 +3,11 @@
 
 use super::{Observation, TimePoint, kaplan_meier};
 use crate::applied::clinical_trials::types::ClinicalTrialError;
-use oxidize_core::rng::OxidizeRng;
+use oxidize_core::rng::{OxidizeRng, sample_bounded_usize};
 use pure_math::pure_math::statistics::bootstrap::BootstrapMethod;
 use pure_math::pure_math::statistics::monte_carlo::{
     normal_cdf_fast, normal_inv_cdf_fast, two_sided_normal_z,
 };
-use rand::RngCore;
 
 /// Kaplan-Meier survival point augmented with nonparametric bootstrap confidence bounds.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -242,14 +241,7 @@ fn bca_survival_bounds(
 #[inline]
 #[verified_engine::verified]
 fn draw_index(rng: &mut OxidizeRng, upper: usize) -> usize {
-    let bound = upper as u64;
-    let zone = u64::MAX - (u64::MAX % bound);
-    loop {
-        let r = rng.next_u64();
-        if r < zone {
-            return (r % bound) as usize;
-        }
-    }
+    sample_bounded_usize(rng, upper)
 }
 
 #[inline]

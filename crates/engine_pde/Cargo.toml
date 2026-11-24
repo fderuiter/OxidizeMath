@@ -5,16 +5,14 @@ edition = "2024"
 
 [features]
 default = ["std"]
-alloc = []
+alloc = ["math_rng/alloc"]
 std = ["alloc", "math_commons/std", "verified_engine/std"]
 
 [dependencies]
 math_commons = { path = "../math_commons", default-features = false }
+math_rng = { path = "../00_foundation/math_rng" }
 rand_core = { workspace = true }
 verified_engine = { version = "0.1.0", path = "../verified_engine", default-features = false }
-
-[dev-dependencies]
-oxidize_core = { path = "../oxidize_core" }
 
 [lints]
 workspace = true

@@ -15,7 +15,7 @@ use engine_diffeq::{
     EulerMaruyamaSolver, SdeSystem, StochasticCalculus,
 };
 use math_commons::math_kernel::types::SolverWorkspace;
-use oxidize_core::rng::OxidizeRng;
+use math_rng::OxidizeRng;
 
 struct OrnsteinUhlenbeck;
 

@@ -9,8 +9,7 @@ use math_explorer::physics::medical::radar_gating::{
     Beamformer, FmcwConfig, MusicEstimator, SpatialCztConfig,
 };
 use num_complex::Complex;
-use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
+use oxidize_core::rng::{sample_closed_open, OxidizeRng};
 use std::f64::consts::PI;
 
 /// Synchronized range-domain spectra and spatial beamformer diagnostics.
@@ -160,7 +159,7 @@ fn synthesize_mimo_snapshots(
     let amp_1 = (state.primary_target.rcs * primary_gain).max(0.05);
     let amp_2 = (state.secondary_target.rcs * secondary_gain).max(0.05);
 
-    let mut rng = OxidizeRng::new(state.rng_seed ^ 0x5A17_6060);
+    let mut rng = OxidizeRng::new(state.rng_seed).with_stream(1);
     let mut snapshots = Vec::with_capacity(m_snaps);
     for m in 0..m_snaps {
         let phi_1 = 0.61 * (m as f64 + 1.0);
@@ -172,17 +171,13 @@ fn synthesize_mimo_snapshots(
             let p2 = omega_2 * t_k + phi_2;
             let clean =
                 Complex::new(p1.cos(), p1.sin()) * amp_1 + Complex::new(p2.cos(), p2.sin()) * amp_2;
-            let n_re = (unit_f64(&mut rng) - 0.5) * 2.0 * state.noise_sigma;
-            let n_im = (unit_f64(&mut rng) - 0.5) * 2.0 * state.noise_sigma;
+            let n_re = (sample_closed_open::<f64, _>(&mut rng) - 0.5) * 2.0 * state.noise_sigma;
+            let n_im = (sample_closed_open::<f64, _>(&mut rng) - 0.5) * 2.0 * state.noise_sigma;
             chirp.push(clean + Complex::new(n_re, n_im));
         }
         snapshots.push(chirp);
     }
     snapshots
-}
-
-fn unit_f64(rng: &mut OxidizeRng) -> f64 {
-    ((rng.next_u64() >> 11) as f64) * (1.0 / ((1_u64 << 53) as f64))
 }
 
 fn compute_coarse_fft_profile(

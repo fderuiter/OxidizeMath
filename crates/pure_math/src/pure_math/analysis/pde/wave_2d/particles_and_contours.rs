@@ -4,7 +4,6 @@
 
 use math_commons::math_kernel::types::flatten_2d_index;
 use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
 
 /// Default Chladni sand particle capacity (`4,000` grains).
 pub const DEFAULT_SAND_PARTICLES: usize = 4_000;
@@ -162,8 +161,7 @@ impl ChladniSandSystem {
 
 #[verified_engine::verified]
 fn next_unit_f64(rng: &mut OxidizeRng) -> f64 {
-    let bits = rng.next_u64() >> 11;
-    (bits as f64) * (1.0 / ((1_u64 << 53) as f64))
+    math_rng::sample_closed_open(rng)
 }
 
 #[verified_engine::verified]

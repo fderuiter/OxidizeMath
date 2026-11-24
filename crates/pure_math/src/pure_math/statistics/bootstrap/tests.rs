@@ -1,7 +1,7 @@
 use super::*;
 use crate::pure_math::statistics::monte_carlo::normal_inv_cdf_fast;
+use math_rng::sample_open;
 use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
 use verified_engine::engine::VerifiedEngine;
 
 #[test]
@@ -11,7 +11,7 @@ fn test_bootstrap_matches_analytical_normal_interval_on_gaussian_sample() {
     let mut rng = OxidizeRng::new(314159);
     let mut data = Vec::with_capacity(n);
     for _ in 0..n {
-        let u = (((rng.next_u64() >> 11) as f64) + 0.5) / ((1_u64 << 53) as f64);
+        let u: f64 = sample_open(&mut rng);
         data.push(10.0 + 2.0 * normal_inv_cdf_fast(u));
     }
 
@@ -57,7 +57,7 @@ fn test_bca_reduces_skew_bias_and_improves_right_tail_coverage() {
     for t in 0..trials {
         let mut rng = OxidizeRng::new(50_000 + t as u64);
         for slot in &mut data {
-            let u = (((rng.next_u64() >> 11) as f64) + 0.5) / ((1_u64 << 53) as f64);
+            let u: f64 = sample_open(&mut rng);
             *slot = -u.ln();
         }
         let cmp = ws

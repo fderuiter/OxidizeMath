@@ -3,16 +3,14 @@
 use super::error::MonteCarloError;
 use super::stats::{MonteCarloEstimate, effective_sample_size, two_sided_normal_z};
 use crate::pure_math::statistics::qmc::{
-    HaltonSequence, MAX_HALTON_DIM, MAX_SOBOL_DIM, SobolSequence,
+    HaltonSequence, MAX_HALTON_DIM, MAX_NIEDERREITER_DIM, MAX_SOBOL_DIM, NiederreiterSequence,
+    SobolSequence,
 };
+use math_rng::{sample_bounded_usize, sample_open};
 use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
 
 /// Guard margin keeping uniform samples strictly inside `(0.0, 1.0)`.
 const OPEN_EPS: f64 = 1e-15;
-
-/// Scale factor converting a 53-bit integer draw into `[0.0, 1.0)`.
-const INV_TWO_POW_53: f64 = 1.0 / ((1_u64 << 53) as f64);
 
 /// Number of Cranley-Patterson replicates used for randomized QMC confidence intervals.
 pub(super) const DEFAULT_QMC_REPLICATES: usize = 8;
@@ -21,8 +19,7 @@ pub(super) const DEFAULT_QMC_REPLICATES: usize = 8;
 #[inline]
 #[verified_engine::verified]
 fn draw_open_unit(rng: &mut OxidizeRng) -> f64 {
-    let u = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53;
-    u.clamp(OPEN_EPS, 1.0 - OPEN_EPS)
+    sample_open(rng)
 }
 
 /// Draws a uniform integer in `0..upper` without modulo bias or heap allocation.
@@ -32,14 +29,7 @@ pub(crate) fn draw_bounded_index(rng: &mut OxidizeRng, upper: usize) -> usize {
     if upper <= 1 {
         return 0;
     }
-    let bound = upper as u64;
-    let zone = u64::MAX - (u64::MAX % bound);
-    loop {
-        let candidate = rng.next_u64();
-        if candidate < zone {
-            return (candidate % bound) as usize;
-        }
-    }
+    sample_bounded_usize(rng, upper)
 }
 
 /// Variance-reduction and sampling strategy selector for [`MonteCarloWorkspace`].
@@ -51,10 +41,12 @@ pub enum SamplingMethod {
     Antithetic,
     /// Stratified Latin Hypercube sampling across every coordinate axis.
     LatinHypercube,
-    /// Cranley-Patterson randomized Halton quasi-Monte Carlo.
+    /// Scrambled + Cranley-Patterson randomized 64D Halton quasi-Monte Carlo.
     RandomizedHalton,
-    /// Cranley-Patterson randomized Joe-Kuo Sobol quasi-Monte Carlo.
+    /// Cranley-Patterson randomized 64D 53-bit Joe-Kuo Sobol quasi-Monte Carlo.
     RandomizedSobol,
+    /// Scrambled + Cranley-Patterson randomized 64D 53-bit base-2 Niederreiter quasi-Monte Carlo.
+    RandomizedNiederreiter,
 }
 
 /// Preallocated workspace executing IID, antithetic, control-variate, importance-sampling,
@@ -74,6 +66,7 @@ pub struct MonteCarloWorkspace {
     pub(super) batch_means_buf: Vec<f64>,
     pub(super) halton: Option<HaltonSequence>,
     pub(super) sobol: Option<SobolSequence>,
+    pub(super) niederreiter: Option<NiederreiterSequence>,
 }
 
 impl MonteCarloWorkspace {
@@ -96,11 +89,12 @@ impl MonteCarloWorkspace {
                     samples: max_samples,
                 })?;
         let halton = HaltonSequence::new(dimension).ok();
-        let sobol = if dimension <= MAX_SOBOL_DIM {
-            SobolSequence::new(dimension).ok()
-        } else {
-            None
-        };
+        let sobol = (dimension <= MAX_SOBOL_DIM)
+            .then(|| SobolSequence::new(dimension).ok())
+            .flatten();
+        let niederreiter = (dimension <= MAX_NIEDERREITER_DIM)
+            .then(|| NiederreiterSequence::new(dimension).ok())
+            .flatten();
         Ok(Self {
             max_samples,
             dimension,
@@ -115,6 +109,7 @@ impl MonteCarloWorkspace {
             batch_means_buf: vec![0.0; DEFAULT_QMC_REPLICATES],
             halton,
             sobol,
+            niederreiter,
         })
     }
 
@@ -176,6 +171,9 @@ impl MonteCarloWorkspace {
             }
             SamplingMethod::RandomizedHalton => self.estimate_qmc_halton(n_samples, rng, integrand),
             SamplingMethod::RandomizedSobol => self.estimate_qmc_sobol(n_samples, rng, integrand),
+            SamplingMethod::RandomizedNiederreiter => {
+                self.estimate_qmc_niederreiter(n_samples, rng, integrand)
+            }
         }
     }
 

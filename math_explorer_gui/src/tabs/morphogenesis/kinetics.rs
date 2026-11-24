@@ -9,8 +9,7 @@ use math_explorer::biology::morphogenesis::{
     GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics, SpatialSchnakenbergKinetics,
     TuringSystem,
 };
-use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
+use oxidize_core::rng::{sample_closed_open, OxidizeRng};
 
 pub(crate) fn apply_uniform_noise<K: ReactionKinetics<2>, D: SpatialDiffusion<2>>(
     system: &mut TuringSystem<2, K, D>,
@@ -21,10 +20,9 @@ pub(crate) fn apply_uniform_noise<K: ReactionKinetics<2>, D: SpatialDiffusion<2>
     if !amp.is_finite() || amp <= 0.0 {
         return;
     }
-    const INV_2_POW_53: f64 = 1.0 / ((1u64 << 53) as f64);
     for idx in 0..count {
-        let u_unit = ((rng.next_u64() >> 11) as f64) * INV_2_POW_53;
-        let v_unit = ((rng.next_u64() >> 11) as f64) * INV_2_POW_53;
+        let u_unit: f64 = sample_closed_open(rng);
+        let v_unit: f64 = sample_closed_open(rng);
         system.u_mut()[idx] += (2.0 * u_unit - 1.0) * amp;
         system.v_mut()[idx] += (2.0 * v_unit - 1.0) * amp;
     }

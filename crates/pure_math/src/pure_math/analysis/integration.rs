@@ -126,10 +126,12 @@ impl Integrator for Trapezoidal {
 /// Sampling engine backing [`MultivariateIntegrator`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MultivariateRule {
-    /// Cranley-Patterson randomized Joe-Kuo Sobol low-discrepancy integration (`1..=32` dims).
+    /// Cranley-Patterson randomized Joe-Kuo Sobol low-discrepancy integration (`1..=64` dims).
     Sobol,
-    /// Cranley-Patterson randomized prime-base Halton low-discrepancy integration (`1..=64` dims).
+    /// Scrambled + Cranley-Patterson randomized prime-base Halton integration (`1..=64` dims).
     Halton,
+    /// Scrambled + Cranley-Patterson randomized base-2 Niederreiter integration (`1..=64` dims).
+    Niederreiter,
     /// Stratified Latin Hypercube integration (`1..=64` dims).
     LatinHypercube,
     /// Standard IID Monte Carlo integration (`1..=64` dims).
@@ -179,10 +181,16 @@ impl MultivariateIntegrator {
         })
     }
 
-    /// Constructs a Joe-Kuo Sobol hyperrectangle integrator (`1..=32` dimensions).
+    /// Constructs a Joe-Kuo Sobol hyperrectangle integrator (`1..=64` dimensions).
     #[verified_engine::verified]
     pub fn new_sobol(dimension: usize, n_samples: usize) -> Result<Self, MonteCarloError> {
         Self::with_rule(MultivariateRule::Sobol, dimension, n_samples)
+    }
+
+    /// Constructs a base-2 Niederreiter hyperrectangle integrator (`1..=64` dimensions).
+    #[verified_engine::verified]
+    pub fn new_niederreiter(dimension: usize, n_samples: usize) -> Result<Self, MonteCarloError> {
+        Self::with_rule(MultivariateRule::Niederreiter, dimension, n_samples)
     }
 
     /// Constructs a prime-base Halton hyperrectangle integrator (`1..=64` dimensions).
@@ -238,6 +246,7 @@ impl MultivariateIntegrator {
         let method = match self.rule {
             MultivariateRule::Sobol => SamplingMethod::RandomizedSobol,
             MultivariateRule::Halton => SamplingMethod::RandomizedHalton,
+            MultivariateRule::Niederreiter => SamplingMethod::RandomizedNiederreiter,
             MultivariateRule::LatinHypercube => SamplingMethod::LatinHypercube,
             MultivariateRule::MonteCarlo => SamplingMethod::Iid,
         };
@@ -301,6 +310,7 @@ impl MultivariateIntegrator {
         let method = match self.rule {
             MultivariateRule::Sobol => SamplingMethod::RandomizedSobol,
             MultivariateRule::Halton => SamplingMethod::RandomizedHalton,
+            MultivariateRule::Niederreiter => SamplingMethod::RandomizedNiederreiter,
             MultivariateRule::LatinHypercube => SamplingMethod::LatinHypercube,
             MultivariateRule::MonteCarlo => SamplingMethod::Iid,
         };

@@ -10,7 +10,7 @@ use math_commons::math_kernel::types::{
     SolverWorkspace, StepSize, flatten_2d_index, flatten_3d_index,
 };
 use math_commons::registry::TOLERANCE_STANDARD;
-use oxidize_core::rng::OxidizeRng;
+use math_rng::OxidizeRng;
 use verified_engine::engine::VerifiedEngine;
 
 fn ginzburg_landau_energy_2d(

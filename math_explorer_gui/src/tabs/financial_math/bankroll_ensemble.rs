@@ -225,7 +225,7 @@ impl BankrollEnsembleLab {
         self.last_barrier_risk = kelly_barrier_risk(p, o, &frac, self.barrier_floor_ratio).ok();
 
         let barrier_floor = w0 * self.barrier_floor_ratio;
-        let mut rng = OxidizeRng::from_seed(BASE_SEED ^ seed_counter.wrapping_mul(0x9E37_79B9));
+        let mut rng = OxidizeRng::new(BASE_SEED).with_stream(seed_counter);
         self.last_solvency_report = ProportionalPortfolioBet::unit_weight(*p, *o, frac)
             .and_then(|bet| {
                 self.workspace
@@ -334,7 +334,7 @@ impl BankrollEnsembleLab {
             w0 * self.barrier_floor_ratio,
         );
         self.reset_push_buffers(w0, barrier_floor, steps);
-        let mut rng = OxidizeRng::from_seed(BASE_SEED ^ seed_counter.wrapping_mul(0x9E37_79B9));
+        let mut rng = OxidizeRng::new(BASE_SEED).with_stream(seed_counter);
         let step_ev_factor = (1.0 + f_clamped * ev).max(0.0);
         let mut ew = w0;
         for t in 1..=steps {

@@ -351,16 +351,13 @@ impl<'a, T: Scalar> SolverWorkspace<'a, T> {
     }
 }
 
-/// Samples a deterministic uniform variate strictly in `(0, 1]` using 53 bits from `rng`.
-///
-/// Shifting `rng.next_u64() >> 11` and adding `1` yields integers in `1..=2^53`, avoiding `0.0`
-/// so `ln(u)` in Box-Muller sampling never overflows or produces `-inf`.
+/// Samples a deterministic uniform variate strictly in `(0, 1)` (clamped `<= 1.0` after `f32` cast)
+/// via [`math_rng::sample_open`], avoiding `0.0` so `ln(u)` in Box-Muller sampling never overflows.
 #[inline]
 #[verified_engine::verified]
 pub fn sample_open_unit<T: Scalar, R: RngCore + ?Sized>(rng: &mut R) -> T {
-    const INV_TWO_POW_53: f64 = 1.0 / 9_007_199_254_740_992.0;
-    let mantissa_plus_one = (rng.next_u64() >> 11) + 1;
-    let u = T::from_f64((mantissa_plus_one as f64) * INV_TWO_POW_53);
+    let u_f64: f64 = math_rng::sample_open(rng);
+    let u = T::from_f64(u_f64);
     debug_assert!(u > T::ZERO && u <= T::ONE);
     u
 }

@@ -1,8 +1,7 @@
 //! Deterministic two-step inverse-CDF sampling for [`super::simulation::BivariateWeibullModel`].
 
 use crate::applied::clinical_trials::types::{ClinicalTrialError, SurvivalTime};
-use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
+use oxidize_core::rng::{OxidizeRng, sample_open};
 
 use super::censoring::CensoredOutcome;
 use super::simulation::{BivariateWeibullModel, SimulationParams};
@@ -37,8 +36,7 @@ impl Default for SimulatedSubject {
 
 #[inline]
 pub(crate) fn open_unit_uniform(rng: &mut OxidizeRng) -> f64 {
-    let bits = rng.next_u64() >> 11;
-    let u = (bits as f64 + 0.5) * (1.0 / ((1_u64 << 53) as f64));
+    let u: f64 = sample_open(rng);
     debug_assert!(u > 0.0 && u < 1.0);
     u
 }
