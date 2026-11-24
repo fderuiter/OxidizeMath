@@ -1,9 +1,23 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use crate::framework::{BrushMode, BrushStroke};
+use crate::framework::{BrushMode, BrushStroke, RasterBrushStroke};
 use crate::tabs::ai::rl_sculpt::RlOverlayMode;
-use crate::url_state::MAX_DECODED_URL_STATE_BYTES;
+use crate::url_state::{
+    encode_share_fragment, parse_share_location, MAX_DECODED_URL_STATE_BYTES, URL_JSON_BOUNDS,
+};
+
+fn count_role(mdp: &SculptedGridMdp, role: GridCellRole) -> usize {
+    let mut count = 0;
+    for y in 0..mdp.height {
+        for x in 0..mdp.width {
+            if mdp.cell_role(GridState { x, y }) == role {
+                count += 1;
+            }
+        }
+    }
+    count
+}
 
 #[test]
 fn test_grid_world_default_playback_and_rl_hyperparameters() {
@@ -63,6 +77,99 @@ fn test_grid_world_step_terminal_reset_and_sonification() {
         (tool.current_state, tool.steps, tool.episodes),
         (tool.mdp.start, 0, 1)
     );
+}
+
+fn assert_greedy_bellman_reroute(tool: &mut GridWorldTool) {
+    tool.learning_rate = 0.4;
+    tool.exploration_rate = 0.25;
+    tool.sync_agent_hyperparameters();
+    for _ in 0..4 {
+        tool.train_batch();
+    }
+    assert_ne!(
+        tool.mdp.cell_role(tool.current_state),
+        GridCellRole::SolidWall
+    );
+    tool.exploration_rate = 0.0;
+    tool.sync_agent_hyperparameters();
+    let mut probe = tool.mdp.start;
+    let mut reached_goal = false;
+    for _ in 0..25 {
+        let act = tool
+            .workspace
+            .greedy_q_action(probe)
+            .expect("greedy action");
+        probe = tool.mdp.step_deterministic(probe, act);
+        assert_ne!(
+            tool.mdp.cell_role(probe),
+            GridCellRole::SolidWall,
+            "Agent entered impassable wall"
+        );
+        if probe == tool.mdp.goal {
+            reached_goal = true;
+            break;
+        }
+    }
+    assert!(
+        reached_goal,
+        "Bellman Q-learning agent must route around sculpted wall to reach relocated Goal"
+    );
+}
+
+#[test]
+fn test_grid_world_live_sculpting_bellman_rerouting_and_url_roundtrip() {
+    let mut tool = GridWorldTool::default();
+    let rev0 = tool.state_revision();
+
+    tool.clear_sculpted_obstacles();
+    tool.brush_mode = GridBrushMode::Wall;
+    tool.apply_brush_stroke(RasterBrushStroke {
+        cells: vec![(1, 0), (1, 1), (1, 2), (1, 3)],
+        secondary: false,
+        via_keyboard: false,
+        focus_cell: (1, 3),
+    });
+    assert_eq!(count_role(&tool.mdp, GridCellRole::SolidWall), 4);
+    assert_ne!(tool.state_revision(), rev0);
+
+    tool.brush_mode = GridBrushMode::Goal;
+    tool.apply_brush_stroke(RasterBrushStroke {
+        cells: vec![(2, 0)],
+        secondary: false,
+        via_keyboard: true,
+        focus_cell: (2, 0),
+    });
+    assert_eq!(tool.mdp.goal, GridState { x: 2, y: 0 });
+
+    tool.brush_mode = GridBrushMode::Wall;
+    tool.apply_brush_stroke(RasterBrushStroke {
+        cells: vec![(0, 0), (2, 0)],
+        secondary: false,
+        via_keyboard: false,
+        focus_cell: (2, 0),
+    });
+    assert_ne!(tool.mdp.cell_role(tool.mdp.start), GridCellRole::SolidWall);
+    assert_ne!(tool.mdp.cell_role(tool.mdp.goal), GridCellRole::SolidWall);
+
+    assert_greedy_bellman_reroute(&mut tool);
+
+    let saved = tool.save_state().expect("GridWorld save_state");
+    assert!(saved.contains("rle_mask"));
+    URL_JSON_BOUNDS
+        .validate_json(&saved)
+        .expect("GridWorld sculpted state fits URL_JSON_BOUNDS");
+    let fragment = encode_share_fragment("ai", Some("GridWorldTool"), Some(&saved))
+        .expect("encode GridWorld URL fragment");
+    let decoded_url = parse_share_location(&fragment, "")
+        .expect("decode GridWorld URL fragment")
+        .expect("present share params");
+
+    let mut restored = GridWorldTool::default();
+    restored
+        .try_load_state(decoded_url.state_json.as_deref().unwrap())
+        .expect("restore sculpted GridWorld");
+    assert_eq!(count_role(&restored.mdp, GridCellRole::SolidWall), 4);
+    assert_eq!(restored.mdp.goal, GridState { x: 2, y: 0 });
 }
 
 #[test]

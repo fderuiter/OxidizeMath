@@ -26,7 +26,19 @@ fn extract_path_attr(attrs: &[syn::Attribute]) -> Option<String> {
 }
 
 impl<'ast> syn::visit::Visit<'ast> for SubmoduleCollector {
+    fn visit_item(&mut self, node: &'ast syn::Item) {
+        if let syn::Item::Mod(item_mod) = node
+            && crate::ast_visitor::attrs_require_cfg_test(&item_mod.attrs)
+        {
+            return;
+        }
+        syn::visit::visit_item(self, node);
+    }
+
     fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
+        if crate::ast_visitor::attrs_require_cfg_test(&node.attrs) {
+            return;
+        }
         if node.content.is_none() {
             self.submodules.push(ExternalSubmodule {
                 ident: node.ident.to_string(),
@@ -37,10 +49,23 @@ impl<'ast> syn::visit::Visit<'ast> for SubmoduleCollector {
     }
 }
 
+fn is_dedicated_test_entry(name: &str) -> bool {
+    if name == "tests" {
+        return true;
+    }
+    let Some(stem) = name.strip_suffix(".rs") else {
+        return false;
+    };
+    stem == "tests" || stem.ends_with("_tests") || stem.starts_with("tests_")
+}
+
 pub(super) fn collect_external_submodules(ast: Option<&syn::File>) -> Vec<ExternalSubmodule> {
     let Some(ast) = ast else {
         return Vec::new();
     };
+    if crate::ast_visitor::attrs_require_cfg_test(&ast.attrs) {
+        return Vec::new();
+    }
     let mut collector = SubmoduleCollector::default();
     syn::visit::Visit::visit_file(&mut collector, ast);
     collector.submodules
@@ -110,6 +135,9 @@ impl<V: crate::vfs::VirtualFileSystem> super::TraceabilityEngine<V> {
                 Err(err) => return Err(err),
             };
             for name in entries {
+                if is_dedicated_test_entry(&name) {
+                    continue;
+                }
                 let path = crate::path_utils::join_and_normalize(&current_dir, &name);
                 if name.ends_with(".rs") {
                     active_files.insert(path);
@@ -166,6 +194,13 @@ impl<V: crate::vfs::VirtualFileSystem> super::TraceabilityEngine<V> {
             if cache.get(&key).is_none() {
                 let content = self.vfs.read_to_string(&norm_file_path).await?;
                 cache.insert_source(key.clone(), content);
+            }
+            if cache
+                .get(&key)
+                .and_then(|e| e.ast.as_ref())
+                .is_some_and(|ast| crate::ast_visitor::attrs_require_cfg_test(&ast.attrs))
+            {
+                continue;
             }
             active_files.insert(norm_file_path.clone());
 

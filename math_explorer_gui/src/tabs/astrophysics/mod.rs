@@ -4,10 +4,14 @@ use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use math_explorer::physics::astrophysics::HaloProfile;
 
+pub mod black_hole_geodesic_tool;
+mod black_hole_geodesic_ui;
 pub mod challenge;
 mod galactic_orbits_relativity;
 pub mod galactic_orbits_tool;
 mod galactic_orbits_ui;
+pub mod relativistic_jet_tool;
+mod relativistic_jet_ui;
 mod rotation_curve_relativity;
 pub mod rotation_curve_tool;
 mod rotation_curve_ui;
@@ -137,3 +141,4 @@ inventory::submit! {
 }
 
 // [cite:dwarf_galaxy_empirical_dependencies]
+// [cite:general_relativity_geodesics]
