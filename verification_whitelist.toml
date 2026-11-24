@@ -328,11 +328,11 @@ min_total_density = 0.120
 
 [verification_debt.opt_out_reasons]
 "Legacy missing assertions" = 1
-"gui_tool" = 659
+"gui_tool" = 669
 "infrastructure" = 2
 "metadata" = 2
 "no_std_engine" = 13
-"tests" = 234
+"tests" = 236
 
 [verification_debt.crate_opt_out_caps]
 "crates/02_engines/engine_linalg" = 15
@@ -344,7 +344,7 @@ min_total_density = 0.120
 "crates/pure_math" = 12
 "crates/scientific_metadata" = 2
 "egui_plot" = 1
-"math_explorer_gui" = 874
+"math_explorer_gui" = 886
 
 [verification_debt.file_opt_out_caps]
 "math_explorer_gui/src/tabs/optics_waves/tool.rs" = 2
