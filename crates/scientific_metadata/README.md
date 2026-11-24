@@ -1,17 +1,22 @@
 # Scientific Metadata
 
-Standardized metadata contracts, parameter constraints, and academic citation registries for the OxidizeMath ecosystem.
+![Maturity: Certified](https://img.shields.io/badge/maturity-Certified-2ea44f.svg)
+
+Standardized metadata contracts, maturity tier descriptors, parameter constraints, and academic citation registries for the OxidizeMath ecosystem.
+
+> **Maturity Tier:** `Certified` — deterministic verification contracts, zero-allocation descriptors, and SemVer signature stability.
 
 ## 1. Overview & Architecture
 
-The `scientific_metadata` crate defines decoupled contracts for mathematical model introspection, accessibility representations, literature citations, and parameter boundary constraints.
+The `scientific_metadata` crate defines decoupled contracts for mathematical model introspection, maturity tier classification, accessibility representations, literature citations, and parameter boundary constraints.
 
 By isolating these contracts into a lightweight, standalone library, mathematical simulation kernels remain completely stateless during calculation routines, while graphical user interfaces and verification test suites can dynamically query model properties without introducing global runtime locks or circular dependencies.
 
 ### Module Structure
 
-- **`theory`**: Defines the `TheoryDescribable` trait and `ParameterConstraint` struct. These contracts allow models to expose:
+- **`theory`**: Defines `MaturityTier` (`Experimental`, `Validated`, `Certified` — safe default `Experimental`), the `TheoryDescribable` trait (including `TheoryDescribable::maturity_tier`), and `ParameterConstraint`:
   - Verified human-readable descriptions of states and operational regimes.
+  - Explicit `MaturityTier` badges and screen-reader accessible qualification labels (`MaturityTier::screen_reader_label`).
   - Screen-reader phonetic strings for accessible scientific computing.
   - Literature citations for underlying mathematical formulations.
   - Parameter boundary constraints (`min`, `max`, `step`) for UI controls and numerical validity guards.

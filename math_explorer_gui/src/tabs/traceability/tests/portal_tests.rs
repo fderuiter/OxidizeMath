@@ -58,6 +58,13 @@ fn test_packaged_desktop_outside_workspace_renders_embedded_28_papers() {
         &mut tab,
         "Verification Certificate: Passed"
     ));
+    assert!(render_tab_text_hit(
+        &mut tab,
+        "Maturity Qualification Tiers"
+    ));
+    assert!(render_tab_text_hit(&mut tab, "[CERT]"));
+    assert!(render_tab_text_hit(&mut tab, "[VAL]"));
+    assert!(render_tab_text_hit(&mut tab, "[EXP]"));
     assert!(tab.online_document_url("cera_framework.tex").is_some());
 }
 

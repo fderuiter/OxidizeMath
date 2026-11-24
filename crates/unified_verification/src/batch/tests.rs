@@ -339,6 +339,7 @@ fn test_batch_ast_parses_each_unique_workspace_file_at_most_once() {
     let apis = crate::api_drift::extract_apis_in_dir_with_cache(Path::new("."), &mut cache);
     assert!(!apis.is_empty());
     assert!(run_traceability_with_cache(false, &mut cache));
+    assert!(crate::maturity::check_maturity_with_cache(&mut cache));
     assert!(crate::entropy_guard::check_entropy_with_cache(&[], &mut cache).is_empty());
     let member_refs: Vec<&str> = members.iter().map(String::as_str).collect();
     assert!(crate::policy_audit::run_policy_audit_with_cache(

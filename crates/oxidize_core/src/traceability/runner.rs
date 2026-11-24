@@ -178,9 +178,17 @@ fn format_module_and_bypass_errors(report: &TraceabilityReport, lines: &mut Vec<
             lines.push(format!("  - {item}"));
         }
         lines.push(
-            "  Hint: `pure_math` modules must use deterministic `theory_verification!` instead of `stochastic_signature_verification!`."
+            "  Hint: `pure_math` and `Certified` modules must use deterministic `theory_verification!` instead of `stochastic_signature_verification!`."
                 .to_string(),
         );
+        failed = true;
+    }
+
+    if !report.maturity_violations.is_empty() {
+        lines.push("\n[!] Maturity Qualification Violations Detected:".to_string());
+        for violation in &report.maturity_violations {
+            lines.push(format!("  - {violation}"));
+        }
         failed = true;
     }
 

@@ -179,4 +179,24 @@ impl SemanticPalette {
             Color32::from_rgb(0, 72, 186)
         }
     }
+
+    /// Returns the pill background fill for `tier` in `mode`, preserving `>= 4.5:1` WCAG 2.2 AA
+    /// text contrast against [`Self::success`], [`Self::info`], and [`Self::warning`].
+    #[inline]
+    #[must_use]
+    pub const fn maturity_badge_bg(
+        mode: ThemeMode,
+        tier: scientific_metadata::theory::MaturityTier,
+    ) -> Color32 {
+        use scientific_metadata::theory::MaturityTier;
+        match (mode, tier) {
+            (ThemeMode::Dark, MaturityTier::Certified) => Color32::from_rgb(14, 48, 26),
+            (ThemeMode::Dark, MaturityTier::Validated) => Color32::from_rgb(12, 38, 66),
+            (ThemeMode::Dark, MaturityTier::Experimental) => Color32::from_rgb(52, 36, 8),
+            (ThemeMode::Light, MaturityTier::Certified) => Color32::from_rgb(232, 248, 237),
+            (ThemeMode::Light, MaturityTier::Validated) => Color32::from_rgb(232, 243, 255),
+            (ThemeMode::Light, MaturityTier::Experimental) => Color32::from_rgb(255, 246, 226),
+            (ThemeMode::HighContrast, _) => Color32::BLACK,
+        }
+    }
 }

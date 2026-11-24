@@ -4,8 +4,11 @@ mod cache;
 #[cfg(feature = "ast-analysis")]
 mod debt_floors;
 mod manifest;
+pub mod maturity;
 #[cfg(feature = "ast-analysis")]
 mod module_tree;
+#[cfg(feature = "ast-analysis")]
+pub mod qualification;
 #[cfg(feature = "ast-analysis")]
 mod runner;
 
@@ -14,6 +17,13 @@ pub use cache::{AstCache, CachedRustFile};
 #[cfg(feature = "ast-analysis")]
 pub use debt_floors::{DensityFloors, load_workspace_density_floors, parse_density_floors_toml};
 pub use manifest::{TraceabilityManifestPayload, VerificationCertificate};
+pub use maturity::{EXPECTED_WORKSPACE_CRATES, MaturityRegistry};
+#[cfg(feature = "ast-analysis")]
+pub use qualification::{
+    MaturityEvidence, MaturityGateReport, VALIDATED_MIN_ASSERTION_DENSITY,
+    discover_maturity_scan_files, evaluate_maturity_with_registry_and_cache,
+    evaluate_workspace_maturity, evaluate_workspace_maturity_with_cache,
+};
 #[cfg(feature = "ast-analysis")]
 pub use runner::{
     WorkspaceAstMetrics, check_and_print_traceability_errors,
@@ -22,6 +32,7 @@ pub use runner::{
     print_traceability_dashboard, run_workspace_traceability,
     run_workspace_traceability_with_cache,
 };
+pub use scientific_metadata::theory::MaturityTier;
 
 use crate::vfs::VirtualFileSystem;
 #[cfg(feature = "ast-analysis")]
@@ -73,6 +84,21 @@ pub struct TraceabilityReport {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[allow(missing_docs)]
     pub file_verified_counts: BTreeMap<String, [usize; 2]>,
+    /// Explicit crate-level maturity tiers loaded from `[crates]` in `traceability.toml`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub crate_maturity_tiers: BTreeMap<String, String>,
+    /// Explicit module-level maturity tiers loaded from `[modules]` in `traceability.toml`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub module_maturity_tiers: BTreeMap<String, String>,
+    /// Registered modules with non-vacuous deterministic `theory_verification!` contracts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deterministic_contract_modules: Vec<String>,
+    /// Registered modules with `VerifiedAllocator` or `VerifiedEngine::run_verified` proofs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub zero_alloc_modules: Vec<String>,
+    /// Per-tier maturity violations detected during AST traceability scanning.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub maturity_violations: Vec<String>,
 }
 
 #[allow(missing_docs)]

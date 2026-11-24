@@ -1,5 +1,8 @@
 //! Sub-segment critical-point and polyline intersection solvers (`poi`).
 //!
+//! **Maturity Tier:** `[CERT] Certified` — zero-allocation stack solvers verified under
+//! `VerifiedAllocator` and locked against breaking signature drift.
+//!
 //! Provides zero-allocation monotone cubic Hermite root finding, vertical line crossings,
 //! 3-point Lagrange parabolic and linear-time plateau extrema refinement, single-pass
 //! critical-point scanning, and monotone/general 2D polyline intersections.
