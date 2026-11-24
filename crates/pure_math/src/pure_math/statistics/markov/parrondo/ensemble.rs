@@ -4,6 +4,9 @@ use super::{
     MAX_MODULUS, ParrondoGame, ParrondoParams, ParrondoSchedule, Result, solve_parrondo_ratchet,
 };
 use crate::error::MarkovError;
+use crate::pure_math::statistics::monte_carlo::{
+    MonteCarloError, MonteCarloEstimate, two_sided_normal_z,
+};
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
 
@@ -14,6 +17,7 @@ const INV_TWO_POW_53: f64 = 1.0 / 9_007_199_254_740_992.0;
 pub struct ParrondoEnsemble {
     wealth: Vec<i64>,
     mean_trajectory: Vec<f64>,
+    stderr_trajectory: Vec<f64>,
     occupancy_counts: [u64; MAX_MODULUS],
     steps_recorded: usize,
 }
@@ -30,9 +34,11 @@ impl ParrondoEnsemble {
                 reason: "Ensemble num_walkers must be at least 1".to_string(),
             });
         }
+        let traj_cap = max_steps.saturating_add(1);
         Ok(Self {
             wealth: vec![0_i64; num_walkers],
-            mean_trajectory: vec![0.0_f64; max_steps.saturating_add(1)],
+            mean_trajectory: vec![0.0_f64; traj_cap],
+            stderr_trajectory: vec![0.0_f64; traj_cap],
             occupancy_counts: [0_u64; MAX_MODULUS],
             steps_recorded: 0,
         })
@@ -45,6 +51,9 @@ impl ParrondoEnsemble {
         self.occupancy_counts = [0_u64; MAX_MODULUS];
         if !self.mean_trajectory.is_empty() {
             self.mean_trajectory[0] = 0.0;
+        }
+        if !self.stderr_trajectory.is_empty() {
+            self.stderr_trajectory[0] = 0.0;
         }
         self.steps_recorded = 0;
     }
@@ -93,10 +102,25 @@ impl ParrondoEnsemble {
 
     #[verified_engine::verified]
     fn record_mean_step(&mut self, sum_wealth: i64) -> f64 {
-        let mean_w = (sum_wealth as f64) / (self.wealth.len() as f64);
+        let n = self.wealth.len();
+        let mean_w = (sum_wealth as f64) / (n as f64);
+        let se_w = if n > 1 {
+            let ss: f64 = self
+                .wealth
+                .iter()
+                .map(|&w| {
+                    let d = (w as f64) - mean_w;
+                    d * d
+                })
+                .sum();
+            (ss / ((n as f64) * ((n - 1) as f64))).sqrt()
+        } else {
+            0.0
+        };
         let next_idx = self.steps_recorded.saturating_add(1);
         if next_idx < self.mean_trajectory.len() {
             self.mean_trajectory[next_idx] = mean_w;
+            self.stderr_trajectory[next_idx] = se_w;
             self.steps_recorded = next_idx;
         }
         mean_w
@@ -161,6 +185,60 @@ impl ParrondoEnsemble {
     #[verified_engine::verified]
     pub fn mean_trajectory(&self) -> &[f64] {
         &self.mean_trajectory[..=self.steps_recorded]
+    }
+
+    /// Returns the recorded cross-walker standard error trajectory slice `0..=steps_recorded`.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn stderr_trajectory(&self) -> &[f64] {
+        &self.stderr_trajectory[..=self.steps_recorded]
+    }
+
+    /// Returns the cross-walker standard error at the latest recorded step.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn terminal_standard_error(&self) -> f64 {
+        self.stderr_trajectory[self.steps_recorded]
+    }
+
+    /// Computes a calibrated zero-allocation [`MonteCarloEstimate`] across current walker wealths.
+    #[verified_engine::verified]
+    pub fn terminal_estimate(
+        &self,
+        confidence_level: f64,
+    ) -> std::result::Result<MonteCarloEstimate, MonteCarloError> {
+        let z = two_sided_normal_z(confidence_level)?;
+        let n = self.wealth.len();
+        let mean = self.wealth.iter().map(|&w| w as f64).sum::<f64>() / (n as f64);
+        let variance = if n > 1 {
+            let ss: f64 = self
+                .wealth
+                .iter()
+                .map(|&w| {
+                    let d = (w as f64) - mean;
+                    d * d
+                })
+                .sum();
+            ss / ((n - 1) as f64)
+        } else {
+            0.0
+        };
+        let se = if n > 1 {
+            (variance / (n as f64)).sqrt()
+        } else {
+            0.0
+        };
+        let half = z * se;
+        Ok(MonteCarloEstimate {
+            mean,
+            variance,
+            standard_error: se,
+            ci_lower: mean - half,
+            ci_upper: mean + half,
+            confidence_level,
+            samples: n,
+            effective_sample_size: n as f64,
+        })
     }
 
     /// Returns walker wealth slice for inspection.
