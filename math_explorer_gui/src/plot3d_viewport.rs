@@ -16,6 +16,7 @@ pub struct Plot3DViewport<'a> {
     half_extent: f64,
     helper_text: Option<&'a str>,
     allow_camera_drag: bool,
+    allow_primary_orbit: bool,
 }
 
 fn base_3d_plot(
@@ -59,6 +60,7 @@ impl<'a> Plot3DViewport<'a> {
             half_extent: half_extent.max(0.1),
             helper_text: Some(CAMERA_3D_HELPER_TEXT),
             allow_camera_drag: true,
+            allow_primary_orbit: true,
         }
     }
 
@@ -73,6 +75,13 @@ impl<'a> Plot3DViewport<'a> {
     #[must_use]
     pub fn allow_camera_drag(mut self, allow: bool) -> Self {
         self.allow_camera_drag = allow;
+        self
+    }
+
+    /// Controls whether unmodified primary pointer drags orbit [`Camera3D`] (`true` in Orbit mode, `false` in Sculpt mode).
+    #[must_use]
+    pub fn allow_primary_orbit(mut self, enabled: bool) -> Self {
+        self.allow_primary_orbit = enabled;
         self
     }
 
@@ -120,11 +129,12 @@ impl<'a> Plot3DViewport<'a> {
 
         let rect_h = plot_response.response.rect.height().max(1.0_f32);
         camera.pan_units_per_px = ((2.0 * y_half) as f32) / rect_h;
-        camera.handle_interaction_with_plot(
+        camera.handle_interaction_with_options(
             &plot_response.response,
             ui,
             captured_plot_id,
             self.allow_camera_drag,
+            self.allow_primary_orbit,
         );
 
         if let Some(text) = self.helper_text {

@@ -1,7 +1,5 @@
 //! Quantum wavepacket and chaotic dynamical system sonification mappings.
 
-// theory_verification!
-
 use std::f64::consts::{PI, TAU};
 
 use num_complex::Complex;
