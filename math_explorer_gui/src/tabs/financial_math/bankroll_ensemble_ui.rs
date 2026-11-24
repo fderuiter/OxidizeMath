@@ -199,6 +199,14 @@ impl BankrollEnsembleLab {
                 med_color,
                 format!("W_median({num_bets}): {:.4}", self.last_median_terminal),
             );
+            if let Some(frc) = self.last_drawdown_f {
+                ui.separator();
+                ui.label(format!(
+                    "Risk-Constrained (f={:.2}%): {:.2}",
+                    frc * 100.0,
+                    self.last_drawdown_terminal
+                ));
+            }
             ui.separator();
             ui.colored_label(
                 palette.warning,
@@ -339,6 +347,15 @@ impl BankrollEnsembleLab {
             .color(inner_col)
             .width(2.0_f32),
         );
+        if !self.drawdown_median_points.is_empty() {
+            plot_ui.line(
+                Line::new(
+                    "Drawdown-Constrained Median",
+                    &self.drawdown_median_points[..],
+                )
+                .color(palette.series_color(0)),
+            );
+        }
         plot_ui.line(
             Line::new("Drawdown Barrier Floor B_floor", &self.barrier_points[..])
                 .color(palette.error)
@@ -377,6 +394,83 @@ impl BankrollEnsembleLab {
             Some(&summary),
         );
         paint_canvas_focus_ring(ui, &resp.response);
+    }
+
+    /// Synchronizes automated `CalloutManager` overlays for growth rate, ruin, and 95% `VaR`/`CVaR`.
+    pub fn sync_callouts(&mut self, num_bets: usize) {
+        let steps = num_bets.min(super::MAX_ENSEMBLE_BETS);
+        if self.median_points.is_empty() {
+            self.callout_manager.clear_auto();
+            return;
+        }
+        let mid_idx = (steps / 2).min(self.median_points.len() - 1);
+        let mid_pt = self.median_points[mid_idx];
+        self.callout_manager.set_auto_callout(
+            "growth_rate",
+            [mid_pt.x, mid_pt.y],
+            format!(
+                "g(f={:.2}) = {:+.4}/step",
+                self.custom_fraction, self.last_growth_rate
+            ),
+            [24.0, -26.0],
+        );
+
+        let end_x = steps as f64;
+        let p05_end = self.p05_points.last().map_or(0.0, |pt| pt.y);
+        let var_dollars = self.last_initial_bankroll * self.last_terminal_var_95;
+        let cvar_dollars = self.last_initial_bankroll * self.last_terminal_cvar_95;
+        self.callout_manager.set_auto_callout(
+            "var_95",
+            [end_x, p05_end],
+            format!(
+                "95% VaR: {:.1}% (${:.2})",
+                self.last_terminal_var_95 * 100.0,
+                var_dollars
+            ),
+            [-84.0, 18.0],
+        );
+        self.callout_manager.set_auto_callout(
+            "cvar_95",
+            [(0.78 * end_x).max(0.0), p05_end],
+            format!(
+                "95% CVaR: {:.1}% (${:.2})",
+                self.last_terminal_cvar_95 * 100.0,
+                cvar_dollars
+            ),
+            [-84.0, 38.0],
+        );
+
+        if let Some(fs) = self
+            .last_f_star
+            .filter(|&fs| self.custom_fraction > 2.0 * fs)
+        {
+            self.callout_manager.set_auto_callout(
+                "ruin_warning",
+                [end_x, self.last_median_terminal],
+                format!(
+                    "Ruin Trap (f={:.2} > 2f*={:.2}): W_med={:.4} vs E[W]={:.2}",
+                    self.custom_fraction,
+                    2.0 * fs,
+                    self.last_median_terminal,
+                    self.last_expected_terminal
+                ),
+                [-90.0, -34.0],
+            );
+        } else {
+            self.remove_auto_tag("ruin_warning");
+        }
+    }
+
+    fn remove_auto_tag(&mut self, tag: &str) {
+        if let Some(id) = self
+            .callout_manager
+            .callouts()
+            .iter()
+            .find(|c| c.tag.as_deref() == Some(tag))
+            .map(|c| c.id)
+        {
+            self.callout_manager.remove_callout(id);
+        }
     }
 }
 

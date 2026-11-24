@@ -1,21 +1,20 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[path = "latch.rs"]
+mod latch;
+
 use super::presets::{
     barrier_interval_for_preset, compute_tunneling_observables_slice, default_compiled_expr,
     evaluate_potential_grid, WavePotentialPreset, DEFAULT_DT, DEFAULT_K0, DEFAULT_SIGMA,
     DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, GRID_POINTS, GRID_X_MAX,
     GRID_X_MIN, SIGMA_MAX, SIGMA_MIN,
 };
-use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use crate::framework::recovery::DiagnosticReport;
 use math_commons::ast::Expr;
-use math_explorer::physics::quantum::{
-    gaussian_wavepacket_into, state_norm_squared, CrankNicolson1D, QuantumState,
-};
+use math_explorer::physics::quantum::{gaussian_wavepacket_into, CrankNicolson1D, QuantumState};
 use math_explorer::registry::MAX_GRID_SIZE;
 use nalgebra::DVector;
 use num_complex::Complex;
-use std::any::Any;
 use std::sync::{Arc, RwLock};
 
 /// Number of unitary Crank-Nicolson substeps executed per `WaveRunner` step.
@@ -122,7 +121,7 @@ pub struct WaveRunner {
     pub(crate) n_points: usize,
     pub(crate) x_min: f64,
     pub(crate) x_max: f64,
-    steps_per_frame: usize,
+    pub(crate) steps_per_frame: usize,
     observables: TunnelingObservables,
     pub(crate) entered_barrier: bool,
     pub(crate) wall_arrived: bool,
@@ -189,6 +188,17 @@ impl WaveRunner {
         runner
     }
 
+    pub(crate) fn record_divergence(&mut self, param: &'static str, message: impl Into<String>) {
+        self.diverged = true;
+        self.sonification = crate::audio::SonificationFrame::silent();
+        self.diagnostic_report = Some(DiagnosticReport::new(
+            self.time,
+            self.step_count,
+            param,
+            message.into(),
+        ));
+    }
+
     /// Rebuilds the spatial grid, clamped potential, Hamiltonian, and initial Gaussian wavepacket.
     pub fn init_from_config(&mut self, cfg: &WaveSimConfig) {
         let n = self.n_points;
@@ -246,6 +256,15 @@ impl WaveRunner {
         self.refresh_sonification(cfg.dt);
     }
 
+    pub(crate) fn refresh_sonification(&mut self, dt: f64) {
+        let modes = self.psi.project_spatial_modes::<8>();
+        self.sonification = crate::audio::mappings::quantum_wavepacket_frame(
+            &modes,
+            &mut self.prev_mode_phases,
+            dt.max(1.0e-4),
+        );
+    }
+
     pub(crate) fn refresh_propagator(&mut self, dt: f64) -> bool {
         if self.cached_dt != Some(dt) {
             if !dt.is_finite() || dt <= 0.0 {
@@ -263,77 +282,6 @@ impl WaveRunner {
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         self.solver.is_valid()
-    }
-
-    /// Updates Born R/B/T integrals and pre-wall `T_scatter` latch in-place with zero heap allocations.
-    pub(crate) fn update_observables_in_place(&mut self) {
-        let n = self.psi.vector.len();
-        if n <= self.prob_scratch.len() {
-            self.psi
-                .probability_density_in_place(&mut self.prob_scratch[..n]);
-            let obs = compute_tunneling_observables_slice(
-                &self.x_axis,
-                &self.prob_scratch[..n],
-                self.x_left,
-                self.x_right,
-            );
-            let prev = self.observables;
-            self.observables = obs;
-            self.update_scatter_latch(prev, obs);
-        }
-    }
-
-    fn update_scatter_latch(&mut self, prev: TunnelingObservables, obs: TunnelingObservables) {
-        if self.time <= 0.0 {
-            return;
-        }
-        let classical_past_barrier = (self.x0 + self.k0 * self.time) > (self.x_right + self.sigma);
-        if obs.barrier_prob >= BARRIER_TRANSIT_THRESHOLD || classical_past_barrier {
-            self.entered_barrier = true;
-        }
-        if self.entered_barrier && !self.wall_arrived {
-            if obs.barrier_prob < BARRIER_TRANSIT_THRESHOLD {
-                if obs.right_wall_prob < WALL_ARRIVAL_THRESHOLD {
-                    self.latched_transmission = Some(obs.transmission);
-                    self.quasi_bound_latched = false;
-                } else if self.latched_transmission.is_none()
-                    && prev.right_wall_prob < WALL_ARRIVAL_THRESHOLD
-                {
-                    let alpha_b = if prev.barrier_prob < BARRIER_TRANSIT_THRESHOLD {
-                        0.0
-                    } else {
-                        let denom = (prev.barrier_prob - obs.barrier_prob).max(f64::EPSILON);
-                        ((prev.barrier_prob - BARRIER_TRANSIT_THRESHOLD) / denom).clamp(0.0, 1.0)
-                    };
-                    let denom_w = (obs.right_wall_prob - prev.right_wall_prob).max(f64::EPSILON);
-                    let alpha_w =
-                        ((WALL_ARRIVAL_THRESHOLD - prev.right_wall_prob) / denom_w).clamp(0.0, 1.0);
-                    if alpha_b <= alpha_w {
-                        let t_pre =
-                            prev.transmission + alpha_w * (obs.transmission - prev.transmission);
-                        self.latched_transmission = Some(t_pre.clamp(0.0, 1.0));
-                        self.quasi_bound_latched = false;
-                    }
-                }
-            } else if self.latched_transmission.is_none()
-                && obs.right_wall_prob >= WALL_ARRIVAL_THRESHOLD
-            {
-                let alpha_w = if prev.right_wall_prob < WALL_ARRIVAL_THRESHOLD {
-                    let denom_w = (obs.right_wall_prob - prev.right_wall_prob).max(f64::EPSILON);
-                    ((WALL_ARRIVAL_THRESHOLD - prev.right_wall_prob) / denom_w).clamp(0.0, 1.0)
-                } else {
-                    0.0
-                };
-                let t_pre = prev.transmission + alpha_w * (obs.transmission - prev.transmission);
-                self.latched_transmission = Some(t_pre.clamp(0.0, 1.0));
-                self.quasi_bound_latched = true;
-            }
-        }
-        if obs.right_wall_prob >= WALL_ARRIVAL_THRESHOLD
-            || (self.latched_transmission.is_some() && obs.left_wall_prob >= WALL_ARRIVAL_THRESHOLD)
-        {
-            self.wall_arrived = true;
-        }
     }
 
     /// Advances the quantum state by an explicit `dt` step.
@@ -379,108 +327,5 @@ impl WaveRunner {
         }
         self.update_observables_in_place();
         self.refresh_sonification(dt);
-    }
-
-    /// Builds a structured [`WaveData`] snapshot integrating [`QuantumState::probability_density_in_place`].
-    #[must_use]
-    pub fn build_wave_data(&self) -> WaveData {
-        let mut safe_prob = vec![0.0; self.psi.vector.len()];
-        self.psi.probability_density_in_place(&mut safe_prob);
-        let obs = compute_tunneling_observables_slice(
-            &self.x_axis,
-            &safe_prob,
-            self.x_left,
-            self.x_right,
-        );
-        for p in &mut safe_prob {
-            if !p.is_finite() {
-                *p = 0.0;
-            }
-        }
-        let safe_potential: Vec<f64> = self
-            .potential
-            .iter()
-            .map(|&v| if v.is_finite() { v } else { 0.0 })
-            .collect();
-
-        WaveData {
-            time: self.time,
-            x_axis: self.x_axis.clone(),
-            prob_density: safe_prob,
-            potential: safe_potential,
-            reflection: obs.reflection,
-            barrier_prob: obs.barrier_prob,
-            transmission: obs.transmission,
-            #[cfg(test)]
-            right_wall_prob: obs.right_wall_prob,
-            latched_transmission: self.latched_transmission,
-            wall_arrived: self.wall_arrived,
-            quasi_bound_latched: self.quasi_bound_latched,
-            x_left: self.x_left,
-            x_right: self.x_right,
-            kinetic_energy: self.kinetic_energy,
-            norm_sq: state_norm_squared(&self.psi),
-        }
-    }
-
-    /// Current latched pre-wall transmission readout $T_{\text{scatter}}$, if latched.
-    #[cfg(test)]
-    #[must_use]
-    pub fn latched_transmission(&self) -> Option<f64> {
-        self.latched_transmission
-    }
-}
-
-impl SimulationRunner for WaveRunner {
-    fn process_command(&mut self, cmd: SimCommand) {
-        match cmd {
-            SimCommand::Reset => {
-                self.reset_parameters();
-                let cfg = self
-                    .config
-                    .read()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .clone();
-                self.init_from_config(&cfg);
-            }
-            SimCommand::SetSpeed(speed) => {
-                self.steps_per_frame = speed.max(1);
-            }
-            other => self.handle_sculpt_command(other),
-        }
-    }
-
-    fn step(&mut self) {
-        let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
-        self.step_with_dt(dt);
-    }
-
-    fn get_snapshot(&self) -> StateSnapshot {
-        let sonification = if self.diverged {
-            crate::audio::SonificationFrame::silent()
-        } else {
-            self.sonification
-        };
-        let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
-        StateSnapshot {
-            width: 0,
-            height: 0,
-            pixels: Arc::new(RwLock::new(Vec::new())),
-            custom_data: Vec::new(),
-            structured_data: Some(structured_data),
-            sonification,
-        }
-    }
-
-    fn get_steps_per_frame(&self) -> usize {
-        self.steps_per_frame
-    }
-
-    fn is_finite_state(&self) -> bool {
-        FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
-        self.diagnostic_report.clone()
     }
 }

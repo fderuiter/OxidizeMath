@@ -1,9 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{BetSizeCalculatorTool, KellyStrategyRow};
-use crate::accessibility::{
-    announce_live_assertive_status, announce_live_status, AccessibleHoverText,
-};
+use crate::accessibility::{announce_live_assertive_status, announce_live_status};
 use crate::web_io::{spawn_save_as_file_dialog, SaveAsDialogConfig};
 use eframe::egui;
 use egui_plot::export::{copy_text_to_clipboard, escape_csv_field};
@@ -171,44 +169,6 @@ impl BetSizeCalculatorTool {
         }
     }
 
-    pub(super) fn show_table_export_bar(&mut self, ui: &mut egui::Ui) {
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .button("📋 Copy CSV")
-                .accessible_hover_text("Copy formula-safe CSV Kelly sizing table to clipboard")
-                .clicked()
-            {
-                self.copy_sizing_to_clipboard(ui.ctx(), false);
-            }
-            if ui
-                .button("💾 Save CSV")
-                .accessible_hover_text("Download or save CSV Kelly sizing table")
-                .clicked()
-            {
-                self.save_sizing_file(false);
-            }
-            if ui
-                .button("📋 Copy Markdown")
-                .accessible_hover_text("Copy Markdown Kelly sizing table to clipboard")
-                .clicked()
-            {
-                self.copy_sizing_to_clipboard(ui.ctx(), true);
-            }
-            if ui
-                .button("💾 Save Markdown")
-                .accessible_hover_text("Download or save Markdown Kelly sizing table")
-                .clicked()
-            {
-                self.save_sizing_file(true);
-            }
-        });
-        if let Some((ref msg, is_err)) = self.io_status {
-            let color = if is_err { palette.error } else { palette.info };
-            ui.colored_label(color, msg);
-        }
-    }
-
     pub(super) fn build_export_primitives(&self) -> Vec<ExportPrimitive> {
         let pal = crate::app::palette::DARK_PALETTE;
         let mut prims = Vec::new();
@@ -227,6 +187,7 @@ impl BetSizeCalculatorTool {
             .iter()
             .chain(self.half_marker.iter())
             .chain(self.full_marker.iter())
+            .chain(self.drawdown_marker.iter())
             .map(|p| [p.x, p.y])
             .collect();
         if !markers.is_empty() {

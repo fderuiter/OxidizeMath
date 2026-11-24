@@ -232,7 +232,9 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
 fn assert_expected_capability_counts(counts: [usize; 8]) {
     let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader] = counts;
     let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
+    let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
     let extra_plot = usize::from(has_surface_morpho)
+        + bio_extra
         + usize::from(cfg!(feature = "pure_math"))
         + usize::from(cfg!(all(feature = "pure_math", feature = "applied")));
     let expected_plot = 73 + extra_plot;

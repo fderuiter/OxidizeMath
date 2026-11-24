@@ -58,6 +58,7 @@ impl_error_from!(@cfg "applied":
 
 impl_error_from!(@cfg "biology":
     BiologyError => Biology,
+    BotanicalError => Botanical,
     HodgkinHuxleyError => HodgkinHuxley,
     KineticsError => Kinetics,
     ReactionDiffusionError => ReactionDiffusion,
