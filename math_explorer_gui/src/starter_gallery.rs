@@ -126,6 +126,17 @@ pub const PRESET_EXPONENTIAL_DECAY: &str = r#"{
   }
 }"#;
 
+/// JSON preset envelope for coupled 2D Van der Pol Phase Portrait ODE.
+pub const PRESET_VAN_DER_POL_PHASE_PORTRAIT: &str = r#"{
+  "metadata": { "schema_version": "1.0", "title": "Van der Pol Phase Portrait", "domain": "analysis", "timestamp": "2026-11-23T00:00:00Z" },
+  "config": {
+    "preset": "Custom", "dt": 0.03, "total_time": 25.0, "param_k": 1.0, "param_r": 1.0, "param_cap_k": 10.0,
+    "ic_y0": 0.25, "ic_v0": 0.0, "custom_coupled": true,
+    "coupled_exprs": ["v", "mu * (1 - y^2) * v - y"], "coupled_params": { "mu": 1.5 },
+    "view_mode": "PhasePortrait"
+  }
+}"#;
+
 /// JSON preset envelope for Turing Spots reaction-diffusion.
 pub const PRESET_TURING_SPOTS: &str = r#"{
   "metadata": {

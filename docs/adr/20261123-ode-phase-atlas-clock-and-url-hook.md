@@ -1,0 +1,28 @@
+# ADR 20261123: ODE Phase Portrait, Progressive 2D Regime Atlas, OdeModel Clock, and Compact URL State Hook
+
+## Status
+Accepted (extends [ADR 0022](0022-unify-preset-state-serialization.md), [ADR 0035](0035-progressive-parameter-atlas-controller.md), and [ADR 0036](0036-coupled-formula-banks-and-custom-regression-callbacks.md))
+
+## Context
+Three limitations restricted dynamical-systems exploration and URL sharing in `OdeSolverTool`:
+1. **Frozen Non-Autonomous Time in `OdeModel::step`**: [`crates/pure_math/src/pure_math/analysis/ode/model.rs`](../../crates/pure_math/src/pure_math/analysis/ode/model.rs) passed a static `0.0` time argument on every `TimeStepper::step` invocation instead of tracking elapsed simulation time. Consequently, non-autonomous equations such as $y' = -k y \sin(t)$ and periodically forced systems such as the Duffing oscillator ($v' = -c v - a y - b y^3 + f \cos(\omega t)$) evaluated $t = 0$ on every step.
+2. **1D Time-Series Lock Without Phase Portraits or 2D Regime Cartography**: Despite coupled `(y', v')` bytecode support from [ADR 0036](0036-coupled-formula-banks-and-custom-regression-callbacks.md), [`math_explorer_gui/src/tabs/analysis/ode/canvas.rs`](../../math_explorer_gui/src/tabs/analysis/ode/canvas.rs) locked `ode_plot` to 1D $t$-series curves without $(y, v)$ phase portraits, normalized slope/quiver fields at a scrubbable time slice $t_{\text{slice}}$, pointer/keyboard trajectory seeding, or a progressive 2D parameter regime atlas on `ParameterAtlasController`.
+3. **Parameter-Only URL Export Hook Standardization**: While workspace `.mws` and `.json` preset files retain pinned `TraceSnapshotManager` runs per [ADR 0022](0022-unify-preset-state-serialization.md), URL fragment sharing requires an explicit `InteractiveTool::export_url_state` hook defaulting to `self.save_recovery_state()` so `SimulationFramework::export_url_preset_json` and `encode_share_fragment_for_tab` stay well below `MAX_DECODED_URL_STATE_BYTES` (`4,096` bytes).
+
+## Decision
+1. **Private Elapsed-Time Clock in `OdeModel`**:
+   - Maintain a private `t: f64` clock initialized to `0.0` in `OdeModel::new` inside [`crates/pure_math/src/pure_math/analysis/ode/model.rs`](../../crates/pure_math/src/pure_math/analysis/ode/model.rs).
+   - Pass `self.t` to `self.solver.step(&self.dynamics, self.t, &mut self.state, dt)` inside `TimeStepper::step` and advance `self.t += dt`, preserving zero heap allocations under `VerifiedAllocator` and keeping all public signatures in [`crates/unified_verification/api_baseline.json`](../../crates/unified_verification/api_baseline.json) unchanged.
+2. **2D Phase Portrait, Normalized Quivers, and Accessible Orbit Seeding**:
+   - Introduce `PlotViewMode` (`TimeSeries` and `PhasePortrait`) in [`math_explorer_gui/src/tabs/analysis/ode/phase.rs`](../../math_explorer_gui/src/tabs/analysis/ode/phase.rs) and wire it into [`math_explorer_gui/src/tabs/analysis/ode/canvas.rs`](../../math_explorer_gui/src/tabs/analysis/ode/canvas.rs) and [`math_explorer_gui/src/tabs/analysis/ode/ui.rs`](../../math_explorer_gui/src/tabs/analysis/ode/ui.rs).
+   - Plot decimated $(y, v)$ orbits (`decimate_xy_series_minmax`) for 2-state systems and $(t, y)$ slope fields for 1D equations, render normalized `egui_plot::Arrows` quivers at scrubbable `t_slice`, project `comparison_manager` and `snapshot_manager` traces onto active axes, and support pointer click plus keyboard `Arrow` + `Enter` initial-condition seeding with AccessKit `Role::Canvas` focus rings and `InteractiveTool::focused_canvas_id`.
+3. **Zero-Allocation `OdeRegimeCartographer` and Starter Gallery Card**:
+   - Implement `OdeRegimeCartographer` (`RegimeCartographer`) in [`math_explorer_gui/src/tabs/analysis/ode/atlas.rs`](../../math_explorer_gui/src/tabs/analysis/ode/atlas.rs) on `ParameterAtlasController` using stack `ArrayState<2>`, `OdeModel`, and borrowed `CompiledExpr` bytecode slices to classify overdamped decay, underdamped spirals, sustained limit cycles, and unstable divergence with zero heap allocations, overlaying the analytical $c^2 = 4k$ critical-damping contour.
+   - Register a Van der Pol phase-portrait `StarterPresetMetadata` card in [`math_explorer_gui/src/starter_gallery.rs`](../../math_explorer_gui/src/starter_gallery.rs) and [`math_explorer_gui/src/tabs/analysis/ode/theory.rs`](../../math_explorer_gui/src/tabs/analysis/ode/theory.rs).
+4. **`InteractiveTool::export_url_state` Hook**:
+   - Define `InteractiveTool::export_url_state` delegating to `self.save_url_state()` (which defaults to `self.save_recovery_state()`) in [`math_explorer_gui/src/framework/mod.rs`](../../math_explorer_gui/src/framework/mod.rs) and route URL preset and share-fragment serialization in [`math_explorer_gui/src/framework/url_share.rs`](../../math_explorer_gui/src/framework/url_share.rs) through it.
+
+## Consequences
+- **Positive**: Non-autonomous ODEs ($y' = -k y \sin(t)$, forced Duffing) integrate accurately across time in both trajectory visualization and sensitivity sweeps without public API drift.
+- **Positive**: Learners can inspect 2D $(y, v)$ limit cycles, multi-solver energy drift, time-sliced vector fields, and progressive $(k, c)$ regime maps with $c^2 = 4k$ teleportation while zero-allocation guarantees hold under `VerifiedEngine::run_verified`.
+- **Positive**: Shared `#tab=analysis&tool=OdeSolverTool&state=...` links remain compact (`< 1,200` decoded bytes) after repeated trajectory seeding and pinned baselines while `.mws` and `.json` exports preserve full `TraceSnapshotManager` overlays.

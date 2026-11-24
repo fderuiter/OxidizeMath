@@ -1,4 +1,4 @@
-//! Verifies that all 41 public error enums tested from `math_explorer::error`
+//! Verifies that all 42 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -17,9 +17,10 @@ use math_explorer::error::{
     DoseFluenceError, EloError, EngineeringError, EpidemiologyError, FitError, FluidError,
     GameTheoryError, Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError,
     HyperbolicError, IsosurfaceError, KellyError, KnotError, LoraError, MarketPricingError,
-    MarkovError, MatchModelError, MathError, MonteCarloError, NumberTheoryError, OuError,
-    PharmacokineticsError, PoissonError, QueueingError, RadarError, SandpileError, ShaderEmitError,
-    SolidStateError, StandardModelError, StatMechError, TdaError, ZipError,
+    MarkovError, MatchModelError, MathError, MonteCarloError, NumberTheoryError,
+    OptionPricingError, OuError, PharmacokineticsError, PoissonError, QueueingError, RadarError,
+    SandpileError, ShaderEmitError, SolidStateError, StandardModelError, StatMechError, TdaError,
+    ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -80,6 +81,10 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         &QueueingError::InvalidServerCount { servers: 0 },
     );
     assert_readable_diagnostic("ZipError", &ZipError::InvalidRate { value: -0.5 });
+}
+
+#[test]
+fn topology_graph_and_pricing_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic("TdaError", &TdaError::EmptyPointCloud);
     assert_readable_diagnostic("CopulaError", &CopulaError::NotPositiveDefinite);
     assert_readable_diagnostic("EloError", &EloError::InvalidScale { value: 0.0 });
@@ -106,6 +111,10 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         &MonteCarloError::DegenerateWeights {
             effective_sample_size: 1.0,
         },
+    );
+    assert_readable_diagnostic(
+        "OptionPricingError",
+        &OptionPricingError::InvalidVolatility { value: 0.0 },
     );
 }
 
@@ -165,6 +174,27 @@ fn kelly_solvency_errors_emit_readable_display_and_metadata() {
             KellyError::DimensionMismatch {
                 expected: 3,
                 actual: 2,
+            },
+        ),
+        (
+            "KellyError::NotPositiveDefinite",
+            KellyError::NotPositiveDefinite,
+        ),
+        (
+            "KellyError::InsufficientData",
+            KellyError::InsufficientData {
+                required: 3,
+                actual: 1,
+            },
+        ),
+        (
+            "KellyError::InvalidConfidenceLevel",
+            KellyError::InvalidConfidenceLevel { value: 1.0 },
+        ),
+        (
+            "KellyError::InvalidParameter",
+            KellyError::InvalidParameter {
+                reason: "leverage cap must be finite",
             },
         ),
         (

@@ -328,11 +328,11 @@ min_total_density = 0.120
 
 [verification_debt.opt_out_reasons]
 "Legacy missing assertions" = 1
-"gui_tool" = 692
+"gui_tool" = 711
 "infrastructure" = 2
 "metadata" = 2
 "no_std_engine" = 13
-"tests" = 239
+"tests" = 242
 
 [verification_debt.crate_opt_out_caps]
 "crates/02_engines/engine_linalg" = 15
@@ -344,7 +344,7 @@ min_total_density = 0.120
 "crates/pure_math" = 12
 "crates/scientific_metadata" = 2
 "egui_plot" = 1
-"math_explorer_gui" = 912
+"math_explorer_gui" = 934
 
 [verification_debt.file_opt_out_caps]
 "math_explorer_gui/src/tabs/optics_waves/tool.rs" = 2
@@ -450,7 +450,7 @@ vendored_crates = [
 "crates/domain_physics/src/physics/medical/dose/mod.rs" = 2
 "crates/domain_physics/src/physics/medical/mod.rs" = 5
 "crates/domain_physics/src/physics/medical/radar_gating/tracking.rs" = 3
-"crates/domain_physics/src/physics/mod.rs" = 2
+"crates/domain_physics/src/physics/mod.rs" = 1
 "crates/domain_physics/src/physics/nuclear/mod.rs" = 5
 "crates/domain_physics/src/physics/nuclear/models.rs" = 5
 "crates/domain_physics/src/physics/nuclear/types.rs" = 13

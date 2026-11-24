@@ -2,8 +2,8 @@ use super::{
     AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
     EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
     KnotError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
-    MonteCarloError, NumberTheoryError, OptimizationError, OuError, PoissonError, QueueingError,
-    StochasticError, TdaError, TensorError, TransformError, ZipError,
+    MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError, OuError,
+    PoissonError, QueueingError, StochasticError, TdaError, TensorError, TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -43,6 +43,9 @@ pub enum PureMathError {
     /// Number theory error.
     #[error("{0}")]
     NumberTheory(#[from] NumberTheoryError),
+    /// Black-Scholes-Merton option pricing error.
+    #[error("{0}")]
+    OptionPricing(#[from] OptionPricingError),
     /// Ornstein-Uhlenbeck process error.
     #[error("{0}")]
     Ou(#[from] OuError),
@@ -172,6 +175,7 @@ impl PureMathError {
             Self::LinearAlgebra(err) => err,
             Self::MonteCarlo(err) => err,
             Self::Optimization(err) => err,
+            Self::OptionPricing(err) => err,
             Self::Stochastic(err) => err,
             Self::Tensor(err) => err,
             Self::Transform(err) => err,

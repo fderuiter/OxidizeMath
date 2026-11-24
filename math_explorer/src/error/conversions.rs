@@ -111,6 +111,7 @@ impl_error_from!(@cfg "pure_math":
     MonteCarloError => MonteCarlo,
     NumberTheoryError => NumberTheory,
     OptimizationError => Optimization,
+    OptionPricingError => OptionPricing,
     OuError => Ou,
     PoissonError => Poisson,
     QueueingError => Queueing,

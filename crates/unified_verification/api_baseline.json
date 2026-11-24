@@ -9281,6 +9281,64 @@
   ],
   "crates/domain_physics/src/physics/optics/caustics.rs": [
     {
+      "signature": "pub use envelope :: CausticEnvelopeBuffer"
+    },
+    {
+      "signature": "pub use envelope :: CausticPoint"
+    },
+    {
+      "signature": "pub use envelope :: coffee_cup_cusp_x"
+    },
+    {
+      "signature": "pub use envelope :: extract_caustic_envelope"
+    },
+    {
+      "signature": "pub use envelope :: nephroid_caustic_point"
+    },
+    {
+      "signature": "pub use envelope :: thin_biconvex_paraxial_focal_length"
+    },
+    {
+      "signature": "pub use hamiltonian :: HamiltonianRayTracer"
+    }
+  ],
+  "crates/domain_physics/src/physics/optics/caustics/envelope.rs": [
+    {
+      "signature": "impl CausticEnvelopeBuffer { pub fn bin_center_y (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl CausticEnvelopeBuffer { pub fn detector_bins (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CausticEnvelopeBuffer { pub fn new (_ : usize , _ : usize , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl CausticEnvelopeBuffer { pub fn points (& self) -> & [CausticPoint] }"
+    },
+    {
+      "signature": "impl CausticEnvelopeBuffer { pub fn set_detector_span (& mut self , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "pub fn coffee_cup_cusp_x (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn extract_caustic_envelope (_ : & RayFanWorkspace , _ : f64 , _ : f64 , _ : & mut CausticEnvelopeBuffer ,) -> usize"
+    },
+    {
+      "signature": "pub fn nephroid_caustic_point (_ : f64 , _ : f64) -> [f64 ; 2]"
+    },
+    {
+      "signature": "pub fn thin_biconvex_paraxial_focal_length (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct CausticEnvelopeBuffer"
+    },
+    {
+      "signature": "pub struct CausticPoint"
+    }
+  ],
+  "crates/domain_physics/src/physics/optics/caustics/hamiltonian.rs": [
+    {
       "signature": "impl HamiltonianRayTracer { pub fn caustic_points (& self) -> & [[f64 ; 2]] }"
     },
     {
@@ -9302,7 +9360,362 @@
       "signature": "pub struct HamiltonianRayTracer"
     }
   ],
+  "crates/domain_physics/src/physics/optics/diffraction.rs": [
+    {
+      "signature": "impl DiffractionAperture { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl FraunhoferProfileBuffer { pub fn angles_rad (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl FraunhoferProfileBuffer { pub fn intensities (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl FraunhoferProfileBuffer { pub fn markers (& self) -> & [CriticalPointMarker] }"
+    },
+    {
+      "signature": "impl FraunhoferProfileBuffer { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl FraunhoferProfileBuffer { pub fn screen_y_mm (& self) -> & [f64] }"
+    },
+    {
+      "signature": "pub const AIRY_FIRST_ZERO_J1 : f64"
+    },
+    {
+      "signature": "pub const AIRY_SECOND_ZERO_J1 : f64"
+    },
+    {
+      "signature": "pub const AIRY_THIRD_ZERO_J1 : f64"
+    },
+    {
+      "signature": "pub enum CriticalPointKind"
+    },
+    {
+      "signature": "pub enum DiffractionAperture"
+    },
+    {
+      "signature": "pub fn airy_normalized_intensity (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn fraunhofer_intensity_at_angle (_ : DiffractionAperture , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn sample_fraunhofer_profile (_ : & FraunhoferConfig , _ : usize , _ : & mut FraunhoferProfileBuffer ,) -> usize"
+    },
+    {
+      "signature": "pub struct CriticalPointMarker"
+    },
+    {
+      "signature": "pub struct FraunhoferConfig"
+    },
+    {
+      "signature": "pub struct FraunhoferProfileBuffer"
+    }
+  ],
+  "crates/domain_physics/src/physics/optics/mod.rs": [
+    {
+      "signature": "pub use caustics :: CausticEnvelopeBuffer"
+    },
+    {
+      "signature": "pub use caustics :: CausticPoint"
+    },
+    {
+      "signature": "pub use caustics :: HamiltonianRayTracer"
+    },
+    {
+      "signature": "pub use caustics :: coffee_cup_cusp_x"
+    },
+    {
+      "signature": "pub use caustics :: extract_caustic_envelope"
+    },
+    {
+      "signature": "pub use caustics :: nephroid_caustic_point"
+    },
+    {
+      "signature": "pub use caustics :: thin_biconvex_paraxial_focal_length"
+    },
+    {
+      "signature": "pub use diffraction :: AIRY_FIRST_ZERO_J1"
+    },
+    {
+      "signature": "pub use diffraction :: AIRY_SECOND_ZERO_J1"
+    },
+    {
+      "signature": "pub use diffraction :: AIRY_THIRD_ZERO_J1"
+    },
+    {
+      "signature": "pub use diffraction :: CriticalPointKind"
+    },
+    {
+      "signature": "pub use diffraction :: CriticalPointMarker"
+    },
+    {
+      "signature": "pub use diffraction :: DiffractionAperture"
+    },
+    {
+      "signature": "pub use diffraction :: FraunhoferConfig"
+    },
+    {
+      "signature": "pub use diffraction :: FraunhoferProfileBuffer"
+    },
+    {
+      "signature": "pub use diffraction :: airy_normalized_intensity"
+    },
+    {
+      "signature": "pub use diffraction :: fraunhofer_intensity_at_angle"
+    },
+    {
+      "signature": "pub use diffraction :: sample_fraunhofer_profile"
+    },
+    {
+      "signature": "pub use ray_tracing :: EikonalRaySystem"
+    },
+    {
+      "signature": "pub use ray_tracing :: GrinMedium"
+    },
+    {
+      "signature": "pub use ray_tracing :: OpticalBenchScene"
+    },
+    {
+      "signature": "pub use ray_tracing :: PolarizationMode"
+    },
+    {
+      "signature": "pub use ray_tracing :: RayFanConfig"
+    },
+    {
+      "signature": "pub use ray_tracing :: RayFanWorkspace"
+    },
+    {
+      "signature": "pub use ray_tracing :: TracedRayMeta"
+    },
+    {
+      "signature": "pub use ray_tracing :: trace_ray_fan"
+    },
+    {
+      "signature": "pub use refraction :: CauchyDispersion"
+    },
+    {
+      "signature": "pub use refraction :: FresnelCoefficients"
+    },
+    {
+      "signature": "pub use refraction :: GlassMaterial"
+    },
+    {
+      "signature": "pub use refraction :: OpticalMediumConfig"
+    },
+    {
+      "signature": "pub use refraction :: OpticsPreset"
+    },
+    {
+      "signature": "pub use refraction :: SnellOutcome"
+    },
+    {
+      "signature": "pub use refraction :: brewster_angle"
+    },
+    {
+      "signature": "pub use refraction :: cauchy_refractive_index"
+    },
+    {
+      "signature": "pub use refraction :: critical_angle"
+    },
+    {
+      "signature": "pub use refraction :: fresnel_polarized"
+    },
+    {
+      "signature": "pub use refraction :: intersect_ray_circle_arc"
+    },
+    {
+      "signature": "pub use refraction :: intersect_ray_segment"
+    },
+    {
+      "signature": "pub use refraction :: normalize_2d"
+    },
+    {
+      "signature": "pub use refraction :: reflect_vector_2d"
+    },
+    {
+      "signature": "pub use refraction :: snell_refract_angle"
+    },
+    {
+      "signature": "pub use refraction :: snell_refract_vector"
+    },
+    {
+      "signature": "pub use refraction :: snell_refracted_angle"
+    },
+    {
+      "signature": "pub use refraction :: snell_vector_2d"
+    },
+    {
+      "signature": "pub use sensing :: DetectorConfig"
+    },
+    {
+      "signature": "pub use sensing :: DetectorReadout"
+    },
+    {
+      "signature": "pub use sensing :: lambertian_intensity"
+    },
+    {
+      "signature": "pub use sensing :: lws_range_resolution"
+    },
+    {
+      "signature": "pub use sensing :: sample_detector_line_in_place"
+    }
+  ],
+  "crates/domain_physics/src/physics/optics/ray_tracing/mod.rs": [
+    {
+      "signature": "impl GrinMedium { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl GrinMedium { pub fn grad_half_n_sq (self , _ : f64 , _ : f64) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl GrinMedium { pub fn refractive_index_at (self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl PolarizationMode { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl RayFanWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl RayFanWorkspace { pub fn ray_vertices (& self , _ : usize) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl RayFanWorkspace { pub fn rays (& self) -> & [TracedRayMeta] }"
+    },
+    {
+      "signature": "pub enum GrinMedium"
+    },
+    {
+      "signature": "pub enum OpticalBenchScene"
+    },
+    {
+      "signature": "pub enum PolarizationMode"
+    },
+    {
+      "signature": "pub fn trace_ray_fan (_ : & RayFanConfig , _ : & mut RayFanWorkspace) -> usize"
+    },
+    {
+      "signature": "pub struct EikonalRaySystem"
+    },
+    {
+      "signature": "pub struct RayFanConfig"
+    },
+    {
+      "signature": "pub struct RayFanWorkspace"
+    },
+    {
+      "signature": "pub struct TracedRayMeta"
+    }
+  ],
   "crates/domain_physics/src/physics/optics/refraction.rs": [
+    {
+      "signature": "pub use fresnel :: CauchyDispersion"
+    },
+    {
+      "signature": "pub use fresnel :: FresnelCoefficients"
+    },
+    {
+      "signature": "pub use fresnel :: GlassMaterial"
+    },
+    {
+      "signature": "pub use fresnel :: SnellOutcome"
+    },
+    {
+      "signature": "pub use fresnel :: brewster_angle"
+    },
+    {
+      "signature": "pub use fresnel :: cauchy_refractive_index"
+    },
+    {
+      "signature": "pub use fresnel :: critical_angle"
+    },
+    {
+      "signature": "pub use fresnel :: fresnel_polarized"
+    },
+    {
+      "signature": "pub use fresnel :: intersect_ray_circle_arc"
+    },
+    {
+      "signature": "pub use fresnel :: intersect_ray_segment"
+    },
+    {
+      "signature": "pub use fresnel :: normalize_2d"
+    },
+    {
+      "signature": "pub use fresnel :: reflect_vector_2d"
+    },
+    {
+      "signature": "pub use fresnel :: snell_refract_angle"
+    },
+    {
+      "signature": "pub use fresnel :: snell_vector_2d"
+    },
+    {
+      "signature": "pub use medium :: OpticalMediumConfig"
+    },
+    {
+      "signature": "pub use medium :: OpticsPreset"
+    },
+    {
+      "signature": "pub use medium :: snell_refract_vector"
+    },
+    {
+      "signature": "pub use medium :: snell_refracted_angle"
+    }
+  ],
+  "crates/domain_physics/src/physics/optics/refraction/fresnel.rs": [
+    {
+      "signature": "impl GlassMaterial { pub const fn cauchy (self) -> CauchyDispersion }"
+    },
+    {
+      "signature": "impl GlassMaterial { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum GlassMaterial"
+    },
+    {
+      "signature": "pub enum SnellOutcome"
+    },
+    {
+      "signature": "pub fn brewster_angle (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn cauchy_refractive_index (_ : CauchyDispersion , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn critical_angle (_ : f64 , _ : f64) -> Option < f64 >"
+    },
+    {
+      "signature": "pub fn fresnel_polarized (_ : f64 , _ : f64 , _ : f64) -> FresnelCoefficients"
+    },
+    {
+      "signature": "pub fn intersect_ray_circle_arc (_ : [f64 ; 2] , _ : [f64 ; 2] , _ : [f64 ; 2] , _ : f64 , _ : Option < f64 > , _ : f64 ,) -> Option < (f64 , [f64 ; 2] , [f64 ; 2]) >"
+    },
+    {
+      "signature": "pub fn intersect_ray_segment (_ : [f64 ; 2] , _ : [f64 ; 2] , _ : [f64 ; 2] , _ : [f64 ; 2] ,) -> Option < (f64 , [f64 ; 2] , [f64 ; 2]) >"
+    },
+    {
+      "signature": "pub fn normalize_2d (_ : [f64 ; 2]) -> Option < [f64 ; 2] >"
+    },
+    {
+      "signature": "pub fn reflect_vector_2d (_ : [f64 ; 2] , _ : [f64 ; 2]) -> [f64 ; 2]"
+    },
+    {
+      "signature": "pub fn snell_refract_angle (_ : f64 , _ : f64 , _ : f64) -> Option < f64 >"
+    },
+    {
+      "signature": "pub fn snell_vector_2d (_ : [f64 ; 2] , _ : [f64 ; 2] , _ : f64 , _ : f64 ,) -> SnellOutcome"
+    },
+    {
+      "signature": "pub struct CauchyDispersion"
+    },
+    {
+      "signature": "pub struct FresnelCoefficients"
+    }
+  ],
+  "crates/domain_physics/src/physics/optics/refraction/medium.rs": [
     {
       "signature": "impl OpticalMediumConfig { pub fn apply_to_wave_field (& self , _ : & mut WaveField2D) }"
     },
@@ -12874,6 +13287,9 @@
       "signature": "pub use crate :: pure_math :: number_theory :: ambs :: AmbsError"
     },
     {
+      "signature": "pub use crate :: pure_math :: statistics :: black_scholes :: OptionPricingError"
+    },
+    {
       "signature": "pub use crate :: pure_math :: statistics :: monte_carlo :: MonteCarloError"
     },
     {
@@ -12974,6 +13390,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: OptimizationError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: OptionPricingError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: OuError } }"
@@ -17165,6 +17584,53 @@
       "signature": "pub fn laguerre (_ : u64 , _ : f64) -> f64"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/black_scholes.rs": [
+    {
+      "signature": "impl BlackScholesParams { pub fn dividend_yield (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BlackScholesParams { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , OptionPricingError > }"
+    },
+    {
+      "signature": "impl BlackScholesParams { pub fn rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BlackScholesParams { pub fn spot (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BlackScholesParams { pub fn strike (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BlackScholesParams { pub fn time_to_expiry (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BlackScholesParams { pub fn volatility (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BlackScholesParams { pub fn with_dividend_yield (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , OptionPricingError > }"
+    },
+    {
+      "signature": "pub enum OptionPricingError"
+    },
+    {
+      "signature": "pub enum OptionType"
+    },
+    {
+      "signature": "pub fn black_scholes_merton (_ : & BlackScholesParams) -> BlackScholesPair"
+    },
+    {
+      "signature": "pub fn price_and_greeks (_ : & BlackScholesParams , _ : OptionType) -> OptionGreeks"
+    },
+    {
+      "signature": "pub struct BlackScholesPair"
+    },
+    {
+      "signature": "pub struct BlackScholesParams"
+    },
+    {
+      "signature": "pub struct OptionGreeks"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/bootstrap/mod.rs": [
     {
       "signature": "impl BootstrapWorkspace { pub fn bca_ci < F > (& mut self , _ : & [f64] , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < BootstrapEstimate , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
@@ -17243,6 +17709,9 @@
       "signature": "impl CorrelationMatrix { pub fn dimension (& self) -> usize }"
     },
     {
+      "signature": "impl CorrelationMatrix { pub fn equicorrelated (_ : usize , _ : Correlation) -> Result < Self , CopulaError > }"
+    },
+    {
       "signature": "impl CorrelationMatrix { pub fn get_correlation (& self , _ : usize , _ : usize) -> Option < f64 > }"
     },
     {
@@ -17279,6 +17748,12 @@
     },
     {
       "signature": "impl GaussianCopula { pub fn cdf_with_scratch (& self , _ : & [Probability] , _ : & mut [f64] ,) -> Result < Probability , CopulaError > }"
+    },
+    {
+      "signature": "impl GaussianCopula { pub fn cdf_with_seed (& self , _ : & [Probability] , _ : u64 , _ : usize ,) -> Result < Probability , CopulaError > }"
+    },
+    {
+      "signature": "impl GaussianCopula { pub fn cdf_with_workspace (& self , _ : & [Probability] , _ : u64 , _ : usize , _ : & mut CopulaQmcWorkspace ,) -> Result < Probability , CopulaError > }"
     },
     {
       "signature": "impl GaussianCopula { pub fn correlation (& self) -> & CorrelationMatrix }"
@@ -17355,6 +17830,15 @@
       "signature": "pub use parlay :: simulate_correlated_parlay_into"
     },
     {
+      "signature": "pub use qmc :: CopulaQmcWorkspace"
+    },
+    {
+      "signature": "pub use qmc :: DEFAULT_COPULA_QMC_PAIRS"
+    },
+    {
+      "signature": "pub use qmc :: MAX_INLINE_COPULA_LEGS"
+    },
+    {
       "signature": "pub use transforms :: NormalTransform"
     },
     {
@@ -17385,6 +17869,23 @@
     },
     {
       "signature": "pub struct ParlayPricingReport"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/copula/qmc.rs": [
+    {
+      "signature": "impl CopulaQmcWorkspace { pub fn ensure_capacity (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl CopulaQmcWorkspace { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub const DEFAULT_COPULA_QMC_PAIRS : usize"
+    },
+    {
+      "signature": "pub const MAX_INLINE_COPULA_LEGS : usize"
+    },
+    {
+      "signature": "pub struct CopulaQmcWorkspace"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/copula/transforms.rs": [
@@ -18065,6 +18566,36 @@
       "signature": "pub use market :: solve_mutually_exclusive_market"
     },
     {
+      "signature": "pub use portfolio :: PortfolioKellyMetrics"
+    },
+    {
+      "signature": "pub use portfolio :: PortfolioKellySolution"
+    },
+    {
+      "signature": "pub use portfolio :: PortfolioKellyWorkspace"
+    },
+    {
+      "signature": "pub use portfolio :: evaluate_portfolio_kelly_metrics"
+    },
+    {
+      "signature": "pub use portfolio :: independent_kelly_into"
+    },
+    {
+      "signature": "pub use portfolio :: independent_kelly_weights"
+    },
+    {
+      "signature": "pub use portfolio :: long_only_kelly_projected_gradient"
+    },
+    {
+      "signature": "pub use portfolio :: solve_long_only_kelly_into"
+    },
+    {
+      "signature": "pub use portfolio :: solve_unconstrained_kelly_into"
+    },
+    {
+      "signature": "pub use portfolio :: unconstrained_covariance_kelly"
+    },
+    {
       "signature": "pub use push :: PushOutcome"
     },
     {
@@ -18123,6 +18654,68 @@
     },
     {
       "signature": "pub use super :: validation"
+    },
+    {
+      "signature": "pub use tail_risk :: PortfolioHorizonSpec"
+    },
+    {
+      "signature": "pub use tail_risk :: TailRiskEstimate"
+    },
+    {
+      "signature": "pub use tail_risk :: TailRiskMetrics"
+    },
+    {
+      "signature": "pub use tail_risk :: empirical_tail_risk"
+    },
+    {
+      "signature": "pub use tail_risk :: empirical_tail_risk_in_place"
+    },
+    {
+      "signature": "pub use tail_risk :: empirical_var_cvar_in_place"
+    },
+    {
+      "signature": "pub use tail_risk :: parametric_lognormal_tail_risk"
+    },
+    {
+      "signature": "pub use tail_risk :: simulate_portfolio_tail_risk_into"
+    },
+    {
+      "signature": "pub use tail_risk :: simulated_portfolio_tail_risk"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/kelly/portfolio.rs": [
+    {
+      "signature": "impl PortfolioKellyWorkspace { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn evaluate_portfolio_kelly_metrics (_ : & [f64] , _ : & [f64] , _ : & DMatrix < f64 > , _ : f64 ,) -> Result < PortfolioKellyMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn independent_kelly_into (_ : & [f64] , _ : & DMatrix < f64 > , _ : f64 , _ : & mut [f64] , _ : & mut PortfolioKellyWorkspace ,) -> Result < PortfolioKellyMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn independent_kelly_weights (_ : & [f64] , _ : & DMatrix < f64 > , _ : f64 ,) -> Result < PortfolioKellySolution , KellyError >"
+    },
+    {
+      "signature": "pub fn long_only_kelly_projected_gradient (_ : & [f64] , _ : & DMatrix < f64 > , _ : f64 , _ : Option < f64 > ,) -> Result < PortfolioKellySolution , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_long_only_kelly_into (_ : & [f64] , _ : & DMatrix < f64 > , _ : f64 , _ : Option < f64 > , _ : & mut [f64] , _ : & mut PortfolioKellyWorkspace ,) -> Result < PortfolioKellyMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_unconstrained_kelly_into (_ : & [f64] , _ : & DMatrix < f64 > , _ : f64 , _ : & mut [f64] , _ : & mut PortfolioKellyWorkspace ,) -> Result < PortfolioKellyMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn unconstrained_covariance_kelly (_ : & [f64] , _ : & DMatrix < f64 > , _ : f64 ,) -> Result < PortfolioKellySolution , KellyError >"
+    },
+    {
+      "signature": "pub struct PortfolioKellyMetrics"
+    },
+    {
+      "signature": "pub struct PortfolioKellySolution"
+    },
+    {
+      "signature": "pub struct PortfolioKellyWorkspace"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/kelly/push.rs": [
@@ -18278,6 +18871,38 @@
     },
     {
       "signature": "pub struct SlateWager"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/kelly/tail_risk.rs": [
+    {
+      "signature": "impl PortfolioHorizonSpec { pub fn new (_ : f64 , _ : f64 , _ : f64) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "pub fn empirical_tail_risk (_ : & [f64]) -> Result < TailRiskMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn empirical_tail_risk_in_place (_ : & mut [f64] ,) -> Result < TailRiskMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn empirical_var_cvar_in_place (_ : & mut [f64] , _ : f64 ,) -> Result < TailRiskEstimate , KellyError >"
+    },
+    {
+      "signature": "pub fn parametric_lognormal_tail_risk (_ : & [f64] , _ : & [f64] , _ : & DMatrix < f64 > , _ : PortfolioHorizonSpec ,) -> Result < TailRiskMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn simulate_portfolio_tail_risk_into (_ : & [f64] , _ : & [f64] , _ : & DMatrix < f64 > , _ : PortfolioHorizonSpec , _ : & mut OxidizeRng , _ : & mut [f64] , _ : & mut PortfolioKellyWorkspace ,) -> Result < TailRiskMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn simulated_portfolio_tail_risk (_ : & [f64] , _ : & [f64] , _ : & DMatrix < f64 > , _ : PortfolioHorizonSpec , _ : usize , _ : u64 ,) -> Result < TailRiskMetrics , KellyError >"
+    },
+    {
+      "signature": "pub struct PortfolioHorizonSpec"
+    },
+    {
+      "signature": "pub struct TailRiskEstimate"
+    },
+    {
+      "signature": "pub struct TailRiskMetrics"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/market_pricing/devig.rs": [
@@ -21390,6 +22015,9 @@
     },
     {
       "signature": "pub use pure_math :: error :: OptimizationError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: OptionPricingError"
     },
     {
       "signature": "pub use pure_math :: error :: OuError"

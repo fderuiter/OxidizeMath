@@ -24,25 +24,27 @@ mod tests {
     fn check_math_and_applied_tools(ctx: &eframe::egui::Context) {
         #[cfg(feature = "pure_math")]
         {
-            use crate::tabs::{
-                algorithmic_information, financial_math, geometry_topology, graph_theory,
-                number_theory,
-            };
-            check_one::<financial_math::bet_size::BetSizeCalculatorTool>(ctx);
-            check_one::<financial_math::bankroll_growth::BankrollGrowthTool>(ctx);
-            check_one::<financial_math::correlated_risk::CorrelatedRiskScenarioTool>(ctx);
-            check_one::<financial_math::market_devig::MarketDeviggingTool>(ctx);
-            check_one::<financial_math::market_execution::MarketExecutionTool>(ctx);
-            check_one::<financial_math::monte_carlo_workbench::MonteCarloWorkbenchTool>(ctx);
-            check_one::<graph_theory::network_metrics::NetworkMetricsTool>(ctx);
-            check_one::<geometry_topology::vietoris_rips::VietorisRipsTool>(ctx);
-            check_one::<geometry_topology::hyperbolic_geometry::HyperbolicGeometryTool>(ctx);
-            check_one::<geometry_topology::knot_braid_studio::KnotBraidStudioTool>(ctx);
-            check_one::<algorithmic_information::state::FractranMachineTool>(ctx);
-            check_one::<number_theory::fractran_machine::FractranMachineTool>(ctx);
-            check_one::<number_theory::ualbf_widget::UalbfWidget>(ctx);
-            check_one::<number_theory::partitions_widget::PartitionsWidget>(ctx);
-            check_one::<number_theory::prime_spiral::PrimeSpiralWidget>(ctx);
+            use crate::tabs::financial_math as fm;
+            check_one::<fm::bet_size::BetSizeCalculatorTool>(ctx);
+            check_one::<fm::bankroll_growth::BankrollGrowthTool>(ctx);
+            check_one::<fm::correlated_risk::CorrelatedRiskScenarioTool>(ctx);
+            check_one::<fm::market_devig::MarketDeviggingTool>(ctx);
+            check_one::<fm::market_execution::MarketExecutionTool>(ctx);
+            check_one::<fm::monte_carlo_workbench::MonteCarloWorkbenchTool>(ctx);
+            check_one::<fm::portfolio_workbench::PortfolioCopulaWorkbenchTool>(ctx);
+            check_one::<crate::tabs::graph_theory::network_metrics::NetworkMetricsTool>(ctx);
+            check_one::<crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool>(ctx);
+            check_one::<crate::tabs::geometry_topology::hyperbolic_geometry::HyperbolicGeometryTool>(
+                ctx,
+            );
+            check_one::<crate::tabs::geometry_topology::knot_braid_studio::KnotBraidStudioTool>(
+                ctx,
+            );
+            check_one::<crate::tabs::algorithmic_information::state::FractranMachineTool>(ctx);
+            check_one::<crate::tabs::number_theory::fractran_machine::FractranMachineTool>(ctx);
+            check_one::<crate::tabs::number_theory::ualbf_widget::UalbfWidget>(ctx);
+            check_one::<crate::tabs::number_theory::partitions_widget::PartitionsWidget>(ctx);
+            check_one::<crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget>(ctx);
         }
         #[cfg(feature = "applied")]
         {
