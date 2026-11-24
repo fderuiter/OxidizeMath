@@ -11,6 +11,7 @@ pub mod market_devig;
 pub mod market_execution;
 pub mod monte_carlo_workbench;
 pub mod parrondo;
+pub mod portfolio_workbench;
 #[cfg(test)]
 mod tests;
 

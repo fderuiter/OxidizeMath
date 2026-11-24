@@ -2,6 +2,7 @@
 
 use crate::framework::{MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
 use math_commons::ast::{parse, CompiledExpr};
+use math_explorer::physics::chaos::fractals::{renormalize_escape_step, SMOOTH_ESCAPE_RADIUS_SQR};
 use num_complex::Complex;
 
 pub const DEFAULT_FRACTAL_EXPR: &str = "z^3 + c";
@@ -68,6 +69,34 @@ impl CompiledFractalJob {
             iter += 1;
         }
         iter
+    }
+
+    /// Evaluates continuous Douady-Hubbard renormalized escape time up to `max_iter` without heap allocation.
+    #[inline]
+    #[must_use]
+    pub fn smooth_escape_time(&self, z0: Complex<f64>, c: Complex<f64>, max_iter: u32) -> f64 {
+        let mut vars = [Complex::new(0.0, 0.0); 2 + MAX_SYNTHESIZED_PARAMS];
+        vars[0] = z0;
+        vars[1] = c;
+        for i in 0..self.param_len {
+            vars[2 + i] = Complex::new(self.params[i], 0.0);
+        }
+        let total_vars = 2 + self.param_len;
+        let mut prev_r2 = z0.norm_sqr();
+        for iter in 0..max_iter {
+            let z = vars[0];
+            let r2 = z.norm_sqr();
+            if !z.re.is_finite() || !z.im.is_finite() || !r2.is_finite() {
+                return f64::from(iter);
+            }
+            if r2 > SMOOTH_ESCAPE_RADIUS_SQR {
+                return renormalize_escape_step(iter, prev_r2, r2)
+                    .min(f64::from(max_iter) - 1.0e-6);
+            }
+            prev_r2 = r2;
+            vars[0] = self.compiled.eval_complex_slice(&vars[..total_vars]);
+        }
+        f64::from(max_iter)
     }
 
     /// Traces the critical orbit starting at $z_0 = 0$ for parameter `c` into `out` without heap allocation.

@@ -79,6 +79,7 @@ pub mod core;
 pub mod gaussian;
 mod multivariate;
 pub mod parlay;
+pub mod qmc;
 pub mod transforms;
 
 pub use bivariate::{RHO_SPLIT, bivariate_copula_cdf, bivariate_normal_cdf};
@@ -91,6 +92,7 @@ pub use parlay::{
     price_correlated_parlay_with_scratch, simulate_correlated_parlay,
     simulate_correlated_parlay_into,
 };
+pub use qmc::{CopulaQmcWorkspace, DEFAULT_COPULA_QMC_PAIRS, MAX_INLINE_COPULA_LEGS};
 pub use transforms::{
     NormalTransform, ProbabilityTransform, inverse_standard_normal, standard_normal_cdf,
 };

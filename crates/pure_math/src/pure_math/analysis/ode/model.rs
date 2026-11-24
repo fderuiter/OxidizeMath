@@ -125,6 +125,25 @@ mod tests {
     use crate::pure_math::analysis::ode::state::{ArrayState, VecState};
 
     #[derive(Debug, Clone, Copy, PartialEq)]
+    struct NonAutonomousSineDecay {
+        k: f64,
+    }
+
+    impl OdeSystem<ArrayState<1>> for NonAutonomousSineDecay {
+        #[verified_engine::verified]
+        fn derivative(&self, t: f64, state: &ArrayState<1>) -> ArrayState<1> {
+            let mut out = ArrayState::zeros();
+            self.derivative_in_place(t, state, &mut out);
+            out
+        }
+
+        #[verified_engine::verified]
+        fn derivative_in_place(&self, t: f64, state: &ArrayState<1>, out: &mut ArrayState<1>) {
+            out.0[0] = -self.k * state.0[0] * t.sin();
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq)]
     struct LinearTimeForcing;
 
     impl OdeSystem<ArrayState<1>> for LinearTimeForcing {
@@ -247,6 +266,40 @@ mod tests {
         assert_eq!(s_heun.0[1].to_bits(), model_heun.state.0[1].to_bits());
         assert_eq!(s_rk4.0[0].to_bits(), model_rk4.state.0[0].to_bits());
         assert_eq!(s_rk4.0[1].to_bits(), model_rk4.state.0[1].to_bits());
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_ode_model_advances_elapsed_time_for_non_autonomous_rk4() {
+        let init = ArrayState([1.0]);
+        let mut model = OdeModel::new(
+            init,
+            NonAutonomousSineDecay { k: 1.0 },
+            RungeKutta4::new(&init),
+        );
+        let dt = 0.05;
+        let steps = 200;
+
+        let (max_err, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+            let mut worst = 0.0_f64;
+            for step_idx in 0..=steps {
+                let t = (step_idx as f64) * dt;
+                let exact = (t.cos() - 1.0).exp();
+                let err = (model.get_state().0[0] - exact).abs();
+                if err > worst {
+                    worst = err;
+                }
+                if step_idx < steps {
+                    model.step(dt);
+                }
+            }
+            worst
+        });
+
+        assert!(
+            max_err < 1e-4,
+            "Non-autonomous RK4 max error {max_err:.6e} exceeded 1e-4"
+        );
     }
 
     #[test]

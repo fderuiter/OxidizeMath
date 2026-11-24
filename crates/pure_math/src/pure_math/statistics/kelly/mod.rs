@@ -24,6 +24,10 @@
 //! - **Martingale Drawdown Risk Bounds (`drawdown`)**:
 //!   Enforces `E[R^(-lambda)] <= 1` with `lambda = ln(beta) / ln(alpha)` so
 //!   `P(inf_{t >= 1} W_t / W_0 <= alpha) <= beta` across single wagers and concurrent slates.
+//! - **Multi-Asset Covariance Kelly & Tail Risk (`portfolio`, `tail_risk`)**:
+//!   Solves unconstrained Cholesky covariance Kelly `w* = Sigma^-1 (mu - r * 1)`, diagonal
+//!   independent Kelly, and Duchi-projected long-only Kelly alongside empirical, parametric
+//!   log-normal, and Cholesky Monte Carlo `95%`/`99%` `VaR` and `CVaR`.
 //!
 //! ## Continuous Bankruptcy vs. Finite Drawdown Barriers
 //!
@@ -103,11 +107,15 @@ pub mod core;
 pub mod criterion;
 pub mod drawdown;
 pub mod market;
+pub mod portfolio;
 pub mod push;
 pub mod quarter_line;
 pub mod slate;
 pub mod slate_eval;
+pub mod tail_risk;
 
+#[cfg(test)]
+mod portfolio_tests;
 #[cfg(test)]
 mod tests;
 
@@ -125,6 +133,12 @@ pub use drawdown::{
     solve_drawdown_constrained_slate_with_mode,
 };
 pub use market::{MarketAllocation, MarketOutcome, MarketScratch, solve_mutually_exclusive_market};
+pub use portfolio::{
+    PortfolioKellyMetrics, PortfolioKellySolution, PortfolioKellyWorkspace,
+    evaluate_portfolio_kelly_metrics, independent_kelly_into, independent_kelly_weights,
+    long_only_kelly_projected_gradient, solve_long_only_kelly_into, solve_unconstrained_kelly_into,
+    unconstrained_covariance_kelly,
+};
 pub use push::{
     PushOutcome, PushWager, push_expected_growth_rate, push_expected_value, push_kelly_fraction,
 };
@@ -134,5 +148,10 @@ pub use quarter_line::{
 };
 pub use slate::{SlateSolution, solve_simultaneous_slate, solve_simultaneous_slate_with_mode};
 pub use slate_eval::{MAX_CONVOLUTION_STATES, SlateEvalMode, SlateScratch, SlateWager};
+pub use tail_risk::{
+    PortfolioHorizonSpec, TailRiskEstimate, TailRiskMetrics, empirical_tail_risk,
+    empirical_tail_risk_in_place, empirical_var_cvar_in_place, parametric_lognormal_tail_risk,
+    simulate_portfolio_tail_risk_into, simulated_portfolio_tail_risk,
+};
 
 // [cite:clinical_trials_statistics]

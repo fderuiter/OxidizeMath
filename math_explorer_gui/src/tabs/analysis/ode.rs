@@ -1,17 +1,20 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 mod annotations;
+pub mod atlas;
 pub mod budget;
 mod canvas;
 mod code_export;
 pub mod comparison;
 mod custom_spec;
 mod persistence;
+pub mod phase;
 pub mod phase_plane;
 pub mod poincare_map;
 pub mod recovery;
 mod series_cache;
 pub mod systems;
+mod theory;
 pub mod ui;
 
 #[cfg(test)]
@@ -21,6 +24,7 @@ use phase_plane::{DEFAULT_PLANAR_X_EXPR, DEFAULT_PLANAR_Y_EXPR, DEFAULT_QUIVER_G
 use poincare_map::{trace_det_from_matrix, DEFAULT_MATRIX_A};
 use systems::{default_coupled_ode_bank, CustomOdeSpec};
 
+use crate::async_sim::atlas::ParameterAtlasController;
 use crate::framework::math_input::CoupledExpressionBank;
 use crate::framework::recovery::emit_divergence_telemetry;
 pub use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
@@ -47,6 +51,13 @@ pub struct OdeSolverTool {
     pub v_series: Vec<f64>,
     pub(crate) display_y: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
     pub(crate) display_v: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
+    pub(crate) display_phase: std::sync::Arc<Vec<egui_plot::PlotPoint>>,
+    pub(crate) view_mode: phase::PlotViewMode,
+    pub(crate) t_slice: f64,
+    pub(crate) phase_cursor: Option<[f64; 2]>,
+    pub(crate) focused_canvas: Option<eframe::egui::Id>,
+    pub(crate) quiver_cache: phase::QuiverCache,
+    pub atlas: ParameterAtlasController,
     pub(crate) diverged: bool,
     pub(crate) math_input: MathExpressionInputBar,
     pub(crate) custom_coupled: bool,
@@ -161,6 +172,13 @@ impl Default for OdeSolverTool {
             v_series: Vec::new(),
             display_y: std::sync::Arc::new(Vec::new()),
             display_v: std::sync::Arc::new(Vec::new()),
+            display_phase: std::sync::Arc::new(Vec::new()),
+            view_mode: phase::PlotViewMode::TimeSeries,
+            t_slice: 0.0,
+            phase_cursor: None,
+            focused_canvas: None,
+            quiver_cache: phase::QuiverCache::default(),
+            atlas: ParameterAtlasController::new(atlas::ODE_ATLAS_AXIS_PAIRS.to_vec()),
             diverged: false,
             math_input,
             custom_coupled: false,
@@ -217,6 +235,11 @@ impl OdeSolverTool {
         } else {
             self.preset.state_labels()
         }
+    }
+
+    #[must_use]
+    pub(crate) fn second_state_label(&self) -> &'static str {
+        self.active_state_labels().1
     }
 
     pub(crate) fn has_custom_input_error(&self) -> bool {
@@ -382,31 +405,16 @@ impl OdeSolverTool {
             crate::framework::decimate_xy_series_minmax(&self.time_series, &self.y_series, cap);
         self.display_v =
             crate::framework::decimate_xy_series_minmax(&self.time_series, &self.v_series, cap);
+        self.display_phase =
+            crate::framework::decimate_xy_series_minmax(&self.y_series, &self.v_series, cap);
+        if !self.t_slice.is_finite() || self.t_slice < 0.0 {
+            self.t_slice = 0.0;
+        } else if self.total_time.is_finite() && self.total_time > 0.0 {
+            self.t_slice = self.t_slice.min(self.total_time);
+        }
         self.recalculate_comparison();
         self.last_param_summary = self.param_summary();
         self.update_callouts();
-    }
-
-    fn update_callouts(&mut self) {
-        if !self.diverged() && !self.y_series.is_empty() {
-            self.callout_manager.set_auto_callout(
-                "initial_condition",
-                [0.0, self.ic_y0],
-                format!("Initial (0, {:.2})", self.ic_y0),
-                [-25.0, -25.0],
-            );
-            if let (Some(&last_t), Some(&last_y)) = (self.time_series.last(), self.y_series.last())
-            {
-                self.callout_manager.set_auto_callout(
-                    "final_state",
-                    [last_t, last_y],
-                    format!("Final ({last_t:.2}, {last_y:.2})"),
-                    [25.0, -25.0],
-                );
-            }
-        } else if self.diverged() {
-            self.callout_manager.clear_auto();
-        }
     }
 
     fn recalculate_active(&mut self, primary_dt: f64) {
@@ -478,3 +486,6 @@ mod sensitivity_tests;
 
 #[cfg(test)]
 mod solver_poi_tests;
+
+#[cfg(test)]
+mod phase_atlas_tests;

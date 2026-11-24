@@ -4,7 +4,6 @@ use super::OdeSolverTool;
 use crate::presets::OdePreset;
 use eframe::egui::{Color32, CornerRadius, Stroke, Vec2};
 use egui_plot::{Callout, PlotUi};
-use std::collections::HashMap;
 
 fn callout_frame_styling(
     plot_ui: &PlotUi<'_>,
@@ -120,6 +119,30 @@ pub(crate) fn harmonic_equilibrium_root(tool: &OdeSolverTool) -> Option<f64> {
 /// Renders simulation callout annotations onto the ODE plot canvas.
 pub fn render_ode_callouts(plot_ui: &mut PlotUi<'_>, tool: &OdeSolverTool) {
     let (bg_fill, frame_stroke, text_color, palette) = callout_frame_styling(plot_ui);
+    if tool.is_2d_phase_portrait() {
+        if tool.ic_y0.is_finite() && tool.ic_v0.is_finite() {
+            let callout_ic = Callout::new(
+                [tool.ic_y0, tool.ic_v0],
+                format!("Initial State: ({:.2}, {:.2})", tool.ic_y0, tool.ic_v0),
+            )
+            .offset(Vec2::new(35.0, -30.0))
+            .leader_stroke(Stroke::new(1.5_f32, palette.series_color(0)))
+            .frame(bg_fill, frame_stroke)
+            .corner_radius(CornerRadius::same(4))
+            .text_color(text_color);
+            plot_ui.callout(callout_ic);
+        }
+        if tool.preset == OdePreset::HarmonicOscillator {
+            let callout_eq = Callout::new([0.0, 0.0], "Center Equilibrium (0, 0)")
+                .offset(Vec2::new(-35.0, 25.0))
+                .leader_stroke(Stroke::new(1.5_f32, palette.series_color(1)))
+                .frame(bg_fill, frame_stroke)
+                .corner_radius(CornerRadius::same(4))
+                .text_color(text_color);
+            plot_ui.callout(callout_eq);
+        }
+        return;
+    }
     render_initial_condition_callout(
         plot_ui,
         tool.ic_y0,
@@ -131,113 +154,45 @@ pub fn render_ode_callouts(plot_ui: &mut PlotUi<'_>, tool: &OdeSolverTool) {
     render_preset_asymptote_callout(plot_ui, tool, bg_fill, frame_stroke, text_color, &palette);
 }
 
-impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
-    fn theory_description(&self) -> String {
-        match self.preset {
-            OdePreset::Exponential => "First-order linear ordinary differential equation describing exponential growth or decay proportional to current quantity.".into(),
-            OdePreset::HarmonicOscillator => "Second-order ordinary differential equation modeling simple harmonic motion under a Hooke's law restoring force.".into(),
-            OdePreset::LogisticGrowth => "Nonlinear ordinary differential equation modeling density-dependent population growth with an environmental carrying capacity.".into(),
-            OdePreset::LinearSystem2D => "Planar 2x2 linear dynamical system classified on the Poincaré trace-determinant bifurcation diagram.".into(),
-            OdePreset::PlanarCustom => "Coupled 2D planar ordinary differential equations: x' = f(t, x, y), y' = g(t, x, y).".into(),
-            OdePreset::Custom if self.custom_coupled => "Coupled two-state ordinary differential equation system: y' = f(t, y, v), v' = g(t, y, v)".into(),
-            OdePreset::Custom => "Custom user-defined ordinary differential equation: y' = f(t, y)".into(),
+impl OdeSolverTool {
+    pub(crate) fn update_callouts(&mut self) {
+        if !self.diverged() && !self.y_series.is_empty() {
+            if self.is_2d_phase_portrait() {
+                self.callout_manager.set_auto_callout(
+                    "initial_condition",
+                    [self.ic_y0, self.ic_v0],
+                    format!("Initial ({:.2}, {:.2})", self.ic_y0, self.ic_v0),
+                    [-25.0, -25.0],
+                );
+                if let (Some(&last_y), Some(&last_v)) = (self.y_series.last(), self.v_series.last())
+                {
+                    self.callout_manager.set_auto_callout(
+                        "final_state",
+                        [last_y, last_v],
+                        format!("Final ({:.2}, {:.2})", last_y, last_v),
+                        [25.0, -25.0],
+                    );
+                }
+            } else {
+                self.callout_manager.set_auto_callout(
+                    "initial_condition",
+                    [0.0, self.ic_y0],
+                    format!("Initial (0, {:.2})", self.ic_y0),
+                    [-25.0, -25.0],
+                );
+                if let (Some(&last_t), Some(&last_y)) =
+                    (self.time_series.last(), self.y_series.last())
+                {
+                    self.callout_manager.set_auto_callout(
+                        "final_state",
+                        [last_t, last_y],
+                        format!("Final ({:.2}, {:.2})", last_t, last_y),
+                        [25.0, -25.0],
+                    );
+                }
+            }
+        } else if self.diverged() {
+            self.callout_manager.clear_auto();
         }
-    }
-    fn phonetic_description(&self) -> String {
-        "Ordinary differential equations theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        match self.preset {
-            OdePreset::Exponential
-            | OdePreset::LinearSystem2D
-            | OdePreset::PlanarCustom
-            | OdePreset::Custom => {
-                "Differential Equations and Dynamical Systems (Perko, 2001)".into()
-            }
-            OdePreset::HarmonicOscillator => {
-                "Classical Mechanics (Goldstein et al., 2002); Perko (2001)".into()
-            }
-            OdePreset::LogisticGrowth => {
-                "Elements of Mathematical Biology (Lotka, 1925); Verhulst (1838)".into()
-            }
-        }
-    }
-    fn theory_latex_equation(&self) -> Option<String> {
-        let eq = match self.preset {
-            OdePreset::Exponential => r"\frac{dy}{dt} = k y",
-            OdePreset::HarmonicOscillator => r"\frac{d^2 y}{dt^2} = -k y",
-            OdePreset::LogisticGrowth => r"\frac{dy}{dt} = r y (1 - \frac{y}{K})",
-            OdePreset::LinearSystem2D => r"\dot{\mathbf{x}} = A \mathbf{x}",
-            OdePreset::PlanarCustom | OdePreset::Custom => return None,
-        };
-        Some(eq.into())
-    }
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        HashMap::from([
-            (
-                "Exponential".into(),
-                "First-order linear ODE representing exponential growth or decay".into(),
-            ),
-            (
-                "Harmonic Oscillator".into(),
-                "Second-order linear ODE representing simple harmonic motion".into(),
-            ),
-            (
-                "Logistic Growth".into(),
-                "Nonlinear first-order ODE modeling population growth with carrying capacity"
-                    .into(),
-            ),
-            (
-                "Linear 2D".into(),
-                "Planar 2x2 linear system with Poincaré stability regimes".into(),
-            ),
-            (
-                "Planar Custom".into(),
-                "Coupled 2D user-defined ODE phase-plane system".into(),
-            ),
-            (
-                "Custom".into(),
-                "Custom user-defined scalar or coupled ordinary differential equation".into(),
-            ),
-        ])
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "harmonic_oscillator",
-        title: "Harmonic Oscillator",
-        description: "y'' = -k·y: Second-order differential equation modeling undamped periodic spring motion.",
-        category: "Differential Equations",
-        icon: "〰️",
-        domain: "analysis",
-        tool_name: Some("OdeSolverTool"),
-        preset_generator: || crate::starter_gallery::PRESET_HARMONIC_OSCILLATOR,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "logistic_growth",
-        title: "Logistic Growth",
-        description: "y' = r·y·(1 - y/K): Non-linear growth constrained by carrying capacity K.",
-        category: "Population Dynamics",
-        icon: "📈",
-        domain: "analysis",
-        tool_name: Some("OdeSolverTool"),
-        preset_generator: || crate::starter_gallery::PRESET_LOGISTIC_GROWTH,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "exponential_decay",
-        title: "Exponential Decay",
-        description: "y' = k·y: First-order differential decay process with constant half-life.",
-        category: "Calculus",
-        icon: "📉",
-        domain: "analysis",
-        tool_name: Some("OdeSolverTool"),
-        preset_generator: || crate::starter_gallery::PRESET_EXPONENTIAL_DECAY,
     }
 }

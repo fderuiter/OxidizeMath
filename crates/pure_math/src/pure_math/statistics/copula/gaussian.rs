@@ -3,6 +3,7 @@
 use super::bivariate::bivariate_copula_cdf;
 use super::core::{Correlation, CorrelationMatrix, Probability};
 use super::multivariate::{evaluate_copula_cdf_with_scratch, required_scratch_len};
+use super::qmc::{CopulaQmcWorkspace, multivariate_cdf_qmc, multivariate_cdf_with_workspace};
 use crate::error::CopulaError;
 use crate::pure_math::analysis::integration::MultivariateIntegrator;
 use crate::pure_math::statistics::monte_carlo::{normal_cdf_fast, normal_inv_cdf_fast};
@@ -126,6 +127,53 @@ impl GaussianCopula {
         scratch: &mut [f64],
     ) -> Result<Probability, CopulaError> {
         evaluate_copula_cdf_with_scratch(u, &self.correlation, scratch)
+    }
+
+    /// Evaluates the Gaussian copula CDF with an explicit Cranley-Patterson `seed` and antithetic
+    /// Halton pair count `n_pairs` (zero heap allocations for `d <= 12`).
+    #[verified_engine::verified]
+    pub fn cdf_with_seed(
+        &self,
+        u: &[Probability],
+        seed: u64,
+        n_pairs: usize,
+    ) -> Result<Probability, CopulaError> {
+        let dim = self.correlation.dimension();
+        if u.len() != dim {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(dim),
+                actual: Dimension(u.len()),
+            }));
+        }
+        if dim == 2 {
+            let rho = Correlation::new(self.correlation.matrix()[(0, 1)].clamp(-1.0, 1.0))?;
+            return bivariate_copula_cdf(u[0], u[1], rho);
+        }
+        multivariate_cdf_qmc(&self.correlation, u, seed, n_pairs)
+    }
+
+    /// Evaluates the Gaussian copula CDF using a caller-supplied [`CopulaQmcWorkspace`]
+    /// with zero heap allocations across arbitrary dimensions.
+    #[verified_engine::verified]
+    pub fn cdf_with_workspace(
+        &self,
+        u: &[Probability],
+        seed: u64,
+        n_pairs: usize,
+        workspace: &mut CopulaQmcWorkspace,
+    ) -> Result<Probability, CopulaError> {
+        let dim = self.correlation.dimension();
+        if u.len() != dim {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(dim),
+                actual: Dimension(u.len()),
+            }));
+        }
+        if dim == 2 {
+            let rho = Correlation::new(self.correlation.matrix()[(0, 1)].clamp(-1.0, 1.0))?;
+            return bivariate_copula_cdf(u[0], u[1], rho);
+        }
+        multivariate_cdf_with_workspace(&self.correlation, u, seed, n_pairs, workspace)
     }
 
     /// Evaluates the multivariate Gaussian copula CDF via Cholesky factorization and Genz
