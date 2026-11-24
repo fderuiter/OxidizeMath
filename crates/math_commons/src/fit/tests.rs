@@ -147,3 +147,24 @@ fn test_six_parameter_levenberg_marquardt_numeric() {
         Err(FitError::UnsupportedDegree { degree: 7 })
     );
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_vandermonde_qr_conditioning_at_eps_1e8() {
+    let eps = 1e-8_f64;
+    let xs = [-1.0_f64, -1.0 + eps, 1.0, 1.0 + eps];
+    let mut pts = [[0.0_f64; 2]; 4];
+    for (i, &x) in xs.iter().enumerate() {
+        pts[i] = [x, 1.2 - 0.7 * x + 0.4 * x * x];
+    }
+    let fit = fit_polynomial(&pts, 2).expect("quadratic QR fit at eps=1e-8");
+    let c = fit.coefficients();
+    let err_sq = (c[0] - 1.2).powi(2) + (c[1] + 0.7).powi(2) + (c[2] - 0.4).powi(2);
+    let ref_sq = 1.2_f64.powi(2) + 0.7_f64.powi(2) + 0.4_f64.powi(2);
+    let rel_l2 = (err_sq / ref_sq).sqrt();
+    assert!(
+        rel_l2 <= 1.7e-8,
+        "Vandermonde QR relative L2 error {rel_l2:e} exceeded 1.7e-8"
+    );
+    assert!((c[2] - 0.4).abs() <= 2e-8);
+}
