@@ -1,10 +1,10 @@
 #[allow(missing_docs)]
 pub mod atlas;
-#[cfg(test)]
+#[cfg(all(test, any(feature = "biology", feature = "physics")))]
 mod checkpoint_tests;
 #[cfg(test)]
 mod fault_and_seed_tests;
-#[cfg(test)]
+#[cfg(all(test, any(feature = "biology", feature = "physics")))]
 mod mvp_time_travel_tests;
 #[cfg(test)]
 mod runner_tests;
@@ -129,7 +129,6 @@ pub struct SimulationController {
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 impl Drop for SimulationController {
     fn drop(&mut self) {
         let _ = unregister_worker_context(self.handle);
@@ -167,7 +166,6 @@ impl SimulationController {
     }
 
     #[cfg(target_arch = "wasm32")]
-    // theory_verification!
     pub fn new<T: SimulationRunner>(runner: T) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
         let (state_tx, state_rx) = sim_state_channel();
@@ -383,7 +381,6 @@ impl SimulationController {
     }
 
     #[cfg(target_arch = "wasm32")]
-    // theory_verification!
     fn wake_wasm_worker(&self) {
         wake_worker(self.handle);
     }
@@ -475,7 +472,6 @@ impl SimulationController {
             .filter(|_| received_new_snapshot)
     }
 }
-// theory_verification!
 
 #[cfg(any(target_arch = "wasm32", test))]
 mod registry;
@@ -488,5 +484,9 @@ use registry::{
 mod wasm;
 #[cfg(target_arch = "wasm32")]
 use wasm::{run_simulation_worker, wake_worker};
-#[cfg(all(test, target_arch = "wasm32"))]
+#[cfg(all(
+    test,
+    target_arch = "wasm32",
+    any(feature = "biology", feature = "physics")
+))]
 mod wasm_tests;

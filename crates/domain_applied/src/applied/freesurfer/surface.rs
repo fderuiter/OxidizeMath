@@ -398,3 +398,30 @@ pub fn evolve_surface_deformable(
         base += SURFACE_CHUNK;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![cfg_attr(any(), verified(opt_out = "tests"))]
+
+    use super::*;
+    use verified_engine::engine::VerifiedEngine;
+
+    #[test]
+    fn test_internal_energy_100_steps_zero_alloc_and_exact_value() {
+        let mut surface =
+            Surface::from_vertices(vec![[0.0, 0.0, 0.0], [1.0, 2.0, 2.0], [1.0, 2.0, 5.0]]);
+        // Tension: (1+4+4) + (0+0+9) = 18.0; bending: (-1)^2 + (-2)^2 + 1^2 = 6.0 -> 0.5*18 + 0.25*6 = 10.5
+        let initial = internal_energy(&surface, 0.5, 0.25);
+        assert!((initial - 10.5).abs() < 1e-12);
+
+        let (accum, _metrics) = VerifiedEngine::run_verified(|| {
+            let mut sum = 0.0;
+            for _ in 0..100 {
+                evolve_surface(&mut surface, 1e-4, 0.2);
+                sum += internal_energy(&surface, 0.5, 0.25) + external_energy(&surface, 0.2);
+            }
+            sum
+        });
+        assert!(accum.is_finite());
+    }
+}

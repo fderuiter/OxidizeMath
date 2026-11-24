@@ -1,14 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use crate::async_sim::{SimCommand, SimulationRunner};
-use crate::tabs::chaos::attractors::{
-    AttractorPlotter, AttractorRunner, SolverExecutionState, MAX_SIMULATION_SPEED,
-};
-use crate::tabs::number_theory::factorization::{FactorizationTool, MAX_SYNC_FACTORIZATION_INPUT};
-use std::collections::VecDeque;
-use std::sync::Arc;
 
+#[cfg(any(feature = "climate", feature = "pure_math"))]
 fn make_preset(domain: &str, title: &str, config: serde_json::Value) -> String {
     serde_json::json!({
         "metadata": {
@@ -22,6 +16,7 @@ fn make_preset(domain: &str, title: &str, config: serde_json::Value) -> String {
     .to_string()
 }
 
+#[cfg(any(feature = "physics", feature = "pure_math"))]
 fn make_framework_session(tool_name: &str, config: serde_json::Value) -> String {
     serde_json::json!({
         "selected_tool_index": null,
@@ -56,6 +51,7 @@ fn test_tool_state_bounds_scanner_bytes_depth_arrays_and_strings() {
     assert!(zero_array_bounds.validate_json("[1]").is_err());
 }
 
+#[cfg(feature = "pure_math")]
 #[test]
 fn test_import_preset_and_framework_session_reject_bounds_before_deserialization() {
     let mut fw = SimulationFramework::new("analysis");
@@ -102,6 +98,7 @@ fn test_import_preset_and_framework_session_reject_bounds_before_deserialization
     );
 }
 
+#[cfg(feature = "climate")]
 #[test]
 fn test_framework_session_per_entry_and_session_byte_limits() {
     let mut fw = SimulationFramework::new("climate");
@@ -148,7 +145,8 @@ fn test_framework_session_per_entry_and_session_byte_limits() {
     assert!(!fw.show_theory_portal);
 }
 
-fn assert_vr_and_cera_proof_cases() {
+#[cfg(feature = "pure_math")]
+fn assert_vr_proof_cases() {
     let mut vr_fw = SimulationFramework::new("geometry_topology");
     assert!(vr_fw.select_tool_by_name("VietorisRipsTool"));
     let vr_baseline = vr_fw.active_tool.as_ref().unwrap().save_state().unwrap();
@@ -174,7 +172,10 @@ fn assert_vr_and_cera_proof_cases() {
         vr_fw.active_tool.as_ref().unwrap().save_state().as_deref(),
         Some(vr_baseline.as_str())
     );
+}
 
+#[cfg(feature = "climate")]
+fn assert_cera_proof_cases() {
     let mut cera_fw = SimulationFramework::new("climate");
     assert!(cera_fw.select_tool_by_name("CeraTool"));
     let cera_preset = make_preset(
@@ -209,76 +210,108 @@ fn assert_vr_and_cera_proof_cases() {
         .is_err());
 }
 
+#[cfg(any(feature = "physics", feature = "pure_math"))]
 fn assert_attractor_and_factorization_proof_cases() {
-    let mut chaos_fw = SimulationFramework::new("chaos");
-    assert!(chaos_fw.select_tool_by_name("AttractorPlotter"));
-    let attr_session = make_framework_session(
-        "Attractor Plotter",
-        serde_json::json!({
-            "sigma": 10.0, "rho": 28.0, "beta": 2.666, "dt": 0.01,
-            "simulation_speed": 2_000_000_000_usize, "execution_state": "Running", "show_annotations": false
-        }),
-    );
-    chaos_fw.load_state(&attr_session);
-    chaos_fw.active_tool.as_mut().unwrap().step_simulation();
-    let post_attr: serde_json::Value =
-        serde_json::from_str(&chaos_fw.active_tool.as_ref().unwrap().save_state().unwrap())
-            .unwrap();
-    assert!(post_attr["simulation_speed"].as_u64().unwrap() <= MAX_SIMULATION_SPEED as u64);
+    #[cfg(feature = "physics")]
+    {
+        use crate::tabs::chaos::attractors::MAX_SIMULATION_SPEED;
+        let mut chaos_fw = SimulationFramework::new("chaos");
+        assert!(chaos_fw.select_tool_by_name("AttractorPlotter"));
+        let attr_session = make_framework_session(
+            "Attractor Plotter",
+            serde_json::json!({
+                "sigma": 10.0, "rho": 28.0, "beta": 2.666, "dt": 0.01,
+                "simulation_speed": 2_000_000_000_usize, "execution_state": "Running", "show_annotations": false
+            }),
+        );
+        chaos_fw.load_state(&attr_session);
+        chaos_fw.active_tool.as_mut().unwrap().step_simulation();
+        let post_attr: serde_json::Value =
+            serde_json::from_str(&chaos_fw.active_tool.as_ref().unwrap().save_state().unwrap())
+                .unwrap();
+        assert!(post_attr["simulation_speed"].as_u64().unwrap() <= MAX_SIMULATION_SPEED as u64);
+    }
 
-    let mut nt_fw = SimulationFramework::new("number_theory");
-    assert!(nt_fw.select_tool_by_name("FactorizationTool"));
-    let fact_preset = make_preset(
-        "number_theory",
-        "Max Prime Factorization",
-        serde_json::json!({"input_text": "18446744073709551557"}),
-    );
-    assert!(nt_fw
-        .active_tool
-        .as_mut()
-        .unwrap()
-        .import_preset_json(&fact_preset)
-        .is_err());
+    #[cfg(feature = "pure_math")]
+    {
+        let mut nt_fw = SimulationFramework::new("number_theory");
+        assert!(nt_fw.select_tool_by_name("FactorizationTool"));
+        let fact_preset = make_preset(
+            "number_theory",
+            "Max Prime Factorization",
+            serde_json::json!({"input_text": "18446744073709551557"}),
+        );
+        assert!(nt_fw
+            .active_tool
+            .as_mut()
+            .unwrap()
+            .import_preset_json(&fact_preset)
+            .is_err());
+    }
 }
 
+#[cfg(any(feature = "climate", feature = "physics", feature = "pure_math"))]
 #[test]
 fn test_acceptance_proof_cases_across_all_four_tools() {
-    assert_vr_and_cera_proof_cases();
+    #[cfg(feature = "pure_math")]
+    assert_vr_proof_cases();
+    #[cfg(feature = "climate")]
+    assert_cera_proof_cases();
+    #[cfg(any(feature = "physics", feature = "pure_math"))]
     assert_attractor_and_factorization_proof_cases();
 }
 
+#[cfg(any(feature = "physics", feature = "pure_math"))]
 #[test]
 fn test_attractor_runner_set_speed_and_factorization_boundary_caps() {
-    let plotter = AttractorPlotter::default();
-    let mut runner = AttractorRunner {
-        system: math_explorer::physics::chaos::lorenz::LorenzBuilder::new().build(
-            math_explorer::physics::chaos::lorenz::LorenzState::new(1.0, 1.0, 1.0),
-        ),
-        params: Arc::clone(&plotter.params),
-        history: VecDeque::with_capacity(100),
-        twin_state: crate::tabs::chaos::attractors::TwinRunnerState::default(),
-        step_count: 0,
-        execution_state: SolverExecutionState::Ready,
-        twin: None,
-        rng: oxidize_core::rng::OxidizeRng::default(),
-    };
-    runner.process_command(SimCommand::SetSpeed(0));
-    assert_eq!(runner.params.read().unwrap().simulation_speed, 1);
-    runner.process_command(SimCommand::SetSpeed(999_999));
-    assert_eq!(
-        runner.params.read().unwrap().simulation_speed,
-        MAX_SIMULATION_SPEED
-    );
+    #[cfg(feature = "physics")]
+    {
+        use crate::async_sim::{SimCommand, SimulationRunner};
+        use crate::tabs::chaos::attractors::{
+            AttractorPlotter, AttractorRunner, SolverExecutionState, TwinRunnerState,
+            MAX_SIMULATION_SPEED,
+        };
+        use std::collections::VecDeque;
+        use std::sync::Arc;
 
-    let mut fact = FactorizationTool::default();
-    let over_cap = format!(
-        "{{\"input_text\":\"{}\"}}",
-        MAX_SYNC_FACTORIZATION_INPUT + 1
-    );
-    assert!(fact.try_load_state(&over_cap).is_err());
-    assert!(fact
-        .try_load_state(&format!(
-            "{{\"input_text\":\"{MAX_SYNC_FACTORIZATION_INPUT}\"}}"
-        ))
-        .is_ok());
+        let plotter = AttractorPlotter::default();
+        let mut runner = AttractorRunner {
+            system: math_explorer::physics::chaos::lorenz::LorenzBuilder::new().build(
+                math_explorer::physics::chaos::lorenz::LorenzState::new(1.0, 1.0, 1.0),
+            ),
+            params: Arc::clone(&plotter.params),
+            history: VecDeque::with_capacity(100),
+            twin_state: TwinRunnerState::default(),
+            step_count: 0,
+            execution_state: SolverExecutionState::Ready,
+            twin: None,
+            rng: oxidize_core::rng::OxidizeRng::default(),
+        };
+        runner.process_command(SimCommand::SetSpeed(0));
+        assert_eq!(runner.params.read().unwrap().simulation_speed, 1);
+        runner.process_command(SimCommand::SetSpeed(999_999));
+        assert_eq!(
+            runner.params.read().unwrap().simulation_speed,
+            MAX_SIMULATION_SPEED
+        );
+    }
+
+    #[cfg(feature = "pure_math")]
+    {
+        use crate::tabs::number_theory::factorization::{
+            FactorizationTool, MAX_SYNC_FACTORIZATION_INPUT,
+        };
+
+        let mut fact = FactorizationTool::default();
+        let over_cap = format!(
+            "{{\"input_text\":\"{}\"}}",
+            MAX_SYNC_FACTORIZATION_INPUT + 1
+        );
+        assert!(fact.try_load_state(&over_cap).is_err());
+        assert!(fact
+            .try_load_state(&format!(
+                "{{\"input_text\":\"{MAX_SYNC_FACTORIZATION_INPUT}\"}}"
+            ))
+            .is_ok());
+    }
 }

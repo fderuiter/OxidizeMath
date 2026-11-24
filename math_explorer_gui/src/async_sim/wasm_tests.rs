@@ -1,5 +1,7 @@
 use super::*;
+#[cfg(feature = "physics")]
 use crate::tabs::chaos::attractors::{AttractorMode, AttractorRunner, AttractorSharedParams};
+#[cfg(feature = "biology")]
 use crate::tabs::morphogenesis::{MorphogenesisSharedParams, MorphogenesisTool};
 use std::sync::RwLock;
 use wasm_bindgen::JsCast;
@@ -38,6 +40,7 @@ async fn wait_wasm_step(controller: &mut SimulationController, expected: usize) 
     );
 }
 
+#[cfg(feature = "biology")]
 #[wasm_bindgen_test]
 async fn wasm_worker_checkpoint_step_stepback_seek_and_reset() {
     let params = Arc::new(RwLock::new(MorphogenesisSharedParams {
@@ -69,6 +72,7 @@ async fn wasm_worker_checkpoint_step_stepback_seek_and_reset() {
     assert_eq!(controller.timeline_metadata().unwrap().max_step, 0);
 }
 
+#[cfg(feature = "physics")]
 #[wasm_bindgen_test]
 async fn wasm_attractor_running_slice_and_seek_pauses_cleanly() {
     let params = Arc::new(RwLock::new(AttractorSharedParams {

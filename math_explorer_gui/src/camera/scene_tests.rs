@@ -1,14 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
-use crate::tabs::{
-    chaos::attractors::AttractorPlotter,
-    geometry_topology::{curvature_heatmap::CurvatureHeatmap, surface_viewer::SurfaceViewer},
-    quantum::spin_viz::SpinVisualizer,
-    solid_state::crystal_viewer::CrystalViewer,
-};
 use nalgebra::Point3;
 
+#[cfg(any(feature = "physics", feature = "pure_math"))]
 fn interior_intersection(
     a0: [f64; 2],
     a1: [f64; 2],
@@ -33,6 +28,7 @@ fn interior_intersection(
         .filter(|(_, u_val)| (0.02..0.98).contains(u_val))
 }
 
+#[cfg(any(feature = "physics", feature = "pure_math"))]
 fn count_rear_over_front_overdraws(segments: &[([f64; 2], [f64; 2], f64)]) -> usize {
     let mut overdraws = 0usize;
     for i in 0..segments.len() {
@@ -267,57 +263,71 @@ fn test_camera_shift_wasd_projection_shortcut_and_reset() {
     assert_eq!(cam, Camera3D::new(0.5, 0.5, 1.0));
 }
 
+#[cfg(any(feature = "physics", feature = "pure_math"))]
 #[test]
 fn test_scene3d_builder_cuts_rear_over_front_overdraws_to_zero_across_five_tools() {
-    let mut curvature = CurvatureHeatmap::default();
-    curvature.populate_scene(egui::Color32::WHITE);
-    let curv_sorted = curvature.scene_builder.sorted_projected_segments();
-    let mut curv_reversed = curv_sorted.clone();
-    curv_reversed.reverse();
-    assert!(
-        count_rear_over_front_overdraws(&curv_reversed) > 700,
-        "Expected >700 rear-over-front overdraws without front-to-back order on 30x30 torus"
-    );
-    assert_eq!(count_rear_over_front_overdraws(&curv_sorted), 0);
+    #[cfg(feature = "pure_math")]
+    {
+        use crate::tabs::geometry_topology::{
+            curvature_heatmap::CurvatureHeatmap, surface_viewer::SurfaceViewer,
+        };
+        let mut curvature = CurvatureHeatmap::default();
+        curvature.populate_scene(egui::Color32::WHITE);
+        let curv_sorted = curvature.scene_builder.sorted_projected_segments();
+        let mut curv_reversed = curv_sorted.clone();
+        curv_reversed.reverse();
+        assert!(
+            count_rear_over_front_overdraws(&curv_reversed) > 700,
+            "Expected >700 rear-over-front overdraws without front-to-back order on 30x30 torus"
+        );
+        assert_eq!(count_rear_over_front_overdraws(&curv_sorted), 0);
 
-    let mut surface = SurfaceViewer::default();
-    surface.populate_scene(egui::Color32::WHITE);
-    let surf_sorted = surface.scene_builder.sorted_projected_segments();
-    let mut surf_reversed = surf_sorted.clone();
-    surf_reversed.reverse();
-    assert!(count_rear_over_front_overdraws(&surf_reversed) > 700);
-    assert_eq!(count_rear_over_front_overdraws(&surf_sorted), 0);
-
-    let mut spin = SpinVisualizer::default();
-    spin.populate_scene(
-        0.4,
-        -0.5,
-        0.75,
-        egui::Color32::GRAY,
-        egui::Color32::RED,
-        true,
-    );
-    assert_eq!(
-        count_rear_over_front_overdraws(&spin.scene_builder.sorted_projected_segments()),
-        0
-    );
-
-    let mut attractor = AttractorPlotter::default();
-    for _ in 0..40 {
-        crate::framework::InteractiveTool::step_simulation(&mut attractor);
+        let mut surface = SurfaceViewer::default();
+        surface.populate_scene(egui::Color32::WHITE);
+        let surf_sorted = surface.scene_builder.sorted_projected_segments();
+        let mut surf_reversed = surf_sorted.clone();
+        surf_reversed.reverse();
+        assert!(count_rear_over_front_overdraws(&surf_reversed) > 700);
+        assert_eq!(count_rear_over_front_overdraws(&surf_sorted), 0);
     }
-    attractor.populate_scene(egui::Color32::LIGHT_BLUE);
-    assert_eq!(
-        count_rear_over_front_overdraws(&attractor.scene_builder.sorted_projected_segments()),
-        0
-    );
 
-    let mut crystal = CrystalViewer::default();
-    crystal.populate_scene(egui::Color32::GRAY, egui::Color32::RED);
-    assert_eq!(
-        count_rear_over_front_overdraws(&crystal.scene_builder.sorted_projected_segments()),
-        0
-    );
+    #[cfg(feature = "physics")]
+    {
+        use crate::tabs::{
+            chaos::attractors::AttractorPlotter, quantum::spin_viz::SpinVisualizer,
+            solid_state::crystal_viewer::CrystalViewer,
+        };
+        let mut spin = SpinVisualizer::default();
+        spin.populate_scene(
+            0.4,
+            -0.5,
+            0.75,
+            egui::Color32::GRAY,
+            egui::Color32::RED,
+            true,
+        );
+        assert_eq!(
+            count_rear_over_front_overdraws(&spin.scene_builder.sorted_projected_segments()),
+            0
+        );
+
+        let mut attractor = AttractorPlotter::default();
+        for _ in 0..40 {
+            crate::framework::InteractiveTool::step_simulation(&mut attractor);
+        }
+        attractor.populate_scene(egui::Color32::LIGHT_BLUE);
+        assert_eq!(
+            count_rear_over_front_overdraws(&attractor.scene_builder.sorted_projected_segments()),
+            0
+        );
+
+        let mut crystal = CrystalViewer::default();
+        crystal.populate_scene(egui::Color32::GRAY, egui::Color32::RED);
+        assert_eq!(
+            count_rear_over_front_overdraws(&crystal.scene_builder.sorted_projected_segments()),
+            0
+        );
+    }
 }
 
 #[test]
