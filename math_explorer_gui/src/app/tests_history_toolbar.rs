@@ -133,7 +133,7 @@ fn test_all_tabs_render_undo_and_redo_buttons_matching_can_undo_and_can_redo() {
         feature = "physics",
         feature = "pure_math"
     ))]
-    assert_eq!(app.tabs.len(), 30);
+    assert_eq!(app.tabs.len(), 31);
     let _ = run_frame(&ctx, &mut app, Vec::new());
     for tab_idx in 0..app.tabs.len() {
         app.selected_tab = tab_idx;

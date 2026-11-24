@@ -206,4 +206,64 @@ fn test_multivariate_gaussian_copula_3d_5d_10d_accuracy() {
     );
 }
 
+#[test]
+#[verified_engine::verified]
+fn test_three_leg_parlay_and_tail_crash_benchmarks() {
+    let corr = CorrelationMatrix::equicorrelated(3, Correlation::new(0.60).unwrap()).unwrap();
+    let copula = GaussianCopula::new(corr.clone());
+
+    let u_parlay = [Probability::new(0.55).unwrap(); 3];
+    let exact_parlay = exact_equicorrelated_copula_cdf(&[0.55; 3], 0.60);
+    let qmc_parlay = copula.cdf(&u_parlay).unwrap().value();
+    assert!((exact_parlay - 0.3272).abs() < 2e-4);
+    assert!((qmc_parlay - exact_parlay).abs() <= 0.005);
+    let sgp = sgp_joint_probability(&u_parlay, &corr).unwrap().value();
+    assert!((sgp - qmc_parlay).abs() < 1e-12);
+
+    let u_crash = [Probability::new(0.05).unwrap(); 3];
+    let exact_crash = exact_equicorrelated_copula_cdf(&[0.05; 3], 0.60);
+    let qmc_crash = copula.cdf(&u_crash).unwrap().value();
+    let naive_crash = 0.05_f64.powi(3);
+    assert!((exact_crash - 0.007_668).abs() < 2e-5);
+    assert!((qmc_crash - exact_crash).abs() <= 0.001);
+    let multiplier = qmc_crash / naive_crash;
+    assert!((multiplier - 61.35).abs() < 2.0);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_cdf_with_seed_and_workspace_zero_allocation_3_to_12_legs() {
+    use super::super::DEFAULT_COPULA_QMC_PAIRS;
+    use verified_engine::engine::VerifiedEngine;
+
+    for &legs in &[3_usize, 4, 6, 8, 10, 12] {
+        let corr =
+            CorrelationMatrix::equicorrelated(legs, Correlation::new(0.50).unwrap()).unwrap();
+        let copula = GaussianCopula::new(corr);
+        let marginals = vec![Probability::new(0.60).unwrap(); legs];
+        let raw = vec![0.60_f64; legs];
+        let exact = exact_equicorrelated_copula_cdf(&raw, 0.50);
+        let (res_seed, _) = VerifiedEngine::run_verified(|| {
+            copula.cdf_with_seed(
+                &marginals,
+                oxidize_core::rng::BASE_SEED,
+                DEFAULT_COPULA_QMC_PAIRS,
+            )
+        });
+        let val_seed = res_seed.unwrap().value();
+        assert!((val_seed - exact).abs() <= 0.005);
+
+        let mut workspace = CopulaQmcWorkspace::with_capacity(16);
+        let (res_ws, _) = VerifiedEngine::run_verified(|| {
+            copula.cdf_with_workspace(
+                &marginals,
+                oxidize_core::rng::BASE_SEED,
+                DEFAULT_COPULA_QMC_PAIRS,
+                &mut workspace,
+            )
+        });
+        assert!((res_ws.unwrap().value() - val_seed).abs() < 1e-12);
+    }
+}
+
 // [cite:clinical_trials_statistics]

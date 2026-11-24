@@ -67,6 +67,9 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         }
         "RadarGatingTool" => &["mmwave_radiotherapy_setup"],
         "OpticsWaveTool" => &["mmwave_radiotherapy_setup", "quantum_mechanics"],
+        "CausticsRayBenchTool" | "FraunhoferDiffractionTool" => {
+            &["geometric_optics_and_caustics", "optics"]
+        }
         "TokenizationTool"
         | "FactorizationTool"
         | "FractranMachineTool"
@@ -115,6 +118,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         ],
         "biology" | "biochemical" => &["biology", "computational_biology"],
         "neuroscience" => &["biology", "computational_biology", "graph_parameters_rust"],
+        "optics" => &["geometric_optics_and_caustics", "optics"],
         "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],
         "solid_state" => &["stat_mech", "pure_math"],
         "ai" => &["graph_parameters_rust"],
