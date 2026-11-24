@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "tests"))]
-
 //! Headless software rasterizer verification generating PNG previews of `KnotBraidStudioTool`.
 
 use super::presets::{

@@ -37,6 +37,8 @@ impl BurauWorkspace {
             scratch: vec![0.0; dim * dim],
         };
         ws.reset_identity();
+        assert_eq!(ws.matrix.len(), dim * dim);
+        assert_eq!(ws.scratch.len(), dim * dim);
         Ok(ws)
     }
 
@@ -47,6 +49,7 @@ impl BurauWorkspace {
         for i in 0..self.dim {
             self.matrix[flatten_2d_index(i, i, self.dim)] = 1.0;
         }
+        debug_assert!(self.dim == 0 || self.matrix[0] == 1.0);
     }
 
     /// Dimension $n - 1$ of the reduced Burau representation.
@@ -153,7 +156,9 @@ impl BurauWorkspace {
                 };
             }
         }
-        Ok(gaussian_det_in_place(&mut self.scratch, self.dim) / denom)
+        let val = gaussian_det_in_place(&mut self.scratch, self.dim) / denom;
+        assert!(val.is_finite());
+        Ok(val)
     }
 }
 
@@ -192,5 +197,6 @@ fn gaussian_det_in_place(buf: &mut [f64], n: usize) -> f64 {
     for i in 0..n {
         prod *= buf[flatten_2d_index(i, i, n)];
     }
+    debug_assert!(prod.is_finite());
     prod
 }

@@ -201,8 +201,74 @@ fn format_module_and_bypass_errors(report: &TraceabilityReport, lines: &mut Vec<
     failed
 }
 
+fn format_density_floor_errors(
+    report: &TraceabilityReport,
+    floors: super::DensityFloors,
+    lines: &mut Vec<String>,
+) -> bool {
+    let mut failed = false;
+    let verified_density = if report.verified_funcs > 0 {
+        report.verified_asserts as f64 / report.verified_funcs as f64
+    } else {
+        0.0
+    };
+    if report.verified_funcs > 0 && verified_density < floors.min_verified_density {
+        lines.push(format!(
+            "\n[!] Assertion Density Failure: Verified modules have a density of {verified_density:.3} asserts/fn, which is below the minimum required {:.3} asserts/fn.",
+            floors.min_verified_density
+        ));
+        for (file, &[asserts, funcs]) in &report.file_verified_counts {
+            if funcs > 0 {
+                let file_density = asserts as f64 / funcs as f64;
+                if file_density < floors.min_verified_density {
+                    lines.push(format!(
+                        "  - {file}: {file_density:.2} asserts/fn ({asserts} asserts / {funcs} verified fns)"
+                    ));
+                }
+            }
+        }
+        lines.push(
+            "  Hint: Add post-condition `assert!` / `assert_eq!` checks to `#[verified]` functions or mark delegating helpers with `#[verified(opt_out = \"reason\")]`."
+                .to_string(),
+        );
+        failed = true;
+    }
+
+    let total_density = if report.total_funcs > 0 {
+        report.total_asserts as f64 / report.total_funcs as f64
+    } else {
+        0.0
+    };
+    if report.total_funcs > 0 && total_density < floors.min_total_density {
+        lines.push(format!(
+            "\n[!] Assertion Density Failure: Total production assertion density is {total_density:.3} asserts/fn, which is below the minimum required {:.3} asserts/fn.",
+            floors.min_total_density
+        ));
+        failed = true;
+    }
+
+    let unverified_funcs = report.total_funcs.saturating_sub(report.verified_funcs);
+    let unverified_asserts = report.total_asserts.saturating_sub(report.verified_asserts);
+    let unverified_density = if unverified_funcs > 0 {
+        unverified_asserts as f64 / unverified_funcs as f64
+    } else {
+        0.0
+    };
+    if let Some(min_unverified) = floors.min_unverified_density
+        && unverified_funcs > 0
+        && unverified_density < min_unverified
+    {
+        lines.push(format!(
+            "\n[!] Assertion Density Failure: Unverified modules have a density of {unverified_density:.3} asserts/fn, which is below the minimum required {min_unverified:.3} asserts/fn."
+        ));
+        failed = true;
+    }
+    failed
+}
+
 fn format_semantic_and_density_errors(
     report: &TraceabilityReport,
+    floors: super::DensityFloors,
     lines: &mut Vec<String>,
 ) -> bool {
     let mut failed = false;
@@ -225,46 +291,42 @@ fn format_semantic_and_density_errors(
         failed = true;
     }
 
-    let verified_density = if report.verified_funcs > 0 {
-        report.verified_asserts as f64 / report.verified_funcs as f64
-    } else {
-        0.0
-    };
-    if report.verified_funcs > 0 && verified_density < 0.4 {
-        lines.push(format!(
-            "\n[!] Assertion Density Failure: Verified modules have a density of {verified_density:.2} asserts/fn, which is below the minimum required 0.4 asserts/fn."
-        ));
-        for (file, &[asserts, funcs]) in &report.file_verified_counts {
-            if funcs > 0 {
-                let file_density = asserts as f64 / funcs as f64;
-                if file_density < 0.4 {
-                    lines.push(format!(
-                        "  - {file}: {file_density:.2} asserts/fn ({asserts} asserts / {funcs} verified fns)"
-                    ));
-                }
-            }
-        }
-        lines.push(
-            "  Hint: Add post-condition `assert!` / `assert_eq!` checks to `#[verified]` functions or mark delegating helpers with `#[verified(opt_out = \"reason\")]`."
-                .to_string(),
-        );
-        failed = true;
-    }
+    failed |= format_density_floor_errors(report, floors, lines);
     failed
+}
+
+/// Formats all traceability diagnostics for `report` against explicit `floors`, returning `(failed, lines)`.
+pub fn format_traceability_errors_with_floors(
+    report: &TraceabilityReport,
+    floors: super::DensityFloors,
+) -> (bool, Vec<String>) {
+    let mut lines = Vec::new();
+    let mut failed = format_unlinked_and_invalid(report, &mut lines);
+    failed |= format_module_and_bypass_errors(report, &mut lines);
+    failed |= format_semantic_and_density_errors(report, floors, &mut lines);
+    (failed, lines)
 }
 
 /// Formats all traceability diagnostics for `report`, returning `(failed, lines)`.
 pub fn format_traceability_errors(report: &TraceabilityReport) -> (bool, Vec<String>) {
-    let mut lines = Vec::new();
-    let mut failed = format_unlinked_and_invalid(report, &mut lines);
-    failed |= format_module_and_bypass_errors(report, &mut lines);
-    failed |= format_semantic_and_density_errors(report, &mut lines);
-    (failed, lines)
+    let floors = super::load_workspace_density_floors().unwrap_or_default();
+    format_traceability_errors_with_floors(report, floors)
 }
 
 /// Evaluates all traceability invariants on `report`, printing diagnostics and returning `true` if any check failed.
 pub fn check_and_print_traceability_errors(report: &TraceabilityReport) -> bool {
     let (failed, lines) = format_traceability_errors(report);
+    for line in lines {
+        println!("{line}");
+    }
+    failed
+}
+
+fn check_and_print_traceability_errors_with_floors(
+    report: &TraceabilityReport,
+    floors: super::DensityFloors,
+) -> bool {
+    let (failed, lines) = format_traceability_errors_with_floors(report, floors);
     for line in lines {
         println!("{line}");
     }
@@ -308,18 +370,28 @@ pub fn print_traceability_dashboard(report: &TraceabilityReport) {
     }
 }
 
-/// Executes full workspace traceability verification in-process using `cache` and returns `Ok(true)` when all checks pass.
-pub fn run_workspace_traceability_with_cache(
-    auto_fix: bool,
-    cache: &mut AstCache,
-) -> Result<bool, std::io::Error> {
-    let engine = TraceabilityEngine::new(LocalFsVfs);
+/// Aggregated non-test production function and assertion counts across active workspace modules.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WorkspaceAstMetrics {
+    /// Number of active non-test Rust source files scanned.
+    pub scanned_files: usize,
+    /// Total production functions and verification macro blocks across scanned files.
+    pub total_funcs: usize,
+    /// Total assertion invocations inside production functions and verification macro blocks.
+    pub total_asserts: usize,
+    /// Total `#[verified]` functions and verification macro blocks across scanned files.
+    pub verified_funcs: usize,
+    /// Total assertion invocations inside `#[verified]` functions and verification macro blocks.
+    pub verified_asserts: usize,
+}
+
+fn resolve_workspace_scan_paths() -> (Vec<String>, String) {
     let (is_root, _) = crate::workspace::get_workspace_members();
     let ws_root = (!is_root)
         .then(crate::workspace::find_workspace_root)
         .flatten();
     let raw_dirs = discover_workspace_code_dirs();
-    let resolved_dirs: Vec<String> = match &ws_root {
+    let resolved_dirs = match &ws_root {
         Some(root) => raw_dirs
             .iter()
             .map(|d| crate::path_utils::normalize_path(root.join(d)))
@@ -330,6 +402,55 @@ pub fn run_workspace_traceability_with_cache(
         Some(root) => crate::path_utils::normalize_path(root.join("papers")),
         None => "papers".to_string(),
     };
+    (resolved_dirs, papers_dir)
+}
+
+/// Collects non-test production function and assertion counts across active workspace modules
+/// using `cache`, guaranteeing identical AST counts between `traceability` and `verify-suite`.
+pub fn collect_workspace_ast_metrics_with_cache(
+    cache: &mut AstCache,
+) -> Result<WorkspaceAstMetrics, std::io::Error> {
+    let engine = TraceabilityEngine::new(LocalFsVfs);
+    let (resolved_dirs, _) = resolve_workspace_scan_paths();
+    let all_dirs: Vec<&str> = resolved_dirs.iter().map(String::as_str).collect();
+    let mut active_files = std::collections::HashSet::new();
+    futures::executor::block_on(engine.gather_active_files(&all_dirs, &mut active_files, cache))?;
+    let mut sorted_files: Vec<String> = active_files.into_iter().collect();
+    sorted_files.sort();
+
+    let mut metrics = WorkspaceAstMetrics::default();
+    for file in sorted_files {
+        let norm_file = crate::path_utils::normalize_path(&file);
+        let key = AstCache::normalize_key(&norm_file);
+        if cache.get(&key).is_none() {
+            let content = std::fs::read_to_string(&norm_file)?;
+            cache.insert_source(key.clone(), content);
+        }
+        let Some(ast) = cache.get(&key).and_then(|e| e.ast.as_ref()) else {
+            continue;
+        };
+        if crate::ast_visitor::attrs_require_cfg_test(&ast.attrs) {
+            continue;
+        }
+        metrics.scanned_files += 1;
+        let mut visitor = crate::ast_visitor::AstVisitor::new();
+        syn::visit::Visit::visit_file(&mut visitor, ast);
+        metrics.total_funcs += visitor.total_funcs;
+        metrics.total_asserts += visitor.total_asserts;
+        metrics.verified_funcs += visitor.verified_funcs;
+        metrics.verified_asserts += visitor.verified_asserts;
+    }
+    Ok(metrics)
+}
+
+/// Executes full workspace traceability verification in-process using `cache` and returns `Ok(true)` when all checks pass.
+pub fn run_workspace_traceability_with_cache(
+    auto_fix: bool,
+    cache: &mut AstCache,
+) -> Result<bool, std::io::Error> {
+    let floors = super::load_workspace_density_floors()?;
+    let engine = TraceabilityEngine::new(LocalFsVfs);
+    let (resolved_dirs, papers_dir) = resolve_workspace_scan_paths();
     let all_dirs: Vec<&str> = resolved_dirs.iter().map(String::as_str).collect();
     let report = futures::executor::block_on(engine.scan_repository_with_cache(
         &all_dirs,
@@ -341,7 +462,7 @@ pub fn run_workspace_traceability_with_cache(
     println!("=== Traceability Report ===");
     println!("Summary: Scanned {} source files.", report.scanned_files);
     print_traceability_dashboard(&report);
-    let failed = check_and_print_traceability_errors(&report);
+    let failed = check_and_print_traceability_errors_with_floors(&report, floors);
     if !failed {
         println!("All checks passed!");
     }

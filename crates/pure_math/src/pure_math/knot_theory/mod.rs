@@ -150,8 +150,31 @@ crate::theory_verification!(
     module = "knot_braid_topology",
     constants = {},
     test = {
-        let trefoil = PlanarDiagram::trefoil(true);
-        let alex = alexander_polynomial_fox(&trefoil).expect("valid trefoil Alexander");
-        assert_eq!(alex.eval_at_one(), 1);
+        let right_braid = crate::pure_math::algebra::BraidWord::new(2, vec![1, 1, 1])
+            .expect("valid 2-strand trefoil braid");
+        let left_braid = right_braid.mirror();
+        let trefoil_r = PlanarDiagram::from_braid(&right_braid);
+        let trefoil_l = PlanarDiagram::from_braid(&left_braid);
+        assert_eq!(trefoil_r.writhe(), 3);
+        assert_eq!(trefoil_l.writhe(), -3);
+        let alex_fox = alexander_polynomial_fox(&trefoil_r).expect("valid Fox Alexander");
+        let alex_burau = alexander_polynomial_burau(&right_braid).expect("valid Burau Alexander");
+        assert_eq!(alex_fox, alex_burau);
+        assert_eq!(alex_fox.eval_at_one(), 1);
+        assert!(alex_fox.is_reciprocal());
+        let jones_r = jones_polynomial(&trefoil_r).expect("valid right trefoil Jones");
+        let jones_l = jones_polynomial(&trefoil_l).expect("valid left trefoil Jones");
+        assert_ne!(jones_r, jones_l);
+        assert_eq!(jones_r.invert_variable(), jones_l);
+        assert!(is_chiral_by_jones(&trefoil_r).expect("valid chirality check"));
+        let hopf = hopf_link(1.5, true, 32).expect("valid Hopf link");
+        let lk = pairwise_linking_matrix(&hopf).expect("valid linking matrix");
+        assert_eq!(lk[0][1], 1);
+        assert_eq!(lk[1][0], 1);
+        let borr = borromean_rings(1.8, 0.9, 36).expect("valid Borromean rings");
+        let borr_lk = pairwise_linking_matrix(&borr).expect("valid Borromean linking");
+        assert_eq!(borr_lk[0][1], 0);
+        assert_eq!(borr_lk[0][2], 0);
+        assert_eq!(borr_lk[1][2], 0);
     }
 );

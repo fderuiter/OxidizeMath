@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "tests"))]
-
 use super::presets::{BORROMEAN_RINGS_PRESET_JSON, CHIRAL_TREFOIL_PRESET_JSON};
 use super::KnotBraidStudioTool;
 use crate::framework::InteractiveTool;

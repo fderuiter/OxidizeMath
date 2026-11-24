@@ -10,16 +10,16 @@ By standardizing universal constants, color mapping formulas, and spatial coordi
 
 ### Module Structure
 
-- **`ast`**: Native mathematical expression lexer, parser, LaTeX formatter, zero-allocation postfix stack bytecode evaluator (`CompiledExpr`), and iterative GLSL ES 3.00 transpiler (`ast::glsl`) for real and complex formulas:
-  - `Expr::to_glsl_scalar` / `Expr::to_glsl_scalar_with_vars`: Iterative `float` emitter with IEEE-safe helpers (`GLSL_SCALAR_HELPERS`).
-  - `Expr::to_glsl_complex` / `Expr::to_glsl_complex_with_vars`: Iterative `vec2` complex emitter with branch-cut `cln`/`cpow`/`csqrt` and `cdiv` guards (`GLSL_COMPLEX_HELPERS`).
+- **`ast`**: Native mathematical expression lexer, bounded Pratt parser, iterative LaTeX formatter, zero-allocation postfix stack bytecode evaluator (`CompiledExpr`), real/complex dynamic evaluators, and iterative GPU shader transpilers:
+  - `ast::glsl` (`Expr::to_glsl_scalar`, `Expr::to_glsl_scalar_with_vars`, `Expr::to_glsl_complex`, `Expr::to_glsl_complex_with_vars`): Iterative GLSL ES 3.00 `float` and `vec2` emitters with IEEE-safe helpers (`GLSL_SCALAR_HELPERS`, `GLSL_COMPLEX_HELPERS`).
+  - `ast::shader` (`Expr::to_wgsl`, `Expr::to_glsl`, `Expr::to_wgsl_complex`, `Expr::to_shader`, `Expr::to_shader_complex`): Iterative WebGPU WGSL and GLSL ES 3.00 emitters with `shader_preludes` (`wgsl_real_prelude`, `glsl_real_prelude`, `wgsl_complex_prelude`, `glsl_complex_prelude`).
 - **`constants`**: Centralized registry of physical, astronomical, and mathematical constants:
   - Speed of light (`C`), Gravitational constant (`G`), Solar mass (`SOLAR_MASS`).
   - Reduced Planck constant (`HBAR_C`), Proton mass (`PROTON_MASS`), Neutron mass (`NEUTRON_MASS`).
   - Liquid drop nuclear model constants and floating-point tolerances (`EPSILON`).
 - **`math_kernel`**: Standardized numerical routines:
   - `types`: 2D/3D index flattening (`flatten_2d_index`) and spatial offsets.
-  - `colormap`: Heatmap color generation (`heatmap_color`), cyclic cosine palettes, and WCAG 2.2 dark-canvas contrast guards.
+  - `colormap`: Heatmap color generation (`heatmap_color`), cyclic cosine palettes, continuous complex domain coloring (`domain_color`, `ShaderPalette`), WCAG 2.2 `3.0:1` dark-canvas contrast guards, and WGSL/GLSL shader palette preludes.
   - `glsl_colormap`: Standalone GLSL ES 3.00 emitters (`glsl_heatmap_color_fn`, `glsl_cyclic_cosine_palette_fn`, `glsl_ensure_dark_canvas_contrast_fn`, `glsl_colormap_library`).
 - **`primitives`**: Basic geometric constructs and coordinate structures.
 - **`registry`**: Constant lookup and numeric tolerance validation.

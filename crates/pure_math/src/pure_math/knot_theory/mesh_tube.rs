@@ -43,6 +43,9 @@ pub fn build_link_tubular_mesh(
     for comp in &link.components {
         append_component_torus(&mut mesh, comp, tube_radius, radial_segments)?;
     }
+    assert_eq!(mesh.vertices.len(), total_vertices);
+    assert_eq!(mesh.normals.len(), total_vertices);
+    assert_eq!(mesh.indices.len(), total_indices);
     Ok(mesh)
 }
 
@@ -88,5 +91,6 @@ fn append_component_torus(
                 .extend_from_slice(&[v00, v01, v11, v00, v11, v10]);
         }
     }
+    debug_assert_eq!(mesh.vertices.len() - base_vertex, n_rings * radial_segments);
     Ok(())
 }

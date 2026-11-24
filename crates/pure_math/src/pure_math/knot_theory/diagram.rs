@@ -156,11 +156,13 @@ impl PlanarDiagram {
     #[must_use]
     #[verified_engine::verified]
     pub fn unknot() -> Self {
-        Self {
+        let d = Self {
             crossings: Vec::new(),
             segments: Vec::new(),
             free_loops: 1,
-        }
+        };
+        debug_assert_eq!(d.free_loops, 1);
+        d
     }
 
     /// `count`-component crossing-free unlink diagram.
@@ -174,11 +176,13 @@ impl PlanarDiagram {
                 reason: "unlink component count must lie in 1..=128",
             });
         }
-        Ok(Self {
+        let d = Self {
             crossings: Vec::new(),
             segments: Vec::new(),
             free_loops: count,
-        })
+        };
+        assert_eq!(d.free_loops, count);
+        Ok(d)
     }
 
     /// Verifies 4-valent slot reciprocity, orientation consistency, and size bounds.
@@ -237,6 +241,7 @@ impl PlanarDiagram {
                 });
             }
         }
+        assert_eq!(self.segments.len(), 2 * c);
         Ok(())
     }
 

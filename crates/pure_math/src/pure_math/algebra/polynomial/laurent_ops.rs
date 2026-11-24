@@ -9,15 +9,20 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 impl<T: Ring> Ring for LaurentPolynomial<T> {
     #[verified_engine::verified]
     fn zero() -> Self {
-        Self {
+        let z = Self {
             min_exp: 0,
             coeffs: Vec::new(),
-        }
+        };
+        debug_assert_eq!(z.min_exp, 0);
+        debug_assert!(z.coeffs.is_empty());
+        z
     }
 
     #[verified_engine::verified]
     fn one() -> Self {
-        Self::monomial(T::one(), 0)
+        let u = Self::monomial(T::one(), 0);
+        debug_assert_eq!(u.min_exp, 0);
+        u
     }
 }
 
@@ -52,7 +57,10 @@ fn combine_linear<T: Ring>(
             out[off_r + i] += c.clone();
         }
     }
-    LaurentPolynomial::new(min_e, out)
+    let res = LaurentPolynomial::new(min_e, out);
+    debug_assert!(res.coeffs.is_empty() || !res.coeffs[0].is_zero());
+    debug_assert!(res.coeffs.len() <= len);
+    res
 }
 
 #[verified_engine::verified]
@@ -73,7 +81,10 @@ fn convolve<T: Ring>(
             out[i + j] += c1.clone() * c2.clone();
         }
     }
-    LaurentPolynomial::new(lhs.min_exp + rhs.min_exp, out)
+    let res = LaurentPolynomial::new(lhs.min_exp + rhs.min_exp, out);
+    debug_assert!(res.coeffs.len() <= out_len);
+    debug_assert!(res.coeffs.is_empty() || !res.coeffs[0].is_zero());
+    res
 }
 
 impl<T: Ring> Add for LaurentPolynomial<T> {
@@ -218,9 +229,11 @@ impl<T: Ring> Neg for LaurentPolynomial<T> {
     type Output = Self;
     #[verified_engine::verified]
     fn neg(mut self) -> Self {
+        let orig_len = self.coeffs.len();
         for c in &mut self.coeffs {
             *c = -std::mem::replace(c, T::zero());
         }
+        debug_assert_eq!(self.coeffs.len(), orig_len);
         self
     }
 }
@@ -229,10 +242,12 @@ impl<T: Ring> Neg for &LaurentPolynomial<T> {
     type Output = LaurentPolynomial<T>;
     #[verified_engine::verified]
     fn neg(self) -> LaurentPolynomial<T> {
-        LaurentPolynomial::new(
+        let res = LaurentPolynomial::new(
             self.min_exp,
             self.coeffs.iter().map(|c| -c.clone()).collect(),
-        )
+        );
+        debug_assert!(res.coeffs.len() <= self.coeffs.len());
+        res
     }
 }
 

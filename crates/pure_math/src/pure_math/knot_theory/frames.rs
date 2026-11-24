@@ -36,7 +36,10 @@ fn choose_initial_normal(t0: &Vector3<f64>) -> Vector3<f64> {
         Vector3::z()
     };
     let proj = ref_axis - t0 * ref_axis.dot(t0);
-    proj.normalize()
+    let u = proj.normalize();
+    debug_assert!(u.dot(t0).abs() < 1e-9);
+    debug_assert!((u.norm() - 1.0).abs() < 1e-9);
+    u
 }
 
 /// Transports `u` from unit tangent `t_prev` to `t_next` using Wang's double-reflection method
@@ -58,7 +61,10 @@ fn parallel_transport_normal(
         choose_initial_normal(t_next)
     };
     let ortho = transported - t_next * transported.dot(t_next);
-    ortho.normalize()
+    let u = ortho.normalize();
+    debug_assert!(u.dot(t_next).abs() < 1e-9);
+    debug_assert!((u.norm() - 1.0).abs() < 1e-9);
+    u
 }
 
 /// Computes closed-loop rotation-minimizing Bishop frames into `out` with zero heap allocations.
@@ -127,6 +133,8 @@ pub fn compute_bishop_frames_in_place(
         frame.normal_u = u_unit;
         frame.normal_v = frame.tangent.cross(&u_unit);
     }
+    debug_assert!((out[0].tangent.norm() - 1.0).abs() < 1e-9);
+    debug_assert!(out[0].tangent.dot(&out[0].normal_u).abs() < 1e-9);
     Ok(())
 }
 

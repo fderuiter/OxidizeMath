@@ -75,7 +75,9 @@ pub fn alexander_polynomial_fox(
     }
 
     let det_128 = bareiss_laurent_det(&mut mat)?;
-    Ok(downcast_laurent_i64(&det_128)?.normalize_alexander())
+    let norm = downcast_laurent_i64(&det_128)?.normalize_alexander();
+    assert!(norm.eval_at_one() >= 0);
+    Ok(norm)
 }
 
 /// Evaluates the $(n - 1) \times (n - 1)$ symbolic reduced Burau matrix $\bar{\psi}(\beta)(t)$
@@ -129,7 +131,9 @@ pub fn alexander_polynomial_burau(braid: &BraidWord) -> Result<LaurentPolynomial
     }
     let cyclotomic_sum = LaurentPolynomial::<i128>::new(0, vec![1_i128; n]);
     let quotient = exact_div_laurent(&det_num, &cyclotomic_sum)?;
-    Ok(downcast_laurent_i64(&quotient)?.normalize_alexander())
+    let norm = downcast_laurent_i64(&quotient)?.normalize_alexander();
+    assert!(norm.eval_at_one() >= 0);
+    Ok(norm)
 }
 
 #[verified_engine::verified]
@@ -194,6 +198,7 @@ fn build_wirtinger_arcs(diagram: &PlanarDiagram) -> (usize, Vec<usize>) {
         }
         *slot = compact_id[root];
     }
+    debug_assert!(count <= m);
     (count, arc_of_seg)
 }
 
@@ -203,6 +208,7 @@ fn find_root(parent: &mut [usize], mut x: usize) -> usize {
         parent[x] = parent[parent[x]];
         x = parent[x];
     }
+    debug_assert_eq!(parent[x], x);
     x
 }
 
@@ -292,6 +298,7 @@ fn exact_div_laurent(
             }
         }
     }
+    debug_assert!(rem.iter().all(|&r| r == 0));
     Ok(LaurentPolynomial::new(num.min_exp - den.min_exp, q))
 }
 

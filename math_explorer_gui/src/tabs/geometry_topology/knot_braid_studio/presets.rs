@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Starter Gallery presets for the Knot, Braid & Skein Studio.
 
 pub(super) const CHIRAL_TREFOIL_PRESET_JSON: &str = r#"{

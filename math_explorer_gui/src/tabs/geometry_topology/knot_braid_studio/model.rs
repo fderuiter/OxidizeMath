@@ -1,6 +1,6 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Computed 3D link geometry, Bishop tubular polylines, planar diagrams, and Laurent invariants.
+
+// [cite:knot_braid_topology]
 
 use super::{KnotBraidStudioTool, MAX_REIDEMEISTER_HISTORY};
 use math_explorer::pure_math::algebra::{BraidWord, LaurentPolynomial};

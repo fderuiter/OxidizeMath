@@ -40,7 +40,9 @@ impl PlanarDiagram {
                 count: self.segments.len(),
             });
         }
-        Ok(insert_ri_curl_on_segment(self, segment_id, sign))
+        let added = insert_ri_curl_on_segment(self, segment_id, sign);
+        assert_eq!(self.segments.len(), 2 * self.crossings.len());
+        Ok(added)
     }
 
     /// Returns `true` if `crossing_id` bounds a removable Reidemeister-I monogon curl.
@@ -81,6 +83,7 @@ impl PlanarDiagram {
         }
         self.crossings[new_head.crossing].slots[new_head.slot as usize] = s_in;
         compact_remove(self, &[crossing_id], &[s_loop, s_out]);
+        assert_eq!(self.segments.len(), 2 * self.crossings.len());
         Ok(())
     }
 
@@ -123,7 +126,9 @@ impl PlanarDiagram {
                 reason: "over and under segments must be distinct",
             });
         }
-        Ok(insert_rii_bigon(self, over_segment_id, under_segment_id))
+        let pair = insert_rii_bigon(self, over_segment_id, under_segment_id);
+        assert_eq!(self.segments.len(), 2 * self.crossings.len());
+        Ok(pair)
     }
 
     /// Returns `true` if `(c1, c2)` bound a removable Reidemeister-II bigon.
@@ -156,6 +161,7 @@ impl PlanarDiagram {
         splice_rii_strand(self, c1, c2, true, s_over_mid, &mut drop_segs);
         splice_rii_strand(self, c1, c2, false, s_under_mid, &mut drop_segs);
         compact_remove(self, &[c1, c2], &drop_segs);
+        assert_eq!(self.segments.len(), 2 * self.crossings.len());
         Ok(())
     }
 }
@@ -349,4 +355,5 @@ pub(super) fn compact_remove(diagram: &mut PlanarDiagram, drop_c: &[usize], drop
     }
     diagram.crossings = new_crossings;
     diagram.segments = new_segments;
+    debug_assert_eq!(diagram.segments.len(), 2 * diagram.crossings.len());
 }

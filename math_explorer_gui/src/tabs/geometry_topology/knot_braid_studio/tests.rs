@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "tests"))]
-
 use super::model::{DiagramEditOp, StudioFamily};
 use super::presets::{
     BORROMEAN_RINGS_PRESET_JSON, CHIRAL_TREFOIL_PRESET_JSON, FIGURE_EIGHT_ISOTOPY_PRESET_JSON,

@@ -45,6 +45,7 @@ impl<T: Ring> LaurentPolynomial<T> {
     pub fn new(min_exp: i32, coeffs: Vec<T>) -> Self {
         let mut poly = Self { min_exp, coeffs };
         poly.normalize_trim();
+        debug_assert!(poly.coeffs.is_empty() || !poly.coeffs[0].is_zero());
         poly
     }
 
@@ -117,6 +118,10 @@ impl<T: Ring> LaurentPolynomial<T> {
         if self.coeffs.is_empty() {
             self.min_exp = 0;
         }
+        debug_assert!(
+            (self.coeffs.is_empty() && self.min_exp == 0)
+                || (!self.coeffs[0].is_zero() && !self.coeffs[self.coeffs.len() - 1].is_zero())
+        );
     }
 
     /// Lowest exponent with a non-zero coefficient, or `None` for the zero polynomial.
@@ -155,14 +160,16 @@ impl<T: Ring> LaurentPolynomial<T> {
     #[must_use]
     #[verified_engine::verified]
     pub fn shift(&self, delta_exp: i32) -> Self {
-        if self.coeffs.is_empty() {
+        let out = if self.coeffs.is_empty() {
             Self::zero()
         } else {
             Self {
                 min_exp: self.min_exp.saturating_add(delta_exp),
                 coeffs: self.coeffs.clone(),
             }
-        }
+        };
+        debug_assert_eq!(out.coeffs.len(), self.coeffs.len());
+        out
     }
 
     /// Substitutes $t \mapsto t^{-1}$, sending $\sum c_k t^k$ to $\sum c_k t^{-k}$.
@@ -174,10 +181,12 @@ impl<T: Ring> LaurentPolynomial<T> {
         };
         let mut rev = self.coeffs.clone();
         rev.reverse();
-        Self {
+        let out = Self {
             min_exp: -max_deg,
             coeffs: rev,
-        }
+        };
+        debug_assert_eq!(out.span(), self.span());
+        out
     }
 
     /// Returns `true` when $P(t) = P(t^{-1})$ identically (palindromic around degree `0`).
@@ -282,6 +291,8 @@ impl LaurentPolynomial<i64> {
         if negate {
             centered = -centered;
         }
+        debug_assert_eq!(centered.min_exp, target_min);
+        debug_assert!(centered.eval_at_one() >= 0);
         centered
     }
 

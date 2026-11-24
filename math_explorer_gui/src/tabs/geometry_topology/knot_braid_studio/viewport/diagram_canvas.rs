@@ -1,6 +1,6 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Planar link diagram world-to-screen mapping, under-crossing gap cues, and crossing badges.
+
+// [cite:knot_braid_topology]
 
 use super::{DiagramThemeColors, UNDER_CROSSING_GAP_PX};
 use eframe::egui::{self, Color32, Pos2, Rect, Stroke, Vec2};

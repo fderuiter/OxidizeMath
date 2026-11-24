@@ -36,6 +36,7 @@ impl ClosedLink3D {
                 });
             }
         }
+        debug_assert!(!components.is_empty());
         Ok(Self { components })
     }
 
@@ -88,7 +89,9 @@ impl ClosedLink3D {
                 max_sq = max_sq.max(pt.coords.norm_squared());
             }
         }
-        max_sq.sqrt()
+        let r = max_sq.sqrt();
+        debug_assert!(r.is_finite() && r >= 0.0);
+        r
     }
 }
 
@@ -99,6 +102,7 @@ fn gcd_usize(mut a: usize, mut b: usize) -> usize {
         a = b;
         b = r;
     }
+    debug_assert!(a > 0);
     a
 }
 
@@ -186,11 +190,13 @@ impl TorusKnot {
         let phi = p0 * theta;
         let psi = q0 * theta + phase;
         let rho = self.major_radius + self.minor_radius * psi.cos();
-        Point3::new(
+        let pt = Point3::new(
             rho * phi.cos(),
             rho * phi.sin(),
             -self.minor_radius * psi.sin(),
-        )
+        );
+        debug_assert!(pt.x.is_finite() && pt.y.is_finite() && pt.z.is_finite());
+        pt
     }
 
     /// Samples `component_idx` uniformly into a pre-allocated buffer `out` with zero heap allocations.
@@ -414,7 +420,9 @@ pub fn hopf_link(
             z_raw * cos_a,
         ));
     }
-    ClosedLink3D::new(vec![c0, c1])
+    let link = ClosedLink3D::new(vec![c0, c1])?;
+    assert_eq!(link.component_count(), 2);
+    Ok(link)
 }
 
 /// Samples the 3-component Brunnian Borromean rings ($6^3_2$) using mutually orthogonal ellipses.
@@ -463,5 +471,7 @@ pub fn borromean_rings(
         r1.push(project_so3(0.0, major_axis * ct, minor_axis * st));
         r2.push(project_so3(minor_axis * st, 0.0, major_axis * ct));
     }
-    ClosedLink3D::new(vec![r0, r1, r2])
+    let link = ClosedLink3D::new(vec![r0, r1, r2])?;
+    assert_eq!(link.component_count(), 3);
+    Ok(link)
 }

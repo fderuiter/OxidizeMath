@@ -97,10 +97,13 @@ impl BraidWord {
                 });
             }
         }
-        Ok(Self {
+        let out = Self {
             strands,
             generators,
-        })
+        };
+        debug_assert!((1..=MAX_BRAID_STRANDS).contains(&out.strands));
+        debug_assert!(out.generators.len() <= MAX_BRAID_WORD_LEN);
+        Ok(out)
     }
 
     /// Constructs the trivial identity braid on `strands` strands.
@@ -159,6 +162,7 @@ impl BraidWord {
             });
         }
         self.generators.push(generator);
+        debug_assert!(self.generators.len() <= MAX_BRAID_WORD_LEN);
         Ok(())
     }
 
@@ -181,6 +185,7 @@ impl BraidWord {
         let mut combined = Vec::with_capacity(total);
         combined.extend_from_slice(&self.generators);
         combined.extend_from_slice(&other.generators);
+        debug_assert_eq!(combined.len(), total);
         Ok(Self {
             strands: self.strands,
             generators: combined,
@@ -191,20 +196,26 @@ impl BraidWord {
     #[must_use]
     #[verified_engine::verified]
     pub fn inverse(&self) -> Self {
-        Self {
+        let inv = Self {
             strands: self.strands,
             generators: self.generators.iter().rev().map(|&g| -g).collect(),
-        }
+        };
+        debug_assert_eq!(inv.generators.len(), self.generators.len());
+        debug_assert_eq!(inv.writhe(), -self.writhe());
+        inv
     }
 
     /// Returns the mirror braid obtained by flipping every crossing sign ($\sigma_i \leftrightarrow \sigma_i^{-1}$).
     #[must_use]
     #[verified_engine::verified]
     pub fn mirror(&self) -> Self {
-        Self {
+        let mir = Self {
             strands: self.strands,
             generators: self.generators.iter().map(|&g| -g).collect(),
-        }
+        };
+        debug_assert_eq!(mir.generators.len(), self.generators.len());
+        debug_assert_eq!(mir.writhe(), -self.writhe());
+        mir
     }
 
     /// Applies positive or negative Markov stabilization $\beta \mapsto \beta \sigma_n^{\pm 1} \in B_{n+1}$.
@@ -234,6 +245,8 @@ impl BraidWord {
             }
         }
         self.generators = stack;
+        debug_assert!(self.generators.len() <= orig_len);
+        debug_assert_eq!((orig_len - self.generators.len()) % 2, 0);
         (orig_len - self.generators.len()) / 2
     }
 
@@ -329,7 +342,9 @@ impl BraidWord {
             slot_of_strand[s_left] = right;
             slot_of_strand[s_right] = left;
         }
-        Permutation::new(slot_of_strand)
+        let perm = Permutation::new(slot_of_strand);
+        debug_assert_eq!(perm.map.len(), self.strands);
+        perm
     }
 
     /// Number of closed link components in the Alexander closure $\hat{\beta}$.
@@ -352,6 +367,7 @@ impl BraidWord {
                 guard += 1;
             }
         }
+        debug_assert!((1..=self.strands).contains(&cycles));
         cycles
     }
 }

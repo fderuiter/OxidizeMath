@@ -71,6 +71,8 @@ impl PlanarDiagram {
             });
         };
         execute_riii_slide(self, c_top_bot, c_top_mid, c_mid_bot, s_tm, s_mb, s_tb);
+        assert_eq!(self.crossings.len(), n);
+        assert_eq!(self.segments.len(), 2 * n);
         Ok(())
     }
 }

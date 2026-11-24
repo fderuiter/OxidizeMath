@@ -1,6 +1,6 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! 3D tubular `Plot3DViewport` and interactive WCAG-accessible 2D planar diagram canvas.
+
+// [cite:knot_braid_topology]
 
 mod diagram_canvas;
 

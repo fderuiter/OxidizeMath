@@ -64,9 +64,11 @@ pub fn kauffman_bracket(diagram: &PlanarDiagram) -> Result<LaurentPolynomial<i64
         }
         let state_loops = count_smoothed_loops(half_edges, &crossing_partner, &mut visited);
         let total_loops = state_loops + diagram.free_loops;
+        debug_assert!(total_loops >= 1);
         let term = d_powers[total_loops - 1].shift(a_minus_b);
         total += term;
     }
+    assert!(!total.coeffs.is_empty());
     Ok(total)
 }
 
@@ -156,6 +158,7 @@ pub fn is_chiral_by_jones(diagram: &PlanarDiagram) -> Result<bool, KnotError> {
 #[inline]
 #[verified_engine::verified]
 fn pair_halves(partner: &mut [usize], h1: usize, h2: usize) {
+    debug_assert_ne!(h1, h2);
     partner[h1] = h2;
     partner[h2] = h1;
 }
@@ -184,6 +187,7 @@ fn count_smoothed_loops(
             guard += 2;
         }
     }
+    debug_assert!(half_edges == 0 || loops >= 1);
     loops
 }
 
@@ -196,5 +200,6 @@ fn precompute_loop_powers(max_power: usize) -> Vec<LaurentPolynomial<i64>> {
         let next = &powers[k - 1] * &d;
         powers.push(next);
     }
+    assert_eq!(powers.len(), max_power + 1);
     powers
 }

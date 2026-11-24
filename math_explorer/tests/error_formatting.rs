@@ -1,4 +1,4 @@
-//! Verifies that all 40 public error enums tested from `math_explorer::error`
+//! Verifies that all 41 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -18,8 +18,8 @@ use math_explorer::error::{
     GameTheoryError, Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError,
     HyperbolicError, IsosurfaceError, KellyError, KnotError, LoraError, MarketPricingError,
     MarkovError, MatchModelError, MathError, MonteCarloError, NumberTheoryError, OuError,
-    PharmacokineticsError, PoissonError, QueueingError, RadarError, SandpileError, SolidStateError,
-    StandardModelError, StatMechError, TdaError, ZipError,
+    PharmacokineticsError, PoissonError, QueueingError, RadarError, SandpileError, ShaderEmitError,
+    SolidStateError, StandardModelError, StatMechError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -61,6 +61,10 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         },
     );
     assert_readable_diagnostic("FitError", &FitError::UnsupportedDegree { degree: 5 });
+    assert_readable_diagnostic(
+        "ShaderEmitError",
+        &ShaderEmitError::RecursionLimitExceeded(64),
+    );
     assert_readable_diagnostic(
         "NumberTheoryError",
         &NumberTheoryError::DivisionByZeroQSeries,

@@ -1,6 +1,6 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Side-panel controls and topological invariant readouts for `KnotBraidStudioTool`.
+
+// [cite:knot_braid_topology]
 
 use super::model::{DiagramEditOp, StudioFamily};
 use super::KnotBraidStudioTool;

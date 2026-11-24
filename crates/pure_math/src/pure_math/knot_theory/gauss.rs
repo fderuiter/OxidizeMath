@@ -41,7 +41,9 @@ fn segment_pair_gauss_contribution(
             }
         }
     }
-    0.25 * accum
+    let contrib = 0.25 * accum;
+    debug_assert!(contrib.is_finite());
+    contrib
 }
 
 /// Computes the continuous 3D Gauss writhe
@@ -75,7 +77,9 @@ pub fn gauss_writhe_quadrature(curve: &[Point3<f64>]) -> Result<f64, KnotError> 
             sum += 2.0 * segment_pair_gauss_contribution(a0, a1, b0, b1);
         }
     }
-    Ok(sum / (4.0 * PI))
+    let writhe = sum / (4.0 * PI);
+    assert!(writhe.is_finite());
+    Ok(writhe)
 }
 
 /// Computes the Gauss linking integral
@@ -107,7 +111,9 @@ pub fn gauss_linking_quadrature(
             sum += segment_pair_gauss_contribution(a0, a1, b0, b1);
         }
     }
-    Ok(sum / (4.0 * PI))
+    let lk = sum / (4.0 * PI);
+    assert!(lk.is_finite());
+    Ok(lk)
 }
 
 /// Rounds [`gauss_linking_quadrature`] to the exact integer topological linking number $\in \mathbb{Z}$.
@@ -149,6 +155,7 @@ pub fn pairwise_linking_numbers_in_place(
             out_matrix[flatten_2d_index(j, i, m)] = lk;
         }
     }
+    debug_assert!(m == 0 || out_matrix[0] == 0);
     Ok(())
 }
 

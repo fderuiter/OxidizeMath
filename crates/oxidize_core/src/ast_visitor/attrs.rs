@@ -7,6 +7,8 @@ use syn::{
     TraitItemFn,
 };
 
+const MAX_ATTR_NESTING_DEPTH: usize = 16;
+
 pub(super) struct AttrScanResult {
     pub opt_outs: Vec<String>,
     pub is_verified: bool,
@@ -47,25 +49,24 @@ fn extract_opt_out_reason(meta: &Meta) -> Option<String> {
             {
                 Some(lit_str.value())
             } else {
-                Some("opt_out".to_string())
+                Some("<non_literal_opt_out>".to_string())
             }
         }
-        Meta::Path(p) if p.is_ident("opt_out") => Some("opt_out".to_string()),
+        Meta::Path(p) if p.is_ident("opt_out") => Some("<missing_opt_out_reason>".to_string()),
+        Meta::List(sub) if sub.path.is_ident("opt_out") => Some("<malformed_opt_out>".to_string()),
         _ => None,
     }
 }
 
 fn extract_embed_theory_module(list: &syn::MetaList) -> Option<String> {
-    let args = list
-        .parse_args_with(Punctuated::<Expr, Token![,]>::parse_terminated)
+    let raw = list
+        .parse_args_with(|input: syn::parse::ParseStream<'_>| {
+            let lit: syn::LitStr = input.parse()?;
+            let _ = input.parse::<TokenStream>();
+            Ok(lit.value())
+        })
         .ok()?;
-    let Expr::Lit(expr_lit) = args.first()? else {
-        return None;
-    };
-    let Lit::Str(lit_str) = &expr_lit.lit else {
-        return None;
-    };
-    let normalized = lit_str.value().replace('\\', "/");
+    let normalized = raw.replace('\\', "/");
     let clean = normalized
         .trim_start_matches("papers/")
         .trim_start_matches("spec:")
@@ -78,6 +79,68 @@ fn parse_meta_list(list: &syn::MetaList) -> Vec<Meta> {
     list.parse_args_with(Punctuated::<Meta, Token![,]>::parse_terminated)
         .map(|items| items.into_iter().collect())
         .unwrap_or_default()
+}
+
+fn meta_requires_cfg_test(meta: &Meta, depth: usize) -> bool {
+    if depth == 0 {
+        return false;
+    }
+    match meta {
+        Meta::Path(path) => path.is_ident("test"),
+        Meta::List(list) if list.path.is_ident("not") => false,
+        Meta::List(list) if list.path.is_ident("all") => parse_meta_list(list)
+            .iter()
+            .any(|nested| meta_requires_cfg_test(nested, depth - 1)),
+        Meta::List(list) if list.path.is_ident("any") => {
+            let nested = parse_meta_list(list);
+            !nested.is_empty()
+                && nested
+                    .iter()
+                    .all(|item| meta_requires_cfg_test(item, depth - 1))
+        }
+        _ => false,
+    }
+}
+
+pub(super) fn attrs_require_cfg_test_filtered(
+    attrs: &[Attribute],
+    allow_inner: bool,
+    allow_outer: bool,
+) -> bool {
+    attrs.iter().any(|attr| {
+        if !style_matches(&attr.style, allow_inner, allow_outer) || !attr.path().is_ident("cfg") {
+            return false;
+        }
+        attr.meta
+            .require_list()
+            .ok()
+            .and_then(|list| list.parse_args::<Meta>().ok())
+            .is_some_and(|meta| meta_requires_cfg_test(&meta, MAX_ATTR_NESTING_DEPTH))
+    })
+}
+
+/// Returns `true` when `attrs` contain a `cfg(...)` predicate that requires `test` to be active.
+///
+/// Items gated with `#[cfg(any(target_arch = "wasm32", test))]` return `false` because they
+/// compile into production `wasm32` targets.
+pub fn attrs_require_cfg_test(attrs: &[Attribute]) -> bool {
+    attrs_require_cfg_test_filtered(attrs, true, true)
+}
+
+/// Extracts all `verified(opt_out = "...")` reason strings from `attr`, including
+/// conditional `cfg_attr(..., verified(opt_out = "..."))` forms, while ignoring `doc` comments.
+pub fn extract_opt_out_reasons_from_attr(attr: &Attribute) -> Vec<String> {
+    if attr.path().is_ident("doc") {
+        return Vec::new();
+    }
+    let mut result = AttrScanResult {
+        opt_outs: Vec::new(),
+        is_verified: false,
+        has_semantic: false,
+        modules_with_lines: Vec::new(),
+    };
+    scan_meta_tree(attr.meta.clone(), attr.span().start().line, &mut result);
+    result.opt_outs
 }
 
 pub(super) fn extract_opt_outs_filtered(
@@ -101,18 +164,29 @@ pub(super) fn extract_opt_outs_filtered(
 }
 
 fn scan_meta_tree(root: Meta, attr_line: usize, result: &mut AttrScanResult) {
-    let mut stack = vec![root];
+    let mut stack = vec![(root, true)];
     let mut safety = 0usize;
-    while let Some(meta) = stack.pop() {
+    while let Some((meta, allow_verified)) = stack.pop() {
         safety += 1;
         if safety > 256 {
             break;
         }
         match meta {
             Meta::List(list) if list.path.is_ident("cfg_attr") => {
-                stack.extend(parse_meta_list(&list).into_iter().skip(1));
+                let mut items = parse_meta_list(&list).into_iter();
+                let Some(pred) = items.next() else {
+                    continue;
+                };
+                let dead_any = matches!(
+                    &pred,
+                    Meta::List(sub) if sub.path.is_ident("any") && parse_meta_list(sub).is_empty()
+                );
+                let child_allow = allow_verified
+                    && !dead_any
+                    && !meta_requires_cfg_test(&pred, MAX_ATTR_NESTING_DEPTH);
+                stack.extend(items.map(|child| (child, child_allow)));
             }
-            Meta::Path(path) if is_verified_path(&path) => {
+            Meta::Path(path) if is_verified_path(&path) && allow_verified => {
                 result.is_verified = true;
                 result.has_semantic = true;
             }
@@ -125,12 +199,12 @@ fn scan_meta_tree(root: Meta, attr_line: usize, result: &mut AttrScanResult) {
                         found_opt_out = true;
                     }
                 }
-                if !found_opt_out {
+                if !found_opt_out && allow_verified {
                     result.is_verified = true;
                     result.has_semantic = true;
                 }
             }
-            Meta::List(list) if is_embed_theory_path(&list.path) => {
+            Meta::List(list) if is_embed_theory_path(&list.path) && allow_verified => {
                 result.is_verified = true;
                 result.has_semantic = true;
                 if let Some(module_name) = extract_embed_theory_module(&list) {
@@ -169,52 +243,23 @@ pub(super) fn scan_attributes(attrs: &[Attribute]) -> AttrScanResult {
             }
             continue;
         }
-        scan_meta_tree(attr.meta.clone(), attr_line, &mut result);
+        if matches!(attr.style, AttrStyle::Outer) {
+            scan_meta_tree(attr.meta.clone(), attr_line, &mut result);
+        }
     }
 
     result
 }
 
-pub(super) fn attrs_mention_cfg_test_filtered(
-    attrs: &[Attribute],
-    allow_inner: bool,
-    allow_outer: bool,
-) -> bool {
-    for attr in attrs {
-        if !style_matches(&attr.style, allow_inner, allow_outer) || !attr.path().is_ident("cfg") {
-            continue;
-        }
-        let Ok(list) = attr.meta.require_list() else {
-            continue;
-        };
-        let Ok(root_meta) = list.parse_args::<Meta>() else {
-            continue;
-        };
-        let mut stack = vec![root_meta];
-        let mut safety = 0usize;
-        while let Some(meta) = stack.pop() {
-            safety += 1;
-            if safety > 256 {
-                break;
-            }
-            match meta {
-                Meta::Path(path) if path.is_ident("test") => return true,
-                Meta::List(inner) if inner.path.is_ident("not") => {}
-                Meta::List(inner) if inner.path.is_ident("all") || inner.path.is_ident("any") => {
-                    stack.extend(parse_meta_list(&inner));
-                }
-                _ => {}
-            }
-        }
-    }
-    false
-}
-
-pub(super) fn attrs_mark_test_fn(attrs: &[Attribute]) -> bool {
-    if attrs_mention_cfg_test_filtered(attrs, true, true) {
+/// Returns `true` when `attrs` mark a function as an executable test or benchmark item.
+pub fn attrs_mark_test_fn(attrs: &[Attribute]) -> bool {
+    if attrs_require_cfg_test_filtered(attrs, true, true) {
         return true;
     }
     for attr in attrs {
+        if !matches!(attr.style, AttrStyle::Outer) {
+            continue;
+        }
         let mut stack = vec![attr.meta.clone()];
         let mut safety = 0usize;
         while let Some(meta) = stack.pop() {
@@ -233,7 +278,11 @@ pub(super) fn attrs_mark_test_fn(attrs: &[Attribute]) -> bool {
             let path = meta.path();
             if let Some(last) = path.segments.last() {
                 let name = last.ident.to_string();
-                if name == "test" || name == "wasm_bindgen_test" || name.ends_with("_test") {
+                if name == "test"
+                    || name == "wasm_bindgen_test"
+                    || name == "bench"
+                    || name.ends_with("_test")
+                {
                     return true;
                 }
             }

@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Interactive 3D Knot, Artin Braid, Reidemeister Isotopy, and Laurent Skein Studio.
 
 // [cite:knot_braid_topology]
