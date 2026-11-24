@@ -153,6 +153,12 @@ fn test_bet_size_default_populates_growth_curve_and_kelly_markers() {
 
     let datasets = tool.export_datasets();
     assert_eq!(datasets.len(), 5);
+    assert!(
+        datasets
+            .iter()
+            .all(|(_, pts)| !pts.is_empty()
+                && pts.iter().all(|[x, y]| x.is_finite() && y.is_finite()))
+    );
     assert!(egui_plot::export::format_csv(&datasets).contains("Expected Growth Rate g(f)"));
     assert!(egui_plot::export::format_json(&datasets).contains("\"Full Kelly (1.00 f*)\""));
 }

@@ -93,6 +93,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export](adr/20261123-parameter-substituted-latex-and-code-artifact-export.md)
 - [ADR 20261123: Variable-Dose Pharmacokinetic Regimen Superposition and Interactive Planner](adr/20261123-pharmacokinetic-regimen-superposition-and-analytics.md)
 - [ADR 20261123: Planar ODE AST Evaluation, Poincaré Stability Maps, AST Caching, and Recovery-Based URL Sharing](adr/20261123-planar-ode-ast-poincare-and-url-recovery.md)
+- [ADR 20261123: Multi-Asset Covariance Kelly, Multivariate QMC Gaussian Copula, Black-Scholes-Merton Greeks, and Portfolio Risk Workbench](adr/20261123-portfolio-copula-workbench-and-multi-asset-risk-engines.md)
 - [ADR 20261123: Preallocated Monte Carlo, Randomized QMC, and Nonparametric Bootstrap Suite](adr/20261123-preallocated-monte-carlo-qmc-and-bootstrap-suite.md)
 - [ADR 20261123: Precompiled Verification Patterns, AST Source Prefetch, and Zero-Allocation Scans](adr/20261123-precompiled-verification-patterns-and-ast-prefetch.md)
 - [ADR 20261123: `core`-Slice Thomas Solver, `CrankNicolson1D` Workspace, and Closed-Form $2\times 2$ Quantum Helpers](adr/20261123-pure-math-thomas-solver-and-closed-form-quantum-workspaces.md)
