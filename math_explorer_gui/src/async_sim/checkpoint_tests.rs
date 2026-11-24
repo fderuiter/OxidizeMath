@@ -29,6 +29,21 @@ use verified_engine::engine::VerifiedEngine;
 type MorphoPair<T> = (MorphogenesisKineticsRunner, Arc<RwLock<T>>);
 
 #[cfg(feature = "biology")]
+fn shared_morpho_params(d_u: f64, d_v: f64, dt: f64) -> Arc<RwLock<MorphogenesisSharedParams>> {
+    Arc::new(RwLock::new(MorphogenesisSharedParams {
+        a: 0.14,
+        b: 0.86,
+        d_u,
+        d_v,
+        dt,
+        high_contrast: false,
+        theme_mode: crate::app::ThemeMode::Dark,
+        heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
+        mask_rle: None,
+    }))
+}
+
+#[cfg(feature = "biology")]
 fn make_morpho_runner(
     w: usize,
     h: usize,
@@ -36,16 +51,7 @@ fn make_morpho_runner(
     d_v: f64,
     noise: f64,
 ) -> MorphoPair<MorphogenesisSharedParams> {
-    let params = Arc::new(RwLock::new(MorphogenesisSharedParams {
-        a: 0.14,
-        b: 0.86,
-        d_u: 1.0,
-        d_v,
-        dt,
-        high_contrast: false,
-        theme_mode: crate::app::ThemeMode::Dark,
-        heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
-    }));
+    let params = shared_morpho_params(1.0, d_v, dt);
     let mut runner = MorphogenesisTool::create_runner(&params, w, h);
     runner.noise_amplitude = noise;
     (runner, params)
@@ -53,16 +59,7 @@ fn make_morpho_runner(
 
 #[cfg(feature = "biology")]
 fn make_gray_scott_runner(w: usize, h: usize) -> MorphoPair<MorphogenesisKineticsState> {
-    let params = Arc::new(RwLock::new(MorphogenesisSharedParams {
-        a: 0.14,
-        b: 0.86,
-        d_u: 0.16,
-        d_v: 0.08,
-        dt: 1.0,
-        high_contrast: false,
-        theme_mode: crate::app::ThemeMode::Dark,
-        heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
-    }));
+    let params = shared_morpho_params(0.16, 0.08, 1.0);
     let ks = Arc::new(RwLock::new(MorphogenesisKineticsState {
         mode: MorphogenesisKineticsMode::GrayScott,
         f: 0.0367,

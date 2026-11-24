@@ -304,4 +304,83 @@ mod ast_analysis_tests {
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
+
+    #[test]
+    fn test_module_tree_skips_cfg_test_outline_submodules() {
+        let mut dirs = HashMap::new();
+        dirs.insert("papers".to_string(), vec!["essay.tex".to_string()]);
+        dirs.insert(
+            "crates/pure_math/src".to_string(),
+            vec!["lib.rs".to_string(), "tests_extra.rs".to_string()],
+        );
+
+        let mut files = HashMap::new();
+        files.insert(
+            "traceability.toml".to_string(),
+            Ok("[links]\nessay = \"essay.tex\"\n".to_string()),
+        );
+        files.insert(
+            "crates/pure_math/src/lib.rs".to_string(),
+            Ok(concat!(
+                "#[cfg(test)]\nmod tests_extra;\n",
+                "/// [cite:essay]\n#[verified]\npub fn prod_fn() { assert!(true); }\n",
+            )
+            .to_string()),
+        );
+        files.insert(
+            "crates/pure_math/src/tests_extra.rs".to_string(),
+            Ok("#[test]\n#[verified]\nfn inflated_test() { assert!(true); assert!(true); assert!(true); }\n".to_string()),
+        );
+
+        let engine = TraceabilityEngine::new(MockVfs { dirs, files });
+        let report = futures::executor::block_on(engine.scan_repository(
+            &["crates/pure_math/src"],
+            "papers",
+            false,
+        ))
+        .expect("scan mock repo");
+
+        assert_eq!(report.scanned_files, 1);
+        assert_eq!(report.verified_funcs, 1);
+        assert_eq!(report.verified_asserts, 1);
+        assert_eq!(report.total_funcs, 1);
+        assert_eq!(report.total_asserts, 1);
+    }
+
+    #[test]
+    fn test_format_traceability_errors_enforces_density_floors() {
+        let report = oxidize_core::traceability::TraceabilityReport {
+            total_funcs: 2,
+            total_asserts: 2,
+            verified_funcs: 1,
+            verified_asserts: 1,
+            ..Default::default()
+        };
+
+        let passing_floors = oxidize_core::traceability::DensityFloors {
+            min_verified_density: 1.0,
+            min_total_density: 1.0,
+            min_unverified_density: Some(1.0),
+        };
+        let (failed_ok, _) = oxidize_core::traceability::format_traceability_errors_with_floors(
+            &report,
+            passing_floors,
+        );
+        assert!(!failed_ok);
+
+        let stricter_floors = oxidize_core::traceability::DensityFloors {
+            min_verified_density: 1.0,
+            min_total_density: 1.5,
+            min_unverified_density: None,
+        };
+        let (failed_total, lines) =
+            oxidize_core::traceability::format_traceability_errors_with_floors(
+                &report,
+                stricter_floors,
+            );
+        assert!(
+            failed_total,
+            "regression below min_total_density must fail: {lines:?}"
+        );
+    }
 }

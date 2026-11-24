@@ -1,10 +1,42 @@
-//! Export capability declarations and status severity styling for [`super::InteractiveTool`].
+//! Export capability declarations, shader export targets, and status severity styling for [`super::InteractiveTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use eframe::egui;
+#[cfg(any(feature = "physics", feature = "pure_math"))]
+use math_commons::ast::ShaderTarget;
 
-/// Target GLSL fragment shader dialect for analytical GPU exports.
+/// Standalone GPU fragment shader source format exported by [`super::InteractiveTool::export_shader_source`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ShaderExportFormat {
+    /// WebGPU Shading Language (`.wgsl`) for WebGPU and Bevy pipelines.
+    Wgsl,
+    /// OpenGL ES 3.00 / Shadertoy fragment shader (`.glsl`).
+    Glsl,
+}
+
+impl ShaderExportFormat {
+    /// Converts this export format into the corresponding AST [`ShaderTarget`].
+    #[cfg(any(feature = "physics", feature = "pure_math"))]
+    #[must_use]
+    pub const fn ast_target(self) -> ShaderTarget {
+        match self {
+            Self::Wgsl => ShaderTarget::Wgsl,
+            Self::Glsl => ShaderTarget::Glsl,
+        }
+    }
+
+    /// Short uppercase format label (`"WGSL"` or `"GLSL"`).
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Wgsl => "WGSL",
+            Self::Glsl => "GLSL",
+        }
+    }
+}
+
+/// Target GLSL fragment shader dialect for analytical `.frag` GPU exports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShaderDialect {
     /// Standalone WebGL2 / OpenGL ES 3.00 fragment shader (`#version 300 es`).
@@ -28,9 +60,9 @@ const DEFAULT_CODE_DISABLED_REASON: &str =
     "Code and LaTeX model export is unavailable: this tool does not expose a parameterized symbolic solver template.";
 
 const DEFAULT_SHADER_DISABLED_REASON: &str =
-    "GLSL shader export is unavailable: this tool does not expose a closed-form analytical 2D fragment field.";
+    "WGSL and GLSL shader export is unavailable: this tool does not expose a closed-form analytical 2D fragment field.";
 
-/// Declares dataset, figure, audio, code, 3D mesh/splat, and analytical GLSL shader export capabilities for an [`super::InteractiveTool`].
+/// Declares dataset, figure, audio, code, 3D mesh/splat, and standalone GPU shader export capabilities for an [`super::InteractiveTool`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExportCapabilities {
     /// Whether tabular dataset exports (`CSV`, `JSON`) are supported.
@@ -47,7 +79,7 @@ pub struct ExportCapabilities {
     pub ply: bool,
     /// Whether Wavefront `.obj` 3D mesh export is supported.
     pub obj: bool,
-    /// Whether standalone GLSL fragment shader exports (`WebGL2`, `Shadertoy`) are supported.
+    /// Whether standalone GPU fragment shader exports (`WGSL`, `GLSL`, `WebGL2`, `Shadertoy`) are supported.
     pub shader: bool,
     /// Explanatory hover text shown when `CSV` / `JSON` buttons are disabled.
     pub dataset_disabled_reason: &'static str,
@@ -63,7 +95,7 @@ pub struct ExportCapabilities {
     pub ply_disabled_reason: &'static str,
     /// Explanatory hover text shown when `Export OBJ` is disabled.
     pub obj_disabled_reason: &'static str,
-    /// Explanatory reason surfaced when GLSL shader export is unavailable.
+    /// Explanatory reason surfaced when WGSL / GLSL shader export is unavailable.
     pub shader_disabled_reason: &'static str,
 }
 
@@ -108,6 +140,12 @@ impl ExportCapabilities {
         }
     }
 
+    /// Capability profile for `egui_plot::Plot` tools that also compile standalone `.wgsl`, `.glsl`, and `.frag` shaders.
+    #[must_use]
+    pub const fn plot_with_shader() -> Self {
+        Self::plot().with_shader()
+    }
+
     /// Standard capability profile for plot-backed tools that also expose a [`super::CodeArtifact`].
     #[must_use]
     pub const fn plot_with_code() -> Self {
@@ -143,6 +181,12 @@ impl ExportCapabilities {
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
         }
+    }
+
+    /// Capability profile for 2D raster/texture tools that also compile standalone `.wgsl`, `.glsl`, and `.frag` shaders.
+    #[must_use]
+    pub const fn raster_with_shader() -> Self {
+        Self::raster_only().with_shader()
     }
 
     /// Capability profile for analytical calculators that export tabular `CSV` and `JSON` datasets without offscreen plot or raster figures.

@@ -109,15 +109,26 @@ fn test_ast_visitor_allow_recursion_preserves_verification_counts() {
         fn qualified_delegate() {
             assert_eq!(2, 2);
         }
+
+        #[cfg_attr(feature = "std", verified_engine::verified)]
+        fn nostd_feature_gated_verified() {
+            assert_eq!(3, 3);
+        }
+
+        #[cfg_attr(any(), verified)]
+        fn dead_any_not_verified() {}
+
+        #[cfg_attr(test, verified)]
+        fn test_only_attr_not_verified() {}
     "#;
     let file = syn::parse_file(code).unwrap();
     let mut visitor = AstVisitor::default();
     visitor.visit_file(&file);
 
-    assert_eq!(visitor.total_funcs, 2);
-    assert_eq!(visitor.verified_funcs, 2);
-    assert_eq!(visitor.semantic_integrity_funcs, 2);
-    assert_eq!(visitor.verified_asserts, 2);
+    assert_eq!(visitor.total_funcs, 5);
+    assert_eq!(visitor.verified_funcs, 3);
+    assert_eq!(visitor.semantic_integrity_funcs, 3);
+    assert_eq!(visitor.verified_asserts, 3);
     assert!(!visitor.opted_out);
 }
 
@@ -208,4 +219,146 @@ fn test_ast_visitor_ignores_embed_theory_and_verified_tokens_inside_doc_comments
     assert_eq!(visitor.total_funcs, 1);
     assert_eq!(visitor.verified_funcs, 0);
     assert_eq!(visitor.verified_modules, vec!["win_ratio".to_string()]);
+}
+
+#[test]
+fn test_ast_visitor_counts_exact_macro_assertions_without_max3_padding() {
+    let empty_macro = r#"
+        crate::theory_verification!(module = "pure_math", constants = {}, test = {});
+    "#;
+    let empty_ast = syn::parse_file(empty_macro).unwrap();
+    let mut empty_visitor = AstVisitor::default();
+    empty_visitor.visit_file(&empty_ast);
+    assert_eq!(empty_visitor.verified_funcs, 1);
+    assert_eq!(empty_visitor.total_funcs, 1);
+    assert_eq!(empty_visitor.verified_asserts, 0);
+    assert_eq!(empty_visitor.total_asserts, 0);
+
+    let real_macro = r#"
+        theory_verification!(
+            module = "algebra",
+            constants = { TOL = 1e-9; },
+            test = {
+                // assert!(true);
+                let _msg = "assert!(true); assert_eq!(1, 1);";
+                assert!(1.0 > TOL);
+                assert_ne!(2, 3);
+            }
+        );
+        stochastic_signature_verification!(
+            module = "ai",
+            external_dependencies = [],
+            signatures = {},
+            statistical_bounds = {},
+            stochastic_test = {
+                let val = compute_sample(0.5);
+                debug_assert!(val.is_finite());
+            }
+        );
+    "#;
+    let real_ast = syn::parse_file(real_macro).unwrap();
+    let mut real_visitor = AstVisitor::default();
+    real_visitor.visit_file(&real_ast);
+    assert_eq!(real_visitor.verified_funcs, 2);
+    assert_eq!(real_visitor.verified_asserts, 3);
+    assert_eq!(real_visitor.total_asserts, 3);
+
+    // Live workspace regression: crates/pure_math/src/pure_math/mod.rs empty test = {} contributes 0 assertions
+    let ws_root = crate::workspace::find_workspace_root().expect("workspace root");
+    let pure_math_mod =
+        std::fs::read_to_string(ws_root.join("crates/pure_math/src/pure_math/mod.rs"))
+            .expect("read pure_math/mod.rs");
+    let pure_math_ast = syn::parse_file(&pure_math_mod).unwrap();
+    let mut pure_math_visitor = AstVisitor::default();
+    pure_math_visitor.visit_file(&pure_math_ast);
+    assert_eq!(pure_math_visitor.verified_funcs, 1);
+    assert_eq!(pure_math_visitor.verified_asserts, 0);
+    assert_eq!(pure_math_visitor.total_asserts, 0);
+}
+
+#[test]
+fn test_ast_visitor_separates_cfg_test_and_test_fns_while_keeping_wasm_or_test_in_prod() {
+    let code = r#"
+        #[cfg(any(target_arch = "wasm32", test))]
+        #[verified]
+        pub fn wasm_shared_prod() -> usize {
+            assert_eq!(2 + 2, 4);
+            4
+        }
+
+        #[cfg(test)]
+        #[verified]
+        fn helper_only_for_tests() {
+            assert!(true);
+            assert!(true);
+        }
+
+        #[test]
+        #[verified]
+        fn unit_test_case() {
+            assert!(true);
+        }
+
+        #[wasm_bindgen_test]
+        fn browser_test_case() {
+            assert!(true);
+        }
+
+        #[cfg(test)]
+        mod tests {
+            mod nested_outline;
+            #[verified]
+            fn inside_test_mod() {
+                assert_eq!(1, 1);
+            }
+        }
+    "#;
+    let ast = syn::parse_file(code).unwrap();
+    let mut visitor = AstVisitor::default();
+    visitor.visit_file(&ast);
+    assert_eq!(visitor.prod_funcs, 1);
+    assert_eq!(visitor.verified_prod_funcs, 1);
+    assert_eq!(visitor.prod_asserts, 1);
+    assert_eq!(visitor.verified_prod_asserts, 1);
+    assert_eq!(visitor.test_funcs, 4);
+    assert_eq!(visitor.verified_test_funcs, 3);
+    assert_eq!(visitor.test_asserts, 5);
+    assert_eq!(visitor.verified_test_asserts, 4);
+    assert_eq!(visitor.total_funcs, 5);
+    assert_eq!(visitor.total_asserts, 6);
+    assert!(visitor.active_submodules.is_empty());
+}
+
+#[test]
+fn test_collect_ast_file_debt_detects_direct_and_cfg_attr_opt_outs_and_ignores_not_opt_out() {
+    let ws_root = crate::workspace::find_workspace_root().expect("workspace root");
+    let evolution_src = std::fs::read_to_string(
+        ws_root.join("crates/pure_math/src/pure_math/analysis/evolution.rs"),
+    )
+    .expect("read evolution.rs");
+    let evolution_ast = syn::parse_file(&evolution_src).unwrap();
+    assert_eq!(
+        collect_ast_file_debt(&evolution_ast),
+        vec!["infrastructure".to_string()]
+    );
+
+    let synthetic = format!(
+        concat!(
+            "#![cfg_attr(any(), {0}(opt_out = \"gui_tool\"))]\n",
+            "#[{0}(not_opt_out = \"ignored\")]\n",
+            "#[verified_engine::{0}(opt_out = \"Legacy missing assertions\")]\n",
+            "pub fn prod_solver_legacy() {{}}\n",
+            "#[cfg(test)]\nmod tests {{\n    fn test_only_legacy() {{}}\n}}\n"
+        ),
+        "verified"
+    );
+    let ast = syn::parse_file(&synthetic).unwrap();
+    assert_eq!(
+        collect_ast_file_debt(&ast),
+        vec![
+            "gui_tool".to_string(),
+            "Legacy function call: prod_solver_legacy".to_string(),
+            "Legacy missing assertions".to_string(),
+        ]
+    );
 }

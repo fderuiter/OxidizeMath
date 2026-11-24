@@ -161,3 +161,31 @@ fn potential_flow_skips_source_singularity_and_rebuilds_in_place_without_allocat
         });
     }
 }
+
+#[test]
+fn potential_flow_wgsl_and_glsl_shader_exports_match_prelude_symbols() {
+    use crate::framework::{InteractiveTool, ShaderExportFormat};
+
+    let mut tool = PotentialFlowTool {
+        high_contrast: true,
+        ..Default::default()
+    };
+    let wgsl = tool
+        .export_shader_source(ShaderExportFormat::Wgsl)
+        .expect("WGSL potential flow shader");
+    assert!(wgsl.contains("fn om_heatmap(t: f32) -> vec3<f32>"));
+    assert!(wgsl.contains("var col = om_heatmap(speed_norm);"));
+    assert!(wgsl.contains("fn om_ensure_contrast(rgb: vec3<f32>) -> vec3<f32>"));
+    assert!(wgsl.contains("col = om_ensure_contrast(col);"));
+    assert!(!wgsl.contains("om_heatmap_color"));
+    assert!(!wgsl.contains("om_apply_high_contrast"));
+    assert!(wgsl.contains("@fragment") && wgsl.contains("fn fs_main("));
+
+    tool.high_contrast = false;
+    let glsl = tool
+        .export_shader_source(ShaderExportFormat::Glsl)
+        .expect("GLSL potential flow shader");
+    assert!(glsl.starts_with("#version 300 es"));
+    assert!(glsl.contains("const bool HIGH_CONTRAST = false;"));
+    assert!(glsl.contains("void main()"));
+}

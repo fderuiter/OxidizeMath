@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "tests"))]
-
 use super::bifurcation_state::{
     CannibalismRegime, CannibalismToolState, PRESET_DIEKMANN_HOPF_WAVES,
     PRESET_TRIBOLIUM_TWO_CYCLES,

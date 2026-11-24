@@ -146,7 +146,7 @@ impl<const N: usize> SpatialDiffusion<N> for CotangentMeshDiffusion {
                 curr[s] = state[s][v];
                 diffs[s] = coeffs[s] * self.laplacian.apply_at(state[s], v);
             }
-            let react = kinetics.reaction(curr);
+            let react = kinetics.reaction_at(v, curr);
             for s in 0..N {
                 next_state[s][v] = curr[s] + dt * (diffs[s] + react[s]);
             }
