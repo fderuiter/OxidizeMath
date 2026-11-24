@@ -1,7 +1,5 @@
 //! Accessible high-contrast sonification toolbar and peak `dBFS` / dominant `Hz` visual meter.
 
-// theory_verification!
-
 use eframe::egui;
 
 use super::frame::{
