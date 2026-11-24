@@ -280,9 +280,9 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         audio, expected_audio,
         "Expected {expected_audio} WAV audio-capable tools"
     );
-    let expected_plot = 77 + extra + bio_extra + stochastic_extra + optics_bonus;
+    let expected_plot = 78 + extra + bio_extra + stochastic_extra + optics_bonus;
     let expected_solid = 7 + extra;
-    let expected_non_shader = 91 + extra + bio_extra + stochastic_extra + optics_bonus;
+    let expected_non_shader = 92 + extra + bio_extra + stochastic_extra + optics_bonus;
     assert_eq!(
         plot, expected_plot,
         "Expected {expected_plot} Plot dataset+figure tools"

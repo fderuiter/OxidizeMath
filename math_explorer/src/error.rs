@@ -38,8 +38,8 @@ pub use pure_math::error::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
     FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError, LinearAlgebraError,
     MarketPricingError, MarkovError, MatchModelError, MonteCarloError, NumberTheoryError,
-    OptimizationError, OuError, PoissonError, PureMathError, QueueingError, StochasticError,
-    TdaError, TensorError, TransformError, ZipError,
+    OptimizationError, OptionPricingError, OuError, PoissonError, PureMathError, QueueingError,
+    StochasticError, TdaError, TensorError, TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -227,6 +227,9 @@ pub enum Error {
     /// Mathematical optimization error.
     #[cfg(feature = "pure_math")]
     Optimization(OptimizationError),
+    /// Black-Scholes-Merton option pricing error.
+    #[cfg(feature = "pure_math")]
+    OptionPricing(OptionPricingError),
     /// Ornstein-Uhlenbeck process error.
     #[cfg(feature = "pure_math")]
     Ou(OuError),
