@@ -312,6 +312,30 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         Ok(next_audio)
     }
 
+    pub(super) fn validate_constrained_param(&self, key: &str, value: f64) -> Result<(), String> {
+        let Some((_, constraint)) = self.param_metadata.iter().find(|meta| meta.0 == key) else {
+            return Err(format!("Unknown parameter '{}' for {}", key, M::name()));
+        };
+        if !value.is_finite() {
+            return Err(format!(
+                "Non-finite value for parameter '{}' in {}",
+                key,
+                M::name()
+            ));
+        }
+        if !(constraint.min..=constraint.max).contains(&value) {
+            return Err(format!(
+                "Parameter '{}' value {} is outside [{}, {}] bounds in {}",
+                key,
+                value,
+                constraint.min,
+                constraint.max,
+                M::name()
+            ));
+        }
+        Ok(())
+    }
+
     fn validate_param_map(&self, params: &HashMap<String, f64>) -> Result<(), String> {
         if !self.param_metadata.is_empty() && params.is_empty() {
             return Err(format!(
@@ -325,16 +349,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ));
         }
         for (key, value) in params {
-            if !self.param_metadata.iter().any(|meta| &meta.0 == key) {
-                return Err(format!("Unknown parameter '{}' for {}", key, M::name()));
-            }
-            if !value.is_finite() {
-                return Err(format!(
-                    "Non-finite value for parameter '{}' in {}",
-                    key,
-                    M::name()
-                ));
-            }
+            self.validate_constrained_param(key, *value)?;
         }
         Ok(())
     }

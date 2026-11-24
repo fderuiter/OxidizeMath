@@ -302,6 +302,11 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
             .as_ref()
             .is_none_or(|b| b.param_slice().iter().all(|v| v.is_finite()));
         params.values().all(|v| v.is_finite())
+            && self.param_metadata.iter().all(|(k, c)| {
+                params
+                    .get(k)
+                    .is_none_or(|v| v.is_finite() && (c.min..=c.max).contains(v))
+            })
             && formula_ok
             && !matches!(
                 self.controller.state(),
