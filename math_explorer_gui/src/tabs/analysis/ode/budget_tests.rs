@@ -269,6 +269,7 @@ fn test_builtin_ode_presets_unscaled_and_replicator_symbolic_validation() {
             ("r".to_string(), 2.0),
             ("c".to_string(), 3.0),
         ]),
+        topology_source: crate::app::TopologySource::SharedBus,
     };
     assert!(valid_rep.validate().is_ok());
 
