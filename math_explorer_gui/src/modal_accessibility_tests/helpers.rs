@@ -1,9 +1,15 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use crate::app::{MathExplorerApp, ViewportLayout};
+use crate::app::MathExplorerApp;
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
+use crate::app::ViewportLayout;
+#[cfg(any(
+    not(target_os = "macos"),
+    all(feature = "pure_math", feature = "ai", feature = "epidemiology")
+))]
+use eframe::egui::PointerButton;
 use eframe::egui::{
-    self, accesskit, vec2, Context, Event, FullOutput, Id, Key, Modifiers, PointerButton, Pos2,
-    RawInput, Rect,
+    self, accesskit, vec2, Context, Event, FullOutput, Id, Key, Modifiers, Pos2, RawInput, Rect,
 };
 use eframe::App;
 
@@ -11,6 +17,7 @@ pub(super) fn screen_rect() -> Rect {
     Rect::from_min_size(Pos2::ZERO, vec2(2000.0, 3000.0))
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 pub(super) fn target_pane_rect(ctx: &Context, pane_idx: usize) -> Rect {
     ctx.data(|d| d.get_temp::<Vec<Rect>>(Id::new("LAST_PANE_RECTS")))
         .and_then(|rects| rects.get(pane_idx).copied())
@@ -104,6 +111,7 @@ pub(super) fn find_ak_nodes_exact(
     })
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 pub(super) fn find_ak_node_in_pane(
     _ctx: &Context,
     out: &FullOutput,
@@ -133,6 +141,10 @@ pub(super) fn focus_ak_node(
         .expect("AccessKit Action::Focus must focus target widget")
 }
 
+#[cfg(any(
+    not(target_os = "macos"),
+    all(feature = "pure_math", feature = "ai", feature = "epidemiology")
+))]
 pub(super) fn click_pos(ctx: &Context, app: &mut MathExplorerApp, pos: Pos2) -> FullOutput {
     let _ = run_app(
         ctx,
@@ -188,6 +200,7 @@ pub(super) fn has_rendered_text(out: &FullOutput, needle: &str) -> bool {
     !find_text_centers(out, needle).is_empty()
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 pub(super) fn find_domain_tab(app: &MathExplorerApp, domain: &str) -> usize {
     app.tabs
         .iter()
@@ -195,6 +208,7 @@ pub(super) fn find_domain_tab(app: &MathExplorerApp, domain: &str) -> usize {
         .unwrap_or_else(|| panic!("Expected SimulationFramework tab for domain '{domain}'"))
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 fn configure_ode_custom(app: &mut MathExplorerApp, pane: usize, analysis_idx: usize) {
     app.set_pane_tab(pane, analysis_idx);
     let fw = app.pane_tab_mut(pane).unwrap().framework_mut().unwrap();
@@ -204,18 +218,21 @@ fn configure_ode_custom(app: &mut MathExplorerApp, pane: usize, analysis_idx: us
     fw.active_tool.as_mut().unwrap().load_state(&custom);
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 fn configure_training_monitor(app: &mut MathExplorerApp, pane: usize, ai_idx: usize) {
     app.set_pane_tab(pane, ai_idx);
     let fw = app.pane_tab_mut(pane).unwrap().framework_mut().unwrap();
     assert!(fw.select_tool_by_name("TrainingMonitorTool"));
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 fn configure_sir_tool(app: &mut MathExplorerApp, pane: usize, epi_idx: usize) {
     app.set_pane_tab(pane, epi_idx);
     let fw = app.pane_tab_mut(pane).unwrap().framework_mut().unwrap();
     assert!(fw.select_tool_by_name("SirTool"));
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 pub(super) fn configure_layout_with_canary_panes(
     app: &mut MathExplorerApp,
     layout: ViewportLayout,
@@ -254,6 +271,7 @@ pub(super) fn configure_layout_with_canary_panes(
     }
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 pub(super) fn snapshot_all_pane_states(
     app: &MathExplorerApp,
     exclude_plot_states_pane: Option<usize>,
@@ -278,6 +296,7 @@ pub(super) fn snapshot_all_pane_states(
         .collect()
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 pub(super) fn copied_texts(out: &FullOutput) -> Vec<String> {
     out.platform_output
         .commands
@@ -289,6 +308,7 @@ pub(super) fn copied_texts(out: &FullOutput) -> Vec<String> {
         .collect()
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 pub(super) fn secondary_click_pos(
     ctx: &Context,
     app: &mut MathExplorerApp,
@@ -322,6 +342,7 @@ pub(super) fn secondary_click_pos(
     )
 }
 
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 pub(super) fn has_close_viewport_cmd(out: &FullOutput) -> bool {
     out.viewport_output
         .get(&egui::ViewportId::ROOT)

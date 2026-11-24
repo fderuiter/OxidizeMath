@@ -5,8 +5,6 @@
 //! phase velocity ([`WaveProbeSample`]) into a stack-resident 8-voice [`SonificationFrame`]
 //! with zero heap allocations.
 
-// theory_verification!
-
 use std::f64::consts::TAU;
 
 use math_explorer::pure_math::analysis::pde::wave_2d::{

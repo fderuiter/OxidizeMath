@@ -1,3 +1,5 @@
+#![cfg_attr(any(), verified(opt_out = "tests"))]
+
 use num_complex::Complex;
 use rustfft::FftPlanner;
 use verified_engine::engine::VerifiedEngine;

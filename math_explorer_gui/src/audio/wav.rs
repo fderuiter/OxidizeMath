@@ -1,8 +1,6 @@
 //! Deterministic RIFF `WAVE` (`PCM16` and `IEEE Float32`, mono/stereo, `44.1`/`48 kHz`) and
 //! synthesizer wavetable (`clm ` / `uhWT`) chunk encoding helpers.
 
-// theory_verification!
-
 use serde::{Deserialize, Serialize};
 
 use super::backend::SonificationBackend;

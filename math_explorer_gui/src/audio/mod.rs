@@ -1,7 +1,5 @@
 //! Dual-backend Web Audio sonification coordinator, `.wav` export ring buffer, and fault hooks.
 
-// theory_verification!
-
 pub mod backend;
 pub mod controller;
 pub mod fourier;
@@ -68,7 +66,7 @@ struct AudioController {
     history_head: usize,
     history_len: usize,
     latest_frame: SonificationFrame,
-    #[cfg(test)]
+    #[cfg(all(test, feature = "physics"))]
     last_exported_wav: Option<(String, Vec<u8>)>,
 }
 
@@ -85,7 +83,7 @@ impl AudioController {
             history_head: 0,
             history_len: 0,
             latest_frame: SonificationFrame::silent(),
-            #[cfg(test)]
+            #[cfg(all(test, feature = "physics"))]
             last_exported_wav: None,
         }
     }
@@ -252,10 +250,12 @@ pub fn export_current_tool_wav(tool_id: &'static str) {
         master_vol,
     );
     let filename = format!("{tool_id}_sonification.wav");
-    #[cfg(test)]
+    #[cfg(all(test, feature = "physics"))]
     AUDIO_CONTROLLER.with(|cell| {
         cell.borrow_mut().last_exported_wav = Some((filename.clone(), wav_bytes.clone()));
     });
+    #[cfg(all(test, not(feature = "physics"), not(target_arch = "wasm32")))]
+    let _ = &wav_bytes;
     #[cfg(not(all(test, not(target_arch = "wasm32"))))]
     {
         let config = SaveAsDialogConfig {
@@ -270,7 +270,7 @@ pub fn export_current_tool_wav(tool_id: &'static str) {
     announce_status(&format!("Exported {filename} stereo PCM audio."));
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "physics"))]
 pub(crate) fn take_last_exported_wav() -> Option<(String, Vec<u8>)> {
     AUDIO_CONTROLLER.with(|cell| cell.borrow_mut().last_exported_wav.take())
 }

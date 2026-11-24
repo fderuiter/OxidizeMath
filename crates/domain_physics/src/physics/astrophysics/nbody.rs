@@ -106,6 +106,24 @@ impl FigureEightThreeBody {
             + (state.0[4] * state.0[11] - state.0[5] * state.0[10])
     }
 
+    /// Constructs a zero-center-of-mass, zero-linear-momentum perturbed Figure-8 state
+    /// around the periodic Chenciner-Montgomery orbit.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn perturbed_figure_eight(delta_pos: f64, delta_mom: f64) -> ArrayState<12> {
+        let mut s = Self::figure_eight_initial_state();
+        if delta_pos.is_finite() {
+            s.0[0] += delta_pos;
+            s.0[2] -= delta_pos;
+        }
+        if delta_mom.is_finite() {
+            s.0[6] -= 0.5 * delta_mom;
+            s.0[8] -= 0.5 * delta_mom;
+            s.0[10] += delta_mom;
+        }
+        s
+    }
+
     /// Constructs a zero-center-of-mass, zero-linear-momentum perturbed Figure-8 orbit from
     /// Poincaré coordinates `(x1, px1)` on the $y_3 = 0$ section.
     #[must_use]

@@ -1,8 +1,6 @@
 //! Pre-planned zero-allocation `rustfft` spectral processors for `2048`-sample wavetable banks
 //! and stereo PDE impulse responses.
 
-// theory_verification!
-
 use std::sync::Arc;
 
 use num_complex::Complex;

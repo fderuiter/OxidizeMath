@@ -1,8 +1,6 @@
 //! User-gesture-gated studio preview controller for stereo `AudioBufferSourceNode` impulse
 //! response strikes and morphable `PeriodicWave` wavetable audition under strict `'self'` CSP.
 
-// theory_verification!
-
 use std::cell::RefCell;
 
 use super::backend::MuteReason;
@@ -457,3 +455,7 @@ pub fn update_studio_wavetable_audition(
 pub fn suspend_studio_preview(reason: MuteReason) {
     STUDIO_PREVIEW.with(|cell| cell.borrow_mut().suspend_all(reason));
 }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+#[path = "studio_preview_wasm_tests.rs"]
+mod wasm_tests;

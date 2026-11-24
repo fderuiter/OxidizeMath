@@ -1,7 +1,5 @@
 //! RIFF `WAVE` chunk inspection and synthesizer (`clm `, `uhWT`) metadata helpers.
 
-// theory_verification!
-
 use super::wav::WavetableChunkSpec;
 
 /// Parsed metadata chunk descriptor returned by [`inspect_wav_riff`].
