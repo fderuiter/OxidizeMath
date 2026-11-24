@@ -265,7 +265,10 @@ fn test_builtin_ode_presets_unscaled_and_replicator_symbolic_validation() {
             vec!["0".to_string(), "2 * r - c".to_string()],
             vec!["r".to_string(), "(r - c) / 2".to_string()],
         ]),
-        symbolic_params: std::collections::BTreeMap::from([("r".into(), 2.0), ("c".into(), 3.0)]),
+        symbolic_params: std::collections::BTreeMap::from([
+            ("r".to_string(), 2.0),
+            ("c".to_string(), 3.0),
+        ]),
         topology_source: crate::app::TopologySource::SharedBus,
     };
     assert!(valid_rep.validate().is_ok());

@@ -14,11 +14,8 @@ use super::reciprocal::{
 use super::types::ElectronVolts;
 use approx::assert_relative_eq;
 use std::f64::consts::{PI, TAU};
-use std::sync::Mutex;
 use verified_engine::allocator::MEMORY_LOCK;
 use verified_engine::engine::VerifiedEngine;
-
-static ZERO_ALLOC_MUTEX: Mutex<()> = Mutex::new(());
 
 fn rotate_2d(q: [f64; 2], angle: f64) -> [f64; 2] {
     let (s, c) = angle.sin_cos();
@@ -182,7 +179,9 @@ fn test_sc_bcc_fcc_extinction_rules_and_brillouin_zones() {
 
 #[test]
 fn test_verified_engine_zero_alloc_bragg_and_bcs() {
-    let _guard = ZERO_ALLOC_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     let mut qc_ws = QuasicrystalWorkspace::new();
     qc_ws.generate_into(&QuasicrystalPatchConfig {
