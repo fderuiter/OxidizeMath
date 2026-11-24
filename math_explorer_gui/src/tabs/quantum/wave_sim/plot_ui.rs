@@ -7,34 +7,26 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use eframe::egui;
-use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints};
+use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints, PlotUi};
 
-use super::atlas::QuantumTunnelingCartographer;
+use super::atlas::{QuantumTunnelingCartographer, WaveCartographer};
+use super::challenges::ActiveWaveChallenge;
 use super::presets::{
     wave_parameter_constraints, WavePotentialPreset, GRID_X_MAX, GRID_X_MIN, POTENTIAL_CLAMP_MAX,
     POTENTIAL_CLAMP_MIN, POTENTIAL_DISPLAY_SCALE,
 };
 use super::runner::WaveData;
 use super::WaveSimulatorTool;
+use crate::async_sim::atlas::RegimeCartographer;
 use crate::framework::{
     BrushMode, CalloutManager, PlotBrushController, PlotBrushFrame, SpatialBrushKit,
 };
 
 impl WaveSimulatorTool {
-    pub(super) fn render_wave_atlas_panel(&mut self, ui: &mut egui::Ui) {
-        if !self.atlas.is_visible() {
-            return;
-        }
-        let ctx = ui.ctx().clone();
-        let (xk, yk) = self.atlas.axis_keys();
-        let get_val = |k: &str| match k {
-            "k0" => self.k0,
-            "v0" => self.v0,
-            "width" => self.width,
-            _ => 0.0,
-        };
+    fn atlas_context_hash(&self, xk: &str, yk: &str) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         (self.preset as u8).hash(&mut h);
+        self.active_challenge.hash(&mut h);
         self.sigma.to_bits().hash(&mut h);
         if xk != "v0" && yk != "v0" {
             self.v0.to_bits().hash(&mut h);
@@ -49,22 +41,42 @@ impl WaveSimulatorTool {
             idx.hash(&mut h);
             val.to_bits().hash(&mut h);
         }
+        h.finish().max(1)
+    }
+
+    pub(super) fn render_wave_atlas_panel(&mut self, ui: &mut egui::Ui) {
+        if !self.atlas.is_visible() {
+            return;
+        }
+        let ctx = ui.ctx().clone();
+        let (xk, yk) = self.atlas.axis_keys();
+        let get_val = |k: &str| match k {
+            "k0" => self.k0,
+            "v0" => self.v0,
+            "width" => self.width,
+            _ => 0.0,
+        };
+        let sig = self.atlas_context_hash(xk, yk);
+        let use_lattice =
+            self.active_challenge == Some(ActiveWaveChallenge::DoubleBarrierResonance);
         let params = wave_parameter_constraints();
         let (preset, k0, v0, width, sigma) =
             (self.preset, self.k0, self.v0, self.width, self.sigma);
         let (expr, sparse) = (self.last_valid_expr.clone(), self.sparse_potential.clone());
-        if let Some(ev) = self.atlas.show_panel(
-            ui,
-            "wave_sim",
-            get_val(xk),
-            get_val(yk),
-            h.finish(),
-            move |keys| {
-                Arc::new(QuantumTunnelingCartographer::new(
-                    &params, keys, preset, k0, v0, width, sigma, &expr, &sparse,
-                ))
-            },
-        ) {
+        if let Some(ev) =
+            self.atlas
+                .show_panel(ui, "wave_sim", get_val(xk), get_val(yk), sig, move |keys| {
+                    if use_lattice {
+                        Arc::new(WaveCartographer::new(
+                            keys, preset, v0, width, &expr, &sparse,
+                        )) as Arc<dyn RegimeCartographer>
+                    } else {
+                        Arc::new(QuantumTunnelingCartographer::new(
+                            &params, keys, preset, k0, v0, width, sigma, &expr, &sparse,
+                        )) as Arc<dyn RegimeCartographer>
+                    }
+                })
+        {
             self.apply_atlas_teleport(ev, Some(&ctx));
         }
     }
@@ -107,6 +119,37 @@ fn build_wave_plot_series(wave_data: &WaveData) -> (Vec<[f64; 2]>, Vec<[f64; 2]>
     (psi_points, v_points, [x_start, x_end])
 }
 
+fn draw_wave_plot_series(
+    plot_ui: &mut PlotUi<'_>,
+    wave_data: &WaveData,
+    colors: (egui::Color32, egui::Color32, egui::Color32),
+) {
+    let (psi_color, potential_color, energy_color) = colors;
+    let (psi_points, v_points, [x_start, x_end]) = build_wave_plot_series(wave_data);
+    let e0_scaled = wave_data.kinetic_energy * POTENTIAL_DISPLAY_SCALE;
+    plot_ui.line(
+        Line::new("Probability |ψ(x, t)|²", PlotPoints::new(psi_points))
+            .color(psi_color)
+            .width(2.0_f32),
+    );
+    plot_ui.line(
+        Line::new("Potential V(x) (scaled)", PlotPoints::new(v_points))
+            .color(potential_color)
+            .width(1.75_f32),
+    );
+    plot_ui.line(
+        Line::new(
+            format!(
+                "Kinetic Energy E0 = {:.2} (scaled)",
+                wave_data.kinetic_energy
+            ),
+            PlotPoints::new(vec![[x_start, e0_scaled], [x_end, e0_scaled]]),
+        )
+        .style(LineStyle::Dashed { length: 6.0_f32 })
+        .color(energy_color),
+    );
+}
+
 pub(super) fn render_wave_plot(
     ui: &mut egui::Ui,
     wave_data: &WaveData,
@@ -115,14 +158,12 @@ pub(super) fn render_wave_plot(
     locked: bool,
 ) -> (egui::Response, Option<PlotBrushFrame>) {
     let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-    let (psi_color, potential_color, energy_color) = (
+    let colors = (
         palette.series_color(0),
         palette.series_color(1),
         palette.series_color(2),
     );
-    draw_wave_plot_header(ui, wave_data, psi_color, potential_color, energy_color);
-    let (psi_points, v_points, [x_start, x_end]) = build_wave_plot_series(wave_data);
-    let e0_scaled = wave_data.kinetic_energy * POTENTIAL_DISPLAY_SCALE;
+    draw_wave_plot_header(ui, wave_data, colors.0, colors.1, colors.2);
     let allow_pan = locked || !brush_kit.is_sculpting();
     let mut brush_frame = None;
     let (y_min, y_max) = (
@@ -138,27 +179,7 @@ pub(super) fn render_wave_plot(
         .allow_drag(allow_pan)
         .allow_zoom(allow_pan)
         .show(ui, |plot_ui| {
-            plot_ui.line(
-                Line::new("Probability |ψ(x, t)|²", PlotPoints::new(psi_points))
-                    .color(psi_color)
-                    .width(2.0_f32),
-            );
-            plot_ui.line(
-                Line::new("Potential V(x) (scaled)", PlotPoints::new(v_points))
-                    .color(potential_color)
-                    .width(1.75_f32),
-            );
-            plot_ui.line(
-                Line::new(
-                    format!(
-                        "Kinetic Energy E0 = {:.2} (scaled)",
-                        wave_data.kinetic_energy
-                    ),
-                    PlotPoints::new(vec![[x_start, e0_scaled], [x_end, e0_scaled]]),
-                )
-                .style(LineStyle::Dashed { length: 6.0_f32 })
-                .color(energy_color),
-            );
+            draw_wave_plot_series(plot_ui, wave_data, colors);
             let b = plot_ui.plot_bounds();
             if b.width() > 0.0 && b.height() > 0.0 {
                 callouts.render_on_plot(plot_ui);

@@ -5,6 +5,7 @@ use eframe::egui;
 
 pub mod clebsch;
 pub mod spin_viz;
+pub mod story_packs;
 pub mod volumetric_studio;
 pub mod wave_sim;
 

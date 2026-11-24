@@ -1,11 +1,17 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::advection::{
+    default_morpho_inlet_u, default_morpho_viscosity, is_default_morpho_inlet_u,
+    is_default_morpho_viscosity, MorphogenesisAdvectionState, MAX_MORPHO_VISCOSITY,
+    MIN_MORPHO_VISCOSITY,
+};
 use super::tool::MorphogenesisTool;
 use crate::async_sim::SimWorkerState;
 use crate::framework::decode_rle_mask;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::MorphogenesisKineticsMode;
 use math_explorer::biology::morphogenesis::{GrayScottKinetics, SchnakenbergKinetics};
+use math_explorer::physics::fluid_dynamics::lattice_boltzmann::MAX_LATTICE_JET_SPEED;
 use scientific_metadata::theory::TheoryDescribable;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -57,6 +63,9 @@ impl FiniteStateGuard for MorphogenesisTool {
                 p.dt = p.dt.clamp(0.001, 2.0);
             }
         }
+        let d_u = p.d_u;
+        let d_v = p.d_v;
+        self.clamp_advection_and_cfl(d_u, d_v, &mut p.dt);
         drop(p);
         self.reset_system();
     }
@@ -72,6 +81,11 @@ impl FiniteStateGuard for MorphogenesisTool {
             ks.f = gs.f;
             ks.k = gs.k;
         }
+        *self
+            .advection_state
+            .write()
+            .unwrap_or_else(|e| e.into_inner()) = MorphogenesisAdvectionState::default();
+        self.live_velocity_peaks = [0.0, 0.0];
         {
             let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
             p.a = 0.1;
@@ -173,6 +187,21 @@ pub struct MorphogenesisToolState {
         skip_serializing_if = "super::atlas::is_default_morpho_atlas_axes"
     )]
     pub atlas_axes: [String; 2],
+    /// Whether coupled Lattice Boltzmann wind-tunnel advection is active.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub advection_enabled: bool,
+    /// Freestream horizontal inflow speed `u_in` (`0.0..=MAX_LATTICE_JET_SPEED`).
+    #[serde(
+        default = "default_morpho_inlet_u",
+        skip_serializing_if = "is_default_morpho_inlet_u"
+    )]
+    pub inlet_u: f64,
+    /// Lattice kinematic viscosity $\nu$ (`MIN_MORPHO_VISCOSITY..=MAX_MORPHO_VISCOSITY`).
+    #[serde(
+        default = "default_morpho_viscosity",
+        skip_serializing_if = "is_default_morpho_viscosity"
+    )]
+    pub viscosity: f64,
 }
 
 impl MorphogenesisToolState {
@@ -183,15 +212,15 @@ impl MorphogenesisToolState {
             ("b", self.b, 0.0, 2.0),
             ("f", self.f, 0.0, 0.12),
             ("k", self.k, 0.0, 0.12),
+            ("inlet_u", self.inlet_u, 0.0, MAX_LATTICE_JET_SPEED),
+            (
+                "viscosity",
+                self.viscosity,
+                MIN_MORPHO_VISCOSITY,
+                MAX_MORPHO_VISCOSITY,
+            ),
         ];
-        for (name, val, min, max) in base_checks {
-            if !val.is_finite() || val < min || val > max {
-                return Err(format!(
-                    "Morphogenesis parameter '{name}' = {val} must be finite within [{min}, {max}]"
-                ));
-            }
-        }
-        let transport_checks = match self.kinetics_mode {
+        for (name, val, min, max) in base_checks.into_iter().chain(match self.kinetics_mode {
             MorphogenesisKineticsMode::Schnakenberg => [
                 ("d_u", self.d_u, 0.1, 5.0),
                 ("d_v", self.d_v, 10.0, 200.0),
@@ -202,8 +231,7 @@ impl MorphogenesisToolState {
                 ("d_v", self.d_v, 0.005, 1.0),
                 ("dt", self.dt, 1e-4, 2.0),
             ],
-        };
-        for (name, val, min, max) in transport_checks {
+        }) {
             if !val.is_finite() || val < min || val > max {
                 return Err(format!(
                     "Morphogenesis parameter '{name}' = {val} must be finite within [{min}, {max}]"

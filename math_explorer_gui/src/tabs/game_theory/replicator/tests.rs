@@ -61,6 +61,59 @@ fn test_symbolic_hawk_dove_parameter_sweep_and_transient_error_preservation() {
 }
 
 #[test]
+fn test_symbolic_payoffs_couple_with_spatial_workspace_graph_and_roundtrip() {
+    use crate::app::data_bus::{SharedGraph, SharedNode};
+    use std::sync::Arc;
+
+    let mut tool = ReplicatorDynamicsTool::default();
+    tool.load_preset_symbolic_hawk_dove();
+    let graph = Arc::new(SharedGraph {
+        revision: 7,
+        nodes: vec![
+            SharedNode {
+                id: 0,
+                norm_pos: [0.2, 0.3],
+            },
+            SharedNode {
+                id: 1,
+                norm_pos: [0.5, 0.7],
+            },
+            SharedNode {
+                id: 2,
+                norm_pos: [0.8, 0.3],
+            },
+        ],
+        edges: vec![(0, 1, 1.5), (1, 2, 1.5), (0, 2, 1.0)],
+    });
+    tool.apply_shared_game_graph(&graph);
+    let initial_spatial_end = tool.spatial.trajectory.last().expect("spatial traj").1[0];
+
+    let mut updated_params = BTreeMap::new();
+    updated_params.insert("v".to_string(), 2.0);
+    updated_params.insert("c".to_string(), 9.0);
+    tool.symbolic_sliders.set_params_map(&updated_params);
+    tool.evaluate_symbolic_matrix();
+    tool.recompute_trajectory_preserving_playback();
+    let shifted_spatial_end = tool.spatial.trajectory.last().expect("spatial traj").1[0];
+    assert!(
+        shifted_spatial_end < initial_spatial_end - 0.03,
+        "higher injury cost c must lower spatial Hawk frequency ({initial_spatial_end} -> {shifted_spatial_end})"
+    );
+
+    tool.spatial.follow_workspace_graph = false;
+    let saved = tool.save_state().expect("save_state");
+    let mut restored = ReplicatorDynamicsTool::default();
+    restored.try_load_state(&saved).expect("try_load_state");
+    assert!(restored.symbolic_mode);
+    assert!(!restored.spatial.follow_workspace_graph);
+    assert_eq!(
+        restored.spatial.trajectory.len(),
+        tool.spatial.trajectory.len()
+    );
+    assert_eq!(restored.save_state().as_deref(), Some(saved.as_str()));
+}
+
+#[test]
 fn test_prisoners_dilemma_mean_fitness_decline_and_stag_hunt() {
     let mut tool = ReplicatorDynamicsTool::default();
     tool.load_preset_symbolic_hawk_dove();
