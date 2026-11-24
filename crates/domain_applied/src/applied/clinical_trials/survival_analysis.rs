@@ -282,4 +282,68 @@ pub fn log_rank_test(
 #[path = "survival_analysis/tests.rs"]
 mod tests;
 
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod proptest_suite {
+    use super::*;
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use proptest::test_runner::{Config, RngAlgorithm, TestRng, TestRunner};
+
+    #[test]
+    fn proptest_kaplan_meier_and_log_rank_invariants() {
+        let mut runner = TestRunner::new_with_rng(
+            Config::with_cases(64),
+            TestRng::deterministic_rng(RngAlgorithm::ChaCha),
+        );
+        let arm_strat = vec((0.1f64..50.0f64, any::<bool>()), 3..24);
+        runner
+            .run(&(arm_strat.clone(), arm_strat), |(raw1, raw2)| {
+                let g1: Vec<Observation> = raw1
+                    .iter()
+                    .map(|&(t, ev)| Observation {
+                        time: SurvivalTime::new(t).unwrap(),
+                        event_occurred: ev,
+                    })
+                    .collect();
+                let g2: Vec<Observation> = raw2
+                    .iter()
+                    .map(|&(t, ev)| Observation {
+                        time: SurvivalTime::new(t).unwrap(),
+                        event_occurred: ev,
+                    })
+                    .collect();
+
+                let curve = kaplan_meier(&g1);
+                let mut prev_s = 1.0;
+                let mut accounted = 0usize;
+                for pt in &curve {
+                    prop_assert!(
+                        pt.survival_probability >= 0.0 && pt.survival_probability <= prev_s + 1e-12
+                    );
+                    prev_s = pt.survival_probability;
+                    accounted += pt.n_events + pt.n_censored;
+                }
+                prop_assert_eq!(accounted, g1.len());
+
+                let all_censored: Vec<Observation> = g1
+                    .iter()
+                    .map(|o| Observation {
+                        event_occurred: false,
+                        ..*o
+                    })
+                    .collect();
+                for pt in kaplan_meier(&all_censored) {
+                    prop_assert!((pt.survival_probability - 1.0).abs() < 1e-15);
+                }
+
+                if let (Ok(r12), Ok(r21)) = (log_rank_test(&g1, &g2), log_rank_test(&g2, &g1)) {
+                    prop_assert!((r12.statistic - r21.statistic).abs() < 1e-10);
+                    prop_assert!((r12.p_value - r21.p_value).abs() < 1e-10);
+                }
+                Ok(())
+            })
+            .unwrap();
+    }
+}
+
 // [cite:clinical_trials_statistics]

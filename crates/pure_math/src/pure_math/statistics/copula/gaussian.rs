@@ -350,4 +350,97 @@ pub fn sgp_joint_probability_with_scratch(
 #[cfg(test)]
 mod tests;
 
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod proptest_suite {
+    use super::*;
+    use proptest::prelude::*;
+    use proptest::test_runner::{Config, RngAlgorithm, TestRng, TestRunner};
+
+    #[test]
+    fn proptest_gaussian_copula_frechet_and_two_increasing_invariants() {
+        let mut runner = TestRunner::new_with_rng(
+            Config::with_cases(64),
+            TestRng::deterministic_rng(RngAlgorithm::ChaCha),
+        );
+        let strategy = (
+            -0.95f64..0.95f64,
+            0.02f64..0.96f64,
+            0.02f64..0.96f64,
+            0.01f64..0.45f64,
+        );
+        runner
+            .run(&strategy, |(rho, u1, v1, delta)| {
+                let u2 = (u1 + delta).min(0.99);
+                let v2 = (v1 + delta).min(0.99);
+                let copula = GaussianCopula::bivariate(Correlation::new(rho).unwrap()).unwrap();
+                let pu1 = Probability::new(u1).unwrap();
+                let pv1 = Probability::new(v1).unwrap();
+                let pu2 = Probability::new(u2).unwrap();
+                let pv2 = Probability::new(v2).unwrap();
+                let p_one = Probability::new(1.0).unwrap();
+                let p_zero = Probability::new(0.0).unwrap();
+
+                let c11 = copula.cdf(&[pu1, pv1]).unwrap().value();
+                let c12 = copula.cdf(&[pu1, pv2]).unwrap().value();
+                let c21 = copula.cdf(&[pu2, pv1]).unwrap().value();
+                let c22 = copula.cdf(&[pu2, pv2]).unwrap().value();
+                let c_sym = copula.cdf(&[pv1, pu1]).unwrap().value();
+
+                let frechet_lo = (u1 + v1 - 1.0).max(0.0);
+                let frechet_hi = u1.min(v1);
+                prop_assert!(c11 + 1e-9 >= frechet_lo && c11 <= frechet_hi + 1e-9);
+                prop_assert!((c11 - c_sym).abs() < 1e-12);
+                prop_assert!(c22 - c12 - c21 + c11 >= -1e-9);
+                prop_assert!((copula.cdf(&[pu1, p_one]).unwrap().value() - u1).abs() < 1e-12);
+                prop_assert!(copula.cdf(&[pu1, p_zero]).unwrap().value().abs() < 1e-12);
+                Ok(())
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn proptest_trivariate_qmc_copula_frechet_and_marginal_consistency() {
+        let mut runner = TestRunner::new_with_rng(
+            Config::with_cases(24),
+            TestRng::deterministic_rng(RngAlgorithm::ChaCha),
+        );
+        let strategy = (
+            -0.42f64..0.88f64,
+            0.05f64..0.95f64,
+            0.05f64..0.95f64,
+            0.05f64..0.95f64,
+        );
+        runner
+            .run(&strategy, |(rho, u1, u2, u3)| {
+                let corr =
+                    CorrelationMatrix::equicorrelated(3, Correlation::new(rho).unwrap()).unwrap();
+                let copula = GaussianCopula::new(corr);
+                let p1 = Probability::new(u1).unwrap();
+                let p2 = Probability::new(u2).unwrap();
+                let p3 = Probability::new(u3).unwrap();
+                let p_one = Probability::new(1.0).unwrap();
+                let p_zero = Probability::new(0.0).unwrap();
+
+                let (prob, se) = copula
+                    .multivariate_cdf_with_error(&[p1, p2, p3], 512, 0x51A7_C0DE)
+                    .unwrap();
+                let c = prob.value();
+                let frechet_lo = (u1 + u2 + u3 - 2.0).max(0.0);
+                let frechet_hi = u1.min(u2).min(u3);
+                let tol = (4.0 * se).max(5e-3);
+                prop_assert!(c + tol >= frechet_lo && c <= frechet_hi + tol);
+                let (m1, se1) = copula
+                    .multivariate_cdf_with_error(&[p1, p_one, p_one], 256, 0x51A7_C0DE)
+                    .unwrap();
+                prop_assert!((m1.value() - u1).abs() < 1e-12 && se1 == 0.0);
+                let (m0, se0) = copula
+                    .multivariate_cdf_with_error(&[p1, p2, p_zero], 256, 0x51A7_C0DE)
+                    .unwrap();
+                prop_assert!(m0.value().abs() < 1e-12 && se0 == 0.0);
+                Ok(())
+            })
+            .unwrap();
+    }
+}
+
 // [cite:clinical_trials_statistics]

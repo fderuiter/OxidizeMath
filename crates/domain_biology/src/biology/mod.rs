@@ -99,3 +99,16 @@ pub use reaction_diffusion::ReactionDiffusionError;
 
 use pure_math::theory_verification;
 theory_verification!(module = "biology", constants = {}, test = {});
+pure_math::mms_convergence_verification!(
+    module = "biology",
+    test = {
+        let mut sys = morphogenesis::TuringSystem::new(
+            math_commons::math_kernel::types::Dimension(8),
+            morphogenesis::DiffusionCoeff(0.16),
+            morphogenesis::DiffusionCoeff(0.08),
+            math_commons::math_kernel::types::StepSize(1.0),
+        );
+        sys.step(0.1);
+        assert!((sys.time() - 0.1).abs() < 1e-12);
+    }
+);

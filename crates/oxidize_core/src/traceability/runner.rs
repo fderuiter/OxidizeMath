@@ -47,6 +47,7 @@ impl VirtualFileSystem for LocalFsVfs {
 }
 
 const IGNORED_TRACEABILITY_MEMBERS: &[&str] = &[
+    "crates/scientific_verification",
     "crates/unified_verification",
     "crates/diagnostics",
     "crates/federated_registry",

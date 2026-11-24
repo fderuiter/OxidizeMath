@@ -140,4 +140,18 @@ fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
     let cert = embedded_cert.expect("embedded Verification_Certificate.json");
     assert!(cert.passed);
     assert!(cert.wasm_path_coverage_pct > 0.0);
+    assert_eq!(cert.certified_solvers, 51);
+    assert_eq!(cert.tier_counts.len(), 6);
+    assert!(cert.tier_counts.values().all(|&c| c > 0));
+    assert!(!cert.interval_bounds.is_empty());
+    assert!(cert.lean4_proof_digests.len() >= 6);
+    assert_eq!(manifest_report.tier_counts.len(), 6);
+    assert!(manifest_report.tier_counts.values().all(|&c| c > 0));
+    assert_eq!(
+        web_snapshot::lean_proof_url("IntervalSoundness.lean"),
+        Some(
+            "https://github.com/fderuiter/OxidizeMath/blob/main/proofs/OxidizeMath/IntervalSoundness.lean"
+                .to_string()
+        )
+    );
 }

@@ -196,3 +196,105 @@ fn test_mean_curvature_flow_shrinkage() {
         r_final
     );
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_heat_equation_sphere_eigenmode_grid_convergence() {
+    use pure_math::pure_math::differential_geometry::buckled_flow::SurfaceTopology;
+
+    // Exact spherical harmonic eigenmode u(u, v, t) = cos(v) * exp(-2 * alpha * t) on unit sphere
+    let sphere = Sphere { radius: 1.0 };
+    let alpha = 0.05;
+    let t_final = 0.04;
+    let grids = [17_usize, 33, 65];
+    let mut errors = [0.0_f64; 3];
+    let mut spacings = [0.0_f64; 3];
+
+    for (idx, &nv) in grids.iter().enumerate() {
+        let nu = 8;
+        let du = 2.0 * PI / nu as f64;
+        let dv = PI / (nv - 1) as f64;
+        spacings[idx] = dv;
+        let h_eff_sq = dv.powi(2).min((dv.sin() * du).powi(2));
+        let dt_target = 0.15 * h_eff_sq / alpha;
+        let steps = ((t_final / dt_target).ceil() as usize).max(8);
+        let dt = t_final / steps as f64;
+
+        let mut solver = HeatEquationSolver::new(
+            &sphere,
+            alpha,
+            (0.0, 2.0 * PI),
+            (0.0, PI),
+            (nu, nv),
+            |_u, v| v.cos(),
+        )
+        .with_topology(SurfaceTopology::PolarSphere);
+
+        for _ in 0..steps {
+            solver.step(dt);
+        }
+
+        let decay = (-2.0 * alpha * t_final).exp();
+        let mut max_err = 0.0_f64;
+        for j in 2..(nv - 2) {
+            let v = j as f64 * dv;
+            let exact = decay * v.cos();
+            let err = (solver.u_grid[0][j] - exact).abs();
+            max_err = max_err.max(err);
+        }
+        errors[idx] = max_err;
+    }
+
+    let order_coarse = (errors[0] / errors[1]).ln() / (spacings[0] / spacings[1]).ln();
+    let order_fine = (errors[1] / errors[2]).ln() / (spacings[1] / spacings[2]).ln();
+    assert!(
+        errors[2] < errors[1] && errors[1] < errors[0],
+        "HeatEquationSolver error must decrease monotonically: {errors:?}"
+    );
+    assert!(
+        order_coarse > 1.75 && order_fine > 1.85,
+        "HeatEquationSolver expected 2nd-order spatial convergence, got ({order_coarse:.3}, {order_fine:.3})"
+    );
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_mean_curvature_flow_sphere_exact_radius_convergence() {
+    // Under dr/dt = H * n_inward = -(1/R) e_r, a sphere of radius R0 shrinks as R(t) = sqrt(R0^2 - 2*t).
+    let r0 = 2.0_f64;
+    let t_final = 0.02_f64;
+    let r_exact = (r0 * r0 - 2.0 * t_final).sqrt();
+    let resolutions = [16_usize, 32, 64];
+    let mut errors = [0.0_f64; 3];
+
+    for (idx, &n) in resolutions.iter().enumerate() {
+        let mut points = vec![vec![Point3::origin(); n]; n];
+        for (i, row) in points.iter_mut().enumerate().take(n) {
+            let u = 2.0 * PI * i as f64 / n as f64;
+            for (j, pt) in row.iter_mut().enumerate().take(n) {
+                let v = 0.2 + (PI - 0.4) * (j as f64 / (n - 1) as f64);
+                *pt = Point3::new(r0 * v.sin() * u.cos(), r0 * v.sin() * u.sin(), r0 * v.cos());
+            }
+        }
+        let mut flow = MeanCurvatureFlow::new(DiscreteSurface::new(points, true, false));
+        let steps = (n * n) / 8;
+        let dt = t_final / steps as f64;
+        for _ in 0..steps {
+            flow.step(dt);
+        }
+        let mid = n / 2;
+        let r_num = flow.surface.points[0][mid].coords.norm();
+        errors[idx] = (r_num - r_exact).abs();
+    }
+
+    let order_1 = (errors[0] / errors[1]).ln() / 2.0_f64.ln();
+    let order_2 = (errors[1] / errors[2]).ln() / 2.0_f64.ln();
+    assert!(
+        errors[2] < errors[1] && errors[1] < errors[0],
+        "MeanCurvatureFlow radius error must decrease on refined grids: {errors:?}"
+    );
+    assert!(
+        order_1 > 1.75 && order_2 > 1.85,
+        "MeanCurvatureFlow expected 2nd-order convergence to sqrt(R0^2 - 2t), got ({order_1:.3}, {order_2:.3})"
+    );
+}

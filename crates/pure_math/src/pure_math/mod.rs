@@ -65,3 +65,28 @@ pub use crate::error;
 // [cite:graph_parameters_rust]
 
 crate::theory_verification!(module = "pure_math", constants = {}, test = {});
+crate::golden_fixture_verification!(
+    module = "pure_math",
+    test = {
+        let j0_40 = special_functions::bessel::bessel_j(0.0, 40.0);
+        assert!((j0_40 - 0.007_366_890_584_237_29).abs() < 1e-12);
+    }
+);
+crate::interval_enclosure_verification!(
+    module = "pure_math",
+    test = {
+        let iv = math_commons::primitives::Interval::point(1.0)
+            .unwrap()
+            .exp();
+        assert!(iv.contains(std::f64::consts::E));
+    }
+);
+crate::formal_proof_verification!(
+    module = "pure_math",
+    proof = "IntervalSoundness.lean",
+    test = {
+        let a = math_commons::primitives::Interval::new(1.0, 2.0).unwrap();
+        let b = math_commons::primitives::Interval::new(0.5, 1.5).unwrap();
+        assert!((a - b).contains(0.5));
+    }
+);

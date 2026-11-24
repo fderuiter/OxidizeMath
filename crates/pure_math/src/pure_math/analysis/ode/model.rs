@@ -38,6 +38,13 @@ impl<State, Dynamics, S> OdeModel<State, Dynamics, S> {
             t: 0.0,
         }
     }
+
+    /// Returns the elapsed simulation time $t$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.t
+    }
 }
 
 impl<State, Dynamics, S> OdeSystem<State> for OdeModel<State, Dynamics, S>
@@ -74,6 +81,16 @@ where
     }
 
     #[verified_engine::verified]
+    fn current_time(&self) -> f64 {
+        self.t
+    }
+
+    #[verified_engine::verified]
+    fn advance_time(&mut self, dt: f64) {
+        self.t += dt;
+    }
+
+    #[verified_engine::verified]
     fn step(&mut self, dt: f64) {
         self.solver
             .step(&self.dynamics, self.t, &mut self.state, dt);
@@ -84,7 +101,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pure_math::analysis::ode::{ArrayState, RungeKutta4};
+    use crate::pure_math::analysis::ode::{ArrayState, Euler, RungeKutta4};
 
     struct NonAutonomousSineDecay {
         k: f64,
@@ -162,6 +179,20 @@ mod tests {
             model.step(0.1);
         }
         // Integral of 2*t from 0 to 2.0 is t^2 = 4.0 (would be 0.2 if t stayed 0.0)
+        assert!((model.get_state().0[0] - 4.0).abs() < 1e-10);
+        assert!((model.time() - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_ode_model_step_with_propagates_and_advances_clock() {
+        let init = ArrayState([0.0]);
+        let mut model = OdeModel::new(init, TimeRampOde, Euler::new(&init));
+        let mut rk4 = RungeKutta4::new(&init);
+        for _ in 0..20 {
+            model.step_with(&mut rk4, 0.1);
+        }
+        assert!((model.time() - 2.0).abs() < 1e-12);
         assert!((model.get_state().0[0] - 4.0).abs() < 1e-10);
     }
 }

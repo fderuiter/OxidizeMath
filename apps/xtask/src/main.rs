@@ -3,6 +3,7 @@ mod features;
 mod gates;
 mod markdown_links;
 mod papers;
+mod pyramid;
 mod setup;
 mod smoke;
 mod staged;
@@ -60,9 +61,13 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "test-wasm" => gates::test_wasm(rest),
         "lint-workflows" => gates::lint_workflows(),
         "regenerate-baseline" => gates::regenerate_baseline(),
-        _ => {
-            println!("Unknown command");
-            exit(1);
+        other => {
+            if let Some((canonical, banner)) = pyramid::resolve_pyramid_subcommand(other) {
+                pyramid::run_pyramid_gate(canonical, banner);
+            } else {
+                println!("Unknown command");
+                exit(1);
+            }
         }
     }
 }
@@ -116,7 +121,8 @@ fn print_help() {
     println!(
         "  verify-records           - Verify architectural decision records (--staged supported)"
     );
-    println!("  verify-suite             - Run high-integrity verified suite\n");
+    println!("  verify-suite             - Run high-integrity verified suite");
+    pyramid::print_pyramid_help();
     println!("Legacy Utility Tasks:");
     println!("  regenerate-baseline      - Regenerate public API baseline");
     println!(

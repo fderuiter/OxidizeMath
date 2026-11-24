@@ -77,3 +77,58 @@ mod tests {
         );
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod proptest_suite {
+    use crate::physics::fluid_dynamics::lattice_boltzmann::model::*;
+    use proptest::prelude::*;
+    use proptest::test_runner::{Config, RngAlgorithm, TestRng, TestRunner};
+
+    #[test]
+    fn proptest_lbm_bgk_and_streaming_mass_momentum_conservation() {
+        let mut runner = TestRunner::new_with_rng(
+            Config::with_cases(48),
+            TestRng::deterministic_rng(RngAlgorithm::ChaCha),
+        );
+        let strategy = (
+            0.6f64..1.6f64,
+            0.7f64..1.4f64,
+            -0.08f64..0.08f64,
+            -0.08f64..0.08f64,
+        );
+        runner
+            .run(&strategy, |(tau, rho0, ux0, uy0)| {
+                let cx = D2Q9::directions_x();
+                let cy = D2Q9::directions_y();
+                let mut f = D2Q9::equilibrium(rho0, ux0, uy0);
+                let bgk = BgkCollision { tau };
+                <BgkCollision as CollisionModel<9, D2Q9>>::apply(&bgk, &mut f, rho0, ux0, uy0);
+                let m: f64 = f.iter().sum();
+                let jx: f64 = f.iter().enumerate().map(|(k, &v)| v * cx[k] as f64).sum();
+                let jy: f64 = f.iter().enumerate().map(|(k, &v)| v * cy[k] as f64).sum();
+                prop_assert!((m - rho0).abs() < 1e-12);
+                prop_assert!((jx - rho0 * ux0).abs() < 1e-12);
+                prop_assert!((jy - rho0 * uy0).abs() < 1e-12);
+
+                let mut lbm = LatticeBoltzmannD2Q9::new(8, 6, tau);
+                lbm.set_obstacle(3, 2, true);
+                lbm.state.f[(2, 2)] = D2Q9::equilibrium(rho0, ux0, uy0);
+                let fluid_mass = |s: &LatticeBoltzmannD2Q9<BgkCollision>| -> f64 {
+                    s.state
+                        .f
+                        .iter()
+                        .zip(s.state.obstacles.iter())
+                        .filter(|&(_, &obs)| !obs)
+                        .map(|(cell, _)| cell.iter().sum::<f64>())
+                        .sum()
+                };
+                let initial_mass = fluid_mass(&lbm);
+                for _ in 0..8 {
+                    lbm.step();
+                }
+                prop_assert!((fluid_mass(&lbm) - initial_mass).abs() < 1e-11);
+                Ok(())
+            })
+            .unwrap();
+    }
+}

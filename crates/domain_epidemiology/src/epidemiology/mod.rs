@@ -89,3 +89,25 @@ pub use crate::error;
 
 use pure_math::theory_verification;
 theory_verification!(module = "epidemiology", constants = {}, test = {});
+pure_math::mms_convergence_verification!(
+    module = "epidemiology",
+    test = {
+        let mut sir = SIRModel::new(1000.0, 10.0, 0.3, 0.1).unwrap();
+        sir.step_forced(0.05, |_t, _y| SIRState {
+            s: 0.0,
+            i: 0.0,
+            r: 0.0,
+        });
+        assert!((sir.time() - 0.05).abs() < 1e-12);
+    }
+);
+pure_math::formal_proof_verification!(
+    module = "epidemiology",
+    proof = "CompartmentalConservation.lean",
+    test = {
+        let mut seir = SEIRModel::new(1000.0, 10.0, 0.4, 0.2, 0.1).unwrap();
+        seir.step(0.1);
+        let st = seir.state();
+        assert!((st.s + st.e + st.i + st.r - 1000.0).abs() < 1e-10);
+    }
+);

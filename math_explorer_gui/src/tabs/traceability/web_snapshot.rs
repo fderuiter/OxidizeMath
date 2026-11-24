@@ -14,6 +14,10 @@ pub const MANIFEST_REL_URL: &str = "./traceability_manifest.json";
 /// Canonical GitHub repository tree base for `.tex` paper sources.
 const GITHUB_PAPERS_BASE: &str = "https://github.com/fderuiter/OxidizeMath/blob/main/papers";
 
+/// Canonical GitHub repository tree base for Lean 4 formal proof modules.
+const GITHUB_PROOFS_BASE: &str =
+    "https://github.com/fderuiter/OxidizeMath/blob/main/proofs/OxidizeMath";
+
 /// Per-paper coverage entry rendered inside [`super::TraceabilityTab`].
 #[derive(Clone)]
 pub(super) struct PaperStatus {
@@ -57,6 +61,15 @@ pub fn paper_tex_url(name: &str) -> Option<String> {
         .or_else(|| clean.strip_suffix(".pdf"))
         .unwrap_or(clean);
     (!stem.is_empty()).then(|| format!("{GITHUB_PAPERS_BASE}/{stem}.tex"))
+}
+
+/// Returns the canonical GitHub `.lean` source link for a Lean 4 proof module.
+pub fn lean_proof_url(module_name: &str) -> Option<String> {
+    let clean = module_name.trim_start_matches('/');
+    if clean.is_empty() || clean.contains("..") || !clean.ends_with(".lean") {
+        return None;
+    }
+    Some(format!("{GITHUB_PROOFS_BASE}/{clean}"))
 }
 
 /// Loads `Verification_Certificate.json` from a local native directory when available.
@@ -148,6 +161,89 @@ pub fn render_certificate_metrics(
         cert.verified_modules_density,
         cert.unverified_modules_density
     ));
+    render_pyramid_summary(ui, cert, palette);
+}
+
+fn render_pyramid_summary(
+    ui: &mut egui::Ui,
+    cert: &VerificationCertificate,
+    palette: &crate::app::SemanticPalette,
+) {
+    if cert.certified_solvers == 0 && cert.tier_counts.is_empty() {
+        return;
+    }
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new("6-Tier Scientific Verification Pyramid").strong());
+    ui.label(format!(
+        "Certified Solvers: {} | Max Interval Width: {:.3e}",
+        cert.certified_solvers, cert.max_interval_width
+    ));
+    ui.horizontal_wrapped(|ui| {
+        for tier_key in oxidize_core::traceability::CANONICAL_PYRAMID_TIERS {
+            let count = cert.tier_counts.get(tier_key).copied().unwrap_or(0);
+            let tier_color = if count > 0 {
+                palette.success
+            } else {
+                palette.warning
+            };
+            ui.label(
+                egui::RichText::new(format!("{tier_key}: {count}"))
+                    .color(tier_color)
+                    .monospace(),
+            );
+        }
+    });
+    render_interval_and_proof_details(ui, cert, palette);
+}
+
+fn render_interval_and_proof_details(
+    ui: &mut egui::Ui,
+    cert: &VerificationCertificate,
+    palette: &crate::app::SemanticPalette,
+) {
+    if !cert.interval_bounds.is_empty() {
+        let header = format!(
+            "Tier 5 Outward-Rounded Interval Enclosures ({})",
+            cert.interval_bounds.len()
+        );
+        egui::CollapsingHeader::new(header)
+            .default_open(true)
+            .show(ui, |ui| {
+                for (kernel, bounds) in &cert.interval_bounds {
+                    let width = (bounds[1] - bounds[0]).max(0.0);
+                    ui.monospace(format!(
+                        "{kernel}: [{:.12e}, {:.12e}] (w={width:.2e})",
+                        bounds[0], bounds[1]
+                    ));
+                }
+            });
+    }
+    if !cert.lean4_proof_digests.is_empty() {
+        let header = format!(
+            "Tier 6 Lean 4 Formal Proof Digests ({})",
+            cert.lean4_proof_digests.len()
+        );
+        egui::CollapsingHeader::new(header)
+            .default_open(true)
+            .show(ui, |ui| {
+                for (module_name, sha256) in &cert.lean4_proof_digests {
+                    let short_sha = sha256.get(..16).unwrap_or(sha256.as_str());
+                    ui.horizontal_wrapped(|ui| {
+                        if let Some(url) = lean_proof_url(module_name) {
+                            ui.hyperlink_to(module_name, url);
+                        } else {
+                            ui.label(module_name);
+                        }
+                        ui.label(
+                            egui::RichText::new("sorry-free")
+                                .color(palette.success)
+                                .small(),
+                        );
+                        ui.monospace(format!("sha256:{short_sha}…"));
+                    });
+                }
+            });
+    }
 }
 
 /// Renders both the hosted PDF link and canonical GitHub `.tex` source fallback link.

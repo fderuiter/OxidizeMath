@@ -234,7 +234,7 @@ fn counts_verification_macros_without_synthetic_floor() {
     assert_eq!(populated.prod_asserts, 0);
     assert_eq!(
         populated.module_tiers.get("sde").map(String::as_str),
-        Some("Stochastic")
+        Some("Tier4_Stochastic")
     );
 }
 

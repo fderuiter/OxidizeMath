@@ -57,6 +57,27 @@ impl OdeSystem<SEIRState> for SEIRDynamics {
     }
 }
 
+struct ForcedSeirDynamics<'a, D, F> {
+    base: &'a D,
+    forcing: F,
+}
+
+impl<'a, D: OdeSystem<SEIRState>, F: Fn(f64, &SEIRState) -> SEIRState> OdeSystem<SEIRState>
+    for ForcedSeirDynamics<'a, D, F>
+{
+    #[verified_engine::verified]
+    fn derivative(&self, t: f64, state: &SEIRState) -> SEIRState {
+        self.base.derivative(t, state) + (self.forcing)(t, state)
+    }
+
+    #[verified_engine::verified]
+    fn derivative_in_place(&self, t: f64, state: &SEIRState, out: &mut SEIRState) {
+        self.base.derivative_in_place(t, state, out);
+        let source = (self.forcing)(t, state);
+        *out += source;
+    }
+}
+
 /// SEIR Model: Susceptible, Exposed, Infectious, Recovered.
 ///
 /// Equations:
@@ -75,6 +96,7 @@ pub struct SEIRModel<S: Solver<SEIRState> = RungeKutta4<SEIRState>> {
     pub dynamics: SEIRDynamics,
     /// The numerical solver strategy.
     solver: S,
+    time: f64,
 }
 
 impl<S: Solver<SEIRState>> TimeStepper<SEIRState> for SEIRModel<S> {
@@ -89,10 +111,25 @@ impl<S: Solver<SEIRState>> TimeStepper<SEIRState> for SEIRModel<S> {
     }
 
     #[verified_engine::verified]
+    fn current_time(&self) -> f64 {
+        self.time
+    }
+
+    #[verified_engine::verified]
+    fn advance_time(&mut self, dt: f64) {
+        self.time += dt;
+    }
+
+    #[verified_engine::verified]
     fn step(&mut self, dt: f64) {
-        // Delegate stepping to the injected solver strategy.
-        // pass &self.dynamics to avoid partial borrow of self.
-        self.solver.step(&self.dynamics, 0.0, &mut self.state, dt);
+        self.solver
+            .step(&self.dynamics, self.time, &mut self.state, dt);
+        self.time += dt;
+    }
+
+    fn step_with<OtherS: Solver<SEIRState>>(&mut self, solver: &mut OtherS, dt: f64) {
+        solver.step(&self.dynamics, self.time, &mut self.state, dt);
+        self.time += dt;
     }
 }
 
@@ -183,6 +220,7 @@ impl SEIRModelBuilder {
                 gamma,
             },
             solver: RungeKutta4::new(&state),
+            time: 0.0,
         })
     }
 }
@@ -238,12 +276,37 @@ impl<S: Solver<SEIRState>> SEIRModel<S> {
         <Self as TimeStepper<SEIRState>>::step_with(self, solver, dt);
     }
 
+    /// Advances the state by `dt` with an explicit time-dependent source term $Q(t, \mathbf{y})$ and zero heap allocation.
+    #[verified_engine::verified]
+    pub fn step_forced<F: Fn(f64, &SEIRState) -> SEIRState>(&mut self, dt: f64, forcing: F) {
+        let forced = ForcedSeirDynamics {
+            base: &self.dynamics,
+            forcing,
+        };
+        self.solver.step(&forced, self.time, &mut self.state, dt);
+        self.time += dt;
+    }
+
+    /// Returns the elapsed simulation time $t$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.time
+    }
+
+    /// Resets the simulation clock to `t`.
+    #[verified_engine::verified]
+    pub fn set_time(&mut self, t: f64) {
+        self.time = t;
+    }
+
     /// Replaces the current solver with a new one.
     pub fn with_solver<NewS: Solver<SEIRState>>(self, new_solver: NewS) -> SEIRModel<NewS> {
         SEIRModel {
             state: self.state,
             dynamics: self.dynamics,
             solver: new_solver,
+            time: self.time,
         }
     }
 

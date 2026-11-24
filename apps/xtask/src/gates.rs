@@ -277,6 +277,9 @@ fn run_compile_and_doc_gates() {
 fn run_audit_gates() {
     println!("\n--- Step 7: Dependency Vulnerability Check ---");
     check_vulnerabilities();
+
+    println!("\n--- Step 8: 6-Tier Scientific Verification Pyramid ---");
+    run_verification("verify-pyramid");
 }
 
 pub fn lint_all() {

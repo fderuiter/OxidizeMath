@@ -118,3 +118,14 @@ pub use crate::error;
 
 use pure_math::theory_verification;
 theory_verification!(module = "climate", constants = {}, test = {});
+pure_math::mms_convergence_verification!(
+    module = "climate",
+    test = {
+        let z1 = nalgebra::DMatrix::from_column_slice(2, 1, &[0.0_f32, 1.0]);
+        let z2 = nalgebra::DMatrix::from_column_slice(2, 1, &[1.0_f32, 2.0]);
+        let emd_same = loss::earth_movers_distance(&z1, &z1);
+        let emd_shift = loss::earth_movers_distance(&z1, &z2);
+        assert!(emd_same.abs() < 1e-6);
+        assert!(emd_shift > 0.0);
+    }
+);

@@ -59,6 +59,7 @@ unverified_modules = [
     "crates/math_commons",
     "crates/oxidize_core",
     "crates/scientific_metadata",
+    "crates/scientific_verification",
     "crates/unified_verification",
     "crates/verified_engine",
     "crates/verified_engine_macros",
@@ -157,6 +158,10 @@ reason = "metadata"
 [[verify_suite.opt_outs]]
 path = "crates/scientific_metadata/src/theory.rs"
 reason = "metadata"
+
+[[verify_suite.opt_outs]]
+path = "crates/scientific_verification/src/"
+reason = "verification_harness"
 
 [[verify_suite.opt_outs]]
 path = "egui_plot/src/sidecar_3d_tests.rs"
@@ -315,6 +320,7 @@ exempt_crates = [
     "crates/math_commons",
     "crates/oxidize_core",
     "crates/scientific_metadata",
+    "crates/scientific_verification",
     "crates/unified_verification",
     "crates/verified_engine",
     "crates/verified_engine_macros",
@@ -333,6 +339,7 @@ min_total_density = 0.120
 "metadata" = 2
 "no_std_engine" = 13
 "tests" = 242
+"verification_harness" = 14
 
 [verification_debt.crate_opt_out_caps]
 "crates/02_engines/engine_linalg" = 15
@@ -343,6 +350,7 @@ min_total_density = 0.120
 "crates/math_commons" = 2
 "crates/pure_math" = 12
 "crates/scientific_metadata" = 2
+"crates/scientific_verification" = 14
 "egui_plot" = 1
 "math_explorer_gui" = 934
 

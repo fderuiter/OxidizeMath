@@ -21,6 +21,18 @@ pub trait TuringSolverStrategy<const N: usize = 2> {
         dynamics: &TuringDynamics<N, K, D>,
         dt: f64,
     );
+
+    /// Performs a single time step at explicit simulation time `t` with zero heap allocation.
+    fn step_at<K: ReactionKinetics<N>, D: SpatialDiffusion<N>>(
+        &mut self,
+        _t: f64,
+        state: &TuringState<N>,
+        next_state: &mut TuringState<N>,
+        dynamics: &TuringDynamics<N, K, D>,
+        dt: f64,
+    ) {
+        self.step(state, next_state, dynamics, dt);
+    }
 }
 
 /// A descriptor for the Turing system's physics (OdeSystem).
@@ -47,7 +59,7 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
     }
 
     #[verified_engine::verified]
-    fn derivative_in_place(&self, _t: f64, state: &TuringState<N>, out: &mut TuringState<N>) {
+    fn derivative_in_place(&self, t: f64, state: &TuringState<N>, out: &mut TuringState<N>) {
         let n = state.len();
         if n == 0 {
             return;
@@ -92,8 +104,8 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
             // because we asserted lengths at the start of the function.
             let inputs: [f64; N] = std::array::from_fn(|s| state.concentrations[s][i]);
 
-            // Compute Reaction
-            let rates = self.kinetics.reaction_at(i, inputs);
+            // Compute Reaction (spatio-temporal; delegates to spatial reaction_at by default)
+            let rates = self.kinetics.reaction_at_time(t, i, inputs);
 
             // Accumulate results
             for (s, rate) in rates.iter().enumerate().take(N) {
@@ -175,20 +187,41 @@ impl<const N: usize> TuringSolverStrategy<N> for FusedEulerSolver {
         dynamics: &TuringDynamics<N, K, D>,
         dt: f64,
     ) {
-        let n = state.len();
-        if n == 0 {
-            return;
-        }
+        self.step_at(0.0, state, next_state, dynamics, dt);
+    }
 
-        if next_state.len() != n {
+    fn step_at<K: ReactionKinetics<N>, D: SpatialDiffusion<N>>(
+        &mut self,
+        t: f64,
+        state: &TuringState<N>,
+        next_state: &mut TuringState<N>,
+        dynamics: &TuringDynamics<N, K, D>,
+        dt: f64,
+    ) {
+        let n = state.len();
+        if n == 0 || next_state.len() != n {
             return;
         }
 
         let concentrations_slices: [&[f64]; N] =
             std::array::from_fn(|i| state.concentrations[i].as_slice());
 
-        let mut next_slices_arr: [&mut [f64]; N] = std::array::from_fn(|_| &mut [] as &mut [f64]);
+        if dynamics.kinetics.is_time_dependent() {
+            dynamics.diffusion.map_diffusion(
+                concentrations_slices,
+                dynamics.diffusion_coeffs,
+                |i, current_vals, diff_vals| {
+                    let rates = dynamics.kinetics.reaction_at_time(t, i, current_vals);
+                    for s in 0..N {
+                        next_state.concentrations[s][i] =
+                            current_vals[s] + dt * (diff_vals[s] + rates[s]);
+                    }
+                },
+            );
+            return;
+        }
 
+        let mut next_slices_arr: [&mut [f64]; N] = std::array::from_fn(|_| &mut [] as &mut [f64]);
         let mut iter = next_state.concentrations.iter_mut();
         for slice in &mut next_slices_arr {
             if let Some(vec) = iter.next() {
@@ -212,13 +245,27 @@ impl<const N: usize> TuringSolverStrategy<N> for FusedEulerSolver {
 pub struct StandardSolverAdapter<S> {
     #[allow(missing_docs)]
     pub solver: S,
+    time: f64,
 }
 
 impl<S> StandardSolverAdapter<S> {
     #[allow(missing_docs)]
     #[verified_engine::verified]
     pub fn new(solver: S) -> Self {
-        Self { solver }
+        Self { solver, time: 0.0 }
+    }
+
+    /// Returns the elapsed simulation time $t$ tracked by this adapter.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.time
+    }
+
+    /// Sets the simulation clock $t$ on this adapter.
+    #[verified_engine::verified]
+    pub fn set_time(&mut self, t: f64) {
+        self.time = t;
     }
 }
 
@@ -232,8 +279,21 @@ impl<const N: usize, S: Solver<TuringState<N>>> TuringSolverStrategy<N>
         dynamics: &TuringDynamics<N, K, D>,
         dt: f64,
     ) {
+        let t = self.time;
+        self.step_at(t, state, next_state, dynamics, dt);
+    }
+
+    fn step_at<K: ReactionKinetics<N>, D: SpatialDiffusion<N>>(
+        &mut self,
+        t: f64,
+        state: &TuringState<N>,
+        next_state: &mut TuringState<N>,
+        dynamics: &TuringDynamics<N, K, D>,
+        dt: f64,
+    ) {
         next_state.copy_from(state);
-        self.solver.step(dynamics, 0.0, next_state, dt);
+        self.solver.step(dynamics, t, next_state, dt);
+        self.time = t + dt;
     }
 }
 

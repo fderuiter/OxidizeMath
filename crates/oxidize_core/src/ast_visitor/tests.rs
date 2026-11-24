@@ -222,6 +222,36 @@ fn test_ast_visitor_ignores_embed_theory_and_verified_tokens_inside_doc_comments
 }
 
 #[test]
+fn test_six_tier_pyramid_macro_classification_and_counts() {
+    let code = r#"
+        theory_verification!(module = "pure_math", constants = {}, test = {});
+        mms_convergence_verification!(module = "epidemiology", test = {});
+        property_invariant_verification!(module = "quantum", test = {});
+        golden_fixture_verification!(module = "pure_math_golden", test = {});
+        stochastic_signature_verification!(
+            module = "ai",
+            external_dependencies = [],
+            signatures = {},
+            statistical_bounds = {},
+            stochastic_test = { let v = 1.5; let _ = v; }
+        );
+        interval_enclosure_verification!(module = "math_commons", test = {});
+        formal_proof_verification!(module = "clinical_trials", proof = "SurvivalBounds.lean", test = {});
+    "#;
+    let file = syn::parse_file(code).unwrap();
+    let mut visitor = AstVisitor::default();
+    visitor.visit_file(&file);
+
+    assert_eq!(visitor.tier_counts.get("Tier1_Convergence"), Some(&2));
+    assert_eq!(visitor.tier_counts.get("Tier2_Property"), Some(&1));
+    assert_eq!(visitor.tier_counts.get("Tier3_Golden"), Some(&1));
+    assert_eq!(visitor.tier_counts.get("Tier4_Stochastic"), Some(&1));
+    assert_eq!(visitor.tier_counts.get("Tier5_Interval"), Some(&1));
+    assert_eq!(visitor.tier_counts.get("Tier6_Formal"), Some(&1));
+    assert_eq!(visitor.verified_funcs, 7);
+}
+
+#[test]
 fn test_ast_visitor_counts_exact_macro_assertions_without_max3_padding() {
     let empty_macro = r#"
         crate::theory_verification!(module = "pure_math", constants = {}, test = {});
@@ -263,7 +293,8 @@ fn test_ast_visitor_counts_exact_macro_assertions_without_max3_padding() {
     assert_eq!(real_visitor.verified_asserts, 3);
     assert_eq!(real_visitor.total_asserts, 3);
 
-    // Live workspace regression: crates/pure_math/src/pure_math/mod.rs empty test = {} contributes 0 assertions
+    // Live workspace regression: crates/pure_math/src/pure_math/mod.rs has 1 empty theory_verification! (0)
+    // plus 3 pyramid macros with 1 assert each (0 + 1 + 1 + 1 = 3 exact assertions, not 4 * 3 = 12)
     let ws_root = crate::workspace::find_workspace_root().expect("workspace root");
     let pure_math_mod =
         std::fs::read_to_string(ws_root.join("crates/pure_math/src/pure_math/mod.rs"))
@@ -271,9 +302,9 @@ fn test_ast_visitor_counts_exact_macro_assertions_without_max3_padding() {
     let pure_math_ast = syn::parse_file(&pure_math_mod).unwrap();
     let mut pure_math_visitor = AstVisitor::default();
     pure_math_visitor.visit_file(&pure_math_ast);
-    assert_eq!(pure_math_visitor.verified_funcs, 1);
-    assert_eq!(pure_math_visitor.verified_asserts, 0);
-    assert_eq!(pure_math_visitor.total_asserts, 0);
+    assert_eq!(pure_math_visitor.verified_funcs, 4);
+    assert_eq!(pure_math_visitor.verified_asserts, 3);
+    assert_eq!(pure_math_visitor.total_asserts, 3);
 }
 
 #[test]

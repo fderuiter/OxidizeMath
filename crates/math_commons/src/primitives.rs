@@ -257,3 +257,41 @@ define_bounded_float!(
     f64::INFINITY,
     "A floating point value bounded between 0.0 and infinity (inclusive of 0.0)."
 );
+
+mod interval;
+mod interval_wrappers;
+pub use interval::Interval;
+pub use interval_wrappers::{NonNegativeInterval, PositiveInterval, UnitIntervalEnclosure};
+
+macro_rules! interval_enclosure_verification {
+    (module = $module_name:expr, test = $test_body:block) => {
+        #[cfg(test)]
+        mod interval_enclosure_verification {
+            use super::*;
+
+            #[test]
+            #[verified_engine::verified]
+            fn test_interval_enclosure_verification() {
+                assert!(
+                    include_str!("../../../traceability.toml").contains($module_name),
+                    "Traceability mismatch: module '{}' is not registered",
+                    $module_name
+                );
+                $test_body
+            }
+        }
+    };
+}
+
+interval_enclosure_verification!(
+    module = "math_commons",
+    test = {
+        let tenth = Interval::point(1.0)
+            .unwrap()
+            .checked_div(Interval::point(10.0).unwrap())
+            .unwrap();
+        let sum = tenth + tenth + tenth;
+        assert!(sum.contains(0.3));
+        assert!(sum.width() > 0.0 && sum.width() < 1e-14);
+    }
+);

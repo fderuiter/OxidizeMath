@@ -148,3 +148,48 @@ fn test_symplectic_method_metadata_iteration_caps_and_rollback() {
     assert_eq!(s_mid, seed);
     assert_eq!(s_gl4, seed);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_symplectic_dt_refinement_convergence_orders() {
+    let sys = QuarticOscillator;
+    let y0 = ArrayState([1.1, 0.2]);
+    let t_end = 1.0;
+    let mut exact = y0;
+    let mut ref_gl4 = GaussLegendre4::new(&y0);
+    let ref_steps = 2_000usize;
+    let ref_dt = t_end / ref_steps as f64;
+    for step in 0..ref_steps {
+        ref_gl4.step(&sys, step as f64 * ref_dt, &mut exact, ref_dt);
+    }
+
+    let eval = |steps: usize| -> [f64; 4] {
+        let dt = t_end / steps as f64;
+        let (mut im_s, mut sv_s, mut yo_s, mut gl_s) = (y0, y0, y0, y0);
+        let mut im = ImplicitMidpoint::new(&y0);
+        let mut sv = StormerVerlet::new(&ArrayState([0.0]));
+        let mut yo = Yoshida4::new(&ArrayState([0.0]));
+        let mut gl = GaussLegendre4::new(&y0);
+        for k in 0..steps {
+            let t = k as f64 * dt;
+            im.step(&sys, t, &mut im_s, dt);
+            sv.step_separable(&sys, &mut sv_s, dt);
+            yo.step_separable(&sys, &mut yo_s, dt);
+            gl.step(&sys, t, &mut gl_s, dt);
+        }
+        [
+            im_s.max_abs_diff(&exact),
+            sv_s.max_abs_diff(&exact),
+            yo_s.max_abs_diff(&exact),
+            gl_s.max_abs_diff(&exact),
+        ]
+    };
+
+    let [e_im_1, e_sv_1, e_yo_1, e_gl_1] = eval(25);
+    let [e_im_2, e_sv_2, e_yo_2, e_gl_2] = eval(50);
+    let ln2 = 2.0_f64.ln();
+    assert!((e_im_1 / e_im_2).ln() / ln2 > 1.95);
+    assert!((e_sv_1 / e_sv_2).ln() / ln2 > 1.95);
+    assert!((e_yo_1 / e_yo_2).ln() / ln2 > 3.90);
+    assert!((e_gl_1 / e_gl_2).ln() / ln2 > 3.95);
+}

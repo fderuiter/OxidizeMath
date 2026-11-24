@@ -109,6 +109,7 @@ pub struct TuringSystem<
     pub diffusion: D,
     /// Numerical solver strategy
     pub solver: S,
+    time: f64,
 }
 
 use math_commons::math_kernel::types::{Dimension, StepSize};
@@ -145,6 +146,7 @@ impl TuringSystem<2, SchnakenbergKinetics, FiniteDifference1D, FusedEulerSolver>
             kinetics: SchnakenbergKinetics::default(),
             diffusion: FiniteDifference1D::new(dx),
             solver: FusedEulerSolver::new(),
+            time: 0.0,
         }
     }
 }
@@ -167,6 +169,7 @@ impl<K: ReactionKinetics<2>, D: SpatialDiffusion<2>> TuringSystem<2, K, D, Fused
             kinetics,
             diffusion,
             solver: FusedEulerSolver::new(),
+            time: 0.0,
         }
     }
 }
@@ -229,7 +232,15 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
             kinetics,
             diffusion,
             solver,
+            time: 0.0,
         }
+    }
+
+    /// Returns the elapsed simulation time $t$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.time
     }
 
     /// Updates the grid using the solver strategy.
@@ -251,12 +262,13 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
             diffusion_coeffs: self.diffusion_coeffs,
         };
 
-        // Delegate time-stepping to the strategy
+        // Delegate time-stepping to the strategy at explicit simulation time
         self.solver
-            .step(&self.state, &mut self.next_state, &dynamics, dt);
+            .step_at(self.time, &self.state, &mut self.next_state, &dynamics, dt);
 
-        // Swap buffers (states)
+        // Swap buffers (states) and advance time
         std::mem::swap(&mut self.state, &mut self.next_state);
+        self.time += dt;
     }
 }
 
@@ -321,6 +333,16 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
     #[verified_engine::verified]
     fn get_state_mut(&mut self) -> &mut TuringState<N> {
         &mut self.state
+    }
+
+    #[verified_engine::verified]
+    fn current_time(&self) -> f64 {
+        self.time
+    }
+
+    #[verified_engine::verified]
+    fn advance_time(&mut self, dt: f64) {
+        self.time += dt;
     }
 
     #[verified_engine::verified(

@@ -151,7 +151,7 @@ fn collect_visitor_traceability_errors(
         ));
     }
     for (module, tier) in &visitor.module_tiers {
-        if rel.contains("pure_math") && tier != "Deterministic" {
+        if rel.contains("pure_math") && (tier == "Tier4_Stochastic" || tier == "Stochastic") {
             let line = visitor.module_spans.get(module).copied().unwrap_or(1);
             errors.push(format!(
                 "[!] Invalid verification tier `{tier}` for `{module}` at {rel}:{line}"

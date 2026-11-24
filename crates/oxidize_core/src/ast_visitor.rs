@@ -1,5 +1,6 @@
 mod attrs;
 mod debt;
+mod pyramid;
 mod vacuous;
 
 pub use attrs::{attrs_mark_test_fn, attrs_require_cfg_test, extract_opt_out_reasons_from_attr};
@@ -7,11 +8,10 @@ pub use debt::collect_ast_file_debt;
 
 use attrs::{
     attrs_require_cfg_test_filtered, count_block_assertions, extract_opt_outs_filtered,
-    parse_verification_macro_tokens, scan_attributes,
+    scan_attributes,
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
-use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{Attribute, ImplItem, ImplItemFn, Item, ItemFn, ItemMacro, TraitItem, TraitItemFn};
 use vacuous::{find_stochastic_zero_init_line, span_line};
@@ -36,13 +36,15 @@ pub struct AstVisitor {
     pub verified_modules: Vec<String>,
     #[allow(missing_docs)]
     pub module_tiers: HashMap<String, String>,
+    /// Per-tier verification macro counts across the 6-tier scientific pyramid.
+    pub tier_counts: BTreeMap<String, usize>,
     #[allow(missing_docs)]
     pub module_spans: HashMap<String, usize>,
     #[allow(missing_docs)]
     pub has_vacuous_bypass: bool,
     #[allow(missing_docs)]
     pub vacuous_bypass_line: Option<usize>,
-    /// Whether the file invokes `theory_verification!` or `stochastic_signature_verification!`.
+    /// Whether the file invokes one of the 6-tier scientific verification pyramid macros.
     pub has_verification_macro: bool,
     #[allow(missing_docs)]
     pub first_unverified_fn: Option<(String, usize)>,
@@ -103,6 +105,7 @@ impl AstVisitor {
         Self {
             verified_modules: Vec::new(),
             module_tiers: HashMap::new(),
+            tier_counts: BTreeMap::new(),
             module_spans: HashMap::new(),
             has_vacuous_bypass: false,
             vacuous_bypass_line: None,
@@ -329,44 +332,7 @@ impl<'ast> Visit<'ast> for AstVisitor {
     }
 
     fn visit_item_macro(&mut self, node: &'ast ItemMacro) {
-        if let Some(ident) = node.mac.path.segments.last().map(|s| &s.ident) {
-            let name = ident.to_string();
-            let tier = if name == "theory_verification" {
-                Some("Deterministic")
-            } else if name == "stochastic_signature_verification" {
-                Some("Stochastic")
-            } else {
-                None
-            };
-
-            if let Some(tier_name) = tier {
-                self.has_verification_macro = true;
-                let macro_line = span_line(node.span());
-                if name == "stochastic_signature_verification"
-                    && let Some(zero_line) = find_stochastic_zero_init_line(&node.mac)
-                {
-                    self.has_vacuous_bypass = true;
-                    let recorded = if zero_line > 0 { zero_line } else { macro_line };
-                    if self.vacuous_bypass_line.is_none() && recorded > 0 {
-                        self.vacuous_bypass_line = Some(recorded);
-                    }
-                }
-                let parsed = parse_verification_macro_tokens(&node.mac.tokens);
-                if let Some(module_name) = parsed.module_name {
-                    self.record_module(module_name.clone(), macro_line);
-                    self.module_tiers.insert(module_name, tier_name.to_string());
-                    self.semantic_integrity_funcs += 1;
-                    self.total_funcs += 1;
-                    self.verified_funcs += 1;
-                    self.test_funcs += 1;
-                    self.verified_test_funcs += 1;
-                    self.total_asserts += parsed.assert_count;
-                    self.verified_asserts += parsed.assert_count;
-                    self.test_asserts += parsed.assert_count;
-                    self.verified_test_asserts += parsed.assert_count;
-                }
-            }
-        }
+        pyramid::record_verification_macro(self, node);
         visit::visit_item_macro(self, node);
     }
 
