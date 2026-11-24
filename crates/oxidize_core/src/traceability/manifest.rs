@@ -79,7 +79,7 @@ mod core_tests {
                 verified_production_assertion_density: 0.12,
                 test_assertion_density: 3.05,
                 passed: true,
-                certified_solvers: 48,
+                certified_solvers: 49,
                 max_interval_width: 1e-14,
                 tier_counts: Default::default(),
                 interval_bounds: Default::default(),
@@ -164,7 +164,7 @@ mod tests {
         assert_eq!(decoded_bare, bare);
 
         let mut tier_counts = std::collections::BTreeMap::new();
-        tier_counts.insert("Tier1_Convergence".to_string(), 48);
+        tier_counts.insert("Tier1_Convergence".to_string(), 49);
         let mut interval_bounds = std::collections::BTreeMap::new();
         interval_bounds.insert(
             "bessel_j0_unit".to_string(),
@@ -187,7 +187,7 @@ mod tests {
                 verified_production_assertion_density: 0.13,
                 test_assertion_density: 3.10,
                 passed: true,
-                certified_solvers: 48,
+                certified_solvers: 49,
                 max_interval_width: 4.44e-16,
                 tier_counts,
                 interval_bounds,

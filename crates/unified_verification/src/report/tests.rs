@@ -312,13 +312,13 @@ fn test_evaluate_integrity_gates_populates_pyramid_certificate_schema() {
     };
     let report = evaluate_integrity_gates(85.0, 72.0, &metrics, &empty_debt, &cfg).report;
     assert!(report.passed);
-    assert_eq!(report.certified_solvers, 48);
+    assert_eq!(report.certified_solvers, 49);
     assert_eq!(report.tier_counts.len(), 6);
     assert!(report.tier_counts.values().all(|&c| c > 0));
     let json = serde_json::to_string(&report).expect("IntegrityReport must serialize");
     let parsed: oxidize_core::traceability::VerificationCertificate =
         serde_json::from_str(&json).expect("VerificationCertificate must deserialize report");
-    assert_eq!(parsed.certified_solvers, 48);
+    assert_eq!(parsed.certified_solvers, 49);
     assert_eq!(parsed.tier_counts.len(), 6);
     assert!(parsed.test_assertion_density > 0.0);
 }

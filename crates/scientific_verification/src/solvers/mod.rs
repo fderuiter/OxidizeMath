@@ -7,16 +7,16 @@ pub mod commons_and_ode;
 mod neuro_applied_ai;
 /// Astrophysics, chaos, optics, fluid dynamics, MRI, quantum, and solid-state solver certificates (11 solvers).
 pub mod physics;
-/// 1D/2D PDE, differential-geometry curvature flow, geodesic, and OU solver certificates (10 solvers).
+/// 1D/2D PDE, differential-geometry curvature flow, geodesic, and OU solver certificates (11 solvers).
 pub mod pure_pde_and_geom;
 
 use crate::mms::SolverCertificate;
 
 /// Executes manufactured-solution, exact-eigenmode, and grid-refinement convergence checks across
-/// all 48 workspace numerical solvers, returning all 48 [`SolverCertificate`] records or an error
+/// all 49 workspace numerical solvers, returning all 49 [`SolverCertificate`] records or an error
 /// describing the first failing solver.
 pub fn verify_all_solvers() -> Result<Vec<SolverCertificate>, String> {
-    let mut certs = Vec::with_capacity(48);
+    let mut certs = Vec::with_capacity(49);
     certs.extend(commons_and_ode::certify_commons_and_ode()?);
     certs.extend(pure_pde_and_geom::certify_pure_pde_and_geom()?);
     certs.extend(physics::certify_physics_solvers()?);

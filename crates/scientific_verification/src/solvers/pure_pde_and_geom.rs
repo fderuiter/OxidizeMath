@@ -21,7 +21,9 @@ use pure_math::pure_math::differential_geometry::mean_curvature_flow::{
     DiscreteSurface, MeanCurvatureFlow,
 };
 use pure_math::pure_math::differential_geometry::surface::Sphere;
-use pure_math::pure_math::statistics::ou_process::{EulerMaruyama, OuParams, TimeStep};
+use pure_math::pure_math::statistics::ou_process::{
+    EulerMaruyama, ExactOuSolver, OuParams, TimeStep,
+};
 use pure_math::pure_math::tensor::TwoSphereMetric;
 use pure_math::pure_math::tensor::geodesic::{GeodesicState, GeodesicSystem};
 use std::f64::consts::{FRAC_PI_2, PI};
@@ -228,7 +230,7 @@ fn certify_curvature_flows() -> Vec<SolverCertificate> {
     ]
 }
 
-fn certify_buckled_geodesic_and_ou() -> Result<Vec<SolverCertificate>, String> {
+fn certify_buckled_and_geodesic() -> Result<Vec<SolverCertificate>, String> {
     let sphere = Sphere { radius: 1.0 };
     let morphogen = vec![0.4_f64; 144];
     let eval_buckled = |steps: usize| -> f64 {
@@ -272,30 +274,47 @@ fn certify_buckled_geodesic_and_ou() -> Result<Vec<SolverCertificate>, String> {
         err_geo[k] = (p_n - p_ref).norm().max((v_n - v_ref).norm());
     }
     let _ = FRAC_PI_2;
+    Ok(vec![
+        pm_cert("BuckledSurfaceFlow", 0.90, &hs_bf, &err_bf, 1e-4),
+        pm_cert("GeodesicSystem", 3.90, &hs_geo, &err_geo, 1e-6),
+    ])
+}
 
+fn certify_ou_solvers() -> Result<Vec<SolverCertificate>, String> {
     let params = OuParams::from_values(2.0, 1.5, 0.0).map_err(|e| format!("{e:?}"))?;
     let exact_ou = 2.0 + (0.5 - 2.0) * (-1.5 * 0.8_f64).exp();
     let (mut hs_ou, mut err_ou) = ([0.0; 3], [0.0; 3]);
+    let mut err_exact_ou = 0.0_f64;
     let mut rng = OxidizeRng::from_seed(99);
     for (k, &n) in [20usize, 40, 80].iter().enumerate() {
         let dt = 0.8 / n as f64;
         hs_ou[k] = dt;
-        let em = EulerMaruyama::new(params, TimeStep::new(dt).map_err(|e| format!("{e:?}"))?);
+        let step = TimeStep::new(dt).map_err(|e| format!("{e:?}"))?;
+        let em = EulerMaruyama::new(params, step);
+        let exact_solver = ExactOuSolver::new(params, step);
         err_ou[k] = (*em.simulate(0.5, n, &mut rng).last().unwrap() - exact_ou).abs();
+        err_exact_ou = err_exact_ou
+            .max((*exact_solver.simulate(0.5, n, &mut rng).last().unwrap() - exact_ou).abs());
     }
+    let noisy = OuParams::from_values(2.0, 1.5, 0.8).map_err(|e| format!("{e:?}"))?;
+    let exact_noisy = ExactOuSolver::new(noisy, TimeStep::new(0.4).map_err(|e| format!("{e:?}"))?);
+    let exact_var = (0.64 / 3.0) * (1.0 - (-2.4_f64).exp());
+    err_exact_ou = err_exact_ou
+        .max((exact_noisy.conditional_mean(0.5, 0.8) - exact_ou).abs())
+        .max((exact_noisy.conditional_variance(0.8) - exact_var).abs());
     Ok(vec![
-        pm_cert("BuckledSurfaceFlow", 0.90, &hs_bf, &err_bf, 1e-4),
-        pm_cert("GeodesicSystem", 3.90, &hs_geo, &err_geo, 1e-6),
         pm_cert("EulerMaruyama", 0.95, &hs_ou, &err_ou, 1e-2),
+        SolverCertificate::evaluate("ExactOuSolver", "pure_math", 0.0, 1.0, err_exact_ou, 1e-12),
     ])
 }
 
-/// Certifies all 10 PDE, curvature-flow, geodesic, and OU solvers in `pure_math`.
+/// Certifies all 11 PDE, curvature-flow, geodesic, and OU solvers in `pure_math`.
 pub fn certify_pure_pde_and_geom() -> Result<Vec<SolverCertificate>, String> {
     let mut out = certify_green_and_laplace();
     out.extend(certify_wave_solvers());
     out.push(certify_fused_stencil());
     out.extend(certify_curvature_flows());
-    out.extend(certify_buckled_geodesic_and_ou()?);
+    out.extend(certify_buckled_and_geodesic()?);
+    out.extend(certify_ou_solvers()?);
     Ok(out)
 }

@@ -744,7 +744,7 @@ jobs:
             and (.total_production_assertion_density | type == "number" and . >= 0)
             and (.verified_production_assertion_density | type == "number" and . >= 0)
             and (.test_assertion_density | type == "number" and . >= 0)
-            and (.certified_solvers | type == "number" and . >= 48)
+            and (.certified_solvers | type == "number" and . >= 49)
             and (.max_interval_width | type == "number" and . >= 0 and . < 1e-9)
             and (.tier_counts | type == "object" and (keys | sort) == [
               "Tier1_Convergence",

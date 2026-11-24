@@ -13,7 +13,7 @@ pub mod mms;
 pub mod proptest_sweeps;
 /// Unified 6-tier pyramid runner and certificate metrics aggregator.
 pub mod pyramid;
-/// Tier 1 convergence certification across all 48 workspace numerical solvers.
+/// Tier 1 convergence certification across all 49 workspace numerical solvers.
 pub mod solvers;
 /// Tier 4 seeded stochastic moment and confidence-bound verification.
 pub mod stochastic;

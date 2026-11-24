@@ -140,7 +140,7 @@ fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
     let cert = embedded_cert.expect("embedded Verification_Certificate.json");
     assert!(cert.passed);
     assert!(cert.wasm_path_coverage_pct > 0.0);
-    assert_eq!(cert.certified_solvers, 48);
+    assert_eq!(cert.certified_solvers, 49);
     assert_eq!(cert.tier_counts.len(), 6);
     assert!(cert.tier_counts.values().all(|&c| c > 0));
     assert!(!cert.interval_bounds.is_empty());

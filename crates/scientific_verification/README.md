@@ -8,10 +8,10 @@ The `scientific_verification` crate provides shared numerical certification harn
 
 ### Verification Pyramid Tiers
 
-- **Tier 1 — Manufactured-Solution & Grid-Refinement Convergence (`mms`, `solvers`)**: Certifies all 48 differential, quadrature, optimization, and linear solvers using log-log ordinary least-squares convergence slopes and zero-heap-allocation hot-loop assertions.
+- **Tier 1 — Manufactured-Solution & Grid-Refinement Convergence (`mms`, `solvers`)**: Certifies all 49 differential, quadrature, optimization, stochastic, and linear solvers using log-log ordinary least-squares convergence slopes and zero-heap-allocation hot-loop assertions.
 - **Tier 2 — Deterministic Property & Conservation Sweeps (`proptest_sweeps`)**: Executes ChaCha-seeded deterministic `proptest` suites across copula monotonicity/bounds, unitary Crank-Nicolson quantum propagation, `LatticeBoltzmann` mass/momentum conservation, Kaplan-Meier survival probabilities, and Bessel Wronskians/recurrences.
 - **Tier 3 — Offline High-Precision Golden Fixtures (`golden`)**: Validates special functions (`bessel_j`, `bessel_y`, `spherical_bessel_j` including asymptotic arguments $x = 40, 50, 100$, `legendre_p`, `hermite`, `associated_laguerre`, `gamma_function`, `beta_function`) and `GaussianCopula` against 150-digit offline fixtures within `< 1e-12`.
-- **Tier 4 — Seeded Stochastic Moment & Confidence Bounds (`stochastic`)**: Verifies deterministic ChaCha-seeded Ornstein-Uhlenbeck stationary moments and Monte Carlo parlay pricing confidence intervals.
+- **Tier 4 — Seeded Stochastic Moment & Confidence Bounds (`stochastic`)**: Verifies deterministic ChaCha-seeded Ornstein-Uhlenbeck stationary and exact large-step Gaussian transition moments, homogeneous Poisson arrival counts, $M/M/1$ truncated-CTMC steady-state occupancy, and Monte Carlo parlay pricing confidence intervals.
 - **Tier 5 — IEEE-754 Outward-Rounded Interval Enclosures (`intervals`)**: Evaluates rigorous outward-rounded `Interval` enclosures for special-function and ODE kernels and records maximum enclosure widths.
 - **Tier 6 — Mechanized Lean 4 Proof Certificates (`lean_proofs`)**: Verifies that every `.lean` module under `proofs/OxidizeMath/` is free of `sorry`, `admit`, and `axiom`, computes deterministic FIPS 180-4 SHA-256 digests, and runs `lake build` when a Lean 4 toolchain is installed.
 

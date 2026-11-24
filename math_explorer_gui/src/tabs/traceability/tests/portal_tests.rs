@@ -62,7 +62,7 @@ fn test_packaged_desktop_outside_workspace_renders_embedded_28_papers() {
         &mut tab,
         "6-Tier Scientific Verification Pyramid"
     ));
-    assert!(render_tab_text_hit(&mut tab, "Certified Solvers: 48"));
+    assert!(render_tab_text_hit(&mut tab, "Certified Solvers: 49"));
     assert!(render_tab_text_hit(&mut tab, "Tier1_Convergence:"));
     assert!(render_tab_text_hit(&mut tab, "Tier5_Interval:"));
     assert!(render_tab_text_hit(&mut tab, "Tier6_Formal:"));
