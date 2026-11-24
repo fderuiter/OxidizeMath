@@ -1,5 +1,5 @@
 // [cite:math_commons]
-use super::{EvalError, FitError, GlslError, LexError, MathError, ParseError};
+use super::{EvalError, FitError, GlslError, LexError, MathError, ParseError, ShaderEmitError};
 use diagnostics::{Diagnostic, Severity};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -26,6 +26,9 @@ pub enum MathCommonsError {
     /// AST-to-GLSL transpilation failure.
     #[error("{0}")]
     Glsl(#[from] GlslError),
+    /// AST-to-WGSL/GLSL shader emission failure.
+    #[error("{0}")]
+    ShaderEmit(#[from] ShaderEmitError),
 }
 
 impl MathCommonsError {
@@ -37,6 +40,7 @@ impl MathCommonsError {
             Self::Parse(err) => err,
             Self::Eval(err) => err,
             Self::Glsl(err) => err,
+            Self::ShaderEmit(err) => err,
         }
     }
 }
