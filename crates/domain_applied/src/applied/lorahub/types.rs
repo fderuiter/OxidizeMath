@@ -6,6 +6,7 @@ use std::collections::HashMap;
 /// Encapsulated to prevent exposing the internal `HashMap` structure directly,
 /// adhering to the Newtype pattern for robustness and encapsulation.
 #[derive(Debug, Clone, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LoraStateDict {
     tensors: HashMap<String, DMatrix<f64>>,
 }

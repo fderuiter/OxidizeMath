@@ -263,6 +263,8 @@ pub mod core;
 mod filtration;
 pub mod homology;
 pub mod persistence;
+#[cfg(feature = "serde")]
+mod serde_support;
 pub mod space3d;
 pub mod workspace;
 

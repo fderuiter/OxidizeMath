@@ -7,7 +7,8 @@ use rand::Rng;
 use thiserror::Error;
 
 /// Errors that can occur during stochastic simulation.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum StochasticError {
     #[error("Invalid reaction index: {0}")]
     #[allow(missing_docs)]

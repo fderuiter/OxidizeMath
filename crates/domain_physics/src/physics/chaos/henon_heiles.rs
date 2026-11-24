@@ -36,6 +36,7 @@ use std::collections::HashMap;
 /// assert!(hh.relative_energy_error(&state, e0) < 1e-7);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HenonHeiles {
     /// Cubic anharmonicity coupling parameter $\lambda$ (standard value `1.0`).
     pub lambda: f64,

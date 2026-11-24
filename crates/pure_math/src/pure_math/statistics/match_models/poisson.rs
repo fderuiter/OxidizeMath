@@ -2,11 +2,13 @@
 
 use super::grid::{DEFAULT_MAX_GOALS, GRID_STRIDE, MAX_GOALS_LIMIT, ScoreGrid};
 use crate::error::MatchModelError;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize};
 use statrs::function::gamma::ln_gamma;
 
 /// Validated expected-goal parameters $(\lambda, \mu)$ for an independent two-team Poisson match model.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct IndependentPoissonParams {
     lambda: f64,
     mu: f64,
@@ -55,6 +57,7 @@ impl IndependentPoissonParams {
     }
 }
 
+#[cfg(feature = "serde")]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawIndependentPoissonParams {
@@ -62,6 +65,7 @@ struct RawIndependentPoissonParams {
     mu: f64,
 }
 
+#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for IndependentPoissonParams {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let raw = RawIndependentPoissonParams::deserialize(deserializer)?;

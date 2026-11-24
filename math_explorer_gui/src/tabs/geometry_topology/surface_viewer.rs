@@ -7,11 +7,12 @@ mod field_surface;
 #[path = "surface_viewer_ui.rs"]
 mod ui;
 
-use super::custom_surface::{CustomSurfaceSandbox, SurfaceType};
+use super::custom_surface::CustomSurfaceSandbox;
 use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Scene3DBuilder};
 use eframe::egui;
+use math_commons::primitives::PositiveFloat;
 use math_explorer::pure_math::differential_geometry::surface::{
-    KleinBottle, ParametricSurface, Sphere, Torus,
+    KleinBottle, ParametricSurface, ParametricSurfaceKind, Sphere, Torus,
 };
 use std::collections::BTreeMap;
 
@@ -19,14 +20,18 @@ const fn default_wall_thickness() -> f64 {
     super::export_utils::DEFAULT_WALL_THICKNESS
 }
 
+fn default_wall_thickness_pf() -> PositiveFloat {
+    PositiveFloat::new(default_wall_thickness()).expect("valid default wall thickness")
+}
+
 #[derive(serde::Serialize)]
 struct SurfaceViewerSaveState {
-    surface_type: SurfaceType,
-    sphere_radius: f64,
-    torus_major_radius: f64,
-    torus_minor_radius: f64,
-    klein_radius: f64,
-    wall_thickness: f64,
+    surface_type: ParametricSurfaceKind,
+    sphere_radius: PositiveFloat,
+    torus_major_radius: PositiveFloat,
+    torus_minor_radius: PositiveFloat,
+    klein_radius: PositiveFloat,
+    wall_thickness: PositiveFloat,
     u_resolution: usize,
     v_resolution: usize,
     camera: Camera3D,
@@ -45,13 +50,13 @@ struct SurfaceViewerSaveState {
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SurfaceViewerState {
-    surface_type: SurfaceType,
-    sphere_radius: f64,
-    torus_major_radius: f64,
-    torus_minor_radius: f64,
-    klein_radius: f64,
-    #[serde(default = "default_wall_thickness")]
-    wall_thickness: f64,
+    surface_type: ParametricSurfaceKind,
+    sphere_radius: PositiveFloat,
+    torus_major_radius: PositiveFloat,
+    torus_minor_radius: PositiveFloat,
+    klein_radius: PositiveFloat,
+    #[serde(default = "default_wall_thickness_pf")]
+    wall_thickness: PositiveFloat,
     u_resolution: usize,
     v_resolution: usize,
     #[serde(default)]
@@ -76,7 +81,7 @@ struct SurfaceViewerState {
 
 /// Interactive 3D parametric wireframe manifold viewer with watertight `.stl`, `.ply`, and `.obj` exports.
 pub struct SurfaceViewer {
-    surface_type: SurfaceType,
+    surface_type: ParametricSurfaceKind,
     sphere_radius: f64,
     torus_major_radius: f64,
     torus_minor_radius: f64,
@@ -95,7 +100,7 @@ impl Default for SurfaceViewer {
     fn default() -> Self {
         let camera = Camera3D::new(0.5, 0.5, 1.0);
         Self {
-            surface_type: SurfaceType::Torus,
+            surface_type: ParametricSurfaceKind::Torus,
             sphere_radius: 1.0,
             torus_major_radius: 2.0,
             torus_minor_radius: 0.5,
@@ -118,18 +123,22 @@ impl SurfaceViewer {
             return live;
         }
         match self.surface_type {
-            SurfaceType::Sphere => Box::new(Sphere {
+            ParametricSurfaceKind::Sphere => Box::new(Sphere {
                 radius: self.sphere_radius,
             }),
-            SurfaceType::Torus => Box::new(Torus {
+            ParametricSurfaceKind::Torus => Box::new(Torus {
                 major_radius: self.torus_major_radius,
                 minor_radius: self.torus_minor_radius,
             }),
-            SurfaceType::KleinBottle => Box::new(KleinBottle {
+            ParametricSurfaceKind::KleinBottle => Box::new(KleinBottle {
                 radius: self.klein_radius,
             }),
-            SurfaceType::CustomHeightfield => Box::new(self.custom_sandbox.build_heightfield()),
-            SurfaceType::CustomParametric => Box::new(self.custom_sandbox.build_parametric()),
+            ParametricSurfaceKind::CustomHeightfield => {
+                Box::new(self.custom_sandbox.build_heightfield())
+            }
+            ParametricSurfaceKind::CustomParametric => {
+                Box::new(self.custom_sandbox.build_parametric())
+            }
         }
     }
 
@@ -147,18 +156,20 @@ impl SurfaceViewer {
     }
 }
 
-fn validate_surface_viewer_state(loaded: &SurfaceViewerState) -> Result<(), String> {
-    if !loaded.sphere_radius.is_finite()
-        || !(0.1..=5.0).contains(&loaded.sphere_radius)
-        || !loaded.torus_major_radius.is_finite()
-        || !(1.0..=5.0).contains(&loaded.torus_major_radius)
-        || !loaded.torus_minor_radius.is_finite()
-        || !(0.1..=2.0).contains(&loaded.torus_minor_radius)
-        || !loaded.klein_radius.is_finite()
-        || !(0.5..=5.0).contains(&loaded.klein_radius)
-        || !loaded.wall_thickness.is_finite()
+fn validate_surface_viewer_state(
+    loaded: &SurfaceViewerState,
+) -> Result<(f64, f64, f64, f64, f64), String> {
+    let sphere_radius = loaded.sphere_radius.value();
+    let torus_major_radius = loaded.torus_major_radius.value();
+    let torus_minor_radius = loaded.torus_minor_radius.value();
+    let klein_radius = loaded.klein_radius.value();
+    let wall_thickness = loaded.wall_thickness.value();
+    if !(0.1..=5.0).contains(&sphere_radius)
+        || !(1.0..=5.0).contains(&torus_major_radius)
+        || !(0.1..=2.0).contains(&torus_minor_radius)
+        || !(0.5..=5.0).contains(&klein_radius)
         || !(super::export_utils::MIN_WALL_THICKNESS..=super::export_utils::MAX_WALL_THICKNESS)
-            .contains(&loaded.wall_thickness)
+            .contains(&wall_thickness)
     {
         return Err("Surface radii or wall thickness out of valid bounds".to_string());
     }
@@ -168,7 +179,13 @@ fn validate_surface_viewer_state(loaded: &SurfaceViewerState) -> Result<(), Stri
     {
         return Err("Surface resolution out of valid bounds".to_string());
     }
-    Ok(())
+    Ok((
+        sphere_radius,
+        torus_major_radius,
+        torus_minor_radius,
+        klein_radius,
+        wall_thickness,
+    ))
 }
 
 impl InteractiveTool for SurfaceViewer {
@@ -236,11 +253,11 @@ impl InteractiveTool for SurfaceViewer {
         let (u_bounds, v_bounds) = self.custom_sandbox.export_domain_bounds(self.surface_type);
         serde_json::to_string(&SurfaceViewerSaveState {
             surface_type: self.surface_type,
-            sphere_radius: self.sphere_radius,
-            torus_major_radius: self.torus_major_radius,
-            torus_minor_radius: self.torus_minor_radius,
-            klein_radius: self.klein_radius,
-            wall_thickness: self.wall_thickness,
+            sphere_radius: PositiveFloat::new(self.sphere_radius).ok()?,
+            torus_major_radius: PositiveFloat::new(self.torus_major_radius).ok()?,
+            torus_minor_radius: PositiveFloat::new(self.torus_minor_radius).ok()?,
+            klein_radius: PositiveFloat::new(self.klein_radius).ok()?,
+            wall_thickness: PositiveFloat::new(self.wall_thickness).ok()?,
             u_resolution: self.u_resolution,
             v_resolution: self.v_resolution,
             camera: self.camera,
@@ -257,7 +274,8 @@ impl InteractiveTool for SurfaceViewer {
         self.state_bounds().validate_json(state)?;
         let loaded: SurfaceViewerState =
             serde_json::from_str(state).map_err(|e| format!("Invalid SurfaceViewer state: {e}"))?;
-        validate_surface_viewer_state(&loaded)?;
+        let (sphere_radius, torus_major_radius, torus_minor_radius, klein_radius, wall_thickness) =
+            validate_surface_viewer_state(&loaded)?;
         let camera = Camera3D::from_preset_fields(
             loaded.camera,
             loaded.pitch,
@@ -272,11 +290,11 @@ impl InteractiveTool for SurfaceViewer {
         )?;
         let cap = crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION;
         self.surface_type = loaded.surface_type;
-        self.sphere_radius = loaded.sphere_radius;
-        self.torus_major_radius = loaded.torus_major_radius;
-        self.torus_minor_radius = loaded.torus_minor_radius;
-        self.klein_radius = loaded.klein_radius;
-        self.wall_thickness = loaded.wall_thickness;
+        self.sphere_radius = sphere_radius;
+        self.torus_major_radius = torus_major_radius;
+        self.torus_minor_radius = torus_minor_radius;
+        self.klein_radius = klein_radius;
+        self.wall_thickness = wall_thickness;
         self.u_resolution = loaded.u_resolution.min(cap);
         self.v_resolution = loaded.v_resolution.min(cap);
         self.camera.apply_pose(camera);
@@ -320,11 +338,11 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for SurfaceViewer {
     fn theory_description(&self) -> String {
         let surf_desc = match self.surface_type {
-            SurfaceType::Sphere => "sphere $S^2$: $\\vec{r}(u, v) = (R \\sin u \\cos v, R \\sin u \\sin v, R \\cos u)$",
-            SurfaceType::Torus => "torus $T^2$: $\\vec{r}(u, v) = ((R + r \\cos v)\\cos u, (R + r \\cos v)\\sin u, r \\sin v)$",
-            SurfaceType::KleinBottle => "non-orientable Klein bottle embedded in 3D: $\\chi(M) = 0$",
-            SurfaceType::CustomHeightfield => "custom Monge heightfield $z = f(x, y)$ compiled to stack bytecode",
-            SurfaceType::CustomParametric => "custom 3D parametric immersion $\\vec{r}(u, v) = (x(u,v), y(u,v), z(u,v))$",
+            ParametricSurfaceKind::Sphere => "sphere $S^2$: $\\vec{r}(u, v) = (R \\sin u \\cos v, R \\sin u \\sin v, R \\cos u)$",
+            ParametricSurfaceKind::Torus => "torus $T^2$: $\\vec{r}(u, v) = ((R + r \\cos v)\\cos u, (R + r \\cos v)\\sin u, r \\sin v)$",
+            ParametricSurfaceKind::KleinBottle => "non-orientable Klein bottle embedded in 3D: $\\chi(M) = 0$",
+            ParametricSurfaceKind::CustomHeightfield => "custom Monge heightfield $z = f(x, y)$ compiled to stack bytecode",
+            ParametricSurfaceKind::CustomParametric => "custom 3D parametric immersion $\\vec{r}(u, v) = (x(u,v), y(u,v), z(u,v))$",
         };
         format!("Parametric 2-manifold surface representation: {surf_desc}.")
     }

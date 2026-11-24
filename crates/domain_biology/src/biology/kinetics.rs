@@ -32,7 +32,8 @@
 
 use thiserror::Error;
 
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum KineticsError {
     #[error("Substrate concentration cannot be negative")]
@@ -54,6 +55,7 @@ pub trait KineticsModel {
 ///
 /// $$ v = \frac{V_{max}\[S\]}{K_m + \[S\]} $$
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MichaelisMenten {
     /// Maximum reaction rate ($V_{max}$).
     pub v_max: f64,
@@ -65,7 +67,7 @@ impl MichaelisMenten {
     /// Creates a new MichaelisMenten model with given parameters.
     #[verified_engine::verified]
     pub fn new(v_max: f64, k_m: f64) -> Result<Self, KineticsError> {
-        if v_max < 0.0 || k_m < 0.0 {
+        if !v_max.is_finite() || !k_m.is_finite() || v_max < 0.0 || k_m < 0.0 {
             return Err(KineticsError::InvalidParameters);
         }
         Ok(Self { v_max, k_m })
@@ -115,6 +117,7 @@ impl KineticsModel for MichaelisMenten {
 /// assert!((velocity - 80.0).abs() < math_explorer::registry::TOLERANCE_FAST);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct HillKinetics {
     /// Maximum reaction rate ($V_{max}$).
     pub v_max: f64,
@@ -128,7 +131,13 @@ impl HillKinetics {
     /// Creates a new HillKinetics model.
     #[verified_engine::verified]
     pub fn new(v_max: f64, k_m: f64, n: f64) -> Result<Self, KineticsError> {
-        if v_max < 0.0 || k_m < 0.0 || n < 0.0 {
+        if !v_max.is_finite()
+            || !k_m.is_finite()
+            || !n.is_finite()
+            || v_max < 0.0
+            || k_m < 0.0
+            || n < 0.0
+        {
             return Err(KineticsError::InvalidParameters);
         }
         Ok(Self { v_max, k_m, n })
@@ -150,6 +159,39 @@ impl KineticsModel for HillKinetics {
         }
 
         Ok(self.v_max * s_n / denominator)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for MichaelisMenten {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawMichaelisMenten {
+            v_max: f64,
+            k_m: f64,
+        }
+        let raw = RawMichaelisMenten::deserialize(deserializer)?;
+        Self::new(raw.v_max, raw.k_m).map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for HillKinetics {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawHillKinetics {
+            v_max: f64,
+            k_m: f64,
+            n: f64,
+        }
+        let raw = RawHillKinetics::deserialize(deserializer)?;
+        Self::new(raw.v_max, raw.k_m, raw.n).map_err(serde::de::Error::custom)
     }
 }
 

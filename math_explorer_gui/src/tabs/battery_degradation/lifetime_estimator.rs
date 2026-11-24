@@ -15,10 +15,12 @@ use super::cell_card::{BatteryCellCard, BatteryDialogIo, ChemistryChoice};
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use duty::{validate_duty_segments, DutyPhaseKind, DutySegmentSpec};
 use eframe::egui;
+use math_commons::primitives::{NonNegativeFloat, PositiveFloat};
 use math_explorer::applied::battery_degradation::{
-    estimate_duty_lifetime, evaluate_duty_point, Capacity, ChemistryPreset, DutyLifetimeSummary,
-    DutySegment, ElectrochemicalAgingModel, DAYS_PER_YEAR, MAX_C_RATE, MAX_DUTY_SEGMENTS,
-    MAX_EXPONENT_Z, MAX_TEMPERATURE_C, MIN_C_RATE, MIN_EXPONENT_Z, MIN_TEMPERATURE_C,
+    estimate_duty_lifetime, evaluate_duty_point, Capacity, ChemistryPreset, DepthOfDischarge,
+    DutyLifetimeSummary, DutySegment, ElectrochemicalAgingModel, DAYS_PER_YEAR, MAX_C_RATE,
+    MAX_DUTY_SEGMENTS, MAX_EXPONENT_Z, MAX_TEMPERATURE_C, MIN_C_RATE, MIN_EXPONENT_Z,
+    MIN_TEMPERATURE_C,
 };
 
 const PLOT_SAMPLES: usize = 240;
@@ -73,9 +75,9 @@ impl Default for LifetimeEstimatorTool {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LifetimeEstimatorState {
-    target_capacity: f64,
-    dod: f64,
-    cycles_per_day: f64,
+    target_capacity: PositiveFloat,
+    dod: DepthOfDischarge,
+    cycles_per_day: NonNegativeFloat,
     #[serde(default, skip_serializing_if = "ChemistryChoice::is_default")]
     chemistry: ChemistryChoice,
     #[serde(default = "default_temp_c", skip_serializing_if = "is_default_temp_c")]
@@ -110,9 +112,9 @@ impl InteractiveTool for LifetimeEstimatorTool {
             None
         };
         serde_json::to_string(&LifetimeEstimatorState {
-            target_capacity: self.target_capacity,
-            dod: self.dod,
-            cycles_per_day: self.cycles_per_day,
+            target_capacity: PositiveFloat::new(self.target_capacity).ok()?,
+            dod: DepthOfDischarge::new(self.dod).ok()?,
+            cycles_per_day: NonNegativeFloat::new(self.cycles_per_day).ok()?,
             chemistry: self.chemistry,
             temperature: self.temperature,
             c_rate: self.c_rate,
@@ -132,9 +134,9 @@ impl InteractiveTool for LifetimeEstimatorTool {
             .map_err(|e| format!("Invalid lifetime estimator state: {e}"))?;
         validate_lifetime_state(&s)?;
         let preset = s.chemistry.to_preset();
-        self.target_capacity = s.target_capacity;
-        self.dod = s.dod;
-        self.cycles_per_day = s.cycles_per_day;
+        self.target_capacity = s.target_capacity.value();
+        self.dod = s.dod.as_f64();
+        self.cycles_per_day = s.cycles_per_day.value();
         self.chemistry = s.chemistry;
         self.temperature = s.temperature;
         self.c_rate = s.c_rate;
@@ -160,12 +162,12 @@ impl InteractiveTool for LifetimeEstimatorTool {
 }
 
 fn validate_lifetime_state(s: &LifetimeEstimatorState) -> Result<(), String> {
-    let scalar_ok = s.target_capacity.is_finite()
-        && (10.0..=99.0).contains(&s.target_capacity)
-        && s.dod.is_finite()
-        && (0.0..=100.0).contains(&s.dod)
-        && s.cycles_per_day.is_finite()
-        && (0.0..=10.0).contains(&s.cycles_per_day)
+    let target_capacity = s.target_capacity.value();
+    let dod = s.dod.as_f64();
+    let cycles_per_day = s.cycles_per_day.value();
+    let scalar_ok = (10.0..=99.0).contains(&target_capacity)
+        && (0.0..=100.0).contains(&dod)
+        && (0.0..=10.0).contains(&cycles_per_day)
         && s.temperature.is_finite()
         && (MIN_TEMPERATURE_C..=MAX_TEMPERATURE_C).contains(&s.temperature)
         && s.c_rate.is_finite()

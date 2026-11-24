@@ -6,6 +6,7 @@ const FLOW_EPS: f64 = 1e-12;
 
 /// Summary of a single shortest augmenting path step discovered by Edmonds-Karp BFS.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AugmentingPathStep {
     /// Vertex sequence `[source, ..., sink]` along the augmenting path.
     pub nodes: Vec<usize>,
@@ -19,6 +20,7 @@ pub struct AugmentingPathStep {
 
 /// Zero-allocation scalar summary returned by [`solve_max_flow_min_cut_in_place`].
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MaxFlowSummary {
     /// Total maximum `s -> t` flow value.
     pub max_flow: f64,
@@ -30,6 +32,7 @@ pub struct MaxFlowSummary {
 
 /// Complete maximum-flow, minimum-cut partition, and augmenting-path trace for visualization.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MaxFlowMinCutResult {
     /// Maximum `s -> t` flow value.
     pub max_flow: f64,

@@ -81,3 +81,21 @@ theory_verification!(
     }
 );
 // [cite:cannibalism]
+
+#[cfg(all(test, feature = "serde"))]
+mod serde_tests {
+    use super::*;
+
+    #[test]
+    fn test_cannibalism_serde_roundtrip() {
+        let kernel = CannibalismKernel::default();
+        let json_k = serde_json::to_string(&kernel).unwrap();
+        let dec_k: CannibalismKernel = serde_json::from_str(&json_k).unwrap();
+        assert_eq!(dec_k, kernel);
+
+        let params = JuvenileAdultParams::default();
+        let json_p = serde_json::to_string(&params).unwrap();
+        let dec_p: JuvenileAdultParams = serde_json::from_str(&json_p).unwrap();
+        assert_eq!(dec_p, params);
+    }
+}

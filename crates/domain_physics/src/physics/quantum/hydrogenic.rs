@@ -15,6 +15,7 @@ use pure_math::pure_math::special_functions::polynomials::associated_laguerre;
 
 /// Validated hydrogenic orbital quantum numbers $(n, \ell, m)$ with $1 \le n \le 6$, $\ell < n$, $|m| \le \ell$.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct OrbitalQuantumNumbers {
     /// Principal quantum number $n \ge 1$.
     pub n: u32,
@@ -61,11 +62,29 @@ impl OrbitalQuantumNumbers {
 
 /// Scalar field observable evaluated from a complex 3D superposition $\Psi(\mathbf{r}, t)$.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum QuantumFieldObservable {
     /// Signed real wavefunction $\text{Re}\,\Psi(\mathbf{r}, t)$ exposing positive/negative nodal shells.
     SignedRealWavefunction,
     /// Born probability density $|\Psi(\mathbf{r}, t)|^2 \ge 0$.
     ProbabilityDensity,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for OrbitalQuantumNumbers {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawOrbital {
+            n: u32,
+            l: u32,
+            m: i32,
+        }
+        let raw = RawOrbital::deserialize(deserializer)?;
+        Self::new(raw.n, raw.l, raw.m).map_err(serde::de::Error::custom)
+    }
 }
 
 /// Non-relativistic hydrogenic eigenenergy $E_n = -\frac{1}{2n^2}$ in Hartree atomic units ($\hbar = m_e = e = 1$).

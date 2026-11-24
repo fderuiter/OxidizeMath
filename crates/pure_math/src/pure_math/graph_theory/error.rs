@@ -4,6 +4,7 @@ use thiserror::Error;
 
 /// Errors returned by network flow solvers, spanning-tree routines, and topology interchange codecs.
 #[derive(Debug, Clone, PartialEq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum GraphTheoryError {
     /// Requested source or sink terminal index is outside `0..vertex_count`.
     #[error("terminal vertex {node} is out of bounds for graph with {vertex_count} vertices")]

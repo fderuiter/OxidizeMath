@@ -5,6 +5,7 @@ pub type Answer = String;
 
 /// Represents a response from a model.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Response {
     /// The text of the response.
     pub text: String,

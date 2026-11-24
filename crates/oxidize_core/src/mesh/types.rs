@@ -2,6 +2,7 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 
 /// A 3D point or vector with single-precision floating point coordinates.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Point3D {
     #[allow(missing_docs)]
     pub x: f32,
@@ -99,7 +100,8 @@ impl Div<f32> for Point3D {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct Mesh {
     #[allow(missing_docs)]
@@ -137,6 +139,7 @@ impl Mesh {
 
 /// An 8-bit per-channel RGB color attribute for a 3D mesh vertex.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VertexColor {
     /// Red channel (`0..=255`).
     pub r: u8,
@@ -156,7 +159,8 @@ impl VertexColor {
 }
 
 /// An indexed 3D triangle mesh paired with per-vertex RGB color attributes.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ColoredMesh {
     /// Indexed triangle geometry and normals.
     pub mesh: Mesh,

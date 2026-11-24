@@ -208,3 +208,30 @@ theory_verification!(
         assert!(t_val > 8.0);
     }
 );
+
+#[cfg(all(test, feature = "serde"))]
+mod serde_tests {
+    use super::*;
+
+    #[test]
+    fn test_freesurfer_serde_roundtrip_and_volume_validation() {
+        let surf = Surface::new(vec![[0.0, 1.0, 2.0]], vec![]);
+        let s_json = serde_json::to_string(&surf).unwrap();
+        assert_eq!(serde_json::from_str::<Surface>(&s_json).unwrap(), surf);
+
+        let cls = TissueClass::new(85.0, 12.0, 0.4);
+        let c_json = serde_json::to_string(&cls).unwrap();
+        assert_eq!(serde_json::from_str::<TissueClass>(&c_json).unwrap(), cls);
+
+        let vol = MriVolume::new([2, 1, 1], [0.0, 0.0, 0.0], 1.0, vec![10.0, 20.0]).unwrap();
+        let v_json = serde_json::to_string(&vol).unwrap();
+        assert_eq!(serde_json::from_str::<MriVolume>(&v_json).unwrap(), vol);
+
+        let bad_len =
+            r#"{"dims":[2,2,2],"origin":[0.0,0.0,0.0],"voxel_size":1.0,"intensities":[1.0]}"#;
+        assert!(serde_json::from_str::<MriVolume>(bad_len).is_err());
+        let bad_vox =
+            r#"{"dims":[1,1,1],"origin":[0.0,0.0,0.0],"voxel_size":0.0,"intensities":[1.0]}"#;
+        assert!(serde_json::from_str::<MriVolume>(bad_vox).is_err());
+    }
+}

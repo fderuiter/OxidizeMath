@@ -48,6 +48,7 @@ impl Default for HodgkinHuxleyParameters {
 ///
 /// Contains the membrane potential $V$ and the dimensionless gating variables $n, m, h$.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HodgkinHuxleyState {
     /// Membrane potential (mV).
     pub v: f64,

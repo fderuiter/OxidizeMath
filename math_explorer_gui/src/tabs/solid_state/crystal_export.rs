@@ -3,6 +3,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::CrystalViewer;
+#[cfg(feature = "physics")]
+use math_explorer::physics::solid_state::lattice::CrystalSystem;
 use nalgebra::Vector3;
 use oxidize_core::mesh::{
     append_colored_part, build_cylinder, build_uv_sphere, ColoredMesh, Point3D, VertexColor,

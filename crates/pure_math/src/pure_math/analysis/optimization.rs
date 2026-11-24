@@ -9,7 +9,8 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 /// Errors that can occur during optimization.
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum OptimizationError {
     #[error("Failed to convert numerical value")]
     #[allow(missing_docs)]
@@ -19,6 +20,8 @@ pub enum OptimizationError {
     Evolution(#[from] EvolutionError),
 }
 
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct L1RegularizedLeastSquares {
     lambda: f64,
@@ -61,6 +64,8 @@ pub trait Optimizer<T: RealField + Copy, Key = u64> {
     ) -> Result<(), OptimizationError>;
 }
 
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct SGD<T> {
     #[allow(missing_docs)]
@@ -206,6 +211,15 @@ impl<T: RealField + Copy, Key> Optimizer<T, Key> for SGD<T> {
     }
 }
 
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(bound(
+        serialize = "T: nalgebra::Scalar + serde::Serialize",
+        deserialize = "T: nalgebra::Scalar + serde::Deserialize<'de>"
+    ))
+)]
 #[allow(missing_docs)]
 pub struct AdamState<T> {
     #[allow(missing_docs)]
@@ -216,8 +230,20 @@ pub struct AdamState<T> {
     pub t: i32,
 }
 
+#[cfg(feature = "serde")]
+#[path = "optimization_serde.rs"]
+mod serde_adam_states;
+
 /// Zero-allocation stack moment accumulators for 2D `Adam` parameter updates.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(bound(
+        serialize = "T: nalgebra::Scalar + serde::Serialize",
+        deserialize = "T: nalgebra::Scalar + serde::Deserialize<'de>"
+    ))
+)]
 pub struct AdamState2D<T> {
     /// First moment (exponentially decaying gradient mean).
     pub m: Vector2<T>,
@@ -246,6 +272,15 @@ impl<T: RealField + Copy> AdamState2D<T> {
     }
 }
 
+#[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(bound(
+        serialize = "T: nalgebra::Scalar + serde::Serialize, Key: Eq + std::hash::Hash + serde::Serialize",
+        deserialize = "T: nalgebra::Scalar + serde::Deserialize<'de>, Key: Eq + std::hash::Hash + serde::Deserialize<'de>"
+    ))
+)]
 #[allow(missing_docs)]
 pub struct Adam<T, Key>
 where
@@ -260,6 +295,7 @@ where
     #[allow(missing_docs)]
     pub epsilon: T,
     #[allow(missing_docs)]
+    #[cfg_attr(feature = "serde", serde(with = "serde_adam_states"))]
     pub states: HashMap<Key, AdamState<T>>,
 }
 
@@ -416,6 +452,7 @@ where
 
 /// Identifies the type of parameter being updated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ParamType {
     #[allow(missing_docs)]
     Weight,
@@ -454,36 +491,5 @@ pub trait Trainable<T: nalgebra::RealField + Copy = f64> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_adam_optimizer_respects_configured_learning_rate() {
-        let mut low_lr = Adam::<f64, usize>::new(0.001).expect("low adam");
-        let mut high_lr = Adam::<f64, usize>::new(0.05).expect("high adam");
-
-        let mut p_low = DMatrix::from_element(2, 2, 1.0_f64);
-        let mut p_high = DMatrix::from_element(2, 2, 1.0_f64);
-        let grad = DMatrix::from_element(2, 2, 0.5_f64);
-
-        low_lr.update_matrix(0, &mut p_low, &grad).expect("low lr");
-        high_lr
-            .update_matrix(0, &mut p_high, &grad)
-            .expect("high lr");
-
-        let delta_low = (1.0 - p_low[(0, 0)]).abs();
-        let delta_high = (1.0 - p_high[(0, 0)]).abs();
-        assert!((delta_high / delta_low - 50.0).abs() < 1e-6);
-
-        let mut v_low = DVector::from_element(2, 1.0);
-        let mut v_high = DVector::from_element(2, 1.0);
-        let v_grad = DVector::from_element(2, 0.5);
-        low_lr
-            .update_vector(1, &mut v_low, &v_grad)
-            .expect("low vec");
-        high_lr
-            .update_vector(1, &mut v_high, &v_grad)
-            .expect("high vec");
-        assert!(((1.0 - v_high[0]).abs() / (1.0 - v_low[0]).abs() - 50.0).abs() < 1e-6);
-    }
-}
+#[path = "optimization_tests.rs"]
+mod tests;

@@ -67,6 +67,8 @@
 
 #[allow(missing_docs)]
 pub mod reaction;
+#[cfg(feature = "serde")]
+mod serde_support;
 #[allow(missing_docs)]
 pub mod solvers;
 #[allow(missing_docs)]
@@ -86,6 +88,7 @@ pub use state::TuringState;
 /// * `K`: The reaction kinetics strategy.
 /// * `D`: The spatial diffusion strategy.
 /// * `S`: The numerical solver strategy.
+#[derive(Debug, Clone, PartialEq)]
 pub struct TuringSystem<
     const N: usize = 2,
     K: ReactionKinetics<N> = SchnakenbergKinetics,
@@ -113,6 +116,7 @@ use std::ops::{Deref, DerefMut};
 
 /// Diffusion coefficient
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DiffusionCoeff(pub f64);
 
 impl Deref for DiffusionCoeff {

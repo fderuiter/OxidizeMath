@@ -3,6 +3,7 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 
 /// Energy in Electron Volts (eV).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ElectronVolts(f64);
 
 impl ElectronVolts {
@@ -110,6 +111,7 @@ impl Neg for ElectronVolts {
 
 /// Temperature in Kelvin (K).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Kelvin(f64);
 
 impl Kelvin {

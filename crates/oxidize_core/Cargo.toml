@@ -6,6 +6,7 @@ edition = "2024"
 [features]
 default = []
 ast-analysis = ["dep:futures", "dep:proc-macro2", "dep:quote", "dep:syn", "dep:toml"]
+serde = ["dep:serde"]
 
 [[bin]]
 name = "traceability_cli"
@@ -18,7 +19,7 @@ proc-macro2 = { workspace = true, optional = true }
 quote = { workspace = true, optional = true }
 rand = { workspace = true, features = ["std", "alloc"] }
 rand_chacha = { workspace = true, features = ["std"] }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"], optional = true }
 syn = { workspace = true, features = ["full", "visit"], optional = true }
 toml = { workspace = true, optional = true }
 

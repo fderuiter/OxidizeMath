@@ -69,6 +69,7 @@ pub(super) const FIBONACCI_PAIRS: [(i128, i128); 9] = [
 ///
 /// Kept `Copy` (zero heap fields) so error paths inside `VerifiedAllocator` never allocate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FractranError {
     /// Program contains zero fraction rules.
     EmptyProgram,

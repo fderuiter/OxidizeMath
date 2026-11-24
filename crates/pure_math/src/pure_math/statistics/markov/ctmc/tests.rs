@@ -166,6 +166,7 @@ fn test_deterministic_simulation() {
     }
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_ctmc_serde_roundtrip_and_invalid_generator_rejection() {
     use serde::Deserialize;

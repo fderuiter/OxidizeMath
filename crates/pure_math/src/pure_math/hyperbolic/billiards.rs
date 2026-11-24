@@ -17,7 +17,8 @@ use std::f64::consts::TAU;
 pub const MAX_BILLIARD_SEGMENTS: usize = 2048;
 
 /// Convex hyperbolic billiard table geometry in $\overline{\mathbb{D}}$.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BilliardDomainKind {
     /// Compact regular `{p, q}` polygon with $(p - 2)(q - 2) > 4$.
     RegularPolygon {
@@ -109,6 +110,7 @@ impl BilliardTable {
 
 /// Instantaneous state of a unit-speed geodesic billiard particle on $\mathbb{D}$.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GeodesicRay {
     /// Interior position $z \in \mathbb{D}$.
     pub position: DiskPoint,
@@ -140,6 +142,7 @@ impl GeodesicRay {
 
 /// Single chordal geodesic flight segment between billiard boundary impacts.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GeodesicSegment {
     /// Segment start coordinate in $\mathbb{D}$.
     pub start: DiskPoint,

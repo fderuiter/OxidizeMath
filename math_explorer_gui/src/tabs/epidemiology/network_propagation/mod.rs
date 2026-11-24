@@ -14,6 +14,7 @@ pub(crate) use analytics::compute_network_analytics;
 
 use crate::framework::InteractiveTool;
 use eframe::egui;
+use math_commons::primitives::NonNegativeFloat;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
 use presets::{build_validated_candidate, NetPropState};
 use std::hash::{Hash, Hasher};
@@ -306,8 +307,8 @@ impl InteractiveTool for NetworkPropagationTool {
         };
         serde_json::to_string(&NetPropState {
             num_nodes,
-            beta: self.model.beta(),
-            gamma: self.model.gamma(),
+            beta: NonNegativeFloat::new(self.model.beta()).ok()?,
+            gamma: NonNegativeFloat::new(self.model.gamma()).ok()?,
             seed: self.seed,
             budget: self.budget,
             vaccinated_nodes,

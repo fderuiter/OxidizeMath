@@ -9,6 +9,7 @@ use topology::{
 
 /// Triangulated three-dimensional cortical surface mesh.
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Surface {
     /// Vertex coordinates `[x, y, z]` in millimeters.
     pub vertices: Vec<[f64; 3]>,
@@ -35,6 +36,7 @@ impl Surface {
 
 /// Three-dimensional structural MRI intensity volume on an isotropic physical grid.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MriVolume {
     /// Voxel counts `[nx, ny, nz]` along the X, Y, and Z axes.
     pub dims: [usize; 3],
@@ -44,6 +46,25 @@ pub struct MriVolume {
     pub voxel_size: f64,
     /// Row-major (`(z * ny + y) * nx + x`) intensity samples of length `nx * ny * nz`.
     pub intensities: Vec<f64>,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for MriVolume {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct MriVolumeRaw {
+            dims: [usize; 3],
+            origin: [f64; 3],
+            voxel_size: f64,
+            intensities: Vec<f64>,
+        }
+        let raw = MriVolumeRaw::deserialize(deserializer)?;
+        Self::new(raw.dims, raw.origin, raw.voxel_size, raw.intensities)
+            .map_err(serde::de::Error::custom)
+    }
 }
 
 impl MriVolume {

@@ -10,6 +10,8 @@ pub trait Tokenizer {
 }
 
 /// A basic whitespace and punctuation tokenizer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct WordTokenizer;
 
 impl Tokenizer for WordTokenizer {
@@ -40,6 +42,8 @@ impl Tokenizer for WordTokenizer {
 }
 
 /// A naive character-level tokenizer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CharTokenizer;
 
 impl Tokenizer for CharTokenizer {
@@ -55,6 +59,8 @@ impl Tokenizer for CharTokenizer {
 /// An Embedding Matrix generator for visualization purposes.
 /// In a real system, this would be a learnable parameter matrix `[vocab_size, d_model]`.
 /// Here, we use a deterministic hash to generate a pseudo-embedding for any token.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PseudoEmbedding {
     #[allow(missing_docs)]
     pub d_model: usize,

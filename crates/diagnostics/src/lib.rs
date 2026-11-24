@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 /// assert_eq!(Severity::Fatal.to_string(), "FATAL");
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Severity {
     /// Informational telemetry indicating normal subsystem progress.
     Info,
@@ -88,7 +89,8 @@ pub trait Diagnostic: std::error::Error + Send + Sync + 'static {
 }
 
 /// Structured diagnostic record dispatched through a [`DiagnosticBus`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DiagnosticEvent {
     /// Operational severity classification of the event.
     pub severity: Severity,

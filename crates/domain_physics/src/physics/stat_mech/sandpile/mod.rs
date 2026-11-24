@@ -28,7 +28,6 @@ use math_commons::fit::CurveFit;
 use math_commons::math_kernel::types::flatten_2d_index;
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
 
 pub use algebra::SandpileElement;
 pub use kirchhoff::{MAX_BAREISS_CELLS, SandpileError, kirchhoff_determinant_bareiss};
@@ -47,7 +46,8 @@ pub const MAX_STABLE_HEIGHT: u32 = 3;
 pub const MAX_SANDPILE_DIM: usize = 128;
 
 /// Outcome of Dhar's burning recurrence algorithm on a 2D sandpile configuration.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BurningTestResult {
     /// `true` if and only if every cell in the lattice burned (configuration is recurrent).
     pub is_recurrent: bool,

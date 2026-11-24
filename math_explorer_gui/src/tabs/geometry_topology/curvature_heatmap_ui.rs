@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{CurvatureHeatmap, CurvatureType, SurfaceType};
+use super::{CurvatureHeatmap, CurvatureKind, ParametricSurfaceKind};
 use crate::framework::{Plot3DViewport, CAMERA_3D_HELPER_TEXT};
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
@@ -14,21 +14,29 @@ impl CurvatureHeatmap {
 
             ui.label("Select Surface:");
             ui.horizontal_wrapped(|ui| {
-                ui.radio_value(&mut self.surface_type, SurfaceType::Sphere, "Sphere");
-                ui.radio_value(&mut self.surface_type, SurfaceType::Torus, "Torus");
                 ui.radio_value(
                     &mut self.surface_type,
-                    SurfaceType::KleinBottle,
+                    ParametricSurfaceKind::Sphere,
+                    "Sphere",
+                );
+                ui.radio_value(
+                    &mut self.surface_type,
+                    ParametricSurfaceKind::Torus,
+                    "Torus",
+                );
+                ui.radio_value(
+                    &mut self.surface_type,
+                    ParametricSurfaceKind::KleinBottle,
                     "Klein Bottle",
                 );
                 ui.radio_value(
                     &mut self.surface_type,
-                    SurfaceType::CustomHeightfield,
+                    ParametricSurfaceKind::CustomHeightfield,
                     "Custom z=f(x,y)",
                 );
                 ui.radio_value(
                     &mut self.surface_type,
-                    SurfaceType::CustomParametric,
+                    ParametricSurfaceKind::CustomParametric,
                     "Custom r(u,v)",
                 );
             });
@@ -38,10 +46,10 @@ impl CurvatureHeatmap {
             ui.horizontal(|ui| {
                 ui.radio_value(
                     &mut self.curvature_type,
-                    CurvatureType::Gaussian,
+                    CurvatureKind::Gaussian,
                     "Gaussian",
                 );
-                ui.radio_value(&mut self.curvature_type, CurvatureType::Mean, "Mean");
+                ui.radio_value(&mut self.curvature_type, CurvatureKind::Mean, "Mean");
             });
 
             ui.separator();
@@ -65,10 +73,10 @@ impl CurvatureHeatmap {
         egui::CollapsingHeader::new("Parameters")
             .default_open(matches!(
                 self.surface_type,
-                SurfaceType::CustomHeightfield | SurfaceType::CustomParametric
+                ParametricSurfaceKind::CustomHeightfield | ParametricSurfaceKind::CustomParametric
             ))
             .show(ui, |ui| match self.surface_type {
-                SurfaceType::Sphere => {
+                ParametricSurfaceKind::Sphere => {
                     ui.add(
                         AnimatedSlider::new(&mut self.sphere_radius, 0.1..=5.0)
                             .hard_bounds(0.1..=5.0)
@@ -76,7 +84,7 @@ impl CurvatureHeatmap {
                             .id_salt("curvature_heatmap_sphere_radius"),
                     );
                 }
-                SurfaceType::Torus => {
+                ParametricSurfaceKind::Torus => {
                     ui.add(
                         AnimatedSlider::new(&mut self.torus_major_radius, 1.0..=5.0)
                             .hard_bounds(1.0..=5.0)
@@ -90,7 +98,7 @@ impl CurvatureHeatmap {
                             .id_salt("curvature_heatmap_torus_minor"),
                     );
                 }
-                SurfaceType::KleinBottle => {
+                ParametricSurfaceKind::KleinBottle => {
                     ui.add(
                         AnimatedSlider::new(&mut self.klein_radius, 0.5..=5.0)
                             .hard_bounds(0.5..=5.0)
@@ -98,7 +106,8 @@ impl CurvatureHeatmap {
                             .id_salt("curvature_heatmap_klein_radius"),
                     );
                 }
-                SurfaceType::CustomHeightfield | SurfaceType::CustomParametric => {
+                ParametricSurfaceKind::CustomHeightfield
+                | ParametricSurfaceKind::CustomParametric => {
                     self.custom_sandbox.ui_for_type(ui, self.surface_type);
                 }
             });

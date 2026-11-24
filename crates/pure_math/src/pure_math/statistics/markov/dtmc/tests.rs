@@ -266,6 +266,7 @@ fn test_validation_errors() {
     assert!(MarkovChain::new(p, states).is_err());
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_dtmc_serde_roundtrip_and_validation_rejections() {
     use serde::Deserialize;

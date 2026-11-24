@@ -22,6 +22,7 @@ use crate::framework::{
     InteractiveTool, SpatialBrushKit, ToolStateBounds,
 };
 use eframe::egui::{self, ColorImage};
+use math_commons::primitives::PositiveFloat;
 use math_explorer::physics::medical::dose::kernel::{DoseKernel, ExponentialKernel};
 use math_explorer::physics::medical::radar_gating::BeamState;
 
@@ -30,8 +31,7 @@ pub use super::imrt::state::{CanvasKeyTarget, DoseDisplayMode};
 /// Interactive radiation therapy tool supporting point-source PSF convolution, 4-beam IMRT
 /// inverse planning, `SpatialBrushKit` contour sculpting, and live 4D radar-gated dosimetry.
 pub struct DoseCalculationTool {
-    pub(crate) amplitude: f64,
-    pub(crate) beta: f64,
+    pub(crate) kernel: ExponentialKernel,
     pub(crate) width: usize,
     pub(crate) height: usize,
     /// Whether 4-beam coplanar IMRT mode is active.
@@ -85,8 +85,7 @@ impl Default for DoseCalculationTool {
         let standalone_4d = Standalone4dStepper::default();
         let latest_telemetry = standalone_4d.latest;
         let mut tool = Self {
-            amplitude: 1.0,
-            beta: 1.0,
+            kernel: ExponentialKernel::new(1.0, 1.0),
             width: 200,
             height: 200,
             imrt_mode: false,
@@ -128,7 +127,7 @@ impl DoseCalculationTool {
             self.gating_4d_enabled = false;
             self.playing_4d = false;
             self.display_mode = DoseDisplayMode::StaticPlan;
-            self.beta = CHALLENGE_IMRT_BETA;
+            self.kernel.beta = CHALLENGE_IMRT_BETA;
             self.width = IMRT_GRID_DIM;
             self.height = IMRT_GRID_DIM;
             self.prescription_gy = CHALLENGE_IMRT_PRESCRIPTION_GY;
@@ -143,7 +142,7 @@ impl DoseCalculationTool {
             self.imrt_workspace.evaluate_in_place(
                 &self.beam_angles_deg,
                 &self.beam_weights,
-                self.beta,
+                self.kernel.beta,
                 self.prescription_gy,
                 self.oar_limit_gy,
             );
@@ -153,10 +152,11 @@ impl DoseCalculationTool {
                 &mut self.callout_manager,
             );
         } else {
-            let d_ref = ExponentialKernel::new(self.amplitude, self.beta)
-                .value_at(2.0)
-                .unwrap_or(0.0);
-            let src_lbl = format!("Source A={:.1}, β={:.2}", self.amplitude, self.beta);
+            let d_ref = self.kernel.value_at(2.0).unwrap_or(0.0);
+            let src_lbl = format!(
+                "Source A={:.1}, β={:.2}",
+                self.kernel.amplitude, self.kernel.beta
+            );
             self.callout_manager
                 .set_auto_callout("psf_source", [0.0, 0.0], src_lbl, [28.0, -22.0]);
             let ref_lbl = format!("K(2cm) = {:.3}", d_ref);
@@ -174,7 +174,7 @@ impl DoseCalculationTool {
         self.imrt_mode = true;
         self.gating_4d_enabled = true;
         self.display_mode = DoseDisplayMode::Gated4d;
-        self.beta = CHALLENGE_IMRT_BETA;
+        self.kernel.beta = CHALLENGE_IMRT_BETA;
         self.width = IMRT_GRID_DIM;
         self.height = IMRT_GRID_DIM;
         self.prescription_gy = CHALLENGE_IMRT_PRESCRIPTION_GY;
@@ -312,8 +312,8 @@ impl InteractiveTool for DoseCalculationTool {
     fn state_revision(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
-        self.amplitude.to_bits().hash(&mut h);
-        self.beta.to_bits().hash(&mut h);
+        self.kernel.amplitude.to_bits().hash(&mut h);
+        self.kernel.beta.to_bits().hash(&mut h);
         self.width.hash(&mut h);
         self.height.hash(&mut h);
         self.imrt_mode.hash(&mut h);
@@ -344,8 +344,8 @@ impl InteractiveTool for DoseCalculationTool {
             && (self.gating_4d_enabled
                 || (self.beam_current_ma - NOMINAL_BEAM_CURRENT_MA).abs() > 1.0e-6);
         let state = DoseState {
-            amplitude: self.amplitude,
-            beta: self.beta,
+            amplitude: PositiveFloat::new(self.kernel.amplitude).ok()?,
+            beta: PositiveFloat::new(self.kernel.beta).ok()?,
             width: self.width,
             height: self.height,
             imrt_mode: self.imrt_mode,
@@ -366,8 +366,7 @@ impl InteractiveTool for DoseCalculationTool {
         let loaded: DoseState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid DoseCalculation state: {e}"))?;
         loaded.validate()?;
-        self.amplitude = loaded.amplitude;
-        self.beta = loaded.beta;
+        self.kernel = ExponentialKernel::new(loaded.amplitude.value(), loaded.beta.value());
         self.width = loaded.width;
         self.height = loaded.height;
         self.imrt_mode = loaded.imrt_mode;
@@ -450,7 +449,7 @@ impl scientific_metadata::theory::TheoryDescribable for DoseCalculationTool {
     fn theory_description(&self) -> String {
         format!(
             "Radiation therapy dose distribution computed via point spread function (PSF) kernel convolution: $D(\\vec{{r}}) = \\int \\Phi(\\vec{{r}}') K(\\vec{{r}} - \\vec{{r}}') d^3\\vec{{r}}'$, using an exponential kernel $K(r) = \\frac{{A}}{{r^2}} e^{{-\\beta r}}$ with amplitude $A = {:.2}$ and attenuation coefficient $\\beta = {:.2}$, coupled with 4D respiratory tissue-shift accumulation and LINAC beam-loading scaling $E(I_b) = E_0 - R_b I_b$.",
-            self.amplitude, self.beta
+            self.kernel.amplitude, self.kernel.beta
         )
     }
     fn phonetic_description(&self) -> String {

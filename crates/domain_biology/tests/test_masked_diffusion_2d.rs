@@ -123,6 +123,25 @@ fn test_emitters_sinks_microfluidic_maze_and_zero_allocation_turing_step() {
     assert_eq!(system.v()[sink_idx], 0.0);
 }
 
+#[cfg(feature = "serde")]
+#[test]
+fn test_masked_diffusion_2d_serde_roundtrip_and_dimension_validation() {
+    use domain_biology::biology::diffusion::{CellMask2D, MaskedFiniteDifference2D};
+
+    let mut masked =
+        FiniteDifference2D::new(Dimension(12), Dimension(12), StepSize(1.0), StepSize(1.0))
+            .with_mask();
+    masked.mask.stamp_microfluidic_maze();
+    let json = serde_json::to_string(&masked).unwrap();
+    let restored: MaskedFiniteDifference2D = serde_json::from_str(&json).unwrap();
+    assert_eq!(restored, masked);
+    assert!(restored.mask.has_active_cells());
+
+    let bad_len =
+        r#"{"width":4,"height":4,"roles":[0,1],"emitter_u_level":1.8,"emitter_v_level":1.8}"#;
+    assert!(serde_json::from_str::<CellMask2D>(bad_len).is_err());
+}
+
 #[test]
 fn test_pin_cell_mask_persists_after_turing_dynamics_standard_solver_updates() {
     let w = 20;

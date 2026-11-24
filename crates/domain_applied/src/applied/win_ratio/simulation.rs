@@ -16,6 +16,7 @@ pub use super::weibull_sampler::SimulatedSubject;
 /// The joint survival function is defined as:
 /// S(t, x) = exp( - (lambda1 * t + lambda2 * x)^alpha )
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BivariateWeibullModel {
     /// Scale parameter for the first event (T).
     pub lambda1: f64,
@@ -89,6 +90,7 @@ impl BivariateWeibullModel {
 
 /// Parameters for the simulation study.
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SimulationParams {
     /// Lambda1 parameter.
     pub lambda1: f64,

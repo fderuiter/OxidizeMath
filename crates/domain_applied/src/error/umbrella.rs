@@ -16,6 +16,7 @@ use thiserror::Error;
 /// Extensible crate-level umbrella error for `domain_applied` modules and upstream math errors.
 #[non_exhaustive]
 #[derive(Debug, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum AppliedError {
     /// Battery degradation modeling error.
     #[error("{0}")]

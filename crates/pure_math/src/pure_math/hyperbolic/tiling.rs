@@ -16,7 +16,8 @@ pub const MAX_POLYGON_VERTICES: usize = 16;
 const IDEAL_APEIROGON_FINITE_VERTICES: usize = 14;
 
 /// Hyperbolic Schläfli tiling specification.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TilingKind {
     /// Regular compact `{p, q}` tiling with $(p - 2)(q - 2) > 4$.
     Regular {
@@ -34,6 +35,7 @@ pub enum TilingKind {
 
 /// Fixed-capacity hyperbolic tile stored inline without per-polygon heap allocations.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TiledPolygon {
     /// Polygon vertices in $\overline{\mathbb{D}}$ (`0..vertex_count` active).
     pub vertices: [Complex64; MAX_POLYGON_VERTICES],

@@ -14,7 +14,8 @@ pub const MAX_BIHARMONIC_NUMBER: f64 = 0.18;
 pub const MAX_VERLET_SUBSTEPS: usize = 64;
 
 /// Governing 2D partial differential equation medium.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Wave2DMedium {
     /// Second-order hyperbolic wave equation $u_{tt} + \gamma u_t = c(x,y)^2 \nabla^2 u + F$.
     AcousticWave,
@@ -23,7 +24,8 @@ pub enum Wave2DMedium {
 }
 
 /// Perimeter boundary condition applied on the rectangular grid boundary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BoundaryMode2D {
     /// Fixed zero displacement ($u = 0$) and zero boundary moment ($\nabla^2 u = 0$).
     Dirichlet,
@@ -36,7 +38,8 @@ pub enum BoundaryMode2D {
 }
 
 /// Harmonic point or line excitation source configuration.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DriverConfig2D {
     /// Whether continuous harmonic forcing is active.
     pub enabled: bool,
@@ -70,7 +73,8 @@ impl Default for DriverConfig2D {
 }
 
 /// Physical parameters governing a 2D wave or biharmonic plate step.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Wave2DParams {
     /// Active PDE medium (`AcousticWave` or `BiharmonicPlate`).
     pub medium: Wave2DMedium,

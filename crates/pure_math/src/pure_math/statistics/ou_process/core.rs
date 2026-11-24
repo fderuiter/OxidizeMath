@@ -51,6 +51,27 @@ impl LongTermMean {
     }
 }
 
+#[cfg(feature = "serde")]
+impl serde::Serialize for LongTermMean {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_f64(self.0)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for LongTermMean {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = f64::deserialize(deserializer)?;
+        Self::new(raw).map_err(serde::de::Error::custom)
+    }
+}
+
 /// Parameters for an Ornstein-Uhlenbeck process.
 ///
 /// This struct encapsulates all the parameters needed to define an OU process:
@@ -58,6 +79,7 @@ impl LongTermMean {
 /// - θ (theta): Mean reversion rate
 /// - σ (sigma): Volatility
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OuParams {
     /// The long-term mean μ.
     pub mu: LongTermMean,

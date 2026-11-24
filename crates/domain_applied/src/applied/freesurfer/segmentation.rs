@@ -6,6 +6,7 @@ pub const MAX_TISSUE_CLASSES: usize = 16;
 
 /// Gaussian intensity likelihood and spatial prior parameters for an anatomical tissue class.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TissueClass {
     /// Expected MRI intensity $\mu_k$ for class $k$.
     pub mean: f64,

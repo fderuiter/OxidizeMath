@@ -7,6 +7,7 @@ use thiserror::Error;
 
 /// Copy, zero-allocation errors that can occur during numerical root finding.
 #[derive(Debug, Clone, Copy, PartialEq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AnalysisError {
     /// The algorithm failed to converge within the maximum number of iterations.
     /// Contains the best guess so far.
@@ -110,6 +111,7 @@ fn validate_solver_bounds(min: f64, max: f64, tolerance: f64) -> Result<(), Anal
 /// }
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Bisection {
     /// Maximum number of iterations before giving up.
     pub max_iterations: usize,
@@ -214,6 +216,7 @@ impl RootFinder for Bisection {
 /// }
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct NewtonRaphson {
     /// Maximum number of iterations.
     pub max_iterations: usize,
@@ -317,6 +320,7 @@ impl RootFinder for NewtonRaphson {
 /// }
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Brent {
     /// Maximum number of iterations before returning [`AnalysisError::ConvergenceError`].
     pub max_iterations: usize,

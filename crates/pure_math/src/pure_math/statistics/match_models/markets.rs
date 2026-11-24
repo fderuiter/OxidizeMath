@@ -4,6 +4,7 @@
 use super::grid::ScoreGrid;
 use crate::error::MatchModelError;
 use crate::pure_math::statistics::kelly::{Odds, UnitInterval};
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 #[verified_engine::verified]
@@ -29,8 +30,9 @@ fn parse_quarter_line(line: f64) -> Result<i64, MatchModelError> {
 }
 
 /// Three-way `1X2` match outcome probabilities derived from a [`ScoreGrid`].
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 pub struct OneXTwoQuote {
     /// Home win probability $\sum_{i > j} P(i, j)$.
     pub home_win: f64,
@@ -81,8 +83,9 @@ impl DrawNoBetQuote {
 }
 
 /// Both-Teams-To-Score (`BTTS`) probabilities over a [`ScoreGrid`].
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 pub struct BttsQuote {
     /// Probability both teams score at least one goal ($i \ge 1 \land j \ge 1$).
     pub yes: f64,
@@ -104,8 +107,9 @@ impl BttsQuote {
 
 /// Exact Asian Handicap settlement probabilities for the home selection at handicap `line`
 /// across whole (`.0`), half (`.5`), and split quarter (`.25`, `.75`) lines.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 pub struct AsianHandicapQuote {
     /// Home handicap line (e.g., `-1.0`, `-0.75`, `-0.5`, `-0.25`, `0.0`, `+0.25`).
     pub line: f64,
@@ -140,8 +144,9 @@ impl AsianHandicapQuote {
 }
 
 /// Exact Over/Under total-goals settlement probabilities at `line` across whole, half, and quarter lines.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 pub struct OverUnderQuote {
     /// Goal total line (e.g., `2.0`, `2.25`, `2.5`, `2.75`, `3.0`).
     pub line: f64,

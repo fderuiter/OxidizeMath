@@ -1,15 +1,14 @@
 //! Core types for Glicko-2 rating system.
 
 use crate::error::Glicko2Error;
-use serde::{Deserialize, Deserializer, Serialize};
 use std::f64::consts::PI;
 
 /// Player rating (r) on the Glicko-2 scale.
 ///
 /// The rating represents a player's skill level. By convention, new players
 /// start at 1500 on the original Glicko scale.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize), serde(transparent))]
 pub struct Rating(f64);
 
 impl Rating {
@@ -71,13 +70,6 @@ impl Default for Rating {
     }
 }
 
-impl<'de> Deserialize<'de> for Rating {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = f64::deserialize(deserializer)?;
-        Self::new(value).map_err(serde::de::Error::custom)
-    }
-}
-
 /// Rating deviation (RD) - a measure of rating uncertainty.
 ///
 /// Higher RD means more uncertainty about the player's true skill.
@@ -86,8 +78,8 @@ impl<'de> Deserialize<'de> for Rating {
 /// - Inactive players' RD increases over time
 ///
 /// Must be positive.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize), serde(transparent))]
 pub struct RatingDeviation(f64);
 
 impl RatingDeviation {
@@ -149,13 +141,6 @@ impl Default for RatingDeviation {
     }
 }
 
-impl<'de> Deserialize<'de> for RatingDeviation {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = f64::deserialize(deserializer)?;
-        Self::new(value).map_err(serde::de::Error::custom)
-    }
-}
-
 /// Rating volatility (σ) - indicates degree of expected rating fluctuation.
 ///
 /// Volatility measures how consistent a player's performance is:
@@ -163,8 +148,8 @@ impl<'de> Deserialize<'de> for RatingDeviation {
 /// - High σ (≈ 0.15): Erratic player with variable performance
 ///
 /// Must be positive. Typical values are between 0.3 and 1.2.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize), serde(transparent))]
 pub struct Volatility(f64);
 
 impl Volatility {
@@ -210,13 +195,6 @@ impl Default for Volatility {
     }
 }
 
-impl<'de> Deserialize<'de> for Volatility {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = f64::deserialize(deserializer)?;
-        Self::new(value).map_err(serde::de::Error::custom)
-    }
-}
-
 /// System constant (τ) - constrains volatility changes.
 ///
 /// Controls how much the volatility can change in response to unexpected results.
@@ -224,8 +202,8 @@ impl<'de> Deserialize<'de> for Volatility {
 /// - Large τ (0.8-1.2): Aggressive, volatility responds quickly
 ///
 /// Glicko-2 paper recommends τ between 0.3 and 1.2, with 0.5 as reasonable default.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize), serde(transparent))]
 pub struct SystemConstant(f64);
 
 impl SystemConstant {
@@ -271,16 +249,13 @@ impl Default for SystemConstant {
     }
 }
 
-impl<'de> Deserialize<'de> for SystemConstant {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = f64::deserialize(deserializer)?;
-        Self::new(value).map_err(serde::de::Error::custom)
-    }
-}
-
 /// A Glicko-2 player with rating, rating deviation, and volatility.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct GlickoPlayer {
     /// The player's rating.
     pub rating: Rating,
@@ -355,7 +330,8 @@ impl Default for GlickoPlayer {
 /// - 1.0 = win
 /// - 0.5 = draw
 /// - 0.0 = loss
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MatchResult {
     /// The opponent player.
     pub opponent: GlickoPlayer,
@@ -393,20 +369,6 @@ impl MatchResult {
     }
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawMatchResult {
-    opponent: GlickoPlayer,
-    score: f64,
-}
-
-impl<'de> Deserialize<'de> for MatchResult {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let raw = RawMatchResult::deserialize(deserializer)?;
-        Self::new(raw.opponent, raw.score).map_err(serde::de::Error::custom)
-    }
-}
-
 /// Computes the g(φ) function used in Glicko-2.
 ///
 /// Formula: g(φ) = 1 / √(1 + 3φ²/π²)
@@ -425,4 +387,65 @@ pub fn g_function(phi: f64) -> f64 {
 #[verified_engine::verified]
 pub fn expected_outcome(mu: f64, mu_j: f64, phi_j: f64) -> f64 {
     1.0 / (1.0 + (-g_function(phi_j) * (mu - mu_j)).exp())
+}
+
+#[cfg(feature = "serde")]
+mod serde_support {
+    use super::*;
+
+    impl<'de> serde::Deserialize<'de> for Rating {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            let value = f64::deserialize(deserializer)?;
+            Self::new(value).map_err(serde::de::Error::custom)
+        }
+    }
+
+    impl<'de> serde::Deserialize<'de> for RatingDeviation {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            let value = f64::deserialize(deserializer)?;
+            Self::new(value).map_err(serde::de::Error::custom)
+        }
+    }
+
+    impl<'de> serde::Deserialize<'de> for Volatility {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            let value = f64::deserialize(deserializer)?;
+            Self::new(value).map_err(serde::de::Error::custom)
+        }
+    }
+
+    impl<'de> serde::Deserialize<'de> for SystemConstant {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            let value = f64::deserialize(deserializer)?;
+            Self::new(value).map_err(serde::de::Error::custom)
+        }
+    }
+
+    impl<'de> serde::Deserialize<'de> for MatchResult {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            #[derive(serde::Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct RawMatchResult {
+                opponent: GlickoPlayer,
+                score: f64,
+            }
+            let raw = RawMatchResult::deserialize(deserializer)?;
+            Self::new(raw.opponent, raw.score).map_err(serde::de::Error::custom)
+        }
+    }
 }

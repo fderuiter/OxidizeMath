@@ -13,6 +13,7 @@ use atlas::{default_sir_atlas_axes, is_default_sir_atlas_axes, SIR_ATLAS_AXIS_PA
 pub use atlas::{SirCartographer, SirRegime};
 use eframe::egui;
 use egui_plot::PlotPoint;
+use math_commons::primitives::{NonNegativeFloat, PositiveFloat};
 use math_explorer::epidemiology::compartmental::SIRModel;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::hash::{Hash, Hasher};
@@ -30,11 +31,11 @@ const MAX_SIR_STEPS: usize = 100_000;
 
 #[derive(serde::Serialize)]
 struct SirStateRef<'a> {
-    n: f64,
-    i0: f64,
-    beta: f64,
-    gamma: f64,
-    duration: f64,
+    n: PositiveFloat,
+    i0: PositiveFloat,
+    beta: NonNegativeFloat,
+    gamma: NonNegativeFloat,
+    duration: NonNegativeFloat,
     #[serde(skip_serializing_if = "Option::is_none")]
     fork: Option<SirForkDescriptor>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -48,11 +49,11 @@ struct SirStateRef<'a> {
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SirState {
-    n: f64,
-    i0: f64,
-    beta: f64,
-    gamma: f64,
-    duration: f64,
+    n: PositiveFloat,
+    i0: PositiveFloat,
+    beta: NonNegativeFloat,
+    gamma: NonNegativeFloat,
+    duration: NonNegativeFloat,
     #[serde(default)]
     fork: Option<SirForkDescriptor>,
     #[serde(default)]
@@ -260,14 +261,15 @@ impl SirTool {
         self.state_bounds().validate_json(state)?;
         let s: SirState =
             serde_json::from_str(state).map_err(|e| format!("Invalid SIR state: {e}"))?;
-        if ![s.n, s.i0, s.beta, s.gamma, s.duration]
-            .iter()
-            .all(|v| v.is_finite())
-            || !(100.0..=100_000.0).contains(&s.n)
-            || !(1.0..=s.n).contains(&s.i0)
-            || !(0.0..=5.0).contains(&s.beta)
-            || !(0.0..=1.0).contains(&s.gamma)
-            || s.duration < 0.0
+        let n = s.n.value();
+        let i0 = s.i0.value();
+        let beta = s.beta.value();
+        let gamma = s.gamma.value();
+        let duration = s.duration.value();
+        if !(100.0..=100_000.0).contains(&n)
+            || !(1.0..=n).contains(&i0)
+            || beta > 5.0
+            || gamma > 1.0
         {
             return Err("SIR parameters out of bounds".into());
         }
@@ -277,11 +279,11 @@ impl SirTool {
         self.atlas
             .set_axis_keys(&s.atlas_axes[0], &s.atlas_axes[1])?;
         self.atlas.set_visible(s.atlas_visible);
-        self.n = s.n;
-        self.i0 = s.i0;
-        self.beta = s.beta;
-        self.gamma = s.gamma;
-        self.duration = s.duration.clamp(MIN_SIR_DURATION, MAX_SIR_DURATION);
+        self.n = n;
+        self.i0 = i0;
+        self.beta = beta;
+        self.gamma = gamma;
+        self.duration = duration.clamp(MIN_SIR_DURATION, MAX_SIR_DURATION);
         self.cf.is_playing = false;
         self.cf.playhead_step = None;
         self.cf.fork = s.fork;
@@ -322,11 +324,11 @@ impl SirTool {
         let snapshot_manager = (include_snapshots && !self.snapshot_manager.is_empty())
             .then_some(&self.snapshot_manager);
         serde_json::to_string(&SirStateRef {
-            n: self.n,
-            i0: self.i0,
-            beta: self.beta,
-            gamma: self.gamma,
-            duration: self.duration,
+            n: PositiveFloat::new(self.n).ok()?,
+            i0: PositiveFloat::new(self.i0).ok()?,
+            beta: NonNegativeFloat::new(self.beta).ok()?,
+            gamma: NonNegativeFloat::new(self.gamma).ok()?,
+            duration: NonNegativeFloat::new(self.duration).ok()?,
             fork: self.cf.fork,
             snapshot_manager,
             atlas_visible: self.atlas.is_visible(),

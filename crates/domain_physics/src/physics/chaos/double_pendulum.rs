@@ -31,6 +31,7 @@ use std::collections::HashMap;
 /// assert!(pendulum.relative_energy_error(&state, e0) < 1e-5);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DoublePendulum {
     /// Upper bob mass $m_1$ (kg).
     pub m1: f64,

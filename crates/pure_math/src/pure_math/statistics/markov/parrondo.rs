@@ -21,7 +21,6 @@
 use crate::error::MarkovError;
 use math_commons::stochastic::SolverWorkspace;
 use nalgebra::{DMatrix, DVector};
-use serde::{Deserialize, Serialize};
 
 mod ensemble;
 pub use ensemble::{
@@ -39,7 +38,8 @@ pub const MAX_MODULUS: usize = 9;
 pub const MAX_SCHEDULE_LEN: usize = 16;
 
 /// Elementary game branch in Parrondo's paradox.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ParrondoGame {
     /// State-independent biased coin with win probability $p_A = p_{A,0} - \epsilon$.
     GameA,
@@ -139,7 +139,8 @@ impl ParrondoSchedule {
 }
 
 /// Validated parameters for a modulo-$M$ Parrondo Brownian ratchet.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ParrondoParams {
     modulus: usize,
     p_a_base: f64,
@@ -280,7 +281,8 @@ impl ParrondoParams {
 }
 
 /// Exact Markov operators, stationary distributions, per-step drifts, and detailed-balance metrics.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ParrondoReport {
     /// Transition matrix $P_A$ on $\mathbb{Z}/M\mathbb{Z}$.
     pub p_a: DMatrix<f64>,

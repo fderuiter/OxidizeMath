@@ -10,7 +10,14 @@ std = [
     "dep:verified_engine",
     "num-complex/std",
     "num-traits/std",
+    "serde?/std",
     "thiserror/std",
+]
+serde = [
+    "dep:serde",
+    "verified_engine?/serde",
+    "diagnostics?/serde",
+    "num-complex/serde",
 ]
 
 [dependencies]
@@ -20,14 +27,14 @@ diagnostics = { path = "../diagnostics", optional = true }
 num-complex = { workspace = true, default-features = false, features = ["libm"] }
 num-traits = { workspace = true, default-features = false, features = ["libm"] }
 libm = "0.2.16"
-
-
-
-
+serde = { workspace = true, default-features = false, features = ["alloc", "derive"], optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+
+[dev-dependencies]
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

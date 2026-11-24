@@ -11,13 +11,13 @@ use crate::audio::mappings::surface_morphogenesis_frame;
 use crate::audio::render_sonification_panel;
 use crate::framework::playback::{PlaybackAction, PlaybackTransport};
 use crate::framework::{Plot3DViewport, CAMERA_3D_HELPER_TEXT};
-use crate::tabs::geometry_topology::custom_surface::SurfaceType;
 use crate::tabs::geometry_topology::export_utils::{MAX_WALL_THICKNESS, MIN_WALL_THICKNESS};
 use eframe::egui;
 use egui_plot::{LineStyle, MarkerShape, PlotPoints, Points};
 use math_commons::math_kernel::colormap::mapped_gradient;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::pure_math::differential_geometry::buckled_flow::SurfaceTopology;
+use math_explorer::pure_math::differential_geometry::surface::ParametricSurfaceKind;
 use nalgebra::Point3;
 
 const COLOR_BINS: usize = 24;
@@ -93,28 +93,36 @@ impl SurfaceMorphogenesisTool {
     fn draw_surface_controls(&mut self, ui: &mut egui::Ui) {
         ui.label("Manifold Topology:");
         ui.horizontal_wrapped(|ui| {
-            ui.radio_value(&mut self.surface_type, SurfaceType::Sphere, "Sphere");
-            ui.radio_value(&mut self.surface_type, SurfaceType::Torus, "Torus");
             ui.radio_value(
                 &mut self.surface_type,
-                SurfaceType::KleinBottle,
+                ParametricSurfaceKind::Sphere,
+                "Sphere",
+            );
+            ui.radio_value(
+                &mut self.surface_type,
+                ParametricSurfaceKind::Torus,
+                "Torus",
+            );
+            ui.radio_value(
+                &mut self.surface_type,
+                ParametricSurfaceKind::KleinBottle,
                 "Klein Bottle",
             );
             ui.radio_value(
                 &mut self.surface_type,
-                SurfaceType::CustomHeightfield,
+                ParametricSurfaceKind::CustomHeightfield,
                 "Custom z=f(x,y)",
             );
             ui.radio_value(
                 &mut self.surface_type,
-                SurfaceType::CustomParametric,
+                ParametricSurfaceKind::CustomParametric,
                 "Custom r(u,v)",
             );
         });
 
         let open_default = matches!(
             self.surface_type,
-            SurfaceType::CustomHeightfield | SurfaceType::CustomParametric
+            ParametricSurfaceKind::CustomHeightfield | ParametricSurfaceKind::CustomParametric
         );
         egui::CollapsingHeader::new("Geometry & Mesh")
             .default_open(open_default)
@@ -123,10 +131,10 @@ impl SurfaceMorphogenesisTool {
 
     fn draw_geometry_mesh_sliders(&mut self, ui: &mut egui::Ui) {
         match self.surface_type {
-            SurfaceType::Sphere => {
+            ParametricSurfaceKind::Sphere => {
                 ui.add(egui::Slider::new(&mut self.sphere_radius, 0.2..=5.0).text("Radius"));
             }
-            SurfaceType::Torus => {
+            ParametricSurfaceKind::Torus => {
                 ui.add(
                     egui::Slider::new(&mut self.torus_major_radius, 1.0..=5.0)
                         .text("Major Radius (R)"),
@@ -136,10 +144,10 @@ impl SurfaceMorphogenesisTool {
                         .text("Minor Radius (r)"),
                 );
             }
-            SurfaceType::KleinBottle => {
+            ParametricSurfaceKind::KleinBottle => {
                 ui.add(egui::Slider::new(&mut self.klein_radius, 0.5..=5.0).text("Radius"));
             }
-            SurfaceType::CustomHeightfield | SurfaceType::CustomParametric => {
+            ParametricSurfaceKind::CustomHeightfield | ParametricSurfaceKind::CustomParametric => {
                 self.custom_sandbox.ui_for_type(ui, self.surface_type);
             }
         }

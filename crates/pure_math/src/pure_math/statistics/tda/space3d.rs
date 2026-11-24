@@ -4,6 +4,7 @@ use crate::error::TdaError;
 
 /// A point in 3D Euclidean space.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Point3D {
     /// X coordinate.
     pub x: f64,

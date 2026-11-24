@@ -14,6 +14,7 @@ pub const MAX_TDA_DIMENSION: usize = 32;
 
 /// A point in 2D space.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Point2D {
     #[allow(missing_docs)]
     pub x: f64,
@@ -51,7 +52,7 @@ impl Point2D {
 }
 
 /// A collection of points in 2D space bounded to [`MAX_TDA_POINTS`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PointCloud {
     #[allow(missing_docs)]
     pub points: Vec<Point2D>,

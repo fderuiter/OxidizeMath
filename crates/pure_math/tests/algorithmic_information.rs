@@ -374,3 +374,30 @@ fn test_fractran_rbig_large_exponents_validation_and_overflow_safety() {
     );
     assert_eq!(near_max, [u32::MAX - 1, 1]);
 }
+
+#[cfg(feature = "serde")]
+#[test]
+fn test_fractran_program_and_compiled_vm_serde_roundtrip_and_validation() {
+    use pure_math::pure_math::algorithmic_information::fractran::FractranCompiledVm;
+    let program = FractranPreset::Mult.program();
+    let json = serde_json::to_string(&program).expect("FractranProgram must serialize");
+    let decoded: FractranProgram =
+        serde_json::from_str(&json).expect("FractranProgram must deserialize");
+    assert_eq!(decoded, program);
+    let mut inline_regs = FractranProgram::encode_u64(72).unwrap();
+    assert!(decoded.step_exponents(&mut inline_regs).unwrap().is_some());
+
+    let vm = decoded.compile().expect("decoded MULT must compile");
+    let vm_json = serde_json::to_string(&vm).expect("FractranCompiledVm must serialize");
+    let vm_decoded: FractranCompiledVm =
+        serde_json::from_str(&vm_json).expect("FractranCompiledVm must deserialize");
+    assert_eq!(vm_decoded, vm);
+
+    let unsorted =
+        r#"{"primes":[3,2],"num_rules":1,"numer_exponents":[1,0],"denom_exponents":[0,1]}"#;
+    assert!(serde_json::from_str::<FractranCompiledVm>(unsorted).is_err());
+
+    let mismatched =
+        r#"{"primes":[2,3],"num_rules":2,"numer_exponents":[1,0],"denom_exponents":[0,1]}"#;
+    assert!(serde_json::from_str::<FractranCompiledVm>(mismatched).is_err());
+}

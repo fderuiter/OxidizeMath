@@ -180,6 +180,7 @@ impl ParrondoEnsemble {
 
 /// Grid configuration for scanning the `(p_A, epsilon)` Parrondo paradox region.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ParrondoPhaseGridConfig {
     /// Modulus $M \in \{3, 5, 7, 9\}$.
     pub modulus: usize,
@@ -219,6 +220,7 @@ impl Default for ParrondoPhaseGridConfig {
 
 /// Evaluated drift sample at a single `(p_A, epsilon)` phase-plane coordinate.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ParrondoPhasePoint {
     /// Effective Game A win probability $p_A$.
     pub p_a: f64,

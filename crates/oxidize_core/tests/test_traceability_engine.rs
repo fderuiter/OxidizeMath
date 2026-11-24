@@ -20,7 +20,9 @@ fn test_verify_module_registered_and_extract_citations_without_ast_feature() {
 
 #[cfg(feature = "ast-analysis")]
 mod ast_analysis_tests {
-    use oxidize_core::traceability::{AstCache, TraceabilityEngine, TraceabilityReport};
+    #[cfg(feature = "serde")]
+    use oxidize_core::traceability::TraceabilityReport;
+    use oxidize_core::traceability::{AstCache, TraceabilityEngine};
     use oxidize_core::vfs::{DefaultVfs, VirtualFileSystem};
     use std::collections::HashMap;
     use std::future::Future;
@@ -95,10 +97,13 @@ mod ast_analysis_tests {
         assert!(report.scanned_files > 0);
         assert!(report.orphaned_papers.is_empty());
 
-        let serialized = toml::to_string(&report).expect("serialize TraceabilityReport");
-        let roundtrip: TraceabilityReport =
-            toml::from_str(&serialized).expect("deserialize TraceabilityReport");
-        assert_eq!(roundtrip, report);
+        #[cfg(feature = "serde")]
+        {
+            let serialized = toml::to_string(&report).expect("serialize TraceabilityReport");
+            let roundtrip: TraceabilityReport =
+                toml::from_str(&serialized).expect("deserialize TraceabilityReport");
+            assert_eq!(roundtrip, report);
+        }
     }
 
     #[test]
@@ -233,13 +238,16 @@ mod ast_analysis_tests {
             .file_verified_counts
             .insert("crates/domain_ai/src/lib.rs".to_string(), [0, 2]);
 
-        let legacy_minimal: TraceabilityReport =
-            toml::from_str("scanned_files = 5\ntotal_funcs = 2\n").expect("legacy deserialize");
-        assert_eq!(legacy_minimal.scanned_files, 5);
-        assert!(legacy_minimal.unlinked_module_details.is_empty());
-        assert!(legacy_minimal.invalid_link_lines.is_empty());
-        assert!(legacy_minimal.unverified_module_spans.is_empty());
-        assert!(legacy_minimal.file_verified_counts.is_empty());
+        #[cfg(feature = "serde")]
+        {
+            let legacy_minimal: TraceabilityReport =
+                toml::from_str("scanned_files = 5\ntotal_funcs = 2\n").expect("legacy deserialize");
+            assert_eq!(legacy_minimal.scanned_files, 5);
+            assert!(legacy_minimal.unlinked_module_details.is_empty());
+            assert!(legacy_minimal.invalid_link_lines.is_empty());
+            assert!(legacy_minimal.unverified_module_spans.is_empty());
+            assert!(legacy_minimal.file_verified_counts.is_empty());
+        }
 
         let (failed, lines) = oxidize_core::traceability::format_traceability_errors(&report);
         assert!(failed);

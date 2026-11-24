@@ -5,8 +5,12 @@ edition = "2024"
 
 [dependencies]
 scientific_metadata = { path = "../scientific_metadata" }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"], optional = true }
 verified_engine_macros = { version = "0.1.0", path = "../verified_engine_macros" }
+
+[features]
+default = []
+serde = ["dep:serde", "scientific_metadata/serde"]
 [dev-dependencies]
 approx = { workspace = true }
 

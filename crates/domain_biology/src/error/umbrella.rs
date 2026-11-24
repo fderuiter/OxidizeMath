@@ -6,6 +6,7 @@ use thiserror::Error;
 /// Extensible crate-level umbrella error for `domain_biology` models and upstream math/applied errors.
 #[non_exhaustive]
 #[derive(Debug, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum BiologyError {
     /// Hodgkin-Huxley cellular neuroscience error.
     #[error("{0}")]

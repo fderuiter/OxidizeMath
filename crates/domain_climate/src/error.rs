@@ -7,6 +7,7 @@ use thiserror::Error;
 
 /// Domain-specific errors for climate emulation, tensor layers, and loss functions.
 #[derive(Error, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum ClimateError {
     /// Configured `aligned_channels` exceeded `latent_channels`.
     #[error(

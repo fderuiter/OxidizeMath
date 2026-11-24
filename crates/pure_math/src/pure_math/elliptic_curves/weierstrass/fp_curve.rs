@@ -19,11 +19,25 @@ pub const MAX_LATTICE_PRIME: i64 = 997;
 
 /// Non-singular short-Weierstrass curve $y^2 = x^3 + ax + b$ over compile-time prime field [`Fp<P>`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct FpWeierstrassCurve<const P: i64> {
     /// Linear coefficient $a \in \mathbb{F}_P$.
     pub a: Fp<P>,
     /// Constant coefficient $b \in \mathbb{F}_P$.
     pub b: Fp<P>,
+}
+
+#[cfg(feature = "serde")]
+impl<'de, const P: i64> serde::Deserialize<'de> for FpWeierstrassCurve<P> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Wire<const P: i64> {
+            a: Fp<P>,
+            b: Fp<P>,
+        }
+        let wire = Wire::<P>::deserialize(deserializer)?;
+        Self::new(wire.a.value, wire.b.value).map_err(serde::de::Error::custom)
+    }
 }
 
 impl<const P: i64> FpWeierstrassCurve<P> {
@@ -129,6 +143,7 @@ impl<const P: i64> FpWeierstrassCurve<P> {
 
 /// Non-singular short-Weierstrass curve $y^2 \equiv x^3 + ax + b \pmod p$ for runtime prime $p > 3$.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct PrimeWeierstrassCurve {
     /// Reduced linear coefficient $a \in [0, p)$.
     pub a: i64,
@@ -136,6 +151,20 @@ pub struct PrimeWeierstrassCurve {
     pub b: i64,
     /// Prime field modulus $p > 3$.
     pub p: i64,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for PrimeWeierstrassCurve {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Wire {
+            a: i64,
+            b: i64,
+            p: i64,
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        Self::new(wire.a, wire.b, wire.p).map_err(serde::de::Error::custom)
+    }
 }
 
 impl PrimeWeierstrassCurve {

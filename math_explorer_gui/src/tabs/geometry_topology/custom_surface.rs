@@ -9,7 +9,7 @@ use crate::framework::{bounded_drag_value, enforce_ordered_drag_range, MathExpre
 use eframe::egui;
 use math_commons::ast::{is_universal_constant, parse, CompiledExpr};
 use math_explorer::pure_math::differential_geometry::surface::{
-    CompiledHeightfieldSurface, CompiledParametricSurface,
+    CompiledHeightfieldSurface, CompiledParametricSurface, ParametricSurfaceKind,
 };
 use std::collections::BTreeMap;
 use std::f64::consts::PI;
@@ -24,30 +24,6 @@ pub const CUSTOM_DOMAIN_MAX_BOUND: f64 = 50.0;
 pub const CUSTOM_DOMAIN_MIN_SPAN: f64 = 0.05;
 pub const DEFAULT_HF_BOUNDS: [f64; 2] = [-2.0, 2.0];
 pub const DEFAULT_PARAM_BOUNDS: [f64; 2] = [0.0, 2.0 * PI];
-
-#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-pub enum SurfaceType {
-    Sphere,
-    Torus,
-    KleinBottle,
-    CustomHeightfield,
-    CustomParametric,
-}
-
-impl SurfaceType {
-    pub const fn uv_domain(self) -> ((f64, f64), (f64, f64)) {
-        match self {
-            Self::CustomHeightfield => (
-                (DEFAULT_HF_BOUNDS[0], DEFAULT_HF_BOUNDS[1]),
-                (DEFAULT_HF_BOUNDS[0], DEFAULT_HF_BOUNDS[1]),
-            ),
-            Self::Sphere | Self::Torus | Self::KleinBottle | Self::CustomParametric => (
-                (DEFAULT_PARAM_BOUNDS[0], DEFAULT_PARAM_BOUNDS[1]),
-                (DEFAULT_PARAM_BOUNDS[0], DEFAULT_PARAM_BOUNDS[1]),
-            ),
-        }
-    }
-}
 
 pub struct CustomSurfaceSandbox {
     pub heightfield_bar: MathExpressionInputBar,
@@ -113,13 +89,16 @@ impl Default for CustomSurfaceSandbox {
 
 impl CustomSurfaceSandbox {
     #[must_use]
-    pub const fn uv_domain_for(&self, surface_type: SurfaceType) -> ((f64, f64), (f64, f64)) {
+    pub const fn uv_domain_for(
+        &self,
+        surface_type: ParametricSurfaceKind,
+    ) -> ((f64, f64), (f64, f64)) {
         match surface_type {
-            SurfaceType::CustomHeightfield => (
+            ParametricSurfaceKind::CustomHeightfield => (
                 (self.hf_u_bounds[0], self.hf_u_bounds[1]),
                 (self.hf_v_bounds[0], self.hf_v_bounds[1]),
             ),
-            SurfaceType::CustomParametric => (
+            ParametricSurfaceKind::CustomParametric => (
                 (self.param_u_bounds[0], self.param_u_bounds[1]),
                 (self.param_v_bounds[0], self.param_v_bounds[1]),
             ),
@@ -129,18 +108,18 @@ impl CustomSurfaceSandbox {
 
     pub fn set_uv_bounds(
         &mut self,
-        surface_type: SurfaceType,
+        surface_type: ParametricSurfaceKind,
         u_bounds: [f64; 2],
         v_bounds: [f64; 2],
     ) -> Result<(), String> {
         validate_domain_pair(u_bounds, "u")?;
         validate_domain_pair(v_bounds, "v")?;
         match surface_type {
-            SurfaceType::CustomHeightfield => {
+            ParametricSurfaceKind::CustomHeightfield => {
                 self.hf_u_bounds = u_bounds;
                 self.hf_v_bounds = v_bounds;
             }
-            SurfaceType::CustomParametric => {
+            ParametricSurfaceKind::CustomParametric => {
                 self.param_u_bounds = u_bounds;
                 self.param_v_bounds = v_bounds;
             }
@@ -149,10 +128,10 @@ impl CustomSurfaceSandbox {
         Ok(())
     }
 
-    pub fn state_fingerprint(&self, surface_type: SurfaceType) -> u64 {
+    pub fn state_fingerprint(&self, surface_type: ParametricSurfaceKind) -> u64 {
         use std::hash::{Hash as _, Hasher as _};
         match surface_type {
-            SurfaceType::CustomHeightfield => {
+            ParametricSurfaceKind::CustomHeightfield => {
                 let mut h = std::collections::hash_map::DefaultHasher::new();
                 self.heightfield_bar.state_fingerprint().hash(&mut h);
                 self.hf_u_bounds[0].to_bits().hash(&mut h);
@@ -161,7 +140,7 @@ impl CustomSurfaceSandbox {
                 self.hf_v_bounds[1].to_bits().hash(&mut h);
                 h.finish().max(1)
             }
-            SurfaceType::CustomParametric => {
+            ParametricSurfaceKind::CustomParametric => {
                 let mut h = std::collections::hash_map::DefaultHasher::new();
                 self.param_x_bar.raw_text.hash(&mut h);
                 self.param_y_bar.raw_text.hash(&mut h);
@@ -178,9 +157,9 @@ impl CustomSurfaceSandbox {
         }
     }
 
-    pub fn ui_for_type(&mut self, ui: &mut egui::Ui, surface_type: SurfaceType) {
+    pub fn ui_for_type(&mut self, ui: &mut egui::Ui, surface_type: ParametricSurfaceKind) {
         match surface_type {
-            SurfaceType::CustomHeightfield => {
+            ParametricSurfaceKind::CustomHeightfield => {
                 self.heightfield_bar.ui(ui);
                 ui.add_space(6.0);
                 draw_domain_bounds_editor(
@@ -191,7 +170,7 @@ impl CustomSurfaceSandbox {
                     DEFAULT_HF_BOUNDS,
                 );
             }
-            SurfaceType::CustomParametric => {
+            ParametricSurfaceKind::CustomParametric => {
                 let mut edited = false;
                 edited |= self.param_x_bar.ui(ui);
                 edited |= self.param_y_bar.ui(ui);
@@ -273,17 +252,18 @@ impl CustomSurfaceSandbox {
 
     pub fn export_fields(
         &self,
-        surface_type: SurfaceType,
+        surface_type: ParametricSurfaceKind,
     ) -> (Option<String>, Option<[String; 3]>, BTreeMap<String, f64>) {
-        let custom_expr = (surface_type == SurfaceType::CustomHeightfield
+        let custom_expr = (surface_type == ParametricSurfaceKind::CustomHeightfield
             || self.heightfield_bar.raw_text != DEFAULT_HEIGHTFIELD_EXPR)
             .then(|| self.heightfield_bar.raw_text.clone());
 
         let has_nondefault_triple = self.param_x_bar.raw_text != DEFAULT_PARAM_X_EXPR
             || self.param_y_bar.raw_text != DEFAULT_PARAM_Y_EXPR
             || self.param_z_bar.raw_text != DEFAULT_PARAM_Z_EXPR;
-        let parametric_exprs =
-            (surface_type == SurfaceType::CustomParametric || has_nondefault_triple).then(|| {
+        let parametric_exprs = (surface_type == ParametricSurfaceKind::CustomParametric
+            || has_nondefault_triple)
+            .then(|| {
                 [
                     self.param_x_bar.raw_text.clone(),
                     self.param_y_bar.raw_text.clone(),
@@ -292,8 +272,8 @@ impl CustomSurfaceSandbox {
             });
 
         let custom_params = match surface_type {
-            SurfaceType::CustomHeightfield => self.heightfield_bar.params_map(),
-            SurfaceType::CustomParametric => self.param_sliders.export_active_map(),
+            ParametricSurfaceKind::CustomHeightfield => self.heightfield_bar.params_map(),
+            ParametricSurfaceKind::CustomParametric => self.param_sliders.export_active_map(),
             _ => BTreeMap::new(),
         };
         (custom_expr, parametric_exprs, custom_params)
@@ -302,14 +282,14 @@ impl CustomSurfaceSandbox {
     #[must_use]
     pub fn export_domain_bounds(
         &self,
-        surface_type: SurfaceType,
+        surface_type: ParametricSurfaceKind,
     ) -> (Option<[f64; 2]>, Option<[f64; 2]>) {
         match surface_type {
-            SurfaceType::CustomHeightfield => (
+            ParametricSurfaceKind::CustomHeightfield => (
                 (!approx_pair(self.hf_u_bounds, DEFAULT_HF_BOUNDS)).then_some(self.hf_u_bounds),
                 (!approx_pair(self.hf_v_bounds, DEFAULT_HF_BOUNDS)).then_some(self.hf_v_bounds),
             ),
-            SurfaceType::CustomParametric => (
+            ParametricSurfaceKind::CustomParametric => (
                 (!approx_pair(self.param_u_bounds, DEFAULT_PARAM_BOUNDS))
                     .then_some(self.param_u_bounds),
                 (!approx_pair(self.param_v_bounds, DEFAULT_PARAM_BOUNDS))
@@ -346,7 +326,7 @@ impl CustomSurfaceSandbox {
 
     pub fn load_domain_bounds(
         &mut self,
-        surface_type: SurfaceType,
+        surface_type: ParametricSurfaceKind,
         u_bounds: Option<[f64; 2]>,
         v_bounds: Option<[f64; 2]>,
     ) -> Result<(), String> {
@@ -358,7 +338,7 @@ impl CustomSurfaceSandbox {
             return Ok(());
         }
         let default_pair = match surface_type {
-            SurfaceType::CustomHeightfield => DEFAULT_HF_BOUNDS,
+            ParametricSurfaceKind::CustomHeightfield => DEFAULT_HF_BOUNDS,
             _ => DEFAULT_PARAM_BOUNDS,
         };
         let u = u_bounds.unwrap_or(default_pair);

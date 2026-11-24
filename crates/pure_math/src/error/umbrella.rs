@@ -14,6 +14,7 @@ use thiserror::Error;
 /// Extensible crate-level umbrella error for `pure_math` algorithms and foundational math errors.
 #[non_exhaustive]
 #[derive(Debug, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum PureMathError {
     /// Copula modeling error.
     #[error("{0}")]

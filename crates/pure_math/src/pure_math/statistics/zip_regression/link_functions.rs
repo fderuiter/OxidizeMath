@@ -11,6 +11,8 @@ use nalgebra::DVector;
 /// λ = exp(η) = exp(β₀ + β₁x₁ + ... + βₚxₚ)
 ///
 /// This ensures λ > 0, which is required for the Poisson distribution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LogLink;
 
 impl LogLink {
@@ -74,6 +76,8 @@ impl LogLink {
 /// ρ = 1/(1 + exp(-γ)) = expit(γ)
 ///
 /// This ensures ρ ∈ [0, 1], which is required for a probability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LogitLink;
 
 impl LogitLink {

@@ -10,6 +10,7 @@ use crate::pure_math::statistics::kelly::{
 
 /// Expected-value and Kelly sizing diagnostics for a soft offered price against a fair probability.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EvEvaluation {
     /// Calibrated vig-free win probability in `[0.0, 1.0]`.
     pub fair_probability: UnitInterval,
@@ -50,6 +51,7 @@ impl EvEvaluation {
 
 /// Side-by-side `+EV` evaluation of a single outcome across all four devigging models.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AllMethodsEvReport {
     /// Target outcome index within the sharp market slice.
     pub outcome_index: usize,

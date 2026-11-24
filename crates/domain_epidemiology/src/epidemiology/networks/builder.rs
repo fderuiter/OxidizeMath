@@ -1,6 +1,7 @@
 use super::{NetworkEpidemicModel, NodeState, canonical_edges_from_adjacency};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum NetworkModelError {
     #[allow(missing_docs)]
@@ -41,6 +42,8 @@ impl std::fmt::Display for NetworkModelError {
 
 impl std::error::Error for NetworkModelError {}
 
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct NetworkEpidemicModelBuilder {
     num_nodes: Option<usize>,
@@ -118,7 +121,7 @@ impl NetworkEpidemicModelBuilder {
         if num_nodes == 0 {
             return Err(NetworkModelError::InvalidNodeCount);
         }
-        if beta < 0.0 || gamma < 0.0 {
+        if !beta.is_finite() || !gamma.is_finite() || beta < 0.0 || gamma < 0.0 {
             return Err(NetworkModelError::InvalidParameters);
         }
 

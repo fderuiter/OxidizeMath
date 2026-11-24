@@ -6,6 +6,7 @@
 use super::analytics::compute_network_analytics;
 use super::{ContainmentMode, NetPropState, NetworkPropagationTool, DEFAULT_CONTAINMENT_BUDGET};
 use crate::framework::{ChallengeEvaluation, ChallengeMetadata, InteractiveTool};
+use math_commons::primitives::NonNegativeFloat;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
 use oxidize_core::rng::OxidizeRng;
 
@@ -197,6 +198,9 @@ impl NetworkPropagationTool {
 }
 
 fn generate_epi_baseline(nodes: usize, beta: f64, gamma: f64, seed: u64) -> String {
+    let (Ok(beta), Ok(gamma)) = (NonNegativeFloat::new(beta), NonNegativeFloat::new(gamma)) else {
+        return String::new();
+    };
     serde_json::to_string(&NetPropState {
         num_nodes: nodes,
         beta,
@@ -279,8 +283,8 @@ fn clamp_epi_challenge_state(
 
     let clamped = serde_json::to_string(&NetPropState {
         num_nodes: nodes,
-        beta,
-        gamma,
+        beta: NonNegativeFloat::new(beta).map_err(|e| e.to_string())?,
+        gamma: NonNegativeFloat::new(gamma).map_err(|e| e.to_string())?,
         seed,
         budget: CHALLENGE_EPI_BUDGET,
         vaccinated_nodes,

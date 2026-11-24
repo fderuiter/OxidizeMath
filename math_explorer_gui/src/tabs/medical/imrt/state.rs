@@ -9,6 +9,7 @@ use super::{
     IMRT_BEAM_COUNT, IMRT_GRID_DIM, IMRT_VOXEL_COUNT,
 };
 use crate::framework::{decode_rle_mask, ChallengeMetadata, ToolStateBounds};
+use math_commons::primitives::PositiveFloat;
 
 /// Summary dosimetric observables from a 4-beam IMRT evaluation.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -71,9 +72,9 @@ pub enum CanvasKeyTarget {
 #[serde(deny_unknown_fields)]
 pub struct DoseState {
     /// Point-source amplitude `A`.
-    pub amplitude: f64,
+    pub amplitude: PositiveFloat,
     /// Radial attenuation coefficient `beta`.
-    pub beta: f64,
+    pub beta: PositiveFloat,
     /// Raster width in pixels.
     pub width: usize,
     /// Raster height in pixels.
@@ -113,12 +114,14 @@ impl DoseState {
 
     /// Validates finiteness, physical parameter ranges, and RLE contour lengths.
     pub fn validate(&self) -> Result<(), String> {
-        if !self.amplitude.is_finite() || !(0.1..=10.0).contains(&self.amplitude) {
-            return Err(format!("amplitude out of [0.1, 10.0]: {}", self.amplitude));
+        let amplitude = self.amplitude.value();
+        let beta = self.beta.value();
+        if !(0.1..=10.0).contains(&amplitude) {
+            return Err(format!("amplitude out of [0.1, 10.0]: {amplitude}"));
         }
         let min_beta = if self.imrt_mode { 0.01 } else { 0.1 };
-        if !self.beta.is_finite() || !(min_beta..=5.0).contains(&self.beta) {
-            return Err(format!("beta out of [{min_beta}, 5.0]: {}", self.beta));
+        if !(min_beta..=5.0).contains(&beta) {
+            return Err(format!("beta out of [{min_beta}, 5.0]: {beta}"));
         }
         if !(10..=1024).contains(&self.width) || !(10..=1024).contains(&self.height) {
             return Err("width and height must be in [10, 1024]".to_string());
@@ -181,8 +184,8 @@ impl DoseState {
 
 fn generate_imrt_challenge_baseline() -> String {
     serde_json::to_string(&DoseState {
-        amplitude: 2.5,
-        beta: CHALLENGE_IMRT_BETA,
+        amplitude: PositiveFloat::new(2.5).expect("valid baseline amplitude"),
+        beta: PositiveFloat::new(CHALLENGE_IMRT_BETA).expect("valid baseline beta"),
         width: IMRT_GRID_DIM,
         height: IMRT_GRID_DIM,
         imrt_mode: true,
@@ -201,9 +204,10 @@ fn generate_imrt_challenge_baseline() -> String {
 fn clamp_imrt_challenge_state(raw_json: &str) -> Result<String, String> {
     let mut state: DoseState =
         serde_json::from_str(raw_json).map_err(|e| format!("Invalid IMRT challenge JSON: {e}"))?;
-    state.amplitude = state.amplitude.clamp(0.1, 10.0);
+    state.amplitude =
+        PositiveFloat::new(state.amplitude.value().clamp(0.1, 10.0)).map_err(|e| e.to_string())?;
     state.imrt_mode = true;
-    state.beta = CHALLENGE_IMRT_BETA;
+    state.beta = PositiveFloat::new(CHALLENGE_IMRT_BETA).map_err(|e| e.to_string())?;
     state.width = IMRT_GRID_DIM;
     state.height = IMRT_GRID_DIM;
     state.prescription_gy = Some(CHALLENGE_IMRT_PRESCRIPTION_GY);

@@ -19,7 +19,8 @@ use crate::pure_math::number_theory::primes::is_prime;
 const REAL_SINGULAR_TOL: f64 = 1e-12;
 
 /// Algebraic singularity class of a short-Weierstrass cubic with $4a^3 + 27b^2 = 0$.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SingularityKind {
     /// Triple-root origin cusp $y^2 = x^3$ ($a = b = 0$, additive smooth locus $\mathbb{G}_a$).
     Cusp,
@@ -43,7 +44,6 @@ impl SingularityKind {
 }
 
 /// Classified singular short-Weierstrass cubic $y^2 = x^3 + ax + b$ over $\mathbb{R}$.
-///
 /// ```
 /// # use pure_math::__doctest_facade as math_explorer;
 /// use math_explorer::pure_math::elliptic_curves::{RealSingularCubic, SingularityKind};

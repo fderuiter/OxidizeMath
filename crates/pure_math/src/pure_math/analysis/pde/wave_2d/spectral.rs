@@ -15,6 +15,7 @@ use rustfft::{Fft, FftPlanner};
 
 /// Dominant non-DC spatial-frequency peak in a centered 2D magnitude spectrum.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SpectralPeak2D {
     /// Signed horizontal wavenumber index $k_x \in [-W/2, W/2)$.
     pub kx: isize,
@@ -28,6 +29,7 @@ pub struct SpectralPeak2D {
 
 /// Ranked non-DC 2D spatial Fourier mode with complex phase from a centered spectrum.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SpectralMode2D {
     /// Signed horizontal wavenumber index $k_x \in [-W/2, W/2)$.
     pub kx: isize,

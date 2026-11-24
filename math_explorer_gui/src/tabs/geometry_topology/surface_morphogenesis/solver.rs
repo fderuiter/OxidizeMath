@@ -6,7 +6,6 @@
 use super::{
     MorphogenesisKineticsKind, PulseBrushAction, SurfaceMorphogenesisTool, SurfaceOverlayMode,
 };
-use crate::tabs::geometry_topology::custom_surface::SurfaceType;
 use crate::tabs::geometry_topology::export_utils::{
     has_direct_periodic_seams, has_klein_seam_topology, has_polar_singularities,
     is_standard_tau_domain,
@@ -18,7 +17,9 @@ use math_explorer::biology::morphogenesis::{DiffusionCoeff, TuringSystem};
 use math_explorer::pure_math::differential_geometry::buckled_flow::{
     BuckledSurfaceFlow, SurfaceTopology,
 };
-use math_explorer::pure_math::differential_geometry::surface::ParametricSurface;
+use math_explorer::pure_math::differential_geometry::surface::{
+    ParametricSurface, ParametricSurfaceKind,
+};
 use nalgebra::Point3;
 use std::f64::consts::{PI, TAU};
 
@@ -108,14 +109,16 @@ pub(super) fn resolve_topology_and_domain(
     surface: &dyn ParametricSurface,
 ) -> (SurfaceTopology, (f64, f64), (f64, f64)) {
     match tool.surface_type {
-        SurfaceType::Sphere => (SurfaceTopology::PolarSphere, (0.0, TAU), (0.0, PI)),
-        SurfaceType::Torus => (SurfaceTopology::PeriodicTorus, (0.0, TAU), (0.0, TAU)),
-        SurfaceType::KleinBottle => (SurfaceTopology::TwistedKlein, (0.0, TAU), (0.0, TAU)),
-        SurfaceType::CustomHeightfield => {
+        ParametricSurfaceKind::Sphere => (SurfaceTopology::PolarSphere, (0.0, TAU), (0.0, PI)),
+        ParametricSurfaceKind::Torus => (SurfaceTopology::PeriodicTorus, (0.0, TAU), (0.0, TAU)),
+        ParametricSurfaceKind::KleinBottle => {
+            (SurfaceTopology::TwistedKlein, (0.0, TAU), (0.0, TAU))
+        }
+        ParametricSurfaceKind::CustomHeightfield => {
             let (ru, rv) = tool.custom_sandbox.uv_domain_for(tool.surface_type);
             (SurfaceTopology::OpenNeumann, ru, rv)
         }
-        SurfaceType::CustomParametric => {
+        ParametricSurfaceKind::CustomParametric => {
             let (ru, rv) = tool.custom_sandbox.uv_domain_for(tool.surface_type);
             if is_standard_tau_domain(ru, rv) {
                 if has_polar_singularities(surface) {

@@ -24,6 +24,7 @@ const DISTANCE_DYADIC_SCALE_BITS: usize = 64;
 /// assert!((d.to_f64() - 0.75).abs() < 1e-12);
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DyadicRational {
     /// Signed integer numerator $m$.
     pub m: i64,
@@ -105,6 +106,7 @@ impl DyadicRational {
 /// assert_eq!(p.y.numer(), 4.0);
 /// ```
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Point2D {
     /// Horizontal rational coordinate.
     pub x: Rational,
@@ -133,6 +135,7 @@ impl Point2D {
 
 /// A 2D point with dyadic rational coordinates $(m_x / 2^{r_x}, m_y / 2^{r_y})$.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DyadicPoint2D {
     /// Horizontal dyadic coordinate.
     pub x: DyadicRational,
@@ -171,6 +174,7 @@ impl DyadicPoint2D {
 
 /// An affine line in $\mathbb{R}^2$ parameterized by $L(t) = \text{origin} + t \cdot \text{direction}$.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Line {
     /// Anchor point on the line.
     pub origin: Point2D,

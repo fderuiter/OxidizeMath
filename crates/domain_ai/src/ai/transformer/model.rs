@@ -45,7 +45,8 @@ use verified_engine::Theory;
 ///
 /// // 3. (User Responsibility) Add Embeddings & Positional Encoding here...
 /// ```
-#[derive(Theory)]
+#[derive(Clone, Debug, PartialEq, Theory)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[theory(
     description = "The Transformer architecture relies entirely on attention mechanisms, dispensing with recurrence and convolutions entirely. The encoder maps an input sequence to a continuous representation, which the decoder uses to generate an output sequence.",
     citation = "Attention Is All You Need (Vaswani et al., 2017)"

@@ -6,6 +6,7 @@ pub mod forward_backward;
 pub mod generation;
 #[allow(missing_docs)]
 pub mod model;
+#[cfg(feature = "serde")]
 mod serde_impl;
 #[allow(missing_docs)]
 pub mod viterbi;

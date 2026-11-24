@@ -18,7 +18,7 @@ fn default_and_try_load_state_run_zero_pde_steps_and_fit_url_bounds() {
         "Default::default() must run zero PDE steps and defer engine allocation"
     );
 
-    tool.surface_type = SurfaceType::CustomHeightfield;
+    tool.surface_type = ParametricSurfaceKind::CustomHeightfield;
     tool.kinetics_kind = MorphogenesisKineticsKind::GrayScott;
     tool.overlay_mode = SurfaceOverlayMode::MetricAnisotropy;
     tool.u_resolution = 24;
@@ -48,7 +48,10 @@ fn default_and_try_load_state_run_zero_pde_steps_and_fit_url_bounds() {
         restored.engine.is_none(),
         "try_load_state() must run zero PDE steps"
     );
-    assert_eq!(restored.surface_type, SurfaceType::CustomHeightfield);
+    assert_eq!(
+        restored.surface_type,
+        ParametricSurfaceKind::CustomHeightfield
+    );
     assert_eq!(restored.kinetics_kind, MorphogenesisKineticsKind::GrayScott);
     assert_eq!(restored.overlay_mode, SurfaceOverlayMode::MetricAnisotropy);
 
@@ -60,14 +63,20 @@ fn default_and_try_load_state_run_zero_pde_steps_and_fit_url_bounds() {
 #[test]
 fn coupled_buckling_exports_watertight_stl_ply_obj_across_all_topologies() {
     for (surf_type, kinetics) in [
-        (SurfaceType::Sphere, MorphogenesisKineticsKind::Schnakenberg),
-        (SurfaceType::Torus, MorphogenesisKineticsKind::Schnakenberg),
         (
-            SurfaceType::KleinBottle,
+            ParametricSurfaceKind::Sphere,
+            MorphogenesisKineticsKind::Schnakenberg,
+        ),
+        (
+            ParametricSurfaceKind::Torus,
+            MorphogenesisKineticsKind::Schnakenberg,
+        ),
+        (
+            ParametricSurfaceKind::KleinBottle,
             MorphogenesisKineticsKind::GrayScott,
         ),
         (
-            SurfaceType::CustomHeightfield,
+            ParametricSurfaceKind::CustomHeightfield,
             MorphogenesisKineticsKind::Schnakenberg,
         ),
     ] {

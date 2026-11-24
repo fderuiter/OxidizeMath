@@ -11,6 +11,7 @@ use thiserror::Error;
 
 /// Centralized mathematical error type.
 #[derive(Debug, Clone, PartialEq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MathError {
     /// Dimension mismatch between tensors/matrices or expected sizes.
     #[error("Dimension mismatch: expected {}, actual {}", expected.0, actual.0)]
@@ -110,6 +111,7 @@ impl From<String> for MathError {
 
 /// Typed diagnostic error returned by zero-allocation curve-fitting solvers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum FitError {
     /// Fewer finite data points were supplied than required by the target model.
     #[error("Insufficient finite points: required at least {required}, found {actual}")]

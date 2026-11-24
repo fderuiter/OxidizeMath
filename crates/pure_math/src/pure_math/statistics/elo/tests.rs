@@ -133,22 +133,25 @@ fn test_elo_markets_and_serde_validation() {
     assert!((spread_to_elo_diff(spread, 25.0).unwrap() - 200.0).abs() < 1e-12);
 
     // Serde round-trip and boundary rejections
-    let cfg_json = serde_json::to_string(&cfg).unwrap();
-    assert_eq!(serde_json::from_str::<EloConfig>(&cfg_json).unwrap(), cfg);
-    assert!(
-        serde_json::from_str::<EloConfig>(
-            r#"{"scale":0.0,"k_factor":20.0,"home_advantage":65.0,"margin_scaling":"None"}"#
+    #[cfg(feature = "serde")]
+    {
+        let cfg_json = serde_json::to_string(&cfg).unwrap();
+        assert_eq!(serde_json::from_str::<EloConfig>(&cfg_json).unwrap(), cfg);
+        assert!(
+            serde_json::from_str::<EloConfig>(
+                r#"{"scale":0.0,"k_factor":20.0,"home_advantage":65.0,"margin_scaling":"None"}"#
+            )
+            .is_err()
+        );
+        assert!(serde_json::from_str::<EloConfig>(
+            r#"{"scale":400.0,"k_factor":20.0,"home_advantage":65.0,"margin_scaling":"None","extra":1}"#
         )
-        .is_err()
-    );
-    assert!(serde_json::from_str::<EloConfig>(
-        r#"{"scale":400.0,"k_factor":20.0,"home_advantage":65.0,"margin_scaling":"None","extra":1}"#
-    )
-    .is_err());
-    assert!(
-        serde_json::from_str::<EloBatchMatch>(
-            r#"{"home_team":1,"away_team":1,"score_home":0.5,"goal_diff":0,"venue":"Home"}"#
-        )
-        .is_err()
-    );
+        .is_err());
+        assert!(
+            serde_json::from_str::<EloBatchMatch>(
+                r#"{"home_team":1,"away_team":1,"score_home":0.5,"goal_diff":0,"venue":"Home"}"#
+            )
+            .is_err()
+        );
+    }
 }

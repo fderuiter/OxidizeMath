@@ -8,6 +8,7 @@ use crate::error::PharmacokineticsError;
 
 /// Lower and upper plasma concentration bounds defining a drug's therapeutic window.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct TherapeuticWindow {
     /// Minimum Effective Concentration (MEC) in mg/L ($\ge 0$).
     pub mec_mg_l: f64,
@@ -35,8 +36,23 @@ impl TherapeuticWindow {
     }
 }
 
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for TherapeuticWindow {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct RawTherapeuticWindow {
+            mec_mg_l: f64,
+            mtc_mg_l: f64,
+        }
+        let raw = RawTherapeuticWindow::deserialize(deserializer)?;
+        Self::new(raw.mec_mg_l, raw.mtc_mg_l).map_err(serde::de::Error::custom)
+    }
+}
+
 /// Summary exposure and therapeutic-window metrics computed over a concentration-time profile.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ExposureSummary {
     /// Peak plasma concentration $C_{\max}$ (mg/L) across the sampled horizon.
     pub c_max: f64,

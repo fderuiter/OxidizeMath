@@ -5,7 +5,6 @@
 
 use math_commons::math_kernel::types::flatten_2d_index;
 use pure_math::pure_math::analysis::pde::wave::WaveField2D;
-use serde::{Deserialize, Serialize};
 
 // [cite:optics]
 
@@ -60,7 +59,8 @@ pub fn lws_range_resolution(r0: f64, delta_r_max: f64, bits: u32) -> f64 {
 }
 
 /// Configuration of a movable vertical optical detector line across a [`WaveField2D`].
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DetectorConfig {
     /// Physical x-coordinate of the virtual detector plane.
     pub detector_x: f64,
@@ -120,7 +120,8 @@ impl Default for DetectorConfig {
 /// assert!(readout.lambertian_intensity > 0.0);
 /// assert!(readout.lws_range_resolution > 0.0);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DetectorReadout {
     /// Physical x-coordinate of the sampled detector column.
     pub detector_x: f64,

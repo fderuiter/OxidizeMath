@@ -31,6 +31,7 @@ impl Diagnostic for NuclearError {
 /// Extensible crate-level umbrella error for `domain_physics` models and upstream math/applied errors.
 #[non_exhaustive]
 #[derive(Debug, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum PhysicsError {
     /// Nonlinear dynamics and chaos simulation error.
     #[error("{0}")]

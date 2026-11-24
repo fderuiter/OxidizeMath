@@ -55,6 +55,7 @@ default = []
 serde = [
     "dep:serde",
     "egui/serde",
+    "math_commons/serde",
 ]
 
 [lib]

@@ -4,6 +4,7 @@ use super::error::GraphTheoryError;
 
 /// Single edge evaluation step during Kruskal's sorted union-find scan.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MstEdgeStep {
     /// Index into the original input edge slice.
     pub edge_index: usize,
@@ -19,6 +20,7 @@ pub struct MstEdgeStep {
 
 /// Zero-allocation scalar summary returned by [`solve_minimum_spanning_tree_in_place`].
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MstSummary {
     /// Total weight of all selected spanning-tree/forest edges.
     pub total_weight: f64,
@@ -30,6 +32,7 @@ pub struct MstSummary {
 
 /// Complete minimum spanning tree/forest result with stepped Kruskal trace.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MstResult {
     /// Total weight of the minimum spanning tree/forest.
     pub total_weight: f64,

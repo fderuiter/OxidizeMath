@@ -16,6 +16,8 @@ pub trait PredictorModel {
 ///
 /// The predictor takes the flattened, aligned latent representation from the
 /// autoencoder's encoder and maps it to the target output variables.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Predictor {
     /// The stack of layers (using `ConvLayer` for simplicity as dense layers).
     pub layers: [ConvLayer; 5],

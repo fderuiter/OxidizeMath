@@ -16,6 +16,7 @@ pub const MAX_REGIMEN_EVENTS: usize = 64;
 
 /// Release profile applied to an individual [`DoseEvent`].
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum ReleaseFormulation {
     /// Single-pulse absorption governed directly by the underlying model.
     ImmediateRelease,
@@ -60,8 +61,28 @@ impl ReleaseFormulation {
     }
 }
 
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for ReleaseFormulation {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        enum RawReleaseFormulation {
+            ImmediateRelease,
+            ExtendedRelease { lag_time_h: f64, f1: f64, f2: f64 },
+        }
+        let form = match RawReleaseFormulation::deserialize(deserializer)? {
+            RawReleaseFormulation::ImmediateRelease => Self::ImmediateRelease,
+            RawReleaseFormulation::ExtendedRelease { lag_time_h, f1, f2 } => {
+                Self::ExtendedRelease { lag_time_h, f1, f2 }
+            }
+        };
+        form.validate().map_err(serde::de::Error::custom)?;
+        Ok(form)
+    }
+}
+
 /// Single dose administration event with per-event timing, dose mass, and release formulation.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct DoseEvent {
     /// Administration time in hours ($\ge 0$).
     pub time_h: f64,
@@ -129,6 +150,21 @@ impl DoseEvent {
         debug_assert!(self.time_h >= 0.0);
         debug_assert!(self.dose_mg >= 0.0);
         Ok(())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for DoseEvent {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct RawDoseEvent {
+            time_h: f64,
+            dose_mg: f64,
+            formulation: ReleaseFormulation,
+        }
+        let raw = RawDoseEvent::deserialize(deserializer)?;
+        Self::new(raw.time_h, raw.dose_mg, raw.formulation).map_err(serde::de::Error::custom)
     }
 }
 

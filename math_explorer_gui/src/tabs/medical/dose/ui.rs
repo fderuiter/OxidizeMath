@@ -379,7 +379,7 @@ fn render_imrt_plan_controls(tool: &mut DoseCalculationTool, ui: &mut egui::Ui) 
     let mut changed = render_imrt_beam_sliders(tool, ui);
     ui.add_enabled_ui(tool.active_challenge.is_none(), |ui| {
         changed |= ui
-            .add(egui::Slider::new(&mut tool.beta, 0.01..=1.0).text("Attenuation β (1/cm)"))
+            .add(egui::Slider::new(&mut tool.kernel.beta, 0.01..=1.0).text("Attenuation β (1/cm)"))
             .changed();
         changed |= ui
             .add(egui::Slider::new(&mut tool.prescription_gy, 20.0..=80.0).text("PTV D_Rx (Gy)"))
@@ -461,10 +461,10 @@ fn render_imrt_beam_sliders(tool: &mut DoseCalculationTool, ui: &mut egui::Ui) -
 fn render_point_source_controls(tool: &mut DoseCalculationTool, ui: &mut egui::Ui) -> bool {
     let mut changed = false;
     changed |= ui
-        .add(egui::Slider::new(&mut tool.amplitude, 0.1..=10.0).text("Source Amplitude"))
+        .add(egui::Slider::new(&mut tool.kernel.amplitude, 0.1..=10.0).text("Source Amplitude"))
         .changed();
     changed |= ui
-        .add(egui::Slider::new(&mut tool.beta, 0.1..=5.0).text("Attenuation (Beta)"))
+        .add(egui::Slider::new(&mut tool.kernel.beta, 0.1..=5.0).text("Attenuation (Beta)"))
         .changed();
     ui.separator();
     ui.label("Kernel: Exponential K(r) = (A / r²) · exp(-βr)");

@@ -36,6 +36,7 @@ const ORBIUM_CELLS: [f64; 400] = [
 
 /// Canonical Lenia soliton species presets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LeniaSpecies {
     /// Smooth single-ring glider (`Orbium unicaudatus`).
     #[default]
@@ -50,6 +51,7 @@ pub enum LeniaSpecies {
 
 /// Complete parametric genome for a [`LeniaSpecies`] organism.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LeniaGenome {
     /// Species identifier.
     pub species: LeniaSpecies,

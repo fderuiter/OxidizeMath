@@ -131,6 +131,7 @@ pub fn validate_generator_matrix<T: RealField + Copy + ToPrimitive>(
     Ok(())
 }
 
+#[cfg(feature = "serde")]
 pub(crate) fn matrix_to_rows<T: RealField + Copy>(matrix: &DMatrix<T>) -> Vec<Vec<T>> {
     let mut rows = Vec::with_capacity(matrix.nrows());
     for i in 0..matrix.nrows() {
@@ -143,6 +144,7 @@ pub(crate) fn matrix_to_rows<T: RealField + Copy>(matrix: &DMatrix<T>) -> Vec<Ve
     rows
 }
 
+#[cfg(feature = "serde")]
 pub(crate) fn rows_to_matrix<T: RealField + Copy>(rows: Vec<Vec<T>>) -> Result<DMatrix<T>> {
     let nrows = rows.len();
     if nrows == 0 {

@@ -9,6 +9,7 @@ pub use super::u_statistic::{
 
 /// Per-tier win, loss, and unresolved tie counts in a hierarchical Win Ratio evaluation.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TierOutcomeCounts {
     /// Number of pairs won by the treatment group at this tier.
     pub wins: usize,
@@ -32,7 +33,8 @@ impl TierOutcomeCounts {
     }
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum ComparisonResult {
     #[allow(missing_docs)]
@@ -53,6 +55,8 @@ pub trait OutcomeComparator<T: ?Sized> {
 /// Strategy: Higher value is better (e.g., survival time, quality of life score).
 ///
 /// If `a > b`, outcome `a` is a Win.
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HigherIsBetter;
 
 impl<T: PartialOrd> OutcomeComparator<T> for HigherIsBetter {
@@ -71,6 +75,8 @@ impl<T: PartialOrd> OutcomeComparator<T> for HigherIsBetter {
 /// Strategy: Lower value is better (e.g., number of hospitalizations, symptom severity).
 ///
 /// If `a < b`, outcome `a` is a Win.
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LowerIsBetter;
 
 impl<T: PartialOrd> OutcomeComparator<T> for LowerIsBetter {
@@ -87,6 +93,8 @@ impl<T: PartialOrd> OutcomeComparator<T> for LowerIsBetter {
 }
 
 /// Strategy: Higher value is better, but only if the difference exceeds a threshold (`a - b > threshold`).
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ThresholdComparator {
     #[allow(missing_docs)]
     pub threshold: f64,
@@ -170,6 +178,8 @@ pub trait PairingStrategy<T> {
 }
 
 /// Unmatched Pair comparison (All-Pairs).
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct UnmatchedPairing;
 
 impl<T> PairingStrategy<T> for UnmatchedPairing {
@@ -216,6 +226,8 @@ impl<T> PairingStrategy<T> for UnmatchedPairing {
 }
 
 /// Matched Pair comparison.
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MatchedPairing;
 
 impl<T> PairingStrategy<T> for MatchedPairing {
@@ -414,6 +426,7 @@ pub fn calculate_win_ratio(wins: i32, losses: i32) -> f64 {
 
 /// Statistical results for a Win Ratio analysis.
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct WinRatioStats {
     /// The calculated win ratio ($N_W / N_L$).
     pub win_ratio: f64,

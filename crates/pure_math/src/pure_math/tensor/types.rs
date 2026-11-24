@@ -9,7 +9,8 @@ use nalgebra::{DMatrix, DVector};
 use thiserror::Error;
 
 /// Errors related to tensor operations.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum TensorError {
     /// Indicates that an operation was attempted with tensors or vectors of incompatible dimensions.
     #[error("Dimension mismatch: expected {expected}, got {got}")]
@@ -34,6 +35,7 @@ pub enum TensorError {
 ///
 /// Components transform like coordinate differentials.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ContravariantVector(pub DVector<f64>);
 
 impl ContravariantVector {
@@ -68,6 +70,7 @@ impl ContravariantVector {
 ///
 /// Components transform inversely to contravariant vectors.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CovariantVector(pub DVector<f64>);
 
 impl CovariantVector {
@@ -102,6 +105,7 @@ impl CovariantVector {
 ///
 /// For now, we represent it as a matrix.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Rank2Tensor(pub DMatrix<f64>);
 
 impl Rank2Tensor {

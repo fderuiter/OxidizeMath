@@ -30,7 +30,6 @@ use super::evolution::{EvolutionEngine, EvolutionError};
 use nalgebra::Vector2;
 use rand::RngCore;
 use rand_distr::{Distribution, Normal};
-use serde::{Deserialize, Serialize};
 
 /// Minimum safe particle mass preventing division-by-zero in kinetic velocity derivatives.
 pub const MIN_MASS: f64 = 0.05;
@@ -91,6 +90,7 @@ pub fn clamp_dt(dt: f64) -> f64 {
 
 /// Canonical 2D phase-space state $(q, p) \in \mathbb{R}^2 \times \mathbb{R}^2$.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PhasePoint2D {
     /// Generalized position coordinates $q = (w, b)$.
     pub q: Vector2<f64>,
@@ -177,7 +177,8 @@ impl PhasePoint2D {
 /// Zero-allocation 2D conformal symplectic Leapfrog (Störmer-Verlet) momentum integrator.
 ///
 /// When `damping == 0.0`, reduces to exact volume-preserving Velocity-Verlet.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HamiltonianLeapfrog2D {
     /// Inertial mass $m \in [0.05, 50.0]$.
     pub mass: f64,
@@ -306,7 +307,8 @@ impl EvolutionEngine<PhasePoint2D, Vector2<f64>> for HamiltonianLeapfrog2D {
 /// $dp = -\nabla V(q)\,dt - \gamma p\,dt + \sqrt{2 m \gamma k_B T}\,dW_t$ into
 /// half-kick (B), half-drift (A), exact Ornstein-Uhlenbeck thermostat (O), half-drift (A),
 /// and half-kick (B).
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LangevinBaoab2D {
     /// Inertial mass $m \in [0.05, 50.0]$.
     pub mass: f64,

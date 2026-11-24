@@ -40,6 +40,7 @@ pub const MAX_POLYNOMIAL_DEGREE: usize = 4;
 
 /// Canonical parametric regression model presets without degree clamping or hash collisions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FitModel {
     /// Degree-1 polynomial regression ($y = c_0 + c_1 x$).
     Linear,
@@ -150,6 +151,7 @@ impl core::fmt::Display for FitModel {
 
 /// Stack-backed result of a polynomial or nonlinear least-squares fit.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CurveFit {
     /// Fitted canonical regression model.
     pub fit_model: FitModel,

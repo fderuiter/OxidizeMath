@@ -41,7 +41,8 @@ pub const G_KPC_KMS2_PER_SOLAR_MASS: f64 =
 pub const MIN_GALACTOCENTRIC_RADIUS_KPC: f64 = 1.0e-3;
 
 /// Morphological classification of irregular dwarf galaxies from Tillaboev et al. (2025).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DwarfMorphology {
     /// Complete sample of 413 irregular dwarf galaxies (`GeneralIrregular`).
     GeneralIrregular,
@@ -163,7 +164,8 @@ impl DwarfMorphology {
 }
 
 /// Summary of empirical Tillaboev (2025) observable predictions for a dwarf galaxy.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TillaboevScalingSummary {
     /// Logarithmic baryonic mass $\log_{10}(M / M_\odot)$.
     pub log_mass_solar: f64,
@@ -176,7 +178,8 @@ pub struct TillaboevScalingSummary {
 }
 
 /// Baryonic stellar-disk and neutral-HI gas parameters derived from a [`GalaxyModel`].
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BaryonicDiskConfig {
     /// Stellar disk mass $M_{\text{disk}}$ in solar masses ($M_\odot$).
     pub disk_mass_solar: f64,
@@ -191,7 +194,8 @@ pub struct BaryonicDiskConfig {
 }
 
 /// Dark-matter halo density profile governing outer galactic rotation curves.
-#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum HaloProfile {
     /// Pure baryonic potential with outer Keplerian $v(r) \propto r^{-1/2}$ falloff.
     #[default]
@@ -230,7 +234,8 @@ impl HaloProfile {
 }
 
 /// Quadrature circular velocity decomposition at a galactocentric radius $r$.
-#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VelocityDecomposition {
     /// Effective galactocentric radius $r \ge 10^{-3}\,\text{kpc}$.
     pub radius_kpc: f64,

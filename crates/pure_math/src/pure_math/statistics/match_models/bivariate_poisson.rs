@@ -3,6 +3,7 @@
 use super::grid::{DEFAULT_MAX_GOALS, MAX_GOALS_LIMIT, ScoreGrid};
 use super::poisson::{log_factorial, poisson_pmf};
 use crate::error::MatchModelError;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// Validated Karlis-Ntzoufras bivariate Poisson parameters $(\lambda_1, \lambda_2, \lambda_3 \ge 0)$.
@@ -10,7 +11,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 /// Represents $X = U_1 + U_3$ and $Y = U_2 + U_3$ with independent $U_k \sim \text{Poisson}(\lambda_k)$,
 /// yielding marginal expectations $\mathbb{E}(X) = \lambda_1 + \lambda_3$,
 /// $\mathbb{E}(Y) = \lambda_2 + \lambda_3$, and shared covariance $\text{Cov}(X, Y) = \lambda_3$.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct BivariatePoissonParams {
     lambda_1: f64,
     lambda_2: f64,
@@ -120,6 +122,7 @@ impl BivariatePoissonParams {
     }
 }
 
+#[cfg(feature = "serde")]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawBivariatePoissonParams {
@@ -128,6 +131,7 @@ struct RawBivariatePoissonParams {
     lambda_3: f64,
 }
 
+#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for BivariatePoissonParams {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let raw = RawBivariatePoissonParams::deserialize(deserializer)?;

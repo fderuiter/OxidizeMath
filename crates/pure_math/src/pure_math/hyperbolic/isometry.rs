@@ -4,7 +4,8 @@ use num_complex::Complex64;
 
 /// Orientation-preserving Möbius isometry of the Poincaré disk $\mathbb{D}$ in $PSU(1,1)$,
 /// represented as $\begin{pmatrix} a & b \\ \bar{b} & \bar{a} \end{pmatrix}$ with $|a|^2 - |b|^2 = 1$.
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Psu11 {
     a_re: f64,
     a_im: f64,
@@ -231,7 +232,8 @@ impl Psu11 {
 
 /// Orientation-preserving Möbius isometry of the upper half-plane $\mathbb{H}$ in $PSL(2,\mathbb{R})$,
 /// represented as $\begin{pmatrix} \alpha & \beta \\ \gamma & \delta \end{pmatrix}$ with $\alpha\delta - \beta\gamma = 1$.
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Psl2R {
     alpha: f64,
     beta: f64,
@@ -433,6 +435,7 @@ impl Psl2R {
 
 /// Orientation-reversing Coxeter reflection across a Poincaré disk geodesic (diameter or orthogonal circle).
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CircleInversion {
     /// Reflection across a diameter with unit tangent $u = e^{i\alpha}$: $\iota(z) = u^2 \bar{z}$.
     Diameter {

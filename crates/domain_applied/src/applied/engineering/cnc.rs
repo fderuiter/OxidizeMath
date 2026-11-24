@@ -2,6 +2,7 @@ use crate::error::EngineeringError;
 
 /// The cutting speed ($V$) in meters per minute (m/min).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct CuttingSpeed(f64);
 
 impl CuttingSpeed {
@@ -11,7 +12,7 @@ impl CuttingSpeed {
     /// Returns `EngineeringError` if `value` is negative or zero.
     #[verified_engine::verified]
     pub fn new(value: f64) -> Result<Self, EngineeringError> {
-        if value <= 0.0 {
+        if !value.is_finite() || value <= 0.0 {
             return Err(EngineeringError::InvalidParameter {
                 name: "CuttingSpeed".to_string(),
                 value,
@@ -29,6 +30,7 @@ impl CuttingSpeed {
 
 /// A material-specific constant ($C$) for Taylor's equation.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MaterialConstant(f64);
 
 impl MaterialConstant {
@@ -38,7 +40,7 @@ impl MaterialConstant {
     /// Returns `EngineeringError` if `value` is negative.
     #[verified_engine::verified]
     pub fn new(value: f64) -> Result<Self, EngineeringError> {
-        if value < 0.0 {
+        if !value.is_finite() || value < 0.0 {
             return Err(EngineeringError::InvalidParameter {
                 name: "MaterialConstant".to_string(),
                 value,
@@ -56,6 +58,7 @@ impl MaterialConstant {
 
 /// The exponent ($n$) dependent on tool material for Taylor's equation.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ToolExponent(f64);
 
 impl ToolExponent {
@@ -65,7 +68,7 @@ impl ToolExponent {
     /// Returns `EngineeringError` if `value` is zero, to prevent division by zero in the exponent.
     #[verified_engine::verified]
     pub fn new(value: f64) -> Result<Self, EngineeringError> {
-        if value == 0.0 {
+        if !value.is_finite() || value == 0.0 {
             return Err(EngineeringError::InvalidParameter {
                 name: "ToolExponent".to_string(),
                 value,
@@ -83,6 +86,7 @@ impl ToolExponent {
 
 /// The estimated tool life in minutes.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ToolLife(f64);
 
 impl ToolLife {
@@ -142,6 +146,39 @@ pub fn calculate_taylor_tool_life(
 ) -> ToolLife {
     let result = (constant_c.value() / cutting_speed.value()).powf(1.0 / exponent_n.value());
     ToolLife::new(result)
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for CuttingSpeed {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = f64::deserialize(deserializer)?;
+        Self::new(raw).map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for MaterialConstant {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = f64::deserialize(deserializer)?;
+        Self::new(raw).map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for ToolExponent {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = f64::deserialize(deserializer)?;
+        Self::new(raw).map_err(serde::de::Error::custom)
+    }
 }
 
 #[cfg(test)]

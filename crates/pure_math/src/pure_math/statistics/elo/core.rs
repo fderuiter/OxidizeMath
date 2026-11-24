@@ -1,6 +1,7 @@
 //! Core validated primitives and configuration types for the sports Elo rating system.
 
 use crate::error::EloError;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// Default Elo rating for newly initialized clubs or competitors.
@@ -16,8 +17,9 @@ pub const DEFAULT_ELO_K_FACTOR: f64 = 20.0;
 pub const DEFAULT_HOME_ADVANTAGE: f64 = 65.0;
 
 /// Validated finite club or competitor Elo rating.
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct EloRating(f64);
 
 impl EloRating {
@@ -54,6 +56,7 @@ impl Default for EloRating {
     }
 }
 
+#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for EloRating {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = f64::deserialize(deserializer)?;
@@ -62,7 +65,8 @@ impl<'de> Deserialize<'de> for EloRating {
 }
 
 /// Match venue context controlling whether `home_advantage` is applied.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Venue {
     /// Standard home-and-away fixture where the first team receives `home_advantage`.
     #[default]
@@ -72,7 +76,8 @@ pub enum Venue {
 }
 
 /// Win-margin (Margin of Victory) multiplier rule applied to Elo updates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum MarginScaling {
     /// Classical binary/ternary Elo update with unit multiplier (`1.0`).
     #[default]
@@ -85,7 +90,8 @@ pub enum MarginScaling {
 }
 
 /// Validated hyperparameters governing Elo expected scores and post-match updates.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct EloConfig {
     scale: f64,
     k_factor: f64,
@@ -169,6 +175,7 @@ impl Default for EloConfig {
     }
 }
 
+#[cfg(feature = "serde")]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawEloConfig {
@@ -178,6 +185,7 @@ struct RawEloConfig {
     margin_scaling: MarginScaling,
 }
 
+#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for EloConfig {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let raw = RawEloConfig::deserialize(deserializer)?;

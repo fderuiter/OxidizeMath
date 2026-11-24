@@ -3,6 +3,7 @@ use core::ops::{Deref, DerefMut};
 
 /// A physical step size, typically used for grid spacing.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StepSize(pub f64);
 
 impl Deref for StepSize {
@@ -20,6 +21,7 @@ impl DerefMut for StepSize {
 
 /// A grid index, representing a coordinate or an offset in a flattened array.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GridIndex(pub usize);
 
 impl Deref for GridIndex {
@@ -37,6 +39,7 @@ impl DerefMut for GridIndex {
 
 /// A dimension representing width or height.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Dimension(pub usize);
 
 impl Deref for Dimension {

@@ -295,6 +295,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn test_hmm_serde_roundtrip_and_validation_rejections() {
         use serde::Deserialize;

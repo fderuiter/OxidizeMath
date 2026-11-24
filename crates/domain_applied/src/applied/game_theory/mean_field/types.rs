@@ -3,10 +3,12 @@ use std::num::NonZeroUsize;
 
 /// Represents a 1D spatial position.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Position(pub f64);
 
 /// Represents a probability density value.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Density(pub f64);
 
 /// Represents a 1D Mean Field Game (MFG) configuration.
@@ -16,6 +18,7 @@ pub struct Density(pub f64);
 /// - `time_horizon` ($T$): Duration of the game.
 /// - `dt`, `dx`: Discretization steps.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MFGConfig {
     #[allow(missing_docs)]
     pub viscosity: f64, // nu
@@ -35,29 +38,100 @@ pub struct MFGConfig {
     pub space_max: f64,
 }
 
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for MFGConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct MFGConfigRaw {
+            viscosity: f64,
+            time_horizon: f64,
+            time_steps: NonZeroUsize,
+            grid_points: NonZeroUsize,
+            dt: f64,
+            dx: f64,
+            space_min: f64,
+            space_max: f64,
+        }
+        let raw = MFGConfigRaw::deserialize(deserializer)?;
+        if ![
+            raw.viscosity,
+            raw.time_horizon,
+            raw.dt,
+            raw.dx,
+            raw.space_min,
+            raw.space_max,
+        ]
+        .into_iter()
+        .all(f64::is_finite)
+        {
+            return Err(serde::de::Error::custom(
+                "MFGConfig float parameters must be finite",
+            ));
+        }
+        if raw.grid_points.get() <= 1 || raw.space_max <= raw.space_min {
+            return Err(serde::de::Error::custom(
+                "MFGConfig requires grid_points > 1 and space_max > space_min",
+            ));
+        }
+        Ok(Self {
+            viscosity: raw.viscosity,
+            time_horizon: raw.time_horizon,
+            time_steps: raw.time_steps,
+            grid_points: raw.grid_points,
+            dt: raw.dt,
+            dx: raw.dx,
+            space_min: raw.space_min,
+            space_max: raw.space_max,
+        })
+    }
+}
+
 // Type states
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct WithoutViscosity;
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct WithViscosity(f64);
 
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct WithoutTimeHorizon;
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct WithTimeHorizon(f64);
 
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct WithoutGridPoints;
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct WithGridPoints(NonZeroUsize);
 
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct WithoutTimeSteps;
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct WithTimeSteps(NonZeroUsize);
 
+#[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct WithoutSpaceBounds;
+#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct WithSpaceBounds {
     min: f64,
@@ -65,7 +139,8 @@ pub struct WithSpaceBounds {
 }
 
 /// Type-State Builder for `MFGConfig`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MFGConfigBuilder<V, T, G, TS, S> {
     viscosity: V,
     time_horizon: T,

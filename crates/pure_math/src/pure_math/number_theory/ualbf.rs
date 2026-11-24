@@ -1,6 +1,8 @@
 // [cite:ualbf_quasiperfect]
 pub use crate::error::NumberTheoryError;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct UalbfSearchResult {
     #[allow(missing_docs)]

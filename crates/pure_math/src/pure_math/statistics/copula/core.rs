@@ -14,6 +14,8 @@ const STRICT_CHOLESKY_MIN_DIAG: f64 = 1e-7;
 
 /// A probability value in `[0, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Probability(f64);
 
 impl Probability {
@@ -45,6 +47,8 @@ impl Probability {
 
 /// A correlation coefficient in `[-1, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Correlation(f64);
 
 impl Correlation {
@@ -76,8 +80,10 @@ impl Correlation {
 
 /// A validated symmetric positive-semidefinite correlation matrix with cached lower-triangular factor.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct CorrelationMatrix {
     matrix: DMatrix<f64>,
+    #[cfg_attr(feature = "serde", serde(skip_serializing))]
     cholesky: DMatrix<f64>,
 }
 
@@ -231,6 +237,43 @@ impl CorrelationMatrix {
     }
 }
 
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Probability {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = f64::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Correlation {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = f64::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for CorrelationMatrix {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawCorrelationMatrix {
+            matrix: DMatrix<f64>,
+        }
+        let raw = RawCorrelationMatrix::deserialize(deserializer)?;
+        Self::new(raw.matrix).map_err(serde::de::Error::custom)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -304,5 +347,23 @@ mod tests {
             ))
             .is_err()
         );
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_correlation_matrix_serde_recomputes_cholesky_and_rejects_indefinite() {
+        let orig = CorrelationMatrix::bivariate(Correlation::new(0.45).unwrap()).unwrap();
+        let json = serde_json::to_string(&orig).unwrap();
+        assert!(!json.contains("cholesky"));
+        let decoded: CorrelationMatrix = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded, orig);
+
+        let bad_mat =
+            DMatrix::from_row_slice(3, 3, &[1.0, 0.9, 0.9, 0.9, 1.0, -0.9, 0.9, -0.9, 1.0]);
+        let bad_json = format!(
+            "{{\"matrix\":{}}}",
+            serde_json::to_string(&bad_mat).unwrap()
+        );
+        assert!(serde_json::from_str::<CorrelationMatrix>(&bad_json).is_err());
     }
 }

@@ -8,6 +8,7 @@ use std::ops::{Add, AddAssign, Mul, MulAssign};
 /// to ensure contiguous memory allocation in column-major orientation.
 /// The layout is such that each column represents a species, where nrows = grid_size and ncols = num_species.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ChemicalState {
     #[allow(missing_docs)]
     pub grid: DMatrix<f64>,

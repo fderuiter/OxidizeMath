@@ -5,7 +5,8 @@
 use crate::error::DoseFluenceError;
 
 /// A linear calibration model: y = mx + c.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LinearCalibrator {
     slope: f64,
     intercept: f64,

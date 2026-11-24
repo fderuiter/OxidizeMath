@@ -10,6 +10,7 @@ use pure_math::pure_math::analysis::pde::fused_stepper::FusedStencilStepper;
 /// Discrete boundary/source role assigned to a 2D reaction-diffusion lattice cell.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ReactionCellRole {
     /// Standard interior fluid cell evolving under coupled reaction-diffusion PDEs.
     #[default]
@@ -39,7 +40,8 @@ impl ReactionCellRole {
 }
 
 /// Pre-allocated 2D spatial mask storing per-cell [`ReactionCellRole`] values.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct CellMask2D {
     width: usize,
     height: usize,
@@ -49,6 +51,44 @@ pub struct CellMask2D {
     pub emitter_u_level: f64,
     /// Pinned inhibitor concentration at [`ReactionCellRole::EmitterV`] cells.
     pub emitter_v_level: f64,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for CellMask2D {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Wire {
+            width: usize,
+            height: usize,
+            roles: Vec<u8>,
+            #[serde(default)]
+            has_active: bool,
+            emitter_u_level: f64,
+            emitter_v_level: f64,
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        let _ = wire.has_active;
+        let expected_len = wire
+            .width
+            .checked_mul(wire.height)
+            .ok_or_else(|| serde::de::Error::custom("CellMask2D grid dimensions overflow"))?;
+        if wire.roles.len() != expected_len {
+            return Err(serde::de::Error::custom(
+                "CellMask2D roles length must equal width * height",
+            ));
+        }
+        if !wire.emitter_u_level.is_finite() || !wire.emitter_v_level.is_finite() {
+            return Err(serde::de::Error::custom(
+                "CellMask2D emitter levels must be finite",
+            ));
+        }
+        let mut mask = Self::new(wire.width, wire.height);
+        mask.emitter_u_level = wire.emitter_u_level;
+        mask.emitter_v_level = wire.emitter_v_level;
+        mask.set_roles_slice(&wire.roles)
+            .map_err(serde::de::Error::custom)?;
+        Ok(mask)
+    }
 }
 
 impl CellMask2D {
@@ -228,12 +268,36 @@ impl CellMask2D {
 
 /// Masked 2D finite-difference operator enforcing internal zero-flux walls,
 /// persistent `u`/`v` emitters, and sinks with zero heap allocations during stepping.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MaskedFiniteDifference2D {
     /// Underlying Cartesian 5-point stencil operator.
     pub base: FiniteDifference2D,
     /// Spatial cell-role mask.
     pub mask: CellMask2D,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for MaskedFiniteDifference2D {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Wire {
+            base: FiniteDifference2D,
+            mask: CellMask2D,
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        if *wire.base.geometry.width != wire.mask.width()
+            || *wire.base.geometry.height != wire.mask.height()
+        {
+            return Err(serde::de::Error::custom(
+                "MaskedFiniteDifference2D mask dimensions must match base geometry",
+            ));
+        }
+        Ok(Self {
+            base: wire.base,
+            mask: wire.mask,
+        })
+    }
 }
 
 impl MaskedFiniteDifference2D {

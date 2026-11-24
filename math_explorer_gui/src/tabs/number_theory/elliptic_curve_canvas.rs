@@ -290,12 +290,10 @@ fn paint_curve_elements(
     palette: &SemanticPalette,
     text_color: Color32,
 ) {
-    let r = if model.p <= 47 {
-        3.8_f32
-    } else if model.p <= 199 {
-        2.7_f32
-    } else {
-        1.9_f32
+    let r = match model.p {
+        ..=47 => 3.8_f32,
+        48..=199 => 2.7_f32,
+        _ => 1.9_f32,
     };
     for pt in model.points {
         if let Some((x, y)) = pt.coordinates() {

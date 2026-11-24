@@ -5,6 +5,7 @@ use crate::async_sim::{BackgroundWorker, SimulationRunner};
 use crate::tabs::ai::rl_sculpt::{
     apply_rle_to_mdp, encode_custom_cells_rle, is_zero_f64, RlSolverMode,
 };
+use math_commons::primitives::UnitInterval;
 use math_explorer::ai::reinforcement_learning::SculptedGridMdp;
 
 fn default_dim() -> i32 {
@@ -15,18 +16,26 @@ fn is_default_dim(val: &i32) -> bool {
     *val == 5
 }
 
+fn default_zero_unit() -> UnitInterval {
+    UnitInterval::new(0.0).expect("0.0 is in [0, 1]")
+}
+
+fn is_zero_unit(val: &UnitInterval) -> bool {
+    is_zero_f64(&val.value())
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct QTableInspectorState {
     view: HeatmapView,
-    gamma: f64,
+    gamma: UnitInterval,
     pretrain_episodes: u32,
     #[serde(default = "default_dim", skip_serializing_if = "is_default_dim")]
     width: i32,
     #[serde(default = "default_dim", skip_serializing_if = "is_default_dim")]
     height: i32,
-    #[serde(default, skip_serializing_if = "is_zero_f64")]
-    wind_slip_prob: f64,
+    #[serde(default = "default_zero_unit", skip_serializing_if = "is_zero_unit")]
+    wind_slip_prob: UnitInterval,
     #[serde(default, skip_serializing_if = "RlSolverMode::is_default")]
     solver_mode: RlSolverMode,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -37,11 +46,11 @@ impl QTableInspectorTool {
     pub(super) fn save_preset_state(&self) -> Option<String> {
         serde_json::to_string(&QTableInspectorState {
             view: self.view,
-            gamma: self.mdp.gamma,
+            gamma: UnitInterval::new(self.mdp.gamma).ok()?,
             pretrain_episodes: self.episodes_trained,
             width: self.mdp.width,
             height: self.mdp.height,
-            wind_slip_prob: self.mdp.wind_slip_prob,
+            wind_slip_prob: UnitInterval::new(self.mdp.wind_slip_prob).ok()?,
             solver_mode: self.solver_mode,
             rle_mask: encode_custom_cells_rle(&self.mdp),
         })
@@ -53,10 +62,6 @@ impl QTableInspectorTool {
             serde_json::from_str(state).map_err(|e| format!("Invalid Q-table state: {e}"))?;
         if !(2..=20).contains(&parsed.width)
             || !(2..=20).contains(&parsed.height)
-            || !parsed.gamma.is_finite()
-            || !(0.0..=1.0).contains(&parsed.gamma)
-            || !parsed.wind_slip_prob.is_finite()
-            || !(0.0..=1.0).contains(&parsed.wind_slip_prob)
             || parsed.pretrain_episodes > 5_000
         {
             return Err(
@@ -64,12 +69,10 @@ impl QTableInspectorTool {
                     .into(),
             );
         }
-        let _ = math_commons::primitives::UnitInterval::new(parsed.gamma)
-            .map_err(|e| format!("Invalid discount factor: {e}"))?;
 
         let mut mdp =
-            SculptedGridMdp::default_with_traps(parsed.width, parsed.height, parsed.gamma);
-        mdp.wind_slip_prob = parsed.wind_slip_prob;
+            SculptedGridMdp::default_with_traps(parsed.width, parsed.height, parsed.gamma.value());
+        mdp.wind_slip_prob = parsed.wind_slip_prob.value();
         apply_rle_to_mdp(&mut mdp, &parsed.rle_mask)?;
 
         let mut runner = SculptedQTableRunner::from_mdp(mdp.clone(), parsed.solver_mode);

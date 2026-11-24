@@ -7,6 +7,7 @@ use crate::pure_math::statistics::kelly::Odds;
 
 /// Risk-free cross-bookmaker arbitrage sizing and guaranteed return summary.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ArbitrageReport {
     /// Number of mutually exclusive outcomes covered across books.
     pub outcome_count: usize,
@@ -23,7 +24,8 @@ pub struct ArbitrageReport {
 }
 
 /// Sizing constraint for multi-outcome Dutching.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DutchingMode {
     /// Allocate a fixed total stake `budget` across selected outcomes for equal payout.
     FixedBudget(f64),
@@ -33,6 +35,7 @@ pub enum DutchingMode {
 
 /// Equal-payout Dutching allocation summary over a subset of contenders.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DutchingReport {
     /// Number of contenders included in the Dutching ticket.
     pub selected_count: usize,

@@ -189,6 +189,7 @@ pub fn color32_images_to_gif_with_speed(
 
 /// Decoded animation metadata and first-frame RGBA pixels from an encoded GIF byte stream.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct GifAnimationSummary {
     /// Canvas pixel width of the decoded animation.
     pub width: u32,

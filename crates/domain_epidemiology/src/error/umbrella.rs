@@ -5,6 +5,7 @@ use std::collections::HashMap;
 /// Extensible crate-level umbrella error for `domain_epidemiology` models and upstream math errors.
 #[non_exhaustive]
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum EpidemiologyDomainError {
     /// Deterministic compartmental or matrix dynamics epidemiology error.
     Epidemiology(EpidemiologyError),

@@ -12,6 +12,7 @@ const NEWTON_TOLERANCE: f64 = 1e-13;
 
 /// A simulated two-tier composite patient record `[Fatal, Non-Fatal]` after follow-up censoring.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SimulatedSubject {
     /// Tier 1 prioritized fatal endpoint (e.g., cardiovascular death).
     pub fatal: CensoredOutcome,

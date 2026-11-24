@@ -9,25 +9,22 @@ mod presets;
 #[path = "curvature_heatmap_ui.rs"]
 mod ui;
 
-use super::custom_surface::{CustomSurfaceSandbox, SurfaceType};
+use super::custom_surface::CustomSurfaceSandbox;
 use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Scene3DBuilder};
 use eframe::egui;
+use math_commons::primitives::PositiveFloat;
+use math_explorer::pure_math::differential_geometry::surface::{
+    CurvatureKind, ParametricSurfaceKind,
+};
 use std::collections::BTreeMap;
-
-#[derive(PartialEq, Eq, Hash, Clone, Copy, serde::Serialize, serde::Deserialize)]
-pub(super) enum CurvatureType {
-    Gaussian,
-    Mean,
-}
-
 #[derive(serde::Serialize)]
 struct CurvatureHeatmapSaveState {
-    surface_type: SurfaceType,
-    curvature_type: CurvatureType,
-    sphere_radius: f64,
-    torus_major_radius: f64,
-    torus_minor_radius: f64,
-    klein_radius: f64,
+    surface_type: ParametricSurfaceKind,
+    curvature_type: CurvatureKind,
+    sphere_radius: PositiveFloat,
+    torus_major_radius: PositiveFloat,
+    torus_minor_radius: PositiveFloat,
+    klein_radius: PositiveFloat,
     u_resolution: usize,
     v_resolution: usize,
     camera: Camera3D,
@@ -46,12 +43,12 @@ struct CurvatureHeatmapSaveState {
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CurvatureHeatmapState {
-    surface_type: SurfaceType,
-    curvature_type: CurvatureType,
-    sphere_radius: f64,
-    torus_major_radius: f64,
-    torus_minor_radius: f64,
-    klein_radius: f64,
+    surface_type: ParametricSurfaceKind,
+    curvature_type: CurvatureKind,
+    sphere_radius: PositiveFloat,
+    torus_major_radius: PositiveFloat,
+    torus_minor_radius: PositiveFloat,
+    klein_radius: PositiveFloat,
     u_resolution: usize,
     v_resolution: usize,
     #[serde(default)]
@@ -76,8 +73,8 @@ struct CurvatureHeatmapState {
 
 /// Interactive 3D parametric manifold Gaussian and mean curvature heatmap viewer.
 pub struct CurvatureHeatmap {
-    surface_type: SurfaceType,
-    curvature_type: CurvatureType,
+    surface_type: ParametricSurfaceKind,
+    curvature_type: CurvatureKind,
     sphere_radius: f64,
     torus_major_radius: f64,
     torus_minor_radius: f64,
@@ -94,8 +91,8 @@ impl Default for CurvatureHeatmap {
     fn default() -> Self {
         let camera = Camera3D::new(0.5, 0.5, 1.0);
         Self {
-            surface_type: SurfaceType::Torus,
-            curvature_type: CurvatureType::Gaussian,
+            surface_type: ParametricSurfaceKind::Torus,
+            curvature_type: CurvatureKind::Gaussian,
             sphere_radius: 1.0,
             torus_major_radius: 2.0,
             torus_minor_radius: 0.5,
@@ -117,30 +114,28 @@ impl CurvatureHeatmap {
     }
 }
 
-fn validate_curvature_radii_and_res(loaded: &CurvatureHeatmapState) -> Result<(), String> {
-    if !loaded.sphere_radius.is_finite() || !(0.1..=5.0).contains(&loaded.sphere_radius) {
+fn validate_curvature_radii_and_res(
+    loaded: &CurvatureHeatmapState,
+) -> Result<(f64, f64, f64, f64), String> {
+    let sphere_radius = loaded.sphere_radius.value();
+    let torus_major_radius = loaded.torus_major_radius.value();
+    let torus_minor_radius = loaded.torus_minor_radius.value();
+    let klein_radius = loaded.klein_radius.value();
+    if !(0.1..=5.0).contains(&sphere_radius) {
+        return Err(format!("sphere_radius out of range: {sphere_radius}"));
+    }
+    if !(1.0..=5.0).contains(&torus_major_radius) {
         return Err(format!(
-            "sphere_radius out of range: {}",
-            loaded.sphere_radius
+            "torus_major_radius out of range: {torus_major_radius}"
         ));
     }
-    if !loaded.torus_major_radius.is_finite() || !(1.0..=5.0).contains(&loaded.torus_major_radius) {
+    if !(0.1..=2.0).contains(&torus_minor_radius) {
         return Err(format!(
-            "torus_major_radius out of range: {}",
-            loaded.torus_major_radius
+            "torus_minor_radius out of range: {torus_minor_radius}"
         ));
     }
-    if !loaded.torus_minor_radius.is_finite() || !(0.1..=2.0).contains(&loaded.torus_minor_radius) {
-        return Err(format!(
-            "torus_minor_radius out of range: {}",
-            loaded.torus_minor_radius
-        ));
-    }
-    if !loaded.klein_radius.is_finite() || !(0.5..=5.0).contains(&loaded.klein_radius) {
-        return Err(format!(
-            "klein_radius out of range: {}",
-            loaded.klein_radius
-        ));
+    if !(0.5..=5.0).contains(&klein_radius) {
+        return Err(format!("klein_radius out of range: {klein_radius}"));
     }
     let max_res = math_commons::registry::MAX_GRID_SIZE;
     if !(10..=max_res).contains(&loaded.u_resolution)
@@ -148,7 +143,12 @@ fn validate_curvature_radii_and_res(loaded: &CurvatureHeatmapState) -> Result<()
     {
         return Err("Resolution out of valid range".to_string());
     }
-    Ok(())
+    Ok((
+        sphere_radius,
+        torus_major_radius,
+        torus_minor_radius,
+        klein_radius,
+    ))
 }
 
 impl InteractiveTool for CurvatureHeatmap {
@@ -206,10 +206,10 @@ impl InteractiveTool for CurvatureHeatmap {
         serde_json::to_string(&CurvatureHeatmapSaveState {
             surface_type: self.surface_type,
             curvature_type: self.curvature_type,
-            sphere_radius: self.sphere_radius,
-            torus_major_radius: self.torus_major_radius,
-            torus_minor_radius: self.torus_minor_radius,
-            klein_radius: self.klein_radius,
+            sphere_radius: PositiveFloat::new(self.sphere_radius).ok()?,
+            torus_major_radius: PositiveFloat::new(self.torus_major_radius).ok()?,
+            torus_minor_radius: PositiveFloat::new(self.torus_minor_radius).ok()?,
+            klein_radius: PositiveFloat::new(self.klein_radius).ok()?,
             u_resolution: self.u_resolution,
             v_resolution: self.v_resolution,
             camera: self.camera,
@@ -226,7 +226,8 @@ impl InteractiveTool for CurvatureHeatmap {
         self.state_bounds().validate_json(state)?;
         let loaded: CurvatureHeatmapState =
             serde_json::from_str(state).map_err(|e| format!("Invalid curvature state: {e}"))?;
-        validate_curvature_radii_and_res(&loaded)?;
+        let (sphere_radius, torus_major_radius, torus_minor_radius, klein_radius) =
+            validate_curvature_radii_and_res(&loaded)?;
         let camera = Camera3D::from_preset_fields(
             loaded.camera,
             loaded.pitch,
@@ -242,10 +243,10 @@ impl InteractiveTool for CurvatureHeatmap {
         let cap = crate::presets::MAX_INTERACTIVE_SURFACE_RESOLUTION;
         self.surface_type = loaded.surface_type;
         self.curvature_type = loaded.curvature_type;
-        self.sphere_radius = loaded.sphere_radius;
-        self.torus_major_radius = loaded.torus_major_radius;
-        self.torus_minor_radius = loaded.torus_minor_radius;
-        self.klein_radius = loaded.klein_radius;
+        self.sphere_radius = sphere_radius;
+        self.torus_major_radius = torus_major_radius;
+        self.torus_minor_radius = torus_minor_radius;
+        self.klein_radius = klein_radius;
         self.u_resolution = loaded.u_resolution.min(cap);
         self.v_resolution = loaded.v_resolution.min(cap);
         self.camera.apply_pose(camera);
@@ -288,15 +289,15 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for CurvatureHeatmap {
     fn theory_description(&self) -> String {
         let surf_name = match self.surface_type {
-            SurfaceType::Sphere => "sphere",
-            SurfaceType::Torus => "torus",
-            SurfaceType::KleinBottle => "Klein bottle",
-            SurfaceType::CustomHeightfield => "custom compiled heightfield",
-            SurfaceType::CustomParametric => "custom compiled parametric manifold",
+            ParametricSurfaceKind::Sphere => "sphere",
+            ParametricSurfaceKind::Torus => "torus",
+            ParametricSurfaceKind::KleinBottle => "Klein bottle",
+            ParametricSurfaceKind::CustomHeightfield => "custom compiled heightfield",
+            ParametricSurfaceKind::CustomParametric => "custom compiled parametric manifold",
         };
         let curv_formula = match self.curvature_type {
-            CurvatureType::Gaussian => "Gaussian curvature $K = \\kappa_1 \\kappa_2 = \\frac{LN - M^2}{EG - F^2}$ (an intrinsic invariant by Gauss's Theorema Egregium)",
-            CurvatureType::Mean => "mean curvature $H = \\frac{\\kappa_1 + \\kappa_2}{2} = \\frac{EN - 2FM + GL}{2(EG - F^2)}$",
+            CurvatureKind::Gaussian => "Gaussian curvature $K = \\kappa_1 \\kappa_2 = \\frac{LN - M^2}{EG - F^2}$ (an intrinsic invariant by Gauss's Theorema Egregium)",
+            CurvatureKind::Mean => "mean curvature $H = \\frac{\\kappa_1 + \\kappa_2}{2} = \\frac{EN - 2FM + GL}{2(EG - F^2)}$",
         };
         format!(
             "Differential geometry surface analysis evaluating {curv_formula} on a parametric {surf_name}."

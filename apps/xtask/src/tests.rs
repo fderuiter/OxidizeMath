@@ -1,4 +1,5 @@
 use super::*;
+use crate::features::assert_no_serde_in_normal_deps;
 use crate::gates::{
     CARGO_DOC_ARGS, HOST_CLIPPY_ARGS, WASM_CLIPPY_ARGS, unified_verification_bin, workspace_wasm,
 };
@@ -256,6 +257,14 @@ fn test_wasm_test_and_smoke_ci_parity() {
         .find("name: Upload Web Dist Artifact")
         .expect("ci.yml must upload wasm_web_dist artifact");
     assert!(smoke_pos > build_pos && smoke_pos < upload_pos);
+}
+
+#[test]
+fn test_math_explorer_zero_serde_without_feature() {
+    assert_no_serde_in_normal_deps(None);
+    assert_no_serde_in_normal_deps(Some(
+        "pure_math,applied,ai,biology,climate,epidemiology,physics",
+    ));
 }
 
 #[test]

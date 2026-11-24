@@ -17,11 +17,25 @@ use crate::error::HighEnergyError;
 ///        + \frac{r^2}{\Delta} dr^2 + r^2 d\theta^2
 ///        + \left(r^2 + a^2 + \frac{a^2 R_s}{r}\right) d\varphi^2$$
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct KerrEquatorialMetric {
     /// Schwarzschild mass scale $R_s = \frac{2GM}{c^2} > 0$.
     pub schwarzschild_radius: f64,
     /// Kerr spin length parameter $a = \frac{J}{Mc}$ satisfying $|a| < \frac{1}{2} R_s$.
     pub spin_a: f64,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for KerrEquatorialMetric {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Wire {
+            schwarzschild_radius: f64,
+            spin_a: f64,
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        Self::new(wire.schwarzschild_radius, wire.spin_a).map_err(serde::de::Error::custom)
+    }
 }
 
 impl KerrEquatorialMetric {

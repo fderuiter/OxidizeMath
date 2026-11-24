@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{DEFAULT_CONTAINMENT_BUDGET, DEFAULT_NETWORK_SEED, MAX_CONTAINMENT_BUDGET};
+use math_commons::primitives::NonNegativeFloat;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
 use std::collections::HashSet;
 
@@ -28,8 +29,8 @@ const fn is_false(value: &bool) -> bool {
 #[serde(deny_unknown_fields)]
 pub(super) struct NetPropState {
     pub(super) num_nodes: usize,
-    pub(super) beta: f64,
-    pub(super) gamma: f64,
+    pub(super) beta: NonNegativeFloat,
+    pub(super) gamma: NonNegativeFloat,
     #[serde(default = "default_seed", skip_serializing_if = "is_default_seed")]
     pub(super) seed: u64,
     #[serde(default = "default_budget", skip_serializing_if = "is_default_budget")]
@@ -65,11 +66,11 @@ pub(super) fn build_validated_candidate(
     ),
     String,
 > {
+    let beta = s.beta.value();
+    let gamma = s.gamma.value();
     if !(10..=200).contains(&s.num_nodes)
-        || !s.beta.is_finite()
-        || !(0.0..=1.0).contains(&s.beta)
-        || !s.gamma.is_finite()
-        || !(0.0..=1.0).contains(&s.gamma)
+        || beta > 1.0
+        || gamma > 1.0
         || s.budget > MAX_CONTAINMENT_BUDGET
     {
         return Err("Network propagation parameters out of bounds".into());
@@ -86,7 +87,7 @@ pub(super) fn build_validated_candidate(
 
     let mut candidate_rng = oxidize_core::rng::OxidizeRng::new(s.seed);
     let mut candidate =
-        NetworkEpidemicModel::new_with_rng(s.num_nodes, s.beta, s.gamma, &mut candidate_rng);
+        NetworkEpidemicModel::new_with_rng(s.num_nodes, beta, gamma, &mut candidate_rng);
 
     for &node in &vax_sorted {
         if node >= candidate.num_nodes() {

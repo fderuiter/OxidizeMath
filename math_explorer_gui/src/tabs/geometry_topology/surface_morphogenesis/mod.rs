@@ -9,12 +9,12 @@ mod solver;
 mod state;
 mod ui;
 
-use super::custom_surface::{CustomSurfaceSandbox, SurfaceType};
+use super::custom_surface::CustomSurfaceSandbox;
 use crate::framework::recovery::FiniteStateGuard as _;
 use crate::framework::{Camera3D, ExportCapabilities, InteractiveTool, Scene3DBuilder};
 use eframe::egui;
 use math_explorer::pure_math::differential_geometry::surface::{
-    KleinBottle, ParametricSurface, Sphere, Torus,
+    KleinBottle, ParametricSurface, ParametricSurfaceKind, Sphere, Torus,
 };
 use scientific_metadata::theory::TheoryDescribable;
 use solver::MorphogenesisSurfaceEngine;
@@ -106,7 +106,7 @@ pub enum PulseBrushAction {
 
 /// Interactive 3D Laplace-Beltrami morphogenesis and mean-curvature buckling tool.
 pub struct SurfaceMorphogenesisTool {
-    pub(crate) surface_type: SurfaceType,
+    pub(crate) surface_type: ParametricSurfaceKind,
     pub(crate) kinetics_kind: MorphogenesisKineticsKind,
     pub(crate) overlay_mode: SurfaceOverlayMode,
     pub(crate) interaction_mode: ViewportInteractionMode,
@@ -144,7 +144,7 @@ impl Default for SurfaceMorphogenesisTool {
         // Zero PDE steps and zero surface evaluations in Default::default()
         let camera = Camera3D::new(0.55, 0.50, 1.0);
         Self {
-            surface_type: SurfaceType::Torus,
+            surface_type: ParametricSurfaceKind::Torus,
             kinetics_kind: MorphogenesisKineticsKind::Schnakenberg,
             overlay_mode: SurfaceOverlayMode::MorphogenConcentration,
             interaction_mode: ViewportInteractionMode::OrbitCamera,
@@ -200,18 +200,22 @@ impl SurfaceMorphogenesisTool {
 
     pub(super) fn create_base_surface(&self) -> Box<dyn ParametricSurface> {
         match self.surface_type {
-            SurfaceType::Sphere => Box::new(Sphere {
+            ParametricSurfaceKind::Sphere => Box::new(Sphere {
                 radius: self.sphere_radius,
             }),
-            SurfaceType::Torus => Box::new(Torus {
+            ParametricSurfaceKind::Torus => Box::new(Torus {
                 major_radius: self.torus_major_radius,
                 minor_radius: self.torus_minor_radius,
             }),
-            SurfaceType::KleinBottle => Box::new(KleinBottle {
+            ParametricSurfaceKind::KleinBottle => Box::new(KleinBottle {
                 radius: self.klein_radius,
             }),
-            SurfaceType::CustomHeightfield => Box::new(self.custom_sandbox.build_heightfield()),
-            SurfaceType::CustomParametric => Box::new(self.custom_sandbox.build_parametric()),
+            ParametricSurfaceKind::CustomHeightfield => {
+                Box::new(self.custom_sandbox.build_heightfield())
+            }
+            ParametricSurfaceKind::CustomParametric => {
+                Box::new(self.custom_sandbox.build_parametric())
+            }
         }
     }
 
@@ -221,13 +225,13 @@ impl SurfaceMorphogenesisTool {
         self.clamped_u_res().hash(&mut h);
         self.clamped_v_res().hash(&mut h);
         match self.surface_type {
-            SurfaceType::Sphere => canonical_bits(self.sphere_radius).hash(&mut h),
-            SurfaceType::Torus => {
+            ParametricSurfaceKind::Sphere => canonical_bits(self.sphere_radius).hash(&mut h),
+            ParametricSurfaceKind::Torus => {
                 canonical_bits(self.torus_major_radius).hash(&mut h);
                 canonical_bits(self.torus_minor_radius).hash(&mut h);
             }
-            SurfaceType::KleinBottle => canonical_bits(self.klein_radius).hash(&mut h),
-            SurfaceType::CustomHeightfield | SurfaceType::CustomParametric => {
+            ParametricSurfaceKind::KleinBottle => canonical_bits(self.klein_radius).hash(&mut h),
+            ParametricSurfaceKind::CustomHeightfield | ParametricSurfaceKind::CustomParametric => {
                 self.custom_sandbox
                     .state_fingerprint(self.surface_type)
                     .hash(&mut h);

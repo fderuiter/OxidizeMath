@@ -31,7 +31,7 @@ fn surface_viewer_custom_heightfield_and_obj_export_work() {
 #[test]
 fn surface_viewer_custom_parametric_union_parameter_cap_preserves_valid_mesh() {
     let mut tool = SurfaceViewer {
-        surface_type: SurfaceType::CustomParametric,
+        surface_type: ParametricSurfaceKind::CustomParametric,
         ..Default::default()
     };
     let baseline_pos = tool.custom_sandbox.build_parametric().position(0.5, 0.5);
@@ -146,11 +146,11 @@ fn surface_viewer_watertight_3d_exports_for_all_surface_types() {
         ..Default::default()
     };
     for (stype, expected_chi) in [
-        (SurfaceType::Sphere, 2),
-        (SurfaceType::Torus, 0),
-        (SurfaceType::KleinBottle, 0),
-        (SurfaceType::CustomHeightfield, 2),
-        (SurfaceType::CustomParametric, 0),
+        (ParametricSurfaceKind::Sphere, 2),
+        (ParametricSurfaceKind::Torus, 0),
+        (ParametricSurfaceKind::KleinBottle, 0),
+        (ParametricSurfaceKind::CustomHeightfield, 2),
+        (ParametricSurfaceKind::CustomParametric, 0),
     ] {
         tool.surface_type = stype;
         let mesh = tool
@@ -173,7 +173,7 @@ fn surface_viewer_watertight_3d_exports_for_all_surface_types() {
 #[test]
 fn surface_viewer_custom_domain_bounds_mesh_obj_and_state_roundtrip() {
     let mut tool = SurfaceViewer {
-        surface_type: SurfaceType::CustomHeightfield,
+        surface_type: ParametricSurfaceKind::CustomHeightfield,
         u_resolution: 10,
         v_resolution: 10,
         ..Default::default()
@@ -182,7 +182,11 @@ fn surface_viewer_custom_domain_bounds_mesh_obj_and_state_roundtrip() {
         .heightfield_bar
         .set_expression("x + 2 * y");
     tool.custom_sandbox
-        .set_uv_bounds(SurfaceType::CustomHeightfield, [1.0, 5.0], [-3.0, 4.0])
+        .set_uv_bounds(
+            ParametricSurfaceKind::CustomHeightfield,
+            [1.0, 5.0],
+            [-3.0, 4.0],
+        )
         .expect("valid domain bounds");
 
     let obj = tool.build_obj_string();
@@ -195,7 +199,7 @@ fn surface_viewer_custom_domain_bounds_mesh_obj_and_state_roundtrip() {
     assert_eq!(
         restored
             .custom_sandbox
-            .uv_domain_for(SurfaceType::CustomHeightfield),
+            .uv_domain_for(ParametricSurfaceKind::CustomHeightfield),
         ((1.0, 5.0), (-3.0, 4.0))
     );
     restored.populate_scene(egui::Color32::WHITE);
@@ -205,7 +209,11 @@ fn surface_viewer_custom_domain_bounds_mesh_obj_and_state_roundtrip() {
         .is_empty());
     assert!(tool
         .custom_sandbox
-        .set_uv_bounds(SurfaceType::CustomHeightfield, [4.0, 1.0], [-1.0, 1.0])
+        .set_uv_bounds(
+            ParametricSurfaceKind::CustomHeightfield,
+            [4.0, 1.0],
+            [-1.0, 1.0],
+        )
         .is_err());
 }
 

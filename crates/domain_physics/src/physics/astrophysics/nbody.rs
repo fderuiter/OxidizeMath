@@ -42,6 +42,7 @@ const BODY_MASS_PAIR: [(usize, usize); 3] = [(0, 1), (0, 2), (1, 2)];
 /// assert!(sys.relative_energy_error(&state, e0) < 1e-8);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FigureEightThreeBody {
     /// Masses $[m_1, m_2, m_3]$ of the three bodies.
     pub masses: [f64; 3],

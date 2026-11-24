@@ -1,11 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::super::custom_surface::SurfaceType;
 use super::SurfaceViewer;
 use eframe::egui;
 use egui_plot::LineStyle;
 use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::pure_math::differential_geometry::surface::ParametricSurface;
+use math_explorer::pure_math::differential_geometry::surface::{
+    ParametricSurface, ParametricSurfaceKind,
+};
 use nalgebra::Point3;
 use std::hash::{Hash as _, Hasher as _};
 
@@ -39,13 +40,13 @@ impl SurfaceViewer {
         }
         (self.surface_type as u8).hash(&mut h);
         match self.surface_type {
-            SurfaceType::Sphere => canonical_bits(self.sphere_radius).hash(&mut h),
-            SurfaceType::Torus => {
+            ParametricSurfaceKind::Sphere => canonical_bits(self.sphere_radius).hash(&mut h),
+            ParametricSurfaceKind::Torus => {
                 canonical_bits(self.torus_major_radius).hash(&mut h);
                 canonical_bits(self.torus_minor_radius).hash(&mut h);
             }
-            SurfaceType::KleinBottle => canonical_bits(self.klein_radius).hash(&mut h),
-            SurfaceType::CustomHeightfield | SurfaceType::CustomParametric => {
+            ParametricSurfaceKind::KleinBottle => canonical_bits(self.klein_radius).hash(&mut h),
+            ParametricSurfaceKind::CustomHeightfield | ParametricSurfaceKind::CustomParametric => {
                 self.custom_sandbox
                     .state_fingerprint(self.surface_type)
                     .hash(&mut h);

@@ -1,12 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::super::custom_surface::SurfaceType;
-use super::{CurvatureHeatmap, CurvatureType};
+use super::CurvatureHeatmap;
 use eframe::egui;
 use egui_plot::LineStyle;
 use math_commons::math_kernel::colormap::mapped_gradient;
 use math_explorer::pure_math::differential_geometry::surface::{
-    KleinBottle, ParametricSurface, Sphere, SurfaceAnalysis, Torus,
+    CurvatureKind, KleinBottle, ParametricSurface, ParametricSurfaceKind, Sphere, SurfaceAnalysis,
+    Torus,
 };
 use nalgebra::Point3;
 use std::hash::{Hash as _, Hasher as _};
@@ -43,13 +43,13 @@ impl CurvatureHeatmap {
         self.u_resolution.hash(&mut h);
         self.v_resolution.hash(&mut h);
         match self.surface_type {
-            SurfaceType::Sphere => canonical_bits(self.sphere_radius).hash(&mut h),
-            SurfaceType::Torus => {
+            ParametricSurfaceKind::Sphere => canonical_bits(self.sphere_radius).hash(&mut h),
+            ParametricSurfaceKind::Torus => {
                 canonical_bits(self.torus_major_radius).hash(&mut h);
                 canonical_bits(self.torus_minor_radius).hash(&mut h);
             }
-            SurfaceType::KleinBottle => canonical_bits(self.klein_radius).hash(&mut h),
-            SurfaceType::CustomHeightfield | SurfaceType::CustomParametric => {
+            ParametricSurfaceKind::KleinBottle => canonical_bits(self.klein_radius).hash(&mut h),
+            ParametricSurfaceKind::CustomHeightfield | ParametricSurfaceKind::CustomParametric => {
                 self.custom_sandbox
                     .state_fingerprint(self.surface_type)
                     .hash(&mut h);
@@ -64,7 +64,7 @@ impl CurvatureHeatmap {
         let v_res = self.v_resolution;
         let ctype = self.curvature_type;
         let (pos, curv, min_k, max_k) = match self.surface_type {
-            SurfaceType::Sphere => sample_positions_and_curvature(
+            ParametricSurfaceKind::Sphere => sample_positions_and_curvature(
                 &Sphere {
                     radius: self.sphere_radius,
                 },
@@ -73,7 +73,7 @@ impl CurvatureHeatmap {
                 v_res,
                 ctype,
             ),
-            SurfaceType::Torus => sample_positions_and_curvature(
+            ParametricSurfaceKind::Torus => sample_positions_and_curvature(
                 &Torus {
                     major_radius: self.torus_major_radius,
                     minor_radius: self.torus_minor_radius,
@@ -83,7 +83,7 @@ impl CurvatureHeatmap {
                 v_res,
                 ctype,
             ),
-            SurfaceType::KleinBottle => sample_positions_and_curvature(
+            ParametricSurfaceKind::KleinBottle => sample_positions_and_curvature(
                 &KleinBottle {
                     radius: self.klein_radius,
                 },
@@ -92,14 +92,14 @@ impl CurvatureHeatmap {
                 v_res,
                 ctype,
             ),
-            SurfaceType::CustomHeightfield => sample_positions_and_curvature(
+            ParametricSurfaceKind::CustomHeightfield => sample_positions_and_curvature(
                 &self.custom_sandbox.build_heightfield(),
                 uv,
                 u_res,
                 v_res,
                 ctype,
             ),
-            SurfaceType::CustomParametric => sample_positions_and_curvature(
+            ParametricSurfaceKind::CustomParametric => sample_positions_and_curvature(
                 &self.custom_sandbox.build_parametric(),
                 uv,
                 u_res,
@@ -195,7 +195,7 @@ fn sample_positions_and_curvature<T: ParametricSurface>(
     uv_domain: ((f64, f64), (f64, f64)),
     u_res: usize,
     v_res: usize,
-    curvature_type: CurvatureType,
+    curvature_type: CurvatureKind,
 ) -> (Vec<Point3<f64>>, Vec<f64>, f64, f64) {
     let ((u_min, u_max), (v_min, v_max)) = uv_domain;
     let total = (u_res + 1) * (v_res + 1);
@@ -210,8 +210,8 @@ fn sample_positions_and_curvature<T: ParametricSurface>(
             let v = v_min + (v_max - v_min) * (j as f64 / v_res.max(1) as f64);
             positions.push(surface.position(u, v));
             let raw = match curvature_type {
-                CurvatureType::Gaussian => surface.gaussian_curvature(u, v),
-                CurvatureType::Mean => surface.mean_curvature(u, v),
+                CurvatureKind::Gaussian => surface.gaussian_curvature(u, v),
+                CurvatureKind::Mean => surface.mean_curvature(u, v),
             };
             let c = if raw.is_finite() {
                 raw.clamp(-1e4, 1e4)

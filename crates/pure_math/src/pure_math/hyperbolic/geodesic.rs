@@ -8,6 +8,7 @@ use std::f64::consts::{PI, TAU};
 
 /// Exact geodesic representation on the Poincaré disk $\overline{\mathbb{D}}$.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GeodesicDisk {
     /// Euclidean diameter passing through the origin along `unit_dir` ($|u| = 1$).
     Diameter {
@@ -137,6 +138,7 @@ pub fn sample_disk_geodesic_into(z1: Complex64, z2: Complex64, out: &mut [[f64; 
 
 /// Exact geodesic representation on the upper half-plane $\mathbb{H}$.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GeodesicHalfPlane {
     /// Vertical Euclidean ray/line $u = x_0$.
     VerticalLine {
@@ -219,6 +221,7 @@ pub fn sample_half_plane_geodesic_into(
 
 /// Euclidean circle in $\mathbb{D}$ tangent to $\partial\mathbb{D}$ at an ideal basepoint $\xi = e^{i\theta}$.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HorocycleDisk {
     /// Unit ideal tangency point $\xi \in \partial\mathbb{D}$ ($|\xi| = 1$).
     pub ideal_base: Complex64,
@@ -230,6 +233,7 @@ pub struct HorocycleDisk {
 
 /// Upper half-plane image of a horocycle under the Cayley transform.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum HorocycleHalfPlane {
     /// Horizontal line $\operatorname{Im}(w) = h > 0$ (when the ideal basepoint is at $\infty$, i.e. $\xi = 1$).
     HorizontalLine {

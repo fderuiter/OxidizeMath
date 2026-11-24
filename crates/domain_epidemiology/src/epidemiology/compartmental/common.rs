@@ -3,7 +3,7 @@ use crate::error::EpidemiologyError;
 /// Validates that a population count is strictly positive.
 #[verified_engine::verified]
 pub fn validate_population(n: f64) -> Result<(), EpidemiologyError> {
-    if n <= 0.0 {
+    if !n.is_finite() || n <= 0.0 {
         return Err(EpidemiologyError::InvalidParameter {
             name: "n (population)".to_string(),
             value: n,
@@ -15,7 +15,7 @@ pub fn validate_population(n: f64) -> Result<(), EpidemiologyError> {
 /// Validates that the initial infected count is within [0, n].
 #[verified_engine::verified]
 pub fn validate_initial_infected(i0: f64, n: f64) -> Result<(), EpidemiologyError> {
-    if i0 < 0.0 || i0 > n {
+    if !i0.is_finite() || i0 < 0.0 || i0 > n {
         return Err(EpidemiologyError::InvalidParameter {
             name: "i0 (initial infected)".to_string(),
             value: i0,
@@ -27,7 +27,7 @@ pub fn validate_initial_infected(i0: f64, n: f64) -> Result<(), EpidemiologyErro
 /// Validates that a rate parameter is non-negative.
 #[verified_engine::verified]
 pub fn validate_rate(name: &str, value: f64) -> Result<(), EpidemiologyError> {
-    if value < 0.0 {
+    if !value.is_finite() || value < 0.0 {
         return Err(EpidemiologyError::InvalidParameter {
             name: name.to_string(),
             value,

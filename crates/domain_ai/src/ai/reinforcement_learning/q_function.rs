@@ -6,7 +6,7 @@ use std::hash::Hash;
 ///
 /// Stores Q-values for discrete (State, Action) pairs.
 /// The default Q-value for unseen pairs is 0.0.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TabularQFunction<S, A>
 where
     S: State + Hash + Eq,
@@ -66,14 +66,57 @@ where
     }
 }
 
+#[cfg(feature = "serde")]
+impl<S, A> serde::Serialize for TabularQFunction<S, A>
+where
+    S: State + Hash + Eq + serde::Serialize,
+    A: Action + Hash + Eq + serde::Serialize,
+{
+    fn serialize<Ser>(&self, serializer: Ser) -> Result<Ser::Ok, Ser::Error>
+    where
+        Ser: serde::Serializer,
+    {
+        use serde::ser::SerializeSeq;
+        let mut seq = serializer.serialize_seq(Some(self.table.len()))?;
+        for ((state, action), value) in &self.table {
+            seq.serialize_element(&(state, action, value))?;
+        }
+        seq.end()
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, S, A> serde::Deserialize<'de> for TabularQFunction<S, A>
+where
+    S: State + Hash + Eq + serde::Deserialize<'de>,
+    A: Action + Hash + Eq + serde::Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let entries = Vec::<(S, A, f64)>::deserialize(deserializer)?;
+        let mut table = HashMap::with_capacity(entries.len());
+        for (state, action, value) in entries {
+            if !value.is_finite() {
+                return Err(serde::de::Error::custom("Q-table values must be finite"));
+            }
+            table.insert((state, action), value);
+        }
+        Ok(Self { table })
+    }
+}
+
 /// Zero-copy discretized state index for fixed-capacity tabular reinforcement learning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DiscreteState(pub usize);
 
 impl State for DiscreteState {}
 
 /// Zero-copy discretized action index for fixed-capacity tabular reinforcement learning.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DiscreteAction(pub usize);
 
 impl Action for DiscreteAction {}

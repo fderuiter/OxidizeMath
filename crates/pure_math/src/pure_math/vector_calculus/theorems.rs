@@ -3,6 +3,8 @@ use super::operators::divergence;
 use nalgebra::Vector3;
 
 /// A rectangular domain in the coordinate space defined by min and max bounds.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Domain {
     #[allow(missing_docs)]
     pub min: Vector3<f64>,

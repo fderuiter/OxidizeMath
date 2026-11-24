@@ -10,6 +10,7 @@ use pure_math::pure_math::analysis::ode::ArrayState;
 
 /// Transverse directional filter for Poincaré hyperplane crossings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CrossingDirection {
     /// Trigger when the section coordinate crosses from $\le c$ to $> c$ with positive slope.
     #[default]
@@ -22,6 +23,7 @@ pub enum CrossingDirection {
 
 /// Interpolated phase-space state at an exact Poincaré hyperplane intersection.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PoincareCrossing<const N: usize> {
     /// Interpolated crossing timestamp $t^* = t_0 + s^* \Delta t$.
     pub time: f64,
@@ -65,6 +67,7 @@ pub struct PoincareCrossing<const N: usize> {
 /// assert!(crossings >= 1);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PoincareSection<const N: usize> {
     /// Index of the state coordinate defining the hyperplane $y[\text{plane\_index}] = \text{plane\_value}$.
     pub plane_index: usize,

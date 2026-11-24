@@ -3,10 +3,12 @@
 use super::core::{EloConfig, EloRating, Venue};
 use super::update::elo_rating_delta;
 use crate::error::EloError;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// Head-to-head match outcome within a multi-club Elo schedule or rating period.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct EloBatchMatch {
     /// Index of the first (home) club in the roster slice.
     pub home_team: usize,
@@ -79,6 +81,7 @@ impl EloBatchMatch {
     }
 }
 
+#[cfg(feature = "serde")]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawEloBatchMatch {
@@ -89,6 +92,7 @@ struct RawEloBatchMatch {
     venue: Venue,
 }
 
+#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for EloBatchMatch {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let raw = RawEloBatchMatch::deserialize(deserializer)?;

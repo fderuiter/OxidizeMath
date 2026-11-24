@@ -24,7 +24,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// assert_eq!(snapshot.arithmetic_ops, 4);
 /// assert_eq!(snapshot.memory_loads, 2);
 /// ```
-#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ComplexityMetrics {
     /// Total binary arithmetic and bitwise operations executed inside `#[verified]` blocks.
     pub arithmetic_ops: u64,

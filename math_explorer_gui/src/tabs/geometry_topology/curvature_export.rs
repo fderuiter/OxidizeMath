@@ -8,7 +8,7 @@ use super::super::export_utils::{
     is_standard_tau_domain, periodic_surface_to_manifold_mesh, polar_surface_to_manifold_mesh,
     DEFAULT_WALL_THICKNESS,
 };
-use super::{CurvatureHeatmap, CurvatureType, SurfaceType};
+use super::{CurvatureHeatmap, CurvatureKind, ParametricSurfaceKind};
 use math_commons::math_kernel::colormap::mapped_gradient;
 use math_explorer::pure_math::differential_geometry::surface::{
     KleinBottle, ParametricSurface, Sphere, SurfaceAnalysis, Torus,
@@ -45,13 +45,13 @@ fn map_curvatures_to_colors(values: &[f64]) -> Vec<VertexColor> {
 
 fn eval_curvature<S: SurfaceAnalysis>(
     surface: &S,
-    curvature_type: CurvatureType,
+    curvature_type: CurvatureKind,
     u: f64,
     v: f64,
 ) -> f64 {
     let c = match curvature_type {
-        CurvatureType::Gaussian => surface.gaussian_curvature(u, v),
-        CurvatureType::Mean => surface.mean_curvature(u, v),
+        CurvatureKind::Gaussian => surface.gaussian_curvature(u, v),
+        CurvatureKind::Mean => surface.mean_curvature(u, v),
     };
     if c.is_finite() {
         c.clamp(-1e4, 1e4)
@@ -66,7 +66,7 @@ impl CurvatureHeatmap {
         let nv = clamp_grid_res(self.v_resolution);
         let (u_range, v_range) = self.custom_sandbox.uv_domain_for(self.surface_type);
         match self.surface_type {
-            SurfaceType::Sphere => self.build_surface_colored_mesh(
+            ParametricSurfaceKind::Sphere => self.build_surface_colored_mesh(
                 &Sphere {
                     radius: self.sphere_radius,
                 },
@@ -75,7 +75,7 @@ impl CurvatureHeatmap {
                 nu,
                 nv,
             ),
-            SurfaceType::Torus => self.build_surface_colored_mesh(
+            ParametricSurfaceKind::Torus => self.build_surface_colored_mesh(
                 &Torus {
                     major_radius: self.torus_major_radius,
                     minor_radius: self.torus_minor_radius,
@@ -85,7 +85,7 @@ impl CurvatureHeatmap {
                 nu,
                 nv,
             ),
-            SurfaceType::KleinBottle => self.build_surface_colored_mesh(
+            ParametricSurfaceKind::KleinBottle => self.build_surface_colored_mesh(
                 &KleinBottle {
                     radius: self.klein_radius,
                 },
@@ -94,14 +94,14 @@ impl CurvatureHeatmap {
                 nu,
                 nv,
             ),
-            SurfaceType::CustomHeightfield => self.build_surface_colored_mesh(
+            ParametricSurfaceKind::CustomHeightfield => self.build_surface_colored_mesh(
                 &self.custom_sandbox.build_heightfield(),
                 u_range,
                 v_range,
                 nu,
                 nv,
             ),
-            SurfaceType::CustomParametric => self.build_surface_colored_mesh(
+            ParametricSurfaceKind::CustomParametric => self.build_surface_colored_mesh(
                 &self.custom_sandbox.build_parametric(),
                 u_range,
                 v_range,

@@ -70,9 +70,9 @@ impl Default for CapacityFadeTool {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CapacityFadeState {
-    dod: f64,
+    dod: DepthOfDischarge,
     temperature: f64,
-    cycles_to_simulate: f64,
+    cycles_to_simulate: Cycles,
     #[serde(default, skip_serializing_if = "ChemistryChoice::is_default")]
     chemistry: ChemistryChoice,
     #[serde(default = "default_c_rate", skip_serializing_if = "is_default_c_rate")]
@@ -180,9 +180,9 @@ impl InteractiveTool for CapacityFadeTool {
             None
         };
         serde_json::to_string(&CapacityFadeState {
-            dod: self.dod,
+            dod: DepthOfDischarge::new(self.dod).ok()?,
             temperature: self.temperature,
-            cycles_to_simulate: self.cycles_to_simulate,
+            cycles_to_simulate: Cycles::new(self.cycles_to_simulate).ok()?,
             chemistry: self.chemistry,
             c_rate: self.c_rate,
             exponent_z: custom_z,
@@ -196,9 +196,9 @@ impl InteractiveTool for CapacityFadeTool {
             serde_json::from_str(state).map_err(|e| format!("Invalid capacity fade state: {e}"))?;
         validate_capacity_fade_state(&s)?;
         let preset = s.chemistry.to_preset();
-        self.dod = s.dod;
+        self.dod = s.dod.as_f64();
         self.temperature = s.temperature;
-        self.cycles_to_simulate = s.cycles_to_simulate;
+        self.cycles_to_simulate = s.cycles_to_simulate.as_f64();
         self.chemistry = s.chemistry;
         self.c_rate = s.c_rate;
         self.exponent_z = s.exponent_z.unwrap_or_else(|| preset.default_exponent_z());
@@ -227,12 +227,12 @@ impl InteractiveTool for CapacityFadeTool {
 }
 
 fn validate_capacity_fade_state(s: &CapacityFadeState) -> Result<(), String> {
-    let basic_valid = s.dod.is_finite()
-        && (0.0..=100.0).contains(&s.dod)
+    let dod = s.dod.as_f64();
+    let cycles = s.cycles_to_simulate.as_f64();
+    let basic_valid = (0.0..=100.0).contains(&dod)
         && s.temperature.is_finite()
         && (MIN_TEMPERATURE_C..=MAX_TEMPERATURE_C).contains(&s.temperature)
-        && s.cycles_to_simulate.is_finite()
-        && (100.0..=10_000.0).contains(&s.cycles_to_simulate)
+        && (100.0..=10_000.0).contains(&cycles)
         && s.c_rate.is_finite()
         && (MIN_C_RATE..=MAX_C_RATE).contains(&s.c_rate);
     if !basic_valid {

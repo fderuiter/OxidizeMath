@@ -17,6 +17,7 @@ pub const MAX_BAREISS_CELLS: usize = 25;
 
 /// Errors returned by Abelian sandpile lattice and group operations.
 #[derive(Error, Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SandpileError {
     /// Grid width or height is zero or exceeds the interactive bound.
     #[error("sandpile dimensions {width}x{height} must each lie in 1..={max_dim}")]

@@ -5,7 +5,8 @@
 /// * `g1`: Coupling for U(1)_Y (Hypercharge).
 /// * `g2`: Coupling for SU(2)_L (Weak Isospin).
 /// * `gs`: Coupling for SU(3)_C (Strong Color).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GaugeCouplings {
     #[allow(missing_docs)]
     pub g1: f64,

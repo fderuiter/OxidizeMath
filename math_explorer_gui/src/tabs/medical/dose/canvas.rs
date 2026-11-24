@@ -20,7 +20,7 @@ use eframe::egui::{
 use egui_plot::{Line, Plot, PlotImage, PlotPoint, PlotPoints, PlotUi, Points, Polygon, Text};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::physics::medical::dose::kernel::{DoseKernel, ExponentialKernel};
+use math_explorer::physics::medical::dose::kernel::DoseKernel;
 
 /// Radius in phantom centimeters at which the 4 coplanar gantry handles orbit isocenter.
 pub const GANTRY_HANDLE_RADIUS_CM: f64 = 8.6;
@@ -37,7 +37,7 @@ pub(crate) fn compute_dose_image_for_contrast(
     }
     let (width, height) = (tool.width.max(1), tool.height.max(1));
     let mut pixels = vec![Color32::BLACK; width * height];
-    let kernel = ExponentialKernel::new(tool.amplitude, tool.beta);
+    let kernel = tool.kernel;
     let (dx, dy) = (
         IMRT_PHANTOM_SIZE_CM / width as f64,
         IMRT_PHANTOM_SIZE_CM / height as f64,
@@ -180,7 +180,7 @@ fn update_focus_and_a11y(tool: &mut DoseCalculationTool, ui: &mut egui::Ui, resp
     } else {
         format!(
             "Point-source exponential dose kernel A={:.1}, beta={:.2}",
-            tool.amplitude, tool.beta
+            tool.kernel.amplitude, tool.kernel.beta
         )
     };
     register_canvas_accessibility(

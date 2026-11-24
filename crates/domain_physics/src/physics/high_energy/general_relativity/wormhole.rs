@@ -11,9 +11,22 @@ use crate::error::HighEnergyError;
 /// Line element:
 /// $$ds^2 = -d(ct)^2 + dl^2 + \left(b_0^2 + l^2\right) d\varphi^2$$
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MorrisThorneWormhole {
     /// Minimum areal radius $b_0 > 0$ at the wormhole throat $l = 0$.
     pub throat_radius: f64,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for MorrisThorneWormhole {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Wire {
+            throat_radius: f64,
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        Self::new(wire.throat_radius).map_err(serde::de::Error::custom)
+    }
 }
 
 impl MorrisThorneWormhole {

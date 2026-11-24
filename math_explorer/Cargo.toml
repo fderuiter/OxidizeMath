@@ -38,6 +38,23 @@ biology = ["applied", "pure_math", "dep:domain_biology"]
 climate = ["ai", "pure_math", "dep:domain_climate"]
 epidemiology = ["pure_math", "dep:domain_epidemiology"]
 physics = ["applied", "pure_math", "dep:domain_physics"]
+serde = [
+    "math_commons/serde",
+    "diagnostics/serde",
+    "scientific_metadata/serde",
+    "verified_engine/serde",
+    "pure_math?/serde",
+    "domain_applied?/serde",
+    "domain_ai?/serde",
+    "domain_physics?/serde",
+    "domain_biology?/serde",
+    "domain_climate?/serde",
+    "domain_epidemiology?/serde",
+    "oxidize_core?/serde",
+    "nalgebra?/serde-serialize",
+    "num-complex?/serde",
+    "petgraph?/serde-1",
+]
 
 [dev-dependencies]
 approx = { workspace = true }

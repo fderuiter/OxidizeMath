@@ -12,6 +12,7 @@ const DEFAULT_RADII_SCRATCH_CAP: usize = 512;
 
 /// Summary of simplex counts and Betti numbers at a single filtration radius.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FiltrationStepSummary {
     /// Connected components (`β₀`).
     pub beta0: usize,

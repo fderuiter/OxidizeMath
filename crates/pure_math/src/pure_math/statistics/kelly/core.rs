@@ -2,7 +2,6 @@
 
 use crate::error::KellyError;
 pub use math_commons::primitives::UnitInterval;
-use serde::{Deserialize, Deserializer, Serialize};
 
 const MAX_CONTINUED_FRACTION_STEPS: usize = 96;
 
@@ -104,8 +103,9 @@ fn rationalize_positive(target: f64, bound: u64) -> (u64, u64) {
 /// - American odds: `Odds::from_american()` / `Odds::to_american()`
 /// - Fractional odds: `Odds::from_fractional()` / `Odds::to_fractional()`
 /// - Implied probability: `Odds::from_implied_probability()` / `Odds::implied_probability()`
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct Odds(f64);
 
 impl Odds {
@@ -319,8 +319,9 @@ impl Odds {
     }
 }
 
-impl<'de> Deserialize<'de> for Odds {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Odds {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = f64::deserialize(deserializer)?;
         Self::new(value).map_err(serde::de::Error::custom)
     }
@@ -329,8 +330,9 @@ impl<'de> Deserialize<'de> for Odds {
 /// Bankroll fraction to bet (must be finite and in `[0.0, 1.0]`).
 ///
 /// Represents what fraction of the total bankroll to wager.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct BankrollFraction(f64);
 
 impl BankrollFraction {
@@ -388,8 +390,9 @@ impl BankrollFraction {
     }
 }
 
-impl<'de> Deserialize<'de> for BankrollFraction {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for BankrollFraction {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = f64::deserialize(deserializer)?;
         Self::new(value).map_err(serde::de::Error::custom)
     }

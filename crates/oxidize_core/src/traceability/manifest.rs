@@ -1,10 +1,10 @@
 //! Serializable manifest envelope and verification certificate schemas for traceability snapshots.
 
 use super::TraceabilityReport;
-use serde::{Deserialize, Serialize};
 
 /// Deserializable schema matching `Verification_Certificate.json`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct VerificationCertificate {
     /// Percentage of native Rust lines executed under `cargo llvm-cov`.
     pub native_execution_coverage_pct: f64,
@@ -21,13 +21,17 @@ pub struct VerificationCertificate {
 }
 
 /// Deserializable web and desktop manifest envelope flattening [`TraceabilityReport`] with optional certificate metadata.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TraceabilityManifestPayload {
     /// Workspace traceability report containing paper coverage, AST counts, and semantic integrity status.
-    #[serde(flatten)]
+    #[cfg_attr(feature = "serde", serde(flatten))]
     pub report: TraceabilityReport,
     /// Optional precomputed verification certificate embedded alongside the traceability report.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Option::is_none")
+    )]
     pub certificate: Option<VerificationCertificate>,
 }
 
@@ -64,8 +68,11 @@ mod core_tests {
 
 #[cfg(all(test, feature = "ast-analysis"))]
 mod tests {
+    #[cfg(feature = "serde")]
     use super::{TraceabilityManifestPayload, VerificationCertificate};
-    use crate::traceability::{TraceabilityEngine, TraceabilityReport};
+    use crate::traceability::TraceabilityEngine;
+    #[cfg(feature = "serde")]
+    use crate::traceability::TraceabilityReport;
     use crate::vfs::VirtualFileSystem;
     use std::collections::HashMap;
     use std::future::Future;
@@ -106,6 +113,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn manifest_payload_roundtrips_with_and_without_certificate() {
         let mut report = TraceabilityReport {

@@ -20,6 +20,7 @@ pub const PROBE_DOWNSAMPLE: f64 = 0.5;
 
 /// Qualitative dynamical outcome of a 24-step `32x32` Lenia soliton probe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LeniaProbeOutcome {
     /// Initial soliton decays toward the homogeneous zero vacuum ($A \to 0$).
     Extinction,
@@ -33,6 +34,7 @@ pub enum LeniaProbeOutcome {
 
 /// Quantitative summary emitted by [`evaluate_lenia_probe_32`].
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LeniaProbeSummary {
     /// Classified qualitative viability regime.
     pub outcome: LeniaProbeOutcome,

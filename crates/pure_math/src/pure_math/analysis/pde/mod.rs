@@ -1,6 +1,7 @@
 /// Classification of Second-Order Linear PDEs.
 /// Based on $B^2 - 4AC$.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PdeClassification {
     #[allow(missing_docs)]
     Elliptic,
@@ -14,6 +15,8 @@ pub enum PdeClassification {
 
 /// Represents the coefficients of a general 2nd order linear PDE:
 /// $A u_{xx} + B u_{xy} + C u_{yy} + D u_x + E u_y + F u = G$
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SecondOrderLinearPde2D {
     #[allow(missing_docs)]
     pub a: f64,

@@ -10,6 +10,8 @@ use nalgebra::{DMatrix, RowDVector};
 /// This network is applied to each position separately and identically. It consists of
 /// two linear transformations with a ReLU activation in between.
 /// Formula: `FFN(x) = max(0, x * W1 + b1) * W2 + b2`
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FeedForward {
     /// Weight matrix for the first linear transformation.
     pub w1: DMatrix<f64>,

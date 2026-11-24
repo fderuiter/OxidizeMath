@@ -9,10 +9,10 @@ use super::{
 };
 use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{Camera3D, InteractiveTool};
-use crate::tabs::geometry_topology::custom_surface::SurfaceType;
 use crate::tabs::geometry_topology::export_utils::{
     DEFAULT_WALL_THICKNESS, MAX_WALL_THICKNESS, MIN_WALL_THICKNESS,
 };
+use math_explorer::pure_math::differential_geometry::surface::ParametricSurfaceKind;
 use std::collections::BTreeMap;
 
 pub(super) const fn default_wall_thickness() -> f64 {
@@ -54,7 +54,7 @@ pub(super) const fn default_steps() -> usize {
 
 #[derive(serde::Serialize)]
 pub(super) struct SurfaceMorphogenesisSaveState {
-    pub surface_type: SurfaceType,
+    pub surface_type: ParametricSurfaceKind,
     pub kinetics_kind: MorphogenesisKineticsKind,
     pub overlay_mode: SurfaceOverlayMode,
     pub sphere_radius: f64,
@@ -91,7 +91,7 @@ pub(super) struct SurfaceMorphogenesisSaveState {
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct SurfaceMorphogenesisLoadState {
-    pub surface_type: SurfaceType,
+    pub surface_type: ParametricSurfaceKind,
     #[serde(default)]
     pub kinetics_kind: MorphogenesisKineticsKind,
     #[serde(default)]

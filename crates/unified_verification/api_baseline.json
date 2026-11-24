@@ -8471,6 +8471,12 @@
   ],
   "crates/domain_physics/src/physics/solid_state/lattice.rs": [
     {
+      "signature": "impl BravaisLattice { pub const fn label (& self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum BravaisLattice"
+    },
+    {
       "signature": "pub struct BodyCenteredCubic"
     },
     {
@@ -9756,6 +9762,9 @@
     },
     {
       "signature": "pub fn bounded_sqrt (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub use serde as __serde"
     }
   ],
   "crates/math_commons/src/registry.rs": [
@@ -12571,7 +12580,16 @@
       "signature": "impl CompiledParametricSurface { pub fn new (_ : CompiledExpr , _ : CompiledExpr , _ : CompiledExpr , _ : & [f64] ,) -> Self }"
     },
     {
+      "signature": "impl ParametricSurfaceKind { pub const fn uv_domain (self) -> ((f64 , f64) , (f64 , f64)) }"
+    },
+    {
       "signature": "pub const MAX_SURFACE_PARAMS : usize"
+    },
+    {
+      "signature": "pub enum CurvatureKind"
+    },
+    {
+      "signature": "pub enum ParametricSurfaceKind"
     },
     {
       "signature": "pub struct CompiledHeightfieldSurface"

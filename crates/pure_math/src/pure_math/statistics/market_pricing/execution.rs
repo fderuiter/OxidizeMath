@@ -5,6 +5,7 @@ use crate::pure_math::statistics::kelly::{Odds, UnitInterval};
 
 /// Balanced or custom-stake spread/total middle analysis.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MiddleReport {
     /// Stake placed on Side A (e.g., Favorite `-2.5`).
     pub stake_a: f64,
@@ -31,7 +32,8 @@ pub struct MiddleReport {
 }
 
 /// Objective for hedging an open pre-game or futures ticket (`original_stake` at `original_odds`).
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum HedgeMode {
     /// Lock in identical guaranteed profit regardless of whether the original or hedge wins.
     EqualProfit,
@@ -41,6 +43,7 @@ pub enum HedgeMode {
 
 /// Live or futures hedge execution summary.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HedgeReport {
     /// Original sunk/committed stake `S_0`.
     pub original_stake: f64,

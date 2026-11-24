@@ -2,6 +2,7 @@
 
 use crate::error::MatchModelError;
 use math_commons::math_kernel::types::flatten_2d_index;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Default maximum goals per team (`0..=15`, `16 x 16 = 256` active cells).
@@ -226,6 +227,7 @@ impl ScoreGrid {
     }
 }
 
+#[cfg(feature = "serde")]
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ScoreGridWire {
@@ -234,6 +236,7 @@ struct ScoreGridWire {
     cells: Vec<f64>,
 }
 
+#[cfg(feature = "serde")]
 impl Serialize for ScoreGrid {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let side = self.max_goals + 1;
@@ -252,6 +255,7 @@ impl Serialize for ScoreGrid {
     }
 }
 
+#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for ScoreGrid {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let wire = ScoreGridWire::deserialize(deserializer)?;

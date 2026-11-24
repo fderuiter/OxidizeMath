@@ -23,6 +23,7 @@ pub const MAX_SWEEP_STEPS: usize = 16;
 
 /// Configuration for a seeded Monte Carlo composite win-ratio power sweep across arm sizes.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct PowerSweepConfig {
     /// Minimum sample size per arm ($n_{\min} \ge 2$).
     pub n_min: usize,
@@ -107,8 +108,40 @@ impl PowerSweepConfig {
     }
 }
 
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for PowerSweepConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct PowerSweepConfigRaw {
+            n_min: usize,
+            n_max: usize,
+            n_steps: usize,
+            replicates: usize,
+            censor_horizon: f64,
+            dropout_rate: f64,
+            sig_alpha: f64,
+        }
+        let raw = PowerSweepConfigRaw::deserialize(deserializer)?;
+        let cfg = Self {
+            n_min: raw.n_min,
+            n_max: raw.n_max,
+            n_steps: raw.n_steps,
+            replicates: raw.replicates,
+            censor_horizon: raw.censor_horizon,
+            dropout_rate: raw.dropout_rate,
+            sig_alpha: raw.sig_alpha,
+        };
+        cfg.validate().map_err(serde::de::Error::custom)?;
+        Ok(cfg)
+    }
+}
+
 /// Aggregated Monte Carlo power and tier waterfall metrics at a single per-arm sample size.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SampleSizePowerPoint {
     /// Subjects per arm ($N$).
     pub n_per_arm: usize,
@@ -130,6 +163,7 @@ pub struct SampleSizePowerPoint {
 
 /// Output report from a deterministic `BivariateWeibullModel` power sweep.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PowerSweepReport {
     /// Theoretical uncensored win ratio $PR_W = \theta^{-\alpha}$.
     pub theoretical_uncensored_wr: f64,

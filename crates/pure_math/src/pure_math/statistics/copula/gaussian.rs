@@ -60,6 +60,8 @@ pub(crate) fn evaluate_copula_cdf(
 /// let joint_prob = copula.cdf(&[u1, u2]).unwrap();
 /// assert!(joint_prob.value() < 0.01 * 0.60);
 /// ```
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GaussianCopula {
     correlation: CorrelationMatrix,
 }

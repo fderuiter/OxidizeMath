@@ -143,6 +143,7 @@ where
 
 /// Parameters governing the continuous Gaussian growth mapping $G(u; \mu, \sigma)$.
 #[derive(Debug, Clone, Copy, PartialEq, Theory)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[theory(
     description = "Gaussian growth response curve mapping neighborhood potential u to local growth rate in [-1, 1].",
     citation = "Chan, B. W.-C. (2019). Lenia: Biology of Artificial Life. Complex Systems, 28(3), 251-286."
@@ -460,3 +461,6 @@ impl Default for KernelShells {
         Self::new(13.0, &[1.0])
     }
 }
+
+#[cfg(feature = "serde")]
+mod serde_support;

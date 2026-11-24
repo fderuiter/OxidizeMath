@@ -37,6 +37,8 @@ pub fn ca_cfar_noise_level(reference_cells: &[f64]) -> f64 {
 ///
 /// The "Elliptical" name refers to the decision boundary in the complex plane,
 /// but essentially this acts as a high-pass filter to remove the stationary component.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EllipticalFilter {
     /// Sliding window of signal history.
     history: VecDeque<Complex<f64>>,

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum EpidemiologyError {
     /// Matrix V (Transition Matrix) is singular and cannot be inverted.

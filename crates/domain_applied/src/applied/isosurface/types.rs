@@ -4,6 +4,7 @@ pub use oxidize_core::mesh::{Mesh, Point3D};
 ///
 /// The grid data is stored in a flat vector, indexed by `z * width * height + y * width + x`.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct VoxelGrid {
     /// Number of voxels along the X axis.
     width: usize,
@@ -20,7 +21,49 @@ pub struct VoxelGrid {
     origin: Point3D,
 }
 
-#[derive(Debug)]
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for VoxelGrid {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct VoxelGridRaw {
+            width: usize,
+            height: usize,
+            depth: usize,
+            data: Vec<f32>,
+            voxel_size: Point3D,
+            origin: Point3D,
+        }
+        let raw = VoxelGridRaw::deserialize(deserializer)?;
+        if ![
+            raw.voxel_size.x,
+            raw.voxel_size.y,
+            raw.voxel_size.z,
+            raw.origin.x,
+            raw.origin.y,
+            raw.origin.z,
+        ]
+        .into_iter()
+        .all(f32::is_finite)
+        {
+            return Err(serde::de::Error::custom(
+                "VoxelGrid voxel_size and origin must be finite",
+            ));
+        }
+        VoxelGrid::builder()
+            .dimensions(raw.width, raw.height, raw.depth)
+            .data(raw.data)
+            .voxel_size(raw.voxel_size)
+            .origin(raw.origin)
+            .build()
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum VoxelGridError {
     #[allow(missing_docs)]
@@ -46,6 +89,8 @@ impl std::fmt::Display for VoxelGridError {
 
 impl std::error::Error for VoxelGridError {}
 
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub struct VoxelGridBuilder {
     width: Option<usize>,

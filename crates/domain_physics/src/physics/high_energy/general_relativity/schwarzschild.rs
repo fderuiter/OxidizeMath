@@ -11,6 +11,7 @@ use crate::physics::high_energy::observer::calculate_lorentz_factor;
 
 /// Classification of worldline causal character for radial effective potentials.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GeodesicKind {
     /// Massive test particle parameterized by $c\tau$ ($\kappa = 1$, $g_{\mu\nu}\dot{x}^\mu\dot{x}^\nu = -1$).
     Timelike,
@@ -36,9 +37,22 @@ impl GeodesicKind {
 ///        + \left(1 - \frac{R_s}{r}\right)^{-1} dr^2
 ///        + r^2 d\theta^2 + r^2 \sin^2\theta\,d\varphi^2$$
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct SchwarzschildBlackHole {
     /// Black hole mass $M > 0$ in kilograms.
     pub mass: f64,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for SchwarzschildBlackHole {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Wire {
+            mass: f64,
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        Self::new(wire.mass).map_err(serde::de::Error::custom)
+    }
 }
 
 impl SchwarzschildBlackHole {

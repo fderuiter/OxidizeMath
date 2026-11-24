@@ -45,7 +45,8 @@ pub const MAX_RELATIVISTIC_BETA: f64 = 0.998_999;
 pub const HORIZON_CLEARANCE_FACTOR: f64 = 1.001;
 
 /// Configuration for a central Schwarzschild black hole embedded in a galactic potential.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CentralBlackHoleConfig {
     /// Whether the central Paczyński-Wiita black hole potential and ISCO capture are active.
     pub enabled: bool,
@@ -244,7 +245,8 @@ pub fn validate_christoffel_radial_connection(
 }
 
 /// Combined general-relativistic and special-relativistic radiative beaming telemetry.
-#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RelativisticBeamingSample {
     /// Clamped speed ratio $\beta = |v| / c \in [0, 0.999)$.
     pub beta: f64,

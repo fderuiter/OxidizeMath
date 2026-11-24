@@ -61,6 +61,7 @@ impl PersistenceInterval {
 
 /// Exact Vietoris-Rips persistence interval paired via $\mathbb{Z}_2$ boundary reduction.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RipsInterval {
     /// Homology dimension (`0` for $H_0$ components, `1` for $H_1$ loops).
     pub dimension: usize,
@@ -102,6 +103,7 @@ impl RipsInterval {
 
 /// Result of exact simplicial Vietoris-Rips persistent homology up to $H_1$.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RipsPersistenceResult {
     /// Exact $H_0$ and $H_1$ intervals ordered by `(dimension, birth, death, is_essential)`.
     pub intervals: Vec<RipsInterval>,
@@ -147,7 +149,11 @@ impl RipsPersistenceResult {
 }
 
 /// A persistence barcode is a collection of persistence intervals.
-#[derive(Debug, Clone)]
+///
+/// The barcode visualizes the lifetime of topological features across
+/// different scales (filtration parameter values).
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PersistenceBarcode {
     /// All persistence intervals in the barcode.
     pub intervals: Vec<PersistenceInterval>,

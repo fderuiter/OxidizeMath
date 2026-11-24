@@ -10,6 +10,7 @@ use num_complex::Complex64;
 
 /// Single postfix bytecode instruction executed by [`CompiledExpr`].
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Instruction {
     /// Push a literal real constant onto the evaluation stack.
     PushConst(f64),

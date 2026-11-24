@@ -5,6 +5,7 @@ use thiserror::Error;
 use crate::physics::solid_state::types::ElectronVolts;
 
 #[derive(Error, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum ChaosError {
     /// The simulation parameters are invalid (e.g., negative time step).
@@ -36,6 +37,7 @@ impl Diagnostic for ChaosError {
 }
 
 #[derive(Error, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum StandardModelError {
     /// Energy scale must be positive.
@@ -72,6 +74,7 @@ pub enum StandardModelError {
 }
 
 #[derive(Error, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum SolidStateError {
     /// The iterative solver failed to converge within the maximum number of iterations.
@@ -115,6 +118,7 @@ pub enum SolidStateError {
 }
 
 #[derive(Error, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum DoseFluenceError {
     #[error("Radius cannot be zero (singularity at r=0)")]
@@ -143,6 +147,7 @@ pub enum DoseFluenceError {
 }
 
 #[derive(Error, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 #[allow(missing_docs)]
 pub enum RadarError {
     /// Insufficient snapshots for MUSIC algorithm.
@@ -183,6 +188,7 @@ pub enum RadarError {
 }
 
 #[derive(Error, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum HighEnergyError {
     /// Mass must be positive.
@@ -234,6 +240,7 @@ pub enum HighEnergyError {
 }
 
 #[derive(Error, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum FluidError {
     /// Density must be strictly positive.
@@ -258,6 +265,7 @@ pub enum FluidError {
 }
 
 #[derive(Error, Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum StatMechError {
     /// Temperature must be non-negative (absolute zero is allowed as a limit).

@@ -67,6 +67,7 @@ impl_geodesic_state!(4, 8);
 
 /// Outcome of a single singularity-checked geodesic integration step.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GeodesicStepStatus {
     /// Step succeeded cleanly; reports updated quadratic norm $g_{\mu\nu}\dot{x}^\mu\dot{x}^\nu$.
     Advanced {

@@ -62,6 +62,7 @@ impl UnmatchedScratch {
 
 /// Summary of an unmatched two-sample win-ratio analysis using Pocock/Bebu-Lachin U-statistics.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct UnmatchedWinRatioSummary {
     /// Number of subjects in the treatment group ($n_1$).
     pub n_treatment: usize,

@@ -12,6 +12,7 @@ use verified_engine::Theory;
 /// * `Dynamics` - The system definition (must implement `OdeSystem<State>`).
 /// * `S` - The numerical solver strategy (must implement `Solver<State>`).
 #[derive(Debug, Clone, Theory)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[theory(
     description = "An Ordinary Differential Equation (ODE) model encapsulates a dynamical system's state, its governing differential equations, and a numerical solver to simulate its evolution over time.",
     citation = "Numerical Recipes: The Art of Scientific Computing (Press et al., 2007)"

@@ -49,7 +49,8 @@ pub const SECONDS_PER_MYR: f64 = 3.155_76e13;
 pub const KPC_PER_MYR_PER_KMS: f64 = (1_000.0 * SECONDS_PER_MYR) / METERS_PER_KPC;
 
 /// Kinematic family of an orbiting test particle in the galactic midplane.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum OrbitParticleKind {
     /// Nearly circular disk star tracing differential rotation and spiral winding.
     #[default]
@@ -59,7 +60,8 @@ pub enum OrbitParticleKind {
 }
 
 /// Planar phase-space state $(x, y, v_x, v_y)$ of a massless tracer particle.
-#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OrbitalState {
     /// Galactocentric $x$ coordinate in kpc.
     pub x_kpc: f64,
@@ -72,12 +74,13 @@ pub struct OrbitalState {
     /// Tracer population tag.
     pub kind: OrbitParticleKind,
     /// Whether this tracer has plunged across $r_{\text{ISCO}} = 3 R_s$ and been captured.
-    #[serde(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub captured: bool,
 }
 
 /// Instantaneous conserved quantities for a tracer particle in a static axisymmetric potential.
-#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OrbitalInvariants {
     /// Specific mechanical energy $E = \frac{1}{2}(v_x^2 + v_y^2) + \Phi(r)$ in $(\text{km/s})^2$.
     pub specific_energy_kms2: f64,
@@ -90,7 +93,8 @@ pub struct OrbitalInvariants {
 }
 
 /// Ensemble sizing and stream eccentricity parameters for [`GalacticDiskSystem`].
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OrbitPopulationConfig {
     /// Number of quasi-circular stellar disk tracer particles.
     pub disk_tracers: usize,
@@ -114,14 +118,15 @@ impl Default for OrbitPopulationConfig {
 }
 
 /// Pre-allocated galactic disk and tidal stream orbit ensemble stepped via symplectic leapfrog.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GalacticDiskSystem {
     /// Baryonic stellar + HI gas disk derived from Tillaboev (2025).
     pub baryons: BaryonicDiskConfig,
     /// Active dark-matter halo profile.
     pub halo: HaloProfile,
     /// Optional central Schwarzschild black hole with Paczyński-Wiita relativistic potential.
-    #[serde(default)]
+    #[cfg_attr(feature = "serde", serde(default))]
     pub central_bh: CentralBlackHoleConfig,
     pub(super) particles: Vec<OrbitalState>,
     trail_ring: Vec<[f64; 2]>,

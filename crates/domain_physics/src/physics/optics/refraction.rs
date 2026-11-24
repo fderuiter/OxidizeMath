@@ -7,12 +7,12 @@
 use pure_math::pure_math::analysis::pde::wave::{
     WaveField2D, WaveFieldConfig2D, WaveSource2D, WaveSourceKind,
 };
-use serde::{Deserialize, Serialize};
 
 // [cite:optics]
 
 /// Canonical 2D wave and geometric-optics benchmark presets.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum OpticsPreset {
     /// Coherent plane wave diffracting through a two-slit conducting screen.
     DoubleSlit,
@@ -70,7 +70,8 @@ impl OpticsPreset {
 /// let neg_theta = snell_refracted_angle(1.0, -1.0, 0.4).expect("transmitted");
 /// assert!((neg_theta + 0.4).abs() < 1e-12);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OpticalMediumConfig {
     /// Selected optical element or aperture preset.
     pub preset: OpticsPreset,

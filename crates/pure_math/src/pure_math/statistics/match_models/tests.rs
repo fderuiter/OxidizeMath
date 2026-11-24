@@ -135,26 +135,29 @@ fn test_quarter_lines_dnb_btts_and_serde() {
     assert!(over_under(&grid, -0.5).is_err());
 
     // Serde round-trip and validation
-    let encoded = serde_json::to_string(&grid).unwrap();
-    let decoded: ScoreGrid = serde_json::from_str(&encoded).unwrap();
-    assert_eq!(decoded.max_goals(), grid.max_goals());
-    assert_eq!(decoded.is_normalized(), grid.is_normalized());
-    assert!((decoded.tail_mass() - grid.tail_mass()).abs() < 1e-15);
-    for h in 0..=grid.max_goals() {
-        for a in 0..=grid.max_goals() {
-            assert!((decoded.prob(h, a) - grid.prob(h, a)).abs() < 1e-15);
+    #[cfg(feature = "serde")]
+    {
+        let encoded = serde_json::to_string(&grid).unwrap();
+        let decoded: ScoreGrid = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded.max_goals(), grid.max_goals());
+        assert_eq!(decoded.is_normalized(), grid.is_normalized());
+        assert!((decoded.tail_mass() - grid.tail_mass()).abs() < 1e-15);
+        for h in 0..=grid.max_goals() {
+            for a in 0..=grid.max_goals() {
+                assert!((decoded.prob(h, a) - grid.prob(h, a)).abs() < 1e-15);
+            }
         }
-    }
-    assert!(
-        serde_json::from_str::<DixonColesParams>(r#"{"lambda":1.35,"mu":1.15,"rho":-0.95}"#)
+        assert!(
+            serde_json::from_str::<DixonColesParams>(r#"{"lambda":1.35,"mu":1.15,"rho":-0.95}"#)
+                .is_err()
+        );
+        assert!(
+            serde_json::from_str::<DixonColesParams>(
+                r#"{"lambda":1.35,"mu":1.15,"rho":-0.13,"extra":true}"#
+            )
             .is_err()
-    );
-    assert!(
-        serde_json::from_str::<DixonColesParams>(
-            r#"{"lambda":1.35,"mu":1.15,"rho":-0.13,"extra":true}"#
-        )
-        .is_err()
-    );
+        );
+    }
 }
 
 #[test]

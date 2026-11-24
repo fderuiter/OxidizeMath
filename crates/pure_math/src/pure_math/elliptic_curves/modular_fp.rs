@@ -9,6 +9,7 @@ use crate::pure_math::elliptic_curves::weierstrass::{AffinePointFp, WeierstrassC
 
 /// Geometric chord-and-tangent step metadata on the modular torus $(\mathbb{R}/p\mathbb{Z})^2$.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ChordStepFp {
     /// Resulting group sum $R = P + Q$.
     pub sum: AffinePointFp,
@@ -26,6 +27,7 @@ pub struct ChordStepFp {
 
 /// Frobenius trace and Hasse-Weil bound sample for $y^2 \equiv x^3 + ax + b \pmod p$.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HasseSweepEntry {
     /// Prime modulus $p \ge 5$.
     pub p: i64,

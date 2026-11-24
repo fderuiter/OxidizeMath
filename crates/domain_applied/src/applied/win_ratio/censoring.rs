@@ -8,6 +8,7 @@ use super::pair_comparison::{ComparisonResult, OutcomeComparator};
 
 /// A right-censored time-to-event outcome for hierarchical composite win-ratio comparisons.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CensoredOutcome {
     /// Observed event time or right-censoring follow-up time (`>= 0.0` and finite).
     pub time: SurvivalTime,
@@ -71,9 +72,28 @@ impl From<CensoredOutcome> for Observation {
 /// [`ComparisonResult::Tie`] when censoring renders ordering indeterminate so evaluation
 /// passes to lower-priority tiers.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct RightCensoredComparator {
     /// Optional administrative censoring horizon `c > 0` applied before comparison.
     pub horizon: Option<f64>,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for RightCensoredComparator {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RightCensoredComparatorRaw {
+            horizon: Option<f64>,
+        }
+        let raw = RightCensoredComparatorRaw::deserialize(deserializer)?;
+        match raw.horizon {
+            Some(c) => Self::with_horizon(c).map_err(serde::de::Error::custom),
+            None => Ok(Self::new()),
+        }
+    }
 }
 
 impl RightCensoredComparator {
@@ -160,6 +180,7 @@ impl OutcomeComparator<Observation> for RightCensoredComparator {
 
 /// Pairwise win, loss, and remaining-tie counts resolved at a single priority tier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TierCount {
     /// Zero-based index of the endpoint tier in the composite hierarchy.
     pub tier_index: usize,
@@ -169,4 +190,45 @@ pub struct TierCount {
     pub losses: usize,
     /// Number of pairs still tied after evaluating this tier.
     pub ties_remaining: usize,
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod serde_tests {
+    use super::*;
+    use crate::applied::win_ratio::power_sweep::PowerSweepConfig;
+
+    #[test]
+    fn test_win_ratio_serde_validation() {
+        let out = CensoredOutcome::new(2.5, true).unwrap();
+        let out_json = serde_json::to_string(&out).unwrap();
+        assert_eq!(
+            serde_json::from_str::<CensoredOutcome>(&out_json).unwrap(),
+            out
+        );
+        assert!(
+            serde_json::from_str::<CensoredOutcome>(r#"{"time":-1.0,"event_occurred":true}"#)
+                .is_err()
+        );
+
+        let cmp = RightCensoredComparator::with_horizon(5.0).unwrap();
+        let cmp_json = serde_json::to_string(&cmp).unwrap();
+        assert_eq!(
+            serde_json::from_str::<RightCensoredComparator>(&cmp_json).unwrap(),
+            cmp
+        );
+        assert!(serde_json::from_str::<RightCensoredComparator>(r#"{"horizon":0.0}"#).is_err());
+
+        let cfg = PowerSweepConfig::default();
+        let cfg_json = serde_json::to_string(&cfg).unwrap();
+        assert_eq!(
+            serde_json::from_str::<PowerSweepConfig>(&cfg_json).unwrap(),
+            cfg
+        );
+        assert!(
+            serde_json::from_str::<PowerSweepConfig>(
+                r#"{"n_min":50,"n_max":10,"n_steps":4,"replicates":10,"censor_horizon":5.0,"dropout_rate":0.0,"sig_alpha":0.05}"#
+            )
+            .is_err()
+        );
+    }
 }

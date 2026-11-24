@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 /// Operational lifecycle states for the radiation beam gating controller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BeamState {
     /// Controller is uninitialized or dormant; beam emission disabled.
     #[default]
@@ -25,6 +26,7 @@ pub enum BeamState {
 
 /// Errors returned during state machine transitions.
 #[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GatingError {
     /// Transition between specified states is not permitted by lifecycle rules.
     #[error("Invalid state transition from {from:?} to {to:?}")]
@@ -59,6 +61,7 @@ impl Diagnostic for GatingError {
 
 /// Configuration and State for the Gating Logic.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GatingLogic {
     /// Amplitude threshold for gating (e.g., peak exhalation level).
     pub threshold: f64,

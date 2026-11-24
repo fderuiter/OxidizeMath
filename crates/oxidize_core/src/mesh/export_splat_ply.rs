@@ -10,6 +10,7 @@ pub const SH_C0: f32 = 0.282_094_8;
 
 /// Portable 3D Gaussian splat export record parameterized in world space.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GaussianSplatPly {
     /// World-space Gaussian mean $\mu = (x, y, z)$.
     pub mean: Point3D,

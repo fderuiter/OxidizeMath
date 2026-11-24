@@ -12,6 +12,8 @@ use std::collections::VecDeque;
 use std::f64::consts::PI;
 
 /// Implements the MUSIC algorithm for high-resolution range estimation.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct MusicEstimator {
     /// Number of signal snapshots (chirps) to estimate covariance.
     snapshot_count: usize,
@@ -303,5 +305,40 @@ impl CompactSubspace {
         }
 
         spectrum
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for MusicEstimator {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct MusicEstimatorWire {
+            snapshot_count: usize,
+            samples_per_chirp: usize,
+            signal_subspace_dim: usize,
+            snapshots: VecDeque<DVector<Complex<f64>>>,
+        }
+
+        let wire = MusicEstimatorWire::deserialize(deserializer)?;
+        let mut estimator = Self::new(
+            wire.samples_per_chirp,
+            wire.snapshot_count,
+            wire.signal_subspace_dim,
+        )
+        .map_err(serde::de::Error::custom)?;
+        if wire.snapshots.len() > wire.snapshot_count {
+            return Err(serde::de::Error::custom(
+                "MusicEstimator snapshots exceed snapshot_count",
+            ));
+        }
+        for snap in wire.snapshots {
+            if snap.len() != wire.samples_per_chirp {
+                return Err(serde::de::Error::custom(
+                    "MusicEstimator snapshot length mismatch",
+                ));
+            }
+            estimator.snapshots.push_back(snap);
+        }
+        Ok(estimator)
     }
 }

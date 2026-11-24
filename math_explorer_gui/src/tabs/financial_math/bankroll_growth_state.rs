@@ -7,14 +7,19 @@ use super::super::bankroll_ensemble::{
     MAX_BARRIER_FLOOR_RATIO, MAX_CUSTOM_FRACTION, MIN_BARRIER_FLOOR_RATIO,
 };
 use super::{is_default_stake_multiplier, BankrollGrowthTool};
+use math_commons::primitives::{NonNegativeFloat, PositiveFloat};
 use math_explorer::pure_math::statistics::kelly::{kelly_fraction, variants, Odds, UnitInterval};
 
-const fn default_stake_multiplier() -> f64 {
-    1.0
+fn default_stake_multiplier() -> NonNegativeFloat {
+    NonNegativeFloat::new(1.0).expect("valid default stake multiplier")
 }
 
-fn default_custom_fraction() -> f64 {
-    DEFAULT_CUSTOM_FRACTION
+fn is_default_stake_multiplier_prim(val: &NonNegativeFloat) -> bool {
+    is_default_stake_multiplier(&val.value())
+}
+
+fn default_custom_fraction() -> NonNegativeFloat {
+    NonNegativeFloat::new(DEFAULT_CUSTOM_FRACTION).expect("valid default custom fraction")
 }
 
 fn default_barrier_floor_ratio() -> f64 {
@@ -25,8 +30,8 @@ fn is_default_mode(mode: &BankrollLabMode) -> bool {
     *mode == BankrollLabMode::KellyStrategies
 }
 
-fn is_default_fraction(val: &f64) -> bool {
-    (*val - DEFAULT_CUSTOM_FRACTION).abs() < 1e-12
+fn is_default_fraction(val: &NonNegativeFloat) -> bool {
+    (val.value() - DEFAULT_CUSTOM_FRACTION).abs() < 1e-12
 }
 
 fn is_default_barrier_floor_ratio(val: &f64) -> bool {
@@ -36,22 +41,22 @@ fn is_default_barrier_floor_ratio(val: &f64) -> bool {
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct BankrollState {
-    initial_bankroll: f64,
-    probability: f64,
-    odds: f64,
+    initial_bankroll: PositiveFloat,
+    probability: UnitInterval,
+    odds: PositiveFloat,
     num_bets: usize,
     #[serde(
         default = "default_stake_multiplier",
-        skip_serializing_if = "is_default_stake_multiplier"
+        skip_serializing_if = "is_default_stake_multiplier_prim"
     )]
-    stake_multiplier: f64,
+    stake_multiplier: NonNegativeFloat,
     #[serde(default, skip_serializing_if = "is_default_mode")]
     mode: BankrollLabMode,
     #[serde(
         default = "default_custom_fraction",
         skip_serializing_if = "is_default_fraction"
     )]
-    custom_fraction: f64,
+    custom_fraction: NonNegativeFloat,
     #[serde(
         default = "default_barrier_floor_ratio",
         skip_serializing_if = "is_default_barrier_floor_ratio"
@@ -62,22 +67,13 @@ struct BankrollState {
 }
 
 fn validate_bankroll_bounds(s: &BankrollState) -> Result<(), String> {
-    if ![
-        s.initial_bankroll,
-        s.probability,
-        s.odds,
-        s.stake_multiplier,
-        s.custom_fraction,
-        s.barrier_floor_ratio,
-    ]
-    .iter()
-    .all(|v| v.is_finite())
-        || !(100.0..=10_000.0).contains(&s.initial_bankroll)
-        || !(0.01..=0.99).contains(&s.probability)
-        || !(0.1..=10.0).contains(&s.odds)
+    if !s.barrier_floor_ratio.is_finite()
+        || !(100.0..=10_000.0).contains(&s.initial_bankroll.value())
+        || !(0.01..=0.99).contains(&s.probability.value())
+        || !(0.1..=10.0).contains(&s.odds.value())
         || !(10..=1000).contains(&s.num_bets)
-        || !(0.0..=3.0).contains(&s.stake_multiplier)
-        || !(0.0..=MAX_CUSTOM_FRACTION).contains(&s.custom_fraction)
+        || s.stake_multiplier.value() > 3.0
+        || s.custom_fraction.value() > MAX_CUSTOM_FRACTION
         || !(MIN_BARRIER_FLOOR_RATIO..=MAX_BARRIER_FLOOR_RATIO).contains(&s.barrier_floor_ratio)
     {
         return Err("Bankroll simulation parameters out of bounds".into());
@@ -88,13 +84,13 @@ fn validate_bankroll_bounds(s: &BankrollState) -> Result<(), String> {
 impl BankrollGrowthTool {
     pub(super) fn save_state_json(&self) -> Option<String> {
         serde_json::to_string(&BankrollState {
-            initial_bankroll: self.initial_bankroll,
-            probability: self.probability,
-            odds: self.odds,
+            initial_bankroll: PositiveFloat::new(self.initial_bankroll).ok()?,
+            probability: UnitInterval::new(self.probability).ok()?,
+            odds: PositiveFloat::new(self.odds).ok()?,
             num_bets: self.num_bets,
-            stake_multiplier: self.stake_multiplier,
+            stake_multiplier: NonNegativeFloat::new(self.stake_multiplier).ok()?,
             mode: self.mode,
-            custom_fraction: self.ensemble_lab.custom_fraction,
+            custom_fraction: NonNegativeFloat::new(self.ensemble_lab.custom_fraction).ok()?,
             barrier_floor_ratio: self.ensemble_lab.barrier_floor_ratio,
             hypothesis: self.ensemble_lab.hypothesis,
         })
@@ -105,21 +101,21 @@ impl BankrollGrowthTool {
         let s: BankrollState =
             serde_json::from_str(state).map_err(|e| format!("Invalid bankroll state: {e}"))?;
         validate_bankroll_bounds(&s)?;
-        let p = UnitInterval::new(s.probability).map_err(|e| format!("Error: {e}"))?;
-        let o = Odds::from_net_odds(s.odds).map_err(|e| format!("Error: {e}"))?;
+        let o = Odds::from_net_odds(s.odds.value()).map_err(|e| format!("Error: {e}"))?;
         if s.mode == BankrollLabMode::KellyStrategies {
-            kelly_fraction(&p, &o).map_err(|e| format!("Error: {e}"))?;
-            variants::half_kelly(&p, &o).map_err(|e| format!("Error: {e}"))?;
-            variants::quarter_kelly(&p, &o).map_err(|e| format!("Error: {e}"))?;
+            kelly_fraction(&s.probability, &o).map_err(|e| format!("Error: {e}"))?;
+            variants::half_kelly(&s.probability, &o).map_err(|e| format!("Error: {e}"))?;
+            variants::quarter_kelly(&s.probability, &o).map_err(|e| format!("Error: {e}"))?;
         }
-        self.initial_bankroll = s.initial_bankroll;
-        self.probability = s.probability;
-        self.odds = s.odds;
+        self.initial_bankroll = s.initial_bankroll.value();
+        self.probability = s.probability.value();
+        self.odds = s.odds.value();
         self.num_bets = s.num_bets;
-        self.stake_multiplier = s.stake_multiplier;
+        self.stake_multiplier = s.stake_multiplier.value();
         self.seed_counter = 0;
         self.mode = s.mode;
-        self.ensemble_lab.custom_fraction = s.custom_fraction.clamp(0.0, MAX_CUSTOM_FRACTION);
+        self.ensemble_lab.custom_fraction =
+            s.custom_fraction.value().clamp(0.0, MAX_CUSTOM_FRACTION);
         self.ensemble_lab.barrier_floor_ratio = s
             .barrier_floor_ratio
             .clamp(MIN_BARRIER_FLOOR_RATIO, MAX_BARRIER_FLOOR_RATIO);

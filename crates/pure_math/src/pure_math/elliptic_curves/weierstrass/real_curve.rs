@@ -11,6 +11,7 @@ const REAL_SINGULAR_TOL: f64 = 1e-12;
 
 /// Projective point on an elliptic curve represented in affine coordinates plus the point at infinity.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum CurvePoint<T> {
     /// Group identity element $\mathcal{O}$ at projective infinity $(0 : 1 : 0)$.
     Infinity,
@@ -94,11 +95,25 @@ pub(super) fn populate_orbit<T: Copy>(
 
 /// Non-singular short-Weierstrass elliptic curve $y^2 = x^3 + ax + b$ over $\mathbb{R}$.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct WeierstrassCurve {
     /// Linear Weierstrass coefficient $a$.
     pub a: f64,
     /// Constant Weierstrass coefficient $b$.
     pub b: f64,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for WeierstrassCurve {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Wire {
+            a: f64,
+            b: f64,
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        Self::new(wire.a, wire.b).map_err(serde::de::Error::custom)
+    }
 }
 
 impl WeierstrassCurve {

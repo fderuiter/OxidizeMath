@@ -147,6 +147,7 @@ impl std::fmt::Display for FitType {
 
 /// UI regression summary bundling fitted parameters, formula text, and residual stems.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct FitResult {
     /// Selected regression model (`FitModel` preset or [`FitType::Custom`]).
     pub fit_type: FitType,
@@ -171,7 +172,9 @@ pub struct FitResult {
     /// Whether transformed linearized fitting (Log Mode) was used.
     pub log_mode: bool,
     /// Optional compiled callback evaluator when `fit_type == FitType::Custom`.
+    #[cfg_attr(feature = "serde", serde(skip))]
     pub custom_evaluator: Option<CustomEvaluatorHandle>,
+    #[cfg_attr(feature = "serde", serde(default))]
     pub(crate) curve_fit: Option<CurveFit>,
 }
 
@@ -258,4 +261,28 @@ pub fn fit_model_with_axes<P: PointSeries + ?Sized>(
     };
     let curve = math_commons::fit::fit_model_with_axes(points, model, log_mode, log_x, log_y)?;
     Ok(FitResult::from_curve_fit(curve, points, dataset_name))
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod serde_tests {
+    use super::{FitResult, FitType, fit_model_with_axes};
+
+    #[test]
+    fn fit_type_and_result_roundtrip_json() {
+        for preset in FitType::MENU_PRESETS
+            .into_iter()
+            .chain(std::iter::once(FitType::Custom))
+        {
+            let encoded = serde_json::to_string(&preset).expect("serialize FitType");
+            let decoded: FitType = serde_json::from_str(&encoded).expect("deserialize FitType");
+            assert_eq!(decoded, preset);
+        }
+
+        let pts = [[1.0, 2.0], [2.0, 4.0], [3.0, 6.0]];
+        let result = fit_model_with_axes(&pts, FitType::Linear, "linear_demo", false, false, false)
+            .expect("fit linear");
+        let encoded = serde_json::to_string(&result).expect("serialize FitResult");
+        let decoded: FitResult = serde_json::from_str(&encoded).expect("deserialize FitResult");
+        assert_eq!(decoded, result);
+    }
 }

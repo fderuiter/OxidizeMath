@@ -9,6 +9,7 @@ pub type Result<T> = std::result::Result<T, MarkovError>;
 use nalgebra::{DMatrix, DVector, RealField};
 use num_traits::ToPrimitive;
 
+#[cfg(feature = "serde")]
 mod serde_impl;
 
 /// A continuous-time Markov chain characterized by its generator matrix.

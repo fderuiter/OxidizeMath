@@ -143,9 +143,22 @@ where
 ///
 /// Line element: $ds^2 = R^2 d\theta^2 + R^2 \sin^2\theta\,d\varphi^2$.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct TwoSphereMetric {
     /// Sphere radius $R > 0$.
     pub radius: f64,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for TwoSphereMetric {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Wire {
+            radius: f64,
+        }
+        let wire = Wire::deserialize(deserializer)?;
+        Self::new(wire.radius).map_err(serde::de::Error::custom)
+    }
 }
 
 impl TwoSphereMetric {

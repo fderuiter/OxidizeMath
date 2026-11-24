@@ -304,6 +304,7 @@ fn assert_contour_batch_shapes(
     log_tf: &egui_plot::PlotTransform,
 ) {
     use egui_plot::PlotItem as _;
+
     let ctx = egui::Context::default();
     let _ = ctx.run(egui::RawInput::default(), |c| {
         egui::CentralPanel::default().show(c, |ui| {

@@ -4,11 +4,10 @@
 use crate::error::MarkovError;
 use nalgebra::RealField;
 use num_traits::ToPrimitive;
-use serde::{Deserialize, Serialize};
 
 /// Hyperparameters controlling Baum-Welch EM training.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct BaumWelchConfig<T> {
     /// Maximum number of EM iterations (`>= 1`).
     pub max_iterations: usize,
@@ -60,9 +59,29 @@ impl<T: RealField + Copy + ToPrimitive> BaumWelchConfig<T> {
     }
 }
 
+#[cfg(feature = "serde")]
+impl<'de, T> serde::Deserialize<'de> for BaumWelchConfig<T>
+where
+    T: RealField + Copy + ToPrimitive + serde::Deserialize<'de>,
+{
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct RawBaumWelchConfig<U> {
+            max_iterations: usize,
+            tolerance: U,
+            dirichlet_alpha: U,
+        }
+        let raw = RawBaumWelchConfig::<T>::deserialize(deserializer)?;
+        Self::new(raw.max_iterations, raw.tolerance, raw.dirichlet_alpha)
+            .map_err(serde::de::Error::custom)
+    }
+}
+
 /// Convergence and log-likelihood summary produced by Baum-Welch EM fitting.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 pub struct BaumWelchReport<T> {
     /// Number of EM iterations executed.
     pub iterations: usize,

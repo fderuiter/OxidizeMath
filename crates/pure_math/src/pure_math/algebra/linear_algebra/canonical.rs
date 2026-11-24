@@ -18,6 +18,8 @@
 use nalgebra::{Complex, DMatrix};
 
 /// Represents a Jordan Block.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct JordanBlock {
     #[allow(missing_docs)]
     pub eigenvalue: Complex<f64>,
@@ -64,6 +66,8 @@ impl JordanBlock {
 /// Represents a Companion Matrix for a polynomial $f(t) = t^n + a_{n-1}t^{n-1} + \dots + a_0$.
 ///
 /// The coefficients are stored in order $[a_0, a_1, \dots, a_{n-1}]$.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CompanionMatrix {
     #[allow(missing_docs)]
     pub coeffs: Vec<f64>,

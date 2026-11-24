@@ -7,7 +7,8 @@ use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
 /// Represents the state of the Lorenz system $(x, y, z)$.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LorenzState {
     /// The 3D state vector.
     pub vec: Vector3<f64>,
@@ -24,7 +25,8 @@ impl LorenzState {
 }
 
 /// A builder for the `LorenzSystem`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LorenzBuilder {
     sigma: f64,
     rho: f64,
@@ -119,7 +121,8 @@ impl LorenzBuilder {
 /// let new_state = lorenz.state.vec;
 /// println!("New State: ({:.2}, {:.2}, {:.2})", new_state.x, new_state.y, new_state.z);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LorenzSystem {
     /// The Prandtl number $\sigma$, representing the ratio of momentum diffusivity to thermal diffusivity.
     pub sigma: f64,

@@ -239,3 +239,22 @@ fn test_eigenmodes_and_lorentzian_spectrum_zero_allocations() {
     assert!(resp > 100.0);
     assert!(metrics.function_calls > 0);
 }
+
+#[cfg(feature = "serde")]
+#[test]
+fn test_eigenmode_2d_serde_roundtrip() {
+    let mode = Eigenmode2D {
+        m: 2,
+        n: 3,
+        frequency_hz: 440.0,
+        omega: 880.0 * std::f64::consts::PI,
+        wavenumber: 11.2,
+        antinode_x: 0.25,
+        antinode_y: 0.75,
+        kind: PlateEigenmodeKind::SquareChladniAntisymmetric,
+    };
+    let json = serde_json::to_string(&(PinConstraint2D::QuadSymmetry, mode)).expect("serialize");
+    let restored: (PinConstraint2D, Eigenmode2D) =
+        serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(restored, (PinConstraint2D::QuadSymmetry, mode));
+}

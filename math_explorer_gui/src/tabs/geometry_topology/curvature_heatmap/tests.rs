@@ -33,10 +33,14 @@ fn curvature_heatmap_camera_preset_and_export_work() {
     assert!(!egui_plot::get_last_plot_datasets().is_empty());
     assert!(!egui_plot::get_last_plot_datasets_3d().is_empty());
 
-    restored.surface_type = SurfaceType::CustomParametric;
+    restored.surface_type = ParametricSurfaceKind::CustomParametric;
     restored
         .custom_sandbox
-        .set_uv_bounds(SurfaceType::CustomParametric, [0.0, 3.0], [0.5, 2.5])
+        .set_uv_bounds(
+            ParametricSurfaceKind::CustomParametric,
+            [0.0, 3.0],
+            [0.5, 2.5],
+        )
         .expect("valid parametric bounds");
     let custom_saved = restored.save_state().expect("save custom bounds");
     let mut custom_restored = CurvatureHeatmap::default();
@@ -46,7 +50,7 @@ fn curvature_heatmap_camera_preset_and_export_work() {
     assert_eq!(
         custom_restored
             .custom_sandbox
-            .uv_domain_for(SurfaceType::CustomParametric),
+            .uv_domain_for(ParametricSurfaceKind::CustomParametric),
         ((0.0, 3.0), (0.5, 2.5))
     );
     custom_restored.populate_scene(egui::Color32::WHITE);
@@ -142,11 +146,11 @@ fn curvature_heatmap_builds_watertight_colored_ply_for_all_surfaces() {
         ..Default::default()
     };
     for stype in [
-        SurfaceType::Sphere,
-        SurfaceType::Torus,
-        SurfaceType::KleinBottle,
-        SurfaceType::CustomHeightfield,
-        SurfaceType::CustomParametric,
+        ParametricSurfaceKind::Sphere,
+        ParametricSurfaceKind::Torus,
+        ParametricSurfaceKind::KleinBottle,
+        ParametricSurfaceKind::CustomHeightfield,
+        ParametricSurfaceKind::CustomParametric,
     ] {
         tool.surface_type = stype;
         let colored = tool

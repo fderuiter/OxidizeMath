@@ -3,7 +3,8 @@
 use std::fmt;
 
 /// Errors that can occur during clinical trial analysis.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClinicalTrialError {
     /// Sample size is too small for the requested test.
     #[allow(missing_docs)]
@@ -42,7 +43,8 @@ impl std::error::Error for ClinicalTrialError {}
 /// |---|---|---|
 /// | Treatment | a | b |
 /// | Control | c | d |
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct ContingencyTable {
     /// Treatment Group: Event count (a).
     pub treatment_event: u32,
@@ -93,7 +95,8 @@ impl ContingencyTable {
 /// A wrapper for continuous data from a study group.
 ///
 /// Calculates and caches summary statistics to avoid re-computation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct GroupData {
     data: Vec<f64>,
 }
@@ -154,6 +157,7 @@ impl GroupData {
 ///
 /// Ensures that time is valid (finite and `>= 0.0`), normalizing `-0.0` to `+0.0`.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct SurvivalTime(f64);
 
 impl SurvivalTime {
@@ -290,5 +294,55 @@ impl Div<SurvivalTime> for SurvivalTime {
     type Output = f64;
     fn div(self, rhs: SurvivalTime) -> f64 {
         self.0 / rhs.0
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for ContingencyTable {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawContingencyTable {
+            treatment_event: u32,
+            treatment_no_event: u32,
+            control_event: u32,
+            control_no_event: u32,
+        }
+        let raw = RawContingencyTable::deserialize(deserializer)?;
+        Self::new(
+            raw.treatment_event,
+            raw.treatment_no_event,
+            raw.control_event,
+            raw.control_no_event,
+        )
+        .map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for GroupData {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawGroupData {
+            data: Vec<f64>,
+        }
+        let raw = RawGroupData::deserialize(deserializer)?;
+        Self::new(raw.data).map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for SurvivalTime {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = f64::deserialize(deserializer)?;
+        Self::new(raw).map_err(serde::de::Error::custom)
     }
 }

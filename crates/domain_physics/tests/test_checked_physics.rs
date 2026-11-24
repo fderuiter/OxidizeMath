@@ -29,7 +29,7 @@ fn fluid_and_radar_checked_apis_reject_invalid_configurations() {
 
     let model = ConstantVelocityModel::new(0.01, 0.1);
     assert!(matches!(
-        TrackingFilter::try_new(1.0, 0.0, model.clone()),
+        TrackingFilter::try_new(1.0, 0.0, model),
         Err(RadarError::InvalidTrackingParameter {
             parameter: "dt",
             ..

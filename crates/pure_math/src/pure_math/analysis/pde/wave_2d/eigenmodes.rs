@@ -26,7 +26,8 @@ const DRUMHEAD_STAIRCASE_CELL_OFFSET: f64 = 0.44;
 const PIN_LEAKAGE_TOLERANCE: f64 = 0.08;
 
 /// Nodal point-clamp layout applied to 2D Chladni plates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PinConstraint2D {
     /// No interior nodal pins.
     None,
@@ -39,7 +40,8 @@ pub enum PinConstraint2D {
 }
 
 /// Spatial basis family of a 2D standing eigenmode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PlateEigenmodeKind {
     /// Free-edge DCT-I separable mode $\cos(m\pi x)\cos(n\pi y)$.
     SquareNeumannCosine,
@@ -57,6 +59,7 @@ pub enum PlateEigenmodeKind {
 
 /// Descriptor for a single discrete-calibrated 2D plate or drumhead eigenmode.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Eigenmode2D {
     /// Primary modal index $m$ (horizontal half-waves or azimuthal Bessel order).
     pub m: usize,

@@ -12,6 +12,7 @@ use math_commons::math_kernel::types::flatten_3d_index;
 
 /// Selects which side of the scalar level-set threshold forms the interior of a closed 3D solid.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SolidPolarity {
     /// Values strictly below `threshold` (`f(x, y, z) < threshold`) lie inside the solid (SDF convention).
     #[default]
@@ -22,6 +23,7 @@ pub enum SolidPolarity {
 
 /// Axis-aligned half-space cutting plane retaining `coord <= max_coord` and sealing the cut cross-section.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CuttingPlane {
     /// Coordinate axis index (`0 = X`, `1 = Y`, `2 = Z`).
     pub axis: usize,
@@ -31,6 +33,7 @@ pub struct CuttingPlane {
 
 /// Configuration for watertight 2-manifold isosurface extraction with boundary and cutting-plane caps.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SolidClosureConfig {
     /// Interior sign convention relative to `threshold`.
     pub polarity: SolidPolarity,

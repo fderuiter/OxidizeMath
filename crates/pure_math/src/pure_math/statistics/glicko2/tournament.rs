@@ -7,11 +7,11 @@ use crate::error::Glicko2Error;
 use nalgebra::DMatrix;
 use oxidize_core::rng::OxidizeRng;
 use rand::Rng;
-use serde::{Deserialize, Deserializer, Serialize};
 use std::cmp::Ordering;
 
 /// Head-to-head match outcome recorded within a tournament rating period.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct PeriodMatch {
     /// Index of the first player in the tournament roster.
     pub player_a: usize,
@@ -57,24 +57,28 @@ impl PeriodMatch {
     }
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawPeriodMatch {
-    player_a: usize,
-    player_b: usize,
-    score_a: f64,
-}
-
-impl<'de> Deserialize<'de> for PeriodMatch {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for PeriodMatch {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct RawPeriodMatch {
+            player_a: usize,
+            player_b: usize,
+            score_a: f64,
+        }
         let raw = RawPeriodMatch::deserialize(deserializer)?;
         Self::new(raw.player_a, raw.player_b, raw.score_a).map_err(serde::de::Error::custom)
     }
 }
 
 /// Scheduled head-to-head pairing between two roster indices.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct Pairing {
     /// First competitor index in the roster.
     pub player_a: usize,
@@ -96,8 +100,12 @@ impl Pairing {
 }
 
 /// Deterministic Swiss-system round pairing plan, including an optional odd-roster bye.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(deny_unknown_fields)
+)]
 pub struct SwissRoundPlan {
     /// Head-to-head board pairings ordered from top table downward.
     pub pairings: Vec<Pairing>,
@@ -310,26 +318,15 @@ pub fn round_robin_schedule(num_players: usize) -> Result<Vec<Vec<Pairing>>, Gli
     Ok(schedule)
 }
 
-fn compare_standing_order(
-    lhs: usize,
-    rhs: usize,
-    scores: &[f64],
-    roster: &[GlickoPlayer],
-) -> Ordering {
+fn compare_standing_order(lhs: usize, rhs: usize, scores: &[f64], r: &[GlickoPlayer]) -> Ordering {
+    let (rd_l, rd_r) = (
+        r[lhs].rating_deviation.value(),
+        r[rhs].rating_deviation.value(),
+    );
     scores[rhs]
         .total_cmp(&scores[lhs])
-        .then_with(|| {
-            roster[rhs]
-                .rating
-                .value()
-                .total_cmp(&roster[lhs].rating.value())
-        })
-        .then_with(|| {
-            roster[lhs]
-                .rating_deviation
-                .value()
-                .total_cmp(&roster[rhs].rating_deviation.value())
-        })
+        .then_with(|| r[rhs].rating.value().total_cmp(&r[lhs].rating.value()))
+        .then_with(|| rd_l.total_cmp(&rd_r))
         .then_with(|| lhs.cmp(&rhs))
 }
 

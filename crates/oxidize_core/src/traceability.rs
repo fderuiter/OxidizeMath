@@ -6,6 +6,8 @@ mod manifest;
 mod module_tree;
 #[cfg(feature = "ast-analysis")]
 mod runner;
+#[cfg(feature = "ast-analysis")]
+mod scan_files;
 
 #[cfg(feature = "ast-analysis")]
 pub use cache::{AstCache, CachedRustFile};
@@ -22,8 +24,12 @@ use crate::vfs::VirtualFileSystem;
 use std::collections::HashSet;
 use std::collections::{BTreeMap, HashMap};
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(default)
+)]
 #[allow(missing_docs)]
 pub struct TraceabilityReport {
     #[allow(missing_docs)]
@@ -34,7 +40,10 @@ pub struct TraceabilityReport {
     pub orphaned_papers: Vec<String>,
     #[allow(missing_docs)]
     pub unlinked_code: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "Vec::is_empty")
+    )]
     #[allow(missing_docs)]
     pub unlinked_module_details: Vec<(String, String, usize)>,
     #[allow(missing_docs)]
@@ -55,16 +64,28 @@ pub struct TraceabilityReport {
     pub vacuous_bypasses: Vec<String>,
     #[allow(missing_docs)]
     pub semantic_integrity_status: HashMap<String, String>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "BTreeMap::is_empty")
+    )]
     #[allow(missing_docs)]
     pub invalid_link_lines: BTreeMap<String, usize>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "BTreeMap::is_empty")
+    )]
     #[allow(missing_docs)]
     pub unverified_module_spans: BTreeMap<String, (String, usize)>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "BTreeMap::is_empty")
+    )]
     #[allow(missing_docs)]
     pub vacuous_bypass_spans: BTreeMap<String, usize>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(default, skip_serializing_if = "BTreeMap::is_empty")
+    )]
     #[allow(missing_docs)]
     pub file_verified_counts: BTreeMap<String, [usize; 2]>,
 }
@@ -289,92 +310,6 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
         analysis::finalize_report_orphans(&mut report);
 
         Ok(report)
-    }
-
-    async fn process_code_files(
-        &self,
-        code_files: Vec<String>,
-        registered_modules: &HashSet<String>,
-        registry_links: &HashMap<String, String>,
-        report: &mut TraceabilityReport,
-        auto_fix: bool,
-        cache: &mut AstCache,
-    ) -> Result<(), std::io::Error> {
-        for file in code_files {
-            self.process_single_file(
-                file,
-                registered_modules,
-                registry_links,
-                report,
-                auto_fix,
-                cache,
-            )
-            .await?;
-        }
-        Ok(())
-    }
-
-    async fn process_single_file(
-        &self,
-        file: String,
-        registered_modules: &HashSet<String>,
-        registry_links: &HashMap<String, String>,
-        report: &mut TraceabilityReport,
-        auto_fix: bool,
-        cache: &mut AstCache,
-    ) -> Result<(), std::io::Error> {
-        let norm_file = crate::path_utils::normalize_path(&file);
-        let key = AstCache::normalize_key(&norm_file);
-        if cache.get(&key).is_none() {
-            let content = self.vfs.read_to_string(&norm_file).await?;
-            cache.insert_source(key.clone(), content);
-        }
-
-        report.scanned_files += 1;
-        let is_module = norm_file.ends_with("mod.rs")
-            || norm_file.contains("/tabs/")
-            || norm_file.ends_with("lib.rs");
-
-        let citations = cache
-            .get(&key)
-            .map(|entry| analysis::extract_citations_with_lines(&entry.content))
-            .unwrap_or_default();
-
-        let final_citations = if auto_fix {
-            let mut updated = cache
-                .get(&key)
-                .map(|entry| entry.content.clone())
-                .unwrap_or_default();
-            let (file_modified, resolved) = analysis::fix_and_collect_citations(
-                &norm_file,
-                &mut updated,
-                citations,
-                registered_modules,
-                registry_links,
-                report,
-                true,
-            );
-            if file_modified {
-                self.vfs
-                    .write_to_file(&norm_file, updated.as_bytes())
-                    .await?;
-                cache.insert_source(key.clone(), updated);
-            }
-            resolved
-        } else {
-            analysis::collect_valid_citations(&norm_file, citations, registered_modules, report)
-        };
-
-        let ast = cache.get(&key).and_then(|entry| entry.ast.as_ref());
-        analysis::analyze_parsed_ast(
-            &norm_file,
-            ast,
-            is_module,
-            &final_citations,
-            registered_modules,
-            report,
-        );
-        Ok(())
     }
 }
 

@@ -10,6 +10,7 @@ pub(super) const ACTIVE_CELL_THRESHOLD: f64 = 0.01;
 
 /// Live macro-observable telemetry for a [`super::engine::LeniaEngine`] simulation state.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LeniaTelemetry {
     /// Total integrated mass $\sum_{x, y} A(x, y)$.
     pub total_mass: f64,

@@ -1,6 +1,7 @@
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum NuclearError {
     #[allow(missing_docs)]
@@ -36,6 +37,7 @@ impl std::error::Error for NuclearError {}
 /// Represents the Atomic Number Z (number of protons).
 /// Must be non-negative.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AtomicNumber(u32);
 
 impl AtomicNumber {
@@ -107,5 +109,26 @@ impl TryFrom<u32> for MassNumber {
     #[verified_engine::verified]
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         Self::new(value)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for MassNumber {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_u32(self.0)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for MassNumber {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = u32::deserialize(deserializer)?;
+        Self::new(raw).map_err(serde::de::Error::custom)
     }
 }

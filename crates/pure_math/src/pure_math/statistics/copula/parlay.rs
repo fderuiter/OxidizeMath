@@ -14,6 +14,7 @@ use rand_distr::StandardNormal;
 
 /// Summary pricing and simulation metrics for a correlated Same Game Parlay (SGP).
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ParlayPricingReport {
     /// Correlated joint win probability across all legs.
     pub joint_probability: Probability,
@@ -320,5 +321,20 @@ mod tests {
             1.0 / exact.joint_probability.value(),
             epsilon = 1e-12
         );
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_parlay_pricing_report_serde() {
+        let legs = [
+            Probability::new(0.5).unwrap(),
+            Probability::new(0.6).unwrap(),
+        ];
+        let corr = CorrelationMatrix::bivariate(super::super::core::Correlation::new(0.2).unwrap())
+            .unwrap();
+        let report = price_correlated_parlay(&legs, &corr).unwrap();
+        let json = serde_json::to_string(&report).unwrap();
+        let decoded: ParlayPricingReport = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded, report);
     }
 }

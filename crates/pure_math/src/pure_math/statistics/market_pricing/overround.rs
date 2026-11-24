@@ -6,6 +6,7 @@ use crate::pure_math::statistics::kelly::Odds;
 
 /// Summary of raw implied probability sum and bookmaker margin for an `n`-way market.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MarketOverround {
     /// Number of mutually exclusive outcomes in the market.
     pub outcome_count: usize,

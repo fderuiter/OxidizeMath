@@ -36,7 +36,8 @@ pub const EINSTEIN_SEPARATION_REL_FLOOR: f64 = 1.0e-3;
 pub const JACOBIAN_EIGEN_FLOOR: f64 = 1.0e-3;
 
 /// Axisymmetric thin-lens optical scalars evaluated at projected radius $R$ or angle $\theta$.
-#[derive(Debug, Clone, Copy, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ThinLensSample {
     /// Clamped radial coordinate ($R$ in kpc or $\theta$ in viewport/angular units).
     pub radius: f64,
@@ -58,6 +59,7 @@ pub struct ThinLensSample {
 
 /// Single lensed image state produced by a Schwarzschild point-mass thin lens.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SchwarzschildLensImage {
     /// Image-plane offset $\boldsymbol{\theta}_{\pm}$ relative to the black hole center.
     pub offset: Vector2<f64>,
@@ -69,6 +71,7 @@ pub struct SchwarzschildLensImage {
 
 /// Dual-image thin-lens solution and $1.5 R_s$ shadow horizon metadata for [`SchwarzschildBlackHole`].
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SchwarzschildDualImages {
     /// Effective Einstein ring radius $\theta_E > 0$.
     pub einstein_radius: f64,

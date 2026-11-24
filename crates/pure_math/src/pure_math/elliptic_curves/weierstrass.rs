@@ -25,9 +25,8 @@ use crate::pure_math::number_theory::primes::is_prime;
 pub const MAX_WEIERSTRASS_PRIME: i64 = 1_000_000_000;
 
 /// Point on a short Weierstrass curve $E(\mathbb{F}_p)$, including the identity $\mathcal{O}$.
-#[derive(
-    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AffinePointFp {
     /// Group identity element $\mathcal{O}$ (point at infinity).
     #[default]
@@ -85,11 +84,29 @@ impl AffinePointFp {
 /// assert_eq!(curve.point_order(p).unwrap(), 19);
 /// assert_eq!(curve.frobenius_trace(), -1);
 /// ```
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct WeierstrassCurveFp {
     p: i64,
     a: i64,
     b: i64,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for WeierstrassCurveFp {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawCurve {
+            p: i64,
+            a: i64,
+            b: i64,
+        }
+        let raw = RawCurve::deserialize(deserializer)?;
+        Self::new(raw.p, raw.a, raw.b).map_err(serde::de::Error::custom)
+    }
 }
 
 impl WeierstrassCurveFp {

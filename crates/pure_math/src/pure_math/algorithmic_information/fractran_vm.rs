@@ -6,7 +6,8 @@ use super::fractran_programs::{FractranCycleInfo, FractranError, MAX_FRACTRAN_PR
 use crate::math_types::Rational;
 
 /// Canonical FRACTRAN counter-machine programs from Conway (1987).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FractranPreset {
     /// Conway's 14-fraction prime-generating universal register program (`PRIMEGAME`).
     PrimeGame,
@@ -78,6 +79,7 @@ impl FractranPreset {
 
 /// Preallocated prime-exponent virtual machine for zero-allocation FRACTRAN execution.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct FractranCompiledVm {
     pub(super) primes: Vec<u64>,
     pub(super) num_rules: usize,
@@ -203,6 +205,7 @@ impl FractranCompiledVm {
 
 /// Decoded Minsky control-state flags and data-counter values at a FRACTRAN configuration.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MinskyDecodedState {
     /// Active `(prime, exponent)` pairs among [`FractranState::state_primes`] with `exponent > 0`.
     pub active_state_primes: Vec<(u64, u32)>,
@@ -212,6 +215,7 @@ pub struct MinskyDecodedState {
 
 /// Directed Minsky counter-machine transition extracted from a compiled FRACTRAN rule.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MinskyTransition {
     /// Zero-based index of the corresponding FRACTRAN fraction rule.
     pub rule_index: usize,
@@ -361,6 +365,77 @@ impl FractranState {
             }
         }
         Ok(Some(rule_idx))
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for FractranProgram {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        #[derive(serde::Serialize)]
+        struct RawProgram<'a> {
+            fractions: &'a [Rational],
+        }
+        RawProgram {
+            fractions: &self.fractions,
+        }
+        .serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for FractranProgram {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawProgram {
+            fractions: Vec<Rational>,
+        }
+        let raw = RawProgram::deserialize(deserializer)?;
+        Ok(Self::new(raw.fractions))
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for FractranCompiledVm {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct RawVm {
+            primes: Vec<u64>,
+            num_rules: usize,
+            numer_exponents: Vec<u32>,
+            denom_exponents: Vec<u32>,
+        }
+        let raw = RawVm::deserialize(deserializer)?;
+        if raw.primes.first().is_some_and(|&p| p < 2)
+            || !raw.primes.windows(2).all(|pair| pair[0] < pair[1])
+        {
+            return Err(serde::de::Error::custom(
+                "FractranCompiledVm primes must be strictly ascending integers >= 2",
+            ));
+        }
+        let expected_len = raw
+            .num_rules
+            .checked_mul(raw.primes.len())
+            .ok_or_else(|| serde::de::Error::custom("FractranCompiledVm table size overflow"))?;
+        if raw.numer_exponents.len() != expected_len || raw.denom_exponents.len() != expected_len {
+            return Err(serde::de::Error::custom(
+                "FractranCompiledVm exponent matrix length does not match num_rules * primes.len()",
+            ));
+        }
+        Ok(Self {
+            primes: raw.primes,
+            num_rules: raw.num_rules,
+            numer_exponents: raw.numer_exponents,
+            denom_exponents: raw.denom_exponents,
+        })
     }
 }
 

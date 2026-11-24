@@ -1,4 +1,6 @@
 mod builder;
+#[cfg(feature = "serde")]
+mod serde_support;
 pub use builder::{NetworkEpidemicModelBuilder, NetworkModelError};
 
 use rand::Rng;
@@ -20,6 +22,7 @@ pub fn heterogeneous_r0(beta: f64, gamma: f64, mean_degree: f64, degree_variance
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[allow(missing_docs)]
 pub enum NodeState {
     #[allow(missing_docs)]
@@ -32,6 +35,7 @@ pub enum NodeState {
     Vaccinated,
 }
 
+#[derive(Clone, Debug, PartialEq)]
 #[allow(missing_docs)]
 pub struct NetworkEpidemicModel {
     pub(super) num_nodes: usize,

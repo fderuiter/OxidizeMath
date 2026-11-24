@@ -156,3 +156,45 @@ fn ou_calibration_and_quantile_summary_are_zero_alloc_and_accurate() {
         assert!((summary.prob_above_threshold - 0.5).abs() < 0.08);
     });
 }
+
+#[cfg(feature = "serde")]
+#[test]
+fn stochastic_summaries_serde_roundtrip() {
+    use math_commons::stochastic::{OuCalibration, SampleSummary, SccSummary};
+
+    let scc = SccSummary {
+        num_components: 3,
+        num_sink_components: 1,
+        unique_sink_size: 2,
+    };
+    let scc_json = serde_json::to_string(&scc).expect("serialize SccSummary");
+    assert_eq!(
+        serde_json::from_str::<SccSummary>(&scc_json).expect("deserialize SccSummary"),
+        scc
+    );
+
+    let cal = OuCalibration {
+        mu: -1.2,
+        theta: 6.0,
+        sigma: 0.45,
+    };
+    let cal_json = serde_json::to_string(&cal).expect("serialize OuCalibration");
+    assert_eq!(
+        serde_json::from_str::<OuCalibration>(&cal_json).expect("deserialize OuCalibration"),
+        cal
+    );
+
+    let sample = SampleSummary {
+        mean: 0.0,
+        std_dev: 1.0,
+        median: 0.01,
+        percentile_05: -1.64,
+        percentile_95: 1.65,
+        prob_above_threshold: 0.5,
+    };
+    let sample_json = serde_json::to_string(&sample).expect("serialize SampleSummary");
+    assert_eq!(
+        serde_json::from_str::<SampleSummary>(&sample_json).expect("deserialize SampleSummary"),
+        sample
+    );
+}

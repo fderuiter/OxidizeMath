@@ -9,6 +9,7 @@ pub const MAX_LATTICE_JET_SPEED: f64 = 0.16;
 
 /// Integrated 2D aerodynamic force and dimensionless lift/drag coefficients.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AerodynamicCoefficients {
     /// Dimensionless drag coefficient $C_D = F_x / (\frac{1}{2} \rho_0 U_\infty^2 L)$.
     pub drag_coeff: f64,
@@ -22,6 +23,7 @@ pub struct AerodynamicCoefficients {
 
 /// Parametric NACA 4-digit airfoil section placed on a 2D lattice grid.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Naca4Airfoil {
     /// Four NACA digits `[m, p, t_tens, t_ones]` (for example `[2, 4, 1, 2]` for NACA 2412).
     pub digits: [u8; 4],

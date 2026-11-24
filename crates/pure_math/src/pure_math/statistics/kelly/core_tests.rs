@@ -142,6 +142,7 @@ fn test_odds_implied_probability_and_net_odds() {
     assert!(Odds::from_net_odds(f64::NEG_INFINITY).is_err());
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn test_odds_and_bankroll_fraction_serde_validation() {
     let odds = Odds::new(2.75).unwrap();

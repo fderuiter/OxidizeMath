@@ -4,6 +4,7 @@ use math_commons::constants::{C, EPSILON};
 /// A struct representing a Four-Vector (Time + 3-Space).
 /// The metric signature is -+++.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FourVector {
     /// Time component (e.g., t or ct, depending on context).
     /// For `invariant_interval`, this is interpreted as time `t` (seconds).

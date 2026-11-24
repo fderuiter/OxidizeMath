@@ -73,6 +73,7 @@ pub fn advect_characteristic_step(
 
 /// Diekmann age-structured mortality, juvenile vulnerability, and Ricker saturation kernel.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CannibalismKernel {
     /// Baseline natural per-capita mortality $\nu_0 \ge 0$.
     pub natural_mortality: f64,

@@ -10,6 +10,7 @@ use std::fmt::Write;
 
 /// Errors that can occur when transpiling an [`Expr`] tree to GLSL source code.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GlslError {
     /// AST subtree height exceeded [`MAX_EVAL_DEPTH`].
     #[error("GLSL transpilation depth limit exceeded (max depth {0})")]

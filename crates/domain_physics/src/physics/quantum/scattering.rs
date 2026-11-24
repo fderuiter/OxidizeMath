@@ -52,6 +52,7 @@ const GAUSS_HERMITE_12: [(f64, f64); 12] = [
 /// Real unimodular $2 \times 2$ state transfer matrix $M \in \mathrm{SL}(2, \mathbb{R})$
 /// propagating $[\psi(x), \psi'(x)]^\top$ across 1D potential segments.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TransferMatrix2x2 {
     /// Upper-left entry $\partial \psi(x + \Delta x) / \partial \psi(x)$.
     pub m00: f64,

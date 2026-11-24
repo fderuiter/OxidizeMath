@@ -16,6 +16,7 @@ pub fn adult_dynamics(n_t_alpha: f64, f_i_t: f64, a_t: f64) -> f64 {
 
 /// Demographic and cannibalism parameters for [`JuvenileAdultSolver`].
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct JuvenileAdultParams {
     /// Maturation age $\alpha > 0$ at which juveniles recruit into the adult class.
     pub maturation_age: f64,

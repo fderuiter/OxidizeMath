@@ -11,6 +11,7 @@ use nalgebra::{Point3, Vector3};
 
 /// Intrinsic boundary topology of a 2D parameterized surface grid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SurfaceTopology {
     /// Doubly periodic manifold $(u, v) \in [u_{\min}, u_{\max}) \times [v_{\min}, v_{\max})$ (e.g. `Torus`).
     PeriodicTorus,

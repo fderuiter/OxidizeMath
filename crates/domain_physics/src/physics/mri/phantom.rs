@@ -4,6 +4,7 @@ use std::f64::consts::PI;
 
 /// MRI relaxation and proton-density parameters at a single spatial voxel.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct TissueParameters {
     /// Equilibrium proton spin density $\rho \in [0, 1]$.
     pub rho: f64,
@@ -15,6 +16,7 @@ pub struct TissueParameters {
 
 /// Analytical ellipse specification for the Modified Shepp-Logan phantom.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SheppLoganEllipse {
     /// Additive grey-level intensity contribution.
     pub additive_intensity: f64,

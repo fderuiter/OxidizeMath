@@ -136,6 +136,7 @@ fn test_expected_outcome() {
     assert!(e < 0.5);
 }
 
+#[cfg(feature = "serde")]
 #[test]
 #[verified_engine::verified]
 fn test_serde_roundtrip_and_validation_all_six_core_types() {

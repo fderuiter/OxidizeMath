@@ -139,7 +139,49 @@ impl<T: ?Sized + ParametricSurface> SurfaceAnalysis for T {
     }
 }
 
+/// Canonical parametric surface family selector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ParametricSurfaceKind {
+    /// Sphere surface parameterized by radius.
+    Sphere,
+    /// Torus surface parameterized by major and minor radii.
+    Torus,
+    /// Figure-8 Klein bottle immersion in $\mathbb{R}^3$.
+    KleinBottle,
+    /// Monge heightfield surface $z = f(x, y)$ compiled to stack bytecode.
+    CustomHeightfield,
+    /// Parametric 3D immersion $r(u, v) = (x(u, v), y(u, v), z(u, v))$ compiled to stack bytecode.
+    CustomParametric,
+}
+
+impl ParametricSurfaceKind {
+    /// Returns the default $(u, v)$ parameter domain `((u_min, u_max), (v_min, v_max))` for this surface family.
+    #[must_use]
+    pub const fn uv_domain(self) -> ((f64, f64), (f64, f64)) {
+        match self {
+            Self::CustomHeightfield => ((-2.0, 2.0), (-2.0, 2.0)),
+            Self::Sphere | Self::Torus | Self::KleinBottle | Self::CustomParametric => (
+                (0.0, 2.0 * std::f64::consts::PI),
+                (0.0, 2.0 * std::f64::consts::PI),
+            ),
+        }
+    }
+}
+
+/// Canonical differential-geometry surface curvature measure selector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum CurvatureKind {
+    /// Gaussian curvature $K = \frac{LN - M^2}{EG - F^2}$.
+    Gaussian,
+    /// Mean curvature $H = \frac{EN - 2FM + GL}{2(EG - F^2)}$.
+    Mean,
+}
+
 /// A Sphere of radius R.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Sphere {
     #[allow(missing_docs)]
     pub radius: f64,
@@ -162,6 +204,8 @@ impl ParametricSurface for Sphere {
 }
 
 /// A Torus with major radius R and minor radius r.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Torus {
     #[allow(missing_docs)]
     pub major_radius: f64,
@@ -182,6 +226,8 @@ impl ParametricSurface for Torus {
 
 /// A Klein Bottle immersion (Figure-8 parametrization) in R^3.
 /// This self-intersects since a true Klein bottle cannot be embedded in R^3 without intersection.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct KleinBottle {
     #[allow(missing_docs)]
     pub radius: f64,

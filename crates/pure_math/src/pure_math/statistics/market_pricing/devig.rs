@@ -8,7 +8,8 @@ use crate::pure_math::statistics::kelly::Odds;
 use math_commons::registry::TOLERANCE_HIGH;
 
 /// Bookmaker vig-removal model used to recover true fair probabilities from quoted odds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DevigMethod {
     /// Proportional scaling (`p_i = pi_i / sum(pi)`), assuming constant margin across all odds.
     Multiplicative,
@@ -23,6 +24,7 @@ pub enum DevigMethod {
 /// Diagnostic emitted when raw `Additive` devigging produces non-positive probabilities on
 /// longshots, requiring clamping and renormalization onto the probability simplex.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SimplexViolationDiagnostic {
     /// Count of outcomes whose raw additive probability was `<= 0.0`.
     pub violated_count: usize,
@@ -36,6 +38,7 @@ pub struct SimplexViolationDiagnostic {
 
 /// Calibration parameter, solver telemetry, and simplex diagnostic produced by a devigging run.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DevigMetadata {
     /// Devigging model applied.
     pub method: DevigMethod,

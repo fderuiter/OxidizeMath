@@ -5,6 +5,8 @@ use nalgebra::Vector3;
 use pure_math::pure_math::analysis::ode::{OdeSystem, TimeStepper};
 
 /// Classical Dynamics Simulator using Bloch Equations.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BlochSimulator {
     /// Current magnetization vector $\vec{M} = (M_x, M_y, M_z)$.
     pub magnetization: Vector3<f64>,

@@ -11,6 +11,7 @@ pub const MAX_EVAL_DEPTH: usize = 64;
 
 /// Errors that can occur during AST compilation or evaluation.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum EvalError {
     /// Variable was not defined in the scope.
     #[error("Unknown variable '{0}'")]

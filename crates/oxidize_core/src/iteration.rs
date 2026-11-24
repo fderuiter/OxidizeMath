@@ -1,5 +1,7 @@
 /// Provides high-performance iteration patterns that separate interior updates
 /// from boundary processing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IterationPattern;
 
 impl IterationPattern {

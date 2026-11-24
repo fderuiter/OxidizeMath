@@ -7,12 +7,11 @@
 
 // [cite:advanced_linear_algebra]
 
-use serde::{Deserialize, Serialize};
-
 use super::traits::{OdeSystem, SeparableHamiltonian, Solver, VectorOperations};
 
 /// Symplectic numerical integration schemes for conservative Hamiltonian systems.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SymplecticMethod {
     /// 2nd-order explicit velocity Störmer-Verlet (leapfrog) splitting for separable Hamiltonians.
     StormerVerlet,

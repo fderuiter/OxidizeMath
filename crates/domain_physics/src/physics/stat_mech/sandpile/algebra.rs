@@ -6,7 +6,6 @@
 //! `generate_left_coset`).
 
 use pure_math::pure_math::algebra::{AbelianGroup, Group, Monoid, Semigroup, Zn};
-use serde::{Deserialize, Serialize};
 
 use super::kirchhoff::{
     SandpileError, creutz_dual_zero_array, creutz_identity_array, dhar_burning_array,
@@ -41,7 +40,8 @@ pub struct SandpileElement<const W: usize, const H: usize> {
     heights: [[u32; W]; H],
 }
 
-impl<const W: usize, const H: usize> Serialize for SandpileElement<W, H> {
+#[cfg(feature = "serde")]
+impl<const W: usize, const H: usize> serde::Serialize for SandpileElement<W, H> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let flat: Vec<u32> = self
             .heights
@@ -52,7 +52,8 @@ impl<const W: usize, const H: usize> Serialize for SandpileElement<W, H> {
     }
 }
 
-impl<'de, const W: usize, const H: usize> Deserialize<'de> for SandpileElement<W, H> {
+#[cfg(feature = "serde")]
+impl<'de, const W: usize, const H: usize> serde::Deserialize<'de> for SandpileElement<W, H> {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let flat = Vec::<u32>::deserialize(deserializer)?;
         if flat.len() != W * H {

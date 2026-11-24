@@ -19,6 +19,7 @@ pub const MAX_INTERCHANGE_EDGES: usize = 2048;
 
 /// Canonical vertex record with optional finite 2D layout coordinates and display label.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct InterchangeNode {
     /// Non-negative integer vertex identifier.
     pub id: usize,
@@ -30,6 +31,7 @@ pub struct InterchangeNode {
 
 /// Canonical weighted edge record connecting `source` to `target`.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct InterchangeEdge {
     /// Source endpoint vertex identifier.
     pub source: usize,
@@ -41,6 +43,7 @@ pub struct InterchangeEdge {
 
 /// Canonical bounded graph representation shared across `.dot`, `.graphml`, and `.csv` codecs.
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct InterchangeGraph {
     /// `true` for directed (`digraph`), `false` for undirected (`graph`).
     pub directed: bool,
@@ -52,6 +55,7 @@ pub struct InterchangeGraph {
 
 /// Optional Graphviz `.dot` styling attributes for an individual vertex.
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DotNodeStyle {
     /// Stroke color (e.g., `"#1f77b4"`).
     pub color: Option<String>,
@@ -65,6 +69,7 @@ pub struct DotNodeStyle {
 
 /// Optional Graphviz `.dot` styling attributes for an individual edge.
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DotEdgeStyle {
     /// Edge stroke color (e.g., `"#2ca02c"`).
     pub color: Option<String>,
@@ -76,6 +81,7 @@ pub struct DotEdgeStyle {
 
 /// Active solver or invariant visual overlay serialized into styled `.dot` exports.
 #[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DotStyleOverlay {
     /// Optional top-level graph caption (`label`).
     pub graph_label: Option<String>,

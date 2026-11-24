@@ -12,7 +12,8 @@ const MIN_HALF_PLANE_IMAG: f64 = 1.0e-6;
 const MAX_HALF_PLANE_COORD: f64 = 1.0e6;
 
 /// Validated point $z = x + i y$ inside the open unit Poincaré disk $\mathbb{D} = \{z \in \mathbb{C} : |z| < 1\}$.
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct DiskPoint {
     re: f64,
     im: f64,
@@ -135,7 +136,8 @@ impl DiskPoint {
 }
 
 /// Validated point $w = u + i v$ in the Poincaré upper half-plane $\mathbb{H} = \{w \in \mathbb{C} : \operatorname{Im}(w) > 0\}$.
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct HalfPlanePoint {
     re: f64,
     im: f64,

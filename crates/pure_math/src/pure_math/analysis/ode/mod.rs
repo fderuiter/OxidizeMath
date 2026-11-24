@@ -21,10 +21,9 @@ pub mod symplectic;
 #[allow(missing_docs)]
 pub mod traits;
 
-use serde::{Deserialize, Serialize};
-
 /// Supported numerical integration methods.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum IntegrationMethod {
     /// 4th-order Runge-Kutta method (default).
     #[default]

@@ -3,6 +3,7 @@
 use super::grid::{DEFAULT_MAX_GOALS, GRID_STRIDE, MAX_GOALS_LIMIT, ScoreGrid};
 use super::poisson::fill_poisson_marginals;
 use crate::error::MatchModelError;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// Computes the structural Dixon-Coles correlation bounds
@@ -40,7 +41,8 @@ pub fn dixon_coles_tau(home: usize, away: usize, lambda: f64, mu: f64, rho: f64)
 }
 
 /// Validated Dixon-Coles match parameters $(\lambda, \mu, \rho)$.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct DixonColesParams {
     lambda: f64,
     mu: f64,
@@ -110,6 +112,7 @@ impl DixonColesParams {
     }
 }
 
+#[cfg(feature = "serde")]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawDixonColesParams {
@@ -118,6 +121,7 @@ struct RawDixonColesParams {
     rho: f64,
 }
 
+#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for DixonColesParams {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let raw = RawDixonColesParams::deserialize(deserializer)?;

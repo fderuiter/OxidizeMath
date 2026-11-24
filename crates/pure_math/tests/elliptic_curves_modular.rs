@@ -266,3 +266,36 @@ fn test_modular_bridge_invariants_class_numbers_and_q_series() {
         vec![1, 744, 196_884, 21_493_760, 864_299_970]
     );
 }
+
+#[cfg(feature = "serde")]
+#[test]
+fn test_weierstrass_curves_and_summaries_serde_roundtrip_and_validation() {
+    let real = WeierstrassCurve::new(-2.0, 2.0).unwrap();
+    let real_json = serde_json::to_string(&real).unwrap();
+    let real_back: WeierstrassCurve = serde_json::from_str(&real_json).unwrap();
+    assert_eq!(real_back, real);
+    assert!(serde_json::from_str::<WeierstrassCurve>(r#"{"a":0.0,"b":0.0}"#).is_err());
+
+    let fp = FpWeierstrassCurve::<29>::new(-1, 0).unwrap();
+    let fp_json = serde_json::to_string(&fp).unwrap();
+    let fp_back: FpWeierstrassCurve<29> = serde_json::from_str(&fp_json).unwrap();
+    assert_eq!(fp_back, fp);
+    assert!(serde_json::from_str::<FpWeierstrassCurve<29>>(r#"{"a":0,"b":0}"#).is_err());
+
+    let rt = PrimeWeierstrassCurve::new(-1, 0, 29).unwrap();
+    let rt_json = serde_json::to_string(&rt).unwrap();
+    let rt_back: PrimeWeierstrassCurve = serde_json::from_str(&rt_json).unwrap();
+    assert_eq!(rt_back, rt);
+    assert!(serde_json::from_str::<PrimeWeierstrassCurve>(r#"{"a":1,"b":1,"p":15}"#).is_err());
+    assert!(serde_json::from_str::<PrimeWeierstrassCurve>(r#"{"a":0,"b":0,"p":29}"#).is_err());
+
+    let pt = CurvePoint::Affine { x: 1_i64, y: 7_i64 };
+    let pt_back: CurvePoint<i64> =
+        serde_json::from_str(&serde_json::to_string(&pt).unwrap()).unwrap();
+    assert_eq!(pt_back, pt);
+
+    let mod_summary = modular_valuation_summary(&rt, 5, 1, 1).unwrap();
+    let mod_back: ModularValuationSummary =
+        serde_json::from_str(&serde_json::to_string(&mod_summary).unwrap()).unwrap();
+    assert_eq!(mod_back, mod_summary);
+}

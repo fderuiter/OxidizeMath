@@ -227,3 +227,47 @@ fn test_interchange_rejects_non_finite_and_oversized_inputs() {
         })
     ));
 }
+
+#[cfg(feature = "serde")]
+#[test]
+fn test_graph_interchange_and_solver_results_serde_roundtrip() {
+    use pure_math::pure_math::graph_theory::{
+        max_flow_min_cut::MaxFlowMinCutResult, minimum_spanning_tree::MstResult,
+    };
+
+    let mut g = InterchangeGraph::new(true);
+    g.push_edge(0, 1, 4.0).expect("edge 0->1");
+    g.push_edge(1, 2, 3.0).expect("edge 1->2");
+    let g_json = serde_json::to_string(&g).expect("serialize InterchangeGraph");
+    assert_eq!(
+        serde_json::from_str::<InterchangeGraph>(&g_json).expect("deserialize InterchangeGraph"),
+        g
+    );
+
+    let flow =
+        max_flow_min_cut(3, &[(0, 1, 4.0), (1, 2, 3.0)], 0, 2, true).expect("solve max flow");
+    let flow_json = serde_json::to_string(&flow).expect("serialize MaxFlowMinCutResult");
+    assert_eq!(
+        serde_json::from_str::<MaxFlowMinCutResult>(&flow_json)
+            .expect("deserialize MaxFlowMinCutResult"),
+        flow
+    );
+
+    let mst =
+        minimum_spanning_tree(3, &[(0, 1, 4.0), (1, 2, 3.0), (0, 2, 5.0)]).expect("solve mst");
+    let mst_json = serde_json::to_string(&mst).expect("serialize MstResult");
+    assert_eq!(
+        serde_json::from_str::<MstResult>(&mst_json).expect("deserialize MstResult"),
+        mst
+    );
+
+    let err = GraphTheoryError::ParseError {
+        format: "DOT",
+        message: "unexpected token".to_string(),
+    };
+    assert!(
+        serde_json::to_string(&err)
+            .expect("serialize GraphTheoryError")
+            .contains("DOT")
+    );
+}

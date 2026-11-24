@@ -45,7 +45,8 @@ pub trait GapEquation {
 /// let gap = solver.solve(&model, ElectronVolts::new(0.05)).unwrap();
 /// assert!((gap / ElectronVolts::new(1.0)) > 0.0);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BcsGapSolver {
     /// Maximum number of damped fixed-point iterations before returning [`SolidStateError::ConvergenceFailure`].
     pub max_iterations: usize,
@@ -151,6 +152,8 @@ impl BcsGapSolver {
 ///
 /// Sums pairing contributions across states within $|\xi_k| \le \hbar\omega_D$ (`debye_cutoff`)
 /// weighted by uniform attractive pairing interaction `potential` $V$.
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct IsotropicBCSModel {
     /// Single-particle kinetic energies $\xi_k = \epsilon_k - \mu$ relative to the Fermi level.
     pub energies: Vec<ElectronVolts>,

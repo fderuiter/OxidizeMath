@@ -57,7 +57,7 @@ pub struct TransitionTensor<T: RealField + Copy + ToPrimitive> {
     /// Maximum time.
     max_time: TimeIndex<T>,
     /// Time-indexed transition matrices, sorted by time.
-    time_slices: Vec<(TimeIndex<T>, DMatrix<T>)>,
+    pub(super) time_slices: Vec<(TimeIndex<T>, DMatrix<T>)>,
 }
 
 impl<T: RealField + Copy + ToPrimitive> TransitionTensor<T> {

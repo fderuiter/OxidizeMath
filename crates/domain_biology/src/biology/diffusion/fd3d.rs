@@ -10,6 +10,7 @@ use pure_math::pure_math::analysis::pde::fused_stepper::FusedStencilStepper;
 /// 3D Cartesian Finite Difference diffusion operator using a 7-point Laplacian stencil
 /// and zero-flux Neumann boundary clamping over [`FusedStencilStepper`].
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FiniteDifference3D {
     /// Grid extent along the X axis.
     pub width: Dimension,

@@ -6,7 +6,6 @@
 
 use math_commons::error::FitError;
 use math_commons::fit::{CurveFit, FitModel, fit_model};
-use serde::{Deserialize, Serialize};
 
 /// Maximum exact integer bucket tracked before accumulating into the overflow tail counter.
 pub const EXACT_AVALANCHE_BUCKET_CAP: usize = 256;
@@ -18,7 +17,8 @@ pub const MAX_POWER_LAW_FIT_POINTS: usize = 20;
 pub const WAVEFRONT_TRACE_CAP: usize = 256;
 
 /// Observable channel for avalanche scaling distributions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum AvalancheObservable {
     /// Total topple count $S$ per avalanche.
     Size,
@@ -29,7 +29,8 @@ pub enum AvalancheObservable {
 }
 
 /// Summary telemetry produced by stabilizing a single avalanche or multi-site perturbation.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AvalancheStats {
     /// Total number of individual site topplings ($S$).
     pub topples: u64,
