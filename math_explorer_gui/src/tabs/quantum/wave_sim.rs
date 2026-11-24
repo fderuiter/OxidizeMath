@@ -16,8 +16,6 @@ mod plot_ui;
 pub mod presets;
 #[path = "wave_sim/runner.rs"]
 pub mod runner;
-#[path = "wave_sim/runner_latch.rs"]
-mod runner_latch;
 #[path = "wave_sim/sculpt.rs"]
 pub mod sculpt;
 #[cfg(test)]
