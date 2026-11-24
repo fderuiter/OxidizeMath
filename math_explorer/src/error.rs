@@ -36,8 +36,9 @@ pub use domain_physics::error::{
 pub use pure_math::error::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
     FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError, LinearAlgebraError,
-    MarketPricingError, MarkovError, MatchModelError, NumberTheoryError, OptimizationError,
-    OuError, PureMathError, StochasticError, TdaError, TensorError, TransformError, ZipError,
+    MarketPricingError, MarkovError, MatchModelError, MonteCarloError, NumberTheoryError,
+    OptimizationError, OuError, PureMathError, StochasticError, TdaError, TensorError,
+    TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -214,6 +215,9 @@ pub enum Error {
     /// Calibrated 2D score-grid match model error.
     #[cfg(feature = "pure_math")]
     MatchModel(MatchModelError),
+    /// Monte Carlo, quasi-Monte Carlo, and bootstrap estimation error.
+    #[cfg(feature = "pure_math")]
+    MonteCarlo(MonteCarloError),
     /// Number theory error.
     #[cfg(feature = "pure_math")]
     NumberTheory(NumberTheoryError),
