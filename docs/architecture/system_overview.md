@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 23 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 24 workspace crates:
 
 ```mermaid
 graph TD
@@ -79,6 +79,7 @@ graph TD
         Engine[verified_engine]
         Macros[verified_engine_macros]
         CoreCrate[oxidize_core]
+        Scalars[math_scalars]
         Linalg[engine_linalg]
         Diag[diagnostics]
     end
@@ -103,7 +104,7 @@ graph TD
     Pure --> Commons & Meta & DiffEq & Pde & Linalg
     DiffEq --> Commons & Engine
     Pde --> Commons & Engine
-    Commons --> CoreCrate & Linalg
+    Commons --> CoreCrate & Linalg & Scalars
     Engine --> Macros & CoreCrate
     Meta --> CoreCrate
 
@@ -116,10 +117,11 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 23 member crates declared in `Cargo.toml`:
+The workspace contains all 24 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
+| `crates/00_foundation/math_scalars` | `#![no_std]` forward-mode AD scalars and outward-rounded intervals/balls | [math_scalars](../../crates/00_foundation/math_scalars/README.md) |
 | `crates/oxidize_core` | Core utilities, file systems, and traceability | [oxidize_core](../../crates/oxidize_core/README.md) |
 | `crates/02_engines/engine_linalg` | `#![no_std]` numerical linear algebra engine | [engine_linalg](../../crates/02_engines/engine_linalg/README.md) |
 | `crates/verified_engine` | Zero-allocation runtime and execution tracking | [zero_allocation_runtime](zero_allocation_runtime.md) |

@@ -1076,6 +1076,7 @@ dependencies = [
  "engine_linalg",
  "engine_pde",
  "math_commons",
+ "math_scalars",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -1364,6 +1365,7 @@ name = "engine_diffeq"
 version = "0.4.0"
 dependencies = [
  "math_commons",
+ "math_scalars",
  "oxidize_core",
  "rand_core",
  "verified_engine",
@@ -2445,6 +2447,7 @@ dependencies = [
  "federated_registry",
  "math_commons",
  "math_explorer",
+ "math_scalars",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -2464,6 +2467,7 @@ dependencies = [
  "diagnostics",
  "engine_linalg",
  "libm",
+ "math_scalars",
  "num-complex",
  "num-traits",
  "oxidize_core",
@@ -2531,6 +2535,14 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
  "web-sys",
+]
+
+[[package]]
+name = "math_scalars"
+version = "0.4.0"
+dependencies = [
+ "libm",
+ "verified_engine",
 ]
 
 [[package]]
@@ -3429,6 +3441,7 @@ dependencies = [
  "engine_linalg",
  "engine_pde",
  "math_commons",
+ "math_scalars",
  "nalgebra 0.34.2",
  "num-complex",
  "num-traits",
@@ -4393,6 +4406,7 @@ name = "unified_verification"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "math_scalars",
  "oxidize_core",
  "proc-macro2",
  "quote",

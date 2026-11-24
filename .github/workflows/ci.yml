@@ -727,6 +727,9 @@ jobs:
           if ! jq -e '
             type == "object"
             and (keys | sort) == [
+              "certified_enclosures_verified",
+              "certified_interval_max_width",
+              "certified_root_max_ulp_bound",
               "native_execution_coverage_pct",
               "passed",
               "test_assertion_density",
@@ -745,6 +748,10 @@ jobs:
             and (.total_production_assertion_density | type == "number" and . >= 0)
             and (.verified_production_assertion_density | type == "number" and . >= 0)
             and (.test_assertion_density | type == "number" and . >= 0)
+            and (.certified_interval_max_width | type == "number" and . >= 0)
+            and (.certified_root_max_ulp_bound | type == "number" and . >= 0 and . <= 4)
+            and (.certified_enclosures_verified | type == "boolean")
+            and .certified_enclosures_verified == true
             and (.passed | type == "boolean")
             and .passed == true
           ' "$CERT_FILE" >/dev/null; then

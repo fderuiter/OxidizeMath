@@ -1,0 +1,19 @@
+[package]
+name = "math_scalars"
+version.workspace = true
+edition = "2024"
+description = "Zero-allocation #![no_std] forward-mode automatic differentiation, IEEE-754 directed-rounding intervals, and midpoint-radius ball scalars"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = []
+alloc = []
+
+[dependencies]
+libm = { workspace = true }
+
+[dev-dependencies]
+verified_engine = { path = "../../verified_engine" }
+
+[lints]
+workspace = true

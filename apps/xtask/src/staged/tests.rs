@@ -276,7 +276,7 @@ fn test_root_config_edits_escalate_to_full_workspace_checks() {
 fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
     let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let crates = load_workspace_crates(&ws_root);
-    assert_eq!(crates.len(), 23);
+    assert_eq!(crates.len(), 24);
 
     let mut web_names: Vec<&str> = crates
         .iter()
@@ -302,6 +302,7 @@ fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
             "math_commons",
             "math_explorer",
             "math_explorer_gui",
+            "math_scalars",
             "oxidize_core",
             "pure_math",
             "scientific_metadata",

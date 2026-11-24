@@ -141,8 +141,9 @@ where
     }
     let mut work = *theta;
     let mut jac = [0.0_f64; MAX_FIT_PARAMS];
+    let eps_sqrt = f64::EPSILON.sqrt();
     for j in 0..k {
-        let h = 1e-6 * theta[j].abs().max(1.0);
+        let h = eps_sqrt * theta[j].abs().max(1.0);
         work[j] = theta[j] + h;
         let Some(yp) = eval_fn(x, &work[..k]) else {
             return (f64::NAN, [0.0; MAX_FIT_PARAMS]);
@@ -157,7 +158,7 @@ where
     (y0, jac)
 }
 
-fn lm_core<const M: usize, P, V, J>(
+pub(super) fn lm_core<const M: usize, P, V, J>(
     points: &P,
     initial_params: &[f64],
     domain_ok: fn(f64, f64) -> bool,
@@ -262,7 +263,7 @@ where
 }
 
 #[inline]
-fn finite_xy(x: f64, y: f64) -> bool {
+pub(super) fn finite_xy(x: f64, y: f64) -> bool {
     x.is_finite() && y.is_finite()
 }
 

@@ -50,6 +50,7 @@ min_verified_production_density = 0.0490
 coverage_tolerance_pct = 1.5
 unverified_modules = [
     "apps/xtask",
+    "crates/00_foundation/math_scalars",
     "crates/02_engines/engine_linalg",
     "crates/diagnostics",
     "crates/engine_diffeq",
@@ -306,6 +307,7 @@ reason = "Activates the getrandom js backend feature on wasm32-unknown-unknown f
 # Non-domain infrastructure, tooling, facade, GUI, and vendored crates exempt from theory_verification!
 exempt_crates = [
     "apps/xtask",
+    "crates/00_foundation/math_scalars",
     "crates/02_engines/engine_linalg",
     "crates/diagnostics",
     "crates/engine_diffeq",

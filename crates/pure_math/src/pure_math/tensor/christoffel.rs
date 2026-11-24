@@ -63,26 +63,22 @@ pub fn christoffel_symbols(
 
     let g_inv = metric.inverse_metric_at(point)?;
 
-    // Precompute metric derivatives: partial_g[k][i, j] = d(g_ij)/dx^k
-    let mut partial_g = vec![DMatrix::zeros(dim, dim); dim];
-
-    // Bolt Optimization: Allocate point buffer once to prevent 2*dim heap allocations
-    let mut p_eval = point.clone();
-
-    for k in 0..dim {
-        // Forward shift
-        p_eval[k] += h;
-        let g_plus = metric.metric_at(&p_eval)?;
-
-        // Backward shift
-        p_eval[k] -= 2.0 * h;
-        let g_minus = metric.metric_at(&p_eval)?;
-
-        // Restore point buffer
-        p_eval[k] += h;
-
-        partial_g[k] = (g_plus - g_minus) / (2.0 * h);
-    }
+    // Use exact forward-AD metric derivatives when available, otherwise central finite differences
+    let partial_g = if let Some(exact) = metric.metric_partials(point) {
+        exact?
+    } else {
+        let mut fd_g = vec![DMatrix::zeros(dim, dim); dim];
+        let mut p_eval = point.clone();
+        for (k, slot) in fd_g.iter_mut().enumerate() {
+            p_eval[k] += h;
+            let g_plus = metric.metric_at(&p_eval)?;
+            p_eval[k] -= 2.0 * h;
+            let g_minus = metric.metric_at(&p_eval)?;
+            p_eval[k] += h;
+            *slot = (g_plus - g_minus) / (2.0 * h);
+        }
+        fd_g
+    };
 
     let mut gammas = vec![DMatrix::zeros(dim, dim); dim];
 

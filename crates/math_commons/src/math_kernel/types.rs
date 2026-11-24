@@ -3,6 +3,9 @@ use core::fmt::Debug;
 use core::ops::{
     Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
 };
+pub use math_scalars::{
+    Ball, Dual, DualVec, HyperDual, Interval, RealScalar, Scalar as DiffScalar,
+};
 use rand_core::RngCore;
 
 /// A physical step size, typically used for grid spacing.
@@ -86,8 +89,9 @@ pub fn flatten_3d_index(x: usize, y: usize, z: usize, width: usize, height: usiz
 
 /// `#![no_std]` Tier 0 real floating-point scalar contract for deterministic ODE, SDE, PDE, and SPDE solvers.
 ///
-/// Implemented for `f64` and `f32` via `libm` so transcendental evaluations are available in bare `#![no_std]`
-/// builds and deterministic across native and `wasm32-unknown-unknown` targets.
+/// Extends [`math_scalars::RealScalar`] (and [`math_scalars::Scalar`]) for `f64` and `f32` via `libm`
+/// so generic solver scalars interoperate seamlessly with `Dual<T>`, `DualVec<T, N>`, `HyperDual<T>`,
+/// `Interval<T>`, and `Ball<T>` across native and `wasm32-unknown-unknown` targets.
 pub trait Scalar:
     Copy
     + Clone
@@ -149,123 +153,71 @@ pub trait Scalar:
     fn max(self, other: Self) -> Self;
 }
 
-impl Scalar for f64 {
-    const ZERO: Self = 0.0;
-    const ONE: Self = 1.0;
-    const TWO: Self = 2.0;
-    const HALF: Self = 0.5;
-    const PI: Self = core::f64::consts::PI;
-    const TAU: Self = core::f64::consts::TAU;
-    const EPSILON: Self = f64::EPSILON;
+macro_rules! impl_kernel_scalar {
+    ($ty:ty) => {
+        impl Scalar for $ty {
+            const ZERO: Self = <$ty as math_scalars::Scalar>::ZERO;
+            const ONE: Self = <$ty as math_scalars::Scalar>::ONE;
+            const TWO: Self = <$ty as math_scalars::Scalar>::TWO;
+            const HALF: Self = <$ty as math_scalars::Scalar>::HALF;
+            const PI: Self = <$ty as math_scalars::Scalar>::PI;
+            const TAU: Self = <$ty as math_scalars::RealScalar>::TAU;
+            const EPSILON: Self = <$ty as math_scalars::RealScalar>::EPSILON;
 
-    #[inline(always)]
-    fn from_f64(value: f64) -> Self {
-        value
-    }
-    #[inline(always)]
-    fn to_f64(self) -> f64 {
-        self
-    }
-    #[inline(always)]
-    fn from_usize(value: usize) -> Self {
-        value as f64
-    }
-    #[inline(always)]
-    fn is_finite(self) -> bool {
-        f64::is_finite(self)
-    }
-    #[inline(always)]
-    fn abs(self) -> Self {
-        libm::fabs(self)
-    }
-    #[inline(always)]
-    fn sqrt(self) -> Self {
-        libm::sqrt(self)
-    }
-    #[inline(always)]
-    fn ln(self) -> Self {
-        libm::log(self)
-    }
-    #[inline(always)]
-    fn exp(self) -> Self {
-        libm::exp(self)
-    }
-    #[inline(always)]
-    fn sin(self) -> Self {
-        libm::sin(self)
-    }
-    #[inline(always)]
-    fn cos(self) -> Self {
-        libm::cos(self)
-    }
-    #[inline(always)]
-    fn min(self, other: Self) -> Self {
-        libm::fmin(self, other)
-    }
-    #[inline(always)]
-    fn max(self, other: Self) -> Self {
-        libm::fmax(self, other)
-    }
+            #[inline(always)]
+            fn from_f64(value: f64) -> Self {
+                <$ty as math_scalars::Scalar>::from_f64(value)
+            }
+            #[inline(always)]
+            fn to_f64(self) -> f64 {
+                <$ty as math_scalars::RealScalar>::to_f64(self)
+            }
+            #[inline(always)]
+            fn from_usize(value: usize) -> Self {
+                value as $ty
+            }
+            #[inline(always)]
+            fn is_finite(self) -> bool {
+                <$ty as math_scalars::RealScalar>::is_finite(self)
+            }
+            #[inline(always)]
+            fn abs(self) -> Self {
+                <$ty as math_scalars::Scalar>::abs(self)
+            }
+            #[inline(always)]
+            fn sqrt(self) -> Self {
+                <$ty as math_scalars::Scalar>::sqrt(self)
+            }
+            #[inline(always)]
+            fn ln(self) -> Self {
+                <$ty as math_scalars::Scalar>::ln(self)
+            }
+            #[inline(always)]
+            fn exp(self) -> Self {
+                <$ty as math_scalars::Scalar>::exp(self)
+            }
+            #[inline(always)]
+            fn sin(self) -> Self {
+                <$ty as math_scalars::Scalar>::sin(self)
+            }
+            #[inline(always)]
+            fn cos(self) -> Self {
+                <$ty as math_scalars::Scalar>::cos(self)
+            }
+            #[inline(always)]
+            fn min(self, other: Self) -> Self {
+                <$ty as math_scalars::RealScalar>::min_val(self, other)
+            }
+            #[inline(always)]
+            fn max(self, other: Self) -> Self {
+                <$ty as math_scalars::RealScalar>::max_val(self, other)
+            }
+        }
+    };
 }
 
-impl Scalar for f32 {
-    const ZERO: Self = 0.0;
-    const ONE: Self = 1.0;
-    const TWO: Self = 2.0;
-    const HALF: Self = 0.5;
-    const PI: Self = core::f32::consts::PI;
-    const TAU: Self = core::f32::consts::TAU;
-    const EPSILON: Self = f32::EPSILON;
-
-    #[inline(always)]
-    fn from_f64(value: f64) -> Self {
-        value as f32
-    }
-    #[inline(always)]
-    fn to_f64(self) -> f64 {
-        f64::from(self)
-    }
-    #[inline(always)]
-    fn from_usize(value: usize) -> Self {
-        value as f32
-    }
-    #[inline(always)]
-    fn is_finite(self) -> bool {
-        f32::is_finite(self)
-    }
-    #[inline(always)]
-    fn abs(self) -> Self {
-        libm::fabsf(self)
-    }
-    #[inline(always)]
-    fn sqrt(self) -> Self {
-        libm::sqrtf(self)
-    }
-    #[inline(always)]
-    fn ln(self) -> Self {
-        libm::logf(self)
-    }
-    #[inline(always)]
-    fn exp(self) -> Self {
-        libm::expf(self)
-    }
-    #[inline(always)]
-    fn sin(self) -> Self {
-        libm::sinf(self)
-    }
-    #[inline(always)]
-    fn cos(self) -> Self {
-        libm::cosf(self)
-    }
-    #[inline(always)]
-    fn min(self, other: Self) -> Self {
-        libm::fminf(self, other)
-    }
-    #[inline(always)]
-    fn max(self, other: Self) -> Self {
-        libm::fmaxf(self, other)
-    }
-}
+impl_kernel_scalar!(f64);
+impl_kernel_scalar!(f32);
 
 /// Zero-allocation borrowed scratch workspace partitioning caller-supplied mutable slices across solver stages.
 ///

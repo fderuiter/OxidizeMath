@@ -75,6 +75,18 @@ pub trait Metric {
         let raised = &g_inv * &vec.0;
         Ok(ContravariantVector::new(raised))
     }
+
+    /// Optional exact coordinate partial derivatives $\partial_k g_{ij}(x)$ (e.g. via forward-mode AD).
+    ///
+    /// Returning `None` selects the legacy central finite-difference stencil in
+    /// [`super::christoffel_symbols`].
+    #[verified_engine::verified]
+    fn metric_partials(
+        &self,
+        _point: &DVector<f64>,
+    ) -> Option<Result<Vec<DMatrix<f64>>, TensorError>> {
+        None
+    }
 }
 
 /// A generic implementation of a Riemannian metric defined by a closure.

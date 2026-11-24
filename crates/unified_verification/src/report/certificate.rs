@@ -125,6 +125,33 @@ pub fn verify_certificate_against_report(
         );
     }
 
+    if !cert.certified_enclosures_verified {
+        diffs.push(format!(
+            "{} records certified_enclosures_verified=false",
+            cert_path.display()
+        ));
+    }
+    if cert.certified_root_max_ulp_bound > super::enclosures::MAX_CERTIFIED_ROOT_ULPS {
+        diffs.push(format!(
+            "Certificate certified_root_max_ulp_bound {} exceeds maximum {} ULPs",
+            cert.certified_root_max_ulp_bound,
+            super::enclosures::MAX_CERTIFIED_ROOT_ULPS
+        ));
+    }
+    if cert.certified_root_max_ulp_bound != expected.certified_root_max_ulp_bound {
+        diffs.push(format!(
+            "certified_root_max_ulp_bound drift: workspace={}, certificate={}",
+            expected.certified_root_max_ulp_bound, cert.certified_root_max_ulp_bound
+        ));
+    }
+    check_float_eq(
+        "certified_interval_max_width",
+        expected.certified_interval_max_width,
+        cert.certified_interval_max_width,
+        1e-20,
+        &mut diffs,
+    );
+
     check_deterministic_fields(expected, &cert, &mut diffs);
     check_readme_badge(&cert, readme_path, &mut diffs);
 

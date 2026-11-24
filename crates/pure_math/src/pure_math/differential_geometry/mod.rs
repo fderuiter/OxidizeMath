@@ -10,6 +10,7 @@ pub mod mean_curvature_flow;
 pub mod operators;
 #[allow(missing_docs)]
 pub mod surface;
+mod surface_ad;
 
 pub use cotangent_mesh::CotangentLaplacian;
 

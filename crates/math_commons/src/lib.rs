@@ -22,6 +22,10 @@ pub mod stochastic;
 #[allow(missing_docs)]
 pub mod wigner;
 
+pub use math_scalars::{
+    self as scalars, Ball, Dual, DualVec, HyperDual, Interval, RealScalar, Scalar as DiffScalar,
+};
+
 #[cfg(all(test, feature = "std"))]
 macro_rules! theory_verification {
     (

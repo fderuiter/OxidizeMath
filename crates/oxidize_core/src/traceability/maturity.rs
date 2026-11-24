@@ -21,6 +21,7 @@ pub const EXPECTED_WORKSPACE_CRATES: &[&str] = &[
     "federated_registry",
     "math_commons",
     "math_explorer",
+    "math_scalars",
     "oxidize_core",
     "pure_math",
     "scientific_metadata",
@@ -192,7 +193,7 @@ impl MaturityRegistry {
         if let Some(rest) = norm.strip_prefix("crates/") {
             let mut parts = rest.split('/').filter(|s| !s.is_empty());
             let first = parts.next()?;
-            if first == "02_engines" {
+            if matches!(first, "00_foundation" | "02_engines") {
                 return parts.next();
             }
             return Some(first);
@@ -218,10 +219,7 @@ impl MaturityRegistry {
             out.push("cera_framework".to_string());
         }
         for seg in segments.iter().rev().skip(1) {
-            if matches!(
-                *seg,
-                "crates" | "02_engines" | "src" | "tests" | "tabs" | "applied" | "physics"
-            ) {
+            if Self::is_ignored_path_segment(seg) {
                 continue;
             }
             if self.modules.contains_key(*seg) && !out.iter().any(|m| m == seg) {
@@ -265,6 +263,20 @@ impl MaturityRegistry {
             }
         }
         out
+    }
+
+    fn is_ignored_path_segment(seg: &str) -> bool {
+        matches!(
+            seg,
+            "crates"
+                | "00_foundation"
+                | "02_engines"
+                | "src"
+                | "tests"
+                | "tabs"
+                | "applied"
+                | "physics"
+        )
     }
 
     fn append_test_stem_modules(&self, norm_path: &str, stem: &str, out: &mut Vec<String>) {

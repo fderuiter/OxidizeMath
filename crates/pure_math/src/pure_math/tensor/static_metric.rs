@@ -110,6 +110,14 @@ pub trait StaticMetric<const N: usize> {
             Err(TensorError::SingularMetric)
         }
     }
+
+    /// Optional exact stack-allocated partial derivatives `∂_σ g_{μν}` (`slot[σ][(μ, ν)]`).
+    fn metric_partials_at(
+        &self,
+        _point: &SVector<f64, N>,
+    ) -> Option<Result<[SMatrix<f64, N, N>; N], TensorError>> {
+        None
+    }
 }
 
 /// Closure-backed [`StaticMetric`] adapter for custom fixed-dimension manifolds.
@@ -227,6 +235,22 @@ impl StaticMetric<2> for TwoSphereMetric {
             && theta < std::f64::consts::PI - 1e-4
             && theta.sin() > 1e-4
     }
+
+    fn metric_partials_at(
+        &self,
+        point: &SVector<f64, 2>,
+    ) -> Option<Result<[SMatrix<f64, 2, 2>; 2], TensorError>> {
+        use math_scalars::{DualVec, Scalar};
+        if !self.radius.is_finite() || self.radius <= 0.0 || !point.iter().all(|v| v.is_finite()) {
+            return Some(Err(TensorError::SingularMetric));
+        }
+        let theta = DualVec::<f64, 2>::variable(point[0], 0);
+        let r2 = DualVec::<f64, 2>::from_f64(self.radius * self.radius);
+        let g11 = r2 * theta.sin().sqr();
+        let d_theta = SMatrix::<f64, 2, 2>::new(0.0, 0.0, 0.0, g11.eps[0]);
+        let d_phi = SMatrix::<f64, 2, 2>::new(0.0, 0.0, 0.0, g11.eps[1]);
+        Some(Ok([d_theta, d_phi]))
+    }
 }
 
 #[verified_engine::verified]
@@ -234,6 +258,9 @@ fn compute_metric_partials<M: StaticMetric<N> + ?Sized, const N: usize>(
     metric: &M,
     point: &SVector<f64, N>,
 ) -> Result<[SMatrix<f64, N, N>; N], TensorError> {
+    if let Some(exact) = metric.metric_partials_at(point) {
+        return exact;
+    }
     let mut partials = [SMatrix::<f64, N, N>::zeros(); N];
     for (sigma, slot) in partials.iter_mut().enumerate() {
         let h = 1e-5 * point[sigma].abs().max(1.0);
