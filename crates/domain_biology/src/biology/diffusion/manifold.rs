@@ -156,8 +156,6 @@ impl<const N: usize> SpatialDiffusion<N> for CotangentMeshDiffusion {
 
 #[cfg(test)]
 mod tests {
-    #![cfg_attr(any(), verified(opt_out = "tests"))]
-
     use super::*;
     use crate::biology::morphogenesis::{
         DiffusionCoeff, GrayScottKinetics, SchnakenbergKinetics, TuringSystem,
