@@ -1,4 +1,4 @@
-//! Verifies that all 37 public error enums tested from `math_explorer::error`
+//! Verifies that all 39 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -18,8 +18,8 @@ use math_explorer::error::{
     FluidError, GameTheoryError, Glicko2Error, GraphTheoryError, HighEnergyError,
     HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError, MarketPricingError, MarkovError,
     MatchModelError, MathError, MonteCarloError, NumberTheoryError, OuError, PharmacokineticsError,
-    RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError, TdaError,
-    ZipError,
+    PoissonError, QueueingError, RadarError, SandpileError, SolidStateError, StandardModelError,
+    StatMechError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -70,6 +70,11 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         &MarkovError::InvalidProbability { value: 1.5 },
     );
     assert_readable_diagnostic("OuError", &OuError::InvalidVolatility { value: -0.1 });
+    assert_readable_diagnostic("PoissonError", &PoissonError::InvalidRate { rate: -1.0 });
+    assert_readable_diagnostic(
+        "QueueingError",
+        &QueueingError::InvalidServerCount { servers: 0 },
+    );
     assert_readable_diagnostic("ZipError", &ZipError::InvalidRate { value: -0.5 });
     assert_readable_diagnostic("TdaError", &TdaError::EmptyPointCloud);
     assert_readable_diagnostic(

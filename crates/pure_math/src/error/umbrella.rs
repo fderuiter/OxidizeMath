@@ -2,8 +2,8 @@ use super::{
     AmbsError, AnalysisError, BayesianError, CopulaError, DistributionError, EllipticCurveError,
     EloError, EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError,
     KellyError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
-    MonteCarloError, NumberTheoryError, OptimizationError, OuError, StochasticError, TdaError,
-    TensorError, TransformError, ZipError,
+    MonteCarloError, NumberTheoryError, OptimizationError, OuError, PoissonError, QueueingError,
+    StochasticError, TdaError, TensorError, TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -52,6 +52,12 @@ pub enum PureMathError {
     /// Ornstein-Uhlenbeck process error.
     #[error("{0}")]
     Ou(#[from] OuError),
+    /// Homogeneous or inhomogeneous Poisson process error.
+    #[error("{0}")]
+    Poisson(#[from] PoissonError),
+    /// Birth-death queueing model error.
+    #[error("{0}")]
+    Queueing(#[from] QueueingError),
     /// Topological data analysis error.
     #[error("{0}")]
     Tda(#[from] TdaError),
@@ -152,6 +158,8 @@ impl PureMathError {
             Self::MatchModel(err) => err,
             Self::NumberTheory(err) => err,
             Self::Ou(err) => err,
+            Self::Poisson(err) => err,
+            Self::Queueing(err) => err,
             Self::Tda(err) => err,
             Self::Zip(err) => err,
             Self::Ambs(err) => err,

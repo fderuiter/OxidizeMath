@@ -150,6 +150,8 @@ fn assert_pure_math_twenty_one_errors() {
         e::MarkovError::InvalidProbability { value: -0.1 }.severity(),
         e::MonteCarloError::ZeroReplicates.severity(),
         e::OuError::InvalidTimeStep { value: 0.0 }.severity(),
+        e::PoissonError::InvalidRate { rate: 0.0 }.severity(),
+        e::QueueingError::InvalidServerCount { servers: 0 }.severity(),
         e::ZipError::InvalidCount { value: -1.0 }.severity(),
         e::TdaError::EmptyPointCloud.severity(),
         e::CopulaError::NotSymmetric.severity(),
@@ -440,7 +442,7 @@ fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
     feature = "physics"
 ))]
 #[test]
-fn all_fifty_one_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
+fn all_fifty_three_leaf_errors_and_umbrellas_convert_and_emit_diagnostics() {
     umbrella_checks::verify_prelude_error_reexports();
     umbrella_checks::verify_bus_capture_and_zero_alloc_facade_result();
 }

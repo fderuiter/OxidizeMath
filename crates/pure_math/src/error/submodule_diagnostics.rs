@@ -13,7 +13,7 @@ use crate::pure_math::{
     graph_theory::GraphTheoryError,
     hyperbolic::HyperbolicError,
     number_theory::ambs::AmbsError,
-    statistics::monte_carlo::MonteCarloError,
+    statistics::{monte_carlo::MonteCarloError, poisson::PoissonError, queueing::QueueingError},
     tensor::types::TensorError,
 };
 use diagnostics::{Diagnostic, Severity};
@@ -336,5 +336,29 @@ impl Diagnostic for MonteCarloError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("MonteCarloError", self.to_string())
+    }
+}
+
+impl Diagnostic for PoissonError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("PoissonError", self.to_string())
+    }
+}
+
+impl Diagnostic for QueueingError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("QueueingError", self.to_string())
     }
 }

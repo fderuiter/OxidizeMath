@@ -150,17 +150,25 @@ fn test_all_28_tab_slugs_map_to_matching_academic_domains_and_titles() {
         "Optics & Waves"
     );
 
+    assert_eq!(
+        card_academic_domain("probability_statistics"),
+        AcademicDomain::PureMath
+    );
+    assert_eq!(
+        card_academic_domain("stochastic_processes"),
+        AcademicDomain::PureMath
+    );
+
     let tabs = crate::tabs::instantiate_tabs();
-    #[cfg(all(
-        feature = "ai",
-        feature = "applied",
-        feature = "biology",
-        feature = "climate",
-        feature = "epidemiology",
-        feature = "physics",
-        feature = "pure_math"
-    ))]
-    assert_eq!(tabs.len(), 30);
+    let expected_tabs = 1
+        + usize::from(cfg!(feature = "ai"))
+        + usize::from(cfg!(feature = "applied")) * 6
+        + usize::from(cfg!(feature = "biology")) * 3
+        + usize::from(cfg!(feature = "climate"))
+        + usize::from(cfg!(feature = "epidemiology"))
+        + usize::from(cfg!(feature = "physics")) * 9
+        + usize::from(cfg!(feature = "pure_math")) * 9;
+    assert_eq!(tabs.len(), expected_tabs);
     for tab in &tabs {
         let slug = tab.url_slug();
         if slug == "traceability" {
