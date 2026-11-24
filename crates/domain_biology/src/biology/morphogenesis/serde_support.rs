@@ -1,4 +1,4 @@
-#![cfg_attr(any(), verified(opt_out = "serde serialization adapter"))]
+// [cite:biology]
 
 use super::{ReactionKinetics, SpatialDiffusion, TuringSolverStrategy, TuringState, TuringSystem};
 

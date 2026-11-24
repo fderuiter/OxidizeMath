@@ -1,4 +1,4 @@
-#![cfg_attr(any(), verified(opt_out = "serde serialization adapter"))]
+// [cite:biology]
 
 use super::grammar::{
     ExpansionToken, LSystemGrammar, MAX_LSYSTEM_RULES, MAX_RULE_EXPANSION, ProductionRule,

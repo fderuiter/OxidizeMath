@@ -1,4 +1,4 @@
-#![cfg_attr(any(), verified(opt_out = "serde serialization adapter"))]
+// [cite:biology]
 
 use super::{GrowthParams, KernelShells, MAX_KERNEL_RADIUS, MAX_KERNEL_RINGS, MIN_KERNEL_RADIUS};
 

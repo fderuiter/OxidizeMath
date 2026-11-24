@@ -174,7 +174,15 @@ mod tests {
         dirs.insert("papers".to_string(), vec!["demo.tex".to_string()]);
         dirs.insert(
             "crates".to_string(),
-            vec!["zeta".to_string(), "demo".to_string()],
+            vec![
+                "zeta".to_string(),
+                "02_engines".to_string(),
+                "demo".to_string(),
+            ],
+        );
+        dirs.insert(
+            "crates/02_engines".to_string(),
+            vec!["engine_linalg".to_string()],
         );
 
         let engine = TraceabilityEngine::new(MemoryVfs { files, dirs });
@@ -186,6 +194,7 @@ mod tests {
             vec![
                 "math_explorer/src",
                 "math_explorer_gui/src/tabs",
+                "crates/02_engines/engine_linalg/src",
                 "crates/demo/src",
                 "crates/zeta/src",
             ]

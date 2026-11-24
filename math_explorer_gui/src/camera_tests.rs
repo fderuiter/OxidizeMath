@@ -403,6 +403,8 @@ fn test_all_six_3d_tools_expose_reset_view_and_helper_on_initial_open() {
         "CrystalViewer",
         #[cfg(feature = "pure_math")]
         "CurvatureHeatmap",
+        #[cfg(feature = "pure_math")]
+        "RiemannianPdeStudio",
         #[cfg(all(feature = "pure_math", feature = "biology"))]
         "SurfaceMorphogenesisTool",
         #[cfg(feature = "ai")]
@@ -416,16 +418,7 @@ fn test_all_six_3d_tools_expose_reset_view_and_helper_on_initial_open() {
         let mut tool = (meta.build)();
         let ctx = egui::Context::default();
         ctx.enable_accesskit();
-        let out = ctx.run(
-            egui::RawInput {
-                screen_rect: Some(egui::Rect::from_min_size(
-                    egui::Pos2::ZERO,
-                    egui::vec2(1280.0, 800.0),
-                )),
-                ..Default::default()
-            },
-            |sub_ctx| tool.show(sub_ctx),
-        );
+        let out = ctx.run(screen_input(Vec::new()), |sub_ctx| tool.show(sub_ctx));
         let ak = out
             .platform_output
             .accesskit_update

@@ -66,35 +66,9 @@ pub fn correlation_dimension_in_place(trajectory: &mut [Vector3<f64>], epsilon: 
         return 0.0;
     }
 
-    let mut count = 0_usize;
-    let epsilon_sq = epsilon * epsilon;
-
     // Sort in place by X-coordinate using stack-only unstable sort to prune search space.
     trajectory.sort_unstable_by(|a, b| a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal));
-
-    for i in 0..n {
-        let p1 = trajectory[i];
-        if !p1.x.is_finite() || !p1.y.is_finite() || !p1.z.is_finite() {
-            continue;
-        }
-
-        // Because data is sorted by X, stop as soon as the X-distance exceeds epsilon.
-        for p2 in trajectory.iter().skip(i + 1) {
-            if !p2.x.is_finite() || !p2.y.is_finite() || !p2.z.is_finite() {
-                continue;
-            }
-            let dx = p2.x - p1.x;
-            if dx > epsilon {
-                break;
-            }
-
-            let dy = p1.y - p2.y;
-            let dz = p1.z - p2.z;
-            if dx * dx + dy * dy + dz * dz < epsilon_sq {
-                count += 1;
-            }
-        }
-    }
+    let count = count_close_pairs_sorted(trajectory, epsilon);
 
     (2.0 * count as f64) / ((n * (n - 1)) as f64)
 }
@@ -116,6 +90,31 @@ pub fn correlation_dimension(trajectory: &[Vector3<f64>], epsilon: f64) -> f64 {
     }
     let mut sorted_traj = trajectory.to_vec();
     correlation_dimension_in_place(&mut sorted_traj, epsilon)
+}
+
+fn count_close_pairs_sorted(sorted_traj: &[Vector3<f64>], epsilon: f64) -> usize {
+    let epsilon_sq = epsilon * epsilon;
+    let mut count = 0_usize;
+    for (i, p1) in sorted_traj.iter().enumerate() {
+        if !p1.x.is_finite() || !p1.y.is_finite() || !p1.z.is_finite() {
+            continue;
+        }
+        for p2 in &sorted_traj[i + 1..] {
+            if !p2.x.is_finite() || !p2.y.is_finite() || !p2.z.is_finite() {
+                continue;
+            }
+            let dx = p2.x - p1.x;
+            if dx > epsilon {
+                break;
+            }
+            let dy = p1.y - p2.y;
+            let dz = p1.z - p2.z;
+            if dx * dx + dy * dy + dz * dz < epsilon_sq {
+                count += 1;
+            }
+        }
+    }
+    count
 }
 
 #[cfg(test)]

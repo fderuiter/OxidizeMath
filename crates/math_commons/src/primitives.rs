@@ -295,8 +295,6 @@ define_bounded_float!(
 
 #[cfg(all(test, feature = "serde"))]
 mod serde_tests {
-    #![cfg_attr(any(), verified(opt_out = "tests"))]
-
     use super::*;
     use serde::Deserialize;
     use serde::de::IntoDeserializer;

@@ -426,7 +426,6 @@ fn flush_essential_births(
     Ok(())
 }
 
-#[verified_engine::verified]
 fn update_births_and_deaths(
     births: &mut Vec<f64>,
     prev_betti: usize,

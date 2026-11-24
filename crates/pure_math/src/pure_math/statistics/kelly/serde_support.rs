@@ -1,4 +1,4 @@
-#![cfg_attr(any(), verified(opt_out = "serde serialization adapter"))]
+// [cite:pure_math]
 
 use super::{
     DrawdownConstraint, MAX_MARKET_OUTCOMES, MAX_SLATE_WAGERS, MarketAllocation, Odds,
