@@ -5,11 +5,12 @@ use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::async_sim::SimCommand;
 use crate::framework::{
-    BrushMode, InteractionContext, InteractiveTool, PlotBrushController, PlotBrushFrame,
-    RasterBrushCanvas,
+    encode_bool_grid, BrushMode, InteractionContext, InteractiveTool, PlotBrushController,
+    PlotBrushFrame, RasterBrushCanvas, RasterBrushStroke,
 };
 use eframe::egui::{self, ColorImage, TextureOptions};
 use egui_plot::{HLine, Line, LineStyle, Plot, PlotImage, PlotPoint, PlotPoints, Points};
+use math_commons::math_kernel::types::flatten_2d_index;
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
     fn draw_raster_brush_canvas(
@@ -28,6 +29,122 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let _ = response.accessible_theory_hover(self);
         if let Some(stroke) = stroke {
             self.apply_brush_stroke(stroke, ctx);
+        }
+    }
+
+    pub(super) fn draw_spatial_brush_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if !M::supports_spatial_brush() {
+            return;
+        }
+        ui.separator();
+        let cmds = M::draw_brush_controls(
+            ui,
+            &mut self.brush_kit,
+            &self.params,
+            &self.sculpt_state,
+            self.controller.latest_snapshot(),
+        );
+        if !cmds.is_empty() {
+            *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = None;
+            self.clear_stepped_state();
+        }
+        for cmd in cmds {
+            if self.controller.send_command(cmd).is_ok() {
+                self.dirty = true;
+                ctx.request_repaint();
+            }
+        }
+    }
+
+    pub(crate) fn apply_brush_stroke(&mut self, stroke: RasterBrushStroke, ctx: &egui::Context) {
+        let Some((grid_w, grid_h, _)) = M::raster_brush_grid() else {
+            return;
+        };
+        if !stroke.secondary
+            && M::supports_spatial_brush()
+            && self.brush_kit.mode == BrushMode::VelocityJet
+        {
+            if self
+                .controller
+                .send_command(SimCommand::ApplyBrushCells {
+                    cells: stroke.cells,
+                    mode: 2,
+                })
+                .is_ok()
+            {
+                self.clear_stepped_state();
+                self.dirty = true;
+                ctx.request_repaint();
+            }
+            return;
+        }
+        let is_obstacle = !stroke.secondary
+            && (!M::supports_spatial_brush() || self.brush_kit.mode != BrushMode::Erase);
+        self.sculpt_state
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        if let Some(ref mut mask) = self.local_obstacles {
+            if mask.len() == grid_w * grid_h {
+                for &(x, y) in &stroke.cells {
+                    if x < grid_w && y < grid_h {
+                        mask[flatten_2d_index(x, y, grid_w)] = is_obstacle;
+                    }
+                }
+                if let Ok(encoded) = encode_bool_grid(grid_w, grid_h, mask) {
+                    *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = Some(encoded);
+                }
+                if let Some(ext) = &mut self.ui_extension {
+                    let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+                    ext.on_obstacle_mask_loaded(Some(mask.as_slice()), &p);
+                }
+            }
+        }
+        if self
+            .controller
+            .send_command(SimCommand::ApplyBrushCells {
+                cells: stroke.cells,
+                mode: u8::from(is_obstacle),
+            })
+            .is_ok()
+        {
+            self.clear_stepped_state();
+            self.dirty = true;
+            ctx.request_repaint();
+        }
+    }
+
+    pub(super) fn handle_custom_obstacle_action(&mut self, action: &str, ctx: &egui::Context) {
+        let Some((grid_w, grid_h, _)) = M::raster_brush_grid() else {
+            return;
+        };
+        if action == "Clear Obstacles" {
+            self.sculpt_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .clear();
+            if let Some(ref mut mask) = self.local_obstacles {
+                mask.fill(false);
+                if let Ok(encoded) = encode_bool_grid(grid_w, grid_h, mask) {
+                    *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = Some(encoded);
+                }
+            }
+            self.clear_stepped_state();
+            self.dirty = true;
+            ctx.request_repaint();
+        } else if action == "Default Obstacles" {
+            self.sculpt_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .clear();
+            let current_params = self
+                .params
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            self.local_obstacles = M::default_obstacle_mask(&current_params);
+            *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = None;
+            self.reset_simulation(Some(ctx));
         }
     }
 

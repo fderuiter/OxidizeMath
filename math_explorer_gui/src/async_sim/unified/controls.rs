@@ -72,6 +72,23 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
     }
 
+    fn render_worker_status_badge(ui: &mut egui::Ui, state: SimWorkerState) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        ui.horizontal(|ui| {
+            ui.label("Status:");
+            let (status_text, color) = match state {
+                SimWorkerState::Uninitialized => ("Uninitialized", palette.muted_text),
+                SimWorkerState::Ready => ("Ready", palette.success),
+                SimWorkerState::Running => ("Running", palette.info),
+                SimWorkerState::Stepping => ("Stepping", palette.warning),
+                SimWorkerState::Faulted => ("Faulted", palette.error),
+                SimWorkerState::Terminated => ("Terminated", palette.muted_text),
+            };
+            ui.colored_label(color, status_text);
+        });
+        ui.separator();
+    }
+
     fn draw_status_and_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let state = self.controller.state();
         if let Some(fault_action) =
@@ -89,31 +106,26 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
 
         let state = self.controller.state();
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        ui.horizontal(|ui| {
-            ui.label("Status:");
-            let (status_text, color) = match state {
-                SimWorkerState::Uninitialized => ("Uninitialized", palette.muted_text),
-                SimWorkerState::Ready => ("Ready", palette.success),
-                SimWorkerState::Running => ("Running", palette.info),
-                SimWorkerState::Stepping => ("Stepping", palette.warning),
-                SimWorkerState::Faulted => ("Faulted", palette.error),
-                SimWorkerState::Terminated => ("Terminated", palette.muted_text),
-            };
-            ui.colored_label(color, status_text);
-        });
-        ui.separator();
+        Self::render_worker_status_badge(ui, state);
 
-        let canvas_focused = self
-            .focused_canvas_id()
+        let canvas_sculpt_focused = self
+            .brush_state
+            .focused_id
+            .or_else(|| {
+                (M::supports_spatial_brush() && self.brush_kit.is_sculpting())
+                    .then(|| self.brush_kit.focused_plot_id())
+                    .flatten()
+            })
             .is_some_and(|id| ctx.memory(|m| m.has_focus(id)));
-        if let Some(action) =
+        let mut transport =
             PlaybackTransport::from_worker_state("unified_transport", M::name(), state)
                 .timeline(self.controller.timeline_metadata())
                 .can_reset(true)
-                .allow_space_shortcut(!canvas_focused)
-                .show(ui)
-        {
+                .allow_space_shortcut(!canvas_sculpt_focused);
+        if M::supports_sonification() && M::sonification_tool_id().is_none() {
+            transport = transport.with_sonification(&mut self.audio_settings);
+        }
+        if let Some(action) = transport.show(ui) {
             let cmd = match action {
                 PlaybackAction::Play => Some(SimCommand::Start),
                 PlaybackAction::Pause => Some(SimCommand::Pause),
@@ -334,29 +346,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         (reset_needed, formula_changed)
     }
 
-    fn draw_spatial_brush_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if !M::supports_spatial_brush() {
-            return;
-        }
-        ui.separator();
-        let cmds = M::draw_brush_controls(
-            ui,
-            &mut self.brush_kit,
-            &self.params,
-            &self.sculpt_state,
-            self.controller.latest_snapshot(),
-        );
-        if !cmds.is_empty() {
-            *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = None;
-            self.clear_stepped_state();
-        }
-        for cmd in cmds {
-            if self.controller.send_command(cmd).is_ok() {
-                self.dirty = true;
-                ctx.request_repaint();
-            }
-        }
-    }
     fn draw_single_parameter(
         ui: &mut egui::Ui,
         name: &str,

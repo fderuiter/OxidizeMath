@@ -4,18 +4,10 @@ use super::sculpt::{
     validate_rle_mask_entries, validate_sparse_potential_entries, OBSTACLES_RLE_KEY,
 };
 use super::{CompiledFormulaPayload, UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool};
-use crate::async_sim::SimCommand;
-use crate::framework::{
-    encode_bool_grid, BrushMode, InteractiveTool, MathExpressionInputBar, RasterBrushStroke,
-    MAX_SYNTHESIZED_PARAMS,
-};
-use eframe::egui;
-use math_commons::math_kernel::types::flatten_2d_index;
+use crate::framework::{InteractiveTool, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
 use std::collections::{BTreeMap, HashMap};
-use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-type ParsedUnifiedState = (HashMap<String, f64>, Option<(String, Vec<bool>)>);
 type FormulaExtTuple = (bool, String, BTreeMap<String, f64>);
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -28,6 +20,11 @@ struct UnifiedExtendedState {
     custom_expr: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     custom_params: BTreeMap<String, f64>,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::audio::AcousticSettings::is_default"
+    )]
+    audio: crate::audio::AcousticSettings,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     rle_mask: Vec<[u32; 2]>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -64,98 +61,6 @@ pub(super) fn snapshot_formula_payload(
 }
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
-    pub(crate) fn apply_brush_stroke(&mut self, stroke: RasterBrushStroke, ctx: &egui::Context) {
-        let Some((grid_w, grid_h, _)) = M::raster_brush_grid() else {
-            return;
-        };
-        if !stroke.secondary
-            && M::supports_spatial_brush()
-            && self.brush_kit.mode == BrushMode::VelocityJet
-        {
-            if self
-                .controller
-                .send_command(SimCommand::ApplyBrushCells {
-                    cells: stroke.cells,
-                    mode: 2,
-                })
-                .is_ok()
-            {
-                self.clear_stepped_state();
-                self.dirty = true;
-                ctx.request_repaint();
-            }
-            return;
-        }
-        let is_obstacle = !stroke.secondary
-            && (!M::supports_spatial_brush() || self.brush_kit.mode != BrushMode::Erase);
-        self.sculpt_state
-            .write()
-            .unwrap_or_else(|e| e.into_inner())
-            .clear();
-        if let Some(ref mut mask) = self.local_obstacles {
-            if mask.len() == grid_w * grid_h {
-                for &(x, y) in &stroke.cells {
-                    if x < grid_w && y < grid_h {
-                        mask[flatten_2d_index(x, y, grid_w)] = is_obstacle;
-                    }
-                }
-                if let Ok(encoded) = encode_bool_grid(grid_w, grid_h, mask) {
-                    *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = Some(encoded);
-                }
-                if let Some(ext) = &mut self.ui_extension {
-                    let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-                    ext.on_obstacle_mask_loaded(Some(mask.as_slice()), &p);
-                }
-            }
-        }
-        if self
-            .controller
-            .send_command(SimCommand::ApplyBrushCells {
-                cells: stroke.cells,
-                mode: u8::from(is_obstacle),
-            })
-            .is_ok()
-        {
-            self.clear_stepped_state();
-            self.dirty = true;
-            ctx.request_repaint();
-        }
-    }
-
-    pub(super) fn handle_custom_obstacle_action(&mut self, action: &str, ctx: &egui::Context) {
-        let Some((grid_w, grid_h, _)) = M::raster_brush_grid() else {
-            return;
-        };
-        if action == "Clear Obstacles" {
-            self.sculpt_state
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .clear();
-            if let Some(ref mut mask) = self.local_obstacles {
-                mask.fill(false);
-                if let Ok(encoded) = encode_bool_grid(grid_w, grid_h, mask) {
-                    *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = Some(encoded);
-                }
-            }
-            self.clear_stepped_state();
-            self.dirty = true;
-            ctx.request_repaint();
-        } else if action == "Default Obstacles" {
-            self.sculpt_state
-                .write()
-                .unwrap_or_else(|e| e.into_inner())
-                .clear();
-            let current_params = self
-                .params
-                .read()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone();
-            self.local_obstacles = M::default_obstacle_mask(&current_params);
-            *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = None;
-            self.reset_simulation(Some(ctx));
-        }
-    }
-
     pub(crate) fn publish_formula_update(&mut self) {
         self.clear_stepped_state();
         if !self.custom_formula_enabled {
@@ -174,37 +79,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .shared_formula
             .write()
             .unwrap_or_else(|e| e.into_inner()) = payload;
-    }
-
-    pub(super) fn compute_state_revision(&self) -> u64 {
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        for (key, _) in &self.param_metadata {
-            key.hash(&mut h);
-            if let Some(val) = params.get(key) {
-                val.to_bits().hash(&mut h);
-            }
-        }
-        sculpt.hash_into(&mut h);
-        if let Some(ext) = &self.ui_extension {
-            ext.state_revision_salt().hash(&mut h);
-        }
-        if let Some(atlas) = &self.atlas {
-            atlas.is_visible().hash(&mut h);
-            atlas.axis_keys().hash(&mut h);
-        }
-        self.custom_formula_enabled.hash(&mut h);
-        if let Some(ref bar) = self.formula_bar {
-            bar.raw_text.hash(&mut h);
-            for &pv in bar.param_slice() {
-                pv.to_bits().hash(&mut h);
-            }
-        }
-        if let Some(ref rle) = *self.obstacle_rle.read().unwrap_or_else(|e| e.into_inner()) {
-            rle.hash(&mut h);
-        }
-        h.finish().max(1)
     }
 
     fn formula_and_atlas_extensions(
@@ -255,34 +129,50 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
         let (formula_ext, atlas_ext) = self.formula_and_atlas_extensions();
         if formula_ext.is_some() || atlas_ext.is_some() {
-            if params.values().any(|v| !v.is_finite()) {
-                return None;
-            }
-            let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
-            let sorted_params = params.iter().map(|(k, &v)| (k.clone(), v)).collect();
-            let (custom_formula_enabled, custom_expr, custom_params) = match formula_ext {
-                Some((en, expr, cp)) => (en, Some(expr), cp),
-                None => (false, None, BTreeMap::new()),
-            };
-            let (atlas_visible, atlas_axes) = match atlas_ext {
-                Some((vis, axes)) => (vis, Some(axes)),
-                None => (false, None),
-            };
-            return serde_json::to_string(&UnifiedExtendedState {
-                params: sorted_params,
-                custom_formula_enabled,
-                custom_expr,
-                custom_params,
-                rle_mask: sculpt.rle_mask.clone(),
-                sparse_potential: sculpt.sparse_potential.clone(),
-                atlas_visible,
-                atlas_axes,
-                obstacles_rle,
-            })
-            .ok();
+            return self.serialize_extended_state(&params, formula_ext, atlas_ext, obstacles_rle);
         }
         drop(params);
         self.serialize_unified_state()
+    }
+
+    fn serialize_extended_state(
+        &self,
+        params: &HashMap<String, f64>,
+        formula_ext: Option<(bool, String, BTreeMap<String, f64>)>,
+        atlas_ext: Option<(bool, [String; 2])>,
+        obstacles_rle: Option<String>,
+    ) -> Option<String> {
+        if params.values().any(|v| !v.is_finite()) {
+            return None;
+        }
+        let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+        let sorted_params = params.iter().map(|(k, &v)| (k.clone(), v)).collect();
+        let (custom_formula_enabled, custom_expr, custom_params) = match formula_ext {
+            Some((en, expr, cp)) => (en, Some(expr), cp),
+            None => (false, None, BTreeMap::new()),
+        };
+        let (atlas_visible, atlas_axes) = match atlas_ext {
+            Some((vis, axes)) => (vis, Some(axes)),
+            None => (false, None),
+        };
+        let audio = if M::supports_sonification() {
+            self.audio_settings
+        } else {
+            crate::audio::AcousticSettings::default()
+        };
+        serde_json::to_string(&UnifiedExtendedState {
+            params: sorted_params,
+            custom_formula_enabled,
+            custom_expr,
+            custom_params,
+            audio,
+            rle_mask: sculpt.rle_mask.clone(),
+            sparse_potential: sculpt.sparse_potential.clone(),
+            atlas_visible,
+            atlas_axes,
+            obstacles_rle,
+        })
+        .ok()
     }
 
     fn try_load_extension_state(&mut self, state: &str) -> Option<Result<(), String>> {
@@ -350,12 +240,39 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         Ok(())
     }
 
-    fn validate_extended_state(
+    fn apply_extended_state(&mut self, ext: UnifiedExtendedState) -> Result<(), String> {
+        let parsed_rle = self.validate_extended_capabilities(&ext)?;
+        let mut map: HashMap<String, f64> = ext.params.into_iter().collect();
+        let next_audio = self.resolve_extended_audio(&mut map, ext.audio)?;
+        self.validate_param_map(&map)?;
+        self.apply_parsed_atlas_state(Some((ext.atlas_visible, ext.atlas_axes)))?;
+        {
+            let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
+            for (k, v) in map {
+                guard.insert(k, v);
+            }
+        }
+        self.audio_settings = next_audio;
+        self.apply_parsed_obstacle_rle(parsed_rle);
+        self.apply_extended_formula(
+            ext.custom_expr,
+            &ext.custom_params,
+            ext.custom_formula_enabled,
+        );
+        {
+            let mut s_guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
+            s_guard.rle_mask = ext.rle_mask;
+            s_guard.sparse_potential = ext.sparse_potential;
+        }
+        self.texture = None;
+        self.respawn_preserving_sculpt(None);
+        Ok(())
+    }
+
+    fn validate_extended_capabilities(
         &self,
         ext: &UnifiedExtendedState,
-    ) -> Result<ParsedUnifiedState, String> {
-        let map: HashMap<String, f64> = ext.params.iter().map(|(k, &v)| (k.clone(), v)).collect();
-        self.validate_param_map(&map)?;
+    ) -> Result<Option<(String, Vec<bool>)>, String> {
         let has_formula = ext.custom_formula_enabled
             || ext.custom_expr.is_some()
             || !ext.custom_params.is_empty();
@@ -378,53 +295,55 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ));
         }
         self.validate_sculpt_for_extended_state(&ext.rle_mask, &ext.sparse_potential)?;
-        let parsed_rle = match ext.obstacles_rle.as_deref() {
+        match ext.obstacles_rle.as_deref() {
             Some(rle) if M::raster_brush_grid().is_some() => {
                 let decoded = M::validate_obstacle_rle(rle)?;
-                Some((rle.to_string(), decoded))
+                Ok(Some((rle.to_string(), decoded)))
             }
-            Some(_) => {
-                return Err(format!(
-                    "Unknown parameter '{OBSTACLES_RLE_KEY}' for {}",
-                    M::name()
-                ));
-            }
-            None => None,
-        };
-        Ok((map, parsed_rle))
+            Some(_) => Err(format!(
+                "Unknown parameter '{OBSTACLES_RLE_KEY}' for {}",
+                M::name()
+            )),
+            None => Ok(None),
+        }
     }
 
-    fn apply_extended_state(&mut self, ext: UnifiedExtendedState) -> Result<(), String> {
-        let (map, parsed_rle) = self.validate_extended_state(&ext)?;
-        self.apply_parsed_atlas_state(Some((ext.atlas_visible, ext.atlas_axes)))?;
-        {
-            let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
-            for (k, v) in map {
-                guard.insert(k, v);
-            }
-        }
-        self.apply_parsed_obstacle_rle(parsed_rle);
+    fn apply_extended_formula(
+        &mut self,
+        custom_expr: Option<String>,
+        custom_params: &BTreeMap<String, f64>,
+        enabled: bool,
+    ) {
         if let Some(spec) = M::formula_spec() {
-            if let Some(expr) = ext.custom_expr {
+            if let Some(expr) = custom_expr {
                 let bar = self
                     .formula_bar
                     .get_or_insert_with(|| build_formula_bar(&spec));
                 bar.set_expression(&expr);
-                bar.set_params_map(&ext.custom_params);
-                self.custom_formula_enabled = ext.custom_formula_enabled;
+                bar.set_params_map(custom_params);
+                self.custom_formula_enabled = enabled;
                 self.publish_formula_update();
             } else {
                 self.reset_formula_bar_to_default();
             }
         }
-        {
-            let mut s_guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
-            s_guard.rle_mask = ext.rle_mask;
-            s_guard.sparse_potential = ext.sparse_potential;
+    }
+
+    fn resolve_extended_audio(
+        &self,
+        map: &mut HashMap<String, f64>,
+        ext_audio: crate::audio::AcousticSettings,
+    ) -> Result<crate::audio::AcousticSettings, String> {
+        let mut next_audio = self.extract_audio_from_map(map)?;
+        if M::supports_sonification() {
+            if !ext_audio.is_default() {
+                next_audio = ext_audio;
+            }
+            next_audio.validate()?;
+        } else if !ext_audio.is_default() {
+            return Err(format!("Audio settings not supported for {}", M::name()));
         }
-        self.texture = None;
-        self.respawn_preserving_sculpt(None);
-        Ok(())
+        Ok(next_audio)
     }
 
     pub(super) fn reset_formula_bar_to_default(&mut self) {
@@ -434,6 +353,23 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             bar.set_params_map(&BTreeMap::new());
             self.publish_formula_update();
         }
+    }
+
+    pub(super) fn extract_audio_from_map(
+        &self,
+        params: &mut HashMap<String, f64>,
+    ) -> Result<crate::audio::AcousticSettings, String> {
+        let mut next_audio = crate::audio::AcousticSettings::default();
+        if M::supports_sonification() {
+            if let Some(g) = params.remove("audio_gain") {
+                next_audio.gain = g as f32;
+            }
+            if let Some(ps) = params.remove("audio_pitch_scale") {
+                next_audio.pitch_scale = ps as f32;
+            }
+            next_audio.validate()?;
+        }
+        Ok(next_audio)
     }
 
     pub(super) fn validate_constrained_param(&self, key: &str, value: f64) -> Result<(), String> {

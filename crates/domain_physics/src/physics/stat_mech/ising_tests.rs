@@ -4,8 +4,6 @@ use domain_applied::applied::game_theory::evolutionary::ReplicatorDynamics;
 use nalgebra::{DMatrix, DVector};
 use verified_engine::engine::VerifiedEngine;
 
-static VERIFIED_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 fn seeded_droplet(r: i32, seed: u64) -> SpinLattice {
     let mut lat = SpinLattice::new(30, 30, Some(seed));
     for y in 0..30 {
@@ -59,7 +57,9 @@ fn test_ising_pinned_spins_stay_fixed_with_zero_allocations() {
         lattice.set_pinned(x, 9, true);
     }
 
-    let _guard = VERIFIED_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let (_, metrics) = VerifiedEngine::run_verified(|| {
         lattice.evolve(20_000, t_high, j_val, h_val);
         lattice.evolve_fermi_game_with_mutation(5_000, 0.1, &payoff, 0.05);
@@ -86,7 +86,9 @@ fn test_fermi_game_zero_allocations_under_verified_allocator() {
     let mut lattice = SpinLattice::new(100, 100, Some(7));
     let payoff = MatrixPayoff::new(DMatrix::from_row_slice(2, 2, &[1.0, -0.1, 1.35, 0.0])).unwrap();
 
-    let _guard = VERIFIED_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let ((m_unif, m_stag), metrics) = VerifiedEngine::run_verified(|| {
         lattice.evolve_fermi_game(5_000, 0.0, &payoff);
         lattice.evolve_fermi_game_with_mutation(5_000, 0.08, &payoff, 0.02);

@@ -79,6 +79,19 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             let num = serde_json::Number::from_f64(*v)?;
             map.insert(k.clone(), serde_json::Value::Number(num));
         }
+        if M::supports_sonification() && !self.audio_settings.is_default() {
+            if let Some(g) = serde_json::Number::from_f64(f64::from(self.audio_settings.gain)) {
+                map.insert("audio_gain".to_string(), serde_json::Value::Number(g));
+            }
+            if let Some(ps) =
+                serde_json::Number::from_f64(f64::from(self.audio_settings.pitch_scale))
+            {
+                map.insert(
+                    "audio_pitch_scale".to_string(),
+                    serde_json::Value::Number(ps),
+                );
+            }
+        }
 
         if let Some(rle) = obstacles_rle {
             map.insert(
@@ -156,7 +169,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             validate_sparse_potential_entries(parsed_sparse, M::name())?;
             return Ok(());
         }
-        if !self.param_metadata.iter().any(|meta| meta.0 == key) {
+        let is_audio_key = M::supports_sonification()
+            && matches!(key.as_str(), "audio_gain" | "audio_pitch_scale");
+        if !is_audio_key && !self.param_metadata.iter().any(|meta| meta.0 == key) {
             return Err(format!("Unknown parameter '{}' for {}", key, M::name()));
         }
         let Some(number) = val.as_f64().filter(|n| n.is_finite()) else {
@@ -166,7 +181,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 M::name()
             ));
         };
-        self.validate_constrained_param(&key, number)?;
+        if !is_audio_key {
+            self.validate_constrained_param(&key, number)?;
+        }
         parsed_params.insert(key, number);
         Ok(())
     }
@@ -191,12 +208,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             )?;
         }
 
-        if !self.param_metadata.is_empty()
-            && parsed_params.is_empty()
-            && parsed_obs_rle.is_none()
-            && parsed_rle.is_empty()
-            && parsed_sparse.is_empty()
-        {
+        let had_any_entry = !parsed_params.is_empty()
+            || parsed_obs_rle.is_some()
+            || !parsed_rle.is_empty()
+            || !parsed_sparse.is_empty();
+        let next_audio = self.extract_audio_from_map(&mut parsed_params)?;
+        if !self.param_metadata.is_empty() && !had_any_entry {
             return Err(format!(
                 "Empty parameter configuration for {}; expected parameters: {}",
                 M::name(),
@@ -215,6 +232,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 guard.insert(key, value);
             }
         }
+        self.audio_settings = next_audio;
         self.apply_parsed_obstacle_rle(parsed_obs_rle);
         self.reset_formula_bar_to_default();
         {
