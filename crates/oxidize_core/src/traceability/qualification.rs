@@ -107,8 +107,20 @@ pub fn discover_maturity_scan_files(workspace_root: &Path) -> Vec<PathBuf> {
             if !crate_dir.is_dir() {
                 continue;
             }
-            collect_rs_files_under(&crate_dir.join("src"), &mut files);
-            collect_rs_files_under(&crate_dir.join("tests"), &mut files);
+            if crate_dir.join("Cargo.toml").is_file() {
+                collect_rs_files_under(&crate_dir.join("src"), &mut files);
+                collect_rs_files_under(&crate_dir.join("tests"), &mut files);
+            } else if let Ok(nested_entries) = std::fs::read_dir(&crate_dir) {
+                let mut nested_dirs: Vec<PathBuf> =
+                    nested_entries.flatten().map(|e| e.path()).collect();
+                nested_dirs.sort();
+                for nested in nested_dirs {
+                    if nested.is_dir() && nested.join("Cargo.toml").is_file() {
+                        collect_rs_files_under(&nested.join("src"), &mut files);
+                        collect_rs_files_under(&nested.join("tests"), &mut files);
+                    }
+                }
+            }
         }
     }
     collect_rs_files_under(&workspace_root.join("math_explorer/src"), &mut files);

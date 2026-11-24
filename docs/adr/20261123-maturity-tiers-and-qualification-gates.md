@@ -21,7 +21,7 @@ OxidizeMath unifies hardened zero-allocation numerical solvers (such as Levenber
    - Classify core deterministic solvers (`FitModel`, `OdeModel`, `OdeSolverTool`) as `MaturityTier::Certified` and research sandboxes (`Cera`, `CeraTool`, `FavoritismInputs`, `FavoritismTheory`) as `MaturityTier::Experimental`.
 
 2. **Declarative Qualification Registry (`traceability.toml` & `oxidize_core`)**:
-   - Extend `traceability.toml` with `[semver_lock] certified_baseline_version = "0.4.0"`, `[crates]` mapping all 15 mathematical workspace crates, and `[modules]` mapping every registered `[links]` module key to an explicit `MaturityTier`, enforcing monotonic containment (`module_tier <= crate_tier` and `item_tier <= crate_tier`).
+   - Extend `traceability.toml` with `[semver_lock] certified_baseline_version = "0.4.0"`, `[crates]` mapping all 18 mathematical workspace crates, and `[modules]` mapping every registered `[links]` module key to an explicit `MaturityTier`, enforcing monotonic containment (`module_tier <= crate_tier` and `item_tier <= crate_tier`).
    - Extend `TraceabilityReport` with serializable `crate_maturity_tiers`, `module_maturity_tiers`, `deterministic_contract_modules`, `zero_alloc_modules`, and `maturity_violations`.
 
 3. **Single-Pass AST Qualification Gates (`oxidize_core::ast_visitor` & `xtask check-maturity`)**:

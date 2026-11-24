@@ -5,7 +5,7 @@ pub mod prelude;
 
 pub use diagnostics;
 pub use math_commons::{
-    ast, constants, fit, math_kernel, poi, primitives, registry, series, wigner,
+    ast, constants, fit, math_kernel, poi, primitives, registry, series, stochastic, wigner,
 };
 pub use scientific_metadata;
 pub use verified_engine;
@@ -28,6 +28,8 @@ pub use domain_epidemiology::epidemiology;
 #[cfg(feature = "physics")]
 pub use domain_physics::physics;
 
+#[cfg(feature = "pure_math")]
+pub use ::pure_math::pure_math::statistics::{bootstrap, monte_carlo, qmc};
 #[cfg(feature = "pure_math")]
 pub use ::pure_math::{math_types, pure_math};
 #[cfg(feature = "pure_math")]

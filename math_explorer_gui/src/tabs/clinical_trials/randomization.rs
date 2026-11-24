@@ -379,6 +379,9 @@ impl InteractiveTool for RandomizationTool {
         self.seed = s.seed;
         self.seed_counter = 0;
         self.strata_spec = s.strata_spec;
+        if s.randomization_type == RandomizationType::Stratified && !s.simpson_config.is_default() {
+            self.stratified_view = StratifiedView::SimpsonParadox;
+        }
         self.simpson_lab.config = s.simpson_config;
         self.simpson_lab.recalculate();
         self.recompute_schedule();
@@ -396,6 +399,17 @@ impl InteractiveTool for RandomizationTool {
                 egui::ScrollArea::vertical().show(ui, |ui| self.render_controls_panel(ui));
             });
         egui::CentralPanel::default().show_inside(ui, |ui| self.render_central_panel(ui));
+    }
+
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        self.simpson_lab.observables()
+    }
+
+    fn sync_callouts(&mut self, specs: &[crate::framework::CalloutSpec]) {
+        if !specs.is_empty() && self.randomization_type == RandomizationType::Stratified {
+            self.stratified_view = StratifiedView::SimpsonParadox;
+        }
+        self.simpson_lab.set_hud_callouts(specs);
     }
 }
 
@@ -455,6 +469,12 @@ impl scientific_metadata::theory::TheoryDescribable for RandomizationTool {
         .into_iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect()
+    }
+
+    fn theory_parameters(
+        &self,
+    ) -> std::collections::HashMap<String, scientific_metadata::theory::ParameterConstraint> {
+        super::simpson_atlas::simpson_theory_parameters()
     }
 }
 

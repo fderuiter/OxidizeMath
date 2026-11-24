@@ -87,6 +87,9 @@ pub(crate) fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         "GeodesicPlaygroundTool" | "ChristoffelInspectorTool" => &["general_relativity_geodesics"],
         "MarkovSequenceWorkbenchTool" => &["clinical_trials_statistics"],
         "CorticalMorphometryTool" => &["freesurfer"],
+        "PhyllotaxisLSystemTool" | "BiochemicalDynamicsTool" | "EvolutionaryBiologyTool" => {
+            &["computational_biology", "biology"]
+        }
         _ => &[],
     };
     tokens.extend(explicit.iter().map(|s| (*s).to_string()));
@@ -111,7 +114,8 @@ pub(crate) fn domain_module_tokens(domain: &str) -> Vec<String> {
         "graph_theory" => &["dijkstra", "graph_parameters_rust"],
         "analysis" | "geometry_topology" | "number_theory" => &["pure_math", "math_commons"],
         "financial_math" => &["clinical_trials_statistics"],
-        "neuroscience" => &["biology", "graph_parameters_rust"],
+        "biology" | "biochemical" => &["biology", "computational_biology"],
+        "neuroscience" => &["biology", "computational_biology", "graph_parameters_rust"],
         "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],
         "solid_state" => &["stat_mech", "pure_math"],
         "ai" => &["graph_parameters_rust"],
@@ -330,10 +334,7 @@ fn extract_first_author_surname(author_field: &str) -> String {
 fn embedded_bib_entries() -> &'static [BibEntry] {
     static BIB_CACHE: OnceLock<Vec<BibEntry>> = OnceLock::new();
     BIB_CACHE.get_or_init(|| {
-        const RAW_BIB: &str = include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../papers/references.bib"
-        ));
+        const RAW_BIB: &str = include_str!(concat!(env!("OUT_DIR"), "/references.bib"));
         let mut entries = Vec::new();
         for chunk in RAW_BIB.split('@').skip(1) {
             let Some((header, rest)) = chunk.split_once('{') else {

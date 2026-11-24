@@ -1,6 +1,10 @@
+#![cfg_attr(not(feature = "std"), no_std)]
 #![doc = include_str!("../README.md")]
 // [cite:math_commons]
 
+extern crate alloc;
+
+#[cfg(feature = "std")]
 #[allow(missing_docs)]
 pub mod ast;
 pub mod constants;
@@ -14,10 +18,11 @@ pub mod poi;
 pub mod primitives;
 pub mod registry;
 pub mod series;
+pub mod stochastic;
 #[allow(missing_docs)]
 pub mod wigner;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 macro_rules! theory_verification {
     (
         module = $module_name:expr,
@@ -38,7 +43,7 @@ macro_rules! theory_verification {
     };
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 theory_verification!(
     module = "math_commons",
     constants = {

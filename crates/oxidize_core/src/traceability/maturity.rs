@@ -15,6 +15,9 @@ pub const EXPECTED_WORKSPACE_CRATES: &[&str] = &[
     "domain_climate",
     "domain_epidemiology",
     "domain_physics",
+    "engine_diffeq",
+    "engine_linalg",
+    "engine_pde",
     "federated_registry",
     "math_commons",
     "math_explorer",
@@ -187,7 +190,12 @@ impl MaturityRegistry {
     pub fn crate_for_repo_path(rel_path: &str) -> Option<&str> {
         let norm = rel_path.trim_start_matches("./");
         if let Some(rest) = norm.strip_prefix("crates/") {
-            return rest.split('/').next().filter(|s| !s.is_empty());
+            let mut parts = rest.split('/').filter(|s| !s.is_empty());
+            let first = parts.next()?;
+            if first == "02_engines" {
+                return parts.next();
+            }
+            return Some(first);
         }
         if norm.starts_with("math_explorer/") {
             return Some("math_explorer");
@@ -212,7 +220,7 @@ impl MaturityRegistry {
         for seg in segments.iter().rev().skip(1) {
             if matches!(
                 *seg,
-                "crates" | "src" | "tests" | "tabs" | "applied" | "physics"
+                "crates" | "02_engines" | "src" | "tests" | "tabs" | "applied" | "physics"
             ) {
                 continue;
             }

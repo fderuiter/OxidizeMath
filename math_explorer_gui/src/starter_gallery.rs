@@ -410,6 +410,8 @@ pub mod challenges;
 mod elliptic_packs;
 #[path = "starter_gallery/filter_ui.rs"]
 pub mod filter_ui;
+#[path = "starter_gallery/paradox_packs.rs"]
+mod paradox_packs;
 #[path = "starter_gallery/root_host.rs"]
 mod root_host;
 #[path = "starter_gallery/stories.rs"]
@@ -423,7 +425,7 @@ pub use challenges::{
 pub use filter_ui::{
     card_academic_domain, filter_challenge_cards, filter_goal_challenges, filter_starter_cards,
     filter_stories, get_all_starter_cards, get_all_starter_cards_with_tools,
-    get_starter_cards_for_domain,
+    get_starter_cards_for_domain, has_any_starter_presets,
 };
 pub(crate) use root_host::{
     begin_root_starter_gallery_scope, flush_deferred_starter_galleries,
