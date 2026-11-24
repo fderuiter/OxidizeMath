@@ -16,6 +16,7 @@ impl OdeSolverTool {
     ) -> bool {
         let mut changed = false;
         changed |= self.render_preset_selector(ui);
+        changed |= self.render_view_and_atlas_controls(ui);
         if self.has_second_state() {
             changed |= self.render_phase_plane_controls(ui);
         }
@@ -45,6 +46,39 @@ impl OdeSolverTool {
             changed = true;
         }
         changed
+    }
+
+    fn render_view_and_atlas_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        use super::phase::PlotViewMode;
+
+        let mut view_updated = false;
+        let plot_mode_active = !self.is_phase_plane_active();
+        ui.add_space(8.0);
+        ui.heading("Visualization Mode");
+        ui.horizontal_wrapped(|ui| {
+            for mode in [PlotViewMode::TimeSeries, PlotViewMode::PhasePortrait] {
+                if ui
+                    .selectable_label(plot_mode_active && self.view_mode == mode, mode.label())
+                    .clicked()
+                    && (!plot_mode_active || self.view_mode != mode)
+                {
+                    self.set_view_mode(mode);
+                }
+            }
+            let _ = self.atlas.show_toggle_button(ui);
+        });
+        if plot_mode_active && self.view_mode == PlotViewMode::PhasePortrait {
+            let max_t = self.total_time.max(0.1);
+            let mut slice = self.t_slice.clamp(0.0, max_t);
+            if ui
+                .add(egui::Slider::new(&mut slice, 0.0..=max_t).text("t_slice (Quiver Time)"))
+                .changed()
+            {
+                self.set_t_slice(slice);
+                view_updated = false;
+            }
+        }
+        view_updated
     }
 
     fn render_preset_selector(&mut self, ui: &mut egui::Ui) -> bool {

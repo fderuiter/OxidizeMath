@@ -87,6 +87,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: `#![no_std]` Linear Algebra Engine (`engine_linalg`), Solver Unification, and Cached Cohort GLM QR](adr/20261123-no-std-engine-linalg-and-solver-unification.md)
 - [ADR 20261123: Promote `#![no_std]` Stochastic Solver Kernel (`SolverWorkspace`) to `math_commons`](adr/20261123-no-std-stochastic-solver-kernel.md)
 - [ADR 20261123: `#![no_std]` Tier 2 `engine_diffeq` & `engine_pde` Solvers and Continuum Stat-Mech SPDEs](adr/20261123-nostd-diffeq-and-pde-engines.md)
+- [ADR 20261123: ODE Phase Portrait, Progressive 2D Regime Atlas, OdeModel Clock, and Compact URL State Hook](adr/20261123-ode-phase-atlas-clock-and-url-hook.md)
 - [ADR 20261123: Root-Owned Pane Dataflow Bus and Cycle-Checked Cross-Domain Pipelines](adr/20261123-pane-dataflow-bus-and-cross-domain-pipelines.md)
 - [ADR 20261123: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export](adr/20261123-parameter-substituted-latex-and-code-artifact-export.md)
 - [ADR 20261123: Variable-Dose Pharmacokinetic Regimen Superposition and Interactive Planner](adr/20261123-pharmacokinetic-regimen-superposition-and-analytics.md)
