@@ -64,6 +64,12 @@ mod tests {
         exercise_interactive_tool::<
             crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool,
         >(ctx);
+        exercise_interactive_tool::<
+            crate::tabs::clinical_trials::win_ratio::WinRatioStressTesterTool,
+        >(ctx);
+        exercise_interactive_tool::<crate::tabs::clinical_trials::composite_win_ratio::WinRatioTool>(
+            ctx,
+        );
         exercise_interactive_tool::<crate::tabs::clinical_trials::survival::SurvivalAnalysisTool>(
             ctx,
         );
@@ -73,9 +79,6 @@ mod tests {
         exercise_interactive_tool::<crate::tabs::clinical_trials::randomization::RandomizationTool>(
             ctx,
         );
-        exercise_interactive_tool::<
-            crate::tabs::clinical_trials::win_ratio::WinRatioStressTesterTool,
-        >(ctx);
         exercise_interactive_tool::<
             crate::tabs::clinical_trials::win_ratio_workbench::WinRatioWorkbenchTool,
         >(ctx);
@@ -407,6 +410,10 @@ mod tests {
         assert_tool_roundtrip(
             &mut crate::tabs::clinical_trials::win_ratio::WinRatioStressTesterTool::default(),
             r#"{"lambda1":0.16,"lambda2":0.36,"alpha":0.7,"theta":0.6,"censor_horizon":4.5,"dropout_rate":0.06,"sig_alpha":0.05,"n_min":30,"n_max":150,"n_steps":5,"replicates":80,"seed":9001,"chart_mode":"TierWaterfall"}"#,
+        );
+        assert_tool_roundtrip(
+            &mut crate::tabs::clinical_trials::composite_win_ratio::WinRatioTool::default(),
+            r#"{"weibull_theta":0.6,"weibull_lambda1":0.11,"weibull_lambda2":0.21,"weibull_alpha":0.78,"horizon_c":10.0,"prc_samples":32,"pairing_mode":"Matched","tier1_kind":"HigherIsBetter","tier2_kind":"LowerIsBetter","tier3_kind":{"Threshold":{"threshold":4.0}},"derive_bmi_tier3":false,"ttest_tier_index":2,"ttest_alpha":0.05,"treat_weight_kg":73.0,"treat_height_m":1.75,"ctrl_weight_kg":81.0,"ctrl_height_m":1.74,"plot_mode":"EmpiricalHierarchy","cohort_text":"Treatment, 880.0, 0.0, 78.0\nTreatment, 760.0, 1.0, 71.0\nControl, 410.0, 2.0, 56.0\nControl, 520.0, 2.0, 60.0"}"#,
         );
         assert_tool_roundtrip(
             &mut crate::tabs::clinical_trials::win_ratio_workbench::WinRatioWorkbenchTool::default(

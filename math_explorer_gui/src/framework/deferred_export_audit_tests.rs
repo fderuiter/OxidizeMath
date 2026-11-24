@@ -261,9 +261,9 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         audio, expected_audio,
         "Expected {expected_audio} WAV audio-capable tools"
     );
-    let expected_plot = (if has_surface_morpho { 75 } else { 74 }) + bio_extra;
+    let expected_plot = (if has_surface_morpho { 76 } else { 75 }) + bio_extra;
     let expected_solid = if has_surface_morpho { 8 } else { 7 };
-    let expected_non_shader = (if has_surface_morpho { 89 } else { 88 }) + bio_extra;
+    let expected_non_shader = (if has_surface_morpho { 90 } else { 89 }) + bio_extra;
     assert_eq!(
         plot, expected_plot,
         "Expected {expected_plot} Plot dataset+figure tools"
