@@ -86,7 +86,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         "VolumetricFieldStudioTool" => &["isosurface_extraction", "gaussian_splatting"],
         "GeodesicPlaygroundTool" | "ChristoffelInspectorTool" => &["general_relativity_geodesics"],
         "MarkovSequenceWorkbenchTool" => &["clinical_trials_statistics"],
-        "CorticalMorphometryTool" => &["freesurfer"],
+        "CorticalMorphometryTool" | "RiemannianPdeStudio" => &["freesurfer"],
         "PhysarumTool" => &["computational_biology", "biology", "dijkstra"],
         "PhyllotaxisLSystemTool" | "BiochemicalDynamicsTool" | "EvolutionaryBiologyTool" => {
             &["computational_biology", "biology"]

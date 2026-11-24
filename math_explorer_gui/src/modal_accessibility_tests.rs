@@ -344,12 +344,10 @@ fn test_legend_checkbox_accesskit_action_click_and_keyboard() {
         .is_empty());
 }
 
-#[cfg(all(feature = "physics", feature = "biology"))]
 #[path = "modal_accessibility_tests/helpers.rs"]
 mod helpers;
-#[cfg(all(feature = "physics", feature = "biology"))]
+#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 #[path = "modal_accessibility_tests/pane_modals.rs"]
 mod pane_modals;
-#[cfg(all(feature = "physics", feature = "biology"))]
 #[path = "modal_accessibility_tests/shortcuts_and_overlays.rs"]
 mod shortcuts_and_overlays;

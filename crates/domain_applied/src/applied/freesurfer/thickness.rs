@@ -19,7 +19,8 @@ fn point_to_surface_distance(point: &[f64; 3], surface: &Surface) -> f64 {
 /// For repeated or whole-mesh queries across $V$ vertices, prefer pre-indexing both surfaces once
 /// with [`SpatialGrid::from_surface`] or [`ThicknessWorkspace`] and calling
 /// [`cortical_thickness_with_grid`], [`cortical_thickness_indexed`], [`cortical_thickness_into`],
-/// [`cortical_thickness_map_into`], [`cortical_thickness_mesh`], or [`cortical_thickness_map`].
+/// [`cortical_thickness_map_into`], [`cortical_thickness_batch_into`], [`cortical_thickness_mesh`],
+/// [`cortical_thickness_batch`], or [`cortical_thickness_map`].
 #[verified_engine::verified]
 pub fn cortical_thickness(
     v_w: &[f64; 3],
@@ -151,6 +152,27 @@ pub fn cortical_thickness_map(white_surface: &Surface, pial_surface: &Surface) -
     );
     thicknesses.truncate(written);
     thicknesses
+}
+
+/// Evaluates symmetric white-to-pial cortical thickness across paired vertices into `out`.
+pub fn cortical_thickness_batch_into(
+    white_surface: &Surface,
+    pial_surface: &Surface,
+    out: &mut [f64],
+) {
+    let (nw, np) = (white_surface.vertices.len(), pial_surface.vertices.len());
+    let count = nw.min(np).min(out.len());
+    if count > 0 {
+        let mut ws = ThicknessWorkspace::with_max_vertices(nw.max(np));
+        let _ =
+            cortical_thickness_map_into(white_surface, pial_surface, &mut ws, &mut out[..count]);
+    }
+}
+
+/// Evaluates symmetric white-to-pial cortical thickness across all paired vertices via [`cortical_thickness_map`].
+#[must_use]
+pub fn cortical_thickness_batch(white_surface: &Surface, pial_surface: &Surface) -> Vec<f64> {
+    cortical_thickness_map(white_surface, pial_surface)
 }
 
 /// Computes vertex-wise cortical thickness across an entire cortical mesh pair by constructing
