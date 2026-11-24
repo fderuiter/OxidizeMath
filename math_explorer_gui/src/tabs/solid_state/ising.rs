@@ -406,7 +406,7 @@ mod atlas_challenge_tests;
 #[path = "ising/tests.rs"]
 mod tests;
 
-// [cite:clinical_trials_statistics]
+// [cite:solid_state]
 
 inventory::submit! {
     crate::framework::ToolMetadata {

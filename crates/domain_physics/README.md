@@ -17,7 +17,7 @@ Simulation models implement standardized time-stepping interfaces—including sy
 - **`fluid_dynamics`**: Lattice Boltzmann methods and Navier-Stokes velocity field solvers.
 - **`mri`**: Bloch equation magnetic resonance spin simulators and RF pulse excitations.
 - **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
-- **`solid_state`**: Crystal lattice geometries, reciprocal space calculations, and electronic band structures.
+- **`solid_state`**: Periodic Bravais lattices (`SimpleCubic`, `BodyCenteredCubic`, `FaceCenteredCubic`), cut-and-project quasicrystals (`Fibonacci1D`, `Penrose5Fold`, `AmmannBeenker8Fold`, `Penrose10Fold`, `Stampfli12Fold`) with phason flip tracking, reciprocal-lattice bases, Brillouin zones, zero-allocation kinematic Bragg structure factors (`BraggWorkspace`), 1D Fibonacci and Aubry-André quasiperiodic eigensolvers (`QuasiperiodicWorkspace`), isotropic s-wave BCS pairing (`BcsGapSolver`, `IsotropicBCSModel`, `coherence_factors_strong`), Debye/Einstein phonons, Fröhlich coupling, and Thomas-Fermi/Yukawa screening.
 - **`stat_mech`**: Ising spin lattices, canonical ensemble thermodynamic calculations, zero-allocation 2D Bak-Tang-Wiesenfeld Abelian sandpile self-organized criticality & recurrent group engines (`sandpile::SandpileGrid`, `sandpile::SandpileElement`), and zero-allocation continuum SPDE engines for Edwards-Wilkinson (`EdwardsWilkinson1D`, `EdwardsWilkinson2D`), Kardar-Parisi-Zhang (`KpzModel1D`, `KpzModel2D`), Allen-Cahn (`AllenCahn2D`), and conserved Cahn-Hilliard (`CahnHilliard2D`) phase-field dynamics.
 - **`optics`**: Zero-allocation geometric & physical optics (`refraction`, `ray_tracing`, `caustics`, `diffraction`, `sensing`), covering Snell/Fresnel polarization, Cauchy dispersion, negative-index Veselago metamaterials, RK4 Hamiltonian & eikonal GRIN lenses (Luneburg, Maxwell fish-eye, Eaton, parabolic waveguide), coffee-cup nephroid & spherical-aberration caustics, Fraunhofer single-slit, grating, and circular Airy diffraction, and calibrated optical detector models (complemented by full-field 2D time-domain FDTD and Verlet wave solvers in `pure_math::analysis::pde::{wave, wave_2d}`).
 
@@ -187,6 +187,32 @@ trace_ray_fan(&cfg, &mut ws);
 let mut caustics = CausticEnvelopeBuffer::new(64, 32, -2.0, 2.0);
 assert!(extract_caustic_envelope(&ws, 1.0, 3.0, &mut caustics) > 30);
 assert_eq!(coffee_cup_cusp_x(2.0), 1.0);
+```
+
+### Cut-and-Project Quasicrystals and Zero-Allocation Bragg Diffraction
+
+Project higher-dimensional $\mathbb{Z}^D$ lattices onto physical and perpendicular subspaces, track discrete phason vertex flips, and evaluate kinematic Bragg structure factors $S(\mathbf{q})$ in preallocated workspaces:
+
+```rust
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::solid_state::quasicrystal::{
+    QuasicrystalPatchConfig, QuasicrystalSymmetry, QuasicrystalWorkspace,
+};
+use math_explorer::physics::solid_state::reciprocal::BraggWorkspace;
+
+let mut qc = QuasicrystalWorkspace::new();
+let cfg = QuasicrystalPatchConfig {
+    symmetry: QuasicrystalSymmetry::Penrose5Fold,
+    patch_radius: 3.5,
+    phason_shift: [0.2, 0.1],
+    ..QuasicrystalPatchConfig::default()
+};
+qc.generate_into(&cfg);
+assert!(qc.sites().len() > 20 && qc.flipped_in_count > 0);
+
+let mut bragg = BraggWorkspace::new(64);
+bragg.evaluate_grid_verified(qc.parallel_points(), 64, 14.0, true);
+assert!(bragg.peak_intensity() > 1.0);
 ```
 
 ---

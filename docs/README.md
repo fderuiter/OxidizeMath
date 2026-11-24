@@ -97,6 +97,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Preallocated Monte Carlo, Randomized QMC, and Nonparametric Bootstrap Suite](adr/20261123-preallocated-monte-carlo-qmc-and-bootstrap-suite.md)
 - [ADR 20261123: Precompiled Verification Patterns, AST Source Prefetch, and Zero-Allocation Scans](adr/20261123-precompiled-verification-patterns-and-ast-prefetch.md)
 - [ADR 20261123: `core`-Slice Thomas Solver, `CrankNicolson1D` Workspace, and Closed-Form $2\times 2$ Quantum Helpers](adr/20261123-pure-math-thomas-solver-and-closed-form-quantum-workspaces.md)
+- [ADR 20261123: Cut-and-Project Quasicrystals, Zero-Allocation Bragg Diffraction, Quasiperiodic Chains, and BCS Tools](adr/20261123-quasicrystal-bragg-quasiperiodic-and-bcs-tools.md)
 - [ADR 20261123: Live 4D Radar-Gated IMRT Contouring Workbench](adr/20261123-radar-gated-4d-imrt-contouring-workbench.md)
 - [ADR 20261123: Shared `RasterBrushCanvas`, Pre-Allocation RLE `base64url` Spatial Masks, and Live 2D Field Sculpting](adr/20261123-raster-brush-canvas-and-spatial-masks.md)
 - [ADR 20261123: Zero-Allocation Fixed-Size Christoffel Symbols, Relativistic Thin-Lens Splat Jacobians, and Paczyński-Wiita Galactic Orbits](adr/20261123-relativistic-lensed-splats-and-orbits.md)
