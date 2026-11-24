@@ -1,4 +1,585 @@
 {
+  "crates/02_engines/engine_linalg/src/cholesky.rs": [
+    {
+      "signature": "pub const fn cholesky_semidefinite_workspace_len (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub const fn cholesky_workspace_len (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn cholesky_factor < T : Scalar > (_ : & [T] , _ : & mut [T] , _ : usize) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub fn cholesky_semidefinite < T : Scalar > (_ : & [T] , _ : & mut [T] , _ : usize , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub fn cholesky_solve < T : Scalar > (_ : & [T] , _ : & [T] , _ : & mut [T] , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub fn cholesky_solve_factored < T : Scalar > (_ : & [T] , _ : & [T] , _ : & mut [T] , _ : usize ,) -> Result < () , LinalgError >"
+    }
+  ],
+  "crates/02_engines/engine_linalg/src/krylov.rs": [
+    {
+      "signature": "pub const fn cg_workspace_len (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub const fn gmres_workspace_len (_ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn cg_solve < T : Scalar > (_ : & CsrMatrixView < '_ , T > , _ : & [T] , _ : & mut [T] , _ : T , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < KrylovReport < T > , LinalgError >"
+    },
+    {
+      "signature": "pub fn gmres_solve < T : Scalar > (_ : & CsrMatrixView < '_ , T > , _ : & [T] , _ : & mut [T] , _ : usize , _ : T , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < KrylovReport < T > , LinalgError >"
+    },
+    {
+      "signature": "pub struct KrylovReport < T >"
+    }
+  ],
+  "crates/02_engines/engine_linalg/src/lib.rs": [
+    {
+      "signature": "pub use cholesky :: cholesky_factor"
+    },
+    {
+      "signature": "pub use cholesky :: cholesky_semidefinite"
+    },
+    {
+      "signature": "pub use cholesky :: cholesky_semidefinite_workspace_len"
+    },
+    {
+      "signature": "pub use cholesky :: cholesky_solve"
+    },
+    {
+      "signature": "pub use cholesky :: cholesky_solve_factored"
+    },
+    {
+      "signature": "pub use cholesky :: cholesky_workspace_len"
+    },
+    {
+      "signature": "pub use krylov :: KrylovReport"
+    },
+    {
+      "signature": "pub use krylov :: cg_solve"
+    },
+    {
+      "signature": "pub use krylov :: cg_workspace_len"
+    },
+    {
+      "signature": "pub use krylov :: gmres_solve"
+    },
+    {
+      "signature": "pub use krylov :: gmres_workspace_len"
+    },
+    {
+      "signature": "pub use lu :: lu_determinant"
+    },
+    {
+      "signature": "pub use lu :: lu_factor_in_place"
+    },
+    {
+      "signature": "pub use lu :: lu_inverse"
+    },
+    {
+      "signature": "pub use lu :: lu_inverse_workspace_len"
+    },
+    {
+      "signature": "pub use lu :: lu_solve"
+    },
+    {
+      "signature": "pub use lu :: lu_solve_factored"
+    },
+    {
+      "signature": "pub use lu :: lu_solve_transpose_factored"
+    },
+    {
+      "signature": "pub use lu :: lu_workspace_len"
+    },
+    {
+      "signature": "pub use norms :: cond_l1"
+    },
+    {
+      "signature": "pub use norms :: cond_l1_workspace_len"
+    },
+    {
+      "signature": "pub use norms :: cond_spectral"
+    },
+    {
+      "signature": "pub use norms :: norm_frobenius"
+    },
+    {
+      "signature": "pub use norms :: norm_l1"
+    },
+    {
+      "signature": "pub use norms :: norm_linf"
+    },
+    {
+      "signature": "pub use norms :: norm_spectral"
+    },
+    {
+      "signature": "pub use norms :: spectral_workspace_len"
+    },
+    {
+      "signature": "pub use qr :: StreamingQr"
+    },
+    {
+      "signature": "pub use qr :: qr_apply_qt"
+    },
+    {
+      "signature": "pub use qr :: qr_factor_pivoted"
+    },
+    {
+      "signature": "pub use qr :: qr_factor_workspace_len"
+    },
+    {
+      "signature": "pub use qr :: qr_least_squares_workspace_len"
+    },
+    {
+      "signature": "pub use qr :: qr_solve_least_squares"
+    },
+    {
+      "signature": "pub use qr :: qr_solve_r_pivoted"
+    },
+    {
+      "signature": "pub use qr :: qr_solve_rt_permuted"
+    },
+    {
+      "signature": "pub use scalar :: Scalar"
+    },
+    {
+      "signature": "pub use scalar :: hypot_f64"
+    },
+    {
+      "signature": "pub use scalar :: sqrt_f64"
+    },
+    {
+      "signature": "pub use sparse :: CsrMatrixView"
+    },
+    {
+      "signature": "pub use svd_bidiag :: svd_bidiagonal"
+    },
+    {
+      "signature": "pub use svd_bidiag :: svd_bidiagonal_workspace_len"
+    },
+    {
+      "signature": "pub use svd_jacobi :: svd_jacobi"
+    },
+    {
+      "signature": "pub use svd_jacobi :: svd_jacobi_workspace_len"
+    },
+    {
+      "signature": "pub use svd_jacobi :: symmetric_eigen_jacobi"
+    },
+    {
+      "signature": "pub use svd_jacobi :: symmetric_eigen_workspace_len"
+    },
+    {
+      "signature": "pub use svd_ops :: qr_or_svd_solve"
+    },
+    {
+      "signature": "pub use svd_ops :: qr_or_svd_workspace_len"
+    },
+    {
+      "signature": "pub use svd_ops :: svd_effective_rank"
+    },
+    {
+      "signature": "pub use svd_ops :: svd_low_rank_approx"
+    },
+    {
+      "signature": "pub use svd_ops :: svd_ops_workspace_len"
+    },
+    {
+      "signature": "pub use svd_ops :: svd_pseudoinverse"
+    },
+    {
+      "signature": "pub use svd_ops :: svd_solve_least_squares"
+    },
+    {
+      "signature": "pub use tikhonov :: DampingStyle"
+    },
+    {
+      "signature": "pub use tikhonov :: damped_normal_workspace_len"
+    },
+    {
+      "signature": "pub use tikhonov :: solve_damped_normal"
+    },
+    {
+      "signature": "pub use tikhonov :: tikhonov_solve"
+    },
+    {
+      "signature": "pub use tikhonov :: tikhonov_workspace_len"
+    },
+    {
+      "signature": "pub use types :: DenseView"
+    },
+    {
+      "signature": "pub use types :: LinalgError"
+    },
+    {
+      "signature": "pub use types :: OwnedWorkspace"
+    },
+    {
+      "signature": "pub use types :: SolverWorkspace"
+    },
+    {
+      "signature": "pub use types :: add_scaled_vec_array"
+    },
+    {
+      "signature": "pub use types :: check_all_finite"
+    },
+    {
+      "signature": "pub use types :: identity_array"
+    },
+    {
+      "signature": "pub use types :: identity_plus_scaled_array"
+    },
+    {
+      "signature": "pub use types :: mat_idx"
+    },
+    {
+      "signature": "pub use types :: mat_mul"
+    },
+    {
+      "signature": "pub use types :: mat_mul_array"
+    },
+    {
+      "signature": "pub use types :: mat_mul_transpose_right"
+    },
+    {
+      "signature": "pub use types :: mat_mul_transpose_right_array"
+    },
+    {
+      "signature": "pub use types :: mat_vec_mul"
+    }
+  ],
+  "crates/02_engines/engine_linalg/src/lu.rs": [
+    {
+      "signature": "pub const fn lu_inverse_workspace_len (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub const fn lu_workspace_len (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn lu_determinant < T : Scalar > (_ : & [T] , _ : usize , _ : i32) -> Result < T , LinalgError >"
+    },
+    {
+      "signature": "pub fn lu_factor_in_place < T : Scalar > (_ : & mut [T] , _ : usize , _ : & mut [usize] , _ : T ,) -> Result < i32 , LinalgError >"
+    },
+    {
+      "signature": "pub fn lu_inverse < T : Scalar > (_ : & [T] , _ : & mut [T] , _ : usize , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub fn lu_solve < T : Scalar > (_ : & [T] , _ : & [T] , _ : & mut [T] , _ : usize , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub fn lu_solve_factored < T : Scalar > (_ : & [T] , _ : usize , _ : & [usize] , _ : & [T] , _ : & mut [T] ,) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub fn lu_solve_transpose_factored < T : Scalar > (_ : & [T] , _ : usize , _ : & [usize] , _ : & [T] , _ : & mut [T] , _ : & mut [T] ,) -> Result < () , LinalgError >"
+    }
+  ],
+  "crates/02_engines/engine_linalg/src/norms.rs": [
+    {
+      "signature": "pub const fn cond_l1_workspace_len (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub const fn spectral_workspace_len (_ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn cond_l1 < T : Scalar > (_ : & [T] , _ : usize , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < T , LinalgError >"
+    },
+    {
+      "signature": "pub fn cond_spectral < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < T , LinalgError >"
+    },
+    {
+      "signature": "pub fn norm_frobenius < T : Scalar > (_ : & [T] , _ : usize , _ : usize) -> Result < T , LinalgError >"
+    },
+    {
+      "signature": "pub fn norm_l1 < T : Scalar > (_ : & [T] , _ : usize , _ : usize) -> Result < T , LinalgError >"
+    },
+    {
+      "signature": "pub fn norm_linf < T : Scalar > (_ : & [T] , _ : usize , _ : usize) -> Result < T , LinalgError >"
+    },
+    {
+      "signature": "pub fn norm_spectral < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < T , LinalgError >"
+    }
+  ],
+  "crates/02_engines/engine_linalg/src/qr.rs": [
+    {
+      "signature": "impl < T : Scalar , const MAX_P : usize > StreamingQr < T , MAX_P > { pub fn new (_ : usize) -> Result < Self , LinalgError > }"
+    },
+    {
+      "signature": "impl < T : Scalar , const MAX_P : usize > StreamingQr < T , MAX_P > { pub fn push_row (& mut self , _ : & [T] , _ : T) -> Result < () , LinalgError > }"
+    },
+    {
+      "signature": "impl < T : Scalar , const MAX_P : usize > StreamingQr < T , MAX_P > { pub fn solve (& self , _ : T) -> Result < [T ; MAX_P] , LinalgError > }"
+    },
+    {
+      "signature": "pub const fn qr_factor_workspace_len (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub const fn qr_least_squares_workspace_len (_ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn qr_apply_qt < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : & mut [T] ,) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub fn qr_factor_pivoted < T : Scalar > (_ : & mut [T] , _ : usize , _ : usize , _ : & mut [T] , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < usize , LinalgError >"
+    },
+    {
+      "signature": "pub fn qr_solve_least_squares < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : & mut [T] , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < usize , LinalgError >"
+    },
+    {
+      "signature": "pub fn qr_solve_r_pivoted < T : Scalar > (_ : & [T] , _ : (usize , usize) , _ : usize , _ : & [usize] , _ : & [T] , _ : & mut [T] , _ : & mut [T] ,) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub fn qr_solve_rt_permuted < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : usize , _ : & [usize] , _ : & [T] , _ : & mut [T] ,) -> Result < T , LinalgError >"
+    },
+    {
+      "signature": "pub struct StreamingQr < T : Scalar , const MAX_P : usize >"
+    }
+  ],
+  "crates/02_engines/engine_linalg/src/scalar.rs": [
+    {
+      "signature": "pub fn hypot_f64 (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn sqrt_f64 (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub trait Scalar : Copy + Clone + PartialEq + PartialOrd + Debug + Display + Default + Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + Div < Output = Self > + Neg < Output = Self > + AddAssign + SubAssign + MulAssign + DivAssign + 'static"
+    },
+    {
+      "signature": "pub trait Scalar { const DEFAULT_TOL_SCALE : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const EPSILON : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const HALF : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const MAX_VALUE : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const MIN_POSITIVE : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const NAN : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const ONE : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const TWO : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const ZERO : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn abs (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn copysign (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn from_f64 (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn from_usize (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn hypot (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn is_finite (self) -> bool }"
+    },
+    {
+      "signature": "pub trait Scalar { fn is_nan (self) -> bool }"
+    },
+    {
+      "signature": "pub trait Scalar { fn max (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn min (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn sqrt (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn to_f64 (self) -> f64 }"
+    }
+  ],
+  "crates/02_engines/engine_linalg/src/sparse.rs": [
+    {
+      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub const fn col_ind (& self) -> & 'a [usize] }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub const fn ncols (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub const fn nnz (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub const fn nrows (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub const fn row_ptr (& self) -> & 'a [usize] }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub const fn values (& self) -> & 'a [T] }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub fn new (_ : usize , _ : usize , _ : & 'a [usize] , _ : & 'a [usize] , _ : & 'a [T] ,) -> Result < Self , LinalgError > }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub fn spmv (& self , _ : & [T] , _ : & mut [T]) -> Result < () , LinalgError > }"
+    },
+    {
+      "signature": "pub struct CsrMatrixView < 'a , T >"
+    }
+  ],
+  "crates/02_engines/engine_linalg/src/svd_bidiag.rs": [
+    {
+      "signature": "pub const fn svd_bidiagonal_workspace_len (_ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn svd_bidiagonal < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & mut [T] , _ : & mut [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+    }
+  ],
+  "crates/02_engines/engine_linalg/src/svd_jacobi.rs": [
+    {
+      "signature": "pub const fn svd_jacobi_workspace_len (_ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub const fn symmetric_eigen_workspace_len (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn svd_jacobi < T : Scalar > (_ : & [T] , _ : (usize , usize) , _ : & mut [T] , _ : & mut [T] , _ : & mut [T] , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub fn symmetric_eigen_jacobi < T : Scalar > (_ : & [T] , _ : usize , _ : & mut [T] , _ : & mut [T] , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+    }
+  ],
+  "crates/02_engines/engine_linalg/src/svd_ops.rs": [
+    {
+      "signature": "pub const fn qr_or_svd_workspace_len (_ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub const fn svd_ops_workspace_len (_ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn qr_or_svd_solve < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : & mut [T] , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < usize , LinalgError >"
+    },
+    {
+      "signature": "pub fn svd_effective_rank < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : T , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < usize , LinalgError >"
+    },
+    {
+      "signature": "pub fn svd_low_rank_approx < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : usize , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub fn svd_pseudoinverse < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub fn svd_solve_least_squares < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < usize , LinalgError >"
+    }
+  ],
+  "crates/02_engines/engine_linalg/src/tikhonov.rs": [
+    {
+      "signature": "pub const fn damped_normal_workspace_len (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub const fn tikhonov_workspace_len (_ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub enum DampingStyle < T >"
+    },
+    {
+      "signature": "pub fn solve_damped_normal < T : Scalar > (_ : & [T] , _ : & [T] , _ : usize , _ : DampingStyle < T > , _ : & mut [T] , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub fn tikhonov_solve < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+    }
+  ],
+  "crates/02_engines/engine_linalg/src/types.rs": [
+    {
+      "signature": "impl < 'a , T : Scalar > DenseView < 'a , T > { pub const fn as_slice (& self) -> & 'a [T] }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > DenseView < 'a , T > { pub const fn ncols (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > DenseView < 'a , T > { pub const fn nrows (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > DenseView < 'a , T > { pub fn get (& self , _ : usize , _ : usize) -> T }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > DenseView < 'a , T > { pub fn new (_ : & 'a [T] , _ : usize , _ : usize) -> Result < Self , LinalgError > }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub const fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub const fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn empty () -> Self }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn new (_ : & 'a mut [T]) -> Self }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn try_split (& mut self , _ : usize ,) -> Result < (& mut [T] , SolverWorkspace < '_ , T >) , LinalgError > }"
+    },
+    {
+      "signature": "impl < T : Scalar > OwnedWorkspace < T > { pub fn as_workspace (& mut self) -> SolverWorkspace < '_ , T > }"
+    },
+    {
+      "signature": "impl < T : Scalar > OwnedWorkspace < T > { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub const fn mat_idx (_ : usize , _ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub enum LinalgError"
+    },
+    {
+      "signature": "pub fn add_scaled_vec_array < T : Scalar , const N : usize > (_ : & [T ; N] , _ : & [T ; N] , _ : T ,) -> [T ; N]"
+    },
+    {
+      "signature": "pub fn check_all_finite < T : Scalar > (_ : & [T]) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub fn identity_array < T : Scalar , const N : usize > () -> [[T ; N] ; N]"
+    },
+    {
+      "signature": "pub fn identity_plus_scaled_array < T : Scalar , const N : usize > (_ : & [[T ; N] ; N] , _ : T ,) -> [[T ; N] ; N]"
+    },
+    {
+      "signature": "pub fn mat_mul < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : usize , _ : & mut [T] ,) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub fn mat_mul_array < T : Scalar , const M : usize , const K : usize , const N : usize > (_ : & [[T ; K] ; M] , _ : & [[T ; N] ; K] ,) -> [[T ; N] ; M]"
+    },
+    {
+      "signature": "pub fn mat_mul_transpose_right < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : usize , _ : & mut [T] ,) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub fn mat_mul_transpose_right_array < T : Scalar , const M : usize , const K : usize , const N : usize > (_ : & [[T ; K] ; M] , _ : & [[T ; K] ; N] ,) -> [[T ; N] ; M]"
+    },
+    {
+      "signature": "pub fn mat_vec_mul < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : & mut [T] ,) -> Result < () , LinalgError >"
+    },
+    {
+      "signature": "pub struct DenseView < 'a , T >"
+    },
+    {
+      "signature": "pub struct OwnedWorkspace < T >"
+    },
+    {
+      "signature": "pub struct SolverWorkspace < 'a , T >"
+    }
+  ],
   "crates/diagnostics/src/lib.rs": [
     {
       "signature": "impl DiagnosticBus { pub fn emit (& self , _ : DiagnosticEvent) }"
@@ -2288,13 +2869,37 @@
   ],
   "crates/domain_applied/src/applied/freesurfer/glm.rs": [
     {
-      "signature": "pub fn estimate_beta < T : RealField > (_ : & DMatrix < T > , _ : & DVector < T > ,) -> Result < DVector < T > , EngineeringError >"
+      "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn contrast_variance_factor (& self , _ : & DVector < T >) -> Result < T , EngineeringError > }"
     },
     {
-      "signature": "pub fn t_statistic < T : RealField + Copy > (_ : & DVector < T > , _ : & DVector < T > , _ : & DMatrix < T > , _ : T ,) -> Result < T , EngineeringError >"
+      "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn estimate_beta (& self , _ : & DVector < T >) -> Result < DVector < T > , EngineeringError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn ncols (& self) -> usize }"
+    },
+    {
+      "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn nrows (& self) -> usize }"
+    },
+    {
+      "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn t_statistic (& self , _ : & DVector < T > , _ : & DVector < T > , _ : T ,) -> Result < T , EngineeringError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn try_new (_ : & DMatrix < T >) -> Result < Self , EngineeringError > }"
+    },
+    {
+      "signature": "pub fn estimate_beta < T : RealField + Scalar > (_ : & DMatrix < T > , _ : & DVector < T > ,) -> Result < DVector < T > , EngineeringError >"
+    },
+    {
+      "signature": "pub fn t_statistic < T : RealField + Scalar > (_ : & DVector < T > , _ : & DVector < T > , _ : & DMatrix < T > , _ : T ,) -> Result < T , EngineeringError >"
+    },
+    {
+      "signature": "pub struct GlmDesignQr < T : RealField + Scalar >"
     }
   ],
   "crates/domain_applied/src/applied/freesurfer/mod.rs": [
+    {
+      "signature": "pub use glm :: GlmDesignQr"
+    },
     {
       "signature": "pub use glm :: estimate_beta"
     },
@@ -2347,6 +2952,9 @@
       "signature": "pub use thickness :: FlatSpatialGrid"
     },
     {
+      "signature": "pub use thickness :: SpatialGrid"
+    },
+    {
       "signature": "pub use thickness :: ThicknessWorkspace"
     },
     {
@@ -2356,10 +2964,19 @@
       "signature": "pub use thickness :: cortical_thickness_indexed"
     },
     {
+      "signature": "pub use thickness :: cortical_thickness_into"
+    },
+    {
       "signature": "pub use thickness :: cortical_thickness_map"
     },
     {
       "signature": "pub use thickness :: cortical_thickness_map_into"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_mesh"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_with_grid"
     }
   ],
   "crates/domain_applied/src/applied/freesurfer/segmentation.rs": [
@@ -2437,37 +3054,13 @@
   ],
   "crates/domain_applied/src/applied/freesurfer/thickness.rs": [
     {
-      "signature": "impl < 'a > FlatSpatialGrid < 'a > { pub const fn cell_size (& self) -> f64 }"
-    },
-    {
-      "signature": "impl < 'a > FlatSpatialGrid < 'a > { pub const fn is_empty (& self) -> bool }"
-    },
-    {
-      "signature": "impl < 'a > FlatSpatialGrid < 'a > { pub fn from_surface (_ : & Surface , _ : & 'a mut [usize] , _ : & 'a mut [[f64 ; 3]] ,) -> Option < Self > }"
-    },
-    {
-      "signature": "impl < 'a > FlatSpatialGrid < 'a > { pub fn required_offsets_len (_ : usize) -> usize }"
-    },
-    {
-      "signature": "impl < 'a > FlatSpatialGrid < 'a > { pub fn shortest_distance (& self , _ : & [f64 ; 3]) -> f64 }"
-    },
-    {
-      "signature": "impl ThicknessWorkspace { pub const fn new () -> Self }"
-    },
-    {
-      "signature": "impl ThicknessWorkspace { pub fn build_grids < 'a > (& 'a mut self , _ : & Surface , _ : & Surface ,) -> Option < (FlatSpatialGrid < 'a > , FlatSpatialGrid < 'a >) > }"
-    },
-    {
-      "signature": "impl ThicknessWorkspace { pub fn ensure_capacity (& mut self , _ : usize) }"
-    },
-    {
-      "signature": "impl ThicknessWorkspace { pub fn with_max_vertices (_ : usize) -> Self }"
-    },
-    {
       "signature": "pub fn cortical_thickness (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & Surface , _ : & Surface ,) -> f64"
     },
     {
       "signature": "pub fn cortical_thickness_indexed (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & FlatSpatialGrid < '_ > , _ : & FlatSpatialGrid < '_ > ,) -> f64"
+    },
+    {
+      "signature": "pub fn cortical_thickness_into (_ : & Surface , _ : & Surface , _ : & SpatialGrid , _ : & SpatialGrid , _ : & mut [f64] ,)"
     },
     {
       "signature": "pub fn cortical_thickness_map (_ : & Surface , _ : & Surface) -> Vec < f64 >"
@@ -2476,10 +3069,19 @@
       "signature": "pub fn cortical_thickness_map_into (_ : & Surface , _ : & Surface , _ : & mut ThicknessWorkspace , _ : & mut [f64] ,) -> usize"
     },
     {
-      "signature": "pub struct FlatSpatialGrid < 'a >"
+      "signature": "pub fn cortical_thickness_mesh (_ : & Surface , _ : & Surface) -> Vec < f64 >"
     },
     {
-      "signature": "pub struct ThicknessWorkspace"
+      "signature": "pub fn cortical_thickness_with_grid (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & SpatialGrid , _ : & SpatialGrid ,) -> f64"
+    },
+    {
+      "signature": "pub use thickness_grid :: FlatSpatialGrid"
+    },
+    {
+      "signature": "pub use thickness_grid :: SpatialGrid"
+    },
+    {
+      "signature": "pub use thickness_grid :: ThicknessWorkspace"
     }
   ],
   "crates/domain_applied/src/applied/game_theory/equilibrium.rs": [
@@ -2523,7 +3125,54 @@
       "signature": "pub trait Correspondence { fn is_in_image (& self , _ : & DVector < f64 > , _ : & DVector < f64 >) -> bool }"
     }
   ],
+  "crates/domain_applied/src/applied/game_theory/evolutionary/graph_replicator.rs": [
+    {
+      "signature": "impl GraphReplicatorFitness { pub fn base_payoff_matrix (& self) -> & DMatrix < f64 > }"
+    },
+    {
+      "signature": "impl GraphReplicatorFitness { pub fn effective_payoff_matrix (& self) -> & DMatrix < f64 > }"
+    },
+    {
+      "signature": "impl GraphReplicatorFitness { pub fn from_csr (_ : DMatrix < f64 > , _ : usize , _ : & [usize] , _ : GraphUpdateRule ,) -> Result < Self , GameTheoryError > }"
+    },
+    {
+      "signature": "impl GraphReplicatorFitness { pub fn mean_active_degree (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GraphReplicatorFitness { pub fn new (_ : DMatrix < f64 > , _ : f64 , _ : GraphUpdateRule ,) -> Result < Self , GameTheoryError > }"
+    },
+    {
+      "signature": "impl GraphReplicatorFitness { pub fn set_mean_active_degree (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl GraphReplicatorFitness { pub fn update_rule (& self) -> GraphUpdateRule }"
+    },
+    {
+      "signature": "pub const MIN_REGULARIZED_GRAPH_DEGREE : f64"
+    },
+    {
+      "signature": "pub enum GraphUpdateRule"
+    },
+    {
+      "signature": "pub fn mean_active_degree_from_csr (_ : usize , _ : & [usize]) -> f64"
+    },
+    {
+      "signature": "pub struct GraphReplicatorFitness"
+    }
+  ],
   "crates/domain_applied/src/applied/game_theory/evolutionary/mod.rs": [
+    {
+      "signature": "pub use graph_replicator :: GraphReplicatorFitness"
+    },
+    {
+      "signature": "pub use graph_replicator :: GraphUpdateRule"
+    },
+    {
+      "signature": "pub use graph_replicator :: MIN_REGULARIZED_GRAPH_DEGREE"
+    },
+    {
+      "signature": "pub use graph_replicator :: mean_active_degree_from_csr"
+    },
     {
       "signature": "pub use replicator :: ReplicatorDynamics"
     },
@@ -5050,6 +5699,12 @@
       "signature": "pub use neuron :: HodgkinHuxleyNeuron"
     },
     {
+      "signature": "pub use synaptic_csr :: MAX_CSR_HH_NEURONS"
+    },
+    {
+      "signature": "pub use synaptic_csr :: step_csr_hodgkin_huxley_network"
+    },
+    {
       "signature": "pub use types :: HodgkinHuxleyParameters"
     },
     {
@@ -5130,6 +5785,14 @@
     },
     {
       "signature": "pub struct HodgkinHuxleyNeuronBuilder"
+    }
+  ],
+  "crates/domain_biology/src/biology/neuroscience/synaptic_csr.rs": [
+    {
+      "signature": "pub const MAX_CSR_HH_NEURONS : usize"
+    },
+    {
+      "signature": "pub fn step_csr_hodgkin_huxley_network (_ : & mut [HodgkinHuxleyNeuron] , _ : & [f64] , _ : & mut [f64] , _ : & [usize] , _ : & [usize] , _ : & [f64] , _ : f64 , _ : f64 , _ : f64 ,)"
     }
   ],
   "crates/domain_biology/src/biology/neuroscience/types.rs": [
@@ -6046,6 +6709,9 @@
     },
     {
       "signature": "impl NetworkEpidemicModelBuilder { pub fn build (self) -> Result < NetworkEpidemicModel , NetworkModelError > }"
+    },
+    {
+      "signature": "impl NetworkEpidemicModelBuilder { pub fn csr_adjacency (self , _ : & [usize] , _ : & [usize] ,) -> Result < Self , NetworkModelError > }"
     },
     {
       "signature": "impl NetworkEpidemicModelBuilder { pub fn new () -> Self }"
@@ -9033,6 +9699,71 @@
       "signature": "pub fn helmholtz_free_energy (_ : f64 , _ : f64) -> f64"
     }
   ],
+  "crates/domain_physics/src/physics/stat_mech/graph_ising.rs": [
+    {
+      "signature": "impl GraphSpinSystem { pub fn col_idx (& self) -> & [usize] }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn cooperator_fraction (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn csr_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn evolve (& mut self , _ : usize , _ : f64 , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn evolve_fermi_game (& mut self , _ : usize , _ : f64 , _ : & MatrixPayoff) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn flip_spin (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn magnetization (& self) -> i64 }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn mean_game_payoff (& self , _ : & MatrixPayoff) -> f64 }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn n_nodes (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn normalized_magnetization (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn randomize (& mut self) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn row_ptr (& self) -> & [usize] }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn set_all_spins (& mut self , _ : i8) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn set_spin (& mut self , _ : usize , _ : i8) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn spins (& self) -> & [i8] }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn total_energy (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn try_from_csr (_ : usize , _ : Vec < usize > , _ : Vec < usize > , _ : Vec < f64 > , _ : Option < u64 > ,) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn weights (& self) -> & [f64] }"
+    },
+    {
+      "signature": "pub const MAX_GRAPH_SPIN_CSR_ENTRIES : usize"
+    },
+    {
+      "signature": "pub const MAX_GRAPH_SPIN_NODES : usize"
+    },
+    {
+      "signature": "pub struct GraphSpinSystem"
+    }
+  ],
   "crates/domain_physics/src/physics/stat_mech/ising.rs": [
     {
       "signature": "impl SpinLattice { pub fn evolve (& mut self , _ : usize , _ : f64 , _ : f64 , _ : f64) }"
@@ -9089,6 +9820,9 @@
   "crates/domain_physics/src/physics/stat_mech/mod.rs": [
     {
       "signature": "pub const KB : f64"
+    },
+    {
+      "signature": "pub use graph_ising :: GraphSpinSystem"
     }
   ],
   "crates/domain_physics/src/physics/stat_mech/quantum_stats.rs": [
@@ -9401,6 +10135,9 @@
       "signature": "impl CompiledExpr { pub fn eval_slice (& self , _ : & [f64]) -> f64 }"
     },
     {
+      "signature": "impl CompiledExpr { pub fn instruction_count (& self) -> usize }"
+    },
+    {
       "signature": "impl CompiledExpr { pub fn instructions (& self) -> & [Instruction] }"
     },
     {
@@ -9518,9 +10255,18 @@
   "crates/math_commons/src/ast/latex.rs": [
     {
       "signature": "impl Expr { pub fn to_latex (& self) -> String }"
+    },
+    {
+      "signature": "impl Expr { pub fn try_to_latex (& self) -> Result < String , EvalError > }"
     }
   ],
   "crates/math_commons/src/ast/lexer.rs": [
+    {
+      "signature": "impl LexError { pub fn input_too_long (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl LexError { pub fn token_limit_exceeded (_ : usize , _ : usize) -> Self }"
+    },
     {
       "signature": "impl LexError { pub fn user_message (& self) -> String }"
     },
@@ -9541,6 +10287,32 @@
     },
     {
       "signature": "pub struct Token"
+    }
+  ],
+  "crates/math_commons/src/ast/limits.rs": [
+    {
+      "signature": "pub const MAX_AST_NODES : usize"
+    },
+    {
+      "signature": "pub const MAX_CODEGEN_OUTPUT_BYTES : usize"
+    },
+    {
+      "signature": "pub const MAX_COMPILED_INSTRUCTIONS : usize"
+    },
+    {
+      "signature": "pub const MAX_EXPR_BYTES : usize"
+    },
+    {
+      "signature": "pub const MAX_EXPR_TOKENS : usize"
+    },
+    {
+      "signature": "pub const MAX_GLSL_OUTPUT_BYTES : usize"
+    },
+    {
+      "signature": "pub const MAX_LATEX_FALLBACK_NODES : usize"
+    },
+    {
+      "signature": "pub const MAX_LATEX_OUTPUT_BYTES : usize"
     }
   ],
   "crates/math_commons/src/ast/mod.rs": [
@@ -9606,6 +10378,30 @@
     },
     {
       "signature": "pub use lexer :: tokenize"
+    },
+    {
+      "signature": "pub use limits :: MAX_AST_NODES"
+    },
+    {
+      "signature": "pub use limits :: MAX_CODEGEN_OUTPUT_BYTES"
+    },
+    {
+      "signature": "pub use limits :: MAX_COMPILED_INSTRUCTIONS"
+    },
+    {
+      "signature": "pub use limits :: MAX_EXPR_BYTES"
+    },
+    {
+      "signature": "pub use limits :: MAX_EXPR_TOKENS"
+    },
+    {
+      "signature": "pub use limits :: MAX_GLSL_OUTPUT_BYTES"
+    },
+    {
+      "signature": "pub use limits :: MAX_LATEX_FALLBACK_NODES"
+    },
+    {
+      "signature": "pub use limits :: MAX_LATEX_OUTPUT_BYTES"
     },
     {
       "signature": "pub use num_complex :: Complex64"
@@ -11186,6 +11982,9 @@
     },
     {
       "signature": "pub fn low_rank_approximation (_ : & DMatrix < f64 > , _ : usize) -> DMatrix < f64 >"
+    },
+    {
+      "signature": "pub fn try_low_rank_approximation (_ : & DMatrix < f64 > , _ : usize ,) -> Result < DMatrix < f64 > , LinearAlgebraError >"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/linear_algebra/eigen.rs": [
@@ -11198,7 +11997,40 @@
   ],
   "crates/pure_math/src/pure_math/algebra/linear_algebra/mod.rs": [
     {
+      "signature": "pub use decomposition :: effective_rank"
+    },
+    {
+      "signature": "pub use decomposition :: low_rank_approximation"
+    },
+    {
+      "signature": "pub use decomposition :: try_low_rank_approximation"
+    },
+    {
       "signature": "pub use numerical :: LinearAlgebraError"
+    },
+    {
+      "signature": "pub use numerical :: moore_penrose_pseudoinverse"
+    },
+    {
+      "signature": "pub use numerical :: solve_cholesky_system"
+    },
+    {
+      "signature": "pub use numerical :: solve_conjugate_gradient"
+    },
+    {
+      "signature": "pub use numerical :: solve_gmres_restarted"
+    },
+    {
+      "signature": "pub use numerical :: solve_linear_system"
+    },
+    {
+      "signature": "pub use numerical :: solve_normal_equation"
+    },
+    {
+      "signature": "pub use numerical :: solve_tikhonov_system"
+    },
+    {
+      "signature": "pub use numerical :: try_moore_penrose_pseudoinverse"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/linear_algebra/numerical.rs": [
@@ -11209,10 +12041,25 @@
       "signature": "pub fn moore_penrose_pseudoinverse (_ : & DMatrix < f64 > , _ : f64) -> DMatrix < f64 >"
     },
     {
+      "signature": "pub fn solve_cholesky_system (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Result < DVector < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn solve_conjugate_gradient (_ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : f64 , _ : usize ,) -> Result < DVector < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn solve_gmres_restarted (_ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : usize , _ : f64 , _ : usize ,) -> Result < DVector < f64 > , LinearAlgebraError >"
+    },
+    {
       "signature": "pub fn solve_linear_system (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Result < DVector < f64 > , LinearAlgebraError >"
     },
     {
       "signature": "pub fn solve_normal_equation (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Result < DVector < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn solve_tikhonov_system (_ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : f64 ,) -> Result < DVector < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn try_moore_penrose_pseudoinverse (_ : & DMatrix < f64 > , _ : f64 ,) -> Result < DMatrix < f64 > , LinearAlgebraError >"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/mod.rs": [
@@ -15024,6 +15871,21 @@
       "signature": "impl BankrollFraction { pub fn value (& self) -> f64 }"
     },
     {
+      "signature": "impl DrawdownConstraint { pub fn alpha (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DrawdownConstraint { pub fn beta (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DrawdownConstraint { pub fn gamma (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DrawdownConstraint { pub fn lambda (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DrawdownConstraint { pub fn new (_ : f64 , _ : f64) -> Result < Self , KellyError > }"
+    },
+    {
       "signature": "impl Odds { pub fn from_american (_ : f64) -> Result < Self , KellyError > }"
     },
     {
@@ -15054,7 +15916,25 @@
       "signature": "impl Odds { pub fn value (& self) -> f64 }"
     },
     {
+      "signature": "pub const EXACT_CONVOLUTION_MAX_WAGERS : usize"
+    },
+    {
+      "signature": "pub const LAPLACE_QUADRATURE_NODES : usize"
+    },
+    {
+      "signature": "pub const MAX_MARKET_OUTCOMES : usize"
+    },
+    {
+      "signature": "pub const MAX_SLATE_WAGERS : usize"
+    },
+    {
+      "signature": "pub const PROBABILITY_SUM_TOLERANCE : f64"
+    },
+    {
       "signature": "pub struct BankrollFraction"
+    },
+    {
+      "signature": "pub struct DrawdownConstraint"
     },
     {
       "signature": "pub struct Odds"
@@ -15086,12 +15966,94 @@
       "signature": "pub mod variants { pub fn quarter_kelly (_ : & UnitInterval , _ : & Odds ,) -> Result < BankrollFraction , KellyError > }"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/kelly/drawdown.rs": [
+    {
+      "signature": "pub fn drawdown_constrained_kelly (_ : & UnitInterval , _ : & Odds , _ : & DrawdownConstraint ,) -> Result < BankrollFraction , KellyError >"
+    },
+    {
+      "signature": "pub fn drawdown_constrained_push_kelly (_ : & PushWager , _ : & DrawdownConstraint ,) -> Result < BankrollFraction , KellyError >"
+    },
+    {
+      "signature": "pub fn drawdown_constrained_quarter_line_kelly (_ : & QuarterLineWager , _ : & DrawdownConstraint ,) -> Result < BankrollFraction , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_drawdown_constrained_slate (_ : & [SlateWager] , _ : & DrawdownConstraint , _ : & mut SlateScratch ,) -> Result < SlateSolution , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_drawdown_constrained_slate_with_mode (_ : & [SlateWager] , _ : & DrawdownConstraint , _ : SlateEvalMode , _ : & mut SlateScratch ,) -> Result < SlateSolution , KellyError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/kelly/market.rs": [
+    {
+      "signature": "impl MarketAllocation { pub fn expected_growth_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MarketAllocation { pub fn expected_value (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MarketAllocation { pub fn kkt_residual (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MarketAllocation { pub fn reserve_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MarketAllocation { pub fn stakes (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl MarketAllocation { pub fn total_fraction (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MarketOutcome { pub fn gross_return (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MarketOutcome { pub fn new (_ : UnitInterval , _ : Odds) -> Self }"
+    },
+    {
+      "signature": "impl MarketOutcome { pub fn odds (& self) -> Odds }"
+    },
+    {
+      "signature": "impl MarketOutcome { pub fn probability (& self) -> UnitInterval }"
+    },
+    {
+      "signature": "impl MarketScratch { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "pub fn solve_mutually_exclusive_market (_ : & [MarketOutcome] , _ : & mut MarketScratch ,) -> Result < MarketAllocation , KellyError >"
+    },
+    {
+      "signature": "pub struct MarketAllocation"
+    },
+    {
+      "signature": "pub struct MarketOutcome"
+    },
+    {
+      "signature": "pub struct MarketScratch"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/kelly/mod.rs": [
     {
       "signature": "pub use core :: BankrollFraction"
     },
     {
+      "signature": "pub use core :: DrawdownConstraint"
+    },
+    {
+      "signature": "pub use core :: EXACT_CONVOLUTION_MAX_WAGERS"
+    },
+    {
+      "signature": "pub use core :: LAPLACE_QUADRATURE_NODES"
+    },
+    {
+      "signature": "pub use core :: MAX_MARKET_OUTCOMES"
+    },
+    {
+      "signature": "pub use core :: MAX_SLATE_WAGERS"
+    },
+    {
       "signature": "pub use core :: Odds"
+    },
+    {
+      "signature": "pub use core :: PROBABILITY_SUM_TOLERANCE"
     },
     {
       "signature": "pub use core :: UnitInterval"
@@ -15112,10 +16074,246 @@
       "signature": "pub use criterion :: variants"
     },
     {
+      "signature": "pub use drawdown :: drawdown_constrained_kelly"
+    },
+    {
+      "signature": "pub use drawdown :: drawdown_constrained_push_kelly"
+    },
+    {
+      "signature": "pub use drawdown :: drawdown_constrained_quarter_line_kelly"
+    },
+    {
+      "signature": "pub use drawdown :: solve_drawdown_constrained_slate"
+    },
+    {
+      "signature": "pub use drawdown :: solve_drawdown_constrained_slate_with_mode"
+    },
+    {
+      "signature": "pub use market :: MarketAllocation"
+    },
+    {
+      "signature": "pub use market :: MarketOutcome"
+    },
+    {
+      "signature": "pub use market :: MarketScratch"
+    },
+    {
+      "signature": "pub use market :: solve_mutually_exclusive_market"
+    },
+    {
+      "signature": "pub use push :: PushOutcome"
+    },
+    {
+      "signature": "pub use push :: PushWager"
+    },
+    {
+      "signature": "pub use push :: push_expected_growth_rate"
+    },
+    {
+      "signature": "pub use push :: push_expected_value"
+    },
+    {
+      "signature": "pub use push :: push_kelly_fraction"
+    },
+    {
+      "signature": "pub use quarter_line :: QuarterLineOutcome"
+    },
+    {
+      "signature": "pub use quarter_line :: QuarterLineWager"
+    },
+    {
+      "signature": "pub use quarter_line :: quarter_line_expected_growth_rate"
+    },
+    {
+      "signature": "pub use quarter_line :: quarter_line_expected_value"
+    },
+    {
+      "signature": "pub use quarter_line :: quarter_line_growth_derivative"
+    },
+    {
+      "signature": "pub use quarter_line :: quarter_line_kelly_fraction"
+    },
+    {
+      "signature": "pub use slate :: SlateSolution"
+    },
+    {
+      "signature": "pub use slate :: solve_simultaneous_slate"
+    },
+    {
+      "signature": "pub use slate :: solve_simultaneous_slate_with_mode"
+    },
+    {
+      "signature": "pub use slate_eval :: MAX_CONVOLUTION_STATES"
+    },
+    {
+      "signature": "pub use slate_eval :: SlateEvalMode"
+    },
+    {
+      "signature": "pub use slate_eval :: SlateScratch"
+    },
+    {
+      "signature": "pub use slate_eval :: SlateWager"
+    },
+    {
       "signature": "pub use super :: ruin"
     },
     {
       "signature": "pub use super :: validation"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/kelly/push.rs": [
+    {
+      "signature": "impl PushWager { pub fn from_win_and_push (_ : f64 , _ : f64 , _ : Odds) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl PushWager { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : Odds) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl PushWager { pub fn odds (& self) -> Odds }"
+    },
+    {
+      "signature": "impl PushWager { pub fn p_loss (& self) -> f64 }"
+    },
+    {
+      "signature": "impl PushWager { pub fn p_push (& self) -> f64 }"
+    },
+    {
+      "signature": "impl PushWager { pub fn p_win (& self) -> f64 }"
+    },
+    {
+      "signature": "impl PushWager { pub fn sample_outcome (& self , _ : f64) -> PushOutcome }"
+    },
+    {
+      "signature": "impl PushWager { pub fn settle (& self , _ : f64 , _ : & BankrollFraction , _ : PushOutcome) -> f64 }"
+    },
+    {
+      "signature": "pub enum PushOutcome"
+    },
+    {
+      "signature": "pub fn push_expected_growth_rate (_ : & PushWager , _ : & BankrollFraction) -> f64"
+    },
+    {
+      "signature": "pub fn push_expected_value (_ : & PushWager) -> f64"
+    },
+    {
+      "signature": "pub fn push_kelly_fraction (_ : & PushWager) -> Result < BankrollFraction , KellyError >"
+    },
+    {
+      "signature": "pub struct PushWager"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/kelly/quarter_line.rs": [
+    {
+      "signature": "impl QuarterLineWager { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : Odds ,) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn odds (& self) -> Odds }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn p_full_loss (& self) -> f64 }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn p_full_win (& self) -> f64 }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn p_half_loss (& self) -> f64 }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn p_half_win (& self) -> f64 }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn p_push (& self) -> f64 }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn sample_outcome (& self , _ : f64) -> QuarterLineOutcome }"
+    },
+    {
+      "signature": "impl QuarterLineWager { pub fn settle (& self , _ : f64 , _ : & BankrollFraction , _ : QuarterLineOutcome ,) -> f64 }"
+    },
+    {
+      "signature": "pub enum QuarterLineOutcome"
+    },
+    {
+      "signature": "pub fn quarter_line_expected_growth_rate (_ : & QuarterLineWager , _ : & BankrollFraction ,) -> f64"
+    },
+    {
+      "signature": "pub fn quarter_line_expected_value (_ : & QuarterLineWager) -> f64"
+    },
+    {
+      "signature": "pub fn quarter_line_growth_derivative (_ : & QuarterLineWager , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn quarter_line_kelly_fraction (_ : & QuarterLineWager ,) -> Result < BankrollFraction , KellyError >"
+    },
+    {
+      "signature": "pub struct QuarterLineWager"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/kelly/slate.rs": [
+    {
+      "signature": "impl SlateSolution { pub fn drawdown_expectation (& self) -> f64 }"
+    },
+    {
+      "signature": "impl SlateSolution { pub fn eval_mode_used (& self) -> SlateEvalMode }"
+    },
+    {
+      "signature": "impl SlateSolution { pub fn expected_growth_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl SlateSolution { pub fn expected_value (& self) -> f64 }"
+    },
+    {
+      "signature": "impl SlateSolution { pub fn kkt_residual (& self) -> f64 }"
+    },
+    {
+      "signature": "impl SlateSolution { pub fn stakes (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl SlateSolution { pub fn total_fraction (& self) -> f64 }"
+    },
+    {
+      "signature": "pub fn solve_simultaneous_slate (_ : & [SlateWager] , _ : & mut SlateScratch ,) -> Result < SlateSolution , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_simultaneous_slate_with_mode (_ : & [SlateWager] , _ : SlateEvalMode , _ : & mut SlateScratch ,) -> Result < SlateSolution , KellyError >"
+    },
+    {
+      "signature": "pub struct SlateSolution"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/kelly/slate_eval.rs": [
+    {
+      "signature": "impl SlateScratch { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "impl SlateWager { pub fn binary (_ : UnitInterval , _ : Odds) -> Self }"
+    },
+    {
+      "signature": "impl SlateWager { pub fn expected_value (& self) -> f64 }"
+    },
+    {
+      "signature": "impl SlateWager { pub fn from_push (_ : PushWager) -> Self }"
+    },
+    {
+      "signature": "impl SlateWager { pub fn from_quarter_line (_ : QuarterLineWager) -> Self }"
+    },
+    {
+      "signature": "impl SlateWager { pub fn sample_net_return (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl SlateWager { pub fn state_count (& self) -> usize }"
+    },
+    {
+      "signature": "pub const MAX_CONVOLUTION_STATES : usize"
+    },
+    {
+      "signature": "pub enum SlateEvalMode"
+    },
+    {
+      "signature": "pub struct SlateScratch"
+    },
+    {
+      "signature": "pub struct SlateWager"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/market_pricing/devig.rs": [

@@ -15,10 +15,15 @@
 //! - `strategies`: Defines payoff structures (e.g., Matrix Games).
 //! - `traits`: Defines the `FitnessStrategy` trait for custom fitness landscapes.
 
+mod graph_replicator;
 mod replicator;
 mod strategies;
 mod traits;
 
+pub use graph_replicator::{
+    GraphReplicatorFitness, GraphUpdateRule, MIN_REGULARIZED_GRAPH_DEGREE,
+    mean_active_degree_from_csr,
+};
 pub use replicator::ReplicatorDynamics;
 pub use strategies::MatrixPayoff;
 pub use traits::FitnessStrategy;
