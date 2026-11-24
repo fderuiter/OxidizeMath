@@ -87,6 +87,9 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         "GeodesicPlaygroundTool" | "ChristoffelInspectorTool" => &["general_relativity_geodesics"],
         "MarkovSequenceWorkbenchTool" => &["clinical_trials_statistics"],
         "CorticalMorphometryTool" => &["freesurfer"],
+        "PhyllotaxisLSystemTool" | "BiochemicalDynamicsTool" | "EvolutionaryBiologyTool" => {
+            &["computational_biology", "biology"]
+        }
         _ => &[],
     };
     tokens.extend(explicit.iter().map(|s| (*s).to_string()));
@@ -112,7 +115,8 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         "analysis" | "geometry_topology" | "number_theory" => &["pure_math", "math_commons"],
         "linear_algebra" => &["advanced_linear_algebra", "pure_math"],
         "financial_math" => &["clinical_trials_statistics"],
-        "neuroscience" => &["biology", "graph_parameters_rust"],
+        "biology" | "biochemical" => &["biology", "computational_biology"],
+        "neuroscience" => &["biology", "computational_biology", "graph_parameters_rust"],
         "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],
         "solid_state" => &["stat_mech", "pure_math"],
         "ai" => &["graph_parameters_rust"],

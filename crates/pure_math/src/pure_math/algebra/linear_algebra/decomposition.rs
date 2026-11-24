@@ -4,12 +4,18 @@
 //! least-squares estimation, spectral conditioning diagnostics, and low-rank approximation.
 //!
 //! ## Supported Factorizations & Invariants
+//! * **LU Decomposition:** $A = LU$ with partial pivoting for square linear systems.
 //! * **Householder QR (`qr_decomposition`):** $A = QR$ with $Q^T Q = I$ and upper trapezoidal $R$.
 //! * **Cholesky (`cholesky_decomposition`):** $A = L L^T$ for symmetric positive-definite matrices.
 //! * **Thin SVD (`svd_decomposition`):** $A = U \operatorname{diag}(\sigma) V^T$ with $\sigma_1 \ge \dots \ge \sigma_r \ge 0$.
 //! * **Conditioning & Norms (`condition_number`, `matrix_norm`):** $\kappa_2(A) = \sigma_{\max} / \sigma_{\min}$ and $\|A\|_{1, 2, \infty, F}$.
 
-use super::numerical::{LinearAlgebraError, bounded_svd, ensure_finite_matrix};
+use super::numerical::{
+    LinearAlgebraError, bounded_svd, dmatrix_to_row_major, ensure_finite_matrix, map_linalg_error,
+};
+use engine_linalg::{
+    SolverWorkspace, svd_effective_rank, svd_low_rank_approx, svd_ops_workspace_len,
+};
 use nalgebra::{DMatrix, DVector};
 
 #[cfg(test)]
@@ -35,10 +41,7 @@ pub enum MatrixNorm {
     Frobenius,
 }
 
-/// Computes the effective rank of a matrix using Singular Value Decomposition (SVD).
-///
-/// The effective rank is determined by counting singular values greater than a given tolerance.
-/// Returns `0` if the matrix is empty or contains non-finite values.
+/// Computes the effective rank of a matrix using [`engine_linalg`] Singular Value Decomposition (SVD).
 ///
 /// # Examples
 ///
@@ -47,44 +50,45 @@ pub enum MatrixNorm {
 /// use math_explorer::pure_math::algebra::linear_algebra::decomposition::effective_rank;
 /// use math_explorer::nalgebra::DMatrix;
 ///
-/// let diag = DMatrix::from_diagonal(&math_explorer::nalgebra::DVector::from_vec(vec![1.0, 1e-11, 3.0]));
+/// let diag = DMatrix::from_diagonal(&math_explorer::nalgebra::DVector::from_vec(vec![1.0, 0.00000000001, 3.0]));
 /// assert_eq!(effective_rank(&diag, Some(1e-5)), 2);
 /// ```
 #[verified_engine::verified]
 pub fn effective_rank(matrix: &DMatrix<f64>, tolerance: Option<f64>) -> usize {
     let tol = tolerance.unwrap_or(math_commons::registry::TOLERANCE_HIGH);
-    if !tol.is_finite() {
-        return 0;
-    }
-    let Ok(svd) = bounded_svd(matrix, false, false) else {
-        return 0;
-    };
-    svd.singular_values
-        .iter()
-        .filter(|&&sigma| sigma > tol)
-        .count()
+    let (m, n) = matrix.shape();
+    let a_row = dmatrix_to_row_major(matrix);
+    let mut scratch = vec![0.0_f64; svd_ops_workspace_len(m, n)];
+    svd_effective_rank(&a_row, m, n, tol, &mut SolverWorkspace::new(&mut scratch)).unwrap_or(0)
 }
 
-/// Computes a rank-`k` Eckart-Young-Mirsky approximation $A_k$ using thin SVD.
-///
-/// # Arguments
-/// * `matrix` - Input matrix $A \in \mathbb{R}^{m \times n}$.
-/// * `k` - Target approximation rank.
-///
-/// # Returns
-/// `Result<DMatrix<f64>, LinearAlgebraError>` containing $A_k = \sum_{i=1}^{\min(k, r)} \sigma_i u_i v_i^T$.
+/// Checked Eckart-Young rank-`k` SVD matrix approximation returning [`LinearAlgebraError`] on `NaN` or non-convergence.
 #[verified_engine::verified]
-pub fn low_rank_approximation(
+pub fn try_low_rank_approximation(
     matrix: &DMatrix<f64>,
     k: usize,
 ) -> Result<DMatrix<f64>, LinearAlgebraError> {
-    let (u, s, v_t) = svd_decomposition(matrix)?;
-    let rank = k.min(s.len());
-    let mut u_scaled = DMatrix::zeros(u.nrows(), u.ncols());
-    for i in 0..rank {
-        u_scaled.set_column(i, &(u.column(i) * s[i]));
-    }
-    Ok(u_scaled * v_t)
+    let (m, n) = matrix.shape();
+    let a_row = dmatrix_to_row_major(matrix);
+    let mut approx = vec![0.0_f64; m * n];
+    let mut scratch = vec![0.0_f64; svd_ops_workspace_len(m, n)];
+    svd_low_rank_approx(
+        &a_row,
+        m,
+        n,
+        k,
+        &mut approx,
+        &mut SolverWorkspace::new(&mut scratch),
+    )
+    .map_err(map_linalg_error)?;
+    Ok(DMatrix::from_row_slice(m, n, &approx))
+}
+
+/// Computes a rank-`k` SVD approximation of `matrix` without panicking; prefer [`try_low_rank_approximation`] for checked error handling.
+#[verified_engine::verified]
+pub fn low_rank_approximation(matrix: &DMatrix<f64>, k: usize) -> DMatrix<f64> {
+    try_low_rank_approximation(matrix, k)
+        .unwrap_or_else(|_| DMatrix::zeros(matrix.nrows(), matrix.ncols()))
 }
 
 /// Computes the thin Householder $QR$ factorization $A = QR$.

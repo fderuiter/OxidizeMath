@@ -58,6 +58,12 @@ pub fn is_transient_parameter_gesture(ctx: &egui::Context, sweep_active: bool) -
     sweep_active || ctx.input(|i| i.pointer.any_down())
 }
 
+/// Maximum synchronous instruction budget per pass for sensitivity finite-difference sweeps.
+pub const MAX_SENSITIVITY_SYNC_INSTRUCTIONS: usize = 2_000_000;
+
+/// Minimum ODE integration step count preserved when scaling sensitivity perturbations.
+pub const MIN_SENSITIVITY_STEPS: usize = 32;
+
 /// Sensitivity analysis engine for parameter perturbation calculations.
 #[derive(Debug, Clone, Default)]
 pub struct SensitivityEngine {
@@ -72,6 +78,8 @@ pub struct SensitivityEngine {
     evaluated_count: usize,
     baseline_map: HashMap<String, f64>,
     gesture_deferred: bool,
+    budget_notice: Option<String>,
+    last_announced_budget: std::cell::RefCell<Option<String>>,
 }
 
 impl SensitivityEngine {
@@ -111,6 +119,48 @@ impl SensitivityEngine {
             .all(|((_, cached_bits), (_, val))| *cached_bits == canonical_f64_bits(*val))
     }
 
+    /// Returns any active synchronous instruction-budget scaling notice.
+    #[must_use]
+    pub fn budget_notice(&self) -> Option<&str> {
+        self.budget_notice.as_deref()
+    }
+
+    /// Updates the external step-scaling notice displayed in the sensitivity panel.
+    pub fn set_budget_notice(&mut self, notice: Option<String>) {
+        self.budget_notice = notice;
+    }
+
+    /// Scales `requested_steps` so a full sensitivity pass (`1 + 2 * min(param_count, 2)` runs)
+    /// stays within [`MAX_SENSITIVITY_SYNC_INSTRUCTIONS`].
+    #[must_use]
+    pub fn scale_steps_for_budget(
+        param_count: usize,
+        requested_steps: usize,
+        stages_per_step: usize,
+        inst_per_rhs: usize,
+    ) -> (usize, Option<String>) {
+        if param_count == 0 || requested_steps <= MIN_SENSITIVITY_STEPS {
+            return (requested_steps, None);
+        }
+        let batch_runs = 1 + 2 * param_count.min(2);
+        let ops_per_step = batch_runs
+            .saturating_mul(stages_per_step.max(1))
+            .saturating_mul(inst_per_rhs.max(1));
+        if requested_steps.saturating_mul(ops_per_step) <= MAX_SENSITIVITY_SYNC_INSTRUCTIONS {
+            return (requested_steps, None);
+        }
+        let capped = (MAX_SENSITIVITY_SYNC_INSTRUCTIONS / ops_per_step.max(1))
+            .clamp(MIN_SENSITIVITY_STEPS, requested_steps);
+        if capped < requested_steps {
+            let msg = format!(
+                "Sensitivity budget applied: scaled perturbation steps from {requested_steps} to {capped} ({MAX_SENSITIVITY_SYNC_INSTRUCTIONS} instruction cap)."
+            );
+            (capped, Some(msg))
+        } else {
+            (requested_steps, None)
+        }
+    }
+
     fn reset_empty(&mut self) {
         self.metrics.clear();
         self.cached_params.clear();
@@ -119,6 +169,7 @@ impl SensitivityEngine {
         self.evaluated_count = 0;
         self.batch_offset = 0;
         self.gesture_deferred = false;
+        self.budget_notice = None;
     }
 
     fn sync_cache_on_miss<K: AsRef<str>>(&mut self, params: &[(K, f64)], context_hash: u64) {
@@ -195,6 +246,24 @@ impl SensitivityEngine {
         params: &[(K, f64)],
         context: &C,
         baseline_output_hint: Option<f64>,
+        eval_fn: F,
+    ) -> &Vec<SensitivityMetric>
+    where
+        K: AsRef<str>,
+        C: Hash,
+        F: FnMut(&HashMap<String, f64>) -> f64,
+    {
+        self.compute_budgeted_with_baseline(params, context, baseline_output_hint, 1, eval_fn)
+    }
+
+    /// Evaluates normalized sensitivity indices while bounding per-pass synchronous instruction work
+    /// (`inst_per_eval * evaluations <= MAX_SENSITIVITY_SYNC_INSTRUCTIONS`).
+    pub fn compute_budgeted_with_baseline<K, C, F>(
+        &mut self,
+        params: &[(K, f64)],
+        context: &C,
+        baseline_output_hint: Option<f64>,
+        inst_per_eval: usize,
         mut eval_fn: F,
     ) -> &Vec<SensitivityMetric>
     where
@@ -207,42 +276,68 @@ impl SensitivityEngine {
             self.reset_empty();
             return &self.metrics;
         }
-
+        let max_batch = max_params_for_eval_cost(inst_per_eval.max(1));
         let context_hash = hash_context(context);
         let is_hit = self.cached_context_hash == Some(context_hash)
             && self.schema_matches(params)
             && self.values_match(params);
-
-        if is_hit {
-            if self.evaluated_count >= params.len() {
+        if is_hit && self.evaluated_count >= params.len() {
+            return &self.metrics;
+        }
+        if !is_hit {
+            self.sync_cache_on_miss(params, context_hash);
+            if max_batch == 0 {
+                self.baseline_output = baseline_output_hint.unwrap_or(f64::NAN);
+                self.evaluated_count = params.len();
+                self.budget_notice = Some(format!(
+                    "Sensitivity budget exceeded ({inst_per_eval} instructions/run > {} cap); simplify formula or increase dt.",
+                    MAX_SENSITIVITY_SYNC_INSTRUCTIONS / 3
+                ));
                 return &self.metrics;
             }
-        } else {
-            self.sync_cache_on_miss(params, context_hash);
             self.baseline_output = baseline_output_hint
                 .filter(|v| v.is_finite())
                 .unwrap_or_else(|| eval_fn(&self.baseline_map));
         }
+        if max_batch == 1 && params.len() > 1 && self.budget_notice.is_none() {
+            self.budget_notice = Some(format!(
+                "Sensitivity budget applied: throttling perturbations to 1 parameter per pass ({MAX_SENSITIVITY_SYNC_INSTRUCTIONS} instruction cap)."
+            ));
+        }
+        self.eval_perturbation_batch(params, max_batch, &mut eval_fn);
+        &self.metrics
+    }
 
+    fn eval_perturbation_batch<K, F>(
+        &mut self,
+        params: &[(K, f64)],
+        max_batch: usize,
+        eval_fn: &mut F,
+    ) where
+        K: AsRef<str>,
+        F: FnMut(&HashMap<String, f64>) -> f64,
+    {
         let num_params = params.len();
-        let batch_count = (num_params - self.evaluated_count).min(2);
+        let batch_count = (num_params - self.evaluated_count).min(max_batch);
         let y0 = self.baseline_output;
-
         for step in 0..batch_count {
             let idx = (self.batch_offset + step) % num_params;
             let (ref name, p_val) = params[idx];
-            self.metrics[idx] = eval_single_param(
-                name.as_ref(),
-                p_val,
-                &mut self.baseline_map,
-                y0,
-                &mut eval_fn,
-            );
+            self.metrics[idx] =
+                eval_single_param(name.as_ref(), p_val, &mut self.baseline_map, y0, eval_fn);
         }
-
         self.batch_offset = (self.batch_offset + batch_count) % num_params;
         self.evaluated_count += batch_count;
-        &self.metrics
+    }
+}
+
+fn max_params_for_eval_cost(inst_per_eval: usize) -> usize {
+    if inst_per_eval <= MAX_SENSITIVITY_SYNC_INSTRUCTIONS / 5 {
+        2
+    } else if inst_per_eval <= MAX_SENSITIVITY_SYNC_INSTRUCTIONS / 3 {
+        1
+    } else {
+        0
     }
 }
 
@@ -303,86 +398,9 @@ where
     }
 }
 
-/// Renders the collapsible Sensitivity & Perturbation analysis panel in the UI sidebar.
-pub fn render_sensitivity_panel_ui(ui: &mut egui::Ui, engine: &SensitivityEngine, id_source: &str) {
-    render_labeled_sensitivity_panel_ui(ui, engine, id_source, "Baseline Metric");
-}
-
-/// Renders the collapsible Sensitivity & Perturbation analysis panel with an explicit observable label.
-pub fn render_labeled_sensitivity_panel_ui(
-    ui: &mut egui::Ui,
-    engine: &SensitivityEngine,
-    id_source: &str,
-    metric_label: &str,
-) {
-    let baseline_heading = if metric_label.is_empty() || metric_label == "Baseline Metric" {
-        format!("Baseline Metric: {:.4}", engine.baseline_output)
-    } else if metric_label.starts_with("Baseline ") {
-        format!("{}: {:.4}", metric_label, engine.baseline_output)
-    } else {
-        format!("Baseline {}: {:.4}", metric_label, engine.baseline_output)
-    };
-
-    if !engine.is_converged() && !engine.gesture_deferred {
-        ui.ctx().request_repaint();
-    }
-
-    ui.add_space(6.0);
-    egui::CollapsingHeader::new("Sensitivity & Perturbation Analysis")
-        .id_salt(format!("{}_sensitivity_panel", id_source))
-        .default_open(true)
-        .show(ui, |ui| {
-            ui.label(baseline_heading);
-            ui.label(
-                egui::RichText::new(
-                    "Normalized elasticity |(dY/dP) * (P/Y)| via central finite diff (±1% delta)",
-                )
-                .weak()
-                .small(),
-            );
-            ui.add_space(4.0);
-
-            if engine.metrics.is_empty() {
-                ui.label("No active parameters to analyze.");
-                return;
-            }
-
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            for metric in &engine.metrics {
-                render_sensitivity_metric_card(ui, metric, &palette);
-                ui.add_space(2.0);
-            }
-        });
-}
-
-fn render_sensitivity_metric_card(
-    ui: &mut egui::Ui,
-    metric: &SensitivityMetric,
-    palette: &crate::app::SemanticPalette,
-) {
-    ui.group(|ui| {
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(&metric.param_name).strong());
-            if metric.is_high_sensitivity {
-                ui.colored_label(palette.error, "⚠️ High Sensitivity (> 2.0 elasticity)");
-            }
-        });
-
-        ui.horizontal(|ui| {
-            ui.label(format!("dY/dP: {:.4}", metric.partial_derivative));
-            ui.add_space(10.0);
-            ui.label(format!("Elasticity: {:.2}", metric.elasticity));
-        });
-
-        let progress = (metric.elasticity / 3.0).clamp(0.0, 1.0) as f32;
-        let color = crate::app::SemanticPalette::progress_bar_fill(ui.visuals(), metric.elasticity);
-
-        let progress_bar = egui::ProgressBar::new(progress)
-            .fill(color)
-            .text(format!("{:.2} elasticity", metric.elasticity));
-        ui.add(progress_bar);
-    });
-}
+#[path = "sensitivity_ui.rs"]
+mod sensitivity_ui;
+pub use sensitivity_ui::{render_labeled_sensitivity_panel_ui, render_sensitivity_panel_ui};
 
 #[cfg(test)]
 #[path = "sensitivity_tests.rs"]

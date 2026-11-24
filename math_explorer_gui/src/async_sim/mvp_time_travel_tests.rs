@@ -204,11 +204,16 @@ fn test_attractor_running_checkpoint_substeps_stream_live_tda_landmarks() {
         commit_pane_outputs, stage_pane_inputs, PaneDataflowBus, PanePipelineDag,
     };
     use crate::app::viewport::focus::CURRENT_RENDERING_PANE_KEY;
+    use crate::app::SharedSimulationBus;
+    use crate::tabs::geometry_topology::vietoris_rips::handoff::poll_live_attractor_landmarks;
 
     let ctx = egui::Context::default();
+    let sim_bus = SharedSimulationBus::from_context_or_insert(&ctx);
+    let baseline_seq = poll_live_attractor_landmarks(&ctx, 0).map_or(0, |(seq, _)| seq);
     let dag = PanePipelineDag::default();
     let mut bus = PaneDataflowBus::default();
     let mut attractor = AttractorPlotter::default();
+    attractor.params.write().unwrap().sim_bus = Some(sim_bus);
     attractor.worker.send_command(SimCommand::Start).unwrap();
 
     let render_pane = |tool: &mut AttractorPlotter, bus: &mut PaneDataflowBus| {
@@ -224,21 +229,28 @@ fn test_attractor_running_checkpoint_substeps_stream_live_tda_landmarks() {
     let baseline_rev = bus.latest_landmarks(0).map_or(0, |p| p.revision);
 
     let mut streamed = None;
+    let mut sim_streamed = None;
     for _ in 0..400 {
         render_pane(&mut attractor, &mut bus);
-        if attractor.step_count >= 32 {
-            if let Some(hit) = bus
+        if sim_streamed.is_none() {
+            sim_streamed = poll_live_attractor_landmarks(&ctx, baseline_seq);
+        }
+        if streamed.is_none() && attractor.step_count >= 32 {
+            streamed = bus
                 .latest_landmarks(0)
                 .filter(|p| p.revision != baseline_rev)
-            {
-                streamed = Some(Arc::clone(hit));
-                break;
-            }
+                .cloned();
+        }
+        if streamed.is_some() && sim_streamed.is_some() {
+            break;
         }
         std::thread::sleep(Duration::from_millis(5));
     }
     let payload = streamed.expect("Checkpointed AttractorPlotter must stream live bus landmarks");
     assert!(payload.points.len() >= 16);
+    let (_, sim_handoff) =
+        sim_streamed.expect("Checkpointed AttractorPlotter must stream SharedSimulationBus cloud");
+    assert!(sim_handoff.points.len() >= 16);
 
     attractor
         .worker

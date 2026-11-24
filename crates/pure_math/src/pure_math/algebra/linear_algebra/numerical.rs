@@ -1,10 +1,15 @@
 //! Numerical Linear Algebra Solvers.
 //!
-//! Provides numerically stable implementations for solving square linear systems,
-//! unconstrained least squares (Householder QR with thin SVD fallback), Moore-Penrose
-//! pseudoinverses, Tikhonov / Ridge regression (augmented QR), and active-set
-//! Lawson-Hanson non-negative least squares (NNLS).
+//! Provides `DMatrix` / `DVector` checked linear system, pivoted Householder QR least-squares
+//! (with SVD fallback), Cholesky, Tikhonov / augmented-QR Ridge, Lawson-Hanson active-set NNLS,
+//! Krylov, and Moore-Penrose pseudoinverse solvers backed by `#![no_std]` [`engine_linalg`].
 
+use engine_linalg::{
+    CsrMatrixView, LinalgError, SolverWorkspace, cg_solve, cg_workspace_len, cholesky_solve,
+    cholesky_workspace_len, gmres_solve, gmres_workspace_len, lu_solve, lu_workspace_len,
+    qr_or_svd_solve, qr_or_svd_workspace_len, svd_ops_workspace_len, svd_pseudoinverse,
+    tikhonov_solve, tikhonov_workspace_len,
+};
 use nalgebra::{DMatrix, DVector, SVD};
 use thiserror::Error;
 
@@ -24,17 +29,50 @@ pub enum LinearAlgebraError {
     /// Solution could not be found.
     #[error("Solution could not be found")]
     SolutionNotFound,
+    /// Input contains non-finite (`NaN`/`Infinity`) values or out-of-range parameters.
+    #[error("Invalid linear algebra input: {0}")]
+    InvalidInput(&'static str),
     /// Input contains `NaN` or infinite floating-point values.
     #[error("Input contains non-finite (NaN or infinite) values")]
     NonFiniteInput,
+    /// Matrix or regularization parameter is not symmetric positive-definite.
+    #[error("Matrix is not symmetric positive-definite")]
+    NotPositiveDefinite,
+    /// Iterative decomposition or Krylov solver failed to converge within budget.
+    #[error("Iterative linear algebra solver failed to converge")]
+    NonConvergence,
     /// Iterative decomposition or constrained solver failed to converge within its iteration cap.
     #[error("Iterative decomposition or solver failed to converge")]
     ConvergenceFailed,
-    /// Matrix or regularization parameter is not positive definite.
-    #[error("Matrix or regularization penalty is not positive definite")]
-    NotPositiveDefinite,
 }
 
+#[verified_engine::verified]
+pub(crate) fn map_linalg_error(err: LinalgError) -> LinearAlgebraError {
+    match err {
+        LinalgError::DimensionMismatch => LinearAlgebraError::DimensionMismatch,
+        LinalgError::SingularMatrix => LinearAlgebraError::SingularMatrix,
+        LinalgError::InvalidInput => {
+            LinearAlgebraError::InvalidInput("non-finite matrix entry or invalid parameter")
+        }
+        LinalgError::NotPositiveDefinite => LinearAlgebraError::NotPositiveDefinite,
+        LinalgError::NonConvergence => LinearAlgebraError::NonConvergence,
+        LinalgError::WorkspaceTooSmall { .. } => LinearAlgebraError::SolutionNotFound,
+    }
+}
+
+#[verified_engine::verified]
+pub(crate) fn dmatrix_to_row_major(a: &DMatrix<f64>) -> Vec<f64> {
+    let (m, n) = a.shape();
+    let mut out = Vec::with_capacity(m * n);
+    for r in 0..m {
+        for c in 0..n {
+            out.push(a[(r, c)]);
+        }
+    }
+    out
+}
+
+#[verified_engine::verified]
 pub(crate) fn ensure_finite_matrix(matrix: &DMatrix<f64>) -> Result<(), LinearAlgebraError> {
     if !matrix.iter().all(|v| v.is_finite()) {
         return Err(LinearAlgebraError::NonFiniteInput);
@@ -45,6 +83,7 @@ pub(crate) fn ensure_finite_matrix(matrix: &DMatrix<f64>) -> Result<(), LinearAl
     Ok(())
 }
 
+#[verified_engine::verified]
 pub(crate) fn validate_system_inputs(
     a: &DMatrix<f64>,
     b: &DVector<f64>,
@@ -58,6 +97,7 @@ pub(crate) fn validate_system_inputs(
     Ok(())
 }
 
+#[verified_engine::verified]
 pub(crate) fn bounded_svd(
     matrix: &DMatrix<f64>,
     compute_u: bool,
@@ -69,137 +109,248 @@ pub(crate) fn bounded_svd(
         .ok_or(LinearAlgebraError::ConvergenceFailed)
 }
 
-fn try_householder_qr_solve(a: &DMatrix<f64>, b: &DVector<f64>) -> Option<DVector<f64>> {
-    let (m, n) = (a.nrows(), a.ncols());
-    if m < n {
-        return None;
-    }
-    let (q, r) = a.clone().qr().unpack();
-    let max_diag = (0..n).map(|i| r[(i, i)].abs()).fold(0.0_f64, f64::max);
-    let qr_tol = f64::EPSILON * (m.max(n) as f64) * 64.0 * max_diag;
-    if max_diag <= f64::EPSILON || (0..n).any(|i| r[(i, i)].abs() <= qr_tol) {
-        return None;
-    }
-    let qtb = q.transpose() * b;
-    let sol = r.solve_upper_triangular(&qtb)?;
-    sol.iter().all(|v| v.is_finite()).then_some(sol)
-}
-
-fn solve_thin_svd_fallback(
-    a: &DMatrix<f64>,
-    b: &DVector<f64>,
-) -> Result<DVector<f64>, LinearAlgebraError> {
-    let (u, s, v_t) = super::decomposition::svd_decomposition(a)?;
-    let max_sigma = s.iter().copied().fold(0.0_f64, f64::max);
-    if max_sigma <= f64::EPSILON {
-        return Err(LinearAlgebraError::SingularMatrix);
-    }
-    let svd_tol = f64::EPSILON * (a.nrows().max(a.ncols()) as f64) * max_sigma;
-    let mut ut_b = u.transpose() * b;
-    for i in 0..s.len() {
-        ut_b[i] = if s[i] > svd_tol { ut_b[i] / s[i] } else { 0.0 };
-    }
-    let sol = v_t.transpose() * ut_b;
-    if !sol.iter().all(|v| v.is_finite()) {
-        return Err(LinearAlgebraError::SingularMatrix);
-    }
-    Ok(sol)
-}
-
-/// Solves a square linear system $Ax = b$ using LU decomposition with partial pivoting.
-///
-/// # Arguments
-///
-/// * `a` - The square coefficient matrix $A$.
-/// * `b` - The right-hand side vector $b$.
-///
-/// # Returns
-///
-/// * `Result<DVector<f64>, LinearAlgebraError>` - The solution vector $x$.
+/// Solves a square linear system $A x = b$ via partial-pivoted LU in [`engine_linalg`].
 #[verified_engine::verified]
 pub fn solve_linear_system(
     a: &DMatrix<f64>,
     b: &DVector<f64>,
 ) -> Result<DVector<f64>, LinearAlgebraError> {
-    validate_system_inputs(a, b)?;
-    if a.nrows() != a.ncols() {
+    let (m, n) = a.shape();
+    if m != n || n != b.len() {
         return Err(LinearAlgebraError::DimensionMismatch);
     }
-    let sol = a
-        .clone()
-        .lu()
-        .solve(b)
-        .ok_or(LinearAlgebraError::SolutionNotFound)?;
-    if !sol.iter().all(|v| v.is_finite()) {
-        return Err(LinearAlgebraError::SingularMatrix);
+    if n == 0 {
+        return Ok(DVector::zeros(0));
     }
-    Ok(sol)
+    let a_row = dmatrix_to_row_major(a);
+    let mut x = vec![0.0_f64; n];
+    let mut pivots = vec![0_usize; n];
+    let mut scratch = vec![0.0_f64; lu_workspace_len(n)];
+    lu_solve(
+        &a_row,
+        b.as_slice(),
+        &mut x,
+        n,
+        &mut pivots,
+        &mut SolverWorkspace::new(&mut scratch),
+    )
+    .map_err(|err| match err {
+        LinalgError::SingularMatrix => LinearAlgebraError::SolutionNotFound,
+        other => map_linalg_error(other),
+    })?;
+    Ok(DVector::from_vec(x))
 }
 
-/// Solves the Linear Least-Squares problem $\min_{\mathbf{c}} \|A\mathbf{c} - \mathbf{b}\|_2^2$.
+/// Solves linear least squares $\min_c \|A c - b\|_2$ via Householder QR with column pivoting and SVD fallback.
 ///
-/// Uses thin Householder $QR$ factorization ($R\mathbf{c} = Q^T\mathbf{b}$) without forming
-/// $A^T A$ (preventing $\kappa(A)^2$ condition-number squaring), and falls back to truncated
-/// thin SVD when $A$ is underdetermined or $R$ exhibits near-zero pivots.
-///
-/// # Arguments
-///
-/// * `a` - Design matrix $A \in \mathbb{R}^{m \times n}$.
-/// * `b` - Observation vector $b \in \mathbb{R}^m$.
-///
-/// # Returns
-///
-/// * `Result<DVector<f64>, LinearAlgebraError>` - The least-squares coefficient vector $\mathbf{c}$.
+/// Avoids squaring the condition number $\kappa(A)$ in explicit normal equations $A^T A c = A^T b$,
+/// recovering near-collinear parameters accurately at $\varepsilon = 10^{-8}$.
 #[verified_engine::verified]
 pub fn solve_normal_equation(
     a: &DMatrix<f64>,
     b: &DVector<f64>,
 ) -> Result<DVector<f64>, LinearAlgebraError> {
-    validate_system_inputs(a, b)?;
-    if let Some(sol) = try_householder_qr_solve(a, b) {
-        return Ok(sol);
+    let (m, n) = a.shape();
+    if m != b.len() {
+        return Err(LinearAlgebraError::DimensionMismatch);
     }
-    solve_thin_svd_fallback(a, b)
+    if m == 0 || n == 0 {
+        return Err(LinearAlgebraError::SingularMatrix);
+    }
+    let a_row = dmatrix_to_row_major(a);
+    let mut x = vec![0.0_f64; n];
+    let mut perm = vec![0_usize; n];
+    let mut scratch = vec![0.0_f64; qr_or_svd_workspace_len(m, n)];
+    let rank = qr_or_svd_solve(
+        &a_row,
+        m,
+        n,
+        b.as_slice(),
+        &mut x,
+        &mut perm,
+        &mut SolverWorkspace::new(&mut scratch),
+    )
+    .map_err(map_linalg_error)?;
+    if rank == 0 {
+        return Err(LinearAlgebraError::SingularMatrix);
+    }
+    Ok(DVector::from_vec(x))
 }
 
-/// Calculates the Moore-Penrose Pseudoinverse ($A^{\dagger}$) via thin SVD.
-///
-/// Singular values at or below `epsilon` are treated as zero.
-///
-/// # Arguments
-///
-/// * `matrix` - Input matrix $A$.
-/// * `epsilon` - Non-negative singular-value cutoff threshold.
-///
-/// # Returns
-///
-/// * `Result<DMatrix<f64>, LinearAlgebraError>` - The pseudoinverse matrix $A^{\dagger}$.
+/// Checked Moore-Penrose pseudoinverse $A^+ = V \Sigma^+ U^T$ returning [`LinearAlgebraError`] on `NaN` or non-convergence.
 #[verified_engine::verified]
-pub fn moore_penrose_pseudoinverse(
+pub fn try_moore_penrose_pseudoinverse(
     matrix: &DMatrix<f64>,
     epsilon: f64,
 ) -> Result<DMatrix<f64>, LinearAlgebraError> {
-    if !epsilon.is_finite() {
-        return Err(LinearAlgebraError::NonFiniteInput);
+    if !epsilon.is_finite() || epsilon < 0.0 {
+        return Err(LinearAlgebraError::InvalidInput(
+            "singular value tolerance epsilon must be finite and non-negative",
+        ));
     }
-    ensure_finite_matrix(matrix)?;
-    if epsilon < 0.0 {
-        return Err(LinearAlgebraError::NotPositiveDefinite);
+    let (m, n) = matrix.shape();
+    let a_row = dmatrix_to_row_major(matrix);
+    let mut pinv = vec![0.0_f64; n * m];
+    let mut scratch = vec![0.0_f64; svd_ops_workspace_len(m, n)];
+    svd_pseudoinverse(
+        &a_row,
+        m,
+        n,
+        epsilon,
+        &mut pinv,
+        &mut SolverWorkspace::new(&mut scratch),
+    )
+    .map_err(map_linalg_error)?;
+    Ok(DMatrix::from_row_slice(n, m, &pinv))
+}
+
+/// Calculates the Moore-Penrose Pseudoinverse ($J^{\dagger}$); prefer [`try_moore_penrose_pseudoinverse`] for checked error handling.
+#[verified_engine::verified]
+pub fn moore_penrose_pseudoinverse(matrix: &DMatrix<f64>, epsilon: f64) -> DMatrix<f64> {
+    try_moore_penrose_pseudoinverse(matrix, epsilon)
+        .unwrap_or_else(|_| DMatrix::zeros(matrix.ncols(), matrix.nrows()))
+}
+
+/// Solves a symmetric positive-definite linear system $A x = b$ via strict Cholesky factorization.
+#[verified_engine::verified]
+pub fn solve_cholesky_system(
+    a: &DMatrix<f64>,
+    b: &DVector<f64>,
+) -> Result<DVector<f64>, LinearAlgebraError> {
+    let (m, n) = a.shape();
+    if m != n || n != b.len() {
+        return Err(LinearAlgebraError::DimensionMismatch);
     }
-    let (u, s, v_t) = super::decomposition::svd_decomposition(matrix)?;
-    let mut v_scaled = v_t.transpose();
-    for i in 0..s.len() {
-        let inv = if s[i] > epsilon { 1.0 / s[i] } else { 0.0 };
-        v_scaled.column_mut(i).scale_mut(inv);
+    let a_row = dmatrix_to_row_major(a);
+    let mut x = vec![0.0_f64; n];
+    let mut scratch = vec![0.0_f64; cholesky_workspace_len(n)];
+    cholesky_solve(
+        &a_row,
+        b.as_slice(),
+        &mut x,
+        n,
+        &mut SolverWorkspace::new(&mut scratch),
+    )
+    .map_err(map_linalg_error)?;
+    Ok(DVector::from_vec(x))
+}
+
+/// Solves Tikhonov ridge regression $\min_x \|A x - b\|_2^2 + \lambda^2 \|x\|_2^2$ via SVD filter factors.
+#[verified_engine::verified]
+pub fn solve_tikhonov_system(
+    a: &DMatrix<f64>,
+    b: &DVector<f64>,
+    lambda: f64,
+) -> Result<DVector<f64>, LinearAlgebraError> {
+    let (m, n) = a.shape();
+    if m != b.len() {
+        return Err(LinearAlgebraError::DimensionMismatch);
     }
-    Ok(v_scaled * u.transpose())
+    let a_row = dmatrix_to_row_major(a);
+    let mut x = vec![0.0_f64; n];
+    let mut scratch = vec![0.0_f64; tikhonov_workspace_len(m, n)];
+    tikhonov_solve(
+        &a_row,
+        m,
+        n,
+        b.as_slice(),
+        lambda,
+        &mut x,
+        &mut SolverWorkspace::new(&mut scratch),
+    )
+    .map_err(map_linalg_error)?;
+    Ok(DVector::from_vec(x))
+}
+
+type CsrOwnedParts = (Vec<usize>, Vec<usize>, Vec<f64>);
+
+fn dense_to_csr_parts(a: &DMatrix<f64>) -> Result<CsrOwnedParts, LinearAlgebraError> {
+    let (m, n) = a.shape();
+    let mut row_ptr = Vec::with_capacity(m + 1);
+    let mut col_ind = Vec::new();
+    let mut values = Vec::new();
+    row_ptr.push(0);
+    for r in 0..m {
+        for c in 0..n {
+            let v = a[(r, c)];
+            if !v.is_finite() {
+                return Err(LinearAlgebraError::InvalidInput(
+                    "matrix contains non-finite entry",
+                ));
+            }
+            if v != 0.0 {
+                col_ind.push(c);
+                values.push(v);
+            }
+        }
+        row_ptr.push(values.len());
+    }
+    Ok((row_ptr, col_ind, values))
+}
+
+/// Solves an SPD linear system $A x = b$ using [`engine_linalg`]'s preallocated Conjugate Gradient solver.
+#[verified_engine::verified]
+pub fn solve_conjugate_gradient(
+    a: &DMatrix<f64>,
+    b: &DVector<f64>,
+    tol: f64,
+    max_iter: usize,
+) -> Result<DVector<f64>, LinearAlgebraError> {
+    let (m, n) = a.shape();
+    if m != n || n != b.len() {
+        return Err(LinearAlgebraError::DimensionMismatch);
+    }
+    let (row_ptr, col_ind, values) = dense_to_csr_parts(a)?;
+    let csr = CsrMatrixView::new(n, n, &row_ptr, &col_ind, &values).map_err(map_linalg_error)?;
+    let mut x = vec![0.0_f64; n];
+    let mut scratch = vec![0.0_f64; cg_workspace_len(n)];
+    cg_solve(
+        &csr,
+        b.as_slice(),
+        &mut x,
+        tol,
+        max_iter,
+        &mut SolverWorkspace::new(&mut scratch),
+    )
+    .map_err(map_linalg_error)?;
+    Ok(DVector::from_vec(x))
+}
+
+/// Solves a general square linear system $A x = b$ using [`engine_linalg`]'s restarted GMRES solver.
+#[verified_engine::verified]
+pub fn solve_gmres_restarted(
+    a: &DMatrix<f64>,
+    b: &DVector<f64>,
+    restart: usize,
+    tol: f64,
+    max_restarts: usize,
+) -> Result<DVector<f64>, LinearAlgebraError> {
+    let (m, n) = a.shape();
+    if m != n || n != b.len() {
+        return Err(LinearAlgebraError::DimensionMismatch);
+    }
+    let (row_ptr, col_ind, values) = dense_to_csr_parts(a)?;
+    let csr = CsrMatrixView::new(n, n, &row_ptr, &col_ind, &values).map_err(map_linalg_error)?;
+    let mut x = vec![0.0_f64; n];
+    let mut scratch = vec![0.0_f64; gmres_workspace_len(n, restart)];
+    gmres_solve(
+        &csr,
+        b.as_slice(),
+        &mut x,
+        restart,
+        tol,
+        max_restarts,
+        &mut SolverWorkspace::new(&mut scratch),
+    )
+    .map_err(map_linalg_error)?;
+    Ok(DVector::from_vec(x))
 }
 
 /// Solves Tikhonov / Ridge-regularized least squares:
 /// $$\min_x \|Ax - b\|_2^2 + \lambda \|x\|_2^2, \qquad \lambda \ge 0$$
 ///
 /// Solves the augmented $(m + n) \times n$ system $\begin{bmatrix} A \\ \sqrt{\lambda} I_n \end{bmatrix} x \approx \begin{bmatrix} b \\ 0 \end{bmatrix}$
-/// via Householder QR (with thin SVD fallback) so $A^T A$ is never explicitly formed.
+/// via pivoted Householder QR (with SVD fallback) so $A^T A$ is never explicitly formed.
 #[verified_engine::verified]
 pub fn solve_ridge_regression(
     a: &DMatrix<f64>,

@@ -18,17 +18,19 @@ fn test_effective_rank() {
 #[verified_engine::verified]
 fn test_low_rank_approx() {
     let m = DMatrix::from_row_slice(2, 2, &[2.0, 0.0, 0.0, 1.0]);
-    let approx = low_rank_approximation(&m, 1).unwrap();
+    let approx = try_low_rank_approximation(&m, 1).unwrap();
+    assert_eq!(low_rank_approximation(&m, 1), approx);
 
     let diff = &m - &approx;
     let norm = diff.norm();
     assert!((norm - 1.0).abs() < 1e-5);
 
     let nan_m = DMatrix::from_row_slice(2, 2, &[2.0, f64::NAN, 0.0, 1.0]);
-    assert_eq!(
-        low_rank_approximation(&nan_m, 1),
-        Err(LinearAlgebraError::NonFiniteInput)
-    );
+    assert!(matches!(
+        try_low_rank_approximation(&nan_m, 1),
+        Err(LinearAlgebraError::InvalidInput(_))
+    ));
+    assert_eq!(low_rank_approximation(&nan_m, 1), DMatrix::zeros(2, 2));
 }
 
 #[test]

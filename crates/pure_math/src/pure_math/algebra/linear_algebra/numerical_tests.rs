@@ -75,7 +75,8 @@ fn test_vandermonde_and_rank_deficient_svd_fallback() {
 #[verified_engine::verified]
 fn test_pseudoinverse_and_error_edge_cases() {
     let rect = DMatrix::from_row_slice(3, 2, &[1.0, 0.0, 0.0, 2.0, 0.0, 0.0]);
-    let pinv = moore_penrose_pseudoinverse(&rect, 1e-12).unwrap();
+    let pinv = try_moore_penrose_pseudoinverse(&rect, 1e-12).unwrap();
+    assert_eq!(moore_penrose_pseudoinverse(&rect, 1e-12), pinv);
     let reconstructed = &rect * &pinv * &rect;
     assert!((&reconstructed - &rect).norm() < 1e-12);
 
@@ -84,30 +85,45 @@ fn test_pseudoinverse_and_error_edge_cases() {
     let ok_vec = DVector::from_column_slice(&[1.0, 2.0]);
     let empty_mat = DMatrix::<f64>::zeros(0, 0);
 
+    assert!(matches!(
+        try_moore_penrose_pseudoinverse(&nan_mat, 1e-9),
+        Err(LinearAlgebraError::InvalidInput(_))
+    ));
+    assert!(matches!(
+        try_moore_penrose_pseudoinverse(&rect, -1e-6),
+        Err(LinearAlgebraError::InvalidInput(_))
+    ));
     assert_eq!(
-        moore_penrose_pseudoinverse(&nan_mat, 1e-9),
-        Err(LinearAlgebraError::NonFiniteInput)
+        try_moore_penrose_pseudoinverse(&empty_mat, 1e-9),
+        Ok(DMatrix::zeros(0, 0))
     );
-    assert_eq!(
-        moore_penrose_pseudoinverse(&rect, -1e-6),
-        Err(LinearAlgebraError::NotPositiveDefinite)
-    );
-    assert_eq!(
-        moore_penrose_pseudoinverse(&empty_mat, 1e-9),
-        Err(LinearAlgebraError::DimensionMismatch)
-    );
-    assert_eq!(
+    assert!(matches!(
         solve_normal_equation(&nan_mat, &ok_vec),
-        Err(LinearAlgebraError::NonFiniteInput)
-    );
-    assert_eq!(
+        Err(LinearAlgebraError::InvalidInput(_))
+    ));
+    assert!(matches!(
         solve_normal_equation(&DMatrix::identity(2, 2), &inf_vec),
-        Err(LinearAlgebraError::NonFiniteInput)
-    );
+        Err(LinearAlgebraError::InvalidInput(_))
+    ));
     assert_eq!(
         solve_normal_equation(&rect, &ok_vec),
         Err(LinearAlgebraError::DimensionMismatch)
     );
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_krylov_cholesky_and_tikhonov_wrappers() {
+    let spd = DMatrix::from_row_slice(2, 2, &[4.0, 1.0, 1.0, 3.0]);
+    let rhs = DVector::from_column_slice(&[5.0, 4.0]);
+    let x_chol = solve_cholesky_system(&spd, &rhs).unwrap();
+    let x_cg = solve_conjugate_gradient(&spd, &rhs, 1e-12, 20).unwrap();
+    let x_gm = solve_gmres_restarted(&spd, &rhs, 2, 1e-12, 10).unwrap();
+    let x_tik = solve_tikhonov_system(&spd, &rhs, 0.0).unwrap();
+    assert!((x_chol[0] - 1.0).abs() < 1e-11);
+    assert!((x_cg[1] - 1.0).abs() < 1e-11);
+    assert!((x_gm[0] - 1.0).abs() < 1e-11);
+    assert!((x_tik[0] - 1.0).abs() < 1e-11);
 }
 
 #[test]

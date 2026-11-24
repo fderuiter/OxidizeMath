@@ -1,0 +1,18 @@
+[package]
+name = "engine_linalg"
+version.workspace = true
+edition = "2024"
+description = "Zero-allocation #![no_std] dense and sparse numerical linear algebra engine"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = []
+alloc = []
+
+[dependencies]
+
+[dev-dependencies]
+verified_engine = { path = "../../verified_engine" }
+
+[lints]
+workspace = true

@@ -7,9 +7,9 @@ use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
 use eframe::egui;
 use math_explorer::nalgebra::{DMatrix, DVector};
 use math_explorer::pure_math::algebra::linear_algebra::{
-    cholesky_decomposition, condition_number, effective_rank, low_rank_approximation, matrix_norm,
-    moore_penrose_pseudoinverse, qr_decomposition, solve_nnls, solve_normal_equation,
-    solve_ridge_regression, svd_decomposition, MatrixNorm,
+    cholesky_decomposition, condition_number, effective_rank, matrix_norm, qr_decomposition,
+    solve_nnls, solve_normal_equation, solve_ridge_regression, svd_decomposition,
+    try_low_rank_approximation, try_moore_penrose_pseudoinverse, MatrixNorm,
 };
 use scientific_metadata::theory::TheoryDescribable;
 use serde::{Deserialize, Serialize};
@@ -252,7 +252,7 @@ fn evaluate_solvers(
     max_sigma: f64,
 ) -> [SolverMetrics; 5] {
     let pinv_tol = f64::EPSILON * (cfg.rows.max(cfg.cols) as f64) * max_sigma.max(1.0);
-    let svd_est = moore_penrose_pseudoinverse(a, pinv_tol)
+    let svd_est = try_moore_penrose_pseudoinverse(a, pinv_tol)
         .ok()
         .map(|pinv| pinv * b);
     let lambda = 10.0_f64.powf(cfg.ridge_lambda_log10);
@@ -306,7 +306,7 @@ fn evaluate_workbench(cfg: &ConditioningConfig) -> WorkbenchSnapshot {
         qr_recon_error: qr_decomposition(&a)
             .map(|(q, r)| (&q * &r - &a).norm())
             .unwrap_or(0.0),
-        low_rank_error: low_rank_approximation(&a, k)
+        low_rank_error: try_low_rank_approximation(&a, k)
             .map(|ak| (&a - ak).norm())
             .unwrap_or(0.0),
         cholesky_spd: cholesky_decomposition(&a).is_ok(),
