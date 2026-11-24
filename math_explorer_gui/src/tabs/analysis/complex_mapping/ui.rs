@@ -115,6 +115,25 @@ impl ComplexMappingTool {
         let max_grid = crate::presets::MAX_INTERACTIVE_GRID_SIZE;
         self.grid_density = self.grid_density.clamp(2, max_grid);
         ui.add(egui::Slider::new(&mut self.grid_density, 2..=max_grid).text("Grid Density:"));
+        let _ = self.ensure_cached_contours();
+        self.render_contour_budget_notice(ui);
+    }
+
+    fn render_contour_budget_notice(&mut self, ui: &mut egui::Ui) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        match self.cache.budget_notice.as_deref() {
+            Some(msg) => {
+                ui.add_space(4.0);
+                ui.colored_label(palette.warning, format!("ℹ️ {msg}"));
+                if self.cache.last_announced_budget.as_deref() != Some(msg) {
+                    crate::accessibility::announce_status(msg);
+                    self.cache.last_announced_budget = Some(msg.to_string());
+                }
+            }
+            None => {
+                self.cache.last_announced_budget = None;
+            }
+        }
     }
 
     fn draw_inspection_controls(&mut self, ui: &mut egui::Ui) {

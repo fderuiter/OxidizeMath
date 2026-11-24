@@ -3,6 +3,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use engine_linalg::{mat_mul_array, mat_mul_transpose_right_array};
 use math_explorer::applied::algorithms::kalman::{
     rk4_ode_kalman_predict, KalmanFilter, KalmanSystem,
 };
@@ -16,30 +17,14 @@ use math_explorer::pure_math::analysis::ode::{rk4_step_dual_jacobian, DualArrayS
 pub const MIN_MEASUREMENT_VARIANCE: f64 = 1.0e-8;
 const MIN_COV_DIAG: f64 = 1.0e-12;
 
+#[inline]
 fn mat_mul<const N: usize>(a: &[[f64; N]; N], b: &[[f64; N]; N]) -> [[f64; N]; N] {
-    let mut out = [[0.0; N]; N];
-    for (out_row, a_row) in out.iter_mut().zip(a.iter()) {
-        for (&aik, b_row) in a_row.iter().zip(b.iter()) {
-            for (o, &bkj) in out_row.iter_mut().zip(b_row.iter()) {
-                *o += aik * bkj;
-            }
-        }
-    }
-    out
+    mat_mul_array(a, b)
 }
 
+#[inline]
 fn mat_mul_transpose_right<const N: usize>(a: &[[f64; N]; N], b: &[[f64; N]; N]) -> [[f64; N]; N] {
-    let mut out = [[0.0; N]; N];
-    for (out_row, a_row) in out.iter_mut().zip(a.iter()) {
-        for (o, b_row) in out_row.iter_mut().zip(b.iter()) {
-            let mut sum = 0.0;
-            for (&aik, &bjk) in a_row.iter().zip(b_row.iter()) {
-                sum += aik * bjk;
-            }
-            *o = sum;
-        }
-    }
-    out
+    mat_mul_transpose_right_array(a, b)
 }
 
 /// Builds a stack-resident `#[verified]` [`LorenzSystem`] configured at `rho_eff`.

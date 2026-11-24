@@ -20,6 +20,7 @@ verified_engine = { version = "0.1.0", path = "../verified_engine" }
 engine_symbolic = { path = "../02_engines/engine_symbolic" }
 
 math_commons = { path = "../math_commons" }
+engine_linalg = { path = "../02_engines/engine_linalg" }
 diagnostics = { path = "../diagnostics" }
 dashu = { workspace = true, features = ["num-traits_v02"] }
 

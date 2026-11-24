@@ -69,6 +69,7 @@ fn append_compare_sync_items(layout_menu: &Submenu, app: &MathExplorerApp) {
             sync.link_cursors,
         ),
         ("compare_sync_playback", "Sync Playback", sync.sync_playback),
+        ("compare_link_topology", "Link Topology", sync.link_topology),
     ] {
         let item = CheckMenuItem::with_id(MenuId::new(id), label, true, checked, None);
         layout_menu.append(&item).unwrap();
@@ -193,6 +194,9 @@ pub(super) fn handle_view_layout_event(
         }
         "compare_sync_playback" => {
             app.set_sync_playback(Some(ctx), !app.compare_sync.sync_playback);
+        }
+        "compare_link_topology" => {
+            app.set_link_topology(Some(ctx), !app.compare_sync.link_topology);
         }
         _ => return false,
     }
