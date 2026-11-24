@@ -1,8 +1,6 @@
 //! Integration, topological invariance, mesh manifold, and zero-allocation verification tests
 //! for `LaurentPolynomial`, `BraidWord`, and `pure_math::knot_theory`.
 
-#![cfg_attr(any(), verified_engine::verified(opt_out = "tests"))]
-
 use nalgebra::Point3;
 use pure_math::pure_math::algebra::traits::Ring;
 use pure_math::pure_math::algebra::{BraidWord, LaurentPolynomial};

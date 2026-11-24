@@ -8,6 +8,9 @@ pub mod custom_surface;
 pub mod export_utils;
 pub mod hyperbolic_geometry;
 pub mod knot_braid_studio;
+pub mod riemannian_studio;
+pub mod surface_brush;
+pub mod surface_brush_kernel;
 #[cfg(feature = "biology")]
 pub mod surface_morphogenesis;
 pub mod surface_viewer;

@@ -1,8 +1,15 @@
 #[cfg(test)]
 mod tests {
-    fn exercise_interactive_tool<T: crate::framework::InteractiveTool + Default>(
-        ctx: &eframe::egui::Context,
-    ) {
+    #[cfg(any(
+        feature = "ai",
+        feature = "applied",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
+    fn check_one<T: crate::framework::InteractiveTool + Default>(ctx: &eframe::egui::Context) {
         let mut tool = T::default();
         let _ = tool.name();
         let _ = tool.theory();
@@ -13,145 +20,139 @@ mod tests {
         });
     }
 
+    #[cfg(any(feature = "applied", feature = "pure_math"))]
+    fn check_math_and_applied_tools(ctx: &eframe::egui::Context) {
+        #[cfg(feature = "pure_math")]
+        {
+            use crate::tabs::{
+                algorithmic_information, financial_math, geometry_topology, graph_theory,
+                number_theory,
+            };
+            check_one::<financial_math::bet_size::BetSizeCalculatorTool>(ctx);
+            check_one::<financial_math::bankroll_growth::BankrollGrowthTool>(ctx);
+            check_one::<financial_math::correlated_risk::CorrelatedRiskScenarioTool>(ctx);
+            check_one::<financial_math::market_devig::MarketDeviggingTool>(ctx);
+            check_one::<financial_math::market_execution::MarketExecutionTool>(ctx);
+            check_one::<financial_math::monte_carlo_workbench::MonteCarloWorkbenchTool>(ctx);
+            check_one::<graph_theory::network_metrics::NetworkMetricsTool>(ctx);
+            check_one::<geometry_topology::vietoris_rips::VietorisRipsTool>(ctx);
+            check_one::<geometry_topology::hyperbolic_geometry::HyperbolicGeometryTool>(ctx);
+            check_one::<geometry_topology::knot_braid_studio::KnotBraidStudioTool>(ctx);
+            check_one::<algorithmic_information::state::FractranMachineTool>(ctx);
+            check_one::<number_theory::fractran_machine::FractranMachineTool>(ctx);
+            check_one::<number_theory::ualbf_widget::UalbfWidget>(ctx);
+            check_one::<number_theory::partitions_widget::PartitionsWidget>(ctx);
+            check_one::<number_theory::prime_spiral::PrimeSpiralWidget>(ctx);
+        }
+        #[cfg(feature = "applied")]
+        {
+            use crate::tabs::{battery_degradation, clinical_trials, game_theory};
+            check_one::<game_theory::auction::MyersonAuctionTool>(ctx);
+            check_one::<game_theory::glicko2::Glicko2TournamentTool>(ctx);
+            check_one::<game_theory::markov::MarkovSequenceWorkbenchTool>(ctx);
+            check_one::<battery_degradation::lifetime_estimator::LifetimeEstimatorTool>(ctx);
+            check_one::<battery_degradation::capacity_fade::CapacityFadeTool>(ctx);
+            check_one::<clinical_trials::pharmacokinetics::PharmacokineticsTool>(ctx);
+            check_one::<clinical_trials::survival::SurvivalAnalysisTool>(ctx);
+            check_one::<clinical_trials::sample_size::SampleSizeCalculatorTool>(ctx);
+            check_one::<clinical_trials::randomization::RandomizationTool>(ctx);
+            check_one::<clinical_trials::win_ratio::WinRatioStressTesterTool>(ctx);
+            check_one::<clinical_trials::composite_win_ratio::WinRatioTool>(ctx);
+            check_one::<clinical_trials::win_ratio_workbench::WinRatioWorkbenchTool>(ctx);
+        }
+    }
+
+    #[cfg(any(
+        feature = "ai",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics"
+    ))]
+    fn check_science_and_ai_tools(ctx: &eframe::egui::Context) {
+        #[cfg(feature = "ai")]
+        {
+            check_one::<crate::tabs::ai::q_table_inspector::QTableInspectorTool>(ctx);
+            check_one::<crate::tabs::ai::attention_maps::AttentionMapsTool>(ctx);
+            check_one::<crate::tabs::ai::tokenization::TokenizationTool>(ctx);
+            check_one::<crate::tabs::ai::activation_functions::ActivationFunctionsTool>(ctx);
+            check_one::<crate::tabs::ai::gaussian_splatting::GaussianSplattingTool>(ctx);
+            check_one::<crate::tabs::ai::training_monitor::TrainingMonitorTool>(ctx);
+            check_one::<crate::tabs::ai::loss_landscape::LossLandscapeTool>(ctx);
+            check_one::<crate::tabs::ai::grid_world::GridWorldTool>(ctx);
+            check_one::<crate::tabs::ai::closed_loop_control::ClosedLoopControlTool>(ctx);
+        }
+        #[cfg(feature = "physics")]
+        {
+            check_one::<crate::tabs::solid_state::band_structure::BandStructureTool>(ctx);
+            check_one::<crate::tabs::solid_state::ising::IsingModelTool>(ctx);
+            check_one::<crate::tabs::quantum::clebsch::ClebschGordanTool>(ctx);
+            check_one::<crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool>(ctx);
+            check_one::<crate::tabs::fluid_dynamics::turbulence::TurbulenceTool>(ctx);
+            check_one::<crate::tabs::medical::beam_profiling::BeamProfilingTool>(ctx);
+            check_one::<crate::tabs::medical::dose::DoseCalculationTool>(ctx);
+            check_one::<crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool>(
+                ctx,
+            );
+            check_one::<crate::tabs::medical::radar_gating::RadarGatingTool>(ctx);
+            check_one::<crate::tabs::chaos::hamiltonian::HamiltonianChaosLab>(ctx);
+        }
+        #[cfg(feature = "climate")]
+        {
+            check_one::<crate::tabs::climate::cera::CeraTool>(ctx);
+            check_one::<crate::tabs::climate::co2_projections::Co2ProjectionsTool>(ctx);
+            check_one::<crate::tabs::climate::temperature::TemperatureAnomaliesTool>(ctx);
+        }
+        #[cfg(feature = "epidemiology")]
+        check_one::<crate::tabs::epidemiology::network_propagation::NetworkPropagationTool>(ctx);
+        #[cfg(feature = "biology")]
+        {
+            check_one::<crate::tabs::morphogenesis::lenia::LeniaTool>(ctx);
+            check_one::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(ctx);
+            check_one::<crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool>(ctx);
+            check_one::<crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool>(
+                ctx,
+            );
+            #[cfg(feature = "pure_math")]
+            check_one::<
+                crate::tabs::geometry_topology::surface_morphogenesis::SurfaceMorphogenesisTool,
+            >(ctx);
+        }
+    }
+
+    #[cfg(any(
+        feature = "ai",
+        feature = "applied",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     #[test]
     fn test_additional_interactive_tools() {
         let ctx = eframe::egui::Context::default();
-
-        exercise_interactive_tool::<crate::tabs::ai::q_table_inspector::QTableInspectorTool>(&ctx);
-        exercise_interactive_tool::<crate::tabs::ai::attention_maps::AttentionMapsTool>(&ctx);
-        exercise_interactive_tool::<crate::tabs::ai::tokenization::TokenizationTool>(&ctx);
-        exercise_interactive_tool::<crate::tabs::financial_math::bet_size::BetSizeCalculatorTool>(
-            &ctx,
-        );
-        exercise_interactive_tool::<crate::tabs::financial_math::bankroll_growth::BankrollGrowthTool>(
-            &ctx,
-        );
-        exercise_interactive_tool::<
-            crate::tabs::financial_math::correlated_risk::CorrelatedRiskScenarioTool,
-        >(&ctx);
-        exercise_interactive_tool::<crate::tabs::financial_math::market_devig::MarketDeviggingTool>(
-            &ctx,
-        );
-        exercise_interactive_tool::<
-            crate::tabs::financial_math::market_execution::MarketExecutionTool,
-        >(&ctx);
-        exercise_interactive_tool::<
-            crate::tabs::financial_math::monte_carlo_workbench::MonteCarloWorkbenchTool,
-        >(&ctx);
-        exercise_interactive_tool::<crate::tabs::game_theory::auction::MyersonAuctionTool>(&ctx);
-        exercise_interactive_tool::<crate::tabs::game_theory::glicko2::Glicko2TournamentTool>(&ctx);
-        exercise_interactive_tool::<crate::tabs::game_theory::markov::MarkovSequenceWorkbenchTool>(
-            &ctx,
-        );
-        exercise_interactive_tool::<
-            crate::tabs::battery_degradation::lifetime_estimator::LifetimeEstimatorTool,
-        >(&ctx);
-        exercise_interactive_tool::<
-            crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool,
-        >(&ctx);
-        exercise_interactive_tool::<crate::tabs::solid_state::band_structure::BandStructureTool>(
-            &ctx,
-        );
-        exercise_interactive_tool::<crate::tabs::solid_state::ising::IsingModelTool>(&ctx);
-        exercise_interactive_tool::<crate::tabs::quantum::clebsch::ClebschGordanTool>(&ctx);
-        exercise_interactive_tool::<crate::tabs::graph_theory::network_metrics::NetworkMetricsTool>(
-            &ctx,
-        );
-        exercise_interactive_tools_part_2(&ctx);
+        #[cfg(any(feature = "applied", feature = "pure_math"))]
+        check_math_and_applied_tools(&ctx);
+        #[cfg(any(
+            feature = "ai",
+            feature = "biology",
+            feature = "climate",
+            feature = "epidemiology",
+            feature = "physics"
+        ))]
+        check_science_and_ai_tools(&ctx);
     }
 
-    fn exercise_interactive_tools_part_2(ctx: &eframe::egui::Context) {
-        exercise_interactive_tool::<
-            crate::tabs::clinical_trials::pharmacokinetics::PharmacokineticsTool,
-        >(ctx);
-        exercise_interactive_tool::<crate::tabs::clinical_trials::survival::SurvivalAnalysisTool>(
-            ctx,
-        );
-        exercise_interactive_tool::<
-            crate::tabs::clinical_trials::sample_size::SampleSizeCalculatorTool,
-        >(ctx);
-        exercise_interactive_tool::<crate::tabs::clinical_trials::randomization::RandomizationTool>(
-            ctx,
-        );
-        exercise_interactive_tool::<
-            crate::tabs::clinical_trials::win_ratio::WinRatioStressTesterTool,
-        >(ctx);
-        exercise_interactive_tool::<
-            crate::tabs::clinical_trials::win_ratio_workbench::WinRatioWorkbenchTool,
-        >(ctx);
-        exercise_interactive_tool::<crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool>(
-            ctx,
-        );
-        exercise_interactive_tool::<
-            crate::tabs::geometry_topology::hyperbolic_geometry::HyperbolicGeometryTool,
-        >(ctx);
-        exercise_interactive_tool::<
-            crate::tabs::geometry_topology::knot_braid_studio::KnotBraidStudioTool,
-        >(ctx);
-        exercise_interactive_tool::<crate::tabs::climate::cera::CeraTool>(ctx);
-        exercise_interactive_tool::<crate::tabs::climate::co2_projections::Co2ProjectionsTool>(ctx);
-        exercise_interactive_tool::<crate::tabs::climate::temperature::TemperatureAnomaliesTool>(
-            ctx,
-        );
-        exercise_interactive_tool::<crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool>(
-            ctx,
-        );
-        exercise_interactive_tool::<crate::tabs::fluid_dynamics::turbulence::TurbulenceTool>(ctx);
-        exercise_interactive_tool::<crate::tabs::ai::activation_functions::ActivationFunctionsTool>(
-            ctx,
-        );
-        exercise_interactive_tool::<crate::tabs::ai::gaussian_splatting::GaussianSplattingTool>(
-            ctx,
-        );
-        exercise_interactive_tool::<crate::tabs::ai::training_monitor::TrainingMonitorTool>(ctx);
-        exercise_interactive_tool::<crate::tabs::ai::loss_landscape::LossLandscapeTool>(ctx);
-        exercise_interactive_tool::<crate::tabs::ai::grid_world::GridWorldTool>(ctx);
-        exercise_interactive_tool::<crate::tabs::ai::closed_loop_control::ClosedLoopControlTool>(
-            ctx,
-        );
-        exercise_interactive_tools_part_3(ctx);
-    }
-
-    fn exercise_interactive_tools_part_3(ctx: &eframe::egui::Context) {
-        exercise_interactive_tool::<crate::tabs::medical::beam_profiling::BeamProfilingTool>(ctx);
-        exercise_interactive_tool::<crate::tabs::medical::dose::DoseCalculationTool>(ctx);
-        exercise_interactive_tool::<
-            crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool,
-        >(ctx);
-        exercise_interactive_tool::<crate::tabs::medical::radar_gating::RadarGatingTool>(ctx);
-        exercise_interactive_tool::<
-            crate::tabs::epidemiology::network_propagation::NetworkPropagationTool,
-        >(ctx);
-        exercise_interactive_tool::<crate::tabs::chaos::hamiltonian::HamiltonianChaosLab>(ctx);
-        exercise_interactive_tool::<crate::tabs::algorithmic_information::state::FractranMachineTool>(
-            ctx,
-        );
-        exercise_interactive_tool::<
-            crate::tabs::number_theory::fractran_machine::FractranMachineTool,
-        >(ctx);
-        exercise_interactive_tool::<crate::tabs::number_theory::ualbf_widget::UalbfWidget>(ctx);
-        exercise_interactive_tool::<crate::tabs::number_theory::partitions_widget::PartitionsWidget>(
-            ctx,
-        );
-        exercise_interactive_tool::<crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget>(
-            ctx,
-        );
-        exercise_interactive_tool::<crate::tabs::morphogenesis::lenia::LeniaTool>(ctx);
-        exercise_interactive_tool::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(
-            ctx,
-        );
-        exercise_interactive_tool::<
-            crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool,
-        >(ctx);
-        exercise_interactive_tool::<
-            crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool,
-        >(ctx);
-        #[cfg(all(feature = "pure_math", feature = "biology"))]
-        exercise_interactive_tool::<
-            crate::tabs::geometry_topology::surface_morphogenesis::SurfaceMorphogenesisTool,
-        >(ctx);
-    }
-
+    #[cfg(all(
+        feature = "ai",
+        feature = "applied",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     #[test]
     fn test_all_registered_tools_theory_metadata() {
         let mut count = 0;
@@ -253,6 +254,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "physics")]
     #[test]
     fn test_theory_context_portal_citation_registration() {
         use crate::framework::SimulationFramework;
@@ -291,6 +293,12 @@ mod tests {
         );
     }
 
+    #[cfg(all(
+        feature = "pure_math",
+        feature = "applied",
+        feature = "physics",
+        any(feature = "climate", feature = "epidemiology")
+    ))]
     fn assert_tool_roundtrip(tool: &mut dyn crate::framework::InteractiveTool, custom_json: &str) {
         let default_saved = tool.save_state().expect("default save_state");
         tool.load_state(custom_json);
@@ -311,6 +319,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(feature = "applied", not(target_arch = "wasm32")))]
     fn assert_tab_roundtrip(tab: &mut dyn crate::tabs::ExplorerTab, custom_json: &str) {
         let default_saved = tab.save_state().expect("default save_state");
         tab.load_state(custom_json);

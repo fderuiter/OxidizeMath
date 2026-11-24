@@ -464,7 +464,7 @@ pub use crate::pure_math::{
     hyperbolic::HyperbolicError,
     knot_theory::KnotError,
     number_theory::ambs::AmbsError,
-    statistics::monte_carlo::MonteCarloError,
+    statistics::{monte_carlo::MonteCarloError, poisson::PoissonError, queueing::QueueingError},
     tensor::types::TensorError,
 };
 pub use sports::{EloError, MatchModelError};

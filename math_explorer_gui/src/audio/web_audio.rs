@@ -1,7 +1,5 @@
 //! Native browser `WebAudioNodeBackend` (`wasm32-unknown-unknown`) without `AudioWorklet` scripts.
 
-// theory_verification!
-
 use wasm_bindgen::JsValue;
 use web_sys::{
     AnalyserNode, AudioContext, AudioContextState, AudioDestinationNode, BiquadFilterNode,

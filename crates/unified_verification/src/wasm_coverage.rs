@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::fs;
 use std::path::{Path, PathBuf};
 use syn::punctuated::Punctuated;
 use syn::visit::{self, Visit};
@@ -238,15 +237,12 @@ impl WasmAstVisitor {
     }
 }
 
-fn summarize_source(content: &str, initial_test_scope: bool) -> FileWasmAstSummary {
-    let Ok(ast) = syn::parse_file(content) else {
-        return FileWasmAstSummary::default();
-    };
+fn summarize_ast(ast: &syn::File, initial_test_scope: bool) -> FileWasmAstSummary {
     let mut visitor = WasmAstVisitor {
         in_test_scope: initial_test_scope,
         summary: FileWasmAstSummary::default(),
     };
-    visitor.visit_file(&ast);
+    visitor.visit_file(ast);
     visitor.summary
 }
 
@@ -281,6 +277,7 @@ fn outline_tree_has_wasm_tests(
     summary: &FileWasmAstSummary,
     visited: &mut HashSet<PathBuf>,
     depth_remaining: usize,
+    cache: &mut oxidize_core::traceability::AstCache,
 ) -> bool {
     if summary.executable_wasm_tests > 0 {
         return true;
@@ -297,12 +294,21 @@ fn outline_tree_has_wasm_tests(
             .unwrap_or_else(|_| child_path.clone());
         if !visited.insert(canonical) {
             continue;
-        }
-        let Ok(child_src) = fs::read_to_string(&child_path) else {
+        };
+        let Some(ast) = cache
+            .get_or_load_fs(&child_path)
+            .and_then(|e| e.ast.as_ref())
+        else {
             continue;
         };
-        let child_summary = summarize_source(&child_src, true);
-        if outline_tree_has_wasm_tests(&child_path, &child_summary, visited, depth_remaining - 1) {
+        let child_summary = summarize_ast(ast, true);
+        if outline_tree_has_wasm_tests(
+            &child_path,
+            &child_summary,
+            visited,
+            depth_remaining - 1,
+            cache,
+        ) {
             return true;
         }
     }
@@ -319,9 +325,15 @@ fn is_dedicated_test_source_path(filepath: &Path) -> bool {
         .any(|c| c.as_os_str().to_str() == Some("tests"))
 }
 
-pub fn count_file_wasm_coverage(filepath: &Path, content: &str) -> (usize, usize) {
+pub fn count_file_wasm_coverage_with_cache(
+    filepath: &Path,
+    cache: &mut oxidize_core::traceability::AstCache,
+) -> (usize, usize) {
     let in_test_file = is_dedicated_test_source_path(filepath);
-    let summary = summarize_source(content, in_test_file);
+    let Some(ast) = cache.get_or_load_fs(filepath).and_then(|e| e.ast.as_ref()) else {
+        return (0, 0);
+    };
+    let summary = summarize_ast(ast, in_test_file);
     if summary.wasm_paths == 0 {
         return (0, 0);
     }
@@ -329,7 +341,7 @@ pub fn count_file_wasm_coverage(filepath: &Path, content: &str) -> (usize, usize
     if let Ok(canon) = filepath.canonicalize() {
         visited.insert(canon);
     }
-    let covered = if outline_tree_has_wasm_tests(filepath, &summary, &mut visited, 2) {
+    let covered = if outline_tree_has_wasm_tests(filepath, &summary, &mut visited, 2, cache) {
         summary.wasm_paths
     } else {
         0
@@ -340,18 +352,19 @@ pub fn count_file_wasm_coverage(filepath: &Path, content: &str) -> (usize, usize
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oxidize_core::traceability::AstCache;
 
     #[test]
     fn test_egui_plot_wasm_paths_are_counted_and_covered() {
         let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut cache = AstCache::new();
         for rel in [
             "egui_plot/src/file_io.rs",
             "egui_plot/src/export.rs",
             "egui_plot/src/export_modal.rs",
         ] {
             let path = ws_root.join(rel);
-            let src = fs::read_to_string(&path).expect("egui_plot source must be readable");
-            let (paths, covered) = count_file_wasm_coverage(&path, &src);
+            let (paths, covered) = count_file_wasm_coverage_with_cache(&path, &mut cache);
             assert!(paths > 0, "expected wasm32 paths in {rel}");
             assert_eq!(
                 covered, paths,

@@ -248,5 +248,3 @@ pub(super) fn render_file_share_menu_item(
         ui.close();
     }
 }
-
-// theory_verification!

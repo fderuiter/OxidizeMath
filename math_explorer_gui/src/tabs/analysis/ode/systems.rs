@@ -8,7 +8,8 @@ use super::OdeSolverTool;
 use crate::presets::OdePreset;
 use math_commons::ast::{CompiledExpr, Expr, Instruction};
 use math_explorer::pure_math::analysis::ode::{
-    ArrayState, Euler, Heun, IntegrationMethod, OdeSystem, RungeKutta4, Solver,
+    ArrayState, Euler, GaussLegendre4, Heun, ImplicitMidpoint, IntegrationMethod, OdeSystem,
+    RungeKutta4, Solver,
 };
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -329,8 +330,25 @@ fn eval_planar_custom_final(
     step_final(ArrayState(ic), &dyn_sys, spec.method, dt, steps)
 }
 
-fn step_final<const N: usize, D: OdeSystem<ArrayState<N>>>(
+fn step_single_solver<const N: usize, D, S>(
     mut state: ArrayState<N>,
+    dyn_sys: &D,
+    mut solver: S,
+    dt: f64,
+    steps: usize,
+) -> f64
+where
+    D: OdeSystem<ArrayState<N>>,
+    S: Solver<ArrayState<N>>,
+{
+    for i in 0..steps {
+        solver.step(dyn_sys, i as f64 * dt, &mut state, dt);
+    }
+    state.0[0]
+}
+
+fn step_final<const N: usize, D: OdeSystem<ArrayState<N>>>(
+    state: ArrayState<N>,
     dyn_sys: &D,
     method: IntegrationMethod,
     dt: f64,
@@ -338,25 +356,19 @@ fn step_final<const N: usize, D: OdeSystem<ArrayState<N>>>(
 ) -> f64 {
     match method {
         IntegrationMethod::RungeKutta4 => {
-            let mut solver = RungeKutta4::new(&state);
-            for i in 0..steps {
-                solver.step(dyn_sys, i as f64 * dt, &mut state, dt);
-            }
+            step_single_solver(state, dyn_sys, RungeKutta4::new(&state), dt, steps)
         }
         IntegrationMethod::Euler => {
-            let mut solver = Euler::new(&state);
-            for i in 0..steps {
-                solver.step(dyn_sys, i as f64 * dt, &mut state, dt);
-            }
+            step_single_solver(state, dyn_sys, Euler::new(&state), dt, steps)
         }
-        IntegrationMethod::Heun => {
-            let mut solver = Heun::new(&state);
-            for i in 0..steps {
-                solver.step(dyn_sys, i as f64 * dt, &mut state, dt);
-            }
+        IntegrationMethod::Heun => step_single_solver(state, dyn_sys, Heun::new(&state), dt, steps),
+        IntegrationMethod::ImplicitMidpoint => {
+            step_single_solver(state, dyn_sys, ImplicitMidpoint::new(&state), dt, steps)
+        }
+        IntegrationMethod::GaussLegendre4 => {
+            step_single_solver(state, dyn_sys, GaussLegendre4::new(&state), dt, steps)
         }
     }
-    state.0[0]
 }
 
 impl OdeSolverTool {
