@@ -20,10 +20,8 @@ pub mod gray_scott_atlas;
 mod legacy_runner;
 /// Continuous 2D FFT Lenia Studio tool and canvas.
 pub mod lenia;
-/// Vogel golden-angle phyllotaxis and nutrient-coupled L-system tool.
-pub mod phyllotaxis_tool;
-/// UI rendering for [`phyllotaxis_tool::PhyllotaxisLSystemTool`].
-pub mod phyllotaxis_ui;
+/// Vogel golden-angle phyllotaxis, D0L/parametric L-systems, and nutrient-coupled branching studio.
+pub mod phyllotaxis_lsystem;
 /// Reaction-diffusion presets, PRNG helper, and scientific metadata wrappers.
 pub mod presets;
 /// Multi-model reaction-diffusion simulation runner.
@@ -54,7 +52,7 @@ pub use gray_scott_atlas::{
 #[cfg(test)]
 pub use lenia::LeniaTool;
 #[cfg(test)]
-pub use phyllotaxis_tool::PhyllotaxisLSystemTool;
+pub use phyllotaxis_lsystem::PhyllotaxisLSystemTool;
 #[cfg(test)]
 pub use presets::MorphogenesisTheory;
 pub use presets::SimpleRng;

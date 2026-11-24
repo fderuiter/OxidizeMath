@@ -138,10 +138,10 @@ fn test_neuroscience_canvas_receives_tab_focus_and_accesskit_label() {
         "Lenia Studio Continuous Automaton Canvas",
     );
 
-    let mut phyllo = crate::tabs::morphogenesis::PhyllotaxisLSystemTool::default();
+    let mut botanical = crate::tabs::morphogenesis::PhyllotaxisLSystemTool::default();
     assert_tool_canvas_tab_focus_and_accesskit_label(
-        &mut phyllo,
-        "Phyllotaxis and L-System Visualization",
+        &mut botanical,
+        "Botanical Phyllotaxis and L-System Morphogenesis Canvas",
     );
 
     let mut evo = crate::tabs::morphogenesis::EvolutionKineticsTool::default();

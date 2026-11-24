@@ -3,7 +3,7 @@
 //! This module applies mathematical modeling to biological systems, spanning from
 //! molecular interactions to population dynamics.
 //!
-//! ##  Quick Start: Neural Dynamics
+//! ## Quick Start: Neural Dynamics
 //!
 //! Simulate a single neuron firing an action potential using the Hodgkin-Huxley model.
 //!
@@ -40,6 +40,8 @@
 //! graph TD
 //!     Pop[Population Scale] -->|Evolutionary Dynamics| Evolution[evolution]
 //!     Tissue[Tissue Scale] --> Morph[morphogenesis]
+//!     Bot[Botanical Scale] --> Phyllo[phyllotaxis & lsystem]
+//!     ALife[Artificial Life] --> Lenia[lenia]
 //!     Cell[Cellular Scale] -->|Action Potentials| Neuro[neuroscience]
 //!     Mol[Molecular Scale] -->|Enzyme Kinetics| Kinetics[kinetics]
 //!     Generic[Generic Framework] -->|Separation of Concerns| RD[reaction_diffusion]
@@ -54,14 +56,13 @@
 //!
 //! ## Submodules
 //!
-//! - **Molecular**: [`kinetics`] - Michaelis-Menten and Hill cooperative enzyme kinetics.
+//! - **Molecular**: [`kinetics`] - Michaelis-Menten and cooperative Hill enzyme kinetics.
 //! - **Cellular**: [`neuroscience`] - Hodgkin-Huxley model for action potentials.
 //! - **Tissue**: [`morphogenesis`] - Turing and Gray-Scott reaction-diffusion systems for pattern formation.
+//! - **Botanical**: [`lsystem`] and [`phyllotaxis`] - Zero-allocation L-system vascular grammars, Vogel golden-angle phyllotaxis, and nutrient-coupled plastochron growth.
 //! - **Artificial Life**: [`lenia`] - Spectral 2D Lenia continuous cellular automata and soliton lifeforms.
-//! - **Botanical**: [`phyllotaxis`] - Vogel golden-angle packing, Fibonacci parastichies, and nutrient-coupled L-systems.
-//! - **Spatial**: [`diffusion`] - 1D, 2D, and 3D finite-difference Laplacian operators.
 //! - **Population**: [`evolution`] - Evolutionary game theory (Hawk-Dove).
-//! - **Generic**: [`reaction_diffusion`] - Generic N-species reaction-diffusion framework.
+//! - **Generic**: [`reaction_diffusion`] and [`diffusion`] - Generic N-species reaction-diffusion and finite-difference operators.
 
 /// Michaelis-Menten and Hill enzyme kinetics.
 pub mod kinetics;
@@ -75,6 +76,12 @@ pub mod morphogenesis;
 /// Continuous 2D Lenia spectral cellular automata.
 pub mod lenia;
 
+/// Deterministic D0L and parametric L-system vascular grammars.
+pub mod lsystem;
+
+/// Vogel planar phyllotaxis, Fibonacci parastichy analysis, and nutrient-coupled plastochrons.
+pub mod phyllotaxis;
+
 /// Spatial diffusion strategies.
 pub mod diffusion;
 
@@ -84,11 +91,9 @@ pub mod evolution;
 /// Generic reaction-diffusion framework.
 pub mod reaction_diffusion;
 
-/// Vogel golden-angle phyllotaxis and nutrient-coupled L-systems.
-pub mod phyllotaxis;
-
 /// Error types for computational biology modules.
 pub use crate::error;
+pub use crate::error::BotanicalError;
 pub use kinetics::KineticsError;
 pub use reaction_diffusion::ReactionDiffusionError;
 

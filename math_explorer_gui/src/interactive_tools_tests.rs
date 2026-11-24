@@ -35,6 +35,9 @@ mod tests {
         exercise_interactive_tool::<
             crate::tabs::financial_math::market_execution::MarketExecutionTool,
         >(&ctx);
+        exercise_interactive_tool::<
+            crate::tabs::financial_math::monte_carlo_workbench::MonteCarloWorkbenchTool,
+        >(&ctx);
         exercise_interactive_tool::<crate::tabs::game_theory::auction::MyersonAuctionTool>(&ctx);
         exercise_interactive_tool::<crate::tabs::game_theory::glicko2::Glicko2TournamentTool>(&ctx);
         exercise_interactive_tool::<crate::tabs::game_theory::markov::MarkovSequenceWorkbenchTool>(
@@ -132,11 +135,17 @@ mod tests {
         );
         exercise_interactive_tool::<crate::tabs::morphogenesis::lenia::LeniaTool>(ctx);
         exercise_interactive_tool::<
-            crate::tabs::morphogenesis::phyllotaxis_tool::PhyllotaxisLSystemTool,
+            crate::tabs::morphogenesis::phyllotaxis_lsystem::PhyllotaxisLSystemTool,
         >(ctx);
         exercise_interactive_tool::<
             crate::tabs::morphogenesis::evolution_kinetics_tool::EvolutionKineticsTool,
         >(ctx);
+        exercise_interactive_tool::<crate::tabs::biochemical::dynamics::BiochemicalDynamicsTool>(
+            ctx,
+        );
+        exercise_interactive_tool::<crate::tabs::biochemical::evolution::EvolutionaryBiologyTool>(
+            ctx,
+        );
         exercise_interactive_tool::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(
             ctx,
         );

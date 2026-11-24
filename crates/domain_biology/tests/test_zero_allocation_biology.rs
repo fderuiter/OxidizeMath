@@ -2,10 +2,12 @@
 
 use domain_biology::biology::evolution::HawkDovePopulation;
 use domain_biology::biology::lenia::{LeniaEngine, LeniaSpecies};
+use domain_biology::biology::lsystem::{
+    BotanicalLSystemPreset, LSystemEngine, MAX_LSYSTEM_SYMBOLS,
+};
 use domain_biology::biology::morphogenesis::{GrayScottKinetics, ReactionKinetics};
 use domain_biology::biology::phyllotaxis::{
-    LSystemConfig, LSystemEngine, NutrientCoupling, NutrientKineticsKind, PhyllotaxisConfig,
-    PhyllotaxisState,
+    NutrientCoupling, NutrientKineticsKind, PhyllotaxisConfig, PhyllotaxisState,
 };
 use oxidize_core::rng::OxidizeRng;
 use pure_math::pure_math::analysis::ode::{ArrayState, OdeSystem};
@@ -38,19 +40,25 @@ fn test_lenia_step_128x128_zero_heap_allocations() {
 
 #[test]
 #[verified_engine::verified]
-fn test_phyllotaxis_and_lsystem_zero_heap_allocations() {
+fn test_phyllotaxis_and_nutrient_lsystem_zero_heap_allocations() {
     let _guard = ZERO_ALLOC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let nutrient = NutrientCoupling::new(NutrientKineticsKind::Hill, 2.0, 1.5, 0.8, 2.5)
         .expect("valid nutrient coupling");
     let mut state = PhyllotaxisState::new(512, 60, PhyllotaxisConfig::default(), nutrient);
-    let mut lsys = LSystemEngine::new(16_384, 16_384, 128);
-    let lsys_cfg = LSystemConfig::default();
+    let (grammar, base_cfg) = BotanicalLSystemPreset::HerbaceousShoot
+        .build_grammar(25.0, 0.78, 0.68)
+        .expect("valid L-system grammar");
+    let scaled_cfg = nutrient.scaled_turtle_config(base_cfg);
+    let mut lsys = LSystemEngine::new(grammar, scaled_cfg, MAX_LSYSTEM_SYMBOLS)
+        .expect("valid L-system engine");
 
     let ((m, n), metrics) = VerifiedEngine::run_verified(|| {
         for _ in 0..8 {
             state.step(0.08);
         }
-        lsys.generate(lsys_cfg, &nutrient);
+        lsys.reconfigure(grammar, nutrient.scaled_turtle_config(base_cfg))
+            .expect("valid scaled turtle config");
+        let _ = lsys.derive_bounded(4);
         state.detect_parastichy_pair()
     });
     assert!(metrics.function_calls > 0);

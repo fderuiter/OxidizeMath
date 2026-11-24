@@ -61,16 +61,20 @@ fn test_morphogenesis_gray_scott_zero_allocation_steps() {
 #[test]
 fn test_phyllotaxis_and_evolution_kinetics_tools_invariants_and_recovery() {
     let mut phyllo = PhyllotaxisLSystemTool::default();
-    let (m, n) = phyllo.phyllotaxis.detect_parastichy_pair();
-    assert!(is_consecutive_fibonacci_pair(m, n));
+    assert!(phyllo.vogel.analysis().is_fibonacci_pair);
+    assert!(is_consecutive_fibonacci_pair(
+        phyllo.vogel.analysis().primary_count,
+        phyllo.vogel.analysis().secondary_count,
+    ));
     assert!(!phyllo.lsystem.segments().is_empty());
-    assert_eq!(phyllo.export_datasets().len(), 2);
+    assert!(phyllo.export_datasets().len() >= 2);
+    assert!(!phyllo.state.nutrient_enabled);
 
     let before_count = phyllo.state.primordia_count;
-    phyllo.advance_plastochrons(0.5);
-    assert!(phyllo.state.primordia_count >= before_count);
+    phyllo.step_simulation();
+    assert!(phyllo.state.primordia_count > before_count);
 
-    phyllo.state.divergence_angle_deg = f64::NAN;
+    phyllo.state.divergence_deg = f64::NAN;
     assert!(!phyllo.has_finite_parameters());
     assert!(InteractiveTool::clamp_parameters(&mut phyllo));
     assert!(phyllo.has_finite_parameters());

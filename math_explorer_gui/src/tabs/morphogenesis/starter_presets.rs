@@ -22,29 +22,6 @@ pub const PRESET_GRAY_SCOTT_CORAL: &str = r#"{
   }
 }"#;
 
-/// Starter preset JSON envelope for Vogel Golden-Angle Sunflower phyllotaxis.
-pub const PRESET_PHYLLOTAXIS_SUNFLOWER: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Phyllotaxis - Golden-Angle Sunflower",
-    "domain": "biology",
-    "timestamp": "2026-11-21T00:00:00Z"
-  },
-  "config": {
-    "divergence_angle_deg": 137.50776405003785,
-    "scale_c": 0.45,
-    "primordia_count": 220,
-    "substrate": 2.5,
-    "v_max": 1.0,
-    "k_m": 1.0,
-    "hill_n": 2.5,
-    "kinetics": "MichaelisMenten",
-    "lsystem_preset": "BotanicalShoot",
-    "lsystem_iterations": 4,
-    "branch_angle_deg": 25.0
-  }
-}"#;
-
 /// Starter preset JSON envelope for Cooperative Hill Nutrient L-System Shoot.
 pub const PRESET_PHYLLOTAXIS_HILL_SHOOT: &str = r#"{
   "metadata": {
@@ -54,17 +31,23 @@ pub const PRESET_PHYLLOTAXIS_HILL_SHOOT: &str = r#"{
     "timestamp": "2026-11-21T00:00:00Z"
   },
   "config": {
-    "divergence_angle_deg": 137.50776405003785,
-    "scale_c": 0.48,
+    "mode": "DualSplit",
+    "divergence_preset": "GoldenAngle",
+    "divergence_deg": 137.50776405003785,
     "primordia_count": 144,
+    "radial_scale": 0.95,
+    "show_parastichies": true,
+    "lsystem_preset": "SympodialBush",
+    "generations": 4,
+    "branch_angle_deg": 22.5,
+    "contraction_r1": 0.78,
+    "contraction_r2": 0.68,
+    "nutrient_enabled": true,
+    "nutrient_kinetics": "Hill",
     "substrate": 3.2,
     "v_max": 1.2,
     "k_m": 1.0,
-    "hill_n": 3.2,
-    "kinetics": "Hill",
-    "lsystem_preset": "SympodialTree",
-    "lsystem_iterations": 4,
-    "branch_angle_deg": 22.5
+    "hill_n": 3.2
   }
 }"#;
 
@@ -104,23 +87,10 @@ inventory::submit! {
 
 inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
-        id: "phyllotaxis_golden_sunflower",
-        title: "Golden-Angle Sunflower",
-        description: "r_k = c√(k+0.5), θ_k = k·137.508°: Vogel floret packing with consecutive Fibonacci parastichies.",
-        category: "Phyllotaxis",
-        icon: "🌻",
-        domain: "biology",
-        tool_name: Some("PhyllotaxisLSystemTool"),
-        preset_generator: || PRESET_PHYLLOTAXIS_SUNFLOWER,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
         id: "phyllotaxis_hill_shoot",
         title: "Cooperative Hill Shoot",
         description: "Parallel L-system branching coupled to sigmoidal Hill enzyme nutrient uptake kinetics.",
-        category: "L-Systems",
+        category: "Botanical Morphogenesis",
         icon: "🌿",
         domain: "biology",
         tool_name: Some("PhyllotaxisLSystemTool"),

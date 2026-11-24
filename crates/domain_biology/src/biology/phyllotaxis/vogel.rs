@@ -1,352 +1,241 @@
-//! Vogel golden-angle primordia packing, Fibonacci parastichy detection, and nutrient kinetics.
+//! Pre-allocated Vogel primordia coordinate engine ($r_n = c\sqrt{n}, \theta_n = n\alpha$).
 
-use crate::biology::kinetics::{HillKinetics, KineticsError, KineticsModel, MichaelisMenten};
-use std::f64::consts::{PI, TAU};
+use super::parastichy::{ParastichyAnalysis, analyze_parastichies, fill_parastichy_chain};
+use crate::error::BotanicalError;
 
-/// Golden divergence angle $\alpha_\phi = 360^\circ (2 - \varphi) \approx 137.507764^\circ$.
-pub const GOLDEN_ANGLE_DEG: f64 = 137.507_764_050_037_85;
+/// Hard upper bound on primordia points in [`VogelPhyllotaxisEngine`] ($2^{12} = 4{,}096$).
+pub const MAX_PRIMORDIA: usize = 4_096;
 
-/// Golden divergence angle in radians ($\approx 2.39996323\text{ rad}$).
-pub const GOLDEN_ANGLE_RAD: f64 = 2.399_963_229_728_653_5;
+/// Square root of 5 ($\sqrt{5}$) used to derive exact golden-angle constants.
+const SQRT_5: f64 = 2.236_067_977_499_79;
 
-/// Lucas divergence angle $\approx 99.501553^\circ$, generating Lucas spiral pairs $(7, 11, 18, 29, \dots)$.
-pub const LUCAS_ANGLE_DEG: f64 = 99.501_552_809_976_85;
+/// Golden ratio $\varphi = (1 + \sqrt{5}) / 2$.
+pub const GOLDEN_RATIO: f64 = 0.5 * (1.0 + SQRT_5);
 
-/// Selects the enzyme saturation model coupling substrate availability to developmental rate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum NutrientKineticsKind {
-    /// Hyperbolic non-cooperative Michaelis-Menten uptake ($n = 1$).
-    #[default]
-    MichaelisMenten,
-    /// Cooperative sigmoidal Hill uptake ($n > 0$).
-    Hill,
+/// Golden divergence angle $\alpha_{\varphi} = 360^\circ (2 - \varphi) \approx 137.507764^\circ$.
+pub const GOLDEN_ANGLE_DEG: f64 = 360.0 * (2.0 - GOLDEN_RATIO);
+
+/// Golden divergence angle in radians $\alpha_{\varphi} = 2\pi (2 - \varphi) \approx 2.39996323\text{ rad}$.
+pub const GOLDEN_ANGLE_RAD: f64 = core::f64::consts::TAU * (2.0 - GOLDEN_RATIO);
+
+/// Canonical irrational and rational phyllotactic divergence angles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DivergenceAnglePreset {
+    /// Golden angle $2\pi(2 - \varphi) \approx 137.5078^\circ$ yielding Fibonacci $(F_k, F_{k+1})$ parastichies.
+    GoldenAngle,
+    /// Lucas noble angle $2\pi / (3 + 1/\varphi) \approx 99.5016^\circ$ yielding Lucas $(3, 4, 7, 11, 18)$ spirals.
+    LucasAngle,
+    /// Rational $1/3$ turn ($120^\circ$) collapsing primordia into 3 radial orthostichy spokes.
+    RationalOneThird,
+    /// Rational $2/5$ turn ($144^\circ$) collapsing primordia into 5 radial spokes.
+    RationalTwoFifths,
+    /// Rational $3/8$ turn ($135^\circ$) collapsing primordia into 8 radial spokes.
+    RationalThreeEighths,
+    /// Rational $5/13$ turn ($138.4615^\circ$) approximating the golden angle at low $N$ before forming 13 spokes.
+    RationalFiveThirteenths,
 }
 
-/// Biochemical nutrient uptake model coupling substrate concentration `\[S\]` to growth rate.
-#[derive(Debug, Clone, Copy)]
-pub struct NutrientCoupling {
-    kind: NutrientKineticsKind,
-    substrate: f64,
-    mm: MichaelisMenten,
-    hill: HillKinetics,
-}
+impl DivergenceAnglePreset {
+    /// All canonical divergence angle presets.
+    pub const ALL: [Self; 6] = [
+        Self::GoldenAngle,
+        Self::LucasAngle,
+        Self::RationalOneThird,
+        Self::RationalTwoFifths,
+        Self::RationalThreeEighths,
+        Self::RationalFiveThirteenths,
+    ];
 
-impl NutrientCoupling {
-    /// Constructs a validated biochemical nutrient coupling configuration.
+    /// Human-readable display label.
     #[verified_engine::verified]
-    pub fn new(
-        kind: NutrientKineticsKind,
-        substrate: f64,
-        v_max: f64,
-        k_m: f64,
-        hill_n: f64,
-    ) -> Result<Self, KineticsError> {
-        if !substrate.is_finite() || substrate < 0.0 {
-            return Err(KineticsError::NegativeSubstrateConcentration);
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::GoldenAngle => "Golden Angle (137.5078°)",
+            Self::LucasAngle => "Lucas Noble Angle (99.5016°)",
+            Self::RationalOneThird => "Rational 1/3 Turn (120.0°)",
+            Self::RationalTwoFifths => "Rational 2/5 Turn (144.0°)",
+            Self::RationalThreeEighths => "Rational 3/8 Turn (135.0°)",
+            Self::RationalFiveThirteenths => "Rational 5/13 Turn (138.4615°)",
         }
-        let mm = MichaelisMenten::new(v_max, k_m)?;
-        let hill = HillKinetics::new(v_max, k_m, hill_n)?;
-        Ok(Self {
-            kind,
-            substrate,
-            mm,
-            hill,
-        })
     }
 
-    /// Evaluates reaction uptake velocity `v([S])` without heap allocations.
+    /// Divergence angle in degrees.
     #[verified_engine::verified]
-    pub fn reaction_velocity(&self) -> f64 {
-        let res = match self.kind {
-            NutrientKineticsKind::MichaelisMenten => self.mm.reaction_velocity(self.substrate),
-            NutrientKineticsKind::Hill => self.hill.reaction_velocity(self.substrate),
-        };
-        res.unwrap_or(0.0)
-    }
-
-    /// Normalized saturation ratio `v([S]) / V_max` in `[0, 1]`.
-    #[verified_engine::verified]
-    pub fn normalized_rate(&self) -> f64 {
-        let v_max = self.mm.v_max;
-        if v_max <= 1e-15 {
-            return 0.0;
+    pub fn angle_deg(self) -> f64 {
+        match self {
+            Self::GoldenAngle => GOLDEN_ANGLE_DEG,
+            Self::LucasAngle => 360.0 / (3.0 + 1.0 / GOLDEN_RATIO),
+            Self::RationalOneThird => 120.0,
+            Self::RationalTwoFifths => 144.0,
+            Self::RationalThreeEighths => 135.0,
+            Self::RationalFiveThirteenths => 360.0 * 5.0 / 13.0,
         }
-        (self.reaction_velocity() / v_max).clamp(0.0, 1.0)
     }
 
-    /// Active kinetics family.
+    /// Divergence angle in radians.
     #[verified_engine::verified]
-    pub fn kind(&self) -> NutrientKineticsKind {
-        self.kind
-    }
-
-    /// Current substrate concentration `[S]`.
-    #[verified_engine::verified]
-    pub fn substrate(&self) -> f64 {
-        self.substrate
-    }
-
-    /// Maximum velocity $V_{\max}$.
-    #[verified_engine::verified]
-    pub fn v_max(&self) -> f64 {
-        self.mm.v_max
-    }
-
-    /// Half-saturation constant $K_m$.
-    #[verified_engine::verified]
-    pub fn k_m(&self) -> f64 {
-        self.mm.k_m
-    }
-
-    /// Hill cooperativity coefficient $n$.
-    #[verified_engine::verified]
-    pub fn hill_n(&self) -> f64 {
-        self.hill.n
+    pub fn angle_rad(self) -> f64 {
+        self.angle_deg().to_radians()
     }
 }
 
-impl Default for NutrientCoupling {
-    #[verified_engine::verified]
-    fn default() -> Self {
-        Self::new(NutrientKineticsKind::MichaelisMenten, 2.5, 1.0, 1.0, 2.5)
-            .expect("valid default nutrient coupling")
-    }
-}
-
-/// Spatial coordinates and plastochron index of a single botanical primordium (floret/leaf).
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub struct Primordium {
-    /// Sequential initiation index $k \in \{0, \dots, N-1\}$.
+/// Coordinates of primordium $n \in [0, N)$ on the planar Vogel spiral.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PrimordiumPoint {
+    /// Zero-based primordium index $n$.
     pub index: usize,
-    /// Radial distance $r_k = c \sqrt{k + 0.5 + \phi}$ from the meristem apex.
+    /// Polar radius $r_n = c\sqrt{n}$.
     pub radius: f64,
-    /// Divergence azimuth $\theta_k = k \cdot \alpha$ in radians.
-    pub angle_rad: f64,
-    /// Cartesian x-coordinate $r_k \cos \theta_k$.
+    /// Cumulative polar angle $\theta_n = n\alpha$ in radians.
+    pub theta: f64,
+    /// Cartesian abscissa $x_n = r_n \cos\theta_n$.
     pub x: f64,
-    /// Cartesian y-coordinate $r_k \sin \theta_k$.
+    /// Cartesian ordinate $y_n = r_n \sin\theta_n$.
     pub y: f64,
 }
 
-/// Configuration for Vogel phyllotaxis primordia packing.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct PhyllotaxisConfig {
-    /// Divergence angle $\alpha$ in degrees (default: [`GOLDEN_ANGLE_DEG`]).
-    pub divergence_angle_deg: f64,
-    /// Radial packing scale constant $c > 0$.
-    pub scale_c: f64,
-    /// Base primordia initiation rate (primordia per unit time at full nutrient saturation).
-    pub base_initiation_rate: f64,
-}
-
-impl Default for PhyllotaxisConfig {
-    #[verified_engine::verified]
-    fn default() -> Self {
-        Self {
-            divergence_angle_deg: GOLDEN_ANGLE_DEG,
-            scale_c: 0.45,
-            base_initiation_rate: 12.0,
-        }
-    }
-}
-
-/// Zero-allocation Vogel phyllotaxis state machine with preallocated primordia storage.
+/// Zero-allocation Vogel phyllotaxis coordinate and parastichy analysis engine.
 #[derive(Debug, Clone)]
-pub struct PhyllotaxisState {
-    config: PhyllotaxisConfig,
-    nutrient: NutrientCoupling,
-    primordia: Vec<Primordium>,
-    active_count: usize,
-    max_primordia: usize,
-    plastochron_phase: f64,
-    elapsed_time: f64,
+pub struct VogelPhyllotaxisEngine {
+    count: usize,
+    divergence_rad: f64,
+    scale: f64,
+    points: Vec<PrimordiumPoint>,
+    analysis: ParastichyAnalysis,
+    spiral_scratch: Vec<usize>,
 }
 
-impl PhyllotaxisState {
-    /// Allocates a bounded phyllotaxis state capable of holding up to `max_primordia` florets.
+impl VogelPhyllotaxisEngine {
+    /// Constructs a [`VogelPhyllotaxisEngine`] with pre-allocated buffers for up to
+    /// [`MAX_PRIMORDIA`] ($4{,}096$) primordia and computes the initial primordia layout.
     #[verified_engine::verified]
-    pub fn new(
-        max_primordia: usize,
-        initial_count: usize,
-        config: PhyllotaxisConfig,
-        nutrient: NutrientCoupling,
-    ) -> Self {
-        let cap = max_primordia.max(1);
-        let active = initial_count.min(cap);
-        let mut state = Self {
-            config,
-            nutrient,
-            primordia: vec![Primordium::default(); cap],
-            active_count: active,
-            max_primordia: cap,
-            plastochron_phase: 0.0,
-            elapsed_time: 0.0,
+    pub fn new(count: usize, divergence_rad: f64, scale: f64) -> Result<Self, BotanicalError> {
+        validate_phyllotaxis_params(count, divergence_rad, scale)?;
+        let mut engine = Self {
+            count,
+            divergence_rad,
+            scale,
+            points: Vec::with_capacity(MAX_PRIMORDIA),
+            analysis: ParastichyAnalysis::default(),
+            spiral_scratch: Vec::with_capacity(MAX_PRIMORDIA),
         };
-        state.recompute_positions_in_place();
-        state
+        engine.recompute();
+        Ok(engine)
     }
 
-    /// Advances plastochron initiation and radial expansion by `dt` with **zero heap allocations**.
+    /// Convenience constructor initialized at the golden angle $\alpha_{\varphi} \approx 137.5078^\circ$.
     #[verified_engine::verified]
-    pub fn step(&mut self, dt: f64) {
-        if !dt.is_finite() || dt <= 0.0 {
-            return;
-        }
-        let rate_scale = self.nutrient.normalized_rate();
-        let delta_plastochrons = dt * self.config.base_initiation_rate.max(0.0) * rate_scale;
-        self.plastochron_phase += delta_plastochrons;
-        self.elapsed_time += dt;
-
-        let whole_new = self.plastochron_phase.floor() as usize;
-        if whole_new > 0 {
-            self.plastochron_phase -= whole_new as f64;
-            self.active_count = (self.active_count + whole_new).min(self.max_primordia);
-        }
-        self.recompute_positions_in_place();
+    pub fn golden(count: usize, scale: f64) -> Result<Self, BotanicalError> {
+        Self::new(count, GOLDEN_ANGLE_RAD, scale)
     }
 
-    /// Immediately sets the active primordia count (clamped to `max_primordia`) and updates geometry.
+    /// Updates `(count, divergence_rad, scale)` and recomputes all Vogel coordinates and
+    /// parastichy counts in place with zero heap allocations.
     #[verified_engine::verified]
-    pub fn set_active_count(&mut self, count: usize) {
-        self.active_count = count.min(self.max_primordia);
-        self.plastochron_phase = 0.0;
-        self.recompute_positions_in_place();
+    pub fn set_parameters(
+        &mut self,
+        count: usize,
+        divergence_rad: f64,
+        scale: f64,
+    ) -> Result<(), BotanicalError> {
+        validate_phyllotaxis_params(count, divergence_rad, scale)?;
+        self.count = count;
+        self.divergence_rad = divergence_rad;
+        self.scale = scale;
+        self.recompute();
+        Ok(())
     }
 
-    /// Updates geometric packing configuration and recomputes primordia coordinates in-place.
+    /// Recomputes $r_n = c\sqrt{n}$, $\theta_n = n\alpha$, Cartesian $(x_n, y_n)$, and opposing
+    /// parastichy spiral metrics into the pre-allocated buffers with zero heap allocations.
     #[verified_engine::verified]
-    pub fn set_config(&mut self, config: PhyllotaxisConfig) {
-        self.config = config;
-        self.recompute_positions_in_place();
-    }
-
-    /// Updates nutrient uptake coupling configuration.
-    #[verified_engine::verified]
-    pub fn set_nutrient(&mut self, nutrient: NutrientCoupling) {
-        self.nutrient = nutrient;
-    }
-
-    #[verified_engine::verified]
-    fn recompute_positions_in_place(&mut self) {
-        let alpha_rad = self.config.divergence_angle_deg.to_radians();
-        let scale_c = self.config.scale_c.max(1e-6);
-        let phase = self.plastochron_phase.clamp(0.0, 1.0);
-
-        for k in 0..self.active_count {
-            let radial_index = (k as f64) + 0.5 + phase;
-            let radius = scale_c * radial_index.sqrt();
-            let angle_rad = (k as f64) * alpha_rad;
-            let (sin_a, cos_a) = angle_rad.sin_cos();
-            self.primordia[k] = Primordium {
-                index: k,
+    pub fn recompute(&mut self) {
+        self.points.clear();
+        for n in 0..self.count {
+            let nf = n as f64;
+            let radius = self.scale * nf.sqrt();
+            let theta = nf * self.divergence_rad;
+            let (sin_t, cos_t) = theta.sin_cos();
+            self.points.push(PrimordiumPoint {
+                index: n,
                 radius,
-                angle_rad,
-                x: radius * cos_a,
-                y: radius * sin_a,
-            };
+                theta,
+                x: radius * cos_t,
+                y: radius * sin_t,
+            });
         }
+        self.analysis = analyze_parastichies(&self.points, self.divergence_rad, self.scale);
     }
 
-    /// Active slice of packed primordia (`0..active_count`).
+    /// Populates the internal pre-allocated scratch buffer with primordia indices belonging to
+    /// `arm_index` (`0..parastichy_step`) for a spiral family of step `parastichy_step`, returning
+    /// the borrowed index slice without allocating.
     #[verified_engine::verified]
-    pub fn primordia(&self) -> &[Primordium] {
-        &self.primordia[..self.active_count]
+    pub fn trace_parastichy_arm(&mut self, arm_index: usize, parastichy_step: usize) -> &[usize] {
+        fill_parastichy_chain(
+            self.count,
+            arm_index,
+            parastichy_step,
+            &mut self.spiral_scratch,
+        );
+        &self.spiral_scratch
     }
 
-    /// Number of currently initiated primordia.
+    /// Active primordia slice of length `count` ($\le 4{,}096$).
+    #[inline]
     #[verified_engine::verified]
-    pub fn active_count(&self) -> usize {
-        self.active_count
+    pub fn points(&self) -> &[PrimordiumPoint] {
+        &self.points
     }
 
-    /// Preallocated primordia capacity.
+    /// Current opposing parastichy counts and packing uniformity analysis.
+    #[inline]
     #[verified_engine::verified]
-    pub fn max_primordia(&self) -> usize {
-        self.max_primordia
+    pub fn analysis(&self) -> ParastichyAnalysis {
+        self.analysis
     }
 
-    /// Current phyllotaxis configuration.
+    /// Active primordia count $N$.
+    #[inline]
     #[verified_engine::verified]
-    pub fn config(&self) -> PhyllotaxisConfig {
-        self.config
+    pub fn count(&self) -> usize {
+        self.count
     }
 
-    /// Current biochemical nutrient coupling model.
+    /// Active divergence angle $\alpha$ in radians.
+    #[inline]
     #[verified_engine::verified]
-    pub fn nutrient(&self) -> NutrientCoupling {
-        self.nutrient
+    pub fn divergence_rad(&self) -> f64 {
+        self.divergence_rad
     }
 
-    /// Elapsed developmental time.
+    /// Active radial scale $c$.
+    #[inline]
     #[verified_engine::verified]
-    pub fn elapsed_time(&self) -> f64 {
-        self.elapsed_time
-    }
-
-    /// Detects the visible opposing parastichy spiral pair `(m, n)` (`m <= n`) on the outer Vogel annulus.
-    #[verified_engine::verified]
-    pub fn detect_parastichy_pair(&self) -> (usize, usize) {
-        detect_parastichy_spirals(self.active_count, self.config.divergence_angle_deg)
+    pub fn scale(&self) -> f64 {
+        self.scale
     }
 }
 
-/// Geometrically detects opposing nearest-neighbor parastichy spiral counts `(m, n)` for `count` florets.
 #[verified_engine::verified]
-pub fn detect_parastichy_spirals(count: usize, divergence_angle_deg: f64) -> (usize, usize) {
-    if count < 5 {
-        return (1, 1.max(count.min(2)));
+fn validate_phyllotaxis_params(
+    count: usize,
+    divergence_rad: f64,
+    scale: f64,
+) -> Result<(), BotanicalError> {
+    if count == 0 || count > MAX_PRIMORDIA {
+        return Err(BotanicalError::InvalidPrimordiaCount {
+            count,
+            max: MAX_PRIMORDIA,
+        });
     }
-    let alpha_rad = divergence_angle_deg.to_radians();
-    let k_ref = ((count * 3) / 4).max(3).min(count - 1);
-    let r_ref = ((k_ref as f64) + 0.5).sqrt();
-
-    let mut best_pos = (f64::INFINITY, 1usize);
-    let mut best_neg = (f64::INFINITY, 1usize);
-    let mut best_any = (f64::INFINITY, 1usize);
-
-    for dk in 1..=k_ref {
-        let r_nb = (((k_ref - dk) as f64) + 0.5).sqrt();
-        let delta_theta = ((dk as f64) * alpha_rad + PI).rem_euclid(TAU) - PI;
-        let dist_sq = r_ref * r_ref + r_nb * r_nb - 2.0 * r_ref * r_nb * delta_theta.cos();
-
-        if dist_sq < best_any.0 {
-            best_any = (dist_sq, dk);
-        }
-        if delta_theta > 1e-7 && dist_sq < best_pos.0 {
-            best_pos = (dist_sq, dk);
-        } else if delta_theta < -1e-7 && dist_sq < best_neg.0 {
-            best_neg = (dist_sq, dk);
-        }
+    if !divergence_rad.is_finite() {
+        return Err(BotanicalError::InvalidDivergenceAngle {
+            angle: divergence_rad,
+        });
     }
-
-    let p = if best_pos.0.is_finite() {
-        best_pos.1
-    } else {
-        best_any.1
-    };
-    let q = if best_neg.0.is_finite() {
-        best_neg.1
-    } else {
-        best_any.1
-    };
-    (p.min(q), p.max(q))
-}
-
-/// Checks whether `(m, n)` (`m <= n`) is a pair of consecutive Fibonacci numbers $(F_k, F_{k+1})$.
-#[verified_engine::verified]
-pub fn is_consecutive_fibonacci_pair(m: usize, n: usize) -> bool {
-    let (lo, hi) = (m.min(n), m.max(n));
-    let mut a = 1usize;
-    let mut b = 1usize;
-    while a <= lo {
-        if a == lo && b == hi {
-            return true;
-        }
-        let Some(next) = a.checked_add(b) else {
-            break;
-        };
-        a = b;
-        b = next;
+    if !scale.is_finite() || scale <= 0.0 {
+        return Err(BotanicalError::InvalidScaleFactor { scale });
     }
-    false
+    Ok(())
 }

@@ -1,71 +1,70 @@
-//! # Developmental Phyllotaxis & Nutrient-Coupled L-Systems
+//! # Botanical Phyllotaxis & Fibonacci Parastichy Mechanics
 //!
-//! Mathematical models of botanical morphogenesis linking shoot apical meristem packing
-//! (Vogel's golden-angle spiral), continued-fraction Fibonacci parastichy emergence, and
-//! parallel Lindenmayer rewriting systems modulated by biochemical enzyme saturation
-//! ([`crate::biology::kinetics::MichaelisMenten`] and [`crate::biology::kinetics::HillKinetics`]).
-//!
-//! ## Quick Start
-//!
-//! ```rust
-//! # use domain_biology::__doctest_facade as math_explorer;
-//! use math_explorer::biology::phyllotaxis::{
-//!     is_consecutive_fibonacci_pair, NutrientCoupling, PhyllotaxisConfig, PhyllotaxisState,
-//! };
-//!
-//! let state = PhyllotaxisState::new(
-//!     512,
-//!     180,
-//!     PhyllotaxisConfig::default(),
-//!     NutrientCoupling::default(),
-//! );
-//! let (m, n) = state.detect_parastichy_pair();
-//! assert!(is_consecutive_fibonacci_pair(m, n));
-//! ```
+//! Implements Vogel's planar phyllotaxis model ($r_n = c\sqrt{n}$, $\theta_n = n\alpha$) capped at
+//! `MAX_PRIMORDIA` $= 4{,}096$ primordia points alongside zero-allocation opposing parastichy
+//! spiral detection $(F_k, F_{k+1})$, annular packing uniformity analysis, and biochemical
+//! nutrient-coupled plastochron stepping (`NutrientCoupling`, `PhyllotaxisState`).
 
-/// Bounded iterative L-system grammar and 2D turtle segment interpreter.
-pub mod lsystem;
-/// Vogel golden-angle primordia packing, parastichy spiral detection, and nutrient kinetics.
+// [cite:biology]
+
+/// Biochemical Michaelis-Menten and Hill nutrient coupling for plastochron and L-system growth.
+pub mod nutrient;
+/// Opposing $(F_k, F_{k+1})$ parastichy spiral pair detection and pre-allocated spiral chain tracing.
+pub mod parastichy;
+/// Pre-allocated Vogel primordia coordinate generator and divergence angle presets.
 pub mod vogel;
 
-#[cfg(test)]
-mod tests;
-
-pub use lsystem::{LSystemConfig, LSystemEngine, LSystemPreset};
+pub use nutrient::{
+    LUCAS_ANGLE_DEG, NutrientCoupling, NutrientKineticsKind, PhyllotaxisConfig, PhyllotaxisState,
+};
+pub use parastichy::{ParastichyAnalysis, is_consecutive_fibonacci_pair};
 pub use vogel::{
-    GOLDEN_ANGLE_DEG, GOLDEN_ANGLE_RAD, LUCAS_ANGLE_DEG, NutrientCoupling, NutrientKineticsKind,
-    PhyllotaxisConfig, PhyllotaxisState, Primordium, detect_parastichy_spirals,
-    is_consecutive_fibonacci_pair,
+    DivergenceAnglePreset, GOLDEN_ANGLE_DEG, GOLDEN_ANGLE_RAD, GOLDEN_RATIO, MAX_PRIMORDIA,
+    PrimordiumPoint, VogelPhyllotaxisEngine,
 };
 
+use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
-use verified_engine::scientific_metadata::theory::TheoryDescribable;
 
-impl TheoryDescribable for PhyllotaxisConfig {
+impl TheoryDescribable for VogelPhyllotaxisEngine {
+    #[verified_engine::verified]
     fn theory_description(&self) -> String {
-        "Vogel golden-angle phyllotaxis r_k = c sqrt(k + 0.5), theta_k = k * alpha coupled with iterative L-system turtle morphogenesis and Michaelis-Menten / Hill nutrient uptake.".to_string()
+        let analysis = self.analysis();
+        format!(
+            "Vogel's phyllotaxis model positions {} botanical primordia on a Fermat spiral \
+             r_n = c*sqrt(n), theta_n = n*alpha so each primordium occupies equal area pi*c^2. \
+             Current opposing parastichy counts: ({}, {}), packing uniformity {:.3}.",
+            self.count(),
+            analysis.primary_count,
+            analysis.secondary_count,
+            analysis.packing_uniformity
+        )
     }
 
+    #[verified_engine::verified]
     fn phonetic_description(&self) -> String {
-        "Vogel golden-angle phyllotaxis spiral r sub k equals c square root of k plus 0.5 and theta sub k equals k times alpha with nutrient-coupled L-systems.".to_string()
+        "Vogel Fermat spiral where radius r sub n equals c times square root of n and polar angle \
+         theta sub n equals n times divergence angle alpha, forming opposing Fibonacci parastichies."
+            .to_string()
     }
 
+    #[verified_engine::verified]
     fn theory_citation(&self) -> String {
-        "Vogel, H. (1979). A better way to construct the sunflower head. Mathematical Biosciences, 44(3-4), 179-189; Lindenmayer, A. (1968). Mathematical models for cellular interactions in development. Journal of Theoretical Biology, 18(3), 280-299.".to_string()
+        "Vogel, H. (1979). A better way to construct the sunflower head. Mathematical Biosciences, \
+         44(3-4), 179-189."
+            .to_string()
     }
 
+    #[verified_engine::verified]
     fn available_descriptions(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert(
-            "en".to_string(),
-            "Vogel golden-angle phyllotaxis spiral and nutrient-coupled L-system morphogenesis."
-                .to_string(),
+            "Fibonacci Parastichies".to_string(),
+            "Irrational golden-angle divergence prevents radial spoke alignment and yields consecutive Fibonacci spirals.".to_string(),
         );
         map
     }
 }
 
-// [cite:biology]
-
-use pure_math::theory_verification;
-theory_verification!(module = "biology", constants = {}, test = {});
+#[cfg(test)]
+mod tests;

@@ -12,8 +12,11 @@ fn wasm_phyllotaxis_and_evolution_tools_step_and_roundtrip_url() {
     assert!(lenia.export_raster_image().is_some());
 
     let mut phyllo = PhyllotaxisLSystemTool::default();
-    let (m, n) = phyllo.phyllotaxis.detect_parastichy_pair();
-    assert!(is_consecutive_fibonacci_pair(m, n));
+    assert!(phyllo.vogel.analysis().is_fibonacci_pair);
+    assert!(is_consecutive_fibonacci_pair(
+        phyllo.vogel.analysis().primary_count,
+        phyllo.vogel.analysis().secondary_count,
+    ));
     phyllo.step_simulation();
     assert!(!phyllo.lsystem.segments().is_empty());
 

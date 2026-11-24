@@ -244,6 +244,9 @@ mod tests {
         let mut t1 = vec![0.0; 64 * 64];
         let mut t2 = vec![0.0; 64 * 64];
 
+        let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let ((), _metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
             fill_shepp_logan_grid(64, 64, &mut rho, &mut t1, &mut t2);
         });
