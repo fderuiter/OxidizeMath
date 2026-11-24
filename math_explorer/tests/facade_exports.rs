@@ -149,6 +149,7 @@ fn assert_pure_math_twenty_one_errors() {
         .severity(),
         e::MarkovError::InvalidProbability { value: -0.1 }.severity(),
         e::MonteCarloError::ZeroReplicates.severity(),
+        e::OptionPricingError::InvalidVolatility { value: 0.0 }.severity(),
         e::OuError::InvalidTimeStep { value: 0.0 }.severity(),
         e::ZipError::InvalidCount { value: -1.0 }.severity(),
         e::TdaError::EmptyPointCloud.severity(),
@@ -171,6 +172,7 @@ fn assert_pure_math_twenty_one_errors() {
     ];
     assert!(severities.iter().all(|s| *s == Severity::Error));
     kelly_checks::assert_kelly_validation_and_ruin_exports();
+    kelly_checks::assert_portfolio_kelly_tail_risk_copula_and_bsm();
 }
 
 #[cfg(feature = "pure_math")]
