@@ -40,7 +40,12 @@ impl NeuralNetworkVizTool {
     /// Polls `PaneDataflowBus` and resizes neural/Kuramoto buffers only when `revision` advances.
     pub(super) fn poll_upstream_graph(&mut self, ctx: &egui::Context) {
         let Some(payload) = poll_pane_graph(ctx) else {
-            self.upstream_linked = false;
+            if self.upstream_linked {
+                self.upstream_linked = false;
+                self.last_upstream_graph_rev = 0;
+                self.restore_local_circuit();
+                self.bump_revision();
+            }
             return;
         };
         self.upstream_linked = true;
@@ -60,7 +65,6 @@ impl NeuralNetworkVizTool {
         if self.neurons.len() != n {
             self.neurons
                 .resize_with(n, || HodgkinHuxleyNeuron::new(-65.0));
-            self.scratch_inputs.resize(n, 0.0);
             self.external_input.resize(n, 0.0);
             if self.external_input.iter().all(|&v| v == 0.0) {
                 self.external_input[0] = 10.0;
@@ -76,6 +80,9 @@ impl NeuralNetworkVizTool {
             }
         }
         self.weights = next_weights;
+        self.rebuild_csr_from_dense();
+        self.synced_bus_revision = None;
+        self.clamped_source_nodes = None;
         let spread = self.kuramoto.frequency_spread();
         self.kuramoto
             .reconfigure_topology(n, &payload.edges, payload.directed, spread);
@@ -216,39 +223,22 @@ impl NeuralNetworkVizTool {
             });
     }
 
-    pub(super) fn draw_synaptic_edges(
-        &self,
-        painter: &egui::Painter,
-        center: egui::Pos2,
-        palette: &SemanticPalette,
-    ) {
-        let num_neurons = self.neurons.len();
-        for i in 0..num_neurons {
-            for j in 0..num_neurons {
-                let weight = self.weights[i][j];
-                if weight != 0.0 {
-                    let p1 = center + egui::vec2(self.positions[j][0], self.positions[j][1]);
-                    let p2 = center + egui::vec2(self.positions[i][0], self.positions[i][1]);
-                    let base = if weight > 0.0 {
-                        palette.success
-                    } else {
-                        palette.error
-                    };
-                    let color = Color32::from_rgba_unmultiplied(base.r(), base.g(), base.b(), 170);
-                    painter.line_segment([p2, p1], ((1.0 + weight.abs()).min(4.0) as f32, color));
-                }
-            }
-        }
-    }
-
     fn build_offline_clone(&self) -> Self {
         let n = self.neurons.len();
-        Self {
+        let mut sim = Self {
             neurons: (0..n).map(|_| HodgkinHuxleyNeuron::new(-65.0)).collect(),
             positions: self.positions.clone(),
             weights: self.weights.clone(),
             external_input: self.external_input.clone(),
-            scratch_inputs: vec![0.0; n],
+            local_preset_inputs: self.local_preset_inputs.clone(),
+            local_preset_weights: self.local_preset_weights.clone(),
+            next_inputs: vec![0.0; n.max(crate::app::MAX_NEURAL_SHARED_NODES)],
+            csr_row_ptr: self.csr_row_ptr.clone(),
+            csr_col_idx: self.csr_col_idx.clone(),
+            csr_weights: self.csr_weights.clone(),
+            topology_source: self.topology_source,
+            synced_bus_revision: None,
+            clamped_source_nodes: None,
             mode: NeuralDynamicsMode::HodgkinHuxley,
             kuramoto: math_explorer::biology::neuroscience::KuramotoNetwork::new(
                 n.max(1),
@@ -262,7 +252,11 @@ impl NeuralNetworkVizTool {
             last_upstream_graph_rev: 0,
             upstream_linked: false,
             revision: 1,
+        };
+        if sim.csr_row_ptr.len() != n + 1 {
+            sim.rebuild_csr_from_dense();
         }
+        sim
     }
 
     pub(super) fn render_offline_wav(&self, sample_rate: u32, duration_secs: f32) -> Vec<u8> {

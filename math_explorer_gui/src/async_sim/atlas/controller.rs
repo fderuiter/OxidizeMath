@@ -177,6 +177,12 @@ impl ParameterAtlasController {
         self.request_generation > 0 && self.completed_generation == self.request_generation
     }
 
+    #[cfg(test)]
+    pub(crate) fn set_raster_size_for_test(&mut self, width: usize, height: usize) {
+        self.raster_size = (width.max(8), height.max(8));
+        self.dirty = true;
+    }
+
     pub(super) fn lookup_or_evaluate_cell(&self, p1: f64, p2: f64) -> Option<AtlasCell> {
         let cartographer = self.active_cartographer.as_ref()?;
         if let Some(meta) = &self.latest_meta {

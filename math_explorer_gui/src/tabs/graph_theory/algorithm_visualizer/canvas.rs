@@ -119,6 +119,9 @@ impl AlgorithmVisualizerTool {
                 announce_live_status(ctx, format!("Sink node set to Node {id}"));
             } else {
                 self.start_node = Some(id);
+                if self.synced_bus_revision.is_none() {
+                    self.local_start_node = Some(id);
+                }
                 if self.sink_node == Some(id) {
                     self.sink_node = self.effective_sink_node(Some(id));
                 }
@@ -161,6 +164,9 @@ impl AlgorithmVisualizerTool {
         });
         if activate {
             self.start_node = Some(self.focused_node);
+            if self.synced_bus_revision.is_none() {
+                self.local_start_node = Some(self.focused_node);
+            }
             if self.sink_node == Some(self.focused_node) {
                 self.sink_node = self.effective_sink_node(self.start_node);
             }

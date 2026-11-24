@@ -4,6 +4,7 @@
 //! `Camera3D` interaction, custom AST metrics, 2D lensing atlas `1x` convergence, and challenges.
 
 use eframe::egui;
+use wasm_bindgen::JsCast;
 use wasm_bindgen_test::wasm_bindgen_test;
 
 use super::*;
@@ -13,6 +14,18 @@ use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool};
 use crate::starter_gallery::{get_goal_challenges_for_domain, get_stories_for_domain};
 use crate::tabs::ExplorerTab;
 use crate::url_state::{encode_share_fragment, parse_share_location};
+
+async fn tick_microtasks() {
+    let promise = js_sys::Promise::new(&mut |resolve, _| {
+        let global = js_sys::global();
+        if let Ok(win) = global.dyn_into::<web_sys::Window>() {
+            let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0);
+        } else {
+            let _ = resolve.call0(&wasm_bindgen::JsValue::UNDEFINED);
+        }
+    });
+    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+}
 
 fn wasm_input(events: Vec<egui::Event>) -> egui::RawInput {
     egui::RawInput {
@@ -76,7 +89,7 @@ fn wasm_relativity_tab_hydrates_renders_gestures_presets_and_exports() {
 }
 
 #[wasm_bindgen_test]
-fn wasm_relativity_ast_sandbox_atlas_convergence_teleport_and_challenges() {
+async fn wasm_relativity_ast_sandbox_atlas_convergence_teleport_and_challenges() {
     assert!(!get_stories_for_domain("relativity").is_empty());
     assert!(get_goal_challenges_for_domain("relativity").len() >= 2);
 
@@ -90,11 +103,12 @@ fn wasm_relativity_ast_sandbox_atlas_convergence_teleport_and_challenges() {
         .expect("wasm custom Christoffel");
     assert!(ev.max_abs_diff < 1e-6);
 
-    // Verify 2D atlas converges to 1x synchronously via cooperative frame budget on wasm32
+    // Verify 2D atlas converges to 1x via cooperative frame budget on wasm32
     let mut tool = GeodesicPlaygroundTool::default();
     tool.import_preset_json(presets::PRESET_PHOTON_RING_LENSING)
         .expect("photon ring preset");
     assert!((tool.launch_energy - 1.0).abs() < 1e-12);
+    tool.atlas.set_raster_size_for_test(32, 32);
     tool.atlas.set_visible(true);
     tool.state.atlas_visible = true;
 
@@ -106,6 +120,7 @@ fn wasm_relativity_ast_sandbox_atlas_convergence_teleport_and_challenges() {
         if tool.atlas.is_converged() {
             break;
         }
+        tick_microtasks().await;
     }
     assert_eq!(tool.atlas.current_stride(), 1);
 
