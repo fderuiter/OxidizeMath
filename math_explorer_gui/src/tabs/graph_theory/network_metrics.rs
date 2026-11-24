@@ -1,8 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[path = "network_metrics/bus_sync.rs"]
+mod bus_sync;
+
 use super::shared_topology::CompactTopologyState;
 use crate::accessibility::AccessibleHoverText;
-use crate::app::{render_topology_source_bar, TopologySource};
+use crate::app::data_bus::ui::render_follow_workspace_toggle;
+use crate::app::data_bus::SharedGraph;
+use crate::app::{render_topology_source_bar, SharedSimulationBus, TopologySource};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use eframe::egui::Pos2;
@@ -18,6 +23,7 @@ use math_explorer::pure_math::graph_theory::parameters::{
 };
 use petgraph::graph::NodeIndex;
 use std::collections::{BTreeSet, HashMap};
+use std::sync::Arc;
 
 #[path = "network_metrics/io_export.rs"]
 mod io_export;
@@ -48,6 +54,10 @@ pub(crate) struct NetworkMetricsState {
     pub(crate) selected_metric: MetricType,
     #[serde(default = "default_true", skip_serializing_if = "is_true")]
     pub(crate) highlight_vertex_cover: bool,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub(crate) follow_workspace_graph: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) frozen_graph: Option<SharedGraph>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) custom_topology: Option<CompactTopologyState>,
     #[serde(default, skip_serializing_if = "TopologySource::is_default")]
@@ -76,6 +86,9 @@ pub struct NetworkMetricsTool {
     tw_scratch: TreewidthScratch,
     revision: u64,
     file_io: super::io_helpers::GraphFileIoState,
+    pub(crate) follow_workspace_graph: bool,
+    pub(crate) applied_bus_revision: u64,
+    active_shared_graph: Option<Arc<SharedGraph>>,
 }
 
 impl Default for NetworkMetricsTool {
@@ -100,6 +113,9 @@ impl Default for NetworkMetricsTool {
             tw_scratch: TreewidthScratch::with_capacity(32),
             revision: 1,
             file_io: super::io_helpers::GraphFileIoState::default(),
+            follow_workspace_graph: true,
+            applied_bus_revision: 0,
+            active_shared_graph: None,
         };
         tool.build_sample_graph();
         tool
@@ -181,6 +197,14 @@ impl NetworkMetricsTool {
 
     pub(crate) fn compute_metrics(&mut self) {
         self.metric_values.clear();
+        if self.node_indices.is_empty() {
+            self.global_diameter = Some(0);
+            self.global_clustering = Some(0.0);
+            self.global_degeneracy = 0;
+            self.global_treewidth = 0;
+            self.vertex_cover_nodes.clear();
+            return;
+        }
         let raw_metrics = match self.selected_metric {
             MetricType::DegreeCentrality => degree_centrality(&self.graph),
             MetricType::ClosenessCentrality => closeness_centrality(&self.graph),
@@ -256,6 +280,22 @@ impl NetworkMetricsTool {
             ) {
                 self.bump_revision();
                 self.sync_shared_topology(&ctx);
+                if !SharedSimulationBus::is_link_topology_enabled(&ctx) {
+                    self.sync_from_bus(&ctx);
+                }
+            }
+            ui.separator();
+            let rev_opt = (self.applied_bus_revision > 0).then_some(self.applied_bus_revision);
+            if render_follow_workspace_toggle(
+                ui,
+                &mut self.follow_workspace_graph,
+                "Network Metrics",
+                rev_opt,
+            ) && self.follow_workspace_graph
+            {
+                self.is_custom_topology = false;
+                self.applied_bus_revision = 0;
+                self.sync_from_bus(ui.ctx());
             }
             ui.separator();
             self.render_metric_selector(ui);
@@ -268,63 +308,6 @@ impl NetworkMetricsTool {
                 "Nodes are heat-mapped by centrality; gold rings mark the vertex-cover modulator.",
             );
         });
-    }
-
-    fn render_metric_selector(&mut self, ui: &mut egui::Ui) {
-        ui.label("Select Metric to Visualize:");
-        let mut changed = false;
-        for (metric, label) in [
-            (MetricType::DegreeCentrality, "Degree Centrality"),
-            (MetricType::ClosenessCentrality, "Closeness Centrality"),
-            (
-                MetricType::ClusteringCoefficient,
-                "Local Clustering Coefficient",
-            ),
-        ] {
-            if ui
-                .radio_value(&mut self.selected_metric, metric, label)
-                .clicked()
-            {
-                changed = true;
-            }
-        }
-        if changed {
-            self.bump_revision();
-            self.compute_metrics();
-        }
-    }
-
-    fn render_invariants_summary(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Structural Invariants");
-        if let Some(d) = self.global_diameter {
-            ui.label(format!("Diameter: {d}"));
-        }
-        if let Some(c) = self.global_clustering {
-            ui.label(format!("Avg Clustering Coefficient: {c:.3}"));
-        }
-        ui.label(format!("Degeneracy k: {}", self.global_degeneracy));
-        let tw_mode = if self.node_positions.len() <= 24 {
-            "exact"
-        } else {
-            "min-fill UB"
-        };
-        ui.label(format!(
-            "Treewidth tw(G): {} ({tw_mode})",
-            self.global_treewidth
-        ));
-        ui.label(format!(
-            "Vertex Cover |C| (2-approx): {}",
-            self.vertex_cover_nodes.len()
-        ));
-        if ui
-            .checkbox(
-                &mut self.highlight_vertex_cover,
-                "Highlight Vertex Cover Modulator",
-            )
-            .changed()
-        {
-            self.bump_revision();
-        }
     }
 
     fn render_canvas(&self, parent_ui: &mut egui::Ui) {
@@ -365,13 +348,18 @@ impl NetworkMetricsTool {
         to_screen: &eframe::egui::emath::RectTransform,
         palette: &crate::app::SemanticPalette,
     ) {
-        for &(u, v, _) in &self.edges {
+        for &(u, v, w) in &self.edges {
             if let (Some(&pos_u), Some(&pos_v)) =
                 (self.node_positions.get(&u), self.node_positions.get(&v))
             {
+                let edge_color = if w < 0.0 {
+                    palette.error
+                } else {
+                    palette.graph_edge
+                };
                 let su = to_screen.transform_pos(pos_u);
                 let sv = to_screen.transform_pos(pos_v);
-                painter.line_segment([su, sv], (2.0, palette.graph_edge));
+                painter.line_segment([su, sv], (2.0, edge_color));
             }
         }
     }
@@ -442,40 +430,23 @@ impl InteractiveTool for NetworkMetricsTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let on_bus = self.synced_bus_revision.is_some();
-        let custom_topology = (!on_bus && self.is_custom_topology)
-            .then(|| self.export_shared_topology().to_compact_state());
-        serde_json::to_string(&NetworkMetricsState {
-            selected_metric: self.selected_metric,
-            highlight_vertex_cover: self.highlight_vertex_cover,
-            custom_topology,
-            topology_source: self.topology_source,
-        })
-        .ok()
+        self.save_metrics_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let loaded: NetworkMetricsState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid NetworkMetrics state: {e}"))?;
-        if let Some(compact) = &loaded.custom_topology {
-            compact.validate()?;
-            self.synced_bus_revision = None;
-            self.load_compact_topology(compact);
-        } else if self.is_custom_topology || self.synced_bus_revision.take().is_some() {
-            self.build_sample_graph();
-        }
-        self.selected_metric = loaded.selected_metric;
-        self.highlight_vertex_cover = loaded.highlight_vertex_cover;
-        self.topology_source = loaded.topology_source;
-        self.bump_revision();
-        self.compute_metrics();
-        Ok(())
+        self.load_metrics_state(state)
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let ctx = parent_ui.ctx().clone();
         self.sync_shared_topology(&ctx);
+        if !SharedSimulationBus::is_link_topology_enabled(&ctx) {
+            self.sync_from_bus(&ctx);
+        }
         self.render_side_panel(parent_ui);
+        if !SharedSimulationBus::is_link_topology_enabled(&ctx) {
+            self.sync_from_bus(&ctx);
+        }
         self.render_canvas(parent_ui);
     }
 }

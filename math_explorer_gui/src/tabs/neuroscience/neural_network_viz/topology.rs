@@ -13,8 +13,11 @@ impl NeuralNetworkVizTool {
     pub fn sync_shared_topology(&mut self, ctx: &egui::Context) {
         match SharedSimulationBus::active_graph_for(ctx, self.topology_source) {
             Some(snap) => {
-                if self.synced_bus_revision != Some(snap.revision) && self.apply_shared_graph(&snap)
+                if self.synced_bus_revision != Some(snap.revision)
+                    && self.apply_sim_bus_topology(&snap)
                 {
+                    self.active_shared_graph = None;
+                    self.applied_bus_revision = 0;
                     self.synced_bus_revision = Some(snap.revision);
                     self.bump_revision();
                 }
@@ -50,7 +53,7 @@ impl NeuralNetworkVizTool {
         self.sync_kuramoto_from_weight_matrix(spread);
     }
 
-    fn apply_shared_graph(&mut self, snap: &SharedGraphTopology) -> bool {
+    fn apply_sim_bus_topology(&mut self, snap: &SharedGraphTopology) -> bool {
         let raw_n = snap.node_count();
         if raw_n == 0 {
             return false;

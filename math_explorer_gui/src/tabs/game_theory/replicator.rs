@@ -1,7 +1,5 @@
 use crate::app::{SharedSimulationBus, TopologySource};
-use crate::framework::math_input::{
-    MathExpressionInputBar, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS,
-};
+use crate::framework::math_input::{MathExpressionInputBar, ParameterSliderBank};
 use crate::framework::{CalloutManager, CalloutSpec, InteractiveTool};
 use crate::presets::ReplicatorPresetConfig;
 use eframe::egui;
@@ -10,16 +8,51 @@ use math_explorer::applied::game_theory::evolutionary::{
     GraphReplicatorFitness, GraphUpdateRule, ReplicatorDynamics,
 };
 use nalgebra::{DMatrix, DVector};
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
+use symbolic::build_static_symbolic_grid;
 
 #[path = "replicator/presets.rs"]
 mod presets;
+#[path = "replicator/spatial.rs"]
+mod spatial;
+#[path = "replicator/symbolic.rs"]
+mod symbolic;
 #[path = "replicator/ui.rs"]
 mod ui;
 
 #[cfg(test)]
 #[path = "replicator/tests.rs"]
 mod tests;
+
+const fn default_true() -> bool {
+    true
+}
+
+fn is_true(v: &bool) -> bool {
+    *v
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReplicatorToolState {
+    payoff_matrix: Vec<Vec<f64>>,
+    initial_population: Vec<f64>,
+    time_horizon: f64,
+    dt: f64,
+    strategy_names: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    symbolic_payoffs: Option<Vec<Vec<String>>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    symbolic_params: BTreeMap<String, f64>,
+    #[serde(default, skip_serializing_if = "TopologySource::is_default")]
+    topology_source: TopologySource,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    follow_workspace_graph: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    seeded_graph: Option<crate::app::data_bus::SharedGraph>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    frozen_graph: Option<crate::app::data_bus::SharedGraph>,
+}
 
 pub struct ReplicatorDynamicsTool {
     payoff_matrix: DMatrix<f64>,
@@ -33,6 +66,7 @@ pub struct ReplicatorDynamicsTool {
     is_playing: bool,
     playback_speed: f64,
     callout_manager: CalloutManager,
+    spatial: spatial::SpatialReplicatorState,
     symbolic_mode: bool,
     pub(crate) symbolic_bars: Vec<Vec<MathExpressionInputBar>>,
     last_valid_exprs: Vec<Vec<Expr>>,
@@ -64,6 +98,7 @@ impl Default for ReplicatorDynamicsTool {
             is_playing: false,
             playback_speed: 1.0,
             callout_manager: CalloutManager::new(),
+            spatial: spatial::SpatialReplicatorState::default(),
             symbolic_mode: false,
             symbolic_bars: bars,
             last_valid_exprs: exprs,
@@ -77,62 +112,6 @@ impl Default for ReplicatorDynamicsTool {
         tool.run_simulation();
         tool
     }
-}
-
-pub(super) type SymbolicGrid = (Vec<Vec<MathExpressionInputBar>>, Vec<Vec<Expr>>);
-
-pub(super) fn build_static_symbolic_grid(formulas: &[&[&str]]) -> SymbolicGrid {
-    let mut bars = Vec::with_capacity(formulas.len());
-    let mut exprs = Vec::with_capacity(formulas.len());
-    for row in formulas {
-        let mut bar_row = Vec::with_capacity(row.len());
-        let mut expr_row = Vec::with_capacity(row.len());
-        for &cell in *row {
-            let bar = MathExpressionInputBar::new("", cell, Vec::new())
-                .with_axes(&[])
-                .with_inline_sliders(false);
-            let expr = bar.expr().cloned().unwrap_or(Expr::Number(0.0));
-            bar_row.push(bar);
-            expr_row.push(expr);
-        }
-        bars.push(bar_row);
-        exprs.push(expr_row);
-    }
-    (bars, exprs)
-}
-
-pub(super) fn compile_symbolic_exprs(
-    exprs: &[Vec<Expr>],
-    sliders: &mut ParameterSliderBank,
-) -> Result<Vec<Vec<Option<CompiledExpr>>>, String> {
-    let mut union_vars = BTreeSet::new();
-    for row in exprs {
-        for expr in row {
-            for v in expr.free_variables() {
-                union_vars.insert(v);
-            }
-        }
-    }
-    let discovered: Vec<String> = union_vars.into_iter().collect();
-    if discovered.len() > MAX_SYNTHESIZED_PARAMS {
-        return Err(format!(
-            "Payoff matrix defines {} free parameters (maximum {MAX_SYNTHESIZED_PARAMS})",
-            discovered.len()
-        ));
-    }
-    sliders.sync_names(&discovered);
-    let shared_refs: Vec<&str> = sliders.active_names().iter().map(String::as_str).collect();
-    let mut compiled_grid = Vec::with_capacity(exprs.len());
-    for row in exprs {
-        let mut compiled_row = Vec::with_capacity(row.len());
-        for expr in row {
-            let compiled = CompiledExpr::compile_with_vars_and_params(expr, &[], &shared_refs)
-                .map_err(|e| e.to_string())?;
-            compiled_row.push(Some(compiled));
-        }
-        compiled_grid.push(compiled_row);
-    }
-    Ok(compiled_grid)
 }
 
 impl ReplicatorDynamicsTool {
@@ -224,48 +203,13 @@ impl ReplicatorDynamicsTool {
                 .collect();
             self.playback_time = self.playback_time.clamp(0.0, self.time_horizon);
         }
+        self.recompute_spatial_trajectory();
     }
 
     pub(crate) fn run_simulation(&mut self) {
         self.recompute_trajectory_preserving_playback();
         self.playback_time = 0.0;
         self.is_playing = false;
-    }
-
-    pub(crate) fn sync_and_eval_symbolic_payoffs(&mut self) {
-        let rows = self.symbolic_bars.len();
-        for i in 0..rows {
-            for j in 0..self.symbolic_bars[i].len() {
-                if let Some(expr) = self.symbolic_bars[i][j].expr() {
-                    self.last_valid_exprs[i][j] = expr.clone();
-                }
-            }
-        }
-
-        match compile_symbolic_exprs(&self.last_valid_exprs, &mut self.symbolic_sliders) {
-            Ok(grid) => {
-                self.symbolic_compiled = grid;
-                self.symbolic_error = None;
-                self.evaluate_symbolic_matrix();
-            }
-            Err(err) => {
-                self.symbolic_error = Some(err);
-            }
-        }
-    }
-
-    pub(crate) fn evaluate_symbolic_matrix(&mut self) {
-        let params = self.symbolic_sliders.param_slice();
-        for (i, row) in self.symbolic_compiled.iter().enumerate() {
-            for (j, cell) in row.iter().enumerate() {
-                if let Some(compiled) = cell {
-                    let val = compiled.eval_slice(params);
-                    if val.is_finite() {
-                        self.payoff_matrix[(i, j)] = val.clamp(-1e4, 1e4);
-                    }
-                }
-            }
-        }
     }
 
     pub(crate) fn step_once(&mut self) {
@@ -368,7 +312,24 @@ impl InteractiveTool for ReplicatorDynamicsTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        serde_json::to_string(&self.export_config()).ok()
+        let cfg = self.export_config();
+        let frozen_graph = (!self.spatial.follow_workspace_graph)
+            .then(|| self.spatial.active_graph.as_ref().map(|g| (**g).clone()))
+            .flatten();
+        serde_json::to_string(&ReplicatorToolState {
+            payoff_matrix: cfg.payoff_matrix,
+            initial_population: cfg.initial_population,
+            time_horizon: cfg.time_horizon,
+            dt: cfg.dt,
+            strategy_names: cfg.strategy_names,
+            symbolic_payoffs: cfg.symbolic_payoffs,
+            symbolic_params: cfg.symbolic_params,
+            topology_source: cfg.topology_source,
+            follow_workspace_graph: self.spatial.follow_workspace_graph,
+            seeded_graph: self.spatial.seeded_graph.clone(),
+            frozen_graph,
+        })
+        .ok()
     }
 
     #[cfg(test)]
@@ -383,14 +344,49 @@ impl InteractiveTool for ReplicatorDynamicsTool {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.state_bounds().validate_json(state)?;
-        let config: ReplicatorPresetConfig = serde_json::from_str(state)
+        let s: ReplicatorToolState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid ReplicatorDynamicsTool state: {e}"))?;
-        self.apply_config(config)
+        for g in [&s.seeded_graph, &s.frozen_graph].into_iter().flatten() {
+            g.validate(
+                crate::app::data_bus::SESSION_MAX_BUS_NODES,
+                crate::app::data_bus::SESSION_MAX_BUS_EDGES,
+            )?;
+        }
+        self.apply_config(ReplicatorPresetConfig {
+            payoff_matrix: s.payoff_matrix,
+            initial_population: s.initial_population,
+            time_horizon: s.time_horizon,
+            dt: s.dt,
+            strategy_names: s.strategy_names,
+            symbolic_payoffs: s.symbolic_payoffs,
+            symbolic_params: s.symbolic_params,
+            topology_source: s.topology_source,
+        })?;
+        self.spatial.follow_workspace_graph = s.follow_workspace_graph;
+        self.spatial.seeded_graph = s.seeded_graph.clone();
+        self.spatial.pending_seed_publish =
+            s.seeded_graph.is_some() && s.topology_source == TopologySource::SharedBus;
+        if let Some(g) = s.frozen_graph.or(s.seeded_graph) {
+            self.apply_shared_game_graph(&std::sync::Arc::new(g));
+        } else if self.spatial.follow_workspace_graph
+            || self.topology_source == TopologySource::LocalPreset
+        {
+            self.spatial.active_graph = None;
+            self.spatial.applied_bus_revision = 0;
+            self.spatial.clamped_source_nodes = None;
+            self.spatial.trajectory.clear();
+        } else {
+            self.recompute_spatial_trajectory();
+        }
+        Ok(())
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let ctx = parent_ui.ctx().clone();
         self.sync_shared_topology(&ctx);
+        if !SharedSimulationBus::is_link_topology_enabled(&ctx) {
+            self.sync_spatial_from_bus(&ctx);
+        }
         if self.is_playing && !self.trajectory.is_empty() {
             let dt = f64::from(parent_ui.ctx().input(|i| i.stable_dt));
             self.playback_time += dt * self.playback_speed;

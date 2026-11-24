@@ -140,7 +140,8 @@ struct WireWorkspaceEnvelope {
 /// Validates that `json_str` fits within the 32,768-byte `#ws=...` preset cap, obeys structural
 /// nesting/array bounds, and contains only finite JSON numbers.
 pub fn validate_workspace_url_preset_json(json_str: &str) -> Result<(), String> {
-    validate_json_streaming_with_bounds(json_str, WORKSPACE_PRESET_JSON_BOUNDS)
+    validate_json_streaming_with_bounds(json_str, WORKSPACE_PRESET_JSON_BOUNDS)?;
+    crate::app::data_bus::validate_embedded_url_bus_json(json_str)
 }
 
 struct ValidatedWireHud {

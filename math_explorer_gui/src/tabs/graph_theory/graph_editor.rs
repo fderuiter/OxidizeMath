@@ -13,11 +13,15 @@ use std::collections::{BTreeMap, HashMap};
 
 pub mod braess;
 mod braess_host;
+mod brushes;
 mod bus_bridge;
+mod bus_sync;
+mod canvas;
 mod dataflow;
 mod io_export;
 mod keyboard;
 mod snapshot;
+
 pub use braess::{AffineLatency, BraessCongestionConfig, BraessCongestionLab};
 pub use io_export::editor_state_json_from_shared;
 #[allow(unused_imports)]
@@ -25,16 +29,19 @@ pub use keyboard::{TRANSLATE_STEP_NORMAL, TRANSLATE_STEP_SHIFT};
 #[allow(unused_imports)]
 pub use snapshot::{GraphSnapshot, SerializedGraphState, MAX_SNAPSHOTS};
 
-#[derive(PartialEq, Default)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
 pub(crate) enum EditorMode {
     #[default]
     AddNode,
     AddEdge,
+    ExcitatoryBrush,
+    InhibitoryBrush,
+    HubStamp,
+    SeverStroke,
     Remove,
 }
 
-/// Interactive graph editor with layouts and Braess congestion routing laboratory.
-#[derive(Default)]
+/// Interactive graph editor with tactile signed brushes and Braess congestion routing laboratory.
 pub struct GraphEditorTool {
     graph: Graph<Pos2, f64>,
     node_indices: HashMap<usize, NodeIndex>,
@@ -44,12 +51,18 @@ pub struct GraphEditorTool {
     pub(crate) edges: Vec<(usize, usize, f64)>,
     dragged_node: Option<usize>,
     mode: EditorMode,
+    brush_weight: f64,
+    hub_spokes: usize,
+    hub_inhibitory: bool,
+    brush_trail: Vec<Pos2>,
+    last_brushed_node: Option<usize>,
+    brush_stroke_undo_pushed: bool,
     hovered_node: Option<usize>,
     hovered_edge: Option<usize>,
     undo_stack: Vec<GraphSnapshot>,
     redo_stack: Vec<GraphSnapshot>,
-    canvas_id: Option<egui::Id>,
     pub(crate) revision: u64,
+    pub(crate) last_published_revision: u64,
     /// Publishes edges as directed `u -> v` connections on `SharedSimulationBus`.
     pub directed_edges: bool,
     /// Hosted Braess's paradox congestion routing laboratory.
@@ -57,16 +70,48 @@ pub struct GraphEditorTool {
     pub(crate) file_io: super::io_helpers::GraphFileIoState,
 }
 
+impl Default for GraphEditorTool {
+    fn default() -> Self {
+        Self {
+            graph: Graph::new(),
+            node_indices: HashMap::new(),
+            node_positions: BTreeMap::new(),
+            selected_node: None,
+            next_node_id: 0,
+            edges: Vec::new(),
+            dragged_node: None,
+            mode: EditorMode::AddNode,
+            brush_weight: 1.0,
+            hub_spokes: 5,
+            hub_inhibitory: false,
+            brush_trail: Vec::new(),
+            last_brushed_node: None,
+            brush_stroke_undo_pushed: false,
+            hovered_node: None,
+            hovered_edge: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            revision: 0,
+            last_published_revision: 0,
+            directed_edges: false,
+            braess: BraessCongestionLab::default(),
+            file_io: super::io_helpers::GraphFileIoState::default(),
+        }
+    }
+}
+
 impl InteractiveTool for GraphEditorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
     }
+
     fn name(&self) -> &'static str {
         "Graph Editor"
     }
     fn domain(&self) -> &'static str {
         "graph_theory"
     }
+
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::plot()
     }
@@ -84,7 +129,7 @@ impl InteractiveTool for GraphEditorTool {
     }
 
     fn has_finite_parameters(&self) -> bool {
-        self.check_finite_graph()
+        self.check_finite_graph() && self.brush_weight.is_finite()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -104,18 +149,15 @@ impl InteractiveTool for GraphEditorTool {
     }
 
     fn show_ui(&mut self, ui: &mut egui::Ui) {
+        self.sync_workspace_bus(ui.ctx());
         ui.heading("Graph Editor");
         ui.separator();
 
-        ui.horizontal(|ui| {
-            ui.radio_value(&mut self.mode, EditorMode::AddNode, "Add Node/Move");
-            ui.radio_value(&mut self.mode, EditorMode::AddEdge, "Add Edge");
-            ui.radio_value(&mut self.mode, EditorMode::Remove, "Remove");
-        });
+        self.render_mode_and_brush_controls(ui);
 
         ui.separator();
         self.show_undo_redo_toolbar(ui);
-        self.show_mode_instructions(ui);
+        self.render_mode_instructions(ui);
         ui.separator();
         self.show_clear_button(ui);
         ui.separator();
@@ -130,6 +172,7 @@ impl InteractiveTool for GraphEditorTool {
 
         let action = self.braess.show_sidebar(ui, &mut self.edges);
         self.apply_braess_action(action);
+        self.sync_workspace_bus(ui.ctx());
     }
 
     fn on_keyboard(&mut self, ctx: &InteractionContext) {
@@ -137,30 +180,44 @@ impl InteractiveTool for GraphEditorTool {
     }
 
     fn on_hover(&mut self, ctx: &InteractionContext) {
-        self.update_hover_targets(ctx.pointer_pos);
+        self.hovered_node = None;
+        self.hovered_edge = None;
+        if let Some(pos) = ctx.pointer_pos {
+            self.hovered_node = self.node_at_pos(pos, 15.0);
+            if self.hovered_node.is_none() {
+                self.hovered_edge = self.edge_at_pos(pos, 5.0);
+            }
+        }
     }
 
     fn on_drag(&mut self, ctx: &InteractionContext) {
-        if self.mode == EditorMode::AddNode {
-            if ctx.response.drag_started() {
-                if let Some(id) = self.hovered_node {
-                    self.push_undo_snapshot();
-                    self.dragged_node = Some(id);
-                }
-            }
-            if ctx.response.dragged() {
-                if let Some(dragged_id) = self.dragged_node {
-                    if let Some(node_pos) = self.node_positions.get_mut(&dragged_id) {
-                        *node_pos += ctx.delta;
-                        self.bump_revision();
+        match self.mode {
+            EditorMode::AddNode => {
+                if ctx.response.drag_started() {
+                    if let Some(id) = self.hovered_node {
+                        self.push_undo_snapshot();
+                        self.dragged_node = Some(id);
                     }
                 }
+                if ctx.response.dragged() {
+                    if let Some(dragged_id) = self.dragged_node {
+                        if let Some(node_pos) = self.node_positions.get_mut(&dragged_id) {
+                            *node_pos += ctx.delta;
+                            self.bump_revision();
+                        }
+                    }
+                }
+                if ctx.response.drag_stopped() {
+                    self.dragged_node = None;
+                }
             }
-            if ctx.response.drag_stopped() {
+            EditorMode::ExcitatoryBrush | EditorMode::InhibitoryBrush | EditorMode::SeverStroke => {
+                self.dragged_node = None;
+                self.handle_brush_or_sever_drag(ctx);
+            }
+            _ => {
                 self.dragged_node = None;
             }
-        } else {
-            self.dragged_node = None;
         }
     }
 
@@ -172,26 +229,26 @@ impl InteractiveTool for GraphEditorTool {
             return;
         };
         match self.mode {
-            EditorMode::AddNode => self.click_add_node(pos),
-            EditorMode::AddEdge => self.click_add_edge(),
-            EditorMode::Remove => self.click_remove(),
+            EditorMode::AddNode => {
+                self.click_add_node(pos);
+            }
+            EditorMode::AddEdge if self.braess.config.enabled => {
+                self.click_add_edge();
+            }
+            EditorMode::AddEdge | EditorMode::ExcitatoryBrush | EditorMode::InhibitoryBrush => {
+                self.handle_edge_click_selection();
+            }
+            EditorMode::HubStamp => {
+                self.stamp_hub_at(pos);
+            }
+            EditorMode::Remove | EditorMode::SeverStroke => {
+                self.click_remove();
+            }
         }
     }
 
     fn draw(&mut self, ui: &mut egui::Ui, response: &egui::Response, painter: &egui::Painter) {
-        self.configure_canvas_focus(ui, response);
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        let text_color = ui.visuals().text_color();
-        let window_stroke = ui.visuals().window_stroke();
-
-        self.draw_edges(painter, &palette, text_color);
-        self.draw_nodes(painter, &palette, window_stroke);
-        if self.braess.config.enabled {
-            self.braess
-                .draw_canvas_banner(painter, response.rect, &palette);
-        }
-        let _ = self.publish_shared_topology(ui.ctx());
-        self.publish_dataflow_topology(ui.ctx());
+        self.draw_graph_canvas(ui, response, painter);
     }
 }
 
@@ -203,65 +260,6 @@ impl GraphEditorTool {
     /// Returns true if a redo snapshot is available.
     pub fn can_redo(&self) -> bool {
         !self.redo_stack.is_empty()
-    }
-
-    fn show_mode_instructions(&mut self, ui: &mut egui::Ui) {
-        match self.mode {
-            EditorMode::AddNode => {
-                ui.label("Click empty space to add a node.");
-                ui.label("Drag nodes to move them.");
-            }
-            EditorMode::AddEdge => {
-                ui.label("Click a node to select it, then another to add an edge.");
-                ui.horizontal(|ui| {
-                    ui.label("New edge:");
-                    ui.add(
-                        egui::DragValue::new(&mut self.braess.new_edge_a)
-                            .speed(0.1)
-                            .range(0.0..=20.0)
-                            .prefix("a="),
-                    );
-                    ui.add(
-                        egui::DragValue::new(&mut self.braess.new_edge_b)
-                            .speed(0.1)
-                            .range(0.0..=20.0)
-                            .prefix("b="),
-                    );
-                });
-            }
-            EditorMode::Remove => {
-                ui.label("Click a node or an edge to remove it.");
-            }
-        }
-    }
-
-    fn update_hover_targets(&mut self, pointer_pos: Option<Pos2>) {
-        self.hovered_node = None;
-        self.hovered_edge = None;
-        let Some(pos) = pointer_pos else {
-            return;
-        };
-        for (&id, &node_pos) in &self.node_positions {
-            if (pos - node_pos).length() <= 15.0 {
-                self.hovered_node = Some(id);
-                return;
-            }
-        }
-        for (i, &(u, v, _)) in self.edges.iter().enumerate() {
-            if let (Some(&pos_u), Some(&pos_v)) =
-                (self.node_positions.get(&u), self.node_positions.get(&v))
-            {
-                let dir = pos_v - pos_u;
-                let len_sq = dir.length_sq();
-                if len_sq > 0.0 {
-                    let t = ((pos - pos_u).dot(dir) / len_sq).clamp(0.0, 1.0);
-                    if (pos - (pos_u + dir * t)).length() <= 5.0 {
-                        self.hovered_edge = Some(i);
-                        break;
-                    }
-                }
-            }
-        }
     }
 
     fn click_add_node(&mut self, pos: Pos2) {
@@ -282,80 +280,31 @@ impl GraphEditorTool {
             self.node_indices.insert(node_id, node_index);
             self.node_positions.insert(node_id, pos);
             self.next_node_id = next_id;
+            self.bump_revision();
         }
     }
 
-    fn draw_edges(
-        &self,
-        painter: &egui::Painter,
-        palette: &crate::app::SemanticPalette,
-        text_color: egui::Color32,
-    ) {
-        for (i, &(u, v, weight)) in self.edges.iter().enumerate() {
-            let (Some(&pos_u), Some(&pos_v)) =
-                (self.node_positions.get(&u), self.node_positions.get(&v))
-            else {
-                continue;
-            };
-            if braess_host::should_draw_congestion_edge(
-                self.braess.config.enabled,
-                &self.mode,
-                self.hovered_edge,
-                i,
-            ) {
-                self.braess
-                    .draw_congestion_edge(painter, palette, text_color, i, pos_u, pos_v);
-                continue;
+    fn handle_edge_click_selection(&mut self) {
+        let Some(clicked_id) = self.hovered_node else {
+            self.selected_node = None;
+            return;
+        };
+        let Some(selected_id) = self.selected_node else {
+            self.selected_node = Some(clicked_id);
+            return;
+        };
+        if selected_id != clicked_id {
+            let weight = self.active_signed_weight();
+            let exists_same = self.edges.iter().any(|&(u, v, w)| {
+                ((u == selected_id && v == clicked_id) || (v == selected_id && u == clicked_id))
+                    && (w - weight).abs() < 1e-9
+            });
+            if !exists_same {
+                self.push_undo_snapshot();
+                let _ = self.upsert_signed_edge(selected_id, clicked_id, weight);
             }
-            let color = if self.mode == EditorMode::Remove && self.hovered_edge == Some(i) {
-                palette.error
-            } else {
-                palette.graph_edge
-            };
-            painter.line_segment([pos_u, pos_v], (2.0, color));
-            let mid_point = pos_u + (pos_v - pos_u) * 0.5;
-            painter.text(
-                mid_point,
-                egui::Align2::CENTER_CENTER,
-                format!("{weight:.1}"),
-                egui::FontId::proportional(12.0),
-                text_color,
-            );
         }
-    }
-
-    fn draw_nodes(
-        &self,
-        painter: &egui::Painter,
-        palette: &crate::app::SemanticPalette,
-        window_stroke: egui::Stroke,
-    ) {
-        for (&id, &pos) in &self.node_positions {
-            let is_selected = self.selected_node == Some(id);
-            let is_hovered = self.hovered_node == Some(id);
-            let fill_color = if self.mode == EditorMode::Remove && is_hovered {
-                palette.error
-            } else if is_selected {
-                palette.success
-            } else {
-                palette.series_color(0)
-            };
-            painter.circle(pos, 15.0, fill_color, window_stroke);
-            let label = if self.braess.config.enabled && id == self.braess.config.source_node {
-                format!("{id}:s")
-            } else if self.braess.config.enabled && id == self.braess.config.sink_node {
-                format!("{id}:t")
-            } else {
-                id.to_string()
-            };
-            painter.text(
-                pos,
-                egui::Align2::CENTER_CENTER,
-                label,
-                egui::FontId::proportional(13.0),
-                crate::app::contrasting_text_color(fill_color),
-            );
-        }
+        self.selected_node = None;
     }
 
     fn show_undo_redo_toolbar(&mut self, ui: &mut egui::Ui) {
@@ -400,6 +349,7 @@ impl GraphEditorTool {
             self.braess.edge_latencies.clear();
             self.selected_node = None;
             self.next_node_id = 0;
+            self.bump_revision();
             if self.braess.config.enabled {
                 self.recompute_braess();
             }
@@ -450,6 +400,7 @@ impl GraphEditorTool {
             }
         }
         self.rebuild_graph();
+        self.bump_revision();
     }
 
     pub(crate) fn rebuild_graph(&mut self) {
@@ -473,5 +424,7 @@ impl GraphEditorTool {
 
 #[cfg(test)]
 mod bounds_tests;
+#[cfg(test)]
+mod brush_tests;
 #[cfg(test)]
 mod tests;
