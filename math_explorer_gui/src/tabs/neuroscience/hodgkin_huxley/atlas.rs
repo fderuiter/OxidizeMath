@@ -231,3 +231,56 @@ impl RegimeCartographer for HodgkinHuxleyCartographer {
         .collect()
     }
 }
+
+pub(super) struct HodgkinHuxleyUiExtension;
+
+impl crate::async_sim::unified::UnifiedUiExtension for HodgkinHuxleyUiExtension {
+    fn draw_side_panel_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        _latest_snapshot: Option<&crate::async_sim::StateSnapshot>,
+    ) -> Vec<crate::async_sim::SimCommand> {
+        #[cfg(feature = "pure_math")]
+        {
+            use crate::accessibility::AccessibleHoverText;
+            ui.separator();
+            if ui
+                .button("🧠 Open 3D Cortical Sheet (Riemannian Studio)")
+                .accessible_hover_text(
+                    "Launch 3D thickness-weighted Hodgkin-Huxley cortical wave propagation in Riemannian PDE Studio",
+                )
+                .clicked()
+            {
+                crate::tabs::geometry_topology::riemannian_studio::handoff::request_open_riemannian_preset(
+                    ui.ctx(),
+                    crate::tabs::geometry_topology::riemannian_studio::handoff::RiemannianPresetTarget::CorticalSpreadingDepression,
+                );
+            }
+        }
+        #[cfg(not(feature = "pure_math"))]
+        let _ = ui;
+        Vec::new()
+    }
+}
+
+impl scientific_metadata::theory::TheoryDescribable for HodgkinHuxleyUnified {
+    fn theory_description(&self) -> String {
+        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).theory_description()
+    }
+
+    fn phonetic_description(&self) -> String {
+        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).phonetic_description()
+    }
+
+    fn theory_citation(&self) -> String {
+        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).theory_citation()
+    }
+
+    fn available_descriptions(&self) -> HashMap<String, String> {
+        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).available_descriptions()
+    }
+
+    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
+        Self::parameters()
+    }
+}

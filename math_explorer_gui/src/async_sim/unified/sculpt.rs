@@ -118,6 +118,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 M::name()
             ));
         };
+        self.validate_constrained_param(&key, number)?;
         parsed_params.insert(key, number);
         Ok(())
     }

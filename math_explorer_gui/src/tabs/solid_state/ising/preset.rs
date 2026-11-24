@@ -115,6 +115,11 @@ pub(crate) struct IsingState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) running: Option<bool>,
     pub(crate) steps_per_frame: usize,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::app::TopologySource::is_default"
+    )]
+    pub(crate) topology_source: crate::app::TopologySource,
 }
 
 impl IsingState {
@@ -171,6 +176,7 @@ impl IsingModelTool {
             state: Some(self.worker.state()),
             running: None,
             steps_per_frame: self.steps_per_frame,
+            topology_source: self.topology_source,
         })
         .ok()
     }
@@ -197,7 +203,11 @@ impl IsingModelTool {
         self.defector_sea = s.defector_sea;
         self.droplet_seeds = s.droplet_seeds;
         self.steps_per_frame = s.steps_per_frame;
+        self.topology_source = s.topology_source;
         self.enforce_ising_challenge_locks();
+        if self.topology_source == crate::app::TopologySource::LocalPreset {
+            self.detach_shared_csr_graph(false);
+        }
         self.sync_shared_params();
         if self.defector_sea || !self.droplet_seeds.is_empty() {
             self.push_seed_layout_to_worker();
@@ -222,6 +232,21 @@ impl IsingModelTool {
         self.stepped_pixels = None;
         self.dirty = true;
         Ok(())
+    }
+
+    pub(super) fn record_droplet_seed(&mut self, seed: super::DropletSeed) {
+        if self.droplet_seeds.last() == Some(&seed) {
+            return;
+        }
+        let cap = if self.active_challenge.is_some() {
+            4
+        } else {
+            super::MAX_DROPLET_SEEDS
+        };
+        if self.droplet_seeds.len() >= cap {
+            self.droplet_seeds.remove(0);
+        }
+        self.droplet_seeds.push(seed);
     }
 }
 

@@ -98,10 +98,25 @@ fn test_exact_distance_equivalence_random_and_sparse() {
     let mut sp_off = vec![0_usize; FlatSpatialGrid::required_offsets_len(2)];
     let mut sp_sort = vec![[0.0_f64; 3]; 2];
     let sp_grid = FlatSpatialGrid::from_surface(&sparse, &mut sp_off, &mut sp_sort).unwrap();
-    for query in [[0.0, 0.0, 0.0], [250.0, -300.0, 15.0]] {
+    let owned_sparse = SpatialGrid::from_surface(&sparse);
+    let owned_surface = SpatialGrid::from_surface(&surface);
+    for query in [
+        [0.0, 0.0, 0.0],
+        [250.0, -300.0, 15.0],
+        [f64::INFINITY, 0.0, 0.0],
+    ] {
         let expected = naive_point_to_surface_distance(&query, &sparse);
         assert_eq!(expected, sp_grid.shortest_distance(&query));
+        assert_eq!(expected, owned_sparse.shortest_distance(&query));
     }
+    assert_eq!(
+        owned_surface.shortest_distance(&[0.5, 0.5, 0.5]),
+        grid.shortest_distance(&[0.5, 0.5, 0.5])
+    );
+    assert_eq!(
+        cortical_thickness_map(&surface, &sparse),
+        cortical_thickness_mesh(&surface, &sparse)
+    );
 }
 
 #[test]
