@@ -7,15 +7,15 @@
 //! - Radioactive Decay (Activity, Gamow Factor).
 //! - Nuclear Reactions (Q-Value, Breit-Wigner Resonance).
 
-#[allow(missing_docs)]
+/// Exponential radioactive decay laws, half-life activity, and Gamow alpha-tunneling factors.
 pub mod decay;
-#[allow(missing_docs)]
+/// Semi-empirical Bethe-Weizsäcker liquid-drop binding energy and spin-orbit shell models.
 pub mod models;
-#[allow(missing_docs)]
+/// Empirical nuclear charge radius $R = r_0 A^{1/3}$ and saturation nucleon density.
 pub mod properties;
-#[allow(missing_docs)]
+/// Reaction $Q$-values and single-level Breit-Wigner resonance cross sections.
 pub mod reactions;
-#[allow(missing_docs)]
+/// Validated `AtomicNumber` ($Z$), `MassNumber` ($A$), and `NuclearError` types.
 pub mod types;
 
 pub use models::{BindingEnergyModel, LiquidDropModel};

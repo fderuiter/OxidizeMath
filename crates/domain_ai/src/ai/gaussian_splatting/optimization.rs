@@ -1,13 +1,13 @@
+/// Adaptive density-control operation selected for a 3D Gaussian primitive during optimization.
 #[derive(Debug, PartialEq)]
-#[allow(missing_docs)]
 pub enum DensityAction {
-    #[allow(missing_docs)]
+    /// Duplicate an under-reconstructed small-scale Gaussian along its positional gradient.
     Clone,
-    #[allow(missing_docs)]
+    /// Subdivide an over-reconstructed large-scale Gaussian into two smaller Gaussians.
     Split,
-    #[allow(missing_docs)]
+    /// Remove a nearly transparent Gaussian whose opacity fell below the pruning threshold.
     Prune,
-    #[allow(missing_docs)]
+    /// Retain the Gaussian unchanged for the current optimization step.
     Keep,
 }
 

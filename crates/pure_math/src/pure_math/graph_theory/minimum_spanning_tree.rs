@@ -209,9 +209,15 @@ fn populate_and_validate_edges(
     Ok(())
 }
 
-/// Computes a minimum spanning tree (or forest) in-place with zero heap allocations after [`KruskalScratch::reserve_for`].
+/// Computes a minimum spanning forest $F^\star \in \arg\min_{F \subseteq E} \sum_{(u,v) \in F} w(u,v)$ in-place with zero heap allocations after [`KruskalScratch::reserve_for`].
 ///
-/// `out_selected_mask` must have length `edges.len()` and receives `true` for every accepted tree edge.
+/// Reference: Kruskal (1956), DOI: 10.1090/S0002-9939-1956-0078686-7; [`docs/math_specs/pure_math.md`](../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Deterministic in-place heapsort and union-by-rank with path halving bound disjoint-set depth to $O(\alpha(|V|))$ without tie-order drift or dynamic allocation.
+///
+/// # Domain of Validity
+/// Requires finite edge weights $w \in \mathbb{R}$, vertex endpoints $u, v < |V|$, pre-reserved `scratch` capacity for $(|V|, |E|)$, and `out_selected_mask.len() == edges.len()`.
 ///
 /// # Examples
 /// ```rust

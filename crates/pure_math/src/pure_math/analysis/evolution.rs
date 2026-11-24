@@ -8,20 +8,20 @@
 use rand::RngCore;
 use thiserror::Error;
 
+/// Enumeration `EvolutionError` classifying EvolutionError variants.
 #[derive(Debug, Clone, PartialEq, Error)]
-#[allow(missing_docs)]
 pub enum EvolutionError {
+    /// Variant `ConversionError` (ConversionError).
     #[error("Failed to convert numerical value")]
-    #[allow(missing_docs)]
     ConversionError,
+    /// Variant `BoundsError` (BoundsError).
     #[error("Loop bound exceeded")]
-    #[allow(missing_docs)]
     BoundsError,
+    /// Variant `InvalidState` (InvalidState).
     #[error("Invalid state")]
-    #[allow(missing_docs)]
     InvalidState,
+    /// Variant `OptimizationError` (OptimizationError).
     #[error("Optimization error")]
-    #[allow(missing_docs)]
     OptimizationError,
 }
 
@@ -53,13 +53,13 @@ pub trait EvolutionEngine<State, AuxState> {
     }
 }
 
-#[allow(missing_docs)]
+/// Trait `DoubleBufferedState` defining DoubleBufferedState operations.
 pub trait DoubleBufferedState {
-    #[allow(missing_docs)]
+    /// Computes `swap_buffers` (swap buffers).
     fn swap_buffers(&mut self);
 }
 
-#[allow(missing_docs)]
+/// Trait `DoubleBufferedEvolutionEngine` defining DoubleBufferedEvolutionEngine operations.
 pub trait DoubleBufferedEvolutionEngine<State: DoubleBufferedState, AuxState>:
     EvolutionEngine<State, AuxState>
 {
@@ -89,11 +89,11 @@ use super::ode::traits::{OdeSystem, Solver, VectorOperations};
 
 /// A unified wrapper that turns any OdeSystem and Solver pair into an EvolutionEngine.
 pub struct SystemEvolver<Sys, Sol> {
-    #[allow(missing_docs)]
+    /// Value for `system` (system).
     pub system: Sys,
-    #[allow(missing_docs)]
+    /// Value for `solver` (solver).
     pub solver: Sol,
-    #[allow(missing_docs)]
+    /// Value for `time` (time).
     pub time: f64,
 }
 

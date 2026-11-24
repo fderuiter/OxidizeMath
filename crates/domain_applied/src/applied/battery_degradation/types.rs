@@ -6,23 +6,23 @@ use std::ops::{Add, Div, Mul, Sub};
 macro_rules! impl_math_ops {
     ($name:ident) => {
         impl $name {
-            #[allow(missing_docs)]
+            /// Raises the underlying scalar value to power `n`, validating domain bounds.
             pub fn powf(&self, n: f64) -> Result<Self, BatteryError> {
                 Self::new(self.0.powf(n))
             }
-            #[allow(missing_docs)]
+            /// Computes the principal square root of the underlying scalar value, validating bounds.
             pub fn sqrt(&self) -> Result<Self, BatteryError> {
                 Self::new(self.0.sqrt())
             }
-            #[allow(missing_docs)]
+            /// Computes the natural logarithm of the underlying scalar value, validating bounds.
             pub fn ln(&self) -> Result<Self, BatteryError> {
                 Self::new(self.0.ln())
             }
-            #[allow(missing_docs)]
+            /// Computes the natural exponential of the underlying scalar value, validating bounds.
             pub fn exp(&self) -> Result<Self, BatteryError> {
                 Self::new(self.0.exp())
             }
-            #[allow(missing_docs)]
+            /// Computes the absolute value of the underlying scalar value, validating bounds.
             pub fn abs(&self) -> Result<Self, BatteryError> {
                 Self::new(self.0.abs())
             }
@@ -116,7 +116,7 @@ macro_rules! impl_math_ops {
 pub struct DepthOfDischarge(f64);
 
 impl DepthOfDischarge {
-    #[allow(missing_docs)]
+    /// Validates and constructs a `DepthOfDischarge` percentage in `[0.0, 100.0]`.
     #[verified_engine::verified]
     pub fn new(value: f64) -> Result<Self, BatteryError> {
         if !(0.0..=100.0).contains(&value) {
@@ -124,12 +124,12 @@ impl DepthOfDischarge {
         }
         Ok(Self(value))
     }
-    #[allow(missing_docs)]
+    /// Constructs a `DepthOfDischarge` clamped into `[0.0, 100.0]`.
     #[verified_engine::verified]
     pub fn new_clamped(value: f64) -> Self {
         Self(value.clamp(0.0, 100.0))
     }
-    #[allow(missing_docs)]
+    /// Returns the raw floating-point percentage in `[0.0, 100.0]`.
     #[verified_engine::verified]
     pub fn as_f64(&self) -> f64 {
         self.0
@@ -150,7 +150,7 @@ impl_math_ops!(DepthOfDischarge);
 pub struct Capacity(f64);
 
 impl Capacity {
-    #[allow(missing_docs)]
+    /// Validates and constructs a fractional state-of-health `Capacity` in `[0.0, 1.0]`.
     #[verified_engine::verified]
     pub fn new(value: f64) -> Result<Self, BatteryError> {
         if !(0.0..=1.0).contains(&value) {
@@ -158,12 +158,12 @@ impl Capacity {
         }
         Ok(Self(value))
     }
-    #[allow(missing_docs)]
+    /// Constructs a `Capacity` clamped into `[0.0, 1.0]`.
     #[verified_engine::verified]
     pub fn new_clamped(value: f64) -> Self {
         Self(value.clamp(0.0, 1.0))
     }
-    #[allow(missing_docs)]
+    /// Returns the raw normalized capacity fraction in `[0.0, 1.0]`.
     #[verified_engine::verified]
     pub fn as_f64(&self) -> f64 {
         self.0
@@ -184,7 +184,7 @@ impl_math_ops!(Capacity);
 pub struct Cycles(f64);
 
 impl Cycles {
-    #[allow(missing_docs)]
+    /// Validates and constructs a non-negative equivalent full `Cycles` count.
     #[verified_engine::verified]
     pub fn new(value: f64) -> Result<Self, BatteryError> {
         if value < 0.0 {
@@ -192,12 +192,12 @@ impl Cycles {
         }
         Ok(Self(value))
     }
-    #[allow(missing_docs)]
+    /// Constructs a `Cycles` count clamped to `>= 0.0`.
     #[verified_engine::verified]
     pub fn new_clamped(value: f64) -> Self {
         Self(value.max(0.0))
     }
-    #[allow(missing_docs)]
+    /// Returns the raw equivalent full cycle count.
     #[verified_engine::verified]
     pub fn as_f64(&self) -> f64 {
         self.0

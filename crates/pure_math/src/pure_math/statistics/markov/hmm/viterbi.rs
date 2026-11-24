@@ -5,7 +5,7 @@ use math_commons::math_kernel::types::Dimension;
 use nalgebra::RealField;
 use num_traits::ToPrimitive;
 
-#[allow(missing_docs)]
+/// Type alias `Result` used across this module.
 pub type Result<T> = std::result::Result<T, MarkovError>;
 
 /// Preallocated scratch buffers for zero-allocation log-domain Viterbi decoding.

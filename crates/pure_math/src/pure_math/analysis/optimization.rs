@@ -11,8 +11,8 @@ use thiserror::Error;
 /// Errors that can occur during optimization.
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum OptimizationError {
+    /// Variant `ConversionError` (ConversionError).
     #[error("Failed to convert numerical value")]
-    #[allow(missing_docs)]
     ConversionError,
     /// Dimension mismatch between prediction and target tensors during optimization.
     #[error("Dimension mismatch during optimization: expected {expected}, actual {actual}")]
@@ -33,19 +33,19 @@ pub enum OptimizationError {
     Evolution(#[from] EvolutionError),
 }
 
-#[allow(missing_docs)]
+#[doc = include_str!("../../../../../docs/math_specs/snippets/opt_l1_lsq.md")]
 pub struct L1RegularizedLeastSquares {
     lambda: f64,
 }
 
 impl L1RegularizedLeastSquares {
-    #[allow(missing_docs)]
+    /// Constructs an $L_1$-regularized least-squares objective with penalty weight `lambda`.
     #[verified_engine::verified]
     pub fn new(lambda: f64) -> Self {
         Self { lambda }
     }
 
-    #[allow(missing_docs)]
+    /// Evaluates $\frac{1}{2}\|A x - y\|_2^2 + \lambda \|x\|_1$.
     #[verified_engine::verified]
     pub fn cost(&mut self, a: &DMatrix<f64>, x: &DVector<f64>, y: &DVector<f64>) -> f64 {
         let residual = y - (a * x);
@@ -56,17 +56,16 @@ impl L1RegularizedLeastSquares {
     }
 }
 
-/// Strategy for updating parameters.
-/// Reimplemented via the Unified EvolutionEngine.
+#[doc = include_str!("../../../../../docs/math_specs/snippets/opt_optimizer.md")]
 pub trait Optimizer<T: RealField + Copy, Key = u64> {
-    #[allow(missing_docs)]
+    /// Computes `update_matrix` (update matrix).
     fn update_matrix(
         &mut self,
         key: Key,
         param: &mut DMatrix<T>,
         grad: &DMatrix<T>,
     ) -> Result<(), OptimizationError>;
-    #[allow(missing_docs)]
+    /// Computes `update_vector` (update vector).
     fn update_vector(
         &mut self,
         key: Key,
@@ -75,14 +74,14 @@ pub trait Optimizer<T: RealField + Copy, Key = u64> {
     ) -> Result<(), OptimizationError>;
 }
 
-#[allow(missing_docs)]
+#[doc = include_str!("../../../../../docs/math_specs/snippets/opt_sgd.md")]
 pub struct SGD<T> {
-    #[allow(missing_docs)]
+    /// Value for `learning_rate` (learning rate).
     pub learning_rate: T,
 }
 
 impl<T: RealField + Copy> SGD<T> {
-    #[allow(missing_docs)]
+    /// Constructs a stochastic gradient descent optimizer with step size `learning_rate`.
     #[verified_engine::verified]
     pub fn new(learning_rate: T) -> Self {
         Self { learning_rate }
@@ -220,13 +219,13 @@ impl<T: RealField + Copy, Key> Optimizer<T, Key> for SGD<T> {
     }
 }
 
-#[allow(missing_docs)]
+/// Data structure `AdamState` representing AdamState state.
 pub struct AdamState<T> {
-    #[allow(missing_docs)]
+    /// Value for `m` (m).
     pub m: DMatrix<T>,
-    #[allow(missing_docs)]
+    /// Value for `v` (v).
     pub v: DMatrix<T>,
-    #[allow(missing_docs)]
+    /// Value for `t` (t).
     pub t: i32,
 }
 
@@ -260,20 +259,20 @@ impl<T: RealField + Copy> AdamState2D<T> {
     }
 }
 
-#[allow(missing_docs)]
+#[doc = include_str!("../../../../../docs/math_specs/snippets/opt_adam.md")]
 pub struct Adam<T, Key>
 where
     Key: Eq + std::hash::Hash,
 {
-    #[allow(missing_docs)]
+    /// Value for `learning_rate` (learning rate).
     pub learning_rate: T,
-    #[allow(missing_docs)]
+    /// Value for `beta1` (beta1).
     pub beta1: T,
-    #[allow(missing_docs)]
+    /// Value for `beta2` (beta2).
     pub beta2: T,
-    #[allow(missing_docs)]
+    /// Value for `epsilon` (epsilon).
     pub epsilon: T,
-    #[allow(missing_docs)]
+    /// Value for `states` (states).
     pub states: HashMap<Key, AdamState<T>>,
 }
 
@@ -281,7 +280,7 @@ impl<T: RealField + Copy, Key> Adam<T, Key>
 where
     Key: Eq + std::hash::Hash + Clone,
 {
-    #[allow(missing_docs)]
+    /// Constructs an `Adam` optimizer with default moments ($\beta_1 = 0.9$, $\beta_2 = 0.999$, $\epsilon = 10^{-8}$).
     #[verified_engine::verified]
     pub fn new(lr: T) -> Result<Self, OptimizationError> {
         Ok(Self {
@@ -293,7 +292,7 @@ where
         })
     }
 
-    #[allow(missing_docs)]
+    /// Returns or initializes zeroed first/second moment accumulators for parameter `key`.
     #[verified_engine::verified]
     pub fn get_state(&mut self, key: Key, shape: (usize, usize)) -> &mut AdamState<T> {
         self.states.entry(key).or_insert_with(|| AdamState {
@@ -431,13 +430,13 @@ where
 /// Identifies the type of parameter being updated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ParamType {
-    #[allow(missing_docs)]
+    /// Variant `Weight` (Weight).
     Weight,
-    #[allow(missing_docs)]
+    /// Variant `Bias` (Bias).
     Bias,
 }
 
-/// Adapter Trait for model optimizers.
+#[doc = include_str!("../../../../../docs/math_specs/snippets/opt_model_opt.md")]
 pub trait ModelOptimizer<T: RealField + Copy>: Optimizer<T, (usize, ParamType)> {}
 
 impl<T: RealField + Copy, O> ModelOptimizer<T> for O where O: Optimizer<T, (usize, ParamType)> {}

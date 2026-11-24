@@ -172,8 +172,24 @@ fn lognormal_var_cvar_at(
     }
 }
 
-/// Computes exact closed-form log-normal wealth `95%` and `99%` `VaR` and `CVaR` dollar losses
-/// for a portfolio with weights `w` over `spec.horizon` years on `spec.bankroll`.
+/// Computes exact closed-form log-normal wealth `95%` and `99%` Value-at-Risk (`VaR`) and
+/// Conditional Value-at-Risk (`CVaR`) dollar losses for portfolio weights $\mathbf{w}$ over
+/// horizon $T$ (`spec.horizon`) on initial bankroll $W_0$ (`spec.bankroll`):
+/// $$\operatorname{VaR}_\alpha = W_0\Bigl(1 - \exp\bigl(\mu_g T + \sigma_p \sqrt{T}\,\Phi^{-1}(1 - \alpha)\bigr)\Bigr), \qquad \operatorname{CVaR}_\alpha = W_0\left(1 - \frac{\exp\bigl(\mu_g T + \tfrac{1}{2}\sigma_p^2 T\bigr)\,\Phi\bigl(\Phi^{-1}(1 - \alpha) - \sigma_p\sqrt{T}\bigr)}{1 - \alpha}\right),$$
+/// where $\mu_g = r + \mathbf{w}^\top(\boldsymbol{\mu} - r\mathbf{1}) - \tfrac{1}{2}\mathbf{w}^\top \Sigma \mathbf{w}$ and $\sigma_p = \sqrt{\mathbf{w}^\top \Sigma \mathbf{w}}$.
+///
+/// Reference: Rockafellar & Uryasev (2000), *J. Risk* 2(3), DOI: 10.21314/JOR.2000.038;
+/// [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Short-circuits deterministic zero-volatility portfolios ($\sigma_p \sqrt{T} \le 10^{-15}$) to
+/// $W_0(1 - e^{\mu_g T})$ to avoid $0/0$ tail-quantile conditioning and clamps quadratic variance
+/// $\mathbf{w}^\top \Sigma \mathbf{w} \ge 0$ against floating-point roundoff.
+///
+/// # Domain of Validity
+/// Requires $N \ge 1$ finite weights and expected returns, symmetric positive-definite $N \times N$
+/// `covariance`, finite `spec.risk_free_rate`, strictly positive `spec.bankroll > 0`, and strictly
+/// positive `spec.horizon > 0`.
 #[verified_engine::verified]
 pub fn parametric_lognormal_tail_risk(
     weights: &[f64],

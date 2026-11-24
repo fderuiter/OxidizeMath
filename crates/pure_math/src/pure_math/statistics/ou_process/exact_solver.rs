@@ -10,7 +10,20 @@ use oxidize_core::rng::OxidizeRng;
 use rand::Rng;
 use rand_distr::{Distribution, Normal};
 
-/// Exact Gaussian transition solver for the Ornstein-Uhlenbeck SDE.
+/// Exact discrete-time Gaussian transition solver for the scalar Ornstein-Uhlenbeck SDE
+/// $dX_t = \theta(\mu - X_t)\,dt + \sigma\,dW_t$, advancing
+/// $$X_{t+\Delta t} = \mu + (X_t - \mu)e^{-\theta\Delta t} + \sigma\sqrt{\frac{1 - e^{-2\theta\Delta t}}{2\theta}}\,Z, \qquad Z \sim \mathcal{N}(0, 1).$$
+///
+/// Reference: Gillespie (1996), *Exact numerical simulation of the Ornstein-Uhlenbeck process and its integral*,
+/// DOI: `10.1103/PhysRevE.54.2084`; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Unconditionally exact in distribution and contraction-stable for all $\Delta t > 0$, evaluating
+/// $1 - e^{-2\theta\Delta t} = -\operatorname{expm1}(-2\theta\Delta t)$ to eliminate catastrophic cancellation as $\theta\Delta t \to 0^+$.
+///
+/// # Domain of Validity
+/// Valid for finite initial states `x0`, validated [`OuParams`] ($\theta > 0$, $\sigma \ge 0$, finite $\mu$),
+/// and strictly positive finite [`TimeStep`] ($\Delta t > 0$).
 #[derive(Debug, Clone)]
 pub struct ExactOuSolver {
     params: OuParams,

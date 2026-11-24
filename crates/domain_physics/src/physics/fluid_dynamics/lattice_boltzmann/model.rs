@@ -7,20 +7,20 @@ use verified_engine::Theory;
 /// This uses the **Strategy Pattern** to decouple the solver logic from the
 /// specific lattice arrangement (D2Q9, D2Q5, etc.).
 pub trait Lattice2D<const Q: usize>: Copy + Clone + Send + Sync + 'static {
+    /// Quadrature weights $w_i$ satisfying $\sum_i w_i = 1$.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn weights() -> [f64; Q];
+    /// Discrete horizontal lattice velocity components $c_{ix} \in \{-1, 0, 1\}$.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn directions_x() -> [i32; Q];
+    /// Discrete vertical lattice velocity components $c_{iy} \in \{-1, 0, 1\}$.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn directions_y() -> [i32; Q];
+    /// Opposite direction lookup table $\bar{i}$ such that $\mathbf{c}_{\bar{i}} = -\mathbf{c}_i$.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn opposite_indices() -> [usize; Q];
+    /// Evaluates the truncated Maxwell-Boltzmann equilibrium distribution $f_i^{\text{eq}}(\rho, \mathbf{u})$.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn equilibrium(rho: f64, ux: f64, uy: f64) -> [f64; Q];
 }
 
@@ -82,14 +82,37 @@ impl Lattice2D<9> for D2Q9 {
     }
 }
 
-/// Trait defining the collision operator strategy.
+/// Trait defining the local mesoscopic collision operator $\Omega_i(f)$:
+/// $$f_i^{\star}(\mathbf{x}, t) = f_i(\mathbf{x}, t) + \Omega_i\!\left(f(\mathbf{x}, t)\right)$$
+///
+/// Reference: Bhatnagar, Gross & Krook (1954), DOI: `10.1103/PhysRev.94.511`; see
+/// [`docs/math_specs/domain_physics.md`](../../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Collision operators must conserve mass $\sum_i \Omega_i = 0$ and momentum $\sum_i \mathbf{c}_i \Omega_i = \mathbf{0}$
+/// and satisfy H-theorem / over-relaxation positivity bounds (e.g. $\tau > 1/2$ for BGK).
+///
+/// # Domain of Validity
+/// Low-Mach weakly compressible lattice flows ($\text{Ma} = |\mathbf{u}| / c_s \lesssim 0.3$) with $\rho > 0$.
 pub trait CollisionModel<const Q: usize, L: Lattice2D<Q>> {
     /// Applies the collision operator to the distribution function `f`.
     #[verified_engine::verified]
     fn apply(&self, f: &mut [f64; Q], rho: f64, ux: f64, uy: f64);
 }
 
-/// BGK Collision Model.
+/// Bhatnagar-Gross-Krook (BGK) single-relaxation-time collision operator:
+/// $$f_i^{\star} = \left(1 - \frac{1}{\tau}\right) f_i + \frac{1}{\tau} f_i^{\text{eq}}(\rho, \mathbf{u}), \qquad \nu = c_s^2\!\left(\tau - \frac{1}{2}\right)$$
+///
+/// Reference: Bhatnagar, Gross & Krook (1954), DOI: `10.1103/PhysRev.94.511`; Qian, d'Humières &
+/// Lallemand (1992), DOI: `10.1209/0295-5075/17/6/001`; see
+/// [`docs/math_specs/domain_physics.md`](../../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Linearly stable only for $\tau > 0.5$ (positive kinematic viscosity $\nu > 0$); near $\tau \to 0.5^+$
+/// non-hydrodynamic ghost modes become under-damped unless grid resolution scales with Reynolds number.
+///
+/// # Domain of Validity
+/// Single-phase Newtonian lattice flows with $\tau > 0.5$, $\rho > 0$, and $|\mathbf{u}| \ll c_s = 1/\sqrt{3}$.
 #[derive(Debug, Clone, Copy, Theory)]
 #[theory(
     description = "Bhatnagar-Gross-Krook (BGK) collision operator for single relaxation time.",
@@ -113,9 +136,18 @@ impl<const Q: usize, L: Lattice2D<Q>> CollisionModel<Q, L> for BgkCollision {
     }
 }
 
-/// Generic Lattice Boltzmann Solver.
+/// Generic Lattice Boltzmann Solver evolving discrete particle populations via collide-and-stream:
+/// $$f_i(\mathbf{x} + \mathbf{c}_i \Delta t, t + \Delta t) = f_i(\mathbf{x}, t) + \Omega_i\!\left(f(\mathbf{x}, t)\right)$$
 ///
-/// Implements the discrete streaming and collision steps to simulate fluid dynamics.
+/// Reference: Qian, d'Humières & Lallemand (1992), DOI: `10.1209/0295-5075/17/6/001`; Succi (2001),
+/// [`docs/math_specs/domain_physics.md`](../../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Requires relaxation time $\tau > 0.5$ and low lattice Mach number $|\mathbf{u}| \lesssim 0.15$
+/// to preserve positive populations $f_i \ge 0$ and second-order Navier-Stokes Chapman-Enskog accuracy.
+///
+/// # Domain of Validity
+/// Weakly compressible isothermal 2D flows on uniform Cartesian lattices with bounce-back obstacles.
 ///
 /// # Examples
 ///
@@ -152,7 +184,7 @@ pub struct LatticeBoltzmann<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q
     pub state: LatticeState<Q>,
     /// Collision Strategy
     pub collision_model: C,
-    #[allow(missing_docs)]
+    /// Zero-sized type marker binding the discrete lattice geometry `L`.
     pub _marker: PhantomData<L>,
 }
 

@@ -53,6 +53,17 @@ pub fn theoretical_steady_state_roughness_sq_1d(
 }
 
 /// 1D Edwards-Wilkinson linear stochastic interface model $\partial_t h = \nu \partial_{xx} h + \eta$.
+///
+/// Reference: Edwards & Wilkinson (1982), *Proc. R. Soc. Lond. A* 381, DOI: 10.1098/rspa.1982.0056;
+/// [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// [`Self::step_fourier`] damps linear modes via $(1 + \nu k^2 \Delta t)^{-1}$ unconditionally in `dt`,
+/// whereas explicit [`Self::step_stencil`] requires $\nu \Delta t / \Delta x^2 \le \frac{1}{2}$.
+///
+/// # Domain of Validity
+/// Requires `n >= 4` (power-of-two with `BoundaryCondition::Periodic` for [`Self::step_fourier`]),
+/// `dx > 0`, `nu > 0`, `noise_intensity >= 0`, and `dt >= 0`.
 #[derive(Debug, Clone)]
 pub struct EdwardsWilkinson1D {
     h: Vec<f64>,
@@ -191,6 +202,17 @@ impl EdwardsWilkinson1D {
 }
 
 /// 2D Edwards-Wilkinson linear stochastic surface model $\partial_t h = \nu \nabla^2 h + \eta$.
+///
+/// Reference: Edwards & Wilkinson (1982), *Proc. R. Soc. Lond. A* 381, DOI: 10.1098/rspa.1982.0056;
+/// [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// [`Self::step_fourier`] damps modes implicitly via $(1 + \nu |\mathbf{k}|^2 \Delta t)^{-1}$, whereas
+/// explicit [`Self::step_stencil`] requires $\nu \Delta t(\Delta x^{-2} + \Delta y^{-2}) \le \frac{1}{2}$.
+///
+/// # Domain of Validity
+/// Requires `width >= 4`, `height >= 4` (power-of-two with `BoundaryCondition::Periodic` for [`Self::step_fourier`]),
+/// `dx, dy > 0`, `nu > 0`, `noise_intensity >= 0`, and `dt >= 0`.
 #[derive(Debug, Clone)]
 pub struct EdwardsWilkinson2D {
     h: Vec<f64>,

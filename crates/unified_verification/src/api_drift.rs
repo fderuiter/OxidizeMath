@@ -7,7 +7,7 @@ use traversal::traverse_crate_root_with_cache;
 
 mod facade;
 pub(crate) mod semver_lock;
-mod traversal;
+pub(crate) mod traversal;
 mod visitor;
 
 #[cfg(test)]

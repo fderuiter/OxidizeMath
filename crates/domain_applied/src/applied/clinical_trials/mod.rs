@@ -70,15 +70,15 @@
 //! }
 //! ```
 
-#[allow(missing_docs)]
+/// Relative risk and odds ratio estimators with log-Wald confidence intervals.
 pub mod analysis;
-#[allow(missing_docs)]
+/// Simple, permuted-block, and covariate-stratified randomization strategies.
 pub mod design;
-#[allow(missing_docs)]
+/// Pooled two-sample Student's $t$-tests and $2 \times 2$ Pearson $\chi^2$ tests.
 pub mod hypothesis_testing;
-#[allow(missing_docs)]
+/// Power and minimum per-arm sample-size formulas for means and proportions.
 pub mod sample_size;
-#[allow(missing_docs)]
+/// Non-parametric Kaplan-Meier survival curves and Greenwood standard errors.
 pub mod survival_analysis;
 pub mod types;
 

@@ -29,8 +29,8 @@ pub fn bounded_exp(x: f64) -> f64 {
     libm::exp(x)
 }
 
+/// Implements checked scalar multiplication/division or delegating binary operators for wrapper types.
 #[macro_export]
-#[allow(missing_docs)]
 macro_rules! impl_binop {
     ($name:ident) => {
         impl ::core::ops::Mul<f64> for $name {
@@ -112,27 +112,27 @@ macro_rules! define_bounded_float {
                 self.0
             }
 
-            #[allow(missing_docs)]
+            /// Raises the bounded value to the floating-point power `n`, validating bounds.
             pub fn powf(&self, n: f64) -> ::core::result::Result<Self, $crate::error::MathError> {
                 Self::new($crate::primitives::bounded_powf(self.0, n))
             }
 
-            #[allow(missing_docs)]
+            /// Computes the principal square root, validating bounds on the result.
             pub fn sqrt(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
                 Self::new($crate::primitives::bounded_sqrt(self.0))
             }
 
-            #[allow(missing_docs)]
+            /// Computes the natural logarithm, validating bounds on the result.
             pub fn ln(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
                 Self::new($crate::primitives::bounded_ln(self.0))
             }
 
-            #[allow(missing_docs)]
+            /// Computes the base-$e$ exponential, validating bounds on the result.
             pub fn exp(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
                 Self::new($crate::primitives::bounded_exp(self.0))
             }
 
-            #[allow(missing_docs)]
+            /// Computes the absolute value, validating bounds on the result.
             pub fn abs(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
                 Self::new(self.0.abs())
             }
@@ -187,27 +187,27 @@ macro_rules! define_strictly_bounded_float {
                 self.0
             }
 
-            #[allow(missing_docs)]
+            /// Raises the strictly bounded value to the floating-point power `n`, validating bounds.
             pub fn powf(&self, n: f64) -> ::core::result::Result<Self, $crate::error::MathError> {
                 Self::new($crate::primitives::bounded_powf(self.0, n))
             }
 
-            #[allow(missing_docs)]
+            /// Computes the principal square root, validating strict bounds on the result.
             pub fn sqrt(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
                 Self::new($crate::primitives::bounded_sqrt(self.0))
             }
 
-            #[allow(missing_docs)]
+            /// Computes the natural logarithm, validating strict bounds on the result.
             pub fn ln(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
                 Self::new($crate::primitives::bounded_ln(self.0))
             }
 
-            #[allow(missing_docs)]
+            /// Computes the base-$e$ exponential, validating strict bounds on the result.
             pub fn exp(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
                 Self::new($crate::primitives::bounded_exp(self.0))
             }
 
-            #[allow(missing_docs)]
+            /// Computes the absolute value, validating strict bounds on the result.
             pub fn abs(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
                 Self::new(self.0.abs())
             }

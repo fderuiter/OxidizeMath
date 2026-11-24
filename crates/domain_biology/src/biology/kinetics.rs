@@ -32,18 +32,33 @@
 
 use thiserror::Error;
 
+/// Validation errors raised when evaluating enzymatic [`KineticsModel`] rates.
 #[derive(Error, Debug, PartialEq)]
-#[allow(missing_docs)]
 pub enum KineticsError {
+    /// Substrate concentration $\[S\]$ was strictly negative.
     #[error("Substrate concentration cannot be negative")]
-    #[allow(missing_docs)]
     NegativeSubstrateConcentration,
+    /// Maximal velocity $V_{\max}$, half-saturation $K_m$, or cooperativity $n$ was negative.
     #[error("Parameters must be non-negative")]
-    #[allow(missing_docs)]
     InvalidParameters,
 }
 
-/// Defines the interface for kinetic models.
+/// Steady-state enzymatic reaction velocity interface mapping substrate concentration $\[S\]$ to rate $v(\[S\])$.
+///
+/// Canonical saturating Hill / Michaelis-Menten rate law:
+/// $$v(\[S\]) = \frac{V_{\max} \[S\]^n}{K_m^n + \[S\]^n}$$
+///
+/// Reference: Michaelis & Menten (1913), *Biochem. Z.* 49:333–369; Hill (1910), DOI:
+/// `10.1113/jphysiol.1910.sp001406`; see
+/// [`docs/math_specs/domain_biology.md`](../../../../docs/math_specs/domain_biology.md).
+///
+/// # Stability
+/// Rational evaluation $V_{\max} \[S\]^n / (K_m^n + \[S\]^n)$ is bounded in $[0, V_{\max}]$ for
+/// $\[S\] \ge 0$ and guards the degenerate $K_m = \[S\] = 0$ limit to `0.0` without division by zero.
+///
+/// # Domain of Validity
+/// Quasi-steady-state well-mixed enzyme kinetics with $\[S\] \ge 0$, $V_{\max} \ge 0$, $K_m \ge 0$,
+/// and cooperativity exponent $n \ge 0$.
 pub trait KineticsModel {
     /// Calculates the reaction velocity for a given substrate concentration $\[S\]$.
     #[verified_engine::verified]

@@ -1,6 +1,19 @@
 use super::traits::PharmacokineticModel;
 
-/// A model that calculates the concentration resulting from multiple doses using the principle of superposition.
+/// Multi-dose linear pharmacokinetic superposition model.
+///
+/// $$
+/// C(t) = \sum_{k:\, t_k \le t} C_1(t - t_k)
+/// $$
+///
+/// Reference: Bateman (1910), DOI: 10.1017/S0305004100019988;
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Causal summation skips future doses ($t_k > t$) so exponential elimination terms remain bounded in $(0, 1]$.
+///
+/// # Domain of Validity
+/// Valid for linear (dose-proportional, time-invariant) ADME kinetics with finite administration times $t_k$.
 #[derive(Debug, Clone)]
 pub struct SuperpositionModel<M> {
     /// The underlying model for a single dose.

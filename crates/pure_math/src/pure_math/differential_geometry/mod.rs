@@ -1,14 +1,14 @@
 pub mod buckled_flow;
 pub mod cotangent_mesh;
-#[allow(missing_docs)]
+/// Submodule providing `heat_equation` types, traits, and algorithms.
 pub mod heat_equation;
 /// Intrinsic hyperbolic geometry on the Poincaré and Beltrami-Klein disks via $\mathrm{SU}(1,1)$.
 pub mod hyperbolic;
-#[allow(missing_docs)]
+/// Submodule providing `mean_curvature_flow` types, traits, and algorithms.
 pub mod mean_curvature_flow;
-#[allow(missing_docs)]
+/// Submodule providing `operators` types, traits, and algorithms.
 pub mod operators;
-#[allow(missing_docs)]
+/// Submodule providing `surface` types, traits, and algorithms.
 pub mod surface;
 
 pub use cotangent_mesh::CotangentLaplacian;

@@ -6,18 +6,15 @@ pub use pure_math::pure_math::analysis::optimization::{
     Optimizer as GenericOptimizer, ParamType, SGD,
 };
 
-// Type alias to maintain backward compatibility for Adam
-// The generic Adam now takes a Key, so we fix it to (usize, ParamType) for the AI module.
-#[allow(missing_docs)]
+use crate::error::AIError;
+
+/// Specialized [`GenericAdam`] optimizer keyed by `(layer_index, ParamType)` for neural layers.
 pub type Adam<T> = GenericAdam<T, (usize, ParamType)>;
 
 /// Mean Squared Error (MSE) Loss function.
 /// Used primarily for Regression.
 ///
-/// J(\theta) = \frac{1}{n} \sum_{i=1}^{n} (y^{(i)} - \hat{y}^{(i)})^2
-use crate::error::AIError;
-
-#[allow(missing_docs)]
+/// $$J(\theta) = \frac{1}{n} \sum_{i=1}^{n} \left(y^{(i)} - \hat{y}^{(i)}\right)^2$$
 #[verified_engine::verified]
 pub fn mean_squared_error<T: RealField + Copy>(
     y_pred: &DVector<T>,

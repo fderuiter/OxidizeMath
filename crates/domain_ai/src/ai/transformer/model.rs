@@ -7,9 +7,24 @@ use crate::ai::transformer::traits::{AttentionMechanism, FeedForwardNetwork, Nor
 
 use verified_engine::Theory;
 
-/// The full Transformer model container.
+/// The full sequence-to-sequence Transformer encoder-decoder container.
 ///
-/// #  Architecture
+/// Composes stacked multi-head scaled dot-product attention and position-wise feed-forward sublayers:
+///
+/// $$\mathrm{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \mathrm{softmax}\!\left(\frac{\mathbf{Q}\mathbf{K}^\top}{\sqrt{d_k}}\right)\mathbf{V}, \qquad \mathrm{FFN}(\mathbf{x}) = \max(\mathbf{0}, \mathbf{x}\mathbf{W}_1 + \mathbf{b}_1)\mathbf{W}_2 + \mathbf{b}_2$$
+///
+/// Reference: Vaswani et al. (2017), arXiv:1706.03762; see
+/// [`docs/math_specs/domain_ai.md`](../../../../../docs/math_specs/domain_ai.md).
+///
+/// # Stability
+/// Scaling logits by $1/\sqrt{d_k}$ keeps attention dot-product variance $O(1)$, preventing
+/// softmax saturation, while residual connections and [`LayerNorm`] bound hidden-state norms across depth.
+///
+/// # Domain of Validity
+/// Non-empty 2D token embedding matrices `(seq_len, d_model)` with finite entries and positive
+/// embedding dimension `d_model` divisible by the configured attention head count $h \ge 1$.
+///
+/// # Architecture
 ///
 /// This struct acts as a **high-level container** for the `Encoder` and `Decoder` stacks.
 /// It provides the structural skeleton of a Transformer but leaves specific pipeline details

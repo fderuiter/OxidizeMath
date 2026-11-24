@@ -31,19 +31,26 @@ impl LaplaceEquation2D {
     }
 }
 
-/// Solves Laplace equation on a rectangular domain with Dirichlet boundary conditions using Fourier series.
-/// Currently assumes $u(0,y)=0, u(a,y)=0, u(x,0)=0, u(x,b)=f(x)$.
+/// Analytical Fourier sine-series solver for the 2D Laplace equation $\Delta u = \partial_{xx} u + \partial_{yy} u = 0$ on $(0, a) \times (0, b)$.
+///
+/// Reference: Evans (2010), *Partial Differential Equations*, DOI: 10.1090/gsm/019; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Evaluates normalized $\sinh(n\pi y / a) / \sinh(n\pi b / a)$ ratios in log/attenuated form to avoid hyperbolic overflow at high harmonic indices $n$.
+///
+/// # Domain of Validity
+/// Valid on finite rectangles with $a > 0$, $b > 0$ and piecewise-smooth Dirichlet boundary profiles.
 pub struct RectangularLaplaceSolver {
-    #[allow(missing_docs)]
+    /// Value for `width` (width).
     pub width: f64, // a
-    #[allow(missing_docs)]
+    /// Value for `height` (height).
     pub height: f64, // b
-    #[allow(missing_docs)]
+    /// Value for `coefficients` (coefficients).
     pub coefficients: Vec<f64>, // A_n coefficients
 }
 
 impl RectangularLaplaceSolver {
-    #[allow(missing_docs)]
+    /// Evaluates the 2D Fourier-hyperbolic harmonic expansion at `(x, y)`.
     #[verified_engine::verified]
     pub fn evaluate(&self, x: f64, y: f64) -> f64 {
         let mut u = 0.0;

@@ -2,7 +2,11 @@
 
 use super::runner::{AtlasPassMeta, AtlasRenderRequest, AtlasRunner, DEFAULT_ATLAS_SIDE};
 use super::{AtlasCell, RegimeCartographer, ATLAS_STRIDES};
-use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, StateSnapshot};
+#[cfg(target_arch = "wasm32")]
+use crate::async_sim::SimulationRunner;
+use crate::async_sim::StateSnapshot;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -28,6 +32,7 @@ pub struct ParameterAtlasController {
     axis_pair_options: Vec<(&'static str, &'static str)>,
     selected_pair_idx: usize,
     visible: bool,
+    suspended: bool,
     dirty: bool,
     raster_size: (usize, usize),
     context_signature: Option<u64>,
@@ -41,7 +46,10 @@ pub struct ParameterAtlasController {
     pub(super) keyboard_cursor: Option<[f64; 2]>,
     shared_request: Option<Arc<RwLock<AtlasRenderRequest>>>,
     latest_generation: Arc<AtomicU64>,
+    #[cfg(not(target_arch = "wasm32"))]
     worker: Option<BackgroundWorker<AtlasRunner>>,
+    #[cfg(target_arch = "wasm32")]
+    wasm_runner: Option<AtlasRunner>,
 }
 
 impl ParameterAtlasController {
@@ -52,6 +60,7 @@ impl ParameterAtlasController {
             axis_pair_options,
             selected_pair_idx: 0,
             visible: false,
+            suspended: false,
             dirty: true,
             raster_size: (DEFAULT_ATLAS_SIDE, DEFAULT_ATLAS_SIDE),
             context_signature: None,
@@ -65,7 +74,10 @@ impl ParameterAtlasController {
             keyboard_cursor: None,
             shared_request: None,
             latest_generation: Arc::new(AtomicU64::new(0)),
+            #[cfg(not(target_arch = "wasm32"))]
             worker: None,
+            #[cfg(target_arch = "wasm32")]
+            wasm_runner: None,
         }
     }
 
@@ -84,11 +96,30 @@ impl ParameterAtlasController {
         self.visible = visible;
         if visible {
             self.dirty = true;
-        } else if let Some(worker) = &mut self.worker {
-            if worker.is_running() {
-                let _ = worker.send_command(SimCommand::Pause);
+        } else {
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(worker) = &mut self.worker {
+                if worker.is_running() {
+                    let _ = worker.send_command(SimCommand::Pause);
+                }
             }
         }
+    }
+
+    /// Suspends or resumes any background [`AtlasRunner`] worker when the host pane/tool hides or shows.
+    pub fn set_suspended(&mut self, suspended: bool) {
+        self.suspended = suspended;
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(worker) = &mut self.worker {
+            worker.set_suspended(suspended);
+        }
+    }
+
+    #[cfg(test)]
+    #[inline]
+    #[must_use]
+    pub fn is_suspended(&self) -> bool {
+        self.suspended
     }
 
     /// Available `(x_key, y_key)` axis pairs supported by the host tool.
@@ -281,9 +312,21 @@ impl ParameterAtlasController {
 
         let shared_ref = Arc::clone(self.shared_request.as_ref().expect("initialized above"));
         let latest_ref = Arc::clone(&self.latest_generation);
+        self.dispatch_platform_runner(shared_ref, latest_ref);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn dispatch_platform_runner(
+        &mut self,
+        shared_ref: Arc<RwLock<AtlasRenderRequest>>,
+        latest_ref: Arc<AtomicU64>,
+    ) {
         match &mut self.worker {
             None => {
-                let mut w = BackgroundWorker::new(AtlasRunner::new(shared_ref, latest_ref));
+                let mut w = BackgroundWorker::new_with_suspended(
+                    AtlasRunner::new(shared_ref, latest_ref),
+                    self.suspended,
+                );
                 let _ = w.send_command(SimCommand::Start);
                 self.worker = Some(w);
             }
@@ -295,11 +338,27 @@ impl ParameterAtlasController {
                     let _ = w.send_command(SimCommand::Custom("cancel_pass".to_string()));
                 }
                 SimWorkerState::Faulted | SimWorkerState::Terminated => {
-                    *w = BackgroundWorker::new(AtlasRunner::new(shared_ref, latest_ref));
+                    w.replace_runner(AtlasRunner::new(shared_ref, latest_ref));
                     let _ = w.send_command(SimCommand::Start);
                 }
                 SimWorkerState::Uninitialized | SimWorkerState::Stepping => {}
             },
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn dispatch_platform_runner(
+        &mut self,
+        shared_ref: Arc<RwLock<AtlasRenderRequest>>,
+        latest_ref: Arc<AtomicU64>,
+    ) {
+        match &mut self.wasm_runner {
+            None => {
+                self.wasm_runner = Some(AtlasRunner::new(shared_ref, latest_ref));
+            }
+            Some(runner) => {
+                let _ = runner.sync_request();
+            }
         }
     }
 
@@ -323,7 +382,11 @@ impl ParameterAtlasController {
             let cartographer = build_cartographer(keys);
             self.dispatch_generation(cartographer);
         }
+        self.poll_platform_runner(ctx);
+    }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    fn poll_platform_runner(&mut self, ctx: &egui::Context) {
         let new_snapshot = self
             .worker
             .as_mut()
@@ -349,8 +412,36 @@ impl ParameterAtlasController {
             }
         }
     }
+
+    #[cfg(target_arch = "wasm32")]
+    fn poll_platform_runner(&mut self, ctx: &egui::Context) {
+        let mut snap_to_upload = None;
+        if let Some(runner) = &mut self.wasm_runner {
+            if !self.suspended && self.completed_generation != self.request_generation {
+                let (budget, shared_with_workers) =
+                    crate::async_sim::wasm_scheduler::allocate_inline_slice_budget();
+                let slice_start = crate::web_io::PlatformInstant::now();
+                runner.step_sliced(Some(budget));
+                if shared_with_workers {
+                    crate::async_sim::wasm_scheduler::record_worker_slice_elapsed(
+                        slice_start.elapsed(),
+                    );
+                }
+                snap_to_upload = Some(runner.get_snapshot());
+            } else if self.texture.is_none() {
+                snap_to_upload = Some(runner.get_snapshot());
+            }
+        }
+        if let Some(snap) = snap_to_upload {
+            self.upload_snapshot(ctx, &snap);
+        }
+        if !self.suspended && self.completed_generation != self.request_generation {
+            ctx.request_repaint();
+        }
+    }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn clone_snapshot_lightweight(s: &StateSnapshot) -> StateSnapshot {
     let meta = s
         .structured_data

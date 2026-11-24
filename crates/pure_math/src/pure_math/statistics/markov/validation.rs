@@ -1,5 +1,5 @@
 use crate::error::MarkovError;
-#[allow(missing_docs)]
+/// Type alias `Result` used across this module.
 pub type Result<T> = std::result::Result<T, MarkovError>;
 use nalgebra::{DMatrix, DVector, RealField};
 use num_traits::ToPrimitive;

@@ -364,6 +364,10 @@ impl InteractiveTool for SirTool {
         "epidemiology"
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.atlas.set_suspended(suspended);
+    }
+
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::plot_with_code()
     }

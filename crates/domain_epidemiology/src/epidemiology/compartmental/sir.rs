@@ -7,11 +7,11 @@ use verified_engine::Theory;
 /// State for the SIR Model.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SIRState {
-    #[allow(missing_docs)]
+    /// Number of susceptible individuals $S(t)$.
     pub s: f64,
-    #[allow(missing_docs)]
+    /// Number of actively infectious individuals $I(t)$.
     pub i: f64,
-    #[allow(missing_docs)]
+    /// Number of recovered or removed individuals $R(t)$.
     pub r: f64,
 }
 
@@ -24,11 +24,11 @@ impl_compartmental_ops!(SIRState, s, i, r);
 /// as a stateless Strategy or Flyweight.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SIRDynamics {
-    #[allow(missing_docs)]
+    /// Constant closed population size $N = S + I + R > 0$.
     pub n: f64,
-    #[allow(missing_docs)]
+    /// Effective transmission rate $\beta \ge 0$.
     pub beta: f64,
-    #[allow(missing_docs)]
+    /// Per-capita recovery rate $\gamma \ge 0$.
     pub gamma: f64,
 }
 
@@ -56,6 +56,17 @@ impl OdeSystem<SIRState> for SIRDynamics {
 /// $$dS/dt = -\beta S I / N$$
 /// $$dI/dt = \beta S I / N - \gamma I$$
 /// $$dR/dt = \gamma I$$
+///
+/// Reference: Kermack & McKendrick (1927), DOI: `10.1098/rspa.1927.0118`; see
+/// [`docs/math_specs/domain_epidemiology.md`](../../../../../docs/math_specs/domain_epidemiology.md#kermack1927contribution).
+///
+/// # Stability
+/// Preserves total mass $S(t) + I(t) + R(t) = N$ up to rounding error; explicit RK4 integration
+/// requires $\Delta t \cdot \max(\beta, \gamma) \lesssim 1$ to keep compartments non-negative.
+///
+/// # Domain of Validity
+/// Closed homogeneous-mixing populations with $N > 0$, $0 \le I_0 \le N$, and finite rates
+/// $\beta \ge 0$, $\gamma \ge 0$.
 ///
 /// Use `SIRModel::builder()` or `SIRModel::new()` to construct.
 #[derive(Debug, Clone, Theory)]

@@ -69,6 +69,18 @@ impl FmcwConfig {
     ///
     /// Equation (1) from the Bressler et al. framework:
     #[verified_engine::embed_theory("papers/mmwave_radiotherapy_setup.tex", label = "eq:range")]
+    ///
+    /// Reference: Richards (2014), *Fundamentals of Radar Signal Processing*; Stove (1992), DOI:
+    /// `10.1049/ip-f-2.1992.0048`; see
+    /// [`docs/math_specs/domain_physics.md`](../../../../../../docs/math_specs/domain_physics.md).
+    ///
+    /// # Stability
+    /// Direct linear scaling in floating-point arithmetic; well-conditioned whenever sweep
+    /// bandwidth `bandwidth` is strictly positive and bounded away from subnormal magnitudes.
+    ///
+    /// # Domain of Validity
+    /// Linearly frequency-modulated sawtooth chirps with `chirp_time > 0`, `bandwidth > 0`, and
+    /// two-way propagation delay much shorter than `chirp_time`.
     #[verified_engine::verified]
     pub fn range_from_beat_frequency(&self, beat_frequency: f64) -> f64 {
         (beat_frequency * C * self.chirp_time) / (2.0 * self.bandwidth)

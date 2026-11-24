@@ -141,7 +141,7 @@ impl<T: ?Sized + ParametricSurface> SurfaceAnalysis for T {
 
 /// A Sphere of radius R.
 pub struct Sphere {
-    #[allow(missing_docs)]
+    /// Value for `radius` (radius).
     pub radius: f64,
 }
 
@@ -163,9 +163,9 @@ impl ParametricSurface for Sphere {
 
 /// A Torus with major radius R and minor radius r.
 pub struct Torus {
-    #[allow(missing_docs)]
+    /// Value for `major_radius` (major radius).
     pub major_radius: f64,
-    #[allow(missing_docs)]
+    /// Value for `minor_radius` (minor radius).
     pub minor_radius: f64,
 }
 
@@ -183,7 +183,7 @@ impl ParametricSurface for Torus {
 /// A Klein Bottle immersion (Figure-8 parametrization) in R^3.
 /// This self-intersects since a true Klein bottle cannot be embedded in R^3 without intersection.
 pub struct KleinBottle {
-    #[allow(missing_docs)]
+    /// Value for `radius` (radius).
     pub radius: f64,
 }
 

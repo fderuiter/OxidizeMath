@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{HeatmapView, QTableInspectorTool, SculptedQTableRunner};
-use crate::async_sim::{BackgroundWorker, SimulationRunner};
+use crate::async_sim::SimulationRunner;
 use crate::tabs::ai::rl_sculpt::{
     apply_rle_to_mdp, encode_custom_cells_rle, is_zero_f64, RlSolverMode,
 };
@@ -85,7 +85,7 @@ impl QTableInspectorTool {
         self.episodes_trained = runner.episodes_trained;
         self.latest_audio = runner.latest_audio;
         self.view = parsed.view;
-        self.worker = BackgroundWorker::new(runner);
+        self.worker.replace_runner(runner);
         self.revision = self.revision.wrapping_add(1);
         Ok(())
     }

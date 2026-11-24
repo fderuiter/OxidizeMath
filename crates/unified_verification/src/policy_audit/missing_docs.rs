@@ -1,10 +1,12 @@
 use super::lint_policy::{
     attr_suppresses_missing_docs, is_vendored_egui_plot_exempt, meta_suppresses_missing_docs,
 };
+use crate::ast_helpers::format_file_line;
 use crate::whitelist::{PathMatchOptions, VerificationWhitelist, path_matches_lossy};
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use std::collections::HashSet;
 use std::path::Path;
+use syn::spanned::Spanned;
 use syn::visit::Visit;
 
 const PATH_MATCH_OPTS: PathMatchOptions = PathMatchOptions {
@@ -28,6 +30,10 @@ pub(crate) fn is_vendored_missing_docs_exempt(
     cfg.vendored_crates
         .iter()
         .any(|vendored| path_matches_lossy(member_path, vendored, PATH_MATCH_OPTS))
+}
+
+pub(crate) fn member_has_lib_target(member_dir: &Path, parsed: &toml::Value) -> bool {
+    parsed.get("lib").is_some() || member_dir.join("src/lib.rs").is_file()
 }
 
 fn tokens_contain_missing_docs(tokens: &[TokenTree]) -> bool {
@@ -82,17 +88,64 @@ fn attr_tokens_suppress_missing_docs(attr_stream: TokenStream) -> bool {
     false
 }
 
+fn macro_attr_targets_banned_item(tokens: &[TokenTree], start_idx: usize) -> Option<&'static str> {
+    let mut j = start_idx;
+    while j < tokens.len() {
+        match &tokens[j] {
+            TokenTree::Punct(p) if p.as_char() == '#' => {
+                j += 1;
+                if j < tokens.len() && matches!(&tokens[j], TokenTree::Group(_)) {
+                    j += 1;
+                }
+            }
+            TokenTree::Ident(id) => {
+                if id == "struct" {
+                    return Some("macro struct");
+                }
+                if id == "enum" {
+                    return Some("macro enum");
+                }
+                if id == "trait" {
+                    return Some("macro trait");
+                }
+                if id == "fn" {
+                    return Some("macro fn");
+                }
+                if matches!(
+                    id.to_string().as_str(),
+                    "pub" | "async" | "const" | "unsafe" | "extern"
+                ) {
+                    j += 1;
+                    if j < tokens.len()
+                        && matches!(&tokens[j], TokenTree::Group(_) | TokenTree::Literal(_))
+                    {
+                        j += 1;
+                    }
+                    continue;
+                }
+                return None;
+            }
+            _ => return None,
+        }
+    }
+    None
+}
+
 pub(crate) struct MissingDocsVisitor {
     pub(crate) file_path: String,
+    pub(crate) reject_item_level: bool,
     pub(crate) has_inner_bypass: bool,
+    pub(crate) has_item_bypass: bool,
     pub(crate) outer_count: usize,
 }
 
 impl MissingDocsVisitor {
-    pub(crate) fn new(file_path: String) -> Self {
+    pub(crate) fn new(file_path: String, reject_item_level: bool) -> Self {
         Self {
             file_path,
+            reject_item_level,
             has_inner_bypass: false,
+            has_item_bypass: false,
             outer_count: 0,
         }
     }
@@ -103,6 +156,30 @@ impl MissingDocsVisitor {
             self.file_path
         );
         self.has_inner_bypass = true;
+    }
+
+    fn report_item_violation(&mut self, line: usize, item_desc: &str) {
+        let loc = format_file_line(&self.file_path, line);
+        println!(
+            "[!] Unauthorized item-level missing_docs bypass at {loc} ({item_desc}): item-level #[allow(missing_docs)]/#[expect(missing_docs)] is prohibited in library crates per CONTRIBUTING.md"
+        );
+        self.has_item_bypass = true;
+    }
+
+    fn check_banned_item_attrs(&mut self, attrs: &[syn::Attribute], kind: &str, name: &str) {
+        if !self.reject_item_level {
+            return;
+        }
+        for attr in attrs {
+            if matches!(attr.style, syn::AttrStyle::Outer) && attr_suppresses_missing_docs(attr) {
+                let desc = if name.is_empty() {
+                    kind.to_string()
+                } else {
+                    format!("{kind} `{name}`")
+                };
+                self.report_item_violation(attr.span().start().line, &desc);
+            }
+        }
     }
 
     fn scan_macro_tokens(&mut self, root_stream: TokenStream, macro_label: &str) {
@@ -133,6 +210,14 @@ impl MissingDocsVisitor {
                     && attr_tokens_suppress_missing_docs(bracket.stream())
                 {
                     self.outer_count += 1;
+                    if self.reject_item_level
+                        && let Some(kind) = macro_attr_targets_banned_item(&tokens, i + 2)
+                    {
+                        self.report_item_violation(
+                            hash.span().start().line,
+                            &format!("{kind} in {macro_label}"),
+                        );
+                    }
                 }
             }
         }
@@ -140,6 +225,60 @@ impl MissingDocsVisitor {
 }
 
 impl<'ast> Visit<'ast> for MissingDocsVisitor {
+    fn visit_item_struct(&mut self, i: &'ast syn::ItemStruct) {
+        self.check_banned_item_attrs(&i.attrs, "struct", &i.ident.to_string());
+        syn::visit::visit_item_struct(self, i);
+    }
+
+    fn visit_item_enum(&mut self, i: &'ast syn::ItemEnum) {
+        self.check_banned_item_attrs(&i.attrs, "enum", &i.ident.to_string());
+        syn::visit::visit_item_enum(self, i);
+    }
+
+    fn visit_variant(&mut self, i: &'ast syn::Variant) {
+        self.check_banned_item_attrs(&i.attrs, "enum variant", &i.ident.to_string());
+        syn::visit::visit_variant(self, i);
+    }
+
+    fn visit_item_trait(&mut self, i: &'ast syn::ItemTrait) {
+        self.check_banned_item_attrs(&i.attrs, "trait", &i.ident.to_string());
+        syn::visit::visit_item_trait(self, i);
+    }
+
+    fn visit_item_trait_alias(&mut self, i: &'ast syn::ItemTraitAlias) {
+        self.check_banned_item_attrs(&i.attrs, "trait alias", &i.ident.to_string());
+        syn::visit::visit_item_trait_alias(self, i);
+    }
+
+    fn visit_field(&mut self, i: &'ast syn::Field) {
+        let name = i
+            .ident
+            .as_ref()
+            .map_or_else(String::new, ToString::to_string);
+        self.check_banned_item_attrs(&i.attrs, "field", &name);
+        syn::visit::visit_field(self, i);
+    }
+
+    fn visit_item_fn(&mut self, i: &'ast syn::ItemFn) {
+        self.check_banned_item_attrs(&i.attrs, "fn", &i.sig.ident.to_string());
+        syn::visit::visit_item_fn(self, i);
+    }
+
+    fn visit_impl_item_fn(&mut self, i: &'ast syn::ImplItemFn) {
+        self.check_banned_item_attrs(&i.attrs, "fn", &i.sig.ident.to_string());
+        syn::visit::visit_impl_item_fn(self, i);
+    }
+
+    fn visit_trait_item_fn(&mut self, i: &'ast syn::TraitItemFn) {
+        self.check_banned_item_attrs(&i.attrs, "trait fn", &i.sig.ident.to_string());
+        syn::visit::visit_trait_item_fn(self, i);
+    }
+
+    fn visit_foreign_item_fn(&mut self, i: &'ast syn::ForeignItemFn) {
+        self.check_banned_item_attrs(&i.attrs, "extern fn", &i.sig.ident.to_string());
+        syn::visit::visit_foreign_item_fn(self, i);
+    }
+
     fn visit_item_macro(&mut self, i: &'ast syn::ItemMacro) {
         if i.mac.path.is_ident("macro_rules") {
             let name = i
@@ -206,10 +345,11 @@ pub(crate) fn record_existing_file_cap(
 pub(crate) fn audit_file_missing_docs(
     ast: &syn::File,
     file_path: &str,
+    reject_item_level: bool,
     whitelist: &VerificationWhitelist,
     matched_keys: &mut HashSet<String>,
 ) -> bool {
-    let mut visitor = MissingDocsVisitor::new(file_path.to_string());
+    let mut visitor = MissingDocsVisitor::new(file_path.to_string(), reject_item_level);
     visitor.visit_file(ast);
 
     let matched = lookup_file_cap(file_path, whitelist);
@@ -217,7 +357,7 @@ pub(crate) fn audit_file_missing_docs(
         matched_keys.insert(key.to_string());
     }
     let cap = matched.map_or(0, |(_, c)| c);
-    let mut ok = !visitor.has_inner_bypass;
+    let mut ok = !visitor.has_inner_bypass && !visitor.has_item_bypass;
 
     if visitor.outer_count > cap {
         println!(

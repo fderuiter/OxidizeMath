@@ -194,7 +194,15 @@ fn run_illinois_dual_search(
     best_kappa
 }
 
-/// Solves a simultaneous `K`-wager slate subject to `E[R^(-lambda)] <= 1` (`SlateEvalMode::Auto`).
+/// Solves the Rachev-Busseti-Ryu-Boyd drawdown-constrained Kelly program $\max_{\mathbf{f} \in \Delta_K} \mathbb{E}[\ln R(\mathbf{f})]$ subject to $\mathbb{E}[R(\mathbf{f})^{-\lambda}] \le 1$ (`SlateEvalMode::Auto`).
+///
+/// Reference: Busseti, Ryu & Boyd (2016), *Risk-Constrained Kelly Gambling*, arXiv:1603.06183; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Monotone Illinois bracket root-finding over dual weight $\kappa \in [0, 1]$ with warm-started FISTA subproblems guarantees primal feasibility $\mathbb{E}[R^{-\lambda}] \le 1 + 10^{-8}$.
+///
+/// # Domain of Validity
+/// Requires $1 \le K \le$ [`MAX_SLATE_WAGERS`] valid [`SlateWager`] entries and a validated [`DrawdownConstraint`] with $\lambda > 0$.
 #[verified_engine::verified]
 pub fn solve_drawdown_constrained_slate(
     wagers: &[SlateWager],
@@ -204,7 +212,15 @@ pub fn solve_drawdown_constrained_slate(
     solve_drawdown_constrained_slate_with_mode(wagers, constraint, SlateEvalMode::Auto, scratch)
 }
 
-/// Solves a simultaneous `K`-wager slate subject to `E[R^(-lambda)] <= 1` with explicit `mode`.
+/// Solves the drawdown-constrained Kelly program $\max_{\mathbf{f} \in \Delta_K} \mathbb{E}[\ln R(\mathbf{f})]$ subject to $\mathbb{E}[R(\mathbf{f})^{-\lambda}] \le 1$ with explicit `mode`.
+///
+/// Reference: Busseti, Ryu & Boyd (2016), *Risk-Constrained Kelly Gambling*, arXiv:1603.06183; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Convexity of $R^{-\lambda}$ on the ruin-capped simplex ensures unique dual separation between unconstrained ($\kappa = 0$) and pure risk-minimization ($\kappa = 1$) regimes.
+///
+/// # Domain of Validity
+/// Requires $1 \le K \le$ [`MAX_SLATE_WAGERS`] valid wagers compatible with `mode` and a validated [`DrawdownConstraint`] ($\lambda > 0$).
 #[verified_engine::verified]
 pub fn solve_drawdown_constrained_slate_with_mode(
     wagers: &[SlateWager],

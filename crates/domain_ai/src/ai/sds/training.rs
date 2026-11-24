@@ -36,10 +36,21 @@ pub trait DifferentiableNeRF: NeRFModel {
     fn backward(&self, bundle: &RayBundle, image_grad: &DMatrix<f64>) -> DMatrix<f64>;
 }
 
-/// Module 5.2: Optimizer Step
-/// Input: Weights theta, Gradients nabla_theta, Learning Rate eta.
-/// Operation: Update weights (e.g., using Adam optimizer).
-/// Output: Updated NeRF Model.
+/// First-order parameter matrix update interface for Score Distillation Sampling optimization.
+///
+/// Advances differentiable scene parameters $\boldsymbol{\theta}_t \in \mathbb{R}^{m \times n}$ along incoming score gradients $\mathbf{g}_t$:
+///
+/// $$\boldsymbol{\theta}_{t+1} = \mathcal{U}(\boldsymbol{\theta}_t, \mathbf{g}_t), \qquad \mathbf{g}_t = \nabla_{\boldsymbol{\theta}} \mathcal{L}_{\mathrm{SDS}}(\boldsymbol{\theta}_t)$$
+///
+/// Reference: Poole et al. (2022), arXiv:2209.14988; see
+/// [`docs/math_specs/domain_ai.md`](../../../../../docs/math_specs/domain_ai.md).
+///
+/// # Stability
+/// Implementations validate exact `(nrows, ncols)` shape agreement between `params`, `grads`, and
+/// internal moment buffers before mutating optimizer state.
+///
+/// # Domain of Validity
+/// Finite real matrices `params` and `grads` of identical dimensions `(m, n)`.
 pub trait Optimizer {
     /// Performs a single optimization step.
     ///
@@ -58,27 +69,41 @@ pub trait Optimizer {
     ) -> Result<DMatrix<f64>, AIError>;
 }
 
-/// Simplified Adam implementation for a single parameter tensor (e.g., NeRF weights).
-/// theta_{t+1} = theta_t - eta * m_t / (sqrt(v_t) + epsilon)
+/// Adaptive Moment Estimation (`Adam`) optimizer over a matrix of differentiable scene parameters.
+///
+/// Maintains bias-corrected exponential moving averages of first and second gradient moments:
+///
+/// $$\mathbf{m}_t = \beta_1 \mathbf{m}_{t-1} + (1 - \beta_1)\mathbf{g}_t, \quad \mathbf{v}_t = \beta_2 \mathbf{v}_{t-1} + (1 - \beta_2)\mathbf{g}_t^{\odot 2}, \quad \boldsymbol{\theta}_t = \boldsymbol{\theta}_{t-1} - \eta \frac{\hat{\mathbf{m}}_t}{\sqrt{\hat{\mathbf{v}}_t} + \epsilon}$$
+///
+/// Reference: Kingma & Ba (2015), arXiv:1412.6980; see
+/// [`docs/math_specs/domain_ai.md`](../../../../../docs/math_specs/domain_ai.md).
+///
+/// # Stability
+/// Bias correction $(1 - \beta_1^t)^{-1}$ and $(1 - \beta_2^t)^{-1}$ prevents initial step bias,
+/// while strictly positive $\epsilon > 0$ guards elementwise division against zero variance.
+///
+/// # Domain of Validity
+/// Strictly positive `learning_rate` $\eta > 0$ and `epsilon` $\epsilon > 0$, decay factors
+/// $\beta_1, \beta_2 \in [0, 1)$, step count $t < \text{i32::MAX}$, and finite matching parameter/gradient shapes.
 pub struct AdamOptimizer {
-    #[allow(missing_docs)]
+    /// Step-size hyperparameter $\eta > 0$.
     pub learning_rate: PositiveFloat,
-    #[allow(missing_docs)]
+    /// Exponential decay factor $\beta_1 \in [0, 1]$ for the first moment estimate.
     pub beta1: UnitInterval,
-    #[allow(missing_docs)]
+    /// Exponential decay factor $\beta_2 \in [0, 1]$ for the second raw moment estimate.
     pub beta2: UnitInterval,
-    #[allow(missing_docs)]
+    /// Numerical damping constant $\epsilon > 0$ added to the root-mean-square denominator.
     pub epsilon: PositiveFloat,
-    #[allow(missing_docs)]
+    /// First-moment running average matrix $\mathbf{m}_t$, lazily initialized on first step.
     pub m: Option<DMatrix<f64>>,
-    #[allow(missing_docs)]
+    /// Second-moment running average matrix $\mathbf{v}_t$, lazily initialized on first step.
     pub v: Option<DMatrix<f64>>,
-    #[allow(missing_docs)]
+    /// Completed optimization step counter $t$.
     pub t: usize,
 }
 
 impl AdamOptimizer {
-    #[allow(missing_docs)]
+    /// Creates an `AdamOptimizer` with standard defaults ($\beta_1 = 0.9$, $\beta_2 = 0.999$, $\epsilon = 10^{-8}$).
     #[verified_engine::verified]
     pub fn new(learning_rate: PositiveFloat) -> Self {
         Self {
@@ -153,20 +178,33 @@ impl Optimizer for AdamOptimizer {
     }
 }
 
-/// Stochastic Gradient Descent with Momentum.
-/// v_{t+1} = momentum * v_t + g_t
-/// theta_{t+1} = theta_t - lr * v_{t+1}
+/// Heavy-ball Stochastic Gradient Descent (`SGD`) optimizer with Polyak momentum.
+///
+/// Accumulates exponentially damped velocity before updating parameters:
+///
+/// $$\mathbf{v}_{t+1} = \mu \mathbf{v}_t + \mathbf{g}_t, \qquad \boldsymbol{\theta}_{t+1} = \boldsymbol{\theta}_t - \eta \mathbf{v}_{t+1}$$
+///
+/// Reference: Polyak (1964), DOI: 10.1016/0041-5553(64)90137-5; Poole et al. (2022), arXiv:2209.14988;
+/// see [`docs/math_specs/domain_ai.md`](../../../../../docs/math_specs/domain_ai.md).
+///
+/// # Stability
+/// On $L$-smooth objectives, convergence requires $0 < \eta < 2(1 + \mu)/L$ with $\mu \in [0, 1)$;
+/// setting $\mu = 1$ disables velocity damping and can cause unbounded oscillation.
+///
+/// # Domain of Validity
+/// Strictly positive `learning_rate` $\eta > 0$, `momentum` $\mu \in [0, 1)$, and finite matching
+/// parameter/gradient matrices.
 pub struct SgdOptimizer {
-    #[allow(missing_docs)]
+    /// Step-size hyperparameter $\eta > 0$.
     pub learning_rate: PositiveFloat,
-    #[allow(missing_docs)]
+    /// Polyak momentum damping coefficient $\mu \in [0, 1]$.
     pub momentum: UnitInterval,
-    #[allow(missing_docs)]
+    /// Accumulated velocity matrix $\mathbf{v}_t$, lazily initialized on first step.
     pub velocity: Option<DMatrix<f64>>,
 }
 
 impl SgdOptimizer {
-    #[allow(missing_docs)]
+    /// Constructs a momentum SGD optimizer with `learning_rate` and `momentum`.
     #[verified_engine::verified]
     pub fn new(learning_rate: PositiveFloat, momentum: UnitInterval) -> Self {
         Self {

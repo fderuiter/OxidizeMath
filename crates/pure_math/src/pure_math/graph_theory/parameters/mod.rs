@@ -1,10 +1,10 @@
-#[allow(missing_docs)]
+/// Submodule providing `degree` types, traits, and algorithms.
 pub mod degree;
-#[allow(missing_docs)]
+/// Submodule providing `modulator` types, traits, and algorithms.
 pub mod modulator;
-#[allow(missing_docs)]
+/// Submodule providing `network_metrics` types, traits, and algorithms.
 pub mod network_metrics;
-#[allow(missing_docs)]
+/// Submodule providing `treewidth` types, traits, and algorithms.
 pub mod treewidth;
 
 // [cite:graph_parameters_rust]

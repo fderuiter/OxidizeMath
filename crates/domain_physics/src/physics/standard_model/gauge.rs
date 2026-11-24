@@ -7,11 +7,11 @@
 /// * `gs`: Coupling for SU(3)_C (Strong Color).
 #[derive(Debug, Clone, Copy)]
 pub struct GaugeCouplings {
-    #[allow(missing_docs)]
+    /// Abelian hypercharge $U(1)_Y$ gauge coupling $g_1$.
     pub g1: f64,
-    #[allow(missing_docs)]
+    /// Chiral weak-isospin $SU(2)_L$ gauge coupling $g_2$.
     pub g2: f64,
-    #[allow(missing_docs)]
+    /// Quantum-chromodynamics $SU(3)_C$ strong coupling $g_s$.
     pub gs: f64,
 }
 

@@ -60,7 +60,20 @@ impl Redshift {
 
 // --- GalaxyModel Trait ---
 
-/// Defines the empirical relationships for a specific galaxy morphology.
+/// Empirical extragalactic scaling relations for dwarf-galaxy morphologies:
+/// $$\log_{10}(M / M_\odot) = \alpha D + \beta, \qquad m_B = \gamma D + m_0, \qquad z = c_1 \log_{10}(M / M_\odot) + c_0$$
+///
+/// Reference: Tully & Fisher (1977), *Astron. Astrophys.* 54:661–673; Karachentsev et al. (2013),
+/// DOI: `10.1088/0004-6256/145/4/101`; see
+/// [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Affine polynomial regressions over bounded observational domain intervals; returns `None` when
+/// apparent-magnitude fits are undefined for a morphological subgroup.
+///
+/// # Domain of Validity
+/// Local-Volume irregular dwarf galaxies at luminosity distances $D \in (0, 50]\,\text{Mpc}$ and
+/// low cosmological redshifts $z \ll 1$.
 pub trait GalaxyModel {
     /// Calculates log(Mass) from Distance.
     #[verified_engine::verified]

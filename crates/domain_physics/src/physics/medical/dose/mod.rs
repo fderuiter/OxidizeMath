@@ -1,6 +1,8 @@
-#[allow(missing_docs)]
+//! Terma and point-spread convolution dose deposition kernels.
+
+/// Total Energy Released per unit Mass (TERMA) photon attenuation routines.
 pub mod algorithm;
-#[allow(missing_docs)]
+/// Radial point-spread dose deposition kernels (`DoseKernel`, `ExponentialKernel`).
 pub mod kernel;
 
 pub use algorithm::calculate_terma;
