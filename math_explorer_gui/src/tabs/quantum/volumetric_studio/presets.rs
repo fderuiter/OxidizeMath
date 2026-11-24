@@ -368,3 +368,56 @@ inventory::submit! {
         preset_generator: || PRESET_CSG_BOOLEAN_SOLID_JSON,
     }
 }
+
+/// Starter JSON for inline 3D AST Schoen Gyroid minimal surface (`sin(k*x)*cos(k*y) + ...`).
+pub const PRESET_3D_IMPLICIT_GYROID_AST_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "3D Implicit Schoen Gyroid AST",
+    "domain": "quantum",
+    "timestamp": "2026-11-23T00:00:00Z"
+  },
+  "config": {
+    "source": "custom_implicit_ast",
+    "render_mode": "hybrid_shell_and_cloud",
+    "grid_resolution": 32,
+    "n1": 1,
+    "l1": 0,
+    "m1": 0,
+    "n2": 2,
+    "l2": 1,
+    "m2": 0,
+    "superposition_mix": 0.5,
+    "relative_phase": 0.0,
+    "quantum_dt": 0.08,
+    "observable": "signed_wavefunction",
+    "iso_threshold": 0.25,
+    "splat_scale": 0.95,
+    "turing_a": 0.1,
+    "turing_b": 0.9,
+    "turing_du": 1.0,
+    "turing_dv": 18.0,
+    "turing_dt": 0.008,
+    "custom_expr": "sin(k * x) * cos(k * y) + sin(k * y) * cos(k * z) + sin(k * z) * cos(k * x)",
+    "custom_params": { "k": 2.4 },
+    "cut_enabled": true,
+    "cut_axis": "z",
+    "cut_offset": 0.2,
+    "probe_brush_enabled": true,
+    "running": false,
+    "camera": { "pitch": 0.46, "yaw": 0.64, "zoom": 1.08 }
+  }
+}"#;
+
+inventory::submit! {
+    StarterPresetMetadata {
+        id: "volumetric_3d_implicit_gyroid_ast",
+        title: "3D Implicit Gyroid Formula",
+        description: "Zero-allocation CompiledExpr::eval_3d Schoen gyroid and 4f_xyz implicit surfaces with synthesized parameter sliders and 20^3 drag previews.",
+        category: "Volumetric Fields",
+        icon: "🔣",
+        domain: "quantum",
+        tool_name: Some("VolumetricFieldStudioTool"),
+        preset_generator: || PRESET_3D_IMPLICIT_GYROID_AST_JSON,
+    }
+}

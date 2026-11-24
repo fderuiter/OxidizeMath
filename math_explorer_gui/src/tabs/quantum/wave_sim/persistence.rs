@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::atlas::WAVE_ATLAS_AXIS_PAIRS;
 use super::presets::{
     compute_tunneling_observables_slice, WavePotentialPreset, DEFAULT_CUSTOM_EXPR, DEFAULT_DT,
     DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0,
@@ -155,6 +156,15 @@ impl WaveSimState {
             })
         {
             return Err("WaveSimulator sparse_potential contains invalid entries".to_string());
+        }
+        if !WAVE_ATLAS_AXIS_PAIRS
+            .iter()
+            .any(|&(xk, yk)| xk == self.atlas_axes[0] && yk == self.atlas_axes[1])
+        {
+            return Err(format!(
+                "WaveSimulator unsupported atlas_axes: {:?}",
+                self.atlas_axes
+            ));
         }
         Ok(preset)
     }
@@ -339,6 +349,7 @@ impl WaveRunner {
             #[cfg(test)]
             right_wall_prob: obs.right_wall_prob,
             latched_transmission: self.latched_transmission,
+            steady_transmission: self.steady_transmission(),
             wall_arrived: self.wall_arrived,
             quasi_bound_latched: self.quasi_bound_latched,
             x_left: self.x_left,

@@ -35,6 +35,31 @@ fn contrast_ratio(fg: Color32, bg: Color32) -> f64 {
     (lighter + 0.05) / (darker + 0.05)
 }
 
+const REQUIRED_CHALLENGES: &[(&str, &str)] = &[
+    ("mri", "bloch_pi_inversion"),
+    ("mri", "bloch_hahn_spin_echo"),
+    ("mri", "mri_kspace_radial_cs"),
+    ("clinical_trials", "pk_therapeutic_window"),
+    ("fluid_dynamics", "lbm_low_drag_fairing"),
+    ("medical", "imrt_oar_sparing"),
+    ("medical", "radar_cough_zero_miss"),
+    ("quantum", "quantum_barrier_50_split"),
+    ("quantum", "quantum_fabry_perot_resonance"),
+    ("quantum", "quantum_subbarrier_50_split"),
+    ("quantum", "quantum_double_barrier_resonance"),
+    #[cfg(feature = "pure_math")]
+    ("analysis", "chladni_antinodal_resonance"),
+    ("epidemiology", "epidemiology_hub_vaccination"),
+    ("epidemiology", "epidemiology_bridge_quarantine"),
+    ("astrophysics", "astrophysics_mystery_halo_fit"),
+    ("elliptic_curves", "hasse_weil_boundary_p23"),
+    ("morphogenesis", "lenia_orbium_tail_regeneration"),
+    ("game_theory", "myerson_welfare_constrained_reserve"),
+    ("game_theory", "first_price_shading_equilibrium"),
+    ("solid_state", "ising_critical_droplet_nucleation"),
+    ("solid_state", "fermi_prisoners_dilemma_nucleation"),
+];
+
 #[test]
 fn test_federated_challenge_registry_and_gallery_tab_switch() {
     let cards: Vec<_> = inventory::iter::<ChallengeMetadata>
@@ -42,23 +67,12 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         .map(ChallengeMetadata::to_card)
         .collect();
     assert!(
-        cards.len() >= 15,
-        "Expected at least 15 registered ChallengeMetadata entries, got {}",
+        cards.len() >= REQUIRED_CHALLENGES.len(),
+        "Expected at least {} registered ChallengeMetadata entries, got {}",
+        REQUIRED_CHALLENGES.len(),
         cards.len()
     );
-    for required_id in [
-        "bloch_pi_inversion",
-        "bloch_hahn_spin_echo",
-        "mri_kspace_radial_cs",
-        "pk_therapeutic_window",
-        "lbm_low_drag_fairing",
-        "imrt_oar_sparing",
-        "radar_cough_zero_miss",
-        "quantum_barrier_50_split",
-        "epidemiology_hub_vaccination",
-        "epidemiology_bridge_quarantine",
-        "astrophysics_mystery_halo_fit",
-    ] {
+    for &(_, required_id) in REQUIRED_CHALLENGES {
         let meta = find_challenge_metadata(required_id)
             .unwrap_or_else(|| panic!("Missing ChallengeMetadata '{required_id}'"));
         let baseline = meta.generate_baseline_state();
@@ -68,13 +82,23 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         assert!(clamped.len() <= MAX_DECODED_URL_STATE_BYTES);
     }
 
-    assert_eq!(get_challenge_cards_for_domain("quantum").len(), 2);
-    assert_eq!(get_challenge_cards_for_domain("mri").len(), 3);
-    assert_eq!(get_challenge_cards_for_domain("clinical_trials").len(), 1);
-    assert_eq!(get_challenge_cards_for_domain("fluid_dynamics").len(), 1);
-    assert_eq!(get_challenge_cards_for_domain("medical").len(), 2);
-    assert_eq!(get_challenge_cards_for_domain("epidemiology").len(), 2);
-    assert_eq!(get_challenge_cards_for_domain("astrophysics").len(), 1);
+    for (dom, expected) in [
+        ("quantum", 4),
+        ("mri", 3),
+        ("clinical_trials", 1),
+        ("fluid_dynamics", 1),
+        ("medical", 2),
+        ("epidemiology", 2),
+        ("astrophysics", 1),
+        ("elliptic_curves", 1),
+        ("biology", 1),
+        ("game_theory", 2),
+        ("solid_state", 2),
+    ] {
+        assert_eq!(get_challenge_cards_for_domain(dom).len(), expected, "{dom}");
+    }
+    #[cfg(feature = "pure_math")]
+    assert_eq!(get_challenge_cards_for_domain("analysis").len(), 1);
 
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
@@ -175,19 +199,7 @@ fn test_challenge_hud_wcag_contrast_reset_and_aria_across_themes() {
 #[test]
 fn test_stateless_challenge_urls_within_size_budget() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    for (slug, challenge_id) in [
-        ("mri", "bloch_pi_inversion"),
-        ("mri", "bloch_hahn_spin_echo"),
-        ("mri", "mri_kspace_radial_cs"),
-        ("clinical_trials", "pk_therapeutic_window"),
-        ("fluid_dynamics", "lbm_low_drag_fairing"),
-        ("medical", "imrt_oar_sparing"),
-        ("medical", "radar_cough_zero_miss"),
-        ("quantum", "quantum_barrier_50_split"),
-        ("epidemiology", "epidemiology_hub_vaccination"),
-        ("epidemiology", "epidemiology_bridge_quarantine"),
-        ("astrophysics", "astrophysics_mystery_halo_fit"),
-    ] {
+    for &(slug, challenge_id) in REQUIRED_CHALLENGES {
         let bare_hash = format!("#tab={slug}&challenge={challenge_id}");
         let parsed = parse_share_location(&bare_hash, "").unwrap().unwrap();
         assert_eq!(parsed.challenge.as_deref(), Some(challenge_id));
@@ -448,50 +460,30 @@ fn assert_locked_field_clamped(
 fn test_tampered_locked_fields_clamped_across_five_studios() {
     use serde_json::{json, Value};
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
-    for (slug, id, key, bad, exp) in [
-        (
-            "quantum",
-            "quantum_barrier_50_split",
-            "k0",
-            json!(9.5),
-            json!(5.0),
-        ),
-        (
-            "mri",
-            "mri_kspace_radial_cs",
-            "phantom",
-            json!("turing_spots"),
-            json!("shepp_logan"),
-        ),
-        (
-            "medical",
-            "radar_cough_zero_miss",
-            "system_latency_ms",
-            json!(0.0),
-            json!(60.0),
-        ),
-        (
-            "epidemiology",
-            "epidemiology_hub_vaccination",
-            "seed",
-            json!(999),
-            json!(20261121),
-        ),
-        (
-            "epidemiology",
-            "epidemiology_bridge_quarantine",
-            "budget",
-            json!(25),
-            Value::Null,
-        ),
-        (
-            "astrophysics",
-            "astrophysics_mystery_halo_fit",
-            "distance_mpc",
-            json!(99.0),
-            json!(14.5),
-        ),
-    ] {
-        assert_locked_field_clamped(slug, id, key, bad, exp);
-    }
+    let c = assert_locked_field_clamped;
+    let (epi, hub, brg) = (
+        "epidemiology",
+        "epidemiology_hub_vaccination",
+        "epidemiology_bridge_quarantine",
+    );
+    let (med, rad) = ("medical", "radar_cough_zero_miss");
+    let (ast, halo) = ("astrophysics", "astrophysics_mystery_halo_fit");
+    c(
+        "quantum",
+        "quantum_barrier_50_split",
+        "k0",
+        json!(9.5),
+        json!(5.0),
+    );
+    c(
+        "mri",
+        "mri_kspace_radial_cs",
+        "phantom",
+        json!("bad"),
+        json!("shepp_logan"),
+    );
+    c(med, rad, "system_latency_ms", json!(0.0), json!(60.0));
+    c(epi, hub, "seed", json!(999), json!(20261121));
+    c(epi, brg, "budget", json!(25), Value::Null);
+    c(ast, halo, "distance_mpc", json!(99.0), json!(14.5));
 }
