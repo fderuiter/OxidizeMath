@@ -1,7 +1,11 @@
 // [cite:math_commons]
+#[cfg(feature = "std")]
 pub use crate::ast::{EvalError, GlslError, LexError, ParseError};
 use crate::math_kernel::types::Dimension;
+use alloc::string::String;
+#[cfg(feature = "std")]
 use diagnostics::{Diagnostic, Severity};
+#[cfg(feature = "std")]
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -65,6 +69,7 @@ pub enum MathError {
     },
 }
 
+#[cfg(feature = "std")]
 impl Diagnostic for MathError {
     fn severity(&self) -> Severity {
         Severity::Error
@@ -99,7 +104,7 @@ impl Diagnostic for MathError {
 }
 
 /// Convenience result alias returning [`MathError`] on failure.
-pub type MathResult<T> = std::result::Result<T, MathError>;
+pub type MathResult<T> = core::result::Result<T, MathError>;
 
 impl From<String> for MathError {
     fn from(reason: String) -> Self {
@@ -145,6 +150,7 @@ pub enum FitError {
     },
 }
 
+#[cfg(feature = "std")]
 impl Diagnostic for FitError {
     fn severity(&self) -> Severity {
         Severity::Error
@@ -180,10 +186,12 @@ impl Diagnostic for FitError {
     }
 }
 
+#[cfg(feature = "std")]
 mod umbrella;
+#[cfg(feature = "std")]
 pub use umbrella::MathCommonsError;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
     use std::error::Error as StdError;

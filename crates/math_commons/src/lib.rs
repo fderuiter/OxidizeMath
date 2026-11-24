@@ -1,7 +1,11 @@
+#![cfg_attr(not(feature = "std"), no_std)]
 #![doc = include_str!("../README.md")]
 // [cite:math_commons]
 
+extern crate alloc;
+
 /// Symbolic mathematical expression AST parser, evaluator, and GLSL emitter.
+#[cfg(feature = "std")]
 pub mod ast;
 pub mod constants;
 /// Shared numerical, bounds, and curve-fitting diagnostic error types.
@@ -17,5 +21,6 @@ pub mod primitives;
 pub mod registry;
 /// Contiguous and strided 2D `(x, y)` series traits for zero-allocation numerical kernels.
 pub mod series;
+pub mod stochastic;
 /// Quantum angular-momentum coupling and Wigner $3j$ / Clebsch-Gordan coefficients.
 pub mod wigner;

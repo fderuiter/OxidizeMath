@@ -42,18 +42,23 @@ The module is organized as follows:
     \item \texttt{graph.rs}: Defines the core graph data structure using \texttt{petgraph}.
     \item \texttt{parameters/degree.rs}: Implements degree-related parameters.
     \item \texttt{parameters/modulator.rs}: Implements modulator-based parameters.
-    \item \texttt{parameters/treewidth.rs}: Implements treewidth.
+    \item \texttt{parameters/treewidth.rs}: Implements exact elimination branch-and-bound treewidth ($|V| \le 24$) and min-fill upper bounds ($|V| > 24$).
+    \item \texttt{max\_flow\_min\_cut.rs}: Implements zero-allocation Edmonds-Karp $s$-$t$ maximum flow and minimum cut partitions.
+    \item \texttt{minimum\_spanning\_tree.rs}: Implements zero-allocation Kruskal minimum spanning forests via in-place heapsort and disjoint-set union-find.
+    \item \texttt{interchange/}: Implements deterministic \texttt{.dot}, \texttt{.graphml}, and weighted edge-list \texttt{.csv} codecs.
 \end{itemize}
 
 \subsection{Data Structures}
-We use the \texttt{petgraph} crate to provide the underlying graph data structures. Our \texttt{Graph} struct is a wrapper around \texttt{petgraph::Graph}, configured for undirected graphs.
+We use the \texttt{petgraph} crate to provide the underlying graph data structures for interactive construction, paired with preallocated flat index workspaces (\texttt{TreewidthScratch}, \texttt{EdmondsKarpScratch}, and \texttt{KruskalScratch}) so hot-loop solver execution performs zero heap allocations.
 
 \subsection{Algorithm Implementation}
 \paragraph{Degeneracy} We implemented a linear-time algorithm to compute the degeneracy of a graph. The algorithm iteratively removes the vertex with the smallest degree and updates the degrees of its neighbors. The degeneracy is the maximum degree of a vertex at the time of its removal.
 
 \paragraph{Vertex Cover} For vertex cover, we implemented a 2-approximation algorithm. This algorithm iterates through the edges of the graph. If an edge is not covered, it adds both of its endpoints to the cover. This is a well-known greedy algorithm that guarantees a solution at most twice the size of the optimal one \cite{bafna1999}.
 
-\paragraph{Treewidth} The computation of treewidth is a notoriously difficult problem. The source paper \cite{komusiewicz2025parameter} uses specialized external solvers for this purpose. Our implementation provides a placeholder for this function, acknowledging its complexity and the need for external tools for an efficient solution.
+\paragraph{Treewidth} While computing exact treewidth is NP-hard \cite{downey1999parameterized, betzler2012}, moderate-order empirical networks and pedagogical benchmarks admit exact elimination search. For graphs with $|V| \le 24$ unique vertices (after stripping self-loops and parallel multiedges), our implementation executes a zero-allocation iterative branch-and-bound search over fixed \texttt{[u32; 24]} bitmask adjacency rows. At each node of the search tree, simplicial and almost-simplicial vertices ($\deg(v) \le \text{lb}$) are eliminated safely without branching, pruned by a maximum-minimum-degree (MMD) subgraph degeneracy lower bound, a greedy min-fill upper bound, and a stack-resident transposition cache. This yields exact values on canonical families ($K_4 \mapsto 3$, $W_7 \mapsto 3$, $C_5 \mapsto 2$, trees $\mapsto 1$, edgeless graphs $\mapsto 0$). For larger instances ($|V| > 24$), \texttt{treewidth\_in\_place} transitions to a preallocated min-fill elimination upper bound in \texttt{TreewidthScratch}.
+
+\paragraph{Network Flows, Spanning Forests, and Graph Interchange} Complementing structural width parameters, \texttt{solve\_max\_flow\_min\_cut\_in\_place} executes Edmonds-Karp shortest-augmenting-path breadth-first searches over a preallocated residual CSR graph to certify max-flow/min-cut duality ($\text{val}(f^*) = c(S, T)$), while \texttt{solve\_minimum\_spanning\_tree\_in\_place} sorts edges via in-place heapsort and extracts minimum spanning forests with path-compressed union-find. Deterministic \texttt{interchange} parsers and emitters enable round-trip exchange across Graphviz \texttt{.dot}, \texttt{.graphml}, and \texttt{.csv} formats.
 
 \section{Conclusion}
 This paper documents a Rust implementation of key graph parameters for parameterized complexity analysis. By providing a clean, well-tested, and open-source library, we hope to facilitate further research in this field. Future work could involve implementing more of the parameters from the source paper and integrating with external solvers for the NP-hard problems.

@@ -19,7 +19,7 @@
 //! ```
 
 use crate::error::MarkovError;
-use crate::pure_math::statistics::markov::dtmc::{MarkovChain, StateType};
+use math_commons::stochastic::SolverWorkspace;
 use nalgebra::{DMatrix, DVector};
 use serde::{Deserialize, Serialize};
 
@@ -384,15 +384,25 @@ pub fn build_schedule_matrix(
     Ok(product)
 }
 
-/// Computes the stationary distribution via lazy damping $\tfrac{1}{2}(I + P)$ and [`MarkovChain`].
 #[verified_engine::verified]
-pub fn lazy_stationary_distribution(transition: &DMatrix<f64>) -> Result<DVector<f64>> {
+fn solve_stationary_exact(
+    ws: &mut SolverWorkspace,
+    transition: &DMatrix<f64>,
+) -> Result<DVector<f64>> {
     let m = transition.nrows();
-    let lazy = (DMatrix::identity(m, m) + transition) * 0.5;
-    MarkovChain::new(lazy, vec![StateType::Transient; m])?
-        .stationary_distribution()
+    debug_assert_eq!(m, transition.ncols());
+    let staged = ws.operator_staging_mut(m);
+    for r in 0..m {
+        for c in 0..m {
+            staged[math_commons::math_kernel::types::flatten_2d_index(c, r, m)] =
+                transition[(r, c)];
+        }
+    }
+    ws.solve_staged_dtmc_stationary_slice(m)
+        .map(DVector::from_column_slice)
         .ok_or_else(|| MarkovError::SingularMatrix {
-            context: "Lazy-damped MarkovChain stationary_distribution did not converge".to_string(),
+            context: "Parrondo transition matrix lacks a unique stationary distribution"
+                .to_string(),
         })
 }
 
@@ -435,15 +445,7 @@ fn evaluate_schedule_cycle(
     (total_gain * inv_len, accum_pi * inv_len)
 }
 
-/// Computes the exact stationary capital drift $g = \sum_{i=0}^{M-1} \pi_i (p_i - q_i)$ of a modular Parrondo Markov chain.
-///
-/// Reference: Harmer & Abbott (1999), DOI: 10.1214/ss/1009212519; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
-///
-/// # Stability
-/// Solves the finite periodic stationary distribution $\boldsymbol{\pi} P = \boldsymbol{\pi}$, $\sum_i \pi_i = 1$ directly rather than via noisy Monte Carlo averaging.
-///
-/// # Domain of Validity
-/// Valid for irreducible modular capital games with transition probabilities $p_i \in (0, 1)$.
+#[doc = include_str!("../../../../../../docs/math_specs/snippets/parrondo_ratchet.md")]
 #[verified_engine::verified]
 pub fn solve_parrondo_ratchet(
     params: &ParrondoParams,
@@ -456,14 +458,11 @@ pub fn solve_parrondo_ratchet(
     );
     let p_mix = build_mixture_matrix(&p_a, &p_b)?;
     let p_schedule = build_schedule_matrix(&p_a, &p_b, schedule)?;
-    let (pi_a, pi_b) = (
-        lazy_stationary_distribution(&p_a)?,
-        lazy_stationary_distribution(&p_b)?,
-    );
-    let (pi_mix, pi_schedule) = (
-        lazy_stationary_distribution(&p_mix)?,
-        lazy_stationary_distribution(&p_schedule)?,
-    );
+    let mut ws = SolverWorkspace::new(m, 0);
+    let pi_a = solve_stationary_exact(&mut ws, &p_a)?;
+    let pi_b = solve_stationary_exact(&mut ws, &p_b)?;
+    let pi_mix = solve_stationary_exact(&mut ws, &p_mix)?;
+    let pi_schedule = solve_stationary_exact(&mut ws, &p_schedule)?;
     let gain_vec_a = DVector::from_element(m, 2.0 * params.p_a() - 1.0);
     let gain_vec_b = DVector::from_fn(m, |s, _| {
         2.0 * params.win_probability(ParrondoGame::GameB, s) - 1.0

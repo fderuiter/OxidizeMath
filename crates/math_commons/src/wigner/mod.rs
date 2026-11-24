@@ -1,4 +1,7 @@
 // [cite:math_commons]
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
+
 /// Clebsch-Gordan coefficient calculator for angular momentum coupling.
 ///
 /// # Example
@@ -34,7 +37,7 @@ pub struct ClebschGordan {
 
 impl ClebschGordan {
     /// Evaluates the Clebsch-Gordan coefficient $\langle j_1 m_1 j_2 m_2 \mid J M \rangle$ via Wigner $3j$ symbols.
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn value(&self) -> f64 {
         let (tj1, tm1, tj2, tm2, tj, tm) =
             (self.tj1, self.tm1, self.tj2, self.tm2, self.tj12, self.tm12);
@@ -59,7 +62,7 @@ impl ClebschGordan {
     }
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn fact(n: i32) -> f64 {
     if n <= 0 {
         1.0
@@ -68,13 +71,13 @@ fn fact(n: i32) -> f64 {
     }
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn triangle_coeff(ta: i32, tb: i32, tc: i32) -> f64 {
     fact((ta + tb - tc) / 2) * fact((ta - tb + tc) / 2) * fact((-ta + tb + tc) / 2)
         / fact((ta + tb + tc) / 2 + 1)
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn wigner_3j(tj1: i32, tj2: i32, tj3: i32, tm1: i32, tm2: i32, tm3: i32) -> f64 {
     if tm1 + tm2 + tm3 != 0 {
         return 0.0;

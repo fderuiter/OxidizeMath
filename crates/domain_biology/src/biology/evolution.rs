@@ -70,6 +70,56 @@ impl HawkDovePopulation {
         Self { v, c }
     }
 
+    /// Returns the 2x2 Hawk-Dove payoff matrix `[[E(H,H), E(H,D)], [E(D,H), E(D,D)]]` on the stack.
+    #[verified_engine::verified]
+    pub fn payoff_matrix(&self) -> [[f64; 2]; 2] {
+        [[(self.v - self.c) / 2.0, self.v], [0.0, self.v / 2.0]]
+    }
+
+    /// Returns the flattened `[R, S, T, P]` payoff vector ordered as Cooperator = Dove (`+1`),
+    /// Defector = Hawk (`-1`) for spatial evolutionary lattice games (such as Fermi-Ising dynamics):
+    /// - $R = E(D, D) = V / 2$
+    /// - $S = E(D, H) = 0$
+    /// - $T = E(H, D) = V$
+    /// - $P = E(H, H) = (V - C) / 2$
+    #[verified_engine::verified]
+    pub fn cooperator_defector_payoffs(&self) -> [f64; 4] {
+        let [[e_hh, e_hd], [e_dh, e_dd]] = self.payoff_matrix();
+        [e_dd, e_dh, e_hd, e_hh]
+    }
+
+    /// Returns the theoretical Evolutionarily Stable Strategy (ESS) Hawk frequency $p^*$:
+    /// - When $C > V > 0$, mixed equilibrium $p^* = V / C \in (0, 1)$.
+    /// - When $V \ge C$ and $V > 0$, pure Hawk dominance $p^* = 1$.
+    /// - When $V \le 0$, $p^* = 0$.
+    #[verified_engine::verified]
+    pub fn ess_hawk_frequency(&self) -> f64 {
+        if self.v <= 0.0 {
+            0.0
+        } else if self.c > self.v {
+            (self.v / self.c).clamp(0.0, 1.0)
+        } else {
+            1.0
+        }
+    }
+
+    /// Computes expected fitness `(fitness_hawk, fitness_dove)` at Hawk frequency `hawk_freq`.
+    #[verified_engine::verified]
+    pub fn expected_fitness(&self, hawk_freq: f64) -> (f64, f64) {
+        let p = hawk_freq.clamp(0.0, 1.0);
+        let [[e_hh, e_hd], [e_dh, e_dd]] = self.payoff_matrix();
+        let w_hawk = p * e_hh + (1.0 - p) * e_hd;
+        let w_dove = p * e_dh + (1.0 - p) * e_dd;
+        (w_hawk, w_dove)
+    }
+
+    /// Evaluates the 1D replicator phase velocity $\dot{p}_H = p_H (1 - p_H) (V - p_H C) / 2$
+    /// without heap allocations.
+    #[verified_engine::verified]
+    pub fn replicator_velocity(&self, hawk_freq: f64) -> f64 {
+        self.derivative(0.0, &ArrayState([hawk_freq])).0[0]
+    }
+
     /// Constructs the Replicator Dynamics system for this game.
     ///
     /// The payoff matrix is:

@@ -221,57 +221,54 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
         max_sum
     }
 
-    /// Computes the steady-state distribution.
+    /// Computes the unique steady-state distribution $\pi$ satisfying $\pi^T G = 0$ and
+    /// $\sum_i \pi_i = 1$ via Tarjan SCC sink isolation and scale-normalized Householder QR.
     ///
-    /// # Mathematical Background
-    ///
-    /// The steady-state distribution π satisfies:
-    /// π·G = 0 and Σᵢ πᵢ = 1
-    ///
-    /// # Returns
-    ///
-    /// The steady-state distribution if it exists and converges, or None otherwise.
-    ///
-    /// # Panics
-    ///
-    /// This function will panic if `T::from_f64` fails when attempting to cast
-    /// numeric constants (e.g., tolerances or exponents) to the generic type `T`.
+    /// Returns `None` when multiple closed sink classes exist (non-unique steady state).
     #[verified_engine::verified]
     pub fn steady_state(&self) -> Option<DVector<T>> {
-        // For irreducible CTMCs, we can find the steady state by computing
-        // the null space of G^T and normalizing.
+        assert!(self.num_states > 0);
+        let mut ws = math_commons::stochastic::SolverWorkspace::new(self.num_states, 0);
+        let mut out = DVector::zeros(self.num_states);
+        self.steady_state_with_workspace(&mut ws, &mut out)
+            .then_some(out)
+    }
 
-        // Alternative approach: simulate for a long time
-        // π ≈ e^T·P(t) for large t, where e^T is any initial distribution
-
-        let long_time = T::from_f64(100.0).unwrap();
-        const MAX_ATTEMPTS: usize = 5;
-
-        for attempt in 0..MAX_ATTEMPTS {
-            let t = long_time * T::from_usize(1 + attempt).unwrap();
-
-            if let Ok(p_t) = self.transition_probabilities(t) {
-                // Use uniform initial distribution
-                let mut pi = DVector::from_element(
-                    self.num_states,
-                    T::one() / T::from_usize(self.num_states).unwrap(),
-                );
-                pi = p_t.transpose() * pi;
-
-                // Check if it's approximately stationary
-                let pi_next = self.generator.transpose() * &pi;
-                if pi_next.norm() < T::from_f64(math_commons::registry::TOLERANCE_FAST).unwrap() {
-                    // Normalize to ensure exact sum to 1
-                    let sum = pi.iter().fold(T::zero(), |acc, &x| acc + x);
-                    if sum > T::from_f64(math_commons::registry::TOLERANCE_HIGH).unwrap() {
-                        pi /= sum;
-                        return Some(pi);
-                    }
+    /// Computes the unique steady-state distribution into `out` using preallocated
+    /// [`math_commons::stochastic::SolverWorkspace`] buffers with zero heap allocations when
+    /// `ws.state_capacity() >= self.num_states`.
+    #[verified_engine::verified]
+    pub fn steady_state_with_workspace(
+        &self,
+        ws: &mut math_commons::stochastic::SolverWorkspace,
+        out: &mut DVector<T>,
+    ) -> bool {
+        let n = self.num_states;
+        debug_assert_eq!(out.len(), n);
+        if n == 0 || out.len() != n {
+            return false;
+        }
+        {
+            let staged = ws.operator_staging_mut(n);
+            for r in 0..n {
+                for c in 0..n {
+                    let Some(v) = self.generator[(r, c)].to_f64() else {
+                        return false;
+                    };
+                    staged[math_commons::math_kernel::types::flatten_2d_index(c, r, n)] = v;
                 }
             }
         }
-
-        None
+        let Some(pi_f64) = ws.solve_staged_ctmc_steady_state_slice(n) else {
+            return false;
+        };
+        for (i, &val) in pi_f64.iter().enumerate() {
+            let Some(cast) = T::from_f64(val) else {
+                return false;
+            };
+            out[i] = cast;
+        }
+        true
     }
 
     /// Computes the expected time to absorption from a transient state.
@@ -369,8 +366,9 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
         max_time: T,
         rng: &mut R,
     ) -> Result<Vec<(T, usize)>> {
-        use rand_distr::{Distribution, Exp, WeightedIndex};
+        use crate::pure_math::analysis::stochastic::GillespieSolver;
 
+        debug_assert!(self.num_states > 0);
         if initial_state >= self.num_states {
             return Err(MarkovError::InvalidState {
                 reason: format!("Initial state {} out of bounds", initial_state),
@@ -380,64 +378,74 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
         let mut trajectory = vec![(T::zero(), initial_state)];
         let mut current_state = initial_state;
         let mut current_time = T::zero();
+        let mut solver = GillespieSolver::with_capacity(rng, self.num_states);
 
         while current_time < max_time {
-            // Get rate out of current state
-            let rate = -self.generator[(current_state, current_state)];
-
-            if rate < T::from_f64(math_commons::registry::TOLERANCE_HIGH).unwrap() {
-                // Absorbing state or very slow rate
-                break;
-            }
-
-            // Sample holding time
-            let exp_dist = Exp::new(rate.to_f64().unwrap_or(0.0)).map_err(|_| {
-                crate::error::MarkovError::Math(math_commons::error::MathError::NumericalError {
-                    reason: format!(
-                        "Invalid rate for exponential: {}",
-                        rate.to_f64().unwrap_or(f64::NAN)
-                    ),
+            let holding_time = solver.step(self, &mut current_state).map_err(|err| {
+                MarkovError::Math(math_commons::error::MathError::NumericalError {
+                    reason: err.to_string(),
                 })
             })?;
-            let holding_time: f64 = exp_dist.sample(rng);
-            current_time += T::from_f64(holding_time).unwrap();
-
+            if !holding_time.is_finite() {
+                break;
+            }
+            let Some(dt_val) = T::from_f64(holding_time) else {
+                return Err(MarkovError::Math(
+                    math_commons::error::MathError::ConversionError {
+                        reason: format!("Failed to convert holding time {holding_time}"),
+                    },
+                ));
+            };
+            current_time += dt_val;
             if current_time >= max_time {
                 break;
             }
-
-            // Sample next state
-            let mut weights = Vec::new();
-            let mut next_states = Vec::new();
-            for j in 0..self.num_states {
-                if j != current_state {
-                    let transition_rate = self.generator[(current_state, j)];
-                    if transition_rate
-                        > T::from_f64(math_commons::registry::TOLERANCE_HIGH).unwrap()
-                    {
-                        weights.push(transition_rate.to_f64().unwrap_or(0.0));
-                        next_states.push(j);
-                    }
-                }
-            }
-
-            if weights.is_empty() {
-                // No transitions possible (shouldn't happen if rate > 0)
-                break;
-            }
-
-            let dist = WeightedIndex::new(&weights).map_err(|_| {
-                crate::error::MarkovError::Math(math_commons::error::MathError::NumericalError {
-                    reason: "Failed to create weighted distribution".to_string(),
-                })
-            })?;
-
-            let next_idx = dist.sample(rng);
-            current_state = next_states[next_idx];
             trajectory.push((current_time, current_state));
         }
 
         Ok(trajectory)
+    }
+}
+
+impl<T: RealField + Copy + ToPrimitive>
+    crate::pure_math::analysis::stochastic::StochasticSystem<usize> for ContinuousMarkovChain<T>
+{
+    #[verified_engine::verified]
+    fn propensities(&self, state: &usize, out: &mut Vec<f64>) {
+        debug_assert!(*state < self.num_states);
+        let i = *state;
+        let tol = math_commons::registry::TOLERANCE_HIGH;
+        let total_exit = (-self.generator[(i, i)]).to_f64().unwrap_or(0.0);
+        if total_exit <= 0.0 {
+            return;
+        }
+        let min_edge = (total_exit * 1e-15).min(tol);
+        for j in 0..self.num_states {
+            if j == i {
+                out.push(0.0);
+            } else {
+                let rate = self.generator[(i, j)].to_f64().unwrap_or(0.0);
+                out.push(if rate > min_edge { rate } else { 0.0 });
+            }
+        }
+    }
+
+    #[verified_engine::verified]
+    fn react(
+        &self,
+        state: &mut usize,
+        reaction_index: usize,
+    ) -> std::result::Result<(), crate::pure_math::analysis::stochastic::StochasticError> {
+        debug_assert!(*state < self.num_states);
+        if reaction_index >= self.num_states {
+            return Err(
+                crate::pure_math::analysis::stochastic::StochasticError::InvalidReactionIndex(
+                    reaction_index,
+                ),
+            );
+        }
+        *state = reaction_index;
+        Ok(())
     }
 }
 

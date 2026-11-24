@@ -48,6 +48,7 @@ mod edge_cache;
 pub mod gradients;
 /// Lorensen-Cline Marching Cubes surface extraction implementation.
 pub mod marching_cubes;
+pub mod solid_closure;
 /// Precomputed Marching Cubes edge intersection and triangle topology lookup tables.
 pub mod tables;
 /// Volumetric scalar grid and builder data structures for isosurface extraction.
@@ -59,6 +60,10 @@ pub use capped::{
 };
 pub use gradients::{CentralDifferenceEstimator, GradientEstimator};
 pub use marching_cubes::{MarchingCubes, extract_isosurface};
+pub use solid_closure::{
+    CuttingPlane, SolidClosureConfig, SolidPolarity, extract_solid_isosurface,
+    extract_solid_isosurface_into,
+};
 pub use types::{Mesh, Point3D, VoxelGrid, VoxelGridError};
 pub use workspace::{IsosurfaceWorkspace, extract_isosurface_into};
 

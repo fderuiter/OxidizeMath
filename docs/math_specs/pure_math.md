@@ -46,7 +46,7 @@ $$
 \theta_{t+1}^{\text{SGD}} = \theta_t - \eta g_t, \qquad \hat{m}_t = \frac{\beta_1 m_{t-1} + (1-\beta_1)g_t}{1 - \beta_1^t}, \quad \hat{v}_t = \frac{\beta_2 v_{t-1} + (1-\beta_2)g_t^2}{1 - \beta_2^t}, \quad \theta_{t+1}^{\text{Adam}} = \theta_t - \eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \epsilon}
 $$
 
-Initial/boundary value solvers evolve $\dot{y} = f(t, y)$ (`OdeModel`, `Solver`), $\partial_t u = \alpha \Delta u$ (`HeatEquationSolver`), $\partial_{tt} u = c^2 \Delta u - \gamma \partial_t u$ (`Wave2DSolver`), $-\Delta u = f$ (`GreenFunctionSolver1D`, `RectangularLaplaceSolver`), exact jump Markov trajectories (`GillespieSolver`), discrete/hidden Markov chains (`HiddenMarkovModel`, `solve_parrondo_ratchet`), and Lundberg ruin adjustment equations (`solve_lundberg_ruin`).
+Initial/boundary value and combinatorial solvers evolve $\dot{y} = f(t, y)$ (`OdeModel`, `Solver`), $\partial_t u = \alpha \Delta u$ (`HeatEquationSolver`), $\partial_{tt} u = c^2 \Delta u - \gamma \partial_t u$ (`Wave2DSolver`), $-\Delta u = f$ (`GreenFunctionSolver1D`, `RectangularLaplaceSolver`), $O(N)$ complex Thomas tridiagonal systems $a_{i-1} x_{i-1} + b_i x_i + c_i x_{i+1} = d_i$ (`solve_tridiagonal_factored`, `solve_tridiagonal_in_place`), Kruskal minimum spanning forests $\min_{F \subseteq E} \sum_{e \in F} w_e$ (`solve_minimum_spanning_tree_in_place`), Edmonds-Karp `s-t` max-flow/min-cut duality $\max_f |f| = \min_{(S,T)} c(S,T)$ (`solve_max_flow_min_cut_in_place`), exact jump Markov trajectories (`GillespieSolver`), discrete/hidden Markov chains (`HiddenMarkovModel`, `solve_parrondo_ratchet`), and Lundberg ruin adjustment equations (`solve_lundberg_ruin`).
 
 ### Citations
 

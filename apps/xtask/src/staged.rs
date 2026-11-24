@@ -1,4 +1,5 @@
 mod graph;
+pub(crate) mod push;
 mod snapshot;
 
 use crate::gates::{
@@ -6,12 +7,14 @@ use crate::gates::{
     run_verification_in_dir_with_env, workspace_root,
 };
 use crate::markdown_links::{check_markdown_links_for_files_in_dir, check_markdown_links_in_dir};
+use graph::is_root_config_escalation;
 pub(crate) use graph::load_workspace_crates;
 #[cfg(test)]
 pub(crate) use graph::parse_workspace_members;
-use graph::{expand_reverse_dependents, is_root_config_escalation};
+pub use push::lint_push;
 use snapshot::{GitSnapshotEnv, sync_index_snapshot};
 use std::collections::{BTreeMap, HashSet};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, exit};
 
@@ -75,7 +78,7 @@ fn find_owning_crate<'a>(path: &str, crates: &'a [WorkspaceCrate]) -> Option<&'a
         .max_by_key(|c| c.dir.len())
 }
 
-fn build_wasm_clippy_args(touched_web: &[&WorkspaceCrate]) -> Option<Vec<String>> {
+pub(crate) fn build_wasm_clippy_args(touched_web: &[&WorkspaceCrate]) -> Option<Vec<String>> {
     if touched_web.is_empty() {
         return None;
     }
@@ -106,7 +109,7 @@ fn build_wasm_clippy_args(touched_web: &[&WorkspaceCrate]) -> Option<Vec<String>
     Some(args)
 }
 
-fn build_host_clippy_args(packages: &[String]) -> Option<Vec<String>> {
+pub(crate) fn build_host_clippy_args(packages: &[String]) -> Option<Vec<String>> {
     if packages.is_empty() {
         return None;
     }
@@ -140,7 +143,7 @@ fn collect_rustfmt_by_edition(
     rustfmt_by_edition
 }
 
-fn select_direct_touched_crates<'a>(
+pub(crate) fn select_direct_touched_crates<'a>(
     all_staged: &[String],
     crates: &'a [WorkspaceCrate],
 ) -> Vec<&'a WorkspaceCrate> {
@@ -159,10 +162,66 @@ fn select_direct_touched_crates<'a>(
     touched
 }
 
+fn content_mentions_wasm32(content: &str) -> bool {
+    [
+        "wasm32",
+        "wasm_bindgen",
+        "wasm-bindgen",
+        "web_sys",
+        "web-sys",
+        "js_sys",
+        "js-sys",
+    ]
+    .iter()
+    .any(|kw| content.contains(kw))
+}
+
+fn crate_touches_wasm32_sources(
+    krate: &WorkspaceCrate,
+    all_staged: &[String],
+    base_dir: Option<&Path>,
+) -> bool {
+    if !krate.is_web {
+        return false;
+    }
+    if krate.package_name == "math_explorer_gui" {
+        return true;
+    }
+    let manifest = format!("{}/Cargo.toml", krate.dir);
+    let prefix = format!("{}/", krate.dir);
+    for path in all_staged {
+        if path != &manifest && !path.starts_with(&prefix) {
+            continue;
+        }
+        let lower = path.to_ascii_lowercase();
+        if lower.contains("wasm") || lower.contains("/web_") {
+            return true;
+        }
+        if let Some(root) = base_dir
+            && (path.ends_with(".rs") || path == &manifest)
+            && let Ok(src) = fs::read_to_string(root.join(path))
+            && content_mentions_wasm32(&src)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(test)]
 pub(crate) fn build_staged_plan(
     all_staged: &[String],
     existing_staged: &[String],
     crates: &[WorkspaceCrate],
+) -> StagedLintPlan {
+    build_staged_plan_in_dir(all_staged, existing_staged, crates, None)
+}
+
+pub(crate) fn build_staged_plan_in_dir(
+    all_staged: &[String],
+    existing_staged: &[String],
+    crates: &[WorkspaceCrate],
+    base_dir: Option<&Path>,
 ) -> StagedLintPlan {
     let full_workspace = all_staged.iter().any(|p| is_root_config_escalation(p));
     let rustfmt_by_edition = collect_rustfmt_by_edition(existing_staged, crates);
@@ -191,14 +250,15 @@ pub(crate) fn build_staged_plan(
     }
 
     let direct_crates = select_direct_touched_crates(all_staged, crates);
-    let affected_crates = expand_reverse_dependents(&direct_crates, crates);
-    let host_clippy_packages: Vec<String> = affected_crates
+    let host_clippy_packages: Vec<String> = direct_crates
         .iter()
         .map(|c| c.package_name.clone())
         .collect();
     let host_clippy_args = build_host_clippy_args(&host_clippy_packages);
-    let touched_web: Vec<&WorkspaceCrate> =
-        affected_crates.into_iter().filter(|c| c.is_web).collect();
+    let touched_web: Vec<&WorkspaceCrate> = direct_crates
+        .into_iter()
+        .filter(|c| crate_touches_wasm32_sources(c, all_staged, base_dir))
+        .collect();
 
     StagedLintPlan {
         full_workspace: false,
@@ -293,7 +353,8 @@ fn prepare_snapshot_and_plan(
             .filter(|p| snapshot_dir.join(p).is_file())
             .collect();
     let crates = load_workspace_crates(&snapshot_dir);
-    let mut plan = build_staged_plan(all_staged, &existing_staged, &crates);
+    let mut plan =
+        build_staged_plan_in_dir(all_staged, &existing_staged, &crates, Some(&snapshot_dir));
     if !git_staged_paths_in(repo_root, &["-M", "--diff-filter=DR"]).is_empty() {
         plan.scan_all_markdown = true;
     }

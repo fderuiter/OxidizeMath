@@ -29,6 +29,74 @@ impl Diagnostic for HodgkinHuxleyError {
 
 pub use crate::biology::{kinetics::KineticsError, reaction_diffusion::ReactionDiffusionError};
 
+/// Errors emitted by botanical morphogenesis kernels (`lsystem` and `phyllotaxis`).
+#[derive(Error, Debug, Clone, PartialEq)]
+pub enum BotanicalError {
+    /// Requested primordia count is zero, non-finite, or exceeds the pre-allocated capacity.
+    #[error("Primordia count {count} must be between 1 and {max}")]
+    InvalidPrimordiaCount {
+        /// Requested primordia count.
+        count: usize,
+        /// Maximum supported primordia count.
+        max: usize,
+    },
+    /// Divergence angle is non-finite.
+    #[error("Divergence angle {angle} rad must be finite")]
+    InvalidDivergenceAngle {
+        /// Supplied divergence angle in radians.
+        angle: f64,
+    },
+    /// Radial scale factor is non-positive or non-finite.
+    #[error("Radial scale factor {scale} must be finite and strictly positive")]
+    InvalidScaleFactor {
+        /// Supplied radial scale factor.
+        scale: f64,
+    },
+    /// L-system string derivation exceeded the pre-allocated symbol tape bound.
+    #[error("L-system derivation requested {requested} symbols, exceeding maximum tape size {max}")]
+    SymbolTapeOverflow {
+        /// Requested total symbol count.
+        requested: usize,
+        /// Maximum configured symbol tape capacity.
+        max: usize,
+    },
+    /// L-system turtle bracket push exceeded the pre-allocated branch stack depth.
+    #[error("L-system turtle bracket stack exceeded maximum depth {max_depth}")]
+    TurtleStackOverflow {
+        /// Maximum configured stack depth.
+        max_depth: usize,
+    },
+    /// L-system string contained a closing bracket `]` with an empty branch stack.
+    #[error("L-system string contains an unmatched closing bracket")]
+    UnmatchedPopBracket,
+    /// Grammar or turtle parameter is invalid or non-finite.
+    #[error("Invalid L-system parameter {name}: {value}")]
+    InvalidGrammarParameter {
+        /// Parameter identifier.
+        name: &'static str,
+        /// Supplied invalid numeric value.
+        value: f64,
+    },
+    /// L-system axiom cannot be empty.
+    #[error("L-system axiom cannot be empty")]
+    EmptyAxiom,
+}
+
+impl Diagnostic for BotanicalError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        map.insert("error_type".to_string(), "BotanicalError".to_string());
+        map.insert("description".to_string(), self.to_string());
+        map
+    }
+}
+
 impl Diagnostic for KineticsError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {

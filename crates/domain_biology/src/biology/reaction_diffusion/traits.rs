@@ -1,5 +1,8 @@
 use super::state::ChemicalState;
 
+/// Maximum species count handled on the stack without heap allocation in `add_reaction_batch`.
+pub const STACK_REACTION_SPECIES_CAP: usize = 16;
+
 /// Defines the local pointwise reaction source term $\mathbf{R}(\mathbf{C})$ for $N$ species:
 /// $$\left(\frac{\partial C_s}{\partial t}\right)_{\text{react}} = R_s(C_0, \dots, C_{N-1})$$
 ///
@@ -23,8 +26,8 @@ pub trait ReactionModel {
 
     /// Computes and accumulates reaction rates for the entire grid.
     ///
-    /// This method allows for vectorized implementations that process multiple grid points
-    /// efficiently. The default implementation iterates over grid points and calls `reaction`.
+    /// For up to [`STACK_REACTION_SPECIES_CAP`] species, local concentrations and reaction
+    /// rates are gathered on the stack so hot integration steps perform zero heap allocations.
     ///
     /// # Arguments
     /// * `state`: Current chemical state (concentrations).
@@ -37,18 +40,34 @@ pub trait ReactionModel {
         }
         let n_grid = state.grid_size();
 
+        if n_species <= STACK_REACTION_SPECIES_CAP {
+            let mut local_concs = [0.0_f64; STACK_REACTION_SPECIES_CAP];
+            let mut local_rates = [0.0_f64; STACK_REACTION_SPECIES_CAP];
+            let conc_slice = &mut local_concs[..n_species];
+            let rate_slice = &mut local_rates[..n_species];
+
+            for i in 0..n_grid {
+                for (s, conc) in conc_slice.iter_mut().enumerate() {
+                    *conc = state.species(s)[i];
+                }
+                rate_slice.fill(0.0);
+                self.reaction(conc_slice, rate_slice);
+                for (s, &rate) in rate_slice.iter().enumerate() {
+                    out_rates.species_mut(s)[i] += rate;
+                }
+            }
+            return;
+        }
+
         let mut local_concs = vec![0.0; n_species];
         let mut local_rates = vec![0.0; n_species];
 
         for i in 0..n_grid {
-            // Gather
             for (s, conc) in local_concs.iter_mut().enumerate().take(n_species) {
                 *conc = state.species(s)[i];
             }
-
+            local_rates.fill(0.0);
             self.reaction(&local_concs, &mut local_rates);
-
-            // Scatter (Accumulate)
             for (s, rate) in local_rates.iter().enumerate().take(n_species) {
                 out_rates.species_mut(s)[i] += rate;
             }

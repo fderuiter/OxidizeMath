@@ -2,6 +2,11 @@
 // [cite:math_commons]
 
 use super::FitModel;
+use alloc::borrow::ToOwned;
+use alloc::format;
+use alloc::string::{String, ToString};
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
 
 const SCI_LOWER: f64 = 1e-3;
 const SCI_UPPER: f64 = 1e5;

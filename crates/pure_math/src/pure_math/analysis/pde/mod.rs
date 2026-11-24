@@ -84,6 +84,8 @@ pub mod greens;
 pub mod heat;
 /// Submodule providing `laplace` types, traits, and algorithms.
 pub mod laplace;
+/// Zero-allocation, `no_std`-compatible complex Thomas tridiagonal matrix factorization and sweeps.
+pub mod tridiagonal;
 /// Submodule providing `wave` types, traits, and algorithms.
 pub mod wave;
 /// Zero-allocation 2D Verlet wave tank, biharmonic Chladni plate, 2D FFT spectra, and sand drift.

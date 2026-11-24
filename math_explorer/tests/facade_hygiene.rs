@@ -128,7 +128,7 @@ mod native {
     }
 
     #[test]
-    fn math_explorer_error_module_reexports_all_twenty_nine_crate_error_enums() {
+    fn math_explorer_error_module_reexports_all_thirty_crate_error_enums() {
         let root = workspace_root();
         let facade_error_src =
             fs::read_to_string(root.join("math_explorer/src/error.rs")).expect("error.rs");
@@ -136,6 +136,7 @@ mod native {
         for rel in [
             "crates/math_commons/src/error.rs",
             "crates/pure_math/src/error.rs",
+            "crates/pure_math/src/error/stochastic.rs",
             "crates/domain_ai/src/error.rs",
             "crates/domain_applied/src/error.rs",
             "crates/domain_biology/src/error.rs",
@@ -156,7 +157,7 @@ mod native {
                 }
             }
         }
-        assert_eq!(crate_enums.len(), 29);
+        assert_eq!(crate_enums.len(), 30);
         for enum_name in &crate_enums {
             assert!(
                 facade_error_src.contains(enum_name),
