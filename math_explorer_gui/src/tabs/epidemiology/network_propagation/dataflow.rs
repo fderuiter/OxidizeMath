@@ -164,6 +164,7 @@ impl NetworkPropagationTool {
         self.clamp_focus_indices();
         self.synced_bus_revision = None;
         self.last_upstream_graph_rev = revision;
+        self.reset_empirical_trace();
         self.bump_revision();
     }
 

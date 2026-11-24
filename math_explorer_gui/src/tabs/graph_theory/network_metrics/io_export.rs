@@ -30,6 +30,8 @@ pub fn metrics_state_json_from_shared(topo: &SharedGraphTopology) -> Option<Stri
     let state = NetworkMetricsState {
         selected_metric: MetricType::DegreeCentrality,
         highlight_vertex_cover: true,
+        follow_workspace_graph: false,
+        frozen_graph: None,
         custom_topology: Some(topo.to_compact_state()),
         topology_source: TopologySource::LocalPreset,
     };
@@ -42,7 +44,7 @@ impl NetworkMetricsTool {
         match SharedSimulationBus::active_graph_for(ctx, self.topology_source) {
             Some(snap) => {
                 if self.synced_bus_revision != Some(snap.revision) {
-                    self.apply_shared_graph(&snap);
+                    self.apply_sim_bus_topology(&snap);
                     self.synced_bus_revision = Some(snap.revision);
                 }
             }
@@ -55,7 +57,7 @@ impl NetworkMetricsTool {
         }
     }
 
-    fn apply_shared_graph(&mut self, snap: &BusGraphTopology) {
+    fn apply_sim_bus_topology(&mut self, snap: &BusGraphTopology) {
         if snap.node_count() == 0 {
             return;
         }
@@ -130,6 +132,8 @@ impl NetworkMetricsTool {
         if topo.is_empty() {
             return;
         }
+        self.follow_workspace_graph = false;
+        self.active_shared_graph = None;
         self.synced_bus_revision = None;
         self.topology_source = TopologySource::LocalPreset;
         self.load_compact_topology(&topo.to_compact_state());
@@ -161,7 +165,11 @@ impl NetworkMetricsTool {
 
     /// Restores the default 7-node wheel graph (`W_7`) and recomputes invariants.
     pub fn reset_to_sample_wheel(&mut self) {
+        self.follow_workspace_graph = true;
+        self.applied_bus_revision = 0;
+        self.active_shared_graph = None;
         self.synced_bus_revision = None;
+        self.topology_source = TopologySource::SharedBus;
         self.build_sample_graph();
         self.bump_revision();
     }
@@ -330,11 +338,15 @@ impl NetworkMetricsTool {
         let edge_specs: Vec<EdgePlotSpec> = self
             .edges
             .iter()
-            .map(|&(u, v, _)| EdgePlotSpec {
+            .map(|&(u, v, w)| EdgePlotSpec {
                 name: format!("Edge {u}-{v}"),
                 u,
                 v,
-                color: palette.graph_edge,
+                color: if w < 0.0 {
+                    palette.error
+                } else {
+                    palette.graph_edge
+                },
                 width: 2.0,
                 directed: self.directed,
             })

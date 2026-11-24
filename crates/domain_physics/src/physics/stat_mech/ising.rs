@@ -12,6 +12,7 @@
 //! - **$T > T_c$**: Paramagnetic phase (Disordered spins).
 
 use super::KB;
+pub use super::graph_ising::GraphSpinSystem;
 use domain_applied::applied::game_theory::evolutionary::MatrixPayoff;
 use math_commons::math_kernel::types::flatten_2d_index;
 use rand::Rng;

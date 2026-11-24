@@ -4,6 +4,7 @@
 
 use super::{Algorithm, AlgorithmVisualizerTool};
 use crate::accessibility::AccessibleHoverText;
+use crate::app::data_bus::ui::render_follow_workspace_toggle;
 use crate::app::{render_topology_source_bar, SharedGraphTopology, SharedSimulationBus};
 use eframe::egui::{self, Pos2};
 use math_explorer::pure_math::graph_theory::graph::Graph;
@@ -14,7 +15,7 @@ impl AlgorithmVisualizerTool {
         match SharedSimulationBus::active_graph_for(ctx, self.topology_source) {
             Some(snap) => {
                 if self.synced_bus_revision != Some(snap.revision) {
-                    self.apply_shared_graph(&snap);
+                    self.apply_sim_bus_topology(&snap);
                     self.synced_bus_revision = Some(snap.revision);
                 }
             }
@@ -27,7 +28,7 @@ impl AlgorithmVisualizerTool {
         }
     }
 
-    fn apply_shared_graph(&mut self, snap: &SharedGraphTopology) {
+    fn apply_sim_bus_topology(&mut self, snap: &SharedGraphTopology) {
         if snap.node_count() == 0 {
             return;
         }
@@ -122,6 +123,22 @@ impl AlgorithmVisualizerTool {
             ) {
                 self.bump_revision();
                 self.sync_shared_topology(&ctx);
+                if !SharedSimulationBus::is_link_topology_enabled(&ctx) {
+                    self.sync_from_bus(&ctx);
+                }
+            }
+            ui.separator();
+            let rev_opt = (self.applied_bus_revision > 0).then_some(self.applied_bus_revision);
+            if render_follow_workspace_toggle(
+                ui,
+                &mut self.follow_workspace_graph,
+                "Algorithm Visualizer",
+                rev_opt,
+            ) && self.follow_workspace_graph
+            {
+                self.is_custom_topology = false;
+                self.applied_bus_revision = 0;
+                self.sync_from_bus(ui.ctx());
             }
             ui.separator();
             self.render_algorithm_radios(ui);

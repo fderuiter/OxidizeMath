@@ -83,6 +83,14 @@ fn is_zero_f64(val: &f64) -> bool {
     val.abs() <= f64::EPSILON
 }
 
+const fn default_true() -> bool {
+    true
+}
+
+fn is_true(val: &bool) -> bool {
+    *val
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct IsingState {
@@ -120,6 +128,12 @@ pub(crate) struct IsingState {
         skip_serializing_if = "crate::app::TopologySource::is_default"
     )]
     pub(crate) topology_source: crate::app::TopologySource,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub(crate) follow_workspace_graph: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) seeded_graph: Option<crate::app::data_bus::SharedGraph>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) frozen_graph: Option<crate::app::data_bus::SharedGraph>,
 }
 
 impl IsingState {
@@ -146,17 +160,28 @@ impl IsingState {
             && (0..=99).contains(&self.brush_radius)
             && (100..=50_000).contains(&self.steps_per_frame)
             && seeds_valid;
-        if valid {
-            Ok(())
-        } else {
-            Err("Ising parameters out of valid bounds".to_string())
+        if !valid {
+            return Err("Ising parameters out of valid bounds".to_string());
         }
+        for g in [&self.seeded_graph, &self.frozen_graph]
+            .into_iter()
+            .flatten()
+        {
+            g.validate(
+                crate::app::data_bus::SESSION_MAX_BUS_NODES,
+                crate::app::data_bus::SESSION_MAX_BUS_EDGES,
+            )?;
+        }
+        Ok(())
     }
 }
 
 impl IsingModelTool {
     pub(super) fn serialize_ising_state(&self) -> Option<String> {
         let (xk, yk) = self.atlas.axis_keys();
+        let frozen_graph = (!self.graph_mode.follow_workspace_graph)
+            .then(|| self.graph_mode.active_graph.as_ref().map(|g| (**g).clone()))
+            .flatten();
         serde_json::to_string(&IsingState {
             temperature: self.temperature,
             j_coupling: self.j_coupling,
@@ -177,13 +202,16 @@ impl IsingModelTool {
             running: None,
             steps_per_frame: self.steps_per_frame,
             topology_source: self.topology_source,
+            follow_workspace_graph: self.graph_mode.follow_workspace_graph,
+            seeded_graph: self.graph_mode.seeded_graph.clone(),
+            frozen_graph,
         })
         .ok()
     }
 
     pub(super) fn deserialize_ising_state(&mut self, state: &str) -> Result<(), String> {
-        use crate::async_sim::{SimCommand, SimWorkerState};
         use crate::framework::InteractiveTool;
+        use std::sync::Arc;
         self.state_bounds().validate_json(state)?;
         let s: IsingState =
             serde_json::from_str(state).map_err(|e| format!("Invalid Ising state: {e}"))?;
@@ -204,31 +232,25 @@ impl IsingModelTool {
         self.droplet_seeds = s.droplet_seeds;
         self.steps_per_frame = s.steps_per_frame;
         self.topology_source = s.topology_source;
-        self.enforce_ising_challenge_locks();
-        if self.topology_source == crate::app::TopologySource::LocalPreset {
+        self.graph_mode.follow_workspace_graph = s.follow_workspace_graph;
+        self.graph_mode.seeded_graph = s.seeded_graph.clone();
+        self.graph_mode.pending_seed_publish =
+            s.seeded_graph.is_some() && s.topology_source == crate::app::TopologySource::SharedBus;
+        if let Some(g) = s.frozen_graph.or(s.seeded_graph) {
+            self.apply_shared_spin_graph(&Arc::new(g));
+        } else if self.graph_mode.follow_workspace_graph
+            || self.topology_source == crate::app::TopologySource::LocalPreset
+        {
             self.detach_shared_csr_graph(false);
         }
+        self.enforce_ising_challenge_locks();
         self.sync_shared_params();
         if self.defector_sea || !self.droplet_seeds.is_empty() {
             self.push_seed_layout_to_worker();
         }
         self.recompute_replicator_curve();
         self.refresh_challenge_workspace();
-
-        let target_state = s.state.unwrap_or_else(|| {
-            if s.running.unwrap_or(false) {
-                SimWorkerState::Running
-            } else {
-                SimWorkerState::Ready
-            }
-        });
-        if target_state == SimWorkerState::Running {
-            if !self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Start);
-            }
-        } else if self.worker.is_running() {
-            let _ = self.worker.send_command(SimCommand::Pause);
-        }
+        self.sync_worker_target_state(s.state, s.running);
         self.stepped_pixels = None;
         self.dirty = true;
         Ok(())
@@ -306,5 +328,56 @@ inventory::submit! {
         domain: "solid_state",
         tool_name: Some("IsingModelTool"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+const FRUSTRATED_TRIANGULAR_PRESET_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Frustrated Triangular Spins",
+    "domain": "solid_state",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "temperature": 0.45,
+    "j_coupling": 1.0,
+    "h_field": 0.0,
+    "steps_per_frame": 2000,
+    "seeded_graph": {
+      "revision": 1,
+      "nodes": [
+        { "id": 0, "norm_pos": [0.50, 0.50] },
+        { "id": 1, "norm_pos": [0.50, 0.14] },
+        { "id": 2, "norm_pos": [0.84, 0.36] },
+        { "id": 3, "norm_pos": [0.72, 0.78] },
+        { "id": 4, "norm_pos": [0.28, 0.78] },
+        { "id": 5, "norm_pos": [0.16, 0.36] }
+      ],
+      "edges": [
+        [0, 1, -1.0],
+        [0, 2, -1.0],
+        [0, 3, -1.0],
+        [0, 4, -1.0],
+        [0, 5, -1.0],
+        [1, 2, -1.0],
+        [2, 3, -1.0],
+        [3, 4, -1.0],
+        [4, 5, -1.0],
+        [5, 1, -1.0]
+      ]
+    }
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "frustrated_triangular_spins",
+        title: "Frustrated Triangular Spins",
+        description: "Odd-cycle antiferromagnetic (-w) wheel graph exhibiting geometric spin frustration with no zero-frustration ground state.",
+        category: "Statistical Mechanics",
+        icon: "🔺",
+        domain: "solid_state",
+        tool_name: Some("IsingModelTool"),
+        preset_generator: || FRUSTRATED_TRIANGULAR_PRESET_JSON,
     }
 }

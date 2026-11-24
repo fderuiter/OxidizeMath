@@ -90,13 +90,19 @@ impl MathExplorerApp {
     }
 
     pub(crate) fn sync_workspace_history_bridge(&self, ctx: &egui::Context) {
-        let bridge = WorkspaceHistoryBridge {
-            active: true,
-            can_undo: self.session_manager.can_undo(),
-            can_redo: self.session_manager.can_redo(),
-            pending: None,
-        };
-        ctx.data_mut(|d| d.insert_temp(egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID), bridge));
+        let can_undo = self.session_manager.can_undo();
+        let can_redo = self.session_manager.can_redo();
+        ctx.data_mut(|d| {
+            let id = egui::Id::new(WORKSPACE_HISTORY_BRIDGE_ID);
+            let prev = d.get_temp::<WorkspaceHistoryBridge>(id).unwrap_or_default();
+            let bridge = WorkspaceHistoryBridge {
+                active: true,
+                can_undo,
+                can_redo,
+                pending: prev.pending,
+            };
+            d.insert_temp(id, bridge);
+        });
     }
 
     pub(crate) fn drain_workspace_history_bridge(&mut self, ctx: &egui::Context) {
@@ -110,10 +116,14 @@ impl MathExplorerApp {
         match pending {
             Some(PendingHistoryAction::Undo) => {
                 self.undo();
+                crate::app::data_bus::sync_app_bus_before_viewport(self, ctx);
+                ctx.request_repaint();
                 crate::accessibility::announce_live_status(ctx, "Action executed: Undo");
             }
             Some(PendingHistoryAction::Redo) => {
                 self.redo();
+                crate::app::data_bus::sync_app_bus_before_viewport(self, ctx);
+                ctx.request_repaint();
                 crate::accessibility::announce_live_status(ctx, "Action executed: Redo");
             }
             None => {}

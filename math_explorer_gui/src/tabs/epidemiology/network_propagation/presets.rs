@@ -1,9 +1,10 @@
+//! Starter and containment challenge presets for [`super::NetworkPropagationTool`].
+
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{DEFAULT_CONTAINMENT_BUDGET, DEFAULT_NETWORK_SEED, MAX_CONTAINMENT_BUDGET};
+use super::{DEFAULT_CONTAINMENT_BUDGET, DEFAULT_NETWORK_SEED};
+use crate::app::data_bus::SharedGraph;
 use crate::app::TopologySource;
-use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
-use std::collections::HashSet;
 
 const fn default_seed() -> u64 {
     DEFAULT_NETWORK_SEED
@@ -21,8 +22,16 @@ const fn is_default_budget(budget: &usize) -> bool {
     *budget == DEFAULT_CONTAINMENT_BUDGET
 }
 
+const fn default_true() -> bool {
+    true
+}
+
 const fn is_false(value: &bool) -> bool {
     !*value
+}
+
+const fn is_true(value: &bool) -> bool {
+    *value
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -43,79 +52,15 @@ pub(super) struct NetPropState {
     pub(super) is_running: bool,
     #[serde(default, skip_serializing_if = "TopologySource::is_default")]
     pub(super) topology_source: TopologySource,
-}
-fn validate_unique_indices(items: &[usize], label: &str) -> Result<Vec<usize>, String> {
-    let mut seen = HashSet::with_capacity(items.len());
-    for &idx in items {
-        if !seen.insert(idx) {
-            return Err(format!("Duplicate index {idx} in {label}"));
-        }
-    }
-    let mut sorted = items.to_vec();
-    sorted.sort_unstable();
-    Ok(sorted)
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub(super) follow_workspace_graph: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) seeded_graph: Option<SharedGraph>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) frozen_graph: Option<SharedGraph>,
 }
 
-pub(super) fn build_validated_candidate(
-    s: &NetPropState,
-) -> Result<
-    (
-        NetworkEpidemicModel,
-        oxidize_core::rng::OxidizeRng,
-        Vec<usize>,
-        Vec<usize>,
-    ),
-    String,
-> {
-    if !(10..=200).contains(&s.num_nodes)
-        || !s.beta.is_finite()
-        || !(0.0..=1.0).contains(&s.beta)
-        || !s.gamma.is_finite()
-        || !(0.0..=1.0).contains(&s.gamma)
-        || s.budget > MAX_CONTAINMENT_BUDGET
-    {
-        return Err("Network propagation parameters out of bounds".into());
-    }
-    if s.vaccinated_nodes
-        .len()
-        .saturating_add(s.quarantined_edges.len())
-        > s.budget
-    {
-        return Err("Containment interventions exceed configured budget".into());
-    }
-    let vax_sorted = validate_unique_indices(&s.vaccinated_nodes, "vaccinated_nodes")?;
-    let edge_sorted = validate_unique_indices(&s.quarantined_edges, "quarantined_edges")?;
-
-    let mut candidate_rng = oxidize_core::rng::OxidizeRng::new(s.seed);
-    let mut candidate =
-        NetworkEpidemicModel::new_with_rng(s.num_nodes, s.beta, s.gamma, &mut candidate_rng);
-
-    for &node in &vax_sorted {
-        if node >= candidate.num_nodes() {
-            return Err(format!("Vaccinated node index {node} out of bounds"));
-        }
-        if candidate.patient_zero() == Some(node)
-            || candidate.states()[node] != NodeState::Susceptible
-        {
-            return Err(format!("Cannot vaccinate patient zero (Node {node})"));
-        }
-        candidate
-            .set_node_vaccinated(node, true)
-            .map_err(|e| e.to_string())?;
-    }
-    for &edge_idx in &edge_sorted {
-        let &[u, v] = candidate
-            .edges()
-            .get(edge_idx)
-            .ok_or_else(|| format!("Quarantined edge index {edge_idx} out of bounds"))?;
-        candidate
-            .set_edge_quarantined(u, v, true)
-            .map_err(|e| e.to_string())?;
-    }
-    Ok((candidate, candidate_rng, vax_sorted, edge_sorted))
-}
-
-const STARTER_PRESET_JSON: &str = r#"{
+pub(super) const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
     "title": "Graph Epidemic Spread",
@@ -126,6 +71,55 @@ const STARTER_PRESET_JSON: &str = r#"{
     "num_nodes": 60,
     "beta": 0.15,
     "gamma": 0.05
+  }
+}"#;
+
+pub(super) const HUB_SPOKE_SUPERSPREADERS_JSON: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Hub-and-Spoke Superspreaders",
+    "domain": "epidemiology",
+    "timestamp": "2026-11-21T00:00:00Z"
+  },
+  "config": {
+    "num_nodes": 13,
+    "beta": 0.08,
+    "gamma": 0.10,
+    "follow_workspace_graph": true,
+    "seeded_graph": {
+      "revision": 1,
+      "nodes": [
+        { "id": 0, "norm_pos": [0.50, 0.50] },
+        { "id": 1, "norm_pos": [0.88, 0.50] },
+        { "id": 2, "norm_pos": [0.83, 0.69] },
+        { "id": 3, "norm_pos": [0.69, 0.83] },
+        { "id": 4, "norm_pos": [0.50, 0.88] },
+        { "id": 5, "norm_pos": [0.31, 0.83] },
+        { "id": 6, "norm_pos": [0.17, 0.69] },
+        { "id": 7, "norm_pos": [0.12, 0.50] },
+        { "id": 8, "norm_pos": [0.17, 0.31] },
+        { "id": 9, "norm_pos": [0.31, 0.17] },
+        { "id": 10, "norm_pos": [0.50, 0.12] },
+        { "id": 11, "norm_pos": [0.69, 0.17] },
+        { "id": 12, "norm_pos": [0.83, 0.31] }
+      ],
+      "edges": [
+        [0, 1, 1.0],
+        [0, 2, 1.0],
+        [0, 3, 1.0],
+        [0, 4, 1.0],
+        [0, 5, 1.0],
+        [0, 6, 1.0],
+        [0, 7, 1.0],
+        [0, 8, 1.0],
+        [0, 9, 1.0],
+        [0, 10, 1.0],
+        [0, 11, 1.0],
+        [0, 12, 1.0],
+        [1, 2, 1.0],
+        [7, 8, 1.0]
+      ]
+    }
   }
 }"#;
 
@@ -169,6 +163,19 @@ inventory::submit! {
         domain: "epidemiology",
         tool_name: Some("NetworkPropagationTool"),
         preset_generator: || STARTER_PRESET_JSON,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "hub_spoke_superspreaders",
+        title: "Hub-and-Spoke Superspreaders",
+        description: "High degree-variance star contact network driving R₀_het > 1 despite subcritical mean-field β/γ.",
+        category: "Network Epidemiology",
+        icon: "💥",
+        domain: "epidemiology",
+        tool_name: Some("NetworkPropagationTool"),
+        preset_generator: || HUB_SPOKE_SUPERSPREADERS_JSON,
     }
 }
 

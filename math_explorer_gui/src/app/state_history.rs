@@ -20,6 +20,7 @@ struct HistoryFingerprint {
     pane_tabs: [usize; 4],
     primary_history_hash: u64,
     secondary_history_hash: u64,
+    bus_revisions: (u64, u64),
     pipeline_links_hash: u64,
 }
 
@@ -126,6 +127,7 @@ fn build_history_fingerprint(
         pane_tabs,
         primary_history_hash,
         secondary_history_hash,
+        bus_revisions: (app.data_bus.graph_revision(), app.data_bus.trace_revision()),
         pipeline_links_hash: pipe_hasher.finish(),
     }
 }
@@ -248,6 +250,7 @@ impl AppState {
             && self.quad_split_ratios.1.to_bits() == other.quad_split_ratios.1.to_bits()
             && self.viewport_layout == other.viewport_layout
             && self.compare_sync == other.compare_sync
+            && self.data_bus == other.data_bus
             && self.pane_tabs == other.pane_tabs
             && self.pipeline_links == other.pipeline_links
             && tab_maps_semantically_eq(&self.tab_states, &other.tab_states)

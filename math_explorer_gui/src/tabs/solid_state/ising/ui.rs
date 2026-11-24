@@ -35,7 +35,9 @@ impl IsingModelTool {
                         let _ = self.atlas.set_axis_keys("temperature", "h_field");
                     }
                     self.sync_shared_params();
-                    self.request_metric_refresh(ctx);
+                    if !self.refresh_graph_metrics() {
+                        self.request_metric_refresh(ctx);
+                    }
                 }
                 if ui
                     .selectable_value(
@@ -56,24 +58,28 @@ impl IsingModelTool {
             });
 
             if self.mode == IsingInteractionMode::FermiGame {
-                ui.add_space(4.0);
-                ui.label("Evolutionary Game Presets:");
-                ui.horizontal_wrapped(|ui| {
-                    for preset in [
-                        FermiGamePreset::PrisonersDilemma,
-                        FermiGamePreset::StagHunt,
-                        FermiGamePreset::HawkDove,
-                    ] {
-                        let selected = self.game_preset == preset;
-                        if ui
-                            .selectable_label(selected, preset.label())
-                            .accessible_hover_text(format!("Load {} payoff preset", preset.label()))
-                            .clicked()
-                        {
-                            self.apply_game_preset(preset, ctx);
-                        }
-                    }
-                });
+                self.draw_fermi_preset_buttons(ui, ctx);
+            }
+        });
+    }
+
+    fn draw_fermi_preset_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.add_space(4.0);
+        ui.label("Evolutionary Game Presets:");
+        ui.horizontal_wrapped(|ui| {
+            for preset in [
+                FermiGamePreset::PrisonersDilemma,
+                FermiGamePreset::StagHunt,
+                FermiGamePreset::HawkDove,
+            ] {
+                let selected = self.game_preset == preset;
+                if ui
+                    .selectable_label(selected, preset.label())
+                    .accessible_hover_text(format!("Load {} payoff preset", preset.label()))
+                    .clicked()
+                {
+                    self.apply_game_preset(preset, ctx);
+                }
             }
         });
     }
@@ -107,7 +113,9 @@ impl IsingModelTool {
                 .changed()
             {
                 self.sync_shared_params();
-                self.request_metric_refresh(ctx);
+                if !self.refresh_graph_metrics() {
+                    self.request_metric_refresh(ctx);
+                }
             }
             ui.small("Positive: Ferromagnetic • Negative: Antiferromagnetic Checkerboard");
 
@@ -121,7 +129,9 @@ impl IsingModelTool {
                 .changed()
             {
                 self.sync_shared_params();
-                self.request_metric_refresh(ctx);
+                if !self.refresh_graph_metrics() {
+                    self.request_metric_refresh(ctx);
+                }
             }
         });
     }
@@ -276,7 +286,10 @@ impl IsingModelTool {
         }
 
         ui.separator();
-        if self.mode == IsingInteractionMode::Ferromagnetic && self.j_coupling < 0.0 {
+        if !self.is_graph_mode()
+            && self.mode == IsingInteractionMode::Ferromagnetic
+            && self.j_coupling < 0.0
+        {
             ui.label(format!(
                 "Staggered Magnetization (M_stag): {:.3}",
                 self.staggered_magnetization
@@ -293,6 +306,12 @@ impl IsingModelTool {
             "Cooperator (+1) Density: {:.1}%",
             self.cooperator_fraction() * 100.0
         ));
+        if self.is_graph_mode() {
+            ui.label(format!(
+                "Frustrated Edges: {}",
+                self.frustrated_edge_count()
+            ));
+        }
     }
 
     pub(super) fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
