@@ -412,3 +412,44 @@ pub(super) fn parse_verification_macro_tokens(tokens: &TokenStream) -> ParsedVer
         assert_count,
     }
 }
+
+pub(super) fn non_fn_item_attrs(node: &syn::Item) -> Option<&[Attribute]> {
+    match node {
+        syn::Item::Fn(_) => None,
+        syn::Item::Const(i) => Some(&i.attrs),
+        syn::Item::Enum(i) => Some(&i.attrs),
+        syn::Item::ExternCrate(i) => Some(&i.attrs),
+        syn::Item::ForeignMod(i) => Some(&i.attrs),
+        syn::Item::Impl(i) => Some(&i.attrs),
+        syn::Item::Macro(i) => Some(&i.attrs),
+        syn::Item::Mod(i) => Some(&i.attrs),
+        syn::Item::Static(i) => Some(&i.attrs),
+        syn::Item::Struct(i) => Some(&i.attrs),
+        syn::Item::Trait(i) => Some(&i.attrs),
+        syn::Item::TraitAlias(i) => Some(&i.attrs),
+        syn::Item::Type(i) => Some(&i.attrs),
+        syn::Item::Union(i) => Some(&i.attrs),
+        syn::Item::Use(i) => Some(&i.attrs),
+        _ => Some(&[]),
+    }
+}
+
+pub(super) fn non_fn_impl_item_attrs(node: &syn::ImplItem) -> Option<&[Attribute]> {
+    match node {
+        syn::ImplItem::Fn(_) => None,
+        syn::ImplItem::Const(i) => Some(&i.attrs),
+        syn::ImplItem::Type(i) => Some(&i.attrs),
+        syn::ImplItem::Macro(i) => Some(&i.attrs),
+        _ => Some(&[]),
+    }
+}
+
+pub(super) fn non_fn_trait_item_attrs(node: &syn::TraitItem) -> Option<&[Attribute]> {
+    match node {
+        syn::TraitItem::Fn(_) => None,
+        syn::TraitItem::Const(i) => Some(&i.attrs),
+        syn::TraitItem::Type(i) => Some(&i.attrs),
+        syn::TraitItem::Macro(i) => Some(&i.attrs),
+        _ => Some(&[]),
+    }
+}

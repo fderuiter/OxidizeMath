@@ -1,6 +1,10 @@
 # Domain Climate
 
+![Maturity: Experimental](https://img.shields.io/badge/maturity-Experimental-d29922.svg)
+
 Climate modeling, autoencoders, and the Climate-invariant Encoding through Representation Alignment (CERA) framework.
+
+> **Maturity Tier:** `Experimental` — exploratory neural climate-emulation research framework (`Cera::maturity_tier() == MaturityTier::Experimental`); fluid API evolution permitted prior to deterministic & zero-allocation qualification.
 
 ## 1. Overview & Architecture
 
