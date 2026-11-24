@@ -1,5 +1,9 @@
 # `engine_pde` — `#![no_std]` Continuum PDE & Stochastic PDE Solver Engine
 
+![Maturity: Validated](https://img.shields.io/badge/maturity-Validated-1f6feb.svg)
+
+> **Maturity Tier:** `Validated` — `#![no_std]` continuum PDE and SPDE stencil/spectral engine verified with analytical stencil/Fourier benchmarks, seeded `OxidizeRng` flux conservation, and zero-allocation runtime tests.
+
 ## 1. Overview & Architecture
 
 `engine_pde` is OxidizeMath's Tier 2 `#![no_std]` continuum partial differential equation (PDE) and stochastic partial differential equation (SPDE) solver crate. It unifies 1D, 2D, and 3D finite-difference stencils, boundary-value operators, conserved-flux stochastic noise, and radix-2 pseudo-spectral Fourier steppers over [`Scalar`](math_commons::math_kernel::types::Scalar), [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace), and `rand_core::RngCore`.

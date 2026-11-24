@@ -1,6 +1,10 @@
 # Domain Epidemiology
 
+![Maturity: Validated](https://img.shields.io/badge/maturity-Validated-0969da.svg)
+
 Deterministic and stochastic disease transmission modeling across compartmental and network systems.
+
+> **Maturity Tier:** Crate `Validated` — deterministic compartmental ODEs (`SIRModel`, `SEIRModel`) and seeded `OxidizeRng` stochastic & network transmission solvers.
 
 ## 1. Overview & Architecture
 

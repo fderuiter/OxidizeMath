@@ -51,6 +51,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "check-file-lengths" => gates::check_file_lengths(),
         "check-duplicates" => gates::check_duplicates(),
         "check-api-drift" => gates::check_api_drift(),
+        "check-maturity" => gates::check_maturity(rest),
         "check-profiles" => gates::check_profiles(),
         "check-public-debug" => gates::check_public_debug(),
         "check-release-tag" => gates::check_release_tag(rest),
@@ -60,7 +61,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "test-policy-audit" => gates::test_policy_audit(),
         "test-wasm" => gates::test_wasm(rest),
         "lint-workflows" => gates::lint_workflows(),
-        "regenerate-baseline" => gates::regenerate_baseline(),
+        "regenerate-baseline" => gates::regenerate_baseline(rest),
         _ => {
             println!("Unknown command");
             exit(1);
@@ -85,6 +86,9 @@ fn print_help() {
     );
     println!(
         "  check-markdown-links     - Check all internal relative markdown documentation links"
+    );
+    println!(
+        "  check-maturity           - Verify Experimental, Validated, and Certified maturity qualification gates"
     );
     println!("  check-profiles           - Verify Cargo release profile invariants");
     println!(

@@ -194,7 +194,12 @@ impl Default for FamilyParams {
 /// let mut inputs = FavoritismInputs::default();
 /// inputs.personality.wealth = 10.0; // The "Golden Child" strategy
 /// ```
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, verified_engine::Theory)]
+#[theory(
+    description = "Satirical Unified Favoritism Theory (UFT) quadrature scoring model for educational exploration.",
+    citation = "Unified Favoritism Theory (UFT), OxidizeMath Applied Compendium (Educational Prototype).",
+    maturity = "Experimental"
+)]
 pub struct FavoritismInputs {
     /// Time and proximity settings.
     pub time: TimeParams,

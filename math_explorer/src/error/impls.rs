@@ -53,6 +53,7 @@ impl Error {
             Self::Poisson(err) => Some(err),
             Self::Queueing(err) => Some(err),
             Self::Stochastic(err) => Some(err),
+            Self::Su11Hyperbolic(err) => Some(err),
             Self::Tda(err) => Some(err),
             Self::Tensor(err) => Some(err),
             Self::Transform(err) => Some(err),
