@@ -1,6 +1,8 @@
 use super::state::ChemicalState;
 
-const MAX_STACK_SPECIES: usize = 32;
+/// Maximum species count handled on the stack without heap allocation in
+/// [`ReactionModel::add_reaction_batch`] and [`ReactionModel::add_reaction_batch_at`].
+pub const STACK_REACTION_SPECIES_CAP: usize = 32;
 
 #[verified_engine::verified]
 fn accumulate_reaction_grid<F>(state: &ChemicalState, out_rates: &mut ChemicalState, mut react: F)
@@ -13,9 +15,9 @@ where
     }
     let n_grid = state.grid_size();
 
-    if n_species <= MAX_STACK_SPECIES {
-        let mut local_concs = [0.0_f64; MAX_STACK_SPECIES];
-        let mut local_rates = [0.0_f64; MAX_STACK_SPECIES];
+    if n_species <= STACK_REACTION_SPECIES_CAP {
+        let mut local_concs = [0.0_f64; STACK_REACTION_SPECIES_CAP];
+        let mut local_rates = [0.0_f64; STACK_REACTION_SPECIES_CAP];
         let concs = &mut local_concs[..n_species];
         let rates = &mut local_rates[..n_species];
         for i in 0..n_grid {
@@ -62,8 +64,14 @@ pub trait ReactionModel {
         self.reaction(concentrations, rates);
     }
 
-    /// Computes and accumulates reaction rates for the entire grid without heap allocation
-    /// when `num_species() <= 32`.
+    /// Computes and accumulates reaction rates for the entire grid.
+    ///
+    /// For up to [`STACK_REACTION_SPECIES_CAP`] species, local concentrations and reaction
+    /// rates are gathered on the stack so hot integration steps perform zero heap allocations.
+    ///
+    /// # Arguments
+    /// * `state`: Current chemical state (concentrations).
+    /// * `out_rates`: Chemical state buffer to accumulate reaction rates into.
     #[verified_engine::verified]
     fn add_reaction_batch(&self, state: &ChemicalState, out_rates: &mut ChemicalState) {
         accumulate_reaction_grid(state, out_rates, |concs, rates| self.reaction(concs, rates));

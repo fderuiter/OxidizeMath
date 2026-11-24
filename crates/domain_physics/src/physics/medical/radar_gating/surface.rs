@@ -11,7 +11,8 @@
 //! or if the patient is lying down, $z$ (vertical) is the height).
 
 use crate::physics::medical::signal;
-use nalgebra::{DMatrix, DVector, Point3};
+use engine_linalg::{SolverWorkspace, svd_ops_workspace_len, svd_solve_least_squares};
+use nalgebra::{DVector, Point3};
 
 /// A fitted bi-quadratic surface.
 #[derive(Debug, Clone, PartialEq)]
@@ -35,12 +36,8 @@ impl BiQuadraticSurface {
     pub fn fit(points: &[Point3<f64>]) -> Option<Self> {
         let n = points.len();
         if n < 6 {
-            return None; // Need at least 6 points for 6 coefficients
+            return None;
         }
-
-        // Construct Design Matrix A (n x 6) and Vector b (n x 1)
-        // Rows of A: [1, x, y, xy, x^2, y^2]
-        // Rows of b: [z]
 
         let mut a_data = Vec::with_capacity(n * 6);
         let mut b_data = Vec::with_capacity(n);
@@ -52,22 +49,25 @@ impl BiQuadraticSurface {
             a_data.push(p.x * p.y);
             a_data.push(p.x.powi(2));
             a_data.push(p.y.powi(2));
-
             b_data.push(p.z);
         }
 
-        let a = DMatrix::from_row_slice(n, 6, &a_data);
-        let b = DVector::from_column_slice(&b_data);
-
-        // Solve using SVD for numerical stability on potentially ill-conditioned matrices
-        // (e.g. if points are collinear or not spread out).
-        // A * x = b  =>  x = A_pseudo_inv * b
-        // nalgebra's SVD solve handles this.
         let epsilon = math_commons::registry::TOLERANCE_STANDARD;
-        match a.svd(true, true).solve(&b, epsilon) {
-            Ok(coefficients) => Some(Self { coefficients }),
-            Err(_) => None,
-        }
+        let mut coeffs = [0.0_f64; 6];
+        let mut scratch = vec![0.0_f64; svd_ops_workspace_len(n, 6)];
+        svd_solve_least_squares(
+            &a_data,
+            n,
+            6,
+            &b_data,
+            epsilon,
+            &mut coeffs,
+            &mut SolverWorkspace::new(&mut scratch),
+        )
+        .ok()?;
+        Some(Self {
+            coefficients: DVector::from_column_slice(&coeffs),
+        })
     }
 
     /// Evaluates the surface height $z$ at a given $(x, y)$.

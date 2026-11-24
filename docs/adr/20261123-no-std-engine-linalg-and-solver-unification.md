@@ -1,0 +1,25 @@
+# ADR 20261123: `#![no_std]` Linear Algebra Engine (`engine_linalg`), Solver Unification, and Cached Cohort GLM QR
+
+## Status
+Accepted (extends [ADR 0016](0016-standardize-crate-documentation-suite.md), [ADR 20261123: Checked Companion APIs](20261123-checked-apis-and-typed-domain-errors.md), and [ADR 20261123: FreeSurfer Cortical Morphometry](20261123-freesurfer-deformable-mrf-and-cortical-morphometry.md))
+
+## Context
+Linear system, least-squares, Cholesky, and singular-value solvers were previously fragmented across nine call sites in five workspace crates (`pure_math`, `math_commons`, `domain_applied`, `domain_physics`, and `math_explorer_gui`):
+1. **Normal-Equation Conditioning Loss**: `solve_normal_equation`, `multivariate_linear_regression`, `fit_polynomial_scaled`, and FreeSurfer `estimate_beta` / `t_statistic` formed explicit normal matrices $X^T X$, squaring the condition number $\kappa(X^T X) = \kappa(X)^2$ and losing precision on near-collinear Lauchli, Vandermonde, and clinical cohort designs ($\varepsilon = 10^{-8}$).
+2. **Repeated Per-Vertex Matrix Factorizations**: `evaluate_cohort_glm` in [`math_explorer_gui/src/tabs/neuroscience/cortical_morphometry/volume_glm.rs`](../../math_explorer_gui/src/tabs/neuroscience/cortical_morphometry/volume_glm.rs) re-factored the shared cohort design matrix $X$ at every mesh vertex instead of reusing a single factorization across all vertices.
+3. **Duplicated Ad-Hoc Kernels and Panicking Decompositions**: Inline Cholesky (`copula/core.rs`), Gauss-Jordan elimination (`fit/poly.rs`, `fit/lm.rs`), custom 6x6 SVD (`radar_gating/surface.rs`), stack EKF array products (`closed_loop_control/ekf.rs`), and `.expect()` calls in [`decomposition.rs`](../../crates/pure_math/src/pure_math/algebra/linear_algebra/decomposition.rs) duplicated core numerical routines without a shared `#![no_std]` zero-allocation engine.
+
+## Decision
+1. **Introduce `#![no_std]` [`crates/02_engines/engine_linalg`](../../crates/02_engines/engine_linalg/src/lib.rs)**:
+   - Implement a pure `core` generic `Scalar` (`f32`, `f64`) numerical linear algebra crate operating over caller-owned [`SolverWorkspace`](../../crates/02_engines/engine_linalg/src/types.rs) slices with optional `alloc` support and zero runtime dependencies.
+   - Provide partial-pivoted LU, strict and positive-semidefinite Cholesky, column-pivoted Householder QR, streaming row-wise Givens QR (`StreamingQr`), one-sided Hestenes-Jacobi and Golub-Kahan bidiagonal QR SVD, `CsrMatrixView` with preallocated Conjugate Gradient (`cg_solve`) and restarted GMRES (`gmres_solve`), matrix norms (`norm_l1`, `norm_linf`, `norm_frobenius`, `norm_spectral`), condition-number estimators (`cond_l1`, `cond_spectral`), and Tikhonov / Marquardt solvers (`tikhonov_solve`, `solve_damped_normal`), traced to `papers/advanced_linear_algebra.tex` in [`traceability.toml`](../../traceability.toml).
+2. **Consolidate All Nine Downstream Solver Sites and Add Checked Companion APIs**:
+   - Route [`solve_normal_equation`](../../crates/pure_math/src/pure_math/algebra/linear_algebra/numerical.rs), [`multivariate_linear_regression`](../../crates/pure_math/src/pure_math/statistics/regression.rs), [`fit_polynomial_scaled`](../../crates/math_commons/src/fit/poly.rs), Levenberg-Marquardt [`fit_nonlinear_lm`](../../crates/math_commons/src/fit/lm.rs), Gaussian copula [`compute_psd_factor`](../../crates/pure_math/src/pure_math/statistics/copula/core.rs), radar [`BiQuadraticSurface::fit`](../../crates/domain_physics/src/physics/medical/radar_gating/surface.rs), and closed-loop EKF array helpers onto `engine_linalg`.
+   - Add checked [`try_moore_penrose_pseudoinverse`](../../crates/pure_math/src/pure_math/algebra/linear_algebra/numerical.rs) and [`try_low_rank_approximation`](../../crates/pure_math/src/pure_math/algebra/linear_algebra/decomposition.rs) returning `Result<_, LinearAlgebraError>`, and remove `.expect()` panics from `decomposition.rs`.
+3. **Cache Pre-Factored Cohort Design QR ([`GlmDesignQr`](../../crates/domain_applied/src/applied/freesurfer/glm.rs))**:
+   - Introduce `GlmDesignQr` in `domain_applied::applied::freesurfer::glm` to factor $X P = Q R$ once and evaluate `estimate_beta`, `t_statistic`, and contrast variance $\|R^{-T} P^T c\|_2^2$ directly from $R$ without forming $X^T X$, reusing a single `GlmDesignQr` across all cortical vertices in `evaluate_cohort_glm`.
+
+## Consequences
+- **Positive**: All `engine_linalg` solvers compile on `wasm32-unknown-unknown` without `std`, execute with zero heap allocations inside `VerifiedEngine::run_verified`, and achieve relative $L_2$ error $\le 1.7 \times 10^{-8}$ on Lauchli, Vandermonde, and cohort GLM conditioning benchmarks at $\varepsilon = 10^{-8}$.
+- **Positive**: Cortical morphometry cohort GLM evaluation factors the shared design matrix once per mesh rebuild rather than once per vertex, and `NaN` or non-convergent pseudoinverse / low-rank inputs return typed `Err(LinearAlgebraError)`.
+- **Neutral**: Workspace member count increases from 20 to 21 crates, recorded across architecture catalogs and `crates/unified_verification/api_baseline.json`.

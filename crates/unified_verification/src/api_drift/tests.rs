@@ -232,6 +232,7 @@ fn test_check_api_drift_runs_and_verifies_workspace_invariants() {
     assert_eq!(math_explorer_items.len(), 27);
     assert!(apis.contains_key("math_explorer/src/error.rs"));
     assert!(apis.contains_key("math_explorer/src/prelude.rs"));
+    assert!(apis.contains_key("crates/02_engines/engine_linalg/src/lib.rs"));
 
     for private_mod in [
         "crates/verified_engine_macros/src/crate_paths.rs",
