@@ -8,6 +8,9 @@ use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
 
 impl scientific_metadata::theory::TheoryDescribable for OdeSolverTool {
+    fn maturity_tier(&self) -> scientific_metadata::theory::MaturityTier {
+        scientific_metadata::theory::MaturityTier::Certified
+    }
     fn theory_description(&self) -> String {
         match self.preset {
             OdePreset::Exponential => "First-order linear ordinary differential equation describing exponential growth or decay proportional to current quantity.".into(),

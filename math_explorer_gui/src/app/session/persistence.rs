@@ -94,6 +94,18 @@ fn migrate_legacy_callout_manager(
     }
 }
 
+fn validate_envelope_bounds(envelope: &WorkspaceEnvelope) -> Result<(), String> {
+    envelope.app_state.data_bus.validate_session_bounds()?;
+    for hist in envelope
+        .history_undo_stack
+        .iter()
+        .chain(envelope.history_redo_stack.iter())
+    {
+        hist.data_bus.validate_session_bounds()?;
+    }
+    Ok(())
+}
+
 impl WorkspaceSessionManager {
     /// Wraps the given application state inside a versioned workspace envelope and serializes it to JSON.
     pub fn create_envelope(&self, app_state: AppState) -> String {
@@ -122,6 +134,7 @@ impl WorkspaceSessionManager {
     /// Validates and parses workspace session content from a JSON string.
     pub fn parse_envelope(&mut self, json_str: &str) -> Result<AppState, String> {
         let cleaned = egui_plot::export::strip_utf8_bom(json_str);
+        crate::framework::ToolStateBounds::SESSION.validate_json(cleaned)?;
         let val: serde_json::Value = serde_json::from_str(cleaned)
             .map_err(|e| format!("Invalid workspace file format: {}", e))?;
 
@@ -142,6 +155,7 @@ impl WorkspaceSessionManager {
                     envelope.schema_version
                 ));
             }
+            validate_envelope_bounds(&envelope)?;
             let mut app_state = envelope.app_state;
             if let Some(ref legacy_mgr) = envelope.callout_manager {
                 migrate_legacy_callout_manager(&mut app_state, legacy_mgr);
@@ -155,8 +169,9 @@ impl WorkspaceSessionManager {
         } else {
             self.undo_stack.clear();
             self.redo_stack.clear();
-            let state: AppState = serde_json::from_str(json_str)
+            let state: AppState = serde_json::from_str(cleaned)
                 .map_err(|e| format!("Corrupted workspace state JSON: {}", e))?;
+            state.data_bus.validate_session_bounds()?;
             self.last_committed_state = Some(state.clone());
             self.last_committed_fingerprint = None;
             self.set_is_restoring(true);

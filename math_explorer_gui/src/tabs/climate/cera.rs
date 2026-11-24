@@ -409,6 +409,9 @@ inventory::submit! {
 }
 
 impl scientific_metadata::theory::TheoryDescribable for CeraTool {
+    fn maturity_tier(&self) -> scientific_metadata::theory::MaturityTier {
+        scientific_metadata::theory::MaturityTier::Experimental
+    }
     fn theory_description(&self) -> String {
         format!(
             "Climate-invariant Encoding through Representation Alignment (CERA) optimizing $L = (1 - \\lambda_{{\\text{{pred}}}} - \\lambda_{{\\text{{emd}}}}) L_{{\\text{{recon}}}} + \\lambda_{{\\text{{pred}}}} L_{{\\text{{pred}}}} + \\lambda_{{\\text{{emd}}}} \\text{{EMD}}(Z_c, Z_w)$ across {} input channels, {} latent ({} aligned) channels, and {} pressure levels.",

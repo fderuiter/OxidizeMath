@@ -1,10 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::custom_spec::default_ode_custom_params;
-use super::phase_plane::{
-    DEFAULT_PLANAR_X_EXPR, DEFAULT_PLANAR_Y_EXPR, DEFAULT_QUIVER_GRID, MAX_QUIVER_GRID,
-    MAX_SEEDED_ORBITS,
-};
+use super::phase_plane::{DEFAULT_PLANAR_X_EXPR, DEFAULT_PLANAR_Y_EXPR, DEFAULT_QUIVER_GRID};
 use super::poincare_map::DEFAULT_MATRIX_A;
 use super::OdeSolverTool;
 use crate::framework::{CalloutManager, TraceSnapshotManager};
@@ -118,42 +115,42 @@ struct OdeStateRef<'a> {
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct OdeState {
+pub(super) struct OdeState {
     #[serde(default)]
-    preset: Option<OdePreset>,
-    dt: f64,
-    total_time: f64,
-    param_k: f64,
-    param_r: f64,
-    param_cap_k: f64,
-    ic_y0: f64,
-    ic_v0: f64,
+    pub(super) preset: Option<OdePreset>,
+    pub(super) dt: f64,
+    pub(super) total_time: f64,
+    pub(super) param_k: f64,
+    pub(super) param_r: f64,
+    pub(super) param_cap_k: f64,
+    pub(super) ic_y0: f64,
+    pub(super) ic_v0: f64,
     #[serde(default)]
-    custom_expr: String,
+    pub(super) custom_expr: String,
     #[serde(default = "default_planar_x_expr")]
-    planar_x_expr: String,
+    pub(super) planar_x_expr: String,
     #[serde(default = "default_planar_y_expr")]
-    planar_y_expr: String,
+    pub(super) planar_y_expr: String,
     #[serde(default = "default_matrix_a")]
-    matrix_a: [[f64; 2]; 2],
+    pub(super) matrix_a: [[f64; 2]; 2],
     #[serde(default)]
     phase_plane_mode: bool,
     #[serde(default = "default_true")]
     show_quiver: bool,
     #[serde(default = "default_quiver_density")]
-    quiver_density: usize,
+    pub(super) quiver_density: usize,
     #[serde(default)]
     show_nullclines: bool,
     #[serde(default)]
-    seeded_ic: Vec<[f64; 2]>,
+    pub(super) seeded_ic: Vec<[f64; 2]>,
     #[serde(default)]
-    custom_coupled: bool,
+    pub(super) custom_coupled: bool,
     #[serde(default)]
-    coupled_exprs: Option<[String; 2]>,
+    pub(super) coupled_exprs: Option<[String; 2]>,
     #[serde(default)]
-    custom_params: BTreeMap<String, f64>,
+    pub(super) custom_params: BTreeMap<String, f64>,
     #[serde(default)]
-    coupled_params: BTreeMap<String, f64>,
+    pub(super) coupled_params: BTreeMap<String, f64>,
     #[serde(default)]
     snapshot_manager: TraceSnapshotManager,
     #[serde(default)]
@@ -167,63 +164,11 @@ struct OdeState {
     #[serde(default)]
     view_mode: super::phase::PlotViewMode,
     #[serde(default)]
-    t_slice: f64,
+    pub(super) t_slice: f64,
     #[serde(default)]
     atlas_visible: bool,
     #[serde(default = "super::atlas::default_ode_atlas_axes")]
-    atlas_axes: [String; 2],
-}
-
-fn validate_loaded_state(s: &OdeState) -> Result<(), String> {
-    if !s.dt.is_finite()
-        || s.dt <= 0.0
-        || !s.total_time.is_finite()
-        || s.total_time <= 0.0
-        || !s.param_k.is_finite()
-        || !s.param_r.is_finite()
-        || !s.param_cap_k.is_finite()
-        || !s.ic_y0.is_finite()
-        || !s.ic_v0.is_finite()
-        || !s.t_slice.is_finite()
-        || s.t_slice < 0.0
-        || !s.matrix_a.iter().flatten().all(|v| v.is_finite())
-        || !s.custom_params.values().all(|v| v.is_finite())
-        || !s.coupled_params.values().all(|v| v.is_finite())
-    {
-        return Err("ODE parameters must be finite with dt > 0 and total_time > 0".to_string());
-    }
-    if !(2..=MAX_QUIVER_GRID).contains(&s.quiver_density) {
-        return Err(format!(
-            "Quiver grid density ({}) must be between 2 and {MAX_QUIVER_GRID}",
-            s.quiver_density
-        ));
-    }
-    if s.seeded_ic.len() > MAX_SEEDED_ORBITS
-        || !s
-            .seeded_ic
-            .iter()
-            .all(|pt| pt[0].is_finite() && pt[1].is_finite())
-    {
-        return Err(format!(
-            "Seeded orbits must be finite and contain at most {MAX_SEEDED_ORBITS} initial states"
-        ));
-    }
-    if !super::atlas::ODE_ATLAS_AXIS_PAIRS
-        .iter()
-        .any(|&(xk, yk)| xk == s.atlas_axes[0] && yk == s.atlas_axes[1])
-    {
-        return Err(format!(
-            "Unsupported ODE atlas_axes pair ('{}', '{}')",
-            s.atlas_axes[0], s.atlas_axes[1]
-        ));
-    }
-    if crate::presets::checked_ode_step_count(s.dt, s.total_time).is_none() {
-        return Err(format!(
-            "ODE step count (total_time / dt) exceeds maximum allowed limit ({})",
-            crate::presets::MAX_ODE_STEPS
-        ));
-    }
-    Ok(())
+    pub(super) atlas_axes: [String; 2],
 }
 
 struct CustomSerializationMaps<'a> {
@@ -428,16 +373,9 @@ impl OdeSolverTool {
     ) -> Result<(), String> {
         let s: OdeState =
             serde_json::from_str(state).map_err(|e| format!("Invalid OdeSolverTool state: {e}"))?;
-        validate_loaded_state(&s)?;
+        self.validate_deserialized_ode_state(&s)?;
         self.apply_deserialized_ode_state(s, preserve_snapshots);
         self.recalculate();
-        if let Some(err) = self.active_custom_formula_error() {
-            let msg = format!(
-                "Invalid OdeSolverTool custom formula: {err}. Simplify or fix the expression and retry."
-            );
-            crate::accessibility::announce_status_with_priority(&msg, "assertive");
-            return Err(msg);
-        }
         Ok(())
     }
 

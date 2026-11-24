@@ -173,6 +173,7 @@ pub fn card_academic_domain(domain: &str) -> AcademicDomain {
         | "number_theory"
         | "geometry_topology"
         | "graph_theory"
+        | "hyperbolic_geometry"
         | "financial_math"
         | "algorithmic_information"
         | "stochastic_processes" => AcademicDomain::PureMath,

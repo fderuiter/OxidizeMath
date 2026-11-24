@@ -105,6 +105,13 @@ fn render_active_tool_theory_body(
     use crate::accessibility::AccessibleHoverText;
     use crate::reflective_ui::render_theory_summary_with_export;
     let theory = tool.theory();
+    let tier = super::maturity_badge::active_framework_tool_tier(framework, tool);
+    ui.horizontal_wrapped(|ui| {
+        ui.strong("Maturity:");
+        super::maturity_badge::render_maturity_badge(ui, tier, false, tool.name());
+        ui.small(super::maturity_badge::tier_qualification_summary(tier));
+    });
+    ui.separator();
     let citation_text = theory.theory_citation();
     scientific_metadata::citation_registry::CitationRegistry::register(
         tool.name().to_string(),

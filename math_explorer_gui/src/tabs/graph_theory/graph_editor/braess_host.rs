@@ -41,6 +41,7 @@ impl GraphEditorTool {
         self.braess.config.shortcut_enabled = shortcut_enabled;
         self.rebuild_graph();
         self.recompute_braess();
+        self.bump_revision();
     }
 
     /// Enables or removes the zero-cost `u -> v` (`1 -> 2`) shortcut edge.
@@ -72,6 +73,7 @@ impl GraphEditorTool {
         self.braess.config.shortcut_enabled = enabled;
         self.rebuild_graph();
         self.recompute_braess();
+        self.bump_revision();
     }
 
     pub(crate) fn insert_new_edge(&mut self, u: usize, v: usize) {
@@ -89,6 +91,7 @@ impl GraphEditorTool {
         if self.braess.config.enabled {
             self.recompute_braess();
         }
+        self.bump_revision();
     }
 
     pub(crate) fn apply_braess_action(&mut self, action: BraessUiAction) {
@@ -148,6 +151,7 @@ impl GraphEditorTool {
             if self.braess.config.enabled {
                 self.recompute_braess();
             }
+            self.bump_revision();
         } else if let Some(edge_idx) = self.hovered_edge {
             self.push_undo_snapshot();
             self.edges.remove(edge_idx);
@@ -158,6 +162,7 @@ impl GraphEditorTool {
             if self.braess.config.enabled {
                 self.recompute_braess();
             }
+            self.bump_revision();
         }
     }
 }
@@ -263,7 +268,9 @@ pub(crate) fn should_draw_congestion_edge(
     hovered_edge: Option<usize>,
     idx: usize,
 ) -> bool {
-    enabled && !(*mode == EditorMode::Remove && hovered_edge == Some(idx))
+    enabled
+        && !(matches!(mode, EditorMode::Remove | EditorMode::SeverStroke)
+            && hovered_edge == Some(idx))
 }
 
 fn draw_arrowhead(

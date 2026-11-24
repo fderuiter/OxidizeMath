@@ -1,5 +1,9 @@
 # `engine_diffeq` — `#![no_std]` Stochastic Differential Equation & Langevin Engine
 
+![Maturity: Validated](https://img.shields.io/badge/maturity-Validated-1f6feb.svg)
+
+> **Maturity Tier:** `Validated` — `#![no_std]` stochastic and Langevin differential equation engine verified with seeded `OxidizeRng` convergence-order benchmarks and zero-allocation runtime tests.
+
 ## 1. Overview & Architecture
 
 `engine_diffeq` is OxidizeMath's Tier 2 `#![no_std]` ordinary, stochastic, and geometric Langevin differential equation solver crate. It consolidates 0D stochastic differential equation (SDE) integrators, underdamped Hamiltonian/Langevin splittings, and discrete jump propensities over the Tier 0 [`Scalar`](math_commons::math_kernel::types::Scalar), [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace), and `rand_core::RngCore` contracts.

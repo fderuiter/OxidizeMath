@@ -1,5 +1,9 @@
 # `math_rng`
 
+![Maturity: Validated](https://img.shields.io/badge/maturity-Validated-1f6feb.svg)
+
+> **Maturity Tier:** `Validated` — Tier 0 `#![no_std]` deterministic ChaCha8 PRNG, scalar sampler, and 64D static QMC foundation crate verified with golden test vectors, cross-target WebAssembly bit-exactness, and `VerifiedAllocator` zero-allocation proofs.
+
 Zero-allocation Tier 0 `#![no_std]` foundation crate providing deterministic ChaCha8 pseudo-random streams, generic `f32`/`f64` scalar samplers, and borrowed-slice 64-dimensional Quasi-Monte Carlo (QMC) views over compact static 53-bit tables.
 
 ## 1. Overview & Architecture

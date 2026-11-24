@@ -1,6 +1,10 @@
 # Domain Applied
 
+![Maturity: Validated](https://img.shields.io/badge/maturity-Validated%20(Certified%20Clinical%20%2F%20Experimental%20Favoritism)-0969da.svg)
+
 Applied mathematical modeling for clinical trials, engineering systems, game theory, and surface extraction.
+
+> **Maturity Tier:** Crate `Validated` — `Certified` biostatistics & ADME modules (`clinical_trials`, `pharmacokinetics`), `Validated` clinical & engineering solvers (`win_ratio`, `battery_degradation`, `freesurfer`, `cannibalism`, `isosurface`), and `Experimental` exploratory/satirical modules (`favoritism`, `lorahub`, `grpo`).
 
 ## 1. Overview & Architecture
 
@@ -16,7 +20,7 @@ The crate spans life sciences, material engineering, distributed systems, and qu
   - `sample_win_ratio`: Pocock et al. (2012) two-tier matched-pair `WinLossCounts` (`calculate_sample_win_ratio`, `calculate_win_proportion`, `calculate_confidence_interval`, `calculate_significance_test_statistic`).
   - `probability_win_ratio`, `simulation`, `weibull_sampler`, & `power_sweep`: Parametric `BivariateWeibullModel` (`SimulationParams`, `win_ratio_parameter`), Clenshaw-Curtis numerical integration (`ProbabilityWinRatioContext`, `calculate_probability_win_ratio`) over censoring horizons $c$, exact inverse-CDF sampling via `OxidizeRng`, and zero-allocation Monte Carlo power sweeps (`run_power_sweep_into`, `run_weibull_power_sweep`).
   - `bmi`: Anthropometric `calculate_bmi` covariate derivation ($\text{kg}/\text{m}^2$).
-- **`clinical_trials`**: Biostatistical trial design (`SimpleRandomizer`, `BlockRandomizer`, `StratifiedRandomizer`), Neyman-Pearson sample size and analytical power curves (`calculate_sample_size_means`, `calculate_sample_size_proportions`, `calculate_power_means`, `calculate_power_proportions`), hypothesis testing (`TTestIndependent`, `ChiSquare2x2`), binary risk metrics (`calculate_risk_metrics`), and right-censored survival analysis with BCa/percentile bootstrap bands (`kaplan_meier`, `kaplan_meier_bootstrap`, `log_rank_test`, `try_estimate_hazard_ratio`).
+- **`clinical_trials`**: Biostatistical trial design (`SimpleRandomizer`, `BlockRandomizer`, `StratifiedRandomizer`), Neyman-Pearson sample size and analytical power curves (`calculate_sample_size_means`, `calculate_sample_size_proportions`, `calculate_power_means`, `calculate_power_proportions`), hypothesis testing (`TTestIndependent`, `ChiSquare2x2`), binary risk metrics (`calculate_risk_metrics`), prognostic risk calibration (`evaluate_prognostic_calibration`: `Brier`, Murphy decomposition, `ECE`, `ROC`/`PR-AUC`), and right-censored survival analysis with BCa/percentile bootstrap bands (`kaplan_meier`, `kaplan_meier_bootstrap`, `log_rank_test`, `try_estimate_hazard_ratio`).
 - **`pharmacokinetics`**: One-compartment oral Bateman ADME kinetics (`PKParameters`, `BatemanModel`, `half_life`, `t_max`, `solve_ka`, `calibrate_ka_from_half_life`), uniform (`SuperpositionModel`) and variable per-event multi-dose superposition (`DoseEvent`, `RegimenSuperposition`), biphasic extended-release formulations (`TwoPulseModel`), stereoselective chiral mixtures (`EnantiomerModel`), and zero-allocation therapeutic-window exposure analytics (`TherapeuticWindow`, `ExposureSummary`).
 - **`battery_degradation`**: Coupled lithium-ion electrochemical aging (`ChemistryPreset`, `ElectrochemicalAgingModel`, `PowerLawModel`) combining DoD stress, stretched exponent $z$, Arrhenius thermal activation, C-rate stress, parabolic $\sqrt{t}$ SEI calendar fade, stack-allocated Levenberg-Marquardt CSV calibration (`calibrate_electrochemical_model`), and multi-segment duty warranty solvers (`DutySegment`, `estimate_duty_lifetime`).
 - **`isosurface`**: 3D volumetric surface and watertight scalar-collar solid extraction (`MarchingCubes`, `IsosurfaceWorkspace`, `SolidClosureConfig`), including cutting-plane cap closure and dual contouring.

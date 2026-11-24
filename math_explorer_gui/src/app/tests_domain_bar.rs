@@ -10,8 +10,8 @@ fn test_all_21_modules_categorized_into_academic_domains() {
     let app = MathExplorerApp::default();
     assert_eq!(
         app.tabs.len(),
-        31,
-        "Expected all 31 modules to be instantiated with default features"
+        32,
+        "Expected all 32 modules to be instantiated with default features"
     );
 
     let mut domain_counts: HashMap<AcademicDomain, Vec<&'static str>> = HashMap::new();
@@ -33,8 +33,8 @@ fn test_all_21_modules_categorized_into_academic_domains() {
     // Verify all 6 domains exist and have the expected modules
     assert_eq!(
         domain_counts.get(&AcademicDomain::PureMath).map(|v| v.len()),
-        Some(8),
-        "Pure Math should have 8 modules: Algorithmic Information, Analysis & Calculus, Elliptic Curves, Financial Math, Geometry & Topology, Graph Theory, Number Theory, Stochastic Processes"
+        Some(9),
+        "Pure Math should have 9 modules: Algorithmic Information, Analysis & Calculus, Elliptic Curves, Financial Math, Geometry & Topology, Graph Theory, Hyperbolic Geometry, Number Theory, Stochastic Processes"
     );
     assert_eq!(
         domain_counts.get(&AcademicDomain::Physics).map(|v| v.len()),
