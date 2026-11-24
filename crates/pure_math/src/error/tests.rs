@@ -47,6 +47,7 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         MatchModelError::InvalidGoalRate { value: -1.0 }.into(),
         MonteCarloError::ZeroReplicates.into(),
         NumberTheoryError::ModuloError.into(),
+        OptionPricingError::InvalidVolatility { value: 0.0 }.into(),
         OuError::InvalidTimeStep { value: 0.0 }.into(),
         PoissonError::InvalidRate { rate: -1.0 }.into(),
         QueueingError::InvalidServerCount { servers: 0 }.into(),
@@ -157,6 +158,23 @@ fn test_monte_carlo_error_umbrella_and_zero_alloc() {
 
 #[test]
 #[verified_engine::verified]
+fn test_option_pricing_error_umbrella_and_zero_alloc() {
+    let (err_res, _) =
+        VerifiedEngine::run_verified(|| -> std::result::Result<f64, PureMathError> {
+            let _: f64 = Err(OptionPricingError::InvalidSpot { value: -1.0 })?;
+            Ok(0.0)
+        });
+    let umbrella = err_res.expect_err("must convert OptionPricingError");
+    assert!(umbrella.source().is_some());
+    assert_eq!(umbrella.severity(), Severity::Error);
+    assert_eq!(
+        umbrella.metadata().get("error_type").map(String::as_str),
+        Some("OptionPricingError")
+    );
+}
+
+#[test]
+#[verified_engine::verified]
 fn test_kelly_validation_and_solvency_variants_umbrella_and_diagnostics() {
     let variants = [
         KellyError::InvalidStake { value: -5.0 },
@@ -171,6 +189,15 @@ fn test_kelly_validation_and_solvency_variants_umbrella_and_diagnostics() {
         KellyError::DimensionMismatch {
             expected: 4,
             actual: 3,
+        },
+        KellyError::NotPositiveDefinite,
+        KellyError::InsufficientData {
+            required: 2,
+            actual: 1,
+        },
+        KellyError::InvalidConfidenceLevel { value: 1.0 },
+        KellyError::InvalidParameter {
+            reason: "horizon must be positive",
         },
         KellyError::ConvergenceFailed {
             reason: "bracket failed",

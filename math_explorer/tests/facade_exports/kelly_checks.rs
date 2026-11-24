@@ -90,3 +90,33 @@ pub(super) fn assert_multi_state_and_drawdown_kelly_solvers() {
     let rc_sol = solve_drawdown_constrained_slate(&slate, &dc, &mut s_scratch).unwrap();
     assert!((rc_sol.total_fraction() - 0.4148979).abs() < 1e-6);
 }
+
+pub(super) fn assert_portfolio_kelly_tail_risk_copula_and_bsm() {
+    use math_explorer::nalgebra::DMatrix;
+    use math_explorer::pure_math::statistics::{black_scholes, copula};
+
+    let mu = [0.12, 0.12, 0.12];
+    let cov = DMatrix::from_row_slice(
+        3,
+        3,
+        &[0.04, 0.024, 0.024, 0.024, 0.04, 0.024, 0.024, 0.024, 0.04],
+    );
+    let sol = kelly::unconstrained_covariance_kelly(&mu, &cov, 0.04).unwrap();
+    assert!((sol.metrics.gross_leverage - 30.0 / 11.0).abs() < 1e-10);
+    let spec = kelly::PortfolioHorizonSpec::new(0.04, 1000.0, 1.0).unwrap();
+    let tail = kelly::parametric_lognormal_tail_risk(&sol.weights, &mu, &cov, spec).unwrap();
+    assert!((tail.cvar_95 - 550.08).abs() < 2.0);
+
+    let corr =
+        copula::CorrelationMatrix::equicorrelated(3, copula::Correlation::new(0.60).unwrap())
+            .unwrap();
+    let cop = copula::GaussianCopula::new(corr);
+    let crash = cop
+        .cdf(&[copula::Probability::new(0.05).unwrap(); 3])
+        .unwrap();
+    assert!(crash.value() > 0.007);
+
+    let bsm_params = black_scholes::BlackScholesParams::new(100.0, 100.0, 0.05, 0.20, 1.0).unwrap();
+    let pair = black_scholes::black_scholes_merton(&bsm_params);
+    assert!((pair.call.price - 10.450_583_57).abs() < 1e-6);
+}
