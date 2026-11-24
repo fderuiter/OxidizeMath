@@ -1,6 +1,10 @@
 # Domain AI
 
+![Maturity: Validated](https://img.shields.io/badge/maturity-Validated%20(Experimental%203DGS%20%2F%20SDS)-0969da.svg)
+
 Neural architectures, attention mechanisms, reinforcement learning, and generative modeling.
+
+> **Maturity Tier:** Crate `Validated` — `Validated` attention, activation, optimization, and reinforcement-learning kernels alongside `Experimental` generative 3D (`gaussian_splatting`, `sds`) modules.
 
 ## 1. Overview & Architecture
 

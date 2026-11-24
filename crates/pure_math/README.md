@@ -1,6 +1,10 @@
 # Pure Math
 
+![Maturity: Certified](https://img.shields.io/badge/maturity-Certified%20Core%20%2F%20Validated%20Statistics-2ea44f.svg)
+
 Rigorous abstract algebra, number theory, differential geometry, and statistical algorithms.
+
+> **Maturity Tier:** Crate `Certified` — `Certified` core solvers (`analysis::ode`, `analysis::roots`, `analysis::pde::wave_2d`, `algebra`, `number_theory`, `elliptic_curves`, `statistics::market_pricing`, `statistics::black_scholes`), `Validated` geometry/statistics modules, and `Experimental` algorithmic-information prototypes.
 
 ## 1. Overview & Architecture
 

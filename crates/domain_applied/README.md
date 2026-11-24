@@ -1,6 +1,10 @@
 # Domain Applied
 
+![Maturity: Validated](https://img.shields.io/badge/maturity-Validated%20(Certified%20Clinical%20%2F%20Experimental%20Favoritism)-0969da.svg)
+
 Applied mathematical modeling for clinical trials, engineering systems, game theory, and surface extraction.
+
+> **Maturity Tier:** Crate `Validated` — `Certified` biostatistics & ADME modules (`clinical_trials`, `pharmacokinetics`), `Validated` clinical & engineering solvers (`win_ratio`, `battery_degradation`, `freesurfer`, `cannibalism`, `isosurface`), and `Experimental` exploratory/satirical modules (`favoritism`, `lorahub`, `grpo`).
 
 ## 1. Overview & Architecture
 

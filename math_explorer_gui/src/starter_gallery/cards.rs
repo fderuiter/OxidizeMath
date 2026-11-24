@@ -56,6 +56,7 @@ fn render_card_header(
     title: &str,
     category: &str,
     cat_color: egui::Color32,
+    tier: scientific_metadata::theory::MaturityTier,
     card_width: f32,
 ) {
     ui.horizontal(|ui| {
@@ -64,10 +65,13 @@ fn render_card_header(
         ui.vertical(|ui| {
             ui.set_max_width(text_w);
             ui.add(egui::Label::new(egui::RichText::new(title).strong().size(15.0)).wrap());
-            let cat = egui::RichText::new(format!("[{category}]"))
-                .small()
-                .color(cat_color);
-            ui.add(egui::Label::new(cat).truncate());
+            ui.horizontal_wrapped(|ui| {
+                let cat = egui::RichText::new(format!("[{category}]"))
+                    .small()
+                    .color(cat_color);
+                ui.add(egui::Label::new(cat).truncate());
+                crate::framework::maturity_badge::render_maturity_badge(ui, tier, true, title);
+            });
         });
     });
 }
@@ -79,6 +83,9 @@ pub(super) fn render_starter_card(
     verb: &str,
 ) -> bool {
     let mut launched = false;
+    let tool_key = card.tool_name.unwrap_or(card.id);
+    let tier =
+        crate::framework::maturity_badge::resolve_tool_maturity_tier(tool_key, card.domain, None);
     egui::Frame::group(ui.style())
         .inner_margin(14.0)
         .corner_radius(8.0)
@@ -94,6 +101,7 @@ pub(super) fn render_starter_card(
                     card.title,
                     card.category,
                     ui.visuals().weak_text_color(),
+                    tier,
                     card_width,
                 );
                 ui.add_space(8.0);
@@ -118,6 +126,11 @@ pub(super) fn render_challenge_card(
 ) -> bool {
     let mut launched = false;
     let palette = SemanticPalette::from_visuals(ui.visuals());
+    let tier = crate::framework::maturity_badge::resolve_tool_maturity_tier(
+        card.tool_name,
+        card.domain,
+        None,
+    );
     egui::Frame::group(ui.style())
         .inner_margin(14.0)
         .corner_radius(8.0)
@@ -134,6 +147,7 @@ pub(super) fn render_challenge_card(
                     card.title,
                     card.category,
                     palette.info,
+                    tier,
                     card_width,
                 );
                 ui.add_space(6.0);
