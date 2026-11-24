@@ -256,6 +256,7 @@ fn test_attractor_runner_set_speed_and_factorization_boundary_caps() {
         ),
         params: Arc::clone(&plotter.params),
         history: VecDeque::with_capacity(100),
+        twin_state: crate::tabs::chaos::attractors::TwinRunnerState::default(),
         step_count: 0,
         execution_state: SolverExecutionState::Ready,
         twin: None,

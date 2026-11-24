@@ -29,6 +29,11 @@ pub mod channel;
 pub use channel::*;
 pub mod checkpoint;
 pub use checkpoint::*;
+pub mod snapshot_history;
+use snapshot_history::{initial_runner_timeline, initial_snapshot_history};
+pub use snapshot_history::{
+    SnapshotHistory, DEFAULT_MAX_SNAPSHOT_FRAMES, MAX_SNAPSHOT_HISTORY_BYTES,
+};
 pub mod state;
 pub use state::*;
 pub mod twin;
@@ -108,23 +113,13 @@ pub trait SimulationRunner: Send + 'static {
     }
 }
 
-fn initial_runner_timeline<T: SimulationRunner>(runner: &T) -> Option<TimelineMetadata> {
-    let stride = runner.checkpoint_stride()?.max(1);
-    let step = runner.current_step();
-    Some(TimelineMetadata {
-        current_step: step,
-        min_step: step,
-        max_step: step,
-        stride,
-    })
-}
-
 #[allow(missing_docs)]
 pub struct SimulationController {
     cmd_tx: Sender<SimCommand>,
     state_rx: SimStateReceiver,
     latest_snapshot: Option<StateSnapshot>,
     timeline_metadata: Option<TimelineMetadata>,
+    snapshot_history: Option<SnapshotHistory>,
     pending_snapshot: bool,
     awaiting_pause_ack: bool,
     state: SimWorkerState,
@@ -157,12 +152,13 @@ impl SimulationController {
         }
 
         worker::spawn_native_worker(runner, cmd_rx, state_tx);
-
+        let snapshot_history = initial_snapshot_history(initial_timeline, &initial_snapshot);
         Self {
             cmd_tx,
             state_rx,
             latest_snapshot: Some(initial_snapshot),
             timeline_metadata: initial_timeline,
+            snapshot_history,
             pending_snapshot: false,
             awaiting_pause_ack: false,
             state: SimWorkerState::Ready,
@@ -191,12 +187,13 @@ impl SimulationController {
         wasm_bindgen_futures::spawn_local(async move {
             run_simulation_worker(handle).await;
         });
-
+        let snapshot_history = initial_snapshot_history(initial_timeline, &initial_snapshot);
         Self {
             cmd_tx,
             state_rx,
             latest_snapshot: Some(initial_snapshot),
             timeline_metadata: initial_timeline,
+            snapshot_history,
             pending_snapshot: false,
             awaiting_pause_ack: false,
             state: SimWorkerState::Ready,
@@ -213,6 +210,21 @@ impl SimulationController {
     /// Latest scrubbable timeline metadata if the underlying runner opted into time travel.
     pub fn timeline_metadata(&self) -> Option<TimelineMetadata> {
         self.timeline_metadata
+    }
+
+    /// Opt-in UI-side [`SnapshotHistory`] ring buffer (`<= 2 MiB`) if active on this controller.
+    pub fn snapshot_history(&self) -> Option<&SnapshotHistory> {
+        self.snapshot_history.as_ref()
+    }
+
+    /// Enables or reconfigures the bounded UI-side [`SnapshotHistory`] ring (`<= 2 MiB`).
+    pub fn enable_snapshot_history(&mut self, max_frames: usize, max_bytes: usize) {
+        self.snapshot_history = Some(SnapshotHistory::seeded(
+            max_frames,
+            max_bytes,
+            self.timeline_metadata,
+            self.latest_snapshot.as_ref(),
+        ));
     }
 
     #[cfg(test)]
@@ -249,16 +261,19 @@ impl SimulationController {
         }
     }
 
+    fn record_incoming_snapshot(&mut self, snapshot: StateSnapshot) {
+        if let (Some(hist), Some(meta)) = (self.snapshot_history.as_mut(), self.timeline_metadata) {
+            hist.record(meta.current_step, &snapshot);
+        }
+        self.latest_snapshot = Some(snapshot);
+    }
+
     fn drain_pre_command_updates(&mut self, is_reset: bool) {
         let batch = self.state_rx.drain();
         for event in batch.events {
             match event {
-                SimControlEvent::Divergence(report) => {
-                    self.diagnostic_report = Some(report);
-                }
-                SimControlEvent::Status(event) => {
-                    self.record_status_pause_ack(&event);
-                }
+                SimControlEvent::Divergence(report) => self.diagnostic_report = Some(report),
+                SimControlEvent::Status(event) => self.record_status_pause_ack(&event),
             }
         }
         if !is_reset && !self.state.is_terminated() {
@@ -268,7 +283,7 @@ impl SimulationController {
             if is_reset {
                 self.pending_snapshot = false;
             } else if !self.state.is_faulted() && !self.state.is_terminated() {
-                self.latest_snapshot = Some(snapshot);
+                self.record_incoming_snapshot(snapshot);
                 self.pending_snapshot = true;
             }
         }
@@ -293,6 +308,11 @@ impl SimulationController {
     }
 
     fn apply_optimistic_timeline(&mut self, cmd: &SimCommand) {
+        if matches!(cmd, SimCommand::Reset) {
+            if let Some(hist) = self.snapshot_history.as_mut() {
+                hist.clear();
+            }
+        }
         let Some(meta) = &mut self.timeline_metadata else {
             return;
         };
@@ -304,6 +324,12 @@ impl SimulationController {
             }
             SimCommand::SeekStep(target) => {
                 meta.current_step = target.clamp(meta.min_step, meta.max_step);
+            }
+            SimCommand::Start | SimCommand::Step(_) => {
+                if let Some(hist) = self.snapshot_history.as_mut() {
+                    hist.truncate_after(meta.current_step);
+                }
+                meta.max_step = meta.current_step;
             }
             _ => {}
         }
@@ -423,7 +449,7 @@ impl SimulationController {
         }
         if let Some(snapshot) = batch.latest_snapshot {
             if !self.state.is_faulted() && !self.state.is_terminated() {
-                self.latest_snapshot = Some(snapshot);
+                self.record_incoming_snapshot(snapshot);
                 received_new_snapshot = true;
             }
         }

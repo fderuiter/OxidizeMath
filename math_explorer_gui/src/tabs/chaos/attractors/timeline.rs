@@ -3,12 +3,19 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::flow::AttractorMode;
-use super::{AttractorPlotter, AttractorRunner, SolverExecutionState};
+use super::{AttractorPlotter, AttractorRunner, AttractorSnapshot, SolverExecutionState};
 use crate::async_sim::ui::WorkerFaultAction;
-use crate::async_sim::{CheckpointParams, CheckpointPayload, SimCommand, TimeTravelCheckpoint};
+use crate::async_sim::{
+    CheckpointParams, CheckpointPayload, SimCommand, SimulationRunner, StateSnapshot,
+    TimeTravelCheckpoint,
+};
+use crate::framework::recovery::DiagnosticReport;
 use crate::framework::PlaybackAction;
 use eframe::egui;
+use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
 use nalgebra::Vector3;
+use oxidize_core::rng::OxidizeRng;
+use std::sync::Arc;
 
 impl AttractorPlotter {
     pub(super) fn apply_fault_action(&mut self, action: WorkerFaultAction, ctx: &egui::Context) {
@@ -81,15 +88,83 @@ impl AttractorPlotter {
             }
         }
     }
+
+    pub(super) fn respawn_worker_with_current_state(&mut self) {
+        let params = std::sync::Arc::clone(&self.params);
+        let mut runner = AttractorRunner::from_params(params);
+        runner.system = self.system.clone();
+        runner.history = self.history.clone();
+        runner.twin_state = self.twin_state.clone();
+        runner.step_count = self.step_count;
+        runner.execution_state = self.execution_state;
+        runner.twin = self.twin.clone();
+        self.worker = crate::async_sim::BackgroundWorker::new(runner);
+    }
 }
 
 impl AttractorRunner {
+    pub(super) fn reset_runner(&mut self) {
+        let (sigma, rho, beta, max_points, twin_cfg) = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            (p.sigma, p.rho, p.beta, p.max_points, p.twin.sanitized())
+        };
+        let init = twin_cfg.initial_state;
+        self.system = LorenzBuilder::new()
+            .sigma(sigma)
+            .rho(rho)
+            .beta(beta)
+            .build(LorenzState::new(init.x, init.y, init.z));
+        self.history.clear();
+        self.twin_state.reset(twin_cfg, max_points);
+        self.step_count = 0;
+        self.twin = None;
+        self.execution_state = SolverExecutionState::Ready;
+        self.rng = OxidizeRng::new(0x4C4F_5245_4E5A_3139);
+    }
+
+    pub(super) fn build_snapshot(&self) -> StateSnapshot {
+        let v = self.system.state.vec;
+        let rhs = {
+            let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+            super::twin::eval_flow_rhs(
+                p.mode,
+                self.system.sigma,
+                self.system.rho,
+                self.system.beta,
+                p.custom_flow.as_deref(),
+                v,
+            )
+        };
+        let diverged = matches!(self.execution_state, SolverExecutionState::Diverged { .. });
+        let sonification = crate::audio::mappings::attractor_frame([v.x, v.y, v.z], rhs, diverged);
+        let snapshot = AttractorSnapshot {
+            history: self.history.clone(),
+            current_vec: v,
+            twin_history: self.twin_state.twin_history.clone(),
+            shadow_vec: self.twin_state.shadow_vec,
+            divergence_history: self.twin_state.divergence_history.clone(),
+            twin_enabled: self.twin_state.enabled,
+            step_count: self.step_count,
+            execution_state: self.execution_state,
+            twin: self.twin.clone(),
+        };
+        StateSnapshot {
+            width: 0,
+            height: 0,
+            pixels: Arc::new(std::sync::RwLock::new(Vec::new())),
+            custom_data: vec![v.x, v.y, v.z, self.step_count as f64],
+            structured_data: Some(Box::new(snapshot)),
+            sonification,
+        }
+    }
+
     pub(super) fn capture_active_checkpoint_params(&self) -> Option<CheckpointParams> {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         let mode_flag = match p.mode {
             AttractorMode::Lorenz => 0.0,
             AttractorMode::Custom => 1.0,
         };
+        let twin_flag = if p.twin.enabled { 1.0 } else { 0.0 };
         Some(CheckpointParams::scalars(&[
             p.sigma,
             p.rho,
@@ -97,17 +172,21 @@ impl AttractorRunner {
             p.dt,
             p.max_points as f64,
             mode_flag,
+            twin_flag,
+            p.twin.epsilon,
         ]))
     }
 
     pub(super) fn capture_time_travel_checkpoint(&self) -> Option<TimeTravelCheckpoint> {
         let params = self.capture_active_checkpoint_params()?;
         let v = self.system.state.vec;
+        let sv = self.twin_state.shadow_vec;
+        let twin_flag = if self.twin_state.enabled { 1.0 } else { 0.0 };
         Some(TimeTravelCheckpoint {
             step: self.step_count,
             rng: self.rng.clone(),
             params,
-            state: CheckpointPayload::scalars(&[v.x, v.y, v.z]),
+            state: CheckpointPayload::scalars(&[v.x, v.y, v.z, sv.x, sv.y, sv.z, twin_flag]),
         })
     }
 
@@ -116,13 +195,13 @@ impl AttractorRunner {
             if s.len() >= 3 {
                 self.system.state.vec = Vector3::new(s[0], s[1], s[2]);
             }
-        }
-        if let Some(p) = checkpoint.params.as_scalars() {
-            if p.len() >= 3 {
-                self.system.sigma = p[0];
-                self.system.rho = p[1];
-                self.system.beta = p[2];
+            if s.len() >= 7 {
+                self.twin_state.shadow_vec = Vector3::new(s[3], s[4], s[5]);
+                self.twin_state.enabled = s[6] > 0.5;
             }
+        }
+        if let Some(p) = checkpoint.params.as_scalars().filter(|p| p.len() >= 3) {
+            (self.system.sigma, self.system.rho, self.system.beta) = (p[0], p[1], p[2]);
         }
         self.step_count = checkpoint.step;
         self.rng = checkpoint.rng.clone();
@@ -139,43 +218,22 @@ impl AttractorRunner {
         front: &[TimeTravelCheckpoint],
         back: &[TimeTravelCheckpoint],
     ) {
-        let max_points = back
-            .last()
-            .or_else(|| front.last())
-            .and_then(|cp| cp.params.as_scalars()?.get(4).copied())
-            .map_or(2000usize, |v| (v as usize).max(1));
-        self.history.clear();
-        let total_post_zero = front.iter().chain(back).filter(|cp| cp.step >= 1).count();
-        let skip = total_post_zero.saturating_sub(max_points);
-        for cp in front
-            .iter()
-            .chain(back)
-            .filter(|cp| cp.step >= 1)
-            .skip(skip)
-        {
-            if let Some(s) = cp.state.as_scalars().filter(|s| s.len() >= 3) {
-                self.history.push_back(Vector3::new(s[0], s[1], s[2]));
-            }
-        }
+        self.twin_state
+            .rebuild_histories(&mut self.history, front, back);
     }
 
     pub(super) fn replay_time_travel_step(&mut self, params: &CheckpointParams) {
-        let Some(p) = params.as_scalars() else {
+        let Some(p) = params.as_scalars().filter(|p| p.len() >= 5) else {
             return;
         };
-        if p.len() < 5 {
-            return;
-        }
-        self.system.sigma = p[0];
-        self.system.rho = p[1];
-        self.system.beta = p[2];
-        let dt = p[3];
-        let max_points = (p[4] as usize).max(1);
+        (self.system.sigma, self.system.rho, self.system.beta) = (p[0], p[1], p[2]);
+        let (dt, max_points) = (p[3], (p[4] as usize).max(1));
         let mode = if p.get(5).copied().unwrap_or(0.0) > 0.5 {
             AttractorMode::Custom
         } else {
             AttractorMode::Lorenz
         };
+        let twin_enabled = p.get(6).copied().unwrap_or(0.0) > 0.5;
         let custom_flow = (mode == AttractorMode::Custom)
             .then(|| {
                 self.params
@@ -185,8 +243,40 @@ impl AttractorRunner {
                     .clone()
             })
             .flatten();
-        if self.advance_tick(dt, max_points, mode, custom_flow.as_deref(), false) {
+        if self.advance_tick(
+            dt,
+            max_points,
+            mode,
+            twin_enabled,
+            custom_flow.as_deref(),
+            false,
+        ) {
             self.execution_state = SolverExecutionState::Paused;
         }
+    }
+
+    pub(super) fn build_diagnostic_report(&self) -> Option<DiagnosticReport> {
+        if let SolverExecutionState::Diverged {
+            invalid_vec: v,
+            diverged_at_step: s,
+        } = self.execution_state
+        {
+            let msg = format!(
+                "Non-finite attractor state [{:.2}, {:.2}, {:.2}] at step {s}",
+                v.x, v.y, v.z
+            );
+            return Some(DiagnosticReport::new(s as f64, s, "lorenz_state", msg));
+        }
+        if !self.is_finite_state() {
+            let dt = self.params.read().unwrap_or_else(|e| e.into_inner()).dt;
+            let t = self.step_count as f64 * if dt.is_finite() { dt } else { 0.01 };
+            return Some(DiagnosticReport::new(
+                t,
+                self.step_count,
+                "lorenz_state",
+                "Non-finite attractor trajectory coordinates detected",
+            ));
+        }
+        None
     }
 }

@@ -202,3 +202,44 @@ pub(super) fn render_step_and_reset_buttons(
     }
     action
 }
+
+pub(super) fn render_timeline_scrubber(
+    ui: &mut egui::Ui,
+    base_id: egui::Id,
+    tool_name: &str,
+    can_step: bool,
+    meta: TimelineMetadata,
+    min_size: egui::Vec2,
+) -> Option<PlaybackAction> {
+    let enabled = ui.is_enabled() && can_step && meta.max_step > meta.min_step;
+    let mut step_val = meta.current_step.clamp(meta.min_step, meta.max_step);
+    let a11y_label = format!(
+        "Scrub {tool_name} timeline step ({}..={})",
+        meta.min_step, meta.max_step
+    );
+    let info = egui::WidgetInfo::slider(enabled, step_val as f64, &a11y_label);
+
+    let resp = ui
+        .scope(|ui| {
+            if min_size.y >= 44.0 {
+                ui.spacing_mut().interact_size.x = ui.spacing().interact_size.x.max(44.0);
+                ui.spacing_mut().interact_size.y = ui.spacing().interact_size.y.max(44.0);
+            }
+            ui.add_enabled(
+                enabled,
+                egui::Slider::new(&mut step_val, meta.min_step..=meta.max_step)
+                    .text(format!("Step [{}..{}]", meta.min_step, meta.max_step)),
+            )
+        })
+        .inner;
+
+    resp.widget_info({
+        let info = info.clone();
+        move || info.clone()
+    });
+    ui.ctx().data_mut(|d| {
+        d.insert_temp(base_id.with("timeline_scrubber_info"), info);
+    });
+    let changed = resp.accessible_hover_text(&a11y_label).changed();
+    (changed && step_val != meta.current_step).then_some(PlaybackAction::ScrubTo(step_val))
+}

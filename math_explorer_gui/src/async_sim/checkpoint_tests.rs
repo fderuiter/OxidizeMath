@@ -99,7 +99,7 @@ fn test_attractor_k1_bit_exact_backward_and_forward_scrub() {
         max_points: 60,
         mode: AttractorMode::Lorenz,
         custom_flow: None,
-        sim_bus: None,
+        ..Default::default()
     }));
     let mut runner = AttractorRunner::from_params(Arc::clone(&params));
     let mut ring = CheckpointRing::new(1);
@@ -152,7 +152,7 @@ fn test_attractor_custom_flow_checkpoint_and_substep_replay() {
         max_points: 50,
         mode: AttractorMode::Custom,
         custom_flow: Some(job),
-        sim_bus: None,
+        ..Default::default()
     }));
     let mut runner = AttractorRunner::from_params(Arc::clone(&params));
     let mut ring = CheckpointRing::new(4);

@@ -325,6 +325,7 @@ fn test_attractor_poisoned_lock_recovery() {
         history: VecDeque::with_capacity(100),
         step_count: 0,
         execution_state: SolverExecutionState::Ready,
+        twin_state: TwinRunnerState::default(),
         twin: None,
         rng: oxidize_core::rng::OxidizeRng::default(),
     };
