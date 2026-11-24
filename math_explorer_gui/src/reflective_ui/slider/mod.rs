@@ -8,8 +8,10 @@ pub mod state;
 #[cfg(test)]
 mod tests;
 
+#[cfg(all(test, feature = "physics"))]
+pub use state::active_sweep_count;
 #[cfg(test)]
-pub use state::{active_sweep_count, SweepFrameFlags};
+pub use state::SweepFrameFlags;
 pub use state::{
     begin_pane_sweep_scope, current_pass_active_sweep_count, has_active_sweeps, has_sweep_mutation,
     live_sweep_mutation_count, load_slider_settings, load_slider_state, merge_pane_sweep_flags,
@@ -86,6 +88,7 @@ impl<'a> AnimatedSlider<'a> {
     }
 
     /// Sets custom animation sweep speed in parameter units per second.
+    #[cfg(any(test, feature = "ai"))]
     pub fn speed(mut self, speed: f64) -> Self {
         if speed.is_finite() && speed > 0.0 {
             self.speed = Some(speed);
@@ -94,6 +97,7 @@ impl<'a> AnimatedSlider<'a> {
     }
 
     /// Sets the default animation repeat mode (`Oscillate`, `Increasing`, `Decreasing`, or `Once`).
+    #[cfg(any(test, feature = "ai"))]
     pub fn sweep_mode(mut self, mode: SweepMode) -> Self {
         self.default_sweep_mode = mode;
         self

@@ -10,7 +10,7 @@ By formalizing biological dynamics into clean, verified Rust algorithms, the cra
 
 ### Module Structure
 
-- **`neuroscience`**: Biophysical neuron and spatial tissue electrophysiology models (`HodgkinHuxleyNeuron` action potential generation, leaky integrate-and-fire spiking patterns, 1D `HodgkinHuxleyCable`, 2D `ExcitableSheet2D`, `KuramotoNetwork` coupled phase-oscillator synchronization, and `step_csr_hodgkin_huxley_network` CSR synaptic stepping).
+- **`neuroscience`**: Biophysical neuron and spatial tissue electrophysiology models (`HodgkinHuxleyNeuron` action potential generation, leaky integrate-and-fire spiking patterns, 1D `HodgkinHuxleyCable`, 2D `ExcitableSheet2D`, curved-manifold `CorticalSheetRunner`, `KuramotoNetwork` coupled phase-oscillator synchronization, and `step_csr_hodgkin_huxley_network` CSR synaptic stepping).
 - **`kinetics`**: Enzyme reaction kinetics (`MichaelisMenten`) and allosteric cooperativity models (`HillKinetics`).
 - **`reaction_diffusion`**: Zero-allocation generic $N$-species reaction-diffusion engine (`ReactionDiffusionSystem`, `HillSubstrateReaction`) decoupled over `ReactionModel` and `DiffusionModel` traits.
 - **`morphogenesis`**: Mathematical models of biological tissue patterning, `SchnakenbergKinetics` / `GrayScottKinetics` / `FitzHughNagumoKinetics` reaction kinetics, and Turing instabilities.

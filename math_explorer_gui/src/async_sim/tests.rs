@@ -352,129 +352,137 @@ fn test_state_display_and_helpers() {
     assert!(SimWorkerState::Terminated.is_terminated());
 }
 
+#[cfg(any(feature = "biology", feature = "physics"))]
 #[test]
 fn test_domain_simulation_tools_initialization() {
     use crate::async_sim::unified::UnifiedSimTool;
-    use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
-    use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
-    use crate::tabs::quantum::wave_sim::WaveSimulatorTool;
-
-    let lbm_tool = UnifiedSimTool::<LbmUnified>::new();
-    assert_eq!(lbm_tool.state(), SimWorkerState::Ready);
-
-    let hh_tool = UnifiedSimTool::<HodgkinHuxleyUnified>::new();
-    assert_eq!(hh_tool.state(), SimWorkerState::Ready);
-
-    let wave_tool = WaveSimulatorTool::new();
-    assert_eq!(wave_tool.state(), SimWorkerState::Ready);
+    #[cfg(feature = "physics")]
+    {
+        use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+        use crate::tabs::quantum::wave_sim::WaveSimulatorTool;
+        assert_eq!(
+            UnifiedSimTool::<LbmUnified>::new().state(),
+            SimWorkerState::Ready
+        );
+        assert_eq!(WaveSimulatorTool::new().state(), SimWorkerState::Ready);
+    }
+    #[cfg(feature = "biology")]
+    {
+        use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
+        assert_eq!(
+            UnifiedSimTool::<HodgkinHuxleyUnified>::new().state(),
+            SimWorkerState::Ready
+        );
+    }
 }
 
+#[cfg(any(feature = "biology", feature = "physics"))]
 #[test]
 fn test_unified_model_observable_hook_and_voltage_derivatives() {
     use crate::async_sim::unified::UnifiedModel;
-    use crate::sensitivity::SensitivityEngine;
-    use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
-    use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
     use std::collections::HashMap;
 
-    let lbm_params = HashMap::from([("viscosity".to_string(), 0.02)]);
-    assert!(LbmUnified::evaluate_observable(&lbm_params).is_none());
+    #[cfg(feature = "physics")]
+    {
+        use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+        let lbm_params = HashMap::from([("viscosity".to_string(), 0.02)]);
+        assert!(LbmUnified::evaluate_observable(&lbm_params).is_none());
+    }
 
-    // Verify negative conductance perturbations near zero clamp cleanly instead of failing builder
-    let zero_perturbation = HashMap::from([
-        ("g_na".to_string(), -0.01),
-        ("g_k".to_string(), -0.01),
-        ("g_l".to_string(), -0.01),
-        ("i_ext".to_string(), 10.0),
-    ]);
-    let clamped_obs = HodgkinHuxleyUnified::evaluate_observable(&zero_perturbation);
-    assert!(clamped_obs.is_some());
+    #[cfg(feature = "biology")]
+    {
+        use crate::sensitivity::SensitivityEngine;
+        use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
 
-    let baseline_params = vec![
-        ("g_k".to_string(), 36.0),
-        ("g_l".to_string(), 0.3),
-        ("g_na".to_string(), 120.0),
-        ("i_ext".to_string(), 10.0),
-    ];
-    let mut engine = SensitivityEngine::new();
-    let eval_hh = |p_map: &HashMap<String, f64>| {
-        HodgkinHuxleyUnified::evaluate_observable(p_map)
-            .map(|(_, v)| v)
-            .unwrap_or(0.0)
-    };
-    engine.compute(&baseline_params, eval_hh);
-    engine.compute(&baseline_params, eval_hh);
+        let zero_perturbation = HashMap::from([
+            ("g_na".to_string(), -0.01),
+            ("g_k".to_string(), -0.01),
+            ("g_l".to_string(), -0.01),
+            ("i_ext".to_string(), 10.0),
+        ]);
+        assert!(HodgkinHuxleyUnified::evaluate_observable(&zero_perturbation).is_some());
 
-    assert!(engine.baseline_output > 20.0);
-    let g_k_deriv = engine.metrics[0].partial_derivative;
-    let g_na_deriv = engine.metrics[2].partial_derivative;
-    assert!(
-        g_k_deriv < 0.0,
-        "Potassium conductance should oppose peak depolarization"
-    );
-    assert!(
-        g_na_deriv > 0.0,
-        "Sodium conductance should raise peak depolarization"
-    );
-    assert!(
-        (g_na_deriv - 1.0).abs() > 1e-2,
-        "Must not equal synthetic slider-sum derivative"
-    );
+        let baseline_params = vec![
+            ("g_k".to_string(), 36.0),
+            ("g_l".to_string(), 0.3),
+            ("g_na".to_string(), 120.0),
+            ("i_ext".to_string(), 10.0),
+        ];
+        let mut engine = SensitivityEngine::new();
+        let eval_hh = |p_map: &HashMap<String, f64>| {
+            HodgkinHuxleyUnified::evaluate_observable(p_map)
+                .map(|(_, v)| v)
+                .unwrap_or(0.0)
+        };
+        engine.compute(&baseline_params, eval_hh);
+        engine.compute(&baseline_params, eval_hh);
+
+        assert!(engine.baseline_output > 20.0);
+        assert!(engine.metrics[0].partial_derivative < 0.0);
+        let g_na_deriv = engine.metrics[2].partial_derivative;
+        assert!(g_na_deriv > 0.0);
+        assert!((g_na_deriv - 1.0).abs() > 1e-2);
+    }
 }
 
+#[cfg(any(feature = "biology", feature = "physics"))]
+fn render_tool_shape_texts(tool: &mut dyn crate::framework::InteractiveTool) -> Vec<String> {
+    let ctx = eframe::egui::Context::default();
+    let out = ctx.run(eframe::egui::RawInput::default(), |ctx| tool.show(ctx));
+    let shapes: Vec<_> = out.shapes.into_iter().map(|cs| cs.shape).collect();
+    let mut texts = Vec::new();
+    crate::sensitivity::tests::collect_shape_texts(&shapes, &mut texts);
+    texts
+}
+
+#[cfg(any(feature = "biology", feature = "physics"))]
 #[test]
 fn test_unified_sim_tool_panel_gating() {
     use crate::async_sim::unified::UnifiedSimTool;
-    use crate::framework::InteractiveTool;
-    use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
-    use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
-    use crate::tabs::quantum::wave_sim::WaveSimulatorTool;
 
-    let render_texts = |tool: &mut dyn InteractiveTool| -> Vec<String> {
+    #[cfg(feature = "physics")]
+    {
+        use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+        use crate::tabs::quantum::wave_sim::WaveSimulatorTool;
+        let lbm_texts = render_tool_shape_texts(&mut UnifiedSimTool::<LbmUnified>::new());
+        assert!(!lbm_texts
+            .iter()
+            .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
+        let wave_texts = render_tool_shape_texts(&mut WaveSimulatorTool::new());
+        assert!(!wave_texts
+            .iter()
+            .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
+    }
+
+    #[cfg(feature = "biology")]
+    {
+        use crate::framework::InteractiveTool;
+        use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
+        let hh_texts = render_tool_shape_texts(&mut UnifiedSimTool::<HodgkinHuxleyUnified>::new());
+        assert!(hh_texts
+            .iter()
+            .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
+        assert!(hh_texts
+            .iter()
+            .any(|t| t.contains("Baseline Peak Membrane Potential (mV):")));
+
         let ctx = eframe::egui::Context::default();
-        let out = ctx.run(eframe::egui::RawInput::default(), |ctx| tool.show(ctx));
-        let shapes: Vec<_> = out.shapes.into_iter().map(|cs| cs.shape).collect();
-        let mut texts = Vec::new();
-        crate::sensitivity::tests::collect_shape_texts(&shapes, &mut texts);
-        texts
-    };
-
-    let lbm_texts = render_texts(&mut UnifiedSimTool::<LbmUnified>::new());
-    assert!(!lbm_texts
-        .iter()
-        .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
-
-    let wave_texts = render_texts(&mut WaveSimulatorTool::new());
-    assert!(!wave_texts
-        .iter()
-        .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
-
-    let hh_texts = render_texts(&mut UnifiedSimTool::<HodgkinHuxleyUnified>::new());
-    assert!(hh_texts
-        .iter()
-        .any(|t| t.contains("Sensitivity & Perturbation Analysis")));
-    assert!(hh_texts
-        .iter()
-        .any(|t| t.contains("Baseline Peak Membrane Potential (mV):")));
-
-    let ctx = eframe::egui::Context::default();
-    let input = eframe::egui::RawInput {
-        screen_rect: Some(eframe::egui::Rect::from_min_size(
+        let rect = eframe::egui::Rect::from_min_size(
             eframe::egui::Pos2::ZERO,
             eframe::egui::vec2(960.0, 640.0),
-        )),
-        ..Default::default()
-    };
-    let mut hh_tool = UnifiedSimTool::<HodgkinHuxleyUnified>::new();
-    let out1 = ctx.run(input.clone(), |ctx| hh_tool.show(ctx));
-    assert!(!hh_tool.sensitivity_engine.is_converged());
-    assert!(out1.viewport_output[&eframe::egui::ViewportId::ROOT]
-        .repaint_delay
-        .is_zero());
-    let _ = ctx.run(input.clone(), |ctx| hh_tool.show(ctx));
-    assert!(hh_tool.sensitivity_engine.is_converged());
-    let out_idle = ctx.run(input, |ctx| hh_tool.show(ctx));
-    assert!(!out_idle.viewport_output[&eframe::egui::ViewportId::ROOT]
-        .repaint_delay
-        .is_zero());
+        );
+        let input = eframe::egui::RawInput {
+            screen_rect: Some(rect),
+            ..Default::default()
+        };
+        let mut hh_tool = UnifiedSimTool::<HodgkinHuxleyUnified>::new();
+        let out1 = ctx.run(input.clone(), |ctx| hh_tool.show(ctx));
+        assert!(!hh_tool.sensitivity_engine.is_converged());
+        let root_id = eframe::egui::ViewportId::ROOT;
+        assert!(out1.viewport_output[&root_id].repaint_delay.is_zero());
+        let _ = ctx.run(input.clone(), |ctx| hh_tool.show(ctx));
+        assert!(hh_tool.sensitivity_engine.is_converged());
+        let out_idle = ctx.run(input, |ctx| hh_tool.show(ctx));
+        assert!(!out_idle.viewport_output[&root_id].repaint_delay.is_zero());
+    }
 }

@@ -1,7 +1,5 @@
 //! Persisted non-mute `AcousticSettings` bounded for safe synthesis, JSON presets, and share URLs.
 
-// theory_verification!
-
 use serde::{Deserialize, Serialize};
 
 /// Default safe user master gain (`0.5` = 50%).

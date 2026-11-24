@@ -1,6 +1,7 @@
 #![doc = include_str!("README.md")]
 
 pub mod cable;
+pub mod cortical_sheet;
 pub mod kinetics;
 pub mod kuramoto;
 pub mod model;
@@ -12,6 +13,7 @@ pub mod types;
 
 // Re-export the public facade to maintain backward compatibility
 pub use cable::{DEFAULT_CABLE_LEN, HodgkinHuxleyCable};
+pub use cortical_sheet::CorticalSheetRunner;
 pub use kuramoto::KuramotoNetwork;
 pub use neuron::HodgkinHuxleyNeuron;
 pub use sheet::{DEFAULT_SHEET_DIM, ExcitableSheet2D, ScheduledS2Pulse};
