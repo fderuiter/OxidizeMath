@@ -1,4 +1,4 @@
-//! Verifies that all 34 public error enums tested from `math_explorer::error`
+//! Verifies that all 36 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -13,12 +13,12 @@
 
 use math_explorer::diagnostics::Diagnostic;
 use math_explorer::error::{
-    AIError, BatteryError, ChaosError, ClimateError, CopulaError, DoseFluenceError, EloError,
-    EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError, Glicko2Error,
-    GraphTheoryError, HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError,
-    MarketPricingError, MarkovError, MatchModelError, MathError, NumberTheoryError, OuError,
-    PharmacokineticsError, RadarError, SandpileError, SolidStateError, StandardModelError,
-    StatMechError, Su11HyperbolicError, TdaError, ZipError,
+    AIError, BatteryError, BotanicalError, ChaosError, ClimateError, CopulaError, DoseFluenceError,
+    EloError, EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError,
+    Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError, IsosurfaceError,
+    KellyError, LoraError, MarketPricingError, MarkovError, MatchModelError, MathError,
+    MonteCarloError, NumberTheoryError, OuError, PharmacokineticsError, RadarError, SandpileError,
+    SolidStateError, StandardModelError, StatMechError, Su11HyperbolicError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -64,13 +64,6 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         "NumberTheoryError",
         &NumberTheoryError::DivisionByZeroQSeries,
     );
-    assert_readable_diagnostic("KellyError", &KellyError::InvalidBankroll { value: -1.0 });
-    assert_readable_diagnostic(
-        "MarketPricingError",
-        &MarketPricingError::NoArbitrage {
-            reciprocal_sum: 1.05,
-        },
-    );
     assert_readable_diagnostic(
         "MarkovError",
         &MarkovError::InvalidProbability { value: 1.5 },
@@ -96,6 +89,116 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         "MatchModelError",
         &MatchModelError::InvalidGoalRate { value: 0.0 },
     );
+    assert_readable_diagnostic(
+        "MonteCarloError",
+        &MonteCarloError::DegenerateWeights {
+            effective_sample_size: 1.0,
+        },
+    );
+}
+
+#[test]
+fn kelly_and_market_pricing_errors_emit_readable_display_and_metadata() {
+    assert_readable_diagnostic("KellyError", &KellyError::InvalidBankroll { value: -1.0 });
+    assert_readable_diagnostic(
+        "KellyError::InvalidNetOdds",
+        &KellyError::InvalidNetOdds { value: 0.0 },
+    );
+    assert_readable_diagnostic(
+        "KellyError::InvalidAmericanOdds",
+        &KellyError::InvalidAmericanOdds { value: 50.0 },
+    );
+    assert_readable_diagnostic(
+        "KellyError::InvalidFractionalOdds",
+        &KellyError::InvalidFractionalOdds {
+            numerator: -1.0,
+            denominator: 2.0,
+        },
+    );
+    assert_readable_diagnostic(
+        "KellyError::InvalidImpliedProbability",
+        &KellyError::InvalidImpliedProbability { value: 1.0 },
+    );
+    assert_readable_diagnostic(
+        "MarketPricingError",
+        &MarketPricingError::NoArbitrage {
+            reciprocal_sum: 1.05,
+        },
+    );
+}
+
+#[test]
+fn kelly_solvency_errors_emit_readable_display_and_metadata() {
+    for (label, err) in [
+        (
+            "KellyError::InvalidStake",
+            KellyError::InvalidStake { value: -5.0 },
+        ),
+        (
+            "KellyError::InvalidBarrier",
+            KellyError::InvalidBarrier {
+                floor: 120.0,
+                initial_wealth: 100.0,
+            },
+        ),
+        (
+            "KellyError::InsufficientBets",
+            KellyError::InsufficientBets {
+                required: 2,
+                actual: 1,
+            },
+        ),
+        (
+            "KellyError::DimensionMismatch",
+            KellyError::DimensionMismatch {
+                expected: 3,
+                actual: 2,
+            },
+        ),
+        (
+            "KellyError::ConvergenceFailed",
+            KellyError::ConvergenceFailed {
+                reason: "bracket failed",
+            },
+        ),
+    ] {
+        assert_readable_diagnostic(label, &err);
+    }
+}
+
+#[test]
+fn kelly_convex_solver_errors_emit_readable_display_and_metadata() {
+    for (label, err) in [
+        (
+            "KellyError::InvalidProbabilityDistribution",
+            KellyError::InvalidProbabilityDistribution { sum: 1.05 },
+        ),
+        (
+            "KellyError::InvalidMarketProbabilitySum",
+            KellyError::InvalidMarketProbabilitySum { sum: 1.1 },
+        ),
+        ("KellyError::EmptyPortfolio", KellyError::EmptyPortfolio),
+        (
+            "KellyError::PortfolioTooLarge",
+            KellyError::PortfolioTooLarge { count: 40, max: 32 },
+        ),
+        (
+            "KellyError::InvalidDrawdownBounds",
+            KellyError::InvalidDrawdownBounds {
+                alpha: 1.2,
+                beta: 0.1,
+            },
+        ),
+        (
+            "KellyError::SolverConvergenceFailed",
+            KellyError::SolverConvergenceFailed {
+                iterations: 64,
+                residual: 1e-4,
+            },
+        ),
+    ] {
+        assert_readable_diagnostic(label, &err);
+    }
 }
 
 #[test]
@@ -129,6 +232,13 @@ fn applied_ai_bio_climate_epi_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic(
         "PharmacokineticsError",
         &PharmacokineticsError::InvalidParameter("volume".to_string()),
+    );
+    assert_readable_diagnostic(
+        "BotanicalError",
+        &BotanicalError::InvalidPrimordiaCount {
+            count: 0,
+            max: 4096,
+        },
     );
     assert_readable_diagnostic(
         "HodgkinHuxleyError",

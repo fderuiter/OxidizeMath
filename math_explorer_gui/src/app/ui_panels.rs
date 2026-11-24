@@ -320,7 +320,15 @@ fn render_view_menu(app: &mut MathExplorerApp, ctx: &egui::Context, ui: &mut egu
             crate::accessibility::announce_live_status(ctx, status_msg);
             ui.close();
         }
-        if ui.button("🎨 Starter Gallery...").clicked() {
+        let gallery_shortcut = if cfg!(target_os = "macos") {
+            "Cmd+Shift+G"
+        } else {
+            "Ctrl+Shift+G"
+        };
+        if ui
+            .add(egui::Button::new("🎨 Starter Gallery...").shortcut_text(gallery_shortcut))
+            .clicked()
+        {
             app.open_starter_gallery(ctx);
             ui.close();
         }
