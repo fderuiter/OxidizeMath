@@ -1,7 +1,5 @@
 //! Dual-backend Web Audio sonification coordinator, `.wav` export ring buffer, and fault hooks.
 
-// theory_verification!
-
 pub mod backend;
 pub mod controller;
 pub mod fourier;

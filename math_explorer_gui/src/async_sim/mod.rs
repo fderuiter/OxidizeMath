@@ -134,7 +134,6 @@ pub struct SimulationController {
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 impl Drop for SimulationController {
     fn drop(&mut self) {
         let _ = unregister_worker_context(self.handle);
@@ -171,7 +170,6 @@ impl SimulationController {
     }
 
     #[cfg(target_arch = "wasm32")]
-    // theory_verification!
     pub fn new<T: SimulationRunner>(runner: T) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
         let (state_tx, state_rx) = sim_state_channel();
@@ -357,7 +355,6 @@ impl SimulationController {
     }
 
     #[cfg(target_arch = "wasm32")]
-    // theory_verification!
     fn wake_wasm_worker(&self) {
         wake_worker(self.handle);
     }
@@ -449,7 +446,6 @@ impl SimulationController {
             .filter(|_| received_new_snapshot)
     }
 }
-// theory_verification!
 
 #[cfg(any(target_arch = "wasm32", test))]
 mod registry;

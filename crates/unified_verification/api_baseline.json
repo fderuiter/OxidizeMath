@@ -11752,6 +11752,9 @@
       "signature": "pub trait Sample2D"
     },
     {
+      "signature": "pub trait Sample2D { fn advance_slice_plateau (_ : & [Self] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 ,) -> usize where Self : Sized , }"
+    },
+    {
       "signature": "pub trait Sample2D { fn sample_x (& self) -> f64 }"
     },
     {
@@ -11851,6 +11854,12 @@
   "crates/oxidize_core/src/ast_visitor.rs": [
     {
       "signature": "impl AstVisitor { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl AstVisitor { pub fn with_test_scope (_ : bool) -> Self }"
+    },
+    {
+      "signature": "pub fn is_dedicated_test_path (_ : & Path) -> bool"
     },
     {
       "signature": "pub struct AstVisitor"

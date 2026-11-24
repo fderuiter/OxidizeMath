@@ -1,4 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+// [cite:biology]
 
 #[path = "hodgkin_huxley/atlas.rs"]
 pub mod atlas;
