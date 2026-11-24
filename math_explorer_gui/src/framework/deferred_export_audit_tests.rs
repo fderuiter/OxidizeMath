@@ -234,9 +234,10 @@ fn assert_expected_capability_counts(counts: [usize; 8]) {
     let has_riemannian = cfg!(feature = "pure_math");
     let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
     let extra = usize::from(has_riemannian) + usize::from(has_surface_morpho);
-    let expected_plot = 73 + extra;
+    let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
+    let expected_plot = 73 + extra + bio_extra;
     let expected_solid = 7 + extra;
-    let expected_non_shader = 87 + extra;
+    let expected_non_shader = 87 + extra + bio_extra;
     assert_eq!(
         plot, expected_plot,
         "Expected {expected_plot} Plot dataset+figure tools"
