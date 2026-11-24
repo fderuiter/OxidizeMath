@@ -6,7 +6,6 @@ use std::collections::BTreeMap;
 
 use eframe::egui;
 use math_explorer::math_kernel::types::flatten_2d_index;
-use math_explorer::pure_math::analysis::pde::wave_2d::apply_biconvex_lens;
 
 use super::{ChladniWaveTankState, ChladniWaveTankTool, GRID_SIZE, REFRACTIVE_MAX, REFRACTIVE_MIN};
 use crate::framework::{bounded_drag_value, MathExpressionInputBar};
@@ -209,29 +208,6 @@ pub(crate) fn detector_focal_metrics(detector_buf: &[f64]) -> (f64, f64) {
 }
 
 impl ChladniWaveTankTool {
-    pub(super) fn apply_active_lens_mask(&mut self) {
-        match self.state.refractive_mode {
-            RefractiveMode::Biconvex => {
-                apply_biconvex_lens(
-                    &mut self.solver.wave_speed_mask,
-                    GRID_SIZE,
-                    GRID_SIZE,
-                    44,
-                    self.state.lens_aperture,
-                    8.0,
-                    self.state.refractive_index,
-                );
-            }
-            RefractiveMode::Formula => {
-                self.refractive.populate_wave_speed_mask(
-                    &mut self.solver.wave_speed_mask,
-                    GRID_SIZE,
-                    GRID_SIZE,
-                );
-            }
-        }
-    }
-
     #[cfg(test)]
     pub(crate) fn set_refractive_formula(&mut self, expr: &str) {
         self.state.lens_enabled = true;

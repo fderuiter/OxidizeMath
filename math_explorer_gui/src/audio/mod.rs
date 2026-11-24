@@ -9,9 +9,12 @@ pub mod frame;
 pub mod limiter;
 pub mod mappings;
 pub mod settings;
+pub mod studio_preview;
 pub mod synth;
 pub mod ui;
 pub mod wav;
+mod wav_riff;
+pub mod wavetable;
 #[cfg(target_arch = "wasm32")]
 pub mod web_audio;
 
@@ -115,6 +118,7 @@ impl AudioController {
     fn suspend_with_reason(&mut self, reason: MuteReason, always_announce: bool) {
         let was_active = !self.backend.is_muted();
         self.backend.mute_and_suspend(reason);
+        studio_preview::suspend_studio_preview(reason);
         if was_active || always_announce {
             announce_status(reason.aria_announcement());
         }
@@ -137,6 +141,7 @@ pub(crate) fn suspend_controller_backend(reason: MuteReason) {
     AUDIO_CONTROLLER.with(|cell| {
         cell.borrow_mut().backend.mute_and_suspend(reason);
     });
+    studio_preview::suspend_studio_preview(reason);
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -334,6 +339,8 @@ mod rl_tests;
 mod spin_resonance_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod wavetable_tests;
 
 #[cfg(all(test, feature = "pure_math"))]
 mod acoustics_tests;

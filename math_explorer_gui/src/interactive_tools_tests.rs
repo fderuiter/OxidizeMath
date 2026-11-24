@@ -143,6 +143,9 @@ mod tests {
         exercise_interactive_tool::<
             crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool,
         >(ctx);
+        exercise_interactive_tool::<crate::tabs::analysis::wavetable_studio::WavetableStudioTool>(
+            ctx,
+        );
         #[cfg(all(feature = "pure_math", feature = "biology"))]
         exercise_interactive_tool::<
             crate::tabs::geometry_topology::surface_morphogenesis::SurfaceMorphogenesisTool,
