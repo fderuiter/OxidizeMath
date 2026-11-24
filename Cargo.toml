@@ -9,6 +9,8 @@ members = [
     "crates/02_engines/engine_symbolic",
     "crates/math_commons",
     "crates/scientific_metadata",
+    "crates/engine_diffeq",
+    "crates/engine_pde",
     "crates/pure_math",
     "crates/domain_ai",
     "crates/domain_physics",
@@ -49,6 +51,7 @@ futures = "0.3"
 getrandom = { version = "0.2.17", features = ["js"] }
 inventory = "0.3.24"
 js-sys = "0.3.107"
+libm = "0.2.16"
 muda = { version = "0.19.3", default-features = false }
 nalgebra = "0.34.0"
 num-complex = "0.4.6"
@@ -60,6 +63,7 @@ quadrature = "0.1.2"
 quote = "1.0.45"
 rand = { version = "0.8.6", default-features = false, features = ["std", "alloc"] }
 rand_chacha = { version = "0.3.1", default-features = false, features = ["std"] }
+rand_core = { version = "0.6.4", default-features = false }
 rand_distr = "0.4.3"
 regex = "1.10"
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }

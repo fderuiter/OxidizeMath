@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 22 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 24 workspace crates:
 
 ```mermaid
 graph TD
@@ -68,6 +68,8 @@ graph TD
 
     subgraph Math_Infrastructure
         Pure[pure_math]
+        DiffEq[engine_diffeq]
+        Pde[engine_pde]
         Commons[math_commons]
         Sym[engine_symbolic]
         Meta[scientific_metadata]
@@ -92,14 +94,16 @@ graph TD
     Explorer --> AI & Phys & Bio & App & Clim & Epi
     Explorer --> Pure & Commons & Sym
 
-    AI --> Commons & Engine & Meta
-    Phys --> Commons & Sym & Engine & Meta & Pure & Linalg
-    Bio --> Commons & Engine & Meta & Pure
-    App --> Commons & Sym & Engine & Meta & Pure & Linalg
+    AI --> Commons & Engine & Meta & DiffEq
+    Phys --> Commons & Sym & Engine & Meta & Pure & DiffEq & Pde & Linalg
+    Bio --> Commons & Engine & Meta & Pure & Pde
+    App --> Commons & Sym & Engine & Meta & Pure & Pde & Linalg
     Clim --> Commons & Engine & Meta
     Epi --> Commons & Sym & Engine & Meta & Pure
 
-    Pure --> Commons & Sym & Meta & Linalg
+    Pure --> Commons & Sym & Meta & DiffEq & Pde & Linalg
+    DiffEq --> Commons & Engine
+    Pde --> Commons & Engine
     Commons --> Sym & CoreCrate & Linalg
     Sym --> Engine & CoreCrate
     Engine --> Macros & CoreCrate
@@ -114,7 +118,7 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 22 member crates declared in `Cargo.toml`:
+The workspace contains all 24 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
@@ -125,6 +129,8 @@ The workspace contains all 22 member crates declared in `Cargo.toml`:
 | `crates/diagnostics` | Static analysis diagnostics and reporting | [diagnostics](../../crates/diagnostics/README.md) |
 | `crates/02_engines/engine_symbolic` | Bounded e-graph saturation and automatic differentiation | [engine_symbolic](../../crates/02_engines/engine_symbolic/README.md) |
 | `crates/math_commons` | Tolerances, constant registries, numeric traits | [math_commons](../../crates/math_commons/README.md) |
+| `crates/engine_diffeq` | `#![no_std]` Itô/Stratonovich SDE and BAOAB Langevin solvers | [engine_diffeq](../../crates/engine_diffeq/README.md) |
+| `crates/engine_pde` | `#![no_std]` 1D/2D/3D stencils, SPDE steppers, and radix-2 Fourier solvers | [engine_pde](../../crates/engine_pde/README.md) |
 | `crates/pure_math` | Pure mathematics and numerical algorithms | [pure_math](../../crates/pure_math/README.md) |
 | `crates/scientific_metadata` | Theory descriptors and citation metadata | [scientific_metadata](../../crates/scientific_metadata/src/lib.rs) |
 | `crates/federated_registry` | Distributed model discovery and registration | [federated_registry](../../crates/federated_registry/README.md) |
