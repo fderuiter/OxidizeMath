@@ -162,6 +162,9 @@ mod spde_zero_alloc_tests {
             CahnHilliard2D::new(8, 8, 1.0, 1.0, 1.0, 0.5, 0.02, BoundaryCondition::Periodic);
         ch.init_spinodal_perturbation(0.0, 0.1, &mut rng);
 
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let ((q_final, mean_ch), metrics) = VerifiedEngine::run_verified(|| {
             let mut q = 1.0;
             let mut p = 0.0;
