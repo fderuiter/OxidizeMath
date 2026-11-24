@@ -95,6 +95,11 @@ impl ExportFormat {
         match self {
             Self::GlslWebGl2 | Self::GlslShadertoy => "shader",
             Self::Tex | Self::Rust | Self::Python => "model",
+            Self::TopologyDot
+            | Self::TopologyGraphMl
+            | Self::TopologyTikz
+            | Self::TopologySvg
+            | Self::TopologyCsv => "topology",
             _ => "dataset",
         }
     }

@@ -8,6 +8,12 @@ fn test_infer_mime_type_all_supported_extensions() {
     assert_eq!(infer_mime_type("data.csv"), "text/csv");
     assert_eq!(infer_mime_type("table.tsv"), "text/tab-separated-values");
     assert_eq!(infer_mime_type("notes.txt"), "text/plain");
+    assert_eq!(infer_mime_type("network.dot"), "text/vnd.graphviz");
+    assert_eq!(infer_mime_type("GRAPH.GV"), "text/vnd.graphviz");
+    assert_eq!(
+        infer_mime_type("topology.graphml"),
+        "application/graphml+xml"
+    );
     assert_eq!(infer_mime_type("equation.tex"), "text/x-tex");
     assert_eq!(infer_mime_type("SOLVER.RS"), "text/x-rust");
     assert_eq!(infer_mime_type("script.py"), "text/x-python");

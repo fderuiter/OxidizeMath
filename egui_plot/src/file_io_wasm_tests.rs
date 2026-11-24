@@ -73,6 +73,17 @@ fn wasm_download_browser_file_and_repaint_restore_canvas_focus() {
 
     download_browser_file("../nested/plot_points.csv", b"x,y\n1.0,2.5\n")
         .expect("browser Blob download should succeed");
+    for (name, body) in [
+        ("topology.dot", &b"graph G { 0 -- 1; }"[..]),
+        ("topology.gv", &b"digraph G { 0 -> 1; }"[..]),
+        ("topology.graphml", &b"<graphml/>"[..]),
+        (
+            "topology.tex",
+            &b"\\begin{tikzpicture}\\end{tikzpicture}"[..],
+        ),
+    ] {
+        download_browser_file(name, body).expect("topology browser Blob download should succeed");
+    }
     assert!(
         doc.query_selector("a[download]")
             .expect("query_selector")

@@ -71,6 +71,7 @@ impl NetworkPropagationTool {
             &prev_quarantined_pairs,
             payload.revision,
         );
+        self.topology_ui.custom = None;
         Ok(())
     }
 

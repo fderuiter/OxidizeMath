@@ -81,6 +81,17 @@ pub enum GraphTheoryError {
         /// Human-readable error message.
         message: String,
     },
+    /// Imported topology byte length exceeds [`super::interchange::MAX_TOPOLOGY_IMPORT_BYTES`].
+    #[error("topology payload ({actual} bytes) exceeds maximum limit of {max} bytes")]
+    PayloadTooLarge {
+        /// Observed UTF-8 byte length.
+        actual: usize,
+        /// Maximum permitted UTF-8 byte length.
+        max: usize,
+    },
+    /// Untrusted GraphML XML contained a forbidden `<!DOCTYPE` or `<!ENTITY` declaration.
+    #[error("XML DOCTYPE and ENTITY declarations are forbidden in untrusted GraphML inputs")]
+    ForbiddenXmlDeclaration,
 }
 
 // [cite:graph_parameters_rust]

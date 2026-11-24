@@ -15034,10 +15034,124 @@
   ],
   "crates/pure_math/src/pure_math/graph_theory/interchange/csv.rs": [
     {
+      "signature": "pub fn parse_csv_topology (_ : & str) -> Result < GraphTopologyDocument , GraphTheoryError >"
+    },
+    {
       "signature": "pub fn parse_edge_csv (_ : & str) -> Result < InterchangeGraph , GraphTheoryError >"
     },
     {
+      "signature": "pub fn to_csv_topology (_ : & GraphTopologyDocument) -> String"
+    },
+    {
       "signature": "pub fn to_edge_csv (_ : & InterchangeGraph) -> Result < String , GraphTheoryError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/interchange/doc_dot.rs": [
+    {
+      "signature": "pub fn parse_dot_topology (_ : & str) -> Result < GraphTopologyDocument , GraphTheoryError >"
+    },
+    {
+      "signature": "pub fn to_dot_topology (_ : & GraphTopologyDocument) -> String"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/interchange/doc_graphml.rs": [
+    {
+      "signature": "pub fn parse_graphml_topology (_ : & str) -> Result < GraphTopologyDocument , GraphTheoryError >"
+    },
+    {
+      "signature": "pub fn to_graphml_topology (_ : & GraphTopologyDocument) -> String"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/interchange/document.rs": [
+    {
+      "signature": "impl GraphTopologyDocument { pub fn ensure_positions (& mut self , _ : LayoutBounds) }"
+    },
+    {
+      "signature": "impl GraphTopologyDocument { pub fn from_interchange (_ : impl Into < String > , _ : & InterchangeGraph) -> Self }"
+    },
+    {
+      "signature": "impl GraphTopologyDocument { pub fn new (_ : impl Into < String > , _ : bool) -> Self }"
+    },
+    {
+      "signature": "impl GraphTopologyDocument { pub fn parse_with_filename (_ : & str , _ : & str) -> Result < Self , GraphTheoryError > }"
+    },
+    {
+      "signature": "impl GraphTopologyDocument { pub fn serialize (& self , _ : TopologyFormat) -> Result < String , GraphTheoryError > }"
+    },
+    {
+      "signature": "impl GraphTopologyDocument { pub fn to_interchange (& self) -> Result < InterchangeGraph , GraphTheoryError > }"
+    },
+    {
+      "signature": "impl GraphTopologyDocument { pub fn to_undirected_petgraph (& self ,) -> Result < (Graph < String , f64 > , Vec < NodeIndex >) , GraphTheoryError > }"
+    },
+    {
+      "signature": "impl GraphTopologyDocument { pub fn validate (& self) -> Result < () , GraphTheoryError > }"
+    },
+    {
+      "signature": "impl TopologyEdge { pub fn new (_ : impl Into < String > , _ : impl Into < String > , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TopologyEdge { pub fn with_attribute (self , _ : impl Into < String > , _ : impl Into < String >) -> Self }"
+    },
+    {
+      "signature": "impl TopologyEdge { pub fn with_color (self , _ : impl Into < String >) -> Self }"
+    },
+    {
+      "signature": "impl TopologyEdge { pub fn with_label (self , _ : impl Into < String >) -> Self }"
+    },
+    {
+      "signature": "impl TopologyEdge { pub fn with_style (self , _ : TopologyEdgeStyle) -> Self }"
+    },
+    {
+      "signature": "impl TopologyNode { pub fn new (_ : impl Into < String > , _ : impl Into < String >) -> Self }"
+    },
+    {
+      "signature": "impl TopologyNode { pub fn with_attribute (self , _ : impl Into < String > , _ : impl Into < String >) -> Self }"
+    },
+    {
+      "signature": "impl TopologyNode { pub fn with_color (self , _ : impl Into < String >) -> Self }"
+    },
+    {
+      "signature": "impl TopologyNode { pub fn with_position (self , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TopologyNode { pub fn with_shape (self , _ : TopologyNodeShape) -> Self }"
+    },
+    {
+      "signature": "impl TopologyNode { pub fn with_stroke (self , _ : impl Into < String >) -> Self }"
+    },
+    {
+      "signature": "pub const DEFAULT_TOPOLOGY_LAYOUT_BOUNDS : LayoutBounds"
+    },
+    {
+      "signature": "pub const MAX_TOPOLOGY_EDGES : usize"
+    },
+    {
+      "signature": "pub const MAX_TOPOLOGY_IMPORT_BYTES : usize"
+    },
+    {
+      "signature": "pub const MAX_TOPOLOGY_NODES : usize"
+    },
+    {
+      "signature": "pub enum TopologyEdgeStyle"
+    },
+    {
+      "signature": "pub enum TopologyFormat"
+    },
+    {
+      "signature": "pub enum TopologyNodeShape"
+    },
+    {
+      "signature": "pub fn strip_utf8_bom_str (_ : & str) -> & str"
+    },
+    {
+      "signature": "pub struct GraphTopologyDocument"
+    },
+    {
+      "signature": "pub struct TopologyEdge"
+    },
+    {
+      "signature": "pub struct TopologyNode"
     }
   ],
   "crates/pure_math/src/pure_math/graph_theory/interchange/dot.rs": [
@@ -15100,10 +15214,61 @@
       "signature": "pub struct InterchangeNode"
     },
     {
+      "signature": "pub use csv :: parse_csv_topology"
+    },
+    {
       "signature": "pub use csv :: parse_edge_csv"
     },
     {
+      "signature": "pub use csv :: to_csv_topology"
+    },
+    {
       "signature": "pub use csv :: to_edge_csv"
+    },
+    {
+      "signature": "pub use doc_dot :: parse_dot_topology"
+    },
+    {
+      "signature": "pub use doc_dot :: to_dot_topology"
+    },
+    {
+      "signature": "pub use doc_graphml :: parse_graphml_topology"
+    },
+    {
+      "signature": "pub use doc_graphml :: to_graphml_topology"
+    },
+    {
+      "signature": "pub use document :: DEFAULT_TOPOLOGY_LAYOUT_BOUNDS"
+    },
+    {
+      "signature": "pub use document :: GraphTopologyDocument"
+    },
+    {
+      "signature": "pub use document :: MAX_TOPOLOGY_EDGES"
+    },
+    {
+      "signature": "pub use document :: MAX_TOPOLOGY_IMPORT_BYTES"
+    },
+    {
+      "signature": "pub use document :: MAX_TOPOLOGY_NODES"
+    },
+    {
+      "signature": "pub use document :: TopologyEdge"
+    },
+    {
+      "signature": "pub use document :: TopologyEdgeStyle"
+    },
+    {
+      "signature": "pub use document :: TopologyFormat"
+    },
+    {
+      "signature": "pub use document :: TopologyNode"
+    },
+    {
+      "signature": "pub use document :: TopologyNodeShape"
+    },
+    {
+      "signature": "pub use document :: strip_utf8_bom_str"
     },
     {
       "signature": "pub use dot :: parse_dot"
@@ -15119,6 +15284,22 @@
     },
     {
       "signature": "pub use graphml :: to_graphml"
+    },
+    {
+      "signature": "pub use svg :: to_svg_topology"
+    },
+    {
+      "signature": "pub use tikz :: to_tikz_topology"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/interchange/svg.rs": [
+    {
+      "signature": "pub fn to_svg_topology (_ : & GraphTopologyDocument) -> String"
+    }
+  ],
+  "crates/pure_math/src/pure_math/graph_theory/interchange/tikz.rs": [
+    {
+      "signature": "pub fn to_tikz_topology (_ : & GraphTopologyDocument) -> String"
     }
   ],
   "crates/pure_math/src/pure_math/graph_theory/layout.rs": [

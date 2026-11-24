@@ -347,6 +347,13 @@ mod tests {
     #[test]
     fn test_infer_mime_type_other_formats() {
         assert_eq!(infer_mime_type("points.csv"), "text/csv");
+        assert_eq!(infer_mime_type("topology.dot"), "text/vnd.graphviz");
+        assert_eq!(infer_mime_type("topology.gv"), "text/vnd.graphviz");
+        assert_eq!(
+            infer_mime_type("topology.graphml"),
+            "application/graphml+xml"
+        );
+        assert_eq!(infer_mime_type("topology.tex"), "text/x-tex");
         assert_eq!(infer_mime_type("plot.svg"), "image/svg+xml");
         assert_eq!(infer_mime_type("figure.png"), "image/png");
         assert_eq!(infer_mime_type("anim.gif"), "image/gif");

@@ -260,7 +260,7 @@ fn synthesize_missing_positions(interchange: &InterchangeGraph) -> BTreeMap<usiz
     out
 }
 
-/// Parses `.dot`, `.graphml`, `.csv`, or `.json` file contents into a bounded [`SharedGraphTopology`].
+/// Parses `.dot`, `.graphml`, `.csv`, `.tsv`, or `.json` file contents into a bounded [`SharedGraphTopology`].
 pub fn parse_topology_document(
     filename_hint: &str,
     content: &str,
@@ -270,7 +270,7 @@ pub fn parse_topology_document(
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    let trimmed = content.trim();
+    let trimmed = crate::web_io::strip_utf8_bom(content).trim();
     if trimmed.is_empty() {
         return Err("Imported file is empty".to_string());
     }
@@ -281,7 +281,7 @@ pub fn parse_topology_document(
         "graphml" | "xml" => SharedGraphTopology::from_interchange_graph(
             &parse_graphml(trimmed).map_err(|e| e.to_string())?,
         ),
-        "csv" => SharedGraphTopology::from_interchange_graph(
+        "csv" | "tsv" => SharedGraphTopology::from_interchange_graph(
             &parse_edge_csv(trimmed).map_err(|e| e.to_string())?,
         ),
         "json" => parse_json_topology(trimmed),

@@ -2,6 +2,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[path = "topology_doc.rs"]
+mod topology_doc;
+
 use super::{MetricType, NetworkMetricsState, NetworkMetricsTool};
 use crate::accessibility::AccessibleHoverText;
 use crate::app::{SharedGraphTopology as BusGraphTopology, SharedSimulationBus, TopologySource};

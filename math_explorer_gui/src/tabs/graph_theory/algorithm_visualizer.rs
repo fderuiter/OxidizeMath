@@ -359,7 +359,13 @@ impl InteractiveTool for AlgorithmVisualizerTool {
         ]
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::plot()
+        crate::framework::ExportCapabilities::plot().with_topology()
+    }
+    fn export_topology_document(
+        &self,
+    ) -> Result<math_explorer::pure_math::graph_theory::interchange::GraphTopologyDocument, String>
+    {
+        self.build_topology_document()
     }
     fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
         self.build_visualizer_plot_primitives()

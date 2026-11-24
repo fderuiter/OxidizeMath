@@ -11,6 +11,7 @@ impl NetworkPropagationTool {
         ui.heading("Controls");
         if !self.upstream_linked {
             self.render_topology_sync_bar(ui);
+            self.render_topology_import_controls(ui);
             ui.separator();
         }
 
@@ -78,7 +79,7 @@ impl NetworkPropagationTool {
         };
         if ui
             .add_enabled(
-                !locked && self.synced_bus_revision.is_none(),
+                !locked && self.synced_bus_revision.is_none() && self.topology_ui.custom.is_none(),
                 egui::Slider::new(&mut num_nodes, 10..=200).text("Nodes"),
             )
             .changed()

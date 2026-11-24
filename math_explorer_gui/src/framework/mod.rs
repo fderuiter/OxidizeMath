@@ -41,6 +41,7 @@ mod export_queue_tests;
 pub(crate) mod export_shader;
 #[cfg(test)]
 mod export_shader_tests;
+pub(crate) mod export_topology;
 pub mod export_types;
 mod export_ui;
 #[cfg(test)]
@@ -368,6 +369,18 @@ pub trait InteractiveTool {
     fn export_glsl_shader(&self, _dialect: ShaderDialect) -> Result<String, String> {
         Err(format!(
             "GLSL shader export is not supported for {}",
+            self.name()
+        ))
+    }
+
+    /// Optional hook to emit a canonical [`math_explorer::pure_math::graph_theory::interchange::GraphTopologyDocument`].
+    #[cfg(feature = "pure_math")]
+    fn export_topology_document(
+        &self,
+    ) -> Result<math_explorer::pure_math::graph_theory::interchange::GraphTopologyDocument, String>
+    {
+        Err(format!(
+            "Graph topology export is not supported for {}",
             self.name()
         ))
     }

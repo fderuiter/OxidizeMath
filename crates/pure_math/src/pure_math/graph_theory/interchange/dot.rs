@@ -1,6 +1,6 @@
 //! Deterministic Graphviz `.dot` parser and styled serializer.
 
-use super::{GraphTheoryError, InterchangeGraph, InterchangeNode, resolve_token_id};
+use super::{GraphTheoryError, InterchangeGraph, clamp_interchange_limit, parse_dot_topology};
 use std::collections::BTreeMap;
 
 #[path = "dot_emit.rs"]
@@ -10,39 +10,13 @@ pub use dot_emit::{to_dot, to_styled_dot};
 /// Parses a Graphviz `.dot` (`graph` or `digraph`) specification into a validated [`InterchangeGraph`].
 #[verified_engine::verified]
 pub fn parse_dot(input: &str) -> Result<InterchangeGraph, GraphTheoryError> {
-    let cleaned = strip_dot_comments(input);
-    let Some(open_brace) = cleaned.find('{') else {
-        return Err(GraphTheoryError::ParseError {
-            format: "DOT",
-            message: "missing opening '{'".to_string(),
-        });
-    };
-    let Some(close_brace) = cleaned.rfind('}') else {
-        return Err(GraphTheoryError::ParseError {
-            format: "DOT",
-            message: "missing closing '}'".to_string(),
-        });
-    };
-    if close_brace < open_brace {
-        return Err(GraphTheoryError::ParseError {
-            format: "DOT",
-            message: "malformed brace delimiters".to_string(),
-        });
-    }
-    let directed = parse_dot_header(&cleaned[..open_brace])?;
-    let body = &cleaned[(open_brace + 1)..close_brace];
-    let mut graph = InterchangeGraph::new(directed);
-    let mut sym_table = BTreeMap::new();
-    let mut next_sym_id = 0usize;
-    for stmt in split_dot_statements(body) {
-        parse_dot_statement(&stmt, &mut graph, &mut sym_table, &mut next_sym_id)?;
-    }
-    graph.validate()?;
-    Ok(graph)
+    parse_dot_topology(input)
+        .and_then(|doc| doc.to_interchange())
+        .map_err(clamp_interchange_limit)
 }
 
 #[verified_engine::verified]
-fn strip_dot_comments(input: &str) -> String {
+pub(super) fn strip_dot_comments(input: &str) -> String {
     let bytes = input.as_bytes();
     let mut out = String::with_capacity(input.len());
     let mut i = 0usize;
@@ -76,7 +50,9 @@ fn strip_dot_comments(input: &str) -> String {
 }
 
 #[verified_engine::verified]
-fn parse_dot_header(prefix: &str) -> Result<bool, GraphTheoryError> {
+pub(super) fn parse_dot_header_and_name(
+    prefix: &str,
+) -> Result<(bool, Option<String>), GraphTheoryError> {
     let mut words = prefix.split_whitespace();
     let first = words.next().ok_or_else(|| GraphTheoryError::ParseError {
         format: "DOT",
@@ -90,10 +66,11 @@ fn parse_dot_header(prefix: &str) -> Result<bool, GraphTheoryError> {
     } else {
         first
     };
+    let name = words.next().map(unquote_dot).filter(|s| !s.is_empty());
     if kw.eq_ignore_ascii_case("digraph") {
-        Ok(true)
+        Ok((true, name))
     } else if kw.eq_ignore_ascii_case("graph") {
-        Ok(false)
+        Ok((false, name))
     } else {
         Err(GraphTheoryError::ParseError {
             format: "DOT",
@@ -103,7 +80,7 @@ fn parse_dot_header(prefix: &str) -> Result<bool, GraphTheoryError> {
 }
 
 #[verified_engine::verified]
-fn split_dot_statements(body: &str) -> Vec<String> {
+pub(super) fn split_dot_statements(body: &str) -> Vec<String> {
     let mut stmts = Vec::new();
     let mut cur = String::new();
     let mut in_quotes = false;
@@ -136,34 +113,7 @@ fn split_dot_statements(body: &str) -> Vec<String> {
 }
 
 #[verified_engine::verified]
-fn parse_dot_statement(
-    stmt: &str,
-    graph: &mut InterchangeGraph,
-    sym_table: &mut BTreeMap<String, usize>,
-    next_sym_id: &mut usize,
-) -> Result<(), GraphTheoryError> {
-    let (head, attrs_raw) = split_head_and_attrs(stmt);
-    let head = head.trim();
-    if head.is_empty() || is_global_dot_attr(head, attrs_raw.is_some()) {
-        return Ok(());
-    }
-    let attrs = attrs_raw.map(parse_dot_attrs).unwrap_or_default();
-    let edge_op = if graph.directed { "->" } else { "--" };
-    let alt_op = if graph.directed { "--" } else { "->" };
-    if head.contains(alt_op) {
-        return Err(GraphTheoryError::ParseError {
-            format: "DOT",
-            message: format!("edge operator '{alt_op}' does not match graph header"),
-        });
-    }
-    if head.contains(edge_op) {
-        return apply_dot_edge_chain(head, edge_op, &attrs, graph, sym_table, next_sym_id);
-    }
-    apply_dot_node(head, &attrs, graph, sym_table, next_sym_id)
-}
-
-#[verified_engine::verified]
-fn is_global_dot_attr(head: &str, has_brackets: bool) -> bool {
+pub(super) fn is_global_dot_attr(head: &str, has_brackets: bool) -> bool {
     if head.contains('=') && !head.contains("->") && !head.contains("--") {
         return true;
     }
@@ -174,7 +124,7 @@ fn is_global_dot_attr(head: &str, has_brackets: bool) -> bool {
 }
 
 #[verified_engine::verified]
-fn split_head_and_attrs(stmt: &str) -> (&str, Option<&str>) {
+pub(super) fn split_head_and_attrs(stmt: &str) -> (&str, Option<&str>) {
     let mut in_quotes = false;
     let mut prev_bs = false;
     let mut open_idx = None;
@@ -198,7 +148,7 @@ fn split_head_and_attrs(stmt: &str) -> (&str, Option<&str>) {
 }
 
 #[verified_engine::verified]
-fn parse_dot_attrs(raw: &str) -> BTreeMap<String, String> {
+pub(super) fn parse_dot_attrs(raw: &str) -> BTreeMap<String, String> {
     let mut map = BTreeMap::new();
     let mut parts = Vec::new();
     let mut cur = String::new();
@@ -227,7 +177,7 @@ fn parse_dot_attrs(raw: &str) -> BTreeMap<String, String> {
 }
 
 #[verified_engine::verified]
-fn unquote_dot(raw: &str) -> String {
+pub(super) fn unquote_dot(raw: &str) -> String {
     let trimmed = raw.trim();
     if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
         trimmed[1..(trimmed.len() - 1)]
@@ -239,31 +189,7 @@ fn unquote_dot(raw: &str) -> String {
 }
 
 #[verified_engine::verified]
-fn apply_dot_node(
-    head: &str,
-    attrs: &BTreeMap<String, String>,
-    graph: &mut InterchangeGraph,
-    sym_table: &mut BTreeMap<String, usize>,
-    next_sym_id: &mut usize,
-) -> Result<(), GraphTheoryError> {
-    let clean_name = unquote_dot(head);
-    if clean_name.is_empty() {
-        return Ok(());
-    }
-    let id = resolve_token_id(&clean_name, sym_table, next_sym_id);
-    let pos = match attrs.get("pos") {
-        Some(pos_str) => Some(parse_dot_pos(id, pos_str)?),
-        None => graph.nodes.get(&id).and_then(|n| n.pos),
-    };
-    let label = attrs
-        .get("label")
-        .cloned()
-        .or_else(|| graph.nodes.get(&id).and_then(|n| n.label.clone()));
-    graph.insert_node(InterchangeNode { id, pos, label })
-}
-
-#[verified_engine::verified]
-fn parse_dot_pos(node: usize, raw: &str) -> Result<(f64, f64), GraphTheoryError> {
+pub(super) fn parse_dot_pos(node: usize, raw: &str) -> Result<(f64, f64), GraphTheoryError> {
     let stripped = raw.trim().trim_end_matches('!');
     let Some((xs, ys)) = stripped.split_once(',') else {
         return Err(GraphTheoryError::ParseError {
@@ -292,43 +218,9 @@ fn parse_dot_pos(node: usize, raw: &str) -> Result<(f64, f64), GraphTheoryError>
 }
 
 #[verified_engine::verified]
-fn apply_dot_edge_chain(
-    head: &str,
-    edge_op: &str,
+pub(super) fn extract_dot_edge_weight(
     attrs: &BTreeMap<String, String>,
-    graph: &mut InterchangeGraph,
-    sym_table: &mut BTreeMap<String, usize>,
-    next_sym_id: &mut usize,
-) -> Result<(), GraphTheoryError> {
-    let weight = extract_dot_edge_weight(attrs)?;
-    let endpoints: Vec<&str> = head.split(edge_op).collect();
-    if endpoints.len() < 2 {
-        return Err(GraphTheoryError::ParseError {
-            format: "DOT",
-            message: "incomplete edge statement".to_string(),
-        });
-    }
-    let mut ids = Vec::with_capacity(endpoints.len());
-    for raw_ep in endpoints {
-        let ep = unquote_dot(raw_ep);
-        if ep.is_empty() {
-            return Err(GraphTheoryError::ParseError {
-                format: "DOT",
-                message: "empty endpoint in edge chain".to_string(),
-            });
-        }
-        ids.push(resolve_token_id(&ep, sym_table, next_sym_id));
-    }
-    let mut i = 0usize;
-    while i + 1 < ids.len() {
-        graph.push_edge(ids[i], ids[i + 1], weight)?;
-        i += 1;
-    }
-    Ok(())
-}
-
-#[verified_engine::verified]
-fn extract_dot_edge_weight(attrs: &BTreeMap<String, String>) -> Result<f64, GraphTheoryError> {
+) -> Result<f64, GraphTheoryError> {
     if let Some(w_str) = attrs.get("weight") {
         let w = w_str
             .trim()

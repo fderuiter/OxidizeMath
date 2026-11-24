@@ -1,12 +1,28 @@
-//! Deterministic Graphviz `.dot`, `.graphml`, and weighted `.csv` topology interchange codecs.
+//! Deterministic Graphviz `.dot`, `.graphml`, LaTeX `TikZ` (`.tex`), vector `.svg`,
+//! and weighted `.csv`/`.tsv` topology interchange codecs.
 
 mod csv;
+mod doc_dot;
+mod doc_graphml;
+mod document;
 mod dot;
+mod escape;
 mod graphml;
+mod svg;
+mod tikz;
 
-pub use csv::{parse_edge_csv, to_edge_csv};
+pub use csv::{parse_csv_topology, parse_edge_csv, to_csv_topology, to_edge_csv};
+pub use doc_dot::{parse_dot_topology, to_dot_topology};
+pub use doc_graphml::{parse_graphml_topology, to_graphml_topology};
+pub use document::{
+    DEFAULT_TOPOLOGY_LAYOUT_BOUNDS, GraphTopologyDocument, MAX_TOPOLOGY_EDGES,
+    MAX_TOPOLOGY_IMPORT_BYTES, MAX_TOPOLOGY_NODES, TopologyEdge, TopologyEdgeStyle, TopologyFormat,
+    TopologyNode, TopologyNodeShape, strip_utf8_bom_str,
+};
 pub use dot::{parse_dot, to_dot, to_styled_dot};
 pub use graphml::{parse_graphml, to_graphml};
+pub use svg::to_svg_topology;
+pub use tikz::to_tikz_topology;
 
 use super::error::GraphTheoryError;
 use std::collections::BTreeMap;
@@ -228,6 +244,23 @@ pub(super) fn resolve_token_id(
     *next_sym_id = next_sym_id.saturating_add(1);
     sym_table.insert(trimmed.to_string(), assigned);
     assigned
+}
+
+#[verified_engine::verified]
+pub(super) fn clamp_interchange_limit(err: GraphTheoryError) -> GraphTheoryError {
+    match err {
+        GraphTheoryError::VertexLimitExceeded { count, .. } => {
+            GraphTheoryError::VertexLimitExceeded {
+                count,
+                max: MAX_INTERCHANGE_VERTICES,
+            }
+        }
+        GraphTheoryError::EdgeLimitExceeded { count, .. } => GraphTheoryError::EdgeLimitExceeded {
+            count,
+            max: MAX_INTERCHANGE_EDGES,
+        },
+        other => other,
+    }
 }
 
 #[verified_engine::verified]

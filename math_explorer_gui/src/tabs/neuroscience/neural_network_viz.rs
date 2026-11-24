@@ -4,6 +4,9 @@
 mod kuramoto_ui;
 #[path = "neural_network_viz/topology.rs"]
 mod topology;
+#[cfg(feature = "pure_math")]
+#[path = "neural_network_viz/topology_export.rs"]
+mod topology_export;
 #[path = "neural_network_viz/ui.rs"]
 mod ui;
 
@@ -237,7 +240,14 @@ impl InteractiveTool for NeuralNetworkVizTool {
         "Neural Network Viz"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::topology_only()
+    }
+    #[cfg(feature = "pure_math")]
+    fn export_topology_document(
+        &self,
+    ) -> Result<math_explorer::pure_math::graph_theory::interchange::GraphTopologyDocument, String>
+    {
+        self.build_neural_topology()
     }
     fn domain(&self) -> &'static str {
         "neuroscience"

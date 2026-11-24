@@ -2,6 +2,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[path = "topology_doc.rs"]
+mod topology_doc;
+
 use super::{Algorithm, AlgorithmVisualizerState, AlgorithmVisualizerTool};
 use crate::accessibility::AccessibleHoverText;
 use crate::tabs::graph_theory::{

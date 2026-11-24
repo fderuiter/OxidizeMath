@@ -227,3 +227,95 @@ fn test_interchange_rejects_non_finite_and_oversized_inputs() {
         })
     ));
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_topology_document_roundtrip_invariants_tikz_svg_and_security_guards() {
+    use pure_math::pure_math::graph_theory::{
+        interchange::{
+            GraphTopologyDocument, MAX_TOPOLOGY_IMPORT_BYTES, TopologyEdge, TopologyEdgeStyle,
+            TopologyFormat, TopologyNode, TopologyNodeShape,
+        },
+        parameters::{degree::degeneracy, treewidth::treewidth},
+    };
+
+    let mut doc = GraphTopologyDocument::new("WheelW5", false);
+    for (id, x, y, shape) in [
+        ("hub", 300.0, 220.0, TopologyNodeShape::DoubleCircle),
+        ("r1", 200.0, 140.0, TopologyNodeShape::Circle),
+        ("r2", 400.0, 140.0, TopologyNodeShape::Circle),
+        ("r3", 400.0, 300.0, TopologyNodeShape::Box),
+        ("r4", 200.0, 300.0, TopologyNodeShape::Circle),
+    ] {
+        doc.nodes.push(
+            TopologyNode::new(id, format!("Node_{id}"))
+                .with_position(x, y)
+                .with_shape(shape)
+                .with_color("#2563EB")
+                .with_attribute("role", id),
+        );
+    }
+    for (u, v, w, style) in [
+        ("hub", "r1", 1.0, TopologyEdgeStyle::Solid),
+        ("hub", "r2", 1.5, TopologyEdgeStyle::Thick),
+        ("hub", "r3", 2.0, TopologyEdgeStyle::Solid),
+        ("hub", "r4", 2.5, TopologyEdgeStyle::Dashed),
+        ("r1", "r2", 1.0, TopologyEdgeStyle::Solid),
+        ("r2", "r3", 1.0, TopologyEdgeStyle::Solid),
+        ("r3", "r4", 1.0, TopologyEdgeStyle::Solid),
+        ("r4", "r1", 1.0, TopologyEdgeStyle::Solid),
+    ] {
+        doc.edges.push(
+            TopologyEdge::new(u, v, w)
+                .with_style(style)
+                .with_label(format!("{u}-{v}")),
+        );
+    }
+
+    let (base_g, _) = doc.to_undirected_petgraph().expect("base petgraph");
+    let base_deg = degeneracy(&base_g);
+    let base_tw = treewidth(&base_g);
+    assert_eq!((base_deg, base_tw), (3, 3));
+
+    for (ext, fmt) in [
+        ("wheel.dot", TopologyFormat::Dot),
+        ("wheel.graphml", TopologyFormat::GraphMl),
+        ("wheel.csv", TopologyFormat::Csv),
+    ] {
+        let serialized = doc.serialize(fmt).expect("serialize");
+        let with_bom = format!("\u{feff}{serialized}");
+        let parsed = GraphTopologyDocument::parse_with_filename(ext, &with_bom).expect("reparse");
+        assert_eq!(parsed.nodes.len(), 5);
+        assert_eq!(parsed.edges.len(), 8);
+        let (g, _) = parsed.to_undirected_petgraph().expect("parsed petgraph");
+        assert_eq!(degeneracy(&g), base_deg);
+        assert_eq!(treewidth(&g), base_tw);
+    }
+
+    let tikz = doc.serialize(TopologyFormat::Tikz).expect("tikz");
+    assert!(tikz.contains("\\documentclass[tikz,border=10pt]{standalone}"));
+    assert!(tikz.contains("\\begin{tikzpicture}"));
+    assert!(tikz.contains("Node\\_hub"));
+
+    let svg = doc.serialize(TopologyFormat::Svg).expect("svg");
+    assert!(svg.starts_with("<svg ") && svg.contains("<title>WheelW5</title>"));
+
+    let xxe = "<?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]><graphml><graph id=\"G\"/></graphml>";
+    assert_eq!(
+        parse_graphml(xxe),
+        Err(GraphTheoryError::ForbiddenXmlDeclaration)
+    );
+    assert_eq!(
+        GraphTopologyDocument::parse_with_filename("evil.graphml", xxe),
+        Err(GraphTheoryError::ForbiddenXmlDeclaration)
+    );
+
+    let oversized = "a".repeat(MAX_TOPOLOGY_IMPORT_BYTES + 1);
+    assert!(matches!(
+        parse_dot(&oversized),
+        Err(GraphTheoryError::PayloadTooLarge {
+            max: MAX_TOPOLOGY_IMPORT_BYTES,
+            ..
+        })
+    ));
+}

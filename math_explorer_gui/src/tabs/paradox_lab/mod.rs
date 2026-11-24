@@ -6,6 +6,8 @@ use eframe::egui;
 
 pub mod braess;
 pub mod braess_atlas;
+#[cfg(feature = "pure_math")]
+mod braess_topology;
 mod braess_ui;
 pub mod parrondo;
 pub mod parrondo_atlas;

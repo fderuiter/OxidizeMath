@@ -98,6 +98,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: `#![no_std]` Linear Algebra Engine (`engine_linalg`), Solver Unification, and Cached Cohort GLM QR](adr/20261123-no-std-engine-linalg-and-solver-unification.md)
 - [ADR 20261123: `#![no_std]` Tier 2 `engine_diffeq` & `engine_pde` Solvers and Continuum Stat-Mech SPDEs](adr/20261123-nostd-diffeq-and-pde-engines.md)
 - [ADR 20261123: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export](adr/20261123-parameter-substituted-latex-and-code-artifact-export.md)
+- [ADR 20261124: Unified `GraphTopologyDocument` Codecs, TikZ/SVG Publication Diagrams, and Cross-Domain GUI Topology Exchange](adr/20261124-unified-graph-topology-exchange.md)
 
 ## Contributing
 

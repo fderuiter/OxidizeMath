@@ -8,7 +8,7 @@ use crate::tabs::geometry_topology::export_utils::{
 use eframe::egui;
 use std::collections::HashSet;
 
-fn run_deferred_export_frame(
+pub(super) fn run_deferred_export_frame(
     framework: &mut SimulationFramework,
     format: ExportFormat,
     open_modal: bool,
@@ -200,7 +200,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     let (mut dataset_only_tool_count, mut unsupported_tool_count) = (0usize, 0usize);
     let (mut solid_3d_count, mut splat_3d_count) = (0usize, 0usize);
     let (mut shader_tool_count, mut non_shader_tool_count) = (0usize, 0usize);
-    let mut audio_tool_count = 0usize;
+    let (mut audio_tool_count, mut topology_tool_count) = (0usize, 0usize);
 
     for meta in inventory::iter::<crate::framework::ToolMetadata> {
         let tool = (meta.build)();
@@ -217,6 +217,13 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
             shader_tool_count += 1;
         } else {
             non_shader_tool_count += 1;
+        }
+        if super::deferred_topology_audit_tests::verify_topology_capability(
+            meta.id,
+            tool.as_ref(),
+            caps,
+        ) {
+            topology_tool_count += 1;
         }
         if !caps.figure {
             verify_non_figure_tool(
@@ -246,12 +253,17 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         shader_tool_count,
         non_shader_tool_count,
         audio_tool_count,
+        topology_tool_count,
     ]);
 }
 
-fn assert_expected_capability_counts(counts: [usize; 9]) {
-    let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader, audio] =
+fn assert_expected_capability_counts(counts: [usize; 10]) {
+    let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader, audio, topology] =
         counts;
+    let expected_topology = usize::from(cfg!(feature = "pure_math")) * 4
+        + usize::from(cfg!(all(feature = "pure_math", feature = "applied")))
+        + usize::from(cfg!(all(feature = "pure_math", feature = "epidemiology")))
+        + usize::from(cfg!(all(feature = "pure_math", feature = "biology")));
     let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
     let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
     let expected_audio = usize::from(cfg!(feature = "biology")) * 2
@@ -280,6 +292,10 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
     assert_eq!(
         non_shader, expected_non_shader,
         "Expected {expected_non_shader} non-shader tools"
+    );
+    assert_eq!(
+        topology, expected_topology,
+        "Expected {expected_topology} graph topology export tools"
     );
 }
 

@@ -2,6 +2,7 @@
 
 pub mod diagram;
 mod panels;
+mod topology_export;
 
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use diagram::{draw_minsky_diagram, MinskyDiagramModel};
@@ -349,7 +350,14 @@ impl InteractiveTool for FractranMachineTool {
         "number_theory"
     }
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot()
+        ExportCapabilities::plot().with_topology()
+    }
+
+    fn export_topology_document(
+        &self,
+    ) -> Result<math_explorer::pure_math::graph_theory::interchange::GraphTopologyDocument, String>
+    {
+        self.build_fractran_topology()
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {

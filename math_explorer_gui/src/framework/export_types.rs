@@ -30,7 +30,10 @@ const DEFAULT_CODE_DISABLED_REASON: &str =
 const DEFAULT_SHADER_DISABLED_REASON: &str =
     "GLSL shader export is unavailable: this tool does not expose a closed-form analytical 2D fragment field.";
 
-/// Declares dataset, figure, audio, code, 3D mesh/splat, and analytical GLSL shader export capabilities for an [`super::InteractiveTool`].
+const DEFAULT_TOPOLOGY_DISABLED_REASON: &str =
+    "Graph topology export is unavailable: this tool does not expose a discrete node-edge network.";
+
+/// Declares dataset, figure, audio, code, 3D mesh/splat, shader, and graph topology export capabilities for an [`super::InteractiveTool`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExportCapabilities {
     /// Whether tabular dataset exports (`CSV`, `JSON`) are supported.
@@ -49,6 +52,8 @@ pub struct ExportCapabilities {
     pub obj: bool,
     /// Whether standalone GLSL fragment shader exports (`WebGL2`, `Shadertoy`) are supported.
     pub shader: bool,
+    /// Whether structured graph topology exports (`DOT`, `GraphML`, `TikZ`, `SVG`, `CSV`) are supported.
+    pub topology: bool,
     /// Explanatory hover text shown when `CSV` / `JSON` buttons are disabled.
     pub dataset_disabled_reason: &'static str,
     /// Explanatory hover text shown when `PNG` / `SVG` / `GIF` buttons are disabled.
@@ -65,6 +70,8 @@ pub struct ExportCapabilities {
     pub obj_disabled_reason: &'static str,
     /// Explanatory reason surfaced when GLSL shader export is unavailable.
     pub shader_disabled_reason: &'static str,
+    /// Explanatory reason surfaced when graph topology export is unavailable.
+    pub topology_disabled_reason: &'static str,
 }
 
 /// Default explanation shown on non-sonified tools when `WAV` export is unavailable.
@@ -97,6 +104,7 @@ impl ExportCapabilities {
             ply: false,
             obj: false,
             shader: false,
+            topology: false,
             dataset_disabled_reason: "",
             figure_disabled_reason: "",
             audio_disabled_reason: DEFAULT_AUDIO_DISABLED_REASON,
@@ -105,6 +113,7 @@ impl ExportCapabilities {
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+            topology_disabled_reason: DEFAULT_TOPOLOGY_DISABLED_REASON,
         }
     }
 
@@ -134,6 +143,7 @@ impl ExportCapabilities {
             ply: false,
             obj: false,
             shader: false,
+            topology: false,
             dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool renders a 2D raster field rather than tabular (X, Y) series.",
             figure_disabled_reason: "",
             audio_disabled_reason: DEFAULT_AUDIO_DISABLED_REASON,
@@ -142,6 +152,7 @@ impl ExportCapabilities {
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+            topology_disabled_reason: DEFAULT_TOPOLOGY_DISABLED_REASON,
         }
     }
 
@@ -158,6 +169,7 @@ impl ExportCapabilities {
             ply: false,
             obj: false,
             shader: false,
+            topology: false,
             dataset_disabled_reason: "",
             figure_disabled_reason: "Figure export is unavailable: this tool computes analytical tables rather than an offscreen plot or raster field.",
             audio_disabled_reason: DEFAULT_AUDIO_DISABLED_REASON,
@@ -166,6 +178,7 @@ impl ExportCapabilities {
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+            topology_disabled_reason: DEFAULT_TOPOLOGY_DISABLED_REASON,
         }
     }
 
@@ -181,6 +194,7 @@ impl ExportCapabilities {
             ply: false,
             obj: false,
             shader: false,
+            topology: false,
             dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool does not produce tabular plot series.",
             figure_disabled_reason: "Figure export is unavailable: this tool does not render an offscreen plot or raster field.",
             audio_disabled_reason: DEFAULT_AUDIO_DISABLED_REASON,
@@ -189,6 +203,7 @@ impl ExportCapabilities {
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+            topology_disabled_reason: DEFAULT_TOPOLOGY_DISABLED_REASON,
         }
     }
 
@@ -250,6 +265,20 @@ impl ExportCapabilities {
         self.shader = true;
         self.shader_disabled_reason = "";
         self
+    }
+
+    /// Enables structured graph topology exports (`DOT`, `GraphML`, `TikZ`, `SVG`, `CSV`) on this profile.
+    #[must_use]
+    pub const fn with_topology(mut self) -> Self {
+        self.topology = true;
+        self.topology_disabled_reason = "";
+        self
+    }
+
+    /// Capability profile for custom network canvases exposing structured graph topology exports without `egui_plot` series.
+    #[must_use]
+    pub const fn topology_only() -> Self {
+        Self::none().with_topology()
     }
 }
 

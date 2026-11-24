@@ -92,6 +92,21 @@ fn wasm_download_browser_file_binary_stl_and_ply_blobs() {
     assert_eq!(infer_mime_type("surface_mesh.stl"), "model/stl");
     assert_eq!(infer_mime_type("curvature_mesh.ply"), "model/ply");
     assert_eq!(infer_mime_type("surface_mesh.obj"), "model/obj");
+    assert_eq!(infer_mime_type("network.dot"), "text/vnd.graphviz");
+    assert_eq!(infer_mime_type("network.gv"), "text/vnd.graphviz");
+    assert_eq!(
+        infer_mime_type("network.graphml"),
+        "application/graphml+xml"
+    );
+    assert_eq!(infer_mime_type("network_tikz.tex"), "text/x-tex");
+
+    download_browser_file("../nested/network.dot", b"graph G { 0 -- 1; }\n")
+        .expect("DOT browser Blob download should succeed");
+    download_browser_file(
+        "../nested/network.graphml",
+        b"<?xml version=\"1.0\"?><graphml><graph id=\"G\"/></graphml>",
+    )
+    .expect("GraphML browser Blob download should succeed");
 
     let sphere = build_uv_sphere(Point3D::new(0.0, 0.0, 0.0), 1.0, 12, 8)
         .expect("UV sphere should build cleanly");

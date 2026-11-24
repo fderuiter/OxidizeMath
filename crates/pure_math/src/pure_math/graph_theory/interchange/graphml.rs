@@ -1,6 +1,10 @@
 //! Deterministic `.graphml` XML parser and serializer for weighted graphs.
 
-use super::{GraphTheoryError, InterchangeGraph, InterchangeNode, format_f64, resolve_token_id};
+use super::escape::{escape_xml, unescape_xml};
+use super::{
+    GraphTheoryError, InterchangeGraph, InterchangeNode, clamp_interchange_limit, format_f64,
+    parse_graphml_topology,
+};
 use std::collections::BTreeMap;
 
 /// Serializes `graph` into deterministic GraphML XML text with node coordinates and edge weights.
@@ -78,77 +82,25 @@ fn append_graphml_node(out: &mut String, id: usize, node: &InterchangeNode) {
     out.push_str("    </node>\n");
 }
 
-#[verified_engine::verified]
-fn escape_xml(raw: &str) -> String {
-    raw.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
-
-#[verified_engine::verified]
-fn unescape_xml(raw: &str) -> String {
-    raw.replace("&quot;", "\"")
-        .replace("&gt;", ">")
-        .replace("&lt;", "<")
-        .replace("&amp;", "&")
-}
-
-#[derive(Default)]
-struct GraphMlKeyMap {
-    weight_key: Option<String>,
-    x_key: Option<String>,
-    y_key: Option<String>,
-    label_key: Option<String>,
-}
-
 /// Parses a `.graphml` XML document into a validated [`InterchangeGraph`].
 #[verified_engine::verified]
-pub fn parse_graphml(input: &str) -> Result<InterchangeGraph, GraphTheoryError> {
-    if !input.contains("<graph") {
-        return Err(GraphTheoryError::ParseError {
-            format: "GraphML",
-            message: "missing <graph> element".to_string(),
-        });
-    }
-    let keys = collect_graphml_keys(input);
-    let directed = detect_graphml_direction(input);
-    let mut graph = InterchangeGraph::new(directed);
-    let mut sym_table = BTreeMap::new();
-    let mut next_sym_id = 0usize;
-
-    parse_all_graphml_nodes(input, &keys, &mut graph, &mut sym_table, &mut next_sym_id)?;
-    parse_all_graphml_edges(input, &keys, &mut graph, &mut sym_table, &mut next_sym_id)?;
-    graph.validate()?;
-    Ok(graph)
+pub fn parse_graphml(raw: &str) -> Result<InterchangeGraph, GraphTheoryError> {
+    parse_graphml_topology(raw)
+        .and_then(|doc| doc.to_interchange())
+        .map_err(clamp_interchange_limit)
 }
 
 #[verified_engine::verified]
-fn collect_graphml_keys(input: &str) -> GraphMlKeyMap {
-    let mut map = GraphMlKeyMap::default();
-    let mut rest = input;
-    while let Some(pos) = rest.find("<key") {
-        let after = &rest[(pos + 4)..];
-        let Some(end) = after.find('>') else {
-            break;
-        };
-        let attrs = parse_xml_attrs(&after[..end]);
-        if let (Some(id), Some(name)) = (attrs.get("id"), attrs.get("attr.name")) {
-            match name.to_ascii_lowercase().as_str() {
-                "weight" => map.weight_key = Some(id.clone()),
-                "x" => map.x_key = Some(id.clone()),
-                "y" => map.y_key = Some(id.clone()),
-                "label" => map.label_key = Some(id.clone()),
-                _ => {}
-            }
-        }
-        rest = &after[(end + 1)..];
+pub(super) fn reject_xml_dtd(input: &str) -> Result<(), GraphTheoryError> {
+    let lower = input.to_ascii_lowercase();
+    if lower.contains("<!doctype") || lower.contains("<!entity") {
+        return Err(GraphTheoryError::ForbiddenXmlDeclaration);
     }
-    map
+    Ok(())
 }
 
 #[verified_engine::verified]
-fn detect_graphml_direction(input: &str) -> bool {
+pub(super) fn detect_graphml_header(input: &str) -> (bool, Option<String>) {
     let mut search = input;
     while let Some(pos) = search.find("<graph") {
         let after = &search[(pos + 6)..];
@@ -156,174 +108,20 @@ fn detect_graphml_direction(input: &str) -> bool {
         if matches!(next_ch, Some(ch) if ch.is_whitespace() || ch == '>') {
             if let Some(end) = after.find('>') {
                 let attrs = parse_xml_attrs(&after[..end]);
-                return attrs
+                let dir = attrs
                     .get("edgedefault")
                     .is_some_and(|v| v.eq_ignore_ascii_case("directed"));
+                return (dir, attrs.get("id").cloned());
             }
             break;
         }
         search = after;
     }
-    false
+    (false, None)
 }
 
 #[verified_engine::verified]
-fn parse_all_graphml_nodes(
-    input: &str,
-    keys: &GraphMlKeyMap,
-    graph: &mut InterchangeGraph,
-    sym_table: &mut BTreeMap<String, usize>,
-    next_sym_id: &mut usize,
-) -> Result<(), GraphTheoryError> {
-    let mut rest = input;
-    while let Some(pos) = rest.find("<node") {
-        let after = &rest[(pos + 5)..];
-        if !after
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_whitespace() || c == '/' || c == '>')
-        {
-            rest = after;
-            continue;
-        }
-        let Some(tag_end) = after.find('>') else {
-            return Err(GraphTheoryError::ParseError {
-                format: "GraphML",
-                message: "unclosed <node> tag".to_string(),
-            });
-        };
-        let tag_header = &after[..tag_end];
-        let self_closing = tag_header.trim_end().ends_with('/');
-        let attrs = parse_xml_attrs(tag_header.trim_end_matches('/'));
-        let raw_id = attrs
-            .get("id")
-            .ok_or_else(|| GraphTheoryError::ParseError {
-                format: "GraphML",
-                message: "<node> missing 'id' attribute".to_string(),
-            })?;
-        let id = resolve_token_id(raw_id, sym_table, next_sym_id);
-        let (inner, next_slice) =
-            extract_element_body(&after[(tag_end + 1)..], "</node>", self_closing)?;
-        let node = build_graphml_node(id, inner, keys)?;
-        graph.insert_node(node)?;
-        rest = next_slice;
-    }
-    Ok(())
-}
-
-#[verified_engine::verified]
-fn build_graphml_node(
-    id: usize,
-    inner: &str,
-    keys: &GraphMlKeyMap,
-) -> Result<InterchangeNode, GraphTheoryError> {
-    let data = parse_data_entries(inner);
-    let x_opt = lookup_data(&data, keys.x_key.as_deref(), &["d_x", "x"]);
-    let y_opt = lookup_data(&data, keys.y_key.as_deref(), &["d_y", "y"]);
-    let pos = match (x_opt, y_opt) {
-        (Some(xs), Some(ys)) => {
-            let x = xs
-                .parse::<f64>()
-                .map_err(|_| GraphTheoryError::ParseError {
-                    format: "GraphML",
-                    message: format!("invalid node x '{xs}'"),
-                })?;
-            let y = ys
-                .parse::<f64>()
-                .map_err(|_| GraphTheoryError::ParseError {
-                    format: "GraphML",
-                    message: format!("invalid node y '{ys}'"),
-                })?;
-            if !x.is_finite() || !y.is_finite() {
-                return Err(GraphTheoryError::InvalidCoordinate { node: id, x, y });
-            }
-            Some((x, y))
-        }
-        _ => None,
-    };
-    let label =
-        lookup_data(&data, keys.label_key.as_deref(), &["d_label", "label"]).map(unescape_xml);
-    Ok(InterchangeNode { id, pos, label })
-}
-
-#[verified_engine::verified]
-fn parse_all_graphml_edges(
-    input: &str,
-    keys: &GraphMlKeyMap,
-    graph: &mut InterchangeGraph,
-    sym_table: &mut BTreeMap<String, usize>,
-    next_sym_id: &mut usize,
-) -> Result<(), GraphTheoryError> {
-    let mut rest = input;
-    while let Some(pos) = rest.find("<edge") {
-        let after = &rest[(pos + 5)..];
-        if !after
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_whitespace() || c == '/' || c == '>')
-        {
-            rest = after;
-            continue;
-        }
-        let Some(tag_end) = after.find('>') else {
-            return Err(GraphTheoryError::ParseError {
-                format: "GraphML",
-                message: "unclosed <edge> tag".to_string(),
-            });
-        };
-        let tag_header = &after[..tag_end];
-        let self_closing = tag_header.trim_end().ends_with('/');
-        let attrs = parse_xml_attrs(tag_header.trim_end_matches('/'));
-        let src_raw = attrs
-            .get("source")
-            .ok_or_else(|| GraphTheoryError::ParseError {
-                format: "GraphML",
-                message: "<edge> missing 'source'".to_string(),
-            })?;
-        let dst_raw = attrs
-            .get("target")
-            .ok_or_else(|| GraphTheoryError::ParseError {
-                format: "GraphML",
-                message: "<edge> missing 'target'".to_string(),
-            })?;
-        let u = resolve_token_id(src_raw, sym_table, next_sym_id);
-        let v = resolve_token_id(dst_raw, sym_table, next_sym_id);
-        let (inner, next_slice) =
-            extract_element_body(&after[(tag_end + 1)..], "</edge>", self_closing)?;
-        let weight = extract_graphml_weight(&attrs, inner, keys)?;
-        graph.push_edge(u, v, weight)?;
-        rest = next_slice;
-    }
-    Ok(())
-}
-
-#[verified_engine::verified]
-fn extract_graphml_weight(
-    attrs: &BTreeMap<String, String>,
-    inner: &str,
-    keys: &GraphMlKeyMap,
-) -> Result<f64, GraphTheoryError> {
-    let data = parse_data_entries(inner);
-    let raw = lookup_data(&data, keys.weight_key.as_deref(), &["d_weight", "weight"])
-        .or_else(|| attrs.get("weight").map(String::as_str));
-    let Some(w_str) = raw else {
-        return Ok(1.0);
-    };
-    let w = w_str
-        .trim()
-        .parse::<f64>()
-        .map_err(|_| GraphTheoryError::ParseError {
-            format: "GraphML",
-            message: format!("invalid edge weight '{w_str}'"),
-        })?;
-    if !w.is_finite() {
-        return Err(GraphTheoryError::InvalidWeight { value: w });
-    }
-    Ok(w)
-}
-
-#[verified_engine::verified]
-fn extract_element_body<'a>(
+pub(super) fn extract_element_body<'a>(
     after_open: &'a str,
     close_tag: &str,
     self_closing: bool,
@@ -344,7 +142,7 @@ fn extract_element_body<'a>(
 }
 
 #[verified_engine::verified]
-fn parse_data_entries(inner: &str) -> BTreeMap<String, String> {
+pub(super) fn parse_data_entries(inner: &str) -> BTreeMap<String, String> {
     let mut map = BTreeMap::new();
     let mut rest = inner;
     while let Some(pos) = rest.find("<data") {
@@ -366,26 +164,7 @@ fn parse_data_entries(inner: &str) -> BTreeMap<String, String> {
 }
 
 #[verified_engine::verified]
-fn lookup_data<'a>(
-    data: &'a BTreeMap<String, String>,
-    primary: Option<&str>,
-    fallbacks: &[&str],
-) -> Option<&'a str> {
-    if let Some(pk) = primary
-        && let Some(val) = data.get(pk)
-    {
-        return Some(val.as_str());
-    }
-    for &fb in fallbacks {
-        if let Some(val) = data.get(fb) {
-            return Some(val.as_str());
-        }
-    }
-    None
-}
-
-#[verified_engine::verified]
-fn parse_xml_attrs(raw: &str) -> BTreeMap<String, String> {
+pub(super) fn parse_xml_attrs(raw: &str) -> BTreeMap<String, String> {
     let mut map = BTreeMap::new();
     let bytes = raw.as_bytes();
     let mut i = 0usize;

@@ -8,6 +8,7 @@ mod dataflow;
 mod presets;
 #[cfg(test)]
 mod tests;
+mod topology_io;
 mod topology_sync;
 
 #[cfg(test)]
@@ -62,6 +63,7 @@ pub struct NetworkPropagationTool {
     pub(super) revision: u64,
     pub(super) last_upstream_graph_rev: u64,
     pub(super) upstream_linked: bool,
+    pub(super) topology_ui: topology_io::EpidemicTopologyUi,
     #[cfg(test)]
     pub(super) sim_steps: u64,
 }
@@ -94,6 +96,7 @@ impl Default for NetworkPropagationTool {
             revision: 1,
             last_upstream_graph_rev: 0,
             upstream_linked: false,
+            topology_ui: topology_io::EpidemicTopologyUi::default(),
             #[cfg(test)]
             sim_steps: 0,
         }
@@ -152,20 +155,20 @@ impl NetworkPropagationTool {
     }
 
     pub(super) fn reset_network(&mut self) {
-        self.rebuild_seeded_graph();
+        self.rebuild_active_graph();
     }
 
     pub(crate) fn clear_interventions(&mut self) {
         self.vaccinated_nodes.clear();
         self.quarantined_edges.clear();
-        self.rebuild_seeded_graph();
+        self.rebuild_active_graph();
     }
 
     pub(super) fn set_seed_and_reset(&mut self, next_seed: u64) {
         self.seed = next_seed;
         self.vaccinated_nodes.clear();
         self.quarantined_edges.clear();
-        self.rebuild_seeded_graph();
+        self.rebuild_active_graph();
     }
 
     pub(super) fn enforce_budget_cap(&mut self) {
@@ -273,15 +276,25 @@ impl InteractiveTool for NetworkPropagationTool {
         "epidemiology"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::topology_only()
+    }
+    fn export_topology_document(
+        &self,
+    ) -> Result<math_explorer::pure_math::graph_theory::interchange::GraphTopologyDocument, String>
+    {
+        self.build_epidemic_topology()
     }
     fn observables(&self) -> Vec<(&'static str, f64)> {
         self.topology_observables()
     }
     fn has_finite_parameters(&self) -> bool {
-        let on_external = self.last_upstream_graph_rev != 0 || self.synced_bus_revision.is_some();
+        let on_external = self.last_upstream_graph_rev != 0
+            || self.synced_bus_revision.is_some()
+            || self.topology_ui.custom.is_some();
         let min_nodes = if on_external { 1 } else { 10 };
-        let max_nodes = MAX_SHARED_GRAPH_NODES.max(MAX_DATAFLOW_GRAPH_NODES);
+        let max_nodes = MAX_SHARED_GRAPH_NODES
+            .max(MAX_DATAFLOW_GRAPH_NODES)
+            .max(math_explorer::pure_math::graph_theory::interchange::MAX_TOPOLOGY_NODES);
         self.model.beta().is_finite()
             && self.model.gamma().is_finite()
             && (min_nodes..=max_nodes).contains(&self.model.num_nodes())
@@ -310,7 +323,7 @@ impl InteractiveTool for NetworkPropagationTool {
                 Vec::new(),
                 Vec::new(),
             )
-        } else if self.synced_bus_revision.is_some() {
+        } else if self.synced_bus_revision.is_some() || self.topology_ui.custom.is_some() {
             (self.local_num_nodes, Vec::new(), Vec::new())
         } else {
             (
@@ -352,6 +365,7 @@ impl InteractiveTool for NetworkPropagationTool {
         self.synced_bus_revision = None;
         self.last_upstream_graph_rev = 0;
         self.upstream_linked = false;
+        self.topology_ui.custom = None;
         self.rng = candidate_rng;
         self.seed = s.seed;
         self.budget = s.budget;
@@ -370,6 +384,9 @@ impl InteractiveTool for NetworkPropagationTool {
     }
 
     fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        if challenge_id.is_some() {
+            self.topology_ui.custom = None;
+        }
         self.set_epi_challenge(challenge_id)
     }
 
@@ -387,6 +404,7 @@ impl InteractiveTool for NetworkPropagationTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.poll_topology_import(&ctx);
         self.poll_upstream_graph(&ctx);
         if !self.upstream_linked {
             self.sync_shared_topology(&ctx);

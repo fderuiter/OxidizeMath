@@ -118,12 +118,14 @@ impl NetworkPropagationTool {
         vax_only: bool,
     ) {
         let topology_changed = self.synced_bus_revision.is_some()
+            || self.topology_ui.custom.is_some()
             || self.model.num_nodes() != nodes
             || (self.model.beta() - beta).abs() > 1.0e-12
             || (self.model.gamma() - gamma).abs() > 1.0e-12
             || self.seed != seed;
         self.local_num_nodes = nodes;
         self.synced_bus_revision = None;
+        self.topology_ui.custom = None;
         self.budget = CHALLENGE_EPI_BUDGET;
         if vax_only {
             self.quarantined_edges.clear();

@@ -15,10 +15,10 @@ use eframe::egui;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
 const TOPOLOGY_OPEN_CONFIG: OpenDialogConfig = OpenDialogConfig {
-    filter_name: "Graph Topology (.dot, .graphml, .csv, .json)",
-    extensions: &["dot", "gv", "graphml", "csv", "json"],
+    filter_name: "Graph Topology (.dot, .graphml, .csv, .tsv, .json)",
+    extensions: &["dot", "gv", "graphml", "csv", "tsv", "json"],
     accept:
-        ".dot,.gv,.graphml,.csv,.json,text/vnd.graphviz,application/xml,text/csv,application/json",
+        ".dot,.gv,.graphml,.csv,.tsv,.json,text/vnd.graphviz,application/graphml+xml,application/xml,text/csv,text/tab-separated-values,application/json",
     read_error_prefix: "Failed to read graph file",
 };
 

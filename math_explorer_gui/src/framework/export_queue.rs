@@ -33,6 +33,16 @@ pub(crate) enum ExportFormat {
     GlslWebGl2,
     /// Standalone Shadertoy (`mainImage`) fragment shader (`.frag`).
     GlslShadertoy,
+    /// Graphviz DOT network topology format (`.dot`).
+    TopologyDot,
+    /// Standard XML GraphML network topology format (`.graphml`).
+    TopologyGraphMl,
+    /// Standalone LaTeX `TikZ` network topology document (`.tex`).
+    TopologyTikz,
+    /// Standalone vector `.svg` network topology diagram.
+    TopologySvg,
+    /// Combined nodes+edges CSV network topology table (`.csv`).
+    TopologyCsv,
 }
 
 impl ExportFormat {
@@ -62,6 +72,11 @@ impl ExportFormat {
                 "Shadertoy Fragment Shader",
                 "shadertoy",
             ),
+            Self::TopologyDot => ("dot", "DOT", "Graphviz DOT Topology", "topology"),
+            Self::TopologyGraphMl => ("graphml", "GraphML", "GraphML Network", "topology"),
+            Self::TopologyTikz => ("tex", "TikZ", "LaTeX TikZ Topology", "topology_tikz"),
+            Self::TopologySvg => ("svg", "Topology SVG", "SVG Network Diagram", "topology"),
+            Self::TopologyCsv => ("csv", "Topology CSV", "CSV Topology Table", "topology"),
         }
     }
 
@@ -290,6 +305,16 @@ impl SimulationFramework {
             (ExportFormat::GlslWebGl2 | ExportFormat::GlslShadertoy, target) => {
                 self.dispatch_shader_export(req.format, target, ctx);
             }
+            (
+                ExportFormat::TopologyDot
+                | ExportFormat::TopologyGraphMl
+                | ExportFormat::TopologyTikz
+                | ExportFormat::TopologySvg
+                | ExportFormat::TopologyCsv,
+                target,
+            ) => {
+                self.dispatch_topology_export(req.format, target, ctx);
+            }
         }
     }
 }
@@ -301,3 +326,7 @@ pub(crate) mod deferred_export_tests;
 #[cfg(test)]
 #[path = "deferred_export_audit_tests.rs"]
 mod deferred_export_audit_tests;
+
+#[cfg(test)]
+#[path = "deferred_topology_audit_tests.rs"]
+mod deferred_topology_audit_tests;
