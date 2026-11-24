@@ -129,18 +129,18 @@ impl IsingModelTool {
         let steps = self.steps_per_frame.clamp(100, 5000);
         match self.mode {
             IsingInteractionMode::Ferromagnetic => {
-                let j_scale = if self.j_coupling.abs() < 1e-6 {
-                    1.0
-                } else {
-                    self.j_coupling.abs()
-                };
-                let t_phys = self.temperature.max(1e-3) * j_scale / KB;
+                let t_phys = self.temperature.max(1e-3) / KB;
                 lattice.evolve(steps, t_phys, self.j_coupling, self.h_field);
             }
             IsingInteractionMode::FermiGame => {
                 let mat = DMatrix::from_row_slice(2, 2, &self.game_payoffs);
                 if let Ok(payoff) = MatrixPayoff::new(mat) {
-                    lattice.evolve_fermi_game(steps, self.temperature, &payoff);
+                    lattice.evolve_fermi_game_with_mutation(
+                        steps,
+                        self.temperature,
+                        &payoff,
+                        self.mutation_rate,
+                    );
                 }
             }
         }

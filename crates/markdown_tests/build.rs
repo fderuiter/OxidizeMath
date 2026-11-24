@@ -3,7 +3,7 @@
 /// Path utilities.
 pub mod path_utils;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -107,18 +107,42 @@ fn module_ident_from_rel_path(rel_path_str: &str, used: &mut BTreeSet<String>) -
     ident
 }
 
-fn write_if_changed(path: &Path, content: &str) {
+fn write_if_changed(path: &Path, content: &[u8]) {
     if let Ok(existing) = fs::read(path)
-        && existing == content.as_bytes()
+        && existing == content
     {
         return;
     }
-    fs::write(path, content).expect("Failed to write OUT_DIR/generated_tests.rs");
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).expect("Failed to create staged_md directory");
+    }
+    fs::write(path, content).expect("Failed to write staged markdown_tests artifact");
+}
+
+fn prune_stale_staged_files(staged_root: &Path, expected_files: &HashSet<PathBuf>) {
+    if !staged_root.is_dir() {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(staged_root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            prune_stale_staged_files(&path, expected_files);
+            if fs::read_dir(&path).is_ok_and(|mut d| d.next().is_none()) {
+                let _ = fs::remove_dir(&path);
+            }
+        } else if !expected_files.contains(&path) {
+            let _ = fs::remove_file(&path);
+        }
+    }
 }
 
 fn main() {
-    let out_dir = env::var("OUT_DIR").expect("OUT_DIR must be set by Cargo");
-    let dest_path = Path::new(&out_dir).join("generated_tests.rs");
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR must be set by Cargo"));
+    let staged_root = out_dir.join("staged_md");
+    let dest_path = out_dir.join("generated_tests.rs");
 
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=../oxidize_core/src/path_utils.rs");
@@ -148,15 +172,26 @@ fn main() {
     normalized_files.sort();
     normalized_files.dedup();
 
+    let mut expected_staged = HashSet::with_capacity(normalized_files.len());
     let mut used_idents = BTreeSet::new();
     let mut generated_code = String::new();
     for rel_path_str in normalized_files {
         println!("cargo:rerun-if-changed={rel_path_str}");
+        let ws_rel = rel_path_str
+            .strip_prefix("../../")
+            .unwrap_or(&rel_path_str)
+            .trim_start_matches('/');
+        let staged_path = staged_root.join(ws_rel);
+        let bytes = fs::read(&rel_path_str).expect("Failed to read workspace Markdown file");
+        write_if_changed(&staged_path, &bytes);
+        expected_staged.insert(staged_path);
+
         let mod_ident = module_ident_from_rel_path(&rel_path_str, &mut used_idents);
         generated_code.push_str(&format!(
-            "#[doc = include_str!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/\", \"{rel_path_str}\"))]\npub mod {mod_ident} {{}}\n"
+            "#[doc = include_str!(concat!(env!(\"OUT_DIR\"), \"/staged_md/\", \"{ws_rel}\"))]\npub mod {mod_ident} {{}}\n"
         ));
     }
 
-    write_if_changed(&dest_path, &generated_code);
+    prune_stale_staged_files(&staged_root, &expected_staged);
+    write_if_changed(&dest_path, generated_code.as_bytes());
 }

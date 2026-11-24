@@ -15,10 +15,7 @@ use std::sync::Arc;
 
 use crate::{
     SharedPoints,
-    export::{
-        EXPORT_PALETTE, ExportOptions, MAX_EXPORT_DIMENSION, color32_image_to_png,
-        color32_images_to_gif,
-    },
+    export::{EXPORT_PALETTE, ExportOptions, MAX_EXPORT_DIMENSION, color32_image_to_png},
 };
 
 pub use raster::{render_primitives_image, render_primitives_image_with_bounds, scale_color_image};
@@ -745,15 +742,20 @@ pub fn export_raster_gif(
         return Err("No raster frames provided for GIF export".to_string());
     }
     let (width, height) = resolve_canvas_dimensions(options)?;
-    let scaled: Vec<egui::ColorImage> = frames
+    if !frames
         .iter()
-        .filter(|img| img.width() > 0 && img.height() > 0 && !img.pixels.is_empty())
-        .map(|img| scale_color_image(img, width, height, options))
-        .collect();
-    if scaled.is_empty() {
+        .any(|img| img.width() > 0 && img.height() > 0 && !img.pixels.is_empty())
+    {
         return Err("All raster frames were empty".to_string());
     }
-    color32_images_to_gif(&scaled, fps)
+    let mut encoder = crate::export::StreamingGifEncoder::new(fps)?;
+    for img in frames {
+        if img.width() > 0 && img.height() > 0 && !img.pixels.is_empty() {
+            let scaled = scale_color_image(img, width, height, options);
+            encoder.encode_color_image(scaled)?;
+        }
+    }
+    encoder.finish()
 }
 
 /// Renders `primitives` offscreen and encodes the resulting canvas as PNG bytes.

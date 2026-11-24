@@ -2,7 +2,7 @@ use super::*;
 use crate::math_kernel::types::flatten_2d_index;
 
 #[test]
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn test_paraboloid_extracts_closed_concentric_loops() {
     let (width, height) = (25_usize, 25_usize);
     let mut values = vec![0.0_f64; width * height];
@@ -41,7 +41,7 @@ fn test_paraboloid_extracts_closed_concentric_loops() {
 }
 
 #[test]
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn test_saddle_field_disambiguates_cases_5_and_10_with_finite_coords() {
     // Classic hyperbolic saddle f(x, y) = x^2 - y^2 centered on grid
     let (width, height) = (21_usize, 21_usize);
@@ -91,7 +91,7 @@ fn test_saddle_field_disambiguates_cases_5_and_10_with_finite_coords() {
 }
 
 #[test]
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn test_periodic_scalar_field_includes_seam_wrap_cells() {
     let (width, height) = (16_usize, 16_usize);
     let mut values = vec![0.0_f64; width * height];

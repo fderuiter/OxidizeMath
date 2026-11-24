@@ -42,8 +42,8 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         .map(ChallengeMetadata::to_card)
         .collect();
     assert!(
-        cards.len() >= 11,
-        "Expected at least 11 registered ChallengeMetadata entries, got {}",
+        cards.len() >= 15,
+        "Expected at least 15 registered ChallengeMetadata entries, got {}",
         cards.len()
     );
     for required_id in [
@@ -68,7 +68,7 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         assert!(clamped.len() <= MAX_DECODED_URL_STATE_BYTES);
     }
 
-    assert_eq!(get_challenge_cards_for_domain("quantum").len(), 1);
+    assert_eq!(get_challenge_cards_for_domain("quantum").len(), 2);
     assert_eq!(get_challenge_cards_for_domain("mri").len(), 3);
     assert_eq!(get_challenge_cards_for_domain("clinical_trials").len(), 1);
     assert_eq!(get_challenge_cards_for_domain("fluid_dynamics").len(), 1);

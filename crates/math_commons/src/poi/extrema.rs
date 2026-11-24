@@ -4,6 +4,7 @@
 use super::LocalExtremum;
 use super::interp::{is_finite_pair, push_unique_vec, segment_threshold_hit, segment_vertical_hit};
 use crate::series::PointSeries;
+use alloc::vec::Vec;
 
 /// Output of a fused single-pass critical-point scan over a single 2D series.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -133,7 +134,7 @@ impl PlateauTracker {
 fn fast_forward_plateau<P: PointSeries + ?Sized>(
     pts: &P,
     n: usize,
-    mut i: usize,
+    i: usize,
     want_y_intercepts: bool,
     p0: &mut [f64; 2],
     tracker: &mut PlateauTracker,
@@ -148,22 +149,15 @@ fn fast_forward_plateau<P: PointSeries + ?Sized>(
     } else {
         return i;
     };
-    let start_i = i;
-    while i < n {
-        let p = pts.point_at(i);
-        if p[1] != flat_y || p[0] < x_min || p[0] > x_max {
-            break;
-        }
-        i += 1;
-    }
-    if i > start_i {
-        let end_p = pts.point_at(i - 1);
+    let next_i = pts.advance_plateau_run(i, flat_y, x_min, x_max).min(n);
+    if next_i > i {
+        let end_p = pts.point_at(next_i - 1);
         if tracker.mode == 2 {
             tracker.last = end_p;
         }
         *p0 = end_p;
     }
-    i
+    next_i
 }
 
 /// Fused $O(N)$ single-pass scan extracting $y = 0$ roots, $x = 0$ intercepts, and local extrema.
@@ -218,7 +212,7 @@ pub fn scan_line_pois<P: PointSeries + ?Sized>(
 }
 
 /// Writes interior local extrema refined via parabolic/plateau interpolation into `out`.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn detect_local_extrema_into<P: PointSeries + ?Sized>(
     pts: &P,
     out: &mut [LocalExtremum],
@@ -265,7 +259,7 @@ pub fn detect_local_extrema<P: PointSeries + ?Sized>(pts: &P) -> Vec<LocalExtrem
 /// Finds the global maximum in `pts`, refining interior peaks via [`parabolic_vertex`].
 ///
 /// Executes with zero heap allocations on any [`PointSeries`].
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn peak_extremum<P: PointSeries + ?Sized>(pts: &P) -> Option<[f64; 2]> {
     peak_extremum_raw(pts)
 }
@@ -302,7 +296,7 @@ fn peak_extremum_raw<P: PointSeries + ?Sized>(pts: &P) -> Option<[f64; 2]> {
 }
 
 /// Fits a 3-point Lagrange parabola through `(p0, p1, p2)` and returns its clamped vertex `[x, y]`.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn parabolic_vertex(p0: [f64; 2], p1: [f64; 2], p2: [f64; 2]) -> [f64; 2] {
     parabolic_vertex_raw(p0, p1, p2)
 }

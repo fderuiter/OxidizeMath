@@ -1,9 +1,14 @@
 //! Two-dimensional Marching Squares isoline extraction with asymptotic saddle disambiguation.
+// [cite:math_commons]
 
 use crate::math_kernel::types::flatten_2d_index;
-use std::collections::HashMap;
+use alloc::collections::BTreeMap;
+use alloc::vec;
+use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests;
 
 /// Maximum contour level count supported by interactive figure exports.
@@ -26,7 +31,7 @@ pub struct ScalarField2D {
 
 impl ScalarField2D {
     /// Constructs a new [`ScalarField2D`] with clamped default contour levels (`1..=16`).
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn new(
         width: usize,
         height: usize,
@@ -44,7 +49,7 @@ impl ScalarField2D {
     }
 
     /// Returns the coordinate domain extents `(domain_width, domain_height)` in cell units.
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn domain_extents(&self) -> (f64, f64) {
         if self.periodic {
             (self.width.max(1) as f64, self.height.max(1) as f64)
@@ -58,7 +63,7 @@ impl ScalarField2D {
 
     /// Samples `(x, y)` using periodic wrap when `self.periodic` is true, or edge clamping otherwise.
     #[inline]
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn sample_grid(&self, x: usize, y: usize) -> f64 {
         if self.width == 0 || self.height == 0 || self.values.is_empty() {
             return 0.0;
@@ -78,7 +83,7 @@ impl ScalarField2D {
     }
 
     /// Computes the `(min, max)` finite scalar range across `self.values`.
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn finite_min_max(&self) -> Option<(f64, f64)> {
         let mut min_v = f64::INFINITY;
         let mut max_v = f64::NEG_INFINITY;
@@ -120,7 +125,7 @@ pub struct MarchingSquares;
 
 impl MarchingSquares {
     /// Extracts `num_levels` (`1..=16`) evenly spaced interior contour thresholds from `field`.
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn extract_levels(field: &ScalarField2D, num_levels: usize) -> Vec<ContourLevel> {
         let clamped = num_levels.clamp(1, MAX_CONTOUR_LEVELS);
         let Some((min_v, max_v)) = field.finite_min_max() else {
@@ -139,7 +144,7 @@ impl MarchingSquares {
     }
 
     /// Extracts contours at explicit scalar `thresholds`.
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn extract_at_thresholds(field: &ScalarField2D, thresholds: &[f64]) -> Vec<ContourLevel> {
         let range = field.finite_min_max().unwrap_or((0.0, 1.0));
         let span = (range.1 - range.0).max(1e-12);
@@ -152,7 +157,7 @@ impl MarchingSquares {
         Self::extract_with_normalized(field, &pairs)
     }
 
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     fn extract_with_normalized(
         field: &ScalarField2D,
         thresholds: &[(f64, f64)],
@@ -186,7 +191,7 @@ impl MarchingSquares {
 }
 
 #[inline]
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn interp_fraction(va: f64, vb: f64, threshold: f64) -> f64 {
     let denom = vb - va;
     if denom.abs() < 1e-12 {
@@ -197,7 +202,7 @@ fn interp_fraction(va: f64, vb: f64, threshold: f64) -> f64 {
 }
 
 #[inline]
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn edge_point(edge: u8, x0: f64, y0: f64, corners: [f64; 4], threshold: f64) -> [f64; 2] {
     let [v00, v10, v11, v01] = corners;
     match edge {
@@ -209,7 +214,7 @@ fn edge_point(edge: u8, x0: f64, y0: f64, corners: [f64; 4], threshold: f64) -> 
 }
 
 #[inline]
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn asymptotic_saddle_value(corners: [f64; 4]) -> f64 {
     let [v00, v10, v11, v01] = corners;
     let denom = v00 + v11 - v10 - v01;
@@ -221,7 +226,7 @@ fn asymptotic_saddle_value(corners: [f64; 4]) -> f64 {
 }
 
 #[inline]
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn cell_edge_pairs(mask: u8, corners: [f64; 4], threshold: f64) -> ([(u8, u8); 2], usize) {
     match mask {
         0 | 15 => ([(0, 0); 2], 0),
@@ -249,7 +254,7 @@ fn cell_edge_pairs(mask: u8, corners: [f64; 4], threshold: f64) -> ([(u8, u8); 2
     }
 }
 
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 fn collect_cell_segments(
     field: &ScalarField2D,
     cells_x: usize,
@@ -299,7 +304,7 @@ fn trace_chain(
     start_seg: usize,
     start_forward: bool,
     segments: &[([f64; 2], [f64; 2])],
-    adj: &HashMap<QuantKey, Vec<usize>>,
+    adj: &BTreeMap<QuantKey, Vec<usize>>,
     used: &mut [bool],
 ) -> ContourPath {
     used[start_seg] = true;
@@ -341,7 +346,7 @@ fn chain_segments(segments: &[([f64; 2], [f64; 2])]) -> Vec<ContourPath> {
     if segments.is_empty() {
         return Vec::new();
     }
-    let mut adj: HashMap<QuantKey, Vec<usize>> = HashMap::with_capacity(segments.len() * 2);
+    let mut adj: BTreeMap<QuantKey, Vec<usize>> = BTreeMap::new();
     for (idx, &(pa, pb)) in segments.iter().enumerate() {
         adj.entry(quantize_point(pa)).or_default().push(idx);
         adj.entry(quantize_point(pb)).or_default().push(idx);

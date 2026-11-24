@@ -7,6 +7,7 @@ pub mod beam_profiling;
 pub mod dose;
 mod dose_export;
 pub mod imrt;
+pub mod link_bus;
 pub mod pharmacokinetic_regimen;
 pub mod radar_gating;
 

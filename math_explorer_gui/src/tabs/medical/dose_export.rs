@@ -46,11 +46,12 @@ impl DoseCalculationTool {
     }
 
     fn sample_imrt_scalar_field(&self, width: usize, height: usize) -> ScalarField2D {
+        let dose_slice = super::dose::canvas::active_imrt_dose_slice(self);
         let mut src = vec![0.0_f64; IMRT_GRID_DIM * IMRT_GRID_DIM];
         for y in 0..IMRT_GRID_DIM {
             let img_y = IMRT_GRID_DIM - 1 - y;
             for x in 0..IMRT_GRID_DIM {
-                let d = self.imrt_workspace.dose_vec[flatten_2d_index(x, y, IMRT_GRID_DIM)];
+                let d = dose_slice[flatten_2d_index(x, y, IMRT_GRID_DIM)];
                 src[flatten_2d_index(x, img_y, IMRT_GRID_DIM)] =
                     if d.is_finite() { d } else { 0.0 };
             }
@@ -75,5 +76,20 @@ impl DoseCalculationTool {
             periodic: false,
             default_levels: 8,
         }
+    }
+}
+
+const STARTER_PRESET_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"Point-Source Dose Kernel","domain":"medical","timestamp":"2026-11-16T00:00:00Z"},"config":{"amplitude":2.5,"beta":0.6,"width":200,"height":200}}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "dose_calculation_starter",
+        title: "Point-Source Dose Kernel",
+        description: "K(r) = (A/r²)e^(-βr): 2D radial point-spread dose convolution heatmap.",
+        category: "Dosimetry",
+        icon: "🎯",
+        domain: "medical",
+        tool_name: Some("DoseCalculationTool"),
+        preset_generator: || STARTER_PRESET_JSON,
     }
 }

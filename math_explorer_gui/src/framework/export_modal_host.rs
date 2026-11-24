@@ -11,6 +11,8 @@ struct FrameworkExportSource<'a> {
     contour_levels: &'a mut usize,
     texture_size: &'a mut u32,
     normal_strength: &'a mut f32,
+    gif_progress: Option<(usize, usize)>,
+    cancel_gif_requested: &'a mut bool,
     status_color: egui::Color32,
     ctx: egui::Context,
 }
@@ -63,6 +65,9 @@ impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
     }
 
     fn intercept_action(&mut self, action: egui_plot::ExportModalAction) -> bool {
+        if action == egui_plot::ExportModalAction::SaveGif && self.gif_progress.is_some() {
+            return true;
+        }
         let (format, target) = match action {
             egui_plot::ExportModalAction::SavePng => (ExportFormat::Png, ExportTarget::File),
             egui_plot::ExportModalAction::SaveSvg => (ExportFormat::Svg, ExportTarget::File),
@@ -98,6 +103,19 @@ impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
             show_contour_controls: caps.contour_controls,
             show_texture_controls: caps.scalar_field,
         })
+    }
+
+    fn active_gif_progress(&self) -> Option<(usize, usize)> {
+        self.gif_progress
+    }
+
+    fn cancel_gif_export(&mut self) -> bool {
+        if self.gif_progress.is_some() {
+            *self.cancel_gif_requested = true;
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -161,6 +179,8 @@ impl SimulationFramework {
         let status_color = self
             .export_status_severity
             .palette_color(&ctx.style().visuals);
+        let gif_progress = self.active_gif_progress();
+        let mut cancel_gif_requested = false;
         let bindings = egui_plot::export_modal::ExportModalBindings {
             open: &mut self.show_export_modal,
             options: &mut self.export_options,
@@ -168,6 +188,7 @@ impl SimulationFramework {
             gif_fps: &mut self.export_gif_fps,
             gif_frames: &mut self.export_gif_frames,
             status_message: &mut self.export_status_message,
+            gif_job: None,
         };
         let mut source = FrameworkExportSource {
             active_tool: &mut self.active_tool,
@@ -177,9 +198,14 @@ impl SimulationFramework {
             contour_levels: &mut self.export_contour_levels,
             texture_size: &mut self.export_texture_size,
             normal_strength: &mut self.export_normal_strength,
+            gif_progress,
+            cancel_gif_requested: &mut cancel_gif_requested,
             status_color,
             ctx: ctx.clone(),
         };
         egui_plot::export_modal::show_export_modal(ctx, bindings, &config, &mut source);
+        if cancel_gif_requested {
+            self.cancel_active_gif_export(true);
+        }
     }
 }

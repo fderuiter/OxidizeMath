@@ -282,7 +282,7 @@ impl SimulationFramework {
         }
     }
 
-    fn write_system_text_clipboard(
+    pub(super) fn write_system_text_clipboard(
         &self,
         label: &'static str,
         noun: &'static str,
@@ -303,7 +303,11 @@ impl SimulationFramework {
                     egui_ctx.data_mut(|d| {
                         let status = match cb {
                             Ok(()) => ActionBarExportStatus {
-                                message: format!("Copied {label} {noun} to clipboard!"),
+                                message: if noun.is_empty() {
+                                    format!("Copied {label} to clipboard!")
+                                } else {
+                                    format!("Copied {label} {noun} to clipboard!")
+                                },
                                 is_error: false,
                                 expires_at_time: None,
                             },
