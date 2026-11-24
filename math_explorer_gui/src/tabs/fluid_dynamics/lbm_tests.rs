@@ -65,3 +65,51 @@ fn test_lbm_unified_persists_airfoil_across_save_load_reset_and_url() {
     let bad_json = serde_json::json!({ "viscosity": 0.02, "obstacles_rle": bad_rle }).to_string();
     assert!(restored.try_load_state(&bad_json).is_err());
 }
+
+#[test]
+fn test_wind_tunnel_tool_loads_rle_airfoil_preset_and_rejects_mismatched_rle() {
+    let mut tool = LatticeBoltzmannTool::default();
+    let airfoil_envelope = super::super::lbm_presets::generate_airfoil_starter_json();
+    tool.import_preset_json(airfoil_envelope)
+        .expect("LatticeBoltzmannTool must import lbm_airfoil_wake RLE preset");
+    assert!((tool.viscosity - 0.015).abs() < 1e-12);
+    assert!(count_solid_cells(&tool.obstacles) > 10);
+
+    let saved = tool.save_state().expect("canonical wind-tunnel state");
+    assert!(saved.contains("obstacle_mask"));
+    assert!(!saved.contains("obstacles_rle"));
+
+    let bad_rle = crate::framework::encode_bool_grid(20, 20, &[true; 400]).unwrap();
+    let bad_json = serde_json::json!({ "viscosity": 0.02, "obstacles_rle": bad_rle }).to_string();
+    assert!(tool.try_load_state(&bad_json).is_err());
+}
+
+#[test]
+fn test_wind_tunnel_tool_certified_maturity_tier_and_hex_mask_import() {
+    use scientific_metadata::theory::MaturityTier;
+
+    let mut tool = LatticeBoltzmannTool::default();
+    assert_eq!(tool.theory().maturity_tier(), MaturityTier::Certified);
+    assert_eq!(
+        crate::framework::maturity_badge::resolve_tool_maturity_tier(
+            "LatticeBoltzmannTool",
+            "fluid_dynamics",
+            Some(tool.theory().maturity_tier()),
+        ),
+        MaturityTier::Certified
+    );
+
+    // Also verify hex-encoded fairing mask import clears guarded inlet columns x < 2.
+    let mut hex_mask = [false; LBM_CELL_COUNT];
+    hex_mask[0] = true; // x = 0 (guarded inlet column)
+    hex_mask[30 + 25 * LBM_WIDTH] = true;
+    let hex_json = serde_json::json!({
+        "viscosity": 0.02,
+        "mask_hex": super::super::lbm_fairing::encode_mask_hex(&hex_mask),
+    })
+    .to_string();
+    tool.try_load_state(&hex_json)
+        .expect("hex-encoded mask payload must decode cleanly");
+    assert!(!tool.obstacles[0], "Inlet column x = 0 must stay open");
+    assert!(tool.obstacles[30 + 25 * LBM_WIDTH]);
+}

@@ -205,4 +205,7 @@ fn test_physics_raster_tools_receive_tab_focus_and_alt_text() {
         &mut sandpile,
         "2D Abelian Sandpile Lattice & Recurrent Crystal",
     );
+
+    let mut lbm = crate::tabs::fluid_dynamics::lattice_boltzmann::LatticeBoltzmannTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(&mut lbm, "Lattice Boltzmann Method");
 }

@@ -1,17 +1,25 @@
-//! Theory metadata and Starter Gallery presets for [`super::lattice_boltzmann::LbmUnified`].
+//! Starter Gallery RLE airfoil preset and `#[cfg(test)]` `LbmUnified` helpers.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::lattice_boltzmann::{LbmUnified, LBM_HEIGHT, LBM_WIDTH};
+#[cfg(test)]
+use super::lattice_boltzmann::LbmUnified;
+use super::lattice_boltzmann::{LBM_HEIGHT, LBM_WIDTH};
+#[cfg(test)]
 use super::lbm_fairing::{LBM_CELL_COUNT, LBM_CORE_RADIUS, LBM_CORE_X, LBM_CORE_Y, LBM_INLET_COLS};
-use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
+#[cfg(test)]
+use crate::async_sim::unified::UnifiedModel;
 use math_commons::math_kernel::types::flatten_2d_index;
+#[cfg(test)]
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     BgkCollision, LatticeBoltzmannD2Q9,
 };
+#[cfg(test)]
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
+#[cfg(test)]
 use std::collections::HashMap;
 
+#[cfg(test)]
 pub(super) fn stamp_disk_into_fairing_mask(
     mask: &mut [bool; LBM_CELL_COUNT],
     cx: i32,
@@ -48,6 +56,7 @@ pub(super) fn stamp_disk_into_fairing_mask(
     any_changed
 }
 
+#[cfg(test)]
 pub(super) fn lbm_parameters() -> HashMap<String, ParameterConstraint> {
     let c = |min, max, step| ParameterConstraint { min, max, step };
     HashMap::from([
@@ -59,6 +68,7 @@ pub(super) fn lbm_parameters() -> HashMap<String, ParameterConstraint> {
     ])
 }
 
+#[cfg(test)]
 pub(super) fn lbm_parameter_label(name: &str) -> String {
     match name {
         "viscosity" => "Kinematic Viscosity (ν)".to_string(),
@@ -70,6 +80,7 @@ pub(super) fn lbm_parameter_label(name: &str) -> String {
     }
 }
 
+#[cfg(test)]
 pub(super) fn lbm_parameter_choices(name: &str) -> &'static [(&'static str, f64)] {
     match name {
         "naca_profile" => &[
@@ -83,16 +94,7 @@ pub(super) fn lbm_parameter_choices(name: &str) -> &'static [(&'static str, f64)
     }
 }
 
-inventory::submit! {
-    crate::framework::ToolMetadata {
-        id: "LatticeBoltzmannTool",
-        display_name: "Lattice Boltzmann (Demo)",
-        domain: "fluid_dynamics",
-        tags: &["lbm", "d2q9", "bgk", "vortex street", "navier-stokes", "fluid"],
-        build: || Box::new(UnifiedSimTool::<LbmUnified>::new()),
-    }
-}
-
+#[cfg(test)]
 pub(crate) fn default_lbm_obstacle_mask() -> Vec<bool> {
     let mut mask = vec![false; LBM_WIDTH * LBM_HEIGHT];
     for y in 0..LBM_HEIGHT {
@@ -107,6 +109,7 @@ pub(crate) fn default_lbm_obstacle_mask() -> Vec<bool> {
     mask
 }
 
+#[cfg(test)]
 pub(crate) fn apply_obstacle_rle_to_solver(
     solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
     encoded: &str,
@@ -131,6 +134,7 @@ pub(crate) fn apply_obstacle_rle_to_solver(
     true
 }
 
+#[cfg(test)]
 impl TheoryDescribable for LbmUnified {
     fn theory_description(&self) -> String {
         LatticeBoltzmannD2Q9::<BgkCollision>::new(1, 1, 1.0).theory_description()
@@ -153,32 +157,7 @@ impl TheoryDescribable for LbmUnified {
     }
 }
 
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "LBM Flow Simulation",
-    "domain": "fluid_dynamics",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "viscosity": 0.02
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "lattice_boltzmann_starter",
-        title: "LBM Flow Simulation",
-        description: "f_i(x + e_i·dt, t + dt) = f_i(x, t) - (f_i - f_i^eq)/τ: Mesoscopic BGK collision streaming solver.",
-        category: "Computational Fluids",
-        icon: "🌊",
-        domain: "fluid_dynamics",
-        tool_name: Some("LatticeBoltzmannTool"),
-        preset_generator: || STARTER_PRESET_JSON,
-    }
-}
-
-fn generate_airfoil_starter_json() -> &'static str {
+pub(crate) fn generate_airfoil_starter_json() -> &'static str {
     static AIRFOIL_PRESET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     AIRFOIL_PRESET
         .get_or_init(|| {

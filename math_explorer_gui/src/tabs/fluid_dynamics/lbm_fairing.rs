@@ -68,6 +68,7 @@ impl FairingStamp {
     }
 
     /// Worker command action string for synchronizing [`super::lattice_boltzmann::LbmUnified`].
+    #[cfg(test)]
     #[must_use]
     pub const fn command_name(self) -> &'static str {
         match self {
@@ -78,6 +79,7 @@ impl FairingStamp {
     }
 
     /// Parses a worker custom command back into a [`FairingStamp`].
+    #[cfg(test)]
     #[must_use]
     pub fn from_command(action: &str) -> Option<Self> {
         match action {
@@ -142,6 +144,7 @@ pub fn restore_inlet_and_core_mask(mask: &mut [bool; LBM_CELL_COUNT]) {
 }
 
 /// Applies an interpolated [`crate::framework::BrushStroke`] to `mask`, returning `true` if any cell changed.
+#[cfg(test)]
 pub fn apply_stroke_to_fairing_mask(
     mask: &mut [bool; LBM_CELL_COUNT],
     stroke: &crate::framework::BrushStroke,
@@ -183,6 +186,7 @@ pub fn apply_stroke_to_fairing_mask(
 }
 
 /// Encodes `mask` into run-length encoded `[value, count]` pairs for `SculptStatePayload`.
+#[cfg(test)]
 #[must_use]
 pub fn encode_fairing_mask_rle(mask: &[bool; LBM_CELL_COUNT]) -> Vec<[u32; 2]> {
     let bytes: Vec<u8> = mask.iter().map(|&b| u8::from(b)).collect();
@@ -261,7 +265,7 @@ fn decode_nibble(ch: u8) -> Result<u8, String> {
     }
 }
 
-/// Serializable state payload for [`super::lattice_boltzmann::LbmUnified`].
+/// Serializable hex-mask state payload for [`CHALLENGE_LBM_FAIRING`].
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LbmSerializedState {
@@ -448,6 +452,9 @@ fn generate_lbm_challenge_baseline() -> String {
 }
 
 fn clamp_lbm_challenge_state(raw_json: &str) -> Result<String, String> {
+    if let Ok(ts) = serde_json::from_str::<super::lattice_boltzmann::LbmToolState>(raw_json) {
+        return ts.into_clamped_challenge_json();
+    }
     let mut parsed: LbmSerializedState =
         serde_json::from_str(raw_json).map_err(|e| format!("Invalid LBM challenge JSON: {e}"))?;
     parsed.viscosity = CHALLENGE_LBM_VISCOSITY;

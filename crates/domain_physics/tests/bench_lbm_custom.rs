@@ -74,6 +74,53 @@ fn bench_lbm_step() {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+#[allow(clippy::disallowed_methods)]
+#[test]
+#[verified_engine::verified]
+fn bench_lbm_obstacle_telemetry_zero_alloc() {
+    let width = 100;
+    let height = 50;
+    let tau = 0.6;
+    let mut solver = LatticeBoltzmannD2Q9::new(width, height, tau);
+    for y in 20..=30 {
+        for x in 28..=32 {
+            solver.set_obstacle(x, y, true);
+        }
+    }
+
+    for _ in 0..10 {
+        solver.set_inlet(0, 0, 2, height, 0.1, 0.0);
+        solver.step();
+    }
+
+    let start = Instant::now();
+    let iterations = 100;
+    let ((fx, fy, curl, solid), metrics) = VerifiedEngine::run_verified(|| {
+        for _ in 0..iterations {
+            solver.set_inlet(0, 0, 2, height, 0.1, 0.0);
+            solver.step();
+        }
+        let (fx, fy) = solver.net_obstacle_force();
+        let curl = solver.vorticity_curl(36, 22);
+        let solid = solver.obstacle_cell_count();
+        (fx, fy, curl, solid)
+    });
+    let duration = start.elapsed();
+
+    assert_eq!(solid, 55);
+    assert!(
+        fx > 0.0,
+        "Expected positive bounce-back drag force, got {fx}"
+    );
+    assert!(fy.is_finite() && curl.is_finite());
+    assert!(metrics.function_calls > 0 && metrics.arithmetic_ops > 0);
+    println!(
+        "LBM Obstacle Telemetry Benchmark (100x50, 100 iters): {:?}",
+        duration
+    );
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn bench_lbm_aborts_if_hot_loop_allocates() {
     const PROBE_ENV: &str = "OXIDIZE_LBM_ALLOC_ABORT_PROBE";

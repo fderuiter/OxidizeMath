@@ -1,0 +1,492 @@
+//! Unit and contract tests for [`super::LatticeBoltzmannTool`], `floor()` brush hits,
+//! `625`-byte `base64url` obstacle masks, aerodynamic telemetry, and GIF wake animation.
+
+#![cfg_attr(any(), verified(opt_out = "tests"))]
+
+use super::*;
+use crate::framework::recovery::FiniteStateGuard;
+use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFramework};
+use crate::url_state::{
+    encode_base64url, encode_share_fragment, parse_share_location, validate_url_preset_json,
+    MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES,
+};
+use eframe::egui;
+use egui_plot::export::{decode_gif_animation_summary, ExportOptions};
+use math_commons::math_kernel::types::flatten_2d_index;
+
+#[test]
+fn test_floor_brush_hits_all_four_subcell_quadrants_and_clamps_bounds() {
+    let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(100.0, 50.0));
+    // Target lattice cell (gx = 30, gy = 25), rendered at screen row py = 49 - 25 = 24 ([24.0, 25.0)).
+    for (sx, sy) in [
+        (30.05, 24.05),
+        (30.95, 24.05),
+        (30.05, 24.95),
+        (30.95, 24.95),
+    ] {
+        let mapped = screen_pos_to_cell(egui::pos2(sx, sy), rect);
+        assert_eq!(
+            mapped,
+            Some((30, 25)),
+            "Sub-cell pointer ({sx}, {sy}) must floor to exact cell (30, 25)"
+        );
+    }
+
+    assert_eq!(lattice_coord_to_cell(-2.5, -0.1), Some((0, 0)));
+    assert_eq!(lattice_coord_to_cell(105.7, 99.9), Some((99, 49)));
+    assert_eq!(lattice_coord_to_cell(f64::NAN, 10.0), None);
+}
+
+#[test]
+fn test_inlet_guard_brush_radii_and_solid_area_budget_cap() {
+    let mut grid = vec![false; LBM_CELL_COUNT];
+    // Radius 1 paints a single exact cell when x >= 2, and refuses x < 2.
+    assert_eq!(apply_brush_with_budget(&mut grid, 0, 25, 1, true, 100), 0);
+    assert_eq!(apply_brush_with_budget(&mut grid, 1, 25, 1, true, 100), 0);
+    assert_eq!(apply_brush_with_budget(&mut grid, 2, 25, 1, true, 100), 1);
+    assert!(grid[flatten_2d_index(2, 25, LBM_WIDTH)]);
+
+    // Large radius near inlet never sets x < 2.
+    let count = apply_brush_with_budget(&mut grid, 2, 25, 5, true, 500);
+    assert!(count > 10);
+    for y in 0..LBM_HEIGHT {
+        assert!(!grid[flatten_2d_index(0, y, LBM_WIDTH)]);
+        assert!(!grid[flatten_2d_index(1, y, LBM_WIDTH)]);
+    }
+
+    // Budget cap strictly prevents adding beyond `area_budget`, while erasing still works.
+    let mut capped = vec![false; LBM_CELL_COUNT];
+    let used = apply_brush_with_budget(&mut capped, 50, 25, 5, true, 25);
+    assert_eq!(used, 25);
+    assert_eq!(count_solid_cells(&capped), 25);
+    let after_extra = apply_brush_with_budget(&mut capped, 70, 25, 5, true, 25);
+    assert_eq!(after_extra, 25);
+    let after_erase = apply_brush_with_budget(&mut capped, 50, 25, 3, false, 25);
+    assert!(after_erase < 25);
+}
+
+#[test]
+fn test_obstacle_mask_625_byte_834_char_roundtrip_and_strict_length_rejection() {
+    let mut sculpted = streamlined_airfoil_obstacle_grid();
+    apply_brush_with_budget(&mut sculpted, 60, 15, 2, true, DEFAULT_AREA_BUDGET);
+
+    let encoded = encode_obstacle_mask(&sculpted);
+    assert_eq!(encoded.len(), LBM_MASK_B64_CHARS);
+    let decoded = decode_obstacle_mask(&encoded).expect("625-byte mask must decode");
+    assert_eq!(decoded, sculpted);
+
+    let short_b64 = encode_base64url(&[0_u8; 624]);
+    assert!(decode_obstacle_mask(&short_b64).is_err());
+
+    let long_b64 = encode_base64url(&[0_u8; 626]);
+    assert!(decode_obstacle_mask(&long_b64).is_err());
+}
+
+#[test]
+fn test_url_share_link_roundtrip_stays_within_bounds_and_legacy_presets_load() {
+    let mut tool = LatticeBoltzmannTool::default();
+    tool.try_load_state(r#"{"viscosity": 0.035}"#)
+        .expect("legacy single-field viscosity config must remain backward-compatible");
+    assert!((tool.viscosity - 0.035).abs() < 1e-12);
+    assert_eq!(tool.obstacles, cylinder_obstacle_grid());
+
+    // Sculpt a custom asymmetric obstacle and round-trip through the browser share-link codec.
+    tool.view_mode = LbmViewMode::Vorticity;
+    tool.area_budget = 220;
+    tool.brush_radius = 3;
+    tool.sculpt_at_cell(48, 22, true);
+    let expected_mask = tool.obstacles.clone();
+
+    let preset_json = tool
+        .export_preset_json()
+        .expect("export_preset_json should succeed");
+    assert!(preset_json.len() <= MAX_DECODED_URL_STATE_BYTES);
+    validate_url_preset_json(&preset_json).expect("URL JSON bounds must pass");
+
+    let fragment = encode_share_fragment(
+        "fluid_dynamics",
+        Some("LatticeBoltzmannTool"),
+        Some(&preset_json),
+    )
+    .expect("encode_share_fragment must fit within 8 KiB");
+    assert!(fragment.len() <= MAX_URL_FRAGMENT_BYTES);
+
+    let parsed = parse_share_location(&fragment, "")
+        .expect("parse_share_location must succeed")
+        .expect("share params present");
+    let mut restored = LatticeBoltzmannTool::default();
+    restored
+        .import_preset_json(parsed.state_json.as_deref().unwrap())
+        .expect("restored tool must import URL state");
+    assert_eq!(restored.obstacles, expected_mask);
+    assert_eq!(restored.view_mode, LbmViewMode::Vorticity);
+    assert_eq!(restored.area_budget, 220);
+}
+
+#[test]
+fn test_aerodynamics_zero_guards_and_streamlined_beats_bluff_plate_drag() {
+    let empty = vec![false; LBM_CELL_COUNT];
+    let zero_h = compute_aerodynamics((1.5, -0.4), 0.10, 0.02, &empty, 10);
+    assert_eq!(zero_h.cd, 0.0);
+    assert_eq!(zero_h.cl, 0.0);
+
+    let cyl = cylinder_obstacle_grid();
+    let zero_u = compute_aerodynamics((1.5, -0.4), 0.0, 0.02, &cyl, 10);
+    assert_eq!(zero_u.cd, 0.0);
+    assert_eq!(zero_u.cl, 0.0);
+
+    let visc = 0.015;
+    let u0 = 0.10;
+    let bluff_mask = bluff_plate_obstacle_grid();
+    let airfoil_mask = streamlined_airfoil_obstacle_grid();
+    let mut bluff_solver = build_wind_tunnel_solver(visc, u0, &bluff_mask);
+    let mut airfoil_solver = build_wind_tunnel_solver(visc, u0, &airfoil_mask);
+
+    let mut bluff_cd_sum = 0.0;
+    let mut airfoil_cd_sum = 0.0;
+    for step in 1..=200 {
+        bluff_solver.set_inlet(0, 0, LBM_INLET_GUARD_COLS, LBM_HEIGHT, u0, 0.0);
+        bluff_solver.step();
+        airfoil_solver.set_inlet(0, 0, LBM_INLET_GUARD_COLS, LBM_HEIGHT, u0, 0.0);
+        airfoil_solver.step();
+        if step > 100 {
+            bluff_cd_sum += compute_aerodynamics(
+                bluff_solver.net_obstacle_force(),
+                u0,
+                visc,
+                &bluff_mask,
+                step,
+            )
+            .cd;
+            airfoil_cd_sum += compute_aerodynamics(
+                airfoil_solver.net_obstacle_force(),
+                u0,
+                visc,
+                &airfoil_mask,
+                step,
+            )
+            .cd;
+        }
+    }
+    let avg_bluff_cd = bluff_cd_sum / 100.0;
+    let avg_airfoil_cd = airfoil_cd_sum / 100.0;
+    assert!(
+        avg_bluff_cd > avg_airfoil_cd && avg_airfoil_cd > 0.0,
+        "Bluff-plate C_D ({avg_bluff_cd:.3}) must exceed streamlined airfoil C_D ({avg_airfoil_cd:.3})"
+    );
+}
+
+#[test]
+fn test_runner_finite_state_guard_halts_on_invalid_params_and_recovers() {
+    let cfg = Arc::new(RwLock::new(LbmSharedConfig {
+        viscosity: -0.5,
+        inflow_speed: 0.10,
+        steps_per_frame: 2,
+        view_mode: LbmViewMode::Speed,
+        high_contrast: false,
+        obstacles: cylinder_obstacle_grid(),
+        mask_generation: 0,
+    }));
+    let lat = Arc::new(RwLock::new(LatticeState::new(LBM_WIDTH, LBM_HEIGHT)));
+    let mut runner = LbmRunner::new(Arc::clone(&cfg), lat);
+    crate::async_sim::SimulationRunner::step(&mut runner);
+    assert!(FiniteStateGuard::diverged(&runner));
+    assert!(FiniteStateGuard::diagnostic_report(&runner).is_some());
+
+    cfg.write().unwrap().viscosity = DEFAULT_VISCOSITY;
+    FiniteStateGuard::reset_parameters(&mut runner);
+    assert!(!FiniteStateGuard::diverged(&runner));
+    assert!(FiniteStateGuard::diagnostic_report(&runner).is_none());
+}
+
+fn export_lbm_gif_via_framework(tool: LatticeBoltzmannTool) -> Vec<u8> {
+    let mut fw = SimulationFramework::new("fluid_dynamics");
+    fw.active_tool = Some(Box::new(tool));
+    fw.export_options = ExportOptions {
+        width: 200,
+        height: 100,
+        ..Default::default()
+    };
+    fw.export_gif_frames = 4;
+    fw.export_gif_fps = 12;
+    let ctx = egui::Context::default();
+    let raw_in = || egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1024.0, 768.0),
+        )),
+        ..Default::default()
+    };
+    let _ = ctx.run(raw_in(), |c| {
+        fw.queue_export(ExportFormat::Gif);
+        fw.show(c, "fluid_dynamics");
+    });
+    for _ in 0..250 {
+        if fw.active_gif_progress().is_none() {
+            break;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let _ = ctx.run(raw_in(), |c| fw.show(c, "fluid_dynamics"));
+    }
+    assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+    fw.export_queue
+        .last_exported_bytes
+        .expect("Streaming GIF export must produce bytes")
+}
+
+#[test]
+fn test_multiframe_gif_export_retains_sculpted_obstacles_and_animates_wake() {
+    let mut tool = LatticeBoltzmannTool::default();
+    tool.apply_obstacle_preset(bluff_plate_obstacle_grid());
+    tool.view_mode = LbmViewMode::Vorticity;
+    tool.push_shared_config();
+    tool.sculpt_at_cell(45, 25, true);
+
+    let frame0 = tool.export_raster_image().expect("frame 0 raster");
+    tool.step_simulation();
+    let frame1 = tool.export_raster_image().expect("frame 1 raster");
+    tool.step_simulation();
+    let frame2 = tool.export_raster_image().expect("frame 2 raster");
+
+    // Sculpted cell (gx = 45, gy = 25 -> py = 49 - 25 = 24) stays solid across frames.
+    let solid_px_idx = flatten_2d_index(45, 24, LBM_WIDTH);
+    assert_eq!(frame0.pixels[solid_px_idx], frame1.pixels[solid_px_idx]);
+    assert_eq!(frame1.pixels[solid_px_idx], frame2.pixels[solid_px_idx]);
+    // Fluid wake pixels evolve across frames.
+    assert_ne!(
+        frame0.pixels, frame2.pixels,
+        "Stepped GIF frames must animate fluid wake around sculpted obstacles"
+    );
+
+    let gif_bytes = export_lbm_gif_via_framework(tool);
+    assert!(gif_bytes.starts_with(b"GIF89a") || gif_bytes.starts_with(b"GIF87a"));
+    assert!(gif_bytes.len() > 256);
+    let summary = decode_gif_animation_summary(&gif_bytes).expect("valid animated GIF");
+    assert_eq!(summary.frame_count, 4);
+}
+
+#[test]
+fn test_export_wind_tunnel_verification_previews() {
+    let visc = 0.012;
+    let u0 = 0.11;
+    let bluff_mask = bluff_plate_obstacle_grid();
+    let airfoil_mask = streamlined_airfoil_obstacle_grid();
+    let mut bluff = build_wind_tunnel_solver(visc, u0, &bluff_mask);
+    let mut airfoil = build_wind_tunnel_solver(visc, u0, &airfoil_mask);
+    let mut bluff_series = Vec::with_capacity(60);
+    let mut airfoil_series = Vec::with_capacity(60);
+
+    for step in 1..=300 {
+        // Tiny initial vertical perturbation seeds classic Karman vortex shedding behind bluff plate.
+        let uy_seed = if step <= 25 { 0.004 } else { 0.0 };
+        bluff.set_inlet(0, 0, LBM_INLET_GUARD_COLS, LBM_HEIGHT, u0, uy_seed);
+        bluff.step();
+        airfoil.set_inlet(0, 0, LBM_INLET_GUARD_COLS, LBM_HEIGHT, u0, uy_seed);
+        airfoil.step();
+        if step >= 60 && step % 4 == 0 {
+            let b_cd =
+                compute_aerodynamics(bluff.net_obstacle_force(), u0, visc, &bluff_mask, step).cd;
+            let a_cd =
+                compute_aerodynamics(airfoil.net_obstacle_force(), u0, visc, &airfoil_mask, step)
+                    .cd;
+            bluff_series.push([step as f64, b_cd]);
+            airfoil_series.push([step as f64, a_cd]);
+        }
+    }
+
+    let scale_opts = ExportOptions::default();
+    let bluff_img = egui_plot::export_primitives::scale_color_image(
+        &render_lbm_color_image(&bluff, u0, LbmViewMode::Vorticity, true),
+        800,
+        400,
+        &scale_opts,
+    );
+    let airfoil_img = egui_plot::export_primitives::scale_color_image(
+        &render_lbm_color_image(&airfoil, u0, LbmViewMode::Speed, true),
+        800,
+        400,
+        &scale_opts,
+    );
+    let temp_dir = std::env::temp_dir();
+    let bluff_png = egui_plot::export::color32_image_to_png(&bluff_img).expect("bluff PNG");
+    let airfoil_png = egui_plot::export::color32_image_to_png(&airfoil_img).expect("airfoil PNG");
+    let _ = std::fs::write(temp_dir.join("lbm_bluff_plate_vorticity.png"), &bluff_png);
+    let _ = std::fs::write(
+        temp_dir.join("lbm_streamlined_airfoil_speed.png"),
+        &airfoil_png,
+    );
+
+    let datasets = vec![
+        ("Bluff Plate C_D(t)".to_string(), bluff_series),
+        ("Streamlined Airfoil C_D(t)".to_string(), airfoil_series),
+    ];
+    let chart_png =
+        egui_plot::export::export_custom_png(&datasets, &scale_opts).expect("C_D chart PNG");
+    let _ = std::fs::write(
+        temp_dir.join("lbm_drag_telemetry_comparison.png"),
+        &chart_png,
+    );
+    assert!(bluff_png.starts_with(b"\x89PNG") && chart_png.starts_with(b"\x89PNG"));
+}
+
+#[test]
+fn test_lbm_fairing_challenge_lifecycle_and_tampered_url_clamping() {
+    let mut fw = crate::framework::SimulationFramework::new("fluid_dynamics");
+    fw.launch_challenge_by_id("lbm_low_drag_fairing", None)
+        .expect("lbm_low_drag_fairing must launch on LatticeBoltzmannTool");
+    assert_eq!(fw.active_challenge_id(), Some("lbm_low_drag_fairing"));
+    let base_eval = fw
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.evaluate_challenge())
+        .expect("challenge evaluation present");
+    assert!(
+        !base_eval.passed,
+        "Bluff cylinder baseline must start unsolved"
+    );
+
+    {
+        let tool = fw
+            .active_tool
+            .as_mut()
+            .and_then(|t| t.as_any_mut())
+            .and_then(|a| a.downcast_mut::<LatticeBoltzmannTool>())
+            .expect("active LatticeBoltzmannTool");
+        // Attempt to erase protected R_core = 4 center (30, 25) must keep core intact.
+        tool.sculpt_at_cell(30, 25, false);
+        assert!(tool.obstacles[flatten_2d_index(30, 25, LBM_WIDTH)]);
+        tool.apply_fairing_stamp(super::super::lbm_fairing::FairingStamp::TeardropFairing);
+    }
+    let solved_eval = fw
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.evaluate_challenge())
+        .expect("solved evaluation");
+    assert!(solved_eval.passed && solved_eval.score >= 60.0);
+
+    // Tamper locked viscosity/inflow_speed in shared challenge URL and verify clamping.
+    let share_url = fw.encode_share_url().expect("challenge share URL");
+    let frag = &share_url[share_url.find('#').unwrap()..];
+    let mut params = parse_share_location(frag, "").unwrap().unwrap();
+    let mut env: serde_json::Value =
+        serde_json::from_str(params.state_json.as_ref().unwrap()).unwrap();
+    env["config"]["viscosity"] = serde_json::json!(0.25);
+    env["config"]["inflow_speed"] = serde_json::json!(0.17);
+    params.state_json = Some(env.to_string());
+    let mut dest_fw = crate::framework::SimulationFramework::new("fluid_dynamics");
+    dest_fw
+        .import_url_share_params(&params, None)
+        .expect("clamped challenge URL import must succeed");
+    let hydrated = dest_fw
+        .active_tool
+        .as_ref()
+        .and_then(|t| t.as_any())
+        .and_then(|a| a.downcast_ref::<LatticeBoltzmannTool>())
+        .unwrap();
+    assert!((hydrated.viscosity - 0.02).abs() < 1e-12);
+    assert!((hydrated.inflow_speed - 0.10).abs() < 1e-12);
+    assert!(hydrated.evaluate_challenge().unwrap().passed);
+}
+
+#[test]
+fn test_tool_on_brush_solid_erase_velocity_jet_and_naca_venturi_stamps() {
+    let mut tool = LatticeBoltzmannTool::default();
+    tool.apply_obstacle_preset(vec![false; LBM_CELL_COUNT]);
+    assert_eq!(count_solid_cells(&tool.obstacles), 0);
+
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let (_, resp) = ui.allocate_exact_size(egui::vec2(200.0, 100.0), egui::Sense::click());
+            let solid_stroke = BrushStroke {
+                start: [20.5, 10.5],
+                end: [35.5, 18.5],
+                radius: 2.0,
+                mode: BrushMode::Solid,
+                drag_vector: [15.0, 8.0],
+            };
+            tool.on_brush(&InteractionContext::from_brush_stroke(&resp, solid_stroke));
+            assert!(count_solid_cells(&tool.obstacles) > 20);
+            assert!(tool.obstacles[flatten_2d_index(20, 10, LBM_WIDTH)]);
+            assert!(tool.obstacles[flatten_2d_index(35, 18, LBM_WIDTH)]);
+
+            let erase_stroke = BrushStroke {
+                start: [20.5, 10.5],
+                end: [20.5, 10.5],
+                radius: 2.0,
+                mode: BrushMode::Erase,
+                drag_vector: [0.0, 0.0],
+            };
+            tool.on_brush(&InteractionContext::from_brush_stroke(&resp, erase_stroke));
+            assert!(!tool.obstacles[flatten_2d_index(20, 10, LBM_WIDTH)]);
+
+            let jet_stroke = BrushStroke {
+                start: [50.5, 25.5],
+                end: [54.5, 25.5],
+                radius: 2.0,
+                mode: BrushMode::VelocityJet,
+                drag_vector: [3.0, 0.0],
+            };
+            tool.on_brush(&InteractionContext::from_brush_stroke(&resp, jet_stroke));
+        });
+    });
+
+    tool.apply_naca_2412_preset(8.0);
+    assert!(count_solid_cells(&tool.obstacles) > 20);
+    tool.apply_venturi_preset();
+    assert!(count_solid_cells(&tool.obstacles) > 250);
+    assert!(tool.has_finite_parameters());
+}
+
+#[test]
+fn parameter_atlas_cartographer_and_teleport_respect_challenge_locks() {
+    use crate::async_sim::atlas::AtlasTeleportEvent;
+    use crate::tabs::fluid_dynamics::lbm_fairing::{
+        CHALLENGE_LBM_FAIRING, CHALLENGE_LBM_VISCOSITY, LBM_U_IN,
+    };
+
+    let mut tool = LatticeBoltzmannTool::default();
+    let pairs = tool.atlas_axis_pairs();
+    assert_eq!(pairs, &[("viscosity", "inlet_velocity")]);
+    assert_eq!(
+        tool.active_atlas_coords(pairs[0]),
+        (DEFAULT_VISCOSITY, DEFAULT_INFLOW_SPEED)
+    );
+
+    let carto = tool
+        .build_atlas_cartographer(pairs[0])
+        .expect("cartographer for (viscosity, inlet_velocity)");
+    assert!((carto.axes().y.constraint.max - INFLOW_SPEED_MAX).abs() < 1e-12);
+    let karman_cell = carto.evaluate_cell(0.015, 0.12);
+    assert_eq!(karman_cell.regime, 2);
+
+    tool.step_simulation();
+    let solver = tool.gif_solver.as_ref().expect("gif_solver initialized");
+    assert_eq!(
+        solver.get_velocity(LBM_WIDTH - 1, 25),
+        solver.get_velocity(LBM_WIDTH - 2, 25),
+        "Zero-gradient convective outflow must copy right-edge velocity from x = width - 2"
+    );
+
+    tool.apply_atlas_teleport(AtlasTeleportEvent {
+        x_key: "viscosity",
+        x_val: 0.035,
+        y_key: "inlet_velocity",
+        y_val: 0.14,
+        regime_label: "Unsteady Kármán Vortex Street",
+    });
+    assert!((tool.viscosity - 0.035).abs() < 1e-12);
+    assert!((tool.inflow_speed - 0.14).abs() < 1e-12);
+
+    tool.apply_challenge(Some(CHALLENGE_LBM_FAIRING)).unwrap();
+    tool.apply_atlas_teleport(AtlasTeleportEvent {
+        x_key: "viscosity",
+        x_val: 0.09,
+        y_key: "inlet_velocity",
+        y_val: 0.16,
+        regime_label: "Unsteady Kármán Vortex Street",
+    });
+    assert!((tool.viscosity - CHALLENGE_LBM_VISCOSITY).abs() < 1e-12);
+    assert!((tool.inflow_speed - LBM_U_IN).abs() < 1e-12);
+}

@@ -1,472 +1,482 @@
+//! Dedicated D2Q9 Lattice Boltzmann Wind Tunnel tool with live bounce-back
+//! aerodynamic telemetry (`C_D`, `C_L`, `Re`), URL-shareable obstacle sculpting,
+//! `SpatialBrushKit` stroke integration (`Solid`, `Erase`, `VelocityJet`),
+//! inverse fairing challenge (`lbm_low_drag_fairing`), and vortex-shedding GIF export.
+
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use self::render::{inspect_solver_solid_and_core, render_lbm_snapshot_pixels};
-use super::lattice_boltzmann_sculpt::{
-    apply_lbm_brush_cells, apply_lbm_custom_action, apply_lbm_sculpt_payload, apply_stroke_to_lbm,
-    draw_lbm_brush_panel, export_solver_rle, record_stroke_in_rle,
-    reset_solver_preserving_obstacles, seed_initial_lbm_geometry, sync_lbm_parameters,
-};
-use super::lbm_atlas::{resolve_inlet_velocity, LbmCartographer, LBM_ATLAS_AXIS_PAIRS};
+use super::lbm_atlas::LBM_ATLAS_AXIS_PAIRS;
 use super::lbm_fairing::{
-    decode_mask_hex, FairingStamp, LBM_CELL_COUNT, LBM_INLET_COLS, LBM_REF_DIAMETER, LBM_RHO_0,
+    restore_inlet_and_core_mask, LbmFairingEvaluator, CHALLENGE_LBM_FAIRING,
+    CHALLENGE_LBM_VISCOSITY, LBM_U_IN,
 };
-use super::lbm_fairing_ui::LbmUiExtension;
-use super::lbm_presets::{apply_obstacle_rle_to_solver, default_lbm_obstacle_mask};
-use crate::async_sim::atlas::RegimeCartographer;
+use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
 #[cfg(test)]
 use crate::async_sim::unified::UnifiedSimTool;
-use crate::async_sim::unified::{UnifiedModel, UnifiedUiExtension};
-use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
-use crate::framework::{BrushMode, BrushStroke, SpatialBrushKit};
-use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
-    advance_wind_tunnel_step, compute_aerodynamic_coefficients, compute_drag_coefficient,
-    compute_vorticity_into, AerodynamicCoefficients, BgkCollision, LatticeBoltzmannD2Q9,
+use crate::async_sim::{BackgroundWorker, SimCommand};
+use crate::framework::{
+    bresenham_line, BrushMode, BrushStroke, ChallengeEvaluation, InteractionContext,
+    InteractiveTool, SpatialBrushKit,
 };
-use scientific_metadata::theory::ParameterConstraint;
-use std::collections::HashMap;
+use eframe::egui;
+use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
+    apply_outflow_right_boundary, BgkCollision, LatticeBoltzmannD2Q9, LatticeState,
+};
+use scientific_metadata::theory::TheoryDescribable;
 use std::sync::{Arc, RwLock};
 
-pub(crate) const LBM_WIDTH: usize = 100;
-pub(crate) const LBM_HEIGHT: usize = 50;
-pub(crate) const LBM_INLET_U: f64 = 0.1;
+#[cfg(test)]
+#[path = "lattice_boltzmann/legacy_unified.rs"]
+mod legacy_unified;
+#[cfg(test)]
+pub use legacy_unified::{LbmSnapshotMetrics, LbmUnified};
+#[cfg(test)]
+#[path = "lattice_boltzmann/render.rs"]
+pub(crate) mod render;
 
-/// Live hydrodynamic force and vorticity diagnostics attached to LBM snapshots.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct LbmSnapshotMetrics {
-    /// Dimensionless lift coefficient $C_L$.
-    pub lift_coeff: f64,
-    /// Dimensionless drag coefficient $C_D$.
-    pub drag_coeff: f64,
-    /// Peak vorticity magnitude $|\omega_z|$ across interior fluid cells.
-    pub max_vorticity: f64,
-}
+#[path = "lattice_boltzmann/presets.rs"]
+mod presets;
 
-pub struct LbmUnified {
-    pub(crate) solver: LatticeBoltzmannD2Q9<BgkCollision>,
-    pub(crate) vorticity_buf: Vec<f64>,
-    pub(crate) latest_aero: AerodynamicCoefficients,
-    pub(crate) inlet_velocity: f64,
-    pub(crate) stamped_airfoil: Option<(u16, f64)>,
-    pub(crate) active_profile_param: f64,
-    pub(crate) challenge_core_locked: bool,
-    pub(crate) display_vorticity: bool,
+#[path = "lattice_boltzmann/runner.rs"]
+pub mod runner;
+pub use runner::*;
+
+#[path = "lattice_boltzmann/state.rs"]
+pub mod state;
+pub use state::*;
+
+#[path = "lattice_boltzmann/ui.rs"]
+mod ui;
+
+#[cfg(test)]
+#[path = "lattice_boltzmann/tests.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "lbm_tests.rs"]
+mod lbm_rle_tests;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+#[path = "lattice_boltzmann/wasm_tests.rs"]
+mod wasm_tests;
+
+/// Interactive D2Q9 Lattice Boltzmann Wind Tunnel backed by [`BackgroundWorker<LbmRunner>`].
+pub struct LatticeBoltzmannTool {
+    pub(crate) viscosity: f64,
+    pub(crate) inflow_speed: f64,
+    pub(crate) steps_per_frame: usize,
+    pub(crate) brush_radius: i32,
+    pub(crate) area_budget: usize,
+    pub(crate) view_mode: LbmViewMode,
+    pub(crate) brush_mode: LbmBrushMode,
     pub(crate) high_contrast: bool,
-    pub(crate) diverged: bool,
-    pub(crate) diagnostic_report: Option<DiagnosticReport>,
-    pub(crate) step_count: usize,
+    pub(crate) obstacles: Vec<bool>,
+    pub(crate) mask_generation: u64,
+    pub(crate) telemetry: LbmTelemetry,
+    pub(crate) cursor_cell: (usize, usize),
+    pub(crate) last_drag_cell: Option<(usize, usize)>,
+    pub(crate) focused_canvas: Option<egui::Id>,
+    pub(crate) texture: Option<egui::TextureHandle>,
+    pub(crate) dirty: bool,
+    pub(crate) gif_solver: Option<LatticeBoltzmannD2Q9<BgkCollision>>,
+    pub(crate) active_challenge: Option<&'static str>,
+    pub(crate) challenge_evaluator: Option<LbmFairingEvaluator>,
+    pub(crate) shared_config: Arc<RwLock<LbmSharedConfig>>,
+    pub(crate) shared_lattice: Arc<RwLock<LatticeState<9>>>,
+    pub(crate) worker: BackgroundWorker<LbmRunner>,
 }
 
-impl LbmUnified {
-    fn refresh_diagnostics(&mut self) {
-        compute_vorticity_into(&self.solver, &mut self.vorticity_buf);
-        let u_ref = self.inlet_velocity.max(1e-4);
-        self.latest_aero = compute_aerodynamic_coefficients(&self.solver, u_ref, 24.0, 3);
-    }
-
-    /// Re-initializes equilibrium populations via `init_equilibrium` and restores
-    /// open inlet columns (`x < 2`) plus the protected `R_core = 4` structural core
-    /// (when in cylinder/fairing mode), while preserving user-sculpted obstacle cells elsewhere.
-    pub fn reset_equilibrium_preserving_obstacles(&mut self, params: &HashMap<String, f64>) {
-        let viscosity = params
-            .get("viscosity")
-            .copied()
-            .filter(|v| v.is_finite() && *v > 0.0)
-            .unwrap_or(0.02);
-        let restore_core = self.stamped_airfoil.is_none();
-        self.inlet_velocity = resolve_inlet_velocity(params);
-        reset_solver_preserving_obstacles(
-            &mut self.solver,
-            viscosity,
-            self.inlet_velocity,
-            restore_core,
-        );
-        self.diverged = false;
-        self.diagnostic_report = None;
-        self.step_count = 0;
-        self.refresh_diagnostics();
-    }
-
-    fn apply_mask(&mut self, mask: &[bool; LBM_CELL_COUNT], params: &HashMap<String, f64>) {
-        for y in 0..LBM_HEIGHT.min(self.solver.height()) {
-            for x in 0..LBM_WIDTH.min(self.solver.width()) {
-                self.solver
-                    .set_obstacle(x, y, mask[flatten_2d_index(x, y, LBM_WIDTH)]);
-            }
-        }
-        self.stamped_airfoil = None;
-        self.active_profile_param = 0.0;
-        self.reset_equilibrium_preserving_obstacles(params);
-    }
-
-    fn apply_discrete_brush(&mut self, cx: i32, cy: i32, r: i32, is_obstacle: bool) {
-        let width = self.solver.width() as i32;
-        let height = self.solver.height() as i32;
-        for y in (cy - r)..=(cy + r) {
-            for x in (cx - r)..=(cx + r) {
-                if x >= LBM_INLET_COLS as i32
-                    && x < width
-                    && y >= 0
-                    && y < height
-                    && (x - cx).pow(2) + (y - cy).pow(2) <= r * r
-                {
-                    self.solver
-                        .set_obstacle(x as usize, y as usize, is_obstacle);
-                }
-            }
-        }
-        self.refresh_diagnostics();
-    }
-}
-
-impl FiniteStateGuard for LbmUnified {
-    fn is_finite_state(&self) -> bool {
-        if self.diverged {
-            return false;
-        }
-        self.solver
-            .state
-            .velocity_x()
-            .iter()
-            .all(|&v| v.is_finite())
-            && self
-                .solver
-                .state
-                .velocity_y()
-                .iter()
-                .all(|&v| v.is_finite())
-            && self.solver.state.density().iter().all(|&v| v.is_finite())
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.diagnostic_report.as_ref()
-    }
-
-    fn diverged(&self) -> bool {
-        self.diverged || !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn reset_parameters(&mut self) {
-        self.diverged = false;
-        self.diagnostic_report = None;
-        self.step_count = 0;
-    }
-}
-
-impl UnifiedModel for LbmUnified {
-    fn domain() -> &'static str {
-        "fluid_dynamics"
-    }
-
-    fn new(params: &HashMap<String, f64>) -> Self {
-        let viscosity = *params.get("viscosity").unwrap_or(&0.02);
-        let tau = 3.0 * viscosity + 0.5;
-        let mut solver = LatticeBoltzmannD2Q9::new(LBM_WIDTH, LBM_HEIGHT, tau);
-        let active_profile_param = *params.get("naca_profile").unwrap_or(&0.0);
-        let stamped_airfoil = seed_initial_lbm_geometry(&mut solver, params);
-
-        let display_vorticity = *params.get("field_view").unwrap_or(&0.0) >= 0.5;
-        let mut model = Self {
-            solver,
-            vorticity_buf: vec![0.0; LBM_WIDTH * LBM_HEIGHT],
-            latest_aero: AerodynamicCoefficients::default(),
-            inlet_velocity: resolve_inlet_velocity(params),
-            stamped_airfoil,
-            active_profile_param,
-            challenge_core_locked: false,
-            display_vorticity,
+impl Default for LatticeBoltzmannTool {
+    fn default() -> Self {
+        let obstacles = cylinder_obstacle_grid();
+        let initial_cfg = LbmSharedConfig {
+            viscosity: DEFAULT_VISCOSITY,
+            inflow_speed: DEFAULT_INFLOW_SPEED,
+            steps_per_frame: DEFAULT_STEPS_PER_FRAME,
+            view_mode: LbmViewMode::Speed,
             high_contrast: false,
-            diverged: false,
-            diagnostic_report: None,
-            step_count: 0,
+            obstacles: obstacles.clone(),
+            mask_generation: 0,
         };
-        model.refresh_diagnostics();
-        model
-    }
-
-    fn reset_model(&mut self, params: &HashMap<String, f64>) {
-        let next_profile = *params.get("naca_profile").unwrap_or(&0.0);
-        if !self.challenge_core_locked && (next_profile - self.active_profile_param).abs() > 1e-6 {
-            let viscosity = params
-                .get("viscosity")
-                .copied()
-                .filter(|v| v.is_finite() && *v > 0.0)
-                .unwrap_or(0.02);
-            self.solver.collision_model.tau = 3.0 * viscosity + 0.5;
-            self.solver.clear_obstacles();
-            self.solver.init_equilibrium();
-            self.stamped_airfoil = seed_initial_lbm_geometry(&mut self.solver, params);
-            self.active_profile_param = next_profile;
-            self.inlet_velocity = resolve_inlet_velocity(params);
-            self.diverged = false;
-            self.diagnostic_report = None;
-            self.step_count = 0;
-            self.refresh_diagnostics();
-        } else {
-            self.reset_equilibrium_preserving_obstacles(params);
+        let shared_config = Arc::new(RwLock::new(initial_cfg));
+        let shared_lattice = Arc::new(RwLock::new(LatticeState::new(LBM_WIDTH, LBM_HEIGHT)));
+        let runner = LbmRunner::new(Arc::clone(&shared_config), Arc::clone(&shared_lattice));
+        let worker = BackgroundWorker::new(runner);
+        let telemetry = compute_aerodynamics(
+            (0.0, 0.0),
+            DEFAULT_INFLOW_SPEED,
+            DEFAULT_VISCOSITY,
+            &obstacles,
+            0,
+        );
+        Self {
+            viscosity: DEFAULT_VISCOSITY,
+            inflow_speed: DEFAULT_INFLOW_SPEED,
+            steps_per_frame: DEFAULT_STEPS_PER_FRAME,
+            brush_radius: DEFAULT_BRUSH_RADIUS,
+            area_budget: DEFAULT_AREA_BUDGET,
+            view_mode: LbmViewMode::Speed,
+            brush_mode: LbmBrushMode::Solid,
+            high_contrast: false,
+            obstacles,
+            mask_generation: 0,
+            telemetry,
+            cursor_cell: (40, 25),
+            last_drag_cell: None,
+            focused_canvas: None,
+            texture: None,
+            dirty: true,
+            gif_solver: None,
+            active_challenge: None,
+            challenge_evaluator: None,
+            shared_config,
+            shared_lattice,
+            worker,
         }
     }
+}
 
-    fn create_ui_extension() -> Option<Box<dyn UnifiedUiExtension>> {
-        Some(Box::new(LbmUiExtension::default()))
+impl LatticeBoltzmannTool {
+    pub(crate) fn push_shared_config(&mut self) {
+        let mut cfg = self
+            .shared_config
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
+        cfg.viscosity = self.viscosity;
+        cfg.inflow_speed = self.inflow_speed;
+        cfg.steps_per_frame = self.steps_per_frame;
+        cfg.view_mode = self.view_mode;
+        cfg.high_contrast = self.high_contrast;
+        self.gif_solver = None;
     }
 
-    fn step(&mut self, params: &HashMap<String, f64>) {
-        if self.diverged {
+    pub(crate) fn refresh_idle_telemetry(&mut self) {
+        let force = (self.telemetry.drag_force, self.telemetry.lift_force);
+        self.telemetry = compute_aerodynamics(
+            force,
+            self.inflow_speed,
+            self.viscosity,
+            &self.obstacles,
+            self.telemetry.step_count,
+        );
+    }
+
+    pub(super) fn enforce_challenge_invariants_and_score(&mut self) {
+        if self.active_challenge != Some(CHALLENGE_LBM_FAIRING) {
             return;
         }
-        let viscosity = *params.get("viscosity").unwrap_or(&0.02);
-        if !viscosity.is_finite() || viscosity <= 0.0 {
-            self.diverged = true;
-            self.diagnostic_report = Some(DiagnosticReport::new(
-                self.step_count as f64,
-                self.step_count,
-                "viscosity",
-                format!("Invalid non-finite viscosity: {viscosity}"),
-            ));
-            return;
-        }
-        sync_lbm_parameters(
-            &mut self.solver,
-            &mut self.stamped_airfoil,
-            &mut self.display_vorticity,
-            params,
-        );
-        self.inlet_velocity = resolve_inlet_velocity(params);
-        self.step_count += 1;
-        advance_wind_tunnel_step(&mut self.solver, self.inlet_velocity);
-        self.refresh_diagnostics();
-
-        if !FiniteStateGuard::is_finite_state(self) {
-            self.diverged = true;
-            self.diagnostic_report = Some(DiagnosticReport::new(
-                self.step_count as f64,
-                self.step_count,
-                "velocity",
-                "Non-finite velocity detected in Lattice Boltzmann grid cells.",
-            ));
-        }
+        self.viscosity = CHALLENGE_LBM_VISCOSITY;
+        self.inflow_speed = LBM_U_IN;
+        self.area_budget = self.area_budget.max(DEFAULT_AREA_BUDGET);
+        let mut mask = [false; LBM_CELL_COUNT];
+        mask.copy_from_slice(&self.obstacles[..LBM_CELL_COUNT]);
+        restore_inlet_and_core_mask(&mut mask);
+        self.obstacles.copy_from_slice(&mask);
+        let evaluator = self
+            .challenge_evaluator
+            .get_or_insert_with(Default::default);
+        evaluator.evaluate_mask_in_place(&mask, CHALLENGE_LBM_VISCOSITY);
     }
 
-    fn sync_parameters(&mut self, params: &HashMap<String, f64>) {
-        sync_lbm_parameters(
-            &mut self.solver,
-            &mut self.stamped_airfoil,
-            &mut self.display_vorticity,
-            params,
+    /// Sculpts or erases solid cells around `(cx, cy)` using `brush_radius` and `area_budget`.
+    pub fn sculpt_at_cell(&mut self, cx: usize, cy: usize, paint_solid: bool) {
+        apply_brush_with_budget(
+            &mut self.obstacles,
+            cx,
+            cy,
+            self.brush_radius,
+            paint_solid,
+            self.area_budget,
         );
-        self.inlet_velocity = resolve_inlet_velocity(params);
-        self.refresh_diagnostics();
+        self.enforce_challenge_invariants_and_score();
+        self.sync_obstacles_to_worker();
     }
 
-    fn get_snapshot(&self) -> StateSnapshot {
-        let width = self.solver.width();
-        let height = self.solver.height();
-        let (pixels, max_vort) = render_lbm_snapshot_pixels(
-            &self.solver,
-            &self.vorticity_buf,
-            self.display_vorticity,
-            self.high_contrast,
-        );
-
-        let (f_drag, f_lift) = self.solver.hydrodynamic_forces();
-        let c_d = compute_drag_coefficient(
-            f_drag,
-            LBM_RHO_0,
-            self.inlet_velocity.max(1e-4),
-            LBM_REF_DIAMETER,
-        );
-        let (n_solid, core_intact) = inspect_solver_solid_and_core(&self.solver);
-        let metrics = LbmSnapshotMetrics {
-            lift_coeff: self.latest_aero.lift_coeff,
-            drag_coeff: self.latest_aero.drag_coeff,
-            max_vorticity: max_vort,
-        };
-
-        StateSnapshot {
-            width,
-            height,
-            pixels: Arc::new(RwLock::new(pixels)),
-            custom_data: vec![
-                f_drag,
-                f_lift,
-                c_d,
-                n_solid as f64,
-                f64::from(u8::from(core_intact)),
-                self.step_count as f64,
-            ],
-            structured_data: Some(Box::new(metrics)),
-            sonification: crate::audio::SonificationFrame::silent(),
-        }
-    }
-
-    fn process_command(&mut self, cmd: SimCommand, params: &HashMap<String, f64>) {
-        self.display_vorticity = *params.get("field_view").unwrap_or(&0.0) >= 0.5;
-        match cmd {
-            SimCommand::Reset => self.reset_equilibrium_preserving_obstacles(params),
-            SimCommand::ApplyBrush {
-                cx,
-                cy,
-                r,
-                is_obstacle,
-            } => self.apply_discrete_brush(cx, cy, r, is_obstacle),
-            SimCommand::ApplyBrushStroke(ref stroke) => {
-                apply_stroke_to_lbm(&mut self.solver, stroke, self.challenge_core_locked);
-                self.refresh_diagnostics();
-            }
-            SimCommand::ApplyBrushCells { ref cells, mode } => {
-                apply_lbm_brush_cells(&mut self.solver, cells, mode);
-                self.refresh_diagnostics();
-            }
-            SimCommand::ClearObstacles => {
-                self.solver.clear_obstacles();
-                self.stamped_airfoil = None;
-                self.refresh_diagnostics();
-            }
-            SimCommand::Custom(ref action) if action.starts_with("ChallengeLockCore:") => {
-                self.challenge_core_locked = action.ends_with('1');
-            }
-            SimCommand::Custom(ref action) if action.starts_with("HighContrast:") => {
-                self.high_contrast = action.ends_with('1');
-            }
-            SimCommand::Custom(ref action)
-                if apply_lbm_custom_action(
-                    &mut self.solver,
-                    &mut self.stamped_airfoil,
-                    action,
-                    params,
-                ) =>
-            {
-                self.active_profile_param = *params.get("naca_profile").unwrap_or(&0.0);
-                self.refresh_diagnostics();
-            }
-            SimCommand::Custom(ref action) => {
-                if let Some(stamp) = FairingStamp::from_command(action) {
-                    let mut mask = [false; LBM_CELL_COUNT];
-                    stamp.write_mask(&mut mask);
-                    self.apply_mask(&mask, params);
-                } else if let Some(hex) = action.strip_prefix("MaskHex:") {
-                    let mut mask = [false; LBM_CELL_COUNT];
-                    if decode_mask_hex(hex, &mut mask).is_ok() {
-                        self.apply_mask(&mask, params);
+    /// Applies a continuous [`BrushStroke`] (`Solid`, `Erase`, or `VelocityJet`) in lattice coordinates.
+    pub fn apply_brush_stroke(&mut self, stroke: &BrushStroke) {
+        match stroke.mode {
+            BrushMode::Solid | BrushMode::Erase => {
+                let (x0, y0) =
+                    SpatialBrushKit::plot_to_grid_y_up(stroke.start, LBM_WIDTH, LBM_HEIGHT);
+                let (x1, y1) =
+                    SpatialBrushKit::plot_to_grid_y_up(stroke.end, LBM_WIDTH, LBM_HEIGHT);
+                let radius =
+                    (stroke.radius.round() as i32).clamp(BRUSH_RADIUS_MIN, BRUSH_RADIUS_MAX);
+                let paint_solid = stroke.mode == BrushMode::Solid;
+                for (cx, cy) in bresenham_line(x0, y0, x1, y1) {
+                    if cx >= 0 && cy >= 0 {
+                        apply_brush_with_budget(
+                            &mut self.obstacles,
+                            cx as usize,
+                            cy as usize,
+                            radius,
+                            paint_solid,
+                            self.area_budget,
+                        );
                     }
                 }
+                self.enforce_challenge_invariants_and_score();
+                self.sync_obstacles_to_worker();
+            }
+            BrushMode::VelocityJet => {
+                self.gif_solver = None;
+                let _ = self
+                    .worker
+                    .send_command(SimCommand::ApplyBrushStroke(*stroke));
+                self.dirty = true;
             }
             _ => {}
         }
     }
 
-    fn custom_actions() -> Vec<&'static str> {
-        vec!["Clear Obstacles", "Default Obstacles"]
-    }
-
-    fn is_raster_model() -> bool {
-        true
-    }
-
-    fn raster_brush_grid() -> Option<(usize, usize, bool)> {
-        Some((LBM_WIDTH, LBM_HEIGHT, true))
-    }
-
-    fn default_obstacle_mask(_params: &HashMap<String, f64>) -> Option<Vec<bool>> {
-        Some(default_lbm_obstacle_mask())
-    }
-
-    fn validate_obstacle_rle(encoded: &str) -> Result<Vec<bool>, String> {
-        crate::framework::decode_bool_grid(encoded, LBM_WIDTH, LBM_HEIGHT)
-    }
-
-    fn apply_obstacle_rle(&mut self, encoded: &str) {
-        if apply_obstacle_rle_to_solver(&mut self.solver, encoded, self.inlet_velocity) {
-            self.stamped_airfoil = None;
-            self.refresh_diagnostics();
+    pub(super) fn sync_obstacles_to_worker(&mut self) {
+        self.mask_generation = self.mask_generation.wrapping_add(1);
+        {
+            let mut cfg = self
+                .shared_config
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            cfg.viscosity = self.viscosity;
+            cfg.inflow_speed = self.inflow_speed;
+            cfg.obstacles.clone_from(&self.obstacles);
+            cfg.mask_generation = self.mask_generation;
         }
+        self.gif_solver = None;
+        self.refresh_idle_telemetry();
+        let _ = self
+            .worker
+            .send_command(SimCommand::Custom("sync_mask".to_string()));
+        self.dirty = true;
     }
 
-    fn supports_spatial_brush() -> bool {
-        true
-    }
-
-    fn default_brush_kit() -> SpatialBrushKit {
-        SpatialBrushKit::new(BrushMode::Solid, 2.0)
-            .with_radius_bounds(1.0, 8.0, 1.0)
-            .with_cursor_step(2.0, 2.0)
-    }
-
-    fn draw_brush_controls(
-        ui: &mut eframe::egui::Ui,
-        brush_kit: &mut SpatialBrushKit,
-        params: &Arc<RwLock<HashMap<String, f64>>>,
-        sculpt_state: &Arc<RwLock<SculptStatePayload>>,
-        snapshot: Option<&StateSnapshot>,
-    ) -> Vec<SimCommand> {
-        draw_lbm_brush_panel(ui, brush_kit, params, sculpt_state, snapshot)
-    }
-
-    fn record_ui_brush_stroke(
-        stroke: &BrushStroke,
-        params: &HashMap<String, f64>,
-        _formula: Option<&crate::async_sim::unified::CompiledFormulaPayload>,
-        sculpt_state: &mut SculptStatePayload,
-    ) {
-        record_stroke_in_rle(stroke, params, sculpt_state);
-    }
-
-    fn apply_sculpt_payload(
-        &mut self,
-        payload: &SculptStatePayload,
-        params: &HashMap<String, f64>,
-    ) {
-        if apply_lbm_sculpt_payload(
-            &mut self.solver,
-            &mut self.active_profile_param,
-            &mut self.stamped_airfoil,
-            payload,
-            params,
-        ) {
-            self.refresh_diagnostics();
-        }
-    }
-
-    fn export_sculpt_payload(&self, _params: &HashMap<String, f64>) -> SculptStatePayload {
-        SculptStatePayload {
-            rle_mask: export_solver_rle(&self.solver),
-            sparse_potential: Vec::new(),
-        }
-    }
-
-    fn parameters() -> HashMap<String, ParameterConstraint> {
-        super::lbm_presets::lbm_parameters()
-    }
-
-    fn parameter_label(name: &str) -> String {
-        super::lbm_presets::lbm_parameter_label(name)
-    }
-
-    fn parameter_choices(name: &str) -> &'static [(&'static str, f64)] {
-        super::lbm_presets::lbm_parameter_choices(name)
-    }
-
-    fn atlas_axis_pairs() -> &'static [(&'static str, &'static str)] {
-        LBM_ATLAS_AXIS_PAIRS
-    }
-
-    fn build_atlas_cartographer(
-        params: &HashMap<String, f64>,
-        axis_keys: (&'static str, &'static str),
-    ) -> Option<Arc<dyn RegimeCartographer>> {
-        LbmCartographer::from_params(params, axis_keys)
-            .map(|c| Arc::new(c) as Arc<dyn RegimeCartographer>)
-    }
-
-    fn name() -> &'static str {
-        "Lattice Boltzmann (Demo)"
+    /// Resets fluid populations to uniform inflow equilibrium around the current obstacle mask.
+    pub fn reset_flow_field(&mut self) {
+        let cfg_arc = Arc::clone(&self.shared_config);
+        let lat_arc = Arc::clone(&self.shared_lattice);
+        self.worker
+            .reset_or_respawn(|| LbmRunner::new(cfg_arc, lat_arc));
+        self.gif_solver = None;
+        self.telemetry = compute_aerodynamics(
+            (0.0, 0.0),
+            self.inflow_speed,
+            self.viscosity,
+            &self.obstacles,
+            0,
+        );
+        self.dirty = true;
     }
 }
 
-#[path = "lattice_boltzmann/render.rs"]
-pub(crate) mod render;
-#[cfg(test)]
-#[path = "lbm_tests.rs"]
-mod tests;
+impl InteractiveTool for LatticeBoltzmannTool {
+    fn theory(&self) -> &dyn TheoryDescribable {
+        self
+    }
+
+    fn name(&self) -> &'static str {
+        "Lattice Boltzmann Wind Tunnel"
+    }
+
+    fn domain(&self) -> &'static str {
+        "fluid_dynamics"
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
+    }
+
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        if let Some(ref stroke) = ctx.brush_stroke {
+            self.apply_brush_stroke(stroke);
+        }
+    }
+
+    fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
+        LBM_ATLAS_AXIS_PAIRS
+    }
+
+    fn active_atlas_coords(&self, _axis_keys: (&'static str, &'static str)) -> (f64, f64) {
+        (self.viscosity, self.inflow_speed)
+    }
+
+    fn atlas_context_signature(&self, _axis_keys: (&'static str, &'static str)) -> u64 {
+        self.mask_generation
+    }
+
+    fn build_atlas_cartographer(
+        &self,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<Arc<dyn RegimeCartographer>> {
+        self.build_wind_tunnel_cartographer(axis_keys)
+    }
+
+    fn apply_atlas_teleport(&mut self, ev: AtlasTeleportEvent) {
+        self.apply_wind_tunnel_teleport(ev);
+    }
+
+    fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {
+        match challenge_id {
+            None => {
+                self.active_challenge = None;
+                Ok(())
+            }
+            Some(CHALLENGE_LBM_FAIRING) => {
+                self.active_challenge = Some(CHALLENGE_LBM_FAIRING);
+                self.enforce_challenge_invariants_and_score();
+                self.sync_obstacles_to_worker();
+                Ok(())
+            }
+            Some(other) => Err(format!(
+                "Unsupported challenge '{other}' for LatticeBoltzmannTool"
+            )),
+        }
+    }
+
+    fn active_challenge_id(&self) -> Option<&'static str> {
+        self.active_challenge
+    }
+
+    fn evaluate_challenge(&self) -> Option<ChallengeEvaluation> {
+        self.active_challenge?;
+        self.challenge_evaluator
+            .as_ref()
+            .map(LbmFairingEvaluator::challenge_evaluation)
+    }
+
+    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
+        crate::framework::ExportCapabilities::raster_only()
+    }
+
+    fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        let u0 = if self.inflow_speed.is_finite() {
+            self.inflow_speed.clamp(INFLOW_SPEED_MIN, INFLOW_SPEED_MAX)
+        } else {
+            DEFAULT_INFLOW_SPEED
+        };
+        if let Some(ref solver) = self.gif_solver {
+            return Some(render_lbm_color_image(
+                solver,
+                u0,
+                self.view_mode,
+                self.high_contrast,
+            ));
+        }
+        Some(render_lbm_color_image(
+            &self.build_snapshot_solver(),
+            u0,
+            self.view_mode,
+            self.high_contrast,
+        ))
+    }
+
+    fn step_simulation(&mut self) {
+        let u0 = self.inflow_speed.clamp(INFLOW_SPEED_MIN, INFLOW_SPEED_MAX);
+        let visc = self.viscosity.clamp(VISCOSITY_MIN, VISCOSITY_MAX);
+        if self.gif_solver.is_none() {
+            self.gif_solver = Some(self.build_snapshot_solver());
+        }
+        let solver = self.gif_solver.as_mut().expect("initialized gif_solver");
+        solver.collision_model.tau = 3.0 * visc + 0.5;
+        sync_solver_obstacles(solver, &self.obstacles);
+        let sub_steps = self
+            .steps_per_frame
+            .clamp(STEPS_PER_FRAME_MIN, STEPS_PER_FRAME_MAX)
+            .max(8);
+        for _ in 0..sub_steps {
+            solver.set_inlet(0, 0, LBM_INLET_GUARD_COLS, LBM_HEIGHT, u0, 0.0);
+            solver.step();
+            apply_outflow_right_boundary(solver);
+        }
+        let net_force = solver.net_obstacle_force();
+        self.telemetry = compute_aerodynamics(
+            net_force,
+            u0,
+            visc,
+            &self.obstacles,
+            self.telemetry.step_count + sub_steps,
+        );
+        self.dirty = true;
+    }
+
+    fn has_finite_parameters(&self) -> bool {
+        self.current_tool_state().validate().is_ok()
+    }
+
+    fn save_state(&self) -> Option<String> {
+        serde_json::to_string(&self.current_tool_state()).ok()
+    }
+
+    fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        let parsed: LbmToolState = serde_json::from_str(state)
+            .map_err(|e| format!("Invalid LBM wind-tunnel state: {e}"))?;
+        let decoded_obstacles = parsed.validate()?;
+        self.viscosity = parsed.viscosity;
+        self.inflow_speed = parsed.inflow_speed;
+        self.steps_per_frame = parsed.steps_per_frame;
+        self.brush_radius = parsed.brush_radius;
+        self.area_budget = parsed.area_budget;
+        self.view_mode = parsed.view_mode;
+        self.obstacles = decoded_obstacles;
+        self.enforce_challenge_invariants_and_score();
+        self.mask_generation = self.mask_generation.wrapping_add(1);
+        {
+            let mut cfg = self
+                .shared_config
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            cfg.viscosity = self.viscosity;
+            cfg.inflow_speed = self.inflow_speed;
+            cfg.steps_per_frame = self.steps_per_frame;
+            cfg.view_mode = self.view_mode;
+            cfg.obstacles.clone_from(&self.obstacles);
+            cfg.mask_generation = self.mask_generation;
+        }
+        self.reset_flow_field();
+        Ok(())
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        self.viscosity = if self.viscosity.is_finite() {
+            self.viscosity.clamp(VISCOSITY_MIN, VISCOSITY_MAX)
+        } else {
+            DEFAULT_VISCOSITY
+        };
+        self.inflow_speed = if self.inflow_speed.is_finite() {
+            self.inflow_speed.clamp(INFLOW_SPEED_MIN, INFLOW_SPEED_MAX)
+        } else {
+            DEFAULT_INFLOW_SPEED
+        };
+        self.steps_per_frame = self
+            .steps_per_frame
+            .clamp(STEPS_PER_FRAME_MIN, STEPS_PER_FRAME_MAX);
+        self.brush_radius = self.brush_radius.clamp(BRUSH_RADIUS_MIN, BRUSH_RADIUS_MAX);
+        self.area_budget = self.area_budget.clamp(AREA_BUDGET_MIN, AREA_BUDGET_MAX);
+        self.enforce_current_budget();
+        self.push_shared_config();
+        self.reset_flow_field();
+        true
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+
+    fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let ctx = parent_ui.ctx().clone();
+        let is_hc = crate::app::ThemeMode::from_visuals(parent_ui.visuals())
+            == crate::app::ThemeMode::HighContrast;
+        if self.high_contrast != is_hc {
+            self.high_contrast = is_hc;
+            self.push_shared_config();
+            self.dirty = true;
+        }
+        self.sync_from_worker(&ctx);
+        self.draw_side_panel(parent_ui, &ctx);
+        self.draw_central_panel(parent_ui, &ctx);
+    }
+}

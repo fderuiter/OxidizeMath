@@ -79,6 +79,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Implicit CAD Volumetric Studio, Boundary-Capped Marching Cubes, and Millimeter STL Export](adr/20261123-implicit-cad-capped-isosurface-and-mm-stl.md)
 - [ADR 20261123: Incremental Vietoris-Rips Filtration, Bitset Simplex Discovery, and Distance Reuse](adr/20261123-incremental-vietoris-rips-filtration.md)
 - [ADR 20261123: Static Inventory Tab Registration and Scoped Build Scripts](adr/20261123-inventory-tabs-and-scoped-build-scripts.md)
+- [ADR 20261123: LBM Double-Buffer Swap Consolidation and Zero-Allocation Bounce-Back Force Telemetry](adr/20261123-lbm-bounce-back-force-and-buffer-swap.md)
 - [ADR 20261123: Downsampled 2D FFT Lenia Soliton Viability Atlas, Potential Histograms, and AST Rule Sandboxes](adr/20261123-lenia-viability-atlas-and-sandboxes.md)
 - [ADR 20261123: Zero-Allocation Brent Root-Finder, Market Pricing Devigging, and Execution Calculators](adr/20261123-market-pricing-brent-and-execution-calculators.md)
 - [ADR 20261123: Log-Space HMM Solvers, Zero-Allocation Baum-Welch EM, Validated Serde, and Markov Sequence Workbench](adr/20261123-markov-sequence-and-reliability-workbench.md)
