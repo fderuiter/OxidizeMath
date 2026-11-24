@@ -191,6 +191,14 @@ impl HodgkinHuxleyNeuron {
         self.v
     }
 
+    /// Sets the membrane potential (mV) directly without reallocating channel kinetics.
+    #[verified_engine::verified]
+    pub fn set_v(&mut self, v: f64) {
+        if v.is_finite() {
+            self.v = v;
+        }
+    }
+
     /// Potassium activation gating variable ($0 \le n \le 1$).
     #[verified_engine::verified]
     pub fn n(&self) -> f64 {

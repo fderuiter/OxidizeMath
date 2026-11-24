@@ -6,10 +6,11 @@ pub mod atlas;
 
 #[cfg(test)]
 pub use atlas::HodgkinHuxleyRegime;
+use atlas::HodgkinHuxleyUiExtension;
 pub use atlas::{HodgkinHuxleyCartographer, HH_ATLAS_AXIS_PAIRS};
 
 use crate::async_sim::atlas::RegimeCartographer;
-use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
+use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool, UnifiedUiExtension};
 use crate::async_sim::{CheckpointParams, CheckpointPayload, StateSnapshot, TimeTravelCheckpoint};
 use math_explorer::biology::neuroscience::{
     HodgkinHuxleyModel, HodgkinHuxleyParameters, HodgkinHuxleyState,
@@ -164,6 +165,10 @@ impl crate::framework::recovery::FiniteStateGuard for HodgkinHuxleyUnified {
 impl UnifiedModel for HodgkinHuxleyUnified {
     fn domain() -> &'static str {
         "neuroscience"
+    }
+
+    fn create_ui_extension() -> Option<Box<dyn UnifiedUiExtension>> {
+        Some(Box::new(HodgkinHuxleyUiExtension))
     }
 
     fn new(params: &HashMap<String, f64>) -> Self {
@@ -432,28 +437,6 @@ inventory::submit! {
         domain: "neuroscience",
         tags: &["action potential", "conductance", "ion channel", "membrane", "neuron"],
         build: || Box::new(UnifiedSimTool::<HodgkinHuxleyUnified>::new()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for HodgkinHuxleyUnified {
-    fn theory_description(&self) -> String {
-        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).theory_description()
-    }
-
-    fn phonetic_description(&self) -> String {
-        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).phonetic_description()
-    }
-
-    fn theory_citation(&self) -> String {
-        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).theory_citation()
-    }
-
-    fn available_descriptions(&self) -> HashMap<String, String> {
-        HodgkinHuxleyModel::new(HodgkinHuxleyParameters::default(), 0.0).available_descriptions()
-    }
-
-    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        Self::parameters()
     }
 }
 

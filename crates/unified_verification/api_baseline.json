@@ -2964,6 +2964,12 @@
       "signature": "pub use thickness :: cortical_thickness"
     },
     {
+      "signature": "pub use thickness :: cortical_thickness_batch"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_batch_into"
+    },
+    {
       "signature": "pub use thickness :: cortical_thickness_indexed"
     },
     {
@@ -3058,6 +3064,12 @@
   "crates/domain_applied/src/applied/freesurfer/thickness.rs": [
     {
       "signature": "pub fn cortical_thickness (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & Surface , _ : & Surface ,) -> f64"
+    },
+    {
+      "signature": "pub fn cortical_thickness_batch (_ : & Surface , _ : & Surface) -> Vec < f64 >"
+    },
+    {
+      "signature": "pub fn cortical_thickness_batch_into (_ : & Surface , _ : & Surface , _ : & mut [f64] ,)"
     },
     {
       "signature": "pub fn cortical_thickness_indexed (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & FlatSpatialGrid < '_ > , _ : & FlatSpatialGrid < '_ > ,) -> f64"
@@ -4822,6 +4834,26 @@
       "signature": "pub struct LaplaceBeltramiDiffusion2D"
     }
   ],
+  "crates/domain_biology/src/biology/diffusion/manifold.rs": [
+    {
+      "signature": "impl CotangentMeshDiffusion { pub fn from_indexed (_ : & [[f64 ; 3]] , _ : & [[usize ; 3]]) -> Self }"
+    },
+    {
+      "signature": "impl CotangentMeshDiffusion { pub fn from_mesh (_ : & Mesh) -> Self }"
+    },
+    {
+      "signature": "impl CotangentMeshDiffusion { pub fn laplacian (& self) -> & CotangentLaplacian }"
+    },
+    {
+      "signature": "impl CotangentMeshDiffusion { pub fn new (_ : CotangentLaplacian) -> Self }"
+    },
+    {
+      "signature": "impl CotangentMeshDiffusion { pub fn num_vertices (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct CotangentMeshDiffusion"
+    }
+  ],
   "crates/domain_biology/src/biology/diffusion/mod.rs": [
     {
       "signature": "pub trait SpatialDiffusion < const N : usize >"
@@ -4858,6 +4890,9 @@
     },
     {
       "signature": "pub use laplace_beltrami :: LaplaceBeltramiDiffusion2D"
+    },
+    {
+      "signature": "pub use manifold :: CotangentMeshDiffusion"
     }
   ],
   "crates/domain_biology/src/biology/evolution.rs": [
@@ -5618,6 +5653,56 @@
       "signature": "pub struct TuringState < const N : usize = 2 >"
     }
   ],
+  "crates/domain_biology/src/biology/neuroscience/cortical_sheet.rs": [
+    {
+      "signature": "impl CorticalSheetRunner { pub fn add_stimulus (& mut self , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn clear_stimulus (& mut self) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn depolarize_vertex (& mut self , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn laplacian (& self) -> & CotangentLaplacian }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn neuron (& self , _ : usize) -> & HodgkinHuxleyNeuron }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn new (_ : CotangentLaplacian , _ : & [f64] , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn num_vertices (& self) -> usize }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn potentials (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn set_laplacian (& mut self , _ : CotangentLaplacian) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn set_sheet_conductance (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn set_stimulus (& mut self , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn sheet_conductance (& self) -> f64 }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn thickness_weights (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn update_thickness_map (& mut self , _ : & [f64] , _ : f64 ,) }"
+    },
+    {
+      "signature": "pub struct CorticalSheetRunner"
+    }
+  ],
   "crates/domain_biology/src/biology/neuroscience/kinetics.rs": [
     {
       "signature": "pub struct StandardKinetics"
@@ -5693,6 +5778,9 @@
   ],
   "crates/domain_biology/src/biology/neuroscience/mod.rs": [
     {
+      "signature": "pub use cortical_sheet :: CorticalSheetRunner"
+    },
+    {
       "signature": "pub use kinetics :: GatingKinetics"
     },
     {
@@ -5755,6 +5843,9 @@
     },
     {
       "signature": "impl HodgkinHuxleyNeuron { pub fn set_n (& mut self , _ : f64) -> Result < () , HodgkinHuxleyError > }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyNeuron { pub fn set_v (& mut self , _ : f64) }"
     },
     {
       "signature": "impl HodgkinHuxleyNeuron { pub fn try_new_with_params (_ : f64 , _ : HodgkinHuxleyParameters ,) -> Result < Self , HodgkinHuxleyError > }"
@@ -14520,6 +14611,53 @@
       "signature": "pub struct BuckledSurfaceFlow"
     }
   ],
+  "crates/pure_math/src/pure_math/differential_geometry/cotangent_mesh.rs": [
+    {
+      "signature": "impl CotangentLaplacian { pub fn apply (& self , _ : & [f64] , _ : & mut [f64]) }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn apply_at (& self , _ : & [f64] , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn compute_mean_curvature (& self , _ : & [[f64 ; 3]] , _ : & mut [f64]) }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn from_indexed (_ : & [[f64 ; 3]] , _ : & [[usize ; 3]]) -> Self }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn from_mesh (_ : & Mesh) -> Self }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn inv_vertex_area (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn mean_edge_length (& self) -> f64 }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn neighbors (& self , _ : usize) -> & [usize] }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn nnz (& self) -> usize }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn num_vertices (& self) -> usize }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn row_weights (& self , _ : usize) -> & [f64] }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn step_heat_euler (& self , _ : & [f64] , _ : & mut [f64] , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn vertex_area (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn vertex_areas (& self) -> & [f64] }"
+    },
+    {
+      "signature": "pub struct CotangentLaplacian"
+    }
+  ],
   "crates/pure_math/src/pure_math/differential_geometry/heat_equation.rs": [
     {
       "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn new (_ : & 'a S , _ : f64 , _ : (f64 , f64) , _ : (f64 , f64) , _ : (usize , usize) , _ : impl Fn (f64 , f64) -> f64 ,) -> Self }"
@@ -14558,6 +14696,11 @@
     },
     {
       "signature": "pub use super :: buckled_flow :: SurfaceTopology"
+    }
+  ],
+  "crates/pure_math/src/pure_math/differential_geometry/mod.rs": [
+    {
+      "signature": "pub use cotangent_mesh :: CotangentLaplacian"
     }
   ],
   "crates/pure_math/src/pure_math/differential_geometry/operators.rs": [
@@ -19994,6 +20137,15 @@
       "signature": "pub use diagnostics :: Severity"
     },
     {
+      "signature": "pub use domain_applied :: applied :: freesurfer :: cortical_thickness_batch"
+    },
+    {
+      "signature": "pub use domain_biology :: biology :: diffusion :: CotangentMeshDiffusion"
+    },
+    {
+      "signature": "pub use domain_biology :: biology :: neuroscience :: CorticalSheetRunner"
+    },
+    {
       "signature": "pub use math_commons :: fit :: FitModel"
     },
     {
@@ -20021,10 +20173,16 @@
       "signature": "pub use nalgebra :: self"
     },
     {
+      "signature": "pub use oxidize_core :: mesh :: ColoredMesh"
+    },
+    {
       "signature": "pub use oxidize_core :: mesh :: Mesh"
     },
     {
       "signature": "pub use oxidize_core :: mesh :: Point3D"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: VertexColor"
     },
     {
       "signature": "pub use oxidize_core :: rng :: OxidizeRng"
@@ -20037,6 +20195,9 @@
     },
     {
       "signature": "pub use pure_math :: math_types :: Rational"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: differential_geometry :: CotangentLaplacian"
     }
   ]
 }

@@ -118,3 +118,31 @@ fn test_exact_distance_equivalence_random_and_sparse() {
         cortical_thickness_mesh(&surface, &sparse)
     );
 }
+
+#[test]
+fn test_cortical_thickness_batch_matches_scalar_queries() {
+    let mut white = Vec::new();
+    let mut pial = Vec::new();
+    for i in 0..32 {
+        let theta = (i as f64) * 0.2;
+        let r_w = 10.0;
+        let r_p = 12.2 + 0.6 * (3.0 * theta).sin();
+        white.push([r_w * theta.cos(), r_w * theta.sin(), (i as f64) * 0.1]);
+        pial.push([r_p * theta.cos(), r_p * theta.sin(), (i as f64) * 0.1]);
+    }
+    let white_surf = Surface::from_vertices(white);
+    let pial_surf = Surface::from_vertices(pial);
+    let batch = cortical_thickness_batch(&white_surf, &pial_surf);
+    let mut into_buf = vec![0.0; 32];
+    cortical_thickness_batch_into(&white_surf, &pial_surf, &mut into_buf);
+    assert_eq!(batch, into_buf);
+    for (idx, &val) in batch.iter().enumerate() {
+        let scalar = cortical_thickness(
+            &white_surf.vertices[idx],
+            &pial_surf.vertices[idx],
+            &white_surf,
+            &pial_surf,
+        );
+        assert!((val - scalar).abs() < 1e-12);
+    }
+}

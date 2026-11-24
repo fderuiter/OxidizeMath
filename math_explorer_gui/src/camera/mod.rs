@@ -7,6 +7,7 @@ use std::hash::{Hash, Hasher};
 #[cfg(test)]
 use eframe::egui;
 
+mod commands;
 #[path = "../camera_gizmo.rs"]
 mod gizmo;
 mod interaction;

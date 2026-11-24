@@ -71,6 +71,7 @@ fn test_all_6_plot_3d_viewport_tools_hide_2d_plot_chrome() {
         "SpinVisualizer",
         "SurfaceViewer",
         "CurvatureHeatmap",
+        "RiemannianPdeStudio",
         #[cfg(feature = "biology")]
         "SurfaceMorphogenesisTool",
         "Gaussian Splatting",
