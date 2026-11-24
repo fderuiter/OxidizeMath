@@ -1,0 +1,21 @@
+[package]
+name = "math_rng"
+version.workspace = true
+edition = "2024"
+description = "Zero-allocation Tier 0 no_std ChaCha8 PRNG streams, generic IEEE-754 samplers, and 64D static-table QMC views."
+
+[features]
+default = []
+alloc = []
+serde = ["dep:serde", "rand_chacha/serde1"]
+
+[dependencies]
+rand_chacha = { workspace = true, default-features = false }
+rand_core = { workspace = true }
+serde = { version = "1.0.228", default-features = false, features = ["derive"], optional = true }
+
+[dev-dependencies]
+verified_engine = { path = "../../verified_engine" }
+
+[lints]
+workspace = true

@@ -262,7 +262,7 @@ impl SimpsonParadoxLab {
     /// Balances Mild and Severe cohorts via `StratifiedRandomizer<BlockRandomizer>` and seeded RNG.
     pub fn balance_via_stratified_randomizer(&mut self, seed_counter: &mut u64) {
         *seed_counter = seed_counter.wrapping_add(1);
-        let mut rng = OxidizeRng::from_seed(BASE_SEED ^ *seed_counter);
+        let mut rng = OxidizeRng::new(BASE_SEED).with_stream(*seed_counter);
         let Ok(block) = BlockRandomizer::new(4) else {
             return;
         };

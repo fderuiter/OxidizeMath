@@ -20,8 +20,7 @@ use math_explorer::physics::medical::radar_gating::{
 };
 use nalgebra::Point3;
 use num_complex::Complex;
-use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
+use oxidize_core::rng::{sample_closed_open, OxidizeRng};
 use std::f64::consts::PI;
 
 /// Fixed time-series ring length preallocated at startup for zero-allocation stepping.
@@ -182,7 +181,7 @@ impl RadarPipeline {
         self.fit_thoracic_patch(state.rng_seed);
 
         self.clutter_filter = EllipticalFilter::new(state.clutter_window as f64);
-        self.rng = OxidizeRng::new(state.rng_seed ^ 0xA5A5_1234);
+        self.rng = OxidizeRng::new(state.rng_seed).with_stream(2);
         self.sim_time_s = 0.0;
         self.cough_timer_s = 0.0;
         self.nan_fault_active = false;
@@ -221,12 +220,12 @@ impl RadarPipeline {
     }
 
     fn fit_thoracic_patch(&mut self, seed: u64) {
-        let mut patch_rng = OxidizeRng::new(seed ^ 0xBEEF_CAFE);
+        let mut patch_rng = OxidizeRng::new(seed).with_stream(3);
         let coords = [-0.04_f64, 0.0, 0.04];
         let mut pts = Vec::with_capacity(9);
         for &px in &coords {
             for &py in &coords {
-                let sparkle = (rng_unit_f64(&mut patch_rng) - 0.5) * 2.0e-4;
+                let sparkle = (sample_closed_open::<f64, _>(&mut patch_rng) - 0.5) * 2.0e-4;
                 let pz = -0.012 * px * px - 0.008 * py * py + sparkle;
                 pts.push(Point3::new(px, py, pz));
             }
@@ -251,8 +250,10 @@ impl RadarPipeline {
         let clutter_mag =
             state.static_clutter_gain + if self.extra_clutter_active { 1.25 } else { 0.0 };
         let static_clutter = Complex::new(clutter_mag * 0.8, -clutter_mag * 0.6);
-        let n_re = (rng_unit_f64(&mut self.rng) - 0.5) * 2.0 * state.noise_sigma * 0.25;
-        let n_im = (rng_unit_f64(&mut self.rng) - 0.5) * 2.0 * state.noise_sigma * 0.25;
+        let n_re =
+            (sample_closed_open::<f64, _>(&mut self.rng) - 0.5) * 2.0 * state.noise_sigma * 0.25;
+        let n_im =
+            (sample_closed_open::<f64, _>(&mut self.rng) - 0.5) * 2.0 * state.noise_sigma * 0.25;
         let raw_iq = Complex::new(phase.cos(), phase.sin()) * state.primary_target.rcs
             + static_clutter
             + Complex::new(n_re, n_im);
@@ -481,10 +482,6 @@ fn ratio_pct(active: u64, total: u64) -> f64 {
     } else {
         100.0 * (active as f64) / (total as f64)
     }
-}
-
-fn rng_unit_f64(rng: &mut OxidizeRng) -> f64 {
-    ((rng.next_u64() >> 11) as f64) * (1.0 / ((1_u64 << 53) as f64))
 }
 
 fn push_ring<T: Copy>(buf: &mut [T], item: T) {

@@ -3,7 +3,6 @@ use super::{BilliardTable, GeodesicRay, MAX_BILLIARD_SEGMENTS};
 use crate::pure_math::hyperbolic::{DiskPoint, GeodesicDisk, Psu11, hyperbolic_distance_disk};
 use num_complex::Complex64;
 use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
 
 /// Exact exit collision data for a ray leaving `ray.position` inside `table`.
 #[derive(Clone, Copy, Debug)]
@@ -113,8 +112,7 @@ pub(super) fn tangent_bundle_separation(r1: GeodesicRay, r2: GeodesicRay) -> f64
 /// Samples a deterministic uniform `f64` in `[0.0, 1.0)` from `OxidizeRng`.
 #[verified_engine::verified]
 pub(super) fn uniform_unit_f64(rng: &mut OxidizeRng) -> f64 {
-    const INV_2POW53: f64 = 1.0 / ((1u64 << 53) as f64);
-    let val = ((rng.next_u64() >> 11) as f64) * INV_2POW53;
+    let val: f64 = math_rng::sample_closed_open(rng);
     assert!((0.0..1.0).contains(&val));
     val
 }

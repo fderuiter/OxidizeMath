@@ -8,23 +8,13 @@ use math_explorer::applied::freesurfer::{
     mrf_voxel_posteriors, GlmDesignQr, MriVolume, Surface, TissueClass,
 };
 use nalgebra::{DMatrix, DVector, Vector3};
+use oxidize_core::rng::{sample_closed_open, OxidizeRng, BASE_SEED};
 use std::f64::consts::TAU;
 
-fn deterministic_voxel_noise(ix: usize, iy: usize, iz: usize) -> f64 {
-    let hash_u01 = |seed: u64| -> f64 {
-        let mut z = (ix as u64)
-            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
-            .wrapping_add((iy as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9))
-            .wrapping_add((iz as u64).wrapping_mul(0x94D0_49BB_1331_11EB))
-            .wrapping_add(seed);
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^= z >> 31;
-        (z >> 11) as f64 * (1.0 / ((1u64 << 53) as f64))
-    };
-    let sum3 = hash_u01(0x2545_F491_4F6C_DD1D)
-        + hash_u01(0x517C_C1B7_2722_0A95)
-        + hash_u01(0x9E37_79B1_85EB_CA87);
+fn sample_voxel_noise(rng: &mut OxidizeRng) -> f64 {
+    let sum3 = sample_closed_open::<f64, _>(rng)
+        + sample_closed_open::<f64, _>(rng)
+        + sample_closed_open::<f64, _>(rng);
     (sum3 - 1.5) * 2.0
 }
 
@@ -36,6 +26,7 @@ pub(super) fn synthesize_mri_and_truth(
     let total = MRI_DIMS[0] * MRI_DIMS[1] * MRI_DIMS[2];
     let mut voxels = Vec::with_capacity(total);
     let mut truth = Vec::with_capacity(total);
+    let mut rng = OxidizeRng::new(BASE_SEED).with_stream(7);
 
     for iz in 0..MRI_DIMS[2] {
         for iy in 0..MRI_DIMS[1] {
@@ -68,8 +59,8 @@ pub(super) fn synthesize_mri_and_truth(
                     (0_u8, 30.0)
                 };
                 truth.push(label);
-                let noisy = (clean_t1 + noise_level * deterministic_voxel_noise(ix, iy, iz))
-                    .clamp(2.0, 160.0);
+                let noisy =
+                    (clean_t1 + noise_level * sample_voxel_noise(&mut rng)).clamp(2.0, 160.0);
                 voxels.push(noisy);
             }
         }

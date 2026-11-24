@@ -5,8 +5,7 @@
 
 use super::{GridState, GridWorldEnv, MarkovDecisionProcess, Move};
 use math_commons::math_kernel::types::flatten_2d_index;
-use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
+use oxidize_core::rng::{OxidizeRng, sample_closed_open};
 
 /// Minimum supported grid width or height for [`SculptedGridMdp`].
 pub const MIN_RL_GRID_DIM: i32 = 2;
@@ -418,7 +417,7 @@ impl SculptedGridMdp {
     ) -> (GridState, f64, bool, f32) {
         let role = self.cell_role(current_state);
         let outcomes = self.transition_outcomes(current_state, action);
-        let u01 = ((rng.next_u64() >> 11) as f64) * (1.0 / ((1_u64 << 53) as f64));
+        let u01: f64 = sample_closed_open(rng);
         let (next_state, slipped) = if outcomes[1].1 > 0.0 && u01 >= outcomes[0].1 {
             (outcomes[1].0, true)
         } else {

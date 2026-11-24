@@ -1,18 +1,14 @@
-//! Prime-base Halton low-discrepancy sequence with Cranley-Patterson random shifts.
+//! Prime-base Halton low-discrepancy sequence delegating to [`math_rng::HaltonView`]
+//! with static Faure permutations, stateless hash Owen scrambling, and Cranley-Patterson shifts.
 
 use crate::pure_math::number_theory::primes::is_prime;
 use crate::pure_math::statistics::monte_carlo::MonteCarloError;
+use math_rng::{BASE_SEED, HaltonView, fill_cranley_patterson_shifts, torus_shift_open};
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
 
-/// Maximum coordinate dimension supported by [`HaltonSequence::new`] using built-in primes.
-pub const MAX_HALTON_DIM: usize = 64;
-
-/// Guard margin keeping open-unit-cube coordinates strictly inside `(0.0, 1.0)`.
-pub(crate) const OPEN_UNIT_EPS: f64 = 1e-15;
-
-/// Scale factor converting a 53-bit integer draw into `[0.0, 1.0)`.
-const INV_TWO_POW_53: f64 = 1.0 / ((1_u64 << 53) as f64);
+/// Maximum coordinate dimension supported by [`HaltonSequence::new`] (`64`).
+pub const MAX_HALTON_DIM: usize = math_rng::MAX_HALTON_DIM;
 
 /// First 64 prime numbers used as pairwise-coprime radical-inverse bases.
 pub const FIRST_64_PRIMES: [u64; MAX_HALTON_DIM] = [
@@ -22,17 +18,18 @@ pub const FIRST_64_PRIMES: [u64; MAX_HALTON_DIM] = [
     311,
 ];
 
-/// Converts an `OxidizeRng` 64-bit word into a uniform `[0.0, 1.0)` float without heap allocation.
-#[inline]
-#[verified_engine::verified]
-pub(crate) fn next_unit_closed_open(rng: &mut OxidizeRng) -> f64 {
-    ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53
-}
-
-/// Evaluates the radical-inverse function $\Phi_b(k)$ in base `base` for index `k`.
+/// Evaluates the radical-inverse function $\Phi_b(k)$ in `base >= 2` for index `k`.
 #[inline]
 #[verified_engine::verified]
 pub fn radical_inverse(mut index: u64, base: u64) -> f64 {
+    if let Ok(b32) = u32::try_from(base)
+        && let Ok(val) = math_rng::radical_inverse(index, b32)
+    {
+        return val;
+    }
+    if base < 2 {
+        return 0.0;
+    }
     let inv_base = 1.0 / (base as f64);
     let mut factor = inv_base;
     let mut acc = 0.0;
@@ -45,16 +42,19 @@ pub fn radical_inverse(mut index: u64, base: u64) -> f64 {
     acc
 }
 
-/// Preallocated prime-base Halton quasi-Monte Carlo sequence with optional Cranley-Patterson shift.
+/// Preallocated 64D prime-base Halton quasi-Monte Carlo sequence delegating canonical prime axes
+/// to [`math_rng::HaltonView`] (static Faure permutations + stateless hash Owen scrambling).
 #[derive(Debug, Clone)]
 pub struct HaltonSequence {
     bases: Vec<u64>,
     shift: Vec<f64>,
     index: u64,
+    scramble_seed: Option<u64>,
+    canonical_primes: bool,
 }
 
 impl HaltonSequence {
-    /// Constructs an unshifted `dimension`-dimensional Halton sequence starting at index `1`.
+    /// Constructs a scrambled `dimension`-dimensional Halton sequence starting at index `1`.
     #[verified_engine::verified]
     pub fn new(dimension: usize) -> Result<Self, MonteCarloError> {
         if dimension == 0 || dimension > MAX_HALTON_DIM {
@@ -67,6 +67,8 @@ impl HaltonSequence {
             bases: FIRST_64_PRIMES[..dimension].to_vec(),
             shift: vec![0.0; dimension],
             index: 1,
+            scramble_seed: Some(BASE_SEED),
+            canonical_primes: true,
         })
     }
 
@@ -84,11 +86,23 @@ impl HaltonSequence {
                 return Err(MonteCarloError::InvalidBase { base });
             }
         }
+        let canonical = bases == &FIRST_64_PRIMES[..bases.len()];
         Ok(Self {
             bases: bases.to_vec(),
             shift: vec![0.0; bases.len()],
             index: 1,
+            scramble_seed: canonical.then_some(BASE_SEED),
+            canonical_primes: canonical,
         })
+    }
+
+    /// Configures stateless hash Owen scrambling (`Some(seed)`) or disables it (`None`).
+    #[inline]
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn with_scramble_seed(mut self, seed: Option<u64>) -> Self {
+        self.scramble_seed = seed;
+        self
     }
 
     /// Coordinate dimensionality of the sequence.
@@ -118,12 +132,13 @@ impl HaltonSequence {
         self.index = start_index.max(1);
     }
 
-    /// Draws an independent Cranley-Patterson uniform shift in `[0, 1)^d` from `rng` and rewinds to index `1`.
+    /// Draws an independent Cranley-Patterson shift in `[0, 1)^d` (and fresh Owen scramble seed) and rewinds to index `1`.
     #[verified_engine::verified]
     pub fn apply_cranley_patterson_shift(&mut self, rng: &mut OxidizeRng) {
-        for slot in &mut self.shift {
-            *slot = next_unit_closed_open(rng);
+        if self.canonical_primes && self.scramble_seed.is_some() {
+            self.scramble_seed = Some(rng.next_u64());
         }
+        fill_cranley_patterson_shifts(&mut self.shift, rng);
         self.index = 1;
     }
 
@@ -138,9 +153,21 @@ impl HaltonSequence {
             });
         }
         let idx = index.max(1);
+        if self.canonical_primes {
+            let mut zero_shifts = [0.0_f64; MAX_HALTON_DIM];
+            let view = HaltonView::new(dim, &mut zero_shifts[..dim])
+                .expect("validated dim")
+                .with_scramble_seed(self.scramble_seed);
+            view.point_at(idx, out).expect("validated out len");
+            for (slot, &shift) in out.iter_mut().zip(&self.shift) {
+                if shift != 0.0 {
+                    *slot = torus_shift_open(*slot, shift);
+                }
+            }
+            return Ok(());
+        }
         for ((slot, &base), &shift) in out.iter_mut().zip(&self.bases).zip(&self.shift) {
-            let raw = (radical_inverse(idx, base) + shift).fract();
-            *slot = raw.clamp(OPEN_UNIT_EPS, 1.0 - OPEN_UNIT_EPS);
+            *slot = torus_shift_open(radical_inverse(idx, base), shift);
         }
         Ok(())
     }

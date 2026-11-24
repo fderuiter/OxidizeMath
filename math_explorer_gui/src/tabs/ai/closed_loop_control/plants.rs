@@ -11,8 +11,7 @@ use math_explorer::epidemiology::compartmental::{SEIRModel, SEIRState};
 use math_explorer::nalgebra::Vector3;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState, LorenzSystem};
 use math_explorer::pure_math::analysis::ode::{OdeSystem, RungeKutta4, TimeStepper};
-use math_explorer::rand::RngCore;
-use math_explorer::rng::OxidizeRng;
+use math_explorer::rng::{sample_standard_normal_f64, OxidizeRng};
 
 /// Number of RK4 phase samples along the Viswanath period-1 AB Lorenz unstable periodic orbit.
 pub const LORENZ_UPO_STEPS: usize = 156;
@@ -27,10 +26,7 @@ const SEIR_GAMMA: f64 = 0.12;
 
 /// Generates a deterministic standard normal sample $\mathcal{N}(0, 1)$ via Box-Muller using `OxidizeRng`.
 pub fn sample_standard_normal(rng: &mut OxidizeRng) -> f64 {
-    let u1 =
-        ((rng.next_u64() as f64 + 1.0) / (u64::MAX as f64 + 2.0)).clamp(1.0e-12, 1.0 - 1.0e-12);
-    let u2 = (rng.next_u64() as f64) / (u64::MAX as f64 + 1.0);
-    (-2.0 * u1.ln()).sqrt() * (std::f64::consts::TAU * u2).cos()
+    sample_standard_normal_f64(rng)
 }
 
 /// Telemetry returned by a single zero-allocation plant + EKF step.

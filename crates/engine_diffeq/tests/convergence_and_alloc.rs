@@ -7,7 +7,7 @@ use engine_diffeq::{
     ssa_sample_event,
 };
 use math_commons::math_kernel::types::SolverWorkspace;
-use oxidize_core::rng::OxidizeRng;
+use math_rng::OxidizeRng;
 use verified_engine::engine::VerifiedEngine;
 
 /// Nonlinear hyperbolic-sine SDE whose exact solution is $X_t = \sinh(\operatorname{arsinh}(X_0) + \mu t + \sigma W_t)$.

@@ -21,6 +21,7 @@ pub mod system;
 pub use baoab::{BaoabLangevinSolver, BaoabParams};
 pub use euler_maruyama::EulerMaruyamaSolver;
 pub use jump::ssa_sample_event;
+pub use math_rng::{BASE_SEED, OxidizeRng};
 pub use milstein::MilsteinSolver;
 pub use sriw1::{CorrelatedWienerIncrement, Sriw1Solver};
 pub use system::{LangevinSystem, SdeSystem, StochasticCalculus};

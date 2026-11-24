@@ -1364,7 +1364,7 @@ name = "engine_diffeq"
 version = "0.4.0"
 dependencies = [
  "math_commons",
- "oxidize_core",
+ "math_rng",
  "rand_core",
  "verified_engine",
 ]
@@ -1381,7 +1381,7 @@ name = "engine_pde"
 version = "0.4.0"
 dependencies = [
  "math_commons",
- "oxidize_core",
+ "math_rng",
  "rand_core",
  "verified_engine",
 ]
@@ -2445,6 +2445,7 @@ dependencies = [
  "federated_registry",
  "math_commons",
  "math_explorer",
+ "math_rng",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -2464,9 +2465,9 @@ dependencies = [
  "diagnostics",
  "engine_linalg",
  "libm",
+ "math_rng",
  "num-complex",
  "num-traits",
- "oxidize_core",
  "rand_core",
  "scientific_metadata",
  "thiserror 2.0.21",
@@ -2531,6 +2532,16 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
  "web-sys",
+]
+
+[[package]]
+name = "math_rng"
+version = "0.4.0"
+dependencies = [
+ "rand_chacha",
+ "rand_core",
+ "serde",
+ "verified_engine",
 ]
 
 [[package]]
@@ -3194,9 +3205,9 @@ dependencies = [
  "futures",
  "getrandom 0.2.17",
  "js-sys",
+ "math_rng",
  "proc-macro2",
  "rand",
- "rand_chacha",
  "scientific_metadata",
  "serde",
  "syn 2.0.119",
@@ -3429,6 +3440,7 @@ dependencies = [
  "engine_linalg",
  "engine_pde",
  "math_commons",
+ "math_rng",
  "nalgebra 0.34.2",
  "num-complex",
  "num-traits",
@@ -3513,6 +3525,7 @@ checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
 dependencies = [
  "ppv-lite86",
  "rand_core",
+ "serde",
 ]
 
 [[package]]
