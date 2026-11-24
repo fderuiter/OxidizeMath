@@ -358,6 +358,7 @@ fn default_tool_priority(domain: &str, id: &str) -> u8 {
         | ("clinical_trials", "PharmacokineticsTool")
         | ("cannibalism", "PopulationStructureTool")
         | ("epidemiology", "SirTool")
+        | ("biochemical", "BiochemicalDynamicsTool")
         | ("ai", "LossLandscapeTool") => 0,
         _ => 1,
     }
