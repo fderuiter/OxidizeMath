@@ -216,8 +216,8 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
         .collect();
     assert_eq!(
         presets.len(),
-        197,
-        "Expected all 197 StarterPresetMetadata entries"
+        200,
+        "Expected all 200 StarterPresetMetadata entries"
     );
 
     for preset in presets {
