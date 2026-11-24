@@ -1,8 +1,6 @@
 //! Number-theory prime-power chords, Ulam quadratic polyrhythms, FRACTRAN register
 //! Kolmogorov modulation, and finite-field elliptic curve torsion sonification.
 
-// theory_verification!
-
 use crate::audio::frame::{
     clamp_freq_hz, SonificationFrame, VoiceSpec, WaveformPreset, MAX_VOICES,
 };

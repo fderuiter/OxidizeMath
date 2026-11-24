@@ -353,7 +353,6 @@ fn verify_framework_export_modal(
 }
 
 #[test]
-#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 fn test_all_six_pane_modals_across_all_four_viewport_layouts() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     for layout in [
@@ -390,7 +389,6 @@ fn test_all_six_pane_modals_across_all_four_viewport_layouts() {
 }
 
 #[test]
-#[cfg(all(feature = "pure_math", feature = "ai", feature = "epidemiology"))]
 fn test_covered_data_table_ignores_arrows_and_copy_in_full_app() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let ctx = Context::default();

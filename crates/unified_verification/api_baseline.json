@@ -2964,6 +2964,12 @@
       "signature": "pub use thickness :: cortical_thickness"
     },
     {
+      "signature": "pub use thickness :: cortical_thickness_batch"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_batch_into"
+    },
+    {
       "signature": "pub use thickness :: cortical_thickness_indexed"
     },
     {
@@ -3058,6 +3064,12 @@
   "crates/domain_applied/src/applied/freesurfer/thickness.rs": [
     {
       "signature": "pub fn cortical_thickness (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & Surface , _ : & Surface ,) -> f64"
+    },
+    {
+      "signature": "pub fn cortical_thickness_batch (_ : & Surface , _ : & Surface) -> Vec < f64 >"
+    },
+    {
+      "signature": "pub fn cortical_thickness_batch_into (_ : & Surface , _ : & Surface , _ : & mut [f64] ,)"
     },
     {
       "signature": "pub fn cortical_thickness_indexed (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & FlatSpatialGrid < '_ > , _ : & FlatSpatialGrid < '_ > ,) -> f64"
@@ -4822,6 +4834,26 @@
       "signature": "pub struct LaplaceBeltramiDiffusion2D"
     }
   ],
+  "crates/domain_biology/src/biology/diffusion/manifold.rs": [
+    {
+      "signature": "impl CotangentMeshDiffusion { pub fn from_indexed (_ : & [[f64 ; 3]] , _ : & [[usize ; 3]]) -> Self }"
+    },
+    {
+      "signature": "impl CotangentMeshDiffusion { pub fn from_mesh (_ : & Mesh) -> Self }"
+    },
+    {
+      "signature": "impl CotangentMeshDiffusion { pub fn laplacian (& self) -> & CotangentLaplacian }"
+    },
+    {
+      "signature": "impl CotangentMeshDiffusion { pub fn new (_ : CotangentLaplacian) -> Self }"
+    },
+    {
+      "signature": "impl CotangentMeshDiffusion { pub fn num_vertices (& self) -> usize }"
+    },
+    {
+      "signature": "pub struct CotangentMeshDiffusion"
+    }
+  ],
   "crates/domain_biology/src/biology/diffusion/mod.rs": [
     {
       "signature": "pub trait SpatialDiffusion < const N : usize >"
@@ -4858,6 +4890,9 @@
     },
     {
       "signature": "pub use laplace_beltrami :: LaplaceBeltramiDiffusion2D"
+    },
+    {
+      "signature": "pub use manifold :: CotangentMeshDiffusion"
     }
   ],
   "crates/domain_biology/src/biology/evolution.rs": [
@@ -5618,6 +5653,56 @@
       "signature": "pub struct TuringState < const N : usize = 2 >"
     }
   ],
+  "crates/domain_biology/src/biology/neuroscience/cortical_sheet.rs": [
+    {
+      "signature": "impl CorticalSheetRunner { pub fn add_stimulus (& mut self , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn clear_stimulus (& mut self) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn depolarize_vertex (& mut self , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn laplacian (& self) -> & CotangentLaplacian }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn neuron (& self , _ : usize) -> & HodgkinHuxleyNeuron }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn new (_ : CotangentLaplacian , _ : & [f64] , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn num_vertices (& self) -> usize }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn potentials (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn set_laplacian (& mut self , _ : CotangentLaplacian) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn set_sheet_conductance (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn set_stimulus (& mut self , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn sheet_conductance (& self) -> f64 }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn thickness_weights (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn update_thickness_map (& mut self , _ : & [f64] , _ : f64 ,) }"
+    },
+    {
+      "signature": "pub struct CorticalSheetRunner"
+    }
+  ],
   "crates/domain_biology/src/biology/neuroscience/kinetics.rs": [
     {
       "signature": "pub struct StandardKinetics"
@@ -5693,6 +5778,9 @@
   ],
   "crates/domain_biology/src/biology/neuroscience/mod.rs": [
     {
+      "signature": "pub use cortical_sheet :: CorticalSheetRunner"
+    },
+    {
       "signature": "pub use kinetics :: GatingKinetics"
     },
     {
@@ -5755,6 +5843,9 @@
     },
     {
       "signature": "impl HodgkinHuxleyNeuron { pub fn set_n (& mut self , _ : f64) -> Result < () , HodgkinHuxleyError > }"
+    },
+    {
+      "signature": "impl HodgkinHuxleyNeuron { pub fn set_v (& mut self , _ : f64) }"
     },
     {
       "signature": "impl HodgkinHuxleyNeuron { pub fn try_new_with_params (_ : f64 , _ : HodgkinHuxleyParameters ,) -> Result < Self , HodgkinHuxleyError > }"
@@ -7338,6 +7429,9 @@
       "signature": "impl FigureEightThreeBody { pub fn figure_eight_initial_state () -> ArrayState < 12 > }"
     },
     {
+      "signature": "impl FigureEightThreeBody { pub fn perturbed_figure_eight (_ : f64 , _ : f64) -> ArrayState < 12 > }"
+    },
+    {
       "signature": "impl FigureEightThreeBody { pub fn seed_on_poincare_section (& self , _ : f64 , _ : f64) -> Option < ArrayState < 12 > > }"
     },
     {
@@ -7603,6 +7697,9 @@
     },
     {
       "signature": "pub struct HenonHeiles"
+    },
+    {
+      "signature": "pub type HenonHeilesSystem = HenonHeiles"
     }
   ],
   "crates/domain_physics/src/physics/chaos/logistic.rs": [
@@ -7662,13 +7759,57 @@
   ],
   "crates/domain_physics/src/physics/chaos/metrics.rs": [
     {
+      "signature": "pub fn array_lyapunov_exponent < const N : usize , S , Sol > (_ : & S , _ : & mut Sol , _ : ArrayState < N > , _ : f64 , _ : usize , _ : f64 ,) -> Option < f64 > where S : OdeSystem < ArrayState < N > > + ? Sized , Sol : Solver < ArrayState < N > > ,"
+    },
+    {
       "signature": "pub fn logistic_lyapunov (_ : f64 , _ : f64 , _ : usize) -> f64"
     },
     {
       "signature": "pub fn lorenz_lyapunov < S , Sol > (_ : & S , _ : & mut Sol , _ : Vector3 < f64 > , _ : f64 , _ : usize , _ : f64 ,) -> Result < f64 , ChaosError > where S : OdeSystem < Vector3 < f64 > > + ? Sized , Sol : Solver < Vector3 < f64 > > ,"
+    },
+    {
+      "signature": "pub fn lyapunov_exponent_4d < S , Sol > (_ : & S , _ : & mut Sol , _ : ArrayState < 4 > , _ : f64 , _ : usize , _ : f64 ,) -> Option < f64 > where S : OdeSystem < ArrayState < 4 > > + ? Sized , Sol : Solver < ArrayState < 4 > > ,"
+    },
+    {
+      "signature": "pub fn lyapunov_exponent_6d < S , Sol > (_ : & S , _ : & mut Sol , _ : ArrayState < 6 > , _ : f64 , _ : usize , _ : f64 ,) -> Option < f64 > where S : OdeSystem < ArrayState < 6 > > + ? Sized , Sol : Solver < ArrayState < 6 > > ,"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/mod.rs": [
+    {
+      "signature": "pub use double_pendulum :: DoublePendulum"
+    },
+    {
+      "signature": "pub use henon_heiles :: HenonHeiles"
+    },
+    {
+      "signature": "pub use henon_heiles :: HenonHeilesSystem"
+    },
+    {
+      "signature": "pub use three_body :: ThreeBodyChoreography"
     }
   ],
   "crates/domain_physics/src/physics/chaos/poincare.rs": [
+    {
+      "signature": "impl < const CAP : usize > PoincareRingBuffer < CAP > { pub const fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl < const CAP : usize > PoincareRingBuffer < CAP > { pub const fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < const CAP : usize > PoincareRingBuffer < CAP > { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "impl < const CAP : usize > PoincareRingBuffer < CAP > { pub fn clear (& mut self) }"
+    },
+    {
+      "signature": "impl < const CAP : usize > PoincareRingBuffer < CAP > { pub fn get (& self , _ : usize) -> Option < PoincarePoint > }"
+    },
+    {
+      "signature": "impl < const CAP : usize > PoincareRingBuffer < CAP > { pub fn push (& mut self , _ : PoincarePoint) }"
+    },
+    {
+      "signature": "impl < const CAP : usize > PoincareRingBuffer < CAP > { pub fn push_crossing < const N : usize > (& mut self , _ : & PoincareCrossing < N >) }"
+    },
     {
       "signature": "impl < const N : usize > PoincareSection < N > { pub fn detect_crossing (& self , _ : f64 , _ : f64 , _ : & ArrayState < N > , _ : & ArrayState < N > , _ : & ArrayState < N > , _ : & ArrayState < N > ,) -> Option < PoincareCrossing < N > > }"
     },
@@ -7688,7 +7829,24 @@
       "signature": "pub struct PoincareCrossing < const N : usize >"
     },
     {
+      "signature": "pub struct PoincarePoint"
+    },
+    {
+      "signature": "pub struct PoincareRingBuffer < const CAP : usize >"
+    },
+    {
       "signature": "pub struct PoincareSection < const N : usize >"
+    }
+  ],
+  "crates/domain_physics/src/physics/chaos/three_body.rs": [
+    {
+      "signature": "pub use crate :: physics :: astrophysics :: nbody :: FIGURE_EIGHT_PERIOD"
+    },
+    {
+      "signature": "pub use crate :: physics :: astrophysics :: nbody :: FigureEightThreeBody"
+    },
+    {
+      "signature": "pub use crate :: physics :: astrophysics :: nbody :: FigureEightThreeBody as ThreeBodyChoreography"
     }
   ],
   "crates/domain_physics/src/physics/fluid_dynamics/analysis.rs": [
@@ -11752,6 +11910,9 @@
       "signature": "pub trait Sample2D"
     },
     {
+      "signature": "pub trait Sample2D { fn advance_slice_plateau (_ : & [Self] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 ,) -> usize where Self : Sized , }"
+    },
+    {
       "signature": "pub trait Sample2D { fn sample_x (& self) -> f64 }"
     },
     {
@@ -11851,6 +12012,12 @@
   "crates/oxidize_core/src/ast_visitor.rs": [
     {
       "signature": "impl AstVisitor { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl AstVisitor { pub fn with_test_scope (_ : bool) -> Self }"
+    },
+    {
+      "signature": "pub fn is_dedicated_test_path (_ : & Path) -> bool"
     },
     {
       "signature": "pub struct AstVisitor"
@@ -13454,15 +13621,50 @@
       "signature": "pub struct PhasePoint2D"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/ode/implicit_midpoint.rs": [
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub const DEFAULT_MAX_ITERS : usize }"
+    },
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub const MAX_ALLOWED_ITERS : usize }"
+    },
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub const fn max_iters (& self) -> usize }"
+    },
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub fn new (_ : & State) -> Self }"
+    },
+    {
+      "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub fn with_max_iters (_ : & State , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize > ImplicitMidpoint < ArrayState < N > > { pub fn try_step_array < S > (& mut self , _ : & S , _ : f64 , _ : & mut ArrayState < N > , _ : f64 ,) -> bool where S : OdeSystem < ArrayState < N > > + ? Sized , }"
+    },
+    {
+      "signature": "pub const MAX_FIXED_POINT_ITERS : usize"
+    },
+    {
+      "signature": "pub struct ImplicitMidpoint < State >"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/ode/mod.rs": [
     {
-      "signature": "impl IntegrationMethod { pub const ALL : [Self ; 3] }"
+      "signature": "impl IntegrationMethod { pub const ALL : [Self ; 5] }"
+    },
+    {
+      "signature": "impl IntegrationMethod { pub const fn is_symplectic (& self) -> bool }"
     },
     {
       "signature": "impl IntegrationMethod { pub fn name (& self) -> & 'static str }"
     },
     {
       "signature": "pub enum IntegrationMethod"
+    },
+    {
+      "signature": "pub use implicit_midpoint :: ImplicitMidpoint"
+    },
+    {
+      "signature": "pub use implicit_midpoint :: MAX_FIXED_POINT_ITERS"
     },
     {
       "signature": "pub use model :: OdeModel"
@@ -13542,6 +13744,15 @@
     },
     {
       "signature": "pub struct RungeKutta4 < State >"
+    },
+    {
+      "signature": "pub use super :: symplectic :: GaussLegendre4"
+    },
+    {
+      "signature": "pub use super :: symplectic :: ImplicitMidpoint"
+    },
+    {
+      "signature": "pub use super :: symplectic :: MAX_FIXED_POINT_ITERS"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/ode/state.rs": [
@@ -13610,6 +13821,9 @@
       "signature": "impl < State : Clone > GaussLegendre4 < State > { pub const MAX_ALLOWED_SUBSTEPS : usize }"
     },
     {
+      "signature": "impl < State : Clone > GaussLegendre4 < State > { pub const fn max_iters (& self) -> usize }"
+    },
+    {
       "signature": "impl < State : Clone > GaussLegendre4 < State > { pub fn new (_ : & State) -> Self }"
     },
     {
@@ -13619,7 +13833,10 @@
       "signature": "impl < State : Clone > GaussLegendre4 < State > { pub fn with_max_iters (_ : & State , _ : usize) -> Self }"
     },
     {
-      "signature": "impl SymplecticMethod { pub const ALL : [Self ; 3] }"
+      "signature": "impl < const N : usize > GaussLegendre4 < ArrayState < N > > { pub fn try_step_array < S > (& mut self , _ : & S , _ : f64 , _ : & mut ArrayState < N > , _ : f64 ,) -> bool where S : OdeSystem < ArrayState < N > > + ? Sized , }"
+    },
+    {
+      "signature": "impl SymplecticMethod { pub const ALL : [Self ; 4] }"
     },
     {
       "signature": "impl SymplecticMethod { pub fn name (& self) -> & 'static str }"
@@ -13635,6 +13852,12 @@
     },
     {
       "signature": "pub struct Yoshida4 < Coord >"
+    },
+    {
+      "signature": "pub use super :: implicit_midpoint :: ImplicitMidpoint"
+    },
+    {
+      "signature": "pub use super :: implicit_midpoint :: MAX_FIXED_POINT_ITERS"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/ode/traits.rs": [
@@ -14511,6 +14734,53 @@
       "signature": "pub struct BuckledSurfaceFlow"
     }
   ],
+  "crates/pure_math/src/pure_math/differential_geometry/cotangent_mesh.rs": [
+    {
+      "signature": "impl CotangentLaplacian { pub fn apply (& self , _ : & [f64] , _ : & mut [f64]) }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn apply_at (& self , _ : & [f64] , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn compute_mean_curvature (& self , _ : & [[f64 ; 3]] , _ : & mut [f64]) }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn from_indexed (_ : & [[f64 ; 3]] , _ : & [[usize ; 3]]) -> Self }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn from_mesh (_ : & Mesh) -> Self }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn inv_vertex_area (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn mean_edge_length (& self) -> f64 }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn neighbors (& self , _ : usize) -> & [usize] }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn nnz (& self) -> usize }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn num_vertices (& self) -> usize }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn row_weights (& self , _ : usize) -> & [f64] }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn step_heat_euler (& self , _ : & [f64] , _ : & mut [f64] , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn vertex_area (& self , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn vertex_areas (& self) -> & [f64] }"
+    },
+    {
+      "signature": "pub struct CotangentLaplacian"
+    }
+  ],
   "crates/pure_math/src/pure_math/differential_geometry/heat_equation.rs": [
     {
       "signature": "impl < 'a , S : ParametricSurface > HeatEquationSolver < 'a , S > { pub fn new (_ : & 'a S , _ : f64 , _ : (f64 , f64) , _ : (f64 , f64) , _ : (usize , usize) , _ : impl Fn (f64 , f64) -> f64 ,) -> Self }"
@@ -14549,6 +14819,11 @@
     },
     {
       "signature": "pub use super :: buckled_flow :: SurfaceTopology"
+    }
+  ],
+  "crates/pure_math/src/pure_math/differential_geometry/mod.rs": [
+    {
+      "signature": "pub use cotangent_mesh :: CotangentLaplacian"
     }
   ],
   "crates/pure_math/src/pure_math/differential_geometry/operators.rs": [
@@ -19985,6 +20260,15 @@
       "signature": "pub use diagnostics :: Severity"
     },
     {
+      "signature": "pub use domain_applied :: applied :: freesurfer :: cortical_thickness_batch"
+    },
+    {
+      "signature": "pub use domain_biology :: biology :: diffusion :: CotangentMeshDiffusion"
+    },
+    {
+      "signature": "pub use domain_biology :: biology :: neuroscience :: CorticalSheetRunner"
+    },
+    {
       "signature": "pub use math_commons :: fit :: FitModel"
     },
     {
@@ -20012,10 +20296,16 @@
       "signature": "pub use nalgebra :: self"
     },
     {
+      "signature": "pub use oxidize_core :: mesh :: ColoredMesh"
+    },
+    {
       "signature": "pub use oxidize_core :: mesh :: Mesh"
     },
     {
       "signature": "pub use oxidize_core :: mesh :: Point3D"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: VertexColor"
     },
     {
       "signature": "pub use oxidize_core :: rng :: OxidizeRng"
@@ -20028,6 +20318,9 @@
     },
     {
       "signature": "pub use pure_math :: math_types :: Rational"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: differential_geometry :: CotangentLaplacian"
     }
   ]
 }

@@ -38,8 +38,19 @@ pub use atlas::WAVE_ATLAS_AXIS_PAIRS;
 pub use atlas::{QuantumTunnelingCartographer, QuantumTunnelingRegime};
 #[cfg(test)]
 pub use challenge::CHALLENGE_FABRY_PEROT_RESONANCE;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 pub use presets::wave_parameter_label;
+#[cfg(test)]
+use presets::STARTER_PRESET_JSON;
 pub use presets::{wave_parameter_constraints, WavePotentialPreset};
 pub use runner::{WaveData, WaveRunner, WaveSimConfig};
 
@@ -463,31 +474,5 @@ inventory::submit! {
         domain: "quantum",
         tags: &["tunneling", "schrodinger", "wavepacket", "sculpt"],
         build: || Box::new(WaveSimulatorTool::new()),
-    }
-}
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Schr\u00f6dinger Wave Packet",
-    "domain": "quantum",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "potential_type": 1.0,
-    "dt": 0.02
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "wave_sim_starter",
-        title: "Schrödinger Wave Packet",
-        description: "iℏ·∂ψ/∂t = -ℏ²/(2m)∇²ψ + V·ψ: 1D Gaussian wave packet evolution in infinite-well, harmonic, and tunneling barrier potentials.",
-        category: "Wave Mechanics",
-        icon: "🌊",
-        domain: "quantum",
-        tool_name: Some("WaveSimulator"),
-        preset_generator: || STARTER_PRESET_JSON,
     }
 }

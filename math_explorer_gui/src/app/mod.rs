@@ -71,7 +71,16 @@ mod tests_shortcuts;
 mod tests_sim_bus;
 #[cfg(test)]
 mod tests_split_view;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 mod tests_tab_cache_perf;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
@@ -82,14 +91,33 @@ pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
 pub use shared_json::SharedTabJson;
-#[cfg(any(feature = "biology", test))]
+#[cfg(any(
+    feature = "applied",
+    feature = "biology",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
+#[allow(unused_imports)]
+pub use sim_bus::render_topology_source_bar;
+#[cfg(feature = "biology")]
 #[allow(unused_imports)]
 pub use sim_bus::MAX_NEURAL_SHARED_NODES;
+#[cfg(any(
+    feature = "pure_math",
+    all(test, any(feature = "biology", feature = "physics"))
+))]
 #[allow(unused_imports)]
-pub use sim_bus::{
-    render_topology_source_bar, SharedGraphTopology, SharedPointCloud3D, SharedSimulationBus,
-    TopologySource, MAX_SHARED_GRAPH_EDGES, MAX_SHARED_GRAPH_NODES,
-};
+pub use sim_bus::MAX_SHARED_GRAPH_EDGES;
+#[cfg(any(
+    feature = "pure_math",
+    feature = "epidemiology",
+    all(test, any(feature = "biology", feature = "physics"))
+))]
+#[allow(unused_imports)]
+pub use sim_bus::MAX_SHARED_GRAPH_NODES;
+#[allow(unused_imports)]
+pub use sim_bus::{SharedGraphTopology, SharedPointCloud3D, SharedSimulationBus, TopologySource};
 pub use state::{AppState, SplitLayoutMode};
 #[allow(unused_imports)]
 pub use theme::{

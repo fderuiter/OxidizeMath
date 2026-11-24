@@ -52,7 +52,9 @@ const REQUIRED_CHALLENGES: &[(&str, &str)] = &[
     ("epidemiology", "epidemiology_hub_vaccination"),
     ("epidemiology", "epidemiology_bridge_quarantine"),
     ("astrophysics", "astrophysics_mystery_halo_fit"),
+    #[cfg(feature = "pure_math")]
     ("elliptic_curves", "hasse_weil_boundary_p23"),
+    #[cfg(feature = "biology")]
     ("morphogenesis", "lenia_orbium_tail_regeneration"),
     ("game_theory", "myerson_welfare_constrained_reserve"),
     ("game_theory", "first_price_shading_equilibrium"),
@@ -90,7 +92,9 @@ fn test_federated_challenge_registry_and_gallery_tab_switch() {
         ("medical", 2),
         ("epidemiology", 2),
         ("astrophysics", 1),
+        #[cfg(feature = "pure_math")]
         ("elliptic_curves", 1),
+        #[cfg(feature = "biology")]
         ("biology", 1),
         ("game_theory", 2),
         ("solid_state", 2),
