@@ -1,6 +1,108 @@
 #![cfg_attr(any(), verified(opt_out = "metadata"))]
 
 use std::collections::HashMap;
+use std::fmt;
+use std::str::FromStr;
+
+/// Verification and API stability lifecycle tier for mathematical modules and models.
+///
+/// Defaults to [`MaturityTier::Experimental`] so prototypes never claim empirical
+/// validation or zero-allocation certification without passing automated gates.
+///
+/// # Example
+///
+/// ```rust
+/// use scientific_metadata::theory::MaturityTier;
+///
+/// assert_eq!(MaturityTier::default(), MaturityTier::Experimental);
+/// assert!(MaturityTier::Experimental < MaturityTier::Validated);
+/// assert!(MaturityTier::Validated < MaturityTier::Certified);
+/// assert_eq!("Certified".parse::<MaturityTier>(), Ok(MaturityTier::Certified));
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub enum MaturityTier {
+    /// Rapid-iteration research or prototype module with verified compile health.
+    #[default]
+    Experimental,
+    /// Empirically validated module backed by assertion density, seeded determinism, and golden fixtures.
+    Validated,
+    /// Production-locked deterministic module backed by zero-allocation proofs and SemVer API locks.
+    Certified,
+}
+
+impl MaturityTier {
+    /// Canonical PascalCase tier identifier used in manifests and badges.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Experimental => "Experimental",
+            Self::Validated => "Validated",
+            Self::Certified => "Certified",
+        }
+    }
+
+    /// Human-facing badge title for UI pills, tables, and documentation headers.
+    #[must_use]
+    pub const fn badge_label(self) -> &'static str {
+        self.as_str()
+    }
+
+    /// Compact uppercase token for narrow UI rails and dense tool lists.
+    #[must_use]
+    pub const fn short_badge(self) -> &'static str {
+        match self {
+            Self::Experimental => "EXP",
+            Self::Validated => "VAL",
+            Self::Certified => "CERT",
+        }
+    }
+
+    /// Accessible screen-reader announcement describing the verification guarantees of the tier.
+    #[must_use]
+    pub const fn screen_reader_label(self) -> &'static str {
+        match self {
+            Self::Experimental => {
+                "Maturity tier: Experimental — prototype module under fluid API evolution"
+            }
+            Self::Validated => {
+                "Maturity tier: Validated — empirically tested with seeded determinism and golden fixtures"
+            }
+            Self::Certified => {
+                "Maturity tier: Certified — deterministic zero-allocation proofs and SemVer signature lock"
+            }
+        }
+    }
+
+    /// Parses a case-insensitive tier label (`"Experimental"`, `"Validated"`, `"Certified"`).
+    #[must_use]
+    pub fn parse_label(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "experimental" => Some(Self::Experimental),
+            "validated" => Some(Self::Validated),
+            "certified" => Some(Self::Certified),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for MaturityTier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for MaturityTier {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse_label(s).ok_or_else(|| {
+            format!(
+                "invalid maturity tier `{}`; expected `Experimental`, `Validated`, or `Certified`",
+                s.trim()
+            )
+        })
+    }
+}
 
 /// A structured representation of mathematical constraints for a parameter.
 ///
@@ -117,6 +219,13 @@ pub trait TheoryDescribable {
     fn theory_latex_equation(&self) -> Option<String> {
         None
     }
+
+    /// Returns the verification and API stability lifecycle tier for this model.
+    ///
+    /// Defaults to [`MaturityTier::Experimental`] as a safe baseline for uncertified models.
+    fn maturity_tier(&self) -> MaturityTier {
+        MaturityTier::Experimental
+    }
 }
 
 #[cfg(test)]
@@ -198,6 +307,54 @@ mod tests {
         assert_eq!(
             model_eq.theory_latex_equation(),
             Some("E = m c^2".to_string())
+        );
+        assert_eq!(model.maturity_tier(), MaturityTier::Experimental);
+    }
+
+    #[test]
+    fn test_maturity_tier_parsing_ordering_and_override() {
+        assert_eq!(MaturityTier::default(), MaturityTier::Experimental);
+        assert!(MaturityTier::Experimental < MaturityTier::Validated);
+        assert!(MaturityTier::Validated < MaturityTier::Certified);
+        assert_eq!(MaturityTier::Experimental.short_badge(), "EXP");
+        assert_eq!(MaturityTier::Validated.short_badge(), "VAL");
+        assert_eq!(MaturityTier::Certified.short_badge(), "CERT");
+        assert_eq!(
+            MaturityTier::parse_label(" certified "),
+            Some(MaturityTier::Certified)
+        );
+        assert_eq!(
+            MaturityTier::parse_label("VALIDATED"),
+            Some(MaturityTier::Validated)
+        );
+        assert_eq!(MaturityTier::parse_label("unknown"), None);
+        assert!("invalid".parse::<MaturityTier>().is_err());
+
+        struct CertifiedSolver;
+        impl TheoryDescribable for CertifiedSolver {
+            fn theory_description(&self) -> String {
+                "Zero-allocation solver".into()
+            }
+            fn phonetic_description(&self) -> String {
+                "Zero allocation solver".into()
+            }
+            fn theory_citation(&self) -> String {
+                "Press et al. (2007)".into()
+            }
+            fn available_descriptions(&self) -> HashMap<String, String> {
+                HashMap::new()
+            }
+            fn maturity_tier(&self) -> MaturityTier {
+                MaturityTier::Certified
+            }
+        }
+        let solver = CertifiedSolver;
+        assert_eq!(solver.maturity_tier(), MaturityTier::Certified);
+        assert!(
+            solver
+                .maturity_tier()
+                .screen_reader_label()
+                .contains("Certified")
         );
     }
 }

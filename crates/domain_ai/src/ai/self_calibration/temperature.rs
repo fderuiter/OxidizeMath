@@ -1,6 +1,36 @@
 // [cite:self_calibration_paper]
 use super::types::{Answer, Response};
+use crate::error::AIError;
 use std::collections::HashMap;
+
+pub use pure_math::pure_math::statistics::calibration::TemperatureScaler;
+
+/// Fits a supervised post-hoc [`TemperatureScaler`] minimizing held-out binary `log_loss`.
+///
+/// Unlike [`map_entropy_to_temperature`]—which computes a label-free self-consistency heuristic
+/// from clustered response strings—this function requires ground-truth binary `outcomes`.
+#[verified_engine::verified]
+pub fn fit_binary_temperature_scaling(
+    logits: &[f64],
+    outcomes: &[bool],
+) -> Result<TemperatureScaler, AIError> {
+    Ok(TemperatureScaler::fit_binary(logits, outcomes)?)
+}
+
+/// Fits a supervised post-hoc [`TemperatureScaler`] minimizing held-out multiclass `log_loss`
+/// over row-major `logits_flat` (`targets.len() * num_classes`).
+#[verified_engine::verified]
+pub fn fit_multiclass_temperature_scaling(
+    logits_flat: &[f64],
+    num_classes: usize,
+    targets: &[usize],
+) -> Result<TemperatureScaler, AIError> {
+    Ok(TemperatureScaler::fit_multiclass(
+        logits_flat,
+        num_classes,
+        targets,
+    )?)
+}
 
 /// Calculates the entropy of the answer distribution.
 ///

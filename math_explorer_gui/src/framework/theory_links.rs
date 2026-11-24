@@ -45,7 +45,7 @@ fn camel_or_space_to_snake(input: &str) -> String {
     out.trim_matches('_').to_string()
 }
 
-fn tool_module_tokens(tool_id: &str) -> Vec<String> {
+pub(crate) fn tool_module_tokens(tool_id: &str) -> Vec<String> {
     let snake = camel_or_space_to_snake(tool_id);
     let mut tokens = vec![tool_id.trim().to_ascii_lowercase(), snake.clone()];
     for suffix in ["_tool", "_widget", "_viewer", "_plotter", "_simulator"] {
@@ -57,9 +57,10 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
     }
     let explicit: &[&str] = match tool_id.trim() {
         "AttentionMapsTool" => &["attention_is_all_you_need_rust"],
+        "CalibrationWorkbenchTool" => &["clinical_trials_statistics", "self_calibration_paper"],
         "GrpoAlignmentLabTool" => &["grpo", "self_calibration_paper"],
         "LoraHubSimplexTool" => &["lorahub"],
-        "SdsNeRfDistillationTool" => &["gaussian_splatting", "graph_parameters_rust"],
+        "SdsNeRfDistillationTool" => &["gaussian_splatting"],
         "CeraTool" => &["cera_framework"],
         "Co2ProjectionsTool" => &["isosurface_extraction"],
         "TurbulenceTool" => &["generative_turbulence"],
@@ -68,6 +69,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         "EllipticCurvePlayground" | "WeierstrassPlaygroundTool" | "ModularInvariantsTool" => {
             &["modular_polynomials_review", "hurwitz_kronecker"]
         }
+        "HyperbolicDiskTool" | "HyperbolicBilliardsTool" => &["modular_polynomials_review"],
         "RadarGatingTool" => &["mmwave_radiotherapy_setup"],
         "OpticsWaveTool" => &["mmwave_radiotherapy_setup", "quantum_mechanics"],
         "CausticsRayBenchTool" | "FraunhoferDiffractionTool" => {
@@ -96,7 +98,7 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
     tokens
 }
 
-fn domain_module_tokens(domain: &str) -> Vec<String> {
+pub(crate) fn domain_module_tokens(domain: &str) -> Vec<String> {
     let clean = domain.trim().to_ascii_lowercase();
     let mut tokens = Vec::new();
     if !clean.is_empty() {
@@ -112,6 +114,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         ],
         "game_theory" => &["graph_parameters_rust"],
         "graph_theory" => &["dijkstra", "graph_parameters_rust"],
+        "hyperbolic_geometry" => &["modular_polynomials_review", "pure_math"],
         "analysis" | "geometry_topology" | "number_theory" => &["pure_math", "math_commons"],
         "financial_math" => &["clinical_trials_statistics"],
         "stochastic_processes" => &[

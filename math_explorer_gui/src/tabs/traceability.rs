@@ -20,6 +20,10 @@ pub struct TraceabilityTab {
     orphaned_papers: Vec<String>,
     unlinked_code: Vec<String>,
     invalid_links: Vec<(String, String)>,
+    crate_maturity_tiers:
+        std::collections::BTreeMap<String, scientific_metadata::theory::MaturityTier>,
+    module_maturity_tiers:
+        std::collections::BTreeMap<String, scientific_metadata::theory::MaturityTier>,
     repo_path: Option<String>,
     user_picked_repo: bool,
     report_rx: Option<
@@ -38,6 +42,8 @@ impl Default for TraceabilityTab {
             orphaned_papers: Vec::new(),
             unlinked_code: Vec::new(),
             invalid_links: Vec::new(),
+            crate_maturity_tiers: std::collections::BTreeMap::new(),
+            module_maturity_tiers: std::collections::BTreeMap::new(),
             repo_path: None,
             user_picked_repo: false,
             report_rx: None,
@@ -138,6 +144,8 @@ impl TraceabilityTab {
         self.orphaned_papers.clear();
         self.unlinked_code.clear();
         self.invalid_links.clear();
+        self.crate_maturity_tiers.clear();
+        self.module_maturity_tiers.clear();
         self.certificate = None;
     }
 
@@ -184,6 +192,26 @@ impl TraceabilityTab {
             .collect();
         self.unlinked_code = report.unlinked_code;
         self.invalid_links = report.invalid_links;
+        self.crate_maturity_tiers = report
+            .crate_maturity_tiers
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k,
+                    scientific_metadata::theory::MaturityTier::parse_label(&v).unwrap_or_default(),
+                )
+            })
+            .collect();
+        self.module_maturity_tiers = report
+            .module_maturity_tiers
+            .into_iter()
+            .map(|(k, v)| {
+                (
+                    k,
+                    scientific_metadata::theory::MaturityTier::parse_label(&v).unwrap_or_default(),
+                )
+            })
+            .collect();
 
         for (paper_name, linked_code) in report.paper_coverage {
             if !paper_name.starts_with("spec:") && !paper_name.starts_with("registry:") {
@@ -403,11 +431,15 @@ impl ExplorerTab for TraceabilityTab {
                 }
                 TraceabilityScanState::Ready => web_snapshot::render_ready_report(
                     ui,
-                    &self.papers,
-                    &self.orphaned_papers,
-                    &self.unlinked_code,
-                    &self.invalid_links,
-                    self.certificate.as_ref(),
+                    &web_snapshot::ReadyReportData {
+                        papers_map: &self.papers,
+                        orphaned_papers: &self.orphaned_papers,
+                        unlinked_code: &self.unlinked_code,
+                        invalid_links: &self.invalid_links,
+                        crate_maturity_tiers: &self.crate_maturity_tiers,
+                        module_maturity_tiers: &self.module_maturity_tiers,
+                        certificate: self.certificate.as_ref(),
+                    },
                     Self::paper_url,
                 ),
             }

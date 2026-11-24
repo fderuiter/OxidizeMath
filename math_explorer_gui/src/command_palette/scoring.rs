@@ -25,6 +25,7 @@ pub fn format_domain_title(domain: &str) -> Cow<'static, str> {
         "game_theory" => Cow::Borrowed("Game Theory"),
         "geometry_topology" => Cow::Borrowed("Geometry & Topology"),
         "graph_theory" => Cow::Borrowed("Graph Theory"),
+        "hyperbolic_geometry" => Cow::Borrowed("Hyperbolic Geometry"),
         "medical" => Cow::Borrowed("Medical Physics"),
         "morphogenesis" => Cow::Borrowed("Morphogenesis"),
         "mri" => Cow::Borrowed("MRI Physics"),

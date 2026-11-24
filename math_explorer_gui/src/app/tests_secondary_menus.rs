@@ -183,8 +183,8 @@ fn test_primary_module_each_domain_shows_only_belonging_modules() {
 
     assert_eq!(
         discovered_modules.len(),
-        31,
-        "All 31 simulation modules must appear under their academic domain"
+        32,
+        "All 32 simulation modules must appear under their academic domain"
     );
 }
 

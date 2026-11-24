@@ -1,4 +1,4 @@
-// [cite:domain_ai]
+// [cite:self_calibration]
 // [cite:self_calibration_paper]
 
 use super::scoring::calculate_soft_self_consistency_scores;

@@ -1,5 +1,9 @@
 # `engine_linalg`
 
+![Maturity: Experimental](https://img.shields.io/badge/maturity-Experimental-d29922.svg)
+
+> **Maturity Tier:** `Experimental` — `#![no_std]` numerical linear algebra engine registered in `traceability.toml` prior to full assertion-density and `theory_verification!` qualification.
+
 ## 1. Overview & Architecture
 
 `engine_linalg` is the foundational `#![no_std]` numerical linear algebra engine for the OxidizeMath workspace (`crates/02_engines/engine_linalg`). It executes dense factorizations, singular value decompositions, sparse CSR Krylov iterations, matrix norm and condition-number estimators, and Tikhonov regularization over generic IEEE-754 [`Scalar`] types (`f32`, `f64`) using caller-owned [`SolverWorkspace`] scratch slices with zero heap allocations.

@@ -1,6 +1,10 @@
 # Domain AI
 
+![Maturity: Validated](https://img.shields.io/badge/maturity-Validated%20(Experimental%203DGS%20%2F%20SDS)-0969da.svg)
+
 Neural architectures, attention mechanisms, reinforcement learning, and generative modeling.
+
+> **Maturity Tier:** Crate `Validated` — `Validated` attention, activation, optimization, and reinforcement-learning kernels alongside `Experimental` generative 3D (`gaussian_splatting`, `sds`) modules.
 
 ## 1. Overview & Architecture
 
@@ -17,7 +21,8 @@ The crate enables educational exploration, deterministic unit verification, and 
 - **`reinforcement_learning`**: Decision-making agents implementing Q-learning, policy gradients, and Bellman value iterations.
 - **`gaussian_splatting`**: Mathematical foundations of 3D Gaussian Splatting and differentiable rasterization.
 - **`sds`**: Score Distillation Sampling bridging 2D diffusion priors with 3D volumetric representations.
-- **`self_calibration`**: Soft self-consistency scoring, dynamic answer-entropy temperature scaling, and KL-divergence confidence distillation.
+- **`calibration`**: Supervised proper scoring rules (`brier_score`, Murphy decomposition, symmetric `log_loss`, `CRPS`), reliability curves (`ECE`, `MCE`), `ROC`/`PR-AUC`, and post-hoc recalibrators (Platt scaling, learned temperature scaling, `PAVA` isotonic regression).
+- **`self_calibration`**: Label-free LLM soft self-consistency scoring, dynamic answer-entropy temperature scaling, and self-distillation KL-divergence confidence loss (`self_calibration_paper.tex`), alongside re-exported supervised `TemperatureScaler`.
 
 ---
 

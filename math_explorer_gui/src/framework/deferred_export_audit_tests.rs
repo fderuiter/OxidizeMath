@@ -267,45 +267,30 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
     let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader, audio] =
         counts;
     let has_riemannian = cfg!(feature = "pure_math");
-    let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
-    let extra = usize::from(has_riemannian) + usize::from(has_surface_morpho);
+    let extra = usize::from(has_riemannian)
+        + usize::from(cfg!(all(feature = "pure_math", feature = "biology")));
     let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
-    let stochastic_extra = if cfg!(feature = "pure_math") { 3 } else { 0 };
+    let pure_extra = if cfg!(feature = "pure_math") { 5 } else { 0 };
     let optics_bonus = if cfg!(feature = "physics") { 2 } else { 0 };
+    let ai_plot_extra = if cfg!(feature = "ai") { 3 } else { 0 };
+    let ai_raster_extra = usize::from(cfg!(feature = "ai"));
     let expected_audio = usize::from(cfg!(feature = "biology")) * 2
         + usize::from(cfg!(feature = "physics")) * 3
         + usize::from(cfg!(feature = "pure_math"))
         + usize::from(has_riemannian);
-    assert_eq!(
-        audio, expected_audio,
-        "Expected {expected_audio} WAV audio-capable tools"
-    );
-    let ai_plot_extra = if cfg!(feature = "ai") { 2 } else { 0 };
-    let ai_raster_extra = if cfg!(feature = "ai") { 1 } else { 0 };
-    let expected_plot = 78 + extra + bio_extra + stochastic_extra + optics_bonus + ai_plot_extra;
-    let expected_raster = 8 + ai_raster_extra;
-    let expected_solid = 7 + extra;
-    let expected_non_shader =
-        92 + extra + bio_extra + stochastic_extra + optics_bonus + ai_plot_extra + ai_raster_extra;
-    assert_eq!(
-        plot, expected_plot,
-        "Expected {expected_plot} Plot dataset+figure tools"
-    );
-    assert_eq!(
-        raster, expected_raster,
-        "Expected {expected_raster} raster figure tools"
-    );
+    let base_extra = extra + bio_extra + pure_extra + optics_bonus + ai_plot_extra;
+    assert_eq!(audio, expected_audio, "Unexpected WAV audio-capable tools");
+    assert_eq!(plot, 78 + base_extra, "Unexpected Plot tools");
+    assert_eq!(raster, 8 + ai_raster_extra, "Unexpected raster tools");
     assert_eq!(dataset_only, 0, "Expected 0 dataset-only registered tools");
     assert_eq!(unsupported, 9, "Expected 9 non-figure tools");
-    assert_eq!(
-        solid_3d, expected_solid,
-        "Expected {expected_solid} solid 3D geometric tools"
-    );
+    assert_eq!(solid_3d, 7 + extra, "Unexpected solid 3D geometric tools");
     assert_eq!(splat_3d, 1, "Expected 1 3DGS splat PLY tool");
     assert_eq!(shader, 3, "Expected 3 analytical GPU shader tools");
     assert_eq!(
-        non_shader, expected_non_shader,
-        "Expected {expected_non_shader} non-shader tools"
+        non_shader,
+        92 + base_extra + ai_raster_extra,
+        "Unexpected non-shader tools"
     );
 }
 
