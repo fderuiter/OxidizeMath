@@ -7,8 +7,8 @@ use crate::async_sim::atlas::AtlasCell;
 use crate::framework::math_input::MAX_SYNTHESIZED_PARAMS;
 use math_commons::ast::{CompiledExpr, Expr};
 use math_explorer::pure_math::analysis::ode::{
-    ArrayState, Euler, Heun, IntegrationMethod, OdeModel, OdeSystem, RungeKutta4, Solver,
-    TimeStepper,
+    ArrayState, Euler, GaussLegendre4, Heun, ImplicitMidpoint, IntegrationMethod, OdeModel,
+    OdeSystem, RungeKutta4, Solver, TimeStepper,
 };
 
 const ATLAS_EVAL_STEPS: usize = 80;
@@ -247,6 +247,14 @@ pub(super) fn classify_stack_dynamics(
         IntegrationMethod::Heun => {
             integrate_with_solver(OdeModel::new(seeded, dyn_sys, Heun::new(&seeded)), dt)
         }
+        IntegrationMethod::ImplicitMidpoint => integrate_with_solver(
+            OdeModel::new(seeded, dyn_sys, ImplicitMidpoint::new(&seeded)),
+            dt,
+        ),
+        IntegrationMethod::GaussLegendre4 => integrate_with_solver(
+            OdeModel::new(seeded, dyn_sys, GaussLegendre4::new(&seeded)),
+            dt,
+        ),
     };
     classify_summary(&dyn_sys, summary)
 }

@@ -3,7 +3,7 @@
 
 #[cfg(test)]
 use crate::framework::ToolMetadata;
-#[cfg(test)]
+#[cfg(all(test, feature = "pure_math"))]
 use eframe::egui;
 
 /// Pre-configured starter simulation template card.
@@ -451,7 +451,16 @@ pub use stories::*;
 #[path = "starter_gallery/tests.rs"]
 mod tests;
 
-#[cfg(test)]
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 #[path = "starter_gallery/contract_tests.rs"]
 mod contract_tests;
 

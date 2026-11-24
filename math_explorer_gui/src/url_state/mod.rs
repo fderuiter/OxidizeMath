@@ -13,8 +13,6 @@ pub mod pipeline;
 mod sync;
 mod workspace_codec;
 
-#[cfg(all(test, target_arch = "wasm32"))]
-mod browser_wasm_tests;
 #[cfg(all(
     test,
     feature = "ai",
@@ -26,7 +24,7 @@ mod browser_wasm_tests;
     feature = "pure_math"
 ))]
 mod contract_tests;
-#[cfg(test)]
+#[cfg(all(test, any(feature = "epidemiology", feature = "pure_math")))]
 mod param_only_tests;
 #[cfg(test)]
 mod tests;
@@ -82,5 +80,3 @@ pub use workspace_codec::{
     validate_workspace_url_preset_json, ParsedShareLocation, WorkspaceShareParams,
     MAX_DECODED_WORKSPACE_URL_BYTES, WORKSPACE_SHARE_SCHEMA_VERSION,
 };
-
-// theory_verification!

@@ -465,16 +465,35 @@ fn test_ode_app_accesskit_exposes_phase_and_atlas_controls() {
 fn test_set_view_mode_exits_planar_phase_plane_mode_cleanly() {
     let mut tool = OdeSolverTool::default();
     tool.apply_poincare_point(-1.0, 2.0);
-    assert!(tool.is_phase_plane_active());
-    assert!(!tool.is_2d_phase_portrait());
-
+    assert!(tool.is_phase_plane_active() && !tool.is_2d_phase_portrait());
     tool.set_view_mode(PlotViewMode::TimeSeries);
-    assert!(!tool.is_phase_plane_active());
-    assert_eq!(tool.view_mode(), PlotViewMode::TimeSeries);
-
+    assert!(!tool.is_phase_plane_active() && tool.view_mode() == PlotViewMode::TimeSeries);
     tool.phase_plane_mode = true;
     assert!(tool.is_phase_plane_active());
     tool.set_view_mode(PlotViewMode::PhasePortrait);
-    assert!(!tool.is_phase_plane_active());
-    assert!(tool.is_2d_phase_portrait());
+    assert!(!tool.is_phase_plane_active() && tool.is_2d_phase_portrait());
+}
+
+#[test]
+fn test_ode_regime_cartographer_symplectic_methods_zero_alloc() {
+    let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    for method in IntegrationMethod::ALL {
+        let tool = OdeSolverTool {
+            preset: OdePreset::HarmonicOscillator,
+            method,
+            ..Default::default()
+        };
+        let cart = OdeRegimeCartographer::from_tool(&tool, ("k", "c"));
+        let (cell, _) =
+            verified_engine::engine::VerifiedEngine::run_verified(|| cart.evaluate_cell(1.5, 0.0));
+        assert!(cell.primary.is_finite());
+        if method.is_symplectic() {
+            assert_eq!(
+                OdeAtlasRegime::from_u8(cell.regime),
+                OdeAtlasRegime::SustainedCycle
+            );
+        }
+    }
 }

@@ -164,3 +164,99 @@ fn test_presets_csv_svg_and_url_roundtrip() {
         lab.ghost.rk4_err_pct
     );
 }
+
+#[test]
+fn test_implicit_midpoint_perturbation_lyapunov_and_nan_recovery() {
+    let mut lab = HamiltonianChaosLab::default();
+    lab.switch_model(HamiltonianModelKind::DoublePendulum);
+    lab.solver = SymplecticSolverChoice::ImplicitMidpoint;
+    lab.clear_orbits();
+    lab.seed_orbit_at([1.1, 0.0]).expect("seed midpoint orbit");
+    lab.step_batch(1_200);
+    assert!(lab.lyapunov_estimate.is_finite());
+    assert!(lab.ghost.symplectic_err_pct < lab.ghost.rk4_err_pct);
+
+    let encoded = lab.save_state().expect("save midpoint state");
+    let mut restored = HamiltonianChaosLab::default();
+    restored
+        .try_load_state(&encoded)
+        .expect("load midpoint state");
+    assert_eq!(restored.solver, SymplecticSolverChoice::ImplicitMidpoint);
+
+    lab.switch_model(HamiltonianModelKind::FigureEightThreeBody);
+    lab.three_body_perturbation = 0.04;
+    lab.rebuild_existing_seeds();
+    lab.step_batch(400);
+    let lead = lab.orbits.last().expect("3-body orbit");
+    let p_tot = lab.three_body.total_linear_momentum(&lead.state12);
+    assert!(p_tot[0].hypot(p_tot[1]) < 1e-11);
+
+    lab.dt = f64::NAN;
+    lab.three_body_perturbation = f64::INFINITY;
+    lab.orbits[0].state12.0[0] = f64::NAN;
+    assert!(!lab.has_finite_parameters());
+    assert!(lab.clamp_parameters());
+    assert!(lab.has_finite_parameters());
+}
+
+fn pump_gif_export(ctx: &Context, fw: &mut crate::framework::SimulationFramework) {
+    for _ in 0..250 {
+        if fw.active_gif_progress().is_none() {
+            break;
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let _ = ctx.run(raw_viewport(), |ctx| {
+            fw.show(ctx, "hamiltonian_export_fw");
+        });
+    }
+}
+
+#[test]
+fn test_simulation_framework_exports_csv_json_png_svg_gif() {
+    use crate::framework::{ExportFormat, ExportStatusSeverity, SimulationFramework};
+
+    let mut fw = SimulationFramework::new("__hamiltonian_export_test__");
+    fw.export_options.width = 240;
+    fw.export_options.height = 180;
+    fw.export_gif_frames = 5;
+    fw.active_tool = Some(Box::new(HamiltonianChaosLab::default()));
+
+    let ctx = Context::default();
+    for fmt in [
+        ExportFormat::Csv,
+        ExportFormat::Json,
+        ExportFormat::Png,
+        ExportFormat::Svg,
+        ExportFormat::Gif,
+    ] {
+        let _ = ctx.run(raw_viewport(), |ctx| {
+            egui_plot::clear_last_plot_datasets();
+            fw.queue_export(fmt);
+            fw.show(ctx, "hamiltonian_export_fw");
+        });
+        if fmt == ExportFormat::Gif {
+            pump_gif_export(&ctx, &mut fw);
+        }
+        assert_eq!(
+            fw.export_status_severity,
+            ExportStatusSeverity::Success,
+            "Export {fmt:?} failed: {:?}",
+            fw.export_status_message
+        );
+        let bytes = fw
+            .export_queue
+            .last_exported_bytes
+            .as_deref()
+            .expect("exported bytes");
+        assert!(!bytes.is_empty());
+        match fmt {
+            ExportFormat::Png => assert_eq!(&bytes[..4], b"\x89PNG"),
+            ExportFormat::Gif => assert_eq!(&bytes[..4], b"GIF8"),
+            ExportFormat::Svg => assert!(std::str::from_utf8(bytes).unwrap().contains("<svg")),
+            ExportFormat::Json => assert!(std::str::from_utf8(bytes).unwrap().contains("Poincare")),
+            ExportFormat::Csv => assert!(std::str::from_utf8(bytes).unwrap().contains("Poincare")),
+            _ => unreachable!(),
+        }
+    }
+}
