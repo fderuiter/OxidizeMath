@@ -43,6 +43,21 @@ fn test_stratified_randomizer_resolves_confounding_reversal() {
         pool.risk.relative_risk
     );
     assert!(!lab.is_simpson_reversal);
+    assert_eq!(lab.allocated_schedule.len(), 800);
+    assert_eq!(lab.allocated_schedule[0].subject_id, "M-0");
+    assert_eq!(lab.allocated_schedule[1].subject_id, "S-0");
+    let mild_treat = lab
+        .allocated_schedule
+        .iter()
+        .filter(|r| r.stratum == "Mild" && r.arm == "Treatment")
+        .count();
+    let sev_treat = lab
+        .allocated_schedule
+        .iter()
+        .filter(|r| r.stratum == "Severe" && r.arm == "Treatment")
+        .count();
+    assert_eq!(mild_treat, 200);
+    assert_eq!(sev_treat, 200);
 }
 
 #[test]
