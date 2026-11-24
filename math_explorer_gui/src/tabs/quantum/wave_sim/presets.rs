@@ -181,6 +181,16 @@ pub fn default_compiled_expr() -> Expr {
         .unwrap_or(Expr::Number(0.0))
 }
 
+/// Replaces non-finite values (`NaN`, `±∞`) with `fallback`.
+#[must_use]
+pub const fn sanitize_finite(value: f64, fallback: f64) -> f64 {
+    if value.is_finite() {
+        value
+    } else {
+        fallback
+    }
+}
+
 /// Clamps any evaluated potential value to `[-500.0, 500.0]`, replacing `NaN` with `0.0`.
 #[must_use]
 pub fn clamp_potential_sample(value: f64) -> f64 {

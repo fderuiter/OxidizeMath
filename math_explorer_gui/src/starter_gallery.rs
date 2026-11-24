@@ -425,7 +425,7 @@ pub use challenges::{
 pub use filter_ui::{
     card_academic_domain, filter_challenge_cards, filter_goal_challenges, filter_starter_cards,
     filter_stories, get_all_starter_cards, get_all_starter_cards_with_tools,
-    get_starter_cards_for_domain,
+    get_starter_cards_for_domain, has_any_starter_presets,
 };
 pub(crate) use root_host::{
     begin_root_starter_gallery_scope, flush_deferred_starter_galleries,

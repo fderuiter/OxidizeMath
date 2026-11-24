@@ -115,8 +115,8 @@ fn solve_centered_poly_system<P: PointSeries + ?Sized>(
     let required = deg + 1;
     let (log_x, log_y) = axes;
     let (u_mean, u_scale) = center_scale;
-    let mut sum_z_pow = [0.0_f64; 9];
-    let mut rhs = [0.0_f64; 5];
+    let mut qr = engine_linalg::StreamingQr::<f64, 5>::new(required)
+        .map_err(|_| FitError::SingularMatrix)?;
 
     for idx in 0..points.len() {
         let p = points.point_at(idx);
@@ -129,21 +129,17 @@ fn solve_centered_poly_system<P: PointSeries + ?Sized>(
         let tx = if log_x { p[0].log10() } else { p[0] };
         let ty = if log_y { p[1].log10() } else { p[1] };
         let z = (tx - u_mean) / u_scale;
+        let mut row = [0.0_f64; 5];
         let mut zp = 1.0_f64;
-        for (k, slot) in sum_z_pow.iter_mut().enumerate().take(2 * deg + 1) {
-            *slot += zp;
-            if k < required {
-                rhs[k] += zp * ty;
-            }
+        for slot in row.iter_mut().take(required) {
+            *slot = zp;
             zp *= z;
         }
+        qr.push_row(&row[..required], ty)
+            .map_err(|_| FitError::SingularMatrix)?;
     }
 
-    let mut mat = [[0.0_f64; 5]; 5];
-    for (r, row) in mat.iter_mut().enumerate().take(required) {
-        row[..required].copy_from_slice(&sum_z_pow[r..(r + required)]);
-    }
-    solve_dense_small_raw(&mut mat, &rhs, required)
+    qr.solve(1e-13).map_err(|_| FitError::SingularMatrix)
 }
 
 fn uncenter_polynomial_coeffs(
@@ -253,35 +249,21 @@ pub(super) fn solve_dense_n_raw<const N: usize>(
     rhs: &[f64; N],
     n: usize,
 ) -> Result<[f64; N], FitError> {
-    if n == 0 || n > N {
+    if n == 0 || n > N || n > 16 {
         return Err(FitError::SingularMatrix);
     }
-    let mut b = *rhs;
-    for col in 0..n {
-        let pivot_row = select_pivot_row(mat, col, n);
-        if !mat[pivot_row][col].is_finite() || mat[pivot_row][col].abs() < 1e-12 {
-            return Err(FitError::SingularMatrix);
-        }
-        if pivot_row != col {
-            mat.swap(col, pivot_row);
-            b.swap(col, pivot_row);
-        }
-        eliminate_below(mat, &mut b, col, n);
+    let mut flat = [0.0_f64; 256];
+    for (r, row) in mat.iter().enumerate().take(n) {
+        let dst_start = r * n;
+        flat[dst_start..(dst_start + n)].copy_from_slice(&row[..n]);
     }
-    back_substitute(mat, &b, n)
-}
-
-fn select_pivot_row<const N: usize>(mat: &[[f64; N]; N], col: usize, n: usize) -> usize {
-    let mut pivot_row = col;
-    let mut pivot_val = mat[col][col].abs();
-    for (row, mat_row) in mat.iter().enumerate().take(n).skip(col + 1) {
-        let cand = mat_row[col].abs();
-        if cand > pivot_val {
-            pivot_val = cand;
-            pivot_row = row;
-        }
-    }
-    pivot_row
+    let mut pivots = [0_usize; 16];
+    engine_linalg::lu_factor_in_place(&mut flat[..(n * n)], n, &mut pivots[..n], 1e-12)
+        .map_err(|_| FitError::SingularMatrix)?;
+    let mut x = [0.0_f64; N];
+    engine_linalg::lu_solve_factored(&flat[..(n * n)], n, &pivots[..n], &rhs[..n], &mut x[..n])
+        .map_err(|_| FitError::SingularMatrix)?;
+    Ok(x)
 }
 
 pub(crate) fn symmetrize_upper<const N: usize>(mat: &mut [[f64; N]; N], n: usize) {
@@ -292,48 +274,6 @@ pub(crate) fn symmetrize_upper<const N: usize>(mat: &mut [[f64; N]; N], n: usize
             dst_row[row] = val;
         }
     }
-}
-
-fn eliminate_below<const N: usize>(
-    mat: &mut [[f64; N]; N],
-    b: &mut [f64; N],
-    col: usize,
-    n: usize,
-) {
-    let (pivot_part, below_part) = mat[..n].split_at_mut(col + 1);
-    let pivot_row = &pivot_part[col];
-    let diag = pivot_row[col];
-    let pivot_b = b[col];
-    for (mat_row, b_row) in below_part.iter_mut().zip(&mut b[col + 1..n]) {
-        let factor = mat_row[col] / diag;
-        mat_row[col] = 0.0;
-        for (dst, &piv) in mat_row[col + 1..n].iter_mut().zip(&pivot_row[col + 1..n]) {
-            *dst -= factor * piv;
-        }
-        *b_row -= factor * pivot_b;
-    }
-}
-
-fn back_substitute<const N: usize>(
-    mat: &[[f64; N]; N],
-    b: &[f64; N],
-    n: usize,
-) -> Result<[f64; N], FitError> {
-    let mut x = [0.0_f64; N];
-    let mut row = n;
-    while row > 0 {
-        row -= 1;
-        let mut sum = b[row];
-        for k in (row + 1)..n {
-            sum -= mat[row][k] * x[k];
-        }
-        let val = sum / mat[row][row];
-        if !val.is_finite() {
-            return Err(FitError::SingularMatrix);
-        }
-        x[row] = val;
-    }
-    Ok(x)
 }
 
 pub use super::format::format_polynomial_formula;
