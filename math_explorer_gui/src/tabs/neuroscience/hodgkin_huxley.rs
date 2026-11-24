@@ -34,24 +34,70 @@ pub struct HodgkinHuxleyUnified {
     rng: OxidizeRng,
     prev_v: f64,
     spiked_since_snapshot: AtomicBool,
+    diagnostic_report: Option<crate::framework::recovery::DiagnosticReport>,
+}
+
+fn sanitize_conductance(val: f64) -> f64 {
+    if val.is_finite() {
+        val.max(0.0)
+    } else {
+        val
+    }
+}
+
+fn clamp_finite_gating(val: f64) -> f64 {
+    if val.is_finite() {
+        val.clamp(0.0, 1.0)
+    } else {
+        val
+    }
 }
 
 impl HodgkinHuxleyUnified {
+    fn diverged_variable(&self) -> Option<&'static str> {
+        if !self.state.v.is_finite() {
+            Some("v")
+        } else if !self.state.n.is_finite() || !(0.0..=1.0).contains(&self.state.n) {
+            Some("n")
+        } else if !self.state.m.is_finite() || !(0.0..=1.0).contains(&self.state.m) {
+            Some("m")
+        } else if !self.state.h.is_finite() || !(0.0..=1.0).contains(&self.state.h) {
+            Some("h")
+        } else if !self.time.is_finite() || !self.dt.is_finite() || self.dt <= 0.0 {
+            Some("dt")
+        } else if !self.i_ext.is_finite()
+            || !self.params.g_na.is_finite()
+            || !self.params.g_k.is_finite()
+            || !self.params.g_l.is_finite()
+        {
+            Some("params")
+        } else {
+            None
+        }
+    }
+
     fn apply_scalar_step(&mut self, g_na: f64, g_k: f64, g_l: f64, i_ext: f64, dt: f64) {
-        self.params.g_na = g_na.max(0.0);
-        self.params.g_k = g_k.max(0.0);
-        self.params.g_l = g_l.max(0.0);
+        if self.diagnostic_report.is_some() {
+            return;
+        }
+        self.params.g_na = sanitize_conductance(g_na);
+        self.params.g_k = sanitize_conductance(g_k);
+        self.params.g_l = sanitize_conductance(g_l);
         self.i_ext = i_ext;
         self.dt = dt;
+        if let Some(var) = self.diverged_variable() {
+            self.record_divergence(var);
+            return;
+        }
         let prev_v = self.state.v;
         let mut solver = Euler::new(&self.state);
         let model = HodgkinHuxleyModel::new(self.params.clone(), self.i_ext);
         let next = solver.solve(&model, 0.0, &self.state, self.dt);
         self.state = HodgkinHuxleyState {
             v: next.v,
-            n: next.n.clamp(0.0, 1.0),
-            m: next.m.clamp(0.0, 1.0),
-            h: next.h.clamp(0.0, 1.0),
+            n: clamp_finite_gating(next.n),
+            m: clamp_finite_gating(next.m),
+            h: clamp_finite_gating(next.h),
         };
         if prev_v <= 0.0 && self.state.v > 0.0 {
             self.spiked_since_snapshot.store(true, Ordering::Relaxed);
@@ -59,14 +105,40 @@ impl HodgkinHuxleyUnified {
         self.prev_v = prev_v;
         self.time += self.dt;
         self.step_count += 1;
+        if let Some(var) = self.diverged_variable() {
+            self.record_divergence(var);
+            return;
+        }
         if self.history.len() >= HH_MAX_HISTORY {
             self.history.pop_front();
         }
         self.history.push_back([self.time, self.state.v]);
     }
+
+    fn record_divergence(&mut self, var: &'static str) {
+        let t_div = if self.time.is_finite() {
+            self.time
+        } else {
+            0.0
+        };
+        self.diagnostic_report = Some(crate::framework::recovery::DiagnosticReport::new(
+            t_div,
+            self.step_count,
+            var,
+            format!("Non-finite Hodgkin-Huxley state variable '{var}' encountered."),
+        ));
+    }
 }
 
-impl crate::framework::recovery::FiniteStateGuard for HodgkinHuxleyUnified {}
+impl crate::framework::recovery::FiniteStateGuard for HodgkinHuxleyUnified {
+    fn is_finite_state(&self) -> bool {
+        self.diverged_variable().is_none()
+    }
+
+    fn diagnostic_report(&self) -> Option<&crate::framework::recovery::DiagnosticReport> {
+        self.diagnostic_report.as_ref()
+    }
+}
 
 impl UnifiedModel for HodgkinHuxleyUnified {
     fn domain() -> &'static str {
@@ -78,14 +150,12 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         let g_k = *params.get("g_k").unwrap_or(&36.0);
         let g_l = *params.get("g_l").unwrap_or(&0.3);
         let i_ext = *params.get("i_ext").unwrap_or(&10.0);
-
         let hh_params = HodgkinHuxleyParameters {
-            g_na: g_na.max(0.0),
-            g_k: g_k.max(0.0),
-            g_l: g_l.max(0.0),
+            g_na: sanitize_conductance(g_na),
+            g_k: sanitize_conductance(g_k),
+            g_l: sanitize_conductance(g_l),
             ..Default::default()
         };
-
         Self {
             state: HodgkinHuxleyState {
                 v: -65.0,
@@ -102,6 +172,7 @@ impl UnifiedModel for HodgkinHuxleyUnified {
             rng: OxidizeRng::new(0x4848_5F4E_4555_524F),
             prev_v: -65.0,
             spiked_since_snapshot: AtomicBool::new(false),
+            diagnostic_report: None,
         }
     }
 
@@ -113,11 +184,24 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         self.apply_scalar_step(new_g_na, new_g_k, new_g_l, new_i_ext, self.dt);
     }
 
+    fn process_command(
+        &mut self,
+        cmd: crate::async_sim::SimCommand,
+        params: &HashMap<String, f64>,
+    ) {
+        if matches!(cmd, crate::async_sim::SimCommand::Reset) {
+            *self = Self::new(params);
+        }
+    }
+
     fn sync_parameters(&mut self, params: &HashMap<String, f64>) {
-        self.params.g_na = params.get("g_na").copied().unwrap_or(120.0).max(0.0);
-        self.params.g_k = params.get("g_k").copied().unwrap_or(36.0).max(0.0);
-        self.params.g_l = params.get("g_l").copied().unwrap_or(0.3).max(0.0);
+        self.params.g_na = sanitize_conductance(params.get("g_na").copied().unwrap_or(120.0));
+        self.params.g_k = sanitize_conductance(params.get("g_k").copied().unwrap_or(36.0));
+        self.params.g_l = sanitize_conductance(params.get("g_l").copied().unwrap_or(0.3));
         self.i_ext = *params.get("i_ext").unwrap_or(&10.0);
+        if self.diverged_variable().is_none() {
+            self.diagnostic_report = None;
+        }
     }
 
     fn get_snapshot(&self) -> StateSnapshot {
@@ -126,25 +210,29 @@ impl UnifiedModel for HodgkinHuxleyUnified {
             custom_data.push(t);
             custom_data.push(v);
         }
-        custom_data.push(self.time);
-        custom_data.push(self.state.v);
-
+        if self.time.is_finite() && self.state.v.is_finite() {
+            custom_data.push(self.time);
+            custom_data.push(self.state.v);
+        }
         let spiked = self.spiked_since_snapshot.swap(false, Ordering::Relaxed);
-        let ref_prev_v = if spiked { -5.0 } else { self.prev_v };
-        let ref_cur_v = if spiked {
-            self.state.v.max(10.0)
+        let sonification = if self.diverged_variable().is_some() {
+            crate::audio::SonificationFrame::silent()
         } else {
-            self.state.v
+            let ref_prev_v = if spiked { -5.0 } else { self.prev_v };
+            let ref_cur_v = if spiked {
+                self.state.v.max(10.0)
+            } else {
+                self.state.v
+            };
+            crate::audio::mappings::hodgkin_huxley_frame(
+                ref_cur_v,
+                ref_prev_v,
+                self.state.m,
+                self.state.h,
+                self.state.n,
+                self.i_ext,
+            )
         };
-        let sonification = crate::audio::mappings::hodgkin_huxley_frame(
-            ref_cur_v,
-            ref_prev_v,
-            self.state.m,
-            self.state.h,
-            self.state.n,
-            self.i_ext,
-        );
-
         StateSnapshot {
             width: 0,
             height: 0,
@@ -160,40 +248,13 @@ impl UnifiedModel for HodgkinHuxleyUnified {
     }
 
     fn parameters() -> HashMap<String, ParameterConstraint> {
-        let mut map = HashMap::new();
-        map.insert(
-            "g_na".to_string(),
-            ParameterConstraint {
-                min: 0.0,
-                max: 200.0,
-                step: 1.0,
-            },
-        );
-        map.insert(
-            "g_k".to_string(),
-            ParameterConstraint {
-                min: 0.0,
-                max: 100.0,
-                step: 1.0,
-            },
-        );
-        map.insert(
-            "g_l".to_string(),
-            ParameterConstraint {
-                min: 0.0,
-                max: 5.0,
-                step: 0.1,
-            },
-        );
-        map.insert(
-            "i_ext".to_string(),
-            ParameterConstraint {
-                min: 0.0,
-                max: 50.0,
-                step: 1.0,
-            },
-        );
-        map
+        let c = |min, max, step| ParameterConstraint { min, max, step };
+        HashMap::from([
+            ("g_na".to_string(), c(0.0, 200.0, 1.0)),
+            ("g_k".to_string(), c(0.0, 100.0, 1.0)),
+            ("g_l".to_string(), c(0.0, 5.0, 0.1)),
+            ("i_ext".to_string(), c(0.0, 50.0, 1.0)),
+        ])
     }
 
     fn parameter_label(name: &str) -> String {
@@ -282,9 +343,9 @@ impl UnifiedModel for HodgkinHuxleyUnified {
     fn restore_checkpoint(&mut self, checkpoint: &TimeTravelCheckpoint) {
         if let Some(p) = checkpoint.params.as_scalars() {
             if p.len() >= 5 {
-                self.params.g_na = p[0].max(0.0);
-                self.params.g_k = p[1].max(0.0);
-                self.params.g_l = p[2].max(0.0);
+                self.params.g_na = sanitize_conductance(p[0]);
+                self.params.g_k = sanitize_conductance(p[1]);
+                self.params.g_l = sanitize_conductance(p[2]);
                 self.i_ext = p[3];
                 self.dt = p[4];
             }
@@ -293,9 +354,9 @@ impl UnifiedModel for HodgkinHuxleyUnified {
             if s.len() >= 5 {
                 self.state = HodgkinHuxleyState {
                     v: s[0],
-                    n: s[1].clamp(0.0, 1.0),
-                    m: s[2].clamp(0.0, 1.0),
-                    h: s[3].clamp(0.0, 1.0),
+                    n: clamp_finite_gating(s[1]),
+                    m: clamp_finite_gating(s[2]),
+                    h: clamp_finite_gating(s[3]),
                 };
                 self.time = s[4];
             }
@@ -304,6 +365,9 @@ impl UnifiedModel for HodgkinHuxleyUnified {
         self.spiked_since_snapshot.store(false, Ordering::Relaxed);
         self.step_count = checkpoint.step;
         self.rng = checkpoint.rng.clone();
+        if self.diverged_variable().is_none() {
+            self.diagnostic_report = None;
+        }
     }
 
     fn rebuild_history(&mut self, front: &[TimeTravelCheckpoint], back: &[TimeTravelCheckpoint]) {
@@ -411,3 +475,7 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
+
+#[cfg(test)]
+#[path = "hodgkin_huxley/tests.rs"]
+mod tests;

@@ -17,6 +17,7 @@ std = [
 thiserror = { workspace = true, default-features = false }
 verified_engine = { version = "0.1.0", path = "../verified_engine", optional = true }
 diagnostics = { path = "../diagnostics", optional = true }
+engine_linalg = { path = "../02_engines/engine_linalg" }
 num-complex = { workspace = true, default-features = false, features = ["libm"] }
 num-traits = { workspace = true, default-features = false, features = ["libm"] }
 libm = "0.2.16"

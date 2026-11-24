@@ -101,15 +101,16 @@ impl InteractiveTool for OdeSolverTool {
 }
 
 impl OdeSolverTool {
-    pub(super) fn sim_spec<'a>(
+    pub(super) fn sim_spec_with_dt<'a>(
         &'a self,
         method: IntegrationMethod,
+        dt: f64,
         custom_spec: Option<&'a CustomOdeSpec>,
     ) -> OdeSimSpec<'a> {
         OdeSimSpec {
             preset: self.preset,
             method,
-            dt: self.dt,
+            dt,
             total_time: self.total_time,
             param_k: self.param_k,
             param_r: self.param_r,
@@ -126,13 +127,18 @@ impl OdeSolverTool {
     fn simulate_if_inactive(
         &self,
         target: IntegrationMethod,
+        dt: f64,
         reuse_active: bool,
         custom_spec: Option<&CustomOdeSpec>,
     ) -> Option<SolverTrajectory> {
         if reuse_active && self.method == target {
             None
         } else {
-            Some(simulate_ode(&self.sim_spec(target, custom_spec)))
+            Some(simulate_ode(&self.sim_spec_with_dt(
+                target,
+                dt,
+                custom_spec,
+            )))
         }
     }
 
@@ -195,21 +201,26 @@ impl OdeSolverTool {
     pub(super) fn recalculate_comparison(&mut self) {
         self.comparison_manager.clear();
         if !self.comparison_mode {
+            self.budget_state.comparison_notice = None;
             return;
         }
 
+        let primary_dt = self.budget_state.effective_dt.max(self.dt);
+        let (comp_dt, comp_notice) = self.effective_comparison_dt(primary_dt);
+        self.budget_state.comparison_notice = comp_notice;
+        let reuse_active = (comp_dt - primary_dt).abs() <= 1e-15
+            && (!self.has_custom_input_error() || !self.time_series.is_empty() || self.diverged);
+        self.populate_comparison_for_dt(comp_dt, reuse_active);
+    }
+
+    fn populate_comparison_for_dt(&mut self, comp_dt: f64, reuse_active: bool) {
         let custom_spec = self.build_custom_ode_spec();
-        let reuse_active =
-            !self.has_custom_input_error() || !self.time_series.is_empty() || self.diverged;
-        let rk4_sim = self.simulate_if_inactive(
+        let [rk4_sim, euler_sim, heun_sim] = [
             IntegrationMethod::RungeKutta4,
-            reuse_active,
-            custom_spec.as_ref(),
-        );
-        let euler_sim =
-            self.simulate_if_inactive(IntegrationMethod::Euler, reuse_active, custom_spec.as_ref());
-        let heun_sim =
-            self.simulate_if_inactive(IntegrationMethod::Heun, reuse_active, custom_spec.as_ref());
+            IntegrationMethod::Euler,
+            IntegrationMethod::Heun,
+        ]
+        .map(|m| self.simulate_if_inactive(m, comp_dt, reuse_active, custom_spec.as_ref()));
 
         let (any_diverged, euler_rk4, heun_rk4, euler_heun, snapshots) = {
             let rk4 = self.trajectory_view(IntegrationMethod::RungeKutta4, &rk4_sim);

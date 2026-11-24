@@ -91,6 +91,8 @@ pub(super) fn render_status_row(
     }
 }
 
+const MAX_PREVIEW_LATEX_BYTES: usize = 2_048;
+
 fn build_calibrated_preview(
     expr: &Expr,
     lhs_prefix: Option<&str>,
@@ -100,16 +102,22 @@ fn build_calibrated_preview(
 ) -> String {
     if !params.is_empty() {
         if let Ok(cal_rhs) = expr.to_latex_with_params(params) {
-            return match lhs_prefix {
+            let candidate = match lhs_prefix {
                 Some(prefix) => format!("{prefix} = {cal_rhs}"),
                 None => cal_rhs,
             };
+            if candidate.len() <= MAX_PREVIEW_LATEX_BYTES {
+                return candidate;
+            }
         }
     }
-    if !symbolic_latex.is_empty() {
+    if !symbolic_latex.is_empty() && symbolic_latex.len() <= MAX_PREVIEW_LATEX_BYTES {
         symbolic_latex.to_string()
-    } else {
+    } else if raw.len() <= MAX_PREVIEW_LATEX_BYTES {
         raw.to_string()
+    } else {
+        let cut = raw.floor_char_boundary(256.min(raw.len()));
+        format!("{}...", &raw[..cut])
     }
 }
 

@@ -155,6 +155,18 @@ fn test_kelly_validation_and_solvency_variants_umbrella_and_diagnostics() {
         KellyError::ConvergenceFailed {
             reason: "bracket failed",
         },
+        KellyError::InvalidProbabilityDistribution { sum: 0.95 },
+        KellyError::InvalidMarketProbabilitySum { sum: 1.05 },
+        KellyError::EmptyPortfolio,
+        KellyError::PortfolioTooLarge { count: 65, max: 64 },
+        KellyError::InvalidDrawdownBounds {
+            alpha: 1.1,
+            beta: 0.1,
+        },
+        KellyError::SolverConvergenceFailed {
+            iterations: 512,
+            residual: 1e-3,
+        },
     ];
     let bus = DiagnosticBus::new();
     for leaf in variants {
