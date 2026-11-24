@@ -1,6 +1,10 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+use super::export::{
+    format_markdown_summary, format_risk_set_csv, format_risk_table_csv, render_survival_svg,
+};
 use super::*;
+use egui_plot::{HLine, Line};
 
 #[test]
 fn test_reject_infinite_and_non_finite_presets() {
@@ -80,9 +84,12 @@ fn test_two_arm_kaplan_meier_estimates_hazard_ratio() {
     })
     .unwrap();
     tool.try_load_state(&state).unwrap();
-    assert_eq!(tool.observations.len(), 3);
-    assert_eq!(tool.control_observations.len(), 3);
-    assert!(!tool.control_curve.is_empty());
+    assert_eq!(tool.arms.len(), 2);
+    assert_eq!(tool.arms[0].name, "Treatment");
+    assert_eq!(tool.arms[1].name, "Control");
+    assert_eq!(tool.arms[0].observations.len(), 3);
+    assert_eq!(tool.arms[1].observations.len(), 3);
+    assert!(!tool.arms[1].curve.is_empty());
     let hr = tool.hazard_ratio.as_ref().unwrap().as_ref().unwrap();
     assert!(*hr < 1.0 && hr.is_finite());
 
@@ -150,3 +157,106 @@ fn test_median_survival_and_half_probability_step_crossing() {
     assert!((crossing.point[0] - median).abs() < 1e-9);
     assert!((crossing.point[1] - 0.50).abs() < 1e-9);
 }
+
+#[test]
+fn test_multi_arm_csv_and_tsv_import_hazard_ratio_and_exports() {
+    let mut tool = SurvivalAnalysisTool::default();
+    let tsv = "arm\ttime\tevent\nControl\t4.0\t1\nControl\t6.0\t1\nControl\t9.0\t0\nTreatment\t8.0\t1\nTreatment\t14.0\t0\nTreatment\t20.0\t0";
+    let (n_arms, n_obs) = tool.import_cohort_str(tsv).expect("valid multi-arm TSV");
+    assert_eq!(n_arms, 2);
+    assert_eq!(n_obs, 6);
+    assert_eq!(tool.arms[0].name, "Treatment");
+    assert_eq!(tool.arms[1].name, "Control");
+
+    let hr = tool
+        .hazard_ratio
+        .as_ref()
+        .expect("two-arm HR present")
+        .as_ref()
+        .copied()
+        .expect("valid HR");
+    // Treatment: 1 event / 42.0 time; Control: 2 events / 19.0 time -> HR = (1/42)/(2/19) < 1.0
+    assert!(hr > 0.0 && hr < 1.0, "Expected protective HR < 1, got {hr}");
+
+    let csv = format_risk_set_csv(&tool);
+    assert!(csv.starts_with("arm,time,n_at_risk,n_events,n_censored,survival_probability\n"));
+    assert!(csv.contains("Treatment,8.0000,3,1,0"));
+    assert!(csv.contains("Control,4.0000,3,1,0"));
+
+    let md = format_markdown_summary(&tool);
+    assert!(md.contains("Incidence-Density Hazard Ratio (Treatment vs Control)"));
+    assert!(md.contains("| Treatment |"));
+
+    let svg = render_survival_svg(&tool).expect("SVG export succeeds");
+    assert!(svg.contains("<svg") && svg.len() > 250);
+    assert_eq!(tool.export_datasets().len(), 8);
+}
+
+#[test]
+fn test_three_arm_kaplan_meier_and_reject_mixed_column_rows() {
+    let mut tool = SurvivalAnalysisTool::default();
+    let three_arm_csv = "\
+arm,time,event
+HighDose,12.0,1
+HighDose,18.0,0
+HighDose,24.0,1
+LowDose,8.0,1
+LowDose,14.0,1
+LowDose,20.0,0
+Placebo,4.0,1
+Placebo,6.0,1
+Placebo,9.0,1";
+    let (n_arms, n_obs) = tool
+        .import_cohort_str(three_arm_csv)
+        .expect("3-arm survival cohort imports cleanly");
+    assert_eq!((n_arms, n_obs), (3, 9));
+    assert_eq!(tool.arms.len(), 3);
+    assert!(tool.hazard_ratio.is_none());
+    assert!(tool.log_rank.is_none());
+    assert_eq!(tool.export_datasets().len(), 12);
+
+    let csv = format_risk_table_csv(&tool.arms);
+    assert!(csv.contains("HighDose,"));
+    assert!(csv.contains("LowDose,"));
+    assert!(csv.contains("Control,"));
+    let md = format_markdown_summary(&tool);
+    assert!(
+        md.contains("| HighDose |") && md.contains("| LowDose |") && md.contains("| Control |")
+    );
+
+    let mixed_rows = "10.0, 1\nTreatment, 14.0, 0";
+    let err = tool
+        .import_cohort_str(mixed_rows)
+        .expect_err("mixed 2-column and 3-column rows must be rejected");
+    assert!(err.contains("Cannot mix 2-column and 3-column survival rows"));
+}
+
+#[cfg(target_arch = "wasm32")]
+mod wasm_tests {
+    use super::*;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    #[wasm_bindgen_test]
+    fn test_wasm_survival_multi_arm_render_and_exports() {
+        let mut tool = SurvivalAnalysisTool::default();
+        tool.import_cohort_str(TWO_ARM_EXAMPLE_CSV)
+            .expect("two-arm CSV import");
+        let ctx = egui::Context::default();
+        let raw_input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::Vec2::new(1024.0, 768.0),
+            )),
+            ..Default::default()
+        };
+        let _ = ctx.run(raw_input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                tool.show_inside(ui);
+            });
+        });
+        assert!(render_survival_svg(&tool).unwrap().contains("<svg"));
+        assert!(format_risk_set_csv(&tool).contains("Treatment"));
+    }
+}
+
+// [cite:clinical_trials_statistics]

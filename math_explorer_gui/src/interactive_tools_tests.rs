@@ -52,6 +52,7 @@ mod tests {
             check_one::<clinical_trials::sample_size::SampleSizeCalculatorTool>(ctx);
             check_one::<clinical_trials::randomization::RandomizationTool>(ctx);
             check_one::<clinical_trials::win_ratio::WinRatioStressTesterTool>(ctx);
+            check_one::<clinical_trials::composite_win_ratio::WinRatioTool>(ctx);
             check_one::<clinical_trials::win_ratio_workbench::WinRatioWorkbenchTool>(ctx);
         }
     }
