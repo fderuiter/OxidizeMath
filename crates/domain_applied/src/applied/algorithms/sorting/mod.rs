@@ -38,19 +38,19 @@
 //! println!("Assignments: {}", result.stats.assignments);
 //! ```
 
-#[allow(missing_docs)]
+/// Divide-and-conquer sorting algorithms (`merge_sort`, `quick_sort`).
 pub mod divide_conquer;
-#[allow(missing_docs)]
+/// Quadratic comparison-based sorting algorithms (`bubble_sort`, `insertion_sort`).
 pub mod elementary;
-#[allow(missing_docs)]
+/// In-place binary-heap `heap_sort` implementation.
 pub mod heap;
-#[allow(missing_docs)]
+/// Non-comparative linear-time `radix_sort` over unsigned integers.
 pub mod linear;
-#[allow(missing_docs)]
+/// Operational comparison, swap, and assignment counters (`SortingStats`, `SortingResult`).
 pub mod stats;
-#[allow(missing_docs)]
+/// Generic `Sorter` strategy trait.
 pub mod strategy;
-#[allow(missing_docs)]
+/// Information-theoretic $\log_2(n!)$ lower bounds and Stirling approximations.
 pub mod theory;
 
 pub use divide_conquer::{MergeSorter, QuickSorter, merge_sort, quick_sort};

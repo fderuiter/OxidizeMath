@@ -207,7 +207,7 @@ fn compute_metrics_unchecked(
     }
 }
 
-/// Zero-allocation unconstrained covariance Kelly solver `w* = Sigma^-1 (mu - r * 1)`.
+#[doc = include_str!("../../../../../../docs/math_specs/snippets/kelly_unconstrained_covariance.md")]
 #[verified_engine::verified]
 pub fn solve_unconstrained_kelly_into(
     expected_returns: &[f64],
@@ -408,7 +408,7 @@ fn run_projected_gradient_loop(
     }
 }
 
-/// Zero-allocation projected-gradient solver for long-only Kelly (`w_i >= 0` with optional leverage cap).
+#[doc = include_str!("../../../../../../docs/math_specs/snippets/kelly_long_only_pg.md")]
 #[verified_engine::verified]
 pub fn solve_long_only_kelly_into(
     expected_returns: &[f64],

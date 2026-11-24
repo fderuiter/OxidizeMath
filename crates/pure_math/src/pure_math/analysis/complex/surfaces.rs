@@ -23,7 +23,7 @@ pub trait RiemannSurface {
 /// Riemann surface for the n-th root function $f(z) = z^{1/n}$.
 /// Has $n$ sheets.
 pub struct NthRootSurface {
-    #[allow(missing_docs)]
+    /// Value for `n` (n).
     pub n: usize,
 }
 

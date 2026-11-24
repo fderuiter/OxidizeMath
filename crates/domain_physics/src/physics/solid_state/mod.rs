@@ -16,13 +16,13 @@
 pub mod band_theory;
 pub mod bcs;
 pub mod interactions;
-#[allow(missing_docs)]
+/// Bravais crystal lattices (SC, BCC, FCC), coordination numbers, and packing fractions.
 pub mod lattice;
 pub mod magnetism;
 pub mod phonons;
 pub mod screening;
 pub mod second_quantization;
-#[allow(missing_docs)]
+/// Strongly typed energy (`ElectronVolts`) and temperature (`Kelvin`) unit wrappers.
 pub mod types;
 
 // [cite:mmwave_radiotherapy_setup]

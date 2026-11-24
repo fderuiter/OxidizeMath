@@ -1,7 +1,17 @@
 use super::types::*;
 use math_commons::constants::liquid_drop_constants;
 
-/// Trait defining the behavior of a nuclear binding energy model.
+/// Trait defining nuclear mass-defect binding energy $B(Z, A)$:
+/// $$B(Z, A) = \left(Z m_p + (A - Z) m_n - M(Z, A)\right) c^2$$
+///
+/// Reference: Weizsäcker (1935), DOI: `10.1007/BF01337700`; Bethe & Bacher (1936), DOI:
+/// `10.1103/RevModPhys.8.82`; see [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Evaluates $B(Z, A) / A$ directly without singular division because `MassNumber` enforces $A \ge 1$.
+///
+/// # Domain of Validity
+/// Bound or quasi-bound nuclides satisfying $0 \le Z \le A$ and $A \ge 1$.
 pub trait BindingEnergyModel {
     /// Calculates the Binding Energy B(Z, A).
     #[verified_engine::verified]
@@ -23,18 +33,30 @@ pub trait BindingEnergyModel {
     }
 }
 
-/// The Liquid Drop Model (Semi-Empirical Mass Formula).
+/// Bethe-Weizsäcker Semi-Empirical Mass Formula (Liquid Drop Model):
+/// $$B(Z, A) = a_V A - a_S A^{2/3} - a_C \frac{Z(Z - 1)}{A^{1/3}} - a_{\text{sym}} \frac{(A - 2Z)^2}{A} \pm \delta(A, Z)$$
+///
+/// Reference: Weizsäcker (1935), DOI: `10.1007/BF01337700`; Bethe & Bacher (1936), DOI:
+/// `10.1103/RevModPhys.8.82`; see [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Closed-form algebraic evaluation over positive fractional powers $A^{2/3}, A^{-1/3}, A^{-1/2}$;
+/// free of catastrophic cancellation away from drip-line extremes.
+///
+/// # Domain of Validity
+/// Medium-to-heavy nuclei ($A \gtrsim 12$, $0 \le Z \le A$) where macroscopic volume/surface scaling
+/// dominates magic-number shell corrections.
 #[derive(Debug, Clone)]
 pub struct LiquidDropModel {
-    #[allow(missing_docs)]
+    /// Volume binding coefficient $a_V$ (MeV).
     pub a_v: f64,
-    #[allow(missing_docs)]
+    /// Surface tension deficit coefficient $a_S$ (MeV).
     pub a_s: f64,
-    #[allow(missing_docs)]
+    /// Coulomb proton-repulsion coefficient $a_C$ (MeV).
     pub a_c: f64,
-    #[allow(missing_docs)]
+    /// Pauli asymmetry coefficient $a_{\text{sym}}$ (MeV).
     pub a_sym: f64,
-    #[allow(missing_docs)]
+    /// Even-odd nucleon pairing amplitude $a_P$ (MeV) scaling $A^{-1/2}$.
     pub delta_coeff: f64,
 }
 

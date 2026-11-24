@@ -6,18 +6,18 @@ use std::collections::HashMap;
 /// Represents the group assignment for a patient in a clinical trial.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Group {
-    #[allow(missing_docs)]
+    /// Active experimental intervention arm.
     Treatment,
-    #[allow(missing_docs)]
+    /// Placebo or standard-of-care comparator arm.
     Control,
 }
 
 /// Represents a patient with an ID and a stratum identifier (e.g., "Male-Young").
 #[derive(Debug, Clone)]
 pub struct Patient {
-    #[allow(missing_docs)]
+    /// Unique participant identifier.
     pub id: String,
-    #[allow(missing_docs)]
+    /// Baseline prognostic stratum label used for stratified randomization.
     pub stratum: String,
 }
 
@@ -149,7 +149,7 @@ pub struct StratifiedRandomizer<S: AllocationStrategy> {
 }
 
 impl<S: AllocationStrategy> StratifiedRandomizer<S> {
-    #[allow(missing_docs)]
+    /// Wraps an inner [`AllocationStrategy`] to apply independently within each patient stratum.
     #[verified_engine::verified]
     pub fn new(strategy: S) -> Self {
         Self { strategy }

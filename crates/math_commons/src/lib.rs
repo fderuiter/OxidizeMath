@@ -4,22 +4,25 @@
 
 extern crate alloc;
 
+/// Symbolic mathematical expression AST parser, evaluator, and GLSL emitter.
 #[cfg(feature = "std")]
-#[allow(missing_docs)]
 pub mod ast;
 pub mod constants;
-#[allow(missing_docs)]
+/// Shared numerical, bounds, and curve-fitting diagnostic error types.
 pub mod error;
+/// Stack-allocated polynomial and damped Levenberg-Marquardt curve-fitting solvers.
 pub mod fit;
-#[allow(missing_docs)]
+/// Colormap gradients and strongly typed grid/step primitives.
 pub mod math_kernel;
+/// Zero-allocation point-of-interest detection (extrema, roots, inflections, intersections).
 pub mod poi;
-#[allow(missing_docs)]
+/// Validated bounded floating-point wrapper types (`UnitInterval`, `PositiveFloat`, `NonNegativeFloat`).
 pub mod primitives;
 pub mod registry;
+/// Contiguous and strided 2D `(x, y)` series traits for zero-allocation numerical kernels.
 pub mod series;
 pub mod stochastic;
-#[allow(missing_docs)]
+/// Quantum angular-momentum coupling and Wigner $3j$ / Clebsch-Gordan coefficients.
 pub mod wigner;
 
 #[cfg(all(test, feature = "std"))]

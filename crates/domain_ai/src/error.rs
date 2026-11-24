@@ -2,13 +2,17 @@ use diagnostics::{Diagnostic, Severity};
 use std::collections::HashMap;
 use thiserror::Error;
 
+/// Error variants produced by AI architectures, optimizers, and training loops.
 #[derive(Error, Debug, Clone, PartialEq)]
-#[allow(missing_docs)]
 pub enum AIError {
     /// Invalid parameter value (e.g. negative learning rate).
     #[error("Invalid parameter {name}: {value}")]
-    #[allow(missing_docs)]
-    InvalidParameter { name: String, value: f64 },
+    InvalidParameter {
+        /// Parameter identifier.
+        name: String,
+        /// Rejected numeric value.
+        value: f64,
+    },
 
     /// Optimization failed or diverged.
     #[error("Optimization diverged")]
@@ -16,8 +20,10 @@ pub enum AIError {
 
     /// State is uninitialized.
     #[error("Uninitialized state: {name}")]
-    #[allow(missing_docs)]
-    UninitializedState { name: String },
+    UninitializedState {
+        /// Name of the uninitialized state buffer or parameter.
+        name: String,
+    },
 
     /// Model dimension is incompatible with the requested attention head count.
     #[error(
@@ -81,12 +87,12 @@ pub enum AIError {
         actual: (usize, usize),
     },
 
+    /// Wrapped foundational error from `math_commons`.
     #[error("{0}")]
-    #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),
 }
 
-#[allow(missing_docs)]
+/// Standard result alias used across `domain_ai` computations.
 pub type Result<T> = math_commons::error::MathResult<T>;
 
 impl Diagnostic for AIError {

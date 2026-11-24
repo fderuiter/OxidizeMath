@@ -10,10 +10,18 @@ use pure_math::pure_math::differential_geometry::cotangent_mesh::CotangentLaplac
 const MIN_THICKNESS_SCALE: f64 = 0.1;
 const MAX_THICKNESS_SCALE: f64 = 4.0;
 
-/// Coupled Hodgkin-Huxley excitable neural sheet over a 3D triangulated manifold.
+/// Coupled Hodgkin-Huxley excitable neural sheet $C_m \frac{\partial V_i}{\partial t} = I_{\text{ext},i} - I_{\text{ion}}(V_i, m_i, h_i, n_i) + g_{\text{sheet}} \tau_i (\Delta_S V)_i$ over a 3D triangulated manifold.
 ///
 /// Pre-allocates membrane potential, external brush stimulus, and normalized cortical thickness
-/// buffers so `step` executes with zero heap allocations under `VerifiedEngine`.
+/// buffers $\tau_i = \operatorname{clamp}(d_i / d_{\text{ref}}, 0.1, 4.0)$ so `step` executes with zero heap allocations under `VerifiedEngine`.
+///
+/// Reference: Hodgkin & Huxley (1952), DOI: 10.1113/jphysiol.1952.sp004764; Fischl & Dale (2000), DOI: 10.1073/pnas.200033797; [`docs/math_specs/domain_biology.md`](../../../../../docs/math_specs/domain_biology.md).
+///
+/// # Stability
+/// Clamps normalized thickness weights to $[0.1, 4.0]$ and integrates stiff ionic gating kinetics alongside diffusive surface coupling under bounded explicit substeps $\Delta t \lesssim 0.05\,\text{ms}$ within the cotangent Laplacian CFL limit.
+///
+/// # Domain of Validity
+/// Valid for finite resting potentials, non-negative sheet conductance $g_{\text{sheet}} \ge 0$, positive reference cortical thickness $d_{\text{ref}} > 0$, and non-degenerate cortical triangle meshes.
 pub struct CorticalSheetRunner {
     neurons: Vec<HodgkinHuxleyNeuron>,
     potentials_mv: Vec<f64>,

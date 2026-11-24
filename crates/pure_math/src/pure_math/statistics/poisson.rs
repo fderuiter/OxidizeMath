@@ -30,7 +30,7 @@ pub enum PoissonError {
     },
 }
 
-/// Homogeneous Poisson point process with constant rate $\lambda > 0$.
+#[doc = include_str!("../../../../../docs/math_specs/snippets/homogeneous_poisson.md")]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct HomogeneousPoisson {
     rate: f64,
@@ -334,7 +334,7 @@ impl IntensityProfile {
     }
 }
 
-/// Inhomogeneous Poisson process simulated via Lewis-Shedler thinning.
+#[doc = include_str!("../../../../../docs/math_specs/snippets/inhomogeneous_poisson.md")]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct InhomogeneousPoisson {
     profile: IntensityProfile,

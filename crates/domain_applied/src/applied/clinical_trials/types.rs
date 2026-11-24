@@ -6,8 +6,12 @@ use std::fmt;
 #[derive(Debug, Clone)]
 pub enum ClinicalTrialError {
     /// Sample size is too small for the requested test.
-    #[allow(missing_docs)]
-    InsufficientSampleSize { required: usize, actual: usize },
+    InsufficientSampleSize {
+        /// Minimum required observations per arm.
+        required: usize,
+        /// Actual observations supplied.
+        actual: usize,
+    },
     /// Invalid input data (e.g., negative counts).
     InvalidData(String),
     /// Statistical calculation failed (e.g., convergence issue).
@@ -191,27 +195,27 @@ impl fmt::Display for SurvivalTime {
 use std::ops::{Add, Div, Mul, Sub};
 
 impl SurvivalTime {
-    #[allow(missing_docs)]
+    /// Raises the survival time to power `n`, returning an error if non-finite or negative.
     #[verified_engine::verified]
     pub fn powf(&self, n: f64) -> Result<Self, ClinicalTrialError> {
         Self::new(self.0.powf(n))
     }
-    #[allow(missing_docs)]
+    /// Computes the principal square root of the survival time.
     #[verified_engine::verified]
     pub fn sqrt(&self) -> Result<Self, ClinicalTrialError> {
         Self::new(self.0.sqrt())
     }
-    #[allow(missing_docs)]
+    /// Computes the natural logarithm of the survival time, failing if `< 1.0`.
     #[verified_engine::verified]
     pub fn ln(&self) -> Result<Self, ClinicalTrialError> {
         Self::new(self.0.ln())
     }
-    #[allow(missing_docs)]
+    /// Computes the natural exponential $\exp(t)$ of the survival time.
     #[verified_engine::verified]
     pub fn exp(&self) -> Result<Self, ClinicalTrialError> {
         Self::new(self.0.exp())
     }
-    #[allow(missing_docs)]
+    /// Returns the absolute survival time $|t|$ as a validated `SurvivalTime`.
     #[verified_engine::verified]
     pub fn abs(&self) -> Result<Self, ClinicalTrialError> {
         Self::new(self.0.abs())

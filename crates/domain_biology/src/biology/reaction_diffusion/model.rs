@@ -9,18 +9,29 @@ use super::{ChemicalState, DiffusionModel, ReactionDiffusionError, ReactionModel
 /// This struct encapsulates the immutable laws of the system (reaction kinetics, diffusion strategy,
 /// and coefficients), separating them from the mutable simulation state.
 ///
-/// It implements `OdeSystem` to calculate the time derivative ($dC/dt$) given a state.
+/// It implements `OdeSystem` to calculate the time derivative ($dC/dt$) given a state:
+/// $$\frac{\partial C_s}{\partial t} = D_s \nabla^2 C_s + R_s(\mathbf{C})$$
+///
+/// Reference: Turing (1952), DOI: `10.1098/rstb.1952.0012`; see
+/// [`docs/math_specs/domain_biology.md`](../../../../../docs/math_specs/domain_biology.md).
+///
+/// # Stability
+/// Semi-discrete method-of-lines ODE stiffness scales as $O(\max_s D_s / h^2)$; explicit integrators
+/// require $\Delta t \le h^2 / (2 d \max_s D_s)$ in $d$ spatial dimensions.
+///
+/// # Domain of Validity
+/// Multi-species systems with $N \ge 1$ species, positive grid size, and non-negative diffusivities $D_s \ge 0$.
 #[derive(Theory)]
 #[theory(
     description = "Turing patterns arise from reaction-diffusion systems where local auto-activation is coupled with long-range inhibition, leading to spontaneous symmetry breaking and the formation of stable spatial patterns.",
     citation = "The Chemical Basis of Morphogenesis (Turing, 1952)"
 )]
 pub struct ReactionDiffusionModel<R, D> {
-    #[allow(missing_docs)]
+    /// Local multi-species reaction kinetics strategy.
     pub reaction: R,
-    #[allow(missing_docs)]
+    /// Spatial Laplacian diffusion operator strategy.
     pub diffusion: D,
-    #[allow(missing_docs)]
+    /// Per-species scalar diffusion coefficients $D_s$.
     pub diffusion_coeffs: Vec<f64>,
 }
 
@@ -54,11 +65,11 @@ pub struct ReactionDiffusionSystem<
     D: DiffusionModel,
     S: Solver<ChemicalState> = Euler<ChemicalState>,
 > {
-    #[allow(missing_docs)]
+    /// Immutable reaction-diffusion physics definition.
     pub model: ReactionDiffusionModel<R, D>,
-    #[allow(missing_docs)]
+    /// Current multi-species spatial concentration matrix.
     pub state: ChemicalState,
-    #[allow(missing_docs)]
+    /// Configured ODE time-stepping solver strategy.
     pub solver: S,
 }
 

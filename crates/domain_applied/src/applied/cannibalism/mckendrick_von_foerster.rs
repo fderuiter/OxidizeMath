@@ -18,6 +18,17 @@ pub fn birth_rate(_t: f64) -> f64 {
 
 /// Pre-allocated upwind characteristic solver for $\partial_t n + \partial_a n = -\mu(t, a, N) n(t, a)$
 /// with integral renewal boundary $n(t, 0) = b(t) = \int_0^{a_{\max}} \beta(a, N(t)) n(t, a)\,da$.
+///
+/// Reference: Cushing (1991), DOI: 10.1007/BF02460617;
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// First-order upwind advection with exponential mortality attenuation is positivity-preserving and total-variation
+/// non-increasing under the hyperbolic CFL condition $\Delta t \le \Delta a$, using zero heap allocations per step.
+///
+/// # Domain of Validity
+/// Valid on finite age domains $0 \le a \le a_{\max}$ with $a_{\max} > 0$, non-negative initial density $n(0, a) \ge 0$,
+/// and non-negative mortality and fecundity kernels.
 #[derive(Debug, Clone)]
 pub struct McKendrickSolver {
     ages: Vec<f64>,

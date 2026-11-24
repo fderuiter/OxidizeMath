@@ -1,19 +1,19 @@
 use std::fmt;
 
+/// Domain validation errors for nuclear structure, decay, and resonance calculations.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(missing_docs)]
 pub enum NuclearError {
-    #[allow(missing_docs)]
+    /// Mass number $A$ was zero or physically invalid.
     InvalidMassNumber(String),
-    #[allow(missing_docs)]
+    /// Atomic number $Z$ exceeded mass number $A$ or violated model constraints.
     InvalidAtomicNumber(String),
-    #[allow(missing_docs)]
+    /// Radioactive half-life $T_{1/2}$ was non-positive.
     InvalidHalfLife,
-    #[allow(missing_docs)]
+    /// Relative projectile velocity was non-positive.
     InvalidVelocity,
-    #[allow(missing_docs)]
+    /// Breit-Wigner resonance decay width $\Gamma$ was non-positive.
     InvalidGammaWidth,
-    #[allow(missing_docs)]
+    /// Computed nuclear volume vanished.
     VolumeZero,
 }
 
@@ -39,19 +39,19 @@ impl std::error::Error for NuclearError {}
 pub struct AtomicNumber(u32);
 
 impl AtomicNumber {
-    #[allow(missing_docs)]
+    /// Wraps a non-negative proton count $Z$.
     #[verified_engine::verified]
     pub fn new(value: u32) -> Self {
         Self(value)
     }
 
-    #[allow(missing_docs)]
+    /// Returns the integer proton count $Z$.
     #[verified_engine::verified]
     pub fn value(&self) -> u32 {
         self.0
     }
 
-    #[allow(missing_docs)]
+    /// Converts the proton count $Z$ to `f64`.
     #[verified_engine::verified]
     pub fn as_f64(&self) -> f64 {
         self.0 as f64
@@ -71,7 +71,7 @@ impl From<u32> for AtomicNumber {
 pub struct MassNumber(u32);
 
 impl MassNumber {
-    #[allow(missing_docs)]
+    /// Validates and constructs a strictly positive nucleon count $A \ge 1$.
     #[verified_engine::verified]
     pub fn new(value: u32) -> Result<Self, NuclearError> {
         if value == 0 {
@@ -88,13 +88,13 @@ impl MassNumber {
         Self(value)
     }
 
-    #[allow(missing_docs)]
+    /// Returns the integer nucleon count $A$.
     #[verified_engine::verified]
     pub fn value(&self) -> u32 {
         self.0
     }
 
-    #[allow(missing_docs)]
+    /// Converts the nucleon count $A$ to `f64`.
     #[verified_engine::verified]
     pub fn as_f64(&self) -> f64 {
         self.0 as f64

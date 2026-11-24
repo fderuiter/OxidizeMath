@@ -1,10 +1,9 @@
 #![doc = include_str!("../README.md")]
 pub mod biology;
-#[allow(missing_docs)]
+/// Typed biological, electrophysiological, kinetic, and reaction-diffusion errors.
 pub mod error;
 
 #[doc(hidden)]
-#[allow(missing_docs)]
 pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{

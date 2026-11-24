@@ -3,8 +3,8 @@ use crate::error::LoraError;
 
 /// Strategy for combining multiple LoRA state dictionaries.
 pub trait CombinationStrategy {
+    /// Combines `modules` using scalar `weights` into a single merged [`LoraStateDict`].
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn combine(
         &self,
         modules: &[LoraStateDict],
@@ -14,8 +14,8 @@ pub trait CombinationStrategy {
 
 /// Strategy for calculating the objective score.
 pub trait ObjectiveStrategy {
+    /// Evaluates the regularized scalar objective from `weights` and task `mock_loss`.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn evaluate(&self, weights: &[f64], mock_loss: f64) -> f64;
 }
 
@@ -72,12 +72,12 @@ impl CombinationStrategy for LinearCombinationStrategy {
 
 /// L1 Regularization strategy.
 pub struct L1RegularizationStrategy {
-    #[allow(missing_docs)]
+    /// Mean-$L_1$ penalty coefficient $\alpha \ge 0$ applied to adapter weights.
     pub alpha: f64,
 }
 
 impl L1RegularizationStrategy {
-    #[allow(missing_docs)]
+    /// Creates a new $L_1$-regularized objective strategy with penalty coefficient `alpha`.
     #[verified_engine::verified]
     pub fn new(alpha: f64) -> Self {
         Self { alpha }

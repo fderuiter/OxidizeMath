@@ -8,27 +8,27 @@ pub trait HypothesisTest<Input> {
     fn test(&self, data: Input) -> Result<TestResult, ClinicalTrialError>;
 }
 
+/// Outcome summary returned by a frequentist [`HypothesisTest`].
 #[derive(Debug, Clone)]
-#[allow(missing_docs)]
 pub struct TestResult {
-    #[allow(missing_docs)]
+    /// Realized test statistic ($t$ or $\chi^2$).
     pub statistic: f64,
-    #[allow(missing_docs)]
+    /// Tail probability under the null hypothesis $H_0$.
     pub p_value: f64,
-    #[allow(missing_docs)]
-    pub is_significant: bool, // Based on provided alpha
-    #[allow(missing_docs)]
-    pub confidence_interval: Option<(f64, f64)>, // For the difference
+    /// Whether `p_value < alpha` rejects $H_0$ at the configured Type-I error level.
+    pub is_significant: bool,
+    /// Optional $(1 - \alpha)$ confidence interval `(lower, upper)` for the effect difference.
+    pub confidence_interval: Option<(f64, f64)>,
 }
 
 /// Strategy for an independent two-sample t-test (assuming equal variances).
 pub struct TTestIndependent {
-    #[allow(missing_docs)]
+    /// Two-sided Type-I significance threshold $\alpha \in (0, 1)$.
     pub alpha: f64,
 }
 
 impl TTestIndependent {
-    #[allow(missing_docs)]
+    /// Constructs a pooled-variance two-sample $t$-test at significance level `alpha`.
     #[verified_engine::verified]
     pub fn new(alpha: f64) -> Self {
         Self { alpha }
@@ -90,12 +90,12 @@ impl<'a> HypothesisTest<(&'a GroupData, &'a GroupData)> for TTestIndependent {
 
 /// Strategy for a Chi-Square test for a 2x2 contingency table.
 pub struct ChiSquare2x2 {
-    #[allow(missing_docs)]
+    /// Upper-tail Type-I significance threshold $\alpha \in (0, 1)$.
     pub alpha: f64,
 }
 
 impl ChiSquare2x2 {
-    #[allow(missing_docs)]
+    /// Constructs a Pearson $\chi^2$ test ($\text{df} = 1$) at significance level `alpha`.
     #[verified_engine::verified]
     pub fn new(alpha: f64) -> Self {
         Self { alpha }

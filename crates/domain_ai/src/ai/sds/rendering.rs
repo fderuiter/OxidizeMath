@@ -5,44 +5,44 @@ use std::f64::consts::PI;
 /// Represents a single ray: r(t) = o + t * d
 #[derive(Debug, Clone, Copy)]
 pub struct Ray {
-    #[allow(missing_docs)]
+    /// World-space camera ray origin $\mathbf{o} \in \mathbb{R}^3$.
     pub origin: Vector3<f64>,
-    #[allow(missing_docs)]
+    /// Normalized world-space viewing direction $\mathbf{d} \in \mathbb{S}^2$.
     pub direction: Vector3<f64>,
 }
 
 /// A bundle of rays corresponding to an image grid.
 pub struct RayBundle {
-    #[allow(missing_docs)]
+    /// Column-major array of camera rays covering `width * height` pixels.
     pub rays: Vec<Ray>,
-    #[allow(missing_docs)]
+    /// Horizontal image resolution in pixels.
     pub width: usize,
-    #[allow(missing_docs)]
+    /// Vertical image resolution in pixels.
     pub height: usize,
 }
 
 /// A persistent rendering context for zero-allocation rendering.
 pub struct RenderContext {
-    #[allow(missing_docs)]
+    /// Scratch RGB pixel buffer of length `width * height`.
     pub image_data: Vec<Vector3<f64>>,
-    #[allow(missing_docs)]
+    /// Stratified ray-march sample depths $t_i \in [t_{\mathrm{near}}, t_{\mathrm{far}}]$.
     pub ts: Vec<f64>,
-    #[allow(missing_docs)]
+    /// Sampled volume densities $\sigma_i \ge 0$ along the active ray.
     pub densities: Vec<f64>,
-    #[allow(missing_docs)]
+    /// Sampled emitted RGB radiances $\mathbf{c}_i$ along the active ray.
     pub colors: Vec<Vector3<f64>>,
-    #[allow(missing_docs)]
+    /// Adjacent sample intervals $\delta_i = t_{i+1} - t_i$ along the active ray.
     pub deltas: Vec<f64>,
-    #[allow(missing_docs)]
+    /// Cached image width in pixels.
     pub width: usize,
-    #[allow(missing_docs)]
+    /// Cached image height in pixels.
     pub height: usize,
-    #[allow(missing_docs)]
+    /// Cached number of stratified samples per ray.
     pub n_samples: usize,
 }
 
 impl RenderContext {
-    #[allow(missing_docs)]
+    /// Creates an empty zero-capacity rendering context.
     pub fn new() -> Self {
         Self {
             image_data: Vec::new(),
@@ -56,7 +56,7 @@ impl RenderContext {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Resizes scratch buffers to accommodate a `width` by `height` image with `n_samples` per ray.
     pub fn resize(&mut self, width: usize, height: usize, n_samples: usize) {
         if self.width != width || self.height != height {
             self.image_data.resize(width * height, Vector3::zeros());
@@ -156,10 +156,25 @@ pub fn positional_encoding(p: f64, l: usize) -> Vec<f64> {
     encoded
 }
 
-/// Module 1.3: MLP Query Interface
+/// Continuous volumetric Neural Radiance Field (NeRF) query interface $(\mathbf{x}, \mathbf{d}) \mapsto (\sigma, \mathbf{c})$.
+///
+/// Integrated along camera rays $\mathbf{r}(t) = \mathbf{o} + t\mathbf{d}$ via classical optical quadrature:
+///
+/// $$\hat{\mathbf{C}}(\mathbf{r}) = \sum_{i=1}^{N} T_i \left(1 - \exp(-\sigma_i \delta_i)\right) \mathbf{c}_i, \qquad T_i = \exp\!\left(-\sum_{j=1}^{i-1} \sigma_j \delta_j\right)$$
+///
+/// Reference: Mildenhall et al. (2020), arXiv:2003.08934; see
+/// [`docs/math_specs/domain_ai.md`](../../../../../docs/math_specs/domain_ai.md).
+///
+/// # Stability
+/// Non-negative volume density $\sigma_i \ge 0$ and positive step lengths $\delta_i > 0$ guarantee
+/// $1 - \exp(-\sigma_i \delta_i) \in [0, 1)$ and monotone transmittance decay $T_{i+1} \le T_i$.
+///
+/// # Domain of Validity
+/// Finite 3D query coordinates $\mathbf{x} \in \mathbb{R}^3$, unit viewing directions
+/// $\|\mathbf{d}\|_2 = 1$, non-negative densities $\sigma \ge 0$, and bounded radiance $\mathbf{c} \in [0, 1]^3$.
 pub trait NeRFModel {
+    /// Evaluates volume density $\sigma(\mathbf{x}) \ge 0$ and emitted RGB radiance $\mathbf{c}(\mathbf{x}, \mathbf{d})$ at `pos` and `dir`.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn query(&self, pos: &Vector3<f64>, dir: &Vector3<f64>) -> (f64, Vector3<f64>);
 }
 

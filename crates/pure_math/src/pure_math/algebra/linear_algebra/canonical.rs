@@ -19,9 +19,9 @@ use nalgebra::{Complex, DMatrix};
 
 /// Represents a Jordan Block.
 pub struct JordanBlock {
-    #[allow(missing_docs)]
+    /// Value for `eigenvalue` (eigenvalue).
     pub eigenvalue: Complex<f64>,
-    #[allow(missing_docs)]
+    /// Value for `size` (size).
     pub size: usize,
 }
 
@@ -65,7 +65,7 @@ impl JordanBlock {
 ///
 /// The coefficients are stored in order $[a_0, a_1, \dots, a_{n-1}]$.
 pub struct CompanionMatrix {
-    #[allow(missing_docs)]
+    /// Value for `coeffs` (coeffs).
     pub coeffs: Vec<f64>,
 }
 

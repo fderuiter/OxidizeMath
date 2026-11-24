@@ -1,10 +1,10 @@
 #![doc = include_str!("../README.md")]
-#[allow(missing_docs)]
+/// Submodule providing `error` types, traits, and algorithms.
 pub mod error;
-#[allow(missing_docs)]
+/// Submodule providing `math_types` types, traits, and algorithms.
 pub mod math_types;
 pub mod pure_math;
-#[allow(missing_docs)]
+/// Submodule providing `theory_macro` types, traits, and algorithms.
 pub mod theory_macro;
 
 #[doc(hidden)]
@@ -14,7 +14,6 @@ pub mod __macro_deps {
 }
 
 #[doc(hidden)]
-#[allow(missing_docs)]
 pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{

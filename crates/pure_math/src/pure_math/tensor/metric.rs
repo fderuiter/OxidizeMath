@@ -89,7 +89,7 @@ impl<F> RiemannianMetric<F>
 where
     F: Fn(&DVector<f64>) -> DMatrix<f64>,
 {
-    #[allow(missing_docs)]
+    /// Wraps a coordinate-dependent metric-tensor closure `metric_fn`.
     #[verified_engine::verified]
     pub fn new(metric_fn: F) -> Self {
         debug_assert!(std::mem::size_of::<Self>() == std::mem::size_of::<F>());

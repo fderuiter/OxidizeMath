@@ -6,22 +6,36 @@ pub use pure_math::pure_math::analysis::optimization::Trainable;
 
 use verified_engine::Theory;
 
-/// A standard Two-Layer Multi-Layer Perceptron (MLP).
-/// Architecture: Input -> Dense -> ReLU -> Dense -> Softmax (implicit in loss)
+/// Two-layer feedforward multi-layer perceptron (MLP) with rectified linear hidden units.
+///
+/// Evaluates the affine-ReLU-affine map:
+///
+/// $$\mathbf{z}_1 = \mathbf{W}_1 \mathbf{x} + \mathbf{b}_1, \qquad \mathbf{a}_1 = \max(\mathbf{0}, \mathbf{z}_1), \qquad \mathbf{z}_2 = \mathbf{W}_2 \mathbf{a}_1 + \mathbf{b}_2$$
+///
+/// Reference: Rumelhart, Hinton & Williams (1986), DOI: 10.1038/323533a0; see
+/// [`docs/math_specs/domain_ai.md`](../../../../../docs/math_specs/domain_ai.md).
+///
+/// # Stability
+/// Backpropagation propagates exact subgradients $\mathbb{I}[\mathbf{z}_1 > 0]$; step sizes must
+/// remain bounded ($\eta \ll 2 / \|\mathbf{W}\|_2^2$) to avoid activation saturation or divergence.
+///
+/// # Domain of Validity
+/// Finite real input vectors $\mathbf{x} \in \mathbb{R}^{d_{\mathrm{in}}}$ matching
+/// `layer1.weights.ncols()`, with positive layer dimensions $(d_{\mathrm{in}}, d_{\mathrm{hid}}, d_{\mathrm{out}})$.
 #[derive(Theory)]
 #[theory(
     description = "A Multi-Layer Perceptron (MLP) is a class of feedforward artificial neural network consisting of at least three layers of nodes: an input layer, a hidden layer and an output layer. Except for the input nodes, each node is a neuron that uses a nonlinear activation function.",
     citation = "Learning representations by back-propagating errors (Rumelhart et al., 1986)"
 )]
 pub struct TwoLayerMLP {
-    #[allow(missing_docs)]
+    /// First dense affine layer mapping $\mathbb{R}^{d_{\mathrm{in}}} \to \mathbb{R}^{d_{\mathrm{hid}}}$.
     pub layer1: DenseLayer,
-    #[allow(missing_docs)]
+    /// Second dense affine layer mapping $\mathbb{R}^{d_{\mathrm{hid}}} \to \mathbb{R}^{d_{\mathrm{out}}}$.
     pub layer2: DenseLayer,
 }
 
 impl TwoLayerMLP {
-    #[allow(missing_docs)]
+    /// Constructs a two-layer MLP initialized from the default uniform random generator.
     #[verified_engine::verified]
     pub fn new(input_dim: usize, hidden_dim: usize, output_dim: usize) -> Self {
         Self {
@@ -30,7 +44,7 @@ impl TwoLayerMLP {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Constructs a two-layer MLP initialized deterministically using `rng`.
     #[verified_engine::verified]
     pub fn new_with_rng<R: rand::Rng + ?Sized>(
         input_dim: usize,

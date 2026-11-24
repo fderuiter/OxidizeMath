@@ -1,10 +1,9 @@
 #![doc = include_str!("../README.md")]
 pub mod epidemiology;
-#[allow(missing_docs)]
+/// Typed epidemiological, compartmental, and network contagion errors.
 pub mod error;
 
 #[doc(hidden)]
-#[allow(missing_docs)]
 pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{EpidemiologyDomainError, EpidemiologyError, NetworkModelError};

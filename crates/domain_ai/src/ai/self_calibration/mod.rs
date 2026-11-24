@@ -11,11 +11,11 @@
 //! `ECE`/`MCE` reliability curves, `ROC`/`PR-AUC`, and Platt or `PAVA` isotonic recalibrators,
 //! see [`crate::ai::calibration`].
 
-#[allow(missing_docs)]
+/// Soft self-consistency agreement scoring across sampled responses.
 pub mod scoring;
-#[allow(missing_docs)]
+/// Answer-distribution Shannon entropy and adaptive temperature scaling.
 pub mod temperature;
-#[allow(missing_docs)]
+/// Kullback-Leibler divergence calibration loss against temperature-scaled targets.
 pub mod training;
 pub mod types;
 

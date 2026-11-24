@@ -3,11 +3,24 @@
 use super::reaction::ReactionKinetics;
 use crate::biology::reaction_diffusion::{ChemicalState, ReactionModel};
 
-/// Spatially varying Schnakenberg kinetics with preallocated per-cell $(a_i, b_i)$ masks.
+/// Spatially varying Schnakenberg kinetics with preallocated per-cell $(a_i, b_i)$ masks,
+/// evaluating local reaction rates $R_u(u_i, v_i) = a_i - u_i + u_i^2 v_i$ and
+/// $R_v(u_i, v_i) = b_i - u_i^2 v_i$ at grid cell $i$.
 ///
 /// Unmasked cells evaluate the scalar baseline $(a, b)$ rates, while masked cells
 /// evaluate their preallocated $(a_i, b_i)$ overrides with zero heap allocation during
 /// reaction-diffusion integration steps.
+///
+/// Reference: Schnakenberg (1979), DOI: `10.1016/0022-5193(79)90002-4`; see
+/// [`docs/math_specs/domain_biology.md`](../../../../../docs/math_specs/domain_biology.md).
+///
+/// # Stability
+/// Explicit reaction-diffusion stepping requires bounded $\Delta t$ against cubic $u_i^2 v_i$ stiffness
+/// across $\max_i (a_i + b_i)$ alongside the diffusive parabolic CFL bound.
+///
+/// # Domain of Validity
+/// Non-negative species concentrations $u_i, v_i \ge 0$, feed rates $a_i \ge 0, b_i > 0$ with $a_i + b_i > 0$,
+/// and concentration slice lengths matching `grid_size`.
 #[derive(Debug, Clone)]
 pub struct SpatialSchnakenbergKinetics {
     /// Baseline activator production rate ($a$).

@@ -48,9 +48,9 @@
 //! ```
 
 pub mod physics;
-#[allow(missing_docs)]
+/// Coupled backward-HJB and forward-Fokker-Planck fixed-point PDE solvers.
 pub mod solver;
-#[allow(missing_docs)]
+/// Grid discretization, viscosity, and boundary configuration types for 1D Mean Field Games.
 pub mod types;
 
 pub use physics::{Hamiltonian, QuadraticHamiltonian};

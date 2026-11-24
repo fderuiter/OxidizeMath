@@ -15,8 +15,21 @@ use math_commons::math_kernel::types::{
 };
 use rand_core::RngCore;
 
-/// 2D conserved Cahn-Hilliard-Cook (Model B) phase-separation SPDE solver supporting both
-/// 2D Biharmonic finite-difference stencils and radix-2 2/3-dealiased semi-implicit Fourier stepping.
+/// 2D conserved Cahn-Hilliard-Cook (Hohenberg-Halperin Model B) phase-separation SPDE solver evolving
+/// $\partial_t \phi = M \nabla^2(\phi^3 - \phi - \kappa \nabla^2 \phi) + \nabla \cdot \vec{\eta}$ via
+/// 2D Biharmonic finite-difference stencils or radix-2 2/3-dealiased semi-implicit Fourier stepping.
+///
+/// Reference: Cahn & Hilliard (1958), DOI: 10.1063/1.1744102; Hohenberg & Halperin (1977),
+/// DOI: 10.1103/RevModPhys.49.435; [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Conserves spatial mean composition $\bar{\phi}$ to machine precision; [`Self::step_fourier_dealiased`]
+/// treats $+M\kappa|\mathbf{k}|^4$ implicitly with Orszag 2/3 dealiasing, while [`Self::step_stencil`]
+/// requires $M\kappa\,\Delta t(\Delta x^{-2} + \Delta y^{-2})^2 \le \frac{1}{8}$.
+///
+/// # Domain of Validity
+/// Requires `width >= 4`, `height >= 4` (power-of-two with `BoundaryCondition::Periodic` for Fourier stepping),
+/// `dx, dy > 0`, `mobility > 0`, `kappa > 0`, and `mobility_temp >= 0`.
 #[derive(Debug, Clone)]
 pub struct CahnHilliard2D {
     phi: Vec<f64>,

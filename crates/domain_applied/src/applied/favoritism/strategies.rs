@@ -10,18 +10,18 @@ const EPSILON: f64 = math_commons::registry::TOLERANCE_STANDARD;
 /// We use `dyn RngCore` to be object-safe regarding the RNG, but we must stay generic
 /// over `I` because `Integrator` is not object-safe.
 pub struct ScoringContext<'a, I: Integrator + ?Sized> {
-    #[allow(missing_docs)]
+    /// Mutable pseudo-random generator used for stochastic mood perturbations.
     pub rng: &'a mut dyn RngCore,
-    #[allow(missing_docs)]
+    /// Numerical quadrature backend evaluating proximity and sibling-effort integrals.
     pub integrator: &'a I,
-    #[allow(missing_docs)]
+    /// Singularity-guarded baseline distance $x_0$ (`|x_0| >= TOLERANCE_STANDARD`).
     pub safe_x0: f64,
-    #[allow(missing_docs)]
+    /// Non-negative integration horizon $t \ge 0$.
     pub safe_t: f64,
 }
 
 impl<'a, I: Integrator + ?Sized> ScoringContext<'a, I> {
-    #[allow(missing_docs)]
+    /// Constructs a sanitized evaluation context clamping near-zero distances and negative times.
     #[verified_engine::verified]
     pub fn new(inputs: &FavoritismInputs, rng: &'a mut dyn RngCore, integrator: &'a I) -> Self {
         let safe_x0 = if inputs.time.x_0.abs() < EPSILON {
@@ -40,14 +40,25 @@ impl<'a, I: Integrator + ?Sized> ScoringContext<'a, I> {
     }
 }
 
-/// The standard model for the Unified Favoritism Theory.
+/// Multiplicative composite model evaluating the Unified Favoritism Theory (`UFT`) functional.
 ///
-/// This struct composes multiple `ScoringStrategy` components to calculate
-/// the final score. It allows for extension by modifying the list of strategies.
+/// Evaluates the quadrature-normalized score ratio over horizon $[0, t]$:
+///
+/// $$F(t) = \frac{\mathcal{N}(t)\,\mathcal{E}(t)\,\det(\mathbf{G})\,(\mathbf{c}^\top \mathbf{w}_c)\,\ln(1 + f_0)\,\mathcal{P}\,\mathcal{S}\,e^{-\lambda \Delta t}\,\xi}{\int_0^t \sum_{s \in \text{siblings}} d_s(\tau)^{-1}\,\mathrm{d}\tau}$$
+///
+/// Reference: Clenshaw & Curtis (1960), DOI: 10.1007/BF01386223; see
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Near-zero distances $|x_0|, |d_s| < \epsilon$ and near-zero sibling integrals are clamped to
+/// `TOLERANCE_STANDARD` ($10^{-10}$) or `1.0` so neither quadrature nor quotient division overflows.
+///
+/// # Domain of Validity
+/// Finite [`FavoritismInputs`] with $t \ge 0$, $1 + f_0 > 0$, and convergent 1D [`Integrator`] backend `I`.
 pub struct UnifiedFavoritismModel<I: Integrator + ?Sized> {
-    #[allow(missing_docs)]
+    /// Multiplicative factor strategies multiplied into the score numerator.
     pub numerator_strategies: Vec<Box<dyn ScoringStrategy<I>>>,
-    #[allow(missing_docs)]
+    /// Normalization factor strategies multiplied into the score denominator.
     pub denominator_strategies: Vec<Box<dyn ScoringStrategy<I>>>,
 }
 
@@ -98,14 +109,14 @@ impl<I: Integrator + ?Sized> UnifiedFavoritismModel<I> {
 
 /// A strategy for calculating a component of the favoritism score.
 pub trait ScoringStrategy<I: Integrator + ?Sized> {
+    /// Evaluates this multiplicative score factor for `inputs` within `ctx`.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn calculate(&self, inputs: &FavoritismInputs, ctx: &mut ScoringContext<I>) -> f64;
 }
 
 // --- Numerator Strategies ---
 
-#[allow(missing_docs)]
+/// Integrates inverse baseline distance $\int_0^t x_0^{-1}\,\mathrm{d}\tau$ over $[0, t]$.
 pub struct ProximityStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for ProximityStrategy {
     #[verified_engine::verified]
@@ -116,7 +127,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for ProximityStrategy {
     }
 }
 
-#[allow(missing_docs)]
+/// Integrates cumulative emotional-support effort over $[0, t] \times [0, 1]$.
 pub struct EmotionalSupportStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for EmotionalSupportStrategy {
     #[verified_engine::verified]
@@ -132,7 +143,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for EmotionalSupportStrategy {
     }
 }
 
-#[allow(missing_docs)]
+/// Computes the $2 \times 2$ diagonal gift matrix determinant $g_{\mathrm{emotional}} \cdot g_{\mathrm{practical}}$.
 pub struct GiftStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for GiftStrategy {
     #[verified_engine::verified]
@@ -145,7 +156,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for GiftStrategy {
     }
 }
 
-#[allow(missing_docs)]
+/// Evaluates the weighted inner product $\mathbf{c}^\top \mathbf{w}_c$ of compliment counts and weights.
 pub struct ComplimentStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for ComplimentStrategy {
     #[verified_engine::verified]
@@ -157,7 +168,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for ComplimentStrategy {
     }
 }
 
-#[allow(missing_docs)]
+/// Evaluates logarithmic diminishing returns $\ln(1 + f_0)$ of contact frequency.
 pub struct ContactFrequencyStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for ContactFrequencyStrategy {
     #[verified_engine::verified]
@@ -166,7 +177,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for ContactFrequencyStrategy {
     }
 }
 
-#[allow(missing_docs)]
+/// Computes the linear combination of intelligence, sensitivity, wealth, and talent traits.
 pub struct PersonalityStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for PersonalityStrategy {
     #[verified_engine::verified]
@@ -178,7 +189,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for PersonalityStrategy {
     }
 }
 
-#[allow(missing_docs)]
+/// Applies birth-order, life-event, crisis-assistance, and visibility multipliers.
 pub struct SocialMultiplierStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for SocialMultiplierStrategy {
     #[verified_engine::verified]
@@ -199,7 +210,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for SocialMultiplierStrategy {
     }
 }
 
-#[allow(missing_docs)]
+/// Evaluates exponential memory decay $\exp(-\lambda \Delta t)$ since last contact.
 pub struct DecayStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for DecayStrategy {
     #[verified_engine::verified]
@@ -208,7 +219,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for DecayStrategy {
     }
 }
 
-#[allow(missing_docs)]
+/// Samples a uniform mood-swing perturbation $\xi \sim \mathcal{U}(0.9, 1.1)$.
 pub struct StochasticStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for StochasticStrategy {
     #[verified_engine::verified]
@@ -224,7 +235,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for StochasticStrategy {
 
 // --- Denominator Strategies ---
 
-#[allow(missing_docs)]
+/// Integrates aggregate inverse sibling distances $\int_0^t \sum_s d_s^{-1}\,\mathrm{d}\tau$ as competitive normalization.
 pub struct SiblingCompetitionStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for SiblingCompetitionStrategy {
     #[verified_engine::verified]

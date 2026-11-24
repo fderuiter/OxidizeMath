@@ -15,12 +15,12 @@ use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 /// P must be prime. This is not checked at compile time but expected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Fp<const P: i64> {
-    #[allow(missing_docs)]
+    /// Value for `value` (value).
     pub value: i64,
 }
 
 impl<const P: i64> Fp<P> {
-    #[allow(missing_docs)]
+    /// Reduces `value` into the canonical residue representative in `0..P` via Euclidean remainder.
     #[verified_engine::verified]
     pub fn new(value: i64) -> Self {
         Fp {

@@ -7,9 +7,21 @@ use super::death_rate::sanitize_density;
 use nalgebra::Vector2;
 use pure_math::pure_math::analysis::ode::{OdeSystem, RungeKutta4, Solver};
 
-/// Parameters for the Cannibalism ODE system.
+/// Two-compartment ordinary differential equation model for normal ($N$) and cannibalistic ($C$) cohorts.
 ///
-/// Encapsulates the coefficients for the 2D population model.
+/// $$
+/// \frac{dN}{dt} = (\beta_N - k_N - \mu_N) N + \beta_C C - \phi, \qquad \frac{dC}{dt} = k_N N - \mu_C C
+/// $$
+///
+/// Reference: Cushing (1991), DOI: 10.1007/BF02460617;
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// [`CannibalismModel::step_rk4`] advances via explicit 4th-order Runge-Kutta and projects negative overshoot
+/// onto the positive orthant $N, C \ge 0$ to prevent unphysical extinction oscillations when $\phi > 0$.
+///
+/// # Domain of Validity
+/// Valid for non-negative demographic rates $\beta_N, \beta_C, k_N, \phi, \mu_N, \mu_C \ge 0$ and $N, C \ge 0$.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CannibalismModel {
     /// Birth rate of normal individuals ($\beta_N$)

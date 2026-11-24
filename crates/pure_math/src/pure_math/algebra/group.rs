@@ -28,9 +28,9 @@ use std::hash::Hash;
 /// Use `Zn<N>` for a type-safe implementation where N is known at compile time.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CyclicElement {
-    #[allow(missing_docs)]
+    /// Value for `value` (value).
     pub value: usize,
-    #[allow(missing_docs)]
+    /// Value for `modulo` (modulo).
     pub modulo: usize,
 }
 
@@ -131,7 +131,7 @@ impl Monoid for CyclicElement {
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Zn<const N: usize> {
-    #[allow(missing_docs)]
+    /// Value for `value` (value).
     pub value: usize,
 }
 
@@ -149,7 +149,7 @@ impl<const N: usize> Zn<N> {
         Ok(Zn { value: value % N })
     }
 
-    #[allow(missing_docs)]
+    /// Creates an element in $Z_N$ reduced modulo `N` (panics if `N == 0`; prefer [`Self::try_new`]).
     #[verified_engine::verified]
     pub fn new(value: usize) -> Self {
         Self::try_new(value).expect("Zn<N> modulus N must be non-zero")
@@ -194,7 +194,7 @@ impl<const N: usize> AbelianGroup for Zn<N> {}
 /// An element of the Symmetric Group $S_n$ (Permutations).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Permutation {
-    #[allow(missing_docs)]
+    /// Value for `map` (map).
     pub map: Vec<usize>, // map[i] is the image of i
 }
 
@@ -255,7 +255,7 @@ impl Permutation {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Returns the identity permutation $\mathrm{id} \in S_n$ mapping each index `i` in `0..n` to itself.
     #[verified_engine::verified]
     pub fn identity(n: usize) -> Self {
         Permutation {

@@ -83,6 +83,7 @@ fn audit_staged_file_full(
         && !missing_docs::audit_file_missing_docs(
             ast,
             file_path,
+            ctx.reject_item_level_missing_docs,
             ctx.whitelist,
             matched_missing_docs_keys,
         )
@@ -182,6 +183,7 @@ fn audit_single_member_scoped(
     let check_clippy_bypasses = !lint_policy::is_vendored_egui_plot_exempt(member, &parsed);
     let check_missing_docs =
         !missing_docs::is_vendored_missing_docs_exempt(member, &parsed, whitelist);
+    let reject_item_level_missing_docs = missing_docs::member_has_lib_target(&member_dir, &parsed);
     let expected_deps = collect_expected_dependencies(&parsed);
     let package_name = manifest_package_name(&parsed);
     let required_deps: HashSet<String> = expected_deps
@@ -199,6 +201,7 @@ fn audit_single_member_scoped(
         whitelist,
         check_clippy_bypasses,
         check_missing_docs,
+        reject_item_level_missing_docs,
         max_fn_lines,
     };
     if !audit_member_sources_scoped(

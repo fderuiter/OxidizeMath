@@ -42,9 +42,9 @@ pub fn linear_transformation(x: &Vector, w: &Matrix, b: &Vector) -> Vector {
 /// A structure representing a dense (fully connected) layer's parameters.
 #[derive(Clone, Debug)]
 pub struct DenseLayer {
-    #[allow(missing_docs)]
+    /// Weight matrix $\mathbf{W} \in \mathbb{R}^{m \times n}$ mapping inputs to pre-activations.
     pub weights: Matrix,
-    #[allow(missing_docs)]
+    /// Additive bias vector $\mathbf{b} \in \mathbb{R}^m$.
     pub bias: Vector,
 }
 

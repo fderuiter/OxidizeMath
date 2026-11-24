@@ -5,8 +5,20 @@ use crate::stencil::StencilOperators;
 use math_commons::math_kernel::types::{SolverWorkspace, flatten_2d_index};
 use rand_core::RngCore;
 
-/// Explicit Euler-Maruyama finite-difference SPDE stepper supporting Periodic, Neumann, and Dirichlet
-/// boundaries plus additive or conserved-flux stochastic noise.
+/// Explicit Euler-Maruyama finite-difference SPDE stepper evolving
+/// $\partial_t u = \mathcal{N}(u, \nabla_h u, \nabla_h^2 u) + \xi$ across Periodic, Neumann, and Dirichlet
+/// boundaries with additive or staggered-face conserved-flux noise.
+///
+/// Reference: LeVeque (2007), DOI: 10.1137/1.9780898717839;
+/// [`docs/math_specs/engine_pde.md`](../../../docs/math_specs/engine_pde.md).
+///
+/// # Stability
+/// Second-order central diffusion requires $D\,\Delta t \sum_k \Delta x_k^{-2} \le \frac{1}{2}$, while
+/// explicit 2D Biharmonic Cahn-Hilliard stepping requires $M\kappa\,\Delta t(\Delta x^{-2} + \Delta y^{-2})^2 \le \frac{1}{8}$.
+///
+/// # Domain of Validity
+/// Requires positive finite stencil spacings (`dx, dy > 0`), `dt >= 0`, non-negative noise intensity,
+/// and `SolverWorkspace` capacity [`Self::scratch_len_1d`] / [`Self::scratch_len_2d`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ExplicitSpdeStencilStepper {
     /// Spatial finite-difference stencil operators.
@@ -206,7 +218,19 @@ impl ExplicitSpdeStencilStepper {
     }
 }
 
-/// Operator-splitting (Strang half-reaction / diffusion / half-reaction + noise) SPDE stencil stepper.
+/// Operator-splitting Strang SPDE stencil stepper advancing $\partial_t u = D \nabla_h^2 u + R(u) + \xi$
+/// via half-reaction ($\Delta t / 2$), `diffusion_substeps` diffusive substeps, half-reaction, and noise.
+///
+/// Reference: Strang (1968), DOI: 10.1137/0705041;
+/// [`docs/math_specs/engine_pde.md`](../../../docs/math_specs/engine_pde.md).
+///
+/// # Stability
+/// Partitioning diffusion into $S = \text{diffusion\_substeps} \ge 1$ substeps relaxes the parabolic CFL
+/// constraint to $D(\Delta t / S)(\Delta x^{-2} + \Delta y^{-2}) \le \frac{1}{2}$ while retaining second-order deterministic splitting.
+///
+/// # Domain of Validity
+/// Requires positive grid spacings (`dx, dy > 0`), `diffusivity >= 0`, `dt >= 0`, `u.len() >= width * height`,
+/// and `SolverWorkspace` capacity at least [`Self::scratch_len_2d`]`(width, height)`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SplitStepSpdeStencilStepper {
     /// Spatial finite-difference stencil operators.

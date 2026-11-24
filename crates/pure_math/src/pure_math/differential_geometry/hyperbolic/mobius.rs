@@ -5,7 +5,21 @@ use num_complex::Complex64;
 
 /// Element $\begin{pmatrix} a & b \\ \bar{b} & \bar{a} \end{pmatrix} \in \mathrm{SU}(1,1)$
 /// satisfying $|a|^2 - |b|^2 = 1$, acting isometrically on the Poincaré disk via
-/// $z \mapsto \frac{a z + b}{\bar{b} z + \bar{a}}$.
+/// $$z \mapsto \frac{a z + b}{\bar{b} z + \bar{a}}, \qquad |a|^2 - |b|^2 = 1.$$
+///
+/// Reference: Balazs & Voros (1986), *Phys. Rep.* 143(3), DOI: 10.1016/0370-1573(86)90159-6;
+/// Cannon, Floyd, Kenyon, & Parry (1997), *Flavors of Geometry*, MSRI Publ. 31;
+/// [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Normalizes `(a, b)` onto the unit hyperboloid $|a|^2 - |b|^2 = 1$ via `det.sqrt()` whenever
+/// $|(|a|^2 - |b|^2) - 1| > 10^{-13}$, exposes [`Self::renormalize`] to eliminate cumulative
+/// composition drift, and clamps transformed points inside [`POINCARE_DISK_RADIUS_MAX`].
+///
+/// # Domain of Validity
+/// Requires finite complex entries `(a, b)` with strictly positive pseudo-determinant
+/// $|a|^2 - |b|^2 > 10^{-15}$ ([`Su11HyperbolicError::DegenerateSu11Matrix`]), acting on points in
+/// the open Poincaré unit disk $|z| < 1$.
 ///
 /// # Example
 ///

@@ -26,16 +26,16 @@
 //! *   **[Hurwitz-Kronecker](hurwitz_kronecker)**: Class number relations.
 //! *   **[ALCF](alcf)**: Algebraic-Lattice Cyclotomic Framework for quasiperfect numbers.
 
-#[allow(missing_docs)]
+/// Submodule providing `alcf` types, traits, and algorithms.
 pub mod alcf;
-#[allow(missing_docs)]
+/// Submodule providing `ambs` types, traits, and algorithms.
 pub mod ambs;
 pub mod class_number;
 pub mod hurwitz_kronecker;
 pub mod partitions;
 pub mod primes;
 pub mod q_series;
-#[allow(missing_docs)]
+/// Submodule providing `ualbf` types, traits, and algorithms.
 pub mod ualbf;
 
 // Re-exports for convenience

@@ -21,6 +21,8 @@ mod cargo_cli_parser;
 pub mod catalog_and_guide_checks;
 pub mod facade_imports;
 pub mod manifest_model;
+pub mod math_contracts;
+mod math_contracts_parser;
 pub mod staged_guides;
 pub mod static_gates;
 pub mod toml_dep_checks;
@@ -28,6 +30,8 @@ pub mod trait_contracts;
 
 #[cfg(test)]
 mod guide_gate_tests;
+#[cfg(test)]
+mod math_contracts_tests;
 #[cfg(test)]
 mod static_gates_tests;
 #[cfg(test)]
@@ -315,13 +319,18 @@ pub fn list_registered_examples_cli() -> bool {
 /// Main entrypoint to audit all discovered workspace crates.
 pub fn run_doc_audit(args: &[String]) -> bool {
     let (workspace_root, members) = crate::manifest_cache::discover_workspace();
-    run_doc_audit_in_base(&workspace_root, &members, args)
+    let mut cache = oxidize_core::traceability::AstCache::new();
+    run_doc_audit_in_base(&workspace_root, &members, args, &mut cache)
 }
 
-/// Audits an explicit slice of `members` relative to the active workspace root.
-pub fn run_doc_audit_for_members(members: &[String], args: &[String]) -> bool {
+/// Audits an explicit slice of `members` sharing an existing single-pass `AstCache`.
+pub fn run_doc_audit_for_members_with_cache(
+    members: &[String],
+    args: &[String],
+    cache: &mut oxidize_core::traceability::AstCache,
+) -> bool {
     let workspace_root = crate::manifest_cache::workspace_root_dir();
-    run_doc_audit_in_base(&workspace_root, members, args)
+    run_doc_audit_in_base(&workspace_root, members, args, cache)
 }
 
 fn count_registered_examples(workspace_root: &Path) -> usize {
@@ -335,7 +344,12 @@ fn count_registered_examples(workspace_root: &Path) -> usize {
         .unwrap_or(0)
 }
 
-fn run_doc_audit_in_base(workspace_root: &Path, members: &[String], args: &[String]) -> bool {
+fn run_doc_audit_in_base(
+    workspace_root: &Path,
+    members: &[String],
+    args: &[String],
+    cache: &mut oxidize_core::traceability::AstCache,
+) -> bool {
     println!("=== Automated Crate Documentation Verification Gate ===");
 
     let staging_mode = args
@@ -380,6 +394,11 @@ fn run_doc_audit_in_base(workspace_root: &Path, members: &[String], args: &[Stri
     report.extend(facade_imports::audit_workspace_guides_and_manifests(
         workspace_root,
     ));
+    report.extend(math_contracts::audit_math_contracts_with_cache(
+        workspace_root,
+        members,
+        cache,
+    ));
 
     let example_count = count_registered_examples(workspace_root);
     print_doc_audit_summary(&report, members.len(), example_count)
@@ -390,6 +409,8 @@ pub fn run_staged_doc_audit(
     touched_members: &[String],
     all_staged: &[String],
     existing_staged: &[String],
+    workspace_members: &[String],
+    cache: &mut oxidize_core::traceability::AstCache,
 ) -> bool {
     let workspace_root = crate::manifest_cache::workspace_root_dir();
     let mut report = AuditReport::new();
@@ -422,6 +443,21 @@ pub fn run_staged_doc_audit(
         all_staged,
         existing_staged,
     ));
+    let math_targets = if all_staged
+        .iter()
+        .any(|p| p.trim_start_matches("./").starts_with("docs/math_specs/"))
+    {
+        workspace_members
+    } else {
+        touched_members
+    };
+    if !math_targets.is_empty() {
+        report.extend(math_contracts::audit_math_contracts_with_cache(
+            &workspace_root,
+            math_targets,
+            cache,
+        ));
+    }
 
     if report.is_success() {
         println!(

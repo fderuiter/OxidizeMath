@@ -5,9 +5,9 @@
 //! This module collects utility functions that don't fit into the larger simulation frameworks
 //! but are essential for "back-of-the-napkin" estimation in embedded systems and manufacturing.
 
-#[allow(missing_docs)]
+/// Spindle speed, feed-rate, and material-removal-rate formulas for CNC machining.
 pub mod cnc;
-#[allow(missing_docs)]
+/// Baud-rate clock tolerance and frame-drift error budgets for asynchronous UART links.
 pub mod uart;
 
 pub use cnc::*;

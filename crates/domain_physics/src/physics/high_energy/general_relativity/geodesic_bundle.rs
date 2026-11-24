@@ -66,7 +66,7 @@ pub struct NewtonianOrbitState {
     pub min_radius: f64,
 }
 
-/// Pre-allocated geodesic and Newtonian comparison bundle (`<= 64` rays) for zero-allocation RK4 stepping.
+#[doc = include_str!("../../../../../../docs/math_specs/snippets/schwarzschild_geodesic_bundle.md")]
 #[derive(Debug, Clone)]
 pub struct SchwarzschildGeodesicBundle {
     /// Underlying Schwarzschild black hole spacetime and cached horizon radius $R_s > 0$.

@@ -24,19 +24,19 @@
 //! - **Density**: g/cm³.
 //! - **Hounsfield Units (HU)**: Dimensionless scale where Water = 0, Air = -1000.
 
-#[allow(missing_docs)]
+/// Linear accelerator waveguide, bremsstrahlung target, and beam-transport physics.
 pub mod accelerator;
 pub mod calibration;
-#[allow(missing_docs)]
+/// TERMA calculation and point-spread convolution dose kernels.
 pub mod dose;
 pub mod evaluation;
-#[allow(missing_docs)]
+/// CT Hounsfield-unit conversion and medical image reconstruction helpers.
 pub mod imaging;
-#[allow(missing_docs)]
+/// Stereoscopic optical surface-guided radiotherapy (SGRT) respiratory motion tracking.
 pub mod optical_motion;
 pub mod optimization;
 pub mod radar_gating;
-#[allow(missing_docs)]
+/// Respiratory surrogate filtering, phase extraction, and spectral estimation.
 pub mod signal;
 pub mod thermodynamics;
 

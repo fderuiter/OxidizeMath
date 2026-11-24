@@ -8,7 +8,7 @@ use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 /// A polynomial with coefficients in a Ring T.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Polynomial<T: Ring> {
-    #[allow(missing_docs)]
+    /// Value for `coeffs` (coeffs).
     pub coeffs: Vec<T>, // coeffs[i] is coefficient of x^i
 }
 
@@ -19,7 +19,7 @@ impl<T: Ring> Default for Polynomial<T> {
 }
 
 impl<T: Ring> Polynomial<T> {
-    #[allow(missing_docs)]
+    /// Constructs a polynomial from ascending-degree coefficients `coeffs`, trimming trailing zeros.
     #[verified_engine::verified]
     pub fn new(coeffs: Vec<T>) -> Self {
         let mut p = Polynomial { coeffs };
@@ -41,7 +41,7 @@ impl<T: Ring> Polynomial<T> {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Returns the polynomial degree $\deg(p)$, or `None` for the zero polynomial.
     #[verified_engine::verified]
     pub fn degree(&self) -> Option<usize> {
         if self.coeffs.is_empty() {

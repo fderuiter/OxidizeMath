@@ -86,7 +86,22 @@ pub const MAX_TILING_DEPTH: usize = 4;
 /// Default ring-buffer capacity for geodesic billiard trajectories and Lyapunov traces.
 pub const MAX_BILLIARD_HISTORY: usize = 2048;
 
-/// Disk model projection used to visualize and export intrinsic $\mathbb{H}^2$ geometry.
+/// Disk model projection used to represent and relate intrinsic $\mathbb{H}^2$ ($K = -1$) geometry
+/// across the conformal Poincaré disk $\mathbb{D}$ and projective Beltrami-Klein disk $\mathbb{K}$:
+/// $$ds_{\mathbb{D}}^2 = \frac{4\,|dz|^2}{(1 - |z|^2)^2}, \qquad w = \frac{2 z}{1 + |z|^2}, \qquad z = \frac{w}{1 + \sqrt{1 - |w|^2}}.$$
+///
+/// Reference: Cannon, Floyd, Kenyon, & Parry (1997), *Flavors of Geometry*, MSRI Publ. 31,
+/// arXiv:math/9812034 (DOI: 10.1017/9781009701556.003);
+/// [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Bidirectional disk conversions clamp radial norms to [`POINCARE_DISK_RADIUS_MAX`] ($1 - 10^{-9}$)
+/// and guard square-root arguments under `(1.0 - |w|^2).max(0.0)`, preventing division-by-zero or
+/// `NaN` generation near the ideal boundary $\partial\mathbb{D}$.
+///
+/// # Domain of Validity
+/// Defined on the open unit disk $|z| < 1$ ($\mathbb{D}$) and $|w| < 1$ ($\mathbb{K}$) representing
+/// complete constant-negative-curvature ($K = -1$) two-dimensional hyperbolic space.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum HyperbolicModel {
     /// Conformal Poincaré disk $\mathbb{D}$: preserves angles; geodesics are orthogonal circular arcs.

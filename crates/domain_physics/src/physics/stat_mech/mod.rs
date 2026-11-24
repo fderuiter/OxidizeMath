@@ -10,15 +10,15 @@ pub const KB: f64 = 1.380649e-23;
 
 pub mod allen_cahn;
 pub mod cahn_hilliard;
-#[allow(missing_docs)]
+/// Langevin brownian dynamics, fluctuation-dissipation, and Fokker-Planck drift-diffusion.
 pub mod dynamics;
 pub mod edwards_wilkinson;
-#[allow(missing_docs)]
+/// Canonical, grand-canonical, and microcanonical partition functions and entropy relations.
 pub mod ensembles;
 pub mod graph_ising;
 pub mod ising;
 pub mod kpz;
-#[allow(missing_docs)]
+/// Fermi-Dirac, Bose-Einstein, and Maxwell-Boltzmann equilibrium occupation distributions.
 pub mod quantum_stats;
 pub mod sandpile;
 

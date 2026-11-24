@@ -1,31 +1,40 @@
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
 /// A 3D point or vector with single-precision floating point coordinates.
+///
+/// # Examples
+/// ```
+/// use oxidize_core::mesh::Point3D;
+///
+/// let a = Point3D::new(1.0, 0.0, 0.0);
+/// let b = Point3D::new(0.0, 1.0, 0.0);
+/// assert_eq!(a.cross(b), Point3D::new(0.0, 0.0, 1.0));
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point3D {
-    #[allow(missing_docs)]
+    /// Cartesian $x$ coordinate.
     pub x: f32,
-    #[allow(missing_docs)]
+    /// Cartesian $y$ coordinate.
     pub y: f32,
-    #[allow(missing_docs)]
+    /// Cartesian $z$ coordinate.
     pub z: f32,
 }
 
 impl Point3D {
-    #[allow(missing_docs)]
+    /// Minimum vector norm threshold below which [`Point3D::normalize`] returns the zero vector.
     pub const EPSILON: f32 = 1.0e-6;
+    /// Constructs a 3D point `(x, y, z)`.
     #[inline]
-    #[allow(missing_docs)]
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
     }
+    /// Computes the Euclidean dot product $\mathbf{u} \cdot \mathbf{v}$.
     #[inline]
-    #[allow(missing_docs)]
     pub fn dot(&self, other: Point3D) -> f32 {
         self.x * other.x + self.y * other.y + self.z * other.z
     }
+    /// Computes the right-handed 3D cross product $\mathbf{u} \times \mathbf{v}$.
     #[inline]
-    #[allow(missing_docs)]
     pub fn cross(&self, other: Point3D) -> Point3D {
         Point3D::new(
             self.y * other.z - self.z * other.y,
@@ -33,13 +42,13 @@ impl Point3D {
             self.x * other.y - self.y * other.x,
         )
     }
+    /// Computes the Euclidean norm $\|\mathbf{u}\|_2$.
     #[inline]
-    #[allow(missing_docs)]
     pub fn magnitude(&self) -> f32 {
         self.dot(*self).sqrt()
     }
+    /// Returns the unit vector $\mathbf{u} / \|\mathbf{u}\|_2$, or `(0, 0, 0)` when $\|\mathbf{u}\|_2 \le \epsilon$.
     #[inline]
-    #[allow(missing_docs)]
     pub fn normalize(&self) -> Point3D {
         let mag = self.magnitude();
         if mag > Self::EPSILON {
@@ -99,14 +108,14 @@ impl Div<f32> for Point3D {
     }
 }
 
+/// Indexed 3D triangle mesh storing vertex positions, optional vertex normals, and triangle index triplets.
 #[derive(Debug, Clone, Default)]
-#[allow(missing_docs)]
 pub struct Mesh {
-    #[allow(missing_docs)]
+    /// Vertex positions in 3D space.
     pub vertices: Vec<Point3D>,
-    #[allow(missing_docs)]
+    /// Per-vertex normal vectors (optional or aligned with `vertices`).
     pub normals: Vec<Point3D>,
-    #[allow(missing_docs)]
+    /// Flat triangle index buffer (`indices.len()` is a multiple of 3).
     pub indices: Vec<usize>,
 }
 

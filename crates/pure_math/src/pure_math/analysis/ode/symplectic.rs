@@ -49,10 +49,15 @@ impl SymplecticMethod {
     }
 }
 
-/// Second-order symplectic velocity Störmer-Verlet (leapfrog) integrator.
+/// Second-order symplectic Stormer-Verlet (velocity-kick / drift / kick) integrator preserving $d\mathbf{q} \wedge d\mathbf{p}$ for separable Hamiltonians $H(\mathbf{q}, \mathbf{p}) = T(\mathbf{p}) + V(\mathbf{q})$.
 ///
-/// Pre-allocates canonical coordinate and momentum scratch buffers at construction so
-/// stepping triggers zero dynamic heap allocations.
+/// Reference: Hairer, Lubich & Wanner (2006), *Geometric Numerical Integration*, DOI: 10.1007/3-540-30666-8; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Time-reversible and symplectic; conserves a shadow Hamiltonian $\tilde{H} = H + O(\Delta t^2)$ over exponentially long horizons when $\omega_{\max} \Delta t < 2$.
+///
+/// # Domain of Validity
+/// Valid for separable Hamiltonian systems with smooth potential forces $-\nabla_{\mathbf{q}} V$ and step size $\Delta t < 2 / \omega_{\max}$.
 #[derive(Debug, Clone)]
 pub struct StormerVerlet<Coord> {
     q: Coord,
@@ -124,10 +129,15 @@ const YOSHIDA_W0: f64 = -CBRT_2 / (2.0 - CBRT_2);
 const YOSHIDA_KICK_OUTER: f64 = 0.5 * YOSHIDA_W1;
 const YOSHIDA_KICK_INNER: f64 = 0.5 * (YOSHIDA_W0 + YOSHIDA_W1);
 
-/// Fourth-order explicit symplectic integrator via Yoshida (1990) triple-Verlet composition.
+/// Fourth-order symmetric symplectic composition solver $S_4(\Delta t) = S_2(w_1 \Delta t) \circ S_2(w_0 \Delta t) \circ S_2(w_1 \Delta t)$ with $w_1 = 1/(2 - 2^{1/3})$.
 ///
-/// Composes three velocity-Verlet stages with substeps $(w_1 \Delta t, w_0 \Delta t, w_1 \Delta t)$,
-/// fusing adjacent half-kicks so each step requires only four force evaluations and zero heap allocations.
+/// Reference: Yoshida (1990), DOI: 10.1016/0375-9601(90)90092-3; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Exactly preserves canonical Poincaré invariants with bounded $O(\Delta t^4)$ energy oscillation and zero secular drift below the linear stability threshold.
+///
+/// # Domain of Validity
+/// Valid for $C^4$ separable Hamiltonian systems with $\omega_{\max} |w_0| \Delta t < 2$.
 #[derive(Debug, Clone)]
 pub struct Yoshida4<Coord> {
     q: Coord,
@@ -226,11 +236,15 @@ const GL4_A12: f64 = 0.25 - SQRT_3_OVER_6;
 const GL4_A21: f64 = 0.25 + SQRT_3_OVER_6;
 const GL4_A22: f64 = 0.25;
 
-/// Fourth-order 2-stage implicit Gauss-Legendre Runge-Kutta symplectic integrator.
+/// Two-stage 4th-order implicit Gauss-Legendre collocation Runge-Kutta solver $\mathbf{y}_{n+1} = \mathbf{y}_n + \frac{\Delta t}{2}(\mathbf{k}_1 + \mathbf{k}_2)$.
 ///
-/// Preserves canonical symplectic 2-forms for **arbitrary** (including non-separable)
-/// Hamiltonian systems such as the chaotic double pendulum. Solves the coupled stage
-/// equations via bounded fixed-point iteration in pre-allocated stack/state buffers.
+/// Reference: Hairer, Lubich & Wanner (2006), DOI: 10.1007/3-540-30666-8; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Unconditionally A-stable, algebraically B-stable, and symplectic on arbitrary (including non-separable) Hamiltonian systems; fixed-point stage iteration requires Lipschitz contraction $L \Delta t < 2$.
+///
+/// # Domain of Validity
+/// Valid for general stiff or Hamiltonian ODEs where stage fixed-point iteration converges within the configured tolerance.
 #[derive(Debug, Clone)]
 pub struct GaussLegendre4<State> {
     initial_state: State,

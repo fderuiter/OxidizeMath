@@ -14,7 +14,7 @@ pub struct LorenzState {
 }
 
 impl LorenzState {
-    #[allow(missing_docs)]
+    /// Constructs a 3D Lorenz phase-space state vector $(x, y, z)$.
     #[verified_engine::verified]
     pub fn new(x: f64, y: f64, z: f64) -> Self {
         LorenzState {

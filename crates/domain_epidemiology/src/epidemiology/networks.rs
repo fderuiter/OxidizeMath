@@ -19,20 +19,52 @@ pub fn heterogeneous_r0(beta: f64, gamma: f64, mean_degree: f64, degree_variance
     (beta / gamma) * factor
 }
 
+/// Discrete epidemiological compartment state of an individual graph vertex.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-#[allow(missing_docs)]
 pub enum NodeState {
-    #[allow(missing_docs)]
+    /// Healthy vertex vulnerable to contagion along active incident edges.
     Susceptible,
-    #[allow(missing_docs)]
+    /// Infectious vertex capable of transmitting contagion at per-edge probability $\beta$.
     Infected,
-    #[allow(missing_docs)]
+    /// Post-infection vertex with permanent immunity after recovery at probability $\gamma$.
     Recovered,
     /// Pre-emptively or reactively immunized vertex that neither acquires nor transmits contagion.
     Vaccinated,
 }
 
-#[allow(missing_docs)]
+/// Discrete-time stochastic SIR contagion simulator with vaccination and edge quarantine on graphs.
+///
+/// Synchronous transition probabilities and heterogeneous degree-moment reproduction number:
+/// $$P_i(\text{S}\to\text{I}) = 1 - (1 - \beta)^{k_i^{\text{inf}}}, \qquad R_0 = \frac{\beta}{\gamma}\frac{\langle k^2\rangle - \langle k\rangle}{\langle k\rangle}$$
+///
+/// Reference: Pastor-Satorras & Vespignani (2001), DOI: `10.1103/PhysRevLett.86.3200`; Newman
+/// (2002), DOI: `10.1103/PhysRevE.66.016128`; see
+/// [`docs/math_specs/domain_epidemiology.md`](../../../../docs/math_specs/domain_epidemiology.md#pastor2001epidemic).
+///
+/// # Stability
+/// Double-buffered state updates (`scratch_states`) advance all vertices synchronously in $O(|V| + |E|)$
+/// time with zero heap allocations per step; probabilities outside $[0, 1]$ saturate Bernoulli comparisons.
+///
+/// # Domain of Validity
+/// Undirected simple graphs with $N \ge 1$ vertices and discrete per-step probabilities
+/// $\beta, \gamma \in [0, 1]$ (small-probability Poisson limit $\beta, \gamma \ll 1$ matches continuous rates).
+///
+/// # Examples
+///
+/// ```rust
+/// # use domain_epidemiology::__doctest_facade as math_explorer;
+/// use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
+///
+/// let mut model = NetworkEpidemicModel::builder()
+///     .num_nodes(3)
+///     .parameters(1.0, 0.0)
+///     .states(vec![NodeState::Infected, NodeState::Susceptible, NodeState::Susceptible])
+///     .adjacency(vec![vec![1], vec![0, 2], vec![1]])
+///     .build()
+///     .unwrap();
+/// model.step();
+/// assert_eq!(model.states()[1], NodeState::Infected);
+/// ```
 pub struct NetworkEpidemicModel {
     pub(super) num_nodes: usize,
     pub(super) states: Vec<NodeState>,
@@ -66,37 +98,37 @@ pub(super) fn canonical_edges_from_adjacency(
 }
 
 impl NetworkEpidemicModel {
-    #[allow(missing_docs)]
+    /// Returns a builder for configuring custom graph topologies, node states, and rates.
     #[verified_engine::verified]
     pub fn builder() -> NetworkEpidemicModelBuilder {
         NetworkEpidemicModelBuilder::new()
     }
 
-    #[allow(missing_docs)]
+    /// Returns the number of vertices $N$ in the contact network.
     #[verified_engine::verified]
     pub fn num_nodes(&self) -> usize {
         self.num_nodes
     }
 
-    #[allow(missing_docs)]
+    /// Returns the current compartmental state slice for all vertices.
     #[verified_engine::verified]
     pub fn states(&self) -> &[NodeState] {
         &self.states
     }
 
-    #[allow(missing_docs)]
+    /// Returns a mutable reference to the vertex compartmental state vector.
     #[verified_engine::verified]
     pub fn states_mut(&mut self) -> &mut Vec<NodeState> {
         &mut self.states
     }
 
-    #[allow(missing_docs)]
+    /// Returns 2D spatial layout coordinates `[x, y]` for each vertex.
     #[verified_engine::verified]
     pub fn positions(&self) -> &[[f32; 2]] {
         &self.positions
     }
 
-    #[allow(missing_docs)]
+    /// Returns the per-vertex neighbor adjacency lists of the contact graph.
     #[verified_engine::verified]
     pub fn adjacency(&self) -> &[Vec<usize>] {
         &self.adjacency
@@ -114,19 +146,19 @@ impl NetworkEpidemicModel {
         self.patient_zero
     }
 
-    #[allow(missing_docs)]
+    /// Returns the per-edge transmission probability parameter $\beta$.
     #[verified_engine::verified]
     pub fn beta(&self) -> f64 {
         self.beta
     }
 
-    #[allow(missing_docs)]
+    /// Returns the per-step recovery probability parameter $\gamma$.
     #[verified_engine::verified]
     pub fn gamma(&self) -> f64 {
         self.gamma
     }
 
-    #[allow(missing_docs)]
+    /// Updates the configured vertex count, rejecting `num == 0`.
     #[verified_engine::verified]
     pub fn set_num_nodes(&mut self, num: usize) -> Result<(), NetworkModelError> {
         if num == 0 {
@@ -136,7 +168,7 @@ impl NetworkEpidemicModel {
         Ok(())
     }
 
-    #[allow(missing_docs)]
+    /// Updates the per-edge transmission probability $\beta$, rejecting negative values.
     #[verified_engine::verified]
     pub fn set_beta(&mut self, beta: f64) -> Result<(), NetworkModelError> {
         if beta < 0.0 {
@@ -146,7 +178,7 @@ impl NetworkEpidemicModel {
         Ok(())
     }
 
-    #[allow(missing_docs)]
+    /// Updates the per-step recovery probability $\gamma$, rejecting negative values.
     #[verified_engine::verified]
     pub fn set_gamma(&mut self, gamma: f64) -> Result<(), NetworkModelError> {
         if gamma < 0.0 {

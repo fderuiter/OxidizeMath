@@ -1,10 +1,14 @@
-#[allow(missing_docs)]
+/// Wavefront OBJ mesh exporter and shared geometry validation helpers.
 pub mod export;
+/// Stanford PLY ASCII/binary mesh exporter.
 pub mod export_ply;
+/// 3D Gaussian splat PLY exporter.
 pub mod export_splat_ply;
+/// Binary and ASCII stereolithography (STL) mesh exporters.
 pub mod export_stl;
+/// Parametric 3D mesh primitive generators.
 pub mod primitives;
-#[allow(missing_docs)]
+/// Core 3D point, indexed triangle mesh, and vertex-color types.
 pub mod types;
 
 pub use export::*;

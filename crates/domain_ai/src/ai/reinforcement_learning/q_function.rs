@@ -31,7 +31,7 @@ where
     S: State + Hash + Eq,
     A: Action + Hash + Eq,
 {
-    #[allow(missing_docs)]
+    /// Constructs an empty hash-backed Q-table defaulting unseen `(state, action)` pairs to `0.0`.
     #[verified_engine::verified]
     pub fn new() -> Self {
         Self {
