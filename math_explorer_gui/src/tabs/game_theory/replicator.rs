@@ -298,11 +298,26 @@ impl InteractiveTool for ReplicatorDynamicsTool {
         self.callout_manager.sync_specs(callouts);
     }
 
+    fn has_finite_parameters(&self) -> bool {
+        crate::presets::checked_ode_step_count(self.dt, self.time_horizon).is_some()
+            && (1e-6..=5.0).contains(&self.dt)
+            && self.time_horizon <= 10_000.0
+            && self
+                .payoff_matrix
+                .iter()
+                .all(|v| v.is_finite() && (-1e4..=1e4).contains(v))
+            && self
+                .initial_population
+                .iter()
+                .all(|v| v.is_finite() && (0.0..=1.0).contains(v))
+    }
+
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&self.export_config()).ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
+        self.state_bounds().validate_json(state)?;
         let config: ReplicatorPresetConfig = serde_json::from_str(state)
             .map_err(|e| format!("Invalid ReplicatorDynamicsTool state: {e}"))?;
         self.apply_config(config)
