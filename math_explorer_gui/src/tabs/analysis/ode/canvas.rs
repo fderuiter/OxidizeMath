@@ -3,10 +3,9 @@
 use super::comparison::{
     compute_series_discrepancy, simulate_ode, OdeSimSpec, SolverDiscrepancy, SolverTrajectory,
 };
-use super::recovery;
 use super::systems::CustomOdeSpec;
 use super::OdeSolverTool;
-use crate::framework::recovery::FiniteStateGuard;
+use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{InteractiveTool, TraceSeries};
 use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
@@ -72,6 +71,15 @@ impl InteractiveTool for OdeSolverTool {
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.deserialize_state(state, false)
+    }
+
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.interactive_diagnostic_report()
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        OdeSolverTool::auto_scale_step_size(self);
+        true
     }
 
     fn clamp_parameters(&mut self) -> bool {
@@ -374,10 +382,6 @@ impl OdeSolverTool {
             super::phase::PlotViewMode::PhasePortrait => "Slope Field & Trajectory",
         };
         ui.heading(heading);
-
-        if FiniteStateGuard::diverged(self) {
-            recovery::render_recovery_ui_in_place(ui, self, changed);
-        }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         if self.view_mode == super::phase::PlotViewMode::PhasePortrait {

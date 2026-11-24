@@ -7,11 +7,8 @@ use crate::accessibility::{
     register_canvas_accessibility, AccessibleTheoryHover,
 };
 use crate::app::ThemeMode;
-use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
-};
+use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::async_sim::SimCommand;
-use crate::framework::recovery::{FiniteStateGuard, RecoveryAction};
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui::{self, vec2, ColorImage};
 use math_explorer::physics::optics::refraction::OpticsPreset;
@@ -83,31 +80,6 @@ impl OpticsWaveTool {
             self.texture = Some(ctx.load_texture("optics_wave_tex", image, opts));
         }
         self.dirty = false;
-    }
-
-    fn draw_fault_and_recovery(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if let Some(action) = render_worker_fault_banner(
-            ui,
-            self.worker.state(),
-            self.worker.diagnostic_report(),
-            true,
-        ) {
-            match action {
-                WorkerFaultAction::Reset => self.reset(),
-                WorkerFaultAction::ResetParameters => FiniteStateGuard::reset_parameters(self),
-                WorkerFaultAction::Recovery(RecoveryAction::AutoScaleStepSize) => {
-                    FiniteStateGuard::auto_scale_step_size(self);
-                }
-                WorkerFaultAction::Recovery(RecoveryAction::ClampParameters) => {
-                    FiniteStateGuard::clamp_parameters(self);
-                }
-                WorkerFaultAction::Recovery(RecoveryAction::ResetParameters) => {
-                    FiniteStateGuard::reset_parameters(self);
-                }
-            }
-            ctx.request_repaint();
-            ui.separator();
-        }
     }
 
     fn draw_medium_controls(&mut self, ui: &mut egui::Ui) {
@@ -203,7 +175,6 @@ impl OpticsWaveTool {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.heading("Optics & Waves Controls");
                 ui.separator();
-                self.draw_fault_and_recovery(ui, &ctx);
                 self.draw_medium_controls(ui);
                 ui.separator();
                 self.draw_overlay_and_detector_controls(ui);

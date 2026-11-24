@@ -9,7 +9,7 @@ use eframe::egui;
 fn test_attractor_divergence_detection() {
     let mut plotter = AttractorPlotter::default();
     assert!(!plotter.diverged());
-    assert!(!plotter.is_paused());
+    assert!(plotter.is_paused());
     assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
 
     // Introduce a non-finite state
@@ -35,9 +35,9 @@ fn test_attractor_divergence_detection() {
         .iter()
         .all(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()));
 
-    // Reset clears diverged flag cleanly and restores Ready
+    // Reset clears diverged flag cleanly and restores paused Ready state
     plotter.reset();
-    assert!(!plotter.diverged() && !plotter.is_paused());
+    assert!(!plotter.diverged() && plotter.is_paused());
     assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
     assert_eq!(plotter.step_count, 0);
 }
@@ -80,14 +80,15 @@ fn test_attractor_transition_validation_non_finite_rejection() {
     plotter.on_slider_changed();
     assert!(plotter.diverged());
 
-    // Explicit reset restores Ready state and finite coordinates
+    // Explicit reset restores paused Ready state and finite coordinates
     plotter.reset();
     assert_eq!(plotter.execution_state, SolverExecutionState::Ready);
-    assert!(!plotter.diverged() && !plotter.is_paused() && plotter.is_finite_state());
+    assert!(!plotter.diverged() && plotter.is_paused() && plotter.is_finite_state());
 
     // Resume now succeeds
     assert!(plotter.try_resume().is_ok());
     assert_eq!(plotter.execution_state, SolverExecutionState::Running);
+    assert!(!plotter.is_paused());
 }
 
 #[test]

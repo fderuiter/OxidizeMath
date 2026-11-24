@@ -166,6 +166,40 @@ fn test_presets_csv_svg_and_url_roundtrip() {
 }
 
 #[test]
+fn test_hamiltonian_lab_non_destructive_reset_and_diagnostic_recovery() {
+    let mut lab = HamiltonianChaosLab {
+        energy: 0.11,
+        dt: 0.03,
+        ..Default::default()
+    };
+    lab.clear_orbits();
+    lab.seed_orbit_at([0.18, 0.0]).expect("seed custom orbit");
+    lab.step_batch(200);
+    let advanced_time = lab.sim_time;
+    assert!(advanced_time > 0.0);
+
+    lab.is_playing = true;
+    lab.reset();
+    assert!(!lab.is_playing);
+    assert!((lab.energy - 0.11).abs() < 1e-12);
+    assert!((lab.dt - 0.03).abs() < 1e-12);
+    assert_eq!(lab.orbits.len(), 1);
+    assert_eq!(lab.orbits[0].seed_qp, [0.18, 0.0]);
+    assert!(lab.sim_time < advanced_time);
+
+    lab.orbits[0].state4.0[0] = f64::NAN;
+    assert!(!lab.has_finite_parameters());
+    let report = lab.diagnostic_report().expect("solver diagnostic report");
+    assert_eq!(report.variable, "orbit_state");
+    assert!((report.t_diverged - lab.sim_time).abs() < 1e-12);
+
+    assert!(lab.auto_scale_step_size());
+    assert!((lab.dt - 0.015).abs() < 1e-12);
+    assert!(lab.has_finite_parameters());
+    assert!(lab.diagnostic_report().is_none());
+}
+
+#[test]
 fn test_implicit_midpoint_perturbation_lyapunov_and_nan_recovery() {
     let mut lab = HamiltonianChaosLab::default();
     lab.switch_model(HamiltonianModelKind::DoublePendulum);

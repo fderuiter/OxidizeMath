@@ -180,6 +180,19 @@ impl LeniaTool {
         mass.is_finite() && mass <= EXTINCTION_MASS_FLOOR
     }
 
+    pub(crate) fn active_lenia_atlas_coords(
+        &self,
+        axis_keys: (&'static str, &'static str),
+    ) -> (f64, f64) {
+        let get = |k: &str| match k {
+            "mu" => self.mu,
+            "sigma" => self.sigma,
+            "radius" => self.radius,
+            _ => 0.0,
+        };
+        (get(axis_keys.0), get(axis_keys.1))
+    }
+
     pub(crate) fn lenia_atlas_context_sig(&self, axis_keys: (&'static str, &'static str)) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.species.hash(&mut h);

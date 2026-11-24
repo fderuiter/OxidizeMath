@@ -320,6 +320,10 @@ impl InteractiveTool for PhyllotaxisLSystemTool {
         FiniteStateGuard::is_finite_state(self)
     }
 
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.diagnostic.clone()
+    }
+
     fn clamp_parameters(&mut self) -> bool {
         FiniteStateGuard::clamp_parameters(self);
         true

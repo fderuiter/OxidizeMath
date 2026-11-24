@@ -5,9 +5,7 @@ use super::pulse::{MriPulseMode, MRI_PULSE_SAMPLES};
 use super::runner::MriSnapshot;
 use super::tool::MriTool;
 use crate::app::SemanticPalette;
-use crate::async_sim::ui::{
-    render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
-};
+use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::framework::{
     render_divergence_strip, CounterfactualTransport, PlaybackAction, PlaybackTransport,
@@ -332,19 +330,6 @@ impl MriTool {
                     }
                 } else {
                     self.fault_notified = false;
-                }
-
-                if let Some(WorkerFaultAction::Reset | WorkerFaultAction::ResetParameters) =
-                    render_worker_fault_banner(
-                        ui,
-                        self.worker.state(),
-                        self.worker.diagnostic_report(),
-                        false,
-                    )
-                {
-                    self.reset();
-                    ctx.request_repaint();
-                    ui.separator();
                 }
 
                 self.draw_relaxation_controls(ui);

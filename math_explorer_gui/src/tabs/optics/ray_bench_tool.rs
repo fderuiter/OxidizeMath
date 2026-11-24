@@ -400,6 +400,10 @@ impl InteractiveTool for CausticsRayBenchTool {
     fn has_finite_parameters(&self) -> bool {
         FiniteStateGuard::is_finite_state(self)
     }
+    fn auto_scale_step_size(&mut self) -> bool {
+        FiniteStateGuard::auto_scale_step_size(self);
+        true
+    }
     fn clamp_parameters(&mut self) -> bool {
         FiniteStateGuard::clamp_parameters(self);
         true

@@ -2,9 +2,10 @@
 
 use super::counterfactual::step_bloch_rotating_frame;
 use super::pulse::{sync_mri_callouts, MriPulseMode, MriPulseWorkspace, RfPulseConfig};
-use super::runner::{MriRunner, MriSharedParams, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE};
+use super::runner::{MriRunner, MriSharedParams, MIN_MRI_TIME_SCALE};
 use super::theory::MriBlochTheory;
-use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
+use crate::async_sim::{BackgroundWorker, SimWorkerState};
+use crate::framework::recovery::DiagnosticReport;
 use crate::framework::{CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use egui_plot::PlotPoint;
@@ -60,47 +61,6 @@ pub struct MriToolState {
     /// Optional rotating-frame RF pulse sequence parameters (omitted in default forward mode).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pulse: Option<RfPulseConfig>,
-}
-
-impl MriToolState {
-    /// Validates finiteness and physical domain bounds for all 6 MRI parameters.
-    pub fn validate(&self) -> Result<(), String> {
-        let checks = [
-            ("t1", self.t1, 0.1, 5.0),
-            ("t2", self.t2, 0.01, 2.0),
-            ("bx", self.bx, -50.0, 50.0),
-            ("by", self.by, -50.0, 50.0),
-            ("bz", self.bz, -50.0, 50.0),
-            (
-                "time_scale",
-                self.time_scale,
-                MIN_MRI_TIME_SCALE,
-                MAX_MRI_TIME_SCALE,
-            ),
-        ];
-        for (name, val, min, max) in checks {
-            if !val.is_finite() || val < min || val > max {
-                return Err(format!(
-                    "MRI parameter '{name}' = {val} must be finite within [{min}, {max}]"
-                ));
-            }
-        }
-        self.audio.validate()?;
-        if let Some(ref pulse) = self.pulse {
-            pulse.validate()?;
-        }
-        Ok(())
-    }
-
-    pub(super) fn resolve_target_state(&self) -> SimWorkerState {
-        self.state.unwrap_or_else(|| {
-            if self.paused.unwrap_or(true) {
-                SimWorkerState::Ready
-            } else {
-                SimWorkerState::Running
-            }
-        })
-    }
 }
 
 /// Interactive tool for MRI Bloch precession and T1/T2 relaxation dynamics.
@@ -231,63 +191,38 @@ impl MriTool {
         );
     }
 
-    /// Restores factory default `t1`, `t2`, `b_field`, and `time_scale` and resets magnetization to `(M0, 0, 0)`.
+    /// Restarts dynamic magnetization to `(M0, 0, 0)` and clears history while preserving finite user parameters.
     pub fn reset(&mut self) {
-        let default_b = Vector3::new(0.0, 0.0, DEFAULT_MRI_BZ);
-        self.simulator.t1 = DEFAULT_MRI_T1;
-        self.simulator.t2 = DEFAULT_MRI_T2;
-        self.simulator.b_field = default_b;
-        self.time_scale = DEFAULT_MRI_TIME_SCALE;
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.t1 = DEFAULT_MRI_T1;
-            p.t2 = DEFAULT_MRI_T2;
-            p.b_field = default_b;
-            p.time_scale = DEFAULT_MRI_TIME_SCALE;
+        if !self.simulator.t1.is_finite() || self.simulator.t1 <= 0.0 {
+            self.simulator.t1 = DEFAULT_MRI_T1;
         }
-        let initial_m = Vector3::new(self.simulator.m0, 0.0, 0.0);
-        self.simulator.magnetization = initial_m;
-        self.current_time = 0.0;
-        self.history.clear();
-        self.mx_points.clear();
-        self.my_points.clear();
-        self.mz_points.clear();
-        self.twin = None;
-        self.branch_engine.clear();
-        if self.active_challenge.is_none() {
+        if !self.simulator.t2.is_finite() || self.simulator.t2 <= 0.0 {
+            self.simulator.t2 = DEFAULT_MRI_T2;
+        }
+        if !self.simulator.b_field.x.is_finite() {
+            self.simulator.b_field.x = 0.0;
+        }
+        if !self.simulator.b_field.y.is_finite() {
+            self.simulator.b_field.y = 0.0;
+        }
+        if !self.simulator.b_field.z.is_finite() {
+            self.simulator.b_field.z = DEFAULT_MRI_BZ;
+        }
+        self.time_scale = super::runner::sanitize_mri_time_scale(self.time_scale);
+        if self.pulse_config.validate().is_err() {
             self.pulse_config = RfPulseConfig::default();
         }
-        self.pulse_workspace.playhead_playing = false;
-        self.pulse_workspace.playhead_idx = super::pulse::MRI_PULSE_SAMPLES - 1;
-        self.fault_notified = false;
-        let params = Arc::clone(&self.params);
-        let m0 = self.simulator.m0;
-        self.worker
-            .reset_or_respawn(|| MriRunner::new(params, initial_m, m0));
-        if !self.pulse_config.mode.is_continuous() {
-            self.recompute_pulse_sequence();
-        } else {
-            sync_mri_callouts(
-                &mut self.callout_manager,
-                MriPulseMode::ContinuousField,
-                m0,
-                self.simulator.t2,
-                &self.pulse_config,
-                0.0,
-                initial_m,
-            );
-        }
-        self.latest_sonification = self.current_sonification_frame();
+        self.enforce_challenge_locks();
+        self.sync_shared_params();
+        self.reset_dynamic_trajectory(false);
     }
 
-    pub(super) fn apply_worker_state(&mut self, target_state: SimWorkerState) {
-        if target_state == SimWorkerState::Running {
-            if !self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Start);
-            }
-        } else if self.worker.is_running() {
-            let _ = self.worker.send_command(SimCommand::Pause);
-        }
+    pub(super) fn sync_shared_params(&self) {
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.t1 = self.simulator.t1;
+        p.t2 = self.simulator.t2;
+        p.b_field = self.simulator.b_field;
+        p.time_scale = self.time_scale;
     }
 }
 
@@ -430,14 +365,45 @@ impl InteractiveTool for MriTool {
     }
 
     fn has_finite_parameters(&self) -> bool {
+        let m = self.simulator.magnetization;
         self.simulator.t1.is_finite()
             && self.simulator.t2.is_finite()
             && self.simulator.b_field.x.is_finite()
             && self.simulator.b_field.y.is_finite()
             && self.simulator.b_field.z.is_finite()
             && self.time_scale.is_finite()
+            && self.current_time.is_finite()
+            && m.x.is_finite()
+            && m.y.is_finite()
+            && m.z.is_finite()
             && self.pulse_config.validate().is_ok()
             && self.worker.state() != SimWorkerState::Faulted
+    }
+
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.build_diagnostic_report()
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        self.time_scale =
+            (super::runner::sanitize_mri_time_scale(self.time_scale) * 0.5).max(MIN_MRI_TIME_SCALE);
+        self.reset();
+        true
+    }
+
+    fn clamp_parameters(&mut self) -> bool {
+        self.clamp_mri_parameters();
+        true
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 
@@ -447,13 +413,7 @@ inventory::submit! {
         display_name: "MRI Bloch Relaxation",
         domain: "mri",
         tags: &[
-            "mri",
-            "bloch",
-            "t1",
-            "t2",
-            "larmor",
-            "magnetization",
-            "nuclear induction",
+            "mri", "bloch", "t1", "t2", "larmor", "magnetization", "nuclear induction",
         ],
         build: || Box::new(MriTool::default()),
     }

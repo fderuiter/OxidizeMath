@@ -6,7 +6,6 @@
 use super::presets::EvolutionPlotView;
 use super::EvolutionaryBiologyTool;
 use crate::app::SemanticPalette;
-use crate::framework::recovery::FiniteStateGuard;
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use egui_plot::{HLine, Legend, Line, Plot, PlotPoints, Points, VLine};
@@ -27,7 +26,6 @@ impl EvolutionaryBiologyTool {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.heading("Evolutionary Replicator Lab");
                 ui.separator();
-                self.draw_recovery_card(ui);
                 self.draw_view_selector(ui);
                 ui.separator();
                 self.draw_payoff_sliders(ui);
@@ -35,30 +33,6 @@ impl EvolutionaryBiologyTool {
                 self.draw_payoff_matrix_card(ui);
             });
         });
-    }
-
-    fn draw_recovery_card(&mut self, ui: &mut egui::Ui) {
-        if !FiniteStateGuard::diverged(self) {
-            return;
-        }
-        let palette = SemanticPalette::from_visuals(ui.visuals());
-        egui::Frame::group(ui.style())
-            .stroke(egui::Stroke::new(1.5_f32, palette.error))
-            .show(ui, |ui| {
-                ui.colored_label(palette.error, "⚠ Replicator Parameter Guard Triggered");
-                if let Some(diag) = &self.diagnostic {
-                    ui.small(&diag.message);
-                }
-                ui.horizontal_wrapped(|ui| {
-                    if ui.button("Clamp Parameters").clicked() {
-                        FiniteStateGuard::clamp_parameters(self);
-                    }
-                    if ui.button("Reset Defaults").clicked() {
-                        FiniteStateGuard::reset_parameters(self);
-                    }
-                });
-            });
-        ui.separator();
     }
 
     fn draw_view_selector(&mut self, ui: &mut egui::Ui) {

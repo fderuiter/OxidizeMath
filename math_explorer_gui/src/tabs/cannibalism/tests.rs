@@ -94,13 +94,58 @@ fn test_finite_state_guard_recovery_actions_and_clamping() {
         "Simulated divergence",
     ));
     assert!(tool.diverged());
-    tool.auto_scale_step_size();
+    assert!(<PopulationStructureTool as InteractiveTool>::auto_scale_step_size(&mut tool));
     assert!(!tool.diverged());
     assert!((tool.config.dt - 0.12).abs() < 1e-12);
 
     tool.reset_parameters();
     assert_eq!(tool.config, PopulationStructureState::default());
     assert!(tool.is_finite_state());
+}
+
+fn count_shape_text(output: &egui::FullOutput, needle: &str) -> usize {
+    let mut count = 0;
+    let mut stack: Vec<&egui::epaint::Shape> = output.shapes.iter().map(|c| &c.shape).collect();
+    while let Some(shape) = stack.pop() {
+        match shape {
+            egui::epaint::Shape::Text(t) if t.galley.job.text.contains(needle) => count += 1,
+            egui::epaint::Shape::Vec(v) => stack.extend(v.iter()),
+            _ => {}
+        }
+    }
+    count
+}
+
+#[test]
+fn test_framework_surfaces_single_solver_diagnostic_banner_and_auto_dismisses() {
+    let mut tab = PopulationStructureTab::default();
+    let _ = run_headless_tab_frame(&mut tab);
+    assert!(!tab.framework.is_diverged());
+
+    let mut bad_tool = PopulationStructureTool::default();
+    bad_tool.diagnostic = Some(crate::framework::DiagnosticReport::new(
+        3.75,
+        42,
+        "density",
+        "Simulated PDE divergence",
+    ));
+    tab.framework.active_tool = Some(Box::new(bad_tool));
+
+    let out = run_headless_tab_frame(&mut tab);
+    assert!(tab.framework.is_diverged());
+    let report = tab
+        .framework
+        .diagnostic_report()
+        .expect("DiagnosticReport surfaced");
+    assert!((report.t_diverged - 3.75).abs() < 1e-9);
+    assert_eq!(report.step_index, 42);
+    assert_eq!(report.variable, "density");
+    assert_eq!(count_shape_text(&out, "Solver Divergence Warning"), 1);
+
+    tab.framework.rollback_auto_scale_step_size();
+    let out_after = run_headless_tab_frame(&mut tab);
+    assert!(!tab.framework.is_diverged());
+    assert_eq!(count_shape_text(&out_after, "Solver Divergence Warning"), 0);
 }
 
 #[test]

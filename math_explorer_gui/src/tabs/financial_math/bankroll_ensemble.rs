@@ -159,14 +159,6 @@ impl BankrollEnsembleLab {
         }
     }
 
-    /// Resets custom fraction, barrier floor, hypothesis state, and callouts to defaults.
-    pub fn reset_defaults(&mut self) {
-        self.custom_fraction = DEFAULT_CUSTOM_FRACTION;
-        self.barrier_floor_ratio = DEFAULT_BARRIER_FLOOR_RATIO;
-        self.hypothesis = None;
-        self.callout_manager.clear_auto();
-    }
-
     /// Clamps `custom_fraction` and `barrier_floor_ratio` into safe finite intervals.
     pub fn clamp_fraction(&mut self) {
         self.custom_fraction = if self.custom_fraction.is_finite() {

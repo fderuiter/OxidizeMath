@@ -6,6 +6,7 @@ use super::kspace_types::{
     MriKSpaceToolState, StudioBrushMode, MAX_STUDIO_STROKES,
 };
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
+use crate::framework::recovery::DiagnosticReport;
 use crate::framework::{
     CalloutManager, ChallengeEvaluation, ExportCapabilities, InteractionContext, InteractiveTool,
 };
@@ -383,20 +384,44 @@ impl InteractiveTool for MriKSpaceTool {
         self.config.validate().is_ok() && self.worker.state() != SimWorkerState::Faulted
     }
 
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.worker.diagnostic_report().cloned()
+    }
+
     fn clamp_parameters(&mut self) -> bool {
-        self.config.flip_angle_deg = self.config.flip_angle_deg.clamp(5.0, 180.0);
-        self.config.tr = self.config.tr.clamp(0.1, 5.0);
-        self.config.te = self.config.te.clamp(0.005, 0.4);
-        self.config.mask_cutoff = self.config.mask_cutoff.clamp(0.05, 1.0);
-        self.config.grad_gx_integral = self.config.grad_gx_integral.clamp(-5.0e-5, 5.0e-5);
-        self.config.grad_gy_integral = self.config.grad_gy_integral.clamp(-5.0e-5, 5.0e-5);
+        let def = MriKSpaceToolState::default();
+        let sanitize = |v: f64, lo: f64, hi: f64, fallback: f64| {
+            if v.is_finite() {
+                v.clamp(lo, hi)
+            } else {
+                fallback
+            }
+        };
+        self.config.flip_angle_deg =
+            sanitize(self.config.flip_angle_deg, 5.0, 180.0, def.flip_angle_deg);
+        self.config.tr = sanitize(self.config.tr, 0.1, 5.0, def.tr);
+        self.config.te = sanitize(self.config.te, 0.005, 0.4, def.te);
+        self.config.mask_cutoff = sanitize(self.config.mask_cutoff, 0.05, 1.0, def.mask_cutoff);
+        self.config.grad_gx_integral = sanitize(self.config.grad_gx_integral, -5.0e-5, 5.0e-5, 0.0);
+        self.config.grad_gy_integral = sanitize(self.config.grad_gy_integral, -5.0e-5, 5.0e-5, 0.0);
         if !matches!(self.config.grid_size, 64 | 128) {
             self.config.grid_size = 64;
         }
         let max_v = self.config.grid_size - 1;
         self.config.selected_voxel[0] = self.config.selected_voxel[0].min(max_v);
         self.config.selected_voxel[1] = self.config.selected_voxel[1].min(max_v);
-        self.sync_and_notify("sync_config");
+        if self.worker.state() == SimWorkerState::Faulted {
+            self.params
+                .write()
+                .unwrap_or_else(|e| e.into_inner())
+                .config = self.config.clone();
+            let params = Arc::clone(&self.params);
+            self.worker
+                .reset_or_respawn(move || MriKSpaceRunner::new(params));
+            self.textures_dirty = true;
+        } else {
+            self.sync_and_notify("sync_config");
+        }
         true
     }
 

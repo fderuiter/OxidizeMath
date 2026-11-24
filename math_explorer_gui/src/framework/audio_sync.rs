@@ -54,6 +54,15 @@ impl SimulationFramework {
     }
 
     pub(super) fn begin_frame_audio_bridge(&mut self, ctx: &egui::Context) {
+        if self.is_diverged
+            || self
+                .active_tool
+                .as_ref()
+                .is_some_and(|t| !t.has_finite_parameters())
+        {
+            let tool_name = self.active_tool.as_ref().map_or("simulation", |t| t.name());
+            self.audio_controller.auto_mute_on_divergence(tool_name);
+        }
         let settings = self
             .active_tool
             .as_ref()

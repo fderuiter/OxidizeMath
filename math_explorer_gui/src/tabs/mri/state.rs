@@ -3,16 +3,59 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::pulse::{
-    score_hahn_spin_echo, score_pi_inversion, MriPulseMode, CHALLENGE_BLOCH_HAHN_ECHO,
-    CHALLENGE_BLOCH_PI_INVERSION, CHALLENGE_MRI_B0, CHALLENGE_MRI_T1, CHALLENGE_MRI_T2,
-    CHALLENGE_MRI_TE, MRI_PULSE_SAMPLES,
+    score_hahn_spin_echo, score_pi_inversion, sync_mri_callouts, MriPulseMode,
+    CHALLENGE_BLOCH_HAHN_ECHO, CHALLENGE_BLOCH_PI_INVERSION, CHALLENGE_MRI_B0, CHALLENGE_MRI_T1,
+    CHALLENGE_MRI_T2, CHALLENGE_MRI_TE, MRI_PULSE_SAMPLES,
 };
-use super::runner::MriSnapshot;
+use super::runner::{MriRunner, MriSnapshot, MAX_MRI_TIME_SCALE, MIN_MRI_TIME_SCALE};
 use super::tool::{MriTool, MriToolState};
-use crate::async_sim::{SimCommand, SimWorkerState};
+use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::ChallengeEvaluation;
+use math_explorer::pure_math::analysis::ode::RungeKutta4;
 use nalgebra::Vector3;
 use std::collections::VecDeque;
+use std::sync::Arc;
+
+impl MriToolState {
+    /// Validates finiteness and physical domain bounds for all 6 MRI parameters.
+    pub fn validate(&self) -> Result<(), String> {
+        let checks = [
+            ("t1", self.t1, 0.1, 5.0),
+            ("t2", self.t2, 0.01, 2.0),
+            ("bx", self.bx, -50.0, 50.0),
+            ("by", self.by, -50.0, 50.0),
+            ("bz", self.bz, -50.0, 50.0),
+            (
+                "time_scale",
+                self.time_scale,
+                MIN_MRI_TIME_SCALE,
+                MAX_MRI_TIME_SCALE,
+            ),
+        ];
+        for (name, val, min, max) in checks {
+            if !val.is_finite() || val < min || val > max {
+                return Err(format!(
+                    "MRI parameter '{name}' = {val} must be finite within [{min}, {max}]"
+                ));
+            }
+        }
+        self.audio.validate()?;
+        if let Some(ref pulse) = self.pulse {
+            pulse.validate()?;
+        }
+        Ok(())
+    }
+
+    pub(super) fn resolve_target_state(&self) -> SimWorkerState {
+        self.state.unwrap_or_else(|| {
+            if self.paused.unwrap_or(true) {
+                SimWorkerState::Ready
+            } else {
+                SimWorkerState::Running
+            }
+        })
+    }
+}
 
 impl MriTool {
     /// Evaluates the active rotating-frame RF pulse sequence and populates plot buffers & callouts.
@@ -110,20 +153,80 @@ impl MriTool {
             p.b_field = self.simulator.b_field;
             p.time_scale = self.time_scale;
         }
-        self.pulse_workspace.playhead_playing = false;
+        self.reset_dynamic_trajectory(true);
         if let Some(desc) = parsed.fork {
             self.apply_mri_fork_descriptor(desc)?;
-        } else {
-            let _ = self.clear_fork();
         }
-        if !self.pulse_config.mode.is_continuous() {
-            let _ = self.worker.send_command(SimCommand::Pause);
-            self.recompute_pulse_sequence();
-        } else {
+        if self.pulse_config.mode.is_continuous() {
             self.apply_worker_state(target_state);
             self.latest_sonification = self.current_sonification_frame();
         }
         Ok(())
+    }
+
+    /// Restores factory default `t1`, `t2`, `b_field`, and `time_scale` and resets magnetization to `(M0, 0, 0)`.
+    #[cfg(test)]
+    pub fn reset_parameters(&mut self) {
+        use super::pulse::RfPulseConfig;
+        use super::tool::{DEFAULT_MRI_BZ, DEFAULT_MRI_T1, DEFAULT_MRI_T2, DEFAULT_MRI_TIME_SCALE};
+        self.simulator.t1 = DEFAULT_MRI_T1;
+        self.simulator.t2 = DEFAULT_MRI_T2;
+        self.simulator.b_field = Vector3::new(0.0, 0.0, DEFAULT_MRI_BZ);
+        self.time_scale = DEFAULT_MRI_TIME_SCALE;
+        if self.active_challenge.is_none() {
+            self.pulse_config = RfPulseConfig::default();
+        }
+        self.enforce_challenge_locks();
+        self.sync_shared_params();
+        self.reset_dynamic_trajectory(false);
+    }
+
+    pub(super) fn reset_dynamic_trajectory(&mut self, replace_worker: bool) {
+        let initial_m = Vector3::new(self.simulator.m0, 0.0, 0.0);
+        self.simulator.magnetization = initial_m;
+        self.solver = RungeKutta4::new(&initial_m);
+        self.current_time = 0.0;
+        self.history.clear();
+        self.mx_points.clear();
+        self.my_points.clear();
+        self.mz_points.clear();
+        self.twin = None;
+        self.branch_engine.clear();
+        self.pulse_workspace.playhead_playing = false;
+        self.pulse_workspace.playhead_idx = MRI_PULSE_SAMPLES - 1;
+        self.fault_notified = false;
+        let params = Arc::clone(&self.params);
+        let m0 = self.simulator.m0;
+        if replace_worker {
+            self.worker = BackgroundWorker::new(MriRunner::new(params, initial_m, m0));
+        } else {
+            self.worker
+                .reset_or_respawn(|| MriRunner::new(params, initial_m, m0));
+        }
+        if !self.pulse_config.mode.is_continuous() {
+            self.recompute_pulse_sequence();
+        } else {
+            sync_mri_callouts(
+                &mut self.callout_manager,
+                MriPulseMode::ContinuousField,
+                m0,
+                self.simulator.t2,
+                &self.pulse_config,
+                0.0,
+                initial_m,
+            );
+        }
+        self.latest_sonification = self.current_sonification_frame();
+    }
+
+    pub(super) fn apply_worker_state(&mut self, target_state: SimWorkerState) {
+        if target_state == SimWorkerState::Running {
+            if !self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+        } else if self.worker.is_running() {
+            let _ = self.worker.send_command(SimCommand::Pause);
+        }
     }
 
     pub(super) fn set_mri_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {

@@ -24,6 +24,14 @@ pub mod code_export_modal;
 mod code_export_tests;
 pub mod counterfactual;
 pub mod decimate;
+#[cfg(all(
+    test,
+    feature = "biology",
+    feature = "climate",
+    feature = "physics",
+    feature = "pure_math"
+))]
+mod divergence_unification_tests;
 #[cfg(all(test, feature = "ai", feature = "physics", feature = "pure_math"))]
 mod drag_bounds_and_rollback_tests;
 mod export_3d;
@@ -170,22 +178,13 @@ pub trait InteractiveTool {
 
     /// Provide theoretical context.
     fn theory(&self) -> &dyn TheoryDescribable;
-
     /// Show the tool at the root `egui::Context` level by delegating to [`Self::show_inside`].
     fn show(&mut self, ctx: &egui::Context) {
         pane_scope::render_default_tool_root(self, ctx);
     }
 
-    /// Show the tool inside a scoped parent `egui::Ui` (supporting multi-pane layouts on a single root `Context`).
-    ///
-    /// # Accessibility Requirements for Custom `show_inside` Overrides
-    ///
-    /// Default canvases use [`egui::Sense::click_and_drag`] and dispatch [`Self::on_keyboard`] when focused.
-    /// Custom overrides must:
-    /// - Allocate regions with [`egui::Sense::focusable_noninteractive`], [`egui::Sense::click`], or [`egui::Sense::click_and_drag`].
-    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))` for `AccessKit` `Role::Image`.
-    /// - Populate `AccessKit` metadata (`Role`, `label`, `value`) via `crate::accessibility::register_canvas_accessibility` and draw a focus ring.
-    /// - Guard arrow-key `Memory::set_focus_lock_filter` (`tab: false`, `escape: false`) strictly while `response.has_focus()`.
+    /// Show the tool inside a scoped parent `egui::Ui` (default canvases use [`egui::Sense::click_and_drag`] and [`Self::on_keyboard`]).
+    /// Custom overrides must keep regions keyboard-focusable, supply `.alt_text(...)` on textures, register `AccessKit` metadata + focus ring, and guard `Memory::set_focus_lock_filter` (`tab: false`, `escape: false`).
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         pane_scope::render_default_tool_inside(self, ui);
     }
@@ -221,6 +220,15 @@ pub trait InteractiveTool {
     /// Direct numeric parameter finiteness hook without JSON serialization.
     fn has_finite_parameters(&self) -> bool {
         true
+    }
+    /// Structured solver divergence report (`t_diverged`, `step_index`, `variable`, `message`)
+    /// surfaced to the shared framework recovery banner without wall-clock session uptime.
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        None
+    }
+    /// Optional hook to halve or scale down numerical step size on solver divergence, returning true if handled.
+    fn auto_scale_step_size(&mut self) -> bool {
+        false
     }
     /// Named scalar observables exposed to the Challenge HUD and `math_commons::ast` evaluator.
     fn observables(&self) -> Vec<(&'static str, f64)> {
@@ -317,22 +325,18 @@ pub trait InteractiveTool {
     fn export_preset_json(&self) -> Result<String, String> {
         export_persistence::export_tool_preset_json(self)
     }
-
     /// Parses and validates a JSON preset string against this tool's domain, applying configuration if valid.
     fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
         export_persistence::import_tool_preset_json(self, json_str)
     }
-
     /// Declares which dataset, figure, and code export formats this tool supports.
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
     }
-
     /// Optional cold-path hook returning calibrated LaTeX, Rust, and Python code artifacts.
     fn export_code_artifact(&self) -> Option<CodeArtifact> {
         None
     }
-
     /// Optional hook to generate standalone `.wgsl` or `.glsl` fragment shader source code.
     fn export_shader_source(&self, _format: ShaderExportFormat) -> Result<String, String> {
         Err(format!(
@@ -340,42 +344,34 @@ pub trait InteractiveTool {
             self.name()
         ))
     }
-
     /// Optional hook to export tool datasets.
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         egui_plot::get_last_plot_datasets()
     }
-
     /// Optional hook to export 3D world-coordinate `(X, Y, Z)` datasets.
     fn export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
         egui_plot::get_last_plot_datasets_3d()
     }
-
     /// Optional hook to extract offscreen drawable plot primitives (`Bar`, `Arrow`, `BoxElem`, `Polyline`, `Points`).
     fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
         egui_plot::get_last_plot_primitives()
     }
-
     /// Optional hook for texture-backed tools to expose their rendered 2D raster field for PNG, SVG, and GIF exports.
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
         None
     }
-
     /// Optional hook to provide custom figure export options.
     fn export_figure_options(&self) -> Option<egui_plot::export::ExportOptions> {
         None
     }
-
     /// Optional cold-path hook to build a watertight 3D triangle [`oxidize_core::mesh::Mesh`] for `.stl`, `.ply`, and `.obj` exports.
     fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
         None
     }
-
     /// Optional cold-path hook to build a per-vertex colored 3D [`oxidize_core::mesh::ColoredMesh`] for `.ply` exports.
     fn export_colored_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::ColoredMesh, String>> {
         None
     }
-
     /// Optional cold-path hook to serialize an INRIA-standard 3D Gaussian Splatting binary `.ply` scene.
     fn export_splat_ply_3d(&self) -> Option<Result<Vec<u8>, String>> {
         None
@@ -467,6 +463,9 @@ pub struct SimulationFramework {
     gif_job: Option<export_gif_job::FrameworkGifJob>,
     pub last_valid_snapshot: Option<StateSnapshot>,
     pub baseline_tool_state: Option<String>,
+    pub factory_tool_state: Option<String>,
+    pub preset_tool_state: Option<String>,
+    pub preset_tool_states: std::collections::HashMap<String, String>,
     pub current_valid_plot_datasets: Vec<(String, egui_plot::SharedPoints)>,
     pub current_valid_plot_datasets_3d: Vec<(String, Vec<[f64; 3]>)>,
     pub is_diverged: bool,

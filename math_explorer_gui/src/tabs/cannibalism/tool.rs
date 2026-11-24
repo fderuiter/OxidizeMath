@@ -375,6 +375,24 @@ impl InteractiveTool for PopulationStructureTool {
         self.is_finite_state()
     }
 
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.diagnostic.clone().or_else(|| {
+            (!self.is_finite_state()).then(|| {
+                DiagnosticReport::new(
+                    self.mvf_solver.time(),
+                    self.step_index,
+                    "state",
+                    "Non-finite or out-of-bounds parameter encountered in Population Structure.",
+                )
+            })
+        })
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        <Self as FiniteStateGuard>::auto_scale_step_size(self);
+        true
+    }
+
     fn clamp_parameters(&mut self) -> bool {
         <Self as FiniteStateGuard>::clamp_parameters(self);
         true

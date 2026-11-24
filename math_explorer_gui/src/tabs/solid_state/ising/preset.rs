@@ -200,12 +200,6 @@ impl IsingModelTool {
         } else {
             pinned_rle
         };
-        let pins_changed = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .pinned_rle
-            != effective_rle;
         self.pin_cells = if effective_rle.is_some() {
             decoded_pins
         } else {
@@ -217,10 +211,9 @@ impl IsingModelTool {
             .pinned_rle = effective_rle;
         self.sync_brush_fields_before_frame();
         self.sync_shared_params();
+        self.reinitialize_lattice_and_metrics();
         if self.defector_sea || !self.droplet_seeds.is_empty() {
             self.push_seed_layout_to_worker();
-        } else if pins_changed {
-            self.reset();
         }
     }
 

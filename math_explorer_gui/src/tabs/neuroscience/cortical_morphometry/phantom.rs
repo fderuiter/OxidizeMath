@@ -280,6 +280,7 @@ impl CorticalMorphometryTool {
             pred.iter().zip(&truth).filter(|(a, b)| a == b).count() as f64
                 / truth.len().max(1) as f64
         };
+        self.diagnostic_report = None;
         self.evolve_white_surface_steps(&mut gen.white, &volume);
         self.cache.evaluate_thickness(&gen.white, &gen.pial);
         let e_int = internal_energy(&gen.white, self.alpha, self.beta);

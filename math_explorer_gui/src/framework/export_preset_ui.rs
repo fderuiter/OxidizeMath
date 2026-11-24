@@ -1,4 +1,4 @@
-//! Preset JSON, share-link, and parameter-reset action bar controls extracted from [`super::export_ui`].
+//! Preset JSON, share-link, and dual-baseline parameter-reset controls extracted from [`super::export_ui`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -15,23 +15,52 @@ impl SimulationFramework {
         }
     }
 
-    pub(super) fn render_reset_parameters_button(
+    pub(super) fn render_revert_to_preset_button(
         &mut self,
         ui: &mut egui::Ui,
         close_on_click: bool,
     ) {
-        if ui
-            .button("↻ Reset Parameters")
-            .accessible_hover_text("Restore default baseline parameters")
-            .clicked()
-        {
-            self.reset_parameters();
-            crate::accessibility::announce_status("Parameters reset to baseline defaults");
-            ui.ctx().request_repaint();
-            if close_on_click {
-                ui.close();
+        let has_preset = self.has_preset_baseline();
+        let tip = if has_preset {
+            "Revert parameter edits to the active loaded preset"
+        } else {
+            "Revert parameter edits to the active loaded preset (no preset loaded)"
+        };
+        if export_action_button(ui, has_preset, "↺ Revert to Preset", tip, close_on_click) {
+            if self.reset_to_preset() {
+                crate::accessibility::announce_status("Parameters reverted to active preset");
             }
+            ui.ctx().request_repaint();
         }
+    }
+
+    pub(super) fn render_factory_reset_button(&mut self, ui: &mut egui::Ui, close_on_click: bool) {
+        let has_preset = self.has_preset_baseline();
+        let (label, tip, announcement) = if has_preset {
+            (
+                "↻ Factory Defaults",
+                "Restore initial factory default parameters",
+                "Parameters reset to factory defaults",
+            )
+        } else {
+            (
+                "↻ Reset Parameters",
+                "Restore default baseline parameters",
+                "Parameters reset to baseline defaults",
+            )
+        };
+        if export_action_button(ui, true, label, tip, close_on_click) {
+            self.reset_to_factory_defaults();
+            crate::accessibility::announce_status(announcement);
+            ui.ctx().request_repaint();
+        }
+    }
+
+    fn render_dual_reset_buttons(&mut self, ui: &mut egui::Ui, close_on_click: bool) {
+        if self.has_preset_baseline() {
+            self.render_revert_to_preset_button(ui, close_on_click);
+        }
+        self.render_factory_reset_button(ui, close_on_click);
     }
 
     pub(super) fn render_preset_toasts(&mut self, ui: &mut egui::Ui) {
@@ -104,15 +133,14 @@ impl SimulationFramework {
     ) {
         let resp = ui.menu_button("⚙ Presets ▾", |menu_ui| {
             self.render_preset_json_buttons(menu_ui, file_slug, true);
-            if !inline_reset {
-                menu_ui.separator();
-                self.render_reset_parameters_button(menu_ui, true);
-            }
+            menu_ui.separator();
+            self.render_revert_to_preset_button(menu_ui, true);
+            self.render_factory_reset_button(menu_ui, true);
         });
         resp.response
             .accessible_hover_text("Open parameter presets menu");
         if inline_reset {
-            self.render_reset_parameters_button(ui, false);
+            self.render_dual_reset_buttons(ui, false);
         }
         self.render_preset_toasts(ui);
     }
@@ -121,7 +149,8 @@ impl SimulationFramework {
         ui.separator();
         ui.label(egui::RichText::new("⚙ Presets:").strong());
         self.render_preset_json_buttons(ui, file_slug, false);
-        self.render_reset_parameters_button(ui, false);
+        self.render_revert_to_preset_button(ui, false);
+        self.render_factory_reset_button(ui, false);
         self.render_preset_toasts(ui);
     }
 }

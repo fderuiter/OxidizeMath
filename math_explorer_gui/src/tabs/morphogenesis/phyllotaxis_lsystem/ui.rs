@@ -5,7 +5,6 @@
 use super::presets::{BotanicalStudioMode, GuiDivergencePreset, GuiLSystemPreset};
 use super::PhyllotaxisLSystemTool;
 use crate::app::SemanticPalette;
-use crate::framework::recovery::FiniteStateGuard;
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 use math_explorer::biology::phyllotaxis::MAX_PRIMORDIA;
@@ -26,7 +25,6 @@ impl PhyllotaxisLSystemTool {
             egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.heading("Phyllotaxis & L-Systems");
                 ui.separator();
-                self.draw_recovery_card(ui);
                 self.draw_mode_selector(ui);
                 ui.separator();
                 self.draw_phyllotaxis_controls(ui);
@@ -34,30 +32,6 @@ impl PhyllotaxisLSystemTool {
                 self.draw_lsystem_controls(ui);
             });
         });
-    }
-
-    fn draw_recovery_card(&mut self, ui: &mut egui::Ui) {
-        if !FiniteStateGuard::diverged(self) {
-            return;
-        }
-        let palette = SemanticPalette::from_visuals(ui.visuals());
-        egui::Frame::group(ui.style())
-            .stroke(egui::Stroke::new(1.5_f32, palette.error))
-            .show(ui, |ui| {
-                ui.colored_label(palette.error, "⚠ Botanical Parameter Guard Triggered");
-                if let Some(diag) = &self.diagnostic {
-                    ui.small(&diag.message);
-                }
-                ui.horizontal_wrapped(|ui| {
-                    if ui.button("Clamp Parameters").clicked() {
-                        FiniteStateGuard::clamp_parameters(self);
-                    }
-                    if ui.button("Reset Studio").clicked() {
-                        FiniteStateGuard::reset_parameters(self);
-                    }
-                });
-            });
-        ui.separator();
     }
 
     fn draw_mode_selector(&mut self, ui: &mut egui::Ui) {

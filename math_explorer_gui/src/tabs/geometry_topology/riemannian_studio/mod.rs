@@ -211,10 +211,59 @@ impl InteractiveTool for RiemannianPdeStudio {
 
     fn has_finite_parameters(&self) -> bool {
         self.config.validate().is_ok()
+            && self
+                .engine
+                .as_ref()
+                .is_none_or(|eng| eng.scalar_field.iter().all(|v| v.is_finite()))
+    }
+
+    fn diagnostic_report(&self) -> Option<crate::framework::recovery::DiagnosticReport> {
+        let step_idx = self
+            .engine
+            .as_ref()
+            .map_or(0, |e| usize::try_from(e.step_count).unwrap_or(usize::MAX));
+        if let Some(eng) = &self.engine {
+            if !eng.scalar_field.iter().all(|v| v.is_finite()) {
+                let dt = if self.config.dt.is_finite() {
+                    self.config.dt.max(0.0)
+                } else {
+                    0.0
+                };
+                return Some(crate::framework::recovery::DiagnosticReport::new(
+                    eng.step_count as f64 * dt,
+                    step_idx,
+                    "scalar_field",
+                    "Non-finite manifold scalar field encountered during Riemannian PDE integration.",
+                ));
+            }
+        }
+        if let Err(msg) = self.config.validate() {
+            return Some(crate::framework::recovery::DiagnosticReport::new(
+                0.0, step_idx, "config", msg,
+            ));
+        }
+        None
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        self.config.dt = if self.config.dt.is_finite() && self.config.dt > 0.0 {
+            (self.config.dt * 0.5).clamp(5e-4, 0.03)
+        } else {
+            0.005
+        };
+        self.rebuild_all();
+        true
     }
 
     fn clamp_parameters(&mut self) -> bool {
+        let field_bad = self
+            .engine
+            .as_ref()
+            .is_some_and(|eng| !eng.scalar_field.iter().all(|v| v.is_finite()));
         self.config.clamp_in_place();
+        if field_bad {
+            self.rebuild_all();
+        }
         true
     }
 

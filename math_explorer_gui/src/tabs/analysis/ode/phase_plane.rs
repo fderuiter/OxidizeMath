@@ -4,10 +4,8 @@
 //! marching-squares nullclines, click-to-seed orbits, and synchronized $(x(t), y(t))$ twin timelines.
 
 use super::comparison::{simulate_ode, OdeSimSpec, SolverTrajectory};
-use super::recovery;
 use super::systems::build_ode_param_map;
 use super::OdeSolverTool;
-use crate::framework::recovery::FiniteStateGuard;
 use eframe::egui;
 use egui_plot::{Arrows, Legend, Line, LineStyle, Plot, PlotPoints, Points};
 
@@ -282,9 +280,6 @@ impl OdeSolverTool {
 
     pub(super) fn render_phase_plane_canvas(&mut self, ui: &mut egui::Ui, changed: &mut bool) {
         ui.heading("2D Phase Portrait & Twin Timelines (Click Canvas to Seed Orbits)");
-        if FiniteStateGuard::diverged(self) {
-            recovery::render_recovery_ui_in_place(ui, self, changed);
-        }
 
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let phase_h = (ui.available_height().max(320.0) * 0.62).max(200.0);

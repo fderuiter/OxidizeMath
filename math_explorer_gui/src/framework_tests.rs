@@ -479,5 +479,6 @@ mod tests {
     }
 }
 
+#[cfg(feature = "pure_math")]
 #[path = "framework/toolbar_reset_tests.rs"]
 mod toolbar_reset_tests;

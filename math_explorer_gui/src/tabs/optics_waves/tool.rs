@@ -135,9 +135,7 @@ impl OpticsWaveTool {
 
 impl FiniteStateGuard for OpticsWaveTool {
     fn is_finite_state(&self) -> bool {
-        self.worker.state() != SimWorkerState::Faulted
-            && self.worker.diagnostic_report().is_none()
-            && self.has_finite_parameters()
+        self.has_finite_parameters()
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -392,6 +390,17 @@ impl InteractiveTool for OpticsWaveTool {
             && p.lens_radius.is_finite()
             && p.detector_x.is_finite()
             && p.cfl_scale.is_finite()
+            && self.worker.state() != SimWorkerState::Faulted
+            && self.worker.diagnostic_report().is_none()
+    }
+
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.worker.diagnostic_report().cloned()
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        FiniteStateGuard::auto_scale_step_size(self);
+        true
     }
 
     fn clamp_parameters(&mut self) -> bool {

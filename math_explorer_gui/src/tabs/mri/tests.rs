@@ -74,26 +74,22 @@ fn test_mri_worker_simulation_step_and_zero_allocation() {
 fn test_mri_fault_halts_repaints_and_recovers() {
     let ctx = egui::Context::default();
     let mut tool = MriTool::default();
+    let repaint_delay = |out: &egui::FullOutput| {
+        out.viewport_output
+            .get(&egui::ViewportId::ROOT)
+            .unwrap()
+            .repaint_delay
+    };
 
     let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show_ui(ctx));
     let output_ready = ctx.run(egui::RawInput::default(), |ctx| tool.show_ui(ctx));
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
-    let delay_ready = output_ready
-        .viewport_output
-        .get(&egui::ViewportId::ROOT)
-        .unwrap()
-        .repaint_delay;
-    assert_ne!(delay_ready, std::time::Duration::ZERO);
+    assert_ne!(repaint_delay(&output_ready), std::time::Duration::ZERO);
 
     let _ = tool.worker.send_command(SimCommand::Start);
     let output_running = ctx.run(egui::RawInput::default(), |ctx| tool.show_ui(ctx));
     assert_eq!(tool.worker.state(), SimWorkerState::Running);
-    let delay_running = output_running
-        .viewport_output
-        .get(&egui::ViewportId::ROOT)
-        .unwrap()
-        .repaint_delay;
-    assert_eq!(delay_running, std::time::Duration::ZERO);
+    assert_eq!(repaint_delay(&output_running), std::time::Duration::ZERO);
 
     let _ = tool.worker.send_command(SimCommand::Pause);
     tool.worker.wait_until_paused();
@@ -102,54 +98,53 @@ fn test_mri_fault_halts_repaints_and_recovers() {
     tool.worker.set_state_for_test(SimWorkerState::Faulted);
     let _ = ctx.run(egui::RawInput::default(), |ctx| tool.show_ui(ctx));
     let output_faulted = ctx.run(egui::RawInput::default(), |ctx| tool.show_ui(ctx));
-    let delay_faulted = output_faulted
-        .viewport_output
-        .get(&egui::ViewportId::ROOT)
-        .unwrap()
-        .repaint_delay;
-    assert_ne!(delay_faulted, std::time::Duration::ZERO);
+    assert_ne!(repaint_delay(&output_faulted), std::time::Duration::ZERO);
 
     tool.retry();
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
 }
 
-#[test]
-fn test_mri_all_6_controls_persist_hash_and_reset_restores_defaults() {
-    let mut tool = MriTool::default();
+fn mutate_all_6_mri_controls(tool: &mut MriTool) {
     let mut prev_rev = tool.state_revision();
     assert!(prev_rev > 0);
-
-    for mutate in [
-        |t: &mut MriTool| {
+    let mutations: [fn(&mut MriTool); 6] = [
+        |t| {
             t.simulator.t1 = 2.4;
             t.params.write().unwrap().t1 = 2.4;
         },
-        |t: &mut MriTool| {
+        |t| {
             t.simulator.t2 = 0.45;
             t.params.write().unwrap().t2 = 0.45;
         },
-        |t: &mut MriTool| {
+        |t| {
             t.simulator.b_field.z = 1.75;
             t.params.write().unwrap().b_field.z = 1.75;
         },
-        |t: &mut MriTool| {
+        |t| {
             t.simulator.b_field.x = 0.03;
             t.params.write().unwrap().b_field.x = 0.03;
         },
-        |t: &mut MriTool| {
+        |t| {
             t.simulator.b_field.y = -0.02;
             t.params.write().unwrap().b_field.y = -0.02;
         },
-        |t: &mut MriTool| {
+        |t| {
             t.time_scale = 12.0;
             t.params.write().unwrap().time_scale = 12.0;
         },
-    ] {
-        mutate(&mut tool);
+    ];
+    for mutate in mutations {
+        mutate(tool);
         let next_rev = tool.state_revision();
         assert_ne!(next_rev, prev_rev);
         prev_rev = next_rev;
     }
+}
+
+#[test]
+fn test_mri_all_6_controls_persist_hash_and_reset_restores_defaults() {
+    let mut tool = MriTool::default();
+    mutate_all_6_mri_controls(&mut tool);
 
     let saved = tool.save_state().expect("save_state must succeed");
     let mut restored = MriTool::default();
@@ -160,17 +155,63 @@ fn test_mri_all_6_controls_persist_hash_and_reset_restores_defaults() {
     assert_eq!(restored.simulator.b_field, Vector3::new(0.03, -0.02, 1.75));
     assert_eq!(restored.time_scale, 12.0);
 
-    // Requirement 6: reset() restores default t1, t2, b_field, and time_scale
+    restored.step_simulation();
+    assert!(restored.current_time > 0.0 && !restored.history.is_empty());
+
+    // Requirement 6: playback reset() restarts trajectory while preserving user parameters
     restored.reset();
-    assert_eq!(restored.simulator.t1, 1.0);
-    assert_eq!(restored.simulator.t2, 0.1);
+    assert_eq!(restored.current_time, 0.0);
+    assert_eq!(
+        restored.simulator.magnetization,
+        Vector3::new(1.0, 0.0, 0.0)
+    );
+    assert!(restored.history.is_empty() && restored.mx_points.is_empty());
+    assert_eq!(restored.simulator.t1, 2.4);
+    assert_eq!(restored.simulator.t2, 0.45);
+    assert_eq!(restored.simulator.b_field, Vector3::new(0.03, -0.02, 1.75));
+    assert_eq!(restored.time_scale, 12.0);
+    {
+        let shared = restored.params.read().unwrap();
+        assert_eq!((shared.t1, shared.t2, shared.time_scale), (2.4, 0.45, 12.0));
+        assert_eq!(shared.b_field, Vector3::new(0.03, -0.02, 1.75));
+    }
+
+    restored.reset_parameters();
+    assert_eq!(
+        (
+            restored.simulator.t1,
+            restored.simulator.t2,
+            restored.time_scale
+        ),
+        (1.0, 0.1, 1.0)
+    );
     assert_eq!(restored.simulator.b_field, Vector3::new(0.0, 0.0, 1.0));
-    assert_eq!(restored.time_scale, 1.0);
-    let shared = restored.params.read().unwrap();
-    assert_eq!(shared.t1, 1.0);
-    assert_eq!(shared.t2, 0.1);
-    assert_eq!(shared.b_field, Vector3::new(0.0, 0.0, 1.0));
-    assert_eq!(shared.time_scale, 1.0);
+}
+
+#[test]
+fn test_mri_try_load_state_clears_stale_trajectory_and_resets_time() {
+    let mut tool = MriTool::default();
+    for _ in 0..10 {
+        tool.step_simulation();
+    }
+    assert!(tool.current_time > 0.0);
+    assert!(tool.history.len() > 1);
+    assert!(tool.mx_points.len() > 1);
+    assert_ne!(tool.simulator.magnetization, Vector3::new(1.0, 0.0, 0.0));
+
+    tool.try_load_state(
+        r#"{"t1":1.8,"t2":0.3,"bx":0.02,"by":-0.01,"bz":1.5,"time_scale":4.0,"state":"Ready"}"#,
+    )
+    .expect("MRI preset state should load");
+
+    assert_eq!(tool.current_time, 0.0);
+    assert_eq!(tool.simulator.magnetization, Vector3::new(1.0, 0.0, 0.0));
+    assert!(tool.history.is_empty());
+    assert!(tool.mx_points.is_empty());
+    let exported = tool.export_datasets();
+    assert_eq!(exported[0].1, vec![[0.0, 1.0]]);
+    assert_eq!(exported[1].1, vec![[0.0, 0.0]]);
+    assert_eq!(exported[2].1, vec![[0.0, 0.0]]);
 }
 
 #[test]
@@ -286,18 +327,19 @@ fn test_mri_poisoned_lock_recovery_and_plot_buffers_reuse() {
 
 fn click_mri_button(ctx: &egui::Context, tab: &mut MriTab, label_substr: &str) {
     let mut frame = eframe::Frame::_new_kittest();
-    let screen_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0));
-    let out = ctx.run(
-        egui::RawInput {
-            screen_rect: Some(screen_rect),
-            ..Default::default()
-        },
-        |ctx| {
-            CentralPanel::default()
-                .frame(Frame::NONE)
-                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
-        },
-    );
+    let raw = |events| egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 900.0),
+        )),
+        events,
+        ..Default::default()
+    };
+    let out = ctx.run(raw(Vec::new()), |ctx| {
+        CentralPanel::default()
+            .frame(Frame::NONE)
+            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+    });
     let ak = out.platform_output.accesskit_update.as_ref().unwrap();
     let bounds = ak
         .nodes
@@ -309,26 +351,18 @@ fn click_mri_button(ctx: &egui::Context, tab: &mut MriTab, label_substr: &str) {
         ((bounds.x0 + bounds.x1) * 0.5) as f32,
         ((bounds.y0 + bounds.y1) * 0.5) as f32,
     );
+    let btn = |pressed| egui::Event::PointerButton {
+        pos: center,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
     let _ = ctx.run(
-        egui::RawInput {
-            screen_rect: Some(screen_rect),
-            events: vec![
-                egui::Event::PointerMoved(center),
-                egui::Event::PointerButton {
-                    pos: center,
-                    button: egui::PointerButton::Primary,
-                    pressed: true,
-                    modifiers: egui::Modifiers::NONE,
-                },
-                egui::Event::PointerButton {
-                    pos: center,
-                    button: egui::PointerButton::Primary,
-                    pressed: false,
-                    modifiers: egui::Modifiers::NONE,
-                },
-            ],
-            ..Default::default()
-        },
+        raw(vec![
+            egui::Event::PointerMoved(center),
+            btn(true),
+            btn(false),
+        ]),
         |ctx| {
             CentralPanel::default()
                 .frame(Frame::NONE)

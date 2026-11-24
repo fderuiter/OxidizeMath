@@ -12,6 +12,12 @@ struct RawToolStates<'a> {
     active: Option<(&'a str, &'a str)>,
 }
 
+impl RawToolStates<'_> {
+    fn is_empty(&self) -> bool {
+        self.saved.is_empty() && self.active.is_none()
+    }
+}
+
 impl Serialize for RawToolStates<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let extra = usize::from(
@@ -119,6 +125,8 @@ struct FrameworkStateSerialize<'a> {
     show_theory_portal: bool,
     show_starter_gallery: bool,
     tool_states: RawToolStates<'a>,
+    #[serde(skip_serializing_if = "RawToolStates::is_empty")]
+    preset_tool_states: RawToolStates<'a>,
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     plot_states: &'a plot_persistence::SavedPlotStatesMap,
 }
@@ -132,6 +140,8 @@ struct FrameworkStateDeserialize {
     show_starter_gallery: bool,
     #[serde(deserialize_with = "deserialize_tool_states")]
     tool_states: HashMap<String, String>,
+    #[serde(default, deserialize_with = "deserialize_tool_states")]
+    preset_tool_states: HashMap<String, String>,
     #[serde(
         default,
         deserialize_with = "plot_persistence::deserialize_plot_states"
@@ -174,43 +184,12 @@ pub(crate) fn framework_json_semantically_eq(a: &str, b: &str) -> bool {
             .tool_states
             .iter()
             .all(|(k, va)| db.tool_states.get(k).is_some_and(|vb| tool_json_eq(va, vb)))
-}
-
-fn with_isolated_plot_globals<R>(f: impl FnOnce() -> R) -> R {
-    let prev = egui_plot::get_last_plot_shared_datasets();
-    let prev_3d = egui_plot::get_last_plot_datasets_3d();
-    let prev_prims = egui_plot::get_last_plot_primitives();
-    egui_plot::clear_last_plot_datasets();
-    egui_plot::clear_last_plot_primitives();
-    let out = f();
-    egui_plot::clear_last_plot_datasets();
-    if !prev.is_empty() {
-        egui_plot::append_last_plot_shared_datasets(&prev);
-    }
-    if !prev_3d.is_empty() {
-        egui_plot::append_last_plot_datasets_3d(&prev_3d);
-    }
-    if !prev_prims.is_empty() {
-        egui_plot::append_last_plot_primitives(&prev_prims);
-    }
-    out
-}
-
-pub(super) fn capture_isolated_tool_datasets(
-    tool: &dyn InteractiveTool,
-) -> Vec<(String, egui_plot::SharedPoints)> {
-    with_isolated_plot_globals(|| {
-        tool.export_datasets()
-            .into_iter()
-            .map(|(name, pts)| (name, egui_plot::SharedPoints::from(pts)))
-            .collect()
-    })
-}
-
-pub(super) fn capture_isolated_tool_datasets_3d(
-    tool: &dyn InteractiveTool,
-) -> Vec<(String, Vec<[f64; 3]>)> {
-    with_isolated_plot_globals(|| tool.export_datasets_3d())
+        && da.preset_tool_states.len() == db.preset_tool_states.len()
+        && da.preset_tool_states.iter().all(|(k, va)| {
+            db.preset_tool_states
+                .get(k)
+                .is_some_and(|vb| tool_json_eq(va, vb))
+        })
 }
 
 impl SimulationFramework {
@@ -264,6 +243,10 @@ impl SimulationFramework {
                     .as_ref()
                     .map(|(name, json)| (*name, json.as_ref())),
             },
+            preset_tool_states: RawToolStates {
+                saved: &self.preset_tool_states,
+                active: None,
+            },
             plot_states: &self.saved_plot_states,
         };
         serde_json::to_string(&state).ok()
@@ -282,6 +265,7 @@ impl SimulationFramework {
         self.show_theory_portal = state.show_theory_portal;
         self.show_starter_gallery = false;
         self.saved_tool_states = state.tool_states;
+        self.preset_tool_states = state.preset_tool_states;
         self.saved_plot_states = state.plot_states;
         self.bump_plot_sync_generation();
         self.bump_framework_revision();
@@ -313,12 +297,47 @@ impl SimulationFramework {
         }
     }
 
+    fn capture_active_tool_initial_snapshot(&mut self, step_index: usize) {
+        let Some(tool) = self.active_tool.as_ref() else {
+            return;
+        };
+        let datasets = state_guard::capture_isolated_tool_datasets(tool.as_ref());
+        let datasets_3d = state_guard::capture_isolated_tool_datasets_3d(tool.as_ref());
+        let recovery = tool.save_recovery_state();
+        let rev = tool.state_revision();
+        self.sync_state.datasets_owner_tool = Some(tool.name());
+        self.current_valid_plot_datasets = datasets.clone();
+        self.current_valid_plot_datasets_3d = datasets_3d;
+        self.rev_cache.last_snapshot_rev = (rev > 0).then_some((tool.name(), rev));
+        self.rev_cache.last_snapshot_source_datasets = datasets.clone();
+        let mut snap = StateSnapshot {
+            tool_state: recovery,
+            plot_datasets: datasets,
+            step_index,
+            timestamp: crate::web_io::PlatformInstant::now(),
+        };
+        snap.enforce_memory_budget();
+        self.last_valid_snapshot = Some(snap);
+    }
+
     fn reload_existing_active_tool(&mut self, idx: usize) {
         self.cancel_active_gif_export(false);
         let meta = self.available_tools[idx];
         self.is_diverged = false;
         self.diagnostic_report = None;
+        if self.factory_tool_state.is_none() {
+            self.factory_tool_state = (meta.build)().save_state();
+        }
         if let Some(tool) = &mut self.active_tool {
+            let preset_state = super::url_share::lookup_saved_tool_state(
+                &self.preset_tool_states,
+                &self.domain,
+                meta,
+                tool.name(),
+            )
+            .cloned();
+            self.preset_tool_state = preset_state.clone();
+            self.baseline_tool_state = preset_state.or_else(|| self.factory_tool_state.clone());
             if let Some(saved) = super::url_share::lookup_saved_tool_state(
                 &self.saved_tool_states,
                 &self.domain,
@@ -333,28 +352,14 @@ impl SimulationFramework {
                 }
                 if !tool.has_finite_parameters() {
                     let fresh = (meta.build)();
-                    self.baseline_tool_state = fresh.save_state();
+                    let factory = fresh.save_state();
+                    self.factory_tool_state = factory.clone();
+                    self.baseline_tool_state = self.preset_tool_state.clone().or(factory);
                     *tool = fresh;
                 }
             }
-            let refreshed = capture_isolated_tool_datasets(tool.as_ref());
-            let refreshed_3d = capture_isolated_tool_datasets_3d(tool.as_ref());
-            let recovery = tool.save_recovery_state();
-            let rev = tool.state_revision();
-            self.sync_state.datasets_owner_tool = Some(tool.name());
-            self.current_valid_plot_datasets = refreshed.clone();
-            self.current_valid_plot_datasets_3d = refreshed_3d;
-            self.rev_cache.last_snapshot_rev = (rev > 0).then_some((tool.name(), rev));
-            self.rev_cache.last_snapshot_source_datasets = refreshed.clone();
-            let mut snap = StateSnapshot {
-                tool_state: recovery,
-                plot_datasets: refreshed,
-                step_index: self.step_counter,
-                timestamp: crate::web_io::PlatformInstant::now(),
-            };
-            snap.enforce_memory_budget();
-            self.last_valid_snapshot = Some(snap);
         }
+        self.capture_active_tool_initial_snapshot(self.step_counter);
     }
 
     /// Selects and activates a tool by index in `available_tools`.
@@ -379,6 +384,13 @@ impl SimulationFramework {
         let meta = self.available_tools[index];
         let mut new_tool = (meta.build)();
         let factory_baseline_state = new_tool.save_state();
+        let preset_baseline_state = super::url_share::lookup_saved_tool_state(
+            &self.preset_tool_states,
+            &self.domain,
+            meta,
+            new_tool.name(),
+        )
+        .cloned();
         if let Some(state) = super::url_share::lookup_saved_tool_state(
             &self.saved_tool_states,
             &self.domain,
@@ -392,29 +404,15 @@ impl SimulationFramework {
         self.export_status_message = None;
         self.export_queue.status = None;
         self.step_counter = 0;
-        self.baseline_tool_state = factory_baseline_state;
-        let recovery_state = new_tool.save_recovery_state();
-        let rev = new_tool.state_revision();
-        let initial_datasets = capture_isolated_tool_datasets(new_tool.as_ref());
-        let initial_datasets_3d = capture_isolated_tool_datasets_3d(new_tool.as_ref());
-        self.sync_state.datasets_owner_tool = Some(new_tool.name());
-        self.current_valid_plot_datasets = initial_datasets.clone();
-        self.current_valid_plot_datasets_3d = initial_datasets_3d;
-        self.rev_cache.last_snapshot_rev = (rev > 0).then_some((new_tool.name(), rev));
-        self.rev_cache.last_snapshot_source_datasets = initial_datasets.clone();
-        let mut snap = StateSnapshot {
-            tool_state: recovery_state,
-            plot_datasets: initial_datasets,
-            step_index: 0,
-            timestamp: crate::web_io::PlatformInstant::now(),
-        };
-        snap.enforce_memory_budget();
-        self.last_valid_snapshot = Some(snap);
+        self.factory_tool_state = factory_baseline_state.clone();
+        self.preset_tool_state = preset_baseline_state.clone();
+        self.baseline_tool_state = preset_baseline_state.or(factory_baseline_state);
         scientific_metadata::citation_registry::CitationRegistry::register(
             new_tool.name().to_string(),
             new_tool.theory().theory_citation(),
         );
         self.active_tool = Some(new_tool);
+        self.capture_active_tool_initial_snapshot(0);
         self.promote_legacy_plot_keys_for_active_tool();
     }
 

@@ -192,6 +192,30 @@ mod tests {
     }
 
     #[test]
+    fn test_neural_network_viz_reset_preserves_sliders_and_custom_weights() {
+        let mut tool = NeuralNetworkVizTool::default();
+        let custom_inputs = vec![24.0, -5.0, 12.5, 8.0, 31.0];
+        tool.external_input = custom_inputs.clone();
+        tool.weights[1][0] = 4.25;
+        tool.weights[3][2] = -2.75;
+        tool.rebuild_csr_from_dense();
+        let expected_weights = tool.weights.clone();
+        tool.is_running = true;
+        for _ in 0..10 {
+            tool.step();
+        }
+        assert!(tool.neurons.iter().any(|n| (n.v() + 65.0).abs() > 1e-3));
+
+        tool.reset();
+        assert!(!tool.is_running);
+        assert_eq!(tool.external_input, custom_inputs);
+        assert_eq!(tool.weights, expected_weights);
+        for neuron in &tool.neurons {
+            assert!((neuron.v() + 65.0).abs() < 1e-9);
+        }
+    }
+
+    #[test]
     fn test_neural_network_viz_zero_alloc_1000_steps_under_verified_allocator() {
         let mut tool = NeuralNetworkVizTool::default();
         {

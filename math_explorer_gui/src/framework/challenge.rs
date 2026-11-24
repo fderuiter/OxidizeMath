@@ -143,6 +143,7 @@ impl SimulationFramework {
     ) -> Result<(), String> {
         let tool_meta = self.available_tools[target_idx];
         let mut candidate = (tool_meta.build)();
+        let factory_state = candidate.save_state();
         candidate.apply_challenge(Some(meta.id))?;
         candidate
             .state_bounds()
@@ -173,6 +174,7 @@ impl SimulationFramework {
             .is_some_and(|eval| eval.passed);
         self.active_challenge = Some(meta);
         self.selected_tool_index = Some(target_idx);
+        self.factory_tool_state = factory_state;
         self.active_tool = Some(candidate);
         self.promote_legacy_plot_keys_for_active_tool();
         self.preset_dialog.toast_error = None;

@@ -330,6 +330,16 @@ impl InteractiveTool for CorticalMorphometryTool {
             && (0.0..=1.5).contains(&self.atrophy_effect_mm)
             && self.camera.is_valid()
             && self.cache.are_meshes_finite()
+            && self.diagnostic_report.is_none()
+    }
+
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.diagnostic_report.clone()
+    }
+
+    fn auto_scale_step_size(&mut self) -> bool {
+        FiniteStateGuard::auto_scale_step_size(self);
+        true
     }
 
     fn clamp_parameters(&mut self) -> bool {

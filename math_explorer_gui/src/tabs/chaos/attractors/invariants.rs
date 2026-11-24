@@ -158,7 +158,7 @@ impl AttractorPlotter {
                 .copied()
                 .filter(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()),
         );
-        if out.len() >= 32 {
+        if out.len() >= MAX_CHAOS_LANDMARKS {
             return;
         }
         let dt = self.dt.clamp(0.001, 0.05);

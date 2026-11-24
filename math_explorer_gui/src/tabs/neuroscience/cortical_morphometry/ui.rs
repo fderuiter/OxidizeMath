@@ -4,7 +4,6 @@
 
 use super::{CorticalMorphometryTool, CorticalOverlayMode, SurfaceDisplayMode};
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::recovery::{render_recovery_banner, FiniteStateGuard, RecoveryAction};
 use crate::framework::{Plot3DViewport, CAMERA_3D_HELPER_TEXT};
 use eframe::egui;
 
@@ -140,17 +139,6 @@ impl CorticalMorphometryTool {
 
     pub(super) fn draw_viewport(&mut self, parent_ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            if self.diverged() {
-                if let Some(action) = render_recovery_banner(ui, self.diagnostic_report()) {
-                    match action {
-                        RecoveryAction::AutoScaleStepSize => self.auto_scale_step_size(),
-                        RecoveryAction::ClampParameters => {
-                            FiniteStateGuard::clamp_parameters(self);
-                        }
-                        RecoveryAction::ResetParameters => self.reset_parameters(),
-                    }
-                }
-            }
             self.populate_scene(ui.visuals().dark_mode);
             if let Some(ref warn_msg) = self.cache.glm_warning {
                 let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());

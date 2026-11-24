@@ -73,7 +73,7 @@ impl SimulationFramework {
                 let msg = if count == 1 {
                     "1 tool matches filter".to_string()
                 } else {
-                    format!("{} tools match filter", count)
+                    format!("{count} tools match filter")
                 };
                 crate::accessibility::announce_status(&msg);
             }
@@ -252,19 +252,47 @@ impl SimulationFramework {
             });
     }
 
-    #[allow(missing_docs, clippy::too_many_lines)]
-    pub fn show_inside(&mut self, ui: &mut egui::Ui, id_source: &str) {
-        let ctx = ui.ctx().clone();
-        egui_plot::clear_last_plot_datasets();
-        egui_plot::clear_last_plot_primitives();
-        let interactive_input = has_interactive_ui_input(&ctx);
-        if interactive_input {
-            self.rev_cache.untracked_tool_revision =
-                self.rev_cache.untracked_tool_revision.wrapping_add(1);
+    fn render_active_tool_frame(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        if self.active_tool.is_none() {
+            return;
         }
-        let sweep_mut_before = crate::reflective_ui::slider::live_sweep_mutation_count(&ctx);
+        let was_diverged = self.is_diverged;
+        if !was_diverged {
+            self.cache_valid_snapshot();
+        }
+        if let Some(tool) = &mut self.active_tool {
+            tool.show_inside(ui);
+        }
+        let _ = self.inspect_runtime_state();
+        if self.is_diverged {
+            if was_diverged {
+                if let Some(ref snapshot) = self.last_valid_snapshot {
+                    egui_plot::clear_last_plot_datasets();
+                    egui_plot::clear_last_plot_primitives();
+                    egui_plot::append_last_plot_shared_datasets(&snapshot.plot_datasets);
+                }
+            } else {
+                crate::audio::notify_solver_diverged();
+                ctx.request_repaint();
+            }
+        } else {
+            if was_diverged {
+                self.cache_valid_snapshot();
+                ctx.request_repaint();
+            }
+            let _ = self.evaluate_challenge_predicates(Some(ctx));
+        }
+    }
 
-        // Display recovery banner when solver divergence is detected
+    fn render_recovery_banner_if_diverged(&mut self, ui: &mut egui::Ui, id_source: &str) {
+        if !self.is_diverged
+            && self
+                .active_tool
+                .as_ref()
+                .is_some_and(|t| t.diagnostic_report().is_some() || !t.has_finite_parameters())
+        {
+            let _ = self.inspect_runtime_state();
+        }
         if self.is_diverged {
             let banner_id = scoped_panel_id(ui, format!("{id_source}_recovery_banner"));
             egui::TopBottomPanel::top(banner_id).show_inside(ui, |ui| {
@@ -278,8 +306,9 @@ impl SimulationFramework {
                 }
             });
         }
+    }
 
-        // Update global input mode
+    fn prepare_frame_context_data(&mut self, ctx: &egui::Context, id_source: &str) {
         ctx.input(|i| {
             if i.any_touches() || i.multi_touch().is_some() {
                 self.input_mode = InputMode::Touch;
@@ -304,6 +333,21 @@ impl SimulationFramework {
                 challenge_active,
             );
         });
+    }
+
+    #[allow(missing_docs)]
+    pub fn show_inside(&mut self, ui: &mut egui::Ui, id_source: &str) {
+        let ctx = ui.ctx().clone();
+        egui_plot::clear_last_plot_datasets();
+        egui_plot::clear_last_plot_primitives();
+        let interactive_input = has_interactive_ui_input(&ctx);
+        if interactive_input {
+            self.rev_cache.untracked_tool_revision =
+                self.rev_cache.untracked_tool_revision.wrapping_add(1);
+        }
+        let sweep_mut_before = crate::reflective_ui::slider::live_sweep_mutation_count(&ctx);
+        self.render_recovery_banner_if_diverged(ui, id_source);
+        self.prepare_frame_context_data(&ctx, id_source);
 
         self.sync_overlays_before_frame(&ctx, id_source);
         self.poll_active_gif_export(&ctx);
@@ -315,27 +359,7 @@ impl SimulationFramework {
         self.show_theory_portal(ui, id_source);
         self.show_framework_atlas_panel(ui, id_source);
         self.begin_plot_scope(&ctx);
-        if !self.is_diverged {
-            self.cache_valid_snapshot();
-            if let Some(tool) = &mut self.active_tool {
-                tool.show_inside(ui);
-            }
-            let _ = self.inspect_runtime_state();
-            if self.is_diverged {
-                crate::audio::notify_solver_diverged();
-                ctx.request_repaint();
-            } else {
-                let _ = self.evaluate_challenge_predicates(Some(&ctx));
-            }
-        } else if let Some(tool) = &mut self.active_tool {
-            // Solver execution halted: keep last valid plot data active in egui_plot
-            if let Some(ref snapshot) = self.last_valid_snapshot {
-                egui_plot::clear_last_plot_datasets();
-                egui_plot::clear_last_plot_primitives();
-                egui_plot::append_last_plot_shared_datasets(&snapshot.plot_datasets);
-            }
-            tool.show_inside(ui);
-        }
+        self.render_active_tool_frame(ui, &ctx);
         self.end_plot_scope(&ctx);
         if !interactive_input
             && crate::reflective_ui::slider::live_sweep_mutation_count(&ctx) > sweep_mut_before

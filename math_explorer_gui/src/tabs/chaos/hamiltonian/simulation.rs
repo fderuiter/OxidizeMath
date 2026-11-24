@@ -95,7 +95,11 @@ impl HamiltonianChaosLab {
         }
         self.three_body_perturbation = self.three_body_perturbation.clamp(0.0, 0.15);
         if !self.orbits_are_finite() {
-            self.seed_default_showcase();
+            if self.orbits.is_empty() {
+                self.seed_default_showcase();
+            } else {
+                self.rebuild_existing_seeds();
+            }
         }
     }
 
@@ -172,6 +176,16 @@ impl HamiltonianChaosLab {
         }
         self.refresh_lyapunov_estimate();
         self.step_batch(WARMUP_STEPS_ON_SEED);
+    }
+
+    /// Restarts dynamic trajectories at `t = 0` while preserving user parameters and seeded orbits.
+    pub fn reset(&mut self) {
+        self.is_playing = false;
+        if self.orbits.is_empty() {
+            self.seed_default_showcase();
+        } else {
+            self.rebuild_existing_seeds();
+        }
     }
 
     /// Clears all seeded orbits and resets the `RungeKutta4` comparator.

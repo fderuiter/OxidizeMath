@@ -160,17 +160,6 @@ impl BankrollGrowthTool {
                 announce_live_status(ui.ctx(), "Recomputed Kelly bankroll growth paths");
                 *changed = false;
             }
-            if ui
-                .button("↻ Reset to Defaults")
-                .accessible_hover_text(
-                    "Reset initial bankroll, win probability, net odds, and bet count to defaults",
-                )
-                .clicked()
-            {
-                self.reset_defaults();
-                announce_live_status(ui.ctx(), "Reset bankroll growth parameters to defaults");
-                *changed = false;
-            }
             ui.small(format!(
                 "(Seed #{}) f* = {:.3} | Active f = {:.3} | EV = {:+.3} | Log-Growth g = {:+.4}",
                 self.seed_counter,

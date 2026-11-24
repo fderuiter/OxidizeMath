@@ -164,11 +164,16 @@ impl NeuralNetworkVizTool {
     }
 
     pub(crate) fn reset(&mut self) {
-        let src = self.topology_source;
-        let keep_mode = self.mode;
-        *self = Self::default();
-        self.topology_source = src;
-        self.mode = keep_mode;
+        self.is_running = false;
+        self.prev_ring_v = [-65.0; 5];
+        self.sonification = crate::audio::SonificationFrame::silent();
+        for neuron in &mut self.neurons {
+            *neuron = HodgkinHuxleyNeuron::new(-65.0);
+        }
+        self.rebuild_csr_from_dense();
+        self.kuramoto.reset_phases();
+        self.order_history.clear();
+        self.record_kuramoto_history_zero_alloc();
     }
 
     pub(crate) fn step_once(&mut self) {
@@ -343,9 +348,14 @@ impl InteractiveTool for NeuralNetworkVizTool {
         self.rebuild_csr_from_dense();
         self.dt = s.dt;
         self.is_running = s.is_running;
+        self.prev_ring_v = [-65.0; 5];
+        self.sonification = crate::audio::SonificationFrame::silent();
         self.mode = s.mode;
         let spread = s.frequency_spread.unwrap_or(0.6);
         self.sync_kuramoto_from_weight_matrix(spread);
+        self.kuramoto.reset_phases();
+        self.order_history.clear();
+        self.record_kuramoto_history_zero_alloc();
         if let Some(k) = s.kuramoto_coupling {
             self.kuramoto.set_coupling(k);
         }

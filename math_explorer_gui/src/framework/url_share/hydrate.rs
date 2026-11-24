@@ -85,9 +85,10 @@ impl SimulationFramework {
         base_preset_json: &str,
         override_state_json: Option<&str>,
         allow_workspace_bounds: bool,
-    ) -> Result<Box<dyn InteractiveTool>, String> {
+    ) -> Result<(Box<dyn InteractiveTool>, Option<String>), String> {
         let meta = self.available_tools[target_idx];
         let mut candidate = (meta.build)();
+        let factory_state = candidate.save_state();
         validate_json_with_bounds(base_preset_json, allow_workspace_bounds)?;
         candidate.import_preset_json(base_preset_json)?;
         if let Some(extra_json) = override_state_json {
@@ -100,7 +101,7 @@ impl SimulationFramework {
                 candidate.name()
             ));
         }
-        Ok(candidate)
+        Ok((candidate, factory_state))
     }
 
     fn import_url_inverse_challenge(
@@ -168,7 +169,7 @@ impl SimulationFramework {
         let target_idx =
             self.verify_requested_url_tool(params.tool.as_deref(), challenge.tool_name)?;
         let base_json = (challenge.initial_preset_generator)();
-        let mut base_candidate = self.validate_candidate_tool_preset(
+        let (mut base_candidate, _) = self.validate_candidate_tool_preset(
             target_idx,
             base_json,
             None,
@@ -176,14 +177,14 @@ impl SimulationFramework {
         )?;
         base_candidate.sync_callouts(challenge.callouts);
         let initial_state = base_candidate.export_url_state();
-        let candidate = self.validate_candidate_tool_preset(
+        let (candidate, factory_state) = self.validate_candidate_tool_preset(
             target_idx,
             base_json,
             params.state_json.as_deref(),
             allow_workspace_bounds,
         )?;
         let compiled = CompiledGoalPredicate::compile(challenge.predicate_expr);
-        self.commit_validated_url_candidate(target_idx, candidate);
+        self.commit_validated_url_candidate(target_idx, candidate, factory_state);
         if let Some(tool) = &mut self.active_tool {
             tool.sync_callouts(challenge.callouts);
         }
@@ -235,7 +236,7 @@ impl SimulationFramework {
         })?;
         let target_idx = self.verify_requested_url_tool(params.tool.as_deref(), story.tool_name)?;
         let step_json = (step.preset_generator)();
-        let mut step_candidate = self.validate_candidate_tool_preset(
+        let (mut step_candidate, _) = self.validate_candidate_tool_preset(
             target_idx,
             step_json,
             None,
@@ -243,13 +244,13 @@ impl SimulationFramework {
         )?;
         step_candidate.sync_callouts(step.callouts);
         let step_state = step_candidate.export_url_state();
-        let candidate = self.validate_candidate_tool_preset(
+        let (candidate, factory_state) = self.validate_candidate_tool_preset(
             target_idx,
             step_json,
             params.state_json.as_deref(),
             allow_workspace_bounds,
         )?;
-        self.commit_validated_url_candidate(target_idx, candidate);
+        self.commit_validated_url_candidate(target_idx, candidate, factory_state);
         if let Some(tool) = &mut self.active_tool {
             tool.sync_callouts(step.callouts);
         }
@@ -291,13 +292,13 @@ impl SimulationFramework {
             .tool_name
             .ok_or_else(|| format!("Starter preset '{}' has no target tool", starter.id))?;
         let target_idx = self.verify_requested_url_tool(params.tool.as_deref(), expected_tool)?;
-        let candidate = self.validate_candidate_tool_preset(
+        let (candidate, factory_state) = self.validate_candidate_tool_preset(
             target_idx,
             starter.generate_preset(),
             params.state_json.as_deref(),
             allow_workspace_bounds,
         )?;
-        self.commit_validated_url_candidate(target_idx, candidate);
+        self.commit_validated_url_candidate(target_idx, candidate, factory_state);
         self.clear_challenge_hud();
         self.sync_active_baseline();
         Ok(())
