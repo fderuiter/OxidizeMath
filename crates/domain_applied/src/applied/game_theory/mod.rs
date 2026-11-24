@@ -53,6 +53,9 @@
 //! }
 //! ```
 
+/// Transferable-utility coalitional games (`u16` bitmasks) and exact `f64` Shapley values.
+pub mod cooperative;
+
 /// Topological concepts for proving equilibrium existence (e.g., Kakutani's Fixed Point Theorem).
 pub mod equilibrium;
 
@@ -64,6 +67,9 @@ pub mod mean_field;
 
 /// Design of rules/mechanisms to achieve specific outcomes, such as revenue-maximizing auctions (Myerson).
 pub mod mechanism_design;
+
+/// Finite strategic-form (matrix and bimatrix) dominance, minimax, support enumeration, and Lemke-Howson solvers.
+pub mod normal_form;
 
 /// Errors for Game Theory calculations.
 // [cite:graph_parameters_rust]

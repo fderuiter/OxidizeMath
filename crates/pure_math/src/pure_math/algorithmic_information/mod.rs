@@ -59,6 +59,7 @@
 //! * **[Geometry](geometry)**: Geometric primitives (Points, Lines, Dyadic Rationals) using exact rational arithmetic.
 //! * **[Kolmogorov](kolmogorov)**: Prefix, `LZ76`, `BDM`, and dyadic point complexity upper bounds.
 //! * **[FRACTRAN](fractran)**: Zero-allocation prime-exponent Universal Minsky Machines and cycle detection.
+//! * **[Shannon](shannon)**: Discrete Shannon & Rényi entropies, `KL`/`JSD` divergences, mutual information, and `BSC`/`BEC`/`AWGN`/Blahut-Arimoto channel capacities.
 
 pub mod combinatorics;
 pub mod fractran;
@@ -67,7 +68,9 @@ pub mod fractran_programs;
 mod fractran_vm;
 pub mod geometry;
 pub mod kolmogorov;
+pub mod shannon;
 
 pub use fractran::FractranError;
+pub use shannon::ShannonError;
 
 // [cite:algorithmic_information_rust]

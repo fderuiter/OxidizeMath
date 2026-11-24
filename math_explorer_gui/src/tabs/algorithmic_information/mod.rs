@@ -6,6 +6,7 @@ use eframe::egui;
 pub mod controls;
 pub mod plots;
 pub mod presets;
+pub mod shannon;
 pub mod state;
 
 #[cfg(test)]

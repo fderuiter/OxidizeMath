@@ -2,7 +2,7 @@ use super::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
     FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError, LinearAlgebraError,
     MarketPricingError, MarkovError, MatchModelError, NumberTheoryError, OptimizationError,
-    OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
+    OuError, ShannonError, StochasticError, TdaError, TensorError, TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -69,6 +69,9 @@ pub enum PureMathError {
     /// Hyperbolic geometry and geodesic billiard error.
     #[error("{0}")]
     Hyperbolic(#[from] HyperbolicError),
+    /// Discrete Shannon entropy, divergence, or channel capacity error.
+    #[error("{0}")]
+    Shannon(#[from] ShannonError),
     /// Numerical linear algebra error.
     #[error("{0}")]
     LinearAlgebra(#[from] LinearAlgebraError),
@@ -149,6 +152,7 @@ impl PureMathError {
             Self::Fractran(err) => err,
             Self::GraphTheory(err) => err,
             Self::Hyperbolic(err) => err,
+            Self::Shannon(err) => err,
             Self::LinearAlgebra(err) => err,
             Self::Optimization(err) => err,
             Self::Stochastic(err) => err,

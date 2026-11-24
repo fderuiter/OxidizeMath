@@ -39,8 +39,11 @@ pub mod pharmacokinetics;
 /// (LLMs), including ensemble composition.
 pub mod lorahub;
 
-/// Applied Game Theory, including Mean Field Games and Evolutionary Dynamics.
+/// Applied Game Theory, including Normal-Form Equilibria, Cooperative Shapley Values, Mean Field Games, and Evolutionary Dynamics.
 pub mod game_theory;
+
+/// Sequential Decision Theory, CARA/CRRA Utilities, EVPI/EVSI, and Multi-Armed Bandits.
+pub mod decision_theory;
 
 pub mod grpo;
 

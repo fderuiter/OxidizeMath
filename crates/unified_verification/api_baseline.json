@@ -2069,6 +2069,202 @@
       "signature": "pub struct SurvivalTime"
     }
   ],
+  "crates/domain_applied/src/applied/decision_theory/bandits.rs": [
+    {
+      "signature": "impl ThompsonBandit { pub fn alphas (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl ThompsonBandit { pub fn betas (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl ThompsonBandit { pub fn new (_ : usize) -> Result < Self , DecisionTheoryError > }"
+    },
+    {
+      "signature": "impl ThompsonBandit { pub fn pull_counts (& self) -> & [u64] }"
+    },
+    {
+      "signature": "impl ThompsonBandit { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl ThompsonBandit { pub fn select_arm (& self , _ : & mut OxidizeRng) -> usize }"
+    },
+    {
+      "signature": "impl ThompsonBandit { pub fn update (& mut self , _ : usize , _ : f64) -> Result < () , DecisionTheoryError > }"
+    },
+    {
+      "signature": "impl ThompsonBandit { pub fn with_prior (_ : usize , _ : f64 , _ : f64 ,) -> Result < Self , DecisionTheoryError > }"
+    },
+    {
+      "signature": "impl Ucb1Bandit { pub fn empirical_means (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl Ucb1Bandit { pub fn new (_ : usize , _ : f64) -> Result < Self , DecisionTheoryError > }"
+    },
+    {
+      "signature": "impl Ucb1Bandit { pub fn pull_counts (& self) -> & [u64] }"
+    },
+    {
+      "signature": "impl Ucb1Bandit { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl Ucb1Bandit { pub fn select_arm (& self , _ : & mut OxidizeRng) -> usize }"
+    },
+    {
+      "signature": "impl Ucb1Bandit { pub fn update (& mut self , _ : usize , _ : f64) -> Result < () , DecisionTheoryError > }"
+    },
+    {
+      "signature": "pub fn simulate_bernoulli_thompson (_ : & mut ThompsonBandit , _ : & [f64] , _ : & mut OxidizeRng , _ : & mut [f64] ,) -> Result < f64 , DecisionTheoryError >"
+    },
+    {
+      "signature": "pub fn simulate_bernoulli_ucb1 (_ : & mut Ucb1Bandit , _ : & [f64] , _ : & mut OxidizeRng , _ : & mut [f64] ,) -> Result < f64 , DecisionTheoryError >"
+    },
+    {
+      "signature": "pub struct ThompsonBandit"
+    },
+    {
+      "signature": "pub struct Ucb1Bandit"
+    }
+  ],
+  "crates/domain_applied/src/applied/decision_theory/mod.rs": [
+    {
+      "signature": "pub enum DecisionTheoryError"
+    },
+    {
+      "signature": "pub use bandits :: ThompsonBandit"
+    },
+    {
+      "signature": "pub use bandits :: Ucb1Bandit"
+    },
+    {
+      "signature": "pub use bandits :: simulate_bernoulli_thompson"
+    },
+    {
+      "signature": "pub use bandits :: simulate_bernoulli_ucb1"
+    },
+    {
+      "signature": "pub use tree :: BackwardInductionResult"
+    },
+    {
+      "signature": "pub use tree :: DecisionEdge"
+    },
+    {
+      "signature": "pub use tree :: DecisionNode"
+    },
+    {
+      "signature": "pub use tree :: DecisionTreeArena"
+    },
+    {
+      "signature": "pub use tree :: DecisionTreeView"
+    },
+    {
+      "signature": "pub use tree :: DecisionTreeWorkspace"
+    },
+    {
+      "signature": "pub use tree :: backward_induction"
+    },
+    {
+      "signature": "pub use utility :: RiskAttitude"
+    },
+    {
+      "signature": "pub use voi :: EvpiResult"
+    },
+    {
+      "signature": "pub use voi :: EvsiResult"
+    },
+    {
+      "signature": "pub use voi :: VoiWorkspace"
+    },
+    {
+      "signature": "pub use voi :: evpi"
+    },
+    {
+      "signature": "pub use voi :: evsi"
+    }
+  ],
+  "crates/domain_applied/src/applied/decision_theory/tree.rs": [
+    {
+      "signature": "impl < 'a > DecisionTreeView < 'a > { pub fn new (_ : & 'a [DecisionNode] , _ : & 'a [DecisionEdge] , _ : usize ,) -> Result < Self , DecisionTheoryError > }"
+    },
+    {
+      "signature": "impl DecisionTreeArena { pub fn view (& self) -> Result < DecisionTreeView < '_ > , DecisionTheoryError > }"
+    },
+    {
+      "signature": "impl DecisionTreeWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl DecisionTreeWorkspace { pub fn node_certainty_equivalent (& self , _ : usize) -> Option < f64 > }"
+    },
+    {
+      "signature": "impl DecisionTreeWorkspace { pub fn optimal_branch (& self , _ : usize) -> Option < usize > }"
+    },
+    {
+      "signature": "pub enum DecisionNode"
+    },
+    {
+      "signature": "pub fn backward_induction (_ : DecisionTreeView < '_ > , _ : RiskAttitude , _ : & mut DecisionTreeWorkspace ,) -> Result < BackwardInductionResult , DecisionTheoryError >"
+    },
+    {
+      "signature": "pub struct BackwardInductionResult"
+    },
+    {
+      "signature": "pub struct DecisionEdge"
+    },
+    {
+      "signature": "pub struct DecisionTreeArena"
+    },
+    {
+      "signature": "pub struct DecisionTreeView < 'a >"
+    },
+    {
+      "signature": "pub struct DecisionTreeWorkspace"
+    }
+  ],
+  "crates/domain_applied/src/applied/decision_theory/utility.rs": [
+    {
+      "signature": "impl RiskAttitude { pub fn certainty_equivalent (self , _ : & [f64] , _ : & [f64] ,) -> Result < f64 , DecisionTheoryError > }"
+    },
+    {
+      "signature": "impl RiskAttitude { pub fn expected_utility (self , _ : & [f64] , _ : & [f64] ,) -> Result < f64 , DecisionTheoryError > }"
+    },
+    {
+      "signature": "impl RiskAttitude { pub fn risk_premium (self , _ : & [f64] , _ : & [f64]) -> Result < f64 , DecisionTheoryError > }"
+    },
+    {
+      "signature": "impl RiskAttitude { pub fn utility (self , _ : f64) -> Result < f64 , DecisionTheoryError > }"
+    },
+    {
+      "signature": "impl RiskAttitude { pub fn validate (self) -> Result < () , DecisionTheoryError > }"
+    },
+    {
+      "signature": "pub enum RiskAttitude"
+    }
+  ],
+  "crates/domain_applied/src/applied/decision_theory/voi.rs": [
+    {
+      "signature": "impl VoiWorkspace { pub fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl VoiWorkspace { pub fn optimal_action_for_signal (& self , _ : usize) -> Option < usize > }"
+    },
+    {
+      "signature": "impl VoiWorkspace { pub fn signal_probability (& self , _ : usize) -> Option < f64 > }"
+    },
+    {
+      "signature": "pub fn evpi (_ : & [f64] , _ : usize , _ : usize , _ : & [f64] ,) -> Result < EvpiResult , DecisionTheoryError >"
+    },
+    {
+      "signature": "pub fn evsi (_ : & [f64] , _ : usize , _ : usize , _ : & [f64] , _ : & [f64] , _ : usize , _ : & mut VoiWorkspace ,) -> Result < EvsiResult , DecisionTheoryError >"
+    },
+    {
+      "signature": "pub struct EvpiResult"
+    },
+    {
+      "signature": "pub struct EvsiResult"
+    },
+    {
+      "signature": "pub struct VoiWorkspace"
+    }
+  ],
   "crates/domain_applied/src/applied/engineering/cnc.rs": [
     {
       "signature": "impl CuttingSpeed { pub fn new (_ : f64) -> Result < Self , EngineeringError > }"
@@ -2476,6 +2672,38 @@
       "signature": "pub struct ThicknessWorkspace"
     }
   ],
+  "crates/domain_applied/src/applied/game_theory/cooperative.rs": [
+    {
+      "signature": "pub const MAX_COALITION_PLAYERS : usize"
+    },
+    {
+      "signature": "pub fn coalition_mask (_ : & [usize] , _ : usize) -> Result < u16 , GameTheoryError >"
+    },
+    {
+      "signature": "pub fn evaluate_coalition (_ : usize , _ : & [f64] , _ : u16 ,) -> Result < f64 , GameTheoryError >"
+    },
+    {
+      "signature": "pub fn grand_coalition_mask (_ : usize) -> Result < u16 , GameTheoryError >"
+    },
+    {
+      "signature": "pub fn is_convex (_ : usize , _ : & [f64]) -> Result < bool , GameTheoryError >"
+    },
+    {
+      "signature": "pub fn is_in_core (_ : usize , _ : & [f64] , _ : & [f64] ,) -> Result < bool , GameTheoryError >"
+    },
+    {
+      "signature": "pub fn is_superadditive (_ : usize , _ : & [f64] ,) -> Result < bool , GameTheoryError >"
+    },
+    {
+      "signature": "pub fn max_core_excess (_ : usize , _ : & [f64] , _ : & [f64] ,) -> Result < (f64 , u16) , GameTheoryError >"
+    },
+    {
+      "signature": "pub fn shapley_values (_ : usize , _ : & [f64] , _ : & mut [f64] ,) -> Result < () , GameTheoryError >"
+    },
+    {
+      "signature": "pub fn validate_characteristic_function (_ : usize , _ : & [f64] ,) -> Result < () , GameTheoryError >"
+    }
+  ],
   "crates/domain_applied/src/applied/game_theory/equilibrium.rs": [
     {
       "signature": "impl < F : Fn (f64) -> f64 > ScalarBestResponse < F > { pub fn is_scalar_in_image (& self , _ : f64 , _ : f64) -> bool }"
@@ -2728,6 +2956,130 @@
     },
     {
       "signature": "pub use statrs :: statistics :: Distribution"
+    }
+  ],
+  "crates/domain_applied/src/applied/game_theory/normal_form/dominance.rs": [
+    {
+      "signature": "impl DominanceWorkspace { pub fn ensure_capacity (& mut self , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl DominanceWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub enum DominanceMode"
+    },
+    {
+      "signature": "pub fn iterated_dominance (_ : BimatrixGameView < '_ > , _ : DominanceMode , _ : & mut DominanceWorkspace , _ : & mut [bool] , _ : & mut [bool] ,) -> Result < DominanceResult , GameTheoryError >"
+    },
+    {
+      "signature": "pub struct DominanceResult"
+    },
+    {
+      "signature": "pub struct DominanceWorkspace"
+    }
+  ],
+  "crates/domain_applied/src/applied/game_theory/normal_form/lemke_howson.rs": [
+    {
+      "signature": "impl LemkeHowsonWorkspace { pub fn ensure_capacity (& mut self , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl LemkeHowsonWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn lemke_howson_equilibrium (_ : BimatrixGameView < '_ > , _ : usize , _ : & mut LemkeHowsonWorkspace , _ : & mut [f64] , _ : & mut [f64] ,) -> Result < BimatrixPayoffs , GameTheoryError >"
+    },
+    {
+      "signature": "pub struct BimatrixPayoffs"
+    },
+    {
+      "signature": "pub struct LemkeHowsonWorkspace"
+    }
+  ],
+  "crates/domain_applied/src/applied/game_theory/normal_form/minimax.rs": [
+    {
+      "signature": "impl MinimaxWorkspace { pub fn ensure_capacity (& mut self , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl MinimaxWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn solve_zero_sum_minimax (_ : & [f64] , _ : usize , _ : usize , _ : & mut MinimaxWorkspace , _ : & mut [f64] , _ : & mut [f64] ,) -> Result < MinimaxResult , GameTheoryError >"
+    },
+    {
+      "signature": "pub struct MinimaxResult"
+    },
+    {
+      "signature": "pub struct MinimaxWorkspace"
+    }
+  ],
+  "crates/domain_applied/src/applied/game_theory/normal_form/mod.rs": [
+    {
+      "signature": "impl < 'a > BimatrixGameView < 'a > { pub fn new (_ : & 'a [f64] , _ : & 'a [f64] , _ : usize , _ : usize ,) -> Result < Self , GameTheoryError > }"
+    },
+    {
+      "signature": "impl < 'a > BimatrixGameView < 'a > { pub fn payoff_pair (& self , _ : usize , _ : usize) -> (f64 , f64) }"
+    },
+    {
+      "signature": "pub fn evaluate_bimatrix_profile (_ : BimatrixGameView < '_ > , _ : & [f64] , _ : & [f64] ,) -> Result < (f64 , f64 , f64) , GameTheoryError >"
+    },
+    {
+      "signature": "pub struct BimatrixGameView < 'a >"
+    },
+    {
+      "signature": "pub use dominance :: DominanceMode"
+    },
+    {
+      "signature": "pub use dominance :: DominanceResult"
+    },
+    {
+      "signature": "pub use dominance :: DominanceWorkspace"
+    },
+    {
+      "signature": "pub use dominance :: iterated_dominance"
+    },
+    {
+      "signature": "pub use lemke_howson :: BimatrixPayoffs"
+    },
+    {
+      "signature": "pub use lemke_howson :: LemkeHowsonWorkspace"
+    },
+    {
+      "signature": "pub use lemke_howson :: lemke_howson_equilibrium"
+    },
+    {
+      "signature": "pub use minimax :: MinimaxResult"
+    },
+    {
+      "signature": "pub use minimax :: MinimaxWorkspace"
+    },
+    {
+      "signature": "pub use minimax :: solve_zero_sum_minimax"
+    },
+    {
+      "signature": "pub use support_enum :: MAX_SUPPORT_ENUM_DIM"
+    },
+    {
+      "signature": "pub use support_enum :: SupportEquilibrium"
+    },
+    {
+      "signature": "pub use support_enum :: support_enumeration"
+    }
+  ],
+  "crates/domain_applied/src/applied/game_theory/normal_form/support_enum.rs": [
+    {
+      "signature": "impl SupportEquilibrium { pub fn col_probs (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl SupportEquilibrium { pub fn row_probs (& self) -> & [f64] }"
+    },
+    {
+      "signature": "pub const MAX_SUPPORT_ENUM_DIM : usize"
+    },
+    {
+      "signature": "pub fn support_enumeration (_ : BimatrixGameView < '_ > , _ : & mut [SupportEquilibrium] ,) -> Result < usize , GameTheoryError >"
+    },
+    {
+      "signature": "pub struct SupportEquilibrium"
     }
   ],
   "crates/domain_applied/src/applied/grpo/formulas.rs": [
@@ -3820,6 +4172,9 @@
       "signature": "pub use crate :: applied :: clinical_trials :: types :: ClinicalTrialError"
     },
     {
+      "signature": "pub use crate :: applied :: decision_theory :: DecisionTheoryError"
+    },
+    {
       "signature": "pub use crate :: applied :: isosurface :: types :: VoxelGridError"
     },
     {
@@ -3843,6 +4198,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ClinicalTrialError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: DecisionTheoryError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: EngineeringError } }"
@@ -3879,6 +4237,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: ClinicalTrialError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: DecisionTheoryError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: EngineeringError } }"
@@ -10343,6 +10704,9 @@
       "signature": "pub use crate :: pure_math :: algorithmic_information :: FractranError"
     },
     {
+      "signature": "pub use crate :: pure_math :: algorithmic_information :: ShannonError"
+    },
+    {
       "signature": "pub use crate :: pure_math :: analysis :: evolution :: EvolutionError"
     },
     {
@@ -10461,6 +10825,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: PureMathError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ShannonError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: StochasticError } }"
@@ -11194,6 +11561,120 @@
   "crates/pure_math/src/pure_math/algorithmic_information/mod.rs": [
     {
       "signature": "pub use fractran :: FractranError"
+    },
+    {
+      "signature": "pub use shannon :: ShannonError"
+    }
+  ],
+  "crates/pure_math/src/pure_math/algorithmic_information/shannon/channel.rs": [
+    {
+      "signature": "impl BlahutArimotoWorkspace { pub fn ensure_capacity (& mut self , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl BlahutArimotoWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn awgn_bandwidth_capacity (_ : f64 , _ : f64) -> Result < f64 , ShannonError >"
+    },
+    {
+      "signature": "pub fn awgn_capacity (_ : f64) -> Result < f64 , ShannonError >"
+    },
+    {
+      "signature": "pub fn bec_capacity (_ : f64) -> Result < f64 , ShannonError >"
+    },
+    {
+      "signature": "pub fn binary_entropy (_ : f64) -> Result < f64 , ShannonError >"
+    },
+    {
+      "signature": "pub fn blahut_arimoto_capacity (_ : & [f64] , _ : usize , _ : usize , _ : f64 , _ : usize , _ : & mut BlahutArimotoWorkspace , _ : & mut [f64] ,) -> Result < ChannelCapacityResult , ShannonError >"
+    },
+    {
+      "signature": "pub fn bsc_capacity (_ : f64) -> Result < f64 , ShannonError >"
+    },
+    {
+      "signature": "pub struct BlahutArimotoWorkspace"
+    },
+    {
+      "signature": "pub struct ChannelCapacityResult"
+    }
+  ],
+  "crates/pure_math/src/pure_math/algorithmic_information/shannon/entropy.rs": [
+    {
+      "signature": "impl JointMiWorkspace { pub fn ensure_capacity (& mut self , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl JointMiWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn categorical_entropy (_ : & [f64]) -> Result < f64 , ShannonError >"
+    },
+    {
+      "signature": "pub fn jensen_shannon_divergence (_ : & [f64] , _ : & [f64]) -> Result < f64 , ShannonError >"
+    },
+    {
+      "signature": "pub fn joint_mutual_information (_ : & [f64] , _ : usize , _ : usize , _ : & mut JointMiWorkspace ,) -> Result < f64 , ShannonError >"
+    },
+    {
+      "signature": "pub fn kl_divergence (_ : & [f64] , _ : & [f64]) -> Result < f64 , ShannonError >"
+    },
+    {
+      "signature": "pub fn renyi_entropy (_ : & [f64] , _ : f64) -> Result < f64 , ShannonError >"
+    },
+    {
+      "signature": "pub fn validate_pmf (_ : & [f64]) -> Result < () , ShannonError >"
+    },
+    {
+      "signature": "pub struct JointMiWorkspace"
+    }
+  ],
+  "crates/pure_math/src/pure_math/algorithmic_information/shannon/mod.rs": [
+    {
+      "signature": "pub enum ShannonError"
+    },
+    {
+      "signature": "pub use channel :: BlahutArimotoWorkspace"
+    },
+    {
+      "signature": "pub use channel :: ChannelCapacityResult"
+    },
+    {
+      "signature": "pub use channel :: awgn_bandwidth_capacity"
+    },
+    {
+      "signature": "pub use channel :: awgn_capacity"
+    },
+    {
+      "signature": "pub use channel :: bec_capacity"
+    },
+    {
+      "signature": "pub use channel :: binary_entropy"
+    },
+    {
+      "signature": "pub use channel :: blahut_arimoto_capacity"
+    },
+    {
+      "signature": "pub use channel :: bsc_capacity"
+    },
+    {
+      "signature": "pub use entropy :: JointMiWorkspace"
+    },
+    {
+      "signature": "pub use entropy :: categorical_entropy"
+    },
+    {
+      "signature": "pub use entropy :: jensen_shannon_divergence"
+    },
+    {
+      "signature": "pub use entropy :: joint_mutual_information"
+    },
+    {
+      "signature": "pub use entropy :: kl_divergence"
+    },
+    {
+      "signature": "pub use entropy :: renyi_entropy"
+    },
+    {
+      "signature": "pub use entropy :: validate_pmf"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/complex/continuation.rs": [
@@ -17094,6 +17575,9 @@
       "signature": "pub use domain_applied :: error :: ClinicalTrialError"
     },
     {
+      "signature": "pub use domain_applied :: error :: DecisionTheoryError"
+    },
+    {
       "signature": "pub use domain_applied :: error :: EngineeringError"
     },
     {
@@ -17254,6 +17738,9 @@
     },
     {
       "signature": "pub use pure_math :: error :: PureMathError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: ShannonError"
     },
     {
       "signature": "pub use pure_math :: error :: StochasticError"

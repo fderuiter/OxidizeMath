@@ -469,7 +469,7 @@ mod umbrella;
 
 pub use crate::pure_math::{
     algebra::linear_algebra::numerical::LinearAlgebraError,
-    algorithmic_information::FractranError,
+    algorithmic_information::{FractranError, ShannonError},
     analysis::{
         evolution::EvolutionError, optimization::OptimizationError, roots::AnalysisError,
         stochastic::StochasticError, transforms::TransformError,

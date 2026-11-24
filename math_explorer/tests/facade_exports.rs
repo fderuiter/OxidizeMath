@@ -157,6 +157,7 @@ fn assert_pure_math_twenty_one_errors() {
         e::EvolutionError::InvalidState.severity(),
         e::FractranError::InvalidFractionSyntax.severity(),
         e::HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 }.severity(),
+        e::ShannonError::EmptyDistribution.severity(),
         e::OptimizationError::ConversionError.severity(),
         e::StochasticError::InvalidReactionIndex(1).severity(),
         e::TensorError::IndexOutOfBounds.severity(),
@@ -307,8 +308,9 @@ fn applied_facade_exports_all_nine_errors_and_umbrella() {
     use math_explorer::applied::game_theory::mechanism_design::{ContinuousCDF, Distribution};
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error::{
-        AppliedError, BatteryError, ClinicalTrialError, EngineeringError, Error, GameTheoryError,
-        IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, VoxelGridError,
+        AppliedError, BatteryError, ClinicalTrialError, DecisionTheoryError, EngineeringError,
+        Error, GameTheoryError, IsosurfaceError, KalmanError, LoraError, PharmacokineticsError,
+        VoxelGridError,
     };
 
     let model = PowerLawModel::standard();
@@ -334,6 +336,7 @@ fn applied_facade_exports_all_nine_errors_and_umbrella() {
     let severities = [
         BatteryError::InvalidCapacity(1.5).severity(),
         ClinicalTrialError::ZeroTotalCount.severity(),
+        DecisionTheoryError::EmptyTree.severity(),
         EngineeringError::InvalidParameter {
             name: "bits".to_string(),
             value: 0.0,

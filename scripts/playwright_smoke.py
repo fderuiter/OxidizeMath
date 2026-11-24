@@ -1082,6 +1082,8 @@ def run_parallel_preload_and_sw_http_cache_check(
             enc_tag = content_encoding or "identity"
             etag = f'"{rel_name}-{enc_tag}-v{rev}-{len(payload)}"'
             content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
+            if clean_path.endswith(".wasm"):
+                content_type = "application/wasm"
 
             if self.headers.get("If-None-Match") == etag:
                 with origin_lock:

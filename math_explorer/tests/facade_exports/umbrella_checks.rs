@@ -56,6 +56,7 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::EloError::InvalidScale { value: 0.0 }, bus),
         check_leaf(error::EvolutionError::BoundsError, bus),
         check_leaf(error::FractranError::InvalidFractionSyntax, bus),
+        check_leaf(error::ShannonError::EmptyDistribution, bus),
         check_leaf(error::Glicko2Error::EmptyMatchResults, bus),
         check_leaf(error::GraphTheoryError::UnknownEndpoint { node: 9 }, bus),
         check_leaf(
@@ -93,6 +94,7 @@ pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::AIError::OptimizationDivergence, bus),
         check_leaf(error::BatteryError::NegativeCycles(-5.0), bus),
         check_leaf(error::ClinicalTrialError::ZeroTotalCount, bus),
+        check_leaf(error::DecisionTheoryError::EmptyTree, bus),
         check_leaf(
             error::EngineeringError::InvalidParameter {
                 name: "n".to_string(),
@@ -143,7 +145,7 @@ pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     ]
 }
 
-pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
+pub fn verify_six_umbrellas_and_eighteen_wrappers(bus: &DiagnosticBus) {
     let umbrellas: [Error; 6] = [
         error::MathCommonsError::from(sample_math()).into(),
         error::PureMathError::from(error::KellyError::InvalidOdds { value: 0.5 }).into(),
@@ -178,6 +180,9 @@ pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
         error::PharmacokineticsError::from(error::AnalysisError::ConvergenceError(0.0))
             .source()
             .is_some(),
+        error::GameTheoryError::from(sample_math())
+            .source()
+            .is_some(),
         error::IsosurfaceError::from(sample_math())
             .source()
             .is_some(),
@@ -196,7 +201,7 @@ pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
             .is_some(),
         error::StatMechError::from(sample_math()).source().is_some(),
     ];
-    assert_eq!(wrapper_sources_present.len(), 17);
+    assert_eq!(wrapper_sources_present.len(), 18);
     assert!(wrapper_sources_present.into_iter().all(|present| present));
 }
 
@@ -210,11 +215,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 55);
-    assert_eq!(*events.lock().unwrap(), 55);
+    assert_eq!(converted.len(), 57);
+    assert_eq!(*events.lock().unwrap(), 57);
 
-    verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 61);
+    verify_six_umbrellas_and_eighteen_wrappers(&bus);
+    assert_eq!(*events.lock().unwrap(), 63);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -236,6 +241,7 @@ fn verify_prelude_domain_leaves() {
     let _applied_and_phys = core::mem::size_of::<(
         p::BatteryError,
         p::ClinicalTrialError,
+        p::DecisionTheoryError,
         p::EngineeringError,
         p::GameTheoryError,
         p::IsosurfaceError,
@@ -293,6 +299,7 @@ pub fn verify_prelude_error_reexports() {
         p::EloError,
         p::EvolutionError,
         p::FractranError,
+        p::ShannonError,
         p::Glicko2Error,
         p::GraphTheoryError,
         p::HyperbolicError,

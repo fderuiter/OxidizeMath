@@ -62,6 +62,62 @@ pub enum GameTheoryError {
         /// Upper bound at `dimension`.
         max: f64,
     },
+    /// Strategy space or player set cannot be empty.
+    #[error("strategy set or player count cannot be empty")]
+    EmptyStrategies,
+    /// Slice or matrix dimensions do not match expected sizes.
+    #[error("dimension mismatch (expected {expected}, got {actual})")]
+    DimensionMismatch {
+        /// Expected number of elements.
+        expected: usize,
+        /// Actual number of elements.
+        actual: usize,
+    },
+    /// Non-finite or out-of-domain payoff or probability entry.
+    #[error("invalid payoff or probability at ({row}, {col}): {value}")]
+    InvalidPayoff {
+        /// Offending row or player index.
+        row: usize,
+        /// Offending column or coalition index.
+        col: usize,
+        /// Offending numeric value.
+        value: f64,
+    },
+    /// Bimatrix game exceeds the `8x8` dimension cap for support enumeration.
+    #[error("bimatrix size {rows}x{cols} exceeds support enumeration cap {max_dim}x{max_dim}")]
+    SupportEnumerationCapExceeded {
+        /// Provided row count.
+        rows: usize,
+        /// Provided column count.
+        cols: usize,
+        /// Maximum supported dimension (`8`).
+        max_dim: usize,
+    },
+    /// Cooperative game exceeds the `16`-player bitmask cap.
+    #[error("coalition player count {players} exceeds bitmask cap of {max_players}")]
+    CoalitionCapExceeded {
+        /// Provided player count.
+        players: usize,
+        /// Maximum supported player count (`16`).
+        max_players: usize,
+    },
+    /// Preallocated workspace or output slice is too small.
+    #[error("game theory workspace too small (required {required}, got {actual})")]
+    WorkspaceTooSmall {
+        /// Minimum required capacity.
+        required: usize,
+        /// Provided capacity.
+        actual: usize,
+    },
+    /// Complementary or Simplex pivoting exceeded the maximum iteration guard.
+    #[error("pivot limit exceeded after {max_pivots} pivots")]
+    PivotLimitExceeded {
+        /// Maximum pivots attempted before aborting.
+        max_pivots: usize,
+    },
+    /// Solver found no feasible equilibrium.
+    #[error("no equilibrium found")]
+    NoEquilibriumFound,
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
     Math(#[from] math_commons::error::MathError),
@@ -235,7 +291,7 @@ mod umbrella;
 
 pub use crate::applied::{
     algorithms::kalman::KalmanError, clinical_trials::types::ClinicalTrialError,
-    isosurface::types::VoxelGridError,
+    decision_theory::DecisionTheoryError, isosurface::types::VoxelGridError,
 };
 pub use umbrella::AppliedError;
 

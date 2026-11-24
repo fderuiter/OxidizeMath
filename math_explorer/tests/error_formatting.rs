@@ -1,4 +1,4 @@
-//! Verifies that all 33 public error enums tested from `math_explorer::error`
+//! Verifies that all 35 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -13,12 +13,12 @@
 
 use math_explorer::diagnostics::Diagnostic;
 use math_explorer::error::{
-    AIError, BatteryError, ChaosError, ClimateError, CopulaError, DoseFluenceError, EloError,
-    EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError, Glicko2Error,
-    GraphTheoryError, HighEnergyError, HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError,
-    MarketPricingError, MarkovError, MatchModelError, MathError, NumberTheoryError, OuError,
-    PharmacokineticsError, RadarError, SandpileError, SolidStateError, StandardModelError,
-    StatMechError, TdaError, ZipError,
+    AIError, BatteryError, ChaosError, ClimateError, CopulaError, DecisionTheoryError,
+    DoseFluenceError, EloError, EngineeringError, EpidemiologyError, FitError, FluidError,
+    GameTheoryError, Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError,
+    IsosurfaceError, KellyError, LoraError, MarketPricingError, MarkovError, MatchModelError,
+    MathError, NumberTheoryError, OuError, PharmacokineticsError, RadarError, SandpileError,
+    ShannonError, SolidStateError, StandardModelError, StatMechError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -92,6 +92,7 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         "MatchModelError",
         &MatchModelError::InvalidGoalRate { value: 0.0 },
     );
+    assert_readable_diagnostic("ShannonError", &ShannonError::EmptyDistribution);
 }
 
 #[test]
@@ -113,6 +114,7 @@ fn applied_ai_bio_climate_epi_errors_emit_readable_display_and_metadata() {
         },
     );
     assert_readable_diagnostic("EngineeringError", &EngineeringError::SingularDesignMatrix);
+    assert_readable_diagnostic("DecisionTheoryError", &DecisionTheoryError::EmptyTree);
     assert_readable_diagnostic(
         "GameTheoryError",
         &GameTheoryError::NonSquarePayoffMatrix { rows: 2, cols: 3 },
@@ -137,7 +139,7 @@ fn applied_ai_bio_climate_epi_errors_emit_readable_display_and_metadata() {
 }
 
 #[test]
-fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
+fn physics_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic(
         "ChaosError",
         &ChaosError::InvalidParameter("dt".to_string()),
@@ -184,7 +186,10 @@ fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
         &StandardModelError::UnbrokenSymmetry { mu2: 1.0 },
     );
     assert_readable_diagnostic("StatMechError", &StatMechError::InvalidTemperature(-5.0));
+}
 
+#[test]
+fn wrapped_math_errors_emit_readable_display_and_metadata() {
     let math_err = MathError::StrictlyOutOfBounds {
         value: 0.0,
         min: 0.0,
@@ -194,6 +199,10 @@ fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic(
         "EngineeringError::Math",
         &EngineeringError::from(math_err.clone()),
+    );
+    assert_readable_diagnostic(
+        "GameTheoryError::Math",
+        &GameTheoryError::from(math_err.clone()),
     );
     assert_readable_diagnostic("DoseFluenceError::Math", &DoseFluenceError::from(math_err));
 }

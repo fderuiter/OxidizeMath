@@ -121,6 +121,14 @@ mod tests {
             ctx,
         );
         exercise_interactive_tool::<
+            crate::tabs::algorithmic_information::shannon::ShannonChannelTool,
+        >(ctx);
+        exercise_interactive_tool::<crate::tabs::game_theory::nash_shapley::NashShapleyTool>(ctx);
+        exercise_interactive_tool::<crate::tabs::game_theory::decision_bandit::DecisionBanditTool>(
+            ctx,
+        );
+        exercise_interactive_tool::<crate::tabs::game_theory::mean_field::MeanFieldGameTool>(ctx);
+        exercise_interactive_tool::<
             crate::tabs::number_theory::fractran_machine::FractranMachineTool,
         >(ctx);
         exercise_interactive_tool::<crate::tabs::number_theory::ualbf_widget::UalbfWidget>(ctx);
