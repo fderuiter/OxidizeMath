@@ -152,7 +152,9 @@ pub fn card_academic_domain(domain: &str) -> AcademicDomain {
         | "graph_theory"
         | "financial_math"
         | "algorithmic_information" => AcademicDomain::PureMath,
-        "biology" | "morphogenesis" | "neuroscience" | "epidemiology" => AcademicDomain::Biology,
+        "biology" | "biochemical" | "morphogenesis" | "neuroscience" | "epidemiology" => {
+            AcademicDomain::Biology
+        }
         "climate" => AcademicDomain::Climate,
         "ai" => AcademicDomain::Ai,
         _ => AcademicDomain::AppliedMath,
