@@ -16,6 +16,7 @@ use math_explorer::physics::high_energy::{
 use math_explorer::pure_math::analysis::ode::ArrayState;
 use scientific_metadata::theory::ParameterConstraint;
 
+use super::sim_integrators::planar_velocity_beta;
 use super::{
     kerr_prograde_critical_b, GeodesicMode, GeodesicPlaygroundTool, SpacetimePreset,
     TrajectorySample, MAX_TRAJECTORY_SAMPLES,
@@ -47,6 +48,8 @@ pub(crate) fn push_custom_lapse_sample(
     let (sin_p, cos_p) = phi.sin_cos();
     let grav = f.sqrt();
     let ut = state.0[4].max(1e-6);
+    let dphi_dct = state.0[7] / ut;
+    let velocity_beta = planar_velocity_beta(r, phi, state.0[5] / ut, dphi_dct);
     let dtau_dt = match ctx.mode {
         GeodesicMode::NullPhoton => 0.0,
         GeodesicMode::TimelikeParticle => (1.0 / ut).clamp(0.0, 1.0),
@@ -62,6 +65,8 @@ pub(crate) fn push_custom_lapse_sample(
         radial_coord: r,
         phi,
         radial_vel: state.0[5],
+        dphi_dct,
+        velocity_beta,
         embed_xyz: [r * cos_p, r * sin_p, z],
         metric_norm,
         clock_rate: dtau_dt,
@@ -87,6 +92,8 @@ pub(crate) fn push_custom_wormhole_sample(
     let z = b0 * (l / b0).asinh();
     let (sin_p, cos_p) = phi.sin_cos();
     let ut = state.0[3].max(1.0);
+    let dphi_dct = state.0[5] / ut;
+    let velocity_beta = planar_velocity_beta(r, phi, state.0[4] / ut, dphi_dct);
     let clock_rate = match ctx.mode {
         GeodesicMode::NullPhoton => 0.0,
         GeodesicMode::TimelikeParticle => (1.0 / ut).clamp(0.0, 1.0),
@@ -97,6 +104,8 @@ pub(crate) fn push_custom_wormhole_sample(
         radial_coord: l,
         phi,
         radial_vel: state.0[4],
+        dphi_dct,
+        velocity_beta,
         embed_xyz: [r * cos_p, r * sin_p, z],
         metric_norm,
         clock_rate,
@@ -123,6 +132,7 @@ impl GeodesicPlaygroundTool {
         }
         self.clamp_state_in_place();
         self.rebuild_trajectory(560);
+        self.lensing_dirty = true;
         self.state.scrub_index = self.samples.len().saturating_sub(1);
         self.revision = self.revision.wrapping_add(1);
     }
@@ -336,29 +346,35 @@ impl GeodesicPlaygroundTool {
         ])
     }
 
-    pub(super) fn collect_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let mut datasets = Vec::with_capacity(5);
-        let limit = self
-            .state
-            .scrub_index
-            .saturating_add(1)
-            .min(self.samples.len());
-        let traj = self.samples[..limit]
+    fn project_scrubbed_samples(&self, samples: &[TrajectorySample]) -> Vec<[f64; 2]> {
+        let lim = self.state.scrub_index.saturating_add(1).min(samples.len());
+        samples[..lim]
             .iter()
             .map(|s| self.state.camera.project(&s.embed_xyz))
-            .collect();
-        datasets.push(("Geodesic Trajectory (Projected)".to_string(), traj));
-        if !self.twin_samples.is_empty() {
-            let t_lim = self
-                .state
-                .scrub_index
-                .saturating_add(1)
-                .min(self.twin_samples.len());
-            let t_traj = self.twin_samples[..t_lim]
+            .collect()
+    }
+
+    pub(super) fn collect_export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        let mut datasets = Vec::with_capacity(self.active_ray_count + 4);
+        if self.active_ray_count > 1 {
+            for (idx, ray) in self
+                .bundle_rays
                 .iter()
-                .map(|s| self.state.camera.project(&s.embed_xyz))
-                .collect();
-            datasets.push(("Twin Geodesic Trajectory (Projected)".to_string(), t_traj));
+                .take(self.active_ray_count)
+                .enumerate()
+            {
+                let pts = self.project_scrubbed_samples(&ray.samples);
+                if !pts.is_empty() {
+                    datasets.push((format!("Geodesic Ray {idx} (b={:.2})", ray.impact_b), pts));
+                }
+            }
+        } else {
+            let traj = self.project_scrubbed_samples(&self.samples);
+            datasets.push(("Geodesic Trajectory (Projected)".to_string(), traj));
+            if !self.twin_samples.is_empty() {
+                let t_traj = self.project_scrubbed_samples(&self.twin_samples);
+                datasets.push(("Twin Geodesic Trajectory (Projected)".to_string(), t_traj));
+            }
         }
         let (r_plus, _, _, _, _) = self.relativistic_radii_and_omega(self.state.initial_radius);
         let ring_r = if r_plus > 0.0 {

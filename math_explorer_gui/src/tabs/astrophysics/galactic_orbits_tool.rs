@@ -4,11 +4,16 @@ use super::galactic_orbits_relativity::{
     clamp_bh_config, is_valid_bh_config, OrbitLensOverlayConfig,
 };
 use super::{clamp_finite, HaloKindChoice};
-use crate::framework::{FiniteStateGuard, InteractiveTool};
+use crate::audio::frame::SonificationFrame;
+use crate::audio::mappings::galactic_orbits_frame;
+use crate::framework::{
+    BrushInteractionMode, BrushMode, ExportCapabilities, FiniteStateGuard, InteractionContext,
+    InteractiveTool, ShaderDialect, SpatialBrushKit,
+};
 use eframe::egui;
 use math_explorer::physics::astrophysics::{
-    CentralBlackHoleConfig, DwarfMorphology, GalacticDiskSystem, Mpc, OrbitParticleKind,
-    OrbitPopulationConfig,
+    decompose_rotation_curve, CentralBlackHoleConfig, DwarfMorphology, GalacticDiskSystem, Mpc,
+    OrbitParticleKind, OrbitPopulationConfig,
 };
 
 pub(super) const TRAIL_CAPACITY: usize = 64;
@@ -39,12 +44,22 @@ pub(crate) struct GalacticOrbitsState {
     pub(crate) lens_overlay: OrbitLensOverlayConfig,
     #[serde(default, skip_serializing_if = "is_false")]
     pub(crate) is_playing: bool,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::audio::AcousticSettings::is_default"
+    )]
+    pub(crate) audio: crate::audio::AcousticSettings,
 }
 
-/// Interactive symplectic leapfrog dwarf-galaxy disk and tidal-stream orbit simulator.
+/// Interactive symplectic leapfrog dwarf-galaxy disk, slingshot, and tidal-stream orbit simulator.
 pub struct GalacticOrbitSimulator {
     pub(crate) cfg: GalacticOrbitsState,
     pub(crate) system: GalacticDiskSystem,
+    pub(crate) brush_kit: SpatialBrushKit,
+    pub(crate) launch_speed_factor: f64,
+    pub(super) slingshot_anchor: Option<[f64; 2]>,
+    pub(super) slingshot_tip: Option<[f64; 2]>,
+    pub(crate) last_plot_id: Option<egui::Id>,
     pub(super) revision: u64,
 }
 
@@ -67,6 +82,7 @@ impl Default for GalacticOrbitSimulator {
             central_bh: CentralBlackHoleConfig::default(),
             lens_overlay: OrbitLensOverlayConfig::default(),
             is_playing: false,
+            audio: crate::audio::AcousticSettings::default(),
         };
         let halo = cfg.halo_kind.build_profile(
             cfg.halo_log10_mass,
@@ -90,14 +106,28 @@ impl Default for GalacticOrbitSimulator {
         Self {
             cfg,
             system,
+            brush_kit: Self::default_brush_kit(),
+            launch_speed_factor: 0.88,
+            slingshot_anchor: None,
+            slingshot_tip: None,
+            last_plot_id: None,
             revision: 1,
         }
     }
 }
 
 impl GalacticOrbitSimulator {
+    pub(crate) fn default_brush_kit() -> SpatialBrushKit {
+        SpatialBrushKit::new(BrushMode::VelocityJet, 0.55)
+            .with_interaction_mode(BrushInteractionMode::Pan)
+            .with_radius_bounds(0.2, 2.4, 0.2)
+            .with_cursor_step(0.35, 0.35)
+    }
+
     pub(crate) fn rebuild_system(&mut self, prewarm_steps: usize) {
         self.revision = self.revision.wrapping_add(1).max(1);
+        self.slingshot_anchor = None;
+        self.slingshot_tip = None;
         let c = &self.cfg;
         let halo =
             c.halo_kind
@@ -126,6 +156,44 @@ impl GalacticOrbitSimulator {
         if prewarm_steps > 0 {
             self.system.step_n_leapfrog(self.cfg.dt_myr, prewarm_steps);
         }
+    }
+
+    /// Injects a zero-allocation `SlingshotProbe` tracer into the pre-allocated ring buffer.
+    pub fn launch_slingshot_probe(&mut self, x_kpc: f64, y_kpc: f64, vx_kms: f64, vy_kms: f64) {
+        let max_r = self.plot_domain_extent();
+        let px = clamp_finite(x_kpc, -max_r, max_r, self.cfg.disk_scale_kpc);
+        let py = clamp_finite(y_kpc, -max_r, max_r, 0.0);
+        let vx = clamp_finite(vx_kms, -600.0, 600.0, 0.0);
+        let vy = clamp_finite(vy_kms, -600.0, 600.0, 40.0);
+        let _ = self.system.launch_tracer_in_place(px, py, vx, vy);
+        self.revision = self.revision.wrapping_add(1).max(1);
+    }
+
+    /// Launches a tangential/eccentric probe at `(x_kpc, y_kpc)` scaled by `launch_speed_factor`.
+    pub fn launch_probe_at_cursor(&mut self, x_kpc: f64, y_kpc: f64) {
+        let r = x_kpc.hypot(y_kpc).max(0.15);
+        let v_local = decompose_rotation_curve(r, &self.system.baryons, &self.system.halo)
+            .v_circ_kms
+            .max(12.0);
+        let speed = v_local * self.launch_speed_factor.clamp(0.2, 2.2);
+        let vx = -(y_kpc / r) * speed - 0.18 * (x_kpc / r) * speed;
+        let vy = (x_kpc / r) * speed - 0.18 * (y_kpc / r) * speed;
+        self.launch_slingshot_probe(x_kpc, y_kpc, vx, vy);
+    }
+
+    /// Builds a zero-allocation polyphonic Doppler [`SonificationFrame`] from active tracers.
+    pub fn build_audio_frame(&self) -> SonificationFrame {
+        let outer_v = decompose_rotation_curve(
+            4.0 * self.cfg.disk_scale_kpc,
+            &self.system.baryons,
+            &self.system.halo,
+        )
+        .v_circ_kms;
+        galactic_orbits_frame(self.system.particles(), outer_v, self.cfg.disk_scale_kpc)
+    }
+
+    pub(super) fn plot_domain_extent(&self) -> f64 {
+        (5.0 * self.cfg.disk_scale_kpc + 1.5 * self.cfg.halo_scale_kpc).max(4.0)
     }
 
     /// Executes a verified zero-allocation leapfrog burst inside `VerifiedEngine::run_verified`.
@@ -158,11 +226,15 @@ impl GalacticOrbitSimulator {
     }
 
     fn collect_orbital_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        let (mut disk_pts, mut stream_pts) = (Vec::new(), Vec::new());
+        let (mut disk_pts, mut stream_pts, mut probe_pts) = (Vec::new(), Vec::new(), Vec::new());
         for p in self.system.particles() {
+            if p.captured {
+                continue;
+            }
             match p.kind {
                 OrbitParticleKind::DiskTracer => disk_pts.push([p.x_kpc, p.y_kpc]),
                 OrbitParticleKind::TidalStream => stream_pts.push([p.x_kpc, p.y_kpc]),
+                OrbitParticleKind::SlingshotProbe => probe_pts.push([p.x_kpc, p.y_kpc]),
             }
         }
         let mut out = vec![
@@ -171,6 +243,9 @@ impl GalacticOrbitSimulator {
         ];
         if !stream_pts.is_empty() {
             out.push(("Tidal Stream Particles".into(), stream_pts));
+        }
+        if !probe_pts.is_empty() {
+            out.push(("Slingshot Probes".into(), probe_pts));
         }
         let mut trail_buf = [[0.0_f64; 2]; TRAIL_CAPACITY];
         for idx in [0usize, self.cfg.disk_tracers] {
@@ -200,6 +275,7 @@ impl FiniteStateGuard for GalacticOrbitSimulator {
         .into_iter()
         .all(f64::is_finite)
             && c.dt_myr > 0.0
+            && c.audio.validate().is_ok()
             && is_valid_bh_config(&c.central_bh)
             && c.lens_overlay.is_valid()
             && self.system.particles().iter().all(|p| {
@@ -230,6 +306,7 @@ impl FiniteStateGuard for GalacticOrbitSimulator {
         c.tidal_tangential_ratio = clamp_finite(c.tidal_tangential_ratio, 0.2, 1.2, 0.62);
         clamp_bh_config(&mut c.central_bh);
         c.lens_overlay.clamp_in_place();
+        c.audio = c.audio.sanitized();
         self.rebuild_system(0);
     }
 }
@@ -257,6 +334,14 @@ impl InteractiveTool for GalacticOrbitSimulator {
     fn step_simulation(&mut self) {
         self.advance_burst();
     }
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.brush_kit.focused_plot_id()
+    }
+    fn on_brush(&mut self, ctx: &InteractionContext) {
+        if let Some(stroke) = ctx.brush_stroke {
+            self.apply_brush_slingshot_stroke(&stroke, ctx.is_dragging);
+        }
+    }
     fn save_state(&self) -> Option<String> {
         serde_json::to_string(&self.cfg).ok()
     }
@@ -275,6 +360,7 @@ impl InteractiveTool for GalacticOrbitSimulator {
         ]
         .into_iter()
         .all(|(v, lo, hi)| v.is_finite() && (lo..=hi).contains(&v));
+        s.audio.validate()?;
         if !valid_floats
             || !(1..=16).contains(&s.substeps_per_frame)
             || !(4..=48).contains(&s.disk_tracers)
@@ -287,6 +373,37 @@ impl InteractiveTool for GalacticOrbitSimulator {
         self.cfg = s;
         self.rebuild_system(16);
         Ok(())
+    }
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot().with_audio().with_shader()
+    }
+    fn sonification_frame(&self) -> Option<SonificationFrame> {
+        Some(if self.has_finite_parameters() {
+            self.build_audio_frame()
+        } else {
+            SonificationFrame::silent()
+        })
+    }
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.cfg.audio
+    }
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.cfg.audio = settings.sanitized();
+        self.revision = self.revision.wrapping_add(1).max(1);
+    }
+    fn export_shader_source(
+        &self,
+        format: crate::framework::ShaderExportFormat,
+    ) -> Result<String, String> {
+        match format {
+            crate::framework::ShaderExportFormat::Wgsl => self.build_galactic_wgsl_shader(),
+            crate::framework::ShaderExportFormat::Glsl => {
+                self.build_galactic_glsl_shader(ShaderDialect::WebGl2Es300)
+            }
+        }
+    }
+    fn export_glsl_shader(&self, dialect: ShaderDialect) -> Result<String, String> {
+        self.build_galactic_glsl_shader(dialect)
     }
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let datasets = egui_plot::get_last_plot_datasets();
@@ -326,8 +443,8 @@ impl InteractiveTool for GalacticOrbitSimulator {
         });
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            ui.heading("Galactic Disk & Tidal Stream Orbits");
-            ui.label("Zero-allocation kick-drift-kick leapfrog integration showing differential spiral winding and rosetta stream precession.");
+            ui.heading("Galactic Disk, Slingshot & Tidal Stream Orbits");
+            ui.label("Zero-allocation leapfrog integration with SpatialBrushKit velocity slingshots, rosetta precession, and Doppler sonification.");
             self.render_orbit_plot(ui);
         });
     }
@@ -340,7 +457,7 @@ inventory::submit! {
         id: "GalacticOrbitSimulator",
         display_name: "Galactic Orbit Simulator",
         domain: "astrophysics",
-        tags: &["astrophysics", "orbits", "symplectic", "leapfrog", "dark-matter"],
+        tags: &["astrophysics", "orbits", "symplectic", "leapfrog", "dark-matter", "slingshot"],
         build: || Box::new(GalacticOrbitSimulator::default()),
     }
 }
@@ -354,50 +471,12 @@ impl scientific_metadata::theory::TheoryDescribable for GalacticOrbitSimulator {
         )
     }
     fn phonetic_description(&self) -> String {
-        "Symplectic leapfrog dwarf galaxy disk and tidal stream orbit simulator".into()
+        "Symplectic leapfrog dwarf galaxy disk, slingshot, and tidal stream orbit simulator".into()
     }
     fn theory_citation(&self) -> String {
         "Tillaboev, Tadjibaev & Otojanova (2025) (tillaboev2025); Binney & Tremaine (2008), Galactic Dynamics; Burkert (1995)".into()
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()
-    }
-}
-
-const PRESET_SPIRAL_WINDING: &str = concat!(
-    r#"{"metadata":{"schema_version":"1.0","title":"Differential Spiral Winding","domain":"astrophysics","timestamp":"2026-11-21T00:00:00Z"},"#,
-    r#""config":{"distance_mpc":16.0,"morphology":"TypeCode10","gas_fraction":0.60,"disk_scale_kpc":0.85,"halo_kind":"NfwCusp","#,
-    r#""halo_log10_mass":10.3,"halo_scale_kpc":2.6,"halo_concentration":13.0,"dt_myr":1.8,"substeps_per_frame":4,"disk_tracers":24,"tidal_tracers":4,"tidal_tangential_ratio":0.70}}"#
-);
-
-const PRESET_TIDAL_PRECESSION: &str = concat!(
-    r#"{"metadata":{"schema_version":"1.0","title":"Dwarf Tidal Stream Precession","domain":"astrophysics","timestamp":"2026-11-21T00:00:00Z"},"#,
-    r#""config":{"distance_mpc":14.0,"morphology":"TypeCode95To99","gas_fraction":0.65,"disk_scale_kpc":0.75,"halo_kind":"BurkertCore","#,
-    r#""halo_log10_mass":10.0,"halo_scale_kpc":2.0,"halo_concentration":11.0,"dt_myr":1.5,"substeps_per_frame":5,"disk_tracers":12,"tidal_tracers":12,"tidal_tangential_ratio":0.48}}"#
-);
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "galactic_orbits_spiral_winding_starter",
-        title: "Differential Spiral Winding",
-        description: "Shear two-arm disk tracers into differential spiral arcs inside an NFW dark-matter halo.",
-        category: "Galactic Dynamics",
-        icon: "🌀",
-        domain: "astrophysics",
-        tool_name: Some("GalacticOrbitSimulator"),
-        preset_generator: || PRESET_SPIRAL_WINDING,
-    }
-}
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "galactic_orbits_tidal_precession_starter",
-        title: "Dwarf Tidal Stream Precession",
-        description: "Integrate eccentric satellite stream rosetta orbits inside a cored Burkert (1995) dwarf potential.",
-        category: "Galactic Dynamics",
-        icon: "☄️",
-        domain: "astrophysics",
-        tool_name: Some("GalacticOrbitSimulator"),
-        preset_generator: || PRESET_TIDAL_PRECESSION,
     }
 }

@@ -180,6 +180,45 @@ impl<M: StaticMetric<N>, const N: usize> GeodesicSystem<M, N> {
             }
         }
     }
+
+    /// Advances `state` up to `max_steps` RK4 steps of size `d_lambda` with zero heap allocations,
+    /// stopping early if `step_rk4` halts at a singularity guard or `stop_fn(state)` returns `true`.
+    #[verified_engine::verified]
+    pub fn integrate_bounded_rk4<S, F>(
+        &self,
+        solver: &mut RungeKutta4<S>,
+        state: &mut S,
+        d_lambda: f64,
+        max_steps: usize,
+        mut stop_fn: F,
+    ) -> (usize, GeodesicStepStatus)
+    where
+        S: GeodesicState<N>,
+        Self: OdeSystem<S>,
+        F: FnMut(&S) -> bool,
+    {
+        let mut status = match self.metric_norm(state) {
+            Ok(metric_norm) if metric_norm.is_finite() && !self.is_halted(state) => {
+                GeodesicStepStatus::Advanced { metric_norm }
+            }
+            _ => return (0, GeodesicStepStatus::HaltedSingularity),
+        };
+        let mut steps_taken = 0;
+        while steps_taken < max_steps {
+            let lambda = (steps_taken as f64) * d_lambda;
+            status = self.step_rk4(solver, lambda, state, d_lambda);
+            match status {
+                GeodesicStepStatus::Advanced { .. } => {
+                    steps_taken += 1;
+                    if stop_fn(state) {
+                        break;
+                    }
+                }
+                GeodesicStepStatus::HaltedSingularity => break,
+            }
+        }
+        (steps_taken, status)
+    }
 }
 
 #[verified_engine::verified]

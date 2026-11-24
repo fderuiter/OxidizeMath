@@ -48,6 +48,9 @@ pub const SECONDS_PER_MYR: f64 = 3.155_76e13;
 /// Conversion factor from $\text{km/s}$ to $\text{kpc/Myr}$ ($\approx 1.022712 \times 10^{-3}$).
 pub const KPC_PER_MYR_PER_KMS: f64 = (1_000.0 * SECONDS_PER_MYR) / METERS_PER_KPC;
 
+/// Pre-allocated ring-buffer capacity for custom canvas-launched [`OrbitParticleKind::SlingshotProbe`] tracers.
+pub const SLINGSHOT_RING_CAPACITY: usize = 8;
+
 /// Kinematic family of an orbiting test particle in the galactic midplane.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum OrbitParticleKind {
@@ -56,6 +59,8 @@ pub enum OrbitParticleKind {
     DiskTracer,
     /// Eccentric satellite remnant tracing rosetta precession and tidal streaming.
     TidalStream,
+    /// User-launched satellite tracer injected via canvas slingshot or keyboard reticle.
+    SlingshotProbe,
 }
 
 /// Planar phase-space state $(x, y, v_x, v_y)$ of a massless tracer particle.
@@ -124,13 +129,19 @@ pub struct GalacticDiskSystem {
     #[serde(default)]
     pub central_bh: CentralBlackHoleConfig,
     pub(super) particles: Vec<OrbitalState>,
-    trail_ring: Vec<[f64; 2]>,
-    trail_capacity: usize,
-    trail_head: usize,
-    trail_len: usize,
-    elapsed_myr: f64,
+    pub(super) trail_ring: Vec<[f64; 2]>,
+    pub(super) trail_capacity: usize,
+    pub(super) trail_head: usize,
+    pub(super) trail_len: usize,
+    pub(super) elapsed_myr: f64,
     pub(super) initial_energy: f64,
     pub(super) initial_lz: f64,
+    #[serde(default)]
+    pub(super) base_count: usize,
+    #[serde(default)]
+    pub(super) active_count: usize,
+    #[serde(default)]
+    pub(super) slingshot_cursor: usize,
 }
 
 /// Computes planar central acceleration $(a_x, a_y)$ in $(\text{km/s})^2/\text{kpc}$ with softened core $r \ge 10^{-3}\,\text{kpc}$.
@@ -242,23 +253,36 @@ impl GalacticDiskSystem {
         let disk_tracers = population.disk_tracers;
         let tidal_tracers = population.tidal_tracers;
         let tidal_tangential_ratio = population.tidal_tangential_ratio;
-        let total = disk_tracers.saturating_add(tidal_tracers).max(1);
+        let base_total = disk_tracers.saturating_add(tidal_tracers).max(1);
+        let total_alloc = base_total.saturating_add(SLINGSHOT_RING_CAPACITY);
         let cap = population.trail_capacity.max(2);
         let mut sys = Self {
             baryons,
             halo,
             central_bh: CentralBlackHoleConfig::default(),
-            particles: vec![OrbitalState::default(); total],
-            trail_ring: vec![[0.0, 0.0]; total.saturating_mul(cap)],
+            particles: vec![OrbitalState::default(); total_alloc],
+            trail_ring: vec![[0.0, 0.0]; total_alloc.saturating_mul(cap)],
             trail_capacity: cap,
             trail_head: 0,
             trail_len: 0,
             elapsed_myr: 0.0,
             initial_energy: 0.0,
             initial_lz: 0.0,
+            base_count: base_total,
+            active_count: base_total,
+            slingshot_cursor: 0,
         };
         sys.reseed_orbits(disk_tracers.max(1), tidal_tracers, tidal_tangential_ratio);
         sys
+    }
+
+    #[verified_engine::verified]
+    pub(super) fn effective_active_len(&self) -> usize {
+        if self.active_count == 0 {
+            self.particles.len()
+        } else {
+            self.active_count.min(self.particles.len())
+        }
     }
 
     /// Reseeds initial tracer positions and velocities in place without reallocating when particle count matches.
@@ -269,15 +293,23 @@ impl GalacticDiskSystem {
         tidal_tracers: usize,
         tidal_tangential_ratio: f64,
     ) {
-        let n_particles = self.particles.len();
-        let disk_n = disk_tracers.min(n_particles);
+        let max_base = if self.base_count == 0 {
+            self.particles.len()
+        } else {
+            self.base_count.min(self.particles.len())
+        };
+        let disk_n = disk_tracers.min(max_base);
+        let tidal_n = tidal_tracers.min(max_base.saturating_sub(disk_n));
         let tang_ratio = if tidal_tangential_ratio.is_finite() {
             tidal_tangential_ratio.clamp(0.15, 1.35)
         } else {
             0.65
         };
+        self.base_count = (disk_n + tidal_n).max(1).min(self.particles.len());
+        self.active_count = self.base_count;
+        self.slingshot_cursor = 0;
         self.seed_disk_tracers(disk_n);
-        self.seed_tidal_tracers(disk_n, tidal_tracers, tang_ratio);
+        self.seed_tidal_tracers(disk_n, tidal_n, tang_ratio);
         self.trail_head = 0;
         self.trail_len = 0;
         self.elapsed_myr = 0.0;
@@ -364,8 +396,9 @@ impl GalacticDiskSystem {
         }
         let slot = self.trail_head;
         let cap = self.trail_capacity;
+        let active_n = self.effective_active_len();
         let mut i = 0;
-        while i < self.particles.len() {
+        while i < active_n {
             let base = i.saturating_mul(cap);
             let idx = base.saturating_add(slot);
             if idx < self.trail_ring.len() {
@@ -387,8 +420,9 @@ impl GalacticDiskSystem {
         }
         let clamped_dt = dt_myr.clamp(-25.0, 25.0);
         let ds = clamped_dt * KPC_PER_MYR_PER_KMS;
+        let active_n = self.effective_active_len();
         let mut i = 0;
-        while i < self.particles.len() {
+        while i < active_n {
             step_single_particle_kdk(
                 &mut self.particles[i],
                 ds,
@@ -425,7 +459,7 @@ impl GalacticDiskSystem {
     #[must_use]
     #[verified_engine::verified]
     pub fn particles(&self) -> &[OrbitalState] {
-        &self.particles
+        &self.particles[..self.effective_active_len()]
     }
 
     /// Elapsed simulation time in Megayears (Myr).
@@ -440,31 +474,5 @@ impl GalacticDiskSystem {
     #[verified_engine::verified]
     pub fn trail_len(&self) -> usize {
         self.trail_len
-    }
-
-    /// Copies the chronological `[x_kpc, y_kpc]` trail of particle `particle_idx` into `out`, returning the number of points written.
-    #[verified_engine::verified]
-    pub fn copy_particle_trail(&self, particle_idx: usize, out: &mut [[f64; 2]]) -> usize {
-        if particle_idx >= self.particles.len() || self.trail_len == 0 || self.trail_capacity == 0 {
-            return 0;
-        }
-        let count = self.trail_len.min(out.len());
-        let cap = self.trail_capacity;
-        let start_slot = if self.trail_len < cap {
-            0
-        } else {
-            self.trail_head
-        };
-        let base = particle_idx.saturating_mul(cap);
-        let mut k = 0;
-        while k < count {
-            let slot = (start_slot + (self.trail_len - count) + k) % cap;
-            let idx = base.saturating_add(slot);
-            if idx < self.trail_ring.len() {
-                out[k] = self.trail_ring[idx];
-            }
-            k += 1;
-        }
-        count
     }
 }

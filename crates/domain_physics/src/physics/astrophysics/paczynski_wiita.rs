@@ -344,7 +344,7 @@ impl GalacticDiskSystem {
     #[must_use]
     #[verified_engine::verified]
     pub fn particle_invariants(&self, index: usize) -> Option<OrbitalInvariants> {
-        let p = self.particles.get(index)?;
+        let p = self.particles().get(index)?;
         let r = (p.x_kpc * p.x_kpc + p.y_kpc * p.y_kpc).sqrt();
         let v_sq = p.vx_kms * p.vx_kms + p.vy_kms * p.vy_kms;
         let phi = total_gravitational_potential(r, &self.baryons, &self.halo)
@@ -362,8 +362,9 @@ impl GalacticDiskSystem {
     #[verified_engine::verified]
     pub fn total_energy(&self) -> f64 {
         let mut sum = 0.0;
+        let active_n = self.effective_active_len();
         let mut i = 0;
-        while i < self.particles.len() {
+        while i < active_n {
             if let Some(inv) = self.particle_invariants(i) {
                 sum += inv.specific_energy_kms2;
             }
@@ -377,9 +378,10 @@ impl GalacticDiskSystem {
     #[verified_engine::verified]
     pub fn total_angular_momentum(&self) -> f64 {
         let mut sum = 0.0;
+        let active = self.particles();
         let mut i = 0;
-        while i < self.particles.len() {
-            let p = &self.particles[i];
+        while i < active.len() {
+            let p = &active[i];
             sum += p.x_kpc * p.vy_kms - p.y_kpc * p.vx_kms;
             i += 1;
         }

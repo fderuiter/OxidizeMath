@@ -1,17 +1,23 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-//! Geodesic Playground tool: 3D Flamm and wormhole embeddings, $V_{\text{eff}}(r)$, twin worldlines,
-//! custom AST metrics, and 2D lensing regime cartography.
+//! Geodesic Playground tool: 3D Flamm and wormhole embeddings, 2D gravitational lensing,
+//! `Orbit` / `Slingshot` / `PhotonFan` modes, $V_{\text{eff}}(r)$ with $\frac{1}{2}e^2$, twin worldlines,
+//! custom AST metrics, 2D lensing regime cartography, and sonification.
 
 use std::collections::{BTreeMap, HashMap};
 
 use crate::async_sim::atlas::ParameterAtlasController;
 use crate::camera::Camera3D;
 use crate::framework::{
-    CalloutManager, CalloutSpec, ExportCapabilities, InteractiveTool, ToolMetadata, ToolStateBounds,
+    CalloutManager, CalloutSpec, ExportCapabilities, InteractiveTool, ShaderDialect,
+    ShaderExportFormat, ToolMetadata, ToolStateBounds,
 };
 use crate::web_io::PlatformInstant;
 use eframe::egui;
+use math_explorer::physics::astrophysics::GalacticDiskSystem;
+use math_explorer::physics::high_energy::{
+    DeflectionTable, LensingMetricSpec, DEFAULT_DEFLECTION_BINS,
+};
 use scientific_metadata::theory::ParameterConstraint;
 use serde::{Deserialize, Serialize};
 
@@ -19,94 +25,48 @@ use serde::{Deserialize, Serialize};
 pub mod atlas;
 #[path = "playground/embedding.rs"]
 mod embedding;
+#[path = "playground/lensing_shader.rs"]
+mod lensing_shader;
+#[path = "playground/lensing_view.rs"]
+mod lensing_view;
 #[path = "playground/sandbox.rs"]
 pub mod sandbox;
 #[path = "playground/sim.rs"]
 mod sim;
+#[path = "playground/sim_integrators.rs"]
+mod sim_integrators;
+#[path = "playground/slingshot.rs"]
+mod slingshot;
 #[path = "playground/telemetry.rs"]
 mod telemetry;
+#[path = "playground/types.rs"]
+mod types;
 #[path = "playground/ui.rs"]
 mod ui;
+#[path = "playground/viewport_3d.rs"]
+mod viewport_3d;
 
 pub use atlas::{kerr_prograde_critical_b, RELATIVITY_ATLAS_AXIS_PAIRS};
 pub use sandbox::MetricSandbox;
-pub use sim::{TrajectorySample, MAX_TRAJECTORY_SAMPLES};
+pub use sim::{BundleRay, TrajectorySample, MAX_BUNDLE_RAYS, MAX_TRAJECTORY_SAMPLES};
+pub use slingshot::SlingshotDragState;
+pub use types::{
+    GeodesicInteractionMode, GeodesicMode, LensingBackgroundKind, SpacetimePreset, ViewportViewMode,
+};
+
+/// Default horizontal pixel width of the 2D gravitational lensing camera.
+pub const LENSING_WIDTH: usize = 160;
+/// Default vertical pixel height of the 2D gravitational lensing camera.
+pub const LENSING_HEIGHT: usize = 120;
 
 use atlas::{default_relativity_atlas_axes, is_default_relativity_atlas_axes};
 use sandbox::{
     default_custom_lapse_expr, default_custom_wormhole_expr, is_default_custom_lapse_expr,
     is_default_custom_wormhole_expr,
 };
-
-fn is_zero_f64(v: &f64) -> bool {
-    v.abs() <= 1e-12
-}
-
-/// Curved spacetime background selectable in [`GeodesicPlaygroundTool`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum SpacetimePreset {
-    /// Static Schwarzschild black hole ($R_s = 2 M_{\text{geom}}$) with Flamm paraboloid embedding.
-    #[default]
-    Schwarzschild,
-    /// Rotating equatorial Kerr black hole with spin parameter $a$ and frame dragging.
-    KerrEquatorial,
-    /// Horizon-free traversable Morris-Thorne wormhole with throat radius $b_0$.
-    MorrisThorneWormhole,
-    /// User-authored static spherically symmetric lapse $f(r)$ via `StaticRiemannianMetric`.
-    CustomRadialLapse,
-    /// User-authored traversable wormhole throat profile $b(l)$ via `StaticRiemannianMetric`.
-    CustomWormholeProfile,
-}
-
-impl SpacetimePreset {
-    /// Ordered list of all selectable spacetime geometries.
-    pub const ALL: [Self; 5] = [
-        Self::Schwarzschild,
-        Self::KerrEquatorial,
-        Self::MorrisThorneWormhole,
-        Self::CustomRadialLapse,
-        Self::CustomWormholeProfile,
-    ];
-
-    /// Display label for combo boxes and telemetry readouts.
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Schwarzschild => "Schwarzschild Black Hole",
-            Self::KerrEquatorial => "Kerr Equatorial (Rotating)",
-            Self::MorrisThorneWormhole => "Morris-Thorne Wormhole",
-            Self::CustomRadialLapse => "Custom Radial Lapse f(r)",
-            Self::CustomWormholeProfile => "Custom Wormhole Profile b(l)",
-        }
-    }
-
-    /// Returns `true` when the spacetime uses proper wormhole coordinate $l \in (-\infty, \infty)$.
-    pub const fn is_wormhole(self) -> bool {
-        matches!(
-            self,
-            Self::MorrisThorneWormhole | Self::CustomWormholeProfile
-        )
-    }
-}
-
-/// Causal worldline character for geodesic integration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum GeodesicMode {
-    /// Massless photon ray ($g_{\mu\nu}\dot{x}^\mu\dot{x}^\nu = 0$, normalized $e = 1$).
-    #[default]
-    NullPhoton,
-    /// Massive test particle ($g_{\mu\nu}\dot{x}^\mu\dot{x}^\nu = -1$) with proper clock $\tau$.
-    TimelikeParticle,
-}
-
-impl GeodesicMode {
-    /// Human-readable worldline label.
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::NullPhoton => "Null Photon (Light Ray)",
-            Self::TimelikeParticle => "Timelike Particle (Massive)",
-        }
-    }
-}
+#[cfg(feature = "biology")]
+use types::build_default_lenia_engine;
+use types::{build_default_lensing_galaxy, default_fan_count, default_fan_spread, is_zero_f64};
 
 /// Bounded JSON state persisted for [`GeodesicPlaygroundTool`] URL sharing and starter presets.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -141,6 +101,24 @@ pub struct GeodesicPlaygroundState {
     pub scrub_index: usize,
     /// 3D viewport camera orientation and zoom.
     pub camera: Camera3D,
+    /// Active canvas gesture mode (`Orbit`, `Slingshot`, `PhotonFan`).
+    #[serde(default)]
+    pub interaction_mode: GeodesicInteractionMode,
+    /// Active central viewport (`Embedding3D` vs `LensingCamera2D`).
+    #[serde(default)]
+    pub view_mode: ViewportViewMode,
+    /// Source plane warped by the 2D gravitational lensing camera.
+    #[serde(default)]
+    pub lensing_background: LensingBackgroundKind,
+    /// Number of rays in `PhotonFan` mode (`2..=16`).
+    #[serde(default = "default_fan_count")]
+    pub fan_count: usize,
+    /// Total impact-parameter spread $\Delta b$ across a `PhotonFan`.
+    #[serde(default = "default_fan_spread")]
+    pub fan_spread: f64,
+    /// Initial azimuthal angle $\varphi_0$ in radians.
+    #[serde(default, skip_serializing_if = "is_zero_f64")]
+    pub launch_azimuth: f64,
     /// Custom 4D radial lapse formula $f(r)$.
     #[serde(
         default = "default_custom_lapse_expr",
@@ -165,6 +143,12 @@ pub struct GeodesicPlaygroundState {
         skip_serializing_if = "is_default_relativity_atlas_axes"
     )]
     pub atlas_axes: [String; 2],
+    /// Persisted non-mute acoustic synthesis settings.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::audio::AcousticSettings::is_default"
+    )]
+    pub audio: crate::audio::AcousticSettings,
 }
 
 impl Default for GeodesicPlaygroundState {
@@ -183,24 +167,43 @@ impl Default for GeodesicPlaygroundState {
             is_playing: false,
             scrub_index: 120,
             camera: Camera3D::new(0.48, -0.62, 1.0),
+            interaction_mode: GeodesicInteractionMode::Orbit,
+            view_mode: ViewportViewMode::Embedding3D,
+            lensing_background: LensingBackgroundKind::GalacticDisk,
+            fan_count: default_fan_count(),
+            fan_spread: default_fan_spread(),
+            launch_azimuth: 0.0,
             custom_lapse_expr: default_custom_lapse_expr(),
             custom_wormhole_expr: default_custom_wormhole_expr(),
             custom_params: BTreeMap::new(),
             atlas_visible: false,
             atlas_axes: default_relativity_atlas_axes(),
+            audio: crate::audio::AcousticSettings::default(),
         }
     }
 }
 
-/// Interactive 3D curved-spacetime geodesic laboratory.
+/// Interactive curved-spacetime geodesic, slingshot, gravitational lensing, and sonification studio.
 pub struct GeodesicPlaygroundTool {
     pub(crate) state: GeodesicPlaygroundState,
     pub(crate) samples: Vec<TrajectorySample>,
     pub(crate) twin_samples: Vec<TrajectorySample>,
+    pub(crate) bundle_rays: Vec<BundleRay>,
+    pub(crate) active_ray_count: usize,
     pub(crate) halted_near_singularity: bool,
     pub(crate) twin_halted_near_singularity: bool,
     pub(crate) launch_energy: f64,
     pub(crate) twin_launch_energy: f64,
+    pub(crate) deflection_table: DeflectionTable,
+    pub(crate) lensing_dirty: bool,
+    pub(crate) lensing_pixels: Vec<egui::Color32>,
+    pub(crate) lensing_texture: Option<egui::TextureHandle>,
+    pub(crate) lensing_galaxy: GalacticDiskSystem,
+    #[cfg(feature = "biology")]
+    pub(crate) lenia_engine: math_explorer::biology::lenia::LeniaEngine,
+    pub(crate) slingshot: SlingshotDragState,
+    pub(crate) focused_canvas: Option<egui::Id>,
+    pub(crate) high_contrast: bool,
     pub(crate) sandbox: MetricSandbox,
     pub(crate) atlas: ParameterAtlasController,
     pub(crate) callouts: CalloutManager,
@@ -210,21 +213,47 @@ pub struct GeodesicPlaygroundTool {
 
 impl Default for GeodesicPlaygroundTool {
     fn default() -> Self {
+        let state = GeodesicPlaygroundState::default();
+        let deflection_table = DeflectionTable::with_capacity(
+            LensingMetricSpec::Schwarzschild {
+                schwarzschild_radius: state.scale_radius,
+            },
+            DEFAULT_DEFLECTION_BINS,
+        )
+        .expect("default Schwarzschild deflection table");
+        #[cfg(feature = "biology")]
+        let lenia_engine = build_default_lenia_engine();
+        let mut bundle_rays = Vec::with_capacity(MAX_BUNDLE_RAYS);
+        for _ in 0..MAX_BUNDLE_RAYS {
+            bundle_rays.push(BundleRay::with_capacity(MAX_TRAJECTORY_SAMPLES + 8));
+        }
         let mut tool = Self {
-            state: GeodesicPlaygroundState::default(),
+            state,
             samples: Vec::with_capacity(MAX_TRAJECTORY_SAMPLES + 8),
             twin_samples: Vec::with_capacity(MAX_TRAJECTORY_SAMPLES + 8),
+            bundle_rays,
+            active_ray_count: 1,
             halted_near_singularity: false,
             twin_halted_near_singularity: false,
             launch_energy: 1.0,
             twin_launch_energy: 1.0,
+            deflection_table,
+            lensing_dirty: true,
+            lensing_pixels: vec![egui::Color32::BLACK; LENSING_WIDTH * LENSING_HEIGHT],
+            lensing_texture: None,
+            lensing_galaxy: build_default_lensing_galaxy(),
+            #[cfg(feature = "biology")]
+            lenia_engine,
+            slingshot: SlingshotDragState::default(),
+            focused_canvas: None,
+            high_contrast: false,
             sandbox: MetricSandbox::default(),
             atlas: ParameterAtlasController::new(RELATIVITY_ATLAS_AXIS_PAIRS.to_vec()),
             callouts: CalloutManager::new(),
             last_tick: PlatformInstant::now(),
             revision: 1,
         };
-        tool.rebuild_trajectory(260);
+        tool.rebuild_trajectory(560);
         tool
     }
 }
@@ -255,17 +284,25 @@ impl InteractiveTool for GeodesicPlaygroundTool {
             && s.twin_delta_b.is_finite()
             && s.radial_bias.is_finite()
             && s.step_size.is_finite()
+            && s.fan_spread.is_finite()
+            && s.launch_azimuth.is_finite()
             && s.custom_params.values().all(|v| v.is_finite())
             && self.sandbox.has_finite_params()
+            && s.audio.validate().is_ok()
             && s.camera.is_valid()
     }
 
     fn clamp_parameters(&mut self) -> bool {
         self.clamp_state_in_place();
+        self.state.audio = self.state.audio.sanitized();
         self.sandbox.lapse_bar.clamp_active_params(-5.0..=5.0);
         self.sandbox.wormhole_bar.clamp_active_params(-5.0..=5.0);
         self.sync_sandbox_to_state();
         self.rebuild_trajectory(560);
+        self.lensing_dirty = true;
+        if self.state.view_mode == ViewportViewMode::LensingCamera2D {
+            self.refresh_lensing_pixels_in_place();
+        }
         self.revision = self.revision.wrapping_add(1);
         true
     }
@@ -279,7 +316,7 @@ impl InteractiveTool for GeodesicPlaygroundTool {
     }
 
     fn state_bounds(&self) -> ToolStateBounds {
-        ToolStateBounds::DEFAULT
+        crate::url_state::URL_JSON_BOUNDS
     }
 
     fn save_state(&self) -> Option<String> {
@@ -293,6 +330,7 @@ impl InteractiveTool for GeodesicPlaygroundTool {
         if !loaded.camera.is_valid() {
             return Err("Camera parameters out of valid bounds".to_string());
         }
+        loaded.audio.validate()?;
         let mut next_sandbox = MetricSandbox::default();
         next_sandbox.apply_persisted(
             &loaded.custom_lapse_expr,
@@ -310,12 +348,51 @@ impl InteractiveTool for GeodesicPlaygroundTool {
         self.sync_sandbox_to_state();
         let target_steps = self.state.scrub_index.clamp(480, MAX_TRAJECTORY_SAMPLES);
         self.rebuild_trajectory(target_steps);
+        self.lensing_dirty = true;
+        if self.state.view_mode == ViewportViewMode::LensingCamera2D {
+            self.refresh_lensing_pixels_in_place();
+        }
         self.revision = self.revision.wrapping_add(1);
         Ok(())
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot()
+        ExportCapabilities::plot().with_audio().with_shader()
+    }
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        Some(if self.has_finite_parameters() {
+            self.build_audio_frame()
+        } else {
+            crate::audio::SonificationFrame::silent()
+        })
+    }
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.state.audio
+    }
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.state.audio = settings.sanitized();
+        self.revision = self.revision.wrapping_add(1);
+    }
+    fn sample_sonification_frames(
+        &mut self,
+        num_frames: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        self.sample_geodesic_wav_frames(num_frames)
+    }
+
+    fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        Some(self.build_lensing_color_image())
+    }
+
+    fn export_shader_source(&self, format: ShaderExportFormat) -> Result<String, String> {
+        match format {
+            ShaderExportFormat::Wgsl => self.build_lensing_wgsl_shader(),
+            ShaderExportFormat::Glsl => self.build_lensing_glsl_shader(ShaderDialect::WebGl2Es300),
+        }
+    }
+
+    fn export_glsl_shader(&self, dialect: ShaderDialect) -> Result<String, String> {
+        self.build_lensing_glsl_shader(dialect)
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
@@ -324,6 +401,10 @@ impl InteractiveTool for GeodesicPlaygroundTool {
 
     fn step_simulation(&mut self) {
         self.advance_steps(self.state.steps_per_frame.clamp(1, 32));
+    }
+
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.focused_canvas
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -344,19 +425,21 @@ impl InteractiveTool for GeodesicPlaygroundTool {
 impl scientific_metadata::theory::TheoryDescribable for GeodesicPlaygroundTool {
     fn theory_description(&self) -> String {
         format!(
-            "Integrates stack-allocated RK4 geodesics d^2x^mu/dlambda^2 + Gamma^mu_(alpha beta) dx^alpha/dlambda dx^beta/dlambda = 0 on {} ({}) with scale R = {:.2}, visualizing 3D embeddings, radial effective potential V_eff(r) vs 1/2 e^2, twin worldline bifurcation, and 2D lensing cartography.",
+            "Integrates stack-allocated RK4 geodesic bundles d^2x^mu/dlambda^2 + Gamma^mu_(alpha beta) dx^alpha/dlambda dx^beta/dlambda = 0 and deflection-table lensing on {} ({}, {}) with scale R = {:.2}, visualizing 3D embeddings, V_eff(r) vs 1/2 e^2, twin worldline bifurcation, 2D lensing cartography, and Doppler sonification.",
             self.state.spacetime.label(),
             self.state.mode.label(),
+            self.state.interaction_mode.label(),
             self.state.scale_radius
         )
     }
 
     fn phonetic_description(&self) -> String {
-        "Curved spacetime geodesic integration, Flamm paraboloid, and twin clock dilation".into()
+        "Curved spacetime geodesic slingshot, gravitational lensing, and redshift sonification studio"
+            .into()
     }
 
     fn theory_citation(&self) -> String {
-        "Schwarzschild (1916); Kerr (1963); Misner, Thorne, & Wheeler, Gravitation (1973); Morris & Thorne (1988)".into()
+        "Schwarzschild (1916); Kerr (1963); Bardeen (1973); Morris & Thorne (1988)".into()
     }
 
     fn available_descriptions(&self) -> HashMap<String, String> {
@@ -373,7 +456,7 @@ inventory::submit! {
         id: "GeodesicPlaygroundTool",
         display_name: "Geodesic Playground",
         domain: "relativity",
-        tags: &["general-relativity", "black-hole", "wormhole", "geodesic"],
+        tags: &["general-relativity", "black-hole", "wormhole", "lensing", "geodesic"],
         build: || Box::new(GeodesicPlaygroundTool::default()),
     }
 }

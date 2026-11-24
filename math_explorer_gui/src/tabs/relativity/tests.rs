@@ -1,16 +1,18 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 //! Desktop unit tests for [`RelativityTab`], [`GeodesicPlaygroundTool`], [`ChristoffelInspectorTool`],
-//! photon-ring normalization, Kerr/ISCO geometry, custom AST metrics, 2D atlas, and stories/challenges.
+//! `Orbit`/`Slingshot`/`PhotonFan` modes, photon-ring normalization, Kerr/ISCO geometry,
+//! custom AST metrics, AccessKit semantics, and `#tab=relativity` URL sharing.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use eframe::egui;
 
 use super::*;
 use crate::app::{MathExplorerApp, ThemeMode};
-use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool};
+use crate::framework::InteractiveTool;
 use crate::tabs::ExplorerTab;
+use crate::url_state::URL_JSON_BOUNDS;
 
 pub(super) fn test_raw_input(events: Vec<egui::Event>) -> egui::RawInput {
     egui::RawInput {
@@ -28,7 +30,7 @@ fn obs_map(tool: &dyn InteractiveTool) -> HashMap<&'static str, f64> {
 }
 
 #[test]
-fn relativity_tab_renders_both_tools_across_all_three_themes() {
+fn relativity_tab_renders_both_tools_and_2d_lensing_across_all_three_themes() {
     let ctx = egui::Context::default();
     let mut frame = eframe::Frame::_new_kittest();
     let mut tab = RelativityTab::default();
@@ -47,20 +49,32 @@ fn relativity_tab_renders_both_tools_across_all_three_themes() {
             });
         }
     }
+
+    let mut lens_tool = GeodesicPlaygroundTool::default();
+    lens_tool.state.view_mode = ViewportViewMode::LensingCamera2D;
+    for bg in [
+        LensingBackgroundKind::GalacticDisk,
+        LensingBackgroundKind::LeniaPortal,
+        LensingBackgroundKind::Starfield,
+    ] {
+        lens_tool.state.lensing_background = bg;
+        lens_tool.lensing_dirty = true;
+        let _ = ctx.run(test_raw_input(Vec::new()), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| lens_tool.show_inside(ui));
+        });
+    }
 }
 
 #[test]
-fn geodesic_playground_camera3d_scroll_zoom_and_drag_orbit_update_state() {
+fn geodesic_playground_camera3d_orbit_vs_slingshot_rotation_lock() {
     let ctx = egui::Context::default();
     let mut tool = GeodesicPlaygroundTool::default();
     let initial_cam = tool.state.camera;
 
-    // Frame 1: layout plot rect
     let _ = ctx.run(test_raw_input(Vec::new()), |ctx| {
         egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
     });
 
-    // Frame 2: scroll wheel over central 3D viewport zooms Camera3D
     let center = egui::pos2(780.0, 320.0);
     let zoom_events = vec![
         egui::Event::PointerMoved(center),
@@ -73,37 +87,138 @@ fn geodesic_playground_camera3d_scroll_zoom_and_drag_orbit_update_state() {
     let _ = ctx.run(test_raw_input(zoom_events), |ctx| {
         egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
     });
-    assert!(
-        (tool.state.camera.zoom - initial_cam.zoom).abs() > 1e-4,
-        "Camera3D zoom must respond to scroll wheel inside Plot3DViewport"
-    );
+    assert!((tool.state.camera.zoom - initial_cam.zoom).abs() > 1e-4);
+
+    tool.state.interaction_mode = GeodesicInteractionMode::PhotonFan;
+    tool.state.fan_count = MAX_BUNDLE_RAYS;
+    tool.rebuild_trajectory(180);
+    assert_eq!(tool.active_ray_count, 16);
+    assert!(tool.locks_camera_orbit());
+    let locked_cam = tool.state.camera;
+
+    let drag_events = vec![
+        egui::Event::PointerMoved(center),
+        egui::Event::PointerButton {
+            pos: center,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        },
+        egui::Event::PointerMoved(egui::pos2(830.0, 355.0)),
+    ];
+    let _ = ctx.run(test_raw_input(drag_events), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
+    });
+    assert_eq!(tool.state.camera, locked_cam);
 }
 
 #[test]
-fn relativity_presets_url_hydration_and_finite_state_guard_rollback() {
+fn geodesic_playground_keyboard_arrow_and_enter_slingshot_launch() {
+    let ctx = egui::Context::default();
+    let mut tool = GeodesicPlaygroundTool::default();
+    let b_before = tool.state.impact_or_momentum;
+    let key_events = vec![
+        egui::Event::Key {
+            key: egui::Key::ArrowRight,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        },
+        egui::Event::Key {
+            key: egui::Key::Enter,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        },
+    ];
+    let _ = ctx.run(test_raw_input(Vec::new()), |ctx| {
+        assert!(!tool.handle_keyboard_slingshot(ctx, false));
+    });
+    let _ = ctx.run(test_raw_input(key_events), |ctx| {
+        assert!(tool.handle_keyboard_slingshot(ctx, true));
+    });
+    assert!((tool.state.impact_or_momentum - b_before).abs() > 1e-3);
+    assert!(tool.state.is_playing);
+}
+
+#[test]
+fn geodesic_playground_accesskit_meter_image_and_canvas_focus() {
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let mut tool = GeodesicPlaygroundTool::default();
+    tool.state.view_mode = ViewportViewMode::LensingCamera2D;
+    let out = ctx.run(test_raw_input(Vec::new()), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
+    });
+    let ak = out
+        .platform_output
+        .accesskit_update
+        .expect("AccessKit tree");
+    assert!(ak
+        .nodes
+        .iter()
+        .any(|(_, n)| n.role() == egui::accesskit::Role::Meter));
+    assert!(ak
+        .nodes
+        .iter()
+        .any(|(_, n)| n.role() == egui::accesskit::Role::Image));
+
+    let center = egui::pos2(780.0, 320.0);
+    let click_events = vec![
+        egui::Event::PointerMoved(center),
+        egui::Event::PointerButton {
+            pos: center,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::NONE,
+        },
+        egui::Event::PointerButton {
+            pos: center,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        },
+    ];
+    let _ = ctx.run(test_raw_input(click_events), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
+    });
+    let _ = ctx.run(test_raw_input(Vec::new()), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
+    });
+    assert!(tool.focused_canvas_id().is_some());
+}
+
+#[test]
+fn relativity_presets_url_bounds_hydration_and_finite_state_guard_rollback() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
     let mut app = MathExplorerApp::default();
     assert!(app
         .apply_share_location_strings("#tab=relativity&tool=GeodesicPlaygroundTool", "", None)
         .unwrap());
-    let active_tab = &mut app.tabs[app.selected_tab];
-    assert_eq!(active_tab.url_slug(), "relativity");
+    assert_eq!(app.tabs[app.selected_tab].url_slug(), "relativity");
 
     let mut playground = GeodesicPlaygroundTool::default();
     for payload in [
         presets::PRESET_PHOTON_RING_LENSING,
         presets::PRESET_ISCO_ROSETTE_CLOCKS,
         presets::PRESET_WORMHOLE_TRANSIT,
+        presets::PRESET_KERR_PHOTON_FAN_SHADOW,
+        presets::PRESET_EINSTEIN_RING_GALAXY_LENSING,
+        presets::PRESET_WORMHOLE_LENIA_PORTAL,
     ] {
         playground.import_preset_json(payload).unwrap();
         assert!(!playground.samples.is_empty());
+        let saved = playground.save_state().unwrap();
+        URL_JSON_BOUNDS.validate_json(&saved).unwrap();
+        playground.try_load_state(&saved).unwrap();
     }
     assert_eq!(
         playground.state.spacetime,
         SpacetimePreset::MorrisThorneWormhole
     );
 
-    // Inject NaN and verify FiniteStateGuard detection + clamp recovery
     playground.state.scale_radius = f64::NAN;
     assert!(!playground.has_finite_parameters());
     assert!(playground.clamp_parameters());
@@ -117,46 +232,6 @@ fn relativity_presets_url_hydration_and_finite_state_guard_rollback() {
         .evaluate_current()
         .expect("valid Kerr Christoffel");
     assert!(eval.max_abs_diff < 1e-6);
-}
-
-#[test]
-fn relativity_tools_export_valid_png_svg_and_csv_artifacts() {
-    for tool_id in ["GeodesicPlaygroundTool", "ChristoffelInspectorTool"] {
-        let mut tab = RelativityTab::default();
-        assert!(tab.select_tool_by_name(tool_id));
-        let fw = tab.framework_mut().unwrap();
-        fw.export_options.width = 360;
-        fw.export_options.height = 240;
-
-        for format in [ExportFormat::Png, ExportFormat::Svg, ExportFormat::Csv] {
-            let ctx = egui::Context::default();
-            let _ = ctx.run(test_raw_input(Vec::new()), |ctx| {
-                egui_plot::clear_last_plot_datasets();
-                fw.show_export_modal = true;
-                fw.queue_export(format);
-                fw.show(ctx, "relativity_export_test");
-            });
-            assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
-            match format {
-                ExportFormat::Png => {
-                    let bytes = fw.export_queue.last_exported_bytes.as_deref().unwrap();
-                    let px =
-                        crate::framework::deferred_export_tests::decode_rgba_pixels(bytes).unwrap();
-                    let colors: HashSet<[u8; 4]> = px.into_iter().collect();
-                    assert!(colors.len() >= 2);
-                }
-                ExportFormat::Svg => {
-                    let svg = fw.export_queue.last_exported_content.as_deref().unwrap();
-                    assert!(svg.contains("<svg") && svg.len() > 250);
-                }
-                ExportFormat::Csv => {
-                    let csv = fw.export_queue.last_exported_content.as_deref().unwrap();
-                    assert!(csv.lines().count() > 20);
-                }
-                _ => {}
-            }
-        }
-    }
 }
 
 #[test]

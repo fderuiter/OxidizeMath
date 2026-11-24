@@ -7,6 +7,7 @@ use nalgebra::{SMatrix, SVector};
 use pure_math::pure_math::tensor::{StaticMetric, TensorError};
 
 use crate::error::HighEnergyError;
+use crate::physics::high_energy::general_relativity::schwarzschild::GeodesicKind;
 
 /// Rotating Kerr black hole restricted to the equatorial slice ($\theta = \pi/2$) in
 /// Boyer-Lindquist coordinates $(ct, r, \theta, \varphi)$.
@@ -98,6 +99,120 @@ impl KerrEquatorialMetric {
         let a = self.spin_a;
         let g33 = r * r + a * a + (a * a * rs) / r;
         Ok((a * rs) / (r * g33))
+    }
+
+    /// Evaluates exact equatorial proper-to-coordinate clock dilation $d\tau / dt$ for a circular
+    /// worldline at radius `r` with coordinate angular rate `dphi_dct` ($\Omega = d\varphi / d(ct)$).
+    ///
+    /// Uses the ADM lapse-shift identity around [`Self::frame_dragging_omega`] and
+    /// [`Self::ergosphere_radius`]:
+    /// $$\left(\frac{d\tau}{dt}\right)^2 = \frac{\Delta}{g_{33}} - g_{33}\left(\Omega - \omega(r)\right)^2$$
+    /// Static observers ($\Omega = 0$) fail inside $r \le r_{\text{ergo}} = R_s$, whereas frame-dragged
+    /// observers ($\Omega \approx \omega(r)$) remain timelike down to $r > r_+$.
+    ///
+    /// # Errors
+    /// Returns [`HighEnergyError::InvalidRadius`] if $r \le r_+$ or [`HighEnergyError::InvalidVelocity`]
+    /// if the specified angular rate yields a null or spacelike worldline.
+    #[verified_engine::verified]
+    pub fn clock_dilation(&self, r: f64, dphi_dct: f64) -> Result<f64, HighEnergyError> {
+        let omega_zamo = self.frame_dragging_omega(r)?;
+        if !dphi_dct.is_finite() {
+            return Err(HighEnergyError::InvalidVelocity { v: f64::NAN });
+        }
+        let r_ergo = self.ergosphere_radius();
+        let a = self.spin_a;
+        let delta = r * r - r_ergo * r + a * a;
+        let g33 = r * r + a * a + (a * a * r_ergo) / r;
+        let zamo_lapse_sq = delta / g33;
+        let rel_omega = dphi_dct - omega_zamo;
+        let dtau_dt_sq = zamo_lapse_sq - g33 * rel_omega * rel_omega;
+        if dtau_dt_sq <= 0.0 {
+            return Err(HighEnergyError::InvalidVelocity { v: C });
+        }
+        Ok(dtau_dt_sq.sqrt())
+    }
+
+    /// Evaluates the Zero-Angular-Momentum Observer (ZAMO) clock dilation $d\tau / dt$ at radius `r`
+    /// corotating at [`Self::frame_dragging_omega`].
+    ///
+    /// # Errors
+    /// Returns [`HighEnergyError::InvalidRadius`] if $r \le r_+$.
+    #[verified_engine::verified]
+    pub fn zamo_clock_dilation(&self, r: f64) -> Result<f64, HighEnergyError> {
+        let omega = self.frame_dragging_omega(r)?;
+        self.clock_dilation(r, omega)
+    }
+
+    /// Evaluates the exact equatorial Kerr radial effective potential $V_{\text{eff}}(r; e, \ell)$
+    /// satisfying $\frac{1}{2}\dot{r}^2 + V_{\text{eff}}(r; e, \ell) = \frac{1}{2} e^2$.
+    ///
+    /// $$V_{\text{eff}}(r; e, \ell) = \frac{\kappa \Delta}{2 r^2}
+    ///   + \frac{(r - r_{\text{ergo}})\ell^2}{2 r^3}
+    ///   + \frac{a R_s e \ell}{r^3}
+    ///   - \frac{a^2 e^2 (r + R_s)}{2 r^3}$$
+    /// Reduces identically to Schwarzschild when $a = 0$.
+    ///
+    /// # Errors
+    /// Returns [`HighEnergyError::InvalidRadius`] if $r \le r_+$ or inputs are non-finite.
+    #[verified_engine::verified]
+    pub fn effective_potential(
+        &self,
+        r: f64,
+        energy_e: f64,
+        angular_momentum_l: f64,
+        kind: GeodesicKind,
+    ) -> Result<f64, HighEnergyError> {
+        let r_plus = self.outer_horizon_radius();
+        if !r.is_finite() || r <= r_plus || !energy_e.is_finite() || !angular_momentum_l.is_finite()
+        {
+            return Err(HighEnergyError::InvalidRadius {
+                radius: r,
+                limit: r_plus,
+            });
+        }
+        let rs = self.schwarzschild_radius;
+        let r_ergo = self.ergosphere_radius();
+        let a = self.spin_a;
+        let delta = r * r - rs * r + a * a;
+        let r2 = r * r;
+        let r3 = r2 * r;
+        let mass_term = (0.5 * kind.kappa() * delta) / r2;
+        let centrif_term = ((r - r_ergo) * angular_momentum_l * angular_momentum_l) / (2.0 * r3);
+        let spin_orbit_term = (a * rs * energy_e * angular_momentum_l) / r3;
+        let spin_quad_term = -(a * a * energy_e * energy_e * (r + rs)) / (2.0 * r3);
+        Ok(mass_term + centrif_term + spin_orbit_term + spin_quad_term)
+    }
+
+    /// Unstable circular equatorial photon orbit radius $r_{\text{ph},\pm}$ (Bardeen 1972)
+    /// for rays corotating (`prograde == true`) or counter-rotating (`prograde == false`) with $|a|$.
+    #[verified_engine::verified]
+    pub fn photon_orbit_radius(&self, prograde: bool) -> f64 {
+        let rs = self.schwarzschild_radius;
+        let chi_abs = ((2.0 * self.spin_a.abs()) / rs).clamp(0.0, 0.999_999);
+        let arg = if prograde { -chi_abs } else { chi_abs };
+        rs * (1.0 + ((2.0 / 3.0) * arg.acos()).cos())
+    }
+
+    /// Critical signed impact parameter $b_{\text{crit}} = \ell / e$ at the prograde or retrograde
+    /// circular photon orbit, signed relative to `self.spin_a` (`+` for corotating when $a \ge 0$).
+    #[verified_engine::verified]
+    pub fn critical_impact_parameter(&self, prograde: bool) -> f64 {
+        let rs = self.schwarzschild_radius;
+        let a_abs = self.spin_a.abs();
+        let r_ph = self.photon_orbit_radius(prograde);
+        let delta = (r_ph * r_ph - rs * r_ph + a_abs * a_abs).max(0.0);
+        let numer = r_ph * r_ph * r_ph + a_abs * a_abs * (r_ph + rs);
+        let b_mag = if prograde {
+            numer / (r_ph * delta.sqrt() + a_abs * rs).max(1e-15)
+        } else {
+            numer / (r_ph * delta.sqrt() - a_abs * rs).max(1e-15)
+        };
+        let spin_sign = if self.spin_a < 0.0 { -1.0 } else { 1.0 };
+        if prograde {
+            spin_sign * b_mag
+        } else {
+            -spin_sign * b_mag
+        }
     }
 
     #[verified_engine::verified]

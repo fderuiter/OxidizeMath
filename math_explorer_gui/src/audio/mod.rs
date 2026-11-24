@@ -343,6 +343,8 @@ mod chladni_tests;
 mod integration_tests;
 #[cfg(all(test, feature = "physics"))]
 mod mri_radar_tests;
+#[cfg(all(test, feature = "physics"))]
+mod relativity_tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 #[path = "audio_wasm_tests.rs"]

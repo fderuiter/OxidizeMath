@@ -8,6 +8,7 @@ pub mod black_hole_geodesic_tool;
 mod black_hole_geodesic_ui;
 pub mod challenge;
 mod galactic_orbits_relativity;
+mod galactic_orbits_shader;
 pub mod galactic_orbits_tool;
 mod galactic_orbits_ui;
 pub mod relativistic_jet_tool;
@@ -16,6 +17,8 @@ mod rotation_curve_relativity;
 pub mod rotation_curve_tool;
 mod rotation_curve_ui;
 
+#[cfg(test)]
+mod slingshot_tests;
 #[cfg(test)]
 mod tests;
 
