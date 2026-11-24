@@ -21,8 +21,9 @@ pub mod __doctest_facade {
             AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
             FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
             LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError, MonteCarloError,
-            NumberTheoryError, OptimizationError, OuError, PureMathError, PureMathError as Error,
-            StochasticError, Su11HyperbolicError, TdaError, TensorError, TransformError, ZipError,
+            NumberTheoryError, OptimizationError, OuError, PoissonError, PureMathError,
+            PureMathError as Error, QueueingError, StochasticError, Su11HyperbolicError, TdaError,
+            TensorError, TransformError, ZipError,
         };
         pub use math_commons::error::{
             EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult,

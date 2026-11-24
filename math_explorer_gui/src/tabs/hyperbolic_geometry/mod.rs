@@ -110,7 +110,7 @@ impl ExplorerTab for HyperbolicGeometryTab {
 inventory::submit! {
     TabDescriptor {
         id: "hyperbolic_geometry",
-        order: 27,
+        order: 28,
         build: || Box::new(HyperbolicGeometryTab::default()),
     }
 }

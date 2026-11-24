@@ -1,4 +1,5 @@
 pub mod buckled_flow;
+pub mod cotangent_mesh;
 #[allow(missing_docs)]
 pub mod heat_equation;
 /// Intrinsic hyperbolic geometry on the Poincaré and Beltrami-Klein disks via $\mathrm{SU}(1,1)$.
@@ -9,5 +10,7 @@ pub mod mean_curvature_flow;
 pub mod operators;
 #[allow(missing_docs)]
 pub mod surface;
+
+pub use cotangent_mesh::CotangentLaplacian;
 
 // [cite:modular_polynomials_review]

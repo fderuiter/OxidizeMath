@@ -6,13 +6,14 @@ Multi-scale physical simulation models from quantum states to astrophysical dyna
 
 The `domain_physics` crate provides computational physics simulation kernels spanning multiple spatial and temporal scales. It translates theoretical formulations—from quantum mechanics and electrodynamics to non-linear chaos and galactic kinematics—into verified numerical algorithms.
 
-Simulation models implement standardized time-stepping interfaces and energy conservation checks, ensuring that numerical approximations maintain physical fidelity throughout simulation runs.
+Simulation models implement standardized time-stepping interfaces—including symplectic integrators (`ImplicitMidpoint`, `GaussLegendre4`, `StormerVerlet`, `Yoshida4`)—and energy/momentum conservation checks, ensuring that numerical approximations maintain physical fidelity throughout long-horizon simulation runs.
 
 ### Module Structure
 
-- **`chaos`**: Deterministic chaotic systems, including conservative Hamiltonian models (`DoublePendulum`, `HenonHeiles`), cubic-Hermite `PoincareSection` detectors, the Lorenz attractor, and Lyapunov exponent analyzers.
+- **`chaos`**: Deterministic chaotic systems, including conservative Hamiltonian models (`DoublePendulum`, `HenonHeilesSystem`, `ThreeBodyChoreography`), cubic-Hermite `PoincareSection` and `PoincareRingBuffer` detectors, the Lorenz attractor, and 3D/4D/6D+ Lyapunov exponent analyzers.
 - **`quantum`**: Quantum state evolution, Clebsch-Gordan coupling coefficients, and Schrödinger wave equation solvers.
 - **`astrophysics`**: Tillaboev (2025) irregular dwarf-galaxy scaling regressions (`GalaxyModel`), baryonic vs. NFW/Burkert dark-matter rotation curves (`decompose_rotation_curve`), zero-allocation symplectic leapfrog disk & tidal-stream orbits (`GalacticDiskSystem`), and planar 3-body gravitational choreographies (`FigureEightThreeBody`).
+- **`high_energy`**: Schwarzschild, equatorial Kerr, and Morris-Thorne spacetime metrics, zero-allocation stack-based geodesic ray/plunge bundles (`SchwarzschildGeodesicBundle`), Lorentz boosts, relativistic twin-jet Doppler beaming, shock compression, and Li & Ma gamma-ray detection significance (`evaluate_jet_knot_observables`).
 - **`fluid_dynamics`**: Lattice Boltzmann methods and Navier-Stokes velocity field solvers.
 - **`mri`**: Bloch equation magnetic resonance spin simulators and RF pulse excitations.
 - **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
@@ -49,6 +50,42 @@ let updated_vec = lorenz.state.vec;
 assert!(updated_vec.x != 10.0 || updated_vec.y != 10.0);
 ```
 
+### Symplectic Integration of Conservative Hamiltonian Chaos
+
+Integrate non-separable (`DoublePendulum`) and separable (`HenonHeilesSystem`, `ThreeBodyChoreography`) Hamiltonians with bounded shadow-energy drift:
+
+```rust
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::chaos::{DoublePendulum, HenonHeilesSystem, ThreeBodyChoreography};
+use math_explorer::pure_math::analysis::ode::{
+    ArrayState, GaussLegendre4, HamiltonianSystem, RungeKutta4, Solver, Yoshida4,
+};
+
+let pendulum = DoublePendulum::default();
+let mut s_gl4 = DoublePendulum::default_chaotic_state();
+let mut s_rk4 = s_gl4;
+let e0 = pendulum.hamiltonian(&s_gl4);
+let mut gl4 = GaussLegendre4::new(&s_gl4);
+let mut rk4 = RungeKutta4::new(&s_rk4);
+for step in 0..400 {
+    let t = step as f64 * 0.02;
+    gl4.step(&pendulum, t, &mut s_gl4, 0.02);
+    rk4.step(&pendulum, t, &mut s_rk4, 0.02);
+}
+assert!(pendulum.relative_energy_error(&s_gl4, e0) < pendulum.relative_energy_error(&s_rk4, e0));
+
+let hh = HenonHeilesSystem::default();
+let mut hh_state = hh.seed_on_poincare_section(0.125, 0.1, 0.0).unwrap();
+let hh_e0 = hh.hamiltonian(&hh_state);
+let mut yoshida = Yoshida4::new(&ArrayState::<2>::zeros());
+yoshida.step_separable(&hh, &mut hh_state, 0.02);
+assert!(hh.relative_energy_error(&hh_state, hh_e0) < 1e-8);
+
+let choreo = ThreeBodyChoreography::default();
+let nb_state = ThreeBodyChoreography::figure_eight_initial_state();
+assert!(choreo.angular_momentum_z(&nb_state).abs() < 1e-12);
+```
+
 ### Decomposing Dwarf-Galaxy Rotation Curves and Symplectic Disk Orbits
 
 Evaluate Tillaboev (2025) scaling regressions, compare cored (`BurkertCore`) and cuspy (`NfwCusp`) dark-matter halos against Keplerian falloff, and advance zero-allocation leapfrog orbits:
@@ -81,6 +118,38 @@ let mut disk = GalacticDiskSystem::from_galaxy_model(
 disk.step_n_leapfrog(2.0, 20);
 assert!(disk.relative_energy_drift() < 1.0e-3);
 assert!(disk.relative_angular_momentum_drift() < 1.0e-11);
+```
+
+### Tracing Schwarzschild Geodesics and Relativistic Jet Doppler Beaming
+
+Advance pre-allocated null lensing fans and sub-ISCO plunges alongside coupled shock-compressed jet beaming and Li & Ma significance:
+
+```rust
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::high_energy::{
+    JetKnotConfig, SchwarzschildGeodesicBundle, evaluate_jet_knot_observables,
+};
+
+let mut bundle = SchwarzschildGeodesicBundle::new(1.0, 8, 128)?;
+bundle.seed_photon_lensing_fan(8, 2.60, 17.45, 0.8);
+let _ = bundle.step_n_verified(0.01, 4_000);
+assert!(bundle.max_killing_drift() < 1.0e-6);
+
+let obs = evaluate_jet_knot_observables(&JetKnotConfig {
+    bulk_beta: 0.9,
+    viewing_angle_rad: 15.0_f64.to_radians(),
+    disk_r_over_rs: 3.0,
+    disk_inclination_rad: 90.0_f64.to_radians(),
+    electron_index_p: 2.4,
+    electron_gamma: 1.0e3,
+    upstream_u_b: 1.0e-3,
+    adiabatic_index: 4.0 / 3.0,
+    intrinsic_signal_counts: 1.0,
+    background_counts_off: 40.0,
+    exposure_ratio: 1.0,
+})?;
+assert!((obs.jet_flux_asymmetry - 18_855.15).abs() < 0.1);
+# Ok::<(), math_explorer::error::HighEnergyError>(())
 ```
 
 ---

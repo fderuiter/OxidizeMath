@@ -10,7 +10,9 @@ use super::OdeSolverTool;
 use crate::presets::{checked_ode_step_count, OdePreset, MAX_ODE_STEPS};
 use eframe::egui;
 use math_commons::ast::{Expr, MAX_COMPILED_INSTRUCTIONS};
-use math_explorer::pure_math::analysis::ode::IntegrationMethod;
+use math_explorer::pure_math::analysis::ode::{
+    ArrayState, GaussLegendre4, ImplicitMidpoint, IntegrationMethod,
+};
 
 /// Maximum synchronous bytecode/AST instruction budget for primary + seeded ODE trajectories.
 pub const MAX_ODE_SYNC_INSTRUCTIONS: usize = 2_000_000;
@@ -28,6 +30,13 @@ pub const fn stages_for_method(method: IntegrationMethod) -> usize {
         IntegrationMethod::Euler => 1,
         IntegrationMethod::Heun => 2,
         IntegrationMethod::RungeKutta4 => 4,
+        IntegrationMethod::ImplicitMidpoint => {
+            1 + ImplicitMidpoint::<ArrayState<1>>::DEFAULT_MAX_ITERS
+        }
+        IntegrationMethod::GaussLegendre4 => {
+            GaussLegendre4::<ArrayState<1>>::DEFAULT_SUBSTEPS
+                * (1 + 2 * GaussLegendre4::<ArrayState<1>>::DEFAULT_MAX_ITERS)
+        }
     }
 }
 
@@ -176,17 +185,24 @@ impl OdeSolverTool {
         }
     }
 
-    /// Computes `(comparison_dt, optional_notice)` across Euler + Heun + RK4 (7 total stages/step).
+    /// Computes `(comparison_dt, optional_notice)` across Euler + Heun + RK4 (plus active symplectic method when rescaled).
     #[must_use]
     pub fn effective_comparison_dt(&self, primary_dt: f64) -> (f64, Option<String>) {
         let base_dt = primary_dt.max(self.dt);
         let Some(base_steps) = checked_ode_step_count(base_dt, self.total_time) else {
             return (base_dt, None);
         };
-        let ops_per_step = 7_usize.saturating_mul(self.rhs_instruction_cost());
-        if base_steps.saturating_mul(ops_per_step) <= MAX_ODE_COMPARISON_SYNC_INSTRUCTIONS {
+        let rhs_cost = self.rhs_instruction_cost();
+        let base_ops = 7_usize.saturating_mul(rhs_cost);
+        if base_steps.saturating_mul(base_ops) <= MAX_ODE_COMPARISON_SYNC_INSTRUCTIONS {
             return (base_dt, None);
         }
+        let comp_stages = if self.method.is_symplectic() {
+            7 + stages_for_method(self.method)
+        } else {
+            7
+        };
+        let ops_per_step = comp_stages.saturating_mul(rhs_cost);
         let capped_steps = (MAX_ODE_COMPARISON_SYNC_INSTRUCTIONS / ops_per_step.max(1))
             .clamp(MIN_ODE_BUDGET_STEPS, base_steps);
         if capped_steps < base_steps {

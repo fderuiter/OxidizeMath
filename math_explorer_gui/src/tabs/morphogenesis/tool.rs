@@ -42,6 +42,10 @@ pub struct MorphogenesisTool {
     pub(crate) local_runner: MorphogenesisKineticsRunner,
     pub(crate) pending_initial_start: bool,
     pub(crate) last_theme_mode: Option<ThemeMode>,
+    pub(crate) brush_state: crate::framework::RasterBrushState,
+    pub(crate) brush_mode: super::brush::MorphoBrushMode,
+    pub(crate) sculpt_microfluidic_layer: bool,
+    pub(crate) mask_cells: Vec<u8>,
     /// Counterfactual shadow twin branch state & perturbation settings.
     pub branch_engine: CounterfactualBranchEngine,
     pub(crate) theory: MorphogenesisTheory,
@@ -61,6 +65,7 @@ impl Default for MorphogenesisTool {
             high_contrast: false,
             theme_mode: ThemeMode::Dark,
             heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
+            mask_rle: None,
         }));
         let kinetics_state =
             Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
@@ -89,6 +94,10 @@ impl Default for MorphogenesisTool {
             local_runner,
             pending_initial_start: true,
             last_theme_mode: None,
+            brush_state: crate::framework::RasterBrushState::default(),
+            brush_mode: super::brush::MorphoBrushMode::default(),
+            sculpt_microfluidic_layer: true,
+            mask_cells: vec![0; width * height],
             branch_engine: CounterfactualBranchEngine::default(),
             theory: MorphogenesisTheory::default(),
             field_stream: super::dataflow::MorphoFieldStreamState::default(),
@@ -214,7 +223,9 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn focused_canvas_id(&self) -> Option<egui::Id> {
-        self.brush_kit.focused_plot_id()
+        self.brush_state
+            .focused_id
+            .or_else(|| self.brush_kit.focused_plot_id())
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -282,6 +293,7 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_v.to_bits().hash(&mut h);
             p.dt.to_bits().hash(&mut h);
             p.heatmap_mode.hash(&mut h);
+            p.mask_rle.hash(&mut h);
         }
         self.width.hash(&mut h);
         self.height.hash(&mut h);
@@ -306,9 +318,17 @@ impl InteractiveTool for MorphogenesisTool {
                 .unwrap_or_else(|e| e.into_inner());
             (ks.mode, ks.f, ks.k)
         };
-        let (a, b, d_u, d_v, dt, heatmap_mode) = {
+        let (a, b, d_u, d_v, dt, heatmap_mode, kinetics_mask_rle) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-            (p.a, p.b, p.d_u, p.d_v, p.dt, p.heatmap_mode)
+            (
+                p.a,
+                p.b,
+                p.d_u,
+                p.d_v,
+                p.dt,
+                p.heatmap_mode,
+                p.mask_rle.clone(),
+            )
         };
         let fork = self
             .local_runner
@@ -342,6 +362,7 @@ impl InteractiveTool for MorphogenesisTool {
             pending_initial_start: self.pending_initial_start,
             fork,
             mask_rle,
+            kinetics_mask_rle,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes,
         })
@@ -353,6 +374,10 @@ impl InteractiveTool for MorphogenesisTool {
         let parsed: MorphogenesisToolState =
             serde_json::from_str(state).map_err(|e| format!("Invalid Morphogenesis state: {e}"))?;
         parsed.validate()?;
+        let decoded_mask = match parsed.kinetics_mask_rle.as_deref() {
+            Some(rle) => crate::framework::decode_u8_grid(rle, parsed.width, parsed.height, 2)?,
+            None => vec![0; parsed.width * parsed.height],
+        };
         self.sync_atlas_options_for_mode(parsed.kinetics_mode);
         let use_mode_default = parsed.kinetics_mode
             == crate::presets::MorphogenesisKineticsMode::GrayScott
@@ -380,10 +405,12 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_u = parsed.d_u;
             p.d_v = parsed.d_v;
             p.dt = parsed.dt;
+            p.mask_rle = parsed.kinetics_mask_rle;
             p.heatmap_mode = parsed
                 .fork
                 .map_or(MorphogenesisHeatmapMode::ActiveUb, |fk| fk.heatmap_mode);
         }
+        self.mask_cells = decoded_mask;
         *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) = parsed.mask_rle;
         if let Some(fork_desc) = parsed.fork {
             self.apply_loaded_fork_state(

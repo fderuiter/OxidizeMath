@@ -297,7 +297,7 @@ impl<const N: usize> SpatialDiffusion<N> for LaplaceBeltramiDiffusion2D {
         let max_d = coeffs.iter().fold(0.0_f64, |acc, &c| acc.max(c.abs()));
         let eff_dt = self.clamp_dt(dt, max_d);
         self.map_diffusion(state, coeffs, |idx, curr, diffs| {
-            let rates = kinetics.reaction(curr);
+            let rates = kinetics.reaction_at(idx, curr);
             for s in 0..N {
                 next_state[s][idx] = curr[s] + eff_dt * (diffs[s] + rates[s]);
             }

@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "tests"))]
-
 use super::*;
 use approx::assert_relative_eq;
 use diagnostics::{Diagnostic, Severity};

@@ -1,5 +1,4 @@
 //! Zero-allocation verification tests for the SU(1,1) hyperbolic geometry engine.
-#![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use num_complex::Complex64;
 use pure_math::pure_math::differential_geometry::hyperbolic::{
