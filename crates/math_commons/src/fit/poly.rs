@@ -4,9 +4,11 @@
 use super::{CurveFit, FitModel};
 use crate::error::FitError;
 use crate::series::PointSeries;
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
 
 /// Fits a polynomial of `degree` (`1..=4`) in linear coordinates with zero heap allocations.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn fit_polynomial<P: PointSeries + ?Sized>(
     points: &P,
     degree: usize,
@@ -15,7 +17,7 @@ pub fn fit_polynomial<P: PointSeries + ?Sized>(
 }
 
 /// Fits a polynomial of `degree` (`1..=4`) with optional $\log_{10}$ axis transforms.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn fit_polynomial_scaled<P: PointSeries + ?Sized>(
     points: &P,
     degree: usize,
@@ -212,7 +214,7 @@ fn compute_poly_metrics<P: PointSeries + ?Sized>(
 /// Evaluates polynomial $c_0 + c_1 x + \dots + c_d x^d$ via Horner's method.
 #[inline]
 #[must_use]
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn eval_polynomial_horner(coeffs: &[f64], x: f64) -> f64 {
     eval_polynomial_horner_raw(coeffs, x)
 }
@@ -229,7 +231,7 @@ pub(super) fn eval_polynomial_horner_raw(coeffs: &[f64], x: f64) -> f64 {
 }
 
 /// Solves an $n \times n$ ($n \le 5$) dense linear system on the stack via partial pivoting.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn solve_dense_small(
     mat: &mut [[f64; 5]; 5],
     rhs: &[f64; 5],

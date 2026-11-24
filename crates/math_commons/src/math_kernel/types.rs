@@ -1,5 +1,5 @@
 // [cite:math_commons]
-use std::ops::{Deref, DerefMut};
+use core::ops::{Deref, DerefMut};
 
 /// A physical step size, typically used for grid spacing.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
