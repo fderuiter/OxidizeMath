@@ -8,8 +8,6 @@ pub mod atlas;
 mod atlas_tests;
 #[path = "wave_sim/challenge.rs"]
 pub mod challenge;
-#[path = "wave_sim/latch.rs"]
-mod latch;
 #[path = "wave_sim/persistence.rs"]
 mod persistence;
 #[path = "wave_sim/plot_ui.rs"]
