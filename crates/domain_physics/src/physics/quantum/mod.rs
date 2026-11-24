@@ -76,7 +76,6 @@ pub mod coupling;
 pub mod crank_nicolson;
 #[allow(missing_docs)]
 pub mod fourier;
-#[allow(missing_docs)]
 pub mod hamiltonian;
 pub mod hydrogenic;
 pub mod scattering;
@@ -92,8 +91,11 @@ pub use coupling::clebsch_gordan;
 pub use crank_nicolson::CrankNicolson1D;
 pub use fourier::{dft_operator, idft_operator};
 pub use hamiltonian::{
-    construct_1d_hamiltonian, construct_1d_hamiltonian_into, construct_two_state_eigen_hamiltonian,
+    MAX_SCULPT_POTENTIAL, MIN_SCULPT_POTENTIAL, PotentialPreset1D,
+    apply_bresenham_potential_stroke, build_1d_potential_preset, construct_1d_hamiltonian,
+    construct_1d_hamiltonian_into, construct_two_state_eigen_hamiltonian,
     construct_two_state_eigen_hamiltonian_into, gaussian_wavepacket, gaussian_wavepacket_into,
+    partition_region_probabilities,
 };
 pub use hydrogenic::{
     HydrogenicSuperposition3D, OrbitalQuantumNumbers, QuantumFieldObservable, hydrogenic_energy_au,

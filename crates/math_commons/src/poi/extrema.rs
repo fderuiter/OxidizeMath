@@ -234,6 +234,12 @@ fn detect_local_extrema_into_raw<P: PointSeries + ?Sized>(
     let mut tracker = PlateauTracker::new();
     let mut i = 1usize;
     while i < n {
+        if p0_fin && (tracker.mode == 0 || tracker.mode == 2) {
+            i = fast_forward_plateau(pts, n, i, false, &mut p0, &mut tracker);
+            if i >= n {
+                break;
+            }
+        }
         let p1 = pts.point_at(i);
         i += 1;
         let p1_fin = is_finite_pair(p1);

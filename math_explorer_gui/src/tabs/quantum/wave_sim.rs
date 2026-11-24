@@ -6,6 +6,8 @@ pub mod atlas;
 #[cfg(test)]
 #[path = "wave_sim/atlas_tests.rs"]
 mod atlas_tests;
+#[path = "wave_sim/canvas.rs"]
+pub(crate) mod canvas;
 #[path = "wave_sim/challenge.rs"]
 pub mod challenge;
 #[path = "wave_sim/persistence.rs"]
@@ -18,6 +20,9 @@ pub mod presets;
 pub mod runner;
 #[path = "wave_sim/sculpt.rs"]
 pub mod sculpt;
+#[cfg(test)]
+#[path = "wave_sim/sculpt_tests.rs"]
+mod sculpt_tests;
 #[cfg(test)]
 #[path = "wave_sim/tests.rs"]
 mod tests;
@@ -80,6 +85,7 @@ pub struct WaveSimulatorTool {
     pub(crate) propagator_rebuilds: Arc<std::sync::atomic::AtomicUsize>,
     pub(crate) active_challenge: Option<&'static str>,
     pub(crate) callout_manager: CalloutManager,
+    pub(crate) emitter_drag: canvas::ActiveEmitterDrag,
     pub(crate) revision: u64,
 }
 
@@ -144,6 +150,7 @@ impl WaveSimulatorTool {
             propagator_rebuilds,
             active_challenge: None,
             callout_manager: CalloutManager::new(),
+            emitter_drag: canvas::ActiveEmitterDrag::None,
             revision: 1,
         }
     }

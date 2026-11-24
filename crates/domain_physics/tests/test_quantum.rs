@@ -1,9 +1,11 @@
 //! Integration tests for test quantum.
 use approx::assert_relative_eq;
 use domain_physics::physics::quantum::{
-    CrankNicolsonPropagator1D, QuantumOperator, QuantumState, TridiagonalHamiltonian1D,
+    CrankNicolsonPropagator1D, PotentialPreset1D, QuantumOperator, QuantumState,
+    TridiagonalHamiltonian1D, apply_bresenham_potential_stroke, build_1d_potential_preset,
     construct_1d_hamiltonian, dft_operator, evolve_state, evolve_state_in_place,
-    gaussian_wavepacket, sigma_x, sigma_y, sigma_z, state_norm_squared, time_evolution_operator,
+    gaussian_wavepacket, partition_region_probabilities, sigma_x, sigma_y, sigma_z,
+    state_norm_squared, time_evolution_operator,
 };
 use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
@@ -288,4 +290,32 @@ fn test_symmetric_eigen_small_empty_non_finite_and_pade_fallback() {
     assert!(nan_u.matrix.iter().all(|c| c.re.is_nan()));
     let inf_u = time_evolution_operator(&sx, f64::INFINITY, 1.0);
     assert!(inf_u.matrix.iter().all(|c| c.re.is_nan()));
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_sculpt_stroke_and_region_probabilities_zero_allocations() {
+    let n = 200;
+    let dx = 10.0 / (n as f64 - 1.0);
+    let x_grid: Vec<f64> = (0..n).map(|i| -5.0 + i as f64 * dx).collect();
+    let mut potential = vec![0.0_f64; n];
+    let psi = gaussian_wavepacket(&x_grid, -2.0, 5.0, 0.5);
+
+    let ((p_ref, p_trans), metrics) = VerifiedEngine::run_verified(|| {
+        build_1d_potential_preset(
+            &x_grid,
+            PotentialPreset1D::FiniteSquareBarrier,
+            14.0,
+            0.5,
+            &mut potential,
+        );
+        apply_bresenham_potential_stroke(&mut potential, 85, -24.0, 115, 32.0);
+        partition_region_probabilities(&psi, 100)
+    });
+
+    assert!(metrics.function_calls >= 3);
+    assert_relative_eq!(potential[85], -24.0, epsilon = 1e-12);
+    assert_relative_eq!(potential[115], 32.0, epsilon = 1e-12);
+    assert_relative_eq!(p_ref + p_trans, 1.0, epsilon = 1e-12);
+    assert!(p_ref > 0.99);
 }

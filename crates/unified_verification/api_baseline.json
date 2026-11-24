@@ -8023,6 +8023,27 @@
   ],
   "crates/domain_physics/src/physics/quantum/hamiltonian.rs": [
     {
+      "signature": "impl PotentialPreset1D { pub const fn code (self) -> f64 }"
+    },
+    {
+      "signature": "impl PotentialPreset1D { pub fn from_code (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub const MAX_SCULPT_POTENTIAL : f64"
+    },
+    {
+      "signature": "pub const MIN_SCULPT_POTENTIAL : f64"
+    },
+    {
+      "signature": "pub enum PotentialPreset1D"
+    },
+    {
+      "signature": "pub fn apply_bresenham_potential_stroke (_ : & mut [f64] , _ : usize , _ : f64 , _ : usize , _ : f64 ,)"
+    },
+    {
+      "signature": "pub fn build_1d_potential_preset (_ : & [f64] , _ : PotentialPreset1D , _ : f64 , _ : f64 , _ : & mut [f64] ,)"
+    },
+    {
       "signature": "pub fn construct_1d_hamiltonian (_ : & DVector < f64 > , _ : f64 , _ : f64 , _ : f64 ,) -> QuantumOperator"
     },
     {
@@ -8039,6 +8060,9 @@
     },
     {
       "signature": "pub fn gaussian_wavepacket_into (_ : & [f64] , _ : f64 , _ : f64 , _ : f64 , _ : & mut QuantumState ,)"
+    },
+    {
+      "signature": "pub fn partition_region_probabilities (_ : & QuantumState , _ : usize) -> (f64 , f64)"
     }
   ],
   "crates/domain_physics/src/physics/quantum/hydrogenic.rs": [
@@ -8102,6 +8126,21 @@
       "signature": "pub use fourier :: idft_operator"
     },
     {
+      "signature": "pub use hamiltonian :: MAX_SCULPT_POTENTIAL"
+    },
+    {
+      "signature": "pub use hamiltonian :: MIN_SCULPT_POTENTIAL"
+    },
+    {
+      "signature": "pub use hamiltonian :: PotentialPreset1D"
+    },
+    {
+      "signature": "pub use hamiltonian :: apply_bresenham_potential_stroke"
+    },
+    {
+      "signature": "pub use hamiltonian :: build_1d_potential_preset"
+    },
+    {
       "signature": "pub use hamiltonian :: construct_1d_hamiltonian"
     },
     {
@@ -8118,6 +8157,9 @@
     },
     {
       "signature": "pub use hamiltonian :: gaussian_wavepacket_into"
+    },
+    {
+      "signature": "pub use hamiltonian :: partition_region_probabilities"
     },
     {
       "signature": "pub use hydrogenic :: HydrogenicSuperposition3D"

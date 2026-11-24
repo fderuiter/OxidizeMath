@@ -6,16 +6,15 @@ use super::presets::{
     DEFAULT_STEPS_PER_FRAME, DEFAULT_V0, DEFAULT_WIDTH, DEFAULT_X0, GRID_POINTS, GRID_X_MAX,
     GRID_X_MIN, SIGMA_MAX, SIGMA_MIN,
 };
-use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
+use crate::framework::recovery::DiagnosticReport;
 use math_commons::ast::Expr;
 use math_explorer::physics::quantum::{
-    gaussian_wavepacket_into, state_norm_squared, CrankNicolson1D, QuantumState,
+    gaussian_wavepacket_into, partition_region_probabilities, state_norm_squared, CrankNicolson1D,
+    QuantumState,
 };
 use math_explorer::registry::MAX_GRID_SIZE;
 use nalgebra::DVector;
 use num_complex::Complex;
-use std::any::Any;
 use std::sync::{Arc, RwLock};
 
 /// Number of unitary Crank-Nicolson substeps executed per `WaveRunner` step.
@@ -82,6 +81,10 @@ pub struct WaveData {
     pub barrier_prob: f64,
     /// Live transmission probability $T(t)$.
     pub transmission: f64,
+    /// Partitioned reflected region probability $P_R \in [0, 1]$ left of the barrier midpoint.
+    pub p_reflected: f64,
+    /// Partitioned transmitted region probability $P_T \in [0, 1]$ right of the barrier midpoint.
+    pub p_transmitted: f64,
     /// Right-wall boundary probability $\sum_{x > 4.25} |\psi|^2$.
     #[cfg(test)]
     pub right_wall_prob: f64,
@@ -107,6 +110,7 @@ pub struct WaveRunner {
     pub(crate) psi: QuantumState,
     pub(crate) solver: CrankNicolson1D,
     pub(crate) cached_dt: Option<f64>,
+    pub(crate) hamiltonian_dirty: bool,
     pub(crate) propagator_rebuilds: Arc<std::sync::atomic::AtomicUsize>,
     pub(crate) prob_scratch: Vec<f64>,
     pub(crate) potential: DVector<f64>,
@@ -122,7 +126,7 @@ pub struct WaveRunner {
     pub(crate) n_points: usize,
     pub(crate) x_min: f64,
     pub(crate) x_max: f64,
-    steps_per_frame: usize,
+    pub(crate) steps_per_frame: usize,
     observables: TunnelingObservables,
     pub(crate) entered_barrier: bool,
     pub(crate) wall_arrived: bool,
@@ -132,7 +136,7 @@ pub struct WaveRunner {
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
     pub(crate) prev_mode_phases: [f64; 8],
-    sonification: crate::audio::SonificationFrame,
+    pub(crate) sonification: crate::audio::SonificationFrame,
 }
 
 impl WaveRunner {
@@ -158,6 +162,7 @@ impl WaveRunner {
             psi: QuantumState::new(DVector::from_element(GRID_POINTS, Complex::new(0.0, 0.0))),
             solver: CrankNicolson1D::with_capacity(max_grid),
             cached_dt: None,
+            hamiltonian_dirty: false,
             propagator_rebuilds,
             prob_scratch: vec![0.0; max_grid],
             potential: DVector::zeros(GRID_POINTS),
@@ -233,6 +238,7 @@ impl WaveRunner {
             self.record_divergence("dx", format!("Invalid spatial step dx: {dx}"));
             return;
         }
+        self.hamiltonian_dirty = false;
         self.cached_dt = None;
         if n > self.prob_scratch.len() {
             self.prob_scratch.resize(n, 0.0);
@@ -267,6 +273,22 @@ impl WaveRunner {
     }
 
     pub(crate) fn refresh_propagator(&mut self, dt: f64) -> bool {
+        if self.hamiltonian_dirty {
+            let Some(dx) = self.checked_dx() else {
+                self.solver.invalidate();
+                self.cached_dt = None;
+                return false;
+            };
+            if !self
+                .solver
+                .update_potential(self.potential.as_slice(), dx, 1.0, 1.0)
+            {
+                self.cached_dt = None;
+                return false;
+            }
+            self.hamiltonian_dirty = false;
+            self.cached_dt = None;
+        }
         if self.cached_dt != Some(dt) {
             if !dt.is_finite() || dt <= 0.0 {
                 self.solver.invalidate();
@@ -423,6 +445,11 @@ impl WaveRunner {
             .map(|&v| if v.is_finite() { v } else { 0.0 })
             .collect();
 
+        let center_x = 0.5 * (self.x_left + self.x_right);
+        let split_idx =
+            super::sculpt::x_to_grid_index(center_x, self.x_min, self.x_max, self.n_points);
+        let (p_reflected, p_transmitted) = partition_region_probabilities(&self.psi, split_idx);
+
         WaveData {
             time: self.time,
             x_axis: self.x_axis.clone(),
@@ -431,6 +458,8 @@ impl WaveRunner {
             reflection: obs.reflection,
             barrier_prob: obs.barrier_prob,
             transmission: obs.transmission,
+            p_reflected,
+            p_transmitted,
             #[cfg(test)]
             right_wall_prob: obs.right_wall_prob,
             latched_transmission: self.latched_transmission,
@@ -448,59 +477,5 @@ impl WaveRunner {
     #[must_use]
     pub fn latched_transmission(&self) -> Option<f64> {
         self.latched_transmission
-    }
-}
-
-impl SimulationRunner for WaveRunner {
-    fn process_command(&mut self, cmd: SimCommand) {
-        match cmd {
-            SimCommand::Reset => {
-                self.reset_parameters();
-                let cfg = self
-                    .config
-                    .read()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .clone();
-                self.init_from_config(&cfg);
-            }
-            SimCommand::SetSpeed(speed) => {
-                self.steps_per_frame = speed.max(1);
-            }
-            other => self.handle_sculpt_command(other),
-        }
-    }
-
-    fn step(&mut self) {
-        let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
-        self.step_with_dt(dt);
-    }
-
-    fn get_snapshot(&self) -> StateSnapshot {
-        let sonification = if self.diverged {
-            crate::audio::SonificationFrame::silent()
-        } else {
-            self.sonification
-        };
-        let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
-        StateSnapshot {
-            width: 0,
-            height: 0,
-            pixels: Arc::new(RwLock::new(Vec::new())),
-            custom_data: Vec::new(),
-            structured_data: Some(structured_data),
-            sonification,
-        }
-    }
-
-    fn get_steps_per_frame(&self) -> usize {
-        self.steps_per_frame
-    }
-
-    fn is_finite_state(&self) -> bool {
-        FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
-        self.diagnostic_report.clone()
     }
 }

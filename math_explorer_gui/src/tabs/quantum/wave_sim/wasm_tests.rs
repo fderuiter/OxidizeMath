@@ -81,3 +81,26 @@ fn wasm_smoke_double_barrier_quasi_bound_latch() {
         .latched_transmission()
         .is_some_and(|t| t.is_finite() && t > 0.08));
 }
+
+#[wasm_bindgen_test]
+fn wasm_smoke_bresenham_sculpt_stroke_and_wavepacket_emitter() {
+    let mut runner = WaveRunner::new(Arc::new(RwLock::new(WaveSimConfig::default())));
+    runner.process_command(SimCommand::SculptStroke1D {
+        i0: 96,
+        v0: 18.0,
+        i1: 104,
+        v1: 18.0,
+    });
+    runner.process_command(SimCommand::SetWavepacket {
+        x0: -1.8,
+        k0: 5.5,
+        sigma: 0.45,
+    });
+    for _ in 0..24 {
+        runner.step();
+    }
+    let data = runner.build_wave_data();
+    assert!((data.potential[100] - 18.0).abs() < 1e-12);
+    assert!((data.p_reflected + data.p_transmitted - 1.0).abs() < 1e-12);
+    assert!((data.norm_sq - 1.0).abs() < 1e-6);
+}

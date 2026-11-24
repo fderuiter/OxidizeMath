@@ -85,6 +85,23 @@ pub fn serialize_compact_preset_envelope<T: Serialize>(
     serde_json::to_string(&envelope).map_err(|e| format!("Serialization error: {e}"))
 }
 
+/// Packs an already-validated raw JSON `config_json` value into a compact `"1.0"` [`PresetWrapper`] JSON envelope.
+pub(crate) fn serialize_compact_raw_preset_envelope(
+    title: &str,
+    domain: &str,
+    config_json: &str,
+) -> Result<String, String> {
+    let mut buf = Vec::with_capacity(config_json.len() + title.len() + domain.len() + 96);
+    buf.extend_from_slice(br#"{"metadata":{"schema_version":"1.0","title":"#);
+    serde_json::to_writer(&mut buf, title).map_err(|e| format!("Serialization error: {e}"))?;
+    buf.extend_from_slice(br#","domain":"#);
+    serde_json::to_writer(&mut buf, domain).map_err(|e| format!("Serialization error: {e}"))?;
+    buf.extend_from_slice(br#","timestamp":"1970-01-01T00:00:00Z"},"config":"#);
+    buf.extend_from_slice(config_json.as_bytes());
+    buf.push(b'}');
+    String::from_utf8(buf).map_err(|e| format!("Serialization error: {e}"))
+}
+
 /// Strips any UTF-8 BOM, enforces `bounds.for_preset_envelope()`, parses a [`PresetWrapper`]
 /// JSON envelope, and validates `metadata.schema_version` and `metadata.domain`.
 pub fn deserialize_preset_envelope_bounded<T: for<'de> Deserialize<'de>>(

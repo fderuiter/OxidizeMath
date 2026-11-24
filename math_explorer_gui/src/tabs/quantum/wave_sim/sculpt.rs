@@ -5,17 +5,20 @@
 
 use super::presets::{
     barrier_interval_for_preset, clamp_potential_sample, evaluate_potential_grid, DEFAULT_DT,
-    GRID_POINTS, GRID_X_MAX, GRID_X_MIN, POTENTIAL_DISPLAY_SCALE,
+    DEFAULT_SIGMA, GRID_POINTS, GRID_X_MAX, GRID_X_MIN, K0_MAX, K0_MIN, POTENTIAL_DISPLAY_SCALE,
+    SIGMA_MAX, SIGMA_MIN, X0_MAX, X0_MIN,
 };
 use super::{WaveRunner, WaveSimulatorTool};
-use crate::async_sim::SimCommand;
+use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{
-    apply_sparse_potential, encode_sparse_potential, interpolate_1d_span, BrushInteractionMode,
-    BrushMode, BrushStroke, InteractionContext, SpatialBrushKit,
+    apply_sparse_potential, encode_sparse_potential, interpolate_1d_span, BrushMode, BrushStroke,
+    InteractionContext, SpatialBrushKit,
 };
 use eframe::egui;
-use math_explorer::physics::quantum::gaussian_wavepacket_into;
+use math_explorer::physics::quantum::{apply_bresenham_potential_stroke, gaussian_wavepacket_into};
+use std::any::Any;
+use std::sync::{Arc, RwLock};
 
 /// Default `SpatialBrushKit` configured for 1D potential barrier/well/step sculpting on `[-5, 5]`.
 #[must_use]
@@ -209,7 +212,7 @@ impl WaveRunner {
         }
     }
 
-    pub(crate) fn rebuild_sculpted_hamiltonian(&mut self) {
+    pub(crate) fn mark_sculpted_potential_dirty(&mut self) {
         let Some(dx) = self.checked_dx() else {
             self.record_divergence(
                 "dx",
@@ -229,39 +232,60 @@ impl WaveRunner {
             self.x_left = xl;
             self.x_right = xr;
         }
-        if !self
-            .solver
-            .update_potential(self.potential.as_slice(), dx, 1.0, 1.0)
-        {
-            self.record_divergence(
-                "potential",
-                "Non-finite sculpted potential encountered during Hamiltonian update.",
-            );
-            return;
-        }
+        self.hamiltonian_dirty = true;
         self.cached_dt = None;
-        let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
-        if dt.is_finite() && dt > 0.0 {
-            let _ = self.refresh_propagator(dt);
-        }
         self.update_observables_in_place();
+        let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
+        self.refresh_sonification(dt);
+    }
+
+    fn relaunch_wavepacket_in_place(&mut self) {
+        gaussian_wavepacket_into(&self.x_axis, self.x0, self.k0, self.sigma, &mut self.psi);
+        self.time = 0.0;
+        self.step_count = 0;
+        self.entered_barrier = false;
+        self.wall_arrived = false;
+        self.quasi_bound_latched = false;
+        self.latched_transmission = None;
+        self.prev_mode_phases = [0.0; 8];
+        self.update_observables_in_place();
+        let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
         self.refresh_sonification(dt);
     }
 
     pub(crate) fn handle_sculpt_command(&mut self, cmd: SimCommand) {
         match cmd {
+            SimCommand::SculptStroke1D { i0, v0, i1, v1 } => {
+                apply_bresenham_potential_stroke(self.potential.as_mut_slice(), i0, v0, i1, v1);
+                self.mark_sculpted_potential_dirty();
+            }
+            SimCommand::SetWavepacket { x0, k0, sigma } => {
+                if x0.is_finite() {
+                    self.x0 = x0.clamp(self.x_min, self.x_max);
+                }
+                if k0.is_finite() {
+                    self.k0 = k0;
+                    self.kinetic_energy = 0.5 * k0 * k0;
+                }
+                self.sigma = if sigma.is_finite() {
+                    sigma.clamp(SIGMA_MIN, SIGMA_MAX)
+                } else {
+                    DEFAULT_SIGMA
+                };
+                self.relaunch_wavepacket_in_place();
+            }
             SimCommand::ApplyBrush {
                 cx, r, is_obstacle, ..
             } => {
                 let slice = self.potential.as_mut_slice();
                 apply_discrete_brush_to_potential(slice, &self.base_potential, cx, r, is_obstacle);
-                self.rebuild_sculpted_hamiltonian();
+                self.mark_sculpted_potential_dirty();
             }
             SimCommand::ApplyBrushStroke(ref stroke) => {
                 let (x_min, x_max) = (self.x_min, self.x_max);
                 let slice = self.potential.as_mut_slice();
                 apply_stroke_to_potential_slice(slice, &self.base_potential, x_min, x_max, stroke);
-                self.rebuild_sculpted_hamiltonian();
+                self.mark_sculpted_potential_dirty();
             }
             SimCommand::SyncSculptState(ref payload) => {
                 self.potential
@@ -271,7 +295,7 @@ impl WaveRunner {
                     self.potential.as_mut_slice(),
                     &payload.sparse_potential,
                 );
-                self.rebuild_sculpted_hamiltonian();
+                self.mark_sculpted_potential_dirty();
             }
             SimCommand::ClearObstacles => self.restore_base_potential(),
             SimCommand::Custom(ref s) if s == "Clear Potential Edits" => {
@@ -279,20 +303,10 @@ impl WaveRunner {
             }
             SimCommand::Custom(ref s) if s == "stamp_double_barrier" => {
                 stamp_double_barrier_into(self.potential.as_mut_slice(), &self.x_axis);
-                self.rebuild_sculpted_hamiltonian();
+                self.mark_sculpted_potential_dirty();
             }
             SimCommand::Custom(ref s) if s == "relaunch_wavepacket" => {
-                gaussian_wavepacket_into(&self.x_axis, self.x0, self.k0, self.sigma, &mut self.psi);
-                self.time = 0.0;
-                self.step_count = 0;
-                self.entered_barrier = false;
-                self.wall_arrived = false;
-                self.quasi_bound_latched = false;
-                self.latched_transmission = None;
-                self.prev_mode_phases = [0.0; 8];
-                self.update_observables_in_place();
-                let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
-                self.refresh_sonification(dt);
+                self.relaunch_wavepacket_in_place();
             }
             _ => {}
         }
@@ -302,12 +316,63 @@ impl WaveRunner {
         self.potential
             .as_mut_slice()
             .copy_from_slice(&self.base_potential);
-        self.rebuild_sculpted_hamiltonian();
+        self.mark_sculpted_potential_dirty();
+    }
+}
+
+impl SimulationRunner for WaveRunner {
+    fn process_command(&mut self, cmd: SimCommand) {
+        match cmd {
+            SimCommand::Reset => {
+                self.reset_parameters();
+                let cfg = self
+                    .config
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone();
+                self.init_from_config(&cfg);
+            }
+            SimCommand::SetSpeed(speed) => self.steps_per_frame = speed.max(1),
+            other => self.handle_sculpt_command(other),
+        }
+    }
+
+    fn step(&mut self) {
+        let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
+        self.step_with_dt(dt);
+    }
+
+    fn get_snapshot(&self) -> StateSnapshot {
+        let sonification = if self.diverged {
+            crate::audio::SonificationFrame::silent()
+        } else {
+            self.sonification
+        };
+        StateSnapshot {
+            width: 0,
+            height: 0,
+            pixels: Arc::new(RwLock::new(Vec::new())),
+            custom_data: Vec::new(),
+            structured_data: Some(Box::new(self.build_wave_data()) as Box<dyn Any + Send>),
+            sonification,
+        }
+    }
+
+    fn get_steps_per_frame(&self) -> usize {
+        self.steps_per_frame
+    }
+
+    fn is_finite_state(&self) -> bool {
+        FiniteStateGuard::is_finite_state(self)
+    }
+
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.diagnostic_report.clone()
     }
 }
 
 impl WaveSimulatorTool {
-    fn base_potential_vec(&self) -> (Vec<f64>, Vec<f64>) {
+    pub(super) fn base_potential_vec(&self) -> (Vec<f64>, Vec<f64>) {
         let dx = (GRID_X_MAX - GRID_X_MIN) / (GRID_POINTS as f64 - 1.0);
         let x_axis: Vec<f64> = (0..GRID_POINTS)
             .map(|i| GRID_X_MIN + i as f64 * dx)
@@ -328,6 +393,20 @@ impl WaveSimulatorTool {
         stroke: BrushStroke,
         ctx: Option<&egui::Context>,
     ) {
+        let i0 = x_to_grid_index(stroke.start[0], GRID_X_MIN, GRID_X_MAX, GRID_POINTS);
+        let i1 = x_to_grid_index(stroke.end[0], GRID_X_MIN, GRID_X_MAX, GRID_POINTS);
+        if i0 != i1
+            && stroke.radius <= 0.15
+            && matches!(
+                stroke.mode,
+                BrushMode::PotentialBarrier | BrushMode::PotentialWell
+            )
+        {
+            let v0 = clamp_potential_sample(stroke.start[1] / POTENTIAL_DISPLAY_SCALE);
+            let v1 = clamp_potential_sample(stroke.end[1] / POTENTIAL_DISPLAY_SCALE);
+            self.apply_sculpt_stroke(i0, v0, i1, v1, ctx);
+            return;
+        }
         let (_, base) = self.base_potential_vec();
         let mut current = base.clone();
         let _ = apply_sparse_potential(&mut current, &self.sparse_potential);
@@ -347,34 +426,19 @@ impl WaveSimulatorTool {
         }
     }
 
-    pub(crate) fn apply_ui_brush_context(&mut self, ic: &InteractionContext) {
-        if let Some(stroke) = ic.brush_stroke {
-            self.apply_ui_brush_stroke(stroke, Some(&ic.response.ctx));
-        }
-    }
-
-    fn draw_sculpt_action_buttons(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.horizontal_wrapped(|ui| {
-            if ui.button("⛩ Stamp Double Barrier").clicked() {
-                self.stamp_double_barrier_edits(ctx);
-            }
-            if ui.button("Clear Potential Edits").clicked() {
-                self.clear_sculpt_edits(ctx);
-            }
-            if ui.button("🚀 Re-launch ψ(x,0)").clicked() {
-                let _ = self
-                    .worker
-                    .send_command(SimCommand::Custom("relaunch_wavepacket".to_string()));
-                ctx.request_repaint();
-            }
-        });
-    }
-
-    fn stamp_double_barrier_edits(&mut self, ctx: &egui::Context) {
-        let (x_axis, base) = self.base_potential_vec();
-        let mut target = base.clone();
-        stamp_double_barrier_into(&mut target, &x_axis);
-        self.sparse_potential = encode_sparse_potential(&base, &target, 1e-6);
+    pub(crate) fn apply_sculpt_stroke(
+        &mut self,
+        i0: usize,
+        v0: f64,
+        i1: usize,
+        v1: f64,
+        ctx: Option<&egui::Context>,
+    ) {
+        let (_, base) = self.base_potential_vec();
+        let mut current = base.clone();
+        let _ = apply_sparse_potential(&mut current, &self.sparse_potential);
+        apply_bresenham_potential_stroke(&mut current, i0, v0, i1, v1);
+        self.sparse_potential = encode_sparse_potential(&base, &current, 1e-6);
         if let Ok(mut cfg) = self.shared_config.write() {
             cfg.sparse_potential = self.sparse_potential.clone();
         }
@@ -383,49 +447,50 @@ impl WaveSimulatorTool {
         self.export_data = None;
         let _ = self
             .worker
-            .send_command(SimCommand::Custom("stamp_double_barrier".to_string()));
-        ctx.request_repaint();
+            .send_command(SimCommand::SculptStroke1D { i0, v0, i1, v1 });
+        if let Some(c) = ctx {
+            c.request_repaint();
+        }
     }
 
-    fn clear_sculpt_edits(&mut self, ctx: &egui::Context) {
-        self.sparse_potential.clear();
+    pub(crate) fn update_wavepacket_live(
+        &mut self,
+        x0: f64,
+        k0: f64,
+        sigma: f64,
+        ctx: Option<&egui::Context>,
+    ) {
+        if x0.is_finite() {
+            self.x0 = x0.clamp(X0_MIN, X0_MAX);
+        }
+        if k0.is_finite() {
+            self.k0 = k0.clamp(K0_MIN, K0_MAX);
+        }
+        if sigma.is_finite() {
+            self.sigma = sigma.clamp(SIGMA_MIN, SIGMA_MAX);
+        }
+        self.enforce_challenge_locks();
         if let Ok(mut cfg) = self.shared_config.write() {
-            cfg.sparse_potential.clear();
+            cfg.x0 = self.x0;
+            cfg.k0 = self.k0;
+            cfg.sigma = self.sigma;
         }
         self.bump_revision();
         self.export_runner = None;
         self.export_data = None;
-        let _ = self
-            .worker
-            .send_command(SimCommand::Custom("Clear Potential Edits".to_string()));
-        ctx.request_repaint();
+        let _ = self.worker.send_command(SimCommand::SetWavepacket {
+            x0: self.x0,
+            k0: self.k0,
+            sigma: self.sigma,
+        });
+        if let Some(c) = ctx {
+            c.request_repaint();
+        }
     }
 
-    pub(crate) fn draw_sculpt_controls(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        ui.label("Potential V(x) Sculpting");
-        ui.horizontal(|ui| {
-            ui.selectable_value(
-                &mut self.brush_kit.interaction_mode,
-                BrushInteractionMode::Sculpt,
-                "🖌 Sculpt",
-            );
-            ui.selectable_value(
-                &mut self.brush_kit.interaction_mode,
-                BrushInteractionMode::Pan,
-                "✋ Pan",
-            );
-        });
-        ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(
-                &mut self.brush_kit.mode,
-                BrushMode::PotentialBarrier,
-                "Barrier",
-            );
-            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::PotentialWell, "Well");
-            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::PotentialStep, "Step");
-            ui.selectable_value(&mut self.brush_kit.mode, BrushMode::Erase, "Erase");
-        });
-        ui.add(egui::Slider::new(&mut self.brush_kit.radius, 0.10..=1.20).text("Brush Width"));
-        self.draw_sculpt_action_buttons(ui, ctx);
+    pub(crate) fn apply_ui_brush_context(&mut self, ic: &InteractionContext) {
+        if let Some(stroke) = ic.brush_stroke {
+            self.apply_ui_brush_stroke(stroke, Some(&ic.response.ctx));
+        }
     }
 }

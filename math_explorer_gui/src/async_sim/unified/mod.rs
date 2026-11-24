@@ -5,7 +5,10 @@ mod canvas;
 mod controls;
 mod persistence;
 pub mod sculpt;
+mod state_io;
 pub mod tool;
+pub use canvas::UnifiedCanvasContext;
+pub use persistence::{CompiledFormulaPayload, UnifiedFormulaSpec};
 pub use sculpt::UnifiedSimRunner;
 pub use tool::*;
 
@@ -13,14 +16,10 @@ use crate::async_sim::{
     CheckpointParams, RegimeCartographer, SculptStatePayload, SimCommand, StateSnapshot,
     TimeTravelCheckpoint,
 };
-use crate::framework::{
-    BrushStroke, CalloutManager, ChallengeEvaluation, SpatialBrushKit, MAX_SYNTHESIZED_PARAMS,
-};
+use crate::framework::{BrushStroke, CalloutManager, ChallengeEvaluation, SpatialBrushKit};
 use eframe::egui;
-use math_commons::ast::CompiledExpr;
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
-use std::ops::RangeInclusive;
 use std::sync::{Arc, RwLock};
 
 pub(crate) const SYNC_PARAMETERS_COMMAND: &str = "__sync_parameters__";
@@ -111,36 +110,6 @@ pub trait UnifiedUiExtension: Send {
     }
 }
 
-/// Specification for an opt-in custom formula input bar on a [`UnifiedModel`].
-#[derive(Clone, Debug)]
-pub struct UnifiedFormulaSpec {
-    /// Left-hand side equation label (e.g. `"V(x)"`).
-    pub lhs_label: &'static str,
-    /// Initial default expression string.
-    pub default_expr: &'static str,
-    /// Coordinate axis variable names bound to leading bytecode slots (e.g. `&["x"]`).
-    pub axes: &'static [&'static str],
-    /// Curated `(display_name, expression)` presets.
-    pub presets: &'static [(&'static str, &'static str)],
-    /// Slider range bounds for auto-synthesized free parameters.
-    pub param_range: RangeInclusive<f64>,
-    /// Default value assigned to newly discovered free parameters.
-    pub param_default: f64,
-}
-
-/// `Arc`-shared compiled formula payload streamed to [`UnifiedSimRunner`] without worker-side parsing.
-#[derive(Clone, Debug)]
-pub struct CompiledFormulaPayload {
-    /// Monotonic revision incremented on formula or parameter slider edits.
-    pub revision: u64,
-    /// Compiled postfix AST bytecode.
-    pub compiled: Arc<CompiledExpr>,
-    /// Stack-allocated parameter values aligned with `compiled`.
-    pub params: [f64; MAX_SYNTHESIZED_PARAMS],
-    /// Number of active parameter slots in `params`.
-    pub param_len: usize,
-}
-
 #[allow(missing_docs)]
 pub trait UnifiedModel:
     Send
@@ -223,6 +192,49 @@ pub trait UnifiedModel:
     fn parameters() -> HashMap<String, ParameterConstraint>
     where
         Self: Sized;
+
+    /// Return the default starting value for `name`.
+    fn default_parameter(name: &str, constraint: &ParameterConstraint) -> f64
+    where
+        Self: Sized,
+    {
+        Self::parameter_choices(name)
+            .first()
+            .map_or((constraint.min + constraint.max) / 2.0, |&(_, v)| v)
+    }
+
+    /// Return true when slider edits to `name` should dispatch `SimCommand::SetWavepacket`
+    /// without resetting sculpted custom series state.
+    fn is_wavepacket_parameter(_name: &str) -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+
+    /// Return true when clicking `action` should clear persisted `custom_series` entries.
+    fn clears_custom_series_on_action(_action: &str) -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+
+    /// Optional `(series_key, expected_len, min_val, max_val)` schemas for custom series state.
+    fn custom_series_schema() -> &'static [(&'static str, usize, f64, f64)]
+    where
+        Self: Sized,
+    {
+        &[]
+    }
+
+    /// Apply persisted custom series vectors (such as `"custom_potential"`) after `new` or `Reset`.
+    fn apply_custom_series(
+        &mut self,
+        _series: &HashMap<String, Vec<f64>>,
+        _params: &HashMap<String, f64>,
+    ) {
+    }
 
     /// Return a user-facing display label for a parameter key.
     fn parameter_label(name: &str) -> String
@@ -365,6 +377,17 @@ pub trait UnifiedModel:
         Self: Sized,
     {
         false
+    }
+
+    /// Interactive central-panel hook with controller, parameter, and custom series access.
+    fn custom_central_panel_interactive(
+        ui: &mut eframe::egui::Ui,
+        ctx: &mut UnifiedCanvasContext<'_>,
+    ) -> bool
+    where
+        Self: Sized,
+    {
+        Self::custom_central_panel(ui, ctx.snapshot())
     }
 
     /// Allow the model to draw custom visualization with [`SpatialBrushKit`] sampling,

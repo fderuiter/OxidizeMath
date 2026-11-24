@@ -39,6 +39,26 @@ pub enum SimCommand {
         #[allow(missing_docs)]
         is_obstacle: bool,
     },
+    /// Interpolates a 1D potential stroke across discrete grid indices `[i0, i1]`.
+    SculptStroke1D {
+        /// Starting grid index.
+        i0: usize,
+        /// Potential value at `i0`.
+        v0: f64,
+        /// Ending grid index.
+        i1: usize,
+        /// Potential value at `i1`.
+        v1: f64,
+    },
+    /// Re-initializes the Gaussian wavepacket emitter while preserving sculpted potentials.
+    SetWavepacket {
+        /// Packet center position $x_0$.
+        x0: f64,
+        /// Initial momentum wavenumber $k_0$.
+        k0: f64,
+        /// Spatial packet width $\sigma$.
+        sigma: f64,
+    },
     /// Applies an interpolated plot-space [`BrushStroke`] to the simulation field or obstacle mask.
     ApplyBrushStroke(BrushStroke),
     /// Synchronizes persisted [`SculptStatePayload`] state with the simulation worker model.
@@ -62,6 +82,8 @@ impl SimCommand {
             Self::SetSpeed(_) => "SetSpeed",
             Self::TrainEpisodes(_) => "TrainEpisodes",
             Self::ApplyBrush { .. } => "ApplyBrush",
+            Self::SculptStroke1D { .. } => "SculptStroke1D",
+            Self::SetWavepacket { .. } => "SetWavepacket",
             Self::ApplyBrushStroke(_) => "ApplyBrushStroke",
             Self::SyncSculptState(_) => "SyncSculptState",
             Self::ClearObstacles => "ClearObstacles",

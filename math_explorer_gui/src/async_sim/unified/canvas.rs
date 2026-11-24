@@ -2,12 +2,36 @@
 
 use super::{UnifiedModel, UnifiedSimTool};
 use crate::async_sim::ui::render_empty_plot_guidance;
-use crate::async_sim::SimCommand;
+use crate::async_sim::{SimCommand, SimulationController, StateSnapshot};
 use crate::framework::{
     BrushMode, InteractionContext, InteractiveTool, PlotBrushController, PlotBrushFrame,
 };
 use eframe::egui::{self, ColorImage, TextureOptions};
 use egui_plot::{HLine, Line, LineStyle, Plot, PlotImage, PlotPoint, PlotPoints, Points};
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+
+/// Interactive central-panel context granting `UnifiedModel` implementations access to the
+/// simulation worker controller, active snapshot, shared parameters, and custom series state.
+pub struct UnifiedCanvasContext<'a> {
+    /// Handle to the background simulation controller for dispatching commands.
+    pub controller: &'a mut SimulationController,
+    /// Optional deterministic export snapshot overriding live worker snapshots.
+    pub stepped_snapshot: Option<&'a StateSnapshot>,
+    /// Shared scalar simulation parameters synchronized with the worker.
+    pub params: &'a Arc<RwLock<HashMap<String, f64>>>,
+    /// Shared custom series vectors (such as `"custom_potential"`) synchronized with the worker.
+    pub custom_series: &'a Arc<RwLock<HashMap<String, Vec<f64>>>>,
+}
+
+impl UnifiedCanvasContext<'_> {
+    /// Returns the active frame snapshot, preferring any stepped export snapshot.
+    #[must_use]
+    pub fn snapshot(&self) -> Option<&StateSnapshot> {
+        self.stepped_snapshot
+            .or_else(|| self.controller.latest_snapshot())
+    }
+}
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
     fn dispatch_legacy_bresenham_frame(
@@ -201,23 +225,34 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     pub(super) fn draw_central_panel(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            let (handled, strokes) = M::custom_central_panel_with_brush(
-                ui,
-                self.controller.latest_snapshot(),
-                &mut self.brush_kit,
-            );
-            if handled {
-                if !strokes.is_empty() {
-                    let resp = ui.interact(
-                        ui.min_rect(),
-                        ui.id().with("unified_custom_brush"),
-                        egui::Sense::hover(),
-                    );
-                    for stroke in strokes {
-                        let ic = InteractionContext::from_brush_stroke(&resp, stroke);
-                        self.on_brush(&ic);
+            if M::supports_spatial_brush() {
+                let (handled, strokes) = M::custom_central_panel_with_brush(
+                    ui,
+                    self.controller.latest_snapshot(),
+                    &mut self.brush_kit,
+                );
+                if handled {
+                    if !strokes.is_empty() {
+                        let resp = ui.interact(
+                            ui.min_rect(),
+                            ui.id().with("unified_custom_brush"),
+                            egui::Sense::hover(),
+                        );
+                        for stroke in strokes {
+                            let ic = InteractionContext::from_brush_stroke(&resp, stroke);
+                            self.on_brush(&ic);
+                        }
                     }
+                    return;
                 }
+            }
+            let mut canvas_ctx = super::UnifiedCanvasContext {
+                controller: self.controller.controller_mut(),
+                stepped_snapshot: self.stepped_snapshot.as_ref(),
+                params: &self.params,
+                custom_series: &self.custom_series,
+            };
+            if M::custom_central_panel_interactive(ui, &mut canvas_ctx) {
                 return;
             }
             if !self.is_atlas_visible() {

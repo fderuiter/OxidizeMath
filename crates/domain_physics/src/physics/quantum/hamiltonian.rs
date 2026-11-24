@@ -1,7 +1,63 @@
+//! 1D finite-difference Hamiltonians, two-state subspace operators, Gaussian wavepackets,
+//! potential sculpting strokes, preset profiles, and Born region probability partitioning.
+
 use crate::physics::quantum::types::{QuantumOperator, QuantumState};
 use core::f64::consts::PI;
 use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
+
+/// Minimum clamped potential energy permitted when sculpting a 1D quantum potential.
+pub const MIN_SCULPT_POTENTIAL: f64 = -200.0;
+
+/// Maximum clamped potential energy permitted when sculpting a 1D quantum potential.
+pub const MAX_SCULPT_POTENTIAL: f64 = 200.0;
+
+/// Canonical 1D spatial potential presets for wavepacket scattering and confinement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PotentialPreset1D {
+    /// Zero interior potential ($V(x) = 0$) inside hard Dirichlet box boundaries.
+    #[default]
+    FreeParticle,
+    /// Quadratic harmonic confinement $V(x) = \frac{1}{2} x^2$.
+    HarmonicTrap,
+    /// Single centered rectangular tunneling barrier of height $V_0$ and width $w$.
+    FiniteSquareBarrier,
+    /// Symmetric double-barrier Fabry-Pérot resonant tunneling cavity.
+    DoubleBarrierResonant,
+    /// Smooth logistic potential step $V(x) = \frac{V_0}{1 + \exp(-x / s)}$.
+    AsymmetricStep,
+}
+
+impl PotentialPreset1D {
+    /// Maps a numeric UI parameter code (`0..=4`) to the corresponding [`PotentialPreset1D`].
+    #[inline]
+    #[must_use]
+    pub fn from_code(code: f64) -> Self {
+        if !code.is_finite() {
+            return Self::FreeParticle;
+        }
+        match code.round() as i32 {
+            1 => Self::HarmonicTrap,
+            2 => Self::FiniteSquareBarrier,
+            3 => Self::DoubleBarrierResonant,
+            4 => Self::AsymmetricStep,
+            _ => Self::FreeParticle,
+        }
+    }
+
+    /// Numeric UI parameter code (`0.0..=4.0`) corresponding to `self`.
+    #[inline]
+    #[must_use]
+    pub const fn code(self) -> f64 {
+        match self {
+            Self::FreeParticle => 0.0,
+            Self::HarmonicTrap => 1.0,
+            Self::FiniteSquareBarrier => 2.0,
+            Self::DoubleBarrierResonant => 3.0,
+            Self::AsymmetricStep => 4.0,
+        }
+    }
+}
 
 #[inline]
 #[verified_engine::verified]
@@ -159,6 +215,155 @@ pub fn gaussian_wavepacket(x_grid: &[f64], x0: f64, k0: f64, sigma: f64) -> Quan
     out
 }
 
+/// Applies a zero-allocation 1D discrete Bresenham linear interpolation stroke between
+/// `(i0, v0)` and `(i1, v1)` across `potential`, clamping all written values to
+/// `[MIN_SCULPT_POTENTIAL, MAX_SCULPT_POTENTIAL]`.
+///
+/// ```
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::physics::quantum::apply_bresenham_potential_stroke;
+///
+/// let mut v = [0.0_f64; 5];
+/// apply_bresenham_potential_stroke(&mut v, 0, 0.0, 4, 40.0);
+/// assert!((v[2] - 20.0).abs() < 1e-12);
+/// ```
+#[verified_engine::verified]
+pub fn apply_bresenham_potential_stroke(
+    potential: &mut [f64],
+    i0: usize,
+    v0: f64,
+    i1: usize,
+    v1: f64,
+) {
+    let len = potential.len();
+    if len == 0 || !v0.is_finite() || !v1.is_finite() {
+        return;
+    }
+    let last = len - 1;
+    let a = i0.min(last);
+    let b = i1.min(last);
+    let clamped_v0 = v0.clamp(MIN_SCULPT_POTENTIAL, MAX_SCULPT_POTENTIAL);
+    let clamped_v1 = v1.clamp(MIN_SCULPT_POTENTIAL, MAX_SCULPT_POTENTIAL);
+    if a == b {
+        potential[a] = clamped_v1;
+        return;
+    }
+    let (start_idx, start_v, end_idx, end_v) = if a <= b {
+        (a, clamped_v0, b, clamped_v1)
+    } else {
+        (b, clamped_v1, a, clamped_v0)
+    };
+    let span = (end_idx - start_idx) as f64;
+    for (step, slot) in potential[start_idx..=end_idx].iter_mut().enumerate() {
+        let t = (step as f64) / span;
+        let interp = start_v + t * (end_v - start_v);
+        *slot = interp.clamp(MIN_SCULPT_POTENTIAL, MAX_SCULPT_POTENTIAL);
+    }
+}
+
+/// Populates `out_potential` in-place with a canonical [`PotentialPreset1D`] profile over `x_grid`
+/// without heap allocations.
+///
+/// ```
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::physics::quantum::{PotentialPreset1D, build_1d_potential_preset};
+///
+/// let x = [-1.0, 0.0, 1.0];
+/// let mut v = [0.0; 3];
+/// build_1d_potential_preset(&x, PotentialPreset1D::FiniteSquareBarrier, 15.0, 0.5, &mut v);
+/// assert_eq!(v, [0.0, 15.0, 0.0]);
+/// ```
+#[verified_engine::verified]
+pub fn build_1d_potential_preset(
+    x_grid: &[f64],
+    preset: PotentialPreset1D,
+    barrier_height: f64,
+    barrier_width: f64,
+    out_potential: &mut [f64],
+) {
+    let n = x_grid.len().min(out_potential.len());
+    let v0 = if barrier_height.is_finite() {
+        barrier_height.clamp(MIN_SCULPT_POTENTIAL, MAX_SCULPT_POTENTIAL)
+    } else {
+        0.0
+    };
+    let width = if barrier_width.is_finite() {
+        barrier_width.clamp(0.05, 4.0)
+    } else {
+        0.4
+    };
+    let half_w = 0.5 * width;
+    for (&x, slot) in x_grid[..n].iter().zip(out_potential[..n].iter_mut()) {
+        let raw = match preset {
+            PotentialPreset1D::FreeParticle => 0.0,
+            PotentialPreset1D::HarmonicTrap => 0.5 * x * x,
+            PotentialPreset1D::FiniteSquareBarrier => {
+                if x.abs() <= half_w {
+                    v0
+                } else {
+                    0.0
+                }
+            }
+            PotentialPreset1D::DoubleBarrierResonant => {
+                let well_half = width;
+                let outer = well_half + width;
+                if x.abs() >= well_half && x.abs() <= outer {
+                    v0
+                } else {
+                    0.0
+                }
+            }
+            PotentialPreset1D::AsymmetricStep => {
+                let softness = (0.25 * width).max(0.05);
+                v0 / (1.0 + (-x / softness).exp())
+            }
+        };
+        *slot = raw.clamp(MIN_SCULPT_POTENTIAL, MAX_SCULPT_POTENTIAL);
+    }
+}
+
+/// Computes `(reflected_prob, transmitted_prob)` by partitioning $|\psi_i|^2$ across `split_index`
+/// with zero heap allocations.
+///
+/// Indices `0..split_index` accumulate into `reflected_prob`; indices `split_index..len`
+/// accumulate into `transmitted_prob`.
+///
+/// ```
+/// # use domain_physics::__doctest_facade as math_explorer;
+/// use math_explorer::nalgebra::DVector;
+/// use math_explorer::num_complex::Complex;
+/// use math_explorer::physics::quantum::{QuantumState, partition_region_probabilities};
+///
+/// let psi = QuantumState::new(DVector::from_vec(vec![
+///     Complex::new(0.6, 0.0),
+///     Complex::new(0.0, 0.8),
+/// ]));
+/// let (p_ref, p_trans) = partition_region_probabilities(&psi, 1);
+/// assert!((p_ref - 0.36).abs() < 1e-12);
+/// assert!((p_trans - 0.64).abs() < 1e-12);
+/// ```
+#[verified_engine::verified]
+#[must_use]
+pub fn partition_region_probabilities(state: &QuantumState, split_index: usize) -> (f64, f64) {
+    let amps = state.vector.as_slice();
+    let split = split_index.min(amps.len());
+    let mut reflected = 0.0;
+    for c in &amps[..split] {
+        let p = c.norm_sqr();
+        if p.is_finite() {
+            reflected += p;
+        }
+    }
+    let mut transmitted = 0.0;
+    for c in &amps[split..] {
+        let p = c.norm_sqr();
+        if p.is_finite() {
+            transmitted += p;
+        }
+    }
+    (reflected, transmitted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,5 +405,38 @@ mod tests {
         let x_grid: Vec<f64> = (0..100).map(|i| i as f64 * 0.1 - 5.0).collect();
         let psi = gaussian_wavepacket(&x_grid, 0.0, 1.0, 1.0);
         assert!((psi.norm() - 1.0).abs() < math_commons::registry::TOLERANCE_HIGH);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_bresenham_stroke_interpolates_reversed_and_clamps() {
+        let mut v = [0.0_f64; 9];
+        apply_bresenham_potential_stroke(&mut v, 6, 300.0, 2, -300.0);
+        assert!((v[2] - MIN_SCULPT_POTENTIAL).abs() < 1e-12);
+        assert!((v[4] - 0.0).abs() < 1e-12);
+        assert!((v[6] - MAX_SCULPT_POTENTIAL).abs() < 1e-12);
+        assert_eq!(v[0], 0.0);
+        assert_eq!(v[8], 0.0);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_presets_and_region_probability_conservation() {
+        let x_grid: Vec<f64> = (0..101).map(|i| -5.0 + i as f64 * 0.1).collect();
+        let mut pot = vec![0.0; x_grid.len()];
+        for code in 0..=4 {
+            let preset = PotentialPreset1D::from_code(code as f64);
+            assert_eq!(preset.code() as i32, code);
+            build_1d_potential_preset(&x_grid, preset, 18.0, 0.6, &mut pot);
+            assert!(
+                pot.iter()
+                    .all(|&val| (MIN_SCULPT_POTENTIAL..=MAX_SCULPT_POTENTIAL).contains(&val))
+            );
+        }
+
+        let psi = gaussian_wavepacket(&x_grid, -2.0, 5.0, 0.5);
+        let (p_ref, p_trans) = partition_region_probabilities(&psi, 50);
+        assert!((p_ref + p_trans - 1.0).abs() < 1e-12);
+        assert!(p_ref > 0.99);
     }
 }

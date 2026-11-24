@@ -10,6 +10,10 @@ use eframe::egui;
 use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints};
 
 use super::atlas::QuantumTunnelingCartographer;
+use super::canvas::{
+    attach_quantum_canvas_accessibility, draw_emitter_overlays, sample_emitter_drag,
+    ActiveEmitterDrag,
+};
 use super::presets::{
     wave_parameter_constraints, WavePotentialPreset, GRID_X_MAX, GRID_X_MIN, POTENTIAL_CLAMP_MAX,
     POTENTIAL_CLAMP_MIN, POTENTIAL_DISPLAY_SCALE,
@@ -107,24 +111,64 @@ fn build_wave_plot_series(wave_data: &WaveData) -> (Vec<[f64; 2]>, Vec<[f64; 2]>
     (psi_points, v_points, [x_start, x_end])
 }
 
+pub(super) struct WavePlotRenderArgs<'a> {
+    pub wave_data: &'a WaveData,
+    pub emitter: (f64, f64, f64),
+    pub emitter_drag: &'a mut ActiveEmitterDrag,
+    pub brush_kit: &'a mut SpatialBrushKit,
+    pub callouts: &'a mut CalloutManager,
+    pub locked: bool,
+}
+
+fn draw_wave_series_lines(
+    plot_ui: &mut egui_plot::PlotUi<'_>,
+    wave_data: &WaveData,
+    colors: (egui::Color32, egui::Color32, egui::Color32),
+) {
+    let (psi_points, v_points, [x_start, x_end]) = build_wave_plot_series(wave_data);
+    let e0_scaled = wave_data.kinetic_energy * POTENTIAL_DISPLAY_SCALE;
+    plot_ui.line(
+        Line::new("Probability |ψ(x, t)|²", PlotPoints::new(psi_points))
+            .color(colors.0)
+            .width(2.0_f32),
+    );
+    plot_ui.line(
+        Line::new("Potential V(x) (scaled)", PlotPoints::new(v_points))
+            .color(colors.1)
+            .width(1.75_f32),
+    );
+    plot_ui.line(
+        Line::new(
+            format!(
+                "Kinetic Energy E0 = {:.2} (scaled)",
+                wave_data.kinetic_energy
+            ),
+            PlotPoints::new(vec![[x_start, e0_scaled], [x_end, e0_scaled]]),
+        )
+        .style(LineStyle::Dashed { length: 6.0_f32 })
+        .color(colors.2),
+    );
+}
+
 pub(super) fn render_wave_plot(
     ui: &mut egui::Ui,
-    wave_data: &WaveData,
-    brush_kit: &mut SpatialBrushKit,
-    callouts: &mut CalloutManager,
-    locked: bool,
-) -> (egui::Response, Option<PlotBrushFrame>) {
+    args: WavePlotRenderArgs<'_>,
+) -> (
+    egui::Response,
+    Option<PlotBrushFrame>,
+    Option<(ActiveEmitterDrag, f64)>,
+) {
     let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-    let (psi_color, potential_color, energy_color) = (
+    let colors = (
         palette.series_color(0),
         palette.series_color(1),
         palette.series_color(2),
     );
-    draw_wave_plot_header(ui, wave_data, psi_color, potential_color, energy_color);
-    let (psi_points, v_points, [x_start, x_end]) = build_wave_plot_series(wave_data);
-    let e0_scaled = wave_data.kinetic_energy * POTENTIAL_DISPLAY_SCALE;
-    let allow_pan = locked || !brush_kit.is_sculpting();
+    draw_wave_plot_header(ui, args.wave_data, colors.0, colors.1, colors.2);
+    let allow_pan = args.locked || !args.brush_kit.is_sculpting();
     let mut brush_frame = None;
+    let mut emitter_drag_event = None;
+    let prev_cursor = args.brush_kit.cursor_pos;
     let (y_min, y_max) = (
         POTENTIAL_CLAMP_MIN * POTENTIAL_DISPLAY_SCALE,
         POTENTIAL_CLAMP_MAX * POTENTIAL_DISPLAY_SCALE,
@@ -138,40 +182,32 @@ pub(super) fn render_wave_plot(
         .allow_drag(allow_pan)
         .allow_zoom(allow_pan)
         .show(ui, |plot_ui| {
-            plot_ui.line(
-                Line::new("Probability |ψ(x, t)|²", PlotPoints::new(psi_points))
-                    .color(psi_color)
-                    .width(2.0_f32),
-            );
-            plot_ui.line(
-                Line::new("Potential V(x) (scaled)", PlotPoints::new(v_points))
-                    .color(potential_color)
-                    .width(1.75_f32),
-            );
-            plot_ui.line(
-                Line::new(
-                    format!(
-                        "Kinetic Energy E0 = {:.2} (scaled)",
-                        wave_data.kinetic_energy
-                    ),
-                    PlotPoints::new(vec![[x_start, e0_scaled], [x_end, e0_scaled]]),
-                )
-                .style(LineStyle::Dashed { length: 6.0_f32 })
-                .color(energy_color),
-            );
+            draw_wave_series_lines(plot_ui, args.wave_data, colors);
             let b = plot_ui.plot_bounds();
             if b.width() > 0.0 && b.height() > 0.0 {
-                callouts.render_on_plot(plot_ui);
+                args.callouts.render_on_plot(plot_ui);
             }
-            if !locked {
-                brush_frame = Some(PlotBrushController::capture_plot(
-                    brush_kit,
-                    plot_ui,
-                    [GRID_X_MIN, y_min],
-                    [GRID_X_MAX, y_max],
-                    Some(BrushMode::Erase),
-                ));
+            if !args.locked {
+                draw_emitter_overlays(plot_ui, args.emitter, &palette);
+                emitter_drag_event = sample_emitter_drag(plot_ui, args.emitter, args.emitter_drag);
+                if emitter_drag_event.is_none() {
+                    brush_frame = Some(PlotBrushController::capture_plot(
+                        args.brush_kit,
+                        plot_ui,
+                        [GRID_X_MIN, y_min],
+                        [GRID_X_MAX, y_max],
+                        Some(BrushMode::Erase),
+                    ));
+                }
             }
         });
-    (plot_resp.response, brush_frame)
+    let cursor_moved = prev_cursor != args.brush_kit.cursor_pos;
+    attach_quantum_canvas_accessibility(
+        ui,
+        &plot_resp.response,
+        args.wave_data,
+        args.brush_kit.cursor_pos,
+        cursor_moved,
+    );
+    (plot_resp.response, brush_frame, emitter_drag_event)
 }

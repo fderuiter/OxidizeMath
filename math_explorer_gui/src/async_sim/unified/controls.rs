@@ -1,6 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::persistence::build_formula_bar;
 use super::{UnifiedModel, UnifiedSimTool};
 use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::ui::{render_worker_fault_banner, WorkerFaultAction};
@@ -11,62 +10,11 @@ use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 
 impl<M: UnifiedModel> UnifiedSimTool<M> {
-    pub(super) fn handle_recovery_action(
-        &mut self,
-        action: crate::framework::recovery::RecoveryAction,
-        ctx: Option<&egui::Context>,
-    ) {
-        use crate::framework::recovery::RecoveryAction;
-        match action {
-            RecoveryAction::AutoScaleStepSize => {
-                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-                if let Some(dt) = p.get_mut("dt") {
-                    *dt = (*dt * 0.5).max(1e-4);
-                } else if let Some(visc) = p.get_mut("viscosity") {
-                    *visc = (*visc * 0.5).max(0.00333);
-                }
-                drop(p);
-                self.reset_simulation(ctx);
-            }
-            RecoveryAction::ClampParameters => {
-                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-                for (name, c) in &self.param_metadata {
-                    if let Some(v) = p.get_mut(name) {
-                        *v = if !v.is_finite() {
-                            M::parameter_choices(name)
-                                .first()
-                                .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice)
-                        } else {
-                            v.clamp(c.min, c.max)
-                        };
-                    }
-                }
-                drop(p);
-                self.reset_simulation(ctx);
-            }
-            RecoveryAction::ResetParameters => {
-                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-                for (name, c) in &self.param_metadata {
-                    let d = match name.as_str() {
-                        "viscosity" => 0.02,
-                        "dt" => 0.05,
-                        "potential_type" => 0.0,
-                        _ => M::parameter_choices(name)
-                            .first()
-                            .map_or((c.min + c.max) / 2.0, |&(_, choice)| choice),
-                    };
-                    p.insert(name.clone(), d);
-                }
-                drop(p);
-                if let Some(spec) = M::formula_spec() {
-                    self.custom_formula_enabled = false;
-                    self.formula_bar = Some(build_formula_bar(&spec));
-                    self.publish_formula_update();
-                }
-                self.reset_simulation(ctx);
-                let _ = self.controller.send_command(SimCommand::Start);
-            }
-        }
+    fn clear_custom_series(&self) {
+        self.custom_series
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
     }
 
     fn draw_status_and_transport(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
@@ -177,7 +125,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         let presets = M::presets();
         if !presets.is_empty() {
             let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Presets:");
                 for (name, preset_params) in presets {
                     if ui.button(name).clicked() {
@@ -189,32 +137,39 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 }
             });
             drop(params_lock);
+            if reset_needed {
+                self.clear_custom_series();
+            }
             ui.separator();
         }
 
         let custom_actions = M::custom_actions();
         if !custom_actions.is_empty() {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label("Actions:");
                 for action in custom_actions {
-                    if ui.button(action).clicked()
-                        && self
+                    if ui.button(action).clicked() {
+                        if M::clears_custom_series_on_action(action) {
+                            self.clear_custom_series();
+                        }
+                        if self
                             .controller
                             .send_command(SimCommand::Custom(action.to_string()))
                             .is_ok()
-                    {
-                        if action.contains("Clear") {
-                            self.sculpt_state
-                                .write()
-                                .unwrap_or_else(|e| e.into_inner())
-                                .clear();
+                        {
+                            if action.contains("Clear") {
+                                self.sculpt_state
+                                    .write()
+                                    .unwrap_or_else(|e| e.into_inner())
+                                    .clear();
+                            }
+                            if let Some(ext) = &mut self.ui_extension {
+                                ext.on_custom_action(action);
+                            }
+                            self.clear_stepped_state();
+                            self.dirty = true;
+                            ctx.request_repaint();
                         }
-                        if let Some(ext) = &mut self.ui_extension {
-                            ext.on_custom_action(action);
-                        }
-                        self.clear_stepped_state();
-                        self.dirty = true;
-                        ctx.request_repaint();
                     }
                 }
             });
@@ -238,11 +193,14 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             self.dispatch_extension_commands(ext_cmds, Some(ctx));
         }
 
-        let (param_reset, mut slider_changed) = self.draw_parameter_entries(ui);
-        reset_needed |= param_reset;
+        let edits = self.draw_parameter_entries(ui);
+        reset_needed |= edits.reset;
+        if edits.clear_series {
+            self.clear_custom_series();
+        }
         let (formula_reset, formula_changed) = self.draw_custom_formula_controls(ui, ctx);
         reset_needed |= formula_reset;
-        slider_changed |= formula_changed;
+        let slider_changed = edits.slider_changed || formula_changed;
         let sweep_active =
             crate::reflective_ui::slider::current_pass_active_sweep_count(ctx) > sweeps_before;
         self.draw_spatial_brush_section(ui, ctx);
@@ -252,15 +210,25 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.draw_observable_sensitivity(ui, defer_sensitivity);
         if reset_needed {
             self.reset_simulation(Some(ctx));
+        } else if let Some((x0, k0, sigma)) = edits.wavepacket {
+            self.clear_stepped_state();
+            if self
+                .controller
+                .send_command(SimCommand::SetWavepacket { x0, k0, sigma })
+                .is_ok()
+            {
+                self.dirty = true;
+                ctx.request_repaint();
+            }
         } else if slider_changed {
             self.clear_stepped_state();
             self.refresh_paused_simulation(Some(ctx));
         }
     }
 
-    fn draw_parameter_entries(&self, ui: &mut egui::Ui) -> (bool, bool) {
-        let mut reset_needed = false;
-        let mut slider_changed = false;
+    fn draw_parameter_entries(&self, ui: &mut egui::Ui) -> ParameterEdits {
+        let mut edits = ParameterEdits::default();
+        let mut wavepacket_changed = false;
         let mut params_lock = self.params.write().unwrap_or_else(|e| e.into_inner());
         for (name, constraint) in &self.param_metadata {
             let locked = self
@@ -274,14 +242,27 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 ui.add_enabled_ui(!locked, |ui| {
                     changed = Self::draw_single_parameter(ui, name, constraint, val, desc);
                 });
+                if !changed {
+                    continue;
+                }
                 if is_choice {
-                    reset_needed |= changed;
+                    edits.reset = true;
+                    edits.clear_series = true;
+                } else if M::is_wavepacket_parameter(name) {
+                    wavepacket_changed = true;
                 } else {
-                    slider_changed |= changed;
+                    edits.slider_changed = true;
                 }
             }
         }
-        (reset_needed, slider_changed)
+        if wavepacket_changed {
+            edits.wavepacket = Some((
+                params_lock.get("x0").copied().unwrap_or(-2.0),
+                params_lock.get("k0").copied().unwrap_or(5.0),
+                params_lock.get("sigma").copied().unwrap_or(0.5),
+            ));
+        }
+        edits
     }
 
     fn draw_custom_formula_controls(
@@ -300,6 +281,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .checkbox(&mut self.custom_formula_enabled, toggle_label)
             .changed()
         {
+            self.clear_custom_series();
             self.publish_formula_update();
             reset_needed = true;
         }
@@ -309,6 +291,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 formula_changed = bar.ui(ui);
             }
             if formula_changed {
+                self.clear_custom_series();
                 self.publish_formula_update();
                 self.dirty = true;
                 ctx.request_repaint();
@@ -482,4 +465,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
     }
+}
+
+#[derive(Default)]
+struct ParameterEdits {
+    reset: bool,
+    clear_series: bool,
+    slider_changed: bool,
+    wavepacket: Option<(f64, f64, f64)>,
 }

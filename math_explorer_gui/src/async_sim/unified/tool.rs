@@ -20,6 +20,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(crate) params: Arc<RwLock<HashMap<String, f64>>>,
     pub(crate) sculpt_state: Arc<RwLock<SculptStatePayload>>,
     pub(crate) brush_kit: SpatialBrushKit,
+    pub(crate) custom_series: Arc<RwLock<HashMap<String, Vec<f64>>>>,
     pub(crate) shared_formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
     pub(crate) formula_bar: Option<MathExpressionInputBar>,
     pub(crate) custom_formula_enabled: bool,
@@ -30,10 +31,10 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(super) dirty: bool,
     pub(crate) step_model: Option<M>,
     pub(super) stepped_snapshot: Option<StateSnapshot>,
-    cached_theory_desc: String,
-    cached_latex_eq: Option<String>,
-    cached_phonetic: String,
-    cached_citation: String,
+    pub(super) cached_theory_desc: String,
+    pub(super) cached_latex_eq: Option<String>,
+    pub(super) cached_phonetic: String,
+    pub(super) cached_citation: String,
     pub(super) cached_descs: HashMap<String, String>,
     pub(super) cached_param_labels: Vec<String>,
     pub(super) cached_observable_label: Option<&'static str>,
@@ -59,19 +60,19 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
 
         let mut initial_params = HashMap::new();
         for (name, constraint) in &param_metadata {
-            let default_val = M::parameter_choices(name)
-                .first()
-                .map_or((constraint.min + constraint.max) / 2.0, |&(_, v)| v);
+            let default_val = M::default_parameter(name, constraint);
             initial_params.insert(name.clone(), default_val);
         }
 
         let formula_bar = M::formula_spec().as_ref().map(build_formula_bar);
         let params = Arc::new(RwLock::new(initial_params.clone()));
         let sculpt_state = Arc::new(RwLock::new(SculptStatePayload::default()));
+        let custom_series = Arc::new(RwLock::new(HashMap::new()));
         let shared_formula = Arc::new(RwLock::new(None));
-        let runner = UnifiedSimRunner::<M>::with_shared(
+        let runner = UnifiedSimRunner::<M>::with_all_shared(
             Arc::clone(&params),
             Arc::clone(&sculpt_state),
+            Arc::clone(&custom_series),
             Arc::clone(&shared_formula),
         );
         let controller = BackgroundWorker::new(runner);
@@ -91,6 +92,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             params,
             sculpt_state,
             brush_kit,
+            custom_series,
             shared_formula,
             formula_bar,
             custom_formula_enabled: false,
@@ -174,9 +176,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
         let params = Arc::clone(&self.params);
         let sculpt = Arc::clone(&self.sculpt_state);
+        let custom_series = Arc::clone(&self.custom_series);
         let formula = Arc::clone(&self.shared_formula);
-        self.controller
-            .reset_or_respawn(|| UnifiedSimRunner::<M>::with_shared(params, sculpt, formula));
+        self.controller.reset_or_respawn(|| {
+            UnifiedSimRunner::<M>::with_all_shared(params, sculpt, custom_series, formula)
+        });
         self.dirty = true;
         if let Some(c) = ctx {
             c.request_repaint();
@@ -275,6 +279,7 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
             let custom_formula_enabled = self.custom_formula_enabled;
             let shared_formula = &self.shared_formula;
             let sculpt_state = &self.sculpt_state;
+            let custom_series = &self.custom_series;
             let model = self.step_model.get_or_insert_with(|| {
                 let mut m = M::new(&params);
                 if custom_formula_enabled {
@@ -288,6 +293,11 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
                     let sculpt = sculpt_state.read().unwrap_or_else(|e| e.into_inner());
                     if !sculpt.is_empty() {
                         m.apply_sculpt_payload(&sculpt, &params);
+                    }
+                }
+                if let Ok(series) = custom_series.read() {
+                    if !series.is_empty() {
+                        m.apply_custom_series(&series, &params);
                     }
                 }
                 m
@@ -310,46 +320,11 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn state_revision(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        for (key, _) in &self.param_metadata {
-            key.hash(&mut h);
-            if let Some(val) = params.get(key) {
-                val.to_bits().hash(&mut h);
-            }
-        }
-        sculpt.hash_into(&mut h);
-        if let Some(ext) = &self.ui_extension {
-            ext.state_revision_salt().hash(&mut h);
-        }
-        if let Some(atlas) = &self.atlas {
-            atlas.is_visible().hash(&mut h);
-            atlas.axis_keys().hash(&mut h);
-        }
-        self.custom_formula_enabled.hash(&mut h);
-        if let Some(ref bar) = self.formula_bar {
-            bar.raw_text.hash(&mut h);
-            for &pv in bar.param_slice() {
-                pv.to_bits().hash(&mut h);
-            }
-        }
-        h.finish().max(1)
+        self.compute_state_revision()
     }
 
     fn has_finite_parameters(&self) -> bool {
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let formula_ok = self
-            .formula_bar
-            .as_ref()
-            .is_none_or(|b| b.param_slice().iter().all(|v| v.is_finite()));
-        params.values().all(|v| v.is_finite())
-            && formula_ok
-            && !matches!(
-                self.controller.state(),
-                crate::async_sim::SimWorkerState::Faulted
-            )
+        self.check_finite_parameters()
     }
 
     fn save_state(&self) -> Option<String> {
@@ -433,26 +408,5 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         {
             ui.ctx().request_repaint();
         }
-    }
-}
-
-impl<M: UnifiedModel> scientific_metadata::theory::TheoryDescribable for UnifiedSimTool<M> {
-    fn theory_description(&self) -> String {
-        self.cached_theory_desc.clone()
-    }
-    fn theory_latex_equation(&self) -> Option<String> {
-        self.cached_latex_eq.clone()
-    }
-    fn phonetic_description(&self) -> String {
-        self.cached_phonetic.clone()
-    }
-    fn theory_citation(&self) -> String {
-        self.cached_citation.clone()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        self.cached_descs.clone()
-    }
-    fn theory_parameters(&self) -> HashMap<String, ParameterConstraint> {
-        self.param_metadata.iter().cloned().collect()
     }
 }

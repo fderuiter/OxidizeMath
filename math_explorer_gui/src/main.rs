@@ -35,6 +35,7 @@ mod markup_tests;
 mod modal_accessibility_tests;
 #[cfg(all(test, feature = "pure_math", feature = "applied"))]
 mod paradox_atlas_and_challenge_tests;
+/// Shared 3D viewport state, accessible camera gizmo, and sidecar projection helpers.
 pub mod plot3d_viewport;
 #[cfg(test)]
 mod plot_chrome_tests;

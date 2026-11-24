@@ -2,8 +2,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::base64url;
 use super::workspace_codec::{decode_workspace_share_param, ParsedShareLocation};
+pub(super) use super::ShareUrlParams;
+use super::{base64url, matches_tab_slug};
 use crate::framework::{ToolStateBounds, MAX_JSON_ARRAY_LEN, MAX_JSON_NESTING_DEPTH};
 
 /// Maximum UTF-8 byte length permitted for raw URL fragments or query strings (`8 KiB`).
@@ -27,25 +28,6 @@ pub const MAX_URL_ID_PARAM_BYTES: usize = 128;
 
 /// Maximum story step index permitted in `&step=<idx>` URL parameters.
 pub const MAX_URL_STORY_STEPS: usize = 64;
-
-/// Parsed simulation share-link parameters extracted from `location.hash` or `location.search`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ShareUrlParams {
-    /// Target domain tab slug or normalized tab identifier.
-    pub tab: String,
-    /// Optional target `InteractiveTool` identifier or display name.
-    pub tool: Option<String>,
-    /// Optional decoded and structurally validated `PresetWrapper` JSON string.
-    pub state_json: Option<String>,
-    /// Optional registered starter snapshot or guided story identifier (`&preset=<id>`).
-    pub preset: Option<String>,
-    /// Optional registered inverse or AST goal challenge identifier (`&challenge=<id>`).
-    pub challenge: Option<String>,
-    /// Optional 0-based guided story step index (`&step=<idx>`).
-    pub step: Option<usize>,
-    /// Optional validated multi-pane dataflow pipeline specification (`&pipe=<base64url>`).
-    pub pipeline: Option<super::pipeline::ValidatedPipelineUrl>,
-}
 
 pub(super) fn percent_encode_component(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
@@ -117,6 +99,46 @@ pub fn encode_share_fragment_with_hud(
     step_idx: Option<usize>,
     preset_json: Option<&str>,
 ) -> Result<String, String> {
+    encode_share_fragment_with_hud_inner(
+        tab_slug,
+        tool_id,
+        preset_id,
+        challenge_id,
+        step_idx,
+        preset_json,
+        true,
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn encode_share_fragment_with_hud_prevalidated(
+    tab_slug: &str,
+    tool_id: Option<&str>,
+    preset_id: Option<&str>,
+    challenge_id: Option<&str>,
+    step_idx: Option<usize>,
+    preset_json: Option<&str>,
+) -> Result<String, String> {
+    encode_share_fragment_with_hud_inner(
+        tab_slug,
+        tool_id,
+        preset_id,
+        challenge_id,
+        step_idx,
+        preset_json,
+        false,
+    )
+}
+
+fn encode_share_fragment_with_hud_inner(
+    tab_slug: &str,
+    tool_id: Option<&str>,
+    preset_id: Option<&str>,
+    challenge_id: Option<&str>,
+    step_idx: Option<usize>,
+    preset_json: Option<&str>,
+    validate_json: bool,
+) -> Result<String, String> {
     if tab_slug.trim().is_empty() {
         return Err("Cannot encode share URL with an empty tab slug".to_string());
     }
@@ -142,7 +164,9 @@ pub fn encode_share_fragment_with_hud(
         fragment.push_str(&percent_encode_component(cid.trim()));
     }
     if let Some(json) = preset_json {
-        validate_url_preset_json(json)?;
+        if validate_json {
+            validate_url_preset_json(json)?;
+        }
         let encoded_state = base64url::encode(json.as_bytes());
         fragment.push_str("&state=");
         fragment.push_str(&encoded_state);
@@ -451,34 +475,4 @@ fn build_validated_share_params(acc: RawParamAccum) -> Result<Option<ShareUrlPar
         step: step_val,
         pipeline,
     }))
-}
-
-fn normalize_slug_tokens(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
-    let mut prev_sep = true;
-    for ch in raw.chars() {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch.to_ascii_lowercase());
-            prev_sep = false;
-        } else if !prev_sep {
-            out.push('_');
-            prev_sep = true;
-        }
-    }
-    if out.ends_with('_') {
-        out.pop();
-    }
-    out
-}
-
-/// Returns true if `requested` matches a tab's canonical `url_slug` or display `tab_name`.
-#[must_use]
-pub fn matches_tab_slug(requested: &str, canonical_slug: &str, tab_name: &str) -> bool {
-    let req = normalize_slug_tokens(requested);
-    if req.is_empty() {
-        return false;
-    }
-    req == normalize_slug_tokens(canonical_slug)
-        || req == normalize_slug_tokens(tab_name)
-        || (canonical_slug == "morphogenesis" && req == "biology")
 }

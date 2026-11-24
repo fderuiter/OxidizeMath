@@ -134,19 +134,32 @@ impl SimulationFramework {
                 cleaned.len()
             ));
         }
-        let raw_config: &serde_json::value::RawValue = serde_json::from_str(cleaned)
+        let config_bounds = if allow_workspace_bounds {
+            crate::framework::ToolStateBounds::new(
+                cap,
+                crate::framework::MAX_JSON_NESTING_DEPTH.saturating_sub(1),
+                crate::framework::MAX_JSON_ARRAY_LEN,
+            )
+        } else {
+            crate::framework::ToolStateBounds::DEFAULT
+        };
+        crate::url_state::validate_json_streaming_with_bounds(cleaned, config_bounds)
             .map_err(|e| format!("Failed to serialize state for '{}': {e}", tool.name()))?;
-        let envelope_json = crate::presets::serialize_compact_preset_envelope(
+        let envelope_json = crate::presets::serialize_compact_raw_preset_envelope(
             tool.name(),
             tool.domain(),
-            raw_config,
+            cleaned,
         )?;
         if allow_workspace_bounds {
             crate::url_state::validate_workspace_url_preset_json(&envelope_json).map_err(|e| {
                 format!("{e}; export a .mws workspace session via File -> Save Workspace Session As... instead")
             })?;
-        } else {
-            crate::url_state::validate_url_preset_json(&envelope_json)?;
+        } else if envelope_json.len() > crate::url_state::MAX_DECODED_URL_STATE_BYTES {
+            return Err(format!(
+                "Decoded URL state ({} bytes) exceeds maximum allowed limit ({} bytes)",
+                envelope_json.len(),
+                crate::url_state::MAX_DECODED_URL_STATE_BYTES
+            ));
         }
         Ok(Some(envelope_json))
     }
@@ -238,7 +251,7 @@ impl SimulationFramework {
     #[cfg(test)]
     pub fn encode_share_fragment_for_tab(&self, tab_slug: &str) -> Result<String, String> {
         let params = self.export_share_url_params(tab_slug)?;
-        crate::url_state::encode_share_fragment_with_hud(
+        crate::url_state::encode_share_fragment_with_hud_prevalidated(
             &params.tab,
             params.tool.as_deref(),
             params.preset.as_deref(),

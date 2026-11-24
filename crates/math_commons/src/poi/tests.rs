@@ -1,5 +1,6 @@
 // [cite:math_commons]
 use super::*;
+use alloc::{vec, vec::Vec};
 
 #[test]
 #[verified_engine::verified]
@@ -11,11 +12,11 @@ fn test_hermite_threshold_crossing_sub_segment_accuracy() {
     let mut crossings = [0.0_f64; 8];
     let n = threshold_crossings_into(&paired, 0.5, &mut crossings);
     assert!(n >= 2);
-    let exact_first = std::f64::consts::FRAC_PI_6;
+    let exact_first = core::f64::consts::FRAC_PI_6;
     assert!((crossings[0] - exact_first).abs() < 5e-4);
 
     let closest = closest_threshold_crossing(&paired, 0.0, 3.0).expect("pi crossing");
-    assert!((closest - std::f64::consts::PI).abs() < 5e-4);
+    assert!((closest - core::f64::consts::PI).abs() < 5e-4);
 }
 
 #[test]
@@ -61,7 +62,7 @@ fn test_monotone_and_parametric_polyline_intersections() {
 
     let circle: Vec<[f64; 2]> = (0..=64)
         .map(|i| {
-            let theta = (i as f64 / 64.0) * std::f64::consts::TAU;
+            let theta = (i as f64 / 64.0) * core::f64::consts::TAU;
             [theta.cos(), theta.sin()]
         })
         .collect();
@@ -129,4 +130,48 @@ fn test_plateau_crossing_y_intercept_and_nan_break() {
     assert!(nan_scan.extrema.is_empty());
     assert_eq!(nan_scan.y_intercepts.len(), 1);
     assert!((nan_scan.y_intercepts[0] - 3.0).abs() < 1e-9);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_advance_plateau_run_across_series_impls_and_nan_x() {
+    use crate::series::PointSeries;
+
+    #[derive(Clone, Copy)]
+    struct CustomSample(f64, f64);
+    impl crate::series::Sample2D for CustomSample {
+        fn sample_x(&self) -> f64 {
+            self.0
+        }
+        fn sample_y(&self) -> f64 {
+            self.1
+        }
+    }
+
+    let arr = [[0.0, 2.0], [1.0, 2.0], [f64::NAN, 2.0], [3.0, 2.0]];
+    assert_eq!(arr.advance_plateau_run(0, 2.0, -10.0, 10.0), 2);
+    assert_eq!(arr.as_slice().advance_plateau_run(0, 2.0, -10.0, 10.0), 2);
+    assert_eq!(arr.as_slice().advance_plateau_run(99, 2.0, -10.0, 10.0), 4);
+
+    let tuples = vec![(0.0, 5.0), (1.0, 5.0), (2.0, 5.0), (3.0, 1.0)];
+    assert_eq!(tuples.advance_plateau_run(0, 5.0, 0.0, 1.5), 2);
+
+    let xs = vec![0.0, 1.0, 2.0, 3.0, 4.0];
+    let ys = vec![0.0, 7.0, 7.0, 7.0, 0.0];
+    let paired = (&xs, &ys);
+    assert_eq!(paired.advance_plateau_run(1, 7.0, -10.0, 10.0), 4);
+    let mut out = [LocalExtremum {
+        point: [0.0; 2],
+        is_max: false,
+    }; 4];
+    assert_eq!(detect_local_extrema_into(&paired, &mut out), 1);
+    assert!((out[0].point[0] - 2.0).abs() < 1e-12);
+
+    let custom = [
+        CustomSample(0.0, 1.0),
+        CustomSample(1.0, 4.0),
+        CustomSample(2.0, 4.0),
+        CustomSample(3.0, 1.0),
+    ];
+    assert_eq!(custom.advance_plateau_run(1, 4.0, -10.0, 10.0), 3);
 }

@@ -1,7 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::canvas::apply_emitter_drag;
 use super::persistence::truncate_utf8_bytes;
-use super::plot_ui::render_wave_plot;
+use super::plot_ui::{render_wave_plot, WavePlotRenderArgs};
 use super::presets::{
     wave_parameter_label, WavePotentialPreset, DT_MAX, DT_MIN, K0_MAX, K0_MIN,
     MAX_CUSTOM_EXPR_BYTES, MAX_STEPS_PER_FRAME, SIGMA_MAX, SIGMA_MIN, V0_MAX, V0_MIN, WIDTH_MAX,
@@ -325,24 +326,17 @@ impl WaveSimulatorTool {
             ),
         );
         ui.small(format!(
+            "Barrier-Peak Split: P_R = {:.1}% | P_T = {:.1}%",
+            wave_data.p_reflected * 100.0,
+            wave_data.p_transmitted * 100.0
+        ));
+        ui.small(format!(
             "Barrier Interior B(t): {:.1}% ([{:.2}, {:.2}])",
             wave_data.barrier_prob * 100.0,
             wave_data.x_left,
             wave_data.x_right
         ));
-        let scatter_text = match wave_data.latched_transmission {
-            Some(latched) if wave_data.quasi_bound_latched => {
-                format!(
-                    "{:.1}% ({latched:.4}, quasi-bound pre-wall)",
-                    latched * 100.0
-                )
-            }
-            Some(latched) if wave_data.wall_arrived => {
-                format!("{:.1}% ({latched:.4}, pre-wall frozen)", latched * 100.0)
-            }
-            Some(latched) => format!("{:.1}% ({latched:.4})", latched * 100.0),
-            None => "Pending transit...".to_string(),
-        };
+        let scatter_text = format_latched_scatter_text(wave_data);
         crate::reflective_ui::render_copyable_metric(ui, "Latched Scatter T", &scatter_text);
         ui.small(format!("Unitary Norm ||ψ||²: {:.6}", wave_data.norm_sq));
     }
@@ -362,15 +356,22 @@ impl WaveSimulatorTool {
                 return;
             };
             self.sync_wave_callouts(&wave_data);
-            let (plot_resp, frame) = render_wave_plot(
+            let emitter = (self.x0, self.k0, self.sigma);
+            let (plot_resp, frame, emitter_ev) = render_wave_plot(
                 ui,
-                &wave_data,
-                &mut self.brush_kit,
-                &mut self.callout_manager,
-                locked,
+                WavePlotRenderArgs {
+                    wave_data: &wave_data,
+                    emitter,
+                    emitter_drag: &mut self.emitter_drag,
+                    brush_kit: &mut self.brush_kit,
+                    callouts: &mut self.callout_manager,
+                    locked,
+                },
             );
             if !locked {
-                if let Some(brush_frame) = frame {
+                if let Some((drag, plot_x)) = emitter_ev {
+                    let _ = apply_emitter_drag(self, drag, plot_x, Some(ui.ctx()));
+                } else if let Some(brush_frame) = frame {
                     brush_frame.dispatch(ui, &plot_resp, self);
                 }
             }
@@ -404,4 +405,20 @@ fn draw_bounded_slider(
     let resp = ui.add(slider);
     let _ = resp.clone().accessible_hover_text(hover_desc);
     resp.changed() && (*value - prev).abs() > 1.0e-9
+}
+
+fn format_latched_scatter_text(wave_data: &WaveData) -> String {
+    match wave_data.latched_transmission {
+        Some(latched) if wave_data.quasi_bound_latched => {
+            format!(
+                "{:.1}% ({latched:.4}, quasi-bound pre-wall)",
+                latched * 100.0
+            )
+        }
+        Some(latched) if wave_data.wall_arrived => {
+            format!("{:.1}% ({latched:.4}, pre-wall frozen)", latched * 100.0)
+        }
+        Some(latched) => format!("{:.1}% ({latched:.4})", latched * 100.0),
+        None => "Pending transit...".to_string(),
+    }
 }

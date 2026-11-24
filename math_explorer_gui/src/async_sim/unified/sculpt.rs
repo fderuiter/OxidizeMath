@@ -1,14 +1,14 @@
-//! Compact UI-side sculpt state and JSON preset/URL persistence helpers for [`super::UnifiedSimTool`].
+//! Compact UI-side sculpt state and background worker runner for [`super::UnifiedSimTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{CompiledFormulaPayload, UnifiedModel, UnifiedSimTool};
+use super::{CompiledFormulaPayload, UnifiedModel};
 use crate::async_sim::{
     CheckpointParams, SculptStatePayload, SimCommand, SimulationRunner, StateSnapshot,
     TimeTravelCheckpoint,
 };
 use crate::framework::MAX_RLE_MASK_CELLS;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
 
@@ -61,137 +61,25 @@ pub(super) fn validate_sparse_potential_entries(
     Ok(())
 }
 
-impl<M: UnifiedModel> UnifiedSimTool<M> {
-    pub(super) fn serialize_unified_state(&self) -> Option<String> {
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
-
-        let mut map = serde_json::Map::new();
-        let sorted: BTreeMap<&String, &f64> = params.iter().collect();
-        for (k, v) in sorted {
-            if let Some(num) = serde_json::Number::from_f64(*v) {
-                map.insert(k.clone(), serde_json::Value::Number(num));
-            }
-        }
-
-        if !sculpt.rle_mask.is_empty() {
-            if let Ok(val) = serde_json::to_value(&sculpt.rle_mask) {
-                map.insert("rle_mask".to_string(), val);
-            }
-        }
-        if !sculpt.sparse_potential.is_empty() {
-            if let Ok(val) = serde_json::to_value(&sculpt.sparse_potential) {
-                map.insert("sparse_potential".to_string(), val);
-            }
-        }
-
-        serde_json::to_string(&map).ok()
-    }
-
-    fn parse_unified_state_entry(
-        &self,
-        key: String,
-        val: serde_json::Value,
-        parsed_params: &mut HashMap<String, f64>,
-        parsed_rle: &mut Vec<[u32; 2]>,
-        parsed_sparse: &mut Vec<(u16, f64)>,
-    ) -> Result<(), String> {
-        if key == "rle_mask" && M::supports_spatial_brush() && M::is_raster_model() {
-            *parsed_rle = serde_json::from_value(val)
-                .map_err(|e| format!("Invalid rle_mask in {}: {e}", M::name()))?;
-            validate_rle_mask_entries(parsed_rle)?;
-            return Ok(());
-        }
-        if key == "sparse_potential" && M::supports_spatial_brush() && !M::is_raster_model() {
-            *parsed_sparse = serde_json::from_value(val)
-                .map_err(|e| format!("Invalid sparse_potential in {}: {e}", M::name()))?;
-            validate_sparse_potential_entries(parsed_sparse, M::name())?;
-            return Ok(());
-        }
-        if !self.param_metadata.iter().any(|meta| meta.0 == key) {
-            return Err(format!("Unknown parameter '{}' for {}", key, M::name()));
-        }
-        let Some(number) = val.as_f64().filter(|n| n.is_finite()) else {
-            return Err(format!(
-                "Non-finite or non-numeric value for parameter '{}' in {}",
-                key,
-                M::name()
-            ));
-        };
-        parsed_params.insert(key, number);
-        Ok(())
-    }
-
-    pub(super) fn deserialize_unified_state(&mut self, state: &str) -> Result<(), String> {
-        let raw_map: serde_json::Map<String, serde_json::Value> = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid simulation parameter state for {}: {e}", M::name()))?;
-
-        let mut parsed_params: HashMap<String, f64> = HashMap::new();
-        let mut parsed_rle: Vec<[u32; 2]> = Vec::new();
-        let mut parsed_sparse: Vec<(u16, f64)> = Vec::new();
-
-        for (key, val) in raw_map {
-            self.parse_unified_state_entry(
-                key,
-                val,
-                &mut parsed_params,
-                &mut parsed_rle,
-                &mut parsed_sparse,
-            )?;
-        }
-
-        if !self.param_metadata.is_empty()
-            && parsed_params.is_empty()
-            && parsed_rle.is_empty()
-            && parsed_sparse.is_empty()
-        {
-            return Err(format!(
-                "Empty parameter configuration for {}; expected parameters: {}",
-                M::name(),
-                self.param_metadata
-                    .iter()
-                    .map(|m| m.0.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-
-        self.apply_parsed_atlas_state(None)?;
-        {
-            let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
-            for (key, value) in parsed_params {
-                guard.insert(key, value);
-            }
-        }
-        self.reset_formula_bar_to_default();
-        {
-            let mut s_guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
-            s_guard.rle_mask = parsed_rle;
-            s_guard.sparse_potential = parsed_sparse;
-        }
-        self.texture = None;
-        self.respawn_preserving_sculpt(None);
-        Ok(())
-    }
-}
-
 /// Background [`SimulationRunner`] adapter driving a [`UnifiedModel`] with shared parameters,
-/// formula revisions, persisted [`SculptStatePayload`] masks, and optional time-travel checkpoint hooks.
+/// formula revisions, persisted [`SculptStatePayload`] masks, custom 1D series, and optional time-travel checkpoint hooks.
 pub struct UnifiedSimRunner<M: UnifiedModel> {
     model: M,
     params: Arc<RwLock<HashMap<String, f64>>>,
     sculpt_state: Arc<RwLock<SculptStatePayload>>,
+    custom_series: Arc<RwLock<HashMap<String, Vec<f64>>>>,
     formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
     applied_formula_rev: Option<u64>,
     steps_per_frame: usize,
 }
 
 impl<M: UnifiedModel> UnifiedSimRunner<M> {
-    /// Creates a new [`UnifiedSimRunner`] initialized from `params` with empty sculpt and formula state.
+    /// Creates a runner sharing `params` with empty sculpt, series, and formula slots.
     pub fn new(params: Arc<RwLock<HashMap<String, f64>>>) -> Self {
-        Self::with_shared(
+        Self::with_all_shared(
             params,
             Arc::new(RwLock::new(SculptStatePayload::default())),
+            Arc::new(RwLock::new(HashMap::new())),
             Arc::new(RwLock::new(None)),
         )
     }
@@ -214,17 +102,34 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
         sculpt_state: Arc<RwLock<SculptStatePayload>>,
         formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
     ) -> Self {
+        Self::with_all_shared(
+            params,
+            sculpt_state,
+            Arc::new(RwLock::new(HashMap::new())),
+            formula,
+        )
+    }
+
+    /// Creates a runner sharing `params`, `sculpt_state`, `custom_series`, and `formula`.
+    pub fn with_all_shared(
+        params: Arc<RwLock<HashMap<String, f64>>>,
+        sculpt_state: Arc<RwLock<SculptStatePayload>>,
+        custom_series: Arc<RwLock<HashMap<String, Vec<f64>>>>,
+        formula: Arc<RwLock<Option<CompiledFormulaPayload>>>,
+    ) -> Self {
         let initial_params = params.read().unwrap_or_else(|e| e.into_inner()).clone();
         let mut runner = Self {
             model: M::new(&initial_params),
             params,
             sculpt_state,
+            custom_series,
             formula,
             applied_formula_rev: None,
             steps_per_frame: 5,
         };
         runner.sync_formula(&initial_params);
         runner.apply_sculpt_if_present(&initial_params);
+        runner.apply_series_if_present(&initial_params);
         runner
     }
 
@@ -237,9 +142,17 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
         }
     }
 
+    fn apply_series_if_present(&mut self, current_params: &HashMap<String, f64>) {
+        let series = self.custom_series.read().unwrap_or_else(|e| e.into_inner());
+        if !series.is_empty() {
+            self.model.apply_custom_series(&series, current_params);
+        }
+    }
+
     fn sync_formula_fields(
         model: &mut M,
         sculpt_state: &RwLock<SculptStatePayload>,
+        custom_series: &RwLock<HashMap<String, Vec<f64>>>,
         formula: &RwLock<Option<CompiledFormulaPayload>>,
         applied_formula_rev: &mut Option<u64>,
         current_params: &HashMap<String, f64>,
@@ -260,12 +173,17 @@ impl<M: UnifiedModel> UnifiedSimRunner<M> {
                 model.apply_sculpt_payload(&sculpt, current_params);
             }
         }
+        let series = custom_series.read().unwrap_or_else(|e| e.into_inner());
+        if !series.is_empty() {
+            model.apply_custom_series(&series, current_params);
+        }
     }
 
     fn sync_formula(&mut self, current_params: &HashMap<String, f64>) {
         Self::sync_formula_fields(
             &mut self.model,
             &self.sculpt_state,
+            &self.custom_series,
             &self.formula,
             &mut self.applied_formula_rev,
             current_params,
@@ -302,6 +220,7 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
                 self.model.reset_model(&current_params);
                 self.applied_formula_rev = None;
                 self.sync_formula(&current_params);
+                self.apply_series_if_present(&current_params);
                 if had_sculpt {
                     self.sync_sculpt_from_model(&current_params);
                 }
@@ -320,6 +239,7 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
                     .is_empty();
                 self.sync_formula(&current_params);
                 self.model.sync_parameters(&current_params);
+                self.apply_series_if_present(&current_params);
                 if had_sculpt {
                     self.sync_sculpt_from_model(&current_params);
                 }
@@ -337,6 +257,7 @@ impl<M: UnifiedModel> SimulationRunner for UnifiedSimRunner<M> {
         Self::sync_formula_fields(
             &mut self.model,
             &self.sculpt_state,
+            &self.custom_series,
             &self.formula,
             &mut self.applied_formula_rev,
             &guard,

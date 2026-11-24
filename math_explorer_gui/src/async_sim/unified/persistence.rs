@@ -1,29 +1,64 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::sculpt::{validate_rle_mask_entries, validate_sparse_potential_entries};
-use super::{CompiledFormulaPayload, UnifiedFormulaSpec, UnifiedModel, UnifiedSimTool};
-use crate::framework::{InteractiveTool, MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
-use std::collections::{BTreeMap, HashMap};
+use super::{UnifiedModel, UnifiedSimTool};
+use crate::async_sim::SimCommand;
+use crate::framework::{MathExpressionInputBar, MAX_SYNTHESIZED_PARAMS};
+use eframe::egui;
+use math_commons::ast::CompiledExpr;
+use std::collections::BTreeMap;
+use std::ops::RangeInclusive;
 use std::sync::Arc;
+
+/// Specification for an opt-in custom formula input bar on a [`UnifiedModel`].
+#[derive(Clone, Debug)]
+pub struct UnifiedFormulaSpec {
+    /// Left-hand side equation label (e.g. `"V(x)"`).
+    pub lhs_label: &'static str,
+    /// Initial default expression string.
+    pub default_expr: &'static str,
+    /// Coordinate axis variable names bound to leading bytecode slots (e.g. `&["x"]`).
+    pub axes: &'static [&'static str],
+    /// Curated `(display_name, expression)` presets.
+    pub presets: &'static [(&'static str, &'static str)],
+    /// Slider range bounds for auto-synthesized free parameters.
+    pub param_range: RangeInclusive<f64>,
+    /// Default value assigned to newly discovered free parameters.
+    pub param_default: f64,
+}
+
+/// `Arc`-shared compiled formula payload streamed to [`super::UnifiedSimRunner`] without worker-side parsing.
+#[derive(Clone, Debug)]
+pub struct CompiledFormulaPayload {
+    /// Monotonic revision incremented on formula or parameter slider edits.
+    pub revision: u64,
+    /// Compiled postfix AST bytecode.
+    pub compiled: Arc<CompiledExpr>,
+    /// Stack-allocated parameter values aligned with `compiled`.
+    pub params: [f64; MAX_SYNTHESIZED_PARAMS],
+    /// Number of active parameter slots in `params`.
+    pub param_len: usize,
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct UnifiedExtendedState {
-    params: BTreeMap<String, f64>,
+pub(super) struct UnifiedExtendedState {
+    pub(super) params: BTreeMap<String, f64>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    custom_formula_enabled: bool,
+    pub(super) custom_formula_enabled: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    custom_expr: Option<String>,
+    pub(super) custom_expr: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    custom_params: BTreeMap<String, f64>,
+    pub(super) custom_params: BTreeMap<String, f64>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(super) custom_series: BTreeMap<String, Vec<f64>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    rle_mask: Vec<[u32; 2]>,
+    pub(super) rle_mask: Vec<[u32; 2]>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    sparse_potential: Vec<(u16, f64)>,
+    pub(super) sparse_potential: Vec<(u16, f64)>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    atlas_visible: bool,
+    pub(super) atlas_visible: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    atlas_axes: Option<[String; 2]>,
+    pub(super) atlas_axes: Option<[String; 2]>,
 }
 
 pub(super) fn build_formula_bar(spec: &UnifiedFormulaSpec) -> MathExpressionInputBar {
@@ -70,166 +105,6 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .unwrap_or_else(|e| e.into_inner()) = payload;
     }
 
-    pub(super) fn serialize_tool_state(&self) -> Option<String> {
-        let params = self.params.read().unwrap_or_else(|e| e.into_inner());
-        if let Some(ext) = &self.ui_extension {
-            if let Some(custom) = ext.save_extra_state(&params) {
-                return Some(custom);
-            }
-        }
-        let formula_ext =
-            M::formula_spec()
-                .zip(self.formula_bar.as_ref())
-                .and_then(|(spec, bar)| {
-                    let active = self.custom_formula_enabled;
-                    let customized = bar.raw_text != spec.default_expr;
-                    (active || customized).then(|| {
-                        let cp = if active {
-                            bar.params_map()
-                        } else {
-                            BTreeMap::new()
-                        };
-                        (active, bar.raw_text.clone(), cp)
-                    })
-                });
-        let atlas_ext = self.atlas.as_ref().and_then(|atlas| {
-            (!atlas.has_default_persisted_state()).then(|| {
-                let (xk, yk) = atlas.axis_keys();
-                (atlas.is_visible(), [xk.to_string(), yk.to_string()])
-            })
-        });
-        if formula_ext.is_some() || atlas_ext.is_some() {
-            let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
-            let sorted_params = params.iter().map(|(k, &v)| (k.clone(), v)).collect();
-            let (custom_formula_enabled, custom_expr, custom_params) = match formula_ext {
-                Some((en, expr, cp)) => (en, Some(expr), cp),
-                None => (false, None, BTreeMap::new()),
-            };
-            let (atlas_visible, atlas_axes) = match atlas_ext {
-                Some((vis, axes)) => (vis, Some(axes)),
-                None => (false, None),
-            };
-            return serde_json::to_string(&UnifiedExtendedState {
-                params: sorted_params,
-                custom_formula_enabled,
-                custom_expr,
-                custom_params,
-                rle_mask: sculpt.rle_mask.clone(),
-                sparse_potential: sculpt.sparse_potential.clone(),
-                atlas_visible,
-                atlas_axes,
-            })
-            .ok();
-        }
-        drop(params);
-        self.serialize_unified_state()
-    }
-
-    fn try_load_extension_state(&mut self, state: &str) -> Option<Result<(), String>> {
-        let ext = self.ui_extension.as_mut()?;
-        let mut next_params = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
-        let res = ext.try_load_extra_state(state, &mut next_params)?;
-        Some(res.map(|cmds| {
-            *self.params.write().unwrap_or_else(|e| e.into_inner()) = next_params;
-            self.texture = None;
-            self.reset_simulation(None);
-            self.dispatch_extension_commands(cmds, None);
-        }))
-    }
-
-    pub(super) fn deserialize_tool_state(&mut self, state: &str) -> Result<(), String> {
-        self.state_bounds().validate_json(state)?;
-        if let Some(res) = self.try_load_extension_state(state) {
-            return res;
-        }
-        if let Ok(ext) = serde_json::from_str::<UnifiedExtendedState>(state) {
-            return self.apply_extended_state(ext);
-        }
-        self.deserialize_unified_state(state)
-    }
-
-    fn validate_sculpt_for_extended_state(
-        &self,
-        rle_mask: &[[u32; 2]],
-        sparse_potential: &[(u16, f64)],
-    ) -> Result<(), String> {
-        if !rle_mask.is_empty() {
-            if !(M::supports_spatial_brush() && M::is_raster_model()) {
-                return Err(format!("{} does not support rle_mask state", M::name()));
-            }
-            validate_rle_mask_entries(rle_mask)?;
-        }
-        if !sparse_potential.is_empty() {
-            if !(M::supports_spatial_brush() && !M::is_raster_model()) {
-                return Err(format!(
-                    "{} does not support sparse_potential state",
-                    M::name()
-                ));
-            }
-            validate_sparse_potential_entries(sparse_potential, M::name())?;
-        }
-        Ok(())
-    }
-
-    fn apply_extended_state(&mut self, ext: UnifiedExtendedState) -> Result<(), String> {
-        let map: HashMap<String, f64> = ext.params.into_iter().collect();
-        self.validate_param_map(&map)?;
-        let has_formula = ext.custom_formula_enabled
-            || ext.custom_expr.is_some()
-            || !ext.custom_params.is_empty();
-        if M::formula_spec().is_none() && has_formula {
-            return Err(format!(
-                "{} does not support custom formula state",
-                M::name()
-            ));
-        }
-        if ext.custom_params.values().any(|v| !v.is_finite()) {
-            return Err(format!(
-                "Non-finite custom formula parameter in {}",
-                M::name()
-            ));
-        }
-        if self.atlas.is_none() && (ext.atlas_visible || ext.atlas_axes.is_some()) {
-            return Err(format!(
-                "{} does not support 2D parameter atlas state",
-                M::name()
-            ));
-        }
-        self.validate_sculpt_for_extended_state(&ext.rle_mask, &ext.sparse_potential)?;
-        self.apply_parsed_atlas_state(Some((ext.atlas_visible, ext.atlas_axes)))?;
-        {
-            let mut guard = self.params.write().unwrap_or_else(|e| e.into_inner());
-            for (k, v) in map {
-                guard.insert(k, v);
-            }
-        }
-        if let Some(spec) = M::formula_spec() {
-            if let Some(expr) = ext.custom_expr {
-                let bar = self
-                    .formula_bar
-                    .get_or_insert_with(|| build_formula_bar(&spec));
-                bar.set_expression(&expr);
-                bar.set_params_map(&ext.custom_params);
-                self.custom_formula_enabled = ext.custom_formula_enabled;
-                self.publish_formula_update();
-            } else {
-                self.reset_formula_bar_to_default();
-            }
-        }
-        {
-            let mut s_guard = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
-            s_guard.rle_mask = ext.rle_mask;
-            s_guard.sparse_potential = ext.sparse_potential;
-        }
-        self.texture = None;
-        self.respawn_preserving_sculpt(None);
-        Ok(())
-    }
-
     pub(super) fn reset_formula_bar_to_default(&mut self) {
         self.custom_formula_enabled = false;
         if let (Some(spec), Some(bar)) = (M::formula_spec(), self.formula_bar.as_mut()) {
@@ -239,30 +114,88 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
     }
 
-    fn validate_param_map(&self, params: &HashMap<String, f64>) -> Result<(), String> {
-        if !self.param_metadata.is_empty() && params.is_empty() {
-            return Err(format!(
-                "Empty parameter configuration for {}; expected parameters: {}",
-                M::name(),
-                self.param_metadata
-                    .iter()
-                    .map(|m| m.0.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
-        }
-        for (key, value) in params {
-            if !self.param_metadata.iter().any(|meta| &meta.0 == key) {
-                return Err(format!("Unknown parameter '{}' for {}", key, M::name()));
+    fn clamp_custom_series(&self) {
+        let mut series = self
+            .custom_series
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
+        series.retain(|key, values| {
+            let Some(&(_, expected_len, min_val, max_val)) = M::custom_series_schema()
+                .iter()
+                .find(|(schema_key, _, _, _)| schema_key == key)
+            else {
+                return false;
+            };
+            if values.len() != expected_len {
+                return false;
             }
-            if !value.is_finite() {
-                return Err(format!(
-                    "Non-finite value for parameter '{}' in {}",
-                    key,
-                    M::name()
-                ));
+            for v in values.iter_mut() {
+                *v = if v.is_finite() {
+                    crate::url_state::quantize_url_centi(*v, min_val, max_val)
+                } else {
+                    0.0
+                };
+            }
+            true
+        });
+    }
+
+    pub(super) fn handle_recovery_action(
+        &mut self,
+        action: crate::framework::recovery::RecoveryAction,
+        ctx: Option<&egui::Context>,
+    ) {
+        use crate::framework::recovery::RecoveryAction;
+        match action {
+            RecoveryAction::AutoScaleStepSize => {
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+                if let Some(dt) = p.get_mut("dt") {
+                    *dt = (*dt * 0.5).max(1e-4);
+                } else if let Some(visc) = p.get_mut("viscosity") {
+                    *visc = (*visc * 0.5).max(0.00333);
+                }
+                drop(p);
+                self.reset_simulation(ctx);
+            }
+            RecoveryAction::ClampParameters => {
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+                for (name, c) in &self.param_metadata {
+                    if let Some(v) = p.get_mut(name) {
+                        *v = if !v.is_finite() {
+                            M::default_parameter(name, c)
+                        } else {
+                            v.clamp(c.min, c.max)
+                        };
+                    }
+                }
+                drop(p);
+                self.clamp_custom_series();
+                self.reset_simulation(ctx);
+            }
+            RecoveryAction::ResetParameters => {
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+                for (name, c) in &self.param_metadata {
+                    let d = match name.as_str() {
+                        "viscosity" => 0.02,
+                        "dt" => 0.05,
+                        "potential_type" => 0.0,
+                        _ => M::default_parameter(name, c),
+                    };
+                    p.insert(name.clone(), d);
+                }
+                drop(p);
+                self.custom_series
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clear();
+                if let Some(spec) = M::formula_spec() {
+                    self.custom_formula_enabled = false;
+                    self.formula_bar = Some(build_formula_bar(&spec));
+                    self.publish_formula_update();
+                }
+                self.reset_simulation(ctx);
+                let _ = self.controller.send_command(SimCommand::Start);
             }
         }
-        Ok(())
     }
 }
