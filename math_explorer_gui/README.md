@@ -44,6 +44,7 @@ classDiagram
 - **`ExplorerTab` & `SimulationFramework`**: Multi-domain plugin architecture combining static `inventory` `ExplorerTab` registration (`TabDescriptor`) with `SimulationFramework` tool catalogs (`InteractiveTool` and `TheoryDescribable`) across AI, Applied Math, Biology, Climate, Epidemiology, Physics, and Pure Math.
 - **`async_sim`**: Off-thread and Web Worker simulation runners preventing frame-budget stalls during heavy PDE, FFT, or Monte Carlo sweeps.
 - **`presets` & `url_state`**: Versioned JSON preset import/export and deterministic URL state encoding.
+- **Coupled Chaos Parameter Atlases (`src/tabs/chaos/`)**: Links 2D `ParameterAtlasController` regime cartography to live trajectories across `FractalViewer` (independent $c$-plane/$z$-plane viewports, live `160x120` hover Julia inset, `c_pinned` probing, and click/`Enter` progressive teleportation), `BifurcationDiagram` (`8ms` `BackgroundWorker` sweeps, `logistic_lyapunov` stability overlay, side-by-side cobweb and $x_n$ iterate inspectors), `AttractorPlotter` (2D $(\sigma, \rho)$ / $(\rho, \beta)$ Hopf & `lorenz_lyapunov` regime atlases and zero-allocation `correlation_dimension_in_place` readouts), and `HamiltonianChaosLab` (symplectic Poincaré surface-of-section lab and energy-drift comparator).
 
 ---
 
