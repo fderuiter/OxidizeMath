@@ -34,7 +34,7 @@ const INDEX_HTML_HEAD: &str = r#"<!DOCTYPE html>
   <div class="container">
     <header>
       <h1>OxidizeMath Academic Papers</h1>
-      <p class="subtitle">Permanent theoretical foundation and empirical verification publications (29 papers)</p>
+      <p class="subtitle">Permanent theoretical foundation and empirical verification publications (30 papers)</p>
       <div class="actions-bar">
 "#;
 

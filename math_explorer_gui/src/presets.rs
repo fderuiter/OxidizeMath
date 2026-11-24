@@ -119,7 +119,7 @@ pub fn deserialize_preset_envelope_bounded<T: for<'de> Deserialize<'de>>(
 #[derive(Default)]
 pub struct PresetDialogState {
     /// Pending channel receiver for imported file `(filename, json_content)`.
-    import_rx: Option<Receiver<Result<(String, String), String>>>,
+    pub(crate) import_rx: Option<Receiver<Result<(String, String), String>>>,
     /// Pending channel receiver for exported preset `filename`.
     export_rx: Option<Receiver<Result<String, String>>>,
     /// Inline toast error message to show user on file import/export failure.

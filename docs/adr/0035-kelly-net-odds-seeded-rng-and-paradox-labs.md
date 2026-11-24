@@ -12,7 +12,7 @@ Three mathematical and deterministic-simulation defects affected interactive sto
 ## Decision
 1. **Explicit `Odds::from_net_odds` Constructor**:
    - Add `Odds::from_net_odds(b: f64) -> Result<Odds, KellyError>` in [`crates/pure_math/src/pure_math/statistics/kelly/core.rs`](../../crates/pure_math/src/pure_math/statistics/kelly/core.rs), validating `b.is_finite() && b > 0.0` and delegating to `Odds::new(1.0 + b)`.
-   - Update [`BankrollGrowthTool`](../../math_explorer_gui/src/tabs/financial_math/bankroll_growth.rs) to construct `Odds::from_net_odds(self.odds)` and settle winning bets with `bet_amount * o.net_profit_multiplier()`.
+   - Update [`BankrollGrowthTool`](../../math_explorer_gui/src/tabs/financial_math/bankroll_growth/mod.rs) to construct `Odds::from_net_odds(self.odds)` and settle winning bets with `bet_amount * o.net_profit_multiplier()`.
 2. **Exact Logarithmic Domain Guard in `expected_growth_rate`**:
    - Update [`expected_growth_rate`](../../crates/pure_math/src/pure_math/statistics/kelly/criterion.rs) to return `f64::NEG_INFINITY` only when `f >= 1.0 || f < 0.0 || 1.0 + b * f <= 0.0`, enabling continuous volatility-drag evaluation across $f \in [0, 0.95]$ in [`bankroll_ensemble.rs`](../../math_explorer_gui/src/tabs/financial_math/bankroll_ensemble.rs).
 3. **Deterministic `BASE_SEED` and `OxidizeRng::from_seed` Streams**:
