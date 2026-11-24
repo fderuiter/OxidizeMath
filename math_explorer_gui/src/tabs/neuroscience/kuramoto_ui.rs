@@ -40,7 +40,12 @@ impl NeuralNetworkVizTool {
     /// Polls `PaneDataflowBus` and resizes neural/Kuramoto buffers only when `revision` advances.
     pub(super) fn poll_upstream_graph(&mut self, ctx: &egui::Context) {
         let Some(payload) = poll_pane_graph(ctx) else {
-            self.upstream_linked = false;
+            if self.upstream_linked {
+                self.upstream_linked = false;
+                self.last_upstream_graph_rev = 0;
+                self.restore_local_circuit();
+                self.bump_revision();
+            }
             return;
         };
         self.upstream_linked = true;
@@ -60,7 +65,6 @@ impl NeuralNetworkVizTool {
         if self.neurons.len() != n {
             self.neurons
                 .resize_with(n, || HodgkinHuxleyNeuron::new(-65.0));
-            self.scratch_inputs.resize(n, 0.0);
             self.external_input.resize(n, 0.0);
             if self.external_input.iter().all(|&v| v == 0.0) {
                 self.external_input[0] = 10.0;
@@ -76,6 +80,9 @@ impl NeuralNetworkVizTool {
             }
         }
         self.weights = next_weights;
+        self.rebuild_csr_from_dense();
+        self.synced_bus_revision = None;
+        self.clamped_source_nodes = None;
         let spread = self.kuramoto.frequency_spread();
         self.kuramoto
             .reconfigure_topology(n, &payload.edges, payload.directed, spread);

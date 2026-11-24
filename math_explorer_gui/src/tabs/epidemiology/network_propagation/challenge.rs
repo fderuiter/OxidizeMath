@@ -117,10 +117,16 @@ impl NetworkPropagationTool {
         seed: u64,
         vax_only: bool,
     ) {
-        let topology_changed = self.model.num_nodes() != nodes
+        let topology_changed = self.using_bus_topology
+            || self.synced_bus_revision.is_some()
+            || self.model.num_nodes() != nodes
             || (self.model.beta() - beta).abs() > 1.0e-12
             || (self.model.gamma() - gamma).abs() > 1.0e-12
             || self.seed != seed;
+        self.local_num_nodes = nodes;
+        self.using_bus_topology = false;
+        self.synced_bus_revision = None;
+        self.synced_ws_bus_revision = None;
         self.budget = CHALLENGE_EPI_BUDGET;
         if vax_only {
             self.quarantined_edges.clear();
@@ -150,6 +156,7 @@ impl NetworkPropagationTool {
             Some(CHALLENGE_EPI_HUB_VACCINATION) => {
                 self.using_bus_topology = false;
                 self.synced_bus_revision = None;
+                self.synced_ws_bus_revision = None;
                 self.upstream_linked = false;
                 self.last_upstream_graph_rev = 0;
                 self.active_challenge = Some(CHALLENGE_EPI_HUB_VACCINATION);
@@ -159,6 +166,7 @@ impl NetworkPropagationTool {
             Some(CHALLENGE_EPI_BRIDGE_QUARANTINE) => {
                 self.using_bus_topology = false;
                 self.synced_bus_revision = None;
+                self.synced_ws_bus_revision = None;
                 self.upstream_linked = false;
                 self.last_upstream_graph_rev = 0;
                 self.active_challenge = Some(CHALLENGE_EPI_BRIDGE_QUARANTINE);
@@ -214,6 +222,7 @@ fn generate_epi_baseline(nodes: usize, beta: f64, gamma: f64, seed: u64) -> Stri
         vaccinated_nodes: Vec::new(),
         quarantined_edges: Vec::new(),
         is_running: false,
+        topology_source: crate::app::TopologySource::default(),
     })
     .unwrap_or_default()
 }
@@ -294,6 +303,7 @@ fn clamp_epi_challenge_state(
         vaccinated_nodes,
         quarantined_edges,
         is_running,
+        topology_source: crate::app::TopologySource::default(),
     })
     .map_err(|e| e.to_string())?;
 

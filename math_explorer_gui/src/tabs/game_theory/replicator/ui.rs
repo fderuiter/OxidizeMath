@@ -31,7 +31,11 @@ impl ReplicatorDynamicsTool {
                     if self.symbolic_mode {
                         ui.label(format!("{:.2}", self.payoff_matrix[(i, j)]));
                     } else if ui
-                        .add(egui::DragValue::new(&mut self.payoff_matrix[(i, j)]).speed(0.1))
+                        .add(
+                            egui::DragValue::new(&mut self.payoff_matrix[(i, j)])
+                                .speed(0.1)
+                                .range(-1e4..=1e4),
+                        )
                         .changed()
                     {
                         self.recompute_trajectory_preserving_playback();
@@ -133,8 +137,27 @@ impl ReplicatorDynamicsTool {
         });
     }
 
+    fn render_topology_sync_header(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        if crate::app::render_topology_source_bar(
+            ui,
+            "replicator_dynamics",
+            &mut self.topology_source,
+            self.synced_bus_revision,
+            None,
+        ) {
+            self.sync_shared_topology(&ctx);
+        }
+        if let Some(k) = self.shared_mean_degree {
+            ui.small(format!(
+                "Ohtsuki-Nowak pair-approximation active (mean degree k = {k:.2})"
+            ));
+        }
+    }
+
     pub(super) fn show_settings_panel(&mut self, ui: &mut egui::Ui) {
         ui.heading("Settings");
+        self.render_topology_sync_header(ui);
         ui.separator();
         self.show_preset_buttons(ui);
 

@@ -327,13 +327,21 @@ impl GraphEditorTool {
     }
 
     pub(crate) fn insert_node_from_keyboard(&mut self, viewport: egui::Rect) {
+        let Some(next_id) = self
+            .next_node_id
+            .checked_add(1)
+            .filter(|_| self.next_node_id < u32::MAX as usize)
+        else {
+            announce_status("Cannot add node: node identifier limit reached");
+            return;
+        };
         let pos = self.resolve_insertion_position(viewport);
         self.push_undo_snapshot();
         let node_id = self.next_node_id;
         let node_index = self.graph.add_node(pos);
         self.node_indices.insert(node_id, node_index);
         self.node_positions.insert(node_id, pos);
-        self.next_node_id += 1;
+        self.next_node_id = next_id;
         self.selected_node = Some(node_id);
         announce_status(&format!(
             "Added node {node_id} at ({:.1}, {:.1})",

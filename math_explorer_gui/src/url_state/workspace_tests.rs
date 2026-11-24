@@ -48,6 +48,7 @@ fn assert_layout_ws_roundtrip(layout: ViewportLayout, count: usize, focused: usi
         link_axes: true,
         link_cursors: count == 4,
         sync_playback: count > 1,
+        link_topology: focused > 0,
     };
     let expected_bus_links: Vec<bool> = (0..if count > 1 { count } else { 0 })
         .map(|i| i % 2 == 0)

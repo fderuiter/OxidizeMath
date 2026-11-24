@@ -182,14 +182,61 @@ impl FiniteStateGuard for WaveRunner {
     }
 }
 
-impl WaveRunner {
-    /// Current latched pre-wall transmission readout $T_{\text{scatter}}$, if latched.
-    #[cfg(test)]
-    #[must_use]
-    pub fn latched_transmission(&self) -> Option<f64> {
-        self.latched_transmission
+impl SimulationRunner for WaveRunner {
+    fn process_command(&mut self, cmd: SimCommand) {
+        match cmd {
+            SimCommand::Reset => {
+                self.reset_parameters();
+                let cfg = self
+                    .config
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .clone();
+                self.init_from_config(&cfg);
+            }
+            SimCommand::SetSpeed(speed) => {
+                self.steps_per_frame = speed.max(1);
+            }
+            other => self.handle_sculpt_command(other),
+        }
     }
 
+    fn step(&mut self) {
+        let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
+        self.step_with_dt(dt);
+    }
+
+    fn get_snapshot(&self) -> StateSnapshot {
+        let sonification = if self.diverged {
+            crate::audio::SonificationFrame::silent()
+        } else {
+            self.sonification
+        };
+        let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
+        StateSnapshot {
+            width: 0,
+            height: 0,
+            pixels: Arc::new(RwLock::new(Vec::new())),
+            custom_data: Vec::new(),
+            structured_data: Some(structured_data),
+            sonification,
+        }
+    }
+
+    fn get_steps_per_frame(&self) -> usize {
+        self.steps_per_frame
+    }
+
+    fn is_finite_state(&self) -> bool {
+        FiniteStateGuard::is_finite_state(self)
+    }
+
+    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        self.diagnostic_report.clone()
+    }
+}
+
+impl WaveRunner {
     pub(crate) fn checked_dx(&self) -> Option<f64> {
         let span = self.x_max - self.x_min;
         if self.n_points < 2 || !span.is_finite() || span <= 0.0 {
@@ -436,59 +483,5 @@ impl WaveSimulatorTool {
         });
         ui.add(egui::Slider::new(&mut self.brush_kit.radius, 0.10..=1.20).text("Brush Width"));
         self.draw_sculpt_action_buttons(ui, ctx);
-    }
-}
-
-impl SimulationRunner for WaveRunner {
-    fn process_command(&mut self, cmd: SimCommand) {
-        match cmd {
-            SimCommand::Reset => {
-                self.reset_parameters();
-                let cfg = self
-                    .config
-                    .read()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .clone();
-                self.init_from_config(&cfg);
-            }
-            SimCommand::SetSpeed(speed) => {
-                self.steps_per_frame = speed.max(1);
-            }
-            other => self.handle_sculpt_command(other),
-        }
-    }
-
-    fn step(&mut self) {
-        let dt = self.config.read().map_or(DEFAULT_DT, |c| c.dt);
-        self.step_with_dt(dt);
-    }
-
-    fn get_snapshot(&self) -> StateSnapshot {
-        let sonification = if self.diverged {
-            crate::audio::SonificationFrame::silent()
-        } else {
-            self.sonification
-        };
-        let structured_data = Box::new(self.build_wave_data()) as Box<dyn Any + Send>;
-        StateSnapshot {
-            width: 0,
-            height: 0,
-            pixels: Arc::new(RwLock::new(Vec::new())),
-            custom_data: Vec::new(),
-            structured_data: Some(structured_data),
-            sonification,
-        }
-    }
-
-    fn get_steps_per_frame(&self) -> usize {
-        self.steps_per_frame
-    }
-
-    fn is_finite_state(&self) -> bool {
-        FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn diagnostic_report(&self) -> Option<DiagnosticReport> {
-        self.diagnostic_report.clone()
     }
 }

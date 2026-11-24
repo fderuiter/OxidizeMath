@@ -61,12 +61,25 @@ impl NetworkMetricsTool {
             .and_then(|s| s.latest().map(|pt| pt[1]));
     }
 
+    pub(super) fn render_ws_bus_badge(&self, ui: &mut eframe::egui::Ui) {
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        ui.label(
+            eframe::egui::RichText::new(format!(
+                "🔗 Linked Topology (rev {})",
+                self.synced_ws_bus_revision.unwrap_or(0)
+            ))
+            .small()
+            .color(palette.success),
+        );
+    }
+
     pub(crate) fn ingest_topology_channel(&mut self, channel: &GraphTopologyChannel) {
         let rev = channel.revision();
-        if rev == 0 || self.synced_bus_revision == Some(rev) {
+        if rev == 0 || self.synced_ws_bus_revision == Some(rev) {
             return;
         }
-        self.synced_bus_revision = Some(rev);
+        self.synced_ws_bus_revision = Some(rev);
+        self.synced_bus_revision = None;
         self.using_bus_topology = true;
         self.directed = false;
         self.is_custom_topology = false;
@@ -97,9 +110,49 @@ impl NetworkMetricsTool {
         self.latest_linked_coherence = None;
         if self.using_bus_topology {
             self.using_bus_topology = false;
-            self.synced_bus_revision = None;
+            self.synced_ws_bus_revision = None;
             self.build_sample_graph();
             self.bump_revision();
         }
+    }
+
+    pub(super) fn build_sample_graph(&mut self) {
+        self.graph = Graph::new();
+        self.node_indices.clear();
+        self.node_positions.clear();
+        self.edges.clear();
+        self.directed = false;
+        self.is_custom_topology = false;
+        let center = Pos2::new(300.0, 300.0);
+        let center_id = 0;
+        let center_idx = self.graph.add_node(center);
+        self.node_indices.insert(center_id, center_idx);
+        self.node_positions.insert(center_id, center);
+
+        let num_outer = 6;
+        let radius = 150.0;
+        for i in 0..num_outer {
+            let angle = 2.0 * std::f32::consts::PI * (i as f32) / (num_outer as f32);
+            let pos = Pos2::new(
+                center.x + radius * angle.cos(),
+                center.y + radius * angle.sin(),
+            );
+            let id = i + 1;
+            let idx = self.graph.add_node(pos);
+            self.node_indices.insert(id, idx);
+            self.node_positions.insert(id, pos);
+            self.edges.push((center_id, id, 1.0));
+            self.graph.add_edge(center_idx, idx, 1.0);
+            if i > 0 {
+                let prev_id = i;
+                self.edges.push((prev_id, id, 1.0));
+                let prev_idx = self.node_indices[&prev_id];
+                self.graph.add_edge(prev_idx, idx, 1.0);
+            }
+        }
+        self.edges.push((num_outer, 1, 1.0));
+        self.graph
+            .add_edge(self.node_indices[&num_outer], self.node_indices[&1], 1.0);
+        self.compute_metrics();
     }
 }

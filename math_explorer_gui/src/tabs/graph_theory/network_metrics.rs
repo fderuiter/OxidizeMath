@@ -3,6 +3,7 @@
 use super::shared_topology::CompactTopologyState;
 use crate::accessibility::AccessibleHoverText;
 use crate::app::workspace_bus::SharedWorkspaceBus;
+use crate::app::{render_topology_source_bar, TopologySource};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use eframe::egui::Pos2;
@@ -52,6 +53,8 @@ pub(crate) struct NetworkMetricsState {
     pub(crate) highlight_vertex_cover: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) custom_topology: Option<CompactTopologyState>,
+    #[serde(default, skip_serializing_if = "TopologySource::is_default")]
+    pub(crate) topology_source: TopologySource,
 }
 
 /// Interactive network centrality and parameterized complexity invariant analyzer.
@@ -64,6 +67,8 @@ pub struct NetworkMetricsTool {
     is_custom_topology: bool,
 
     selected_metric: MetricType,
+    pub topology_source: TopologySource,
+    synced_bus_revision: Option<u64>,
     highlight_vertex_cover: bool,
     metric_values: HashMap<usize, f64>,
     global_diameter: Option<usize>,
@@ -73,7 +78,7 @@ pub struct NetworkMetricsTool {
     vertex_cover_nodes: BTreeSet<usize>,
     tw_scratch: TreewidthScratch,
 
-    synced_bus_revision: Option<u64>,
+    synced_ws_bus_revision: Option<u64>,
     using_bus_topology: bool,
     latest_linked_coherence: Option<f64>,
     recompute_count: u64,
@@ -91,6 +96,8 @@ impl Default for NetworkMetricsTool {
             directed: false,
             is_custom_topology: false,
             selected_metric: MetricType::DegreeCentrality,
+            topology_source: TopologySource::SharedBus,
+            synced_bus_revision: None,
             highlight_vertex_cover: true,
             metric_values: HashMap::new(),
             global_diameter: None,
@@ -99,7 +106,7 @@ impl Default for NetworkMetricsTool {
             global_treewidth: 0,
             vertex_cover_nodes: BTreeSet::new(),
             tw_scratch: TreewidthScratch::with_capacity(32),
-            synced_bus_revision: None,
+            synced_ws_bus_revision: None,
             using_bus_topology: false,
             latest_linked_coherence: None,
             recompute_count: 0,
@@ -114,47 +121,6 @@ impl Default for NetworkMetricsTool {
 impl NetworkMetricsTool {
     pub(crate) fn bump_revision(&mut self) {
         self.revision = self.revision.wrapping_add(1).max(1);
-    }
-
-    fn build_sample_graph(&mut self) {
-        self.graph = Graph::new();
-        self.node_indices.clear();
-        self.node_positions.clear();
-        self.edges.clear();
-        self.directed = false;
-        self.is_custom_topology = false;
-
-        let center = Pos2::new(300.0, 300.0);
-        let center_id = 0;
-        let center_idx = self.graph.add_node(center);
-        self.node_indices.insert(center_id, center_idx);
-        self.node_positions.insert(center_id, center);
-
-        let num_outer = 6;
-        let radius = 150.0;
-        for i in 0..num_outer {
-            let angle = 2.0 * std::f32::consts::PI * (i as f32) / (num_outer as f32);
-            let pos = Pos2::new(
-                center.x + radius * angle.cos(),
-                center.y + radius * angle.sin(),
-            );
-            let id = i + 1;
-            let idx = self.graph.add_node(pos);
-            self.node_indices.insert(id, idx);
-            self.node_positions.insert(id, pos);
-            self.edges.push((center_id, id, 1.0));
-            self.graph.add_edge(center_idx, idx, 1.0);
-            if i > 0 {
-                let prev_id = i;
-                self.edges.push((prev_id, id, 1.0));
-                let prev_idx = self.node_indices[&prev_id];
-                self.graph.add_edge(prev_idx, idx, 1.0);
-            }
-        }
-        self.edges.push((num_outer, 1, 1.0));
-        self.graph
-            .add_edge(self.node_indices[&num_outer], self.node_indices[&1], 1.0);
-        self.compute_metrics();
     }
 
     pub(crate) fn compute_metrics(&mut self) {
@@ -230,19 +196,21 @@ impl NetworkMetricsTool {
     }
 
     fn render_side_panel(&mut self, parent_ui: &mut egui::Ui) {
+        let ctx = parent_ui.ctx().clone();
         let panel_id = crate::framework::scoped_panel_id(parent_ui, "network_metrics_controls");
         crate::framework::PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
             ui.heading("Network Metrics");
             if self.using_bus_topology {
-                let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-                ui.label(
-                    egui::RichText::new(format!(
-                        "🔗 Linked Topology (rev {})",
-                        self.synced_bus_revision.unwrap_or(0)
-                    ))
-                    .small()
-                    .color(palette.success),
-                );
+                self.render_ws_bus_badge(ui);
+            } else if render_topology_source_bar(
+                ui,
+                "network_metrics",
+                &mut self.topology_source,
+                self.synced_bus_revision,
+                None,
+            ) {
+                self.bump_revision();
+                self.sync_shared_topology(&ctx);
             }
             ui.separator();
             self.render_metric_selector(ui);
@@ -407,6 +375,18 @@ impl InteractiveTool for NetworkMetricsTool {
     fn domain(&self) -> &'static str {
         "graph_theory"
     }
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        vec![
+            ("node_count", self.node_positions.len() as f64),
+            ("edge_count", self.edges.len() as f64),
+            (
+                "synced_bus_revision",
+                self.synced_bus_revision
+                    .or(self.synced_ws_bus_revision)
+                    .unwrap_or(0) as f64,
+            ),
+        ]
+    }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::plot()
     }
@@ -430,12 +410,14 @@ impl InteractiveTool for NetworkMetricsTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let custom_topology = (self.is_custom_topology && !self.using_bus_topology)
+        let on_bus = self.using_bus_topology || self.synced_bus_revision.is_some();
+        let custom_topology = (!on_bus && self.is_custom_topology)
             .then(|| self.export_shared_topology().to_compact_state());
         serde_json::to_string(&NetworkMetricsState {
             selected_metric: self.selected_metric,
             highlight_vertex_cover: self.highlight_vertex_cover,
             custom_topology,
+            topology_source: self.topology_source,
         })
         .ok()
     }
@@ -445,12 +427,20 @@ impl InteractiveTool for NetworkMetricsTool {
             .map_err(|e| format!("Invalid NetworkMetrics state: {e}"))?;
         if let Some(compact) = &loaded.custom_topology {
             compact.validate()?;
+            self.synced_bus_revision = None;
+            self.synced_ws_bus_revision = None;
             self.load_compact_topology(compact);
-        } else if self.is_custom_topology {
+        } else if self.is_custom_topology
+            || self.using_bus_topology
+            || self.synced_bus_revision.take().is_some()
+        {
+            self.using_bus_topology = false;
+            self.synced_ws_bus_revision = None;
             self.build_sample_graph();
         }
         self.selected_metric = loaded.selected_metric;
         self.highlight_vertex_cover = loaded.highlight_vertex_cover;
+        self.topology_source = loaded.topology_source;
         self.bump_revision();
         self.compute_metrics();
         Ok(())
@@ -463,6 +453,10 @@ impl InteractiveTool for NetworkMetricsTool {
         .is_none()
         {
             self.on_bus_unlinked();
+        }
+        if !self.using_bus_topology {
+            let ctx = parent_ui.ctx().clone();
+            self.sync_shared_topology(&ctx);
         }
         self.render_side_panel(parent_ui);
         self.render_canvas(parent_ui);

@@ -30,7 +30,14 @@ impl NetworkPropagationTool {
             return;
         }
         let Some(payload) = poll_pane_graph(ctx) else {
-            self.upstream_linked = false;
+            if self.upstream_linked {
+                self.upstream_linked = false;
+                self.last_upstream_graph_rev = 0;
+                let _ = self.model.set_num_nodes(self.local_num_nodes);
+                self.vaccinated_nodes.clear();
+                self.quarantined_edges.clear();
+                self.rebuild_seeded_graph();
+            }
             return;
         };
         self.upstream_linked = true;
@@ -155,6 +162,9 @@ impl NetworkPropagationTool {
         self.model = next_model;
         self.enforce_budget_cap();
         self.clamp_focus_indices();
+        self.using_bus_topology = false;
+        self.synced_bus_revision = None;
+        self.synced_ws_bus_revision = None;
         self.last_upstream_graph_rev = revision;
         self.bump_revision();
     }
@@ -172,10 +182,5 @@ impl NetworkPropagationTool {
     #[cfg(test)]
     pub(crate) fn current_effective_r0(&self) -> f64 {
         super::compute_network_analytics(&self.model).effective_r0
-    }
-
-    #[cfg(test)]
-    pub(crate) fn active_node_count(&self) -> usize {
-        self.model.num_nodes()
     }
 }

@@ -40,10 +40,10 @@ impl NetworkPropagationTool {
             return;
         }
         let rev = channel.revision();
-        if rev == 0 || self.synced_bus_revision == Some(rev) {
+        if rev == 0 || self.synced_ws_bus_revision == Some(rev) {
             return;
         }
-        self.synced_bus_revision = Some(rev);
+        self.synced_ws_bus_revision = Some(rev);
         if channel.positions().is_empty() {
             return;
         }
@@ -80,6 +80,7 @@ impl NetworkPropagationTool {
             self.reconcile_bus_interventions(&mut built);
             self.model = built;
             self.using_bus_topology = true;
+            self.synced_bus_revision = None;
             self.clamp_focus_indices();
             self.bump_revision();
         }
@@ -159,10 +160,10 @@ impl NetworkPropagationTool {
     pub(super) fn on_bus_unlinked(&mut self) {
         if self.using_bus_topology {
             self.using_bus_topology = false;
-            self.synced_bus_revision = None;
+            self.synced_ws_bus_revision = None;
             self.vaccinated_nodes.clear();
             self.quarantined_edges.clear();
-            let _ = self.model.set_num_nodes(self.standalone_num_nodes);
+            let _ = self.model.set_num_nodes(self.local_num_nodes);
             if self.seed == 0 {
                 self.seed = DEFAULT_NETWORK_SEED;
             }

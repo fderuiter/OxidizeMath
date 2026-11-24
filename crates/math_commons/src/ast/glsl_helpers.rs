@@ -1,6 +1,8 @@
 //! IEEE-safe GLSL ES 3.00 helper preambles for scalar (`float`) and complex (`vec2`) AST evaluation.
 // [cite:math_commons]
 
+use super::expr::Func;
+
 /// Standalone GLSL ES 3.00 helper functions guarding scalar `float` division, exponentiation,
 /// logarithms (`ln`, `log10`), square roots, hyperbolic functions, and inverse trig domains.
 pub const GLSL_SCALAR_HELPERS: &str = r#"float glsl_div(float a, float b) {
@@ -279,4 +281,49 @@ pub(super) fn is_valid_glsl_ident(name: &str) -> bool {
         return false;
     }
     GLSL_KEYWORDS.binary_search(&name).is_err()
+}
+
+pub(super) const fn glsl_func_prefix(func: Func, complex: bool) -> &'static str {
+    match (complex, func) {
+        (false, Func::Sin) => "sin(",
+        (false, Func::Cos) => "cos(",
+        (false, Func::Tan) => "tan(",
+        (false, Func::Exp) => "glsl_exp(",
+        (false, Func::Ln) => "glsl_ln(",
+        (false, Func::Log10) => "glsl_log10(",
+        (false, Func::Sqrt) => "glsl_sqrt(",
+        (false, Func::Abs) => "abs(",
+        (false, Func::Sinh) => "glsl_sinh(",
+        (false, Func::Cosh) => "glsl_cosh(",
+        (false, Func::Tanh) => "tanh(",
+        (false, Func::Asin) => "glsl_asin(",
+        (false, Func::Acos) => "glsl_acos(",
+        (false, Func::Atan) => "atan(",
+        (false, Func::Min) => "min(",
+        (false, Func::Max) => "max(",
+        (false, Func::Clamp) => "glsl_clamp(",
+        (false, Func::Step) => "glsl_step(",
+        (false, Func::Rect) => "glsl_rect(",
+        (false, Func::Atan2) => "glsl_atan2(",
+        (true, Func::Sin) => "csin(",
+        (true, Func::Cos) => "ccos(",
+        (true, Func::Tan) => "ctan(",
+        (true, Func::Exp) => "cexp(",
+        (true, Func::Ln) => "cln(",
+        (true, Func::Log10) => "clog10(",
+        (true, Func::Sqrt) => "csqrt(",
+        (true, Func::Abs) => "cabs(",
+        (true, Func::Sinh) => "csinh(",
+        (true, Func::Cosh) => "ccosh(",
+        (true, Func::Tanh) => "ctanh(",
+        (true, Func::Asin) => "casin(",
+        (true, Func::Acos) => "cacos(",
+        (true, Func::Atan) => "catan(",
+        (true, Func::Min) => "cmin(",
+        (true, Func::Max) => "cmax(",
+        (true, Func::Clamp) => "cclamp(",
+        (true, Func::Step) => "cstep(",
+        (true, Func::Rect) => "crect(",
+        (true, Func::Atan2) => "catan2(",
+    }
 }

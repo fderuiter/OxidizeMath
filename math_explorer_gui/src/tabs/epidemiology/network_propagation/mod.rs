@@ -9,12 +9,15 @@ mod dataflow;
 mod presets;
 #[cfg(test)]
 mod tests;
+mod topology_sync;
 
 #[cfg(test)]
 pub(crate) use analytics::compute_network_analytics;
 use presets::build_validated_candidate;
 pub(crate) use presets::NetPropState;
 
+use crate::app::dataflow_bus::MAX_DATAFLOW_GRAPH_NODES;
+use crate::app::{TopologySource, MAX_SHARED_GRAPH_NODES};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
@@ -41,6 +44,9 @@ pub enum ContainmentMode {
 /// Interactive stochastic network contagion and budgeted containment explorer.
 pub struct NetworkPropagationTool {
     pub(super) model: NetworkEpidemicModel,
+    pub(super) local_num_nodes: usize,
+    pub topology_source: TopologySource,
+    pub(super) synced_bus_revision: Option<u64>,
     pub(super) rng: oxidize_core::rng::OxidizeRng,
     pub(super) baseline_model: NetworkEpidemicModel,
     pub(super) baseline_rng: oxidize_core::rng::OxidizeRng,
@@ -53,8 +59,7 @@ pub struct NetworkPropagationTool {
     pub(super) focused_edge: usize,
     #[cfg(test)]
     pub(super) canvas_id: Option<egui::Id>,
-    pub(super) standalone_num_nodes: usize,
-    pub(super) synced_bus_revision: Option<u64>,
+    pub(super) synced_ws_bus_revision: Option<u64>,
     pub(super) using_bus_topology: bool,
     pub(super) is_running: bool,
     pub(super) active_challenge: Option<&'static str>,
@@ -73,6 +78,9 @@ impl Default for NetworkPropagationTool {
         let baseline_model = NetworkEpidemicModel::new_with_rng(50, 0.05, 0.02, &mut baseline_rng);
         Self {
             model,
+            local_num_nodes: 50,
+            topology_source: TopologySource::SharedBus,
+            synced_bus_revision: None,
             rng,
             baseline_model,
             baseline_rng,
@@ -85,8 +93,7 @@ impl Default for NetworkPropagationTool {
             focused_edge: 0,
             #[cfg(test)]
             canvas_id: None,
-            standalone_num_nodes: 50,
-            synced_bus_revision: None,
+            synced_ws_bus_revision: None,
             using_bus_topology: false,
             is_running: false,
             active_challenge: None,
@@ -128,6 +135,7 @@ impl NetworkPropagationTool {
     }
 
     pub(super) fn rebuild_seeded_graph(&mut self) {
+        self.synced_bus_revision = None;
         self.rng = oxidize_core::rng::OxidizeRng::new(self.seed);
         self.model
             .initialize_geometric_graph_with_rng(&mut self.rng);
@@ -284,18 +292,25 @@ impl InteractiveTool for NetworkPropagationTool {
     fn sync_workspace_bus(&mut self, bus: &mut crate::app::workspace_bus::SharedWorkspaceBus) {
         self.ingest_topology_channel(&bus.topology);
     }
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        self.topology_observables()
+    }
     fn has_finite_parameters(&self) -> bool {
-        let external_topo = self.using_bus_topology || self.last_upstream_graph_rev != 0;
-        let node_bounds = if external_topo { 1..=256 } else { 10..=200 };
+        let on_external = self.using_bus_topology
+            || self.last_upstream_graph_rev != 0
+            || self.synced_bus_revision.is_some();
+        let min_nodes = if on_external { 1 } else { 10 };
+        let max_nodes = MAX_SHARED_GRAPH_NODES.max(MAX_DATAFLOW_GRAPH_NODES);
         self.model.beta().is_finite()
             && self.model.gamma().is_finite()
-            && (10..=200).contains(&self.standalone_num_nodes)
-            && node_bounds.contains(&self.model.num_nodes())
+            && (min_nodes..=max_nodes).contains(&self.model.num_nodes())
+            && (10..=200).contains(&self.local_num_nodes)
     }
     fn state_revision(&self) -> u64 {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.revision.hash(&mut h);
-        self.model.num_nodes().hash(&mut h);
+        self.local_num_nodes.hash(&mut h);
+        self.topology_source.hash(&mut h);
         self.model.beta().to_bits().hash(&mut h);
         self.model.gamma().to_bits().hash(&mut h);
         self.seed.hash(&mut h);
@@ -308,13 +323,15 @@ impl InteractiveTool for NetworkPropagationTool {
     }
     fn save_state(&self) -> Option<String> {
         let (num_nodes, vaccinated_nodes, quarantined_edges) = if self.using_bus_topology {
-            (self.standalone_num_nodes, Vec::new(), Vec::new())
+            (self.local_num_nodes, Vec::new(), Vec::new())
         } else if self.last_upstream_graph_rev != 0 {
             (
                 self.model.num_nodes().clamp(10, 200),
                 Vec::new(),
                 Vec::new(),
             )
+        } else if self.synced_bus_revision.is_some() {
+            (self.local_num_nodes, Vec::new(), Vec::new())
         } else {
             (
                 self.model.num_nodes(),
@@ -331,6 +348,7 @@ impl InteractiveTool for NetworkPropagationTool {
             vaccinated_nodes,
             quarantined_edges,
             is_running: self.is_running,
+            topology_source: self.topology_source,
         })
         .ok()
     }
@@ -347,7 +365,11 @@ impl InteractiveTool for NetworkPropagationTool {
         let s: NetPropState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid network propagation state: {e}"))?;
         let (candidate, candidate_rng, vax_sorted, edge_sorted) = build_validated_candidate(&s)?;
-        self.standalone_num_nodes = s.num_nodes;
+        self.local_num_nodes = s.num_nodes;
+        self.topology_source = s.topology_source;
+        self.synced_bus_revision = None;
+        self.last_upstream_graph_rev = 0;
+        self.upstream_linked = false;
         self.seed = s.seed;
         self.budget = s.budget;
         if self.using_bus_topology {
@@ -391,16 +413,21 @@ impl InteractiveTool for NetworkPropagationTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
-        self.poll_upstream_graph(ui.ctx());
-        egui::CentralPanel::default().show_inside(ui, |ui| {
-            if !self.upstream_linked
-                && crate::app::workspace_bus::with_linked_bus(|bus| {
-                    self.ingest_topology_channel(&bus.topology);
-                })
-                .is_none()
+        let ctx = ui.ctx().clone();
+        self.poll_upstream_graph(&ctx);
+        if !self.upstream_linked {
+            if crate::app::workspace_bus::with_linked_bus(|bus| {
+                self.ingest_topology_channel(&bus.topology);
+            })
+            .is_none()
             {
                 self.on_bus_unlinked();
             }
+            if !self.using_bus_topology {
+                self.sync_shared_topology(&ctx);
+            }
+        }
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             if self.is_running {
                 self.step_models_lockstep();
                 #[cfg(test)]
