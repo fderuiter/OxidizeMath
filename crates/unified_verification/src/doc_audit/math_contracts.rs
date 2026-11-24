@@ -1,5 +1,5 @@
 //! Single-pass `syn` AST gate enforcing the 4-part mathematical docstring contract
-//! across public mathematical models and solvers in all `8` mathematical crates.
+//! across public mathematical models, steppers, and solvers in all `11` mathematical crates.
 
 use super::math_contracts_parser::{
     ContractPatterns, FileAuditEnv, has_embed_theory, verify_item_contract,
@@ -14,9 +14,12 @@ use oxidize_core::traceability::AstCache;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-/// Canonical workspace directories of the `8` mathematical crates governed by the 4-part contract.
+/// Canonical workspace directories of the `11` mathematical and solver crates governed by the 4-part contract.
 pub const MATH_CONTRACT_CRATES: &[&str] = &[
     "crates/math_commons",
+    "crates/02_engines/engine_linalg",
+    "crates/engine_diffeq",
+    "crates/engine_pde",
     "crates/pure_math",
     "crates/domain_ai",
     "crates/domain_applied",
@@ -42,16 +45,25 @@ const EXPLICIT_MATH_TYPES: &[&str] = &[
     "TuringSolverStrategy",
     "Cera",
     "Euler",
+    "EulerMaruyama",
     "Heun",
     "RungeKutta4",
     "StormerVerlet",
     "Yoshida4",
     "GaussLegendre4",
+    "HamiltonianLeapfrog2D",
+    "LangevinBaoab2D",
     "GreenFunctionSolver1D",
     "FusedStencilStepper",
+    "CrankNicolson1D",
+    "CrankNicolsonPropagator1D",
+    "AllenCahn2D",
+    "CahnHilliard2D",
+    "EdwardsWilkinson1D",
+    "EdwardsWilkinson2D",
 ];
 
-/// Audits all `8` mathematical crates present in `members` using the shared single-pass `AstCache`.
+/// Audits all `11` mathematical and solver crates present in `members` using the shared single-pass `AstCache`.
 pub fn audit_math_contracts_with_cache(
     workspace_root: &Path,
     members: &[String],
@@ -315,10 +327,16 @@ fn is_math_type_target(ident: &str, attrs: &[syn::Attribute]) -> bool {
     {
         return false;
     }
-    ident.ends_with("Solver")
-        || ident.ends_with("Model")
-        || ident.ends_with("Optimizer")
-        || ident.ends_with("Integrator")
+    let ident_core = ident
+        .strip_suffix("1D")
+        .or_else(|| ident.strip_suffix("2D"))
+        .or_else(|| ident.strip_suffix("3D"))
+        .unwrap_or(ident);
+    ident_core.ends_with("Solver")
+        || ident_core.ends_with("Model")
+        || ident_core.ends_with("Optimizer")
+        || ident_core.ends_with("Integrator")
+        || ident_core.ends_with("Stepper")
         || EXPLICIT_MATH_TYPES.contains(&ident)
         || has_derive_theory(attrs)
 }
@@ -330,6 +348,8 @@ fn is_math_fn_target(fn_name: &str, self_ident: Option<&str>, attrs: &[syn::Attr
     match self_ident {
         None => {
             fn_name.starts_with("solve_")
+                || fn_name.ends_with("_solve")
+                || fn_name.contains("_solve_")
                 || fn_name.starts_with("levenberg_marquardt")
                 || fn_name.starts_with("fit_model")
         }

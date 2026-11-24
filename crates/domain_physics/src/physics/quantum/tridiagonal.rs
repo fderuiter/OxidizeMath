@@ -331,6 +331,17 @@ impl TridiagonalHamiltonian1D {
 
 /// Zero-allocation 1D unitary Crank-Nicolson propagator solving
 /// $(I + i\alpha\hat{H})\psi^{n+1} = (I - i\alpha\hat{H})\psi^n$ with $\alpha = \frac{\Delta t}{2\hbar}$.
+///
+/// Reference: Crank & Nicolson (1947), DOI: 10.1017/S0305004100023197;
+/// [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Cayley rational approximation $(I + i\alpha\hat{H})^{-1}(I - i\alpha\hat{H})$ is unconditionally
+/// unitary for real symmetric $\hat{H}$ and strictly diagonally dominant in the complex plane ($|1 + i\alpha d_j| \ge 1$).
+///
+/// # Domain of Validity
+/// Requires finite [`TridiagonalHamiltonian1D`] bands, strictly positive finite `dt > 0` and
+/// `h_bar > 0`, and `state.vector.len() == self.len()`.
 #[derive(Clone, Debug)]
 pub struct CrankNicolsonPropagator1D {
     workspace: SolverWorkspace,

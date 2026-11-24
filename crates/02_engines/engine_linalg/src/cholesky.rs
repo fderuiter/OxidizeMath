@@ -69,7 +69,17 @@ pub fn cholesky_factor<T: Scalar>(a: &[T], l: &mut [T], n: usize) -> Result<(), 
 }
 
 /// Solves $L L^T x = b$ given a lower-triangular Cholesky factor `l` from [`cholesky_factor`].
-/// `[cite:engine_linalg]`
+///
+/// Reference: Golub & Van Loan (2013), *Matrix Computations*, DOI: 10.56021/9781421407944;
+/// [`docs/math_specs/engine_linalg.md`](../../../../docs/math_specs/engine_linalg.md). `[cite:engine_linalg]`
+///
+/// # Stability
+/// Forward and backward triangular sweeps achieve componentwise backward stability with
+/// backward error $O(n\,\varepsilon_{\text{mach}})$ without pivoting when $L_{ii} > 0$.
+///
+/// # Domain of Validity
+/// Requires `l.len() == n * n`, `b.len() == n`, `x.len() == n`, finite `b`, and strictly positive
+/// Cholesky diagonal entries $L_{ii} > 0$ (`LinalgError::NotPositiveDefinite` otherwise).
 pub fn cholesky_solve_factored<T: Scalar>(
     l: &[T],
     b: &[T],
@@ -103,8 +113,18 @@ pub fn cholesky_solve_factored<T: Scalar>(
     Ok(())
 }
 
-/// Solves a symmetric positive-definite linear system $A x = b$ via strict Cholesky in `ws`.
-/// `[cite:engine_linalg]`
+/// Solves a symmetric positive-definite linear system $A x = b$ via strict $A = L L^T$ Cholesky in `ws`.
+///
+/// Reference: Golub & Van Loan (2013), *Matrix Computations*, DOI: 10.56021/9781421407944;
+/// [`docs/math_specs/engine_linalg.md`](../../../../docs/math_specs/engine_linalg.md). `[cite:engine_linalg]`
+///
+/// # Stability
+/// Backward-stable with normwise backward error $\|\Delta A\|_2 / \|A\|_2 = O(n\,\varepsilon_{\text{mach}})$
+/// and zero pivot growth on symmetric positive-definite matrices.
+///
+/// # Domain of Validity
+/// Requires finite symmetric positive-definite `a` (`n * n`), finite `b` (`n`), `x` (`n`), and
+/// `ws` capacity at least [`cholesky_workspace_len`]`(n)`.
 pub fn cholesky_solve<T: Scalar>(
     a: &[T],
     b: &[T],

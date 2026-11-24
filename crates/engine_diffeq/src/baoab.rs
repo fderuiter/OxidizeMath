@@ -17,11 +17,22 @@ pub struct BaoabParams<T: Scalar> {
     pub dt: T,
 }
 
-/// Symmetric Leimkuhler-Matthews `B-A-O-A-B` geometric Langevin integrator.
+/// Symmetric Leimkuhler-Matthews `B-A-O-A-B` geometric Langevin integrator for
+/// $dq = m^{-1} p\,dt$, $dp = -\nabla V(q)\,dt - \gamma p\,dt + \sqrt{2 \gamma m k_B T}\,dW_t$.
 ///
 /// Splits kick (`B`), drift (`A`), and exact Ornstein-Uhlenbeck thermostat (`O`) substeps so the
 /// deterministic limit ($\gamma = 0$) reduces to symplectic Velocity Verlet while harmonic potentials
-/// preserve the exact configurational Gibbs-Boltzmann variance for any stable step size $\Delta t$.
+/// preserve the exact configurational Gibbs-Boltzmann variance.
+/// Reference: Leimkuhler & Matthews (2013), DOI: 10.1093/amrx/abs010;
+/// [`docs/math_specs/engine_diffeq.md`](../../../docs/math_specs/engine_diffeq.md).
+///
+/// # Stability
+/// Stable on harmonic oscillators of frequency $\omega_{\max}$ for $0 < \omega_{\max} \Delta t < 2$,
+/// with unconditionally contractive thermostat decay $c_1 = e^{-\gamma \Delta t} \in (0, 1]$.
+///
+/// # Domain of Validity
+/// Requires `mass > 0`, `friction >= 0`, `temperature >= 0`, `dt > 0`, `q.len() >= dim`,
+/// `p.len() >= dim`, and `SolverWorkspace` length at least `2 * dim`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BaoabLangevinSolver<T: Scalar> {
     params: BaoabParams<T>,

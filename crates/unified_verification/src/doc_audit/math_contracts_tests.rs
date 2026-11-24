@@ -143,3 +143,31 @@ pub struct MissingSnippetSolver;
         "Missing include_str! target must fail closed: {violations:?}"
     );
 }
+
+#[test]
+fn test_math_contract_audits_extracted_engine_crates_steppers_and_dimension_suffixes() {
+    let dir = TempTestDir::new("math_contract_extracted_engines");
+    let linalg_src = "/// Missing contract.\npub fn lu_solve() {}\n";
+    let pde_src = "/// Missing contract.\npub struct SemiImplicitFourierStepper;\n";
+    let phys_src = "/// Missing contract.\npub struct KpzModel1D;\n";
+
+    let mut members = Vec::new();
+    members.extend(setup_math_crate(
+        &dir,
+        "crates/02_engines/engine_linalg",
+        linalg_src,
+    ));
+    members.extend(setup_math_crate(&dir, "crates/engine_pde", pde_src));
+    members.extend(setup_math_crate(&dir, "crates/domain_physics", phys_src));
+
+    let mut cache = AstCache::new();
+    let violations = audit_math_contracts_with_cache(&dir, &members, &mut cache);
+    assert_eq!(violations.len(), 3, "Got: {violations:?}");
+    assert!(violations.iter().any(|v| v.contains("fn lu_solve")));
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("struct SemiImplicitFourierStepper"))
+    );
+    assert!(violations.iter().any(|v| v.contains("struct KpzModel1D")));
+}

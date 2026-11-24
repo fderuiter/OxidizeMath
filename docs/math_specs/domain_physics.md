@@ -60,3 +60,28 @@ Power-of-two zero-padded FFT convolution (`conv_len >= N + K - 1`) eliminates ci
 ### Domain of Validity
 
 Requires sweep bandwidth $B > 0$, chirp duration $T_c > 0$, sampling rate $f_s > 0$ satisfying Nyquist bounds ($|f_0| + |B| \le f_s / 2$ for unaliased real targets), and finite time step $\Delta t > 0$ for `ConstantVelocityModel`.
+
+## 3. Unitary 1D Quantum Cayley Propagation & Continuum Statistical Mechanics SPDEs (`quantum`, `stat_mech`)
+
+### Governing Equations
+
+1D Schrödinger propagation (`CrankNicolson1D`, `CrankNicolsonPropagator1D`) advances wavefunctions via the $O(N)$ tridiagonal Cayley transform, while non-equilibrium statistical mechanics solvers evolve Model A (`AllenCahn2D`), conserved Model B (`CahnHilliard2D`), linear `EdwardsWilkinson1D`/`EdwardsWilkinson2D`, and nonlinear `KpzModel1D`/`KpzModel2D` fields:
+
+$$
+\left(I + \frac{i\Delta t}{2\hbar}\hat{H}\right)\psi^{n+1} = \left(I - \frac{i\Delta t}{2\hbar}\hat{H}\right)\psi^n, \qquad \partial_t h = \nu \nabla^2 h + \frac{\lambda}{2}|\nabla h|^2 + \eta, \qquad \partial_t \phi = M \nabla^2(\phi^3 - \phi - \kappa \nabla^2 \phi) + \nabla \cdot \vec{\eta}
+$$
+
+### Citations
+
+- BibTeX keys: [`orszag1972numerical`](../../papers/references.bib#orszag1972numerical) (DOI: `10.1103/PhysRevLett.28.76`), [`orszag1979spectral`](../../papers/references.bib#orszag1979spectral), [`Rosner`](../../papers/references.bib#Rosner).
+- Literature: Crank & Nicolson (1947), DOI: `10.1017/S0305004100023197`; Hohenberg & Halperin (1977), DOI: `10.1103/RevModPhys.49.435`; Kardar, Parisi, & Zhang (1986), DOI: `10.1103/PhysRevLett.56.889`.
+- Manuscripts: [`papers/quantum_mechanics.tex`](../../papers/quantum_mechanics.tex), [`papers/generative_turbulence.tex`](../../papers/generative_turbulence.tex).
+
+### Stability
+
+Cayley propagation is unconditionally unitary ($\|\psi^{n+1}\|_2 = \|\psi^n\|_2$) for real symmetric $\hat{H}$ and $\Delta t > 0$; radix-2 `step_fourier_dealiased` treats $+\nu|\mathbf{k}|^2$ and $+M\kappa|\mathbf{k}|^4$ implicitly with $2/3$-rule dealiasing, while explicit stencil stepping obeys parabolic/biharmonic CFL bounds.
+
+### Domain of Validity
+
+Requires finite potentials $V(x_i)$ and strictly positive `(dx, dt, mass, h_bar)` for `CrankNicolson1D`; `AllenCahn2D` requires `width, height >= 3`, $M > 0$, $\kappa \ge 0$; `CahnHilliard2D`, `EdwardsWilkinson*`, and `KpzModel*` require grid sizes $\ge 4$ (power-of-two with `BoundaryCondition::Periodic` for Fourier stepping), positive spacings, and $M, \kappa, \nu > 0$.
+

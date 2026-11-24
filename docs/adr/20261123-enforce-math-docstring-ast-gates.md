@@ -7,13 +7,13 @@ Accepted (extends [ADR 0005](0005-active-documentation-standard.md), [ADR 0013](
 ## Context
 
 1. **Grandfathered Library `missing_docs` Exemptions**: Following [ADR 0044](0044-ratchet-missing-docs-and-core-api-documentation.md), `[missing_docs.files]` in [`verification_whitelist.toml`](../../verification_whitelist.toml) still exempted `176` library files (`985` outer `#[allow(missing_docs)]` attributes, covering `160` public files in `api_baseline.json`), while `audit_file_missing_docs` allowed item-level `#[allow(missing_docs)]` on structs, enums, traits, fields, and functions whenever a file cap was present.
-2. **Unverified Mathematical Preconditions in IDE Tooltips**: Neither `unified_verification check-docs` nor `batch-static` / `batch-staged` verified that public mathematical models and solvers across the `8` mathematical crates (`math_commons`, `pure_math`, `domain_ai`, `domain_applied`, `domain_biology`, `domain_climate`, `domain_epidemiology`, `domain_physics`) document governing equations, literature citations, numerical stability bounds, and validity domains.
+2. **Unverified Mathematical Preconditions in IDE Tooltips**: Neither `unified_verification check-docs` nor `batch-static` / `batch-staged` verified that public mathematical models, steppers, and solvers across the `11` mathematical and solver crates (`math_commons`, `engine_linalg`, `engine_diffeq`, `engine_pde`, `pure_math`, `domain_ai`, `domain_applied`, `domain_biology`, `domain_climate`, `domain_epidemiology`, `domain_physics`) document governing equations, literature citations, numerical stability bounds, and validity domains.
 3. **500-Line Source Ceiling vs. Rich Mathematical Docstrings**: Near-limit library modules (`465–499` lines) could not inline multi-section LaTeX specifications and runnable `math_explorer::` doctests without breaching `check_file_lengths`.
 
 ## Decision
 
 1. **Canonical Mathematical Specifications (`docs/math_specs/`)**:
-   - Author canonical specifications under [`docs/math_specs/`](../math_specs/README.md) for all `8` mathematical crates anchored to BibTeX keys in [`papers/references.bib`](../../papers/references.bib) and manuscripts in `papers/`, alongside external `#[doc = include_str!("...")]` snippets under `docs/math_specs/snippets/` for near-limit Rust modules.
+   - Author canonical specifications under [`docs/math_specs/`](../math_specs/README.md) for all `11` mathematical and solver crates anchored to BibTeX keys in [`papers/references.bib`](../../papers/references.bib) and manuscripts in `papers/`, alongside external `#[doc = include_str!("...")]` snippets under `docs/math_specs/snippets/` for near-limit Rust modules.
 2. **Single-Pass 4-Part Math Contract AST Gate (`doc_audit::math_contracts`)**:
    - Add a `syn` AST verification pass in `crates/unified_verification/src/doc_audit/math_contracts.rs` sharing `AstCache` across `check-docs`, `batch-ast`, `batch-static`, and `batch-staged`.
    - Resolve `///`, `#[cfg_attr(..., doc = ...)]`, and `#[doc = include_str!("...")]` docstrings and fail closed with exact `file:line` diagnostics whenever any public mathematical solver or model omits:
