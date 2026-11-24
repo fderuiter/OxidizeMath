@@ -10,11 +10,8 @@ use verified_engine::Theory;
 /// Maximum number of free scalar parameters stored inline for custom Lenia AST rules.
 pub const MAX_LENIA_RULE_PARAMS: usize = 8;
 
-/// Evaluates Lenia's smooth $C^\infty$ exponential bump core on $r \in (0, 1)$:
-///
-/// $$K_C(r) = \exp\!\left(4 - \frac{1}{r(1 - r)}\right)$$
-///
-/// Returns `0.0` outside $(0, 1)$, peaking at $K_C(0.5) = 1.0$.
+/// Evaluates Lenia's smooth $C^\infty$ bump $K_C(r) = \exp(4 - (r(1 - r))^{-1})$ (`@chan2019lenia`, `spec:biology_v1`).
+/// Numerical stability: guards $r \notin (10^{-6}, 1 - 10^{-6})$ to prevent underflow/division overflow. Domain of validity: finite $r \in \mathbb{R}$ (supported on $(0, 1)$).
 #[verified_engine::verified]
 pub fn kernel_core_bump(r: f64) -> f64 {
     if !(1e-6..(1.0 - 1e-6)).contains(&r) {
@@ -24,9 +21,8 @@ pub fn kernel_core_bump(r: f64) -> f64 {
     (4.0 - 1.0 / denom).exp()
 }
 
-/// Evaluates Lenia's Gaussian growth mapping $G(u; \mu, \sigma) \in [-1, 1]$:
-///
-/// $$G(u; \mu, \sigma) = 2 \exp\!\left(-\frac{(u - \mu)^2}{2\sigma^2}\right) - 1$$
+/// Evaluates Lenia's Gaussian growth mapping $G(u; \mu, \sigma) = 2\exp(-(u - \mu)^2 / (2\sigma^2)) - 1 \in [-1, 1]$ (`@chan2019lenia`, `spec:biology_v1`).
+/// Numerical stability: clamps $|\sigma| \ge 10^{-6}$ (fallback `0.015`) to prevent overflow in $(u - \mu)/\sigma$. Domain of validity: finite $u, \mu \in \mathbb{R}$ and $\sigma > 0$.
 #[verified_engine::verified]
 pub fn growth_gaussian(u: f64, mu: f64, sigma: f64) -> f64 {
     let safe_sigma = if sigma.is_finite() {
@@ -38,8 +34,8 @@ pub fn growth_gaussian(u: f64, mu: f64, sigma: f64) -> f64 {
     2.0 * (-0.5 * z * z).exp() - 1.0
 }
 
-/// Writes a periodic wrap-around spatial kernel of interaction `radius` into `out` (`width * height`)
-/// normalized to unit $L^1$ torus mass ($\sum_{x, y} K(x, y) = 1$), returning the pre-normalized sum.
+/// Writes a periodic torus kernel normalized to unit $L^1$ mass $\sum_{x,y} K(x, y) = 1$ (`@chan2019lenia`, `spec:biology_v1`).
+/// Numerical stability: falls back to a unit impulse at $(0, 0)$ if raw kernel mass $\le 10^{-15}$. Domain of validity: `out.len() >= width * height > 0` and finite `radius > 0`.
 #[verified_engine::verified]
 pub fn write_normalized_torus_kernel<F>(
     width: usize,
@@ -141,11 +137,12 @@ where
     points
 }
 
-/// Parameters governing the continuous Gaussian growth mapping $G(u; \mu, \sigma)$.
+/// Parameters $(\mu, \sigma)$ governing Lenia's Gaussian growth curve $G(u; \mu, \sigma) = 2\exp(-(u-\mu)^2/(2\sigma^2)) - 1$ (`@chan2019lenia`, `spec:biology_v1`).
+/// Numerical stability: bounded away from $\sigma = 0$ via $[\text{1e-4}, 0.5]$ clamping. Domain of validity: $\mu \in [0.001, 1.0]$ and $\sigma \in [10^{-4}, 0.5]$.
 #[derive(Debug, Clone, Copy, PartialEq, Theory)]
 #[theory(
     description = "Gaussian growth response curve mapping neighborhood potential u to local growth rate in [-1, 1].",
-    citation = "Chan, B. W.-C. (2019). Lenia: Biology of Artificial Life. Complex Systems, 28(3), 251-286."
+    citation = "chan2019lenia"
 )]
 pub struct GrowthParams {
     /// Optimal neighborhood potential center ($\mu$).
@@ -157,7 +154,7 @@ pub struct GrowthParams {
 }
 
 impl GrowthParams {
-    /// Creates clamped finite Gaussian growth parameters.
+    /// Creates clamped parameters for $G(u; \mu, \sigma)$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: sanitizes `NaN`/`Inf` to `(0.15, 0.015)`. Domain of validity: clamped to $\mu \in [0.001, 1.0], \sigma \in [10^{-4}, 0.5]$.
     #[verified_engine::verified]
     pub fn new(mu: f64, sigma: f64) -> Self {
         let clean_mu = if mu.is_finite() {
@@ -176,13 +173,13 @@ impl GrowthParams {
         }
     }
 
-    /// Evaluates $G(u; \mu, \sigma)$ at potential `u`.
+    /// Evaluates $G(u; \mu, \sigma) \in [-1, 1]$ at potential `u` (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: bounded exponential in $[-1, 1]$. Domain of validity: finite potential $u \in [0, 1]$.
     #[verified_engine::verified]
     pub fn evaluate(&self, u: f64) -> f64 {
         growth_gaussian(u, self.mu, self.sigma)
     }
 
-    /// Samples `[u, G(u)]` across $u \in [0, 1]$ for plot inspection and telemetry export.
+    /// Samples $[u_k, G(u_k)]$ uniformly over $u_k = k/(N-1) \in [0, 1]$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: clamps $N \ge 2$ to avoid zero division. Domain of validity: `samples >= 2`.
     #[verified_engine::verified]
     pub fn sample_curve(&self, samples: usize) -> Vec<[f64; 2]> {
         sample_unit_interval(samples, |u| self.evaluate(u))
@@ -199,7 +196,8 @@ impl Default for GrowthParams {
     }
 }
 
-/// Custom 1D AST bytecode growth evaluator clamping $G(u)$ safely into $[-1, 1]$.
+/// Custom 1D AST bytecode growth evaluator clamping $G(u; \theta) \in [-1, 1]$ (`@chan2019lenia`, `spec:biology_v1`).
+/// Numerical stability: maps `NaN` bytecode outputs to `-1.0` and clamps extremes to $[-1, 1]$. Domain of validity: 1D `CompiledExpr` over $u \in [0, 1]$ with $\le 8$ inline parameters.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompiledGrowthRule {
     compiled: CompiledExpr,
@@ -208,7 +206,7 @@ pub struct CompiledGrowthRule {
 }
 
 impl CompiledGrowthRule {
-    /// Wraps a compiled 1D expression (`axis 0 = u`) and up to [`MAX_LENIA_RULE_PARAMS`] parameters.
+    /// Wraps a compiled 1D growth expression $G(u; \theta)$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: non-finite parameters sanitize to `0.0`. Domain of validity: up to `MAX_LENIA_RULE_PARAMS` parameters.
     #[verified_engine::verified]
     pub fn new(compiled: CompiledExpr, params: &[f64]) -> Self {
         let (buf, param_count) = copy_inline_params(params);
@@ -219,21 +217,21 @@ impl CompiledGrowthRule {
         }
     }
 
-    /// Underlying postfix bytecode program.
+    /// Borrows the postfix bytecode for $G(u; \theta)$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: exact reference borrow. Domain of validity: valid for lifetime of `self`.
     #[must_use]
     #[verified_engine::verified]
     pub fn compiled(&self) -> &CompiledExpr {
         &self.compiled
     }
 
-    /// Active inline parameter slice corresponding to `compiled.param_names()`.
+    /// Returns active parameter vector $\theta \in \mathbb{R}^p$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: exact slice view. Domain of validity: $0 \le p \le 8$.
     #[must_use]
     #[verified_engine::verified]
     pub fn params(&self) -> &[f64] {
         &self.params[..self.param_count]
     }
 
-    /// Updates inline parameter values in-place without reallocating bytecode.
+    /// Updates inline parameters $\theta$ for $G(u; \theta)$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: replaces non-finite inputs with `0.0`. Domain of validity: truncates inputs beyond `MAX_LENIA_RULE_PARAMS`.
     #[verified_engine::verified]
     pub fn set_params(&mut self, params: &[f64]) {
         let (buf, count) = copy_inline_params(params);
@@ -241,13 +239,13 @@ impl CompiledGrowthRule {
         self.param_count = count;
     }
 
-    /// Evaluates $G(u)$ with `self.params()`, clamping finite outputs to `[-1, 1]` and `NaN` to `-1.0`.
+    /// Evaluates clamped $G(u; \theta) \in [-1, 1]$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: `NaN` maps to `-1.0` and infinities clamp to $\pm 1$. Domain of validity: finite $u \in [0, 1]$.
     #[verified_engine::verified]
     pub fn evaluate(&self, u: f64) -> f64 {
         self.evaluate_with_params(u, self.params())
     }
 
-    /// Evaluates $G(u)$ with an explicit parameter slice, performing zero heap allocations.
+    /// Evaluates clamped $G(u; \theta) \in [-1, 1]$ with explicit $\theta$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: zero-allocation stack evaluation clamping `NaN` to `-1.0`. Domain of validity: finite $u \in [0, 1]$ and matching `params`.
     #[verified_engine::verified]
     pub fn evaluate_with_params(&self, u: f64, params: &[f64]) -> f64 {
         let safe_u = if u.is_finite() { u } else { 0.0 };
@@ -259,14 +257,15 @@ impl CompiledGrowthRule {
         }
     }
 
-    /// Samples `[u, G(u)]` across $u \in [0, 1]$ for inspector plotting and dataset export.
+    /// Samples $[u_k, G(u_k)]$ over $u_k = k/(N-1) \in [0, 1]$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: clamps $N \ge 2$ to prevent zero division. Domain of validity: `samples >= 2`.
     #[verified_engine::verified]
     pub fn sample_curve(&self, samples: usize) -> Vec<[f64; 2]> {
         sample_unit_interval(samples, |u| self.evaluate(u))
     }
 }
 
-/// Custom 1D AST bytecode radial kernel evaluator $K(r)$ on $r \in [0, 1]$ normalized to unit $L^1$ torus mass.
+/// Custom 1D AST bytecode radial kernel $K(r; \theta)$ normalized to $\sum K = 1$ (`@chan2019lenia`, `spec:biology_v1`).
+/// Numerical stability: clamps raw radial weights to $[0, 10^6]$ before $L^1$ normalization. Domain of validity: normalized radius $r \in [0, 1]$ with $\le 8$ inline parameters.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompiledKernelRule {
     compiled: CompiledExpr,
@@ -275,7 +274,7 @@ pub struct CompiledKernelRule {
 }
 
 impl CompiledKernelRule {
-    /// Wraps a compiled 1D radial kernel expression (`axis 0 = r`) and inline parameters.
+    /// Wraps a compiled 1D radial kernel $K(r; \theta)$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: non-finite parameters sanitize to `0.0`. Domain of validity: up to `MAX_LENIA_RULE_PARAMS` parameters.
     #[verified_engine::verified]
     pub fn new(compiled: CompiledExpr, params: &[f64]) -> Self {
         let (buf, param_count) = copy_inline_params(params);
@@ -286,21 +285,21 @@ impl CompiledKernelRule {
         }
     }
 
-    /// Underlying postfix bytecode program.
+    /// Borrows the postfix bytecode for $K(r; \theta)$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: exact reference borrow. Domain of validity: valid for lifetime of `self`.
     #[must_use]
     #[verified_engine::verified]
     pub fn compiled(&self) -> &CompiledExpr {
         &self.compiled
     }
 
-    /// Active inline parameter slice corresponding to `compiled.param_names()`.
+    /// Returns active parameter slice $\theta \in \mathbb{R}^p$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: exact slice view. Domain of validity: $0 \le p \le 8$.
     #[must_use]
     #[verified_engine::verified]
     pub fn params(&self) -> &[f64] {
         &self.params[..self.param_count]
     }
 
-    /// Updates inline parameter values in-place without reallocating bytecode.
+    /// Updates inline parameters $\theta$ for $K(r; \theta)$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: replaces non-finite inputs with `0.0`. Domain of validity: truncates inputs beyond `MAX_LENIA_RULE_PARAMS`.
     #[verified_engine::verified]
     pub fn set_params(&mut self, params: &[f64]) {
         let (buf, count) = copy_inline_params(params);
@@ -308,13 +307,13 @@ impl CompiledKernelRule {
         self.param_count = count;
     }
 
-    /// Evaluates the unnormalized radial kernel weight on $r \in [0, 1]$ (clamped non-negative).
+    /// Evaluates unnormalized $K(r_{\text{norm}}; \theta) \ge 0$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: clamps finite positive values to $\le 10^6$. Domain of validity: $r_{\text{norm}} \in [0, 1]$ (`0.0` outside).
     #[verified_engine::verified]
     pub fn shell_unnormalized(&self, r_norm: f64) -> f64 {
         self.shell_unnormalized_with_params(r_norm, self.params())
     }
 
-    /// Evaluates the unnormalized radial kernel weight on $r \in [0, 1]$ using an explicit parameter slice.
+    /// Evaluates unnormalized $K(r_{\text{norm}}; \theta) \ge 0$ with explicit $\theta$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: rejects `NaN`/negative weights and caps at $10^6$. Domain of validity: $r_{\text{norm}} \in [0, 1]$.
     #[verified_engine::verified]
     pub fn shell_unnormalized_with_params(&self, r_norm: f64, params: &[f64]) -> f64 {
         if !(0.0..=1.0).contains(&r_norm) {
@@ -328,13 +327,13 @@ impl CompiledKernelRule {
         }
     }
 
-    /// Samples `[r_norm, K(r_norm)]` across $r_{\text{norm}} \in [0, 1]$.
+    /// Samples $[r_k, K(r_k)]$ over $r_k = k/(N-1) \in [0, 1]$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: clamps $N \ge 2$ to prevent zero division. Domain of validity: `samples >= 2`.
     #[verified_engine::verified]
     pub fn sample_radial_profile(&self, samples: usize) -> Vec<[f64; 2]> {
         sample_unit_interval(samples, |r| self.shell_unnormalized(r))
     }
 
-    /// Writes the periodic wrap-around spatial kernel normalized to unit $L^1$ torus mass.
+    /// Writes unit-$L^1$ torus kernel $\sum_{x,y} K(x, y) = 1$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: impulse fallback when mass $\le 10^{-15}$. Domain of validity: `out.len() >= width * height > 0` and `radius > 0`.
     #[verified_engine::verified]
     pub fn write_wrapped_spatial_kernel(
         &self,
@@ -346,7 +345,7 @@ impl CompiledKernelRule {
         self.write_wrapped_spatial_kernel_with_params(width, height, radius, self.params(), out)
     }
 
-    /// Writes the periodic wrap-around spatial kernel using an explicit parameter slice with zero heap allocations.
+    /// Writes unit-$L^1$ torus kernel $\sum_{x,y} K(x, y; \theta) = 1$ with explicit $\theta$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: zero-allocation normalization with impulse fallback. Domain of validity: `out.len() >= width * height > 0` and `radius > 0`.
     #[verified_engine::verified]
     pub fn write_wrapped_spatial_kernel_with_params(
         &self,
@@ -362,7 +361,8 @@ impl CompiledKernelRule {
     }
 }
 
-/// Concentric-ring kernel shell specification $K_S(r; R, \beta)$ with $R \in [4, 32]$ and $1..=4$ rings.
+/// Concentric-ring kernel shell $K_S(r) = \beta_{\lfloor B r \rfloor} K_C(B r \bmod 1)$ (`@chan2019lenia`, `spec:biology_v1`).
+/// Numerical stability: clamps weights to $[0, 1]$ and enforces $\sum \beta_k > 10^{-12}$. Domain of validity: radius $R \in [4, 32]$ and ring count $B \in \{1, 2, 3, 4\}$.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct KernelShells {
     radius: f64,
@@ -371,8 +371,7 @@ pub struct KernelShells {
 }
 
 impl KernelShells {
-    /// Constructs a concentric-ring kernel shell with radius clamped to `4.0..=32.0`
-    /// and `1..=4` non-negative ring weights $\beta_k \in [0, 1]$.
+    /// Constructs concentric-ring shell $K_S(r; R, \beta)$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: defaults degenerate zero-sum weights to $\beta_0 = 1$. Domain of validity: clamps $R \in [4, 32]$ and $1 \le B \le 4$ weights in $[0, 1]$.
     #[verified_engine::verified]
     pub fn new(radius: f64, ring_weights: &[f64]) -> Self {
         let clamped_r = if radius.is_finite() {
@@ -403,25 +402,25 @@ impl KernelShells {
         }
     }
 
-    /// Returns the interaction radius $R$ in grid cells (`4.0..=32.0`).
+    /// Returns interaction radius $R \in [4, 32]$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: exact scalar copy. Domain of validity: clamped grid-cell radius $[4.0, 32.0]$.
     #[verified_engine::verified]
     pub fn radius(&self) -> f64 {
         self.radius
     }
 
-    /// Returns the number of active concentric rings (`1..=4`).
+    /// Returns active concentric ring count $B \in \{1, 2, 3, 4\}$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: exact integer copy. Domain of validity: $1 \le B \le 4$.
     #[verified_engine::verified]
     pub fn ring_count(&self) -> usize {
         self.ring_count
     }
 
-    /// Returns the active concentric ring weights $\beta_0, \dots, \beta_{B-1}$.
+    /// Returns ring weights $[\beta_0, \dots, \beta_{B-1}] \in [0, 1]^B$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: exact slice view. Domain of validity: $1 \le B \le 4$.
     #[verified_engine::verified]
     pub fn ring_weights(&self) -> &[f64] {
         &self.weights[..self.ring_count]
     }
 
-    /// Evaluates the unnormalized radial shell value $K_S(r) \in [0, 1]$ for normalized distance $r = d / R \in [0, 1]$.
+    /// Evaluates unnormalized shell $K_S(r) = \beta_k K_C(B r - k) \in [0, 1]$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: returns `0.0` at ring boundaries via `kernel_core_bump`. Domain of validity: normalized distance $r_{\text{norm}} \in [0, 1)$.
     #[verified_engine::verified]
     pub fn shell_unnormalized(&self, r_norm: f64) -> f64 {
         if !(0.0..1.0).contains(&r_norm) {
@@ -433,14 +432,13 @@ impl KernelShells {
         self.weights[ring_idx] * kernel_core_bump(local_r)
     }
 
-    /// Samples `[r_norm, K_S(r_norm)]` across $r_{\text{norm}} \in [0, 1]$ for radial kernel inspection.
+    /// Samples $[r_k, K_S(r_k)]$ over $r_k = k/(N-1) \in [0, 1]$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: clamps $N \ge 2$ to prevent zero division. Domain of validity: `samples >= 2`.
     #[verified_engine::verified]
     pub fn sample_radial_profile(&self, samples: usize) -> Vec<[f64; 2]> {
         sample_unit_interval(samples, |r| self.shell_unnormalized(r))
     }
 
-    /// Writes the periodic wrap-around spatial kernel into `out` (`width * height`)
-    /// normalized to unit $L^1$ sum ($\sum_{x, y} K(x, y) = 1$), returning the raw pre-normalized sum.
+    /// Writes unit-$L^1$ torus kernel $\sum_{x,y} K(x, y) = 1$ (`@chan2019lenia`, `spec:biology_v1`). Numerical stability: impulse fallback if discrete shell sum $\le 10^{-15}$. Domain of validity: `out.len() >= width * height > 0`.
     #[verified_engine::verified]
     pub fn write_wrapped_spatial_kernel(
         &self,

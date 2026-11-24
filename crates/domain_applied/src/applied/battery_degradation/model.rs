@@ -23,40 +23,42 @@ pub const MIN_EXPONENT_Z: f64 = 0.1;
 /// Maximum supported stretched cycling exponent $z$.
 pub const MAX_EXPONENT_Z: f64 = 2.0;
 
-#[allow(missing_docs)]
+/// Trait characterizing Li-ion state-of-health capacity fade $C(N, D) \in [0, 1]$ (`@bloom2001accelerated`, `spec:battery_degradation_v1`).
+/// Numerical stability: all outputs clamp safely to bounded `Cycles`/`Capacity` domains. Domain of validity: $D \in (0, 1]$, $N \ge 0$, and $C \in (0, 1]$.
 pub trait DegradationModel {
+    /// Computes cycle life $N_{70}(D)$ at which $C(N_{70}, D) = 0.7$ (`@bloom2001accelerated`, `spec:battery_degradation_v1`). Numerical stability: clamped non-negative `Cycles`. Domain of validity: $D \in (0, 1]$.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn n70(&self, d: DepthOfDischarge) -> Cycles;
 
+    /// Evaluates remaining fractional capacity $C(N, D) \in [0, 1]$ (`@bloom2001accelerated`, `spec:battery_degradation_v1`). Numerical stability: guards $N_{70} = 0$ without zero division. Domain of validity: $N \ge 0, D \in (0, 1]$.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn capacity(&self, n: Cycles, d: DepthOfDischarge) -> Capacity;
 
+    /// Inverts capacity fade for cycle count $N(C_{\text{target}}, D)$ (`@bloom2001accelerated`, `spec:battery_degradation_v1`). Numerical stability: clamped log-ratio evaluation. Domain of validity: $C_{\text{target}} \in (0, 1], D \in (0, 1]$.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn cycles_to_capacity(&self, target: Capacity, d: DepthOfDischarge) -> Cycles;
 }
 
+/// Empirical DoD power-law cycle-life model $N_{70}(D) = \alpha D^\beta, C(N, D) = 0.7^{N / N_{70}(D)}$ (`@bloom2001accelerated`, `spec:battery_degradation_v1`).
+/// Numerical stability: `Cycles`/`Capacity` clamping prevents overflow near $D \to 0^+$. Domain of validity: $\alpha > 0, \beta < 0, D \in (0, 1]$.
 #[derive(Debug, Clone, Copy, Theory)]
 #[theory(
     description = "Empirical power-law model characterizing the cycle life of lithium-ion batteries as a function of depth of discharge.",
-    citation = "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)"
+    citation = "bloom2001accelerated"
 )]
-#[allow(missing_docs)]
 pub struct PowerLawModel {
     alpha: f64,
     beta: f64,
 }
 
 impl PowerLawModel {
-    #[allow(missing_docs)]
+    /// Constructs $N_{70}(D) = \alpha D^\beta$ from $(\alpha, \beta)$ (`@bloom2001accelerated`, `spec:battery_degradation_v1`). Numerical stability: exact `f64` capture. Domain of validity: finite $\alpha > 0, \beta < 0$.
     #[verified_engine::verified]
     pub fn new(alpha: f64, beta: f64) -> Self {
         Self { alpha, beta }
     }
 
-    #[allow(missing_docs)]
+    /// Returns reference Li-ion fit $(\alpha, \beta) = (1.019 \times 10^5, -1.2639)$ for $N_{70}(D) = \alpha D^\beta$ (`@bloom2001accelerated`, `spec:battery_degradation_v1`). Numerical stability: well-conditioned on $D \in [0.05, 1.0]$. Domain of validity: $D \in (0, 1]$ at $25\,^\circ\text{C}$.
     #[verified_engine::verified]
     pub fn standard() -> Self {
         Self {
@@ -95,19 +97,19 @@ impl DegradationModel for PowerLawModel {
 }
 
 impl PowerLawModel {
-    #[allow(missing_docs)]
+    /// Evaluates $N_{70}(D) = \alpha D^\beta$ (`@bloom2001accelerated`, `spec:battery_degradation_v1`). Numerical stability: clamped `Cycles` output. Domain of validity: $D \in (0, 1]$.
     #[verified_engine::verified]
     pub fn n70(&self, d: DepthOfDischarge) -> Cycles {
         DegradationModel::n70(self, d)
     }
 
-    #[allow(missing_docs)]
+    /// Evaluates $C(N, D) = 0.7^{N / N_{70}(D)}$ (`@bloom2001accelerated`, `spec:battery_degradation_v1`). Numerical stability: guards $N_{70} = 0$ safely. Domain of validity: $N \ge 0, D \in (0, 1]$.
     #[verified_engine::verified]
     pub fn capacity(&self, n: Cycles, d: DepthOfDischarge) -> Capacity {
         DegradationModel::capacity(self, n, d)
     }
 
-    #[allow(missing_docs)]
+    /// Evaluates $N(C, D) = N_{70}(D) \ln C / \ln 0.7$ (`@bloom2001accelerated`, `spec:battery_degradation_v1`). Numerical stability: uses precomputed `LN_0_7` constant. Domain of validity: $C \in (0, 1], D \in (0, 1]$.
     #[verified_engine::verified]
     pub fn cycles_to_capacity(&self, target: Capacity, d: DepthOfDischarge) -> Cycles {
         DegradationModel::cycles_to_capacity(self, target, d)
@@ -125,12 +127,12 @@ fn sanitize_bounded(val: f64, min: f64, max: f64, fallback: f64) -> f64 {
     }
 }
 
-/// Coupled electrochemical aging model combining DoD stress, stretched exponent $z$,
-/// Arrhenius thermal activation, C-rate mechanical stress, and $\sqrt{t}$ SEI calendar fade.
+/// Coupled electrochemical aging model $C = 1 - 0.3(N/N_{70})^z - k_{\text{SEI}} A_T(T)\sqrt{t}$ (`@ning2004cycle`, `@bloom2001accelerated`, `spec:battery_degradation_v1`).
+/// Numerical stability: clamps temperature, C-rate, and $z$ away from singular exponents. Domain of validity: $T \in [-20, 60]\,^\circ\text{C}, I_c \in [0.05, 10]\,\text{C}, z \in [0.1, 2.0]$.
 #[derive(Debug, Clone, Copy, PartialEq, Theory)]
 #[theory(
     description = "Coupled electrochemical Li-ion aging model combining stretched power-law cycling fade 0.3*(N/N_70)^z, Arrhenius thermal activation exp(-E_a/(R*T)), C-rate stress, and parabolic sqrt(t) SEI growth.",
-    citation = "Cycle-life model for graphite-LiFePO4 cells (Wang et al., 2011); Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)"
+    citation = "ning2004cycle, bloom2001accelerated"
 )]
 pub struct ElectrochemicalAgingModel {
     preset: ChemistryPreset,
@@ -151,7 +153,7 @@ impl Default for ElectrochemicalAgingModel {
 }
 
 impl ElectrochemicalAgingModel {
-    /// Initializes a coupled aging model from [`ChemistryPreset`] at $25\,^\circ\text{C}$ and $1.0\text{C}$.
+    /// Initializes coupled fade $C = 1 - Q_{\text{cyc}} - Q_{\text{SEI}}$ from [`ChemistryPreset`] at $T = 25\,^\circ\text{C}, I_c = 1\text{C}$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: preset constants lie strictly inside bounded intervals. Domain of validity: all supported [`ChemistryPreset`] variants.
     #[must_use]
     #[verified_engine::verified]
     pub fn from_preset(preset: ChemistryPreset) -> Self {
@@ -168,7 +170,7 @@ impl ElectrochemicalAgingModel {
         }
     }
 
-    /// Constructs a coupled aging model from `preset` kinetic defaults with custom DoD/operating parameters.
+    /// Constructs $N_{70}(D, T, I_c) = \alpha D^\beta / (A_T I_c^{\gamma_c})$ with clamped parameters (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: `sanitize_bounded` replaces `NaN`/`Inf` with safe defaults. Domain of validity: clamped to $T \in [-20, 60]\,^\circ\text{C}, I_c \in [0.05, 10]\,\text{C}, z \in [0.1, 2.0]$.
     #[must_use]
     #[verified_engine::verified]
     pub fn new(
@@ -186,7 +188,7 @@ impl ElectrochemicalAgingModel {
             .with_c_rate(c_rate)
     }
 
-    /// Returns a copy with custom kinetic activation energy, C-rate exponent, and SEI calendar rate.
+    /// Updates kinetic parameters $(E_a, \gamma_c, k_{\text{SEI}})$ in $A_T(T) I_c^{\gamma_c}$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: clamps $E_a \le 120\,\text{kJ/mol}$ to prevent `exp` overflow. Domain of validity: $E_a \in [0, 1.2 \times 10^5], \gamma_c \in [0, 3], k_{\text{SEI}} \in [0, 0.2]$.
     #[must_use]
     #[verified_engine::verified]
     pub fn with_kinetics(
@@ -211,7 +213,7 @@ impl ElectrochemicalAgingModel {
         self
     }
 
-    /// Returns a copy with operating temperature clamped to `[-20.0, 60.0]` °C (`253.15..=333.15` K).
+    /// Sets operating temperature $T_C \in [-20, 60]\,^\circ\text{C}$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: keeps $T_K \ge 253.15\,\text{K}$ away from $1/T_K$ singularity. Domain of validity: $T_C \in [-20.0, 60.0]\,^\circ\text{C}$.
     #[must_use]
     #[verified_engine::verified]
     pub fn with_temperature_c(mut self, temperature_c: f64) -> Self {
@@ -220,7 +222,7 @@ impl ElectrochemicalAgingModel {
         self
     }
 
-    /// Returns a copy with operating C-rate clamped to `[0.05, 10.0]` `1/h`.
+    /// Sets operating C-rate $I_c \in [0.05, 10.0]$ in $I_c^{\gamma_c}$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: positive lower bound prevents zero-stress division. Domain of validity: $I_c \in [0.05, 10.0]\,\text{h}^{-1}$.
     #[must_use]
     #[verified_engine::verified]
     pub fn with_c_rate(mut self, c_rate: f64) -> Self {
@@ -228,7 +230,7 @@ impl ElectrochemicalAgingModel {
         self
     }
 
-    /// Returns a copy with stretched cycling exponent $z$ clamped to `[0.1, 2.0]`.
+    /// Sets stretched cycling exponent $z \in [0.1, 2.0]$ in $0.3(N/N_{70})^z$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: bounds $1/z \le 10$ during inverse cycle solves. Domain of validity: $z \in [0.1, 2.0]$.
     #[must_use]
     #[verified_engine::verified]
     pub fn with_exponent_z(mut self, z: f64) -> Self {
@@ -236,7 +238,7 @@ impl ElectrochemicalAgingModel {
         self
     }
 
-    /// Returns a copy with parabolic SEI calendar fade rate $k_{\text{SEI}}$ (`day^-0.5` at `25 °C`).
+    /// Sets parabolic SEI rate $k_{\text{SEI}}$ in $Q_{\text{SEI}} = k_{\text{SEI}} A_T \sqrt{t}$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: bounded in $[0, 0.2]$. Domain of validity: $k_{\text{SEI}} \in [0.0, 0.2]\,\text{day}^{-1/2}$.
     #[must_use]
     #[verified_engine::verified]
     pub fn with_sei_rate(mut self, sei_rate: f64) -> Self {
@@ -244,7 +246,7 @@ impl ElectrochemicalAgingModel {
         self
     }
 
-    /// Returns a copy with updated DoD power-law prefactor $\alpha$ and exponent $\beta$.
+    /// Updates DoD law parameters $(\alpha, \beta)$ in $N_{70} \propto \alpha D^\beta$ (`@bloom2001accelerated`, `spec:battery_degradation_v1`). Numerical stability: clamps $\alpha \in [1, 10^9], \beta \in [-4, -0.05]$. Domain of validity: finite $\alpha > 0, \beta < 0$.
     #[must_use]
     #[verified_engine::verified]
     pub fn with_dod_law(mut self, alpha: f64, beta: f64) -> Self {
@@ -253,77 +255,77 @@ impl ElectrochemicalAgingModel {
         self
     }
 
-    /// Returns the base [`ChemistryPreset`] associated with this model.
+    /// Returns chemistry preset governing baseline $(E_a, \gamma_c, k_{\text{SEI}})$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: exact enum copy. Domain of validity: all [`ChemistryPreset`] variants.
     #[must_use]
     #[verified_engine::verified]
     pub const fn preset(&self) -> ChemistryPreset {
         self.preset
     }
 
-    /// Returns the DoD power-law prefactor $\alpha$.
+    /// Returns DoD power-law prefactor $\alpha > 0$ (`@bloom2001accelerated`, `spec:battery_degradation_v1`). Numerical stability: exact `f64` copy. Domain of validity: $\alpha \in [1, 10^9]$.
     #[must_use]
     #[verified_engine::verified]
     pub const fn alpha(&self) -> f64 {
         self.alpha
     }
 
-    /// Returns the DoD power-law exponent $\beta$.
+    /// Returns DoD power-law exponent $\beta < 0$ (`@bloom2001accelerated`, `spec:battery_degradation_v1`). Numerical stability: exact `f64` copy. Domain of validity: $\beta \in [-4.0, -0.05]$.
     #[must_use]
     #[verified_engine::verified]
     pub const fn beta(&self) -> f64 {
         self.beta
     }
 
-    /// Returns the stretched cycling exponent $z \in [0.1, 2.0]$.
+    /// Returns stretched cycling exponent $z \in [0.1, 2.0]$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: exact `f64` copy. Domain of validity: $z \in [0.1, 2.0]$.
     #[must_use]
     #[verified_engine::verified]
     pub const fn exponent_z(&self) -> f64 {
         self.z
     }
 
-    /// Returns the Arrhenius activation energy $E_a$ ($\text{J}\cdot\text{mol}^{-1}$).
+    /// Returns Arrhenius activation energy $E_a$ ($\text{J}\cdot\text{mol}^{-1}$) (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: exact `f64` copy. Domain of validity: $E_a \in [0, 1.2 \times 10^5]$.
     #[must_use]
     #[verified_engine::verified]
     pub const fn activation_energy(&self) -> f64 {
         self.activation_energy
     }
 
-    /// Returns the C-rate stress exponent $\gamma_c$.
+    /// Returns C-rate mechanical stress exponent $\gamma_c$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: exact `f64` copy. Domain of validity: $\gamma_c \in [0.0, 3.0]$.
     #[must_use]
     #[verified_engine::verified]
     pub const fn c_rate_exponent(&self) -> f64 {
         self.c_rate_exponent
     }
 
-    /// Returns the reference $25\,^\circ\text{C}$ SEI calendar fade rate ($\text{day}^{-1/2}$).
+    /// Returns reference $25\,^\circ\text{C}$ SEI fade rate $k_{\text{SEI}}$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: exact `f64` copy. Domain of validity: $k_{\text{SEI}} \in [0.0, 0.2]\,\text{day}^{-1/2}$.
     #[must_use]
     #[verified_engine::verified]
     pub const fn sei_rate(&self) -> f64 {
         self.sei_rate
     }
 
-    /// Returns the clamped operating temperature in degrees Celsius (`-20.0..=60.0`).
+    /// Returns clamped temperature $T_C \in [-20, 60]\,^\circ\text{C}$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: exact `f64` copy. Domain of validity: $[-20.0, 60.0]\,^\circ\text{C}$.
     #[must_use]
     #[verified_engine::verified]
     pub const fn temperature_c(&self) -> f64 {
         self.temperature_c
     }
 
-    /// Returns the clamped absolute operating temperature in Kelvin (`253.15..=333.15`).
+    /// Returns absolute temperature $T_K = T_C + 273.15$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: single `f64` addition bounded in $[253.15, 333.15]$. Domain of validity: $T_C \in [-20, 60]\,^\circ\text{C}$.
     #[must_use]
     #[verified_engine::verified]
     pub fn temperature_k(&self) -> f64 {
         self.temperature_c + CELSIUS_TO_KELVIN
     }
 
-    /// Returns the clamped operating C-rate (`0.05..=10.0`).
+    /// Returns clamped operating C-rate $I_c \in [0.05, 10.0]$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: exact `f64` copy. Domain of validity: $[0.05, 10.0]\,\text{h}^{-1}$.
     #[must_use]
     #[verified_engine::verified]
     pub const fn c_rate(&self) -> f64 {
         self.c_rate
     }
 
-    /// Normalized Arrhenius thermal acceleration factor $\exp((E_a / R)(1/T_{\text{ref}} - 1/T))$, equal to `1.0` at $25\,^\circ\text{C}$.
+    /// Evaluates Arrhenius factor $A_T(T) = \exp((E_a/R)(T_{\text{ref}}^{-1} - T^{-1}))$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: exponent bounded on $T \in [253.15, 333.15]\,\text{K}$ without overflow. Domain of validity: $E_a \in [0, 1.2 \times 10^5], T \in [253.15, 333.15]\,\text{K}$.
     #[must_use]
     #[verified_engine::verified]
     pub fn arrhenius_factor(&self) -> f64 {
@@ -332,14 +334,14 @@ impl ElectrochemicalAgingModel {
         exponent.exp()
     }
 
-    /// Dimensionless C-rate mechanical stress factor $I_c^{\gamma_c}$ (`1.0` at $1\text{C}$).
+    /// Evaluates C-rate stress factor $S_I = I_c^{\gamma_c}$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: well-conditioned `powf` on $I_c \in [0.05, 10], \gamma_c \in [0, 3]$. Domain of validity: $I_c \in [0.05, 10.0], \gamma_c \in [0, 3]$.
     #[must_use]
     #[verified_engine::verified]
     pub fn c_rate_stress_factor(&self) -> f64 {
         self.c_rate.powf(self.c_rate_exponent)
     }
 
-    /// Fractional cycling capacity loss $0.3 \cdot (N / N_{70}(D, T, I_c))^z$.
+    /// Evaluates fractional cycling loss $Q_{\text{cyc}} = 0.3(N / N_{70})^z \in [0, 1]$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: guards $N_{70} \le 0$ and clamps output to $[0, 1]$. Domain of validity: $N \ge 0, D \in (0, 1]$.
     #[must_use]
     #[verified_engine::verified]
     pub fn cycling_loss(&self, n: Cycles, d: DepthOfDischarge) -> f64 {
@@ -355,7 +357,7 @@ impl ElectrochemicalAgingModel {
         (0.3 * (raw_n / n70_val).powf(self.z)).clamp(0.0, 1.0)
     }
 
-    /// Fractional SEI calendar capacity loss $k_{\text{SEI}} A_T(T) \sqrt{t_{\text{days}}}$.
+    /// Evaluates parabolic SEI loss $Q_{\text{SEI}} = k_{\text{SEI}} A_T(T)\sqrt{t} \in [0, 1]$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: returns `0.0` for non-positive/non-finite `elapsed_days` and clamps to $[0, 1]$. Domain of validity: finite $t \ge 0$ days.
     #[must_use]
     #[verified_engine::verified]
     pub fn sei_calendar_loss(&self, elapsed_days: f64) -> f64 {
@@ -365,7 +367,7 @@ impl ElectrochemicalAgingModel {
         (self.sei_rate * self.arrhenius_factor() * elapsed_days.sqrt()).clamp(0.0, 1.0)
     }
 
-    /// Coupled state-of-health capacity combining stretched cycling fade and $\sqrt{t}$ SEI growth.
+    /// Evaluates coupled capacity $C(N, D, t) = \text{clamp}(1 - Q_{\text{cyc}} - Q_{\text{SEI}}, 0, 1)$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: bounded subtraction clamped to `[0, 1]`. Domain of validity: $N \ge 0, D \in (0, 1], t \ge 0$.
     #[must_use]
     #[verified_engine::verified]
     pub fn coupled_capacity(&self, n: Cycles, d: DepthOfDischarge, elapsed_days: f64) -> Capacity {
@@ -373,21 +375,21 @@ impl ElectrochemicalAgingModel {
         Capacity::new_clamped(1.0 - loss)
     }
 
-    /// Projected cycle life to $70\%$ capacity under pure cycling at `(d, temperature_c, c_rate)`.
+    /// Evaluates stressed cycle life $N_{70}(D, T, I_c) = \alpha D^\beta / (A_T I_c^{\gamma_c})$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: clamps $D \ge 10^{-4}$ and stress $\ge 10^{-12}$. Domain of validity: $D \in (0, 1]$.
     #[must_use]
     #[verified_engine::verified]
     pub fn n70(&self, d: DepthOfDischarge) -> Cycles {
         DegradationModel::n70(self, d)
     }
 
-    /// Cycling state-of-health capacity after `n` cycles at depth of discharge `d`.
+    /// Evaluates pure-cycling state of health $C(N, D) = 1 - 0.3(N / N_{70})^z$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: clamped in `[0, 1]`. Domain of validity: $N \ge 0, D \in (0, 1]$.
     #[must_use]
     #[verified_engine::verified]
     pub fn capacity(&self, n: Cycles, d: DepthOfDischarge) -> Capacity {
         DegradationModel::capacity(self, n, d)
     }
 
-    /// Cycles required to reach `target` state of health under cycling at depth of discharge `d`.
+    /// Solves $N(C_{\text{target}}, D) = N_{70} ((1 - C_{\text{target}})/0.3)^{1/z}$ (`@ning2004cycle`, `spec:battery_degradation_v1`). Numerical stability: bounded exponent $1/z \in [0.5, 10]$. Domain of validity: $C_{\text{target}} \in [0, 1], D \in (0, 1]$.
     #[must_use]
     #[verified_engine::verified]
     pub fn cycles_to_capacity(&self, target: Capacity, d: DepthOfDischarge) -> Cycles {

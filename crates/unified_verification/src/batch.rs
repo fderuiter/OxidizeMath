@@ -22,9 +22,16 @@ pub fn run_traceability_with_cache(auto_fix: bool, cache: &mut AstCache) -> bool
 
 pub fn run_traceability_in_process(args: &[String]) -> bool {
     let _root_guard = crate::manifest_cache::WorkspaceRootGuard::enter();
+    let (workspace_root, members) = crate::manifest_cache::discover_workspace();
     let auto_fix = args.iter().any(|arg| arg == "--auto-fix");
     let mut cache = AstCache::new();
-    run_traceability_with_cache(auto_fix, &mut cache)
+    let trace_ok = run_traceability_with_cache(auto_fix, &mut cache);
+    let math_ok = crate::math_doc_contract::run_math_doc_contract_in_workspace(
+        &workspace_root,
+        &members,
+        &mut cache,
+    );
+    trace_ok && math_ok
 }
 
 pub fn run_batch_ast_with_cache(members: &[String], cache: &mut AstCache) -> bool {
@@ -185,6 +192,14 @@ pub(crate) fn select_touched_members(
     touched
 }
 
+pub(crate) fn is_math_reference_path(path: &str) -> bool {
+    let norm = path.replace('\\', "/");
+    let rel = norm.trim_start_matches("./");
+    rel == "papers/references.bib"
+        || rel == "traceability.toml"
+        || rel.starts_with("docs/math_specs/")
+}
+
 pub(crate) fn select_touched_policy_members(
     all_staged: &[String],
     workspace_members: &[String],
@@ -193,15 +208,18 @@ pub(crate) fn select_touched_policy_members(
         return workspace_members.to_vec();
     }
 
+    let math_refs_staged = all_staged.iter().any(|p| is_math_reference_path(p));
     let mut touched = Vec::new();
     for member in workspace_members {
         let prefix = format!("{member}/");
         let manifest = format!("{member}/Cargo.toml");
-        let is_touched = all_staged.iter().any(|p| {
-            p == &manifest
-                || (p.starts_with(&prefix)
-                    && (p.ends_with(".rs") || p.ends_with(".md") || p.ends_with("/Cargo.toml")))
-        });
+        let is_touched = (math_refs_staged
+            && crate::math_doc_contract::is_math_contract_member(member))
+            || all_staged.iter().any(|p| {
+                p == &manifest
+                    || (p.starts_with(&prefix)
+                        && (p.ends_with(".rs") || p.ends_with(".md") || p.ends_with("/Cargo.toml")))
+            });
         if is_touched {
             touched.push(member.clone());
         }
@@ -226,6 +244,7 @@ fn run_staged_policy_and_md_fences(
         } else {
             crate::policy_audit::staged_member::run_staged_policy_audit_with_caches(
                 &member_refs,
+                all_staged,
                 existing_staged,
                 cache,
                 manifest_cache,

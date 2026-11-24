@@ -9,11 +9,16 @@ use nalgebra::{DMatrix, Dyn, Matrix, Storage};
 pub use crate::climate::config::CeraConfig;
 use verified_engine::Theory;
 
-/// The main CERA model.
+/// Climate-Emulation and Response Architecture (`Cera`) coupling an encoder-decoder representation
+/// $z = E_\phi(x)$ with a linear-nonlinear cloud response predictor $\hat{y} = P_\psi(z_{\text{aligned}})$.
+///
+/// - **Citation**: `@Liu2025CERA` (`spec:climate_v1`, `papers/cera_framework.tex`).
+/// - **Numerical stability**: Single-precision (`f32`) latent projections remain bounded when input columns are standardized and learning rates satisfy $\eta \in (0, 10^{-2}]$.
+/// - **Domain of validity**: Requires `1 <= aligned_channels <= latent_channels`, `num_levels >= 1`, and input row counts divisible by `num_levels`.
 #[derive(Theory)]
 #[theory(
     description = "CERA is a Climate-Emulation and Response Architecture that combines autoencoders with a predictive downstream model to map local atmospheric states to global cloud properties under varying climate forcing.",
-    citation = "Climate-Emulation and Response Architecture (CERA) paper"
+    citation = "Liu2025CERA"
 )]
 pub struct Cera<A: AutoencoderModel, P: PredictorModel> {
     /// The autoencoder component.
@@ -25,7 +30,11 @@ pub struct Cera<A: AutoencoderModel, P: PredictorModel> {
 }
 
 impl Cera<Autoencoder, Predictor> {
-    /// Creates a new CERA model with the given configuration.
+    /// Creates a new CERA model instantiating default [`Autoencoder`] and [`Predictor`] dimensions
+    /// $d_{\text{pred}} = L \cdot C_{\text{aligned}}$ (`@Liu2025CERA`, `spec:climate_v1`).
+    ///
+    /// - **Numerical stability**: Weight initialization scales inversely with channel fan-in to prevent activation saturation.
+    /// - **Domain of validity**: Valid for `1 <= config.aligned_channels <= config.latent_channels` and `config.num_levels >= 1`; returns [`ClimateError`] otherwise.
     ///
     /// # Arguments
     ///
@@ -77,7 +86,10 @@ impl Cera<Autoencoder, Predictor> {
 }
 
 impl<P: PredictorModel> Cera<Autoencoder, P> {
-    /// Creates a new CERA model with a custom predictor.
+    /// Creates a new CERA model pairing the default [`Autoencoder`] $z = E_\phi(x)$ with a custom predictor (`@Liu2025CERA`, `spec:climate_v1`).
+    ///
+    /// - **Numerical stability**: Preserves exact `f32` parameter buffers without intermediate rescaling.
+    /// - **Domain of validity**: Valid when `1 <= config.aligned_channels <= config.latent_channels` and `config.num_levels >= 1`.
     ///
     /// # Arguments
     ///
@@ -95,7 +107,10 @@ impl<P: PredictorModel> Cera<Autoencoder, P> {
 }
 
 impl<A: AutoencoderModel, P: PredictorModel> Cera<A, P> {
-    /// Creates a new CERA model with injected dependencies.
+    /// Creates a new CERA model from injected `autoencoder` and `predictor` components verifying $1 \le C_{\text{aligned}} \le C_{\text{latent}}$ (`@Liu2025CERA`, `spec:climate_v1`).
+    ///
+    /// - **Numerical stability**: Performs exact integer configuration checks with zero floating-point rounding error.
+    /// - **Domain of validity**: Requires `config.aligned_channels >= 1`, `config.aligned_channels <= config.latent_channels`, and `config.num_levels >= 1`.
     ///
     /// # Arguments
     ///
@@ -132,8 +147,10 @@ impl<A: AutoencoderModel, P: PredictorModel> Cera<A, P> {
         })
     }
 
-    /// Reshapes a batch of latent vectors for the predictor.
-    /// From (batch_size * num_levels, channels) to (batch_size, num_levels * channels).
+    /// Reshapes a batch of latent vectors from $(B \cdot L, C_{\text{aligned}})$ to $(B, L \cdot C_{\text{aligned}})$ via $Z_{b, \ell C + c} = z_{b L + \ell, c}$ (`@Liu2025CERA`, `spec:climate_v1`).
+    ///
+    /// - **Numerical stability**: Bitwise-exact index permutation with zero arithmetic rounding error.
+    /// - **Domain of validity**: Requires `latent_matrix.nrows() >= batch_size * self.config.num_levels` and `latent_matrix.ncols() == self.config.aligned_channels`.
     ///
     /// # Arguments
     ///
@@ -164,7 +181,10 @@ impl<A: AutoencoderModel, P: PredictorModel> Cera<A, P> {
         DMatrix::from_row_slice(batch_size, num_levels * aligned_channels, &reshaped_data)
     }
 
-    /// Makes a prediction using the trained CERA model.
+    /// Evaluates the coupled forward map $\hat{Y} = P_\psi(\text{reshape}(E_\phi(X)_{:, 1:C_{\text{aligned}}}))$ (`@Liu2025CERA`, `spec:climate_v1`).
+    ///
+    /// - **Numerical stability**: Forward `f32` matrix-vector products accumulate $O(L \cdot C_{\text{aligned}} \varepsilon_{\text{mach}})$ rounding error.
+    /// - **Domain of validity**: Requires finite `inputs` with `inputs.nrows()` a positive multiple of `self.config.num_levels` and `inputs.ncols() == self.config.in_channels`.
     ///
     /// # Arguments
     ///

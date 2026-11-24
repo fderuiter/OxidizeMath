@@ -44,7 +44,7 @@ pub use scientific_metadata;
 /// use verified_engine::scientific_metadata::theory::TheoryDescribable;
 ///
 /// #[derive(Theory)]
-/// #[theory(description = "Hookean spring law", citation = "Hooke (1678)")]
+/// #[theory(description = "Hookean spring law", citation = "landau1976mechanics")]
 /// pub struct SpringParams {
 ///     #[theory(min = 0.1, max = 500.0, step = 0.5)]
 ///     pub stiffness: f64,

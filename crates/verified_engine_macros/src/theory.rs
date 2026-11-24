@@ -20,18 +20,26 @@ struct StructTheoryMeta {
     seen_citation: bool,
 }
 
-fn parse_string_meta(
+fn parse_string_meta_lit(
     meta: &syn::meta::ParseNestedMeta<'_>,
     seen: &mut bool,
     key_name: &str,
-) -> syn::Result<String> {
+) -> syn::Result<syn::LitStr> {
     if *seen {
         return Err(meta.error(format!("duplicate `{key_name}` key in `#[theory]`")));
     }
     let value = meta.value()?;
     let lit: syn::LitStr = value.parse()?;
     *seen = true;
-    Ok(lit.value())
+    Ok(lit)
+}
+
+fn parse_string_meta(
+    meta: &syn::meta::ParseNestedMeta<'_>,
+    seen: &mut bool,
+    key_name: &str,
+) -> syn::Result<String> {
+    parse_string_meta_lit(meta, seen, key_name).map(|lit| lit.value())
 }
 
 fn parse_struct_attrs(
@@ -52,7 +60,8 @@ fn parse_struct_attrs(
                 out.phonetic = parse_string_meta(&meta, &mut out.seen_phonetic, "phonetic")?;
                 Ok(())
             } else if meta.path.is_ident("citation") {
-                out.citation = parse_string_meta(&meta, &mut out.seen_citation, "citation")?;
+                let lit = parse_string_meta_lit(&meta, &mut out.seen_citation, "citation")?;
+                out.citation = crate::bibtex_check::validate_theory_citation_lit(&lit)?;
                 Ok(())
             } else {
                 let key = meta.path.to_token_stream().to_string();
@@ -418,7 +427,7 @@ mod tests {
         let sm = quote! { ::scientific_metadata };
         let expanded = derive_theory_impl_with_path(
             quote! {
-                #[theory(description = "Grid", citation = "Ref")]
+                #[theory(description = "Grid", citation = "dormand1980family")]
                 struct GridModel {
                     #[theory(min = -10, max = 100, step = 5)]
                     offset: i32,

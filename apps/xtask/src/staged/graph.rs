@@ -30,6 +30,8 @@ pub(crate) fn is_root_config_escalation(path: &str) -> bool {
             | ".rustfmt.toml"
             | "rustfmt.toml"
             | "verification_whitelist.toml"
+            | "papers/references.bib"
+            | "traceability.toml"
     ) || path.starts_with(".cargo/")
 }
 

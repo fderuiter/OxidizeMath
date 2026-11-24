@@ -12951,6 +12951,75 @@
       "signature": "pub fn collect_ast_file_debt (_ : & syn :: File) -> Vec < String >"
     }
   ],
+  "crates/oxidize_core/src/bibtex.rs": [
+    {
+      "signature": "pub use extract :: extract_doc_bib_keys"
+    },
+    {
+      "signature": "pub use extract :: extract_doc_spec_ids"
+    },
+    {
+      "signature": "pub use extract :: extract_tex_cite_keys"
+    },
+    {
+      "signature": "pub use extract :: validate_math_spec_markdown"
+    },
+    {
+      "signature": "pub use parser :: BibtexDatabase"
+    },
+    {
+      "signature": "pub use parser :: BibtexEntry"
+    },
+    {
+      "signature": "pub use parser :: is_valid_bibtex_key"
+    }
+  ],
+  "crates/oxidize_core/src/bibtex/extract.rs": [
+    {
+      "signature": "pub fn extract_doc_bib_keys (_ : & str) -> Vec < String >"
+    },
+    {
+      "signature": "pub fn extract_doc_spec_ids (_ : & str) -> Vec < String >"
+    },
+    {
+      "signature": "pub fn extract_tex_cite_keys (_ : & str) -> Vec < String >"
+    },
+    {
+      "signature": "pub fn validate_math_spec_markdown (_ : & str , _ : & str , _ : & BibtexDatabase ,) -> Result < Vec < String > , String >"
+    }
+  ],
+  "crates/oxidize_core/src/bibtex/parser.rs": [
+    {
+      "signature": "impl BibtexDatabase { pub fn entries (& self) -> & BTreeMap < String , BibtexEntry > }"
+    },
+    {
+      "signature": "impl BibtexDatabase { pub fn get (& self , _ : & str) -> Option < & BibtexEntry > }"
+    },
+    {
+      "signature": "impl BibtexDatabase { pub fn parse (_ : & str) -> Result < Self , String > }"
+    },
+    {
+      "signature": "impl BibtexDatabase { pub fn verify_cited_key (& self , _ : & str) -> Result < & BibtexEntry , String > }"
+    },
+    {
+      "signature": "impl BibtexEntry { pub fn doi (& self) -> Option < & str > }"
+    },
+    {
+      "signature": "impl BibtexEntry { pub fn eprint (& self) -> Option < & str > }"
+    },
+    {
+      "signature": "impl BibtexEntry { pub fn has_persistent_id (& self) -> bool }"
+    },
+    {
+      "signature": "pub fn is_valid_bibtex_key (_ : & str) -> bool"
+    },
+    {
+      "signature": "pub struct BibtexDatabase"
+    },
+    {
+      "signature": "pub struct BibtexEntry"
+    }
+  ],
   "crates/oxidize_core/src/boundary.rs": [
     {
       "signature": "pub struct NeumannBoundary"

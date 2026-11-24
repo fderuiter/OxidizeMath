@@ -196,6 +196,7 @@ pub fn generate_traceability_snapshot(out_dir: &Path) {
 
     let cert_path = ws_root.join("Verification_Certificate.json");
     vfs.emit_if_exists(&cert_path);
+    vfs.emit_if_exists(&ws_root.join("docs/math_specs"));
     let certificate = read_optional_certificate(&cert_path);
 
     let code_dirs = active_code_dirs(&vfs);

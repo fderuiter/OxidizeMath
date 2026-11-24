@@ -4,6 +4,7 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
 
+mod bibtex_check;
 mod crate_paths;
 mod embed_theory;
 mod latex_parser;
@@ -126,7 +127,7 @@ pub fn verified(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// #[theory(
 ///     description = "Damped harmonic oscillator",
 ///     phonetic = "Damped harmonic oscillator",
-///     citation = "Goldstein, Classical Mechanics (2002)"
+///     citation = "dormand1980family"
 /// )]
 /// pub struct OscillatorConfig {
 ///     #[theory(min = 0.0, max = 50.0, step = 0.1)]

@@ -443,6 +443,14 @@ pub(crate) fn run_policy_audit_with_whitelist_and_caches(
             success = false;
         }
     }
+    if !crate::math_doc_contract::audit_members_with_whitelist_and_cache(
+        members,
+        whitelist_path,
+        &whitelist,
+        cache,
+    ) {
+        success = false;
+    }
 
     success
 }

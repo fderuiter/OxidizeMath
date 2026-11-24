@@ -50,10 +50,29 @@ fn test_packaged_desktop_outside_workspace_renders_embedded_28_papers() {
     super::wait_for_scan_completion(&mut tab);
     assert_eq!(tab.state, TraceabilityScanState::Ready);
     assert_eq!(tab.papers.len(), 31);
+    assert_eq!(tab.specs.len(), 22);
     assert!(tab.orphaned_papers.is_empty());
     assert!(tab.certificate.as_ref().is_some_and(|c| c.passed));
     assert!(render_tab_text_hit(&mut tab, "100% Parity Achieved"));
     assert!(render_tab_text_hit(&mut tab, "Total Papers: 31"));
+    assert!(render_tab_text_hit(&mut tab, "Verified Math Specs: 22"));
+    assert!(render_tab_text_hit(
+        &mut tab,
+        "Domain Math Specifications (docs/math_specs/)"
+    ));
+    assert!(render_tab_text_hit(
+        &mut tab,
+        "docs/math_specs/climate_v1.md"
+    ));
+    assert!(!render_tab_text_hit(&mut tab, "spec:climate_v1"));
+    assert_eq!(
+        TraceabilityTab::spec_url("spec:climate_v1"),
+        Some(
+            "https://github.com/fderuiter/OxidizeMath/blob/main/docs/math_specs/climate_v1.md"
+                .to_string()
+        )
+    );
+    assert_eq!(TraceabilityTab::spec_url("papers/cera_framework.tex"), None);
     assert!(render_tab_text_hit(
         &mut tab,
         "Verification Certificate: Passed"

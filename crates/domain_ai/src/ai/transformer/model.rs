@@ -45,10 +45,19 @@ use verified_engine::Theory;
 ///
 /// // 3. (User Responsibility) Add Embeddings & Positional Encoding here...
 /// ```
+///
+/// # Mathematical Formulation & Verification
+///
+/// Each attention sublayer computes scaled dot-product attention:
+/// $$\mathrm{Attention}(Q, K, V) = \mathrm{softmax}\!\left(\frac{Q K^\top}{\sqrt{d_k}}\right) V$$
+///
+/// - **Citation**: `@vaswani2017attention` (`spec:transformer_v1`).
+/// - **Numerical stability**: Scaling logits by $1/\sqrt{d_k}$, max-shifted softmax normalization, and residual layer normalization bound forward condition numbers across deep stacks.
+/// - **Domain of validity**: Requires positive model dimension $d_{\text{model}} \ge 1$ divisible by attention head count $h \ge 1$, positive feed-forward width $d_{\text{ff}} \ge 1$, and finite sequence tensors.
 #[derive(Theory)]
 #[theory(
     description = "The Transformer architecture relies entirely on attention mechanisms, dispensing with recurrence and convolutions entirely. The encoder maps an input sequence to a continuous representation, which the decoder uses to generate an output sequence.",
-    citation = "Attention Is All You Need (Vaswani et al., 2017)"
+    citation = "vaswani2017attention"
 )]
 pub struct Transformer<
     A: AttentionMechanism = MultiHeadAttention,

@@ -27,7 +27,9 @@ pub(crate) fn requires_full_traceability(all_staged: &[String], escalate: bool) 
         || all_staged.iter().any(|p| {
             let norm = p.replace('\\', "/");
             let rel = norm.trim_start_matches("./");
-            rel == "traceability.toml" || rel.starts_with("papers/")
+            rel == "traceability.toml"
+                || rel.starts_with("papers/")
+                || rel.starts_with("docs/math_specs/")
         })
 }
 

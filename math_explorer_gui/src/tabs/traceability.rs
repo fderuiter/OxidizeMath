@@ -13,10 +13,11 @@ mod web_snapshot;
 use scanner::execute_workspace_scan;
 pub(crate) use web_snapshot::embedded_traceability_report;
 use web_snapshot::PaperStatus;
-pub use web_snapshot::{paper_tex_url, render_paper_links};
+pub use web_snapshot::{paper_tex_url, parse_spec_stem, render_paper_links};
 
 pub struct TraceabilityTab {
     papers: HashMap<String, PaperStatus>,
+    specs: HashMap<String, PaperStatus>,
     orphaned_papers: Vec<String>,
     unlinked_code: Vec<String>,
     invalid_links: Vec<(String, String)>,
@@ -35,6 +36,7 @@ impl Default for TraceabilityTab {
     fn default() -> Self {
         Self {
             papers: HashMap::new(),
+            specs: HashMap::new(),
             orphaned_papers: Vec::new(),
             unlinked_code: Vec::new(),
             invalid_links: Vec::new(),
@@ -100,6 +102,10 @@ impl TraceabilityTab {
         Self::paper_url_for_target(name, cfg!(target_arch = "wasm32"))
     }
 
+    pub fn spec_url(name: &str) -> Option<String> {
+        web_snapshot::spec_doc_url(name)
+    }
+
     #[cfg(test)]
     pub fn online_document_url(&self, name: &str) -> Option<String> {
         let clean = name.strip_prefix("papers/").unwrap_or(name);
@@ -135,6 +141,7 @@ impl TraceabilityTab {
 
     fn clear_results(&mut self) {
         self.papers.clear();
+        self.specs.clear();
         self.orphaned_papers.clear();
         self.unlinked_code.clear();
         self.invalid_links.clear();
@@ -186,7 +193,15 @@ impl TraceabilityTab {
         self.invalid_links = report.invalid_links;
 
         for (paper_name, linked_code) in report.paper_coverage {
-            if !paper_name.starts_with("spec:") && !paper_name.starts_with("registry:") {
+            if paper_name.starts_with("spec:") {
+                self.specs.insert(
+                    paper_name.clone(),
+                    PaperStatus {
+                        name: paper_name,
+                        linked_code,
+                    },
+                );
+            } else if !paper_name.starts_with("registry:") {
                 self.papers.insert(
                     paper_name.clone(),
                     PaperStatus {
@@ -403,12 +418,15 @@ impl ExplorerTab for TraceabilityTab {
                 }
                 TraceabilityScanState::Ready => web_snapshot::render_ready_report(
                     ui,
-                    &self.papers,
-                    &self.orphaned_papers,
-                    &self.unlinked_code,
-                    &self.invalid_links,
-                    self.certificate.as_ref(),
-                    Self::paper_url,
+                    web_snapshot::ReadyReportView {
+                        papers_map: &self.papers,
+                        specs_map: &self.specs,
+                        orphaned_papers: &self.orphaned_papers,
+                        unlinked_code: &self.unlinked_code,
+                        invalid_links: &self.invalid_links,
+                        certificate: self.certificate.as_ref(),
+                        paper_pdf_fn: Self::paper_url,
+                    },
                 ),
             }
         });

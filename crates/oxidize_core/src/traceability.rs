@@ -8,6 +8,8 @@ mod manifest;
 mod module_tree;
 #[cfg(feature = "ast-analysis")]
 mod runner;
+#[cfg(feature = "ast-analysis")]
+mod spec_verify;
 
 #[cfg(feature = "ast-analysis")]
 pub use cache::{AstCache, CachedRustFile};
@@ -276,11 +278,15 @@ impl<V: VirtualFileSystem> TraceabilityEngine<V> {
             .await?;
 
         let registry_table = self.read_registry_table(papers_dir).await?;
+        let verified_specs = self
+            .verify_specs_and_bibtex(papers_dir, &valid_papers, &registry_table, &mut report)
+            .await?;
         let mut registered_modules = HashSet::new();
         let mut registry_links = HashMap::new();
         analysis::apply_registry_table(
             &registry_table,
             &valid_papers,
+            &verified_specs,
             &mut registered_modules,
             &mut registry_links,
             &mut report,

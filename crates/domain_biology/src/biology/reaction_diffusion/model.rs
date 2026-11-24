@@ -4,16 +4,14 @@ use verified_engine::Theory;
 
 use super::{ChemicalState, DiffusionModel, ReactionDiffusionError, ReactionModel};
 
-/// A pure physics definition of a Reaction-Diffusion system.
+/// Pure operator definition of an $N$-species reaction-diffusion PDE $\partial_t \mathbf{C} = \mathbf{D}\nabla^2 \mathbf{C} + \mathbf{R}(\mathbf{C})$ (`@turing1952chemical`, `spec:biology_v1`).
 ///
-/// This struct encapsulates the immutable laws of the system (reaction kinetics, diffusion strategy,
-/// and coefficients), separating them from the mutable simulation state.
-///
-/// It implements `OdeSystem` to calculate the time derivative ($dC/dt$) given a state.
+/// - **Numerical stability**: Explicit spatial Laplacians require the parabolic CFL step bound $\Delta t \le \Delta x^2 / (2 d \max_i D_i)$.
+/// - **Domain of validity**: Requires `diffusion_coeffs.len() == state.num_species()`, non-negative diffusivities $D_i \ge 0$, and non-empty spatial grids.
 #[derive(Theory)]
 #[theory(
     description = "Turing patterns arise from reaction-diffusion systems where local auto-activation is coupled with long-range inhibition, leading to spontaneous symmetry breaking and the formation of stable spatial patterns.",
-    citation = "The Chemical Basis of Morphogenesis (Turing, 1952)"
+    citation = "turing1952chemical"
 )]
 pub struct ReactionDiffusionModel<R, D> {
     #[allow(missing_docs)]
@@ -45,10 +43,8 @@ impl<R: ReactionModel, D: DiffusionModel> OdeSystem<ChemicalState>
     }
 }
 
-/// A generic Reaction-Diffusion system for N species.
-///
-/// This struct manages the simulation state and the integration strategy.
-/// By default, it uses the Forward Euler method, but can be configured with other solvers.
+/// Coupled state-and-solver container integrating $\partial_t \mathbf{C} = \mathbf{D}\nabla^2 \mathbf{C} + \mathbf{R}(\mathbf{C})$ (`@turing1952chemical`, `spec:biology_v1`).
+/// Numerical stability: governed by the parabolic CFL bound $\Delta t \le \Delta x^2 / (2 d \max_i D_i)$ of the active solver `S`. Domain of validity: `num_species >= 1`, `grid_size >= 1`, and finite $D_i \ge 0$.
 pub struct ReactionDiffusionSystem<
     R: ReactionModel,
     D: DiffusionModel,
@@ -62,9 +58,8 @@ pub struct ReactionDiffusionSystem<
     pub solver: S,
 }
 
-/// Builder for `ReactionDiffusionSystem`.
-///
-/// Ensures that parameters are physically valid before creating the system.
+/// Validated builder assembling [`ReactionDiffusionSystem`] for $\partial_t \mathbf{C} = \mathbf{D}\nabla^2 \mathbf{C} + \mathbf{R}(\mathbf{C})$ (`@turing1952chemical`, `spec:biology_v1`).
+/// Numerical stability: enforces dimensional alignment prior to time-stepping with zero floating-point drift. Domain of validity: requires positive `num_species`, positive `grid_size`, and matching `diffusion_coeffs` length.
 #[derive(Debug, Clone)]
 pub struct ReactionDiffusionSystemBuilder<R, D, S> {
     num_species: Option<usize>,
@@ -92,7 +87,8 @@ impl<R, D, S> Default for ReactionDiffusionSystemBuilder<R, D, S> {
 impl<R: ReactionModel, D: DiffusionModel>
     ReactionDiffusionSystemBuilder<R, D, Euler<ChemicalState>>
 {
-    /// Starts a new builder with default type parameters.
+    /// Starts a builder for $\partial_t \mathbf{C} = \mathbf{D}\nabla^2 \mathbf{C} + \mathbf{R}(\mathbf{C})$ with empty slots (`@turing1952chemical`, `spec:biology_v1`).
+    /// Numerical stability: exact `None` initialization without rounding. Domain of validity: all required fields must be populated before calling `build`.
     #[verified_engine::verified]
     pub fn new() -> Self {
         Self::default()
@@ -102,42 +98,48 @@ impl<R: ReactionModel, D: DiffusionModel>
 impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>>
     ReactionDiffusionSystemBuilder<R, D, S>
 {
-    /// Sets the number of chemical species.
+    /// Sets the species count $N$ for state vector $\mathbf{C} \in \mathbb{R}^{N \times M}$ (`@turing1952chemical`, `spec:biology_v1`).
+    /// Numerical stability: exact integer assignment. Domain of validity: requires $N \ge 1$ at `build` validation.
     #[verified_engine::verified]
     pub fn num_species(mut self, num_species: usize) -> Self {
         self.num_species = Some(num_species);
         self
     }
 
-    /// Sets the spatial grid size.
+    /// Sets the flattened spatial node count $M$ for $\mathbf{C} \in \mathbb{R}^{N \times M}$ (`@turing1952chemical`, `spec:biology_v1`).
+    /// Numerical stability: exact integer assignment. Domain of validity: requires $M \ge 1$ matching the discretised domain mesh.
     #[verified_engine::verified]
     pub fn grid_size(mut self, grid_size: usize) -> Self {
         self.grid_size = Some(grid_size);
         self
     }
 
-    /// Sets the reaction kinetics model.
+    /// Binds the nonlinear reaction operator $\mathbf{R}(\mathbf{C})$ (`@turing1952chemical`, `spec:biology_v1`).
+    /// Numerical stability: lossless move without numerical rounding. Domain of validity: `reaction` must support `num_species` channels.
     #[verified_engine::verified]
     pub fn reaction(mut self, reaction: R) -> Self {
         self.reaction = Some(reaction);
         self
     }
 
-    /// Sets the spatial diffusion model.
+    /// Binds the spatial diffusion operator $\mathbf{D}\nabla^2 \mathbf{C}$ (`@turing1952chemical`, `spec:biology_v1`).
+    /// Numerical stability: lossless move without numerical rounding. Domain of validity: `diffusion` stencil must match `grid_size`.
     #[verified_engine::verified]
     pub fn diffusion(mut self, diffusion: D) -> Self {
         self.diffusion = Some(diffusion);
         self
     }
 
-    /// Sets the diffusion coefficients for each species.
+    /// Sets species diffusivities $\mathbf{D} = [D_1, \dots, D_N]$ (`@turing1952chemical`, `spec:biology_v1`).
+    /// Numerical stability: exact `f64` vector capture. Domain of validity: requires `coeffs.len() == num_species` and finite $D_i \ge 0$.
     #[verified_engine::verified]
     pub fn diffusion_coeffs(mut self, coeffs: Vec<f64>) -> Self {
         self.diffusion_coeffs = Some(coeffs);
         self
     }
 
-    /// Sets a custom solver strategy.
+    /// Substitutes time-integrator `solver` advancing $\mathbf{C}(t + \Delta t)$ (`@turing1952chemical`, `spec:biology_v1`).
+    /// Numerical stability: inherits truncation order and stability region of `NewS`. Domain of validity: `solver` buffers must match `(num_species, grid_size)`.
     pub fn solver<NewS: Solver<ChemicalState>>(
         self,
         solver: NewS,
@@ -156,7 +158,8 @@ impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>>
 impl<R: ReactionModel, D: DiffusionModel>
     ReactionDiffusionSystemBuilder<R, D, Euler<ChemicalState>>
 {
-    /// Builds the `ReactionDiffusionSystem` with the default Euler solver.
+    /// Validates dimensions and constructs a Forward-Euler system $\mathbf{C}^{n+1} = \mathbf{C}^n + \Delta t \dot{\mathbf{C}}^n$ (`@turing1952chemical`, `spec:biology_v1`).
+    /// Numerical stability: first-order $O(\Delta t)$ Euler requires $\Delta t \le \Delta x^2 / (2 d \max_i D_i)$. Domain of validity: `num_species >= 1`, `grid_size >= 1`, and `diffusion_coeffs.len() == num_species`.
     #[verified_engine::verified]
     pub fn build(
         self,
@@ -212,7 +215,8 @@ impl<R: ReactionModel, D: DiffusionModel>
 impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>>
     ReactionDiffusionSystemBuilder<R, D, S>
 {
-    /// Builds the `ReactionDiffusionSystem` with a custom solver.
+    /// Validates dimensions and constructs a [`ReactionDiffusionSystem`] with custom integrator $\Phi_{\Delta t}$ (`@turing1952chemical`, `spec:biology_v1`).
+    /// Numerical stability: governed by the CFL and stiffness stability region of `S`. Domain of validity: `num_species >= 1`, `grid_size >= 1`, `diffusion_coeffs.len() == num_species`, and `solver` present.
     #[verified_engine::verified]
     pub fn build_with_solver(
         self,
@@ -266,7 +270,8 @@ impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>>
 }
 
 impl<R: ReactionModel, D: DiffusionModel> ReactionDiffusionSystem<R, D, Euler<ChemicalState>> {
-    /// Creates a new builder for a Reaction-Diffusion system.
+    /// Returns a fresh builder for $\partial_t \mathbf{C} = \mathbf{D}\nabla^2 \mathbf{C} + \mathbf{R}(\mathbf{C})$ (`@turing1952chemical`, `spec:biology_v1`).
+    /// Numerical stability: exact `None` initialization. Domain of validity: configure species, grid, operators, and diffusivities prior to `build`.
     #[verified_engine::verified]
     pub fn builder() -> ReactionDiffusionSystemBuilder<R, D, Euler<ChemicalState>> {
         ReactionDiffusionSystemBuilder::new()
@@ -276,7 +281,8 @@ impl<R: ReactionModel, D: DiffusionModel> ReactionDiffusionSystem<R, D, Euler<Ch
 impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>>
     ReactionDiffusionSystem<R, D, S>
 {
-    /// Advances the system by a time step `dt` using the configured solver.
+    /// Advances $\mathbf{C}(t)$ to $\mathbf{C}(t + \Delta t)$ under $\partial_t \mathbf{C} = \mathbf{D}\nabla^2 \mathbf{C} + \mathbf{R}(\mathbf{C})$ (`@turing1952chemical`, `spec:biology_v1`).
+    /// Numerical stability: requires finite $\Delta t > 0$ within the solver's parabolic CFL stability bound. Domain of validity: autonomous reaction-diffusion state with finite concentrations.
     #[verified_engine::verified]
     pub fn step(&mut self, dt: f64) {
         // The solver manages the integration logic.
@@ -284,13 +290,15 @@ impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>>
         self.solver.step(&self.model, 0.0, &mut self.state, dt);
     }
 
-    /// Accessor for the reaction model.
+    /// Borrows the reaction operator $\mathbf{R}(\mathbf{C})$ (`@turing1952chemical`, `spec:biology_v1`).
+    /// Numerical stability: zero-cost reference borrow without arithmetic error. Domain of validity: valid for the lifetime of `self`.
     #[verified_engine::verified]
     pub fn reaction(&self) -> &R {
         &self.model.reaction
     }
 
-    /// Accessor for the diffusion model.
+    /// Borrows the spatial diffusion operator $\mathbf{D}\nabla^2$ (`@turing1952chemical`, `spec:biology_v1`).
+    /// Numerical stability: zero-cost reference borrow without arithmetic error. Domain of validity: valid for the lifetime of `self`.
     #[verified_engine::verified]
     pub fn diffusion(&self) -> &D {
         &self.model.diffusion

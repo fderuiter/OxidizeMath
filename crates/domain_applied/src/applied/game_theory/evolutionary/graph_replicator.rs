@@ -9,11 +9,14 @@ use crate::error::GameTheoryError;
 use nalgebra::{DMatrix, DVector};
 use verified_engine::Theory;
 
-/// Minimum clamped active degree above `2.0` used in the Ohtsuki-Nowak denominator $(k - 2)$
-/// so sparse paths, dyads, and cycles remain continuous and finite.
+/// Minimum regularized active degree $k_{\min} = 2.05 > 2$ clamping the Ohtsuki-Nowak denominator $(k - 2)$ (`@ohtsuki2006replicator`, `spec:game_theory_v1`).
+/// Numerical stability: bounds $(k - 2)^{-1} \le 20$ to prevent division-by-zero blowup. Domain of validity: sparse graphs with $0 < k \le 2.05$.
 pub const MIN_REGULARIZED_GRAPH_DEGREE: f64 = 2.05;
 
-/// Microscopic replacement rule governing Ohtsuki-Nowak pair-approximation assortment $B(A, k)$.
+/// Microscopic replacement rule governing Ohtsuki-Nowak pair-approximation assortment $B(A, k)$ (`@ohtsuki2006replicator`, `@ohtsuki2006simple`, `spec:game_theory_v1`).
+///
+/// - **Numerical stability**: Closed-form rational entries in $k$ evaluated in IEEE-754 `f64` with denominator clamped at $k \ge 2.05$.
+/// - **Domain of validity**: Regular or degree-homogeneous contact networks with finite payoff matrix $A \in \mathbb{R}^{n \times n}$ and active degree $k > 2$.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum GraphUpdateRule {
     /// Death-Birth updating: a random focal individual dies and neighbors compete proportional to fitness ($b/c > k$).
@@ -25,9 +28,10 @@ pub enum GraphUpdateRule {
     Imitation,
 }
 
-/// Computes the mean active degree across nodes with at least one incident CSR edge.
+/// Computes mean active degree $\bar{k} = |\mathcal{V}_+|^{-1}\sum_{i \in \mathcal{V}_+} d_i$ over nodes with CSR row degree $d_i = p_{i+1} - p_i > 0$ (`@ohtsuki2006replicator`, `spec:game_theory_v1`).
 ///
-/// Returns `0.0` when `n_nodes == 0` or every node is isolated.
+/// - **Numerical stability**: Exact `usize` degree accumulation with saturating subtraction prior to a single IEEE-754 `f64` division; returns `0.0` when $|\mathcal{V}_+| = 0$.
+/// - **Domain of validity**: CSR pointer slices satisfying `row_ptr.len() >= n_nodes + 1` and non-decreasing offsets (`0.0` returned otherwise).
 #[must_use]
 #[verified_engine::verified]
 pub fn mean_active_degree_from_csr(n_nodes: usize, row_ptr: &[usize]) -> f64 {
@@ -83,10 +87,13 @@ fn build_ohtsuki_nowak_matrix(
     eff
 }
 
-/// Pair-approximation fitness landscape $f(x) = (A + B(A, k))x$ for replicator dynamics on graphs.
+/// Pair-approximation fitness landscape $\mathbf{f}(\mathbf{x}) = (A + B(A, k))\mathbf{x}$ for replicator dynamics on graphs (`@ohtsuki2006replicator`, `@ohtsuki2006simple`, `spec:game_theory_v1`).
 ///
 /// Precomputes the Ohtsuki-Nowak effective payoff matrix $A_{\text{eff}} = A + B(A, k)$ at construction
 /// so [`FitnessStrategy::fitness`] executes a single zero-allocation `mul_to` matrix-vector product.
+///
+/// - **Numerical stability**: Regularizes $k \leftarrow \max(k, 2.05)$ for $k > 0$ so $(k - 2)$ never underflows or divides by zero; reduces smoothly to $A_{\text{eff}} = A$ at $k \le 0$.
+/// - **Domain of validity**: Square payoff matrices $A \in \mathbb{R}^{n \times n}$, simplex states $\mathbf{x} \in \Delta^{n-1}$, and finite mean active degree $k \ge 0$ (exact pair approximation for $k > 2$).
 ///
 /// # Examples
 ///
@@ -109,7 +116,7 @@ fn build_ohtsuki_nowak_matrix(
 #[derive(Debug, Clone, Theory)]
 #[theory(
     description = "Ohtsuki-Nowak pair-approximation replicator equation transforming payoff matrix A into A + B(A, k) on graphs of mean active degree k.",
-    citation = "The replicator equation on graphs (Ohtsuki & Nowak, Nature 441, 502-505, 2006)"
+    citation = "ohtsuki2006replicator; ohtsuki2006simple"
 )]
 pub struct GraphReplicatorFitness {
     base_payoff: DMatrix<f64>,
@@ -119,7 +126,8 @@ pub struct GraphReplicatorFitness {
 }
 
 impl GraphReplicatorFitness {
-    /// Creates a new [`GraphReplicatorFitness`] from a square payoff matrix and mean active degree $k$.
+    /// Constructs [`GraphReplicatorFitness`] with effective matrix $A_{\text{eff}} = A + B(A, k)$ (`@ohtsuki2006replicator`, `spec:game_theory_v1`).
+    /// Numerical stability: clamps $0 < k < 2.05$ to $2.05$ and sanitizes non-positive/non-finite $k$ to $0$. Domain of validity: square $A \in \mathbb{R}^{n \times n}$ and $k \ge 0$.
     ///
     /// # Errors
     /// Returns [`GameTheoryError::NonSquarePayoffMatrix`] if `payoff_matrix` is not square.
@@ -149,7 +157,8 @@ impl GraphReplicatorFitness {
         })
     }
 
-    /// Constructs [`GraphReplicatorFitness`] directly from a CSR `row_ptr` slice.
+    /// Constructs [`GraphReplicatorFitness`] from CSR offsets via $k = \bar{k}(\text{row\_ptr})$ (`@ohtsuki2006replicator`, `spec:game_theory_v1`).
+    /// Numerical stability: saturating integer degree sum with regularized $(k - 2)$ denominator. Domain of validity: square $A \in \mathbb{R}^{n \times n}$ and valid CSR `row_ptr`.
     ///
     /// # Errors
     /// Returns [`GameTheoryError::NonSquarePayoffMatrix`] if `payoff_matrix` is not square.
@@ -164,7 +173,8 @@ impl GraphReplicatorFitness {
         Self::new(payoff_matrix, k, rule)
     }
 
-    /// Updates the graph's mean active degree $k$ and recomputes $A + B(A, k)$.
+    /// Updates mean active degree $k$ and recomputes $A_{\text{eff}} = A + B(A, k)$ (`@ohtsuki2006replicator`, `spec:game_theory_v1`).
+    /// Numerical stability: clamps $0 < k < 2.05$ to $2.05$ and maps non-finite/non-positive $k \mapsto 0$. Domain of validity: any IEEE-754 `f64` (physical graphs satisfy $k > 2$).
     #[verified_engine::verified]
     pub fn set_mean_active_degree(&mut self, mean_active_degree: f64) {
         let sanitized_k = if mean_active_degree.is_finite() && mean_active_degree > 0.0 {
@@ -177,28 +187,32 @@ impl GraphReplicatorFitness {
             build_ohtsuki_nowak_matrix(&self.base_payoff, sanitized_k, self.rule);
     }
 
-    /// Returns the underlying well-mixed payoff matrix $A$.
+    /// Returns reference to well-mixed payoff matrix $A \in \mathbb{R}^{n \times n}$ (`@ohtsuki2006replicator`, `spec:game_theory_v1`).
+    /// Numerical stability: exact borrow with zero rounding error. Domain of validity: all constructed [`GraphReplicatorFitness`] instances.
     #[must_use]
     #[verified_engine::verified]
     pub fn base_payoff_matrix(&self) -> &DMatrix<f64> {
         &self.base_payoff
     }
 
-    /// Returns the Ohtsuki-Nowak effective payoff matrix $A + B(A, k)$.
+    /// Returns reference to Ohtsuki-Nowak effective payoff matrix $A_{\text{eff}} = A + B(A, k)$ (`@ohtsuki2006replicator`, `spec:game_theory_v1`).
+    /// Numerical stability: exact borrow of precomputed regularized `f64` matrix. Domain of validity: all constructed [`GraphReplicatorFitness`] instances.
     #[must_use]
     #[verified_engine::verified]
     pub fn effective_payoff_matrix(&self) -> &DMatrix<f64> {
         &self.effective_payoff
     }
 
-    /// Returns the stored mean active degree $k$.
+    /// Returns stored sanitized mean active degree $k \ge 0$ (`@ohtsuki2006replicator`, `spec:game_theory_v1`).
+    /// Numerical stability: exact `f64` scalar read. Domain of validity: finite $k \ge 0$.
     #[must_use]
     #[verified_engine::verified]
     pub fn mean_active_degree(&self) -> f64 {
         self.mean_active_degree
     }
 
-    /// Returns the microscopic replacement rule.
+    /// Returns configured microscopic replacement rule $\mathcal{R} \in \{\text{DB}, \text{BD}, \text{IM}\}$ (`@ohtsuki2006replicator`, `spec:game_theory_v1`).
+    /// Numerical stability: exact enum copy. Domain of validity: all [`GraphUpdateRule`] variants.
     #[must_use]
     #[verified_engine::verified]
     pub fn update_rule(&self) -> GraphUpdateRule {

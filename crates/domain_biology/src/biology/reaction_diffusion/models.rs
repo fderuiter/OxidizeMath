@@ -6,11 +6,14 @@ use super::traits::ReactionModel;
 use crate::biology::kinetics::{HillKinetics, KineticsError, KineticsModel};
 
 /// Two-species activator-substrate biochemical reaction coupling cooperative [`HillKinetics`]
-/// autocatalysis with substrate replenishment and linear clearance.
+/// autocatalysis with substrate replenishment and linear clearance (`@hill1910possible`, `papers/computational_biology.tex`, `spec:biology_v1`).
 ///
 /// Species `0` ($u$, activator/product) and species `1` ($s$, substrate) evolve locally as:
 /// $$\frac{\partial u}{\partial t} = s \cdot \frac{V_{\max} u^n}{K_m^n + u^n} - k_{\mathrm{deg}} u + k_{\mathrm{basal}},$$
 /// $$\frac{\partial s}{\partial t} = k_{\mathrm{feed}} (s_0 - s) - s \cdot \frac{V_{\max} u^n}{K_m^n + u^n}.$$
+///
+/// - **Numerical stability**: Clamps negative intermediate concentrations to $0$ before evaluating $u^n / (K_m^n + u^n)$, bounding Hill saturation in $[0, V_{\max}]$ without division-by-zero for $K_m > 0$.
+/// - **Domain of validity**: Requires finite $V_{\max}, K_m, n, s_0 > 0$ and finite $k_{\mathrm{feed}}, k_{\mathrm{deg}}, k_{\mathrm{basal}} \ge 0$ over non-negative state vectors $(u, s) \in \mathbb{R}_{\ge 0}^2$.
 #[derive(Debug, Clone, PartialEq)]
 pub struct HillSubstrateReaction {
     /// Cooperative Hill enzyme model governing autocatalytic turnover.
@@ -26,7 +29,10 @@ pub struct HillSubstrateReaction {
 }
 
 impl HillSubstrateReaction {
-    /// Constructs a validated [`HillSubstrateReaction`] from positive kinetic constants.
+    /// Constructs a validated [`HillSubstrateReaction`] parameterizing $\dot{u} = s V_{\max} u^n / (K_m^n + u^n) - k_{\mathrm{deg}} u + k_{\mathrm{basal}}$ (`@hill1910possible`, `papers/computational_biology.tex`, `spec:biology_v1`).
+    ///
+    /// - **Numerical stability**: Rejects `NaN`, `±∞`, and non-positive half-saturation $K_m$ upfront so downstream Hill flux evaluations stay well-conditioned in IEEE-754 `f64`.
+    /// - **Domain of validity**: Requires finite $V_{\max} > 0$, $K_m > 0$, $n > 0$, $s_0 > 0$, and finite $k_{\mathrm{feed}}, k_{\mathrm{deg}}, k_{\mathrm{basal}} \ge 0$; returns [`KineticsError::InvalidParameters`] otherwise.
     #[verified_engine::verified]
     pub fn new(
         v_max: f64,
@@ -63,7 +69,10 @@ impl HillSubstrateReaction {
         })
     }
 
-    /// Evaluates the cooperative turnover flux $s \cdot V_{\max} u^n / (K_m^n + u^n)$ safely for $u, s \ge 0$.
+    /// Evaluates the cooperative turnover flux $J(u, s) = s \cdot V_{\max} u^n / (K_m^n + u^n)$ (`@hill1910possible`, `papers/computational_biology.tex`, `spec:biology_v1`).
+    ///
+    /// - **Numerical stability**: Projects $(u, s) \mapsto (\max(u, 0), \max(s, 0))$ and delegates to [`HillKinetics::reaction_velocity`] for overflow-safe saturation at large $u / K_m$.
+    /// - **Domain of validity**: Valid for finite concentrations $(u, s) \in \mathbb{R}^2$ (negative numerical undershoots clamp smoothly to $0$).
     #[inline]
     #[verified_engine::verified]
     pub fn turnover_flux(&self, activator: f64, substrate: f64) -> f64 {

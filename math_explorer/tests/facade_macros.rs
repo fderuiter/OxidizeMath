@@ -7,7 +7,7 @@ use math_explorer::verified_engine::{Theory, embed_theory, verified};
 #[derive(Theory)]
 #[theory(
     description = "Top-level math_explorer facade model",
-    citation = "Newton, I. (1687). Principia."
+    citation = "landau1976mechanics"
 )]
 struct ExplorerFacadeModel {
     #[theory(min = -4, max = 4, step = 2)]
@@ -287,7 +287,7 @@ use math_explorer::scientific_metadata::theory::TheoryDescribable;
 use math_explorer::verified_engine::{Theory, embed_theory, verified};
 
 #[derive(Theory)]
-#[theory(description = "External math_explorer-only model", citation = "Test (2026)")]
+#[theory(description = "External math_explorer-only model", citation = "bluestein1970linear")]
 pub struct FacadeOnlyModel {
     #[theory(min = 0, max = 100, step = 5)]
     pub steps: u32,

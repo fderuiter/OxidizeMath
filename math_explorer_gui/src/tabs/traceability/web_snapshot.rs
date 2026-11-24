@@ -14,6 +14,10 @@ pub const MANIFEST_REL_URL: &str = "./traceability_manifest.json";
 /// Canonical GitHub repository tree base for `.tex` paper sources.
 const GITHUB_PAPERS_BASE: &str = "https://github.com/fderuiter/OxidizeMath/blob/main/papers";
 
+/// Canonical GitHub repository tree base for `docs/math_specs/*.md` specifications.
+const GITHUB_MATH_SPECS_BASE: &str =
+    "https://github.com/fderuiter/OxidizeMath/blob/main/docs/math_specs";
+
 /// Per-paper coverage entry rendered inside [`super::TraceabilityTab`].
 #[derive(Clone)]
 pub(super) struct PaperStatus {
@@ -57,6 +61,33 @@ pub fn paper_tex_url(name: &str) -> Option<String> {
         .or_else(|| clean.strip_suffix(".pdf"))
         .unwrap_or(clean);
     (!stem.is_empty()).then(|| format!("{GITHUB_PAPERS_BASE}/{stem}.tex"))
+}
+
+/// Extracts the validated `<id>` stem from a `spec:<id>` or `docs/math_specs/<id>.md` target.
+pub fn parse_spec_stem(name: &str) -> Option<&str> {
+    let trimmed = name.trim();
+    let raw_id = trimmed
+        .strip_prefix("spec:")
+        .or_else(|| trimmed.strip_prefix("docs/math_specs/"))?;
+    let stem = raw_id.strip_suffix(".md").unwrap_or(raw_id);
+    (!stem.is_empty()
+        && stem != "README"
+        && stem
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-'))
+    .then_some(stem)
+}
+
+/// Returns the canonical GitHub `docs/math_specs/<id>.md` specification URL for a `spec:<id>` target.
+pub fn spec_doc_url(name: &str) -> Option<String> {
+    parse_spec_stem(name).map(|stem| format!("{GITHUB_MATH_SPECS_BASE}/{stem}.md"))
+}
+
+/// Formats a `spec:<id>` target as its clean repository path `docs/math_specs/<id>.md`.
+pub fn spec_display_path(name: &str) -> String {
+    parse_spec_stem(name)
+        .map(|stem| format!("docs/math_specs/{stem}.md"))
+        .unwrap_or_else(|| name.to_string())
 }
 
 /// Loads `Verification_Certificate.json` from a local native directory when available.
@@ -170,43 +201,50 @@ pub fn render_paper_links(
     });
 }
 
-/// Renders the scrollable `Ready` traceability summary, diagnostics, and paper matrix.
-pub(super) fn render_ready_report(
-    ui: &mut egui::Ui,
-    papers_map: &HashMap<String, PaperStatus>,
-    orphaned_papers: &[String],
-    unlinked_code: &[String],
-    invalid_links: &[(String, String)],
-    certificate: Option<&VerificationCertificate>,
-    paper_pdf_fn: fn(&str) -> Option<String>,
-) {
+/// Borrowed view of ready scan state passed to [`render_ready_report`].
+pub(super) struct ReadyReportView<'a> {
+    pub papers_map: &'a HashMap<String, PaperStatus>,
+    pub specs_map: &'a HashMap<String, PaperStatus>,
+    pub orphaned_papers: &'a [String],
+    pub unlinked_code: &'a [String],
+    pub invalid_links: &'a [(String, String)],
+    pub certificate: Option<&'a VerificationCertificate>,
+    pub paper_pdf_fn: fn(&str) -> Option<String>,
+}
+
+/// Renders the scrollable `Ready` traceability summary, diagnostics, paper matrix, and math specs.
+pub(super) fn render_ready_report(ui: &mut egui::Ui, view: ReadyReportView<'_>) {
     let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
     egui::ScrollArea::vertical().show(ui, |ui| {
         egui::CollapsingHeader::new("System Health & Alignment")
             .default_open(true)
             .show(ui, |ui| {
-                let full_parity = !papers_map.is_empty()
-                    && orphaned_papers.is_empty()
-                    && unlinked_code.is_empty()
-                    && invalid_links.is_empty();
+                let full_parity = !view.papers_map.is_empty()
+                    && view.orphaned_papers.is_empty()
+                    && view.unlinked_code.is_empty()
+                    && view.invalid_links.is_empty();
                 if full_parity {
                     ui.label(egui::RichText::new("100% Parity Achieved").color(palette.success));
                 } else {
                     ui.label(egui::RichText::new("Partial Alignment").color(palette.warning));
                 }
-                ui.label(format!("Total Papers: {}", papers_map.len()));
-                render_certificate_metrics(ui, certificate, &palette);
+                ui.label(format!("Total Papers: {}", view.papers_map.len()));
+                if !view.specs_map.is_empty() {
+                    ui.label(format!("Verified Math Specs: {}", view.specs_map.len()));
+                }
+                render_certificate_metrics(ui, view.certificate, &palette);
             });
 
         render_diagnostics(
             ui,
-            orphaned_papers,
-            unlinked_code,
-            invalid_links,
+            view.orphaned_papers,
+            view.unlinked_code,
+            view.invalid_links,
             &palette,
-            paper_pdf_fn,
+            view.paper_pdf_fn,
         );
-        render_matrix_section(ui, papers_map, &palette, paper_pdf_fn);
+        render_specs_section(ui, view.specs_map, &palette);
+        render_matrix_section(ui, view.papers_map, &palette, view.paper_pdf_fn);
     });
 }
 
@@ -267,6 +305,37 @@ fn render_matrix_section(
                 ui.label(egui::RichText::new("No implementation found").color(palette.error));
             } else {
                 for code in &p.linked_code {
+                    ui.label(code);
+                }
+            }
+        });
+    }
+}
+
+fn render_specs_section(
+    ui: &mut egui::Ui,
+    specs_map: &HashMap<String, PaperStatus>,
+    palette: &crate::app::SemanticPalette,
+) {
+    if specs_map.is_empty() {
+        return;
+    }
+    ui.add_space(10.0);
+    ui.heading("Domain Math Specifications (docs/math_specs/)");
+
+    let mut specs: Vec<_> = specs_map.values().collect();
+    specs.sort_by_key(|a| spec_display_path(&a.name));
+
+    for s in specs {
+        let display = spec_display_path(&s.name);
+        ui.collapsing(&display, |ui| {
+            if let Some(url) = spec_doc_url(&s.name) {
+                ui.hyperlink_to("📐 View Math Spec", url);
+            }
+            if s.linked_code.is_empty() {
+                ui.label(egui::RichText::new("No implementation found").color(palette.error));
+            } else {
+                for code in &s.linked_code {
                     ui.label(code);
                 }
             }

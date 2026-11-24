@@ -233,6 +233,7 @@ fn audit_single_member_scoped(
 
 pub(crate) fn run_staged_policy_audit_with_caches(
     members: &[&str],
+    all_staged: &[String],
     existing_staged: &[String],
     cache: &mut oxidize_core::traceability::AstCache,
     manifest_cache: &mut crate::manifest_cache::ManifestCache,
@@ -274,6 +275,19 @@ pub(crate) fn run_staged_policy_audit_with_caches(
         ) {
             success = false;
         }
+    }
+    let audit_all_math_files = all_staged
+        .iter()
+        .any(|p| crate::batch::is_math_reference_path(p));
+    if !crate::math_doc_contract::audit_staged_members_with_whitelist_and_cache(
+        members,
+        &staged_rs_set,
+        audit_all_math_files,
+        &whitelist_path,
+        &whitelist,
+        cache,
+    ) {
+        success = false;
     }
     success
 }

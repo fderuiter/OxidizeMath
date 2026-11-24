@@ -2,10 +2,14 @@
 
 use super::{InteractiveTool, SimulationFramework, ToolMetadata};
 use crate::tabs::traceability::{
-    embedded_traceability_report, paper_tex_url, render_paper_links, TraceabilityTab,
+    embedded_traceability_report, paper_tex_url, parse_spec_stem, render_paper_links,
+    TraceabilityTab,
 };
 use eframe::egui;
 use std::collections::BTreeSet;
+
+const GITHUB_BIB_REGISTRY_URL: &str =
+    "https://github.com/fderuiter/OxidizeMath/blob/main/papers/references.bib";
 
 #[path = "theory_links_bib.rs"]
 mod bib;
@@ -18,6 +22,13 @@ pub(crate) struct ResolvedPaperLink {
     pub paper_name: String,
     pub pdf_url: Option<String>,
     pub tex_url: Option<String>,
+}
+
+/// Verified `docs/math_specs/<id>.md` specification link resolved for a tool or domain.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ResolvedSpecLink {
+    pub spec_stem: String,
+    pub spec_url: String,
 }
 
 /// External DOI, arXiv, or web reference link matched from a tool citation.
@@ -104,6 +115,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
     let aliases: &[&str] = match clean.as_str() {
         "algorithmic_information" => &["algorithmic_information_rust", "pure_math", "algorithms"],
         "chaos" => &["chaos_theory"],
+        "clinical_trials" => &["clinical_trials_statistics"],
         "elliptic_curves" => &[
             "modular_polynomials_review",
             "hurwitz_kronecker",
@@ -119,12 +131,13 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
             "advanced_linear_algebra",
             "pure_math",
         ],
-        "biology" | "biochemical" => &["biology", "computational_biology"],
+        "biology" | "biochemical" | "morphogenesis" => &["biology", "computational_biology"],
         "neuroscience" => &["biology", "computational_biology", "graph_parameters_rust"],
         "optics" => &["geometric_optics_and_caustics", "optics"],
-        "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],
+        "optics_waves" => &["optics", "domain_physics", "mmwave_radiotherapy_setup"],
+        "quantum" => &["quantum_mechanics"],
         "solid_state" => &["stat_mech", "pure_math"],
-        "ai" => &["graph_parameters_rust"],
+        "ai" => &["attention_is_all_you_need_rust", "graph_parameters_rust"],
         "paradox_lab" => &["paradox_lab", "game_theory", "graph_parameters_rust"],
         "astrophysics" => &[
             "dwarf_galaxy_empirical_dependencies",
@@ -188,7 +201,41 @@ pub(crate) fn resolve_portal_paper_links(tool_id: &str, domain: &str) -> Vec<Res
         .collect()
 }
 
-/// Renders hosted paper PDF, `.tex` source, and external DOI/arXiv citation links in the Theory Context Portal.
+/// Resolves verified `docs/math_specs/<id>.md` specification links for `(tool_id, domain)`.
+pub(crate) fn resolve_portal_spec_links(tool_id: &str, domain: &str) -> Vec<ResolvedSpecLink> {
+    let Ok(report) = embedded_traceability_report() else {
+        return Vec::new();
+    };
+    let tool_tokens = tool_module_tokens(tool_id);
+    let domain_tokens = domain_module_tokens(domain);
+    let mut matched = Vec::new();
+
+    for (target_name, modules) in &report.paper_coverage {
+        if !target_name.starts_with("spec:") {
+            continue;
+        }
+        let hits = modules.iter().any(|m| {
+            tool_tokens.iter().any(|t| m.eq_ignore_ascii_case(t))
+                || domain_tokens.iter().any(|d| m.eq_ignore_ascii_case(d))
+        });
+        if hits {
+            if let (Some(stem), Some(url)) = (
+                parse_spec_stem(target_name),
+                TraceabilityTab::spec_url(target_name),
+            ) {
+                matched.push(ResolvedSpecLink {
+                    spec_stem: stem.to_string(),
+                    spec_url: url,
+                });
+            }
+        }
+    }
+    matched.sort_by(|a, b| a.spec_stem.cmp(&b.spec_stem));
+    matched.dedup_by(|a, b| a.spec_stem == b.spec_stem);
+    matched
+}
+
+/// Renders hosted paper PDF, `.tex` source, verified math specs, and external DOI/arXiv citation links.
 pub(crate) fn render_portal_links_for_framework(
     framework: &SimulationFramework,
     ui: &mut egui::Ui,
@@ -207,8 +254,9 @@ pub(crate) fn render_portal_links_for_framework(
     let domain = active_meta.map_or(fallback_domain, |m| m.domain);
 
     let paper_links = resolve_portal_paper_links(tool_id, domain);
+    let spec_links = resolve_portal_spec_links(tool_id, domain);
     let ext_links = resolve_citation_reference_links(citation);
-    if paper_links.is_empty() && ext_links.is_empty() {
+    if paper_links.is_empty() && spec_links.is_empty() && ext_links.is_empty() {
         return;
     }
 
@@ -223,10 +271,22 @@ pub(crate) fn render_portal_links_for_framework(
             &pdf_label,
         );
     }
-    if !ext_links.is_empty() {
+    if !spec_links.is_empty() || !ext_links.is_empty() {
         ui.horizontal_wrapped(|ui| {
+            for spec in &spec_links {
+                ui.hyperlink_to(
+                    format!("🔗 Math Spec ({}.md)", spec.spec_stem),
+                    &spec.spec_url,
+                );
+            }
             for ext in &ext_links {
                 ui.hyperlink_to(format!("🔗 {}", ext.label), &ext.url);
+            }
+            if paper_links.is_empty() && ext_links.is_empty() && spec_links.len() == 1 {
+                ui.hyperlink_to(
+                    "🔗 BibTeX Registry (references.bib)",
+                    GITHUB_BIB_REGISTRY_URL,
+                );
             }
         });
     }

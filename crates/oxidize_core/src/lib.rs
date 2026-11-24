@@ -2,6 +2,7 @@
 #[cfg(feature = "ast-analysis")]
 #[allow(missing_docs)]
 pub mod ast_visitor;
+pub mod bibtex;
 #[allow(missing_docs)]
 pub mod boundary;
 #[allow(missing_docs)]

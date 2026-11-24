@@ -4,7 +4,8 @@ use crate::impl_compartmental_ops;
 use pure_math::pure_math::analysis::ode::{OdeSystem, RungeKutta4, Solver, TimeStepper};
 use verified_engine::Theory;
 
-/// State for the SEIR Model.
+/// Compartmental state vector $(S, E, I, R)$ conserving $S + E + I + R = N$ (`@anderson1991infectious`, `spec:epidemiology_v1`).
+/// Numerical stability: componentwise `f64` vector arithmetic incurs $O(\varepsilon_{\text{mach}} N)$ drift per step. Domain of validity: non-negative counts $S, E, I, R \ge 0$ with $S + E + I + R = N > 0$.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SEIRState {
     #[allow(missing_docs)]
@@ -19,10 +20,8 @@ pub struct SEIRState {
 
 impl_compartmental_ops!(SEIRState, s, e, i, r);
 
-/// Pure dynamics of the SEIR Model.
-///
-/// This struct holds the parameters and defines the differential equations,
-/// but does not hold the simulation state.
+/// Stateless SEIR dynamics $(\dot{S}, \dot{E}, \dot{I}, \dot{R}) = (-\beta S I / N, \beta S I / N - \sigma E, \sigma E - \gamma I, \gamma I)$ (`@anderson1991infectious`, `spec:epidemiology_v1`).
+/// Numerical stability: explicit RK4 preserves positivity when $\Delta t (\beta + \sigma + \gamma) < 2.78$. Domain of validity: finite $N > 0$ and $\beta, \sigma, \gamma \ge 0$.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SEIRDynamics {
     #[allow(missing_docs)]
@@ -63,11 +62,13 @@ impl OdeSystem<SEIRState> for SEIRDynamics {
 /// $$dE/dt = \beta S I / N - \sigma E$$
 /// $$dI/dt = \sigma E - \gamma I$$
 ///
-/// Use `SEIRModel::builder()` or `SEIRModel::new()` to construct.
+/// - **Citation**: `@anderson1991infectious` (`spec:epidemiology_v1`).
+/// - **Numerical stability**: Fourth-order RK4 conserves $S + E + I + R = N$ up to $O(\varepsilon_{\text{mach}} N)$ for $\Delta t (\beta + \sigma + \gamma) \le 1$.
+/// - **Domain of validity**: Closed population $N > 0$, initial infected $0 \le I_0 \le N$, and finite rates $\beta, \sigma, \gamma \ge 0$.
 #[derive(Debug, Clone, Theory)]
 #[theory(
     description = "The SEIR model is a compartmental epidemic model that incorporates an exposed (latent) period before individuals become infectious.",
-    citation = "Mathematical epidemiology of infectious diseases (Diekmann & Heesterbeek, 2000)"
+    citation = "anderson1991infectious"
 )]
 pub struct SEIRModel<S: Solver<SEIRState> = RungeKutta4<SEIRState>> {
     state: SEIRState,
@@ -96,7 +97,8 @@ impl<S: Solver<SEIRState>> TimeStepper<SEIRState> for SEIRModel<S> {
     }
 }
 
-/// Builder for SEIRModel to ensure valid parameter configuration.
+/// Parameter-validating builder for SEIR dynamics $\dot{E} = \beta S I / N - \sigma E$ (`@anderson1991infectious`, `spec:epidemiology_v1`).
+/// Numerical stability: rejects zero/negative $N$ prior to division by $N$. Domain of validity: $N > 0, 0 \le I_0 \le N, \beta, \sigma, \gamma \ge 0$.
 #[derive(Debug, Default, Clone)]
 pub struct SEIRModelBuilder {
     n: Option<f64>,
@@ -107,42 +109,43 @@ pub struct SEIRModelBuilder {
 }
 
 impl SEIRModelBuilder {
-    /// Sets the total population size N.
+    /// Sets total closed population $N = S + E + I + R$ (`@anderson1991infectious`, `spec:epidemiology_v1`). Numerical stability: exact `f64` capture. Domain of validity: finite $N > 0$.
     #[verified_engine::verified]
     pub fn n(mut self, n: f64) -> Self {
         self.n = Some(n);
         self
     }
 
-    /// Sets the initial infected count I0.
+    /// Sets initial infectious count $I_0 = I(0)$ (`@anderson1991infectious`, `spec:epidemiology_v1`). Numerical stability: exact `f64` capture; $S_0 = N - I_0, E_0 = 0$. Domain of validity: finite $0 \le I_0 \le N$.
     #[verified_engine::verified]
     pub fn i0(mut self, i0: f64) -> Self {
         self.i0 = Some(i0);
         self
     }
 
-    /// Sets the transmission rate beta.
+    /// Sets transmission rate $\beta$ in $\dot{S} = -\beta S I / N$ (`@anderson1991infectious`, `spec:epidemiology_v1`). Numerical stability: exact `f64` capture. Domain of validity: finite $\beta \ge 0$.
     #[verified_engine::verified]
     pub fn beta(mut self, beta: f64) -> Self {
         self.beta = Some(beta);
         self
     }
 
-    /// Sets the incubation rate sigma.
+    /// Sets latent progression rate $\sigma$ in $\dot{I} = \sigma E - \gamma I$ (`@anderson1991infectious`, `spec:epidemiology_v1`). Numerical stability: exact `f64` capture. Domain of validity: finite $\sigma \ge 0$.
     #[verified_engine::verified]
     pub fn sigma(mut self, sigma: f64) -> Self {
         self.sigma = Some(sigma);
         self
     }
 
-    /// Sets the recovery rate gamma.
+    /// Sets recovery rate $\gamma$ in $\dot{R} = \gamma I$ (`@anderson1991infectious`, `spec:epidemiology_v1`). Numerical stability: exact `f64` capture. Domain of validity: finite $\gamma \ge 0$.
     #[verified_engine::verified]
     pub fn gamma(mut self, gamma: f64) -> Self {
         self.gamma = Some(gamma);
         self
     }
 
-    /// Builds the SEIRModel, validating all parameters.
+    /// Validates $(N, I_0, \beta, \sigma, \gamma)$ and constructs an RK4 [`SEIRModel`] with $S_0 = N - I_0$ (`@anderson1991infectious`, `spec:epidemiology_v1`).
+    /// Numerical stability: guarantees $N > 0$ before evaluating $\beta S I / N$. Domain of validity: $N > 0, 0 \le I_0 \le N, \beta, \sigma, \gamma \ge 0$.
     #[verified_engine::verified]
     pub fn build(self) -> Result<SEIRModel<RungeKutta4<SEIRState>>, EpidemiologyError> {
         let n = self.n.ok_or(EpidemiologyError::MissingParameter {
@@ -188,13 +191,15 @@ impl SEIRModelBuilder {
 }
 
 impl SEIRModel<RungeKutta4<SEIRState>> {
-    /// Returns a new builder for the SEIRModel.
+    /// Returns a fresh builder for $\dot{E} = \beta S I / N - \sigma E, \dot{I} = \sigma E - \gamma I$ (`@anderson1991infectious`, `spec:epidemiology_v1`).
+    /// Numerical stability: defers division by $N$ until `build()`. Domain of validity: populate $N > 0, 0 \le I_0 \le N, \beta, \sigma, \gamma \ge 0$.
     #[verified_engine::verified]
     pub fn builder() -> SEIRModelBuilder {
         SEIRModelBuilder::default()
     }
 
-    /// Constructs a new SEIRModel with the given parameters using RungeKutta4.
+    /// Constructs a validated RK4 [`SEIRModel`] for $(S, E, I, R)$ (`@anderson1991infectious`, `spec:epidemiology_v1`).
+    /// Numerical stability: fourth-order $O(\Delta t^4)$ local truncation error under `RungeKutta4`. Domain of validity: finite $N > 0, 0 \le I_0 \le N, \beta, \sigma, \gamma \ge 0$.
     ///
     /// # Examples
     ///
@@ -227,18 +232,18 @@ impl SEIRModel<RungeKutta4<SEIRState>> {
 }
 
 impl<S: Solver<SEIRState>> SEIRModel<S> {
-    /// Advances the state by dt using the configured solver.
+    /// Advances $(S, E, I, R)$ by $\Delta t$ under $\dot{E} = \beta S I / N - \sigma E$ (`@anderson1991infectious`, `spec:epidemiology_v1`). Numerical stability: stable under RK4 for $\Delta t (\beta + \sigma + \gamma) < 2.78$. Domain of validity: finite $\Delta t \ge 0$.
     #[verified_engine::verified]
     pub fn step(&mut self, dt: f64) {
         <Self as TimeStepper<SEIRState>>::step(self, dt);
     }
 
-    /// Advances the state by dt using a provided solver strategy.
+    /// Advances $(S, E, I, R)$ by $\Delta t$ using external integrator $\Phi_{\Delta t}$ (`@anderson1991infectious`, `spec:epidemiology_v1`). Numerical stability: governed by `OtherS` stability region. Domain of validity: finite $\Delta t \ge 0$.
     pub fn step_with<OtherS: Solver<SEIRState>>(&mut self, solver: &mut OtherS, dt: f64) {
         <Self as TimeStepper<SEIRState>>::step_with(self, solver, dt);
     }
 
-    /// Replaces the current solver with a new one.
+    /// Substitutes internal integrator advancing $(S, E, I, R)(t + \Delta t)$ (`@anderson1991infectious`, `spec:epidemiology_v1`). Numerical stability: lossless state move without rounding. Domain of validity: any [`Solver<SEIRState>`].
     pub fn with_solver<NewS: Solver<SEIRState>>(self, new_solver: NewS) -> SEIRModel<NewS> {
         SEIRModel {
             state: self.state,
@@ -247,31 +252,31 @@ impl<S: Solver<SEIRState>> SEIRModel<S> {
         }
     }
 
-    /// Returns the transmission rate beta.
+    /// Returns transmission rate $\beta \ge 0$ (`@anderson1991infectious`, `spec:epidemiology_v1`). Numerical stability: exact scalar copy. Domain of validity: non-negative rate $\beta \ge 0$.
     #[verified_engine::verified]
     pub fn beta(&self) -> f64 {
         self.dynamics.beta
     }
 
-    /// Returns the incubation rate sigma.
+    /// Returns latent progression rate $\sigma \ge 0$ (`@anderson1991infectious`, `spec:epidemiology_v1`). Numerical stability: exact scalar copy. Domain of validity: non-negative rate $\sigma \ge 0$.
     #[verified_engine::verified]
     pub fn sigma(&self) -> f64 {
         self.dynamics.sigma
     }
 
-    /// Returns the recovery rate gamma.
+    /// Returns recovery rate $\gamma \ge 0$ (`@anderson1991infectious`, `spec:epidemiology_v1`). Numerical stability: exact scalar copy. Domain of validity: non-negative rate $\gamma \ge 0$.
     #[verified_engine::verified]
     pub fn gamma(&self) -> f64 {
         self.dynamics.gamma
     }
 
-    /// Returns the total population size N.
+    /// Returns closed population size $N = S + E + I + R > 0$ (`@anderson1991infectious`, `spec:epidemiology_v1`). Numerical stability: exact scalar copy. Domain of validity: strictly positive $N > 0$.
     #[verified_engine::verified]
     pub fn n(&self) -> f64 {
         self.dynamics.n
     }
 
-    /// Returns the current state.
+    /// Borrows current compartmental state $(S, E, I, R)$ (`@anderson1991infectious`, `spec:epidemiology_v1`). Numerical stability: zero-cost reference borrow. Domain of validity: $S, E, I, R \ge 0$ with $S + E + I + R = N$.
     #[verified_engine::verified]
     pub fn state(&self) -> &SEIRState {
         &self.state

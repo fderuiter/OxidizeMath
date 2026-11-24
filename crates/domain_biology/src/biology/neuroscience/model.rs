@@ -23,10 +23,15 @@ use verified_engine::Theory;
 /// 2.  **Gating Variables ($x \in \{n, m, h\}$):**
 ///     $$ \frac{dx}{dt} = \alpha_x(V)(1 - x) - \beta_x(V)x $$
 ///     The rate constants $\alpha_x$ and $\beta_x$ are determined by the [`GatingKinetics`](crate::biology::neuroscience::kinetics::GatingKinetics) strategy.
+///
+/// # References & Verification
+/// - **Citation**: `@hodgkin1952quantitative` (`spec:biology_v1`).
+/// - **Numerical stability**: Stiff sodium activation $\alpha_m(V)$ requires integration steps $\Delta t \le 0.05\,\text{ms}$ with explicit RK4 to avoid oscillatory overshoot.
+/// - **Domain of validity**: Physiological membrane potential $V \in [-110, +80]\,\text{mV}$, dimensionless gating probabilities $n, m, h \in [0, 1]$, and finite $I_{\text{ext}}$.
 #[derive(Debug, Clone, Theory)]
 #[theory(
     description = "The Hodgkin-Huxley model describes the initiation and propagation of action potentials in neurons using a set of non-linear differential equations.",
-    citation = "A quantitative description of membrane current and its application to conduction and excitation in nerve (Hodgkin & Huxley, 1952)"
+    citation = "hodgkin1952quantitative"
 )]
 pub struct HodgkinHuxleyModel {
     /// Parameters of the model (conductances, potentials, kinetics).
@@ -37,7 +42,10 @@ pub struct HodgkinHuxleyModel {
 }
 
 impl HodgkinHuxleyModel {
-    /// Creates a new Hodgkin-Huxley model instance.
+    /// Creates a new Hodgkin-Huxley conductance system $C_m \dot{V} = I_{\text{ext}} - \sum_k I_k$ (`@hodgkin1952quantitative`, `spec:biology_v1`).
+    ///
+    /// - **Numerical stability**: Exact parameter storage with zero rounding error; downstream stiffness is governed by $g_{\text{Na}}$ and $\Delta t$.
+    /// - **Domain of validity**: Requires non-negative conductances $g_{\text{Na}}, g_{\text{K}}, g_{\text{L}} \ge 0$ and finite injected current $I_{\text{ext}}$ ($\mu\text{A}/\text{cm}^2$).
     ///
     /// # Arguments
     /// * `params` - The biophysical parameters (conductances, etc.).

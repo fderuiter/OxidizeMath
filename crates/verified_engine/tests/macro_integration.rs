@@ -32,7 +32,7 @@ impl StepTrait for Accumulator {
 #[theory(
     description = "Mixed integer and float parameter model",
     phonetic = "Mixed integer and float parameter model",
-    citation = "Newton, I. (1687). Principia."
+    citation = "landau1976mechanics"
 )]
 struct MixedBoundsModel {
     #[theory(min = -10, max = 10, step = 1)]
@@ -82,7 +82,7 @@ fn test_allow_recursion_records_runtime_complexity_metrics() {
 #[derive(Theory)]
 #[theory(
     description = "All primitive numeric bounds",
-    citation = "IEEE 754 (2019)."
+    citation = "goldberg1991every"
 )]
 struct AllNumericPrimitivesModel {
     #[theory(min = -8, max = 8, step = 1)]
@@ -344,7 +344,7 @@ mod facade_isolation {
 use verified_engine::{Theory, embed_theory, verified};
 
 #[derive(Theory)]
-#[theory(description = "Downstream facade-only model", citation = "Test (2026)")]
+#[theory(description = "Downstream facade-only model", citation = "bluestein1970linear")]
 pub struct ExternalModel {
     #[theory(min = -5, max = 5, step = 1)]
     pub count: i32,

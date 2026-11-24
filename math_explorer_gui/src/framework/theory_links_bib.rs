@@ -8,6 +8,7 @@ use std::sync::OnceLock;
 
 #[derive(Clone, Debug)]
 struct BibEntry {
+    key: String,
     norm_title_words: Vec<String>,
     first_author: String,
     year: String,
@@ -74,28 +75,10 @@ fn parse_bib_fields(body: &str) -> HashMap<String, String> {
         if i >= len {
             break;
         }
-        let val = if chars[i] == '{' {
-            let Some((raw, next_i)) = read_balanced_braces(&chars, i + 1) else {
-                break;
-            };
-            i = next_i;
-            raw
-        } else if chars[i] == '"' {
-            let start = i + 1;
-            i += 1;
-            while i < len && chars[i] != '"' {
-                i += 1;
-            }
-            let raw: String = chars[start..i.min(len)].iter().collect();
-            i = (i + 1).min(len);
-            raw
-        } else {
-            let start = i;
-            while i < len && !chars[i].is_whitespace() && chars[i] != ',' && chars[i] != '}' {
-                i += 1;
-            }
-            chars[start..i].iter().collect()
+        let Some((val, next_i)) = read_field_value(&chars, i) else {
+            break;
         };
+        i = next_i;
         let cleaned = val.replace(['{', '}'], "");
         fields.insert(
             field_name.to_ascii_lowercase(),
@@ -103,6 +86,27 @@ fn parse_bib_fields(body: &str) -> HashMap<String, String> {
         );
     }
     fields
+}
+
+fn read_field_value(chars: &[char], mut i: usize) -> Option<(String, usize)> {
+    let len = chars.len();
+    if chars[i] == '{' {
+        read_balanced_braces(chars, i + 1)
+    } else if chars[i] == '"' {
+        let start = i + 1;
+        i += 1;
+        while i < len && chars[i] != '"' {
+            i += 1;
+        }
+        let raw: String = chars[start..i.min(len)].iter().collect();
+        Some((raw, (i + 1).min(len)))
+    } else {
+        let start = i;
+        while i < len && !chars[i].is_whitespace() && chars[i] != ',' && chars[i] != '}' {
+            i += 1;
+        }
+        Some((chars[start..i].iter().collect(), i))
+    }
 }
 
 fn extract_arxiv_id(text: &str) -> Option<String> {
@@ -200,6 +204,7 @@ fn embedded_bib_entries() -> &'static [BibEntry] {
                 .map(|y| y.trim().to_string())
                 .unwrap_or_default();
             entries.push(BibEntry {
+                key: key.to_string(),
                 norm_title_words: content_words(title),
                 first_author: extract_first_author_surname(author),
                 year,
@@ -250,12 +255,24 @@ fn extract_inline_citation_links(citation: &str) -> Vec<ExternalCitationLink> {
     links
 }
 
-/// Matches a citation string against `papers/references.bib` DOI, arXiv, and URL entries.
+fn extract_citation_key_tokens(citation: &str) -> BTreeSet<String> {
+    citation
+        .split(|c: char| {
+            c.is_whitespace() || matches!(c, ',' | ';' | '`' | '@' | '(' | ')' | '[' | ']')
+        })
+        .map(|s| s.trim_start_matches("bib:").trim_end_matches('.'))
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+/// Matches a citation string or BibTeX key against `papers/references.bib` DOI, arXiv, and URL entries.
 pub(crate) fn resolve_citation_reference_links(citation: &str) -> Vec<ExternalCitationLink> {
     if citation.trim().is_empty() {
         return Vec::new();
     }
     let cit_words = content_words(citation);
+    let key_tokens = extract_citation_key_tokens(citation);
     let mut seen_urls = BTreeSet::new();
     let mut out = Vec::new();
 
@@ -265,6 +282,7 @@ pub(crate) fn resolve_citation_reference_links(citation: &str) -> Vec<ExternalCi
         }
     }
     for entry in embedded_bib_entries() {
+        let exact_key_match = key_tokens.contains(&entry.key);
         let title_match = contains_word_subsequence(&cit_words, &entry.norm_title_words);
         let author_year_match = entry.first_author.len() >= 4
             && entry.year.len() == 4
@@ -274,7 +292,9 @@ pub(crate) fn resolve_citation_reference_links(citation: &str) -> Vec<ExternalCi
                 .norm_title_words
                 .iter()
                 .any(|tw| tw.len() >= 5 && cit_words.iter().any(|cw| cw == tw));
-        if (title_match || author_year_match) && seen_urls.insert(entry.url.clone()) {
+        if (exact_key_match || title_match || author_year_match)
+            && seen_urls.insert(entry.url.clone())
+        {
             out.push(ExternalCitationLink {
                 label: entry.label.clone(),
                 url: entry.url.clone(),
