@@ -26,6 +26,33 @@ impl SimpsonParadoxLab {
         self.render_simpson_atlas_panel(ui);
         self.render_rr_forest_plot(ui, &palette);
         let _ = self.callout_manager.render_ui(ui);
+        self.render_retained_schedule_preview(ui);
+    }
+
+    fn render_retained_schedule_preview(&self, ui: &mut egui::Ui) {
+        egui::CollapsingHeader::new(format!(
+            "Retained Stratified Subject Schedule ({} Patients)",
+            self.allocated_schedule.len()
+        ))
+        .show(ui, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("stratified_subject_schedule_scroll")
+                .max_height(160.0)
+                .show(ui, |ui| {
+                    for rec in self.allocated_schedule.iter().take(200) {
+                        ui.label(format!(
+                            "#{:04} | {} ({}) -> {}",
+                            rec.sequence, rec.subject_id, rec.stratum, rec.arm
+                        ));
+                    }
+                    if self.allocated_schedule.len() > 200 {
+                        ui.label(format!(
+                            "... {} total patients retained (use Schedule .csv / .json export for full roster)",
+                            self.allocated_schedule.len()
+                        ));
+                    }
+                });
+        });
     }
 
     fn render_predict_winner_prompt(&mut self, ui: &mut egui::Ui) {
