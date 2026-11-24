@@ -341,6 +341,8 @@ impl MathExplorerApp {
         self.prune_incompatible_pipeline_links();
 
         if let Some(egui_ctx) = ctx {
+            self.sim_bus
+                .install_in_context(egui_ctx, self.compare_sync.link_topology);
             let target_focus = self.focused_pane;
             egui_ctx.data_mut(|d| {
                 d.insert_temp(

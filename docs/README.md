@@ -84,6 +84,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Zero-Allocation Fixed-Size Christoffel Symbols, Relativistic Thin-Lens Splat Jacobians, and Paczyński-Wiita Galactic Orbits](adr/20261123-relativistic-lensed-splats-and-orbits.md)
 - [ADR 20261123: Reusable Flat CSR Spatial Grid for Cortical Thickness](adr/20261123-reusable-flat-spatial-grid-cortical-thickness.md)
 - [ADR 20261123: Scope Pre-Commit Gates, Add Pre-Push Tiering, and Eliminate Build-Script `CARGO_MANIFEST_DIR` Drift](adr/20261123-scope-pre-commit-gates-and-pre-push-tiering.md)
+- [ADR 20261123: Workspace-Scoped `SharedSimulationBus`, Copy-on-Write CSR Topologies, and Zero-Allocation Graph Kernels](adr/20261123-shared-simulation-topology-bus.md)
 - [ADR 20261123: Zero-Allocation Laplace-Beltrami Surface Morphogenesis and Mean-Curvature Buckling](adr/20261123-surface-morphogenesis-laplace-beltrami-buckling.md)
 - [ADR 20261123: Tridiagonal Crank-Nicolson 1D Quantum Propagation and Persistent Unified GIF Stepping](adr/20261123-tridiagonal-crank-nicolson-quantum-propagation.md)
 - [ADR 20261123: Unified RL Maze Sculpting, Exact Bellman Solvers, and TD Surprise Sonification](adr/20261123-unified-rl-maze-sculpting-bellman-and-sonification.md)

@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 
 pub mod braess;
 mod braess_host;
+mod bus_bridge;
 mod dataflow;
 mod io_export;
 mod keyboard;
@@ -49,6 +50,8 @@ pub struct GraphEditorTool {
     redo_stack: Vec<GraphSnapshot>,
     canvas_id: Option<egui::Id>,
     pub(crate) revision: u64,
+    /// Publishes edges as directed `u -> v` connections on `SharedSimulationBus`.
+    pub directed_edges: bool,
     /// Hosted Braess's paradox congestion routing laboratory.
     pub braess: BraessCongestionLab,
     pub(crate) file_io: super::io_helpers::GraphFileIoState,
@@ -120,6 +123,7 @@ impl InteractiveTool for GraphEditorTool {
         ui.separator();
         ui.label(format!("Nodes: {}", self.node_positions.len()));
         ui.label(format!("Edges: {}", self.edges.len()));
+        self.show_bus_bridge_controls(ui);
         ui.separator();
         self.render_interchange_and_handoff_ui(ui);
         ui.separator();
@@ -186,6 +190,7 @@ impl InteractiveTool for GraphEditorTool {
             self.braess
                 .draw_canvas_banner(painter, response.rect, &palette);
         }
+        let _ = self.publish_shared_topology(ui.ctx());
         self.publish_dataflow_topology(ui.ctx());
     }
 }

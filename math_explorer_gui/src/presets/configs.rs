@@ -117,6 +117,12 @@ pub struct ReplicatorPresetConfig {
     /// Shared parameter values for symbolic payoff cells (e.g. `v`, `c` in Hawk-Dove).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub symbolic_params: std::collections::BTreeMap<String, f64>,
+    /// Per-pane topology source (`SharedBus` vs `LocalPreset`).
+    #[serde(
+        default,
+        skip_serializing_if = "crate::app::TopologySource::is_default"
+    )]
+    pub topology_source: crate::app::TopologySource,
 }
 
 const MAX_REPLICATOR_STRATEGIES: usize = 16;

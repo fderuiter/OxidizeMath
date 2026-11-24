@@ -16,6 +16,7 @@ mod pane_slots;
 pub(crate) mod session;
 mod share_link;
 pub mod shared_json;
+pub mod sim_bus;
 mod state;
 pub(crate) mod state_history;
 pub mod theme;
@@ -67,6 +68,8 @@ mod tests_session_lifecycle;
 #[cfg(test)]
 mod tests_shortcuts;
 #[cfg(test)]
+mod tests_sim_bus;
+#[cfg(test)]
 mod tests_split_view;
 #[cfg(test)]
 mod tests_tab_cache_perf;
@@ -79,6 +82,14 @@ pub use domain_bar::AcademicDomain;
 #[allow(unused_imports)]
 pub use session::{SessionLifecycleState, WorkspaceEnvelope, WorkspaceSessionManager};
 pub use shared_json::SharedTabJson;
+#[cfg(any(feature = "biology", test))]
+#[allow(unused_imports)]
+pub use sim_bus::MAX_NEURAL_SHARED_NODES;
+#[allow(unused_imports)]
+pub use sim_bus::{
+    render_topology_source_bar, SharedGraphTopology, SharedPointCloud3D, SharedSimulationBus,
+    TopologySource, MAX_SHARED_GRAPH_EDGES, MAX_SHARED_GRAPH_NODES,
+};
 pub use state::{AppState, SplitLayoutMode};
 #[allow(unused_imports)]
 pub use theme::{
@@ -123,6 +134,7 @@ pub struct MathExplorerApp {
     last_frame_had_input: bool,
     pending_focus_prune: bool,
     pub compare_sync: ComparisonSyncConfig,
+    pub sim_bus: SharedSimulationBus,
     pub dataflow_bus: PaneDataflowBus,
     pub pipeline_dag: PanePipelineDag,
     pub(super) url_sync: crate::url_state::UrlSyncController,
@@ -163,6 +175,7 @@ impl Default for MathExplorerApp {
             last_frame_had_input: false,
             pending_focus_prune: false,
             compare_sync: ComparisonSyncConfig::default(),
+            sim_bus: SharedSimulationBus::new(),
             dataflow_bus: PaneDataflowBus::default(),
             pipeline_dag: PanePipelineDag::default(),
             url_sync: crate::url_state::UrlSyncController::default(),
@@ -333,7 +346,6 @@ impl eframe::App for MathExplorerApp {
     fn auto_save_interval(&self) -> std::time::Duration {
         std::time::Duration::from_secs(5)
     }
-
     #[cfg(target_arch = "wasm32")]
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)

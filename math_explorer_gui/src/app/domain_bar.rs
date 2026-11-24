@@ -102,11 +102,15 @@ pub fn select_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_idx: usize
 
 /// Polls cross-domain handoff triggers (e.g., `AttractorPlotter -> VietorisRipsTool` and elliptic torus handoffs).
 pub fn poll_cross_tab_tool_handoffs(app: &mut MathExplorerApp, ctx: &egui::Context) {
+    app.sim_bus
+        .install_in_context(ctx, app.compare_sync.link_topology);
     #[cfg(feature = "pure_math")]
     {
-        if crate::tabs::geometry_topology::vietoris_rips::handoff::take_open_vietoris_rips_request(
-            ctx,
-        ) {
+        if app.sim_bus.take_open_vietoris_rips_request()
+            || crate::tabs::geometry_topology::vietoris_rips::handoff::take_open_vietoris_rips_request(
+                ctx,
+            )
+        {
             if let Some(tab_idx) = app
                 .tabs
                 .iter()

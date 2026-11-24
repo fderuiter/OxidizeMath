@@ -107,6 +107,7 @@ fn test_replicator_matrix_validation() {
         strategy_names: vec!["A".to_string(), "B".to_string()],
         symbolic_payoffs: None,
         symbolic_params: std::collections::BTreeMap::new(),
+        topology_source: crate::app::TopologySource::SharedBus,
     };
     assert!(valid.validate().is_ok());
 
@@ -118,6 +119,7 @@ fn test_replicator_matrix_validation() {
         strategy_names: vec!["A".to_string(), "B".to_string()],
         symbolic_payoffs: None,
         symbolic_params: std::collections::BTreeMap::new(),
+        topology_source: crate::app::TopologySource::SharedBus,
     };
     assert!(non_square.validate().is_err());
 
@@ -129,6 +131,7 @@ fn test_replicator_matrix_validation() {
         strategy_names: vec!["A".to_string()],
         symbolic_payoffs: None,
         symbolic_params: std::collections::BTreeMap::new(),
+        topology_source: crate::app::TopologySource::SharedBus,
     };
     assert!(strategy_mismatch.validate().is_err());
 
@@ -146,6 +149,7 @@ fn test_replicator_matrix_validation() {
             vec!["0".to_string(), "v / 2".to_string()],
         ]),
         symbolic_params: params,
+        topology_source: crate::app::TopologySource::SharedBus,
     };
     assert!(valid_symbolic.validate().is_ok());
 }

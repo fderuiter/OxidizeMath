@@ -1,3 +1,4 @@
+use crate::app::{SharedSimulationBus, TopologySource};
 use crate::framework::math_input::{
     MathExpressionInputBar, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS,
 };
@@ -5,9 +6,11 @@ use crate::framework::{CalloutManager, CalloutSpec, InteractiveTool};
 use crate::presets::ReplicatorPresetConfig;
 use eframe::egui;
 use math_commons::ast::{CompiledExpr, Expr};
-use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
+use math_explorer::applied::game_theory::evolutionary::{
+    GraphReplicatorFitness, GraphUpdateRule, ReplicatorDynamics,
+};
 use nalgebra::{DMatrix, DVector};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 #[path = "replicator/presets.rs"]
 mod presets;
@@ -36,6 +39,9 @@ pub struct ReplicatorDynamicsTool {
     symbolic_compiled: Vec<Vec<Option<CompiledExpr>>>,
     pub(crate) symbolic_sliders: ParameterSliderBank,
     symbolic_error: Option<String>,
+    pub topology_source: TopologySource,
+    pub(crate) synced_bus_revision: Option<u64>,
+    pub(crate) shared_mean_degree: Option<f64>,
 }
 
 impl Default for ReplicatorDynamicsTool {
@@ -64,15 +70,18 @@ impl Default for ReplicatorDynamicsTool {
             symbolic_compiled: vec![vec![None; rows]; rows],
             symbolic_sliders: sliders,
             symbolic_error: None,
+            topology_source: TopologySource::SharedBus,
+            synced_bus_revision: None,
+            shared_mean_degree: None,
         };
         tool.run_simulation();
         tool
     }
 }
 
-type SymbolicGrid = (Vec<Vec<MathExpressionInputBar>>, Vec<Vec<Expr>>);
+pub(super) type SymbolicGrid = (Vec<Vec<MathExpressionInputBar>>, Vec<Vec<Expr>>);
 
-fn build_static_symbolic_grid(formulas: &[&[&str]]) -> SymbolicGrid {
+pub(super) fn build_static_symbolic_grid(formulas: &[&[&str]]) -> SymbolicGrid {
     let mut bars = Vec::with_capacity(formulas.len());
     let mut exprs = Vec::with_capacity(formulas.len());
     for row in formulas {
@@ -92,32 +101,7 @@ fn build_static_symbolic_grid(formulas: &[&[&str]]) -> SymbolicGrid {
     (bars, exprs)
 }
 
-fn build_dynamic_symbolic_grid(formulas: &[Vec<String>]) -> Result<SymbolicGrid, String> {
-    let mut bars = Vec::with_capacity(formulas.len());
-    let mut exprs = Vec::with_capacity(formulas.len());
-    for (i, row) in formulas.iter().enumerate() {
-        let mut bar_row = Vec::with_capacity(row.len());
-        let mut expr_row = Vec::with_capacity(row.len());
-        for (j, cell) in row.iter().enumerate() {
-            let bar = MathExpressionInputBar::new("", cell, Vec::new())
-                .with_axes(&[])
-                .with_inline_sliders(false);
-            let Some(expr) = bar.expr().cloned() else {
-                let reason = bar
-                    .error_message()
-                    .unwrap_or_else(|| "invalid expression".to_string());
-                return Err(format!("Invalid symbolic payoff at ({i}, {j}): {reason}"));
-            };
-            bar_row.push(bar);
-            expr_row.push(expr);
-        }
-        bars.push(bar_row);
-        exprs.push(expr_row);
-    }
-    Ok((bars, exprs))
-}
-
-fn compile_symbolic_exprs(
+pub(super) fn compile_symbolic_exprs(
     exprs: &[Vec<Expr>],
     sliders: &mut ParameterSliderBank,
 ) -> Result<Vec<Vec<Option<CompiledExpr>>>, String> {
@@ -152,6 +136,49 @@ fn compile_symbolic_exprs(
 }
 
 impl ReplicatorDynamicsTool {
+    /// Synchronizes Ohtsuki-Nowak mean degree $k$ with [`SharedSimulationBus`].
+    pub fn sync_shared_topology(&mut self, ctx: &egui::Context) {
+        match SharedSimulationBus::active_graph_for(ctx, self.topology_source) {
+            Some(snap) => {
+                if self.synced_bus_revision != Some(snap.revision) {
+                    self.synced_bus_revision = Some(snap.revision);
+                    self.shared_mean_degree =
+                        (snap.mean_active_degree > 0.0).then_some(snap.mean_active_degree);
+                    self.recompute_trajectory_preserving_playback();
+                }
+            }
+            None => {
+                if self.synced_bus_revision.take().is_some()
+                    || self.shared_mean_degree.take().is_some()
+                {
+                    self.shared_mean_degree = None;
+                    self.recompute_trajectory_preserving_playback();
+                }
+            }
+        }
+    }
+
+    /// Returns the currently synced shared bus revision, if active.
+    #[cfg(test)]
+    #[must_use]
+    pub fn synced_bus_revision(&self) -> Option<u64> {
+        self.synced_bus_revision
+    }
+
+    /// Returns the active Ohtsuki-Nowak mean degree $k$ ingested from the shared graph, if `k > 2`.
+    #[cfg(test)]
+    #[must_use]
+    pub fn active_graph_mean_degree(&self) -> Option<f64> {
+        self.shared_mean_degree
+    }
+
+    /// Returns the final simulated strategy proportion vector $x(T)$.
+    #[cfg(test)]
+    #[must_use]
+    pub fn final_population(&self) -> Option<&DVector<f64>> {
+        self.trajectory.last().map(|(_, x)| x)
+    }
+
     pub(crate) fn recompute_trajectory_preserving_playback(&mut self) {
         let sum = self.initial_population.sum();
         if sum > 0.0 {
@@ -159,6 +186,29 @@ impl ReplicatorDynamicsTool {
         } else {
             let n = self.initial_population.len();
             self.initial_population = DVector::from_element(n, 1.0 / n as f64);
+        }
+
+        if let Some(k) = self.shared_mean_degree {
+            if let Ok(fit) = GraphReplicatorFitness::new(
+                self.payoff_matrix.clone(),
+                k,
+                GraphUpdateRule::DeathBirth,
+            ) {
+                let eff = fit.effective_payoff_matrix().clone();
+                let system = ReplicatorDynamics::new_with_fitness(fit);
+                self.trajectory =
+                    system.simulate(self.initial_population.clone(), self.time_horizon, self.dt);
+                self.mean_fitness_series = self
+                    .trajectory
+                    .iter()
+                    .filter_map(|(t, x)| {
+                        let avg = x.dot(&(&eff * x));
+                        (t.is_finite() && avg.is_finite()).then_some([*t, avg])
+                    })
+                    .collect();
+                self.playback_time = self.playback_time.clamp(0.0, self.time_horizon);
+                return;
+            }
         }
 
         if let Ok(system) = ReplicatorDynamics::new(self.payoff_matrix.clone()) {
@@ -291,6 +341,11 @@ impl InteractiveTool for ReplicatorDynamicsTool {
             ("x1_initial", x1_init),
             ("x1_final", x1_final),
             ("oscillation_span", self.compute_oscillation_span()),
+            (
+                "synced_bus_revision",
+                self.synced_bus_revision.unwrap_or(0) as f64,
+            ),
+            ("shared_mean_degree", self.shared_mean_degree.unwrap_or(0.0)),
         ]
     }
 
@@ -316,6 +371,16 @@ impl InteractiveTool for ReplicatorDynamicsTool {
         serde_json::to_string(&self.export_config()).ok()
     }
 
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
+    }
+
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.state_bounds().validate_json(state)?;
         let config: ReplicatorPresetConfig = serde_json::from_str(state)
@@ -324,6 +389,8 @@ impl InteractiveTool for ReplicatorDynamicsTool {
     }
 
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
+        let ctx = parent_ui.ctx().clone();
+        self.sync_shared_topology(&ctx);
         if self.is_playing && !self.trajectory.is_empty() {
             let dt = f64::from(parent_ui.ctx().input(|i| i.stable_dt));
             self.playback_time += dt * self.playback_speed;
@@ -370,85 +437,5 @@ impl scientific_metadata::theory::TheoryDescribable for ReplicatorDynamicsTool {
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()
-    }
-}
-
-impl ReplicatorDynamicsTool {
-    fn export_config(&self) -> ReplicatorPresetConfig {
-        let rows = self.payoff_matrix.nrows();
-        let cols = self.payoff_matrix.ncols();
-        let mut matrix = Vec::with_capacity(rows);
-        for i in 0..rows {
-            let mut row = Vec::with_capacity(cols);
-            for j in 0..cols {
-                row.push(self.payoff_matrix[(i, j)]);
-            }
-            matrix.push(row);
-        }
-        let initial_pop: Vec<f64> = self.initial_population.iter().copied().collect();
-        let (symbolic_payoffs, symbolic_params) = if self.symbolic_mode {
-            let sym_rows = self
-                .symbolic_bars
-                .iter()
-                .map(|row| row.iter().map(|b| b.raw_text.trim().to_string()).collect())
-                .collect();
-            (Some(sym_rows), self.symbolic_sliders.export_active_map())
-        } else {
-            (None, BTreeMap::new())
-        };
-
-        ReplicatorPresetConfig {
-            payoff_matrix: matrix,
-            initial_population: initial_pop,
-            time_horizon: self.time_horizon,
-            dt: self.dt,
-            strategy_names: self.strategy_names.clone(),
-            symbolic_payoffs,
-            symbolic_params,
-        }
-    }
-
-    fn apply_config(&mut self, config: ReplicatorPresetConfig) -> Result<(), String> {
-        config.validate()?;
-
-        let rows = config.payoff_matrix.len();
-        let mut sliders = self.symbolic_sliders.clone();
-        let (sym_mode, bars, exprs, compiled) = if let Some(ref sym_rows) = config.symbolic_payoffs
-        {
-            let (bars, exprs) = build_dynamic_symbolic_grid(sym_rows)?;
-            sliders.set_params_map(&config.symbolic_params);
-            let compiled = compile_symbolic_exprs(&exprs, &mut sliders)?;
-            (true, bars, exprs, compiled)
-        } else {
-            let formatted: Vec<Vec<String>> = config
-                .payoff_matrix
-                .iter()
-                .map(|r| r.iter().map(|v| format!("{v}")).collect())
-                .collect();
-            let (bars, exprs) = build_dynamic_symbolic_grid(&formatted)?;
-            (false, bars, exprs, vec![vec![None; rows]; rows])
-        };
-
-        let mut flat = Vec::with_capacity(rows * rows);
-        for row in &config.payoff_matrix {
-            flat.extend_from_slice(row);
-        }
-
-        self.payoff_matrix = DMatrix::from_row_slice(rows, rows, &flat);
-        self.initial_population = DVector::from_vec(config.initial_population);
-        self.time_horizon = config.time_horizon;
-        self.dt = config.dt;
-        self.strategy_names = config.strategy_names;
-        self.symbolic_mode = sym_mode;
-        self.symbolic_bars = bars;
-        self.last_valid_exprs = exprs;
-        self.symbolic_compiled = compiled;
-        self.symbolic_sliders = sliders;
-        self.symbolic_error = None;
-        if self.symbolic_mode {
-            self.evaluate_symbolic_matrix();
-        }
-        self.run_simulation();
-        Ok(())
     }
 }
