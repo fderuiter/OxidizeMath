@@ -17,14 +17,12 @@ pub const LBM_HEIGHT: usize = 50;
 pub const LBM_CELL_COUNT: usize = LBM_WIDTH * LBM_HEIGHT;
 /// Packed byte length of the `5,000`-cell obstacle bitmask (`625` bytes).
 pub const LBM_MASK_BYTES: usize = LBM_CELL_COUNT / 8;
-
 /// Inlet column count along the left boundary (`x in 0..2`).
 pub const LBM_INLET_COLS: usize = 2;
 /// Horizontal inlet velocity `U_in` in lattice units.
 pub const LBM_U_IN: f64 = 0.1;
 /// Reference lattice density `rho_0`.
 pub const LBM_RHO_0: f64 = 1.0;
-
 /// Protected structural core X center.
 pub const LBM_CORE_X: i32 = 30;
 /// Protected structural core Y center.
@@ -39,7 +37,6 @@ pub const LBM_REF_DIAMETER: f64 = 11.0;
 pub const LBM_MIN_SOLID_CELLS: usize = 65;
 /// Deterministic BGK + bounce-back steps for zero-allocation drag evaluation.
 pub const LBM_EVAL_STEPS: usize = 120;
-
 /// Canonical challenge ID for the LBM low-drag fairing inverse problem.
 pub const CHALLENGE_LBM_FAIRING: &str = "lbm_low_drag_fairing";
 /// Locked kinematic viscosity `nu` for `lbm_low_drag_fairing`.
@@ -67,7 +64,8 @@ impl FairingStamp {
         }
     }
 
-    /// Worker command action string for synchronizing [`super::lattice_boltzmann::LbmUnified`].
+    /// Worker command action string for synchronizing `LbmUnified`.
+    #[cfg(test)]
     #[must_use]
     pub const fn command_name(self) -> &'static str {
         match self {
@@ -78,6 +76,7 @@ impl FairingStamp {
     }
 
     /// Parses a worker custom command back into a [`FairingStamp`].
+    #[cfg(test)]
     #[must_use]
     pub fn from_command(action: &str) -> Option<Self> {
         match action {
@@ -142,47 +141,41 @@ pub fn restore_inlet_and_core_mask(mask: &mut [bool; LBM_CELL_COUNT]) {
 }
 
 /// Applies an interpolated [`crate::framework::BrushStroke`] to `mask`, returning `true` if any cell changed.
+#[cfg(test)]
 pub fn apply_stroke_to_fairing_mask(
     mask: &mut [bool; LBM_CELL_COUNT],
     stroke: &crate::framework::BrushStroke,
     lock_core: bool,
 ) -> bool {
+    use crate::framework::{rasterize_disk_stroke, BrushMode, SpatialBrushKit};
     let is_obs = match stroke.mode {
-        crate::framework::BrushMode::Solid => true,
-        crate::framework::BrushMode::Erase => false,
+        BrushMode::Solid => true,
+        BrushMode::Erase => false,
         _ => return false,
     };
-    let (x0, y0) =
-        crate::framework::SpatialBrushKit::plot_to_grid_y_up(stroke.start, LBM_WIDTH, LBM_HEIGHT);
-    let (x1, y1) =
-        crate::framework::SpatialBrushKit::plot_to_grid_y_up(stroke.end, LBM_WIDTH, LBM_HEIGHT);
+    let (x0, y0) = SpatialBrushKit::plot_to_grid_y_up(stroke.start, LBM_WIDTH, LBM_HEIGHT);
+    let (x1, y1) = SpatialBrushKit::plot_to_grid_y_up(stroke.end, LBM_WIDTH, LBM_HEIGHT);
     let r = (stroke.radius.round() as i32).clamp(0, 16);
     let mut changed = false;
-    crate::framework::rasterize_disk_stroke(
-        (x0, y0),
-        (x1, y1),
-        r,
-        (LBM_WIDTH, LBM_HEIGHT),
-        |gx, gy| {
-            if gx < LBM_INLET_COLS {
-                return;
-            }
-            let dx = gx as i32 - LBM_CORE_X;
-            let dy = gy as i32 - LBM_CORE_Y;
-            if !is_obs && lock_core && dx * dx + dy * dy <= LBM_CORE_RADIUS * LBM_CORE_RADIUS {
-                return;
-            }
-            let idx = flatten_2d_index(gx, gy, LBM_WIDTH);
-            if mask[idx] != is_obs {
-                mask[idx] = is_obs;
-                changed = true;
-            }
-        },
-    );
+    rasterize_disk_stroke((x0, y0), (x1, y1), r, (LBM_WIDTH, LBM_HEIGHT), |gx, gy| {
+        if gx < LBM_INLET_COLS {
+            return;
+        }
+        let (dx, dy) = (gx as i32 - LBM_CORE_X, gy as i32 - LBM_CORE_Y);
+        if !is_obs && lock_core && dx * dx + dy * dy <= LBM_CORE_RADIUS * LBM_CORE_RADIUS {
+            return;
+        }
+        let idx = flatten_2d_index(gx, gy, LBM_WIDTH);
+        if mask[idx] != is_obs {
+            mask[idx] = is_obs;
+            changed = true;
+        }
+    });
     changed
 }
 
 /// Encodes `mask` into run-length encoded `[value, count]` pairs for `SculptStatePayload`.
+#[cfg(test)]
 #[must_use]
 pub fn encode_fairing_mask_rle(mask: &[bool; LBM_CELL_COUNT]) -> Vec<[u32; 2]> {
     let bytes: Vec<u8> = mask.iter().map(|&b| u8::from(b)).collect();
@@ -261,7 +254,7 @@ fn decode_nibble(ch: u8) -> Result<u8, String> {
     }
 }
 
-/// Serializable state payload for [`super::lattice_boltzmann::LbmUnified`].
+/// Serializable state payload for legacy `LbmUnified` and challenge baseline JSON.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LbmSerializedState {
@@ -448,6 +441,22 @@ fn generate_lbm_challenge_baseline() -> String {
 }
 
 fn clamp_lbm_challenge_state(raw_json: &str) -> Result<String, String> {
+    if let Ok(mut tool_state) =
+        serde_json::from_str::<super::lattice_boltzmann::LbmToolState>(raw_json)
+    {
+        tool_state.viscosity = CHALLENGE_LBM_VISCOSITY;
+        tool_state.inflow_speed = LBM_U_IN;
+        tool_state.area_budget = tool_state
+            .area_budget
+            .clamp(super::lattice_boltzmann::DEFAULT_AREA_BUDGET, 1_500);
+        let decoded = tool_state.validate()?;
+        let mut mask = [false; LBM_CELL_COUNT];
+        mask.copy_from_slice(&decoded[..LBM_CELL_COUNT]);
+        restore_inlet_and_core_mask(&mut mask);
+        tool_state.obstacle_mask = super::lattice_boltzmann::encode_obstacle_mask(&mask);
+        tool_state.mask_hex = None;
+        return serde_json::to_string(&tool_state).map_err(|e| format!("LBM serialize error: {e}"));
+    }
     let mut parsed: LbmSerializedState =
         serde_json::from_str(raw_json).map_err(|e| format!("Invalid LBM challenge JSON: {e}"))?;
     parsed.viscosity = CHALLENGE_LBM_VISCOSITY;

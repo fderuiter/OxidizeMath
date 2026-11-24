@@ -13,6 +13,7 @@ pub mod forces;
 pub mod model;
 #[allow(missing_docs)]
 pub mod state;
+mod telemetry;
 
 #[cfg(test)]
 mod tests;

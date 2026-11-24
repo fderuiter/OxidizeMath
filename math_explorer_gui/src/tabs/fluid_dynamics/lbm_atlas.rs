@@ -1,8 +1,9 @@
-//! Zero-allocation BGK / Reynolds regime cartographer for [`super::lattice_boltzmann::LbmUnified`].
+//! Zero-allocation BGK / Reynolds regime cartographer for [`super::lattice_boltzmann::LatticeBoltzmannTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::lattice_boltzmann::{LbmUnified, LBM_INLET_U};
+#[cfg(test)]
+use super::lattice_boltzmann::LBM_INLET_U;
 use super::lbm_fairing::LBM_REF_DIAMETER;
 use crate::async_sim::atlas::{
     atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, RegimeCartographer,
@@ -11,7 +12,7 @@ use eframe::egui;
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
 
-/// Supported 2D parameter atlas axis pairs for [`LbmUnified`].
+/// Supported 2D parameter atlas axis pairs for the D2Q9 wind tunnel.
 pub const LBM_ATLAS_AXIS_PAIRS: &[(&str, &str)] = &[("viscosity", "inlet_velocity")];
 
 const VISC_MIN: f64 = 0.00333;
@@ -30,26 +31,25 @@ pub struct LbmCartographer {
 }
 
 impl LbmCartographer {
-    /// Builds a cartographer for `("viscosity", "inlet_velocity")` given current [`LbmUnified`] parameters.
+    /// Builds a cartographer for `("viscosity", "inlet_velocity")` from theory constraints and `char_length`.
     #[must_use]
-    pub fn from_params(
-        params: &HashMap<String, f64>,
+    pub fn with_theory_and_char_length(
+        theory: &HashMap<String, ParameterConstraint>,
+        char_length: f64,
         axis_keys: (&'static str, &'static str),
     ) -> Option<Self> {
         if axis_keys != ("viscosity", "inlet_velocity") {
             return None;
         }
-        let theory = <LbmUnified as crate::async_sim::unified::UnifiedModel>::parameters();
-        let profile = params.get("naca_profile").copied().unwrap_or(0.0);
-        let char_length = if profile >= 1.0 {
-            24.0
+        let safe_len = if char_length.is_finite() && char_length >= 1.0 {
+            char_length
         } else {
             LBM_REF_DIAMETER
         };
         Some(Self {
             axes: AtlasAxisPair {
                 x: AtlasAxisSpec::from_theory(
-                    &theory,
+                    theory,
                     "viscosity",
                     "Kinematic Viscosity ν (lu²/ts)",
                     ParameterConstraint {
@@ -59,7 +59,7 @@ impl LbmCartographer {
                     },
                 ),
                 y: AtlasAxisSpec::from_theory(
-                    &theory,
+                    theory,
                     "inlet_velocity",
                     "Inlet Velocity U (lu/ts)",
                     ParameterConstraint {
@@ -69,8 +69,26 @@ impl LbmCartographer {
                     },
                 ),
             },
-            char_length,
+            char_length: safe_len,
         })
+    }
+
+    /// Builds a cartographer for `("viscosity", "inlet_velocity")` from legacy `UnifiedModel` parameters.
+    #[cfg(test)]
+    #[must_use]
+    pub fn from_params(
+        params: &HashMap<String, f64>,
+        axis_keys: (&'static str, &'static str),
+    ) -> Option<Self> {
+        let theory =
+            <super::lattice_boltzmann::LbmUnified as crate::async_sim::unified::UnifiedModel>::parameters();
+        let profile = params.get("naca_profile").copied().unwrap_or(0.0);
+        let char_length = if profile >= 1.0 {
+            24.0
+        } else {
+            LBM_REF_DIAMETER
+        };
+        Self::with_theory_and_char_length(&theory, char_length, axis_keys)
     }
 }
 
@@ -154,6 +172,7 @@ impl RegimeCartographer for LbmCartographer {
     }
 }
 
+#[cfg(test)]
 #[must_use]
 pub(crate) fn resolve_inlet_velocity(params: &HashMap<String, f64>) -> f64 {
     params
