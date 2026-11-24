@@ -174,7 +174,8 @@ impl<'de> Visitor<'de> for StreamingJsonValidator {
 /// Validates that `json_str` fits within the 4,096-byte URL state cap, obeys structural nesting
 /// and array bounds, and parses as JSON containing only finite numbers in a single streaming pass.
 pub fn validate_url_preset_json(json_str: &str) -> Result<(), String> {
-    validate_json_streaming_with_bounds(json_str, URL_JSON_BOUNDS)
+    validate_json_streaming_with_bounds(json_str, URL_JSON_BOUNDS)?;
+    crate::app::data_bus::validate_embedded_url_bus_json(json_str)
 }
 
 pub(crate) fn validate_json_streaming_with_bounds(

@@ -3306,6 +3306,35 @@
       "signature": "pub struct GraphReplicatorFitness"
     }
   ],
+  "crates/domain_applied/src/applied/game_theory/evolutionary/graph_replicator_system.rs": [
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn evolve (& mut self , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn from_population_mean (_ : usize , _ : & DMatrix < f64 > , _ : & [(usize , usize , f64)] , _ : & [f64] ,) -> Result < Self , GameTheoryError > }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn mean_frequencies (& self , _ : & mut [f64]) }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn new (_ : usize , _ : & DMatrix < f64 > , _ : & [(usize , usize , f64)] , _ : & [f64] ,) -> Result < Self , GameTheoryError > }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn node_state (& self , _ : usize) -> & [f64] }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn num_nodes (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn num_strategies (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "pub struct GraphReplicatorSystem"
+    }
+  ],
   "crates/domain_applied/src/applied/game_theory/evolutionary/mod.rs": [
     {
       "signature": "pub use graph_replicator :: GraphReplicatorFitness"
@@ -3318,6 +3347,9 @@
     },
     {
       "signature": "pub use graph_replicator :: mean_active_degree_from_csr"
+    },
+    {
+      "signature": "pub use graph_replicator_system :: GraphReplicatorSystem"
     },
     {
       "signature": "pub use replicator :: ReplicatorDynamics"
@@ -10821,19 +10853,49 @@
       "signature": "impl GraphSpinSystem { pub fn flip_spin (& mut self , _ : usize) }"
     },
     {
+      "signature": "impl GraphSpinSystem { pub fn frustrated_edge_count (& self , _ : f64) -> usize }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn hamiltonian (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
       "signature": "impl GraphSpinSystem { pub fn magnetization (& self) -> i64 }"
     },
     {
       "signature": "impl GraphSpinSystem { pub fn mean_game_payoff (& self , _ : & MatrixPayoff) -> f64 }"
     },
     {
+      "signature": "impl GraphSpinSystem { pub fn mean_magnetization (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn metropolis_step (& mut self , _ : f64 , _ : f64 , _ : f64) }"
+    },
+    {
       "signature": "impl GraphSpinSystem { pub fn n_nodes (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn neighbors_of (& self , _ : usize) -> (& [usize] , & [f64]) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn new (_ : usize , _ : & [(usize , usize , f64)] , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn new_with_spins (_ : Vec < i8 > , _ : & [(usize , usize , f64)] , _ : Option < u64 > ,) -> Self }"
     },
     {
       "signature": "impl GraphSpinSystem { pub fn normalized_magnetization (& self) -> f64 }"
     },
     {
+      "signature": "impl GraphSpinSystem { pub fn num_edges (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn num_nodes (& self) -> usize }"
+    },
+    {
       "signature": "impl GraphSpinSystem { pub fn randomize (& mut self) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn reseed (& mut self , _ : u64) }"
     },
     {
       "signature": "impl GraphSpinSystem { pub fn row_ptr (& self) -> & [usize] }"
@@ -10929,6 +10991,9 @@
     },
     {
       "signature": "pub struct SpinLattice"
+    },
+    {
+      "signature": "pub use super :: graph_ising :: GraphSpinSystem"
     }
   ],
   "crates/domain_physics/src/physics/stat_mech/kpz.rs": [

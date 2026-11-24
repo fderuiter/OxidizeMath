@@ -103,8 +103,8 @@ fn test_all_registered_tools_have_starter_presets() {
         .collect();
     assert_eq!(
         presets.len(),
-        200,
-        "Expected 200 registered starter presets"
+        204,
+        "Expected 204 registered starter presets"
     );
 
     for tool in &tools {
@@ -293,8 +293,8 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
         .collect();
     assert_eq!(
         presets.len(),
-        200,
-        "Expected 200 StarterPresetMetadata entries"
+        204,
+        "Expected 204 StarterPresetMetadata entries"
     );
 
     for preset in presets {

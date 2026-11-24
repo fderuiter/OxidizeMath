@@ -79,6 +79,7 @@ impl NetworkPropagationTool {
         self.last_upstream_graph_rev = 0;
         self.is_running = false;
         self.clamp_focus_indices();
+        self.reset_empirical_trace();
         #[cfg(test)]
         {
             self.sim_steps = 0;
@@ -103,6 +104,9 @@ impl NetworkPropagationTool {
         });
         if changed {
             self.sync_shared_topology(&ctx);
+            if !SharedSimulationBus::is_link_topology_enabled(&ctx) {
+                self.sync_from_bus(&ctx);
+            }
         }
         if self.synced_bus_revision.is_some() {
             ui.small(format!(
