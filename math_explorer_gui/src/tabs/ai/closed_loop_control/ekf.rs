@@ -2,6 +2,10 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use engine_linalg::{
+    add_scaled_vec_array, identity_array, identity_plus_scaled_array, mat_mul_array,
+    mat_mul_transpose_right_array,
+};
 use math_explorer::applied::algorithms::kalman::{KalmanFilter, KalmanSystem};
 use math_explorer::nalgebra::{DMatrix, DVector};
 
@@ -49,56 +53,29 @@ where
     (next_x, jac)
 }
 
+#[inline]
 fn identity_mat<const N: usize>() -> [[f64; N]; N] {
-    let mut m = [[0.0; N]; N];
-    for (i, row) in m.iter_mut().enumerate() {
-        row[i] = 1.0;
-    }
-    m
+    identity_array::<f64, N>()
 }
 
+#[inline]
 fn add_scaled_vec<const N: usize>(base: &[f64; N], delta: &[f64; N], scale: f64) -> [f64; N] {
-    let mut out = [0.0; N];
-    for ((o, &b), &d) in out.iter_mut().zip(base.iter()).zip(delta.iter()) {
-        *o = b + scale * d;
-    }
-    out
+    add_scaled_vec_array(base, delta, scale)
 }
 
+#[inline]
 fn identity_plus_scaled<const N: usize>(mat: &[[f64; N]; N], scale: f64) -> [[f64; N]; N] {
-    let mut out = identity_mat::<N>();
-    for (out_row, m_row) in out.iter_mut().zip(mat.iter()) {
-        for (o, &m) in out_row.iter_mut().zip(m_row.iter()) {
-            *o += scale * m;
-        }
-    }
-    out
+    identity_plus_scaled_array(mat, scale)
 }
 
+#[inline]
 fn mat_mul<const N: usize>(a: &[[f64; N]; N], b: &[[f64; N]; N]) -> [[f64; N]; N] {
-    let mut out = [[0.0; N]; N];
-    for (out_row, a_row) in out.iter_mut().zip(a.iter()) {
-        for (&aik, b_row) in a_row.iter().zip(b.iter()) {
-            for (o, &bkj) in out_row.iter_mut().zip(b_row.iter()) {
-                *o += aik * bkj;
-            }
-        }
-    }
-    out
+    mat_mul_array(a, b)
 }
 
+#[inline]
 fn mat_mul_transpose_right<const N: usize>(a: &[[f64; N]; N], b: &[[f64; N]; N]) -> [[f64; N]; N] {
-    let mut out = [[0.0; N]; N];
-    for (out_row, a_row) in out.iter_mut().zip(a.iter()) {
-        for (o, b_row) in out_row.iter_mut().zip(b.iter()) {
-            let mut sum = 0.0;
-            for (&aik, &bjk) in a_row.iter().zip(b_row.iter()) {
-                sum += aik * bjk;
-            }
-            *o = sum;
-        }
-    }
-    out
+    mat_mul_transpose_right_array(a, b)
 }
 
 /// Continuous-time Lorenz vector field and analytical $3 \times 3$ Jacobian at effective Rayleigh number `rho_eff`.

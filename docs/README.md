@@ -6,7 +6,7 @@ Welcome to the OxidizeMath documentation directory.
 
 The [Architecture Guide Suite](architecture/README.md) provides centralized blueprints, diagrams, and developer walkthroughs:
 
-- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 20 crates.
+- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 21 crates.
 - **[CERA Framework Guide](architecture/cera_framework.md)**: Climate-invariant Encoding through Representation Alignment and climate modeling pipelines.
 - **[Zero-Allocation Runtime Guide](architecture/zero_allocation_runtime.md)**: NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and verified engine execution rules.
 - **[Interactive Tool Walkthrough](architecture/interactive_tool_walkthrough.md)**: Step-by-step developer guide to implement interactive simulations with `InteractiveTool`.
@@ -59,6 +59,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Coupled Electrochemical Battery Aging, Zero-Allocation CSV Calibration, and Multi-Segment Lifetime Exports](adr/20261123-coupled-battery-aging-and-lifetime-exports.md)
 - [ADR 20261123: Zero-Allocation CSR Spatial Grid and Cortical Thickness Workspace](adr/20261123-csr-spatial-grid-thickness-workspace.md)
 - [ADR 20261123: Elliptic Curve Discriminant Atlas, Singular Cubic Rendering, and Hasse-Weil Challenges](adr/20261123-elliptic-curve-atlas-singular-loci-and-challenges.md)
+- [ADR 20261123: Enforce AST Complexity Limits and Synchronous Solver Instruction Budgets](adr/20261123-enforce-ast-limits-and-solver-budgets.md)
 - [ADR 20261123: Feature-Gate Core AST Tools and Unify Workspace Crates](adr/20261123-feature-gate-core-ast-tools-and-unify-crates.md)
 - [ADR 20261123: Zero-Allocation 2D FFT Lenia Engine and Promoted Gray-Scott Kinetics](adr/20261123-fft-lenia-engine-and-gray-scott-kinetics.md)
 - [ADR 20261123: Zero-Allocation Prime-Exponent FRACTRAN VM, Kolmogorov Bounds, and Auto-Discovered `AlgorithmicInfoTab`](adr/20261123-fractran-vm-kolmogorov-and-algorithmic-info-tab.md)
@@ -77,7 +78,9 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Zero-Allocation Brent Root-Finder, Market Pricing Devigging, and Execution Calculators](adr/20261123-market-pricing-brent-and-execution-calculators.md)
 - [ADR 20261123: Log-Space HMM Solvers, Zero-Allocation Baum-Welch EM, Validated Serde, and Markov Sequence Workbench](adr/20261123-markov-sequence-and-reliability-workbench.md)
 - [ADR 20261123: Modularize Setup and Enforce Static Documentation Gates](adr/20261123-modularize-setup-and-enforce-doc-gates.md)
+- [ADR 20261123: Multi-State, Portfolio, and Drawdown-Constrained Kelly Convex Solvers](adr/20261123-multi-state-kelly-convex-solvers.md)
 - [ADR 20261123: Myerson Mechanism-Design Auction Lab and Analytical Ising / Fermi Spatial Parameter Atlas](adr/20261123-myerson-auction-lab-and-ising-parameter-atlas.md)
+- [ADR 20261123: `#![no_std]` Linear Algebra Engine (`engine_linalg`), Solver Unification, and Cached Cohort GLM QR](adr/20261123-no-std-engine-linalg-and-solver-unification.md)
 - [ADR 20261123: Promote `#![no_std]` Stochastic Solver Kernel (`SolverWorkspace`) to `math_commons`](adr/20261123-no-std-stochastic-solver-kernel.md)
 - [ADR 20261123: Root-Owned Pane Dataflow Bus and Cycle-Checked Cross-Domain Pipelines](adr/20261123-pane-dataflow-bus-and-cross-domain-pipelines.md)
 - [ADR 20261123: Parameter-Substituted LaTeX and Multi-Target Code Artifact Export](adr/20261123-parameter-substituted-latex-and-code-artifact-export.md)
@@ -87,12 +90,15 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: `core`-Slice Thomas Solver, `CrankNicolson1D` Workspace, and Closed-Form $2\times 2$ Quantum Helpers](adr/20261123-pure-math-thomas-solver-and-closed-form-quantum-workspaces.md)
 - [ADR 20261123: Live 4D Radar-Gated IMRT Contouring Workbench](adr/20261123-radar-gated-4d-imrt-contouring-workbench.md)
 - [ADR 20261123: Zero-Allocation Fixed-Size Christoffel Symbols, Relativistic Thin-Lens Splat Jacobians, and Paczyński-Wiita Galactic Orbits](adr/20261123-relativistic-lensed-splats-and-orbits.md)
+- [ADR 20261123: Reusable Flat CSR Spatial Grid for Cortical Thickness](adr/20261123-reusable-flat-spatial-grid-cortical-thickness.md)
 - [ADR 20261123: Scope Pre-Commit Gates, Add Pre-Push Tiering, and Eliminate Build-Script `CARGO_MANIFEST_DIR` Drift](adr/20261123-scope-pre-commit-gates-and-pre-push-tiering.md)
+- [ADR 20261123: Workspace-Scoped `SharedSimulationBus`, Copy-on-Write CSR Topologies, and Zero-Allocation Graph Kernels](adr/20261123-shared-simulation-topology-bus.md)
 - [ADR 20261123: Zero-Allocation Laplace-Beltrami Surface Morphogenesis and Mean-Curvature Buckling](adr/20261123-surface-morphogenesis-laplace-beltrami-buckling.md)
 - [ADR 20261123: Tridiagonal Crank-Nicolson 1D Quantum Propagation and Persistent Unified GIF Stepping](adr/20261123-tridiagonal-crank-nicolson-quantum-propagation.md)
 - [ADR 20261123: Root Dev/Test Dependency Optimization Profiles and Inlined Atomic Verification Fast Path](adr/20261123-tune-dev-profiles-and-inline-atomic-metrics.md)
 - [ADR 20261123: Unified RL Maze Sculpting, Exact Bellman Solvers, and TD Surprise Sonification](adr/20261123-unified-rl-maze-sculpting-bellman-and-sonification.md)
 - [ADR 20261123: Unify `verify-suite` onto `AstCache`, Item-Scoped Opt-Outs, and Read-Only `--check` Mode](adr/20261123-unify-verify-suite-ast-cache-and-check-mode.md)
+- [ADR 20261123: Validate Tool Loaders and Harden Solver Arithmetic Against 32-Bit Overflow](adr/20261123-validate-tool-loaders-and-harden-solver-arithmetic.md)
 - [ADR 20261123: Volumetric 3D Implicit Formulas, Boundary-Padded Solid Closure, and Unified 3D Exports](adr/20261123-volumetric-implicit-formulas-and-solid-exports.md)
 - [ADR 20261123: Quantum Tunneling and 2D Chladni Resonance Parameter Atlases](adr/20261123-wave-and-chladni-resonance-atlases.md)
 - [ADR 20261123: Pre-Allocated 2D FDTD Wave Solver, Hamiltonian Ray Caustics, and Optics Playground](adr/20261123-wave-optics-fdtd-and-ray-caustics.md)

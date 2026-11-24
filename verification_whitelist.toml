@@ -50,6 +50,7 @@ min_verified_production_density = 0.0490
 coverage_tolerance_pct = 1.5
 unverified_modules = [
     "apps/xtask",
+    "crates/02_engines/engine_linalg",
     "crates/diagnostics",
     "crates/federated_registry",
     "crates/markdown_tests",
@@ -62,6 +63,14 @@ unverified_modules = [
     "math_explorer",
     "math_explorer_gui",
 ]
+
+[[verify_suite.opt_outs]]
+path = "crates/02_engines/engine_linalg/src/"
+reason = "no_std_engine"
+
+[[verify_suite.opt_outs]]
+path = "crates/02_engines/engine_linalg/src/"
+reason = "tests"
 
 [[verify_suite.opt_outs]]
 path = "crates/domain_applied/src/applied/freesurfer/thickness_tests.rs"
@@ -85,6 +94,10 @@ reason = "tests"
 
 [[verify_suite.opt_outs]]
 path = "crates/math_commons/src/ast/arity_tests.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/math_commons/src/ast/limit_tests.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]

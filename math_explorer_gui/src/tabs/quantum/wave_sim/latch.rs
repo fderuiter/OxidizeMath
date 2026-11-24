@@ -1,13 +1,32 @@
+//! Born probability R/B/T integration and pre-wall scattering latch updates for [`super::WaveRunner`].
+
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{TunnelingObservables, WaveRunner, BARRIER_TRANSIT_THRESHOLD, WALL_ARRIVAL_THRESHOLD};
+use super::{
+    compute_tunneling_observables_slice, TunnelingObservables, WaveRunner,
+    BARRIER_TRANSIT_THRESHOLD, WALL_ARRIVAL_THRESHOLD,
+};
 
 impl WaveRunner {
-    pub(super) fn update_scatter_latch(
-        &mut self,
-        prev: TunnelingObservables,
-        obs: TunnelingObservables,
-    ) {
+    /// Updates Born R/B/T integrals and pre-wall `T_scatter` latch in-place with zero heap allocations.
+    pub(crate) fn update_observables_in_place(&mut self) {
+        let n = self.psi.vector.len();
+        if n <= self.prob_scratch.len() {
+            self.psi
+                .probability_density_in_place(&mut self.prob_scratch[..n]);
+            let obs = compute_tunneling_observables_slice(
+                &self.x_axis,
+                &self.prob_scratch[..n],
+                self.x_left,
+                self.x_right,
+            );
+            let prev = self.observables;
+            self.observables = obs;
+            self.update_scatter_latch(prev, obs);
+        }
+    }
+
+    fn update_scatter_latch(&mut self, prev: TunnelingObservables, obs: TunnelingObservables) {
         if self.time <= 0.0 {
             return;
         }
