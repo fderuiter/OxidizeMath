@@ -9,6 +9,8 @@ use crate::pure_math::{
         stochastic::StochasticError, transforms::TransformError,
     },
     elliptic_curves::EllipticCurveError,
+    graph_theory::GraphTheoryError,
+    hyperbolic::HyperbolicError,
     number_theory::ambs::AmbsError,
     tensor::types::TensorError,
 };
@@ -203,6 +205,18 @@ impl Diagnostic for EllipticCurveError {
     }
 }
 
+impl Diagnostic for GraphTheoryError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("GraphTheoryError", self.to_string())
+    }
+}
+
 impl Diagnostic for EvolutionError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
@@ -272,5 +286,17 @@ impl Diagnostic for TransformError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("TransformError", self.to_string())
+    }
+}
+
+impl Diagnostic for HyperbolicError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("HyperbolicError", self.to_string())
     }
 }

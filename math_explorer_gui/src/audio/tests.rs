@@ -12,8 +12,9 @@ use super::frame::{MAX_FREQ_HZ, MIN_FREQ_HZ};
 #[cfg(feature = "pure_math")]
 use super::mappings::chladni_wave_tank_frame;
 use super::mappings::{
-    attractor_frame, bifurcation_frame, hodgkin_huxley_frame, just_intonation_ratio,
-    neural_ring_frame, prime_chord_frame, quantum_wavepacket_frame, spike_analysis_frame,
+    attractor_frame, bifurcation_frame, hodgkin_huxley_frame, imrt_delivery_frame,
+    just_intonation_ratio, neural_ring_frame, prime_chord_frame, quantum_wavepacket_frame,
+    radar_linac_frame, spike_analysis_frame, LinacGatePhase,
 };
 use super::synth::OfflinePcmSynthesizer;
 use super::ui::{format_meter_readout, meter_fill_fraction, render_sonification_panel};
@@ -62,7 +63,7 @@ fn test_zero_alloc_1000_steps_frame_extraction_and_offline_pcm_synthesis() {
         let mut peak = 0.0_f32;
         for step in 0..1_000usize {
             let phase = (step as f64) * 0.05;
-            let frame = match step % 8 {
+            let frame = match step % 10 {
                 0 => hodgkin_huxley_frame(30.0 * phase.sin(), -10.0, 0.8, 0.4, 0.5, 10.0),
                 1 => spike_analysis_frame(25.0 * phase.cos(), -15.0, 0.0, 42.0),
                 2 => {
@@ -80,6 +81,7 @@ fn test_zero_alloc_1000_steps_frame_extraction_and_offline_pcm_synthesis() {
                 5 => bifurcation_frame(2.9 + 0.9 * ((step % 10) as f64) * 0.1),
                 #[cfg(feature = "pure_math")]
                 6 => sample_chladni_step_frame(phase, &detector_line, step % 16 == 0),
+                7 | 8 => sample_medical_step_frame(step, phase),
                 _ => prime_chord_frame(&factors, WaveformPreset::JustHarmonic),
             };
             synth.apply_frame(&frame);
@@ -283,6 +285,28 @@ fn test_mute_within_30ms_wav_encoding_and_accessible_ui_themes() {
     assert!(msgs
         .iter()
         .any(|(text, prio)| prio == "polite" && text.contains("suspended cleanly")));
+}
+
+fn sample_medical_step_frame(step: usize, phase: f64) -> SonificationFrame {
+    if step.is_multiple_of(2) {
+        imrt_delivery_frame(
+            LinacGatePhase::BeamActive,
+            -2.2,
+            59.0,
+            60.0,
+            31.0,
+            26.0,
+            5.60,
+        )
+    } else {
+        radar_linac_frame(
+            LinacGatePhase::BeamActive,
+            -2.5 + phase.sin(),
+            4.0 * phase.cos(),
+            38.0,
+            phase,
+        )
+    }
 }
 
 #[cfg(feature = "pure_math")]

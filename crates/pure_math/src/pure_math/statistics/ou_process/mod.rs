@@ -131,6 +131,7 @@ pub mod solver;
 
 pub use analysis::{
     MomentumType, OuAnalyzer, OuVarianceReduction, PerformanceStats, estimate_ou_params,
+    summarize_terminal_values_with_workspace,
 };
 pub use core::{LongTermMean, OuParams};
 pub use solver::{EulerMaruyama, TimeStep};

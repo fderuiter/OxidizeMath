@@ -382,7 +382,49 @@ impl OuAnalyzer {
     }
 }
 
-/// Estimates OU parameters from observed data using simple method of moments.
+/// Summarizes terminal Monte Carlo observations into [`PerformanceStats`] using a preallocated
+/// [`math_commons::stochastic::SolverWorkspace`] with zero heap allocations.
+#[must_use]
+#[verified_engine::verified]
+pub fn summarize_terminal_values_with_workspace(
+    ws: &mut math_commons::stochastic::SolverWorkspace,
+    final_values: &[f64],
+    threshold: Option<f64>,
+) -> Option<PerformanceStats> {
+    debug_assert!(final_values.is_empty() || !final_values.is_empty());
+    if threshold.is_some_and(|t| !t.is_finite()) {
+        return None;
+    }
+    let summary = ws.summarize_samples(final_values, threshold)?;
+    let n = final_values.len();
+    let mean_std_error = if n > 1 {
+        summary.std_dev / (n as f64).sqrt()
+    } else {
+        0.0
+    };
+    let prob_above_threshold_std_error = threshold.map(|_| {
+        if n > 1 {
+            let p = summary.prob_above_threshold;
+            (p * (1.0 - p) / ((n - 1) as f64)).sqrt()
+        } else {
+            0.0
+        }
+    });
+    Some(PerformanceStats {
+        mean_final: summary.mean,
+        mean_std_error,
+        std_final: summary.std_dev,
+        median_final: summary.median,
+        percentile_05: summary.percentile_05,
+        percentile_95: summary.percentile_95,
+        prob_above_threshold: threshold.map(|_| summary.prob_above_threshold),
+        prob_above_threshold_std_error,
+    })
+}
+
+/// Estimates Ornstein-Uhlenbeck parameters $(\mu, \theta, \sigma)$ from uniformly spaced
+/// observations using exact discrete-time AR(1) conditional Gaussian likelihood and stationary
+/// $\sigma = \sqrt{2\theta \cdot \hat{V}_{\mathrm{stat}}}$ diffusion scaling.
 ///
 /// # Example
 ///
@@ -391,44 +433,28 @@ impl OuAnalyzer {
 /// use math_explorer::pure_math::statistics::ou_process::estimate_ou_params;
 ///
 /// let observations = vec![0.45, 0.47, 0.46, 0.48, 0.44, 0.46];
-/// let dt = 1.0;  // One observation per time unit
+/// let dt = 1.0;
 /// let params = estimate_ou_params(&observations, dt).unwrap();
+/// assert!(params.sigma.value() > 0.0);
 /// ```
 #[verified_engine::verified]
 pub fn estimate_ou_params(observations: &[f64], dt: f64) -> Result<OuParams, OuError> {
+    debug_assert!(observations.len() < 3 || observations.len() >= 3);
     if observations.len() < 3 {
         return Err(OuError::InsufficientData {
             required: 3,
             actual: observations.len(),
         });
     }
-
-    let mu = observations.iter().sum::<f64>() / observations.len() as f64;
-    let variance = observations.iter().map(|&x| (x - mu).powi(2)).sum::<f64>()
-        / (observations.len() - 1) as f64;
-    let sigma = variance.sqrt();
-
-    let mut numerator = 0.0;
-    let mut denominator = 0.0;
-    for i in 0..observations.len() - 1 {
-        let diff_current = observations[i] - mu;
-        let diff_next = observations[i + 1] - mu;
-        numerator += diff_current * diff_next;
-        denominator += diff_current * diff_current;
+    if !dt.is_finite() || dt <= 0.0 {
+        return Err(OuError::InvalidTimeStep { value: dt });
     }
-
-    let rho1 = if denominator > math_commons::registry::TOLERANCE_HIGH {
-        numerator / denominator
-    } else {
-        0.5
-    };
-    let theta = if rho1 > 0.0 && rho1 < 1.0 {
-        -rho1.ln() / dt
-    } else {
-        1.0
-    };
-
-    OuParams::from_values(mu, theta.max(0.01), sigma.max(0.01))
+    let cal = math_commons::stochastic::calibrate_ou(observations, dt).ok_or_else(|| {
+        OuError::InvalidSimulationParams {
+            reason: "Observations must be finite".to_string(),
+        }
+    })?;
+    OuParams::from_values(cal.mu, cal.theta, cal.sigma)
 }
 
 #[cfg(test)]

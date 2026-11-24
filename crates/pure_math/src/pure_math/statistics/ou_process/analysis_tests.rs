@@ -108,10 +108,50 @@ fn test_comeback_probability_and_estimation() {
     let prob = analyzer.comeback_probability(0.3, 0.5, 1.0, 1000, &mut rng);
     assert!((0.0..=1.0).contains(&prob) && prob > 0.0);
 
-    let solver = EulerMaruyama::new(params, TimeStep::new(0.1).unwrap());
+    let true_params = OuParams::from_values(0.5, 1.0, 0.2).unwrap();
+    let solver = EulerMaruyama::new(true_params, TimeStep::new(0.02).unwrap());
     let mut rng2 = oxidize_core::rng::OxidizeRng::new(12345);
-    let trajectory = solver.simulate(0.6, 100, &mut rng2);
-    let estimated = estimate_ou_params(&trajectory, 0.1).unwrap();
-    assert!((estimated.mu.value() - 0.5).abs() < 0.35);
+    let trajectory = solver.simulate(0.5, 2_500, &mut rng2);
+    let estimated = estimate_ou_params(&trajectory, 0.02).unwrap();
+    assert!((estimated.mu.value() - 0.5).abs() < 0.15);
+    assert!(estimated.theta.value() > 0.0);
+    assert!((estimated.sigma.value() - 0.2).abs() / 0.2 < 0.12);
     assert!(estimate_ou_params(&[0.5, 0.6], 1.0).is_err());
+
+    let mut ws = math_commons::stochastic::SolverWorkspace::new(0, 8);
+    let ws_stats =
+        summarize_terminal_values_with_workspace(&mut ws, &[0.2, 0.4, 0.6, 0.8], Some(0.5))
+            .unwrap();
+    assert!((ws_stats.mean_final - 0.5).abs() < 1e-12);
+    assert!(ws_stats.mean_std_error > 0.0);
+    assert_eq!(ws_stats.prob_above_threshold, Some(0.5));
+    assert!(ws_stats.prob_above_threshold_std_error.unwrap() > 0.0);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_estimate_ou_params_recovers_sigma_across_slow_and_fast_theta() {
+    let slow_params = OuParams::from_values(1.2, 0.05, 0.25).unwrap();
+    let fast_params = OuParams::from_values(-0.8, 5.0, 0.35).unwrap();
+    let dt = TimeStep::new(0.01).unwrap();
+
+    let mut rng_slow = oxidize_core::rng::OxidizeRng::new(2026_1123);
+    let slow_traj = EulerMaruyama::new(slow_params, dt).simulate(1.2, 4_000, &mut rng_slow);
+    let est_slow = estimate_ou_params(&slow_traj, 0.01).unwrap();
+    assert!(
+        (est_slow.sigma.value() - 0.25).abs() / 0.25 < 0.10,
+        "slow theta sigma={} expected ~0.25",
+        est_slow.sigma.value()
+    );
+
+    let mut rng_fast = oxidize_core::rng::OxidizeRng::new(2026_1124);
+    let fast_traj = EulerMaruyama::new(fast_params, dt).simulate(-0.8, 4_000, &mut rng_fast);
+    let est_fast = estimate_ou_params(&fast_traj, 0.01).unwrap();
+    assert!((est_fast.mu.value() - (-0.8)).abs() < 0.10);
+    assert!((est_fast.theta.value() - 5.0).abs() / 5.0 < 0.18);
+    assert!(
+        (est_fast.sigma.value() - 0.35).abs() / 0.35 < 0.10,
+        "fast theta sigma={} expected ~0.35",
+        est_fast.sigma.value()
+    );
 }

@@ -19,10 +19,11 @@ pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{
             AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
-            FractranError, Glicko2Error, KellyError, LinearAlgebraError, MarketPricingError,
-            MarkovError, MatchModelError, NumberTheoryError, OptimizationError, OuError, ProbError,
-            PureMathError, PureMathError as Error, StochasticError, TdaError, TensorError,
-            TransformError, ZipError,
+            FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
+            LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
+            NumberTheoryError, OptimizationError, OuError, ProbError, PureMathError,
+            PureMathError as Error, StochasticError, TdaError, TensorError, TransformError,
+            ZipError,
         };
         pub use math_commons::error::{
             EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult,
@@ -45,7 +46,7 @@ pub mod __doctest_facade {
     pub use diagnostics;
     pub use engine_prob as prob;
     pub use math_commons::{
-        ast, constants, fit, math_kernel, poi, primitives, registry, series, wigner,
+        ast, constants, fit, math_kernel, poi, primitives, registry, series, stochastic, wigner,
     };
     pub use nalgebra;
     pub use num_complex;
