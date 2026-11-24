@@ -6,7 +6,7 @@ Canonical governing equations, bibliography references, stability bounds, and va
 
 ### Governing Equations
 
-Coupled two-species activator-inhibitor PDEs (`ReactionDiffusionModel`, `DiffusionModel`, `ReactionModel`, `FusedEulerSolver`, `StandardSolverAdapter`, `TuringSolverStrategy`) evolve concentrations $(u, v)$ under discrete Laplacian stencils:
+Coupled two-species activator-inhibitor PDEs (`ReactionDiffusionModel`, `DiffusionModel`, `ReactionModel`, `SchnakenbergKinetics`, `SpatialSchnakenbergKinetics`, `GrayScottKinetics`, `FusedEulerSolver`, `StandardSolverAdapter`, `TuringSolverStrategy`) evolve concentrations $(u, v)$ under discrete Laplacian stencils:
 
 $$
 \frac{\partial u}{\partial t} = D_u \nabla^2 u + R_u(u, v), \qquad \frac{\partial v}{\partial t} = D_v \nabla^2 v + R_v(u, v)

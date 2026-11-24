@@ -1,15 +1,18 @@
-//! Central canvas painter and `SpatialBrushKit::sample_rect` integration for [`super::GridWorldTool`].
+//! Central canvas painter combining Bellman/policy/wind overlays with [`RasterBrushCanvas`]
+//! tactile and keyboard sculpting for [`super::GridWorldTool`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::GridWorldTool;
-use crate::accessibility::{register_canvas_accessibility, AccessibleHoverText};
+use crate::accessibility::AccessibleTheoryHover;
 use crate::app::{contrasting_text_color, SemanticPalette};
-use crate::framework::{BrushMode, InputMode, InteractionContext, InteractiveTool};
+use crate::framework::{
+    cell_screen_rect, BrushMode, InputMode, RasterBrushCanvas, RasterBrushStroke,
+};
 use crate::tabs::ai::q_table_inspector::q_value_cell_color;
 use crate::tabs::ai::rl_sculpt::{
-    mean_bellman_residual, paint_policy_arrow, role_base_fill, role_glyph, RlOverlayMode,
-    RlSolverMode,
+    brush_mode_to_cell_role, mean_bellman_residual, paint_policy_arrow, role_base_fill, role_glyph,
+    RlOverlayMode, RlSolverMode,
 };
 use eframe::egui;
 use math_explorer::ai::reinforcement_learning::{GridCellRole, GridState, MarkovDecisionProcess};
@@ -170,7 +173,7 @@ impl GridWorldTool {
         });
     }
 
-    fn compute_grid_layout(&self, ui: &egui::Ui, input_mode: InputMode) -> (f32, egui::Vec2) {
+    fn compute_grid_layout(&self, ui: &egui::Ui, input_mode: InputMode) -> egui::Vec2 {
         let base_cell = if input_mode == InputMode::Touch {
             48.0_f32
         } else {
@@ -180,21 +183,46 @@ impl GridWorldTool {
         let fit_cell =
             ((ui.available_width().min(ui.available_height()) - 16.0) / max_dim).clamp(24.0, 64.0);
         let cell_size = base_cell.max(fit_cell).min(64.0);
-        let grid_size = egui::vec2(
+        egui::vec2(
             self.mdp.width as f32 * cell_size,
             self.mdp.height as f32 * cell_size,
-        );
-        (cell_size, grid_size)
+        )
+    }
+
+    fn apply_canvas_stroke(&mut self, stroke: RasterBrushStroke) {
+        if !stroke.secondary
+            && matches!(
+                self.brush_kit.mode,
+                BrushMode::WindUp
+                    | BrushMode::WindDown
+                    | BrushMode::WindLeft
+                    | BrushMode::WindRight
+            )
+        {
+            let role = brush_mode_to_cell_role(self.brush_kit.mode);
+            for &(cx, cy) in &stroke.cells {
+                let st = GridState {
+                    x: cx as i32,
+                    y: cy as i32,
+                };
+                if self.mdp.in_bounds(st) && st != self.mdp.goal {
+                    self.mdp.set_cell_role(st, role);
+                }
+            }
+            self.bellman_dirty = true;
+            self.ensure_bellman_up_to_date();
+            self.revision = self.revision.wrapping_add(1);
+            return;
+        }
+        self.apply_brush_stroke(stroke);
     }
 
     pub(super) fn draw_central_canvas(&mut self, parent_ui: &mut egui::Ui, input_mode: InputMode) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.draw_telemetry_header(ui);
-            let (cell_size, grid_size) = self.compute_grid_layout(ui, input_mode);
-            let (response, painter) = ui.allocate_painter(grid_size, egui::Sense::click_and_drag());
-            let _ = response
-                .clone()
-                .accessible_hover_text("Grid World Visualization");
+            let grid_size = self.compute_grid_layout(ui, input_mode);
+            let gw = self.mdp.width.max(1) as usize;
+            let gh = self.mdp.height.max(1) as usize;
             let summary = format!(
                 "Agent at ({}, {}), Episode {}, Reward {:.2}, Overlay {}, Wind {:.2}",
                 self.current_state.x,
@@ -204,43 +232,29 @@ impl GridWorldTool {
                 self.overlay_mode.label(),
                 self.mdp.wind_slip_prob
             );
-            register_canvas_accessibility(
-                ui,
-                &response,
-                egui::accesskit::Role::GraphicsDocument,
-                "Grid World Visualization",
-                Some(&summary),
-            );
-
-            let palette = SemanticPalette::from_visuals(ui.visuals());
             let bounds = self.overlay_bounds();
-            for x in 0..self.mdp.width {
-                for y in 0..self.mdp.height {
-                    let top_left =
-                        response.rect.min + egui::vec2(x as f32 * cell_size, y as f32 * cell_size);
-                    let cell_rect =
-                        egui::Rect::from_min_size(top_left, egui::vec2(cell_size, cell_size));
-                    self.paint_single_cell(
-                        &painter,
-                        cell_rect,
-                        GridState { x, y },
-                        bounds,
-                        &palette,
-                    );
-                }
-            }
-
-            let domain_max = [f64::from(self.mdp.width), f64::from(self.mdp.height)];
-            let strokes = self.brush_kit.sample_rect(
-                ui,
-                &response,
-                [0.0, 0.0],
-                domain_max,
-                Some(BrushMode::Erase),
-            );
-            for stroke in strokes {
-                let brush_ctx = InteractionContext::from_brush_stroke(&response, stroke);
-                self.on_brush(&brush_ctx);
+            let mut brush_state = std::mem::take(&mut self.brush_state);
+            let (response, stroke) =
+                RasterBrushCanvas::new("grid_world_canvas", gw, gh, "Grid World Visualization")
+                    .role(egui::accesskit::Role::GraphicsDocument)
+                    .value_summary(&summary)
+                    .max_canvas_size(grid_size)
+                    .show_custom(ui, &mut brush_state, |painter, rect, palette| {
+                        for x in 0..gw {
+                            for y in 0..gh {
+                                let cell_rect = cell_screen_rect(rect, x, y, gw, gh, false);
+                                let st = GridState {
+                                    x: x as i32,
+                                    y: y as i32,
+                                };
+                                self.paint_single_cell(painter, cell_rect, st, bounds, palette);
+                            }
+                        }
+                    });
+            self.brush_state = brush_state;
+            let _ = response.accessible_theory_hover(self);
+            if let Some(stroke) = stroke {
+                self.apply_canvas_stroke(stroke);
             }
         });
     }

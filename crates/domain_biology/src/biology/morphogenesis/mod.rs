@@ -69,6 +69,8 @@
 pub mod reaction;
 /// Fused forward-Euler and generic ODE-adapter Turing time-stepping strategies.
 pub mod solvers;
+/// Spatially heterogeneous Schnakenberg kinetics with preallocated masks.
+pub mod spatial_reaction;
 /// Contiguous N-species spatial concentration state buffers.
 pub mod state;
 
@@ -77,6 +79,7 @@ use pure_math::pure_math::analysis::ode::{OdeSystem, TimeStepper};
 
 pub use reaction::{GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics};
 pub use solvers::{FusedEulerSolver, StandardSolverAdapter, TuringDynamics, TuringSolverStrategy};
+pub use spatial_reaction::SpatialSchnakenbergKinetics;
 pub use state::TuringState;
 
 /// Represents a Reaction-Diffusion system.

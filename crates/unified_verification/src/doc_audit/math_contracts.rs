@@ -66,6 +66,14 @@ const EXPLICIT_MATH_TYPES: &[&str] = &[
     "CahnHilliard2D",
     "EdwardsWilkinson1D",
     "EdwardsWilkinson2D",
+    "HomogeneousPoisson",
+    "InhomogeneousPoisson",
+    "Mm1Queue",
+    "MmcQueue",
+    "SpatialSchnakenbergKinetics",
+    "SchwarzschildConnection4D",
+    "SchwarzschildBlackHole",
+    "SchwarzschildGeodesicBundle",
 ];
 
 /// Audits all `11` mathematical and solver crates present in `members` using the shared single-pass `AstCache`.

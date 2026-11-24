@@ -38,12 +38,14 @@ pub struct GridWorldEnv {
     pub start: GridState,
     /// Terminal hazard states yielding $-10.0$ reward.
     pub traps: Vec<GridState>,
+    /// Impassable wall cells that block agent transitions in [`Self::step`].
+    pub walls: Vec<GridState>,
     /// Future-reward discount factor $\gamma \in [0, 1]$.
     pub gamma: f64,
 }
 
 impl GridWorldEnv {
-    /// Computes the deterministic next [`GridState`] after applying `action`, clamping at grid boundaries.
+    /// Computes the deterministic next [`GridState`] after applying `action`, clamping at grid boundaries and [`Self::walls`].
     #[verified_engine::verified]
     pub fn step(&self, current_state: &GridState, action: &Move) -> GridState {
         let mut expected_next = *current_state;
@@ -57,7 +59,8 @@ impl GridWorldEnv {
         let is_valid = expected_next.x >= 0
             && expected_next.x < self.width
             && expected_next.y >= 0
-            && expected_next.y < self.height;
+            && expected_next.y < self.height
+            && !self.walls.contains(&expected_next);
 
         if is_valid {
             expected_next
@@ -110,5 +113,33 @@ impl MarkovDecisionProcess for GridWorldEnv {
     #[verified_engine::verified]
     fn is_terminal(&self, state: &Self::S) -> bool {
         *state == self.goal || self.traps.contains(state)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_grid_world_walls_block_transitions_with_zero_allocations() {
+        let env = GridWorldEnv {
+            width: 5,
+            height: 5,
+            start: GridState { x: 0, y: 0 },
+            goal: GridState { x: 4, y: 4 },
+            traps: vec![GridState { x: 2, y: 2 }],
+            walls: vec![GridState { x: 1, y: 0 }, GridState { x: 0, y: 1 }],
+            gamma: 0.9,
+        };
+        let origin = GridState { x: 0, y: 0 };
+        let (blocked_right, metrics) =
+            verified_engine::engine::VerifiedEngine::run_verified(|| {
+                env.step(&origin, &Move::Right)
+            });
+        assert!(metrics.function_calls > 0);
+        assert_eq!(blocked_right, origin);
+        assert_eq!(env.step(&origin, &Move::Down), origin);
+        let free_cell = GridState { x: 2, y: 0 };
+        assert_eq!(env.step(&free_cell, &Move::Right), GridState { x: 3, y: 0 });
     }
 }

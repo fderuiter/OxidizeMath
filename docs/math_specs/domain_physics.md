@@ -12,7 +12,7 @@ $$
 \Delta_{n+1} = (1 - \alpha)\Delta_n + \alpha \sum_{|\xi_k| \le \hbar\omega_D} \frac{V\,\Delta_n}{2\sqrt{\xi_k^2 + \Delta_n^2}}
 $$
 
-Discrete-velocity BGK Lattice Boltzmann (`D2Q9Model`, `CollisionModel`) relaxes populations $f_i^{\text{out}} = f_i - \frac{1}{\tau}(f_i - f_i^{\text{eq}}(\rho, \mathbf{u}))$, `GalaxyModel` evaluates axisymmetric/spherical circular velocity profiles $v_c^2(R) = R\,\partial_R \Phi(R, 0)$, and Bethe-Weizsaecker `LiquidDropModel` (`BindingEnergyModel`) computes nuclear binding energy $B(A, Z)$.
+Discrete-velocity BGK Lattice Boltzmann (`D2Q9Model`, `CollisionModel`) relaxes populations $f_i^{\text{out}} = f_i - \frac{1}{\tau}(f_i - f_i^{\text{eq}}(\rho, \mathbf{u}))$, `GalaxyModel` evaluates axisymmetric/spherical circular velocity profiles $v_c^2(R) = R\,\partial_R \Phi(R, 0)$, `SchwarzschildBlackHole` and `SchwarzschildGeodesicBundle` integrate relativistic 4D Schwarzschild geodesics $\ddot{x}^\mu + \Gamma^\mu_{\alpha\beta}\dot{x}^\alpha\dot{x}^\beta = 0$ against Newtonian orbits, and Bethe-Weizsaecker `LiquidDropModel` (`BindingEnergyModel`) computes nuclear binding energy $B(A, Z)$.
 
 ### Citations
 

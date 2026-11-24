@@ -235,6 +235,7 @@ fn test_morphogenesis_tool_state_envelope_roundtrip() {
         pending_initial_start: false,
         fork: None,
         mask_rle: Vec::new(),
+        kinetics_mask_rle: None,
         atlas_visible: false,
         atlas_axes: default_morpho_atlas_axes(),
     };

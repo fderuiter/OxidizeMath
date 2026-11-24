@@ -325,11 +325,12 @@ pub mod validation;
 // Re-export commonly used types
 pub use crate::error::MarkovError;
 pub use ctmc::ContinuousMarkovChain;
-pub use dtmc::{MarkovChain, StateType};
+pub use dtmc::{CommunicatingClass, MarkovChain, StateType};
 /// Type alias `Result` used across this module.
 pub type Result<T> = std::result::Result<T, MarkovError>;
 pub use hmm::{
-    BaumWelchConfig, BaumWelchReport, BaumWelchWorkspace, HiddenMarkovModel, ViterbiWorkspace,
+    BaumWelchConfig, BaumWelchReport, BaumWelchResult, BaumWelchWorkspace, HiddenMarkovModel,
+    ViterbiWorkspace,
 };
 pub use math_commons::stochastic::SolverWorkspace;
 pub use num_traits::ToPrimitive;
