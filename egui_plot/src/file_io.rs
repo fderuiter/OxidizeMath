@@ -50,6 +50,8 @@ pub fn infer_mime_type(filename: &str) -> &'static str {
         "image/gif"
     } else if lower.ends_with(".wgsl") {
         "text/wgsl"
+    } else if lower.ends_with(".wav") {
+        "audio/wav"
     } else if lower.ends_with(".stl") {
         "model/stl"
     } else if lower.ends_with(".ply") {

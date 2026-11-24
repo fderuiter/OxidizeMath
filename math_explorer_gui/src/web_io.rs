@@ -354,6 +354,8 @@ mod tests {
         assert_eq!(infer_mime_type("anim.gif"), "image/gif");
         assert_eq!(infer_mime_type("fractal_shader.wgsl"), "text/wgsl");
         assert_eq!(infer_mime_type("domain_shader.glsl"), "text/plain");
+        assert_eq!(infer_mime_type("clip_audio.wav"), "audio/wav");
+        assert_eq!(infer_mime_type("CLIP.WAV"), "audio/wav");
         assert_eq!(infer_mime_type("manifold.stl"), "model/stl");
         assert_eq!(infer_mime_type("splats.ply"), "model/ply");
         assert_eq!(infer_mime_type("surface.obj"), "model/obj");

@@ -7,6 +7,7 @@
 
 use super::eval::MAX_EVAL_DEPTH;
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
+use super::limits::{MAX_AST_NODES, MAX_GLSL_OUTPUT_BYTES};
 use super::shader_preludes::ShaderTarget;
 use std::f64::consts::{E, PI, TAU};
 
@@ -16,6 +17,14 @@ pub enum ShaderEmitError {
     /// AST height exceeded [`MAX_EVAL_DEPTH`].
     #[error("Shader transpilation depth limit exceeded (max depth {0})")]
     RecursionLimitExceeded(usize),
+
+    /// Visited AST node count exceeded [`MAX_AST_NODES`].
+    #[error("Shader transpilation complexity limit exceeded (max {0} AST nodes)")]
+    NodeLimitExceeded(usize),
+
+    /// Generated shader expression length exceeded [`MAX_GLSL_OUTPUT_BYTES`].
+    #[error("Shader transpilation output limit exceeded (max {0} bytes)")]
+    OutputLimitExceeded(usize),
 
     /// Built-in function node was given the wrong number of arguments.
     #[error("Function '{}' expected {expected} arguments, found {found}", func.as_str())]
@@ -50,6 +59,12 @@ impl diagnostics::Diagnostic for ShaderEmitError {
         match self {
             Self::RecursionLimitExceeded(max_depth) => {
                 map.insert("max_depth".to_string(), max_depth.to_string());
+            }
+            Self::NodeLimitExceeded(max_nodes) => {
+                map.insert("max_nodes".to_string(), max_nodes.to_string());
+            }
+            Self::OutputLimitExceeded(max_bytes) => {
+                map.insert("max_output_bytes".to_string(), max_bytes.to_string());
             }
             Self::WrongArgumentCount {
                 func,
@@ -127,6 +142,7 @@ fn emit_shader_expr(
     target: ShaderTarget,
     mode: DomainMode,
 ) -> Result<String, ShaderEmitError> {
+    let mut visited_nodes = 0usize;
     let mut out = String::with_capacity(64);
     let mut stack = Vec::with_capacity(16);
     stack.push(EmitFrame::Eval {
@@ -136,12 +152,24 @@ fn emit_shader_expr(
 
     while let Some(frame) = stack.pop() {
         match frame {
-            EmitFrame::Raw(lit) => out.push_str(lit),
+            EmitFrame::Raw(lit) => {
+                if out.len() + lit.len() > MAX_GLSL_OUTPUT_BYTES {
+                    return Err(ShaderEmitError::OutputLimitExceeded(MAX_GLSL_OUTPUT_BYTES));
+                }
+                out.push_str(lit);
+            }
             EmitFrame::Eval { expr, depth } => {
                 if depth > MAX_EVAL_DEPTH {
                     return Err(ShaderEmitError::RecursionLimitExceeded(MAX_EVAL_DEPTH));
                 }
+                visited_nodes += 1;
+                if visited_nodes > MAX_AST_NODES {
+                    return Err(ShaderEmitError::NodeLimitExceeded(MAX_AST_NODES));
+                }
                 emit_node(expr, depth, target, mode, &mut stack, &mut out)?;
+                if out.len() > MAX_GLSL_OUTPUT_BYTES {
+                    return Err(ShaderEmitError::OutputLimitExceeded(MAX_GLSL_OUTPUT_BYTES));
+                }
             }
         }
     }

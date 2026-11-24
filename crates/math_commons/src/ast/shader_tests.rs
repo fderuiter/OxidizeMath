@@ -233,3 +233,34 @@ fn test_eval_complex_zc_matches_mandelbrot_and_custom_multibrot() {
     let expected = z.powf(3.0) + c;
     assert!((actual - expected).norm() < 1e-12);
 }
+
+fn build_balanced_sum(levels: usize) -> Expr {
+    if levels == 0 {
+        Expr::Variable("x".to_string())
+    } else {
+        Expr::binary(
+            BinaryOp::Add,
+            build_balanced_sum(levels - 1),
+            build_balanced_sum(levels - 1),
+        )
+    }
+}
+
+#[test]
+fn test_shader_emitter_enforces_node_and_output_budget_limits() {
+    let wide = build_balanced_sum(8);
+    assert_eq!(
+        wide.to_wgsl(),
+        Err(ShaderEmitError::NodeLimitExceeded(MAX_AST_NODES))
+    );
+    assert_eq!(
+        wide.to_shader_complex(ShaderTarget::Glsl),
+        Err(ShaderEmitError::NodeLimitExceeded(MAX_AST_NODES))
+    );
+
+    let huge_ident = "v".repeat(MAX_GLSL_OUTPUT_BYTES + 16);
+    assert_eq!(
+        Expr::Variable(huge_ident).to_wgsl(),
+        Err(ShaderEmitError::OutputLimitExceeded(MAX_GLSL_OUTPUT_BYTES))
+    );
+}

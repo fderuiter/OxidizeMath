@@ -59,6 +59,8 @@ pub struct FractalViewer {
     pub(crate) julia_c: Complex<f64>,
     /// Whether `julia_c` is pinned against Mandelbrot pointer hover updates.
     pub c_pinned: bool,
+    /// Whether clicking or pressing `Enter` on the Mandelbrot plane teleports directly to `J_c`.
+    pub linked_explorer: bool,
     pub(crate) math_input: MathExpressionInputBar,
     pub(crate) quadratic_job: CompiledFractalJob,
     pub(crate) atlas: ParameterAtlasController,
@@ -70,7 +72,7 @@ pub struct FractalViewer {
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) julia_inset_texture: Option<egui::TextureHandle>,
     pub(crate) julia_inset_image: Option<egui::ColorImage>,
-    pub(crate) julia_inset_key: Option<(u64, u64, u32, bool, FractalColorStyle)>,
+    pub(crate) julia_inset_key: Option<JuliaInsetKey>,
     pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) dirty: bool,
     pub(crate) requested_size: (usize, usize),
@@ -144,6 +146,7 @@ impl Default for FractalViewer {
             julia_c.im.to_bits(),
             inset_iter,
             false,
+            0,
             initial_style,
         );
         Self {
@@ -155,6 +158,7 @@ impl Default for FractalViewer {
             mode,
             julia_c,
             c_pinned: false,
+            linked_explorer: false,
             math_input,
             quadratic_job: CompiledFractalJob::quadratic(),
             atlas: ParameterAtlasController::new(FRACTAL_ATLAS_AXIS_PAIRS.to_vec()),

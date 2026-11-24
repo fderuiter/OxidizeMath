@@ -3,9 +3,17 @@
 use super::*;
 use crate::framework::shader_foundry::{bind_complex_shader_params, validate_complex_shader_vars};
 use crate::framework::MAX_SYNTHESIZED_PARAMS;
-use math_commons::ast::{parse_equation, CompiledExpr};
+use math_commons::ast::{parse_equation, CompiledExpr, MAX_EXPR_BYTES};
 use math_commons::math_kernel::colormap::ShaderPalette;
 use std::collections::BTreeMap;
+
+pub(super) fn reject_invalid_formula(err: impl std::fmt::Display) -> String {
+    let msg = format!(
+        "Invalid complex mapping formula: {err}. Simplify or fix the expression and retry."
+    );
+    crate::accessibility::announce_status_with_priority(&msg, "assertive");
+    msg
+}
 
 const fn default_domain_coloring() -> bool {
     true
@@ -74,27 +82,40 @@ impl ComplexMappingState {
         let palette = ShaderPalette::from_slug(&self.palette)
             .ok_or_else(|| format!("Unknown complex mapping palette '{}'", self.palette))?;
         if let Some(raw) = &self.custom_expr {
-            if raw.len() > MAX_CUSTOM_EXPR_BYTES {
-                return Err("Custom complex expression exceeds 512-byte limit".into());
+            if raw.len() > MAX_EXPR_BYTES {
+                return Err(reject_invalid_formula(format!(
+                    "expression exceeds {MAX_EXPR_BYTES}-byte limit"
+                )));
             }
-            let (_, expr) = parse_equation(raw.trim())
-                .map_err(|e| format!("Invalid custom complex expression: {e}"))?;
-            let compiled = CompiledExpr::compile_complex(&expr, &["z"])
-                .map_err(|e| format!("Invalid custom complex expression: {e}"))?;
+        }
+        if self.function == MappingFunction::Custom || self.custom_expr.is_some() {
+            let raw = self
+                .custom_expr
+                .as_deref()
+                .unwrap_or(DEFAULT_CUSTOM_MAPPING_EXPR);
+            let (_, expr) = parse_equation(raw.trim()).map_err(reject_invalid_formula)?;
+            let compiled =
+                CompiledExpr::compile_complex(&expr, &["z"]).map_err(reject_invalid_formula)?;
             if compiled.param_names().len() > MAX_SYNTHESIZED_PARAMS {
-                return Err(format!(
-                    "Custom complex expression exceeds {MAX_SYNTHESIZED_PARAMS} parameters"
-                ));
+                return Err(reject_invalid_formula(format!(
+                    "expression exceeds {MAX_SYNTHESIZED_PARAMS} parameters"
+                )));
             }
             let mut effective = BTreeMap::new();
             for name in compiled.param_names() {
+                if !name.eq_ignore_ascii_case("a") {
+                    return Err(reject_invalid_formula(format!(
+                        "Unknown variable '{name}' (allowed: z, a)"
+                    )));
+                }
                 effective.insert(
                     name.clone(),
                     self.custom_params.get(name).copied().unwrap_or(1.0),
                 );
             }
-            let bound = bind_complex_shader_params(&expr, &effective, &["z"])?;
-            validate_complex_shader_vars(&bound)?;
+            let bound = bind_complex_shader_params(&expr, &effective, &["z"])
+                .map_err(reject_invalid_formula)?;
+            validate_complex_shader_vars(&bound).map_err(reject_invalid_formula)?;
         }
         Ok(palette)
     }

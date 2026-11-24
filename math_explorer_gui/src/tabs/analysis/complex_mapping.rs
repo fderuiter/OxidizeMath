@@ -34,7 +34,6 @@ pub(super) const COMPLEX_MIN_SPAN: f64 = 0.1;
 pub(super) const DOMAIN_COLOR_PREVIEW_SIDE: usize = 160;
 const EXP_SIN_GUARD_LIMIT: f64 = 50.0;
 const NAN_COMPLEX: Complex64 = Complex64::new(f64::NAN, f64::NAN);
-pub(super) const MAX_CUSTOM_EXPR_BYTES: usize = 512;
 pub(super) const DEFAULT_CUSTOM_MAPPING_EXPR: &str = "z^3 - 1/z";
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -376,8 +375,14 @@ impl InteractiveTool for ComplexMappingTool {
                 .unwrap_or(DEFAULT_CUSTOM_MAPPING_EXPR),
         );
         self.math_input.set_params_map(&s.custom_params);
+        if self.function == MappingFunction::Custom {
+            if let Some(err) = self.math_input.error_message() {
+                return Err(state::reject_invalid_formula(&err));
+            }
+        }
         self.domain_texture_key = None;
         self.shader_preview.invalidate();
+        let _ = self.ensure_cached_contours();
         Ok(())
     }
 
@@ -474,6 +479,9 @@ inventory::submit! {
     }
 }
 
+#[cfg(test)]
+#[path = "complex_mapping/budget_tests.rs"]
+mod budget_tests;
 #[cfg(test)]
 #[path = "complex_mapping/shader_tests.rs"]
 mod shader_tests;

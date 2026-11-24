@@ -1,12 +1,14 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    render_fractal_color_image, render_fractal_color_image_styled, CompiledFractalJob, FractalMode,
-    FractalRenderRequest, FractalViewer, COORD_MAX, COORD_MIN, ZOOM_MAX, ZOOM_MIN,
+    render_fractal_color_image, render_fractal_color_image_styled, CompiledFractalJob,
+    FractalColorStyle, FractalMode, FractalRenderRequest, FractalViewer, COORD_MAX, COORD_MIN,
+    ZOOM_MAX, ZOOM_MIN,
 };
 use crate::app::SemanticPalette;
 use eframe::egui;
 use num_complex::Complex;
+use std::hash::{Hash, Hasher};
 
 /// Exact raster dimensions (`160x120`) for the live Mandelbrot `J_c` Julia inset.
 pub const JULIA_INSET_SIZE: (usize, usize) = (160, 120);
@@ -14,6 +16,8 @@ pub const JULIA_INSET_SIZE: (usize, usize) = (160, 120);
 pub const CRITICAL_ORBIT_STEPS: usize = 32;
 /// Iteration cap for the synchronous `160x120` Julia preview so 60 FPS latency holds at 1080p.
 pub const JULIA_INSET_MAX_ITER: u32 = 48;
+
+pub(super) type JuliaInsetKey = (u64, u64, u32, bool, u64, FractalColorStyle);
 
 const ORBIT_DRAW_NORM_SQR_CAP: f64 = 64.0;
 
@@ -97,6 +101,18 @@ pub fn compute_critical_orbit(c: Complex<f64>, steps: usize) -> Vec<Complex<f64>
 }
 
 impl FractalViewer {
+    fn formula_inset_hash(&self) -> u64 {
+        if self.mode != FractalMode::CustomMandelbrot {
+            return 0;
+        }
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.math_input.raw_text.hash(&mut h);
+        for &pv in self.math_input.param_slice() {
+            pv.to_bits().hash(&mut h);
+        }
+        h.finish().max(1)
+    }
+
     /// Refreshes the cached `160x120` `J_c` preview image via `render_fractal_color_image`.
     pub fn refresh_julia_inset(&mut self, ctx: &egui::Context) {
         let inset_iter = self.max_iter.clamp(10, JULIA_INSET_MAX_ITER);
@@ -110,6 +126,7 @@ impl FractalViewer {
             safe_c.im.to_bits(),
             inset_iter,
             self.high_contrast,
+            self.formula_inset_hash(),
             style,
         );
         if self.julia_inset_key == Some(key) {
@@ -124,6 +141,8 @@ impl FractalViewer {
             }
             return;
         }
+        let is_custom = self.mode == FractalMode::CustomMandelbrot;
+        let job = is_custom.then(|| CompiledFractalJob::from_bar(&self.math_input));
         let req = FractalRenderRequest {
             generation: 0,
             width: JULIA_INSET_SIZE.0,
@@ -131,11 +150,15 @@ impl FractalViewer {
             center: Complex::new(0.0, 0.0),
             zoom: 1.0,
             max_iter: inset_iter,
-            mode: FractalMode::Julia,
+            mode: if is_custom {
+                FractalMode::CustomJulia
+            } else {
+                FractalMode::Julia
+            },
             julia_c: safe_c,
             high_contrast: self.high_contrast,
         };
-        let img = render_fractal_color_image_styled(&req, None, style);
+        let img = render_fractal_color_image_styled(&req, job.as_ref(), style);
         let opts = egui::TextureOptions::LINEAR;
         self.julia_inset_image = Some(img.clone());
         if let Some(tex) = &mut self.julia_inset_texture {
@@ -175,9 +198,7 @@ impl FractalViewer {
 
         self.paint_critical_orbit(&painter, canvas_rect, &palette);
         self.paint_c_crosshair(&painter, canvas_rect, &palette);
-        if self.mode == FractalMode::Mandelbrot {
-            self.paint_julia_inset(&painter, canvas_rect, &palette);
-        }
+        self.paint_julia_inset(&painter, canvas_rect, &palette);
     }
 
     fn paint_critical_orbit(

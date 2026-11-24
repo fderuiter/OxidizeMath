@@ -58,6 +58,7 @@ impl_error_from!(@cfg "applied":
 
 impl_error_from!(@cfg "biology":
     BiologyError => Biology,
+    BotanicalError => Botanical,
     HodgkinHuxleyError => HodgkinHuxley,
     KineticsError => Kinetics,
     ReactionDiffusionError => ReactionDiffusion,
@@ -105,6 +106,7 @@ impl_error_from!(@cfg "pure_math":
     MarketPricingError => MarketPricing,
     MarkovError => Markov,
     MatchModelError => MatchModel,
+    MonteCarloError => MonteCarlo,
     NumberTheoryError => NumberTheory,
     OptimizationError => Optimization,
     OuError => Ou,

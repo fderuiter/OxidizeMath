@@ -60,13 +60,15 @@ const DEFAULT_CODE_DISABLED_REASON: &str =
 const DEFAULT_SHADER_DISABLED_REASON: &str =
     "WGSL and GLSL shader export is unavailable: this tool does not expose a closed-form analytical 2D fragment field.";
 
-/// Declares dataset, figure, code, 3D mesh/splat, and standalone GPU shader export capabilities for an [`super::InteractiveTool`].
+/// Declares dataset, figure, audio, code, 3D mesh/splat, and standalone GPU shader export capabilities for an [`super::InteractiveTool`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExportCapabilities {
     /// Whether tabular dataset exports (`CSV`, `JSON`) are supported.
     pub dataset: bool,
     /// Whether offscreen figure exports (`PNG`, `SVG`, `GIF`) are supported.
     pub figure: bool,
+    /// Whether 16-bit PCM `.wav` sonification audio export is supported.
+    pub audio: bool,
     /// Whether parameterized LaTeX, Rust, and Python code exports (`.tex`, `.rs`, `.py`) are supported.
     pub code: bool,
     /// Whether watertight binary `.stl` 3D solid mesh export is supported.
@@ -81,6 +83,8 @@ pub struct ExportCapabilities {
     pub dataset_disabled_reason: &'static str,
     /// Explanatory hover text shown when `PNG` / `SVG` / `GIF` buttons are disabled.
     pub figure_disabled_reason: &'static str,
+    /// Explanatory hover text shown when `WAV` audio export is disabled.
+    pub audio_disabled_reason: &'static str,
     /// Explanatory hover text shown when the `Code & LaTeX` button is disabled.
     pub code_disabled_reason: &'static str,
     /// Explanatory hover text shown when `Export STL` is disabled.
@@ -92,6 +96,10 @@ pub struct ExportCapabilities {
     /// Explanatory reason surfaced when WGSL / GLSL shader export is unavailable.
     pub shader_disabled_reason: &'static str,
 }
+
+/// Default explanation shown on non-sonified tools when `WAV` export is unavailable.
+pub const DEFAULT_AUDIO_DISABLED_REASON: &str =
+    "WAV audio export is unavailable: this tool does not emit sonification frames.";
 
 impl Default for ExportCapabilities {
     fn default() -> Self {
@@ -113,6 +121,7 @@ impl ExportCapabilities {
         Self {
             dataset: true,
             figure: true,
+            audio: false,
             code: false,
             stl: false,
             ply: false,
@@ -120,6 +129,7 @@ impl ExportCapabilities {
             shader: false,
             dataset_disabled_reason: "",
             figure_disabled_reason: "",
+            audio_disabled_reason: DEFAULT_AUDIO_DISABLED_REASON,
             code_disabled_reason: DEFAULT_CODE_DISABLED_REASON,
             stl_disabled_reason: DEFAULT_STL_DISABLED,
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
@@ -154,6 +164,7 @@ impl ExportCapabilities {
         Self {
             dataset: false,
             figure: true,
+            audio: false,
             code: false,
             stl: false,
             ply: false,
@@ -161,6 +172,7 @@ impl ExportCapabilities {
             shader: false,
             dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool renders a 2D raster field rather than tabular (X, Y) series.",
             figure_disabled_reason: "",
+            audio_disabled_reason: DEFAULT_AUDIO_DISABLED_REASON,
             code_disabled_reason: DEFAULT_CODE_DISABLED_REASON,
             stl_disabled_reason: DEFAULT_STL_DISABLED,
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
@@ -182,6 +194,7 @@ impl ExportCapabilities {
         Self {
             dataset: true,
             figure: false,
+            audio: false,
             code: false,
             stl: false,
             ply: false,
@@ -189,6 +202,7 @@ impl ExportCapabilities {
             shader: false,
             dataset_disabled_reason: "",
             figure_disabled_reason: "Figure export is unavailable: this tool computes analytical tables rather than an offscreen plot or raster field.",
+            audio_disabled_reason: DEFAULT_AUDIO_DISABLED_REASON,
             code_disabled_reason: DEFAULT_CODE_DISABLED_REASON,
             stl_disabled_reason: DEFAULT_STL_DISABLED,
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
@@ -203,6 +217,7 @@ impl ExportCapabilities {
         Self {
             dataset: false,
             figure: false,
+            audio: false,
             code: false,
             stl: false,
             ply: false,
@@ -210,12 +225,21 @@ impl ExportCapabilities {
             shader: false,
             dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool does not produce tabular plot series.",
             figure_disabled_reason: "Figure export is unavailable: this tool does not render an offscreen plot or raster field.",
+            audio_disabled_reason: DEFAULT_AUDIO_DISABLED_REASON,
             code_disabled_reason: DEFAULT_CODE_DISABLED_REASON,
             stl_disabled_reason: DEFAULT_STL_DISABLED,
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
         }
+    }
+
+    /// Enables 16-bit PCM `.wav` audio export on an existing capability profile.
+    #[must_use]
+    pub const fn with_audio(mut self) -> Self {
+        self.audio = true;
+        self.audio_disabled_reason = "";
+        self
     }
 
     /// Enables watertight `.stl`, `.ply`, and `.obj` 3D solid mesh exports alongside existing capabilities.
@@ -262,7 +286,6 @@ impl ExportCapabilities {
     pub const fn has_3d_export(&self) -> bool {
         self.stl || self.ply || self.obj
     }
-
     /// Enables standalone WebGL2 and Shadertoy `.frag` shader exports on this capability profile.
     #[must_use]
     pub const fn with_shader(mut self) -> Self {
