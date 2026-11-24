@@ -67,4 +67,32 @@ impl GeodesicPlaygroundTool {
         };
         geodesic_bundle_frame(&voices[..count], waveform)
     }
+
+    pub(super) fn sample_geodesic_wav_frames(
+        &mut self,
+        num_frames: usize,
+    ) -> Vec<SonificationFrame> {
+        use crate::framework::InteractiveTool;
+        if !self.has_finite_parameters() {
+            return Vec::new();
+        }
+        if self.samples.is_empty() {
+            self.rebuild_trajectory(560);
+        }
+        let count = num_frames.max(1);
+        let len = self.samples.len();
+        let prev_scrub = self.state.scrub_index;
+        let denom = count.saturating_sub(1).max(1);
+        let mut out = Vec::with_capacity(count);
+        for idx in 0..count {
+            self.state.scrub_index = if len <= 1 {
+                0
+            } else {
+                (idx * (len - 1)) / denom
+            };
+            out.push(self.build_audio_frame().sanitize());
+        }
+        self.state.scrub_index = prev_scrub;
+        out
+    }
 }

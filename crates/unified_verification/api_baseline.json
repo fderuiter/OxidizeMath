@@ -1343,6 +1343,9 @@
       "signature": "pub fn sample_timestep_with_rng < R : Rng + ? Sized > (_ : usize , _ : & mut R) -> usize"
     },
     {
+      "signature": "pub fn step_vp_sde_in_place < R : Rng + ? Sized > (_ : & mut DMatrix < f64 > , _ : f64 , _ : f64 , _ : & mut R ,)"
+    },
+    {
       "signature": "pub struct NoiseSchedule"
     }
   ],
@@ -2592,6 +2595,12 @@
     },
     {
       "signature": "pub struct TimePoint"
+    },
+    {
+      "signature": "pub use bootstrap :: BootstrapSurvivalPoint"
+    },
+    {
+      "signature": "pub use bootstrap :: kaplan_meier_bootstrap"
     }
   ],
   "crates/domain_applied/src/applied/clinical_trials/types.rs": [
@@ -3353,6 +3362,12 @@
     },
     {
       "signature": "pub fn simulate_optimal_revenue < D : ValuationDistribution > (_ : & D , _ : usize , _ : usize ,) -> f64"
+    },
+    {
+      "signature": "pub fn simulate_optimal_revenue_stats < D : ValuationDistribution > (_ : & D , _ : usize , _ : usize ,) -> Result < MonteCarloEstimate , MonteCarloError >"
+    },
+    {
+      "signature": "pub fn simulate_optimal_revenue_stats_with_rng < D : ValuationDistribution , R : Rng + ? Sized > (_ : & D , _ : usize , _ : usize , _ : f64 , _ : & mut R ,) -> Result < MonteCarloEstimate , MonteCarloError >"
     },
     {
       "signature": "pub fn simulate_optimal_revenue_with_rng < D : ValuationDistribution , R : Rng + ? Sized > (_ : & D , _ : usize , _ : usize , _ : & mut R ,) -> f64"
@@ -4563,6 +4578,9 @@
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: ast }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: bootstrap }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
     },
     {
@@ -4581,6 +4599,9 @@
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: mesh }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: monte_carlo }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: nalgebra }"
     },
     {
@@ -4597,6 +4618,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: pure_math }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: qmc }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rand }"
@@ -5534,6 +5558,12 @@
     }
   ],
   "crates/domain_biology/src/biology/morphogenesis/solvers.rs": [
+    {
+      "signature": "impl < 'a , const N : usize , K , D > FusedEulerEvolution < 'a , N , K , D > { pub fn new (_ : FusedEulerSolver , _ : & 'a TuringDynamics < 'a , N , K , D >) -> Self }"
+    },
+    {
+      "signature": "impl < 'a , const N : usize , K , D > FusedEulerEvolution < 'a , N , K , D > { pub fn with_stochastic_noise (_ : FusedEulerSolver , _ : & 'a TuringDynamics < 'a , N , K , D > , _ : f64 , _ : f64 ,) -> Self }"
+    },
     {
       "signature": "impl < S > StandardSolverAdapter < S > { pub fn new (_ : S) -> Self }"
     },
@@ -7547,6 +7577,9 @@
   "crates/domain_physics/src/physics/chaos/fractals.rs": [
     {
       "signature": "pub fn correlation_dimension (_ : & [Vector3 < f64 >] , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn correlation_dimension_in_place (_ : & mut [Vector3 < f64 >] , _ : f64) -> f64"
     },
     {
       "signature": "pub fn escape_time_julia (_ : Complex < f64 > , _ : Complex < f64 > , _ : u32) -> u32"
@@ -9766,6 +9799,70 @@
       "signature": "pub fn running_coupling (_ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , StandardModelError >"
     }
   ],
+  "crates/domain_physics/src/physics/stat_mech/allen_cahn.rs": [
+    {
+      "signature": "impl AllenCahn2D { pub fn field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl AllenCahn2D { pub fn field_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl AllenCahn2D { pub fn ginzburg_landau_energy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl AllenCahn2D { pub fn new (_ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Self }"
+    },
+    {
+      "signature": "impl AllenCahn2D { pub fn spatial_mean (& self) -> f64 }"
+    },
+    {
+      "signature": "impl AllenCahn2D { pub fn step_explicit < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R) }"
+    },
+    {
+      "signature": "impl AllenCahn2D { pub fn step_split < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : usize , _ : & mut R ,) }"
+    },
+    {
+      "signature": "impl AllenCahn2D { pub fn try_new (_ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Result < Self , StatMechError > }"
+    },
+    {
+      "signature": "pub fn ginzburg_landau_free_energy_2d (_ : & [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> f64"
+    },
+    {
+      "signature": "pub struct AllenCahn2D"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/cahn_hilliard.rs": [
+    {
+      "signature": "impl CahnHilliard2D { pub fn field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CahnHilliard2D { pub fn field_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl CahnHilliard2D { pub fn ginzburg_landau_energy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl CahnHilliard2D { pub fn init_spinodal_perturbation < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : f64 , _ : & mut R ,) }"
+    },
+    {
+      "signature": "impl CahnHilliard2D { pub fn new (_ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Self }"
+    },
+    {
+      "signature": "impl CahnHilliard2D { pub fn spatial_mean (& self) -> f64 }"
+    },
+    {
+      "signature": "impl CahnHilliard2D { pub fn step_fourier_dealiased < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R) }"
+    },
+    {
+      "signature": "impl CahnHilliard2D { pub fn step_stencil < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R) }"
+    },
+    {
+      "signature": "impl CahnHilliard2D { pub fn try_new (_ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Result < Self , StatMechError > }"
+    },
+    {
+      "signature": "pub struct CahnHilliard2D"
+    }
+  ],
   "crates/domain_physics/src/physics/stat_mech/dynamics.rs": [
     {
       "signature": "pub fn estimate_diffusion_coefficient (_ : usize , _ : usize) -> f64"
@@ -9778,6 +9875,68 @@
     },
     {
       "signature": "pub fn random_walk_1d_with_rng < R : Rng + ? Sized > (_ : usize , _ : & mut R) -> f64"
+    },
+    {
+      "signature": "pub fn step_overdamped_brownian_1d < R : rand_core :: RngCore + ? Sized > (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut R ,) -> f64"
+    },
+    {
+      "signature": "pub fn step_underdamped_langevin_1d < R : rand_core :: RngCore + ? Sized > (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut R ,) -> (f64 , f64)"
+    }
+  ],
+  "crates/domain_physics/src/physics/stat_mech/edwards_wilkinson.rs": [
+    {
+      "signature": "impl EdwardsWilkinson1D { pub fn field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl EdwardsWilkinson1D { pub fn field_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl EdwardsWilkinson1D { pub fn interface_roughness (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EdwardsWilkinson1D { pub fn mean_height (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EdwardsWilkinson1D { pub fn new (_ : usize , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Self }"
+    },
+    {
+      "signature": "impl EdwardsWilkinson1D { pub fn step_fourier < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R) }"
+    },
+    {
+      "signature": "impl EdwardsWilkinson1D { pub fn step_stencil < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R) }"
+    },
+    {
+      "signature": "impl EdwardsWilkinson1D { pub fn try_new (_ : usize , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Result < Self , StatMechError > }"
+    },
+    {
+      "signature": "impl EdwardsWilkinson2D { pub fn field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl EdwardsWilkinson2D { pub fn interface_roughness (& self) -> f64 }"
+    },
+    {
+      "signature": "impl EdwardsWilkinson2D { pub fn new (_ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Self }"
+    },
+    {
+      "signature": "impl EdwardsWilkinson2D { pub fn step_fourier < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R) }"
+    },
+    {
+      "signature": "impl EdwardsWilkinson2D { pub fn step_stencil < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R) }"
+    },
+    {
+      "signature": "pub fn interface_roughness (_ : & [f64]) -> f64"
+    },
+    {
+      "signature": "pub fn mean_field (_ : & [f64]) -> f64"
+    },
+    {
+      "signature": "pub fn theoretical_steady_state_roughness_sq_1d (_ : f64 , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub struct EdwardsWilkinson1D"
+    },
+    {
+      "signature": "pub struct EdwardsWilkinson2D"
     }
   ],
   "crates/domain_physics/src/physics/stat_mech/ensembles.rs": [
@@ -9915,12 +10074,98 @@
       "signature": "pub struct SpinLattice"
     }
   ],
+  "crates/domain_physics/src/physics/stat_mech/kpz.rs": [
+    {
+      "signature": "impl KpzModel1D { pub fn field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl KpzModel1D { pub fn field_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl KpzModel1D { pub fn interface_roughness (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KpzModel1D { pub fn mean_height (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KpzModel1D { pub fn mean_slope_squared (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KpzModel1D { pub fn new (_ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Self }"
+    },
+    {
+      "signature": "impl KpzModel1D { pub fn step_fourier_dealiased < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R) }"
+    },
+    {
+      "signature": "impl KpzModel1D { pub fn step_stencil < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R) }"
+    },
+    {
+      "signature": "impl KpzModel1D { pub fn try_new (_ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Result < Self , StatMechError > }"
+    },
+    {
+      "signature": "impl KpzModel2D { pub fn field (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl KpzModel2D { pub fn field_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl KpzModel2D { pub fn interface_roughness (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KpzModel2D { pub fn mean_height (& self) -> f64 }"
+    },
+    {
+      "signature": "impl KpzModel2D { pub fn new (_ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Self }"
+    },
+    {
+      "signature": "impl KpzModel2D { pub fn step_fourier_dealiased < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R) }"
+    },
+    {
+      "signature": "impl KpzModel2D { pub fn step_stencil < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R) }"
+    },
+    {
+      "signature": "pub struct KpzModel1D"
+    },
+    {
+      "signature": "pub struct KpzModel2D"
+    }
+  ],
   "crates/domain_physics/src/physics/stat_mech/mod.rs": [
     {
       "signature": "pub const KB : f64"
     },
     {
+      "signature": "pub use allen_cahn :: AllenCahn2D"
+    },
+    {
+      "signature": "pub use allen_cahn :: ginzburg_landau_free_energy_2d"
+    },
+    {
+      "signature": "pub use cahn_hilliard :: CahnHilliard2D"
+    },
+    {
+      "signature": "pub use edwards_wilkinson :: EdwardsWilkinson1D"
+    },
+    {
+      "signature": "pub use edwards_wilkinson :: EdwardsWilkinson2D"
+    },
+    {
+      "signature": "pub use edwards_wilkinson :: interface_roughness"
+    },
+    {
+      "signature": "pub use edwards_wilkinson :: mean_field"
+    },
+    {
+      "signature": "pub use edwards_wilkinson :: theoretical_steady_state_roughness_sq_1d"
+    },
+    {
       "signature": "pub use graph_ising :: GraphSpinSystem"
+    },
+    {
+      "signature": "pub use kpz :: KpzModel1D"
+    },
+    {
+      "signature": "pub use kpz :: KpzModel2D"
     }
   ],
   "crates/domain_physics/src/physics/stat_mech/quantum_stats.rs": [
@@ -10132,6 +10377,474 @@
     },
     {
       "signature": "pub struct AvalancheTelemetry"
+    }
+  ],
+  "crates/engine_diffeq/src/baoab.rs": [
+    {
+      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub const fn params (& self) -> BaoabParams < T > }"
+    },
+    {
+      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub const fn scratch_len (_ : usize) -> usize }"
+    },
+    {
+      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn new (_ : BaoabParams < T >) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn step < S : LangevinSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : & mut [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
+    },
+    {
+      "signature": "pub struct BaoabLangevinSolver < T : Scalar >"
+    },
+    {
+      "signature": "pub struct BaoabParams < T : Scalar >"
+    }
+  ],
+  "crates/engine_diffeq/src/euler_maruyama.rs": [
+    {
+      "signature": "impl EulerMaruyamaSolver { pub const fn calculus (& self) -> StochasticCalculus }"
+    },
+    {
+      "signature": "impl EulerMaruyamaSolver { pub const fn new (_ : StochasticCalculus) -> Self }"
+    },
+    {
+      "signature": "impl EulerMaruyamaSolver { pub const fn scratch_len (& self , _ : usize , _ : usize) -> usize }"
+    },
+    {
+      "signature": "impl EulerMaruyamaSolver { pub fn step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
+    },
+    {
+      "signature": "impl EulerMaruyamaSolver { pub fn step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) }"
+    },
+    {
+      "signature": "pub struct EulerMaruyamaSolver"
+    }
+  ],
+  "crates/engine_diffeq/src/jump.rs": [
+    {
+      "signature": "pub fn ssa_sample_event < T : Scalar , R : RngCore + ? Sized > (_ : & [T] , _ : & mut R ,) -> Option < (T , usize) >"
+    }
+  ],
+  "crates/engine_diffeq/src/lib.rs": [
+    {
+      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > OwnedWorkspace < T > { pub fn as_workspace (& mut self) -> math_commons :: math_kernel :: types :: SolverWorkspace < '_ , T > }"
+    },
+    {
+      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > OwnedWorkspace < T > { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct OwnedWorkspace < T : math_commons :: math_kernel :: types :: Scalar >"
+    },
+    {
+      "signature": "pub use baoab :: BaoabLangevinSolver"
+    },
+    {
+      "signature": "pub use baoab :: BaoabParams"
+    },
+    {
+      "signature": "pub use euler_maruyama :: EulerMaruyamaSolver"
+    },
+    {
+      "signature": "pub use jump :: ssa_sample_event"
+    },
+    {
+      "signature": "pub use milstein :: MilsteinSolver"
+    },
+    {
+      "signature": "pub use sriw1 :: CorrelatedWienerIncrement"
+    },
+    {
+      "signature": "pub use sriw1 :: Sriw1Solver"
+    },
+    {
+      "signature": "pub use system :: LangevinSystem"
+    },
+    {
+      "signature": "pub use system :: SdeSystem"
+    },
+    {
+      "signature": "pub use system :: StochasticCalculus"
+    }
+  ],
+  "crates/engine_diffeq/src/milstein.rs": [
+    {
+      "signature": "impl MilsteinSolver { pub const fn calculus (& self) -> StochasticCalculus }"
+    },
+    {
+      "signature": "impl MilsteinSolver { pub const fn new (_ : StochasticCalculus) -> Self }"
+    },
+    {
+      "signature": "impl MilsteinSolver { pub const fn scratch_len (& self , _ : usize , _ : usize) -> usize }"
+    },
+    {
+      "signature": "impl MilsteinSolver { pub const fn with_levy_truncation (self , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl MilsteinSolver { pub fn step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
+    },
+    {
+      "signature": "impl MilsteinSolver { pub fn step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) }"
+    },
+    {
+      "signature": "pub struct MilsteinSolver"
+    }
+  ],
+  "crates/engine_diffeq/src/sriw1.rs": [
+    {
+      "signature": "impl < T : Scalar > CorrelatedWienerIncrement < T > { pub fn sample < R : RngCore + ? Sized > (_ : T , _ : & mut R) -> Self }"
+    },
+    {
+      "signature": "impl Sriw1Solver { pub const fn calculus (& self) -> StochasticCalculus }"
+    },
+    {
+      "signature": "impl Sriw1Solver { pub const fn new (_ : StochasticCalculus) -> Self }"
+    },
+    {
+      "signature": "impl Sriw1Solver { pub const fn scratch_len (& self , _ : usize , _ : usize) -> usize }"
+    },
+    {
+      "signature": "impl Sriw1Solver { pub fn step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
+    },
+    {
+      "signature": "impl Sriw1Solver { pub fn step_with_correlated_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) }"
+    },
+    {
+      "signature": "pub struct CorrelatedWienerIncrement < T : Scalar >"
+    },
+    {
+      "signature": "pub struct Sriw1Solver"
+    }
+  ],
+  "crates/engine_diffeq/src/system.rs": [
+    {
+      "signature": "pub const fn ito_drift_scratch_len (_ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub enum StochasticCalculus"
+    },
+    {
+      "signature": "pub fn eval_ito_effective_drift < T : Scalar , S : SdeSystem < T > + ? Sized > (_ : & S , _ : StochasticCalculus , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,)"
+    },
+    {
+      "signature": "pub trait LangevinSystem < T : Scalar >"
+    },
+    {
+      "signature": "pub trait LangevinSystem < T : Scalar > { fn dim (& self) -> usize }"
+    },
+    {
+      "signature": "pub trait LangevinSystem < T : Scalar > { fn grad_potential (& self , _ : & [T] , _ : & mut [T]) }"
+    },
+    {
+      "signature": "pub trait SdeSystem < T : Scalar >"
+    },
+    {
+      "signature": "pub trait SdeSystem < T : Scalar > { fn diffusion (& self , _ : T , _ : & [T] , _ : & mut [T]) }"
+    },
+    {
+      "signature": "pub trait SdeSystem < T : Scalar > { fn diffusion_jacobian_action (& self , _ : T , _ : & [T] , _ : usize , _ : & [T] , _ : & mut [T] , _ : & mut [T] , _ : & mut [T] , _ : & mut [T] ,) }"
+    },
+    {
+      "signature": "pub trait SdeSystem < T : Scalar > { fn drift (& self , _ : T , _ : & [T] , _ : & mut [T]) }"
+    },
+    {
+      "signature": "pub trait SdeSystem < T : Scalar > { fn state_dim (& self) -> usize }"
+    },
+    {
+      "signature": "pub trait SdeSystem < T : Scalar > { fn wiener_dim (& self) -> usize }"
+    }
+  ],
+  "crates/engine_pde/src/boundary.rs": [
+    {
+      "signature": "impl BoundaryCondition { pub const fn is_dirichlet (self) -> bool }"
+    },
+    {
+      "signature": "impl BoundaryCondition { pub fn sample_1d (self , _ : & [f64] , _ : usize , _ : usize) -> (f64 , f64 , f64) }"
+    },
+    {
+      "signature": "impl BoundaryCondition { pub fn sample_2d (self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize ,) -> (f64 , f64 , f64 , f64 , f64) }"
+    },
+    {
+      "signature": "impl BoundaryCondition { pub fn sample_3d (self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize ,) -> (f64 , [f64 ; 6]) }"
+    },
+    {
+      "signature": "pub enum BoundaryCondition"
+    }
+  ],
+  "crates/engine_pde/src/fft.rs": [
+    {
+      "signature": "pub const fn signed_mode_index (_ : usize , _ : usize) -> isize"
+    },
+    {
+      "signature": "pub fn dealias_1d_spectrum (_ : & mut [f64] , _ : usize)"
+    },
+    {
+      "signature": "pub fn dealias_2d_spectrum (_ : & mut [f64] , _ : usize , _ : usize)"
+    },
+    {
+      "signature": "pub fn fft_1d_inplace (_ : & mut [f64] , _ : usize , _ : bool)"
+    },
+    {
+      "signature": "pub fn fft_2d_inplace (_ : & mut [f64] , _ : usize , _ : usize , _ : & mut [f64] , _ : bool ,)"
+    },
+    {
+      "signature": "pub fn mode_wavenumber (_ : usize , _ : usize , _ : f64) -> f64"
+    }
+  ],
+  "crates/engine_pde/src/fourier_stepper.rs": [
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub const fn scratch_len_1d (_ : usize) -> usize }"
+    },
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub const fn scratch_len_2d (_ : usize , _ : usize) -> usize }"
+    },
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub fn new_1d (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub fn new_2d (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub fn step_cahn_hilliard_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+    },
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub fn step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+    },
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub fn step_edwards_wilkinson_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+    },
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub fn step_edwards_wilkinson_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+    },
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub fn step_kpz_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+    },
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub fn step_kpz_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+    },
+    {
+      "signature": "pub struct SemiImplicitFourierStepper"
+    }
+  ],
+  "crates/engine_pde/src/fused_stepper.rs": [
+    {
+      "signature": "impl FusedStencilStepper { pub fn new (_ : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl FusedStencilStepper { pub fn new_2d (_ : StepSize , _ : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl FusedStencilStepper { pub fn new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl FusedStencilStepper { pub fn step_1d_coupled_neumann < const N : usize , F > (& self , _ : usize , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators) -> [f64 ; N] , }"
+    },
+    {
+      "signature": "impl FusedStencilStepper { pub fn step_1d_slice < F > (& self , _ : & [f64] , _ : & mut [f64] , _ : f64 , _ : f64 , _ : F) where F : FnMut (usize , f64 , f64 , f64 , & StencilOperators) -> f64 , }"
+    },
+    {
+      "signature": "impl FusedStencilStepper { pub fn step_2d_coupled_neumann < const N : usize , F > (& self , _ : (usize , usize) , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators ,) -> [f64 ; N] , }"
+    },
+    {
+      "signature": "impl FusedStencilStepper { pub fn step_3d_coupled_neumann < const N : usize , F > (& self , _ : (usize , usize , usize) , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , StencilNeighbors3D < N > , & StencilOperators) -> [f64 ; N] , }"
+    },
+    {
+      "signature": "impl FusedStencilStepper { pub fn try_new (_ : StepSize) -> Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl FusedStencilStepper { pub fn try_new_2d (_ : StepSize , _ : StepSize) -> Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl FusedStencilStepper { pub fn try_new_3d (_ : StepSize , _ : StepSize , _ : StepSize ,) -> Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "pub struct FusedStencilStepper"
+    }
+  ],
+  "crates/engine_pde/src/lib.rs": [
+    {
+      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > PdeOwnedWorkspace < T > { pub fn as_workspace (& mut self) -> math_commons :: math_kernel :: types :: SolverWorkspace < '_ , T > }"
+    },
+    {
+      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > PdeOwnedWorkspace < T > { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct PdeOwnedWorkspace < T : math_commons :: math_kernel :: types :: Scalar >"
+    },
+    {
+      "signature": "pub use boundary :: BoundaryCondition"
+    },
+    {
+      "signature": "pub use fft :: dealias_1d_spectrum"
+    },
+    {
+      "signature": "pub use fft :: dealias_2d_spectrum"
+    },
+    {
+      "signature": "pub use fft :: fft_1d_inplace"
+    },
+    {
+      "signature": "pub use fft :: fft_2d_inplace"
+    },
+    {
+      "signature": "pub use fourier_stepper :: SemiImplicitFourierStepper"
+    },
+    {
+      "signature": "pub use fused_stepper :: FusedStencilStepper"
+    },
+    {
+      "signature": "pub use spde_noise :: SpdeNoiseKind"
+    },
+    {
+      "signature": "pub use spde_noise :: inject_additive_noise_1d"
+    },
+    {
+      "signature": "pub use spde_noise :: inject_additive_noise_2d"
+    },
+    {
+      "signature": "pub use spde_noise :: inject_conserved_flux_noise_1d"
+    },
+    {
+      "signature": "pub use spde_noise :: inject_conserved_flux_noise_2d"
+    },
+    {
+      "signature": "pub use spde_stencil :: ExplicitSpdeStencilStepper"
+    },
+    {
+      "signature": "pub use spde_stencil :: SplitStepSpdeStencilStepper"
+    },
+    {
+      "signature": "pub use stencil :: StencilNeighbors3D"
+    },
+    {
+      "signature": "pub use stencil :: StencilOperators"
+    }
+  ],
+  "crates/engine_pde/src/spde_noise.rs": [
+    {
+      "signature": "pub enum SpdeNoiseKind"
+    },
+    {
+      "signature": "pub fn inject_additive_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,)"
+    },
+    {
+      "signature": "pub fn inject_additive_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,)"
+    },
+    {
+      "signature": "pub fn inject_conserved_flux_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,)"
+    },
+    {
+      "signature": "pub fn inject_conserved_flux_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,)"
+    }
+  ],
+  "crates/engine_pde/src/spde_stencil.rs": [
+    {
+      "signature": "impl ExplicitSpdeStencilStepper { pub const fn new (_ : StencilOperators , _ : BoundaryCondition , _ : SpdeNoiseKind ,) -> Self }"
+    },
+    {
+      "signature": "impl ExplicitSpdeStencilStepper { pub const fn scratch_len_1d (_ : usize) -> usize }"
+    },
+    {
+      "signature": "impl ExplicitSpdeStencilStepper { pub const fn scratch_len_2d (_ : usize , _ : usize) -> usize }"
+    },
+    {
+      "signature": "impl ExplicitSpdeStencilStepper { pub fn step_1d < F , R > (& self , _ : & mut [f64] , _ : f64 , _ : F , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) where F : FnMut (usize , f64 , f64 , f64) -> f64 , R : RngCore + ? Sized , }"
+    },
+    {
+      "signature": "impl ExplicitSpdeStencilStepper { pub fn step_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : F , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) where F : FnMut (usize , usize , f64 , (f64 , f64) , f64) -> f64 , R : RngCore + ? Sized , }"
+    },
+    {
+      "signature": "impl ExplicitSpdeStencilStepper { pub fn step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+    },
+    {
+      "signature": "impl SplitStepSpdeStencilStepper { pub const fn new (_ : StencilOperators , _ : BoundaryCondition , _ : SpdeNoiseKind , _ : usize ,) -> Self }"
+    },
+    {
+      "signature": "impl SplitStepSpdeStencilStepper { pub const fn scratch_len_2d (_ : usize , _ : usize) -> usize }"
+    },
+    {
+      "signature": "impl SplitStepSpdeStencilStepper { pub fn step_reaction_diffusion_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : F , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) where F : FnMut (f64) -> f64 , R : RngCore + ? Sized , }"
+    },
+    {
+      "signature": "pub struct ExplicitSpdeStencilStepper"
+    },
+    {
+      "signature": "pub struct SplitStepSpdeStencilStepper"
+    }
+  ],
+  "crates/engine_pde/src/stencil.rs": [
+    {
+      "signature": "impl StencilOperators { pub fn central_diff_1st (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn central_diff_2nd (& self , _ : f64 , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn central_diff_2nd_2d (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn central_diff_2nd_3d (& self , _ : f64 , _ : [f64 ; 6]) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn grad_sq_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn grad_sq_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn gradient_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn gradient_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn gradient_3d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> (f64 , f64 , f64) }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn laplacian_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn laplacian_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn laplacian_3d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn new (_ : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn new_2d (_ : StepSize , _ : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_new (_ : StepSize) -> Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_new_2d (_ : StepSize , _ : StepSize) -> Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_new_3d (_ : StepSize , _ : StepSize , _ : StepSize ,) -> Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_new_checked (_ : StepSize , _ : StepSize , _ : StepSize) -> Option < Self > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn upwind_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : f64 , _ : BoundaryCondition ,) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn upwind_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : (f64 , f64) , _ : BoundaryCondition ,) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn upwind_3d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : (f64 , f64 , f64) , _ : BoundaryCondition ,) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn upwind_flux (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub struct StencilNeighbors3D < const N : usize >"
+    },
+    {
+      "signature": "pub struct StencilOperators"
     }
   ],
   "crates/federated_registry/src/lib.rs": [
@@ -10862,10 +11575,46 @@
   ],
   "crates/math_commons/src/math_kernel/types.rs": [
     {
+      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn as_mut_slice (& mut self) -> & mut [T] }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn as_slice (& self) -> & [T] }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn new (_ : & 'a mut [T]) -> Self }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn reborrow (& mut self) -> SolverWorkspace < '_ , T > }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn take_slice (& mut self , _ : usize) -> & 'a mut [T] }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn zero_fill (& mut self) }"
+    },
+    {
+      "signature": "pub fn fill_standard_normal < T : Scalar , R : RngCore + ? Sized > (_ : & mut [T] , _ : & mut R)"
+    },
+    {
       "signature": "pub fn flatten_2d_index (_ : usize , _ : usize , _ : usize) -> usize"
     },
     {
       "signature": "pub fn flatten_3d_index (_ : usize , _ : usize , _ : usize , _ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn sample_open_unit < T : Scalar , R : RngCore + ? Sized > (_ : & mut R) -> T"
+    },
+    {
+      "signature": "pub fn sample_standard_normal < T : Scalar , R : RngCore + ? Sized > (_ : & mut R) -> T"
+    },
+    {
+      "signature": "pub fn sample_standard_normal_pair < T : Scalar , R : RngCore + ? Sized > (_ : & mut R) -> (T , T)"
     },
     {
       "signature": "pub struct Dimension"
@@ -10874,7 +11623,70 @@
       "signature": "pub struct GridIndex"
     },
     {
+      "signature": "pub struct SolverWorkspace < 'a , T : Scalar >"
+    },
+    {
       "signature": "pub struct StepSize"
+    },
+    {
+      "signature": "pub trait Scalar : Copy + Clone + PartialEq + PartialOrd + Debug + Default + Send + Sync + 'static + Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + Div < Output = Self > + Neg < Output = Self > + AddAssign + SubAssign + MulAssign + DivAssign"
+    },
+    {
+      "signature": "pub trait Scalar { const EPSILON : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const HALF : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const ONE : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const PI : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const TAU : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const TWO : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const ZERO : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn abs (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn cos (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn exp (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn from_f64 (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn from_usize (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn is_finite (self) -> bool }"
+    },
+    {
+      "signature": "pub trait Scalar { fn ln (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn max (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn min (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn sin (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn sqrt (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn to_f64 (self) -> f64 }"
     }
   ],
   "crates/math_commons/src/poi/extrema.rs": [
@@ -11619,6 +12431,9 @@
       "signature": "pub use crate :: pure_math :: number_theory :: ambs :: AmbsError"
     },
     {
+      "signature": "pub use crate :: pure_math :: statistics :: monte_carlo :: MonteCarloError"
+    },
+    {
       "signature": "pub use crate :: pure_math :: tensor :: types :: TensorError"
     },
     {
@@ -11695,6 +12510,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: MatchModelError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: MonteCarloError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: NumberTheoryError } }"
@@ -11812,6 +12630,15 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use crate :: math_types }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate :: pure_math :: statistics :: bootstrap }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate :: pure_math :: statistics :: monte_carlo }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate :: pure_math :: statistics :: qmc }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use crate :: pure_math }"
@@ -12598,13 +13425,49 @@
   ],
   "crates/pure_math/src/pure_math/analysis/integration.rs": [
     {
+      "signature": "impl MultivariateIntegrator { pub fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn integrate < F > (& mut self , _ : & [f64] , _ : & [f64] , _ : F ,) -> Result < IntegrationResult , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn integrate_unit_cube < F > (& mut self , _ : F) -> Result < IntegrationResult , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn n_samples (& self) -> usize }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn new_halton (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn new_latin_hypercube (_ : usize , _ : usize ,) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn new_monte_carlo (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn new_sobol (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn with_rule (_ : MultivariateRule , _ : usize , _ : usize ,) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn with_seed (self , _ : u64) -> Self }"
+    },
+    {
       "signature": "impl Trapezoidal { pub fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub enum MultivariateRule"
     },
     {
       "signature": "pub struct ClenshawCurtis"
     },
     {
       "signature": "pub struct IntegrationResult"
+    },
+    {
+      "signature": "pub struct MultivariateIntegrator"
     },
     {
       "signature": "pub struct Trapezoidal"
@@ -13025,76 +13888,28 @@
   ],
   "crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs": [
     {
-      "signature": "impl FusedStencilStepper { pub fn new (_ : StepSize) -> Self }"
+      "signature": "pub use engine_pde :: BoundaryCondition"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn new_2d (_ : StepSize , _ : StepSize) -> Self }"
+      "signature": "pub use engine_pde :: ExplicitSpdeStencilStepper"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Self }"
+      "signature": "pub use engine_pde :: FusedStencilStepper"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn step_1d_coupled_neumann < const N : usize , F > (& self , _ : usize , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators) -> [f64 ; N] , }"
+      "signature": "pub use engine_pde :: SemiImplicitFourierStepper"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn step_1d_slice < F > (& self , _ : & [f64] , _ : & mut [f64] , _ : f64 , _ : f64 , _ : F) where F : FnMut (usize , f64 , f64 , f64 , & StencilOperators) -> f64 , }"
+      "signature": "pub use engine_pde :: SpdeNoiseKind"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn step_2d_coupled_neumann < const N : usize , F > (& self , _ : (usize , usize) , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators ,) -> [f64 ; N] , }"
+      "signature": "pub use engine_pde :: SplitStepSpdeStencilStepper"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn step_3d_coupled_neumann < const N : usize , F > (& self , _ : (usize , usize , usize) , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , StencilNeighbors3D < N > , & StencilOperators) -> [f64 ; N] , }"
+      "signature": "pub use engine_pde :: StencilNeighbors3D"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn try_new (_ : StepSize) -> Result < Self , MathError > }"
-    },
-    {
-      "signature": "impl FusedStencilStepper { pub fn try_new_2d (_ : StepSize , _ : StepSize) -> Result < Self , MathError > }"
-    },
-    {
-      "signature": "impl FusedStencilStepper { pub fn try_new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Result < Self , MathError > }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn central_diff_1st (& self , _ : f64 , _ : f64) -> f64 }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn central_diff_2nd (& self , _ : f64 , _ : f64 , _ : f64) -> f64 }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn central_diff_2nd_2d (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn central_diff_2nd_3d (& self , _ : f64 , _ : [f64 ; 6]) -> f64 }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn new (_ : StepSize) -> Self }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn new_2d (_ : StepSize , _ : StepSize) -> Self }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Self }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn try_new (_ : StepSize) -> Result < Self , MathError > }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn try_new_2d (_ : StepSize , _ : StepSize) -> Result < Self , MathError > }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn try_new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Result < Self , MathError > }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn upwind_flux (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
-    },
-    {
-      "signature": "pub struct FusedStencilStepper"
-    },
-    {
-      "signature": "pub struct StencilNeighbors3D < const N : usize >"
-    },
-    {
-      "signature": "pub struct StencilOperators"
+      "signature": "pub use engine_pde :: StencilOperators"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/pde/greens.rs": [
@@ -15248,6 +16063,56 @@
       "signature": "pub fn laguerre (_ : u64 , _ : f64) -> f64"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/bootstrap/mod.rs": [
+    {
+      "signature": "impl BootstrapWorkspace { pub fn bca_ci < F > (& mut self , _ : & [f64] , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < BootstrapEstimate , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn bca_ci_with_scratch < F > (& mut self , _ : & [f64] , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < BootstrapEstimate , MonteCarloError > where F : FnMut (& [f64] , & mut [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn compare_intervals < F > (& mut self , _ : & [f64] , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < BootstrapComparison , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn compare_intervals_with_scratch < F > (& mut self , _ : & [f64] , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < BootstrapComparison , MonteCarloError > where F : FnMut (& [f64] , & mut [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn last_replicates (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn max_data_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn max_replicates (& self) -> usize }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn new (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn percentile_ci < F > (& mut self , _ : & [f64] , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < BootstrapEstimate , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl BootstrapWorkspace { pub fn percentile_ci_with_scratch < F > (& mut self , _ : & [f64] , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < BootstrapEstimate , MonteCarloError > where F : FnMut (& [f64] , & mut [f64]) -> f64 , }"
+    },
+    {
+      "signature": "pub enum BootstrapMethod"
+    },
+    {
+      "signature": "pub fn sample_mean (_ : & [f64]) -> f64"
+    },
+    {
+      "signature": "pub fn sample_median_in_place (_ : & [f64] , _ : & mut [f64]) -> f64"
+    },
+    {
+      "signature": "pub struct BootstrapComparison"
+    },
+    {
+      "signature": "pub struct BootstrapEstimate"
+    },
+    {
+      "signature": "pub struct BootstrapWorkspace"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/copula/bivariate.rs": [
     {
       "signature": "pub const RHO_SPLIT : f64"
@@ -15315,6 +16180,12 @@
     },
     {
       "signature": "impl GaussianCopula { pub fn correlation (& self) -> & CorrelationMatrix }"
+    },
+    {
+      "signature": "impl GaussianCopula { pub fn multivariate_cdf (& self , _ : & [Probability]) -> Result < Probability , CopulaError > }"
+    },
+    {
+      "signature": "impl GaussianCopula { pub fn multivariate_cdf_with_error (& self , _ : & [Probability] , _ : usize , _ : u64 ,) -> Result < (Probability , f64) , CopulaError > }"
     },
     {
       "signature": "impl GaussianCopula { pub fn new (_ : CorrelationMatrix) -> Self }"
@@ -16957,10 +17828,19 @@
       "signature": "impl ParrondoEnsemble { pub fn simulate_schedule (& mut self , _ : & ParrondoParams , _ : & ParrondoSchedule , _ : usize , _ : & mut OxidizeRng ,) -> f64 }"
     },
     {
+      "signature": "impl ParrondoEnsemble { pub fn stderr_trajectory (& self) -> & [f64] }"
+    },
+    {
       "signature": "impl ParrondoEnsemble { pub fn step_game (& mut self , _ : & ParrondoParams , _ : ParrondoGame , _ : & mut OxidizeRng ,) -> f64 }"
     },
     {
       "signature": "impl ParrondoEnsemble { pub fn step_mixture (& mut self , _ : & ParrondoParams , _ : & mut OxidizeRng) -> f64 }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn terminal_estimate (& self , _ : f64 ,) -> std :: result :: Result < MonteCarloEstimate , MonteCarloError > }"
+    },
+    {
+      "signature": "impl ParrondoEnsemble { pub fn terminal_standard_error (& self) -> f64 }"
     },
     {
       "signature": "impl ParrondoEnsemble { pub fn wealth (& self) -> & [i64] }"
@@ -17376,6 +18256,101 @@
       "signature": "pub struct IndependentPoissonParams"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/monte_carlo/error.rs": [
+    {
+      "signature": "pub enum MonteCarloError"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/monte_carlo/mod.rs": [
+    {
+      "signature": "pub use error :: MonteCarloError"
+    },
+    {
+      "signature": "pub use stats :: MonteCarloEstimate"
+    },
+    {
+      "signature": "pub use stats :: effective_sample_size"
+    },
+    {
+      "signature": "pub use stats :: normal_cdf_fast"
+    },
+    {
+      "signature": "pub use stats :: normal_inv_cdf_fast"
+    },
+    {
+      "signature": "pub use stats :: two_sided_normal_z"
+    },
+    {
+      "signature": "pub use workspace :: MonteCarloWorkspace"
+    },
+    {
+      "signature": "pub use workspace :: SamplingMethod"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/monte_carlo/stats.rs": [
+    {
+      "signature": "impl MonteCarloEstimate { pub fn ci_half_width (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MonteCarloEstimate { pub fn from_samples (_ : & [f64] , _ : f64) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "pub fn effective_sample_size (_ : & [f64]) -> Result < f64 , MonteCarloError >"
+    },
+    {
+      "signature": "pub fn normal_cdf_fast (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn normal_inv_cdf_fast (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn two_sided_normal_z (_ : f64) -> Result < f64 , MonteCarloError >"
+    },
+    {
+      "signature": "pub struct MonteCarloEstimate"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/monte_carlo/workspace.rs": [
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn estimate_antithetic < F > (& mut self , _ : usize , _ : & mut OxidizeRng , _ : F ,) -> Result < MonteCarloEstimate , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn estimate_control_variate < F > (& mut self , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < MonteCarloEstimate , MonteCarloError > where F : FnMut (& [f64]) -> (f64 , f64) , }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn estimate_iid < F > (& mut self , _ : usize , _ : & mut OxidizeRng , _ : F ,) -> Result < MonteCarloEstimate , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn estimate_importance_sampling < S > (& mut self , _ : usize , _ : & mut OxidizeRng , _ : S ,) -> Result < MonteCarloEstimate , MonteCarloError > where S : FnMut (& [f64]) -> (f64 , f64) , }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn estimate_latin_hypercube < F > (& mut self , _ : usize , _ : & mut OxidizeRng , _ : F ,) -> Result < MonteCarloEstimate , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn estimate_with_method < F > (& mut self , _ : SamplingMethod , _ : usize , _ : & mut OxidizeRng , _ : F ,) -> Result < MonteCarloEstimate , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn max_samples (& self) -> usize }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn new (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn set_confidence_level (& mut self , _ : f64) -> Result < () , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MonteCarloWorkspace { pub fn with_confidence_level (self , _ : f64) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "pub enum SamplingMethod"
+    },
+    {
+      "signature": "pub struct MonteCarloWorkspace"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/ou_process/analysis.rs": [
     {
       "signature": "impl MomentumType { pub fn classify (_ : f64) -> Self }"
@@ -17397,6 +18372,9 @@
     },
     {
       "signature": "impl OuAnalyzer { pub fn params (& self) -> OuParams }"
+    },
+    {
+      "signature": "impl OuAnalyzer { pub fn try_monte_carlo_forecast < R : Rng > (& self , _ : f64 , _ : f64 , _ : usize , _ : Option < f64 > , _ : & mut R ,) -> Result < PerformanceStats , OuError > }"
     },
     {
       "signature": "pub enum MomentumType"
@@ -17493,6 +18471,101 @@
     },
     {
       "signature": "pub struct TimeStep"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/qmc/halton.rs": [
+    {
+      "signature": "impl HaltonSequence { pub fn apply_cranley_patterson_shift (& mut self , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn new (_ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn next_point (& mut self , _ : & mut [f64]) -> Result < () , MonteCarloError > }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn point_at (& self , _ : u64 , _ : & mut [f64]) -> Result < () , MonteCarloError > }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn reset_index (& mut self , _ : u64) }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn with_bases (_ : & [u64]) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "pub const FIRST_64_PRIMES : [u64 ; MAX_HALTON_DIM]"
+    },
+    {
+      "signature": "pub const MAX_HALTON_DIM : usize"
+    },
+    {
+      "signature": "pub fn radical_inverse (_ : u64 , _ : u64) -> f64"
+    },
+    {
+      "signature": "pub struct HaltonSequence"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/qmc/mod.rs": [
+    {
+      "signature": "pub use halton :: FIRST_64_PRIMES"
+    },
+    {
+      "signature": "pub use halton :: HaltonSequence"
+    },
+    {
+      "signature": "pub use halton :: MAX_HALTON_DIM"
+    },
+    {
+      "signature": "pub use halton :: radical_inverse"
+    },
+    {
+      "signature": "pub use sobol :: SobolSequence"
+    },
+    {
+      "signature": "pub use sobol_data :: MAX_SOBOL_DIM"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/qmc/sobol.rs": [
+    {
+      "signature": "impl SobolSequence { pub fn apply_cranley_patterson_shift (& mut self , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn index (& self) -> u32 }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn new (_ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn next_point (& mut self , _ : & mut [f64]) -> Result < () , MonteCarloError > }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn point_at (& self , _ : u32 , _ : & mut [f64]) -> Result < () , MonteCarloError > }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn reset_index (& mut self , _ : u32) }"
+    },
+    {
+      "signature": "pub struct SobolSequence"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/qmc/sobol_data.rs": [
+    {
+      "signature": "pub const MAX_SOBOL_DIM : usize"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/regression.rs": [
@@ -18901,6 +19974,9 @@
       "signature": "pub use pure_math :: error :: MatchModelError"
     },
     {
+      "signature": "pub use pure_math :: error :: MonteCarloError"
+    },
+    {
       "signature": "pub use pure_math :: error :: NumberTheoryError"
     },
     {
@@ -19000,6 +20076,15 @@
     },
     {
       "signature": "pub use pure_math :: pure_math"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: bootstrap"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: monte_carlo"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics :: qmc"
     },
     {
       "signature": "pub use rand"

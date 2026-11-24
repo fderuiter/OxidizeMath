@@ -82,7 +82,7 @@ pub struct StateSnapshot {
     pub custom_data: Vec<f64>,
     #[allow(missing_docs)]
     pub structured_data: Option<Box<dyn std::any::Any + Send>>,
-    #[allow(missing_docs)]
+    /// Acoustic synthesis parameters sampled at the current simulation step.
     pub sonification: crate::audio::SonificationFrame,
 }
 

@@ -44,6 +44,11 @@ pub(crate) struct GalacticOrbitsState {
     pub(crate) lens_overlay: OrbitLensOverlayConfig,
     #[serde(default, skip_serializing_if = "is_false")]
     pub(crate) is_playing: bool,
+    #[serde(
+        default,
+        skip_serializing_if = "crate::audio::AcousticSettings::is_default"
+    )]
+    pub(crate) audio: crate::audio::AcousticSettings,
 }
 
 /// Interactive symplectic leapfrog dwarf-galaxy disk, slingshot, and tidal-stream orbit simulator.
@@ -77,6 +82,7 @@ impl Default for GalacticOrbitSimulator {
             central_bh: CentralBlackHoleConfig::default(),
             lens_overlay: OrbitLensOverlayConfig::default(),
             is_playing: false,
+            audio: crate::audio::AcousticSettings::default(),
         };
         let halo = cfg.halo_kind.build_profile(
             cfg.halo_log10_mass,
@@ -269,6 +275,7 @@ impl FiniteStateGuard for GalacticOrbitSimulator {
         .into_iter()
         .all(f64::is_finite)
             && c.dt_myr > 0.0
+            && c.audio.validate().is_ok()
             && is_valid_bh_config(&c.central_bh)
             && c.lens_overlay.is_valid()
             && self.system.particles().iter().all(|p| {
@@ -299,6 +306,7 @@ impl FiniteStateGuard for GalacticOrbitSimulator {
         c.tidal_tangential_ratio = clamp_finite(c.tidal_tangential_ratio, 0.2, 1.2, 0.62);
         clamp_bh_config(&mut c.central_bh);
         c.lens_overlay.clamp_in_place();
+        c.audio = c.audio.sanitized();
         self.rebuild_system(0);
     }
 }
@@ -352,6 +360,7 @@ impl InteractiveTool for GalacticOrbitSimulator {
         ]
         .into_iter()
         .all(|(v, lo, hi)| v.is_finite() && (lo..=hi).contains(&v));
+        s.audio.validate()?;
         if !valid_floats
             || !(1..=16).contains(&s.substeps_per_frame)
             || !(4..=48).contains(&s.disk_tracers)
@@ -366,7 +375,21 @@ impl InteractiveTool for GalacticOrbitSimulator {
         Ok(())
     }
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot().with_shader()
+        ExportCapabilities::plot().with_audio().with_shader()
+    }
+    fn sonification_frame(&self) -> Option<SonificationFrame> {
+        Some(if self.has_finite_parameters() {
+            self.build_audio_frame()
+        } else {
+            SonificationFrame::silent()
+        })
+    }
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.cfg.audio
+    }
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.cfg.audio = settings.sanitized();
+        self.revision = self.revision.wrapping_add(1).max(1);
     }
     fn export_glsl_shader(&self, dialect: ShaderDialect) -> Result<String, String> {
         self.build_galactic_glsl_shader(dialect)

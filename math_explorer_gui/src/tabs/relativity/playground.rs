@@ -154,6 +154,12 @@ pub struct GeodesicPlaygroundState {
         skip_serializing_if = "is_default_relativity_atlas_axes"
     )]
     pub atlas_axes: [String; 2],
+    /// Persisted non-mute acoustic synthesis settings.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::audio::AcousticSettings::is_default"
+    )]
+    pub audio: crate::audio::AcousticSettings,
 }
 
 impl Default for GeodesicPlaygroundState {
@@ -183,6 +189,7 @@ impl Default for GeodesicPlaygroundState {
             custom_params: BTreeMap::new(),
             atlas_visible: false,
             atlas_axes: default_relativity_atlas_axes(),
+            audio: crate::audio::AcousticSettings::default(),
         }
     }
 }
@@ -324,11 +331,13 @@ impl InteractiveTool for GeodesicPlaygroundTool {
             && s.launch_azimuth.is_finite()
             && s.custom_params.values().all(|v| v.is_finite())
             && self.sandbox.has_finite_params()
+            && s.audio.validate().is_ok()
             && s.camera.is_valid()
     }
 
     fn clamp_parameters(&mut self) -> bool {
         self.clamp_state_in_place();
+        self.state.audio = self.state.audio.sanitized();
         self.sandbox.lapse_bar.clamp_active_params(-5.0..=5.0);
         self.sandbox.wormhole_bar.clamp_active_params(-5.0..=5.0);
         self.sync_sandbox_to_state();
@@ -364,6 +373,7 @@ impl InteractiveTool for GeodesicPlaygroundTool {
         if !loaded.camera.is_valid() {
             return Err("Camera parameters out of valid bounds".to_string());
         }
+        loaded.audio.validate()?;
         let mut next_sandbox = MetricSandbox::default();
         next_sandbox.apply_persisted(
             &loaded.custom_lapse_expr,
@@ -390,7 +400,27 @@ impl InteractiveTool for GeodesicPlaygroundTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot().with_shader()
+        ExportCapabilities::plot().with_audio().with_shader()
+    }
+    fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {
+        Some(if self.has_finite_parameters() {
+            self.build_audio_frame()
+        } else {
+            crate::audio::SonificationFrame::silent()
+        })
+    }
+    fn acoustic_settings(&self) -> crate::audio::AcousticSettings {
+        self.state.audio
+    }
+    fn set_acoustic_settings(&mut self, settings: crate::audio::AcousticSettings) {
+        self.state.audio = settings.sanitized();
+        self.revision = self.revision.wrapping_add(1);
+    }
+    fn sample_sonification_frames(
+        &mut self,
+        num_frames: usize,
+    ) -> Vec<crate::audio::SonificationFrame> {
+        self.sample_geodesic_wav_frames(num_frames)
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {

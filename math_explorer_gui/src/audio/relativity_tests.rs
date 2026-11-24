@@ -111,3 +111,69 @@ fn test_relativity_horizon_guard_and_pause_decay_below_minus_80dbfs_in_30ms() {
         .fold(0.0_f32, |a, b| a.max(b.abs()));
     assert!(peak_pause < 1.0e-4, "got {peak_pause}");
 }
+
+fn verify_tool_wav_and_settings(domain: &str, tool_id: &str) {
+    use super::{AcousticSettings, WAV_HEADER_BYTES};
+    use crate::framework::{ExportFormat, SimulationFramework};
+
+    let ctx = eframe::egui::Context::default();
+    let custom = AcousticSettings {
+        gain: 0.72,
+        pitch_scale: 1.35,
+    };
+    let sub_dir = std::env::temp_dir().join(format!(
+        "oxidize_relativity_wav_{tool_id}_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&sub_dir);
+    std::fs::create_dir_all(&sub_dir).expect("create temp wav dir");
+
+    let mut fw = SimulationFramework::new(domain);
+    fw.export_queue.destination_dir = Some(sub_dir.clone());
+    assert!(fw.select_tool_by_name(tool_id) && fw.is_audio_muted());
+    fw.set_acoustic_settings(custom);
+
+    let preset_json = fw
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .export_preset_json()
+        .unwrap();
+    let mut restored = SimulationFramework::new(domain);
+    assert!(restored.select_tool_by_name(tool_id));
+    restored
+        .active_tool
+        .as_mut()
+        .unwrap()
+        .import_preset_json(&preset_json)
+        .expect("preset round-trip");
+    assert!(restored.is_audio_muted());
+    let cfg = restored.active_tool.as_ref().unwrap().acoustic_settings();
+    assert!((cfg.gain - custom.gain).abs() < 1e-5);
+    assert!((cfg.pitch_scale - custom.pitch_scale).abs() < 1e-5);
+
+    fw.queue_export(ExportFormat::Wav);
+    fw.dispatch_pending_exports_with_ctx(&ctx);
+    let wav_path = std::fs::read_dir(&sub_dir)
+        .expect("read wav dir")
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .find(|p| p.extension().and_then(|s| s.to_str()) == Some("wav"))
+        .unwrap_or_else(|| panic!("Missing exported .wav file for {tool_id}"));
+    let bytes = std::fs::read(&wav_path).expect("read exported wav");
+    let _ = std::fs::remove_dir_all(&sub_dir);
+    assert!(bytes.len() > WAV_HEADER_BYTES && &bytes[0..4] == b"RIFF");
+    let energy: f64 = bytes[WAV_HEADER_BYTES..]
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|s| f64::from(i16::from_le_bytes(*s)).powi(2) / (32_768.0 * 32_768.0))
+        .sum();
+    assert!(energy > 0.5, "{tool_id} WAV energy too low: {energy}");
+}
+
+#[test]
+fn test_relativity_and_galactic_tools_framework_wav_export_and_acoustic_settings() {
+    verify_tool_wav_and_settings("relativity", "GeodesicPlaygroundTool");
+    verify_tool_wav_and_settings("astrophysics", "GalacticOrbitSimulator");
+}
