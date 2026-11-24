@@ -8,7 +8,7 @@ The `domain_biology` crate formalizes living systems across hierarchical scales 
 
 ### Module Structure
 
-- **`neuroscience`**: Biophysical neuron models (`HodgkinHuxleyNeuron` action potential generation, CSR synaptic networks via `step_csr_hodgkin_huxley_network`, leaky integrate-and-fire spiking patterns, and `KuramotoNetwork` coupled phase-oscillator synchronization).
+- **`neuroscience`**: Biophysical neuron models (`HodgkinHuxleyNeuron` action potential generation, CSR synaptic networks via `step_csr_hodgkin_huxley_network`, thickness-weighted cortical sheets via `CorticalSheetRunner`, leaky integrate-and-fire spiking patterns, and `KuramotoNetwork` coupled phase-oscillator synchronization).
 - **`kinetics`**: Biochemical saturation models including `MichaelisMenten` ($n = 1$) and cooperative sigmoidal `HillKinetics` ($n > 0$) unified under `KineticsModel`.
 - **`reaction_diffusion`**: Zero-allocation generic $N$-species reaction-diffusion engine (`ReactionDiffusionSystem`, `HillSubstrateReaction`, `ChemicalState`) decoupled over `ReactionModel` and `DiffusionModel` traits.
 - **`morphogenesis`**: Two-species activator-inhibitor pattern solvers (`TuringSystem`, `FusedEulerSolver`) with `SchnakenbergKinetics` and `GrayScottKinetics`.
@@ -16,7 +16,7 @@ The `domain_biology` crate formalizes living systems across hierarchical scales 
 - **`phyllotaxis`**: Pre-allocated Vogel planar phyllotaxis (`VogelPhyllotaxisEngine`, $r_n = c\sqrt{n}, \theta_n = n\alpha$ up to $4{,}096$ primordia), opposing Fibonacci $(F_k, F_{k+1})$ parastichy spiral analysis, and biochemical nutrient-coupled plastochron stepping (`NutrientCoupling`, `PhyllotaxisState`).
 - **`lenia`**: Spectral 2D Lenia continuous cellular automata (`LeniaEngine`, concentric-ring `KernelShells`, Gaussian growth curves, and `Orbium` / `Geminium` / `Hydrogeminium` / `Scutium` solitons).
 - **`evolution`**: Evolutionary game theory (`HawkDovePopulation`, `PayoffMatrix2x2`), replicator dynamics, and Evolutionarily Stable Strategy ($p^* = \min(V / C, 1)$) equilibria.
-- **`diffusion`**: 1D, 2D, and 3D finite-difference Fickian diffusion operators (`FiniteDifference1D`, `FiniteDifference2D`, `FiniteDifference3D`) and curved-surface Riemannian diffusion (`LaplaceBeltramiDiffusion2D`).
+- **`diffusion`**: 1D, 2D, and 3D finite-difference Fickian diffusion operators (`FiniteDifference1D`, `FiniteDifference2D`, `FiniteDifference3D`) and curved-surface Riemannian diffusion (`LaplaceBeltramiDiffusion2D`, `CotangentMeshDiffusion`).
 
 ---
 

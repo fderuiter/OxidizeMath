@@ -1,8 +1,6 @@
 //! Zero-allocation Larmor spin-resonance sonification mappings across 0D FID,
 //! 8-voice Hahn spin echoes, 2D k-space voxel ensembles, and quantum Zeeman Bloch states.
 
-// theory_verification!
-
 use std::f64::consts::TAU;
 
 use nalgebra::Vector3;
