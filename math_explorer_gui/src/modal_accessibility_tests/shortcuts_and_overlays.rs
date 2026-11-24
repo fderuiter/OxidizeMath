@@ -367,8 +367,8 @@ fn test_theory_context_portal_close_button_escape_and_focus_return_across_all_27
     ))]
     assert_eq!(
         fw_tab_indices.len(),
-        28,
-        "Expected all 28 SimulationFramework tabs to be registered"
+        29,
+        "Expected all 29 SimulationFramework tabs to be registered"
     );
     for tab_idx in fw_tab_indices {
         verify_theory_portal_in_tab(tab_idx);
