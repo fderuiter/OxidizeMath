@@ -156,6 +156,12 @@ fn test_neuroscience_canvas_receives_tab_focus_and_accesskit_label() {
         &mut botanical,
         "Botanical Phyllotaxis and L-System Morphogenesis Canvas",
     );
+
+    let mut sheet = crate::tabs::neuroscience::excitable_sheet::ExcitableSheetTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut sheet,
+        "2D Excitable Sheet & Virtual Electrodes Visualization",
+    );
 }
 
 #[cfg(feature = "epidemiology")]
@@ -198,6 +204,12 @@ fn test_physics_raster_tools_receive_tab_focus_and_alt_text() {
     assert_tool_canvas_tab_focus_and_accesskit_label(
         &mut radar,
         "60 GHz MIMO Radar Room Visualization",
+    );
+
+    let mut bio_leads = crate::tabs::medical::bioelectric_leads::BioelectricLeadTool::default();
+    assert_tool_canvas_tab_focus_and_accesskit_label(
+        &mut bio_leads,
+        "Bioelectric 3-Lead Dipole Mapper Visualization",
     );
 
     let mut sandpile = crate::tabs::solid_state::sandpile::AbelianSandpileStudio::default();

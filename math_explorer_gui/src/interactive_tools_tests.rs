@@ -69,54 +69,53 @@ mod tests {
         feature = "physics"
     ))]
     fn check_science_and_ai_tools(ctx: &eframe::egui::Context) {
+        use crate::tabs;
         #[cfg(feature = "ai")]
         {
-            check_one::<crate::tabs::ai::q_table_inspector::QTableInspectorTool>(ctx);
-            check_one::<crate::tabs::ai::calibration_workbench::CalibrationWorkbenchTool>(ctx);
-            check_one::<crate::tabs::ai::attention_maps::AttentionMapsTool>(ctx);
-            check_one::<crate::tabs::ai::tokenization::TokenizationTool>(ctx);
-            check_one::<crate::tabs::ai::activation_functions::ActivationFunctionsTool>(ctx);
-            check_one::<crate::tabs::ai::gaussian_splatting::GaussianSplattingTool>(ctx);
-            check_one::<crate::tabs::ai::training_monitor::TrainingMonitorTool>(ctx);
-            check_one::<crate::tabs::ai::loss_landscape::LossLandscapeTool>(ctx);
-            check_one::<crate::tabs::ai::grid_world::GridWorldTool>(ctx);
-            check_one::<crate::tabs::ai::closed_loop_control::ClosedLoopControlTool>(ctx);
+            check_one::<tabs::ai::q_table_inspector::QTableInspectorTool>(ctx);
+            check_one::<tabs::ai::calibration_workbench::CalibrationWorkbenchTool>(ctx);
+            check_one::<tabs::ai::attention_maps::AttentionMapsTool>(ctx);
+            check_one::<tabs::ai::tokenization::TokenizationTool>(ctx);
+            check_one::<tabs::ai::activation_functions::ActivationFunctionsTool>(ctx);
+            check_one::<tabs::ai::gaussian_splatting::GaussianSplattingTool>(ctx);
+            check_one::<tabs::ai::training_monitor::TrainingMonitorTool>(ctx);
+            check_one::<tabs::ai::loss_landscape::LossLandscapeTool>(ctx);
+            check_one::<tabs::ai::grid_world::GridWorldTool>(ctx);
+            check_one::<tabs::ai::closed_loop_control::ClosedLoopControlTool>(ctx);
         }
         #[cfg(feature = "physics")]
         {
-            check_one::<crate::tabs::solid_state::band_structure::BandStructureTool>(ctx);
-            check_one::<crate::tabs::solid_state::ising::IsingModelTool>(ctx);
-            check_one::<crate::tabs::quantum::clebsch::ClebschGordanTool>(ctx);
-            check_one::<crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool>(ctx);
-            check_one::<crate::tabs::fluid_dynamics::turbulence::TurbulenceTool>(ctx);
-            check_one::<crate::tabs::medical::beam_profiling::BeamProfilingTool>(ctx);
-            check_one::<crate::tabs::medical::dose::DoseCalculationTool>(ctx);
-            check_one::<crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool>(
-                ctx,
-            );
-            check_one::<crate::tabs::medical::radar_gating::RadarGatingTool>(ctx);
-            check_one::<crate::tabs::chaos::hamiltonian::HamiltonianChaosLab>(ctx);
+            check_one::<tabs::solid_state::band_structure::BandStructureTool>(ctx);
+            check_one::<tabs::solid_state::ising::IsingModelTool>(ctx);
+            check_one::<tabs::quantum::clebsch::ClebschGordanTool>(ctx);
+            check_one::<tabs::fluid_dynamics::potential_flow::PotentialFlowTool>(ctx);
+            check_one::<tabs::fluid_dynamics::turbulence::TurbulenceTool>(ctx);
+            check_one::<tabs::medical::beam_profiling::BeamProfilingTool>(ctx);
+            check_one::<tabs::medical::bioelectric_leads::BioelectricLeadTool>(ctx);
+            check_one::<tabs::medical::dose::DoseCalculationTool>(ctx);
+            check_one::<tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool>(ctx);
+            check_one::<tabs::medical::radar_gating::RadarGatingTool>(ctx);
+            check_one::<tabs::chaos::hamiltonian::HamiltonianChaosLab>(ctx);
         }
         #[cfg(feature = "climate")]
         {
-            check_one::<crate::tabs::climate::cera::CeraTool>(ctx);
-            check_one::<crate::tabs::climate::co2_projections::Co2ProjectionsTool>(ctx);
-            check_one::<crate::tabs::climate::temperature::TemperatureAnomaliesTool>(ctx);
+            check_one::<tabs::climate::cera::CeraTool>(ctx);
+            check_one::<tabs::climate::co2_projections::Co2ProjectionsTool>(ctx);
+            check_one::<tabs::climate::temperature::TemperatureAnomaliesTool>(ctx);
         }
         #[cfg(feature = "epidemiology")]
-        check_one::<crate::tabs::epidemiology::network_propagation::NetworkPropagationTool>(ctx);
+        check_one::<tabs::epidemiology::network_propagation::NetworkPropagationTool>(ctx);
         #[cfg(feature = "biology")]
         {
-            check_one::<crate::tabs::morphogenesis::lenia::LeniaTool>(ctx);
-            check_one::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(ctx);
-            check_one::<crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool>(ctx);
-            check_one::<crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool>(
+            check_one::<tabs::morphogenesis::lenia::LeniaTool>(ctx);
+            check_one::<tabs::neuroscience::excitable_sheet::ExcitableSheetTool>(ctx);
+            check_one::<tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(ctx);
+            check_one::<tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool>(ctx);
+            check_one::<tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool>(ctx);
+            #[cfg(feature = "pure_math")]
+            check_one::<tabs::geometry_topology::surface_morphogenesis::SurfaceMorphogenesisTool>(
                 ctx,
             );
-            #[cfg(feature = "pure_math")]
-            check_one::<
-                crate::tabs::geometry_topology::surface_morphogenesis::SurfaceMorphogenesisTool,
-            >(ctx);
         }
     }
 
