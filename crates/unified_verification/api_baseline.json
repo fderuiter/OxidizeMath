@@ -13281,6 +13281,9 @@
       "signature": "pub use crate :: pure_math :: number_theory :: ambs :: AmbsError"
     },
     {
+      "signature": "pub use crate :: pure_math :: statistics :: black_scholes :: OptionPricingError"
+    },
+    {
       "signature": "pub use crate :: pure_math :: statistics :: monte_carlo :: MonteCarloError"
     },
     {
@@ -13375,6 +13378,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: OptimizationError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: OptionPricingError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: OuError } }"
@@ -17027,6 +17033,53 @@
       "signature": "pub fn laguerre (_ : u64 , _ : f64) -> f64"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/black_scholes.rs": [
+    {
+      "signature": "impl BlackScholesParams { pub fn dividend_yield (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BlackScholesParams { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , OptionPricingError > }"
+    },
+    {
+      "signature": "impl BlackScholesParams { pub fn rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BlackScholesParams { pub fn spot (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BlackScholesParams { pub fn strike (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BlackScholesParams { pub fn time_to_expiry (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BlackScholesParams { pub fn volatility (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BlackScholesParams { pub fn with_dividend_yield (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , OptionPricingError > }"
+    },
+    {
+      "signature": "pub enum OptionPricingError"
+    },
+    {
+      "signature": "pub enum OptionType"
+    },
+    {
+      "signature": "pub fn black_scholes_merton (_ : & BlackScholesParams) -> BlackScholesPair"
+    },
+    {
+      "signature": "pub fn price_and_greeks (_ : & BlackScholesParams , _ : OptionType) -> OptionGreeks"
+    },
+    {
+      "signature": "pub struct BlackScholesPair"
+    },
+    {
+      "signature": "pub struct BlackScholesParams"
+    },
+    {
+      "signature": "pub struct OptionGreeks"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/bootstrap/mod.rs": [
     {
       "signature": "impl BootstrapWorkspace { pub fn bca_ci < F > (& mut self , _ : & [f64] , _ : usize , _ : f64 , _ : & mut OxidizeRng , _ : F ,) -> Result < BootstrapEstimate , MonteCarloError > where F : FnMut (& [f64]) -> f64 , }"
@@ -17105,6 +17158,9 @@
       "signature": "impl CorrelationMatrix { pub fn dimension (& self) -> usize }"
     },
     {
+      "signature": "impl CorrelationMatrix { pub fn equicorrelated (_ : usize , _ : Correlation) -> Result < Self , CopulaError > }"
+    },
+    {
       "signature": "impl CorrelationMatrix { pub fn get_correlation (& self , _ : usize , _ : usize) -> Option < f64 > }"
     },
     {
@@ -17141,6 +17197,12 @@
     },
     {
       "signature": "impl GaussianCopula { pub fn cdf_with_scratch (& self , _ : & [Probability] , _ : & mut [f64] ,) -> Result < Probability , CopulaError > }"
+    },
+    {
+      "signature": "impl GaussianCopula { pub fn cdf_with_seed (& self , _ : & [Probability] , _ : u64 , _ : usize ,) -> Result < Probability , CopulaError > }"
+    },
+    {
+      "signature": "impl GaussianCopula { pub fn cdf_with_workspace (& self , _ : & [Probability] , _ : u64 , _ : usize , _ : & mut CopulaQmcWorkspace ,) -> Result < Probability , CopulaError > }"
     },
     {
       "signature": "impl GaussianCopula { pub fn correlation (& self) -> & CorrelationMatrix }"
@@ -17217,6 +17279,15 @@
       "signature": "pub use parlay :: simulate_correlated_parlay_into"
     },
     {
+      "signature": "pub use qmc :: CopulaQmcWorkspace"
+    },
+    {
+      "signature": "pub use qmc :: DEFAULT_COPULA_QMC_PAIRS"
+    },
+    {
+      "signature": "pub use qmc :: MAX_INLINE_COPULA_LEGS"
+    },
+    {
       "signature": "pub use transforms :: NormalTransform"
     },
     {
@@ -17247,6 +17318,23 @@
     },
     {
       "signature": "pub struct ParlayPricingReport"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/copula/qmc.rs": [
+    {
+      "signature": "impl CopulaQmcWorkspace { pub fn ensure_capacity (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl CopulaQmcWorkspace { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub const DEFAULT_COPULA_QMC_PAIRS : usize"
+    },
+    {
+      "signature": "pub const MAX_INLINE_COPULA_LEGS : usize"
+    },
+    {
+      "signature": "pub struct CopulaQmcWorkspace"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/copula/transforms.rs": [
@@ -17927,6 +18015,36 @@
       "signature": "pub use market :: solve_mutually_exclusive_market"
     },
     {
+      "signature": "pub use portfolio :: PortfolioKellyMetrics"
+    },
+    {
+      "signature": "pub use portfolio :: PortfolioKellySolution"
+    },
+    {
+      "signature": "pub use portfolio :: PortfolioKellyWorkspace"
+    },
+    {
+      "signature": "pub use portfolio :: evaluate_portfolio_kelly_metrics"
+    },
+    {
+      "signature": "pub use portfolio :: independent_kelly_into"
+    },
+    {
+      "signature": "pub use portfolio :: independent_kelly_weights"
+    },
+    {
+      "signature": "pub use portfolio :: long_only_kelly_projected_gradient"
+    },
+    {
+      "signature": "pub use portfolio :: solve_long_only_kelly_into"
+    },
+    {
+      "signature": "pub use portfolio :: solve_unconstrained_kelly_into"
+    },
+    {
+      "signature": "pub use portfolio :: unconstrained_covariance_kelly"
+    },
+    {
       "signature": "pub use push :: PushOutcome"
     },
     {
@@ -17985,6 +18103,68 @@
     },
     {
       "signature": "pub use super :: validation"
+    },
+    {
+      "signature": "pub use tail_risk :: PortfolioHorizonSpec"
+    },
+    {
+      "signature": "pub use tail_risk :: TailRiskEstimate"
+    },
+    {
+      "signature": "pub use tail_risk :: TailRiskMetrics"
+    },
+    {
+      "signature": "pub use tail_risk :: empirical_tail_risk"
+    },
+    {
+      "signature": "pub use tail_risk :: empirical_tail_risk_in_place"
+    },
+    {
+      "signature": "pub use tail_risk :: empirical_var_cvar_in_place"
+    },
+    {
+      "signature": "pub use tail_risk :: parametric_lognormal_tail_risk"
+    },
+    {
+      "signature": "pub use tail_risk :: simulate_portfolio_tail_risk_into"
+    },
+    {
+      "signature": "pub use tail_risk :: simulated_portfolio_tail_risk"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/kelly/portfolio.rs": [
+    {
+      "signature": "impl PortfolioKellyWorkspace { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn evaluate_portfolio_kelly_metrics (_ : & [f64] , _ : & [f64] , _ : & DMatrix < f64 > , _ : f64 ,) -> Result < PortfolioKellyMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn independent_kelly_into (_ : & [f64] , _ : & DMatrix < f64 > , _ : f64 , _ : & mut [f64] , _ : & mut PortfolioKellyWorkspace ,) -> Result < PortfolioKellyMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn independent_kelly_weights (_ : & [f64] , _ : & DMatrix < f64 > , _ : f64 ,) -> Result < PortfolioKellySolution , KellyError >"
+    },
+    {
+      "signature": "pub fn long_only_kelly_projected_gradient (_ : & [f64] , _ : & DMatrix < f64 > , _ : f64 , _ : Option < f64 > ,) -> Result < PortfolioKellySolution , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_long_only_kelly_into (_ : & [f64] , _ : & DMatrix < f64 > , _ : f64 , _ : Option < f64 > , _ : & mut [f64] , _ : & mut PortfolioKellyWorkspace ,) -> Result < PortfolioKellyMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn solve_unconstrained_kelly_into (_ : & [f64] , _ : & DMatrix < f64 > , _ : f64 , _ : & mut [f64] , _ : & mut PortfolioKellyWorkspace ,) -> Result < PortfolioKellyMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn unconstrained_covariance_kelly (_ : & [f64] , _ : & DMatrix < f64 > , _ : f64 ,) -> Result < PortfolioKellySolution , KellyError >"
+    },
+    {
+      "signature": "pub struct PortfolioKellyMetrics"
+    },
+    {
+      "signature": "pub struct PortfolioKellySolution"
+    },
+    {
+      "signature": "pub struct PortfolioKellyWorkspace"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/kelly/push.rs": [
@@ -18140,6 +18320,38 @@
     },
     {
       "signature": "pub struct SlateWager"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/kelly/tail_risk.rs": [
+    {
+      "signature": "impl PortfolioHorizonSpec { pub fn new (_ : f64 , _ : f64 , _ : f64) -> Result < Self , KellyError > }"
+    },
+    {
+      "signature": "pub fn empirical_tail_risk (_ : & [f64]) -> Result < TailRiskMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn empirical_tail_risk_in_place (_ : & mut [f64] ,) -> Result < TailRiskMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn empirical_var_cvar_in_place (_ : & mut [f64] , _ : f64 ,) -> Result < TailRiskEstimate , KellyError >"
+    },
+    {
+      "signature": "pub fn parametric_lognormal_tail_risk (_ : & [f64] , _ : & [f64] , _ : & DMatrix < f64 > , _ : PortfolioHorizonSpec ,) -> Result < TailRiskMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn simulate_portfolio_tail_risk_into (_ : & [f64] , _ : & [f64] , _ : & DMatrix < f64 > , _ : PortfolioHorizonSpec , _ : & mut OxidizeRng , _ : & mut [f64] , _ : & mut PortfolioKellyWorkspace ,) -> Result < TailRiskMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn simulated_portfolio_tail_risk (_ : & [f64] , _ : & [f64] , _ : & DMatrix < f64 > , _ : PortfolioHorizonSpec , _ : usize , _ : u64 ,) -> Result < TailRiskMetrics , KellyError >"
+    },
+    {
+      "signature": "pub struct PortfolioHorizonSpec"
+    },
+    {
+      "signature": "pub struct TailRiskEstimate"
+    },
+    {
+      "signature": "pub struct TailRiskMetrics"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/market_pricing/devig.rs": [
@@ -21246,6 +21458,9 @@
     },
     {
       "signature": "pub use pure_math :: error :: OptimizationError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: OptionPricingError"
     },
     {
       "signature": "pub use pure_math :: error :: OuError"

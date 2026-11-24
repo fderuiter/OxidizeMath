@@ -34,6 +34,8 @@
 //!     Brier/log-loss proper scoring rules, and realized yield statistical significance.
 //! *   **[Copulas](copula)**: sophisticated dependency modeling (e.g., Gaussian Copula) for correlated events,
 //!     critical for pricing derivatives or "Same Game Parlays".
+//! *   **[Black-Scholes-Merton](black_scholes)**: Closed-form European Call/Put valuation and analytical
+//!     `Delta`, `Gamma`, `Vega`, `Theta`, and `Rho` sensitivities.
 //!
 //! ###  Advanced Data Analysis
 //! *   **[Monte Carlo & Variance Reduction](monte_carlo)**: Preallocated workspaces for IID, antithetic, control-variate, Kong-`ESS` importance sampling, Latin Hypercube, and randomized QMC.
@@ -111,6 +113,7 @@
 //! }
 //! ```
 
+pub mod black_scholes;
 pub mod bootstrap;
 pub mod copula;
 pub mod elo;

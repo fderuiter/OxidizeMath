@@ -149,6 +149,20 @@ impl CorrelationMatrix {
         Ok(Self { matrix, cholesky })
     }
 
+    /// Creates an equicorrelated `dimension x dimension` correlation matrix with off-diagonal `rho`.
+    #[verified_engine::verified]
+    pub fn equicorrelated(dimension: usize, rho: Correlation) -> Result<Self, CopulaError> {
+        if dimension == 0 {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(1),
+                actual: Dimension(0),
+            }));
+        }
+        let r = rho.value();
+        let matrix = DMatrix::from_fn(dimension, dimension, |i, j| if i == j { 1.0 } else { r });
+        Self::new(matrix)
+    }
+
     /// Creates a bivariate correlation matrix `[[1, rho], [rho, 1]]` from a single correlation.
     ///
     /// # Example
@@ -227,6 +241,8 @@ mod tests {
         assert_eq!(matrix.dimension(), 2);
         assert_eq!(matrix.get_correlation(0, 1), Some(0.6));
         assert_eq!(matrix.get_correlation(1, 0), Some(0.6));
+        assert_eq!(matrix.get_correlation(0, 0), Some(1.0));
+        assert!((matrix.cholesky_factor()[(1, 1)] - 0.8).abs() < 1e-12);
 
         let pos_one = CorrelationMatrix::bivariate(Correlation::new(1.0).unwrap()).unwrap();
         let reconstructed_pos = pos_one.cholesky_factor() * pos_one.cholesky_factor().transpose();
@@ -269,6 +285,24 @@ mod tests {
                 &[1.0, f64::NAN, f64::NAN, 1.0]
             ))
             .is_err()
+        );
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_correlation_matrix_rejects_indefinite_3x3_min_eigenvalue_minus_0_8() {
+        let indefinite_frustrated =
+            DMatrix::from_row_slice(3, 3, &[1.0, 0.9, -0.9, 0.9, 1.0, 0.9, -0.9, 0.9, 1.0]);
+        assert_eq!(
+            CorrelationMatrix::new(indefinite_frustrated),
+            Err(CopulaError::NotPositiveDefinite)
+        );
+
+        let indefinite_equicorr =
+            DMatrix::from_row_slice(3, 3, &[1.0, -0.9, -0.9, -0.9, 1.0, -0.9, -0.9, -0.9, 1.0]);
+        assert_eq!(
+            CorrelationMatrix::new(indefinite_equicorr),
+            Err(CopulaError::NotPositiveDefinite)
         );
     }
 }
