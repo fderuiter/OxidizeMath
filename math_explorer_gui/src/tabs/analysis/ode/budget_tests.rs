@@ -216,6 +216,8 @@ fn test_url_4096b_and_2mib_state_payloads_reject_abusive_formulas_and_bound_hydr
     let mut hydrated = OdeSolverTool::default();
     let res = hydrated.try_load_state(&state_json);
     assert!(res.is_err());
+    assert_eq!(hydrated.preset, OdePreset::Exponential);
+    assert!(hydrated.math_input.is_valid());
 
     // 3. Valid multi-node formula within 4,096-byte URL cap at MAX_ODE_STEPS hydrates rapidly under budget.
     let valid_heavy = multi_node_scalar_ode_expr();
@@ -227,6 +229,81 @@ fn test_url_4096b_and_2mib_state_payloads_reject_abusive_formulas_and_bound_hydr
     fw.import_url_preset_json(Some("OdeSolverTool"), Some(&valid_url_json))
         .expect("valid heavy URL preset should hydrate cleanly under budget");
     assert!(t0.elapsed().as_secs_f64() < 1.0);
+}
+
+#[test]
+fn test_ode_rejects_balanced_and_planar_payloads_atomically_and_bounds_255_node_preset() {
+    use super::atlas::OdeRegimeCartographer;
+    use super::phase::PlotViewMode;
+    use crate::async_sim::atlas::RegimeCartographer;
+
+    let h5_prod = super::budget::build_test_balanced_expr("y y", 5);
+    let over_383 = format!("{h5_prod}+{h5_prod}+{h5_prod}");
+    let h10 = super::budget::build_test_balanced_expr("y", 10);
+    let mut tool = OdeSolverTool::default();
+    tool.set_view_mode(PlotViewMode::PhasePortrait);
+    tool.set_t_slice(2.5);
+    assert!(tool.atlas.set_axis_keys("r", "cap_k").is_ok());
+    tool.atlas.set_visible(true);
+
+    for bad_state in [
+        format!(
+            r#"{{"preset":"PlanarCustom","dt":0.02,"total_time":5.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0,"planar_x_expr":"{over_383}","planar_y_expr":"-x"}}"#
+        ),
+        format!(
+            r#"{{"preset":"Custom","custom_coupled":true,"dt":0.02,"total_time":5.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0,"coupled_exprs":["v","{over_383}"]}}"#
+        ),
+        format!(
+            r#"{{"preset":"Exponential","dt":0.02,"total_time":5.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0,"custom_expr":"{h10}","t_slice":0.5,"atlas_axes":["k","c"]}}"#
+        ),
+    ] {
+        assert!(tool.try_load_state(&bad_state).is_err());
+        assert_eq!(tool.preset, OdePreset::Exponential);
+        assert_eq!(tool.view_mode(), PlotViewMode::PhasePortrait);
+        assert!((tool.t_slice() - 2.5).abs() < 1e-12);
+        assert_eq!(tool.atlas.axis_keys(), ("r", "cap_k"));
+        assert!(tool.atlas.is_visible());
+        assert!(tool.math_input.is_valid() && tool.planar_x_input.is_valid());
+        assert!(tool.coupled_bank.is_valid());
+    }
+
+    assert_255_node_ode_budget_atlas_and_png(&mut tool, |t, keys| {
+        OdeRegimeCartographer::from_tool(t, keys)
+            .evaluate_cell(1.0, 0.2)
+            .primary
+            .is_finite()
+    });
+}
+
+fn assert_255_node_ode_budget_atlas_and_png(
+    tool: &mut OdeSolverTool,
+    eval_atlas: impl Fn(&OdeSolverTool, (&'static str, &'static str)) -> bool,
+) {
+    let sum_247 = [6, 5, 4, 3, 2]
+        .map(|h| super::budget::build_test_balanced_expr("y", h))
+        .join("+");
+    let bounded_255 = format!("-0.001*({sum_247})+0.1*sin(t)");
+    let ok_state = format!(
+        r#"{{"preset":"Custom","dt":0.0005,"total_time":100.0,"param_k":1.0,"param_r":1.0,"param_cap_k":10.0,"ic_y0":1.0,"ic_v0":0.0,"comparison_mode":true,"custom_expr":"{bounded_255}"}}"#
+    );
+    tool.try_load_state(&ok_state)
+        .expect("255-node balanced scalar ODE should hydrate under budget");
+    assert_eq!(tool.rhs_instruction_cost(), 255);
+    let steps = tool.y_series.len().saturating_sub(1);
+    assert!(
+        steps
+            .saturating_mul(4)
+            .saturating_mul(tool.rhs_instruction_cost())
+            <= MAX_ODE_SYNC_INSTRUCTIONS
+    );
+    assert!(eval_atlas(tool, ("k", "dt")));
+    let png = egui_plot::export::export_custom_png(
+        &tool.export_datasets(),
+        &egui_plot::export::ExportOptions::default(),
+    )
+    .expect("export 255-node budgeted ODE PNG");
+    assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+    let _ = std::fs::write("/tmp/ode_bounded_ast_budget.png", png);
 }
 
 #[test]
