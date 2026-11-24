@@ -1074,6 +1074,7 @@ dependencies = [
  "approx",
  "diagnostics",
  "engine_graph",
+ "engine_linalg",
  "engine_prob",
  "math_commons",
  "nalgebra 0.34.2",
@@ -1139,6 +1140,7 @@ dependencies = [
  "approx",
  "diagnostics",
  "domain_applied",
+ "engine_linalg",
  "math_commons",
  "nalgebra 0.34.2",
  "num-complex",
@@ -1362,6 +1364,13 @@ dependencies = [
  "approx",
  "engine_prob",
  "libm",
+ "verified_engine",
+]
+
+[[package]]
+name = "engine_linalg"
+version = "0.4.0"
+dependencies = [
  "verified_engine",
 ]
 
@@ -2431,6 +2440,7 @@ dependencies = [
  "domain_climate",
  "domain_epidemiology",
  "domain_physics",
+ "engine_linalg",
  "federated_registry",
  "math_commons",
  "math_explorer",
@@ -2451,6 +2461,7 @@ name = "math_commons"
 version = "0.4.0"
 dependencies = [
  "diagnostics",
+ "engine_linalg",
  "libm",
  "num-complex",
  "num-traits",
@@ -2493,6 +2504,7 @@ dependencies = [
  "diagnostics",
  "eframe",
  "egui_plot",
+ "engine_linalg",
  "federated_registry",
  "flate2",
  "futures",
@@ -3412,6 +3424,7 @@ dependencies = [
  "dashu",
  "diagnostics",
  "engine_graph",
+ "engine_linalg",
  "engine_prob",
  "math_commons",
  "nalgebra 0.34.2",

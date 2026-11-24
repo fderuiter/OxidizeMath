@@ -19,6 +19,7 @@ engine_prob = { path = "../02_engines/engine_prob", features = ["alloc"] }
 engine_graph = { path = "../02_engines/engine_graph", features = ["alloc"] }
 
 math_commons = { path = "../math_commons" }
+engine_linalg = { path = "../02_engines/engine_linalg" }
 diagnostics = { path = "../diagnostics" }
 dashu = { workspace = true, features = ["num-traits_v02"] }
 

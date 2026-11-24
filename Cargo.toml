@@ -5,6 +5,7 @@ members = [
     "crates/oxidize_core",
     "crates/verified_engine",
     "crates/verified_engine_macros",
+    "crates/02_engines/engine_linalg",
     "crates/math_commons",
     "crates/scientific_metadata",
     "crates/02_engines/engine_prob",

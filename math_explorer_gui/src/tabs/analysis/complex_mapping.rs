@@ -291,6 +291,16 @@ impl InteractiveTool for ComplexMappingTool {
         self.math_input
             .set_expression(s.custom_expr.as_deref().unwrap_or(DEFAULT_CUSTOM_EXPR));
         self.math_input.set_params_map(&s.custom_params);
+        if self.function == MappingFunction::Custom {
+            if let Some(err) = self.math_input.error_message() {
+                let msg = format!(
+                    "Invalid complex mapping formula: {err}. Simplify or fix the expression and retry."
+                );
+                crate::accessibility::announce_status_with_priority(&msg, "assertive");
+                return Err(msg);
+            }
+        }
+        let _ = self.ensure_cached_contours();
         Ok(())
     }
 
@@ -439,6 +449,9 @@ inventory::submit! {
     }
 }
 
+#[cfg(test)]
+#[path = "complex_mapping/budget_tests.rs"]
+mod budget_tests;
 #[cfg(test)]
 #[path = "complex_mapping/tests.rs"]
 mod tests;

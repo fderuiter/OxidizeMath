@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 22 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 23 workspace crates:
 
 ```mermaid
 graph TD
@@ -79,30 +79,31 @@ graph TD
         Engine[verified_engine]
         Macros[verified_engine_macros]
         CoreCrate[oxidize_core]
+        Linalg[engine_linalg]
         Diag[diagnostics]
     end
 
     Xtask -.-> Verify
     Verify -.-> Explorer & CoreCrate & Meta & Diag
-    MdTests -.-> Explorer & Meta & CoreCrate & Registry
+    MdTests -.-> Explorer & Meta & CoreCrate & Registry & Linalg
 
     GUI --> Explorer
     GUI --> Plot
-    GUI --> Meta & Registry & Diag
+    GUI --> Meta & Registry & Diag & Linalg
     Explorer --> AI & Phys & Bio & App & Clim & Epi
     Explorer --> Pure & Prob & Graph & Commons
 
     AI --> Commons & Engine & Meta & Prob
-    Phys --> Commons & Engine & Meta & Pure & Prob
+    Phys --> Commons & Engine & Meta & Pure & Prob & Linalg
     Bio --> Commons & Engine & Meta & Pure & Prob
-    App --> Commons & Engine & Meta & Pure & Prob & Graph
+    App --> Commons & Engine & Meta & Pure & Prob & Graph & Linalg
     Clim --> Commons & Engine & Meta & Prob
     Epi --> Commons & Engine & Meta & Pure & Prob
 
-    Pure --> Commons & Meta & Prob & Graph
+    Pure --> Commons & Meta & Prob & Graph & Linalg
     Prob --> Engine
     Graph --> Engine
-    Commons --> CoreCrate
+    Commons --> CoreCrate & Linalg
     Engine --> Macros & CoreCrate
     Meta --> CoreCrate
 
@@ -115,11 +116,12 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 22 member crates declared in `Cargo.toml`:
+The workspace contains all 23 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
 | `crates/oxidize_core` | Core utilities, file systems, and traceability | [oxidize_core](../../crates/oxidize_core/README.md) |
+| `crates/02_engines/engine_linalg` | `#![no_std]` numerical linear algebra engine | [engine_linalg](../../crates/02_engines/engine_linalg/README.md) |
 | `crates/verified_engine` | Zero-allocation runtime and execution tracking | [zero_allocation_runtime](zero_allocation_runtime.md) |
 | `crates/verified_engine_macros` | Attribute macros (`#[theory]`, `#[verified]`) | [verified_engine](../../crates/verified_engine/src/lib.rs) |
 | `crates/diagnostics` | Static analysis diagnostics and reporting | [diagnostics](../../crates/diagnostics/README.md) |

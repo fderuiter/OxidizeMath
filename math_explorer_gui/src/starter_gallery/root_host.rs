@@ -198,70 +198,93 @@ fn render_gallery_header_and_tabs(
     active_tab
 }
 
+struct GalleryRenderScope<'a> {
+    modal_id: egui::Id,
+    id_source: &'a str,
+    default_domain_slug: Option<&'a str>,
+    cards: &'a [StarterCard],
+    challenges: &'a [ChallengeCard],
+    metrics: &'a GalleryOverlayMetrics,
+}
+
 fn render_starter_gallery_body(
     ui: &mut egui::Ui,
     frame_ctx: &mut crate::ModalFrameContext,
-    modal_id: egui::Id,
-    id_source: &str,
-    cards: &[StarterCard],
-    challenges: &[ChallengeCard],
-    m: &GalleryOverlayMetrics,
+    scope: &GalleryRenderScope<'_>,
 ) -> Option<GallerySelection> {
-    let (stories, goal_challenges) = load_gallery_stories_and_goals(id_source, cards, challenges);
-    let mut selected = None;
+    let (stories, goals) =
+        load_gallery_stories_and_goals(scope.id_source, scope.cards, scope.challenges);
     let top_y = ui.cursor().top();
-    ui.set_max_width(m.inner_w);
-    ui.set_width(m.inner_w);
+    ui.set_max_width(scope.metrics.inner_w);
+    ui.set_width(scope.metrics.inner_w);
 
-    let mut filter_state = super::filter_ui::load_gallery_filter_state(ui.ctx(), modal_id);
-    let filtered =
-        FilteredGalleryItems::build(cards, &stories, challenges, &goal_challenges, &filter_state);
+    let mut filter_state = super::filter_ui::load_gallery_filter_state(
+        ui.ctx(),
+        scope.modal_id,
+        scope.default_domain_slug,
+    );
+    let prev_sig = (filter_state.query.clone(), filter_state.selected_domain);
+    let build_items = |st: &super::filter_ui::GalleryFilterState| {
+        FilteredGalleryItems::build(scope.cards, &stories, scope.challenges, &goals, st)
+    };
+    let mut filtered = build_items(&filter_state);
     let total_counts = (
-        cards.len(),
+        scope.cards.len(),
         stories.len(),
-        challenges.len() + goal_challenges.len(),
+        scope.challenges.len() + goals.len(),
     );
     let active_tab = render_gallery_header_and_tabs(
         ui,
         frame_ctx,
-        modal_id,
-        id_source,
+        scope.modal_id,
+        scope.id_source,
         total_counts,
         filtered.counts(),
-        m.inner_w,
+        scope.metrics.inner_w,
     );
-    super::filter_ui::render_gallery_filter_bar(ui, frame_ctx, &mut filter_state, m.inner_w);
-    ui.add_space(4.0);
-    ui.separator();
-    ui.add_space(6.0);
-
-    let header_used = (ui.cursor().top() - top_y).max(0.0);
-    let scroll_h = (m.max_h - 32.0 - header_used)
-        .max(88.0)
-        .min(m.scroll_h.max(220.0));
-
-    egui::ScrollArea::vertical()
-        .max_height(scroll_h)
-        .auto_shrink([false, true])
-        .show(ui, |ui| {
-            ui.set_max_width(m.inner_w);
-            ui.spacing_mut().item_spacing = egui::vec2(14.0, 14.0);
-            selected = filtered.render_tab(ui, frame_ctx, active_tab, &mut filter_state, m);
-        });
-    super::filter_ui::store_gallery_filter_state(ui.ctx(), modal_id, filter_state);
+    super::filter_ui::render_gallery_filter_bar(
+        ui,
+        frame_ctx,
+        &mut filter_state,
+        scope.metrics.inner_w,
+    );
+    if (filter_state.query.as_str(), filter_state.selected_domain)
+        != (prev_sig.0.as_str(), prev_sig.1)
+    {
+        filtered = build_items(&filter_state);
+    }
+    let selected = filtered.render_scroll_results(
+        ui,
+        frame_ctx,
+        top_y,
+        scope.metrics,
+        active_tab,
+        &mut filter_state,
+    );
+    if (filter_state.query.as_str(), filter_state.selected_domain)
+        != (prev_sig.0.as_str(), prev_sig.1)
+    {
+        build_items(&filter_state).announce_filter_update(
+            ui.ctx(),
+            active_tab,
+            filter_state.selected_domain,
+        );
+    }
+    super::filter_ui::store_gallery_filter_state(ui.ctx(), scope.modal_id, filter_state);
     selected
 }
 
-/// Renders the central canvas starter, story, & challenge gallery overlay clamped to root window bounds.
-pub fn show_starter_gallery_with_challenges(
+fn show_starter_gallery_inner(
     ctx: &egui::Context,
     id_source: &str,
+    default_domain_slug: Option<&str>,
     cards: &[StarterCard],
     challenges: &[ChallengeCard],
     is_open: &mut bool,
 ) -> Option<GallerySelection> {
     let modal_id = egui::Id::new(format!("{id_source}_starter_gallery_overlay"));
-    if !*is_open {
+    let was_open = *is_open;
+    if !was_open {
         super::filter_ui::clear_gallery_filter_state(ctx, modal_id);
     }
     let (stories, goal_challenges) = load_gallery_stories_and_goals(id_source, cards, challenges);
@@ -270,6 +293,14 @@ pub fn show_starter_gallery_with_challenges(
         return None;
     }
     let m = compute_gallery_metrics(ctx);
+    let scope = GalleryRenderScope {
+        modal_id,
+        id_source,
+        default_domain_slug,
+        cards,
+        challenges,
+        metrics: &m,
+    };
     let mut selected = None;
     let frame = egui::Frame::window(&ctx.style())
         .inner_margin(16)
@@ -282,15 +313,27 @@ pub fn show_starter_gallery_with_challenges(
         .max_width(m.max_w)
         .max_height(m.max_h)
         .show(ctx, is_open, |ui, frame_ctx| {
-            selected = render_starter_gallery_body(
-                ui, frame_ctx, modal_id, id_source, cards, challenges, &m,
-            );
+            selected = render_starter_gallery_body(ui, frame_ctx, &scope);
         });
 
     if !*is_open || selected.is_some() {
         super::filter_ui::clear_gallery_filter_state(ctx, modal_id);
+        if was_open && !*is_open && selected.is_none() {
+            crate::accessibility::announce_live_status(ctx, "Starter template gallery closed");
+        }
     }
     selected
+}
+
+/// Renders the central canvas starter, story, & challenge gallery overlay clamped to root window bounds.
+pub fn show_starter_gallery_with_challenges(
+    ctx: &egui::Context,
+    id_source: &str,
+    cards: &[StarterCard],
+    challenges: &[ChallengeCard],
+    is_open: &mut bool,
+) -> Option<GallerySelection> {
+    show_starter_gallery_inner(ctx, id_source, None, cards, challenges, is_open)
 }
 
 /// Renders the central canvas starter gallery card overlay clamped to root window bounds.
@@ -382,9 +425,10 @@ pub(crate) fn flush_deferred_starter_galleries(
     });
     for req in requests {
         let mut is_open = true;
-        let selected = show_starter_gallery_with_challenges(
+        let selected = show_starter_gallery_inner(
             ctx,
             &req.modal_source,
+            Some(&req.id_source),
             &req.cards,
             &req.challenges,
             &mut is_open,
