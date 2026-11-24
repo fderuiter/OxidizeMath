@@ -3,8 +3,7 @@
 use crate::math_types::Rational;
 use dashu::base::Sign;
 use dashu::integer::UBig;
-use diagnostics::{Diagnostic, Severity};
-use std::collections::HashMap;
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use std::fmt;
 
 /// First 64 prime numbers ($p_0 = 2$ through $p_{63} = 311$) indexing zero-allocation registers.
@@ -230,11 +229,9 @@ impl Diagnostic for FractranError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "FractranError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "FractranError");
+        visitor.record_display("description", self);
     }
 }
 

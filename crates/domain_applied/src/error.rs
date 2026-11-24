@@ -1,6 +1,5 @@
-use diagnostics::{Diagnostic, Severity};
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::pure_math::analysis::roots::AnalysisError;
-use std::collections::HashMap;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -27,6 +26,9 @@ pub enum BatteryError {
     /// Cycles cannot be negative.
     #[error("Cycles cannot be negative, got {0}")]
     NegativeCycles(f64),
+    /// Wrapped curve-fitting solver error.
+    #[error("{0}")]
+    Fit(#[from] math_commons::error::FitError),
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -65,6 +67,9 @@ pub enum GameTheoryError {
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
     Math(#[from] math_commons::error::MathError),
+    /// Wrapped Monte Carlo estimation error.
+    #[error("{0}")]
+    MonteCarlo(#[from] pure_math::error::MonteCarloError),
 }
 
 #[derive(Debug, Clone, PartialEq, Error)]
@@ -132,28 +137,30 @@ impl Diagnostic for PharmacokineticsError {
         Severity::Error
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert(
-            "error_type".to_string(),
-            "PharmacokineticsError".to_string(),
-        );
-        map.insert("description".to_string(), self.to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        if let Self::AnalysisError(err) = self {
+            err.visit_fields(visitor);
+        }
+        visitor.record_str("error_type", "PharmacokineticsError");
+        visitor.record_display("description", self);
     }
 }
 
 impl Diagnostic for BatteryError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
-        Severity::Error
+        match self {
+            Self::Fit(err) => err.severity(),
+            _ => Severity::Error,
+        }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "BatteryError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        if let Self::Fit(fit_err) = self {
+            fit_err.visit_fields(visitor);
+        }
+        visitor.record_str("error_type", "BatteryError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -162,18 +169,19 @@ impl Diagnostic for GameTheoryError {
     fn severity(&self) -> Severity {
         match self {
             Self::Math(err) => err.severity(),
+            Self::MonteCarlo(err) => err.severity(),
             _ => Severity::Error,
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "GameTheoryError".to_string());
-        if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        match self {
+            Self::Math(math_err) => math_err.visit_fields(visitor),
+            Self::MonteCarlo(mc_err) => mc_err.visit_fields(visitor),
+            _ => {}
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "GameTheoryError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -186,14 +194,12 @@ impl Diagnostic for EngineeringError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "EngineeringError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "EngineeringError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -203,11 +209,9 @@ impl Diagnostic for LoraError {
         Severity::Error
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "LoraError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "LoraError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -220,14 +224,12 @@ impl Diagnostic for IsosurfaceError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "IsosurfaceError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "IsosurfaceError");
+        visitor.record_display("description", self);
     }
 }
 mod submodule_diagnostics;

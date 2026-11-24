@@ -1,4 +1,4 @@
-use super::{ApiItem, is_facade_reachable_file};
+use super::{ApiItem, is_facade_reachable_file, is_tier2_engine_file};
 use std::collections::{BTreeMap, HashMap};
 
 pub(super) type ParsedSignatureMap<'a> = HashMap<&'a str, Option<syn::File>>;
@@ -130,7 +130,7 @@ pub(super) fn build_parsed_signatures_counted<'a>(
     let mut parsed = HashMap::new();
     let mut parse_attempts = 0usize;
     for (path, items) in apis {
-        if !is_facade_reachable_file(path) {
+        if !is_facade_reachable_file(path) && !is_tier2_engine_file(path) {
             continue;
         }
         for item in items {
