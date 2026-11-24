@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use self::render::{inspect_solver_solid_and_core, render_lbm_snapshot_pixels};
+use self::render::{inspect_solver_solid_and_core, render_lbm_snapshot_buffers};
 use super::lattice_boltzmann_sculpt::{
     apply_lbm_custom_action, apply_lbm_sculpt_payload, apply_stroke_to_lbm, draw_lbm_brush_panel,
     export_solver_rle, record_stroke_in_rle, reset_solver_preserving_obstacles,
@@ -16,6 +16,7 @@ use crate::async_sim::unified::{UnifiedModel, UnifiedUiExtension};
 use crate::async_sim::{SculptStatePayload, SimCommand, StateSnapshot};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{BrushMode, BrushStroke, SpatialBrushKit};
+use math_commons::math_kernel::marching_squares::ScalarField2D;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     advance_wind_tunnel_step, compute_aerodynamic_coefficients, compute_drag_coefficient,
@@ -29,8 +30,8 @@ pub(crate) const LBM_WIDTH: usize = 100;
 pub(crate) const LBM_HEIGHT: usize = 50;
 pub(crate) const LBM_INLET_U: f64 = 0.1;
 
-/// Live hydrodynamic force and vorticity diagnostics attached to LBM snapshots.
-#[derive(Debug, Clone, Copy, Default)]
+/// Live hydrodynamic force, vorticity diagnostics, and scalar field attached to LBM snapshots.
+#[derive(Debug, Clone)]
 pub struct LbmSnapshotMetrics {
     /// Dimensionless lift coefficient $C_L$.
     pub lift_coeff: f64,
@@ -38,6 +39,8 @@ pub struct LbmSnapshotMetrics {
     pub drag_coeff: f64,
     /// Peak vorticity magnitude $|\omega_z|$ across interior fluid cells.
     pub max_vorticity: f64,
+    /// Active 2D scalar field (`|u|` or `ω_z`) for contour SVG and 16-bit texture export.
+    pub scalar_field: ScalarField2D,
 }
 
 pub struct LbmUnified {
@@ -255,7 +258,7 @@ impl UnifiedModel for LbmUnified {
     fn get_snapshot(&self) -> StateSnapshot {
         let width = self.solver.width();
         let height = self.solver.height();
-        let (pixels, max_vort) = render_lbm_snapshot_pixels(
+        let (pixels, scalar_values, max_vort) = render_lbm_snapshot_buffers(
             &self.solver,
             &self.vorticity_buf,
             self.display_vorticity,
@@ -274,6 +277,13 @@ impl UnifiedModel for LbmUnified {
             lift_coeff: self.latest_aero.lift_coeff,
             drag_coeff: self.latest_aero.drag_coeff,
             max_vorticity: max_vort,
+            scalar_field: ScalarField2D {
+                width,
+                height,
+                values: scalar_values,
+                periodic: false,
+                default_levels: 8,
+            },
         };
 
         StateSnapshot {
@@ -351,6 +361,18 @@ impl UnifiedModel for LbmUnified {
 
     fn is_raster_model() -> bool {
         true
+    }
+
+    fn has_scalar_field() -> bool {
+        true
+    }
+
+    fn extract_scalar_field(snapshot: &StateSnapshot) -> Option<ScalarField2D> {
+        snapshot
+            .structured_data
+            .as_ref()
+            .and_then(|d| d.downcast_ref::<LbmSnapshotMetrics>())
+            .map(|m| m.scalar_field.clone())
     }
 
     fn supports_spatial_brush() -> bool {

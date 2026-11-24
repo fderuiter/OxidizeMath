@@ -2,10 +2,7 @@ use crate::async_sim::atlas::ParameterAtlasController;
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState};
 use crate::framework::{ChallengeEvaluation, InteractionContext, InteractiveTool};
 use eframe::egui;
-use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
-use math_explorer::physics::stat_mech::KB;
-use nalgebra::DMatrix;
 use std::collections::VecDeque;
 use std::hash::{Hash, Hasher};
 use std::sync::atomic::Ordering;
@@ -15,6 +12,8 @@ use std::sync::Arc;
 pub mod atlas;
 #[path = "ising/challenge.rs"]
 pub mod challenge;
+#[path = "ising/export.rs"]
+mod export;
 #[path = "ising/graph_mode.rs"]
 mod graph_mode;
 #[path = "ising/overlay.rs"]
@@ -61,6 +60,7 @@ pub struct IsingModelTool {
     texture: Option<egui::TextureHandle>,
     pixels: Vec<egui::Color32>,
     stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
+    stepped_spins: Option<(usize, usize, Vec<i8>)>,
     last_theme: Option<crate::app::ThemeMode>,
     dirty: bool,
     pub topology_source: crate::app::TopologySource,
@@ -91,6 +91,7 @@ impl IsingModelTool {
         };
         self.worker = BackgroundWorker::new(runner);
         self.stepped_pixels = None;
+        self.stepped_spins = None;
         self.sync_metrics_from_latest();
         self.reset_trajectory_overlays();
         self.dirty = true;
@@ -123,6 +124,7 @@ impl IsingModelTool {
             self.push_seed_layout_to_worker();
         }
         self.stepped_pixels = None;
+        self.stepped_spins = None;
         self.pending_ode_resync = true;
         self.sync_metrics_from_latest();
         self.reset_trajectory_overlays();
@@ -163,6 +165,7 @@ impl Default for IsingModelTool {
             texture: None,
             pixels: Vec::new(),
             stepped_pixels: None,
+            stepped_spins: None,
             last_theme: None,
             dirty: true,
             topology_source: crate::app::TopologySource::SharedBus,
@@ -258,21 +261,29 @@ impl InteractiveTool for IsingModelTool {
         ]
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::raster_only()
+        if self.is_graph_mode() {
+            crate::framework::ExportCapabilities::raster_only()
+        } else {
+            crate::framework::ExportCapabilities::discrete_lattice()
+        }
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
-        if let Some((w, h, ref px)) = self.stepped_pixels {
-            if w > 0 && h > 0 && !px.is_empty() {
-                return Some(egui::ColorImage::new([w, h], px.clone()));
-            }
-        }
-        let snap = self.worker.latest_snapshot()?;
-        let px = snap.pixels.try_read().ok()?;
-        if px.is_empty() || snap.width == 0 || snap.height == 0 {
-            return None;
-        }
-        Some(egui::ColorImage::new([snap.width, snap.height], px.clone()))
+        self.build_ising_raster_image()
+    }
+
+    fn export_scalar_field(
+        &self,
+    ) -> Option<math_commons::math_kernel::marching_squares::ScalarField2D> {
+        self.build_ising_scalar_field()
+    }
+
+    fn export_vector_svg(
+        &self,
+        options: &egui_plot::export::ExportOptions,
+        _contour_levels: usize,
+    ) -> Option<Result<String, String>> {
+        Some(self.build_ising_vector_svg(options))
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {
@@ -340,43 +351,7 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn step_simulation(&mut self) {
-        if self.is_graph_mode() {
-            let trials = self.steps_per_frame.clamp(16, 2_000);
-            self.step_graph_trials(trials);
-            return;
-        }
-        let mut lattice = SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None);
-        let steps = self.steps_per_frame.clamp(100, 5000);
-        match self.mode {
-            IsingInteractionMode::Ferromagnetic => {
-                let t_phys = self.temperature.max(1e-3) / KB;
-                lattice.evolve(steps, t_phys, self.j_coupling, self.h_field);
-            }
-            IsingInteractionMode::FermiGame => {
-                let mat = DMatrix::from_row_slice(2, 2, &self.game_payoffs);
-                if let Ok(payoff) = MatrixPayoff::new(mat) {
-                    lattice.evolve_fermi_game_with_mutation(
-                        steps,
-                        self.temperature,
-                        &payoff,
-                        self.mutation_rate,
-                    );
-                }
-            }
-        }
-        let palette = self
-            .params
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .theme
-            .palette();
-        let pixels: Vec<egui::Color32> = lattice
-            .spins()
-            .iter()
-            .map(|&s| ising_spin_color(s, &palette))
-            .collect();
-        self.stepped_pixels = Some((lattice.width(), lattice.height(), pixels));
-        self.dirty = true;
+        self.step_ising_offscreen();
     }
 
     fn save_state(&self) -> Option<String> {
@@ -436,6 +411,7 @@ impl InteractiveTool for IsingModelTool {
                 self.staggered_magnetization = ms;
                 self.record_snapshot_progress();
                 self.stepped_pixels = None;
+                self.stepped_spins = None;
                 self.dirty = true;
             }
         }

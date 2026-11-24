@@ -140,7 +140,16 @@ fn test_all_28_tab_slugs_map_to_matching_academic_domains_and_titles() {
     );
 
     let tabs = crate::tabs::instantiate_tabs();
-    assert_eq!(tabs.len(), 28);
+    #[cfg(all(
+        feature = "pure_math",
+        feature = "applied",
+        feature = "ai",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics"
+    ))]
+    assert_eq!(tabs.len(), 29);
     for tab in &tabs {
         let slug = tab.url_slug();
         let expected = AcademicDomain::from_str(tab.academic_domain())

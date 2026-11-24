@@ -230,6 +230,7 @@ impl IsingModelTool {
             let _ = self.worker.send_command(SimCommand::Pause);
         }
         self.stepped_pixels = None;
+        self.stepped_spins = None;
         self.dirty = true;
         Ok(())
     }

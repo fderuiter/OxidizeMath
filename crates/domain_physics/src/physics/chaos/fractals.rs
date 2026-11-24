@@ -39,6 +39,66 @@ pub fn escape_time_julia(z: Complex<f64>, c: Complex<f64>, max_iter: u32) -> u32
     max_iter
 }
 
+#[inline(always)]
+#[verified_engine::verified]
+fn renormalize_escape_potential(iter: u32, norm_sq: f64, max_iter: u32) -> f64 {
+    let log_zn = 0.5 * norm_sq.ln();
+    let nu = log_zn.ln() / std::f64::consts::LN_2;
+    ((iter as f64) + 1.0 - nu).clamp(0.0, max_iter as f64)
+}
+
+/// Computes the continuous renormalized escape-time potential for the Mandelbrot set.
+///
+/// Uses an enlarged escape radius ($|z|^2 > 256$) with Douady-Hubbard logarithmic potential
+/// renormalization $\nu = n + 1 - \log_2(\ln |z_n|)$ to eliminate integer terracing.
+/// Bounded interior points return `max_iter as f64`.
+#[verified_engine::verified]
+pub fn smooth_escape_mandelbrot(c: Complex<f64>, max_iter: u32) -> f64 {
+    if max_iter == 0 {
+        return 0.0;
+    }
+    let mut z = Complex::new(0.0, 0.0);
+    for i in 0..max_iter {
+        let norm_sq = z.norm_sqr();
+        if norm_sq > 256.0 {
+            return renormalize_escape_potential(i, norm_sq, max_iter);
+        }
+        z = z * z + c;
+    }
+    let final_norm_sq = z.norm_sqr();
+    if final_norm_sq > 4.0 {
+        renormalize_escape_potential(max_iter, final_norm_sq, max_iter)
+    } else {
+        max_iter as f64
+    }
+}
+
+/// Computes the continuous renormalized escape-time potential for the Julia set of parameter $c$.
+///
+/// Uses an enlarged escape radius ($|z|^2 > 256$) with logarithmic potential renormalization
+/// $\nu = n + 1 - \log_2(\ln |z_n|)$ to produce smooth, band-free scalar fields.
+/// Bounded interior points return `max_iter as f64`.
+#[verified_engine::verified]
+pub fn smooth_escape_julia(z: Complex<f64>, c: Complex<f64>, max_iter: u32) -> f64 {
+    if max_iter == 0 {
+        return 0.0;
+    }
+    let mut z_curr = z;
+    for i in 0..max_iter {
+        let norm_sq = z_curr.norm_sqr();
+        if norm_sq > 256.0 {
+            return renormalize_escape_potential(i, norm_sq, max_iter);
+        }
+        z_curr = z_curr * z_curr + c;
+    }
+    let final_norm_sq = z_curr.norm_sqr();
+    if final_norm_sq > 4.0 {
+        renormalize_escape_potential(max_iter, final_norm_sq, max_iter)
+    } else {
+        max_iter as f64
+    }
+}
+
 /// Calculates the Correlation Sum $C(\epsilon)$ for the Grassberger-Procaccia algorithm.
 ///
 /// The Correlation Dimension is a measure of the dimensionality of the space occupied by a set of random points,

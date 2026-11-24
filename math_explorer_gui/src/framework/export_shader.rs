@@ -90,16 +90,6 @@ pub(crate) fn compile_complex_bar_glsl(
     Ok((param_decls, expr_glsl))
 }
 
-impl ExportFormat {
-    const fn clipboard_item_noun(self) -> &'static str {
-        match self {
-            Self::GlslWebGl2 | Self::GlslShadertoy => "shader",
-            Self::Tex | Self::Rust | Self::Python => "model",
-            _ => "dataset",
-        }
-    }
-}
-
 fn format_clipboard_error(err: &str) -> String {
     if err.contains("Export CSV") {
         format!("Clipboard unavailable: {err}")

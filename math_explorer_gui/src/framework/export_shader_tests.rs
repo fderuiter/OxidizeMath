@@ -267,6 +267,9 @@ fn test_fractal_custom_mandelbrot_and_custom_julia_glsl_shader_export() {
     params.insert("a".to_string(), 1.25);
     viewer.math_input.set_params_map(&params);
 
+    let caps = viewer.export_capabilities();
+    assert!(caps.scalar_field && caps.contour_controls && caps.shader);
+
     let custom_mb = viewer
         .export_glsl_shader(ShaderDialect::WebGl2Es300)
         .expect("CustomMandelbrot WebGL2 shader must compile");

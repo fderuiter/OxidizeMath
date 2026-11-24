@@ -44,21 +44,21 @@ pub(crate) fn record_theory_portal_toggle(
 
 #[derive(Clone, Copy)]
 pub(crate) struct UntrackedUrlDigestCache {
-    pub(super) tool_name: &'static str,
-    pub(super) checked_untracked_rev: u64,
-    pub(super) url_digest: u64,
+    pub(crate) tool_name: &'static str,
+    pub(crate) checked_untracked_rev: u64,
+    pub(crate) url_digest: u64,
 }
 
 #[derive(Default)]
 pub(crate) struct FrameworkRevisionCache {
-    pub(super) framework_revision: u64,
-    pub(super) untracked_tool_revision: u64,
-    pub(super) untracked_url_digest: std::cell::Cell<Option<UntrackedUrlDigestCache>>,
-    pub(super) active_tool_json:
+    pub(crate) framework_revision: u64,
+    pub(crate) untracked_tool_revision: u64,
+    pub(crate) untracked_url_digest: std::cell::Cell<Option<UntrackedUrlDigestCache>>,
+    pub(crate) active_tool_json:
         std::cell::RefCell<Option<(&'static str, u64, std::sync::Arc<str>)>>,
-    pub(super) last_snapshot_rev: Option<(&'static str, u64)>,
-    pub(super) last_snapshot_source_datasets: Vec<(String, egui_plot::SharedPoints)>,
-    pub(super) last_plot_capture_hash: Option<(&'static str, u64)>,
+    pub(crate) last_snapshot_rev: Option<(&'static str, u64)>,
+    pub(crate) last_snapshot_source_datasets: Vec<(String, egui_plot::SharedPoints)>,
+    pub(crate) last_plot_capture_hash: Option<(&'static str, u64)>,
 }
 
 pub(super) fn next_framework_id() -> u64 {
@@ -308,6 +308,9 @@ impl SimulationFramework {
             export_bg_dark: true,
             export_gif_fps: 15,
             export_gif_frames: 20,
+            export_contour_levels: 8,
+            export_texture_size: 1024,
+            export_normal_strength: 2.0,
             export_status_message: None,
             export_status_severity: super::ExportStatusSeverity::Success,
             domain: domain.to_string(),

@@ -5,10 +5,34 @@ use crate::async_sim::SimWorkerState;
 use crate::framework::decode_rle_mask;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::MorphogenesisKineticsMode;
+use math_explorer::biology::diffusion::BoundaryMode;
 use math_explorer::biology::morphogenesis::{GrayScottKinetics, SchnakenbergKinetics};
 use scientific_metadata::theory::TheoryDescribable;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+/// Spatial finite-difference boundary condition selector for [`MorphogenesisTool`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MorphogenesisBoundaryMode {
+    /// Zero-flux clamped edges (`∂u/∂n = 0`).
+    #[default]
+    Neumann,
+    /// Seamless toroidal wrap across opposite grid edges.
+    Periodic,
+}
+
+impl MorphogenesisBoundaryMode {
+    pub(crate) const fn to_domain_mode(self) -> BoundaryMode {
+        match self {
+            Self::Neumann => BoundaryMode::Neumann,
+            Self::Periodic => BoundaryMode::Periodic,
+        }
+    }
+
+    pub(crate) const fn is_neumann(&self) -> bool {
+        matches!(self, Self::Neumann)
+    }
+}
 
 impl FiniteStateGuard for MorphogenesisTool {
     fn is_finite_state(&self) -> bool {
@@ -69,6 +93,7 @@ impl FiniteStateGuard for MorphogenesisTool {
                 .write()
                 .unwrap_or_else(|e| e.into_inner());
             ks.mode = MorphogenesisKineticsMode::Schnakenberg;
+            ks.boundary = MorphogenesisBoundaryMode::Neumann;
             ks.f = gs.f;
             ks.k = gs.k;
         }
@@ -153,6 +178,9 @@ pub struct MorphogenesisToolState {
     /// Reaction kinetics family (`Schnakenberg` or `GrayScott`).
     #[serde(default)]
     pub kinetics_mode: MorphogenesisKineticsMode,
+    /// Spatial boundary condition (`Neumann` or `Periodic`).
+    #[serde(default, skip_serializing_if = "MorphogenesisBoundaryMode::is_neumann")]
+    pub boundary: MorphogenesisBoundaryMode,
     /// Gray-Scott substrate feed rate `f` (`0.0..=0.12`).
     #[serde(default = "default_gray_scott_f")]
     pub f: f64,

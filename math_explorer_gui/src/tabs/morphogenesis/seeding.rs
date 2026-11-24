@@ -79,11 +79,13 @@ impl MorphogenesisTool {
         } else {
             SimWorkerState::Ready
         };
-        let current_mode = self
-            .kinetics_state
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .mode;
+        let (current_mode, boundary) = {
+            let ks = self
+                .kinetics_state
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
+            (ks.mode, ks.boundary)
+        };
         let atlas_axes =
             if current_mode != kinetics_mode || self.atlas.has_default_persisted_state() {
                 super::atlas::default_morpho_atlas_axes()
@@ -100,6 +102,7 @@ impl MorphogenesisTool {
             width: self.width,
             height: self.height,
             kinetics_mode,
+            boundary,
             f,
             k,
             state: Some(target_state),
@@ -146,6 +149,7 @@ impl MorphogenesisTool {
             self.worker = BackgroundWorker::new(runner);
             self.branch_engine.clear();
             self.stepped_pixels = None;
+            self.stepped_scalar = None;
             self.step_runner = None;
             self.dirty = true;
         } else {

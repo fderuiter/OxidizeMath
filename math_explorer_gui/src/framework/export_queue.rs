@@ -15,6 +15,10 @@ pub(crate) enum ExportFormat {
     Svg,
     /// Animated Graphics Interchange Format (`.gif`).
     Gif,
+    /// Borderless power-of-two 16-bit grayscale heightmap PNG (`.png`).
+    Heightmap16Png,
+    /// Borderless power-of-two 16-bit tangent-space normal-map PNG (`.png`).
+    NormalMapPng,
     /// Parameter-calibrated LaTeX mathematical model document (`.tex`).
     Tex,
     /// Standalone Rust 2024 numerical solver snippet (`.rs`).
@@ -41,6 +45,13 @@ impl ExportFormat {
             Self::Png => ("png", "PNG", "PNG Image", "figure"),
             Self::Svg => ("svg", "SVG", "SVG Vector Image", "figure"),
             Self::Gif => ("gif", "GIF", "GIF Animation", "animation"),
+            Self::Heightmap16Png => (
+                "png",
+                "16-bit Heightmap",
+                "16-bit Heightmap PNG",
+                "heightmap16",
+            ),
+            Self::NormalMapPng => ("png", "Normal Map", "Normal Map PNG", "normal_map"),
             Self::Tex => ("tex", "LaTeX", "LaTeX Document", "model"),
             Self::Rust => ("rs", "Rust", "Rust Source File", "model"),
             Self::Python => ("py", "Python", "Python Script", "model"),
@@ -59,6 +70,15 @@ impl ExportFormat {
                 "Shadertoy Fragment Shader",
                 "shadertoy",
             ),
+        }
+    }
+
+    pub(super) const fn clipboard_item_noun(self) -> &'static str {
+        match self {
+            Self::Svg => "vector",
+            Self::GlslWebGl2 | Self::GlslShadertoy => "shader",
+            Self::Tex | Self::Rust | Self::Python => "model",
+            _ => "dataset",
         }
     }
 
@@ -275,8 +295,11 @@ impl SimulationFramework {
             }
             (ExportFormat::Png, ExportTarget::File) => self.dispatch_png_export(),
             (ExportFormat::Png, ExportTarget::Clipboard) => self.dispatch_png_clipboard_export(ctx),
-            (ExportFormat::Svg, _) => self.dispatch_svg_export(),
+            (ExportFormat::Svg, ExportTarget::File) => self.dispatch_svg_export(),
+            (ExportFormat::Svg, ExportTarget::Clipboard) => self.dispatch_svg_clipboard_export(ctx),
             (ExportFormat::Gif, _) => self.start_gif_export(ctx),
+            (ExportFormat::Heightmap16Png, _) => self.dispatch_heightmap16_export(),
+            (ExportFormat::NormalMapPng, _) => self.dispatch_normal_map_export(),
             (ExportFormat::Tex | ExportFormat::Rust | ExportFormat::Python, target) => {
                 self.dispatch_code_export(req.format, target, ctx);
             }

@@ -16,6 +16,10 @@ pub mod atlas;
 pub use atlas::FractalCartographer;
 use atlas::FRACTAL_ATLAS_AXIS_PAIRS;
 
+#[path = "fractals/export.rs"]
+mod export;
+pub use export::*;
+
 #[path = "fractals/formula.rs"]
 pub mod formula;
 pub use formula::{default_fractal_input_bar, CompiledFractalJob, DEFAULT_FRACTAL_EXPR};
@@ -225,7 +229,7 @@ impl InteractiveTool for FractalViewer {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::raster_only().with_shader()
+        crate::framework::ExportCapabilities::scalar_field().with_shader()
     }
 
     fn export_glsl_shader(
@@ -236,35 +240,42 @@ impl InteractiveTool for FractalViewer {
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
-        let zoom = if self.zoom.is_finite() && (ZOOM_MIN..=ZOOM_MAX).contains(&self.zoom) {
-            self.zoom
+        let (w, h) = if self.requested_size == INITIAL_PREVIEW_SIZE {
+            (960, 640)
         } else {
-            1.0
+            clamp_fractal_dimensions(
+                self.requested_size.0,
+                self.requested_size.1,
+                MAX_FRACTAL_TEXTURE_SIDE,
+            )
         };
-        let req = FractalRenderRequest {
-            generation: self.request_generation,
-            width: 480,
-            height: 320,
-            center: Complex::new(
-                self.center.re.clamp(COORD_MIN, COORD_MAX),
-                self.center.im.clamp(COORD_MIN, COORD_MAX),
-            ),
-            zoom,
-            max_iter: self
-                .max_iter
-                .clamp(10, math_commons::registry::MAX_ITERATIONS as u32),
-            mode: self.mode,
-            julia_c: Complex::new(
-                self.julia_c.re.clamp(COORD_MIN, COORD_MAX),
-                self.julia_c.im.clamp(COORD_MIN, COORD_MAX),
-            ),
-            high_contrast: self.high_contrast,
-        };
-        let job = self
-            .mode
-            .is_custom()
-            .then(|| CompiledFractalJob::from_bar(&self.math_input));
+        let req = self.sanitized_export_request(w, h);
+        let job = self.compiled_export_formula();
         Some(render_fractal_color_image_with_formula(&req, job.as_ref()))
+    }
+
+    fn export_scalar_field(
+        &self,
+    ) -> Option<math_commons::math_kernel::marching_squares::ScalarField2D> {
+        let (w, h) = if self.requested_size == INITIAL_PREVIEW_SIZE {
+            (240, 160)
+        } else {
+            clamp_fractal_dimensions(self.requested_size.0, self.requested_size.1, 512)
+        };
+        let req = self.sanitized_export_request(w, h);
+        let job = self.compiled_export_formula();
+        Some(render_fractal_scalar_field_with_formula(&req, job.as_ref()))
+    }
+
+    fn export_scalar_field_at(
+        &self,
+        width: usize,
+        height: usize,
+    ) -> Option<math_commons::math_kernel::marching_squares::ScalarField2D> {
+        let (w, h) = clamp_fractal_dimensions(width, height, MAX_FRACTAL_TEXTURE_SIDE);
+        let req = self.sanitized_export_request(w, h);
+        let job = self.compiled_export_formula();
+        Some(render_fractal_scalar_field_with_formula(&req, job.as_ref()))
     }
 
     fn step_simulation(&mut self) {

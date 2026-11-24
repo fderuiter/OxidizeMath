@@ -88,6 +88,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Zero-Allocation Laplace-Beltrami Surface Morphogenesis and Mean-Curvature Buckling](adr/20261123-surface-morphogenesis-laplace-beltrami-buckling.md)
 - [ADR 20261123: Tridiagonal Crank-Nicolson 1D Quantum Propagation and Persistent Unified GIF Stepping](adr/20261123-tridiagonal-crank-nicolson-quantum-propagation.md)
 - [ADR 20261123: Unified RL Maze Sculpting, Exact Bellman Solvers, and TD Surprise Sonification](adr/20261123-unified-rl-maze-sculpting-bellman-and-sonification.md)
+- [ADR 20261123: Unified 2D Scalar-Field Contours and 16-Bit Texture Exports](adr/20261123-unified-scalar-field-contours-and-16bit-textures.md)
 - [ADR 20261123: Volumetric 3D Implicit Formulas, Boundary-Padded Solid Closure, and Unified 3D Exports](adr/20261123-volumetric-implicit-formulas-and-solid-exports.md)
 - [ADR 20261123: Quantum Tunneling and 2D Chladni Resonance Parameter Atlases](adr/20261123-wave-and-chladni-resonance-atlases.md)
 - [ADR 20261123: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping](adr/20261123-workspace-release-version-guards-and-wix-mapping.md)

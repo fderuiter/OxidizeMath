@@ -61,13 +61,18 @@ pub use crate::{
     },
     export_modal::{
         CallbackExportSource, ExportDataSource, ExportModalAction, ExportModalBindings,
-        ExportModalConfig, ExportModalState, ModalGifJobHandle, clipboard_status_id,
-        show_export_modal,
+        ExportModalConfig, ExportModalState, ModalGifJobHandle, SpatialExportBindings,
+        clipboard_status_id, show_export_modal,
     },
     export_primitives::{
-        ExportPrimitive, append_last_plot_primitives, clear_last_plot_primitives,
-        export_primitives_svg, export_raster_gif, export_raster_svg, get_last_plot_primitives,
-        has_finite_shared_dataset_points, render_primitives_image, shared_datasets_to_primitives,
+        ExportPrimitive, MAX_SVG_CONTOUR_LEVELS, MIN_SVG_CONTOUR_LEVELS, SvgContourLayer,
+        SvgContourPath, SvgRectCell, TEXTURE_SIZE_PRESETS, append_last_plot_primitives,
+        clear_last_plot_primitives, copy_svg_to_clipboard, copy_svg_to_clipboard_with_callback,
+        decode_heightmap_16bit_png, decode_normal_map_16bit_png, encode_heightmap_16bit_png,
+        encode_normal_map_png, export_contour_layers_svg, export_primitives_svg, export_raster_gif,
+        export_raster_svg, export_rect_grid_svg, get_last_plot_primitives,
+        has_finite_shared_dataset_points, render_primitives_image,
+        resample_scalar_field_borderless, sanitize_texture_size, shared_datasets_to_primitives,
     },
     fit::{
         CustomEvaluatorHandle, CustomFitCallback, CustomFitEvaluator, FitError, FitResult, FitType,

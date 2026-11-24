@@ -1,8 +1,9 @@
-//! Dataset (`CSV`, `JSON`) and text-clipboard export serialization for [`super::SimulationFramework`].
+//! Tabular 2D and 3D dataset (`CSV`, `JSON`) export serialization for [`super::SimulationFramework`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::*;
+use eframe::egui;
 
 impl SimulationFramework {
     /// Resolves export datasets for the active tool, falling back to `current_valid_plot_datasets`

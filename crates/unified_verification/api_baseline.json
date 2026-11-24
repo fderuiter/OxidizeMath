@@ -4624,7 +4624,13 @@
   ],
   "crates/domain_biology/src/biology/diffusion/fd2d/boundary.rs": [
     {
+      "signature": "pub enum BoundaryMode"
+    },
+    {
       "signature": "pub struct NeumannBoundary"
+    },
+    {
+      "signature": "pub struct PeriodicBoundary"
     },
     {
       "signature": "pub trait BoundaryStrategy"
@@ -4722,7 +4728,16 @@
   ],
   "crates/domain_biology/src/biology/diffusion/fd2d/mod.rs": [
     {
+      "signature": "impl FiniteDifference2D { pub fn is_periodic (& self) -> bool }"
+    },
+    {
       "signature": "impl FiniteDifference2D { pub fn new (_ : Dimension , _ : Dimension , _ : StepSize , _ : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl FiniteDifference2D { pub fn new_periodic (_ : Dimension , _ : Dimension , _ : StepSize , _ : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl FiniteDifference2D { pub fn with_boundary_mode (self , _ : BoundaryMode) -> Self }"
     },
     {
       "signature": "impl FiniteDifference2D { pub fn with_mask (self) -> MaskedFiniteDifference2D }"
@@ -4828,6 +4843,15 @@
     },
     {
       "signature": "pub use fd2d :: ReactionCellRole"
+    },
+    {
+      "signature": "pub use fd2d :: boundary :: BoundaryMode"
+    },
+    {
+      "signature": "pub use fd2d :: boundary :: NeumannBoundary"
+    },
+    {
+      "signature": "pub use fd2d :: boundary :: PeriodicBoundary"
     },
     {
       "signature": "pub use fd3d :: FiniteDifference3D"
@@ -7550,6 +7574,12 @@
     },
     {
       "signature": "pub fn escape_time_mandelbrot (_ : Complex < f64 > , _ : u32) -> u32"
+    },
+    {
+      "signature": "pub fn smooth_escape_julia (_ : Complex < f64 > , _ : Complex < f64 > , _ : u32) -> f64"
+    },
+    {
+      "signature": "pub fn smooth_escape_mandelbrot (_ : Complex < f64 > , _ : u32) -> f64"
     }
   ],
   "crates/domain_physics/src/physics/chaos/henon_heiles.rs": [
@@ -10741,6 +10771,41 @@
       "signature": "pub fn glsl_colormap_library () -> String"
     }
   ],
+  "crates/math_commons/src/math_kernel/marching_squares.rs": [
+    {
+      "signature": "impl MarchingSquares { pub fn extract_at_thresholds (_ : & ScalarField2D , _ : & [f64]) -> Vec < ContourLevel > }"
+    },
+    {
+      "signature": "impl MarchingSquares { pub fn extract_levels (_ : & ScalarField2D , _ : usize) -> Vec < ContourLevel > }"
+    },
+    {
+      "signature": "impl ScalarField2D { pub fn domain_extents (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl ScalarField2D { pub fn finite_min_max (& self) -> Option < (f64 , f64) > }"
+    },
+    {
+      "signature": "impl ScalarField2D { pub fn new (_ : usize , _ : usize , _ : Vec < f64 > , _ : bool , _ : usize ,) -> Self }"
+    },
+    {
+      "signature": "impl ScalarField2D { pub fn sample_grid (& self , _ : usize , _ : usize) -> f64 }"
+    },
+    {
+      "signature": "pub const MAX_CONTOUR_LEVELS : usize"
+    },
+    {
+      "signature": "pub struct ContourLevel"
+    },
+    {
+      "signature": "pub struct ContourPath"
+    },
+    {
+      "signature": "pub struct MarchingSquares"
+    },
+    {
+      "signature": "pub struct ScalarField2D"
+    }
+  ],
   "crates/math_commons/src/math_kernel/types.rs": [
     {
       "signature": "pub fn flatten_2d_index (_ : usize , _ : usize , _ : usize) -> usize"
@@ -12922,9 +12987,6 @@
     },
     {
       "signature": "impl FusedStencilStepper { pub fn step_2d_coupled_neumann < const N : usize , F > (& self , _ : (usize , usize) , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators ,) -> [f64 ; N] , }"
-    },
-    {
-      "signature": "impl FusedStencilStepper { pub fn step_3d_coupled_neumann < const N : usize , F > (& self , _ : (usize , usize , usize) , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , StencilNeighbors3D < N > , & StencilOperators) -> [f64 ; N] , }"
     },
     {
       "signature": "impl FusedStencilStepper { pub fn try_new (_ : StepSize) -> Result < Self , MathError > }"

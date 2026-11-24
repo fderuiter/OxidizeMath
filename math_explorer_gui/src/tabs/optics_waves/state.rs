@@ -107,3 +107,148 @@ impl OpticsWaveToolState {
         })
     }
 }
+
+impl super::tool::OpticsWaveTool {
+    pub(super) fn build_export_raster_image(&self) -> Option<eframe::egui::ColorImage> {
+        use super::runner::{render_wavefield_image, OpticsWaveRunner, WaveRenderInput};
+        use crate::async_sim::SimulationRunner;
+        use eframe::egui::ColorImage;
+        use std::sync::Arc;
+
+        if let Some((w, h, ref px)) = self.stepped_pixels {
+            if w > 0 && h > 0 && px.len() == w * h {
+                return Some(ColorImage {
+                    size: [w, h],
+                    pixels: px.clone(),
+                    ..Default::default()
+                });
+            }
+        }
+        if let Some(ref frame) = self.latest_frame {
+            let (show_irradiance, high_contrast) = {
+                let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+                (p.show_irradiance, p.high_contrast)
+            };
+            if frame.field.len() == self.grid_size * self.grid_size {
+                return Some(render_wavefield_image(WaveRenderInput {
+                    field: &frame.field,
+                    irradiance: &frame.irradiance,
+                    refractive_index: &frame.refractive_index,
+                    obstacle: &frame.obstacle,
+                    width: self.grid_size,
+                    height: self.grid_size,
+                    show_irradiance,
+                    high_contrast,
+                }));
+            }
+        }
+        if self.pixels.len() == self.grid_size * self.grid_size && !self.pixels.is_empty() {
+            return Some(ColorImage {
+                size: [self.grid_size, self.grid_size],
+                pixels: self.pixels.clone(),
+                ..Default::default()
+            });
+        }
+        let mut preview = OpticsWaveRunner::new(Arc::clone(&self.params), self.grid_size);
+        preview.step();
+        let snap = preview.get_snapshot();
+        let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
+        Some(ColorImage {
+            size: [snap.width, snap.height],
+            pixels: px.clone(),
+            ..Default::default()
+        })
+    }
+
+    pub(super) fn build_export_scalar_field(
+        &self,
+    ) -> Option<math_commons::math_kernel::marching_squares::ScalarField2D> {
+        use super::runner::{OpticsFrameData, OpticsWaveRunner};
+        use crate::async_sim::SimulationRunner;
+        use math_commons::math_kernel::marching_squares::ScalarField2D;
+        use std::sync::Arc;
+
+        let show_irradiance = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .show_irradiance;
+        if let Some((w, h, ref vals)) = self.stepped_scalar {
+            if w > 0 && h > 0 && vals.len() == w * h {
+                return Some(ScalarField2D {
+                    width: w,
+                    height: h,
+                    values: vals.clone(),
+                    periodic: false,
+                    default_levels: 8,
+                });
+            }
+        }
+        let from_frame = |f: &OpticsFrameData| {
+            if show_irradiance {
+                f.irradiance.clone()
+            } else {
+                f.field.clone()
+            }
+        };
+        if let Some(ref frame) = self.latest_frame {
+            let values = from_frame(frame);
+            if values.len() == self.grid_size * self.grid_size && self.grid_size > 0 {
+                return Some(ScalarField2D {
+                    width: self.grid_size,
+                    height: self.grid_size,
+                    values,
+                    periodic: false,
+                    default_levels: 8,
+                });
+            }
+        }
+        let mut preview = OpticsWaveRunner::new(Arc::clone(&self.params), self.grid_size);
+        preview.step();
+        let snap = preview.get_snapshot();
+        let frame = snap
+            .structured_data
+            .as_ref()
+            .and_then(|d| d.downcast_ref::<OpticsFrameData>())?;
+        Some(ScalarField2D {
+            width: snap.width,
+            height: snap.height,
+            values: from_frame(frame),
+            periodic: false,
+            default_levels: 8,
+        })
+    }
+
+    pub(super) fn advance_optics_step(&mut self) {
+        use super::runner::{OpticsFrameData, OpticsWaveRunner};
+        use crate::async_sim::SimulationRunner;
+        use std::sync::Arc;
+
+        let show_irradiance = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .show_irradiance;
+        let runner = self
+            .step_runner
+            .get_or_insert_with(|| OpticsWaveRunner::new(Arc::clone(&self.params), self.grid_size));
+        for _ in 0..4 {
+            runner.step();
+        }
+        let snap = runner.get_snapshot();
+        let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
+        self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
+        if let Some(frame) = snap
+            .structured_data
+            .as_ref()
+            .and_then(|d| d.downcast_ref::<OpticsFrameData>())
+        {
+            let vals = if show_irradiance {
+                frame.irradiance.clone()
+            } else {
+                frame.field.clone()
+            };
+            self.stepped_scalar = Some((snap.width, snap.height, vals));
+        }
+    }
+}

@@ -19,6 +19,7 @@ pub mod fd3d;
 pub mod laplace_beltrami;
 
 pub use fd1d::FiniteDifference1D;
+pub use fd2d::boundary::{BoundaryMode, NeumannBoundary, PeriodicBoundary};
 pub use fd2d::{CellMask2D, FiniteDifference2D, MaskedFiniteDifference2D, ReactionCellRole};
 pub use fd3d::FiniteDifference3D;
 pub use laplace_beltrami::LaplaceBeltramiDiffusion2D;

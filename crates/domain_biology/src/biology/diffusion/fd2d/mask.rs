@@ -257,6 +257,16 @@ impl MaskedFiniteDifference2D {
             slice[nb_idx]
         }
     }
+
+    #[inline]
+    #[verified_engine::verified]
+    fn axis_neighbors(pos: usize, len: usize, periodic: bool) -> (usize, usize) {
+        if periodic {
+            ((pos + len - 1) % len, (pos + 1) % len)
+        } else {
+            (pos.saturating_sub(1), (pos + 1).min(len - 1))
+        }
+    }
 }
 
 impl DiffusionModel for MaskedFiniteDifference2D {
@@ -271,23 +281,25 @@ impl DiffusionModel for MaskedFiniteDifference2D {
         let inv_dx_sq = 1.0 / (*self.base.geometry.dx() * *self.base.geometry.dx());
         let inv_dy_sq = 1.0 / (*self.base.geometry.dy() * *self.base.geometry.dy());
 
+        let periodic = self.base.is_periodic();
+
         for (s, &coeff) in coeffs.iter().enumerate().take(state.num_species()) {
             let src = state.species(s);
             let dst = out.species_mut(s);
             let cx = coeff * inv_dx_sq;
             let cy = coeff * inv_dy_sq;
             for y in 0..h {
-                let y_u = y.saturating_sub(1);
-                let y_d = (y + 1).min(h - 1);
+                let (y_u, y_d) = Self::axis_neighbors(y, h, periodic);
                 for x in 0..w {
                     let idx = y * w + x;
                     if self.mask.roles[idx] == ReactionCellRole::ZeroFluxWall as u8 {
                         dst[idx] = 0.0;
                         continue;
                     }
+                    let (x_l, x_r) = Self::axis_neighbors(x, w, periodic);
                     let u_c = src[idx];
-                    let u_l = self.neighbor_val(src, u_c, y * w + x.saturating_sub(1));
-                    let u_r = self.neighbor_val(src, u_c, y * w + (x + 1).min(w - 1));
+                    let u_l = self.neighbor_val(src, u_c, y * w + x_l);
+                    let u_r = self.neighbor_val(src, u_c, y * w + x_r);
                     let u_u = self.neighbor_val(src, u_c, y_u * w + x);
                     let u_d = self.neighbor_val(src, u_c, y_d * w + x);
                     dst[idx] = (u_l + u_r - 2.0 * u_c) * cx + (u_u + u_d - 2.0 * u_c) * cy;
@@ -324,9 +336,10 @@ impl<const N: usize> SpatialDiffusion<N> for MaskedFiniteDifference2D {
         let inv_dx_sq = 1.0 / (*self.base.geometry.dx() * *self.base.geometry.dx());
         let inv_dy_sq = 1.0 / (*self.base.geometry.dy() * *self.base.geometry.dy());
 
+        let periodic = self.base.is_periodic();
+
         for y in 0..h {
-            let y_u = y.saturating_sub(1);
-            let y_d = (y + 1).min(h - 1);
+            let (y_u, y_d) = Self::axis_neighbors(y, h, periodic);
             for x in 0..w {
                 let idx = y * w + x;
                 let role = ReactionCellRole::from_u8(self.mask.roles[idx]);
@@ -354,6 +367,7 @@ impl<const N: usize> SpatialDiffusion<N> for MaskedFiniteDifference2D {
                         }
                     }
                     ReactionCellRole::Free => {
+                        let (x_l, x_r) = Self::axis_neighbors(x, w, periodic);
                         let mut curr = [0.0; N];
                         for s in 0..N {
                             curr[s] = state[s][idx];
@@ -361,8 +375,8 @@ impl<const N: usize> SpatialDiffusion<N> for MaskedFiniteDifference2D {
                         let rates = kinetics.reaction(curr);
                         for s in 0..N {
                             let u_c = curr[s];
-                            let u_l = self.neighbor_val(state[s], u_c, y * w + x.saturating_sub(1));
-                            let u_r = self.neighbor_val(state[s], u_c, y * w + (x + 1).min(w - 1));
+                            let u_l = self.neighbor_val(state[s], u_c, y * w + x_l);
+                            let u_r = self.neighbor_val(state[s], u_c, y * w + x_r);
                             let u_u = self.neighbor_val(state[s], u_c, y_u * w + x);
                             let u_d = self.neighbor_val(state[s], u_c, y_d * w + x);
                             let d_s = coeffs[s].max(0.0);
@@ -394,18 +408,19 @@ impl<const N: usize> SpatialDiffusion<N> for MaskedFiniteDifference2D {
         let h = *self.base.geometry.height;
         let inv_dx_sq = 1.0 / (*self.base.geometry.dx() * *self.base.geometry.dx());
         let inv_dy_sq = 1.0 / (*self.base.geometry.dy() * *self.base.geometry.dy());
+        let periodic = self.base.is_periodic();
         for y in 0..h {
-            let y_u = y.saturating_sub(1);
-            let y_d = (y + 1).min(h - 1);
+            let (y_u, y_d) = Self::axis_neighbors(y, h, periodic);
             for x in 0..w {
                 let idx = y * w + x;
                 let mut curr = [0.0; N];
                 let mut diffs = [0.0; N];
                 if self.mask.roles[idx] != ReactionCellRole::ZeroFluxWall as u8 {
+                    let (x_l, x_r) = Self::axis_neighbors(x, w, periodic);
                     for s in 0..N {
                         let u_c = state[s][idx];
-                        let u_l = self.neighbor_val(state[s], u_c, y * w + x.saturating_sub(1));
-                        let u_r = self.neighbor_val(state[s], u_c, y * w + (x + 1).min(w - 1));
+                        let u_l = self.neighbor_val(state[s], u_c, y * w + x_l);
+                        let u_r = self.neighbor_val(state[s], u_c, y * w + x_r);
                         let u_u = self.neighbor_val(state[s], u_c, y_u * w + x);
                         let u_d = self.neighbor_val(state[s], u_c, y_d * w + x);
                         curr[s] = u_c;

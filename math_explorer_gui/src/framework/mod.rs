@@ -39,6 +39,9 @@ mod export_queue_tests;
 pub(crate) mod export_shader;
 #[cfg(test)]
 mod export_shader_tests;
+mod export_spatial;
+#[cfg(test)]
+mod export_spatial_tests;
 pub mod export_types;
 mod export_ui;
 #[cfg(test)]
@@ -159,27 +162,16 @@ pub trait InteractiveTool {
 
     /// Show the tool inside a scoped parent `egui::Ui` (supporting multi-pane layouts on a single root `Context`).
     ///
-    /// # Accessibility Requirements for Custom `show_inside` Overrides
-    ///
-    /// - Allocate custom painter regions with [`egui::Sense::focusable_noninteractive`], [`egui::Sense::click`],
-    ///   or [`egui::Sense::click_and_drag`] instead of `Sense::hover()` so `Tab` traversal reaches the visualization.
-    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))` so `AccessKit`
-    ///   exposes `Role::Image` and non-empty alternative text.
-    /// - Populate `AccessKit` metadata via `crate::accessibility::register_canvas_accessibility` and draw a
-    ///   high-contrast focus ring when `response.has_focus()`.
-    /// - When consuming arrow keys, set `EventFilter { tab: false, horizontal_arrows: true, vertical_arrows: true, escape: false }`
-    ///   strictly while `response.has_focus()` so `Tab` and `Shift+Tab` never trap keyboard users.
+    /// Custom `show_inside` implementations must use focusable `Sense` modes, `egui::Image::alt_text`,
+    /// `register_canvas_accessibility` with a focus ring, and non-trapping `EventFilter { tab: false, .. }`.
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         pane_scope::render_default_tool_inside(self, ui);
     }
 
     /// Optional: UI rendering for the tool's specific side-panel controls.
     fn show_ui(&mut self, _ui: &mut egui::Ui) {}
-
     /// Optional: Context-based drawing.
     fn draw(&mut self, _ui: &mut egui::Ui, _response: &egui::Response, _painter: &egui::Painter) {}
-
-    // Normalized event hooks
     #[allow(missing_docs)]
     fn on_hover(&mut self, _ctx: &InteractionContext) {}
     #[allow(missing_docs)]
@@ -197,45 +189,36 @@ pub trait InteractiveTool {
     fn state_revision(&self) -> u64 {
         0
     }
-
     /// Parameter-only revision counter for live URL synchronization (defaults to [`Self::state_revision`]).
     fn url_state_revision(&self) -> u64 {
         self.state_revision()
     }
-
     /// Returns the interactive canvas `Id` when this tool owns non-text canvas focus.
     fn focused_canvas_id(&self) -> Option<egui::Id> {
         None
     }
-
     /// Direct numeric parameter finiteness hook without JSON serialization.
     fn has_finite_parameters(&self) -> bool {
         true
     }
-
     /// Named scalar observables exposed to the Challenge HUD and `math_commons::ast` evaluator.
     fn observables(&self) -> Vec<(&'static str, f64)> {
         Vec::new()
     }
-
     /// Synchronizes declarative guided story or challenge callout pins onto the tool's plot.
     fn sync_callouts(&mut self, _callouts: &[CalloutSpec]) {}
-
     /// Candidate `(x_key, y_key)` parameter pairs for the framework-hosted 2D parameter atlas.
     fn atlas_axis_pairs(&self) -> &'static [(&'static str, &'static str)] {
         &[]
     }
-
     /// Current `(x_val, y_val)` coordinates of the tool on the selected `axis_keys` plane.
     fn active_atlas_coords(&self, _axis_keys: (&'static str, &'static str)) -> (f64, f64) {
         (0.0, 0.0)
     }
-
     /// Hashable signature of non-axis context parameters that invalidate cached atlas slices.
     fn atlas_context_signature(&self, _axis_keys: (&'static str, &'static str)) -> u64 {
         self.state_revision()
     }
-
     /// Builds a zero-allocation [`crate::async_sim::atlas::RegimeCartographer`] for `axis_keys`.
     fn build_atlas_cartographer(
         &self,
@@ -243,7 +226,6 @@ pub trait InteractiveTool {
     ) -> Option<std::sync::Arc<dyn crate::async_sim::atlas::RegimeCartographer>> {
         None
     }
-
     /// Applies an interactive click or keyboard teleport event from the framework-hosted 2D atlas.
     fn apply_atlas_teleport(&mut self, _ev: crate::async_sim::atlas::AtlasTeleportEvent) {}
 
@@ -354,8 +336,33 @@ pub trait InteractiveTool {
         egui_plot::get_last_plot_primitives()
     }
 
-    /// Optional hook for texture-backed tools to expose their rendered 2D raster field for PNG, SVG, and GIF exports.
+    /// Optional hook for texture-backed tools to expose their rendered 2D raster field for PNG and GIF exports.
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
+        None
+    }
+
+    /// Optional hook for 2D spatial tools to expose continuous or lattice scalar fields for Marching Squares contours and 16-bit textures.
+    fn export_scalar_field(
+        &self,
+    ) -> Option<math_commons::math_kernel::marching_squares::ScalarField2D> {
+        None
+    }
+
+    /// Optional resolution-aware scalar-field hook used when baking borderless power-of-two 16-bit heightmaps or normal maps.
+    fn export_scalar_field_at(
+        &self,
+        _width: usize,
+        _height: usize,
+    ) -> Option<math_commons::math_kernel::marching_squares::ScalarField2D> {
+        self.export_scalar_field()
+    }
+
+    /// Optional hook for discrete lattice or matrix tools to serialize standalone vector `<path>` or `<rect>` SVG documents.
+    fn export_vector_svg(
+        &self,
+        _options: &egui_plot::export::ExportOptions,
+        _contour_levels: usize,
+    ) -> Option<Result<String, String>> {
         None
     }
 
@@ -440,6 +447,9 @@ pub struct SimulationFramework {
     pub export_bg_dark: bool,
     pub export_gif_fps: u32,
     pub export_gif_frames: u32,
+    pub export_contour_levels: usize,
+    pub export_texture_size: u32,
+    pub export_normal_strength: f32,
     pub export_status_message: Option<String>,
     pub export_status_severity: ExportStatusSeverity,
     pub domain: String,

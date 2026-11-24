@@ -108,6 +108,25 @@ fn test_custom_fractal_url_roundtrip() {
     assert_eq!(restored.mode, FractalMode::CustomMandelbrot);
     assert_eq!(restored.math_input.raw_text, "a * z^3 + c");
     assert_eq!(restored.math_input.params_map(), pmap);
+
+    let field = restored
+        .export_scalar_field_at(64, 64)
+        .expect("custom fractal scalar field");
+    assert_eq!((field.width, field.height), (64, 64));
+    assert!(field.values.iter().all(|v| v.is_finite()));
+
+    let job = CompiledFractalJob::from_bar(&restored.math_input);
+    let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let ((p_inside, p_outside), _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+        (
+            job.smooth_escape(Complex::new(0.0, 0.0), Complex::new(0.1, 0.1), 100),
+            job.smooth_escape(Complex::new(0.0, 0.0), Complex::new(1.8, 1.2), 100),
+        )
+    });
+    assert!((p_inside - 100.0).abs() < 1e-12);
+    assert!(p_outside > 0.0 && p_outside < 10.0);
 }
 
 #[test]

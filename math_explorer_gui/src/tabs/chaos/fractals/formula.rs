@@ -70,6 +70,36 @@ impl CompiledFractalJob {
         iter
     }
 
+    /// Evaluates continuous escape potential on stack buffers for Marching Squares contours and 16-bit textures.
+    #[inline]
+    #[must_use]
+    pub fn smooth_escape(&self, z0: Complex<f64>, c: Complex<f64>, max_iter: u32) -> f64 {
+        let mut vars = [Complex::new(0.0, 0.0); 2 + MAX_SYNTHESIZED_PARAMS];
+        vars[0] = z0;
+        vars[1] = c;
+        for i in 0..self.param_len {
+            vars[2 + i] = Complex::new(self.params[i], 0.0);
+        }
+        let total_vars = 2 + self.param_len;
+        let max_pot = f64::from(max_iter);
+        let mut iter = 0_u32;
+        while iter < max_iter {
+            let z = vars[0];
+            let norm_sq = z.norm_sqr();
+            if !z.re.is_finite() || !z.im.is_finite() || !norm_sq.is_finite() {
+                return f64::from(iter).clamp(0.0, max_pot);
+            }
+            if norm_sq > 256.0 {
+                let log_zn = norm_sq.ln() * 0.5;
+                let frac = (log_zn.ln() / std::f64::consts::LN_2).clamp(0.0, 8.0);
+                return (f64::from(iter) + 1.0 - frac).clamp(0.0, max_pot);
+            }
+            vars[0] = self.compiled.eval_complex_slice(&vars[..total_vars]);
+            iter += 1;
+        }
+        max_pot
+    }
+
     /// Traces the critical orbit starting at $z_0 = 0$ for parameter `c` into `out` without heap allocation.
     #[inline]
     pub fn trace_critical_orbit(&self, c: Complex<f64>, out: &mut [Complex<f64>]) -> usize {

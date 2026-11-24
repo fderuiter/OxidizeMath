@@ -3,6 +3,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+mod export;
 pub mod playhead;
 
 use std::hash::{Hash, Hasher};
@@ -199,7 +200,7 @@ impl InteractiveTool for PrimeSpiralWidget {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::raster_only()
+        ExportCapabilities::discrete_lattice()
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
@@ -208,6 +209,20 @@ impl InteractiveTool for PrimeSpiralWidget {
             return Some(ColorImage::new([size, size], self.pixels_buffer.clone()));
         }
         Some(Self::build_spiral_image(size))
+    }
+
+    fn export_scalar_field(
+        &self,
+    ) -> Option<math_commons::math_kernel::marching_squares::ScalarField2D> {
+        Some(Self::build_ulam_scalar_field(self.grid_size.max(2)))
+    }
+
+    fn export_vector_svg(
+        &self,
+        options: &egui_plot::export::ExportOptions,
+        _contour_levels: usize,
+    ) -> Option<Result<String, String>> {
+        Some(Self::build_ulam_vector_svg(self.grid_size.max(2), options))
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {

@@ -1,14 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::presets::OpticsWaveTheory;
-use super::runner::{
-    render_wavefield_image, OpticsFrameData, OpticsSharedParams, OpticsWaveRunner, WaveRenderInput,
-};
+use super::runner::{OpticsFrameData, OpticsSharedParams, OpticsWaveRunner};
 use super::state::{default_grid_size, OpticsWaveToolState};
 use crate::async_sim::{BackgroundWorker, SimCommand, SimWorkerState, SimulationRunner};
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use eframe::egui::{self, ColorImage};
+use math_commons::math_kernel::marching_squares::ScalarField2D;
 use scientific_metadata::theory::TheoryDescribable;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -25,6 +24,7 @@ pub struct OpticsWaveTool {
     pub(crate) latest_frame: Option<OpticsFrameData>,
     pub(crate) dirty: bool,
     pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
+    pub(crate) stepped_scalar: Option<(usize, usize, Vec<f64>)>,
     pub(crate) step_runner: Option<OpticsWaveRunner>,
     pub(crate) pending_initial_start: bool,
     pub(crate) last_high_contrast: Option<bool>,
@@ -47,6 +47,7 @@ impl Default for OpticsWaveTool {
             latest_frame: None,
             dirty: true,
             stepped_pixels: None,
+            stepped_scalar: None,
             step_runner: None,
             pending_initial_start: true,
             last_high_contrast: None,
@@ -65,6 +66,7 @@ impl OpticsWaveTool {
         self.pixels.clear();
         self.latest_frame = None;
         self.stepped_pixels = None;
+        self.stepped_scalar = None;
         self.step_runner = None;
         self.pending_initial_start = false;
         self.dirty = true;
@@ -90,6 +92,7 @@ impl OpticsWaveTool {
         self.pixels.clear();
         self.latest_frame = None;
         self.stepped_pixels = None;
+        self.stepped_scalar = None;
         self.step_runner = None;
         self.dirty = true;
         if was_running {
@@ -222,65 +225,19 @@ impl InteractiveTool for OpticsWaveTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::raster_only()
+        ExportCapabilities::scalar_field()
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
-        if let Some((w, h, ref px)) = self.stepped_pixels {
-            if w > 0 && h > 0 && px.len() == w * h {
-                return Some(ColorImage {
-                    size: [w, h],
-                    pixels: px.clone(),
-                    ..Default::default()
-                });
-            }
-        }
-        if let Some(ref frame) = self.latest_frame {
-            let (show_irradiance, high_contrast) = {
-                let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-                (p.show_irradiance, p.high_contrast)
-            };
-            if frame.field.len() == self.grid_size * self.grid_size {
-                return Some(render_wavefield_image(WaveRenderInput {
-                    field: &frame.field,
-                    irradiance: &frame.irradiance,
-                    refractive_index: &frame.refractive_index,
-                    obstacle: &frame.obstacle,
-                    width: self.grid_size,
-                    height: self.grid_size,
-                    show_irradiance,
-                    high_contrast,
-                }));
-            }
-        }
-        if self.pixels.len() == self.grid_size * self.grid_size && !self.pixels.is_empty() {
-            return Some(ColorImage {
-                size: [self.grid_size, self.grid_size],
-                pixels: self.pixels.clone(),
-                ..Default::default()
-            });
-        }
-        let mut preview = OpticsWaveRunner::new(Arc::clone(&self.params), self.grid_size);
-        preview.step();
-        let snap = preview.get_snapshot();
-        let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
-        Some(ColorImage {
-            size: [snap.width, snap.height],
-            pixels: px.clone(),
-            ..Default::default()
-        })
+        self.build_export_raster_image()
+    }
+
+    fn export_scalar_field(&self) -> Option<ScalarField2D> {
+        self.build_export_scalar_field()
     }
 
     fn step_simulation(&mut self) {
-        let runner = self
-            .step_runner
-            .get_or_insert_with(|| OpticsWaveRunner::new(Arc::clone(&self.params), self.grid_size));
-        for _ in 0..4 {
-            runner.step();
-        }
-        let snap = runner.get_snapshot();
-        let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
-        self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
+        self.advance_optics_step();
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -364,6 +321,7 @@ impl InteractiveTool for OpticsWaveTool {
             self.pixels.clear();
             self.latest_frame = None;
             self.stepped_pixels = None;
+            self.stepped_scalar = None;
             self.step_runner = None;
             self.dirty = true;
         } else {

@@ -298,3 +298,42 @@ fn test_attention_maps_arrow_key_cursor_and_live_announcements() {
         "Tab must advance focus away from the heatmap"
     );
 }
+
+#[test]
+fn test_attention_maps_vector_rect_svg_and_scalar_field_exports() {
+    let mut tool = AttentionMapsTool::default();
+    tool.q_matrix[(0, 0)] = 2.2;
+    tool.k_matrix[(1, 2)] = -1.4;
+    tool.v_matrix[(2, 3)] = 1.8;
+    tool.recalculate();
+
+    let dark_opts = egui_plot::export::ExportOptions::default();
+    let dark_svg = tool
+        .export_attention_svg(&dark_opts)
+        .expect("dark vector SVG export should succeed");
+    assert!(dark_svg.contains("<svg"));
+    assert!(dark_svg.contains("<rect"));
+    assert!(!dark_svg.contains("data:image/png"));
+
+    // 4x4 weights + 4x4 output = 32 matrix cells (+ 1 background rect = 33 <rect tags)
+    let rect_count = dark_svg.matches("<rect ").count();
+    assert_eq!(rect_count, 33);
+
+    let light_opts = egui_plot::export::ExportOptions {
+        background_color: egui::Color32::WHITE,
+        ..Default::default()
+    };
+    let light_svg = tool
+        .export_attention_svg(&light_opts)
+        .expect("light vector SVG export should succeed");
+    assert_ne!(dark_svg, light_svg);
+    assert!(!light_svg.contains("data:image/png"));
+
+    let field = tool
+        .export_scalar_field()
+        .expect("attention weights scalar field");
+    assert_eq!(field.width, 4);
+    assert_eq!(field.height, 4);
+    assert!(!field.periodic);
+    assert_eq!(field.values.len(), 16);
+}

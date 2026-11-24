@@ -5,6 +5,7 @@ use crate::presets::MorphogenesisKineticsMode;
 use crate::tabs::chaos::attractors::{
     default_flow_bank, AttractorMode, AttractorRunner, AttractorSharedParams, CompiledFlowJob,
 };
+use crate::tabs::morphogenesis::presets::MorphogenesisBoundaryMode;
 use crate::tabs::morphogenesis::runner::{
     MorphoSnapshotData, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
 };
@@ -60,6 +61,7 @@ fn make_gray_scott_runner(
     }));
     let ks = Arc::new(RwLock::new(MorphogenesisKineticsState {
         mode: MorphogenesisKineticsMode::GrayScott,
+        boundary: MorphogenesisBoundaryMode::Neumann,
         f: 0.0367,
         k: 0.0649,
     }));

@@ -62,3 +62,47 @@ fn test_stencil_operator_evaluations() {
     let flux_neg_expected = (5.0 * (-2.0) - 3.0 * (-2.0)) / dx;
     assert!((flux_neg - flux_neg_expected).abs() < 1e-12);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_step_2d_coupled_periodic_mass_conservation_and_wrap() {
+    let (width, height) = (8_usize, 8_usize);
+    let n = width * height;
+    let stepper = FusedStencilStepper::new_2d(StepSize(1.0), StepSize(1.0));
+    let mut u = vec![0.0; n];
+    let mut v = vec![0.0; n];
+    u[flatten_2d_index(0, 0, width)] = 4.0;
+    v[flatten_2d_index(width - 1, height - 1, width)] = 2.0;
+
+    let initial_u_mass: f64 = u.iter().sum();
+    let initial_v_mass: f64 = v.iter().sum();
+    let mut next_u = vec![0.0; n];
+    let mut next_v = vec![0.0; n];
+
+    for _ in 0..20 {
+        stepper.step_2d_coupled_periodic(
+            (width, height),
+            [u.as_slice(), v.as_slice()],
+            [next_u.as_mut_slice(), next_v.as_mut_slice()],
+            0.1,
+            1.0,
+            |_i, curr, left, right, up, down, ops| {
+                [
+                    0.5 * ops.central_diff_2nd_2d(curr[0], left[0], right[0], up[0], down[0]),
+                    0.25 * ops.central_diff_2nd_2d(curr[1], left[1], right[1], up[1], down[1]),
+                ]
+            },
+        );
+        std::mem::swap(&mut u, &mut next_u);
+        std::mem::swap(&mut v, &mut next_v);
+    }
+
+    let final_u_mass: f64 = u.iter().sum();
+    let final_v_mass: f64 = v.iter().sum();
+    assert!((final_u_mass - initial_u_mass).abs() < 1e-12);
+    assert!((final_v_mass - initial_v_mass).abs() < 1e-12);
+    let left_wrap = u[flatten_2d_index(width - 1, 0, width)];
+    let right_inner = u[flatten_2d_index(1, 0, width)];
+    assert!((left_wrap - right_inner).abs() < 1e-12);
+    assert!(left_wrap > 0.0);
+}

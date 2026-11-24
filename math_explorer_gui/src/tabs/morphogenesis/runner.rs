@@ -7,7 +7,9 @@ use super::counterfactual::{
 };
 #[cfg(test)]
 pub use super::legacy_runner::MorphogenesisRunner;
+use super::presets::MorphogenesisBoundaryMode;
 pub(crate) use super::runner_twin::apply_uniform_noise;
+use super::runner_twin::{boundary_to_scalar, mode_to_scalar, scalar_to_boundary, scalar_to_mode};
 use super::sculpt::{apply_sculpt_sim_command, enforce_system_mask, overlay_cell_mask_colors};
 use super::MorphogenesisTool;
 use crate::app::ThemeMode;
@@ -57,11 +59,13 @@ impl ReactionKinetics<2> for MorphogenesisKineticsAdapter {
     }
 }
 
-/// Shared Gray-Scott mode and `(f, k)` parameters paired with [`MorphogenesisSharedParams`].
+/// Shared Gray-Scott mode, boundary condition, and `(f, k)` parameters paired with [`MorphogenesisSharedParams`].
 #[derive(Clone, Copy, Debug)]
 pub struct MorphogenesisKineticsState {
     /// Selected kinetics regime.
     pub mode: MorphogenesisKineticsMode,
+    /// Selected spatial boundary condition (`Neumann` or `Periodic`).
+    pub boundary: MorphogenesisBoundaryMode,
     /// Gray-Scott substrate feed rate `f`.
     pub f: f64,
     /// Gray-Scott autocatalyst kill rate `k`.
@@ -73,6 +77,7 @@ impl Default for MorphogenesisKineticsState {
         let gs = GrayScottKinetics::mitosis();
         Self {
             mode: MorphogenesisKineticsMode::Schnakenberg,
+            boundary: MorphogenesisBoundaryMode::Neumann,
             f: gs.f,
             k: gs.k,
         }
@@ -97,6 +102,21 @@ pub struct MorphogenesisSharedParams {
     pub theme_mode: ThemeMode,
     /// Active counterfactual spatial heatmap mode (`ActiveUb`, `SplitUaUb`, or `DifferenceAbs`).
     pub heatmap_mode: MorphogenesisHeatmapMode,
+}
+
+impl Default for MorphogenesisSharedParams {
+    fn default() -> Self {
+        Self {
+            a: 0.1,
+            b: 0.9,
+            d_u: 1.0,
+            d_v: 100.0,
+            dt: 0.05,
+            high_contrast: false,
+            theme_mode: ThemeMode::Dark,
+            heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
+        }
+    }
 }
 
 /// Multi-kinetics worker runner supporting [`SchnakenbergKinetics`], [`GrayScottKinetics`],
@@ -135,19 +155,8 @@ impl FiniteStateGuard for MorphogenesisKineticsRunner {
 }
 
 impl MorphogenesisKineticsRunner {
-    fn mode_to_scalar(mode: MorphogenesisKineticsMode) -> f64 {
-        match mode {
-            MorphogenesisKineticsMode::Schnakenberg => 0.0,
-            MorphogenesisKineticsMode::GrayScott => 1.0,
-        }
-    }
-
-    fn scalar_to_mode(tag: f64) -> MorphogenesisKineticsMode {
-        if tag >= 0.5 {
-            MorphogenesisKineticsMode::GrayScott
-        } else {
-            MorphogenesisKineticsMode::Schnakenberg
-        }
+    pub(crate) fn active_concentration_slice(&self) -> &[f64] {
+        active_morphogen_slice(&self.system)
     }
 
     pub(super) fn read_kinetics(&self) -> MorphogenesisKineticsState {
@@ -167,35 +176,33 @@ impl MorphogenesisKineticsRunner {
             (p.a, p.b, p.d_u, p.d_v, p.dt)
         };
         let ks = self.read_kinetics();
-        self.apply_explicit_params(ks.mode, a, b, ks.f, ks.k, d_u, d_v, dt)
+        self.apply_explicit_params(ks, a, b, d_u, d_v, dt)
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn apply_explicit_params(
         &mut self,
-        mode: MorphogenesisKineticsMode,
+        ks: MorphogenesisKineticsState,
         a: f64,
         b: f64,
-        f: f64,
-        k: f64,
         d_u: f64,
         d_v: f64,
         dt: f64,
     ) -> Option<f64> {
         if !a.is_finite()
             || !b.is_finite()
-            || !f.is_finite()
-            || !k.is_finite()
+            || !ks.f.is_finite()
+            || !ks.k.is_finite()
             || !d_u.is_finite()
             || !d_v.is_finite()
         {
             return None;
         }
-        self.system.kinetics.mode = mode;
+        self.system.diffusion.base.boundary_mode = ks.boundary.to_domain_mode();
+        self.system.kinetics.mode = ks.mode;
         self.system.kinetics.a = a;
         self.system.kinetics.b = b;
-        self.system.kinetics.f = f;
-        self.system.kinetics.k = k;
+        self.system.kinetics.f = ks.f;
+        self.system.kinetics.k = ks.k;
         self.system.diffusion_coeffs[0] = d_u;
         self.system.diffusion_coeffs[1] = d_v;
         if !self.has_counterfactual_twin()
@@ -212,8 +219,18 @@ impl MorphogenesisKineticsRunner {
             return None;
         }
         self.noise_amplitude = p[8];
-        let mode = Self::scalar_to_mode(p[0]);
-        self.apply_explicit_params(mode, p[1], p[2], p[3], p[4], p[5], p[6], p[7])
+        let boundary = p
+            .get(9)
+            .copied()
+            .map(scalar_to_boundary)
+            .unwrap_or_else(|| self.read_kinetics().boundary);
+        let ks = MorphogenesisKineticsState {
+            mode: scalar_to_mode(p[0]),
+            boundary,
+            f: p[3],
+            k: p[4],
+        };
+        self.apply_explicit_params(ks, p[1], p[2], p[5], p[6], p[7])
     }
 
     fn advance_grid_step(&mut self, dt: f64, noise_amp: f64) {
@@ -395,7 +412,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         let ks = self.read_kinetics();
         Some(CheckpointParams::scalars(&[
-            Self::mode_to_scalar(ks.mode),
+            mode_to_scalar(ks.mode),
             p.a,
             p.b,
             ks.f,
@@ -404,6 +421,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
             p.d_v,
             p.dt,
             self.noise_amplitude,
+            boundary_to_scalar(ks.boundary),
         ]))
     }
 

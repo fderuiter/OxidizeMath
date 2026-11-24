@@ -38,6 +38,7 @@ pub struct MorphogenesisTool {
     pub(crate) pixels: Vec<egui::Color32>,
     pub(crate) dirty: bool,
     pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
+    pub(crate) stepped_scalar: Option<(usize, usize, Vec<f64>)>,
     pub(crate) step_runner: Option<MorphogenesisKineticsRunner>,
     pub(crate) local_runner: MorphogenesisKineticsRunner,
     pub(crate) pending_initial_start: bool,
@@ -52,16 +53,7 @@ impl Default for MorphogenesisTool {
     fn default() -> Self {
         let width = 100;
         let height = 100;
-        let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams {
-            a: 0.1,
-            b: 0.9,
-            d_u: 1.0,
-            d_v: 100.0,
-            dt: 0.05,
-            high_contrast: false,
-            theme_mode: ThemeMode::Dark,
-            heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
-        }));
+        let params = Arc::new(std::sync::RwLock::new(MorphogenesisSharedParams::default()));
         let kinetics_state =
             Arc::new(std::sync::RwLock::new(MorphogenesisKineticsState::default()));
 
@@ -85,6 +77,7 @@ impl Default for MorphogenesisTool {
             pixels: Vec::new(),
             dirty: true,
             stepped_pixels: None,
+            stepped_scalar: None,
             step_runner: None,
             local_runner,
             pending_initial_start: true,
@@ -142,6 +135,7 @@ impl MorphogenesisTool {
         self.worker = BackgroundWorker::new(runner);
         self.branch_engine.clear();
         self.stepped_pixels = None;
+        self.stepped_scalar = None;
         self.step_runner = None;
         self.pending_initial_start = false;
         self.dirty = true;
@@ -166,6 +160,7 @@ impl MorphogenesisTool {
         self.worker
             .reset_or_respawn(|| Self::create_kinetics_runner(&params, &ks, &mask, width, height));
         self.stepped_pixels = None;
+        self.stepped_scalar = None;
         self.step_runner = None;
         self.pending_initial_start = false;
         self.dirty = true;
@@ -189,9 +184,13 @@ impl InteractiveTool for MorphogenesisTool {
 
     fn export_capabilities(&self) -> ExportCapabilities {
         if self.is_forked() {
-            ExportCapabilities::plot()
+            ExportCapabilities {
+                dataset: true,
+                dataset_disabled_reason: "",
+                ..ExportCapabilities::scalar_field()
+            }
         } else {
-            ExportCapabilities::raster_only()
+            ExportCapabilities::scalar_field()
         }
     }
 
@@ -200,11 +199,17 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
-        self.export_morpho_raster_image()
+        self.build_export_raster_image()
+    }
+
+    fn export_scalar_field(
+        &self,
+    ) -> Option<math_commons::math_kernel::marching_squares::ScalarField2D> {
+        self.build_export_scalar_field()
     }
 
     fn step_simulation(&mut self) {
-        self.advance_morpho_step();
+        self.step_simulation_offscreen();
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {
@@ -271,6 +276,7 @@ impl InteractiveTool for MorphogenesisTool {
                 .read()
                 .unwrap_or_else(|e| e.into_inner());
             ks.mode.hash(&mut h);
+            ks.boundary.hash(&mut h);
             ks.f.to_bits().hash(&mut h);
             ks.k.to_bits().hash(&mut h);
         }
@@ -299,12 +305,12 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let (kinetics_mode, f, k) = {
+        let (kinetics_mode, boundary, f, k) = {
             let ks = self
                 .kinetics_state
                 .read()
                 .unwrap_or_else(|e| e.into_inner());
-            (ks.mode, ks.f, ks.k)
+            (ks.mode, ks.boundary, ks.f, ks.k)
         };
         let (a, b, d_u, d_v, dt, heatmap_mode) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
@@ -335,6 +341,7 @@ impl InteractiveTool for MorphogenesisTool {
             width: self.width,
             height: self.height,
             kinetics_mode,
+            boundary,
             f,
             k,
             state: Some(self.worker.state()),
@@ -370,6 +377,7 @@ impl InteractiveTool for MorphogenesisTool {
                 .write()
                 .unwrap_or_else(|e| e.into_inner());
             ks.mode = parsed.kinetics_mode;
+            ks.boundary = parsed.boundary;
             ks.f = parsed.f;
             ks.k = parsed.k;
         }

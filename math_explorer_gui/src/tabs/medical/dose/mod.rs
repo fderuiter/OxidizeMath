@@ -22,6 +22,7 @@ use crate::framework::{
     InteractiveTool, SpatialBrushKit, ToolStateBounds,
 };
 use eframe::egui::{self, ColorImage};
+use math_commons::math_kernel::marching_squares::ScalarField2D;
 use math_explorer::physics::medical::dose::kernel::{DoseKernel, ExponentialKernel};
 use math_explorer::physics::medical::radar_gating::BeamState;
 
@@ -281,11 +282,19 @@ impl InteractiveTool for DoseCalculationTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::raster_only()
+        ExportCapabilities::scalar_field()
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
         Some(self.compute_dose_image_for_contrast(self.high_contrast))
+    }
+
+    fn export_scalar_field(&self) -> Option<ScalarField2D> {
+        Some(self.compute_dose_scalar_field(self.width.clamp(60, 256), self.height.clamp(60, 256)))
+    }
+
+    fn export_scalar_field_at(&self, width: usize, height: usize) -> Option<ScalarField2D> {
+        Some(self.compute_dose_scalar_field(width.clamp(16, 2048), height.clamp(16, 2048)))
     }
 
     fn state_bounds(&self) -> ToolStateBounds {
@@ -470,20 +479,5 @@ impl scientific_metadata::theory::TheoryDescribable for DoseCalculationTool {
                 "Radial dose attenuation and scattering decay coefficient beta".into(),
             ),
         ])
-    }
-}
-
-const STARTER_PRESET_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"Point-Source Dose Kernel","domain":"medical","timestamp":"2026-11-16T00:00:00Z"},"config":{"amplitude":2.5,"beta":0.6,"width":200,"height":200}}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "dose_calculation_starter",
-        title: "Point-Source Dose Kernel",
-        description: "K(r) = (A/r²)e^(-βr): 2D radial point-spread dose convolution heatmap.",
-        category: "Dosimetry",
-        icon: "🎯",
-        domain: "medical",
-        tool_name: Some("DoseCalculationTool"),
-        preset_generator: || STARTER_PRESET_JSON,
     }
 }

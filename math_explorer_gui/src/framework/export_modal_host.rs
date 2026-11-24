@@ -8,6 +8,9 @@ struct FrameworkExportSource<'a> {
     cached_tool_name: Option<&'static str>,
     cached_plot_datasets: &'a [(String, egui_plot::SharedPoints)],
     export_queue: &'a mut ExportQueue,
+    contour_levels: &'a mut usize,
+    texture_size: &'a mut u32,
+    normal_strength: &'a mut f32,
     gif_progress: Option<(usize, usize)>,
     cancel_gif_requested: &'a mut bool,
     status_color: egui::Color32,
@@ -68,14 +71,38 @@ impl egui_plot::export_modal::ExportDataSource for FrameworkExportSource<'_> {
         let (format, target) = match action {
             egui_plot::ExportModalAction::SavePng => (ExportFormat::Png, ExportTarget::File),
             egui_plot::ExportModalAction::SaveSvg => (ExportFormat::Svg, ExportTarget::File),
+            egui_plot::ExportModalAction::CopySvg => (ExportFormat::Svg, ExportTarget::Clipboard),
             egui_plot::ExportModalAction::SaveGif => (ExportFormat::Gif, ExportTarget::File),
             egui_plot::ExportModalAction::CopyClipboard => {
                 (ExportFormat::Png, ExportTarget::Clipboard)
+            }
+            egui_plot::ExportModalAction::SaveHeightmap16Png => {
+                (ExportFormat::Heightmap16Png, ExportTarget::File)
+            }
+            egui_plot::ExportModalAction::SaveNormalMapPng => {
+                (ExportFormat::NormalMapPng, ExportTarget::File)
             }
         };
         self.export_queue.push_target(format, target);
         self.ctx.request_repaint();
         true
+    }
+
+    fn spatial_bindings(&mut self) -> Option<egui_plot::SpatialExportBindings<'_>> {
+        let caps = self
+            .active_tool
+            .as_ref()
+            .map_or_else(ExportCapabilities::none, |tool| tool.export_capabilities());
+        if !caps.contour_controls && !caps.scalar_field {
+            return None;
+        }
+        Some(egui_plot::SpatialExportBindings {
+            contour_levels: self.contour_levels,
+            texture_size: self.texture_size,
+            normal_strength: self.normal_strength,
+            show_contour_controls: caps.contour_controls,
+            show_texture_controls: caps.scalar_field,
+        })
     }
 
     fn active_gif_progress(&self) -> Option<(usize, usize)> {
@@ -98,6 +125,9 @@ impl SimulationFramework {
             if let Some(custom_opts) = tool.export_figure_options() {
                 self.export_bg_dark = custom_opts.background_color != egui::Color32::WHITE;
                 self.export_options = custom_opts;
+            }
+            if let Some(field) = tool.export_scalar_field() {
+                self.export_contour_levels = field.default_levels.clamp(1, 16);
             }
         }
         self.show_export_modal = true;
@@ -165,6 +195,9 @@ impl SimulationFramework {
             cached_tool_name: self.sync_state.datasets_owner_tool,
             cached_plot_datasets: &self.current_valid_plot_datasets,
             export_queue: &mut self.export_queue,
+            contour_levels: &mut self.export_contour_levels,
+            texture_size: &mut self.export_texture_size,
+            normal_strength: &mut self.export_normal_strength,
             gif_progress,
             cancel_gif_requested: &mut cancel_gif_requested,
             status_color,

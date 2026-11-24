@@ -158,12 +158,12 @@ impl MorphogenesisTool {
     }
 
     pub(crate) fn reseed_gray_scott_if_washed_out(&mut self) -> bool {
-        let (f, k) = {
+        let (boundary, f, k) = {
             let ks = self
                 .kinetics_state
                 .read()
                 .unwrap_or_else(|e| e.into_inner());
-            (ks.f, ks.k)
+            (ks.boundary, ks.f, ks.k)
         };
         let (d_u, d_v, dt) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
@@ -173,6 +173,7 @@ impl MorphogenesisTool {
             return false;
         }
         if let Some(sr) = &mut self.step_runner {
+            sr.system.diffusion.base.boundary_mode = boundary.to_domain_mode();
             sr.system.kinetics.mode = MorphogenesisKineticsMode::GrayScott;
             sr.system.kinetics.f = f;
             sr.system.kinetics.k = k;
@@ -192,11 +193,13 @@ impl MorphogenesisTool {
         if self.is_forked() {
             return false;
         }
-        let mode = self
-            .kinetics_state
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .mode;
+        let (mode, boundary) = {
+            let ks = self
+                .kinetics_state
+                .read()
+                .unwrap_or_else(|e| e.into_inner());
+            (ks.mode, ks.boundary)
+        };
         if mode == MorphogenesisKineticsMode::GrayScott {
             return self.reseed_gray_scott_if_washed_out();
         }
@@ -208,6 +211,7 @@ impl MorphogenesisTool {
             return false;
         }
         if let Some(sr) = &mut self.step_runner {
+            sr.system.diffusion.base.boundary_mode = boundary.to_domain_mode();
             sr.system.kinetics.mode = MorphogenesisKineticsMode::Schnakenberg;
             sr.system.kinetics.a = a;
             sr.system.kinetics.b = b;

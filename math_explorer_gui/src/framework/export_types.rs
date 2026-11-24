@@ -37,6 +37,10 @@ pub struct ExportCapabilities {
     pub dataset: bool,
     /// Whether offscreen figure exports (`PNG`, `SVG`, `GIF`) are supported.
     pub figure: bool,
+    /// Whether borderless 16-bit heightmap and normal-map PNG exports are supported.
+    pub scalar_field: bool,
+    /// Whether Marching Squares contour-level controls (`1..=16`) apply to SVG figure exports.
+    pub contour_controls: bool,
     /// Whether parameterized LaTeX, Rust, and Python code exports (`.tex`, `.rs`, `.py`) are supported.
     pub code: bool,
     /// Whether watertight binary `.stl` 3D solid mesh export is supported.
@@ -83,6 +87,8 @@ impl ExportCapabilities {
         Self {
             dataset: true,
             figure: true,
+            scalar_field: false,
+            contour_controls: false,
             code: false,
             stl: false,
             ply: false,
@@ -112,12 +118,83 @@ impl ExportCapabilities {
         self
     }
 
+    /// Capability profile for 2D continuous scalar-field simulations supporting Marching Squares SVG contours and 16-bit textures.
+    #[must_use]
+    pub const fn scalar_field() -> Self {
+        Self {
+            dataset: false,
+            figure: true,
+            scalar_field: true,
+            contour_controls: true,
+            code: false,
+            stl: false,
+            ply: false,
+            obj: false,
+            shader: false,
+            dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool simulates a 2D spatial scalar field rather than tabular (X, Y) series.",
+            figure_disabled_reason: "",
+            code_disabled_reason: DEFAULT_CODE_DISABLED_REASON,
+            stl_disabled_reason: DEFAULT_STL_DISABLED,
+            ply_disabled_reason: DEFAULT_PLY_DISABLED,
+            obj_disabled_reason: DEFAULT_OBJ_DISABLED,
+            shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+        }
+    }
+
+    /// Capability profile for discrete 2D lattice tools supporting exact vector `<path>` SVGs and borderless 16-bit textures.
+    #[must_use]
+    pub const fn discrete_lattice() -> Self {
+        Self {
+            dataset: false,
+            figure: true,
+            scalar_field: true,
+            contour_controls: false,
+            code: false,
+            stl: false,
+            ply: false,
+            obj: false,
+            shader: false,
+            dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool renders a 2D discrete lattice rather than tabular (X, Y) series.",
+            figure_disabled_reason: "",
+            code_disabled_reason: DEFAULT_CODE_DISABLED_REASON,
+            stl_disabled_reason: DEFAULT_STL_DISABLED,
+            ply_disabled_reason: DEFAULT_PLY_DISABLED,
+            obj_disabled_reason: DEFAULT_OBJ_DISABLED,
+            shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+        }
+    }
+
+    /// Capability profile for 2D matrix heatmap tools emitting exact `<rect>` SVG geometry and borderless 16-bit textures.
+    #[must_use]
+    pub const fn vector_grid() -> Self {
+        Self {
+            dataset: false,
+            figure: true,
+            scalar_field: true,
+            contour_controls: false,
+            code: false,
+            stl: false,
+            ply: false,
+            obj: false,
+            shader: false,
+            dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool renders a 2D matrix heatmap rather than tabular (X, Y) series.",
+            figure_disabled_reason: "",
+            code_disabled_reason: DEFAULT_CODE_DISABLED_REASON,
+            stl_disabled_reason: DEFAULT_STL_DISABLED,
+            ply_disabled_reason: DEFAULT_PLY_DISABLED,
+            obj_disabled_reason: DEFAULT_OBJ_DISABLED,
+            shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+        }
+    }
+
     /// Capability profile for 2D raster/texture tools without tabular `(X, Y)` datasets.
     #[must_use]
     pub const fn raster_only() -> Self {
         Self {
             dataset: false,
             figure: true,
+            scalar_field: false,
+            contour_controls: false,
             code: false,
             stl: false,
             ply: false,
@@ -140,6 +217,8 @@ impl ExportCapabilities {
         Self {
             dataset: true,
             figure: false,
+            scalar_field: false,
+            contour_controls: false,
             code: false,
             stl: false,
             ply: false,
@@ -161,6 +240,8 @@ impl ExportCapabilities {
         Self {
             dataset: false,
             figure: false,
+            scalar_field: false,
+            contour_controls: false,
             code: false,
             stl: false,
             ply: false,

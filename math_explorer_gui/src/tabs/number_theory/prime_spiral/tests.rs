@@ -184,3 +184,27 @@ fn test_ulam_keyboard_navigation_and_role_meter_presence() {
     assert!(tool.focused_canvas_id().is_none());
     crate::audio::export_current_tool_wav("prime_spiral");
 }
+
+#[test]
+fn test_prime_spiral_discrete_lattice_and_vector_svg_export() {
+    let tool = PrimeSpiralWidget {
+        grid_size: 40,
+        ..Default::default()
+    };
+    let caps = tool.export_capabilities();
+    assert!(caps.scalar_field);
+    assert!(caps.figure);
+
+    let field = tool.export_scalar_field().expect("ulam scalar field");
+    assert_eq!(field.width, 40);
+    assert_eq!(field.height, 40);
+    assert_eq!(field.values.len(), 1600);
+    assert!(field.values.iter().any(|&v| (v - 1.0).abs() < 1e-12));
+
+    let svg = tool
+        .export_vector_svg(&egui_plot::export::ExportOptions::default(), 8)
+        .expect("ulam vector svg option")
+        .expect("ulam vector svg result");
+    assert!(svg.contains("<path "));
+    assert!(!svg.contains("<image "));
+}

@@ -164,6 +164,7 @@ fn test_replicator_preset_rejects_invalid_ode_and_simplex_bounds() {
         strategy_names: vec!["A".to_string(), "B".to_string()],
         symbolic_payoffs: None,
         symbolic_params: std::collections::BTreeMap::new(),
+        topology_source: crate::app::TopologySource::SharedBus,
     };
 
     for (dt, horizon) in [
@@ -215,7 +216,10 @@ fn test_checked_ode_step_count_bounds_and_step_caps() {
 
 #[test]
 fn test_morphogenesis_tool_state_envelope_roundtrip() {
-    use crate::tabs::morphogenesis::{atlas::default_morpho_atlas_axes, MorphogenesisToolState};
+    use crate::tabs::morphogenesis::{
+        atlas::default_morpho_atlas_axes, presets::MorphogenesisBoundaryMode,
+        MorphogenesisToolState,
+    };
 
     let config = MorphogenesisToolState {
         a: 0.14,
@@ -226,6 +230,7 @@ fn test_morphogenesis_tool_state_envelope_roundtrip() {
         width: 80,
         height: 80,
         kinetics_mode: MorphogenesisKineticsMode::Schnakenberg,
+        boundary: MorphogenesisBoundaryMode::Neumann,
         f: 0.0367,
         k: 0.0649,
         state: None,

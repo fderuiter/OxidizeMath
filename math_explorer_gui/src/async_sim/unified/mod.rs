@@ -303,6 +303,30 @@ pub trait UnifiedModel:
         false
     }
 
+    /// Whether this model exports a 2D scalar field for Marching Squares contours and 16-bit textures.
+    fn has_scalar_field() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+
+    /// Extracts a [`math_commons::math_kernel::marching_squares::ScalarField2D`] from `snapshot` when [`Self::has_scalar_field`] is `true`.
+    fn extract_scalar_field(
+        snapshot: &StateSnapshot,
+    ) -> Option<math_commons::math_kernel::marching_squares::ScalarField2D>
+    where
+        Self: Sized,
+    {
+        snapshot
+            .structured_data
+            .as_ref()
+            .and_then(|d| {
+                d.downcast_ref::<math_commons::math_kernel::marching_squares::ScalarField2D>()
+            })
+            .cloned()
+    }
+
     /// Whether this model supports interactive [`SpatialBrushKit`] sculpting and persistence.
     fn supports_spatial_brush() -> bool
     where

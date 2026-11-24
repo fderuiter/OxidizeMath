@@ -38,15 +38,16 @@ pub(crate) fn inspect_solver_solid_and_core(
     (n_solid, core_intact)
 }
 
-pub(crate) fn render_lbm_snapshot_pixels(
+pub(crate) fn render_lbm_snapshot_buffers(
     solver: &LatticeBoltzmannD2Q9<BgkCollision>,
     vorticity_buf: &[f64],
     display_vorticity: bool,
     high_contrast: bool,
-) -> (Vec<Color32>, f64) {
+) -> (Vec<Color32>, Vec<f64>, f64) {
     let width = solver.width();
     let height = solver.height();
     let mut pixels = vec![Color32::BLACK; width * height];
+    let mut scalar_values = vec![0.0_f64; width * height];
     let mut max_vort = 0.0_f64;
     let obs_color = if high_contrast {
         let rgb = ensure_dark_canvas_contrast([180, 180, 180]);
@@ -61,15 +62,19 @@ pub(crate) fn render_lbm_snapshot_pixels(
             let solver_idx = flatten_2d_index(x, solver_y, width);
             if solver.is_obstacle(x, solver_y) {
                 pixels[pixel_idx] = obs_color;
+                scalar_values[pixel_idx] = -0.01;
             } else {
                 let omega = vorticity_buf[solver_idx];
                 let safe_w = if omega.is_finite() { omega } else { 0.0 };
                 max_vort = max_vort.max(safe_w.abs());
                 let norm = if display_vorticity {
+                    scalar_values[pixel_idx] = safe_w;
                     (0.5 + safe_w * 12.0).clamp(0.0, 1.0)
                 } else {
                     let v = solver.get_velocity_magnitude(x, solver_y);
-                    (if v.is_finite() { v } else { 0.0 } * 1000.0 / 255.0).clamp(0.0, 1.0)
+                    let safe_v = if v.is_finite() { v } else { 0.0 };
+                    scalar_values[pixel_idx] = safe_v;
+                    (safe_v * 1000.0 / 255.0).clamp(0.0, 1.0)
                 };
                 let rgb = if high_contrast {
                     heatmap_color_high_contrast(norm)
@@ -80,7 +85,7 @@ pub(crate) fn render_lbm_snapshot_pixels(
             }
         }
     }
-    (pixels, max_vort)
+    (pixels, scalar_values, max_vort)
 }
 
 pub(crate) fn draw_aerodynamic_metrics(ui: &mut egui::Ui, snapshot: Option<&StateSnapshot>) {

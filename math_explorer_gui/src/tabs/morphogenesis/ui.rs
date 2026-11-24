@@ -1,9 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::counterfactual::{
-    render_morphogenesis_heatmap, MorphogenesisHeatmapMode, MorphogenesisSnapshotData,
-};
-use super::sculpt::{draw_morpho_sculpt_controls, overlay_cell_mask_colors};
+use super::counterfactual::MorphogenesisSnapshotData;
+use super::presets::MorphogenesisBoundaryMode;
+use super::sculpt::draw_morpho_sculpt_controls;
 use super::MorphogenesisTool;
 use crate::app::ThemeMode;
 use crate::async_sim::ui::{
@@ -17,59 +16,11 @@ use crate::framework::{
 };
 use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui;
-use eframe::egui::ColorImage;
 use egui_plot::{Plot, PlotImage, PlotPoint};
 use math_explorer::biology::morphogenesis::GrayScottKinetics;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 
 impl MorphogenesisTool {
-    fn render_snapshot_image(
-        &self,
-        theme: ThemeMode,
-        mode: MorphogenesisHeatmapMode,
-    ) -> Option<ColorImage> {
-        let num_pixels = self.width * self.height;
-        if let Some(snapshot) = self.worker.latest_snapshot() {
-            if let Some(data) = snapshot
-                .structured_data
-                .as_ref()
-                .and_then(|d| d.downcast_ref::<MorphogenesisSnapshotData>())
-                .filter(|d| {
-                    d.u_data.len() == num_pixels && d.step_count >= self.local_runner.step_count
-                })
-            {
-                let mut img = render_morphogenesis_heatmap(
-                    &data.u_data,
-                    data.u_a.as_deref(),
-                    self.width,
-                    self.height,
-                    mode,
-                    theme,
-                );
-                if mode == MorphogenesisHeatmapMode::ActiveUb && !data.mask_roles.is_empty() {
-                    overlay_cell_mask_colors(
-                        &mut img,
-                        &data.mask_roles,
-                        theme == ThemeMode::HighContrast,
-                    );
-                }
-                return Some(img);
-            }
-            if let Ok(px) = snapshot.pixels.try_read() {
-                if px.len() == num_pixels && !self.is_forked() {
-                    return Some(ColorImage {
-                        size: [self.width, self.height],
-                        pixels: px.clone(),
-                        ..Default::default()
-                    });
-                }
-            }
-            return None;
-        }
-        self.is_forked()
-            .then(|| self.render_current_heatmap_image())
-    }
-
     fn sync_texture_from_snapshot(&mut self, ctx: &egui::Context) {
         if !self.dirty && self.texture.is_some() {
             return;
@@ -126,6 +77,36 @@ impl MorphogenesisTool {
                 self.apply_gray_scott_preset(mitosis.f, mitosis.k);
             }
         });
+        let mut boundary_changed = false;
+        {
+            let mut ks = self
+                .kinetics_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Boundary:");
+                boundary_changed |= ui
+                    .selectable_value(
+                        &mut ks.boundary,
+                        MorphogenesisBoundaryMode::Neumann,
+                        "Neumann",
+                    )
+                    .changed();
+                boundary_changed |= ui
+                    .selectable_value(
+                        &mut ks.boundary,
+                        MorphogenesisBoundaryMode::Periodic,
+                        "Periodic",
+                    )
+                    .changed();
+            });
+        }
+        if boundary_changed {
+            self.stepped_pixels = None;
+            self.stepped_scalar = None;
+            self.invalidate_scalar_field_cache();
+            self.dirty = true;
+        }
     }
 
     fn stabilize_cfl_step(&mut self, ctx: &egui::Context, min_dt: f64, max_dt: f64) {

@@ -3,6 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::counterfactual::{active_morphogen_slice, MorphogenesisTwinState};
+use super::presets::MorphogenesisBoundaryMode;
 use super::runner::{
     MorphogenesisKineticsAdapter, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
     MorphogenesisSharedParams, DEFAULT_MORPHOGENESIS_SEED,
@@ -10,6 +11,7 @@ use super::runner::{
 use super::MorphogenesisTool;
 use crate::framework::decode_rle_mask;
 use crate::framework::recovery::FiniteStateGuard;
+use crate::presets::MorphogenesisKineticsMode;
 use math_explorer::biology::diffusion::{
     FiniteDifference2D, MaskedFiniteDifference2D, SpatialDiffusion,
 };
@@ -34,6 +36,36 @@ pub(crate) fn apply_uniform_noise<K: ReactionKinetics<2>, D: SpatialDiffusion<2>
         let v_unit = ((rng.next_u64() >> 11) as f64) * INV_2_POW_53;
         system.u_mut()[idx] += (2.0 * u_unit - 1.0) * amp;
         system.v_mut()[idx] += (2.0 * v_unit - 1.0) * amp;
+    }
+}
+
+pub(super) const fn mode_to_scalar(mode: MorphogenesisKineticsMode) -> f64 {
+    match mode {
+        MorphogenesisKineticsMode::Schnakenberg => 0.0,
+        MorphogenesisKineticsMode::GrayScott => 1.0,
+    }
+}
+
+pub(super) fn scalar_to_mode(tag: f64) -> MorphogenesisKineticsMode {
+    if tag >= 0.5 {
+        MorphogenesisKineticsMode::GrayScott
+    } else {
+        MorphogenesisKineticsMode::Schnakenberg
+    }
+}
+
+pub(super) const fn boundary_to_scalar(boundary: MorphogenesisBoundaryMode) -> f64 {
+    match boundary {
+        MorphogenesisBoundaryMode::Neumann => 0.0,
+        MorphogenesisBoundaryMode::Periodic => 1.0,
+    }
+}
+
+pub(super) fn scalar_to_boundary(tag: f64) -> MorphogenesisBoundaryMode {
+    if tag >= 0.5 {
+        MorphogenesisBoundaryMode::Periodic
+    } else {
+        MorphogenesisBoundaryMode::Neumann
     }
 }
 
@@ -68,9 +100,9 @@ impl MorphogenesisKineticsRunner {
             let p = params.read().unwrap_or_else(|e| e.into_inner());
             (p.a, p.b, p.d_u, p.d_v)
         };
-        let (mode, f, k) = {
+        let (mode, boundary, f, k) = {
             let ks = kinetics_state.read().unwrap_or_else(|e| e.into_inner());
-            (ks.mode, ks.f, ks.k)
+            (ks.mode, ks.boundary, ks.f, ks.k)
         };
         let diffusion = FiniteDifference2D::new(
             Dimension(width),
@@ -78,6 +110,7 @@ impl MorphogenesisKineticsRunner {
             StepSize(1.0),
             StepSize(1.0),
         )
+        .with_boundary_mode(boundary.to_domain_mode())
         .with_mask();
         let mut system = TuringSystem::new_with_kinetics(
             Dimension(width * height),
