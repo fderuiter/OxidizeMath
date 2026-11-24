@@ -4,9 +4,18 @@
 mod workspace_wasm;
 
 pub use workspace_wasm::{
-    HOST_ONLY_WORKSPACE_PACKAGES, WasmCrateSpec, WasmTestTargetKind, WorkspaceError,
-    build_wasm_cargo_test_invocations, discover_wasm_crates, parse_workspace_members_std,
+    BROWSER_WASM_PACKAGES, HOST_ONLY_WORKSPACE_PACKAGES, WasmCrateSpec, WasmExecutionRuntime,
+    WasmTestTargetKind, WorkspaceError, build_wasm_no_run_json_invocations, discover_wasm_crates,
+    extract_wasm_test_executables_from_cargo_json, parse_workspace_members_std,
 };
+
+/// Constructs Cargo CLI argument vectors (`cargo test --target wasm32-unknown-unknown ...`)
+/// covering all discovered library and binary crates.
+#[must_use]
+pub fn build_wasm_cargo_test_invocations(crates: &[WasmCrateSpec]) -> Vec<Vec<String>> {
+    let refs: Vec<&WasmCrateSpec> = crates.iter().collect();
+    workspace_wasm::build_cargo_test_group_invocations(&refs, false)
+}
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -379,5 +388,58 @@ members = ["sub_crate", "other_crate"]
                 "host-only crate {excluded} must not be in wasm discovery"
             );
         }
+
+        let mut browser: Vec<&str> = crates
+            .iter()
+            .filter(|c| c.execution_runtime() == WasmExecutionRuntime::BrowserChromium)
+            .map(|c| c.package_name.as_str())
+            .collect();
+        browser.sort_unstable();
+        assert_eq!(
+            browser,
+            vec!["egui_plot", "math_explorer_gui", "oxidize_core"]
+        );
+        let node_crates: Vec<&str> = crates
+            .iter()
+            .filter(|c| c.execution_runtime() == WasmExecutionRuntime::NodeJs)
+            .map(|c| c.package_name.as_str())
+            .collect();
+        assert_eq!(node_crates.len(), 16);
+        assert!(node_crates.contains(&"math_explorer"));
+        for new_engine in ["engine_linalg", "engine_diffeq", "engine_pde"] {
+            assert!(
+                node_crates.contains(&new_engine),
+                "missing Node.js wasm engine crate {new_engine}"
+            );
+        }
+        assert_eq!(
+            build_wasm_no_run_json_invocations(&crates, WasmExecutionRuntime::BrowserChromium)
+                .len(),
+            2
+        );
+        assert_eq!(
+            build_wasm_no_run_json_invocations(&crates, WasmExecutionRuntime::NodeJs).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn test_extract_wasm_test_executables_handles_spaces_and_filters_non_tests() {
+        let sample = concat!(
+            "{\"reason\":\"compiler-artifact\",\"profile\":{\"test\":false},\"executable\":\"/tmp/with space/non_test.wasm\"}\n",
+            "{\"reason\":\"compiler-artifact\",\"profile\":{\"opt_level\":\"0\",\"test\":true},\"executable\":\"/tmp/work tree/target/wasm32-unknown-unknown/debug/deps/math_commons-0123456789abcdef.wasm\"}\n",
+            "{\"reason\":\"build-finished\",\"success\":true}\n",
+        );
+        let paths = extract_wasm_test_executables_from_cargo_json(sample).unwrap();
+        assert_eq!(
+            paths,
+            vec![std::path::PathBuf::from(
+                "/tmp/work tree/target/wasm32-unknown-unknown/debug/deps/math_commons-0123456789abcdef.wasm"
+            )]
+        );
+        assert_eq!(
+            extract_wasm_test_executables_from_cargo_json(""),
+            Err(WorkspaceError::NoWasmTestArtifacts)
+        );
     }
 }

@@ -1,4 +1,5 @@
-//! Pure-`std` workspace root resolution and `wasm32-unknown-unknown` crate discovery.
+//! Pure-`std` workspace root resolution, `wasm32-unknown-unknown` crate discovery,
+//! and Cargo `--message-format=json` test artifact extraction.
 //!
 //! Shared between `oxidize_core::workspace` and `xtask` so `apps/xtask` remains free
 //! of external crate dependencies while dynamically discovering every WebAssembly-compatible
@@ -7,6 +8,11 @@
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+#[path = "workspace_wasm_json.rs"]
+mod workspace_wasm_json;
+
+pub use workspace_wasm_json::extract_wasm_test_executables_from_cargo_json;
 
 /// Typed error returned when discovering or parsing Cargo workspace manifests.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -31,6 +37,8 @@ pub enum WorkspaceError {
         /// Name of the missing TOML key or table.
         field: &'static str,
     },
+    /// Cargo JSON output contained no `.wasm` test executable artifacts.
+    NoWasmTestArtifacts,
 }
 
 impl fmt::Display for WorkspaceError {
@@ -49,6 +57,12 @@ impl fmt::Display for WorkspaceError {
             Self::MissingPackageField { path, field } => {
                 write!(f, "Missing {field} in {path}")
             }
+            Self::NoWasmTestArtifacts => {
+                write!(
+                    f,
+                    "No wasm32 test executable artifacts found in Cargo JSON output"
+                )
+            }
         }
     }
 }
@@ -59,6 +73,9 @@ impl std::error::Error for WorkspaceError {}
 pub const HOST_ONLY_WORKSPACE_PACKAGES: &[&str] =
     &["xtask", "unified_verification", "markdown_tests"];
 
+/// Workspace packages whose `wasm32-unknown-unknown` suites require `wasm-bindgen-test` in Chromium.
+pub const BROWSER_WASM_PACKAGES: &[&str] = &["oxidize_core", "egui_plot", "math_explorer_gui"];
+
 /// Target selection flag kind for testing a workspace crate on `wasm32-unknown-unknown`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WasmTestTargetKind {
@@ -66,6 +83,15 @@ pub enum WasmTestTargetKind {
     Lib,
     /// Binary target exercised via `cargo test --bins`.
     Bin,
+}
+
+/// Runtime environment used to execute a workspace crate's `wasm32-unknown-unknown` test binary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WasmExecutionRuntime {
+    /// Headless Chromium via `wasm-bindgen --target web` under `PRODUCTION_CSP`.
+    BrowserChromium,
+    /// Pure-Rust `libtest` (`exports.main(0, 0)`) instantiated directly in Node.js (`node`).
+    NodeJs,
 }
 
 /// Metadata describing a `wasm32-unknown-unknown`-compatible workspace crate.
@@ -77,6 +103,18 @@ pub struct WasmCrateSpec {
     pub package_name: String,
     /// Whether the crate exposes a library or binary target for `wasm32` testing.
     pub target_kind: WasmTestTargetKind,
+}
+
+impl WasmCrateSpec {
+    /// Returns the execution runtime (`BrowserChromium` vs `NodeJs`) for this crate.
+    #[must_use]
+    pub fn execution_runtime(&self) -> WasmExecutionRuntime {
+        if BROWSER_WASM_PACKAGES.contains(&self.package_name.as_str()) {
+            WasmExecutionRuntime::BrowserChromium
+        } else {
+            WasmExecutionRuntime::NodeJs
+        }
+    }
 }
 
 /// Walks `start` and its ancestors to find the directory whose `Cargo.toml` defines `[workspace]`.
@@ -285,10 +323,10 @@ pub fn discover_wasm_crates(workspace_root: &Path) -> Result<Vec<WasmCrateSpec>,
     Ok(specs)
 }
 
-/// Constructs Cargo CLI argument vectors (`cargo test --target wasm32-unknown-unknown ...`)
-/// covering all discovered library and binary crates.
-#[must_use]
-pub fn build_wasm_cargo_test_invocations(crates: &[WasmCrateSpec]) -> Vec<Vec<String>> {
+pub(crate) fn build_cargo_test_group_invocations(
+    crates: &[&WasmCrateSpec],
+    no_run_json: bool,
+) -> Vec<Vec<String>> {
     let mut invocations = Vec::new();
     let lib_pkgs: Vec<&str> = crates
         .iter()
@@ -306,6 +344,10 @@ pub fn build_wasm_cargo_test_invocations(crates: &[WasmCrateSpec]) -> Vec<Vec<St
             args.push(pkg.to_string());
         }
         args.push("--lib".to_string());
+        if no_run_json {
+            args.push("--no-run".to_string());
+            args.push("--message-format=json".to_string());
+        }
         invocations.push(args);
     }
 
@@ -313,14 +355,32 @@ pub fn build_wasm_cargo_test_invocations(crates: &[WasmCrateSpec]) -> Vec<Vec<St
         .iter()
         .filter(|c| c.target_kind == WasmTestTargetKind::Bin)
     {
-        invocations.push(vec![
+        let mut args = vec![
             "test".to_string(),
             "--target".to_string(),
             "wasm32-unknown-unknown".to_string(),
             "-p".to_string(),
             bin_crate.package_name.clone(),
             "--bins".to_string(),
-        ]);
+        ];
+        if no_run_json {
+            args.push("--no-run".to_string());
+            args.push("--message-format=json".to_string());
+        }
+        invocations.push(args);
     }
     invocations
+}
+
+/// Constructs Cargo `--no-run --message-format=json` argument vectors for a specific `runtime`.
+#[must_use]
+pub fn build_wasm_no_run_json_invocations(
+    crates: &[WasmCrateSpec],
+    runtime: WasmExecutionRuntime,
+) -> Vec<Vec<String>> {
+    let filtered: Vec<&WasmCrateSpec> = crates
+        .iter()
+        .filter(|c| c.execution_runtime() == runtime)
+        .collect();
+    build_cargo_test_group_invocations(&filtered, true)
 }

@@ -53,6 +53,7 @@ pub struct FileMetrics {
     pub test_asserts: f64,
     pub opt_outs: Vec<(String, String)>,
     pub legacy_funcs: Vec<(String, String)>,
+    pub orphaned_wasm_tests: Vec<String>,
 }
 
 pub struct DebtSources<'a> {
@@ -92,6 +93,7 @@ pub(crate) fn analyze_file_ast_into(
     filepath: &Path,
     ast: &syn::File,
     wasm_counts: (usize, usize),
+    orphaned_wasm: Vec<String>,
     m: &mut FileMetrics,
 ) {
     let mut visitor = AstVisitor::with_test_scope(is_dedicated_test_path(filepath));
@@ -103,6 +105,11 @@ pub(crate) fn analyze_file_ast_into(
     }
     for fn_name in visitor.legacy_funcs {
         m.legacy_funcs.push((norm.clone(), fn_name));
+    }
+    for fn_name in orphaned_wasm {
+        m.orphaned_wasm_tests.push(format!(
+            "Orphaned wasm32 #[test] in {norm}: `{fn_name}` (use #[wasm_bindgen_test])"
+        ));
     }
 
     let unverified_funcs = visitor.total_funcs.saturating_sub(visitor.verified_funcs);
@@ -130,14 +137,15 @@ pub fn analyze_files_with_cache(rs_files: &[PathBuf], cache: &mut AstCache) -> F
     cache.preload_sources(rs_files);
     let mut m = FileMetrics::default();
     for filepath in rs_files {
-        let wasm_counts =
-            crate::wasm_coverage::count_file_wasm_coverage_with_cache(filepath, cache);
+        let (wasm_counts, orphaned_wasm) =
+            crate::wasm_coverage::count_file_wasm_coverage_and_orphans_with_cache(filepath, cache);
         if let Some(ast) = cache.get_or_load_fs(filepath).and_then(|e| e.ast.as_ref()) {
-            analyze_file_ast_into(filepath, ast, wasm_counts, &mut m);
+            analyze_file_ast_into(filepath, ast, wasm_counts, orphaned_wasm, &mut m);
         }
     }
     m.opt_outs.sort();
     m.legacy_funcs.sort();
+    m.orphaned_wasm_tests.sort();
     m
 }
 
@@ -211,6 +219,7 @@ fn collect_debt_violations(
     for (file, fn_name) in &m.legacy_funcs {
         unauthorized.push(format!("Legacy function in {file}: {fn_name}"));
     }
+    unauthorized.extend(m.orphaned_wasm_tests.iter().cloned());
     for fm in debt.unverified_crates {
         if config.is_unverified_module_allowed(fm) {
             auth_crates += 1;

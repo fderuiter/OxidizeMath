@@ -30,8 +30,8 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | `lint-workflows` | Validates GitHub Actions workflow definitions and permissions. | Active |
 | `smoke-examples` | Discovers every `[[example]]` target in `math_explorer/Cargo.toml` via `unified_verification list-examples`, builds all examples once, and runs each binary in an isolated temporary directory with `MATH_EXPLORER_SMOKE=1` and bounded timeout enforcement. | Active |
 | `test-features` | Exercises isolated Cargo domain feature flags (`pure_math`, `physics`, `core-only`, etc.), running `math_explorer` unit/integration tests, doctests, and `--benches` plus `math_explorer_gui` `--bins --tests` type-checks and `-D warnings` Clippy per feature leg. | Active |
-| `test-policy-audit` | Audits workspace crates for unauthorized lint/dead-code/`missing_docs` bypasses and unused dependencies. | Active |
-| `test-wasm` | Discovers and executes `wasm32-unknown-unknown` unit and browser tests across all compatible workspace crates (anchored to the workspace root), builds `math_explorer_gui/dist` (unless `--skip-build` is passed), verifies the 4 MB bundle budget, and runs headless Chromium CSP & fault-injection smoke checks (`--screenshot-dir <dir>` supported). | Active |
+| `test-policy-audit` | Audits workspace crates for unauthorized lint/dead-code/`missing_docs` bypasses, orphaned `#[cfg(target_arch = "wasm32")]` `#[test]` items, and unused dependencies. | Active |
+| `test-wasm` | Builds `wasm32-unknown-unknown` test artifacts with `--no-run --message-format=json` (anchored to the workspace root), runs browser `#[wasm_bindgen_test]` suites (`oxidize_core`, `egui_plot`, and `math_explorer_gui`) in headless Chromium under `PRODUCTION_CSP` and `--lib` `libtest` suites for all 15 pure-Rust `crates/` libraries plus `math_explorer` in Node.js (`node`), builds `math_explorer_gui/dist` (unless `--skip-build` is passed), verifies the 5 MB bundle budget, and runs headless Chromium CSP & fault-injection smoke checks (`--screenshot-dir <dir>` supported). | Active |
 | `traceability` | Verifies academic paper citation bindings and `#[verified]` coverage. | Active |
 | `verify-records` | Verifies architectural decision records (`--staged` supported), enforcing `YYYYMMDD-slug.md` naming with valid dates and unique slugs for new ADRs, freezing legacy `NNNN-slug.md` prefixes, requiring `# ` and `## Status` headings, and checking ACMR updates on core changes. | Active |
 | `verify-suite` | Runs the full coverage-instrumented high-integrity verification suite. | Active |
@@ -41,7 +41,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | Command | Operational Role | Status |
 |---|---|---|
 | `regenerate-baseline` | Regenerates `crates/unified_verification/api_baseline.json`. | Maintenance |
-| `setup` | Configures `.githooks/pre-commit` and `.githooks/pre-push` (`0755` executable permissions) first, then (unless `--hooks-only`) adds `wasm32-unknown-unknown`, checks `wasm-bindgen` `0.2.130`, `trunk`, `brotli`, and Playwright Chromium prerequisites (warning by default or enforcing with `--web`), and runs `cargo check --workspace` (unless `--check-only`). | Maintenance |
+| `setup` | Configures `.githooks/pre-commit` and `.githooks/pre-push` (`0755` executable permissions) first, then (unless `--hooks-only`) adds `wasm32-unknown-unknown`, checks `node`, `wasm-bindgen` `0.2.130`, `trunk`, `brotli`, and Playwright Chromium prerequisites (warning by default or enforcing with `--web`), and runs `cargo check --workspace` (unless `--check-only`). | Maintenance |
 
 ---
 
@@ -74,14 +74,14 @@ cargo run -p xtask -- lint-push
 cargo run -p xtask -- lint-all
 ```
 
-### WebAssembly & Browser Smoke Prerequisites (`test-wasm`)
+### WebAssembly & Hybrid Runner Prerequisites (`test-wasm`)
 
-Running `cargo run -p xtask -- test-wasm` locally requires the `wasm32-unknown-unknown` Rust target, `trunk`, `wasm-bindgen-cli` (matching the workspace `wasm-bindgen` version), `brotli`, and Python `playwright` with headless Chromium installed:
+Running `cargo run -p xtask -- test-wasm` locally requires the `wasm32-unknown-unknown` Rust target, Node.js (`node`), `trunk`, `wasm-bindgen-cli` (matching the workspace `wasm-bindgen` version), `brotli`, and Python `playwright` with headless Chromium installed:
 
 ```bash
 rustup target add wasm32-unknown-unknown
-sudo apt-get install -y brotli
-cargo binstall --no-confirm trunk wasm-bindgen-cli@0.2.130
+sudo apt-get install -y nodejs brotli
+cargo binstall --no-confirm trunk@0.22.2 wasm-bindgen-cli@0.2.130
 python3 -m pip install --user playwright
 python3 -m playwright install --with-deps chromium
 cargo run -p xtask -- test-wasm

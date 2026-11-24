@@ -375,8 +375,8 @@ impl<T: Scalar, const MAX_P: usize> StreamingQr<T, MAX_P> {
             return Err(LinalgError::SingularMatrix);
         }
         let mut max_diag = T::ZERO;
-        for i in 0..self.ncols {
-            max_diag = max_diag.max(self.r[i][i].abs());
+        for (i, row) in self.r.iter().enumerate().take(self.ncols) {
+            max_diag = max_diag.max(row[i].abs());
         }
         if max_diag == T::ZERO {
             return Err(LinalgError::SingularMatrix);

@@ -98,6 +98,13 @@ fn audit_staged_file_full(
             ok = false;
         }
     }
+
+    for fn_name in crate::wasm_coverage::find_orphaned_wasm_unit_tests_ast(path, ast) {
+        println!(
+            "[!] Orphaned wasm32 #[test] in {file_path} (`{fn_name}`): use #[wasm_bindgen_test] instead"
+        );
+        ok = false;
+    }
     ok
 }
 

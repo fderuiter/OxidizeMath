@@ -423,8 +423,7 @@ fn render_hierarchy_plot(tool: &WinRatioTool, ui: &mut egui::Ui, palette: Semant
         .legend(Legend::default())
         .show(ui, |plot_ui| {
             let mut est_pts = Vec::with_capacity(count);
-            for k in 0..count {
-                let t = tool.eval.tiers[k];
+            for (k, &t) in tool.eval.tiers[..count].iter().enumerate() {
                 let x = (k + 1) as f64;
                 let y = if t.cumulative_wr.is_finite() {
                     t.cumulative_wr

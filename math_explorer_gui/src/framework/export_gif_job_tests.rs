@@ -340,7 +340,7 @@ fn wasm_framework_encodes_one_gif_frame_per_repaint_and_cancels_cleanly() {
         aspect_ratio: AspectRatioOption::FourThree,
         ..Default::default()
     };
-    fw.export_gif_frames = 4;
+    fw.export_gif_frames = 5;
     fw.export_gif_fps = 10;
 
     let ctx = egui::Context::default();
@@ -350,12 +350,12 @@ fn wasm_framework_encodes_one_gif_frame_per_repaint_and_cancels_cleanly() {
         fw.show(c, "wasm_gif_domain");
     });
     assert_eq!(restored.load(Ordering::SeqCst), 19);
-    assert_eq!(fw.active_gif_progress(), Some((0, 4)));
+    assert_eq!(fw.active_gif_progress(), Some((0, 5)));
 
     let _ = ctx.run(screen_raw(), |c| fw.show(c, "wasm_gif_domain"));
-    assert_eq!(fw.active_gif_progress(), Some((1, 4)));
+    assert_eq!(fw.active_gif_progress(), Some((1, 5)));
     let _ = ctx.run(screen_raw(), |c| fw.show(c, "wasm_gif_domain"));
-    assert_eq!(fw.active_gif_progress(), Some((2, 4)));
+    assert_eq!(fw.active_gif_progress(), Some((2, 5)));
     assert!(fw.cancel_active_gif_export(true));
     assert_eq!(fw.active_gif_progress(), None);
 }

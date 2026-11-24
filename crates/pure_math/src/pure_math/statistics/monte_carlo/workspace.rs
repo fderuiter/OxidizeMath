@@ -347,8 +347,8 @@ impl MonteCarloWorkspace {
         let active_grid = &mut self.lhs_grid[..n_samples * dim];
 
         for axis in 0..dim {
-            for idx in 0..n_samples {
-                self.perm_buf[idx] = idx;
+            for (idx, slot) in self.perm_buf.iter_mut().enumerate().take(n_samples) {
+                *slot = idx;
             }
             for idx in (1..n_samples).rev() {
                 let swap_idx = draw_bounded_index(rng, idx + 1);

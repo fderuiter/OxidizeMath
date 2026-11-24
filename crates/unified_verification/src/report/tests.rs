@@ -36,6 +36,7 @@ fn baseline_metrics() -> FileMetrics {
         test_asserts: 7.0,
         opt_outs: Vec::new(),
         legacy_funcs: Vec::new(),
+        orphaned_wasm_tests: Vec::new(),
     }
 }
 
@@ -292,6 +293,26 @@ fn test_collect_llvm_cov_json_cleans_only_after_parsing() {
     );
     assert!(bad_res.is_err());
     assert!(!cleaned_on_bad_json);
+}
+
+#[test]
+fn test_report_rejects_orphaned_wasm32_unit_tests() {
+    let bad_src = r#"
+        #[cfg(target_arch = "wasm32")]
+        #[test]
+        fn orphaned_browser_test() {
+            assert_eq!(1, 1);
+        }
+    "#;
+    let mut m = analyze_snippet("egui_plot/src/probe.rs", bad_src);
+    m.verified_funcs = 2.0;
+    m.verified_asserts = 2.0;
+    m.prod_funcs = 2.0;
+    m.prod_asserts = 2.0;
+    m.verified_prod_funcs = 2.0;
+    m.verified_prod_asserts = 2.0;
+    assert_eq!(m.orphaned_wasm_tests.len(), 1);
+    assert!(!print_report(85.0, 100.0, &m, &[]));
 }
 
 #[test]

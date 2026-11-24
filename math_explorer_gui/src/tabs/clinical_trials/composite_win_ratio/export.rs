@@ -88,8 +88,7 @@ fn append_markdown_empirical_section(out: &mut String, tool: &WinRatioTool) {
         "| Tier | Wins | Losses | Remaining Ties | Cumulative WR [95% CI] |"
     );
     let _ = writeln!(out, "| :--- | :--- | :--- | :--- | :--- |");
-    for k in 0..ev.active_tier_count {
-        let t = ev.tiers[k];
+    for &t in &ev.tiers[..ev.active_tier_count] {
         let _ = writeln!(
             out,
             "| Tier {} | {} | {} | {} | {} [{}, {}] |",
@@ -180,8 +179,7 @@ pub fn format_csv_report(tool: &WinRatioTool) -> String {
     }
     let _ = writeln!(out, "bmi,treatment_ref,,{:.4},,,kg/m2", ev.treat_ref_bmi);
     let _ = writeln!(out, "bmi,control_ref,,{:.4},,,kg/m2", ev.ctrl_ref_bmi);
-    for k in 0..ev.active_tier_count {
-        let t = ev.tiers[k];
+    for &t in &ev.tiers[..ev.active_tier_count] {
         let _ = writeln!(
             out,
             "tier,tier_{},{},{},{},{},wins={};losses={};ties={}",
@@ -232,8 +230,11 @@ pub fn collect_export_datasets(tool: &WinRatioTool) -> Vec<(String, Vec<[f64; 2]
         }
         WinRatioPlotMode::EmpiricalHierarchy => {
             let mut pts = Vec::with_capacity(tool.eval.active_tier_count);
-            for k in 0..tool.eval.active_tier_count {
-                let wr = tool.eval.tiers[k].cumulative_wr;
+            for (k, &t) in tool.eval.tiers[..tool.eval.active_tier_count]
+                .iter()
+                .enumerate()
+            {
+                let wr = t.cumulative_wr;
                 pts.push([(k + 1) as f64, if wr.is_finite() { wr } else { 10.0 }]);
             }
             if !pts.is_empty() {

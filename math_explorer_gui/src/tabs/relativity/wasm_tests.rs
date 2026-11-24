@@ -4,6 +4,7 @@
 //! `Camera3D` interaction, custom AST metrics, 2D lensing atlas `1x` convergence, and challenges.
 
 use eframe::egui;
+use wasm_bindgen::JsCast;
 use wasm_bindgen_test::wasm_bindgen_test;
 
 use super::*;
@@ -23,6 +24,31 @@ fn wasm_input(events: Vec<egui::Event>) -> egui::RawInput {
         events,
         ..Default::default()
     }
+}
+
+async fn yield_wasm_event_loop() {
+    let promise = js_sys::Promise::new(&mut |resolve, _| {
+        if let Ok(win) = js_sys::global().dyn_into::<web_sys::Window>() {
+            let _ = win.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, 0);
+        } else {
+            let _ = resolve.call0(&wasm_bindgen::JsValue::UNDEFINED);
+        }
+    });
+    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+}
+
+async fn drive_atlas_to_convergence(tool: &mut GeodesicPlaygroundTool) {
+    let ctx = egui::Context::default();
+    for _ in 0..400 {
+        let _ = ctx.run(wasm_input(Vec::new()), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
+        });
+        if tool.atlas.is_converged() {
+            break;
+        }
+        yield_wasm_event_loop().await;
+    }
+    assert_eq!(tool.atlas.current_stride(), 1);
 }
 
 #[wasm_bindgen_test]
@@ -76,7 +102,7 @@ fn wasm_relativity_tab_hydrates_renders_gestures_presets_and_exports() {
 }
 
 #[wasm_bindgen_test]
-fn wasm_relativity_ast_sandbox_atlas_convergence_teleport_and_challenges() {
+async fn wasm_relativity_ast_sandbox_atlas_convergence_teleport_and_challenges() {
     assert!(!get_stories_for_domain("relativity").is_empty());
     assert!(get_goal_challenges_for_domain("relativity").len() >= 2);
 
@@ -90,24 +116,14 @@ fn wasm_relativity_ast_sandbox_atlas_convergence_teleport_and_challenges() {
         .expect("wasm custom Christoffel");
     assert!(ev.max_abs_diff < 1e-6);
 
-    // Verify 2D atlas converges to 1x synchronously via cooperative frame budget on wasm32
+    // Verify 2D atlas converges to 1x via cooperative browser event-loop slices on wasm32
     let mut tool = GeodesicPlaygroundTool::default();
     tool.import_preset_json(presets::PRESET_PHOTON_RING_LENSING)
         .expect("photon ring preset");
     assert!((tool.launch_energy - 1.0).abs() < 1e-12);
     tool.atlas.set_visible(true);
     tool.state.atlas_visible = true;
-
-    let ctx = egui::Context::default();
-    for _ in 0..80 {
-        let _ = ctx.run(wasm_input(Vec::new()), |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| tool.show_inside(ui));
-        });
-        if tool.atlas.is_converged() {
-            break;
-        }
-    }
-    assert_eq!(tool.atlas.current_stride(), 1);
+    drive_atlas_to_convergence(&mut tool).await;
 
     // Teleport to photon-ring boundary and verify URL fragment round-trip
     let b_target = playground::kerr_prograde_critical_b(2.0, 0.0) + 0.02;

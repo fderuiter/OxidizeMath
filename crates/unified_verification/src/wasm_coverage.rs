@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use syn::punctuated::Punctuated;
 use syn::visit::{self, Visit};
-use syn::{Attribute, Expr, Field, ImplItem, Item, ItemFn, ItemMod, Lit, Meta, Token};
+use syn::{Attribute, Expr, Field, ImplItem, ImplItemFn, Item, ItemFn, ItemMod, Lit, Meta, Token};
 
 #[derive(Default)]
 struct OutlineTestMod {
@@ -15,6 +15,7 @@ struct FileWasmAstSummary {
     wasm_paths: usize,
     executable_wasm_tests: usize,
     outline_test_mods: Vec<OutlineTestMod>,
+    orphaned_wasm_unit_tests: Vec<String>,
 }
 
 fn parse_nested_metas(list: &syn::MetaList) -> Vec<Meta> {
@@ -46,6 +47,18 @@ fn meta_requires_wasm32(meta: &Meta) -> bool {
     }
 }
 
+fn attrs_require_wasm32(attrs: &[Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        attr.path().is_ident("cfg")
+            && attr
+                .meta
+                .require_list()
+                .ok()
+                .and_then(|list| list.parse_args::<Meta>().ok())
+                .is_some_and(|meta| meta_requires_wasm32(&meta))
+    })
+}
+
 fn attrs_mention_test(attrs: &[Attribute]) -> bool {
     attrs.iter().any(|attr| {
         if !attr.path().is_ident("cfg") {
@@ -72,6 +85,17 @@ fn attrs_define_wasm_only_prod_path(attrs: &[Attribute]) -> bool {
     })
 }
 
+fn path_is_libtest_attr(path: &syn::Path) -> bool {
+    let segs: Vec<String> = path.segments.iter().map(|s| s.ident.to_string()).collect();
+    matches!(
+        segs.iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .as_slice(),
+        ["test"] | ["core", "prelude", "v1", "test"] | ["std", "prelude", "v1", "test"]
+    )
+}
+
 fn meta_has_wasm_bindgen_test(meta: &Meta) -> bool {
     match meta {
         Meta::Path(path) => path
@@ -90,6 +114,35 @@ fn attrs_have_wasm_bindgen_test(attrs: &[Attribute]) -> bool {
     attrs
         .iter()
         .any(|attr| meta_has_wasm_bindgen_test(&attr.meta))
+}
+
+fn attrs_have_orphaned_wasm32_libtest(attrs: &[Attribute], in_wasm32_scope: bool) -> bool {
+    if attrs_have_wasm_bindgen_test(attrs) {
+        return false;
+    }
+    let fn_requires_wasm = in_wasm32_scope || attrs_require_wasm32(attrs);
+    let has_plain_test = attrs
+        .iter()
+        .any(|attr| matches!(&attr.meta, Meta::Path(path) if path_is_libtest_attr(path)));
+    if fn_requires_wasm && has_plain_test {
+        return true;
+    }
+    attrs.iter().any(|attr| {
+        let Meta::List(list) = &attr.meta else {
+            return false;
+        };
+        if !list.path.is_ident("cfg_attr") {
+            return false;
+        }
+        let nested = parse_nested_metas(list);
+        let Some((predicate, rest)) = nested.split_first() else {
+            return false;
+        };
+        (in_wasm32_scope || meta_requires_wasm32(predicate))
+            && rest
+                .iter()
+                .any(|m| matches!(m, Meta::Path(p) if path_is_libtest_attr(p)))
+    })
 }
 
 fn extract_path_attr(attrs: &[Attribute]) -> Option<String> {
@@ -149,6 +202,7 @@ fn expr_attrs(expr: &Expr) -> &[Attribute] {
 
 struct WasmAstVisitor {
     in_test_scope: bool,
+    in_wasm32_scope: bool,
     summary: FileWasmAstSummary,
 }
 
@@ -159,39 +213,60 @@ impl<'ast> Visit<'ast> for WasmAstVisitor {
             return;
         }
         let attrs = item_attrs(node);
+        let prev_test = self.in_test_scope;
+        let prev_wasm = self.in_wasm32_scope;
         if attrs_mention_test(attrs) {
-            let prev = self.in_test_scope;
             self.in_test_scope = true;
-            visit::visit_item(self, node);
-            self.in_test_scope = prev;
-            return;
+        }
+        if attrs_require_wasm32(attrs) {
+            self.in_wasm32_scope = true;
         }
         if !self.in_test_scope && attrs_define_wasm_only_prod_path(attrs) {
             self.summary.wasm_paths += 1;
         }
         visit::visit_item(self, node);
+        self.in_test_scope = prev_test;
+        self.in_wasm32_scope = prev_wasm;
     }
 
     fn visit_item_fn(&mut self, node: &'ast ItemFn) {
         if attrs_have_wasm_bindgen_test(&node.attrs) {
             self.summary.executable_wasm_tests += 1;
+        } else if attrs_have_orphaned_wasm32_libtest(&node.attrs, self.in_wasm32_scope) {
+            self.summary
+                .orphaned_wasm_unit_tests
+                .push(node.sig.ident.to_string());
         }
         visit::visit_item_fn(self, node);
     }
 
     fn visit_impl_item(&mut self, node: &'ast ImplItem) {
         let attrs = impl_item_attrs(node);
+        let prev_test = self.in_test_scope;
+        let prev_wasm = self.in_wasm32_scope;
         if attrs_mention_test(attrs) {
-            let prev = self.in_test_scope;
             self.in_test_scope = true;
-            visit::visit_impl_item(self, node);
-            self.in_test_scope = prev;
-            return;
+        }
+        if attrs_require_wasm32(attrs) {
+            self.in_wasm32_scope = true;
         }
         if !self.in_test_scope && attrs_define_wasm_only_prod_path(attrs) {
             self.summary.wasm_paths += 1;
         }
         visit::visit_impl_item(self, node);
+        self.in_test_scope = prev_test;
+        self.in_wasm32_scope = prev_wasm;
+    }
+
+    fn visit_impl_item_fn(&mut self, node: &'ast ImplItemFn) {
+        if attrs_have_wasm_bindgen_test(&node.attrs) {
+            self.summary.executable_wasm_tests += 1;
+        } else if attrs_have_orphaned_wasm32_libtest(&node.attrs, self.in_wasm32_scope) {
+            self.summary
+                .orphaned_wasm_unit_tests
+                .push(node.sig.ident.to_string());
+        }
+        visit::visit_impl_item_fn(self, node);
     }
 
     fn visit_field(&mut self, node: &'ast Field) {
@@ -220,6 +295,7 @@ impl<'ast> Visit<'ast> for WasmAstVisitor {
 impl WasmAstVisitor {
     fn visit_mod_item(&mut self, item_mod: &ItemMod) {
         let is_test_mod = self.in_test_scope || attrs_mention_test(&item_mod.attrs);
+        let is_wasm_mod = self.in_wasm32_scope || attrs_require_wasm32(&item_mod.attrs);
         if !is_test_mod && attrs_define_wasm_only_prod_path(&item_mod.attrs) {
             self.summary.wasm_paths += 1;
         }
@@ -230,16 +306,29 @@ impl WasmAstVisitor {
             });
             return;
         }
-        let prev = self.in_test_scope;
+        let prev_test = self.in_test_scope;
+        let prev_wasm = self.in_wasm32_scope;
         self.in_test_scope = is_test_mod;
+        self.in_wasm32_scope = is_wasm_mod;
         visit::visit_item_mod(self, item_mod);
-        self.in_test_scope = prev;
+        self.in_test_scope = prev_test;
+        self.in_wasm32_scope = prev_wasm;
     }
 }
 
-fn summarize_ast(ast: &syn::File, initial_test_scope: bool) -> FileWasmAstSummary {
+fn is_dedicated_wasm_test_path(filepath: &Path) -> bool {
+    let stem = filepath.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    stem.ends_with("_wasm_tests") || stem == "wasm_tests"
+}
+
+fn summarize_ast(
+    ast: &syn::File,
+    initial_test_scope: bool,
+    initial_wasm32_scope: bool,
+) -> FileWasmAstSummary {
     let mut visitor = WasmAstVisitor {
         in_test_scope: initial_test_scope,
+        in_wasm32_scope: initial_wasm32_scope || attrs_require_wasm32(&ast.attrs),
         summary: FileWasmAstSummary::default(),
     };
     visitor.visit_file(ast);
@@ -301,7 +390,7 @@ fn outline_tree_has_wasm_tests(
         else {
             continue;
         };
-        let child_summary = summarize_ast(ast, true);
+        let child_summary = summarize_ast(ast, true, is_dedicated_wasm_test_path(&child_path));
         if outline_tree_has_wasm_tests(
             &child_path,
             &child_summary,
@@ -325,17 +414,35 @@ fn is_dedicated_test_source_path(filepath: &Path) -> bool {
         .any(|c| c.as_os_str().to_str() == Some("tests"))
 }
 
-pub fn count_file_wasm_coverage_with_cache(
+pub fn find_orphaned_wasm_unit_tests_ast(filepath: &Path, ast: &syn::File) -> Vec<String> {
+    let summary = summarize_ast(
+        ast,
+        is_dedicated_test_source_path(filepath),
+        is_dedicated_wasm_test_path(filepath),
+    );
+    summary.orphaned_wasm_unit_tests
+}
+
+#[cfg(test)]
+pub fn find_orphaned_wasm_unit_tests(filepath: &Path, content: &str) -> Vec<String> {
+    let Ok(ast) = syn::parse_file(content) else {
+        return Vec::new();
+    };
+    find_orphaned_wasm_unit_tests_ast(filepath, &ast)
+}
+
+pub fn count_file_wasm_coverage_and_orphans_with_cache(
     filepath: &Path,
     cache: &mut oxidize_core::traceability::AstCache,
-) -> (usize, usize) {
+) -> ((usize, usize), Vec<String>) {
     let in_test_file = is_dedicated_test_source_path(filepath);
+    let in_wasm_test_file = is_dedicated_wasm_test_path(filepath);
     let Some(ast) = cache.get_or_load_fs(filepath).and_then(|e| e.ast.as_ref()) else {
-        return (0, 0);
+        return ((0, 0), Vec::new());
     };
-    let summary = summarize_ast(ast, in_test_file);
+    let summary = summarize_ast(ast, in_test_file, in_wasm_test_file);
     if summary.wasm_paths == 0 {
-        return (0, 0);
+        return ((0, 0), summary.orphaned_wasm_unit_tests);
     }
     let mut visited = HashSet::new();
     if let Ok(canon) = filepath.canonicalize() {
@@ -346,30 +453,12 @@ pub fn count_file_wasm_coverage_with_cache(
     } else {
         0
     };
-    (summary.wasm_paths, covered)
+    (
+        (summary.wasm_paths, covered),
+        summary.orphaned_wasm_unit_tests,
+    )
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use oxidize_core::traceability::AstCache;
-
-    #[test]
-    fn test_egui_plot_wasm_paths_are_counted_and_covered() {
-        let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let mut cache = AstCache::new();
-        for rel in [
-            "egui_plot/src/file_io.rs",
-            "egui_plot/src/export.rs",
-            "egui_plot/src/export_modal.rs",
-        ] {
-            let path = ws_root.join(rel);
-            let (paths, covered) = count_file_wasm_coverage_with_cache(&path, &mut cache);
-            assert!(paths > 0, "expected wasm32 paths in {rel}");
-            assert_eq!(
-                covered, paths,
-                "expected all wasm32 paths in {rel} to be covered by #[wasm_bindgen_test]"
-            );
-        }
-    }
-}
+#[path = "wasm_coverage_tests.rs"]
+mod tests;
