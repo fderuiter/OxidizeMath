@@ -24,4 +24,4 @@ At the same time, existing biostatistical tools in `ClinicalTrialsTab` had four 
 ## Consequences
 - **Positive**: Every clinical trial tool in `ClinicalTrialsTab` advertises `ExportCapabilities::plot()`, passes offscreen PNG/SVG modal audits, executes 100% locally in memory on desktop and `wasm32-unknown-unknown`, and exposes end-to-end report/table downloads.
 - **Positive**: `WinRatioTool::evaluate_hot_path` executes with zero heap allocations under `VerifiedEngine::run_verified`, and `MatchedPairing` enforces equal arm lengths prior to evaluation so domain panics are impossible from user input.
-- **Neutral**: Global GUI registry contracts advance to `96` `InteractiveTool` entries (`75` plot-export tools, `10` non-figure tools, `93` non-shader tools, `95` non-audio tools) and `167` `StarterPresetMetadata` cards across `29` tabs.
+- **Neutral**: Global GUI registry contracts advance to `100` `InteractiveTool` entries (`83` plot-export tools, `9` non-figure tools, `97` non-shader tools, `93` non-audio tools) and `177` `StarterPresetMetadata` cards across `30` tabs.

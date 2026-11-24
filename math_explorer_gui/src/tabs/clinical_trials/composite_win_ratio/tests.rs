@@ -191,6 +191,18 @@ fn test_clinical_trials_suite_offscreen_png_and_svg_exports() {
     );
 }
 
+#[test]
+fn test_win_ratio_state_roundtrip() {
+    let json_payload = r#"{"weibull_theta":0.6,"weibull_lambda1":0.11,"weibull_lambda2":0.21,"weibull_alpha":0.78,"horizon_c":10.0,"prc_samples":32,"pairing_mode":"Matched","tier1_kind":"HigherIsBetter","tier2_kind":"LowerIsBetter","tier3_kind":{"Threshold":{"threshold":4.0}},"derive_bmi_tier3":false,"ttest_tier_index":2,"ttest_alpha":0.05,"treat_weight_kg":73.0,"treat_height_m":1.75,"ctrl_weight_kg":81.0,"ctrl_height_m":1.74,"plot_mode":"EmpiricalHierarchy","cohort_text":"Treatment, 880.0, 0.0, 78.0\nTreatment, 760.0, 1.0, 71.0\nControl, 410.0, 2.0, 56.0\nControl, 520.0, 2.0, 60.0"}"#;
+    let mut roundtrip_tool = WinRatioTool::default();
+    roundtrip_tool.try_load_state(json_payload).unwrap();
+    let saved = roundtrip_tool.save_state().unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&saved).unwrap(),
+        serde_json::from_str::<serde_json::Value>(json_payload).unwrap()
+    );
+}
+
 #[cfg(target_arch = "wasm32")]
 mod wasm_browser_tests {
     use super::*;
