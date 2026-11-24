@@ -3,12 +3,34 @@
 //! Closed-form surface mass convergence $\kappa(R)$, mean convergence $\bar{\kappa}(R)$,
 //! tangential shear $\gamma(R)$, $2 \times 2$ magnification Jacobians, and critical/caustic
 //! radii comparing Navarro-Frenk-White (`NfwCusp`) against Burkert (`BurkertCore`) halos.
+//!
+//! Passing raw viewport coordinates (`ViewportLength`) or bare `f64` radii without converting to
+//! physical [`Kiloparsecs`] is rejected at compile time:
+//!
+//! ```compile_fail
+//! # use domain_physics::__doctest_facade as math_explorer;
+//! use math_explorer::physics::astrophysics::{HaloProfile, halo_thin_lens_sample};
+//! use math_scalars::ViewportLength;
+//!
+//! let _ = halo_thin_lens_sample(ViewportLength::new(0.25), None, &HaloProfile::BaryonicOnly, 1.0e8);
+//! ```
+//!
+//! ```compile_fail
+//! # use domain_physics::__doctest_facade as math_explorer;
+//! use math_explorer::physics::astrophysics::{HaloProfile, halo_lens_deflection_and_jacobian};
+//! use math_scalars::ViewportLength;
+//! use nalgebra::Vector2;
+//!
+//! let vp_offset = Vector2::new(ViewportLength::new(0.1), ViewportLength::new(-0.2));
+//! let _ = halo_lens_deflection_and_jacobian(vp_offset, None, &HaloProfile::BaryonicOnly, 1.0e8);
+//! ```
 
 // [cite:dwarf_galaxy_empirical_dependencies]
 // [cite:general_relativity_geodesics]
 
 use std::f64::consts::{FRAC_PI_2, PI};
 
+use math_scalars::Kiloparsecs;
 use nalgebra::{Matrix2, Vector2};
 
 use super::lensing::{
@@ -87,7 +109,7 @@ fn kuzmin_convergence_and_mean(
     if m <= 0.0 {
         return (0.0, 0.0);
     }
-    let a = scale_kpc.max(MIN_GALACTOCENTRIC_RADIUS_KPC);
+    let a = scale_kpc.max(MIN_GALACTOCENTRIC_RADIUS_KPC.get());
     let s = (r_kpc * r_kpc + a * a).sqrt();
     let sigma = (a * m) / (2.0 * PI * s * s * s);
     let m_cyl = m * (1.0 - a / s);
@@ -100,12 +122,13 @@ fn kuzmin_convergence_and_mean(
 #[must_use]
 #[verified_engine::verified]
 pub fn halo_thin_lens_sample(
-    r_kpc: f64,
+    r_kpc: Kiloparsecs,
     baryons: Option<&BaryonicDiskConfig>,
     halo: &HaloProfile,
     sigma_crit_solar_per_kpc2: f64,
 ) -> ThinLensSample {
-    let r = clamp_radius_kpc(r_kpc);
+    let r = clamp_radius_kpc(r_kpc).get();
+    let r_min = MIN_GALACTOCENTRIC_RADIUS_KPC.get();
     let sigma_crit = if sigma_crit_solar_per_kpc2.is_finite() {
         sigma_crit_solar_per_kpc2.max(1.0e3)
     } else {
@@ -118,7 +141,7 @@ pub fn halo_thin_lens_sample(
             scale_radius_kpc,
             concentration,
         } => {
-            let rs = scale_radius_kpc.max(MIN_GALACTOCENTRIC_RADIUS_KPC);
+            let rs = scale_radius_kpc.get().max(r_min);
             let c = concentration.max(0.5);
             let nfw_c = ((1.0 + c).ln() - c / (1.0 + c)).max(1.0e-12);
             let m_scale = virial_mass_solar.max(0.0) / nfw_c;
@@ -132,7 +155,7 @@ pub fn halo_thin_lens_sample(
             core_radius_kpc,
             concentration,
         } => {
-            let r0 = core_radius_kpc.max(MIN_GALACTOCENTRIC_RADIUS_KPC);
+            let r0 = core_radius_kpc.get().max(r_min);
             let c = concentration.max(0.5);
             let burk_c = (0.5 * (1.0 + c * c).ln() + (1.0 + c).ln() - c.atan()).max(1.0e-12);
             let m_scale = virial_mass_solar.max(0.0) / burk_c;
@@ -166,33 +189,42 @@ pub fn halo_thin_lens_sample(
     }
 }
 
-/// Evaluates vector deflection $\boldsymbol{\alpha}(\mathbf{x})$ and $2 \times 2$ Jacobian $J_{\text{lens}}$ for a halo lens.
+/// Evaluates physical-kpc vector deflection $\boldsymbol{\alpha}(\mathbf{x})$ and dimensionless
+/// $2 \times 2$ Jacobian $J_{\text{lens}}$ for a halo lens.
 #[must_use]
 #[verified_engine::verified]
 pub fn halo_lens_deflection_and_jacobian(
-    offset_kpc: Vector2<f64>,
+    offset_kpc: Vector2<Kiloparsecs>,
     baryons: Option<&BaryonicDiskConfig>,
     halo: &HaloProfile,
     sigma_crit_solar_per_kpc2: f64,
-) -> (Vector2<f64>, Matrix2<f64>, ThinLensSample) {
+) -> (Vector2<Kiloparsecs>, Matrix2<f64>, ThinLensSample) {
     let ox = if offset_kpc.x.is_finite() {
-        offset_kpc.x
+        offset_kpc.x.get()
     } else {
         0.0
     };
     let oy = if offset_kpc.y.is_finite() {
-        offset_kpc.y
+        offset_kpc.y.get()
     } else {
         0.0
     };
     let r = (ox * ox + oy * oy).sqrt();
-    let sample = halo_thin_lens_sample(r, baryons, halo, sigma_crit_solar_per_kpc2);
+    let sample = halo_thin_lens_sample(
+        Kiloparsecs::new(r),
+        baryons,
+        halo,
+        sigma_crit_solar_per_kpc2,
+    );
     let dir = if r > 1.0e-9 {
         Vector2::new(ox / r, oy / r)
     } else {
         Vector2::zeros()
     };
-    let deflection_vec = dir * sample.deflection;
+    let deflection_vec = Vector2::new(
+        Kiloparsecs::new(dir.x * sample.deflection),
+        Kiloparsecs::new(dir.y * sample.deflection),
+    );
     let jac = axisymmetric_lens_jacobian(
         Vector2::new(ox, oy),
         sample.lambda_radial,
@@ -201,30 +233,46 @@ pub fn halo_lens_deflection_and_jacobian(
     (deflection_vec, jac, sample)
 }
 
-/// Locates the outer tangential critical radius $R_{\text{crit}}$ where $\lambda_t(R) = 1 - \bar{\kappa}(R) = 0$.
+/// Locates the outer tangential critical radius $R_{\text{crit}}$ (in physical [`Kiloparsecs`])
+/// where $\lambda_t(R) = 1 - \bar{\kappa}(R) = 0$.
 #[must_use]
 #[verified_engine::verified]
 pub fn tangential_critical_radius_kpc(
     baryons: Option<&BaryonicDiskConfig>,
     halo: &HaloProfile,
     sigma_crit_solar_per_kpc2: f64,
-    r_max_kpc: f64,
-) -> Option<f64> {
-    let mut lo = MIN_GALACTOCENTRIC_RADIUS_KPC;
-    let mut hi = clamp_radius_kpc(r_max_kpc).max(0.1);
-    let f_lo =
-        halo_thin_lens_sample(lo, baryons, halo, sigma_crit_solar_per_kpc2).lambda_tangential;
+    r_max_kpc: Kiloparsecs,
+) -> Option<Kiloparsecs> {
+    let mut lo = MIN_GALACTOCENTRIC_RADIUS_KPC.get();
+    let mut hi = clamp_radius_kpc(r_max_kpc).get().max(0.1);
+    let f_lo = halo_thin_lens_sample(
+        Kiloparsecs::new(lo),
+        baryons,
+        halo,
+        sigma_crit_solar_per_kpc2,
+    )
+    .lambda_tangential;
     if f_lo > 0.0 {
         return None;
     }
-    let mut f_hi =
-        halo_thin_lens_sample(hi, baryons, halo, sigma_crit_solar_per_kpc2).lambda_tangential;
+    let mut f_hi = halo_thin_lens_sample(
+        Kiloparsecs::new(hi),
+        baryons,
+        halo,
+        sigma_crit_solar_per_kpc2,
+    )
+    .lambda_tangential;
     let mut expand = 0;
     while f_hi <= 0.0 && expand < 20 {
         lo = hi;
         hi *= 2.0;
-        f_hi =
-            halo_thin_lens_sample(hi, baryons, halo, sigma_crit_solar_per_kpc2).lambda_tangential;
+        f_hi = halo_thin_lens_sample(
+            Kiloparsecs::new(hi),
+            baryons,
+            halo,
+            sigma_crit_solar_per_kpc2,
+        )
+        .lambda_tangential;
         expand += 1;
     }
     if f_hi <= 0.0 {
@@ -233,8 +281,13 @@ pub fn tangential_critical_radius_kpc(
     let mut iter = 0;
     while iter < 40 {
         let mid = 0.5 * (lo + hi);
-        let f_mid =
-            halo_thin_lens_sample(mid, baryons, halo, sigma_crit_solar_per_kpc2).lambda_tangential;
+        let f_mid = halo_thin_lens_sample(
+            Kiloparsecs::new(mid),
+            baryons,
+            halo,
+            sigma_crit_solar_per_kpc2,
+        )
+        .lambda_tangential;
         if f_mid <= 0.0 {
             lo = mid;
         } else {
@@ -242,14 +295,14 @@ pub fn tangential_critical_radius_kpc(
         }
         iter += 1;
     }
-    Some(0.5 * (lo + hi))
+    Some(Kiloparsecs::new(0.5 * (lo + hi)))
 }
 
 /// Fills `out` with evenly spaced [`ThinLensSample`] evaluations over `[r_min_kpc, r_max_kpc]` with zero heap allocations.
 #[verified_engine::verified]
 pub fn sample_halo_lensing_into(
-    r_min_kpc: f64,
-    r_max_kpc: f64,
+    r_min_kpc: Kiloparsecs,
+    r_max_kpc: Kiloparsecs,
     baryons: Option<&BaryonicDiskConfig>,
     halo: &HaloProfile,
     sigma_crit_solar_per_kpc2: f64,
@@ -259,13 +312,13 @@ pub fn sample_halo_lensing_into(
     if n == 0 {
         return;
     }
-    let start = clamp_radius_kpc(r_min_kpc);
-    let end = clamp_radius_kpc(r_max_kpc).max(start);
+    let start = clamp_radius_kpc(r_min_kpc).get();
+    let end = clamp_radius_kpc(r_max_kpc).get().max(start);
     let denom = if n > 1 { (n - 1) as f64 } else { 1.0 };
     let mut i = 0;
     while i < n {
         let frac = if n > 1 { i as f64 / denom } else { 0.0 };
-        let r = start + frac * (end - start);
+        let r = Kiloparsecs::new(start + frac * (end - start));
         out[i] = halo_thin_lens_sample(r, baryons, halo, sigma_crit_solar_per_kpc2);
         i += 1;
     }

@@ -1,16 +1,17 @@
 //! Quantum Foundations of MRI.
+// [cite:math_scalars]
 
 use crate::error::StatMechError;
+use math_scalars::{DimensionlessVal, Hertz, Kelvin, Tesla};
 
-/// Gyromagnetic Ratio for Hydrogen in rad/s/T.
-/// $\gamma \approx 2.675 \times 10^8$ rad/s/T.
-pub const GYROMAGNETIC_RATIO: f64 = 2.675e8;
+/// Proton gyromagnetic ratio $\gamma_p$ in $\text{rad}\cdot\text{s}^{-1}\cdot\text{T}^{-1}$ (`SiFrame`).
+pub use math_commons::constants::si::PROTON_GYROMAGNETIC_RATIO as GYROMAGNETIC_RATIO;
 
-/// Reduced Planck constant in J·s.
-pub const H_BAR: f64 = 1.0545718e-34;
+/// Reduced Planck constant $\hbar$ in $\text{J}\cdot\text{s}$ (`SiFrame`).
+pub use math_commons::constants::si::H_BAR;
 
-/// Boltzmann constant in J/K.
-pub const K_B: f64 = 1.380649e-23;
+/// Boltzmann constant $k_B$ in $\text{J}\cdot\text{K}^{-1}$ (`SiFrame`).
+pub use math_commons::constants::si::K_B;
 
 /// Calculates the Larmor frequency $\omega_0$ for a given magnetic field $B_0$.
 ///
@@ -21,7 +22,8 @@ pub const K_B: f64 = 1.380649e-23;
 /// * Larmor frequency in rad/s.
 #[verified_engine::verified]
 pub fn larmor_frequency(b0: f64) -> f64 {
-    GYROMAGNETIC_RATIO * b0
+    let omega: Hertz = GYROMAGNETIC_RATIO * Tesla::new(b0);
+    omega.get()
 }
 
 /// Calculates the Boltzmann magnetization population ratio $N_-/N_+$.
@@ -39,6 +41,7 @@ pub fn boltzmann_ratio(temperature: f64, b0: f64) -> Result<f64, StatMechError> 
     if !temperature.is_finite() || temperature <= 0.0 {
         return Err(StatMechError::InvalidTemperature(temperature));
     }
-    let exponent = -(H_BAR * GYROMAGNETIC_RATIO * b0) / (K_B * temperature);
-    Ok(exponent.exp())
+    let exponent: DimensionlessVal =
+        -((H_BAR * GYROMAGNETIC_RATIO * Tesla::new(b0)) / (K_B * Kelvin::new(temperature)));
+    Ok(exponent.exp().get())
 }

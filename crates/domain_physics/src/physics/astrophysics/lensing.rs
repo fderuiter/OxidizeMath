@@ -9,15 +9,15 @@
 //! # Example
 //! ```rust
 //! # use domain_physics::__doctest_facade as math_explorer;
-//! use math_explorer::nalgebra::Vector2;
 //! use math_explorer::physics::astrophysics::{HaloProfile, halo_thin_lens_sample};
+//! use math_explorer::scalars::Kiloparsecs;
 //!
 //! let nfw = HaloProfile::NfwCusp {
 //!     virial_mass_solar: 2.0e11,
-//!     scale_radius_kpc: 4.0,
+//!     scale_radius_kpc: Kiloparsecs::new(4.0),
 //!     concentration: 12.0,
 //! };
-//! let sample = halo_thin_lens_sample(1.0, None, &nfw, 1.0e8);
+//! let sample = halo_thin_lens_sample(Kiloparsecs::new(1.0), None, &nfw, 1.0e8);
 //! assert!(sample.convergence > 0.0 && sample.shear > 0.0);
 //! ```
 

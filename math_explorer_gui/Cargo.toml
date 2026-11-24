@@ -68,6 +68,7 @@ oxidize_core = { path = "../crates/oxidize_core" }
 math_explorer = { path = "../math_explorer", optional = true }
 engine_linalg = { path = "../crates/02_engines/engine_linalg" }
 math_commons = { path = "../crates/math_commons" }
+math_scalars = { path = "../crates/00_foundation/math_scalars", features = ["serde"] }
 scientific_metadata = { path = "../crates/scientific_metadata" }
 diagnostics = { path = "../crates/diagnostics" }
 verified_engine = { path = "../crates/verified_engine" }

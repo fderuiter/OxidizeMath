@@ -16,7 +16,7 @@ use std::f64::consts::PI;
 /// * Phase angle in radians.
 #[verified_engine::verified]
 pub fn accumulated_phase(position: Vector3<f64>, gradient_integral: Vector3<f64>) -> f64 {
-    proton::GYROMAGNETIC_RATIO * position.dot(&gradient_integral)
+    proton::GYROMAGNETIC_RATIO.get() * position.dot(&gradient_integral)
 }
 
 /// Calculates the current k-space coordinate.
@@ -30,5 +30,5 @@ pub fn accumulated_phase(position: Vector3<f64>, gradient_integral: Vector3<f64>
 /// * k-space coordinate vector in cycles/meter ($m^{-1}$).
 #[verified_engine::verified]
 pub fn k_space_coordinate(gradient_integral: Vector3<f64>) -> Vector3<f64> {
-    (proton::GYROMAGNETIC_RATIO / (2.0 * PI)) * gradient_integral
+    (proton::GYROMAGNETIC_RATIO.get() / (2.0 * PI)) * gradient_integral
 }

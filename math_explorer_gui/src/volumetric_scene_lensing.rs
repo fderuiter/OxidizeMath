@@ -9,13 +9,14 @@ use crate::camera::Camera3D;
 use math_explorer::ai::gaussian_splatting::projection::{
     project_scene_lensed_into, LensedProjectionOutcome, LensedSplatImageSpec, SplatCameraProjection,
 };
-use math_explorer::constants::{C, SOLAR_MASS};
+use math_explorer::constants::si::{C, SOLAR_MASS};
 use math_explorer::physics::astrophysics::{
     evaluate_relativistic_beaming, halo_lens_deflection_and_jacobian,
     schwarzschild_thin_lens_images, tangential_critical_radius_kpc,
-    validate_christoffel_radial_connection, HaloProfile,
+    validate_christoffel_radial_connection, HaloProfile, SchwarzschildLensImage,
 };
 use math_explorer::physics::high_energy::general_relativity::SchwarzschildBlackHole;
+use math_scalars::{Kiloparsecs, ViewportLength};
 use nalgebra::{Point2, Vector2, Vector3};
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +27,41 @@ use super::{
 
 /// Number of vertices in closed circular critical/shadow/caustic overlay rings.
 pub const CAUSTIC_RING_POINTS: usize = 65;
+
+/// Default galactic field-of-view scale (`8.0 kpc` per viewport unit; `[-2.5, 2.5]` spans `[-20, 20] kpc`).
+pub const DEFAULT_VIEWPORT_KPC_SCALE: f64 = 8.0;
+
+const fn default_viewport_kpc_scale() -> f64 {
+    DEFAULT_VIEWPORT_KPC_SCALE
+}
+
+fn in_range(val: f64, lo: f64, hi: f64) -> bool {
+    val.is_finite() && (lo..=hi).contains(&val)
+}
+
+fn clamp_or(val: f64, lo: f64, hi: f64, fallback: f64) -> f64 {
+    if val.is_finite() {
+        val.clamp(lo, hi)
+    } else {
+        fallback
+    }
+}
+
+fn safe_kpc_scale(kpc_per_viewport: f64) -> f64 {
+    clamp_or(kpc_per_viewport, 0.1, 25.0, DEFAULT_VIEWPORT_KPC_SCALE)
+}
+
+/// Converts a 1D viewport length (`ViewportFrame`) into physical `Kiloparsecs` (`GalacticKpcFrame`).
+#[must_use]
+pub fn viewport_to_kpc(vp: ViewportLength, kpc_per_viewport: f64) -> Kiloparsecs {
+    vp.to_kiloparsecs(safe_kpc_scale(kpc_per_viewport))
+}
+
+/// Converts a physical `Kiloparsecs` (`GalacticKpcFrame`) length back into `ViewportLength` (`ViewportFrame`).
+#[must_use]
+pub fn kpc_to_viewport(kpc: Kiloparsecs, kpc_per_viewport: f64) -> ViewportLength {
+    kpc.to_viewport(safe_kpc_scale(kpc_per_viewport))
+}
 
 /// Gravitational thin-lens model applied to projected 3D Gaussian splats.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -80,6 +116,9 @@ pub struct SplatLensConfig {
     pub halo_log10_mass: f64,
     /// Characteristic halo scale/core radius $r_s$ or $r_0$ in viewport units.
     pub halo_scale_radius: f64,
+    /// Physical kiloparsecs per viewport unit (`kpc / vp`) bridging `ViewportFrame` and `GalacticKpcFrame`.
+    #[serde(default = "default_viewport_kpc_scale")]
+    pub viewport_kpc_scale: f64,
     /// Logarithmic critical surface density $\log_{10}(\Sigma_{\text{crit}})$ controlling caustic size.
     pub log10_sigma_crit: f64,
     /// Peak inner orbital speed fraction $v_{\text{ISCO}} / c \in [0, 0.99]$ for Doppler/synchrotron beaming.
@@ -100,6 +139,7 @@ impl Default for SplatLensConfig {
             viewport_rs: 0.16,
             halo_log10_mass: 11.4,
             halo_scale_radius: 0.55,
+            viewport_kpc_scale: DEFAULT_VIEWPORT_KPC_SCALE,
             log10_sigma_crit: 8.15,
             peak_orbital_beta: 0.42,
             magnetic_u_b: 1.5,
@@ -116,91 +156,58 @@ impl SplatLensConfig {
 
     /// Returns `true` when all numeric lens parameters are finite and within safe bounds.
     pub fn is_valid(&self) -> bool {
-        self.center[0].is_finite()
-            && (-6.0..=6.0).contains(&self.center[0])
-            && self.center[1].is_finite()
-            && (-6.0..=6.0).contains(&self.center[1])
-            && self.einstein_radius.is_finite()
-            && (0.05..=3.0).contains(&self.einstein_radius)
-            && self.viewport_rs.is_finite()
-            && (0.02..=1.5).contains(&self.viewport_rs)
-            && self.halo_log10_mass.is_finite()
-            && (8.0..=14.0).contains(&self.halo_log10_mass)
-            && self.halo_scale_radius.is_finite()
-            && (0.08..=4.0).contains(&self.halo_scale_radius)
-            && self.log10_sigma_crit.is_finite()
-            && (6.0..=11.0).contains(&self.log10_sigma_crit)
-            && self.peak_orbital_beta.is_finite()
-            && (0.0..=0.995).contains(&self.peak_orbital_beta)
-            && self.magnetic_u_b.is_finite()
-            && (0.0..=50.0).contains(&self.magnetic_u_b)
+        in_range(self.center[0], -6.0, 6.0)
+            && in_range(self.center[1], -6.0, 6.0)
+            && in_range(self.einstein_radius, 0.05, 3.0)
+            && in_range(self.viewport_rs, 0.02, 1.5)
+            && in_range(self.halo_log10_mass, 8.0, 14.0)
+            && in_range(self.halo_scale_radius, 0.08, 4.0)
+            && in_range(self.viewport_kpc_scale, 0.1, 25.0)
+            && in_range(self.log10_sigma_crit, 6.0, 11.0)
+            && in_range(self.peak_orbital_beta, 0.0, 0.995)
+            && in_range(self.magnetic_u_b, 0.0, 50.0)
     }
 
     /// Clamps any out-of-range or non-finite numeric fields in-place to safe physical bounds.
     pub fn clamp_in_place(&mut self) {
         let def = Self::default();
-        self.center[0] = if self.center[0].is_finite() {
-            self.center[0].clamp(-6.0, 6.0)
-        } else {
-            def.center[0]
-        };
-        self.center[1] = if self.center[1].is_finite() {
-            self.center[1].clamp(-6.0, 6.0)
-        } else {
-            def.center[1]
-        };
-        self.einstein_radius = if self.einstein_radius.is_finite() {
-            self.einstein_radius.clamp(0.05, 3.0)
-        } else {
-            def.einstein_radius
-        };
-        self.viewport_rs = if self.viewport_rs.is_finite() {
-            self.viewport_rs.clamp(0.02, 1.5)
-        } else {
-            def.viewport_rs
-        };
-        self.halo_log10_mass = if self.halo_log10_mass.is_finite() {
-            self.halo_log10_mass.clamp(8.0, 14.0)
-        } else {
-            def.halo_log10_mass
-        };
-        self.halo_scale_radius = if self.halo_scale_radius.is_finite() {
-            self.halo_scale_radius.clamp(0.08, 4.0)
-        } else {
-            def.halo_scale_radius
-        };
-        self.log10_sigma_crit = if self.log10_sigma_crit.is_finite() {
-            self.log10_sigma_crit.clamp(6.0, 11.0)
-        } else {
-            def.log10_sigma_crit
-        };
-        self.peak_orbital_beta = if self.peak_orbital_beta.is_finite() {
-            self.peak_orbital_beta.clamp(0.0, 0.995)
-        } else {
-            def.peak_orbital_beta
-        };
-        self.magnetic_u_b = if self.magnetic_u_b.is_finite() {
-            self.magnetic_u_b.clamp(0.0, 50.0)
-        } else {
-            def.magnetic_u_b
-        };
+        self.center[0] = clamp_or(self.center[0], -6.0, 6.0, def.center[0]);
+        self.center[1] = clamp_or(self.center[1], -6.0, 6.0, def.center[1]);
+        self.einstein_radius = clamp_or(self.einstein_radius, 0.05, 3.0, def.einstein_radius);
+        self.viewport_rs = clamp_or(self.viewport_rs, 0.02, 1.5, def.viewport_rs);
+        self.halo_log10_mass = clamp_or(self.halo_log10_mass, 8.0, 14.0, def.halo_log10_mass);
+        self.halo_scale_radius = clamp_or(self.halo_scale_radius, 0.08, 4.0, def.halo_scale_radius);
+        self.viewport_kpc_scale =
+            clamp_or(self.viewport_kpc_scale, 0.1, 25.0, def.viewport_kpc_scale);
+        self.log10_sigma_crit = clamp_or(self.log10_sigma_crit, 6.0, 11.0, def.log10_sigma_crit);
+        self.peak_orbital_beta =
+            clamp_or(self.peak_orbital_beta, 0.0, 0.995, def.peak_orbital_beta);
+        self.magnetic_u_b = clamp_or(self.magnetic_u_b, 0.0, 50.0, def.magnetic_u_b);
     }
 
     /// Feeds all lens fields into a `Hasher` for render-cache invalidation and URL revision tracking.
     pub fn hash_state(&self, h: &mut impl std::hash::Hasher) {
         use std::hash::Hash;
-        self.mode.hash(h);
-        self.center[0].to_bits().hash(h);
-        self.center[1].to_bits().hash(h);
-        self.drag_lens_on_canvas.hash(h);
-        self.einstein_radius.to_bits().hash(h);
-        self.viewport_rs.to_bits().hash(h);
-        self.halo_log10_mass.to_bits().hash(h);
-        self.halo_scale_radius.to_bits().hash(h);
-        self.log10_sigma_crit.to_bits().hash(h);
-        self.peak_orbital_beta.to_bits().hash(h);
-        self.magnetic_u_b.to_bits().hash(h);
-        self.show_caustic_overlay.hash(h);
+        (
+            self.mode,
+            self.drag_lens_on_canvas,
+            self.show_caustic_overlay,
+        )
+            .hash(h);
+        [
+            self.center[0],
+            self.center[1],
+            self.einstein_radius,
+            self.viewport_rs,
+            self.halo_log10_mass,
+            self.halo_scale_radius,
+            self.viewport_kpc_scale,
+            self.log10_sigma_crit,
+            self.peak_orbital_beta,
+            self.magnetic_u_b,
+        ]
+        .map(f64::to_bits)
+        .hash(h);
     }
 
     /// Preset lens configuration tailored to [`super::presets::VolumetricSplatPreset::RelativisticAccretionDisk`].
@@ -217,19 +224,20 @@ impl SplatLensConfig {
         }
     }
 
-    /// Builds the `NfwCusp` and `BurkertCore` halo profiles at matched mass & scale for comparison.
+    /// Builds the `NfwCusp` and `BurkertCore` halo profiles at matched mass & physical `kpc` scale for comparison.
     pub fn matched_halos(&self) -> (HaloProfile, HaloProfile, f64) {
         let m200 = 10.0_f64.powf(self.halo_log10_mass.clamp(8.0, 14.0));
-        let scale = self.halo_scale_radius.clamp(0.08, 4.0);
+        let scale_vp = ViewportLength::new(self.halo_scale_radius.clamp(0.08, 4.0));
+        let scale_kpc = viewport_to_kpc(scale_vp, self.viewport_kpc_scale);
         let sigma_crit = 10.0_f64.powf(self.log10_sigma_crit.clamp(6.0, 11.0));
         let nfw = HaloProfile::NfwCusp {
             virial_mass_solar: m200,
-            scale_radius_kpc: scale,
+            scale_radius_kpc: scale_kpc,
             concentration: 12.0,
         };
         let burk = HaloProfile::BurkertCore {
             virial_mass_solar: m200,
-            core_radius_kpc: scale,
+            core_radius_kpc: scale_kpc,
             concentration: 12.0,
         };
         (nfw, burk, sigma_crit)
@@ -274,7 +282,7 @@ pub fn project_and_rasterize_lensed_workspace(
         focal: (focal, focal),
         scale_multiplier,
     };
-    let bh = SchwarzschildBlackHole::new(1.0e8 * SOLAR_MASS).expect("valid lens black hole");
+    let bh = SchwarzschildBlackHole::new(1.0e8 * SOLAR_MASS.get()).expect("valid lens black hole");
     let cam_forward = Vector3::new(
         view_matrix[(2, 0)],
         view_matrix[(2, 1)],
@@ -313,20 +321,38 @@ pub fn project_and_rasterize_lensed_workspace(
         pan,
         &mut ws.pixel_buffer,
     );
+    build_frame_telemetry(
+        &bh,
+        lens,
+        (&nfw_halo, &burk_halo, sigma_crit),
+        (ws.projected_splats.len(), masked_rays, max_boost),
+    )
+}
 
-    let shadow_r = if lens.mode == SplatLensMode::Schwarzschild {
+fn build_frame_telemetry(
+    bh: &SchwarzschildBlackHole,
+    lens: &SplatLensConfig,
+    (nfw_halo, burk_halo, sigma_crit): (&HaloProfile, &HaloProfile, f64),
+    (emitted_images, shadow_masked_rays, max_radiance_boost): (usize, usize, f64),
+) -> LensedFrameTelemetry {
+    let shadow_radius = if lens.mode == SplatLensMode::Schwarzschild {
         1.5 * lens.viewport_rs.max(0.0)
     } else {
         0.0
     };
-    let (gamma_r00, _) = validate_christoffel_radial_connection(&bh, 6.0).unwrap_or((0.0, 0.0));
+    let (gamma_r00, _) = validate_christoffel_radial_connection(bh, 6.0).unwrap_or((0.0, 0.0));
+    let r_search_kpc = viewport_to_kpc(ViewportLength::new(6.0), lens.viewport_kpc_scale);
+    let crit_vp = |h: &HaloProfile| {
+        tangential_critical_radius_kpc(None, h, sigma_crit, r_search_kpc)
+            .map(|r_kpc| kpc_to_viewport(r_kpc, lens.viewport_kpc_scale).get())
+    };
     LensedFrameTelemetry {
-        emitted_images: ws.projected_splats.len(),
-        shadow_masked_rays: masked_rays,
-        shadow_radius: shadow_r,
-        nfw_critical_radius: tangential_critical_radius_kpc(None, &nfw_halo, sigma_crit, 6.0),
-        burkert_critical_radius: tangential_critical_radius_kpc(None, &burk_halo, sigma_crit, 6.0),
-        max_radiance_boost: max_boost,
+        emitted_images,
+        shadow_masked_rays,
+        shadow_radius,
+        nfw_critical_radius: crit_vp(nfw_halo),
+        burkert_critical_radius: crit_vp(burk_halo),
+        max_radiance_boost,
         christoffel_gamma_r00: gamma_r00,
     }
 }
@@ -348,11 +374,9 @@ pub(crate) fn compute_splat_beaming_weight(
     let tang_dir = Vector3::new(-world_pos.z / r_cyl, 0.0, world_pos.x / r_cyl);
     let los_cos = (-tang_dir.dot(cam_forward)).clamp(-1.0, 1.0);
     let kep_falloff = (3.0 / r_over_rs).clamp(0.05, 1.0).sqrt();
-    let speed_m_s = (lens.peak_orbital_beta.clamp(0.0, 0.998) * kep_falloff) * C;
-    match evaluate_relativistic_beaming(bh, r_over_rs, speed_m_s, los_cos, lens.magnetic_u_b) {
-        Ok(sample) => sample.radiance_weight,
-        Err(_) => 1.0,
-    }
+    let speed_m_s = (lens.peak_orbital_beta.clamp(0.0, 0.998) * kep_falloff) * C.get();
+    evaluate_relativistic_beaming(bh, r_over_rs, speed_m_s, los_cos, lens.magnetic_u_b)
+        .map_or(1.0, |sample| sample.radiance_weight)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -387,9 +411,12 @@ pub(crate) fn evaluate_lens_mode_outcome(
             } else {
                 burk_halo
             };
-            let (defl, jac, sample) =
-                halo_lens_deflection_and_jacobian(rel, None, halo, sigma_crit);
-            let deflected = Point2::new(beta_pt.x + defl.x, beta_pt.y + defl.y);
+            let rel_kpc =
+                rel.map(|v| viewport_to_kpc(ViewportLength::new(v), lens.viewport_kpc_scale));
+            let (defl_kpc, jac, sample) =
+                halo_lens_deflection_and_jacobian(rel_kpc, None, halo, sigma_crit);
+            let defl_vp = defl_kpc.map(|d| kpc_to_viewport(d, lens.viewport_kpc_scale));
+            let deflected = Point2::new(beta_pt.x + defl_vp.x.get(), beta_pt.y + defl_vp.y.get());
             LensedProjectionOutcome {
                 primary: Some(LensedSplatImageSpec {
                     mean: deflected,
@@ -418,25 +445,20 @@ fn evaluate_schwarzschild_outcome(
             secondary: None,
         };
     };
-    if dual.primary.is_none() {
-        *masked_rays += 1;
-    }
-    if dual.secondary.is_none() {
-        *masked_rays += 1;
-    }
+    *masked_rays += usize::from(dual.primary.is_none()) + usize::from(dual.secondary.is_none());
+    let map_img = |img: SchwarzschildLensImage, rad: f64, lo: f64, hi: f64| LensedSplatImageSpec {
+        mean: Point2::new(lens_center.x + img.offset.x, lens_center.y + img.offset.y),
+        lens_jacobian: img.jacobian,
+        radiance_weight: rad,
+        opacity_weight: img.magnification_abs.sqrt().clamp(lo, hi),
+    };
     LensedProjectionOutcome {
-        primary: dual.primary.map(|img| LensedSplatImageSpec {
-            mean: Point2::new(lens_center.x + img.offset.x, lens_center.y + img.offset.y),
-            lens_jacobian: img.jacobian,
-            radiance_weight,
-            opacity_weight: img.magnification_abs.sqrt().clamp(0.35, 1.35),
-        }),
-        secondary: dual.secondary.map(|img| LensedSplatImageSpec {
-            mean: Point2::new(lens_center.x + img.offset.x, lens_center.y + img.offset.y),
-            lens_jacobian: img.jacobian,
-            radiance_weight: radiance_weight * 0.85,
-            opacity_weight: img.magnification_abs.sqrt().clamp(0.22, 1.15),
-        }),
+        primary: dual
+            .primary
+            .map(|img| map_img(img, radiance_weight, 0.35, 1.35)),
+        secondary: dual
+            .secondary
+            .map(|img| map_img(img, radiance_weight * 0.85, 0.22, 1.15)),
     }
 }
 

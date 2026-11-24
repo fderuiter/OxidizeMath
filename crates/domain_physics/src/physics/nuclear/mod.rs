@@ -80,7 +80,22 @@ mod tests {
     #[allow(clippy::assertions_on_constants)]
     #[verified_engine::verified]
     fn test_constants() {
-        assert!(math_commons::constants::PROTON_MASS > 900.0);
+        assert!(math_commons::constants::nuclear::PROTON_MASS.get() > 900.0);
+        let eta = decay::gamow_factor(
+            AtomicNumber::new(90),
+            AtomicNumber::new(2),
+            math_scalars::FemtometersPerSecond::new(1.5e22),
+        )
+        .unwrap();
+        assert!(eta > 0.0 && eta.is_finite());
+        assert!(
+            decay::gamow_factor(
+                AtomicNumber::new(90),
+                AtomicNumber::new(2),
+                math_scalars::FemtometersPerSecond::new(0.0),
+            )
+            .is_err()
+        );
     }
 
     #[test]

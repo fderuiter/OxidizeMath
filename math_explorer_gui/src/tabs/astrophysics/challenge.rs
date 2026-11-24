@@ -139,7 +139,12 @@ pub fn evaluate_mystery_residuals_into(
     let mut sum_sq = 0.0_f64;
     let mut chi_sq = 0.0_f64;
     for (idx, obs) in MYSTERY_DWARF_TARGETS.iter().enumerate() {
-        let v_model = decompose_rotation_curve(obs.radius_kpc, baryons, halo).v_circ_kms;
+        let v_model = decompose_rotation_curve(
+            math_scalars::Kiloparsecs::new(obs.radius_kpc),
+            baryons,
+            halo,
+        )
+        .v_circ_kms;
         let dv = v_model - obs.v_obs_kms;
         residuals_out[idx] = dv;
         sum_sq += dv * dv;

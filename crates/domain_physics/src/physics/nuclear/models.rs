@@ -1,5 +1,5 @@
 use super::types::*;
-use math_commons::constants::liquid_drop_constants;
+use math_commons::constants::nuclear::liquid_drop_constants;
 
 /// Trait defining the behavior of a nuclear binding energy model.
 pub trait BindingEnergyModel {
@@ -42,11 +42,11 @@ impl Default for LiquidDropModel {
     #[verified_engine::verified]
     fn default() -> Self {
         Self {
-            a_v: liquid_drop_constants::A_V,
-            a_s: liquid_drop_constants::A_S,
-            a_c: liquid_drop_constants::A_C,
-            a_sym: liquid_drop_constants::A_SYM,
-            delta_coeff: liquid_drop_constants::DELTA_COEFF,
+            a_v: liquid_drop_constants::A_V.get(),
+            a_s: liquid_drop_constants::A_S.get(),
+            a_c: liquid_drop_constants::A_C.get(),
+            a_sym: liquid_drop_constants::A_SYM.get(),
+            delta_coeff: liquid_drop_constants::DELTA_COEFF.get(),
         }
     }
 }
@@ -114,7 +114,8 @@ impl BindingEnergyModel for LiquidDropModel {
 
 /// The Shell Model (Spin-Orbit coupling).
 pub mod shell {
-    use math_commons::constants;
+    use math_commons::constants::nuclear;
+    use math_scalars::MeVSecond;
 
     /// Calculates the spin-orbit expectation value <L.S>.
     ///
@@ -129,8 +130,8 @@ pub mod shell {
     /// * `f64` - The energy shift factor.
     #[verified_engine::verified]
     pub fn spin_orbit_coupling(l: f64, s: f64, j: f64) -> f64 {
-        let hbar = constants::HBAR_C / constants::LIGHT_SPEED;
+        let hbar: MeVSecond = nuclear::HBAR_C / nuclear::LIGHT_SPEED;
         let term = j * (j + 1.0) - l * (l + 1.0) - s * (s + 1.0);
-        (hbar.powi(2) / 2.0) * term
+        (hbar.get().powi(2) / 2.0) * term
     }
 }

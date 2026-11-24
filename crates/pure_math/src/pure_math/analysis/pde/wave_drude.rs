@@ -30,7 +30,7 @@ impl WaveField2D {
             g,
             decay_m: 1.0 - 0.5 * gamma * ds,
             inv_dx: self.ops.inv_dx,
-            inv_dy: 1.0 / *self.ops.dy,
+            inv_dy: 1.0 / self.ops.dy.get(),
         };
         self.update_drude_magnetic(coeffs);
         let src_val = source.map_or(0.0, |s| s.evaluate_at_time(self.time));

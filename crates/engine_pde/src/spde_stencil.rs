@@ -76,7 +76,15 @@ impl ExplicitSpdeStencilStepper {
             let lap = self.ops.laplacian_1d_at(src, n, x, self.boundary);
             u[x] = src[x] + dt * deterministic_rhs(x, src[x], grad, lap);
         }
-        apply_noise_1d(u, *self.ops.dx, dt, self.boundary, self.noise, &mut ws, rng);
+        apply_noise_1d(
+            u,
+            self.ops.dx.get(),
+            dt,
+            self.boundary,
+            self.noise,
+            &mut ws,
+            rng,
+        );
     }
 
     /// Advances a 2D SPDE $\partial_t u = \mathcal{N}(x, y, u, \nabla u, \nabla^2 u) + \xi$ in-place.
@@ -125,8 +133,8 @@ impl ExplicitSpdeStencilStepper {
             &mut u[..total],
             width,
             height,
-            *self.ops.dx,
-            *self.ops.dy,
+            self.ops.dx.get(),
+            self.ops.dy.get(),
             dt,
             self.boundary,
             self.noise,
@@ -195,8 +203,8 @@ impl ExplicitSpdeStencilStepper {
             &mut phi[..total],
             width,
             height,
-            *self.ops.dx,
-            *self.ops.dy,
+            self.ops.dx.get(),
+            self.ops.dy.get(),
             dt,
             self.boundary,
             self.noise,
@@ -299,8 +307,8 @@ impl SplitStepSpdeStencilStepper {
             &mut u[..total],
             width,
             height,
-            *self.ops.dx,
-            *self.ops.dy,
+            self.ops.dx.get(),
+            self.ops.dy.get(),
             dt,
             self.boundary,
             self.noise,

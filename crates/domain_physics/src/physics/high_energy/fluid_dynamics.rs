@@ -1,5 +1,5 @@
 use crate::error::HighEnergyError;
-use math_commons::constants::C;
+use math_commons::constants::si::C;
 
 /// Calculates the density compression ratio r for a strong relativistic shock.
 /// Formula: r = (gamma_hat + 1) / (gamma_hat - 1)
@@ -45,7 +45,8 @@ pub fn specific_enthalpy(
         return Err(HighEnergyError::InvalidPressure { p: pressure });
     }
 
-    let term = (adiabatic_index / (adiabatic_index - 1.0)) * (pressure / (density * C.powi(2)));
+    let term =
+        (adiabatic_index / (adiabatic_index - 1.0)) * (pressure / (density * C.get().powi(2)));
     Ok(1.0 + term)
 }
 

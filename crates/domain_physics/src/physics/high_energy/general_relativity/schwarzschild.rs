@@ -1,6 +1,7 @@
 //! Schwarzschild spacetime metric, orbital potentials, Flamm paraboloid, and twin clock dilation.
 
-use math_commons::constants::{C, G};
+use math_commons::constants::si::{C, G};
+use math_scalars::{Kilograms, Meters};
 use nalgebra::{SMatrix, SVector, Vector4};
 use pure_math::pure_math::tensor::{
     GeodesicStepStatus, LorentzianConnection4D, SchwarzschildConnection4D, StaticMetric,
@@ -69,8 +70,8 @@ impl SchwarzschildBlackHole {
                 limit: 0.0,
             });
         }
-        let mass = (r_s * C * C) / (2.0 * G);
-        Self::new(mass)
+        let mass: Kilograms = (Meters::new(r_s) * C * C) / (G * 2.0);
+        Self::new(mass.get())
     }
 
     /// Calculates the Schwarzschild event horizon radius $R_s = \frac{2GM}{c^2}$.
@@ -82,7 +83,8 @@ impl SchwarzschildBlackHole {
         if !self.mass.is_finite() || self.mass <= 0.0 {
             return Err(HighEnergyError::InvalidMass { mass: self.mass });
         }
-        Ok((2.0 * G * self.mass) / C.powi(2))
+        let rs: Meters = (G * Kilograms::new(self.mass) * 2.0) / (C * C);
+        Ok(rs.get())
     }
 
     /// Calculates the gravitational time dilation factor $d\tau / dt = \sqrt{1 - R_s / r}$.

@@ -74,3 +74,21 @@ fn test_trait_implementation() {
     let coupled = ElectrochemicalAgingModel::from_preset(ChemistryPreset::Lfp);
     assert!(evaluate_model(&coupled) > result);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_celsius_kelvin_offset_and_dimensionless_sei_calendar_loss() {
+    let cold_c = math_scalars::Celsius::<f64>::new(-20.0);
+    assert!((cold_c.to_kelvin().get() - 253.15).abs() < 1.0e-12);
+
+    let baseline = ElectrochemicalAgingModel::from_preset(ChemistryPreset::Nmc811);
+    let cold_model = baseline.with_temperature(cold_c);
+    assert_eq!(cold_model.temperature(), cold_c);
+    assert!((cold_model.temperature_c() - (-20.0)).abs() < 1.0e-12);
+    assert!(cold_model.sei_calendar_loss(36.0) < baseline.sei_calendar_loss(36.0));
+
+    // Dimensionless ratio (t / t_ref).sqrt() quadruples time to double SEI loss.
+    let loss_9d = baseline.sei_calendar_loss(9.0);
+    let loss_36d = baseline.sei_calendar_loss(36.0);
+    assert!(((loss_36d / loss_9d) - 2.0).abs() < 1.0e-12);
+}

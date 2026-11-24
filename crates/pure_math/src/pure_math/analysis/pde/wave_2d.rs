@@ -142,12 +142,12 @@ impl Wave2DSolver {
     /// Horizontal cell spacing $\Delta x$.
     #[verified_engine::verified]
     pub fn dx(&self) -> f64 {
-        *self.ops.dx
+        self.ops.dx.get()
     }
     /// Vertical cell spacing $\Delta y$.
     #[verified_engine::verified]
     pub fn dy(&self) -> f64 {
-        *self.ops.dy
+        self.ops.dy.get()
     }
     /// Elapsed simulation time $t$.
     #[verified_engine::verified]

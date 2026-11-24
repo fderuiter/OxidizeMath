@@ -33,7 +33,7 @@ impl MriKSpaceRunner {
         let t_defocus = self
             .echo_tau
             .map_or(self.current_time, |tau| self.current_time - 2.0 * tau);
-        let gamma_t = proton::GYROMAGNETIC_RATIO * t_defocus;
+        let gamma_t = proton::GYROMAGNETIC_RATIO.get() * t_defocus;
         std::array::from_fn(|s| {
             let theta = base_theta + gamma_t * (((s as f64) - 3.5) * spread);
             Vector3::new(m_perp * theta.sin(), m_perp * theta.cos(), center.z)
@@ -51,7 +51,7 @@ impl MriKSpaceRunner {
         let t_defocus = self
             .echo_tau
             .map_or(self.current_time, |tau| self.current_time - 2.0 * tau);
-        let gamma_t = proton::GYROMAGNETIC_RATIO * t_defocus;
+        let gamma_t = proton::GYROMAGNETIC_RATIO.get() * t_defocus;
         for (s, slot) in self.probe_spins.iter_mut().enumerate() {
             let theta = base_theta + gamma_t * (((s as f64) - 3.5) * spread);
             *slot = Vector3::new(m_perp * theta.sin(), m_perp * theta.cos(), center.z);
@@ -248,7 +248,7 @@ fn rotate_ensemble_delta_b0<const K: usize>(
     spread_frac: f64,
     elapsed_time: f64,
 ) {
-    let gamma_t = proton::GYROMAGNETIC_RATIO * elapsed_time;
+    let gamma_t = proton::GYROMAGNETIC_RATIO.get() * elapsed_time;
     let prev_spread = spread_frac * prev_b0.abs();
     let next_spread = spread_frac * next_b0.abs();
     let center = ((K.saturating_sub(1)) as f64) * 0.5;

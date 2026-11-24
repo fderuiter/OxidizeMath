@@ -65,18 +65,58 @@ fn test_stl_binary_size_and_ascii_round_trip() {
     assert_eq!(stl_bin.len(), 84 + 50 * face_count);
     assert!(!stl_bin[..5].eq_ignore_ascii_case(b"solid"));
     assert!(
-        stl_bin[..80]
+        stl_bin[..STL_UNITLESS_HEADER_TEXT.len()] == *STL_UNITLESS_HEADER_TEXT,
+        "Unscaled binary STL must start with unitless header prefix"
+    );
+    assert!(
+        !stl_bin[..80]
             .windows(b"UNITS=mm".len())
             .any(|w| w == b"UNITS=mm"),
-        "Binary STL 80-byte header must declare UNITS=mm"
+        "Unscaled Mesh binary STL 80-byte header must NOT claim UNITS=mm"
     );
     let stored_faces = u32::from_le_bytes(stl_bin[80..84].try_into().unwrap()) as usize;
     assert_eq!(stored_faces, face_count);
+
+    let calibrated_mm = MillimeterMesh::from_scaled(sphere.clone(), 42.5).expect("calibrated mm");
+    assert!((calibrated_mm.span_mm().get() - 42.5).abs() <= 1.0e-5);
+    let calibrated_bin = export_mesh_to_stl_binary(&calibrated_mm).expect("MillimeterMesh STL");
+    assert!(
+        calibrated_bin[..80]
+            .windows(b"UNITS=mm".len())
+            .any(|w| w == b"UNITS=mm"),
+        "MillimeterMesh binary STL 80-byte header must declare UNITS=mm"
+    );
+
+    for f in 0..face_count {
+        let base = 84 + f * 50;
+        for k in 0..12 {
+            let off = base + k * 4;
+            let val = f32::from_le_bytes(stl_bin[off..off + 4].try_into().unwrap());
+            assert!(val.is_finite(), "Non-finite STL float at facet {f}");
+        }
+    }
+
+    let stl_ascii = export_mesh_to_stl_ascii(&sphere).expect("ASCII STL");
+    let parsed = parse_stl_ascii(&stl_ascii).expect("parse ASCII STL");
+    assert_eq!(parsed.indices.len() / 3, face_count);
+    assert!((signed_volume(&parsed) - signed_volume(&sphere)).abs() < 1.0e-2);
+}
+
+#[test]
+fn test_stl_millimeter_mesh_scaling_spans_and_bounds() {
+    let sphere = build_uv_sphere(Point3D::new(0.0, 0.0, 0.0), 1.5, 16, 12).expect("sphere");
+    let face_count = sphere.indices.len() / 3;
 
     for target_mm in [5.0_f32, 42.5_f32, 250.0_f32] {
         let scaled_bin =
             export_mesh_to_stl_binary_scaled(&sphere, target_mm).expect("scaled binary STL");
         assert_eq!(scaled_bin.len(), 84 + 50 * face_count);
+        assert!(
+            scaled_bin[..80]
+                .windows(b"UNITS=mm".len())
+                .any(|w| w == b"UNITS=mm"),
+            "Scaled binary STL 80-byte header must declare UNITS=mm"
+        );
         let mut min_x = f32::INFINITY;
         let mut max_x = f32::NEG_INFINITY;
         let mut min_y = f32::INFINITY;
@@ -106,20 +146,6 @@ fn test_stl_binary_size_and_ascii_round_trip() {
     }
     assert!(export_mesh_to_stl_binary_scaled(&sphere, 2.0).is_err());
     assert!(export_mesh_to_stl_binary_scaled(&sphere, 300.0).is_err());
-
-    for f in 0..face_count {
-        let base = 84 + f * 50;
-        for k in 0..12 {
-            let off = base + k * 4;
-            let val = f32::from_le_bytes(stl_bin[off..off + 4].try_into().unwrap());
-            assert!(val.is_finite(), "Non-finite STL float at facet {f}");
-        }
-    }
-
-    let stl_ascii = export_mesh_to_stl_ascii(&sphere).expect("ASCII STL");
-    let parsed = parse_stl_ascii(&stl_ascii).expect("parse ASCII STL");
-    assert_eq!(parsed.indices.len() / 3, face_count);
-    assert!((signed_volume(&parsed) - signed_volume(&sphere)).abs() < 1.0e-2);
 }
 
 #[test]

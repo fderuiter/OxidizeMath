@@ -2,18 +2,24 @@
 // [cite:battery_degradation]
 
 use super::types::{Capacity, Cycles, DepthOfDischarge};
+use math_commons::constants::si::GAS_CONSTANT_R as SI_GAS_CONSTANT_R;
+use math_scalars::{
+    CELSIUS_ZERO_KELVIN_OFFSET, Celsius, DimensionlessVal, JoulesPerMole, Kelvin, Seconds,
+};
 use verified_engine::Theory;
 
 /// Minimum supported cell operating temperature in degrees Celsius (`253.15 K`).
 pub const MIN_TEMPERATURE_C: f64 = -20.0;
 /// Maximum supported cell operating temperature in degrees Celsius (`333.15 K`).
 pub const MAX_TEMPERATURE_C: f64 = 60.0;
-/// Offset converting degrees Celsius to Kelvin.
-pub const CELSIUS_TO_KELVIN: f64 = 273.15;
-/// Standard electrochemical reference temperature in Kelvin (`25.0 °C`).
-pub const REFERENCE_TEMPERATURE_K: f64 = 298.15;
+/// Exact affine offset converting degrees Celsius to absolute Kelvin (`273.15 K`).
+pub const CELSIUS_TO_KELVIN: f64 = CELSIUS_ZERO_KELVIN_OFFSET;
+/// Standard electrochemical reference temperature in Kelvin (`25.0 °C = 298.15 K`).
+pub const REFERENCE_TEMPERATURE_K: Kelvin = Kelvin::new(298.15);
+/// Reference calendar interval $t_{\text{ref}} = 1\,\text{day} = 86\,400\,\text{s}$ normalizing parabolic SEI growth $\sqrt{t / t_{\text{ref}}}$.
+pub const SEI_REFERENCE_TIME: Seconds = Seconds::new(86_400.0);
 /// Universal molar gas constant $R$ in $\text{J}\cdot\text{mol}^{-1}\cdot\text{K}^{-1}$.
-pub const GAS_CONSTANT_R: f64 = 8.314_462_618;
+pub const GAS_CONSTANT_R: math_scalars::JoulesPerMoleKelvin = SI_GAS_CONSTANT_R;
 /// Minimum supported charge/discharge C-rate (`1/h`).
 pub const MIN_C_RATE: f64 = 0.05;
 /// Maximum supported charge/discharge C-rate (`1/h`).
@@ -140,7 +146,7 @@ pub struct ElectrochemicalAgingModel {
     activation_energy: f64,
     c_rate_exponent: f64,
     sei_rate: f64,
-    temperature_c: f64,
+    temperature: Celsius,
     c_rate: f64,
 }
 
@@ -163,7 +169,7 @@ impl ElectrochemicalAgingModel {
             activation_energy: preset.default_activation_energy(),
             c_rate_exponent: preset.default_c_rate_exponent(),
             sei_rate: preset.default_sei_rate(),
-            temperature_c: 25.0,
+            temperature: Celsius::new(25.0),
             c_rate: 1.0,
         }
     }
@@ -211,13 +217,25 @@ impl ElectrochemicalAgingModel {
         self
     }
 
+    /// Returns a copy with affine [`Celsius`] operating temperature clamped to `[-20.0, 60.0] °C`.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn with_temperature(mut self, temperature: Celsius) -> Self {
+        let clamped_c = sanitize_bounded(
+            temperature.get(),
+            MIN_TEMPERATURE_C,
+            MAX_TEMPERATURE_C,
+            25.0,
+        );
+        self.temperature = Celsius::new(clamped_c);
+        self
+    }
+
     /// Returns a copy with operating temperature clamped to `[-20.0, 60.0]` °C (`253.15..=333.15` K).
     #[must_use]
     #[verified_engine::verified]
-    pub fn with_temperature_c(mut self, temperature_c: f64) -> Self {
-        self.temperature_c =
-            sanitize_bounded(temperature_c, MIN_TEMPERATURE_C, MAX_TEMPERATURE_C, 25.0);
-        self
+    pub fn with_temperature_c(self, temperature_c: f64) -> Self {
+        self.with_temperature(Celsius::new(temperature_c))
     }
 
     /// Returns a copy with operating C-rate clamped to `[0.05, 10.0]` `1/h`.
@@ -295,25 +313,39 @@ impl ElectrochemicalAgingModel {
         self.c_rate_exponent
     }
 
-    /// Returns the reference $25\,^\circ\text{C}$ SEI calendar fade rate ($\text{day}^{-1/2}$).
+    /// Returns the reference $25\,^\circ\text{C}$ 1-day SEI calendar fade coefficient $k_{\text{SEI,ref}}$ multiplying $\sqrt{t / t_{\text{ref}}}$.
     #[must_use]
     #[verified_engine::verified]
     pub const fn sei_rate(&self) -> f64 {
         self.sei_rate
     }
 
+    /// Returns the clamped affine [`Celsius`] operating temperature (`-20.0..=60.0 °C`).
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn temperature(&self) -> Celsius {
+        self.temperature
+    }
+
+    /// Returns the clamped absolute [`Kelvin`] operating temperature (`253.15..=333.15 K`) via [`Celsius::to_kelvin`].
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn temperature_kelvin(&self) -> Kelvin {
+        self.temperature.to_kelvin()
+    }
+
     /// Returns the clamped operating temperature in degrees Celsius (`-20.0..=60.0`).
     #[must_use]
     #[verified_engine::verified]
     pub const fn temperature_c(&self) -> f64 {
-        self.temperature_c
+        self.temperature.get()
     }
 
     /// Returns the clamped absolute operating temperature in Kelvin (`253.15..=333.15`).
     #[must_use]
     #[verified_engine::verified]
     pub fn temperature_k(&self) -> f64 {
-        self.temperature_c + CELSIUS_TO_KELVIN
+        self.temperature.to_kelvin().get()
     }
 
     /// Returns the clamped operating C-rate (`0.05..=10.0`).
@@ -324,12 +356,24 @@ impl ElectrochemicalAgingModel {
     }
 
     /// Normalized Arrhenius thermal acceleration factor $\exp((E_a / R)(1/T_{\text{ref}} - 1/T))$, equal to `1.0` at $25\,^\circ\text{C}$.
+    ///
+    /// Requires explicit [`Celsius::to_kelvin`] conversion before reciprocal thermal division:
+    ///
+    /// ```compile_fail
+    /// use math_scalars::{Celsius, JoulesPerMole};
+    ///
+    /// let t_c = Celsius::new(25.0);
+    /// let ea = JoulesPerMole::new(35_000.0);
+    /// let _bad = ea / t_c;
+    /// ```
     #[must_use]
     #[verified_engine::verified]
     pub fn arrhenius_factor(&self) -> f64 {
-        let exponent = (self.activation_energy / GAS_CONSTANT_R)
-            * (1.0 / REFERENCE_TEMPERATURE_K - 1.0 / self.temperature_k());
-        exponent.exp()
+        let ea = JoulesPerMole::new(self.activation_energy);
+        let temp_k: Kelvin = self.temperature.to_kelvin();
+        let inv_temp_delta = REFERENCE_TEMPERATURE_K.recip() - temp_k.recip();
+        let exponent: DimensionlessVal = (ea * inv_temp_delta) / SI_GAS_CONSTANT_R;
+        exponent.exp().get()
     }
 
     /// Dimensionless C-rate mechanical stress factor $I_c^{\gamma_c}$ (`1.0` at $1\text{C}$).
@@ -355,14 +399,16 @@ impl ElectrochemicalAgingModel {
         (0.3 * (raw_n / n70_val).powf(self.z)).clamp(0.0, 1.0)
     }
 
-    /// Fractional SEI calendar capacity loss $k_{\text{SEI}} A_T(T) \sqrt{t_{\text{days}}}$.
+    /// Fractional SEI calendar capacity loss $k_{\text{SEI,ref}} A_T(T) \sqrt{t / t_{\text{ref}}}$ normalized by $t_{\text{ref}} = 1\,\text{day}$.
     #[must_use]
     #[verified_engine::verified]
     pub fn sei_calendar_loss(&self, elapsed_days: f64) -> f64 {
         if !elapsed_days.is_finite() || elapsed_days <= 0.0 {
             return 0.0;
         }
-        (self.sei_rate * self.arrhenius_factor() * elapsed_days.sqrt()).clamp(0.0, 1.0)
+        let elapsed = Seconds::new(elapsed_days * SEI_REFERENCE_TIME.get());
+        let dimensionless_root: DimensionlessVal = (elapsed / SEI_REFERENCE_TIME).sqrt();
+        (self.sei_rate * self.arrhenius_factor() * dimensionless_root.get()).clamp(0.0, 1.0)
     }
 
     /// Coupled state-of-health capacity combining stretched cycling fade and $\sqrt{t}$ SEI growth.

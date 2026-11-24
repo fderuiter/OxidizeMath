@@ -175,8 +175,8 @@ fn test_mri_detuning_meter_hz_and_hahn_echo_rustfft_peak_preserving_scores() {
     // Verify HahnSpinEcho challenge score invariance and rustfft echo peak at t = TE
     tool.pulse_config.detuning_hz = 0.0;
     tool.pulse_config.duration_tau = 0.002;
-    tool.pulse_config.b1_amp =
-        std::f64::consts::PI / (math_explorer::physics::mri::proton::GYROMAGNETIC_RATIO * 0.002);
+    tool.pulse_config.b1_amp = std::f64::consts::PI
+        / (math_explorer::physics::mri::proton::GYROMAGNETIC_RATIO.get() * 0.002);
     tool.apply_challenge(Some(CHALLENGE_BLOCH_HAHN_ECHO))
         .expect("Hahn echo challenge");
     let score_before = tool.evaluate_challenge().expect("echo eval");
@@ -291,7 +291,7 @@ fn test_kspace_turing_delta_b0_detuning_echo_recovery_chirp_and_rf_spike() {
 
 #[test]
 fn test_radar_60ghz_doppler_music_scatterers_cough_and_30ms_interlock_mute() {
-    let expected_fd = (2.0 * RADAR_CARRIER_60GHZ_HZ * 0.015) / C;
+    let expected_fd = (2.0 * RADAR_CARRIER_60GHZ_HZ * 0.015) / C.get();
     assert!((doppler_shift_60ghz_hz(0.015) - expected_fd).abs() < 1e-9);
 
     let mut tool = RadarGatingTool::default();

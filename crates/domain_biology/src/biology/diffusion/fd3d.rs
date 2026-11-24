@@ -37,7 +37,7 @@ impl FiniteDifference3D {
         dz: StepSize,
     ) -> Self {
         assert!(
-            *dx > 0.0 && *dy > 0.0 && *dz > 0.0,
+            dx.get() > 0.0 && dy.get() > 0.0 && dz.get() > 0.0,
             "3D step sizes must be positive"
         );
         Self {

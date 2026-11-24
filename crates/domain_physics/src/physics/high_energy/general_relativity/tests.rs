@@ -3,7 +3,7 @@
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_3, PI};
 
 use approx::assert_relative_eq;
-use math_commons::constants::SOLAR_MASS;
+use math_commons::constants::si::SOLAR_MASS;
 use nalgebra::SVector;
 use pure_math::pure_math::analysis::ode::{ArrayState, RungeKutta4};
 use pure_math::pure_math::tensor::{
@@ -18,11 +18,11 @@ use crate::physics::high_energy::{C, G};
 #[test]
 #[verified_engine::verified]
 fn test_schwarzschild() {
-    let mass = SOLAR_MASS;
+    let mass = SOLAR_MASS.get();
     let bh = SchwarzschildBlackHole::new(mass).expect("Failed to create BH");
 
     let rs = bh.schwarzschild_radius().expect("Failed to calc Rs");
-    let expected_rs = 2.0 * G * mass / (C * C);
+    let expected_rs = ((G * SOLAR_MASS * 2.0) / (C * C)).get();
     assert_relative_eq!(rs, expected_rs);
 
     let isco = bh.isco().expect("Failed to calc ISCO");
@@ -41,7 +41,7 @@ fn test_schwarzschild() {
 fn test_errors() {
     assert!(SchwarzschildBlackHole::new(-1.0).is_err());
 
-    let bh = SchwarzschildBlackHole::new(SOLAR_MASS).unwrap();
+    let bh = SchwarzschildBlackHole::new(SOLAR_MASS.get()).unwrap();
     let rs = bh.schwarzschild_radius().unwrap();
     assert!(bh.gravitational_time_dilation(0.5 * rs).is_err());
 }
@@ -61,7 +61,7 @@ fn test_helpers_flamm_potential_and_combined_clock_rate() {
     );
 
     // Circular orbit at ISCO r = 3 Rs has local shell speed v/c = 0.5 => dtau/dt = sqrt(2/3)*sqrt(3/4) = sqrt(1/2)
-    let rate = combined_clock_rate(&bh, 3.0 * rs, 0.5 * C).unwrap();
+    let rate = combined_clock_rate(&bh, 3.0 * rs, (C * 0.5).get()).unwrap();
     assert_relative_eq!(rate, 0.5_f64.sqrt(), epsilon = 1e-12);
     assert!(bh.flamm_paraboloid_z(0.9 * rs).is_err());
     assert!(effective_potential(rs, 0.9 * rs, 4.0, GeodesicKind::Null).is_err());

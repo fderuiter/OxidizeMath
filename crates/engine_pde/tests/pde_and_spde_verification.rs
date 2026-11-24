@@ -22,7 +22,7 @@ fn ginzburg_landau_energy_2d(
     bc: BoundaryCondition,
 ) -> f64 {
     let mut energy = 0.0;
-    let dv = (*ops.dx) * (*ops.dy);
+    let dv = ops.dx.get() * ops.dy.get();
     for y in 0..height {
         for x in 0..width {
             let idx = flatten_2d_index(x, y, width);

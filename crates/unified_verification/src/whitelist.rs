@@ -451,6 +451,10 @@ mod tests {
             "crates/pure_math"
         );
         assert_eq!(
+            debt::crate_prefix_for_file("crates/00_foundation/math_scalars/src/lib.rs"),
+            "crates/00_foundation/math_scalars"
+        );
+        assert_eq!(
             debt::crate_prefix_for_file("crates/02_engines/engine_linalg/src/lu.rs"),
             "crates/02_engines/engine_linalg"
         );

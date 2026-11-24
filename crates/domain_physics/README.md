@@ -96,15 +96,16 @@ use math_explorer::physics::astrophysics::{
     GalacticDiskSystem, HaloProfile, Mpc, OrbitPopulationConfig, TypeCode10,
     baryons_from_distance, decompose_rotation_curve,
 };
+use math_explorer::scalars::Kiloparsecs;
 
 let baryons = baryons_from_distance(&TypeCode10, Mpc(12.0), 0.6, 0.8);
-let keplerian = decompose_rotation_curve(8.0, &baryons, &HaloProfile::BaryonicOnly);
+let keplerian = decompose_rotation_curve(Kiloparsecs::new(8.0), &baryons, &HaloProfile::BaryonicOnly);
 let burkert = HaloProfile::BurkertCore {
     virial_mass_solar: 1.0e10,
-    core_radius_kpc: 2.2,
+    core_radius_kpc: Kiloparsecs::new(2.2),
     concentration: 12.0,
 };
-let dark_halo = decompose_rotation_curve(8.0, &baryons, &burkert);
+let dark_halo = decompose_rotation_curve(Kiloparsecs::new(8.0), &baryons, &burkert);
 assert!(dark_halo.v_circ_kms > keplerian.v_circ_kms);
 
 let mut disk = GalacticDiskSystem::from_galaxy_model(

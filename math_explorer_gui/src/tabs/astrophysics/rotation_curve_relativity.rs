@@ -6,11 +6,12 @@
 
 use eframe::egui;
 use egui_plot::{Line, LineStyle, Plot, PlotPoints};
-use math_explorer::constants::SOLAR_MASS;
+use math_explorer::constants::si::SOLAR_MASS;
 use math_explorer::physics::astrophysics::{
     sample_halo_lensing_into, tangential_critical_radius_kpc, HaloProfile, ThinLensSample,
 };
 use math_explorer::physics::high_energy::general_relativity::SchwarzschildBlackHole;
+use math_scalars::Kiloparsecs;
 
 use crate::reflective_ui::render_copyable_metric;
 
@@ -61,9 +62,11 @@ impl RotationCurveExplorer {
     pub(super) fn recalculate_relativity_profiles(&mut self, r_max: f64) {
         let baryons = self.current_baryons();
         let m200 = 10.0_f64.powf(self.cfg.halo_log10_mass.clamp(8.0, 12.0));
-        let scale = self.cfg.halo_scale_kpc.clamp(0.3, 10.0);
+        let scale = Kiloparsecs::new(self.cfg.halo_scale_kpc.clamp(0.3, 10.0));
         let conc = self.cfg.halo_concentration.clamp(4.0, 25.0);
         let sigma_crit = 10.0_f64.powf(self.cfg.relativity.log10_sigma_crit.clamp(6.0, 10.5));
+        let r_min_kpc = Kiloparsecs::new(0.05);
+        let r_max_kpc = Kiloparsecs::new(r_max);
 
         let nfw = HaloProfile::NfwCusp {
             virial_mass_solar: m200,
@@ -76,26 +79,29 @@ impl RotationCurveExplorer {
             concentration: conc,
         };
         sample_halo_lensing_into(
-            0.05,
-            r_max,
+            r_min_kpc,
+            r_max_kpc,
             Some(&baryons),
             &nfw,
             sigma_crit,
             &mut self.nfw_lens_samples,
         );
         sample_halo_lensing_into(
-            0.05,
-            r_max,
+            r_min_kpc,
+            r_max_kpc,
             Some(&baryons),
             &burk,
             sigma_crit,
             &mut self.burkert_lens_samples,
         );
-        self.nfw_crit_kpc = tangential_critical_radius_kpc(Some(&baryons), &nfw, sigma_crit, r_max);
+        self.nfw_crit_kpc =
+            tangential_critical_radius_kpc(Some(&baryons), &nfw, sigma_crit, r_max_kpc)
+                .map(Kiloparsecs::get);
         self.burkert_crit_kpc =
-            tangential_critical_radius_kpc(Some(&baryons), &burk, sigma_crit, r_max);
+            tangential_critical_radius_kpc(Some(&baryons), &burk, sigma_crit, r_max_kpc)
+                .map(Kiloparsecs::get);
 
-        let bh = SchwarzschildBlackHole::new(1.0e8 * SOLAR_MASS).expect("valid bh");
+        let bh = SchwarzschildBlackHole::new(1.0e8 * SOLAR_MASS.get()).expect("valid bh");
         let bh_rs_phys = bh.schwarzschild_radius().unwrap_or(1.0);
         let rs_kpc = self.cfg.relativity.central_bh_rs_kpc.clamp(0.01, 2.0);
         let n = self.dilation_samples.len();

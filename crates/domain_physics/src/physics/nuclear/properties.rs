@@ -1,5 +1,5 @@
 use super::types::*;
-use math_commons::constants::property_constants;
+use math_commons::constants::nuclear::property_constants;
 use std::f64::consts::PI;
 
 /// Calculates the nuclear radius using the formula R = R0 * A^(1/3).
@@ -11,7 +11,7 @@ use std::f64::consts::PI;
 /// * `f64` - The radius in femtometers (fm).
 #[verified_engine::verified]
 pub fn calculate_radius(mass_number: MassNumber) -> f64 {
-    property_constants::R0 * (mass_number.value() as f64).powf(1.0 / 3.0)
+    (property_constants::R0 * (mass_number.value() as f64).powf(1.0 / 3.0)).get()
 }
 
 /// Calculates the nucleon density (nucleons per volume).

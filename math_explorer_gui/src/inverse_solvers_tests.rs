@@ -35,7 +35,7 @@ use std::sync::{Arc, RwLock};
 #[test]
 fn test_ground_truth_mri_pi_inversion_and_detuned_failure() {
     let duration_tau = 0.002_f64;
-    let b1_pi = std::f64::consts::PI / (proton::GYROMAGNETIC_RATIO * duration_tau);
+    let b1_pi = std::f64::consts::PI / (proton::GYROMAGNETIC_RATIO.get() * duration_tau);
 
     let mut mri = MriTool::default();
     mri.apply_challenge(Some(CHALLENGE_BLOCH_PI_INVERSION))
@@ -62,7 +62,7 @@ fn test_ground_truth_mri_pi_inversion_and_detuned_failure() {
 #[test]
 fn test_ground_truth_mri_hahn_spin_echo_and_zero_alloc() {
     let duration_tau = 0.002_f64;
-    let b1_pi = std::f64::consts::PI / (proton::GYROMAGNETIC_RATIO * duration_tau);
+    let b1_pi = std::f64::consts::PI / (proton::GYROMAGNETIC_RATIO.get() * duration_tau);
     let mut mri = MriTool::default();
     mri.apply_challenge(Some(CHALLENGE_BLOCH_HAHN_ECHO))
         .unwrap();

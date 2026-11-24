@@ -21,7 +21,7 @@ pub struct BlochSimulator {
 impl OdeSystem<Vector3<f64>> for BlochSimulator {
     #[verified_engine::verified]
     fn derivative(&self, _t: f64, state: &Vector3<f64>) -> Vector3<f64> {
-        let gamma = proton::GYROMAGNETIC_RATIO;
+        let gamma = proton::GYROMAGNETIC_RATIO.get();
 
         // Precession term: M x (gamma B)
         let precession = state.cross(&(self.b_field * gamma));
@@ -113,7 +113,7 @@ fn advance_isochromat_grid_kernel<const K: usize>(
     spread_frac: f64,
     dt: f64,
 ) {
-    let gamma_dt = proton::GYROMAGNETIC_RATIO * dt;
+    let gamma_dt = proton::GYROMAGNETIC_RATIO.get() * dt;
     let center = ((K.saturating_sub(1)) as f64) * 0.5;
     for ((((ens, &m0), &e1), &e2), &b0) in spins
         .iter_mut()
@@ -160,6 +160,6 @@ pub fn rotating_frame_effective_field(
     b1_amp: f64,
     phase_rad: f64,
 ) -> Vector3<f64> {
-    let delta_bz = b0 - omega_rf / proton::GYROMAGNETIC_RATIO;
+    let delta_bz = b0 - omega_rf / proton::GYROMAGNETIC_RATIO.get();
     Vector3::new(b1_amp * phase_rad.cos(), b1_amp * phase_rad.sin(), delta_bz)
 }

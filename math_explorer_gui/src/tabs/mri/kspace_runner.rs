@@ -185,7 +185,7 @@ impl MriKSpaceRunner {
         let base_flip = cfg.flip_angle_deg * (PI / 180.0);
         let tr = cfg.tr;
         let te = cfg.te;
-        let gamma = proton::GYROMAGNETIC_RATIO;
+        let gamma = proton::GYROMAGNETIC_RATIO.get();
 
         for idx in 0..(self.size * self.size) {
             let m0 = self.rho[idx];

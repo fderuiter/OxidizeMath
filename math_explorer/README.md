@@ -10,13 +10,13 @@ Unified public facade crate re-exporting verified mathematical kernels, runtime 
 
 ## 1. Overview & Architecture
 
-The `math_explorer` crate serves as the primary library entrypoint for downstream Rust consumers, examples, benchmarks, and the interactive GUI. It unifies foundational primitives (`diagnostics`, `math_commons`, `scientific_metadata`, `verified_engine`) with feature-gated scientific domains under a stable public namespace.
+The `math_explorer` crate serves as the primary library entrypoint for downstream Rust consumers, examples, benchmarks, and the interactive GUI. It unifies foundational primitives (`diagnostics`, `math_commons`, `math_scalars`, `scientific_metadata`, `verified_engine`) with feature-gated scientific domains under a stable public namespace.
 
 ### Module Structure
 
 - **Core Always-On Modules**:
-  - `error` & `prelude`: Unified `MathError`, `MathResult`, bounded numeric primitives (`PositiveFloat`, `NonNegativeFloat`, `UnitInterval`), and `Diagnostic` traits.
-  - `ast`, `constants`, `fit`, `math_kernel`, `poi`, `primitives`, `registry`, `series`, `wigner`: Expression parsing/compilation, zero-allocation curve fitting and critical-point solvers, physical constants, tolerances, and Clebsch-Gordan coefficients.
+  - `error` & `prelude`: Unified `MathError`, `MathResult`, bounded numeric primitives (`PositiveFloat`, `NonNegativeFloat`, `UnitInterval`), SI dimensional quantities (`Quantity`, `Celsius`, `Kelvin`, `Kiloparsecs`), and `Diagnostic` traits.
+  - `math_scalars` (`scalars`), `ast`, `constants`, `fit`, `math_kernel`, `poi`, `primitives`, `registry`, `series`, `wigner`: Zero-cost SI dimensional algebra, expression parsing/compilation, zero-allocation curve fitting and critical-point solvers, unit-tagged `constants::si` and `constants::nuclear` registries, tolerances, and Clebsch-Gordan coefficients.
   - `verified_engine` & `scientific_metadata`: Zero-allocation runtime verification harness (`VerifiedEngine`), `#[verified]`, `#[derive(Theory)]`, and `#[embed_theory]`.
 - **Feature-Gated Domain Modules**:
   - **`ai`**: Artificial Intelligence primitives, including Transformer components (Attention, Encoder/Decoder), Reinforcement Learning, NeRF-Diffusion, and Self-Calibration loops.

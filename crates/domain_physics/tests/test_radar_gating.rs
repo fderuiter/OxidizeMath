@@ -32,7 +32,7 @@ fn test_radar_physics() {
     // Let's create a synthetic phase for 1 m/s velocity
     // 1 = (dPhi * lambda) / (4 * pi * Tc)
     // dPhi = (4 * pi * Tc) / lambda
-    let lambda = C / 60.0e9;
+    let lambda = C.get() / 60.0e9;
     let tc = 50.0e-6;
     let expected_dphi = (4.0 * std::f64::consts::PI * tc) / lambda;
 

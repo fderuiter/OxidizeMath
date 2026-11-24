@@ -1,80 +1,32 @@
+//! Dimensionally constrained battery degradation domain wrappers (`DepthOfDischarge`,
+//! `Capacity`, `Cycles`).
+// [cite:battery_degradation]
+
 pub use crate::error::BatteryError;
 
 use std::fmt;
 use std::ops::{Add, Div, Mul, Sub};
 
-macro_rules! impl_math_ops {
+macro_rules! impl_linear_domain_ops {
     ($name:ident) => {
-        impl $name {
-            #[allow(missing_docs)]
-            pub fn powf(&self, n: f64) -> Result<Self, BatteryError> {
-                Self::new(self.0.powf(n))
-            }
-            #[allow(missing_docs)]
-            pub fn sqrt(&self) -> Result<Self, BatteryError> {
-                Self::new(self.0.sqrt())
-            }
-            #[allow(missing_docs)]
-            pub fn ln(&self) -> Result<Self, BatteryError> {
-                Self::new(self.0.ln())
-            }
-            #[allow(missing_docs)]
-            pub fn exp(&self) -> Result<Self, BatteryError> {
-                Self::new(self.0.exp())
-            }
-            #[allow(missing_docs)]
-            pub fn abs(&self) -> Result<Self, BatteryError> {
-                Self::new(self.0.abs())
-            }
-        }
-
-        impl Add<f64> for $name {
-            type Output = Result<Self, BatteryError>;
-            fn add(self, rhs: f64) -> Self::Output {
-                Self::new(self.0 + rhs)
-            }
-        }
-        impl Sub<f64> for $name {
-            type Output = Result<Self, BatteryError>;
-            fn sub(self, rhs: f64) -> Self::Output {
-                Self::new(self.0 - rhs)
-            }
-        }
         impl Mul<f64> for $name {
             type Output = Result<Self, BatteryError>;
             fn mul(self, rhs: f64) -> Self::Output {
                 Self::new(self.0 * rhs)
             }
         }
-        impl Div<f64> for $name {
-            type Output = Result<Self, BatteryError>;
-            fn div(self, rhs: f64) -> Self::Output {
-                Self::new(self.0 / rhs)
-            }
-        }
 
-        impl Add<$name> for f64 {
-            type Output = Result<$name, BatteryError>;
-            fn add(self, rhs: $name) -> Self::Output {
-                $name::new(self + rhs.0)
-            }
-        }
-        impl Sub<$name> for f64 {
-            type Output = Result<$name, BatteryError>;
-            fn sub(self, rhs: $name) -> Self::Output {
-                $name::new(self - rhs.0)
-            }
-        }
         impl Mul<$name> for f64 {
             type Output = Result<$name, BatteryError>;
             fn mul(self, rhs: $name) -> Self::Output {
                 $name::new(self * rhs.0)
             }
         }
-        impl Div<$name> for f64 {
-            type Output = Result<$name, BatteryError>;
-            fn div(self, rhs: $name) -> Self::Output {
-                $name::new(self / rhs.0)
+
+        impl Div<f64> for $name {
+            type Output = Result<Self, BatteryError>;
+            fn div(self, rhs: f64) -> Self::Output {
+                Self::new(self.0 / rhs)
             }
         }
 
@@ -84,18 +36,14 @@ macro_rules! impl_math_ops {
                 Self::new(self.0 + rhs.0)
             }
         }
+
         impl Sub<$name> for $name {
             type Output = Result<Self, BatteryError>;
             fn sub(self, rhs: $name) -> Self::Output {
                 Self::new(self.0 - rhs.0)
             }
         }
-        impl Mul<$name> for $name {
-            type Output = Result<Self, BatteryError>;
-            fn mul(self, rhs: $name) -> Self::Output {
-                Self::new(self.0 * rhs.0)
-            }
-        }
+
         impl Div<$name> for $name {
             type Output = f64;
             fn div(self, rhs: $name) -> f64 {
@@ -111,25 +59,39 @@ macro_rules! impl_math_ops {
     };
 }
 
-/// Depth of Discharge (DoD) as a percentage (0.0 to 100.0).
+/// Depth of Discharge (DoD) as a bounded percentage in `[0.0, 100.0]`.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct DepthOfDischarge(f64);
 
 impl DepthOfDischarge {
-    #[allow(missing_docs)]
+    /// Constructs a validated [`DepthOfDischarge`] in `[0.0, 100.0]`.
     #[verified_engine::verified]
     pub fn new(value: f64) -> Result<Self, BatteryError> {
-        if !(0.0..=100.0).contains(&value) {
+        if !value.is_finite() || !(0.0..=100.0).contains(&value) {
             return Err(BatteryError::InvalidDepthOfDischarge(value));
         }
         Ok(Self(value))
     }
-    #[allow(missing_docs)]
+
+    /// Constructs a [`DepthOfDischarge`] clamped into `[0.0, 100.0]`.
     #[verified_engine::verified]
     pub fn new_clamped(value: f64) -> Self {
         Self(value.clamp(0.0, 100.0))
     }
-    #[allow(missing_docs)]
+
+    /// Returns the underlying percentage scalar by copy.
+    #[inline(always)]
+    pub const fn get(self) -> f64 {
+        self.0
+    }
+
+    /// Returns the underlying percentage scalar.
+    #[inline(always)]
+    pub const fn value(&self) -> f64 {
+        self.0
+    }
+
+    /// Returns the underlying percentage as `f64`.
     #[verified_engine::verified]
     pub fn as_f64(&self) -> f64 {
         self.0
@@ -143,27 +105,41 @@ impl fmt::Display for DepthOfDischarge {
     }
 }
 
-impl_math_ops!(DepthOfDischarge);
+impl_linear_domain_ops!(DepthOfDischarge);
 
-/// Battery Capacity as a fraction of initial capacity (0.0 to 1.0).
+/// Battery state-of-health capacity as a bounded fraction of initial capacity in `[0.0, 1.0]`.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Capacity(f64);
 
 impl Capacity {
-    #[allow(missing_docs)]
+    /// Constructs a validated [`Capacity`] in `[0.0, 1.0]`.
     #[verified_engine::verified]
     pub fn new(value: f64) -> Result<Self, BatteryError> {
-        if !(0.0..=1.0).contains(&value) {
+        if !value.is_finite() || !(0.0..=1.0).contains(&value) {
             return Err(BatteryError::InvalidCapacity(value));
         }
         Ok(Self(value))
     }
-    #[allow(missing_docs)]
+
+    /// Constructs a [`Capacity`] clamped into `[0.0, 1.0]`.
     #[verified_engine::verified]
     pub fn new_clamped(value: f64) -> Self {
         Self(value.clamp(0.0, 1.0))
     }
-    #[allow(missing_docs)]
+
+    /// Returns the underlying capacity fraction by copy.
+    #[inline(always)]
+    pub const fn get(self) -> f64 {
+        self.0
+    }
+
+    /// Returns the underlying capacity fraction.
+    #[inline(always)]
+    pub const fn value(&self) -> f64 {
+        self.0
+    }
+
+    /// Returns the underlying capacity fraction as `f64`.
     #[verified_engine::verified]
     pub fn as_f64(&self) -> f64 {
         self.0
@@ -177,27 +153,60 @@ impl fmt::Display for Capacity {
     }
 }
 
-impl_math_ops!(Capacity);
+impl_linear_domain_ops!(Capacity);
 
-/// Number of Equivalent Full Cycles (EFC).
+/// Non-negative count of Equivalent Full Cycles (EFC).
+///
+/// Self-multiplication (`Cycles * Cycles`), reciprocal coercion (`f64 / Cycles`), bare scalar
+/// addition, and transcendental `.ln()` / `.exp()` are rejected at compile time:
+///
+/// ```compile_fail
+/// # use domain_applied::__doctest_facade as math_explorer;
+/// use math_explorer::applied::battery_degradation::types::Cycles;
+///
+/// let n = Cycles::new(100.0).unwrap();
+/// let _sq = n * n;
+/// ```
+///
+/// ```compile_fail
+/// # use domain_applied::__doctest_facade as math_explorer;
+/// use math_explorer::applied::battery_degradation::types::Cycles;
+///
+/// let n = Cycles::new(100.0).unwrap();
+/// let _bad = n.ln();
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct Cycles(f64);
 
 impl Cycles {
-    #[allow(missing_docs)]
+    /// Constructs a validated finite non-negative [`Cycles`] count.
     #[verified_engine::verified]
     pub fn new(value: f64) -> Result<Self, BatteryError> {
-        if value < 0.0 {
+        if !value.is_finite() || value < 0.0 {
             return Err(BatteryError::NegativeCycles(value));
         }
         Ok(Self(value))
     }
-    #[allow(missing_docs)]
+
+    /// Constructs a [`Cycles`] count clamped to `>= 0.0`.
     #[verified_engine::verified]
     pub fn new_clamped(value: f64) -> Self {
         Self(value.max(0.0))
     }
-    #[allow(missing_docs)]
+
+    /// Returns the underlying cycle count by copy.
+    #[inline(always)]
+    pub const fn get(self) -> f64 {
+        self.0
+    }
+
+    /// Returns the underlying cycle count.
+    #[inline(always)]
+    pub const fn value(&self) -> f64 {
+        self.0
+    }
+
+    /// Returns the underlying cycle count as `f64`.
     #[verified_engine::verified]
     pub fn as_f64(&self) -> f64 {
         self.0
@@ -211,4 +220,4 @@ impl fmt::Display for Cycles {
     }
 }
 
-impl_math_ops!(Cycles);
+impl_linear_domain_ops!(Cycles);

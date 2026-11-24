@@ -56,7 +56,7 @@ pub use czt::SpatialCztConfig;
 pub use czt::chirp_z_transform;
 pub use gating::{BeamState, GatingError, GatingLogic};
 pub use geometry::{AngleFftConfig, SensorToPatientTransform, SphericalPoint};
-pub use math_commons::constants::C;
+pub use math_commons::constants::si::C;
 pub use mimo::Beamformer;
 pub use phase::PhaseUnwrapper;
 pub use physics::FmcwConfig;

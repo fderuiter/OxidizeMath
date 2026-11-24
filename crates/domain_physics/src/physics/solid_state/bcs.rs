@@ -187,11 +187,10 @@ impl GapEquation for IsotropicBCSModel {
         current_gap: ElectronVolts,
     ) -> Result<ElectronVolts, SolidStateError> {
         let mut summation = 0.0;
-        let delta_sq = current_gap.powf(2.0);
 
         for &xi in &self.energies {
             if xi.abs() <= self.debye_cutoff {
-                let e_k = (xi.powf(2.0) + delta_sq).sqrt();
+                let e_k = xi.hypot(current_gap);
                 let e_k_raw = e_k / ElectronVolts::new(1.0);
                 if e_k_raw > 1e-12 {
                     summation += 1.0 / (2.0 * e_k_raw);
@@ -232,7 +231,7 @@ pub fn coherence_factors_strong(
     xi_k: ElectronVolts,
     delta: ElectronVolts,
 ) -> Result<(f64, f64), SolidStateError> {
-    let e_k = (xi_k.powf(2.0) + delta.powf(2.0)).sqrt();
+    let e_k = xi_k.hypot(delta);
     let raw_v_sq = 0.5 * (1.0 - (xi_k / e_k));
 
     let v_sq = math_commons::primitives::UnitInterval::new(raw_v_sq)?;

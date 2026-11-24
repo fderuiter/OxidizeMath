@@ -3,7 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::state::RadarGatingState;
-use math_commons::constants::C;
+use math_commons::constants::si::C;
 use math_explorer::physics::medical::radar_gating::geometry::angle_resolution;
 use math_explorer::physics::medical::radar_gating::{
     Beamformer, FmcwConfig, MusicEstimator, SpatialCztConfig,
@@ -234,7 +234,7 @@ fn compute_czt_profile(
         output_bins: bins,
         bandwidth: fmcw.bandwidth,
         chirp_time: fmcw.chirp_time,
-        c: C,
+        c: C.get(),
     };
     let czt_vals = cfg.process(signal, sample_rate);
     let max_power = czt_vals
@@ -268,7 +268,8 @@ fn compute_music_profile(
             return Vec::new();
         }
     }
-    let Ok(spec) = estimator.compute_spectrum(win_start, win_end, step_range, fmcw.bandwidth, C)
+    let Ok(spec) =
+        estimator.compute_spectrum(win_start, win_end, step_range, fmcw.bandwidth, C.get())
     else {
         return Vec::new();
     };

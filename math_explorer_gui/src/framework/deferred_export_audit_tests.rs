@@ -392,6 +392,12 @@ fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
         .as_deref()
         .expect("STL bytes recorded");
     assert_eq!(stl_bytes.len(), expected_stl_len);
+    assert!(
+        stl_bytes[..80]
+            .windows(b"UNITS=mm".len())
+            .any(|w| w == b"UNITS=mm"),
+        "{meta_id} deferred STL export must declare calibrated UNITS=mm header"
+    );
 
     clear_test_announcements();
     run_deferred_export_frame(&mut fw, ExportFormat::Ply, false);

@@ -3,6 +3,7 @@
 use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use math_explorer::physics::astrophysics::HaloProfile;
+use math_scalars::Kiloparsecs;
 
 pub mod black_hole_geodesic_tool;
 mod black_hole_geodesic_ui;
@@ -59,7 +60,7 @@ impl HaloKindChoice {
         concentration: f64,
     ) -> HaloProfile {
         let m200 = 10.0_f64.powf(log10_m200.clamp(6.0, 14.0));
-        let r_scale = radius_kpc.clamp(0.1, 25.0);
+        let r_scale = Kiloparsecs::new(radius_kpc.clamp(0.1, 25.0));
         let c = concentration.clamp(1.0, 40.0);
         match self {
             Self::BaryonicOnly => HaloProfile::BaryonicOnly,

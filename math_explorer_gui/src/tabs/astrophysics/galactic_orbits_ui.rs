@@ -37,7 +37,7 @@ impl GalacticOrbitSimulator {
         }
 
         let outer_v = decompose_rotation_curve(
-            4.0 * self.cfg.disk_scale_kpc,
+            math_scalars::Kiloparsecs::new(4.0 * self.cfg.disk_scale_kpc),
             &self.system.baryons,
             &self.system.halo,
         )

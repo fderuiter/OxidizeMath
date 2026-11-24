@@ -38,7 +38,8 @@ impl crate::biology::reaction_diffusion::DiffusionModel for FiniteDifference1D {
         coeffs: &[f64],
     ) {
         let n_species = state.num_species();
-        let dx_sq = *self.dx * *self.dx;
+        let dx_val = self.dx.get();
+        let dx_sq = dx_val * dx_val;
         let inv_dx_sq = 1.0 / dx_sq;
 
         for (s, d) in coeffs.iter().enumerate().take(n_species) {
@@ -106,7 +107,8 @@ impl<const N: usize> SpatialDiffusion<N> for FiniteDifference1D {
             return;
         }
 
-        let dx_sq = *self.dx * *self.dx;
+        let dx_val = self.dx.get();
+        let dx_sq = dx_val * dx_val;
         let inv_dx_sq = 1.0 / dx_sq;
 
         // Precompute coefficients

@@ -20,7 +20,7 @@ fn simulate_signal(
     println!("True Displacement: {:.6} mm", displacement_mm);
 
     let sim_chirp_time = config.chirp_time;
-    let beat_freq = (2.0 * config.bandwidth * true_range) / (C * sim_chirp_time);
+    let beat_freq = (2.0 * config.bandwidth * true_range) / (C.get() * sim_chirp_time);
     println!("Expected Beat Frequency: {:.2} Hz", beat_freq);
 
     let lambda = config.wavelength();

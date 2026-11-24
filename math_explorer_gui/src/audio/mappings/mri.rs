@@ -90,7 +90,7 @@ pub fn mri_bloch_frame(
     let mz_norm = (magnetization.z * inv_m0).clamp(-1.0, 1.0) as f32;
     let carrier_hz = rotating_carrier_hz(b_field.z, detuning_hz);
     let b1_amp = b_field.x.hypot(b_field.y);
-    let nutation_hz = ((proton::GYROMAGNETIC_RATIO * b1_amp) / TAU).clamp(0.0, 1200.0) as f32;
+    let nutation_hz = ((proton::GYROMAGNETIC_RATIO.get() * b1_amp) / TAU).clamp(0.0, 1200.0) as f32;
     let pan = (magnetization.y.atan2(magnetization.x).sin() as f32 * 0.70).clamp(-0.85, 0.85);
     let lead_gain = (0.20 + 0.70 * m_xy.min(1.0)).clamp(0.20, 0.92);
 

@@ -193,3 +193,56 @@ fn wasm_lensed_gaussian_splatting_roundtrip_and_exports() {
     assert_eq!(reload.lens.mode, SplatLensMode::Schwarzschild);
     assert_valid_splat_exports(&reload);
 }
+
+#[test]
+fn test_viewport_kpc_frame_roundtrip_critical_alignment_and_legacy_serde_default() {
+    use super::scene::{kpc_to_viewport, viewport_to_kpc};
+    use crate::volumetric_scene::lensing::{
+        evaluate_lens_mode_outcome, DEFAULT_VIEWPORT_KPC_SCALE,
+    };
+    use math_explorer::constants::si::SOLAR_MASS;
+    use math_explorer::physics::astrophysics::{
+        halo_thin_lens_sample, tangential_critical_radius_kpc,
+    };
+    use math_explorer::physics::high_energy::general_relativity::SchwarzschildBlackHole;
+    use math_scalars::ViewportLength;
+    use nalgebra::{Point2, Vector2};
+
+    let legacy_json = r#"{"mode":"nfw_cusp","center":[0.2,-0.1],"halo_log10_mass":11.4,"halo_scale_radius":0.55,"log10_sigma_crit":8.15}"#;
+    let cfg: SplatLensConfig = serde_json::from_str(legacy_json).expect("legacy JSON deserializes");
+    assert!((cfg.viewport_kpc_scale - DEFAULT_VIEWPORT_KPC_SCALE).abs() < 1.0e-12);
+
+    let vp = ViewportLength::new(1.375);
+    let kpc = viewport_to_kpc(vp, cfg.viewport_kpc_scale);
+    assert!((kpc.get() - 1.375 * DEFAULT_VIEWPORT_KPC_SCALE).abs() < 1.0e-12);
+    assert!((kpc_to_viewport(kpc, cfg.viewport_kpc_scale).get() - vp.get()).abs() < 1.0e-12);
+
+    let (nfw, burk, sigma_crit) = cfg.matched_halos();
+    let r_search = viewport_to_kpc(ViewportLength::new(6.0), cfg.viewport_kpc_scale);
+    let rn_kpc =
+        tangential_critical_radius_kpc(None, &nfw, sigma_crit, r_search).expect("NFW crit");
+    let rn_vp = kpc_to_viewport(rn_kpc, cfg.viewport_kpc_scale);
+    let sample_at_crit = halo_thin_lens_sample(
+        viewport_to_kpc(rn_vp, cfg.viewport_kpc_scale),
+        None,
+        &nfw,
+        sigma_crit,
+    );
+    assert!(sample_at_crit.lambda_tangential.abs() < 1.0e-6);
+
+    let bh = SchwarzschildBlackHole::new(1.0e8 * SOLAR_MASS.get()).unwrap();
+    let mut masked = 0usize;
+    let out = evaluate_lens_mode_outcome(
+        &bh,
+        &cfg,
+        Vector2::new(cfg.center[0], cfg.center[1]),
+        &nfw,
+        &burk,
+        sigma_crit,
+        Point2::new(cfg.center[0] + rn_vp.get(), cfg.center[1]),
+        1.0,
+        &mut masked,
+    );
+    let deflected = out.primary.expect("primary halo image").mean;
+    assert!((deflected.x - (cfg.center[0] + 2.0 * rn_vp.get())).abs() < 1.0e-5);
+}

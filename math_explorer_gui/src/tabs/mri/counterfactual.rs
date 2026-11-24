@@ -66,7 +66,7 @@ impl MriSpinEchoEnsemble {
     pub fn from_mid_decay(base_m: Vector3<f64>, fork_time: f64) -> Self {
         let m_xy = base_m.x.hypot(base_m.y);
         let base_phase = base_m.y.atan2(base_m.x);
-        let gamma = proton::GYROMAGNETIC_RATIO;
+        let gamma = proton::GYROMAGNETIC_RATIO.get();
         let tau = fork_time.clamp(0.02, 1.0);
 
         let mut bz_offsets = [0.0; ISOCHROMAT_COUNT];
@@ -380,7 +380,7 @@ pub(crate) fn step_bloch_rotating_frame(
     let phase_rad = b_lab.y.atan2(b_lab.x);
     let mut b_rot = rotating_frame_effective_field(b_lab.z, omega_rf, b1_amp, phase_rad);
     b_rot.z += bz_offset;
-    let max_phase_step = proton::GYROMAGNETIC_RATIO * b_rot.norm() * dt;
+    let max_phase_step = proton::GYROMAGNETIC_RATIO.get() * b_rot.norm() * dt;
     let sub_steps = if max_phase_step.is_finite() && max_phase_step > 0.25 {
         (max_phase_step / 0.25).ceil().min(64.0) as usize
     } else {

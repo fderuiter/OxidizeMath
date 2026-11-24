@@ -7,7 +7,7 @@ use super::*;
 use eframe::egui;
 use oxidize_core::mesh::{
     export_colored_mesh_to_ply_binary, export_mesh_to_obj_string, export_mesh_to_ply_binary,
-    export_mesh_to_stl_binary, ColoredMesh, Mesh,
+    export_mesh_to_stl_binary, ColoredMesh, Mesh, MillimeterMesh, DEFAULT_EXPORT_SPAN_MM,
 };
 
 fn resolve_solid_mesh(tool: &dyn InteractiveTool) -> Option<Result<Mesh, String>> {
@@ -16,6 +16,20 @@ fn resolve_solid_mesh(tool: &dyn InteractiveTool) -> Option<Result<Mesh, String>
     }
     tool.export_colored_mesh_3d()
         .map(|res: Result<ColoredMesh, String>| res.map(|cm| cm.mesh))
+}
+
+fn serialize_calibrated_tool_stl(tool: &dyn InteractiveTool) -> Option<Result<Vec<u8>, String>> {
+    if let Some(mm_res) = tool.export_millimeter_mesh_3d() {
+        return Some(
+            mm_res.and_then(|mm| export_mesh_to_stl_binary(&mm).map_err(|e| e.to_string())),
+        );
+    }
+    let mesh_res = resolve_solid_mesh(tool)?;
+    Some(mesh_res.and_then(|mesh| {
+        let calibrated =
+            MillimeterMesh::from_scaled(mesh, DEFAULT_EXPORT_SPAN_MM).map_err(|e| e.to_string())?;
+        export_mesh_to_stl_binary(&calibrated).map_err(|e| e.to_string())
+    }))
 }
 
 impl SimulationFramework {
@@ -89,15 +103,18 @@ impl SimulationFramework {
             self.set_export_status(ExportStatusSeverity::Warning, caps.stl_disabled_reason);
             return;
         }
-        let Some(mesh_res) = self.active_tool.as_deref().and_then(resolve_solid_mesh) else {
+        let Some(bytes_res) = self
+            .active_tool
+            .as_deref()
+            .and_then(serialize_calibrated_tool_stl)
+        else {
             self.set_export_status(
                 ExportStatusSeverity::Error,
                 format!("No 3D mesh available to export as STL from {tool_name}."),
             );
             return;
         };
-        match mesh_res.and_then(|mesh| export_mesh_to_stl_binary(&mesh).map_err(|e| e.to_string()))
-        {
+        match bytes_res {
             Ok(bytes) => {
                 let filename = Self::build_export_filename(tool_name, ExportFormat::Stl);
                 self.complete_file_export(
@@ -194,5 +211,64 @@ impl SimulationFramework {
                 format!("3D OBJ export failed: {err}"),
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oxidize_core::mesh::{build_uv_sphere, Point3D};
+
+    struct DummyUnscaledTool;
+    impl TheoryDescribable for DummyUnscaledTool {
+        fn theory_description(&self) -> String {
+            String::new()
+        }
+        fn phonetic_description(&self) -> String {
+            String::new()
+        }
+        fn theory_citation(&self) -> String {
+            String::new()
+        }
+        fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+            std::collections::HashMap::new()
+        }
+    }
+    impl InteractiveTool for DummyUnscaledTool {
+        fn name(&self) -> &'static str {
+            "DummyUnscaledTool"
+        }
+        fn theory(&self) -> &dyn TheoryDescribable {
+            self
+        }
+        fn export_mesh_3d(&self) -> Option<Result<Mesh, String>> {
+            Some(
+                build_uv_sphere(Point3D::new(0.0, 0.0, 0.0), 0.5, 10, 8).map_err(|e| e.to_string()),
+            )
+        }
+    }
+
+    #[test]
+    fn test_dispatch_stl_calibrates_unscaled_mesh_to_default_mm_span() {
+        let tool = DummyUnscaledTool;
+        let bytes = serialize_calibrated_tool_stl(&tool)
+            .expect("mesh present")
+            .expect("calibrated STL");
+        assert!(std::str::from_utf8(&bytes[..80])
+            .unwrap_or("")
+            .contains("UNITS=mm"));
+        let face_count = u32::from_le_bytes(bytes[80..84].try_into().unwrap()) as usize;
+        let mut min_x = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        for f in 0..face_count {
+            let base = 84 + f * 50;
+            for v in 0..3 {
+                let off = base + 12 + v * 12;
+                let vx = f32::from_le_bytes(bytes[off..off + 4].try_into().unwrap());
+                min_x = min_x.min(vx);
+                max_x = max_x.max(vx);
+            }
+        }
+        assert!(((max_x - min_x) - DEFAULT_EXPORT_SPAN_MM).abs() <= 0.05);
     }
 }

@@ -74,8 +74,8 @@ fn test_survival_time_rejects_non_finite_and_overflow() {
     assert!(SurvivalTime::new(f64::NAN).is_err());
 
     // Arithmetic overflow and domain errors delegating to SurvivalTime::new
-    assert!(SurvivalTime::new(1000.0).unwrap().exp().is_err());
-    assert!(SurvivalTime::new(0.0).unwrap().ln().is_err());
+    assert!((SurvivalTime::new(f64::MAX).unwrap() + SurvivalTime::new(f64::MAX).unwrap()).is_err());
+    assert!((SurvivalTime::new(1.0).unwrap() - SurvivalTime::new(2.0).unwrap()).is_err());
     assert!((SurvivalTime::new(1.0).unwrap() / 0.0).is_err());
     assert!((SurvivalTime::new(f64::MAX).unwrap() * 2.0).is_err());
 }

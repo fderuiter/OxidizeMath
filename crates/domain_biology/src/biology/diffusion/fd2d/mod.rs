@@ -82,8 +82,10 @@ impl crate::biology::reaction_diffusion::DiffusionModel for FiniteDifference2D {
             let dst = out.species_mut(s);
             let coeff = *coeff;
 
-            let inv_dx_sq = 1.0 / (*self.geometry.dx() * *self.geometry.dx());
-            let inv_dy_sq = 1.0 / (*self.geometry.dy() * *self.geometry.dy());
+            let dx_val = self.geometry.dx().get();
+            let dy_val = self.geometry.dy().get();
+            let inv_dx_sq = 1.0 / (dx_val * dx_val);
+            let inv_dy_sq = 1.0 / (dy_val * dy_val);
             let cx = coeff * inv_dx_sq;
             let cy = coeff * inv_dy_sq;
             let c_center = -2.0 * (cx + cy);
@@ -183,8 +185,10 @@ impl<const N: usize> SpatialDiffusion<N> for FiniteDifference2D {
             panic!("Buffer size mismatch in FiniteDifference2D");
         }
 
-        let inv_dx_sq = 1.0 / (*self.geometry.dx() * *self.geometry.dx());
-        let inv_dy_sq = 1.0 / (*self.geometry.dy() * *self.geometry.dy());
+        let dx_val = self.geometry.dx().get();
+        let dy_val = self.geometry.dy().get();
+        let inv_dx_sq = 1.0 / (dx_val * dx_val);
+        let inv_dy_sq = 1.0 / (dy_val * dy_val);
 
         let mut cx = [0.0; N];
         let mut cy = [0.0; N];

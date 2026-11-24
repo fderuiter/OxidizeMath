@@ -126,6 +126,15 @@ impl InteractiveTool for VolumetricFieldStudioTool {
             .then(|| self.engine.export_solid_mesh_3d(&self.config))
     }
 
+    fn export_millimeter_mesh_3d(
+        &self,
+    ) -> Option<Result<oxidize_core::mesh::MillimeterMesh, String>> {
+        self.config
+            .render_mode
+            .uses_mesh()
+            .then(|| self.engine.export_millimeter_mesh_3d(&self.config))
+    }
+
     fn export_colored_mesh_3d(&self) -> Option<Result<ColoredMesh, String>> {
         self.config
             .render_mode

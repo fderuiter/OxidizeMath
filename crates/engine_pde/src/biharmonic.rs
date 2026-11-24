@@ -19,7 +19,7 @@ impl StencilOperators {
         if n == 0 {
             return;
         }
-        debug_assert!(*self.dx > 0.0);
+        debug_assert!(self.dx.get() > 0.0);
         let lambda = if dt.is_finite() {
             (dt * self.inv_dx).clamp(0.0, 1.0)
         } else {

@@ -8,6 +8,7 @@ use domain_physics::physics::astrophysics::{
     baryons_from_absolute_magnitude, baryons_from_distance, decompose_rotation_curve,
     planar_acceleration, sample_rotation_curve_into,
 };
+use math_scalars::Kiloparsecs;
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
 
@@ -125,8 +126,10 @@ fn test_baryonic_keplerian_outer_falloff_and_quadrature() {
             < 1.0e-3
     );
 
-    let r_inner_outer = decompose_rotation_curve(15.0, &baryons, &HaloProfile::BaryonicOnly);
-    let r_far_outer = decompose_rotation_curve(60.0, &baryons, &HaloProfile::BaryonicOnly);
+    let r_inner_outer =
+        decompose_rotation_curve(Kiloparsecs::new(15.0), &baryons, &HaloProfile::BaryonicOnly);
+    let r_far_outer =
+        decompose_rotation_curve(Kiloparsecs::new(60.0), &baryons, &HaloProfile::BaryonicOnly);
     assert_eq!(r_inner_outer.v_halo_kms, 0.0);
     assert!(r_far_outer.v_circ_kms < r_inner_outer.v_circ_kms);
 
@@ -146,32 +149,33 @@ fn test_nfw_cusp_versus_burkert_core_and_center_clamping() {
     let baryons = DwarfMorphology::TypeCode10.baryonic_config_from_distance(Mpc(10.0), 0.6, 0.8);
     let nfw = HaloProfile::NfwCusp {
         virial_mass_solar: 1.5e10,
-        scale_radius_kpc: 2.5,
+        scale_radius_kpc: Kiloparsecs::new(2.5),
         concentration: 12.0,
     };
     let burkert = HaloProfile::BurkertCore {
         virial_mass_solar: 1.5e10,
-        core_radius_kpc: 2.5,
+        core_radius_kpc: Kiloparsecs::new(2.5),
         concentration: 12.0,
     };
 
     // Zero and negative radii clamp safely to MIN_GALACTOCENTRIC_RADIUS_KPC without NaN/Inf
-    let at_zero = decompose_rotation_curve(0.0, &baryons, &nfw);
-    assert_eq!(at_zero.radius_kpc, MIN_GALACTOCENTRIC_RADIUS_KPC);
+    let at_zero = decompose_rotation_curve(Kiloparsecs::new(0.0), &baryons, &nfw);
+    assert_eq!(at_zero.radius_kpc, MIN_GALACTOCENTRIC_RADIUS_KPC.get());
     assert!(at_zero.v_circ_kms.is_finite());
     let (ax0, ay0) = planar_acceleration(0.0, 0.0, &baryons, &nfw);
     assert_eq!((ax0, ay0), (0.0, 0.0));
 
     // Inner core vs cusp: NFW rho ~ r^-1 cusp yields higher inner halo speed than Burkert constant-density core
-    let inner_nfw = decompose_rotation_curve(0.25, &baryons, &nfw);
-    let inner_burkert = decompose_rotation_curve(0.25, &baryons, &burkert);
+    let inner_nfw = decompose_rotation_curve(Kiloparsecs::new(0.25), &baryons, &nfw);
+    let inner_burkert = decompose_rotation_curve(Kiloparsecs::new(0.25), &baryons, &burkert);
     assert!(inner_nfw.v_halo_kms > inner_burkert.v_halo_kms);
     assert!(inner_nfw.v_circ_kms > inner_burkert.v_circ_kms);
 
     // Outer halo flattens rotation curve well above pure baryonic Keplerian falloff
-    let outer_bary = decompose_rotation_curve(10.0, &baryons, &HaloProfile::BaryonicOnly);
-    let outer_nfw = decompose_rotation_curve(10.0, &baryons, &nfw);
-    let outer_burkert = decompose_rotation_curve(10.0, &baryons, &burkert);
+    let outer_bary =
+        decompose_rotation_curve(Kiloparsecs::new(10.0), &baryons, &HaloProfile::BaryonicOnly);
+    let outer_nfw = decompose_rotation_curve(Kiloparsecs::new(10.0), &baryons, &nfw);
+    let outer_burkert = decompose_rotation_curve(Kiloparsecs::new(10.0), &baryons, &burkert);
     assert!(outer_nfw.v_circ_kms > 2.0 * outer_bary.v_circ_kms);
     assert!(outer_burkert.v_circ_kms > 2.0 * outer_bary.v_circ_kms);
 }
@@ -181,7 +185,7 @@ fn test_nfw_cusp_versus_burkert_core_and_center_clamping() {
 fn test_symplectic_leapfrog_conserves_invariants_with_zero_allocations() {
     let halo = HaloProfile::BurkertCore {
         virial_mass_solar: 1.2e10,
-        core_radius_kpc: 2.2,
+        core_radius_kpc: Kiloparsecs::new(2.2),
         concentration: 11.0,
     };
     let mut system = GalacticDiskSystem::from_morphology(
@@ -215,7 +219,13 @@ fn test_symplectic_leapfrog_conserves_invariants_with_zero_allocations() {
     let mut trail_buf = [[0.0_f64; 2]; 32];
 
     let (trail_written, metrics) = VerifiedEngine::run_verified(|| {
-        sample_rotation_curve_into(0.1, 10.0, &system.baryons, &system.halo, &mut curve_buf);
+        sample_rotation_curve_into(
+            Kiloparsecs::new(0.1),
+            Kiloparsecs::new(10.0),
+            &system.baryons,
+            &system.halo,
+            &mut curve_buf,
+        );
         system.step_n_leapfrog(1.5, 80);
         system.copy_particle_trail(0, &mut trail_buf)
     });
@@ -239,16 +249,16 @@ fn test_schwarzschild_and_halo_lensing_jacobians_shadow_and_caustics_zero_alloc(
     use domain_physics::physics::high_energy::general_relativity::SchwarzschildBlackHole;
     use nalgebra::Vector2;
 
-    let bh = SchwarzschildBlackHole::new(1.0e8 * math_commons::constants::SOLAR_MASS)
+    let bh = SchwarzschildBlackHole::new((math_commons::constants::si::SOLAR_MASS * 1.0e8).get())
         .expect("valid black hole");
     let nfw = HaloProfile::NfwCusp {
         virial_mass_solar: 4.0e11,
-        scale_radius_kpc: 3.5,
+        scale_radius_kpc: Kiloparsecs::new(3.5),
         concentration: 14.0,
     };
     let burkert = HaloProfile::BurkertCore {
         virial_mass_solar: 4.0e11,
-        core_radius_kpc: 3.5,
+        core_radius_kpc: Kiloparsecs::new(3.5),
         concentration: 14.0,
     };
     let mut nfw_buf = [ThinLensSample::default(); 24];
@@ -261,10 +271,25 @@ fn test_schwarzschild_and_halo_lensing_jacobians_shadow_and_caustics_zero_alloc(
             let inside_shadow =
                 schwarzschild_thin_lens_images(&bh, Vector2::new(0.05, 0.0), 0.30, 0.30)
                     .expect("shadow");
-            sample_halo_lensing_into(0.05, 8.0, None, &nfw, 2.5e7, &mut nfw_buf);
-            sample_halo_lensing_into(0.05, 8.0, None, &burkert, 2.5e7, &mut burk_buf);
-            let rc_n = tangential_critical_radius_kpc(None, &nfw, 2.5e7, 15.0);
-            let rc_b = tangential_critical_radius_kpc(None, &burkert, 2.5e7, 15.0);
+            sample_halo_lensing_into(
+                Kiloparsecs::new(0.05),
+                Kiloparsecs::new(8.0),
+                None,
+                &nfw,
+                2.5e7,
+                &mut nfw_buf,
+            );
+            sample_halo_lensing_into(
+                Kiloparsecs::new(0.05),
+                Kiloparsecs::new(8.0),
+                None,
+                &burkert,
+                2.5e7,
+                &mut burk_buf,
+            );
+            let rc_n = tangential_critical_radius_kpc(None, &nfw, 2.5e7, Kiloparsecs::new(15.0));
+            let rc_b =
+                tangential_critical_radius_kpc(None, &burkert, 2.5e7, Kiloparsecs::new(15.0));
             (on_axis, inside_shadow, rc_n, rc_b)
         });
 
@@ -279,22 +304,27 @@ fn test_schwarzschild_and_halo_lensing_jacobians_shadow_and_caustics_zero_alloc(
     // Inner NFW cusp yields stronger inner convergence and shear than Burkert flat core
     assert!(nfw_buf[0].convergence > burk_buf[0].convergence);
     assert!(nfw_buf[0].shear > burk_buf[0].shear);
-    let burk_center = halo_thin_lens_sample(1.0e-3, None, &burkert, 2.5e7);
+    let burk_center = halo_thin_lens_sample(Kiloparsecs::new(1.0e-3), None, &burkert, 2.5e7);
     assert!(burk_center.shear < 1.0e-6);
 
     // Verify exact differential relation d(R^2 * mean_kappa)/dR == 2 * R * kappa for Burkert
     let r_mid = 2.4;
     let h = 1.0e-4;
-    let s_minus = halo_thin_lens_sample(r_mid - h, None, &burkert, 2.5e7);
-    let s_plus = halo_thin_lens_sample(r_mid + h, None, &burkert, 2.5e7);
-    let s_zero = halo_thin_lens_sample(r_mid, None, &burkert, 2.5e7);
+    let s_minus = halo_thin_lens_sample(Kiloparsecs::new(r_mid - h), None, &burkert, 2.5e7);
+    let s_plus = halo_thin_lens_sample(Kiloparsecs::new(r_mid + h), None, &burkert, 2.5e7);
+    let s_zero = halo_thin_lens_sample(Kiloparsecs::new(r_mid), None, &burkert, 2.5e7);
     let deriv = ((r_mid + h).powi(2) * s_plus.mean_convergence
         - (r_mid - h).powi(2) * s_minus.mean_convergence)
         / (2.0 * h);
     assert!((deriv - 2.0 * r_mid * s_zero.convergence).abs() < 1.0e-5);
 
-    let (_defl, jac, _sample) =
-        halo_lens_deflection_and_jacobian(Vector2::new(1.5, -0.8), None, &nfw, 2.5e7);
+    let (defl, jac, _sample) = halo_lens_deflection_and_jacobian(
+        Vector2::new(Kiloparsecs::new(1.5), Kiloparsecs::new(-0.8)),
+        None,
+        &nfw,
+        2.5e7,
+    );
+    assert!(defl.x.is_finite() && defl.y.is_finite());
     assert!(jac.iter().all(|v| v.is_finite()));
     assert!(r_crit_nfw.is_some() && r_crit_burk.is_some());
 }
@@ -306,11 +336,11 @@ fn test_paczynski_wiita_isco_capture_rosetta_christoffel_and_beaming_zero_alloc(
         CentralBlackHoleConfig, evaluate_relativistic_beaming,
         validate_christoffel_radial_connection,
     };
-    use math_commons::constants::C;
+    use math_commons::constants::si::C;
 
     let halo = HaloProfile::NfwCusp {
         virial_mass_solar: 1.0e10,
-        scale_radius_kpc: 2.5,
+        scale_radius_kpc: Kiloparsecs::new(2.5),
         concentration: 12.0,
     };
     let pop = OrbitPopulationConfig {
@@ -348,11 +378,11 @@ fn test_paczynski_wiita_isco_capture_rosetta_christoffel_and_beaming_zero_alloc(
             let conn = validate_christoffel_radial_connection(&bh_metric, 6.0)
                 .expect("christoffel connection");
             // Singularity clamps: r <= R_s (0.5 * R_s) and v >= 0.999 * C (1.5 * C) stay finite!
-            let b_hor = evaluate_relativistic_beaming(&bh_metric, 0.5, 1.5 * C, 1.0, 2.0)
+            let b_hor = evaluate_relativistic_beaming(&bh_metric, 0.5, (C * 1.5).get(), 1.0, 2.0)
                 .expect("clamped beaming");
-            let b_app = evaluate_relativistic_beaming(&bh_metric, 6.0, 0.45 * C, 0.9, 2.0)
+            let b_app = evaluate_relativistic_beaming(&bh_metric, 6.0, (C * 0.45).get(), 0.9, 2.0)
                 .expect("approaching");
-            let b_rec = evaluate_relativistic_beaming(&bh_metric, 6.0, 0.45 * C, -0.9, 2.0)
+            let b_rec = evaluate_relativistic_beaming(&bh_metric, 6.0, (C * 0.45).get(), -0.9, 2.0)
                 .expect("receding");
             (conn, b_hor, b_app, b_rec)
         });

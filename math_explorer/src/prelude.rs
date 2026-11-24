@@ -5,11 +5,12 @@ pub use diagnostics::{Diagnostic, Severity};
 pub use math_commons::fit::FitModel;
 pub use math_commons::primitives::{NonNegativeFloat, PositiveFloat, UnitInterval};
 pub use math_commons::series::{PointSeries, Sample2D};
+pub use math_scalars::{Celsius, Kelvin, Kiloparsecs, Quantity, Scalar, SiFrame};
 
 #[cfg(feature = "pure_math")]
 pub use nalgebra::{self, DMatrix, DVector};
 #[cfg(feature = "pure_math")]
-pub use oxidize_core::mesh::{ColoredMesh, Mesh, Point3D, VertexColor};
+pub use oxidize_core::mesh::{ColoredMesh, Mesh, MillimeterMesh, Point3D, VertexColor};
 #[cfg(feature = "pure_math")]
 pub use oxidize_core::rng::OxidizeRng;
 #[cfg(feature = "pure_math")]
