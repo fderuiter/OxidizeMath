@@ -389,13 +389,20 @@ impl SpatialBrushKit {
             return;
         };
 
-        let pointer_in_plot = response.hovered() || response.dragged();
+        let pointer_in_plot =
+            response.hovered() || response.dragged() || self.last_drag_pos.is_some();
         if !pointer_in_plot {
             self.last_drag_pos = None;
             return;
         }
 
-        if let Some(coord) = plot_ui.pointer_coordinate() {
+        let live_coord = ctx
+            .input(|i| i.pointer.interact_pos().or_else(|| i.pointer.latest_pos()))
+            .filter(|&p| response.rect.contains(p) || self.last_drag_pos.is_some())
+            .map(|p| plot_ui.plot_from_screen(p))
+            .or_else(|| plot_ui.pointer_coordinate());
+
+        if let Some(coord) = live_coord {
             let curr = [coord.x, coord.y];
             let prev = self.last_drag_pos.unwrap_or(curr);
             let drag_vector = [curr[0] - prev[0], curr[1] - prev[1]];
