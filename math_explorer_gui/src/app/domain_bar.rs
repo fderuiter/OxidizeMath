@@ -100,7 +100,7 @@ pub fn select_tab(app: &mut MathExplorerApp, ctx: &egui::Context, tab_idx: usize
     }
 }
 
-/// Polls cross-domain handoff triggers (e.g., `AttractorPlotter -> VietorisRipsTool` and elliptic torus handoffs).
+/// Polls cross-domain handoff triggers (e.g., `AttractorPlotter -> VietorisRipsTool`, `RiemannianPdeStudio`, and elliptic torus handoffs).
 pub fn poll_cross_tab_tool_handoffs(app: &mut MathExplorerApp, ctx: &egui::Context) {
     app.sim_bus
         .install_in_context(ctx, app.compare_sync.link_topology);
@@ -118,6 +118,32 @@ pub fn poll_cross_tab_tool_handoffs(app: &mut MathExplorerApp, ctx: &egui::Conte
             {
                 select_primary_tab(app, ctx, tab_idx);
                 let _ = app.tabs[tab_idx].select_tool_by_name("VietorisRipsTool");
+            }
+        }
+        if let Some(target) =
+            crate::tabs::geometry_topology::riemannian_studio::handoff::take_open_riemannian_preset(
+                ctx,
+            )
+        {
+            if let Some(tab_idx) = app
+                .tabs
+                .iter()
+                .position(|t| t.name() == "Geometry & Topology")
+            {
+                select_primary_tab(app, ctx, tab_idx);
+                let preset_json =
+                    crate::tabs::geometry_topology::riemannian_studio::presets::preset_json_for_target(
+                        target,
+                    );
+                if let Some(fw) = app.tabs[tab_idx].framework_mut() {
+                    let _ = fw.apply_starter_card(
+                        "Riemannian PDE Studio",
+                        Some("RiemannianPdeStudio"),
+                        Some(preset_json),
+                    );
+                } else {
+                    let _ = app.tabs[tab_idx].select_tool_by_name("RiemannianPdeStudio");
+                }
             }
         }
         if let Some(payload) =

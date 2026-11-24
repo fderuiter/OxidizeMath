@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "tests"))]
-
 use super::bcs::{BcsGapSolver, IsotropicBCSModel, coherence_factors_strong};
 use super::lattice::{BodyCenteredCubic, CrystalSystem, FaceCenteredCubic, SimpleCubic};
 use super::quasicrystal::{
@@ -17,6 +15,7 @@ use std::f64::consts::{PI, TAU};
 use verified_engine::allocator::MEMORY_LOCK;
 use verified_engine::engine::VerifiedEngine;
 
+#[verified_engine::verified]
 fn rotate_2d(q: [f64; 2], angle: f64) -> [f64; 2] {
     let (s, c) = angle.sin_cos();
     [c * q[0] - s * q[1], s * q[0] + c * q[1]]

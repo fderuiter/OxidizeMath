@@ -5,8 +5,6 @@ use federated_registry::Severity;
 use serde::{Deserialize, Serialize};
 use std::sync::mpsc::{channel, Receiver, TryRecvError};
 
-// theory_verification!
-
 /// Metadata included in exported preset JSON files.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]

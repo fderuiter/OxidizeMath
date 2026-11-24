@@ -232,20 +232,6 @@ impl VrChaosState {
     }
 }
 
-#[cfg(feature = "physics")]
-fn step_lorenz_point(pt: Point3D, dt: f64, sigma: f64, rho: f64, beta: f64) -> Point3D {
-    use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
-    let mut sys = LorenzBuilder::new()
-        .sigma(sigma)
-        .rho(rho)
-        .beta(beta)
-        .build(LorenzState::new(pt.x, pt.y, pt.z));
-    sys.step(dt);
-    let v = sys.state.vec;
-    Point3D::new(v.x, v.y, v.z)
-}
-
-#[cfg(not(feature = "physics"))]
 fn step_lorenz_point(s: Point3D, dt: f64, sigma: f64, rho: f64, beta: f64) -> Point3D {
     let deriv = |p: Point3D| {
         Point3D::new(

@@ -1,14 +1,23 @@
 use super::*;
+#[cfg(all(feature = "biology", feature = "physics"))]
 use crate::async_sim::unified::UnifiedSimTool;
-use crate::framework::{InteractiveTool, MAX_TOOL_STATE_BYTES};
+use crate::framework::InteractiveTool;
+#[cfg(feature = "biology")]
+use crate::framework::MAX_TOOL_STATE_BYTES;
+#[cfg(feature = "physics")]
 use crate::tabs::chaos::attractors::AttractorPlotter;
+#[cfg(all(feature = "biology", feature = "physics"))]
 use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
+#[cfg(feature = "biology")]
 use crate::tabs::morphogenesis::MorphogenesisTool;
+#[cfg(feature = "physics")]
 use crate::tabs::mri::MriTool;
+#[cfg(all(feature = "biology", feature = "physics"))]
 use crate::tabs::neuroscience::hodgkin_huxley::HodgkinHuxleyUnified;
 use eframe::egui;
 use std::time::Duration;
 
+#[cfg(any(feature = "biology", feature = "physics"))]
 fn wait_for_step(controller: &mut SimulationController, expected_step: usize) {
     for _ in 0..400 {
         let _ = controller.update();
@@ -28,6 +37,7 @@ fn wait_for_step(controller: &mut SimulationController, expected_step: usize) {
     );
 }
 
+#[cfg(feature = "physics")]
 fn wait_for_tool_step<T: InteractiveTool>(
     ctx: &egui::Context,
     tool: &mut T,
@@ -45,6 +55,7 @@ fn wait_for_tool_step<T: InteractiveTool>(
     panic!("Timed out waiting for tool UI to settle at target step");
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_attractor_and_mri_tools_end_to_end_step_back_and_scrub() {
     let ctx = egui::Context::default();
@@ -102,6 +113,7 @@ fn test_attractor_and_mri_tools_end_to_end_step_back_and_scrub() {
     assert_eq!(mri.history.len(), 4);
 }
 
+#[cfg(all(feature = "biology", feature = "physics"))]
 #[test]
 fn test_hodgkin_huxley_vs_non_opted_in_unified_and_morphogenesis_k16() {
     let mut hh = UnifiedSimTool::<HodgkinHuxleyUnified>::new();
@@ -144,6 +156,7 @@ fn test_hodgkin_huxley_vs_non_opted_in_unified_and_morphogenesis_k16() {
     assert_eq!(morpho.worker.timeline_metadata().unwrap().max_step, 0);
 }
 
+#[cfg(feature = "biology")]
 #[test]
 fn test_preset_save_state_and_ctrl_z_remain_parameter_only_after_scrubbing() {
     let mut morpho = MorphogenesisTool {
@@ -198,6 +211,7 @@ fn test_preset_save_state_and_ctrl_z_remain_parameter_only_after_scrubbing() {
     );
 }
 
+#[cfg(feature = "physics")]
 #[test]
 fn test_attractor_running_checkpoint_substeps_stream_live_tda_landmarks() {
     use crate::app::dataflow_bus::{
