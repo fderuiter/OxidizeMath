@@ -3,7 +3,7 @@
 use super::*;
 use crate::framework::shader_foundry::{bind_complex_shader_params, validate_complex_shader_vars};
 use crate::framework::MAX_SYNTHESIZED_PARAMS;
-use math_commons::ast::{parse_equation, CompiledExpr, MAX_EXPR_BYTES};
+use math_commons::ast::{LexError, MAX_EXPR_BYTES};
 use math_commons::math_kernel::colormap::ShaderPalette;
 use std::collections::BTreeMap;
 
@@ -83,37 +83,24 @@ impl ComplexMappingState {
             .ok_or_else(|| format!("Unknown complex mapping palette '{}'", self.palette))?;
         if let Some(raw) = &self.custom_expr {
             if raw.len() > MAX_EXPR_BYTES {
-                return Err(reject_invalid_formula(format!(
-                    "expression exceeds {MAX_EXPR_BYTES}-byte limit"
-                )));
+                return Err(reject_invalid_formula(
+                    LexError::input_too_long(raw.len()).user_message(),
+                ));
             }
         }
-        if self.function == MappingFunction::Custom || self.custom_expr.is_some() {
+        if self.function == MappingFunction::Custom {
             let raw = self
                 .custom_expr
                 .as_deref()
                 .unwrap_or(DEFAULT_CUSTOM_MAPPING_EXPR);
-            let (_, expr) = parse_equation(raw.trim()).map_err(reject_invalid_formula)?;
-            let compiled =
-                CompiledExpr::compile_complex(&expr, &["z"]).map_err(reject_invalid_formula)?;
-            if compiled.param_names().len() > MAX_SYNTHESIZED_PARAMS {
-                return Err(reject_invalid_formula(format!(
-                    "expression exceeds {MAX_SYNTHESIZED_PARAMS} parameters"
-                )));
+            let mut probe = default_complex_math_input();
+            probe.set_expression(raw);
+            probe.set_params_map(&self.custom_params);
+            if let Some(err) = probe.error_message() {
+                return Err(reject_invalid_formula(err));
             }
-            let mut effective = BTreeMap::new();
-            for name in compiled.param_names() {
-                if !name.eq_ignore_ascii_case("a") {
-                    return Err(reject_invalid_formula(format!(
-                        "Unknown variable '{name}' (allowed: z, a)"
-                    )));
-                }
-                effective.insert(
-                    name.clone(),
-                    self.custom_params.get(name).copied().unwrap_or(1.0),
-                );
-            }
-            let bound = bind_complex_shader_params(&expr, &effective, &["z"])
+            let expr = probe.expr().expect("validated custom complex AST");
+            let bound = bind_complex_shader_params(expr, &probe.params_map(), &["z"])
                 .map_err(reject_invalid_formula)?;
             validate_complex_shader_vars(&bound).map_err(reject_invalid_formula)?;
         }

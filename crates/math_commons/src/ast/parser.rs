@@ -4,6 +4,7 @@
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
 use super::lexer::{LexError, Span, Token, TokenKind, tokenize};
 use super::limits::{MAX_AST_NODES, MAX_EXPR_BYTES};
+use super::parser_diagnostics::{format_found_token, format_user_message_for_input};
 
 /// Maximum allowed recursion nesting depth to prevent stack overflow.
 pub const MAX_PARSE_DEPTH: usize = 64;
@@ -71,14 +72,6 @@ pub enum ParseError {
     },
 }
 
-fn format_found_token(found: &str) -> String {
-    if found == "<EOF>" || found == "end of expression" {
-        "end of expression".to_string()
-    } else {
-        format!("'{found}'")
-    }
-}
-
 impl ParseError {
     /// Formats this parse error in plain language using 1-indexed character positions
     /// without exposing internal `Span` structs or `<EOF>` markers.
@@ -91,16 +84,7 @@ impl ParseError {
     /// incomplete expressions also report a 1-indexed character position.
     #[must_use]
     pub fn user_message_for_input(&self, input: &str) -> String {
-        if matches!(self, Self::UnexpectedEof) {
-            let trimmed_chars = input.trim().chars().count();
-            if trimmed_chars > 0 {
-                return format!(
-                    "Unexpected end of expression at character {}",
-                    trimmed_chars + 1
-                );
-            }
-        }
-        self.user_message()
+        format_user_message_for_input(self, input)
     }
 }
 
@@ -168,6 +152,11 @@ impl Parser {
             return Err(ParseError::NodeLimitExceeded(MAX_AST_NODES));
         }
         Ok(())
+    }
+
+    fn alloc_leaf(&mut self, expr: Expr) -> Result<(Expr, usize), ParseError> {
+        self.bump_node()?;
+        Ok((expr, 0))
     }
 
     fn peek(&self) -> &Token {
@@ -268,10 +257,7 @@ impl Parser {
     fn parse_prefix(&mut self, depth: usize) -> Result<(Expr, usize), ParseError> {
         let tok = self.advance().clone();
         match tok.kind {
-            TokenKind::Number(n) => {
-                self.bump_node()?;
-                Ok((Expr::Number(n), 0))
-            }
+            TokenKind::Number(n) => self.alloc_leaf(Expr::Number(n)),
             TokenKind::Ident(name) => self.parse_ident_or_func(name, tok.span, depth),
             TokenKind::LParen => self.parse_grouped_parens(depth),
             TokenKind::Pipe => self.parse_abs(depth),
@@ -340,8 +326,7 @@ impl Parser {
             if self.peek().kind == TokenKind::LParen {
                 return Err(ParseError::UnknownFunction { name, span });
             }
-            self.bump_node()?;
-            return Ok((Expr::Variable(name), 0));
+            return self.alloc_leaf(Expr::Variable(name));
         };
 
         if self.peek().kind == TokenKind::LParen {
