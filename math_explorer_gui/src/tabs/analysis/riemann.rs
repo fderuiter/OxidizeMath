@@ -119,17 +119,7 @@ impl Default for RiemannIntegrationTool {
             result: 0.0,
             error_estimate: 0.0,
             active_panel_count: 10,
-            math_input: MathExpressionInputBar::new(
-                "f(x)",
-                DEFAULT_RIEMANN_EXPR,
-                vec![
-                    ("Clipped Sine Wave", "clamp(sin(k * x), -0.5, 0.8)"),
-                    ("Boxcar Pulse", "a * rect(x / w)"),
-                    ("Step Ramp", "x * step(x - a)"),
-                    ("Damped Cosine", "exp(-a * x) * cos(k * x)"),
-                ],
-            )
-            .with_axes(&["x"]),
+            math_input: ui::default_riemann_bar(),
             cached_trapezoid_polygons: Vec::new(),
             cached_true_curve: Vec::new(),
             cached_gk_panels: Vec::new(),
@@ -436,10 +426,24 @@ impl InteractiveTool for RiemannIntegrationTool {
             || !(1..=200).contains(&s.steps)
             || !s.cc_tolerance.is_finite()
             || !(MIN_CC_TOLERANCE..=MAX_CC_TOLERANCE).contains(&s.cc_tolerance)
+            || !s.custom_params.values().all(|v| v.is_finite())
         {
             return Err(
                 "Riemann integration interval, partition count, or tolerance invalid".into(),
             );
+        }
+        let mut bar = ui::default_riemann_bar();
+        bar.set_expression(s.custom_expr.as_deref().unwrap_or(DEFAULT_RIEMANN_EXPR));
+        bar.set_params_map(&s.custom_params);
+        if (s.preset == FunctionPreset::Custom || s.custom_expr.is_some())
+            && bar.error_message().is_some()
+        {
+            let msg = format!(
+                "Invalid Riemann custom formula: {}",
+                bar.error_message().as_deref().unwrap_or("parse error")
+            );
+            crate::accessibility::announce_status_with_priority(&msg, "assertive");
+            return Err(msg);
         }
         self.preset = s.preset;
         self.quadrature_method = s.quadrature_method;
@@ -447,9 +451,7 @@ impl InteractiveTool for RiemannIntegrationTool {
         self.min_x = s.min_x;
         self.max_x = s.max_x;
         self.steps = s.steps;
-        self.math_input
-            .set_expression(s.custom_expr.as_deref().unwrap_or(DEFAULT_RIEMANN_EXPR));
-        self.math_input.set_params_map(&s.custom_params);
+        self.math_input = bar;
         self.recalculate();
         Ok(())
     }

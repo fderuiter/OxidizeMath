@@ -135,15 +135,15 @@ impl OdeSolverTool {
         self.bump_revision();
     }
 
-    pub(super) fn recalculate_seeded_orbits(&mut self) {
+    pub(super) fn recalculate_seeded_orbits(&mut self, primary_dt: f64) {
         self.seeded_trajectories.clear();
         if !self.has_second_state() || self.seeded_ic.is_empty() {
             return;
         }
         let orbit_count = (1 + self.seeded_ic.len()).min(1 + MAX_SEEDED_ORBITS);
         let max_steps_each = (crate::presets::MAX_ODE_STEPS / orbit_count).max(1);
-        let effective_dt = self
-            .dt
+        let effective_dt = primary_dt
+            .max(self.dt)
             .max((self.total_time / max_steps_each as f64).max(1e-6));
 
         let custom_spec = self.build_custom_ode_spec();

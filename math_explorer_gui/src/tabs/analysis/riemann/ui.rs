@@ -6,6 +6,20 @@ use crate::reflective_ui::render_copyable_metric;
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints, Points, Polygon};
 
+pub(super) fn default_riemann_bar() -> MathExpressionInputBar {
+    MathExpressionInputBar::new(
+        "f(x)",
+        DEFAULT_RIEMANN_EXPR,
+        vec![
+            ("Clipped Sine Wave", "clamp(sin(k * x), -0.5, 0.8)"),
+            ("Boxcar Pulse", "a * rect(x / w)"),
+            ("Step Ramp", "x * step(x - a)"),
+            ("Damped Cosine", "exp(-a * x) * cos(k * x)"),
+        ],
+    )
+    .with_axes(&["x"])
+}
+
 impl RiemannIntegrationTool {
     fn draw_preset_combo(&mut self, ui: &mut egui::Ui) -> bool {
         let mut changed = false;

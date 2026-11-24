@@ -1,7 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+use crate::pure_math::statistics::monte_carlo::MonteCarloError;
 use std::f64::consts::PI;
+use verified_engine::engine::VerifiedEngine;
 
 fn clamp_pulse(x: f64) -> f64 {
     (3.0 * x).sin().clamp(-0.5, 0.8)
@@ -137,3 +139,80 @@ fn gk15_panel_export_is_sorted_and_covers_domain() {
     }
     assert!((res.value - 0.5).abs() < 1e-6);
 }
+
+#[test]
+fn test_trapezoidal_richardson_error_estimate() {
+    let trap_even = Trapezoidal::new(100);
+    let lin = trap_even.integrate(|x| 3.0 * x + 2.0, 0.0, 2.0, 1e-6);
+    assert!((lin.value - 10.0).abs() < 1e-12);
+    assert!(lin.error < 1e-12);
+
+    let exact = std::f64::consts::E - 1.0;
+    let res_even = trap_even.integrate(f64::exp, 0.0, 1.0, 1e-6);
+    let true_err_even = (res_even.value - exact).abs();
+    assert!(res_even.error > 0.0);
+    assert!((res_even.error - true_err_even).abs() < true_err_even * 0.05);
+
+    let trap_odd = Trapezoidal::new(101);
+    let res_odd = trap_odd.integrate(f64::exp, 0.0, 1.0, 1e-6);
+    let true_err_odd = (res_odd.value - exact).abs();
+    assert!(res_odd.error > 0.0);
+    assert!((res_odd.error - true_err_odd).abs() < true_err_odd * 0.05);
+}
+
+#[test]
+fn test_multivariate_integrator_hyperrectangle_and_zero_alloc() {
+    let exact = 104.0 / 3.0;
+    let lower = [0.0, 1.0, -1.0];
+    let upper = [2.0, 3.0, 1.0];
+
+    let mut sobol_int = MultivariateIntegrator::new_sobol(3, 1024)
+        .unwrap()
+        .with_seed(99);
+    let mut halton_int = MultivariateIntegrator::new_halton(3, 1024)
+        .unwrap()
+        .with_seed(99);
+
+    let (sobol_res, _) = VerifiedEngine::run_verified(|| {
+        sobol_int
+            .integrate(&lower, &upper, |x| x[0] * x[1] * x[1] + x[2])
+            .unwrap()
+    });
+    let halton_res = halton_int
+        .integrate(&lower, &upper, |x| x[0] * x[1] * x[1] + x[2])
+        .unwrap();
+
+    let mut mc_int = MultivariateIntegrator::new_monte_carlo(3, 1024)
+        .unwrap()
+        .with_seed(99);
+    let mc_res = mc_int
+        .integrate(&lower, &upper, |x| x[0] * x[1] * x[1] + x[2])
+        .unwrap();
+
+    assert!(
+        (sobol_res.value - exact).abs() < 0.05,
+        "Sobol integral {} vs exact {}",
+        sobol_res.value,
+        exact
+    );
+    assert!(
+        sobol_res.error > 0.0 && sobol_res.error < mc_res.error * 0.5,
+        "Sobol SE {} should beat IID SE {}",
+        sobol_res.error,
+        mc_res.error
+    );
+    assert!(
+        (halton_res.value - exact).abs() < 0.35,
+        "Halton integral {} vs exact {}",
+        halton_res.value,
+        exact
+    );
+    assert!(halton_res.error > 0.0 && halton_res.error < mc_res.error * 0.5);
+
+    assert!(matches!(
+        sobol_int.integrate(&[2.0, 0.0, 0.0], &[1.0, 1.0, 1.0], |_| 1.0),
+        Err(MonteCarloError::InvalidBounds { dimension: 0, .. })
+    ));
+}
+
+// [cite:graph_parameters_rust]

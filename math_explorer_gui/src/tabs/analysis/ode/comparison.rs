@@ -120,7 +120,7 @@ pub fn simulate_ode(spec: &OdeSimSpec<'_>) -> SolverTrajectory {
         method: spec.method,
         ..Default::default()
     };
-    let Some(num_steps) = validate_initial_state(&mut traj, spec) else {
+    let Some((num_steps, eff_dt)) = validate_initial_state(&mut traj, spec) else {
         return traj;
     };
     let Some(point_cap) = num_steps.checked_add(1) else {
@@ -133,13 +133,18 @@ pub fn simulate_ode(spec: &OdeSimSpec<'_>) -> SolverTrajectory {
     {
         return traj;
     }
-    dispatch_sim_preset(&mut traj, spec, num_steps);
+    dispatch_sim_preset(&mut traj, spec, eff_dt, num_steps);
     traj
 }
 
-fn dispatch_sim_preset(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_steps: usize) {
+fn dispatch_sim_preset(
+    traj: &mut SolverTrajectory,
+    spec: &OdeSimSpec<'_>,
+    dt: f64,
+    num_steps: usize,
+) {
     if spec.preset.is_2d() {
-        dispatch_sim_2d(traj, spec, num_steps);
+        dispatch_sim_2d(traj, spec, dt, num_steps);
         return;
     }
     let init_1d = ArrayState([spec.ic_y0]);
@@ -147,22 +152,22 @@ fn dispatch_sim_preset(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_s
     match spec.preset {
         OdePreset::Exponential => {
             let dyn_sys = ExponentialOde { k: spec.param_k };
-            run_loop_nd(traj, init_1d, &dyn_sys, spec, num_steps, names_1d);
+            run_loop_nd(traj, init_1d, &dyn_sys, spec, dt, num_steps, names_1d);
         }
         OdePreset::LogisticGrowth => {
             let dyn_sys = LogisticGrowthOde {
                 r: spec.param_r,
                 cap_k: spec.param_cap_k,
             };
-            run_loop_nd(traj, init_1d, &dyn_sys, spec, num_steps, names_1d);
+            run_loop_nd(traj, init_1d, &dyn_sys, spec, dt, num_steps, names_1d);
         }
         OdePreset::Custom => {
             if let Some(cspec) = spec.custom_spec {
                 if cspec.is_coupled() {
                     let init_2d = ArrayState([spec.ic_y0, spec.ic_v0]);
-                    run_loop_nd(traj, init_2d, cspec, spec, num_steps, ("y(t)", "v(t)"));
+                    run_loop_nd(traj, init_2d, cspec, spec, dt, num_steps, ("y(t)", "v(t)"));
                 } else {
-                    run_loop_nd(traj, init_1d, cspec, spec, num_steps, names_1d);
+                    run_loop_nd(traj, init_1d, cspec, spec, dt, num_steps, names_1d);
                 }
             }
         }
@@ -170,18 +175,34 @@ fn dispatch_sim_preset(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_s
     }
 }
 
-fn dispatch_sim_2d(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_steps: usize) {
+fn dispatch_sim_2d(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, dt: f64, num_steps: usize) {
     let init_2d = ArrayState([spec.ic_y0, spec.ic_v0]);
     match spec.preset {
         OdePreset::HarmonicOscillator => {
             let dyn_sys = HarmonicOscillatorOde { k: spec.param_k };
-            run_loop_nd(traj, init_2d, &dyn_sys, spec, num_steps, ("y(t)", "y'(t)"));
+            run_loop_nd(
+                traj,
+                init_2d,
+                &dyn_sys,
+                spec,
+                dt,
+                num_steps,
+                ("y(t)", "y'(t)"),
+            );
         }
         OdePreset::LinearSystem2D => {
             let dyn_sys = Linear2DOde {
                 matrix_a: spec.matrix_a,
             };
-            run_loop_nd(traj, init_2d, &dyn_sys, spec, num_steps, ("x(t)", "y(t)"));
+            run_loop_nd(
+                traj,
+                init_2d,
+                &dyn_sys,
+                spec,
+                dt,
+                num_steps,
+                ("x(t)", "y(t)"),
+            );
         }
         OdePreset::PlanarCustom => {
             if let (Some(x_expr), Some(y_expr)) = (spec.planar_x_expr, spec.planar_y_expr) {
@@ -190,15 +211,27 @@ fn dispatch_sim_2d(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, num_steps
                     y_expr,
                     params: build_ode_param_map(spec.param_k, spec.param_r, spec.param_cap_k),
                 };
-                run_loop_nd(traj, init_2d, &dyn_sys, spec, num_steps, ("x(t)", "y(t)"));
+                run_loop_nd(
+                    traj,
+                    init_2d,
+                    &dyn_sys,
+                    spec,
+                    dt,
+                    num_steps,
+                    ("x(t)", "y(t)"),
+                );
             }
         }
         OdePreset::Exponential | OdePreset::LogisticGrowth | OdePreset::Custom => {}
     }
 }
 
-fn validate_initial_state(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>) -> Option<usize> {
-    let num_steps = crate::presets::checked_ode_step_count(spec.dt, spec.total_time)?;
+fn validate_initial_state(
+    traj: &mut SolverTrajectory,
+    spec: &OdeSimSpec<'_>,
+) -> Option<(usize, f64)> {
+    let (num_steps, eff_dt) =
+        spec.budgeted_steps_and_dt(super::budget::MAX_ODE_SYNC_INSTRUCTIONS)?;
     let (v0_name, v1_name, _, _) = spec.state_labels();
     if !spec.ic_y0.is_finite() {
         traj.diverged = true;
@@ -217,7 +250,7 @@ fn validate_initial_state(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>) ->
         traj.divergence_info = Some((0.0, 0, "A".to_string()));
         return None;
     }
-    Some(num_steps)
+    Some((num_steps, eff_dt))
 }
 
 fn run_loop_nd<const N: usize, D>(
@@ -225,15 +258,15 @@ fn run_loop_nd<const N: usize, D>(
     init: ArrayState<N>,
     dynamics: &D,
     spec: &OdeSimSpec<'_>,
+    dt: f64,
     num_steps: usize,
     names: (&str, &str),
 ) where
     D: OdeSystem<ArrayState<N>>,
     ArrayState<N>: IndexedState,
 {
-    let rtol = sanitize_adaptive_tol(spec.adaptive_tol);
-    let atol = (rtol * 0.01).max(1e-14);
-    let dt = spec.dt;
+    let base_rtol = sanitize_adaptive_tol(spec.adaptive_tol);
+    let (rtol, atol, max_sub) = super::budget::budgeted_adaptive_params(spec, num_steps, base_rtol);
     match spec.method {
         IntegrationMethod::RungeKutta4 => {
             let mut s = RungeKutta4::new(&init);
@@ -248,7 +281,9 @@ fn run_loop_nd<const N: usize, D>(
             execute_steps_nd(traj, init, dynamics, &mut s, dt, num_steps, names);
         }
         IntegrationMethod::DormandPrince45 => {
-            let mut s = DormandPrince45::new(&init).with_tolerances(rtol, atol);
+            let mut s = DormandPrince45::new(&init)
+                .with_tolerances(rtol, atol)
+                .with_max_substeps(max_sub);
             execute_steps_nd(traj, init, dynamics, &mut s, dt, num_steps, names);
         }
         IntegrationMethod::BackwardEuler => {
@@ -260,8 +295,65 @@ fn run_loop_nd<const N: usize, D>(
             execute_steps_nd(traj, init, dynamics, &mut s, dt, num_steps, names);
         }
         IntegrationMethod::Rosenbrock23 => {
-            let mut s = Rosenbrock23::new(&init).with_tolerances(rtol, atol);
+            let mut s = Rosenbrock23::new(&init)
+                .with_tolerances(rtol, atol)
+                .with_max_substeps(max_sub);
             execute_steps_nd(traj, init, dynamics, &mut s, dt, num_steps, names);
+        }
+    }
+}
+
+fn run_solver_n_steps<const N: usize, D: OdeSystem<ArrayState<N>>, S: Solver<ArrayState<N>>>(
+    mut state: ArrayState<N>,
+    dyn_sys: &D,
+    mut solver: S,
+    dt: f64,
+    steps: usize,
+) -> f64 {
+    for i in 0..steps {
+        solver.step(dyn_sys, i as f64 * dt, &mut state, dt);
+    }
+    state.0[0]
+}
+
+pub(super) fn step_final<const N: usize, D: OdeSystem<ArrayState<N>>>(
+    state: ArrayState<N>,
+    dyn_sys: &D,
+    spec: &OdeSimSpec<'_>,
+    dt: f64,
+    steps: usize,
+) -> f64
+where
+    ArrayState<N>: IndexedState,
+{
+    let base_rtol = sanitize_adaptive_tol(spec.adaptive_tol);
+    let (rtol, atol, max_sub) = super::budget::budgeted_adaptive_params(spec, steps, base_rtol);
+    match spec.method {
+        IntegrationMethod::RungeKutta4 => {
+            run_solver_n_steps(state, dyn_sys, RungeKutta4::new(&state), dt, steps)
+        }
+        IntegrationMethod::Euler => {
+            run_solver_n_steps(state, dyn_sys, Euler::new(&state), dt, steps)
+        }
+        IntegrationMethod::Heun => run_solver_n_steps(state, dyn_sys, Heun::new(&state), dt, steps),
+        IntegrationMethod::DormandPrince45 => {
+            let s = DormandPrince45::new(&state)
+                .with_tolerances(rtol, atol)
+                .with_max_substeps(max_sub);
+            run_solver_n_steps(state, dyn_sys, s, dt, steps)
+        }
+        IntegrationMethod::BackwardEuler => {
+            run_solver_n_steps(state, dyn_sys, BackwardEuler::new(&state), dt, steps)
+        }
+        IntegrationMethod::ImplicitTrapezoidal => {
+            let s = ImplicitTrapezoidal::new(&state);
+            run_solver_n_steps(state, dyn_sys, s, dt, steps)
+        }
+        IntegrationMethod::Rosenbrock23 => {
+            let s = Rosenbrock23::new(&state)
+                .with_tolerances(rtol, atol)
+                .with_max_substeps(max_sub);
+            run_solver_n_steps(state, dyn_sys, s, dt, steps)
         }
     }
 }

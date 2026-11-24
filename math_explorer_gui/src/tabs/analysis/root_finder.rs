@@ -259,8 +259,16 @@ impl RootFinderTool {
         self.max_iterations.hash(&mut h);
         self.selected_step.hash(&mut h);
         self.scalar_input.raw_text.hash(&mut h);
+        self.scalar_input.active_param_names().hash(&mut h);
+        for &v in self.scalar_input.param_slice() {
+            v.to_bits().hash(&mut h);
+        }
         self.coupled_bank.raw_text(0).hash(&mut h);
         self.coupled_bank.raw_text(1).hash(&mut h);
+        self.coupled_bank.param_names().hash(&mut h);
+        for &v in self.coupled_bank.param_slice() {
+            v.to_bits().hash(&mut h);
+        }
         h.finish().max(1)
     }
 }
@@ -376,23 +384,7 @@ impl InteractiveTool for RootFinderTool {
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         let s: RootFinderState =
             serde_json::from_str(state).map_err(|e| format!("Invalid RootFinder state: {e}"))?;
-        if !s.bracket_min.is_finite()
-            || !s.bracket_max.is_finite()
-            || !(ROOT_DOMAIN_MIN..=ROOT_DOMAIN_MAX).contains(&s.bracket_min)
-            || !(ROOT_DOMAIN_MIN..=ROOT_DOMAIN_MAX).contains(&s.bracket_max)
-            || s.bracket_min >= s.bracket_max
-            || !s
-                .init_2d
-                .iter()
-                .all(|v| v.is_finite() && (ROOT_DOMAIN_MIN..=ROOT_DOMAIN_MAX).contains(v))
-            || !s.domain_span_2d.is_finite()
-            || !(0.5..=25.0).contains(&s.domain_span_2d)
-            || !s.tolerance.is_finite()
-            || !(MIN_ROOT_TOL..=MAX_ROOT_TOL).contains(&s.tolerance)
-            || !(4..=200).contains(&s.max_iterations)
-        {
-            return Err("RootFinder bounds, initial guess, or tolerance out of range".into());
-        }
+        let (scalar_bar, coupled_bank) = validate_loaded_root_state(&s)?;
         self.dimension = s.dimension;
         self.scalar_method = s.scalar_method;
         self.bracket_min = s.bracket_min;
@@ -401,17 +393,8 @@ impl InteractiveTool for RootFinderTool {
         self.domain_span_2d = s.domain_span_2d;
         self.tolerance = s.tolerance;
         self.max_iterations = s.max_iterations;
-        self.scalar_input
-            .set_expression(s.scalar_expr.as_deref().unwrap_or(DEFAULT_SCALAR_EXPR));
-        if !s.scalar_params.is_empty() {
-            self.scalar_input.set_params_map(&s.scalar_params);
-        }
-        if let Some([e1, e2]) = s.coupled_exprs {
-            self.coupled_bank.set_expressions(&[e1, e2]);
-        }
-        if !s.coupled_params.is_empty() {
-            self.coupled_bank.set_params_map(&s.coupled_params);
-        }
+        self.scalar_input = scalar_bar;
+        self.coupled_bank = coupled_bank;
         self.recalculate();
         self.selected_step = self.max_step_index();
         Ok(())
@@ -444,6 +427,58 @@ inventory::submit! {
         tags: &["roots", "bisection", "brent", "newton", "secant"],
         build: || Box::new(RootFinderTool::default()),
     }
+}
+
+fn validate_loaded_root_state(
+    s: &RootFinderState,
+) -> Result<(MathExpressionInputBar, CoupledExpressionBank), String> {
+    if !s.bracket_min.is_finite()
+        || !s.bracket_max.is_finite()
+        || !(ROOT_DOMAIN_MIN..=ROOT_DOMAIN_MAX).contains(&s.bracket_min)
+        || !(ROOT_DOMAIN_MIN..=ROOT_DOMAIN_MAX).contains(&s.bracket_max)
+        || s.bracket_min >= s.bracket_max
+        || !s
+            .init_2d
+            .iter()
+            .all(|v| v.is_finite() && (ROOT_DOMAIN_MIN..=ROOT_DOMAIN_MAX).contains(v))
+        || !s.domain_span_2d.is_finite()
+        || !(0.5..=25.0).contains(&s.domain_span_2d)
+        || !s.tolerance.is_finite()
+        || !(MIN_ROOT_TOL..=MAX_ROOT_TOL).contains(&s.tolerance)
+        || !(4..=200).contains(&s.max_iterations)
+        || !s.scalar_params.values().all(|v| v.is_finite())
+        || !s.coupled_params.values().all(|v| v.is_finite())
+    {
+        return Err("RootFinder bounds, initial guess, or tolerance out of range".into());
+    }
+    let mut scalar_bar = default_scalar_bar();
+    if let Some(ref expr) = s.scalar_expr {
+        scalar_bar.set_expression(expr);
+    }
+    if !s.scalar_params.is_empty() {
+        scalar_bar.set_params_map(&s.scalar_params);
+    }
+    let mut coupled_bank = default_coupled_2d_bank();
+    if let Some(ref exprs) = s.coupled_exprs {
+        coupled_bank.set_expressions(exprs);
+    }
+    if !s.coupled_params.is_empty() {
+        coupled_bank.set_params_map(&s.coupled_params);
+    }
+    let expr_err = (s.dimension == RootDimension::System2D || s.coupled_exprs.is_some())
+        .then(|| coupled_bank.first_error())
+        .flatten()
+        .or_else(|| {
+            (s.dimension == RootDimension::Scalar1D || s.scalar_expr.is_some())
+                .then(|| scalar_bar.error_message())
+                .flatten()
+        });
+    if let Some(err) = expr_err {
+        let msg = format!("Invalid RootFinder custom formula: {err}");
+        crate::accessibility::announce_status_with_priority(&msg, "assertive");
+        return Err(msg);
+    }
+    Ok((scalar_bar, coupled_bank))
 }
 
 #[cfg(test)]

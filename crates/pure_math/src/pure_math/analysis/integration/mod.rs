@@ -1,15 +1,18 @@
-//! Numerical Integration Strategies.
+//! Numerical Integration Strategies (1D quadrature and hyperrectangle QMC/MC integration).
 //!
-//! Provides a common interface for numerical integration algorithms (`ClenshawCurtis`,
-//! `Trapezoidal` with two-grid Richardson error estimation, composite `Simpson`, and
-//! stack-bounded adaptive `GaussKronrod15`).
+//! Provides a common interface for scalar quadrature (`ClenshawCurtis`, `Trapezoidal` with
+//! two-grid Richardson error estimation, composite `Simpson`, and stack-bounded adaptive
+//! `GaussKronrod15`) alongside a preallocated [`MultivariateIntegrator`] over hyperrectangles
+//! $[a_1, b_1] \times \dots \times [a_d, b_d]$ backed by Sobol, Halton, Latin Hypercube, or IID MC.
 
 pub mod gauss_kronrod;
+pub mod multivariate;
 
 #[cfg(test)]
 mod tests;
 
 pub use gauss_kronrod::{GK15_MAX_PANELS, GaussKronrod15, GkSubinterval};
+pub use multivariate::{MultivariateIntegrator, MultivariateRule};
 use quadrature::clenshaw_curtis;
 
 /// Result of an integration operation.

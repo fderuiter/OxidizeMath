@@ -48,6 +48,7 @@ pub struct MultivariateNewton {
     work_trial_x: Vec<f64>,
     work_delta: Vec<f64>,
     work_jac: Vec<f64>,
+    work_pivots: Vec<usize>,
 }
 
 impl Default for MultivariateNewton {
@@ -75,6 +76,7 @@ impl MultivariateNewton {
             work_trial_x: Vec::new(),
             work_delta: Vec::new(),
             work_jac: Vec::new(),
+            work_pivots: Vec::new(),
         }
     }
 
@@ -92,6 +94,7 @@ impl MultivariateNewton {
             work_trial_x: vec![0.0; dim],
             work_delta: vec![0.0; dim],
             work_jac: vec![0.0; dim.saturating_mul(dim)],
+            work_pivots: vec![0; dim],
         }
     }
 
@@ -104,6 +107,7 @@ impl MultivariateNewton {
             self.work_f_minus.resize(dim, 0.0);
             self.work_trial_x.resize(dim, 0.0);
             self.work_delta.resize(dim, 0.0);
+            self.work_pivots.resize(dim, 0);
         }
         let n2 = dim.saturating_mul(dim);
         if self.work_jac.len() < n2 {
@@ -134,26 +138,25 @@ impl MultivariateNewton {
         let mut trial_x = [0.0; MAX_STACK_NEWTON_DIM];
         let mut delta = [0.0; MAX_STACK_NEWTON_DIM];
         let mut jac = [0.0; MAX_STACK_NEWTON_DIM * MAX_STACK_NEWTON_DIM];
+        let mut pivots = [0usize; MAX_STACK_NEWTON_DIM];
 
         let mut eval_slice = |pt: &[f64], out: &mut [f64]| {
             let mut arr = [0.0; N];
             arr.copy_from_slice(&pt[..N]);
-            let res = f(&arr);
-            out[..N].copy_from_slice(&res);
+            out[..N].copy_from_slice(&f(&arr));
         };
 
         run_newton_kernel(
             &mut eval_slice,
             &mut x,
-            self.max_iterations,
-            self.tolerance,
-            self.fd_step,
+            (self.max_iterations, self.tolerance, self.fd_step),
             &mut fx[..N],
             &mut f_plus[..N],
             &mut f_minus[..N],
             &mut trial_x[..N],
             &mut delta[..N],
             &mut jac[..N * N],
+            &mut pivots[..N],
         )?;
         Ok(x)
     }
@@ -180,11 +183,12 @@ impl MultivariateNewton {
         let mut x = initial;
         let mut jac_flat = [0.0; MAX_STACK_NEWTON_DIM * MAX_STACK_NEWTON_DIM];
         let mut rhs = [0.0; MAX_STACK_NEWTON_DIM];
+        let mut scratch = [0.0; MAX_STACK_NEWTON_DIM];
+        let mut pivots = [0usize; MAX_STACK_NEWTON_DIM];
 
         for _ in 0..self.max_iterations {
             let fx = f(&x);
-            let res_norm = max_abs_finite(&fx)?;
-            if res_norm <= self.tolerance {
+            if max_abs_finite(&fx)? <= self.tolerance {
                 normalize_slice_zeros(&mut x);
                 return Ok(x);
             }
@@ -193,7 +197,14 @@ impl MultivariateNewton {
                 jac_flat[r * N..(r + 1) * N].copy_from_slice(&j_rows[r]);
                 rhs[r] = -fx[r];
             }
-            if !solve_linear_in_place(&mut jac_flat[..N * N], &mut rhs[..N], N, PIVOT_TOL) {
+            if !solve_linear_in_place(
+                &mut jac_flat[..N * N],
+                &mut rhs[..N],
+                &mut pivots[..N],
+                &mut scratch[..N],
+                N,
+                PIVOT_TOL,
+            ) {
                 return Err(AnalysisError::InvalidParameters(
                     "Singular or non-finite Jacobian in MultivariateNewton",
                 ));
@@ -250,15 +261,14 @@ impl MultivariateNewton {
         run_newton_kernel(
             &mut f,
             x,
-            self.max_iterations,
-            self.tolerance,
-            self.fd_step,
+            (self.max_iterations, self.tolerance, self.fd_step),
             &mut self.work_fx[..n],
             &mut self.work_f_plus[..n],
             &mut self.work_f_minus[..n],
             &mut self.work_trial_x[..n],
             &mut self.work_delta[..n],
             &mut self.work_jac[..n * n],
+            &mut self.work_pivots[..n],
         )
     }
 
@@ -316,15 +326,14 @@ impl MultivariateNewton {
         let res = run_newton_kernel(
             &mut adapter,
             &mut x_buf[..n],
-            self.max_iterations,
-            self.tolerance,
-            self.fd_step,
+            (self.max_iterations, self.tolerance, self.fd_step),
             &mut self.work_fx[..n],
             &mut self.work_f_plus[..n],
             &mut self.work_f_minus[..n],
             &mut self.work_trial_x[..n],
             &mut self.work_delta[..n],
             &mut self.work_jac[..n * n],
+            &mut self.work_pivots[..n],
         );
         for (i, &val) in x_buf.iter().take(n).enumerate() {
             state.set(i, val);
@@ -353,10 +362,7 @@ fn max_abs_finite(vals: &[f64]) -> Result<f64, AnalysisError> {
                 "Non-finite residual or step encountered in MultivariateNewton",
             ));
         }
-        let a = v.abs();
-        if a > max_v {
-            max_v = a;
-        }
+        max_v = max_v.max(v.abs());
     }
     Ok(max_v)
 }
@@ -373,15 +379,14 @@ fn normalize_slice_zeros(vals: &mut [f64]) {
 fn run_newton_kernel(
     f: &mut dyn FnMut(&[f64], &mut [f64]),
     x: &mut [f64],
-    max_iterations: usize,
-    tolerance: f64,
-    fd_step: f64,
+    (max_iterations, tolerance, fd_step): (usize, f64, f64),
     fx: &mut [f64],
     f_plus: &mut [f64],
     f_minus: &mut [f64],
     trial_x: &mut [f64],
     delta: &mut [f64],
     jac: &mut [f64],
+    pivots: &mut [usize],
 ) -> Result<(), AnalysisError> {
     validate_newton_params(x, tolerance)?;
     let n = x.len();
@@ -403,7 +408,7 @@ fn run_newton_kernel(
         for i in 0..n {
             delta[i] = -fx[i];
         }
-        if !solve_linear_in_place(jac, delta, n, PIVOT_TOL) {
+        if !solve_linear_in_place(jac, delta, pivots, f_minus, n, PIVOT_TOL) {
             return Err(AnalysisError::InvalidParameters(
                 "Singular or ill-conditioned Jacobian in MultivariateNewton",
             ));
@@ -476,10 +481,7 @@ fn damp_newton_step(
             *res_norm = new_norm;
             let mut max_step = 0.0_f64;
             for &d in delta {
-                let s = (alpha * d).abs();
-                if s > max_step {
-                    max_step = s;
-                }
+                max_step = max_step.max((alpha * d).abs());
             }
             return Ok(max_step);
         }

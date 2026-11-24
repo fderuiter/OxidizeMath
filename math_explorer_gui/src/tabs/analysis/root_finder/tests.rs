@@ -104,6 +104,21 @@ fn test_root_finder_state_roundtrip_presets_and_deferred_export() {
         .try_load_state(r#"{"unknown_field": 123}"#)
         .is_err());
 
+    let before_bad = restored.save_state().expect("save before bad");
+    assert!(restored
+        .try_load_state(r#"{"bracket_min":0.0,"bracket_max":2.0,"scalar_expr":"sin("}"#)
+        .is_err());
+    assert_eq!(restored.save_state().as_deref(), Some(before_bad.as_str()));
+
+    let default_saved = RootFinderTool::default().save_state().expect("default");
+    restored
+        .try_load_state(&default_saved)
+        .expect("restore default over dirty");
+    assert_eq!(
+        restored.save_state().as_deref(),
+        Some(default_saved.as_str())
+    );
+
     let png = render_tool_deferred_png(Box::new(restored));
     assert!(!png.is_empty());
     let _ = std::fs::write("/tmp/root_finder_2d_contours.png", &png);

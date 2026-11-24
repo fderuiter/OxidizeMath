@@ -19,6 +19,8 @@ struct ImplicitWorkspace<State: IndexedState> {
     f_pert: State,
     jac_mat: Vec<f64>,
     rhs: Vec<f64>,
+    scratch: Vec<f64>,
+    pivots: Vec<usize>,
     newton_tol: f64,
     max_newton_iters: usize,
 }
@@ -35,6 +37,8 @@ impl<State: IndexedState> ImplicitWorkspace<State> {
             f_pert: template.clone(),
             jac_mat: vec![0.0; n * n],
             rhs: vec![0.0; n],
+            scratch: vec![0.0; n],
+            pivots: vec![0; n],
             newton_tol: 1e-11,
             max_newton_iters: 12,
         }
@@ -47,6 +51,12 @@ impl<State: IndexedState> ImplicitWorkspace<State> {
         }
         if self.rhs.len() < n {
             self.rhs.resize(n, 0.0);
+        }
+        if self.scratch.len() < n {
+            self.scratch.resize(n, 0.0);
+        }
+        if self.pivots.len() < n {
+            self.pivots.resize(n, 0);
         }
     }
 
@@ -123,7 +133,14 @@ impl<State: IndexedState> ImplicitWorkspace<State> {
                 return;
             }
             self.assemble_system_matrix(system, t_next, beta, n);
-            if !solve_linear_in_place(&mut self.jac_mat, &mut self.rhs, n, PIVOT_TOL) {
+            if !solve_linear_in_place(
+                &mut self.jac_mat,
+                &mut self.rhs,
+                &mut self.pivots,
+                &mut self.scratch,
+                n,
+                PIVOT_TOL,
+            ) {
                 return;
             }
             let mut max_delta = 0.0;

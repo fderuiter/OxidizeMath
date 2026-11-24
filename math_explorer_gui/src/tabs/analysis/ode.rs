@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 mod annotations;
+pub mod budget;
 mod canvas;
 mod code_export;
 pub mod comparison;
@@ -82,6 +83,7 @@ pub struct OdeSolverTool {
     pub(crate) series_cache: series_cache::OdeSeriesCache,
     pub(crate) synced_legacy_params: [f64; 3],
     pub(crate) active_baseline_hash: Option<u64>,
+    pub(crate) budget_state: budget::OdeBudgetState,
 }
 
 fn default_scalar_ode_input() -> MathExpressionInputBar {
@@ -199,6 +201,7 @@ impl Default for OdeSolverTool {
             series_cache: series_cache::OdeSeriesCache::default(),
             synced_legacy_params: [1.0, 1.0, 10.0],
             active_baseline_hash: None,
+            budget_state: budget::OdeBudgetState::default(),
         };
         tool.seed_default_custom_params();
         tool.recalculate();
@@ -370,9 +373,13 @@ impl OdeSolverTool {
         self.diverged = false;
         self.diagnostic_report = None;
         self.active_baseline_hash = None;
+        let (primary_dt, primary_notice) = self.effective_primary_dt();
+        self.budget_state.effective_dt = primary_dt;
+        self.budget_state.primary_notice = primary_notice;
+        self.budget_state.comparison_notice = None;
 
-        self.recalculate_active();
-        self.recalculate_seeded_orbits();
+        self.recalculate_active(primary_dt);
+        self.recalculate_seeded_orbits(primary_dt);
         self.series_cache.rebuild(
             &self.time_series,
             &self.y_series,
@@ -413,10 +420,11 @@ impl OdeSolverTool {
         }
     }
 
-    fn recalculate_active(&mut self) {
+    fn recalculate_active(&mut self, primary_dt: f64) {
         let input_has_err = self.has_custom_input_error();
         let custom_spec = self.build_custom_ode_spec();
-        let active_traj = simulate_ode(&self.sim_spec(self.method, custom_spec.as_ref()));
+        let active_traj =
+            simulate_ode(&self.sim_spec_with_dt(self.method, primary_dt, custom_spec.as_ref()));
         if input_has_err && (active_traj.diverged || active_traj.divergence_info.is_some()) {
             return;
         }
@@ -461,6 +469,8 @@ inventory::submit! {
     }
 }
 
+#[cfg(test)]
+mod budget_tests;
 #[cfg(test)]
 mod comparison_tests;
 #[cfg(test)]

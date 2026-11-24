@@ -7,10 +7,9 @@ pub use super::custom_spec::{default_coupled_ode_bank, CustomOdeSpec};
 use super::OdeSolverTool;
 use crate::presets::OdePreset;
 use math_commons::ast::{CompiledExpr, Expr, Instruction};
-use math_explorer::pure_math::analysis::ode::{
-    ArrayState, BackwardEuler, DormandPrince45, Euler, Heun, ImplicitTrapezoidal, IndexedState,
-    IntegrationMethod, OdeSystem, Rosenbrock23, RungeKutta4, Solver,
-};
+#[cfg(test)]
+use math_explorer::pure_math::analysis::ode::IntegrationMethod;
+use math_explorer::pure_math::analysis::ode::{ArrayState, OdeSystem};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
@@ -232,7 +231,9 @@ pub fn eval_ode_final_state_planar(
     spec: &super::comparison::OdeSimSpec<'_>,
     p_map: &HashMap<String, f64>,
 ) -> f64 {
-    let Some(steps) = crate::presets::checked_ode_step_count(spec.dt, spec.total_time) else {
+    let Some((steps, eff_dt)) =
+        spec.budgeted_steps_and_dt(super::budget::MAX_ODE_SYNC_INSTRUCTIONS)
+    else {
         return f64::NAN;
     };
     let y0 = p_map.get("y0").copied().unwrap_or(spec.ic_y0);
@@ -246,17 +247,21 @@ pub fn eval_ode_final_state_planar(
         .unwrap_or(spec.param_cap_k);
 
     match spec.preset {
-        OdePreset::Exponential => step_final(ArrayState([y0]), &ExponentialOde { k }, spec, steps),
+        OdePreset::Exponential => {
+            step_final(ArrayState([y0]), &ExponentialOde { k }, spec, eff_dt, steps)
+        }
         OdePreset::HarmonicOscillator => step_final(
             ArrayState([y0, v0]),
             &HarmonicOscillatorOde { k },
             spec,
+            eff_dt,
             steps,
         ),
         OdePreset::LogisticGrowth => step_final(
             ArrayState([y0]),
             &LogisticGrowthOde { r, cap_k },
             spec,
+            eff_dt,
             steps,
         ),
         OdePreset::LinearSystem2D => {
@@ -272,10 +277,12 @@ pub fn eval_ode_final_state_planar(
                     ],
                 ],
             };
-            step_final(ArrayState([y0, v0]), &dyn_sys, spec, steps)
+            step_final(ArrayState([y0, v0]), &dyn_sys, spec, eff_dt, steps)
         }
-        OdePreset::PlanarCustom => eval_planar_custom_final([y0, v0], cap_k, spec, p_map, steps),
-        OdePreset::Custom => eval_custom_spec_final([y0, v0], spec, p_map, steps),
+        OdePreset::PlanarCustom => {
+            eval_planar_custom_final([y0, v0], cap_k, spec, p_map, eff_dt, steps)
+        }
+        OdePreset::Custom => eval_custom_spec_final([y0, v0], spec, p_map, eff_dt, steps),
     }
 }
 
@@ -283,6 +290,7 @@ fn eval_custom_spec_final(
     ic: [f64; 2],
     spec: &super::comparison::OdeSimSpec<'_>,
     p_map: &HashMap<String, f64>,
+    dt: f64,
     steps: usize,
 ) -> f64 {
     let Some(cspec) = spec.custom_spec else {
@@ -290,9 +298,9 @@ fn eval_custom_spec_final(
     };
     let dynamics = cspec.with_param_overrides(p_map);
     if dynamics.is_coupled() {
-        step_final(ArrayState(ic), &dynamics, spec, steps)
+        step_final(ArrayState(ic), &dynamics, spec, dt, steps)
     } else {
-        step_final(ArrayState([ic[0]]), &dynamics, spec, steps)
+        step_final(ArrayState([ic[0]]), &dynamics, spec, dt, steps)
     }
 }
 
@@ -301,6 +309,7 @@ fn eval_planar_custom_final(
     cap_k: f64,
     spec: &super::comparison::OdeSimSpec<'_>,
     p_map: &HashMap<String, f64>,
+    dt: f64,
     steps: usize,
 ) -> f64 {
     let (Some(x_expr), Some(y_expr)) = (spec.planar_x_expr, spec.planar_y_expr) else {
@@ -314,69 +323,10 @@ fn eval_planar_custom_final(
         y_expr,
         params,
     };
-    step_final(ArrayState(ic), &dyn_sys, spec, steps)
+    step_final(ArrayState(ic), &dyn_sys, spec, dt, steps)
 }
 
-fn run_solver_n_steps<const N: usize, D, S>(
-    state: &mut ArrayState<N>,
-    dyn_sys: &D,
-    solver: &mut S,
-    dt: f64,
-    steps: usize,
-) where
-    D: OdeSystem<ArrayState<N>>,
-    S: Solver<ArrayState<N>>,
-{
-    for i in 0..steps {
-        solver.step(dyn_sys, i as f64 * dt, state, dt);
-    }
-}
-
-fn step_final<const N: usize, D>(
-    mut state: ArrayState<N>,
-    dyn_sys: &D,
-    spec: &super::comparison::OdeSimSpec<'_>,
-    steps: usize,
-) -> f64
-where
-    D: OdeSystem<ArrayState<N>>,
-    ArrayState<N>: IndexedState,
-{
-    let dt = spec.dt;
-    let rtol = super::comparison::sanitize_adaptive_tol(spec.adaptive_tol);
-    let atol = (rtol * 0.01).max(1e-14);
-    match spec.method {
-        IntegrationMethod::RungeKutta4 => {
-            let mut s = RungeKutta4::new(&state);
-            run_solver_n_steps(&mut state, dyn_sys, &mut s, dt, steps);
-        }
-        IntegrationMethod::Euler => {
-            let mut s = Euler::new(&state);
-            run_solver_n_steps(&mut state, dyn_sys, &mut s, dt, steps);
-        }
-        IntegrationMethod::Heun => {
-            let mut s = Heun::new(&state);
-            run_solver_n_steps(&mut state, dyn_sys, &mut s, dt, steps);
-        }
-        IntegrationMethod::DormandPrince45 => {
-            let mut s = DormandPrince45::new(&state).with_tolerances(rtol, atol);
-            run_solver_n_steps(&mut state, dyn_sys, &mut s, dt, steps);
-        }
-        IntegrationMethod::BackwardEuler => {
-            let mut s = BackwardEuler::new(&state);
-            run_solver_n_steps(&mut state, dyn_sys, &mut s, dt, steps);
-        }
-        IntegrationMethod::ImplicitTrapezoidal => {
-            let mut s = ImplicitTrapezoidal::new(&state);
-            run_solver_n_steps(&mut state, dyn_sys, &mut s, dt, steps);
-        }
-        IntegrationMethod::Rosenbrock23 => {
-            let mut s = Rosenbrock23::new(&state).with_tolerances(rtol, atol);
-            run_solver_n_steps(&mut state, dyn_sys, &mut s, dt, steps);
-        }
-    }
-    state.0[0]
-}
+use super::comparison::step_final;
 
 impl OdeSolverTool {
     pub(crate) fn compute_active_baseline_hash(&self, custom_spec: Option<&CustomOdeSpec>) -> u64 {
@@ -414,13 +364,14 @@ impl OdeSolverTool {
 
     fn reusable_baseline_final_y(
         &self,
+        primary_dt: f64,
         custom_spec: Option<&CustomOdeSpec>,
         param_refs: &[(&str, f64)],
     ) -> Option<f64> {
         if self.diverged || self.has_custom_input_error() {
             return None;
         }
-        let steps = crate::presets::checked_ode_step_count(self.dt, self.total_time)?;
+        let steps = crate::presets::checked_ode_step_count(primary_dt, self.total_time)?;
         if self.y_series.len() != steps + 1
             || (self.has_second_state() && self.v_series.len() != steps + 1)
         {
@@ -451,12 +402,20 @@ impl OdeSolverTool {
             .map(|(k, v)| (k.as_str(), *v))
             .collect();
 
+        let primary_dt = self.budget_state.effective_dt.max(self.dt);
+        let (sens_dt, inst_per_eval) = self.prepare_sensitivity_budget(param_refs.len());
+
         let custom_spec = self.build_custom_ode_spec();
-        let baseline_hint = self.reusable_baseline_final_y(custom_spec.as_ref(), &param_refs);
-        let px = self.planar_x_input.cached_expr().cloned();
-        let py = self.planar_y_input.cached_expr().cloned();
-        let base_spec =
-            self.sim_spec_with_planar(self.method, custom_spec.as_ref(), px.as_ref(), py.as_ref());
+        let baseline_hint = ((sens_dt - primary_dt).abs() <= 1e-15)
+            .then(|| self.reusable_baseline_final_y(primary_dt, custom_spec.as_ref(), &param_refs))
+            .flatten();
+        let base_spec = self.sim_spec_with_planar(
+            self.method,
+            sens_dt,
+            custom_spec.as_ref(),
+            self.planar_x_input.cached_expr(),
+            self.planar_y_input.cached_expr(),
+        );
         let custom_ctx =
             (self.preset == OdePreset::Custom).then_some(CustomOdeContext(custom_spec.as_ref()));
         let planar_ctx = (self.preset == OdePreset::PlanarCustom).then_some((
@@ -474,10 +433,11 @@ impl OdeSolverTool {
             planar_ctx,
         );
 
-        self.sensitivity_engine.compute_with_baseline(
+        self.sensitivity_engine.compute_budgeted_with_baseline(
             &param_refs,
             &context,
             baseline_hint,
+            inst_per_eval,
             |p_map| eval_ode_final_state_planar(&base_spec, p_map),
         );
     }

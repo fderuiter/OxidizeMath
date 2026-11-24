@@ -233,13 +233,20 @@ impl<State: IndexedState> Rosenbrock23<State> {
                 let idx = math_commons::math_kernel::types::flatten_2d_index(j, i, n);
                 self.lu[idx] = diag - h * self.jac[idx];
             }
-            self.scratch[i] = h * (self.f0.get(i) + h * self.dfdt[i]);
+            self.k1[i] = h * (self.f0.get(i) + h * self.dfdt[i]);
         }
-        if !solve_linear_in_place(&mut self.lu, &mut self.scratch, n, PIVOT_TOL) {
+        if !solve_linear_in_place(
+            &mut self.lu,
+            &mut self.k1,
+            &mut self.pivots,
+            &mut self.scratch,
+            n,
+            PIVOT_TOL,
+        ) {
             return false;
         }
         for i in 0..n {
-            self.y_next.set(i, state.get(i) + self.scratch[i]);
+            self.y_next.set(i, state.get(i) + self.k1[i]);
         }
         true
     }
