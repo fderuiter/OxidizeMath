@@ -35,6 +35,105 @@ pub struct PoincareCrossing<const N: usize> {
     pub state: ArrayState<N>,
 }
 
+/// Projected 2D point `(q, p)` recorded on a Poincaré surface of section.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct PoincarePoint {
+    /// Horizontal section coordinate $q_{\text{plot}}(t^*)$.
+    pub q: f64,
+    /// Vertical conjugate momentum coordinate $p_{\text{plot}}(t^*)$.
+    pub p: f64,
+    /// Interpolated crossing timestamp $t^*$.
+    pub time: f64,
+}
+
+/// Fixed-capacity stack-allocated circular buffer for zero-allocation Poincaré section points.
+#[derive(Debug, Clone, Copy)]
+pub struct PoincareRingBuffer<const CAP: usize> {
+    entries: [PoincarePoint; CAP],
+    head: usize,
+    len: usize,
+}
+
+impl<const CAP: usize> Default for PoincareRingBuffer<CAP> {
+    #[verified_engine::verified]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const CAP: usize> PoincareRingBuffer<CAP> {
+    /// Creates an empty stack-allocated Poincaré ring buffer.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn new() -> Self {
+        Self {
+            entries: [PoincarePoint {
+                q: 0.0,
+                p: 0.0,
+                time: 0.0,
+            }; CAP],
+            head: 0,
+            len: 0,
+        }
+    }
+
+    /// Resets the buffer without reallocating.
+    #[verified_engine::verified]
+    pub fn clear(&mut self) {
+        self.head = 0;
+        self.len = 0;
+    }
+
+    /// Number of stored Poincaré crossings (`<= CAP`).
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Returns `true` when no crossings have been recorded.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Appends a section point, overwriting the oldest entry when full.
+    #[verified_engine::verified]
+    pub fn push(&mut self, point: PoincarePoint) {
+        if CAP == 0 {
+            return;
+        }
+        let write_idx = (self.head + self.len) % CAP;
+        self.entries[write_idx] = point;
+        if self.len < CAP {
+            self.len += 1;
+        } else {
+            self.head = (self.head + 1) % CAP;
+        }
+    }
+
+    /// Appends the `(q_sec, p_sec, time)` projection of an interpolated [`PoincareCrossing`].
+    #[verified_engine::verified]
+    pub fn push_crossing<const N: usize>(&mut self, crossing: &PoincareCrossing<N>) {
+        self.push(PoincarePoint {
+            q: crossing.q_sec,
+            p: crossing.p_sec,
+            time: crossing.time,
+        });
+    }
+
+    /// Fetches the entry at `chronological_index` (`0` = oldest retained crossing).
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn get(&self, chronological_index: usize) -> Option<PoincarePoint> {
+        if chronological_index >= self.len || CAP == 0 {
+            return None;
+        }
+        Some(self.entries[(self.head + chronological_index) % CAP])
+    }
+}
+
 /// Zero-allocation Poincaré surface-of-section hyperplane specification.
 ///
 /// # Example
@@ -299,5 +398,26 @@ mod tests {
             "Interpolated momentum should equal 1.0, got {}",
             crossing.p_sec
         );
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_poincare_ring_buffer_wraparound_order() {
+        let mut ring = PoincareRingBuffer::<3>::new();
+        assert!(ring.is_empty());
+        for i in 0..5 {
+            ring.push(PoincarePoint {
+                q: i as f64,
+                p: -(i as f64),
+                time: i as f64 * 0.5,
+            });
+        }
+        assert_eq!(ring.len(), 3);
+        assert_eq!(ring.get(0).unwrap().q, 2.0);
+        assert_eq!(ring.get(1).unwrap().q, 3.0);
+        assert_eq!(ring.get(2).unwrap().q, 4.0);
+        assert!(ring.get(3).is_none());
+        ring.clear();
+        assert!(ring.is_empty());
     }
 }

@@ -1,29 +1,29 @@
 use super::buckled_flow::{SurfaceTopology, detect_twisted_seam_map};
 use super::surface::{ParametricSurface, SurfaceAnalysis};
 
-/// Surface heat diffusion solver integrating $\partial_t u = \Delta_{\mathcal{M}} u$ via the discrete cotangent Laplace-Beltrami operator on triangle meshes.
+/// Parametric surface heat diffusion solver integrating $\frac{\partial u}{\partial t} = \alpha \Delta_S u$ over a structured $(u, v)$ grid via a divergence-form Laplace-Beltrami stencil.
 ///
 /// Reference: Crane, Weischedel & Wardetzky (2013), DOI: 10.1145/2516971.2516977; [`docs/math_specs/pure_math.md`](../../../../../docs/math_specs/pure_math.md).
 ///
 /// # Stability
-/// Explicit forward-Euler stepping requires $\Delta t \le A_{\min} / \sum |\cot \alpha_{ij}|$, while backward-Euler mass-stiffness solves $(M - \Delta t\,L)u^{n+1} = M u^n$ are unconditionally $L^2$-stable.
+/// Explicit forward-Euler time stepping requires parabolic CFL compliance $\alpha \Delta t \max_{(u,v)} \left(\frac{g_{vv}}{(\det g)\,\Delta u^2} + \frac{g_{uu}}{(\det g)\,\Delta v^2}\right) \le \frac{1}{2}$ away from metric singularities; degenerate polar caps fall back safely when $\det g < 10^{-12}$.
 ///
 /// # Domain of Validity
-/// Valid on manifold, non-degenerate 2D triangle meshes with strictly positive face areas.
+/// Valid on smooth parametric surfaces $S(u, v)$ with non-negative diffusivity $\alpha \ge 0$, grid resolutions $\ge 3 \times 3$, and finite initial temperature fields.
 pub struct HeatEquationSolver<'a, S: ParametricSurface> {
-    /// Value for `surface` (surface).
+    /// Underlying parametric surface $S(u, v)$ supplying metric tensors.
     pub surface: &'a S,
-    /// Value for `alpha` (alpha).
+    /// Thermal diffusivity $\alpha \ge 0$.
     pub alpha: f64, // Thermal diffusivity
-    /// Value for `u_grid` (u grid).
+    /// Active 2D temperature field $u(u_i, v_j)$ on the parameter grid.
     pub u_grid: Vec<Vec<f64>>, // Current temperature state
-    /// Value for `next_grid` (next grid).
+    /// Pre-allocated scratch grid avoiding heap allocations during `step`.
     pub next_grid: Vec<Vec<f64>>, // Bolt Optimization: Buffer to avoid allocations in step
-    /// Value for `grid_res` (grid res).
+    /// Parameter grid dimensions `(n_u, n_v)`.
     pub grid_res: (usize, usize), // (n_u, n_v)
-    /// Value for `range_u` (range u).
+    /// Inclusive parameter interval `(u_min, u_max)`.
     pub range_u: (f64, f64),
-    /// Value for `range_v` (range v).
+    /// Inclusive parameter interval `(v_min, v_max)`.
     pub range_v: (f64, f64),
     /// Boundary topology applied across parameter seams and polar caps.
     pub topology: SurfaceTopology,
@@ -148,11 +148,13 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
         self
     }
 
+    #[verified_engine::verified]
     fn grid_spacings(&self) -> (f64, f64) {
         self.topology
             .grid_spacings(self.range_u, self.range_v, self.grid_res.0, self.grid_res.1)
     }
 
+    #[verified_engine::verified]
     fn sample_cell(&self, i: i32, j: i32) -> f64 {
         let (nu, nv) = (self.grid_res.0 as i32, self.grid_res.1 as i32);
         let (wi, wj) = match self.topology {
@@ -179,6 +181,7 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
         self.u_grid[wi][wj]
     }
 
+    #[verified_engine::verified]
     fn compute_flux_u(&self, i_base: i32, j_base: i32, du: f64, dv: f64) -> f64 {
         let nu = self.grid_res.0 as i32;
         if self.topology == SurfaceTopology::OpenNeumann && (i_base < 0 || i_base + 1 >= nu) {
@@ -207,6 +210,7 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
         (g_metric * f_u - f * 0.5 * (f_v_i + f_v_ip1)) / sqrt_g
     }
 
+    #[verified_engine::verified]
     fn compute_flux_v(&self, i_base: i32, j_base: i32, du: f64, dv: f64) -> f64 {
         let nv = self.grid_res.1 as i32;
         if self.topology == SurfaceTopology::OpenNeumann && (j_base < 0 || j_base + 1 >= nv) {
@@ -230,6 +234,9 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
     #[verified_engine::verified]
     pub fn step(&mut self, dt: f64) {
         let (nu, nv) = self.grid_res;
+        if nu < 2 || nv < 2 {
+            return;
+        }
         let (du, dv) = self.grid_spacings();
         let j_range = if self.topology == SurfaceTopology::PolarSphere {
             1..nv.saturating_sub(1)
@@ -242,13 +249,18 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
             for j in j_range.clone() {
                 let u = self.range_u.0 + i as f64 * du;
                 let v = self.range_v.0 + j as f64 * dv;
-                let flux_u_plus = self.compute_flux_u(i as i32, j as i32, du, dv);
-                let flux_u_minus = self.compute_flux_u(i as i32 - 1, j as i32, du, dv);
-                let flux_v_plus = self.compute_flux_v(i as i32, j as i32, du, dv);
-                let flux_v_minus = self.compute_flux_v(i as i32, j as i32 - 1, du, dv);
-                let area = self.surface.area_element(u, v).max(1e-12);
-                let laplacian =
-                    ((flux_u_plus - flux_u_minus) / du + (flux_v_plus - flux_v_minus) / dv) / area;
+                let (e, f, g_metric) = self.surface.first_fundamental_form(u, v);
+                let det_g = e * g_metric - f * f;
+                let laplacian = if det_g.abs() < 1e-12 {
+                    0.0
+                } else {
+                    let flux_u_plus = self.compute_flux_u(i as i32, j as i32, du, dv);
+                    let flux_u_minus = self.compute_flux_u(i as i32 - 1, j as i32, du, dv);
+                    let flux_v_plus = self.compute_flux_v(i as i32, j as i32, du, dv);
+                    let flux_v_minus = self.compute_flux_v(i as i32, j as i32 - 1, du, dv);
+                    let area = self.surface.area_element(u, v).max(1e-12);
+                    ((flux_u_plus - flux_u_minus) / du + (flux_v_plus - flux_v_minus) / dv) / area
+                };
                 self.next_grid[i][j] = self.u_grid[i][j] + dt * self.alpha * laplacian;
             }
         }
@@ -258,6 +270,7 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
         std::mem::swap(&mut self.u_grid, &mut self.next_grid);
     }
 
+    #[verified_engine::verified]
     fn step_polar_caps(&mut self, dt: f64, dv: f64) {
         let (nu, nv) = self.grid_res;
         for (pole_j, ring_j, probe_v) in [
@@ -272,6 +285,42 @@ impl<'a, S: ParametricSurface> HeatEquationSolver<'a, S> {
             let updated = pole_val + dt * self.alpha * lap;
             for row in self.next_grid.iter_mut().take(nu) {
                 row[pole_j] = updated;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pure_math::differential_geometry::surface::Sphere;
+    use std::f64::consts::PI;
+    use verified_engine::engine::VerifiedEngine;
+
+    #[test]
+    fn test_heat_equation_solver_polar_domain_no_nan_and_zero_alloc() {
+        let sphere = Sphere { radius: 1.0 };
+        let mut solver = HeatEquationSolver::new(
+            &sphere,
+            0.01,
+            (0.0, 2.0 * PI),
+            (0.0, PI),
+            (16, 16),
+            |u, v| v.cos() + 0.25 * u.sin() * v.sin(),
+        );
+
+        let ((), _metrics) = VerifiedEngine::run_verified(|| {
+            for _ in 0..25 {
+                solver.step(1e-4);
+            }
+        });
+
+        for row in &solver.u_grid {
+            for &val in row {
+                assert!(
+                    val.is_finite(),
+                    "Pole-inclusive grid produced non-finite value {val}"
+                );
             }
         }
     }

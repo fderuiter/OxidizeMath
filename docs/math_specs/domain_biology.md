@@ -46,7 +46,7 @@ assert_eq!(sys.u().len(), 16);
 
 ### Governing Equations
 
-`HodgkinHuxleyModel` integrates membrane potential $V$ coupled to potassium ($n$) and sodium ($m, h$) gating probabilities, while `KineticsModel` (Michaelis-Menten / Hill) characterizes enzymatic reaction velocity $v([S])$:
+`HodgkinHuxleyModel` and thickness-weighted cortical manifold sheets (`CorticalSheetRunner`, coupled with `CotangentMeshDiffusion` over `CotangentLaplacian`) integrate membrane potential $V$ coupled to potassium ($n$) and sodium ($m, h$) gating probabilities and diffusive surface currents $g_{\text{sheet}}\tau_i(\Delta_S V)_i$, while `KineticsModel` (Michaelis-Menten / Hill) characterizes enzymatic reaction velocity $v([S])$:
 
 $$
 C_m \frac{dV}{dt} = I_{\text{ext}} - \bar{g}_{Na} m^3 h (V - E_{Na}) - \bar{g}_K n^4 (V - E_K) - \bar{g}_L (V - E_L), \qquad v([S]) = \frac{V_{\max} [S]^n}{K_m^n + [S]^n}

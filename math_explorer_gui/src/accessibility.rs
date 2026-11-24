@@ -41,7 +41,6 @@ static ASSERTIVE_SLOT_TOGGLE: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 pub fn init_accessibility_bridge() {
     if let Some(window) = web_sys::window() {
         if let Some(document) = window.document() {
@@ -171,7 +170,6 @@ pub fn with_live_region<R>(f: impl FnOnce(&TwinSlotLiveRegion) -> R) -> R {
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 pub fn announce_status(message: &str) {
     announce_status_with_priority(message, "polite");
 }
@@ -399,7 +397,6 @@ impl AccessibleTheoryHover for Response {
         }
     }
 }
-// theory_verification!
 
 /// Announces a polite status message to the live region and stores it in `ctx` temp data.
 pub fn announce_live_status(ctx: &eframe::egui::Context, message: impl Into<String>) {

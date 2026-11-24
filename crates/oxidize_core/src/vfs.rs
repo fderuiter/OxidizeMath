@@ -82,7 +82,6 @@ pub(crate) fn resolve_wasm_fetch_url(path: &str) -> String {
 
 /// Browser `fetch` and Blob-download implementation of [`VirtualFileSystem`] on `wasm32`.
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 pub struct WasmVfs;
 
 #[cfg(target_arch = "wasm32")]
@@ -149,7 +148,6 @@ impl VirtualFileSystem for WasmVfs {
 
 /// Triggers an anchor-element browser file download of `content` named `filename` on `wasm32`.
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 pub fn trigger_download(filename: &str, content: &[u8]) {
     use wasm_bindgen::JsCast;
     let window = web_sys::window().unwrap();
@@ -172,7 +170,6 @@ pub fn trigger_download(filename: &str, content: &[u8]) {
     a.click();
     web_sys::Url::revoke_object_url(&url).unwrap();
 }
-// theory_verification!
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {

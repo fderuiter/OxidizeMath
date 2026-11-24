@@ -29,5 +29,5 @@ Accepted (extends [ADR 0005](0005-active-documentation-standard.md), [ADR 0013](
 
 ## Consequences
 
-- **Positive**: `0` library files remain under `[missing_docs.files]`; IDE hover tooltips across all `8` mathematical crates display complete equations, citations, stability bounds, validity domains, and runnable `math_explorer::` examples; `.githooks/pre-commit`, `xtask check-docs`, and `xtask lint-all` fail closed on missing contract sections or broken cross-artifact links while keeping every Rust source file at or below `500` lines.
+- **Positive**: `0` library files remain under `[missing_docs.files]`; IDE hover tooltips across all `11` mathematical and solver crates display complete equations, citations, stability bounds, validity domains, and runnable `math_explorer::` examples; `.githooks/pre-commit`, `xtask check-docs`, and `xtask lint-all` fail closed on missing contract sections or broken cross-artifact links while keeping every Rust source file at or below `500` lines.
 - **Neutral**: Public signatures in `crates/unified_verification/api_baseline.json`, zero-allocation `VerifiedAllocator` hot loops, and binary-only `math_explorer_gui` caps remain unchanged.
