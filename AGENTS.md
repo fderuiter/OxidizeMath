@@ -25,18 +25,22 @@ Markdown verification gates:
 
 Rust jobs in [.github/workflows/ci.yml](.github/workflows/ci.yml) set `CARGO_INCREMENTAL: "0"` (leaving [.cargo/config.toml](.cargo/config.toml) untouched so local developer builds remain incremental), restore Cargo registry sources and filtered profile-scoped `target/` caches (excluding `incremental/`, `doc/`, `llvm-cov-target/`, `package/`, and `tmp/`) via [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml) (`./.github/actions/cargo-cache`), and cache pinned CLI binaries (`cargo-audit`, `cargo-llvm-cov`, `trunk`, `wasm-bindgen-cli`, and `cargo-packager`) under `~/.cache/ci-tools/` outside `~/.cargo/bin` via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml) (`./.github/actions/ci-tool-cache`).
 
-Run workspace builds, fast diff-scoped pre-commit checks (`lint-staged`), and the full PR verification suite (`lint-all`) aligned with [CONTRIBUTING.md](CONTRIBUTING.md) and [crates/unified_verification/README.md](crates/unified_verification/README.md) via `xtask` (`xtask` builds `unified_verification` with Cargo's default `dev` profile locally to skip release fat LTO):
+Run workspace builds, fast staged-scoped pre-commit checks (`lint-staged`), offline pre-push reverse-dependent checks (`lint-push`), and the full PR verification suite (`lint-all`) aligned with [CONTRIBUTING.md](CONTRIBUTING.md) and [crates/unified_verification/README.md](crates/unified_verification/README.md) via `xtask` (`xtask` builds `unified_verification` with Cargo's default `dev` profile locally to skip release fat LTO):
 
 ```bash
 # Type-check and build all workspace members
 cargo check --workspace
 cargo build --workspace --all-features
 
-# Run fast offline snapshot-backed pre-commit checks on the staged Git index (executed automatically by
-# .githooks/pre-commit; syncs <target_dir>/lint-staged-snapshot, runs rustfmt, batch-staged profiles/ADR records/
-# lengths/docs/duplicates/traceability/entropy/policy, single .github/ workflow lint, .md or deletion/rename link
-# scans, and reverse-dependent + 19-web-crate host/wasm32 Clippy without OSV network calls or API drift)
+# Run fast offline snapshot-backed pre-commit checks scoped to staged files and directly touched crates
+# (executed automatically by .githooks/pre-commit; syncs <target_dir>/lint-staged-snapshot, runs rustfmt,
+# scoped batch-staged checks on touched crates/staged guides/staged .rs citations, single .github/ workflow
+# lint, .md or deletion/rename link scans, and direct-crate host Clippy + conditional GUI/wasm32 Clippy)
 cargo run -p xtask -- lint-staged
+
+# Run offline pre-push checks across commits being pushed (executed automatically by .githooks/pre-push;
+# runs reverse-dependent host & web-reachable wasm32 Clippy plus full 804-file workspace traceability)
+cargo run -p xtask -- lint-push
 
 # Run the full PR verification suite before opening or updating a pull request (formatting, batched static
 # & single-parse AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift,
@@ -143,7 +147,7 @@ In CI, all eight `feature-matrix` legs share a single `features-shared` Linux `d
 
 ## 4. Local WebAssembly (`Web/WASM`) & Pages Bundle Checks
 
-In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` restores pinned `trunk` (`0.22.2`) and `wasm-bindgen-cli` (`0.2.130`) binaries via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml), caches `~/.cache/trunk` (keyed by runner OS, `Cargo.lock`, and [math_explorer_gui/Trunk.toml](math_explorer_gui/Trunk.toml) for `wasm-opt` `version_123`), compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed `traceability_manifest.json`, local paper artifacts when present, and `favicon.ico` without standalone `Verification_Certificate.json` or duplicate `papers/*.pdf`, while running [scripts/compress_dist.sh](scripts/compress_dist.sh) to stamp `WASM_SOURCE_SIZE`, `WASM_BROTLI_SIZE`, and `WASM_GZIP_SIZE` into `bootstrap.js` and generate local `.gz`/`.br` assets for self-hosted servers and Playwright wire-progress smoke checks), enforces the 4 MB compressed bundle budget via temporary `brotli -9` and `gzip -9` streams in [scripts/verify_wasm_budget.sh](scripts/verify_wasm_budget.sh), executes browser `wasm32` unit tests and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, and uploads `wasm_web_dist` (excluding `.gz`/`.br` sidecars) on `refs/heads/main`. Subsequently, `deploy-pages` downloads `wasm_web_dist`, `compiled_papers`, and `verification-certificate-linux_artifact`, validates and injects the live `Verification_Certificate.json` object into `pages_dist/traceability_manifest.json`, strips any residual `.gz`/`.br` or standalone `Verification_Certificate.json` files, stages all 29 root PDFs at `pages_dist/{stem}.pdf` alongside `pages_dist/papers/index.html`, generates and verifies `pages_dist/SHA256SUMS` once across all served files, and publishes the GitHub Pages artifact.
+In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` restores pinned `trunk` (`0.22.2`) and `wasm-bindgen-cli` (`0.2.130`) binaries via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml), caches `~/.cache/trunk` (keyed by runner OS, `Cargo.lock`, and [math_explorer_gui/Trunk.toml](math_explorer_gui/Trunk.toml) for `wasm-opt` `version_123`), compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed `traceability_manifest.json`, local paper artifacts when present, and `favicon.ico` without standalone `Verification_Certificate.json` or duplicate `papers/*.pdf`, while running [scripts/compress_dist.sh](scripts/compress_dist.sh) to stamp `WASM_SOURCE_SIZE`, `WASM_BROTLI_SIZE`, and `WASM_GZIP_SIZE` into `bootstrap.js` and generate local `.gz`/`.br` assets for self-hosted servers and Playwright wire-progress smoke checks), enforces the 4 MB compressed bundle budget via temporary `brotli -9` and `gzip -9` streams in [scripts/verify_wasm_budget.sh](scripts/verify_wasm_budget.sh), executes browser `wasm32` unit tests and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, and uploads `wasm_web_dist` (excluding `.gz`/`.br` sidecars) on `refs/heads/main`. Subsequently, `deploy-pages` downloads `wasm_web_dist`, `compiled_papers`, and `verification-certificate-linux_artifact`, validates and injects the live `Verification_Certificate.json` object into `pages_dist/traceability_manifest.json`, strips any residual `.gz`/`.br` or standalone `Verification_Certificate.json` files, stages all 30 root PDFs at `pages_dist/{stem}.pdf` alongside `pages_dist/papers/index.html`, generates and verifies `pages_dist/SHA256SUMS` once across all served files, and publishes the GitHub Pages artifact.
 
 ```bash
 # 1. Install the WebAssembly Rust target, Trunk, wasm-bindgen-cli, compression utilities, and Playwright Chromium (Ubuntu / Debian)
@@ -274,9 +278,9 @@ sudo apt-get update
 sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra texlive-science texlive-binaries
 ```
 
-### Compile All 29 Academic Papers via `xtask`
+### Compile All 30 Academic Papers via `xtask`
 
-Run the paper compiler defined in [apps/xtask/src/papers.rs](apps/xtask/src/papers.rs) to execute multi-pass `pdflatex` (`-no-shell-escape -interaction=nonstopmode -halt-on-error`) and `bibtex`, verify `.blg` and `.log` outputs for unresolved citations or undefined references across all 29 `.tex` manuscripts, generate `papers/output/index.html` (archive catalog) and `papers/output/pages-index.html` (GitHub Pages catalog), and package `papers/output/papers-bundle.tar.gz` alongside `papers/output/SHA256SUMS`:
+Run the paper compiler defined in [apps/xtask/src/papers.rs](apps/xtask/src/papers.rs) to execute multi-pass `pdflatex` (`-no-shell-escape -interaction=nonstopmode -halt-on-error`) and `bibtex`, verify `.blg` and `.log` outputs for unresolved citations or undefined references across all 30 `.tex` manuscripts, generate `papers/output/index.html` (archive catalog) and `papers/output/pages-index.html` (GitHub Pages catalog), and package `papers/output/papers-bundle.tar.gz` alongside `papers/output/SHA256SUMS`:
 
 ```bash
 cargo run -p xtask -- compile-papers

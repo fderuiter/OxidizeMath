@@ -146,7 +146,7 @@ fn sample_orbium_bilinear(u: f64, v: f64) -> f64 {
 }
 
 #[verified_engine::verified]
-fn analytic_species_density(species: LeniaSpecies, nx: f64, ny: f64) -> f64 {
+pub(super) fn analytic_species_density(species: LeniaSpecies, nx: f64, ny: f64) -> f64 {
     let r = nx.hypot(ny);
     match species {
         LeniaSpecies::Orbium => {

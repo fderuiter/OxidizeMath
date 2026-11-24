@@ -1098,6 +1098,7 @@ dependencies = [
  "pure_math",
  "rand",
  "rustfft",
+ "scientific_metadata",
  "thiserror 2.0.21",
  "verified_engine",
 ]
@@ -2453,6 +2454,7 @@ dependencies = [
  "diagnostics",
  "libm",
  "num-complex",
+ "num-traits",
  "oxidize_core",
  "rand_core",
  "thiserror 2.0.21",
@@ -2493,6 +2495,7 @@ dependencies = [
  "eframe",
  "egui_plot",
  "federated_registry",
+ "flate2",
  "futures",
  "inventory",
  "js-sys",
