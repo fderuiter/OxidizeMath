@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{
-    evaluate_kelly_sizing, plot_line, plot_vline, render_sports_central_panel,
+    clamp_finite, evaluate_kelly_sizing, plot_line, plot_vline, render_sports_central_panel,
     render_sports_left_panel, render_sports_plot, slider_f64, slider_f64_step,
 };
 use crate::accessibility::{
@@ -129,6 +129,10 @@ impl Default for MatchScoreHeatmapTool {
 }
 
 impl MatchScoreHeatmapTool {
+    pub(super) fn cell_probability(&self, home: usize, away: usize) -> f64 {
+        self.matrix[flatten_2d_index(away, home, MATRIX_DIM)]
+    }
+
     pub(super) fn recompute(&mut self) {
         let lh = PoissonRate::new(self.state.lambda_home)
             .unwrap_or_else(|_| PoissonRate::new(1.5).unwrap());
@@ -185,7 +189,7 @@ impl MatchScoreHeatmapTool {
             for h in 0..=MAX_GOALS {
                 for a in 0..=MAX_GOALS {
                     if h + a == total {
-                        let idx = flatten_2d_index(h, a, MATRIX_DIM);
+                        let idx = flatten_2d_index(a, h, MATRIX_DIM);
                         s_act += self.matrix[idx];
                         s_ind += indep[idx];
                     }
@@ -312,7 +316,7 @@ impl MatchScoreHeatmapTool {
         let dark = ui.visuals().dark_mode;
         for h in 0..MATRIX_DIM {
             for a in 0..MATRIX_DIM {
-                let p = self.matrix[flatten_2d_index(h, a, MATRIX_DIM)];
+                let p = self.cell_probability(h, a);
                 let t = (p / max_p).clamp(0.0, 1.0);
                 let rgb = if dark {
                     heatmap_color_high_contrast(t)
@@ -399,14 +403,23 @@ impl InteractiveTool for MatchScoreHeatmapTool {
         self.state.validate().is_ok()
     }
     fn clamp_parameters(&mut self) -> bool {
-        self.state.lambda_home = self.state.lambda_home.clamp(0.15, 4.5);
-        self.state.lambda_away = self.state.lambda_away.clamp(0.15, 4.5);
-        self.state.dixon_coles_rho = self.state.dixon_coles_rho.clamp(-0.22, 0.22);
-        self.state.shared_lambda3 = self.state.shared_lambda3.clamp(0.0, 1.2);
-        self.state.goal_line = self.state.goal_line.clamp(0.5, 6.5);
-        self.state.handicap_line = self.state.handicap_line.clamp(-3.5, 3.5);
-        self.state.offered_home_odds = self.state.offered_home_odds.clamp(1.05, 25.0);
-        self.state.bankroll = self.state.bankroll.clamp(10.0, 1_000_000.0);
+        let d = MatchHeatmapState::default();
+        self.state.lambda_home = clamp_finite(self.state.lambda_home, 0.15, 4.5, d.lambda_home);
+        self.state.lambda_away = clamp_finite(self.state.lambda_away, 0.15, 4.5, d.lambda_away);
+        self.state.dixon_coles_rho =
+            clamp_finite(self.state.dixon_coles_rho, -0.22, 0.22, d.dixon_coles_rho);
+        self.state.shared_lambda3 =
+            clamp_finite(self.state.shared_lambda3, 0.0, 1.2, d.shared_lambda3);
+        self.state.goal_line = clamp_finite(self.state.goal_line, 0.5, 6.5, d.goal_line);
+        self.state.handicap_line =
+            clamp_finite(self.state.handicap_line, -3.5, 3.5, d.handicap_line);
+        self.state.offered_home_odds = clamp_finite(
+            self.state.offered_home_odds,
+            1.05,
+            25.0,
+            d.offered_home_odds,
+        );
+        self.state.bankroll = clamp_finite(self.state.bankroll, 10.0, 1_000_000.0, d.bankroll);
         self.recompute();
         true
     }

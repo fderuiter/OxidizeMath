@@ -23,6 +23,6 @@ At the same time, OxidizeMath's `xtask test-features` matrix enforces $2^N$ comb
 
 ## Consequences
 
-- Callers compose devigging, match score grids, ZIP props, Gaussian copula SGPs, OU comeback probabilities, and Elo/Glicko-2 ratings directly into Kelly sizing without `f64` unwrapping.
+- Callers compose devigging, match score grids, ZIP props, Gaussian copula SGPs, OU comeback probabilities, and Elo/Glicko-2 ratings directly into Kelly sizing without `f64` unwrapping, with checked `(max_goals + 1)^2` slice dimension validation on flat score matrices and `NaN`-safe default fallback clamping across all seven `SportsAnalyticsTab` tools.
 - Combinatorial feature build time remains unchanged at $2^7 = 128$ configurations, and compressed WASM bundles remain well under the 4 MiB (`4,194,304` byte) gate.
 - Bidirectional theory-to-code parity spans 31 compiled LaTeX manuscripts with zero orphaned papers and verified BibTeX DOI/arXiv links across all sports and financial wagering tools.

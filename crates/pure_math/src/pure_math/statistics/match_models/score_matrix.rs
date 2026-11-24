@@ -91,8 +91,16 @@ pub struct MatchOutcomeProbs {
 
 #[verified_engine::verified]
 fn validate_matrix_slice(matrix_len: usize, max_goals: usize) -> Result<usize, MathError> {
-    let cols = max_goals + 1;
-    let expected = cols * cols;
+    let cols = max_goals
+        .checked_add(1)
+        .ok_or(MathError::DimensionMismatch {
+            expected: Dimension(usize::MAX),
+            actual: Dimension(matrix_len),
+        })?;
+    let expected = cols.checked_mul(cols).ok_or(MathError::DimensionMismatch {
+        expected: Dimension(usize::MAX),
+        actual: Dimension(matrix_len),
+    })?;
     if matrix_len != expected {
         return Err(MathError::DimensionMismatch {
             expected: Dimension(expected),

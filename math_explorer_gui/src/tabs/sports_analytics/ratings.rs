@@ -314,16 +314,27 @@ impl InteractiveTool for SportsRatingsTool {
         self.state.validate().is_ok()
     }
     fn clamp_parameters(&mut self) -> bool {
-        self.state.home_rating = self.state.home_rating.clamp(800.0, 2600.0);
-        self.state.away_rating = self.state.away_rating.clamp(800.0, 2600.0);
-        self.state.home_rd = self.state.home_rd.clamp(25.0, 350.0);
-        self.state.away_rd = self.state.away_rd.clamp(25.0, 350.0);
-        self.state.volatility = self.state.volatility.clamp(0.01, 0.25);
-        self.state.home_advantage = self.state.home_advantage.clamp(0.0, 150.0);
-        self.state.elo_k = self.state.elo_k.clamp(4.0, 64.0);
+        let d = SportsRatingsState::default();
+        self.state.home_rating =
+            super::clamp_finite(self.state.home_rating, 800.0, 2600.0, d.home_rating);
+        self.state.away_rating =
+            super::clamp_finite(self.state.away_rating, 800.0, 2600.0, d.away_rating);
+        self.state.home_rd = super::clamp_finite(self.state.home_rd, 25.0, 350.0, d.home_rd);
+        self.state.away_rd = super::clamp_finite(self.state.away_rd, 25.0, 350.0, d.away_rd);
+        self.state.volatility =
+            super::clamp_finite(self.state.volatility, 0.01, 0.25, d.volatility);
+        self.state.home_advantage =
+            super::clamp_finite(self.state.home_advantage, 0.0, 150.0, d.home_advantage);
+        self.state.elo_k = super::clamp_finite(self.state.elo_k, 4.0, 64.0, d.elo_k);
         self.state.margin_of_victory = self.state.margin_of_victory.min(15);
-        self.state.offered_home_odds = self.state.offered_home_odds.clamp(1.05, 25.0);
-        self.state.bankroll = self.state.bankroll.clamp(10.0, 1_000_000.0);
+        self.state.offered_home_odds = super::clamp_finite(
+            self.state.offered_home_odds,
+            1.05,
+            25.0,
+            d.offered_home_odds,
+        );
+        self.state.bankroll =
+            super::clamp_finite(self.state.bankroll, 10.0, 1_000_000.0, d.bankroll);
         self.recompute();
         true
     }

@@ -277,13 +277,29 @@ impl InteractiveTool for LiveMomentumTool {
         self.state.validate().is_ok()
     }
     fn clamp_parameters(&mut self) -> bool {
-        self.state.current_margin = self.state.current_margin.clamp(-30.0, 30.0);
-        self.state.pregame_spread_mu = self.state.pregame_spread_mu.clamp(-20.0, 20.0);
-        self.state.reversion_theta = self.state.reversion_theta.clamp(0.10, 6.0);
-        self.state.volatility_sigma = self.state.volatility_sigma.clamp(1.0, 25.0);
-        self.state.remaining_time = self.state.remaining_time.clamp(0.05, 1.0);
-        self.state.offered_live_odds = self.state.offered_live_odds.clamp(1.05, 25.0);
-        self.state.bankroll = self.state.bankroll.clamp(10.0, 1_000_000.0);
+        let d = LiveMomentumState::default();
+        self.state.current_margin =
+            super::clamp_finite(self.state.current_margin, -30.0, 30.0, d.current_margin);
+        self.state.pregame_spread_mu = super::clamp_finite(
+            self.state.pregame_spread_mu,
+            -20.0,
+            20.0,
+            d.pregame_spread_mu,
+        );
+        self.state.reversion_theta =
+            super::clamp_finite(self.state.reversion_theta, 0.10, 6.0, d.reversion_theta);
+        self.state.volatility_sigma =
+            super::clamp_finite(self.state.volatility_sigma, 1.0, 25.0, d.volatility_sigma);
+        self.state.remaining_time =
+            super::clamp_finite(self.state.remaining_time, 0.05, 1.0, d.remaining_time);
+        self.state.offered_live_odds = super::clamp_finite(
+            self.state.offered_live_odds,
+            1.05,
+            25.0,
+            d.offered_live_odds,
+        );
+        self.state.bankroll =
+            super::clamp_finite(self.state.bankroll, 10.0, 1_000_000.0, d.bankroll);
         self.recompute();
         true
     }

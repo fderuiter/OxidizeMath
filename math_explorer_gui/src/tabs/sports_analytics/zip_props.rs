@@ -263,11 +263,24 @@ impl InteractiveTool for ZipCountPropsTool {
         self.state.validate().is_ok()
     }
     fn clamp_parameters(&mut self) -> bool {
-        self.state.zero_inflation_pi = self.state.zero_inflation_pi.clamp(0.0, 0.90);
-        self.state.active_rate_lambda = self.state.active_rate_lambda.clamp(0.20, 10.0);
+        let d = ZipPropsState::default();
+        self.state.zero_inflation_pi =
+            super::clamp_finite(self.state.zero_inflation_pi, 0.0, 0.90, d.zero_inflation_pi);
+        self.state.active_rate_lambda = super::clamp_finite(
+            self.state.active_rate_lambda,
+            0.20,
+            10.0,
+            d.active_rate_lambda,
+        );
         self.state.prop_line_half = self.state.prop_line_half.min(10);
-        self.state.offered_over_odds = self.state.offered_over_odds.clamp(1.05, 25.0);
-        self.state.bankroll = self.state.bankroll.clamp(10.0, 1_000_000.0);
+        self.state.offered_over_odds = super::clamp_finite(
+            self.state.offered_over_odds,
+            1.05,
+            25.0,
+            d.offered_over_odds,
+        );
+        self.state.bankroll =
+            super::clamp_finite(self.state.bankroll, 10.0, 1_000_000.0, d.bankroll);
         self.recompute();
         true
     }

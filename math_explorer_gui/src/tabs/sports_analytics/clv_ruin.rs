@@ -290,12 +290,18 @@ impl InteractiveTool for ClvRuinTool {
         self.state.validate().is_ok()
     }
     fn clamp_parameters(&mut self) -> bool {
-        self.state.bet_odds = self.state.bet_odds.clamp(1.05, 25.0);
-        self.state.close_home_odds = self.state.close_home_odds.clamp(1.05, 25.0);
-        self.state.close_away_odds = self.state.close_away_odds.clamp(1.05, 25.0);
-        self.state.kelly_multiplier = self.state.kelly_multiplier.clamp(0.05, 2.20);
-        self.state.drawdown_ratio = self.state.drawdown_ratio.clamp(0.10, 0.90);
-        self.state.bankroll_units = self.state.bankroll_units.clamp(5.0, 250.0);
+        let d = ClvRuinState::default();
+        self.state.bet_odds = super::clamp_finite(self.state.bet_odds, 1.05, 25.0, d.bet_odds);
+        self.state.close_home_odds =
+            super::clamp_finite(self.state.close_home_odds, 1.05, 25.0, d.close_home_odds);
+        self.state.close_away_odds =
+            super::clamp_finite(self.state.close_away_odds, 1.05, 25.0, d.close_away_odds);
+        self.state.kelly_multiplier =
+            super::clamp_finite(self.state.kelly_multiplier, 0.05, 2.20, d.kelly_multiplier);
+        self.state.drawdown_ratio =
+            super::clamp_finite(self.state.drawdown_ratio, 0.10, 0.90, d.drawdown_ratio);
+        self.state.bankroll_units =
+            super::clamp_finite(self.state.bankroll_units, 5.0, 250.0, d.bankroll_units);
         self.recompute();
         true
     }

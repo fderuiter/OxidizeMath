@@ -294,11 +294,14 @@ impl InteractiveTool for MarketDeviggingTool {
         self.state.validate().is_ok()
     }
     fn clamp_parameters(&mut self) -> bool {
-        self.state.odds_home = self.state.odds_home.clamp(1.05, 25.0);
-        self.state.odds_draw = self.state.odds_draw.clamp(1.05, 25.0);
-        self.state.odds_away = self.state.odds_away.clamp(1.05, 25.0);
-        self.state.offered_bet_odds = self.state.offered_bet_odds.clamp(1.05, 25.0);
-        self.state.bankroll = self.state.bankroll.clamp(10.0, 1_000_000.0);
+        let d = MarketDevigState::default();
+        self.state.odds_home = super::clamp_finite(self.state.odds_home, 1.05, 25.0, d.odds_home);
+        self.state.odds_draw = super::clamp_finite(self.state.odds_draw, 1.05, 25.0, d.odds_draw);
+        self.state.odds_away = super::clamp_finite(self.state.odds_away, 1.05, 25.0, d.odds_away);
+        self.state.offered_bet_odds =
+            super::clamp_finite(self.state.offered_bet_odds, 1.05, 25.0, d.offered_bet_odds);
+        self.state.bankroll =
+            super::clamp_finite(self.state.bankroll, 10.0, 1_000_000.0, d.bankroll);
         self.recompute();
         true
     }

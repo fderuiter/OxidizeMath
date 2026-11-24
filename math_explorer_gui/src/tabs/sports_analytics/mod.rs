@@ -175,6 +175,15 @@ pub(super) fn parse_state_value(raw: &str) -> Result<serde_json::Value, String> 
     serde_json::from_str(raw).map_err(|e| e.to_string())
 }
 
+/// Clamps `val` into `[min, max]`, substituting `fallback` when `val` is `NaN` or infinite.
+pub(super) fn clamp_finite(val: f64, min: f64, max: f64, fallback: f64) -> f64 {
+    if val.is_finite() {
+        val.clamp(min, max)
+    } else {
+        fallback
+    }
+}
+
 impl ExplorerTab for SportsAnalyticsTab {
     fn name(&self) -> &'static str {
         "Sports Analytics"

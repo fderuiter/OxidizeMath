@@ -192,6 +192,76 @@ fn test_sports_analytics_renders_across_all_three_themes() {
     }
 }
 
+#[test]
+fn test_match_heatmap_cell_probability_row_col_orientation() {
+    let mut tool = match_heatmap::MatchScoreHeatmapTool::default();
+    tool.state.variant = match_heatmap::ScoreMatrixVariant::IndependentPoisson;
+    tool.state.lambda_home = 2.8;
+    tool.state.lambda_away = 0.5;
+    tool.recompute();
+
+    let p_1_0 = tool.cell_probability(1, 0);
+    let p_0_1 = tool.cell_probability(0, 1);
+    assert!((p_1_0 / p_0_1 - (2.8 / 0.5)).abs() < 1e-12);
+    assert!(tool.cell_probability(3, 0) > tool.cell_probability(0, 3) * 10.0);
+}
+
+fn assert_clamp_recovers(tool: &mut dyn crate::framework::InteractiveTool) {
+    assert!(
+        !tool.has_finite_parameters(),
+        "{} expected invalid",
+        tool.name()
+    );
+    assert!(tool.clamp_parameters());
+    assert!(
+        tool.has_finite_parameters(),
+        "{} failed recovery",
+        tool.name()
+    );
+    for (_, pts) in tool.export_datasets() {
+        assert!(!pts.is_empty());
+        assert!(pts.iter().all(|p| p[0].is_finite() && p[1].is_finite()));
+    }
+}
+
+#[test]
+fn test_sports_analytics_clamp_parameters_recovers_non_finite_states() {
+    let mut devig = market_devig::MarketDeviggingTool::default();
+    devig.state.odds_home = f64::NAN;
+    devig.state.bankroll = f64::INFINITY;
+    assert_clamp_recovers(&mut devig);
+
+    let mut heatmap = match_heatmap::MatchScoreHeatmapTool::default();
+    heatmap.state.lambda_home = f64::NAN;
+    heatmap.state.dixon_coles_rho = f64::NEG_INFINITY;
+    assert_clamp_recovers(&mut heatmap);
+
+    let mut sgp = sgp_copula::SgpCopulaTool::default();
+    sgp.state.leg1_prob = f64::NAN;
+    sgp.state.rho_12 = f64::INFINITY;
+    assert_clamp_recovers(&mut sgp);
+
+    let mut zip = zip_props::ZipCountPropsTool::default();
+    zip.state.zero_inflation_pi = f64::NAN;
+    zip.state.prop_line_half = 99;
+    assert_clamp_recovers(&mut zip);
+
+    let mut ou = live_momentum::LiveMomentumTool::default();
+    ou.state.current_margin = f64::NAN;
+    ou.state.volatility_sigma = f64::INFINITY;
+    assert_clamp_recovers(&mut ou);
+
+    let mut ratings = ratings::SportsRatingsTool::default();
+    ratings.state.home_rating = f64::NAN;
+    ratings.state.margin_of_victory = 99;
+    assert_clamp_recovers(&mut ratings);
+
+    let mut clv = clv_ruin::ClvRuinTool::default();
+    clv.state.bet_odds = f64::NAN;
+    clv.state.kelly_multiplier = f64::INFINITY;
+    assert_clamp_recovers(&mut clv);
+}
+
 #[cfg(target_arch = "wasm32")]
 mod wasm_tests {
     use super::*;

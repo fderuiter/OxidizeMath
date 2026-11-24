@@ -292,3 +292,25 @@ fn test_flat_slice_score_matrices_and_unit_interval_aggregators() {
     assert!(SharedGoalRate::new(-0.1).is_err());
     assert!(match_1x2_probabilities(&indep8[..10], 8).is_err());
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_flat_slice_score_matrix_rejects_overflowing_max_goals() {
+    let lh = PoissonRate::new(1.45).unwrap();
+    let la = PoissonRate::new(1.15).unwrap();
+    let mut buf = [0.0_f64; 4];
+    for bad_max in [usize::MAX, usize::MAX / 2] {
+        assert!(independent_poisson_matrix_into(lh, la, bad_max, &mut buf).is_err());
+        assert!(
+            dixon_coles_matrix_into(lh, la, DixonColesRho::default(), bad_max, &mut buf).is_err()
+        );
+        assert!(
+            bivariate_poisson_matrix_into(lh, la, SharedGoalRate::default(), bad_max, &mut buf)
+                .is_err()
+        );
+        assert!(match_1x2_probabilities(&buf, bad_max).is_err());
+        assert!(over_under_probabilities(&buf, bad_max, 2.5).is_err());
+        assert!(asian_handicap_home_cover(&buf, bad_max, -0.5).is_err());
+        assert!(both_teams_to_score_probability(&buf, bad_max).is_err());
+    }
+}

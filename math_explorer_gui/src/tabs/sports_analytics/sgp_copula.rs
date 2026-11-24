@@ -292,14 +292,17 @@ impl InteractiveTool for SgpCopulaTool {
         self.state.validate().is_ok()
     }
     fn clamp_parameters(&mut self) -> bool {
-        self.state.leg1_prob = self.state.leg1_prob.clamp(0.05, 0.95);
-        self.state.leg2_prob = self.state.leg2_prob.clamp(0.05, 0.95);
-        self.state.leg3_prob = self.state.leg3_prob.clamp(0.05, 0.95);
-        self.state.rho_12 = self.state.rho_12.clamp(-0.85, 0.85);
-        self.state.rho_13 = self.state.rho_13.clamp(-0.85, 0.85);
-        self.state.rho_23 = self.state.rho_23.clamp(-0.85, 0.85);
-        self.state.offered_sgp_odds = self.state.offered_sgp_odds.clamp(1.10, 50.0);
-        self.state.bankroll = self.state.bankroll.clamp(10.0, 1_000_000.0);
+        let d = SgpCopulaState::default();
+        self.state.leg1_prob = super::clamp_finite(self.state.leg1_prob, 0.05, 0.95, d.leg1_prob);
+        self.state.leg2_prob = super::clamp_finite(self.state.leg2_prob, 0.05, 0.95, d.leg2_prob);
+        self.state.leg3_prob = super::clamp_finite(self.state.leg3_prob, 0.05, 0.95, d.leg3_prob);
+        self.state.rho_12 = super::clamp_finite(self.state.rho_12, -0.85, 0.85, d.rho_12);
+        self.state.rho_13 = super::clamp_finite(self.state.rho_13, -0.85, 0.85, d.rho_13);
+        self.state.rho_23 = super::clamp_finite(self.state.rho_23, -0.85, 0.85, d.rho_23);
+        self.state.offered_sgp_odds =
+            super::clamp_finite(self.state.offered_sgp_odds, 1.10, 50.0, d.offered_sgp_odds);
+        self.state.bankroll =
+            super::clamp_finite(self.state.bankroll, 10.0, 1_000_000.0, d.bankroll);
         self.recompute();
         true
     }
