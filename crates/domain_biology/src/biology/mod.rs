@@ -54,14 +54,15 @@
 //!
 //! ## Submodules
 //!
-//! - **Molecular**: [`kinetics`] - Michaelis-Menten enzyme kinetics.
+//! - **Molecular**: [`kinetics`] - Michaelis-Menten and cooperative Hill enzyme kinetics.
 //! - **Cellular**: [`neuroscience`] - Hodgkin-Huxley model for action potentials.
 //! - **Tissue**: [`morphogenesis`] - Turing and Gray-Scott reaction-diffusion systems for pattern formation.
+//! - **Botanical**: [`lsystem`] and [`phyllotaxis`] - Zero-allocation L-system vascular grammars and Vogel golden-angle phyllotaxis.
 //! - **Artificial Life**: [`lenia`] - Spectral 2D Lenia continuous cellular automata and soliton lifeforms.
 //! - **Population**: [`evolution`] - Evolutionary game theory (Hawk-Dove).
 //! - **Generic**: [`reaction_diffusion`] - Generic N-species reaction-diffusion framework.
 
-/// Michaelis-Menten enzyme kinetics.
+/// Michaelis-Menten and Hill enzyme kinetics.
 pub mod kinetics;
 
 /// Hodgkin-Huxley neuron model.
@@ -72,6 +73,12 @@ pub mod morphogenesis;
 
 /// Continuous 2D Lenia spectral cellular automata.
 pub mod lenia;
+
+/// Deterministic D0L and parametric L-system vascular grammars.
+pub mod lsystem;
+
+/// Vogel planar phyllotaxis and Fibonacci parastichy analysis.
+pub mod phyllotaxis;
 
 /// Spatial diffusion strategies.
 pub mod diffusion;
@@ -84,10 +91,11 @@ pub mod reaction_diffusion;
 
 /// Error types for computational biology modules.
 pub use crate::error;
+pub use crate::error::BotanicalError;
 pub use kinetics::KineticsError;
 pub use reaction_diffusion::ReactionDiffusionError;
 
-// [cite:favorite_child]
+// [cite:biology]
 
 use pure_math::theory_verification;
 theory_verification!(module = "biology", constants = {}, test = {});

@@ -139,6 +139,7 @@ fn test_ast_visitor_ignores_macro_examples_in_doc_comments() {
 
     assert_eq!(visitor.total_funcs, 1);
     assert_eq!(visitor.verified_funcs, 0);
+    assert_eq!(visitor.semantic_integrity_funcs, 0);
     assert!(visitor.verified_modules.is_empty());
 }
 

@@ -2,8 +2,9 @@
 //! Outward-rounded IEEE-754 interval arithmetic enclosures for verified numerical kernels.
 
 use crate::error::MathError;
-use std::f64::consts::{FRAC_PI_2, PI, TAU};
-use std::ops::{Add, Mul, Neg, Sub};
+use alloc::string::ToString;
+use core::f64::consts::{FRAC_PI_2, PI, TAU};
+use core::ops::{Add, Mul, Neg, Sub};
 
 #[inline]
 fn ulp_down_1(x: f64) -> f64 {
@@ -270,9 +271,9 @@ impl Interval {
         let lo = if self.lo == 0.0 {
             0.0
         } else {
-            ulp_down_1(self.lo.sqrt()).max(0.0)
+            ulp_down_1(libm::sqrt(self.lo)).max(0.0)
         };
-        let hi = ulp_up_1(self.hi.sqrt());
+        let hi = ulp_up_1(libm::sqrt(self.hi));
         assert!(lo <= hi);
         Ok(Self { lo, hi })
     }
@@ -281,8 +282,8 @@ impl Interval {
     #[must_use]
     #[verified_engine::verified]
     pub fn exp(self) -> Self {
-        let lo = ulp_down_2(self.lo.exp()).max(0.0);
-        let hi = ulp_up_2(self.hi.exp());
+        let lo = ulp_down_2(libm::exp(self.lo)).max(0.0);
+        let hi = ulp_up_2(libm::exp(self.hi));
         assert!(lo <= hi);
         Self { lo, hi }
     }
@@ -297,7 +298,7 @@ impl Interval {
                 max: f64::INFINITY,
             });
         }
-        let (lo, hi) = (ulp_down_2(self.lo.ln()), ulp_up_2(self.hi.ln()));
+        let (lo, hi) = (ulp_down_2(libm::log(self.lo)), ulp_up_2(libm::log(self.hi)));
         assert!(lo <= hi);
         Ok(Self { lo, hi })
     }
@@ -309,13 +310,13 @@ impl Interval {
         if self.hi - self.lo >= TAU {
             return Self { lo: -1.0, hi: 1.0 };
         }
-        let (c_lo, c_hi) = (self.lo.cos(), self.hi.cos());
+        let (c_lo, c_hi) = (libm::cos(self.lo), libm::cos(self.hi));
         let mut lo = ulp_down_2(c_lo.min(c_hi)).max(-1.0);
         let mut hi = ulp_up_2(c_lo.max(c_hi)).min(1.0);
-        if (self.lo / TAU).ceil() * TAU <= self.hi + 1e-15 {
+        if libm::ceil(self.lo / TAU) * TAU <= self.hi + 1e-15 {
             hi = 1.0;
         }
-        if ((self.lo - PI) / TAU).ceil() * TAU + PI <= self.hi + 1e-15 {
+        if libm::ceil((self.lo - PI) / TAU) * TAU + PI <= self.hi + 1e-15 {
             lo = -1.0;
         }
         assert!(lo <= hi && lo >= -1.0 && hi <= 1.0);

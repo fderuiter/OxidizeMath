@@ -1,8 +1,8 @@
 use super::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
-    FractranError, Glicko2Error, KellyError, LinearAlgebraError, MarketPricingError, MarkovError,
-    MatchModelError, NumberTheoryError, OptimizationError, OuError, StochasticError, TdaError,
-    TensorError, TransformError, ZipError,
+    FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError, LinearAlgebraError,
+    MarketPricingError, MarkovError, MatchModelError, MonteCarloError, NumberTheoryError,
+    OptimizationError, OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -36,6 +36,9 @@ pub enum PureMathError {
     /// Calibrated 2D score-grid match model error.
     #[error("{0}")]
     MatchModel(#[from] MatchModelError),
+    /// Monte Carlo, quasi-Monte Carlo, and bootstrap estimation error.
+    #[error("{0}")]
+    MonteCarlo(#[from] MonteCarloError),
     /// Number theory error.
     #[error("{0}")]
     NumberTheory(#[from] NumberTheoryError),
@@ -63,6 +66,12 @@ pub enum PureMathError {
     /// Prime-exponent FRACTRAN register machine error.
     #[error("{0}")]
     Fractran(#[from] FractranError),
+    /// Graph theory solver or interchange error.
+    #[error("{0}")]
+    GraphTheory(#[from] GraphTheoryError),
+    /// Hyperbolic geometry and geodesic billiard error.
+    #[error("{0}")]
+    Hyperbolic(#[from] HyperbolicError),
     /// Numerical linear algebra error.
     #[error("{0}")]
     LinearAlgebra(#[from] LinearAlgebraError),
@@ -141,7 +150,10 @@ impl PureMathError {
             Self::EllipticCurve(err) => err,
             Self::Evolution(err) => err,
             Self::Fractran(err) => err,
+            Self::GraphTheory(err) => err,
+            Self::Hyperbolic(err) => err,
             Self::LinearAlgebra(err) => err,
+            Self::MonteCarlo(err) => err,
             Self::Optimization(err) => err,
             Self::Stochastic(err) => err,
             Self::Tensor(err) => err,

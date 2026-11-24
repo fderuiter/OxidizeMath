@@ -108,13 +108,25 @@ fn test_host_only_leaf_crate_skips_wasm_workflows_and_markdown() {
 }
 
 #[test]
-fn test_reverse_dependents_expand_host_and_wasm_clippy() {
+fn test_pre_commit_scopes_to_direct_crates_while_pre_push_expands_reverse_dependents() {
     let crates = sample_crates();
     let staged = vec!["crates/scientific_metadata/src/lib.rs".to_string()];
-    let plan = build_staged_plan(&staged, &staged, &crates);
 
+    // Pre-commit: only direct crate, no wasm32 Clippy unless GUI or wasm32 sources touched
+    let pre_commit_plan = build_staged_plan(&staged, &staged, &crates);
     assert_eq!(
-        plan.host_clippy_packages,
+        pre_commit_plan.host_clippy_packages,
+        vec!["scientific_metadata"]
+    );
+    assert!(
+        pre_commit_plan.wasm_clippy_args.is_none(),
+        "Portable library edits without wasm32 sources should defer wasm32 Clippy to pre-push"
+    );
+
+    // Pre-push: expands reverse dependents across host and wasm32 + runs full traceability
+    let pre_push_plan = push::build_push_plan(&staged, &crates);
+    assert_eq!(
+        pre_push_plan.host_clippy_packages,
         vec![
             "scientific_metadata",
             "domain_physics",
@@ -122,9 +134,9 @@ fn test_reverse_dependents_expand_host_and_wasm_clippy() {
             "markdown_tests",
         ]
     );
-    let wasm = plan
+    let wasm = pre_push_plan
         .wasm_clippy_args
-        .expect("shared web crate edit must trigger wasm32 clippy");
+        .expect("pre-push must run wasm32 clippy across affected web crates");
     assert!(wasm.contains(&"scientific_metadata".to_string()));
     assert!(wasm.contains(&"domain_physics".to_string()));
     assert!(wasm.contains(&"math_explorer_gui".to_string()));
@@ -132,10 +144,11 @@ fn test_reverse_dependents_expand_host_and_wasm_clippy() {
     assert!(wasm.contains(&"--lib".to_string()));
     assert!(wasm.contains(&"--bins".to_string()));
     assert!(wasm.contains(&"--tests".to_string()));
+    assert!(pre_push_plan.run_full_traceability);
 }
 
 #[test]
-fn test_web_leaf_and_library_target_flags() {
+fn test_web_leaf_and_wasm32_source_target_flags() {
     let crates = sample_crates();
 
     let gui_only = vec!["math_explorer_gui/src/main.rs".to_string()];
@@ -147,22 +160,42 @@ fn test_web_leaf_and_library_target_flags() {
     assert_eq!(gui_plan.host_clippy_packages, vec!["math_explorer_gui"]);
     let gui_wasm = gui_plan
         .wasm_clippy_args
-        .expect("gui should run wasm clippy");
+        .expect("gui should run wasm clippy in pre-commit");
     assert!(!gui_wasm.iter().any(|a| a == "--lib"));
     assert!(gui_wasm.iter().any(|a| a == "--bins"));
     assert!(gui_wasm.iter().any(|a| a == "--tests"));
 
-    let plot_only = vec!["egui_plot/Cargo.toml".to_string()];
-    let plot_plan = build_staged_plan(&plot_only, &plot_only, &crates);
-    assert_eq!(
-        plot_plan.host_clippy_packages,
-        vec!["egui_plot", "math_explorer_gui"]
-    );
-    let plot_wasm = plot_plan
+    // Editing a wasm32-specific source path or content in a web library runs wasm32 Clippy on that direct crate
+    let wasm_path_staged = vec!["crates/domain_physics/src/wasm_bridge.rs".to_string()];
+    let wasm_path_plan = build_staged_plan(&wasm_path_staged, &wasm_path_staged, &crates);
+    assert_eq!(wasm_path_plan.host_clippy_packages, vec!["domain_physics"]);
+    let lib_wasm = wasm_path_plan
         .wasm_clippy_args
-        .expect("plot and gui dependent should run wasm clippy");
-    assert!(plot_wasm.iter().any(|a| a == "--lib"));
-    assert!(plot_wasm.iter().any(|a| a == "--bins"));
+        .expect("wasm32 source edit in web crate should run wasm32 clippy");
+    assert!(lib_wasm.iter().any(|a| a == "--lib"));
+    assert!(!lib_wasm.iter().any(|a| a == "--bins"));
+
+    let tmp_dir = std::env::temp_dir().join(format!("xtask_wasm_src_test_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp_dir);
+    fs::create_dir_all(tmp_dir.join("crates/domain_physics/src")).unwrap();
+    fs::write(
+        tmp_dir.join("crates/domain_physics/src/quantum.rs"),
+        "#[cfg(target_arch = \"wasm32\")]\npub fn web_entry() {}\n",
+    )
+    .unwrap();
+    let cfg_staged = vec!["crates/domain_physics/src/quantum.rs".to_string()];
+    let cfg_plan = build_staged_plan_in_dir(&cfg_staged, &cfg_staged, &crates, Some(&tmp_dir));
+    assert!(cfg_plan.wasm_clippy_args.is_some());
+    let _ = fs::remove_dir_all(&tmp_dir);
+}
+
+#[test]
+fn test_parse_pre_push_stdin_lines() {
+    let raw = "refs/heads/feat abc123 refs/heads/feat def456\nrefs/heads/del 0000000000000000000000000000000000000000 refs/heads/del 111111\n";
+    let parsed = push::parse_pre_push_stdin(raw);
+    assert_eq!(parsed.len(), 2);
+    assert_eq!(parsed[0].local_oid, "abc123");
+    assert_eq!(parsed[0].remote_oid, "def456");
 }
 
 #[test]
@@ -240,10 +273,10 @@ fn test_root_config_edits_escalate_to_full_workspace_checks() {
 }
 
 #[test]
-fn test_load_real_workspace_discovers_all_17_web_crates_and_dependents() {
+fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
     let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let crates = load_workspace_crates(&ws_root);
-    assert_eq!(crates.len(), 21);
+    assert_eq!(crates.len(), 24);
 
     let mut web_names: Vec<&str> = crates
         .iter()
@@ -262,6 +295,9 @@ fn test_load_real_workspace_discovers_all_17_web_crates_and_dependents() {
             "domain_epidemiology",
             "domain_physics",
             "egui_plot",
+            "engine_diffeq",
+            "engine_linalg",
+            "engine_pde",
             "federated_registry",
             "math_commons",
             "math_explorer",
@@ -285,13 +321,19 @@ fn test_load_real_workspace_discovers_all_17_web_crates_and_dependents() {
     }
 
     let meta_staged = vec!["crates/scientific_metadata/src/lib.rs".to_string()];
-    let meta_plan = build_staged_plan(&meta_staged, &meta_staged, &crates);
+    let meta_commit_plan = build_staged_plan(&meta_staged, &meta_staged, &crates);
+    assert_eq!(
+        meta_commit_plan.host_clippy_packages,
+        vec!["scientific_metadata"]
+    );
+
+    let meta_push_plan = push::build_push_plan(&meta_staged, &crates);
     for expected_dep in ["verified_engine", "math_explorer", "math_explorer_gui"] {
         assert!(
-            meta_plan
+            meta_push_plan
                 .host_clippy_packages
                 .contains(&expected_dep.to_string()),
-            "scientific_metadata edit must lint reverse dependent {expected_dep}"
+            "scientific_metadata push must lint reverse dependent {expected_dep}"
         );
     }
 }

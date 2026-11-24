@@ -1,9 +1,9 @@
 {
   "native_execution_coverage_pct": 84.78101808299363,
-  "wasm_path_coverage_pct": 80.0,
-  "total_assertion_density": 0.696649209335435,
-  "verified_modules_density": 0.6533206831119545,
-  "unverified_modules_density": 0.7125095506008197,
+  "wasm_path_coverage_pct": 77.27272727272727,
+  "total_assertion_density": 0.697138743926579,
+  "verified_modules_density": 0.6836483155299918,
+  "unverified_modules_density": 0.7022238741250078,
   "passed": true,
   "certified_solvers": 47,
   "max_interval_width": 7.958078640513122e-13,
@@ -22,7 +22,7 @@
     ],
     "exp_ln_roundtrip_2_5": [
       2.4999999999999987,
-      2.5000000000000013
+      2.5000000000000018
     ],
     "logistic_peak_at_0_5": [
       0.9999999999999997,

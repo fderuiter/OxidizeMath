@@ -13,6 +13,7 @@ mod pyramid_cli;
 mod records;
 mod release_tag;
 mod report;
+mod staged_traceability;
 mod utils;
 mod vulnerabilities;
 mod wasm_coverage;

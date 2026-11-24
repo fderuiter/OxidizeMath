@@ -180,7 +180,7 @@ impl QuantumState {
             if m >= n {
                 break;
             }
-            let k_pi = ((m + 1) as f64) * std::f64::consts::PI / denom;
+            let k_pi = ((m + 1) as f64) * core::f64::consts::PI / denom;
             let mut acc = Complex::new(0.0, 0.0);
             for (j, amp) in self.vector.iter().enumerate() {
                 let basis = norm_factor * (((j + 1) as f64) * k_pi).sin();

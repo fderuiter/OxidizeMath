@@ -1,9 +1,11 @@
 //! Stack-allocated damped Levenberg-Marquardt nonlinear least-squares solvers (`k <= 6`).
 // [cite:math_commons]
 
-use super::poly::{solve_dense_n_raw, symmetrize_upper};
+use super::poly::symmetrize_upper;
 use crate::error::FitError;
 use crate::series::PointSeries;
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
 
 /// Maximum outer Levenberg-Marquardt iterations before returning [`FitError::NonConvergence`].
 pub const MAX_LM_ITERATIONS: usize = 80;
@@ -14,7 +16,7 @@ pub const MAX_FIT_PARAMS: usize = 6;
 const MAX_DAMPING_SUBSTEPS: usize = 12;
 
 /// Minimizes $\sum_i (y_i - \hat{f}(x_i; \theta))^2$ over finite points in `points` on the stack.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn levenberg_marquardt<P, F>(
     points: &P,
     initial_params: &[f64],
@@ -35,7 +37,7 @@ where
 }
 
 /// Minimizes nonlinear least squares over observations satisfying `domain_ok(x, y)`.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn levenberg_marquardt_filtered<P, F>(
     points: &P,
     initial_params: &[f64],
@@ -58,7 +60,7 @@ where
 
 /// Minimizes nonlinear least squares ($1 \le k \le 6$) for an arbitrary scalar callback `eval_fn`
 /// using central finite-difference Jacobians on stack buffers with zero heap allocations.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn levenberg_marquardt_numeric<P, F>(
     points: &P,
     initial_params: &[f64],
@@ -87,7 +89,7 @@ where
 
 /// Evaluates $\sum_i (y_i - \hat{f}(x_i; \theta))^2$ over finite points in `points`, returning
 /// `None` if no finite points exist or any evaluation produces a non-finite residual.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn sum_squared_errors_numeric<P, F>(points: &P, params: &[f64], eval_fn: F) -> Option<f64>
 where
     P: PointSeries + ?Sized,
@@ -301,8 +303,7 @@ where
     let mut step_norm = 0.0_f64;
     let mut param_norm = 0.0_f64;
     for _ in 0..MAX_DAMPING_SUBSTEPS {
-        let (mut mat, rhs) = build_damped_system(sys.jtj, sys.jtr, k, *lambda);
-        let Ok(delta) = solve_dense_n_raw(&mut mat, &rhs, k) else {
+        let Ok(delta) = solve_lm_damped_step(sys.jtj, sys.jtr, k, *lambda) else {
             *lambda *= 10.0;
             continue;
         };
@@ -332,21 +333,37 @@ where
     (false, step_norm, param_norm)
 }
 
-fn build_damped_system<const M: usize>(
+fn solve_lm_damped_step<const M: usize>(
     jtj: &[[f64; M]; M],
     jtr: &[f64; M],
     k: usize,
     lambda: f64,
-) -> ([[f64; M]; M], [f64; M]) {
-    let mut mat = [[0.0_f64; M]; M];
-    let mut rhs = [0.0_f64; M];
-    for r in 0..k {
-        rhs[r] = jtr[r];
-        mat[r][..k].copy_from_slice(&jtj[r][..k]);
-        let diag_scale = jtj[r][r].abs().max(1e-6);
-        mat[r][r] += lambda * diag_scale;
+) -> Result<[f64; M], FitError> {
+    if k == 0 || k > M || k > 8 {
+        return Err(FitError::SingularMatrix);
     }
-    (mat, rhs)
+    let mut flat_jtj = [0.0_f64; 64];
+    for (r, row) in jtj.iter().enumerate().take(k) {
+        let start = r * k;
+        flat_jtj[start..(start + k)].copy_from_slice(&row[..k]);
+    }
+    let mut delta = [0.0_f64; M];
+    let mut pivots = [0_usize; 8];
+    let mut scratch = [0.0_f64; 128];
+    engine_linalg::solve_damped_normal(
+        &flat_jtj[..(k * k)],
+        &jtr[..k],
+        k,
+        engine_linalg::DampingStyle::Marquardt {
+            lambda,
+            diag_floor: 1e-6,
+        },
+        &mut delta[..k],
+        &mut pivots[..k],
+        &mut engine_linalg::SolverWorkspace::new(&mut scratch),
+    )
+    .map_err(|_| FitError::SingularMatrix)?;
+    Ok(delta)
 }
 
 type NormalSystem<const M: usize> = ([[f64; M]; M], [f64; M], f64);
