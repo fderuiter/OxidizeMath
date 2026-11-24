@@ -49,6 +49,9 @@ impl InteractiveTool for SaveStateTrapTool {
     fn save_recovery_state(&self) -> Option<String> {
         self.inner.save_recovery_state()
     }
+    fn export_url_state(&self) -> Option<String> {
+        self.inner.export_url_state()
+    }
     fn save_url_state(&self) -> Option<String> {
         self.inner.save_url_state()
     }

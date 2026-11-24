@@ -85,3 +85,27 @@ Cayley propagation is unconditionally unitary ($\|\psi^{n+1}\|_2 = \|\psi^n\|_2$
 
 Requires finite potentials $V(x_i)$ and strictly positive `(dx, dt, mass, h_bar)` for `CrankNicolson1D`; `AllenCahn2D` requires `width, height >= 3`, $M > 0$, $\kappa \ge 0$; `CahnHilliard2D`, `EdwardsWilkinson*`, and `KpzModel*` require grid sizes $\ge 4$ (power-of-two with `BoundaryCondition::Periodic` for Fourier stepping), positive spacings, and $M, \kappa, \nu > 0$.
 
+## 4. Canonical Eikonal Ray Tracing, Caustic Envelopes & Fraunhofer Diffraction (`optics`)
+
+### Governing Equations
+
+Graded-index geometric ray tracing (`EikonalRaySystem`, `HamiltonianRayTracer`) integrates canonical optical path flow $d\tau = ds / n(\mathbf{r})$ with optical momentum $\mathbf{p} = n\frac{d\mathbf{r}}{ds}$ alongside polarized Fresnel interface equations and far-field Fraunhofer diffraction:
+
+$$
+\frac{d\mathbf{r}}{d\tau} = \mathbf{p}, \qquad \frac{d\mathbf{p}}{d\tau} = \frac{1}{2}\nabla\bigl(n^2(\mathbf{r})\bigr), \qquad I_{\text{Airy}}(\theta) = I_0 \left(\frac{2 J_1(\pi D \sin\theta / \lambda)}{\pi D \sin\theta / \lambda}\right)^2
+$$
+
+### Citations
+
+- BibTeX keys: [`born1999principles`](../../papers/references.bib#born1999principles), [`luneburg1964mathematical`](../../papers/references.bib#luneburg1964mathematical), [`berry1980catastrophe`](../../papers/references.bib#berry1980catastrophe) (DOI: `10.1016/S0079-6638(08)70215-4`).
+- Manuscript: [`papers/geometric_optics_and_caustics.tex`](../../papers/geometric_optics_and_caustics.tex).
+
+### Stability
+
+Fourth-order `RungeKutta4<ArrayState<4>>` preserves the optical Hamiltonian $H(\mathbf{r}, \mathbf{p}) = |\mathbf{p}|^2 - n^2(\mathbf{r}) = 0$ to $O(\Delta\tau^4)$ with regularized Eaton cores ($\epsilon \in [0.03, 0.5]$), while `airy_normalized_intensity` switches smoothly between a near-axis Taylor expansion, `bessel_j`, and Hankel's asymptotic series.
+
+### Domain of Validity
+
+Valid in the short-wavelength eikonal limit ($\lambda \ll R$) for geometric ray bundles with positive scale radii $R > 0$ and in the Fraunhofer far-field regime ($L \gg D^2 / \lambda$) with strictly positive wavelength $\lambda > 0$ and aperture dimensions.
+
+

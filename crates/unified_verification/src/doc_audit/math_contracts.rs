@@ -74,6 +74,8 @@ const EXPLICIT_MATH_TYPES: &[&str] = &[
     "SchwarzschildConnection4D",
     "SchwarzschildBlackHole",
     "SchwarzschildGeodesicBundle",
+    "HamiltonianRayTracer",
+    "EikonalRaySystem",
 ];
 
 /// Audits all `11` mathematical and solver crates present in `members` using the shared single-pass `AstCache`.

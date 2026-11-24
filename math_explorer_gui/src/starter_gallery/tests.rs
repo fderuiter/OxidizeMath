@@ -61,6 +61,9 @@ fn test_preset_json_validity() {
             .import_preset_json(PRESET_HARMONIC_OSCILLATOR)
             .unwrap();
         ode_tool.import_preset_json(PRESET_LOGISTIC_GROWTH).unwrap();
+        ode_tool
+            .import_preset_json(PRESET_VAN_DER_POL_PHASE_PORTRAIT)
+            .unwrap();
     }
 
     #[cfg(feature = "biology")]
@@ -93,15 +96,15 @@ fn test_preset_json_validity() {
 #[test]
 fn test_all_registered_tools_have_starter_presets() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert_eq!(tools.len(), 102, "Expected 102 registered tools");
+    assert_eq!(tools.len(), 104, "Expected 104 registered tools");
 
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
     assert_eq!(
         presets.len(),
-        181,
-        "Expected 181 registered starter presets"
+        190,
+        "Expected 190 registered starter presets"
     );
 
     for tool in &tools {
@@ -290,8 +293,8 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
         .collect();
     assert_eq!(
         presets.len(),
-        181,
-        "Expected 181 StarterPresetMetadata entries"
+        190,
+        "Expected 190 StarterPresetMetadata entries"
     );
 
     for preset in presets {
@@ -324,8 +327,8 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
         .collect();
     assert_eq!(
         tools.len(),
-        102,
-        "Expected 102 InteractiveTool registrations"
+        104,
+        "Expected 104 InteractiveTool registrations"
     );
 
     for tool_meta in tools {
