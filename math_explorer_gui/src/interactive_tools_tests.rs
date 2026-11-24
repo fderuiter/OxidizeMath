@@ -31,6 +31,9 @@ mod tests {
             );
             check_one::<crate::tabs::financial_math::market_devig::MarketDeviggingTool>(ctx);
             check_one::<crate::tabs::financial_math::market_execution::MarketExecutionTool>(ctx);
+            check_one::<crate::tabs::financial_math::monte_carlo_workbench::MonteCarloWorkbenchTool>(
+                ctx,
+            );
             check_one::<crate::tabs::graph_theory::network_metrics::NetworkMetricsTool>(ctx);
             check_one::<crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool>(ctx);
             check_one::<crate::tabs::geometry_topology::hyperbolic_geometry::HyperbolicGeometryTool>(

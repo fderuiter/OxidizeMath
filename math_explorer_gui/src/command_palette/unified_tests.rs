@@ -122,3 +122,40 @@ fn test_word_boundary_search_matches_scientific_terms_and_rejects_noise() {
     assert!(fuzzy_match_score("Quantum Spin Visualizer", "qspin").is_none());
     assert!(fuzzy_match_score("Layout: Split Horizontal", "lsphz").is_none());
 }
+
+#[test]
+fn test_explore_catalog_alias_shortcut_and_preset_tag_discovery() {
+    let tabs = crate::tabs::instantiate_tabs();
+    let palette = CommandPalette {
+        query: "explore catalog".to_string(),
+        ..Default::default()
+    };
+    let catalog_items = palette.filter_items(&tabs);
+    let expected_shortcut = if cfg!(target_os = "macos") {
+        "Cmd+Shift+G"
+    } else {
+        "Ctrl+Shift+G"
+    };
+    assert!(catalog_items.iter().take(4).any(|item| matches!(
+        item,
+        PaletteItem::Command {
+            action: PaletteAction::OpenStarterGallery,
+            shortcut: Some(sc),
+            ..
+        } if sc == expected_shortcut
+    )));
+
+    #[cfg(feature = "epidemiology")]
+    {
+        let mut palette = palette;
+        palette.query = "kermack".to_string();
+        let kermack_items = palette.filter_items(&tabs);
+        assert!(kermack_items
+            .iter()
+            .any(|item| matches!(item, PaletteItem::Tool { name, .. } if *name == "SIR Model")));
+        assert!(kermack_items.iter().any(|item| matches!(
+            item,
+            PaletteItem::Preset { preset, .. } if preset.domain == "epidemiology"
+        )));
+    }
+}

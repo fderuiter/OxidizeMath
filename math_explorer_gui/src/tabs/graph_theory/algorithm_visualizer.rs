@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::shared_topology::CompactTopologyState;
+use crate::app::TopologySource;
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use eframe::egui::Pos2;
@@ -46,6 +47,8 @@ pub(crate) struct AlgorithmVisualizerState {
     pub(crate) playback_speed: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) custom_topology: Option<CompactTopologyState>,
+    #[serde(default, skip_serializing_if = "TopologySource::is_default")]
+    pub(crate) topology_source: TopologySource,
 }
 
 /// Interactive stepped visualizer for shortest-path predecessor trees, `s-t` min-cuts, and MSTs.
@@ -58,7 +61,10 @@ pub struct AlgorithmVisualizerTool {
     is_custom_topology: bool,
 
     selected_algorithm: Algorithm,
+    pub topology_source: TopologySource,
+    synced_bus_revision: Option<u64>,
     start_node: Option<usize>,
+    local_start_node: Option<usize>,
     sink_node: Option<usize>,
     focused_node: usize,
 
@@ -87,7 +93,10 @@ impl Default for AlgorithmVisualizerTool {
             directed: false,
             is_custom_topology: false,
             selected_algorithm: Algorithm::Dijkstra,
+            topology_source: TopologySource::SharedBus,
+            synced_bus_revision: None,
             start_node: None,
+            local_start_node: Some(0),
             sink_node: None,
             focused_node: 0,
             animation_step: 0,
@@ -221,7 +230,6 @@ impl AlgorithmVisualizerTool {
         self.edges.clear();
         self.directed = false;
         self.is_custom_topology = false;
-
         let rows = 4;
         let cols = 4;
         let spacing = 80.0;
@@ -254,9 +262,23 @@ impl AlgorithmVisualizerTool {
                 }
             }
         }
-        self.start_node = Some(0);
+        if self.synced_bus_revision.is_none() {
+            self.start_node = self.local_start_node;
+        }
+        if self
+            .start_node
+            .is_none_or(|id| !self.node_indices.contains_key(&id))
+        {
+            self.start_node = Some(0);
+            self.local_start_node = Some(0);
+            self.focused_node = 0;
+        } else if let Some(id) = self.start_node {
+            self.focused_node = id;
+        }
         self.sink_node = Some(15);
-        self.focused_node = 0;
+        if self.sink_node == self.start_node {
+            self.sink_node = self.effective_sink_node(self.start_node);
+        }
         self.run_algorithm();
     }
 
@@ -325,6 +347,17 @@ impl InteractiveTool for AlgorithmVisualizerTool {
     fn domain(&self) -> &'static str {
         "graph_theory"
     }
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        vec![
+            ("node_count", self.node_positions.len() as f64),
+            ("edge_count", self.edges.len() as f64),
+            ("visited_count", self.visit_order.len() as f64),
+            (
+                "synced_bus_revision",
+                self.synced_bus_revision.unwrap_or(0) as f64,
+            ),
+        ]
+    }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::plot()
     }
@@ -351,19 +384,24 @@ impl InteractiveTool for AlgorithmVisualizerTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let include_sink =
-            self.selected_algorithm == Algorithm::MaxFlowMinCut || self.is_custom_topology;
-        let custom_topology = self
-            .is_custom_topology
+        let on_bus = self.synced_bus_revision.is_some();
+        let include_sink = !on_bus
+            && (self.selected_algorithm == Algorithm::MaxFlowMinCut || self.is_custom_topology);
+        let custom_topology = (!on_bus && self.is_custom_topology)
             .then(|| self.export_shared_topology().to_compact_state());
         serde_json::to_string(&AlgorithmVisualizerState {
             selected_algorithm: self.selected_algorithm,
-            start_node: self.start_node,
+            start_node: if on_bus {
+                self.local_start_node
+            } else {
+                self.start_node
+            },
             sink_node: include_sink
                 .then(|| self.effective_sink_node(self.start_node))
                 .flatten(),
             playback_speed: self.playback_speed,
             custom_topology,
+            topology_source: self.topology_source,
         })
         .ok()
     }
@@ -379,8 +417,9 @@ impl InteractiveTool for AlgorithmVisualizerTool {
         }
         if let Some(compact) = &loaded.custom_topology {
             compact.validate()?;
+            self.synced_bus_revision = None;
             self.load_compact_topology(compact);
-        } else if self.is_custom_topology {
+        } else if self.is_custom_topology || self.synced_bus_revision.take().is_some() {
             self.build_sample_graph();
         }
         if let Some(id) = loaded.start_node {
@@ -394,7 +433,9 @@ impl InteractiveTool for AlgorithmVisualizerTool {
             }
         }
         self.selected_algorithm = loaded.selected_algorithm;
+        self.topology_source = loaded.topology_source;
         self.start_node = loaded.start_node;
+        self.local_start_node = loaded.start_node;
         if let Some(id) = loaded.start_node {
             self.focused_node = id;
         }
@@ -409,6 +450,7 @@ impl InteractiveTool for AlgorithmVisualizerTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.sync_shared_topology(&ctx);
         self.update_animation(&ctx);
         self.render_controls(ui);
         self.render_canvas(ui);

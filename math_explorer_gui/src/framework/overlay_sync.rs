@@ -3,11 +3,17 @@
 use super::{InteractiveTool, SimulationFramework};
 use eframe::egui;
 
+/// Compile-time inventory registration metadata for an [`InteractiveTool`] implementation.
 pub struct ToolMetadata {
+    /// Stable tool identifier used in URLs, presets, and `#[register_tool]` inventory entries.
     pub id: &'static str,
+    /// Human-readable display title shown in the sub-tool picker and command palette.
     pub display_name: &'static str,
+    /// Parent domain tab title owning this interactive tool.
     pub domain: &'static str,
+    /// Searchable domain and topic keywords used by the command palette and gallery.
     pub tags: &'static [&'static str],
+    /// Zero-argument constructor creating a default instance of the tool.
     pub build: fn() -> Box<dyn InteractiveTool>,
 }
 
@@ -333,6 +339,7 @@ impl SimulationFramework {
             step_counter: 0,
             branch_engine: super::CounterfactualBranchEngine::default(),
             start_time: crate::web_io::PlatformInstant::now(),
+            audio_controller: crate::audio::AudioEngineController::new(),
             challenge_hud: super::ChallengeHudState::default(),
             active_challenge: None,
             challenge_was_passed: false,
@@ -367,6 +374,7 @@ fn default_tool_priority(domain: &str, id: &str) -> u8 {
         | ("elliptic_curves", "WeierstrassPlaygroundTool")
         | ("clinical_trials", "PharmacokineticsTool")
         | ("epidemiology", "SirTool")
+        | ("biochemical", "BiochemicalDynamicsTool")
         | ("ai", "LossLandscapeTool") => 0,
         _ => 1,
     }

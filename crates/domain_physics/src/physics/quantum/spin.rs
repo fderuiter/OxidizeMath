@@ -114,6 +114,9 @@ mod tests {
         }
 
         let mut scratch = QuantumState::spin_zero();
+        let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let (final_norm, _) = VerifiedEngine::run_verified(|| {
             for k in 0..1_000usize {
                 let th = ((k % 180) as f64) * (PI / 180.0);

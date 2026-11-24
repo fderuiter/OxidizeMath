@@ -1,14 +1,13 @@
-//! Context-scoped one-click landmark handoffs and `PaneDataflowBus` payload conversions.
+//! Workspace-scoped 3D chaotic landmark handoff, live stream, and `PaneDataflowBus`
+//! payload adapters backed by [`crate::app::SharedSimulationBus`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::MAX_CHAOS_LANDMARKS;
 use crate::app::dataflow_bus::{LandmarkCloud3DPayload, ScalarField2DPayload};
+use crate::app::{SharedPointCloud3D, SharedSimulationBus};
 use eframe::egui;
 use math_explorer::pure_math::statistics::tda::{farthest_point_landmarks, Point3D};
-
-const OPEN_VR_REQUEST_ID: &str = "OPEN_VIETORIS_RIPS_HANDOFF";
-const CHAOS_HANDOFF_PAYLOAD_ID: &str = "CHAOS_LANDMARK_HANDOFF_PAYLOAD";
 
 /// Payload transferring up to `MAX_CHAOS_LANDMARKS` 3D chaotic landmarks and
 /// Lorenz system parameters from `AttractorPlotter` to `VietorisRipsTool`.
@@ -27,14 +26,45 @@ pub struct ChaosLandmarkHandoff {
 }
 
 impl ChaosLandmarkHandoff {
+    /// Converts an immutable [`SharedPointCloud3D`] frame from [`SharedSimulationBus`] into [`Self`].
+    #[must_use]
+    pub fn from_shared_cloud(cloud: &SharedPointCloud3D) -> Self {
+        Self {
+            points: cloud
+                .points
+                .iter()
+                .map(|&[x, y, z]| Point3D::new(x, y, z))
+                .collect(),
+            sigma: cloud.sigma,
+            rho: cloud.rho,
+            beta: cloud.beta,
+            dt: cloud.dt,
+        }
+    }
+
+    /// Converts [`Self`] landmark coordinates into `[x, y, z]` triples for [`SharedSimulationBus`].
+    #[cfg(any(feature = "physics", test))]
+    #[must_use]
+    pub fn raw_points(&self) -> Vec<[f64; 3]> {
+        self.points.iter().map(|p| [p.x, p.y, p.z]).collect()
+    }
+
     /// Converts this handoff into a sanitized [`LandmarkCloud3DPayload`] for [`crate::app::dataflow_bus::PaneDataflowBus`].
     #[cfg(feature = "physics")]
+    #[must_use]
     pub fn to_bus_payload(&self, revision: u64) -> LandmarkCloud3DPayload {
-        let raw: Vec<[f64; 3]> = self.points.iter().map(|p| [p.x, p.y, p.z]).collect();
-        LandmarkCloud3DPayload::sanitized(revision, raw, self.sigma, self.rho, self.beta, self.dt)
+        LandmarkCloud3DPayload::sanitized(
+            revision,
+            self.raw_points(),
+            self.sigma,
+            self.rho,
+            self.beta,
+            self.dt,
+        )
     }
 
     /// Reconstructs a [`ChaosLandmarkHandoff`] from an upstream [`LandmarkCloud3DPayload`].
+    #[must_use]
     pub fn from_bus_payload(payload: &LandmarkCloud3DPayload) -> Self {
         let points = payload
             .points
@@ -51,34 +81,64 @@ impl ChaosLandmarkHandoff {
     }
 }
 
-/// Queues a one-click 3D landmark handoff inside `ctx` without process-global statics.
+/// Queues a one-click 3D landmark handoff on the workspace [`SharedSimulationBus`] attached to `ctx`.
 #[cfg(any(feature = "physics", test))]
 pub fn submit_chaos_landmark_handoff(ctx: &egui::Context, handoff: ChaosLandmarkHandoff) {
-    ctx.data_mut(|d| {
-        d.insert_temp(egui::Id::new(CHAOS_HANDOFF_PAYLOAD_ID), handoff);
-    });
+    let bus = SharedSimulationBus::from_context_or_insert(ctx);
+    let _ = bus.submit_vr_handoff(
+        handoff.raw_points(),
+        handoff.sigma,
+        handoff.rho,
+        handoff.beta,
+        handoff.dt,
+        false,
+    );
 }
 
-/// Drains any pending one-click 3D landmark handoff queued in `ctx`.
+/// Drains any pending one-click 3D landmark handoff queued on `ctx`'s [`SharedSimulationBus`].
 pub fn take_chaos_landmark_handoff(ctx: &egui::Context) -> Option<ChaosLandmarkHandoff> {
-    ctx.data_mut(|d| d.remove_temp::<ChaosLandmarkHandoff>(egui::Id::new(CHAOS_HANDOFF_PAYLOAD_ID)))
+    let bus = SharedSimulationBus::from_context(ctx)?;
+    let cloud = bus.take_vr_handoff()?;
+    Some(ChaosLandmarkHandoff::from_shared_cloud(&cloud))
 }
 
-/// Signals `MathExplorerApp` to focus the `Geometry & Topology` tab and select `VietorisRipsTool`.
+/// Publishes the latest live 3D landmarks onto `ctx`'s [`SharedSimulationBus`].
+#[cfg(all(test, feature = "physics"))]
+pub fn publish_live_attractor_landmarks(ctx: &egui::Context, handoff: ChaosLandmarkHandoff) {
+    let bus = SharedSimulationBus::from_context_or_insert(ctx);
+    let _ = bus.publish_point_cloud_3d(
+        handoff.raw_points(),
+        handoff.sigma,
+        handoff.rho,
+        handoff.beta,
+        handoff.dt,
+    );
+}
+
+/// Reads a newer live landmark frame from `ctx`'s [`SharedSimulationBus`] if `revision > last_seen_seq`.
+pub fn poll_live_attractor_landmarks(
+    ctx: &egui::Context,
+    last_seen_seq: u64,
+) -> Option<(u64, ChaosLandmarkHandoff)> {
+    let bus = SharedSimulationBus::from_context(ctx)?;
+    let cloud = bus.latest_point_cloud_3d_since(last_seen_seq)?;
+    Some((
+        cloud.revision,
+        ChaosLandmarkHandoff::from_shared_cloud(&cloud),
+    ))
+}
+
+/// Signals `MathExplorerApp` on `ctx` to focus `Geometry & Topology` and select `VietorisRipsTool`.
 #[cfg(feature = "physics")]
 pub fn request_open_vietoris_rips(ctx: &egui::Context) {
-    ctx.data_mut(|d| {
-        d.insert_temp(egui::Id::new(OPEN_VR_REQUEST_ID), true);
-    });
+    let bus = SharedSimulationBus::from_context_or_insert(ctx);
+    bus.request_open_vietoris_rips();
     ctx.request_repaint();
 }
 
-/// Consumes any pending `VietorisRipsTool` cross-tab navigation request.
+/// Consumes any pending `VietorisRipsTool` cross-tab navigation request on `ctx`.
 pub fn take_open_vietoris_rips_request(ctx: &egui::Context) -> bool {
-    ctx.data_mut(|d| {
-        d.remove_temp::<bool>(egui::Id::new(OPEN_VR_REQUEST_ID))
-            .unwrap_or(false)
-    })
+    SharedSimulationBus::from_context(ctx).is_some_and(|bus| bus.take_open_vietoris_rips_request())
 }
 
 /// Extracts up to `max_landmarks` 3D heightfield landmarks from an upstream 2D scalar field.
