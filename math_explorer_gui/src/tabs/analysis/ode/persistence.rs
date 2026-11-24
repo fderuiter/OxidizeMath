@@ -395,6 +395,13 @@ impl OdeSolverTool {
         validate_loaded_state(&s)?;
         self.apply_deserialized_ode_state(s, preserve_snapshots);
         self.recalculate();
+        if let Some(err) = self.active_custom_formula_error() {
+            let msg = format!(
+                "Invalid OdeSolverTool custom formula: {err}. Simplify or fix the expression and retry."
+            );
+            crate::accessibility::announce_status_with_priority(&msg, "assertive");
+            return Err(msg);
+        }
         Ok(())
     }
 

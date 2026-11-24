@@ -11,10 +11,13 @@ pub const KB: f64 = 1.380649e-23;
 pub mod dynamics;
 #[allow(missing_docs)]
 pub mod ensembles;
+pub mod graph_ising;
 pub mod ising;
 #[allow(missing_docs)]
 pub mod quantum_stats;
 pub mod sandpile;
+
+pub use graph_ising::GraphSpinSystem;
 
 // [cite:graph_parameters_rust]
 
