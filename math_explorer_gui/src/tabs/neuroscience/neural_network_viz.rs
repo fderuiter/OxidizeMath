@@ -1,13 +1,17 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[path = "neural_network_viz/bus_sync.rs"]
+mod bus_sync;
 #[path = "kuramoto_ui.rs"]
 mod kuramoto_ui;
+#[path = "neural_network_viz/presets.rs"]
+mod presets;
 #[path = "neural_network_viz/topology.rs"]
 mod topology;
 #[path = "neural_network_viz/ui.rs"]
 mod ui;
 
-use crate::app::dataflow_bus::MAX_DATAFLOW_GRAPH_NODES;
+use crate::app::data_bus::SharedGraph;
 use crate::app::{TopologySource, MAX_NEURAL_SHARED_NODES};
 use crate::framework::InteractiveTool;
 use eframe::egui;
@@ -16,6 +20,7 @@ use math_explorer::biology::neuroscience::{
 };
 use std::collections::VecDeque;
 use std::f32::consts::TAU;
+use std::sync::Arc;
 
 const SYNAPTIC_GAIN: f64 = 50.0;
 pub(crate) const MAX_ORDER_HISTORY: usize = 200;
@@ -32,7 +37,7 @@ pub enum NeuralDynamicsMode {
 }
 
 impl NeuralDynamicsMode {
-    const fn is_default(&self) -> bool {
+    pub(crate) const fn is_default(&self) -> bool {
         matches!(self, Self::HodgkinHuxley)
     }
 }
@@ -56,7 +61,12 @@ pub struct NeuralNetworkVizTool {
     pub(crate) order_history: VecDeque<[f64; 2]>,
     pub(crate) is_running: bool,
     pub(crate) dt: f64,
-    prev_ring_v: [f64; 5],
+    pub(crate) follow_workspace_graph: bool,
+    pub(crate) applied_bus_revision: u64,
+    pub(super) active_shared_graph: Option<Arc<SharedGraph>>,
+    pub(super) seeded_graph: Option<SharedGraph>,
+    pub(super) pending_seed_publish: bool,
+    pub(super) prev_ring_v: [f64; 5],
     pub(crate) sonification: crate::audio::SonificationFrame,
     pub(crate) last_upstream_graph_rev: u64,
     pub(crate) upstream_linked: bool,
@@ -107,6 +117,11 @@ impl Default for NeuralNetworkVizTool {
             order_history,
             is_running: false,
             dt: 0.05,
+            follow_workspace_graph: true,
+            applied_bus_revision: 0,
+            active_shared_graph: None,
+            seeded_graph: None,
+            pending_seed_publish: false,
             prev_ring_v: [-65.0; 5],
             sonification: crate::audio::SonificationFrame::silent(),
             last_upstream_graph_rev: 0,
@@ -163,14 +178,6 @@ impl NeuralNetworkVizTool {
         self.csr_weights = cw;
     }
 
-    pub(crate) fn reset(&mut self) {
-        let src = self.topology_source;
-        let keep_mode = self.mode;
-        *self = Self::default();
-        self.topology_source = src;
-        self.mode = keep_mode;
-    }
-
     pub(crate) fn step_once(&mut self) {
         self.is_running = false;
         self.step();
@@ -209,24 +216,6 @@ impl NeuralNetworkVizTool {
         self.prev_ring_v = before;
         self.sonification = crate::audio::mappings::neural_ring_frame(&after, &before, 0.0);
     }
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct NeuralNetworkVizState {
-    external_input: Vec<f64>,
-    #[serde(default)]
-    weights: Vec<Vec<f64>>,
-    dt: f64,
-    is_running: bool,
-    #[serde(default, skip_serializing_if = "TopologySource::is_default")]
-    topology_source: TopologySource,
-    #[serde(default, skip_serializing_if = "NeuralDynamicsMode::is_default")]
-    mode: NeuralDynamicsMode,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    kuramoto_coupling: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    frequency_spread: Option<f64>,
 }
 
 impl InteractiveTool for NeuralNetworkVizTool {
@@ -272,85 +261,11 @@ impl InteractiveTool for NeuralNetworkVizTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let on_external = self.synced_bus_revision.is_some() || self.upstream_linked;
-        let include_kuramoto = self.mode == NeuralDynamicsMode::Kuramoto;
-        serde_json::to_string(&NeuralNetworkVizState {
-            external_input: if on_external && !self.local_preset_inputs.is_empty() {
-                self.local_preset_inputs.clone()
-            } else {
-                self.external_input.clone()
-            },
-            weights: if on_external && !self.local_preset_weights.is_empty() {
-                self.local_preset_weights.clone()
-            } else {
-                self.weights.clone()
-            },
-            dt: self.dt,
-            is_running: self.is_running,
-            topology_source: self.topology_source,
-            mode: self.mode,
-            kuramoto_coupling: include_kuramoto.then(|| self.kuramoto.coupling()),
-            frequency_spread: include_kuramoto.then(|| self.kuramoto.frequency_spread()),
-        })
-        .ok()
+        self.save_nn_state()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
-        let s: NeuralNetworkVizState = serde_json::from_str(state)
-            .map_err(|e| format!("Invalid neural network viz state: {e}"))?;
-        let n = s.external_input.len();
-        let weights_valid = s.weights.is_empty()
-            || (s.weights.len() == n
-                && s.weights
-                    .iter()
-                    .all(|row| row.len() == n && row.iter().all(|w| w.is_finite())));
-        if !(1..=MAX_DATAFLOW_GRAPH_NODES).contains(&n)
-            || !weights_valid
-            || !s
-                .external_input
-                .iter()
-                .all(|v| v.is_finite() && (-10.0..=50.0).contains(v))
-            || !s.dt.is_finite()
-            || !(0.001..=0.5).contains(&s.dt)
-        {
-            return Err("NeuralNetworkViz parameters or dimensions out of bounds".into());
-        }
-        self.synced_bus_revision = None;
-        self.clamped_source_nodes = None;
-        self.last_upstream_graph_rev = 0;
-        self.upstream_linked = false;
-        self.topology_source = s.topology_source;
-        if s.weights.is_empty() && n == 5 {
-            self.build_default_ring();
-        } else {
-            let radius = 100.0;
-            self.neurons = (0..n).map(|_| HodgkinHuxleyNeuron::new(-65.0)).collect();
-            self.positions = (0..n)
-                .map(|i| {
-                    let angle = i as f32 * TAU / n as f32;
-                    [angle.cos() * radius, angle.sin() * radius]
-                })
-                .collect();
-            self.weights = if s.weights.is_empty() {
-                vec![vec![0.0; n]; n]
-            } else {
-                s.weights
-            };
-        }
-        self.external_input = s.external_input;
-        self.local_preset_inputs = self.external_input.clone();
-        self.local_preset_weights = self.weights.clone();
-        self.rebuild_csr_from_dense();
-        self.dt = s.dt;
-        self.is_running = s.is_running;
-        self.mode = s.mode;
-        let spread = s.frequency_spread.unwrap_or(0.6);
-        self.sync_kuramoto_from_weight_matrix(spread);
-        if let Some(k) = s.kuramoto_coupling {
-            self.kuramoto.set_coupling(k);
-        }
-        self.bump_revision();
-        Ok(())
+        self.load_nn_state(state)
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
@@ -358,6 +273,9 @@ impl InteractiveTool for NeuralNetworkVizTool {
         self.poll_upstream_graph(&ctx);
         if !self.upstream_linked {
             self.sync_shared_topology(&ctx);
+            if !crate::app::SharedSimulationBus::is_link_topology_enabled(&ctx) {
+                self.sync_from_bus(&ctx);
+            }
         }
         if self.is_running {
             let substeps = if self.mode == NeuralDynamicsMode::Kuramoto {
@@ -371,6 +289,10 @@ impl InteractiveTool for NeuralNetworkVizTool {
             ctx.request_repaint();
         }
         self.draw_controls(ui);
+        if !self.upstream_linked && !crate::app::SharedSimulationBus::is_link_topology_enabled(&ctx)
+        {
+            self.sync_from_bus(&ctx);
+        }
         self.draw_network(ui);
     }
 }
@@ -417,39 +339,5 @@ impl scientific_metadata::theory::TheoryDescribable for NeuralNetworkVizTool {
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()
-    }
-}
-
-const STARTER_PRESET_JSON: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Spiking Neural Circuit",
-    "domain": "neuroscience",
-    "timestamp": "2026-11-16T00:00:00Z"
-  },
-  "config": {
-    "external_input": [15.0, 0.0, 0.0, 0.0, 0.0],
-    "weights": [
-      [0.0, -1.0, 0.0, 0.0, 2.0],
-      [2.0, 0.0, -1.0, 0.0, 0.0],
-      [0.0, 2.0, 0.0, -1.0, 0.0],
-      [0.0, 0.0, 2.0, 0.0, -1.0],
-      [-1.0, 0.0, 0.0, 2.0, 0.0]
-    ],
-    "dt": 0.05,
-    "is_running": false
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "neural_network_viz_starter",
-        title: "Spiking Neural Circuit",
-        description: "Coupled 5-neuron Hodgkin-Huxley ring circuit with excitatory and inhibitory synaptic currents.",
-        category: "Neural Circuits",
-        icon: "⚡",
-        domain: "neuroscience",
-        tool_name: Some("NeuralNetworkVizTool"),
-        preset_generator: || STARTER_PRESET_JSON,
     }
 }

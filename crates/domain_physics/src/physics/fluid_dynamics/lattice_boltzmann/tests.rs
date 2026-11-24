@@ -76,4 +76,51 @@ mod tests {
             (solver.collision_model.tau - 0.6).abs() < math_commons::registry::TOLERANCE_STANDARD
         );
     }
+
+    #[test]
+    fn test_row_major_velocity_and_obstacle_projection_zero_alloc() {
+        use crate::physics::fluid_dynamics::lattice_boltzmann::{
+            advance_wind_tunnel_step, project_obstacles_row_major_into,
+            project_velocity_row_major_into, sync_obstacles_row_major,
+        };
+        use math_commons::math_kernel::types::flatten_2d_index;
+
+        let (width, height) = (12, 7);
+        let mut solver = LatticeBoltzmannD2Q9::new(width, height, 0.65);
+        let mut row_obs = vec![false; width * height];
+        row_obs[flatten_2d_index(5, 3, width)] = true;
+
+        let mut out_ux = vec![0.0; width * height];
+        let mut out_uy = vec![0.0; width * height];
+        let mut out_obs = vec![false; width * height];
+
+        let ((), _metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+            sync_obstacles_row_major(&mut solver, &row_obs);
+            for _ in 0..8 {
+                advance_wind_tunnel_step(&mut solver, 0.1);
+            }
+            project_velocity_row_major_into(&solver, &mut out_ux, &mut out_uy);
+            project_obstacles_row_major_into(&solver, &mut out_obs);
+        });
+
+        assert!(solver.is_obstacle(5, 3));
+        assert_eq!(out_obs, row_obs);
+        assert_eq!(out_ux[flatten_2d_index(5, 3, width)], 0.0);
+        assert_eq!(out_uy[flatten_2d_index(5, 3, width)], 0.0);
+
+        for y in 0..height {
+            for x in 0..width {
+                let idx = flatten_2d_index(x, y, width);
+                let (vx, vy) = solver.get_velocity(x, y);
+                assert!((out_ux[idx] - vx).abs() < 1e-12);
+                assert!((out_uy[idx] - vy).abs() < 1e-12);
+            }
+        }
+
+        // Erasing obstacle restores rest equilibrium safely
+        row_obs[flatten_2d_index(5, 3, width)] = false;
+        sync_obstacles_row_major(&mut solver, &row_obs);
+        assert!(!solver.is_obstacle(5, 3));
+        assert!((solver.get_density(5, 3) - 1.0).abs() < 1e-12);
+    }
 }

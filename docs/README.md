@@ -66,6 +66,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Counterfactual Shadow Twin Branching](adr/20261123-counterfactual-shadow-twin-branching.md)
 - [ADR 20261123: Coupled Electrochemical Battery Aging, Zero-Allocation CSV Calibration, and Multi-Segment Lifetime Exports](adr/20261123-coupled-battery-aging-and-lifetime-exports.md)
 - [ADR 20261123: Coupled Chaos Parameter Atlases and Zero-Allocation Lyapunov Kernels](adr/20261123-coupled-chaos-parameter-atlases-and-zero-alloc-metrics.md)
+- [ADR 20261123: Coupled Lattice Boltzmann D2Q9 and First-Order Upwind Advection Morphogenesis Studio](adr/20261123-coupled-lbm-upwind-advection-morphogenesis.md)
 - [ADR 20261123: Zero-Allocation CSR Spatial Grid and Cortical Thickness Workspace](adr/20261123-csr-spatial-grid-thickness-workspace.md)
 - [ADR 20261123: Elliptic Curve Discriminant Atlas, Singular Cubic Rendering, and Hasse-Weil Challenges](adr/20261123-elliptic-curve-atlas-singular-loci-and-challenges.md)
 - [ADR 20261123: Enforce AST Complexity Limits and Synchronous Solver Instruction Budgets](adr/20261123-enforce-ast-limits-and-solver-budgets.md)
@@ -127,6 +128,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Quantum Tunneling and 2D Chladni Resonance Parameter Atlases](adr/20261123-wave-and-chladni-resonance-atlases.md)
 - [ADR 20261123: Pre-Allocated 2D FDTD Wave Solver, Hamiltonian Ray Caustics, and Optics Playground](adr/20261123-wave-optics-fdtd-and-ray-caustics.md)
 - [ADR 20261123: Composite Win Ratio Workbench and Clinical Trial Biostatistics Upgrades](adr/20261123-win-ratio-workbench-and-clinical-trial-upgrades.md)
+- [ADR 20261123: `WorkspaceDataBus` Cross-Domain Graph Coupling and Zero-Allocation Graph Solvers](adr/20261123-workspace-data-bus-cross-domain-graph-coupling.md)
 - [ADR 20261123: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping](adr/20261123-workspace-release-version-guards-and-wix-mapping.md)
 - [ADR 20261123: Add xtask Smoke Gates and Zero-Allocation Benchmark Checks](adr/20261123-xtask-smoke-gates-and-zero-allocation-bench-checks.md)
 

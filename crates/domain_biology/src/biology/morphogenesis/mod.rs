@@ -65,6 +65,7 @@
 //! println!("Concentration of Activator at center: {:.4}", u_center);
 //! ```
 
+pub mod advection;
 /// Local N-species autocatalytic reaction kinetics (Schnakenberg and Gray-Scott).
 pub mod reaction;
 /// Fused forward-Euler and generic ODE-adapter Turing time-stepping strategies.

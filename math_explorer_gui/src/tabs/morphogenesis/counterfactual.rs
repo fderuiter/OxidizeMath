@@ -120,6 +120,10 @@ pub struct MorphogenesisSnapshotData {
     pub u_a: Option<Vec<f64>>,
     /// Optional row-major `ReactionCellRole` byte grid when any cell is non-`Free`.
     pub mask_roles: Vec<u8>,
+    /// Peak horizontal Lattice Boltzmann speed `|ux|_max` on the worker grid.
+    pub max_abs_ux: f64,
+    /// Peak vertical Lattice Boltzmann speed `|uy|_max` on the worker grid.
+    pub max_abs_uy: f64,
     /// Current step index `k`.
     pub step_count: usize,
     /// Live spatial divergence snapshot when forked.

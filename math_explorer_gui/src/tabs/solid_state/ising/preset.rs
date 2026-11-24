@@ -84,6 +84,14 @@ fn is_zero_f64(val: &f64) -> bool {
     val.abs() <= f64::EPSILON
 }
 
+const fn default_true() -> bool {
+    true
+}
+
+fn is_true(val: &bool) -> bool {
+    *val
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct IsingState {
@@ -123,6 +131,12 @@ pub(crate) struct IsingState {
         skip_serializing_if = "crate::app::TopologySource::is_default"
     )]
     pub(crate) topology_source: crate::app::TopologySource,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub(crate) follow_workspace_graph: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) seeded_graph: Option<crate::app::data_bus::SharedGraph>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) frozen_graph: Option<crate::app::data_bus::SharedGraph>,
 }
 
 impl IsingState {
@@ -152,6 +166,15 @@ impl IsingState {
         if !valid {
             return Err("Ising parameters out of valid bounds".to_string());
         }
+        for g in [&self.seeded_graph, &self.frozen_graph]
+            .into_iter()
+            .flatten()
+        {
+            g.validate(
+                crate::app::data_bus::SESSION_MAX_BUS_NODES,
+                crate::app::data_bus::SESSION_MAX_BUS_EDGES,
+            )?;
+        }
         if let Some(ref rle) = self.pinned_rle {
             let _ =
                 crate::framework::decode_u8_grid(rle, DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, 2)?;
@@ -163,6 +186,9 @@ impl IsingState {
 impl IsingModelTool {
     pub(super) fn serialize_ising_state(&self) -> Option<String> {
         let (xk, yk) = self.atlas.axis_keys();
+        let frozen_graph = (!self.graph_mode.follow_workspace_graph)
+            .then(|| self.graph_mode.active_graph.as_ref().map(|g| (**g).clone()))
+            .flatten();
         let pinned_rle = self
             .params
             .read()
@@ -190,6 +216,9 @@ impl IsingModelTool {
             steps_per_frame: self.steps_per_frame,
             pinned_rle,
             topology_source: self.topology_source,
+            follow_workspace_graph: self.graph_mode.follow_workspace_graph,
+            seeded_graph: self.graph_mode.seeded_graph.clone(),
+            frozen_graph,
         })
         .ok()
     }
@@ -225,8 +254,8 @@ impl IsingModelTool {
     }
 
     pub(super) fn deserialize_ising_state(&mut self, state: &str) -> Result<(), String> {
-        use crate::async_sim::{SimCommand, SimWorkerState};
         use crate::framework::{decode_u8_grid, InteractiveTool};
+        use std::sync::Arc;
         self.state_bounds().validate_json(state)?;
         let s: IsingState =
             serde_json::from_str(state).map_err(|e| format!("Invalid Ising state: {e}"))?;
@@ -251,28 +280,25 @@ impl IsingModelTool {
         self.droplet_seeds = s.droplet_seeds;
         self.steps_per_frame = s.steps_per_frame;
         self.topology_source = s.topology_source;
-        self.enforce_ising_challenge_locks();
-        if self.topology_source == crate::app::TopologySource::LocalPreset {
+        self.graph_mode.follow_workspace_graph = s.follow_workspace_graph;
+        self.graph_mode.seeded_graph = s.seeded_graph.clone();
+        self.graph_mode.pending_seed_publish =
+            s.seeded_graph.is_some() && s.topology_source == crate::app::TopologySource::SharedBus;
+        if s.frozen_graph.is_some()
+            || s.seeded_graph.is_some()
+            || self.graph_mode.follow_workspace_graph
+            || self.topology_source == crate::app::TopologySource::LocalPreset
+        {
             self.detach_shared_csr_graph(false);
         }
+        self.enforce_ising_challenge_locks();
         self.apply_loaded_pins_and_seeds(s.pinned_rle, decoded_pins);
+        if let Some(g) = s.frozen_graph.or(s.seeded_graph) {
+            self.apply_shared_spin_graph(&Arc::new(g));
+        }
         self.recompute_replicator_curve();
         self.refresh_challenge_workspace();
-
-        let target_state = s.state.unwrap_or_else(|| {
-            if s.running.unwrap_or(false) {
-                SimWorkerState::Running
-            } else {
-                SimWorkerState::Ready
-            }
-        });
-        if target_state == SimWorkerState::Running {
-            if !self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Start);
-            }
-        } else if self.worker.is_running() {
-            let _ = self.worker.send_command(SimCommand::Pause);
-        }
+        self.sync_worker_target_state(s.state, s.running);
         self.stepped_pixels = None;
         self.dirty = true;
         Ok(())
