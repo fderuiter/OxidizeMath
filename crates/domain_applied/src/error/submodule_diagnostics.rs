@@ -1,6 +1,6 @@
 use crate::applied::{
     algorithms::kalman::KalmanError, clinical_trials::types::ClinicalTrialError,
-    isosurface::types::VoxelGridError,
+    isosurface::types::VoxelGridError, portfolio::PortfolioError,
 };
 use diagnostics::{Diagnostic, Severity};
 use std::collections::HashMap;
@@ -52,5 +52,17 @@ impl Diagnostic for VoxelGridError {
     #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
         error_metadata("VoxelGridError", self.to_string())
+    }
+}
+
+impl Diagnostic for PortfolioError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        error_metadata("PortfolioError", self.to_string())
     }
 }

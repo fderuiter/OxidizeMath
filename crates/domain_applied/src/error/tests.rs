@@ -41,6 +41,7 @@ fn test_applied_umbrella_variants_preserve_source_and_diagnostics() {
         KalmanError::MatrixInversionError.into(),
         LoraError::EmptyEnsemble.into(),
         PharmacokineticsError::from(AnalysisError::ConvergenceError(1.0)).into(),
+        PortfolioError::NotSymmetric.into(),
         VoxelGridError::InvalidDimensions.into(),
         sample_math_err().into(),
         AnalysisError::RootNotBracketed {

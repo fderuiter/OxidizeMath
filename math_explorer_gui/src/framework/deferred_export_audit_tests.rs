@@ -264,9 +264,11 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         audio, expected_audio,
         "Expected {expected_audio} WAV audio-capable tools"
     );
-    let expected_plot = 74 + extra + bio_extra;
+    let fin_extra = usize::from(cfg!(feature = "pure_math"))
+        + usize::from(cfg!(all(feature = "pure_math", feature = "applied")));
+    let expected_plot = 74 + extra + bio_extra + fin_extra;
     let expected_solid = 7 + extra;
-    let expected_non_shader = 88 + extra + bio_extra;
+    let expected_non_shader = 88 + extra + bio_extra + fin_extra;
     assert_eq!(
         plot, expected_plot,
         "Expected {expected_plot} Plot dataset+figure tools"
@@ -464,4 +466,35 @@ fn verify_splat_mode_ply_and_assertive_stl_obj_warnings(tool: Box<dyn Interactiv
         .as_deref()
         .expect("3DGS PLY bytes recorded");
     assert!(splat_ply.starts_with(b"ply\nformat binary_little_endian 1.0\n"));
+}
+
+#[cfg(all(feature = "pure_math", feature = "applied"))]
+#[test]
+fn test_financial_math_tools_csv_json_png_svg_exports() {
+    for id in [
+        "BetSizeCalculatorTool",
+        "BankrollGrowthTool",
+        "CorrelatedRiskScenarioTool",
+        "TailRiskDrawdownTool",
+        "MarkowitzFrontierTool",
+    ] {
+        let meta = inventory::iter::<crate::framework::ToolMetadata>
+            .into_iter()
+            .find(|m| m.id == id)
+            .unwrap_or_else(|| panic!("Missing financial_math tool {id}"));
+        verify_single_figure_tool(id, (meta.build)());
+        let mut fw = SimulationFramework::new("__audit_fin_data__");
+        fw.active_tool = Some((meta.build)());
+        run_deferred_export_frame(&mut fw, ExportFormat::Csv, true);
+        assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+        let csv = fw.export_queue.last_exported_content.as_deref();
+        assert!(
+            csv.is_some_and(|s| s.lines().count() >= 5),
+            "Short CSV {id}"
+        );
+        run_deferred_export_frame(&mut fw, ExportFormat::Json, true);
+        assert_eq!(fw.export_status_severity, ExportStatusSeverity::Success);
+        let json = fw.export_queue.last_exported_content.as_deref();
+        assert!(json.is_some_and(|s| serde_json::from_str::<serde_json::Value>(s).is_ok()));
+    }
 }

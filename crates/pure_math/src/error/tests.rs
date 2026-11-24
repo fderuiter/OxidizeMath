@@ -48,6 +48,7 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         MonteCarloError::ZeroReplicates.into(),
         NumberTheoryError::ModuloError.into(),
         OuError::InvalidTimeStep { value: 0.0 }.into(),
+        RiskError::EmptySeries.into(),
         TdaError::EmptyPointCloud.into(),
         ZipError::InvalidRate { value: -1.0 }.into(),
         AmbsError::ConversionError.into(),

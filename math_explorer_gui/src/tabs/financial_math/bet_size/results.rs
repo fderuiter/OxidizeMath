@@ -29,6 +29,7 @@ enum MarkerSlot {
 
 impl BetSizeCalculatorTool {
     pub(crate) fn recalculate(&mut self) {
+        let start = PlatformInstant::now();
         self.clear_cached_outputs();
         match self.mode {
             BetSizingMode::Binary => self.recalculate_binary(),
@@ -37,6 +38,7 @@ impl BetSizeCalculatorTool {
             BetSizingMode::MutuallyExclusive => self.recalculate_market(),
             BetSizingMode::SimultaneousSlate => self.recalculate_slate(),
         }
+        self.last_compute_ms = start.elapsed().as_secs_f64() * 1000.0;
     }
 
     fn clear_cached_outputs(&mut self) {
@@ -47,6 +49,8 @@ impl BetSizeCalculatorTool {
         self.drawdown_marker.clear();
         self.strategy_rows.clear();
         self.ev_per_unit = None;
+        self.optimal_f_star = None;
+        self.optimal_growth_rate = 0.0;
         self.lundberg_summary = None;
         self.sample_size_95 = None;
         self.clv_audit = None;
@@ -69,7 +73,11 @@ impl BetSizeCalculatorTool {
                 match s {
                     MarkerSlot::Quarter => self.quarter_marker.push(pt),
                     MarkerSlot::Half => self.half_marker.push(pt),
-                    MarkerSlot::Full => self.full_marker.push(pt),
+                    MarkerSlot::Full => {
+                        self.optimal_f_star = Some(frac);
+                        self.optimal_growth_rate = g;
+                        self.full_marker.push(pt);
+                    }
                     MarkerSlot::Drawdown => self.drawdown_marker.push(pt),
                 }
             }
@@ -351,10 +359,12 @@ impl BetSizeCalculatorTool {
         self.populate_curve(f_max, eval_ray);
         if total_f > 1e-9 {
             let (q, h) = (0.25 * total_f, 0.50 * total_f);
+            let g_full = eval_ray(total_f);
+            self.optimal_f_star = Some(total_f);
+            self.optimal_growth_rate = g_full;
             self.quarter_marker.push(PlotPoint::new(q, eval_ray(q)));
             self.half_marker.push(PlotPoint::new(h, eval_ray(h)));
-            self.full_marker
-                .push(PlotPoint::new(total_f, eval_ray(total_f)));
+            self.full_marker.push(PlotPoint::new(total_f, g_full));
         }
     }
 

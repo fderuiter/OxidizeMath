@@ -34,6 +34,9 @@ mod tests {
             check_one::<crate::tabs::financial_math::monte_carlo_workbench::MonteCarloWorkbenchTool>(
                 ctx,
             );
+            check_one::<crate::tabs::financial_math::tail_risk::TailRiskDrawdownTool>(ctx);
+            #[cfg(feature = "applied")]
+            check_one::<crate::tabs::financial_math::markowitz::MarkowitzFrontierTool>(ctx);
             check_one::<crate::tabs::graph_theory::network_metrics::NetworkMetricsTool>(ctx);
             check_one::<crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool>(ctx);
             check_one::<crate::tabs::geometry_topology::hyperbolic_geometry::HyperbolicGeometryTool>(
@@ -165,7 +168,6 @@ mod tests {
             let desc = theory.theory_description();
             let phonetic = theory.phonetic_description();
             let citation = theory.theory_citation();
-
             assert!(
                 !desc.trim().is_empty(),
                 "Tool {} has empty theory_description",
@@ -177,7 +179,6 @@ mod tests {
                 meta.id,
                 desc
             );
-
             assert!(
                 !phonetic.trim().is_empty(),
                 "Tool {} has empty phonetic_description",
@@ -189,7 +190,6 @@ mod tests {
                 meta.id,
                 phonetic
             );
-
             assert!(
                 !citation.trim().is_empty(),
                 "Tool {} has empty theory_citation",
@@ -201,10 +201,8 @@ mod tests {
                 "Tool {} has placeholder citation 'Uncited'",
                 meta.id
             );
-
             count += 1;
         }
-
         assert!(
             count >= 40,
             "Expected at least 40 registered tools, got {}",

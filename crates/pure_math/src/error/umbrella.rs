@@ -2,7 +2,8 @@ use super::{
     AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
     FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError, LinearAlgebraError,
     MarketPricingError, MarkovError, MatchModelError, MonteCarloError, NumberTheoryError,
-    OptimizationError, OuError, StochasticError, TdaError, TensorError, TransformError, ZipError,
+    OptimizationError, OuError, RiskError, StochasticError, TdaError, TensorError, TransformError,
+    ZipError,
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
@@ -45,6 +46,9 @@ pub enum PureMathError {
     /// Ornstein-Uhlenbeck process error.
     #[error("{0}")]
     Ou(#[from] OuError),
+    /// Statistical tail-risk, drawdown, and performance-ratio error.
+    #[error("{0}")]
+    Risk(#[from] RiskError),
     /// Topological data analysis error.
     #[error("{0}")]
     Tda(#[from] TdaError),
@@ -143,6 +147,7 @@ impl PureMathError {
             Self::MatchModel(err) => err,
             Self::NumberTheory(err) => err,
             Self::Ou(err) => err,
+            Self::Risk(err) => err,
             Self::Tda(err) => err,
             Self::Zip(err) => err,
             Self::Ambs(err) => err,

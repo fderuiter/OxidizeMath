@@ -75,11 +75,31 @@ path = "crates/02_engines/engine_linalg/src/"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
+path = "crates/domain_applied/src/applied/freesurfer/surface.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
 path = "crates/domain_applied/src/applied/freesurfer/thickness_tests.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
+path = "crates/domain_applied/tests/test_freesurfer_zero_alloc.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/domain_biology/src/biology/diffusion/manifold.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/domain_biology/src/biology/neuroscience/cortical_sheet.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
 path = "crates/domain_biology/tests/test_kuramoto_zero_alloc.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/domain_biology/tests/test_manifold_cortical_zero_alloc.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
@@ -123,6 +143,22 @@ path = "crates/pure_math/src/pure_math/differential_geometry/buckled_flow_tests.
 reason = "tests"
 
 [[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/differential_geometry/cotangent_mesh.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/differential_geometry/heat_equation.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/differential_geometry/mean_curvature_flow.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/src/pure_math/differential_geometry/operators.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
 path = "crates/pure_math/src/pure_math/elliptic_curves/singular_tests.rs"
 reason = "tests"
 
@@ -136,6 +172,10 @@ reason = "tests"
 
 [[verify_suite.opt_outs]]
 path = "crates/pure_math/tests/algorithmic_information.rs"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/pure_math/tests/test_cotangent_zero_alloc.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]

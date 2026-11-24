@@ -1,4 +1,4 @@
-//! Verifies that all 35 public error enums tested from `math_explorer::error`
+//! Verifies that all 37 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -17,8 +17,9 @@ use math_explorer::error::{
     EloError, EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError,
     Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError, IsosurfaceError,
     KellyError, LoraError, MarketPricingError, MarkovError, MatchModelError, MathError,
-    MonteCarloError, NumberTheoryError, OuError, PharmacokineticsError, RadarError, SandpileError,
-    SolidStateError, StandardModelError, StatMechError, TdaError, ZipError,
+    MonteCarloError, NumberTheoryError, OuError, PharmacokineticsError, PortfolioError, RadarError,
+    RiskError, SandpileError, SolidStateError, StandardModelError, StatMechError, TdaError,
+    ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -91,6 +92,7 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
             effective_sample_size: 1.0,
         },
     );
+    assert_readable_diagnostic("RiskError", &RiskError::InvalidConfidence { value: 1.2 });
 }
 
 #[test]
@@ -229,6 +231,7 @@ fn applied_ai_bio_climate_epi_errors_emit_readable_display_and_metadata() {
         "PharmacokineticsError",
         &PharmacokineticsError::InvalidParameter("volume".to_string()),
     );
+    assert_readable_diagnostic("PortfolioError", &PortfolioError::TooFewAssets { count: 1 });
     assert_readable_diagnostic(
         "BotanicalError",
         &BotanicalError::InvalidPrimordiaCount {

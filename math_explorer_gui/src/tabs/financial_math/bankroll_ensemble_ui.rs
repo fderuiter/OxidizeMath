@@ -1,4 +1,4 @@
-//! UI rendering helpers for [`super::BankrollEnsembleLab`].
+//! UI controls, solvency banner, percentile fan-band plot, and underwater drawdown view for [`super::BankrollEnsembleLab`].
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
@@ -6,12 +6,16 @@ use super::{
     BankrollEnsembleLab, VolatilityHypothesis, ENSEMBLE_PATH_COUNT, MAX_BARRIER_FLOOR_RATIO,
     MAX_CUSTOM_FRACTION, MIN_BARRIER_FLOOR_RATIO,
 };
-use crate::accessibility::AccessibleHoverText;
+use crate::accessibility::{
+    paint_canvas_focus_ring, register_canvas_accessibility, AccessibleHoverText,
+};
+use crate::app::SemanticPalette;
 use eframe::egui;
-use egui_plot::{Line, LineStyle, Plot};
+use eframe::egui::accesskit::Role;
+use egui_plot::{Legend, Line, LineStyle, Plot, Polygon};
 
 impl BankrollEnsembleLab {
-    /// Renders the hypothesis prompt, fraction/barrier sliders, solvency telemetry, and plot.
+    /// Renders the hypothesis prompt, sliders, solvency/tail-risk banners, fan-band plot, and underwater plot.
     pub fn show_lab_ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -32,12 +36,14 @@ impl BankrollEnsembleLab {
         self.render_metrics_banner(ui, *num_bets);
         self.render_solvency_banner(ui, *num_bets);
         self.render_ensemble_plot(ui);
+        ui.add_space(4.0);
+        self.render_underwater_plot(ui);
         let _ = self.callout_manager.render_ui(ui);
         changed
     }
 
     fn render_hypothesis_card(&mut self, ui: &mut egui::Ui) -> bool {
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        let palette = SemanticPalette::from_visuals(ui.visuals());
         ui.group(|ui| {
             ui.label(
                 egui::RichText::new(
@@ -66,7 +72,7 @@ impl BankrollEnsembleLab {
                     ("Counterintuitive Outcome:", palette.warning)
                 };
                 let detail = if shrinks {
-                    "Overbetting past 2f* makes g(f) < 0: rare jackpots inflate E[W_T] while typical bettors decay toward ruin."
+                    "Over-allocating past 2f* makes g(f) < 0: rare outliers inflate E[W_T] while 5th–95th quantile paths decay."
                 } else {
                     "When 0 < f < 2f*, g(f) > 0 so typical wealth compounds upward — yet finite drawdowns remain substantial near Full Kelly."
                 };
@@ -87,9 +93,11 @@ impl BankrollEnsembleLab {
         let mut changed = ui
             .add(
                 egui::Slider::new(&mut self.custom_fraction, 0.0..=MAX_CUSTOM_FRACTION)
-                    .text("Custom Bet Fraction (f)"),
+                    .text("Allocation Fraction (f)"),
             )
-            .accessible_hover_text("Fraction of bankroll wagered each round, clamped to 0.0..=0.95")
+            .accessible_hover_text(
+                "Fraction of capital allocated each period, clamped to 0.0..=0.95",
+            )
             .changed();
         changed |= ui
             .add(
@@ -167,7 +175,7 @@ impl BankrollEnsembleLab {
     }
 
     fn render_metrics_banner(&self, ui: &mut egui::Ui, num_bets: usize) {
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        let palette = SemanticPalette::from_visuals(ui.visuals());
         let f_star_text = self.last_f_star.map_or_else(
             || "No positive edge".to_string(),
             |fs| format!("{fs:.3} (2f* = {:.3})", 2.0 * fs),
@@ -175,10 +183,7 @@ impl BankrollEnsembleLab {
         ui.horizontal_wrapped(|ui| {
             ui.label(format!("Optimal f*: {f_star_text}"));
             ui.separator();
-            ui.label(format!(
-                "Growth Rate g(f): {:+.5}/bet",
-                self.last_growth_rate
-            ));
+            ui.label(format!("g(f): {:+.5}/step", self.last_growth_rate));
             ui.separator();
             ui.label(format!(
                 "E[W_{num_bets}]: {:.2}",
@@ -207,11 +212,26 @@ impl BankrollEnsembleLab {
                     self.last_drawdown_terminal
                 ));
             }
+            ui.separator();
+            ui.colored_label(
+                palette.warning,
+                format!(
+                    "95% VaR: {:.1}% | 95% CVaR: {:.1}%",
+                    self.last_terminal_var_95 * 100.0,
+                    self.last_terminal_cvar_95 * 100.0
+                ),
+            );
+            ui.separator();
+            ui.label(format!(
+                "Max DD: {:.1}% | Max Underwater: {} steps",
+                self.last_max_drawdown * 100.0,
+                self.last_underwater_duration
+            ));
         });
     }
 
     fn render_solvency_banner(&self, ui: &mut egui::Ui, num_bets: usize) {
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        let palette = SemanticPalette::from_visuals(ui.visuals());
         let floor_pct = self.barrier_floor_ratio * 100.0;
         let dd_pct = (1.0 - self.barrier_floor_ratio) * 100.0;
         ui.group(|ui| {
@@ -257,45 +277,131 @@ impl BankrollEnsembleLab {
     }
 
     fn render_ensemble_plot(&mut self, ui: &mut egui::Ui) {
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        let plot = Plot::new("bankroll_volatility_drag_plot")
-            .view_aspect(2.1)
-            .legend(egui_plot::Legend::default());
-        plot.show(ui, |plot_ui| {
-            plot_ui.line(
-                Line::new("Expected Wealth E[W_t]", &self.expected_points[..])
-                    .color(palette.series_color(1)),
-            );
-            plot_ui.line(
-                Line::new("Analytical Median W_median(t)", &self.median_points[..])
-                    .color(palette.series_color(3)),
-            );
-            plot_ui.line(
-                Line::new(
-                    format!("Ensemble Median ({ENSEMBLE_PATH_COUNT} Seeded Paths)"),
-                    &self.empirical_median_points[..],
-                )
-                .color(palette.series_color(5)),
-            );
-            if !self.drawdown_median_points.is_empty() {
-                plot_ui.line(
-                    Line::new(
-                        "Drawdown-Constrained Median",
-                        &self.drawdown_median_points[..],
-                    )
-                    .color(palette.series_color(2)),
-                );
-            }
-            plot_ui.line(
-                Line::new("Drawdown Barrier Floor B_floor", &self.barrier_points[..])
-                    .color(palette.error)
-                    .style(LineStyle::Dashed { length: 8.0 }),
-            );
-            self.callout_manager.render_on_plot(plot_ui);
-        });
+        let palette = SemanticPalette::from_visuals(ui.visuals());
+        let resp = Plot::new("bankroll_volatility_drag_plot")
+            .height(260.0)
+            .x_axis_label("Allocation Step t")
+            .y_axis_label("Capital W(t)")
+            .legend(Legend::default())
+            .show(ui, |plot_ui| {
+                self.draw_ensemble_series(plot_ui, &palette);
+            });
+        let summary = format!(
+            "Ensemble fan bands: W_median {:.4}, 95% VaR {:.1}%, 95% CVaR {:.1}%, underwater duration {} steps",
+            self.last_median_terminal,
+            self.last_terminal_var_95 * 100.0,
+            self.last_terminal_cvar_95 * 100.0,
+            self.last_underwater_duration
+        );
+        register_canvas_accessibility(
+            ui,
+            &resp.response,
+            Role::GraphicsDocument,
+            "Ensemble Percentile Fan Bands and Solvency Barrier Plot",
+            Some(&summary),
+        );
+        paint_canvas_focus_ring(ui, &resp.response);
     }
 
-    /// Synchronizes automated `CalloutManager` overlays for `expected_growth_rate` and ruin.
+    fn draw_ensemble_series<'a>(
+        &'a mut self,
+        plot_ui: &mut egui_plot::PlotUi<'a>,
+        palette: &SemanticPalette,
+    ) {
+        let outer_col = palette.series_color(2);
+        let inner_col = palette.series_color(5);
+        let outer_fill =
+            egui::Color32::from_rgba_unmultiplied(outer_col.r(), outer_col.g(), outer_col.b(), 30);
+        let inner_fill =
+            egui::Color32::from_rgba_unmultiplied(inner_col.r(), inner_col.g(), inner_col.b(), 56);
+        if self.fan_5_95_poly.len() >= 4 {
+            plot_ui.polygon(
+                Polygon::new("5th–95th Percentile Band", &self.fan_5_95_poly[..])
+                    .fill_color(outer_fill),
+            );
+        }
+        if self.fan_25_75_poly.len() >= 4 {
+            plot_ui.polygon(
+                Polygon::new("25th–75th Interquartile Band", &self.fan_25_75_poly[..])
+                    .fill_color(inner_fill),
+            );
+        }
+        plot_ui.line(
+            Line::new("95th Percentile", &self.p95_points[..])
+                .color(outer_col)
+                .style(LineStyle::Dashed { length: 6.0 }),
+        );
+        plot_ui.line(
+            Line::new("5th Percentile", &self.p05_points[..])
+                .color(palette.warning)
+                .style(LineStyle::Dashed { length: 6.0 }),
+        );
+        plot_ui.line(
+            Line::new("Expected Wealth E[W_t]", &self.expected_points[..])
+                .color(palette.series_color(1)),
+        );
+        plot_ui.line(
+            Line::new("Analytical Median W_median(t)", &self.median_points[..])
+                .color(palette.series_color(3)),
+        );
+        plot_ui.line(
+            Line::new(
+                format!("Ensemble Median ({ENSEMBLE_PATH_COUNT} Seeded Paths)"),
+                &self.empirical_median_points[..],
+            )
+            .color(inner_col)
+            .width(2.0_f32),
+        );
+        if !self.drawdown_median_points.is_empty() {
+            plot_ui.line(
+                Line::new(
+                    "Drawdown-Constrained Median",
+                    &self.drawdown_median_points[..],
+                )
+                .color(palette.series_color(0)),
+            );
+        }
+        plot_ui.line(
+            Line::new("Drawdown Barrier Floor B_floor", &self.barrier_points[..])
+                .color(palette.error)
+                .style(LineStyle::Dashed { length: 8.0 }),
+        );
+        self.callout_manager.render_on_plot(plot_ui);
+    }
+
+    fn render_underwater_plot(&self, ui: &mut egui::Ui) {
+        let palette = SemanticPalette::from_visuals(ui.visuals());
+        let resp = Plot::new("bankroll_ensemble_underwater_plot")
+            .height(150.0)
+            .x_axis_label("Allocation Step t")
+            .y_axis_label("Underwater Drawdown (%)")
+            .legend(Legend::default())
+            .show(ui, |plot_ui| {
+                plot_ui.line(
+                    Line::new(
+                        "Median Underwater Drawdown (%)",
+                        &self.underwater_points[..],
+                    )
+                    .color(palette.error)
+                    .width(1.8_f32),
+                );
+            });
+        let summary = format!(
+            "Peak-to-trough drawdown {:.1}% with maximum underwater recovery span {} steps",
+            self.last_max_drawdown * 100.0,
+            self.last_underwater_duration
+        );
+        register_canvas_accessibility(
+            ui,
+            &resp.response,
+            Role::GraphicsDocument,
+            "Ensemble Underwater Fractional Drawdown Curve",
+            Some(&summary),
+        );
+        paint_canvas_focus_ring(ui, &resp.response);
+    }
+
+    /// Synchronizes automated `CalloutManager` overlays for growth rate, ruin, and 95% `VaR`/`CVaR`.
     pub fn sync_callouts(&mut self, num_bets: usize) {
         let steps = num_bets.min(super::MAX_ENSEMBLE_BETS);
         if self.median_points.is_empty() {
@@ -308,10 +414,35 @@ impl BankrollEnsembleLab {
             "growth_rate",
             [mid_pt.x, mid_pt.y],
             format!(
-                "g(f={:.2}) = {:+.4}/bet",
+                "g(f={:.2}) = {:+.4}/step",
                 self.custom_fraction, self.last_growth_rate
             ),
             [24.0, -26.0],
+        );
+
+        let end_x = steps as f64;
+        let p05_end = self.p05_points.last().map_or(0.0, |pt| pt.y);
+        let var_dollars = self.last_initial_bankroll * self.last_terminal_var_95;
+        let cvar_dollars = self.last_initial_bankroll * self.last_terminal_cvar_95;
+        self.callout_manager.set_auto_callout(
+            "var_95",
+            [end_x, p05_end],
+            format!(
+                "95% VaR: {:.1}% (${:.2})",
+                self.last_terminal_var_95 * 100.0,
+                var_dollars
+            ),
+            [-84.0, 18.0],
+        );
+        self.callout_manager.set_auto_callout(
+            "cvar_95",
+            [(0.78 * end_x).max(0.0), p05_end],
+            format!(
+                "95% CVaR: {:.1}% (${:.2})",
+                self.last_terminal_cvar_95 * 100.0,
+                cvar_dollars
+            ),
+            [-84.0, 38.0],
         );
 
         if let Some(fs) = self
@@ -320,7 +451,7 @@ impl BankrollEnsembleLab {
         {
             self.callout_manager.set_auto_callout(
                 "ruin_warning",
-                [steps as f64, self.last_median_terminal],
+                [end_x, self.last_median_terminal],
                 format!(
                     "Ruin Trap (f={:.2} > 2f*={:.2}): W_med={:.4} vs E[W]={:.2}",
                     self.custom_fraction,

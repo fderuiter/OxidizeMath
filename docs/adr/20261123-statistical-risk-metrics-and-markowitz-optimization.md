@@ -1,0 +1,25 @@
+# ADR 20261123: Zero-Allocation Statistical Risk Metrics, Active-Set Markowitz Optimization, and Financial Math Workbenches
+
+## Status
+Accepted (extends [ADR 0024](0024-deferred-modal-exports-and-plot-primitives.md), [ADR 0034](0034-curate-math-explorer-facade-exports-and-doctests.md), and [ADR 20261123](20261123-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
+
+## Context
+`FinancialMathTab` ([`math_explorer_gui/src/tabs/financial_math/mod.rs`](../../math_explorer_gui/src/tabs/financial_math/mod.rs)) previously exposed single-asset Kelly capital sizing (`BetSizeCalculatorTool`), binary compounding (`BankrollGrowthTool`), and Parrondo games (`ParrondoParadoxTool`) without coherent tail-risk quantiles (`VaR` / `CVaR`), underwater drawdown recovery diagnostics, risk-adjusted performance ratios (`Sharpe`, `Sortino`, `Calmar`), or multi-asset mean-variance portfolio optimization. In addition, `BankrollEnsembleLab` plotted only analytical mean and asymptotic median curves without empirical percentile fan bands or terminal downside tail loss.
+
+## Decision
+1. **Statistical Tail-Risk, Drawdown, and Ratio Kernels (`pure_math::statistics::risk`)**:
+   - Add [`crates/pure_math/src/pure_math/statistics/risk/mod.rs`](../../crates/pure_math/src/pure_math/statistics/risk/mod.rs) implementing Historical empirical (Acerbi-Tasche coherent expected shortfall), parametric Gaussian, and 4th-order Cornish-Fisher `VaR` and `CVaR` over confidence levels $\alpha \in (0.5, 1.0)$, reusing `standard_normal_quantile_and_pdf` from [`crates/pure_math/src/pure_math/statistics/copula/transforms.rs`](../../crates/pure_math/src/pure_math/statistics/copula/transforms.rs) with zero new dependencies in `crates/pure_math/Cargo.toml`.
+   - Implement `sharpe_ratio`, `sortino_ratio`, `calmar_ratio`, `calmar_ratio_wealth`, `max_drawdown_returns`, `max_drawdown_wealth`, `drawdown_series_from_returns`, `drawdown_series_from_wealth`, and `max_underwater_duration_*` using caller-owned scratch slices and stack accumulators with zero heap allocations under `VerifiedAllocator`.
+2. **Constrained Markowitz Mean-Variance Optimization (`domain_applied::applied::portfolio`)**:
+   - Add [`crates/domain_applied/src/applied/portfolio/mod.rs`](../../crates/domain_applied/src/applied/portfolio/mod.rs) supporting up to `MAX_PORTFOLIO_ASSETS = 16` correlated assets via fixed-size stack Cholesky factorization (`PortfolioSpec`).
+   - Provide analytical Merton two-fund Lagrangian solvers (`unconstrained_min_variance`, `unconstrained_target_return`, `unconstrained_tangency`, `unconstrained_frontier_in_place`) alongside primal-dual active-set quadratic-programming solvers (`long_only_*` and upper-bounded `constrained_*`) for global minimum-variance (`GMV`), efficient frontiers, and maximum-Sharpe tangency allocations with zero heap allocations under `VerifiedAllocator`.
+   - Re-export `RiskError` and `PortfolioError` (`Copy`, zero-allocation error enums) through `pure_math`, `domain_applied`, and `math_explorer::error::MathExplorerError`.
+3. **Upgraded & New `FinancialMathTab` Workbenches (`math_explorer_gui`)**:
+   - Keep [`math_explorer_gui/src/tabs/financial_math/mod.rs`](../../math_explorer_gui/src/tabs/financial_math/mod.rs) gated under `#[cfg(feature = "pure_math")]` (`order: 24`) with `markowitz` additionally gated under `#[cfg(feature = "applied")]`.
+   - Upgrade [`bankroll_ensemble.rs`](../../math_explorer_gui/src/tabs/financial_math/bankroll_ensemble.rs), [`bankroll_growth/mod.rs`](../../math_explorer_gui/src/tabs/financial_math/bankroll_growth/mod.rs), and [`bet_size/mod.rs`](../../math_explorer_gui/src/tabs/financial_math/bet_size/mod.rs) with 5th–95th and 25th–75th percentile polygon fan bands, underwater curves, terminal 95% `VaR` / `CVaR` callouts, logarithmic growth curve $g(f)$, and `ExportCapabilities::plot()`.
+   - Register [`TailRiskDrawdownTool`](../../math_explorer_gui/src/tabs/financial_math/tail_risk/mod.rs) and [`MarkowitzFrontierTool`](../../math_explorer_gui/src/tabs/financial_math/markowitz/mod.rs) with `StarterPresetMetadata` cards, strict `#[serde(deny_unknown_fields)]` URL state, `SemanticPalette` theming, `PlatformInstant::now()`, `AccessKit` canvas descriptors, and CSV/JSON/PNG/SVG exports.
+
+## Consequences
+- **Positive**: Cleanly separates pure univariate statistical risk functionals (`pure_math::statistics::risk`) from applied constrained multi-asset optimization (`domain_applied::applied::portfolio`) while guaranteeing zero heap allocations across every hot kernel and GUI `evaluate_in_place` loop.
+- **Positive**: Desktop and `wasm32-unknown-unknown` users can compare Gaussian vs. fat-tailed Cornish-Fisher and Historical expected shortfall, inspect non-ergodic percentile fan bands, and solve constrained Markowitz frontiers up to 16 assets with full URL and export parity.
+- **Neutral**: Factor-model covariance shrinkage and transaction-cost turnover penalties remain out of scope so portfolio optimization stays strictly stack-allocated (`16 x 16`).

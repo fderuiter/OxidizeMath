@@ -2,6 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+mod plots;
 mod simulation;
 mod state;
 #[cfg(test)]
@@ -25,7 +26,7 @@ use super::bankroll_ensemble::{
     BankrollEnsembleLab, BankrollLabMode, MAX_BARRIER_FLOOR_RATIO, MAX_CUSTOM_FRACTION,
     MIN_BARRIER_FLOOR_RATIO,
 };
-use crate::framework::{CalloutManager, CalloutSpec, InteractiveTool};
+use crate::framework::{CalloutManager, CalloutSpec, ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use egui_plot::PlotPoint;
 use math_explorer::pure_math::statistics::kelly::{
@@ -61,6 +62,7 @@ pub struct BankrollGrowthTool {
     pub(super) active_fraction: f64,
     pub(super) active_growth_rate: f64,
     pub(super) unit_expected_value: f64,
+    pub(super) last_compute_ms: f64,
     pub(super) callout_manager: CalloutManager,
     pub(super) error_msg: Option<String>,
 }
@@ -94,6 +96,7 @@ impl Default for BankrollGrowthTool {
             active_fraction: 0.0,
             active_growth_rate: 0.0,
             unit_expected_value: 0.0,
+            last_compute_ms: 0.0,
             callout_manager: CalloutManager::new(),
             error_msg: None,
         };
@@ -175,6 +178,10 @@ impl InteractiveTool for BankrollGrowthTool {
         "financial_math"
     }
 
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::plot()
+    }
+
     fn has_finite_parameters(&self) -> bool {
         [
             self.initial_bankroll,
@@ -208,6 +215,12 @@ impl InteractiveTool for BankrollGrowthTool {
             ("expected_growth_rate", self.active_growth_rate),
             ("expected_value", self.unit_expected_value),
             ("final_bankroll", final_w),
+            ("ensemble_var_95", self.ensemble_lab.last_terminal_var_95),
+            ("ensemble_cvar_95", self.ensemble_lab.last_terminal_cvar_95),
+            (
+                "ensemble_underwater_duration",
+                self.ensemble_lab.last_underwater_duration as f64,
+            ),
         ]
     }
 
@@ -259,6 +272,14 @@ impl InteractiveTool for BankrollGrowthTool {
             }
         }
         Ok(())
+    }
+
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.build_export_datasets()
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_export_primitives()
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {

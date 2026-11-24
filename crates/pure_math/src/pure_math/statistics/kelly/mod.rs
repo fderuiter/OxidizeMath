@@ -35,7 +35,8 @@
 //! [`crate::pure_math::statistics::ruin::kelly_barrier_risk`]). At Full Kelly ($f = f^*$),
 //! $\theta^* = 1$ so the asymptotic probability of halving one's bankroll is **50%** (~38% over
 //! 200 even-money bets at $p = 0.55$). Use [`drawdown`] or [`ruin`] to enforce explicit drawdown
-//! budgets.
+//! budgets, [`super::risk`] for empirical/parametric `VaR`, `CVaR`, and underwater drawdown
+//! analysis, or `math_explorer::applied::portfolio` for multi-asset Markowitz optimization.
 //!
 //! ## Example: Binary, Push, Market, and Drawdown-Constrained Kelly
 //!
