@@ -6,6 +6,7 @@ use eframe::egui;
 pub mod band_structure;
 pub mod crystal_viewer;
 pub mod ising;
+pub mod quasicrystal_studio;
 pub mod sandpile;
 
 pub struct SolidStateTab {

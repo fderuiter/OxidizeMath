@@ -271,7 +271,7 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
     let extra = usize::from(has_riemannian) + usize::from(has_surface_morpho);
     let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
     let stochastic_extra = if cfg!(feature = "pure_math") { 3 } else { 0 };
-    let optics_bonus = if cfg!(feature = "physics") { 2 } else { 0 };
+    let optics_bonus = if cfg!(feature = "physics") { 3 } else { 0 };
     let extra_su11_hyp = if cfg!(feature = "pure_math") { 2 } else { 0 };
     let has_ai = cfg!(feature = "ai");
     let expected_audio = usize::from(cfg!(feature = "biology")) * 2
