@@ -1,3 +1,4 @@
+pub use super::symplectic::{GaussLegendre4, ImplicitMidpoint, MAX_FIXED_POINT_ITERS};
 use super::traits::{OdeSystem, Solver, VectorOperations};
 
 /// Shared kernel for Runge-Kutta 4th Order logic.

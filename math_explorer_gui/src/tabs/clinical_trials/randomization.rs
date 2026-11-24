@@ -2,67 +2,100 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::randomization_io::{
-    build_cumulative_series, default_seed, default_strata_spec, draw_balance_plot,
-    format_schedule_csv, format_schedule_json, is_default_seed, is_default_strata_spec,
-    parse_strata_patients, ScheduleRow, ScheduleSaveIo, DEFAULT_RNG_SEED, STARTER_PRESET_JSON,
+use super::clinical_io::ClinicalIoState;
+pub use super::randomization_schedule::STARTER_PRESET_JSON;
+use super::randomization_schedule::{
+    build_cumulative_balance_datasets, build_deterministic_stratum_schedule,
+    build_stratified_schedule_from_map, build_unstratified_schedule, default_seed,
+    default_strata_spec, is_default_seed, is_default_strata_spec, parse_strata_patients,
+    randomization_available_descriptions, render_cumulative_balance_plot, render_roster_summary,
+    render_schedule_export_bar, SubjectAllocationRecord, DEFAULT_RNG_SEED,
 };
 use super::simpson_paradox::{SimpsonParadoxConfig, SimpsonParadoxLab};
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::{ExportCapabilities, InteractiveTool};
-use crate::reflective_ui::render_copyable_metric;
+use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
 use eframe::egui;
 use math_explorer::applied::clinical_trials::design::{
     AllocationStrategy, BlockRandomizer, Group, SimpleRandomizer, StratifiedRandomizer,
 };
 use oxidize_core::rng::{OxidizeRng, BASE_SEED};
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize, serde::Deserialize)]
-enum RandomizationType {
+/// Clinical trial subject allocation scheme.
+#[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+pub enum RandomizationType {
+    /// Independent coin-flip Bernoulli allocation (`SimpleRandomizer`).
     Simple,
+    /// Permuted block randomization (`BlockRandomizer`).
     Block,
+    /// Stratified permuted block randomization (`StratifiedRandomizer` + Simpson's Paradox Lab).
     Stratified,
 }
 
+impl RandomizationType {
+    /// Short mode label for `.csv` and `.json` allocation schedule exports.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Simple => "Simple",
+            Self::Block => "Block",
+            Self::Stratified => "Stratified",
+        }
+    }
+}
+
+/// Active view within `RandomizationType::Stratified`.
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
-enum StratifiedView {
-    #[default]
+pub enum StratifiedView {
+    /// Cumulative arm-balance plot across custom `'StratumName:Count'` cohorts.
     ScheduleBalance,
+    /// Interactive confounding & Simpson's paradox laboratory (`Mild` / `Severe`).
+    #[default]
     SimpsonParadox,
 }
 
 /// Interactive clinical trial randomization and stratified Simpson's paradox explorer.
 pub struct RandomizationTool {
-    randomization_type: RandomizationType,
-    n_subjects: usize,
-    block_size: usize,
-    seed: u64,
-    seed_counter: u64,
-    strata_spec: String,
-    stratified_view: StratifiedView,
-    assignments: Vec<Group>,
-    schedule: Vec<ScheduleRow>,
-    error_message: Option<String>,
-    save_io: ScheduleSaveIo,
+    /// Active randomization strategy (`Simple`, `Block`, or `Stratified`).
+    pub randomization_type: RandomizationType,
+    /// Number of subjects to enroll in `Simple` or `Block` modes (`1..=1000`).
+    pub n_subjects: usize,
+    /// Permuted block size in `Block` and `Stratified` modes (`2..=100`, even).
+    pub block_size: usize,
+    /// Base deterministic RNG seed (`OxidizeRng`).
+    pub seed: u64,
+    /// Monotonic deterministic RNG seed counter incremented on each explicit allocation click.
+    pub seed_counter: u64,
+    /// Multi-stratum `'Name:Count'` enrollment specification for `Stratified` schedules.
+    pub strata_spec: String,
+    /// Selected view when `randomization_type == RandomizationType::Stratified`.
+    pub stratified_view: StratifiedView,
+    /// Latest `Group` vector (`Simple` / `Block` / `strata_spec`).
+    pub assignments: Vec<Group>,
+    /// Retained per-subject allocation records (`Simple` / `Block` / `strata_spec`).
+    pub schedule: Vec<SubjectAllocationRecord>,
+    /// Validation or domain error message, if any.
+    pub error_message: Option<String>,
     /// Hosted stratified confounding and Simpson's paradox laboratory.
     pub simpson_lab: SimpsonParadoxLab,
+    /// Non-blocking save/status helper for `.csv` and `.json` schedule downloads.
+    pub(crate) io_state: ClinicalIoState,
 }
 
 impl Default for RandomizationTool {
     fn default() -> Self {
         let mut tool = Self {
             randomization_type: RandomizationType::Simple,
-            n_subjects: 24,
+            n_subjects: 10,
             block_size: 4,
             seed: DEFAULT_RNG_SEED,
             seed_counter: 0,
             strata_spec: default_strata_spec(),
-            stratified_view: StratifiedView::ScheduleBalance,
+            stratified_view: StratifiedView::SimpsonParadox,
             assignments: Vec::new(),
             schedule: Vec::new(),
             error_message: None,
-            save_io: ScheduleSaveIo::default(),
             simpson_lab: SimpsonParadoxLab::default(),
+            io_state: ClinicalIoState::default(),
         };
         tool.recompute_schedule();
         tool
@@ -87,7 +120,9 @@ struct RandomizationState {
 }
 
 impl RandomizationTool {
-    const fn effective_seed(&self) -> u64 {
+    /// Effective deterministic seed combining `seed` and `seed_counter`.
+    #[must_use]
+    pub const fn effective_seed(&self) -> u64 {
         if self.seed_counter == 0 {
             self.seed
         } else {
@@ -99,9 +134,26 @@ impl RandomizationTool {
     pub fn allocate_subjects(&mut self) {
         self.seed_counter = self.seed_counter.wrapping_add(1);
         self.recompute_schedule();
+        if self.randomization_type == RandomizationType::Stratified {
+            let mut simpson_seed = self.seed_counter.wrapping_sub(1);
+            self.simpson_lab
+                .balance_via_stratified_randomizer(&mut simpson_seed);
+        }
     }
 
-    fn recompute_schedule(&mut self) {
+    /// Returns the active subject allocation schedule across `Simple`, `Block`, or `Stratified`.
+    #[must_use]
+    pub fn active_schedule(&self) -> &[SubjectAllocationRecord] {
+        if self.randomization_type == RandomizationType::Stratified
+            && self.stratified_view == StratifiedView::SimpsonParadox
+        {
+            &self.simpson_lab.allocated_schedule
+        } else {
+            &self.schedule
+        }
+    }
+
+    pub(crate) fn recompute_schedule(&mut self) {
         self.error_message = None;
         self.schedule.clear();
         self.assignments.clear();
@@ -109,14 +161,20 @@ impl RandomizationTool {
 
         match self.randomization_type {
             RandomizationType::Simple => match SimpleRandomizer.assign(&mut rng, self.n_subjects) {
-                Ok(groups) => self.set_unstratified_schedule(groups),
+                Ok(groups) => {
+                    self.schedule = build_unstratified_schedule(&groups, None);
+                    self.assignments = groups;
+                }
                 Err(e) => self.error_message = Some(e.to_string()),
             },
             RandomizationType::Block => {
                 match BlockRandomizer::new(self.block_size)
                     .and_then(|r| r.assign(&mut rng, self.n_subjects))
                 {
-                    Ok(groups) => self.set_unstratified_schedule(groups),
+                    Ok(groups) => {
+                        self.schedule = build_unstratified_schedule(&groups, Some(self.block_size));
+                        self.assignments = groups;
+                    }
                     Err(e) => self.error_message = Some(e.to_string()),
                 }
             }
@@ -134,41 +192,17 @@ impl RandomizationTool {
         });
         match res {
             Ok((patients, map)) => {
-                self.schedule = patients
-                    .into_iter()
-                    .enumerate()
-                    .filter_map(|(i, p)| {
-                        let group = *map.get(&p.id)?;
-                        Some(ScheduleRow {
-                            subject_index: i + 1,
-                            patient_id: p.id,
-                            stratum: p.stratum,
-                            group,
-                        })
-                    })
+                self.assignments = patients
+                    .iter()
+                    .filter_map(|p| map.get(&p.id).copied())
                     .collect();
-                self.assignments = self.schedule.iter().map(|r| r.group).collect();
+                self.schedule = build_stratified_schedule_from_map(&patients, &map);
             }
             Err(err) => self.error_message = Some(err),
         }
     }
 
-    fn set_unstratified_schedule(&mut self, groups: Vec<Group>) {
-        self.assignments.clone_from(&groups);
-        self.schedule = groups
-            .into_iter()
-            .enumerate()
-            .map(|(i, group)| ScheduleRow {
-                subject_index: i + 1,
-                patient_id: format!("S{:04}", i + 1),
-                stratum: "Unstratified".to_string(),
-                group,
-            })
-            .collect();
-    }
-
     fn render_controls_panel(&mut self, ui: &mut egui::Ui) {
-        self.save_io.poll();
         let mut changed = false;
         ui.heading("Subject Allocation");
         ui.horizontal_wrapped(|ui| {
@@ -231,67 +265,22 @@ impl RandomizationTool {
     fn render_action_buttons_and_roster(&mut self, ui: &mut egui::Ui) {
         let enter_pressed = crate::framework::is_pane_activation_shortcut_allowed(ui)
             && ui.input(|i| i.key_pressed(egui::Key::Enter));
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .button("▶ Allocate Subjects")
-                .accessible_hover_text("Run seeded OxidizeRng subject allocation")
-                .clicked()
-                || enter_pressed
-            {
-                self.allocate_subjects();
-            }
-            let ready = !self.schedule.is_empty();
-            if ui
-                .add_enabled(ready, egui::Button::new("💾 Save CSV"))
-                .accessible_hover_text("Download seeded allocation schedule as CSV")
-                .clicked()
-            {
-                self.save_io
-                    .save_csv(format_schedule_csv(&self.schedule, self.effective_seed()));
-            }
-            if ui
-                .add_enabled(ready, egui::Button::new("💾 Save JSON"))
-                .accessible_hover_text("Download seeded allocation schedule as JSON")
-                .clicked()
-            {
-                self.save_io.save_json(format_schedule_json(
-                    &self.schedule,
-                    self.effective_seed(),
-                    self.block_size,
-                ));
-            }
-        });
-        self.render_roster_summary(ui);
-    }
-
-    fn render_roster_summary(&self, ui: &mut egui::Ui) {
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        if let Some((is_err, msg)) = &self.save_io.status {
-            ui.colored_label(if *is_err { palette.error } else { palette.info }, msg);
+        if ui
+            .button("▶ Allocate Subjects")
+            .accessible_hover_text("Run seeded OxidizeRng subject allocation")
+            .clicked()
+            || enter_pressed
+        {
+            self.allocate_subjects();
         }
-        if let Some(err) = &self.error_message {
-            ui.colored_label(palette.error, format!("Error: {err}"));
-            return;
-        }
-        let trt_n = self
-            .schedule
-            .iter()
-            .filter(|r| r.group == Group::Treatment)
-            .count();
-        let ctrl_n = self.schedule.len().saturating_sub(trt_n);
-        render_copyable_metric(ui, "Treatment / Control", &format!("{trt_n} / {ctrl_n}"));
-        egui::ScrollArea::vertical()
-            .max_height(200.0)
-            .show(ui, |ui| {
-                for row in &self.schedule {
-                    ui.label(format!(
-                        "{} [{}]: {}",
-                        row.patient_id,
-                        row.stratum,
-                        row.group_label()
-                    ));
-                }
-            });
+        ui.add_space(4.0);
+        let export_sched = self.active_schedule().to_vec();
+        let mode_label = self.randomization_type.label();
+        let seed = self.effective_seed();
+        render_schedule_export_bar(&mut self.io_state, ui, mode_label, seed, &export_sched);
+        self.io_state.render_status(ui);
+        ui.separator();
+        render_roster_summary(ui, self.error_message.as_deref(), self.active_schedule());
     }
 
     fn render_central_panel(&mut self, ui: &mut egui::Ui) {
@@ -317,7 +306,8 @@ impl RandomizationTool {
                 return;
             }
         }
-        draw_balance_plot(&self.schedule, ui);
+        ui.heading("Cumulative Arm Balance Trajectory");
+        render_cumulative_balance_plot(ui, "randomization_balance_plot", &self.schedule);
     }
 }
 
@@ -325,26 +315,25 @@ impl InteractiveTool for RandomizationTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
     }
+
     fn name(&self) -> &'static str {
         "Randomization"
     }
+
     fn domain(&self) -> &'static str {
         "clinical_trials"
     }
+
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
-        if self.schedule.is_empty() {
-            return Vec::new();
-        }
-        let (trt, ctrl, diff) = build_cumulative_series(&self.schedule);
-        vec![
-            ("Treatment Enrolled".into(), trt),
-            ("Control Enrolled".into(), ctrl),
-            ("Imbalance (T - C)".into(), diff),
-        ]
+        build_cumulative_balance_datasets(self.active_schedule())
+    }
+
+    fn state_bounds(&self) -> ToolStateBounds {
+        ToolStateBounds::DEFAULT
     }
 
     fn save_state(&self) -> Option<String> {
@@ -378,11 +367,18 @@ impl InteractiveTool for RandomizationTool {
         self.block_size = s.block_size;
         self.seed = s.seed;
         self.seed_counter = 0;
+        self.stratified_view =
+            if !is_default_strata_spec(&s.strata_spec) && s.simpson_config.is_default() {
+                StratifiedView::ScheduleBalance
+            } else {
+                StratifiedView::SimpsonParadox
+            };
         self.strata_spec = s.strata_spec;
-        if s.randomization_type == RandomizationType::Stratified && !s.simpson_config.is_default() {
-            self.stratified_view = StratifiedView::SimpsonParadox;
-        }
         self.simpson_lab.config = s.simpson_config;
+        self.simpson_lab.allocated_schedule = build_deterministic_stratum_schedule(
+            self.simpson_lab.config.mild_counts,
+            self.simpson_lab.config.severe_counts,
+        );
         self.simpson_lab.recalculate();
         self.recompute_schedule();
         if let Some(err) = &self.error_message {
@@ -392,6 +388,7 @@ impl InteractiveTool for RandomizationTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
+        self.io_state.poll_save("allocation schedule");
         let panel_id = crate::framework::scoped_panel_id(ui, "randomization_side_panel");
         crate::framework::PaneSidePanel::left(panel_id)
             .min_width(300.0)
@@ -413,14 +410,20 @@ impl InteractiveTool for RandomizationTool {
     }
 }
 
-// [cite:clinical_trials_statistics]
-
 inventory::submit! {
     crate::framework::ToolMetadata {
         id: "RandomizationTool",
         display_name: "Randomization",
         domain: "clinical_trials",
-        tags: &["permuted block", "stratified", "bernoulli", "allocation", "confounding", "rct"],
+        tags: &[
+            "permuted block",
+            "stratified",
+            "bernoulli",
+            "allocation",
+            "confounding",
+            "simpson",
+            "rct",
+        ],
         build: || Box::new(RandomizationTool::default()),
     }
 }
@@ -442,33 +445,20 @@ impl scientific_metadata::theory::TheoryDescribable for RandomizationTool {
             "Clinical trial subject allocation using {} (seed {}) across {} subjects to eliminate selection bias.",
             scheme,
             self.effective_seed(),
-            self.schedule.len()
+            self.active_schedule().len()
         )
     }
+
     fn phonetic_description(&self) -> String {
         "Clinical trial randomization allocation theory".into()
     }
+
     fn theory_citation(&self) -> String {
         "Randomization in Clinical Trials: Theory and Practice (Rosenberger & Lachin, 2015)".into()
     }
+
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        [
-            (
-                "Simple",
-                "Independent coin-toss allocation with potential small-sample imbalance",
-            ),
-            (
-                "Block",
-                "Permuted block allocation ensuring exact balance at block boundaries",
-            ),
-            (
-                "Stratified",
-                "Within-stratum permuted block randomization preventing Simpson's paradox reversals",
-            ),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect()
+        randomization_available_descriptions()
     }
 
     fn theory_parameters(
@@ -494,3 +484,5 @@ inventory::submit! {
 #[cfg(test)]
 #[path = "randomization_tests.rs"]
 mod tests;
+
+// [cite:clinical_trials_statistics]

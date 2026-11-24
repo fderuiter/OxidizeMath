@@ -1,7 +1,5 @@
 //! Zero-allocation MRI Bloch, Hahn spin-echo, and 2D k-space Turing phantom sonification mappings.
 
-// theory_verification!
-
 use std::f64::consts::TAU;
 
 use math_explorer::physics::mri::proton;

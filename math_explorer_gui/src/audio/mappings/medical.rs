@@ -1,8 +1,6 @@
 //! Medical physics sonification mappings: 60 GHz radar respiratory Doppler gating
 //! and 4D coplanar IMRT LINAC pulse delivery with OAR overdose roughness.
 
-// theory_verification!
-
 use crate::audio::frame::{clamp_freq_hz, SonificationFrame, VoiceSpec, WaveformPreset};
 
 /// Feature-independent LINAC gating phase mirrored from `domain_physics` `BeamState`.

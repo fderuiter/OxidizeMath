@@ -3,7 +3,8 @@
 use super::proton;
 use nalgebra::Vector3;
 use pure_math::pure_math::analysis::ode::{
-    Euler, Heun, IntegrationMethod, OdeSystem, RungeKutta4, Solver, TimeStepper,
+    Euler, GaussLegendre4, Heun, ImplicitMidpoint, IntegrationMethod, OdeSystem, RungeKutta4,
+    Solver, TimeStepper,
 };
 
 #[derive(Clone, Copy)]
@@ -11,6 +12,8 @@ struct BlochSolverBuffers {
     euler: Euler<Vector3<f64>>,
     heun: Heun<Vector3<f64>>,
     rk4: RungeKutta4<Vector3<f64>>,
+    implicit_midpoint: ImplicitMidpoint<Vector3<f64>>,
+    gl4: GaussLegendre4<Vector3<f64>>,
 }
 
 impl BlochSolverBuffers {
@@ -20,6 +23,8 @@ impl BlochSolverBuffers {
             euler: Euler::new(example),
             heun: Heun::new(example),
             rk4: RungeKutta4::new(example),
+            implicit_midpoint: ImplicitMidpoint::new(example),
+            gl4: GaussLegendre4::new(example),
         }
     }
 }
@@ -172,6 +177,16 @@ impl BlochSimulator {
             IntegrationMethod::Heun => {
                 self.solvers
                     .heun
+                    .step(&dynamics, t, &mut self.magnetization, dt);
+            }
+            IntegrationMethod::ImplicitMidpoint => {
+                self.solvers
+                    .implicit_midpoint
+                    .step(&dynamics, t, &mut self.magnetization, dt);
+            }
+            IntegrationMethod::GaussLegendre4 => {
+                self.solvers
+                    .gl4
                     .step(&dynamics, t, &mut self.magnetization, dt);
             }
         }
@@ -351,14 +366,9 @@ mod tests {
     fn test_bloch_integrator_parity_time_and_derives() {
         let dt = 1e-4;
         let b_field = Vector3::new(1e-5, 0.5e-5, 2e-5);
-        let methods = [
-            IntegrationMethod::Euler,
-            IntegrationMethod::Heun,
-            IntegrationMethod::RungeKutta4,
-        ];
         let mut finals = Vec::new();
 
-        for method in methods {
+        for method in IntegrationMethod::ALL {
             let init_m = Vector3::new(0.0, 0.0, 1.0);
             let mut inherent = BlochSimulator::new(init_m, 1.0).with_integration_method(method);
             inherent.set_relaxation(1.0, 0.1);

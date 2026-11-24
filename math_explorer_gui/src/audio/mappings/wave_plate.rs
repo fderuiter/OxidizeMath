@@ -1,7 +1,5 @@
 //! Kirchhoff-Love biharmonic plate dispersion and 2D wave-tank interference sonification mapping.
 
-// theory_verification!
-
 use math_explorer::pure_math::analysis::pde::wave_2d::{
     analytic_clamped_square_omega, SpectralMode2D, Wave2DMedium, Wave2DParams,
 };

@@ -5,17 +5,26 @@
 use serde::{Deserialize, Serialize};
 
 /// Maximum node count published in [`SharedGraphTopology`].
+#[cfg(any(
+    feature = "pure_math",
+    feature = "epidemiology",
+    all(test, any(feature = "biology", feature = "physics"))
+))]
 pub const MAX_SHARED_GRAPH_NODES: usize = 256;
 
 /// Maximum undirected/directed sculpted edge count published in [`SharedGraphTopology`].
+#[cfg(any(
+    feature = "pure_math",
+    all(test, any(feature = "biology", feature = "physics"))
+))]
 pub const MAX_SHARED_GRAPH_EDGES: usize = 2_048;
 
 /// Maximum neuron count ingested by `NeuralNetworkVizTool` from [`SharedGraphTopology`].
-#[cfg(any(feature = "biology", test))]
+#[cfg(feature = "biology")]
 pub const MAX_NEURAL_SHARED_NODES: usize = 32;
 
 /// Maximum 3D chaotic landmark count published in [`SharedPointCloud3D`].
-#[cfg(any(feature = "physics", test))]
+#[cfg(any(feature = "physics", all(test, feature = "pure_math")))]
 pub const MAX_SHARED_LANDMARKS: usize = 128;
 
 /// Per-tool topology ingestion mode persisted as a compact tag in tool JSON and URL state.
@@ -36,6 +45,13 @@ impl TopologySource {
     }
 
     /// Human-readable UI label for the topology source mode.
+    #[cfg(any(
+        feature = "applied",
+        feature = "biology",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     #[must_use]
     pub fn label(self) -> &'static str {
         match self {
@@ -74,9 +90,9 @@ pub struct SharedGraphTopology {
     pub undirected_edges: Vec<(usize, usize, f64)>,
     /// Mean symmetric degree across active (`deg > 0`) nodes (`0.0` if edgeless).
     pub mean_active_degree: f64,
-    /// Unclamped source node count before applying [`MAX_SHARED_GRAPH_NODES`].
+    /// Unclamped source node count before applying `MAX_SHARED_GRAPH_NODES`.
     pub original_node_count: usize,
-    /// Unclamped source edge count before applying [`MAX_SHARED_GRAPH_EDGES`].
+    /// Unclamped source edge count before applying `MAX_SHARED_GRAPH_EDGES`.
     pub original_edge_count: usize,
     /// True if `original_node_count > MAX_SHARED_GRAPH_NODES`.
     pub clamped_nodes: bool,
@@ -84,6 +100,10 @@ pub struct SharedGraphTopology {
     pub clamped_edges: bool,
 }
 
+#[cfg(any(
+    feature = "pure_math",
+    all(test, any(feature = "biology", feature = "physics"))
+))]
 fn normalize_positions(positions: &[[f32; 2]]) -> Vec<[f32; 2]> {
     if positions.is_empty() {
         return Vec::new();
@@ -123,8 +143,16 @@ fn normalize_positions(positions: &[[f32; 2]]) -> Vec<[f32; 2]> {
         .collect()
 }
 
+#[cfg(any(
+    feature = "pure_math",
+    all(test, any(feature = "biology", feature = "physics"))
+))]
 type AdjacencyPair = (Vec<Vec<(usize, f64)>>, Vec<Vec<(usize, f64)>>, bool);
 
+#[cfg(any(
+    feature = "pure_math",
+    all(test, any(feature = "biology", feature = "physics"))
+))]
 fn build_bounded_adjacencies(
     node_ids: &[usize],
     directed: bool,
@@ -165,6 +193,10 @@ fn build_bounded_adjacencies(
     (authored_adj, sym_adj, clamped_edges)
 }
 
+#[cfg(any(
+    feature = "pure_math",
+    all(test, any(feature = "biology", feature = "physics"))
+))]
 fn pack_csr(n: usize, adj: &[Vec<(usize, f64)>]) -> (Vec<usize>, Vec<usize>, Vec<f64>) {
     let mut row_ptr = Vec::with_capacity(n + 1);
     let total: usize = adj.iter().map(Vec::len).sum();
@@ -181,6 +213,10 @@ fn pack_csr(n: usize, adj: &[Vec<(usize, f64)>]) -> (Vec<usize>, Vec<usize>, Vec
     (row_ptr, col_idx, weights)
 }
 
+#[cfg(any(
+    feature = "pure_math",
+    all(test, any(feature = "biology", feature = "physics"))
+))]
 fn upsert_edge(row: &mut Vec<(usize, f64)>, target: usize, weight: f64) {
     if let Some(existing) = row.iter_mut().find(|(v, _)| *v == target) {
         existing.1 = weight;
@@ -189,6 +225,10 @@ fn upsert_edge(row: &mut Vec<(usize, f64)>, target: usize, weight: f64) {
     }
 }
 
+#[cfg(any(
+    feature = "pure_math",
+    all(test, any(feature = "biology", feature = "physics"))
+))]
 fn summarize_symmetric_edges(sym_adj: &[Vec<(usize, f64)>]) -> (Vec<(usize, usize, f64)>, f64) {
     let mut undirected_edges = Vec::new();
     let mut active_nodes = 0usize;
@@ -214,6 +254,10 @@ fn summarize_symmetric_edges(sym_adj: &[Vec<(usize, f64)>]) -> (Vec<(usize, usiz
 
 impl SharedGraphTopology {
     /// Builds an immutable [`SharedGraphTopology`] from raw `(node_id, [x, y])` and `(u_id, v_id, w)` slices.
+    #[cfg(any(
+        feature = "pure_math",
+        all(test, any(feature = "biology", feature = "physics"))
+    ))]
     #[must_use]
     pub fn from_raw(
         revision: u64,
@@ -260,12 +304,24 @@ impl SharedGraphTopology {
     }
 
     /// Returns the number of nodes in the snapshot (`<= 256`).
+    #[cfg(any(
+        feature = "biology",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     #[must_use]
     pub fn node_count(&self) -> usize {
         self.node_ids.len()
     }
 
     /// Maps normalized node positions into `[min_x..=max_x] x [min_y..=max_y]`.
+    #[cfg(any(
+        feature = "biology",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     #[must_use]
     pub fn map_positions_to_bounds(
         &self,

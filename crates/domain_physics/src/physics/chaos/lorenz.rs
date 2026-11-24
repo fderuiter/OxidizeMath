@@ -3,7 +3,8 @@
 
 use nalgebra::Vector3;
 use pure_math::pure_math::analysis::ode::{
-    Euler, Heun, IntegrationMethod, OdeSystem, RungeKutta4, Solver, TimeStepper,
+    Euler, GaussLegendre4, Heun, ImplicitMidpoint, IntegrationMethod, OdeSystem, RungeKutta4,
+    Solver, TimeStepper,
 };
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
@@ -13,6 +14,8 @@ struct LorenzSolverBuffers {
     euler: Euler<Vector3<f64>>,
     heun: Heun<Vector3<f64>>,
     rk4: RungeKutta4<Vector3<f64>>,
+    implicit_midpoint: ImplicitMidpoint<Vector3<f64>>,
+    gl4: GaussLegendre4<Vector3<f64>>,
 }
 
 impl LorenzSolverBuffers {
@@ -22,6 +25,8 @@ impl LorenzSolverBuffers {
             euler: Euler::new(example),
             heun: Heun::new(example),
             rk4: RungeKutta4::new(example),
+            implicit_midpoint: ImplicitMidpoint::new(example),
+            gl4: GaussLegendre4::new(example),
         }
     }
 }
@@ -235,6 +240,14 @@ impl LorenzSystem {
                     .heun
                     .step(&dynamics, t, &mut self.state.vec, dt);
             }
+            IntegrationMethod::ImplicitMidpoint => {
+                self.solvers
+                    .implicit_midpoint
+                    .step(&dynamics, t, &mut self.state.vec, dt);
+            }
+            IntegrationMethod::GaussLegendre4 => {
+                self.solvers.gl4.step(&dynamics, t, &mut self.state.vec, dt);
+            }
         }
     }
 
@@ -443,16 +456,11 @@ mod tests {
     fn test_lorenz_integrator_parity_time_and_derives() {
         let init = LorenzState::new(1.0, 2.0, 3.0);
         let dt = 0.01;
-        let methods = [
-            IntegrationMethod::Euler,
-            IntegrationMethod::Heun,
-            IntegrationMethod::RungeKutta4,
-        ];
         let mut finals = Vec::new();
 
-        for method in methods {
+        for method in IntegrationMethod::ALL {
             let builder = LorenzBuilder::new().integration_method(method);
-            assert_eq!(builder, builder.clone());
+            assert_eq!(builder, builder);
             assert!(!format!("{builder:?}").is_empty());
 
             let mut inherent = builder.build(init);

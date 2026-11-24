@@ -98,6 +98,31 @@ fn test_readme_only_batch_staged_parses_zero_rust_files_and_catches_staged_md_fe
     );
 }
 
+#[test]
+fn test_requires_full_traceability_escalates_registry_and_papers() {
+    assert!(!crate::staged_traceability::requires_full_traceability(
+        &[
+            "README.md".to_string(),
+            "docs/adr/0041-test.md".to_string(),
+            "crates/pure_math/src/lib.rs".to_string(),
+            "math_explorer_gui/src/app/theme.rs".to_string(),
+        ],
+        false,
+    ));
+    assert!(crate::staged_traceability::requires_full_traceability(
+        &["README.md".to_string()],
+        true,
+    ));
+    assert!(crate::staged_traceability::requires_full_traceability(
+        &["traceability.toml".to_string()],
+        false,
+    ));
+    assert!(crate::staged_traceability::requires_full_traceability(
+        &["papers/grpo.tex".to_string()],
+        false,
+    ));
+}
+
 fn setup_minimal_staged_physics_workspace() {
     fs::create_dir_all("papers").unwrap();
     fs::write("papers/quantum.tex", "% quantum\n").unwrap();
@@ -183,6 +208,36 @@ fn test_staged_markdown_fence_policy_and_staged_rs_citation_gate() {
     .unwrap();
     assert!(
         crate::staged_traceability::run_staged_traceability_with_cache(
+            &rs_staged,
+            &members,
+            &mut AstCache::new(),
+        )
+    );
+}
+
+#[test]
+fn test_staged_traceability_item_scoped_opt_out_does_not_suppress_sibling() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let tmp = TempTestDir::new("batch_staged_item_opt_out");
+    let orig = env::current_dir().unwrap();
+    let _guard = CurrentDirGuard(orig);
+    env::set_current_dir(&*tmp).unwrap();
+    setup_minimal_staged_physics_workspace();
+
+    let members = vec!["crates/domain_physics".to_string()];
+    let rs_staged = vec!["crates/domain_physics/src/lib.rs".to_string()];
+    fs::write(
+        "crates/domain_physics/src/lib.rs",
+        concat!(
+            "#![doc = include_str!(\"../README.md\")]\n",
+            "#[cfg_attr(any(), verified(opt_out = \"gui_tool\"))]\n",
+            "pub fn helper() -> usize { 1 }\n",
+            "pub fn sibling_missing_cite(x: f64) -> f64 { x }\n",
+        ),
+    )
+    .unwrap();
+    assert!(
+        !crate::staged_traceability::run_staged_traceability_with_cache(
             &rs_staged,
             &members,
             &mut AstCache::new(),
@@ -291,6 +346,12 @@ fn test_batch_ast_parses_each_unique_workspace_file_at_most_once() {
         &mut cache
     ));
 
+    let rs_files = crate::report::collect_rs_files();
+    let metrics = crate::report::analyze_files_with_cache(&rs_files, &mut cache);
+    assert!(metrics.total_funcs > 0.0);
+    let unverified = crate::report::find_unverified_crates_with_cache(&members, &mut cache);
+    assert!(!unverified.contains(&"crates/pure_math".to_string()));
+
     assert!(cache.parse_calls() > 500);
     assert_eq!(cache.parse_calls(), cache.len());
 
@@ -301,7 +362,7 @@ fn test_batch_ast_parses_each_unique_workspace_file_at_most_once() {
     assert_eq!(
         canonical_files.len(),
         cache.parse_calls(),
-        "Every physical Rust file in the workspace must be parsed by syn::parse_file at most once"
+        "Every physical Rust file in the workspace must be parsed by syn::parse_file at most once across batch_ast + report"
     );
 }
 
