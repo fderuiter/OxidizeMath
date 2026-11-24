@@ -13,6 +13,9 @@ oxidize_core = { path = "../oxidize_core", features = ["serde"] }
 verified_engine = { path = "../verified_engine", features = ["serde"] }
 verified_engine_macros = { path = "../verified_engine_macros" }
 diagnostics = { path = "../diagnostics", features = ["serde"] }
+engine_diffeq = { path = "../engine_diffeq", features = ["serde"] }
+engine_linalg = { path = "../02_engines/engine_linalg" }
+engine_pde = { path = "../engine_pde", features = ["serde"] }
 math_commons = { path = "../math_commons", features = ["serde"] }
 pure_math = { path = "../pure_math", features = ["serde"] }
 domain_ai = { path = "../domain_ai", features = ["serde"] }

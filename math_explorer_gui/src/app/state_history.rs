@@ -116,7 +116,8 @@ fn build_history_fingerprint(
         },
         compare_sync_bits: u8::from(app.compare_sync.link_axes)
             | (u8::from(app.compare_sync.link_cursors) << 1)
-            | (u8::from(app.compare_sync.sync_playback) << 2),
+            | (u8::from(app.compare_sync.sync_playback) << 2)
+            | (u8::from(app.compare_sync.link_topology) << 3),
         split_ratio_bits: app.split_ratio.clamp(0.20, 0.80).to_bits(),
         quad_split_ratio_bits: (
             app.quad_split_ratios.0.clamp(0.20, 0.80).to_bits(),

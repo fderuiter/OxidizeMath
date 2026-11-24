@@ -7,14 +7,20 @@ use rand::Rng;
 
 /// Performance statistics from Monte Carlo simulation.
 ///
-/// Contains summary statistics from multiple simulated trajectories.
+/// Contains summary statistics and calibrated standard errors from multiple simulated trajectories.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PerformanceStats {
     /// Mean of final values across all paths.
     pub mean_final: f64,
-    /// Standard deviation of final values.
+    /// Sample standard deviation of final values.
     pub std_final: f64,
+    /// Standard error of `mean_final` (`std_final / sqrt(n_paths)`).
+    pub standard_error: f64,
+    /// Lower bound of the 95% normal confidence interval for `mean_final`.
+    pub ci_95_lower: f64,
+    /// Upper bound of the 95% normal confidence interval for `mean_final`.
+    pub ci_95_upper: f64,
     /// Median of final values.
     pub median_final: f64,
     /// 5th percentile of final values.
@@ -23,6 +29,8 @@ pub struct PerformanceStats {
     pub percentile_95: f64,
     /// Probability of exceeding a threshold.
     pub prob_above_threshold: Option<f64>,
+    /// Binomial standard error of `prob_above_threshold` (`sqrt(p*(1-p)/n_paths)`).
+    pub prob_standard_error: Option<f64>,
 }
 
 /// Player momentum classifier based on mean reversion rate.
@@ -164,22 +172,75 @@ impl OuAnalyzer {
         threshold: Option<f64>,
         rng: &mut R,
     ) -> PerformanceStats {
-        debug_assert!(n_paths > 0);
-        let n_steps = (time_horizon / self.dt.value()).ceil() as usize;
+        let valid_threshold = threshold.filter(|t| t.is_finite());
+        let fallback = if x0.is_finite() {
+            x0
+        } else {
+            self.params.mu.value()
+        };
+        let fallback_stats = || PerformanceStats {
+            mean_final: fallback,
+            std_final: 0.0,
+            standard_error: 0.0,
+            ci_95_lower: fallback,
+            ci_95_upper: fallback,
+            median_final: fallback,
+            percentile_05: fallback,
+            percentile_95: fallback,
+            prob_above_threshold: valid_threshold.map(|_| 0.0),
+            prob_standard_error: valid_threshold.map(|_| 0.0),
+        };
+        if n_paths == 0 || !x0.is_finite() || !time_horizon.is_finite() || time_horizon < 0.0 {
+            return fallback_stats();
+        }
+
+        let n_steps = if time_horizon == 0.0 {
+            0
+        } else {
+            (time_horizon / self.dt.value()).ceil() as usize
+        };
         let solver = EulerMaruyama::new(self.params, self.dt);
         let paths = solver.simulate_paths(x0, n_steps, n_paths, rng);
-        let final_values: Vec<f64> = paths.iter().filter_map(|p| p.last().copied()).collect();
+        let final_values: Vec<f64> = paths
+            .iter()
+            .map(|p| {
+                let last = p.last().copied().unwrap_or(fallback);
+                if last.is_finite() { last } else { fallback }
+            })
+            .collect();
         let mut ws = math_commons::stochastic::SolverWorkspace::new(0, final_values.len());
-        summarize_terminal_values_with_workspace(&mut ws, &final_values, threshold).unwrap_or(
-            PerformanceStats {
-                mean_final: x0,
-                std_final: 0.0,
-                median_final: x0,
-                percentile_05: x0,
-                percentile_95: x0,
-                prob_above_threshold: threshold.map(|t| if x0 > t { 1.0 } else { 0.0 }),
-            },
-        )
+        summarize_terminal_values_with_workspace(&mut ws, &final_values, valid_threshold)
+            .unwrap_or_else(fallback_stats)
+    }
+
+    /// Validated fallible variant of [`Self::monte_carlo_forecast`] returning [`OuError`] on invalid inputs.
+    #[verified_engine::verified]
+    pub fn try_monte_carlo_forecast<R: Rng>(
+        &self,
+        x0: f64,
+        time_horizon: f64,
+        n_paths: usize,
+        threshold: Option<f64>,
+        rng: &mut R,
+    ) -> Result<PerformanceStats, OuError> {
+        if n_paths == 0 {
+            return Err(OuError::InvalidSimulationParams {
+                reason: "n_paths must be at least 1".to_string(),
+            });
+        }
+        if !x0.is_finite() || !time_horizon.is_finite() || time_horizon < 0.0 {
+            return Err(OuError::InvalidSimulationParams {
+                reason: "x0 and time_horizon must be finite with time_horizon >= 0".to_string(),
+            });
+        }
+        if let Some(t) = threshold
+            && !t.is_finite()
+        {
+            return Err(OuError::InvalidSimulationParams {
+                reason: "threshold must be finite".to_string(),
+            });
+        }
+        Ok(self.monte_carlo_forecast(x0, time_horizon, n_paths, threshold, rng))
     }
 
     /// Estimates the probability of a comeback given current deficit.
@@ -231,14 +292,28 @@ pub fn summarize_terminal_values_with_workspace(
     threshold: Option<f64>,
 ) -> Option<PerformanceStats> {
     debug_assert!(final_values.is_empty() || !final_values.is_empty());
-    let summary = ws.summarize_samples(final_values, threshold)?;
+    let valid_threshold = threshold.filter(|t| t.is_finite());
+    let summary = ws.summarize_samples(final_values, valid_threshold)?;
+    let n = final_values.len();
+    let standard_error = if n > 1 {
+        summary.std_dev / (n as f64).sqrt()
+    } else {
+        0.0
+    };
+    let ci_half = 1.959_963_984_540_054 * standard_error;
+    let prob_above_threshold = valid_threshold.map(|_| summary.prob_above_threshold);
+    let prob_standard_error = prob_above_threshold.map(|p| ((p * (1.0 - p)) / (n as f64)).sqrt());
     Some(PerformanceStats {
         mean_final: summary.mean,
         std_final: summary.std_dev,
+        standard_error,
+        ci_95_lower: summary.mean - ci_half,
+        ci_95_upper: summary.mean + ci_half,
         median_final: summary.median,
         percentile_05: summary.percentile_05,
         percentile_95: summary.percentile_95,
-        prob_above_threshold: threshold.map(|_| summary.prob_above_threshold),
+        prob_above_threshold,
+        prob_standard_error,
     })
 }
 
@@ -385,5 +460,39 @@ mod tests {
         let observations = vec![0.5, 0.6];
         let result = estimate_ou_params(&observations, 1.0);
         assert!(result.is_err());
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_monte_carlo_forecast_zero_paths_nan_and_standard_errors() {
+        let params = OuParams::from_values(0.5, 1.0, 0.2).unwrap();
+        let dt = TimeStep::new(0.01).unwrap();
+        let analyzer = OuAnalyzer::new(params, dt);
+        let mut rng = oxidize_core::rng::OxidizeRng::new(7);
+
+        let zero_stats = analyzer.monte_carlo_forecast(0.6, 1.0, 0, Some(0.5), &mut rng);
+        assert!(zero_stats.mean_final.is_finite());
+        assert_eq!(zero_stats.standard_error, 0.0);
+        assert_eq!(zero_stats.prob_above_threshold, Some(0.0));
+        assert!(
+            analyzer
+                .try_monte_carlo_forecast(0.6, 1.0, 0, None, &mut rng)
+                .is_err()
+        );
+
+        let nan_stats = analyzer.monte_carlo_forecast(f64::NAN, 1.0, 64, Some(f64::NAN), &mut rng);
+        assert!(nan_stats.mean_final.is_finite());
+        assert_eq!(nan_stats.standard_error, 0.0);
+        assert!(nan_stats.prob_above_threshold.is_none());
+        assert!(
+            analyzer
+                .try_monte_carlo_forecast(f64::NAN, 1.0, 64, None, &mut rng)
+                .is_err()
+        );
+
+        let stats = analyzer.monte_carlo_forecast(0.5, 1.0, 500, Some(0.5), &mut rng);
+        assert!(stats.standard_error > 0.0);
+        assert!(stats.ci_95_lower < stats.mean_final && stats.mean_final < stats.ci_95_upper);
+        assert!(stats.prob_standard_error.unwrap() > 0.0);
     }
 }

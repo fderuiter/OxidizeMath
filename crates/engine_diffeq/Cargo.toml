@@ -1,0 +1,23 @@
+[package]
+name = "engine_diffeq"
+version.workspace = true
+edition = "2024"
+
+[features]
+default = ["std"]
+alloc = []
+std = ["alloc", "math_commons/std", "serde?/std", "verified_engine/std"]
+serde = ["dep:serde", "math_commons/serde", "verified_engine/serde"]
+
+[dependencies]
+math_commons = { path = "../math_commons", default-features = false }
+rand_core = { workspace = true }
+serde = { workspace = true, default-features = false, features = ["derive"], optional = true }
+verified_engine = { version = "0.1.0", path = "../verified_engine", default-features = false }
+
+[dev-dependencies]
+oxidize_core = { path = "../oxidize_core" }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

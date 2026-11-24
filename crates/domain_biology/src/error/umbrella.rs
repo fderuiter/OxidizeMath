@@ -1,4 +1,4 @@
-use super::{HodgkinHuxleyError, KineticsError, ReactionDiffusionError};
+use super::{BotanicalError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError};
 use diagnostics::{Diagnostic, Severity};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -8,6 +8,9 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum BiologyError {
+    /// Botanical morphogenesis (L-system or phyllotaxis) error.
+    #[error("{0}")]
+    Botanical(#[from] BotanicalError),
     /// Hodgkin-Huxley cellular neuroscience error.
     #[error("{0}")]
     HodgkinHuxley(#[from] HodgkinHuxleyError),
@@ -70,6 +73,7 @@ impl BiologyError {
     #[verified_engine::verified]
     fn as_diagnostic(&self) -> &dyn Diagnostic {
         match self {
+            Self::Botanical(err) => err,
             Self::HodgkinHuxley(err) => err,
             Self::Kinetics(err) => err,
             Self::ReactionDiffusion(err) => err,

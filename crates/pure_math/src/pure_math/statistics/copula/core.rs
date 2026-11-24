@@ -1,16 +1,12 @@
 //! Core types for copula operations.
 
 use crate::error::CopulaError;
+use crate::pure_math::algebra::linear_algebra::numerical::dmatrix_to_row_major;
+use engine_linalg::{SolverWorkspace, cholesky_semidefinite, cholesky_semidefinite_workspace_len};
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
 use math_commons::registry::TOLERANCE_HIGH;
-use nalgebra::{DMatrix, SymmetricEigen};
-
-/// Pivot threshold below which a positive-semidefinite Schur complement diagonal is snapped to zero.
-const PSD_PIVOT_EPS: f64 = 1e-12;
-
-/// Minimum diagonal threshold for accepting unpivoted strict Cholesky without spectral verification.
-const STRICT_CHOLESKY_MIN_DIAG: f64 = 1e-7;
+use nalgebra::DMatrix;
 
 /// A probability value in `[0, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -132,51 +128,21 @@ fn validate_entries_and_symmetry(matrix: &DMatrix<f64>) -> Result<DMatrix<f64>, 
     Ok(sym)
 }
 
-fn semidefinite_cholesky(sym: &DMatrix<f64>) -> DMatrix<f64> {
-    let n = sym.nrows();
-    let mut lower = DMatrix::zeros(n, n);
-    for i in 0..n {
-        for j in 0..i {
-            let l_jj = lower[(j, j)];
-            if l_jj > 0.0 {
-                let mut sum = 0.0;
-                for k in 0..j {
-                    sum += lower[(i, k)] * lower[(j, k)];
-                }
-                lower[(i, j)] = (sym[(i, j)] - sum) / l_jj;
-            }
-        }
-        let mut diag_sum = 0.0;
-        for j in 0..i {
-            let v = lower[(i, j)];
-            diag_sum += v * v;
-        }
-        let rem = sym[(i, i)] - diag_sum;
-        if rem > PSD_PIVOT_EPS {
-            lower[(i, i)] = rem.sqrt();
-        }
-    }
-    lower
-}
-
 fn compute_psd_factor(sym: DMatrix<f64>) -> Result<DMatrix<f64>, CopulaError> {
-    if let Some(chol) = sym.clone().cholesky() {
-        let lower = chol.unpack();
-        let min_diag = (0..lower.nrows())
-            .map(|i| lower[(i, i)])
-            .fold(f64::INFINITY, f64::min);
-        if min_diag > STRICT_CHOLESKY_MIN_DIAG {
-            return Ok(lower);
-        }
-    }
-
-    let eig = SymmetricEigen::new(sym.clone());
-    for &ev in eig.eigenvalues.iter() {
-        if !ev.is_finite() || ev < -TOLERANCE_HIGH {
-            return Err(CopulaError::NotPositiveDefinite);
-        }
-    }
-    Ok(semidefinite_cholesky(&sym))
+    let n = sym.nrows();
+    let sym_row = dmatrix_to_row_major(&sym);
+    let mut lower = vec![0.0_f64; n * n];
+    let mut scratch = vec![0.0_f64; cholesky_semidefinite_workspace_len(n)];
+    cholesky_semidefinite(
+        &sym_row,
+        &mut lower,
+        n,
+        TOLERANCE_HIGH,
+        TOLERANCE_HIGH,
+        &mut SolverWorkspace::new(&mut scratch),
+    )
+    .map_err(|_| CopulaError::NotPositiveDefinite)?;
+    Ok(DMatrix::from_row_slice(n, n, &lower))
 }
 
 impl CorrelationMatrix {

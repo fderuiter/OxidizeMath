@@ -453,6 +453,9 @@ mod tests {
         let compiled = CompiledExpr::compile_with_vars_and_params(&ast, &["x"], &["v0", "width"])
             .expect("compiled bytecode");
 
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let (val, metrics) = VerifiedEngine::run_verified(|| {
             let t_ast = compiled_barrier_transmission(
                 5.0,

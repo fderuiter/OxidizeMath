@@ -1,6 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{DEFAULT_CONTAINMENT_BUDGET, DEFAULT_NETWORK_SEED, MAX_CONTAINMENT_BUDGET};
+use crate::app::TopologySource;
 use math_commons::primitives::NonNegativeFloat;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
 use std::collections::HashSet;
@@ -41,8 +42,9 @@ pub(super) struct NetPropState {
     pub(super) quarantined_edges: Vec<usize>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub(super) is_running: bool,
+    #[serde(default, skip_serializing_if = "TopologySource::is_default")]
+    pub(super) topology_source: TopologySource,
 }
-
 fn validate_unique_indices(items: &[usize], label: &str) -> Result<Vec<usize>, String> {
     let mut seen = HashSet::with_capacity(items.len());
     for &idx in items {

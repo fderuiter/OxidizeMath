@@ -106,6 +106,21 @@ fn verify_shader_capability(
     true
 }
 
+fn verify_audio_capability(meta_id: &str, caps: ExportCapabilities) -> bool {
+    if !caps.audio {
+        assert!(
+            !caps.audio_disabled_reason.is_empty(),
+            "{meta_id} disables audio export without an explanatory reason"
+        );
+        return false;
+    }
+    assert!(
+        caps.audio_disabled_reason.is_empty(),
+        "{meta_id} advertises audio export but has non-empty disabled reason"
+    );
+    true
+}
+
 fn verify_dataset_only_tool(meta_name: &str, tool: Box<dyn InteractiveTool>) {
     let mut framework = SimulationFramework::new("__audit_dataset_only__");
     framework.active_tool = Some(tool);
@@ -185,10 +200,14 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     let (mut dataset_only_tool_count, mut unsupported_tool_count) = (0usize, 0usize);
     let (mut solid_3d_count, mut splat_3d_count) = (0usize, 0usize);
     let (mut shader_tool_count, mut non_shader_tool_count) = (0usize, 0usize);
+    let mut audio_tool_count = 0usize;
 
     for meta in inventory::iter::<crate::framework::ToolMetadata> {
         let tool = (meta.build)();
         let caps = tool.export_capabilities();
+        if verify_audio_capability(meta.id, caps) {
+            audio_tool_count += 1;
+        }
         if caps.stl && caps.ply && caps.obj {
             solid_3d_count += 1;
         } else if caps.ply {
@@ -226,15 +245,25 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         splat_3d_count,
         shader_tool_count,
         non_shader_tool_count,
+        audio_tool_count,
     ]);
 }
 
-fn assert_expected_capability_counts(counts: [usize; 8]) {
-    let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader] = counts;
+fn assert_expected_capability_counts(counts: [usize; 9]) {
+    let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader, audio] =
+        counts;
     let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
-    let expected_plot = if has_surface_morpho { 74 } else { 73 };
+    let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
+    let expected_audio = usize::from(cfg!(feature = "biology")) * 2
+        + usize::from(cfg!(feature = "physics")) * 3
+        + usize::from(cfg!(feature = "pure_math"));
+    assert_eq!(
+        audio, expected_audio,
+        "Expected {expected_audio} WAV audio-capable tools"
+    );
+    let expected_plot = (if has_surface_morpho { 75 } else { 74 }) + bio_extra;
     let expected_solid = if has_surface_morpho { 8 } else { 7 };
-    let expected_non_shader = if has_surface_morpho { 88 } else { 87 };
+    let expected_non_shader = (if has_surface_morpho { 89 } else { 88 }) + bio_extra;
     assert_eq!(
         plot, expected_plot,
         "Expected {expected_plot} Plot dataset+figure tools"

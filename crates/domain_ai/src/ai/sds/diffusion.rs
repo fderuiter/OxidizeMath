@@ -1,6 +1,26 @@
+use engine_diffeq::{EulerMaruyamaSolver, SdeSystem, StochasticCalculus};
+use math_commons::math_kernel::types::{SolverWorkspace, fill_standard_normal};
 use nalgebra::DMatrix;
 use rand::Rng;
-use rand_distr::{Distribution, Normal};
+
+struct VariancePreservingPixelSde {
+    beta: f64,
+}
+
+impl SdeSystem<f64> for VariancePreservingPixelSde {
+    fn state_dim(&self) -> usize {
+        1
+    }
+    fn wiener_dim(&self) -> usize {
+        1
+    }
+    fn drift(&self, _t: f64, x: &[f64], out_drift: &mut [f64]) {
+        out_drift[0] = -0.5 * self.beta * x[0];
+    }
+    fn diffusion(&self, _t: f64, _x: &[f64], out_diffusion: &mut [f64]) {
+        out_diffusion[0] = self.beta.max(0.0).sqrt();
+    }
+}
 
 const DEFAULT_BETA_START: f64 = 0.0001;
 const DEFAULT_BETA_END: f64 = 0.02;
@@ -143,18 +163,38 @@ pub fn generate_noise(rows: usize, cols: usize) -> Result<DMatrix<f64>, crate::e
     generate_noise_with_rng(rows, cols, &mut rng)
 }
 
-/// Helper to generate Gaussian noise matching image dimensions using an injected RNG.
+/// Helper to generate Gaussian noise matching image dimensions using Tier 0 Box-Muller over `RngCore`.
 #[verified_engine::verified]
 pub fn generate_noise_with_rng<R: Rng + ?Sized>(
     rows: usize,
     cols: usize,
     rng: &mut R,
 ) -> Result<DMatrix<f64>, crate::error::AIError> {
-    let normal =
-        Normal::new(0.0, 1.0).map_err(|e| math_commons::error::MathError::ConversionError {
-            reason: format!("Invalid normal distribution: {}", e),
-        })?;
-    Ok(DMatrix::from_fn(rows, cols, |_, _| normal.sample(rng)))
+    let mut mat = DMatrix::zeros(rows, cols);
+    fill_standard_normal(mat.as_mut_slice(), rng);
+    debug_assert_eq!(mat.nrows(), rows);
+    Ok(mat)
+}
+
+/// Advances latent pixels in-place by one variance-preserving SDE step
+/// $dx = -\frac{1}{2}\beta x\,dt + \sqrt{\beta}\,dW_t$ via [`engine_diffeq::EulerMaruyamaSolver`].
+#[verified_engine::verified]
+pub fn step_vp_sde_in_place<R: Rng + ?Sized>(
+    latent: &mut DMatrix<f64>,
+    beta: f64,
+    dt: f64,
+    rng: &mut R,
+) {
+    assert!(beta >= 0.0 && dt >= 0.0);
+    let sde = VariancePreservingPixelSde { beta };
+    let solver = EulerMaruyamaSolver::new(StochasticCalculus::Ito);
+    let mut scratch = [0.0_f64; 4];
+    let mut ws = SolverWorkspace::new(&mut scratch);
+    for px in latent.as_mut_slice() {
+        let mut state = [*px];
+        solver.step(&sde, 0.0, dt, &mut state, &mut ws, rng);
+        *px = state[0];
+    }
 }
 
 #[cfg(test)]

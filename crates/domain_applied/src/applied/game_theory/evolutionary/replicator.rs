@@ -46,6 +46,8 @@ impl ReplicatorDynamics<MatrixPayoff> {
     }
 }
 
+const MAX_REPLICATOR_STEPS: usize = 200_000;
+
 impl<S: FitnessStrategy> ReplicatorDynamics<S> {
     /// Creates a new system with a custom fitness strategy.
     #[verified_engine::verified]
@@ -103,8 +105,20 @@ impl<S: FitnessStrategy> ReplicatorDynamics<S> {
     where
         Solve: Solver<DVector<f64>>,
     {
-        let steps = (time_horizon / dt).ceil() as usize;
-        let mut trajectory = Vec::with_capacity(steps + 1);
+        let steps =
+            if !time_horizon.is_finite() || time_horizon <= 0.0 || !dt.is_finite() || dt <= 0.0 {
+                0
+            } else {
+                let raw_steps = (time_horizon / dt).ceil();
+                if raw_steps.is_nan() || raw_steps <= 0.0 {
+                    0
+                } else if raw_steps >= MAX_REPLICATOR_STEPS as f64 {
+                    MAX_REPLICATOR_STEPS
+                } else {
+                    raw_steps as usize
+                }
+            };
+        let mut trajectory = Vec::with_capacity(steps.saturating_add(1));
         let mut current_x = initial_population;
         let mut current_t = 0.0;
 
@@ -117,7 +131,10 @@ impl<S: FitnessStrategy> ReplicatorDynamics<S> {
 
             // Normalize to prevent numerical drift from simplex
             let sum = current_x.sum();
-            if (sum - 1.0).abs() > math_commons::registry::TOLERANCE_STANDARD {
+            if sum.is_finite()
+                && sum > 0.0
+                && (sum - 1.0).abs() > math_commons::registry::TOLERANCE_STANDARD
+            {
                 current_x /= sum;
             }
 
@@ -208,5 +225,35 @@ mod tests {
 
         assert!((deriv[0] - 0.096).abs() < math_commons::registry::TOLERANCE_FAST);
         assert!((deriv[1] - -0.096).abs() < math_commons::registry::TOLERANCE_FAST);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_simulate_guards_zero_dt_and_extreme_step_counts() {
+        let payoff = DMatrix::from_row_slice(2, 2, &[-1.0, 2.0, 0.0, 1.0]);
+        let system = ReplicatorDynamics::new(payoff).unwrap();
+        let init = DVector::from_vec(vec![0.25, 0.75]);
+
+        for (horizon, dt) in [
+            (20.0, 0.0),
+            (20.0, -0.05),
+            (20.0, f64::NAN),
+            (20.0, f64::INFINITY),
+            (0.0, 0.05),
+            (-10.0, 0.05),
+            (f64::NAN, 0.05),
+            (f64::INFINITY, 0.05),
+        ] {
+            let traj = system.simulate(init.clone(), horizon, dt);
+            assert_eq!(traj.len(), 1);
+            assert_eq!(traj[0].0, 0.0);
+            assert_eq!(traj[0].1, init);
+        }
+
+        // Extreme step ratio exceeding u32::MAX must cap at MAX_REPLICATOR_STEPS without overflow
+        let capped = system.simulate(init, 20.0, 1e-12);
+        assert_eq!(capped.len(), MAX_REPLICATOR_STEPS + 1);
+        let last = &capped.last().unwrap().1;
+        assert!(last.iter().all(|v| v.is_finite()));
     }
 }

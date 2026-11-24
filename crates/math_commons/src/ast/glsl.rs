@@ -3,8 +3,9 @@
 
 use super::eval::MAX_EVAL_DEPTH;
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
-use super::glsl_helpers::is_valid_glsl_ident;
 pub use super::glsl_helpers::{GLSL_COMPLEX_HELPERS, GLSL_SCALAR_HELPERS};
+use super::glsl_helpers::{glsl_func_prefix, is_valid_glsl_ident};
+use super::limits::{MAX_AST_NODES, MAX_GLSL_OUTPUT_BYTES};
 use std::f64::consts::{E, PI, TAU};
 use std::fmt::Write;
 
@@ -15,6 +16,14 @@ pub enum GlslError {
     /// AST subtree height exceeded [`MAX_EVAL_DEPTH`].
     #[error("GLSL transpilation depth limit exceeded (max depth {0})")]
     DepthLimitExceeded(usize),
+
+    /// Visited AST node count exceeded [`MAX_AST_NODES`].
+    #[error("GLSL transpilation complexity limit exceeded (max {0} AST nodes)")]
+    NodeLimitExceeded(usize),
+
+    /// Generated GLSL source length exceeded [`MAX_GLSL_OUTPUT_BYTES`].
+    #[error("GLSL transpilation output limit exceeded (max {0} bytes)")]
+    OutputLimitExceeded(usize),
 
     /// Built-in function was invoked with an unsupported argument count.
     #[error("Function '{func:?}' expected {expected} arguments, found {found}")]
@@ -49,6 +58,12 @@ impl diagnostics::Diagnostic for GlslError {
         match self {
             Self::DepthLimitExceeded(limit) => {
                 map.insert("glsl_max_depth".to_string(), limit.to_string());
+            }
+            Self::NodeLimitExceeded(limit) => {
+                map.insert("glsl_max_nodes".to_string(), limit.to_string());
+            }
+            Self::OutputLimitExceeded(limit) => {
+                map.insert("glsl_max_output_bytes".to_string(), limit.to_string());
             }
             Self::WrongArgumentCount {
                 func,
@@ -118,6 +133,7 @@ fn emit_glsl_iterative<'a>(
     mode: GlslMode,
     allowed_vars: Option<&'a [&'a str]>,
 ) -> Result<String, GlslError> {
+    let mut visited_nodes = 0usize;
     let mut emitter = GlslEmitter {
         mode,
         allowed_vars,
@@ -130,7 +146,12 @@ fn emit_glsl_iterative<'a>(
     };
     while let Some(frame) = emitter.stack.pop() {
         match frame {
-            GlslFrame::Literal(lit) => emitter.out.push_str(lit),
+            GlslFrame::Literal(lit) => {
+                if emitter.out.len() + lit.len() > MAX_GLSL_OUTPUT_BYTES {
+                    return Err(GlslError::OutputLimitExceeded(MAX_GLSL_OUTPUT_BYTES));
+                }
+                emitter.out.push_str(lit);
+            }
             GlslFrame::Eval {
                 expr,
                 parent_prec,
@@ -139,7 +160,14 @@ fn emit_glsl_iterative<'a>(
                 if depth > MAX_EVAL_DEPTH {
                     return Err(GlslError::DepthLimitExceeded(MAX_EVAL_DEPTH));
                 }
+                visited_nodes += 1;
+                if visited_nodes > MAX_AST_NODES {
+                    return Err(GlslError::NodeLimitExceeded(MAX_AST_NODES));
+                }
                 emitter.step_frame(expr, parent_prec, depth)?;
+                if emitter.out.len() > MAX_GLSL_OUTPUT_BYTES {
+                    return Err(GlslError::OutputLimitExceeded(MAX_GLSL_OUTPUT_BYTES));
+                }
             }
         }
     }
@@ -311,7 +339,8 @@ impl<'a> GlslEmitter<'a> {
                 found: args.len(),
             });
         }
-        self.out.push_str(glsl_func_prefix(func, self.mode));
+        self.out
+            .push_str(glsl_func_prefix(func, self.mode == GlslMode::Complex));
         self.stack.push(GlslFrame::Literal(")"));
         for (idx, arg) in args.iter().enumerate().rev() {
             self.stack.push(GlslFrame::Eval {
@@ -422,49 +451,4 @@ struct InfixSpec {
     prec: u8,
     left_prec: u8,
     right_prec: u8,
-}
-
-const fn glsl_func_prefix(func: Func, mode: GlslMode) -> &'static str {
-    match (mode, func) {
-        (GlslMode::Scalar, Func::Sin) => "sin(",
-        (GlslMode::Scalar, Func::Cos) => "cos(",
-        (GlslMode::Scalar, Func::Tan) => "tan(",
-        (GlslMode::Scalar, Func::Exp) => "glsl_exp(",
-        (GlslMode::Scalar, Func::Ln) => "glsl_ln(",
-        (GlslMode::Scalar, Func::Log10) => "glsl_log10(",
-        (GlslMode::Scalar, Func::Sqrt) => "glsl_sqrt(",
-        (GlslMode::Scalar, Func::Abs) => "abs(",
-        (GlslMode::Scalar, Func::Sinh) => "glsl_sinh(",
-        (GlslMode::Scalar, Func::Cosh) => "glsl_cosh(",
-        (GlslMode::Scalar, Func::Tanh) => "tanh(",
-        (GlslMode::Scalar, Func::Asin) => "glsl_asin(",
-        (GlslMode::Scalar, Func::Acos) => "glsl_acos(",
-        (GlslMode::Scalar, Func::Atan) => "atan(",
-        (GlslMode::Scalar, Func::Min) => "min(",
-        (GlslMode::Scalar, Func::Max) => "max(",
-        (GlslMode::Scalar, Func::Clamp) => "glsl_clamp(",
-        (GlslMode::Scalar, Func::Step) => "glsl_step(",
-        (GlslMode::Scalar, Func::Rect) => "glsl_rect(",
-        (GlslMode::Scalar, Func::Atan2) => "glsl_atan2(",
-        (GlslMode::Complex, Func::Sin) => "csin(",
-        (GlslMode::Complex, Func::Cos) => "ccos(",
-        (GlslMode::Complex, Func::Tan) => "ctan(",
-        (GlslMode::Complex, Func::Exp) => "cexp(",
-        (GlslMode::Complex, Func::Ln) => "cln(",
-        (GlslMode::Complex, Func::Log10) => "clog10(",
-        (GlslMode::Complex, Func::Sqrt) => "csqrt(",
-        (GlslMode::Complex, Func::Abs) => "cabs(",
-        (GlslMode::Complex, Func::Sinh) => "csinh(",
-        (GlslMode::Complex, Func::Cosh) => "ccosh(",
-        (GlslMode::Complex, Func::Tanh) => "ctanh(",
-        (GlslMode::Complex, Func::Asin) => "casin(",
-        (GlslMode::Complex, Func::Acos) => "cacos(",
-        (GlslMode::Complex, Func::Atan) => "catan(",
-        (GlslMode::Complex, Func::Min) => "cmin(",
-        (GlslMode::Complex, Func::Max) => "cmax(",
-        (GlslMode::Complex, Func::Clamp) => "cclamp(",
-        (GlslMode::Complex, Func::Step) => "cstep(",
-        (GlslMode::Complex, Func::Rect) => "crect(",
-        (GlslMode::Complex, Func::Atan2) => "catan2(",
-    }
 }

@@ -240,30 +240,141 @@ impl<const N: usize, S: Solver<TuringState<N>>> TuringSolverStrategy<N>
     }
 }
 
+use engine_pde::{BoundaryCondition, inject_additive_noise_1d};
+use math_commons::math_kernel::types::SolverWorkspace;
 use pure_math::pure_math::analysis::evolution::{EvolutionEngine, EvolutionError};
 use rand::RngCore;
 
-/// A wrapper to use FusedEulerSolver within the unified EvolutionEngine interface.
+/// A wrapper to use [`FusedEulerSolver`] within the unified [`EvolutionEngine`] interface,
+/// forwarding caller `rng` streams into [`engine_pde`] spatio-temporal noise when `noise_intensity > 0.0`.
 pub struct FusedEulerEvolution<'a, const N: usize, K, D> {
-    #[allow(missing_docs)]
+    /// Underlying deterministic fused reaction-diffusion stepper.
     pub solver: FusedEulerSolver,
-    #[allow(missing_docs)]
+    /// Borrowed reaction-diffusion kinetics and spatial diffusion operator.
     pub dynamics: &'a TuringDynamics<'a, N, K, D>,
+    /// Optional spatio-temporal Gaussian white-noise intensity $D_{\text{noise}} \ge 0$.
+    pub noise_intensity: f64,
+    /// Effective spatial cell measure $\Delta V > 0$ scaling stochastic concentration fluctuations.
+    pub cell_measure: f64,
+}
+
+impl<'a, const N: usize, K, D> FusedEulerEvolution<'a, N, K, D> {
+    /// Creates a deterministic (`noise_intensity = 0.0`) [`FusedEulerEvolution`] adapter.
+    #[verified_engine::verified]
+    pub fn new(solver: FusedEulerSolver, dynamics: &'a TuringDynamics<'a, N, K, D>) -> Self {
+        Self {
+            solver,
+            dynamics,
+            noise_intensity: 0.0,
+            cell_measure: 1.0,
+        }
+    }
+
+    /// Creates a stochastic [`FusedEulerEvolution`] adapter injecting white noise of `noise_intensity`
+    /// scaled by `cell_measure` ($\Delta x$ or $\Delta x \Delta y$) via [`engine_pde`].
+    #[verified_engine::verified]
+    pub fn with_stochastic_noise(
+        solver: FusedEulerSolver,
+        dynamics: &'a TuringDynamics<'a, N, K, D>,
+        noise_intensity: f64,
+        cell_measure: f64,
+    ) -> Self {
+        assert!(noise_intensity >= 0.0 && cell_measure > 0.0);
+        Self {
+            solver,
+            dynamics,
+            noise_intensity,
+            cell_measure,
+        }
+    }
 }
 
 impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>>
     EvolutionEngine<TuringState<N>, TuringState<N>> for FusedEulerEvolution<'a, N, K, D>
 {
+    #[verified_engine::verified]
     fn step<R: RngCore + ?Sized>(
         &mut self,
         state: &mut TuringState<N>,
         aux: &mut TuringState<N>,
-        _rng: &mut R,
+        rng: &mut R,
         dt: f64,
     ) -> Result<(), EvolutionError> {
+        if !dt.is_finite() || dt < 0.0 {
+            return Err(EvolutionError::InvalidState);
+        }
         self.solver.step(state, aux, self.dynamics, dt);
-        // aux holds the next state. To make it standard, we should copy it back to state.
         state.copy_from(aux);
+        if self.noise_intensity > 0.0 && dt > 0.0 {
+            let dx = self.cell_measure.max(1e-12);
+            let mut stack_scratch = [0.0_f64; 64];
+            for species in &mut state.concentrations {
+                for chunk in species.chunks_mut(64) {
+                    let mut ws = SolverWorkspace::new(&mut stack_scratch);
+                    inject_additive_noise_1d(
+                        chunk,
+                        dx,
+                        dt,
+                        self.noise_intensity,
+                        BoundaryCondition::Neumann,
+                        &mut ws,
+                        rng,
+                    );
+                }
+            }
+        }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod stochastic_evolution_tests {
+    use super::*;
+    use crate::biology::diffusion::FiniteDifference1D;
+    use crate::biology::morphogenesis::SchnakenbergKinetics;
+    use math_commons::math_kernel::types::StepSize;
+    use oxidize_core::rng::OxidizeRng;
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_fused_euler_evolution_forwards_rng_to_engine_pde() {
+        let kinetics = SchnakenbergKinetics::default();
+        let diffusion = FiniteDifference1D::new(StepSize(1.0));
+        let dynamics = TuringDynamics {
+            kinetics: &kinetics,
+            diffusion: &diffusion,
+            diffusion_coeffs: [1.0, 20.0],
+        };
+        let mut state_a = TuringState::<2>::new(32);
+        let mut state_b = TuringState::<2>::new(32);
+        let mut aux = TuringState::<2>::new(32);
+        state_a.concentrations[0].fill(1.0);
+        state_a.concentrations[1].fill(0.5);
+        state_b.copy_from(&state_a);
+
+        let mut evo_det = FusedEulerEvolution::new(FusedEulerSolver::new(), &dynamics);
+        let mut evo_stoch = FusedEulerEvolution::with_stochastic_noise(
+            FusedEulerSolver::new(),
+            &dynamics,
+            0.05,
+            1.0,
+        );
+        let mut rng = OxidizeRng::new(77);
+        evo_det
+            .step(&mut state_a, &mut aux, &mut rng, 0.01)
+            .unwrap();
+        evo_stoch
+            .step(&mut state_b, &mut aux, &mut rng, 0.01)
+            .unwrap();
+        // Homogeneous deterministic step stays spatially uniform, whereas stochastic step breaks symmetry!
+        let u_min = state_b.concentrations[0]
+            .iter()
+            .copied()
+            .fold(f64::INFINITY, f64::min);
+        let u_max = state_b.concentrations[0]
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max);
+        assert!(u_max - u_min > 1e-4);
     }
 }

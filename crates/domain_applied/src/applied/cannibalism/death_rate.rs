@@ -40,7 +40,8 @@ pub fn trapezoidal_quadrature(values: &[f64], da: f64) -> f64 {
     sanitize_density(sum * da)
 }
 
-/// Advances one CFL-safe characteristic upwind step (`dt <= da`) without heap allocation.
+/// Advances one CFL-safe characteristic upwind step (`dt <= da`) without heap allocation,
+/// delegating to [`engine_pde::StencilOperators::step_characteristic_upwind_1d`].
 #[verified_engine::verified]
 pub fn advect_characteristic_step(
     density: &[f64],
@@ -54,21 +55,19 @@ pub fn advect_characteristic_step(
     if n == 0 {
         return;
     }
-    let lambda = if da > 0.0 && dt.is_finite() && da.is_finite() {
-        (dt / da).clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
-    next_density[0] = sanitize_density(boundary_birth);
-    let mut idx = 1;
-    while idx < n {
-        let foot = (1.0 - lambda) * sanitize_density(density[idx])
-            + lambda * sanitize_density(density[idx - 1]);
-        let mu = sanitize_density(mortality[idx]);
-        let survival = (-mu * dt.max(0.0)).exp();
-        next_density[idx] = sanitize_density(foot * survival);
-        idx += 1;
+    if !(da > 0.0 && da.is_finite()) {
+        next_density[0] = sanitize_density(boundary_birth);
+        let dt_pos = dt.max(0.0);
+        for idx in 1..n {
+            let mu = sanitize_density(mortality[idx]);
+            next_density[idx] =
+                sanitize_density(sanitize_density(density[idx]) * (-mu * dt_pos).exp());
+        }
+        return;
     }
+    let ops = engine_pde::StencilOperators::new(math_commons::math_kernel::types::StepSize(da));
+    ops.step_characteristic_upwind_1d(density, mortality, boundary_birth, dt, next_density);
+    debug_assert!(next_density[0].is_finite());
 }
 
 /// Diekmann age-structured mortality, juvenile vulnerability, and Ricker saturation kernel.

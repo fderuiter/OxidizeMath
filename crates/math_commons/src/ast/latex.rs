@@ -1,8 +1,9 @@
 //! LaTeX representation generator for Abstract Syntax Tree expressions.
 // [cite:math_commons]
 
-use super::eval::EvalError;
+use super::eval::{EvalError, MAX_EVAL_DEPTH};
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
+use super::limits::{MAX_AST_NODES, MAX_LATEX_FALLBACK_NODES, MAX_LATEX_OUTPUT_BYTES};
 use std::collections::HashMap;
 use std::fmt::Write;
 
@@ -16,19 +17,24 @@ enum LatexFrame<'a> {
 }
 
 impl Expr {
-    /// Converts the AST expression to a formatted symbolic LaTeX string.
+    /// Converts the AST expression to a bounded symbolic LaTeX string, eliding
+    /// subtrees beyond [`MAX_LATEX_FALLBACK_NODES`] or [`MAX_LATEX_OUTPUT_BYTES`] with `\dots`
+    /// while preserving balanced closing delimiters.
     #[must_use]
     pub fn to_latex(&self) -> String {
-        format_latex_iterative(self, 0, None).expect("unbounded symbolic LaTeX cannot fail")
+        format_latex_bounded_infallible(self, 0)
+    }
+
+    /// Converts the AST expression to a symbolic LaTeX string, returning an error
+    /// if depth, node count ([`MAX_AST_NODES`]), or output length ([`MAX_LATEX_OUTPUT_BYTES`]) is exceeded.
+    pub fn try_to_latex(&self) -> Result<String, EvalError> {
+        format_latex_iterative(self, 0, None)
     }
 }
 
-pub(super) fn format_latex_iterative(
-    root: &Expr,
-    initial_prec: u8,
-    calibrated: Option<(&HashMap<String, f64>, usize)>,
-) -> Result<String, EvalError> {
+fn format_latex_bounded_infallible(root: &Expr, initial_prec: u8) -> String {
     let mut out = String::new();
+    let mut visited_nodes = 0usize;
     let mut stack = vec![LatexFrame::Eval {
         expr: root,
         parent_prec: initial_prec,
@@ -42,12 +48,56 @@ pub(super) fn format_latex_iterative(
                 parent_prec,
                 depth,
             } => {
-                if let Some((_, max_depth)) = calibrated
-                    && depth > max_depth
+                if visited_nodes >= MAX_LATEX_FALLBACK_NODES || out.len() >= MAX_LATEX_OUTPUT_BYTES
                 {
+                    out.push_str(r"\dots");
+                    continue;
+                }
+                visited_nodes += 1;
+                let _ = eval_latex_frame(expr, parent_prec, depth, None, &mut stack, &mut out);
+            }
+        }
+    }
+    out
+}
+
+pub(super) fn format_latex_iterative(
+    root: &Expr,
+    initial_prec: u8,
+    calibrated: Option<(&HashMap<String, f64>, usize)>,
+) -> Result<String, EvalError> {
+    let max_depth = calibrated.map_or(MAX_EVAL_DEPTH, |(_, d)| d);
+    let mut out = String::new();
+    let mut visited_nodes = 0usize;
+    let mut stack = vec![LatexFrame::Eval {
+        expr: root,
+        parent_prec: initial_prec,
+        depth: 0,
+    }];
+    while let Some(frame) = stack.pop() {
+        match frame {
+            LatexFrame::Literal(lit) => {
+                if out.len() + lit.len() > MAX_LATEX_OUTPUT_BYTES {
+                    return Err(EvalError::OutputLimitExceeded(MAX_LATEX_OUTPUT_BYTES));
+                }
+                out.push_str(lit);
+            }
+            LatexFrame::Eval {
+                expr,
+                parent_prec,
+                depth,
+            } => {
+                if depth > max_depth {
                     return Err(EvalError::RecursionLimitExceeded(max_depth));
                 }
+                visited_nodes += 1;
+                if visited_nodes > MAX_AST_NODES {
+                    return Err(EvalError::InstructionLimitExceeded(MAX_AST_NODES));
+                }
                 eval_latex_frame(expr, parent_prec, depth, calibrated, &mut stack, &mut out)?;
+                if out.len() > MAX_LATEX_OUTPUT_BYTES {
+                    return Err(EvalError::OutputLimitExceeded(MAX_LATEX_OUTPUT_BYTES));
+                }
             }
         }
     }

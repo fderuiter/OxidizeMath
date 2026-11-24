@@ -1,6 +1,7 @@
 //! Lexical analyzer / tokenizer for mathematical expressions.
 // [cite:math_commons]
 
+use super::limits::{MAX_EXPR_BYTES, MAX_EXPR_TOKENS};
 use std::fmt;
 
 /// Spanned byte position range in the source string.
@@ -97,6 +98,28 @@ pub struct LexError {
 }
 
 impl LexError {
+    /// Creates a lexical error when raw UTF-8 input exceeds [`MAX_EXPR_BYTES`].
+    #[must_use]
+    pub fn input_too_long(len: usize) -> Self {
+        Self {
+            start: MAX_EXPR_BYTES,
+            end: len,
+            message: format!(
+                "Expression length ({len} bytes) exceeds maximum limit of {MAX_EXPR_BYTES} bytes"
+            ),
+        }
+    }
+
+    /// Creates a lexical error when non-EOF token count exceeds [`MAX_EXPR_TOKENS`].
+    #[must_use]
+    pub fn token_limit_exceeded(start: usize, end: usize) -> Self {
+        Self {
+            start,
+            end,
+            message: format!("Expression exceeds maximum limit of {MAX_EXPR_TOKENS} tokens"),
+        }
+    }
+
     /// Formats this lexical error in plain language using 1-indexed character positions.
     #[must_use]
     pub fn user_message(&self) -> String {
@@ -122,9 +145,12 @@ impl diagnostics::Diagnostic for LexError {
 
 /// Tokenizes a mathematical expression string into a vector of tokens.
 pub fn tokenize(input: &str) -> Result<Vec<Token>, LexError> {
-    let mut tokens = Vec::new();
     let bytes = input.as_bytes();
     let len = bytes.len();
+    if len > MAX_EXPR_BYTES {
+        return Err(LexError::input_too_long(len));
+    }
+    let mut tokens = Vec::with_capacity((len / 2 + 1).min(MAX_EXPR_TOKENS + 1));
     let mut i = 0;
 
     while i < len {
@@ -132,6 +158,9 @@ pub fn tokenize(input: &str) -> Result<Vec<Token>, LexError> {
         if b.is_ascii_whitespace() {
             i += 1;
             continue;
+        }
+        if tokens.len() >= MAX_EXPR_TOKENS {
+            return Err(LexError::token_limit_exceeded(i, len));
         }
 
         if let Some(kind) = match_single_char(b) {
