@@ -93,6 +93,18 @@ pub struct BaumWelchReport<T> {
     pub final_log_likelihood: T,
 }
 
+/// Summary returned by [`super::HiddenMarkovModel::baum_welch`].
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct BaumWelchResult<T> {
+    /// Log-likelihood trace $\ln P(Y \mid \theta^{(k)})$ at each accepted EM state.
+    pub log_likelihoods: Vec<T>,
+    /// Number of parameter update iterations completed.
+    pub iterations: usize,
+    /// True if consecutive log-likelihood improvement fell within `tolerance`.
+    pub converged: bool,
+}
+
 /// Preallocated workspace buffers for zero-allocation Baum-Welch EM fitting.
 #[derive(Debug, Clone)]
 pub struct BaumWelchWorkspace<T> {
