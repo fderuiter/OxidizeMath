@@ -79,34 +79,6 @@ impl AttractorPlotter {
         });
     }
 
-    fn draw_telemetry_and_handoff(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let state = self.system.state.vec;
-        ui.label(format!("X: {:.2}", state.x));
-        ui.label(format!("Y: {:.2}", state.y));
-        ui.label(format!("Z: {:.2}", state.z));
-        if let Some(lyap) = self.current_lyapunov_exponent() {
-            let prefix = if self.mode == super::AttractorMode::Lorenz {
-                "Lorenz Lyapunov"
-            } else {
-                "Flow Lyapunov"
-            };
-            ui.label(format!("{prefix} λ₁: {lyap:+.3}"));
-        }
-        if let Some((c_eps, d2)) = self.current_correlation_invariants() {
-            ui.label(format!("Correlation C(ε): {c_eps:.3} (D₂ ≈ {d2:.2})"));
-        }
-        ui.separator();
-        if ui
-            .add_enabled(
-                !self.diverged() && self.is_finite_state(),
-                egui::Button::new("🕸 Send 3D Landmarks to Vietoris-Rips"),
-            )
-            .clicked()
-        {
-            let _ = self.send_landmarks_to_vietoris_rips(Some(ctx));
-        }
-    }
-
     fn draw_parameter_sliders(&mut self, ui: &mut egui::Ui) {
         if self.mode == super::AttractorMode::Custom {
             egui::CollapsingHeader::new("Vector Field Equations")
@@ -214,31 +186,32 @@ impl AttractorPlotter {
             .default_open(true)
             .show(ui, |ui| {
                 self.draw_transport_and_fork_controls(ui, ctx, worker_faulted);
-                if ui
-                    .add(
-                        egui::Slider::new(
-                            &mut self.simulation_speed,
-                            1..=super::MAX_SIMULATION_SPEED,
-                        )
-                        .text("Speed (steps/frame)"),
-                    )
-                    .changed()
-                {
-                    self.on_slider_changed();
-                }
-                if ui
-                    .add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)"))
-                    .changed()
-                {
-                    self.on_slider_changed();
-                }
-                if ui
-                    .add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points"))
-                    .changed()
-                {
-                    self.on_slider_changed();
-                }
+                self.draw_simulation_sliders(ui);
             });
+    }
+
+    fn draw_simulation_sliders(&mut self, ui: &mut egui::Ui) {
+        if ui
+            .add(
+                egui::Slider::new(&mut self.simulation_speed, 1..=super::MAX_SIMULATION_SPEED)
+                    .text("Speed (steps/frame)"),
+            )
+            .changed()
+        {
+            self.on_slider_changed();
+        }
+        if ui
+            .add(egui::Slider::new(&mut self.dt, 0.001..=0.05).text("Time Step (dt)"))
+            .changed()
+        {
+            self.on_slider_changed();
+        }
+        if ui
+            .add(egui::Slider::new(&mut self.max_points, 100..=10000).text("Max Points"))
+            .changed()
+        {
+            self.on_slider_changed();
+        }
     }
 
     fn draw_central_fault_banner(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
