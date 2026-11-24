@@ -14,17 +14,38 @@ pub mod higgs;
 pub mod neutrinos;
 pub mod qcd;
 
-// [cite:graph_parameters_rust]
+pub use gauge::GaugeCouplings;
+pub use higgs::{HiggsPotential, boson_masses};
+pub use neutrinos::{
+    NeutrinoFlavor, PmnsParameters, construct_pmns, matter_potential_ev2,
+    msw_oscillation_probabilities, pmns_oscillation_probabilities,
+};
+
+// [cite:standard_model]
 
 use pure_math::theory_verification;
 
 theory_verification!(
     module = "standard_model",
     constants = {
-        DUMMY = 1.0;
+        HIGGS_VEV_GEV = 246.22;
+        WEAK_G1 = 0.357;
+        WEAK_G2 = 0.652;
     },
     test = {
         use approx::assert_relative_eq;
-        assert_relative_eq!(DUMMY, 1.0, epsilon = math_commons::registry::TOLERANCE_FAST);
+        let couplings = gauge::GaugeCouplings::new(WEAK_G1, WEAK_G2, 1.22);
+        let (cos_theta_w, sin_theta_w) = couplings.weak_mixing_angle();
+        let (m_w, m_z) = higgs::boson_masses(HIGGS_VEV_GEV, &couplings);
+        assert_relative_eq!(
+            cos_theta_w * cos_theta_w + sin_theta_w * sin_theta_w,
+            1.0,
+            epsilon = math_commons::registry::TOLERANCE_HIGH
+        );
+        assert_relative_eq!(
+            m_w / m_z,
+            cos_theta_w,
+            epsilon = math_commons::registry::TOLERANCE_HIGH
+        );
     }
 );

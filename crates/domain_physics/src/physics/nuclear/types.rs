@@ -15,6 +15,10 @@ pub enum NuclearError {
     InvalidGammaWidth,
     #[allow(missing_docs)]
     VolumeZero,
+    /// Invalid Bateman decay chain configuration (empty, over-capacity, non-positive, or degenerate rates).
+    InvalidDecayChain(&'static str),
+    /// Elapsed decay time must be finite and non-negative.
+    InvalidTime,
 }
 
 impl fmt::Display for NuclearError {
@@ -27,6 +31,8 @@ impl fmt::Display for NuclearError {
             NuclearError::InvalidVelocity => write!(f, "Velocity must be positive"),
             NuclearError::InvalidGammaWidth => write!(f, "Gamma width must be positive"),
             NuclearError::VolumeZero => write!(f, "Calculated volume is zero"),
+            NuclearError::InvalidDecayChain(msg) => write!(f, "Invalid decay chain: {}", msg),
+            NuclearError::InvalidTime => write!(f, "Elapsed decay time must be finite and >= 0"),
         }
     }
 }

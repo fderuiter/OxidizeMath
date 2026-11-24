@@ -33,6 +33,11 @@ fn test_starter_cards_presence_and_metadata() {
     assert!(can_cards
         .iter()
         .any(|c| c.title == "Dwarf & Giant Hopf Cycles"));
+
+    let subatomic_cards = get_starter_cards_for_domain("subatomic", &[]);
+    assert!(subatomic_cards
+        .iter()
+        .any(|c| c.title == "Iron-56 Peak & Isobar Parabola"));
 }
 
 #[test]
@@ -65,15 +70,15 @@ fn test_preset_json_validity() {
 #[test]
 fn test_all_registered_tools_have_starter_presets() {
     let tools: Vec<&'static ToolMetadata> = inventory::iter::<ToolMetadata>.into_iter().collect();
-    assert_eq!(tools.len(), 95, "Expected 95 registered tools");
+    assert_eq!(tools.len(), 98, "Expected 98 registered tools");
 
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
     assert_eq!(
         presets.len(),
-        165,
-        "Expected 165 registered starter presets"
+        169,
+        "Expected 169 registered starter presets"
     );
 
     for tool in &tools {
@@ -234,8 +239,8 @@ fn test_all_57_starter_presets_apply_and_mutate_perturbed_states() {
         .collect();
     assert_eq!(
         presets.len(),
-        165,
-        "Expected 165 StarterPresetMetadata entries"
+        169,
+        "Expected 169 StarterPresetMetadata entries"
     );
 
     for preset in presets {
@@ -257,7 +262,7 @@ fn test_all_52_interactive_tools_serialize_and_restore_non_default_state() {
     let presets: Vec<&'static StarterPresetMetadata> = inventory::iter::<StarterPresetMetadata>
         .into_iter()
         .collect();
-    assert_eq!(tools.len(), 95, "Expected 95 InteractiveTool registrations");
+    assert_eq!(tools.len(), 98, "Expected 98 InteractiveTool registrations");
 
     for tool_meta in tools {
         let default_tool = (tool_meta.build)();

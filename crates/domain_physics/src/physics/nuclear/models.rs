@@ -23,6 +23,28 @@ pub trait BindingEnergyModel {
     }
 }
 
+/// Signed term-by-term breakdown of the Weizsäcker Semi-Empirical Mass Formula (in MeV).
+///
+/// All five physical terms carry their signed contribution to total binding energy $B(Z, A)$:
+/// `volume + surface + coulomb + asymmetry + pairing == total`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LiquidDropBreakdown {
+    /// Positive bulk nuclear attraction $+a_V A$ (MeV).
+    pub volume: f64,
+    /// Negative surface tension correction $-a_S A^{2/3}$ (MeV).
+    pub surface: f64,
+    /// Negative proton-proton electrostatic repulsion $-a_C Z(Z - 1) A^{-1/3}$ (MeV).
+    pub coulomb: f64,
+    /// Negative Pauli neutron-proton asymmetry penalty $-a_{\text{sym}} (A - 2Z)^2 / A$ (MeV).
+    pub asymmetry: f64,
+    /// Signed nucleon pairing contribution $+\delta_0 A^{-1/2}$ (even-even), $-\delta_0 A^{-1/2}$ (odd-odd), or $0$ (odd $A$).
+    pub pairing: f64,
+    /// Total nuclear binding energy $B(Z, A)$ (MeV).
+    pub total: f64,
+    /// Binding energy per nucleon $B(Z, A) / A$ (MeV).
+    pub per_nucleon: f64,
+}
+
 /// The Liquid Drop Model (Semi-Empirical Mass Formula).
 #[derive(Debug, Clone)]
 pub struct LiquidDropModel {
@@ -69,6 +91,49 @@ impl LiquidDropModel {
             delta_coeff,
         }
     }
+
+    /// Computes the full Weizsäcker binding-energy term breakdown for nuclide $(Z, A)$.
+    #[verified_engine::verified]
+    pub fn binding_energy_breakdown(
+        &self,
+        atomic_number: AtomicNumber,
+        mass_number: MassNumber,
+    ) -> Result<LiquidDropBreakdown, NuclearError> {
+        let z_val = atomic_number.value();
+        let a_val = mass_number.value();
+        if z_val > a_val {
+            return Err(NuclearError::InvalidAtomicNumber(
+                "Z cannot be greater than A".to_string(),
+            ));
+        }
+
+        let z = z_val as f64;
+        let a = a_val as f64;
+        let volume = self.a_v * a;
+        let surface = -self.a_s * a.powf(2.0 / 3.0);
+        let coulomb = -self.a_c * (z * (z - 1.0)) / a.powf(1.0 / 3.0);
+        let asymmetry = -self.a_sym * (a - 2.0 * z).powi(2) / a;
+
+        let n_val = a_val - z_val;
+        let pairing = if z_val.is_multiple_of(2) && n_val.is_multiple_of(2) {
+            self.delta_coeff * a.powf(-0.5)
+        } else if !z_val.is_multiple_of(2) && !n_val.is_multiple_of(2) {
+            -self.delta_coeff * a.powf(-0.5)
+        } else {
+            0.0
+        };
+
+        let total = volume + surface + coulomb + asymmetry + pairing;
+        Ok(LiquidDropBreakdown {
+            volume,
+            surface,
+            coulomb,
+            asymmetry,
+            pairing,
+            total,
+            per_nucleon: total / a,
+        })
+    }
 }
 
 impl BindingEnergyModel for LiquidDropModel {
@@ -78,37 +143,8 @@ impl BindingEnergyModel for LiquidDropModel {
         atomic_number: AtomicNumber,
         mass_number: MassNumber,
     ) -> Result<f64, NuclearError> {
-        let z = atomic_number.value() as f64;
-        let a = mass_number.value() as f64;
-
-        if atomic_number.value() > mass_number.value() {
-            return Err(NuclearError::InvalidAtomicNumber(
-                "Z cannot be greater than A".to_string(),
-            ));
-        }
-
-        let vol_term = self.a_v * a;
-        let surf_term = self.a_s * a.powf(2.0 / 3.0);
-        let coul_term = self.a_c * (z * (z - 1.0)) / a.powf(1.0 / 3.0);
-        let sym_term = self.a_sym * (a - 2.0 * z).powi(2) / a;
-
-        // Pairing term delta
-        let z_val = atomic_number.value();
-        let n_val = mass_number.value() - z_val;
-
-        let delta = if z_val.is_multiple_of(2) && n_val.is_multiple_of(2) {
-            // Even Z, Even N
-            self.delta_coeff * a.powf(-0.5)
-        } else if !z_val.is_multiple_of(2) && !n_val.is_multiple_of(2) {
-            // Odd Z, Odd N
-            -self.delta_coeff * a.powf(-0.5)
-        } else {
-            // Odd A (one even, one odd)
-            0.0
-        };
-
-        let b = vol_term - surf_term - coul_term - sym_term + delta;
-        Ok(b)
+        self.binding_energy_breakdown(atomic_number, mass_number)
+            .map(|b| b.total)
     }
 }
 

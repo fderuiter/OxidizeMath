@@ -90,6 +90,8 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         "PhyllotaxisLSystemTool" | "BiochemicalDynamicsTool" | "EvolutionaryBiologyTool" => {
             &["computational_biology", "biology"]
         }
+        "NuclearStabilityTool" | "StandardModelTool" => &["quantum_mechanics", "domain_physics"],
+        "RelativisticJetTool" => &["relativity", "astrophysics", "domain_physics"],
         _ => &[],
     };
     tokens.extend(explicit.iter().map(|s| (*s).to_string()));
@@ -125,6 +127,7 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
             "general_relativity",
             "tensors",
         ],
+        "subatomic" => &["quantum_mechanics", "relativity", "domain_physics"],
         _ => &[],
     };
     tokens.extend(aliases.iter().map(|s| (*s).to_string()));

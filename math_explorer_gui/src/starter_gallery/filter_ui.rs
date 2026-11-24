@@ -167,7 +167,7 @@ pub(crate) fn clear_gallery_filter_state(ctx: &egui::Context, modal_id: egui::Id
 pub fn card_academic_domain(domain: &str) -> AcademicDomain {
     match domain {
         "quantum" | "mri" | "fluid_dynamics" | "chaos" | "solid_state" | "medical"
-        | "astrophysics" | "relativity" | "optics_waves" => AcademicDomain::Physics,
+        | "astrophysics" | "relativity" | "optics_waves" | "subatomic" => AcademicDomain::Physics,
         "analysis"
         | "elliptic_curves"
         | "number_theory"

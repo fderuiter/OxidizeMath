@@ -54,6 +54,12 @@ pub enum StandardModelError {
     #[error("Invalid quark flavor count nf = {nf}")]
     #[allow(missing_docs)]
     InvalidFlavors { nf: f64 },
+    /// Invalid neutrino oscillation parameter (e.g., non-positive energy or negative baseline/density).
+    #[error("Invalid neutrino oscillation parameter: {reason}")]
+    InvalidNeutrinoParameter {
+        /// Human-readable description of the violated oscillation domain constraint.
+        reason: &'static str,
+    },
     /// Spontaneous symmetry breaking requires a negative mass-squared parameter (`mu2 < 0`).
     #[error("Spontaneous symmetry breaking requires mu^2 < 0, got {mu2}")]
     UnbrokenSymmetry {
@@ -224,6 +230,18 @@ pub enum HighEnergyError {
     /// Momentum is invalid (e.g. m^2 + p^2 < 0 somehow? or just checking validity).
     #[error("Invalid relativistic four-momentum")]
     InvalidMomentum,
+    /// Viewing angle must be finite (in radians).
+    #[error("Viewing angle must be finite, got {angle_rad} rad")]
+    InvalidViewingAngle {
+        /// Non-finite viewing angle supplied to the observer kernel (radians).
+        angle_rad: f64,
+    },
+    /// Doppler or beaming factor must be finite and positive.
+    #[error("Doppler or beaming factor must be finite and positive, got {factor}")]
+    InvalidBeamingFactor {
+        /// Invalid Doppler or beaming factor encountered.
+        factor: f64,
+    },
     /// Invalid statistics parameters (e.g. negative counts).
     #[error("Invalid counting statistics parameters: {reason}")]
     #[allow(missing_docs)]

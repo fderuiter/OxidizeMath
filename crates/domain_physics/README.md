@@ -15,7 +15,9 @@ Simulation models implement standardized time-stepping interfaces and energy con
 - **`astrophysics`**: Tillaboev (2025) irregular dwarf-galaxy scaling regressions (`GalaxyModel`), baryonic vs. NFW/Burkert dark-matter rotation curves (`decompose_rotation_curve`), zero-allocation symplectic leapfrog disk & tidal-stream orbits (`GalacticDiskSystem`), and planar 3-body gravitational choreographies (`FigureEightThreeBody`).
 - **`fluid_dynamics`**: Lattice Boltzmann methods and Navier-Stokes velocity field solvers.
 - **`mri`**: Bloch equation magnetic resonance spin simulators and RF pulse excitations.
-- **`nuclear`**: Liquid drop model nuclear binding energies and radioactive decay kinetics.
+- **`nuclear`**: Semi-empirical Weizsäcker binding-energy breakdowns (`LiquidDropModel::binding_energy_breakdown`), shell spin-orbit splittings, $\alpha$-decay $Q$-values & Gamow barrier penetration, Breit-Wigner resonances, and zero-allocation $N$-nuclide Bateman decay chains (`BatemanChain`).
+- **`standard_model`**: Electroweak $SU(2)_L \times U(1)_Y$ spontaneous symmetry breaking, CKM quark flavor mixing & Jarlskog $CP$-violation invariants, 1-loop QCD $\alpha_s(Q^2)$ running, and zero-allocation 3-flavor PMNS & Wolfenstein-Mikheyev-Smirnov (MSW) matter neutrino oscillations (`neutrinos`).
+- **`high_energy`**: Spacetime `FourVector` Lorentz boosts, special-relativistic Doppler & superluminal apparent-motion kinematics (`observer`), synchrotron radiation power, relativistic ideal-fluid shock hydrodynamics, and Li-Ma $\gamma$-ray Poisson significance.
 - **`solid_state`**: Crystal lattice geometries, reciprocal space calculations, and electronic band structures.
 - **`stat_mech`**: Ising spin lattices, canonical ensemble thermodynamic calculations, zero-allocation 2D Bak-Tang-Wiesenfeld Abelian sandpile self-organized criticality & recurrent group engines (`sandpile::SandpileGrid`, `sandpile::SandpileElement`), and zero-allocation continuum SPDE engines for Edwards-Wilkinson (`EdwardsWilkinson1D`, `EdwardsWilkinson2D`), Kardar-Parisi-Zhang (`KpzModel1D`, `KpzModel2D`), Allen-Cahn (`AllenCahn2D`), and conserved Cahn-Hilliard (`CahnHilliard2D`) phase-field dynamics.
 - **`optics`**: Graded-index and negative-index refractive media (`refraction`), RK4 Hamiltonian ray tracing and caustic envelope detection (`caustics`), and calibrated optical detector models (`sensing`), complemented by full-field 2D time-domain FDTD and Verlet wave solvers in `pure_math::analysis::pde::{wave, wave_2d}`.
@@ -81,6 +83,40 @@ let mut disk = GalacticDiskSystem::from_galaxy_model(
 disk.step_n_leapfrog(2.0, 20);
 assert!(disk.relative_energy_drift() < 1.0e-3);
 assert!(disk.relative_angular_momentum_drift() < 1.0e-11);
+```
+
+### Subatomic Decay Chains, MSW Neutrino Oscillations, and Relativistic Jets
+
+Evaluate stack-allocated Bateman radioactive decay chains, propagate 3-flavor MSW matter neutrino oscillations, and boost relativistic blazar jets:
+
+```rust
+# use domain_physics::__doctest_facade as math_explorer;
+use math_explorer::physics::high_energy::observer::{FourVector, apparent_transverse_beta};
+use math_explorer::physics::nuclear::BatemanChain;
+use math_explorer::physics::standard_model::neutrinos::{
+    NeutrinoFlavor, PmnsParameters, msw_oscillation_probabilities,
+};
+
+let chain = BatemanChain::from_half_lives([Some(10.0), Some(10.0), None], [1.0, 0.0, 0.0]).unwrap();
+let pops = chain.populations_at(10.0).unwrap();
+assert!((pops.iter().sum::<f64>() - 1.0).abs() < 1.0e-12);
+
+let probs = msw_oscillation_probabilities(
+    &PmnsParameters::pdg_normal_ordering(),
+    NeutrinoFlavor::Muon,
+    1300.0,
+    2.5,
+    2.85,
+    0.5,
+    false,
+)
+.unwrap();
+assert!((probs.iter().sum::<f64>() - 1.0).abs() < 1.0e-11);
+
+let p_rest = FourVector::new(10.0, 0.0, 0.0, 0.0);
+let p_lab = p_rest.lorentz_boost(-0.98, 0.0, 0.0).unwrap();
+assert!((p_lab.minkowski_norm_squared() - p_rest.minkowski_norm_squared()).abs() < 1.0e-9);
+assert!(apparent_transverse_beta(0.98, 0.15).unwrap() > 4.5);
 ```
 
 ---
