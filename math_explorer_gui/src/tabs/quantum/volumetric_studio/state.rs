@@ -3,6 +3,7 @@
 // [cite:quantum_mechanics]
 // [cite:isosurface_extraction]
 
+use super::ast_field::DEFAULT_CUSTOM_3D_EXPR;
 use crate::camera::Camera3D;
 use crate::volumetric_scene::VolumeCutFilter;
 use math_explorer::physics::quantum::{OrbitalQuantumNumbers, QuantumFieldObservable};
@@ -40,7 +41,7 @@ pub const MAX_EXPORT_SIZE_MM: f64 = 250.0;
 /// Default physical export size in millimeters (`mm`).
 pub const DEFAULT_EXPORT_SIZE_MM: f64 = 50.0;
 
-/// Active 3D volumetric PDE / eigenstate / implicit CAD generator.
+/// Active 3D volumetric PDE, eigenstate, implicit CAD, or signed implicit AST generator.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldSourceMode {
@@ -49,9 +50,11 @@ pub enum FieldSourceMode {
     QuantumSuperposition,
     /// Two-species 3D Schnakenberg reaction-diffusion grid via `FiniteDifference3D`.
     TuringMorphogenesis,
-    /// User-authored 3D implicit equation $f(x, y, z) = c$ evaluated via `CompiledExpr::eval_3d`.
+    /// User-authored 3D implicit CAD solid $f(x, y, z) = c$ evaluated via `CompiledExpr::eval_3d`.
     #[serde(alias = "custom_implicit_formula")]
     CustomImplicit,
+    /// User-authored signed 3D implicit scalar field $f(x, y, z)$ with dual nodal shells and $20^3$ drag preview.
+    CustomImplicitAst,
 }
 
 impl FieldSourceMode {
@@ -61,6 +64,7 @@ impl FieldSourceMode {
             Self::QuantumSuperposition => "3D Hydrogenic Superposition",
             Self::TuringMorphogenesis => "3D Turing Reaction-Diffusion",
             Self::CustomImplicit => "3D Implicit CAD f(x,y,z) = c",
+            Self::CustomImplicitAst => "Custom 3D Implicit Formula",
         }
     }
 }
@@ -192,12 +196,18 @@ fn default_wall_width() -> f64 {
 fn default_export_size_mm() -> f64 {
     DEFAULT_EXPORT_SIZE_MM
 }
+fn default_custom_3d_expr() -> String {
+    DEFAULT_CUSTOM_3D_EXPR.to_string()
+}
+fn is_default_custom_3d_expr(expr: &str) -> bool {
+    expr == DEFAULT_CUSTOM_3D_EXPR
+}
 
 /// Complete serializable state for `VolumetricFieldStudioTool` (`#[serde(deny_unknown_fields)]`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VolumetricStudioConfig {
-    /// Active 3D volumetric simulation or implicit CAD model.
+    /// Active 3D volumetric simulation, implicit CAD solid, or signed AST field model.
     pub source: FieldSourceMode,
     /// Active 3D surface/splat renderer.
     pub render_mode: VolumetricRenderMode,
@@ -238,10 +248,19 @@ pub struct VolumetricStudioConfig {
     pub turing_dv: f64,
     /// Turing integration step `dt` in `[0.001, 0.05]`.
     pub turing_dt: f64,
-    /// Implicit equation formula string $f(x, y, z)$.
+    /// User-authored signed 3D AST scalar field expression over `(x, y, z)` (`<= 512` bytes).
+    #[serde(
+        default = "default_custom_3d_expr",
+        skip_serializing_if = "is_default_custom_3d_expr"
+    )]
+    pub custom_expr: String,
+    /// Synthesized free-parameter values paired with `custom_expr`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub custom_params: BTreeMap<String, f64>,
+    /// Implicit CAD equation formula string $f(x, y, z)$.
     #[serde(default = "default_implicit_expr")]
     pub implicit_expr: String,
-    /// Free scalar parameter values keyed by identifier name.
+    /// Free scalar parameter values keyed by identifier name for `implicit_expr`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub implicit_params: BTreeMap<String, f64>,
     /// Implicit level-set constant $c$ in $f(x, y, z) = c$ (`[-20.0, 20.0]`).
@@ -304,6 +323,8 @@ impl Default for VolumetricStudioConfig {
             turing_du: 1.0,
             turing_dv: 18.0,
             turing_dt: 0.008,
+            custom_expr: default_custom_3d_expr(),
+            custom_params: BTreeMap::new(),
             implicit_expr: default_implicit_expr(),
             implicit_params: BTreeMap::new(),
             implicit_level: 0.0,
@@ -356,7 +377,7 @@ impl VolumetricStudioConfig {
         })
     }
 
-    /// Strictly validates quantum numbers, PDE rates, implicit formula/bounds, and `Camera3D` pose.
+    /// Strictly validates quantum numbers, PDE rates, implicit CAD/AST formulas, and `Camera3D` pose.
     pub fn validate(&self) -> Result<(), String> {
         if !(MIN_VOLUMETRIC_GRID..=MAX_VOLUMETRIC_GRID).contains(&self.grid_resolution) {
             return Err(format!(
@@ -368,6 +389,7 @@ impl VolumetricStudioConfig {
         OrbitalQuantumNumbers::new(self.n2, self.l2, self.m2)?;
         self.validate_scalar_ranges()?;
         super::implicit::validate_implicit_config(self)?;
+        super::ast_field::validate_custom_ast_config(self)?;
         if !self.camera.is_valid() {
             return Err("Invalid Camera3D pose in VolumetricFieldStudioTool".into());
         }
@@ -432,6 +454,7 @@ impl VolumetricStudioConfig {
         self.turing_dv = clamp_finite(self.turing_dv, 5.0, 60.0, 18.0);
         self.turing_dt = clamp_finite(self.turing_dt, 0.001, 0.05, 0.008);
         super::implicit::clamp_implicit_config_in_place(self);
+        super::ast_field::clamp_custom_ast_config_in_place(self);
         self.cut_offset = clamp_finite(self.cut_offset, -1.0, 1.0, 0.0);
         if !self.camera.is_valid() {
             self.camera.reset();
