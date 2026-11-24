@@ -151,7 +151,7 @@ impl PrimeSpiralWidget {
         self.pulse_gate = true;
     }
 
-    fn max_visible_step(&self) -> usize {
+    pub(super) fn max_visible_step(&self) -> usize {
         let max_n = (self.grid_size * self.grid_size).max(16);
         match self.playhead_mode {
             UlamPlayheadMode::QuadraticRay => {

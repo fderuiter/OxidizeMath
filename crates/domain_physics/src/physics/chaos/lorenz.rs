@@ -230,6 +230,9 @@ fn classify_lorenz_regime(system: &LorenzSystem) -> (&'static str, f64, Option<f
     if system.rho <= 1.0 {
         return ("Origin sink regime", lambda, rho_h);
     }
+    if system.sigma <= 0.0 || system.beta <= 0.0 {
+        return ("Twin-lobe equilibrium regime", lambda, rho_h);
+    }
     if lambda.is_finite() && lambda > 0.05 {
         return ("Chaotic regime", lambda, rho_h);
     }

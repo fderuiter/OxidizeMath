@@ -1,10 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::*;
+use crate::async_sim::SimulationRunner;
 use crate::framework::{InteractiveTool, SimulationFramework};
+use crate::reflective_ui::AnimatedSliderState;
 use crate::url_state::{encode_share_fragment, parse_share_location, validate_url_preset_json};
+use crate::web_io::PlatformInstant;
 use eframe::egui;
 use math_explorer::physics::chaos::metrics::logistic_lyapunov;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 fn screen_input(events: Vec<egui::Event>) -> egui::RawInput {
     egui::RawInput {
@@ -75,10 +81,49 @@ fn find_bifurcation_canvas_bounds(out: &egui::FullOutput) -> egui::Rect {
     panic!("Bifurcation Diagram Canvas AccessKit node not found");
 }
 
+fn run_animated_sweep_frames(ctx: &egui::Context, tool: &mut BifurcationDiagram) -> Duration {
+    let screen = Some(egui::Rect::from_min_size(
+        egui::Pos2::ZERO,
+        egui::vec2(1280.0, 800.0),
+    ));
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: screen,
+            ..Default::default()
+        },
+        |c| tool.show(c),
+    );
+    ctx.data_mut(|d| {
+        d.insert_persisted(
+            egui::Id::new("bifurcation_r_min"),
+            AnimatedSliderState {
+                playing: true,
+                direction: 1.0,
+                ..Default::default()
+            },
+        );
+    });
+    let mut min_elapsed = Duration::MAX;
+    for _ in 0..3 {
+        let t0 = PlatformInstant::now();
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: screen,
+                predicted_dt: 0.05,
+                ..Default::default()
+            },
+            |c| tool.show(c),
+        );
+        min_elapsed = min_elapsed.min(t0.elapsed());
+    }
+    min_elapsed
+}
+
 #[test]
 fn test_bifurcation_recompute_and_borrowed_slice() {
     let mut tool = BifurcationDiagram::default();
     assert!(!tool.points.is_empty());
+    assert!(!tool.lyapunov_points.is_empty());
 
     let count_initial = tool.points.len();
     tool.steps = 200;
@@ -92,44 +137,117 @@ fn test_bifurcation_recompute_and_borrowed_slice() {
 }
 
 #[test]
-fn test_bifurcation_animated_slider_sweep() {
-    use crate::reflective_ui::AnimatedSliderState;
-    let mut tool = BifurcationDiagram::default();
-    let ctx = egui::Context::default();
-    let initial_r_min = tool.r_min;
-
-    // Simulate activating animation on r_min slider
-    let id = egui::Id::new("bifurcation_r_min");
-    ctx.data_mut(|d| {
-        d.insert_persisted(
-            id,
-            AnimatedSliderState {
-                playing: true,
-                direction: 1.0,
-                ..Default::default()
-            },
-        );
-    });
-
-    let raw_input = egui::RawInput {
-        predicted_dt: 0.1,
+fn test_bifurcation_animated_slider_sweep_under_16_67ms() {
+    let mut tool = BifurcationDiagram {
+        steps: 2000,
         ..Default::default()
     };
-    let _ = ctx.run(raw_input, |ctx| {
-        tool.show(ctx);
-    });
+    let ctx = egui::Context::default();
+    let initial_r_min = tool.r_min;
+    let min_elapsed = run_animated_sweep_frames(&ctx, &mut tool);
 
-    // r_min should have increased, and recompute was triggered
     assert!(tool.r_min > initial_r_min);
+    assert!(tool.request_generation >= 1);
+    assert!(
+        min_elapsed < Duration::from_micros(16_670),
+        "AnimatedSlider sweep at steps=2000 stalled UI thread: {min_elapsed:?}"
+    );
 
-    let points_vec: Vec<[f64; 2]> = tool.points.iter().map(|p| [p.x, p.y]).collect();
-    let datasets = vec![("Bifurcation Diagram (Logistic Map)".to_string(), points_vec)];
+    let datasets = tool.export_datasets();
     if let Ok(bytes) = egui_plot::export::export_custom_png(
         &datasets,
         &egui_plot::export::ExportOptions::default(),
     ) {
         let _ = std::fs::write("/tmp/bifurcation_diagram_animated.png", bytes);
     }
+}
+
+#[test]
+fn test_bifurcation_runner_progressive_sweep_and_lyapunov_signs() {
+    let req = BifurcationSweepRequest {
+        generation: 1,
+        map_mode: BifurcationMapMode::Logistic,
+        r_min: 2.5,
+        r_max: 4.0,
+        steps: 300,
+        x0: 0.5,
+    };
+    let shared = Arc::new(RwLock::new(BifurcationSweepRequest {
+        generation: 0,
+        ..req
+    }));
+    let formula = Arc::new(RwLock::new(None));
+    let latest = Arc::new(AtomicU64::new(0));
+    let mut runner = BifurcationRunner::new(
+        Arc::clone(&shared),
+        Arc::clone(&latest),
+        Arc::clone(&formula),
+    );
+    *shared.write().unwrap() = req;
+    latest.store(1, Ordering::Release);
+
+    for _ in 0..512 {
+        runner.step();
+        if runner.is_complete() {
+            break;
+        }
+    }
+    assert!(runner.is_complete());
+    let snap = runner.get_snapshot();
+    let data = snap
+        .structured_data
+        .as_ref()
+        .and_then(|d| d.downcast_ref::<BifurcationSweepSnapshot>())
+        .expect("BifurcationSweepSnapshot expected");
+    assert!(data.is_final);
+    assert_eq!(data.points.len(), 301 * 50);
+    assert_eq!(data.lyapunov_points.len(), 301);
+    assert!(data.lyapunov_points.iter().all(|pt| pt.y.is_finite()));
+    assert!(data.lyapunov_points.first().unwrap().y < 0.0);
+    assert!(data.lyapunov_points.last().unwrap().y > 0.0);
+
+    let mut tool = BifurcationDiagram::default();
+    tool.select_probe_r(2.8);
+    assert!(tool.probe_lyapunov().expect("r=2.8 lyapunov") < 0.0);
+    tool.select_probe_r(3.83);
+    assert!(tool.probe_lyapunov().expect("r=3.83 lyapunov") < 0.0);
+    tool.select_probe_r(3.95);
+    assert!(tool.probe_lyapunov().expect("r=3.95 lyapunov") > 0.0);
+}
+
+#[test]
+fn test_bifurcation_cobweb_orbit_and_backward_compatible_state() {
+    let mut tool = BifurcationDiagram {
+        selected_r: 2.8,
+        probe_r: 2.8,
+        x0: 0.2,
+        ..Default::default()
+    };
+    tool.reset_live_orbit();
+    assert!(!tool.orbit_points.is_empty());
+    assert!(!tool.cobweb_points.is_empty());
+    let tail = tool.orbit_points.last().unwrap().y;
+    assert!(
+        (tail - (1.0 - 1.0 / 2.8)).abs() < 1e-3,
+        "r=2.8 orbit should converge near x* = 1 - 1/r, got {tail}"
+    );
+
+    let x_before = tool.orbit_x;
+    <BifurcationDiagram as InteractiveTool>::step_simulation(&mut tool);
+    assert_eq!(tool.orbit_step_count, 1);
+    assert!((tool.orbit_x - 2.8 * x_before * (1.0 - x_before)).abs() < 1e-12);
+
+    let legacy_json = r#"{"r_min":1.0,"r_max":3.6,"steps":200}"#;
+    tool.try_load_state(legacy_json)
+        .expect("legacy JSON without probe_r must load");
+    assert_eq!(tool.steps, 200);
+    assert!((tool.r_min..=tool.r_max).contains(&tool.probe_r));
+
+    tool.select_probe_r(3.2);
+    let saved = tool.save_state().expect("save_state must succeed");
+    let mut restored = BifurcationDiagram::default();
+    restored.try_load_state(&saved).expect("roundtrip load");
+    assert!((restored.probe_r - 3.2).abs() < 1e-9);
 }
 
 #[test]
@@ -307,18 +425,17 @@ fn test_bifurcation_custom_1d_map_zero_alloc_and_state_roundtrip() {
         .iter()
         .all(|pt| pt.x.is_finite() && pt.y.is_finite()));
 
-    // Verify transient syntax error keeps last valid cascade points
     let prev_len = tool.points.len();
     tool.math_input.set_expression("a * sin(pi * x) +");
     tool.recompute();
     assert_eq!(tool.points.len(), prev_len);
 
-    // Restore valid quadratic map x^2 - r on [0.0, 2.0] and verify zero heap allocations
     tool.math_input.set_expression("x^2 - r");
     tool.r_min = 0.0;
     tool.r_max = 1.9;
     tool.x0 = 0.1;
     tool.points.reserve(tool.steps * CUSTOM_ORBIT_SAMPLES);
+    tool.lyapunov_points.reserve(tool.steps);
     tool.recompute();
     assert!(!tool.points.is_empty());
 
@@ -329,7 +446,6 @@ fn test_bifurcation_custom_1d_map_zero_alloc_and_state_roundtrip() {
         tool.recompute();
     });
 
-    // Verify compact JSON / #state= persistence round-trip (< 4096 bytes)
     tool.math_input.set_expression("a * x * (1 - x) * r");
     tool.math_input.set_params_map(&pmap);
     let saved = tool.save_state().expect("custom bifurcation state saves");
@@ -344,65 +460,6 @@ fn test_bifurcation_custom_1d_map_zero_alloc_and_state_roundtrip() {
     assert!((restored.r_min - 0.0).abs() < 1e-12);
     assert!((restored.r_max - 1.9).abs() < 1e-12);
     assert!((restored.x0 - 0.1).abs() < 1e-12);
-}
-
-#[test]
-fn test_bifurcation_background_runner_lyapunov_and_cobweb_step() {
-    use crate::async_sim::SimulationRunner;
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::{Arc, RwLock};
-
-    let req = BifurcationSweepRequest {
-        generation: 1,
-        map_mode: BifurcationMapMode::Logistic,
-        r_min: 2.5,
-        r_max: 3.9,
-        steps: 140,
-        x0: 0.5,
-    };
-    let shared_req = Arc::new(RwLock::new(BifurcationSweepRequest {
-        generation: 0,
-        ..req
-    }));
-    let shared_formula = Arc::new(RwLock::new(None));
-    let latest_gen = Arc::new(AtomicU64::new(0));
-    let mut runner = BifurcationRunner::new(
-        Arc::clone(&shared_req),
-        Arc::clone(&latest_gen),
-        Arc::clone(&shared_formula),
-    );
-    *shared_req.write().unwrap() = req;
-    latest_gen.store(1, Ordering::Release);
-
-    for _ in 0..16 {
-        runner.step();
-        if runner.is_complete() {
-            break;
-        }
-    }
-    assert!(runner.is_complete());
-    let snap = runner.get_snapshot();
-    let payload = snap
-        .structured_data
-        .as_ref()
-        .and_then(|d| d.downcast_ref::<BifurcationSweepSnapshot>())
-        .expect("BifurcationSweepSnapshot attached");
-    assert!(payload.is_final);
-    assert_eq!(payload.points.len(), 141 * 50);
-    assert_eq!(payload.lyapunov_points.len(), 141);
-    assert!(payload.lyapunov_points.first().unwrap().y < 0.0);
-    assert!(payload.lyapunov_points.last().unwrap().y > 0.0);
-
-    let mut tool = BifurcationDiagram {
-        probe_r: 3.8,
-        ..Default::default()
-    };
-    tool.reset_live_orbit();
-    assert!(!tool.cobweb_points.is_empty());
-    let x_before = tool.orbit_x;
-    <BifurcationDiagram as crate::framework::InteractiveTool>::step_simulation(&mut tool);
-    assert_eq!(tool.orbit_step_count, 1);
-    assert!((tool.orbit_x - 3.8 * x_before * (1.0 - x_before)).abs() < 1e-12);
 }
 
 #[test]
