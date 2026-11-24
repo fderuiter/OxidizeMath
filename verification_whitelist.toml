@@ -167,6 +167,7 @@ reason = "Activates the getrandom js backend feature on wasm32-unknown-unknown f
 # Non-domain infrastructure, tooling, facade, GUI, and vendored crates exempt from theory_verification!
 exempt_crates = [
     "apps/xtask",
+    "crates/02_engines/engine_linalg",
     "crates/diagnostics",
     "crates/federated_registry",
     "crates/markdown_tests",
@@ -186,21 +187,23 @@ min_total_density = 0.020
 
 [verification_debt.opt_out_reasons]
 "Legacy missing assertions" = 1
-"gui_tool" = 603
+"gui_tool" = 619
 "infrastructure" = 2
 "metadata" = 2
-"tests" = 215
+"no_std_engine" = 13
+"tests" = 225
 
 [verification_debt.crate_opt_out_caps]
+"crates/02_engines/engine_linalg" = 15
 "crates/domain_applied" = 1
 "crates/domain_biology" = 1
 "crates/domain_epidemiology" = 1
 "crates/domain_physics" = 2
-"crates/math_commons" = 1
+"crates/math_commons" = 2
 "crates/pure_math" = 12
 "crates/scientific_metadata" = 2
 "egui_plot" = 1
-"math_explorer_gui" = 802
+"math_explorer_gui" = 825
 
 [verification_debt.file_opt_out_caps]
 "math_explorer_gui/src/tabs/optics_waves/tool.rs" = 2

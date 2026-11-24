@@ -106,8 +106,10 @@ pub(crate) fn crate_prefix_for_file(file_path: &str) -> String {
     let norm = file_path.trim().replace('\\', "/");
     let trimmed = norm.trim_start_matches("./");
     let segs: Vec<&str> = trimmed.split('/').filter(|s| !s.is_empty()).collect();
-    if segs.len() >= 3 && (segs[0] == "crates" || segs[0] == "apps") {
-        format!("{}/{}", segs[0], segs[1])
+    if let Some((idx, _)) = segs.iter().enumerate().skip(1).find(|&(idx, &seg)| {
+        matches!(seg, "src" | "tests" | "benches" | "examples") || idx + 1 == segs.len()
+    }) {
+        segs[..idx].join("/")
     } else if !segs.is_empty() {
         segs[0].to_string()
     } else {

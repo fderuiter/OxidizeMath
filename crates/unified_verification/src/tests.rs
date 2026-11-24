@@ -206,7 +206,7 @@ fn test_verify_suite_and_traceability_report_identical_ast_metrics() {
     );
     assert!(
         suite_metrics.opt_outs.len() >= 605,
-        "expected all cfg_attr opt-outs (>= 605, currently 823) to be detected, got {}",
+        "expected all cfg_attr opt-outs (>= 605, currently 862) to be detected, got {}",
         suite_metrics.opt_outs.len()
     );
     assert!(

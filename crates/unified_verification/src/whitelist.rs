@@ -431,4 +431,24 @@ mod tests {
             opts
         ));
     }
+
+    #[test]
+    fn test_crate_prefix_for_file_supports_nested_multi_segment_crates() {
+        assert_eq!(
+            debt::crate_prefix_for_file("math_explorer_gui/src/tabs/tests/mod.rs"),
+            "math_explorer_gui"
+        );
+        assert_eq!(
+            debt::crate_prefix_for_file("crates/pure_math/src/pure_math/mod.rs"),
+            "crates/pure_math"
+        );
+        assert_eq!(
+            debt::crate_prefix_for_file("crates/02_engines/engine_linalg/src/lu.rs"),
+            "crates/02_engines/engine_linalg"
+        );
+        assert_eq!(
+            debt::crate_prefix_for_file("crates/02_engines/engine_linalg/src/tests.rs"),
+            "crates/02_engines/engine_linalg"
+        );
+    }
 }
