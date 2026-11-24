@@ -414,6 +414,10 @@ impl InteractiveTool for ModularInvariantsTool {
         modular_invariants_ui::build_export_datasets(self)
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.atlas.set_suspended(suspended);
+    }
+
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let panel_id = scoped_panel_id(ui, "modular_invariants_controls");
         PaneSidePanel::left(panel_id).show_inside(ui, |ui| {

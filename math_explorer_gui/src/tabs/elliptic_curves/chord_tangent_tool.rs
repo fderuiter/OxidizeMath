@@ -292,6 +292,10 @@ impl InteractiveTool for WeierstrassPlaygroundTool {
         "elliptic_curves"
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.atlas.set_suspended(suspended);
+    }
+
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
     }

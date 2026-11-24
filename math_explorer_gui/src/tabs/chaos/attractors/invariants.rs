@@ -100,7 +100,7 @@ impl AttractorPlotter {
         let key = (self.flow_config_hash(), self.step_count / 25);
         if self.invariants_cache.corr_key != Some(key) {
             let mut scratch = std::mem::take(&mut self.invariants_cache.scratch);
-            self.fill_or_seed_trajectory(&mut scratch, 600);
+            self.fill_or_seed_trajectory(&mut scratch, 32, 600);
             let c1 = correlation_dimension_in_place(&mut scratch, 2.5);
             let c2 = correlation_dimension_in_place(&mut scratch, 7.5);
             self.invariants_cache.scratch = scratch;
@@ -146,11 +146,16 @@ impl AttractorPlotter {
 
     pub(super) fn collect_or_seed_trajectory(&self, fallback_steps: usize) -> Vec<Vector3<f64>> {
         let mut out = Vec::with_capacity(fallback_steps);
-        self.fill_or_seed_trajectory(&mut out, fallback_steps);
+        self.fill_or_seed_trajectory(&mut out, MAX_CHAOS_LANDMARKS, fallback_steps);
         out
     }
 
-    fn fill_or_seed_trajectory(&self, out: &mut Vec<Vector3<f64>>, fallback_steps: usize) {
+    fn fill_or_seed_trajectory(
+        &self,
+        out: &mut Vec<Vector3<f64>>,
+        min_points: usize,
+        fallback_steps: usize,
+    ) {
         out.clear();
         out.extend(
             self.history
@@ -158,7 +163,7 @@ impl AttractorPlotter {
                 .copied()
                 .filter(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()),
         );
-        if out.len() >= 32 {
+        if out.len() >= min_points {
             return;
         }
         let dt = self.dt.clamp(0.001, 0.05);
@@ -200,7 +205,7 @@ impl AttractorPlotter {
             return Err("Cannot export landmarks from non-finite attractor state".to_string());
         }
         let mut traj = Vec::with_capacity(1200);
-        self.fill_or_seed_trajectory(&mut traj, 1200);
+        self.fill_or_seed_trajectory(&mut traj, MAX_CHAOS_LANDMARKS, 1200);
         let pts: Vec<Point3D> = traj
             .into_iter()
             .map(|v| Point3D::new(v.x, v.y, v.z))

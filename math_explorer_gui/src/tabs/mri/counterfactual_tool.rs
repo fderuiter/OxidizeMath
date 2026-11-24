@@ -230,7 +230,7 @@ impl MriTool {
             step_count: self.current_step_index(),
             rng: oxidize_core::rng::OxidizeRng::new(0x4D52_495F_424C_4F43),
         };
-        self.worker = crate::async_sim::BackgroundWorker::new(runner);
+        self.worker.replace_runner(runner);
     }
 
     pub(super) fn apply_mri_branch_action(&mut self, action: BranchControlAction) -> bool {
