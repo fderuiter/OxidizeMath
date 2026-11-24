@@ -1,7 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{ElementType, PotentialFlowTool, SerializedFlowElement, FLOW_VIEW_MAX, FLOW_VIEW_MIN};
-use crate::framework::{InteractiveTool, ShaderDialect};
+use crate::framework::{InteractiveTool, ShaderDialect, ShaderExportFormat};
 use math_commons::ast::{format_glsl_float, format_shader_f32, ShaderTarget};
 use math_commons::math_kernel::colormap::colormap_prelude_for;
 use math_commons::math_kernel::glsl_colormap::{
@@ -13,6 +13,13 @@ use std::fmt::Write;
 pub const MAX_SHADER_SINGULARITIES: usize = 64;
 
 impl PotentialFlowTool {
+    pub(super) fn build_shader_source(&self, format: ShaderExportFormat) -> Result<String, String> {
+        match format {
+            ShaderExportFormat::Wgsl => self.build_wgsl_shader(),
+            ShaderExportFormat::Glsl => self.build_glsl_shader(ShaderDialect::WebGl2Es300),
+        }
+    }
+
     pub(super) fn build_wgsl_shader(&self) -> Result<String, String> {
         if !self.has_finite_parameters() {
             return Err("Potential flow parameters are non-finite or out of bounds".to_string());
@@ -173,8 +180,8 @@ vec4 flow_vortex(vec2 p, float gamma, vec2 center) {
     vec2 d = p - center;
     float r2 = max(dot(d, d), 1.0e-6);
     vec2 uv = (gamma * INV_TWO_PI / r2) * vec2(-d.y, d.x);
-    float psi = (gamma * INV_TWO_PI) * 0.5 * log(r2);
-    float phi = -(gamma * INV_TWO_PI) * safe_atan2(d.y, d.x);
+    float psi = -(gamma * INV_TWO_PI) * 0.5 * log(r2);
+    float phi = (gamma * INV_TWO_PI) * safe_atan2(d.y, d.x);
     return vec4(uv, psi, phi);
 }
 
@@ -305,7 +312,7 @@ fn flow_vortex(p: vec2<f32>, gamma: f32, center: vec2<f32>) -> vec4<f32> {
     let d = p - center;
     let r2 = max(dot(d, d), 1.0e-6);
     let uv = (gamma * INV_TWO_PI / r2) * vec2<f32>(-d.y, d.x);
-    return vec4<f32>(uv, (gamma * INV_TWO_PI) * 0.5 * log(r2), -(gamma * INV_TWO_PI) * safe_atan2(d.y, d.x));
+    return vec4<f32>(uv, -(gamma * INV_TWO_PI) * 0.5 * log(r2), (gamma * INV_TWO_PI) * safe_atan2(d.y, d.x));
 }
 
 fn flow_doublet(p: vec2<f32>, kappa: f32, center: vec2<f32>) -> vec4<f32> {
