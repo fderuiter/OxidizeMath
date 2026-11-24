@@ -130,6 +130,9 @@ mod verified_alloc_tests {
             half_angle_rad: 0.12,
         };
 
+        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let (_, metrics) = VerifiedEngine::run_verified(|| {
             for step in 0..100usize {
                 let active_cfg = if step % 2 == 0 { &ray_cfg } else { &cup_cfg };

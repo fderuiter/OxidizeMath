@@ -8,13 +8,15 @@ use math_explorer::physics::stat_mech::KB;
 use nalgebra::DMatrix;
 use std::collections::VecDeque;
 use std::hash::{Hash, Hasher};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 #[path = "ising/atlas.rs"]
 pub mod atlas;
 #[path = "ising/challenge.rs"]
 pub mod challenge;
+#[path = "ising/graph_mode.rs"]
+mod graph_mode;
 #[path = "ising/overlay.rs"]
 mod overlay;
 #[path = "ising/preset.rs"]
@@ -61,6 +63,12 @@ pub struct IsingModelTool {
     stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
     last_theme: Option<crate::app::ThemeMode>,
     dirty: bool,
+    pub topology_source: crate::app::TopologySource,
+    pub(super) graph_system: Option<math_explorer::physics::stat_mech::GraphSpinSystem>,
+    pub(super) shared_topology: Option<Arc<crate::app::SharedGraphTopology>>,
+    pub(super) synced_bus_revision: Option<u64>,
+    pub(super) graph_running: bool,
+    pub(super) graph_sweeps: f64,
     pub(crate) atlas: ParameterAtlasController,
     pub(crate) active_challenge: Option<&'static str>,
     pub(crate) challenge_workspace: IsingChallengeWorkspace,
@@ -120,61 +128,28 @@ impl IsingModelTool {
         self.reset_trajectory_overlays();
         self.dirty = true;
     }
-
-    fn record_droplet_seed(&mut self, seed: DropletSeed) {
-        if self.droplet_seeds.last() == Some(&seed) {
-            return;
-        }
-        let cap = if self.active_challenge.is_some() {
-            4
-        } else {
-            MAX_DROPLET_SEEDS
-        };
-        if self.droplet_seeds.len() >= cap {
-            self.droplet_seeds.remove(0);
-        }
-        self.droplet_seeds.push(seed);
-    }
 }
 
 impl Default for IsingModelTool {
     fn default() -> Self {
-        let (temperature, j_coupling, h_field, steps_per_frame) = (2.269, 1.0, 0.0, 5000);
-        let (mode, game_preset) = (
-            IsingInteractionMode::Ferromagnetic,
-            FermiGamePreset::default(),
-        );
-        let game_payoffs = preset::default_game_payoffs();
-        let params = Arc::new(std::sync::RwLock::new(IsingSharedParams {
-            temperature,
-            j_coupling,
-            h_field,
-            mutation_rate: 0.0,
-            mode,
-            game_payoffs,
-            defector_sea: false,
-            droplet_seeds: Vec::new(),
-            steps_per_frame,
-            theme: crate::app::ThemeMode::Dark,
-            total_trials: AtomicU64::new(0),
-        }));
+        let params = Arc::new(std::sync::RwLock::new(IsingSharedParams::default()));
         let worker = BackgroundWorker::new(IsingRunner {
             lattice: SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None),
             params: Arc::clone(&params),
         });
         let mut tool = Self {
-            temperature,
-            j_coupling,
-            h_field,
+            temperature: 2.269,
+            j_coupling: 1.0,
+            h_field: 0.0,
             mutation_rate: 0.0,
-            mode,
-            game_preset,
-            game_payoffs,
+            mode: IsingInteractionMode::Ferromagnetic,
+            game_preset: FermiGamePreset::default(),
+            game_payoffs: preset::default_game_payoffs(),
             brush_radius: preset::default_brush_radius(),
             brush_cooperator: preset::default_brush_cooperator(),
             defector_sea: false,
             droplet_seeds: Vec::new(),
-            steps_per_frame,
+            steps_per_frame: 5000,
             magnetization: 0.0,
             uniform_magnetization: 0.0,
             staggered_magnetization: 0.0,
@@ -190,6 +165,12 @@ impl Default for IsingModelTool {
             stepped_pixels: None,
             last_theme: None,
             dirty: true,
+            topology_source: crate::app::TopologySource::SharedBus,
+            graph_system: None,
+            shared_topology: None,
+            synced_bus_revision: None,
+            graph_running: false,
+            graph_sweeps: 0.0,
             atlas: ParameterAtlasController::new(ISING_ATLAS_AXIS_PAIRS.to_vec()),
             active_challenge: None,
             challenge_workspace: IsingChallengeWorkspace::default(),
@@ -224,6 +205,7 @@ impl InteractiveTool for IsingModelTool {
         self.defector_sea.hash(&mut h);
         self.droplet_seeds.len().hash(&mut h);
         self.steps_per_frame.hash(&mut h);
+        self.topology_source.hash(&mut h);
         self.atlas.is_visible().hash(&mut h);
         self.atlas.axis_keys().hash(&mut h);
         h.finish().max(1)
@@ -265,9 +247,16 @@ impl InteractiveTool for IsingModelTool {
             ("staggered_magnetization", self.staggered_magnetization),
             ("energy", self.energy),
             ("cooperator_fraction", self.cooperator_fraction()),
+            (
+                "graph_node_count",
+                self.active_graph_node_count().unwrap_or(0) as f64,
+            ),
+            (
+                "synced_bus_revision",
+                self.synced_bus_revision.unwrap_or(0) as f64,
+            ),
         ]
     }
-
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::raster_only()
     }
@@ -351,6 +340,11 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn step_simulation(&mut self) {
+        if self.is_graph_mode() {
+            let trials = self.steps_per_frame.clamp(16, 2_000);
+            self.step_graph_trials(trials);
+            return;
+        }
         let mut lattice = SpinLattice::new(DEFAULT_ISING_SIZE, DEFAULT_ISING_SIZE, None);
         let steps = self.steps_per_frame.clamp(100, 5000);
         match self.mode {
@@ -415,26 +409,35 @@ impl InteractiveTool for IsingModelTool {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.sync_shared_topology(&ctx);
         let theme = crate::app::ThemeMode::from_visuals(ui.visuals());
         if self.last_theme != Some(theme) {
             self.last_theme = Some(theme);
             self.params.write().unwrap_or_else(|e| e.into_inner()).theme = theme;
             self.dirty = true;
         }
-        let fallback_m = self.magnetization;
-        let fallback_e = self.energy;
-        if let Some((m, e, mu, ms)) = self
-            .worker
-            .update()
-            .map(|s| Self::extract_snapshot_metrics(s, fallback_m, fallback_e))
-        {
-            self.magnetization = m;
-            self.energy = e;
-            self.uniform_magnetization = mu;
-            self.staggered_magnetization = ms;
-            self.record_snapshot_progress();
-            self.stepped_pixels = None;
-            self.dirty = true;
+        if self.is_graph_mode() {
+            if self.graph_running {
+                let trials = self.steps_per_frame.clamp(16, 4_000);
+                self.step_graph_trials(trials);
+                ctx.request_repaint();
+            }
+        } else {
+            let fallback_m = self.magnetization;
+            let fallback_e = self.energy;
+            if let Some((m, e, mu, ms)) = self
+                .worker
+                .update()
+                .map(|s| Self::extract_snapshot_metrics(s, fallback_m, fallback_e))
+            {
+                self.magnetization = m;
+                self.energy = e;
+                self.uniform_magnetization = mu;
+                self.staggered_magnetization = ms;
+                self.record_snapshot_progress();
+                self.stepped_pixels = None;
+                self.dirty = true;
+            }
         }
 
         if matches!(

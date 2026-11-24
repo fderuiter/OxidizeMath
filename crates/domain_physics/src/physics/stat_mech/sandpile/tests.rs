@@ -154,6 +154,9 @@ fn zero_allocation_hot_paths_and_power_law_fit() {
     grid.fill(MAX_STABLE_HEIGHT);
 
     // Warm up critical attractor inside VerifiedEngine::run_verified (zero heap allocations!).
+    let _alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let ((creutz_topples, burn_res, fit), metrics) = VerifiedEngine::run_verified(|| {
         let creutz_t = grid.load_creutz_identity();
         let burn = grid.dhar_burning_test();
