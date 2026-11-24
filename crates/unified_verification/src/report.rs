@@ -3,7 +3,10 @@ mod coverage;
 
 pub use coverage::{collect_llvm_cov_json, parse_coverage};
 
-use crate::whitelist::{VerifySuiteConfig, WORKSPACE_WHITELIST_CANDIDATES, load_whitelist_strict};
+use crate::whitelist::{
+    VerificationDebtConfig, VerifySuiteConfig, WORKSPACE_WHITELIST_CANDIDATES,
+    load_whitelist_strict,
+};
 use oxidize_core::ast_visitor::{AstVisitor, is_dedicated_test_path};
 use oxidize_core::traceability::AstCache;
 use serde::{Deserialize, Serialize};
@@ -67,11 +70,11 @@ pub struct GateEvaluation {
     pub authorized_unverified_crates: usize,
 }
 
-pub fn load_verify_suite_config_strict(
+pub(crate) fn load_suite_and_debt_configs_strict(
     explicit_whitelist: Option<&Path>,
-) -> Result<VerifySuiteConfig, String> {
+) -> Result<(VerifySuiteConfig, Option<VerificationDebtConfig>), String> {
     load_whitelist_strict(explicit_whitelist, WORKSPACE_WHITELIST_CANDIDATES)
-        .map(|wl| wl.verify_suite.unwrap_or_default())
+        .map(|wl| (wl.verify_suite.unwrap_or_default(), wl.verification_debt))
 }
 
 pub const VERIFY_SUITE_WRITE_ENV: &str = "OXIDIZE_VERIFY_SUITE_WRITE";
@@ -141,7 +144,7 @@ pub fn analyze_files_with_cache(rs_files: &[PathBuf], cache: &mut AstCache) -> F
 pub fn find_unverified_crates_with_cache(members: &[String], cache: &mut AstCache) -> Vec<String> {
     let mut unverified = Vec::new();
     for fm in members {
-        if fm == "egui_plot" {
+        if fm == "egui_plot" || fm.ends_with("/egui_plot") || fm.ends_with("\\egui_plot") {
             continue;
         }
         let mod_dir = Path::new(fm).join("src");
@@ -151,9 +154,15 @@ pub fn find_unverified_crates_with_cache(members: &[String], cache: &mut AstCach
         let has_theory = crate::utils::collect_rs_files_filtered(&[&mod_dir], &["target"])
             .into_iter()
             .any(|path| {
+                if is_dedicated_test_path(&path) {
+                    return false;
+                }
                 let Some(ast) = cache.get_or_load_fs(&path).and_then(|e| e.ast.as_ref()) else {
                     return false;
                 };
+                if oxidize_core::ast_visitor::attrs_require_cfg_test(&ast.attrs) {
+                    return false;
+                }
                 let mut visitor = AstVisitor::new();
                 visitor.visit_file(ast);
                 visitor.has_verification_macro
@@ -346,23 +355,17 @@ fn print_dashboard(eval: &GateEvaluation) {
     print_gate_failures(eval);
 }
 
-pub fn run_report_with_mode(
+fn apply_report_mode_io(
+    report: &IntegrityReport,
     native_cov_pct: f64,
-    wasm_cov_pct: f64,
-    m: &FileMetrics,
-    debt: &DebtSources<'_>,
+    tolerance_pct: f64,
     mode: ReportMode,
+    output_cert: Option<&Path>,
 ) -> bool {
-    let config = match load_verify_suite_config_strict(None) {
-        Ok(cfg) => cfg,
-        Err(err) => {
-            eprintln!("[!] {err}");
-            return false;
-        }
-    };
-    let eval = evaluate_integrity_gates(native_cov_pct, wasm_cov_pct, m, debt, &config);
-    print_dashboard(&eval);
-    if !eval.report.passed {
+    if let Some(target_cert) = output_cert
+        && let Err(err) = certificate::write_certificate_only(report, target_cert)
+    {
+        eprintln!("[!] {err}");
         return false;
     }
 
@@ -371,7 +374,7 @@ pub fn run_report_with_mode(
     match mode {
         ReportMode::Write => {
             if let Err(err) =
-                certificate::write_certificate_and_readme(&eval.report, cert_path, readme_path)
+                certificate::write_certificate_and_readme(report, cert_path, readme_path)
             {
                 eprintln!("[!] {err}");
                 return false;
@@ -379,9 +382,9 @@ pub fn run_report_with_mode(
             true
         }
         ReportMode::Check => match certificate::verify_certificate_against_report(
-            &eval.report,
+            report,
             Some(native_cov_pct),
-            config.coverage_tolerance_pct,
+            tolerance_pct,
             cert_path,
             readme_path,
         ) {
@@ -404,6 +407,48 @@ pub fn run_report_with_mode(
     }
 }
 
+pub fn run_report_with_options(
+    native_cov_pct: f64,
+    wasm_cov_pct: f64,
+    m: &FileMetrics,
+    debt: &DebtSources<'_>,
+    mode: ReportMode,
+    output_cert: Option<&Path>,
+) -> bool {
+    let (config, debt_caps) = match load_suite_and_debt_configs_strict(None) {
+        Ok(pair) => pair,
+        Err(err) => {
+            eprintln!("[!] {err}");
+            return false;
+        }
+    };
+    let mut combined_extra: Vec<String> = debt.extra_debt.to_vec();
+    if let Some(cfg) = &debt_caps {
+        combined_extra.extend(crate::whitelist::debt::evaluate_opt_out_caps(
+            cfg,
+            &m.opt_outs,
+        ));
+    }
+    let merged_debt = DebtSources {
+        unverified_crates: debt.unverified_crates,
+        file_length_debt: debt.file_length_debt,
+        entropy_debt: debt.entropy_debt,
+        extra_debt: &combined_extra,
+    };
+    let eval = evaluate_integrity_gates(native_cov_pct, wasm_cov_pct, m, &merged_debt, &config);
+    print_dashboard(&eval);
+    if !eval.report.passed {
+        return false;
+    }
+    apply_report_mode_io(
+        &eval.report,
+        native_cov_pct,
+        config.coverage_tolerance_pct,
+        mode,
+        output_cert,
+    )
+}
+
 #[cfg(test)]
 pub fn print_report(
     native_cov_pct: f64,
@@ -411,14 +456,14 @@ pub fn print_report(
     m: &FileMetrics,
     debt_items: &[String],
 ) -> bool {
-    let config = VerifySuiteConfig::default();
+    let cfg = VerifySuiteConfig::default();
     let debt = DebtSources {
         unverified_crates: &[],
         file_length_debt: &[],
         entropy_debt: &[],
         extra_debt: debt_items,
     };
-    let eval = evaluate_integrity_gates(native_cov_pct, wasm_cov_pct, m, &debt, &config);
+    let eval = evaluate_integrity_gates(native_cov_pct, wasm_cov_pct, m, &debt, &cfg);
     print_dashboard(&eval);
     eval.report.passed
 }
