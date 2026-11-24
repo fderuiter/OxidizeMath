@@ -1,3 +1,5 @@
+//! BibTeX, DOI, arXiv, and external reference link parsing for [`super::resolve_citation_reference_links`].
+
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::ExternalCitationLink;

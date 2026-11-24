@@ -19,7 +19,8 @@ struct EngineFbBuffers {
 }
 
 impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
-    fn validate_observations(&self, observations: &[usize]) -> Result<()> {
+    #[verified_engine::verified]
+    pub(crate) fn validate_observations(&self, observations: &[usize]) -> Result<()> {
         if observations.is_empty() {
             return Err(MarkovError::InvalidObservation {
                 reason: "Observation sequence is empty".to_string(),
@@ -108,7 +109,20 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
         }
     }
 
+    /// Computes the exact log-likelihood $\ln P(Y_1, \dots, Y_T)$ from forward scaling factors.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MarkovError::InvalidObservation`] if `observations` is empty or out of bounds.
+    #[verified_engine::verified]
+    pub fn forward_log_likelihood(&self, observations: &[usize]) -> Result<T> {
+        self.log_likelihood(observations)
+    }
+
     /// Computes $P(Y_1, \dots, Y_T)$ using the scaled forward algorithm in [`engine_graph`].
+    ///
+    /// With conditional scaling factors $s_t = P(Y_t \mid Y_{1:t-1})$, the exact observation
+    /// likelihood is $P(Y_{1:T}) = \prod_{t=0}^{T-1} s_t = \exp\!\left(\sum_{t=0}^{T-1} \ln s_t\right)$.
     #[verified_engine::verified]
     pub fn forward(&self, observations: &[usize]) -> Result<T> {
         let ll = self.log_likelihood(observations)?;
@@ -121,6 +135,10 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
 
     /// Computes posterior state probabilities $\gamma(t, i) = P(X_t = i \mid Y_{1:T})$
     /// via [`engine_graph::chain_forward_backward_into`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MarkovError::InvalidObservation`] if `observations` is empty or out of bounds.
     #[verified_engine::verified]
     pub fn posterior_probabilities(&self, observations: &[usize]) -> Result<DMatrix<T>> {
         let fb = self.run_engine_forward_backward(observations)?;
@@ -137,6 +155,10 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
 
     /// Computes filtered posterior state probabilities $P(X_T = i \mid Y_{1:T})$ at the final step
     /// via [`engine_graph::chain_forward_backward_into`] and [`engine_prob::discrete_posterior_into`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MarkovError::InvalidObservation`] if `observations` is empty or out of bounds.
     #[verified_engine::verified]
     pub fn filter(&self, observations: &[usize]) -> Result<DVector<T>> {
         let fb = self.run_engine_forward_backward(observations)?;
@@ -160,3 +182,5 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
         ))
     }
 }
+
+// [cite:clinical_trials_statistics]

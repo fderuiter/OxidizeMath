@@ -211,6 +211,8 @@ impl MorphogenesisTool {
             sr.system.kinetics.mode = MorphogenesisKineticsMode::Schnakenberg;
             sr.system.kinetics.a = a;
             sr.system.kinetics.b = b;
+            sr.system.kinetics.spatial.a = a;
+            sr.system.kinetics.spatial.b = b;
             sr.system.diffusion_coeffs = [d_u, d_v];
             Self::initialize_adapter_system(&mut sr.system, self.width, self.height);
             sr.enforce_mask_concentrations();

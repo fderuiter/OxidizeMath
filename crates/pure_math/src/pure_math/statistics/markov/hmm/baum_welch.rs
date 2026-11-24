@@ -3,6 +3,7 @@
 //! to [`engine_prob`].
 // [cite:clinical_trials_statistics]
 
+pub use super::baum_welch_types::BaumWelchResult;
 use super::baum_welch_types::{BaumWelchConfig, BaumWelchReport, BaumWelchWorkspace};
 use super::model::HiddenMarkovModel;
 use crate::error::MarkovError;
@@ -79,7 +80,7 @@ fn sync_f64_model<T: RealField + Copy + ToPrimitive>(
     }
 }
 
-fn run_e_step_into<T: RealField + Copy + ToPrimitive>(
+pub(super) fn run_e_step_into<T: RealField + Copy + ToPrimitive>(
     hmm: &HiddenMarkovModel<T>,
     observations: &[usize],
     ws: &mut BaumWelchWorkspace<T>,
@@ -128,7 +129,7 @@ fn run_e_step_into<T: RealField + Copy + ToPrimitive>(
     ll
 }
 
-fn snapshot_parameters<T: RealField + Copy + ToPrimitive>(
+pub(super) fn snapshot_parameters<T: RealField + Copy + ToPrimitive>(
     hmm: &HiddenMarkovModel<T>,
     ws: &mut BaumWelchWorkspace<T>,
 ) {
@@ -157,7 +158,7 @@ fn snapshot_parameters<T: RealField + Copy + ToPrimitive>(
     }
 }
 
-fn restore_parameters<T: RealField + Copy + ToPrimitive>(
+pub(super) fn restore_parameters<T: RealField + Copy + ToPrimitive>(
     hmm: &mut HiddenMarkovModel<T>,
     ws: &BaumWelchWorkspace<T>,
 ) {
@@ -186,7 +187,7 @@ fn restore_parameters<T: RealField + Copy + ToPrimitive>(
     }
 }
 
-fn apply_m_step<T: RealField + Copy + ToPrimitive>(
+pub(super) fn apply_m_step<T: RealField + Copy + ToPrimitive>(
     hmm: &mut HiddenMarkovModel<T>,
     ws: &mut BaumWelchWorkspace<T>,
     prior_f64: f64,
@@ -245,7 +246,7 @@ fn apply_m_step<T: RealField + Copy + ToPrimitive>(
     }
 }
 
-fn scalar_from_ll<T: RealField + Copy>(ll: f64) -> T {
+pub(super) fn scalar_from_ll<T: RealField + Copy>(ll: f64) -> T {
     if ll.is_finite() {
         T::from_f64(ll).unwrap_or_else(T::zero)
     } else {

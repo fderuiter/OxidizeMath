@@ -1,15 +1,16 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-#[path = "theory_links_bib.rs"]
-mod theory_links_bib;
-
 use super::{InteractiveTool, SimulationFramework, ToolMetadata};
 use crate::tabs::traceability::{
     embedded_traceability_report, paper_tex_url, render_paper_links, TraceabilityTab,
 };
 use eframe::egui;
 use std::collections::BTreeSet;
-pub(crate) use theory_links_bib::resolve_citation_reference_links;
+
+#[path = "theory_links_bib.rs"]
+mod bib;
+
+pub(crate) use bib::resolve_citation_reference_links;
 
 /// Staged academic paper PDF and `.tex` source URLs resolved for a tool or domain.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -71,10 +72,13 @@ fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         | "FractranMachineTool"
         | "AlgorithmicFractranTool"
         | "AlgorithmicComplexityTool" => &["algorithmic_information_rust"],
-        "WinRatioWorkbenchTool" | "WinRatioStressTesterTool" => &["win_ratio"],
+        "WinRatioWorkbenchTool" | "WinRatioStressTesterTool" | "WinRatioTool" => &["win_ratio"],
         "AlgorithmVisualizerTool" | "GraphEditorTool" => &["dijkstra"],
         "VolumetricFieldStudioTool" => &["isosurface_extraction", "gaussian_splatting"],
-        "GeodesicPlaygroundTool" | "ChristoffelInspectorTool" => &["general_relativity_geodesics"],
+        "GeodesicPlaygroundTool"
+        | "ChristoffelInspectorTool"
+        | "BlackHoleGeodesicWorkbench"
+        | "RelativisticJetBeamingLab" => &["general_relativity_geodesics"],
         "MarkovSequenceWorkbenchTool" => &["clinical_trials_statistics"],
         "CorticalMorphometryTool" | "RiemannianPdeStudio" => &["freesurfer"],
         "DistributionsExplorerTool" | "ConjugateBayesianTool" => {
@@ -108,12 +112,22 @@ fn domain_module_tokens(domain: &str) -> Vec<String> {
         "graph_theory" => &["dijkstra", "graph_parameters_rust"],
         "analysis" | "geometry_topology" | "number_theory" => &["pure_math", "math_commons"],
         "financial_math" => &["clinical_trials_statistics"],
+        "stochastic_processes" => &[
+            "clinical_trials_statistics",
+            "advanced_linear_algebra",
+            "pure_math",
+        ],
         "biology" | "biochemical" => &["biology", "computational_biology"],
         "neuroscience" => &["biology", "computational_biology", "graph_parameters_rust"],
         "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],
         "solid_state" => &["stat_mech", "pure_math"],
         "paradox_lab" => &["paradox_lab", "game_theory", "graph_parameters_rust"],
         "probability" => &["engine_prob", "engine_graph", "clinical_trials_statistics"],
+        "astrophysics" => &[
+            "dwarf_galaxy_empirical_dependencies",
+            "general_relativity_geodesics",
+            "high_energy",
+        ],
         "relativity" => &[
             "general_relativity_geodesics",
             "general_relativity",
@@ -182,16 +196,12 @@ pub(crate) fn render_portal_links_for_framework(
         .selected_tool_index
         .and_then(|idx| framework.available_tools.get(idx).copied());
     let tool_id = active_meta.map_or_else(|| tool.name(), |m| m.id);
-    let domain = active_meta.map_or_else(
-        || {
-            if framework.domain.is_empty() {
-                tool.domain()
-            } else {
-                framework.domain.as_str()
-            }
-        },
-        |m| m.domain,
-    );
+    let fallback_domain = if framework.domain.is_empty() {
+        tool.domain()
+    } else {
+        framework.domain.as_str()
+    };
+    let domain = active_meta.map_or(fallback_domain, |m| m.domain);
 
     let paper_links = resolve_portal_paper_links(tool_id, domain);
     let ext_links = resolve_citation_reference_links(citation);
@@ -201,10 +211,7 @@ pub(crate) fn render_portal_links_for_framework(
 
     ui.add_space(4.0);
     for paper in &paper_links {
-        let stem = paper
-            .paper_name
-            .strip_suffix(".tex")
-            .unwrap_or(&paper.paper_name);
+        let stem = paper.paper_name.trim_end_matches(".tex");
         let pdf_label = format!("📄 View PDF ({stem}.pdf)");
         render_paper_links(
             ui,

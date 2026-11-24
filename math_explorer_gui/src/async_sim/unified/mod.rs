@@ -83,6 +83,8 @@ pub trait UnifiedUiExtension: Send {
 
     fn on_custom_action(&mut self, _action: &str) {}
 
+    fn on_obstacle_mask_loaded(&mut self, _mask: Option<&[bool]>, _params: &HashMap<String, f64>) {}
+
     fn draw_side_panel_controls(
         &mut self,
         _ui: &mut egui::Ui,
@@ -303,6 +305,33 @@ pub trait UnifiedModel:
     {
         false
     }
+
+    /// Returns `(grid_w, grid_h, flip_y)` when interactive `RasterBrushCanvas` sculpting is supported.
+    fn raster_brush_grid() -> Option<(usize, usize, bool)>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
+    /// Returns the default boolean obstacle mask for `raster_brush_grid` when initialized.
+    fn default_obstacle_mask(_params: &HashMap<String, f64>) -> Option<Vec<bool>>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
+    /// Validates an encoded RLE obstacle mask prior to applying state changes.
+    fn validate_obstacle_rle(_encoded: &str) -> Result<Vec<bool>, String>
+    where
+        Self: Sized,
+    {
+        Err("Obstacle RLE masks are not supported for this model".to_string())
+    }
+
+    /// Applies a validated RLE obstacle mask onto this model instance.
+    fn apply_obstacle_rle(&mut self, _encoded: &str) {}
 
     /// Whether this model supports interactive [`SpatialBrushKit`] sculpting and persistence.
     fn supports_spatial_brush() -> bool

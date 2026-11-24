@@ -88,7 +88,7 @@ impl ExplorerTab for ProbabilityWorkbenchTab {
 inventory::submit! {
     TabDescriptor {
         id: "probability",
-        order: 27,
+        order: 28,
         build: || Box::new(ProbabilityWorkbenchTab::default()),
     }
 }

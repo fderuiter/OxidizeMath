@@ -9,6 +9,7 @@ use super::lbm_fairing::{
     CHALLENGE_LBM_FAIRING, CHALLENGE_LBM_VISCOSITY, LBM_CELL_COUNT, LBM_CORE_RADIUS, LBM_CORE_X,
     LBM_CORE_Y, LBM_HEIGHT, LBM_INLET_COLS, LBM_MIN_SOLID_CELLS, LBM_U_IN, LBM_WIDTH,
 };
+use super::lbm_presets::stamp_disk_into_fairing_mask;
 use crate::accessibility::{
     announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
     register_canvas_accessibility, AccessibleHoverText,
@@ -371,31 +372,14 @@ impl UnifiedUiExtension for LbmUiExtension {
     }
 
     fn on_brush(&mut self, cx: i32, cy: i32, r: i32, is_obstacle: bool) -> bool {
-        let mut any_changed = false;
-        for y in (cy - r)..=(cy + r) {
-            for x in (cx - r)..=(cx + r) {
-                if x >= LBM_INLET_COLS as i32
-                    && x < LBM_WIDTH as i32
-                    && y >= 0
-                    && y < LBM_HEIGHT as i32
-                    && (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r
-                {
-                    let dx = x - LBM_CORE_X;
-                    let dy = y - LBM_CORE_Y;
-                    if !is_obstacle
-                        && self.active_challenge.is_some()
-                        && dx * dx + dy * dy <= LBM_CORE_RADIUS * LBM_CORE_RADIUS
-                    {
-                        continue;
-                    }
-                    let idx = flatten_2d_index(x as usize, y as usize, LBM_WIDTH);
-                    if self.mask[idx] != is_obstacle {
-                        self.mask[idx] = is_obstacle;
-                        any_changed = true;
-                    }
-                }
-            }
-        }
+        let any_changed = stamp_disk_into_fairing_mask(
+            &mut self.mask,
+            cx,
+            cy,
+            r,
+            is_obstacle,
+            self.active_challenge.is_some(),
+        );
         if any_changed {
             self.evaluator
                 .evaluate_mask_in_place(&self.mask, CHALLENGE_LBM_VISCOSITY);
@@ -428,15 +412,30 @@ impl UnifiedUiExtension for LbmUiExtension {
     }
 
     fn on_custom_action(&mut self, action: &str) {
-        if action == "Clear Obstacles" {
-            self.mask.fill(false);
-            if self.active_challenge.is_some() {
-                restore_inlet_and_core_mask(&mut self.mask);
+        match action {
+            "Clear Obstacles" => {
+                self.mask.fill(false);
+                if self.active_challenge.is_some() {
+                    restore_inlet_and_core_mask(&mut self.mask);
+                }
             }
-            self.evaluator
-                .evaluate_mask_in_place(&self.mask, CHALLENGE_LBM_VISCOSITY);
-            self.revision_counter = self.revision_counter.wrapping_add(1);
+            "Default Obstacles" => self.mask = self.default_mask,
+            _ => return,
         }
+        self.evaluator
+            .evaluate_mask_in_place(&self.mask, CHALLENGE_LBM_VISCOSITY);
+        self.revision_counter = self.revision_counter.wrapping_add(1);
+    }
+
+    fn on_obstacle_mask_loaded(&mut self, mask: Option<&[bool]>, params: &HashMap<String, f64>) {
+        let next = mask
+            .and_then(|s| <[bool; LBM_CELL_COUNT]>::try_from(s).ok())
+            .unwrap_or(self.default_mask);
+        if std::mem::replace(&mut self.mask, next) != next || self.active_challenge.is_some() {
+            let visc = *params.get("viscosity").unwrap_or(&CHALLENGE_LBM_VISCOSITY);
+            self.evaluator.evaluate_mask_in_place(&self.mask, visc);
+        }
+        self.revision_counter = self.revision_counter.wrapping_add(1);
     }
 
     fn draw_side_panel_controls(

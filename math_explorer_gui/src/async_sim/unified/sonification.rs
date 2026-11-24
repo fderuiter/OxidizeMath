@@ -12,8 +12,12 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             let custom_formula_enabled = self.custom_formula_enabled;
             let shared_formula = &self.shared_formula;
             let sculpt_state = &self.sculpt_state;
+            let obstacle_rle = &self.obstacle_rle;
             let model = self.step_model.get_or_insert_with(|| {
                 let mut m = M::new(&params);
+                if let Some(ref rle) = *obstacle_rle.read().unwrap_or_else(|e| e.into_inner()) {
+                    m.apply_obstacle_rle(rle);
+                }
                 if custom_formula_enabled {
                     let payload = shared_formula
                         .read()
@@ -65,6 +69,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 pv.to_bits().hash(&mut h);
             }
         }
+        if let Some(ref rle) = *self.obstacle_rle.read().unwrap_or_else(|e| e.into_inner()) {
+            rle.hash(&mut h);
+        }
         h.finish().max(1)
     }
 
@@ -99,6 +106,9 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .unwrap_or_else(|e| e.into_inner())
             .clone();
         let mut model = M::new(&params);
+        if let Some(ref rle) = *self.obstacle_rle.read().unwrap_or_else(|e| e.into_inner()) {
+            model.apply_obstacle_rle(rle);
+        }
         if self.custom_formula_enabled {
             let payload = self
                 .shared_formula
