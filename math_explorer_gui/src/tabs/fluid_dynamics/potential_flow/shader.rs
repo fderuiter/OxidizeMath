@@ -143,8 +143,8 @@ vec4 flow_vortex(vec2 p, float gamma, vec2 center) {
     vec2 d = p - center;
     float r2 = max(dot(d, d), 1.0e-6);
     vec2 uv = (gamma * INV_TWO_PI / r2) * vec2(-d.y, d.x);
-    float psi = (gamma * INV_TWO_PI) * 0.5 * log(r2);
-    float phi = -(gamma * INV_TWO_PI) * safe_atan2(d.y, d.x);
+    float psi = -(gamma * INV_TWO_PI) * 0.5 * log(r2);
+    float phi = (gamma * INV_TWO_PI) * safe_atan2(d.y, d.x);
     return vec4(uv, psi, phi);
 }
 

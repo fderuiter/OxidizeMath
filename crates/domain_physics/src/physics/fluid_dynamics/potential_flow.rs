@@ -25,6 +25,12 @@ pub trait FlowElement: Send + Sync {
     /// Velocity potential phi at point (x, y).
     #[verified_engine::verified]
     fn potential(&self, x: f64, y: f64) -> f64;
+
+    /// Optional singularity core coordinates `(x, y)` for core and branch-cut guards.
+    #[verified_engine::verified]
+    fn singularity_center(&self) -> Option<Vector2<f64>> {
+        None
+    }
 }
 
 /// Uniform flow with constant velocity U at angle alpha.
@@ -140,6 +146,11 @@ impl FlowElement for Source {
         let r = (dx * dx + dy * dy).sqrt();
         (self.strength / (2.0 * PI)) * r.ln()
     }
+
+    #[verified_engine::verified]
+    fn singularity_center(&self) -> Option<Vector2<f64>> {
+        Some(Vector2::new(self.x, self.y))
+    }
 }
 
 /// A Free Vortex with circulation Gamma at a specific location.
@@ -207,14 +218,19 @@ impl FlowElement for Vortex {
         if r < math_commons::registry::TOLERANCE_HIGH {
             return 0.0;
         }
-        (self.strength / (2.0 * PI)) * r.ln()
+        -(self.strength / (2.0 * PI)) * r.ln()
     }
 
     #[verified_engine::verified]
     fn potential(&self, x: f64, y: f64) -> f64 {
         let dx = x - self.x;
         let dy = y - self.y;
-        -(self.strength / (2.0 * PI)) * dy.atan2(dx)
+        (self.strength / (2.0 * PI)) * dy.atan2(dx)
+    }
+
+    #[verified_engine::verified]
+    fn singularity_center(&self) -> Option<Vector2<f64>> {
+        Some(Vector2::new(self.x, self.y))
     }
 }
 
@@ -314,6 +330,11 @@ impl FlowElement for Doublet {
         // phi = - (kappa * x) / (2*pi*r^2)
         -(self.strength * dx) / (2.0 * PI * r2)
     }
+
+    #[verified_engine::verified]
+    fn singularity_center(&self) -> Option<Vector2<f64>> {
+        Some(Vector2::new(self.x, self.y))
+    }
 }
 
 /// A container for multiple flow elements, enabling superposition.
@@ -372,6 +393,44 @@ impl PotentialFlowField {
     #[verified_engine::verified]
     pub fn clear(&mut self) {
         self.elements.clear();
+    }
+
+    /// Returns `true` if `(x, y)` lies within squared distance `min_r2` of any singularity core.
+    #[verified_engine::verified]
+    pub fn is_near_singularity(&self, x: f64, y: f64, min_r2: f64) -> bool {
+        let r2_limit = min_r2.max(math_commons::registry::TOLERANCE_HIGH);
+        debug_assert!(r2_limit >= math_commons::registry::TOLERANCE_HIGH);
+        for element in &self.elements {
+            if let Some(center) = element.singularity_center() {
+                let dx = x - center.x;
+                let dy = y - center.y;
+                if dx * dx + dy * dy <= r2_limit {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Extracts iso-$\psi$ streamline segments over `(x_min, x_max, y_min, y_max)` via marching squares.
+    #[verified_engine::verified]
+    pub fn extract_streamline_segments(
+        &self,
+        bounds: (f64, f64, f64, f64),
+        resolution: usize,
+        iso_levels: &[f64],
+    ) -> Vec<([f64; 2], [f64; 2])> {
+        super::analysis::march_streamlines(self, bounds, resolution, iso_levels)
+    }
+
+    /// Detects stagnation points where $\mathbf{V}(x, y) = \mathbf{0}$ outside singularity cores.
+    #[verified_engine::verified]
+    pub fn detect_stagnation_points(
+        &self,
+        bounds: (f64, f64, f64, f64),
+        resolution: usize,
+    ) -> Vec<Vector2<f64>> {
+        super::analysis::find_stagnation_points(self, bounds, resolution)
     }
 }
 

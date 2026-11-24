@@ -164,66 +164,6 @@ pub const PRESET_TURING_STRIPES: &str = r#"{
   }
 }"#;
 
-/// JSON preset envelope for Fluid Dynamics Cylinder Vector Field.
-pub const PRESET_VECTOR_FIELD: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Potential Flow - Cylinder Vector Field",
-    "domain": "fluid_dynamics",
-    "timestamp": "2026-11-14T00:00:00Z"
-  },
-  "config": {
-    "elements": [
-      {
-        "element_type": "Uniform",
-        "strength": 10.0,
-        "x": 0.0,
-        "y": 0.0,
-        "angle": 0.0
-      },
-      {
-        "element_type": "Doublet",
-        "strength": 251.32741228718345,
-        "x": 0.0,
-        "y": 0.0,
-        "angle": 0.0
-      }
-    ],
-    "grid_size": 20,
-    "view_range": 10.0
-  }
-}"#;
-
-/// JSON preset envelope for Fluid Dynamics Source-Sink Pair.
-pub const PRESET_SOURCE_SINK: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Potential Flow - Source-Sink Singularity Pair",
-    "domain": "fluid_dynamics",
-    "timestamp": "2026-11-14T00:00:00Z"
-  },
-  "config": {
-    "elements": [
-      {
-        "element_type": "Source",
-        "strength": 10.0,
-        "x": -3.0,
-        "y": 0.0,
-        "angle": 0.0
-      },
-      {
-        "element_type": "Sink",
-        "strength": 10.0,
-        "x": 3.0,
-        "y": 0.0,
-        "angle": 0.0
-      }
-    ],
-    "grid_size": 25,
-    "view_range": 12.0
-  }
-}"#;
-
 /// JSON preset envelope for 3D Chaotic Attractor.
 pub const PRESET_3D_ATTRACTOR: &str = r#"{
   "metadata": {
@@ -402,6 +342,10 @@ pub const PRESET_FAVORITISM_SIBLING_RIVALRY: &str = r#"{
 #[path = "starter_gallery/counterfactual_presets.rs"]
 mod counterfactual_presets;
 pub use counterfactual_presets::*;
+
+#[path = "starter_gallery/fluid_presets.rs"]
+mod fluid_presets;
+pub use fluid_presets::*;
 
 #[path = "starter_gallery/challenges.rs"]
 pub mod challenges;
