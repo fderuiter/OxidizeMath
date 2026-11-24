@@ -52,21 +52,22 @@ impl OdeSolverTool {
         use super::phase::PlotViewMode;
 
         let mut view_updated = false;
+        let plot_mode_active = !self.is_phase_plane_active();
         ui.add_space(8.0);
         ui.heading("Visualization Mode");
         ui.horizontal_wrapped(|ui| {
             for mode in [PlotViewMode::TimeSeries, PlotViewMode::PhasePortrait] {
                 if ui
-                    .selectable_label(self.view_mode == mode, mode.label())
+                    .selectable_label(plot_mode_active && self.view_mode == mode, mode.label())
                     .clicked()
-                    && self.view_mode != mode
+                    && (!plot_mode_active || self.view_mode != mode)
                 {
                     self.set_view_mode(mode);
                 }
             }
             let _ = self.atlas.show_toggle_button(ui);
         });
-        if self.view_mode == PlotViewMode::PhasePortrait {
+        if plot_mode_active && self.view_mode == PlotViewMode::PhasePortrait {
             let max_t = self.total_time.max(0.1);
             let mut slice = self.t_slice.clamp(0.0, max_t);
             if ui

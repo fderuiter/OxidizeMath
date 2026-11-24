@@ -142,10 +142,12 @@ impl OdeSolverTool {
         self.view_mode
     }
 
-    /// Switches [`PlotViewMode`] (`TimeSeries` or `PhasePortrait`) and refreshes callouts.
+    /// Switches [`PlotViewMode`] (`TimeSeries` or `PhasePortrait`), exits twin `phase_plane_mode`
+    /// if active so the selected projection takes effect immediately, and refreshes callouts.
     pub fn set_view_mode(&mut self, mode: PlotViewMode) {
-        if self.view_mode != mode {
+        if self.view_mode != mode || self.phase_plane_mode {
             self.view_mode = mode;
+            self.phase_plane_mode = false;
             self.bump_revision();
             self.update_callouts();
         }
@@ -181,7 +183,9 @@ impl OdeSolverTool {
     #[inline]
     #[must_use]
     pub fn is_2d_phase_portrait(&self) -> bool {
-        matches!(self.view_mode, PlotViewMode::PhasePortrait) && self.has_second_state()
+        !self.is_phase_plane_active()
+            && matches!(self.view_mode, PlotViewMode::PhasePortrait)
+            && self.has_second_state()
     }
 
     pub(crate) fn phase_window_bounds(&self) -> ((f64, f64), (f64, f64)) {

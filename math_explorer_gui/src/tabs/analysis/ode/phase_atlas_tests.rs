@@ -460,3 +460,21 @@ fn test_ode_app_accesskit_exposes_phase_and_atlas_controls() {
         .any(|l| l.contains("2D Parameter Atlas"));
     assert!(has_phase && has_atlas);
 }
+
+#[test]
+fn test_set_view_mode_exits_planar_phase_plane_mode_cleanly() {
+    let mut tool = OdeSolverTool::default();
+    tool.apply_poincare_point(-1.0, 2.0);
+    assert!(tool.is_phase_plane_active());
+    assert!(!tool.is_2d_phase_portrait());
+
+    tool.set_view_mode(PlotViewMode::TimeSeries);
+    assert!(!tool.is_phase_plane_active());
+    assert_eq!(tool.view_mode(), PlotViewMode::TimeSeries);
+
+    tool.phase_plane_mode = true;
+    assert!(tool.is_phase_plane_active());
+    tool.set_view_mode(PlotViewMode::PhasePortrait);
+    assert!(!tool.is_phase_plane_active());
+    assert!(tool.is_2d_phase_portrait());
+}
