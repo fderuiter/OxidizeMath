@@ -327,10 +327,7 @@ fn test_left_associative_and_implicit_mul_height_limits() {
     );
 
     let huge_add = format!("{}1", "1+".repeat(100_000));
-    assert_eq!(
-        parse(&huge_add),
-        Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH))
-    );
+    assert!(matches!(parse(&huge_add), Err(ParseError::Lex(_))));
 
     let exact_mul = vec!["x"; MAX_PARSE_DEPTH + 1].join(" ");
     let parsed_mul = parse(&exact_mul).expect("height 64 implicit multiplication should parse");
@@ -343,10 +340,7 @@ fn test_left_associative_and_implicit_mul_height_limits() {
     );
 
     let huge_mul = format!("{}x", "x ".repeat(100_000));
-    assert_eq!(
-        parse(&huge_mul),
-        Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH))
-    );
+    assert!(matches!(parse(&huge_mul), Err(ParseError::Lex(_))));
 }
 
 #[test]

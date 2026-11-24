@@ -7,6 +7,8 @@ use std::path::Path;
 use toml::Value;
 
 const RELEASE_WORKSPACE_MEMBERS: &[&str] = &[
+    "crates/02_engines/engine_linalg",
+    "crates/02_engines/engine_prob",
     "crates/math_commons",
     "crates/scientific_metadata",
     "crates/pure_math",

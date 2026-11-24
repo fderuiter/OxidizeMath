@@ -1,11 +1,12 @@
 [workspace]
 members = [
-    "crates/02_engines/engine_prob",
     "crates/federated_registry",
     "crates/diagnostics",
     "crates/oxidize_core",
     "crates/verified_engine",
     "crates/verified_engine_macros",
+    "crates/02_engines/engine_linalg",
+    "crates/02_engines/engine_prob",
     "crates/math_commons",
     "crates/scientific_metadata",
     "crates/pure_math",
