@@ -271,7 +271,7 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
     let extra = usize::from(has_riemannian) + usize::from(has_surface_morpho);
     let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
     let stochastic_extra = if cfg!(feature = "pure_math") { 3 } else { 0 };
-    let optics_bonus = if cfg!(feature = "physics") { 2 } else { 0 };
+    let physics_bonus = if cfg!(feature = "physics") { 4 } else { 0 };
     let extra_su11_hyp = if cfg!(feature = "pure_math") { 2 } else { 0 };
     let has_ai = cfg!(feature = "ai");
     let expected_audio = usize::from(cfg!(feature = "biology")) * 2
@@ -286,7 +286,7 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         + extra
         + bio_extra
         + stochastic_extra
-        + optics_bonus
+        + physics_bonus
         + extra_su11_hyp
         + usize::from(has_ai);
     let expected_solid = 7 + extra;
@@ -294,7 +294,7 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         + extra
         + bio_extra
         + stochastic_extra
-        + optics_bonus
+        + physics_bonus
         + extra_su11_hyp
         + usize::from(has_ai);
     assert_eq!(

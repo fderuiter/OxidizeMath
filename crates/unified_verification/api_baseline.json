@@ -10440,6 +10440,12 @@
       "signature": "impl IsotropicBCSModel { pub fn new (_ : Vec < f64 > , _ : f64 , _ : f64 ,) -> Result < Self , SolidStateError > }"
     },
     {
+      "signature": "impl IsotropicBCSModel { pub fn update_uniform_window (& mut self , _ : f64 , _ : f64 , _ : f64 ,) }"
+    },
+    {
+      "signature": "impl IsotropicBCSModel { pub fn with_uniform_window (_ : usize , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
       "signature": "pub fn coherence_factors_strong (_ : ElectronVolts , _ : ElectronVolts ,) -> Result < (f64 , f64) , SolidStateError >"
     },
     {
@@ -10503,6 +10509,156 @@
     },
     {
       "signature": "pub fn optical_dispersion (_ : f64 , _ : f64) -> f64"
+    }
+  ],
+  "crates/domain_physics/src/physics/solid_state/quasicrystal.rs": [
+    {
+      "signature": "impl QuasicrystalPatchConfig { pub fn sanitized (self) -> Self }"
+    },
+    {
+      "signature": "impl QuasicrystalSymmetry { pub const fn rotational_order (self) -> usize }"
+    },
+    {
+      "signature": "impl QuasicrystalSymmetry { pub fn characteristic_bond_length (self) -> f64 }"
+    },
+    {
+      "signature": "impl QuasicrystalSymmetry { pub fn fundamental_wavevector (self) -> f64 }"
+    },
+    {
+      "signature": "impl QuasicrystalWorkspace { pub fn edges (& self) -> & [([f64 ; 2] , [f64 ; 2])] }"
+    },
+    {
+      "signature": "impl QuasicrystalWorkspace { pub fn generate_into (& mut self , _ : & QuasicrystalPatchConfig) }"
+    },
+    {
+      "signature": "impl QuasicrystalWorkspace { pub fn new () -> Self }"
+    },
+    {
+      "signature": "impl QuasicrystalWorkspace { pub fn parallel_points (& self) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl QuasicrystalWorkspace { pub fn sites (& self) -> & [ProjectedSite] }"
+    },
+    {
+      "signature": "pub const GOLDEN_RATIO : f64"
+    },
+    {
+      "signature": "pub const MAX_PATCH_RADIUS : f64"
+    },
+    {
+      "signature": "pub const MAX_QUASICRYSTAL_EDGES : usize"
+    },
+    {
+      "signature": "pub const MAX_QUASICRYSTAL_SITES : usize"
+    },
+    {
+      "signature": "pub enum QuasicrystalSymmetry"
+    },
+    {
+      "signature": "pub fn acceptance_window_polygon (_ : QuasicrystalSymmetry , _ : f64 , _ : [f64 ; 2] , _ : & mut [[f64 ; 2] ; 14] ,) -> usize"
+    },
+    {
+      "signature": "pub fn generate_quasicrystal_patch (_ : & QuasicrystalPatchConfig) -> Vec < ProjectedSite >"
+    },
+    {
+      "signature": "pub struct ProjectedSite"
+    },
+    {
+      "signature": "pub struct QuasicrystalPatchConfig"
+    },
+    {
+      "signature": "pub struct QuasicrystalWorkspace"
+    }
+  ],
+  "crates/domain_physics/src/physics/solid_state/quasiperiodic.rs": [
+    {
+      "signature": "impl QuasiperiodicWorkspace { pub fn count_prominent_gaps (& self , _ : f64) -> usize }"
+    },
+    {
+      "signature": "impl QuasiperiodicWorkspace { pub fn count_spectral_gaps (& self , _ : f64) -> usize }"
+    },
+    {
+      "signature": "impl QuasiperiodicWorkspace { pub fn eigenvalues (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl QuasiperiodicWorkspace { pub fn idos (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl QuasiperiodicWorkspace { pub fn ipr (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl QuasiperiodicWorkspace { pub fn mean_ipr (& self) -> f64 }"
+    },
+    {
+      "signature": "impl QuasiperiodicWorkspace { pub fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl QuasiperiodicWorkspace { pub fn solve_into (& mut self , _ : QuasiperiodicChainModel) -> Result < () , & 'static str > }"
+    },
+    {
+      "signature": "pub const INVERSE_GOLDEN_RATIO : f64"
+    },
+    {
+      "signature": "pub const MAX_CHAIN_SITES : usize"
+    },
+    {
+      "signature": "pub enum QuasiperiodicChainModel"
+    },
+    {
+      "signature": "pub fn fibonacci_word_is_a (_ : usize) -> bool"
+    },
+    {
+      "signature": "pub struct QuasiperiodicWorkspace"
+    }
+  ],
+  "crates/domain_physics/src/physics/solid_state/reciprocal.rs": [
+    {
+      "signature": "impl BraggWorkspace { pub fn evaluate_grid_verified (& mut self , _ : & [[f64 ; 2]] , _ : usize , _ : f64 , _ : bool ,) }"
+    },
+    {
+      "signature": "impl BraggWorkspace { pub fn grid_size (& self) -> usize }"
+    },
+    {
+      "signature": "impl BraggWorkspace { pub fn intensities (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BraggWorkspace { pub fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl BraggWorkspace { pub fn peak_intensity (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BraggWorkspace { pub fn q_max (& self) -> f64 }"
+    },
+    {
+      "signature": "pub const MAX_BRAGG_GRID : usize"
+    },
+    {
+      "signature": "pub fn brillouin_zone_1d (_ : f64) -> Option < [f64 ; 2] >"
+    },
+    {
+      "signature": "pub fn first_brillouin_zone_2d (_ : & [[f64 ; 2] ; 2] , _ : & mut [[f64 ; 2] ; 16] ,) -> usize"
+    },
+    {
+      "signature": "pub fn pseudo_brillouin_zone_polygon (_ : usize , _ : f64 , _ : & mut [[f64 ; 2] ; 16] ,) -> usize"
+    },
+    {
+      "signature": "pub fn reciprocal_basis_2d (_ : & [[f64 ; 2] ; 2]) -> Option < [[f64 ; 2] ; 2] >"
+    },
+    {
+      "signature": "pub fn reciprocal_basis_3d (_ : & [Vector3 < f64 > ; 3]) -> Option < [Vector3 < f64 > ; 3] >"
+    },
+    {
+      "signature": "pub fn structure_factor_2d (_ : & [[f64 ; 2]] , _ : [f64 ; 2]) -> f64"
+    },
+    {
+      "signature": "pub fn structure_factor_3d (_ : & [Vector3 < f64 >] , _ : Vector3 < f64 >) -> f64"
+    },
+    {
+      "signature": "pub fn unit_cell_structure_factor (_ : & UnitCell , _ : [i32 ; 3]) -> f64"
+    },
+    {
+      "signature": "pub struct BraggWorkspace"
     }
   ],
   "crates/domain_physics/src/physics/solid_state/screening.rs": [

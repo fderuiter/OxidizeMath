@@ -57,7 +57,7 @@ cargo run --release --package math_explorer_gui
 *   **Physics / Medical:** Dose Calculation (2D Heatmap of radiation dose distribution).
 *   **Physics / Chaos:** Attractor Plotter (Lorenz, Rossler), Bifurcation Diagrams, and Fractal Generator.
 *   **Physics / Quantum:** Schrödinger Solver, Wavefunction Evolution, and Clebsch-Gordan Calculator.
-*   **Physics / Solid State:** Crystal Lattice Viewer (FCC, BCC, SC).
+*   **Physics / Solid State:** Crystal Lattice Viewer (FCC, BCC, SC with reciprocal basis & extinction readout), Quasicrystal & Bragg Diffraction (1D Fibonacci, 5-/8-/10-/12-fold cut-and-project phason flips & $S(\mathbf{q})$ maps), Band Structure (1D Bloch, Fibonacci Cantor spectrum & IDOS, Aubry-André localization), BCS Superconductivity & Phonons ($\Delta$, Bogoliubov coherence, Debye $C_V$, Yukawa screening), and 2D Ising Model.
 *   **Game Theory:** Evolutionary Replicator Dynamics and Bayesian Glicko-2 Tournament Simulator ($r \pm 2\,\text{RD}$ confidence bands, $\sigma$ volatility shifts, Swiss & Round-Robin pairings, and frozen-vs-sequential drift).
 
 
@@ -94,7 +94,7 @@ graph TD
 | ** Biology** | `math_explorer::biology` | `Validated` | **Neuroscience** (Hodgkin-Huxley) & **Morphogenesis** (`Certified`); **Reaction-Diffusion** & **Evolutionary Dynamics** (`Validated`). |
 | ** Climate** | `math_explorer::climate` | `Experimental` | **CERA Framework** (Climate-invariant Encoding through Representation Alignment research prototype). |
 | ** Epidemiology** | `math_explorer::epidemiology` | `Validated` | **Compartmental Models** (SIR/SEIR), **Network Spread**, and **Stochastic Dynamics**. |
-| ** Physics** | `math_explorer::physics` | `Validated` | **Quantum Mechanics**, **Chaos Theory**, & **Abelian Sandpile** (`Certified`); **Astrophysics**, **Fluid Dynamics**, **MRI**, & **Optics** (`Validated`); **Nuclear** & **Solid State** (`Experimental`). |
+| ** Physics** | `math_explorer::physics` | `Validated` | **Quantum Mechanics**, **Chaos Theory**, **Solid State** (Quasicrystals, Bragg Diffraction, Quasiperiodic Bands, BCS), & **Abelian Sandpile** (`Certified`); **Astrophysics**, **Fluid Dynamics**, **MRI**, & **Optics** (`Validated`); **Nuclear** (`Experimental`). |
 | ** Pure Math** | `math_explorer::pure_math` | `Certified` | **ODE / Root / Wave2D Solvers**, **Abstract Algebra**, **Number Theory**, & **Elliptic Curves** (`Certified`); **Statistics** & **Differential Geometry** (`Validated`). |
 | ** GUI** | `math_explorer_gui` | `Validated` | Interactive **eframe/egui** desktop and WebAssembly workbench surfacing per-tool `MaturityTier` badges across `SimulationFramework`, `Theory Context Portal`, and `TraceabilityTab`. |
 
