@@ -217,20 +217,42 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_eq!(plot_tool_count, 65, "Expected 65 Plot dataset+figure tools");
-    assert_eq!(raster_tool_count, 8, "Expected 8 raster figure tools");
+    assert_expected_capability_counts([
+        plot_tool_count,
+        raster_tool_count,
+        dataset_only_tool_count,
+        unsupported_tool_count,
+        solid_3d_count,
+        splat_3d_count,
+        shader_tool_count,
+        non_shader_tool_count,
+    ]);
+}
+
+fn assert_expected_capability_counts(counts: [usize; 8]) {
+    let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader] = counts;
+    let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
+    let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
+    let expected_plot = (if has_surface_morpho { 75 } else { 74 }) + bio_extra;
+    let expected_solid = if has_surface_morpho { 8 } else { 7 };
+    let expected_non_shader = (if has_surface_morpho { 89 } else { 88 }) + bio_extra;
     assert_eq!(
-        dataset_only_tool_count, 0,
-        "Expected 0 dataset-only registered tools"
+        plot, expected_plot,
+        "Expected {expected_plot} Plot dataset+figure tools"
     );
-    assert_eq!(unsupported_tool_count, 14, "Expected 14 non-figure tools");
-    assert_eq!(solid_3d_count, 7, "Expected 7 solid 3D geometric tools");
-    assert_eq!(splat_3d_count, 1, "Expected 1 3DGS splat PLY tool");
+    assert_eq!(raster, 8, "Expected 8 raster figure tools");
+    assert_eq!(dataset_only, 0, "Expected 0 dataset-only registered tools");
+    assert_eq!(unsupported, 9, "Expected 9 non-figure tools");
     assert_eq!(
-        shader_tool_count, 3,
-        "Expected 3 analytical GLSL shader tools"
+        solid_3d, expected_solid,
+        "Expected {expected_solid} solid 3D geometric tools"
     );
-    assert_eq!(non_shader_tool_count, 84, "Expected 84 non-shader tools");
+    assert_eq!(splat_3d, 1, "Expected 1 3DGS splat PLY tool");
+    assert_eq!(shader, 3, "Expected 3 analytical GLSL shader tools");
+    assert_eq!(
+        non_shader, expected_non_shader,
+        "Expected {expected_non_shader} non-shader tools"
+    );
 }
 
 #[derive(Default)]
@@ -348,10 +370,12 @@ fn verify_solid_3d_tool_exports(meta_id: &str, tool: Box<dyn InteractiveTool>) {
 }
 
 #[test]
-fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
+fn test_all_eight_3d_tools_deferred_stl_ply_payloads_and_live_region() {
     let solid_ids = [
         "SurfaceViewer",
         "CurvatureHeatmap",
+        #[cfg(all(feature = "pure_math", feature = "biology"))]
+        "SurfaceMorphogenesisTool",
         "AttractorPlotter",
         "CrystalViewer",
         "SpinVisualizer",
@@ -370,15 +394,28 @@ fn test_all_six_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         .into_iter()
         .find(|m| m.id == "Gaussian Splatting")
         .expect("Gaussian Splatting registered");
-    let mut gs_fw = SimulationFramework::new("__audit_3dgs__");
-    gs_fw.active_tool = Some((gs_meta.build)());
+    verify_splat_mode_ply_and_assertive_stl_obj_warnings((gs_meta.build)());
 
-    clear_test_announcements();
-    run_deferred_export_frame(&mut gs_fw, ExportFormat::Stl, false);
-    assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Warning);
-    assert!(all_announcements()
-        .iter()
-        .any(|(_, prio)| prio == "assertive"));
+    let mut vol_splat =
+        crate::tabs::quantum::volumetric_studio::VolumetricFieldStudioTool::default();
+    vol_splat.config.render_mode =
+        crate::tabs::quantum::volumetric_studio::state::VolumetricRenderMode::GaussianRadianceCloud;
+    vol_splat.refresh_zero_alloc();
+    verify_splat_mode_ply_and_assertive_stl_obj_warnings(Box::new(vol_splat));
+}
+
+fn verify_splat_mode_ply_and_assertive_stl_obj_warnings(tool: Box<dyn InteractiveTool>) {
+    let mut gs_fw = SimulationFramework::new("__audit_3dgs__");
+    gs_fw.active_tool = Some(tool);
+
+    for blocked_fmt in [ExportFormat::Stl, ExportFormat::Obj] {
+        clear_test_announcements();
+        run_deferred_export_frame(&mut gs_fw, blocked_fmt, false);
+        assert_eq!(gs_fw.export_status_severity, ExportStatusSeverity::Warning);
+        assert!(all_announcements()
+            .iter()
+            .any(|(_, prio)| prio == "assertive"));
+    }
 
     clear_test_announcements();
     let slot_before = with_live_region(|r| r.active_slot);

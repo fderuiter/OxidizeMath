@@ -118,6 +118,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                 M::name()
             ));
         };
+        self.validate_constrained_param(&key, number)?;
         parsed_params.insert(key, number);
         Ok(())
     }
@@ -175,8 +176,8 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
     }
 }
 
-/// Background worker runner driving a [`UnifiedModel`] with shared parameters, formulas, sculpt state,
-/// and optional time-travel checkpoint hooks.
+/// Background [`SimulationRunner`] adapter driving a [`UnifiedModel`] with shared parameters,
+/// formula revisions, persisted [`SculptStatePayload`] masks, and optional time-travel checkpoint hooks.
 pub struct UnifiedSimRunner<M: UnifiedModel> {
     model: M,
     params: Arc<RwLock<HashMap<String, f64>>>,

@@ -159,6 +159,12 @@ def run_accesskit_dom_speech_and_webgl_recovery_check(
                 f"[a11y_bridge] SpeechSynthesis must remain silent on boot: {speech_boot}"
             )
 
+        # Dismiss cold-boot Starter & Challenge Gallery onboarding modal (#1728) via #accesskit_dom_root if open.
+        close_gallery_btn = page.locator("#accesskit_dom_root button", has_text="Close Gallery")
+        if close_gallery_btn.count() > 0:
+            close_gallery_btn.first.evaluate("(el) => { el.focus(); el.click(); }")
+            expect(close_gallery_btn).to_have_count(0, timeout=5_000)
+
         # 1. DOM focus + click routing on #accesskit_dom_root: focus & open Appearance menu.
         appearance_btn = page.locator("#accesskit_dom_root button", has_text="Appearance").first
         appearance_btn.evaluate("(el) => { el.focus(); }")

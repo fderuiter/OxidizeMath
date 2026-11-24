@@ -45,6 +45,7 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         .into(),
         MarkovError::from(sample_math_err()).into(),
         MatchModelError::InvalidGoalRate { value: -1.0 }.into(),
+        MonteCarloError::ZeroReplicates.into(),
         NumberTheoryError::ModuloError.into(),
         OuError::InvalidTimeStep { value: 0.0 }.into(),
         TdaError::EmptyPointCloud.into(),
@@ -54,6 +55,8 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         EllipticCurveError::InvalidDegree.into(),
         EvolutionError::InvalidState.into(),
         FractranError::InvalidFractionSyntax.into(),
+        GraphTheoryError::UnknownEndpoint { node: 9 }.into(),
+        HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 }.into(),
         LinearAlgebraError::SingularMatrix.into(),
         OptimizationError::from(EvolutionError::ConversionError).into(),
         StochasticError::InvalidReactionIndex(3).into(),
@@ -128,6 +131,71 @@ fn test_glicko2_tournament_variants_umbrella_and_diagnostics() {
         assert_eq!(
             meta.get("description").map(String::as_str),
             Some(msg.as_str())
+        );
+        bus.emit_diagnostic(&umbrella);
+    }
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_monte_carlo_error_umbrella_and_zero_alloc() {
+    let (err_res, _) =
+        VerifiedEngine::run_verified(|| -> std::result::Result<f64, PureMathError> {
+            let _: f64 = Err(MonteCarloError::ZeroReplicates)?;
+            Ok(0.0)
+        });
+    let umbrella = err_res.expect_err("must convert MonteCarloError");
+    assert!(umbrella.source().is_some());
+    assert_eq!(umbrella.severity(), Severity::Error);
+    assert_eq!(
+        umbrella.metadata().get("error_type").map(String::as_str),
+        Some("MonteCarloError")
+    );
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_kelly_validation_and_solvency_variants_umbrella_and_diagnostics() {
+    let variants = [
+        KellyError::InvalidStake { value: -5.0 },
+        KellyError::InvalidBarrier {
+            floor: 120.0,
+            initial_wealth: 100.0,
+        },
+        KellyError::InsufficientBets {
+            required: 2,
+            actual: 0,
+        },
+        KellyError::DimensionMismatch {
+            expected: 4,
+            actual: 3,
+        },
+        KellyError::ConvergenceFailed {
+            reason: "bracket failed",
+        },
+        KellyError::InvalidProbabilityDistribution { sum: 0.95 },
+        KellyError::InvalidMarketProbabilitySum { sum: 1.05 },
+        KellyError::EmptyPortfolio,
+        KellyError::PortfolioTooLarge { count: 65, max: 64 },
+        KellyError::InvalidDrawdownBounds {
+            alpha: 1.1,
+            beta: 0.1,
+        },
+        KellyError::SolverConvergenceFailed {
+            iterations: 512,
+            residual: 1e-3,
+        },
+    ];
+    let bus = DiagnosticBus::new();
+    for leaf in variants {
+        let msg = leaf.to_string();
+        let umbrella = PureMathError::from(leaf);
+        assert!(umbrella.source().is_some());
+        assert_eq!(umbrella.to_string(), msg);
+        let meta = umbrella.metadata();
+        assert_eq!(
+            meta.get("error_type").map(String::as_str),
+            Some("KellyError")
         );
         bus.emit_diagnostic(&umbrella);
     }

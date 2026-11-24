@@ -108,10 +108,21 @@ pub fn get_all_starter_cards_with_tools(extra_tools: &[&'static ToolMetadata]) -
     cards
 }
 
+/// Returns `true` when at least one starter preset or simulation tool is registered in `inventory`.
+#[must_use]
+pub fn has_any_starter_presets() -> bool {
+    inventory::iter::<StarterPresetMetadata>
+        .into_iter()
+        .next()
+        .is_some()
+        || inventory::iter::<ToolMetadata>.into_iter().next().is_some()
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct GalleryFilterState {
     pub query: String,
     pub selected_domain: Option<AcademicDomain>,
+    pub preferred_slug: Option<String>,
 }
 
 fn filter_state_id(modal_id: egui::Id) -> egui::Id {
@@ -121,9 +132,21 @@ fn filter_state_id(modal_id: egui::Id) -> egui::Id {
 pub(crate) fn load_gallery_filter_state(
     ctx: &egui::Context,
     modal_id: egui::Id,
+    default_domain_slug: Option<&str>,
 ) -> GalleryFilterState {
-    ctx.data(|d| d.get_temp::<GalleryFilterState>(filter_state_id(modal_id)))
-        .unwrap_or_default()
+    if let Some(existing) =
+        ctx.data(|d| d.get_temp::<GalleryFilterState>(filter_state_id(modal_id)))
+    {
+        return existing;
+    }
+    if let Some(slug) = default_domain_slug {
+        return GalleryFilterState {
+            query: String::new(),
+            selected_domain: Some(card_academic_domain(slug)),
+            preferred_slug: Some(slug.to_string()),
+        };
+    }
+    GalleryFilterState::default()
 }
 
 pub(crate) fn store_gallery_filter_state(
@@ -144,7 +167,7 @@ pub(crate) fn clear_gallery_filter_state(ctx: &egui::Context, modal_id: egui::Id
 pub fn card_academic_domain(domain: &str) -> AcademicDomain {
     match domain {
         "quantum" | "mri" | "fluid_dynamics" | "chaos" | "solid_state" | "medical"
-        | "astrophysics" | "relativity" => AcademicDomain::Physics,
+        | "astrophysics" | "relativity" | "optics_waves" => AcademicDomain::Physics,
         "analysis"
         | "elliptic_curves"
         | "number_theory"
@@ -152,7 +175,9 @@ pub fn card_academic_domain(domain: &str) -> AcademicDomain {
         | "graph_theory"
         | "financial_math"
         | "algorithmic_information" => AcademicDomain::PureMath,
-        "biology" | "morphogenesis" | "neuroscience" | "epidemiology" => AcademicDomain::Biology,
+        "biology" | "biochemical" | "morphogenesis" | "neuroscience" | "epidemiology" => {
+            AcademicDomain::Biology
+        }
         "climate" => AcademicDomain::Climate,
         "ai" => AcademicDomain::Ai,
         _ => AcademicDomain::AppliedMath,
@@ -373,8 +398,11 @@ pub(super) fn render_gallery_filter_bar(
     state: &mut GalleryFilterState,
     inner_w: f32,
 ) {
-    let esc_pressed = ui.input(|i| i.key_pressed(egui::Key::Escape) && i.modifiers.is_none());
-    let prev_query_empty = state.query.is_empty();
+    const HINT: &str = "🔍 Filter starter templates, stories, challenges, or tools...";
+    let esc_pressed = frame_ctx.is_top_modal
+        && ui.input(|i| i.key_pressed(egui::Key::Escape) && i.modifiers.is_none());
+    let prev_query = state.query.clone();
+    let prev_query_empty = prev_query.is_empty();
 
     ui.horizontal(|ui| {
         ui.set_max_width(inner_w);
@@ -382,8 +410,13 @@ pub(super) fn render_gallery_filter_bar(
         let edit_w = (inner_w - clear_reserve).max(80.0);
         let edit = egui::TextEdit::singleline(&mut state.query)
             .desired_width(edit_w)
-            .hint_text("🔍 Filter starter templates, stories, challenges, or tools...");
+            .hint_text(HINT);
         let resp = ui.add(edit);
+        let info = egui::WidgetInfo {
+            label: Some("Search starter gallery".to_string()),
+            ..egui::WidgetInfo::text_edit(ui.is_enabled(), &prev_query, &state.query, HINT)
+        };
+        resp.widget_info(move || info.clone());
         if !state.query.is_empty() && ui.small_button("✖").clicked() {
             state.query.clear();
             resp.request_focus();
@@ -392,6 +425,9 @@ pub(super) fn render_gallery_filter_bar(
             if prev_query_empty {
                 frame_ctx.close();
             } else {
+                let _ = ui
+                    .ctx()
+                    .input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
                 state.query.clear();
                 resp.request_focus();
             }

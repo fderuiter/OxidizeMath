@@ -4,6 +4,8 @@
 use super::poly::{solve_dense_small_raw, symmetrize_upper};
 use crate::error::FitError;
 use crate::series::PointSeries;
+#[cfg(not(feature = "std"))]
+use num_traits::Float as _;
 
 const MAX_SIN_SAMPLES: usize = 256;
 
@@ -41,7 +43,7 @@ impl WeightedOlsAccum {
     }
 
     /// Solves for `(intercept, slope)` or returns [`FitError::SingularMatrix`].
-    #[verified_engine::verified]
+    #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn solve(&self) -> Result<(f64, f64), FitError> {
         if self.count < 2 {
             return Err(FitError::InsufficientPoints {
@@ -64,7 +66,7 @@ impl WeightedOlsAccum {
 }
 
 /// Solves weighted linear regression $v = \alpha + \beta u$ over `[u, v, w]` triples.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn weighted_ols_line(samples: &[[f64; 3]]) -> Result<(f64, f64), FitError> {
     weighted_ols_line_inner(samples)
 }
@@ -78,7 +80,7 @@ fn weighted_ols_line_inner(samples: &[[f64; 3]]) -> Result<(f64, f64), FitError>
 }
 
 /// Estimates closed-form initial parameters `[a, b]` for $y = a e^{b x}$ via $y^2$-weighted log-OLS.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn seed_exponential<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2], FitError> {
     let [a_u, b, x0] = seed_exponential_shifted(points)?;
     let a = a_u * (-b * x0).clamp(-700.0, 700.0).exp();
@@ -134,7 +136,7 @@ pub(super) fn seed_exponential_shifted<P: PointSeries + ?Sized>(
 }
 
 /// Estimates closed-form initial parameters `[a, b]` for $y = a x^b$ ($x > 0, y > 0$).
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn seed_power_law<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2], FitError> {
     seed_power_law_inner(points)
 }
@@ -175,7 +177,7 @@ fn seed_power_law_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2],
 }
 
 /// Estimates exact closed-form parameters `[a, b]` for $y = a + b \ln(x)$ ($x > 0$).
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn seed_logarithmic<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2], FitError> {
     seed_logarithmic_inner(points)
 }
@@ -209,7 +211,7 @@ fn seed_logarithmic_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2
 }
 
 /// Estimates initial parameters `[L, k, x0]` for $y = L / (1 + e^{-k(x - x_0)})$.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn seed_logistic<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 3], FitError> {
     seed_logistic_inner(points)
 }
@@ -272,7 +274,7 @@ fn scan_logistic_bounds<P: PointSeries + ?Sized>(points: &P) -> (usize, f64, f64
 }
 
 /// Estimates initial parameters `[A, B, C, D]` for $y = A \sin(B x + C) + D$ on the stack.
-#[verified_engine::verified]
+#[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn seed_sinusoidal<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 4], FitError> {
     seed_sinusoidal_inner(points)
 }
@@ -310,15 +312,18 @@ fn seed_sinusoidal_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 4]
     let (best_b, best_lin) = search_best_harmonic(sub, &freqs, x0);
     if let Some((alpha, beta, d)) = best_lin {
         let amp = (alpha * alpha + beta * beta).sqrt().max(1e-6);
-        let mut phase = (alpha.atan2(beta) - best_b * x0).rem_euclid(std::f64::consts::TAU);
-        if phase > std::f64::consts::PI {
-            phase -= std::f64::consts::TAU;
+        let mut phase = num_traits::Euclid::rem_euclid(
+            &(alpha.atan2(beta) - best_b * x0),
+            &core::f64::consts::TAU,
+        );
+        if phase > core::f64::consts::PI {
+            phase -= core::f64::consts::TAU;
         }
         Ok([amp, best_b, phase, d])
     } else {
         Ok([
             amp_fallback,
-            (std::f64::consts::TAU / span_x).max(1e-4),
+            (core::f64::consts::TAU / span_x).max(1e-4),
             0.0,
             mean_y,
         ])
@@ -367,12 +372,12 @@ fn sample_sorted_points<P: PointSeries + ?Sized>(
 
 fn candidate_frequencies(sub: &[[f64; 2]], mean_y: f64, span_x: f64) -> [f64; 67] {
     let mut freqs = [0.0_f64; 67];
-    let b_min = (0.25 * std::f64::consts::TAU / span_x).max(1e-6);
+    let b_min = (0.25 * core::f64::consts::TAU / span_x).max(1e-6);
     let max_cycles = ((sub.len() as f64) * 0.25).clamp(4.0, 24.0);
-    let b_max = (max_cycles * std::f64::consts::TAU / span_x).max(b_min * 2.0);
+    let b_max = (max_cycles * core::f64::consts::TAU / span_x).max(b_min * 2.0);
     freqs[0] = jacquelin_frequency(sub, mean_y).unwrap_or(0.0);
     freqs[1] = zero_crossing_frequency(sub, mean_y, span_x).unwrap_or(0.0);
-    freqs[2] = std::f64::consts::TAU / span_x;
+    freqs[2] = core::f64::consts::TAU / span_x;
     for (idx, slot) in freqs.iter_mut().enumerate().skip(3) {
         let t = (idx - 3) as f64 / 63.0;
         *slot = b_min + t * (b_max - b_min);
@@ -389,7 +394,7 @@ fn zero_crossing_frequency(sorted: &[[f64; 2]], mean_y: f64, span_x: f64) -> Opt
             crossings += 1;
         }
     }
-    (crossings >= 1).then_some(std::f64::consts::PI * (crossings as f64) / span_x)
+    (crossings >= 1).then_some(core::f64::consts::PI * (crossings as f64) / span_x)
 }
 
 fn search_best_harmonic(

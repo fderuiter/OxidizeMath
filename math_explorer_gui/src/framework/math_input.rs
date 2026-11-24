@@ -3,20 +3,25 @@
 
 pub mod coupled;
 pub mod params;
+mod preview;
 mod scope;
 
 #[cfg(test)]
+mod limit_tests;
+#[cfg(test)]
 mod tests;
 
-pub use coupled::CoupledExpressionBank;
+pub use coupled::{CoupledExpressionBank, MAX_COUPLED_BANK_INSTRUCTIONS};
+pub use math_commons::ast::{MAX_AST_NODES, MAX_COMPILED_INSTRUCTIONS, MAX_EXPR_BYTES};
 pub use params::{
     ParamSliderSpec, ParameterRangeConfig, ParameterSliderBank, MAX_SYNTHESIZED_PARAMS,
 };
 use scope::VariableScopePolicy;
 
 use eframe::egui;
-use math_commons::ast::{parse_equation, CompiledExpr, Expr, ParseError};
-use std::collections::BTreeMap;
+use math_commons::ast::{parse_equation, CompiledExpr, Expr, LexError, ParseError};
+use preview::{render_presets, render_status_row, update_latex_preview};
+use std::collections::{BTreeMap, HashMap};
 use std::ops::RangeInclusive;
 
 /// Reusable input bar component for dynamic mathematical equations.
@@ -30,6 +35,8 @@ pub struct MathExpressionInputBar {
     pub lhs_name: Option<String>,
     /// Compiled AST expression or syntax error.
     pub parsed_expr: Result<Expr, ParseError>,
+    /// Last successfully compiled AST expression retained across mid-keystroke syntax errors.
+    pub last_valid_expr: Option<Expr>,
     /// Formatted LaTeX string for preview rendering.
     pub latex_cache: String,
     /// Available presets as (Name, Equation String) pairs.
@@ -56,6 +63,10 @@ pub struct MathExpressionInputBar {
     slider_bank: ParameterSliderBank,
     /// Optional tool-level allowed/disallowed variable validation rules.
     scope_policy: VariableScopePolicy,
+    /// Maximum compiled bytecode instructions allowed for this formula.
+    max_instructions: usize,
+    /// Original UTF-8 byte length when an oversized input was truncated on assignment.
+    oversized_byte_len: Option<usize>,
 }
 
 impl MathExpressionInputBar {
@@ -71,6 +82,7 @@ impl MathExpressionInputBar {
             default_lhs: default_lhs.to_string(),
             lhs_name: None,
             parsed_expr: Err(ParseError::EmptyExpression),
+            last_valid_expr: None,
             latex_cache: String::new(),
             presets,
             had_error: false,
@@ -91,8 +103,10 @@ impl MathExpressionInputBar {
             last_valid_compiled: None,
             slider_bank: ParameterSliderBank::new(),
             scope_policy: VariableScopePolicy::default(),
+            max_instructions: MAX_COMPILED_INSTRUCTIONS,
+            oversized_byte_len: None,
         };
-        bar.reparse();
+        bar.set_expression(initial_expr);
         bar
     }
 
@@ -160,10 +174,32 @@ impl MathExpressionInputBar {
         self
     }
 
-    /// Updates the expression text and reparses/recompiles the AST.
-    pub fn set_expression(&mut self, text: &str) {
-        self.raw_text = text.to_string();
+    /// Configures a stricter per-expression compiled bytecode instruction ceiling.
+    #[must_use]
+    pub fn with_max_instructions(mut self, max_instructions: usize) -> Self {
+        self.max_instructions = max_instructions.clamp(1, MAX_COMPILED_INSTRUCTIONS);
         self.reparse();
+        self
+    }
+
+    /// Updates the expression text (bounding retained heap bytes) and reparses/recompiles the AST.
+    pub fn set_expression(&mut self, text: &str) {
+        if text.len() > MAX_EXPR_BYTES {
+            self.oversized_byte_len = Some(text.len());
+            let keep = text.floor_char_boundary((MAX_EXPR_BYTES + 4).min(text.len()));
+            self.raw_text = text[..keep].to_string();
+        } else {
+            self.oversized_byte_len = None;
+            self.raw_text = text.to_string();
+        }
+        self.reparse();
+    }
+
+    /// Returns the instruction count of the active (or last valid fallback) compiled formula.
+    #[must_use]
+    pub fn instruction_count(&self) -> usize {
+        self.active_compiled()
+            .map_or(0, CompiledExpr::instruction_count)
     }
 
     /// Returns a reference to the parsed AST if currently valid.
@@ -174,6 +210,13 @@ impl MathExpressionInputBar {
         } else {
             self.parsed_expr.as_ref().ok()
         }
+    }
+
+    /// Returns the active parsed AST if valid, or falls back to the last valid cached AST
+    /// during mid-keystroke syntax or validation errors.
+    #[must_use]
+    pub fn cached_expr(&self) -> Option<&Expr> {
+        self.expr().or(self.last_valid_expr.as_ref())
     }
 
     /// Returns the currently valid compiled bytecode (`None` if current input has an error).
@@ -273,6 +316,15 @@ impl MathExpressionInputBar {
 
     /// Reparses `raw_text`, compiles bytecode, validates arity/scope, and syncs parameter sliders.
     pub fn reparse(&mut self) {
+        if self.raw_text.len() > MAX_EXPR_BYTES {
+            let reported_len = self.oversized_byte_len.unwrap_or(self.raw_text.len());
+            self.parsed_expr = Err(ParseError::Lex(LexError::input_too_long(reported_len)));
+            self.validation_error = None;
+            self.compiled_expr = None;
+            self.latex_cache.clear();
+            return;
+        }
+        self.oversized_byte_len = None;
         let trimmed = self.raw_text.trim();
         if trimmed.is_empty() {
             self.parsed_expr = Err(ParseError::EmptyExpression);
@@ -294,15 +346,21 @@ impl MathExpressionInputBar {
         }
     }
 
+    fn reject_parsed_candidate(&mut self, expr: Expr, err: String, clear_latex: bool) {
+        self.validation_error = Some(err);
+        self.compiled_expr = None;
+        if clear_latex {
+            self.latex_cache.clear();
+        }
+        self.parsed_expr = Ok(expr);
+    }
+
     fn finish_valid_parse(&mut self, lhs: Option<String>, expr: Expr) {
         if let Err(scope_err) = self
             .scope_policy
             .validate(&expr, &self.axes, self.complex_mode)
         {
-            self.validation_error = Some(scope_err);
-            self.compiled_expr = None;
-            self.latex_cache.clear();
-            self.parsed_expr = Ok(expr);
+            self.reject_parsed_candidate(expr, scope_err, true);
             return;
         }
 
@@ -315,13 +373,21 @@ impl MathExpressionInputBar {
 
         match compile_res {
             Ok(compiled) => {
+                if compiled.instruction_count() > self.max_instructions {
+                    let msg = format!(
+                        "Formula compiles to {} instructions (maximum {}). Simplify the expression",
+                        compiled.instruction_count(),
+                        self.max_instructions
+                    );
+                    self.reject_parsed_candidate(expr, msg, true);
+                    return;
+                }
                 if self.scope_enabled && compiled.param_names().len() > MAX_SYNTHESIZED_PARAMS {
-                    self.validation_error = Some(format!(
+                    let msg = format!(
                         "Formula defines {} free parameters (maximum {MAX_SYNTHESIZED_PARAMS})",
                         compiled.param_names().len()
-                    ));
-                    self.compiled_expr = None;
-                    self.parsed_expr = Ok(expr);
+                    );
+                    self.reject_parsed_candidate(expr, msg, false);
                     return;
                 }
                 if self.scope_enabled {
@@ -335,16 +401,12 @@ impl MathExpressionInputBar {
                 );
                 self.lhs_name = lhs;
                 self.validation_error = None;
+                self.last_valid_expr = Some(expr.clone());
                 self.last_valid_compiled = Some(compiled.clone());
                 self.compiled_expr = Some(compiled);
                 self.parsed_expr = Ok(expr);
             }
-            Err(eval_err) => {
-                self.validation_error = Some(eval_err.to_string());
-                self.compiled_expr = None;
-                self.latex_cache.clear();
-                self.parsed_expr = Ok(expr);
-            }
+            Err(eval_err) => self.reject_parsed_candidate(expr, eval_err.to_string(), true),
         }
     }
 
@@ -352,6 +414,18 @@ impl MathExpressionInputBar {
     ///
     /// Returns `true` if the expression or any synthesized parameter slider changed.
     pub fn ui(&mut self, ui: &mut egui::Ui) -> bool {
+        let slider_params: HashMap<String, f64> = if self.scope_enabled {
+            self.slider_bank.export_active_map().into_iter().collect()
+        } else {
+            HashMap::new()
+        };
+        self.ui_with_params(ui, &slider_params)
+    }
+
+    /// Renders the math expression input bar UI with live parameter-calibrated LaTeX preview and code copy/save actions.
+    ///
+    /// Returns `true` if the expression or any synthesized parameter slider changed.
+    pub fn ui_with_params(&mut self, ui: &mut egui::Ui, params: &HashMap<String, f64>) -> bool {
         let mut changed = false;
 
         ui.group(|ui| {
@@ -367,6 +441,7 @@ impl MathExpressionInputBar {
                     }
                     let res = ui.add(
                         egui::TextEdit::singleline(&mut self.raw_text)
+                            .char_limit(MAX_EXPR_BYTES)
                             .hint_text("Enter mathematical expression...")
                             .desired_width((ui.available_width() - 8.0).max(48.0)),
                     );
@@ -377,12 +452,19 @@ impl MathExpressionInputBar {
                 });
 
                 ui.add_space(4.0);
+                let default_prefix =
+                    (!self.default_lhs.is_empty()).then_some(self.default_lhs.as_str());
+                let lhs_prefix = self.lhs_name.as_deref().or(default_prefix);
                 let err_detail = self.error_message();
+                let valid_expr = if self.validation_error.is_none() {
+                    self.parsed_expr.as_ref().ok()
+                } else {
+                    None
+                };
                 render_status_row(
                     ui,
-                    err_detail.as_deref(),
-                    &self.latex_cache,
-                    &self.raw_text,
+                    (err_detail.as_deref(), valid_expr, lhs_prefix, params),
+                    (&self.latex_cache, &self.raw_text, &self.axes),
                     &mut self.had_error,
                     &mut self.last_announced_error,
                 );
@@ -402,86 +484,5 @@ impl MathExpressionInputBar {
             return false;
         }
         ui.push_id(id_salt, |ui| self.slider_bank.ui(ui)).inner
-    }
-}
-
-fn update_latex_preview(
-    latex_cache: &mut String,
-    lhs: Option<&str>,
-    default_lhs: &str,
-    expr: &Expr,
-) {
-    let lhs_label = lhs.or((!default_lhs.is_empty()).then_some(default_lhs));
-    let expr_latex = expr.to_latex();
-    *latex_cache = match lhs_label {
-        Some(prefix) => format!("{prefix} = {expr_latex}"),
-        None => expr_latex,
-    };
-}
-
-fn render_presets(
-    ui: &mut egui::Ui,
-    presets: &[(&'static str, &'static str)],
-) -> Option<&'static str> {
-    if presets.is_empty() {
-        return None;
-    }
-    let mut selected_preset = None;
-    ui.horizontal(|ui| {
-        ui.label("Presets:");
-        egui::ComboBox::from_id_salt(ui.id().with("math_presets"))
-            .selected_text("Select Preset...")
-            .show_ui(ui, |ui| {
-                for (name, expr_str) in presets {
-                    if ui.button(*name).clicked() {
-                        selected_preset = Some(*expr_str);
-                        ui.close();
-                    }
-                }
-            });
-    });
-    ui.add_space(4.0);
-    selected_preset
-}
-
-fn render_status_row(
-    ui: &mut egui::Ui,
-    err_detail: Option<&str>,
-    latex: &str,
-    raw: &str,
-    had_error: &mut bool,
-    last_announced_error: &mut Option<String>,
-) {
-    if let Some(detail) = err_detail {
-        let err_msg = format!("Syntax Error: {detail}");
-        if last_announced_error.as_deref() != Some(&err_msg) {
-            crate::accessibility::announce_status_with_priority(&err_msg, "assertive");
-            *had_error = true;
-            *last_announced_error = Some(err_msg);
-        }
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        ui.horizontal(|ui| {
-            ui.label(
-                egui::RichText::new(format!("⚠️ Syntax Error: {detail}"))
-                    .color(palette.error)
-                    .small(),
-            );
-        });
-    } else {
-        if *had_error {
-            crate::accessibility::announce_status("Mathematical expression is valid");
-            *had_error = false;
-            *last_announced_error = None;
-        }
-        ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("Preview:").weak());
-            let preview_str = if !latex.is_empty() { latex } else { raw };
-            egui_plot::render_math_label(
-                ui,
-                preview_str,
-                egui::TextStyle::Body,
-                ui.visuals().text_color(),
-            );
-        });
     }
 }

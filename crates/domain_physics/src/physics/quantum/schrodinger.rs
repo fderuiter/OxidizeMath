@@ -18,9 +18,83 @@ use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
 
 #[verified_engine::verified]
+fn write_closed_form_2x2_hermitian(
+    matrix: &DMatrix<Complex<f64>>,
+    omega: f64,
+    out: &mut DMatrix<Complex<f64>>,
+) -> bool {
+    let h00 = matrix[(0, 0)];
+    let h01 = matrix[(0, 1)];
+    let h10 = matrix[(1, 0)];
+    let h11 = matrix[(1, 1)];
+    let herm_tol = 1e-14;
+    if h00.im.abs() > herm_tol
+        || h11.im.abs() > herm_tol
+        || (h01.re - h10.re).abs() > herm_tol
+        || (h01.im + h10.im).abs() > herm_tol
+    {
+        return false;
+    }
+    let b = Complex::new(0.5 * (h01.re + h10.re), 0.5 * (h01.im - h10.im));
+    let mu = 0.5 * (h00.re + h11.re);
+    let delta = 0.5 * (h00.re - h11.re);
+    let gap = delta.hypot(b.norm());
+    let (sin_mu, cos_mu) = (omega * mu).sin_cos();
+    let phase = Complex::new(cos_mu, sin_mu);
+    let theta = omega * gap;
+    let (sin_t, cos_t) = theta.sin_cos();
+    let kappa = if gap <= f64::MIN_POSITIVE || theta.abs() < 1e-8 {
+        omega * (1.0 - (theta * theta) / 6.0)
+    } else {
+        sin_t / gap
+    };
+    out[(0, 0)] = phase * Complex::new(cos_t, kappa * delta);
+    out[(1, 1)] = phase * Complex::new(cos_t, -kappa * delta);
+    out[(0, 1)] = phase * Complex::new(-kappa * b.im, kappa * b.re);
+    out[(1, 0)] = phase * Complex::new(kappa * b.im, kappa * b.re);
+    true
+}
+
+/// Computes the exact closed-form unitary propagator $U(t) = e^{-i\hat{H}t/\hbar}$ in place for any
+/// finite $2 \times 2$ Hermitian [`QuantumOperator`], performing zero heap allocations when
+/// `out.matrix` is already $2 \times 2$.
+///
+/// Returns `false` if `hamiltonian.matrix` is not $2 \times 2$ Hermitian or if `t` / `h_bar` is
+/// non-finite or `h_bar == 0.0` (filling `out.matrix` with `NaN` on non-finite inputs).
+#[verified_engine::verified]
+pub fn time_evolution_operator_2x2_into(
+    hamiltonian: &QuantumOperator,
+    t: f64,
+    h_bar: f64,
+    out: &mut QuantumOperator,
+) -> bool {
+    if hamiltonian.matrix.nrows() != 2 || hamiltonian.matrix.ncols() != 2 {
+        return false;
+    }
+    if out.matrix.nrows() != 2 || out.matrix.ncols() != 2 {
+        out.matrix = DMatrix::zeros(2, 2);
+    }
+    let finite_h = hamiltonian
+        .matrix
+        .as_slice()
+        .iter()
+        .all(|c| c.re.is_finite() && c.im.is_finite());
+    if !t.is_finite() || !h_bar.is_finite() || h_bar == 0.0 || !finite_h {
+        out.matrix.fill(Complex::new(f64::NAN, f64::NAN));
+        return false;
+    }
+    let omega = -t / h_bar;
+    if !omega.is_finite() {
+        out.matrix.fill(Complex::new(f64::NAN, f64::NAN));
+        return false;
+    }
+    write_closed_form_2x2_hermitian(&hamiltonian.matrix, omega, &mut out.matrix)
+}
+
+#[verified_engine::verified]
 fn try_extract_real_symmetric(matrix: &DMatrix<Complex<f64>>) -> Option<DMatrix<f64>> {
     let n = matrix.nrows();
-    if n < 4 || matrix.ncols() != n {
+    if n == 0 || matrix.ncols() != n {
         return None;
     }
     let src = matrix.as_slice();
@@ -85,8 +159,8 @@ fn real_symmetric_propagator(real_h: DMatrix<f64>, omega: f64) -> Option<Quantum
 /// Calculates the time evolution operator $U(t) = e^{-i\hat{H}t/\hbar}$.
 ///
 /// This implementation assumes the Hamiltonian $\hat{H}$ is time-independent.
-/// The operator is computed via orthogonal spectral decomposition for finite real-symmetric
-/// Hamiltonians ($N \ge 4$) and complex matrix exponentiation otherwise.
+/// The operator is computed via orthogonal spectral decomposition (`SymmetricEigen`) for finite
+/// real-symmetric Hamiltonians and Padé complex matrix exponentiation otherwise.
 ///
 /// $$ U(t) = \exp\left(-\frac{i}{\hbar} \hat{H} t\right) $$
 ///
@@ -138,19 +212,45 @@ pub fn time_evolution_operator(
     t: f64,
     h_bar: f64,
 ) -> QuantumOperator {
+    let nrows = hamiltonian.matrix.nrows();
+    let ncols = hamiltonian.matrix.ncols();
+    if nrows == 0 && ncols == 0 {
+        return QuantumOperator::new(DMatrix::zeros(0, 0));
+    }
+    let finite_h = hamiltonian
+        .matrix
+        .as_slice()
+        .iter()
+        .all(|c| c.re.is_finite() && c.im.is_finite());
+    if !t.is_finite() || !h_bar.is_finite() || h_bar == 0.0 || !finite_h {
+        return QuantumOperator::new(DMatrix::from_element(
+            nrows,
+            ncols,
+            Complex::new(f64::NAN, f64::NAN),
+        ));
+    }
     let omega = -t / h_bar;
-    if let Some(op) = omega
-        .is_finite()
-        .then(|| try_extract_real_symmetric(&hamiltonian.matrix))
-        .flatten()
+    if !omega.is_finite() {
+        return QuantumOperator::new(DMatrix::from_element(
+            nrows,
+            ncols,
+            Complex::new(f64::NAN, f64::NAN),
+        ));
+    }
+    if nrows == 2 && ncols == 2 {
+        let mut u2 = DMatrix::<Complex<f64>>::zeros(2, 2);
+        if write_closed_form_2x2_hermitian(&hamiltonian.matrix, omega, &mut u2) {
+            return QuantumOperator::new(u2);
+        }
+    }
+    if let Some(op) = try_extract_real_symmetric(&hamiltonian.matrix)
         .and_then(|real_h| real_symmetric_propagator(real_h, omega))
     {
         return op;
     }
 
-    // Fallback for small, complex Hermitian, non-symmetric, or non-finite operators
-    let i = Complex::new(0.0, 1.0);
-    let factor = -i * t / h_bar;
+    // Fallback for complex Hermitian or general non-symmetric finite operators
+    let factor = Complex::new(0.0, omega);
     let scaled_h = &hamiltonian.matrix * factor;
     QuantumOperator::new(scaled_h.exp())
 }
@@ -275,7 +375,7 @@ pub fn evolve_state_in_place(
         "Scratch vector length must match state vector length"
     );
     propagator.matrix.mul_to(&state.vector, scratch);
-    std::mem::swap(&mut state.vector, scratch);
+    core::mem::swap(&mut state.vector, scratch);
 }
 
 /// Computes the total squared norm $\sum_i |\psi_i|^2$ of `state` with zero heap allocations.

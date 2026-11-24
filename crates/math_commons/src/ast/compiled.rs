@@ -6,6 +6,7 @@ use super::eval::{
     lookup_universal_real_const,
 };
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
+use super::limits::MAX_COMPILED_INSTRUCTIONS;
 use num_complex::Complex64;
 
 /// Single postfix bytecode instruction executed by [`CompiledExpr`].
@@ -94,7 +95,8 @@ impl CompiledExpr {
                 var_names.push(param.to_string());
             }
         }
-        let mut instructions = Vec::new();
+        let mut instructions = Vec::with_capacity(16);
+        let mut visited_nodes = 0usize;
         let mut work = vec![CompileFrame::Visit {
             expr: root,
             depth: 0,
@@ -102,8 +104,24 @@ impl CompiledExpr {
 
         while let Some(frame) = work.pop() {
             match frame {
-                CompileFrame::Emit(inst) => instructions.push(inst),
+                CompileFrame::Emit(inst) => {
+                    if instructions.len() >= MAX_COMPILED_INSTRUCTIONS {
+                        return Err(EvalError::InstructionLimitExceeded(
+                            MAX_COMPILED_INSTRUCTIONS,
+                        ));
+                    }
+                    instructions.push(inst);
+                }
                 CompileFrame::Visit { expr, depth } => {
+                    if depth > MAX_EVAL_DEPTH {
+                        return Err(EvalError::RecursionLimitExceeded(MAX_EVAL_DEPTH));
+                    }
+                    visited_nodes += 1;
+                    if visited_nodes > MAX_COMPILED_INSTRUCTIONS {
+                        return Err(EvalError::InstructionLimitExceeded(
+                            MAX_COMPILED_INSTRUCTIONS,
+                        ));
+                    }
                     compile_node(
                         expr,
                         depth,
@@ -123,6 +141,12 @@ impl CompiledExpr {
             var_names,
             axis_count,
         })
+    }
+
+    /// Returns the number of compiled postfix instructions.
+    #[must_use]
+    pub fn instruction_count(&self) -> usize {
+        self.instructions.len()
     }
 
     /// Returns the compiled postfix instruction slice.
@@ -322,6 +346,11 @@ fn resolve_variable_instruction(
 }
 
 fn verify_stack_depth(instructions: &[Instruction]) -> Result<(), EvalError> {
+    if instructions.len() > MAX_COMPILED_INSTRUCTIONS {
+        return Err(EvalError::InstructionLimitExceeded(
+            MAX_COMPILED_INSTRUCTIONS,
+        ));
+    }
     let mut sp = 0usize;
     for &inst in instructions {
         match inst {

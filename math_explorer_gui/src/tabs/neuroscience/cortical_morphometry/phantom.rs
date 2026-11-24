@@ -10,15 +10,17 @@ use super::CorticalMorphometryTool;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::InteractiveTool;
 use math_explorer::applied::freesurfer::{
-    cortical_thickness_map, evolve_surface_deformable, external_energy_volume, internal_energy,
-    mrf_segment_volume, MriVolume, Surface,
+    cortical_thickness_map_into, evolve_surface_deformable, external_energy_volume,
+    internal_energy, mrf_segment_volume, MriVolume, Surface, ThicknessWorkspace,
 };
 use nalgebra::Vector3;
 use std::f64::consts::{PI, TAU};
 use std::hash::{Hash as _, Hasher as _};
-use volume_glm::{
-    evaluate_cohort_glm, sample_gm_posteriors_on_cortex, synthesize_mri_and_truth, tissue_classes,
-};
+#[cfg(test)]
+pub(super) use volume_glm::evaluate_cohort_glm;
+#[cfg(not(test))]
+use volume_glm::evaluate_cohort_glm;
+use volume_glm::{sample_gm_posteriors_on_cortex, synthesize_mri_and_truth, tissue_classes};
 
 pub(super) const MRI_DIMS: [usize; 3] = [16, 16, 16];
 pub(super) const MRI_ORIGIN_MM: [f64; 3] = [-45.0, -45.0, -45.0];
@@ -35,6 +37,7 @@ pub(super) struct CorticalPhantomCache {
     pub(super) pial_inflated: Vec<[f64; 3]>,
     pub(super) sulcal_depth_mm: Vec<f64>,
     pub(super) thickness_mm: Vec<f64>,
+    pub(super) thickness_workspace: ThicknessWorkspace,
     pub(super) glm_t_stats: Vec<f64>,
     pub(super) gm_posteriors: Vec<f64>,
     pub(super) volume: Option<MriVolume>,
@@ -53,6 +56,19 @@ impl CorticalPhantomCache {
     pub(super) fn invalidate(&mut self) {
         self.compute_key = None;
         self.proj_key = None;
+    }
+
+    pub(super) fn evaluate_thickness(&mut self, white: &Surface, pial: &Surface) {
+        let pair_count = white.vertices.len().min(pial.vertices.len());
+        self.thickness_workspace
+            .ensure_capacity(white.vertices.len().max(pial.vertices.len()));
+        self.thickness_mm.resize(pair_count, 0.0);
+        let _ = cortical_thickness_map_into(
+            white,
+            pial,
+            &mut self.thickness_workspace,
+            &mut self.thickness_mm,
+        );
     }
 
     pub(super) fn are_meshes_finite(&self) -> bool {
@@ -265,7 +281,7 @@ impl CorticalMorphometryTool {
                 / truth.len().max(1) as f64
         };
         self.evolve_white_surface_steps(&mut gen.white, &volume);
-        let thickness = cortical_thickness_map(&gen.white, &gen.pial);
+        self.cache.evaluate_thickness(&gen.white, &gen.pial);
         let e_int = internal_energy(&gen.white, self.alpha, self.beta);
         let e_ext = external_energy_volume(&gen.white, &volume, self.sigma);
         let gm_post = sample_gm_posteriors_on_cortex(
@@ -276,14 +292,14 @@ impl CorticalMorphometryTool {
             self.potts_beta,
         );
         let glm = evaluate_cohort_glm(
-            &thickness,
+            &self.cache.thickness_mm,
             &gen.atrophy_weights,
             self.atrophy_effect_mm,
             self.collinear_glm_design,
         );
         self.store_evaluation_cache(
             key,
-            (gen, volume, thickness, gm_post),
+            (gen, volume, gm_post),
             (acc(&ml_labels), acc(&mrf_labels), mrf_labels),
             (e_int, e_ext, glm),
         );
@@ -292,19 +308,18 @@ impl CorticalMorphometryTool {
     fn store_evaluation_cache(
         &mut self,
         key: u64,
-        geom: (GeneratedSurfaces, MriVolume, Vec<f64>, Vec<f64>),
+        geom: (GeneratedSurfaces, MriVolume, Vec<f64>),
         mrf: (f64, f64, Vec<u8>),
         stats: (f64, f64, (Vec<f64>, f64, Option<String>)),
     ) {
-        let (gen, volume, thickness, gm_post) = geom;
-        self.cache.mean_thickness_mm =
-            thickness.iter().sum::<f64>() / thickness.len().max(1) as f64;
+        let (gen, volume, gm_post) = geom;
+        self.cache.mean_thickness_mm = self.cache.thickness_mm.iter().sum::<f64>()
+            / self.cache.thickness_mm.len().max(1) as f64;
         self.cache.white_surface = Some(gen.white);
         self.cache.pial_surface = Some(gen.pial);
         self.cache.white_inflated = gen.white_inflated;
         self.cache.pial_inflated = gen.pial_inflated;
         self.cache.sulcal_depth_mm = gen.sulcal_depth_mm;
-        self.cache.thickness_mm = thickness;
         self.cache.gm_posteriors = gm_post;
         self.cache.ml_accuracy = mrf.0;
         self.cache.mrf_accuracy = mrf.1;

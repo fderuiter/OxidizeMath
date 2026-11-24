@@ -1,54 +1,11 @@
-use super::export_dataset::FrameworkExportSource;
+pub(super) use super::code_export_modal::{export_action_button, wrapped_colored_label};
 use super::*;
 use eframe::egui;
 
 /// Pane toolbar width threshold below which `Export` and `Presets` collapse into overflow menus.
 pub const EXPORT_BAR_OVERFLOW_BREAKPOINT: f32 = 960.0;
 
-fn wrapped_colored_label(ui: &mut egui::Ui, color: egui::Color32, text: String) {
-    ui.add(egui::Label::new(egui::RichText::new(text).color(color)).wrap());
-}
-
-pub(super) fn export_action_button(
-    ui: &mut egui::Ui,
-    enabled: bool,
-    label: &str,
-    tip: &str,
-    close_on_click: bool,
-) -> bool {
-    let clicked = ui
-        .add_enabled(enabled, egui::Button::new(label))
-        .accessible_hover_text(tip)
-        .clicked();
-    if clicked && close_on_click {
-        ui.close();
-    }
-    clicked
-}
-
 impl SimulationFramework {
-    pub(super) fn open_export_modal_for_active_tool(&mut self) {
-        if let Some(tool) = &self.active_tool {
-            if let Some(custom_opts) = tool.export_figure_options() {
-                self.export_bg_dark = custom_opts.background_color != egui::Color32::WHITE;
-                self.export_options = custom_opts;
-            }
-        }
-        self.show_export_modal = true;
-    }
-
-    pub(super) fn export_filenames_for_tool(tool_name: &str) -> (String, String, String) {
-        (
-            Self::build_export_filename(tool_name, ExportFormat::Png),
-            Self::build_export_filename(tool_name, ExportFormat::Svg),
-            Self::build_export_filename(tool_name, ExportFormat::Gif),
-        )
-    }
-
-    pub(super) fn export_modal_scope_id(&self, id_source: &str) -> egui::Id {
-        egui::Id::new(("framework_export", id_source, self.instance_id))
-    }
-
     pub(super) fn show_export_action_bar(&mut self, ui: &mut egui::Ui, id_source: &str) {
         if self.active_tool.is_none() {
             return;
@@ -151,6 +108,14 @@ impl SimulationFramework {
         if export_action_button(ui, caps.figure, "Export PNG Image", fig_tip, close_on_click) {
             self.open_export_modal_for_active_tool();
         }
+        let code_tip = if caps.code {
+            "Preview, copy, and download calibrated LaTeX, Rust (.rs), and Python (.py) model code"
+        } else {
+            caps.code_disabled_reason
+        };
+        if export_action_button(ui, caps.code, "Code & LaTeX", code_tip, close_on_click) {
+            self.open_code_export_modal();
+        }
         self.render_3d_export_action_items(ui, caps, close_on_click);
         self.render_shader_export_items(ui, caps, close_on_click);
     }
@@ -172,8 +137,32 @@ impl SimulationFramework {
         file_slug
     }
 
+    fn render_action_bar_gif_progress(&mut self, ui: &mut egui::Ui) -> bool {
+        let Some((completed, total)) = self.active_gif_progress() else {
+            return false;
+        };
+        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        wrapped_colored_label(
+            ui,
+            palette.success,
+            format!("⏳ Encoding GIF frame {completed}/{total}..."),
+        );
+        if ui
+            .small_button("⏹ Cancel GIF")
+            .accessible_hover_text("Cancel active GIF animation export")
+            .clicked()
+        {
+            self.cancel_active_gif_export(true);
+            ui.ctx().request_repaint();
+        }
+        true
+    }
+
     fn render_action_bar_export_status(&mut self, ctx: &egui::Context, ui: &mut egui::Ui) {
         self.poll_action_bar_clipboard_status(ctx);
+        if self.render_action_bar_gif_progress(ui) {
+            return;
+        }
 
         let now = ctx.input(|i| i.time);
         let mut clear_status = false;
@@ -188,7 +177,7 @@ impl SimulationFramework {
                 } else {
                     let remaining = (exp - now).max(0.05);
                     ctx.request_repaint_after(std::time::Duration::from_secs_f64(remaining));
-                    if !self.show_export_modal {
+                    if !self.show_export_modal && !self.show_code_export_modal {
                         wrapped_colored_label(ui, palette.success, format!("✓ {}", status.message));
                         if ui
                             .small_button("✖")
@@ -200,7 +189,7 @@ impl SimulationFramework {
                         }
                     }
                 }
-            } else if !self.show_export_modal {
+            } else if !self.show_export_modal && !self.show_code_export_modal {
                 let err_color = if self.export_status_severity == ExportStatusSeverity::Warning {
                     palette.warning
                 } else {
@@ -337,55 +326,5 @@ impl SimulationFramework {
         self.render_preset_json_buttons(ui, file_slug, false);
         self.render_reset_parameters_button(ui, false);
         self.render_preset_toasts(ui);
-    }
-
-    pub(super) fn show_export_modal_dialog(&mut self, ctx: &egui::Context, id_source: &str) {
-        let scope_id = self.export_modal_scope_id(id_source);
-        self.sync_state.last_modal_scope_id = Some(scope_id);
-
-        if let Some(msg) =
-            ctx.data_mut(|d| d.remove_temp::<String>(egui_plot::clipboard_status_id(scope_id)))
-        {
-            let sev = if msg.contains("failed") || msg.contains("unavailable") {
-                ExportStatusSeverity::Error
-            } else {
-                ExportStatusSeverity::Success
-            };
-            self.set_export_status(sev, msg);
-        }
-
-        let tool_name = self
-            .active_tool
-            .as_ref()
-            .map_or("simulation", |tool| tool.name());
-        let (png_filename, svg_filename, gif_filename) = Self::export_filenames_for_tool(tool_name);
-        let window_title = format!("Export High-Res Plot - {id_source}");
-        let config = egui_plot::export_modal::ExportModalConfig {
-            window_title: &window_title,
-            id: scope_id,
-            png_filename: &png_filename,
-            svg_filename: &svg_filename,
-            gif_filename: &gif_filename,
-        };
-        let status_color = self
-            .export_status_severity
-            .palette_color(&ctx.style().visuals);
-        let bindings = egui_plot::export_modal::ExportModalBindings {
-            open: &mut self.show_export_modal,
-            options: &mut self.export_options,
-            bg_dark: &mut self.export_bg_dark,
-            gif_fps: &mut self.export_gif_fps,
-            gif_frames: &mut self.export_gif_frames,
-            status_message: &mut self.export_status_message,
-        };
-        let mut source = FrameworkExportSource {
-            active_tool: &mut self.active_tool,
-            cached_tool_name: self.sync_state.datasets_owner_tool,
-            cached_plot_datasets: &self.current_valid_plot_datasets,
-            export_queue: &mut self.export_queue,
-            status_color,
-            ctx: ctx.clone(),
-        };
-        egui_plot::export_modal::show_export_modal(ctx, bindings, &config, &mut source);
     }
 }

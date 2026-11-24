@@ -50,6 +50,7 @@ pub enum FieldSourceMode {
     /// Two-species 3D Schnakenberg reaction-diffusion grid via `FiniteDifference3D`.
     TuringMorphogenesis,
     /// User-authored 3D implicit equation $f(x, y, z) = c$ evaluated via `CompiledExpr::eval_3d`.
+    #[serde(alias = "custom_implicit_formula")]
     CustomImplicit,
 }
 

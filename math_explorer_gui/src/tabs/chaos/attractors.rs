@@ -25,6 +25,8 @@ pub use counterfactual::*;
 pub mod flow;
 pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS};
 
+#[path = "attractors/dataflow.rs"]
+mod dataflow;
 #[path = "attractors/invariants.rs"]
 mod invariants;
 
@@ -60,7 +62,7 @@ pub struct AttractorPlotter {
     pub(crate) max_points: usize,
     pub(crate) camera: Camera3D,
     pub(crate) scene_builder: Scene3DBuilder,
-    trajectory_scratch: Vec<Point3<f64>>,
+    pub(crate) trajectory_scratch: Vec<Point3<f64>>,
     pub(crate) params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     pub(crate) worker: BackgroundWorker<AttractorRunner>,
     pub show_annotations: bool,
@@ -71,6 +73,7 @@ pub struct AttractorPlotter {
     pub(super) latest_sonification: crate::audio::SonificationFrame,
     pub(crate) invariants_cache: invariants::CachedAttractorInvariants,
     pub(crate) atlas: ParameterAtlasController,
+    pub(crate) bus_cache: dataflow::AttractorBusCache,
 }
 
 impl Default for AttractorPlotter {
@@ -88,10 +91,10 @@ impl Default for AttractorPlotter {
             max_points: 2000,
             mode: AttractorMode::Lorenz,
             custom_flow,
+            sim_bus: None,
         }));
         let runner = AttractorRunner::from_params(Arc::clone(&params));
         let worker = BackgroundWorker::new(runner);
-
         let camera = Camera3D::new(0.0, 0.0, 1.0).with_perspective_distance(75.0);
         Self {
             mode: AttractorMode::Lorenz,
@@ -121,6 +124,7 @@ impl Default for AttractorPlotter {
             ),
             invariants_cache: invariants::CachedAttractorInvariants::default(),
             atlas: ParameterAtlasController::new(ATTRACTOR_ATLAS_AXIS_PAIRS.to_vec()),
+            bus_cache: dataflow::AttractorBusCache::default(),
         }
     }
 }
@@ -168,19 +172,21 @@ impl AttractorPlotter {
         Ok(())
     }
 
-    pub fn on_slider_changed(&mut self) {
+    fn sync_shared_params(&self) {
         let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.sigma = self.system.sigma;
-            p.rho = self.system.rho;
-            p.beta = self.system.beta;
-            p.dt = self.dt;
-            p.simulation_speed = self.simulation_speed;
-            p.max_points = self.max_points;
-            p.mode = self.mode;
-            p.custom_flow = Some(job);
-        }
+        let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+        p.sigma = self.system.sigma;
+        p.rho = self.system.rho;
+        p.beta = self.system.beta;
+        p.dt = self.dt;
+        p.simulation_speed = self.simulation_speed;
+        p.max_points = self.max_points;
+        p.mode = self.mode;
+        p.custom_flow = Some(job);
+    }
+
+    pub fn on_slider_changed(&mut self) {
+        self.sync_shared_params();
         if self.diverged() && self.is_finite_state() {
             self.execution_state = SolverExecutionState::Ready;
         }
@@ -217,18 +223,8 @@ impl AttractorPlotter {
         self.twin = None;
         self.branch_engine.clear();
         self.execution_state = SolverExecutionState::Ready;
-        let job = Arc::new(CompiledFlowJob::from_bank(&self.flow_bank));
-        {
-            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
-            p.sigma = sigma;
-            p.rho = rho;
-            p.beta = beta;
-            p.dt = self.dt;
-            p.simulation_speed = self.simulation_speed;
-            p.max_points = self.max_points;
-            p.mode = self.mode;
-            p.custom_flow = Some(job);
-        }
+        self.invariants_cache.invalidate();
+        self.sync_shared_params();
         let params = Arc::clone(&self.params);
         self.worker
             .reset_or_respawn(|| AttractorRunner::from_params(params));
@@ -256,47 +252,58 @@ impl AttractorPlotter {
             .project(&[p_centered.x, p_centered.y, p_centered.z])
     }
 
-    fn step_single_tick(&mut self, cap: usize, custom_job: Option<&CompiledFlowJob>) -> bool {
+    fn sync_worker_snapshot(&mut self) {
         let current_vec = self.system.state.vec;
-        if !current_vec.x.is_finite() || !current_vec.y.is_finite() || !current_vec.z.is_finite() {
+        if (!current_vec.x.is_finite() || !current_vec.y.is_finite() || !current_vec.z.is_finite())
+            && !self.diverged()
+        {
             self.execution_state = SolverExecutionState::Diverged {
                 invalid_vec: current_vec,
                 diverged_at_step: self.step_count,
             };
-            return false;
         }
-        if let Some(ref mut twin) = self.twin {
-            if !twin.step_branch_a(self.dt, cap) {
-                self.execution_state = SolverExecutionState::Diverged {
-                    invalid_vec: twin.system_a.state.vec,
-                    diverged_at_step: self.step_count,
-                };
-                return false;
+        let ui_diverged = self.diverged();
+        let was_paused = self.is_paused();
+        if let Some(snapshot) = self.worker.update() {
+            self.latest_sonification = snapshot.sonification;
+            if !ui_diverged {
+                if let Some(data) = snapshot
+                    .structured_data
+                    .as_ref()
+                    .and_then(|d| d.downcast_ref::<AttractorSnapshot>())
+                {
+                    self.history = data.history.clone();
+                    self.system.state.vec = data.current_vec;
+                    self.step_count = data.step_count;
+                    self.twin = data.twin.clone();
+                    if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
+                        || !was_paused
+                    {
+                        self.execution_state = data.execution_state;
+                    }
+                }
+                self.sync_local_branch_engine();
             }
         }
-        if let Some(job) = custom_job {
-            self.system.state.vec = job.rk4_step(current_vec, self.dt);
-        } else {
-            self.system.step(self.dt);
-        }
-        self.step_count += 1;
+    }
 
-        let vec = self.system.state.vec;
-        if !vec.x.is_finite() || !vec.y.is_finite() || !vec.z.is_finite() {
-            self.execution_state = SolverExecutionState::Diverged {
-                invalid_vec: vec,
-                diverged_at_step: self.step_count,
-            };
-            return false;
+    fn sync_worker_playback(&mut self, ctx: &egui::Context) {
+        let worker_faulted = self.worker.state().is_faulted();
+        if self.diverged() || worker_faulted {
+            self.latest_sonification = crate::audio::SonificationFrame::silent();
+            crate::audio::notify_solver_diverged();
         }
-        if self.history.len() >= cap {
-            self.history.pop_front();
+        if !self.is_paused() && !worker_faulted {
+            if !self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+            ctx.request_repaint();
+        } else if self.worker.is_running() {
+            let _ = self.worker.send_command(SimCommand::Pause);
         }
-        self.history.push_back(vec);
-        if let Some(ref mut twin) = self.twin {
-            twin.observe_lockstep(self.step_count, self.dt, vec);
+        if self.worker.state().is_stepping() {
+            ctx.request_repaint();
         }
-        true
     }
 }
 
@@ -328,21 +335,7 @@ impl InteractiveTool for AttractorPlotter {
     }
 
     fn step_simulation(&mut self) {
-        if self.diverged() {
-            return;
-        }
-        if self.execution_state == SolverExecutionState::Ready {
-            self.execution_state = SolverExecutionState::Running;
-        }
-        let cap = self.max_points.clamp(1, ATTRACTOR_RING_CAPACITY);
-        let custom_job = (self.mode == AttractorMode::Custom)
-            .then(|| CompiledFlowJob::from_bank(&self.flow_bank));
-        for _ in 0..self.simulation_speed.clamp(1, MAX_SIMULATION_SPEED) {
-            if !self.step_single_tick(cap, custom_job.as_ref()) {
-                break;
-            }
-        }
-        self.sync_local_branch_engine();
+        self.advance_step_simulation();
     }
 
     fn counterfactual_snapshot(&self) -> Option<crate::framework::DivergenceSnapshot> {
@@ -388,60 +381,23 @@ impl InteractiveTool for AttractorPlotter {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        let current_vec = self.system.state.vec;
-        if (!current_vec.x.is_finite() || !current_vec.y.is_finite() || !current_vec.z.is_finite())
-            && !self.diverged()
-        {
-            self.execution_state = SolverExecutionState::Diverged {
-                invalid_vec: current_vec,
-                diverged_at_step: self.step_count,
-            };
-        }
+        self.bind_sim_bus(&ctx);
+        self.sync_worker_snapshot();
 
-        let ui_diverged = self.diverged();
-        let was_paused = self.is_paused();
-        if let Some(snapshot) = self.worker.update() {
-            self.latest_sonification = snapshot.sonification;
-            if !ui_diverged {
-                if let Some(data) = snapshot
-                    .structured_data
-                    .as_ref()
-                    .and_then(|d| d.downcast_ref::<AttractorSnapshot>())
-                {
-                    self.history = data.history.clone();
-                    self.system.state.vec = data.current_vec;
-                    self.step_count = data.step_count;
-                    self.twin = data.twin.clone();
-                    if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
-                        || !was_paused
-                    {
-                        self.execution_state = data.execution_state;
-                    }
-                }
-                self.sync_local_branch_engine();
-            }
-        }
-
-        let worker_faulted = self.worker.state().is_faulted();
-        if self.diverged() || worker_faulted {
-            self.latest_sonification = crate::audio::SonificationFrame::silent();
-            crate::audio::notify_solver_diverged();
-        }
-        if !self.is_paused() && !worker_faulted {
-            if !self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Start);
-            }
-            ctx.request_repaint();
-        } else if self.worker.is_running() {
-            let _ = self.worker.send_command(SimCommand::Pause);
-        }
-
-        if self.worker.state().is_stepping() {
-            ctx.request_repaint();
-        }
-
+        self.sync_worker_playback(&ctx);
+        self.publish_bus_landmarks(&ctx);
         self.draw_side_panel(ui, &ctx);
         self.draw_central_panel(ui, &ctx);
+    }
+
+    #[cfg(test)]
+    fn as_any(&self) -> Option<&dyn std::any::Any> {
+        Some(self)
+    }
+
+    #[cfg(test)]
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        Some(self)
     }
 }
 
@@ -451,6 +407,10 @@ mod preset;
 #[cfg(test)]
 #[path = "attractors/attractor_tests.rs"]
 mod attractor_tests;
+
+#[cfg(test)]
+#[path = "attractors/lyapunov_bridge_tests.rs"]
+mod lyapunov_bridge_tests;
 
 #[cfg(test)]
 #[path = "attractors/counterfactual_tests.rs"]

@@ -35,6 +35,10 @@ mod tests {
         exercise_interactive_tool::<
             crate::tabs::financial_math::market_execution::MarketExecutionTool,
         >(&ctx);
+        exercise_interactive_tool::<
+            crate::tabs::financial_math::monte_carlo_workbench::MonteCarloWorkbenchTool,
+        >(&ctx);
+        exercise_interactive_tool::<crate::tabs::game_theory::auction::MyersonAuctionTool>(&ctx);
         exercise_interactive_tool::<crate::tabs::game_theory::glicko2::Glicko2TournamentTool>(&ctx);
         exercise_interactive_tool::<crate::tabs::game_theory::markov::MarkovSequenceWorkbenchTool>(
             &ctx,
@@ -69,9 +73,18 @@ mod tests {
         exercise_interactive_tool::<crate::tabs::clinical_trials::randomization::RandomizationTool>(
             ctx,
         );
+        exercise_interactive_tool::<
+            crate::tabs::clinical_trials::win_ratio::WinRatioStressTesterTool,
+        >(ctx);
+        exercise_interactive_tool::<
+            crate::tabs::clinical_trials::win_ratio_workbench::WinRatioWorkbenchTool,
+        >(ctx);
         exercise_interactive_tool::<crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool>(
             ctx,
         );
+        exercise_interactive_tool::<
+            crate::tabs::geometry_topology::hyperbolic_geometry::HyperbolicGeometryTool,
+        >(ctx);
         exercise_interactive_tool::<crate::tabs::climate::cera::CeraTool>(ctx);
         exercise_interactive_tool::<crate::tabs::climate::co2_projections::Co2ProjectionsTool>(ctx);
         exercise_interactive_tool::<crate::tabs::climate::temperature::TemperatureAnomaliesTool>(
@@ -129,6 +142,10 @@ mod tests {
         >(ctx);
         exercise_interactive_tool::<
             crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool,
+        >(ctx);
+        #[cfg(all(feature = "pure_math", feature = "biology"))]
+        exercise_interactive_tool::<
+            crate::tabs::geometry_topology::surface_morphogenesis::SurfaceMorphogenesisTool,
         >(ctx);
     }
 
@@ -392,6 +409,11 @@ mod tests {
             r#"{"lambda1":0.16,"lambda2":0.36,"alpha":0.7,"theta":0.6,"censor_horizon":4.5,"dropout_rate":0.06,"sig_alpha":0.05,"n_min":30,"n_max":150,"n_steps":5,"replicates":80,"seed":9001,"chart_mode":"TierWaterfall"}"#,
         );
         assert_tool_roundtrip(
+            &mut crate::tabs::clinical_trials::win_ratio_workbench::WinRatioWorkbenchTool::default(
+            ),
+            r#"{"cohort_text":"Treatment,120,0\nControl,80,2","pairing_mode":"Unmatched","active_view":"CohortWaterfall","tier_specs":[{"label":"Survival","kind":"HigherIsBetter","threshold":0.0},{"label":"Hosp","kind":"LowerIsBetter","threshold":0.0}],"weibull_cfg":{"lambda1":0.08,"lambda2":0.18,"alpha":1.25,"theta":0.65,"horizon_c":8.0}}"#,
+        );
+        assert_tool_roundtrip(
             &mut crate::tabs::epidemiology::network_propagation::NetworkPropagationTool::default(),
             r#"{"num_nodes":30,"beta":0.08,"gamma":0.03}"#,
         );
@@ -447,8 +469,10 @@ mod tests {
     #[test]
     fn test_traceability_tab_state_roundtrip() {
         let _guard = crate::reflective_ui::tests::lock_test_mutex();
+        let manifest_dir_raw =
+            std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set");
         let valid_repo_dir = oxidize_core::path_utils::normalize_path(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            std::path::Path::new(&manifest_dir_raw)
                 .canonicalize()
                 .expect("canonical manifest dir"),
         );

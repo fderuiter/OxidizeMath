@@ -1,61 +1,162 @@
 //! LaTeX representation generator for Abstract Syntax Tree expressions.
 // [cite:math_commons]
 
+use super::eval::{EvalError, MAX_EVAL_DEPTH};
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
+use super::limits::{MAX_AST_NODES, MAX_LATEX_FALLBACK_NODES, MAX_LATEX_OUTPUT_BYTES};
+use std::collections::HashMap;
 use std::fmt::Write;
 
 enum LatexFrame<'a> {
-    Eval { expr: &'a Expr, parent_prec: u8 },
+    Eval {
+        expr: &'a Expr,
+        parent_prec: u8,
+        depth: usize,
+    },
     Literal(&'static str),
 }
 
 impl Expr {
-    /// Converts the AST expression to a formatted LaTeX string.
+    /// Converts the AST expression to a bounded symbolic LaTeX string, eliding
+    /// subtrees beyond [`MAX_LATEX_FALLBACK_NODES`] or [`MAX_LATEX_OUTPUT_BYTES`] with `\dots`
+    /// while preserving balanced closing delimiters.
     #[must_use]
     pub fn to_latex(&self) -> String {
-        self.to_latex_prec(0)
+        format_latex_bounded_infallible(self, 0)
     }
 
-    fn to_latex_prec(&self, parent_prec: u8) -> String {
-        let mut out = String::new();
-        let mut stack = vec![LatexFrame::Eval {
-            expr: self,
-            parent_prec,
-        }];
-        while let Some(frame) = stack.pop() {
-            match frame {
-                LatexFrame::Literal(lit) => out.push_str(lit),
-                LatexFrame::Eval { expr, parent_prec } => {
-                    eval_latex_frame(expr, parent_prec, &mut stack, &mut out);
+    /// Converts the AST expression to a symbolic LaTeX string, returning an error
+    /// if depth, node count ([`MAX_AST_NODES`]), or output length ([`MAX_LATEX_OUTPUT_BYTES`]) is exceeded.
+    pub fn try_to_latex(&self) -> Result<String, EvalError> {
+        format_latex_iterative(self, 0, None)
+    }
+}
+
+fn format_latex_bounded_infallible(root: &Expr, initial_prec: u8) -> String {
+    let mut out = String::new();
+    let mut visited_nodes = 0usize;
+    let mut stack = vec![LatexFrame::Eval {
+        expr: root,
+        parent_prec: initial_prec,
+        depth: 0,
+    }];
+    while let Some(frame) = stack.pop() {
+        match frame {
+            LatexFrame::Literal(lit) => out.push_str(lit),
+            LatexFrame::Eval {
+                expr,
+                parent_prec,
+                depth,
+            } => {
+                if visited_nodes >= MAX_LATEX_FALLBACK_NODES || out.len() >= MAX_LATEX_OUTPUT_BYTES
+                {
+                    out.push_str(r"\dots");
+                    continue;
+                }
+                visited_nodes += 1;
+                let _ = eval_latex_frame(expr, parent_prec, depth, None, &mut stack, &mut out);
+            }
+        }
+    }
+    out
+}
+
+pub(super) fn format_latex_iterative(
+    root: &Expr,
+    initial_prec: u8,
+    calibrated: Option<(&HashMap<String, f64>, usize)>,
+) -> Result<String, EvalError> {
+    let max_depth = calibrated.map_or(MAX_EVAL_DEPTH, |(_, d)| d);
+    let mut out = String::new();
+    let mut visited_nodes = 0usize;
+    let mut stack = vec![LatexFrame::Eval {
+        expr: root,
+        parent_prec: initial_prec,
+        depth: 0,
+    }];
+    while let Some(frame) = stack.pop() {
+        match frame {
+            LatexFrame::Literal(lit) => {
+                if out.len() + lit.len() > MAX_LATEX_OUTPUT_BYTES {
+                    return Err(EvalError::OutputLimitExceeded(MAX_LATEX_OUTPUT_BYTES));
+                }
+                out.push_str(lit);
+            }
+            LatexFrame::Eval {
+                expr,
+                parent_prec,
+                depth,
+            } => {
+                if depth > max_depth {
+                    return Err(EvalError::RecursionLimitExceeded(max_depth));
+                }
+                visited_nodes += 1;
+                if visited_nodes > MAX_AST_NODES {
+                    return Err(EvalError::InstructionLimitExceeded(MAX_AST_NODES));
+                }
+                eval_latex_frame(expr, parent_prec, depth, calibrated, &mut stack, &mut out)?;
+                if out.len() > MAX_LATEX_OUTPUT_BYTES {
+                    return Err(EvalError::OutputLimitExceeded(MAX_LATEX_OUTPUT_BYTES));
                 }
             }
         }
-        out
     }
+    Ok(out)
 }
 
 fn eval_latex_frame<'a>(
     expr: &'a Expr,
     parent_prec: u8,
+    depth: usize,
+    calibrated: Option<(&HashMap<String, f64>, usize)>,
     stack: &mut Vec<LatexFrame<'a>>,
     out: &mut String,
-) {
+) -> Result<(), EvalError> {
     match expr {
-        Expr::Number(n) => write_number(out, *n),
-        Expr::Variable(name) => write_variable(out, name),
+        Expr::Number(n) => {
+            if calibrated.is_some() && !n.is_finite() {
+                return Err(EvalError::DomainError(format!(
+                    "Numeric constant must be finite, got {n}"
+                )));
+            }
+            write_signed_number(out, *n, calibrated.is_some() && parent_prec > 0);
+        }
+        Expr::Variable(name) => write_latex_symbol(out, name, parent_prec, calibrated),
         Expr::Binary { op, left, right } => {
-            push_binary_frames(*op, left, right, parent_prec, stack, out);
+            push_binary_frames(*op, left, right, parent_prec, depth + 1, stack, out);
         }
         Expr::Unary { op, expr } => {
-            push_unary_frames(*op, expr, stack, out);
+            let wrap = calibrated.is_some() && parent_prec >= 5;
+            if wrap {
+                out.push_str(r"\left(");
+                stack.push(LatexFrame::Literal(r"\right)"));
+            }
+            out.push(match op {
+                UnaryOp::Pos => '+',
+                UnaryOp::Neg => '-',
+            });
+            stack.push(LatexFrame::Eval {
+                expr,
+                parent_prec: 6,
+                depth: depth + 1,
+            });
         }
         Expr::Function { func, args } => {
-            push_function_frames(*func, args, stack, out);
+            let expected = func.arity();
+            if calibrated.is_some() && args.len() != expected {
+                return Err(EvalError::WrongArgumentCount {
+                    func: *func,
+                    expected,
+                    found: args.len(),
+                });
+            }
+            push_function_frames(*func, args, depth + 1, stack, out);
         }
     }
+    Ok(())
 }
 
-fn write_number(out: &mut String, n: f64) {
+pub(super) fn write_number(out: &mut String, n: f64) {
     if n.fract() == 0.0 && n.abs() < 1e12 {
         write!(out, "{}", n as i64).expect("writing to String cannot fail");
     } else {
@@ -63,7 +164,41 @@ fn write_number(out: &mut String, n: f64) {
     }
 }
 
-fn write_variable(out: &mut String, name: &str) {
+fn write_signed_number(out: &mut String, n: f64, wrap_negative: bool) {
+    if wrap_negative && n < 0.0 {
+        out.push_str(r"\left(");
+        write_number(out, n);
+        out.push_str(r"\right)");
+    } else {
+        write_number(out, n);
+    }
+}
+
+fn write_latex_symbol(
+    out: &mut String,
+    name: &str,
+    parent_prec: u8,
+    calibrated: Option<(&HashMap<String, f64>, usize)>,
+) {
+    let is_reserved = name.eq_ignore_ascii_case("pi")
+        || name.eq_ignore_ascii_case("e")
+        || name.eq_ignore_ascii_case("tau")
+        || name.eq_ignore_ascii_case("t")
+        || name.eq_ignore_ascii_case("y")
+        || name.eq_ignore_ascii_case("x")
+        || name.eq_ignore_ascii_case("z");
+    if !is_reserved
+        && let Some((params, _)) = calibrated
+        && let Some(val) = super::codegen::lookup_param(params, name)
+        && val.is_finite()
+    {
+        write_signed_number(out, val, parent_prec > 0);
+        return;
+    }
+    write_variable(out, name);
+}
+
+pub(super) fn write_variable(out: &mut String, name: &str) {
     if name.eq_ignore_ascii_case("pi") {
         out.push_str(r"\pi");
     } else if name.eq_ignore_ascii_case("tau") {
@@ -80,6 +215,7 @@ fn push_binary_frames<'a>(
     left: &'a Expr,
     right: &'a Expr,
     parent_prec: u8,
+    next_depth: usize,
     stack: &mut Vec<LatexFrame<'a>>,
     out: &mut String,
 ) {
@@ -91,8 +227,7 @@ fn push_binary_frames<'a>(
         BinaryOp::Pow => (5, "{", "}^{", "}", 5, 0),
     };
 
-    let wrap_parens = prec < parent_prec && op != BinaryOp::Div;
-    if wrap_parens {
+    if prec < parent_prec && op != BinaryOp::Div {
         out.push_str(r"\left(");
         stack.push(LatexFrame::Literal(r"\right)"));
     }
@@ -103,33 +238,20 @@ fn push_binary_frames<'a>(
     stack.push(LatexFrame::Eval {
         expr: right,
         parent_prec: right_prec,
+        depth: next_depth,
     });
     stack.push(LatexFrame::Literal(sep));
     stack.push(LatexFrame::Eval {
         expr: left,
         parent_prec: left_prec,
-    });
-}
-
-fn push_unary_frames<'a>(
-    op: UnaryOp,
-    expr: &'a Expr,
-    stack: &mut Vec<LatexFrame<'a>>,
-    out: &mut String,
-) {
-    match op {
-        UnaryOp::Pos => out.push('+'),
-        UnaryOp::Neg => out.push('-'),
-    }
-    stack.push(LatexFrame::Eval {
-        expr,
-        parent_prec: 6,
+        depth: next_depth,
     });
 }
 
 fn push_function_frames<'a>(
     func: Func,
     args: &'a [Expr],
+    next_depth: usize,
     stack: &mut Vec<LatexFrame<'a>>,
     out: &mut String,
 ) {
@@ -140,6 +262,7 @@ fn push_function_frames<'a>(
             stack.push(LatexFrame::Eval {
                 expr: &args[0],
                 parent_prec: 0,
+                depth: next_depth,
             });
         }
         Func::Abs if !args.is_empty() => {
@@ -148,6 +271,7 @@ fn push_function_frames<'a>(
             stack.push(LatexFrame::Eval {
                 expr: &args[0],
                 parent_prec: 0,
+                depth: next_depth,
             });
         }
         _ => {
@@ -158,6 +282,7 @@ fn push_function_frames<'a>(
                 stack.push(LatexFrame::Eval {
                     expr: arg,
                     parent_prec: 0,
+                    depth: next_depth,
                 });
                 if idx > 0 {
                     stack.push(LatexFrame::Literal(", "));

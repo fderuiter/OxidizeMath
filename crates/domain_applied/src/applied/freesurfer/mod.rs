@@ -79,7 +79,7 @@
 //!
 //! - `segmentation`: Multi-label Bayesian classification and 6-connected Potts MRF ICM denoising.
 //! - `surface`: Triangulated deformable surface models driven by thin-plate and smoothed MRI energies.
-//! - `thickness`: Uniform-grid accelerated single-vertex and batch cortical thickness estimation.
+//! - `thickness`: Zero-allocation CSR `FlatSpatialGrid`, `SpatialGrid`, `ThicknessWorkspace`, and cortical thickness estimation.
 //! - `glm`: Ordinary least squares parameter estimation and contrast `t_statistic` evaluation.
 
 #[allow(missing_docs)]
@@ -92,7 +92,7 @@ pub mod surface;
 pub mod thickness;
 
 // Re-export public items preserving baseline compatibility and exposing upgraded kernels
-pub use glm::{estimate_beta, t_statistic};
+pub use glm::{GlmDesignQr, estimate_beta, t_statistic};
 pub use segmentation::{
     MAX_TISSUE_CLASSES, TissueClass, bayesian_classification, mrf_segment_volume,
     mrf_voxel_posteriors, normalized_posteriors, normalized_posteriors_into,
@@ -101,7 +101,11 @@ pub use surface::{
     MriVolume, Surface, evolve_surface, evolve_surface_deformable, external_energy,
     external_energy_volume, internal_energy,
 };
-pub use thickness::{cortical_thickness, cortical_thickness_map};
+pub use thickness::{
+    FlatSpatialGrid, SpatialGrid, ThicknessWorkspace, cortical_thickness,
+    cortical_thickness_indexed, cortical_thickness_into, cortical_thickness_map,
+    cortical_thickness_map_into, cortical_thickness_mesh, cortical_thickness_with_grid,
+};
 
 // [cite:freesurfer]
 

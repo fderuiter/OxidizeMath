@@ -20,6 +20,7 @@ struct HistoryFingerprint {
     pane_tabs: [usize; 4],
     primary_history_hash: u64,
     secondary_history_hash: u64,
+    pipeline_links_hash: u64,
 }
 
 /// Zero-allocation O(1) state fingerprint separating semantic history from transient UI chrome.
@@ -96,6 +97,13 @@ fn build_history_fingerprint(
     if app.viewport_layout != ViewportLayout::QuadGrid {
         pane_tabs[1] = app.secondary_tab;
     }
+    let mut pipe_hasher = std::collections::hash_map::DefaultHasher::new();
+    let active_links = if app.viewport_layout == ViewportLayout::Single {
+        &[][..]
+    } else {
+        app.pipeline_dag.links()
+    };
+    active_links.hash(&mut pipe_hasher);
     HistoryFingerprint {
         selected_tab: app.selected_tab,
         secondary_tab: app.secondary_tab,
@@ -112,7 +120,8 @@ fn build_history_fingerprint(
         },
         compare_sync_bits: u8::from(app.compare_sync.link_axes)
             | (u8::from(app.compare_sync.link_cursors) << 1)
-            | (u8::from(app.compare_sync.sync_playback) << 2),
+            | (u8::from(app.compare_sync.sync_playback) << 2)
+            | (u8::from(app.compare_sync.link_topology) << 3),
         split_ratio_bits: app.split_ratio.clamp(0.20, 0.80).to_bits(),
         quad_split_ratio_bits: (
             app.quad_split_ratios.0.clamp(0.20, 0.80).to_bits(),
@@ -121,6 +130,7 @@ fn build_history_fingerprint(
         pane_tabs,
         primary_history_hash,
         secondary_history_hash,
+        pipeline_links_hash: pipe_hasher.finish(),
     }
 }
 
@@ -159,6 +169,7 @@ struct LiveChromeSnapshot {
     theme: ThemeMode,
     speech_enabled: bool,
     speech_volume: f32,
+    viewport_layout: ViewportLayout,
     focused_pane: usize,
     primary_overlays: HashMap<String, (bool, bool)>,
     secondary_overlays: [Option<(String, bool, bool)>; MAX_SECONDARY_PANES],
@@ -193,6 +204,7 @@ impl LiveChromeSnapshot {
             theme: app.theme,
             speech_enabled: app.speech_enabled,
             speech_volume: app.speech_volume,
+            viewport_layout: app.viewport_layout,
             focused_pane: app.active_focused_pane(),
             primary_overlays,
             secondary_overlays,
@@ -211,7 +223,7 @@ impl LiveChromeSnapshot {
         crate::accessibility::sync_speech_settings(app.speech_enabled, app.speech_volume);
         if app.viewport_layout == ViewportLayout::Single {
             app.focused_pane = 0;
-        } else {
+        } else if self.viewport_layout != ViewportLayout::Single {
             let max_pane = app.viewport_layout.pane_count().saturating_sub(1);
             app.focused_pane = self.focused_pane.min(max_pane);
         }
@@ -248,6 +260,7 @@ impl AppState {
             && self.viewport_layout == other.viewport_layout
             && self.compare_sync == other.compare_sync
             && self.pane_tabs == other.pane_tabs
+            && self.pipeline_links == other.pipeline_links
             && tab_maps_semantically_eq(&self.tab_states, &other.tab_states)
             && pane_tab_maps_semantically_eq(&self.pane_tab_states, &other.pane_tab_states)
     }
@@ -255,7 +268,7 @@ impl AppState {
     /// Restores historical workspace state during `Undo` / `Redo` while preserving live UI chrome.
     pub fn apply_preserving_chrome(self, app: &mut MathExplorerApp) {
         let chrome = LiveChromeSnapshot::capture(app);
-        self.apply(app);
+        app.apply_app_state(self);
         chrome.restore(app);
     }
 }

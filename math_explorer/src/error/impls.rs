@@ -38,11 +38,14 @@ impl Error {
             Self::Evolution(err) => Some(err),
             Self::Fractran(err) => Some(err),
             Self::Glicko2(err) => Some(err),
+            Self::GraphTheory(err) => Some(err),
+            Self::Hyperbolic(err) => Some(err),
             Self::Kelly(err) => Some(err),
             Self::LinearAlgebra(err) => Some(err),
             Self::MarketPricing(err) => Some(err),
             Self::Markov(err) => Some(err),
             Self::MatchModel(err) => Some(err),
+            Self::MonteCarlo(err) => Some(err),
             Self::NumberTheory(err) => Some(err),
             Self::Optimization(err) => Some(err),
             Self::Ou(err) => Some(err),
@@ -109,6 +112,8 @@ impl Error {
             Self::AI(err) => Some(err),
             #[cfg(feature = "biology")]
             Self::Biology(err) => Some(err),
+            #[cfg(feature = "biology")]
+            Self::Botanical(err) => Some(err),
             #[cfg(feature = "biology")]
             Self::HodgkinHuxley(err) => Some(err),
             #[cfg(feature = "biology")]

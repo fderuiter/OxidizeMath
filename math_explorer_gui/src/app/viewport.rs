@@ -245,12 +245,14 @@ pub(super) fn render_single_pane_viewport(
                 );
             });
             compare_sync::clear_single_pane_sync_context(ctx);
+            app.sim_bus
+                .install_in_context(ctx, app.compare_sync.link_topology);
 
             let mut pane_ui = build_pane_region_ui(ui, 0, total_rect, "Main Viewport");
             let should_focus = pending_focus == Some(0);
             focus::begin_pending_pane_focus(ctx, should_focus);
             render_pane_content(app, ctx, frame, &mut pane_ui, 0, total_rect);
-            focus::finish_pending_pane_focus(ctx, should_focus);
+            focus::finish_pending_pane_focus(ctx, should_focus, 0);
             focus::record_resolved_pane_focus(ctx, 0);
         });
     crate::starter_gallery::flush_deferred_starter_galleries(app, ctx);
@@ -289,7 +291,7 @@ fn render_multi_pane_regions(
             should_focus,
         );
         render_pane_content(app, ctx, frame, &mut pane_ui, pane_idx, content_rect);
-        focus::finish_pending_pane_focus(ctx, should_focus);
+        focus::finish_pending_pane_focus(ctx, should_focus, pane_idx);
     }
     if let Some(target_pane) = pending_focus {
         let overwritten = crate::accessibility::with_live_region(|r| {
