@@ -20,4 +20,4 @@ Accepted (extends [ADR 0008](0008-finite-state-guard-solver-divergence.md), [ADR
 
 ## Consequences
 - **Positive**: Every diverging `SimulationFramework` tool surfaces solver-accurate `t`, `Step`, and `Variable` diagnostics through one WCAG 2.2 AA top recovery banner that auto-dismisses upon valid recovery, preserves both preset and factory baselines across sessions, and enforces consistent playback-reset vs preset-load semantics.
-- **Neutral**: Standalone tabs outside `SimulationFramework` and `crates/unified_verification/api_baseline.json` remain unchanged.
+- **Neutral**: Standalone tabs outside `SimulationFramework` and `crates/unified_verification/api_baseline.json` remain unchanged; `verified_engine::metrics` stack-unwinding unit tests are gated with `#[cfg(not(target_arch = "wasm32"))]` to match `wasm32-unknown-unknown` non-unwinding test targets.

@@ -1,7 +1,5 @@
 //! Continuous Fourier series harmonic table generation for custom `PeriodicWave` timbres.
 
-// theory_verification!
-
 use super::frame::{HarmonicWeights, WaveformPreset, NUM_HARMONICS};
 
 /// Precomputed bank of stack-resident [`HarmonicWeights`] indexed by [`WaveformPreset::index`].

@@ -11,9 +11,29 @@ use std::hash::{Hash, Hasher};
 /// Renders accessible workspace `Undo` and `Redo` toolbar buttons synchronized with
 /// [`crate::app::session::shortcuts::WorkspaceHistoryBridge`].
 pub fn render_workspace_history_buttons(ui: &mut egui::Ui) {
-    let active = is_workspace_history_active(ui.ctx());
-    let bridge = read_workspace_history_bridge(ui.ctx());
-    let touch_mode = ui.ctx().data(|d| {
+    let ctx = ui.ctx();
+    let (saw_touch, saw_mouse_move) = ctx.input(|i| {
+        let touch = i.any_touches()
+            || i.multi_touch().is_some()
+            || i.events
+                .iter()
+                .any(|e| matches!(e, egui::Event::Touch { .. }));
+        (touch, !touch && i.pointer.is_moving())
+    });
+    if saw_touch {
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("INPUT_MODE"), InputMode::Touch);
+            d.insert_temp(egui::Id::new("INPUT_MODE_TOUCH"), true);
+        });
+    } else if saw_mouse_move {
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("INPUT_MODE"), InputMode::Mouse);
+            d.insert_temp(egui::Id::new("INPUT_MODE_TOUCH"), false);
+        });
+    }
+    let active = is_workspace_history_active(ctx);
+    let bridge = read_workspace_history_bridge(ctx);
+    let touch_mode = ctx.data(|d| {
         d.get_temp::<InputMode>(egui::Id::new("INPUT_MODE")) == Some(InputMode::Touch)
             || d.get_temp::<bool>(egui::Id::new("INPUT_MODE_TOUCH"))
                 .unwrap_or(false)

@@ -17,7 +17,8 @@ use math_explorer::physics::chaos::{
     double_pendulum::DoublePendulum, henon_heiles::HenonHeiles, poincare::PoincareSection,
 };
 use math_explorer::pure_math::analysis::ode::{
-    ArrayState, GaussLegendre4, RungeKutta4, StormerVerlet, SymplecticMethod, Yoshida4,
+    ArrayState, GaussLegendre4, ImplicitMidpoint, RungeKutta4, StormerVerlet, SymplecticMethod,
+    Yoshida4,
 };
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
@@ -93,6 +94,8 @@ impl HamiltonianModelKind {
 /// Serializable symplectic integrator selector for [`HamiltonianChaosLab`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SymplecticSolverChoice {
+    /// Second-order implicit midpoint Gauss-Legendre Runge-Kutta.
+    ImplicitMidpoint,
     /// Second-order velocity Störmer-Verlet splitting.
     StormerVerlet,
     /// Fourth-order Yoshida symmetric triple-jump composition.
@@ -106,16 +109,24 @@ impl SymplecticSolverChoice {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
+            Self::ImplicitMidpoint => "Implicit Midpoint (2nd Order)",
             Self::StormerVerlet => "Störmer-Verlet (2nd Order)",
             Self::Yoshida4 => "Yoshida 4th Order",
             Self::GaussLegendre4 => "Gauss-Legendre 4th Order (Implicit)",
         }
     }
 
+    /// Returns `true` if this symplectic integrator handles general non-separable Hamiltonians.
+    #[must_use]
+    pub const fn is_implicit(self) -> bool {
+        matches!(self, Self::ImplicitMidpoint | Self::GaussLegendre4)
+    }
+
     /// Converts the GUI enum to the `pure_math` [`SymplecticMethod`] descriptor.
     #[must_use]
     pub const fn to_method(self) -> SymplecticMethod {
         match self {
+            Self::ImplicitMidpoint => SymplecticMethod::ImplicitMidpoint,
             Self::StormerVerlet => SymplecticMethod::StormerVerlet,
             Self::Yoshida4 => SymplecticMethod::Yoshida4,
             Self::GaussLegendre4 => SymplecticMethod::GaussLegendre4,
@@ -126,6 +137,8 @@ impl SymplecticSolverChoice {
 /// Secondary right-hand plot mode alongside the Poincaré section canvas.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ComparatorView {
+    /// Synchronized split view combining real-space motion above the live energy-drift race.
+    SynchronizedSplit,
     /// Plots relative Hamiltonian error $|\Delta H / H_0|$ (%) for Symplectic vs `RungeKutta4`.
     EnergyDrift,
     /// Plots real-space configuration trajectories alongside the decaying `RungeKutta4` twin.
@@ -137,6 +150,7 @@ impl ComparatorView {
     #[must_use]
     pub const fn label(self) -> &'static str {
         match self {
+            Self::SynchronizedSplit => "Motion + Drift Race",
             Self::EnergyDrift => "Relative Energy Drift (%)",
             Self::ConfigurationSpace => "Configuration Trajectory",
         }
@@ -184,6 +198,7 @@ pub struct GhostComparator {
     pub(crate) deriv4: ArrayState<4>,
     pub(crate) prev_deriv4: ArrayState<4>,
     pub(crate) state12: ArrayState<12>,
+    pub(crate) prev12: ArrayState<12>,
     /// Decaying `RungeKutta4` Poincaré crossings, capped at [`MAX_GHOST_SECTION_POINTS`].
     pub section_points: Vec<[f64; 2]>,
     pub(crate) section_write_idx: usize,
@@ -227,14 +242,20 @@ pub struct HamiltonianChaosLab {
     pub sim_time: f64,
     /// Last measured integration frame wall duration in milliseconds.
     pub last_frame_ms: f64,
+    /// Estimated largest finite-time Lyapunov exponent $\lambda_{\max}$ for the lead orbit.
+    pub lyapunov_estimate: f64,
+    /// Zero-momentum perturbation amplitude $\delta$ around the periodic 3-body Figure-8 orbit.
+    pub three_body_perturbation: f64,
     pub(crate) state_rev: u64,
     pub(crate) focused_canvas: Option<egui::Id>,
     pub(crate) last_status_note: Option<String>,
     pub(crate) henon: HenonHeiles,
     pub(crate) pendulum: DoublePendulum,
     pub(crate) three_body: FigureEightThreeBody,
+    pub(crate) mid4: ImplicitMidpoint<ArrayState<4>>,
     pub(crate) verlet2: StormerVerlet<ArrayState<2>>,
     pub(crate) yoshida2: Yoshida4<ArrayState<2>>,
+    pub(crate) mid12: ImplicitMidpoint<ArrayState<12>>,
     pub(crate) verlet6: StormerVerlet<ArrayState<6>>,
     pub(crate) yoshida6: Yoshida4<ArrayState<6>>,
     pub(crate) gl4_4: GaussLegendre4<ArrayState<4>>,
@@ -254,7 +275,7 @@ impl Default for HamiltonianChaosLab {
         let mut lab = Self {
             model: HamiltonianModelKind::HenonHeiles,
             solver: SymplecticSolverChoice::Yoshida4,
-            comparator_view: ComparatorView::EnergyDrift,
+            comparator_view: ComparatorView::SynchronizedSplit,
             dt: 0.015,
             energy: 0.125,
             steps_per_frame: 32,
@@ -265,14 +286,18 @@ impl Default for HamiltonianChaosLab {
             ghost: GhostComparator::default(),
             sim_time: 0.0,
             last_frame_ms: 0.0,
+            lyapunov_estimate: 0.0,
+            three_body_perturbation: 0.0,
             state_rev: 1,
             focused_canvas: None,
             last_status_note: None,
             henon: HenonHeiles::default(),
             pendulum: DoublePendulum::default(),
             three_body: FigureEightThreeBody::default(),
+            mid4: ImplicitMidpoint::new(&z4),
             verlet2: StormerVerlet::new(&z2),
             yoshida2: Yoshida4::new(&z2),
+            mid12: ImplicitMidpoint::new(&z12),
             verlet6: StormerVerlet::new(&z6),
             yoshida6: Yoshida4::new(&z6),
             gl4_4: GaussLegendre4::new(&z4),
@@ -352,19 +377,28 @@ impl InteractiveTool for HamiltonianChaosLab {
     fn has_finite_parameters(&self) -> bool {
         self.dt.is_finite()
             && self.energy.is_finite()
+            && self.three_body_perturbation.is_finite()
             && self.cursor_qp[0].is_finite()
             && self.cursor_qp[1].is_finite()
             && self.orbits_are_finite()
     }
 
     fn diagnostic_report(&self) -> Option<DiagnosticReport> {
+        let step_index = (self.sim_time / self.dt.abs().max(1e-6)).round() as usize;
         if !self.orbits_are_finite() {
-            let step_index = (self.sim_time / self.dt.abs().max(1e-6)).round() as usize;
             return Some(DiagnosticReport::new(
                 self.sim_time,
                 step_index,
                 "orbit_state",
                 "Non-finite canonical phase-space coordinate detected during Hamiltonian integration.",
+            ));
+        }
+        if !self.has_finite_parameters() {
+            return Some(DiagnosticReport::new(
+                self.sim_time,
+                step_index,
+                "parameters",
+                "Non-finite Hamiltonian parameter (dt, energy, perturbation, or cursor) detected.",
             ));
         }
         None
@@ -382,11 +416,7 @@ impl InteractiveTool for HamiltonianChaosLab {
     }
 
     fn clamp_parameters(&mut self) -> bool {
-        let had_bad_orbits = !self.orbits_are_finite();
         self.clamp_model_parameters();
-        if had_bad_orbits {
-            self.rebuild_existing_seeds();
-        }
         true
     }
 

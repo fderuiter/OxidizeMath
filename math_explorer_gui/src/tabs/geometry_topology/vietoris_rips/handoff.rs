@@ -50,7 +50,7 @@ impl ChaosLandmarkHandoff {
     }
 
     /// Converts this handoff into a sanitized [`LandmarkCloud3DPayload`] for [`crate::app::dataflow_bus::PaneDataflowBus`].
-    #[cfg(any(feature = "physics", test))]
+    #[cfg(feature = "physics")]
     #[must_use]
     pub fn to_bus_payload(&self, revision: u64) -> LandmarkCloud3DPayload {
         LandmarkCloud3DPayload::sanitized(
@@ -103,7 +103,7 @@ pub fn take_chaos_landmark_handoff(ctx: &egui::Context) -> Option<ChaosLandmarkH
 }
 
 /// Publishes the latest live 3D landmarks onto `ctx`'s [`SharedSimulationBus`].
-#[cfg(test)]
+#[cfg(all(test, feature = "physics"))]
 pub fn publish_live_attractor_landmarks(ctx: &egui::Context, handoff: ChaosLandmarkHandoff) {
     let bus = SharedSimulationBus::from_context_or_insert(ctx);
     let _ = bus.publish_point_cloud_3d(
@@ -129,7 +129,7 @@ pub fn poll_live_attractor_landmarks(
 }
 
 /// Signals `MathExplorerApp` on `ctx` to focus `Geometry & Topology` and select `VietorisRipsTool`.
-#[cfg(any(feature = "physics", test))]
+#[cfg(feature = "physics")]
 pub fn request_open_vietoris_rips(ctx: &egui::Context) {
     let bus = SharedSimulationBus::from_context_or_insert(ctx);
     bus.request_open_vietoris_rips();

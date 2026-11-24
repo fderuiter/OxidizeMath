@@ -6,14 +6,24 @@ use super::{
     DataflowStreamKind, GraphTopologyPayload, LandmarkCloud3DPayload, PanePipelineDag,
     ScalarField2DPayload, MAX_DATAFLOW_PANES,
 };
+#[cfg(any(
+    test,
+    feature = "biology",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 use crate::app::viewport::focus::CURRENT_RENDERING_PANE_KEY;
 use eframe::egui;
 use std::sync::Arc;
 
 #[derive(Clone, Default)]
 struct StagedPaneInput {
+    #[cfg(any(test, feature = "epidemiology", feature = "biology"))]
     graph: Option<Arc<GraphTopologyPayload>>,
+    #[cfg(any(test, feature = "pure_math"))]
     landmarks: Option<Arc<LandmarkCloud3DPayload>>,
+    #[cfg(any(test, feature = "pure_math"))]
     field: Option<Arc<ScalarField2DPayload>>,
 }
 
@@ -82,6 +92,13 @@ fn output_slot_id(pane_idx: usize) -> egui::Id {
     egui::Id::new(("pane_dataflow_out", pane_idx))
 }
 
+#[cfg(any(
+    test,
+    feature = "biology",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
 fn active_pane_index(ctx: &egui::Context) -> Option<usize> {
     ctx.data(|d| d.get_temp::<usize>(egui::Id::new(CURRENT_RENDERING_PANE_KEY)))
 }
@@ -93,22 +110,24 @@ pub fn stage_pane_inputs(
     dag: &PanePipelineDag,
     bus: &PaneDataflowBus,
 ) {
-    let staged = match dag.upstream_for(pane_idx) {
-        Some(link) => match link.kind {
-            DataflowStreamKind::GraphTopology => StagedPaneInput {
-                graph: bus.latest_graph(link.from_pane).cloned(),
-                ..Default::default()
-            },
-            DataflowStreamKind::Landmarks3D => StagedPaneInput {
-                landmarks: bus.latest_landmarks(link.from_pane).cloned(),
-                ..Default::default()
-            },
-            DataflowStreamKind::ScalarField2D => StagedPaneInput {
-                field: bus.latest_field(link.from_pane).cloned(),
-                ..Default::default()
-            },
-        },
-        None => StagedPaneInput::default(),
+    let (mut graph, mut landmarks, mut field) = (None, None, None);
+    if let Some(link) = dag.upstream_for(pane_idx) {
+        match link.kind {
+            DataflowStreamKind::GraphTopology => graph = bus.latest_graph(link.from_pane).cloned(),
+            DataflowStreamKind::Landmarks3D => {
+                landmarks = bus.latest_landmarks(link.from_pane).cloned();
+            }
+            DataflowStreamKind::ScalarField2D => field = bus.latest_field(link.from_pane).cloned(),
+        }
+    }
+    let _ = (&graph, &landmarks, &field);
+    let staged = StagedPaneInput {
+        #[cfg(any(test, feature = "epidemiology", feature = "biology"))]
+        graph,
+        #[cfg(any(test, feature = "pure_math"))]
+        landmarks,
+        #[cfg(any(test, feature = "pure_math"))]
+        field,
     };
     ctx.data_mut(|d| {
         d.insert_temp(input_slot_id(pane_idx), staged);
@@ -179,7 +198,7 @@ pub fn publish_pane_graph(ctx: &egui::Context, payload: GraphTopologyPayload) {
 }
 
 /// Publishes a sanitized 3D landmark cloud from the currently rendering pane.
-#[cfg(any(test, feature = "physics", feature = "biology"))]
+#[cfg(any(test, feature = "physics"))]
 pub fn publish_pane_landmarks(ctx: &egui::Context, payload: LandmarkCloud3DPayload) {
     let Some(pane_idx) = active_pane_index(ctx) else {
         return;

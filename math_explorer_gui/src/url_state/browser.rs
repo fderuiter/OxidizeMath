@@ -74,7 +74,6 @@ pub fn read_browser_location_parts() -> Option<(String, String)> {
         return Some(parts);
     }
     #[cfg(target_arch = "wasm32")]
-    // theory_verification!
     {
         let window = web_sys::window()?;
         let location = window.location();
@@ -114,7 +113,6 @@ fn retain_non_share_query(search: &str) -> String {
 }
 
 #[cfg(target_arch = "wasm32")]
-// theory_verification!
 fn build_self_sync_history_state(hash_part: &str) -> wasm_bindgen::JsValue {
     let state_obj = js_sys::Object::new();
     let _ = js_sys::Reflect::set(
@@ -140,7 +138,6 @@ pub fn replace_browser_url_fragment(fragment: &str) -> Result<(), String> {
     LAST_REPLACED_BROWSER_FRAGMENT.with(|slot| *slot.borrow_mut() = Some(hash_part.clone()));
 
     #[cfg(target_arch = "wasm32")]
-    // theory_verification!
     {
         let window = web_sys::window().ok_or_else(|| "Browser window unavailable".to_string())?;
         let history = window
@@ -174,7 +171,6 @@ pub fn is_browser_location_self_synced(hash: &str, search: &str) -> bool {
     }
 
     #[cfg(target_arch = "wasm32")]
-    // theory_verification!
     {
         let Some(window) = web_sys::window() else {
             return false;
@@ -238,7 +234,6 @@ fn base_share_origin() -> String {
     }
 
     #[cfg(target_arch = "wasm32")]
-    // theory_verification!
     if let Some(window) = web_sys::window() {
         let loc = window.location();
         let origin = loc.origin().unwrap_or_default();
@@ -286,3 +281,7 @@ pub fn copy_share_url_to_clipboard(
         }
     }
 }
+
+#[cfg(all(test, target_arch = "wasm32"))]
+#[path = "browser_wasm_tests.rs"]
+mod wasm_tests;

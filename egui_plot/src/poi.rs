@@ -134,116 +134,28 @@ impl math_commons::series::PointSeries for SeriesCoords<'_> {
     #[inline(always)]
     fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
         match self {
-            Self::PlotPoints(pts) => advance_plot_points_plateau(pts, start, flat_y, x_min, x_max),
-            Self::Shared(pts) => advance_shared_pairs_plateau(pts, start, flat_y, x_min, x_max),
+            Self::PlotPoints(pts) => {
+                <PlotPoint as math_commons::series::Sample2D>::advance_slice_plateau(
+                    pts,
+                    start,
+                    pts.len(),
+                    flat_y,
+                    x_min,
+                    x_max,
+                )
+            }
+            Self::Shared(pts) => {
+                <[f64; 2] as math_commons::series::Sample2D>::advance_slice_plateau(
+                    pts,
+                    start,
+                    pts.len(),
+                    flat_y,
+                    x_min,
+                    x_max,
+                )
+            }
         }
     }
-}
-
-#[inline(always)]
-fn advance_plot_points_plateau(
-    pts: &[PlotPoint],
-    mut i: usize,
-    flat_y: f64,
-    x_min: f64,
-    x_max: f64,
-) -> usize {
-    let (chunks, _) = pts[i..].as_chunks::<8>();
-    for &[p0, p1, p2, p3, p4, p5, p6, p7] in chunks {
-        let y_ok = (p0.y == flat_y)
-            & (p1.y == flat_y)
-            & (p2.y == flat_y)
-            & (p3.y == flat_y)
-            & (p4.y == flat_y)
-            & (p5.y == flat_y)
-            & (p6.y == flat_y)
-            & (p7.y == flat_y);
-        let x_ok = (p0.x >= x_min)
-            & (p0.x <= x_max)
-            & (p1.x >= x_min)
-            & (p1.x <= x_max)
-            & (p2.x >= x_min)
-            & (p2.x <= x_max)
-            & (p3.x >= x_min)
-            & (p3.x <= x_max)
-            & (p4.x >= x_min)
-            & (p4.x <= x_max)
-            & (p5.x >= x_min)
-            & (p5.x <= x_max)
-            & (p6.x >= x_min)
-            & (p6.x <= x_max)
-            & (p7.x >= x_min)
-            & (p7.x <= x_max);
-        if !(y_ok & x_ok) {
-            break;
-        }
-        i += 8;
-    }
-    for p in &pts[i..] {
-        if !((p.y == flat_y) & (p.x >= x_min) & (p.x <= x_max)) {
-            break;
-        }
-        i += 1;
-    }
-    i
-}
-
-#[inline(always)]
-fn advance_shared_pairs_plateau(
-    pts: &[[f64; 2]],
-    mut i: usize,
-    flat_y: f64,
-    x_min: f64,
-    x_max: f64,
-) -> usize {
-    let (chunks, _) = pts[i..].as_chunks::<8>();
-    for &[
-        [x0, y0],
-        [x1, y1],
-        [x2, y2],
-        [x3, y3],
-        [x4, y4],
-        [x5, y5],
-        [x6, y6],
-        [x7, y7],
-    ] in chunks
-    {
-        let y_ok = (y0 == flat_y)
-            & (y1 == flat_y)
-            & (y2 == flat_y)
-            & (y3 == flat_y)
-            & (y4 == flat_y)
-            & (y5 == flat_y)
-            & (y6 == flat_y)
-            & (y7 == flat_y);
-        let x_ok = (x0 >= x_min)
-            & (x0 <= x_max)
-            & (x1 >= x_min)
-            & (x1 <= x_max)
-            & (x2 >= x_min)
-            & (x2 <= x_max)
-            & (x3 >= x_min)
-            & (x3 <= x_max)
-            & (x4 >= x_min)
-            & (x4 <= x_max)
-            & (x5 >= x_min)
-            & (x5 <= x_max)
-            & (x6 >= x_min)
-            & (x6 <= x_max)
-            & (x7 >= x_min)
-            & (x7 <= x_max);
-        if !(y_ok & x_ok) {
-            break;
-        }
-        i += 8;
-    }
-    for &[x, y] in &pts[i..] {
-        if !((y == flat_y) & (x >= x_min) & (x <= x_max)) {
-            break;
-        }
-        i += 1;
-    }
-    i
 }
 
 pub(crate) struct LineSeriesRef<'a> {

@@ -1,8 +1,7 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::comparison::{
-    build_view_trace_series, compute_series_discrepancy, simulate_ode, OdeSimSpec,
-    SolverTrajectory, TrajectoryView,
+    compute_series_discrepancy, simulate_ode, OdeSimSpec, SolverDiscrepancy, SolverTrajectory,
 };
 use super::systems::CustomOdeSpec;
 use super::OdeSolverTool;
@@ -67,22 +66,7 @@ impl InteractiveTool for OdeSolverTool {
     }
 
     fn diagnostic_report(&self) -> Option<DiagnosticReport> {
-        OdeSolverTool::diagnostic_report(self).cloned().or_else(|| {
-            (!FiniteStateGuard::is_finite_state(self)).then(|| {
-                let t_div = self
-                    .time_series
-                    .last()
-                    .copied()
-                    .filter(|t| t.is_finite())
-                    .unwrap_or(0.0);
-                DiagnosticReport::new(
-                    t_div,
-                    self.time_series.len(),
-                    "parameters",
-                    "Non-finite ODE solver parameter or state detected.",
-                )
-            })
-        })
+        self.interactive_diagnostic_report()
     }
 
     fn auto_scale_step_size(&mut self) -> bool {
@@ -121,6 +105,58 @@ impl InteractiveTool for OdeSolverTool {
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
         Some(self)
     }
+}
+
+struct TrajectoryView<'a> {
+    method: IntegrationMethod,
+    time_series: &'a [f64],
+    y_series: &'a [f64],
+    v_series: &'a [f64],
+    diverged: bool,
+    is_active_reused: bool,
+}
+
+fn build_view_trace_series(
+    view: &TrajectoryView<'_>,
+    labels: (&'static str, &'static str, &'static str, &'static str),
+    has_v: bool,
+    phase_active: bool,
+) -> Vec<TraceSeries> {
+    let (t1_lbl, t2_lbl, px_lbl, py_lbl) = labels;
+    if phase_active {
+        let pts_phase: Vec<[f64; 2]> = view
+            .y_series
+            .iter()
+            .zip(view.v_series)
+            .map(|(&x, &y)| [x, y])
+            .collect();
+        return vec![TraceSeries::new(format!("({px_lbl}, {py_lbl})"), pts_phase)];
+    }
+    let pts_y: Vec<[f64; 2]> = view
+        .time_series
+        .iter()
+        .zip(view.y_series)
+        .map(|(&t, &y)| [t, y])
+        .collect();
+    let mut series = vec![TraceSeries::new(t1_lbl, pts_y)];
+    if has_v && !view.v_series.is_empty() {
+        let pts_v: Vec<[f64; 2]> = view
+            .time_series
+            .iter()
+            .zip(view.v_series)
+            .map(|(&t, &v)| [t, v])
+            .collect();
+        series.push(TraceSeries::new(t2_lbl, pts_v));
+    }
+    series
+}
+
+struct ComparisonBundle {
+    any_diverged: bool,
+    euler_rk4: SolverDiscrepancy,
+    heun_rk4: SolverDiscrepancy,
+    euler_heun: SolverDiscrepancy,
+    snapshots: Vec<(&'static str, Vec<TraceSeries>)>,
 }
 
 impl OdeSolverTool {
@@ -221,6 +257,55 @@ impl OdeSolverTool {
             .collect()
     }
 
+    fn collect_comparison_bundle(
+        &self,
+        comp_dt: f64,
+        reuse_active: bool,
+        custom_spec: Option<&CustomOdeSpec>,
+    ) -> ComparisonBundle {
+        let [rk4_sim, euler_sim, heun_sim] = [
+            IntegrationMethod::RungeKutta4,
+            IntegrationMethod::Euler,
+            IntegrationMethod::Heun,
+        ]
+        .map(|m| self.simulate_if_inactive(m, comp_dt, reuse_active, custom_spec));
+        let symp_sim = self
+            .method
+            .is_symplectic()
+            .then(|| self.simulate_if_inactive(self.method, comp_dt, reuse_active, custom_spec));
+
+        let rk4 = self.trajectory_view(IntegrationMethod::RungeKutta4, &rk4_sim);
+        let euler = self.trajectory_view(IntegrationMethod::Euler, &euler_sim);
+        let heun = self.trajectory_view(IntegrationMethod::Heun, &heun_sim);
+
+        let mut any_diverged = rk4.diverged || euler.diverged || heun.diverged;
+        let euler_rk4 =
+            compute_series_discrepancy(euler.y_series, euler.v_series, rk4.y_series, rk4.v_series);
+        let heun_rk4 =
+            compute_series_discrepancy(heun.y_series, heun.v_series, rk4.y_series, rk4.v_series);
+        let euler_heun = compute_series_discrepancy(
+            euler.y_series,
+            euler.v_series,
+            heun.y_series,
+            heun.v_series,
+        );
+        let snapshots = if let Some(ref symp_opt) = symp_sim {
+            let symp = self.trajectory_view(self.method, symp_opt);
+            any_diverged |= symp.diverged;
+            self.build_comparison_snapshot_series(&[rk4, euler, heun, symp])
+        } else {
+            self.build_comparison_snapshot_series(&[rk4, euler, heun])
+        };
+
+        ComparisonBundle {
+            any_diverged,
+            euler_rk4,
+            heun_rk4,
+            euler_heun,
+            snapshots,
+        }
+    }
+
     pub(super) fn recalculate_comparison(&mut self) {
         self.comparison_manager.clear();
         if !self.comparison_mode {
@@ -238,48 +323,15 @@ impl OdeSolverTool {
 
     fn populate_comparison_for_dt(&mut self, comp_dt: f64, reuse_active: bool) {
         let custom_spec = self.build_custom_ode_spec();
-        let [rk4_sim, euler_sim, heun_sim] = [
-            IntegrationMethod::RungeKutta4,
-            IntegrationMethod::Euler,
-            IntegrationMethod::Heun,
-        ]
-        .map(|m| self.simulate_if_inactive(m, comp_dt, reuse_active, custom_spec.as_ref()));
+        let bundle = self.collect_comparison_bundle(comp_dt, reuse_active, custom_spec.as_ref());
 
-        let (any_diverged, euler_rk4, heun_rk4, euler_heun, snapshots) = {
-            let rk4 = self.trajectory_view(IntegrationMethod::RungeKutta4, &rk4_sim);
-            let euler = self.trajectory_view(IntegrationMethod::Euler, &euler_sim);
-            let heun = self.trajectory_view(IntegrationMethod::Heun, &heun_sim);
-
-            let any_diverged = rk4.diverged || euler.diverged || heun.diverged;
-            let euler_rk4 = compute_series_discrepancy(
-                euler.y_series,
-                euler.v_series,
-                rk4.y_series,
-                rk4.v_series,
-            );
-            let heun_rk4 = compute_series_discrepancy(
-                heun.y_series,
-                heun.v_series,
-                rk4.y_series,
-                rk4.v_series,
-            );
-            let euler_heun = compute_series_discrepancy(
-                euler.y_series,
-                euler.v_series,
-                heun.y_series,
-                heun.v_series,
-            );
-            let snapshots = self.build_comparison_snapshot_series(&[rk4, euler, heun]);
-            (any_diverged, euler_rk4, heun_rk4, euler_heun, snapshots)
-        };
-
-        if !self.has_custom_input_error() && any_diverged {
+        if !self.has_custom_input_error() && bundle.any_diverged {
             self.diverged = true;
         }
-        self.discrepancy_euler_rk4 = euler_rk4;
-        self.discrepancy_heun_rk4 = heun_rk4;
-        self.discrepancy_euler_heun = euler_heun;
-        for (label, series) in snapshots {
+        self.discrepancy_euler_rk4 = bundle.euler_rk4;
+        self.discrepancy_heun_rk4 = bundle.heun_rk4;
+        self.discrepancy_euler_heun = bundle.euler_heun;
+        for (label, series) in bundle.snapshots {
             self.comparison_manager.add_snapshot(label, "", series);
         }
     }

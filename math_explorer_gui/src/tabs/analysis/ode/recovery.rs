@@ -111,6 +111,26 @@ impl OdeSolverTool {
         self.pending_sweep_run = None;
         self.recalculate();
     }
+
+    /// Returns the active solver [`DiagnosticReport`] or a parameter-finiteness fallback report.
+    pub(super) fn interactive_diagnostic_report(&self) -> Option<DiagnosticReport> {
+        OdeSolverTool::diagnostic_report(self).cloned().or_else(|| {
+            (!FiniteStateGuard::is_finite_state(self)).then(|| {
+                let t_div = self
+                    .time_series
+                    .last()
+                    .copied()
+                    .filter(|t| t.is_finite())
+                    .unwrap_or(0.0);
+                DiagnosticReport::new(
+                    t_div,
+                    self.time_series.len(),
+                    "parameters",
+                    "Non-finite ODE solver parameter or state detected.",
+                )
+            })
+        })
+    }
 }
 
 fn are_seeded_orbits_finite(tool: &OdeSolverTool) -> bool {
