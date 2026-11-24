@@ -62,6 +62,8 @@ pub struct AttractorSharedParams {
     pub perturbation_offset: [f64; 3],
     /// Auxiliary Rössler and double-pendulum constants.
     pub extra: ExtraChaosParams,
+    /// Optional workspace-scoped shared simulation bus for live 3D landmark streaming.
+    pub sim_bus: Option<crate::app::SharedSimulationBus>,
 }
 
 impl Default for AttractorSharedParams {
@@ -80,6 +82,7 @@ impl Default for AttractorSharedParams {
             shadow_enabled: true,
             perturbation_offset: [DEFAULT_EPSILON, 0.0, 0.0],
             extra: ExtraChaosParams::default(),
+            sim_bus: None,
         }
     }
 }

@@ -9,7 +9,6 @@ use super::presets::{
 };
 use super::{WaveRunner, WaveSimulatorTool};
 use crate::async_sim::SimCommand;
-use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{
     apply_sparse_potential, encode_sparse_potential, interpolate_1d_span, BrushInteractionMode,
     BrushMode, BrushStroke, InteractionContext, SpatialBrushKit,
@@ -154,53 +153,7 @@ fn detect_sculpted_interval(
     Some((x_axis[lo], x_axis[hi]))
 }
 
-impl FiniteStateGuard for WaveRunner {
-    fn is_finite_state(&self) -> bool {
-        if self.diverged {
-            return false;
-        }
-        self.psi
-            .vector
-            .iter()
-            .all(|c| c.re.is_finite() && c.im.is_finite())
-    }
-
-    fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
-        self.diagnostic_report.as_ref()
-    }
-
-    fn diverged(&self) -> bool {
-        self.diverged || !FiniteStateGuard::is_finite_state(self)
-    }
-
-    fn reset_parameters(&mut self) {
-        self.diverged = false;
-        self.diagnostic_report = None;
-        self.step_count = 0;
-    }
-}
-
 impl WaveRunner {
-    pub(crate) fn record_divergence(&mut self, param: &'static str, message: impl Into<String>) {
-        self.diverged = true;
-        self.sonification = crate::audio::SonificationFrame::silent();
-        self.diagnostic_report = Some(DiagnosticReport::new(
-            self.time,
-            self.step_count,
-            param,
-            message.into(),
-        ));
-    }
-
-    pub(crate) fn refresh_sonification(&mut self, dt: f64) {
-        let modes = self.psi.project_spatial_modes::<8>();
-        self.sonification = crate::audio::mappings::quantum_wavepacket_frame(
-            &modes,
-            &mut self.prev_mode_phases,
-            dt.max(1.0e-4),
-        );
-    }
-
     pub(crate) fn checked_dx(&self) -> Option<f64> {
         let span = self.x_max - self.x_min;
         if self.n_points < 2 || !span.is_finite() || span <= 0.0 {

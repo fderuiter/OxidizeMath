@@ -2,12 +2,14 @@
 //! Side-panel controls for model selection, custom 3D vector fields, twin initial conditions,
 //! AST offsets, opt-in `PlaybackTransport` scrubbing, and live Lyapunov / fractal metrics.
 
-use super::twin_state::{AttractorSystemKind, ON_ATTRACTOR_LORENZ_STATE};
+use super::twin_state::{AttractorSystemKind, TwinFrame, ON_ATTRACTOR_LORENZ_STATE};
 use super::{AttractorMode, AttractorPlotter, SolverExecutionState, MAX_SIMULATION_SPEED};
 use crate::accessibility::announce_status_with_priority;
 use crate::app::SemanticPalette;
 use crate::async_sim::{SimCommand, SimWorkerState, TimelineMetadata};
-use crate::framework::{bounded_drag_value, PlaybackAction, PlaybackTransport};
+use crate::framework::{
+    bounded_drag_value, PlaybackAction, PlaybackTransport, DEFAULT_TIMELINE_RING_CAPACITY,
+};
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 
@@ -412,5 +414,51 @@ impl AttractorPlotter {
                     ui.label(format!("Correlation Sum C({r:.2}) = {c_r:.4}"));
                 }
             });
+    }
+
+    pub(crate) fn apply_restored_frame(&mut self, frame: TwinFrame) {
+        self.step_count = frame.step;
+        self.system.state.vec = frame.primary_vec3();
+        if self.twin.is_some() {
+            self.twin = None;
+            self.branch_engine.clear();
+        }
+        self.history.clear();
+        self.shadow_history.clear();
+        let cap = self.max_points.clamp(1, DEFAULT_TIMELINE_RING_CAPACITY);
+        for item in self.timeline.iter_up_to_cursor().skip(1) {
+            if self.history.len() >= cap {
+                self.history.pop_front();
+            }
+            self.history.push_back(item.primary_vec3());
+            if self.shadow_history.len() >= cap {
+                self.shadow_history.pop_front();
+            }
+            self.shadow_history.push_back(item.shadow_vec3());
+        }
+        self.metrics_cache.update_windowed_ftle(&self.timeline);
+    }
+
+    pub(crate) fn seek_timeline_frame(&mut self, frame_idx: usize, ctx: &egui::Context) {
+        self.execution_state = SolverExecutionState::Paused;
+        let mut target_step = frame_idx;
+        if let Some(frame) = self.timeline.seek(frame_idx) {
+            target_step = frame.step;
+            self.apply_restored_frame(frame);
+        }
+        let _ = self.worker.send_command(SimCommand::SeekStep(target_step));
+        ctx.request_repaint();
+    }
+
+    pub(crate) fn seek_timeline_step(&mut self, target_step: usize, ctx: &egui::Context) {
+        self.execution_state = SolverExecutionState::Paused;
+        let pos = self.timeline.iter_all().position(|f| f.step == target_step);
+        if let Some(pos) = pos {
+            if let Some(frame) = self.timeline.seek(pos) {
+                self.apply_restored_frame(frame);
+            }
+        }
+        let _ = self.worker.send_command(SimCommand::SeekStep(target_step));
+        ctx.request_repaint();
     }
 }

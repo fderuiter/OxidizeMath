@@ -318,6 +318,9 @@ impl SimulationRunner for AttractorRunner {
                 break;
             }
         }
+        if self.history.len() >= 16 && self.step_count % 15 < sp.speed {
+            self.publish_live_landmarks(sp.dt);
+        }
     }
 
     fn step_once(&mut self) {
@@ -431,6 +434,11 @@ impl SimulationRunner for AttractorRunner {
         if self.execution_state == SolverExecutionState::Ready {
             self.execution_state = SolverExecutionState::Running;
         }
-        let _ = self.advance_tick(&sp, true);
+        if self.advance_tick(&sp, true)
+            && self.history.len() >= 16
+            && self.step_count.is_multiple_of(15)
+        {
+            self.publish_live_landmarks(sp.dt);
+        }
     }
 }

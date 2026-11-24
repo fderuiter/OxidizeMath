@@ -80,14 +80,17 @@
 
 #[allow(missing_docs)]
 pub mod model;
+/// Concrete biochemical reaction kinetics for multi-species reaction-diffusion systems.
+pub mod models;
 #[allow(missing_docs)]
 pub mod state;
 #[allow(missing_docs)]
 pub mod traits;
 
 pub use model::{ReactionDiffusionModel, ReactionDiffusionSystem, ReactionDiffusionSystemBuilder};
+pub use models::HillSubstrateReaction;
 pub use state::ChemicalState;
-pub use traits::{DiffusionModel, ReactionModel};
+pub use traits::{DiffusionModel, ReactionModel, STACK_REACTION_SPECIES_CAP};
 
 /// Errors related to Reaction-Diffusion systems.
 #[derive(Debug, thiserror::Error, PartialEq)]

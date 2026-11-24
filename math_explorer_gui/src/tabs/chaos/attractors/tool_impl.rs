@@ -403,6 +403,7 @@ impl InteractiveTool for AttractorPlotter {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.bind_sim_bus(&ctx);
         let current_vec = self.system.state.vec;
         if (!current_vec.x.is_finite() || !current_vec.y.is_finite() || !current_vec.z.is_finite())
             && !self.diverged()
