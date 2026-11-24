@@ -288,6 +288,10 @@ impl InteractiveTool for RewardPlotsTool {
     fn domain(&self) -> &'static str {
         "ai"
     }
+
+    fn set_suspended(&mut self, suspended: bool) {
+        self.controller.set_suspended(suspended);
+    }
     fn state_revision(&self) -> u64 {
         self.revision
     }

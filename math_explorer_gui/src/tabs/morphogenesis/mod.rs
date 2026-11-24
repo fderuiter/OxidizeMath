@@ -5,6 +5,7 @@ use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 
+pub mod advection;
 pub mod atlas;
 mod atlas_bridge;
 pub mod brush;
@@ -75,9 +76,9 @@ pub struct MorphogenesisTab {
 
 impl Default for MorphogenesisTab {
     fn default() -> Self {
-        let mut framework = crate::framework::SimulationFramework::new("biology");
-        let _ = framework.select_tool_by_name("MorphogenesisTool");
-        Self { framework }
+        Self {
+            framework: crate::framework::SimulationFramework::new("biology"),
+        }
     }
 }
 
@@ -171,6 +172,8 @@ inventory::submit! {
     }
 }
 
+#[cfg(test)]
+mod advection_tests;
 #[cfg(test)]
 mod brush_tests;
 #[cfg(test)]

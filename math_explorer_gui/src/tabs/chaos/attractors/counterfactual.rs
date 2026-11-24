@@ -374,7 +374,7 @@ impl AttractorPlotter {
         runner.step_count = self.step_count;
         runner.execution_state = self.execution_state;
         runner.twin = self.twin.clone();
-        self.worker = crate::async_sim::BackgroundWorker::new(runner);
+        self.worker.replace_runner(runner);
     }
 
     /// Populates `self.scene_builder` with world `Point3<f64>` attractor trajectory segments.

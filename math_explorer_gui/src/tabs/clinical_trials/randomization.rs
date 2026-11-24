@@ -325,10 +325,13 @@ impl InteractiveTool for RandomizationTool {
         "clinical_trials"
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.simpson_lab.atlas.set_suspended(suspended);
+    }
+
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
     }
-
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         build_cumulative_balance_datasets(self.active_schedule())
     }

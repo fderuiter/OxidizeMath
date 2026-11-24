@@ -1,5 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-//! Side-panel controls, `PlaybackTransport`, orbital/Turing/implicit CAD parameter editors,
+//! Side-panel controls, `PlaybackTransport`, orbital/Turing/implicit CAD/AST parameter editors,
 //! cutting-plane inspector, and millimeter export sizing for [`super::VolumetricFieldStudioTool`].
 // [cite:quantum_mechanics]
 // [cite:isosurface_extraction]
@@ -37,16 +37,24 @@ impl VolumetricFieldStudioTool {
             ui.heading("Volumetric Field Studio");
             ui.small("3D Implicit CAD, MarchingCubes & Gaussian3D");
             ui.separator();
-            if self.config.source != FieldSourceMode::CustomImplicit {
+            if !matches!(
+                self.config.source,
+                FieldSourceMode::CustomImplicit | FieldSourceMode::CustomImplicitAst
+            ) {
                 self.draw_playback_bar(ui);
                 ui.separator();
             }
             let mut dirty = self.draw_source_and_model_controls(ui);
             ui.separator();
             dirty |= self.draw_render_and_slice_controls(ui);
+            let pointer_down = ui.input(|i| i.pointer.any_down());
             if dirty {
                 self.config.clamp_in_place();
-                self.refresh_zero_alloc();
+                let drag_preview =
+                    self.config.source == FieldSourceMode::CustomImplicitAst && pointer_down;
+                self.refresh_with_drag_preview(drag_preview);
+            } else if self.engine.preview_drag_active && !pointer_down {
+                self.refresh_with_drag_preview(false);
             }
             ui.separator();
             self.draw_probe_and_export_section(ui);
@@ -105,6 +113,7 @@ impl VolumetricFieldStudioTool {
                     FieldSourceMode::QuantumSuperposition,
                     FieldSourceMode::TuringMorphogenesis,
                     FieldSourceMode::CustomImplicit,
+                    FieldSourceMode::CustomImplicitAst,
                 ] {
                     ui.selectable_value(&mut self.config.source, mode, mode.label());
                 }
@@ -115,6 +124,20 @@ impl VolumetricFieldStudioTool {
             FieldSourceMode::TuringMorphogenesis => changed |= self.draw_turing_controls(ui),
             FieldSourceMode::CustomImplicit => {
                 changed |= self.implicit_ui.draw_controls(ui, &mut self.config);
+            }
+            FieldSourceMode::CustomImplicitAst => {
+                let prev_expr = self.config.custom_expr.clone();
+                changed |= self.ast_controller.ui(
+                    ui,
+                    &mut self.config.custom_expr,
+                    &mut self.config.custom_params,
+                );
+                if self.config.custom_expr != prev_expr
+                    && self.config.custom_expr == super::ast_field::ORBITAL_4F_XYZ_EXPR
+                    && self.config.iso_threshold > 0.06
+                {
+                    self.config.iso_threshold = 0.045;
+                }
             }
         }
         changed

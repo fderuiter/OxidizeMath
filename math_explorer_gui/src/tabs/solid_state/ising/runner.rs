@@ -1,11 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+pub use super::brush::{
+    apply_circular_droplet, apply_ising_brush_cells, apply_pinned_rle_to_lattice,
+};
 use super::preset::IsingInteractionMode;
 use crate::async_sim::{SimCommand, SimulationRunner, StateSnapshot};
-use crate::framework::decode_u8_grid;
 use crate::framework::recovery::DiagnosticReport;
 use eframe::egui;
-use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
 use math_explorer::physics::stat_mech::KB;
@@ -145,110 +146,19 @@ pub fn ising_spin_color(spin: i8, palette: &crate::app::SemanticPalette) -> egui
     }
 }
 
-/// Applies an RLE-encoded pin mask (`0`=unpinned, `1`=pinned `+1`, `2`=pinned `-1`) to `lattice`.
-pub fn apply_pinned_rle_to_lattice(lattice: &mut SpinLattice, pinned_rle: Option<&str>) {
-    lattice.clear_pinned();
-    let Some(rle) = pinned_rle else {
-        return;
-    };
-    let w = lattice.width();
-    let h = lattice.height();
-    let Ok(decoded) = decode_u8_grid(rle, w, h, 2) else {
-        return;
-    };
-    for y in 0..h {
-        for x in 0..w {
-            match decoded[flatten_2d_index(x, y, w)] {
-                1 => {
-                    lattice.set(x, y, 1);
-                    lattice.set_pinned(x, y, true);
-                }
-                2 => {
-                    lattice.set(x, y, -1);
-                    lattice.set_pinned(x, y, true);
-                }
-                _ => {}
-            }
-        }
-    }
-}
-
-/// Applies a batch of discrete brush cells onto `lattice`.
-pub fn apply_ising_brush_cells(
-    lattice: &mut SpinLattice,
-    cells: &[(usize, usize)],
-    mode: IsingBrushMode,
-) {
-    let w = lattice.width();
-    let h = lattice.height();
-    for &(x, y) in cells {
-        if x >= w || y >= h {
-            continue;
-        }
-        match mode {
-            IsingBrushMode::SpinUp => {
-                if !lattice.is_pinned(x, y) {
-                    lattice.set(x, y, 1);
-                }
-            }
-            IsingBrushMode::SpinDown => {
-                if !lattice.is_pinned(x, y) {
-                    lattice.set(x, y, -1);
-                }
-            }
-            IsingBrushMode::PinUp => {
-                lattice.set(x, y, 1);
-                lattice.set_pinned(x, y, true);
-            }
-            IsingBrushMode::PinDown => {
-                lattice.set(x, y, -1);
-                lattice.set_pinned(x, y, true);
-            }
-            IsingBrushMode::Unpin => {
-                lattice.set_pinned(x, y, false);
-            }
-        }
-    }
-}
-
-/// Paints a clamped circular droplet onto unpinned sites of `lattice` using `SpinLattice::set`.
-pub fn apply_circular_droplet(lattice: &mut SpinLattice, cx: i32, cy: i32, r: i32, spin_val: i8) {
-    let width = lattice.width();
-    let height = lattice.height();
-    if width == 0 || height == 0 {
-        return;
-    }
-    let max_x = (width as i32) - 1;
-    let max_y = (height as i32) - 1;
-    let cx = cx.clamp(0, max_x);
-    let cy = cy.clamp(0, max_y);
-    let r = r.clamp(0, max_x.max(max_y));
-    let r_sq = i64::from(r) * i64::from(r);
-
-    let y_min = (cy - r).max(0);
-    let y_max = (cy + r).min(max_y);
-    let x_min = (cx - r).max(0);
-    let x_max = (cx + r).min(max_x);
-
-    for y in y_min..=y_max {
-        let dy = i64::from(y - cy);
-        for x in x_min..=x_max {
-            let dx = i64::from(x - cx);
-            if dx * dx + dy * dy <= r_sq && !lattice.is_pinned(x as usize, y as usize) {
-                lattice.set(x as usize, y as usize, spin_val);
-            }
-        }
-    }
-}
-
 #[allow(missing_docs)]
 pub struct IsingRunner {
     pub lattice: SpinLattice,
     pub params: Arc<std::sync::RwLock<IsingSharedParams>>,
 }
 
+const ISING_SLICE_TRIAL_CHUNK: usize = 512;
+
 impl IsingRunner {
-    fn evolve_trials(&mut self, num_trials: usize) {
+    fn evolve_trials_sliced(&mut self, num_trials: usize, max_slice: Option<std::time::Duration>) {
+        if num_trials == 0 {
+            return;
+        }
         let (mode, temp, j, h, payoffs, mutation_rate) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (
@@ -263,32 +173,84 @@ impl IsingRunner {
         if !temp.is_finite() || !mutation_rate.is_finite() {
             return;
         }
-        match mode {
+        let completed = match mode {
             IsingInteractionMode::Ferromagnetic => {
                 if !j.is_finite() || !h.is_finite() {
                     return;
                 }
                 let t_phys = temp.max(1e-3) / KB;
-                self.lattice.evolve(num_trials, t_phys, j, h);
+                self.evolve_ferromagnetic_chunks(num_trials, t_phys, j, h, max_slice)
             }
             IsingInteractionMode::FermiGame => {
                 if !payoffs.iter().all(|v| v.is_finite()) {
                     return;
                 }
                 let mat = DMatrix::from_row_slice(2, 2, &payoffs);
-                if let Ok(payoff) = MatrixPayoff::new(mat) {
-                    self.lattice.evolve_fermi_game_with_mutation(
-                        num_trials,
-                        temp,
-                        &payoff,
-                        mutation_rate,
-                    );
-                }
+                let Ok(payoff) = MatrixPayoff::new(mat) else {
+                    return;
+                };
+                self.evolve_fermi_chunks(num_trials, temp, &payoff, mutation_rate, max_slice)
             }
-        }
+        };
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         p.total_trials
-            .fetch_add(num_trials as u64, Ordering::Relaxed);
+            .fetch_add(completed as u64, Ordering::Relaxed);
+    }
+
+    fn evolve_ferromagnetic_chunks(
+        &mut self,
+        num_trials: usize,
+        t_phys: f64,
+        j: f64,
+        h: f64,
+        max_slice: Option<std::time::Duration>,
+    ) -> usize {
+        let Some(raw_budget) = max_slice else {
+            self.lattice.evolve(num_trials, t_phys, j, h);
+            return num_trials;
+        };
+        let reserve = std::time::Duration::from_micros(150).min(raw_budget / 4);
+        let budget = raw_budget.saturating_sub(reserve);
+        let start = crate::web_io::PlatformInstant::now();
+        let mut done = 0_usize;
+        while done < num_trials {
+            if done > 0 && start.elapsed() >= budget {
+                break;
+            }
+            let batch = (num_trials - done).min(ISING_SLICE_TRIAL_CHUNK);
+            self.lattice.evolve(batch, t_phys, j, h);
+            done += batch;
+        }
+        done
+    }
+
+    fn evolve_fermi_chunks(
+        &mut self,
+        num_trials: usize,
+        temp: f64,
+        payoff: &MatrixPayoff,
+        mutation_rate: f64,
+        max_slice: Option<std::time::Duration>,
+    ) -> usize {
+        let Some(raw_budget) = max_slice else {
+            self.lattice
+                .evolve_fermi_game_with_mutation(num_trials, temp, payoff, mutation_rate);
+            return num_trials;
+        };
+        let reserve = std::time::Duration::from_micros(150).min(raw_budget / 4);
+        let budget = raw_budget.saturating_sub(reserve);
+        let start = crate::web_io::PlatformInstant::now();
+        let mut done = 0_usize;
+        while done < num_trials {
+            if done > 0 && start.elapsed() >= budget {
+                break;
+            }
+            let batch = (num_trials - done).min(ISING_SLICE_TRIAL_CHUNK);
+            self.lattice
+                .evolve_fermi_game_with_mutation(batch, temp, payoff, mutation_rate);
+            done += batch;
+        }
+        done
     }
 
     fn apply_shared_seed_layout(&mut self) {
@@ -382,17 +344,21 @@ impl SimulationRunner for IsingRunner {
     }
 
     fn step(&mut self) {
+        self.step_sliced(None);
+    }
+
+    fn step_sliced(&mut self, max_slice: Option<std::time::Duration>) {
         let steps = self
             .params
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .steps_per_frame;
-        self.evolve_trials(steps);
+        self.evolve_trials_sliced(steps, max_slice);
     }
 
     fn step_once(&mut self) {
         let one_sweep = self.lattice.width() * self.lattice.height();
-        self.evolve_trials(one_sweep);
+        self.evolve_trials_sliced(one_sweep, None);
     }
 
     fn get_snapshot(&self) -> StateSnapshot {

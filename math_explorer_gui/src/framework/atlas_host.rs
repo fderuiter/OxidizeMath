@@ -14,14 +14,25 @@ use eframe::egui;
 pub struct FrameworkAtlasHost {
     owner_tool_name: Option<&'static str>,
     visible: bool,
+    suspended: bool,
     controller: Option<ParameterAtlasController>,
 }
 
 impl FrameworkAtlasHost {
     /// Resets the hosted controller when switching to a different tool.
     pub fn reset_for_tool_switch(&mut self) {
+        if let Some(mut ctrl) = self.controller.take() {
+            ctrl.set_suspended(true);
+        }
         self.owner_tool_name = None;
-        self.controller = None;
+    }
+
+    /// Suspends or resumes any hosted 2D parameter atlas worker when framework visibility changes.
+    pub fn set_suspended(&mut self, suspended: bool) {
+        self.suspended = suspended;
+        if let Some(ctrl) = &mut self.controller {
+            ctrl.set_suspended(suspended);
+        }
     }
 
     /// Returns whether the framework-hosted 2D parameter atlas panel is currently open.
@@ -56,13 +67,18 @@ impl FrameworkAtlasHost {
         }
         let name = tool.name();
         if self.owner_tool_name != Some(name) || self.controller.is_none() {
+            if let Some(mut old) = self.controller.take() {
+                old.set_suspended(true);
+            }
             let mut ctrl = ParameterAtlasController::new(pairs.to_vec());
             ctrl.set_visible(self.visible);
+            ctrl.set_suspended(self.suspended);
             self.owner_tool_name = Some(name);
             self.controller = Some(ctrl);
         } else if let Some(ctrl) = &mut self.controller {
             ctrl.replace_axis_pair_options(pairs.to_vec());
             ctrl.set_visible(self.visible);
+            ctrl.set_suspended(self.suspended);
         }
         self.controller.as_mut()
     }

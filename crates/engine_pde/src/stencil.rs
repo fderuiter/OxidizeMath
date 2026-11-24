@@ -30,6 +30,8 @@ pub struct StencilOperators {
     pub dz: StepSize,
     /// Precomputed reciprocal $1 / \Delta x$.
     pub inv_dx: f64,
+    /// Precomputed reciprocal $1 / \Delta y$.
+    pub inv_dy: f64,
     /// Precomputed reciprocal $1 / (2 \Delta x)$.
     pub inv_two_dx: f64,
     /// Precomputed reciprocal $1 / \Delta x^2$.
@@ -55,6 +57,7 @@ impl StencilOperators {
             dy,
             dz,
             inv_dx: 1.0 / *dx,
+            inv_dy: 1.0 / *dy,
             inv_two_dx: 1.0 / (2.0 * *dx),
             inv_dx_sq: 1.0 / (*dx * *dx),
             inv_dy_sq: 1.0 / (*dy * *dy),
@@ -343,11 +346,10 @@ impl StencilOperators {
         assert!(x < width && y < height && u.len() >= width * height);
         let (curr, left, right, up, down) = bc.sample_2d(u, width, height, x, y);
         let fx = self.upwind_flux(vel.0, left, curr, right);
-        let inv_dy = 1.0 / *self.dy;
         let fy = if vel.1 > 0.0 {
-            (curr - up) * vel.1 * inv_dy
+            (curr - up) * vel.1 * self.inv_dy
         } else {
-            (down - curr) * vel.1 * inv_dy
+            (down - curr) * vel.1 * self.inv_dy
         };
         fx + fy
     }
@@ -371,12 +373,11 @@ impl StencilOperators {
         assert!(x < width && y < height && z < depth && u.len() >= width * height * depth);
         let (curr, nb) = bc.sample_3d(u, width, height, depth, x, y, z);
         let fx = self.upwind_flux(vel.0, nb[0], curr, nb[1]);
-        let inv_dy = 1.0 / *self.dy;
         let inv_dz = 1.0 / *self.dz;
         let fy = if vel.1 > 0.0 {
-            (curr - nb[2]) * vel.1 * inv_dy
+            (curr - nb[2]) * vel.1 * self.inv_dy
         } else {
-            (nb[3] - curr) * vel.1 * inv_dy
+            (nb[3] - curr) * vel.1 * self.inv_dy
         };
         let fz = if vel.2 > 0.0 {
             (curr - nb[4]) * vel.2 * inv_dz

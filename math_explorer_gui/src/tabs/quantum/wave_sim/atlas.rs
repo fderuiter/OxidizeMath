@@ -3,6 +3,10 @@
 
 //! Zero-allocation 2D quantum tunneling & Fabry-Pérot resonance parameter atlas.
 
+#[cfg(test)]
+pub use super::lattice_atlas::compute_lattice_steady_transmission_from_slice;
+pub use super::lattice_atlas::{compute_inline_steady_transmission, WaveCartographer};
+
 use super::presets::{
     clamp_potential_sample, WavePotentialPreset, DEFAULT_K0, DEFAULT_SIGMA, DEFAULT_V0,
     DEFAULT_WIDTH, GRID_POINTS, GRID_X_MAX, GRID_X_MIN, K0_MAX, K0_MIN, SIGMA_MAX, SIGMA_MIN,
@@ -24,7 +28,7 @@ use std::collections::HashMap;
 const SLICES_1D: usize = 96;
 const WINDOW_HALF_SPAN: f64 = 4.5;
 
-/// Supported `(x, y)` parameter axis pairs for [`QuantumTunnelingCartographer`].
+/// Supported `(x, y)` parameter axis pairs for [`QuantumTunnelingCartographer`] and [`WaveCartographer`].
 pub const WAVE_ATLAS_AXIS_PAIRS: &[(&str, &str)] = &[("k0", "v0"), ("k0", "width")];
 
 /// Default serialized atlas axis pair for [`super::WaveSimulatorTool`].

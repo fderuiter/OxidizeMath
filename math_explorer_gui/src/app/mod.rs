@@ -23,6 +23,7 @@ pub(crate) mod state_history;
 pub mod theme;
 pub(crate) mod ui_panels;
 pub(crate) mod viewport;
+mod visibility;
 mod workspace_url;
 mod workspace_url_pipeline;
 
@@ -198,7 +199,7 @@ impl Default for MathExplorerApp {
         crate::framework::ensure_custom_fit_bridge();
         let tabs: Vec<Box<dyn ExplorerTab>> = crate::tabs::instantiate_tabs();
 
-        Self {
+        let mut app = Self {
             tabs,
             selected_tab: 0,
             split_layout_mode: SplitLayoutMode::Single,
@@ -231,7 +232,9 @@ impl Default for MathExplorerApp {
             pipeline_dag: PanePipelineDag::default(),
             url_sync: crate::url_state::UrlSyncController::default(),
             data_bus: data_bus::WorkspaceDataBus::default(),
-        }
+        };
+        app.sync_viewport_visibility();
+        app
     }
 }
 
@@ -261,6 +264,7 @@ impl MathExplorerApp {
         for pane_idx in 1..self.viewport_layout.pane_count() {
             let _ = self.pane_tab_mut(pane_idx);
         }
+        self.sync_viewport_visibility();
     }
 
     /// Serializes the entire application state (selected tab, panel toggles, individual tab states) to JSON.
@@ -355,6 +359,7 @@ impl MathExplorerApp {
         let active_layout = self.resolve_active_viewport_layout();
         self.prune_inactive_pane_slots(active_layout.pane_count());
         domain_bar::poll_cross_tab_tool_handoffs(self, ctx);
+        self.sync_viewport_visibility();
         self.sync_workspace_history_bridge(ctx);
         data_bus::sync_app_bus_before_viewport(self, ctx);
 
@@ -379,6 +384,7 @@ impl eframe::App for MathExplorerApp {
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
         self.render_global_starter_gallery(ctx);
         self.apply_command_palette_selection(ctx);
+        self.sync_viewport_visibility();
         crate::accessibility::sync_context_live_messages(ctx, false);
 
         self.last_frame_had_input =

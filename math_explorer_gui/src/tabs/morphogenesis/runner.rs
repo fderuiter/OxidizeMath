@@ -1,5 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::advection::{MorphoWindTunnel, MorphogenesisAdvectionState};
 use super::brush::{apply_mask_rle_to_kinetics, apply_morpho_cells_to_system, MorphoBrushMode};
 pub use super::counterfactual::MorphogenesisSnapshotData as MorphoSnapshotData;
 use super::counterfactual::{
@@ -12,7 +13,7 @@ pub use super::kinetics::{
 };
 #[cfg(test)]
 pub use super::legacy_runner::MorphogenesisRunner;
-use super::sculpt::{apply_sculpt_sim_command, enforce_system_mask, overlay_cell_mask_colors};
+use super::sculpt::{apply_sculpt_sim_command, overlay_cell_mask_colors};
 use super::MorphogenesisTool;
 use crate::app::ThemeMode;
 use crate::async_sim::{
@@ -34,8 +35,10 @@ pub const DEFAULT_MORPHOGENESIS_SEED: u64 = 0x4D4F_5250_484F_3244;
 /// time-travel checkpoint replay, and counterfactual shadow twins.
 pub struct MorphogenesisKineticsRunner {
     pub(crate) system: TuringSystem<2, MorphogenesisKineticsAdapter, MaskedFiniteDifference2D>,
+    pub(crate) wind_tunnel: MorphoWindTunnel,
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) kinetics_state: Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+    pub(crate) advection_state: Arc<std::sync::RwLock<MorphogenesisAdvectionState>>,
     pub(crate) width: usize,
     pub(crate) height: usize,
     pub(crate) step_count: usize,
@@ -52,7 +55,7 @@ impl FiniteStateGuard for MorphogenesisKineticsRunner {
             t.system_a.u().iter().all(|&x| x.is_finite())
                 && t.system_a.v().iter().all(|&x| x.is_finite())
         });
-        b_ok && a_ok
+        b_ok && a_ok && self.wind_tunnel.is_finite_state()
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -85,10 +88,6 @@ impl MorphogenesisKineticsRunner {
             .kinetics_state
             .read()
             .unwrap_or_else(|e| e.into_inner())
-    }
-
-    pub(crate) fn enforce_mask_concentrations(&mut self) {
-        enforce_system_mask(&mut self.system, self.width, self.height);
     }
 
     pub(super) fn sync_system_params(&mut self) -> Option<f64> {
@@ -157,6 +156,9 @@ impl MorphogenesisKineticsRunner {
         }
         MorphogenesisTool::initialize_adapter_system(&mut self.system, self.width, self.height);
         self.enforce_mask_concentrations();
+        let visc = self.read_advection().viscosity;
+        self.wind_tunnel
+            .reset_preserving_mask(&self.system.diffusion.mask, visc);
         self.step_count = 0;
         self.rng = OxidizeRng::new(DEFAULT_MORPHOGENESIS_SEED);
         self.twin = None;
@@ -173,7 +175,7 @@ impl MorphogenesisKineticsRunner {
 
     fn advance_grid_step(&mut self, dt: f64, noise_amp: f64) {
         self.enforce_mask_concentrations();
-        self.system.step(dt);
+        self.step_coupled_or_isotropic(dt);
         apply_uniform_noise(
             &mut self.system,
             self.width * self.height,
@@ -184,8 +186,10 @@ impl MorphogenesisKineticsRunner {
         self.step_count += 1;
     }
 
-    fn apply_sculpt_command(&mut self, cmd: &SimCommand) {
+    pub(crate) fn apply_sculpt_command(&mut self, cmd: &SimCommand) {
         if apply_sculpt_sim_command(&mut self.system, self.width, self.height, cmd) {
+            self.wind_tunnel
+                .sync_from_cell_mask(&self.system.diffusion.mask);
             return;
         }
         match cmd {
@@ -199,13 +203,19 @@ impl MorphogenesisKineticsRunner {
                 );
                 self.enforce_mask_concentrations();
             }
-            SimCommand::Custom(s) if s == "clear_mask" => self.system.diffusion.mask.clear(),
+            SimCommand::Custom(s) if s == "clear_mask" => {
+                self.system.diffusion.mask.clear();
+                self.wind_tunnel
+                    .sync_from_cell_mask(&self.system.diffusion.mask);
+            }
             SimCommand::Custom(s) if s == "clear_kinetics_mask" => {
                 self.system.kinetics.clear_mask();
             }
             SimCommand::Custom(s) if s == "stamp_maze" => {
                 self.system.diffusion.mask.stamp_microfluidic_maze();
                 self.enforce_mask_concentrations();
+                self.wind_tunnel
+                    .sync_from_cell_mask(&self.system.diffusion.mask);
             }
             _ => {}
         }
@@ -249,10 +259,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
         }
         let noise_amp = self.noise_amplitude;
         if let Some(dt) = self.sync_system_params() {
-            if let Some(ref mut twin) = self.twin {
-                enforce_system_mask(&mut twin.system_a, self.width, self.height);
-                twin.step_branch_a(dt, self.width, self.height, noise_amp);
-            }
+            self.step_twin_branch_a(dt, noise_amp);
         }
     }
 
@@ -275,10 +282,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
         }
         let noise_amp = self.noise_amplitude;
         if let Some(dt) = self.sync_system_params() {
-            if let Some(ref mut twin) = self.twin {
-                enforce_system_mask(&mut twin.system_a, self.width, self.height);
-                twin.step_branch_a(dt, self.width, self.height, noise_amp);
-            }
+            self.step_twin_branch_a(dt, noise_amp);
             self.advance_grid_step(dt, noise_amp);
             if let Some(ref mut twin) = self.twin {
                 twin.observe_lockstep(self.step_count, dt, active_morphogen_slice(&self.system));
@@ -326,6 +330,8 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
                 u_data,
                 u_a,
                 mask_roles,
+                max_abs_ux: self.wind_tunnel.max_abs_ux,
+                max_abs_uy: self.wind_tunnel.max_abs_uy,
                 step_count: self.step_count,
                 divergence,
             })),
@@ -345,7 +351,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
     }
 
     fn checkpoint_stride(&self) -> Option<usize> {
-        Some(16)
+        (!self.read_advection().enabled).then_some(16)
     }
 
     fn current_step(&self) -> usize {
@@ -412,6 +418,8 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
                     }
                     _ => self.system.diffusion.mask.clear(),
                 }
+                self.wind_tunnel
+                    .sync_from_cell_mask(&self.system.diffusion.mask);
             }
         }
         if let Some(p) = checkpoint.params.as_scalars() {
