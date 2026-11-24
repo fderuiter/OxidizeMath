@@ -140,6 +140,30 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         });
     }
 
+    pub(super) fn validate_constrained_param(&self, key: &str, value: f64) -> Result<(), String> {
+        let Some((_, constraint)) = self.param_metadata.iter().find(|meta| meta.0 == key) else {
+            return Err(format!("Unknown parameter '{}' for {}", key, M::name()));
+        };
+        if !value.is_finite() {
+            return Err(format!(
+                "Non-finite value for parameter '{}' in {}",
+                key,
+                M::name()
+            ));
+        }
+        if !(constraint.min..=constraint.max).contains(&value) {
+            return Err(format!(
+                "Parameter '{}' value {} is outside [{}, {}] bounds in {}",
+                key,
+                value,
+                constraint.min,
+                constraint.max,
+                M::name()
+            ));
+        }
+        Ok(())
+    }
+
     pub(super) fn handle_recovery_action(
         &mut self,
         action: crate::framework::recovery::RecoveryAction,

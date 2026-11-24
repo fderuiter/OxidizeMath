@@ -162,6 +162,11 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             .as_ref()
             .is_none_or(|b| b.param_slice().iter().all(|v| v.is_finite()));
         params.values().all(|v| v.is_finite())
+            && self.param_metadata.iter().all(|(k, c)| {
+                params
+                    .get(k)
+                    .is_none_or(|v| v.is_finite() && (c.min..=c.max).contains(v))
+            })
             && formula_ok
             && sculpt.sparse_potential.iter().all(|&(_, v)| v.is_finite())
             && series.values().all(|vec| vec.iter().all(|v| v.is_finite()))
@@ -240,15 +245,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             ));
         }
         for (key, value) in params {
-            if !self.param_metadata.iter().any(|meta| &meta.0 == key) {
-                return Err(format!("Unknown parameter '{key}' for {}", M::name()));
-            }
-            if !value.is_finite() {
-                return Err(format!(
-                    "Non-finite value for parameter '{key}' in {}",
-                    M::name()
-                ));
-            }
+            self.validate_constrained_param(key, *value)?;
         }
         Ok(())
     }
@@ -374,6 +371,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
                         M::name()
                     )
                 })?;
+                self.validate_constrained_param(key, num)?;
                 scalars.insert(key.clone(), num);
             } else if let Some(series_vec) = validate_custom_series_entry::<M>(key, value)? {
                 if !series_vec.is_empty() {

@@ -127,3 +127,30 @@ fn test_global_starter_cards_search_and_domain_pill_filtering() {
         .iter()
         .all(|g| card_academic_domain(g.domain) == AcademicDomain::AppliedMath));
 }
+
+#[test]
+fn test_all_28_tab_slugs_map_to_matching_academic_domains_and_titles() {
+    assert_eq!(
+        card_academic_domain("optics_waves"),
+        AcademicDomain::Physics
+    );
+    assert_eq!(
+        crate::command_palette::format_domain_title("optics_waves").as_ref(),
+        "Optics & Waves"
+    );
+
+    let tabs = crate::tabs::instantiate_tabs();
+    assert_eq!(tabs.len(), 29);
+    for tab in &tabs {
+        let slug = tab.url_slug();
+        let expected = AcademicDomain::from_str(tab.academic_domain())
+            .unwrap_or_else(|| panic!("Tab '{}' has invalid academic_domain", tab.name()));
+        assert_eq!(
+            card_academic_domain(slug),
+            expected,
+            "card_academic_domain('{slug}') did not match tab '{}' domain {:?}",
+            tab.name(),
+            expected
+        );
+    }
+}
