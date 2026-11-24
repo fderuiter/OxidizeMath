@@ -57,6 +57,11 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::EvolutionError::BoundsError, bus),
         check_leaf(error::FractranError::InvalidFractionSyntax, bus),
         check_leaf(error::Glicko2Error::EmptyMatchResults, bus),
+        check_leaf(error::GraphTheoryError::UnknownEndpoint { node: 9 }, bus),
+        check_leaf(
+            error::HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 },
+            bus,
+        ),
         check_leaf(error::KellyError::InvalidBankroll { value: -1.0 }, bus),
         check_leaf(error::LinearAlgebraError::SingularMatrix, bus),
         check_leaf(
@@ -205,11 +210,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 53);
-    assert_eq!(*events.lock().unwrap(), 53);
+    assert_eq!(converted.len(), 55);
+    assert_eq!(*events.lock().unwrap(), 55);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 59);
+    assert_eq!(*events.lock().unwrap(), 61);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -289,6 +294,8 @@ pub fn verify_prelude_error_reexports() {
         p::EvolutionError,
         p::FractranError,
         p::Glicko2Error,
+        p::GraphTheoryError,
+        p::HyperbolicError,
         p::KellyError,
         p::LinearAlgebraError,
         p::MarketPricingError,

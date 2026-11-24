@@ -1,3 +1,4 @@
+pub mod buckled_flow;
 #[allow(missing_docs)]
 pub mod heat_equation;
 #[allow(missing_docs)]
