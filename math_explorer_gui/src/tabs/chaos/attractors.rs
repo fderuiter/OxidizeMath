@@ -91,10 +91,10 @@ impl Default for AttractorPlotter {
             max_points: 2000,
             mode: AttractorMode::Lorenz,
             custom_flow,
+            sim_bus: None,
         }));
         let runner = AttractorRunner::from_params(Arc::clone(&params));
         let worker = BackgroundWorker::new(runner);
-
         let camera = Camera3D::new(0.0, 0.0, 1.0).with_perspective_distance(75.0);
         Self {
             mode: AttractorMode::Lorenz,
@@ -286,6 +286,25 @@ impl AttractorPlotter {
             }
         }
     }
+
+    fn sync_worker_playback(&mut self, ctx: &egui::Context) {
+        let worker_faulted = self.worker.state().is_faulted();
+        if self.diverged() || worker_faulted {
+            self.latest_sonification = crate::audio::SonificationFrame::silent();
+            crate::audio::notify_solver_diverged();
+        }
+        if !self.is_paused() && !worker_faulted {
+            if !self.worker.is_running() {
+                let _ = self.worker.send_command(SimCommand::Start);
+            }
+            ctx.request_repaint();
+        } else if self.worker.is_running() {
+            let _ = self.worker.send_command(SimCommand::Pause);
+        }
+        if self.worker.state().is_stepping() {
+            ctx.request_repaint();
+        }
+    }
 }
 
 impl InteractiveTool for AttractorPlotter {
@@ -362,26 +381,10 @@ impl InteractiveTool for AttractorPlotter {
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
+        self.bind_sim_bus(&ctx);
         self.sync_worker_snapshot();
 
-        let worker_faulted = self.worker.state().is_faulted();
-        if self.diverged() || worker_faulted {
-            self.latest_sonification = crate::audio::SonificationFrame::silent();
-            crate::audio::notify_solver_diverged();
-        }
-        if !self.is_paused() && !worker_faulted {
-            if !self.worker.is_running() {
-                let _ = self.worker.send_command(SimCommand::Start);
-            }
-            ctx.request_repaint();
-        } else if self.worker.is_running() {
-            let _ = self.worker.send_command(SimCommand::Pause);
-        }
-
-        if self.worker.state().is_stepping() {
-            ctx.request_repaint();
-        }
-
+        self.sync_worker_playback(&ctx);
         self.publish_bus_landmarks(&ctx);
         self.draw_side_panel(ui, &ctx);
         self.draw_central_panel(ui, &ctx);

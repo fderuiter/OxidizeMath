@@ -311,3 +311,48 @@ fn test_droplet_seed_persistence_bounds_and_nucleation_challenges() {
         );
     }
 }
+
+#[test]
+fn test_shared_bus_graph_mode_coexists_with_nucleation_challenges_and_state_roundtrip() {
+    use crate::app::{SharedSimulationBus, TopologySource};
+
+    let ctx = egui::Context::default();
+    let bus = SharedSimulationBus::default();
+    bus.install_in_context(&ctx, true);
+    bus.publish_graph_if_changed(
+        1,
+        false,
+        &[
+            (0, [0.1, 0.1]),
+            (1, [0.9, 0.1]),
+            (2, [0.9, 0.9]),
+            (3, [0.1, 0.9]),
+        ],
+        &[(0, 1, 1.0), (1, 2, 1.0), (2, 3, 1.0), (3, 0, 1.0)],
+    );
+
+    let mut tool = IsingModelTool::default();
+    tool.sync_shared_topology(&ctx);
+    assert!(tool.is_graph_mode());
+    assert_eq!(tool.active_graph_node_count(), Some(4));
+    tool.step_graph_trials(64);
+    let expected_coop = ((tool.uniform_magnetization + 1.0) * 0.5).clamp(0.0, 1.0);
+    assert!((tool.cooperator_fraction() - expected_coop).abs() < 1e-12);
+
+    // Activating a nucleation challenge detaches CSR graph mode and locks onto 100x100 lattice
+    tool.apply_challenge(Some(CHALLENGE_ISING_DROPLET_NUCLEATION))
+        .unwrap();
+    assert!(!tool.is_graph_mode());
+    tool.sync_shared_topology(&ctx);
+    assert!(!tool.is_graph_mode());
+
+    // Exiting challenge re-enables SharedBus ingestion; LocalPreset round-trips cleanly
+    tool.apply_challenge(None).unwrap();
+    tool.sync_shared_topology(&ctx);
+    assert!(tool.is_graph_mode());
+    tool.topology_source = TopologySource::LocalPreset;
+    let saved = tool.save_state().unwrap();
+    let mut restored = IsingModelTool::default();
+    restored.try_load_state(&saved).unwrap();
+    assert_eq!(restored.topology_source, TopologySource::LocalPreset);
+}
