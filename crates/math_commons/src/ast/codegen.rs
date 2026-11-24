@@ -7,6 +7,7 @@ mod codegen_funcs;
 use super::eval::{EvalError, MAX_EVAL_DEPTH};
 use super::expr::{BinaryOp, Expr, UnaryOp};
 use super::latex::{format_latex_iterative, write_number};
+use super::limits::{MAX_AST_NODES, MAX_CODEGEN_OUTPUT_BYTES};
 use codegen_funcs::push_code_func;
 use std::collections::HashMap;
 
@@ -181,7 +182,12 @@ pub(super) fn lookup_param(params: &HashMap<String, f64>, name: &str) -> Option<
 
 fn expr_uses_arg(root: &Expr, target_arg: &str) -> bool {
     let mut stack = vec![root];
+    let mut visited = 0usize;
     while let Some(node) = stack.pop() {
+        visited += 1;
+        if visited > MAX_AST_NODES {
+            break;
+        }
         match node {
             Expr::Number(_) => {}
             Expr::Variable(v) if v.eq_ignore_ascii_case(target_arg) => return true,
@@ -220,13 +226,23 @@ fn emit_code_iterative<'a>(
     target: CodeTarget<'a>,
 ) -> Result<String, EvalError> {
     let mut out = String::new();
+    let mut visited_nodes = 0usize;
     let mut stack = vec![CodeFrame::Eval(root, 0, 0)];
     while let Some(frame) = stack.pop() {
         match frame {
-            CodeFrame::Literal(lit) => out.push_str(lit),
+            CodeFrame::Literal(lit) => {
+                if out.len() + lit.len() > MAX_CODEGEN_OUTPUT_BYTES {
+                    return Err(EvalError::OutputLimitExceeded(MAX_CODEGEN_OUTPUT_BYTES));
+                }
+                out.push_str(lit);
+            }
             CodeFrame::Eval(expr, parent_prec, depth) => {
                 if depth > MAX_EVAL_DEPTH {
                     return Err(EvalError::RecursionLimitExceeded(MAX_EVAL_DEPTH));
+                }
+                visited_nodes += 1;
+                if visited_nodes > MAX_AST_NODES {
+                    return Err(EvalError::InstructionLimitExceeded(MAX_AST_NODES));
                 }
                 step_code_frame(
                     expr,
@@ -237,6 +253,9 @@ fn emit_code_iterative<'a>(
                     &mut stack,
                     &mut out,
                 )?;
+                if out.len() > MAX_CODEGEN_OUTPUT_BYTES {
+                    return Err(EvalError::OutputLimitExceeded(MAX_CODEGEN_OUTPUT_BYTES));
+                }
             }
         }
     }
