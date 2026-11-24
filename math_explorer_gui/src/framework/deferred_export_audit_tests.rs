@@ -253,6 +253,7 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
     let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader, audio] =
         counts;
     let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
+    let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
     let expected_audio = usize::from(cfg!(feature = "biology")) * 2
         + usize::from(cfg!(feature = "physics")) * 3
         + usize::from(cfg!(feature = "pure_math"));
@@ -260,9 +261,9 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         audio, expected_audio,
         "Expected {expected_audio} WAV audio-capable tools"
     );
-    let expected_plot = if has_surface_morpho { 74 } else { 73 };
+    let expected_plot = (if has_surface_morpho { 74 } else { 73 }) + bio_extra;
     let expected_solid = if has_surface_morpho { 8 } else { 7 };
-    let expected_non_shader = if has_surface_morpho { 88 } else { 87 };
+    let expected_non_shader = (if has_surface_morpho { 88 } else { 87 }) + bio_extra;
     assert_eq!(
         plot, expected_plot,
         "Expected {expected_plot} Plot dataset+figure tools"

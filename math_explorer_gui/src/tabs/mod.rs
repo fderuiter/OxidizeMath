@@ -12,6 +12,8 @@ pub mod analysis;
 pub mod astrophysics;
 #[cfg(feature = "applied")]
 pub mod battery_degradation;
+#[cfg(feature = "biology")]
+pub mod biochemical;
 #[cfg(feature = "applied")]
 pub mod cannibalism;
 #[cfg(feature = "physics")]
@@ -208,7 +210,7 @@ pub trait ExplorerTab {
             | "Population Structure"
             | "Traceability Portal" => "Applied Math",
 
-            "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
+            "Biochemical Dynamics" | "Morphogenesis" | "Neuroscience" | "Epidemiology" => "Biology",
 
             "Climate" => "Climate",
 
@@ -275,6 +277,7 @@ pub trait ExplorerTab {
             "Analysis & Calculus" => "analysis",
             "Astrophysics" => "astrophysics",
             "Battery Degradation" => "battery_degradation",
+            "Biochemical Dynamics" => "biochemical",
             "Chaos Theory" => "chaos",
             "Climate" => "climate",
             "Clinical Trials" => "clinical_trials",
