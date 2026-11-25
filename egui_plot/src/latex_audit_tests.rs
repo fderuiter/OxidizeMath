@@ -54,6 +54,7 @@ fn assert_no_leaked_latex_words(latex: &str) {
     let job = parse_latex_with_font(latex, font, Color32::WHITE);
     let job_sanitized = job.text.replace("right-censored", "");
     for leaked in [
+        "\\",
         "left",
         "right",
         "dot",
@@ -64,6 +65,13 @@ fn assert_no_leaked_latex_words(latex: &str) {
         "mathbf",
         "mathcal",
         "operatorname",
+        "wedge",
+        "widehat",
+        "widetilde",
+        "mapsto",
+        "implies",
+        "subseteq",
+        "supseteq",
     ] {
         assert!(
             !box_sanitized.contains(leaked),
@@ -112,6 +120,9 @@ fn test_audited_theory_and_ode_equations_render_without_leaked_commands() {
         "3D Volumetric Field Studio (Hydrogenic 1s + 2pz) evolves hydrogenic superpositions $\\Psi(\\mathbf{r}, t) = c_1(t) R_{n_1 \\ell_1}(r) Y_{\\ell_1 m_1}(\\theta,\\phi) + c_2(t) R_{n_2 \\ell_2}(r) Y_{\\ell_2 m_2}(\\theta,\\phi)$ and 3D Schnakenberg reaction-diffusion $\\partial_t u = D_u \\nabla^2_{3D} u + a - u + u^2 v$ across a 28^3 VoxelGrid using MarchingCubes and EWA Gaussian3D splatting.",
         // lenia/presets.rs
         r"A_{t+\Delta t} = \operatorname{clamp}\!\left(A_t + \Delta t \, G\!\left(\mathcal{F}^{-1}(\mathcal{F}(A_t)\odot \hat{K});\,\mu,\sigma\right),\,0,\,1\right)",
+        // hamiltonian.rs / win_ratio / bet_size / riemannian_studio / disk_tool
+        r"\dot{q} = \frac{\partial H}{\partial p}, \quad \dot{p} = -\frac{\partial H}{\partial q}, \quad dp \wedge dq = \text{const}",
+        r"\widehat{WR} = \frac{N_W}{N_L}, \quad f^\top \Sigma f \le \sigma^2, \quad t = \frac{c^\top \hat{\beta}}{\text{SE}}, \quad z \mapsto e^{i\theta}\frac{z - a}{1 - \bar{a}z}",
     ];
 
     for formula in audited_formulas {
@@ -232,4 +243,111 @@ fn test_overdot_ellipses_and_blackboard_substitutions() {
     assert!(prose_job.text.contains("x\u{0307}"));
     assert!(prose_job.text.contains('ℝ'));
     assert!(!prose_job.text.contains("left") && !prose_job.text.contains("right"));
+}
+
+#[test]
+fn test_new_tex_symbols_wide_accents_and_unknown_command_preservation() {
+    let font = audit_font();
+    let sym_job = parse_latex_with_font(
+        r"dp \wedge dq, f^\top x, A \bot B, z \mapsto w, P \implies \neg Q, U \subseteq V \supseteq W",
+        font.clone(),
+        Color32::WHITE,
+    );
+    for expected in ['∧', '⊤', '⊥', '↦', '⇒', '¬', '⊆', '⊇'] {
+        assert!(
+            sym_job.text.contains(expected),
+            "Expected '{expected}' in rendered symbol job {:?}",
+            sym_job.text
+        );
+    }
+    assert!(!sym_job.text.contains('\\'));
+
+    let wide_job = parse_latex_with_font(
+        r"\widehat{WR} + \widetilde{\theta}",
+        font.clone(),
+        Color32::WHITE,
+    );
+    assert!(wide_job.text.contains("WR\u{0302}"));
+    assert!(wide_job.text.contains("θ\u{0303}"));
+    assert!(!wide_job.text.contains("widehat") && !wide_job.text.contains("widetilde"));
+
+    let unknown_box = parse_latex_to_box(r"\unmappedcmd{x} + 1", &font, Color32::WHITE).unwrap();
+    let mut box_text = String::new();
+    collect_box_texts(&unknown_box, &mut box_text);
+    assert!(
+        box_text.contains(r"\unmappedcmd"),
+        "Unknown command must retain leading backslash in MathBox: {box_text:?}"
+    );
+    let unknown_job = parse_latex_with_font(r"\unmappedcmd{x} + 1", font, Color32::WHITE);
+    assert!(
+        unknown_job.text.contains(r"\unmappedcmd"),
+        "Unknown command must retain leading backslash in LayoutJob: {:?}",
+        unknown_job.text
+    );
+}
+
+#[test]
+fn test_plot_label_full_alphanumeric_subscripts_currency_and_caps() {
+    let font = audit_font();
+    let veff =
+        parse_plot_label_with_font("Effective Potential V_eff(r)", font.clone(), Color32::WHITE);
+    assert_eq!(veff.text, "Effective Potential Veff(r)");
+    assert_eq!(veff.sections.len(), 3);
+    assert!(veff.sections.iter().all(|s| !s.format.italics));
+    assert_eq!(
+        &veff.text[veff.sections[0].byte_range.clone()],
+        "Effective Potential V"
+    );
+    assert_eq!(veff.sections[0].format.valign, egui::Align::Center);
+    assert_eq!(&veff.text[veff.sections[1].byte_range.clone()], "eff");
+    assert_eq!(veff.sections[1].format.valign, egui::Align::Max);
+    assert!(veff.sections[1].format.font_id.size < font.size);
+    assert_eq!(&veff.text[veff.sections[2].byte_range.clone()], "(r)");
+    assert_eq!(veff.sections[2].format.valign, egui::Align::Center);
+
+    for (label, expected_sub) in [
+        ("Schwarzschild Coordinate Radius r / R_s", "s"),
+        ("Circular Velocity v_circ (km/s)", "circ"),
+        ("Fermi-Dirac f_FD(E)", "FD"),
+    ] {
+        let job = parse_plot_label_with_font(label, font.clone(), Color32::WHITE);
+        assert!(job.sections.iter().all(|s| !s.format.italics));
+        assert!(
+            job.sections
+                .iter()
+                .any(|s| &job.text[s.byte_range.clone()] == expected_sub
+                    && s.format.valign == egui::Align::Max),
+            "Expected contiguous subscript '{expected_sub}' in {label:?}, got {:?}",
+            job.sections
+        );
+    }
+
+    let currency = parse_plot_label_with_font("Expected Profit ($)", font.clone(), Color32::WHITE);
+    assert_eq!(currency.text, "Expected Profit ($)");
+    assert!(currency.sections.iter().all(|s| !s.format.italics));
+
+    let inline_tex = parse_plot_label_with_font(r"\frac{dy}{dt}", font.clone(), Color32::WHITE);
+    assert!(inline_tex.text.contains("dy⁄dt") && !inline_tex.text.contains('\n'));
+
+    let oversized = "V_eff ".repeat((MAX_LATEX_INPUT_BYTES / 5) + 16);
+    let capped = parse_plot_label_with_font(&oversized, font, Color32::WHITE);
+    assert!(capped.text.chars().count() <= MAX_FALLBACK_CHARS);
+
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let job = crate::parse_plot_label_to_layout_job(
+                "Uncensored PR_W = 1/θ^α",
+                TextStyle::Body,
+                ui,
+                Color32::WHITE,
+            );
+            assert!(job.sections.iter().any(|s| {
+                &job.text[s.byte_range.clone()] == "W" && s.format.valign == egui::Align::Max
+            }));
+            assert!(job.sections.iter().any(|s| {
+                &job.text[s.byte_range.clone()] == "α" && s.format.valign == egui::Align::Min
+            }));
+        });
+    });
 }
