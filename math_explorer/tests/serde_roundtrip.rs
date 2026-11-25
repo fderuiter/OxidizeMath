@@ -10,7 +10,40 @@ fn facade_serde_json_dev_dep_linked() {
 #[test]
 fn facade_primitives_and_grid_types_roundtrip_json() {
     use math_explorer::math_kernel::types::{Dimension, GridIndex, StepSize};
-    use math_explorer::prelude::{NonNegativeFloat, PositiveFloat, UnitInterval};
+    use math_explorer::prelude::{
+        Interval, NonNegativeFloat, NonNegativeInterval, PositiveFloat, PositiveInterval,
+        UnitInterval, UnitIntervalEnclosure,
+    };
+
+    let iv = Interval::new(-0.5, 1.25).expect("interval");
+    assert_eq!(
+        serde_json::from_str::<Interval>(&serde_json::to_string(&iv).unwrap()).unwrap(),
+        iv
+    );
+    assert!(serde_json::from_str::<Interval>("[2.0, 1.0]").is_err());
+
+    let u_iv = UnitIntervalEnclosure::new(0.2, 0.8).expect("unit enclosure");
+    assert_eq!(
+        serde_json::from_str::<UnitIntervalEnclosure>(&serde_json::to_string(&u_iv).unwrap())
+            .unwrap(),
+        u_iv
+    );
+    assert!(serde_json::from_str::<UnitIntervalEnclosure>("[-0.1, 0.8]").is_err());
+
+    let p_iv = PositiveInterval::new(0.5, 2.0).expect("positive interval");
+    assert_eq!(
+        serde_json::from_str::<PositiveInterval>(&serde_json::to_string(&p_iv).unwrap()).unwrap(),
+        p_iv
+    );
+    assert!(serde_json::from_str::<PositiveInterval>("[0.0, 2.0]").is_err());
+
+    let nn_iv = NonNegativeInterval::new(0.0, 4.0).expect("non-negative interval");
+    assert_eq!(
+        serde_json::from_str::<NonNegativeInterval>(&serde_json::to_string(&nn_iv).unwrap())
+            .unwrap(),
+        nn_iv
+    );
+    assert!(serde_json::from_str::<NonNegativeInterval>("[-0.1, 4.0]").is_err());
 
     let u = UnitInterval::new(0.75).expect("unit interval");
     let u_json = serde_json::to_string(&u).expect("serialize UnitInterval");

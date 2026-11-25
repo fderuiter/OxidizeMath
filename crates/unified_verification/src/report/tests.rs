@@ -251,6 +251,13 @@ fn test_certificate_check_mode_is_read_only_and_enforces_parity() {
         verify_certificate_against_report(&drifted, None, 1.5, &cert_path, &readme_path).is_err(),
         "Deterministic AST density drift must fail check mode"
     );
+    let mut pyramid_drifted = eval.report.clone();
+    pyramid_drifted.certified_solvers += 1;
+    assert!(
+        verify_certificate_against_report(&pyramid_drifted, None, 1.5, &cert_path, &readme_path)
+            .is_err(),
+        "Pyramid certified_solvers drift must fail check mode"
+    );
     assert_eq!(fs::read_to_string(&cert_path).unwrap(), cert_before);
     assert_eq!(fs::read_to_string(&readme_path).unwrap(), readme_before);
 }
@@ -295,6 +302,29 @@ fn test_collect_llvm_cov_json_cleans_only_after_parsing() {
 }
 
 #[test]
+fn test_evaluate_integrity_gates_populates_pyramid_certificate_schema() {
+    let metrics = baseline_metrics();
+    let cfg = VerifySuiteConfig::default();
+    let empty_debt = DebtSources {
+        unverified_crates: &[],
+        file_length_debt: &[],
+        entropy_debt: &[],
+        extra_debt: &[],
+    };
+    let report = evaluate_integrity_gates(85.0, 72.0, &metrics, &empty_debt, &cfg).report;
+    assert!(report.passed);
+    assert_eq!(report.certified_solvers, 55);
+    assert_eq!(report.tier_counts.len(), 6);
+    assert!(report.tier_counts.values().all(|&c| c > 0));
+    let json = serde_json::to_string(&report).expect("IntegrityReport must serialize");
+    let parsed: oxidize_core::traceability::VerificationCertificate =
+        serde_json::from_str(&json).expect("VerificationCertificate must deserialize report");
+    assert_eq!(parsed.certified_solvers, 55);
+    assert_eq!(parsed.tier_counts.len(), 6);
+    assert!(parsed.test_assertion_density > 0.0);
+}
+
+#[test]
 fn test_comment_markers_in_vfs_and_accessibility_never_mark_files_or_crates_verified() {
     let _lock = crate::DIR_LOCK.lock().unwrap();
     let ws_root = crate::manifest_cache::workspace_root_dir();
@@ -327,7 +357,7 @@ fn test_comment_markers_in_vfs_and_accessibility_never_mark_files_or_crates_veri
 }
 
 #[test]
-fn test_write_certificate_only_emits_9_key_schema_without_touching_tracked_files() {
+fn test_write_certificate_only_emits_14_key_schema_without_touching_tracked_files() {
     let tmp = TempTestDir::new("report_output_cert_only");
     let readme_path = tmp.join("README.md");
     let orig_readme = "# Demo\n![Coverage](https://img.shields.io/badge/coverage-10.0%25-yellow)\n";
@@ -362,9 +392,14 @@ fn test_write_certificate_only_emits_9_key_schema_without_touching_tracked_files
     assert_eq!(
         keys,
         [
+            "certified_solvers",
+            "interval_bounds",
+            "lean4_proof_digests",
+            "max_interval_width",
             "native_execution_coverage_pct",
             "passed",
             "test_assertion_density",
+            "tier_counts",
             "total_assertion_density",
             "total_production_assertion_density",
             "unverified_modules_density",

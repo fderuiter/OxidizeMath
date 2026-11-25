@@ -30,6 +30,18 @@ pub trait TuringSolverStrategy<const N: usize = 2> {
         dynamics: &TuringDynamics<N, K, D>,
         dt: f64,
     );
+
+    /// Performs a single time step starting at explicit simulation time `t`.
+    fn step_at<K: ReactionKinetics<N>, D: SpatialDiffusion<N>>(
+        &mut self,
+        _t: f64,
+        state: &TuringState<N>,
+        next_state: &mut TuringState<N>,
+        dynamics: &TuringDynamics<N, K, D>,
+        dt: f64,
+    ) {
+        self.step(state, next_state, dynamics, dt);
+    }
 }
 
 /// A descriptor for the Turing system's physics (OdeSystem).
@@ -56,7 +68,7 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
     }
 
     #[verified_engine::verified]
-    fn derivative_in_place(&self, _t: f64, state: &TuringState<N>, out: &mut TuringState<N>) {
+    fn derivative_in_place(&self, t: f64, state: &TuringState<N>, out: &mut TuringState<N>) {
         let n = state.len();
         if n == 0 {
             return;
@@ -102,7 +114,7 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
             let inputs: [f64; N] = std::array::from_fn(|s| state.concentrations[s][i]);
 
             // Compute Reaction
-            let rates = self.kinetics.reaction_at(i, inputs);
+            let rates = self.kinetics.reaction_at_time(t, i, inputs);
 
             // Accumulate results
             for (s, rate) in rates.iter().enumerate().take(N) {
@@ -268,6 +280,31 @@ impl<const N: usize> TuringSolverStrategy<N> for FusedEulerSolver {
             dynamics.kinetics,
         );
     }
+
+    fn step_at<K: ReactionKinetics<N>, D: SpatialDiffusion<N>>(
+        &mut self,
+        t: f64,
+        state: &TuringState<N>,
+        next_state: &mut TuringState<N>,
+        dynamics: &TuringDynamics<N, K, D>,
+        dt: f64,
+    ) {
+        if !dynamics.kinetics.is_time_dependent() {
+            self.step(state, next_state, dynamics, dt);
+            return;
+        }
+        let n = state.len();
+        if n == 0 || next_state.len() != n {
+            return;
+        }
+        dynamics.derivative_in_place(t, state, next_state);
+        for s in 0..N {
+            for i in 0..n {
+                next_state.concentrations[s][i] =
+                    state.concentrations[s][i] + dt * next_state.concentrations[s][i];
+            }
+        }
+    }
 }
 
 /// Adapts a generic ODE [`Solver`] (e.g. `RungeKutta4`) to [`TuringSolverStrategy`] for
@@ -285,13 +322,27 @@ impl<const N: usize> TuringSolverStrategy<N> for FusedEulerSolver {
 pub struct StandardSolverAdapter<S> {
     /// Wrapped ODE time-integrator strategy.
     pub solver: S,
+    time: f64,
 }
 
 impl<S> StandardSolverAdapter<S> {
     /// Wraps an [`OdeSystem`] `solver` as a [`TuringSolverStrategy`].
     #[verified_engine::verified]
     pub fn new(solver: S) -> Self {
-        Self { solver }
+        Self { solver, time: 0.0 }
+    }
+
+    /// Returns the elapsed simulation clock $t$ tracked by this adapter.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.time
+    }
+
+    /// Sets the simulation clock to `t`.
+    #[verified_engine::verified]
+    pub fn set_time(&mut self, t: f64) {
+        self.time = t;
     }
 }
 
@@ -305,8 +356,21 @@ impl<const N: usize, S: Solver<TuringState<N>>> TuringSolverStrategy<N>
         dynamics: &TuringDynamics<N, K, D>,
         dt: f64,
     ) {
+        let t = self.time;
+        self.step_at(t, state, next_state, dynamics, dt);
+    }
+
+    fn step_at<K: ReactionKinetics<N>, D: SpatialDiffusion<N>>(
+        &mut self,
+        t: f64,
+        state: &TuringState<N>,
+        next_state: &mut TuringState<N>,
+        dynamics: &TuringDynamics<N, K, D>,
+        dt: f64,
+    ) {
         next_state.copy_from(state);
-        self.solver.step(dynamics, 0.0, next_state, dt);
+        self.solver.step(dynamics, t, next_state, dt);
+        self.time = t + dt;
     }
 }
 
@@ -398,73 +462,5 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>>
 }
 
 #[cfg(test)]
-mod stochastic_evolution_tests {
-    use super::*;
-    use crate::biology::diffusion::FiniteDifference1D;
-    use crate::biology::morphogenesis::SchnakenbergKinetics;
-    use math_commons::math_kernel::types::StepSize;
-    use oxidize_core::rng::OxidizeRng;
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_fused_euler_evolution_forwards_rng_to_engine_pde() {
-        let kinetics = SchnakenbergKinetics::default();
-        let diffusion = FiniteDifference1D::new(StepSize(1.0));
-        let dynamics = TuringDynamics {
-            kinetics: &kinetics,
-            diffusion: &diffusion,
-            diffusion_coeffs: [1.0, 20.0],
-        };
-        let mut state_a = TuringState::<2>::new(32);
-        let mut state_b = TuringState::<2>::new(32);
-        let mut aux = TuringState::<2>::new(32);
-        state_a.concentrations[0].fill(1.0);
-        state_a.concentrations[1].fill(0.5);
-        state_b.copy_from(&state_a);
-
-        let mut evo_det = FusedEulerEvolution::new(FusedEulerSolver::new(), &dynamics);
-        let mut evo_stoch = FusedEulerEvolution::with_stochastic_noise(
-            FusedEulerSolver::new(),
-            &dynamics,
-            0.05,
-            1.0,
-        );
-        let mut rng = OxidizeRng::new(77);
-        evo_det
-            .step(&mut state_a, &mut aux, &mut rng, 0.01)
-            .unwrap();
-        evo_stoch
-            .step(&mut state_b, &mut aux, &mut rng, 0.01)
-            .unwrap();
-        // Homogeneous deterministic step stays spatially uniform, whereas stochastic step breaks symmetry!
-        let u_min = state_b.concentrations[0]
-            .iter()
-            .copied()
-            .fold(f64::INFINITY, f64::min);
-        let u_max = state_b.concentrations[0]
-            .iter()
-            .copied()
-            .fold(f64::NEG_INFINITY, f64::max);
-        assert!(u_max - u_min > 1e-4);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_cfl_2d_helpers_guarantee_substep_bound() {
-        let cfl = FusedEulerSolver::cfl_dt_2d(1.0, 1.0, 100.0);
-        assert!((cfl - 0.002).abs() < 1e-15);
-
-        let (substeps, sub_dt) = FusedEulerSolver::cfl_substeps_2d(0.05, 1.0, 1.0, 100.0, 100);
-        assert!((25..=100).contains(&substeps));
-        assert!(sub_dt <= cfl + 1e-15);
-        assert!(((substeps as f64) * sub_dt - 0.05).abs() < 1e-12);
-
-        let (capped_n, capped_dt) = FusedEulerSolver::cfl_substeps_2d(1.0, 1.0, 1.0, 100.0, 10);
-        assert_eq!(capped_n, 10);
-        assert!(capped_dt <= cfl + 1e-15);
-        assert_eq!(
-            FusedEulerSolver::cfl_substeps_2d(0.5, 1.0, 0.16, 0.08, 100),
-            (1, 0.5)
-        );
-    }
-}
+#[path = "solvers_tests.rs"]
+mod stochastic_evolution_tests;

@@ -53,6 +53,19 @@ impl<State, Dynamics, S> OdeModel<State, Dynamics, S> {
             t: 0.0,
         }
     }
+
+    /// Returns the elapsed simulation time $t$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.t
+    }
+
+    /// Resets the simulation clock to `t`.
+    #[verified_engine::verified]
+    pub fn set_time(&mut self, t: f64) {
+        self.t = t;
+    }
 }
 
 impl<State, Dynamics, S> OdeSystem<State> for OdeModel<State, Dynamics, S>
@@ -86,6 +99,16 @@ where
     #[verified_engine::verified]
     fn get_state_mut(&mut self) -> &mut State {
         &mut self.state
+    }
+
+    #[verified_engine::verified]
+    fn current_time(&self) -> f64 {
+        self.t
+    }
+
+    #[verified_engine::verified]
+    fn advance_time(&mut self, dt: f64) {
+        self.t += dt;
     }
 
     #[verified_engine::verified]

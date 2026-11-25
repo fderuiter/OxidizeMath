@@ -1,7 +1,9 @@
 pub mod certificate;
 mod coverage;
+mod dashboard;
 
 pub use coverage::{collect_llvm_cov_json, parse_coverage};
+pub(crate) use dashboard::{print_dashboard, print_gate_failures};
 
 use crate::whitelist::{
     VerificationDebtConfig, VerifySuiteConfig, WORKSPACE_WHITELIST_CANDIDATES,
@@ -10,6 +12,7 @@ use crate::whitelist::{
 use oxidize_core::ast_visitor::{AstVisitor, is_dedicated_test_path};
 use oxidize_core::traceability::AstCache;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use syn::visit::Visit;
 
@@ -33,6 +36,16 @@ pub struct IntegrityReport {
     #[serde(default)]
     pub test_assertion_density: f64,
     pub passed: bool,
+    #[serde(default)]
+    pub certified_solvers: usize,
+    #[serde(default)]
+    pub max_interval_width: f64,
+    #[serde(default)]
+    pub tier_counts: BTreeMap<String, usize>,
+    #[serde(default)]
+    pub interval_bounds: BTreeMap<String, [f64; 2]>,
+    #[serde(default)]
+    pub lean4_proof_digests: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -144,7 +157,13 @@ pub fn analyze_files_with_cache(rs_files: &[PathBuf], cache: &mut AstCache) -> F
 pub fn find_unverified_crates_with_cache(members: &[String], cache: &mut AstCache) -> Vec<String> {
     let mut unverified = Vec::new();
     for fm in members {
-        if fm == "egui_plot" || fm.ends_with("/egui_plot") || fm.ends_with("\\egui_plot") {
+        if fm == "egui_plot"
+            || fm.ends_with("/egui_plot")
+            || fm.ends_with("\\egui_plot")
+            || fm == "crates/scientific_verification"
+            || fm.ends_with("/crates/scientific_verification")
+            || fm.ends_with("\\crates\\scientific_verification")
+        {
             continue;
         }
         let mod_dir = Path::new(fm).join("src");
@@ -259,6 +278,28 @@ fn build_gate_errors(
     errors
 }
 
+fn evaluate_pyramid_gate(gate_errors: &mut Vec<String>) -> crate::pyramid_cli::PyramidTelemetry {
+    match crate::pyramid_cli::cached_pyramid_telemetry() {
+        Ok(summary) => {
+            let min_solvers = oxidize_core::traceability::CERTIFIED_SOLVER_COUNT;
+            if summary.certified_solvers < min_solvers {
+                gate_errors.push(format!(
+                    "Certified solvers {} is below required {}",
+                    summary.certified_solvers, min_solvers
+                ));
+            }
+            if summary.tier_counts.len() != 6 || summary.tier_counts.values().any(|&c| c == 0) {
+                gate_errors.push("Scientific verification pyramid missing active tiers".into());
+            }
+            summary
+        }
+        Err(err) => {
+            gate_errors.push(format!("Scientific Verification Pyramid Failure: {err}"));
+            crate::pyramid_cli::PyramidTelemetry::default()
+        }
+    }
+}
+
 pub fn evaluate_integrity_gates(
     native_cov_pct: f64,
     wasm_cov_pct: f64,
@@ -275,13 +316,14 @@ pub fn evaluate_integrity_gates(
 
     let (unauthorized_debt, authorized_opt_outs, authorized_unverified_crates) =
         collect_debt_violations(m, debt, config);
-    let gate_errors = build_gate_errors(
+    let mut gate_errors = build_gate_errors(
         native_cov_pct,
         verified_density,
         total_prod_density,
         verified_prod_density,
         config,
     );
+    let pyramid = evaluate_pyramid_gate(&mut gate_errors);
     let passed = gate_errors.is_empty() && unauthorized_debt.is_empty();
 
     GateEvaluation {
@@ -295,64 +337,17 @@ pub fn evaluate_integrity_gates(
             verified_production_assertion_density: verified_prod_density,
             test_assertion_density: test_density,
             passed,
+            certified_solvers: pyramid.certified_solvers,
+            max_interval_width: pyramid.max_interval_width,
+            tier_counts: pyramid.tier_counts,
+            interval_bounds: pyramid.interval_bounds,
+            lean4_proof_digests: pyramid.lean4_proof_digests,
         },
         unauthorized_debt,
         gate_errors,
         authorized_opt_outs,
         authorized_unverified_crates,
     }
-}
-
-pub(crate) fn print_gate_failures(eval: &GateEvaluation) {
-    for err in &eval.gate_errors {
-        println!("\n[!] {err}");
-    }
-    if !eval.unauthorized_debt.is_empty() {
-        println!("\n--- Unauthorized Integrity Debt (FAIL) ---");
-        for (idx, item) in eval.unauthorized_debt.iter().enumerate() {
-            println!("[{}] {}", idx + 1, item);
-        }
-    }
-}
-
-fn print_dashboard(eval: &GateEvaluation) {
-    let r = &eval.report;
-    println!("\n--- Integrity Report ---");
-    println!(
-        "Native Execution Coverage: {:.2}%",
-        r.native_execution_coverage_pct
-    );
-    println!("WASM Path Coverage: {:.2}%", r.wasm_path_coverage_pct);
-    println!("\n--- High-Integrity Dashboard ---");
-    println!(
-        "Total Assertion Density: {:.2} asserts/fn",
-        r.total_assertion_density
-    );
-    println!(
-        "Verified Modules Density: {:.2} asserts/fn",
-        r.verified_modules_density
-    );
-    println!(
-        "Unverified Modules Density: {:.2} asserts/fn",
-        r.unverified_modules_density
-    );
-    println!(
-        "Total Production Density: {:.4} asserts/fn",
-        r.total_production_assertion_density
-    );
-    println!(
-        "Verified Production Density: {:.4} asserts/fn",
-        r.verified_production_assertion_density
-    );
-    println!(
-        "Test Assertion Density: {:.2} asserts/fn",
-        r.test_assertion_density
-    );
-    println!(
-        "Authorized whitelist exemptions: {} opt-outs, {} non-domain crates",
-        eval.authorized_opt_outs, eval.authorized_unverified_crates
-    );
-    print_gate_failures(eval);
 }
 
 fn apply_report_mode_io(

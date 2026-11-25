@@ -172,9 +172,46 @@ fn check_deterministic_fields(
             expected.test_assertion_density,
             cert.test_assertion_density,
         ),
+        (
+            "max_interval_width",
+            expected.max_interval_width,
+            cert.max_interval_width,
+        ),
     ];
     for (name, actual, recorded) in pairs {
         check_float_eq(name, actual, recorded, CERT_FLOAT_EPSILON, diffs);
+    }
+    check_pyramid_fields(expected, cert, diffs);
+}
+
+fn check_pyramid_fields(
+    expected: &IntegrityReport,
+    cert: &IntegrityReport,
+    diffs: &mut Vec<String>,
+) {
+    if expected.certified_solvers != cert.certified_solvers {
+        diffs.push(format!(
+            "certified_solvers drift: workspace={}, certificate={}",
+            expected.certified_solvers, cert.certified_solvers
+        ));
+    }
+    if expected.tier_counts != cert.tier_counts {
+        diffs.push(format!(
+            "tier_counts drift: workspace={:?}, certificate={:?}",
+            expected.tier_counts, cert.tier_counts
+        ));
+    }
+    if expected.lean4_proof_digests != cert.lean4_proof_digests {
+        diffs.push("lean4_proof_digests drift against workspace proofs/".to_string());
+    }
+    if expected.interval_bounds.len() != cert.interval_bounds.len()
+        || expected.interval_bounds.iter().any(|(k, [lo, hi])| {
+            cert.interval_bounds.get(k).is_none_or(|[clo, chi]| {
+                (lo - clo).abs() > CERT_FLOAT_EPSILON || (hi - chi).abs() > CERT_FLOAT_EPSILON
+            })
+        })
+    {
+        diffs.push("interval_bounds drift against Tier 5 enclosures".to_string());
     }
 }
 

@@ -276,7 +276,7 @@ fn test_root_config_edits_escalate_to_full_workspace_checks() {
 fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
     let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let crates = load_workspace_crates(&ws_root);
-    assert_eq!(crates.len(), 25);
+    assert_eq!(crates.len(), 26);
 
     let mut web_names: Vec<&str> = crates
         .iter()
@@ -312,7 +312,12 @@ fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
         ]
     );
 
-    for host_only in ["markdown_tests", "unified_verification", "xtask"] {
+    for host_only in [
+        "markdown_tests",
+        "scientific_verification",
+        "unified_verification",
+        "xtask",
+    ] {
         let krate = crates.iter().find(|c| c.package_name == host_only).unwrap();
         assert!(!krate.is_web, "{host_only} should not be marked is_web");
     }
