@@ -1,7 +1,55 @@
 //! Ratcheted assertion density floor loader for workspace traceability gates.
 
+use std::fmt;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::{Path, PathBuf};
+
+/// Typed error returned when parsing `[verification_debt]` density floors from TOML.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DensityFloorsError {
+    /// Underlying TOML document syntax failed to parse.
+    InvalidToml(String),
+    /// `[verification_debt]` exists in the document but is not a TOML table.
+    InvalidVerificationDebtTable,
+    /// One or more configured density floor values were negative or non-finite.
+    InvalidDensityValue {
+        /// Parsed `min_verified_density` floor.
+        min_verified_density: f64,
+        /// Parsed `min_total_density` floor.
+        min_total_density: f64,
+        /// Optional parsed `min_unverified_density` floor.
+        min_unverified_density: Option<f64>,
+    },
+}
+
+impl fmt::Display for DensityFloorsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidToml(reason) => {
+                write!(f, "Invalid TOML in verification_whitelist.toml: {reason}")
+            }
+            Self::InvalidVerificationDebtTable => {
+                write!(f, "[verification_debt] must be a TOML table")
+            }
+            Self::InvalidDensityValue {
+                min_verified_density,
+                min_total_density,
+                min_unverified_density,
+            } => match min_unverified_density {
+                Some(unverified) => write!(
+                    f,
+                    "[verification_debt] density floors must be finite and >= 0.0 (verified={min_verified_density}, total={min_total_density}, unverified={unverified})"
+                ),
+                None => write!(
+                    f,
+                    "[verification_debt] density floors must be finite and >= 0.0 (verified={min_verified_density}, total={min_total_density})"
+                ),
+            },
+        }
+    }
+}
+
+impl std::error::Error for DensityFloorsError {}
 
 /// Minimum assertion density floors enforced during traceability evaluation.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -41,15 +89,17 @@ fn find_workspace_whitelist_file() -> Option<PathBuf> {
 }
 
 /// Parses `[verification_debt]` density floors from `verification_whitelist.toml` TOML content.
-pub fn parse_density_floors_toml(content: &str) -> Result<Option<DensityFloors>, String> {
+pub fn parse_density_floors_toml(
+    content: &str,
+) -> Result<Option<DensityFloors>, DensityFloorsError> {
     let parsed: toml::Table = content
         .parse()
-        .map_err(|err| format!("Invalid TOML in verification_whitelist.toml: {err}"))?;
+        .map_err(|err: toml::de::Error| DensityFloorsError::InvalidToml(err.to_string()))?;
     let Some(debt_val) = parsed.get("verification_debt") else {
         return Ok(None);
     };
     let Some(debt) = debt_val.as_table() else {
-        return Err("[verification_debt] must be a TOML table".to_string());
+        return Err(DensityFloorsError::InvalidVerificationDebtTable);
     };
     let min_verified_density = debt
         .get("min_verified_density")
@@ -68,7 +118,11 @@ pub fn parse_density_floors_toml(content: &str) -> Result<Option<DensityFloors>,
         || min_total_density < 0.0
         || min_unverified_density.is_some_and(|u| !u.is_finite() || u < 0.0)
     {
-        return Err("[verification_debt] density floors must be finite and >= 0.0".to_string());
+        return Err(DensityFloorsError::InvalidDensityValue {
+            min_verified_density,
+            min_total_density,
+            min_unverified_density,
+        });
     }
     Ok(Some(DensityFloors {
         min_verified_density,
@@ -91,7 +145,7 @@ pub fn load_workspace_density_floors() -> Result<DensityFloors, std::io::Error> 
         };
         let content = std::fs::read_to_string(&path)?;
         let parsed = parse_density_floors_toml(&content)
-            .map_err(|msg| std::io::Error::new(std::io::ErrorKind::InvalidData, msg))?;
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err.to_string()))?;
         Ok(parsed.unwrap_or_default())
     }
 }
