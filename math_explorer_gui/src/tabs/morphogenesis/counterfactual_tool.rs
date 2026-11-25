@@ -208,14 +208,7 @@ impl MorphogenesisTool {
         desc.validate()?;
         let (active_a, active_b, active_du, active_dv, dt, active_f, active_k) =
             self.stage_baseline_fork_params(&desc);
-        let mut runner = Self::create_kinetics_runner_with_advection(
-            &self.params,
-            &self.kinetics_state,
-            &self.advection_state,
-            &self.mask_rle,
-            self.width,
-            self.height,
-        );
+        let mut runner = self.create_live_runner();
         for _ in 0..desc.fork_step {
             runner.step();
         }

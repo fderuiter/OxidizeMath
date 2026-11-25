@@ -17,6 +17,7 @@ pub mod kinetics;
 #[cfg(test)]
 mod legacy_runner;
 pub mod lenia;
+pub mod minimap;
 pub mod phyllotaxis_lsystem;
 pub mod presets;
 pub mod runner;

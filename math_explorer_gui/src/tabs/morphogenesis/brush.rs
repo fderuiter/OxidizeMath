@@ -8,6 +8,7 @@ use crate::framework::{
 };
 use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui;
+use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::biology::diffusion::SpatialDiffusion;
 use math_explorer::biology::morphogenesis::{
     ReactionKinetics, SpatialSchnakenbergKinetics, TuringSystem,
@@ -94,6 +95,8 @@ pub trait MorphoSpatialKinetics: ReactionKinetics<2> {
     fn erase_equilibrium(&self) -> (f64, f64);
     /// Returns `(delta, ceiling)` for chemical perturbation brush modes.
     fn seed_perturbation(&self) -> (f64, f64);
+    /// Applies [`MorphoBrushMode::ActivatorSeed`] to `(u, v)`, nucleating Gray-Scott catalyst drops when active.
+    fn apply_activator_seed(&self, u: f64, v: f64) -> (f64, f64);
 }
 
 impl MorphoSpatialKinetics for SpatialSchnakenbergKinetics {
@@ -116,6 +119,10 @@ impl MorphoSpatialKinetics for SpatialSchnakenbergKinetics {
 
     fn seed_perturbation(&self) -> (f64, f64) {
         (0.75, 8.0)
+    }
+
+    fn apply_activator_seed(&self, u: f64, v: f64) -> (f64, f64) {
+        ((u + 0.75).clamp(0.0, 8.0), v)
     }
 }
 
@@ -146,6 +153,16 @@ impl MorphoSpatialKinetics for MorphogenesisKineticsAdapter {
         match self.mode {
             MorphogenesisKineticsMode::Schnakenberg => (0.75, 8.0),
             MorphogenesisKineticsMode::GrayScott => (0.25, 1.0),
+        }
+    }
+
+    fn apply_activator_seed(&self, u: f64, v: f64) -> (f64, f64) {
+        match self.mode {
+            MorphogenesisKineticsMode::Schnakenberg => ((u + 0.75).clamp(0.0, 8.0), v),
+            MorphogenesisKineticsMode::GrayScott => (
+                (u - 0.50).clamp(0.0, 1.0).min(0.50),
+                (v + 0.25).clamp(0.25, 1.0),
+            ),
         }
     }
 }
@@ -187,14 +204,17 @@ pub fn apply_morpho_cells_to_system<K: MorphoSpatialKinetics, D: SpatialDiffusio
         if x >= width || y >= height {
             continue;
         }
-        let idx = y * width + x;
+        let idx = flatten_2d_index(x, y, width);
         if idx >= total {
             continue;
         }
         match mode {
             MorphoBrushMode::ActivatorSeed => {
-                let next_u = (system.u()[idx] + seed_delta).clamp(0.0, ceiling);
+                let (next_u, next_v) = system
+                    .kinetics
+                    .apply_activator_seed(system.u()[idx], system.v()[idx]);
                 system.u_mut()[idx] = next_u;
+                system.v_mut()[idx] = next_v;
             }
             MorphoBrushMode::InhibitorSeed => {
                 let next_v = (system.v()[idx] + seed_delta).clamp(0.0, ceiling);
@@ -291,7 +311,7 @@ impl MorphogenesisTool {
         if let Some(sym) = maybe_sym {
             for &(x, y) in &stroke.cells {
                 if x < self.width && y < self.height {
-                    self.mask_cells[y * self.width + x] = sym;
+                    self.mask_cells[flatten_2d_index(x, y, self.width)] = sym;
                 }
             }
             self.sync_mask_rle_from_cells();

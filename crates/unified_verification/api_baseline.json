@@ -6314,6 +6314,9 @@
       "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : SpatialDiffusion < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , D , S > { pub fn step (& mut self , _ : f64) }"
     },
     {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : SpatialDiffusion < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , D , S > { pub fn step_with_kinetics < KAlt : ReactionKinetics < N > > (& mut self , _ : & KAlt , _ : f64) }"
+    },
+    {
       "signature": "impl TuringSystem < 2 , SchnakenbergKinetics , FiniteDifference1D , FusedEulerSolver > { pub fn new (_ : Dimension , _ : DiffusionCoeff , _ : DiffusionCoeff , _ : StepSize) -> Self }"
     },
     {
@@ -6394,6 +6397,12 @@
     },
     {
       "signature": "impl < S > StandardSolverAdapter < S > { pub fn new (_ : S) -> Self }"
+    },
+    {
+      "signature": "impl FusedEulerSolver { pub fn cfl_substeps_2d (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : usize ,) -> (usize , f64) }"
+    },
+    {
+      "signature": "impl FusedEulerSolver { pub fn cfl_dt_2d (_ : f64 , _ : f64 , _ : f64) -> f64 }"
     },
     {
       "signature": "impl FusedEulerSolver { pub fn new () -> Self }"

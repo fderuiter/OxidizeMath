@@ -101,12 +101,24 @@ impl FiniteStateGuard for MorphogenesisTool {
             .unwrap_or_else(|e| e.into_inner())
             .clear();
         self.theory.mode = MorphogenesisKineticsMode::Schnakenberg;
+        self.auto_dt
+            .store(true, std::sync::atomic::Ordering::Relaxed);
         self.reset_system();
     }
 }
 
 #[cfg(test)]
-pub use super::starter_presets::PRESET_GRAY_SCOTT_MITOSIS;
+pub use super::starter_presets::{
+    PRESET_GRAY_SCOTT_CORAL, PRESET_GRAY_SCOTT_MITOSIS, PRESET_GRAY_SCOTT_SOLITONS,
+};
+
+fn default_true() -> bool {
+    true
+}
+
+fn is_true(val: &bool) -> bool {
+    *val
+}
 
 fn default_grid_dim() -> usize {
     100
@@ -145,6 +157,9 @@ pub struct MorphogenesisToolState {
     pub d_v: f64,
     /// Integration time step `dt`.
     pub dt: f64,
+    /// Whether 2D Forward Euler CFL substepping automatically splits `dt` when advection is disabled.
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub auto_dt: bool,
     /// Spatial grid width (`1..=512`).
     #[serde(default = "default_grid_dim")]
     pub width: usize,

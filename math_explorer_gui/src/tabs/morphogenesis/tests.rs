@@ -6,6 +6,7 @@ use crate::framework::recovery::FiniteStateGuard;
 use crate::framework::{ExportFormat, ExportStatusSeverity, InteractiveTool};
 use egui::{CentralPanel, Frame};
 use math_commons::math_kernel::colormap::heatmap_color;
+use std::sync::atomic::Ordering;
 use std::{sync::Arc, thread, time::Duration};
 
 fn raw_screen_input(w: f32, h: f32, events: Vec<egui::Event>) -> egui::RawInput {
@@ -469,11 +470,16 @@ fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
     let mut tool = MorphogenesisTool::default();
     assert_eq!(morpho_state(&tab).state, Some(SimWorkerState::Ready));
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
-
     thread::sleep(Duration::from_millis(40));
     assert_eq!(morpho_state(&tab).state, Some(SimWorkerState::Ready));
     assert_eq!(tool.worker.state(), SimWorkerState::Ready);
-
+    render_tab_frame(&ctx, &mut tab);
+    let _ = render_tool_frame(&ctx, &mut tool);
+    assert_ne!(tool.worker.state(), SimWorkerState::Faulted);
+    morpho_tool_mut(&mut tab)
+        .auto_dt
+        .store(false, Ordering::Relaxed);
+    tool.auto_dt.store(false, Ordering::Relaxed);
     for _ in 0..400 {
         render_tab_frame(&ctx, &mut tab);
         let _ = render_tool_frame(&ctx, &mut tool);
@@ -484,7 +490,6 @@ fn test_morphogenesis_defers_start_until_render_and_faults_on_divergence() {
         }
         thread::sleep(Duration::from_millis(10));
     }
-
     assert_eq!(morpho_state(&tab).state, Some(SimWorkerState::Faulted));
     assert_eq!(tool.worker.state(), SimWorkerState::Faulted);
     assert!(tool.worker.diagnostic_report().is_some());

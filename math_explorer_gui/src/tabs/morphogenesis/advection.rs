@@ -253,7 +253,20 @@ impl MorphogenesisKineticsRunner {
         let adv = self.read_advection();
         if !adv.enabled {
             self.wind_tunnel.twin_step_ready = false;
-            self.system.step(dt);
+            let (subs, sub_dt) = if self.auto_dt.load(std::sync::atomic::Ordering::Relaxed) {
+                math_explorer::biology::morphogenesis::FusedEulerSolver::cfl_substeps_2d(
+                    dt,
+                    1.0,
+                    self.system.diffusion_coeffs[0],
+                    self.system.diffusion_coeffs[1],
+                    super::runner::MAX_CFL_SUBSTEPS,
+                )
+            } else {
+                (1, dt)
+            };
+            for _ in 0..subs {
+                self.system.step(sub_dt);
+            }
             return;
         }
         if !std::mem::take(&mut self.wind_tunnel.twin_step_ready) {

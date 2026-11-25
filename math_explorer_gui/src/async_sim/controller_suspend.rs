@@ -236,7 +236,7 @@ impl<T: super::SimulationRunner> NativeWorkerLoop<T> {
             &mut self.runner,
             &mut self.ring,
             self.steps_per_frame,
-            None,
+            Some(std::time::Duration::from_millis(16)),
             &mut self.state,
             &self.state_tx,
         ) {
