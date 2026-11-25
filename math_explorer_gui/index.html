@@ -272,6 +272,7 @@
 
         #error_container[data-error-category="network"] #error_recovery_steps,
         #error_container[data-error-category="compile"] #error_recovery_steps,
+        #error_container[data-error-category="runtime"] #error_recovery_steps,
         #error_container[data-error-category="timeout"] #error_recovery_steps,
         #error_container[data-error-category="isolation"] #error_recovery_steps {
             display: block;
@@ -1182,6 +1183,7 @@
             <form class="action-buttons" method="get" action="">
                 <button type="submit" id="webgl_reload_button" class="reload-btn">Reload Page</button>
                 <button type="button" id="download_workspace_button" class="secondary-btn" hidden>Download Saved Workspace (.mws)</button>
+                <button type="button" id="reset_workspace_button" class="secondary-btn" hidden>Reset Saved Workspace &amp; Reload</button>
             </form>
             <pre id="error_details" class="error-details" style="display: none;"></pre>
         </div>

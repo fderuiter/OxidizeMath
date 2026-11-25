@@ -1,3 +1,4 @@
+pub mod boot_sentinel;
 pub mod data_bus;
 pub mod dataflow_bus;
 pub mod domain_bar;
@@ -31,6 +32,8 @@ mod workspace_url_pipeline;
 mod tests;
 #[cfg(test)]
 mod tests_adaptive_chrome;
+#[cfg(test)]
+mod tests_boot_sentinel;
 #[cfg(test)]
 mod tests_cold_start_and_palette;
 #[cfg(test)]
@@ -190,6 +193,7 @@ pub struct MathExplorerApp {
     pub pipeline_dag: PanePipelineDag,
     pub(super) url_sync: crate::url_state::UrlSyncController,
     pub data_bus: data_bus::WorkspaceDataBus,
+    pub boot_sentinel: boot_sentinel::BootSentinelState,
 }
 
 impl Default for MathExplorerApp {
@@ -232,6 +236,7 @@ impl Default for MathExplorerApp {
             pipeline_dag: PanePipelineDag::default(),
             url_sync: crate::url_state::UrlSyncController::default(),
             data_bus: data_bus::WorkspaceDataBus::default(),
+            boot_sentinel: boot_sentinel::BootSentinelState::default(),
         };
         app.sync_viewport_visibility();
         app
@@ -241,11 +246,7 @@ impl Default for MathExplorerApp {
 impl MathExplorerApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let mut app = Self::default();
-        let restored = theme::init_startup_theme(&mut app, cc);
-        let hydrated = app.hydrate_from_browser_url(&cc.egui_ctx, restored);
-        if !restored && !hydrated && crate::starter_gallery::has_any_starter_presets() {
-            app.show_starter_gallery = true;
-        }
+        boot_sentinel::hydrate_with_boot_sentinel(&mut app, cc);
 
         #[cfg(target_os = "macos")]
         macos_menu::setup_macos_menu(&app);
@@ -350,6 +351,8 @@ impl MathExplorerApp {
             ui_panels::render_main_menu(self, ctx, ui);
         });
 
+        boot_sentinel::render_safe_mode_banner(self, ctx);
+
         egui::TopBottomPanel::top("domain_switcher_bar")
             .exact_height(34.0)
             .show(ctx, |ui| {
@@ -397,6 +400,7 @@ impl eframe::App for MathExplorerApp {
         crate::framework::record_focused_widget_type_from_output(ctx);
         theme::sync_frame_theme(self, ctx, frame);
         self.tick_url_sync(ctx);
+        boot_sentinel::complete_first_frame(self);
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {

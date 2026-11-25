@@ -8,6 +8,7 @@ import functools
 import gzip
 import html.parser
 import http.server
+import json
 import mimetypes
 import os
 import re
@@ -88,6 +89,12 @@ EXPECTED_FAULTS: dict[str, FaultExpectation] = {
         title="WebAssembly Startup Error",
         message_substr="failed to compile, instantiate, or start",
         alert_substr="WebAssembly startup error",
+    ),
+    "runtime": FaultExpectation(
+        category="runtime",
+        title="Application Runtime Error",
+        message_substr="unexpected WebAssembly runtime error",
+        alert_substr="Application runtime error in Math Explorer",
     ),
     "timeout": FaultExpectation(
         category="timeout",
@@ -686,6 +693,218 @@ def run_internal_error_and_fallback_compile_checks(
     )
 
 
+def run_runtime_crash_boundary_and_boot_sentinel_checks(
+    browser: Browser,
+    base_url: str,
+    screenshot_dir: Path | None = None,
+) -> None:
+    runtime_loader_stub = (
+        b"export default async function init() {\n"
+        b"    throw new WebAssembly.RuntimeError('unreachable');\n"
+        b"}\n"
+    )
+
+    for mode_label, use_fallback in (("reload", False), ("bootstrap_fallback", True)):
+        ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+        try:
+            pg = ctx.new_page()
+            csp_violations: list[str] = []
+            aborted_unrouted: list[str] = []
+            attach_csp_observer(pg, csp_violations)
+            attach_unrouted_script_abort_observer(pg, aborted_unrouted)
+            if use_fallback:
+                pg.route(
+                    "**/reload.js*",
+                    lambda route: route.fulfill(
+                        status=200,
+                        content_type="text/javascript",
+                        body=b"// fallback runtime trap check without reload.js\n",
+                    ),
+                )
+            pg.route(
+                "**/math_explorer_gui.js*",
+                lambda route: route.fulfill(
+                    status=200,
+                    content_type="text/javascript",
+                    body=runtime_loader_stub,
+                ),
+            )
+            pg.goto(f"{base_url}/", wait_until="domcontentloaded")
+            try:
+                verify_error_recovery(
+                    pg, f"startup_runtime_trap_{mode_label}", EXPECTED_FAULTS["runtime"]
+                )
+            except AssertionError as exc:
+                if aborted_unrouted:
+                    raise TransientBrowserCrashError(
+                        f"[startup_runtime_trap_{mode_label}] Unrouted script aborted: {aborted_unrouted}"
+                    ) from exc
+                raise
+            assert_zero_csp_violations(f"startup_runtime_trap_{mode_label}", csp_violations)
+        finally:
+            ctx.close()
+
+    # Post-boot fatal panic + WebAssembly.RuntimeError trap, .mws backup download, and 1-click reset
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800}, accept_downloads=True)
+    try:
+        pg = ctx.new_page()
+        csp_violations = []
+        attach_csp_observer(pg, csp_violations)
+        pg.goto(f"{base_url}/#tab=chaos_theory", wait_until="domcontentloaded")
+        expect(pg.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+        expect(pg.locator("#the_canvas_id")).to_be_focused()
+
+        saved_payload = (
+            '{"schema_version":"1.0","app_version":"0.4.0","timestamp":"2026-11-25T00:00:00Z",'
+            '"app_state":{"selected_tab":0,"selected_tab_name":null,"show_info":true,'
+            '"show_warnings":true,"show_errors":true,"theme":"Light","tab_states":{}}}'
+        )
+        pg.evaluate(
+            """(payload) => {
+                window.localStorage.setItem('app', payload);
+                document.documentElement.dataset.theme = 'light';
+                const audioState = { suspended: false, gainValue: 0.75 };
+                window.__smokeAudioState = audioState;
+                const fakeGain = {
+                    gain: {
+                        value: 0.75,
+                        cancelScheduledValues() {},
+                        setTargetAtTime(v) { audioState.gainValue = v; },
+                    },
+                };
+                const fakeCtx = {
+                    currentTime: 1.5,
+                    state: 'running',
+                    suspend() {
+                        audioState.suspended = true;
+                        this.state = 'suspended';
+                        return Promise.resolve();
+                    },
+                };
+                window.__mathExplorerBoot.registerAudioStream(fakeCtx, fakeGain);
+                window.__mathExplorerBoot.recordFatalPanic(
+                    'Thread panicked: integer overflow in solver step',
+                    'crates/domain_applied/src/replicator.rs:105'
+                );
+                window.setTimeout(() => {
+                    throw new WebAssembly.RuntimeError('unreachable');
+                }, 0);
+            }""",
+            saved_payload,
+        )
+
+        verify_error_recovery(pg, "post_boot_runtime_trap", EXPECTED_FAULTS["runtime"])
+        expect(pg.locator("#error_details")).to_contain_text(
+            "crates/domain_applied/src/replicator.rs:105"
+        )
+        expect(pg.locator("#error_details")).to_contain_text("unreachable")
+        audio_probe = pg.evaluate("() => window.__smokeAudioState")
+        if not audio_probe["suspended"] or audio_probe["gainValue"] != 0:
+            raise AssertionError(
+                f"[post_boot_runtime_trap] Expected active audio stream to be silenced, got {audio_probe}"
+            )
+
+        if screenshot_dir is not None:
+            pg.screenshot(path=str(screenshot_dir / "smoke_runtime_crash_boundary.png"))
+
+        with pg.expect_download(timeout=5_000) as download_info:
+            pg.locator("#download_workspace_button").click()
+        download = download_info.value
+        if not download.suggested_filename.endswith(".mws"):
+            raise AssertionError(
+                f"[post_boot_runtime_trap] Expected .mws backup filename, got {download.suggested_filename!r}"
+            )
+        dl_path = download.path()
+        if dl_path is None or Path(dl_path).read_text(encoding="utf-8") != saved_payload:
+            raise AssertionError("[post_boot_runtime_trap] Exported .mws backup content mismatch")
+
+        pg.locator("#reset_workspace_button").click()
+        expect(pg.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+        expect(pg.locator("#error_container")).to_be_hidden()
+        expect(pg.locator("#the_canvas_id")).to_be_visible()
+        expect(pg.locator("#the_canvas_id")).to_be_focused()
+        reset_state = pg.evaluate(
+            """() => ({
+                hash: window.location.hash,
+                app: window.localStorage.getItem('app'),
+                quarantined: window.localStorage.getItem('math_explorer_quarantined_workspace'),
+                theme: document.documentElement.dataset.theme,
+            })"""
+        )
+        if (
+            reset_state["hash"] != ""
+            or reset_state["app"] is not None
+            or reset_state["quarantined"] != saved_payload
+            or reset_state["theme"] != "light"
+        ):
+            raise AssertionError(
+                f"[post_boot_runtime_trap] Unexpected state after reset: {reset_state}"
+            )
+        assert_zero_csp_violations("post_boot_runtime_trap", csp_violations)
+    finally:
+        ctx.close()
+
+    # Boot sentinel reload quarantine check (poisoned localStorage + share URL)
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    try:
+        pg = ctx.new_page()
+        csp_violations = []
+        attach_csp_observer(pg, csp_violations)
+        poisoned_payload = (
+            '{"schema_version":"1.0","app_version":"0.4.0","timestamp":"2026-11-25T00:00:00Z",'
+            '"app_state":{"theme":"HighContrast","corrupt_payload":true}}'
+        )
+        pg.add_init_script(
+            f"""(() => {{
+                if (!window.__bootSentinelSeeded) {{
+                    window.__bootSentinelSeeded = true;
+                    window.sessionStorage.setItem('math_explorer_boot_sentinel', 'hydrating');
+                    window.localStorage.setItem('app', {json.dumps(poisoned_payload)});
+                }}
+            }})();"""
+        )
+        pg.goto(f"{base_url}/?keep=1&tab=bad#ws=poisoned", wait_until="domcontentloaded")
+        expect(pg.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+        expect(pg.locator("#error_container")).to_be_hidden()
+        expect(pg.locator("#the_canvas_id")).to_be_visible()
+        expect(pg.locator("#the_canvas_id")).to_be_focused()
+        pg.wait_for_function(
+            "() => window.sessionStorage.getItem('math_explorer_boot_sentinel') === null",
+            timeout=5_000,
+        )
+
+        quarantined_state = pg.evaluate(
+            """() => ({
+                sentinel: window.sessionStorage.getItem('math_explorer_boot_sentinel'),
+                app: window.localStorage.getItem('app'),
+                quarantined: window.localStorage.getItem('math_explorer_quarantined_workspace'),
+                theme: document.documentElement.dataset.theme,
+                hash: window.location.hash,
+                search: window.location.search,
+            })"""
+        )
+        if (
+            quarantined_state["sentinel"] is not None
+            or quarantined_state["app"] == poisoned_payload
+            or quarantined_state["quarantined"] != poisoned_payload
+            or quarantined_state["theme"] != "high-contrast"
+            or quarantined_state["hash"] != ""
+            or quarantined_state["search"] != "?keep=1"
+        ):
+            raise AssertionError(
+                f"[boot_sentinel_quarantine] Unexpected state after sentinel recovery: {quarantined_state}"
+            )
+        if screenshot_dir is not None:
+            pg.screenshot(path=str(screenshot_dir / "smoke_boot_sentinel_safe_mode.png"))
+        assert_zero_csp_violations("boot_sentinel_quarantine", csp_violations)
+    finally:
+        ctx.close()
+
+    print(
+        "[PASS] runtime_crash_boundary_and_boot_sentinel: startup/post-boot RuntimeError, audio mute, .mws export, 1-click reset, and boot sentinel quarantine verified"
+    )
+
+
 def load_and_verify_production_csp(trunk_toml: Path, dist_dir: Path) -> str:
     config = tomllib.loads(trunk_toml.read_text(encoding="utf-8"))
     csp = config.get("serve", {}).get("headers", {}).get("Content-Security-Policy", "").strip()
@@ -903,6 +1122,12 @@ def verify_error_recovery(
 
     if expectation.category == "webgl":
         expect(page.locator("#webgl_instructions")).to_be_visible()
+        expect(page.locator("#error_details")).to_be_visible()
+    elif expectation.category == "runtime":
+        expect(page.locator("#error_recovery_steps")).to_be_visible()
+        expect(page.locator("#webgl_instructions")).to_be_hidden()
+        expect(page.locator("#download_workspace_button")).to_be_visible()
+        expect(page.locator("#reset_workspace_button")).to_be_visible()
         expect(page.locator("#error_details")).to_be_visible()
 
     reload_btn = page.locator("#webgl_reload_button")
@@ -1531,6 +1756,16 @@ def run_smoke_suite(
                         screenshot_dir / "smoke_fault_compile_internal_error.png"
                         if screenshot_dir
                         else None,
+                    ),
+                )
+
+                run_with_crash_retry(
+                    webgl_pool,
+                    "runtime_crash_boundary_and_boot_sentinel",
+                    lambda b: run_runtime_crash_boundary_and_boot_sentinel_checks(
+                        b,
+                        base_url,
+                        screenshot_dir,
                     ),
                 )
 

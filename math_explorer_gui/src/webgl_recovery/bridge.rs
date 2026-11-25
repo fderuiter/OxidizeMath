@@ -60,6 +60,9 @@ where
     let _ = btn.set_attribute("data-download-bound", "true");
     let listener = Closure::wrap(Box::new(move |event: web_sys::Event| {
         event.prevent_default();
+        if crate::crash_boundary::has_fatal_panic_occurred() {
+            return;
+        }
         let (envelope_json, filename) = read_snapshot();
         if !envelope_json.is_empty() {
             let _ = crate::web_io::download_browser_file(&filename, envelope_json.as_bytes());

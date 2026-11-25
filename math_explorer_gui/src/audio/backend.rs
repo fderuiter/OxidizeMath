@@ -21,6 +21,8 @@ pub enum MuteReason {
     WindowBlurred,
     /// Active workspace tab switched to a different tool.
     ToolSwitched,
+    /// Fatal WebAssembly panic or runtime trap intercepted before abort.
+    RuntimeTrap,
 }
 
 impl MuteReason {
@@ -36,6 +38,7 @@ impl MuteReason {
             Self::WebGlContextLost => "Graphics context lost; Web Audio suspended cleanly.",
             Self::WindowBlurred => "Window unfocused; sonification suspended.",
             Self::ToolSwitched => "Switched tool; previous sonification silenced.",
+            Self::RuntimeTrap => "Fatal runtime error; sonification silenced immediately.",
         }
     }
 }

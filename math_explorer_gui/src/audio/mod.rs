@@ -303,6 +303,16 @@ pub fn on_webgl_context_lost() {
     });
 }
 
+/// Immediately silences and suspends active audio streams inside a fatal panic hook without re-entrant borrow panics.
+pub fn silence_all_audio_on_fatal_panic() {
+    controller::bump_force_mute_epoch();
+    let _ = AUDIO_CONTROLLER.try_with(|cell| {
+        if let Ok(mut ctrl) = cell.try_borrow_mut() {
+            ctrl.backend.mute_and_suspend(MuteReason::RuntimeTrap);
+        }
+    });
+}
+
 /// Suspends audio within `<= 30 ms` when the browser tab or window loses focus.
 pub fn notify_window_blurred() {
     AUDIO_CONTROLLER.with(|cell| {

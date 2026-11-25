@@ -21,6 +21,7 @@ mod camera_3d_optout_tests;
 ))]
 mod canvas_accessibility_tests;
 mod command_palette;
+pub mod crash_boundary;
 #[allow(missing_docs)]
 pub mod framework;
 #[cfg(test)]
@@ -81,6 +82,7 @@ pub(crate) static VERIFIED_ALLOC_TEST_MUTEX: std::sync::Mutex<()> = std::sync::M
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result {
     diagnostics::init_panic_hook();
+    crash_boundary::install_fatal_panic_bridge();
     let _ = federated_registry::global_registry();
     accessibility::init_accessibility_bridge();
     let native_options = eframe::NativeOptions {
@@ -263,6 +265,12 @@ fn finish_wasm_startup(
 ) {
     use wasm_bindgen::JsCast;
 
+    if crash_boundary::has_fatal_panic_occurred() {
+        std::mem::forget(runner);
+        clear_global_wasm_bindings(window);
+        return;
+    }
+
     if is_error_boundary_active(doc) {
         runner.destroy();
         clear_global_wasm_bindings(window);
@@ -289,6 +297,11 @@ fn finish_wasm_startup(
             }
         }
         Err(err) => {
+            if crash_boundary::has_fatal_panic_occurred() {
+                std::mem::forget(runner);
+                clear_global_wasm_bindings(window);
+                return;
+            }
             runner.destroy();
             let err_msg = format!("{err:?}");
             eprintln!("Failed to start eframe WebRunner: {err_msg}");
@@ -311,6 +324,7 @@ fn main() {
 
     console_error_panic_hook::set_once();
     diagnostics::init_panic_hook();
+    crash_boundary::install_fatal_panic_bridge();
     let _ = federated_registry::global_registry();
     accessibility::init_accessibility_bridge();
     wasm_bindgen_futures::spawn_local(async {

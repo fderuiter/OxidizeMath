@@ -11,6 +11,10 @@ mod shell_tests;
 mod startup_tests;
 
 #[cfg(test)]
+#[path = "markup_crash_boundary_tests.rs"]
+mod crash_boundary_markup_tests;
+
+#[cfg(test)]
 mod tests {
     const INDEX_HTML: &str = include_str!("../index.html");
     const TRUNK_TOML: &str = include_str!("../Trunk.toml");

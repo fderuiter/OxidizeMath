@@ -78,7 +78,18 @@ fn bind_download_button(doc: &web_sys::Document, runtime_rc: &Rc<RefCell<Recover
     });
 }
 
+fn dispose_runner_safely(runner: eframe::WebRunner) {
+    if crate::crash_boundary::has_fatal_panic_occurred() {
+        std::mem::forget(runner);
+    } else {
+        runner.destroy();
+    }
+}
+
 fn handle_restore_timeout(runtime_rc: &Rc<RefCell<RecoveryRuntime>>, detail: &str) {
+    if crate::crash_boundary::has_fatal_panic_occurred() {
+        return;
+    }
     let window = web_sys::window();
     let Some(doc) = window.as_ref().and_then(web_sys::Window::document) else {
         return;
@@ -101,7 +112,7 @@ fn handle_restore_timeout(runtime_rc: &Rc<RefCell<RecoveryRuntime>>, detail: &st
         (rt.active_runner.take(), env, name, blocked)
     };
     if let Some(runner) = stale_runner {
-        runner.destroy();
+        dispose_runner_safely(runner);
     }
     crate::audio::on_webgl_context_lost();
     notify_recovery_failed(
@@ -146,6 +157,9 @@ fn arm_fallback_restore_timer(
 fn on_context_lost(event: &web_sys::Event, runtime_rc: &Rc<RefCell<RecoveryRuntime>>) {
     event.prevent_default();
     crate::audio::on_webgl_context_lost();
+    if crate::crash_boundary::has_fatal_panic_occurred() {
+        return;
+    }
     let window = web_sys::window();
     let Some(doc) = window.as_ref().and_then(web_sys::Window::document) else {
         return;
@@ -178,7 +192,7 @@ fn on_context_lost(event: &web_sys::Event, runtime_rc: &Rc<RefCell<RecoveryRunti
     };
 
     if let Some(runner) = runner_to_destroy {
-        runner.destroy();
+        dispose_runner_safely(runner);
     }
 
     bind_download_button(&doc, runtime_rc);
@@ -229,13 +243,14 @@ fn finish_runner_restart(
 ) {
     let window = web_sys::window();
     let Some(doc) = window.as_ref().and_then(web_sys::Window::document) else {
-        new_runner.destroy();
+        dispose_runner_safely(new_runner);
         return;
     };
     let still_current = runtime_rc.borrow().phase == RecoveryPhase::Restoring { epoch }
+        && !crate::crash_boundary::has_fatal_panic_occurred()
         && !crate::is_error_boundary_active(&doc);
     if !still_current {
-        new_runner.destroy();
+        dispose_runner_safely(new_runner);
         return;
     }
 
@@ -253,7 +268,7 @@ fn finish_runner_restart(
             }
         }
         Err(err) => {
-            new_runner.destroy();
+            dispose_runner_safely(new_runner);
             let (envelope_json, filename, storage_blocked) = {
                 let mut rt = runtime_rc.borrow_mut();
                 clear_fallback_timer(window.as_ref(), &mut rt);
@@ -277,6 +292,9 @@ fn on_context_restored(
     canvas: &web_sys::HtmlCanvasElement,
     runtime_rc: &Rc<RefCell<RecoveryRuntime>>,
 ) {
+    if crate::crash_boundary::has_fatal_panic_occurred() {
+        return;
+    }
     let window = web_sys::window();
     let Some(doc) = window.as_ref().and_then(web_sys::Window::document) else {
         return;

@@ -11,6 +11,27 @@ const MODULE_PATH = './math_explorer_gui.js';
 const WASM_PATH = './math_explorer_gui_bg.wasm';
 const FALLBACK_STALL_TIMEOUT_MS = 12000;
 const FALLBACK_COMPILE_TIMEOUT_MS = 45000;
+const FALLBACK_BOOT_SENTINEL_KEY = 'math_explorer_boot_sentinel';
+const FALLBACK_QUARANTINED_WORKSPACE_KEY = 'math_explorer_quarantined_workspace';
+const FALLBACK_PRESERVED_THEME_KEY = 'math_explorer_preserved_theme';
+const FALLBACK_RECOVERY_FILENAME = 'math-explorer-recovery.mws';
+const FALLBACK_SHARE_QUERY_KEYS = new Set([
+    'ws',
+    'tab',
+    'tool',
+    'state',
+    'preset',
+    'challenge',
+    'step',
+    'pipe',
+]);
+const STARTUP_ASSET_NAMES = [
+    'reload.js',
+    'bootstrap.js',
+    'initializer.js',
+    'math_explorer_gui.js',
+    'math_explorer_gui_bg.wasm',
+];
 
 const FALLBACK_CATEGORY_COPY = {
     network: {
@@ -34,6 +55,19 @@ const FALLBACK_CATEGORY_COPY = {
             'Ensure you are using a current browser release with WebAssembly enabled.',
             'Verify that browser extensions or enterprise policies do not block WebAssembly execution.',
         ],
+    },
+    runtime: {
+        title: 'Application Runtime Error',
+        message:
+            'Math Explorer encountered an unexpected WebAssembly runtime error and stopped to protect your session. Download a backup of your saved workspace (.mws), reload the page, or reset your saved workspace to start fresh.',
+        heading: 'Recovery Steps',
+        steps: [
+            'Select Download Saved Workspace (.mws) below to export a backup of your saved or quarantined workspace.',
+            'Select Reload Page to restart Math Explorer. Repeated startup crashes automatically quarantine saved state into safe mode.',
+            'Select Reset Saved Workspace & Reload to archive saved state, clear share URL parameters, and open a clean workspace immediately.',
+        ],
+        alert:
+            'Application runtime error in Math Explorer. Download your saved workspace backup, select Reload Page, or select Reset Saved Workspace and Reload.',
     },
     isolation: {
         title: 'Browser Isolation & Shared Memory Unavailable',
@@ -84,6 +118,141 @@ function bindFallbackReloadButton() {
         });
     }
     return reloadButton;
+}
+
+function buildFallbackRuntimeEnvelope() {
+    const rawTheme = String(document.documentElement?.dataset?.theme || '').toLowerCase();
+    let theme = 'Dark';
+    if (rawTheme === 'light') {
+        theme = 'Light';
+    } else if (rawTheme === 'high-contrast') {
+        theme = 'HighContrast';
+    }
+    return JSON.stringify({
+        schema_version: '1.0',
+        app_version: '0.4.0',
+        timestamp: new Date().toISOString(),
+        app_state: {
+            selected_tab: 0,
+            selected_tab_name: null,
+            show_info: true,
+            show_warnings: true,
+            show_errors: true,
+            theme,
+            tab_states: {},
+        },
+    });
+}
+
+function readFallbackWorkspacePayload(categoryHint) {
+    try {
+        if (window.localStorage) {
+            const raw = window.localStorage.getItem('app');
+            if (typeof raw === 'string' && raw.trim().length > 0) {
+                return raw;
+            }
+            const quarantined = window.localStorage.getItem(FALLBACK_QUARANTINED_WORKSPACE_KEY);
+            if (typeof quarantined === 'string' && quarantined.trim().length > 0) {
+                return quarantined;
+            }
+        }
+    } catch (_) {
+        // Ignore restricted localStorage
+    }
+    const activeCat =
+        categoryHint ||
+        document.getElementById('error_container')?.getAttribute('data-error-category') ||
+        '';
+    return activeCat === 'runtime' ? buildFallbackRuntimeEnvelope() : '';
+}
+
+function bindFallbackRuntimeControls(category) {
+    const downloadButton = document.getElementById('download_workspace_button');
+    if (downloadButton) {
+        if (!downloadButton.dataset.downloadBound) {
+            downloadButton.dataset.downloadBound = 'true';
+            downloadButton.addEventListener('click', (event) => {
+                if (event && typeof event.preventDefault === 'function') {
+                    event.preventDefault();
+                }
+                const payload = readFallbackWorkspacePayload();
+                if (!payload || typeof Blob === 'undefined' || !window.URL || !URL.createObjectURL) {
+                    return;
+                }
+                const blob = new Blob([payload], { type: 'application/json' });
+                const objectUrl = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = objectUrl;
+                link.download = FALLBACK_RECOVERY_FILENAME;
+                link.rel = 'noopener';
+                link.style.display = 'none';
+                document.body?.appendChild(link);
+                link.click();
+                link.parentNode?.removeChild(link);
+                window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+            });
+        }
+        downloadButton.hidden =
+            (category !== 'runtime' && category !== 'webgl') ||
+            readFallbackWorkspacePayload(category).length === 0;
+    }
+
+    const resetButton = document.getElementById('reset_workspace_button');
+    if (resetButton) {
+        if (!resetButton.dataset.resetBound) {
+            resetButton.dataset.resetBound = 'true';
+            resetButton.addEventListener('click', (event) => {
+                if (event && typeof event.preventDefault === 'function') {
+                    event.preventDefault();
+                }
+                try {
+                    const currentTheme = document.documentElement?.dataset?.theme;
+                    if (window.localStorage) {
+                        const rawApp = window.localStorage.getItem('app');
+                        if (typeof rawApp === 'string' && rawApp.trim().length > 0) {
+                            window.localStorage.setItem(FALLBACK_QUARANTINED_WORKSPACE_KEY, rawApp);
+                        }
+                        window.localStorage.removeItem('app');
+                        if (currentTheme) {
+                            window.localStorage.setItem(FALLBACK_PRESERVED_THEME_KEY, currentTheme);
+                        }
+                    }
+                } catch (_) {
+                    // Ignore storage restrictions
+                }
+                try {
+                    window.sessionStorage?.removeItem(FALLBACK_BOOT_SENTINEL_KEY);
+                } catch (_) {
+                    // Ignore sessionStorage restrictions
+                }
+                try {
+                    if (window.history && typeof window.history.replaceState === 'function') {
+                        const pathname = window.location?.pathname || '/';
+                        const rawSearch = String(window.location?.search || '')
+                            .replace(/^\?/, '')
+                            .trim();
+                        const kept = rawSearch
+                            ? rawSearch.split('&').filter((pair) => {
+                                  if (!pair) return false;
+                                  const rawKey = pair.split('=')[0];
+                                  return !FALLBACK_SHARE_QUERY_KEYS.has(rawKey);
+                              })
+                            : [];
+                        const nextUrl = pathname + (kept.length > 0 ? `?${kept.join('&')}` : '');
+                        window.history.replaceState(
+                            { __oxidize_self_sync: '1', fragment: '' },
+                            '',
+                            nextUrl,
+                        );
+                    }
+                } catch (_) {
+                    // Ignore History API restrictions
+                }
+                window.location.reload();
+            });
+        }
+        resetButton.hidden = category !== 'runtime';
+    }
 }
 
 function formatError(err) {
@@ -175,6 +344,12 @@ const STREAM_TRUNCATION_PATTERN =
 const FIREFOX_INTERNAL_ERROR_PATTERN =
     /internalerror|out of memory|too much recursion|allocation size overflow/i;
 
+const FALLBACK_COMPILE_ERROR_PATTERN =
+    /\bcompileerror\b|\blinkerror\b|magic word|magic number|webassembly\.compile|integrity|content security policy/i;
+
+const FALLBACK_RUNTIME_TRAP_PATTERN =
+    /\bruntimeerror\b|\bunreachable\b|memory access out of bounds|out of bounds memory access|indirect call signature mismatch|table index is out of bounds|integer divide by zero|integer overflow|call stack size exceeded|panicked at|thread panicked/i;
+
 function isFirefoxInternalError(err, detailText) {
     if (typeof InternalError !== 'undefined' && err instanceof InternalError) {
         return true;
@@ -185,33 +360,47 @@ function isFirefoxInternalError(err, detailText) {
     return FIREFOX_INTERNAL_ERROR_PATTERN.test(detailText || formatError(err));
 }
 
+function hasAnyFailedStartupResource() {
+    for (let i = 0; i < STARTUP_ASSET_NAMES.length; i += 1) {
+        if (lookupResourceHttpStatus(STARTUP_ASSET_NAMES[i]) >= 400) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function classifyFallbackCategory(err, detailText, assetPath) {
-    if (/timeout|timed out|stalled/i.test(detailText)) {
+    const combinedText = detailText || formatError(err);
+    if (/timeout|timed out|stalled/i.test(combinedText)) {
         return 'timeout';
     }
-    if (lookupResourceHttpStatus(assetPath) >= 400) {
+    if (lookupResourceHttpStatus(assetPath) >= 400 || hasAnyFailedStartupResource()) {
         return 'network';
     }
     if (
-        STREAM_TRUNCATION_PATTERN.test(detailText) ||
+        STREAM_TRUNCATION_PATTERN.test(combinedText) ||
         /http\s+[45]\d\d|status code is not ok|failed to fetch|networkerror|network error|load failed|dynamically imported module|importing a module script failed|failed to load startup|aborted|aborterror|err_aborted|err_failed|err_connection|err_internet|err_content_length_mismatch/i.test(
-            detailText,
+            combinedText,
         )
     ) {
         return 'network';
     }
-    if (/webgl|hardware acceleration|rendering context/i.test(detailText)) {
+    if (/webgl|hardware acceleration|rendering context/i.test(combinedText)) {
         return 'webgl';
     }
-    if (/sharedarraybuffer|cross-origin isolat|crossoriginisolated/i.test(detailText)) {
+    if (/sharedarraybuffer|cross-origin isolat|crossoriginisolated/i.test(combinedText)) {
         return 'isolation';
     }
     if (
-        isFirefoxInternalError(err, detailText) ||
-        (typeof WebAssembly !== 'undefined' &&
-            (err instanceof WebAssembly.CompileError ||
-                err instanceof WebAssembly.LinkError ||
-                err instanceof WebAssembly.RuntimeError)) ||
+        isFirefoxInternalError(err, combinedText) ||
+        isFallbackCompileOrLinkError(err, combinedText)
+    ) {
+        return 'compile';
+    }
+    if (isFallbackWasmRuntimeTrap(err, combinedText)) {
+        return 'runtime';
+    }
+    if (
         err instanceof SyntaxError ||
         err instanceof RangeError ||
         err instanceof ReferenceError ||
@@ -220,6 +409,33 @@ function classifyFallbackCategory(err, detailText, assetPath) {
         return 'compile';
     }
     return 'compile';
+}
+
+function isFallbackCompileOrLinkError(err, detailText) {
+    if (
+        typeof WebAssembly !== 'undefined' &&
+        (err instanceof WebAssembly.CompileError || err instanceof WebAssembly.LinkError)
+    ) {
+        return true;
+    }
+    if (
+        err &&
+        typeof err === 'object' &&
+        (err.name === 'CompileError' || err.name === 'LinkError')
+    ) {
+        return true;
+    }
+    return FALLBACK_COMPILE_ERROR_PATTERN.test(detailText || formatError(err));
+}
+
+function isFallbackWasmRuntimeTrap(err, detailText) {
+    if (typeof WebAssembly !== 'undefined' && err instanceof WebAssembly.RuntimeError) {
+        return true;
+    }
+    if (err && typeof err === 'object' && err.name === 'RuntimeError') {
+        return true;
+    }
+    return FALLBACK_RUNTIME_TRAP_PATTERN.test(detailText || formatError(err));
 }
 
 function buildDiagnosticDetails(err, assetPath) {
@@ -298,6 +514,18 @@ function showBootstrapRecovery(err, assetPath) {
             detailsEl.setAttribute('style', 'display: block;');
         }
 
+        if (copy.alert) {
+            const slot0 = document.getElementById('aria-live-assertive-slot-0');
+            const slot1 = document.getElementById('aria-live-assertive-slot-1');
+            if (slot0) {
+                slot0.textContent = copy.alert;
+            }
+            if (slot1) {
+                slot1.textContent = '';
+            }
+        }
+
+        bindFallbackRuntimeControls(category);
         const reloadButton = bindFallbackReloadButton();
         if (reloadButton && typeof reloadButton.focus === 'function') {
             reloadButton.focus();

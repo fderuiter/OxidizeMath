@@ -5,6 +5,19 @@
     const DEFAULT_COMPILE_TIMEOUT_MS = 45000;
     const DEFAULT_WEBGL_RESTORE_TIMEOUT_MS = 8000;
     const DEFAULT_RECOVERY_FILENAME = 'math-explorer-recovery.mws';
+    const BOOT_SENTINEL_SESSION_KEY = 'math_explorer_boot_sentinel';
+    const QUARANTINED_WORKSPACE_KEY = 'math_explorer_quarantined_workspace';
+    const PRESERVED_THEME_KEY = 'math_explorer_preserved_theme';
+    const SHARE_QUERY_KEYS = {
+        ws: true,
+        tab: true,
+        tool: true,
+        state: true,
+        preset: true,
+        challenge: true,
+        step: true,
+        pipe: true
+    };
     const STARTUP_ASSET_PATTERN =
         /(?:^|\/)(reload\.js|bootstrap\.js|initializer\.js|math_explorer_gui\.js|math_explorer_gui_bg\.wasm)(?:[?#]|$)/i;
 
@@ -42,15 +55,11 @@
         return null;
     }
 
-    function readSavedThemeFromStorage() {
+    function parseSavedThemeFromRawJson(raw) {
+        if (typeof raw !== 'string' || !raw) {
+            return null;
+        }
         try {
-            if (!window.localStorage) {
-                return null;
-            }
-            const raw = window.localStorage.getItem('app');
-            if (!raw) {
-                return null;
-            }
             const parsed = JSON.parse(raw.replace(/^\uFEFF/, ''));
             if (!parsed || typeof parsed !== 'object') {
                 return null;
@@ -77,6 +86,21 @@
                 return null;
             }
             return normalizeSavedTheme(parsed.theme);
+        } catch (_err) {
+            return null;
+        }
+    }
+
+    function readSavedThemeFromStorage() {
+        try {
+            if (!window.localStorage) {
+                return null;
+            }
+            const raw = window.localStorage.getItem('app');
+            if (!raw) {
+                return normalizeSavedTheme(window.localStorage.getItem(PRESERVED_THEME_KEY));
+            }
+            return parseSavedThemeFromRawJson(raw);
         } catch (_err) {
             // Fall back to OS media queries on SecurityError or invalid JSON
             return null;
@@ -160,6 +184,19 @@
             alert:
                 'WebAssembly startup error. Cached files may be corrupted. Select Reload Page to retry.'
         },
+        runtime: {
+            title: 'Application Runtime Error',
+            message:
+                'Math Explorer encountered an unexpected WebAssembly runtime error and stopped to protect your session. You can download a backup of your saved workspace (.mws), reload the page, or reset your saved workspace to start fresh.',
+            heading: 'Recovery Steps',
+            steps: [
+                'Select Download Saved Workspace (.mws) below to export a backup of your saved or quarantined workspace.',
+                'Select Reload Page to restart Math Explorer. Repeated startup crashes automatically quarantine saved state into safe mode.',
+                'Select Reset Saved Workspace & Reload to archive saved state, clear share URL parameters, and open a clean workspace immediately.'
+            ],
+            alert:
+                'Application runtime error in Math Explorer. Download your saved workspace backup, select Reload Page, or select Reset Saved Workspace and Reload.'
+        },
         isolation: {
             title: 'Browser Isolation & Shared Memory Unavailable',
             message:
@@ -235,7 +272,10 @@
     let savedWorkspaceEnvelope = '';
     let savedWorkspaceFilename = DEFAULT_RECOVERY_FILENAME;
     let storageWriteBlocked = false;
+    let runtimeSnapshotFrozen = false;
     let webglRecoveryHandlers = null;
+    let lastFatalPanicSummary = '';
+    const activeAudioStreams = [];
     let currentPhase = 'transfer';
     let lastStageLabel = 'Initializing startup scripts';
     let pendingActions = [];
@@ -372,25 +412,260 @@
                 return '';
             }
             const raw = window.localStorage.getItem('app');
-            return typeof raw === 'string' && raw.trim().length > 0 ? raw : '';
+            if (typeof raw === 'string' && raw.trim().length > 0) {
+                return raw;
+            }
+            const quarantined = window.localStorage.getItem(QUARANTINED_WORKSPACE_KEY);
+            return typeof quarantined === 'string' && quarantined.trim().length > 0
+                ? quarantined
+                : '';
         } catch (_err) {
             return '';
         }
     }
 
-    function resolveSavedWorkspaceEnvelope() {
+    function registerAudioStream(audioCtx, masterGain) {
+        if (!audioCtx || typeof audioCtx !== 'object') {
+            return;
+        }
+        for (let i = 0; i < activeAudioStreams.length; i += 1) {
+            if (activeAudioStreams[i].ctx === audioCtx) {
+                activeAudioStreams[i].gain = masterGain || activeAudioStreams[i].gain;
+                return;
+            }
+        }
+        activeAudioStreams.push({ ctx: audioCtx, gain: masterGain || null });
+    }
+
+    function silenceActiveAudioStreams() {
+        for (let i = 0; i < activeAudioStreams.length; i += 1) {
+            const entry = activeAudioStreams[i];
+            if (!entry || !entry.ctx) {
+                continue;
+            }
+            try {
+                const now =
+                    typeof entry.ctx.currentTime === 'number' && Number.isFinite(entry.ctx.currentTime)
+                        ? entry.ctx.currentTime
+                        : 0;
+                if (entry.gain && entry.gain.gain) {
+                    if (typeof entry.gain.gain.cancelScheduledValues === 'function') {
+                        entry.gain.gain.cancelScheduledValues(now);
+                    }
+                    if (typeof entry.gain.gain.setTargetAtTime === 'function') {
+                        entry.gain.gain.setTargetAtTime(0, now, 0.005);
+                    }
+                    entry.gain.gain.value = 0;
+                }
+            } catch (_gainErr) {
+                // Ignore gain node mutation errors during trap teardown
+            }
+            try {
+                if (entry.ctx.state !== 'closed' && typeof entry.ctx.suspend === 'function') {
+                    const maybePromise = entry.ctx.suspend();
+                    if (maybePromise && typeof maybePromise.catch === 'function') {
+                        maybePromise.catch(function () {});
+                    }
+                }
+            } catch (_ctxErr) {
+                // Ignore AudioContext suspend errors
+            }
+        }
+    }
+
+    function stripShareUrlParameters() {
+        try {
+            if (
+                !window.history ||
+                typeof window.history.replaceState !== 'function' ||
+                !window.location
+            ) {
+                return;
+            }
+            const pathname = window.location.pathname || '/';
+            const rawSearch = String(window.location.search || '').replace(/^\?/, '').trim();
+            const kept = [];
+            if (rawSearch.length > 0) {
+                const pairs = rawSearch.split('&');
+                for (let i = 0; i < pairs.length; i += 1) {
+                    const pair = pairs[i];
+                    if (!pair) {
+                        continue;
+                    }
+                    const eqIdx = pair.indexOf('=');
+                    const rawKey = eqIdx === -1 ? pair : pair.slice(0, eqIdx);
+                    let decodedKey = rawKey;
+                    try {
+                        decodedKey = decodeURIComponent(rawKey);
+                    } catch (_decodeErr) {
+                        decodedKey = rawKey;
+                    }
+                    if (!Object.prototype.hasOwnProperty.call(SHARE_QUERY_KEYS, decodedKey)) {
+                        kept.push(pair);
+                    }
+                }
+            }
+            const cleanQuery = kept.length > 0 ? '?' + kept.join('&') : '';
+            window.history.replaceState(
+                { __oxidize_self_sync: '1', fragment: '' },
+                '',
+                pathname + cleanQuery
+            );
+        } catch (_err) {
+            // Ignore History API errors in restricted browsing contexts
+        }
+    }
+
+    function freezeRuntimeWorkspaceSnapshot() {
+        if (runtimeSnapshotFrozen) {
+            return;
+        }
+        runtimeSnapshotFrozen = true;
+        const snapshot = readFallbackEnvelopeFromStorage();
+        if (snapshot.length > 0) {
+            savedWorkspaceEnvelope = snapshot;
+        }
+    }
+
+    function resetSavedWorkspaceAndReload() {
+        const frozenPayload =
+            runtimeSnapshotFrozen && savedWorkspaceEnvelope && savedWorkspaceEnvelope.length > 0
+                ? savedWorkspaceEnvelope
+                : '';
+        const preservedTheme =
+            parseSavedThemeFromRawJson(frozenPayload) ||
+            readSavedThemeFromStorage() ||
+            normalizeSavedTheme(
+                document.documentElement && document.documentElement.dataset
+                    ? document.documentElement.dataset.theme
+                    : null
+            );
+        try {
+            if (window.localStorage) {
+                const rawApp = frozenPayload || window.localStorage.getItem('app');
+                if (typeof rawApp === 'string' && rawApp.trim().length > 0) {
+                    savedWorkspaceEnvelope = rawApp;
+                    window.localStorage.setItem(QUARANTINED_WORKSPACE_KEY, rawApp);
+                }
+                window.localStorage.removeItem('app');
+                if (preservedTheme) {
+                    window.localStorage.setItem(PRESERVED_THEME_KEY, preservedTheme);
+                }
+            }
+        } catch (_storageErr) {
+            // Continue resetting URL and reloading even when storage writes are blocked
+        }
+        try {
+            if (window.sessionStorage) {
+                window.sessionStorage.removeItem(BOOT_SENTINEL_SESSION_KEY);
+            }
+        } catch (_sessionErr) {
+            // Ignore restricted sessionStorage
+        }
+        stripShareUrlParameters();
+        window.location.reload();
+    }
+
+    function bindResetWorkspaceButton() {
+        const resetButton = document.getElementById('reset_workspace_button');
+        if (resetButton && !resetButton.dataset.resetBound) {
+            resetButton.dataset.resetBound = 'true';
+            resetButton.addEventListener('click', function (event) {
+                if (event && typeof event.preventDefault === 'function') {
+                    event.preventDefault();
+                }
+                resetSavedWorkspaceAndReload();
+            });
+        }
+        return resetButton;
+    }
+
+    function syncResetWorkspaceButton(resolvedCategory) {
+        const resetButton = document.getElementById('reset_workspace_button');
+        if (!resetButton) {
+            return null;
+        }
+        resetButton.hidden = resolvedCategory !== 'runtime';
+        return resetButton;
+    }
+
+    function resolveEnvelopeThemeVariant() {
+        const current =
+            readSavedThemeFromStorage() ||
+            normalizeSavedTheme(
+                document.documentElement && document.documentElement.dataset
+                    ? document.documentElement.dataset.theme
+                    : null
+            );
+        if (current === 'light') {
+            return 'Light';
+        }
+        if (current === 'high-contrast') {
+            return 'HighContrast';
+        }
+        return 'Dark';
+    }
+
+    function buildMinimalRuntimeEnvelope() {
+        return JSON.stringify({
+            schema_version: '1.0',
+            app_version: '0.4.0',
+            timestamp: new Date().toISOString(),
+            app_state: {
+                selected_tab: 0,
+                selected_tab_name: null,
+                show_info: true,
+                show_warnings: true,
+                show_errors: true,
+                theme: resolveEnvelopeThemeVariant(),
+                tab_states: {}
+            }
+        });
+    }
+
+    function getActiveErrorCategory() {
+        const errorContainer = document.getElementById('error_container');
+        return errorContainer ? errorContainer.getAttribute('data-error-category') || '' : '';
+    }
+
+    function resolveSavedWorkspaceEnvelope(categoryHint) {
+        if (
+            (storageWriteBlocked || runtimeSnapshotFrozen) &&
+            savedWorkspaceEnvelope &&
+            savedWorkspaceEnvelope.length > 0
+        ) {
+            return savedWorkspaceEnvelope;
+        }
+        try {
+            if (window.localStorage) {
+                const rawApp = window.localStorage.getItem('app');
+                if (typeof rawApp === 'string' && rawApp.trim().length > 0) {
+                    return rawApp;
+                }
+            }
+        } catch (_err) {
+            // Fall through to in-memory or quarantined backup when localStorage is restricted
+        }
         if (savedWorkspaceEnvelope && savedWorkspaceEnvelope.length > 0) {
             return savedWorkspaceEnvelope;
         }
-        return readFallbackEnvelopeFromStorage();
+        const fallback = readFallbackEnvelopeFromStorage();
+        if (fallback.length > 0) {
+            return fallback;
+        }
+        const effectiveCategory = categoryHint || getActiveErrorCategory();
+        if (effectiveCategory === 'runtime') {
+            return buildMinimalRuntimeEnvelope();
+        }
+        return '';
     }
 
-    function syncDownloadWorkspaceButton() {
+    function syncDownloadWorkspaceButton(categoryHint) {
         const btn = document.getElementById('download_workspace_button');
         if (!btn) {
             return null;
         }
-        const payload = resolveSavedWorkspaceEnvelope();
+        const payload = resolveSavedWorkspaceEnvelope(categoryHint);
         const hasPayload = payload.length > 0;
         btn.hidden = !hasPayload;
         btn.setAttribute('data-storage-blocked', storageWriteBlocked ? 'true' : 'false');
@@ -575,6 +850,12 @@
     const FIREFOX_INTERNAL_ERROR_PATTERN =
         /internalerror|out of memory|too much recursion|allocation size overflow/i;
 
+    const WASM_COMPILE_ERROR_PATTERN =
+        /\bcompileerror\b|\blinkerror\b|magic word|magic number|webassembly\.compile|integrity|content security policy/i;
+
+    const WASM_RUNTIME_TRAP_PATTERN =
+        /\bruntimeerror\b|\bunreachable\b|memory access out of bounds|out of bounds memory access|indirect call signature mismatch|table index is out of bounds|integer divide by zero|integer overflow|call stack size exceeded|panicked at|thread panicked/i;
+
     function isFirefoxInternalError(reason, text) {
         if (typeof InternalError !== 'undefined' && reason instanceof InternalError) {
             return true;
@@ -590,7 +871,7 @@
         if (/timeout|timed out|stalled/i.test(text)) {
             return 'timeout';
         }
-        if (resourceUrl && hasFailedResourceStatus(resourceUrl)) {
+        if ((resourceUrl && hasFailedResourceStatus(resourceUrl)) || hasFailedResourceStatus()) {
             return 'network';
         }
         if (
@@ -609,26 +890,51 @@
         ) {
             return 'isolation';
         }
+        if (isFirefoxInternalError(reason, text) || isWasmCompileOrLinkError(reason, text)) {
+            return 'compile';
+        }
+        if (isWasmRuntimeTrap(reason, text)) {
+            return 'runtime';
+        }
         if (
-            isFirefoxInternalError(reason, text) ||
-            (typeof WebAssembly !== 'undefined' &&
-                (reason instanceof WebAssembly.CompileError ||
-                    reason instanceof WebAssembly.LinkError ||
-                    reason instanceof WebAssembly.RuntimeError)) ||
             reason instanceof SyntaxError ||
             reason instanceof RangeError ||
             reason instanceof ReferenceError ||
             reason instanceof TypeError ||
-            /compileerror|linkerror|runtimeerror|internalerror|out of memory|too much recursion|allocation size overflow|rangeerror|referenceerror|typeerror|unreachable|out of bounds|call stack|magic word|magic number|webassembly\.instantiate|webassembly\.compile|wasm|integrity|content security policy/i.test(
+            /rangeerror|referenceerror|typeerror|out of bounds|call stack|webassembly\.instantiate|wasm/i.test(
                 text
             )
         ) {
-            return 'compile';
+            return bootCompleted ? 'runtime' : 'compile';
         }
-        if (hasFailedResourceStatus()) {
-            return 'network';
+        return bootCompleted ? 'runtime' : 'network';
+    }
+
+    function isWasmCompileOrLinkError(reason, text) {
+        if (
+            typeof WebAssembly !== 'undefined' &&
+            (reason instanceof WebAssembly.CompileError || reason instanceof WebAssembly.LinkError)
+        ) {
+            return true;
         }
-        return 'network';
+        if (
+            reason &&
+            typeof reason === 'object' &&
+            (reason.name === 'CompileError' || reason.name === 'LinkError')
+        ) {
+            return true;
+        }
+        return WASM_COMPILE_ERROR_PATTERN.test(text);
+    }
+
+    function isWasmRuntimeTrap(reason, text) {
+        if (typeof WebAssembly !== 'undefined' && reason instanceof WebAssembly.RuntimeError) {
+            return true;
+        }
+        if (reason && typeof reason === 'object' && reason.name === 'RuntimeError') {
+            return true;
+        }
+        return WASM_RUNTIME_TRAP_PATTERN.test(text);
     }
 
     function selectCategoryConfig(resolvedCategory, detailText) {
@@ -749,6 +1055,37 @@
         webglRecoveryHandlers = handlers && typeof handlers === 'object' ? handlers : null;
     }
 
+    function composeRuntimeDetailText(rawDetail) {
+        const cleanDetail = formatReason(rawDetail).trim();
+        if (!lastFatalPanicSummary) {
+            return cleanDetail;
+        }
+        if (!cleanDetail || cleanDetail === lastFatalPanicSummary) {
+            return lastFatalPanicSummary;
+        }
+        if (cleanDetail.indexOf(lastFatalPanicSummary) !== -1) {
+            return cleanDetail;
+        }
+        if (lastFatalPanicSummary.indexOf(cleanDetail) !== -1) {
+            return lastFatalPanicSummary;
+        }
+        return lastFatalPanicSummary + '\nWebAssembly trap: ' + cleanDetail;
+    }
+
+    function recordFatalPanic(summary, location) {
+        freezeRuntimeWorkspaceSnapshot();
+        silenceActiveAudioStreams();
+        const baseSummary = typeof summary === 'string' ? summary.trim() : formatReason(summary).trim();
+        const loc = typeof location === 'string' ? location.trim() : '';
+        let formatted = baseSummary || 'Thread panicked in WebAssembly runtime.';
+        if (loc && formatted.indexOf(loc) === -1) {
+            formatted = formatted + ' (at ' + loc + ')';
+        }
+        lastFatalPanicSummary = formatted;
+        showError('runtime', formatted);
+        return formatted;
+    }
+
     function showError(category, details) {
         if (isUnloading) {
             return;
@@ -758,7 +1095,10 @@
             : 'network';
 
         if (bootFailed && resolvedCategory !== 'webgl') {
-            const extraDetail = formatReason(details);
+            const extraDetail =
+                resolvedCategory === 'runtime'
+                    ? composeRuntimeDetailText(details)
+                    : formatReason(details);
             if (extraDetail && /http\s+[45]\d\d/i.test(extraDetail)) {
                 runWhenDomReady(function () {
                     const detailsEl = document.getElementById('error_details');
@@ -767,14 +1107,37 @@
                         detailsEl.style.display = 'block';
                     }
                 });
+            } else if (resolvedCategory === 'runtime' && extraDetail) {
+                runWhenDomReady(function () {
+                    const errorContainer = document.getElementById('error_container');
+                    const activeCategory = errorContainer
+                        ? errorContainer.getAttribute('data-error-category')
+                        : '';
+                    if (activeCategory === 'runtime') {
+                        const detailsEl = document.getElementById('error_details');
+                        if (detailsEl && detailsEl.textContent !== extraDetail) {
+                            detailsEl.textContent = extraDetail;
+                            detailsEl.style.display = 'block';
+                        }
+                    }
+                });
             }
             return;
         }
-        if (!isBootPending() && resolvedCategory !== 'webgl') {
+        if (!isBootPending() && resolvedCategory !== 'webgl' && resolvedCategory !== 'runtime') {
             return;
         }
 
-        const detailText = formatReason(details);
+        const detailText =
+            resolvedCategory === 'runtime'
+                ? composeRuntimeDetailText(details)
+                : formatReason(details);
+        if (resolvedCategory === 'runtime') {
+            freezeRuntimeWorkspaceSnapshot();
+        }
+        if (resolvedCategory === 'runtime' || resolvedCategory === 'webgl') {
+            silenceActiveAudioStreams();
+        }
         bootFailed = true;
         clearWatchdog();
         clearWebglRestoreTimer();
@@ -870,9 +1233,16 @@
             }
 
             bindDownloadWorkspaceButton();
-            if (resolvedCategory === 'webgl') {
-                syncDownloadWorkspaceButton();
+            bindResetWorkspaceButton();
+            if (resolvedCategory === 'webgl' || resolvedCategory === 'runtime') {
+                syncDownloadWorkspaceButton(resolvedCategory);
+            } else {
+                const downloadBtn = document.getElementById('download_workspace_button');
+                if (downloadBtn) {
+                    downloadBtn.hidden = true;
+                }
             }
+            syncResetWorkspaceButton(resolvedCategory);
 
             announce(cfg.alert, 'assertive');
 
@@ -1028,6 +1398,7 @@
         markBootManaged();
         bindReloadButton();
         bindDownloadWorkspaceButton();
+        bindResetWorkspaceButton();
         bindCanvasContextGuard();
 
         const queued = pendingActions.slice();
@@ -1060,15 +1431,18 @@
         clearWebglRestoreTimer();
     });
 
-    // Capture-phase listener catches <script> and <link rel="modulepreload"|"preload"> network/integrity failures
+    // Capture-phase listener catches startup <script>/<link> failures and post-boot runtime traps
     window.addEventListener(
         'error',
         function (event) {
-            if (!isBootPending() || isUnloading) {
+            if (isUnloading) {
                 return;
             }
             const target = event && event.target;
             if (target && target !== window && target.tagName) {
+                if (!isBootPending()) {
+                    return;
+                }
                 const tag = String(target.tagName).toUpperCase();
                 const rel = String(target.rel || '').toLowerCase();
                 if (tag === 'SCRIPT' || (tag === 'LINK' && (rel === 'modulepreload' || rel === 'preload'))) {
@@ -1094,18 +1468,49 @@
                 }
                 return;
             }
-            const reason = (event && (event.error || event.message)) || 'Unexpected startup error';
-            handleFailure(reason);
+            const rawReason = event && (event.error || event.message);
+            if (!isBootPending()) {
+                const msgText = formatReason(rawReason);
+                if (!msgText || /resizeobserver loop/i.test(msgText)) {
+                    return;
+                }
+                const postBootCategory = classifyError(rawReason);
+                const targetCategory = postBootCategory === 'webgl' ? 'webgl' : 'runtime';
+                showError(targetCategory, rawReason);
+                return;
+            }
+            handleFailure(rawReason || 'Unexpected startup error');
         },
         true
     );
 
     window.addEventListener('unhandledrejection', function (event) {
-        if (!isBootPending() || isUnloading) {
+        if (isUnloading) {
             return;
         }
-        const reason = (event && event.reason) || 'Unhandled startup promise rejection';
-        handleFailure(reason);
+        const rawReason = event && event.reason;
+        if (!isBootPending()) {
+            const msgText = formatReason(rawReason);
+            const errName =
+                rawReason && typeof rawReason === 'object' ? String(rawReason.name || '') : '';
+            if (
+                !msgText ||
+                errName === 'AbortError' ||
+                errName === 'NotAllowedError' ||
+                errName === 'SecurityError' ||
+                /resizeobserver loop/i.test(msgText)
+            ) {
+                return;
+            }
+            const postBootCategory = classifyError(rawReason);
+            if (postBootCategory === 'network' && !lastFatalPanicSummary) {
+                return;
+            }
+            const targetCategory = postBootCategory === 'webgl' ? 'webgl' : 'runtime';
+            showError(targetCategory, rawReason);
+            return;
+        }
+        handleFailure(rawReason || 'Unhandled startup promise rejection');
     });
 
     window.addEventListener('securitypolicyviolation', function (event) {
@@ -1140,6 +1545,10 @@
         getWebglRestoreTimeoutMs: resolveWebglRestoreTimeoutMs,
         setSavedWorkspaceEnvelope: setSavedWorkspaceEnvelope,
         downloadSavedWorkspace: downloadSavedWorkspace,
+        resetSavedWorkspaceAndReload: resetSavedWorkspaceAndReload,
+        recordFatalPanic: recordFatalPanic,
+        registerAudioStream: registerAudioStream,
+        silenceActiveAudioStreams: silenceActiveAudioStreams,
         beginWebglContextRecovery: beginWebglContextRecovery,
         completeWebglContextRecovery: completeWebglContextRecovery,
         failWebglContextRecovery: failWebglContextRecovery,

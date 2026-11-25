@@ -191,6 +191,7 @@ fn build_audio_graph(preset_bank: &PresetHarmonicBank) -> Result<WebAudioGraph, 
     let ctx = AudioContext::new().map_err(format_js_err)?;
     let master_gain = ctx.create_gain().map_err(format_js_err)?;
     master_gain.gain().set_value(0.0);
+    crate::crash_boundary::register_active_audio_graph(&ctx, &master_gain);
 
     let compressor = build_master_limiter(&ctx)?;
     let ceiling_gain = ctx.create_gain().map_err(format_js_err)?;
