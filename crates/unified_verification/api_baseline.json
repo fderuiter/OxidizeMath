@@ -8168,6 +8168,9 @@
       "signature": "pub use orbits :: SECONDS_PER_MYR"
     },
     {
+      "signature": "pub use orbits :: SLINGSHOT_RING_CAPACITY"
+    },
+    {
       "signature": "pub use orbits :: planar_acceleration"
     },
     {
@@ -8308,6 +8311,9 @@
     },
     {
       "signature": "pub const SECONDS_PER_MYR : f64"
+    },
+    {
+      "signature": "pub const SLINGSHOT_RING_CAPACITY : usize"
     },
     {
       "signature": "pub enum OrbitParticleKind"
@@ -9144,6 +9150,15 @@
   ],
   "crates/domain_physics/src/physics/high_energy/general_relativity/kerr.rs": [
     {
+      "signature": "impl KerrEquatorialMetric { pub fn clock_dilation (& self , _ : f64 , _ : f64) -> Result < f64 , HighEnergyError > }"
+    },
+    {
+      "signature": "impl KerrEquatorialMetric { pub fn critical_impact_parameter (& self , _ : bool) -> f64 }"
+    },
+    {
+      "signature": "impl KerrEquatorialMetric { pub fn effective_potential (& self , _ : f64 , _ : f64 , _ : f64 , _ : GeodesicKind ,) -> Result < f64 , HighEnergyError > }"
+    },
+    {
       "signature": "impl KerrEquatorialMetric { pub fn ergosphere_radius (& self) -> f64 }"
     },
     {
@@ -9159,7 +9174,63 @@
       "signature": "impl KerrEquatorialMetric { pub fn outer_horizon_radius (& self) -> f64 }"
     },
     {
+      "signature": "impl KerrEquatorialMetric { pub fn photon_orbit_radius (& self , _ : bool) -> f64 }"
+    },
+    {
+      "signature": "impl KerrEquatorialMetric { pub fn zamo_clock_dilation (& self , _ : f64) -> Result < f64 , HighEnergyError > }"
+    },
+    {
       "signature": "pub struct KerrEquatorialMetric"
+    }
+  ],
+  "crates/domain_physics/src/physics/high_energy/general_relativity/lensing.rs": [
+    {
+      "signature": "impl DeflectionTable { pub fn build (_ : LensingMetricSpec , _ : f64 , _ : f64 , _ : usize ,) -> Result < Self , HighEnergyError > }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn critical_impact_bounds (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn map_image_uv (& self , _ : f64 , _ : f64 , _ : f64) -> LensedRayHit }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn max_impact_b (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn rebuild_in_place (& mut self , _ : LensingMetricSpec , _ : f64 , _ : f64 ,) -> Result < () , HighEnergyError > }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn sample_impact (& self , _ : f64) -> DeflectionSample }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn samples (& self) -> & [DeflectionSample] }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn spec (& self) -> LensingMetricSpec }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn with_capacity (_ : LensingMetricSpec , _ : usize) -> Result < Self , HighEnergyError > }"
+    },
+    {
+      "signature": "impl LensingMetricSpec { pub fn critical_impact_bounds (& self) -> Result < (f64 , f64) , HighEnergyError > }"
+    },
+    {
+      "signature": "pub const DEFAULT_DEFLECTION_BINS : usize"
+    },
+    {
+      "signature": "pub const EINSTEIN_RING_IMPACT_FACTOR : f64"
+    },
+    {
+      "signature": "pub enum LensingMetricSpec"
+    },
+    {
+      "signature": "pub struct DeflectionSample"
+    },
+    {
+      "signature": "pub struct DeflectionTable"
+    },
+    {
+      "signature": "pub struct LensedRayHit"
     }
   ],
   "crates/domain_physics/src/physics/high_energy/general_relativity/mod.rs": [
@@ -9180,6 +9251,24 @@
     },
     {
       "signature": "pub use kerr :: KerrEquatorialMetric"
+    },
+    {
+      "signature": "pub use lensing :: DEFAULT_DEFLECTION_BINS"
+    },
+    {
+      "signature": "pub use lensing :: DeflectionSample"
+    },
+    {
+      "signature": "pub use lensing :: DeflectionTable"
+    },
+    {
+      "signature": "pub use lensing :: EINSTEIN_RING_IMPACT_FACTOR"
+    },
+    {
+      "signature": "pub use lensing :: LensedRayHit"
+    },
+    {
+      "signature": "pub use lensing :: LensingMetricSpec"
     },
     {
       "signature": "pub use schwarzschild :: GeodesicKind"
@@ -9299,6 +9388,18 @@
   ],
   "crates/domain_physics/src/physics/high_energy/mod.rs": [
     {
+      "signature": "pub use general_relativity :: DEFAULT_DEFLECTION_BINS"
+    },
+    {
+      "signature": "pub use general_relativity :: DeflectionSample"
+    },
+    {
+      "signature": "pub use general_relativity :: DeflectionTable"
+    },
+    {
+      "signature": "pub use general_relativity :: EINSTEIN_RING_IMPACT_FACTOR"
+    },
+    {
       "signature": "pub use general_relativity :: GeodesicKind"
     },
     {
@@ -9306,6 +9407,12 @@
     },
     {
       "signature": "pub use general_relativity :: KerrEquatorialMetric"
+    },
+    {
+      "signature": "pub use general_relativity :: LensedRayHit"
+    },
+    {
+      "signature": "pub use general_relativity :: LensingMetricSpec"
     },
     {
       "signature": "pub use general_relativity :: MAX_GEODESIC_TRAJECTORIES"
@@ -9353,6 +9460,9 @@
       "signature": "pub use math_commons :: constants :: SOLAR_MASS"
     },
     {
+      "signature": "pub use observer :: FourVector"
+    },
+    {
       "signature": "pub use observer :: apparent_superluminal_beta"
     },
     {
@@ -9380,6 +9490,12 @@
       "signature": "pub use radiation :: evaluate_jet_knot_observables"
     },
     {
+      "signature": "pub use radiation :: inverse_compton_spectral_index"
+    },
+    {
+      "signature": "pub use radiation :: synchrotron_power"
+    },
+    {
       "signature": "pub use radiation :: twin_jet_flux_asymmetry"
     }
   ],
@@ -9398,6 +9514,9 @@
     },
     {
       "signature": "impl FourVector { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl FourVector { pub fn relativistic_doppler_factor (& self , _ : [f64 ; 3] ,) -> Result < f64 , HighEnergyError > }"
     },
     {
       "signature": "pub fn apparent_superluminal_beta (_ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
@@ -23137,6 +23256,9 @@
     }
   ],
   "crates/pure_math/src/pure_math/tensor/geodesic.rs": [
+    {
+      "signature": "impl < M : StaticMetric < N > , const N : usize > GeodesicSystem < M , N > { pub fn integrate_bounded_rk4 < S , F > (& self , _ : & mut RungeKutta4 < S > , _ : & mut S , _ : f64 , _ : usize , _ : F ,) -> (usize , GeodesicStepStatus) where S : GeodesicState < N > , Self : OdeSystem < S > , F : FnMut (& S) -> bool , }"
+    },
     {
       "signature": "impl < M : StaticMetric < N > , const N : usize > GeodesicSystem < M , N > { pub fn into_metric (self) -> M }"
     },

@@ -1,17 +1,19 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-//! Side-panel controls, 3D Flamm/wormhole `Plot3DViewport`, $V_{\text{eff}}(r)$ with $\frac{1}{2}e^2$,
-//! twin worldlines, Kerr/ISCO overlays, and 2D lensing atlas UI.
+//! Side-panel controls, $V_{\text{eff}}(r)$ with $\frac{1}{2}e^2$, twin worldline readouts,
+//! Kerr/ISCO/photon-sphere overlays, 2D lensing atlas toggle, and Doppler sonification UI.
 
-use crate::accessibility::AccessibleTheoryHover;
 use crate::app::SemanticPalette;
-use crate::camera::Plot3DViewport;
+use crate::audio::render_sonification_panel;
 use crate::framework::{scoped_panel_id, PaneSidePanel, PlaybackAction, PlaybackTransport};
 use crate::web_io::PlatformInstant;
 use eframe::egui;
 use egui_plot::{Line, LineStyle, Plot, PlotPoints, Points, VLine};
 
-use super::{GeodesicMode, GeodesicPlaygroundTool, SpacetimePreset, TrajectorySample};
+use super::{
+    GeodesicInteractionMode, GeodesicMode, GeodesicPlaygroundTool, LensingBackgroundKind,
+    SpacetimePreset, TrajectorySample, ViewportViewMode,
+};
 
 impl GeodesicPlaygroundTool {
     pub(super) fn render_tool(&mut self, parent_ui: &mut egui::Ui) {
@@ -36,23 +38,85 @@ impl GeodesicPlaygroundTool {
     fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
         let panel_id = scoped_panel_id(parent_ui, "relativity_playground_side");
         PaneSidePanel::left(panel_id).show_inside(parent_ui, |ui| {
-            ui.heading("Geodesic Playground");
-            ui.separator();
-            let mut recompute = self.draw_mode_selectors(ui);
-            recompute |= self.draw_sandbox_controls(ui);
-            recompute |= self.draw_parameter_sliders(ui);
-            ui.separator();
-            if self.atlas.show_toggle_button(ui) {
-                self.state.atlas_visible = self.atlas.is_visible();
-                self.revision = self.revision.wrapping_add(1);
-            }
-            ui.separator();
-            self.draw_transport_and_scrubber(ui, ctx, recompute);
-            ui.separator();
-            egui::CollapsingHeader::new("3D Camera")
-                .default_open(false)
-                .show(ui, |ui| self.state.camera.ui(ui));
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.heading("Geodesic Playground");
+                self.draw_mode_and_view_selectors(ui);
+                ui.separator();
+                let mut recompute = self.draw_mode_selectors(ui);
+                recompute |= self.draw_sandbox_controls(ui);
+                recompute |= self.draw_parameter_sliders(ui);
+                ui.separator();
+                if self.atlas.show_toggle_button(ui) {
+                    self.state.atlas_visible = self.atlas.is_visible();
+                    self.revision = self.revision.wrapping_add(1);
+                }
+                ui.separator();
+                self.draw_transport_and_scrubber(ui, ctx, recompute);
+                ui.separator();
+                let audio_frame = self.build_audio_frame();
+                let is_paused = !self.state.is_playing || self.halted_near_singularity;
+                render_sonification_panel(ui, "geodesic_playground", &audio_frame, is_paused);
+                ui.separator();
+                egui::CollapsingHeader::new("3D Camera")
+                    .default_open(false)
+                    .show(ui, |ui| self.state.camera.ui(ui));
+            });
         });
+    }
+
+    fn draw_mode_and_view_selectors(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Gesture:");
+            for mode in [
+                GeodesicInteractionMode::Orbit,
+                GeodesicInteractionMode::Slingshot,
+                GeodesicInteractionMode::PhotonFan,
+            ] {
+                if ui
+                    .selectable_value(&mut self.state.interaction_mode, mode, mode.label())
+                    .changed()
+                {
+                    self.rebuild_trajectory(560);
+                    self.state.scrub_index = self.samples.len().saturating_sub(1);
+                    self.revision = self.revision.wrapping_add(1);
+                }
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("View:");
+            for view in [
+                ViewportViewMode::Embedding3D,
+                ViewportViewMode::LensingCamera2D,
+            ] {
+                if ui
+                    .selectable_value(&mut self.state.view_mode, view, view.label())
+                    .changed()
+                {
+                    self.lensing_dirty = true;
+                    self.refresh_lensing_pixels_in_place();
+                    self.revision = self.revision.wrapping_add(1);
+                }
+            }
+        });
+        if self.state.view_mode == ViewportViewMode::LensingCamera2D {
+            egui::ComboBox::from_label("Lensing Source")
+                .selected_text(self.state.lensing_background.label())
+                .show_ui(ui, |ui| {
+                    for bg in [
+                        LensingBackgroundKind::GalacticDisk,
+                        LensingBackgroundKind::LeniaPortal,
+                        LensingBackgroundKind::Starfield,
+                    ] {
+                        if ui
+                            .selectable_value(&mut self.state.lensing_background, bg, bg.label())
+                            .changed()
+                        {
+                            self.refresh_lensing_pixels_in_place();
+                            self.revision = self.revision.wrapping_add(1);
+                        }
+                    }
+                });
+        }
     }
 
     fn draw_mode_selectors(&mut self, ui: &mut egui::Ui) -> bool {
@@ -61,9 +125,13 @@ impl GeodesicPlaygroundTool {
             .selected_text(self.state.spacetime.label())
             .show_ui(ui, |ui| {
                 for candidate in SpacetimePreset::ALL {
-                    recompute |= ui
+                    if ui
                         .selectable_value(&mut self.state.spacetime, candidate, candidate.label())
-                        .changed();
+                        .changed()
+                    {
+                        self.lensing_dirty = true;
+                        recompute = true;
+                    }
                 }
             });
         egui::ComboBox::from_label("Worldline")
@@ -86,15 +154,22 @@ impl GeodesicPlaygroundTool {
         } else {
             "Schwarzschild Radius Rs"
         };
-        changed |= ui
+        if ui
             .add(egui::Slider::new(&mut self.state.scale_radius, 0.5..=5.0).text(scale_lbl))
-            .changed();
-        if self.state.spacetime == SpacetimePreset::KerrEquatorial {
-            changed |= ui
+            .changed()
+        {
+            self.lensing_dirty = true;
+            changed = true;
+        }
+        if self.state.spacetime == SpacetimePreset::KerrEquatorial
+            && ui
                 .add(
                     egui::Slider::new(&mut self.state.spin_chi, -0.95..=0.95).text("Kerr Spin chi"),
                 )
-                .changed();
+                .changed()
+        {
+            self.lensing_dirty = true;
+            changed = true;
         }
         let min_r = self.min_launch_radius();
         let (r_range, r_lbl) = if is_wh {
@@ -122,6 +197,20 @@ impl GeodesicPlaygroundTool {
         changed |= ui
             .add(egui::Slider::new(&mut self.state.radial_bias, -0.98..=0.98).text("Radial Launch"))
             .changed();
+        changed |= self.draw_fan_and_step_sliders(ui);
+        changed
+    }
+
+    fn draw_fan_and_step_sliders(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut changed = false;
+        if self.state.interaction_mode == GeodesicInteractionMode::PhotonFan {
+            changed |= ui
+                .add(egui::Slider::new(&mut self.state.fan_count, 2..=16).text("Fan Rays"))
+                .changed();
+            changed |= ui
+                .add(egui::Slider::new(&mut self.state.fan_spread, 0.1..=8.0).text("Fan Spread db"))
+                .changed();
+        }
         changed |= ui
             .add(egui::Slider::new(&mut self.state.step_size, 0.005..=0.12).text("Step dlambda"))
             .changed();
@@ -137,6 +226,9 @@ impl GeodesicPlaygroundTool {
         if recompute {
             self.clamp_state_in_place();
             self.rebuild_trajectory(560);
+            if self.state.view_mode == ViewportViewMode::LensingCamera2D {
+                self.refresh_lensing_pixels_in_place();
+            }
             self.state.scrub_index = self.samples.len().saturating_sub(1);
             self.revision = self.revision.wrapping_add(1);
         }
@@ -147,35 +239,7 @@ impl GeodesicPlaygroundTool {
         )
         .show(ui)
         {
-            match action {
-                PlaybackAction::Play => {
-                    if self.samples.len() >= super::MAX_TRAJECTORY_SAMPLES
-                        || self.halted_near_singularity
-                    {
-                        self.rebuild_trajectory(80);
-                    }
-                    self.state.is_playing = true;
-                    self.last_tick = PlatformInstant::now();
-                }
-                PlaybackAction::Pause => self.state.is_playing = false,
-                PlaybackAction::Step => {
-                    self.state.is_playing = false;
-                    self.advance_steps(1);
-                }
-                PlaybackAction::Reset => {
-                    self.state.is_playing = false;
-                    self.rebuild_trajectory(560);
-                    self.state.scrub_index = self.samples.len().saturating_sub(1);
-                }
-                PlaybackAction::StepBack => {
-                    self.state.is_playing = false;
-                    self.state.scrub_index = self.state.scrub_index.saturating_sub(1);
-                }
-                PlaybackAction::ScrubTo(step) => {
-                    self.state.is_playing = false;
-                    self.state.scrub_index = step.min(self.samples.len().saturating_sub(1));
-                }
-            }
+            self.apply_transport_action(action);
             self.revision = self.revision.wrapping_add(1);
             ctx.request_repaint();
         }
@@ -186,6 +250,42 @@ impl GeodesicPlaygroundTool {
                 .changed()
         {
             self.revision = self.revision.wrapping_add(1);
+        }
+    }
+
+    fn apply_transport_action(&mut self, action: PlaybackAction) {
+        match action {
+            PlaybackAction::Play => {
+                if self.samples.len() >= super::MAX_TRAJECTORY_SAMPLES
+                    || self.halted_near_singularity
+                {
+                    self.rebuild_trajectory(80);
+                }
+                self.state.is_playing = true;
+                self.last_tick = PlatformInstant::now();
+            }
+            PlaybackAction::Pause => {
+                self.state.is_playing = false;
+                crate::audio::notify_playback_paused();
+            }
+            PlaybackAction::Step => {
+                self.state.is_playing = false;
+                self.advance_steps(1);
+            }
+            PlaybackAction::Reset => {
+                self.state.is_playing = false;
+                crate::audio::notify_playback_reset();
+                self.rebuild_trajectory(560);
+                self.state.scrub_index = self.samples.len().saturating_sub(1);
+            }
+            PlaybackAction::StepBack => {
+                self.state.is_playing = false;
+                self.state.scrub_index = self.state.scrub_index.saturating_sub(1);
+            }
+            PlaybackAction::ScrubTo(step) => {
+                self.state.is_playing = false;
+                self.state.scrub_index = step.min(self.samples.len().saturating_sub(1));
+            }
         }
     }
 
@@ -215,10 +315,9 @@ impl GeodesicPlaygroundTool {
         };
         let active = self.active_sample();
         let twin = self.active_twin_sample();
-        let (_, r_ergo, _, isco, _) = self.relativistic_radii_and_omega(
+        let (_, r_ergo, _, isco, r_ph) = self.relativistic_radii_and_omega(
             active.map_or(self.state.initial_radius, |s| s.radial_coord),
         );
-        let is_wh = self.state.spacetime.is_wormhole();
         let plot_id = scoped_panel_id(ui, "relativity_veff_plot");
         Plot::new(plot_id)
             .height(162.0)
@@ -227,24 +326,12 @@ impl GeodesicPlaygroundTool {
                 plot_ui.line(
                     Line::new("V_eff(r)", PlotPoints::new(curve)).color(palette.series_color(2)),
                 );
-                plot_ui.line(
-                    Line::new(
-                        "0.5 * e^2",
-                        PlotPoints::new(vec![[x_bounds[0], e_half_sq], [x_bounds[1], e_half_sq]]),
-                    )
-                    .color(palette.warning)
-                    .style(LineStyle::Dashed { length: 6.0 }),
+                self.draw_veff_reference_lines(
+                    plot_ui,
+                    palette,
+                    (x_bounds, e_half_sq),
+                    (r_ph, isco, r_ergo),
                 );
-                if !is_wh && isco > 0.0 {
-                    plot_ui.vline(
-                        VLine::new("ISCO", isco)
-                            .color(palette.info)
-                            .style(LineStyle::Dotted { spacing: 5.0 }),
-                    );
-                }
-                if self.state.spacetime == SpacetimePreset::KerrEquatorial && r_ergo > 0.0 {
-                    plot_ui.vline(VLine::new("Ergosphere r_ergo", r_ergo).color(palette.error));
-                }
                 if let Some(sample) = active {
                     plot_ui.points(
                         Points::new("Current Position", vec![[sample.radial_coord, e_half_sq]])
@@ -262,6 +349,42 @@ impl GeodesicPlaygroundTool {
                 }
                 self.callouts.render_on_plot(plot_ui);
             });
+    }
+
+    fn draw_veff_reference_lines(
+        &self,
+        plot_ui: &mut egui_plot::PlotUi<'_>,
+        palette: &SemanticPalette,
+        (x_bounds, e_half_sq): ([f64; 2], f64),
+        (r_ph, isco, r_ergo): (f64, f64, f64),
+    ) {
+        plot_ui.line(
+            Line::new(
+                "0.5 * e^2",
+                PlotPoints::new(vec![[x_bounds[0], e_half_sq], [x_bounds[1], e_half_sq]]),
+            )
+            .color(palette.warning)
+            .style(LineStyle::Dashed { length: 6.0 }),
+        );
+        if !self.state.spacetime.is_wormhole() {
+            if r_ph > 0.0 {
+                plot_ui.vline(
+                    VLine::new("Photon Sphere", r_ph)
+                        .color(palette.warning)
+                        .style(LineStyle::Dashed { length: 5.0 }),
+                );
+            }
+            if isco > 0.0 {
+                plot_ui.vline(
+                    VLine::new("ISCO", isco)
+                        .color(palette.info)
+                        .style(LineStyle::Dotted { spacing: 5.0 }),
+                );
+            }
+        }
+        if self.state.spacetime == SpacetimePreset::KerrEquatorial && r_ergo > 0.0 {
+            plot_ui.vline(VLine::new("Ergosphere r_ergo", r_ergo).color(palette.error));
+        }
     }
 
     fn draw_twin_clock_readout(
@@ -298,8 +421,11 @@ impl GeodesicPlaygroundTool {
             return;
         };
         ui.label(format!(
-            "Primary ct: {:.3}  |  tau/lambda: {:.3}  |  r: {:.3}",
-            sample.coord_ct, sample.proper_tau, sample.radial_coord
+            "Primary ct: {:.3}  |  tau/lambda: {:.3}  |  r: {:.3}  |  Rays: {}",
+            sample.coord_ct,
+            sample.proper_tau,
+            sample.radial_coord,
+            self.active_ray_count.max(1)
         ));
         if let Some(twin) = self.active_twin_sample() {
             self.draw_twin_clock_readout(ui, palette, sample, twin);
@@ -355,75 +481,5 @@ impl GeodesicPlaygroundTool {
             .scrub_index
             .min(self.twin_samples.len().saturating_sub(1));
         self.twin_samples.get(idx).copied()
-    }
-
-    fn draw_central_workspace(&mut self, parent_ui: &mut egui::Ui) {
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            if self.atlas.is_visible() {
-                ui.columns(2, |cols| {
-                    self.render_3d_viewport_inside(&mut cols[0]);
-                    self.render_relativity_atlas_panel(&mut cols[1]);
-                });
-            } else {
-                self.render_3d_viewport_inside(ui);
-            }
-        });
-    }
-
-    fn render_3d_viewport_inside(&mut self, ui: &mut egui::Ui) {
-        let palette = SemanticPalette::from_visuals(ui.visuals());
-        let wireframe = self.build_embedding_wireframe();
-        let ref_rings = self.build_3d_reference_rings(&palette);
-        let (traj, head) = self.projected_worldline(&self.samples, self.active_sample());
-        let twin_proj = (!self.twin_samples.is_empty())
-            .then(|| self.projected_worldline(&self.twin_samples, self.active_twin_sample()));
-
-        let mut camera = self.state.camera;
-        let plot_id = scoped_panel_id(ui, "relativity_flamm_3d");
-        let response = Plot3DViewport::new(plot_id, 16.0)
-            .show(ui, &mut camera, |plot_ui| {
-                for (idx, ring) in wireframe.into_iter().enumerate() {
-                    plot_ui.line(
-                        Line::new(format!("Embedding Mesh {idx}"), PlotPoints::new(ring))
-                            .color(palette.graph_edge),
-                    );
-                }
-                for line in ref_rings {
-                    plot_ui.line(line);
-                }
-                plot_ui.line(
-                    Line::new("Geodesic Worldline", PlotPoints::new(traj))
-                        .color(palette.series_color(0))
-                        .width(2.4_f32),
-                );
-                if let Some((t_line, t_head)) = twin_proj {
-                    plot_ui.line(
-                        Line::new("Twin Worldline", PlotPoints::new(t_line))
-                            .color(palette.series_color(1))
-                            .width(2.0_f32)
-                            .style(LineStyle::Dashed { length: 7.0 }),
-                    );
-                    if let Some(tp) = t_head {
-                        plot_ui.points(
-                            Points::new("Twin Ray", vec![tp])
-                                .radius(4.5_f32)
-                                .color(palette.series_color(1)),
-                        );
-                    }
-                }
-                if let Some(pt) = head {
-                    plot_ui.points(
-                        Points::new("Particle / Photon", vec![pt])
-                            .radius(5.0_f32)
-                            .color(palette.accent),
-                    );
-                }
-            })
-            .response;
-        if camera != self.state.camera {
-            self.state.camera = camera;
-            self.revision = self.revision.wrapping_add(1);
-        }
-        response.accessible_theory_hover(self);
     }
 }

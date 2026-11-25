@@ -11,6 +11,8 @@ pub mod neuroscience;
 pub mod number_theory;
 pub mod quantum_chaos;
 pub mod reinforcement_learning;
+#[cfg(feature = "physics")]
+pub mod relativity_astrophysics;
 pub mod spin_resonance;
 #[cfg(all(feature = "pure_math", feature = "biology"))]
 pub mod surface_morphogenesis;
@@ -36,6 +38,10 @@ pub use number_theory::{
 };
 pub use quantum_chaos::{attractor_frame, bifurcation_frame, quantum_wavepacket_frame};
 pub use reinforcement_learning::rl_td_surprise_frame;
+#[cfg(feature = "physics")]
+pub use relativity_astrophysics::{
+    galactic_orbits_frame, geodesic_bundle_frame, GeodesicVoiceSample,
+};
 pub use spin_resonance::{
     bloch_fid_frame, hahn_echo_isochromat_frame, kspace_voxel_ensemble_frame, zeeman_bloch_frame,
 };

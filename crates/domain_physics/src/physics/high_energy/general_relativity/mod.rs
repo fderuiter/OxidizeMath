@@ -12,6 +12,7 @@
 
 pub mod geodesic_bundle;
 pub mod kerr;
+pub mod lensing;
 pub mod schwarzschild;
 pub mod wormhole;
 
@@ -20,6 +21,10 @@ pub use geodesic_bundle::{
     SchwarzschildGeodesicBundle, newtonian_periapsis_radius,
 };
 pub use kerr::KerrEquatorialMetric;
+pub use lensing::{
+    DEFAULT_DEFLECTION_BINS, DeflectionSample, DeflectionTable, EINSTEIN_RING_IMPACT_FACTOR,
+    LensedRayHit, LensingMetricSpec,
+};
 pub use schwarzschild::{
     GeodesicKind, SchwarzschildBlackHole, combined_clock_rate, critical_impact_parameter,
     effective_potential, flamm_paraboloid_z, photon_sphere_radius,

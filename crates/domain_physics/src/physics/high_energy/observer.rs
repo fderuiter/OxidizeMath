@@ -123,6 +123,38 @@ impl FourVector {
             z: self.z + parallel_scale * beta_vec[2],
         })
     }
+
+    /// Computes the relativistic Doppler frequency ratio $\delta = \nu_{\text{obs}} / \nu_{\text{emit}}$
+    /// for radiation propagating along spatial direction `(self.x, self.y, self.z)` from a source
+    /// moving with dimensionless three-velocity `source_beta` ($\mathbf{v}_{\text{src}} / c$).
+    ///
+    /// Evaluates $\delta = \left[\gamma\left(1 - \boldsymbol{\beta}_{\text{src}}\cdot\hat{\mathbf{n}}\right)\right]^{-1}$
+    /// by Lorentz-boosting the observer-frame null direction $(1, \hat{\mathbf{n}})$ into the source rest frame.
+    ///
+    /// # Errors
+    /// Returns [`HighEnergyError::InvalidVelocity`] if inputs are non-finite, the spatial propagation
+    /// vector has zero length, or $|\boldsymbol{\beta}_{\text{src}}| \ge 1$.
+    #[verified_engine::verified]
+    pub fn relativistic_doppler_factor(
+        &self,
+        source_beta: [f64; 3],
+    ) -> Result<f64, HighEnergyError> {
+        if !self.t.is_finite() || !self.x.is_finite() || !self.y.is_finite() || !self.z.is_finite()
+        {
+            return Err(HighEnergyError::InvalidVelocity { v: f64::NAN });
+        }
+        let norm_sq = self.x * self.x + self.y * self.y + self.z * self.z;
+        if norm_sq <= EPSILON * EPSILON {
+            return Err(HighEnergyError::InvalidVelocity { v: 0.0 });
+        }
+        let inv_norm = 1.0 / norm_sq.sqrt();
+        let null_ray = Self::new(1.0, self.x * inv_norm, self.y * inv_norm, self.z * inv_norm);
+        let boosted = null_ray.lorentz_boost(source_beta)?;
+        if boosted.t <= EPSILON {
+            return Err(HighEnergyError::InvalidVelocity { v: C });
+        }
+        Ok(1.0 / boosted.t)
+    }
 }
 
 /// Calculates the Lorentz factor $\gamma = (1 - \beta^2)^{-1/2}$ from dimensionless speed $\beta = v/c$.
@@ -277,6 +309,36 @@ mod tests {
         assert!(
             b_app > 1.7,
             "expected superluminal beta_app > 1.7, got {b_app}"
+        );
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_four_vector_relativistic_doppler_longitudinal_and_transverse() {
+        let los = FourVector::new(1.0, 1.0, 0.0, 0.0);
+        let beta = 0.6;
+        let blue = los
+            .relativistic_doppler_factor([beta, 0.0, 0.0])
+            .expect("approaching Doppler factor");
+        let expected_blue = ((1.0 + beta) / (1.0 - beta)).sqrt();
+        assert_relative_eq!(blue, expected_blue, epsilon = 1e-10);
+
+        let red = los
+            .relativistic_doppler_factor([-beta, 0.0, 0.0])
+            .expect("receding Doppler factor");
+        let expected_red = ((1.0 - beta) / (1.0 + beta)).sqrt();
+        assert_relative_eq!(red, expected_red, epsilon = 1e-10);
+
+        let transverse = los
+            .relativistic_doppler_factor([0.0, beta, 0.0])
+            .expect("transverse Doppler factor");
+        assert_relative_eq!(transverse, 0.8, epsilon = 1e-10);
+
+        assert!(los.lorentz_boost([0.8, 0.8, 0.0]).is_err());
+        assert!(
+            FourVector::new(1.0, 0.0, 0.0, 0.0)
+                .relativistic_doppler_factor([0.2, 0.0, 0.0])
+                .is_err()
         );
     }
 }

@@ -90,15 +90,41 @@ ds^2 = -\left(1 - \frac{R_s}{r}\right) d(ct)^2
      + \frac{r^2}{\Delta} dr^2 + r^2 d\theta^2
      + \left(r^2 + a^2 + \frac{a^2 R_s}{r}\right) d\varphi^2,
 \end{equation}
-with outer event horizon $r_+ = \frac{1}{2}(R_s + \sqrt{R_s^2 - 4a^2})$ and zero-angular-momentum frame-dragging rate $\omega(r) = -g_{03}/g_{33}$.
+with outer event horizon $r_+ = \frac{1}{2}(R_s + \sqrt{R_s^2 - 4a^2})$, equatorial static-limit ergosphere radius $r_{\text{ergo}}(\pi/2) = R_s$, and zero-angular-momentum observer (ZAMO) frame-dragging rate $\omega(r) = -g_{03}/g_{33} = a R_s / (r^3 + a^2 r + a^2 R_s)$. An equatorial worldline with coordinate angular velocity $\Omega = d\varphi / d(ct)$ experiences exact proper-to-coordinate clock dilation
+\begin{equation}
+\frac{d\tau}{dt} = \sqrt{-g_{00} - 2 g_{03}\,\Omega - g_{33}\,\Omega^2},
+\qquad
+\left.\frac{d\tau}{dt}\right|_{\text{ZAMO}} = \sqrt{\frac{\Delta}{g_{33}}},
+\end{equation}
+revealing that stationary clocks ($\Omega = 0$) cannot exist inside the ergosphere $r_+ < r < R_s$ unless co-rotating with spacetime ($\Omega > 0$). Conserved specific energy $e$ and axial angular momentum $\ell$ govern radial motion through $\frac{1}{2}\dot{r}^2 + V_{\text{eff}}^{\text{Kerr}}(r; e, \ell) = \frac{1}{2} e^2$ with exact post-Newtonian and frame-dragging couplings
+\begin{equation}
+V_{\text{eff}}^{\text{Kerr}}(r; e, \ell) =
+\frac{\kappa}{2}\left(1 - \frac{R_s}{r}\right)
++ \frac{\ell^2 - a^2(e^2 - \kappa)}{2 r^2}
+- \frac{R_s(\ell - a e)^2}{2 r^3},
+\end{equation}
+splitting circular prograde and retrograde photon orbits ($r_{\text{ph}}^{\pm} = R_s [1 + \cos(\frac{2}{3}\arccos(\mp 2a/R_s))]$) and producing an asymmetric D-shaped shadow bounded by $b_{\text{crit}}^{\pm}$.
 
-\subsection{Traversable Morris--Thorne Wormhole}
+\subsection{Traversable Morris--Thorne Wormhole and Two-Sheet Lensing}
 
 The zero-tidal-force Morris--Thorne wormhole \cite{morris1988wormholes} in proper radial coordinate $l \in (-\infty, +\infty)$ with throat radius $b_0 > 0$ has line element
 \begin{equation}
 ds^2 = -d(ct)^2 + dl^2 + \left(b_0^2 + l^2\right) d\varphi^2,
 \end{equation}
-with non-vanishing connection components $\Gamma^l_{\varphi\varphi} = -l$ and $\Gamma^\varphi_{l\varphi} = \Gamma^\varphi_{\varphi l} = l / (b_0^2 + l^2)$. Its spatial slice embeds isometrically into $\mathbb{R}^3$ via cylindrical radius $r(l) = \sqrt{b_0^2 + l^2}$ and vertical coordinate $z(l) = b_0 \operatorname{arsinh}(l / b_0)$, allowing smooth trajectory transit across the throat $l = 0$ whenever $|\ell / e| < b_0$.
+with non-vanishing connection components $\Gamma^l_{\varphi\varphi} = -l$ and $\Gamma^\varphi_{l\varphi} = \Gamma^\varphi_{\varphi l} = l / (b_0^2 + l^2)$. Its spatial slice embeds isometrically into $\mathbb{R}^3$ via cylindrical radius $r(l) = \sqrt{b_0^2 + l^2}$ and vertical coordinate $z(l) = b_0 \operatorname{arsinh}(l / b_0)$, allowing smooth trajectory transit across the throat $l = 0$ whenever $|b| = |\ell / e| < b_0$.
+
+\section{Pre-Allocated Deflection-Table Lensing and Relativistic Doppler Sonification}
+
+To render real-time 2D optical lensing of background astrophysical disks and continuous soliton fields without per-pixel ODE integration allocations, \texttt{DeflectionTable} pre-integrates a uniform lookup table over signed impact parameters $b \in [-b_{\max}, b_{\max}]$ via bounded \texttt{GeodesicSystem::integrate\_bounded\_rk4} sweeps. Each uncaptured ray records total azimuthal sweep $\Delta\varphi(b)$, net bending angle $\hat{\alpha}(b) = |\Delta\varphi(b)| - \pi$, asymptotic universe sheet $\sigma(b) = \operatorname{sgn}(l_{\text{end}}) \in \{-1, +1\}$, and minimum-periapsis gravitational redshift. Image-plane coordinates $(u, v)$ map in $O(1)$ time via linear table interpolation to deflected source-plane coordinates $(u_s, v_s)$, reproducing the Einstein ring at $b_{\text{crit}} = \frac{3\sqrt{3}}{2} R_s$, frame-dragged Kerr shadow asymmetry, and two-sheet wormhole portal views ($|b| < b_0 \Rightarrow \sigma = -1$).
+
+For polyphonic auditory display, each active geodesic or galactic tracer maps local proper-clock dilation, covariant Lorentz boosts on 4-vectors $x'^\mu = \Lambda^\mu_{\;\nu}(\boldsymbol{\beta})\,x^\nu$ preserving $\eta_{\mu\nu} x^\mu x^\nu = -(x^0)^2 + \|\mathbf{x}\|^2$, and relativistic Doppler shift along unit line-of-sight $\hat{\mathbf{n}}$,
+\begin{equation}
+\mathcal{D}(\boldsymbol{\beta}, \hat{\mathbf{n}})
+= \frac{1}{\gamma(\beta)\,\left(1 - \boldsymbol{\beta}\cdot\hat{\mathbf{n}}\right)},
+\qquad
+f_{\text{obs}} = f_0 \left(\frac{d\tau}{dt}\right) \mathcal{D}(\boldsymbol{\beta}, \hat{\mathbf{n}}),
+\end{equation}
+onto bounded carrier frequencies $f_{\text{obs}} \in [20, 8000]\,\text{Hz}$, while total synchrotron radiation power $P_{\text{sync}} = \frac{4}{3}\sigma_T c \beta^2 \gamma^2 u_B$ modulates voice gain and harmonic brightness.
 
 \bibliographystyle{plain}
 \bibliography{references}

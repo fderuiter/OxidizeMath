@@ -266,6 +266,7 @@ impl GeodesicPlaygroundTool {
         };
         if changed {
             self.sync_sandbox_to_state();
+            self.lensing_dirty = true;
         }
         changed
     }
@@ -391,7 +392,7 @@ impl GeodesicPlaygroundTool {
         };
         let sys = GeodesicSystem::new(build_wormhole_static_metric(compiled, b0, params));
         let mut state = ArrayState::<6>::from_pos_vel(
-            &SVector::<f64, 3>::new(0.0, l0, 0.0),
+            &SVector::<f64, 3>::new(0.0, l0, self.state.launch_azimuth),
             &SVector::<f64, 3>::new(ut, ul, uphi),
         );
         let mut solver = RungeKutta4::new(&state);
@@ -443,7 +444,7 @@ impl GeodesicPlaygroundTool {
                 let ur_sq = (e * e - safe_f * (ell * ell) / (r0 * r0)).max(0.0);
                 let sign = if radial_bias > 0.0 { 1.0 } else { -1.0 };
                 (
-                    SVector::<f64, 4>::new(0.0, r0, FRAC_PI_2, 0.0),
+                    SVector::<f64, 4>::new(0.0, r0, FRAC_PI_2, self.state.launch_azimuth),
                     SVector::<f64, 4>::new(ut, sign * ur_sq.sqrt(), 0.0, uphi),
                     e,
                 )
@@ -456,7 +457,7 @@ impl GeodesicPlaygroundTool {
                 let e = e_sq.max(1e-6).sqrt();
                 let ut = e / safe_f;
                 (
-                    SVector::<f64, 4>::new(0.0, r0, FRAC_PI_2, 0.0),
+                    SVector::<f64, 4>::new(0.0, r0, FRAC_PI_2, self.state.launch_azimuth),
                     SVector::<f64, 4>::new(ut, ur, 0.0, uphi),
                     e,
                 )
