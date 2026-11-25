@@ -13,6 +13,7 @@ use core::fmt;
 /// assert_eq!(Severity::Fatal.to_string(), "FATAL");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Severity {
     /// Routine progress or non-actionable diagnostic note.
     Info,

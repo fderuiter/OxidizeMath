@@ -20,6 +20,7 @@ use rand_core::RngCore;
 /// Requires positive finite stencil spacings (`dx, dy > 0`), `dt >= 0`, non-negative noise intensity,
 /// and `SolverWorkspace` capacity [`Self::scratch_len_1d`] / [`Self::scratch_len_2d`].
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ExplicitSpdeStencilStepper {
     /// Spatial finite-difference stencil operators.
     pub ops: StencilOperators,
@@ -232,6 +233,7 @@ impl ExplicitSpdeStencilStepper {
 /// Requires positive grid spacings (`dx, dy > 0`), `diffusivity >= 0`, `dt >= 0`, `u.len() >= width * height`,
 /// and `SolverWorkspace` capacity at least [`Self::scratch_len_2d`]`(width, height)`.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SplitStepSpdeStencilStepper {
     /// Spatial finite-difference stencil operators.
     pub ops: StencilOperators,

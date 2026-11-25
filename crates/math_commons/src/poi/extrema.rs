@@ -8,6 +8,7 @@ use alloc::vec::Vec;
 
 /// Output of a fused single-pass critical-point scan over a single 2D series.
 #[derive(Debug, Clone, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LinePoiScan {
     /// Interpolated horizontal coordinates where $y = 0$.
     pub roots: Vec<f64>,

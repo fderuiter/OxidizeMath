@@ -23,6 +23,7 @@ use rand_core::RngCore;
 /// Requires $C^1$ drift and $C^2$ diffusion fields, `dt >= 0`, `state.len() >= state_dim`, and
 /// `SolverWorkspace` capacity at least [`Self::scratch_len`]`(state_dim, wiener_dim)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MilsteinSolver {
     calculus: StochasticCalculus,
     levy_truncation: usize,

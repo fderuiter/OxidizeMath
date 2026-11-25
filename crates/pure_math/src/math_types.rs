@@ -6,6 +6,7 @@ use dashu::rational::RBig;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, RemAssign, Sub, SubAssign};
 /// Arbitrary-precision signed integer wrapper over [`dashu::integer::IBig`].
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Integer(pub IBig);
 impl From<Integer> for IBig {
     fn from(i: Integer) -> Self {
@@ -210,6 +211,7 @@ type F = dashu::float::FBig;
 
 /// Data structure `Float` representing Float state.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Float(pub F);
 impl Float {
     /// Computes `with_val` (with val).
@@ -339,6 +341,7 @@ impl PartialOrd<f64> for Float {
 
 /// Data structure `Rational` representing Rational state.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Rational(pub RBig);
 impl Default for Rational {
     fn default() -> Self {

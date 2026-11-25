@@ -27,6 +27,7 @@ pub fn check_all_finite<T: Scalar>(slice: &[T]) -> Result<(), LinalgError> {
 
 /// Typed `#![no_std]` error returned by [`crate`] factorizations and iterative solvers.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LinalgError {
     /// Matrix or vector dimensions do not conform to the requested operation.
     DimensionMismatch,

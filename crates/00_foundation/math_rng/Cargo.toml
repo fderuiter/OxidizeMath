@@ -8,13 +8,15 @@ description = "Zero-allocation Tier 0 no_std ChaCha8 PRNG streams, generic IEEE-
 default = []
 alloc = []
 serde = ["dep:serde", "rand_chacha/serde1"]
+std = ["alloc", "serde?/std"]
 
 [dependencies]
 rand_chacha = { workspace = true, default-features = false }
 rand_core = { workspace = true }
-serde = { version = "1.0.228", default-features = false, features = ["derive"], optional = true }
+serde = { workspace = true, optional = true }
 
 [dev-dependencies]
+serde_json = { workspace = true, default-features = false, features = ["alloc", "float_roundtrip"] }
 verified_engine = { path = "../../verified_engine" }
 
 [lints]

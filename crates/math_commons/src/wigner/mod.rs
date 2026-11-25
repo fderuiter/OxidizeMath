@@ -1,6 +1,5 @@
 // [cite:math_commons]
-#[cfg(not(feature = "std"))]
-use num_traits::Float as _;
+use num_traits::Float;
 
 /// Clebsch-Gordan coefficient calculator for angular momentum coupling.
 ///
@@ -20,6 +19,8 @@ use num_traits::Float as _;
 /// let expected = (3.0_f64 / 10.0).sqrt();
 /// assert!((val - expected).abs() < 1e-6);
 /// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClebschGordan {
     /// Twice the first angular momentum quantum number ($2 j_1$).
     pub tj1: i32,
@@ -58,7 +59,7 @@ impl ClebschGordan {
             cg_sign = -1.0;
         }
 
-        cg_sign * (tj as f64 + 1.0).sqrt() * w3j
+        cg_sign * Float::sqrt(tj as f64 + 1.0) * w3j
     }
 }
 
@@ -126,7 +127,7 @@ fn wigner_3j(tj1: i32, tj2: i32, tj3: i32, tm1: i32, tm2: i32, tm3: i32) -> f64 
     } else {
         1.0
     };
-    sign * prefactor.sqrt() * sum
+    sign * Float::sqrt(prefactor) * sum
 }
 
 #[cfg(test)]

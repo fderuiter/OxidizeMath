@@ -7,6 +7,7 @@ use rand_core::RngCore;
 
 /// Spatio-temporal stochastic forcing structure for continuum SPDE steppers.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SpdeNoiseKind {
     /// Deterministic evolution without stochastic forcing.
     None,

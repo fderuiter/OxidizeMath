@@ -27,6 +27,7 @@ The `math_explorer` crate serves as the primary library entrypoint for downstrea
   - **`epidemiology`**: Disease transmission modeling across **SIR/SEIR** compartmental ODEs, stochastic Gillespie processes, and contact networks.
   - **`physics`**: Physical simulations spanning **Quantum Mechanics**, **Fluid Dynamics**, **Solid State** (BCS Superconductivity, Ising), **Chaos Theory** (Lorenz System), and **MRI Physics**.
   - **`pure_math`**: Foundational mathematics covering **Abstract Algebra**, **Number Theory** (Partitions, Q-Series), **Graph Theory**, **Analysis** (`MultivariateIntegrator`), **Statistics** (`monte_carlo`, `qmc`, `bootstrap`, Multivariate Copulas, Glicko-2, Markov, TDA), and **Differential Geometry**.
+  - **`serde`**: Opt-in `serde` serialization across foundational primitives (`UnitInterval`, `PositiveFloat`, `NonNegativeFloat`, `StepSize`, `GridIndex`, `Dimension`, `CurveFit`, `LocalExtremum`, `MathError`) and active external math re-exports (`nalgebra`, `num_complex`, `petgraph`, `rand`, `dashu`).
 
 ### Maturity Tiers & Module Matrix
 
