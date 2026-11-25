@@ -6,10 +6,10 @@ use egui::{
 };
 
 use crate::{
-    AccessState, Line, Plot, PlotIdSource, PlotImage, PlotMemory, PlotPoint,
+    AccessState, Line, Plot, Plot3DSeries, PlotIdSource, PlotImage, PlotMemory, PlotPoint,
     data_table::{
         DataTableState, TableSeriesRef, data_table_clipboard_status_id, format_table_value,
-        format_tsv, series_share_x, show_data_table_modal_with_pois,
+        format_tsv, series_share_x, show_data_table_modal_3d, show_data_table_modal_with_pois,
     },
     humanize_plot_label,
     items::SavedCallout,
@@ -999,6 +999,263 @@ fn test_disabled_table_view_and_empty_modal_copy_buttons_stay_focusable_and_esca
         &[],
     );
     assert!(!open, "Second Escape must close Data Table modal");
+}
+
+fn sample_3d_series(primary_color: Color32) -> Vec<Plot3DSeries> {
+    vec![
+        Plot3DSeries::new(
+            "Trajectory",
+            vec![[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]],
+            vec![[1.0, 2.0, 25.0], [1.1, 2.2, 24.8], [1.2, 2.4, 3.5e-5]],
+            primary_color,
+        ),
+        Plot3DSeries::new(
+            "Initial State",
+            vec![[0.0, 0.0]],
+            vec![[0.0, 0.0, 0.0]],
+            Color32::GREEN,
+        ),
+    ]
+}
+
+fn run_modal_3d(
+    ctx: &Context,
+    raw: RawInput,
+    id: Id,
+    open: &mut bool,
+    st: &mut DataTableState,
+    series: &[Plot3DSeries],
+) -> FullOutput {
+    ctx.run(raw, |c| {
+        show_data_table_modal_3d(c, id, "Data Table - Lorenz", open, st, series);
+    })
+}
+
+#[test]
+fn test_3d_table_exposes_accesskit_roles_and_virtualized_row_count() {
+    use egui::accesskit::Role;
+    let ctx = Context::default();
+    ctx.enable_accesskit();
+    let (id, series) = (
+        Id::new("ak_3d_hierarchy_test"),
+        sample_3d_series(Color32::LIGHT_BLUE),
+    );
+    let (mut open, mut st) = (true, DataTableState::default());
+    let _ = run_modal_3d(&ctx, screen_input(), id, &mut open, &mut st, &series);
+    let out = run_modal_3d(&ctx, screen_input(), id, &mut open, &mut st, &series);
+    let ak = out
+        .platform_output
+        .accesskit_update
+        .as_ref()
+        .expect("3D AccessKit tree");
+    assert_table_hierarchy(
+        ak,
+        "3D series data table",
+        4,
+        4,
+        "Row 1 of 3 (Trajectory): X = 1.000000, Y = 2.000000, Z = 25.000000",
+    );
+
+    let big_proj: Vec<[f64; 2]> = (0..200).map(|i| [f64::from(i), 0.0]).collect();
+    let big_world: Vec<[f64; 3]> = (0..200)
+        .map(|i| [f64::from(i), f64::from(i) * 0.5, 10.0])
+        .collect();
+    let big_series = [Plot3DSeries::new(
+        "Attractor",
+        big_proj,
+        big_world,
+        Color32::LIGHT_BLUE,
+    )];
+    let (vid, mut vopen, mut vst) = (Id::new("ak_3d_virt_test"), true, DataTableState::default());
+    let _ = run_modal_3d(&ctx, screen_input(), vid, &mut vopen, &mut vst, &big_series);
+    let vout = run_modal_3d(&ctx, screen_input(), vid, &mut vopen, &mut vst, &big_series);
+    let vak = vout.platform_output.accesskit_update.as_ref().unwrap();
+    let vmap: std::collections::HashMap<_, _> = vak.nodes.iter().map(|(k, n)| (*k, n)).collect();
+    let (_, vtbl) = vak
+        .nodes
+        .iter()
+        .find(|(_, n)| n.role() == Role::Table && n.label() == Some("3D series data table"))
+        .expect("Virtualized 3D Role::Table");
+    assert_eq!(
+        (vtbl.row_count(), vtbl.column_count()),
+        (Some(201), Some(4))
+    );
+    let visible_rows = vtbl
+        .children()
+        .iter()
+        .filter(|cid| vmap.get(cid).is_some_and(|n| n.role() == Role::Row))
+        .count();
+    assert!(
+        (2..40).contains(&visible_rows),
+        "Expected virtualized O(visible_rows) Role::Row count, got {visible_rows}"
+    );
+}
+
+#[test]
+fn test_3d_high_contrast_header_dot_and_row_focus_ring_meet_3_to_1_contrast() {
+    use crate::a11y::contrast_ratio;
+    let visuals = high_contrast_visuals();
+    let low_contrast_dot = Color32::from_rgb(20, 28, 36);
+    assert!(contrast_ratio(low_contrast_dot, visuals.faint_bg_color) < 1.5);
+
+    let ctx = Context::default();
+    ctx.enable_accesskit();
+    ctx.set_visuals(visuals.clone());
+    let (id, series) = (
+        Id::new("hc_3d_contrast_test"),
+        sample_3d_series(low_contrast_dot),
+    );
+    let (mut open, mut st) = (true, DataTableState::default());
+    let _ = run_modal_3d(&ctx, screen_input(), id, &mut open, &mut st, &series);
+    let (_, out_focused) = tab_to_ak_node(
+        &ctx,
+        egui::accesskit::Role::Row,
+        "Row 1 of 3 (Trajectory)",
+        |raw| run_modal_3d(&ctx, raw, id, &mut open, &mut st, &series),
+    );
+    let (circles, strokes) = collect_circles_and_strokes(&out_focused);
+    assert!(
+        !circles.is_empty(),
+        "Expected 3D X-header series marker dot"
+    );
+    assert!(
+        circles
+            .iter()
+            .all(|(_, fill)| contrast_ratio(*fill, visuals.faint_bg_color) >= 3.0),
+        "3D HighContrast header dot {:?} failed 3:1 against {:?}",
+        circles,
+        visuals.faint_bg_color
+    );
+    assert!(
+        strokes
+            .iter()
+            .any(|s| contrast_ratio(s.color, visuals.selection.bg_fill) >= 3.0),
+        "Focused 3D row must paint >= 3:1 focus ring on HighContrast selection fill"
+    );
+}
+
+#[test]
+fn test_3d_series_tablist_live_summaries_status_and_empty_escape_tooltips() {
+    use egui::{
+        Tooltip,
+        accesskit::{Live, Role},
+    };
+    let ctx = Context::default();
+    ctx.enable_accesskit();
+    let (id, series) = (
+        Id::new("a11y_3d_tabs_and_live_test"),
+        sample_3d_series(Color32::from_rgb(90, 160, 250)),
+    );
+    let (mut open, mut st) = (true, DataTableState::default());
+    let _ = run_modal_3d(&ctx, screen_input(), id, &mut open, &mut st, &series);
+    let out = run_modal_3d(&ctx, screen_input(), id, &mut open, &mut st, &series);
+    let ak = out.platform_output.accesskit_update.as_ref().unwrap();
+    let map: std::collections::HashMap<_, _> = ak.nodes.iter().map(|(k, n)| (*k, n)).collect();
+    let (_, tl) = ak
+        .nodes
+        .iter()
+        .find(|(_, n)| n.role() == Role::TabList && n.label() == Some("3D plot series"))
+        .expect("3D series Role::TabList");
+    assert_eq!(tl.children().len(), 2);
+    assert!(
+        tl.children()
+            .iter()
+            .all(|cid| map.get(cid).is_some_and(|n| n.role() == Role::Tab))
+    );
+
+    let row3_pos = find_text_center(&out, "3.500000e-5").unwrap();
+    let _ = click_at(&ctx, row3_pos, PointerButton::Primary, |c| {
+        show_data_table_modal_3d(c, id, "Data Table - Lorenz", &mut open, &mut st, &series);
+    });
+    assert_eq!(st.selected_row, 2);
+    assert_eq!(
+        polite_live(&ctx).as_deref(),
+        Some("Row 3 of 3 (Trajectory): X = 1.200000, Y = 2.400000, Z = 3.500000e-5")
+    );
+
+    let csv_pos = find_text_center(&out, "Copy CSV").unwrap();
+    let out_copy = click_at(&ctx, csv_pos, PointerButton::Primary, |c| {
+        show_data_table_modal_3d(c, id, "Data Table - Lorenz", &mut open, &mut st, &series);
+    });
+    assert!(
+        out_copy
+            .platform_output
+            .accesskit_update
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .any(|(_, n)| n.role() == Role::Status && n.live() == Some(Live::Polite))
+    );
+
+    let _ = tab_to_ak_node(&ctx, Role::Tab, "Trajectory (3)", |raw| {
+        run_modal_3d(&ctx, raw, id, &mut open, &mut st, &series)
+    });
+    let _ = run_modal_3d(
+        &ctx,
+        key_input(Key::ArrowRight),
+        id,
+        &mut open,
+        &mut st,
+        &series,
+    );
+    assert_eq!((st.selected_series, st.selected_row), (1, 0));
+    assert_eq!(
+        polite_live(&ctx).as_deref(),
+        Some("Selected series tab: Initial State (1)")
+    );
+
+    let (empty_id, mut e_open, mut e_st) = (
+        Id::new("empty_3d_copy_a11y"),
+        true,
+        DataTableState::default(),
+    );
+    let _ = run_modal_3d(&ctx, screen_input(), empty_id, &mut e_open, &mut e_st, &[]);
+    let out_empty = run_modal_3d(&ctx, screen_input(), empty_id, &mut e_open, &mut e_st, &[]);
+    let copy_pos = find_text_center(&out_empty, "Copy TSV").unwrap();
+    let clicked = click_at(&ctx, copy_pos, PointerButton::Primary, |c| {
+        show_data_table_modal_3d(
+            c,
+            empty_id,
+            "Data Table - Empty 3D",
+            &mut e_open,
+            &mut e_st,
+            &[],
+        );
+    });
+    assert!(
+        !clicked
+            .platform_output
+            .commands
+            .iter()
+            .any(|cmd| matches!(cmd, OutputCommand::CopyText(_)))
+    );
+    let (copy_id, _) = tab_to_ak_node(&ctx, Role::Button, "Copy TSV", |raw| {
+        run_modal_3d(&ctx, raw, empty_id, &mut e_open, &mut e_st, &[])
+    });
+    assert!(Tooltip::was_tooltip_open_last_frame(&ctx, copy_id));
+    let _ = run_modal_3d(
+        &ctx,
+        key_input(Key::Escape),
+        empty_id,
+        &mut e_open,
+        &mut e_st,
+        &[],
+    );
+    assert!(!Tooltip::was_tooltip_open_last_frame(&ctx, copy_id));
+    assert!(
+        e_open,
+        "First Escape must dismiss 3D disabled-copy tooltip only"
+    );
+    let _ = run_modal_3d(
+        &ctx,
+        key_input(Key::Escape),
+        empty_id,
+        &mut e_open,
+        &mut e_st,
+        &[],
+    );
+    assert!(!e_open, "Second Escape must close 3D Data Table modal");
 }
 
 #[test]

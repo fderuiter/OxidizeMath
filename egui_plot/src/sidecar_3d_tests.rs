@@ -222,5 +222,115 @@ fn test_3d_data_table_and_exports_format_world_xyz() {
     let row_msg = ctx
         .data(|d| d.get_temp::<String>(Id::new("aria_live_message")))
         .expect("ArrowDown in 3D Table View should announce X, Y, Z");
-    assert!(row_msg.contains("Z = 24.8"), "Got: {row_msg}");
+    assert_eq!(
+        row_msg,
+        "Row 2 of 2 (Trajectory): X = 1.100000, Y = 1.200000, Z = 24.800000"
+    );
+}
+
+#[test]
+fn test_3d_data_table_unnamed_series_fallback_and_tab_switch_announcements() {
+    use egui::accesskit::Role;
+    let series = [
+        Plot3DSeries::new(
+            "Orbit",
+            vec![[0.1, 0.2], [0.3, 0.4]],
+            vec![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+            Color32::LIGHT_BLUE,
+        ),
+        Plot3DSeries::new(
+            "   ",
+            vec![[-0.2, 0.1], [-0.4, 0.5]],
+            vec![[-1.0, -2.0, -3.0], [-4.0, -5.0, -6.0]],
+            Color32::GOLD,
+        ),
+    ];
+    let ctx = Context::default();
+    ctx.enable_accesskit();
+    let mut show_table = true;
+    let mut state = DataTableState::default();
+    let plot_id = Id::new("table_3d_unnamed_series_test");
+    let _ = ctx.run(frame_input(Vec::new()), |ctx| {
+        show_data_table_modal_3d(ctx, plot_id, "Bloch", &mut show_table, &mut state, &series);
+    });
+    let out = ctx.run(frame_input(Vec::new()), |ctx| {
+        show_data_table_modal_3d(ctx, plot_id, "Bloch", &mut show_table, &mut state, &series);
+    });
+    let ak = out
+        .platform_output
+        .accesskit_update
+        .as_ref()
+        .expect("AccessKit tree for 3D table");
+    let tab2_raw = ak
+        .nodes
+        .iter()
+        .find_map(|(nid, n)| {
+            (n.role() == Role::Tab && n.label() == Some("Series 2 (2)")).then_some(nid.0)
+        })
+        .expect("Unnamed 3D series must expose 'Series 2 (2)' Role::Tab");
+
+    let tab1_raw = ak
+        .nodes
+        .iter()
+        .find_map(|(nid, n)| {
+            (n.role() == Role::Tab && n.label() == Some("Orbit (2)")).then_some(nid.0)
+        })
+        .expect("First 3D series Role::Tab");
+    for _ in 0..24 {
+        if ctx
+            .memory(|m| m.focused())
+            .is_some_and(|f| f.value() == tab1_raw)
+        {
+            break;
+        }
+        let tab_evt = Event::Key {
+            key: Key::Tab,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        };
+        let _ = ctx.run(frame_input(vec![tab_evt]), |ctx| {
+            show_data_table_modal_3d(ctx, plot_id, "Bloch", &mut show_table, &mut state, &series);
+        });
+    }
+    let _ = ctx.run(frame_input(Vec::new()), |ctx| {
+        show_data_table_modal_3d(ctx, plot_id, "Bloch", &mut show_table, &mut state, &series);
+    });
+    let right_evt = Event::Key {
+        key: Key::ArrowRight,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+    let _ = ctx.run(frame_input(vec![right_evt]), |ctx| {
+        show_data_table_modal_3d(ctx, plot_id, "Bloch", &mut show_table, &mut state, &series);
+    });
+    assert_eq!(state.selected_series, 1);
+    assert_eq!(
+        ctx.memory(|m| m.focused()).map(|f| f.value()),
+        Some(tab2_raw)
+    );
+    assert_eq!(
+        ctx.data(|d| d.get_temp::<String>(Id::new("aria_live_message")))
+            .as_deref(),
+        Some("Selected series tab: Series 2 (2)")
+    );
+
+    let down_evt = Event::Key {
+        key: Key::ArrowDown,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
+    };
+    let _ = ctx.run(frame_input(vec![down_evt]), |ctx| {
+        show_data_table_modal_3d(ctx, plot_id, "Bloch", &mut show_table, &mut state, &series);
+    });
+    assert_eq!(
+        ctx.data(|d| d.get_temp::<String>(Id::new("aria_live_message")))
+            .as_deref(),
+        Some("Row 2 of 2 (Series 2): X = -4.000000, Y = -5.000000, Z = -6.000000")
+    );
 }
