@@ -13,10 +13,34 @@ pub struct Plot3DViewport<'a> {
     id_source: egui::Id,
     plot_key: String,
     title: Option<String>,
+    status_text: Option<String>,
     half_extent: f64,
     helper_text: Option<&'a str>,
     allow_camera_drag: bool,
     allow_primary_orbit: bool,
+}
+
+fn humanize_plot_key(raw: &str) -> Option<String> {
+    let words: Vec<String> = raw
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|part| !part.is_empty() && !part.eq_ignore_ascii_case("plot"))
+        .map(|part| {
+            if part.eq_ignore_ascii_case("3d") {
+                "3D".to_owned()
+            } else {
+                let mut chars = part.chars();
+                match chars.next() {
+                    Some(first) => {
+                        let mut s = first.to_uppercase().collect::<String>();
+                        s.push_str(chars.as_str());
+                        s
+                    }
+                    None => String::new(),
+                }
+            }
+        })
+        .collect();
+    (!words.is_empty()).then(|| words.join(" "))
 }
 
 fn base_3d_plot(
@@ -57,11 +81,30 @@ impl<'a> Plot3DViewport<'a> {
             id_source,
             plot_key,
             title,
+            status_text: None,
             half_extent: half_extent.max(0.1),
             helper_text: Some(CAMERA_3D_HELPER_TEXT),
             allow_camera_drag: true,
             allow_primary_orbit: true,
         }
+    }
+
+    /// Sets an explicit human-readable display title on the `Role::GraphicsDocument` node.
+    #[must_use]
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        let raw = title.into();
+        let trimmed = raw.trim();
+        self.title = (!trimmed.is_empty()).then(|| trimmed.to_owned());
+        self
+    }
+
+    /// Appends tool-specific telemetry or status text to the 3D orientation `AccessKit` `value`.
+    #[must_use]
+    pub fn status_text(mut self, status: impl Into<String>) -> Self {
+        let raw = status.into();
+        let trimmed = raw.trim();
+        self.status_text = (!trimmed.is_empty()).then(|| trimmed.to_owned());
+        self
     }
 
     /// Overrides the helper caption displayed beneath the 3D canvas.
@@ -110,14 +153,20 @@ impl<'a> Plot3DViewport<'a> {
         camera: &mut Camera3D,
         build_fn: impl FnOnce(&mut egui_plot::PlotUi<'p>) -> R,
     ) -> egui_plot::PlotResponse<R> {
+        crate::accessibility::ensure_plot_live_bridge();
         let avail = ui.available_size_before_wrap();
         let (plot_height, x_half, y_half) =
             Self::compute_half_extents(avail, self.half_extent, self.helper_text.is_some());
 
+        let resolved_title = self.title.or_else(|| humanize_plot_key(&self.plot_key));
+        let status_ref = self.status_text.as_deref();
+        let initial_value = camera.orientation_value_text(status_ref);
+
         let mut captured_plot_id = None;
-        let mut plot =
-            base_3d_plot(self.id_source, plot_height, x_half, y_half).plot_key(self.plot_key);
-        if let Some(title) = self.title {
+        let mut plot = base_3d_plot(self.id_source, plot_height, x_half, y_half)
+            .plot_key(self.plot_key)
+            .a11y_value(initial_value);
+        if let Some(title) = resolved_title {
             plot = plot.title(title);
         }
         let plot_response = plot.show(ui, |plot_ui| {
@@ -127,6 +176,7 @@ impl<'a> Plot3DViewport<'a> {
             build_fn(plot_ui)
         });
 
+        let pre_cam = *camera;
         let rect_h = plot_response.response.rect.height().max(1.0_f32);
         camera.pan_units_per_px = ((2.0 * y_half) as f32) / rect_h;
         camera.handle_interaction_with_options(
@@ -136,6 +186,13 @@ impl<'a> Plot3DViewport<'a> {
             self.allow_camera_drag,
             self.allow_primary_orbit,
         );
+        if *camera != pre_cam {
+            let updated_value = camera.orientation_value_text(status_ref);
+            ui.ctx()
+                .accesskit_node_builder(plot_response.response.id, |builder| {
+                    builder.set_value(updated_value);
+                });
+        }
 
         if let Some(text) = self.helper_text {
             ui.label(text);

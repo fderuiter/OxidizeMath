@@ -14,7 +14,7 @@ const PAN_PX_PER_SEC: f32 = 720.0_f32;
 const ZOOM_BASE_PER_FRAME_60HZ: f32 = 1.05_f32;
 const DEFAULT_FRAME_DT: f32 = 1.0_f32 / 60.0_f32;
 
-const TRACKED_CAMERA_KEYS: [egui::Key; 12] = [
+const TRACKED_CAMERA_KEYS: [egui::Key; 13] = [
     egui::Key::W,
     egui::Key::A,
     egui::Key::S,
@@ -22,6 +22,7 @@ const TRACKED_CAMERA_KEYS: [egui::Key; 12] = [
     egui::Key::Q,
     egui::Key::E,
     egui::Key::R,
+    egui::Key::Home,
     egui::Key::P,
     egui::Key::Num1,
     egui::Key::Num2,
@@ -206,6 +207,7 @@ impl Camera3D {
         }
         if !press_inside_gizmo && allow_primary_orbit && response.double_clicked() {
             self.reset();
+            self.announce_reset(ui.ctx());
         } else if let Some(touch) = multi_touch {
             if touch.zoom_delta != 1.0_f32 {
                 let zoom_factor = 1.0_f32 + (touch.zoom_delta - 1.0_f32) * 0.5_f32;
@@ -272,21 +274,32 @@ impl Camera3D {
     }
 
     fn apply_discrete_view_keys(&mut self, ui: &egui::Ui, suppressed_mask: u16) -> bool {
-        if ui.input(|i| unmodified_key_pressed(i, egui::Key::R, suppressed_mask)) {
+        let ctx = ui.ctx();
+        let reset_pressed = ui.input(|i| {
+            unmodified_key_pressed(i, egui::Key::R, suppressed_mask)
+                || unmodified_key_pressed(i, egui::Key::Home, suppressed_mask)
+        });
+        if reset_pressed {
             self.reset();
+            self.announce_reset(ctx);
             return true;
         }
         if ui.input(|i| unmodified_key_pressed(i, egui::Key::P, suppressed_mask)) {
             self.projection = self.projection.toggle();
+            self.announce_projection(ctx);
         }
         if ui.input(|i| unmodified_key_pressed(i, egui::Key::Num1, suppressed_mask)) {
             self.snap_to_yz();
+            self.announce_view_snap(ctx, "X-axis (YZ plane)");
         } else if ui.input(|i| unmodified_key_pressed(i, egui::Key::Num2, suppressed_mask)) {
             self.snap_to_xz();
+            self.announce_view_snap(ctx, "Y-axis (XZ plane)");
         } else if ui.input(|i| unmodified_key_pressed(i, egui::Key::Num3, suppressed_mask)) {
             self.snap_to_xy();
+            self.announce_view_snap(ctx, "Z-axis (XY plane)");
         } else if ui.input(|i| unmodified_key_pressed(i, egui::Key::Num4, suppressed_mask)) {
             self.snap_to_iso();
+            self.announce_view_snap(ctx, "Isometric");
         }
         false
     }
@@ -370,6 +383,17 @@ impl Camera3D {
             prev.zoom
         };
 
+        self.draw_projection_and_reset_controls(ui, prev.projection);
+        if *self != prev {
+            ui.ctx().request_repaint();
+        }
+    }
+
+    fn draw_projection_and_reset_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        prev_projection: ProjectionMode,
+    ) {
         ui.horizontal(|ui| {
             ui.label("Projection:");
             ui.selectable_value(
@@ -383,12 +407,12 @@ impl Camera3D {
                 ProjectionMode::Perspective.label(),
             );
         });
-
+        if self.projection != prev_projection {
+            self.announce_projection(ui.ctx());
+        }
         if ui.button("↻ Reset View").clicked() {
             self.reset();
-        }
-        if *self != prev {
-            ui.ctx().request_repaint();
+            self.announce_reset(ui.ctx());
         }
     }
 }

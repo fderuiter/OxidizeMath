@@ -119,6 +119,116 @@ impl VolumetricFieldStudioTool {
             }
         }
         draw_axes_and_overlays(self, plot_ui, camera, palette);
+        plot_ui.set_3d_sidecar(build_volumetric_sidecar(self, camera, palette));
+    }
+}
+
+fn build_volumetric_sidecar(
+    tool: &VolumetricFieldStudioTool,
+    camera: &Camera3D,
+    palette: &crate::app::SemanticPalette,
+) -> egui_plot::Plot3DSeriesSidecar {
+    let mut sidecar = egui_plot::Plot3DSeriesSidecar::new();
+    if tool.config.render_mode.uses_mesh() {
+        push_mesh_series(
+            &mut sidecar,
+            "Isosurface (+)",
+            &tool.engine.pos_mesh.vertices,
+            camera,
+            palette.series_color(0),
+        );
+        push_mesh_series(
+            &mut sidecar,
+            "Isosurface (-)",
+            &tool.engine.neg_mesh.vertices,
+            camera,
+            palette.series_color(1),
+        );
+    }
+    if tool.config.render_mode.uses_splats() {
+        let world: Vec<[f64; 3]> = tool
+            .engine
+            .splat_ws
+            .scene
+            .gaussians
+            .iter()
+            .map(|g| [g.mean.x, g.mean.y, g.mean.z])
+            .collect();
+        let proj: Vec<[f64; 2]> = world.iter().map(|p| camera.project(p)).collect();
+        sidecar.push_series(egui_plot::Plot3DSeries::new(
+            "Gaussian3D Means",
+            proj,
+            world,
+            palette.accent,
+        ));
+    }
+    append_volumetric_overlay_series(&mut sidecar, tool, camera, palette);
+    sidecar
+}
+
+fn push_mesh_series(
+    sidecar: &mut egui_plot::Plot3DSeriesSidecar,
+    name: &str,
+    verts: &[oxidize_core::mesh::Point3D],
+    camera: &Camera3D,
+    color: egui::Color32,
+) {
+    if verts.is_empty() {
+        return;
+    }
+    let stride = verts.len().div_ceil(256).max(1);
+    let mut proj = Vec::with_capacity(256);
+    let mut world = Vec::with_capacity(256);
+    for v in verts.iter().step_by(stride) {
+        let w = [f64::from(v.x), f64::from(v.y), f64::from(v.z)];
+        proj.push(camera.project(&w));
+        world.push(w);
+    }
+    sidecar.push_series(egui_plot::Plot3DSeries::new(name, proj, world, color));
+}
+
+fn append_volumetric_overlay_series(
+    sidecar: &mut egui_plot::Plot3DSeriesSidecar,
+    tool: &VolumetricFieldStudioTool,
+    camera: &Camera3D,
+    palette: &crate::app::SemanticPalette,
+) {
+    let origin = camera.project(&[0.0, 0.0, 0.0]);
+    for (label, tip, color) in [
+        ("X Axis", [2.1, 0.0, 0.0], palette.axis_x),
+        ("Y Axis", [0.0, 2.1, 0.0], palette.axis_y),
+        ("Z Axis", [0.0, 0.0, 2.1], palette.axis_z),
+    ] {
+        sidecar.push_series(egui_plot::Plot3DSeries::new(
+            label,
+            vec![origin, camera.project(&tip)],
+            vec![[0.0, 0.0, 0.0], tip],
+            color,
+        ));
+    }
+    if tool.config.cut_enabled && !tool.engine.slice_contours.is_empty() {
+        let mut c_proj = Vec::with_capacity(tool.engine.slice_contours.len() * 2);
+        let mut c_world = Vec::with_capacity(tool.engine.slice_contours.len() * 2);
+        for seg in &tool.engine.slice_contours {
+            c_proj.push(camera.project(&seg[0]));
+            c_proj.push(camera.project(&seg[1]));
+            c_world.push(seg[0]);
+            c_world.push(seg[1]);
+        }
+        sidecar.push_series(egui_plot::Plot3DSeries::new(
+            "Slice Nodal Contour",
+            c_proj,
+            c_world,
+            palette.warning,
+        ));
+    }
+    if let Some(probe) = tool.engine.probe {
+        sidecar.push_series(egui_plot::Plot3DSeries::new(
+            "3D Probe",
+            vec![camera.project(&probe.world_pos)],
+            vec![probe.world_pos],
+            palette.accent,
+        ));
     }
 }
 

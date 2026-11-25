@@ -4,6 +4,7 @@ use eframe::egui;
 
 const GIZMO_TOOLBAR_CLEARANCE_PX: f32 = 30.0_f32;
 const GIZMO_MIN_TARGET_PX: f32 = 24.0_f32;
+const GIZMO_ISO_PILL_WIDTH_PX: f32 = 28.0_f32;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) enum GizmoAxis {
@@ -83,6 +84,27 @@ fn build_gizmo_handle(
     }
 }
 
+fn build_iso_pill_handle(
+    center: egui::Pos2,
+    triad_bottom_extent: f32,
+    iso_gap: f32,
+    color: egui::Color32,
+) -> GizmoHandle {
+    let pill_size = egui::vec2(GIZMO_ISO_PILL_WIDTH_PX, GIZMO_MIN_TARGET_PX);
+    let min_pos = egui::pos2(
+        (center.x - 0.5_f32 * pill_size.x).round(),
+        (center.y + triad_bottom_extent + iso_gap).round(),
+    );
+    let button_rect = egui::Rect::from_min_size(min_pos, pill_size);
+    GizmoHandle {
+        axis: GizmoAxis::Iso,
+        color,
+        screen_pos: button_rect.center(),
+        button_rect,
+        depth: -10.0_f32,
+    }
+}
+
 impl Camera3D {
     pub(super) fn gizmo_geometry(
         &self,
@@ -97,6 +119,9 @@ impl Camera3D {
             .ceil()
             .max(GIZMO_MIN_TARGET_PX);
         let half_btn = 0.5_f32 * btn_extent;
+        let bg_radius = axis_length + knob_radius + 4.0_f32;
+        let triad_bottom = bg_radius.max(axis_length + half_btn);
+        let iso_gap = (4.0_f32 * scale).ceil();
         let pad = (45.0_f32 * scale).max(axis_length + half_btn + 2.0_f32);
         let toolbar_offset = if rect.height() >= 140.0_f32 {
             GIZMO_TOOLBAR_CLEARANCE_PX
@@ -104,8 +129,10 @@ impl Camera3D {
             0.0_f32
         };
 
-        let center_x = (rect.max.x - pad).max(rect.min.x + half_btn);
-        let max_cy = (rect.max.y - pad).max(rect.min.y + half_btn);
+        let min_cx = rect.min.x + half_btn.max(0.5_f32 * GIZMO_ISO_PILL_WIDTH_PX);
+        let center_x = (rect.max.x - pad).max(min_cx);
+        let bottom_pad = triad_bottom + iso_gap + GIZMO_MIN_TARGET_PX + 2.0_f32;
+        let max_cy = (rect.max.y - bottom_pad).max(rect.min.y + toolbar_offset + half_btn);
         let center_y = (rect.min.y + toolbar_offset + pad).min(max_cy);
         let center = egui::pos2(center_x, center_y);
 
@@ -113,14 +140,7 @@ impl Camera3D {
         let (px_y, py_y, pz_y) = self.project_unit(&[0.0, 1.0, 0.0]);
         let (px_z, py_z, pz_z) = self.project_unit(&[0.0, 0.0, 1.0]);
         let mut handles = [
-            build_gizmo_handle(
-                center,
-                half_btn,
-                btn_extent,
-                GizmoAxis::Iso,
-                palette.surface_fill,
-                (0.0, 0.0, -10.0_f32),
-            ),
+            build_iso_pill_handle(center, triad_bottom, iso_gap, palette.muted_text),
             build_gizmo_handle(
                 center,
                 half_btn,
@@ -163,10 +183,17 @@ impl Camera3D {
         pos: egui::Pos2,
         knob_radius: f32,
     ) -> Option<GizmoAxis> {
+        if handles
+            .iter()
+            .any(|h| h.axis == GizmoAxis::Iso && h.button_rect.contains(pos))
+        {
+            return Some(GizmoAxis::Iso);
+        }
         let hit_radius = knob_radius + 4.0_f32;
         if let Some(handle) = handles
             .iter()
             .rev()
+            .filter(|h| h.axis != GizmoAxis::Iso)
             .find(|h| pos.distance(h.screen_pos) <= hit_radius)
         {
             return Some(handle.axis);
@@ -245,6 +272,7 @@ impl Camera3D {
         };
         if let Some(axis) = clicked_axis {
             axis.apply_snap(self);
+            self.announce_gizmo_snap(ui.ctx(), axis);
         }
 
         let hovered_axis = if any_hovered {
@@ -283,50 +311,76 @@ impl Camera3D {
 
         for (idx, handle) in handles.iter().enumerate() {
             let is_active = hovered_axis == Some(handle.axis) || focused[idx];
+            Self::paint_gizmo_handle(
+                painter,
+                &palette,
+                (center, knob_radius, scale),
+                handle,
+                is_active,
+                focused[idx],
+            );
+        }
+    }
+
+    fn paint_gizmo_handle(
+        painter: &egui::Painter,
+        palette: &crate::app::SemanticPalette,
+        metrics: (egui::Pos2, f32, f32),
+        handle: &GizmoHandle,
+        is_active: bool,
+        is_focused: bool,
+    ) {
+        let (center, knob_radius, scale) = metrics;
+        let border_w = if is_active { 2.0_f32 } else { 1.0_f32 };
+        let text_fg = crate::app::contrasting_text_color(handle.color);
+
+        if handle.axis == GizmoAxis::Iso {
+            painter.rect_filled(handle.button_rect, 6.0_f32, handle.color);
+            painter.rect_stroke(
+                handle.button_rect,
+                6.0_f32,
+                egui::Stroke::new(border_w, palette.node_stroke),
+                egui::StrokeKind::Inside,
+            );
+            painter.text(
+                handle.button_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                handle.axis.short_label(),
+                egui::FontId::proportional(9.5_f32),
+                text_fg,
+            );
+        } else {
             let current_radius = if is_active {
                 knob_radius * 1.25_f32
             } else {
                 knob_radius
             };
-
-            if handle.axis != GizmoAxis::Iso {
-                painter.line_segment(
-                    [center, handle.screen_pos],
-                    egui::Stroke::new(2.5_f32 * scale, handle.color),
-                );
-            }
-
+            painter.line_segment(
+                [center, handle.screen_pos],
+                egui::Stroke::new(2.5_f32 * scale, handle.color),
+            );
             painter.circle_filled(handle.screen_pos, current_radius, handle.color);
             painter.circle_stroke(
                 handle.screen_pos,
                 current_radius,
-                egui::Stroke::new(
-                    if is_active { 2.0_f32 } else { 1.0_f32 },
-                    palette.node_stroke,
-                ),
+                egui::Stroke::new(border_w, palette.node_stroke),
             );
-
-            let font_size = if handle.axis == GizmoAxis::Iso {
-                8.0_f32 * scale
-            } else {
-                10.0_f32 * scale
-            };
             painter.text(
                 handle.screen_pos,
                 egui::Align2::CENTER_CENTER,
                 handle.axis.short_label(),
-                egui::FontId::proportional(font_size),
-                crate::app::contrasting_text_color(handle.color),
+                egui::FontId::proportional(10.0_f32 * scale),
+                text_fg,
             );
+        }
 
-            if focused[idx] {
-                painter.rect_stroke(
-                    handle.button_rect,
-                    4.0_f32,
-                    egui::Stroke::new(2.0_f32, palette.accent),
-                    egui::StrokeKind::Inside,
-                );
-            }
+        if is_focused {
+            painter.rect_stroke(
+                handle.button_rect.expand(1.5_f32),
+                6.0_f32,
+                egui::Stroke::new(2.0_f32, palette.accent),
+                egui::StrokeKind::Outside,
+            );
         }
     }
 

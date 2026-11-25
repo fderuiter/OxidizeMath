@@ -11,8 +11,7 @@ use nalgebra::Point3;
 
 use super::SpinVisualizer;
 use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility, AccessibleTheoryHover,
+    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring, AccessibleTheoryHover,
 };
 use crate::framework::{PlaybackAction, PlaybackTransport, Plot3DViewport};
 
@@ -288,7 +287,13 @@ impl SpinVisualizer {
             let allow_cam_drag = self.active_drag.is_none();
             let mut camera = self.camera;
             let mut captured_bounds = None;
+            let val_desc = format!(
+                "Spin [{ex:.2}, {ey:.2}, {ez:.2}], B [{:.2}, {:.2}, {:.2}]",
+                self.b_field[0], self.b_field[1], self.b_field[2]
+            );
             let response = Plot3DViewport::new("bloch_sphere", 1.5)
+                .title("3D Quantum Bloch Sphere")
+                .status_text(val_desc)
                 .allow_camera_drag(allow_cam_drag)
                 .show(ui, &mut camera, |plot_ui| {
                     self.scene_builder.finish(plot_ui);
@@ -304,17 +309,6 @@ impl SpinVisualizer {
                 self.update_active_handle_drag(ui, response.rect, bounds, was_dragging);
             }
 
-            let val_desc = format!(
-                "Spin [{ex:.2}, {ey:.2}, {ez:.2}], B [{:.2}, {:.2}, {:.2}]",
-                self.b_field[0], self.b_field[1], self.b_field[2]
-            );
-            register_canvas_accessibility(
-                ui,
-                &response,
-                egui::accesskit::Role::Canvas,
-                "3D Quantum Bloch Sphere",
-                Some(&val_desc),
-            );
             self.handle_bloch_canvas_keyboard(ui, &response);
             response.accessible_theory_hover(&self.psi);
         });

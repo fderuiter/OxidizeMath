@@ -476,6 +476,7 @@ pub struct Plot<'a> {
     allow_2d_analysis: bool,
     scene_3d_mode: bool,
     allow_csv_import: bool,
+    a11y_value: Option<String>,
 }
 
 impl<'a> Plot<'a> {
@@ -537,6 +538,7 @@ impl<'a> Plot<'a> {
             allow_2d_analysis: true,
             scene_3d_mode: false,
             allow_csv_import: true,
+            a11y_value: None,
         }
     }
 
@@ -566,6 +568,16 @@ impl<'a> Plot<'a> {
         let raw = title.into();
         let trimmed = raw.trim();
         self.title = (!trimmed.is_empty()).then(|| trimmed.to_owned());
+        self
+    }
+
+    /// Attach an optional Accessibility (`AccessKit`) value description to the plot's
+    /// `Role::GraphicsDocument` node (for example, 3D camera orientation and tool status).
+    #[inline]
+    pub fn a11y_value(mut self, value: impl Into<String>) -> Self {
+        let raw = value.into();
+        let trimmed = raw.trim();
+        self.a11y_value = (!trimmed.is_empty()).then(|| trimmed.to_owned());
         self
     }
 
@@ -1228,6 +1240,7 @@ impl<'a> Plot<'a> {
             allow_2d_analysis,
             scene_3d_mode,
             allow_csv_import,
+            a11y_value,
         } = self;
 
         let allow_2d_analysis = allow_2d_analysis && !scene_3d_mode;
@@ -2059,6 +2072,7 @@ impl<'a> Plot<'a> {
             plot_id,
             allow_zoom,
             allow_pan: allow_drag.or(allow_scroll),
+            scene_3d_mode,
             data_aspect,
             linked_axes: &linked_axes,
             auto_content_bounds,
@@ -2286,12 +2300,21 @@ impl<'a> Plot<'a> {
         let plot_enabled = ui.is_enabled();
         focus_response.widget_info({
             let label = plot_a11y_label.clone();
-            move || egui::WidgetInfo::labeled(egui::WidgetType::Other, plot_enabled, label.clone())
+            let val = a11y_value.clone();
+            move || {
+                let mut info =
+                    egui::WidgetInfo::labeled(egui::WidgetType::Other, plot_enabled, label.clone());
+                info.current_text_value = val.clone();
+                info
+            }
         });
         ui.ctx()
             .accesskit_node_builder(focus_response.id, |builder| {
                 builder.set_role(egui::accesskit::Role::GraphicsDocument);
                 builder.set_label(plot_a11y_label);
+                if let Some(val) = a11y_value {
+                    builder.set_value(val);
+                }
             });
 
         if header_h > 0.0 {
@@ -3052,7 +3075,7 @@ impl<'a> Plot<'a> {
     ) {
         let zoom_axes = cfg.allow_zoom.and(ui.is_enabled());
         let pan_axes = cfg.allow_pan.and(ui.is_enabled());
-        let reset_enabled = ui.is_enabled();
+        let reset_enabled = ui.is_enabled() && !cfg.scene_3d_mode;
         register_plot_viewport_commands(ui.ctx(), zoom_axes.any(), pan_axes, reset_enabled);
 
         let has_viewport_dispatch =
@@ -3179,6 +3202,7 @@ struct ViewportKeyboardConfig<'a> {
     plot_id: Id,
     allow_zoom: Vec2b,
     allow_pan: Vec2b,
+    scene_3d_mode: bool,
     data_aspect: Option<f32>,
     linked_axes: &'a Option<(Id, Vec2b)>,
     auto_content_bounds: PlotBounds,
@@ -3697,7 +3721,7 @@ fn handle_focused_plot_dataset_keys(
         return;
     }
 
-    let mut changed = false;
+    let mut triggered = false;
     if CommandRegistryData::register_and_check(
         ui.ctx(),
         "Next Dataset",
@@ -3707,11 +3731,12 @@ fn handle_focused_plot_dataset_keys(
         "Plot Accessibility",
         Some(ui),
         None,
-    ) && access_state.focused_item + 1 < num_items
-    {
-        access_state.focused_item += 1;
-        access_state.focused_point = 0;
-        changed = true;
+    ) {
+        triggered = true;
+        if access_state.focused_item + 1 < num_items {
+            access_state.focused_item += 1;
+            access_state.focused_point = 0;
+        }
     }
     if CommandRegistryData::register_and_check(
         ui.ctx(),
@@ -3722,18 +3747,19 @@ fn handle_focused_plot_dataset_keys(
         "Plot Accessibility",
         Some(ui),
         None,
-    ) && access_state.focused_item > 0
-    {
-        access_state.focused_item -= 1;
-        access_state.focused_point = 0;
-        changed = true;
+    ) {
+        triggered = true;
+        if access_state.focused_item > 0 {
+            access_state.focused_item -= 1;
+            access_state.focused_point = 0;
+        }
     }
     if let Some((_, pts, _)) = accessible_datasets.get(access_state.focused_item)
         && !pts.is_empty()
     {
-        changed |= step_focused_point_index(ui, pts.len(), &mut access_state.focused_point);
+        triggered |= step_focused_point_index(ui, pts.len(), &mut access_state.focused_point);
     }
-    if changed {
+    if triggered {
         access_state.focused_poi = None;
         announce_focused_dataset_point(
             ui.ctx(),
@@ -3779,7 +3805,7 @@ fn announce_focused_dataset_point(
 
 fn step_focused_point_index(ui: &Ui, num_pts: usize, focused_point: &mut usize) -> bool {
     use crate::commands::{CommandRegistryData, CommandTrigger};
-    let mut changed = false;
+    let mut triggered = false;
     if CommandRegistryData::register_and_check(
         ui.ctx(),
         "Next Point",
@@ -3789,10 +3815,11 @@ fn step_focused_point_index(ui: &Ui, num_pts: usize, focused_point: &mut usize) 
         "Plot Accessibility",
         Some(ui),
         None,
-    ) && *focused_point + 1 < num_pts
-    {
-        *focused_point += 1;
-        changed = true;
+    ) {
+        triggered = true;
+        if *focused_point + 1 < num_pts {
+            *focused_point += 1;
+        }
     }
     if CommandRegistryData::register_and_check(
         ui.ctx(),
@@ -3803,12 +3830,13 @@ fn step_focused_point_index(ui: &Ui, num_pts: usize, focused_point: &mut usize) 
         "Plot Accessibility",
         Some(ui),
         None,
-    ) && *focused_point > 0
-    {
-        *focused_point -= 1;
-        changed = true;
+    ) {
+        triggered = true;
+        if *focused_point > 0 {
+            *focused_point -= 1;
+        }
     }
-    changed
+    triggered
 }
 
 fn resolve_focused_plot_point<'a>(

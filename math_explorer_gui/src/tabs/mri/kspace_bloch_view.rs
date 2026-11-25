@@ -1,12 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::kspace_tool::MriKSpaceTool;
-use super::kspace_types::ISOCHROMAT_COUNT;
+use super::kspace_types::{MriKSpaceSnapshot, ISOCHROMAT_COUNT};
 use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::SimWorkerState;
 use crate::framework::{bounded_drag_value, Plot3DViewport};
 use eframe::egui;
-use egui_plot::{Line, PlotPoint, Points};
+use egui_plot::{Line, PlotPoint, PlotPoints, Points};
 
 impl MriKSpaceTool {
     pub(crate) fn draw_selected_voxel_telemetry(&mut self, ui: &mut egui::Ui) {
@@ -93,71 +93,138 @@ impl MriKSpaceTool {
     pub(crate) fn draw_bloch_3d_readout(&mut self, ui: &mut egui::Ui) {
         ui.heading("Selected Voxel 3D Bloch Sphere Readout");
         self.sync_kspace_callouts();
-        let equator = project_sphere_ring(&self.config.camera, 0);
-        let meridian_a = project_sphere_ring(&self.config.camera, 1);
-        let meridian_b = project_sphere_ring(&self.config.camera, 2);
-        let proj = |p: [f64; 3]| {
-            let [x, y] = self.config.camera.project(&p);
-            PlotPoint::new(x, y)
-        };
-        let origin = proj([0.0, 0.0, 0.0]);
-        let net = self.latest.selected_net_m;
-        let net_end = proj([net.x, net.y, net.z]);
-        let net_line = [origin, net_end];
-        let net_tip = [net_end];
-        let x_ax = [origin, proj([1.15, 0.0, 0.0])];
-        let y_ax = [origin, proj([0.0, 1.15, 0.0])];
-        let z_ax = [origin, proj([0.0, 0.0, 1.15])];
-        let iso_lines: [[PlotPoint; 2]; ISOCHROMAT_COUNT] = std::array::from_fn(|i| {
-            let s = self.latest.selected_spins[i];
-            [origin, proj([s.x, s.y, s.z])]
-        });
-        let trail: Vec<PlotPoint> = self
-            .latest
-            .selected_trajectory
-            .iter()
-            .map(|m| proj([m.x, m.y, m.z]))
-            .collect();
-
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+        let cam_snap = self.config.camera;
+        let sidecar = self.build_bloch_3d_sidecar(&cam_snap, &palette);
+        let equator = project_sphere_ring(&cam_snap, 0);
+        let meridian_a = project_sphere_ring(&cam_snap, 1);
+        let meridian_b = project_sphere_ring(&cam_snap, 2);
+
+        let latest = &self.latest;
+        let callout_manager = &mut self.callout_manager;
         let resp = Plot3DViewport::new("mri_voxel_bloch_3d", 1.4)
             .show(ui, &mut self.config.camera, |plot_ui| {
-                plot_ui.line(Line::new("", &equator[..]).color(palette.graph_edge));
-                plot_ui.line(Line::new("", &meridian_a[..]).color(palette.graph_edge));
-                plot_ui.line(Line::new("", &meridian_b[..]).color(palette.graph_edge));
-                plot_ui.line(Line::new("Mx", &x_ax[..]).color(palette.axis_x));
-                plot_ui.line(Line::new("My", &y_ax[..]).color(palette.axis_y));
-                plot_ui.line(Line::new("Mz", &z_ax[..]).color(palette.axis_z));
-                for line in &iso_lines {
-                    plot_ui.line(
-                        Line::new("", &line[..])
-                            .color(palette.warning)
-                            .width(1.5_f32),
-                    );
-                }
-                if trail.len() > 1 {
-                    plot_ui.line(Line::new("Trajectory", &trail[..]).color(palette.axis_y));
-                }
-                plot_ui.line(
-                    Line::new("Net M", &net_line[..])
-                        .color(palette.accent)
-                        .width(3.0_f32),
-                );
-                plot_ui.points(
-                    Points::new("", &net_tip[..])
-                        .radius(5.0_f32)
-                        .color(palette.accent),
-                );
-                self.callout_manager.render_on_plot(plot_ui);
+                plot_ui.line(Line::new("", equator).color(palette.graph_edge));
+                plot_ui.line(Line::new("", meridian_a).color(palette.graph_edge));
+                plot_ui.line(Line::new("", meridian_b).color(palette.graph_edge));
+                draw_bloch_vectors_3d(latest, plot_ui, &cam_snap, &palette);
+                callout_manager.render_on_plot(plot_ui);
+                plot_ui.set_3d_sidecar(sidecar);
             })
             .response;
         resp.accessible_theory_hover(&self.theory);
     }
+
+    fn build_bloch_3d_sidecar(
+        &self,
+        camera: &crate::framework::Camera3D,
+        palette: &crate::app::SemanticPalette,
+    ) -> egui_plot::Plot3DSeriesSidecar {
+        let mut sidecar = egui_plot::Plot3DSeriesSidecar::new();
+        let origin_2d = camera.project(&[0.0, 0.0, 0.0]);
+        let net = self.latest.selected_net_m;
+        let net_w = [net.x, net.y, net.z];
+        sidecar.push_series(egui_plot::Plot3DSeries::new(
+            "Net M",
+            vec![origin_2d, camera.project(&net_w)],
+            vec![[0.0, 0.0, 0.0], net_w],
+            palette.accent,
+        ));
+        let iso_world: Vec<[f64; 3]> = self
+            .latest
+            .selected_spins
+            .iter()
+            .map(|s| [s.x, s.y, s.z])
+            .collect();
+        let iso_proj: Vec<[f64; 2]> = iso_world.iter().map(|p| camera.project(p)).collect();
+        sidecar.push_series(egui_plot::Plot3DSeries::new(
+            "Isochromats",
+            iso_proj,
+            iso_world,
+            palette.warning,
+        ));
+        if self.latest.selected_trajectory.len() > 1 {
+            let t_world: Vec<[f64; 3]> = self
+                .latest
+                .selected_trajectory
+                .iter()
+                .map(|m| [m.x, m.y, m.z])
+                .collect();
+            let t_proj: Vec<[f64; 2]> = t_world.iter().map(|p| camera.project(p)).collect();
+            sidecar.push_series(egui_plot::Plot3DSeries::new(
+                "Trajectory",
+                t_proj,
+                t_world,
+                palette.axis_y,
+            ));
+        }
+        for (name, tip, color) in [
+            ("Mx", [1.15, 0.0, 0.0], palette.axis_x),
+            ("My", [0.0, 1.15, 0.0], palette.axis_y),
+            ("Mz", [0.0, 0.0, 1.15], palette.axis_z),
+        ] {
+            sidecar.push_series(egui_plot::Plot3DSeries::new(
+                name,
+                vec![origin_2d, camera.project(&tip)],
+                vec![[0.0, 0.0, 0.0], tip],
+                color,
+            ));
+        }
+        sidecar
+    }
 }
 
-fn project_sphere_ring(camera: &crate::framework::Camera3D, axis: usize) -> [PlotPoint; 61] {
-    let mut pts = [PlotPoint::new(0.0, 0.0); 61];
-    for (i, slot) in pts.iter_mut().enumerate() {
+fn draw_bloch_vectors_3d(
+    latest: &MriKSpaceSnapshot,
+    plot_ui: &mut egui_plot::PlotUi<'_>,
+    camera: &crate::framework::Camera3D,
+    palette: &crate::app::SemanticPalette,
+) {
+    let proj = |p: [f64; 3]| {
+        let [x, y] = camera.project(&p);
+        PlotPoint::new(x, y)
+    };
+    let origin = proj([0.0, 0.0, 0.0]);
+    let net = latest.selected_net_m;
+    let net_end = proj([net.x, net.y, net.z]);
+
+    for (name, tip, color) in [
+        ("Mx", [1.15, 0.0, 0.0], palette.axis_x),
+        ("My", [0.0, 1.15, 0.0], palette.axis_y),
+        ("Mz", [0.0, 0.0, 1.15], palette.axis_z),
+    ] {
+        plot_ui.line(Line::new(name, PlotPoints::Owned(vec![origin, proj(tip)])).color(color));
+    }
+    for i in 0..ISOCHROMAT_COUNT {
+        let s = latest.selected_spins[i];
+        let pts = PlotPoints::Owned(vec![origin, proj([s.x, s.y, s.z])]);
+        plot_ui.line(Line::new("", pts).color(palette.warning).width(1.5_f32));
+    }
+    if latest.selected_trajectory.len() > 1 {
+        let trail: Vec<PlotPoint> = latest
+            .selected_trajectory
+            .iter()
+            .map(|m| proj([m.x, m.y, m.z]))
+            .collect();
+        plot_ui.line(Line::new("Trajectory", PlotPoints::Owned(trail)).color(palette.axis_y));
+    }
+    let net_pts = PlotPoints::Owned(vec![origin, net_end]);
+    plot_ui.line(
+        Line::new("Net M", net_pts)
+            .color(palette.accent)
+            .width(3.0_f32),
+    );
+    let tip_pts = PlotPoints::Owned(vec![net_end]);
+    plot_ui.points(
+        Points::new("", tip_pts)
+            .radius(5.0_f32)
+            .color(palette.accent),
+    );
+}
+
+fn project_sphere_ring(camera: &crate::framework::Camera3D, axis: usize) -> PlotPoints<'static> {
+    let mut pts = Vec::with_capacity(61);
+    for i in 0..=60 {
         let theta = (i as f64) * std::f64::consts::TAU / 60.0;
         let p3 = match axis {
             0 => [theta.cos(), theta.sin(), 0.0],
@@ -165,7 +232,7 @@ fn project_sphere_ring(camera: &crate::framework::Camera3D, axis: usize) -> [Plo
             _ => [theta.cos(), 0.0, theta.sin()],
         };
         let [x, y] = camera.project(&p3);
-        *slot = PlotPoint::new(x, y);
+        pts.push(PlotPoint::new(x, y));
     }
-    pts
+    PlotPoints::Owned(pts)
 }

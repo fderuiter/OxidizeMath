@@ -422,3 +422,38 @@ fn test_creation_context_startup_theme_and_saved_override() {
     cc_corrupt.storage = Some(&storage);
     assert_eq!(MathExplorerApp::new(&cc_corrupt).theme, ThemeMode::Light);
 }
+
+#[test]
+fn test_iso_gizmo_pill_fill_and_label_contrast_across_all_themes() {
+    for mode in ALL_THEMES {
+        let visuals = mode.visuals();
+        let palette = mode.palette();
+        let iso_fill = palette.muted_text;
+        let wf = visuals.window_fill();
+        let bg = visuals.extreme_bg_color;
+        let alpha = 180.0_f32 / 255.0_f32;
+        let backdrop_composited = eframe::egui::Color32::from_rgb(
+            (f32::from(wf.r()) * alpha + f32::from(bg.r()) * (1.0 - alpha)).round() as u8,
+            (f32::from(wf.g()) * alpha + f32::from(bg.g()) * (1.0 - alpha)).round() as u8,
+            (f32::from(wf.b()) * alpha + f32::from(bg.b()) * (1.0 - alpha)).round() as u8,
+        );
+
+        let window_ratio = contrast_ratio(iso_fill, wf);
+        let backdrop_ratio = contrast_ratio(iso_fill, backdrop_composited);
+        assert!(
+            window_ratio >= 3.0,
+            "{mode:?} ISO pill fill vs window_fill contrast {window_ratio:.2}:1 < 3.0:1"
+        );
+        assert!(
+            backdrop_ratio >= 3.0,
+            "{mode:?} ISO pill fill vs backdrop_fill contrast {backdrop_ratio:.2}:1 < 3.0:1"
+        );
+
+        let label_fg = contrasting_text_color(iso_fill);
+        let text_ratio = contrast_ratio(iso_fill, label_fg);
+        assert!(
+            text_ratio >= 4.5,
+            "{mode:?} ISO pill text contrast {text_ratio:.2}:1 < 4.5:1"
+        );
+    }
+}

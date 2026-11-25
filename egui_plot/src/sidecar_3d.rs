@@ -75,6 +75,9 @@ impl Plot3DSeriesSidecar {
     /// Appends a logical 3D series for `Table View`, keyboard navigation, and dataset exports.
     pub fn push_series(&mut self, series: Plot3DSeries) {
         if !series.world.is_empty() {
+            for (&proj, &world) in series.projected.iter().zip(&series.world) {
+                self.fallback_vertices.push((proj, world));
+            }
             self.series.push(series);
         }
     }

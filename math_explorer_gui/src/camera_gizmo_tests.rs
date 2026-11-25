@@ -256,6 +256,7 @@ fn test_camera_modifier_guards_prevent_ctrl_a_and_ctrl_s_drift() {
             egui::Key::Q,
             egui::Key::E,
             egui::Key::R,
+            egui::Key::Home,
         ] {
             let press = egui::Event::Key {
                 key,
@@ -446,4 +447,38 @@ fn test_plot3d_viewport_clears_stale_log_memory_without_culling_negative_bounds(
     assert_eq!(cleaned.transform().log_axis(), egui::Vec2b::FALSE);
     assert!(cleaned.transform().bounds().min()[0] <= -4.0);
     assert!(cleaned.transform().bounds().min()[1] <= -4.0);
+}
+
+#[test]
+fn test_clicking_detached_iso_pill_from_snapped_pose_restores_iso_and_announces() {
+    let ctx = egui::Context::default();
+    let mut cam = Camera3D::default();
+    cam.snap_to_xy();
+    let mut rect = egui::Rect::NOTHING;
+    let _ = ctx.run(viewport_input(Vec::new(), 1.0 / 60.0), |c| {
+        egui::CentralPanel::default().show(c, |ui| {
+            rect = Plot3DViewport::new("iso_snap_vp", 4.0)
+                .show(ui, &mut cam, |_| {})
+                .response
+                .rect;
+        });
+    });
+    let palette = crate::app::ThemeMode::Dark.palette();
+    let (_, _, _, handles) = cam.gizmo_geometry(rect, &palette);
+    let iso_pos = handles
+        .iter()
+        .find(|h| h.axis == GizmoAxis::Iso)
+        .expect("ISO pill")
+        .screen_pos;
+
+    crate::accessibility::clear_test_announcements();
+    let _ = ctx.run(viewport_input(click_events(iso_pos), 1.0 / 60.0), |c| {
+        egui::CentralPanel::default().show(c, |ui| {
+            let _ = Plot3DViewport::new("iso_snap_vp", 4.0).show(ui, &mut cam, |_| {});
+        });
+    });
+    assert_eq!((cam.pitch, cam.yaw), (0.5, 0.5));
+    assert!(crate::accessibility::all_announcements()
+        .iter()
+        .any(|(m, prio)| prio == "polite" && m.contains("Isometric")));
 }

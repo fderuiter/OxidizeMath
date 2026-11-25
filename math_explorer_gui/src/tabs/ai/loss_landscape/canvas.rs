@@ -87,6 +87,7 @@ impl LossLandscapeTool {
             }
         };
 
+        let sidecar = self.build_3d_arena_sidecar(grid, &saved_camera, &palette);
         let mut cam = self.camera;
         let plot_resp = Plot3DViewport::new("loss_landscape_3d_plot", ARENA_3D_HALF_EXTENT)
             .helper_text(helper)
@@ -126,11 +127,88 @@ impl LossLandscapeTool {
                             .width(2.5_f32),
                     );
                 }
+                plot_ui.set_3d_sidecar(sidecar);
             });
         if !suppress_orbit {
             self.camera = cam;
         }
         self.handle_viewport_gesture(ui, &plot_resp.response);
+    }
+
+    fn build_3d_arena_sidecar(
+        &self,
+        grid: &SurfaceGrid,
+        cam: &Camera3D,
+        palette: &SemanticPalette,
+    ) -> egui_plot::Plot3DSeriesSidecar {
+        let mut sidecar = egui_plot::Plot3DSeriesSidecar::new();
+        let eval = self.surface_evaluator();
+        let mut mesh_proj = Vec::new();
+        let mut mesh_world = Vec::new();
+        for row in &grid.rows {
+            for &[w, b, loss] in row {
+                if w.is_finite() && b.is_finite() && loss.is_finite() {
+                    mesh_proj.push(cam.project(&grid.world_point(w, b, loss, 0.0)));
+                    mesh_world.push([w, b, loss]);
+                }
+            }
+        }
+        sidecar.push_series(egui_plot::Plot3DSeries::new(
+            "Surface Mesh",
+            mesh_proj,
+            mesh_world,
+            palette.axis_z,
+        ));
+        let mut min_proj = Vec::new();
+        let mut min_world = Vec::new();
+        for &[mw, mb] in eval.global_minima() {
+            let mloss = eval.evaluate(mw, mb);
+            min_proj.push(cam.project(&grid.world_point(mw, mb, mloss, 0.03)));
+            min_world.push([mw, mb, mloss]);
+        }
+        sidecar.push_series(egui_plot::Plot3DSeries::new(
+            "Global Minimum",
+            min_proj,
+            min_world,
+            palette.success,
+        ));
+        self.append_racer_3d_series(&mut sidecar, grid, cam, palette);
+        sidecar
+    }
+
+    fn append_racer_3d_series(
+        &self,
+        sidecar: &mut egui_plot::Plot3DSeriesSidecar,
+        grid: &SurfaceGrid,
+        cam: &Camera3D,
+        palette: &SemanticPalette,
+    ) {
+        let eval = self.surface_evaluator();
+        for (idx, racer) in self.arena.racers.iter().enumerate() {
+            if !self.arena_config.enabled_racers[idx] || !racer.kind.is_available_in_build() {
+                continue;
+            }
+            let mut proj = Vec::with_capacity(racer.trail.len() + 1);
+            let mut world = Vec::with_capacity(racer.trail.len() + 1);
+            for [w, b] in racer.trail.iter() {
+                let l = eval.evaluate(w, b);
+                proj.push(cam.project(&grid.world_point(w, b, l, 0.035)));
+                world.push([w, b, l]);
+            }
+            proj.push(cam.project(&grid.world_point(
+                racer.phase.q.x,
+                racer.phase.q.y,
+                racer.potential_energy,
+                0.045,
+            )));
+            world.push([racer.phase.q.x, racer.phase.q.y, racer.potential_energy]);
+            sidecar.push_series(egui_plot::Plot3DSeries::new(
+                racer.kind.label(),
+                proj,
+                world,
+                racer.kind.color(palette),
+            ));
+        }
     }
 
     pub(super) fn show_2d_contours(&mut self, ui: &mut egui::Ui, grid: &SurfaceGrid) {

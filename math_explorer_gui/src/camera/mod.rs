@@ -7,6 +7,7 @@ use std::hash::{Hash, Hasher};
 #[cfg(test)]
 use eframe::egui;
 
+mod announcements;
 mod commands;
 #[path = "../camera_gizmo.rs"]
 mod gizmo;
@@ -52,7 +53,7 @@ pub const CAMERA_3D_MAX_PAN: f32 = 1_000.0_f32;
 
 /// Canonical canvas helper text displayed below interactive 3D viewports.
 pub const CAMERA_3D_HELPER_TEXT: &str =
-    "Drag canvas or use WASD to orbit, Shift+Drag or Shift+WASD to pan, scroll or Q/E to zoom, P to switch projection, double-click or press R to reset view.";
+    "Drag canvas or use WASD to orbit, Shift+Drag or Shift+WASD to pan, scroll or Q/E to zoom, 1-4 to snap X/Y/Z/ISO, P to switch projection, Home or R to reset view.";
 
 /// 3D viewport projection mode matching GeoGebra 3D style-bar projection switching.
 #[derive(
@@ -275,6 +276,8 @@ impl Camera3D {
     }
 }
 
+#[cfg(test)]
+mod a11y_tests;
 #[cfg(test)]
 #[path = "../camera_gizmo_tests.rs"]
 mod gizmo_tests;

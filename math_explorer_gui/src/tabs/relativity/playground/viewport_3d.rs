@@ -40,12 +40,14 @@ impl GeodesicPlaygroundTool {
         let ref_rings = self.build_3d_reference_rings(&palette);
         let twin_proj = (!self.twin_samples.is_empty() && self.active_ray_count <= 1)
             .then(|| self.projected_worldline(&self.twin_samples, self.active_twin_sample()));
+        let sidecar = self.build_relativity_3d_sidecar(&palette);
 
         let mut camera = self.state.camera;
         let lock_orbit = self.locks_camera_orbit();
         let helper = self.viewport_3d_helper_text();
         let plot_id = scoped_panel_id(ui, "relativity_flamm_3d");
         let response = Plot3DViewport::new(plot_id, 16.0)
+            .title("Relativity Flamm 3D")
             .helper_text(helper)
             .show(ui, &mut camera, |plot_ui| {
                 for (idx, ring) in wireframe.into_iter().enumerate() {
@@ -62,6 +64,7 @@ impl GeodesicPlaygroundTool {
                     Self::draw_twin_worldline_3d(plot_ui, &palette, t_line, t_head);
                 }
                 let _ = self.interact_3d_slingshot(plot_ui, &palette);
+                plot_ui.set_3d_sidecar(sidecar);
             })
             .response;
 
@@ -75,8 +78,86 @@ impl GeodesicPlaygroundTool {
         }
         crate::accessibility::lock_canvas_arrow_keys(ui, &response);
         let can_key = response.has_focus() || (response.hovered() && !ctx.wants_keyboard_input());
-        let _ = self.handle_keyboard_slingshot(&ctx, can_key);
+        let _ = self.handle_keyboard_slingshot(&ctx, can_key && self.locks_camera_orbit());
         response.accessible_theory_hover(self);
+    }
+
+    fn build_relativity_3d_sidecar(
+        &self,
+        palette: &SemanticPalette,
+    ) -> egui_plot::Plot3DSeriesSidecar {
+        let mut sidecar = egui_plot::Plot3DSeriesSidecar::new();
+        let cam = &self.state.camera;
+        for (name, world, color) in self.reference_rings_world(palette) {
+            let proj = world.iter().map(|p| cam.project(p)).collect();
+            sidecar.push_series(egui_plot::Plot3DSeries::new(name, proj, world, color));
+        }
+        let mut mesh_proj = Vec::new();
+        let mut mesh_world = Vec::new();
+        for ring in self.build_embedding_wireframe_world() {
+            for p in ring {
+                mesh_proj.push(cam.project(&p));
+                mesh_world.push(p);
+            }
+        }
+        sidecar.push_series(egui_plot::Plot3DSeries::new(
+            "Embedding Surface",
+            mesh_proj,
+            mesh_world,
+            palette.graph_edge,
+        ));
+        self.append_worldline_3d_series(&mut sidecar, palette);
+        sidecar
+    }
+
+    fn append_worldline_3d_series(
+        &self,
+        sidecar: &mut egui_plot::Plot3DSeriesSidecar,
+        palette: &SemanticPalette,
+    ) {
+        let cam = &self.state.camera;
+        let count = self.active_ray_count.max(1);
+        for (idx, ray) in self.bundle_rays.iter().take(count).enumerate() {
+            let limit = self
+                .state
+                .scrub_index
+                .saturating_add(1)
+                .min(ray.samples.len());
+            if limit == 0 {
+                continue;
+            }
+            let world: Vec<[f64; 3]> = ray.samples[..limit].iter().map(|s| s.embed_xyz).collect();
+            let proj: Vec<[f64; 2]> = world.iter().map(|p| cam.project(p)).collect();
+            let name = if count == 1 {
+                "Geodesic Worldline".to_owned()
+            } else {
+                format!("Geodesic Ray {idx}")
+            };
+            sidecar.push_series(egui_plot::Plot3DSeries::new(
+                name,
+                proj,
+                world,
+                palette.series_color(idx % 6),
+            ));
+        }
+        if !self.twin_samples.is_empty() && count <= 1 {
+            let limit = self
+                .state
+                .scrub_index
+                .saturating_add(1)
+                .min(self.twin_samples.len());
+            let world: Vec<[f64; 3]> = self.twin_samples[..limit]
+                .iter()
+                .map(|s| s.embed_xyz)
+                .collect();
+            let proj: Vec<[f64; 2]> = world.iter().map(|p| cam.project(p)).collect();
+            sidecar.push_series(egui_plot::Plot3DSeries::new(
+                "Twin Worldline",
+                proj,
+                world,
+                palette.series_color(1),
+            ));
+        }
     }
 
     fn draw_twin_worldline_3d(

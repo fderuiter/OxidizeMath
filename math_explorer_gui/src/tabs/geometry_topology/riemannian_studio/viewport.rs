@@ -6,7 +6,6 @@
 use super::super::surface_brush::{ManifoldPickView, ViewportBrushMode, SCULPT_3D_HELPER_TEXT};
 use super::mesh_gen::ManifoldGeometry;
 use super::RiemannianPdeStudio;
-use crate::accessibility::register_canvas_accessibility;
 use crate::app::SemanticPalette;
 use crate::framework::{Plot3DViewport, CAMERA_3D_HELPER_TEXT};
 use eframe::egui;
@@ -43,7 +42,16 @@ impl RiemannianPdeStudio {
                 palette,
             );
 
+            let summary = format!(
+                "{} on {} ({} vertices, step {})",
+                self.config.regime.label(),
+                self.config.manifold.label(),
+                geom.positions.len(),
+                eng.step_count,
+            );
             let plot_resp = Plot3DViewport::new("riemannian_pde_3d_plot", 3.3)
+                .title("3D Riemannian PDE Manifold Viewport")
+                .status_text(summary)
                 .allow_primary_orbit(is_orbit)
                 .helper_text(helper)
                 .show(ui, &mut cam, |plot_ui| {
@@ -60,13 +68,6 @@ impl RiemannianPdeStudio {
                 .response
                 .has_focus()
                 .then_some(plot_resp.response.id);
-            register_viewport_accessibility(
-                ui,
-                &plot_resp.response,
-                &self.config,
-                geom.positions.len(),
-                eng.step_count,
-            );
             self.process_viewport_brush(ui, &plot_resp.response, pointer_xy);
         });
     }
@@ -104,27 +105,6 @@ impl RiemannianPdeStudio {
             }
         }
     }
-}
-
-fn register_viewport_accessibility(
-    ui: &egui::Ui,
-    response: &egui::Response,
-    cfg: &super::state::RiemannianStudioConfig,
-    vertex_count: usize,
-    step_count: u64,
-) {
-    let summary = format!(
-        "{} on {} ({vertex_count} vertices, step {step_count})",
-        cfg.regime.label(),
-        cfg.manifold.label(),
-    );
-    register_canvas_accessibility(
-        ui,
-        response,
-        egui::accesskit::Role::Canvas,
-        "3D Riemannian PDE Manifold Viewport",
-        Some(&summary),
-    );
 }
 
 fn record_manifold_scene_points(

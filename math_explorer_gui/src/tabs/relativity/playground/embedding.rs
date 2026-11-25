@@ -96,21 +96,75 @@ impl GeodesicPlaygroundTool {
         });
     }
 
+    pub(super) fn reference_ring_world(
+        radius: f64,
+        z_height: f64,
+        segments: usize,
+    ) -> Vec<[f64; 3]> {
+        let n = segments.max(12);
+        (0..=n)
+            .map(|i| {
+                let (s, c) = (TAU * (i as f64) / (n as f64)).sin_cos();
+                [radius * c, radius * s, z_height]
+            })
+            .collect()
+    }
+
     pub(super) fn reference_ring_projected(
         &self,
         radius: f64,
         z_height: f64,
         segments: usize,
     ) -> Vec<[f64; 2]> {
-        let n = segments.max(12);
-        (0..=n)
-            .map(|i| {
-                let (s, c) = (TAU * (i as f64) / (n as f64)).sin_cos();
-                self.state
-                    .camera
-                    .project(&[radius * c, radius * s, z_height])
-            })
+        Self::reference_ring_world(radius, z_height, segments)
+            .into_iter()
+            .map(|p| self.state.camera.project(&p))
             .collect()
+    }
+
+    pub(super) fn reference_rings_world(
+        &self,
+        palette: &SemanticPalette,
+    ) -> Vec<(&'static str, Vec<[f64; 3]>, eframe::egui::Color32)> {
+        let (r_plus, r_ergo, _, isco, r_ph) =
+            self.relativistic_radii_and_omega(self.state.initial_radius);
+        let throat_r = if r_plus > 0.0 {
+            r_plus
+        } else {
+            self.state.scale_radius
+        };
+        let mut rings = vec![(
+            "Outer Horizon / Throat r+",
+            Self::reference_ring_world(throat_r, 0.0, 56),
+            palette.error,
+        )];
+        if self.state.spacetime == SpacetimePreset::KerrEquatorial
+            && (r_ergo - throat_r).abs() > 1e-4
+        {
+            let z_e = flamm_paraboloid_z(throat_r, r_ergo).unwrap_or(0.0);
+            rings.push((
+                "Static Limit Ergosphere r_ergo",
+                Self::reference_ring_world(r_ergo, z_e, 56),
+                palette.error,
+            ));
+        }
+        if !self.state.spacetime.is_wormhole() && r_ph > throat_r {
+            let z_ph = self.surface_z_at(throat_r, r_ph);
+            rings.push((
+                "Photon Sphere",
+                Self::reference_ring_world(r_ph, z_ph, 56),
+                palette.warning,
+            ));
+        }
+        if !self.state.spacetime.is_wormhole() && isco > throat_r {
+            let z_i = self.surface_z_at(throat_r, isco);
+            rings.push((
+                "ISCO",
+                Self::reference_ring_world(isco, z_i, 56),
+                palette.info,
+            ));
+        }
+        rings
     }
 
     pub(super) fn build_3d_reference_rings(&self, palette: &SemanticPalette) -> Vec<Line<'static>> {
@@ -189,7 +243,7 @@ impl GeodesicPlaygroundTool {
         )
     }
 
-    pub(super) fn build_embedding_wireframe(&self) -> Vec<Vec<[f64; 2]>> {
+    pub(super) fn build_embedding_wireframe_world(&self) -> Vec<Vec<[f64; 3]>> {
         let mut lines = Vec::with_capacity(14);
         let rs = self.state.scale_radius;
         if !self.state.spacetime.is_wormhole() {
@@ -197,27 +251,40 @@ impl GeodesicPlaygroundTool {
             let r_base = r_plus.max(0.3);
             for ring_idx in 1..=5 {
                 let r = r_base * (1.0 + 1.35 * f64::from(ring_idx));
-                lines.push(self.reference_ring_projected(r, self.surface_z_at(r_base, r), 40));
+                lines.push(Self::reference_ring_world(
+                    r,
+                    self.surface_z_at(r_base, r),
+                    40,
+                ));
             }
             for spoke in 0..8 {
                 let (s, c) = (TAU * f64::from(spoke) / 8.0).sin_cos();
                 let meridian = (0..18)
                     .map(|k| {
                         let r = r_base + 7.0 * rs * (k as f64) / 17.0;
-                        self.state
-                            .camera
-                            .project(&[r * c, r * s, self.surface_z_at(r_base, r)])
+                        [r * c, r * s, self.surface_z_at(r_base, r)]
                     })
                     .collect();
                 lines.push(meridian);
             }
         } else {
-            self.build_wormhole_wireframe(&mut lines, rs);
+            self.build_wormhole_wireframe_world(&mut lines, rs);
         }
         lines
     }
 
-    fn build_wormhole_wireframe(&self, lines: &mut Vec<Vec<[f64; 2]>>, b0: f64) {
+    pub(super) fn build_embedding_wireframe(&self) -> Vec<Vec<[f64; 2]>> {
+        self.build_embedding_wireframe_world()
+            .into_iter()
+            .map(|ring| {
+                ring.into_iter()
+                    .map(|p| self.state.camera.project(&p))
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn build_wormhole_wireframe_world(&self, lines: &mut Vec<Vec<[f64; 3]>>, b0: f64) {
         let is_custom = self.state.spacetime == SpacetimePreset::CustomWormholeProfile;
         let wh = MorrisThorneWormhole::new(b0).ok();
         let eval_r = |l: f64| {
@@ -231,7 +298,7 @@ impl GeodesicPlaygroundTool {
         };
         for level in [-6.0, -3.0, 3.0, 6.0] {
             let z = b0.max(0.1) * (level / b0.max(0.1)).asinh();
-            lines.push(self.reference_ring_projected(eval_r(level), z, 40));
+            lines.push(Self::reference_ring_world(eval_r(level), z, 40));
         }
         for spoke in 0..8 {
             let (s, c) = (TAU * f64::from(spoke) / 8.0).sin_cos();
@@ -240,7 +307,7 @@ impl GeodesicPlaygroundTool {
                     let l = -8.0 + 16.0 * (k as f64) / 20.0;
                     let r = eval_r(l);
                     let z = b0.max(0.1) * (l / b0.max(0.1)).asinh();
-                    self.state.camera.project(&[r * c, r * s, z])
+                    [r * c, r * s, z]
                 })
                 .collect();
             lines.push(meridian);

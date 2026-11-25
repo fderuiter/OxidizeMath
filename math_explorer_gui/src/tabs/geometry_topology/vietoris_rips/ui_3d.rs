@@ -270,15 +270,45 @@ impl VietorisRipsTool {
                     .stroke(egui::Stroke::new(0.0_f32, egui::Color32::TRANSPARENT)),
             );
         }
+        let mut edge_proj = Vec::with_capacity(self.cached_edges_3d.len() * 2);
+        let mut edge_world = Vec::with_capacity(self.cached_edges_3d.len() * 2);
         for &[a, b] in &self.cached_edges_3d {
+            let pa = self.project_3d(a);
+            let pb = self.project_3d(b);
+            edge_proj.push(pa);
+            edge_proj.push(pb);
+            edge_world.push([a.x, a.y, a.z]);
+            edge_world.push([b.x, b.y, b.z]);
             plot_ui.line(
-                Line::new("3D Edge", vec![self.project_3d(a), self.project_3d(b)])
+                Line::new("3D Edge", vec![pa, pb])
                     .color(palette.graph_edge)
                     .width(1.4_f32),
             );
         }
         let verts: Vec<[f64; 2]> = self.points_3d.iter().map(|&p| self.project_3d(p)).collect();
-        plot_ui.points(Points::new("3D Landmarks", verts).color(s0).radius(4.2_f32));
+        let world_verts: Vec<[f64; 3]> = self.points_3d.iter().map(|p| [p.x, p.y, p.z]).collect();
+        plot_ui.points(
+            Points::new("3D Landmarks", verts.clone())
+                .color(s0)
+                .radius(4.2_f32),
+        );
+
+        let mut sidecar = egui_plot::Plot3DSeriesSidecar::new();
+        sidecar.push_series(egui_plot::Plot3DSeries::new(
+            "3D Landmarks",
+            verts,
+            world_verts,
+            s0,
+        ));
+        if !edge_world.is_empty() {
+            sidecar.push_series(egui_plot::Plot3DSeries::new(
+                "3D Edges",
+                edge_proj,
+                edge_world,
+                palette.graph_edge,
+            ));
+        }
+        plot_ui.set_3d_sidecar(sidecar);
     }
 }
 

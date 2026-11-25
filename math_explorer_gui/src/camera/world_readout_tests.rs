@@ -201,3 +201,50 @@ fn test_framework_export_queue_csv_json_and_url_roundtrip_preserve_3d_state() {
         .expect("3D JSON content");
     assert!(json.contains("\"z\": 0"), "Got: {json}");
 }
+
+#[test]
+fn test_five_new_sidecar_tools_emit_camera_invariant_world_xyz() {
+    let mut loss = crate::tabs::ai::loss_landscape::LossLandscapeTool::default();
+    let loss_a = run_tool_and_capture_3d(&mut loss);
+    loss.camera = transformed_camera(loss.camera);
+    let loss_b = run_tool_and_capture_3d(&mut loss);
+    assert_datasets_3d_invariant("LossLandscapeTool", &loss_a, &loss_b);
+
+    let mut vr = crate::tabs::geometry_topology::vietoris_rips::VietorisRipsTool::default();
+    vr.chaos.playing = false;
+    vr.load_validated_3d_points(
+        vec![
+            math_explorer::pure_math::statistics::tda::Point3D::new(-1.5, 0.5, 2.0),
+            math_explorer::pure_math::statistics::tda::Point3D::new(1.5, -0.5, -1.0),
+            math_explorer::pure_math::statistics::tda::Point3D::new(0.0, 2.0, 0.25),
+        ],
+        5.0,
+    )
+    .expect("valid 3D landmarks");
+    let vr_a = run_tool_and_capture_3d(&mut vr);
+    vr.camera = transformed_camera(vr.camera);
+    let vr_b = run_tool_and_capture_3d(&mut vr);
+    assert_datasets_3d_invariant("VietorisRipsTool", &vr_a, &vr_b);
+
+    let mut mri = crate::tabs::mri::kspace_tool::MriKSpaceTool::default();
+    let _ = run_tool_and_capture_3d(&mut mri);
+    let _ = mri.worker.send_command(crate::async_sim::SimCommand::Pause);
+    let mri_a = run_tool_and_capture_3d(&mut mri);
+    mri.config.camera = transformed_camera(mri.config.camera);
+    let mri_b = run_tool_and_capture_3d(&mut mri);
+    assert_datasets_3d_invariant("MriKSpaceTool", &mri_a, &mri_b);
+
+    let mut vol = crate::tabs::quantum::volumetric_studio::VolumetricFieldStudioTool::default();
+    vol.config.running = false;
+    let vol_a = run_tool_and_capture_3d(&mut vol);
+    vol.config.camera = transformed_camera(vol.config.camera);
+    let vol_b = run_tool_and_capture_3d(&mut vol);
+    assert_datasets_3d_invariant("VolumetricFieldStudioTool", &vol_a, &vol_b);
+
+    let mut rel = crate::tabs::relativity::GeodesicPlaygroundTool::default();
+    rel.state.is_playing = false;
+    let rel_a = run_tool_and_capture_3d(&mut rel);
+    rel.state.camera = transformed_camera(rel.state.camera);
+    let rel_b = run_tool_and_capture_3d(&mut rel);
+    assert_datasets_3d_invariant("GeodesicPlaygroundTool", &rel_a, &rel_b);
+}

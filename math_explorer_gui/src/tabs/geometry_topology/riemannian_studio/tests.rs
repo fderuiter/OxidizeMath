@@ -71,10 +71,11 @@ fn test_default_studio_is_lightweight_and_exposes_3d_accessibility_controls() {
         "Must expose Orbit helper caption on initial open"
     );
     assert!(
-        ak.nodes
-            .iter()
-            .any(|(_, n)| n.role() == egui::accesskit::Role::Canvas),
-        "Must expose AccessKit Role::Canvas for the 3D manifold viewport"
+        ak.nodes.iter().any(|(_, n)| {
+            n.role() == egui::accesskit::Role::GraphicsDocument
+                && n.value().unwrap_or("").contains("Pitch")
+        }),
+        "Must expose AccessKit Role::GraphicsDocument with 3D orientation value for the manifold viewport"
     );
 }
 
