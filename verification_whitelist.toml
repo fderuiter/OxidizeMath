@@ -44,9 +44,13 @@ allow_write = ["pages", "id-token"]
 reason = "Deploying to GitHub Pages requires pages: write and id-token: write"
 
 [verify_suite]
+min_native_execution_coverage_pct = 80.0
+min_wasm_path_coverage_pct = 70.0
+min_total_assertion_density = 0.65
 min_verified_assertion_density = 0.40
 min_total_production_density = 0.0160
 min_verified_production_density = 0.0490
+min_test_assertion_density = 3.00
 coverage_tolerance_pct = 1.5
 unverified_modules = [
     "apps/xtask",

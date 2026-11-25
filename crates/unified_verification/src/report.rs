@@ -16,21 +16,20 @@ use syn::visit::Visit;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ReportMode {
     Check,
+    StrictParity,
     Write,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct IntegrityReport {
     pub native_execution_coverage_pct: f64,
     pub wasm_path_coverage_pct: f64,
     pub total_assertion_density: f64,
     pub verified_modules_density: f64,
     pub unverified_modules_density: f64,
-    #[serde(default)]
     pub total_production_assertion_density: f64,
-    #[serde(default)]
     pub verified_production_assertion_density: f64,
-    #[serde(default)]
     pub test_assertion_density: f64,
     pub passed: bool,
 }
@@ -224,38 +223,75 @@ fn collect_debt_violations(
     (unauthorized, auth_opt_outs, auth_crates)
 }
 
-fn build_gate_errors(
-    native_cov_pct: f64,
-    verified_density: f64,
-    total_prod_density: f64,
-    verified_prod_density: f64,
-    config: &VerifySuiteConfig,
-) -> Vec<String> {
+fn check_density_floor(label: &str, actual: f64, floor: f64, kind: &str, errors: &mut Vec<String>) {
+    if !actual.is_finite() || actual < floor {
+        errors.push(format!(
+            "{label} {actual:.4} is below {kind} {floor:.4} asserts/fn"
+        ));
+    }
+}
+
+fn check_coverage_floor(label: &str, actual: f64, floor: f64, errors: &mut Vec<String>) {
+    if !actual.is_finite() || !(0.0..=100.0).contains(&actual) {
+        errors.push(format!(
+            "{label} {actual:.2}% must be finite within 0.0%..=100.0%"
+        ));
+    } else if actual < floor {
+        errors.push(format!(
+            "{label} {actual:.2}% is below ratcheted floor {floor:.2}%"
+        ));
+    }
+}
+
+fn build_gate_errors(report: &IntegrityReport, config: &VerifySuiteConfig) -> Vec<String> {
     let mut errors = Vec::new();
-    if verified_density < config.min_verified_assertion_density {
-        errors.push(format!(
-            "Verified modules density {:.4} is below required {:.4} asserts/fn",
-            verified_density, config.min_verified_assertion_density
-        ));
-    }
-    if total_prod_density < config.min_total_production_density {
-        errors.push(format!(
-            "Total production density {:.4} is below ratcheted floor {:.4} asserts/fn",
-            total_prod_density, config.min_total_production_density
-        ));
-    }
-    if verified_prod_density < config.min_verified_production_density {
-        errors.push(format!(
-            "Verified production density {:.4} is below ratcheted floor {:.4} asserts/fn",
-            verified_prod_density, config.min_verified_production_density
-        ));
-    }
-    if native_cov_pct < 50.0 {
-        errors.push(format!(
-            "Native execution coverage {:.2}% is below threshold of 50.0%",
-            native_cov_pct
-        ));
-    }
+    check_density_floor(
+        "Verified modules density",
+        report.verified_modules_density,
+        config.min_verified_assertion_density,
+        "required",
+        &mut errors,
+    );
+    check_density_floor(
+        "Total assertion density",
+        report.total_assertion_density,
+        config.min_total_assertion_density,
+        "ratcheted floor",
+        &mut errors,
+    );
+    check_density_floor(
+        "Total production density",
+        report.total_production_assertion_density,
+        config.min_total_production_density,
+        "ratcheted floor",
+        &mut errors,
+    );
+    check_density_floor(
+        "Verified production density",
+        report.verified_production_assertion_density,
+        config.min_verified_production_density,
+        "ratcheted floor",
+        &mut errors,
+    );
+    check_density_floor(
+        "Test assertion density",
+        report.test_assertion_density,
+        config.min_test_assertion_density,
+        "ratcheted floor",
+        &mut errors,
+    );
+    check_coverage_floor(
+        "WASM path coverage",
+        report.wasm_path_coverage_pct,
+        config.min_wasm_path_coverage_pct,
+        &mut errors,
+    );
+    check_coverage_floor(
+        "Native execution coverage",
+        report.native_execution_coverage_pct,
+        config.min_native_execution_coverage_pct,
+        &mut errors,
+    );
     errors
 }
 
@@ -266,36 +302,28 @@ pub fn evaluate_integrity_gates(
     debt: &DebtSources<'_>,
     config: &VerifySuiteConfig,
 ) -> GateEvaluation {
-    let total_density = ratio_or_zero(m.total_asserts, m.total_funcs);
-    let verified_density = ratio_or_zero(m.verified_asserts, m.verified_funcs);
-    let unverified_density = ratio_or_zero(m.unverified_asserts, m.unverified_funcs);
-    let total_prod_density = ratio_or_zero(m.prod_asserts, m.prod_funcs);
-    let verified_prod_density = ratio_or_zero(m.verified_prod_asserts, m.verified_prod_funcs);
-    let test_density = ratio_or_zero(m.test_asserts, m.test_funcs);
+    let mut report = IntegrityReport {
+        native_execution_coverage_pct: native_cov_pct,
+        wasm_path_coverage_pct: wasm_cov_pct,
+        total_assertion_density: ratio_or_zero(m.total_asserts, m.total_funcs),
+        verified_modules_density: ratio_or_zero(m.verified_asserts, m.verified_funcs),
+        unverified_modules_density: ratio_or_zero(m.unverified_asserts, m.unverified_funcs),
+        total_production_assertion_density: ratio_or_zero(m.prod_asserts, m.prod_funcs),
+        verified_production_assertion_density: ratio_or_zero(
+            m.verified_prod_asserts,
+            m.verified_prod_funcs,
+        ),
+        test_assertion_density: ratio_or_zero(m.test_asserts, m.test_funcs),
+        passed: false,
+    };
 
     let (unauthorized_debt, authorized_opt_outs, authorized_unverified_crates) =
         collect_debt_violations(m, debt, config);
-    let gate_errors = build_gate_errors(
-        native_cov_pct,
-        verified_density,
-        total_prod_density,
-        verified_prod_density,
-        config,
-    );
-    let passed = gate_errors.is_empty() && unauthorized_debt.is_empty();
+    let gate_errors = build_gate_errors(&report, config);
+    report.passed = gate_errors.is_empty() && unauthorized_debt.is_empty();
 
     GateEvaluation {
-        report: IntegrityReport {
-            native_execution_coverage_pct: native_cov_pct,
-            wasm_path_coverage_pct: wasm_cov_pct,
-            total_assertion_density: total_density,
-            verified_modules_density: verified_density,
-            unverified_modules_density: unverified_density,
-            total_production_assertion_density: total_prod_density,
-            verified_production_assertion_density: verified_prod_density,
-            test_assertion_density: test_density,
-            passed,
-        },
+        report,
         unauthorized_debt,
         gate_errors,
         authorized_opt_outs,
@@ -381,29 +409,19 @@ fn apply_report_mode_io(
             }
             true
         }
-        ReportMode::Check => match certificate::verify_certificate_against_report(
+        ReportMode::Check => certificate::run_check_certificate_io(
+            report,
+            cert_path,
+            readme_path,
+            "Verified Verification_Certificate.json schema and README.md badge in read-only --check mode.",
+        ),
+        ReportMode::StrictParity => certificate::run_strict_parity_io(
             report,
             Some(native_cov_pct),
             tolerance_pct,
             cert_path,
             readme_path,
-        ) {
-            Ok(()) => {
-                println!(
-                    "Verified {} and {} parity in read-only --check mode.",
-                    certificate::CERT_FILE_NAME,
-                    certificate::README_FILE_NAME
-                );
-                true
-            }
-            Err(diffs) => {
-                eprintln!("\n[!] Certificate parity check failed (--check):");
-                for diff in diffs {
-                    eprintln!("  - {diff}");
-                }
-                false
-            }
-        },
+        ),
     }
 }
 

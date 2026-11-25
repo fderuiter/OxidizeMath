@@ -73,11 +73,34 @@ fn run_check_file_lengths_cli(args: &[String]) {
 }
 
 fn parse_check_certificate_mode(args: &[String]) -> Result<report::ReportMode, String> {
-    match args {
-        [] => Ok(report::ReportMode::Check),
-        [flag] if flag == "--check" => Ok(report::ReportMode::Check),
-        [flag] if flag == "--write" || flag == "--write-tracked" => Ok(report::ReportMode::Write),
-        _ => Err("Usage: unified_verification check-certificate [--check | --write]".to_string()),
+    let mut saw_check = false;
+    let mut saw_strict = false;
+    let mut saw_write = false;
+    for arg in args {
+        match arg.as_str() {
+            "--check" => saw_check = true,
+            "--strict-parity" | "--strict-certificate" => saw_strict = true,
+            "--write" | "--write-tracked" => saw_write = true,
+            _ => {
+                return Err(
+                    "Usage: unified_verification check-certificate [--check | --strict-parity | --write]"
+                        .to_string(),
+                );
+            }
+        }
+    }
+    if saw_write && (saw_check || saw_strict) {
+        return Err(
+            "Cannot combine `--write` with `--check` or `--strict-parity` in `check-certificate`"
+                .to_string(),
+        );
+    }
+    if saw_write {
+        Ok(report::ReportMode::Write)
+    } else if saw_strict {
+        Ok(report::ReportMode::StrictParity)
+    } else {
+        Ok(report::ReportMode::Check)
     }
 }
 
@@ -113,6 +136,7 @@ fn parse_non_empty_cert_path(raw: &str) -> Result<std::path::PathBuf, String> {
 
 pub(crate) fn parse_verify_suite_args(args: &[String]) -> Result<VerifySuiteOptions, String> {
     let mut saw_check = false;
+    let mut saw_strict = false;
     let mut saw_write = false;
     let mut auto_fix = false;
     let mut coverage_only = false;
@@ -123,6 +147,7 @@ pub(crate) fn parse_verify_suite_args(args: &[String]) -> Result<VerifySuiteOpti
         let arg = args[idx].as_str();
         match arg {
             "--check" => saw_check = true,
+            "--strict-parity" | "--strict-certificate" => saw_strict = true,
             "--write" | "--write-tracked" => saw_write = true,
             "--auto-fix" => auto_fix = true,
             "--coverage-only" => coverage_only = true,
@@ -139,17 +164,36 @@ pub(crate) fn parse_verify_suite_args(args: &[String]) -> Result<VerifySuiteOpti
             }
             other => {
                 return Err(format!(
-                    "Unknown verify-suite flag `{other}` (expected `--check`, `--write`, `--write-tracked`, `--coverage-only`, `--output-cert <path>`, or `--write --auto-fix`)"
+                    "Unknown verify-suite flag `{other}` (expected `--check`, `--strict-parity`, `--write`, `--write-tracked`, `--coverage-only`, `--output-cert <path>`, or `--write --auto-fix`)"
                 ));
             }
         }
         idx += 1;
     }
-    if saw_check && saw_write {
-        return Err("Cannot pass both `--check` and `--write` to `verify-suite`".to_string());
+    if saw_write && (saw_check || saw_strict) {
+        return Err(
+            "Cannot pass `--write` together with `--check` or `--strict-parity` to `verify-suite`"
+                .to_string(),
+        );
     }
+    let mode = resolve_suite_mode(saw_write, saw_strict, auto_fix)?;
+    Ok(VerifySuiteOptions {
+        mode,
+        auto_fix,
+        coverage_only,
+        output_cert,
+    })
+}
+
+fn resolve_suite_mode(
+    saw_write: bool,
+    saw_strict: bool,
+    auto_fix: bool,
+) -> Result<report::ReportMode, String> {
     let mode = if saw_write {
         report::ReportMode::Write
+    } else if saw_strict {
+        report::ReportMode::StrictParity
     } else {
         report::ReportMode::Check
     };
@@ -159,12 +203,7 @@ pub(crate) fn parse_verify_suite_args(args: &[String]) -> Result<VerifySuiteOpti
                 .to_string(),
         );
     }
-    Ok(VerifySuiteOptions {
-        mode,
-        auto_fix,
-        coverage_only,
-        output_cert,
-    })
+    Ok(mode)
 }
 
 fn exit_if_failed(passed: bool) {

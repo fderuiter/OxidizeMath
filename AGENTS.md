@@ -44,7 +44,7 @@ cargo run -p xtask -- lint-push
 
 # Run the full PR verification suite before opening or updating a pull request (formatting, batched static
 # & single-parse AST checks across profiles, ADRs, file lengths, workflows, crate docs, AST clones, API drift,
-# in-process traceability, entropy, policy audit, and Verification_Certificate.json parity, plus host & WASM clippy, rustdoc, doctests, links, and OSV)
+# in-process traceability, entropy, policy audit, and Verification_Certificate.json schema & [verify_suite] floors, plus host & WASM clippy, rustdoc, doctests, links, and OSV)
 cargo run -p xtask -- lint-all
 ```
 
@@ -104,15 +104,15 @@ cargo run -p unified_verification --release -- traceability
 cargo run -p unified_verification --release -- verify-records --staged
 BASE_SHA="$(git merge-base HEAD origin/main)" HEAD_SHA="HEAD" cargo run -p unified_verification --release -- verify-records
 
-# Verify Verification_Certificate.json and README.md badge parity against AST metrics without llvm-cov
+# Verify Verification_Certificate.json 9-key schema, README.md badge, and ratcheted [verify_suite] AST/WASM floors without llvm-cov
 cargo run -p unified_verification --release -- check-certificate
 cargo run -p xtask -- check-certificate
 
-# Run the full high-integrity verified suite in read-only --check mode (default; used in CI)
+# Run the full high-integrity verified suite in read-only --check mode (default; enforces ratcheted floors in CI without colliding on tracked snapshots)
 cargo run -p unified_verification --release -- verify-suite --check
 cargo run -p xtask -- verify-suite --check
 
-# Explicitly refresh Verification_Certificate.json and README.md coverage badge after intentional metric changes
+# Explicitly refresh checked-in Verification_Certificate.json and README.md coverage badge for local/release snapshot updates
 cargo run -p unified_verification --release -- verify-suite --write
 cargo run -p xtask -- verify-suite --write
 

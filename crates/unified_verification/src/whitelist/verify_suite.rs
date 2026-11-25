@@ -1,5 +1,9 @@
 use serde::Deserialize;
 
+fn default_min_native_execution_coverage_pct() -> f64 {
+    50.0
+}
+
 fn default_min_verified_density() -> f64 {
     0.40
 }
@@ -12,6 +16,15 @@ fn default_coverage_tolerance_pct() -> f64 {
 #[derive(Deserialize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct VerifySuiteConfig {
+    /// Ratcheted minimum native execution line coverage percentage (default `50.0`).
+    #[serde(default = "default_min_native_execution_coverage_pct")]
+    pub min_native_execution_coverage_pct: f64,
+    /// Ratcheted minimum `wasm32` path coverage percentage (default `0.0`).
+    #[serde(default)]
+    pub min_wasm_path_coverage_pct: f64,
+    /// Ratcheted minimum workspace-wide total assertion density (default `0.0`).
+    #[serde(default)]
+    pub min_total_assertion_density: f64,
     /// Minimum required combined assertion density across verified functions (default `0.40`).
     #[serde(default = "default_min_verified_density")]
     pub min_verified_assertion_density: f64,
@@ -21,7 +34,10 @@ pub struct VerifySuiteConfig {
     /// Ratcheted minimum production assertion density across `#[verified]` non-test functions.
     #[serde(default)]
     pub min_verified_production_density: f64,
-    /// Allowed percentage-point tolerance for `native_execution_coverage_pct` in `--check` mode.
+    /// Ratcheted minimum assertion density across dedicated test functions (default `0.0`).
+    #[serde(default)]
+    pub min_test_assertion_density: f64,
+    /// Allowed percentage-point tolerance for `native_execution_coverage_pct` in `--strict-parity` mode.
     #[serde(default = "default_coverage_tolerance_pct")]
     pub coverage_tolerance_pct: f64,
     /// Non-domain workspace crates permitted to omit `theory_verification!` / `stochastic_signature_verification!`.
@@ -35,9 +51,13 @@ pub struct VerifySuiteConfig {
 impl Default for VerifySuiteConfig {
     fn default() -> Self {
         Self {
+            min_native_execution_coverage_pct: default_min_native_execution_coverage_pct(),
+            min_wasm_path_coverage_pct: 0.0,
+            min_total_assertion_density: 0.0,
             min_verified_assertion_density: default_min_verified_density(),
             min_total_production_density: 0.0,
             min_verified_production_density: 0.0,
+            min_test_assertion_density: 0.0,
             coverage_tolerance_pct: default_coverage_tolerance_pct(),
             unverified_modules: Vec::new(),
             opt_outs: Vec::new(),
