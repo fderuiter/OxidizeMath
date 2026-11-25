@@ -12,14 +12,15 @@
 //! use math_explorer::physics::astrophysics::{
 //!     HaloProfile, Mpc, TypeCode10, baryons_from_distance, decompose_rotation_curve,
 //! };
+//! use math_explorer::scalars::Kiloparsecs;
 //!
 //! let baryons = baryons_from_distance(&TypeCode10, Mpc(12.0), 0.6, 0.8);
 //! let halo = HaloProfile::BurkertCore {
 //!     virial_mass_solar: 8.0e9,
-//!     core_radius_kpc: 2.0,
+//!     core_radius_kpc: Kiloparsecs::new(2.0),
 //!     concentration: 12.0,
 //! };
-//! let sample = decompose_rotation_curve(4.0, &baryons, &halo);
+//! let sample = decompose_rotation_curve(Kiloparsecs::new(4.0), &baryons, &halo);
 //! assert!(sample.v_circ_kms > sample.v_disk_kms);
 //! ```
 
@@ -29,16 +30,18 @@ use super::galaxies::{
     GalaxyModel, GeneralIrregular, Magnitude, Mpc, Redshift, SolarMassLog, TypeCode10,
     TypeCode95To99,
 };
+use math_scalars::Kiloparsecs;
 
 /// Meters per kiloparsec ($1\,\text{kpc} = 3.085677581491367 \times 10^{19}\,\text{m}$).
-pub const METERS_PER_KPC: f64 = 3.085_677_581_491_367e19;
+pub const METERS_PER_KPC: f64 = math_scalars::METERS_PER_KILOPARSEC;
 
 /// Gravitational constant in galactic units ($\text{kpc}\,(\text{km/s})^2\,M_\odot^{-1}$).
-pub const G_KPC_KMS2_PER_SOLAR_MASS: f64 =
-    (math_commons::constants::G * math_commons::constants::SOLAR_MASS) / (METERS_PER_KPC * 1.0e6);
+pub const G_KPC_KMS2_PER_SOLAR_MASS: f64 = (math_commons::constants::si::G.get()
+    * math_commons::constants::si::SOLAR_MASS.get())
+    / (METERS_PER_KPC * 1.0e6);
 
 /// Minimum softened galactocentric radius in kpc preventing central division by zero.
-pub const MIN_GALACTOCENTRIC_RADIUS_KPC: f64 = 1.0e-3;
+pub const MIN_GALACTOCENTRIC_RADIUS_KPC: Kiloparsecs = Kiloparsecs::new(1.0e-3);
 
 /// Morphological classification of irregular dwarf galaxies from Tillaboev et al. (2025).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -200,8 +203,8 @@ pub enum HaloProfile {
     NfwCusp {
         /// Virial halo mass $M_{200}$ in solar masses ($M_\odot$).
         virial_mass_solar: f64,
-        /// Characteristic scale radius $r_s$ in kpc.
-        scale_radius_kpc: f64,
+        /// Characteristic scale radius $r_s$ in physical kiloparsecs.
+        scale_radius_kpc: Kiloparsecs,
         /// Virial concentration $c = r_{200} / r_s$.
         concentration: f64,
     },
@@ -209,8 +212,8 @@ pub enum HaloProfile {
     BurkertCore {
         /// Virial halo mass $M_{200}$ in solar masses ($M_\odot$).
         virial_mass_solar: f64,
-        /// Constant-density core radius $r_0$ in kpc.
-        core_radius_kpc: f64,
+        /// Constant-density core radius $r_0$ in physical kiloparsecs.
+        core_radius_kpc: Kiloparsecs,
         /// Virial concentration $c = r_{200} / r_0$.
         concentration: f64,
     },
@@ -247,8 +250,8 @@ pub struct VelocityDecomposition {
 /// Clamps galactocentric radius $r$ to at least [`MIN_GALACTOCENTRIC_RADIUS_KPC`] ($10^{-3}\,\text{kpc}$).
 #[must_use]
 #[verified_engine::verified]
-pub fn clamp_radius_kpc(r_kpc: f64) -> f64 {
-    if r_kpc.is_finite() && r_kpc > MIN_GALACTOCENTRIC_RADIUS_KPC {
+pub fn clamp_radius_kpc(r_kpc: Kiloparsecs) -> Kiloparsecs {
+    if r_kpc.is_finite() && r_kpc.get() > MIN_GALACTOCENTRIC_RADIUS_KPC.get() {
         r_kpc
     } else {
         MIN_GALACTOCENTRIC_RADIUS_KPC
@@ -331,7 +334,7 @@ pub fn baryons_from_absolute_magnitude<M: GalaxyModel>(
 #[verified_engine::verified]
 fn kuzmin_v_sq(r_kpc: f64, mass_solar: f64, scale_kpc: f64) -> f64 {
     let m = mass_solar.max(0.0);
-    let a = scale_kpc.max(MIN_GALACTOCENTRIC_RADIUS_KPC);
+    let a = scale_kpc.max(MIN_GALACTOCENTRIC_RADIUS_KPC.get());
     let denom = (r_kpc * r_kpc + a * a).powf(1.5);
     (G_KPC_KMS2_PER_SOLAR_MASS * m * r_kpc * r_kpc / denom).max(0.0)
 }
@@ -339,7 +342,7 @@ fn kuzmin_v_sq(r_kpc: f64, mass_solar: f64, scale_kpc: f64) -> f64 {
 #[verified_engine::verified]
 fn kuzmin_potential(r_kpc: f64, mass_solar: f64, scale_kpc: f64) -> f64 {
     let m = mass_solar.max(0.0);
-    let a = scale_kpc.max(MIN_GALACTOCENTRIC_RADIUS_KPC);
+    let a = scale_kpc.max(MIN_GALACTOCENTRIC_RADIUS_KPC.get());
     -G_KPC_KMS2_PER_SOLAR_MASS * m / (r_kpc * r_kpc + a * a).sqrt()
 }
 
@@ -355,6 +358,7 @@ fn burkert_shape(x: f64) -> f64 {
 
 #[verified_engine::verified]
 fn halo_v_sq(r_eff_kpc: f64, halo: &HaloProfile) -> f64 {
+    let r_min = MIN_GALACTOCENTRIC_RADIUS_KPC.get();
     match *halo {
         HaloProfile::BaryonicOnly => 0.0,
         HaloProfile::NfwCusp {
@@ -363,7 +367,7 @@ fn halo_v_sq(r_eff_kpc: f64, halo: &HaloProfile) -> f64 {
             concentration,
         } => {
             let m200 = virial_mass_solar.max(0.0);
-            let rs = scale_radius_kpc.max(MIN_GALACTOCENTRIC_RADIUS_KPC);
+            let rs = scale_radius_kpc.get().max(r_min);
             let c = concentration.max(0.5);
             let m_scale = m200 / nfw_shape(c).max(1.0e-12);
             (G_KPC_KMS2_PER_SOLAR_MASS * m_scale * nfw_shape(r_eff_kpc / rs) / r_eff_kpc).max(0.0)
@@ -374,7 +378,7 @@ fn halo_v_sq(r_eff_kpc: f64, halo: &HaloProfile) -> f64 {
             concentration,
         } => {
             let m200 = virial_mass_solar.max(0.0);
-            let r0 = core_radius_kpc.max(MIN_GALACTOCENTRIC_RADIUS_KPC);
+            let r0 = core_radius_kpc.get().max(r_min);
             let c = concentration.max(0.5);
             let m_scale = m200 / burkert_shape(c).max(1.0e-12);
             (G_KPC_KMS2_PER_SOLAR_MASS * m_scale * burkert_shape(r_eff_kpc / r0) / r_eff_kpc)
@@ -385,6 +389,7 @@ fn halo_v_sq(r_eff_kpc: f64, halo: &HaloProfile) -> f64 {
 
 #[verified_engine::verified]
 fn halo_potential_at_eff_radius(r_eff_kpc: f64, halo: &HaloProfile) -> f64 {
+    let r_min = MIN_GALACTOCENTRIC_RADIUS_KPC.get();
     match *halo {
         HaloProfile::BaryonicOnly => 0.0,
         HaloProfile::NfwCusp {
@@ -393,7 +398,7 @@ fn halo_potential_at_eff_radius(r_eff_kpc: f64, halo: &HaloProfile) -> f64 {
             concentration,
         } => {
             let m200 = virial_mass_solar.max(0.0);
-            let rs = scale_radius_kpc.max(MIN_GALACTOCENTRIC_RADIUS_KPC);
+            let rs = scale_radius_kpc.get().max(r_min);
             let c = concentration.max(0.5);
             let m_scale = m200 / nfw_shape(c).max(1.0e-12);
             -G_KPC_KMS2_PER_SOLAR_MASS * m_scale * (1.0 + r_eff_kpc / rs).ln() / r_eff_kpc
@@ -404,7 +409,7 @@ fn halo_potential_at_eff_radius(r_eff_kpc: f64, halo: &HaloProfile) -> f64 {
             concentration,
         } => {
             let m200 = virial_mass_solar.max(0.0);
-            let r0 = core_radius_kpc.max(MIN_GALACTOCENTRIC_RADIUS_KPC);
+            let r0 = core_radius_kpc.get().max(r_min);
             let c = concentration.max(0.5);
             let m_scale = m200 / burkert_shape(c).max(1.0e-12);
             let x = r_eff_kpc / r0;
@@ -419,11 +424,11 @@ fn halo_potential_at_eff_radius(r_eff_kpc: f64, halo: &HaloProfile) -> f64 {
 #[must_use]
 #[verified_engine::verified]
 pub fn decompose_rotation_curve(
-    r_kpc: f64,
+    r_kpc: Kiloparsecs,
     baryons: &BaryonicDiskConfig,
     halo: &HaloProfile,
 ) -> VelocityDecomposition {
-    let r_eff = clamp_radius_kpc(r_kpc);
+    let r_eff = clamp_radius_kpc(r_kpc).get();
     let v_disk_sq = kuzmin_v_sq(r_eff, baryons.disk_mass_solar, baryons.disk_scale_kpc);
     let v_gas_sq = kuzmin_v_sq(r_eff, baryons.gas_mass_solar, baryons.gas_scale_kpc);
     let v_halo_sq = halo_v_sq(r_eff, halo);
@@ -441,25 +446,26 @@ pub fn decompose_rotation_curve(
 #[must_use]
 #[verified_engine::verified]
 pub fn total_gravitational_potential(
-    r_kpc: f64,
+    r_kpc: Kiloparsecs,
     baryons: &BaryonicDiskConfig,
     halo: &HaloProfile,
 ) -> f64 {
+    let r_min = MIN_GALACTOCENTRIC_RADIUS_KPC.get();
     let r_nonneg = if r_kpc.is_finite() {
-        r_kpc.abs()
+        r_kpc.abs().get()
     } else {
-        MIN_GALACTOCENTRIC_RADIUS_KPC
+        r_min
     };
-    if r_nonneg >= MIN_GALACTOCENTRIC_RADIUS_KPC {
+    if r_nonneg >= r_min {
         kuzmin_potential(r_nonneg, baryons.disk_mass_solar, baryons.disk_scale_kpc)
             + kuzmin_potential(r_nonneg, baryons.gas_mass_solar, baryons.gas_scale_kpc)
             + halo_potential_at_eff_radius(r_nonneg, halo)
     } else {
-        let r_min = MIN_GALACTOCENTRIC_RADIUS_KPC;
         let phi_min = kuzmin_potential(r_min, baryons.disk_mass_solar, baryons.disk_scale_kpc)
             + kuzmin_potential(r_min, baryons.gas_mass_solar, baryons.gas_scale_kpc)
             + halo_potential_at_eff_radius(r_min, halo);
-        let v_min = decompose_rotation_curve(r_min, baryons, halo).v_circ_kms;
+        let v_min =
+            decompose_rotation_curve(MIN_GALACTOCENTRIC_RADIUS_KPC, baryons, halo).v_circ_kms;
         let omega_sq = (v_min * v_min) / (r_min * r_min);
         phi_min - 0.5 * omega_sq * (r_min * r_min - r_nonneg * r_nonneg)
     }
@@ -468,8 +474,8 @@ pub fn total_gravitational_potential(
 /// Fills a caller-allocated slice with evenly spaced [`VelocityDecomposition`] samples over `[r_min_kpc, r_max_kpc]`.
 #[verified_engine::verified]
 pub fn sample_rotation_curve_into(
-    r_min_kpc: f64,
-    r_max_kpc: f64,
+    r_min_kpc: Kiloparsecs,
+    r_max_kpc: Kiloparsecs,
     baryons: &BaryonicDiskConfig,
     halo: &HaloProfile,
     out: &mut [VelocityDecomposition],
@@ -478,13 +484,13 @@ pub fn sample_rotation_curve_into(
     if n == 0 {
         return;
     }
-    let start = clamp_radius_kpc(r_min_kpc);
-    let end = clamp_radius_kpc(r_max_kpc).max(start);
+    let start = clamp_radius_kpc(r_min_kpc).get();
+    let end = clamp_radius_kpc(r_max_kpc).get().max(start);
     let denom = if n > 1 { (n - 1) as f64 } else { 1.0 };
     let mut i = 0;
     while i < n {
         let frac = if n > 1 { i as f64 / denom } else { 0.0 };
-        let r = start + frac * (end - start);
+        let r = Kiloparsecs::new(start + frac * (end - start));
         out[i] = decompose_rotation_curve(r, baryons, halo);
         i += 1;
     }

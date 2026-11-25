@@ -11,13 +11,14 @@ Unified public facade crate re-exporting verified mathematical kernels, runtime 
 
 ## 1. Overview & Architecture
 
-The `math_explorer` crate serves as the primary library entrypoint for downstream Rust consumers, examples, benchmarks, and the interactive GUI. It unifies foundational primitives (`diagnostics`, `math_commons`, `scientific_metadata`, `verified_engine`) with feature-gated scientific domains under a stable public namespace.
+The `math_explorer` crate serves as the primary library entrypoint for downstream Rust consumers, examples, benchmarks, and the interactive GUI. It unifies foundational primitives (`diagnostics`, `math_commons`, `math_scalars`, `scientific_metadata`, `verified_engine`) with feature-gated scientific domains under a stable public namespace.
 
 ### Module Structure
 
 - **Core Always-On Modules**:
-  - `error` & `prelude`: Unified `MathError`, `MathResult`, bounded numeric primitives (`PositiveFloat`, `NonNegativeFloat`, `UnitInterval`), and `Diagnostic` traits.
-  - `ast`, `constants`, `fit`, `math_kernel`, `poi`, `primitives`, `registry`, `series`, `wigner`: Expression parsing/compilation, zero-allocation curve fitting and critical-point solvers, physical constants, tolerances, and Clebsch-Gordan coefficients.
+  - `error` & `prelude`: Unified `MathError`, `MathResult`, bounded numeric primitives (`PositiveFloat`, `NonNegativeFloat`, `UnitInterval`), SI dimensional [`Quantity`](math_scalars::Quantity) types, and `Diagnostic` traits.
+  - `scalars` (`math_scalars`): `#![no_std]` `#[repr(transparent)]` type-level SI exponent quantities, unit-system frames (`SiFrame`, `NuclearMeVFmFrame`, `GalacticKpcFrame`, `ViewportFrame`, `MillimeterFrame`), and affine/absolute `Celsius` / `Kelvin` temperatures.
+  - `ast`, `constants`, `fit`, `math_kernel`, `poi`, `primitives`, `registry`, `series`, `wigner`: Expression parsing/compilation, zero-allocation curve fitting and critical-point solvers, frame-separated SI/nuclear physical constants, tolerances, and Clebsch-Gordan coefficients.
   - `verified_engine` & `scientific_metadata`: Zero-allocation runtime verification harness (`VerifiedEngine`), `#[verified]`, `#[derive(Theory)]`, and `#[embed_theory]`.
 - **Feature-Gated Domain Modules**:
   - **`ai`**: Artificial Intelligence primitives, including Transformer components (Attention, Encoder/Decoder), Reinforcement Learning, NeRF-Diffusion, and Self-Calibration loops.
@@ -32,6 +33,7 @@ The `math_explorer` crate serves as the primary library entrypoint for downstrea
 
 | Facade Namespace | Default Tier | Promoted / Submodule Highlights | Verification & SemVer Contract |
 | :--- | :--- | :--- | :--- |
+| `scalars` (`math_scalars`), `constants` | `[CERT] Certified` | `Quantity<T, D, F>`, `SiFrame`, `Celsius`/`Kelvin` | `#[repr(transparent)]` SI exponent checking, `VerifiedAllocator` zero-alloc proofs, SemVer-locked |
 | `fit`, `poi`, `ast`, `math_kernel`, `wigner` | `[CERT] Certified` | `FitModel`, Hermite/Lagrange `poi`, stack bytecode `CompiledExpr` | Non-vacuous `theory_verification!`, `VerifiedAllocator` zero-alloc proofs, SemVer-locked |
 | `scientific_metadata`, `verified_engine` | `[CERT] Certified` | `MaturityTier`, `TheoryDescribable`, `VerifiedEngine::run_verified` | Deterministic metadata & zero-allocation runtime harness, SemVer-locked |
 | `pure_math` | `[VAL] Validated` | `[CERT]` `analysis::ode` (`OdeModel`), `roots`, `wave_2d`, `algebra`, `number_theory`, `elliptic_curves`; `[EXP]` `algorithmic_info` | `Certified` solvers SemVer-locked; `Validated` modules seeded & golden-tested |

@@ -157,7 +157,15 @@ pub(super) fn assert_watertight_outward_solid_stl_ply_and_obj(
         signed_volume(&mesh) > 0.0,
         "{label} must have positive outward signed_volume"
     );
-    let stl = export_mesh_to_stl_binary(&mesh).expect("binary STL serialization");
+    let unscaled_stl = export_mesh_to_stl_binary(&mesh).expect("unitless binary STL");
+    assert!(!std::str::from_utf8(&unscaled_stl[..80])
+        .unwrap_or("")
+        .contains("UNITS=mm"));
+    let mm_mesh = tool
+        .export_millimeter_mesh_3d()
+        .expect("MillimeterMesh capability")
+        .unwrap_or_else(|e| panic!("{label} export_millimeter_mesh_3d failed: {e}"));
+    let stl = export_mesh_to_stl_binary(&mm_mesh).expect("binary STL serialization");
     assert_eq!(stl.len(), 84 + 50 * (mesh.indices.len() / 3));
     assert!(std::str::from_utf8(&stl[..80])
         .unwrap_or("")

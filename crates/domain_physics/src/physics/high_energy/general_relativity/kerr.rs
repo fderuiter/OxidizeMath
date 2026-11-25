@@ -2,7 +2,8 @@
 
 use std::f64::consts::PI;
 
-use math_commons::constants::{C, G};
+use math_commons::constants::si::{C, G};
+use math_scalars::{Kilograms, Meters};
 use nalgebra::{SMatrix, SVector};
 use pure_math::pure_math::tensor::{StaticMetric, TensorError};
 
@@ -61,8 +62,8 @@ impl KerrEquatorialMetric {
         if !mass.is_finite() || mass <= 0.0 {
             return Err(HighEnergyError::InvalidMass { mass });
         }
-        let rs = (2.0 * G * mass) / (C * C);
-        Self::new(rs, 0.5 * rs * chi)
+        let rs: Meters = (G * Kilograms::new(mass) * 2.0) / (C * C);
+        Self::new(rs.get(), 0.5 * rs.get() * chi)
     }
 
     /// Outer event horizon radius $r_+ = \frac{1}{2}\left(R_s + \sqrt{R_s^2 - 4a^2}\right)$.

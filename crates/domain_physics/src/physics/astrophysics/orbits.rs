@@ -12,10 +12,11 @@
 //! use math_explorer::physics::astrophysics::{
 //!     GalacticDiskSystem, HaloProfile, Mpc, OrbitPopulationConfig, TypeCode10,
 //! };
+//! use math_explorer::scalars::Kiloparsecs;
 //!
 //! let halo = HaloProfile::NfwCusp {
 //!     virial_mass_solar: 1.0e10,
-//!     scale_radius_kpc: 2.5,
+//!     scale_radius_kpc: Kiloparsecs::new(2.5),
 //!     concentration: 12.0,
 //! };
 //! let mut sys = GalacticDiskSystem::from_galaxy_model(
@@ -41,6 +42,7 @@ use super::rotation_curves::{
     BaryonicDiskConfig, DwarfMorphology, HaloProfile, METERS_PER_KPC,
     MIN_GALACTOCENTRIC_RADIUS_KPC, baryons_from_distance, decompose_rotation_curve,
 };
+use math_scalars::Kiloparsecs;
 
 /// Seconds per Megayear ($365.25 \times 86400 \times 10^6$).
 pub const SECONDS_PER_MYR: f64 = 3.155_76e13;
@@ -143,8 +145,8 @@ pub fn planar_acceleration(
     halo: &HaloProfile,
 ) -> (f64, f64) {
     let r_sq = x_kpc * x_kpc + y_kpc * y_kpc;
-    let r_eff = r_sq.sqrt().max(MIN_GALACTOCENTRIC_RADIUS_KPC);
-    let dec = decompose_rotation_curve(r_eff, baryons, halo);
+    let r_eff = r_sq.sqrt().max(MIN_GALACTOCENTRIC_RADIUS_KPC.get());
+    let dec = decompose_rotation_curve(Kiloparsecs::new(r_eff), baryons, halo);
     let omega_sq = (dec.v_circ_kms * dec.v_circ_kms) / (r_eff * r_eff);
     (-omega_sq * x_kpc, -omega_sq * y_kpc)
 }
@@ -293,7 +295,8 @@ impl GalacticDiskSystem {
 
     #[verified_engine::verified]
     fn circular_speed_with_bh(&self, r_kpc: f64) -> f64 {
-        let v_gal = decompose_rotation_curve(r_kpc, &self.baryons, &self.halo).v_circ_kms;
+        let v_gal =
+            decompose_rotation_curve(Kiloparsecs::new(r_kpc), &self.baryons, &self.halo).v_circ_kms;
         let v_bh = paczynski_wiita_circular_speed_kms(r_kpc, &self.central_bh);
         (v_gal * v_gal + v_bh * v_bh).sqrt()
     }
@@ -306,7 +309,7 @@ impl GalacticDiskSystem {
         let r_floor = if self.central_bh.enabled {
             1.15 * self.central_bh.isco_radius_kpc()
         } else {
-            MIN_GALACTOCENTRIC_RADIUS_KPC
+            MIN_GALACTOCENTRIC_RADIUS_KPC.get()
         };
         while i < disk_n {
             let u = (i as f64 + 0.5) / denom;
@@ -339,7 +342,7 @@ impl GalacticDiskSystem {
         let mut j = 0;
         while j < count {
             let spread = (j as f64 / denom) - 0.5;
-            let r = (r_apocenter * (1.0 + 0.14 * spread)).max(MIN_GALACTOCENTRIC_RADIUS_KPC);
+            let r = (r_apocenter * (1.0 + 0.14 * spread)).max(MIN_GALACTOCENTRIC_RADIUS_KPC.get());
             let angle = 0.6 + 0.18 * spread;
             let v_circ = self.circular_speed_with_bh(r);
             let v_tan = v_circ * tang_ratio * (1.0 + 0.04 * spread);

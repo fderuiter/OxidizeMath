@@ -31,7 +31,7 @@ pub fn gradient_integral_for_normalized_k(ux: f64, uy: f64) -> Vector3<f64> {
     let k_scale = (KSPACE_DIM as f64) / DEFAULT_FOV_METERS;
     let target_kx = ux * k_scale;
     let target_ky = uy * k_scale;
-    let inv_gamma_over_2pi = (2.0 * PI) / GYROMAGNETIC_RATIO;
+    let inv_gamma_over_2pi = (2.0 * PI) / GYROMAGNETIC_RATIO.get();
     Vector3::new(
         target_kx * inv_gamma_over_2pi,
         target_ky * inv_gamma_over_2pi,

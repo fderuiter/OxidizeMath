@@ -1,12 +1,6 @@
+//! Bounded real scalar newtypes (`UnitInterval`, `PositiveFloat`, `NonNegativeFloat`) with
+//! explicit scalar extraction and no `Deref` or domain-escaping transcendental methods.
 // [cite:math_commons]
-use core::ops::Deref;
-
-/// Internal `#![no_std]` float power helper used by bounded float macros.
-#[doc(hidden)]
-#[inline]
-pub fn bounded_powf(x: f64, n: f64) -> f64 {
-    libm::pow(x, n)
-}
 
 /// Internal `#![no_std]` square-root helper used by bounded float macros.
 #[doc(hidden)]
@@ -15,22 +9,8 @@ pub fn bounded_sqrt(x: f64) -> f64 {
     libm::sqrt(x)
 }
 
-/// Internal `#![no_std]` natural-logarithm helper used by bounded float macros.
-#[doc(hidden)]
-#[inline]
-pub fn bounded_ln(x: f64) -> f64 {
-    libm::log(x)
-}
-
-/// Internal `#![no_std]` exponential helper used by bounded float macros.
-#[doc(hidden)]
-#[inline]
-pub fn bounded_exp(x: f64) -> f64 {
-    libm::exp(x)
-}
-
+/// Internal binary-operator helper macro for bounded float primitives.
 #[macro_export]
-#[allow(missing_docs)]
 macro_rules! impl_binop {
     ($name:ident) => {
         impl ::core::ops::Mul<f64> for $name {
@@ -80,7 +60,8 @@ macro_rules! impl_binop {
     };
 }
 
-/// A macro to define a bounded float primitive.
+/// Defines a closed-interval bounded float primitive `[min, max]` without `Deref` or
+/// domain-escaping `.ln()`, `.exp()`, or `.powf()` methods.
 #[macro_export]
 macro_rules! define_bounded_float {
     (
@@ -94,7 +75,7 @@ macro_rules! define_bounded_float {
         pub struct $name(f64);
 
         impl $name {
-            /// Creates a new instance, validating bounds.
+            /// Creates a new instance after validating closed bounds `[min, max]`.
             pub fn new(value: f64) -> Result<Self, $crate::error::MathError> {
                 if ($min..=$max).contains(&value) && value.is_finite() {
                     Ok(Self(value))
@@ -107,41 +88,26 @@ macro_rules! define_bounded_float {
                 }
             }
 
-            /// Retrieves the raw value.
-            pub fn value(&self) -> f64 {
+            /// Returns the wrapped scalar value by copy.
+            #[inline(always)]
+            pub const fn get(self) -> f64 {
                 self.0
             }
 
-            #[allow(missing_docs)]
-            pub fn powf(&self, n: f64) -> ::core::result::Result<Self, $crate::error::MathError> {
-                Self::new($crate::primitives::bounded_powf(self.0, n))
+            /// Retrieves the raw scalar value.
+            #[inline(always)]
+            pub const fn value(&self) -> f64 {
+                self.0
             }
 
-            #[allow(missing_docs)]
+            /// Evaluates the principal square root and validates the bounded interval.
             pub fn sqrt(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
                 Self::new($crate::primitives::bounded_sqrt(self.0))
             }
 
-            #[allow(missing_docs)]
-            pub fn ln(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
-                Self::new($crate::primitives::bounded_ln(self.0))
-            }
-
-            #[allow(missing_docs)]
-            pub fn exp(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
-                Self::new($crate::primitives::bounded_exp(self.0))
-            }
-
-            #[allow(missing_docs)]
+            /// Evaluates the absolute value and validates the bounded interval.
             pub fn abs(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
                 Self::new(self.0.abs())
-            }
-        }
-
-        impl Deref for $name {
-            type Target = f64;
-            fn deref(&self) -> &Self::Target {
-                &self.0
             }
         }
 
@@ -155,7 +121,8 @@ macro_rules! define_bounded_float {
     };
 }
 
-/// A macro to define a strictly bounded float primitive (min < value < max).
+/// Defines an open-interval strictly bounded float primitive `(min, max)` without `Deref` or
+/// domain-escaping `.ln()`, `.exp()`, or `.powf()` methods.
 #[macro_export]
 macro_rules! define_strictly_bounded_float {
     (
@@ -169,7 +136,7 @@ macro_rules! define_strictly_bounded_float {
         pub struct $name(f64);
 
         impl $name {
-            /// Creates a new instance, validating bounds strictly.
+            /// Creates a new instance after validating strict open bounds `(min, max)`.
             pub fn new(value: f64) -> Result<Self, $crate::error::MathError> {
                 if value > $min && value < $max && value.is_finite() {
                     Ok(Self(value))
@@ -182,41 +149,26 @@ macro_rules! define_strictly_bounded_float {
                 }
             }
 
-            /// Retrieves the raw value.
-            pub fn value(&self) -> f64 {
+            /// Returns the wrapped scalar value by copy.
+            #[inline(always)]
+            pub const fn get(self) -> f64 {
                 self.0
             }
 
-            #[allow(missing_docs)]
-            pub fn powf(&self, n: f64) -> ::core::result::Result<Self, $crate::error::MathError> {
-                Self::new($crate::primitives::bounded_powf(self.0, n))
+            /// Retrieves the raw scalar value.
+            #[inline(always)]
+            pub const fn value(&self) -> f64 {
+                self.0
             }
 
-            #[allow(missing_docs)]
+            /// Evaluates the principal square root and validates strict bounds.
             pub fn sqrt(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
                 Self::new($crate::primitives::bounded_sqrt(self.0))
             }
 
-            #[allow(missing_docs)]
-            pub fn ln(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
-                Self::new($crate::primitives::bounded_ln(self.0))
-            }
-
-            #[allow(missing_docs)]
-            pub fn exp(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
-                Self::new($crate::primitives::bounded_exp(self.0))
-            }
-
-            #[allow(missing_docs)]
+            /// Evaluates the absolute value and validates strict bounds.
             pub fn abs(&self) -> ::core::result::Result<Self, $crate::error::MathError> {
                 Self::new(self.0.abs())
-            }
-        }
-
-        impl Deref for $name {
-            type Target = f64;
-            fn deref(&self) -> &Self::Target {
-                &self.0
             }
         }
 
@@ -234,11 +186,12 @@ define_bounded_float!(
     UnitInterval,
     0.0,
     1.0,
-    "A floating point value strictly bounded between 0.0 and 1.0 inclusive."
+    "A floating-point value bounded on `[0.0, 1.0]` requiring explicit `.get()` or `.value()` extraction.\n\n```compile_fail\nuse math_commons::primitives::UnitInterval;\nlet p = UnitInterval::new(0.5).unwrap();\nlet _raw: f64 = *p;\n```\n\n```compile_fail\nuse math_commons::primitives::UnitInterval;\nlet p = UnitInterval::new(0.5).unwrap();\nlet _ = p.ln();\n```"
 );
 
 impl UnitInterval {
-    /// Returns the complementary probability (1.0 - self.value()).
+    /// Returns the complementary probability `1.0 - self.value()`.
+    #[inline(always)]
     pub fn complement(&self) -> f64 {
         1.0 - self.0
     }
@@ -248,12 +201,12 @@ define_strictly_bounded_float!(
     PositiveFloat,
     0.0,
     f64::INFINITY,
-    "A floating point value strictly greater than 0.0."
+    "A floating-point value strictly greater than `0.0` requiring explicit `.get()` or `.value()` extraction."
 );
 
 define_bounded_float!(
     NonNegativeFloat,
     0.0,
     f64::INFINITY,
-    "A floating point value bounded between 0.0 and infinity (inclusive of 0.0)."
+    "A floating-point value in `[0.0, +inf)` requiring explicit `.get()` or `.value()` extraction."
 );

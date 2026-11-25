@@ -106,7 +106,7 @@ impl RfPulseConfig {
     /// Nominal on-resonance flip angle $\alpha = \gamma B_1 \tau$ in degrees.
     #[must_use]
     pub fn nominal_flip_deg(&self) -> f64 {
-        (proton::GYROMAGNETIC_RATIO * self.b1_amp * self.duration_tau).to_degrees()
+        (proton::GYROMAGNETIC_RATIO.get() * self.b1_amp * self.duration_tau).to_degrees()
     }
 }
 
@@ -227,7 +227,7 @@ impl MriPulseWorkspace {
             for (iso_i, m_iso) in self.isochromats.iter_mut().enumerate() {
                 let b_iso = b0
                     + std::f64::consts::TAU * ISOCHROMAT_OFFSETS_HZ[iso_i]
-                        / proton::GYROMAGNETIC_RATIO;
+                        / proton::GYROMAGNETIC_RATIO.get();
                 let b_eff = rotating_frame_effective_field(b_iso, omega_rf, active_b1, phase_rad);
                 self.sim.set_b_field(b_eff);
                 self.rk4.step(&self.sim, t_mid - 0.5 * dt, m_iso, dt);

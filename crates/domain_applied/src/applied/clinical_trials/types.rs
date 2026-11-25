@@ -153,6 +153,24 @@ impl GroupData {
 /// A finite, non-negative time value for survival analysis.
 ///
 /// Ensures that time is valid (finite and `>= 0.0`), normalizing `-0.0` to `+0.0`.
+/// Self-multiplication (`SurvivalTime * SurvivalTime`), reciprocal coercion (`f64 / SurvivalTime`),
+/// and transcendental `.ln()` / `.exp()` are rejected at compile time:
+///
+/// ```compile_fail
+/// # use domain_applied::__doctest_facade as math_explorer;
+/// use math_explorer::applied::clinical_trials::types::SurvivalTime;
+///
+/// let t = SurvivalTime::new(5.0).unwrap();
+/// let _sq = t * t;
+/// ```
+///
+/// ```compile_fail
+/// # use domain_applied::__doctest_facade as math_explorer;
+/// use math_explorer::applied::clinical_trials::types::SurvivalTime;
+///
+/// let t = SurvivalTime::new(5.0).unwrap();
+/// let _bad = t.ln();
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct SurvivalTime(f64);
 
@@ -175,6 +193,18 @@ impl SurvivalTime {
         Ok(Self(normalized))
     }
 
+    /// Returns the underlying scalar time value by copy.
+    #[inline(always)]
+    pub const fn get(self) -> f64 {
+        self.0
+    }
+
+    /// Returns the underlying scalar time value.
+    #[inline(always)]
+    pub const fn value(&self) -> f64 {
+        self.0
+    }
+
     /// Returns the underlying `f64` value.
     #[verified_engine::verified]
     pub fn as_f64(&self) -> f64 {
@@ -190,46 +220,6 @@ impl fmt::Display for SurvivalTime {
 }
 use std::ops::{Add, Div, Mul, Sub};
 
-impl SurvivalTime {
-    #[allow(missing_docs)]
-    #[verified_engine::verified]
-    pub fn powf(&self, n: f64) -> Result<Self, ClinicalTrialError> {
-        Self::new(self.0.powf(n))
-    }
-    #[allow(missing_docs)]
-    #[verified_engine::verified]
-    pub fn sqrt(&self) -> Result<Self, ClinicalTrialError> {
-        Self::new(self.0.sqrt())
-    }
-    #[allow(missing_docs)]
-    #[verified_engine::verified]
-    pub fn ln(&self) -> Result<Self, ClinicalTrialError> {
-        Self::new(self.0.ln())
-    }
-    #[allow(missing_docs)]
-    #[verified_engine::verified]
-    pub fn exp(&self) -> Result<Self, ClinicalTrialError> {
-        Self::new(self.0.exp())
-    }
-    #[allow(missing_docs)]
-    #[verified_engine::verified]
-    pub fn abs(&self) -> Result<Self, ClinicalTrialError> {
-        Self::new(self.0.abs())
-    }
-}
-
-impl Add<f64> for SurvivalTime {
-    type Output = Result<Self, ClinicalTrialError>;
-    fn add(self, rhs: f64) -> Self::Output {
-        Self::new(self.0 + rhs)
-    }
-}
-impl Sub<f64> for SurvivalTime {
-    type Output = Result<Self, ClinicalTrialError>;
-    fn sub(self, rhs: f64) -> Self::Output {
-        Self::new(self.0 - rhs)
-    }
-}
 impl Mul<f64> for SurvivalTime {
     type Output = Result<Self, ClinicalTrialError>;
     fn mul(self, rhs: f64) -> Self::Output {
@@ -243,28 +233,10 @@ impl Div<f64> for SurvivalTime {
     }
 }
 
-impl Add<SurvivalTime> for f64 {
-    type Output = Result<SurvivalTime, ClinicalTrialError>;
-    fn add(self, rhs: SurvivalTime) -> Self::Output {
-        SurvivalTime::new(self + rhs.0)
-    }
-}
-impl Sub<SurvivalTime> for f64 {
-    type Output = Result<SurvivalTime, ClinicalTrialError>;
-    fn sub(self, rhs: SurvivalTime) -> Self::Output {
-        SurvivalTime::new(self - rhs.0)
-    }
-}
 impl Mul<SurvivalTime> for f64 {
     type Output = Result<SurvivalTime, ClinicalTrialError>;
     fn mul(self, rhs: SurvivalTime) -> Self::Output {
         SurvivalTime::new(self * rhs.0)
-    }
-}
-impl Div<SurvivalTime> for f64 {
-    type Output = Result<SurvivalTime, ClinicalTrialError>;
-    fn div(self, rhs: SurvivalTime) -> Self::Output {
-        SurvivalTime::new(self / rhs.0)
     }
 }
 
@@ -278,12 +250,6 @@ impl Sub<SurvivalTime> for SurvivalTime {
     type Output = Result<Self, ClinicalTrialError>;
     fn sub(self, rhs: SurvivalTime) -> Self::Output {
         Self::new(self.0 - rhs.0)
-    }
-}
-impl Mul<SurvivalTime> for SurvivalTime {
-    type Output = Result<Self, ClinicalTrialError>;
-    fn mul(self, rhs: SurvivalTime) -> Self::Output {
-        Self::new(self.0 * rhs.0)
     }
 }
 impl Div<SurvivalTime> for SurvivalTime {

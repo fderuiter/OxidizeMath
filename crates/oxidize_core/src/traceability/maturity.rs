@@ -21,6 +21,7 @@ pub const EXPECTED_WORKSPACE_CRATES: &[&str] = &[
     "federated_registry",
     "math_commons",
     "math_explorer",
+    "math_scalars",
     "oxidize_core",
     "pure_math",
     "scientific_metadata",
@@ -192,7 +193,7 @@ impl MaturityRegistry {
         if let Some(rest) = norm.strip_prefix("crates/") {
             let mut parts = rest.split('/').filter(|s| !s.is_empty());
             let first = parts.next()?;
-            if first == "02_engines" {
+            if matches!(first, "00_foundation" | "02_engines") {
                 return parts.next();
             }
             return Some(first);
@@ -218,51 +219,27 @@ impl MaturityRegistry {
             out.push("cera_framework".to_string());
         }
         for seg in segments.iter().rev().skip(1) {
-            if matches!(
-                *seg,
-                "crates" | "02_engines" | "src" | "tests" | "tabs" | "applied" | "physics"
-            ) {
-                continue;
-            }
-            if self.modules.contains_key(*seg) && !out.iter().any(|m| m == seg) {
+            if !is_structural_path_segment(seg)
+                && self.modules.contains_key(*seg)
+                && !out.iter().any(|m| m == seg)
+            {
                 out.push((*seg).to_string());
             }
         }
         if trimmed.contains("/tests/") {
             self.append_test_stem_modules(trimmed, stem, &mut out);
         }
-        if let Some(crate_name) = Self::crate_for_repo_path(trimmed) {
-            let root_mod = match crate_name {
-                "domain_biology" => Some("biology"),
-                "domain_epidemiology" => Some("epidemiology"),
-                "domain_climate" => Some("climate"),
-                "pure_math" => Some("pure_math"),
-                "math_commons" => Some("math_commons"),
-                _ => None,
-            };
-            if let Some(m) = root_mod
-                && self.modules.contains_key(m)
-                && !out.iter().any(|x| x == m)
-            {
-                out.push(m.to_string());
-            }
+        if let Some(m) = Self::crate_for_repo_path(trimmed).and_then(root_module_for_crate)
+            && self.modules.contains_key(m)
+            && !out.iter().any(|x| x == m)
+        {
+            out.push(m.to_string());
         }
         if out.is_empty()
-            && let Some(rest) = trimmed.strip_prefix("math_explorer_gui/src/tabs/")
-            && let Some(tab_domain) = rest.split('/').next()
+            && let Some(m) = gui_fallback_module(trimmed)
+            && self.modules.contains_key(m)
         {
-            let gui_mod = match tab_domain {
-                "analysis" | "geometry_topology" | "number_theory" => Some("pure_math"),
-                "morphogenesis" | "neuroscience" => Some("biology"),
-                "optics" | "optics_waves" => Some("optics"),
-                "algorithmic_information" => Some("algorithmic_information_rust"),
-                _ => None,
-            };
-            if let Some(m) = gui_mod
-                && self.modules.contains_key(m)
-            {
-                out.push(m.to_string());
-            }
+            out.push(m.to_string());
         }
         out
     }
@@ -310,5 +287,45 @@ impl MaturityRegistry {
             return tier;
         }
         MaturityTier::Experimental
+    }
+}
+
+fn is_structural_path_segment(seg: &str) -> bool {
+    matches!(
+        seg,
+        "crates"
+            | "00_foundation"
+            | "02_engines"
+            | "src"
+            | "tests"
+            | "tabs"
+            | "applied"
+            | "physics"
+    )
+}
+
+fn root_module_for_crate(crate_name: &str) -> Option<&'static str> {
+    match crate_name {
+        "domain_biology" => Some("biology"),
+        "domain_epidemiology" => Some("epidemiology"),
+        "domain_climate" => Some("climate"),
+        "pure_math" => Some("pure_math"),
+        "math_commons" => Some("math_commons"),
+        "math_scalars" => Some("math_scalars"),
+        _ => None,
+    }
+}
+
+fn gui_fallback_module(trimmed: &str) -> Option<&'static str> {
+    let tab_domain = trimmed
+        .strip_prefix("math_explorer_gui/src/tabs/")?
+        .split('/')
+        .next()?;
+    match tab_domain {
+        "analysis" | "geometry_topology" | "number_theory" => Some("pure_math"),
+        "morphogenesis" | "neuroscience" => Some("biology"),
+        "optics" | "optics_waves" => Some("optics"),
+        "algorithmic_information" => Some("algorithmic_information_rust"),
+        _ => None,
     }
 }

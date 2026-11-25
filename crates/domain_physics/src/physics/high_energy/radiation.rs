@@ -4,7 +4,8 @@ use crate::physics::high_energy::observer::{
     apparent_superluminal_beta, calculate_lorentz_factor_from_beta, relativistic_doppler_factor,
 };
 use crate::physics::high_energy::statistics::li_ma_significance;
-use math_commons::constants::{C, SIGMA_T};
+use math_commons::constants::si::{C, SIGMA_T};
+use math_scalars::{DimEnergyDensity, Quantity, SiFrame, Watts};
 use std::f64::consts::PI;
 
 /// Calculates the total synchrotron power radiated by a single electron.
@@ -27,9 +28,10 @@ pub fn synchrotron_power(u_b: f64, beta: f64, gamma: f64) -> Result<f64, HighEne
         return Err(HighEnergyError::InvalidLorentzFactor { gamma });
     }
 
-    // P = 4/3 sigma_T c beta^2 gamma^2 U_B
-    let power = (4.0 / 3.0) * SIGMA_T * C * beta.powi(2) * gamma.powi(2) * u_b;
-    Ok(power)
+    // P = 4/3 sigma_T c beta^2 gamma^2 U_B  ->  [m^2] * [m/s] * [J/m^3] = [W]
+    let u_b_qty: Quantity<f64, DimEnergyDensity, SiFrame> = Quantity::new(u_b);
+    let power: Watts = ((SIGMA_T * C) * ((4.0 / 3.0) * beta.powi(2) * gamma.powi(2))) * u_b_qty;
+    Ok(power.get())
 }
 
 /// Calculates the observed spectral index alpha from an electron power-law distribution p.
@@ -257,7 +259,7 @@ mod tests {
         let gamma = 2.0;
         let beta = (1.0 - 1.0 / 4.0f64).sqrt();
         let p = synchrotron_power(u_b, beta, gamma).expect("Failed to calc synchrotron power");
-        let expected = (4.0 / 3.0) * SIGMA_T * C * beta * beta * 4.0;
+        let expected = (4.0 / 3.0) * SIGMA_T.get() * C.get() * beta * beta * 4.0;
         assert_relative_eq!(
             p,
             expected,

@@ -182,22 +182,21 @@ impl RotationCurveExplorer {
             c.halo_kind,
             c.halo_concentration,
         );
-        let r_eval = c.max_radius_kpc.clamp(2.0, 25.0);
+        let r_eval = math_scalars::Kiloparsecs::new(c.max_radius_kpc.clamp(2.0, 25.0));
         self.sensitivity_engine
             .compute_with_context(&params, &ctx_bits, |p_map| {
-                let f_gas = p_map.get("HI Gas Fraction").copied().unwrap_or(0.6);
-                let r_d = p_map.get("Disk Scale R_d (kpc)").copied().unwrap_or(0.8);
-                let log_m = p_map
-                    .get("Halo log10(M200 / M_sun)")
-                    .copied()
-                    .unwrap_or(10.0);
-                let r_s = p_map
-                    .get("Scale / Core Radius (kpc)")
-                    .copied()
-                    .unwrap_or(2.2);
-                let bary = morph.baryonic_config_from_distance(Mpc(dist), f_gas, r_d);
-                decompose_rotation_curve(r_eval, &bary, &hk.build_profile(log_m, r_s, conc))
-                    .v_circ_kms
+                let get = |k, d| p_map.get(k).copied().unwrap_or(d);
+                let bary = morph.baryonic_config_from_distance(
+                    Mpc(dist),
+                    get("HI Gas Fraction", 0.6),
+                    get("Disk Scale R_d (kpc)", 0.8),
+                );
+                let halo = hk.build_profile(
+                    get("Halo log10(M200 / M_sun)", 10.0),
+                    get("Scale / Core Radius (kpc)", 2.2),
+                    conc,
+                );
+                decompose_rotation_curve(r_eval, &bary, &halo).v_circ_kms
             });
         crate::sensitivity::render_sensitivity_panel_ui(
             ui,

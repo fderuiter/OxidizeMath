@@ -103,7 +103,11 @@ impl GaussianSplattingTool {
             );
             ui.add(
                 egui::Slider::new(&mut self.lens.halo_scale_radius, 0.15..=2.0)
-                    .text("Scale / Core Radius"),
+                    .text("Scale / Core Radius (vp)"),
+            );
+            ui.add(
+                egui::Slider::new(&mut self.lens.viewport_kpc_scale, 1.0..=20.0)
+                    .text("Viewport Scale (kpc / vp)"),
             );
             ui.add(
                 egui::Slider::new(&mut self.lens.log10_sigma_crit, 7.0..=9.5).text("log10(Σ_crit)"),

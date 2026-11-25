@@ -123,15 +123,15 @@ pub fn advection_courant_number(
     if !dt.is_finite()
         || dt <= 0.0
         || !dx.is_finite()
-        || *dx <= 0.0
+        || dx.get() <= 0.0
         || !dy.is_finite()
-        || *dy <= 0.0
+        || dy.get() <= 0.0
         || !max_abs_ux.is_finite()
         || !max_abs_uy.is_finite()
     {
         return 0.0;
     }
-    dt * (max_abs_ux.abs() / *dx + max_abs_uy.abs() / *dy)
+    dt * (max_abs_ux.abs() / dx.get() + max_abs_uy.abs() / dy.get())
 }
 
 /// Computes the maximum explicit Forward Euler time step $\Delta t_{\max}$ satisfying
@@ -149,17 +149,17 @@ pub fn advection_diffusion_cfl_limit(
     max_abs_uy: f64,
 ) -> f64 {
     if !dx.is_finite()
-        || *dx <= 0.0
+        || dx.get() <= 0.0
         || !dy.is_finite()
-        || *dy <= 0.0
+        || dy.get() <= 0.0
         || !d_max.is_finite()
         || !max_abs_ux.is_finite()
         || !max_abs_uy.is_finite()
     {
         return 0.0;
     }
-    let inv_dx = 1.0 / *dx;
-    let inv_dy = 1.0 / *dy;
+    let inv_dx = 1.0 / dx.get();
+    let inv_dy = 1.0 / dy.get();
     let diff_rate = 2.0 * d_max.max(0.0) * (inv_dx * inv_dx + inv_dy * inv_dy);
     let adv_rate = max_abs_ux.abs() * inv_dx + max_abs_uy.abs() * inv_dy;
     let denom = diff_rate + adv_rate;
@@ -265,6 +265,10 @@ mod tests {
         assert_eq!(grid_peclet_number(f64::NAN, 1.0, 0.1), 0.0);
         assert_eq!(
             advection_diffusion_cfl_limit(StepSize(1.0), StepSize(1.0), f64::NAN, 0.1, 0.0),
+            0.0
+        );
+        assert_eq!(
+            advection_courant_number(0.5, StepSize::new(0.0), StepSize::new(1.0), 0.1, 0.1),
             0.0
         );
     }

@@ -1,6 +1,7 @@
 //! Zero-allocation 60 GHz FMCW Doppler, sub-Rayleigh MUSIC, and LINAC `BeamState` sonification.
 
 use math_explorer::physics::medical::radar_gating::{BeamState, FmcwConfig, C};
+use math_scalars::{Hertz, MetersPerSecond};
 
 use crate::audio::frame::{clamp_freq_hz, SonificationFrame, VoiceSpec, WaveformPreset};
 
@@ -37,7 +38,9 @@ pub fn doppler_shift_60ghz_hz(velocity_m_s: f64) -> f64 {
     if !velocity_m_s.is_finite() {
         return 0.0;
     }
-    (2.0 * RADAR_CARRIER_60GHZ_HZ * velocity_m_s) / C
+    let fd: Hertz =
+        2.0 * Hertz::new(RADAR_CARRIER_60GHZ_HZ) * (MetersPerSecond::new(velocity_m_s) / C);
+    fd.get()
 }
 
 /// Maps 60 GHz Kalman velocity, sub-Rayleigh `MUSIC` scatterers, cough spikes, and `BeamState`
@@ -58,7 +61,9 @@ pub fn medical_radar_frame(input: &RadarDopplerAudioInput) -> SonificationFrame 
         chirp_time: 50.0e-6,
     };
     let rayleigh_cm = (fmcw.range_resolution() * 100.0).clamp(1.5, 60.0) as f32;
-    let doppler_hz = (2.0 * fmcw.center_frequency * input.velocity_m_s) / C;
+    let doppler_hz =
+        (2.0 * Hertz::new(fmcw.center_frequency) * (MetersPerSecond::new(input.velocity_m_s) / C))
+            .get();
     let cough_norm = if input.cough_timer_s.is_finite() && input.cough_timer_s > 0.0 {
         (input.cough_timer_s / 0.45).clamp(0.0, 1.0) as f32
     } else {

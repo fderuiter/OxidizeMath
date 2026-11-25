@@ -42,7 +42,7 @@
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // 1. Define a Supermassive Black Hole (1 million solar masses)
-//!     let mass = 1_000_000.0 * SOLAR_MASS;
+//!     let mass = (SOLAR_MASS * 1_000_000.0).get();
 //!     let bh = SchwarzschildBlackHole::new(mass)?;
 //!
 //!     // 2. Place an observer at 3x the Schwarzschild radius (ISCO - Innermost Stable Circular Orbit)
@@ -55,7 +55,7 @@
 //!
 //!     // 4. Incorporate Special Relativity (Orbiting at 0.5c)
 //!     // The observer is also moving, further slowing time from the perspective of a distant observer.
-//!     let velocity = 0.5 * C;
+//!     let velocity = (C * 0.5).get();
 //!     let gamma = calculate_lorentz_factor(velocity)?;
 //!     // Kinematic dilation factor is 1/gamma
 //!     let sr_dilation = 1.0 / gamma;
@@ -92,8 +92,8 @@ pub mod radiation;
 #[allow(missing_docs)]
 pub mod statistics;
 
-// Re-export constants to match original API
-pub use math_commons::constants::{C, G, SIGMA_T, SOLAR_MASS};
+// Re-export typed SI constants
+pub use math_commons::constants::si::{C, G, SIGMA_T, SOLAR_MASS};
 
 // Re-export SchwarzschildBlackHole, geodesic bundle, and jet beaming helpers
 pub use general_relativity::{

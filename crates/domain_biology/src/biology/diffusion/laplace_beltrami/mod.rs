@@ -159,7 +159,7 @@ impl LaplaceBeltramiDiffusion2D {
     #[must_use]
     #[verified_engine::verified]
     pub fn surface_integral(&self, field: &[f64]) -> f64 {
-        let cell_du_dv = *self.du * *self.dv;
+        let cell_du_dv = self.du.get() * self.dv.get();
         field
             .iter()
             .zip(&self.area_elements)

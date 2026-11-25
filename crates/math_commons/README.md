@@ -17,10 +17,10 @@ By standardizing universal constants, color mapping formulas, and spatial coordi
 - **`ast`**: Native mathematical expression lexer, bounded Pratt parser, iterative LaTeX formatter, zero-allocation postfix stack bytecode evaluator (`CompiledExpr`), real/complex dynamic evaluators, and iterative GPU shader transpilers:
   - `ast::glsl` (`Expr::to_glsl_scalar`, `Expr::to_glsl_scalar_with_vars`, `Expr::to_glsl_complex`, `Expr::to_glsl_complex_with_vars`): Iterative GLSL ES 3.00 `float` and `vec2` emitters with IEEE-safe helpers (`GLSL_SCALAR_HELPERS`, `GLSL_COMPLEX_HELPERS`).
   - `ast::shader` (`Expr::to_wgsl`, `Expr::to_glsl`, `Expr::to_wgsl_complex`, `Expr::to_shader`, `Expr::to_shader_complex`): Iterative WebGPU WGSL and GLSL ES 3.00 emitters with `shader_preludes` (`wgsl_real_prelude`, `glsl_real_prelude`, `wgsl_complex_prelude`, `glsl_complex_prelude`).
-- **`constants`**: Centralized registry of physical, astronomical, and mathematical constants:
-  - Speed of light (`C`), Gravitational constant (`G`), Solar mass (`SOLAR_MASS`).
-  - Reduced Planck constant (`HBAR_C`), Proton mass (`PROTON_MASS`), Neutron mass (`NEUTRON_MASS`).
-  - Liquid drop nuclear model constants and floating-point tolerances (`EPSILON`).
+- **`constants`**: Centralized registry of physical, astronomical, nuclear, and mathematical constants partitioned into disjoint unit-system frames:
+  - `constants::si`: Coherent SI [`math_scalars::Quantity`] constants (`C`, `G`, `SOLAR_MASS`, `HBAR`, `K_B`, `R_GAS`, `PROTON_MASS`, `NEUTRON_MASS`).
+  - `constants::nuclear`: Subatomic `MeV`-`fm` [`math_scalars::Quantity`] constants (`HBAR_C`, `LIGHT_SPEED`, `ELEMENTARY_CHARGE_SQ`, `PROTON_MASS_MEV`, `NEUTRON_MASS_MEV`) and liquid-drop binding coefficients.
+  - Dimensionless mathematical constants (`PI`, `TAU`, `EPSILON`, `SQRT_2`, `LN_2`).
 - **`math_kernel`**: Standardized numerical routines:
   - `types`: 2D/3D index flattening (`flatten_2d_index`) and spatial offsets.
   - `colormap`: Heatmap color generation (`heatmap_color`), cyclic cosine palettes, continuous complex domain coloring (`domain_color`, `ShaderPalette`), WCAG 2.2 `3.0:1` dark-canvas contrast guards, and WGSL/GLSL shader palette preludes.
@@ -66,12 +66,12 @@ assert_eq!(vertex, [2.0, 4.0]);
 Utilize spatial index flattening and scientific color palette evaluation:
 
 ```rust
-use math_commons::constants::C;
+use math_commons::constants::si::C;
 use math_commons::math_kernel::colormap::heatmap_color;
 use math_commons::math_kernel::types::flatten_2d_index;
 
-// Access standardized physical constants
-assert_eq!(C, 299_792_458.0);
+// Access standardized SI physical constants
+assert_eq!(C.get(), 299_792_458.0);
 
 // Flatten 2D simulation coordinates into a linear buffer index
 let index = flatten_2d_index(3, 2, 10);

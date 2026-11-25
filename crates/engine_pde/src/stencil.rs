@@ -46,22 +46,22 @@ impl StencilOperators {
     /// Creates 1D stencil operators in `#![no_std]` contexts, returning `None` if `dx <= 0` or non-finite.
     #[verified_engine::verified]
     pub fn try_new_checked(dx: StepSize, dy: StepSize, dz: StepSize) -> Option<Self> {
-        for step in [*dx, *dy, *dz] {
+        for step in [dx.get(), dy.get(), dz.get()] {
             if !(step > 0.0 && step.is_finite()) {
                 return None;
             }
         }
-        debug_assert!(*dx > 0.0 && *dy > 0.0 && *dz > 0.0);
+        debug_assert!(dx.get() > 0.0 && dy.get() > 0.0 && dz.get() > 0.0);
         Some(Self {
             dx,
             dy,
             dz,
-            inv_dx: 1.0 / *dx,
-            inv_dy: 1.0 / *dy,
-            inv_two_dx: 1.0 / (2.0 * *dx),
-            inv_dx_sq: 1.0 / (*dx * *dx),
-            inv_dy_sq: 1.0 / (*dy * *dy),
-            inv_dz_sq: 1.0 / (*dz * *dz),
+            inv_dx: 1.0 / dx.get(),
+            inv_dy: 1.0 / dy.get(),
+            inv_two_dx: 1.0 / (2.0 * dx.get()),
+            inv_dx_sq: 1.0 / (dx.get() * dx.get()),
+            inv_dy_sq: 1.0 / (dy.get() * dy.get()),
+            inv_dz_sq: 1.0 / (dz.get() * dz.get()),
         })
     }
 
@@ -87,7 +87,7 @@ impl StencilOperators {
         dy: StepSize,
         dz: StepSize,
     ) -> Result<Self, math_commons::error::MathError> {
-        for step in [*dx, *dy, *dz] {
+        for step in [dx.get(), dy.get(), dz.get()] {
             if !(step > 0.0 && step.is_finite()) {
                 return Err(math_commons::error::MathError::StrictlyOutOfBounds {
                     value: step,
@@ -96,17 +96,17 @@ impl StencilOperators {
                 });
             }
         }
-        debug_assert!(*dx > 0.0 && *dy > 0.0 && *dz > 0.0);
+        debug_assert!(dx.get() > 0.0 && dy.get() > 0.0 && dz.get() > 0.0);
         Ok(Self::try_new_checked(dx, dy, dz).expect("Step sizes validated positive"))
     }
 
-    /// Creates 1D stencil operators, panicking if `*dx <= 0.0` or non-finite.
+    /// Creates 1D stencil operators, panicking if `dx.get() <= 0.0` or non-finite.
     #[verified_engine::verified]
     pub fn new(dx: StepSize) -> Self {
         Self::new_3d(dx, StepSize(1.0), StepSize(1.0))
     }
 
-    /// Creates 2D stencil operators, panicking if `*dx <= 0.0` or `*dy <= 0.0`.
+    /// Creates 2D stencil operators, panicking if `dx.get() <= 0.0` or `dy.get() <= 0.0`.
     #[verified_engine::verified]
     pub fn new_2d(dx: StepSize, dy: StepSize) -> Self {
         Self::new_3d(dx, dy, StepSize(1.0))
@@ -116,15 +116,15 @@ impl StencilOperators {
     #[verified_engine::verified]
     pub fn new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Self {
         assert!(
-            *dx > 0.0 && dx.is_finite(),
+            dx.get() > 0.0 && dx.is_finite(),
             "Step size dx must be positive and non-zero"
         );
         assert!(
-            *dy > 0.0 && dy.is_finite(),
+            dy.get() > 0.0 && dy.is_finite(),
             "Step size dy must be positive and non-zero"
         );
         assert!(
-            *dz > 0.0 && dz.is_finite(),
+            dz.get() > 0.0 && dz.is_finite(),
             "Step size dz must be positive and non-zero"
         );
         Self::try_new_checked(dx, dy, dz).expect("Step sizes validated positive")
@@ -260,7 +260,7 @@ impl StencilOperators {
         assert!(x < width && y < height && u.len() >= width * height);
         let (_curr, left, right, up, down) = bc.sample_2d(u, width, height, x, y);
         let gx = (right - left) * self.inv_two_dx;
-        let gy = (down - up) / (2.0 * *self.dy);
+        let gy = (down - up) / (2.0 * self.dy.get());
         (gx, gy)
     }
 
@@ -282,8 +282,8 @@ impl StencilOperators {
         assert!(x < width && y < height && z < depth && u.len() >= width * height * depth);
         let (_curr, nb) = bc.sample_3d(u, width, height, depth, x, y, z);
         let gx = (nb[1] - nb[0]) * self.inv_two_dx;
-        let gy = (nb[3] - nb[2]) / (2.0 * *self.dy);
-        let gz = (nb[5] - nb[4]) / (2.0 * *self.dz);
+        let gy = (nb[3] - nb[2]) / (2.0 * self.dy.get());
+        let gz = (nb[5] - nb[4]) / (2.0 * self.dz.get());
         (gx, gy, gz)
     }
 
@@ -373,7 +373,7 @@ impl StencilOperators {
         assert!(x < width && y < height && z < depth && u.len() >= width * height * depth);
         let (curr, nb) = bc.sample_3d(u, width, height, depth, x, y, z);
         let fx = self.upwind_flux(vel.0, nb[0], curr, nb[1]);
-        let inv_dz = 1.0 / *self.dz;
+        let inv_dz = 1.0 / self.dz.get();
         let fy = if vel.1 > 0.0 {
             (curr - nb[2]) * vel.1 * self.inv_dy
         } else {

@@ -51,12 +51,12 @@ fn wasm_volumetric_studio_quantum_turing_and_implicit_cad_solid_and_splat_export
         tool.config.cut_axis = SliceAxis::Z;
         tool.config.cut_offset = 0.15;
         tool.refresh_zero_alloc();
-        let mesh = tool
-            .export_mesh_3d()
-            .expect("3D solid capability")
-            .expect("closed solid mesh on wasm32");
-        let stl = export_mesh_to_stl_binary(&mesh).expect("binary STL on wasm32");
-        assert_eq!(stl.len(), 84 + 50 * (mesh.indices.len() / 3));
+        let mm_mesh = tool
+            .export_millimeter_mesh_3d()
+            .expect("3D MillimeterMesh capability")
+            .expect("closed calibrated solid mesh on wasm32");
+        let stl = export_mesh_to_stl_binary(&mm_mesh).expect("binary STL on wasm32");
+        assert_eq!(stl.len(), 84 + 50 * (mm_mesh.mesh().indices.len() / 3));
         assert!(std::str::from_utf8(&stl[..80])
             .unwrap_or("")
             .contains("UNITS=mm"));

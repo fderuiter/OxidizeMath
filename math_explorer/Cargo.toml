@@ -5,6 +5,7 @@ edition = "2024"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
+math_scalars = { path = "../crates/00_foundation/math_scalars", features = ["serde"] }
 math_commons = { path = "../crates/math_commons" }
 diagnostics = { path = "../crates/diagnostics" }
 pure_math = { path = "../crates/pure_math", optional = true }

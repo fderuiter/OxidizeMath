@@ -3,7 +3,8 @@
 // [cite:gaussian_splatting]
 
 pub use crate::volumetric_scene::lensing::{
-    build_circle_ring, LensedFrameTelemetry, SplatLensConfig, SplatLensMode,
+    build_circle_ring, kpc_to_viewport, viewport_to_kpc, LensedFrameTelemetry, SplatLensConfig,
+    SplatLensMode,
 };
 pub use crate::volumetric_scene::presets::{
     build_preset_scene_and_gradients, VolumetricSplatPreset,
@@ -20,11 +21,12 @@ use math_explorer::ai::gaussian_splatting::{
     optimization::{determine_density_action, DensityAction},
     projection, rendering, Gaussian2D, Gaussian3D, Scene,
 };
-use math_explorer::constants::SOLAR_MASS;
+use math_explorer::constants::si::SOLAR_MASS;
 use math_explorer::physics::astrophysics::{
     tangential_critical_radius_kpc, validate_christoffel_radial_connection, HaloProfile,
 };
 use math_explorer::physics::high_energy::general_relativity::SchwarzschildBlackHole;
+use math_scalars::ViewportLength;
 use nalgebra::{Matrix2, Matrix2x3, Point2, Point3, Vector2, Vector3};
 
 pub(super) type ProjectedSplatRing = (
@@ -200,7 +202,7 @@ pub(super) fn project_lensed_into(
         focal: (focal, focal),
         scale_multiplier: tool.scale,
     };
-    let bh = SchwarzschildBlackHole::new(1.0e8 * SOLAR_MASS).expect("valid black hole");
+    let bh = SchwarzschildBlackHole::new(1.0e8 * SOLAR_MASS.get()).expect("valid black hole");
     let cam_forward = Vector3::new(
         view_matrix[(2, 0)],
         view_matrix[(2, 1)],
@@ -265,12 +267,25 @@ fn build_lensed_telemetry(
     };
     let (christoffel_gamma_r00, _) =
         validate_christoffel_radial_connection(bh, 6.0).unwrap_or((0.0, 0.0));
+    let r_search_kpc = viewport_to_kpc(ViewportLength::new(6.0), lens.viewport_kpc_scale);
     LensedFrameTelemetry {
         emitted_images,
         shadow_masked_rays,
         shadow_radius,
-        nfw_critical_radius: tangential_critical_radius_kpc(None, nfw_halo, sigma_crit, 6.0),
-        burkert_critical_radius: tangential_critical_radius_kpc(None, burk_halo, sigma_crit, 6.0),
+        nfw_critical_radius: tangential_critical_radius_kpc(
+            None,
+            nfw_halo,
+            sigma_crit,
+            r_search_kpc,
+        )
+        .map(|r_kpc| kpc_to_viewport(r_kpc, lens.viewport_kpc_scale).get()),
+        burkert_critical_radius: tangential_critical_radius_kpc(
+            None,
+            burk_halo,
+            sigma_crit,
+            r_search_kpc,
+        )
+        .map(|r_kpc| kpc_to_viewport(r_kpc, lens.viewport_kpc_scale).get()),
         max_radiance_boost,
         christoffel_gamma_r00,
     }

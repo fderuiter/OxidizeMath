@@ -33,9 +33,8 @@ fn unit_interval_bounds_methods_and_operators_return_math_error() {
     );
     assert!(matches!(3.0 * a, Err(MathError::OutOfBounds { .. })));
     assert!(matches!(a / 0.1, Err(MathError::OutOfBounds { .. })));
-    assert!(matches!(a.ln(), Err(MathError::OutOfBounds { .. })));
-    assert!(matches!(a.exp(), Err(MathError::OutOfBounds { .. })));
-    assert!(matches!(a.powf(-2.0), Err(MathError::OutOfBounds { .. })));
+    assert_eq!(a.get(), 0.5);
+    assert_eq!(a.value(), 0.5);
     assert!(a.sqrt().is_ok());
     assert!(a.abs().is_ok());
 }
@@ -67,7 +66,8 @@ fn positive_and_non_negative_float_return_typed_bounds_errors() {
         p / -1.0,
         Err(MathError::StrictlyOutOfBounds { .. })
     ));
-    assert!(matches!(p.ln(), Err(MathError::StrictlyOutOfBounds { .. })));
+    assert_eq!(p.get(), 1.0);
+    assert!(p.sqrt().is_ok());
 
     assert_eq!(
         NonNegativeFloat::new(-0.5),

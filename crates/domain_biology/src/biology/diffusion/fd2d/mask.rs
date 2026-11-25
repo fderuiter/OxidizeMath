@@ -268,8 +268,10 @@ impl DiffusionModel for MaskedFiniteDifference2D {
         }
         let w = *self.base.geometry.width;
         let h = *self.base.geometry.height;
-        let inv_dx_sq = 1.0 / (*self.base.geometry.dx() * *self.base.geometry.dx());
-        let inv_dy_sq = 1.0 / (*self.base.geometry.dy() * *self.base.geometry.dy());
+        let dx = self.base.geometry.dx().get();
+        let dy = self.base.geometry.dy().get();
+        let inv_dx_sq = 1.0 / (dx * dx);
+        let inv_dy_sq = 1.0 / (dy * dy);
 
         for (s, &coeff) in coeffs.iter().enumerate().take(state.num_species()) {
             let src = state.species(s);
@@ -321,8 +323,10 @@ impl<const N: usize> SpatialDiffusion<N> for MaskedFiniteDifference2D {
         if N == 0 || w == 0 || h == 0 {
             return;
         }
-        let inv_dx_sq = 1.0 / (*self.base.geometry.dx() * *self.base.geometry.dx());
-        let inv_dy_sq = 1.0 / (*self.base.geometry.dy() * *self.base.geometry.dy());
+        let dx = self.base.geometry.dx().get();
+        let dy = self.base.geometry.dy().get();
+        let inv_dx_sq = 1.0 / (dx * dx);
+        let inv_dy_sq = 1.0 / (dy * dy);
 
         for y in 0..h {
             let y_u = y.saturating_sub(1);
@@ -392,8 +396,10 @@ impl<const N: usize> SpatialDiffusion<N> for MaskedFiniteDifference2D {
         }
         let w = *self.base.geometry.width;
         let h = *self.base.geometry.height;
-        let inv_dx_sq = 1.0 / (*self.base.geometry.dx() * *self.base.geometry.dx());
-        let inv_dy_sq = 1.0 / (*self.base.geometry.dy() * *self.base.geometry.dy());
+        let dx = self.base.geometry.dx().get();
+        let dy = self.base.geometry.dy().get();
+        let inv_dx_sq = 1.0 / (dx * dx);
+        let inv_dy_sq = 1.0 / (dy * dy);
         for y in 0..h {
             let y_u = y.saturating_sub(1);
             let y_d = (y + 1).min(h - 1);

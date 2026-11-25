@@ -367,6 +367,13 @@ pub trait InteractiveTool {
         None
     }
 
+    /// Optional cold-path hook to build a millimeter-calibrated [`oxidize_core::mesh::MillimeterMesh`] for `.stl` (`UNITS=mm`) exports.
+    fn export_millimeter_mesh_3d(
+        &self,
+    ) -> Option<Result<oxidize_core::mesh::MillimeterMesh, String>> {
+        None
+    }
+
     /// Optional cold-path hook to build a per-vertex colored 3D [`oxidize_core::mesh::ColoredMesh`] for `.ply` exports.
     fn export_colored_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::ColoredMesh, String>> {
         None

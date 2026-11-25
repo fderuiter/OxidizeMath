@@ -1,5 +1,9 @@
+// [cite:math_scalars]
 use super::types::*;
-use math_commons::constants;
+use math_commons::constants::nuclear;
+use math_scalars::{
+    Dimensionless, FemtometersPerSecond, MeVFm, MeVSecond, NuclearMeVFmFrame, Quantity,
+};
 use std::f64::consts::PI;
 
 /// Calculates the remaining amount of a substance.
@@ -23,23 +27,26 @@ pub fn calculate_remaining(
     Ok(initial_quantity * (-lambda * time).exp())
 }
 
-/// Calculates the Gamow factor for alpha decay.
+/// Calculates the dimensionless Sommerfeld/Gamow barrier-penetration parameter for alpha decay
+/// using typed [`NuclearMeVFmFrame`] constants ($\hbar = (\hbar c) / c_{\text{nuc}}$).
 ///
 /// # Arguments
 /// * `z_daughter` - Atomic number of the daughter nucleus.
 /// * `z_alpha` - Atomic number of the alpha particle (usually 2).
-/// * `velocity` - Velocity of the alpha particle in fm/s.
+/// * `velocity` - Velocity of the alpha particle in $\text{fm}\cdot\text{s}^{-1}$.
 #[verified_engine::verified]
 pub fn gamow_factor(
     z_daughter: AtomicNumber,
     z_alpha: AtomicNumber,
-    velocity: f64,
+    velocity: FemtometersPerSecond,
 ) -> Result<f64, NuclearError> {
-    if velocity <= 0.0 {
+    if !velocity.is_finite() || velocity.get() <= 0.0 {
         return Err(NuclearError::InvalidVelocity);
     }
-    let hbar = constants::HBAR_C / constants::LIGHT_SPEED;
-    let numerator = PI * z_alpha.value() as f64 * z_daughter.value() as f64 * constants::E_SQUARED;
-    let denominator = hbar * velocity;
-    Ok(numerator / denominator)
+    let hbar: MeVSecond = nuclear::HBAR_C / nuclear::LIGHT_SPEED;
+    let numerator: MeVFm =
+        nuclear::E_SQUARED * (PI * z_alpha.value() as f64 * z_daughter.value() as f64);
+    let denominator: MeVFm = hbar * velocity;
+    let eta: Quantity<f64, Dimensionless, NuclearMeVFmFrame> = numerator / denominator;
+    Ok(eta.get())
 }

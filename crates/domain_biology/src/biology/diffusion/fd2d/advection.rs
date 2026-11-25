@@ -217,8 +217,8 @@ impl MaskedFiniteDifference2D {
             ux.len() >= total && uy.len() >= total,
             "Velocity slice length mismatch in MaskedFiniteDifference2D::step_advected_fused"
         );
-        let inv_dx = 1.0 / *self.base.geometry.dx();
-        let inv_dy = 1.0 / *self.base.geometry.dy();
+        let inv_dx = 1.0 / self.base.geometry.dx().get();
+        let inv_dy = 1.0 / self.base.geometry.dy().get();
         let spacings = [inv_dx, inv_dy, inv_dx * inv_dx, inv_dy * inv_dy];
         let roles = self.mask.roles();
 

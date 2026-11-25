@@ -1,5 +1,6 @@
 use crate::error::HighEnergyError;
-use math_commons::constants::{C, EPSILON};
+use math_commons::constants::EPSILON;
+use math_commons::constants::si::C;
 
 /// A struct representing a Four-Vector (Time + 3-Space).
 /// The metric signature is -+++.
@@ -29,7 +30,7 @@ impl FourVector {
     /// This assumes `self.t` is time in seconds.
     #[verified_engine::verified]
     pub fn invariant_interval(&self) -> Result<f64, HighEnergyError> {
-        let ct = C * self.t;
+        let ct = C.get() * self.t;
         Ok(-(ct * ct) + self.x * self.x + self.y * self.y + self.z * self.z)
     }
 
@@ -49,7 +50,7 @@ impl FourVector {
         // Contraction p^mu p_mu = - (p^0)^2 + (p^1)^2 + ...
         // Here self.t is p^0 (E/c).
         let p_sq = -(self.t * self.t) + self.x * self.x + self.y * self.y + self.z * self.z;
-        let target = -(mass * C).powi(2);
+        let target = -(mass * C.get()).powi(2);
 
         // Using relative error for robustness with large numbers, or absolute for small.
         let diff = (p_sq - target).abs();
@@ -107,7 +108,7 @@ impl FourVector {
             beta_vec[0] * beta_vec[0] + beta_vec[1] * beta_vec[1] + beta_vec[2] * beta_vec[2];
         if beta_sq >= 1.0 {
             return Err(HighEnergyError::InvalidVelocity {
-                v: beta_sq.sqrt() * C,
+                v: beta_sq.sqrt() * C.get(),
             });
         }
         if beta_sq <= EPSILON * EPSILON {
@@ -132,7 +133,7 @@ impl FourVector {
 #[verified_engine::verified]
 pub fn calculate_lorentz_factor_from_beta(beta: f64) -> Result<f64, HighEnergyError> {
     if !beta.is_finite() || beta.abs() >= 1.0 {
-        return Err(HighEnergyError::InvalidVelocity { v: beta * C });
+        return Err(HighEnergyError::InvalidVelocity { v: beta * C.get() });
     }
     Ok(1.0 / (1.0 - beta * beta).sqrt())
 }
@@ -144,7 +145,7 @@ pub fn calculate_lorentz_factor_from_beta(beta: f64) -> Result<f64, HighEnergyEr
 /// * `HighEnergyError::InvalidVelocity` if `|v| >= c`.
 #[verified_engine::verified]
 pub fn calculate_lorentz_factor(v: f64) -> Result<f64, HighEnergyError> {
-    calculate_lorentz_factor_from_beta(v / C)
+    calculate_lorentz_factor_from_beta(v / C.get())
 }
 
 /// Calculates the kinematic relativistic Doppler factor
@@ -165,7 +166,7 @@ pub fn relativistic_doppler_factor(
     let gamma = calculate_lorentz_factor_from_beta(beta)?;
     let denom = gamma * (1.0 - beta * viewing_angle_rad.cos());
     if denom <= 0.0 || !denom.is_finite() {
-        return Err(HighEnergyError::InvalidVelocity { v: beta * C });
+        return Err(HighEnergyError::InvalidVelocity { v: beta * C.get() });
     }
     Ok(1.0 / denom)
 }
@@ -187,7 +188,7 @@ pub fn apparent_superluminal_beta(
     let (sin_t, cos_t) = viewing_angle_rad.sin_cos();
     let denom = 1.0 - beta * cos_t;
     if denom <= 0.0 || !denom.is_finite() {
-        return Err(HighEnergyError::InvalidVelocity { v: beta * C });
+        return Err(HighEnergyError::InvalidVelocity { v: beta * C.get() });
     }
     Ok((beta * sin_t).abs() / denom)
 }
@@ -200,8 +201,9 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_special_relativity() {
+        let c_val = C.get();
         // Lorentz Factor: v = 0.6c => gamma = 1.25
-        let v = 0.6 * C;
+        let v = 0.6 * c_val;
         let gamma = calculate_lorentz_factor(v).expect("Failed to calc Lorentz factor");
         assert_relative_eq!(
             gamma,
@@ -211,24 +213,12 @@ mod tests {
 
         // Invariant Interval: ct=3, x=4, y=0, z=0 => s^2 = -9 + 16 = 7
         // t = 3/c.
-        let fv = FourVector::new(3.0 / C, 4.0, 0.0, 0.0);
+        let fv = FourVector::new(3.0 / c_val, 4.0, 0.0, 0.0);
         let s2 = fv.invariant_interval().expect("Failed to calc interval");
         assert_relative_eq!(s2, 7.0, epsilon = math_commons::registry::TOLERANCE_FAST);
 
-        // Momentum Invariance
-        // m=1. p^mu = (gamma mc, gamma mv, 0, 0) / c?
-        // p^0 = E/c = gamma m c.
-        // p^1 = gamma m v.
-        // p.p = -(gamma m c)^2 + (gamma m v)^2 = gamma^2 m^2 (v^2 - c^2) = gamma^2 m^2 (-c^2/gamma^2) = -m^2 c^2.
-        // Let's use m=1, v=0.6c, gamma=1.25.
-        // p^0 = 1.25 * 1 * C.
-        // p^1 = 1.25 * 1 * 0.6 * C = 0.75 * C.
         let mass = 1.0;
-        // Wait, FourVector.t is just the value.
-        // If p^mu = (E/c, px, py, pz).
-        // E/c = 1.25 * C.
-        // px = 0.75 * C.
-        let p_vec = FourVector::new(1.25 * C, 0.75 * C, 0.0, 0.0);
+        let p_vec = FourVector::new(1.25 * c_val, 0.75 * c_val, 0.0, 0.0);
         assert!(
             p_vec
                 .is_valid_momentum(mass)
@@ -239,8 +229,9 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_errors() {
-        assert!(calculate_lorentz_factor(C).is_err());
-        assert!(calculate_lorentz_factor(1.1 * C).is_err());
+        let c_val = C.get();
+        assert!(calculate_lorentz_factor(c_val).is_err());
+        assert!(calculate_lorentz_factor(1.1 * c_val).is_err());
         let fv = FourVector::new(0.0, 0.0, 0.0, 0.0);
         assert!(fv.is_valid_momentum(-1.0).is_err());
     }
@@ -248,7 +239,8 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_lorentz_boosts_preserve_interval_and_doppler_factor() {
-        let rest_p = FourVector::new(2.0 * C, 0.3 * C, -0.4 * C, 0.5 * C);
+        let c_val = C.get();
+        let rest_p = FourVector::new(2.0 * c_val, 0.3 * c_val, -0.4 * c_val, 0.5 * c_val);
         let p_sq_before = -(rest_p.t * rest_p.t)
             + rest_p.x * rest_p.x
             + rest_p.y * rest_p.y

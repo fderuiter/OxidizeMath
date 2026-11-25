@@ -55,7 +55,7 @@ theory_verification!(
         use crate::poi::parabolic_vertex;
         use scientific_metadata::theory::{MaturityTier, TheoryDescribable};
 
-        assert_eq!(constants::C, SPEED_OF_LIGHT_M_S);
+        assert_eq!(constants::si::C.get(), SPEED_OF_LIGHT_M_S);
         let vertex = parabolic_vertex([1.0, 3.0], [2.0, 4.0], [3.0, 3.0]);
         assert!((vertex[1] - PARABOLIC_PEAK_Y).abs() < 1e-12);
         let xs = [0.0, 1.0, 2.0, 3.0, 4.0];

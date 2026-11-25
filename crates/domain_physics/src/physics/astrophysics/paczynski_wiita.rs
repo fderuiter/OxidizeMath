@@ -26,7 +26,8 @@
 
 use std::f64::consts::FRAC_PI_2;
 
-use math_commons::constants::{C, SOLAR_MASS};
+use math_commons::constants::si::{C, SIGMA_T, SOLAR_MASS};
+use math_scalars::Kiloparsecs;
 use nalgebra::SVector;
 use pure_math::pure_math::tensor::christoffel_symbols_fixed;
 
@@ -100,7 +101,7 @@ impl CentralBlackHoleConfig {
         } else {
             1.0e8
         };
-        SchwarzschildBlackHole::new(m_solar * SOLAR_MASS)
+        SchwarzschildBlackHole::new((SOLAR_MASS * m_solar).get())
     }
 
     /// Clamped Schwarzschild horizon scale $R_s > 0$ in kpc.
@@ -280,28 +281,28 @@ pub fn evaluate_relativistic_beaming(
         6.0
     };
     let r_m = safe_ratio * rs;
-    let max_v = MAX_RELATIVISTIC_BETA * C;
+    let c_val = C.get();
+    let max_v = MAX_RELATIVISTIC_BETA * c_val;
     let v_mag = if speed_m_s.is_finite() {
         speed_m_s.abs().min(max_v)
     } else {
         0.0
     };
-    let beta = (v_mag / C).clamp(0.0, MAX_RELATIVISTIC_BETA);
+    let beta = (v_mag / c_val).clamp(0.0, MAX_RELATIVISTIC_BETA);
     let mu_los = if los_cos.is_finite() {
         los_cos.clamp(-1.0, 1.0)
     } else {
         0.0
     };
     let g_grav = bh.gravitational_time_dilation(r_m)?;
-    let gamma = calculate_lorentz_factor(beta * C)?;
+    let gamma = calculate_lorentz_factor(beta * c_val)?;
     let u_b = if magnetic_u_b.is_finite() {
         magnetic_u_b.max(0.0)
     } else {
         0.0
     };
     let sync_w = synchrotron_power(u_b, beta, gamma)?;
-    let ref_sync =
-        ((4.0 / 3.0) * math_commons::constants::SIGMA_T * C * u_b.max(1.0e-12)).max(1.0e-30);
+    let ref_sync = ((4.0 / 3.0) * SIGMA_T.get() * c_val * u_b.max(1.0e-12)).max(1.0e-30);
     let sync_gain = (sync_w / ref_sync).clamp(0.0, 6.0);
     let doppler = (1.0 / (gamma * (1.0 - beta * mu_los)).max(1.0e-4)).clamp(0.05, 12.0);
     let radiance_weight =
@@ -347,7 +348,7 @@ impl GalacticDiskSystem {
         let p = self.particles.get(index)?;
         let r = (p.x_kpc * p.x_kpc + p.y_kpc * p.y_kpc).sqrt();
         let v_sq = p.vx_kms * p.vx_kms + p.vy_kms * p.vy_kms;
-        let phi = total_gravitational_potential(r, &self.baryons, &self.halo)
+        let phi = total_gravitational_potential(Kiloparsecs::new(r), &self.baryons, &self.halo)
             + paczynski_wiita_potential_kpc(r, &self.central_bh);
         Some(OrbitalInvariants {
             specific_energy_kms2: 0.5 * v_sq + phi,

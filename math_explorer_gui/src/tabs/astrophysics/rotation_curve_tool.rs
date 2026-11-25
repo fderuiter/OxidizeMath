@@ -11,6 +11,7 @@ use math_explorer::physics::astrophysics::{
     sample_rotation_curve_into, BaryonicDiskConfig, DwarfMorphology, Magnitude, Mpc,
     ThinLensSample, VelocityDecomposition,
 };
+use math_scalars::Kiloparsecs;
 
 const CURVE_SAMPLES: usize = 96;
 
@@ -131,16 +132,24 @@ impl RotationCurveExplorer {
             self.cfg.halo_scale_kpc,
             self.cfg.halo_concentration,
         );
+        let r_min = Kiloparsecs::new(0.05);
         let r_max = self.cfg.max_radius_kpc.clamp(2.0, 25.0);
+        let r_max_kpc = Kiloparsecs::new(r_max);
         let halo = self.cfg.halo_kind.build_profile(m, rs, c);
-        sample_rotation_curve_into(0.05, r_max, &baryons, &halo, &mut self.samples);
+        sample_rotation_curve_into(r_min, r_max_kpc, &baryons, &halo, &mut self.samples);
         let (rmse, chi_sq) =
             evaluate_mystery_residuals_into(&baryons, &halo, &mut self.target_residuals_kms);
         self.rmse_kms = rmse;
         self.reduced_chi_sq = chi_sq;
 
         let alt = self.counterpart_halo_choice().build_profile(m, rs, c);
-        sample_rotation_curve_into(0.05, r_max, &baryons, &alt, &mut self.counterpart_samples);
+        sample_rotation_curve_into(
+            r_min,
+            r_max_kpc,
+            &baryons,
+            &alt,
+            &mut self.counterpart_samples,
+        );
         let mut alt_res = [0.0; NUM_MYSTERY_TARGETS];
         let (alt_rmse, alt_chi) = evaluate_mystery_residuals_into(&baryons, &alt, &mut alt_res);
         self.counterpart_rmse_kms = alt_rmse;

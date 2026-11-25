@@ -6,11 +6,12 @@
 
 use eframe::egui;
 use egui_plot::{Line, LineStyle, MarkerShape, PlotPoints, Points};
-use math_explorer::constants::C;
+use math_explorer::constants::si::C;
 use math_explorer::physics::astrophysics::{
     evaluate_relativistic_beaming, tangential_critical_radius_kpc,
     validate_christoffel_radial_connection, CentralBlackHoleConfig, HaloProfile, OrbitParticleKind,
 };
+use math_scalars::Kiloparsecs;
 
 use crate::reflective_ui::render_copyable_metric;
 use crate::volumetric_scene::lensing::build_circle_ring;
@@ -107,9 +108,10 @@ impl GalacticOrbitSimulator {
 
     pub(crate) fn compute_caustic_radii_kpc(&self) -> (Option<f64>, Option<f64>) {
         let m200 = 10.0_f64.powf(self.cfg.halo_log10_mass.clamp(8.0, 12.0));
-        let scale = self.cfg.halo_scale_kpc.clamp(0.3, 10.0);
+        let scale = Kiloparsecs::new(self.cfg.halo_scale_kpc.clamp(0.3, 10.0));
         let conc = self.cfg.halo_concentration.clamp(4.0, 25.0);
         let sigma_crit = 10.0_f64.powf(self.cfg.lens_overlay.log10_sigma_crit.clamp(6.0, 10.5));
+        let r_search = Kiloparsecs::new(20.0);
         let nfw = HaloProfile::NfwCusp {
             virial_mass_solar: m200,
             scale_radius_kpc: scale,
@@ -121,8 +123,10 @@ impl GalacticOrbitSimulator {
             concentration: conc,
         };
         (
-            tangential_critical_radius_kpc(Some(&self.system.baryons), &nfw, sigma_crit, 20.0),
-            tangential_critical_radius_kpc(Some(&self.system.baryons), &burk, sigma_crit, 20.0),
+            tangential_critical_radius_kpc(Some(&self.system.baryons), &nfw, sigma_crit, r_search)
+                .map(Kiloparsecs::get),
+            tangential_critical_radius_kpc(Some(&self.system.baryons), &burk, sigma_crit, r_search)
+                .map(Kiloparsecs::get),
         )
     }
 
@@ -312,7 +316,8 @@ impl GalacticOrbitSimulator {
             } else {
                 0.0
             };
-            let v_eff_m_s = (speed_kms * beta_scale * C).clamp(0.0, 0.998 * C);
+            let c_m_s = C.get();
+            let v_eff_m_s = (speed_kms * beta_scale * c_m_s).clamp(0.0, 0.998 * c_m_s);
             let boost = evaluate_relativistic_beaming(&bh, r / rs_kpc, v_eff_m_s, los_cos, u_b)
                 .map_or(1.0, |b| b.radiance_weight);
             if boost >= 1.0 {

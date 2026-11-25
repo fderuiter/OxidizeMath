@@ -13,6 +13,7 @@ thiserror = { workspace = true }
 oxidize_core = { path = "../oxidize_core" }
 verified_engine = { version = "0.1.0", path = "../verified_engine" }
 
+math_scalars = { path = "../00_foundation/math_scalars", features = ["serde"] }
 math_commons = { path = "../math_commons" }
 engine_diffeq = { path = "../engine_diffeq" }
 engine_linalg = { path = "../02_engines/engine_linalg" }

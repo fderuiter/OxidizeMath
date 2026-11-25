@@ -91,6 +91,7 @@ fn test_build_script_emits_scoped_rerun_directives() {
         "src/tabs/mod.rs",
         "../traceability.toml",
         "../papers",
+        "../crates/00_foundation/math_scalars/src",
         "../crates/02_engines/engine_linalg/src",
         "../crates/federated_registry/src",
         "../crates/oxidize_core/src",

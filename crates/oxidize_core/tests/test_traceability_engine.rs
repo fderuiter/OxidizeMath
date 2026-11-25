@@ -415,6 +415,14 @@ mod ast_analysis_tests {
             baseline_reg.crate_tier("math_commons"),
             Some(MaturityTier::Certified)
         );
+        assert_eq!(
+            baseline_reg.crate_tier("math_scalars"),
+            Some(MaturityTier::Certified)
+        );
+        assert_eq!(
+            MaturityRegistry::crate_for_repo_path("crates/00_foundation/math_scalars/src/lib.rs"),
+            Some("math_scalars")
+        );
 
         let gate_report =
             evaluate_maturity_with_registry_and_cache(root, baseline_reg.clone(), &mut cache);

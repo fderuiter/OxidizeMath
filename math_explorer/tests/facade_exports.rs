@@ -57,10 +57,13 @@ fn assert_core_error_and_prelude_exports() {
 #[test]
 fn core_only_facade_exports_work_without_domain_features() {
     use math_explorer::ast::{Complex64, parse};
-    use math_explorer::constants::C;
-    use math_explorer::prelude::{NonNegativeFloat, PositiveFloat, UnitInterval};
+    use math_explorer::constants::{nuclear::HBAR_C, si::C};
+    use math_explorer::prelude::{
+        Celsius, Kelvin, NonNegativeFloat, PositiveFloat, Quantity, UnitInterval,
+    };
     use math_explorer::primitives::PositiveFloat as DirectPositiveFloat;
     use math_explorer::registry::TOLERANCE_STANDARD;
+    use math_explorer::scalars::Meters;
     use math_explorer::wigner::ClebschGordan;
 
     let pos = PositiveFloat::new(1.5).expect("valid positive float");
@@ -68,11 +71,15 @@ fn core_only_facade_exports_work_without_domain_features() {
     assert_eq!(pos, direct_pos);
     assert_eq!(NonNegativeFloat::new(0.0).unwrap().value(), 0.0);
     assert_eq!(UnitInterval::new(0.25).unwrap().value(), 0.25);
+    let room_k: Kelvin = Celsius::new(25.0).to_kelvin();
+    let _: Quantity<f64, _, _> = Meters::new(1.0);
+    assert!((room_k.get() - 298.15).abs() < 1e-12);
 
     let expr = parse("x + 1").expect("valid AST expression");
     assert!(!format!("{expr:?}").is_empty());
     assert_eq!(Complex64::new(1.0, -1.0).re, 1.0);
-    assert_eq!(C, 299_792_458.0);
+    assert_eq!(C.get(), 299_792_458.0);
+    assert_eq!(HBAR_C.get(), 197.3);
     assert_eq!(TOLERANCE_STANDARD, 1e-9);
     assert_core_error_and_prelude_exports();
 

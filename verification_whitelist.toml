@@ -50,6 +50,7 @@ min_verified_production_density = 0.0490
 coverage_tolerance_pct = 1.5
 unverified_modules = [
     "apps/xtask",
+    "crates/00_foundation/math_scalars",
     "crates/02_engines/engine_linalg",
     "crates/diagnostics",
     "crates/engine_diffeq",
@@ -65,6 +66,14 @@ unverified_modules = [
     "math_explorer",
     "math_explorer_gui",
 ]
+
+[[verify_suite.opt_outs]]
+path = "crates/00_foundation/math_scalars/src/"
+reason = "no_std_engine"
+
+[[verify_suite.opt_outs]]
+path = "crates/00_foundation/math_scalars/src/"
+reason = "tests"
 
 [[verify_suite.opt_outs]]
 path = "crates/02_engines/engine_linalg/src/"
@@ -306,6 +315,7 @@ reason = "Activates the getrandom js backend feature on wasm32-unknown-unknown f
 # Non-domain infrastructure, tooling, facade, GUI, and vendored crates exempt from theory_verification!
 exempt_crates = [
     "apps/xtask",
+    "crates/00_foundation/math_scalars",
     "crates/02_engines/engine_linalg",
     "crates/diagnostics",
     "crates/engine_diffeq",
@@ -331,10 +341,11 @@ min_total_density = 0.120
 "gui_tool" = 743
 "infrastructure" = 2
 "metadata" = 2
-"no_std_engine" = 13
-"tests" = 243
+"no_std_engine" = 14
+"tests" = 244
 
 [verification_debt.crate_opt_out_caps]
+"crates/00_foundation/math_scalars" = 2
 "crates/02_engines/engine_linalg" = 15
 "crates/domain_applied" = 1
 "crates/domain_biology" = 1
@@ -389,12 +400,11 @@ vendored_crates = [
 "crates/domain_applied/src/applied/algorithms/sorting/mod.rs" = 7
 "crates/domain_applied/src/applied/battery_degradation/mod.rs" = 1
 "crates/domain_applied/src/applied/battery_degradation/model.rs" = 10
-"crates/domain_applied/src/applied/battery_degradation/types.rs" = 14
 "crates/domain_applied/src/applied/clinical_trials/analysis.rs" = 5
 "crates/domain_applied/src/applied/clinical_trials/design.rs" = 5
 "crates/domain_applied/src/applied/clinical_trials/hypothesis_testing.rs" = 9
 "crates/domain_applied/src/applied/clinical_trials/mod.rs" = 5
-"crates/domain_applied/src/applied/clinical_trials/types.rs" = 6
+"crates/domain_applied/src/applied/clinical_trials/types.rs" = 1
 "crates/domain_applied/src/applied/engineering/mod.rs" = 2
 "crates/domain_applied/src/applied/favoritism/favorite_child.rs" = 2
 "crates/domain_applied/src/applied/favoritism/mod.rs" = 4
@@ -458,15 +468,12 @@ vendored_crates = [
 "crates/domain_physics/src/physics/solid_state/interactions.rs" = 1
 "crates/domain_physics/src/physics/solid_state/mod.rs" = 2
 "crates/domain_physics/src/physics/solid_state/second_quantization.rs" = 6
-"crates/domain_physics/src/physics/solid_state/types.rs" = 9
 "crates/domain_physics/src/physics/standard_model/gauge.rs" = 3
 "crates/domain_physics/src/physics/stat_mech/mod.rs" = 3
-"crates/math_commons/src/constants.rs" = 6
 "crates/math_commons/src/error.rs" = 5
 "crates/math_commons/src/lib.rs" = 5
 "crates/math_commons/src/math_kernel/colormap.rs" = 1
 "crates/math_commons/src/math_kernel/mod.rs" = 2
-"crates/math_commons/src/primitives.rs" = 11
 "crates/math_commons/src/registry.rs" = 1
 "crates/math_commons/src/wigner/mod.rs" = 7
 "crates/oxidize_core/src/ast_visitor.rs" = 15

@@ -44,19 +44,19 @@ impl FusedStencilStepper {
         })
     }
 
-    /// Constructs a 1D fused stencil stepper, panicking if `*dx <= 0.0`.
+    /// Constructs a 1D fused stencil stepper, panicking if `dx.get() <= 0.0`.
     #[verified_engine::verified]
     pub fn new(dx: StepSize) -> Self {
-        assert!(*dx > 0.0 && dx.is_finite());
+        assert!(dx.get() > 0.0 && dx.is_finite());
         Self {
             ops: StencilOperators::new(dx),
         }
     }
 
-    /// Constructs a 2D fused stencil stepper, panicking if `*dx <= 0.0` or `*dy <= 0.0`.
+    /// Constructs a 2D fused stencil stepper, panicking if `dx.get() <= 0.0` or `dy.get() <= 0.0`.
     #[verified_engine::verified]
     pub fn new_2d(dx: StepSize, dy: StepSize) -> Self {
-        assert!(*dx > 0.0 && *dy > 0.0);
+        assert!(dx.get() > 0.0 && dy.get() > 0.0);
         Self {
             ops: StencilOperators::new_2d(dx, dy),
         }
@@ -65,7 +65,7 @@ impl FusedStencilStepper {
     /// Constructs a 3D fused stencil stepper for `(dx, dy, dz)`.
     #[verified_engine::verified]
     pub fn new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Self {
-        assert!(*dx > 0.0 && *dy > 0.0 && *dz > 0.0);
+        assert!(dx.get() > 0.0 && dy.get() > 0.0 && dz.get() > 0.0);
         Self {
             ops: StencilOperators::new_3d(dx, dy, dz),
         }
@@ -78,7 +78,7 @@ impl FusedStencilStepper {
         F: FnMut(usize, f64, f64, f64, &StencilOperators) -> f64,
     {
         let n = src.len();
-        debug_assert!(*self.ops.dx > 0.0);
+        debug_assert!(self.ops.dx.get() > 0.0);
         if n > 2 && dst.len() >= n {
             for (i, win) in src.windows(3).enumerate() {
                 let rhs = op(i + 1, win[0], win[1], win[2], &self.ops);
@@ -100,7 +100,7 @@ impl FusedStencilStepper {
     ) where
         F: FnMut(usize, [f64; N], [f64; N], [f64; N], &StencilOperators) -> [f64; N],
     {
-        debug_assert!(*self.ops.dx > 0.0);
+        debug_assert!(self.ops.dx.get() > 0.0);
         if n == 0 {
             return;
         }
@@ -140,7 +140,7 @@ impl FusedStencilStepper {
         ) -> [f64; N],
     {
         let (width, height) = dim;
-        debug_assert!(*self.ops.dx > 0.0 && *self.ops.dy > 0.0);
+        debug_assert!(self.ops.dx.get() > 0.0 && self.ops.dy.get() > 0.0);
         if width == 0 || height == 0 {
             return;
         }
@@ -185,7 +185,7 @@ impl FusedStencilStepper {
     {
         let (width, height, depth) = dim;
         let slice_stride = width * height;
-        debug_assert!(*self.ops.dz > 0.0);
+        debug_assert!(self.ops.dz.get() > 0.0);
         if slice_stride * depth == 0 {
             return;
         }

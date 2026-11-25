@@ -17,7 +17,7 @@ use math_explorer::biology::morphogenesis::{SchnakenbergKinetics, TuringSystem};
 use math_explorer::math_kernel::types::flatten_3d_index;
 #[cfg(test)]
 use oxidize_core::mesh::export_mesh_to_obj_string;
-use oxidize_core::mesh::{scale_mesh_to_millimeters, Mesh, Point3D as CorePoint3D};
+use oxidize_core::mesh::{Mesh, MillimeterMesh, Point3D as CorePoint3D};
 
 /// Maximum painter facets emitted per frame to keep `egui_plot::Polygon` crisp at 60 FPS.
 pub const MAX_RENDERED_FACETS: usize = 2_400;
@@ -289,8 +289,11 @@ impl VolumetricEngine {
         crossings
     }
 
-    /// Extracts a closed, outward-wound 2-manifold [`Mesh`] scaled to `cfg.export_size_mm` millimeters.
-    pub fn export_solid_mesh_3d(&self, cfg: &VolumetricStudioConfig) -> Result<Mesh, String> {
+    /// Extracts a closed, outward-wound 2-manifold [`MillimeterMesh`] calibrated to `cfg.export_size_mm` millimeters.
+    pub fn export_millimeter_mesh_3d(
+        &self,
+        cfg: &VolumetricStudioConfig,
+    ) -> Result<MillimeterMesh, String> {
         let cut_cap = cfg.active_cut_filter().map(to_cut_plane_cap);
         let signed = is_signed_field(cfg);
         let mut combined = self.build_capped_export_mesh(cfg, signed, cut_cap)?;
@@ -300,9 +303,14 @@ impl VolumetricEngine {
         if combined.indices.is_empty() {
             return Err("No solid volume at current level / iso_threshold to export.".into());
         }
-        scale_mesh_to_millimeters(&mut combined, cfg.export_size_mm as f32)
-            .map_err(|e| format!("Millimeter mesh scaling error: {e}"))?;
-        Ok(combined)
+        MillimeterMesh::from_scaled(combined, cfg.export_size_mm as f32)
+            .map_err(|e| format!("Millimeter mesh scaling error: {e}"))
+    }
+
+    /// Extracts a closed, outward-wound 2-manifold [`Mesh`] scaled to `cfg.export_size_mm` millimeters.
+    pub fn export_solid_mesh_3d(&self, cfg: &VolumetricStudioConfig) -> Result<Mesh, String> {
+        self.export_millimeter_mesh_3d(cfg)
+            .map(MillimeterMesh::into_mesh)
     }
 
     fn build_capped_export_mesh(

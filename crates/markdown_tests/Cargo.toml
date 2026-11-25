@@ -15,6 +15,7 @@ verified_engine_macros = { path = "../verified_engine_macros" }
 diagnostics = { path = "../diagnostics" }
 engine_linalg = { path = "../02_engines/engine_linalg" }
 math_commons = { path = "../math_commons" }
+math_scalars = { path = "../00_foundation/math_scalars" }
 pure_math = { path = "../pure_math" }
 domain_ai = { path = "../domain_ai" }
 domain_physics = { path = "../domain_physics" }

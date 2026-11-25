@@ -1076,6 +1076,7 @@ dependencies = [
  "engine_linalg",
  "engine_pde",
  "math_commons",
+ "math_scalars",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -1143,6 +1144,7 @@ dependencies = [
  "engine_linalg",
  "engine_pde",
  "math_commons",
+ "math_scalars",
  "nalgebra 0.34.2",
  "num-complex",
  "oxidize_core",
@@ -2445,6 +2447,7 @@ dependencies = [
  "federated_registry",
  "math_commons",
  "math_explorer",
+ "math_scalars",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -2464,6 +2467,7 @@ dependencies = [
  "diagnostics",
  "engine_linalg",
  "libm",
+ "math_scalars",
  "num-complex",
  "num-traits",
  "oxidize_core",
@@ -2487,6 +2491,7 @@ dependencies = [
  "domain_epidemiology",
  "domain_physics",
  "math_commons",
+ "math_scalars",
  "nalgebra 0.34.2",
  "num-complex",
  "oxidize_core",
@@ -2514,6 +2519,7 @@ dependencies = [
  "js-sys",
  "math_commons",
  "math_explorer",
+ "math_scalars",
  "muda",
  "nalgebra 0.34.2",
  "num-complex",
@@ -2531,6 +2537,16 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
  "web-sys",
+]
+
+[[package]]
+name = "math_scalars"
+version = "0.4.0"
+dependencies = [
+ "libm",
+ "serde",
+ "serde_json",
+ "verified_engine",
 ]
 
 [[package]]
@@ -3194,6 +3210,7 @@ dependencies = [
  "futures",
  "getrandom 0.2.17",
  "js-sys",
+ "math_scalars",
  "proc-macro2",
  "rand",
  "rand_chacha",

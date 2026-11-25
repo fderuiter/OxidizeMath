@@ -113,24 +113,38 @@ pub struct TuringSystem<
 }
 
 use math_commons::math_kernel::types::{Dimension, StepSize};
-use std::ops::{Deref, DerefMut};
 
-/// Diffusion coefficient
+/// Diffusion coefficient wrapper without `Deref<Target = f64>` coercion.
+///
+/// ```compile_fail
+/// # use domain_biology::__doctest_facade as math_explorer;
+/// use math_explorer::biology::morphogenesis::DiffusionCoeff;
+/// let d = DiffusionCoeff(1.0);
+/// let _erased: &f64 = &d;
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
 pub struct DiffusionCoeff(pub f64);
 
-impl Deref for DiffusionCoeff {
-    type Target = f64;
+impl DiffusionCoeff {
+    /// Wraps a raw diffusion coefficient.
+    #[inline]
     #[verified_engine::verified]
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    pub const fn new(value: f64) -> Self {
+        Self(value)
     }
-}
 
-impl DerefMut for DiffusionCoeff {
+    /// Returns the raw diffusion coefficient scalar.
+    #[inline]
     #[verified_engine::verified]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+    pub const fn get(self) -> f64 {
+        self.0
+    }
+
+    /// Alias for [`Self::get`].
+    #[inline]
+    #[verified_engine::verified]
+    pub const fn value(self) -> f64 {
+        self.0
     }
 }
 
@@ -142,7 +156,7 @@ impl TuringSystem<2, SchnakenbergKinetics, FiniteDifference1D, FusedEulerSolver>
         Self {
             state: TuringState::new(*size),
             next_state: TuringState::new(*size),
-            diffusion_coeffs: [*d_u, *d_v],
+            diffusion_coeffs: [d_u.get(), d_v.get()],
             kinetics: SchnakenbergKinetics::default(),
             diffusion: FiniteDifference1D::new(dx),
             solver: FusedEulerSolver::new(),
@@ -164,7 +178,7 @@ impl<K: ReactionKinetics<2>, D: SpatialDiffusion<2>> TuringSystem<2, K, D, Fused
         Self {
             state: TuringState::new(*size),
             next_state: TuringState::new(*size),
-            diffusion_coeffs: [*d_u, *d_v],
+            diffusion_coeffs: [d_u.get(), d_v.get()],
             kinetics,
             diffusion,
             solver: FusedEulerSolver::new(),
@@ -221,7 +235,7 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
     ) -> Self {
         let mut coeffs = [0.0; N];
         for i in 0..N {
-            coeffs[i] = *diffusion_coeffs[i];
+            coeffs[i] = diffusion_coeffs[i].get();
         }
         Self {
             state: TuringState::new(*size),

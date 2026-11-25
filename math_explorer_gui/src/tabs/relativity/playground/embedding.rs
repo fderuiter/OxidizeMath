@@ -327,7 +327,7 @@ fn compute_4d_clock_factors(meta: Sample4dMeta<'_>, r: f64, dtau_dt: f64) -> (f6
         } else {
             0.0
         };
-        let rt = combined_clock_rate(schwarz, r_safe, beta * C).unwrap_or(dtau_dt);
+        let rt = combined_clock_rate(schwarz, r_safe, (beta * C).get()).unwrap_or(dtau_dt);
         let gam = if beta > 0.0 {
             1.0 / (1.0 - beta * beta).sqrt()
         } else {

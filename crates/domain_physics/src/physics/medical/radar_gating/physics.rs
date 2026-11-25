@@ -4,7 +4,7 @@
 //! radar systems, specifically focusing on range resolution and Doppler velocity estimation.
 //!
 //! The TI IWR6843 is a mmWave sensor operating in the 60-64 GHz band.
-use math_commons::constants::C;
+use math_commons::constants::si::C;
 
 /// Configuration for the FMCW Radar system.
 #[derive(Debug, Clone, Copy)]
@@ -39,7 +39,7 @@ impl FmcwConfig {
     /// $$ \Delta R = \frac{c}{2B} $$
     #[verified_engine::verified]
     pub fn range_resolution(&self) -> f64 {
-        C / (2.0 * self.bandwidth)
+        C.get() / (2.0 * self.bandwidth)
     }
 
     /// Calculates the signal wavelength ($\lambda$).
@@ -47,7 +47,7 @@ impl FmcwConfig {
     /// $$ \lambda = \frac{c}{f_c} $$
     #[verified_engine::verified]
     pub fn wavelength(&self) -> f64 {
-        C / self.center_frequency
+        C.get() / self.center_frequency
     }
 
     /// Estimates radial velocity ($v$) from the phase shift ($\Delta \phi$) between chirps.
@@ -71,7 +71,7 @@ impl FmcwConfig {
     #[verified_engine::embed_theory("papers/mmwave_radiotherapy_setup.tex", label = "eq:range")]
     #[verified_engine::verified]
     pub fn range_from_beat_frequency(&self, beat_frequency: f64) -> f64 {
-        (beat_frequency * C * self.chirp_time) / (2.0 * self.bandwidth)
+        (beat_frequency * C.get() * self.chirp_time) / (2.0 * self.bandwidth)
     }
 
     /// Estimates physical displacement ($d$) from the phase change ($\Delta \phi$).
@@ -154,6 +154,6 @@ impl FmcwConfig {
     /// * `range` ($R$) - Distance to target (m).
     #[verified_engine::verified]
     pub fn beat_frequency(slope: f64, range: f64) -> f64 {
-        (slope * 2.0 * range) / C
+        (slope * 2.0 * range) / C.get()
     }
 }

@@ -12,7 +12,7 @@ When you submit a PR, you aren't just merging code; you are merging knowledge. E
 
 Before implementing new features or making structural changes, review our centralized architecture documentation:
 
-- [System Overview & Crate Topology](docs/architecture/system_overview.md): System layers and crate dependencies across all 23 crates.
+- [System Overview & Crate Topology](docs/architecture/system_overview.md): System layers and crate dependencies across all 24 crates.
 - [CERA Framework Guide](docs/architecture/cera_framework.md): Climate-invariant encoding, representation alignment, and modeling pipelines.
 - [Zero-Allocation Runtime Guide](docs/architecture/zero_allocation_runtime.md): NASA Power of 10 Rule 3 enforcement and `VerifiedEngine` runtime rules.
 - [Interactive Tool Walkthrough](docs/architecture/interactive_tool_walkthrough.md): Step-by-step tutorial to implement and register simulation tabs.
@@ -267,9 +267,9 @@ To ensure reliability and verifiability, we adopt an adaptation of NASA's "Power
     *   **Rule**: No function should be longer than what can be printed on a single sheet of paper (approx. 60 lines).
     *   **Implementation**: Decompose large functions into smaller, testable helper functions. If a function is too long, it likely violates the Single Responsibility Principle.
 
-5.  **Assertion Density**:
-    *   **Rule**: The assertion density of the code should average to a minimum of two assertions per function.
-    *   **Implementation**: Use `assert!` to enforce invariants (e.g., "mass must be positive") and `debug_assert!` for performance-critical checks. Validate function inputs and state consistency rigorously.
+5.  **Assertion Density & Compile-Time Dimensional Invariants**:
+    *   **Rule**: The assertion density of the code should average to a minimum of two assertions per function, while physical units and coordinate scales must be enforced at compile time via [`math_scalars`](crates/00_foundation/math_scalars/README.md).
+    *   **Implementation**: Encode physical quantities, constants, and frame conversions (`SiFrame`, `NuclearMeVFmFrame`, `GalacticKpcFrame`, `ViewportFrame`, `MillimeterFrame`, affine `Celsius` vs. absolute `Kelvin`) using `math_scalars::Quantity` rather than bare floats or `Deref` wrappers, and pair compile-time dimensional types with `assert!` / `debug_assert!` for positivity, finiteness, and domain range checks.
 
 6.  **Small Data Scope**:
     *   **Rule**: Data objects must be declared at the smallest possible level of scope.

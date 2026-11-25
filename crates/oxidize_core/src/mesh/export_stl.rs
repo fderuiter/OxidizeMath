@@ -7,11 +7,82 @@ use std::io::{Error, ErrorKind};
 
 /// Binary STL 80-byte header prefix declaring millimeter (`UNITS=mm`) coordinates for slicers.
 pub const STL_HEADER_TEXT: &[u8] = b"OxidizeMath binary STL export; UNITS=mm";
+/// Binary STL 80-byte header prefix for uncalibrated dimensionless meshes (omitting `UNITS=mm`).
+pub const STL_UNITLESS_HEADER_TEXT: &[u8] = b"OxidizeMath binary STL export";
 
 /// Minimum supported physical print span in millimeters.
 pub const MIN_EXPORT_SPAN_MM: f32 = 5.0;
 /// Maximum supported physical print span in millimeters.
 pub const MAX_EXPORT_SPAN_MM: f32 = 250.0;
+/// Default physical print span in millimeters (`100.0 mm`) when auto-calibrating unscaled meshes.
+pub const DEFAULT_EXPORT_SPAN_MM: f32 = 100.0;
+
+/// Calibrated 3D triangle mesh guaranteed to have finite vertices scaled to `[5.0, 250.0] mm`.
+#[derive(Debug, Clone)]
+pub struct MillimeterMesh {
+    mesh: Mesh,
+    span_mm: math_scalars::Millimeters<f32>,
+}
+
+impl MillimeterMesh {
+    /// Centers `mesh` at the origin and scales its largest bounding-box axis span to `target_span_mm` (`[5.0, 250.0] mm`).
+    pub fn from_scaled(mut mesh: Mesh, target_span_mm: f32) -> Result<Self, Error> {
+        scale_mesh_to_millimeters(&mut mesh, target_span_mm)?;
+        Ok(Self {
+            mesh,
+            span_mm: math_scalars::Millimeters::new(target_span_mm),
+        })
+    }
+
+    /// Centers `mesh` at the origin and scales its largest axis span to a typed [`math_scalars::Millimeters`] quantity.
+    pub fn from_scaled_quantity(
+        mesh: Mesh,
+        target_span: math_scalars::Millimeters<f32>,
+    ) -> Result<Self, Error> {
+        Self::from_scaled(mesh, target_span.get())
+    }
+
+    /// Borrows the calibrated millimeter [`Mesh`].
+    #[must_use]
+    pub const fn mesh(&self) -> &Mesh {
+        &self.mesh
+    }
+
+    /// Consumes the wrapper and returns the calibrated millimeter [`Mesh`].
+    #[must_use]
+    pub fn into_mesh(self) -> Mesh {
+        self.mesh
+    }
+
+    /// Returns the calibrated bounding-box span in typed [`math_scalars::Millimeters`].
+    #[must_use]
+    pub const fn span_mm(&self) -> math_scalars::Millimeters<f32> {
+        self.span_mm
+    }
+}
+
+/// Opaque seal token preventing external implementations of [`StlBinarySource`].
+#[doc(hidden)]
+pub struct StlBinarySeal(());
+
+/// Sealed source trait distinguishing calibrated [`MillimeterMesh`] (`UNITS=mm`) from unscaled [`Mesh`] (unitless header).
+pub trait StlBinarySource {
+    /// Returns the underlying triangle [`Mesh`] and the matching 80-byte binary STL header prefix.
+    #[doc(hidden)]
+    fn stl_mesh_and_header(&self, _seal: StlBinarySeal) -> (&Mesh, &'static [u8]);
+}
+
+impl StlBinarySource for MillimeterMesh {
+    fn stl_mesh_and_header(&self, _seal: StlBinarySeal) -> (&Mesh, &'static [u8]) {
+        (&self.mesh, STL_HEADER_TEXT)
+    }
+}
+
+impl StlBinarySource for Mesh {
+    fn stl_mesh_and_header(&self, _seal: StlBinarySeal) -> (&Mesh, &'static [u8]) {
+        (self, STL_UNITLESS_HEADER_TEXT)
+    }
+}
 
 fn write_point_le(buf: &mut Vec<u8>, pt: Point3D) {
     buf.extend_from_slice(&pt.x.to_le_bytes());
@@ -67,13 +138,18 @@ pub fn export_mesh_to_stl_binary_scaled(
     mesh: &Mesh,
     target_span_mm: f32,
 ) -> Result<Vec<u8>, Error> {
-    let mut scaled = mesh.clone();
-    scale_mesh_to_millimeters(&mut scaled, target_span_mm)?;
-    export_mesh_to_stl_binary(&scaled)
+    let calibrated = MillimeterMesh::from_scaled(mesh.clone(), target_span_mm)?;
+    export_mesh_to_stl_binary(&calibrated)
 }
 
-/// Serializes an indexed triangle [`Mesh`] into standard binary little-endian `.stl` bytes (`84 + 50 * F`).
-pub fn export_mesh_to_stl_binary(mesh: &Mesh) -> Result<Vec<u8>, Error> {
+/// Serializes an indexed triangle mesh into standard binary little-endian `.stl` bytes (`84 + 50 * F`).
+///
+/// Stamps `UNITS=mm` exclusively when given a calibrated [`MillimeterMesh`]; unscaled [`Mesh`]
+/// inputs emit [`STL_UNITLESS_HEADER_TEXT`] without claiming millimeter coordinates.
+pub fn export_mesh_to_stl_binary<S: StlBinarySource + ?Sized>(
+    source: &S,
+) -> Result<Vec<u8>, Error> {
+    let (mesh, header_text) = source.stl_mesh_and_header(StlBinarySeal(()));
     validate_mesh_geometry(mesh, true)?;
     let (triangles, _) = mesh.indices.as_chunks::<3>();
     let face_count = u32::try_from(triangles.len())
@@ -81,8 +157,8 @@ pub fn export_mesh_to_stl_binary(mesh: &Mesh) -> Result<Vec<u8>, Error> {
 
     let mut out = Vec::with_capacity(84 + 50 * triangles.len());
     let mut header = [0_u8; 80];
-    let copy_len = STL_HEADER_TEXT.len().min(header.len());
-    header[..copy_len].copy_from_slice(&STL_HEADER_TEXT[..copy_len]);
+    let copy_len = header_text.len().min(header.len());
+    header[..copy_len].copy_from_slice(&header_text[..copy_len]);
     out.extend_from_slice(&header);
     out.extend_from_slice(&face_count.to_le_bytes());
 

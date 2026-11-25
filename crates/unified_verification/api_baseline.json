@@ -1,4 +1,878 @@
 {
+  "crates/00_foundation/math_scalars/src/aliases.rs": [
+    {
+      "signature": "impl < T : Scalar > Kiloparsecs < T > { pub fn from_meters (_ : Meters < T >) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar > Kiloparsecs < T > { pub fn to_meters (self) -> Meters < T > }"
+    },
+    {
+      "signature": "impl < T : Scalar > Kiloparsecs < T > { pub fn to_viewport (self , _ : T) -> ViewportLength < T > }"
+    },
+    {
+      "signature": "impl < T : Scalar > Millimeters < T > { pub fn from_meters (_ : Meters < T >) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar > Millimeters < T > { pub fn to_meters (self) -> Meters < T > }"
+    },
+    {
+      "signature": "impl < T : Scalar > ViewportLength < T > { pub fn to_kiloparsecs (self , _ : T) -> Kiloparsecs < T > }"
+    },
+    {
+      "signature": "pub const METERS_PER_KILOPARSEC : f64"
+    },
+    {
+      "signature": "pub type CubicMeters < T = f64 > = Quantity < T , DimVolume , SiFrame >"
+    },
+    {
+      "signature": "pub type DimensionlessVal < T = f64 > = Quantity < T , Dimensionless , SiFrame >"
+    },
+    {
+      "signature": "pub type Femtometers < T = f64 > = Quantity < T , DimLength , NuclearMeVFmFrame >"
+    },
+    {
+      "signature": "pub type FemtometersPerSecond < T = f64 > = Quantity < T , DimVelocity , NuclearMeVFmFrame >"
+    },
+    {
+      "signature": "pub type GyromagneticRatioSi < T = f64 > = Quantity < T , DimGyromagneticRatio , SiFrame >"
+    },
+    {
+      "signature": "pub type Hertz < T = f64 > = Quantity < T , DimFrequency , SiFrame >"
+    },
+    {
+      "signature": "pub type Joules < T = f64 > = Quantity < T , DimEnergy , SiFrame >"
+    },
+    {
+      "signature": "pub type JoulesPerKelvin < T = f64 > = Quantity < T , DimHeatCapacity , SiFrame >"
+    },
+    {
+      "signature": "pub type JoulesPerMole < T = f64 > = Quantity < T , DimMolarEnergy , SiFrame >"
+    },
+    {
+      "signature": "pub type JoulesPerMoleKelvin < T = f64 > = Quantity < T , DimMolarHeatCapacity , SiFrame >"
+    },
+    {
+      "signature": "pub type JoulesSecond < T = f64 > = Quantity < T , DimAction , SiFrame >"
+    },
+    {
+      "signature": "pub type Kilograms < T = f64 > = Quantity < T , DimMass , SiFrame >"
+    },
+    {
+      "signature": "pub type Kiloparsecs < T = f64 > = Quantity < T , DimLength , GalacticKpcFrame >"
+    },
+    {
+      "signature": "pub type MeV < T = f64 > = Quantity < T , DimEnergy , NuclearMeVFmFrame >"
+    },
+    {
+      "signature": "pub type MeVFm < T = f64 > = Quantity < T , DimEnergyLength , NuclearMeVFmFrame >"
+    },
+    {
+      "signature": "pub type MeVSecond < T = f64 > = Quantity < T , DimAction , NuclearMeVFmFrame >"
+    },
+    {
+      "signature": "pub type Meters < T = f64 > = Quantity < T , DimLength , SiFrame >"
+    },
+    {
+      "signature": "pub type MetersPerSecond < T = f64 > = Quantity < T , DimVelocity , SiFrame >"
+    },
+    {
+      "signature": "pub type Millimeters < T = f64 > = Quantity < T , DimLength , MillimeterFrame >"
+    },
+    {
+      "signature": "pub type Newtons < T = f64 > = Quantity < T , DimForce , SiFrame >"
+    },
+    {
+      "signature": "pub type Pascals < T = f64 > = Quantity < T , DimPressure , SiFrame >"
+    },
+    {
+      "signature": "pub type Seconds < T = f64 > = Quantity < T , DimTime , SiFrame >"
+    },
+    {
+      "signature": "pub type SiGravitationalConstant < T = f64 > = Quantity < T , DimGravitationalConstant , SiFrame >"
+    },
+    {
+      "signature": "pub type SquareMeters < T = f64 > = Quantity < T , DimArea , SiFrame >"
+    },
+    {
+      "signature": "pub type Tesla < T = f64 > = Quantity < T , DimMagneticFluxDensity , SiFrame >"
+    },
+    {
+      "signature": "pub type ViewportLength < T = f64 > = Quantity < T , DimLength , ViewportFrame >"
+    },
+    {
+      "signature": "pub type Watts < T = f64 > = Quantity < T , DimPower , SiFrame >"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/dim.rs": [
+    {
+      "signature": "pub struct Dim < L : TypeInt , M : TypeInt , T : TypeInt , I : TypeInt , Theta : TypeInt , N : TypeInt , J : TypeInt , >"
+    },
+    {
+      "signature": "pub trait AddDim < Rhs : DimSpec > : DimSpec"
+    },
+    {
+      "signature": "pub trait AddDim < Rhs : DimSpec > { type Output : DimSpec }"
+    },
+    {
+      "signature": "pub trait DimSpec : Copy + Clone + Debug + Default + PartialEq + Eq + Send + Sync + 'static"
+    },
+    {
+      "signature": "pub trait DimSpec { const I : i8 }"
+    },
+    {
+      "signature": "pub trait DimSpec { const J : i8 }"
+    },
+    {
+      "signature": "pub trait DimSpec { const L : i8 }"
+    },
+    {
+      "signature": "pub trait DimSpec { const M : i8 }"
+    },
+    {
+      "signature": "pub trait DimSpec { const N : i8 }"
+    },
+    {
+      "signature": "pub trait DimSpec { const T : i8 }"
+    },
+    {
+      "signature": "pub trait DimSpec { const THETA : i8 }"
+    },
+    {
+      "signature": "pub trait DimSpec { fn exponents () -> [i8 ; 7] }"
+    },
+    {
+      "signature": "pub trait HalfDim : DimSpec"
+    },
+    {
+      "signature": "pub trait HalfDim { type Output : DimSpec }"
+    },
+    {
+      "signature": "pub trait NegDim : DimSpec"
+    },
+    {
+      "signature": "pub trait NegDim { type Output : DimSpec }"
+    },
+    {
+      "signature": "pub trait SubDim < Rhs : DimSpec > : DimSpec"
+    },
+    {
+      "signature": "pub trait SubDim < Rhs : DimSpec > { type Output : DimSpec }"
+    },
+    {
+      "signature": "pub type DimAcceleration = Dim < P1 , Z0 , N2 , Z0 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimAction = Dim < P2 , P1 , N1 , Z0 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimAmount = Dim < Z0 , Z0 , Z0 , Z0 , Z0 , P1 , Z0 >"
+    },
+    {
+      "signature": "pub type DimArea = Dim < P2 , Z0 , Z0 , Z0 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimCurrent = Dim < Z0 , Z0 , Z0 , P1 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimEnergy = Dim < P2 , P1 , N2 , Z0 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimEnergyDensity = DimPressure"
+    },
+    {
+      "signature": "pub type DimEnergyLength = Dim < P3 , P1 , N2 , Z0 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimForce = Dim < P1 , P1 , N2 , Z0 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimFrequency = Dim < Z0 , Z0 , N1 , Z0 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimGravitationalConstant = Dim < P3 , N1 , N2 , Z0 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimGyromagneticRatio = Dim < Z0 , N1 , P1 , P1 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimHeatCapacity = Dim < P2 , P1 , N2 , Z0 , N1 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimLength = Dim < P1 , Z0 , Z0 , Z0 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimLuminousIntensity = Dim < Z0 , Z0 , Z0 , Z0 , Z0 , Z0 , P1 >"
+    },
+    {
+      "signature": "pub type DimMagneticFluxDensity = Dim < Z0 , P1 , N2 , N1 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimMass = Dim < Z0 , P1 , Z0 , Z0 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimMolarEnergy = Dim < P2 , P1 , N2 , Z0 , Z0 , N1 , Z0 >"
+    },
+    {
+      "signature": "pub type DimMolarHeatCapacity = Dim < P2 , P1 , N2 , Z0 , N1 , N1 , Z0 >"
+    },
+    {
+      "signature": "pub type DimPower = Dim < P2 , P1 , N3 , Z0 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimPressure = Dim < N1 , P1 , N2 , Z0 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimTemperature = Dim < Z0 , Z0 , Z0 , Z0 , P1 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimTime = Dim < Z0 , Z0 , P1 , Z0 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimVelocity = Dim < P1 , Z0 , N1 , Z0 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type DimVolume = Dim < P3 , Z0 , Z0 , Z0 , Z0 , Z0 , Z0 >"
+    },
+    {
+      "signature": "pub type Dimensionless = Dim < Z0 , Z0 , Z0 , Z0 , Z0 , Z0 , Z0 >"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/frame.rs": [
+    {
+      "signature": "pub struct GalacticKpcFrame"
+    },
+    {
+      "signature": "pub struct MillimeterFrame"
+    },
+    {
+      "signature": "pub struct NuclearMeVFmFrame"
+    },
+    {
+      "signature": "pub struct SiFrame"
+    },
+    {
+      "signature": "pub struct ViewportFrame"
+    },
+    {
+      "signature": "pub trait UnitFrame : Copy + Clone + Debug + Default + PartialEq + Eq + Send + Sync + 'static"
+    },
+    {
+      "signature": "pub trait UnitFrame { const NAME : & 'static str }"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/int.rs": [
+    {
+      "signature": "pub struct NInt < N : NonZeroNat >"
+    },
+    {
+      "signature": "pub struct PInt < N : NonZeroNat >"
+    },
+    {
+      "signature": "pub struct Succ < N : NonZeroNat >"
+    },
+    {
+      "signature": "pub struct U1"
+    },
+    {
+      "signature": "pub struct Z0"
+    },
+    {
+      "signature": "pub trait AddExp < Rhs : TypeInt > : TypeInt"
+    },
+    {
+      "signature": "pub trait AddExp < Rhs : TypeInt > { type Output : TypeInt }"
+    },
+    {
+      "signature": "pub trait AddNat < Rhs : NonZeroNat > : NonZeroNat"
+    },
+    {
+      "signature": "pub trait AddNat < Rhs : NonZeroNat > { type Output : NonZeroNat }"
+    },
+    {
+      "signature": "pub trait HalfExp : TypeInt"
+    },
+    {
+      "signature": "pub trait HalfExp { type Output : TypeInt }"
+    },
+    {
+      "signature": "pub trait HalfNat : NonZeroNat"
+    },
+    {
+      "signature": "pub trait HalfNat { type Output : NonZeroNat }"
+    },
+    {
+      "signature": "pub trait NegExp : TypeInt"
+    },
+    {
+      "signature": "pub trait NegExp { type Output : TypeInt }"
+    },
+    {
+      "signature": "pub trait NonZeroNat : Copy + Clone + Debug + Default + PartialEq + Eq + Send + Sync + 'static"
+    },
+    {
+      "signature": "pub trait NonZeroNat { const VALUE : i8 }"
+    },
+    {
+      "signature": "pub trait SubExp < Rhs : TypeInt > : TypeInt"
+    },
+    {
+      "signature": "pub trait SubExp < Rhs : TypeInt > { type Output : TypeInt }"
+    },
+    {
+      "signature": "pub trait SubNat < Rhs : NonZeroNat > : NonZeroNat"
+    },
+    {
+      "signature": "pub trait SubNat < Rhs : NonZeroNat > { type Output : TypeInt }"
+    },
+    {
+      "signature": "pub trait TypeInt : Copy + Clone + Debug + Default + PartialEq + Eq + Send + Sync + 'static"
+    },
+    {
+      "signature": "pub trait TypeInt { const EXPONENT : i8 }"
+    },
+    {
+      "signature": "pub type N1 = NInt < U1 >"
+    },
+    {
+      "signature": "pub type N2 = NInt < Nat2 >"
+    },
+    {
+      "signature": "pub type N3 = NInt < Nat3 >"
+    },
+    {
+      "signature": "pub type N4 = NInt < Nat4 >"
+    },
+    {
+      "signature": "pub type N5 = NInt < Nat5 >"
+    },
+    {
+      "signature": "pub type N6 = NInt < Nat6 >"
+    },
+    {
+      "signature": "pub type N7 = NInt < Nat7 >"
+    },
+    {
+      "signature": "pub type N8 = NInt < Nat8 >"
+    },
+    {
+      "signature": "pub type Nat2 = Succ < U1 >"
+    },
+    {
+      "signature": "pub type Nat3 = Succ < Nat2 >"
+    },
+    {
+      "signature": "pub type Nat4 = Succ < Nat3 >"
+    },
+    {
+      "signature": "pub type Nat5 = Succ < Nat4 >"
+    },
+    {
+      "signature": "pub type Nat6 = Succ < Nat5 >"
+    },
+    {
+      "signature": "pub type Nat7 = Succ < Nat6 >"
+    },
+    {
+      "signature": "pub type Nat8 = Succ < Nat7 >"
+    },
+    {
+      "signature": "pub type P1 = PInt < U1 >"
+    },
+    {
+      "signature": "pub type P2 = PInt < Nat2 >"
+    },
+    {
+      "signature": "pub type P3 = PInt < Nat3 >"
+    },
+    {
+      "signature": "pub type P4 = PInt < Nat4 >"
+    },
+    {
+      "signature": "pub type P5 = PInt < Nat5 >"
+    },
+    {
+      "signature": "pub type P6 = PInt < Nat6 >"
+    },
+    {
+      "signature": "pub type P7 = PInt < Nat7 >"
+    },
+    {
+      "signature": "pub type P8 = PInt < Nat8 >"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/lib.rs": [
+    {
+      "signature": "pub use aliases :: CubicMeters"
+    },
+    {
+      "signature": "pub use aliases :: DimensionlessVal"
+    },
+    {
+      "signature": "pub use aliases :: Femtometers"
+    },
+    {
+      "signature": "pub use aliases :: FemtometersPerSecond"
+    },
+    {
+      "signature": "pub use aliases :: GyromagneticRatioSi"
+    },
+    {
+      "signature": "pub use aliases :: Hertz"
+    },
+    {
+      "signature": "pub use aliases :: Joules"
+    },
+    {
+      "signature": "pub use aliases :: JoulesPerKelvin"
+    },
+    {
+      "signature": "pub use aliases :: JoulesPerMole"
+    },
+    {
+      "signature": "pub use aliases :: JoulesPerMoleKelvin"
+    },
+    {
+      "signature": "pub use aliases :: JoulesSecond"
+    },
+    {
+      "signature": "pub use aliases :: Kilograms"
+    },
+    {
+      "signature": "pub use aliases :: Kiloparsecs"
+    },
+    {
+      "signature": "pub use aliases :: METERS_PER_KILOPARSEC"
+    },
+    {
+      "signature": "pub use aliases :: MeV"
+    },
+    {
+      "signature": "pub use aliases :: MeVFm"
+    },
+    {
+      "signature": "pub use aliases :: MeVSecond"
+    },
+    {
+      "signature": "pub use aliases :: Meters"
+    },
+    {
+      "signature": "pub use aliases :: MetersPerSecond"
+    },
+    {
+      "signature": "pub use aliases :: Millimeters"
+    },
+    {
+      "signature": "pub use aliases :: Newtons"
+    },
+    {
+      "signature": "pub use aliases :: Pascals"
+    },
+    {
+      "signature": "pub use aliases :: Seconds"
+    },
+    {
+      "signature": "pub use aliases :: SiGravitationalConstant"
+    },
+    {
+      "signature": "pub use aliases :: SquareMeters"
+    },
+    {
+      "signature": "pub use aliases :: Tesla"
+    },
+    {
+      "signature": "pub use aliases :: ViewportLength"
+    },
+    {
+      "signature": "pub use aliases :: Watts"
+    },
+    {
+      "signature": "pub use dim :: AddDim"
+    },
+    {
+      "signature": "pub use dim :: Dim"
+    },
+    {
+      "signature": "pub use dim :: DimAcceleration"
+    },
+    {
+      "signature": "pub use dim :: DimAction"
+    },
+    {
+      "signature": "pub use dim :: DimAmount"
+    },
+    {
+      "signature": "pub use dim :: DimArea"
+    },
+    {
+      "signature": "pub use dim :: DimCurrent"
+    },
+    {
+      "signature": "pub use dim :: DimEnergy"
+    },
+    {
+      "signature": "pub use dim :: DimEnergyDensity"
+    },
+    {
+      "signature": "pub use dim :: DimEnergyLength"
+    },
+    {
+      "signature": "pub use dim :: DimForce"
+    },
+    {
+      "signature": "pub use dim :: DimFrequency"
+    },
+    {
+      "signature": "pub use dim :: DimGravitationalConstant"
+    },
+    {
+      "signature": "pub use dim :: DimGyromagneticRatio"
+    },
+    {
+      "signature": "pub use dim :: DimHeatCapacity"
+    },
+    {
+      "signature": "pub use dim :: DimLength"
+    },
+    {
+      "signature": "pub use dim :: DimLuminousIntensity"
+    },
+    {
+      "signature": "pub use dim :: DimMagneticFluxDensity"
+    },
+    {
+      "signature": "pub use dim :: DimMass"
+    },
+    {
+      "signature": "pub use dim :: DimMolarEnergy"
+    },
+    {
+      "signature": "pub use dim :: DimMolarHeatCapacity"
+    },
+    {
+      "signature": "pub use dim :: DimPower"
+    },
+    {
+      "signature": "pub use dim :: DimPressure"
+    },
+    {
+      "signature": "pub use dim :: DimSpec"
+    },
+    {
+      "signature": "pub use dim :: DimTemperature"
+    },
+    {
+      "signature": "pub use dim :: DimTime"
+    },
+    {
+      "signature": "pub use dim :: DimVelocity"
+    },
+    {
+      "signature": "pub use dim :: DimVolume"
+    },
+    {
+      "signature": "pub use dim :: Dimensionless"
+    },
+    {
+      "signature": "pub use dim :: HalfDim"
+    },
+    {
+      "signature": "pub use dim :: NegDim"
+    },
+    {
+      "signature": "pub use dim :: SubDim"
+    },
+    {
+      "signature": "pub use frame :: GalacticKpcFrame"
+    },
+    {
+      "signature": "pub use frame :: MillimeterFrame"
+    },
+    {
+      "signature": "pub use frame :: NuclearMeVFmFrame"
+    },
+    {
+      "signature": "pub use frame :: SiFrame"
+    },
+    {
+      "signature": "pub use frame :: UnitFrame"
+    },
+    {
+      "signature": "pub use frame :: ViewportFrame"
+    },
+    {
+      "signature": "pub use int :: AddExp"
+    },
+    {
+      "signature": "pub use int :: HalfExp"
+    },
+    {
+      "signature": "pub use int :: N1"
+    },
+    {
+      "signature": "pub use int :: N2"
+    },
+    {
+      "signature": "pub use int :: N3"
+    },
+    {
+      "signature": "pub use int :: N4"
+    },
+    {
+      "signature": "pub use int :: N5"
+    },
+    {
+      "signature": "pub use int :: N6"
+    },
+    {
+      "signature": "pub use int :: N7"
+    },
+    {
+      "signature": "pub use int :: N8"
+    },
+    {
+      "signature": "pub use int :: NInt"
+    },
+    {
+      "signature": "pub use int :: Nat2"
+    },
+    {
+      "signature": "pub use int :: Nat3"
+    },
+    {
+      "signature": "pub use int :: Nat4"
+    },
+    {
+      "signature": "pub use int :: Nat5"
+    },
+    {
+      "signature": "pub use int :: Nat6"
+    },
+    {
+      "signature": "pub use int :: Nat7"
+    },
+    {
+      "signature": "pub use int :: Nat8"
+    },
+    {
+      "signature": "pub use int :: NegExp"
+    },
+    {
+      "signature": "pub use int :: NonZeroNat"
+    },
+    {
+      "signature": "pub use int :: P1"
+    },
+    {
+      "signature": "pub use int :: P2"
+    },
+    {
+      "signature": "pub use int :: P3"
+    },
+    {
+      "signature": "pub use int :: P4"
+    },
+    {
+      "signature": "pub use int :: P5"
+    },
+    {
+      "signature": "pub use int :: P6"
+    },
+    {
+      "signature": "pub use int :: P7"
+    },
+    {
+      "signature": "pub use int :: P8"
+    },
+    {
+      "signature": "pub use int :: PInt"
+    },
+    {
+      "signature": "pub use int :: SubExp"
+    },
+    {
+      "signature": "pub use int :: Succ"
+    },
+    {
+      "signature": "pub use int :: TypeInt"
+    },
+    {
+      "signature": "pub use int :: U1"
+    },
+    {
+      "signature": "pub use int :: Z0"
+    },
+    {
+      "signature": "pub use quantity :: Quantity"
+    },
+    {
+      "signature": "pub use scalar :: Scalar"
+    },
+    {
+      "signature": "pub use temperature :: CELSIUS_ZERO_KELVIN_OFFSET"
+    },
+    {
+      "signature": "pub use temperature :: Celsius"
+    },
+    {
+      "signature": "pub use temperature :: Kelvin"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/quantity.rs": [
+    {
+      "signature": "impl < T , D : DimSpec , F : UnitFrame > Quantity < T , D , F > { pub const fn new (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T , D : DimSpec , F : UnitFrame > Quantity < T , D , F > { pub fn into_inner (self) -> T }"
+    },
+    {
+      "signature": "impl < T : Copy , D : DimSpec , F : UnitFrame > Quantity < T , D , F > { pub const fn get (self) -> T }"
+    },
+    {
+      "signature": "impl < T : Copy , D : DimSpec , F : UnitFrame > Quantity < T , D , F > { pub const fn value (& self) -> T }"
+    },
+    {
+      "signature": "impl < T : Scalar , D : DimSpec , F : UnitFrame > Quantity < T , D , F > { pub const ZERO : Self }"
+    },
+    {
+      "signature": "impl < T : Scalar , D : DimSpec , F : UnitFrame > Quantity < T , D , F > { pub fn abs (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar , D : DimSpec , F : UnitFrame > Quantity < T , D , F > { pub fn clamp (self , _ : Self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar , D : DimSpec , F : UnitFrame > Quantity < T , D , F > { pub fn is_finite (self) -> bool }"
+    },
+    {
+      "signature": "impl < T : Scalar , D : DimSpec , F : UnitFrame > Quantity < T , D , F > { pub fn max (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar , D : DimSpec , F : UnitFrame > Quantity < T , D , F > { pub fn min (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar , D : DimSpec , F : UnitFrame > Quantity < T , D , F > { pub fn recip (self) -> Quantity < T , D :: Output , F > where D : NegDim , }"
+    },
+    {
+      "signature": "impl < T : Scalar , D : DimSpec , F : UnitFrame > Quantity < T , D , F > { pub fn sqrt (self) -> Quantity < T , D :: Output , F > where D : HalfDim , }"
+    },
+    {
+      "signature": "impl < T : Scalar , F : UnitFrame > Quantity < T , Dimensionless , F > { pub const ONE : Self }"
+    },
+    {
+      "signature": "impl < T : Scalar , F : UnitFrame > Quantity < T , Dimensionless , F > { pub fn cos (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar , F : UnitFrame > Quantity < T , Dimensionless , F > { pub fn exp (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar , F : UnitFrame > Quantity < T , Dimensionless , F > { pub fn ln (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar , F : UnitFrame > Quantity < T , Dimensionless , F > { pub fn powf (self , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar , F : UnitFrame > Quantity < T , Dimensionless , F > { pub fn sin (self) -> Self }"
+    },
+    {
+      "signature": "pub struct Quantity < T , D : DimSpec , F : UnitFrame >"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/scalar.rs": [
+    {
+      "signature": "pub trait Scalar : Copy + Clone + PartialEq + PartialOrd + Debug + Default + Send + Sync + 'static + Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + Div < Output = Self > + Neg < Output = Self > + AddAssign + SubAssign + MulAssign + DivAssign"
+    },
+    {
+      "signature": "pub trait Scalar { const EPSILON : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const HALF : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const ONE : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const PI : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const TAU : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const TWO : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const ZERO : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn abs (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn cos (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn exp (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn from_f64 (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn from_usize (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn is_finite (self) -> bool }"
+    },
+    {
+      "signature": "pub trait Scalar { fn ln (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn max (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn min (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn powf (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn sin (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn sqrt (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn to_f64 (self) -> f64 }"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/temperature.rs": [
+    {
+      "signature": "impl < T : Copy > Celsius < T > { pub const fn get (self) -> T }"
+    },
+    {
+      "signature": "impl < T : Copy > Celsius < T > { pub const fn new (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : Copy > Celsius < T > { pub const fn value (& self) -> T }"
+    },
+    {
+      "signature": "impl < T : Scalar > Celsius < T > { pub fn clamp (self , _ : Self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar > Celsius < T > { pub fn from_kelvin (_ : Kelvin < T >) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar > Celsius < T > { pub fn is_finite (self) -> bool }"
+    },
+    {
+      "signature": "impl < T : Scalar > Celsius < T > { pub fn to_kelvin (self) -> Kelvin < T > }"
+    },
+    {
+      "signature": "pub const CELSIUS_ZERO_KELVIN_OFFSET : f64"
+    },
+    {
+      "signature": "pub struct Celsius < T = f64 >"
+    },
+    {
+      "signature": "pub type Kelvin < T = f64 > = Quantity < T , DimTemperature , SiFrame >"
+    }
+  ],
   "crates/02_engines/engine_linalg/src/cholesky.rs": [
     {
       "signature": "pub const fn cholesky_semidefinite_workspace_len (_ : usize) -> usize"
@@ -2240,6 +3114,9 @@
       "signature": "impl ElectrochemicalAgingModel { pub const fn sei_rate (& self) -> f64 }"
     },
     {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn temperature (& self) -> Celsius }"
+    },
+    {
       "signature": "impl ElectrochemicalAgingModel { pub const fn temperature_c (& self) -> f64 }"
     },
     {
@@ -2276,6 +3153,9 @@
       "signature": "impl ElectrochemicalAgingModel { pub fn temperature_k (& self) -> f64 }"
     },
     {
+      "signature": "impl ElectrochemicalAgingModel { pub fn temperature_kelvin (& self) -> Kelvin }"
+    },
+    {
       "signature": "impl ElectrochemicalAgingModel { pub fn with_c_rate (self , _ : f64) -> Self }"
     },
     {
@@ -2289,6 +3169,9 @@
     },
     {
       "signature": "impl ElectrochemicalAgingModel { pub fn with_sei_rate (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_temperature (self , _ : Celsius) -> Self }"
     },
     {
       "signature": "impl ElectrochemicalAgingModel { pub fn with_temperature_c (self , _ : f64) -> Self }"
@@ -2312,7 +3195,7 @@
       "signature": "pub const CELSIUS_TO_KELVIN : f64"
     },
     {
-      "signature": "pub const GAS_CONSTANT_R : f64"
+      "signature": "pub const GAS_CONSTANT_R : math_scalars :: JoulesPerMoleKelvin"
     },
     {
       "signature": "pub const MAX_C_RATE : f64"
@@ -2333,7 +3216,10 @@
       "signature": "pub const MIN_TEMPERATURE_C : f64"
     },
     {
-      "signature": "pub const REFERENCE_TEMPERATURE_K : f64"
+      "signature": "pub const REFERENCE_TEMPERATURE_K : Kelvin"
+    },
+    {
+      "signature": "pub const SEI_REFERENCE_TIME : Seconds"
     },
     {
       "signature": "pub struct ElectrochemicalAgingModel"
@@ -2391,6 +3277,12 @@
   ],
   "crates/domain_applied/src/applied/battery_degradation/types.rs": [
     {
+      "signature": "impl Capacity { pub const fn get (self) -> f64 }"
+    },
+    {
+      "signature": "impl Capacity { pub const fn value (& self) -> f64 }"
+    },
+    {
       "signature": "impl Capacity { pub fn as_f64 (& self) -> f64 }"
     },
     {
@@ -2400,6 +3292,12 @@
       "signature": "impl Capacity { pub fn new_clamped (_ : f64) -> Self }"
     },
     {
+      "signature": "impl Cycles { pub const fn get (self) -> f64 }"
+    },
+    {
+      "signature": "impl Cycles { pub const fn value (& self) -> f64 }"
+    },
+    {
       "signature": "impl Cycles { pub fn as_f64 (& self) -> f64 }"
     },
     {
@@ -2407,6 +3305,12 @@
     },
     {
       "signature": "impl Cycles { pub fn new_clamped (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl DepthOfDischarge { pub const fn get (self) -> f64 }"
+    },
+    {
+      "signature": "impl DepthOfDischarge { pub const fn value (& self) -> f64 }"
     },
     {
       "signature": "impl DepthOfDischarge { pub fn as_f64 (& self) -> f64 }"
@@ -2757,25 +3661,16 @@
       "signature": "impl GroupData { pub fn variance (& self) -> f64 }"
     },
     {
-      "signature": "impl SurvivalTime { pub fn abs (& self) -> Result < Self , ClinicalTrialError > }"
+      "signature": "impl SurvivalTime { pub const fn get (self) -> f64 }"
+    },
+    {
+      "signature": "impl SurvivalTime { pub const fn value (& self) -> f64 }"
     },
     {
       "signature": "impl SurvivalTime { pub fn as_f64 (& self) -> f64 }"
     },
     {
-      "signature": "impl SurvivalTime { pub fn exp (& self) -> Result < Self , ClinicalTrialError > }"
-    },
-    {
-      "signature": "impl SurvivalTime { pub fn ln (& self) -> Result < Self , ClinicalTrialError > }"
-    },
-    {
       "signature": "impl SurvivalTime { pub fn new (_ : f64) -> Result < Self , ClinicalTrialError > }"
-    },
-    {
-      "signature": "impl SurvivalTime { pub fn powf (& self , _ : f64) -> Result < Self , ClinicalTrialError > }"
-    },
-    {
-      "signature": "impl SurvivalTime { pub fn sqrt (& self) -> Result < Self , ClinicalTrialError > }"
     },
     {
       "signature": "pub enum ClinicalTrialError"
@@ -5715,6 +6610,15 @@
       "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : SpatialDiffusion < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , D , S > { pub fn step (& mut self , _ : f64) }"
     },
     {
+      "signature": "impl DiffusionCoeff { pub const fn get (self) -> f64 }"
+    },
+    {
+      "signature": "impl DiffusionCoeff { pub const fn new (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl DiffusionCoeff { pub const fn value (self) -> f64 }"
+    },
+    {
       "signature": "impl TuringSystem < 2 , SchnakenbergKinetics , FiniteDifference1D , FusedEulerSolver > { pub fn new (_ : Dimension , _ : DiffusionCoeff , _ : DiffusionCoeff , _ : StepSize) -> Self }"
     },
     {
@@ -7315,6 +8219,12 @@
       "signature": "pub mod __doctest_facade { pub use domain_applied :: applied }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub use math_scalars as scalars }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use math_scalars }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: ast }"
     },
     {
@@ -7430,16 +8340,16 @@
   ],
   "crates/domain_physics/src/physics/astrophysics/halo_lensing.rs": [
     {
-      "signature": "pub fn halo_lens_deflection_and_jacobian (_ : Vector2 < f64 > , _ : Option < & BaryonicDiskConfig > , _ : & HaloProfile , _ : f64 ,) -> (Vector2 < f64 > , Matrix2 < f64 > , ThinLensSample)"
+      "signature": "pub fn halo_lens_deflection_and_jacobian (_ : Vector2 < Kiloparsecs > , _ : Option < & BaryonicDiskConfig > , _ : & HaloProfile , _ : f64 ,) -> (Vector2 < Kiloparsecs > , Matrix2 < f64 > , ThinLensSample)"
     },
     {
-      "signature": "pub fn halo_thin_lens_sample (_ : f64 , _ : Option < & BaryonicDiskConfig > , _ : & HaloProfile , _ : f64 ,) -> ThinLensSample"
+      "signature": "pub fn halo_thin_lens_sample (_ : Kiloparsecs , _ : Option < & BaryonicDiskConfig > , _ : & HaloProfile , _ : f64 ,) -> ThinLensSample"
     },
     {
-      "signature": "pub fn sample_halo_lensing_into (_ : f64 , _ : f64 , _ : Option < & BaryonicDiskConfig > , _ : & HaloProfile , _ : f64 , _ : & mut [ThinLensSample] ,)"
+      "signature": "pub fn sample_halo_lensing_into (_ : Kiloparsecs , _ : Kiloparsecs , _ : Option < & BaryonicDiskConfig > , _ : & HaloProfile , _ : f64 , _ : & mut [ThinLensSample] ,)"
     },
     {
-      "signature": "pub fn tangential_critical_radius_kpc (_ : Option < & BaryonicDiskConfig > , _ : & HaloProfile , _ : f64 , _ : f64 ,) -> Option < f64 >"
+      "signature": "pub fn tangential_critical_radius_kpc (_ : Option < & BaryonicDiskConfig > , _ : & HaloProfile , _ : f64 , _ : Kiloparsecs ,) -> Option < Kiloparsecs >"
     }
   ],
   "crates/domain_physics/src/physics/astrophysics/lensing.rs": [
@@ -7832,7 +8742,7 @@
       "signature": "pub const METERS_PER_KPC : f64"
     },
     {
-      "signature": "pub const MIN_GALACTOCENTRIC_RADIUS_KPC : f64"
+      "signature": "pub const MIN_GALACTOCENTRIC_RADIUS_KPC : Kiloparsecs"
     },
     {
       "signature": "pub enum DwarfMorphology"
@@ -7847,16 +8757,16 @@
       "signature": "pub fn baryons_from_distance < M : GalaxyModel > (_ : & M , _ : Mpc , _ : f64 , _ : f64 ,) -> BaryonicDiskConfig"
     },
     {
-      "signature": "pub fn clamp_radius_kpc (_ : f64) -> f64"
+      "signature": "pub fn clamp_radius_kpc (_ : Kiloparsecs) -> Kiloparsecs"
     },
     {
-      "signature": "pub fn decompose_rotation_curve (_ : f64 , _ : & BaryonicDiskConfig , _ : & HaloProfile ,) -> VelocityDecomposition"
+      "signature": "pub fn decompose_rotation_curve (_ : Kiloparsecs , _ : & BaryonicDiskConfig , _ : & HaloProfile ,) -> VelocityDecomposition"
     },
     {
-      "signature": "pub fn sample_rotation_curve_into (_ : f64 , _ : f64 , _ : & BaryonicDiskConfig , _ : & HaloProfile , _ : & mut [VelocityDecomposition] ,)"
+      "signature": "pub fn sample_rotation_curve_into (_ : Kiloparsecs , _ : Kiloparsecs , _ : & BaryonicDiskConfig , _ : & HaloProfile , _ : & mut [VelocityDecomposition] ,)"
     },
     {
-      "signature": "pub fn total_gravitational_potential (_ : f64 , _ : & BaryonicDiskConfig , _ : & HaloProfile ,) -> f64"
+      "signature": "pub fn total_gravitational_potential (_ : Kiloparsecs , _ : & BaryonicDiskConfig , _ : & HaloProfile ,) -> f64"
     },
     {
       "signature": "pub struct BaryonicDiskConfig"
@@ -8742,16 +9652,16 @@
       "signature": "pub use general_relativity :: photon_sphere_radius"
     },
     {
-      "signature": "pub use math_commons :: constants :: C"
+      "signature": "pub use math_commons :: constants :: si :: C"
     },
     {
-      "signature": "pub use math_commons :: constants :: G"
+      "signature": "pub use math_commons :: constants :: si :: G"
     },
     {
-      "signature": "pub use math_commons :: constants :: SIGMA_T"
+      "signature": "pub use math_commons :: constants :: si :: SIGMA_T"
     },
     {
-      "signature": "pub use math_commons :: constants :: SOLAR_MASS"
+      "signature": "pub use math_commons :: constants :: si :: SOLAR_MASS"
     },
     {
       "signature": "pub use observer :: apparent_superluminal_beta"
@@ -9142,7 +10052,7 @@
       "signature": "pub use geometry :: SphericalPoint"
     },
     {
-      "signature": "pub use math_commons :: constants :: C"
+      "signature": "pub use math_commons :: constants :: si :: C"
     },
     {
       "signature": "pub use mimo :: Beamformer"
@@ -9349,19 +10259,19 @@
   ],
   "crates/domain_physics/src/physics/mri/proton.rs": [
     {
-      "signature": "pub const GYROMAGNETIC_RATIO : f64"
-    },
-    {
-      "signature": "pub const H_BAR : f64"
-    },
-    {
-      "signature": "pub const K_B : f64"
-    },
-    {
       "signature": "pub fn boltzmann_ratio (_ : f64 , _ : f64) -> Result < f64 , StatMechError >"
     },
     {
       "signature": "pub fn larmor_frequency (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub use math_commons :: constants :: si :: H_BAR"
+    },
+    {
+      "signature": "pub use math_commons :: constants :: si :: K_B"
+    },
+    {
+      "signature": "pub use math_commons :: constants :: si :: PROTON_GYROMAGNETIC_RATIO as GYROMAGNETIC_RATIO"
     }
   ],
   "crates/domain_physics/src/physics/mri/reconstruction.rs": [
@@ -9421,7 +10331,7 @@
       "signature": "pub fn calculate_remaining (_ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , NuclearError >"
     },
     {
-      "signature": "pub fn gamow_factor (_ : AtomicNumber , _ : AtomicNumber , _ : f64 ,) -> Result < f64 , NuclearError >"
+      "signature": "pub fn gamow_factor (_ : AtomicNumber , _ : AtomicNumber , _ : FemtometersPerSecond ,) -> Result < f64 , NuclearError >"
     }
   ],
   "crates/domain_physics/src/physics/nuclear/mod.rs": [
@@ -10625,46 +11535,37 @@
   ],
   "crates/domain_physics/src/physics/solid_state/types.rs": [
     {
+      "signature": "impl ElectronVolts { pub const fn as_f64 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectronVolts { pub const fn get (self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectronVolts { pub const fn new (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectronVolts { pub const fn value (& self) -> f64 }"
+    },
+    {
       "signature": "impl ElectronVolts { pub fn abs (self) -> Self }"
     },
     {
-      "signature": "impl ElectronVolts { pub fn as_f64 (& self) -> f64 }"
+      "signature": "impl ElectronVolts { pub fn hypot (self , _ : Self) -> Self }"
     },
     {
-      "signature": "impl ElectronVolts { pub fn exp (& self) -> Self }"
+      "signature": "impl Kelvin { pub const fn as_f64 (& self) -> f64 }"
     },
     {
-      "signature": "impl ElectronVolts { pub fn ln (& self) -> Self }"
+      "signature": "impl Kelvin { pub const fn get (self) -> f64 }"
     },
     {
-      "signature": "impl ElectronVolts { pub fn new (_ : f64) -> Self }"
+      "signature": "impl Kelvin { pub const fn new (_ : f64) -> Self }"
     },
     {
-      "signature": "impl ElectronVolts { pub fn powf (& self , _ : f64) -> Self }"
-    },
-    {
-      "signature": "impl ElectronVolts { pub fn sqrt (& self) -> Self }"
+      "signature": "impl Kelvin { pub const fn value (& self) -> f64 }"
     },
     {
       "signature": "impl Kelvin { pub fn abs (& self) -> Self }"
-    },
-    {
-      "signature": "impl Kelvin { pub fn as_f64 (& self) -> f64 }"
-    },
-    {
-      "signature": "impl Kelvin { pub fn exp (& self) -> Self }"
-    },
-    {
-      "signature": "impl Kelvin { pub fn ln (& self) -> Self }"
-    },
-    {
-      "signature": "impl Kelvin { pub fn new (_ : f64) -> Self }"
-    },
-    {
-      "signature": "impl Kelvin { pub fn powf (& self , _ : f64) -> Self }"
-    },
-    {
-      "signature": "impl Kelvin { pub fn sqrt (& self) -> Self }"
     },
     {
       "signature": "pub struct ElectronVolts"
@@ -12284,61 +13185,79 @@
   ],
   "crates/math_commons/src/constants.rs": [
     {
-      "signature": "pub const C : f64"
-    },
-    {
       "signature": "pub const EPSILON : f64"
-    },
-    {
-      "signature": "pub const E_SQUARED : f64"
-    },
-    {
-      "signature": "pub const G : f64"
-    },
-    {
-      "signature": "pub const HBAR_C : f64"
-    },
-    {
-      "signature": "pub const LIGHT_SPEED : f64"
     },
     {
       "signature": "pub const LN_0_7 : f64"
     },
     {
-      "signature": "pub const NEUTRON_MASS : f64"
+      "signature": "pub mod nuclear"
     },
     {
-      "signature": "pub const PROTON_MASS : f64"
+      "signature": "pub mod nuclear { pub const E_SQUARED : MeVFm }"
     },
     {
-      "signature": "pub const SIGMA_T : f64"
+      "signature": "pub mod nuclear { pub const HBAR_C : MeVFm }"
     },
     {
-      "signature": "pub const SOLAR_MASS : f64"
+      "signature": "pub mod nuclear { pub const LIGHT_SPEED : FemtometersPerSecond }"
     },
     {
-      "signature": "pub mod liquid_drop_constants"
+      "signature": "pub mod nuclear { pub const NEUTRON_MASS : MeV }"
     },
     {
-      "signature": "pub mod liquid_drop_constants { pub const A_C : f64 }"
+      "signature": "pub mod nuclear { pub const PROTON_MASS : MeV }"
     },
     {
-      "signature": "pub mod liquid_drop_constants { pub const A_S : f64 }"
+      "signature": "pub mod nuclear { pub mod liquid_drop_constants { pub const A_C : MeV } }"
     },
     {
-      "signature": "pub mod liquid_drop_constants { pub const A_SYM : f64 }"
+      "signature": "pub mod nuclear { pub mod liquid_drop_constants { pub const A_S : MeV } }"
     },
     {
-      "signature": "pub mod liquid_drop_constants { pub const A_V : f64 }"
+      "signature": "pub mod nuclear { pub mod liquid_drop_constants { pub const A_SYM : MeV } }"
     },
     {
-      "signature": "pub mod liquid_drop_constants { pub const DELTA_COEFF : f64 }"
+      "signature": "pub mod nuclear { pub mod liquid_drop_constants { pub const A_V : MeV } }"
     },
     {
-      "signature": "pub mod property_constants"
+      "signature": "pub mod nuclear { pub mod liquid_drop_constants { pub const DELTA_COEFF : MeV } }"
     },
     {
-      "signature": "pub mod property_constants { pub const R0 : f64 }"
+      "signature": "pub mod nuclear { pub mod liquid_drop_constants }"
+    },
+    {
+      "signature": "pub mod nuclear { pub mod property_constants { pub const R0 : Femtometers } }"
+    },
+    {
+      "signature": "pub mod nuclear { pub mod property_constants }"
+    },
+    {
+      "signature": "pub mod si"
+    },
+    {
+      "signature": "pub mod si { pub const C : MetersPerSecond }"
+    },
+    {
+      "signature": "pub mod si { pub const G : SiGravitationalConstant }"
+    },
+    {
+      "signature": "pub mod si { pub const GAS_CONSTANT_R : JoulesPerMoleKelvin }"
+    },
+    {
+      "signature": "pub mod si { pub const H_BAR : JoulesSecond }"
+    },
+    {
+      "signature": "pub mod si { pub const K_B : JoulesPerKelvin }"
+    },
+    {
+      "signature": "pub mod si { pub const PROTON_GYROMAGNETIC_RATIO : GyromagneticRatioSi }"
+    },
+    {
+      "signature": "pub mod si { pub const SIGMA_T : SquareMeters }"
+    },
+    {
+      "signature": "pub mod si { pub const SOLAR_MASS : Kilograms }"
     }
   ],
   "crates/math_commons/src/error.rs": [
@@ -12637,6 +13556,18 @@
       "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn zero_fill (& mut self) }"
     },
     {
+      "signature": "impl StepSize { pub const fn get (self) -> f64 }"
+    },
+    {
+      "signature": "impl StepSize { pub const fn new (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl StepSize { pub const fn value (& self) -> f64 }"
+    },
+    {
+      "signature": "impl StepSize { pub fn is_finite (self) -> bool }"
+    },
+    {
       "signature": "pub fn fill_standard_normal < T : Scalar , R : RngCore + ? Sized > (_ : & mut [T] , _ : & mut R)"
     },
     {
@@ -12667,64 +13598,7 @@
       "signature": "pub struct StepSize"
     },
     {
-      "signature": "pub trait Scalar : Copy + Clone + PartialEq + PartialOrd + Debug + Default + Send + Sync + 'static + Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + Div < Output = Self > + Neg < Output = Self > + AddAssign + SubAssign + MulAssign + DivAssign"
-    },
-    {
-      "signature": "pub trait Scalar { const EPSILON : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const HALF : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const ONE : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const PI : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const TAU : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const TWO : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const ZERO : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn abs (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn cos (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn exp (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn from_f64 (_ : f64) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn from_usize (_ : usize) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn is_finite (self) -> bool }"
-    },
-    {
-      "signature": "pub trait Scalar { fn ln (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn max (self , _ : Self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn min (self , _ : Self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn sin (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn sqrt (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn to_f64 (self) -> f64 }"
+      "signature": "pub use math_scalars :: Scalar"
     }
   ],
   "crates/math_commons/src/poi/extrema.rs": [
@@ -12843,15 +13717,6 @@
   "crates/math_commons/src/primitives.rs": [
     {
       "signature": "impl UnitInterval { pub fn complement (& self) -> f64 }"
-    },
-    {
-      "signature": "pub fn bounded_exp (_ : f64) -> f64"
-    },
-    {
-      "signature": "pub fn bounded_ln (_ : f64) -> f64"
-    },
-    {
-      "signature": "pub fn bounded_powf (_ : f64 , _ : f64) -> f64"
     },
     {
       "signature": "pub fn bounded_sqrt (_ : f64) -> f64"
@@ -13104,6 +13969,24 @@
   ],
   "crates/oxidize_core/src/mesh/export_stl.rs": [
     {
+      "signature": "impl MillimeterMesh { pub const fn mesh (& self) -> & Mesh }"
+    },
+    {
+      "signature": "impl MillimeterMesh { pub const fn span_mm (& self) -> math_scalars :: Millimeters < f32 > }"
+    },
+    {
+      "signature": "impl MillimeterMesh { pub fn from_scaled (_ : Mesh , _ : f32) -> Result < Self , Error > }"
+    },
+    {
+      "signature": "impl MillimeterMesh { pub fn from_scaled_quantity (_ : Mesh , _ : math_scalars :: Millimeters < f32 > ,) -> Result < Self , Error > }"
+    },
+    {
+      "signature": "impl MillimeterMesh { pub fn into_mesh (self) -> Mesh }"
+    },
+    {
+      "signature": "pub const DEFAULT_EXPORT_SPAN_MM : f32"
+    },
+    {
       "signature": "pub const MAX_EXPORT_SPAN_MM : f32"
     },
     {
@@ -13113,10 +13996,13 @@
       "signature": "pub const STL_HEADER_TEXT : & [u8]"
     },
     {
+      "signature": "pub const STL_UNITLESS_HEADER_TEXT : & [u8]"
+    },
+    {
       "signature": "pub fn export_mesh_to_stl_ascii (_ : & Mesh) -> Result < String , Error >"
     },
     {
-      "signature": "pub fn export_mesh_to_stl_binary (_ : & Mesh) -> Result < Vec < u8 > , Error >"
+      "signature": "pub fn export_mesh_to_stl_binary < S : StlBinarySource + ? Sized > (_ : & S ,) -> Result < Vec < u8 > , Error >"
     },
     {
       "signature": "pub fn export_mesh_to_stl_binary_scaled (_ : & Mesh , _ : f32 ,) -> Result < Vec < u8 > , Error >"
@@ -13126,6 +14012,18 @@
     },
     {
       "signature": "pub fn scale_mesh_to_millimeters (_ : & mut Mesh , _ : f32) -> Result < () , Error >"
+    },
+    {
+      "signature": "pub struct MillimeterMesh"
+    },
+    {
+      "signature": "pub struct StlBinarySeal"
+    },
+    {
+      "signature": "pub trait StlBinarySource"
+    },
+    {
+      "signature": "pub trait StlBinarySource { fn stl_mesh_and_header (& self , _ : StlBinarySeal) -> (& Mesh , & 'static [u8]) }"
     }
   ],
   "crates/oxidize_core/src/mesh/mod.rs": [
@@ -22560,6 +23458,12 @@
       "signature": "pub use math_commons :: wigner"
     },
     {
+      "signature": "pub use math_scalars :: self"
+    },
+    {
+      "signature": "pub use math_scalars :: self as scalars"
+    },
+    {
       "signature": "pub use nalgebra"
     },
     {
@@ -22637,6 +23541,24 @@
       "signature": "pub use math_commons :: series :: Sample2D"
     },
     {
+      "signature": "pub use math_scalars :: Celsius"
+    },
+    {
+      "signature": "pub use math_scalars :: Kelvin"
+    },
+    {
+      "signature": "pub use math_scalars :: Kiloparsecs"
+    },
+    {
+      "signature": "pub use math_scalars :: Quantity"
+    },
+    {
+      "signature": "pub use math_scalars :: Scalar"
+    },
+    {
+      "signature": "pub use math_scalars :: SiFrame"
+    },
+    {
       "signature": "pub use nalgebra :: DMatrix"
     },
     {
@@ -22650,6 +23572,9 @@
     },
     {
       "signature": "pub use oxidize_core :: mesh :: Mesh"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: MillimeterMesh"
     },
     {
       "signature": "pub use oxidize_core :: mesh :: Point3D"

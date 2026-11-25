@@ -1,0 +1,21 @@
+[package]
+name = "math_scalars"
+version.workspace = true
+edition = "2024"
+description = "Zero-cost #![no_std] type-level SI base exponent quantities, unit frames, and real Scalar trait"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = []
+serde = ["dep:serde"]
+
+[dependencies]
+libm = { workspace = true }
+serde = { workspace = true, default-features = false, features = ["derive"], optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+verified_engine = { path = "../../verified_engine" }
+
+[lints]
+workspace = true
