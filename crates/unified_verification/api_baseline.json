@@ -554,6 +554,988 @@
       "signature": "pub fn torus_shift_open < T : RngScalar > (_ : f64 , _ : f64) -> T"
     }
   ],
+  "crates/00_foundation/math_scalars/src/bigint.rs": [
+    {
+      "signature": "impl BigFloat { pub const fn as_fbig (& self) -> & BinaryFloat }"
+    },
+    {
+      "signature": "impl BigFloat { pub fn abs (& self) -> Self }"
+    },
+    {
+      "signature": "impl BigFloat { pub fn from_bigint_with_prec (_ : usize , _ : & BigInt) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl BigFloat { pub fn from_rational_with_prec (_ : usize , _ : & BigRational) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl BigFloat { pub fn precision (& self) -> usize }"
+    },
+    {
+      "signature": "impl BigFloat { pub fn round_f64 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BigFloat { pub fn to_f64 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BigFloat { pub fn try_with_prec (_ : usize , _ : f64) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl BigFloat { pub fn with_prec (& self , _ : usize) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl BigInt { pub const fn as_ibig (& self) -> & IBig }"
+    },
+    {
+      "signature": "impl BigInt { pub const fn from_ibig (_ : IBig) -> Self }"
+    },
+    {
+      "signature": "impl BigInt { pub const fn one () -> Self }"
+    },
+    {
+      "signature": "impl BigInt { pub const fn zero () -> Self }"
+    },
+    {
+      "signature": "impl BigInt { pub fn abs (& self) -> Self }"
+    },
+    {
+      "signature": "impl BigInt { pub fn checked_div_euclid (& self , _ : & Self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl BigInt { pub fn checked_rem_euclid (& self , _ : & Self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl BigInt { pub fn from_i256 (_ : I256) -> Self }"
+    },
+    {
+      "signature": "impl BigInt { pub fn from_str_radix (_ : & str , _ : u32) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl BigInt { pub fn from_u256 (_ : U256) -> Self }"
+    },
+    {
+      "signature": "impl BigInt { pub fn into_ibig (self) -> IBig }"
+    },
+    {
+      "signature": "impl BigInt { pub fn is_zero (& self) -> bool }"
+    },
+    {
+      "signature": "impl BigInt { pub fn to_f64 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BigInt { pub fn to_i64 (& self) -> Result < i64 , ScalarError > }"
+    },
+    {
+      "signature": "impl BigRational { pub const fn as_rbig (& self) -> & RBig }"
+    },
+    {
+      "signature": "impl BigRational { pub const fn from_rbig (_ : RBig) -> Self }"
+    },
+    {
+      "signature": "impl BigRational { pub fn abs (& self) -> Self }"
+    },
+    {
+      "signature": "impl BigRational { pub fn denominator (& self) -> BigInt }"
+    },
+    {
+      "signature": "impl BigRational { pub fn from_bigint (_ : BigInt) -> Self }"
+    },
+    {
+      "signature": "impl BigRational { pub fn is_zero (& self) -> bool }"
+    },
+    {
+      "signature": "impl BigRational { pub fn numerator (& self) -> BigInt }"
+    },
+    {
+      "signature": "impl BigRational { pub fn to_f64 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl BigRational { pub fn try_inverse (& self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl BigRational { pub fn try_new (_ : BigInt , _ : BigInt) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "pub struct BigFloat"
+    },
+    {
+      "signature": "pub struct BigInt"
+    },
+    {
+      "signature": "pub struct BigRational"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/complex.rs": [
+    {
+      "signature": "impl < T : RealScalar > Complex < T > { pub const I : Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Complex < T > { pub const fn from_real (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Complex < T > { pub fn arg (self) -> T }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Complex < T > { pub fn checked_div (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Complex < T > { pub fn checked_inv (self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Complex < T > { pub fn conj (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Complex < T > { pub fn exp (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Complex < T > { pub fn from_polar (_ : T , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Complex < T > { pub fn ln (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Complex < T > { pub fn norm (self) -> T }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Complex < T > { pub fn norm_sqr (self) -> T }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Complex < T > { pub fn scale (self , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Complex < T > { pub fn sqrt (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Complex < T > { pub fn try_inverse (self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < T > Complex < T > { pub const fn new (_ : T , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T > Complex < T > { pub const fn to_array (self) -> [T ; 2] where T : Copy , }"
+    },
+    {
+      "signature": "pub struct Complex < T >"
+    },
+    {
+      "signature": "pub type Complex32 = Complex < f32 >"
+    },
+    {
+      "signature": "pub type Complex64 = Complex < f64 >"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/error.rs": [
+    {
+      "signature": "pub enum ScalarError"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/fixed256.rs": [
+    {
+      "signature": "impl U256 { pub const MAX : Self }"
+    },
+    {
+      "signature": "impl U256 { pub const ONE : Self }"
+    },
+    {
+      "signature": "impl U256 { pub const ZERO : Self }"
+    },
+    {
+      "signature": "impl U256 { pub const fn bit (self , _ : usize) -> bool }"
+    },
+    {
+      "signature": "impl U256 { pub const fn bits (self) -> u32 }"
+    },
+    {
+      "signature": "impl U256 { pub const fn checked_add (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl U256 { pub const fn checked_div (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl U256 { pub const fn checked_div_euclid (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl U256 { pub const fn checked_div_rem (self , _ : Self) -> Option < (Self , Self) > }"
+    },
+    {
+      "signature": "impl U256 { pub const fn checked_mul (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl U256 { pub const fn checked_rem (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl U256 { pub const fn checked_rem_euclid (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl U256 { pub const fn checked_shl (self , _ : u32) -> Option < Self > }"
+    },
+    {
+      "signature": "impl U256 { pub const fn checked_shr (self , _ : u32) -> Option < Self > }"
+    },
+    {
+      "signature": "impl U256 { pub const fn checked_sub (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl U256 { pub const fn from_limbs (_ : [u64 ; 4]) -> Self }"
+    },
+    {
+      "signature": "impl U256 { pub const fn from_u128 (_ : u128) -> Self }"
+    },
+    {
+      "signature": "impl U256 { pub const fn from_u64 (_ : u64) -> Self }"
+    },
+    {
+      "signature": "impl U256 { pub const fn is_zero (self) -> bool }"
+    },
+    {
+      "signature": "impl U256 { pub const fn leading_zeros (self) -> u32 }"
+    },
+    {
+      "signature": "impl U256 { pub const fn limbs (self) -> [u64 ; 4] }"
+    },
+    {
+      "signature": "impl U256 { pub const fn overflowing_add (self , _ : Self) -> (Self , bool) }"
+    },
+    {
+      "signature": "impl U256 { pub const fn overflowing_sub (self , _ : Self) -> (Self , bool) }"
+    },
+    {
+      "signature": "impl U256 { pub const fn wrapping_add (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl U256 { pub const fn wrapping_neg (self) -> Self }"
+    },
+    {
+      "signature": "impl U256 { pub const fn wrapping_sub (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl U256 { pub fn to_f64 (self) -> f64 }"
+    },
+    {
+      "signature": "pub struct U256"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/fixed256_signed.rs": [
+    {
+      "signature": "impl I256 { pub const MAX : Self }"
+    },
+    {
+      "signature": "impl I256 { pub const MIN : Self }"
+    },
+    {
+      "signature": "impl I256 { pub const NEG_ONE : Self }"
+    },
+    {
+      "signature": "impl I256 { pub const ONE : Self }"
+    },
+    {
+      "signature": "impl I256 { pub const ZERO : Self }"
+    },
+    {
+      "signature": "impl I256 { pub const fn checked_abs (self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl I256 { pub const fn checked_add (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl I256 { pub const fn checked_div (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl I256 { pub const fn checked_div_euclid (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl I256 { pub const fn checked_mul (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl I256 { pub const fn checked_neg (self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl I256 { pub const fn checked_rem (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl I256 { pub const fn checked_rem_euclid (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl I256 { pub const fn checked_sub (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl I256 { pub const fn from_i128 (_ : i128) -> Self }"
+    },
+    {
+      "signature": "impl I256 { pub const fn from_i64 (_ : i64) -> Self }"
+    },
+    {
+      "signature": "impl I256 { pub const fn from_raw_u256 (_ : U256) -> Self }"
+    },
+    {
+      "signature": "impl I256 { pub const fn is_negative (self) -> bool }"
+    },
+    {
+      "signature": "impl I256 { pub const fn is_positive (self) -> bool }"
+    },
+    {
+      "signature": "impl I256 { pub const fn is_zero (self) -> bool }"
+    },
+    {
+      "signature": "impl I256 { pub const fn to_raw_u256 (self) -> U256 }"
+    },
+    {
+      "signature": "impl I256 { pub const fn unsigned_abs (self) -> U256 }"
+    },
+    {
+      "signature": "pub struct I256"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/fp.rs": [
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const MODULUS : u64 }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const ONE : Self }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const VALIDATE_PRIME : () }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const ZERO : Self }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const fn add_const (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const fn checked_div (self , _ : Self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const fn checked_inv (self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const fn from_i128 (_ : i128) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const fn from_u64 (_ : u64) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const fn is_zero (self) -> bool }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const fn legendre_symbol (self) -> i8 }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const fn mul_const (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const fn neg_const (self) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const fn new (_ : i64) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const fn pow (self , _ : u64) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const fn sqrt_roots (self) -> ([Self ; 2] , usize) }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const fn sub_const (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const fn try_inverse (self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < const P : u64 > Fp < P > { pub const fn value (self) -> u64 }"
+    },
+    {
+      "signature": "pub struct Fp < const P : u64 >"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/fp_ext.rs": [
+    {
+      "signature": "impl < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > > FpExt < P , DEG , M > { pub const ONE : Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > > FpExt < P , DEG , M > { pub const VALIDATE_EXTENSION : () }"
+    },
+    {
+      "signature": "impl < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > > FpExt < P , DEG , M > { pub const ZERO : Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > > FpExt < P , DEG , M > { pub const fn coeffs (& self) -> & [Fp < P > ; DEG] }"
+    },
+    {
+      "signature": "impl < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > > FpExt < P , DEG , M > { pub const fn from_base (_ : Fp < P >) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > > FpExt < P , DEG , M > { pub const fn from_coeffs (_ : [Fp < P > ; DEG]) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > > FpExt < P , DEG , M > { pub const fn from_u64_coeffs (_ : [u64 ; DEG]) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > > FpExt < P , DEG , M > { pub fn checked_inv (self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > > FpExt < P , DEG , M > { pub fn frobenius (self) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > > FpExt < P , DEG , M > { pub fn generator () -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > > FpExt < P , DEG , M > { pub fn is_zero (& self) -> bool }"
+    },
+    {
+      "signature": "impl < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > > FpExt < P , DEG , M > { pub fn mul_by_alpha (self) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > > FpExt < P , DEG , M > { pub fn pow (self , _ : u64) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > > FpExt < P , DEG , M > { pub fn scale (self , _ : Fp < P >) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > > FpExt < P , DEG , M > { pub fn try_inverse (self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "pub struct FpExt < const P : u64 , const DEG : usize , M : IrreducibleModulus < P , DEG > >"
+    },
+    {
+      "signature": "pub trait IrreducibleModulus < const P : u64 , const DEG : usize > : Copy + Clone + PartialEq + Eq + fmt :: Debug"
+    },
+    {
+      "signature": "pub trait IrreducibleModulus < const P : u64 , const DEG : usize > { const COEFFS : [u64 ; DEG] }"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/lib.rs": [
+    {
+      "signature": "pub use bigint :: BigFloat"
+    },
+    {
+      "signature": "pub use bigint :: BigInt"
+    },
+    {
+      "signature": "pub use bigint :: BigRational"
+    },
+    {
+      "signature": "pub use complex :: Complex"
+    },
+    {
+      "signature": "pub use complex :: Complex32"
+    },
+    {
+      "signature": "pub use complex :: Complex64"
+    },
+    {
+      "signature": "pub use error :: ScalarError"
+    },
+    {
+      "signature": "pub use fixed256 :: U256"
+    },
+    {
+      "signature": "pub use fixed256_signed :: I256"
+    },
+    {
+      "signature": "pub use fp :: Fp"
+    },
+    {
+      "signature": "pub use fp_ext :: FpExt"
+    },
+    {
+      "signature": "pub use fp_ext :: IrreducibleModulus"
+    },
+    {
+      "signature": "pub use modular :: MAX_PRIME_U64"
+    },
+    {
+      "signature": "pub use modular :: is_prime_u64"
+    },
+    {
+      "signature": "pub use modular :: mod_add_u64"
+    },
+    {
+      "signature": "pub use modular :: mod_inv_u64"
+    },
+    {
+      "signature": "pub use modular :: mod_mul_u64"
+    },
+    {
+      "signature": "pub use modular :: mod_neg_u64"
+    },
+    {
+      "signature": "pub use modular :: mod_pow_u64"
+    },
+    {
+      "signature": "pub use modular :: mod_reduce_i128"
+    },
+    {
+      "signature": "pub use modular :: mod_reduce_i64"
+    },
+    {
+      "signature": "pub use modular :: mod_sub_u64"
+    },
+    {
+      "signature": "pub use modular :: tonelli_shanks_u64"
+    },
+    {
+      "signature": "pub use octonion :: Octonion"
+    },
+    {
+      "signature": "pub use padic :: Qp"
+    },
+    {
+      "signature": "pub use padic :: eval_int_poly_qp"
+    },
+    {
+      "signature": "pub use padic :: hensel_lift_root"
+    },
+    {
+      "signature": "pub use poly :: PolyField"
+    },
+    {
+      "signature": "pub use poly :: StackPoly"
+    },
+    {
+      "signature": "pub use quaternion :: Quaternion"
+    },
+    {
+      "signature": "pub use quaternion :: UnitQuaternion"
+    },
+    {
+      "signature": "pub use traits :: FieldScalar"
+    },
+    {
+      "signature": "pub use traits :: RealScalar"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/modular.rs": [
+    {
+      "signature": "pub const MAX_PRIME_U64 : u64"
+    },
+    {
+      "signature": "pub const fn is_prime_u64 (_ : u64) -> bool"
+    },
+    {
+      "signature": "pub const fn mod_add_u64 (_ : u64 , _ : u64 , _ : u64) -> u64"
+    },
+    {
+      "signature": "pub const fn mod_inv_u64 (_ : u64 , _ : u64) -> Option < u64 >"
+    },
+    {
+      "signature": "pub const fn mod_mul_u64 (_ : u64 , _ : u64 , _ : u64) -> u64"
+    },
+    {
+      "signature": "pub const fn mod_neg_u64 (_ : u64 , _ : u64) -> u64"
+    },
+    {
+      "signature": "pub const fn mod_pow_u64 (_ : u64 , _ : u64 , _ : u64) -> u64"
+    },
+    {
+      "signature": "pub const fn mod_reduce_i128 (_ : i128 , _ : u64) -> u64"
+    },
+    {
+      "signature": "pub const fn mod_reduce_i64 (_ : i64 , _ : u64) -> u64"
+    },
+    {
+      "signature": "pub const fn mod_sub_u64 (_ : u64 , _ : u64 , _ : u64) -> u64"
+    },
+    {
+      "signature": "pub const fn tonelli_shanks_u64 (_ : u64 , _ : u64) -> ([u64 ; 2] , usize)"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/octonion.rs": [
+    {
+      "signature": "impl < T : RealScalar > Octonion < T > { pub const ONE : Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Octonion < T > { pub const ZERO : Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Octonion < T > { pub fn checked_inv (self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Octonion < T > { pub fn conj (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Octonion < T > { pub fn dot (self , _ : Self) -> T }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Octonion < T > { pub fn is_finite (self) -> bool }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Octonion < T > { pub fn norm (self) -> T }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Octonion < T > { pub fn norm_sqr (self) -> T }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Octonion < T > { pub fn scale (self , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Octonion < T > { pub fn try_inverse (self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < T > Octonion < T > { pub const fn from_array (_ : [T ; 8]) -> Self where T : Copy , }"
+    },
+    {
+      "signature": "impl < T > Octonion < T > { pub const fn from_quaternions (_ : Quaternion < T > , _ : Quaternion < T >) -> Self where T : Copy , }"
+    },
+    {
+      "signature": "impl < T > Octonion < T > { pub const fn new (_ : T , _ : T , _ : T , _ : T , _ : T , _ : T , _ : T , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T > Octonion < T > { pub const fn to_array (self) -> [T ; 8] where T : Copy , }"
+    },
+    {
+      "signature": "impl < T > Octonion < T > { pub const fn to_quaternions (self) -> (Quaternion < T > , Quaternion < T >) where T : Copy , }"
+    },
+    {
+      "signature": "pub struct Octonion < T >"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/padic.rs": [
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub const VALIDATE_PADIC : () }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub const fn digits (& self) -> & [u64 ; N] }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub const fn is_zero (& self) -> bool }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub const fn one () -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub const fn uniformizer () -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub const fn valuation (& self) -> Option < i32 > }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub const fn zero () -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub fn checked_div (self , _ : Self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub fn checked_inv (self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub fn from_i64 (_ : i64) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub fn from_rational (_ : i64 , _ : i64) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub fn from_raw_digits (_ : [u64 ; N] , _ : i32) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub fn from_u64 (_ : u64) -> Self }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub fn padic_abs_f64 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub fn satisfies_ultrametric (_ : Self , _ : Self) -> bool }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub fn to_u128_mod_pn (& self) -> Option < u128 > }"
+    },
+    {
+      "signature": "impl < const P : u64 , const N : usize > Qp < P , N > { pub fn try_inverse (self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "pub fn eval_int_poly_qp < const P : u64 , const N : usize > (_ : & [i64] , _ : Qp < P , N >) -> Qp < P , N >"
+    },
+    {
+      "signature": "pub fn hensel_lift_root < const P : u64 , const N : usize , const DEG_CAP : usize > (_ : & [i64] , _ : u64 ,) -> Result < Qp < P , N > , ScalarError >"
+    },
+    {
+      "signature": "pub struct Qp < const P : u64 , const N : usize >"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/poly.rs": [
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub const fn degree (& self) -> Option < usize > }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub const fn is_zero (& self) -> bool }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn checked_add (& self , _ : & Self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn checked_div_rem (& self , _ : & Self) -> Result < (Self , Self) , ScalarError > }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn checked_mul (& self , _ : & Self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn checked_sub (& self , _ : & Self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn coeff (& self , _ : usize) -> T }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn coeffs (& self) -> & [T] }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn constant (_ : T) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn eval (& self , _ : T) -> T }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn extended_gcd (& self , _ : & Self) -> Result < (Self , Self , Self) , ScalarError > }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn formal_derivative (& self) -> Self }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn from_slice (_ : & [T]) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn gcd (& self , _ : & Self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn leading_coeff (& self) -> Option < T > }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn monomial (_ : T , _ : usize) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn scale (& self , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn to_monic (& self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < T : PolyField , const CAP : usize > StackPoly < T , CAP > { pub fn zero () -> Self }"
+    },
+    {
+      "signature": "pub struct StackPoly < T , const CAP : usize >"
+    },
+    {
+      "signature": "pub trait PolyField : Copy + Clone + PartialEq + Default + fmt :: Debug + Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + Neg < Output = Self >"
+    },
+    {
+      "signature": "pub trait PolyField { const ONE : Self }"
+    },
+    {
+      "signature": "pub trait PolyField { const ZERO : Self }"
+    },
+    {
+      "signature": "pub trait PolyField { fn checked_inv (self) -> Option < Self > }"
+    },
+    {
+      "signature": "pub trait PolyField { fn from_usize_ring (_ : usize) -> Self }"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/quaternion.rs": [
+    {
+      "signature": "impl < T : RealScalar > Quaternion < T > { pub const ONE : Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Quaternion < T > { pub const ZERO : Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Quaternion < T > { pub fn checked_inv (self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Quaternion < T > { pub fn conj (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Quaternion < T > { pub fn dot (self , _ : Self) -> T }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Quaternion < T > { pub fn is_finite (self) -> bool }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Quaternion < T > { pub fn norm (self) -> T }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Quaternion < T > { pub fn norm_sqr (self) -> T }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Quaternion < T > { pub fn scale (self , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Quaternion < T > { pub fn try_inverse (self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < T : RealScalar > Quaternion < T > { pub fn try_normalize (self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < T : RealScalar > UnitQuaternion < T > { pub const fn as_wxyz (self) -> [T ; 4] }"
+    },
+    {
+      "signature": "impl < T : RealScalar > UnitQuaternion < T > { pub const fn identity () -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > UnitQuaternion < T > { pub const fn quaternion (self) -> Quaternion < T > }"
+    },
+    {
+      "signature": "impl < T : RealScalar > UnitQuaternion < T > { pub fn from_axis_angle (_ : [T ; 3] , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > UnitQuaternion < T > { pub fn from_scaled_axis (_ : [T ; 3]) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > UnitQuaternion < T > { pub fn from_wxyz_or_identity (_ : [T ; 4]) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > UnitQuaternion < T > { pub fn inverse (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealScalar > UnitQuaternion < T > { pub fn rotate_vec3 (self , _ : [T ; 3]) -> [T ; 3] }"
+    },
+    {
+      "signature": "impl < T : RealScalar > UnitQuaternion < T > { pub fn rotation_between (_ : [T ; 3] , _ : [T ; 3]) -> Option < Self > }"
+    },
+    {
+      "signature": "impl < T : RealScalar > UnitQuaternion < T > { pub fn to_rotation_matrix3 (self) -> [[T ; 3] ; 3] }"
+    },
+    {
+      "signature": "impl < T : RealScalar > UnitQuaternion < T > { pub fn try_from_quaternion (_ : Quaternion < T >) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "impl < T > Quaternion < T > { pub const fn as_wxyz (self) -> [T ; 4] where T : Copy , }"
+    },
+    {
+      "signature": "impl < T > Quaternion < T > { pub const fn from_wxyz (_ : [T ; 4]) -> Self where T : Copy , }"
+    },
+    {
+      "signature": "impl < T > Quaternion < T > { pub const fn new (_ : T , _ : T , _ : T , _ : T) -> Self }"
+    },
+    {
+      "signature": "pub struct Quaternion < T >"
+    },
+    {
+      "signature": "pub struct UnitQuaternion < T >"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/traits.rs": [
+    {
+      "signature": "pub trait FieldScalar : Copy + Clone + PartialEq + Debug + Display + Default + Send + Sync + 'static + Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + Div < Output = Self > + Neg < Output = Self > + AddAssign + SubAssign + MulAssign + DivAssign"
+    },
+    {
+      "signature": "pub trait FieldScalar { const ONE : Self }"
+    },
+    {
+      "signature": "pub trait FieldScalar { const ZERO : Self }"
+    },
+    {
+      "signature": "pub trait FieldScalar { fn abs (self) -> Self :: Real }"
+    },
+    {
+      "signature": "pub trait FieldScalar { fn checked_inv (self) -> Option < Self > }"
+    },
+    {
+      "signature": "pub trait FieldScalar { fn conj (self) -> Self }"
+    },
+    {
+      "signature": "pub trait FieldScalar { fn from_f64 (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub trait FieldScalar { fn from_real (_ : Self :: Real) -> Self }"
+    },
+    {
+      "signature": "pub trait FieldScalar { fn from_usize (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub trait FieldScalar { fn is_finite (self) -> bool }"
+    },
+    {
+      "signature": "pub trait FieldScalar { fn is_nan (self) -> bool }"
+    },
+    {
+      "signature": "pub trait FieldScalar { fn is_zero (self) -> bool }"
+    },
+    {
+      "signature": "pub trait FieldScalar { fn norm_sqr (self) -> Self :: Real }"
+    },
+    {
+      "signature": "pub trait FieldScalar { fn try_inverse (self) -> Result < Self , ScalarError > }"
+    },
+    {
+      "signature": "pub trait FieldScalar { type Real : RealScalar }"
+    },
+    {
+      "signature": "pub trait RealScalar : FieldScalar < Real = Self > + PartialOrd"
+    },
+    {
+      "signature": "pub trait RealScalar { const DEFAULT_TOL_SCALE : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { const EPSILON : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { const HALF : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { const MAX_VALUE : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { const MIN_POSITIVE : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { const NAN : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { const PI : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { const TAU : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { const TWO : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn atan2 (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn ceil (self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn copysign (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn cos (self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn exp (self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn floor (self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn hypot (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn ln (self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn max (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn min (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn powf (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn powi (self , _ : i32) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn round (self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn sin (self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn sqrt (self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn to_f64 (self) -> f64 }"
+    }
+  ],
   "crates/02_engines/engine_linalg/src/cholesky.rs": [
     {
       "signature": "pub const fn cholesky_semidefinite_workspace_len (_ : usize) -> usize"
@@ -585,7 +1567,7 @@
       "signature": "pub fn cg_solve < T : Scalar > (_ : & CsrMatrixView < '_ , T > , _ : & [T] , _ : & mut [T] , _ : T , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < KrylovReport < T > , LinalgError >"
     },
     {
-      "signature": "pub fn gmres_solve < T : Scalar > (_ : & CsrMatrixView < '_ , T > , _ : & [T] , _ : & mut [T] , _ : usize , _ : T , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < KrylovReport < T > , LinalgError >"
+      "signature": "pub fn gmres_solve < T : FieldScalar > (_ : & CsrMatrixView < '_ , T > , _ : & [T] , _ : & mut [T] , _ : usize , _ : T :: Real , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < KrylovReport < T :: Real > , LinalgError >"
     },
     {
       "signature": "pub struct KrylovReport < T >"
@@ -696,6 +1678,21 @@
     },
     {
       "signature": "pub use qr :: qr_solve_rt_permuted"
+    },
+    {
+      "signature": "pub use scalar :: Complex"
+    },
+    {
+      "signature": "pub use scalar :: Complex32"
+    },
+    {
+      "signature": "pub use scalar :: Complex64"
+    },
+    {
+      "signature": "pub use scalar :: FieldScalar"
+    },
+    {
+      "signature": "pub use scalar :: RealScalar"
     },
     {
       "signature": "pub use scalar :: Scalar"
@@ -814,22 +1811,22 @@
       "signature": "pub const fn lu_workspace_len (_ : usize) -> usize"
     },
     {
-      "signature": "pub fn lu_determinant < T : Scalar > (_ : & [T] , _ : usize , _ : i32) -> Result < T , LinalgError >"
+      "signature": "pub fn lu_determinant < T : FieldScalar > (_ : & [T] , _ : usize , _ : i32) -> Result < T , LinalgError >"
     },
     {
-      "signature": "pub fn lu_factor_in_place < T : Scalar > (_ : & mut [T] , _ : usize , _ : & mut [usize] , _ : T ,) -> Result < i32 , LinalgError >"
+      "signature": "pub fn lu_factor_in_place < T : FieldScalar > (_ : & mut [T] , _ : usize , _ : & mut [usize] , _ : T :: Real ,) -> Result < i32 , LinalgError >"
     },
     {
-      "signature": "pub fn lu_inverse < T : Scalar > (_ : & [T] , _ : & mut [T] , _ : usize , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+      "signature": "pub fn lu_inverse < T : FieldScalar > (_ : & [T] , _ : & mut [T] , _ : usize , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
     },
     {
-      "signature": "pub fn lu_solve < T : Scalar > (_ : & [T] , _ : & [T] , _ : & mut [T] , _ : usize , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+      "signature": "pub fn lu_solve < T : FieldScalar > (_ : & [T] , _ : & [T] , _ : & mut [T] , _ : usize , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
     },
     {
-      "signature": "pub fn lu_solve_factored < T : Scalar > (_ : & [T] , _ : usize , _ : & [usize] , _ : & [T] , _ : & mut [T] ,) -> Result < () , LinalgError >"
+      "signature": "pub fn lu_solve_factored < T : FieldScalar > (_ : & [T] , _ : usize , _ : & [usize] , _ : & [T] , _ : & mut [T] ,) -> Result < () , LinalgError >"
     },
     {
-      "signature": "pub fn lu_solve_transpose_factored < T : Scalar > (_ : & [T] , _ : usize , _ : & [usize] , _ : & [T] , _ : & mut [T] , _ : & mut [T] ,) -> Result < () , LinalgError >"
+      "signature": "pub fn lu_solve_transpose_factored < T : FieldScalar > (_ : & [T] , _ : usize , _ : & [usize] , _ : & [T] , _ : & mut [T] , _ : & mut [T] ,) -> Result < () , LinalgError >"
     }
   ],
   "crates/02_engines/engine_linalg/src/norms.rs": [
@@ -846,13 +1843,13 @@
       "signature": "pub fn cond_spectral < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < T , LinalgError >"
     },
     {
-      "signature": "pub fn norm_frobenius < T : Scalar > (_ : & [T] , _ : usize , _ : usize) -> Result < T , LinalgError >"
+      "signature": "pub fn norm_frobenius < T : FieldScalar > (_ : & [T] , _ : usize , _ : usize) -> Result < T :: Real , LinalgError >"
     },
     {
-      "signature": "pub fn norm_l1 < T : Scalar > (_ : & [T] , _ : usize , _ : usize) -> Result < T , LinalgError >"
+      "signature": "pub fn norm_l1 < T : FieldScalar > (_ : & [T] , _ : usize , _ : usize) -> Result < T :: Real , LinalgError >"
     },
     {
-      "signature": "pub fn norm_linf < T : Scalar > (_ : & [T] , _ : usize , _ : usize) -> Result < T , LinalgError >"
+      "signature": "pub fn norm_linf < T : FieldScalar > (_ : & [T] , _ : usize , _ : usize) -> Result < T :: Real , LinalgError >"
     },
     {
       "signature": "pub fn norm_spectral < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < T , LinalgError >"
@@ -901,93 +1898,48 @@
       "signature": "pub fn sqrt_f64 (_ : f64) -> f64"
     },
     {
-      "signature": "pub trait Scalar : Copy + Clone + PartialEq + PartialOrd + Debug + Display + Default + Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + Div < Output = Self > + Neg < Output = Self > + AddAssign + SubAssign + MulAssign + DivAssign + 'static"
+      "signature": "pub use math_scalars :: Complex"
     },
     {
-      "signature": "pub trait Scalar { const DEFAULT_TOL_SCALE : Self }"
+      "signature": "pub use math_scalars :: Complex32"
     },
     {
-      "signature": "pub trait Scalar { const EPSILON : Self }"
+      "signature": "pub use math_scalars :: Complex64"
     },
     {
-      "signature": "pub trait Scalar { const HALF : Self }"
+      "signature": "pub use math_scalars :: FieldScalar"
     },
     {
-      "signature": "pub trait Scalar { const MAX_VALUE : Self }"
+      "signature": "pub use math_scalars :: RealScalar"
     },
     {
-      "signature": "pub trait Scalar { const MIN_POSITIVE : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const NAN : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const ONE : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const TWO : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const ZERO : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn abs (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn copysign (self , _ : Self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn from_f64 (_ : f64) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn from_usize (_ : usize) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn hypot (self , _ : Self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn is_finite (self) -> bool }"
-    },
-    {
-      "signature": "pub trait Scalar { fn is_nan (self) -> bool }"
-    },
-    {
-      "signature": "pub trait Scalar { fn max (self , _ : Self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn min (self , _ : Self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn sqrt (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn to_f64 (self) -> f64 }"
+      "signature": "pub use math_scalars :: RealScalar as Scalar"
     }
   ],
   "crates/02_engines/engine_linalg/src/sparse.rs": [
     {
-      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub const fn col_ind (& self) -> & 'a [usize] }"
+      "signature": "impl < 'a , T : FieldScalar > CsrMatrixView < 'a , T > { pub const fn col_ind (& self) -> & 'a [usize] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub const fn ncols (& self) -> usize }"
+      "signature": "impl < 'a , T : FieldScalar > CsrMatrixView < 'a , T > { pub const fn ncols (& self) -> usize }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub const fn nnz (& self) -> usize }"
+      "signature": "impl < 'a , T : FieldScalar > CsrMatrixView < 'a , T > { pub const fn nnz (& self) -> usize }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub const fn nrows (& self) -> usize }"
+      "signature": "impl < 'a , T : FieldScalar > CsrMatrixView < 'a , T > { pub const fn nrows (& self) -> usize }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub const fn row_ptr (& self) -> & 'a [usize] }"
+      "signature": "impl < 'a , T : FieldScalar > CsrMatrixView < 'a , T > { pub const fn row_ptr (& self) -> & 'a [usize] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub const fn values (& self) -> & 'a [T] }"
+      "signature": "impl < 'a , T : FieldScalar > CsrMatrixView < 'a , T > { pub const fn values (& self) -> & 'a [T] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub fn new (_ : usize , _ : usize , _ : & 'a [usize] , _ : & 'a [usize] , _ : & 'a [T] ,) -> Result < Self , LinalgError > }"
+      "signature": "impl < 'a , T : FieldScalar > CsrMatrixView < 'a , T > { pub fn new (_ : usize , _ : usize , _ : & 'a [usize] , _ : & 'a [usize] , _ : & 'a [T] ,) -> Result < Self , LinalgError > }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > CsrMatrixView < 'a , T > { pub fn spmv (& self , _ : & [T] , _ : & mut [T]) -> Result < () , LinalgError > }"
+      "signature": "impl < 'a , T : FieldScalar > CsrMatrixView < 'a , T > { pub fn spmv (& self , _ : & [T] , _ : & mut [T]) -> Result < () , LinalgError > }"
     },
     {
       "signature": "pub struct CsrMatrixView < 'a , T >"
@@ -1057,40 +2009,40 @@
   ],
   "crates/02_engines/engine_linalg/src/types.rs": [
     {
-      "signature": "impl < 'a , T : Scalar > DenseView < 'a , T > { pub const fn as_slice (& self) -> & 'a [T] }"
+      "signature": "impl < 'a , T : FieldScalar > DenseView < 'a , T > { pub const fn as_slice (& self) -> & 'a [T] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > DenseView < 'a , T > { pub const fn ncols (& self) -> usize }"
+      "signature": "impl < 'a , T : FieldScalar > DenseView < 'a , T > { pub const fn ncols (& self) -> usize }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > DenseView < 'a , T > { pub const fn nrows (& self) -> usize }"
+      "signature": "impl < 'a , T : FieldScalar > DenseView < 'a , T > { pub const fn nrows (& self) -> usize }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > DenseView < 'a , T > { pub fn get (& self , _ : usize , _ : usize) -> T }"
+      "signature": "impl < 'a , T : FieldScalar > DenseView < 'a , T > { pub fn get (& self , _ : usize , _ : usize) -> T }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > DenseView < 'a , T > { pub fn new (_ : & 'a [T] , _ : usize , _ : usize) -> Result < Self , LinalgError > }"
+      "signature": "impl < 'a , T : FieldScalar > DenseView < 'a , T > { pub fn new (_ : & 'a [T] , _ : usize , _ : usize) -> Result < Self , LinalgError > }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub const fn is_empty (& self) -> bool }"
+      "signature": "impl < 'a , T : FieldScalar > SolverWorkspace < 'a , T > { pub const fn is_empty (& self) -> bool }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub const fn len (& self) -> usize }"
+      "signature": "impl < 'a , T : FieldScalar > SolverWorkspace < 'a , T > { pub const fn len (& self) -> usize }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn empty () -> Self }"
+      "signature": "impl < 'a , T : FieldScalar > SolverWorkspace < 'a , T > { pub fn empty () -> Self }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn new (_ : & 'a mut [T]) -> Self }"
+      "signature": "impl < 'a , T : FieldScalar > SolverWorkspace < 'a , T > { pub fn new (_ : & 'a mut [T]) -> Self }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn try_split (& mut self , _ : usize ,) -> Result < (& mut [T] , SolverWorkspace < '_ , T >) , LinalgError > }"
+      "signature": "impl < 'a , T : FieldScalar > SolverWorkspace < 'a , T > { pub fn try_split (& mut self , _ : usize ,) -> Result < (& mut [T] , SolverWorkspace < '_ , T >) , LinalgError > }"
     },
     {
-      "signature": "impl < T : Scalar > OwnedWorkspace < T > { pub fn as_workspace (& mut self) -> SolverWorkspace < '_ , T > }"
+      "signature": "impl < T : FieldScalar > OwnedWorkspace < T > { pub fn as_workspace (& mut self) -> SolverWorkspace < '_ , T > }"
     },
     {
-      "signature": "impl < T : Scalar > OwnedWorkspace < T > { pub fn with_capacity (_ : usize) -> Self }"
+      "signature": "impl < T : FieldScalar > OwnedWorkspace < T > { pub fn with_capacity (_ : usize) -> Self }"
     },
     {
       "signature": "pub const fn mat_idx (_ : usize , _ : usize , _ : usize) -> usize"
@@ -1099,31 +2051,31 @@
       "signature": "pub enum LinalgError"
     },
     {
-      "signature": "pub fn add_scaled_vec_array < T : Scalar , const N : usize > (_ : & [T ; N] , _ : & [T ; N] , _ : T ,) -> [T ; N]"
+      "signature": "pub fn add_scaled_vec_array < T : FieldScalar , const N : usize > (_ : & [T ; N] , _ : & [T ; N] , _ : T ,) -> [T ; N]"
     },
     {
-      "signature": "pub fn check_all_finite < T : Scalar > (_ : & [T]) -> Result < () , LinalgError >"
+      "signature": "pub fn check_all_finite < T : FieldScalar > (_ : & [T]) -> Result < () , LinalgError >"
     },
     {
-      "signature": "pub fn identity_array < T : Scalar , const N : usize > () -> [[T ; N] ; N]"
+      "signature": "pub fn identity_array < T : FieldScalar , const N : usize > () -> [[T ; N] ; N]"
     },
     {
-      "signature": "pub fn identity_plus_scaled_array < T : Scalar , const N : usize > (_ : & [[T ; N] ; N] , _ : T ,) -> [[T ; N] ; N]"
+      "signature": "pub fn identity_plus_scaled_array < T : FieldScalar , const N : usize > (_ : & [[T ; N] ; N] , _ : T ,) -> [[T ; N] ; N]"
     },
     {
-      "signature": "pub fn mat_mul < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : usize , _ : & mut [T] ,) -> Result < () , LinalgError >"
+      "signature": "pub fn mat_mul < T : FieldScalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : usize , _ : & mut [T] ,) -> Result < () , LinalgError >"
     },
     {
-      "signature": "pub fn mat_mul_array < T : Scalar , const M : usize , const K : usize , const N : usize > (_ : & [[T ; K] ; M] , _ : & [[T ; N] ; K] ,) -> [[T ; N] ; M]"
+      "signature": "pub fn mat_mul_array < T : FieldScalar , const M : usize , const K : usize , const N : usize > (_ : & [[T ; K] ; M] , _ : & [[T ; N] ; K] ,) -> [[T ; N] ; M]"
     },
     {
-      "signature": "pub fn mat_mul_transpose_right < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : usize , _ : & mut [T] ,) -> Result < () , LinalgError >"
+      "signature": "pub fn mat_mul_transpose_right < T : FieldScalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : usize , _ : & mut [T] ,) -> Result < () , LinalgError >"
     },
     {
-      "signature": "pub fn mat_mul_transpose_right_array < T : Scalar , const M : usize , const K : usize , const N : usize > (_ : & [[T ; K] ; M] , _ : & [[T ; K] ; N] ,) -> [[T ; N] ; M]"
+      "signature": "pub fn mat_mul_transpose_right_array < T : FieldScalar , const M : usize , const K : usize , const N : usize , > (_ : & [[T ; K] ; M] , _ : & [[T ; K] ; N] ,) -> [[T ; N] ; M]"
     },
     {
-      "signature": "pub fn mat_vec_mul < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : & mut [T] ,) -> Result < () , LinalgError >"
+      "signature": "pub fn mat_vec_mul < T : FieldScalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : & mut [T] ,) -> Result < () , LinalgError >"
     },
     {
       "signature": "pub struct DenseView < 'a , T >"
@@ -1426,7 +2378,13 @@
       "signature": "pub use structs :: Gaussian3D"
     },
     {
+      "signature": "pub use structs :: Quaternion"
+    },
+    {
       "signature": "pub use structs :: Scene"
+    },
+    {
+      "signature": "pub use structs :: UnitQuaternion"
     }
   ],
   "crates/domain_ai/src/ai/gaussian_splatting/optimization.rs": [
@@ -1486,6 +2444,12 @@
     },
     {
       "signature": "pub struct Scene"
+    },
+    {
+      "signature": "pub use math_scalars :: Quaternion"
+    },
+    {
+      "signature": "pub use math_scalars :: UnitQuaternion"
     }
   ],
   "crates/domain_ai/src/ai/mod.rs": [
@@ -13180,28 +14144,28 @@
   ],
   "crates/math_commons/src/math_kernel/types.rs": [
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn as_mut_slice (& mut self) -> & mut [T] }"
+      "signature": "impl < 'a , T : FieldScalar > SolverWorkspace < 'a , T > { pub fn as_mut_slice (& mut self) -> & mut [T] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn as_slice (& self) -> & [T] }"
+      "signature": "impl < 'a , T : FieldScalar > SolverWorkspace < 'a , T > { pub fn as_slice (& self) -> & [T] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn is_empty (& self) -> bool }"
+      "signature": "impl < 'a , T : FieldScalar > SolverWorkspace < 'a , T > { pub fn is_empty (& self) -> bool }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn len (& self) -> usize }"
+      "signature": "impl < 'a , T : FieldScalar > SolverWorkspace < 'a , T > { pub fn len (& self) -> usize }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn new (_ : & 'a mut [T]) -> Self }"
+      "signature": "impl < 'a , T : FieldScalar > SolverWorkspace < 'a , T > { pub fn new (_ : & 'a mut [T]) -> Self }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn reborrow (& mut self) -> SolverWorkspace < '_ , T > }"
+      "signature": "impl < 'a , T : FieldScalar > SolverWorkspace < 'a , T > { pub fn reborrow (& mut self) -> SolverWorkspace < '_ , T > }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn take_slice (& mut self , _ : usize) -> & 'a mut [T] }"
+      "signature": "impl < 'a , T : FieldScalar > SolverWorkspace < 'a , T > { pub fn take_slice (& mut self , _ : usize) -> & 'a mut [T] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn zero_fill (& mut self) }"
+      "signature": "impl < 'a , T : FieldScalar > SolverWorkspace < 'a , T > { pub fn zero_fill (& mut self) }"
     },
     {
       "signature": "pub fn fill_standard_normal < T : Scalar , R : RngCore + ? Sized > (_ : & mut [T] , _ : & mut R)"
@@ -13228,70 +14192,28 @@
       "signature": "pub struct GridIndex"
     },
     {
-      "signature": "pub struct SolverWorkspace < 'a , T : Scalar >"
+      "signature": "pub struct SolverWorkspace < 'a , T : FieldScalar >"
     },
     {
       "signature": "pub struct StepSize"
     },
     {
-      "signature": "pub trait Scalar : Copy + Clone + PartialEq + PartialOrd + Debug + Default + Send + Sync + 'static + Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + Div < Output = Self > + Neg < Output = Self > + AddAssign + SubAssign + MulAssign + DivAssign"
+      "signature": "pub use math_scalars :: Complex"
     },
     {
-      "signature": "pub trait Scalar { const EPSILON : Self }"
+      "signature": "pub use math_scalars :: Complex32"
     },
     {
-      "signature": "pub trait Scalar { const HALF : Self }"
+      "signature": "pub use math_scalars :: Complex64"
     },
     {
-      "signature": "pub trait Scalar { const ONE : Self }"
+      "signature": "pub use math_scalars :: FieldScalar"
     },
     {
-      "signature": "pub trait Scalar { const PI : Self }"
+      "signature": "pub use math_scalars :: RealScalar"
     },
     {
-      "signature": "pub trait Scalar { const TAU : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const TWO : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const ZERO : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn abs (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn cos (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn exp (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn from_f64 (_ : f64) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn from_usize (_ : usize) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn is_finite (self) -> bool }"
-    },
-    {
-      "signature": "pub trait Scalar { fn ln (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn max (self , _ : Self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn min (self , _ : Self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn sin (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn sqrt (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn to_f64 (self) -> f64 }"
+      "signature": "pub use math_scalars :: RealScalar as Scalar"
     }
   ],
   "crates/math_commons/src/poi/extrema.rs": [
@@ -13659,6 +14581,9 @@
     }
   ],
   "crates/oxidize_core/src/mesh/export_splat_ply.rs": [
+    {
+      "signature": "impl GaussianSplatPly { pub fn unit_rotation (& self) -> UnitQuaternion < f32 > }"
+    },
     {
       "signature": "pub const SH_C0 : f32"
     },
@@ -14536,7 +15461,16 @@
       "signature": "impl Float { pub fn abs (self) -> Self }"
     },
     {
+      "signature": "impl Float { pub fn precision (& self) -> usize }"
+    },
+    {
       "signature": "impl Float { pub fn round (self) -> f64 }"
+    },
+    {
+      "signature": "impl Float { pub fn to_f64 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Float { pub fn try_with_prec (_ : u32 , _ : f64) -> Result < Self , ScalarError > }"
     },
     {
       "signature": "impl Float { pub fn with_val (_ : u32 , _ : f64) -> Self }"
@@ -14546,6 +15480,9 @@
     },
     {
       "signature": "impl Integer { pub fn assign (& mut self , _ : i128) }"
+    },
+    {
+      "signature": "impl Integer { pub fn div_floor (& self , _ : & Self) -> Self }"
     },
     {
       "signature": "impl Integer { pub fn from < T > (_ : T) -> Self where IBig : From < T > , }"
@@ -14563,6 +15500,12 @@
       "signature": "impl Integer { pub fn is_even (& self) -> bool }"
     },
     {
+      "signature": "impl Integer { pub fn is_negative (& self) -> bool }"
+    },
+    {
+      "signature": "impl Integer { pub fn is_zero (& self) -> bool }"
+    },
+    {
       "signature": "impl Integer { pub fn new () -> Self }"
     },
     {
@@ -14570,6 +15513,9 @@
     },
     {
       "signature": "impl Integer { pub fn pow_mod (& self , _ : & Integer , _ : & Integer) -> Result < Self , NumberTheoryError > }"
+    },
+    {
+      "signature": "impl Integer { pub fn shl_bits (& self , _ : usize) -> Self }"
     },
     {
       "signature": "impl Integer { pub fn sqrt (& self) -> Self }"
@@ -14581,22 +15527,43 @@
       "signature": "impl Integer { pub fn to_i32 (& self) -> Option < i32 > }"
     },
     {
+      "signature": "impl Integer { pub fn to_i64 (& self) -> Option < i64 > }"
+    },
+    {
       "signature": "impl Integer { pub fn to_u64 (& self) -> Option < u64 > }"
     },
     {
       "signature": "impl Integer { pub fn to_usize (& self) -> Option < usize > }"
     },
     {
+      "signature": "impl Integer { pub fn unsigned_abs_ubig (& self) -> UBig }"
+    },
+    {
       "signature": "impl Rational { pub fn denom (& self) -> f64 }"
     },
     {
+      "signature": "impl Rational { pub fn denominator (& self) -> Integer }"
+    },
+    {
       "signature": "impl Rational { pub fn from (_ : (i128 , i128)) -> Self }"
+    },
+    {
+      "signature": "impl Rational { pub fn from_parts (_ : IBig , _ : UBig) -> Self }"
     },
     {
       "signature": "impl Rational { pub fn new () -> Self }"
     },
     {
       "signature": "impl Rational { pub fn numer (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Rational { pub fn numerator (& self) -> Integer }"
+    },
+    {
+      "signature": "impl Rational { pub fn to_big_rational (& self) -> BigRational }"
+    },
+    {
+      "signature": "impl Rational { pub fn try_from_integers (_ : Integer , _ : Integer) -> Result < Self , ScalarError > }"
     },
     {
       "signature": "pub mod ops"
@@ -14630,17 +15597,41 @@
     },
     {
       "signature": "pub use dashu :: integer :: IBig"
+    },
+    {
+      "signature": "pub use dashu :: integer :: UBig"
+    },
+    {
+      "signature": "pub use math_scalars :: BigFloat"
+    },
+    {
+      "signature": "pub use math_scalars :: BigInt"
+    },
+    {
+      "signature": "pub use math_scalars :: BigRational"
+    },
+    {
+      "signature": "pub use math_scalars :: I256"
+    },
+    {
+      "signature": "pub use math_scalars :: ScalarError"
+    },
+    {
+      "signature": "pub use math_scalars :: U256"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/fields.rs": [
     {
-      "signature": "impl < const P : i64 > Fp < P > { pub fn checked_inverse (& self) -> Result < Self , NumberTheoryError > }"
+      "signature": "pub use math_scalars :: Fp"
     },
     {
-      "signature": "impl < const P : i64 > Fp < P > { pub fn new (_ : i64) -> Self }"
+      "signature": "pub use math_scalars :: FpExt"
     },
     {
-      "signature": "pub struct Fp < const P : i64 >"
+      "signature": "pub use math_scalars :: IrreducibleModulus"
+    },
+    {
+      "signature": "pub use math_scalars :: ScalarError"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/group.rs": [
@@ -14890,6 +15881,12 @@
       "signature": "pub use fields :: Fp"
     },
     {
+      "signature": "pub use fields :: FpExt"
+    },
+    {
+      "signature": "pub use fields :: IrreducibleModulus"
+    },
+    {
       "signature": "pub use group :: BraidError"
     },
     {
@@ -14929,7 +15926,13 @@
       "signature": "pub use polynomial :: LaurentPolynomial"
     },
     {
+      "signature": "pub use polynomial :: PolyField"
+    },
+    {
       "signature": "pub use polynomial :: Polynomial"
+    },
+    {
+      "signature": "pub use polynomial :: StackPoly"
     },
     {
       "signature": "pub use traits :: AbelianGroup"
@@ -14955,6 +15958,9 @@
   ],
   "crates/pure_math/src/pure_math/algebra/polynomial.rs": [
     {
+      "signature": "impl < T : Field > Polynomial < T > { pub fn checked_div_rem (& self , _ : & Self) -> Result < (Self , Self) , NumberTheoryError > }"
+    },
+    {
       "signature": "impl < T : Ring > Polynomial < T > { pub fn degree (& self) -> Option < usize > }"
     },
     {
@@ -14971,6 +15977,18 @@
     },
     {
       "signature": "pub use laurent :: LaurentPolynomial"
+    },
+    {
+      "signature": "pub use math_scalars :: FpExt"
+    },
+    {
+      "signature": "pub use math_scalars :: IrreducibleModulus"
+    },
+    {
+      "signature": "pub use math_scalars :: PolyField"
+    },
+    {
+      "signature": "pub use math_scalars :: StackPoly"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/polynomial/laurent.rs": [
@@ -15047,6 +16065,9 @@
     },
     {
       "signature": "pub trait Field : Ring + Div < Output = Self >"
+    },
+    {
+      "signature": "pub trait Field { fn checked_inverse (& self) -> Result < Self , crate :: error :: NumberTheoryError > }"
     },
     {
       "signature": "pub trait Field { fn multiplicative_inverse (& self) -> Self }"
@@ -17203,10 +18224,16 @@
       "signature": "pub enum EllipticCurveError"
     },
     {
+      "signature": "pub fn lift_weierstrass_y_qp < const P : u64 , const N : usize > (_ : i64 , _ : i64 , _ : i64 , _ : u64 ,) -> Result < Qp < P , N > , ScalarError >"
+    },
+    {
       "signature": "pub fn prime_factors (_ : u64) -> HashMap < u64 , u32 >"
     },
     {
       "signature": "pub fn psi (_ : u64) -> u64"
+    },
+    {
+      "signature": "pub fn satisfies_padic_valuation_bound < const P : u64 , const N : usize > (_ : Qp < P , N > , _ : u64 ,) -> bool"
     },
     {
       "signature": "pub fn theorem_1_1_bounds (_ : u64 , _ : u64 , _ : u64) -> Result < Theorem11Bounds , EllipticCurveError >"
@@ -17219,6 +18246,18 @@
     },
     {
       "signature": "pub struct Theorem12Bounds"
+    },
+    {
+      "signature": "pub use math_scalars :: Qp"
+    },
+    {
+      "signature": "pub use math_scalars :: ScalarError"
+    },
+    {
+      "signature": "pub use math_scalars :: eval_int_poly_qp"
+    },
+    {
+      "signature": "pub use math_scalars :: hensel_lift_root"
     },
     {
       "signature": "pub use modular_bridge :: *"
@@ -17247,7 +18286,7 @@
       "signature": "pub fn hurwitz_trace_sum (_ : u64) -> (f64 , f64 , bool)"
     },
     {
-      "signature": "pub fn j_invariant_fp < const P : i64 > (_ : & FpWeierstrassCurve < P >) -> Fp < P >"
+      "signature": "pub fn j_invariant_fp < const P : u64 > (_ : & FpWeierstrassCurve < P >) -> Fp < P >"
     },
     {
       "signature": "pub fn j_invariant_mod_p (_ : & PrimeWeierstrassCurve) -> i64"
@@ -17460,28 +18499,28 @@
   ],
   "crates/pure_math/src/pure_math/elliptic_curves/weierstrass/fp_curve.rs": [
     {
-      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn add (& self , _ : CurvePoint < Fp < P > > , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
+      "signature": "impl < const P : u64 > FpWeierstrassCurve < P > { pub fn add (& self , _ : CurvePoint < Fp < P > > , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
     },
     {
-      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn discriminant (& self) -> Fp < P > }"
+      "signature": "impl < const P : u64 > FpWeierstrassCurve < P > { pub fn discriminant (& self) -> Fp < P > }"
     },
     {
-      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn double (& self , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
+      "signature": "impl < const P : u64 > FpWeierstrassCurve < P > { pub fn double (& self , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
     },
     {
-      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn is_on_curve (& self , _ : CurvePoint < Fp < P > >) -> bool }"
+      "signature": "impl < const P : u64 > FpWeierstrassCurve < P > { pub fn is_on_curve (& self , _ : CurvePoint < Fp < P > >) -> bool }"
     },
     {
-      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn negate (& self , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
+      "signature": "impl < const P : u64 > FpWeierstrassCurve < P > { pub fn negate (& self , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
     },
     {
-      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn new (_ : i64 , _ : i64) -> Result < Self , EllipticCurveError > }"
+      "signature": "impl < const P : u64 > FpWeierstrassCurve < P > { pub fn new (_ : i64 , _ : i64) -> Result < Self , EllipticCurveError > }"
     },
     {
-      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn scalar_mul (& self , _ : i64 , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
+      "signature": "impl < const P : u64 > FpWeierstrassCurve < P > { pub fn scalar_mul (& self , _ : i64 , _ : CurvePoint < Fp < P > >) -> CurvePoint < Fp < P > > }"
     },
     {
-      "signature": "impl < const P : i64 > FpWeierstrassCurve < P > { pub fn write_orbit (& self , _ : CurvePoint < Fp < P > > , _ : & mut [CurvePoint < Fp < P > >] ,) -> usize }"
+      "signature": "impl < const P : u64 > FpWeierstrassCurve < P > { pub fn write_orbit (& self , _ : CurvePoint < Fp < P > > , _ : & mut [CurvePoint < Fp < P > >] ,) -> usize }"
     },
     {
       "signature": "impl PrimeWeierstrassCurve { pub fn add (& self , _ : CurvePoint < i64 > , _ : CurvePoint < i64 >) -> CurvePoint < i64 > }"
@@ -17532,7 +18571,7 @@
       "signature": "pub fn hasse_weil_bound (_ : u64) -> f64"
     },
     {
-      "signature": "pub struct FpWeierstrassCurve < const P : i64 >"
+      "signature": "pub struct FpWeierstrassCurve < const P : u64 >"
     },
     {
       "signature": "pub struct PrimeWeierstrassCurve"
@@ -18717,6 +19756,38 @@
     },
     {
       "signature": "pub struct AmbsDsp"
+    },
+    {
+      "signature": "pub use padic_hensel :: Qp"
+    },
+    {
+      "signature": "pub use padic_hensel :: ScalarError"
+    },
+    {
+      "signature": "pub use padic_hensel :: eval_int_poly_qp"
+    },
+    {
+      "signature": "pub use padic_hensel :: hensel_lift_root"
+    },
+    {
+      "signature": "pub use padic_hensel :: lift_quadratic_residue_qp"
+    }
+  ],
+  "crates/pure_math/src/pure_math/number_theory/ambs/padic_hensel.rs": [
+    {
+      "signature": "pub fn lift_quadratic_residue_qp < const P : u64 , const N : usize > (_ : i64) -> ([Qp < P , N > ; 2] , usize)"
+    },
+    {
+      "signature": "pub use math_scalars :: Qp"
+    },
+    {
+      "signature": "pub use math_scalars :: ScalarError"
+    },
+    {
+      "signature": "pub use math_scalars :: eval_int_poly_qp"
+    },
+    {
+      "signature": "pub use math_scalars :: hensel_lift_root"
     }
   ],
   "crates/pure_math/src/pure_math/number_theory/class_number.rs": [

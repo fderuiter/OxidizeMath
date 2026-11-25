@@ -2,6 +2,7 @@
 
 use super::export::invalid_mesh_error;
 use super::types::Point3D;
+use math_scalars::UnitQuaternion;
 use std::fmt::Write as _;
 use std::io::Error;
 
@@ -38,13 +39,11 @@ fn build_splat_ply_header(vertex_count: usize) -> String {
     h
 }
 
-fn normalize_quat(q: [f32; 4]) -> [f32; 4] {
-    let norm_sq = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3];
-    if norm_sq.is_finite() && norm_sq > 1.0e-12 {
-        let inv = 1.0 / norm_sq.sqrt();
-        [q[0] * inv, q[1] * inv, q[2] * inv, q[3] * inv]
-    } else {
-        [1.0, 0.0, 0.0, 0.0]
+impl GaussianSplatPly {
+    /// Normalizes `self.rotation` into a canonical [`UnitQuaternion<f32>`] (falling back to identity if degenerate).
+    #[must_use]
+    pub fn unit_rotation(&self) -> UnitQuaternion<f32> {
+        UnitQuaternion::from_wxyz_or_identity(self.rotation)
     }
 }
 
@@ -94,7 +93,7 @@ pub fn export_splats_to_ply_binary(splats: &[GaussianSplatPly]) -> Result<Vec<u8
         let s0 = splat.scale.x.max(1.0e-8).ln();
         let s1 = splat.scale.y.max(1.0e-8).ln();
         let s2 = splat.scale.z.max(1.0e-8).ln();
-        let [r0, r1, r2, r3] = normalize_quat(splat.rotation);
+        let [r0, r1, r2, r3] = splat.unit_rotation().as_wxyz();
 
         let fields = [
             splat.mean.x,

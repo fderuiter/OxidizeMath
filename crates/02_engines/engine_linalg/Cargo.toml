@@ -10,6 +10,7 @@ default = []
 alloc = []
 
 [dependencies]
+math_scalars = { path = "../../00_foundation/math_scalars", default-features = false }
 
 [dev-dependencies]
 verified_engine = { path = "../../verified_engine" }

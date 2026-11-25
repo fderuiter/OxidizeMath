@@ -1,0 +1,21 @@
+[package]
+name = "math_scalars"
+version.workspace = true
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Tier 0 #![no_std] scalar contracts, fixed/arbitrary precision numbers, Cayley-Dickson algebras, Montgomery finite fields, Galois extensions, and p-adic lifting"
+
+[features]
+default = []
+alloc = ["dep:dashu"]
+std = ["alloc", "dashu?/std"]
+
+[dependencies]
+dashu = { workspace = true, optional = true }
+libm = { workspace = true }
+
+[dev-dependencies]
+verified_engine = { path = "../../verified_engine" }
+
+[lints]
+workspace = true

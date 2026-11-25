@@ -3,7 +3,7 @@
 // [cite:advanced_linear_algebra]
 //! LU decomposition with partial pivoting, linear system solvers, determinant, and matrix inverse.
 
-use crate::scalar::Scalar;
+use crate::scalar::{FieldScalar, RealScalar};
 use crate::types::{LinalgError, SolverWorkspace, check_all_finite, mat_idx};
 
 /// Workspace scalar capacity required by [`lu_solve`] for an `n x n` matrix.
@@ -20,7 +20,7 @@ pub const fn lu_inverse_workspace_len(n: usize) -> usize {
     n * n + 2 * n
 }
 
-fn swap_rows<T: Scalar>(mat: &mut [T], n: usize, r1: usize, r2: usize) {
+fn swap_rows<T: FieldScalar>(mat: &mut [T], n: usize, r1: usize, r2: usize) {
     if r1 == r2 {
         return;
     }
@@ -34,11 +34,11 @@ fn swap_rows<T: Scalar>(mat: &mut [T], n: usize, r1: usize, r2: usize) {
 /// Records the row permutation in `pivots` (`pivots.len() == n`) and returns the permutation
 /// parity (`+1` for even row swaps, `-1` for odd row swaps).
 /// `[cite:engine_linalg]`
-pub fn lu_factor_in_place<T: Scalar>(
+pub fn lu_factor_in_place<T: FieldScalar>(
     lu: &mut [T],
     n: usize,
     pivots: &mut [usize],
-    tol: T,
+    tol: T::Real,
 ) -> Result<i32, LinalgError> {
     if n.checked_mul(n) != Some(lu.len()) || pivots.len() != n {
         return Err(LinalgError::DimensionMismatch);
@@ -51,11 +51,11 @@ pub fn lu_factor_in_place<T: Scalar>(
         return Ok(1);
     }
 
-    let mut max_abs = T::ZERO;
+    let mut max_abs = T::Real::ZERO;
     for &v in lu.iter() {
         max_abs = max_abs.max(v.abs());
     }
-    let eff_tol = tol.max(T::from_usize(n) * T::EPSILON * max_abs);
+    let eff_tol = tol.max(T::Real::from_usize(n) * T::Real::EPSILON * max_abs);
     let mut parity = 1_i32;
 
     for k in 0..n {
@@ -68,7 +68,7 @@ pub fn lu_factor_in_place<T: Scalar>(
                 best_row = i;
             }
         }
-        if best_val <= eff_tol || best_val == T::ZERO {
+        if best_val <= eff_tol || best_val == T::Real::ZERO {
             return Err(LinalgError::SingularMatrix);
         }
         if best_row != k {
@@ -101,7 +101,7 @@ pub fn lu_factor_in_place<T: Scalar>(
 /// # Domain of Validity
 /// Requires `lu.len() == n * n`, `pivots.len() == n` (valid permutation indices), finite `b` (`n`),
 /// `x` (`n`), and non-zero upper-triangular pivots $U_{ii} \ne 0$ (`LinalgError::SingularMatrix`).
-pub fn lu_solve_factored<T: Scalar>(
+pub fn lu_solve_factored<T: FieldScalar>(
     lu: &[T],
     n: usize,
     pivots: &[usize],
@@ -148,7 +148,7 @@ pub fn lu_solve_factored<T: Scalar>(
 /// # Domain of Validity
 /// Requires `lu.len() == n * n`, `pivots.len() == n`, finite `b` (`n`), `x` (`n`), `work.len() >= n`,
 /// and non-zero diagonal pivots $U_{ii} \ne 0$.
-pub fn lu_solve_transpose_factored<T: Scalar>(
+pub fn lu_solve_transpose_factored<T: FieldScalar>(
     lu: &[T],
     n: usize,
     pivots: &[usize],
@@ -205,7 +205,7 @@ pub fn lu_solve_transpose_factored<T: Scalar>(
 /// # Domain of Validity
 /// Requires finite nonsingular `a` (`n * n`), finite `b` (`n`), `x` (`n`), `pivots` (`n`), and `ws`
 /// capacity at least [`lu_workspace_len`]`(n)`.
-pub fn lu_solve<T: Scalar>(
+pub fn lu_solve<T: FieldScalar>(
     a: &[T],
     b: &[T],
     x: &mut [T],
@@ -218,13 +218,13 @@ pub fn lu_solve<T: Scalar>(
     }
     let (lu_buf, _) = ws.try_split(lu_workspace_len(n))?;
     lu_buf.copy_from_slice(a);
-    lu_factor_in_place(lu_buf, n, pivots, T::ZERO)?;
+    lu_factor_in_place(lu_buf, n, pivots, T::Real::ZERO)?;
     lu_solve_factored(lu_buf, n, pivots, b, x)
 }
 
 /// Computes $\det(A)$ from an in-place [`lu_factor_in_place`] factorization and swap `parity`.
 /// `[cite:engine_linalg]`
-pub fn lu_determinant<T: Scalar>(lu: &[T], n: usize, parity: i32) -> Result<T, LinalgError> {
+pub fn lu_determinant<T: FieldScalar>(lu: &[T], n: usize, parity: i32) -> Result<T, LinalgError> {
     if n.checked_mul(n) != Some(lu.len()) {
         return Err(LinalgError::DimensionMismatch);
     }
@@ -237,7 +237,7 @@ pub fn lu_determinant<T: Scalar>(lu: &[T], n: usize, parity: i32) -> Result<T, L
 
 /// Computes the matrix inverse $A^{-1}$ of an `n x n` matrix via LU with partial pivoting.
 /// `[cite:engine_linalg]`
-pub fn lu_inverse<T: Scalar>(
+pub fn lu_inverse<T: FieldScalar>(
     a: &[T],
     inv: &mut [T],
     n: usize,
@@ -251,7 +251,7 @@ pub fn lu_inverse<T: Scalar>(
     let (rhs, mut rest2) = rest.try_split(n)?;
     let (col, _) = rest2.try_split(n)?;
     lu_buf.copy_from_slice(a);
-    lu_factor_in_place(lu_buf, n, pivots, T::ZERO)?;
+    lu_factor_in_place(lu_buf, n, pivots, T::Real::ZERO)?;
 
     for j in 0..n {
         rhs.fill(T::ZERO);

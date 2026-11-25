@@ -2,7 +2,7 @@
 
 use crate::error::EngineeringError;
 use engine_linalg::{
-    Scalar, SolverWorkspace, qr_apply_qt, qr_factor_pivoted, qr_factor_workspace_len,
+    FieldScalar, Scalar, SolverWorkspace, qr_apply_qt, qr_factor_pivoted, qr_factor_workspace_len,
     qr_solve_r_pivoted, qr_solve_rt_permuted,
 };
 use nalgebra::{DMatrix, DVector, RealField};
@@ -39,9 +39,9 @@ impl<T: RealField + Scalar> GlmDesignQr<T> {
                 qr.push(x[(r, c)]);
             }
         }
-        let mut tau = vec![<T as Scalar>::ZERO; n];
+        let mut tau = vec![<T as FieldScalar>::ZERO; n];
         let mut col_perm = vec![0_usize; n];
-        let mut scratch = vec![<T as Scalar>::ZERO; qr_factor_workspace_len(n)];
+        let mut scratch = vec![<T as FieldScalar>::ZERO; qr_factor_workspace_len(n)];
         let rank = qr_factor_pivoted(
             &mut qr,
             m,
@@ -89,8 +89,8 @@ impl<T: RealField + Scalar> GlmDesignQr<T> {
         let mut qt_y = y.as_slice().to_vec();
         qr_apply_qt(&self.qr, self.nrows, self.ncols, &self.tau, &mut qt_y)
             .map_err(|_| EngineeringError::SingularDesignMatrix)?;
-        let mut beta = vec![<T as Scalar>::ZERO; self.ncols];
-        let mut z_work = vec![<T as Scalar>::ZERO; self.ncols];
+        let mut beta = vec![<T as FieldScalar>::ZERO; self.ncols];
+        let mut z_work = vec![<T as FieldScalar>::ZERO; self.ncols];
         qr_solve_r_pivoted(
             &self.qr,
             (self.nrows, self.ncols),
@@ -114,7 +114,7 @@ impl<T: RealField + Scalar> GlmDesignQr<T> {
                 actual: c.len(),
             });
         }
-        let mut w_work = vec![<T as Scalar>::ZERO; self.ncols];
+        let mut w_work = vec![<T as FieldScalar>::ZERO; self.ncols];
         qr_solve_rt_permuted(
             &self.qr,
             self.nrows,
@@ -151,11 +151,13 @@ impl<T: RealField + Scalar> GlmDesignQr<T> {
         }
         let variance_term = self.contrast_variance_factor(c)?;
         let scaled_variance = residual_variance * variance_term;
-        if scaled_variance <= <T as Scalar>::ZERO || !<T as Scalar>::is_finite(scaled_variance) {
+        if scaled_variance <= <T as FieldScalar>::ZERO
+            || !<T as FieldScalar>::is_finite(scaled_variance)
+        {
             return Err(EngineeringError::ZeroContrastVariance);
         }
         let denominator = <T as Scalar>::sqrt(scaled_variance);
-        if denominator == <T as Scalar>::ZERO {
+        if denominator == <T as FieldScalar>::ZERO {
             return Err(EngineeringError::ZeroContrastVariance);
         }
         Ok(c.dot(beta) / denominator)

@@ -1,7 +1,7 @@
 //! Unit tests for pure_math math_types module.
 
 use pure_math::math_types::ops::{Pow, RemRounding};
-use pure_math::math_types::{Float, Integer, Rational};
+use pure_math::math_types::{BigRational, Float, Integer, Rational, ScalarError};
 
 #[test]
 fn test_integer_basics_and_conversions() {
@@ -141,4 +141,40 @@ fn test_float_basics_and_arithmetic() {
 
     assert!(f1 > f2);
     assert_eq!(f1, Float::with_val(53, 2.5));
+
+    // Preserve 256-bit caller precision across 1/3 * 3 and reject NaN / Infinity / prec == 0:
+    assert_eq!(
+        Float::try_with_prec(0, 1.0),
+        Err(ScalarError::ZeroPrecision)
+    );
+    assert_eq!(
+        Float::try_with_prec(256, f64::NAN),
+        Err(ScalarError::NonFiniteFloat)
+    );
+    assert_eq!(
+        Float::try_with_prec(256, f64::INFINITY),
+        Err(ScalarError::NonFiniteFloat)
+    );
+    assert_eq!(
+        Float::try_with_prec(256, f64::NEG_INFINITY),
+        Err(ScalarError::NonFiniteFloat)
+    );
+    let one_256 = Float::try_with_prec(256, 1.0).unwrap();
+    let three_256 = Float::try_with_prec(256, 3.0).unwrap();
+    assert_eq!(one_256.precision(), 256);
+    let third_256 = &one_256 / &three_256;
+    assert_eq!(third_256.precision(), 256);
+    let err_256 = (&third_256 * &three_256 - one_256).abs();
+    let bound = Float::try_with_prec(256, 2.0_f64.powi(-250)).unwrap();
+    assert!(err_256 < bound);
+
+    // Exact large integer numerator and denominator on Rational and BigRational without f64 loss:
+    let big_num = Integer::from(1_i64).shl_bits(100) + Integer::from(3_i64);
+    let big_den = Integer::from(1_i64).shl_bits(100) + Integer::from(7_i64);
+    let exact_rat = Rational::try_from_integers(big_num.clone(), big_den.clone()).unwrap();
+    assert_eq!(exact_rat.numerator(), big_num);
+    assert_eq!(exact_rat.denominator(), big_den);
+    let big_rat: BigRational = exact_rat.to_big_rational();
+    assert_eq!(big_rat.numerator().to_string(), big_num.0.to_string());
+    assert_eq!(big_rat.denominator().to_string(), big_den.0.to_string());
 }

@@ -1059,6 +1059,7 @@ dependencies = [
  "diagnostics",
  "engine_diffeq",
  "math_commons",
+ "math_scalars",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -1373,6 +1374,7 @@ dependencies = [
 name = "engine_linalg"
 version = "0.4.0"
 dependencies = [
+ "math_scalars",
  "verified_engine",
 ]
 
@@ -2446,6 +2448,7 @@ dependencies = [
  "math_commons",
  "math_explorer",
  "math_rng",
+ "math_scalars",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -2466,6 +2469,7 @@ dependencies = [
  "engine_linalg",
  "libm",
  "math_rng",
+ "math_scalars",
  "num-complex",
  "num-traits",
  "rand_core",
@@ -2541,6 +2545,15 @@ dependencies = [
  "rand_chacha",
  "rand_core",
  "serde",
+ "verified_engine",
+]
+
+[[package]]
+name = "math_scalars"
+version = "0.4.0"
+dependencies = [
+ "dashu",
+ "libm",
  "verified_engine",
 ]
 
@@ -3206,6 +3219,7 @@ dependencies = [
  "getrandom 0.2.17",
  "js-sys",
  "math_rng",
+ "math_scalars",
  "proc-macro2",
  "rand",
  "scientific_metadata",
@@ -3441,6 +3455,7 @@ dependencies = [
  "engine_pde",
  "math_commons",
  "math_rng",
+ "math_scalars",
  "nalgebra 0.34.2",
  "num-complex",
  "num-traits",

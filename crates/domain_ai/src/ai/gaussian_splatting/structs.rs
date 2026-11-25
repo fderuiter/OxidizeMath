@@ -1,4 +1,5 @@
-use nalgebra::{Matrix2, Matrix3, Point2, Point3, UnitQuaternion, Vector3};
+pub use math_scalars::{Quaternion, UnitQuaternion};
+use nalgebra::{Matrix2, Matrix3, Point2, Point3, Vector3};
 
 /// Represents a 3D Gaussian in the scene.
 ///
@@ -25,7 +26,11 @@ impl Gaussian3D {
     #[verified_engine::verified]
     pub fn compute_covariance(&self) -> Matrix3<f64> {
         let s = Matrix3::from_diagonal(&self.scale);
-        let r = self.rotation.to_rotation_matrix();
+        let rm = self.rotation.to_rotation_matrix3();
+        let r = Matrix3::new(
+            rm[0][0], rm[0][1], rm[0][2], rm[1][0], rm[1][1], rm[1][2], rm[2][0], rm[2][1],
+            rm[2][2],
+        );
         let m = r * s;
         m * m.transpose()
     }
@@ -39,7 +44,9 @@ impl Gaussian3D {
         } else {
             1.0
         };
-        let q = self.rotation.quaternion();
+        let [w, x, y, z] = self.rotation.as_wxyz();
+        let unit_f32 =
+            UnitQuaternion::<f32>::from_wxyz_or_identity([w as f32, x as f32, y as f32, z as f32]);
         oxidize_core::mesh::GaussianSplatPly {
             mean: oxidize_core::mesh::Point3D::new(
                 self.mean.x as f32,
@@ -51,7 +58,7 @@ impl Gaussian3D {
                 (self.scale.y * mult) as f32,
                 (self.scale.z * mult) as f32,
             ),
-            rotation: [q.w as f32, q.i as f32, q.j as f32, q.k as f32],
+            rotation: unit_f32.as_wxyz(),
             opacity: self.opacity as f32,
             color: [
                 self.color.x as f32,

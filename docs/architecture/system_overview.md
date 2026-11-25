@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 24 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 25 workspace crates:
 
 ```mermaid
 graph TD
@@ -79,6 +79,7 @@ graph TD
         Engine[verified_engine]
         Macros[verified_engine_macros]
         CoreCrate[oxidize_core]
+        Scalars[math_scalars]
         Rng[math_rng]
         Linalg[engine_linalg]
         Diag[diagnostics]
@@ -86,7 +87,7 @@ graph TD
 
     Xtask -.-> Verify
     Verify -.-> Explorer & CoreCrate & Meta & Diag
-    MdTests -.-> Explorer & Meta & CoreCrate & Registry & Linalg & Rng
+    MdTests -.-> Explorer & Meta & CoreCrate & Registry & Linalg & Rng & Scalars
 
     GUI --> Explorer
     GUI --> Plot
@@ -94,18 +95,19 @@ graph TD
     Explorer --> AI & Phys & Bio & App & Clim & Epi
     Explorer --> Pure & Commons
 
-    AI --> Commons & Engine & Meta & DiffEq
+    AI --> Commons & Engine & Meta & DiffEq & Scalars
     Phys --> Commons & Engine & Meta & Pure & DiffEq & Pde & Linalg
     Bio --> Commons & Engine & Meta & Pure & Pde
     App --> Commons & Engine & Meta & Pure & Pde & Linalg
     Clim --> Commons & Engine & Meta
     Epi --> Commons & Engine & Meta & Pure
 
-    Pure --> Commons & Meta & DiffEq & Pde & Linalg & Rng
+    Pure --> Commons & Meta & DiffEq & Pde & Linalg & Rng & Scalars
     DiffEq --> Commons & Engine & Rng
     Pde --> Commons & Engine & Rng
-    Commons --> CoreCrate & Linalg & Rng
-    CoreCrate --> Rng
+    Commons --> CoreCrate & Linalg & Rng & Scalars
+    Linalg --> Scalars
+    CoreCrate --> Rng & Scalars
     Engine --> Macros & CoreCrate
     Meta --> CoreCrate
 
@@ -118,10 +120,11 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 24 member crates declared in `Cargo.toml`:
+The workspace contains all 25 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
+| `crates/00_foundation/math_scalars` | `#![no_std]` scalar contracts, 256-bit integers, Cayley-Dickson algebras, 64-bit Montgomery fields, and $p$-adic lifting | [math_scalars](../../crates/00_foundation/math_scalars/README.md) |
 | `crates/00_foundation/math_rng` | `#![no_std]` ChaCha8 stream PRNG, generic float/index samplers, and 64D QMC views | [math_rng](../../crates/00_foundation/math_rng/README.md) |
 | `crates/oxidize_core` | Core utilities, file systems, and traceability | [oxidize_core](../../crates/oxidize_core/README.md) |
 | `crates/02_engines/engine_linalg` | `#![no_std]` numerical linear algebra engine | [engine_linalg](../../crates/02_engines/engine_linalg/README.md) |

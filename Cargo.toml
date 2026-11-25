@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/00_foundation/math_rng",
+    "crates/00_foundation/math_scalars",
     "crates/federated_registry",
     "crates/diagnostics",
     "crates/oxidize_core",
@@ -45,7 +46,7 @@ approx = "0.5.1"
 arboard = "3.4"
 chrono = "0.4"
 console_error_panic_hook = "0.1.7"
-dashu = { version = "0.4.4", features = ["num-traits_v02"] }
+dashu = { version = "0.4.4", default-features = false, features = ["num-order", "num-traits_v02"] }
 eframe = "0.33.3"
 futures = "0.3"
 getrandom = { version = "0.2.17", features = ["js"] }

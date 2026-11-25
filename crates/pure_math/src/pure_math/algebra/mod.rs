@@ -82,13 +82,13 @@ pub mod polynomial;
 /// Submodule providing `traits` types, traits, and algorithms.
 pub mod traits;
 
-pub use fields::Fp;
+pub use fields::{Fp, FpExt, IrreducibleModulus};
 pub use group::{
     BraidError, BraidWord, CyclicElement, MAX_BRAID_STRANDS, MAX_BRAID_WORD_LEN, Permutation, Zn,
     generate_left_coset, generate_right_coset, is_normal_subgroup, is_subgroup,
 };
 pub use linear_algebra::LinearAlgebraError;
-pub use polynomial::{LaurentPolynomial, Polynomial};
+pub use polynomial::{LaurentPolynomial, PolyField, Polynomial, StackPoly};
 pub use traits::{AbelianGroup, EuclideanDomain, Field, Group, Monoid, Ring, Semigroup};
 
 // [cite:advanced_linear_algebra]

@@ -14,6 +14,7 @@ verified_engine = { path = "../verified_engine" }
 verified_engine_macros = { path = "../verified_engine_macros" }
 diagnostics = { path = "../diagnostics" }
 math_rng = { path = "../00_foundation/math_rng", features = ["alloc", "serde"] }
+math_scalars = { path = "../00_foundation/math_scalars", features = ["alloc", "std"] }
 engine_linalg = { path = "../02_engines/engine_linalg" }
 math_commons = { path = "../math_commons" }
 pure_math = { path = "../pure_math" }

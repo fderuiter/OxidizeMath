@@ -3,7 +3,7 @@
 // [cite:advanced_linear_algebra]
 //! Error types, caller-owned [`SolverWorkspace`] buffers, row-major views, and stack array kernels.
 
-use crate::scalar::Scalar;
+use crate::scalar::FieldScalar;
 use core::fmt;
 
 /// Computes the flat row-major index for `(row, col)` in a matrix with `ncols` columns.
@@ -16,7 +16,7 @@ pub const fn mat_idx(row: usize, col: usize, ncols: usize) -> usize {
 /// Validates that every element in `slice` is finite (`!is_nan()` and `!is_infinite()`).
 /// `[cite:engine_linalg]`
 #[inline]
-pub fn check_all_finite<T: Scalar>(slice: &[T]) -> Result<(), LinalgError> {
+pub fn check_all_finite<T: FieldScalar>(slice: &[T]) -> Result<(), LinalgError> {
     for &val in slice {
         if !val.is_finite() {
             return Err(LinalgError::InvalidInput);
@@ -79,7 +79,7 @@ pub struct SolverWorkspace<'a, T> {
     buf: &'a mut [T],
 }
 
-impl<'a, T: Scalar> SolverWorkspace<'a, T> {
+impl<'a, T: FieldScalar> SolverWorkspace<'a, T> {
     /// Wraps a caller-owned mutable slice as a reusable solver workspace.
     #[inline]
     pub fn new(buf: &'a mut [T]) -> Self {
@@ -130,7 +130,7 @@ pub struct OwnedWorkspace<T> {
 }
 
 #[cfg(feature = "alloc")]
-impl<T: Scalar> OwnedWorkspace<T> {
+impl<T: FieldScalar> OwnedWorkspace<T> {
     /// Allocates a workspace of `capacity` zeroed scalars once for repeated zero-alloc solver calls.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
@@ -153,7 +153,7 @@ pub struct DenseView<'a, T> {
     ncols: usize,
 }
 
-impl<'a, T: Scalar> DenseView<'a, T> {
+impl<'a, T: FieldScalar> DenseView<'a, T> {
     /// Constructs a validated `nrows x ncols` row-major view.
     #[inline]
     pub fn new(data: &'a [T], nrows: usize, ncols: usize) -> Result<Self, LinalgError> {
@@ -190,7 +190,7 @@ impl<'a, T: Scalar> DenseView<'a, T> {
 
 /// Computes row-major $C = A B$ for $A \in \mathbb{R}^{m \times k}$ and $B \in \mathbb{R}^{k \times n}$.
 /// `[cite:engine_linalg]`
-pub fn mat_mul<T: Scalar>(
+pub fn mat_mul<T: FieldScalar>(
     a: &[T],
     m: usize,
     k: usize,
@@ -218,7 +218,7 @@ pub fn mat_mul<T: Scalar>(
 
 /// Computes row-major $C = A B^T$ for $A \in \mathbb{R}^{m \times k}$ and $B \in \mathbb{R}^{n \times k}$.
 /// `[cite:engine_linalg]`
-pub fn mat_mul_transpose_right<T: Scalar>(
+pub fn mat_mul_transpose_right<T: FieldScalar>(
     a: &[T],
     m: usize,
     k: usize,
@@ -246,7 +246,7 @@ pub fn mat_mul_transpose_right<T: Scalar>(
 
 /// Computes $y = A x$ for row-major $A \in \mathbb{R}^{m \times n}$.
 /// `[cite:engine_linalg]`
-pub fn mat_vec_mul<T: Scalar>(
+pub fn mat_vec_mul<T: FieldScalar>(
     a: &[T],
     m: usize,
     n: usize,
@@ -269,7 +269,7 @@ pub fn mat_vec_mul<T: Scalar>(
 /// Returns the $N \times N$ stack identity matrix $I_N$.
 /// `[cite:engine_linalg]`
 #[inline]
-pub fn identity_array<T: Scalar, const N: usize>() -> [[T; N]; N] {
+pub fn identity_array<T: FieldScalar, const N: usize>() -> [[T; N]; N] {
     let mut out = [[T::ZERO; N]; N];
     let mut i = 0;
     while i < N {
@@ -282,7 +282,7 @@ pub fn identity_array<T: Scalar, const N: usize>() -> [[T; N]; N] {
 /// Returns `base + scale * dir` on stack vectors of length `N`.
 /// `[cite:engine_linalg]`
 #[inline]
-pub fn add_scaled_vec_array<T: Scalar, const N: usize>(
+pub fn add_scaled_vec_array<T: FieldScalar, const N: usize>(
     base: &[T; N],
     dir: &[T; N],
     scale: T,
@@ -297,7 +297,7 @@ pub fn add_scaled_vec_array<T: Scalar, const N: usize>(
 /// Returns $I_N + \text{scale} \cdot J$ on $N \times N$ stack arrays.
 /// `[cite:engine_linalg]`
 #[inline]
-pub fn identity_plus_scaled_array<T: Scalar, const N: usize>(
+pub fn identity_plus_scaled_array<T: FieldScalar, const N: usize>(
     jac: &[[T; N]; N],
     scale: T,
 ) -> [[T; N]; N] {
@@ -313,7 +313,7 @@ pub fn identity_plus_scaled_array<T: Scalar, const N: usize>(
 /// Multiplies $M \times K$ by $K \times N$ stack arrays: $C = A B$.
 /// `[cite:engine_linalg]`
 #[inline]
-pub fn mat_mul_array<T: Scalar, const M: usize, const K: usize, const N: usize>(
+pub fn mat_mul_array<T: FieldScalar, const M: usize, const K: usize, const N: usize>(
     a: &[[T; K]; M],
     b: &[[T; N]; K],
 ) -> [[T; N]; M] {
@@ -332,7 +332,12 @@ pub fn mat_mul_array<T: Scalar, const M: usize, const K: usize, const N: usize>(
 /// Multiplies $M \times K$ by the transpose of $N \times K$ stack arrays: $C = A B^T$.
 /// `[cite:engine_linalg]`
 #[inline]
-pub fn mat_mul_transpose_right_array<T: Scalar, const M: usize, const K: usize, const N: usize>(
+pub fn mat_mul_transpose_right_array<
+    T: FieldScalar,
+    const M: usize,
+    const K: usize,
+    const N: usize,
+>(
     a: &[[T; K]; M],
     b: &[[T; K]; N],
 ) -> [[T; N]; M] {

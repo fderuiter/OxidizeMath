@@ -1,8 +1,9 @@
 use crate::error::NumberTheoryError;
-use dashu::base::Abs;
+use dashu::base::{Abs, Sign};
 use dashu::float::FBig;
-pub use dashu::integer::IBig;
+pub use dashu::integer::{IBig, UBig};
 use dashu::rational::RBig;
+pub use math_scalars::{BigFloat, BigInt, BigRational, I256, ScalarError, U256};
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, RemAssign, Sub, SubAssign};
 /// Arbitrary-precision signed integer wrapper over [`dashu::integer::IBig`].
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
@@ -46,6 +47,35 @@ impl Integer {
     /// Computes `to_u64` (to u64).
     pub fn to_u64(&self) -> Option<u64> {
         u64::try_from(&self.0).ok()
+    }
+    /// Converts `self` to `i64` if within bounds.
+    pub fn to_i64(&self) -> Option<i64> {
+        i64::try_from(&self.0).ok()
+    }
+    /// Returns `true` if `self == 0`.
+    pub fn is_zero(&self) -> bool {
+        self.0.is_zero()
+    }
+    /// Returns `true` if `self < 0`.
+    pub fn is_negative(&self) -> bool {
+        self.0.sign() == Sign::Negative
+    }
+    /// Returns the unsigned magnitude `|self|` as [`UBig`].
+    pub fn unsigned_abs_ubig(&self) -> UBig {
+        self.0.clone().into_parts().1
+    }
+    /// Shifts `self` left by `bits` ($n \cdot 2^{\text{bits}}$).
+    pub fn shl_bits(&self, bits: usize) -> Self {
+        Integer(&self.0 << bits)
+    }
+    /// Exact floor division $\lfloor a / b \rfloor$ for positive divisor `rhs`.
+    pub fn div_floor(&self, rhs: &Self) -> Self {
+        let mut q = &self.0 / &rhs.0;
+        let r = &self.0 % &rhs.0;
+        if r < IBig::ZERO {
+            q -= IBig::ONE;
+        }
+        Integer(q)
     }
     /// Computes `assign` (assign).
     pub fn assign(&mut self, v: i128) {
@@ -206,40 +236,42 @@ impl SubAssign<&Integer> for Integer {
     }
 }
 
-type F = dashu::float::FBig;
-
-/// Data structure `Float` representing Float state.
-#[derive(Clone, Debug)]
-pub struct Float(pub F);
+/// Arbitrary-precision binary floating-point wrapper over [`BigFloat`] preserving mantissa precision.
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+pub struct Float(pub BigFloat);
 impl Float {
-    /// Computes `with_val` (with val).
-    pub fn with_val(_prec: u32, v: f64) -> Self {
-        if let Ok(f) = F::try_from(v) {
-            Float(f)
-        } else {
-            Float(F::from(0u8))
-        }
+    /// Fallibly constructs a `Float` with `prec` mantissa bits from finite `v`,
+    /// rejecting `prec == 0` ([`ScalarError::ZeroPrecision`]) and `NaN` / `±Infinity` ([`ScalarError::NonFiniteFloat`]).
+    #[verified_engine::verified]
+    pub fn try_with_prec(prec: u32, v: f64) -> Result<Self, ScalarError> {
+        BigFloat::try_with_prec(prec as usize, v).map(Float)
     }
-    /// Computes `abs` (abs).
+    /// Constructs a `Float` with `prec` mantissa bits from finite `v`.
+    ///
+    /// # Panics
+    /// Panics if `prec == 0` or `v` is non-finite (`NaN` or `±Infinity`); use [`Self::try_with_prec`] for fallible construction.
+    pub fn with_val(prec: u32, v: f64) -> Self {
+        Self::try_with_prec(prec, v)
+            .expect("Float::with_val requires prec > 0 and a finite f64 value")
+    }
+    /// Active binary mantissa precision in bits.
+    #[must_use]
+    pub fn precision(&self) -> usize {
+        self.0.precision()
+    }
+    /// Converts `self` to its closest `f64` value.
+    #[must_use]
+    pub fn to_f64(&self) -> f64 {
+        self.0.to_f64()
+    }
+    /// Computes `abs` (abs) preserving mantissa precision.
     pub fn abs(self) -> Self {
         Float(self.0.abs())
     }
     /// Rounds the arbitrary-precision float to the nearest `f64` integer value.
     #[verified_engine::verified]
     pub fn round(self) -> f64 {
-        use dashu::float::round::mode::HalfAway;
-        let f: FBig<HalfAway, 2> = self.0.clone().with_rounding();
-        f.to_f64().value().round()
-    }
-}
-impl PartialEq for Float {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
-impl PartialOrd for Float {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
+        self.0.round_f64()
     }
 }
 impl Add for Float {
@@ -310,30 +342,24 @@ impl<'b> Div<&'b Float> for &Float {
 }
 impl AddAssign for Float {
     fn add_assign(&mut self, rhs: Self) {
-        self.0 += rhs.0;
+        self.0 = self.0.clone() + rhs.0;
     }
 }
 impl SubAssign for Float {
     fn sub_assign(&mut self, rhs: Self) {
-        self.0 -= rhs.0;
+        self.0 = self.0.clone() - rhs.0;
     }
 }
 impl PartialEq<f64> for Float {
     fn eq(&self, other: &f64) -> bool {
-        if let Ok(f) = F::try_from(*other) {
-            self.0 == f
-        } else {
-            false
-        }
+        BigFloat::try_with_prec(self.precision().max(53), *other).is_ok_and(|rhs| self.0 == rhs)
     }
 }
 impl PartialOrd<f64> for Float {
     fn partial_cmp(&self, other: &f64) -> Option<std::cmp::Ordering> {
-        if let Ok(f) = F::try_from(*other) {
-            self.0.partial_cmp(&f)
-        } else {
-            None
-        }
+        BigFloat::try_with_prec(self.precision().max(53), *other)
+            .ok()
+            .and_then(|rhs| self.0.partial_cmp(&rhs))
     }
 }
 
@@ -362,6 +388,33 @@ impl Rational {
         }
         Rational(RBig::from_parts(real_n, mag_d))
     }
+    /// Constructs a reduced `Rational` from signed [`IBig`] numerator and positive [`UBig`] denominator.
+    #[must_use]
+    pub fn from_parts(numer: IBig, denom: UBig) -> Self {
+        Rational(RBig::from_parts(numer, denom))
+    }
+    /// Fallibly constructs a reduced `Rational` from exact [`Integer`] numerator and denominator.
+    pub fn try_from_integers(numer: Integer, denom: Integer) -> Result<Self, ScalarError> {
+        BigRational::try_new(BigInt::from_ibig(numer.0), BigInt::from_ibig(denom.0))
+            .map(|r| Rational(r.as_rbig().clone()))
+    }
+    /// Exact reduced signed [`Integer`] numerator without `f64` narrowing.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn numerator(&self) -> Integer {
+        Integer(self.0.numerator().clone())
+    }
+    /// Exact reduced positive [`Integer`] denominator without `f64` narrowing.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn denominator(&self) -> Integer {
+        Integer(IBig::from(self.0.denominator().clone()))
+    }
+    /// Converts `self` into a canonical [`BigRational`].
+    #[must_use]
+    pub fn to_big_rational(&self) -> BigRational {
+        BigRational::from_rbig(self.0.clone())
+    }
     /// Converts the numerator of the reduced fraction to `f64`.
     #[verified_engine::verified]
     pub fn numer(&self) -> f64 {
@@ -377,54 +430,10 @@ impl Rational {
         d_f.to_f64().value()
     }
 }
-impl Add for Rational {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self {
-        Rational(self.0 + rhs.0)
-    }
-}
-impl Sub for Rational {
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self {
-        Rational(self.0 - rhs.0)
-    }
-}
-impl Mul for Rational {
-    type Output = Self;
-    fn mul(self, rhs: Self) -> Self {
-        Rational(self.0 * rhs.0)
-    }
-}
-impl Div for Rational {
-    type Output = Self;
-    fn div(self, rhs: Self) -> Self {
-        Rational(self.0 / rhs.0)
-    }
-}
-impl<'b> Mul<&'b Rational> for &Rational {
-    type Output = Rational;
-    fn mul(self, rhs: &'b Rational) -> Rational {
-        Rational(self.0.clone() * rhs.0.clone())
-    }
-}
-impl<'b> Add<&'b Rational> for &Rational {
-    type Output = Rational;
-    fn add(self, rhs: &'b Rational) -> Rational {
-        Rational(self.0.clone() + rhs.0.clone())
-    }
-}
-impl Mul<Rational> for &Rational {
-    type Output = Rational;
-    fn mul(self, rhs: Rational) -> Rational {
-        Rational(self.0.clone() * rhs.0)
-    }
-}
-impl Add<Rational> for &Rational {
-    type Output = Rational;
-    fn add(self, rhs: Rational) -> Rational {
-        Rational(self.0.clone() + rhs.0)
-    }
-}
+math_commons::impl_binop!(Rational, Add, add);
+math_commons::impl_binop!(Rational, Sub, sub);
+math_commons::impl_binop!(Rational, Mul, mul);
+math_commons::impl_binop!(Rational, Div, div);
 
 /// Submodule providing `ops` types, traits, and algorithms.
 pub mod ops {

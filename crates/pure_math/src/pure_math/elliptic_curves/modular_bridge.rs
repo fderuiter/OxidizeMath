@@ -74,7 +74,7 @@ pub fn j_invariant_real(curve: &WeierstrassCurve) -> f64 {
 /// Computes the modular $j$-invariant $j(E) \in \mathbb{F}_P$ for a const-generic prime curve.
 #[must_use]
 #[verified_engine::verified]
-pub fn j_invariant_fp<const P: i64>(curve: &FpWeierstrassCurve<P>) -> Fp<P> {
+pub fn j_invariant_fp<const P: u64>(curve: &FpWeierstrassCurve<P>) -> Fp<P> {
     let four_a3 = Fp::<P>::new(4) * curve.a * curve.a * curve.a;
     let denom = four_a3 + Fp::<P>::new(27) * curve.b * curve.b;
     Fp::<P>::new(1728) * four_a3 * denom.multiplicative_inverse()

@@ -19,6 +19,7 @@ diagnostics = { path = "../diagnostics", optional = true }
 engine_linalg = { path = "../02_engines/engine_linalg" }
 libm = { workspace = true }
 math_rng = { path = "../00_foundation/math_rng", features = ["alloc"] }
+math_scalars = { path = "../00_foundation/math_scalars", default-features = false }
 num-complex = { workspace = true, default-features = false, features = ["libm"] }
 num-traits = { workspace = true, default-features = false, features = ["libm"] }
 rand_core = { workspace = true }

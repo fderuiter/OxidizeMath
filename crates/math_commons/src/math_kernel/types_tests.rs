@@ -1,24 +1,29 @@
 // [cite:math_commons]
 use super::{
-    Scalar, SolverWorkspace, fill_standard_normal, sample_open_unit, sample_standard_normal,
-    sample_standard_normal_pair,
+    Complex, FieldScalar, Scalar, SolverWorkspace, fill_standard_normal, sample_open_unit,
+    sample_standard_normal, sample_standard_normal_pair,
 };
 use math_rng::OxidizeRng;
 
 #[test]
 #[verified_engine::verified]
 fn test_scalar_f64_and_f32_identities() {
-    let x64 = <f64 as Scalar>::from_f64(4.0);
+    let x64 = <f64 as FieldScalar>::from_f64(4.0);
     assert!((x64.sqrt() - 2.0).abs() < 1e-12);
     assert!((x64.ln().exp() - 4.0).abs() < 1e-12);
     let trig64 = <f64 as Scalar>::PI.cos();
     assert!((trig64 + 1.0).abs() < 1e-12);
 
-    let x32 = <f32 as Scalar>::from_f64(9.0);
+    let x32 = <f32 as FieldScalar>::from_f64(9.0);
     assert!((x32.sqrt() - 3.0).abs() < 1e-6);
     assert!((x32.ln().exp() - 9.0).abs() < 1e-5);
     let trig32 = <f32 as Scalar>::HALF * <f32 as Scalar>::PI;
     assert!((trig32.sin() - 1.0).abs() < 1e-6);
+
+    let mut cbuf = [Complex::new(1.0_f64, -1.0); 4];
+    let mut cws = SolverWorkspace::new(&mut cbuf);
+    cws.zero_fill();
+    assert!(cws.as_slice().iter().all(|&z| z == Complex::<f64>::ZERO));
 }
 
 #[test]
