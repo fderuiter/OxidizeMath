@@ -96,8 +96,8 @@ pub use hamiltonian::{
     construct_two_state_eigen_hamiltonian_into, gaussian_wavepacket, gaussian_wavepacket_into,
 };
 pub use hydrogenic::{
-    HydrogenicSuperposition3D, OrbitalQuantumNumbers, QuantumFieldObservable, hydrogenic_energy_au,
-    hydrogenic_orbital_cartesian, hydrogenic_radial_wavefunction,
+    HydrogenicSuperposition3D, OrbitalQuantumNumbers, QuantumError, QuantumFieldObservable,
+    hydrogenic_energy_au, hydrogenic_orbital_cartesian, hydrogenic_radial_wavefunction,
 };
 pub use scattering::{
     TransferMatrix2x2, compiled_barrier_transmission, compiled_barrier_transmission_with_overrides,

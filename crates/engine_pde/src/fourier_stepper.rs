@@ -38,7 +38,32 @@ pub struct SemiImplicitFourierStepper {
 }
 
 impl SemiImplicitFourierStepper {
+    /// Creates a 1D radix-2 Fourier stepper after validating `dx > 0` and finite.
+    #[verified_engine::verified]
+    pub fn try_new_1d(dx: f64) -> Result<Self, math_commons::error::MathError> {
+        Self::try_new_2d(dx, 1.0)
+    }
+
+    /// Creates a 2D radix-2 Fourier stepper after validating `dx > 0` and `dy > 0` are finite.
+    #[verified_engine::verified]
+    pub fn try_new_2d(dx: f64, dy: f64) -> Result<Self, math_commons::error::MathError> {
+        for step in [dx, dy] {
+            if !(step > 0.0 && step.is_finite()) {
+                return Err(math_commons::error::MathError::StrictlyOutOfBounds {
+                    value: step,
+                    min: 0.0,
+                    max: f64::INFINITY,
+                });
+            }
+        }
+        debug_assert!(dx > 0.0 && dy > 0.0);
+        Ok(Self { dx, dy })
+    }
+
     /// Creates a 1D radix-2 Fourier stepper for uniform spacing `dx > 0`.
+    ///
+    /// # Panics
+    /// Panics if `dx <= 0.0` or `dx` is non-finite.
     #[verified_engine::verified]
     pub fn new_1d(dx: f64) -> Self {
         assert!(dx > 0.0 && dx.is_finite(), "dx must be positive and finite");
@@ -46,6 +71,9 @@ impl SemiImplicitFourierStepper {
     }
 
     /// Creates a 2D radix-2 Fourier stepper for spacings `dx > 0` and `dy > 0`.
+    ///
+    /// # Panics
+    /// Panics if `dx <= 0.0`, `dy <= 0.0`, or either spacing is non-finite.
     #[verified_engine::verified]
     pub fn new_2d(dx: f64, dy: f64) -> Self {
         assert!(dx > 0.0 && dx.is_finite(), "dx must be positive and finite");

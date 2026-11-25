@@ -2044,7 +2044,7 @@
       "signature": "impl SculptedGridMdp { pub const fn in_bounds (& self , _ : GridState) -> bool }"
     },
     {
-      "signature": "impl SculptedGridMdp { pub fn apply_cells_u8 (& mut self , _ : & [u8]) -> Result < () , String > }"
+      "signature": "impl SculptedGridMdp { pub fn apply_cells_u8 (& mut self , _ : & [u8]) -> Result < () , crate :: error :: AIError > }"
     },
     {
       "signature": "impl SculptedGridMdp { pub fn cell_index (& self , _ : GridState) -> usize }"
@@ -4127,7 +4127,7 @@
   ],
   "crates/domain_applied/src/applied/freesurfer/surface.rs": [
     {
-      "signature": "impl MriVolume { pub fn new (_ : [usize ; 3] , _ : [f64 ; 3] , _ : f64 , _ : Vec < f64 > ,) -> Result < Self , & 'static str > }"
+      "signature": "impl MriVolume { pub fn new (_ : [usize ; 3] , _ : [f64 ; 3] , _ : f64 , _ : Vec < f64 > ,) -> Result < Self , crate :: error :: EngineeringError > }"
     },
     {
       "signature": "impl MriVolume { pub fn sample_trilinear (& self , _ : & [f64 ; 3]) -> f64 }"
@@ -6018,7 +6018,7 @@
       "signature": "impl CellMask2D { pub fn set (& mut self , _ : usize , _ : usize , _ : ReactionCellRole) }"
     },
     {
-      "signature": "impl CellMask2D { pub fn set_roles_slice (& mut self , _ : & [u8]) -> Result < () , & 'static str > }"
+      "signature": "impl CellMask2D { pub fn set_roles_slice (& mut self , _ : & [u8] ,) -> Result < () , crate :: biology :: reaction_diffusion :: ReactionDiffusionError > }"
     },
     {
       "signature": "impl CellMask2D { pub fn stamp_microfluidic_maze (& mut self) }"
@@ -8382,6 +8382,9 @@
     },
     {
       "signature": "pub use crate :: physics :: nuclear :: types :: NuclearError"
+    },
+    {
+      "signature": "pub use crate :: physics :: quantum :: hydrogenic :: QuantumError"
     },
     {
       "signature": "pub use crate :: physics :: stat_mech :: sandpile :: SandpileError"
@@ -11444,7 +11447,10 @@
       "signature": "impl OrbitalQuantumNumbers { pub fn clamped (_ : u32 , _ : u32 , _ : i32) -> Self }"
     },
     {
-      "signature": "impl OrbitalQuantumNumbers { pub fn new (_ : u32 , _ : u32 , _ : i32) -> Result < Self , String > }"
+      "signature": "impl OrbitalQuantumNumbers { pub fn new (_ : u32 , _ : u32 , _ : i32) -> Result < Self , QuantumError > }"
+    },
+    {
+      "signature": "pub enum QuantumError"
     },
     {
       "signature": "pub enum QuantumFieldObservable"
@@ -11501,6 +11507,9 @@
     },
     {
       "signature": "pub use hydrogenic :: OrbitalQuantumNumbers"
+    },
+    {
+      "signature": "pub use hydrogenic :: QuantumError"
     },
     {
       "signature": "pub use hydrogenic :: QuantumFieldObservable"
@@ -12729,6 +12738,9 @@
       "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn step < S : LangevinSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : & mut [T] , _ : & mut [T] , _ : & mut impl SolverWorkspace , _ : & mut R ,) }"
     },
     {
+      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn try_new (_ : BaoabParams < T >) -> Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
       "signature": "pub struct BaoabLangevinSolver < T : Scalar >"
     },
     {
@@ -12961,6 +12973,12 @@
     },
     {
       "signature": "impl SemiImplicitFourierStepper { pub fn step_kpz_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut impl SolverWorkspace , _ : & mut R ,) }"
+    },
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_new_1d (_ : f64) -> Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_new_2d (_ : f64 , _ : f64) -> Result < Self , math_commons :: error :: MathError > }"
     },
     {
       "signature": "pub struct SemiImplicitFourierStepper"
@@ -14814,6 +14832,9 @@
       "signature": "pub use debt_floors :: DensityFloors"
     },
     {
+      "signature": "pub use debt_floors :: DensityFloorsError"
+    },
+    {
       "signature": "pub use debt_floors :: load_workspace_density_floors"
     },
     {
@@ -14941,10 +14962,13 @@
   ],
   "crates/oxidize_core/src/traceability/debt_floors.rs": [
     {
+      "signature": "pub enum DensityFloorsError"
+    },
+    {
       "signature": "pub fn load_workspace_density_floors () -> Result < DensityFloors , std :: io :: Error >"
     },
     {
-      "signature": "pub fn parse_density_floors_toml (_ : & str) -> Result < Option < DensityFloors > , String >"
+      "signature": "pub fn parse_density_floors_toml (_ : & str ,) -> Result < Option < DensityFloors > , DensityFloorsError >"
     },
     {
       "signature": "pub struct DensityFloors"
@@ -24898,6 +24922,9 @@
     },
     {
       "signature": "pub use domain_physics :: error :: PhysicsError"
+    },
+    {
+      "signature": "pub use domain_physics :: error :: QuantumError"
     },
     {
       "signature": "pub use domain_physics :: error :: RadarError"

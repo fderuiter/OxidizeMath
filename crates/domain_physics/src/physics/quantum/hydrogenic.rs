@@ -13,6 +13,72 @@ use num_complex::Complex;
 use pure_math::pure_math::special_functions::legendre::real_spherical_harmonic;
 use pure_math::pure_math::special_functions::polynomials::associated_laguerre;
 
+/// Typed domain errors returned by hydrogenic orbital and quantum state constructors.
+#[derive(thiserror::Error, Debug, Clone, PartialEq)]
+pub enum QuantumError {
+    /// Principal quantum number `n` lies outside the supported `min..=max` range.
+    #[error("Principal quantum number n={n} must be in {min}..={max}")]
+    InvalidPrincipalQuantumNumber {
+        /// Rejected principal quantum number `n`.
+        n: u32,
+        /// Inclusive lower bound (`1`).
+        min: u32,
+        /// Inclusive upper bound (`6`).
+        max: u32,
+    },
+    /// Azimuthal quantum number `l` violated `l < n`.
+    #[error("Orbital quantum number l={l} must satisfy l < n={n}")]
+    InvalidOrbitalQuantumNumber {
+        /// Rejected azimuthal quantum number `l`.
+        l: u32,
+        /// Principal quantum number `n`.
+        n: u32,
+    },
+    /// Magnetic quantum number `m` violated `|m| <= l`.
+    #[error("Magnetic quantum number m={m} must satisfy |m| <= l={l}")]
+    InvalidMagneticQuantumNumber {
+        /// Rejected magnetic quantum number `m`.
+        m: i32,
+        /// Azimuthal quantum number `l`.
+        l: u32,
+    },
+    /// Wrapped centralized mathematical error.
+    #[error("{0}")]
+    Math(#[from] math_commons::error::MathError),
+}
+
+impl diagnostics::Diagnostic for QuantumError {
+    #[verified_engine::verified]
+    fn severity(&self) -> diagnostics::Severity {
+        match self {
+            Self::Math(err) => err.severity(),
+            _ => diagnostics::Severity::Error,
+        }
+    }
+
+    #[verified_engine::verified]
+    fn visit_fields(&self, visitor: &mut dyn diagnostics::DiagnosticVisitor) {
+        match self {
+            Self::Math(math_err) => math_err.visit_fields(visitor),
+            Self::InvalidPrincipalQuantumNumber { n, min, max } => {
+                visitor.record_u64("n", u64::from(*n));
+                visitor.record_u64("min", u64::from(*min));
+                visitor.record_u64("max", u64::from(*max));
+            }
+            Self::InvalidOrbitalQuantumNumber { l, n } => {
+                visitor.record_u64("l", u64::from(*l));
+                visitor.record_u64("n", u64::from(*n));
+            }
+            Self::InvalidMagneticQuantumNumber { m, l } => {
+                visitor.record_i64("m", i64::from(*m));
+                visitor.record_u64("l", u64::from(*l));
+            }
+        }
+        visitor.record_str("error_type", "QuantumError");
+        visitor.record_display("description", self);
+    }
+}
+
 /// Validated hydrogenic orbital quantum numbers $(n, \ell, m)$ with $1 \le n \le 6$, $\ell < n$, $|m| \le \ell$.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct OrbitalQuantumNumbers {
@@ -27,20 +93,17 @@ pub struct OrbitalQuantumNumbers {
 impl OrbitalQuantumNumbers {
     /// Validates and constructs `(n, l, m)` within interactive bounds `1 <= n <= 6`.
     #[verified_engine::verified]
-    pub fn new(n: u32, l: u32, m: i32) -> Result<Self, String> {
+    pub fn new(n: u32, l: u32, m: i32) -> Result<Self, QuantumError> {
         if !(1..=6).contains(&n) {
-            return Err(format!("Principal quantum number n={n} must be in 1..=6"));
+            return Err(QuantumError::InvalidPrincipalQuantumNumber { n, min: 1, max: 6 });
         }
         if l >= n {
-            return Err(format!(
-                "Orbital quantum number l={l} must satisfy l < n={n}"
-            ));
+            return Err(QuantumError::InvalidOrbitalQuantumNumber { l, n });
         }
         if m.unsigned_abs() > l {
-            return Err(format!(
-                "Magnetic quantum number m={m} must satisfy |m| <= l={l}"
-            ));
+            return Err(QuantumError::InvalidMagneticQuantumNumber { m, l });
         }
+        debug_assert!((1..=6).contains(&n) && l < n && m.unsigned_abs() <= l);
         Ok(Self { n, l, m })
     }
 

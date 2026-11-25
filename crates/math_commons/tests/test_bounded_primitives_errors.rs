@@ -2,11 +2,27 @@
 //! on `UnitInterval`, `PositiveFloat`, and `NonNegativeFloat`.
 #![cfg(feature = "std")]
 
-use diagnostics::Diagnostic;
-use math_commons::error::MathError;
-use math_commons::math_kernel::types::Dimension;
+use diagnostics::{Diagnostic, DiagnosticVisitor};
+use math_commons::error::{ArenaError, MathError};
+use math_commons::math_kernel::types::{ByteArena, Dimension, SolverWorkspace};
 use math_commons::primitives::{NonNegativeFloat, PositiveFloat, UnitInterval};
+use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
+
+#[global_allocator]
+static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
+
+struct CountingVisitor(usize);
+
+impl DiagnosticVisitor for CountingVisitor {
+    fn record_str(&mut self, _key: &str, _value: &str) {
+        self.0 += 1;
+    }
+
+    fn record_display(&mut self, _key: &str, _value: &dyn core::fmt::Display) {
+        self.0 += 1;
+    }
+}
 
 #[test]
 fn unit_interval_bounds_methods_and_operators_return_math_error() {
@@ -104,4 +120,56 @@ fn dimension_mismatch_display_omits_debug_wrappers_and_failures_do_not_allocate(
             && matches!(e3, MathError::OutOfBounds { .. })
     });
     assert!(ok);
+}
+
+#[test]
+fn solver_workspace_try_take_slice_returns_typed_error_without_allocating() {
+    let mut backing = [0.0_f64; 6];
+    let (ok, _) = VerifiedEngine::run_verified(|| {
+        let mut ws = ByteArena::from_slice(&mut backing);
+        let mut scope = SolverWorkspace::reborrow(&mut ws);
+        let first = scope.alloc_slice::<f64>(4).expect("first slice fits");
+        first[0] = 3.5;
+        let err = scope
+            .alloc_slice::<f64>(4)
+            .expect_err("overflow slice must return InsufficientCapacity");
+        assert_eq!(
+            err,
+            ArenaError::InsufficientCapacity {
+                requested: 32,
+                available: 16,
+            }
+        );
+        let ws_err = MathError::WorkspaceTooSmall {
+            required: 4,
+            available: 2,
+        };
+        let mut v = CountingVisitor(0);
+        ws_err.visit_fields(&mut v);
+        assert_eq!(v.0, 4);
+
+        let tail = scope
+            .alloc_slice::<f64>(2)
+            .expect("remaining capacity preserved after failed alloc_slice");
+        tail[1] = 1.5;
+        first[0] + tail[1] == 5.0
+    });
+    assert!(ok);
+
+    let ws_err = MathError::WorkspaceTooSmall {
+        required: 8,
+        available: 3,
+    };
+    assert_eq!(
+        ws_err.to_string(),
+        "Solver workspace too small: required 8 elements, available 3"
+    );
+    assert_eq!(
+        ws_err.metadata().get("required").map(String::as_str),
+        Some("8")
+    );
+    assert_eq!(
+        ws_err.metadata().get("available").map(String::as_str),
+        Some("3")
+    );
 }

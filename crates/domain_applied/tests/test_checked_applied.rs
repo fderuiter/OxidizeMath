@@ -54,3 +54,36 @@ fn glm_estimators_return_typed_engineering_errors() {
         Err(EngineeringError::ZeroContrastVariance)
     );
 }
+
+#[test]
+fn mri_volume_new_returns_typed_engineering_errors_across_all_preconditions() {
+    use domain_applied::applied::freesurfer::surface::MriVolume;
+
+    assert_eq!(
+        MriVolume::new([0, 2, 2], [0.0; 3], 1.0, vec![]),
+        Err(EngineeringError::ZeroVolumeDimension { dims: [0, 2, 2] })
+    );
+    assert_eq!(
+        MriVolume::new([2, 2, 2], [0.0; 3], 0.0, vec![0.0; 8]),
+        Err(EngineeringError::InvalidVoxelSize { voxel_size: 0.0 })
+    );
+    assert!(matches!(
+        MriVolume::new([2, 2, 2], [0.0, f64::INFINITY, 0.0], 1.0, vec![0.0; 8]),
+        Err(EngineeringError::NonFiniteOrigin { .. })
+    ));
+    assert_eq!(
+        MriVolume::new([usize::MAX, 2, 2], [0.0; 3], 1.0, vec![]),
+        Err(EngineeringError::VolumeDimensionsOverflow {
+            dims: [usize::MAX, 2, 2],
+        })
+    );
+    assert_eq!(
+        MriVolume::new([2, 2, 2], [0.0; 3], 1.0, vec![0.0; 7]),
+        Err(EngineeringError::DimensionMismatch {
+            context: "MRI volume intensities length",
+            expected: 8,
+            actual: 7,
+        })
+    );
+    assert!(MriVolume::new([2, 2, 2], [0.0; 3], 1.0, vec![1.0; 8]).is_ok());
+}

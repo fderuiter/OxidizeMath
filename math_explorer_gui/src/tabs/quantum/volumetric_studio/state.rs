@@ -385,8 +385,8 @@ impl VolumetricStudioConfig {
                 self.grid_resolution
             ));
         }
-        OrbitalQuantumNumbers::new(self.n1, self.l1, self.m1)?;
-        OrbitalQuantumNumbers::new(self.n2, self.l2, self.m2)?;
+        OrbitalQuantumNumbers::new(self.n1, self.l1, self.m1).map_err(|err| err.to_string())?;
+        OrbitalQuantumNumbers::new(self.n2, self.l2, self.m2).map_err(|err| err.to_string())?;
         self.validate_scalar_ranges()?;
         super::implicit::validate_implicit_config(self)?;
         super::ast_field::validate_custom_ast_config(self)?;

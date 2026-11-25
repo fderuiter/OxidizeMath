@@ -1,6 +1,6 @@
 use super::{
     ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
-    RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError,
+    QuantumError, RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError,
 };
 use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use domain_applied::error::{AppliedError, KalmanError};
@@ -49,6 +49,9 @@ pub enum PhysicsError {
     /// Nuclear structure and reaction error.
     #[error("{0}")]
     Nuclear(#[from] NuclearError),
+    /// Hydrogenic orbital and quantum mechanics error.
+    #[error("{0}")]
+    Quantum(#[from] QuantumError),
     /// Radar array and MUSIC estimation error.
     #[error("{0}")]
     Radar(#[from] RadarError),
@@ -207,6 +210,7 @@ impl PhysicsError {
             Self::Gating(err) => err,
             Self::HighEnergy(err) => err,
             Self::Nuclear(err) => err,
+            Self::Quantum(err) => err,
             Self::Radar(err) => err,
             Self::Sandpile(err) => err,
             Self::SolidState(err) => err,

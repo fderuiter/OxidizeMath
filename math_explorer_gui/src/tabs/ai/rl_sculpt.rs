@@ -290,7 +290,7 @@ pub fn apply_rle_to_mdp(mdp: &mut SculptedGridMdp, rle_mask: &[[u32; 2]]) -> Res
     }
     let expected = (mdp.width as usize) * (mdp.height as usize);
     let raw = decode_rle_mask(rle_mask, expected)?;
-    mdp.apply_cells_u8(&raw)
+    mdp.apply_cells_u8(&raw).map_err(|err| err.to_string())
 }
 
 /// Packs `mdp` and `solver` into a worker-synchronizable [`SculptStatePayload`].

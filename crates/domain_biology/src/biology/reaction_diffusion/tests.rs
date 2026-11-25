@@ -133,3 +133,28 @@ fn test_reaction_diffusion_system_equivalence() {
         );
     }
 }
+
+#[test]
+fn cell_mask_2d_set_roles_slice_returns_typed_error_without_allocating() {
+    use crate::biology::diffusion::CellMask2D;
+    use verified_engine::engine::VerifiedEngine;
+
+    let mut mask = CellMask2D::new(4, 3);
+    let valid_bytes = [0_u8; 12];
+    let short_bytes = [0_u8; 5];
+
+    let (ok, _) = VerifiedEngine::run_verified(|| {
+        let err = mask
+            .set_roles_slice(&short_bytes)
+            .expect_err("mismatched slice length must fail");
+        assert_eq!(
+            err,
+            ReactionDiffusionError::CellMaskLengthMismatch {
+                expected: 12,
+                actual: 5,
+            }
+        );
+        mask.set_roles_slice(&valid_bytes).is_ok()
+    });
+    assert!(ok);
+}

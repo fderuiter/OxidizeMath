@@ -113,8 +113,13 @@ impl Diagnostic for ReactionDiffusionError {
 
     #[verified_engine::verified]
     fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
-        if let Self::Math(math_err) = self {
-            math_err.visit_fields(visitor);
+        match self {
+            Self::Math(math_err) => math_err.visit_fields(visitor),
+            Self::CellMaskLengthMismatch { expected, actual } => {
+                visitor.record_usize("expected", *expected);
+                visitor.record_usize("actual", *actual);
+            }
+            _ => {}
         }
         visitor.record_str("error_type", "ReactionDiffusionError");
         visitor.record_display("description", self);

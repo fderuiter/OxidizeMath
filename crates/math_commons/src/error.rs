@@ -54,6 +54,15 @@ pub enum MathError {
         len: usize,
     },
 
+    /// Pre-allocated solver scratch workspace had fewer elements than required.
+    #[error("Solver workspace too small: required {required} elements, available {available}")]
+    WorkspaceTooSmall {
+        /// Number of elements requested by the caller.
+        required: usize,
+        /// Remaining elements available in the workspace slice.
+        available: usize,
+    },
+
     /// Numerical computation failures (e.g., singular matrix, non-positive definite).
     #[cfg(feature = "alloc")]
     #[error("Numerical error: {reason}")]
@@ -94,6 +103,13 @@ impl Diagnostic for MathError {
                 visitor.record_usize("index", *index);
                 visitor.record_usize("value", *value);
                 visitor.record_usize("len", *len);
+            }
+            Self::WorkspaceTooSmall {
+                required,
+                available,
+            } => {
+                visitor.record_usize("required", *required);
+                visitor.record_usize("available", *available);
             }
             #[cfg(feature = "alloc")]
             Self::NumericalError { reason } | Self::ConversionError { reason } => {
