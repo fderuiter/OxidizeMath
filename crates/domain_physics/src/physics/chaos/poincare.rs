@@ -47,7 +47,7 @@ pub struct PoincarePoint {
 }
 
 /// Fixed-capacity stack-allocated circular buffer for zero-allocation Poincaré section points.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PoincareRingBuffer<const CAP: usize> {
     entries: [PoincarePoint; CAP],
     head: usize,

@@ -65,6 +65,7 @@ pub enum NodeState {
 /// model.step();
 /// assert_eq!(model.states()[1], NodeState::Infected);
 /// ```
+#[derive(Debug, Clone, PartialEq)]
 pub struct NetworkEpidemicModel {
     pub(super) num_nodes: usize,
     pub(super) states: Vec<NodeState>,

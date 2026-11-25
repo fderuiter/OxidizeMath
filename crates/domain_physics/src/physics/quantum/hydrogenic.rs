@@ -132,6 +132,7 @@ pub fn hydrogenic_orbital_cartesian(
 }
 
 /// Zero-allocation 3D two-state hydrogenic superposition engine coupled to `schrodinger` and `hamiltonian`.
+#[derive(Debug, Clone, PartialEq)]
 pub struct HydrogenicSuperposition3D {
     orbital_a: OrbitalQuantumNumbers,
     orbital_b: OrbitalQuantumNumbers,

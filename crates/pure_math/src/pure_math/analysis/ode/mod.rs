@@ -7,6 +7,8 @@
 //! with any vector-like type (e.g., `Vec<f64>`, `nalgebra::Vector3<f64>`, etc.),
 //! avoiding heap allocations when fixed-size arrays are sufficient.
 
+/// Submodule providing pre-allocated `IntegrationMethod` solver dispatch.
+pub mod configured_solver;
 pub mod implicit_midpoint;
 /// Submodule providing `macros` types, traits, and algorithms.
 pub mod macros;
@@ -69,6 +71,7 @@ impl IntegrationMethod {
     }
 }
 
+pub use configured_solver::PreallocatedOdeSolver;
 pub use implicit_midpoint::{ImplicitMidpoint, MAX_FIXED_POINT_ITERS};
 pub use model::OdeModel;
 pub use solvers::{Euler, Heun, RungeKutta4};

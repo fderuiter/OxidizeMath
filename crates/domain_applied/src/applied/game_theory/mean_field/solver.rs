@@ -54,6 +54,7 @@ pub trait MFGSolver {
 ///
 /// # Domain of Validity
 /// Valid on bounded 1D intervals $x_{\min} < x_{\max}$ with $\nu \ge 0$ and convex differentiable Hamiltonians $H(p)$.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct FixedPointSolver<H: Hamiltonian> {
     /// Number of backward-HJB / forward-FP fixed-point iterations to execute.
     pub iterations: usize,

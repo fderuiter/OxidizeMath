@@ -69,7 +69,7 @@ impl OdeSystem<SIRState> for SIRDynamics {
 /// $\beta \ge 0$, $\gamma \ge 0$.
 ///
 /// Use `SIRModel::builder()` or `SIRModel::new()` to construct.
-#[derive(Debug, Clone, Theory)]
+#[derive(Debug, Clone, PartialEq, Theory)]
 #[theory(
     description = "The SIR model is an epidemiological model that computes the theoretical number of people infected with a contagious illness in a closed population over time.",
     citation = "A Contribution to the Mathematical Theory of Epidemics (Kermack & McKendrick, 1927)"
@@ -80,6 +80,7 @@ pub struct SIRModel<S: Solver<SIRState> = RungeKutta4<SIRState>> {
     pub dynamics: SIRDynamics,
     /// The numerical solver strategy.
     solver: S,
+    t: f64,
 }
 
 impl<S: Solver<SIRState>> TimeStepper<SIRState> for SIRModel<S> {
@@ -94,15 +95,41 @@ impl<S: Solver<SIRState>> TimeStepper<SIRState> for SIRModel<S> {
     }
 
     #[verified_engine::verified]
+    fn elapsed_time(&self) -> f64 {
+        self.t
+    }
+
+    #[verified_engine::verified]
+    fn advance_time(&mut self, dt: f64) {
+        self.t += dt;
+    }
+
+    #[verified_engine::verified]
+    fn step_at(&mut self, t: f64, dt: f64) {
+        self.solver.step(&self.dynamics, t, &mut self.state, dt);
+    }
+
+    #[verified_engine::verified]
+    fn step_with_at<Sol: Solver<SIRState>>(&mut self, solver: &mut Sol, t: f64, dt: f64) {
+        solver.step(&self.dynamics, t, &mut self.state, dt);
+    }
+
+    #[verified_engine::verified]
     fn step(&mut self, dt: f64) {
-        // Delegate stepping to the injected solver strategy.
-        // pass &self.dynamics to avoid partial borrow of self.
-        self.solver.step(&self.dynamics, 0.0, &mut self.state, dt);
+        self.solver
+            .step(&self.dynamics, self.t, &mut self.state, dt);
+        self.t += dt;
+    }
+
+    #[verified_engine::verified]
+    fn step_with<Sol: Solver<SIRState>>(&mut self, solver: &mut Sol, dt: f64) {
+        solver.step(&self.dynamics, self.t, &mut self.state, dt);
+        self.t += dt;
     }
 }
 
 /// Builder for SIRModel to ensure valid parameter configuration.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct SIRModelBuilder {
     n: Option<f64>,
     i0: Option<f64>,
@@ -170,6 +197,7 @@ impl SIRModelBuilder {
             state,
             dynamics: SIRDynamics { n, beta, gamma },
             solver: RungeKutta4::new(&state),
+            t: 0.0,
         })
     }
 }
@@ -239,13 +267,21 @@ impl<S: Solver<SIRState>> SIRModel<S> {
         <Self as TimeStepper<SIRState>>::step_with(self, solver, dt);
     }
 
-    /// Replaces the current solver with a new one.
+    /// Replaces the current solver with a new one, preserving elapsed simulation time.
     pub fn with_solver<NewS: Solver<SIRState>>(self, new_solver: NewS) -> SIRModel<NewS> {
         SIRModel {
             state: self.state,
             dynamics: self.dynamics,
             solver: new_solver,
+            t: self.t,
         }
+    }
+
+    /// Returns the elapsed simulation time $t$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.t
     }
 
     /// Returns the transmission rate beta.

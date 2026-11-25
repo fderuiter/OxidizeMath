@@ -68,7 +68,7 @@ pub trait DegradationModel {
 /// # Domain of Validity
 /// Positive prefactor $\alpha > 0$, negative stress exponent $\beta < 0$, positive DoD $D \in (0, 100]$,
 /// and non-negative cycles $N \ge 0$.
-#[derive(Debug, Clone, Copy, Theory)]
+#[derive(Debug, Clone, Copy, Theory, PartialEq)]
 #[theory(
     description = "Empirical power-law model characterizing the cycle life of lithium-ion batteries as a function of depth of discharge.",
     citation = "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)"

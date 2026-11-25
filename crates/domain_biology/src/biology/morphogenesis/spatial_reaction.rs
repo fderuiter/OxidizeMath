@@ -21,7 +21,7 @@ use crate::biology::reaction_diffusion::{ChemicalState, ReactionModel};
 /// # Domain of Validity
 /// Non-negative species concentrations $u_i, v_i \ge 0$, feed rates $a_i \ge 0, b_i > 0$ with $a_i + b_i > 0$,
 /// and concentration slice lengths matching `grid_size`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SpatialSchnakenbergKinetics {
     /// Baseline activator production rate ($a$).
     pub a: f64,
@@ -160,6 +160,16 @@ impl ReactionModel for SpatialSchnakenbergKinetics {
             rates_u[i] += out[0];
             rates_v[i] += out[1];
         }
+    }
+
+    #[verified_engine::verified]
+    fn add_reaction_batch_at_time(
+        &self,
+        _t: f64,
+        state: &ChemicalState,
+        rates: &mut ChemicalState,
+    ) {
+        self.add_reaction_batch(state, rates);
     }
 }
 

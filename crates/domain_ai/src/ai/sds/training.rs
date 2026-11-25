@@ -85,6 +85,7 @@ pub trait Optimizer {
 /// # Domain of Validity
 /// Strictly positive `learning_rate` $\eta > 0$ and `epsilon` $\epsilon > 0$, decay factors
 /// $\beta_1, \beta_2 \in [0, 1)$, step count $t < \text{i32::MAX}$, and finite matching parameter/gradient shapes.
+#[derive(Debug, Clone, PartialEq)]
 pub struct AdamOptimizer {
     /// Step-size hyperparameter $\eta > 0$.
     pub learning_rate: PositiveFloat,
@@ -194,6 +195,7 @@ impl Optimizer for AdamOptimizer {
 /// # Domain of Validity
 /// Strictly positive `learning_rate` $\eta > 0$, `momentum` $\mu \in [0, 1)$, and finite matching
 /// parameter/gradient matrices.
+#[derive(Debug, Clone, PartialEq)]
 pub struct SgdOptimizer {
     /// Step-size hyperparameter $\eta > 0$.
     pub learning_rate: PositiveFloat,

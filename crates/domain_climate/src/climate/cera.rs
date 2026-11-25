@@ -25,7 +25,7 @@ use verified_engine::Theory;
 /// # Domain of Validity
 /// Requires `aligned_channels <= latent_channels`, `in_channels > 0`, `num_levels > 0`, `output_size > 0`,
 /// and finite `f32` vertical atmospheric profiles.
-#[derive(Theory)]
+#[derive(Debug, Clone, PartialEq, Theory)]
 #[theory(
     description = "CERA is a Climate-Emulation and Response Architecture that combines autoencoders with a predictive downstream model to map local atmospheric states to global cloud properties under varying climate forcing.",
     citation = "Climate-Emulation and Response Architecture (CERA) paper",

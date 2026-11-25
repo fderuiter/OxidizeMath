@@ -53,12 +53,31 @@ pub struct CachedRustFile {
     pub ast: Option<syn::File>,
 }
 
+impl std::fmt::Debug for CachedRustFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CachedRustFile")
+            .field("content_len", &self.content.len())
+            .field("has_ast", &self.ast.is_some())
+            .finish()
+    }
+}
+
 /// In-memory cache ensuring each unique Rust file is parsed with `syn::parse_file` at most once.
 #[derive(Default)]
 pub struct AstCache {
     entries: HashMap<String, CachedRustFile>,
     prefetched: HashMap<String, String>,
     parse_calls: usize,
+}
+
+impl std::fmt::Debug for AstCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AstCache")
+            .field("entries_len", &self.entries.len())
+            .field("prefetched_len", &self.prefetched.len())
+            .field("parse_calls", &self.parse_calls)
+            .finish()
+    }
 }
 
 impl AstCache {

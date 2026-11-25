@@ -9,6 +9,7 @@ use super::types::{Mesh, Point3D, VoxelGrid};
 use crate::error::IsosurfaceError;
 
 /// Reusable rolling-slice cache workspace enabling zero-allocation per-frame [`MarchingCubes`] extraction.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IsosurfaceWorkspace {
     pub(super) edge_cache: SliceEdgeCache,
     lock_mesh_capacity: bool,

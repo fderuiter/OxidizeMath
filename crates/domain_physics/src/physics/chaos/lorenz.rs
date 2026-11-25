@@ -1,13 +1,16 @@
 // [cite:chaos_theory]
 //! Continuous Chaos (The Lorenz System)
 
+use crate::error::ChaosError;
 use nalgebra::Vector3;
-use pure_math::pure_math::analysis::ode::{OdeSystem, Solver, TimeStepper};
+use pure_math::pure_math::analysis::ode::{
+    IntegrationMethod, OdeSystem, PreallocatedOdeSolver, Solver, TimeStepper,
+};
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
 /// Represents the state of the Lorenz system $(x, y, z)$.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct LorenzState {
     /// The 3D state vector.
     pub vec: Vector3<f64>,
@@ -23,12 +26,39 @@ impl LorenzState {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct LorenzDynamics {
+    sigma: f64,
+    rho: f64,
+    beta: f64,
+}
+
+impl OdeSystem<Vector3<f64>> for LorenzDynamics {
+    #[verified_engine::verified]
+    fn derivative(&self, _t: f64, state: &Vector3<f64>) -> Vector3<f64> {
+        let x = state.x;
+        let y = state.y;
+        let z = state.z;
+        Vector3::new(
+            self.sigma * (y - x),
+            x * (self.rho - z) - y,
+            x * y - self.beta * z,
+        )
+    }
+
+    #[verified_engine::verified]
+    fn derivative_in_place(&self, t: f64, state: &Vector3<f64>, out: &mut Vector3<f64>) {
+        *out = self.derivative(t, state);
+    }
+}
+
 /// A builder for the `LorenzSystem`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LorenzBuilder {
     sigma: f64,
     rho: f64,
     beta: f64,
+    integration_method: IntegrationMethod,
 }
 
 impl Default for LorenzBuilder {
@@ -38,12 +68,13 @@ impl Default for LorenzBuilder {
             sigma: 10.0,
             rho: 28.0,
             beta: 8.0 / 3.0,
+            integration_method: IntegrationMethod::RungeKutta4,
         }
     }
 }
 
 impl LorenzBuilder {
-    /// Creates a new builder with standard chaotic constants.
+    /// Creates a new builder with standard chaotic constants and [`IntegrationMethod::RungeKutta4`].
     #[verified_engine::verified]
     pub fn new() -> Self {
         Self::default()
@@ -70,15 +101,55 @@ impl LorenzBuilder {
         self
     }
 
-    /// Builds the `LorenzSystem` with the configured parameters and initial state.
+    /// Selects the numerical [`IntegrationMethod`] used by `LorenzSystem::step`.
+    #[verified_engine::verified]
+    pub fn integration_method(mut self, method: IntegrationMethod) -> Self {
+        self.integration_method = method;
+        self
+    }
+
+    /// Builds the `LorenzSystem` with pre-allocated solver scratch buffers and `t = 0.0`.
     #[verified_engine::verified]
     pub fn build(self, state: LorenzState) -> LorenzSystem {
+        let solver = PreallocatedOdeSolver::new(&state.vec);
         LorenzSystem {
             sigma: self.sigma,
             rho: self.rho,
             beta: self.beta,
             state,
+            integration_method: self.integration_method,
+            t: 0.0,
+            solver,
         }
+    }
+
+    /// Validates that parameters and initial state are finite before building a [`LorenzSystem`].
+    #[verified_engine::verified]
+    pub fn try_build(self, state: LorenzState) -> Result<LorenzSystem, ChaosError> {
+        if !self.sigma.is_finite() || self.sigma <= 0.0 {
+            return Err(ChaosError::InvalidParameter(format!(
+                "sigma must be finite and positive, got {}",
+                self.sigma
+            )));
+        }
+        if !self.rho.is_finite() || self.rho < 0.0 {
+            return Err(ChaosError::InvalidParameter(format!(
+                "rho must be finite and non-negative, got {}",
+                self.rho
+            )));
+        }
+        if !self.beta.is_finite() || self.beta <= 0.0 {
+            return Err(ChaosError::InvalidParameter(format!(
+                "beta must be finite and positive, got {}",
+                self.beta
+            )));
+        }
+        if !(state.vec.x.is_finite() && state.vec.y.is_finite() && state.vec.z.is_finite()) {
+            return Err(ChaosError::InvalidParameter(
+                "initial LorenzState coordinates must be finite".to_string(),
+            ));
+        }
+        Ok(self.build(state))
     }
 }
 
@@ -129,6 +200,22 @@ pub struct LorenzSystem {
     pub beta: f64,
     /// The current state of the system.
     pub state: LorenzState,
+    /// Selected numerical integration scheme honored by `step`.
+    pub integration_method: IntegrationMethod,
+    t: f64,
+    solver: PreallocatedOdeSolver<Vector3<f64>>,
+}
+
+impl PartialEq for LorenzSystem {
+    #[verified_engine::verified]
+    fn eq(&self, other: &Self) -> bool {
+        self.sigma == other.sigma
+            && self.rho == other.rho
+            && self.beta == other.beta
+            && self.state == other.state
+            && self.integration_method == other.integration_method
+            && self.t == other.t
+    }
 }
 
 impl TimeStepper<Vector3<f64>> for LorenzSystem {
@@ -141,9 +228,61 @@ impl TimeStepper<Vector3<f64>> for LorenzSystem {
     fn get_state_mut(&mut self) -> &mut Vector3<f64> {
         &mut self.state.vec
     }
+
+    #[verified_engine::verified]
+    fn elapsed_time(&self) -> f64 {
+        self.t
+    }
+
+    #[verified_engine::verified]
+    fn advance_time(&mut self, dt: f64) {
+        self.t += dt;
+    }
+
+    #[verified_engine::verified]
+    fn step_at(&mut self, t: f64, dt: f64) {
+        let dynamics = self.dynamics();
+        self.solver.step_method(
+            self.integration_method,
+            &dynamics,
+            t,
+            &mut self.state.vec,
+            dt,
+        );
+    }
+
+    #[verified_engine::verified]
+    fn step_with_at<S: Solver<Vector3<f64>>>(&mut self, solver: &mut S, t: f64, dt: f64) {
+        let dynamics = self.dynamics();
+        solver.step(&dynamics, t, &mut self.state.vec, dt);
+    }
+
+    #[verified_engine::verified]
+    fn step(&mut self, dt: f64) {
+        let t = self.t;
+        self.step_at(t, dt);
+        self.t += dt;
+    }
+
+    #[verified_engine::verified]
+    fn step_with<S: Solver<Vector3<f64>>>(&mut self, solver: &mut S, dt: f64) {
+        let t = self.t;
+        self.step_with_at(solver, t, dt);
+        self.t += dt;
+    }
 }
 
 impl LorenzSystem {
+    #[inline]
+    #[verified_engine::verified]
+    fn dynamics(&self) -> LorenzDynamics {
+        LorenzDynamics {
+            sigma: self.sigma,
+            rho: self.rho,
+            beta: self.beta,
+        }
+    }
+
     /// Creates a new LorenzSystem with standard chaotic constants: $\sigma=10, \rho=28, \beta=8/3$.
     ///
     /// # Deprecation Notice
@@ -153,9 +292,20 @@ impl LorenzSystem {
         LorenzBuilder::new().build(initial_state)
     }
 
-    /// Advances the system by time `dt` using the Runge-Kutta 4 (RK4) method.
-    ///
-    /// This now delegates to the generic `RungeKutta4` solver via `TimeStepper`.
+    /// Returns the elapsed simulation time $t$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.t
+    }
+
+    /// Updates the active [`IntegrationMethod`] without reallocating scratch buffers.
+    #[verified_engine::verified]
+    pub fn set_integration_method(&mut self, method: IntegrationMethod) {
+        self.integration_method = method;
+    }
+
+    /// Advances the system by time `dt` using the configured [`IntegrationMethod`] and pre-allocated buffers.
     #[verified_engine::verified]
     pub fn step(&mut self, dt: f64) {
         <Self as TimeStepper<Vector3<f64>>>::step(self, dt);
@@ -164,6 +314,7 @@ impl LorenzSystem {
     /// Advances the system by time `dt` using a provided solver strategy.
     ///
     /// This allows the user to switch integrators (e.g., Euler, RK4) dynamically.
+    #[verified_engine::verified]
     pub fn step_with<S: Solver<Vector3<f64>>>(&mut self, solver: &mut S, dt: f64) {
         <Self as TimeStepper<Vector3<f64>>>::step_with(self, solver, dt);
     }
@@ -172,16 +323,13 @@ impl LorenzSystem {
 impl OdeSystem<Vector3<f64>> for LorenzSystem {
     /// Calculates the derivative at a given state.
     #[verified_engine::verified]
-    fn derivative(&self, _t: f64, state: &Vector3<f64>) -> Vector3<f64> {
-        let x = state.x;
-        let y = state.y;
-        let z = state.z;
+    fn derivative(&self, t: f64, state: &Vector3<f64>) -> Vector3<f64> {
+        self.dynamics().derivative(t, state)
+    }
 
-        let dx = self.sigma * (y - x);
-        let dy = x * (self.rho - z) - y;
-        let dz = x * y - self.beta * z;
-
-        Vector3::new(dx, dy, dz)
+    #[verified_engine::verified]
+    fn derivative_in_place(&self, t: f64, state: &Vector3<f64>, out: &mut Vector3<f64>) {
+        self.dynamics().derivative_in_place(t, state, out);
     }
 }
 

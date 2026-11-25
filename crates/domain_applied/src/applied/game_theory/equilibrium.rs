@@ -142,6 +142,14 @@ pub struct BestResponseCorrespondence {
     pub tolerance: f64,
 }
 
+impl std::fmt::Debug for BestResponseCorrespondence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BestResponseCorrespondence")
+            .field("tolerance", &self.tolerance)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Correspondence for BestResponseCorrespondence {
     #[verified_engine::verified]
     fn is_in_image(&self, source: &DVector<f64>, target: &DVector<f64>) -> bool {
@@ -167,11 +175,20 @@ impl Correspondence for BestResponseCorrespondence {
 /// assert!(is_fixed_point(&best_response, &eq_bid));
 /// assert!(!is_fixed_point(&best_response, &truthful_bid));
 /// ```
+#[derive(Clone, Copy, PartialEq)]
 pub struct ScalarBestResponse<F> {
     /// Scalar best-response mapping $b^*(b)$ returning the optimal response on $\mathbb{R}$.
     pub mapping: F,
     /// Non-negative tolerance $\varepsilon \ge 0$ for set-membership $|y - b^*(x)| \le \varepsilon$.
     pub tolerance: f64,
+}
+
+impl<F> std::fmt::Debug for ScalarBestResponse<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ScalarBestResponse")
+            .field("tolerance", &self.tolerance)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<F: Fn(f64) -> f64> ScalarBestResponse<F> {

@@ -38,6 +38,7 @@ use nalgebra::{DMatrix, DVector};
 ///
 /// let model = ZipRegression::new(counts, x, z).unwrap();
 /// ```
+#[derive(Debug, Clone, PartialEq)]
 pub struct ZipRegression {
     /// The observed counts.
     counts: Vec<Count>,

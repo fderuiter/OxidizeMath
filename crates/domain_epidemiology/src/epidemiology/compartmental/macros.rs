@@ -46,6 +46,11 @@ macro_rules! impl_compartmental_ops {
             fn copy_from(&mut self, other: &Self) {
                 *self = *other;
             }
+
+            #[verified_engine::verified]
+            fn take_for_step(&mut self) -> Self {
+                *self
+            }
         }
     };
 }

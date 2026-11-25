@@ -22,7 +22,7 @@ use verified_engine::Theory;
 /// # Domain of Validity
 /// Finite real input vectors $\mathbf{x} \in \mathbb{R}^{d_{\mathrm{in}}}$ matching
 /// `layer1.weights.ncols()`, with positive layer dimensions $(d_{\mathrm{in}}, d_{\mathrm{hid}}, d_{\mathrm{out}})$.
-#[derive(Theory)]
+#[derive(Debug, Clone, PartialEq, Theory)]
 #[theory(
     description = "A Multi-Layer Perceptron (MLP) is a class of feedforward artificial neural network consisting of at least three layers of nodes: an input layer, a hidden layer and an output layer. Except for the input nodes, each node is a neuron that uses a nonlinear activation function.",
     citation = "Learning representations by back-propagating errors (Rumelhart et al., 1986)"

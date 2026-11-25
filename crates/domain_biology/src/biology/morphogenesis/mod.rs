@@ -90,6 +90,7 @@ pub use state::TuringState;
 /// * `K`: The reaction kinetics strategy.
 /// * `D`: The spatial diffusion strategy.
 /// * `S`: The numerical solver strategy.
+#[derive(Debug, Clone, PartialEq)]
 pub struct TuringSystem<
     const N: usize = 2,
     K: ReactionKinetics<N> = SchnakenbergKinetics,

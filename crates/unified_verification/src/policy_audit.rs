@@ -407,7 +407,10 @@ pub(crate) fn run_policy_audit_with_caches(
     };
     let whitelist_path =
         resolved.unwrap_or_else(|| Path::new(crate::whitelist::WHITELIST_FILE_NAME).to_path_buf());
-    run_policy_audit_with_whitelist_and_caches(members, &whitelist_path, cache, manifest_cache)
+    let ok =
+        run_policy_audit_with_whitelist_and_caches(members, &whitelist_path, cache, manifest_cache);
+    let debug_ok = crate::public_debug::audit_members_public_debug(members, cache);
+    ok && debug_ok
 }
 
 #[cfg(test)]

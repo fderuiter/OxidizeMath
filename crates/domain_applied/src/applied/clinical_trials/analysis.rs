@@ -2,7 +2,7 @@ use super::types::{ClinicalTrialError, ContingencyTable};
 use statrs::distribution::{ContinuousCDF, Normal};
 
 /// Point estimates and Wald $(1 - \alpha)$ confidence intervals for $2 \times 2$ binary outcomes.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RiskMetrics {
     /// Treatment-to-control incidence ratio $\mathrm{RR} = [a/(a+b)] / [c/(c+d)]$.
     pub relative_risk: f64,

@@ -2,7 +2,7 @@ use num_complex::Complex64;
 use thiserror::Error;
 
 /// Errors that can occur during spectral transforms.
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Clone, Eq)]
 pub enum TransformError {
     /// Variant `InvalidDimension` (InvalidDimension).
     #[error("Input dimensions must be a power of 2")]

@@ -74,7 +74,7 @@ impl OdeSystem<SEIRState> for SEIRDynamics {
 /// $\beta, \sigma, \gamma \ge 0$.
 ///
 /// Use `SEIRModel::builder()` or `SEIRModel::new()` to construct.
-#[derive(Debug, Clone, Theory)]
+#[derive(Debug, Clone, PartialEq, Theory)]
 #[theory(
     description = "The SEIR model is a compartmental epidemic model that incorporates an exposed (latent) period before individuals become infectious.",
     citation = "Mathematical epidemiology of infectious diseases (Diekmann & Heesterbeek, 2000)"
@@ -85,6 +85,7 @@ pub struct SEIRModel<S: Solver<SEIRState> = RungeKutta4<SEIRState>> {
     pub dynamics: SEIRDynamics,
     /// The numerical solver strategy.
     solver: S,
+    t: f64,
 }
 
 impl<S: Solver<SEIRState>> TimeStepper<SEIRState> for SEIRModel<S> {
@@ -99,15 +100,41 @@ impl<S: Solver<SEIRState>> TimeStepper<SEIRState> for SEIRModel<S> {
     }
 
     #[verified_engine::verified]
+    fn elapsed_time(&self) -> f64 {
+        self.t
+    }
+
+    #[verified_engine::verified]
+    fn advance_time(&mut self, dt: f64) {
+        self.t += dt;
+    }
+
+    #[verified_engine::verified]
+    fn step_at(&mut self, t: f64, dt: f64) {
+        self.solver.step(&self.dynamics, t, &mut self.state, dt);
+    }
+
+    #[verified_engine::verified]
+    fn step_with_at<Sol: Solver<SEIRState>>(&mut self, solver: &mut Sol, t: f64, dt: f64) {
+        solver.step(&self.dynamics, t, &mut self.state, dt);
+    }
+
+    #[verified_engine::verified]
     fn step(&mut self, dt: f64) {
-        // Delegate stepping to the injected solver strategy.
-        // pass &self.dynamics to avoid partial borrow of self.
-        self.solver.step(&self.dynamics, 0.0, &mut self.state, dt);
+        self.solver
+            .step(&self.dynamics, self.t, &mut self.state, dt);
+        self.t += dt;
+    }
+
+    #[verified_engine::verified]
+    fn step_with<Sol: Solver<SEIRState>>(&mut self, solver: &mut Sol, dt: f64) {
+        solver.step(&self.dynamics, self.t, &mut self.state, dt);
+        self.t += dt;
     }
 }
 
 /// Builder for SEIRModel to ensure valid parameter configuration.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct SEIRModelBuilder {
     n: Option<f64>,
     i0: Option<f64>,
@@ -193,6 +220,7 @@ impl SEIRModelBuilder {
                 gamma,
             },
             solver: RungeKutta4::new(&state),
+            t: 0.0,
         })
     }
 }
@@ -248,13 +276,21 @@ impl<S: Solver<SEIRState>> SEIRModel<S> {
         <Self as TimeStepper<SEIRState>>::step_with(self, solver, dt);
     }
 
-    /// Replaces the current solver with a new one.
+    /// Replaces the current solver with a new one, preserving elapsed simulation time.
     pub fn with_solver<NewS: Solver<SEIRState>>(self, new_solver: NewS) -> SEIRModel<NewS> {
         SEIRModel {
             state: self.state,
             dynamics: self.dynamics,
             solver: new_solver,
+            t: self.t,
         }
+    }
+
+    /// Returns the elapsed simulation time $t$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.t
     }
 
     /// Returns the transmission rate beta.

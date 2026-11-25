@@ -122,23 +122,37 @@ classDiagram
         +step(system, t, state, dt)
     }
 
+    class TuringSolverStrategy {
+        <<Trait>>
+        +step(state, next_state, dynamics, dt)
+    }
+
     class TuringSystem {
         +kinetics: ReactionKinetics
         +diffusion: SpatialDiffusion
-        +step()
+        +solver: TuringSolverStrategy
+        +step(dt)
+    }
+
+    class StandardSolverAdapter~S~ {
+        +solver: S
+        +step(state, next_state, dynamics, dt)
     }
 
     class RungeKutta4 {
-        +step()
+        +step(system, t, state, dt)
     }
 
     class FusedEulerSolver {
-        +step()
+        +step(state, next_state, dynamics, dt)
     }
 
-    OdeSystem <|-- TuringSystem
+    OdeSystem <|.. TuringSystem
     Solver <|.. RungeKutta4
-    TuringSystem --> Solver : Uses
+    TuringSolverStrategy <|.. FusedEulerSolver
+    TuringSolverStrategy <|.. StandardSolverAdapter~S~
+    StandardSolverAdapter~S~ --> Solver : Wraps
+    TuringSystem --> TuringSolverStrategy : Uses
     TuringSystem --> ReactionKinetics : Uses
     TuringSystem --> SpatialDiffusion : Uses
 ```

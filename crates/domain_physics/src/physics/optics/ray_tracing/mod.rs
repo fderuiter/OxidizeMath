@@ -132,7 +132,7 @@ impl GrinMedium {
 }
 
 #[doc = include_str!("../../../../../../docs/math_specs/snippets/eikonal_ray_system.md")]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EikonalRaySystem {
     /// Underlying continuous graded-index profile.
     pub medium: GrinMedium,
@@ -250,7 +250,7 @@ pub struct RayFanConfig {
 }
 
 /// Per-ray metadata indexing polyline slices returned by [`RayFanWorkspace::ray_vertices`].
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct TracedRayMeta {
     /// Starting index in `RayFanWorkspace::points`.
     pub point_start: usize,
@@ -271,6 +271,7 @@ pub struct TracedRayMeta {
 }
 
 /// Pre-allocated workspace for zero-allocation ray-fan integration and surface tracing.
+#[derive(Debug, Clone, PartialEq)]
 pub struct RayFanWorkspace {
     rk4: RungeKutta4<ArrayState<4>>,
     points: Vec<[f64; 2]>,

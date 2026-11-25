@@ -104,4 +104,14 @@ impl ReactionModel for HillSubstrateReaction {
             out_rates.species_mut(1)[i] += self.feed_rate * (self.substrate_reservoir - s) - flux;
         }
     }
+
+    #[verified_engine::verified]
+    fn add_reaction_batch_at_time(
+        &self,
+        _t: f64,
+        state: &ChemicalState,
+        out_rates: &mut ChemicalState,
+    ) {
+        self.add_reaction_batch(state, out_rates);
+    }
 }

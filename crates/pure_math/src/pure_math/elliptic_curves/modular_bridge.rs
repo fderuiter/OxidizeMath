@@ -27,7 +27,7 @@ use crate::pure_math::number_theory::q_series::QSeries;
 pub const MAX_SCALED_J_PRECISION: usize = 12;
 
 /// Summary pairing a curve's modular $j$-invariant with Breuer valuation lower bounds at level $N$.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Eq)]
 pub struct ModularValuationSummary {
     /// Curve $j$-invariant modulo $p$ in $[0, p)$.
     pub j_invariant_mod_p: i64,
@@ -42,7 +42,7 @@ pub struct ModularValuationSummary {
 }
 
 /// Summary linking Frobenius trace $a_p$ at prime $p$ to imaginary quadratic class numbers.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct FrobeniusClassSummary {
     /// Prime field modulus $p$.
     pub p: u64,

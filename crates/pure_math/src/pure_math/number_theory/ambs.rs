@@ -18,7 +18,7 @@ pub fn sigma(n: u64) -> u64 {
 }
 
 /// Enumeration `AmbsError` classifying AmbsError variants.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum AmbsError {
     /// Variant `ParseError` (ParseError).
     #[error("Failed to parse integer from string: {0}")]
@@ -106,6 +106,7 @@ pub fn precompute_valid_prime_powers(limit_p: u64, max_e: u32) -> Vec<(u64, u32,
 }
 
 /// Data structure `AmbsDsp` representing AmbsDsp state.
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct AmbsDsp {
     /// Value for `valid_powers` (valid powers).
     pub valid_powers: Vec<(u64, u32, u64)>,

@@ -36,7 +36,7 @@ pub const fn index_to_move(idx: usize) -> Move {
 }
 
 /// Pre-allocated dense RL buffers enabling `0`-allocation Q-learning and policy-gradient rollouts.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DenseRlWorkspace {
     /// Active grid column count.
     pub width: usize,

@@ -20,7 +20,7 @@ use crate::error::PharmacokineticsError;
 ///
 /// # Domain of Validity
 /// Valid for enantiomer dose fractions $f_d, f_l \in (0, 1)$ (or boundary $0, 1$) without in-vivo chiral inversion.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EnantiomerModel {
     d_base: PKParameters,
     l_base: PKParameters,

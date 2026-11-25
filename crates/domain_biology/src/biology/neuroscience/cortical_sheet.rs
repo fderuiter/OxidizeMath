@@ -22,6 +22,7 @@ const MAX_THICKNESS_SCALE: f64 = 4.0;
 ///
 /// # Domain of Validity
 /// Valid for finite resting potentials, non-negative sheet conductance $g_{\text{sheet}} \ge 0$, positive reference cortical thickness $d_{\text{ref}} > 0$, and non-degenerate cortical triangle meshes.
+#[derive(Debug, Clone)]
 pub struct CorticalSheetRunner {
     neurons: Vec<HodgkinHuxleyNeuron>,
     potentials_mv: Vec<f64>,

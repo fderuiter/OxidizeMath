@@ -2,7 +2,7 @@ use super::stats::{SortingResult, SortingStats};
 use super::strategy::Sorter;
 
 /// Strategy implementation for Heap Sort.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct HeapSorter;
 
 impl<T: Ord + Clone> Sorter<T> for HeapSorter {

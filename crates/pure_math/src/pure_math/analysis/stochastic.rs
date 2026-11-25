@@ -7,7 +7,7 @@ use rand::Rng;
 use thiserror::Error;
 
 /// Errors that can occur during stochastic simulation.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum StochasticError {
     /// Variant `InvalidReactionIndex` (InvalidReactionIndex).
     #[error("Invalid reaction index: {0}")]
@@ -58,6 +58,7 @@ impl Drop for AllocationLockGuard {
 ///
 /// # Domain of Validity
 /// Valid for well-mixed discrete-molecule reaction networks with non-negative finite propensities $a_j(\mathbf{x}) \ge 0$.
+#[derive(Debug, Clone, PartialEq)]
 pub struct GillespieSolver<R> {
     rng: R,
     /// Reusable buffer for propensities to avoid allocation per step.

@@ -31,7 +31,7 @@ pub trait Hamiltonian {
 ///
 /// Note: The struct field is named `mass` to represent the mass parameter $m$,
 /// not to be confused with the population density $m(x)$.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct QuadraticHamiltonian {
     /// Inertial mass coefficient $m > 0$ scaling kinetic control effort $H(p) = p^2 / (2m)$.
     pub mass: f64,

@@ -75,6 +75,7 @@ impl fmt::Display for LinalgError {
 impl core::error::Error for LinalgError {}
 
 /// Caller-owned mutable scratch slice used by `#![no_std]` solvers without heap allocation.
+#[derive(Debug, PartialEq, Eq)]
 pub struct SolverWorkspace<'a, T> {
     buf: &'a mut [T],
 }
@@ -125,6 +126,7 @@ impl<'a, T: Scalar> SolverWorkspace<'a, T> {
 
 /// Optional heap-backed workspace convenience wrapper enabled by the `alloc` Cargo feature.
 #[cfg(feature = "alloc")]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct OwnedWorkspace<T> {
     buf: alloc::vec::Vec<T>,
 }
@@ -146,7 +148,7 @@ impl<T: Scalar> OwnedWorkspace<T> {
 }
 
 /// Immutable row-major dense matrix view over a caller slice.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct DenseView<'a, T> {
     data: &'a [T],
     nrows: usize,

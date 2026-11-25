@@ -25,7 +25,7 @@ use verified_engine::Theory;
 ///
 /// # Domain of Validity
 /// Valid for locally Lipschitz right-hand sides $\mathbf{f}(t, \mathbf{y})$ over finite time horizons with finite step sizes $\Delta t$.
-#[derive(Debug, Clone, Theory)]
+#[derive(Debug, Clone, PartialEq, Theory)]
 #[theory(
     description = "An Ordinary Differential Equation (ODE) model encapsulates a dynamical system's state, its governing differential equations, and a numerical solver to simulate its evolution over time.",
     citation = "Numerical Recipes: The Art of Scientific Computing (Press et al., 2007)",
@@ -52,6 +52,19 @@ impl<State, Dynamics, S> OdeModel<State, Dynamics, S> {
             solver,
             t: 0.0,
         }
+    }
+
+    /// Returns the elapsed simulation time $t$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.t
+    }
+
+    /// Sets the current simulation time $t$.
+    #[verified_engine::verified]
+    pub fn set_time(&mut self, t: f64) {
+        self.t = t;
     }
 }
 
@@ -89,9 +102,35 @@ where
     }
 
     #[verified_engine::verified]
+    fn elapsed_time(&self) -> f64 {
+        self.t
+    }
+
+    #[verified_engine::verified]
+    fn advance_time(&mut self, dt: f64) {
+        self.t += dt;
+    }
+
+    #[verified_engine::verified]
+    fn step_at(&mut self, t: f64, dt: f64) {
+        self.solver.step(&self.dynamics, t, &mut self.state, dt);
+    }
+
+    #[verified_engine::verified]
+    fn step_with_at<Sol: Solver<State>>(&mut self, solver: &mut Sol, t: f64, dt: f64) {
+        solver.step(&self.dynamics, t, &mut self.state, dt);
+    }
+
+    #[verified_engine::verified]
     fn step(&mut self, dt: f64) {
         self.solver
             .step(&self.dynamics, self.t, &mut self.state, dt);
+        self.t += dt;
+    }
+
+    #[verified_engine::verified]
+    fn step_with<Sol: Solver<State>>(&mut self, solver: &mut Sol, dt: f64) {
+        solver.step(&self.dynamics, self.t, &mut self.state, dt);
         self.t += dt;
     }
 }

@@ -41,7 +41,7 @@ pub trait Integrator: Send + Sync {
 /// Clenshaw-Curtis Quadrature Integration.
 ///
 /// Uses the `quadrature` crate.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ClenshawCurtis;
 
 impl Integrator for ClenshawCurtis {
@@ -59,7 +59,7 @@ impl Integrator for ClenshawCurtis {
 }
 
 /// Trapezoidal Rule Integration with $O(h^2)$ Richardson extrapolation error estimation.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Trapezoidal {
     /// Number of steps (segments) to use.
     pub steps: usize,

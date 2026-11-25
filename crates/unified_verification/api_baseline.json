@@ -6339,6 +6339,9 @@
     },
     {
       "signature": "pub trait ReactionKinetics < const N : usize = 2 > { fn reaction_at (& self , _ : usize , _ : [f64 ; N]) -> [f64 ; N] }"
+    },
+    {
+      "signature": "pub trait ReactionKinetics < const N : usize = 2 > { fn reaction_at_time (& self , _ : f64 , _ : usize , _ : [f64 ; N]) -> [f64 ; N] }"
     }
   ],
   "crates/domain_biology/src/biology/morphogenesis/solvers.rs": [
@@ -6349,7 +6352,13 @@
       "signature": "impl < 'a , const N : usize , K , D > FusedEulerEvolution < 'a , N , K , D > { pub fn with_stochastic_noise (_ : FusedEulerSolver , _ : & 'a TuringDynamics < 'a , N , K , D > , _ : f64 , _ : f64 ,) -> Self }"
     },
     {
+      "signature": "impl < S > StandardSolverAdapter < S > { pub const fn time (& self) -> f64 }"
+    },
+    {
       "signature": "impl < S > StandardSolverAdapter < S > { pub fn new (_ : S) -> Self }"
+    },
+    {
+      "signature": "impl < S > StandardSolverAdapter < S > { pub fn set_time (& mut self , _ : f64) }"
     },
     {
       "signature": "impl FusedEulerSolver { pub fn new () -> Self }"
@@ -6820,6 +6829,9 @@
   ],
   "crates/domain_biology/src/biology/reaction_diffusion/model.rs": [
     {
+      "signature": "impl < R : ReactionModel , D : DiffusionModel , S : Solver < ChemicalState > > ReactionDiffusionSystem < R , D , S > { pub const fn time (& self) -> f64 }"
+    },
+    {
       "signature": "impl < R : ReactionModel , D : DiffusionModel , S : Solver < ChemicalState > > ReactionDiffusionSystem < R , D , S > { pub fn diffusion (& self) -> & D }"
     },
     {
@@ -6916,7 +6928,13 @@
       "signature": "pub trait ReactionModel { fn add_reaction_batch (& self , _ : & ChemicalState , _ : & mut ChemicalState) }"
     },
     {
+      "signature": "pub trait ReactionModel { fn add_reaction_batch_at_time (& self , _ : f64 , _ : & ChemicalState , _ : & mut ChemicalState ,) }"
+    },
+    {
       "signature": "pub trait ReactionModel { fn reaction (& self , _ : & [f64] , _ : & mut [f64]) }"
+    },
+    {
+      "signature": "pub trait ReactionModel { fn reaction_at_time (& self , _ : f64 , _ : & [f64] , _ : & mut [f64]) }"
     }
   ],
   "crates/domain_biology/src/error.rs": [
@@ -7351,6 +7369,9 @@
   ],
   "crates/domain_epidemiology/src/epidemiology/compartmental/seir.rs": [
     {
+      "signature": "impl < S : Solver < SEIRState > > SEIRModel < S > { pub const fn time (& self) -> f64 }"
+    },
+    {
       "signature": "impl < S : Solver < SEIRState > > SEIRModel < S > { pub fn beta (& self) -> f64 }"
     },
     {
@@ -7412,6 +7433,9 @@
     }
   ],
   "crates/domain_epidemiology/src/epidemiology/compartmental/sir.rs": [
+    {
+      "signature": "impl < S : Solver < SIRState > > SIRModel < S > { pub const fn time (& self) -> f64 }"
+    },
     {
       "signature": "impl < S : Solver < SIRState > > SIRModel < S > { pub fn beta (& self) -> f64 }"
     },
@@ -8520,6 +8544,9 @@
       "signature": "impl LorenzBuilder { pub fn build (self , _ : LorenzState) -> LorenzSystem }"
     },
     {
+      "signature": "impl LorenzBuilder { pub fn integration_method (self , _ : IntegrationMethod) -> Self }"
+    },
+    {
       "signature": "impl LorenzBuilder { pub fn new () -> Self }"
     },
     {
@@ -8529,10 +8556,19 @@
       "signature": "impl LorenzBuilder { pub fn sigma (self , _ : f64) -> Self }"
     },
     {
+      "signature": "impl LorenzBuilder { pub fn try_build (self , _ : LorenzState) -> Result < LorenzSystem , ChaosError > }"
+    },
+    {
       "signature": "impl LorenzState { pub fn new (_ : f64 , _ : f64 , _ : f64) -> Self }"
     },
     {
+      "signature": "impl LorenzSystem { pub const fn time (& self) -> f64 }"
+    },
+    {
       "signature": "impl LorenzSystem { pub fn default_chaotic (_ : LorenzState) -> Self }"
+    },
+    {
+      "signature": "impl LorenzSystem { pub fn set_integration_method (& mut self , _ : IntegrationMethod) }"
     },
     {
       "signature": "impl LorenzSystem { pub fn step (& mut self , _ : f64) }"
@@ -9859,6 +9895,9 @@
   ],
   "crates/domain_physics/src/physics/mri/bloch.rs": [
     {
+      "signature": "impl BlochSimulator { pub const fn time (& self) -> f64 }"
+    },
+    {
       "signature": "impl BlochSimulator { pub fn advance_isochromat_grid < const K : usize > (& mut self , _ : & mut [[Vector3 < f64 > ; K]] , _ : & [f64] , _ : & [f64] , _ : & [f64] , _ : & [f64] , _ : f64 , _ : f64 ,) }"
     },
     {
@@ -9868,7 +9907,22 @@
       "signature": "impl BlochSimulator { pub fn set_b_field (& mut self , _ : Vector3 < f64 >) }"
     },
     {
+      "signature": "impl BlochSimulator { pub fn set_integration_method (& mut self , _ : IntegrationMethod) }"
+    },
+    {
       "signature": "impl BlochSimulator { pub fn set_relaxation (& mut self , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl BlochSimulator { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl BlochSimulator { pub fn step_with < S : Solver < Vector3 < f64 > > > (& mut self , _ : & mut S , _ : f64) }"
+    },
+    {
+      "signature": "impl BlochSimulator { pub fn try_new (_ : Vector3 < f64 > , _ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl BlochSimulator { pub fn with_integration_method (self , _ : IntegrationMethod) -> Self }"
     },
     {
       "signature": "pub fn rotating_frame_effective_field (_ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Vector3 < f64 >"
@@ -15572,6 +15626,17 @@
       "signature": "pub struct PhasePoint2D"
     }
   ],
+  "crates/pure_math/src/pure_math/analysis/ode/configured_solver.rs": [
+    {
+      "signature": "impl < State : Clone > PreallocatedOdeSolver < State > { pub fn new (_ : & State) -> Self }"
+    },
+    {
+      "signature": "impl < State : VectorOperations > PreallocatedOdeSolver < State > { pub fn step_method < S > (& mut self , _ : IntegrationMethod , _ : & S , _ : f64 , _ : & mut State , _ : f64 ,) where S : OdeSystem < State > + ? Sized , }"
+    },
+    {
+      "signature": "pub struct PreallocatedOdeSolver < State >"
+    }
+  ],
   "crates/pure_math/src/pure_math/analysis/ode/implicit_midpoint.rs": [
     {
       "signature": "impl < State : Clone > ImplicitMidpoint < State > { pub const DEFAULT_MAX_ITERS : usize }"
@@ -15610,6 +15675,9 @@
     },
     {
       "signature": "pub enum IntegrationMethod"
+    },
+    {
+      "signature": "pub use configured_solver :: PreallocatedOdeSolver"
     },
     {
       "signature": "pub use implicit_midpoint :: ImplicitMidpoint"
@@ -15671,7 +15739,13 @@
   ],
   "crates/pure_math/src/pure_math/analysis/ode/model.rs": [
     {
+      "signature": "impl < State , Dynamics , S > OdeModel < State , Dynamics , S > { pub const fn time (& self) -> f64 }"
+    },
+    {
       "signature": "impl < State , Dynamics , S > OdeModel < State , Dynamics , S > { pub fn new (_ : State , _ : Dynamics , _ : S) -> Self }"
+    },
+    {
+      "signature": "impl < State , Dynamics , S > OdeModel < State , Dynamics , S > { pub fn set_time (& mut self , _ : f64) }"
     },
     {
       "signature": "pub struct OdeModel < State , Dynamics , S >"
@@ -15728,6 +15802,12 @@
       "signature": "pub trait TimeStepper < State : VectorOperations > : OdeSystem < State >"
     },
     {
+      "signature": "pub trait TimeStepper < State : VectorOperations > { fn advance_time (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "pub trait TimeStepper < State : VectorOperations > { fn elapsed_time (& self) -> f64 }"
+    },
+    {
       "signature": "pub trait TimeStepper < State : VectorOperations > { fn get_state (& self) -> & State }"
     },
     {
@@ -15737,7 +15817,13 @@
       "signature": "pub trait TimeStepper < State : VectorOperations > { fn step (& mut self , _ : f64) }"
     },
     {
+      "signature": "pub trait TimeStepper < State : VectorOperations > { fn step_at (& mut self , _ : f64 , _ : f64) }"
+    },
+    {
       "signature": "pub trait TimeStepper < State : VectorOperations > { fn step_with < S : Solver < State > > (& mut self , _ : & mut S , _ : f64) }"
+    },
+    {
+      "signature": "pub trait TimeStepper < State : VectorOperations > { fn step_with_at < S : Solver < State > > (& mut self , _ : & mut S , _ : f64 , _ : f64) }"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/ode/symplectic.rs": [
@@ -15877,6 +15963,9 @@
     },
     {
       "signature": "pub trait VectorOperations { fn scale_add (& mut self , _ : & Self , _ : f64) }"
+    },
+    {
+      "signature": "pub trait VectorOperations { fn take_for_step (& mut self) -> Self }"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/optimization.rs": [

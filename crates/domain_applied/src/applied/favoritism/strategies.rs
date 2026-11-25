@@ -40,6 +40,15 @@ impl<'a, I: Integrator + ?Sized> ScoringContext<'a, I> {
     }
 }
 
+impl<I: Integrator + ?Sized> std::fmt::Debug for ScoringContext<'_, I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ScoringContext")
+            .field("safe_x0", &self.safe_x0)
+            .field("safe_t", &self.safe_t)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Multiplicative composite model evaluating the Unified Favoritism Theory (`UFT`) functional.
 ///
 /// Evaluates the quadrature-normalized score ratio over horizon $[0, t]$:
@@ -60,6 +69,18 @@ pub struct UnifiedFavoritismModel<I: Integrator + ?Sized> {
     pub numerator_strategies: Vec<Box<dyn ScoringStrategy<I>>>,
     /// Normalization factor strategies multiplied into the score denominator.
     pub denominator_strategies: Vec<Box<dyn ScoringStrategy<I>>>,
+}
+
+impl<I: Integrator + ?Sized> std::fmt::Debug for UnifiedFavoritismModel<I> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UnifiedFavoritismModel")
+            .field("numerator_strategies_len", &self.numerator_strategies.len())
+            .field(
+                "denominator_strategies_len",
+                &self.denominator_strategies.len(),
+            )
+            .finish()
+    }
 }
 
 impl<I: Integrator + ?Sized> Default for UnifiedFavoritismModel<I> {
@@ -117,6 +138,7 @@ pub trait ScoringStrategy<I: Integrator + ?Sized> {
 // --- Numerator Strategies ---
 
 /// Integrates inverse baseline distance $\int_0^t x_0^{-1}\,\mathrm{d}\tau$ over $[0, t]$.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ProximityStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for ProximityStrategy {
     #[verified_engine::verified]
@@ -128,6 +150,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for ProximityStrategy {
 }
 
 /// Integrates cumulative emotional-support effort over $[0, t] \times [0, 1]$.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct EmotionalSupportStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for EmotionalSupportStrategy {
     #[verified_engine::verified]
@@ -144,6 +167,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for EmotionalSupportStrategy {
 }
 
 /// Computes the $2 \times 2$ diagonal gift matrix determinant $g_{\mathrm{emotional}} \cdot g_{\mathrm{practical}}$.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct GiftStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for GiftStrategy {
     #[verified_engine::verified]
@@ -157,6 +181,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for GiftStrategy {
 }
 
 /// Evaluates the weighted inner product $\mathbf{c}^\top \mathbf{w}_c$ of compliment counts and weights.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ComplimentStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for ComplimentStrategy {
     #[verified_engine::verified]
@@ -169,6 +194,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for ComplimentStrategy {
 }
 
 /// Evaluates logarithmic diminishing returns $\ln(1 + f_0)$ of contact frequency.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ContactFrequencyStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for ContactFrequencyStrategy {
     #[verified_engine::verified]
@@ -178,6 +204,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for ContactFrequencyStrategy {
 }
 
 /// Computes the linear combination of intelligence, sensitivity, wealth, and talent traits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PersonalityStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for PersonalityStrategy {
     #[verified_engine::verified]
@@ -190,6 +217,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for PersonalityStrategy {
 }
 
 /// Applies birth-order, life-event, crisis-assistance, and visibility multipliers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SocialMultiplierStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for SocialMultiplierStrategy {
     #[verified_engine::verified]
@@ -211,6 +239,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for SocialMultiplierStrategy {
 }
 
 /// Evaluates exponential memory decay $\exp(-\lambda \Delta t)$ since last contact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct DecayStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for DecayStrategy {
     #[verified_engine::verified]
@@ -220,6 +249,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for DecayStrategy {
 }
 
 /// Samples a uniform mood-swing perturbation $\xi \sim \mathcal{U}(0.9, 1.1)$.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct StochasticStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for StochasticStrategy {
     #[verified_engine::verified]
@@ -236,6 +266,7 @@ impl<I: Integrator + ?Sized> ScoringStrategy<I> for StochasticStrategy {
 // --- Denominator Strategies ---
 
 /// Integrates aggregate inverse sibling distances $\int_0^t \sum_s d_s^{-1}\,\mathrm{d}\tau$ as competitive normalization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SiblingCompetitionStrategy;
 impl<I: Integrator + ?Sized> ScoringStrategy<I> for SiblingCompetitionStrategy {
     #[verified_engine::verified]

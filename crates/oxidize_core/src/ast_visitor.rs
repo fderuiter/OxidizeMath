@@ -37,6 +37,7 @@ pub fn is_dedicated_test_path(filepath: &Path) -> bool {
 }
 
 /// Single-pass `syn` visitor collecting verification attributes, citations, and stochastic integrity metrics.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AstVisitor {
     /// Registered module keys verified via macros, `#[embed_theory]`, or `[cite:...]` annotations.
     pub verified_modules: Vec<String>,

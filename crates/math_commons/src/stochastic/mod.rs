@@ -53,7 +53,7 @@ pub struct SccSummary {
 /// assert!((pi[1] - 0.25).abs() < 1e-12);
 /// assert!((pi[2] - 0.25).abs() < 1e-12);
 /// ```
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct SolverWorkspace {
     pub(crate) state_capacity: usize,
     pub(crate) sample_capacity: usize,

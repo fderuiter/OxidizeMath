@@ -36,6 +36,7 @@ pub trait TuringSolverStrategy<const N: usize = 2> {
 ///
 /// This struct implements `OdeSystem` to allow standard solvers to integrate
 /// the reaction-diffusion equations.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TuringDynamics<'a, const N: usize, K, D> {
     /// Local reaction kinetics operator $\mathbf{R}(\mathbf{u})$.
     pub kinetics: &'a K,
@@ -56,7 +57,7 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
     }
 
     #[verified_engine::verified]
-    fn derivative_in_place(&self, _t: f64, state: &TuringState<N>, out: &mut TuringState<N>) {
+    fn derivative_in_place(&self, t: f64, state: &TuringState<N>, out: &mut TuringState<N>) {
         let n = state.len();
         if n == 0 {
             return;
@@ -101,8 +102,8 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
             // because we asserted lengths at the start of the function.
             let inputs: [f64; N] = std::array::from_fn(|s| state.concentrations[s][i]);
 
-            // Compute Reaction
-            let rates = self.kinetics.reaction_at(i, inputs);
+            // Compute Reaction (passes elapsed simulation time t for non-autonomous kinetics)
+            let rates = self.kinetics.reaction_at_time(t, i, inputs);
 
             // Accumulate results
             for (s, rate) in rates.iter().enumerate().take(N) {
@@ -172,7 +173,7 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
 /// // dt = 0.01
 /// solver.step(&state, &mut next_state, &dynamics, 0.01);
 /// ```
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FusedEulerSolver;
 
 impl FusedEulerSolver {
@@ -237,16 +238,31 @@ impl<const N: usize> TuringSolverStrategy<N> for FusedEulerSolver {
 ///
 /// # Domain of Validity
 /// Method-of-lines discretizations over finite grids with $D_i \ge 0$ and matching `TuringState` dimensions.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StandardSolverAdapter<S> {
     /// Wrapped ODE time-integrator strategy.
     pub solver: S,
+    t: f64,
 }
 
 impl<S> StandardSolverAdapter<S> {
-    /// Wraps an [`OdeSystem`] `solver` as a [`TuringSolverStrategy`].
+    /// Wraps an [`OdeSystem`] `solver` as a [`TuringSolverStrategy`] initialized at `t = 0.0`.
     #[verified_engine::verified]
     pub fn new(solver: S) -> Self {
-        Self { solver }
+        Self { solver, t: 0.0 }
+    }
+
+    /// Returns the elapsed simulation time $t$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.t
+    }
+
+    /// Sets the current simulation time $t$.
+    #[verified_engine::verified]
+    pub fn set_time(&mut self, t: f64) {
+        self.t = t;
     }
 }
 
@@ -261,7 +277,8 @@ impl<const N: usize, S: Solver<TuringState<N>>> TuringSolverStrategy<N>
         dt: f64,
     ) {
         next_state.copy_from(state);
-        self.solver.step(dynamics, 0.0, next_state, dt);
+        self.solver.step(dynamics, self.t, next_state, dt);
+        self.t += dt;
     }
 }
 
@@ -272,6 +289,7 @@ use rand::RngCore;
 
 /// A wrapper to use [`FusedEulerSolver`] within the unified [`EvolutionEngine`] interface,
 /// forwarding caller `rng` streams into [`engine_pde`] spatio-temporal noise when `noise_intensity > 0.0`.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FusedEulerEvolution<'a, const N: usize, K, D> {
     /// Underlying deterministic fused reaction-diffusion stepper.
     pub solver: FusedEulerSolver,

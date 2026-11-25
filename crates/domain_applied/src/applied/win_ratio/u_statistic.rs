@@ -6,7 +6,7 @@ use super::censoring::TierCount;
 use super::pair_comparison::{ComparisonResult, WinRatioAnalysis, WinRatioStats};
 
 /// Borrowed per-subject win and loss count slices for two-sample U-statistic variance projection.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SubjectMarginals<'a> {
     /// Per-subject win counts for treatment arm (`len >= n_treatment`).
     pub row_wins: &'a [u32],
@@ -19,7 +19,7 @@ pub struct SubjectMarginals<'a> {
 }
 
 /// Preallocated scratch buffers for zero-allocation unmatched U-statistic evaluation.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UnmatchedScratch {
     /// Per-subject win counts for treatment arm (`len >= n_treatment`).
     pub row_wins: Vec<u32>,

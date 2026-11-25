@@ -97,6 +97,7 @@ pub struct FraunhoferConfig {
 }
 
 /// Pre-allocated output buffer for zero-allocation Fraunhofer profile sampling and critical-point markers.
+#[derive(Debug, Clone, PartialEq)]
 pub struct FraunhoferProfileBuffer {
     angles_rad: Vec<f64>,
     screen_y_mm: Vec<f64>,

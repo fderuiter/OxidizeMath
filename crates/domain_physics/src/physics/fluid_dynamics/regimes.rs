@@ -28,7 +28,7 @@ pub trait FlowClassifier {
 /// * $Re < 2000$: Laminar
 /// * $2000 \le Re \le 4000$: Transitional
 /// * $Re > 4000$: Turbulent
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PipeFlowClassifier;
 
 impl FlowClassifier for PipeFlowClassifier {
@@ -50,7 +50,7 @@ impl FlowClassifier for PipeFlowClassifier {
 /// * $Re \ge 5 \times 10^5$: Turbulent
 ///
 /// Note: This assumes a smooth plate and zero pressure gradient.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct FlatPlateClassifier;
 
 impl FlowClassifier for FlatPlateClassifier {

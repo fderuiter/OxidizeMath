@@ -9,6 +9,7 @@ use crate::pure_math::analysis::integration::{ClenshawCurtis, Integrator};
 ///
 /// # Domain of Validity
 /// Valid on bounded intervals $(0, L)$ with $L > 0$, homogeneous boundary conditions $u(0) = u(L) = 0$, and integrable forcing $f$.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GreenFunctionSolver1D<I: Integrator> {
     integrator: I,
 }
@@ -68,6 +69,7 @@ impl<I: Integrator> GreenFunctionSolver1D<I> {
 ///
 /// Example: Infinite half-space z > 0.
 /// $G(r, r') = \frac{1}{4\pi |r - r'|} - \frac{1}{4\pi |r - r'_{image}|}$
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MethodOfImages;
 
 impl MethodOfImages {

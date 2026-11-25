@@ -133,6 +133,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping](adr/20261123-workspace-release-version-guards-and-wix-mapping.md)
 - [ADR 20261123: Add xtask Smoke Gates and Zero-Allocation Benchmark Checks](adr/20261123-xtask-smoke-gates-and-zero-allocation-bench-checks.md)
 - [ADR 20261124: Tier 0 `math_rng` Crate, Stream-Split ChaCha8 Samplers, and 64D Static QMC Views](adr/20261124-math-rng-static-qmc-views.md)
+- [ADR 20261124: Additive Steppers, Standard Derives, and Public `Debug` Gate](adr/20261124-additive-steppers-standard-derives-and-debug-gate.md)
 
 ## Contributing
 

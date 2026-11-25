@@ -19,6 +19,14 @@ pub trait ReactionKinetics<const N: usize = 2> {
     fn reaction_at(&self, _index: usize, concentrations: [f64; N]) -> [f64; N] {
         self.reaction(concentrations)
     }
+
+    /// Evaluates reaction rates at simulation time `t` and linear grid cell `index`,
+    /// defaulting to [`Self::reaction_at`].
+    #[inline]
+    #[verified_engine::verified]
+    fn reaction_at_time(&self, _t: f64, index: usize, concentrations: [f64; N]) -> [f64; N] {
+        self.reaction_at(index, concentrations)
+    }
 }
 
 /// Schnakenberg kinetics (often used for Turing patterns).
@@ -45,7 +53,7 @@ pub trait ReactionKinetics<const N: usize = 2> {
 /// # Domain of Validity
 /// Non-negative concentrations $u, v \ge 0$ and strictly positive feed rates $a \ge 0$, $b > 0$
 /// with $a + b > 0$.
-#[derive(Debug, Clone, Copy, Theory)]
+#[derive(Debug, Clone, Copy, PartialEq, Theory)]
 #[theory(
     description = "Schnakenberg kinetics (often used for Turing patterns).",
     citation = "Schnakenberg, J. (1979). Simple chemical reaction systems with limit cycle behaviour. Journal of theoretical biology, 81(3), 389-400."
@@ -125,6 +133,16 @@ impl ReactionModel for SchnakenbergKinetics {
             rates_u[i] += out[0];
             rates_v[i] += out[1];
         }
+    }
+
+    #[verified_engine::verified]
+    fn add_reaction_batch_at_time(
+        &self,
+        _t: f64,
+        state: &crate::biology::reaction_diffusion::ChemicalState,
+        rates: &mut crate::biology::reaction_diffusion::ChemicalState,
+    ) {
+        self.add_reaction_batch(state, rates);
     }
 }
 
@@ -241,5 +259,15 @@ impl ReactionModel for GrayScottKinetics {
             rates_u[i] += out[0];
             rates_v[i] += out[1];
         }
+    }
+
+    #[verified_engine::verified]
+    fn add_reaction_batch_at_time(
+        &self,
+        _t: f64,
+        state: &crate::biology::reaction_diffusion::ChemicalState,
+        rates: &mut crate::biology::reaction_diffusion::ChemicalState,
+    ) {
+        self.add_reaction_batch(state, rates);
     }
 }

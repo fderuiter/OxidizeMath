@@ -62,6 +62,7 @@ pub trait ProbabilityTransform {
 }
 
 /// Normal (Gaussian) probability integral transformation.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct NormalTransform {
     normal: Normal,
 }

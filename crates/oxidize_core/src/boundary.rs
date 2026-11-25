@@ -6,6 +6,7 @@ pub trait BoundaryCondition {
 }
 
 /// Zero-flux (clamped-edge) discrete Neumann boundary condition on a `width * height` grid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct NeumannBoundary;
 impl BoundaryCondition for NeumannBoundary {
     fn resolve(&self, x: isize, y: isize, width: usize, height: usize) -> Option<usize> {

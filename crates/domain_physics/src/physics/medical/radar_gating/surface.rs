@@ -15,7 +15,7 @@ use engine_linalg::{SolverWorkspace, svd_ops_workspace_len, svd_solve_least_squa
 use nalgebra::{DVector, Point3};
 
 /// A fitted bi-quadratic surface.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BiQuadraticSurface {
     /// Coefficients $[c_0, c_1, c_2, c_3, c_4, c_5]$.
     pub coefficients: DVector<f64>,

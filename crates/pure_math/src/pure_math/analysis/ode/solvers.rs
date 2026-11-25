@@ -63,7 +63,7 @@ fn rk4_kernel<State, S>(
 ///
 /// # Domain of Validity
 /// Valid for non-stiff dissipative systems with small time steps $\Delta t < 2 / |\lambda|_{\max}$.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Euler<State> {
     buffer: State,
 }
@@ -104,7 +104,7 @@ impl<State: VectorOperations> Solver<State> for Euler<State> {
 ///
 /// # Domain of Validity
 /// Valid for non-stiff ODEs with $C^2$ solutions and step sizes within $|1 + z + z^2/2| \le 1$.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Heun<State> {
     k: State,
     tmp: State,
@@ -161,7 +161,7 @@ impl<State: VectorOperations> Solver<State> for Heun<State> {
 ///
 /// # Domain of Validity
 /// Valid for non-stiff $C^4$ dynamical systems where $|\lambda \Delta t| \lesssim 2.78$.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RungeKutta4<State> {
     k: State,
     tmp: State,

@@ -282,7 +282,7 @@ impl Scalar for f32 {
 /// stage_b[0] = 2.0;
 /// assert_eq!(stage_a[0] + stage_b[0], 3.0);
 /// ```
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct SolverWorkspace<'a, T: Scalar> {
     buf: &'a mut [T],
 }

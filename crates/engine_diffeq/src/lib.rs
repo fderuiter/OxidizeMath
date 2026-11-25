@@ -28,7 +28,7 @@ pub use system::{LangevinSystem, SdeSystem, StochasticCalculus};
 
 #[cfg(feature = "alloc")]
 /// Optional `alloc`-backed scratch buffer owner that lends zero-allocation [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace) views.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OwnedWorkspace<T: math_commons::math_kernel::types::Scalar> {
     buf: alloc::vec::Vec<T>,
 }

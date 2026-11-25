@@ -8,7 +8,7 @@ use super::conservation::{Euler as InviscidEuler, MomentumEquation};
 use super::potential_flow::{FlowElement, PotentialFlowField};
 use super::types::{FlowState, FluidProperties, SpatialGradients};
 use nalgebra::{Matrix3, Vector2, Vector3};
-use pure_math::pure_math::analysis::ode::{OdeSystem, RungeKutta4, SolverExt, TimeStepper};
+use pure_math::pure_math::analysis::ode::{OdeSystem, RungeKutta4, Solver, TimeStepper};
 
 /// A Lagrangian particle in a flow field.
 ///
@@ -19,6 +19,7 @@ use pure_math::pure_math::analysis::ode::{OdeSystem, RungeKutta4, SolverExt, Tim
 /// **Note:** This is a simplified model where spatial gradients are provided externally
 /// or assumed constant during the time step. In a full simulation, gradients would be
 /// re-evaluated at each step based on the particle's new position relative to neighbors.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FluidParticleSystem<'a, M: MomentumEquation> {
     /// Fluid properties (density, viscosity).
     pub properties: &'a FluidProperties,
@@ -82,17 +83,10 @@ impl<'a, M: MomentumEquation> TimeStepper<FlowState> for FluidParticleSystem<'a,
     fn get_state_mut(&mut self) -> &mut FlowState {
         &mut self.state
     }
-
-    #[verified_engine::verified]
-    fn step(&mut self, dt: f64) {
-        let mut solver = RungeKutta4::new(self.get_state());
-        let new_state = solver.solve(self, 0.0, self.get_state(), dt);
-        *self.get_state_mut() = new_state;
-    }
 }
 
 /// Instantaneous Lagrangian probe readout coupling [`PotentialFlowField`] with [`FluidParticleSystem`].
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TracerProbeReadout {
     /// Probe coordinates `(x, y)`.
     pub position: Vector2<f64>,
@@ -125,6 +119,7 @@ pub struct TracerProbeReadout {
 /// Models steady, inviscid, incompressible, irrotational 2D potential flow away from point
 /// singularities, requiring finite tracer coordinates, finite `dt`, and positive fluid density
 /// $\rho > 0$ when evaluating Bernoulli/Euler probe readouts.
+#[derive(Debug, Clone, Copy)]
 pub struct PotentialTracerSystem<'a> {
     /// Underlying potential flow superposition field.
     pub field: &'a PotentialFlowField,
@@ -257,6 +252,8 @@ impl TimeStepper<Vector2<f64>> for PotentialTracerSystem<'_> {
             return;
         }
         let mut solver = RungeKutta4::new(&self.position);
-        self.position = solver.solve(self, 0.0, &self.position, dt);
+        let mut next_pos = self.position;
+        solver.step(self, 0.0, &mut next_pos, dt);
+        self.position = next_pos;
     }
 }

@@ -10,6 +10,7 @@ mod manifest_cache;
 mod maturity;
 mod policy_audit;
 mod profile;
+mod public_debug;
 mod records;
 mod release_tag;
 mod report;
@@ -189,6 +190,9 @@ fn main() {
         "check-certificate" => exit_if_failed(run_check_certificate_cli(&args[2..])),
         "regenerate-baseline" => api_drift::regenerate_baseline_with_args(&args[2..]),
         "check-api-drift" => exit_if_failed(api_drift::check_api_drift()),
+        "check-public-debug" => {
+            exit_if_failed(public_debug::run_check_public_debug_cli(&args[2..]))
+        }
         "check-maturity" => exit_if_failed(maturity::check_maturity(&args[2..])),
         "check-duplicates" => exit_if_failed(ast_visitor::run_clone_detector()),
         "check-profiles" => run_check_profiles_cli(),

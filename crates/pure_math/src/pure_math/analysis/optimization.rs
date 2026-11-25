@@ -34,6 +34,7 @@ pub enum OptimizationError {
 }
 
 #[doc = include_str!("../../../../../docs/math_specs/snippets/opt_l1_lsq.md")]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct L1RegularizedLeastSquares {
     lambda: f64,
 }
@@ -75,6 +76,7 @@ pub trait Optimizer<T: RealField + Copy, Key = u64> {
 }
 
 #[doc = include_str!("../../../../../docs/math_specs/snippets/opt_sgd.md")]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct SGD<T> {
     /// Value for `learning_rate` (learning rate).
     pub learning_rate: T,
@@ -220,6 +222,7 @@ impl<T: RealField + Copy, Key> Optimizer<T, Key> for SGD<T> {
 }
 
 /// Data structure `AdamState` representing AdamState state.
+#[derive(Debug, Clone, PartialEq)]
 pub struct AdamState<T> {
     /// Value for `m` (m).
     pub m: DMatrix<T>,
@@ -260,6 +263,7 @@ impl<T: RealField + Copy> AdamState2D<T> {
 }
 
 #[doc = include_str!("../../../../../docs/math_specs/snippets/opt_adam.md")]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Adam<T, Key>
 where
     Key: Eq + std::hash::Hash,

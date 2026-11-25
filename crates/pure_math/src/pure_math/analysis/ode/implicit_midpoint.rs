@@ -49,7 +49,7 @@ pub const MAX_FIXED_POINT_ITERS: usize = 12;
 /// let amp_sq = state.0[0] * state.0[0] + state.0[1] * state.0[1];
 /// assert!((amp_sq - 1.0).abs() < 1e-10);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ImplicitMidpoint<State> {
     initial_state: State,
     stage: State,

@@ -44,7 +44,7 @@ pub mod steady_state;
 /// assert!((pi[0] - 0.6).abs() < 1e-12);
 /// assert!((pi[1] - 0.4).abs() < 1e-12);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ContinuousMarkovChain<T: RealField + Copy + ToPrimitive> {
     /// The generator matrix G.
     pub(crate) generator: DMatrix<T>,

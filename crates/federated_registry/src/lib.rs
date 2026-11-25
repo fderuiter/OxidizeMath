@@ -22,7 +22,7 @@ pub use diagnostics::Severity;
 /// assert_eq!(event.source, "rk4_integrator");
 /// assert_eq!(event.severity, Severity::Info);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TelemetryEvent {
     /// Identifier of the subsystem or simulation kernel emitting the event.
     pub source: String,
@@ -63,6 +63,15 @@ pub struct FederatedRegistry {
     sender: Sender<TelemetryEvent>,
     receiver: Arc<Mutex<Receiver<TelemetryEvent>>>,
     sources: Arc<Mutex<Vec<String>>>,
+}
+
+impl std::fmt::Debug for FederatedRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let known = self.known_sources();
+        f.debug_struct("FederatedRegistry")
+            .field("sources", &known)
+            .finish_non_exhaustive()
+    }
 }
 
 impl FederatedRegistry {

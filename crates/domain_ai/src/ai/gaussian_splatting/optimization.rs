@@ -1,5 +1,5 @@
 /// Adaptive density-control operation selected for a 3D Gaussian primitive during optimization.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq)]
 pub enum DensityAction {
     /// Duplicate an under-reconstructed small-scale Gaussian along its positional gradient.
     Clone,

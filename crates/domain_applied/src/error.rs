@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use thiserror::Error;
 
 /// Errors returned by pharmacokinetic compartmental and root-finding solvers.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone, PartialEq)]
 pub enum PharmacokineticsError {
     /// An invalid parameter was provided (e.g., negative volume or rate constant).
     #[error("Invalid parameter: {0}")]

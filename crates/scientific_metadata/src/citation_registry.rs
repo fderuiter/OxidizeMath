@@ -26,6 +26,7 @@ use std::sync::{OnceLock, RwLock};
 ///     Some("Ising, E. (1925). Beitrag zur Theorie des Ferromagnetismus.")
 /// );
 /// ```
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CitationRegistry {
     citations: HashMap<String, String>,
 }

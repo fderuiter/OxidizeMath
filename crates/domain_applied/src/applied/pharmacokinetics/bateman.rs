@@ -18,7 +18,7 @@ use pure_math::pure_math::analysis::roots::NewtonRaphson;
 ///
 /// # Domain of Validity
 /// Valid for $t \ge 0$ (returning $0$ for $t < 0$) and validated [`PKParameters`] with $V > 0$, $k_a > 0$, $k_e > 0$.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BatemanModel {
     /// Validated one-compartment ADME parameter set $(F, D, k_a, k_e, V)$.
     pub params: PKParameters,

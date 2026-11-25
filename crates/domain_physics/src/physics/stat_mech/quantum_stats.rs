@@ -16,7 +16,7 @@ pub trait StatisticalDistribution {
 }
 
 /// Fermi-Dirac Statistics (Fermions).
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct FermiDirac;
 
 impl StatisticalDistribution for FermiDirac {
@@ -54,7 +54,7 @@ impl StatisticalDistribution for FermiDirac {
 }
 
 /// Bose-Einstein Statistics (Bosons).
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct BoseEinstein;
 
 impl StatisticalDistribution for BoseEinstein {
@@ -102,7 +102,7 @@ impl StatisticalDistribution for BoseEinstein {
 }
 
 /// Maxwell-Boltzmann Statistics (Classical).
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct MaxwellBoltzmann;
 
 impl StatisticalDistribution for MaxwellBoltzmann {

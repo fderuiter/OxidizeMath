@@ -20,6 +20,7 @@ use num_traits::Float as _;
 /// let expected = (3.0_f64 / 10.0).sqrt();
 /// assert!((val - expected).abs() < 1e-6);
 /// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ClebschGordan {
     /// Twice the first angular momentum quantum number ($2 j_1$).
     pub tj1: i32,

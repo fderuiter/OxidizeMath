@@ -15,7 +15,7 @@ pub trait IterationStrategy {
 }
 
 /// Loop-splitting 2D traversal separating perimeter boundary resolution from branchless interior sweeps.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct LoopSplittingIteration;
 
 impl IterationStrategy for LoopSplittingIteration {

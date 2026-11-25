@@ -15,7 +15,7 @@ use math_commons::math_kernel::types::StepSize;
 /// ```
 ///
 /// $$ \nabla^2 u \approx \frac{u_{i+1} - 2u_i + u_{i-1}}{dx^2} $$
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FiniteDifference1D {
     /// Grid spacing.
     pub dx: StepSize,

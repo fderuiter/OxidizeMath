@@ -46,7 +46,7 @@ pub trait BindingEnergyModel {
 /// # Domain of Validity
 /// Medium-to-heavy nuclei ($A \gtrsim 12$, $0 \le Z \le A$) where macroscopic volume/surface scaling
 /// dominates magic-number shell corrections.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LiquidDropModel {
     /// Volume binding coefficient $a_V$ (MeV).
     pub a_v: f64,

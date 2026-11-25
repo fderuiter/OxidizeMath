@@ -160,4 +160,12 @@ impl<const N: usize> VectorOperations for TuringState<N> {
             s.copy_from_slice(r_vec);
         }
     }
+
+    #[verified_engine::verified]
+    fn take_for_step(&mut self) -> Self {
+        let placeholder = std::array::from_fn(|_| Vec::new());
+        Self {
+            concentrations: std::mem::replace(&mut self.concentrations, placeholder),
+        }
+    }
 }

@@ -2,7 +2,7 @@ use super::stats::{SortingResult, SortingStats};
 use super::strategy::Sorter;
 
 /// Strategy implementation for Radix Sort.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct RadixSorter;
 
 impl Sorter<u64> for RadixSorter {

@@ -93,7 +93,7 @@ pub use state::ChemicalState;
 pub use traits::{DiffusionModel, ReactionModel, STACK_REACTION_SPECIES_CAP};
 
 /// Errors related to Reaction-Diffusion systems.
-#[derive(Debug, thiserror::Error, PartialEq)]
+#[derive(Debug, thiserror::Error, PartialEq, Clone)]
 pub enum ReactionDiffusionError {
     /// Underlying dimension-mismatch or numerical error from `math_commons`.
     #[error("Mathematical error: {0}")]

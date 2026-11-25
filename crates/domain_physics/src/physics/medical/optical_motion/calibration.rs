@@ -5,7 +5,7 @@
 use crate::error::DoseFluenceError;
 
 /// A linear calibration model: y = mx + c.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LinearCalibrator {
     slope: f64,
     intercept: f64,

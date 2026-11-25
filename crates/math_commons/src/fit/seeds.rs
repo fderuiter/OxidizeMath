@@ -10,7 +10,7 @@ use num_traits::Float as _;
 const MAX_SIN_SAMPLES: usize = 256;
 
 /// Streaming accumulator for weighted linear regression $v = \alpha + \beta u$ on the stack.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct WeightedOlsAccum {
     sw: f64,
     su: f64,

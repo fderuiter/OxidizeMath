@@ -9,7 +9,7 @@ use num_traits::ToPrimitive;
 pub type Result<T> = std::result::Result<T, MarkovError>;
 
 /// Preallocated scratch buffers for zero-allocation log-domain Viterbi decoding.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ViterbiWorkspace<T> {
     num_states: usize,
     num_observations: usize,

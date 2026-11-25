@@ -3,7 +3,7 @@ use nalgebra::{Point3, Vector3};
 
 /// A discrete surface represented by a grid of points.
 /// Used for evolutions where the surface geometry itself changes.
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DiscreteSurface {
     /// 2D parameter grid of 3D surface positions $\mathbf{r}(u_i, v_j)$.
     pub points: Vec<Vec<Point3<f64>>>,
@@ -117,6 +117,7 @@ impl DiscreteSurface {
 ///
 /// # Domain of Validity
 /// Valid on non-empty structured 2D surface grids prior to neckpinch or finite-time curvature singularities, with zero heap allocations during `step`.
+#[derive(Debug, Clone, PartialEq)]
 pub struct MeanCurvatureFlow {
     /// Active evolving discrete surface grid.
     pub surface: DiscreteSurface,

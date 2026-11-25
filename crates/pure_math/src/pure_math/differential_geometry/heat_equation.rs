@@ -10,6 +10,7 @@ use super::surface::{ParametricSurface, SurfaceAnalysis};
 ///
 /// # Domain of Validity
 /// Valid on smooth parametric surfaces $S(u, v)$ with non-negative diffusivity $\alpha \ge 0$, grid resolutions $\ge 3 \times 3$, and finite initial temperature fields.
+#[derive(Debug, Clone, PartialEq)]
 pub struct HeatEquationSolver<'a, S: ParametricSurface> {
     /// Underlying parametric surface $S(u, v)$ supplying metric tensors.
     pub surface: &'a S,

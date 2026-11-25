@@ -24,6 +24,10 @@ pub struct ApiItem {
 
 const BASELINE_REL_PATH: &str = "crates/unified_verification/api_baseline.json";
 
+pub(crate) fn crate_roots(workspace_root: &Path) -> Vec<PathBuf> {
+    collect_crate_roots(workspace_root)
+}
+
 fn collect_crate_roots(workspace_root: &Path) -> Vec<PathBuf> {
     let mut roots = vec![workspace_root.join("math_explorer/src/lib.rs")];
     let crates_dir = workspace_root.join("crates");
@@ -359,5 +363,6 @@ pub fn check_api_drift_with_cache(cache: &mut AstCache) -> bool {
     for line in messages {
         println!("{line}");
     }
-    drift_ok && facade_violations.is_empty()
+    let debug_ok = crate::public_debug::check_public_debug_in_dir_with_cache(&root, cache);
+    drift_ok && facade_violations.is_empty() && debug_ok
 }
