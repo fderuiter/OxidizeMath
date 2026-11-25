@@ -401,7 +401,7 @@ pub use crate::pure_math::{
     number_theory::ambs::AmbsError,
     statistics::{
         black_scholes::OptionPricingError, monte_carlo::MonteCarloError, poisson::PoissonError,
-        queueing::QueueingError,
+        queueing::QueueingError, risk::RiskError,
     },
     tensor::types::TensorError,
 };

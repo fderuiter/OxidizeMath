@@ -12,6 +12,7 @@ use std::path::Path;
 
 const IGNORED_TRACEABILITY_MEMBERS: &[&str] = &[
     "crates/00_foundation/math_diagnostics",
+    "crates/scientific_verification",
     "crates/unified_verification",
     "crates/diagnostics",
     "crates/federated_registry",
@@ -73,7 +74,7 @@ fn extract_citations_with_lines(content: &str) -> Vec<(String, usize)> {
             break;
         };
         let paper_name = content[real_start..real_start + end].to_string();
-        if !paper_name.is_empty()
+        if paper_name.chars().any(|c| c.is_ascii_alphanumeric())
             && paper_name
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')

@@ -47,5 +47,8 @@ dashu = { workspace = true, features = ["num-traits_v02"] }
 approx = { workspace = true }
 serde_json = { workspace = true }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+proptest = { workspace = true }
+
 [lints]
 workspace = true

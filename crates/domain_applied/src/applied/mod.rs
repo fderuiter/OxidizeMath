@@ -10,6 +10,7 @@
 //! - **Physics & Engineering**: `battery_degradation`, `isosurface`.
 //! - **Artificial Intelligence**: `lorahub`, `grpo`.
 //! - **Social Science (Satire)**: `favoritism`.
+//! - **Quantitative Finance & Decision Theory**: `portfolio`, `game_theory`.
 //! - **General Algorithms**: `algorithms`, `win_ratio`.
 
 /// Modeling of battery health and capacity fade over time.
@@ -54,6 +55,10 @@ pub mod clinical_trials;
 /// General purpose algorithms, including Sorting and other utility structures.
 pub mod algorithms;
 pub mod engineering;
+
+/// Constrained Markowitz mean-variance portfolio optimization (`GMV`, efficient frontier,
+/// maximum-Sharpe tangency, and Capital Allocation Line).
+pub mod portfolio;
 
 /// Error types for applied mathematics modules.
 pub use crate::error;

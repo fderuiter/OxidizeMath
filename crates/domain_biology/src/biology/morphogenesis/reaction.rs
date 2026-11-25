@@ -19,6 +19,20 @@ pub trait ReactionKinetics<const N: usize = 2> {
     fn reaction_at(&self, _index: usize, concentrations: [f64; N]) -> [f64; N] {
         self.reaction(concentrations)
     }
+
+    /// Evaluates spatio-temporal reaction rates at `(t, index, concentrations)`, defaulting to [`Self::reaction_at`].
+    #[inline]
+    #[verified_engine::verified]
+    fn reaction_at_time(&self, _t: f64, index: usize, concentrations: [f64; N]) -> [f64; N] {
+        self.reaction_at(index, concentrations)
+    }
+
+    /// Returns `true` when [`Self::reaction_at_time`] explicitly depends on elapsed time `t`.
+    #[inline]
+    #[verified_engine::verified]
+    fn is_time_dependent(&self) -> bool {
+        false
+    }
 }
 
 /// Schnakenberg kinetics (often used for Turing patterns).

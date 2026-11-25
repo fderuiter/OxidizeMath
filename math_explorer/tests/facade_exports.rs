@@ -153,6 +153,7 @@ fn assert_pure_math_twenty_one_errors() {
         e::OuError::InvalidTimeStep { value: 0.0 }.severity(),
         e::PoissonError::InvalidRate { rate: 0.0 }.severity(),
         e::QueueingError::InvalidServerCount { servers: 0 }.severity(),
+        e::RiskError::EmptySeries.severity(),
         e::ZipError::InvalidCount { value: -1.0 }.severity(),
         e::TdaError::EmptyPointCloud.severity(),
         e::CopulaError::NotSymmetric.severity(),
@@ -277,10 +278,12 @@ fn applied_facade_exports_all_nine_errors_and_umbrella() {
     };
     use math_explorer::applied::error as inner_error;
     use math_explorer::applied::game_theory::mechanism_design::{ContinuousCDF, Distribution};
+    use math_explorer::applied::portfolio::{PortfolioSpec, long_only_tangency};
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error::{
         AppliedError, BatteryError, ClinicalTrialError, EngineeringError, Error, GameTheoryError,
-        IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, VoxelGridError,
+        IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, PortfolioError,
+        VoxelGridError,
     };
 
     let model = PowerLawModel::standard();
@@ -316,10 +319,14 @@ fn applied_facade_exports_all_nine_errors_and_umbrella() {
         KalmanError::MatrixInversionError.severity(),
         LoraError::EmptyEnsemble.severity(),
         PharmacokineticsError::InvalidParameter("v".to_string()).severity(),
+        PortfolioError::NotPositiveDefinite.severity(),
         VoxelGridError::DataSizeMismatch.severity(),
         inner_error::LoraError::EmptyWeights.severity(),
     ];
     assert!(severities.iter().all(|s| *s == Severity::Error));
+    let spec =
+        PortfolioSpec::from_upper_correlations(&[0.10, 0.06], &[0.18, 0.10], &[0.2]).unwrap();
+    assert!(long_only_tangency(&spec, 0.02).unwrap().sharpe_ratio > 0.0);
 }
 
 #[cfg(feature = "biology")]

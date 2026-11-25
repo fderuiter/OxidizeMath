@@ -127,3 +127,20 @@ theory_verification!(
         assert!(peak_v > 0.0);
     }
 );
+
+pure_math::mms_convergence_verification!(
+    module = "biology",
+    test = {
+        use math_commons::math_kernel::types::{Dimension, StepSize};
+        use morphogenesis::{DiffusionCoeff, TuringSystem};
+
+        let mut sys = TuringSystem::new(
+            Dimension(8),
+            DiffusionCoeff(0.1),
+            DiffusionCoeff(0.5),
+            StepSize(1.0),
+        );
+        sys.step(0.05);
+        assert!((sys.time() - 0.05).abs() < 1e-15);
+    }
+);

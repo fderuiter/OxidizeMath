@@ -5235,6 +5235,120 @@
       "signature": "pub struct TwoPulseModel < M >"
     }
   ],
+  "crates/domain_applied/src/applied/portfolio/frontier.rs": [
+    {
+      "signature": "pub fn constrained_frontier_in_place (_ : & PortfolioSpec , _ : f64 , _ : & [f64] , _ : & mut [PortfolioAllocation] ,) -> Result < usize , PortfolioError >"
+    },
+    {
+      "signature": "pub fn constrained_min_variance (_ : & PortfolioSpec , _ : f64 , _ : & [f64] ,) -> Result < PortfolioAllocation , PortfolioError >"
+    },
+    {
+      "signature": "pub fn constrained_tangency (_ : & PortfolioSpec , _ : f64 , _ : & [f64] ,) -> Result < PortfolioAllocation , PortfolioError >"
+    },
+    {
+      "signature": "pub fn constrained_target_return (_ : & PortfolioSpec , _ : f64 , _ : f64 , _ : & [f64] ,) -> Result < PortfolioAllocation , PortfolioError >"
+    },
+    {
+      "signature": "pub fn long_only_frontier_in_place (_ : & PortfolioSpec , _ : f64 , _ : & mut [PortfolioAllocation] ,) -> Result < usize , PortfolioError >"
+    },
+    {
+      "signature": "pub fn long_only_min_variance (_ : & PortfolioSpec , _ : f64 ,) -> Result < PortfolioAllocation , PortfolioError >"
+    },
+    {
+      "signature": "pub fn long_only_tangency (_ : & PortfolioSpec , _ : f64 ,) -> Result < PortfolioAllocation , PortfolioError >"
+    },
+    {
+      "signature": "pub fn long_only_target_return (_ : & PortfolioSpec , _ : f64 , _ : f64 ,) -> Result < PortfolioAllocation , PortfolioError >"
+    }
+  ],
+  "crates/domain_applied/src/applied/portfolio/mod.rs": [
+    {
+      "signature": "impl PortfolioAllocation { pub fn weights_slice (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl PortfolioSpec { pub fn asset_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl PortfolioSpec { pub fn covariance_at (& self , _ : usize , _ : usize) -> Result < f64 , PortfolioError > }"
+    },
+    {
+      "signature": "impl PortfolioSpec { pub fn evaluate_weights (& self , _ : & [f64] , _ : f64 ,) -> Result < PortfolioAllocation , PortfolioError > }"
+    },
+    {
+      "signature": "impl PortfolioSpec { pub fn expected_returns (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl PortfolioSpec { pub fn from_covariance (_ : & [f64] , _ : & [f64] ,) -> Result < Self , PortfolioError > }"
+    },
+    {
+      "signature": "impl PortfolioSpec { pub fn from_upper_correlations (_ : & [f64] , _ : & [f64] , _ : & [f64] ,) -> Result < Self , PortfolioError > }"
+    },
+    {
+      "signature": "impl PortfolioSpec { pub fn from_volatilities_and_correlations (_ : & [f64] , _ : & [f64] , _ : & [f64] ,) -> Result < Self , PortfolioError > }"
+    },
+    {
+      "signature": "pub const MAX_PORTFOLIO_ASSETS : usize"
+    },
+    {
+      "signature": "pub enum PortfolioError"
+    },
+    {
+      "signature": "pub struct PortfolioAllocation"
+    },
+    {
+      "signature": "pub struct PortfolioSpec"
+    },
+    {
+      "signature": "pub use frontier :: constrained_frontier_in_place"
+    },
+    {
+      "signature": "pub use frontier :: constrained_min_variance"
+    },
+    {
+      "signature": "pub use frontier :: constrained_tangency"
+    },
+    {
+      "signature": "pub use frontier :: constrained_target_return"
+    },
+    {
+      "signature": "pub use frontier :: long_only_frontier_in_place"
+    },
+    {
+      "signature": "pub use frontier :: long_only_min_variance"
+    },
+    {
+      "signature": "pub use frontier :: long_only_tangency"
+    },
+    {
+      "signature": "pub use frontier :: long_only_target_return"
+    },
+    {
+      "signature": "pub use unconstrained :: unconstrained_frontier_in_place"
+    },
+    {
+      "signature": "pub use unconstrained :: unconstrained_min_variance"
+    },
+    {
+      "signature": "pub use unconstrained :: unconstrained_tangency"
+    },
+    {
+      "signature": "pub use unconstrained :: unconstrained_target_return"
+    }
+  ],
+  "crates/domain_applied/src/applied/portfolio/unconstrained.rs": [
+    {
+      "signature": "pub fn unconstrained_frontier_in_place (_ : & PortfolioSpec , _ : f64 , _ : f64 , _ : f64 , _ : & mut [PortfolioAllocation] ,) -> Result < usize , PortfolioError >"
+    },
+    {
+      "signature": "pub fn unconstrained_min_variance (_ : & PortfolioSpec , _ : f64 ,) -> Result < PortfolioAllocation , PortfolioError >"
+    },
+    {
+      "signature": "pub fn unconstrained_tangency (_ : & PortfolioSpec , _ : f64 ,) -> Result < PortfolioAllocation , PortfolioError >"
+    },
+    {
+      "signature": "pub fn unconstrained_target_return (_ : & PortfolioSpec , _ : f64 , _ : f64 ,) -> Result < PortfolioAllocation , PortfolioError >"
+    }
+  ],
   "crates/domain_applied/src/applied/win_ratio/bmi.rs": [
     {
       "signature": "pub fn calculate_bmi (_ : f64 , _ : f64) -> f64"
@@ -5648,6 +5762,9 @@
       "signature": "pub use crate :: applied :: isosurface :: types :: VoxelGridError"
     },
     {
+      "signature": "pub use crate :: applied :: portfolio :: PortfolioError"
+    },
+    {
       "signature": "pub use umbrella :: AppliedError"
     }
   ],
@@ -5688,6 +5805,9 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: PharmacokineticsError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: PortfolioError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: VoxelGridError } }"
     },
     {
@@ -5722,6 +5842,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: PharmacokineticsError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: PortfolioError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: VoxelGridError } }"
@@ -6695,7 +6818,13 @@
       "signature": "impl < K : ReactionKinetics < 2 > , D : SpatialDiffusion < 2 > > TuringSystem < 2 , K , D , FusedEulerSolver > { pub fn new_with_kinetics (_ : Dimension , _ : DiffusionCoeff , _ : DiffusionCoeff , _ : K , _ : D ,) -> Self }"
     },
     {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : SpatialDiffusion < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , D , S > { pub const fn time (& self) -> f64 }"
+    },
+    {
       "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : SpatialDiffusion < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , D , S > { pub fn new_with_solver (_ : Dimension , _ : [DiffusionCoeff ; N] , _ : K , _ : D , _ : S ,) -> Self }"
+    },
+    {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : SpatialDiffusion < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , D , S > { pub fn set_time (& mut self , _ : f64) }"
     },
     {
       "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : SpatialDiffusion < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , D , S > { pub fn step (& mut self , _ : f64) }"
@@ -6769,10 +6898,16 @@
       "signature": "pub trait ReactionKinetics < const N : usize = 2 >"
     },
     {
+      "signature": "pub trait ReactionKinetics < const N : usize = 2 > { fn is_time_dependent (& self) -> bool }"
+    },
+    {
       "signature": "pub trait ReactionKinetics < const N : usize = 2 > { fn reaction (& self , _ : [f64 ; N]) -> [f64 ; N] }"
     },
     {
       "signature": "pub trait ReactionKinetics < const N : usize = 2 > { fn reaction_at (& self , _ : usize , _ : [f64 ; N]) -> [f64 ; N] }"
+    },
+    {
+      "signature": "pub trait ReactionKinetics < const N : usize = 2 > { fn reaction_at_time (& self , _ : f64 , _ : usize , _ : [f64 ; N]) -> [f64 ; N] }"
     }
   ],
   "crates/domain_biology/src/biology/morphogenesis/solvers.rs": [
@@ -6783,13 +6918,19 @@
       "signature": "impl < 'a , const N : usize , K , D > FusedEulerEvolution < 'a , N , K , D > { pub fn with_stochastic_noise (_ : FusedEulerSolver , _ : & 'a TuringDynamics < 'a , N , K , D > , _ : f64 , _ : f64 ,) -> Self }"
     },
     {
+      "signature": "impl < S > StandardSolverAdapter < S > { pub const fn time (& self) -> f64 }"
+    },
+    {
       "signature": "impl < S > StandardSolverAdapter < S > { pub fn new (_ : S) -> Self }"
     },
     {
-      "signature": "impl FusedEulerSolver { pub fn cfl_substeps_2d (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : usize ,) -> (usize , f64) }"
+      "signature": "impl < S > StandardSolverAdapter < S > { pub fn set_time (& mut self , _ : f64) }"
     },
     {
       "signature": "impl FusedEulerSolver { pub fn cfl_dt_2d (_ : f64 , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl FusedEulerSolver { pub fn cfl_substeps_2d (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : usize ,) -> (usize , f64) }"
     },
     {
       "signature": "impl FusedEulerSolver { pub fn new () -> Self }"
@@ -6811,6 +6952,9 @@
     },
     {
       "signature": "pub trait TuringSolverStrategy < const N : usize = 2 > { fn step < K : ReactionKinetics < N > , D : SpatialDiffusion < N > > (& mut self , _ : & TuringState < N > , _ : & mut TuringState < N > , _ : & TuringDynamics < N , K , D > , _ : f64 ,) }"
+    },
+    {
+      "signature": "pub trait TuringSolverStrategy < const N : usize = 2 > { fn step_at < K : ReactionKinetics < N > , D : SpatialDiffusion < N > > (& mut self , _ : f64 , _ : & TuringState < N > , _ : & mut TuringState < N > , _ : & TuringDynamics < N , K , D > , _ : f64 ,) }"
     }
   ],
   "crates/domain_biology/src/biology/morphogenesis/spatial_reaction.rs": [
@@ -7260,10 +7404,16 @@
   ],
   "crates/domain_biology/src/biology/reaction_diffusion/model.rs": [
     {
+      "signature": "impl < R : ReactionModel , D : DiffusionModel , S : Solver < ChemicalState > > ReactionDiffusionSystem < R , D , S > { pub const fn time (& self) -> f64 }"
+    },
+    {
       "signature": "impl < R : ReactionModel , D : DiffusionModel , S : Solver < ChemicalState > > ReactionDiffusionSystem < R , D , S > { pub fn diffusion (& self) -> & D }"
     },
     {
       "signature": "impl < R : ReactionModel , D : DiffusionModel , S : Solver < ChemicalState > > ReactionDiffusionSystem < R , D , S > { pub fn reaction (& self) -> & R }"
+    },
+    {
+      "signature": "impl < R : ReactionModel , D : DiffusionModel , S : Solver < ChemicalState > > ReactionDiffusionSystem < R , D , S > { pub fn set_time (& mut self , _ : f64) }"
     },
     {
       "signature": "impl < R : ReactionModel , D : DiffusionModel , S : Solver < ChemicalState > > ReactionDiffusionSystem < R , D , S > { pub fn step (& mut self , _ : f64) }"
@@ -7791,6 +7941,9 @@
   ],
   "crates/domain_epidemiology/src/epidemiology/compartmental/seir.rs": [
     {
+      "signature": "impl < S : Solver < SEIRState > > SEIRModel < S > { pub const fn time (& self) -> f64 }"
+    },
+    {
       "signature": "impl < S : Solver < SEIRState > > SEIRModel < S > { pub fn beta (& self) -> f64 }"
     },
     {
@@ -7800,6 +7953,12 @@
       "signature": "impl < S : Solver < SEIRState > > SEIRModel < S > { pub fn n (& self) -> f64 }"
     },
     {
+      "signature": "impl < S : Solver < SEIRState > > SEIRModel < S > { pub fn reset_time (& mut self) }"
+    },
+    {
+      "signature": "impl < S : Solver < SEIRState > > SEIRModel < S > { pub fn set_time (& mut self , _ : f64) }"
+    },
+    {
       "signature": "impl < S : Solver < SEIRState > > SEIRModel < S > { pub fn sigma (& self) -> f64 }"
     },
     {
@@ -7807,6 +7966,9 @@
     },
     {
       "signature": "impl < S : Solver < SEIRState > > SEIRModel < S > { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl < S : Solver < SEIRState > > SEIRModel < S > { pub fn step_forced < F : Fn (f64 , & SEIRState) -> SEIRState > (& mut self , _ : f64 , _ : F) }"
     },
     {
       "signature": "impl < S : Solver < SEIRState > > SEIRModel < S > { pub fn step_with < OtherS : Solver < SEIRState > > (& mut self , _ : & mut OtherS , _ : f64) }"
@@ -7853,6 +8015,9 @@
   ],
   "crates/domain_epidemiology/src/epidemiology/compartmental/sir.rs": [
     {
+      "signature": "impl < S : Solver < SIRState > > SIRModel < S > { pub const fn time (& self) -> f64 }"
+    },
+    {
       "signature": "impl < S : Solver < SIRState > > SIRModel < S > { pub fn beta (& self) -> f64 }"
     },
     {
@@ -7862,10 +8027,19 @@
       "signature": "impl < S : Solver < SIRState > > SIRModel < S > { pub fn n (& self) -> f64 }"
     },
     {
+      "signature": "impl < S : Solver < SIRState > > SIRModel < S > { pub fn reset_time (& mut self) }"
+    },
+    {
+      "signature": "impl < S : Solver < SIRState > > SIRModel < S > { pub fn set_time (& mut self , _ : f64) }"
+    },
+    {
       "signature": "impl < S : Solver < SIRState > > SIRModel < S > { pub fn state (& self) -> & SIRState }"
     },
     {
       "signature": "impl < S : Solver < SIRState > > SIRModel < S > { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl < S : Solver < SIRState > > SIRModel < S > { pub fn step_forced < F : Fn (f64 , & SIRState) -> SIRState > (& mut self , _ : f64 , _ : F) }"
     },
     {
       "signature": "impl < S : Solver < SIRState > > SIRModel < S > { pub fn step_with < OtherS : Solver < SIRState > > (& mut self , _ : & mut OtherS , _ : f64) }"
@@ -14072,6 +14246,130 @@
     },
     {
       "signature": "pub fn bounded_sqrt (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub use interval :: Interval"
+    },
+    {
+      "signature": "pub use interval_wrappers :: NonNegativeInterval"
+    },
+    {
+      "signature": "pub use interval_wrappers :: PositiveInterval"
+    },
+    {
+      "signature": "pub use interval_wrappers :: UnitIntervalEnclosure"
+    }
+  ],
+  "crates/math_commons/src/primitives/interval.rs": [
+    {
+      "signature": "impl Interval { pub const fn bounds (& self) -> [f64 ; 2] }"
+    },
+    {
+      "signature": "impl Interval { pub const fn hi (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Interval { pub const fn lo (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Interval { pub fn abs (self) -> Self }"
+    },
+    {
+      "signature": "impl Interval { pub fn checked_div (self , _ : Self) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl Interval { pub fn clamp_domain (self , _ : f64 , _ : f64) -> Option < Self > }"
+    },
+    {
+      "signature": "impl Interval { pub fn contains (& self , _ : f64) -> bool }"
+    },
+    {
+      "signature": "impl Interval { pub fn cos (self) -> Self }"
+    },
+    {
+      "signature": "impl Interval { pub fn encloses (& self , _ : Self) -> bool }"
+    },
+    {
+      "signature": "impl Interval { pub fn exp (self) -> Self }"
+    },
+    {
+      "signature": "impl Interval { pub fn from_approx (_ : f64) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl Interval { pub fn hull (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl Interval { pub fn intersect (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl Interval { pub fn ln (self) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl Interval { pub fn midpoint (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Interval { pub fn new (_ : f64 , _ : f64) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl Interval { pub fn point (_ : f64) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl Interval { pub fn powu (self , _ : u32) -> Self }"
+    },
+    {
+      "signature": "impl Interval { pub fn radius (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Interval { pub fn sin (self) -> Self }"
+    },
+    {
+      "signature": "impl Interval { pub fn sqr (self) -> Self }"
+    },
+    {
+      "signature": "impl Interval { pub fn sqrt (self) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl Interval { pub fn try_new (_ : f64 , _ : f64) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl Interval { pub fn width (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct Interval"
+    }
+  ],
+  "crates/math_commons/src/primitives/interval_wrappers.rs": [
+    {
+      "signature": "impl NonNegativeInterval { pub const fn interval (& self) -> Interval }"
+    },
+    {
+      "signature": "impl NonNegativeInterval { pub fn new (_ : f64 , _ : f64) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl PositiveInterval { pub const fn interval (& self) -> Interval }"
+    },
+    {
+      "signature": "impl PositiveInterval { pub fn new (_ : f64 , _ : f64) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl UnitIntervalEnclosure { pub const fn interval (& self) -> Interval }"
+    },
+    {
+      "signature": "impl UnitIntervalEnclosure { pub fn clamp_from (_ : Interval) -> Self }"
+    },
+    {
+      "signature": "impl UnitIntervalEnclosure { pub fn complement (& self) -> Self }"
+    },
+    {
+      "signature": "impl UnitIntervalEnclosure { pub fn new (_ : f64 , _ : f64) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "pub struct NonNegativeInterval"
+    },
+    {
+      "signature": "pub struct PositiveInterval"
+    },
+    {
+      "signature": "pub struct UnitIntervalEnclosure"
     }
   ],
   "crates/math_commons/src/registry.rs": [
@@ -14534,6 +14832,24 @@
       "signature": "pub use maturity :: MaturityRegistry"
     },
     {
+      "signature": "pub use proof_digest :: CANONICAL_PYRAMID_TIERS"
+    },
+    {
+      "signature": "pub use proof_digest :: CERTIFIED_SOLVER_COUNT"
+    },
+    {
+      "signature": "pub use proof_digest :: collect_lean4_proof_digests"
+    },
+    {
+      "signature": "pub use proof_digest :: sha256_hex"
+    },
+    {
+      "signature": "pub use proof_digest :: strip_lean_comments"
+    },
+    {
+      "signature": "pub use proof_digest :: validate_lean_proof_source"
+    },
+    {
       "signature": "pub use qualification :: MaturityEvidence"
     },
     {
@@ -14672,6 +14988,26 @@
     },
     {
       "signature": "pub struct MaturityRegistry"
+    }
+  ],
+  "crates/oxidize_core/src/traceability/proof_digest.rs": [
+    {
+      "signature": "pub const CANONICAL_PYRAMID_TIERS : [& str ; 6]"
+    },
+    {
+      "signature": "pub const CERTIFIED_SOLVER_COUNT : usize"
+    },
+    {
+      "signature": "pub fn collect_lean4_proof_digests (_ : & Path ,) -> Result < BTreeMap < String , String > , String >"
+    },
+    {
+      "signature": "pub fn sha256_hex (_ : & [u8]) -> String"
+    },
+    {
+      "signature": "pub fn strip_lean_comments (_ : & str) -> String"
+    },
+    {
+      "signature": "pub fn validate_lean_proof_source (_ : & str , _ : & str) -> Result < () , String >"
     }
   ],
   "crates/oxidize_core/src/traceability/qualification.rs": [
@@ -14870,6 +15206,9 @@
       "signature": "pub use crate :: pure_math :: statistics :: queueing :: QueueingError"
     },
     {
+      "signature": "pub use crate :: pure_math :: statistics :: risk :: RiskError"
+    },
+    {
       "signature": "pub use crate :: pure_math :: tensor :: types :: TensorError"
     },
     {
@@ -15017,6 +15356,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: QueueingError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: RiskError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: StochasticError } }"
@@ -16395,7 +16737,13 @@
   ],
   "crates/pure_math/src/pure_math/analysis/ode/model.rs": [
     {
+      "signature": "impl < State , Dynamics , S > OdeModel < State , Dynamics , S > { pub const fn time (& self) -> f64 }"
+    },
+    {
       "signature": "impl < State , Dynamics , S > OdeModel < State , Dynamics , S > { pub fn new (_ : State , _ : Dynamics , _ : S) -> Self }"
+    },
+    {
+      "signature": "impl < State , Dynamics , S > OdeModel < State , Dynamics , S > { pub fn set_time (& mut self , _ : f64) }"
     },
     {
       "signature": "pub struct OdeModel < State , Dynamics , S >"
@@ -16450,6 +16798,12 @@
   "crates/pure_math/src/pure_math/analysis/ode/stepper.rs": [
     {
       "signature": "pub trait TimeStepper < State : VectorOperations > : OdeSystem < State >"
+    },
+    {
+      "signature": "pub trait TimeStepper < State : VectorOperations > { fn advance_time (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "pub trait TimeStepper < State : VectorOperations > { fn current_time (& self) -> f64 }"
     },
     {
       "signature": "pub trait TimeStepper < State : VectorOperations > { fn get_state (& self) -> & State }"
@@ -22921,6 +23275,125 @@
       "signature": "pub fn multivariate_linear_regression (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Option < DVector < f64 > >"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/risk/drawdown.rs": [
+    {
+      "signature": "pub fn drawdown_series_from_returns (_ : & [f64] , _ : & mut [f64] ,) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn drawdown_series_from_wealth (_ : & [f64] , _ : & mut [f64] ,) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn max_drawdown_returns (_ : & [f64]) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn max_drawdown_wealth (_ : & [f64]) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn max_underwater_duration_returns (_ : & [f64]) -> Result < usize , RiskError >"
+    },
+    {
+      "signature": "pub fn max_underwater_duration_wealth (_ : & [f64]) -> Result < usize , RiskError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/risk/mod.rs": [
+    {
+      "signature": "pub enum RiskError"
+    },
+    {
+      "signature": "pub fn summarize_return_risk (_ : & [f64] , _ : f64 , _ : f64 , _ : f64 , _ : & mut [f64] ,) -> Result < RiskSummary , RiskError >"
+    },
+    {
+      "signature": "pub struct RiskSummary"
+    },
+    {
+      "signature": "pub use drawdown :: drawdown_series_from_returns"
+    },
+    {
+      "signature": "pub use drawdown :: drawdown_series_from_wealth"
+    },
+    {
+      "signature": "pub use drawdown :: max_drawdown_returns"
+    },
+    {
+      "signature": "pub use drawdown :: max_drawdown_wealth"
+    },
+    {
+      "signature": "pub use drawdown :: max_underwater_duration_returns"
+    },
+    {
+      "signature": "pub use drawdown :: max_underwater_duration_wealth"
+    },
+    {
+      "signature": "pub use ratios :: calmar_ratio"
+    },
+    {
+      "signature": "pub use ratios :: calmar_ratio_wealth"
+    },
+    {
+      "signature": "pub use ratios :: sharpe_ratio"
+    },
+    {
+      "signature": "pub use ratios :: sortino_ratio"
+    },
+    {
+      "signature": "pub use tail :: cornish_fisher_cvar"
+    },
+    {
+      "signature": "pub use tail :: cornish_fisher_var"
+    },
+    {
+      "signature": "pub use tail :: gaussian_cvar"
+    },
+    {
+      "signature": "pub use tail :: gaussian_var"
+    },
+    {
+      "signature": "pub use tail :: historical_cvar"
+    },
+    {
+      "signature": "pub use tail :: historical_var"
+    },
+    {
+      "signature": "pub use tail :: validate_confidence"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/risk/ratios.rs": [
+    {
+      "signature": "pub fn calmar_ratio (_ : & [f64] , _ : f64) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn calmar_ratio_wealth (_ : & [f64] , _ : f64) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn sharpe_ratio (_ : & [f64] , _ : f64 , _ : f64 ,) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn sortino_ratio (_ : & [f64] , _ : f64 , _ : f64 ,) -> Result < f64 , RiskError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/risk/tail.rs": [
+    {
+      "signature": "pub fn cornish_fisher_cvar (_ : & [f64] , _ : f64) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn cornish_fisher_var (_ : & [f64] , _ : f64) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn gaussian_cvar (_ : & [f64] , _ : f64) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn gaussian_var (_ : & [f64] , _ : f64) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn historical_cvar (_ : & [f64] , _ : f64 , _ : & mut [f64] ,) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn historical_var (_ : & [f64] , _ : f64 , _ : & mut [f64] ,) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn validate_confidence (_ : f64) -> Result < f64 , RiskError >"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/ruin/analytical.rs": [
     {
       "signature": "impl PortfolioBet { pub fn new (_ : UnitInterval , _ : Odds , _ : f64 , _ : f64 ,) -> Result < Self , KellyError > }"
@@ -24117,6 +24590,139 @@
       "signature": "pub trait TheoryDescribable { fn theory_parameters (& self) -> HashMap < String , ParameterConstraint > }"
     }
   ],
+  "crates/scientific_verification/src/golden.rs": [
+    {
+      "signature": "pub fn verify_golden_fixtures () -> Result < usize , String >"
+    }
+  ],
+  "crates/scientific_verification/src/intervals.rs": [
+    {
+      "signature": "pub fn compute_certified_interval_enclosures () -> Result < IntervalCertification , String >"
+    },
+    {
+      "signature": "pub struct IntervalCertification"
+    }
+  ],
+  "crates/scientific_verification/src/lean_proofs.rs": [
+    {
+      "signature": "pub fn verify_and_digest_lean_proofs () -> Result < BTreeMap < String , String > , String >"
+    }
+  ],
+  "crates/scientific_verification/src/lib.rs": [
+    {
+      "signature": "pub use pyramid :: PyramidSummary"
+    },
+    {
+      "signature": "pub use pyramid :: TierReport"
+    },
+    {
+      "signature": "pub use pyramid :: run_full_pyramid"
+    },
+    {
+      "signature": "pub use pyramid :: run_tier1"
+    },
+    {
+      "signature": "pub use pyramid :: run_tier2"
+    },
+    {
+      "signature": "pub use pyramid :: run_tier3"
+    },
+    {
+      "signature": "pub use pyramid :: run_tier4"
+    },
+    {
+      "signature": "pub use pyramid :: run_tier5"
+    },
+    {
+      "signature": "pub use pyramid :: run_tier6"
+    }
+  ],
+  "crates/scientific_verification/src/mms.rs": [
+    {
+      "signature": "impl SolverCertificate { pub fn evaluate (_ : & 'static str , _ : & 'static str , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "pub fn max_abs_error (_ : & [f64] , _ : & [f64]) -> f64"
+    },
+    {
+      "signature": "pub fn ols_convergence_order (_ : & [f64] , _ : & [f64]) -> f64"
+    },
+    {
+      "signature": "pub fn rms_error (_ : & [f64] , _ : & [f64]) -> f64"
+    },
+    {
+      "signature": "pub struct SolverCertificate"
+    }
+  ],
+  "crates/scientific_verification/src/proptest_sweeps.rs": [
+    {
+      "signature": "pub fn verify_property_sweeps () -> Result < usize , String >"
+    }
+  ],
+  "crates/scientific_verification/src/pyramid.rs": [
+    {
+      "signature": "pub fn run_full_pyramid () -> Result < PyramidSummary , String >"
+    },
+    {
+      "signature": "pub fn run_tier1 () -> Result < TierReport , String >"
+    },
+    {
+      "signature": "pub fn run_tier2 () -> Result < TierReport , String >"
+    },
+    {
+      "signature": "pub fn run_tier3 () -> Result < TierReport , String >"
+    },
+    {
+      "signature": "pub fn run_tier4 () -> Result < TierReport , String >"
+    },
+    {
+      "signature": "pub fn run_tier5 () -> Result < TierReport , String >"
+    },
+    {
+      "signature": "pub fn run_tier6 () -> Result < TierReport , String >"
+    },
+    {
+      "signature": "pub struct PyramidSummary"
+    },
+    {
+      "signature": "pub struct TierReport"
+    }
+  ],
+  "crates/scientific_verification/src/solvers/bio_epi_applied_ai.rs": [
+    {
+      "signature": "pub fn certify_bio_epi_applied_ai () -> Result < Vec < SolverCertificate > , String >"
+    }
+  ],
+  "crates/scientific_verification/src/solvers/calibration_and_hyperbolic.rs": [
+    {
+      "signature": "pub fn certify_calibration_and_hyperbolic () -> Result < Vec < SolverCertificate > , String >"
+    }
+  ],
+  "crates/scientific_verification/src/solvers/commons_and_ode.rs": [
+    {
+      "signature": "pub fn certify_commons_and_ode () -> Result < Vec < SolverCertificate > , String >"
+    }
+  ],
+  "crates/scientific_verification/src/solvers/mod.rs": [
+    {
+      "signature": "pub fn verify_all_solvers () -> Result < Vec < SolverCertificate > , String >"
+    }
+  ],
+  "crates/scientific_verification/src/solvers/physics.rs": [
+    {
+      "signature": "pub fn certify_physics_solvers () -> Result < Vec < SolverCertificate > , String >"
+    }
+  ],
+  "crates/scientific_verification/src/solvers/pure_pde_and_geom.rs": [
+    {
+      "signature": "pub fn certify_pure_pde_and_geom () -> Result < Vec < SolverCertificate > , String >"
+    }
+  ],
+  "crates/scientific_verification/src/stochastic.rs": [
+    {
+      "signature": "pub fn verify_stochastic_moments () -> Result < usize , String >"
+    }
+  ],
   "crates/verified_engine/src/allocator.rs": [
     {
       "signature": "pub fn lock_allocations ()"
@@ -24238,6 +24844,9 @@
     },
     {
       "signature": "pub use domain_applied :: error :: PharmacokineticsError"
+    },
+    {
+      "signature": "pub use domain_applied :: error :: PortfolioError"
     },
     {
       "signature": "pub use domain_applied :: error :: VoxelGridError"
@@ -24414,6 +25023,9 @@
       "signature": "pub use pure_math :: error :: QueueingError"
     },
     {
+      "signature": "pub use pure_math :: error :: RiskError"
+    },
+    {
       "signature": "pub use pure_math :: error :: StochasticError"
     },
     {
@@ -24553,13 +25165,25 @@
       "signature": "pub use math_commons :: fit :: FitModel"
     },
     {
+      "signature": "pub use math_commons :: primitives :: Interval"
+    },
+    {
       "signature": "pub use math_commons :: primitives :: NonNegativeFloat"
+    },
+    {
+      "signature": "pub use math_commons :: primitives :: NonNegativeInterval"
     },
     {
       "signature": "pub use math_commons :: primitives :: PositiveFloat"
     },
     {
+      "signature": "pub use math_commons :: primitives :: PositiveInterval"
+    },
+    {
       "signature": "pub use math_commons :: primitives :: UnitInterval"
+    },
+    {
+      "signature": "pub use math_commons :: primitives :: UnitIntervalEnclosure"
     },
     {
       "signature": "pub use math_commons :: series :: PointSeries"

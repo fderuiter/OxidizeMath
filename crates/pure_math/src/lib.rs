@@ -22,7 +22,7 @@ pub mod __doctest_facade {
             KellyError, KnotError, LinalgError, LinearAlgebraError, MarketPricingError,
             MarkovError, MatchModelError, MonteCarloError, NumberTheoryError, OptimizationError,
             OptionPricingError, OuError, PoissonError, PureMathError, PureMathError as Error,
-            QueueingError, StochasticError, Su11HyperbolicError, TdaError, TensorError,
+            QueueingError, RiskError, StochasticError, Su11HyperbolicError, TdaError, TensorError,
             TransformError, ZipError,
         };
         pub use math_commons::error::{

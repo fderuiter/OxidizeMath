@@ -44,6 +44,10 @@ diagnostics = { path = "../diagnostics" }
 serde_json = { workspace = true, default-features = false, features = ["alloc", "float_roundtrip"] }
 
 [[test]]
+name = "interval_enclosure"
+required-features = ["std"]
+
+[[test]]
 name = "test_bounded_primitives_errors"
 required-features = ["std"]
 

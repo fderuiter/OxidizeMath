@@ -13,7 +13,7 @@ pub use domain_ai::error::AIError;
 #[cfg(feature = "applied")]
 pub use domain_applied::error::{
     AppliedError, BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError,
-    IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, VoxelGridError,
+    IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, PortfolioError, VoxelGridError,
 };
 
 #[cfg(feature = "biology")]
@@ -41,8 +41,8 @@ pub use pure_math::error::{
     EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
     KnotError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
     MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError, OuError,
-    PoissonError, PureMathError, QueueingError, StochasticError, Su11HyperbolicError, TdaError,
-    TensorError, TransformError, ZipError,
+    PoissonError, PureMathError, QueueingError, RiskError, StochasticError, Su11HyperbolicError,
+    TdaError, TensorError, TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -106,6 +106,9 @@ pub enum Error {
     /// Pharmacokinetics modeling error.
     #[cfg(feature = "applied")]
     Pharmacokinetics(PharmacokineticsError),
+    /// Markowitz portfolio optimization error.
+    #[cfg(feature = "applied")]
+    Portfolio(PortfolioError),
     /// Volumetric voxel grid construction error.
     #[cfg(feature = "applied")]
     VoxelGrid(VoxelGridError),
@@ -255,6 +258,9 @@ pub enum Error {
     /// Birth-death queueing model error.
     #[cfg(feature = "pure_math")]
     Queueing(QueueingError),
+    /// Statistical tail-risk, drawdown, and return-ratio error.
+    #[cfg(feature = "pure_math")]
+    Risk(RiskError),
     /// Stochastic simulation error.
     #[cfg(feature = "pure_math")]
     Stochastic(StochasticError),

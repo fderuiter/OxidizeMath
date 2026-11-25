@@ -13,7 +13,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | `check-api-drift` | Validates public API surface against `api_baseline.json`. | Active |
 | `check-benches` | Builds and runs all workspace benchmark targets in test mode (`cargo test --workspace --benches --all-features`). | Active |
 | `check-cargo-docs` | Verifies workspace documentation builds with `--all-features` and zero warnings. | Active |
-| `check-certificate` | Verifies `Verification_Certificate.json` 9-key schema, `README.md` badge validity, and ratcheted `[verify_suite]` quality floors (`--strict-parity` and `--write` supported). | Active |
+| `check-certificate` | Verifies `Verification_Certificate.json` 14-key schema, `README.md` badge validity, and ratcheted `[verify_suite]` quality floors (`--strict-parity` and `--write` supported). | Active |
 | `check-docs` | Runs crate documentation audit across all workspace crates. | Active |
 | `check-duplicates` | Runs AST-level code clone detector across first-party crates. | Active |
 | `check-entropy` | Scans codebase for high entropy strings and unseeded RNG usage. | Active |
@@ -36,6 +36,8 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | `traceability` | Verifies academic paper citation bindings and `#[verified]` coverage. | Active |
 | `verify-records` | Verifies architectural decision records (`--staged` supported), enforcing `YYYYMMDD-slug.md` naming with valid dates and unique slugs for new ADRs, freezing legacy `NNNN-slug.md` prefixes, requiring `# ` and `## Status` headings, and checking ACMR updates on core changes. | Active |
 | `verify-suite` | Runs the full coverage-instrumented high-integrity verification suite. | Active |
+| `verify-tier1`..`verify-tier6` | Runs an individual tier of the 6-tier scientific verification pyramid (MMS convergence, property sweeps, golden fixtures, stochastic moments, interval enclosures, or Lean 4 proof certificates). | Active |
+| `verify-pyramid` | Executes all 6 tiers of the scientific verification pyramid across all 55 numerical solvers, interval enclosures, and Lean 4 proof digests. | Active |
 
 ### Maintenance & Onboarding Tasks
 

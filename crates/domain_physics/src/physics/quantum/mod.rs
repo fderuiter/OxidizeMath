@@ -127,3 +127,27 @@ theory_verification!(
         assert_relative_eq!(DUMMY, 1.0, epsilon = math_commons::registry::TOLERANCE_FAST);
     }
 );
+
+pure_math::property_invariant_verification!(
+    module = "quantum",
+    test = {
+        let h = construct_two_state_eigen_hamiltonian(1.0, 2.5, 0.3);
+        let u = time_evolution_operator(&h, 0.2, 1.0);
+        let diff = &u.matrix.adjoint() * &u.matrix - nalgebra::DMatrix::identity(2, 2);
+        assert!(diff.norm() < 1e-12);
+    }
+);
+
+pure_math::formal_proof_verification!(
+    module = "quantum",
+    proof = "QuantumUnitarity.lean",
+    test = {
+        let h = construct_two_state_eigen_hamiltonian(-0.5, 1.5, 0.25);
+        let psi0 = QuantumState::new(nalgebra::DVector::from_vec(vec![
+            num_complex::Complex::new(0.6, 0.0),
+            num_complex::Complex::new(0.0, 0.8),
+        ]));
+        let psi1 = evolve_state(&psi0, &h, 0.35, 1.0);
+        assert!((state_norm_squared(&psi1) - 1.0).abs() < 1e-12);
+    }
+);

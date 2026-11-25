@@ -34,6 +34,7 @@ const INTERNAL_FOUNDATION_MEMBERS: &[&str] = &[
     "crates/verified_engine_macros",
     "crates/markdown_tests",
     "apps/xtask",
+    "crates/scientific_verification",
     "crates/unified_verification",
 ];
 

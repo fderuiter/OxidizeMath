@@ -97,6 +97,7 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::OuError::InvalidVolatility { value: -0.1 }, bus),
         check_leaf(error::PoissonError::InvalidRate { rate: -1.0 }, bus),
         check_leaf(error::QueueingError::InvalidServerCount { servers: 0 }, bus),
+        check_leaf(error::RiskError::EmptySeries, bus),
         check_leaf(error::StochasticError::InvalidReactionIndex(2), bus),
         check_leaf(
             error::Su11HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 },
@@ -136,6 +137,7 @@ pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
             error::PharmacokineticsError::InvalidParameter("k".to_string()),
             bus,
         ),
+        check_leaf(error::PortfolioError::NotPositiveDefinite, bus),
         check_leaf(error::VoxelGridError::InvalidDimensions, bus),
         check_leaf(error::BotanicalError::EmptyAxiom, bus),
         check_leaf(error::HodgkinHuxleyError::InvalidConductance(-1.0), bus),
@@ -236,11 +238,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 65);
-    assert_eq!(*events.lock().unwrap(), 65);
+    assert_eq!(converted.len(), 67);
+    assert_eq!(*events.lock().unwrap(), 67);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 71);
+    assert_eq!(*events.lock().unwrap(), 73);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -276,6 +278,7 @@ fn verify_prelude_domain_leaves() {
         p::KalmanError,
         p::LoraError,
         p::PharmacokineticsError,
+        p::PortfolioError,
         p::VoxelGridError,
         p::ChaosError,
         p::DoseFluenceError,
@@ -318,6 +321,7 @@ fn verify_prelude_pure_math_leaves() {
         p::OuError,
         p::PoissonError,
         p::QueueingError,
+        p::RiskError,
         p::StochasticError,
         p::Su11HyperbolicError,
         p::TdaError,

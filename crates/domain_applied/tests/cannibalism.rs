@@ -121,3 +121,78 @@ fn test_zero_heap_allocation_during_pde_stepping() {
     assert!(mvf.total_population() > 0.0 && mvf.total_population().is_finite());
     assert!(ja.adults() > 0.0 && ja.adults().is_finite());
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_non_unit_cfl_grid_refinement_convergence_mckendrick() {
+    use std::f64::consts::PI;
+
+    let (mu, max_age, t_end, cfl) = (0.2, 6.0, 0.8, 0.5);
+    let grids = [61_usize, 121, 241, 481];
+    let mut mvf_errors = [0.0_f64; 4];
+    let init_profile = |a: f64| -> f64 {
+        if (1.0..=4.0).contains(&a) {
+            10.0 * (PI * (a - 1.0) / 3.0).sin().powi(4)
+        } else {
+            0.0
+        }
+    };
+
+    for (idx, &n_ages) in grids.iter().enumerate() {
+        let kernel = cannibalism::CannibalismKernel::new(mu, 0.0, 0.0, 2.0, 0.0, 4.0, 0.0, 50.0);
+        let mut solver = cannibalism::McKendrickSolver::new(n_ages, max_age, kernel);
+        solver.set_initial_density(init_profile);
+        let steps = (t_end / (cfl * solver.da())).round() as usize;
+        let exact_dt = t_end / steps as f64;
+        for _ in 0..steps {
+            solver.step_upwind_with_boundary(exact_dt, 0.0);
+        }
+        let mut l2_sq = 0.0;
+        for (&age, &num) in solver.ages().iter().zip(solver.density().iter()) {
+            let exact = if age >= t_end {
+                init_profile(age - t_end) * (-mu * t_end).exp()
+            } else {
+                0.0
+            };
+            l2_sq += (num - exact).powi(2) * solver.da();
+        }
+        mvf_errors[idx] = l2_sq.sqrt();
+    }
+
+    let mvf_order = (mvf_errors[2] / mvf_errors[3]).ln() / 2.0_f64.ln();
+    assert!(mvf_errors[3] < mvf_errors[2] && mvf_errors[2] < mvf_errors[1]);
+    assert!(
+        mvf_order > 0.85,
+        "McKendrickSolver expected O(h) non-unit CFL convergence, got {mvf_order:.3}"
+    );
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_non_unit_cfl_grid_refinement_convergence_juvenile_adult() {
+    use std::f64::consts::PI;
+
+    let params = cannibalism::JuvenileAdultParams::default();
+    let run_ja = |n_ages: usize| -> (f64, f64) {
+        let mut ja = cannibalism::JuvenileAdultSolver::new(n_ages, 12.0, params);
+        ja.set_initial_state(12.0, |a| 6.0 * (PI * a / params.maturation_age).sin());
+        let steps = (0.5 / (0.5 * ja.da())).round() as usize;
+        let step_dt = 0.5 / steps as f64;
+        for _ in 0..steps {
+            ja.step_upwind(step_dt);
+        }
+        (ja.adults(), ja.total_juveniles())
+    };
+
+    let (a_ref, j_ref) = run_ja(961);
+    let mut ja_errs = [0.0_f64; 3];
+    for (idx, &n_ages) in [61_usize, 121, 241].iter().enumerate() {
+        let (a_n, j_n) = run_ja(n_ages);
+        ja_errs[idx] = ((a_n - a_ref).powi(2) + (j_n - j_ref).powi(2)).sqrt();
+    }
+    let ja_order = (ja_errs[1] / ja_errs[2]).ln() / 2.0_f64.ln();
+    assert!(
+        ja_errs[2] < ja_errs[1] && ja_errs[1] < ja_errs[0] && ja_order > 0.85,
+        "JuvenileAdultSolver expected O(h) convergence at CFL=0.5, errs={ja_errs:?}, order={ja_order:.3}"
+    );
+}

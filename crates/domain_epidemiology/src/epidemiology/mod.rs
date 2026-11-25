@@ -108,5 +108,26 @@ theory_verification!(
         assert!((st.s + st.i + st.r - POPULATION_N).abs() < 1e-9);
         assert!(st.i > INITIAL_I0);
         assert!(st.r > 0.0);
+        assert!((model.time() - 5.0).abs() < 1e-12);
+    }
+);
+
+pure_math::mms_convergence_verification!(
+    module = "epidemiology",
+    test = {
+        let mut model = SIRModel::new(1000.0, 20.0, 0.3, 0.1).unwrap();
+        model.step(0.25);
+        assert!((model.time() - 0.25).abs() < 1e-15);
+    }
+);
+
+pure_math::formal_proof_verification!(
+    module = "epidemiology",
+    proof = "CompartmentalConservation.lean",
+    test = {
+        let mut model = SEIRModel::new(1000.0, 15.0, 0.4, 0.2, 0.1).unwrap();
+        model.step(0.1);
+        let st = model.state();
+        assert!((st.s + st.e + st.i + st.r - 1000.0).abs() < 1e-9);
     }
 );

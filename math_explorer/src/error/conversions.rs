@@ -55,6 +55,7 @@ impl_error_from!(@cfg "applied":
     KalmanError => Kalman,
     LoraError => Lora,
     PharmacokineticsError => Pharmacokinetics,
+    PortfolioError => Portfolio,
     VoxelGridError => VoxelGrid,
 );
 
@@ -117,6 +118,7 @@ impl_error_from!(@cfg "pure_math":
     OuError => Ou,
     PoissonError => Poisson,
     QueueingError => Queueing,
+    RiskError => Risk,
     StochasticError => Stochastic,
     Su11HyperbolicError => Su11Hyperbolic,
     TdaError => Tda,

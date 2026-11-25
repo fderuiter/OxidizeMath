@@ -276,7 +276,7 @@ fn test_root_config_edits_escalate_to_full_workspace_checks() {
 fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
     let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let crates = load_workspace_crates(&ws_root);
-    assert_eq!(crates.len(), 26);
+    assert_eq!(crates.len(), 27);
 
     let mut web_names: Vec<&str> = crates
         .iter()
@@ -313,19 +313,28 @@ fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
         ]
     );
 
-    for host_only in ["markdown_tests", "unified_verification", "xtask"] {
+    for host_only in [
+        "markdown_tests",
+        "scientific_verification",
+        "unified_verification",
+        "xtask",
+    ] {
         let krate = crates.iter().find(|c| c.package_name == host_only).unwrap();
         assert!(!krate.is_web, "{host_only} should not be marked is_web");
     }
 
+    assert_scientific_metadata_plans(&crates);
+}
+
+fn assert_scientific_metadata_plans(crates: &[WorkspaceCrate]) {
     let meta_staged = vec!["crates/scientific_metadata/src/lib.rs".to_string()];
-    let meta_commit_plan = build_staged_plan(&meta_staged, &meta_staged, &crates);
+    let meta_commit_plan = build_staged_plan(&meta_staged, &meta_staged, crates);
     assert_eq!(
         meta_commit_plan.host_clippy_packages,
         vec!["scientific_metadata"]
     );
 
-    let meta_push_plan = push::build_push_plan(&meta_staged, &crates);
+    let meta_push_plan = push::build_push_plan(&meta_staged, crates);
     for expected_dep in ["verified_engine", "math_explorer", "math_explorer_gui"] {
         assert!(
             meta_push_plan

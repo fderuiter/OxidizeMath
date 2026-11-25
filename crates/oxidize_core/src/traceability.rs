@@ -7,6 +7,7 @@ mod manifest;
 pub mod maturity;
 #[cfg(feature = "ast-analysis")]
 mod module_tree;
+pub mod proof_digest;
 #[cfg(feature = "ast-analysis")]
 pub mod qualification;
 #[cfg(feature = "ast-analysis")]
@@ -18,6 +19,10 @@ pub use cache::{AstCache, CachedRustFile};
 pub use debt_floors::{DensityFloors, load_workspace_density_floors, parse_density_floors_toml};
 pub use manifest::{TraceabilityManifestPayload, VerificationCertificate};
 pub use maturity::{EXPECTED_WORKSPACE_CRATES, MaturityRegistry};
+pub use proof_digest::{
+    CANONICAL_PYRAMID_TIERS, CERTIFIED_SOLVER_COUNT, collect_lean4_proof_digests, sha256_hex,
+    strip_lean_comments, validate_lean_proof_source,
+};
 #[cfg(feature = "ast-analysis")]
 pub use qualification::{
     MaturityEvidence, MaturityGateReport, VALIDATED_MIN_ASSERTION_DENSITY,
@@ -99,6 +104,9 @@ pub struct TraceabilityReport {
     /// Per-tier maturity violations detected during AST traceability scanning.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub maturity_violations: Vec<String>,
+    /// Per-tier verification macro invocation counts across the 6-tier scientific verification pyramid.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tier_counts: BTreeMap<String, usize>,
 }
 
 /// Traceability scanner parameterized over a [`VirtualFileSystem`] backend.
