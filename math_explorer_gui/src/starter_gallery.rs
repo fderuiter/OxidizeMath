@@ -199,6 +199,10 @@ pub const PRESET_3D_ATTRACTOR: &str = r#"{
   }
 }"#;
 
+/// JSON preset envelope for Lorenz Butterfly Effect Twin Trajectory divergence.
+#[cfg(feature = "physics")]
+pub use crate::tabs::chaos::attractors::PRESET_3D_ATTRACTOR_TWIN;
+
 /// JSON preset envelope for Replicator Hawk-Dove Dynamics.
 pub const PRESET_HAWK_DOVE: &str = r#"{
   "metadata": {

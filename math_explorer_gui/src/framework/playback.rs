@@ -264,37 +264,14 @@ impl<'a> PlaybackTransport<'a> {
         meta: TimelineMetadata,
         min_size: egui::Vec2,
     ) -> Option<PlaybackAction> {
-        let enabled = ui.is_enabled() && self.can_toggle && meta.max_step > meta.min_step;
-        let mut step_val = meta.current_step.clamp(meta.min_step, meta.max_step);
-        let a11y_label = format!(
-            "Scrub {} timeline step ({}..={})",
-            self.tool_name, meta.min_step, meta.max_step
-        );
-        let info = egui::WidgetInfo::slider(enabled, step_val as f64, &a11y_label);
-
-        let resp = ui
-            .scope(|ui| {
-                if min_size.y >= 44.0 {
-                    ui.spacing_mut().interact_size.x = ui.spacing().interact_size.x.max(44.0);
-                    ui.spacing_mut().interact_size.y = ui.spacing().interact_size.y.max(44.0);
-                }
-                ui.add_enabled(
-                    enabled,
-                    egui::Slider::new(&mut step_val, meta.min_step..=meta.max_step)
-                        .text(format!("Step [{}..{}]", meta.min_step, meta.max_step)),
-                )
-            })
-            .inner;
-
-        resp.widget_info({
-            let info = info.clone();
-            move || info.clone()
-        });
-        ui.ctx().data_mut(|d| {
-            d.insert_temp(base_id.with("timeline_scrubber_info"), info);
-        });
-        let changed = resp.accessible_hover_text(&a11y_label).changed();
-        (changed && step_val != meta.current_step).then_some(PlaybackAction::ScrubTo(step_val))
+        helpers::render_timeline_scrubber(
+            ui,
+            base_id,
+            self.tool_name,
+            self.can_step,
+            meta,
+            min_size,
+        )
     }
     fn is_action_applicable(&self, action: PlaybackAction) -> bool {
         match action {
@@ -317,6 +294,7 @@ impl<'a> PlaybackTransport<'a> {
     ) -> (Option<PlaybackAction>, bool) {
         use crate::app::viewport::compare_sync::{
             claim_pending_sync_key, emit_playback_broadcast, poll_playback_broadcast,
+            SyncTransportCaps,
         };
         let ctx = ui.ctx();
         if let Some((bcast_action, announce)) = poll_playback_broadcast(ctx, base_id) {
@@ -332,12 +310,14 @@ impl<'a> PlaybackTransport<'a> {
             let announce = emit_playback_broadcast(ctx, base_id, dispatched, None);
             return (Some(dispatched), announce);
         }
-        if let Some((sync_key_action, key)) = claim_pending_sync_key(
-            ctx,
-            self.can_toggle && self.allow_space_shortcut,
-            self.is_playing,
-            self.can_step,
-        ) {
+        let sync_caps = SyncTransportCaps {
+            can_toggle: self.can_toggle && self.allow_space_shortcut,
+            is_playing: self.is_playing,
+            can_step: self.can_step,
+            can_step_back: self.can_step_back(),
+            prev_keyframe_step: self.timeline.map(|m| m.previous_keyframe_step()),
+        };
+        if let Some((sync_key_action, key)) = claim_pending_sync_key(ctx, sync_caps) {
             let announce = emit_playback_broadcast(ctx, base_id, sync_key_action, Some(key));
             return (Some(sync_key_action), announce);
         }

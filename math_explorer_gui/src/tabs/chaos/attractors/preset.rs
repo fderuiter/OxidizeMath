@@ -1,12 +1,44 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::twin::{
+    is_default_initial_state, is_default_twin_epsilon, TwinConfig, DEFAULT_INITIAL_STATE,
+    DEFAULT_TWIN_EPSILON, MAX_INITIAL_COORD, MAX_TWIN_EPSILON, MIN_INITIAL_COORD, MIN_TWIN_EPSILON,
+};
 use super::{
     AttractorForkDescriptor, AttractorMode, AttractorPlotter, SolverExecutionState,
     DEFAULT_FIXED_CALLOUT_OFFSETS, DEFAULT_FLOW_EXPRS,
 };
 use crate::framework::Camera3D;
 use eframe::egui;
+use nalgebra::Vector3;
 use std::collections::BTreeMap;
+
+/// JSON preset envelope for Lorenz Butterfly Effect Twin Trajectory divergence.
+pub const PRESET_3D_ATTRACTOR_TWIN: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Lorenz Butterfly Effect - Twin Trajectories",
+    "domain": "chaos",
+    "timestamp": "2026-11-23T00:00:00Z"
+  },
+  "config": {
+    "sigma": 10.0,
+    "rho": 28.0,
+    "beta": 2.6666666666666665,
+    "dt": 0.01,
+    "simulation_speed": 8,
+    "execution_state": "Running",
+    "show_annotations": true,
+    "initial_state": [1.0, 1.0, 1.0],
+    "twin_enabled": true,
+    "epsilon": 1e-9,
+    "camera": {
+      "pitch": 0.35,
+      "yaw": -0.45,
+      "zoom": 1.0
+    }
+  }
+}"#;
 
 const fn default_annotations_enabled() -> bool {
     true
@@ -14,6 +46,18 @@ const fn default_annotations_enabled() -> bool {
 
 const fn default_tube_radius() -> f64 {
     super::export::DEFAULT_TUBE_RADIUS
+}
+
+const fn default_initial_state() -> [f64; 3] {
+    DEFAULT_INITIAL_STATE
+}
+
+const fn default_twin_epsilon() -> f64 {
+    DEFAULT_TWIN_EPSILON
+}
+
+const fn is_false(v: &bool) -> bool {
+    !*v
 }
 
 fn is_default_fixed_callout_offsets(v: &[[f32; 2]; 2]) -> bool {
@@ -43,6 +87,12 @@ struct AttractorSaveState {
     custom_exprs: Option<[String; 3]>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     custom_params: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "is_default_initial_state")]
+    initial_state: [f64; 3],
+    #[serde(skip_serializing_if = "is_false")]
+    twin_enabled: bool,
+    #[serde(skip_serializing_if = "is_default_twin_epsilon")]
+    epsilon: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     fork: Option<AttractorForkDescriptor>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -85,6 +135,12 @@ struct AttractorState {
     custom_exprs: Option<[String; 3]>,
     #[serde(default)]
     custom_params: BTreeMap<String, f64>,
+    #[serde(default = "default_initial_state")]
+    initial_state: [f64; 3],
+    #[serde(default)]
+    twin_enabled: bool,
+    #[serde(default = "default_twin_epsilon")]
+    epsilon: f64,
     #[serde(default)]
     fork: Option<AttractorForkDescriptor>,
     #[serde(default)]
@@ -98,11 +154,34 @@ impl AttractorPlotter {
         self.system.sigma = 10.0;
         self.system.rho = 28.0;
         self.system.beta = 8.0 / 3.0;
+        self.twin_cfg = TwinConfig::default();
         self.flow_bank = super::default_flow_bank();
         self.dt = 0.01;
         self.tube_radius = super::export::DEFAULT_TUBE_RADIUS;
         self.fixed_callout_offsets = DEFAULT_FIXED_CALLOUT_OFFSETS.map(egui::Vec2::from);
         self.reset();
+    }
+
+    fn hash_fork_and_twin_state(&self, h: &mut std::collections::hash_map::DefaultHasher) {
+        use std::hash::Hash;
+        self.twin_cfg.initial_state.x.to_bits().hash(h);
+        self.twin_cfg.initial_state.y.to_bits().hash(h);
+        self.twin_cfg.initial_state.z.to_bits().hash(h);
+        self.twin_cfg.enabled.hash(h);
+        self.twin_cfg.epsilon.to_bits().hash(h);
+        if let Some(ref twin) = self.twin {
+            (
+                true,
+                twin.fork_step,
+                twin.delta_x.to_bits(),
+                twin.system_a.sigma.to_bits(),
+                twin.system_a.rho.to_bits(),
+                twin.system_a.beta.to_bits(),
+            )
+                .hash(h);
+        } else {
+            false.hash(h);
+        }
     }
 
     pub(super) fn compute_state_revision(&self) -> u64 {
@@ -143,19 +222,7 @@ impl AttractorPlotter {
         self.camera.hash_state(&mut h);
         self.audio_settings.gain.to_bits().hash(&mut h);
         self.audio_settings.pitch_scale.to_bits().hash(&mut h);
-        if let Some(ref twin) = self.twin {
-            (
-                true,
-                twin.fork_step,
-                twin.delta_x.to_bits(),
-                twin.system_a.sigma.to_bits(),
-                twin.system_a.rho.to_bits(),
-                twin.system_a.beta.to_bits(),
-            )
-                .hash(&mut h);
-        } else {
-            false.hash(&mut h);
-        }
+        self.hash_fork_and_twin_state(&mut h);
         h.finish().max(1)
     }
 
@@ -194,6 +261,9 @@ impl AttractorPlotter {
             mode: self.mode,
             custom_exprs,
             custom_params,
+            initial_state: self.twin_cfg.initial_array(),
+            twin_enabled: self.twin_cfg.enabled,
+            epsilon: self.twin_cfg.epsilon,
             fork,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes: [xk.to_string(), yk.to_string()],
@@ -226,6 +296,11 @@ impl AttractorPlotter {
         self.audio_settings = s.audio;
         self.fixed_callout_offsets = offsets.map(egui::Vec2::from);
         self.camera.apply_pose(camera);
+        self.twin_cfg = TwinConfig {
+            initial_state: Vector3::new(s.initial_state[0], s.initial_state[1], s.initial_state[2]),
+            enabled: s.twin_enabled,
+            epsilon: s.epsilon,
+        };
         self.dragged_callout = None;
         self.atlas.set_visible(s.atlas_visible);
         let _ = self.atlas.set_axis_keys(&s.atlas_axes[0], &s.atlas_axes[1]);
@@ -273,6 +348,12 @@ impl AttractorPlotter {
 
 fn validate_attractor_state(s: &AttractorState) -> Result<[[f32; 2]; 2], String> {
     s.audio.validate()?;
+    let coords_valid = s
+        .initial_state
+        .iter()
+        .all(|v| v.is_finite() && (MIN_INITIAL_COORD..=MAX_INITIAL_COORD).contains(v));
+    let eps_valid =
+        s.epsilon.is_finite() && (MIN_TWIN_EPSILON..=MAX_TWIN_EPSILON).contains(&s.epsilon);
     if !s.sigma.is_finite()
         || !s.rho.is_finite()
         || !s.beta.is_finite()
@@ -283,9 +364,11 @@ fn validate_attractor_state(s: &AttractorState) -> Result<[[f32; 2]; 2], String>
             .contains(&s.tube_radius)
         || !(1..=super::MAX_SIMULATION_SPEED).contains(&s.simulation_speed)
         || s.custom_params.values().any(|v| !v.is_finite())
+        || !coords_valid
+        || !eps_valid
     {
         return Err(format!(
-            "AttractorPlotter parameters must be finite with dt > 0 and simulation_speed in 1..={}",
+            "AttractorPlotter parameters must be finite with dt > 0, simulation_speed in 1..={}, initial_state in [{MIN_INITIAL_COORD}, {MAX_INITIAL_COORD}], and epsilon in [{MIN_TWIN_EPSILON:e}, {MAX_TWIN_EPSILON:e}]",
             super::MAX_SIMULATION_SPEED
         ));
     }
@@ -303,7 +386,7 @@ inventory::submit! {
         id: "AttractorPlotter",
         display_name: "Attractor Plotter",
         domain: "chaos",
-        tags: &["lorenz", "attractor", "chaos"],
+        tags: &["lorenz", "attractor", "chaos", "butterfly", "lyapunov"],
         build: || Box::new(AttractorPlotter::default()),
     }
 }

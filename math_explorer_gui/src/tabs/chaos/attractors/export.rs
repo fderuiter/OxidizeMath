@@ -127,7 +127,7 @@ impl AttractorPlotter {
         if points_b.is_empty() && self.is_finite_state() {
             points_b.push(self.project(self.system.state.vec));
         }
-        if let Some(ref twin) = self.twin {
+        let mut out = if let Some(ref twin) = self.twin {
             let mut points_a: Vec<[f64; 2]> =
                 twin.history_a.iter().map(|p| self.project(*p)).collect();
             if points_a.is_empty() {
@@ -139,7 +139,20 @@ impl AttractorPlotter {
             ]
         } else {
             vec![("Trajectory".to_string(), points_b)]
+        };
+        if self.twin_cfg.enabled {
+            let mut twin_pts: Vec<[f64; 2]> = self
+                .twin_state
+                .twin_history
+                .iter()
+                .map(|p| self.project(*p))
+                .collect();
+            if twin_pts.is_empty() && self.is_finite_state() {
+                twin_pts.push(self.project(self.twin_state.shadow_vec));
+            }
+            out.push(("Twin Trajectory".to_string(), twin_pts));
         }
+        out
     }
 
     pub(super) fn collect_export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
@@ -148,7 +161,7 @@ impl AttractorPlotter {
             let v = self.system.state.vec;
             points_b.push([v.x, v.y, v.z]);
         }
-        if let Some(ref twin) = self.twin {
+        let mut out = if let Some(ref twin) = self.twin {
             let mut points_a: Vec<[f64; 3]> =
                 twin.history_a.iter().map(|p| [p.x, p.y, p.z]).collect();
             if points_a.is_empty() {
@@ -161,6 +174,20 @@ impl AttractorPlotter {
             ]
         } else {
             vec![("Trajectory".to_string(), points_b)]
+        };
+        if self.twin_cfg.enabled {
+            let mut twin_pts: Vec<[f64; 3]> = self
+                .twin_state
+                .twin_history
+                .iter()
+                .map(|p| [p.x, p.y, p.z])
+                .collect();
+            if twin_pts.is_empty() && self.is_finite_state() {
+                let sv = self.twin_state.shadow_vec;
+                twin_pts.push([sv.x, sv.y, sv.z]);
+            }
+            out.push(("Twin Trajectory".to_string(), twin_pts));
         }
+        out
     }
 }

@@ -86,12 +86,14 @@ impl super::SimulationController {
             super::seed_controller_channel(&runner, &state_tx);
         let suspension = NativeSuspension::new(suspended);
         spawn_native_worker(runner, cmd_rx, state_tx, Arc::clone(&suspension));
+        let snapshot_history = super::initial_snapshot_history(initial_timeline, &initial_snapshot);
 
         Self {
             cmd_tx,
             state_rx,
             latest_snapshot: Some(initial_snapshot),
             timeline_metadata: initial_timeline,
+            snapshot_history,
             pending_snapshot: false,
             awaiting_pause_ack: false,
             suspended,
@@ -122,12 +124,14 @@ impl super::SimulationController {
         wasm_bindgen_futures::spawn_local(async move {
             super::run_simulation_worker(handle).await;
         });
+        let snapshot_history = super::initial_snapshot_history(initial_timeline, &initial_snapshot);
 
         Self {
             cmd_tx,
             state_rx,
             latest_snapshot: Some(initial_snapshot),
             timeline_metadata: initial_timeline,
+            snapshot_history,
             pending_snapshot: false,
             awaiting_pause_ack: false,
             suspended,
