@@ -88,7 +88,10 @@ mod tests {
         #[cfg(feature = "physics")]
         {
             check_one::<crate::tabs::solid_state::band_structure::BandStructureTool>(ctx);
+            check_one::<crate::tabs::solid_state::bcs::BcsSuperconductivityTool>(ctx);
             check_one::<crate::tabs::solid_state::ising::IsingModelTool>(ctx);
+            check_one::<crate::tabs::solid_state::quantum_stats::QuantumStatsPhononTool>(ctx);
+            check_one::<crate::tabs::solid_state::sandpile::AbelianSandpileStudio>(ctx);
             check_one::<crate::tabs::quantum::clebsch::ClebschGordanTool>(ctx);
             check_one::<crate::tabs::fluid_dynamics::potential_flow::PotentialFlowTool>(ctx);
             check_one::<crate::tabs::fluid_dynamics::turbulence::TurbulenceTool>(ctx);
@@ -262,18 +265,14 @@ mod tests {
     fn test_theory_context_portal_citation_registration() {
         use crate::framework::SimulationFramework;
         let ctx = eframe::egui::Context::default();
-
         let mut framework = SimulationFramework::new("medical");
         framework.show_theory_portal = true;
-
-        // Select Dose Calculation tool if present
         let dose_idx = framework
             .available_tools
             .iter()
             .position(|m| m.display_name.contains("Dose") || m.id.contains("Dose"))
             .unwrap_or(0);
         framework.select_tool(dose_idx);
-
         let active_name = framework.active_tool.as_ref().unwrap().name().to_string();
         let expected_citation = framework
             .active_tool
@@ -281,11 +280,9 @@ mod tests {
             .unwrap()
             .theory()
             .theory_citation();
-
         let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
             framework.show(ctx, "test_portal_registration");
         });
-
         let registered =
             scientific_metadata::citation_registry::CitationRegistry::get(&active_name);
         assert_eq!(

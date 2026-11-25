@@ -275,6 +275,7 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
     let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
     let stochastic_extra = if cfg!(feature = "pure_math") { 3 } else { 0 };
     let optics_bonus = if cfg!(feature = "physics") { 2 } else { 0 };
+    let solid_state_bonus = if cfg!(feature = "physics") { 2 } else { 0 };
     let extra_su11_hyp = if cfg!(feature = "pure_math") { 2 } else { 0 };
     let has_ai = cfg!(feature = "ai");
     let expected_audio = usize::from(cfg!(feature = "biology")) * 2
@@ -285,7 +286,12 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         audio, expected_audio,
         "Expected {expected_audio} WAV audio-capable tools"
     );
-    let bonus = bio_extra + stochastic_extra + optics_bonus + extra_su11_hyp + usize::from(has_ai);
+    let bonus = bio_extra
+        + stochastic_extra
+        + optics_bonus
+        + solid_state_bonus
+        + extra_su11_hyp
+        + usize::from(has_ai);
     let expected_plot = 78 + extra + bonus;
     let expected_solid = 7 + extra;
     let expected_non_shader = 92 + extra + bonus;
