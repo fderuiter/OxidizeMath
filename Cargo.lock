@@ -948,6 +948,7 @@ dependencies = [
  "num-order",
  "num-traits",
  "rustversion",
+ "serde",
  "static_assertions",
 ]
 
@@ -963,6 +964,7 @@ dependencies = [
  "num-order",
  "num-traits",
  "rustversion",
+ "serde",
  "static_assertions",
 ]
 
@@ -995,6 +997,7 @@ dependencies = [
  "num-order",
  "num-traits",
  "rustversion",
+ "serde",
 ]
 
 [[package]]
@@ -1366,6 +1369,8 @@ dependencies = [
  "math_commons",
  "oxidize_core",
  "rand_core",
+ "serde",
+ "serde_json",
  "verified_engine",
 ]
 
@@ -1373,6 +1378,8 @@ dependencies = [
 name = "engine_linalg"
 version = "0.4.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "verified_engine",
 ]
 
@@ -1383,6 +1390,8 @@ dependencies = [
  "math_commons",
  "oxidize_core",
  "rand_core",
+ "serde",
+ "serde_json",
  "verified_engine",
 ]
 
@@ -2469,6 +2478,8 @@ dependencies = [
  "oxidize_core",
  "rand_core",
  "scientific_metadata",
+ "serde",
+ "serde_json",
  "thiserror 2.0.21",
  "verified_engine",
 ]
@@ -2494,6 +2505,7 @@ dependencies = [
  "pure_math",
  "rand",
  "scientific_metadata",
+ "serde_json",
  "verified_engine",
 ]
 
@@ -2710,6 +2722,7 @@ dependencies = [
  "num-complex",
  "num-rational",
  "num-traits",
+ "serde",
  "simba",
  "typenum",
 ]
@@ -2787,6 +2800,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73f88a1307638156682bada9d7604135552957b7818057dcef22705b4d509495"
 dependencies = [
  "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -3262,6 +3276,8 @@ checksum = "b4c5cc86750666a3ed20bdaf5ca2a0344f9c67674cae0515bec2da16fbaa47db"
 dependencies = [
  "fixedbitset",
  "indexmap",
+ "serde",
+ "serde_derive",
 ]
 
 [[package]]
@@ -3503,6 +3519,7 @@ dependencies = [
  "libc",
  "rand_chacha",
  "rand_core",
+ "serde",
 ]
 
 [[package]]
@@ -3522,6 +3539,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom 0.2.17",
+ "serde",
 ]
 
 [[package]]

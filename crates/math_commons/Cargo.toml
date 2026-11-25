@@ -5,11 +5,18 @@ edition = "2024"
 
 [features]
 default = ["std"]
+serde = [
+    "dep:serde",
+    "serde/alloc",
+    "engine_linalg/serde",
+    "num-complex/serde",
+]
 std = [
     "dep:diagnostics",
     "dep:scientific_metadata",
     "num-complex/std",
     "num-traits/std",
+    "serde?/std",
     "thiserror/std",
     "verified_engine/std",
 ]
@@ -22,11 +29,29 @@ num-complex = { workspace = true, default-features = false, features = ["libm"] 
 num-traits = { workspace = true, default-features = false, features = ["libm"] }
 rand_core = { workspace = true }
 scientific_metadata = { path = "../scientific_metadata", optional = true }
+serde = { workspace = true, optional = true }
 thiserror = { workspace = true, default-features = false }
 verified_engine = { version = "0.1.0", path = "../verified_engine", default-features = false }
 
 [dev-dependencies]
 oxidize_core = { path = "../oxidize_core" }
+serde_json = { workspace = true, default-features = false, features = ["alloc", "float_roundtrip"] }
+
+[[test]]
+name = "test_bounded_primitives_errors"
+required-features = ["std"]
+
+[[test]]
+name = "verified_ast_eval"
+required-features = ["std"]
+
+[[test]]
+name = "verified_curve_solvers"
+required-features = ["std"]
+
+[[test]]
+name = "verified_stochastic_kernel"
+required-features = ["std"]
 
 
 

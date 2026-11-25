@@ -13,6 +13,7 @@ use num_traits::Float as _;
 
 /// Analytical shader palette family shared across CPU rasterizers and exported WGSL/GLSL shaders.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ShaderPalette {
     /// Smooth multi-frequency cosine escape bands (`0`).
     #[default]

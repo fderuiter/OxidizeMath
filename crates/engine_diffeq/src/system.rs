@@ -3,6 +3,7 @@ use math_commons::math_kernel::types::{Scalar, SolverWorkspace, flatten_2d_index
 
 /// Stochastic integral interpretation governing drift-diffusion coupling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum StochasticCalculus {
     /// Non-anticipating left-point Itô integral $\int G(t, X_t) \, dW_t$.
     #[default]

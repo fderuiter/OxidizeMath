@@ -4,6 +4,7 @@ use math_commons::math_kernel::types::{StepSize, flatten_2d_index, flatten_3d_in
 
 /// Generic fused finite-difference stencil stepper evaluating spatial derivatives in a single grid pass.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FusedStencilStepper {
     /// Precomputed spatial finite-difference operators.
     pub ops: StencilOperators,

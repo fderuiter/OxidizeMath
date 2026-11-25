@@ -12,6 +12,7 @@ use rand_core::RngCore;
 /// noise, `levy_truncation > 0` approximates the Lévy area $A_{j_1, j_2}$ via a `p`-mode Karhunen-Loève
 /// Fourier expansion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MilsteinSolver {
     calculus: StochasticCalculus,
     levy_truncation: usize,

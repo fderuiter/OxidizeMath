@@ -13,6 +13,7 @@ use std::f64::consts::{E, PI, TAU};
 
 /// Errors produced when lowering an [`Expr`] to WGSL or GLSL shader source.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ShaderEmitError {
     /// AST height exceeded [`MAX_EVAL_DEPTH`].
     #[error("Shader transpilation depth limit exceeded (max depth {0})")]

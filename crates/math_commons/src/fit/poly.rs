@@ -4,8 +4,7 @@
 use super::{CurveFit, FitModel};
 use crate::error::FitError;
 use crate::series::PointSeries;
-#[cfg(not(feature = "std"))]
-use num_traits::Float as _;
+use num_traits::Float;
 
 /// Fits a polynomial of `degree` (`1..=4`) in linear coordinates with zero heap allocations.
 #[cfg_attr(feature = "std", verified_engine::verified)]
@@ -95,8 +94,8 @@ fn scan_poly_domain<P: PointSeries + ?Sized>(
         if (log_x && p[0] <= 0.0) || (log_y && p[1] <= 0.0) {
             continue;
         }
-        let tx = if log_x { p[0].log10() } else { p[0] };
-        let ty = if log_y { p[1].log10() } else { p[1] };
+        let tx = if log_x { Float::log10(p[0]) } else { p[0] };
+        let ty = if log_y { Float::log10(p[1]) } else { p[1] };
         valid_count += 1;
         sum_tx += tx;
         sum_ty += ty;
@@ -126,8 +125,8 @@ fn solve_centered_poly_system<P: PointSeries + ?Sized>(
         if (log_x && p[0] <= 0.0) || (log_y && p[1] <= 0.0) {
             continue;
         }
-        let tx = if log_x { p[0].log10() } else { p[0] };
-        let ty = if log_y { p[1].log10() } else { p[1] };
+        let tx = if log_x { Float::log10(p[0]) } else { p[0] };
+        let ty = if log_y { Float::log10(p[1]) } else { p[1] };
         let z = (tx - u_mean) / u_scale;
         let mut row = [0.0_f64; 5];
         let mut zp = 1.0_f64;
@@ -187,8 +186,8 @@ fn compute_poly_metrics<P: PointSeries + ?Sized>(
         if (log_x && p[0] <= 0.0) || (log_y && p[1] <= 0.0) {
             continue;
         }
-        let tx = if log_x { p[0].log10() } else { p[0] };
-        let ty = if log_y { p[1].log10() } else { p[1] };
+        let tx = if log_x { Float::log10(p[0]) } else { p[0] };
+        let ty = if log_y { Float::log10(p[1]) } else { p[1] };
         let z = (tx - u_mean) / u_scale;
         let pred = eval_polynomial_horner_raw(centered_coeffs, z);
         let diff = ty - pred;
@@ -203,7 +202,7 @@ fn compute_poly_metrics<P: PointSeries + ?Sized>(
     } else {
         0.0
     };
-    let rmse = (ss_res / (valid_count as f64)).sqrt();
+    let rmse = Float::sqrt(ss_res / (valid_count as f64));
     (r_squared, rmse)
 }
 

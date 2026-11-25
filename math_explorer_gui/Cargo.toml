@@ -75,7 +75,7 @@ num-complex = { workspace = true }
 rand = { workspace = true }
 petgraph = { workspace = true }
 inventory = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["std", "derive"] }
 serde_json = { workspace = true, features = ["float_roundtrip"] }
 chrono = { workspace = true }
 flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }

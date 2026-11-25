@@ -22,6 +22,9 @@ pub mod stochastic;
 #[allow(missing_docs)]
 pub mod wigner;
 
+#[cfg(test)]
+mod serde_tests;
+
 #[cfg(all(test, feature = "std"))]
 macro_rules! theory_verification {
     (

@@ -124,6 +124,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: `WorkspaceDataBus` Cross-Domain Graph Coupling and Zero-Allocation Graph Solvers](adr/20261123-workspace-data-bus-cross-domain-graph-coupling.md)
 - [ADR 20261123: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping](adr/20261123-workspace-release-version-guards-and-wix-mapping.md)
 - [ADR 20261123: Add xtask Smoke Gates and Zero-Allocation Benchmark Checks](adr/20261123-xtask-smoke-gates-and-zero-allocation-bench-checks.md)
+- [ADR 20261124: Optional `#![no_std]` Serde Across Substrate, Plot Outputs, and Facade](adr/20261124-optional-no-std-serde-substrate-and-facade.md)
 
 ## Contributing
 

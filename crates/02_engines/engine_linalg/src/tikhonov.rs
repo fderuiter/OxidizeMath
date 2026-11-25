@@ -79,6 +79,7 @@ pub fn tikhonov_solve<T: Scalar>(
 
 /// Diagonal regularization strategy for [`solve_damped_normal`].
 #[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DampingStyle<T> {
     /// Isotropic additive diagonal damping $H_{ii} + \lambda$.
     Isotropic(T),

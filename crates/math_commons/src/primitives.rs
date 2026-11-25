@@ -91,6 +91,11 @@ macro_rules! define_bounded_float {
     ) => {
         #[doc = $doc]
         #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+        #[cfg_attr(
+            feature = "serde",
+            derive(serde::Serialize, serde::Deserialize),
+            serde(try_from = "f64", into = "f64")
+        )]
         pub struct $name(f64);
 
         impl $name {
@@ -151,6 +156,14 @@ macro_rules! define_bounded_float {
             }
         }
 
+        impl ::core::convert::TryFrom<f64> for $name {
+            type Error = $crate::error::MathError;
+
+            fn try_from(value: f64) -> ::core::result::Result<Self, Self::Error> {
+                Self::new(value)
+            }
+        }
+
         $crate::impl_binop!($name);
     };
 }
@@ -166,6 +179,11 @@ macro_rules! define_strictly_bounded_float {
     ) => {
         #[doc = $doc]
         #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
+        #[cfg_attr(
+            feature = "serde",
+            derive(serde::Serialize, serde::Deserialize),
+            serde(try_from = "f64", into = "f64")
+        )]
         pub struct $name(f64);
 
         impl $name {
@@ -223,6 +241,14 @@ macro_rules! define_strictly_bounded_float {
         impl From<$name> for f64 {
             fn from(val: $name) -> Self {
                 val.0
+            }
+        }
+
+        impl ::core::convert::TryFrom<f64> for $name {
+            type Error = $crate::error::MathError;
+
+            fn try_from(value: f64) -> ::core::result::Result<Self, Self::Error> {
+                Self::new(value)
             }
         }
 

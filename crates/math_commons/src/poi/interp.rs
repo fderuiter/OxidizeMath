@@ -3,8 +3,7 @@
 
 use crate::series::PointSeries;
 use alloc::vec::Vec;
-#[cfg(not(feature = "std"))]
-use num_traits::Float as _;
+use num_traits::Float;
 
 /// Writes sub-segment `x` coordinates where `pts` crosses `y = y_target` into `out`.
 ///
@@ -230,7 +229,7 @@ fn solve_hermite_bracket(
     } else {
         let a = m0 / sec;
         let b = m1 / sec;
-        let hypot = (a * a + b * b).sqrt();
+        let hypot = Float::sqrt(a * a + b * b);
         if hypot > 3.0 {
             let tau = 3.0 / hypot;
             m0 = tau * a * sec;

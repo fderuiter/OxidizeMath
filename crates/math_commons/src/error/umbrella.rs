@@ -7,6 +7,7 @@ use thiserror::Error;
 /// Extensible crate-level umbrella error for `math_commons` workflows.
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MathCommonsError {
     /// Core mathematical validation or dimension failure.
     #[error("{0}")]
