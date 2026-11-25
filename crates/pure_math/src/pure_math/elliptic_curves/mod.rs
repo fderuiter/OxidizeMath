@@ -11,10 +11,15 @@ use thiserror::Error;
 
 pub mod modular_bridge;
 mod modular_fp;
+mod padic_lift;
 pub mod singular;
 pub mod weierstrass;
 
 pub use modular_bridge::*;
+pub use padic_lift::{
+    Qp, ScalarError, eval_int_poly_qp, hensel_lift_root, lift_weierstrass_y_qp,
+    satisfies_padic_valuation_bound,
+};
 pub use singular::*;
 pub use weierstrass::*;
 

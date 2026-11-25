@@ -262,3 +262,94 @@ fn test_norms_condition_estimators_and_tikhonov() {
     assert!((x_ridge[0] - expected_0).abs() < 1e-12);
     assert!((x_ridge[1] - expected_1).abs() < 1e-12);
 }
+
+#[test]
+fn test_complex_lu_inverse_and_determinant() {
+    let a = [
+        Complex::new(2.0_f64, 1.0),
+        Complex::new(-1.0, 0.5),
+        Complex::new(0.5, -1.5),
+        Complex::new(3.0, -2.0),
+    ];
+    let x_true = [Complex::new(1.25_f64, -0.75), Complex::new(-0.5, 2.0)];
+    let mut b = [Complex::ZERO; 2];
+    mat_vec_mul(&a, 2, 2, &x_true, &mut b).unwrap();
+
+    let mut x = [Complex::ZERO; 2];
+    let mut piv = [0_usize; 2];
+    let mut ws_buf = [Complex::ZERO; 64];
+    lu_solve(
+        &a,
+        &b,
+        &mut x,
+        2,
+        &mut piv,
+        &mut SolverWorkspace::new(&mut ws_buf),
+    )
+    .unwrap();
+    for i in 0..2 {
+        assert!((x[i] - x_true[i]).abs() < 1e-12);
+    }
+
+    let mut inv = [Complex::ZERO; 4];
+    lu_inverse(
+        &a,
+        &mut inv,
+        2,
+        &mut piv,
+        &mut SolverWorkspace::new(&mut ws_buf),
+    )
+    .unwrap();
+    let mut prod = [Complex::ZERO; 4];
+    mat_mul(&a, 2, 2, &inv, 2, &mut prod).unwrap();
+    assert!((prod[0] - Complex::ONE).abs() < 1e-12);
+    assert!(prod[1].abs() < 1e-12);
+    assert!(prod[2].abs() < 1e-12);
+    assert!((prod[3] - Complex::ONE).abs() < 1e-12);
+
+    let mut lu = a;
+    let parity = lu_factor_in_place(&mut lu, 2, &mut piv, 0.0).unwrap();
+    let det = lu_determinant(&lu, 2, parity).unwrap();
+    let expected_det = a[0] * a[3] - a[1] * a[2];
+    assert!((det - expected_det).abs() < 1e-12);
+}
+
+#[test]
+fn test_complex_gmres_sparse_solver() {
+    let row_ptr = [0_usize, 2, 5, 7];
+    let col_ind = [0_usize, 1, 0, 1, 2, 1, 2];
+    let values = [
+        Complex::new(4.0_f64, 1.0),
+        Complex::new(-1.0, 0.5),
+        Complex::new(0.5, -0.5),
+        Complex::new(5.0, -2.0),
+        Complex::new(-1.0, 1.0),
+        Complex::new(-0.75, -0.25),
+        Complex::new(3.5, 1.5),
+    ];
+    let csr = CsrMatrixView::new(3, 3, &row_ptr, &col_ind, &values).unwrap();
+    let x_ref = [
+        Complex::new(1.0_f64, -1.0),
+        Complex::new(-0.5, 1.5),
+        Complex::new(2.0, 0.25),
+    ];
+    let mut rhs = [Complex::ZERO; 3];
+    csr.spmv(&x_ref, &mut rhs).unwrap();
+
+    let mut x_gm = [Complex::ZERO; 3];
+    let mut gm_buf = [Complex::ZERO; 128];
+    let rep = gmres_solve(
+        &csr,
+        &rhs,
+        &mut x_gm,
+        3,
+        1e-12,
+        10,
+        &mut SolverWorkspace::new(&mut gm_buf[..gmres_workspace_len(3, 3)]),
+    )
+    .unwrap();
+    assert!(rep.residual_norm < 1e-11);
+    for i in 0..3 {
+        assert!((x_gm[i] - x_ref[i]).abs() < 1e-10);
+    }
+}

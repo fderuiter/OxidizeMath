@@ -163,3 +163,63 @@ fn test_abelian_group_reexport_and_left_cosets() {
     let left = generate_left_coset(&subgroup, &a);
     assert_eq!(left, vec![Zn::<6>::new(2), Zn::<6>::new(5)]);
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+struct ModF32Irred;
+impl IrreducibleModulus<3, 2> for ModF32Irred {
+    const COEFFS: [u64; 2] = [1, 0]; // x^2 + 1 irreducible over F_3
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_montgomery_fp64_fp2_fp_ext_stack_poly_and_ambs_qp() {
+    // Explicit P = 2 path:
+    let one2 = Fp::<2>::new(1);
+    assert_eq!(one2 + one2, Fp::<2>::zero());
+    assert_eq!(one2.checked_inverse(), Ok(one2));
+    assert!(Fp::<2>::zero().checked_inverse().is_err());
+
+    // Carry-safe 64-bit primes above sqrt(i64::MAX) and up to 2^64 - 59:
+    const P_MID: u64 = 3_037_000_507;
+    const P_MAX: u64 = 18_446_744_073_709_551_557;
+    let x_mid = Fp::<P_MID>::from_u64(P_MID - 2);
+    assert_eq!(x_mid * x_mid, Fp::<P_MID>::from_u64(4));
+    assert_eq!(x_mid * x_mid.checked_inverse().unwrap(), Fp::<P_MID>::one());
+
+    let x_max = Fp::<P_MAX>::from_u64(P_MAX - 3);
+    assert_eq!(x_max * x_max, Fp::<P_MAX>::from_u64(9));
+    assert_eq!(x_max * x_max.checked_inverse().unwrap(), Fp::<P_MAX>::one());
+
+    // Polynomial Euclidean division + StackPoly:
+    let dividend = Polynomial::new(vec![Fp::<7>::new(6), Fp::<7>::new(0), Fp::<7>::new(1)]);
+    let divisor = Polynomial::new(vec![Fp::<7>::new(6), Fp::<7>::new(1)]);
+    let (quot, rem) = dividend.checked_div_rem(&divisor).unwrap();
+    assert!(rem.is_zero());
+    assert_eq!(
+        quot,
+        Polynomial::new(vec![Fp::<7>::new(1), Fp::<7>::new(1)])
+    );
+
+    let sp_a = StackPoly::<Fp<7>, 8>::from_slice(&[Fp::new(6), Fp::new(0), Fp::new(1)]).unwrap();
+    let sp_b = StackPoly::<Fp<7>, 8>::from_slice(&[Fp::new(6), Fp::new(1)]).unwrap();
+    assert_eq!(
+        sp_a / sp_b,
+        StackPoly::<Fp<7>, 8>::from_slice(&[Fp::new(1), Fp::new(1)]).unwrap()
+    );
+    assert!((sp_a % sp_b).is_zero());
+
+    // Galois extension F_{3^2} = F_3[x] / (x^2 + 1):
+    let i_ext = FpExt::<3, 2, ModF32Irred>::generator();
+    assert_eq!(i_ext * i_ext, -FpExt::<3, 2, ModF32Irred>::one());
+    let u_ext = FpExt::<3, 2, ModF32Irred>::from_base(Fp::new(1)) + i_ext;
+    assert_eq!(u_ext * u_ext.checked_inverse().unwrap(), FpExt::one());
+
+    // Stack Qp quadratic residue Hensel lifting in ambs:
+    let (roots, count) =
+        pure_math::pure_math::number_theory::ambs::lift_quadratic_residue_qp::<7, 6>(2);
+    assert_eq!(count, 2);
+    for r in roots {
+        let diff = r * r - pure_math::pure_math::number_theory::ambs::Qp::<7, 6>::from_i64(2);
+        assert!(diff.is_zero() || diff.valuation().unwrap() >= 6);
+    }
+}

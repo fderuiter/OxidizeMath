@@ -18,6 +18,9 @@ pub enum MathCommonsError {
     /// `#![no_std]` linear algebra engine failure.
     #[error("{0}")]
     Linalg(#[from] LinalgError),
+    /// `#![no_std]` scalar, finite-field, or exact arithmetic failure.
+    #[error("{0}")]
+    Scalar(#[from] math_scalars::ScalarError),
     /// AST lexical analysis failure.
     #[cfg(feature = "std")]
     #[error("{0}")]
@@ -46,6 +49,7 @@ impl MathCommonsError {
             Self::Math(err) => err,
             Self::Fit(err) => err,
             Self::Linalg(err) => err,
+            Self::Scalar(err) => err,
             #[cfg(feature = "std")]
             Self::Lex(err) => err,
             #[cfg(feature = "std")]

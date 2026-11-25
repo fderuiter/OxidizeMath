@@ -1,7 +1,6 @@
 //! Canonical FRACTRAN constants, stack-inline rules, and unified error types.
 
 use crate::math_types::Rational;
-use dashu::base::Sign;
 use dashu::integer::UBig;
 use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use std::fmt;
@@ -343,14 +342,15 @@ pub(super) fn compile_rational_rule(
     rule_index: usize,
     frac: &Rational,
 ) -> Result<FractranRule, FractranError> {
-    let (sign, num_mag) = frac.0.numerator().clone().into_parts();
-    if num_mag == UBig::from(0u8) {
+    let numer = frac.numerator();
+    if numer.is_zero() {
         return Err(FractranError::ZeroNumerator { rule_index });
     }
-    if sign == Sign::Negative {
+    if numer.is_negative() {
         return Err(FractranError::NegativeFraction { rule_index });
     }
-    let den_mag = frac.0.denominator().clone();
+    let num_mag = numer.unsigned_abs_ubig();
+    let den_mag = frac.denominator().unsigned_abs_ubig();
     let mut deltas = [0i32; MAX_FRACTRAN_PRIMES];
     let mut active_len = 0usize;
     factor_component_into_deltas(&num_mag, 1, rule_index, &mut deltas, &mut active_len)?;

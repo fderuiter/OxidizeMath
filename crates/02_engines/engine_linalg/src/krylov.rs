@@ -3,7 +3,7 @@
 // [cite:advanced_linear_algebra]
 //! Preallocated zero-allocation Conjugate Gradient (CG) and restarted GMRES Krylov solvers.
 
-use crate::scalar::Scalar;
+use crate::scalar::{FieldScalar, RealScalar, Scalar};
 use crate::sparse::CsrMatrixView;
 use crate::types::{LinalgError, SolverWorkspace, check_all_finite, mat_idx};
 
@@ -32,24 +32,24 @@ pub const fn gmres_workspace_len(n: usize, restart: usize) -> usize {
 }
 
 #[inline]
-fn dot_vec<T: Scalar>(a: &[T], b: &[T]) -> T {
+fn dot_hermitian<T: FieldScalar>(u: &[T], v: &[T]) -> T {
     let mut sum = T::ZERO;
-    for (&x, &y) in a.iter().zip(b.iter()) {
-        sum += x * y;
+    for (&x, &y) in u.iter().zip(v.iter()) {
+        sum += x.conj() * y;
     }
     sum
 }
 
 #[inline]
-fn norm2_vec<T: Scalar>(v: &[T]) -> T {
-    let mut scale = T::ZERO;
-    let mut ssq = T::ONE;
+fn norm2_vec<T: FieldScalar>(v: &[T]) -> T::Real {
+    let mut scale = T::Real::ZERO;
+    let mut ssq = T::Real::ONE;
     for &x in v {
         let ax = x.abs();
-        if ax > T::ZERO {
+        if ax > T::Real::ZERO {
             if scale < ax {
                 let ratio = scale / ax;
-                ssq = T::ONE + ssq * ratio * ratio;
+                ssq = T::Real::ONE + ssq * ratio * ratio;
                 scale = ax;
             } else {
                 let ratio = ax / scale;
@@ -102,7 +102,7 @@ pub fn cg_solve<T: Scalar>(
 
     let b_norm = norm2_vec(b).max(T::ONE);
     let stop = tol * b_norm;
-    let mut rs_old = dot_vec(r, r);
+    let mut rs_old = dot_hermitian(r, r);
     let mut res_norm = rs_old.sqrt();
     if res_norm <= stop {
         return Ok(KrylovReport {
@@ -113,7 +113,7 @@ pub fn cg_solve<T: Scalar>(
 
     for iter in 1..=max_iter {
         a.spmv(p, ap)?;
-        let p_ap = dot_vec(p, ap);
+        let p_ap = dot_hermitian(p, ap);
         if p_ap <= T::ZERO || !p_ap.is_finite() {
             return Err(LinalgError::NotPositiveDefinite);
         }
@@ -122,7 +122,7 @@ pub fn cg_solve<T: Scalar>(
             x[i] += alpha * p[i];
             r[i] -= alpha * ap[i];
         }
-        let rs_new = dot_vec(r, r);
+        let rs_new = dot_hermitian(r, r);
         res_norm = rs_new.sqrt();
         if res_norm <= stop {
             return Ok(KrylovReport {
@@ -140,7 +140,7 @@ pub fn cg_solve<T: Scalar>(
     Err(LinalgError::NonConvergence)
 }
 
-fn arnoldi_mgs_step<T: Scalar>(
+fn arnoldi_mgs_step<T: FieldScalar>(
     a: &CsrMatrixView<'_, T>,
     v_basis: &mut [T],
     h_mat: &mut [T],
@@ -153,24 +153,25 @@ fn arnoldi_mgs_step<T: Scalar>(
     a.spmv(&v_basis[vj_start..(vj_start + n)], w)?;
     for i in 0..=j {
         let vi_start = i * n;
-        let hij = dot_vec(&w[..n], &v_basis[vi_start..(vi_start + n)]);
+        let hij = dot_hermitian(&v_basis[vi_start..(vi_start + n)], &w[..n]);
         h_mat[mat_idx(i, j, m)] = hij;
         for k in 0..n {
             w[k] -= hij * v_basis[vi_start + k];
         }
     }
     let h_next = norm2_vec(&w[..n]);
-    h_mat[mat_idx(j + 1, j, m)] = h_next;
-    if h_next > T::ZERO {
+    h_mat[mat_idx(j + 1, j, m)] = T::from_real(h_next);
+    if h_next > T::Real::ZERO {
         let next_start = (j + 1) * n;
+        let inv = T::from_real(T::Real::ONE / h_next);
         for k in 0..n {
-            v_basis[next_start + k] = w[k] / h_next;
+            v_basis[next_start + k] = w[k] * inv;
         }
     }
     Ok(())
 }
 
-fn apply_gmres_rotations<T: Scalar>(
+fn apply_gmres_rotations<T: FieldScalar>(
     h_mat: &mut [T],
     cs: &mut [T],
     sn: &mut [T],
@@ -181,20 +182,26 @@ fn apply_gmres_rotations<T: Scalar>(
     for i in 0..j {
         let h_ij = h_mat[mat_idx(i, j, m)];
         let h_next = h_mat[mat_idx(i + 1, j, m)];
-        h_mat[mat_idx(i, j, m)] = cs[i] * h_ij + sn[i] * h_next;
+        h_mat[mat_idx(i, j, m)] = cs[i] * h_ij + sn[i].conj() * h_next;
         h_mat[mat_idx(i + 1, j, m)] = -sn[i] * h_ij + cs[i] * h_next;
     }
     let h_jj = h_mat[mat_idx(j, j, m)];
     let h_j1j = h_mat[mat_idx(j + 1, j, m)];
-    let denom = h_jj.hypot(h_j1j);
-    if denom == T::ZERO {
+    let abs_a = h_jj.abs();
+    let abs_b = h_j1j.abs();
+    let denom = abs_a.hypot(abs_b);
+    if denom == T::Real::ZERO {
         cs[j] = T::ONE;
         sn[j] = T::ZERO;
+    } else if abs_a == T::Real::ZERO {
+        cs[j] = T::ZERO;
+        sn[j] = T::ONE;
     } else {
-        cs[j] = h_jj / denom;
-        sn[j] = h_j1j / denom;
+        cs[j] = T::from_real(abs_a / denom);
+        let sign_a = h_jj * T::from_real(T::Real::ONE / abs_a);
+        sn[j] = sign_a.conj() * h_j1j * T::from_real(T::Real::ONE / denom);
     }
-    h_mat[mat_idx(j, j, m)] = cs[j] * h_jj + sn[j] * h_j1j;
+    h_mat[mat_idx(j, j, m)] = cs[j] * h_jj + sn[j].conj() * h_j1j;
     h_mat[mat_idx(j + 1, j, m)] = T::ZERO;
 
     let gj = g[j];
@@ -202,7 +209,7 @@ fn apply_gmres_rotations<T: Scalar>(
     g[j + 1] = -sn[j] * gj;
 }
 
-fn update_gmres_x<T: Scalar>(
+fn update_gmres_x<T: FieldScalar>(
     h_mat: &[T],
     v_basis: &[T],
     g: &[T],
@@ -243,20 +250,20 @@ fn update_gmres_x<T: Scalar>(
 /// # Domain of Validity
 /// Requires square `a` (`n x n`), finite `b` and initial `x` (`n`), `restart >= 1`, strictly
 /// positive finite `tol > 0`, and `ws` capacity at least [`gmres_workspace_len`]`(n, restart)`.
-pub fn gmres_solve<T: Scalar>(
+pub fn gmres_solve<T: FieldScalar>(
     a: &CsrMatrixView<'_, T>,
     b: &[T],
     x: &mut [T],
     restart: usize,
-    tol: T,
+    tol: T::Real,
     max_restarts: usize,
     ws: &mut SolverWorkspace<'_, T>,
-) -> Result<KrylovReport<T>, LinalgError> {
+) -> Result<KrylovReport<T::Real>, LinalgError> {
     let n = a.nrows();
     if a.ncols() != n || b.len() != n || x.len() != n {
         return Err(LinalgError::DimensionMismatch);
     }
-    if restart == 0 || !tol.is_finite() || tol <= T::ZERO {
+    if restart == 0 || !tol.is_finite() || tol <= T::Real::ZERO {
         return Err(LinalgError::InvalidInput);
     }
     check_all_finite(b)?;
@@ -271,7 +278,7 @@ pub fn gmres_solve<T: Scalar>(
     let (y, mut r6) = r5.try_split(m)?;
     let (w, _) = r6.try_split(n)?;
 
-    let stop = tol * norm2_vec(b).max(T::ONE);
+    let stop = tol * norm2_vec(b).max(T::Real::ONE);
     let mut total_iters = 0;
 
     for _cycle in 0..max_restarts {
@@ -289,10 +296,11 @@ pub fn gmres_solve<T: Scalar>(
         v_basis.fill(T::ZERO);
         h_mat.fill(T::ZERO);
         g.fill(T::ZERO);
+        let inv_beta = T::from_real(T::Real::ONE / beta);
         for k in 0..n {
-            v_basis[k] = w[k] / beta;
+            v_basis[k] = w[k] * inv_beta;
         }
-        g[0] = beta;
+        g[0] = T::from_real(beta);
 
         let mut inner_steps = 0;
         for j in 0..m {

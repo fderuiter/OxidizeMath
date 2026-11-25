@@ -4,7 +4,7 @@
 //! Matrix norms (`L1`, `Linf`, Frobenius, spectral) and 1-norm / spectral condition-number estimators.
 
 use crate::lu::{lu_factor_in_place, lu_solve_factored, lu_solve_transpose_factored};
-use crate::scalar::Scalar;
+use crate::scalar::{FieldScalar, RealScalar, Scalar};
 use crate::svd_bidiag::{svd_bidiagonal, svd_bidiagonal_workspace_len};
 use crate::types::{LinalgError, SolverWorkspace, check_all_finite, mat_idx};
 
@@ -25,14 +25,14 @@ pub const fn cond_l1_workspace_len(n: usize) -> usize {
 
 /// Computes the induced 1-norm $\|A\|_1 = \max_j \sum_i |A_{ij}|$.
 /// `[cite:engine_linalg]`
-pub fn norm_l1<T: Scalar>(a: &[T], m: usize, n: usize) -> Result<T, LinalgError> {
+pub fn norm_l1<T: FieldScalar>(a: &[T], m: usize, n: usize) -> Result<T::Real, LinalgError> {
     if m.checked_mul(n) != Some(a.len()) {
         return Err(LinalgError::DimensionMismatch);
     }
     check_all_finite(a)?;
-    let mut best = T::ZERO;
+    let mut best = T::Real::ZERO;
     for c in 0..n {
-        let mut col_sum = T::ZERO;
+        let mut col_sum = T::Real::ZERO;
         for r in 0..m {
             col_sum += a[mat_idx(r, c, n)].abs();
         }
@@ -43,14 +43,14 @@ pub fn norm_l1<T: Scalar>(a: &[T], m: usize, n: usize) -> Result<T, LinalgError>
 
 /// Computes the induced infinity-norm $\|A\|_\infty = \max_i \sum_j |A_{ij}|$.
 /// `[cite:engine_linalg]`
-pub fn norm_linf<T: Scalar>(a: &[T], m: usize, n: usize) -> Result<T, LinalgError> {
+pub fn norm_linf<T: FieldScalar>(a: &[T], m: usize, n: usize) -> Result<T::Real, LinalgError> {
     if m.checked_mul(n) != Some(a.len()) {
         return Err(LinalgError::DimensionMismatch);
     }
     check_all_finite(a)?;
-    let mut best = T::ZERO;
+    let mut best = T::Real::ZERO;
     for r in 0..m {
-        let mut row_sum = T::ZERO;
+        let mut row_sum = T::Real::ZERO;
         for c in 0..n {
             row_sum += a[mat_idx(r, c, n)].abs();
         }
@@ -59,21 +59,21 @@ pub fn norm_linf<T: Scalar>(a: &[T], m: usize, n: usize) -> Result<T, LinalgErro
     Ok(best)
 }
 
-/// Computes the scaled overflow-safe Frobenius norm $\|A\|_F = \sqrt{\sum_{i,j} A_{ij}^2}$.
+/// Computes the scaled overflow-safe Frobenius norm $\|A\|_F = \sqrt{\sum_{i,j} |A_{ij}|^2}$.
 /// `[cite:engine_linalg]`
-pub fn norm_frobenius<T: Scalar>(a: &[T], m: usize, n: usize) -> Result<T, LinalgError> {
+pub fn norm_frobenius<T: FieldScalar>(a: &[T], m: usize, n: usize) -> Result<T::Real, LinalgError> {
     if m.checked_mul(n) != Some(a.len()) {
         return Err(LinalgError::DimensionMismatch);
     }
     check_all_finite(a)?;
-    let mut scale = T::ZERO;
-    let mut ssq = T::ONE;
+    let mut scale = T::Real::ZERO;
+    let mut ssq = T::Real::ONE;
     for &val in a {
         let av = val.abs();
-        if av > T::ZERO {
+        if av > T::Real::ZERO {
             if scale < av {
                 let ratio = scale / av;
-                ssq = T::ONE + ssq * ratio * ratio;
+                ssq = T::Real::ONE + ssq * ratio * ratio;
                 scale = av;
             } else {
                 let ratio = av / scale;

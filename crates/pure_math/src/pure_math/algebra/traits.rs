@@ -66,6 +66,19 @@ pub trait Field: Ring + Div<Output = Self> {
     /// Multiplicative inverse of the element.
     #[verified_engine::verified]
     fn multiplicative_inverse(&self) -> Self;
+
+    /// Computes the multiplicative inverse $x^{-1}$ without panicking on zero.
+    ///
+    /// # Errors
+    /// Returns [`crate::error::NumberTheoryError::DivisionByZeroFieldElement`] when `self.is_zero()`.
+    #[verified_engine::verified]
+    fn checked_inverse(&self) -> Result<Self, crate::error::NumberTheoryError> {
+        if self.is_zero() {
+            Err(crate::error::NumberTheoryError::DivisionByZeroFieldElement)
+        } else {
+            Ok(self.multiplicative_inverse())
+        }
+    }
 }
 
 // Implementations for primitives

@@ -276,7 +276,7 @@ fn test_root_config_edits_escalate_to_full_workspace_checks() {
 fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
     let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let crates = load_workspace_crates(&ws_root);
-    assert_eq!(crates.len(), 26);
+    assert_eq!(crates.len(), 27);
 
     let mut web_names: Vec<&str> = crates
         .iter()
@@ -304,6 +304,7 @@ fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
             "math_explorer",
             "math_explorer_gui",
             "math_rng",
+            "math_scalars",
             "oxidize_core",
             "pure_math",
             "scientific_metadata",
@@ -321,7 +322,12 @@ fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
         let krate = crates.iter().find(|c| c.package_name == host_only).unwrap();
         assert!(!krate.is_web, "{host_only} should not be marked is_web");
     }
+}
 
+#[test]
+fn test_real_workspace_scientific_metadata_reverse_dependents() {
+    let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let crates = load_workspace_crates(&ws_root);
     let meta_staged = vec!["crates/scientific_metadata/src/lib.rs".to_string()];
     let meta_commit_plan = build_staged_plan(&meta_staged, &meta_staged, &crates);
     assert_eq!(

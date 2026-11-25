@@ -5,7 +5,7 @@ pub use engine_diffeq::DiffeqError;
 pub use engine_pde::PdeError;
 pub use math_commons::error::{
     EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, MathResult,
-    ParseError, ShaderEmitError,
+    ParseError, ScalarError, ShaderEmitError,
 };
 
 #[cfg(feature = "ai")]

@@ -6,7 +6,9 @@ use core::fmt;
 use std::error::Error as StdError;
 
 use math_explorer::diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
-use math_explorer::error::{Error, FitError, LinalgError, MathCommonsError, MathError};
+use math_explorer::error::{
+    Error, FitError, LinalgError, MathCommonsError, MathError, ScalarError,
+};
 use math_explorer::math_kernel::types::Dimension;
 use math_explorer::verified_engine::allocator::VerifiedAllocator;
 use math_explorer::verified_engine::engine::VerifiedEngine;
@@ -48,24 +50,36 @@ fn core_only_zero_alloc_diagnostics_and_linalg_error_wiring() {
         required: 32,
         available: 8,
     };
+    let scalar = ScalarError::DegreeOverflow {
+        capacity: 8,
+        required: 12,
+    };
     let fit = FitError::from(linalg);
     let commons = MathCommonsError::from(linalg);
+    let scalar_commons = MathCommonsError::from(scalar);
+    let scalar_facade = Error::from(scalar);
     let facade = Error::from(linalg);
 
     assert!(fit.source().is_some());
     assert!(commons.source().is_some());
+    assert!(scalar_commons.source().is_some());
+    assert!(scalar_facade.source().is_some());
     assert!(facade.source().is_some());
 
     let (total_fields, _metrics) = VerifiedEngine::run_verified(|| {
         assert_eq!(linalg.severity(), Severity::Error);
+        assert_eq!(scalar.severity(), Severity::Error);
         count_visited_fields(&linalg)
             + count_visited_fields(&math)
             + count_visited_fields(&ws)
+            + count_visited_fields(&scalar)
             + count_visited_fields(&fit)
             + count_visited_fields(&commons)
+            + count_visited_fields(&scalar_commons)
+            + count_visited_fields(&scalar_facade)
             + count_visited_fields(&facade)
     });
-    assert!(total_fields >= 22);
+    assert!(total_fields >= 39);
 }
 
 #[cfg(all(
@@ -409,5 +423,24 @@ mod full_domain_wiring {
                 + count_visited_fields(&facade_err)
         });
         assert!(fields >= 14);
+    }
+
+    #[test]
+    fn scalar_error_converts_into_pure_math_and_facade_and_visits_zero_alloc() {
+        use math_explorer::math_types::Float;
+
+        let (fields, _metrics) = VerifiedEngine::run_verified(|| {
+            let s_err: ScalarError = Float::try_with_prec(0, 1.0).unwrap_err();
+            let pm_err =
+                (|| -> Result<Float, PureMathError> { Ok(Float::try_with_prec(128, f64::NAN)?) })()
+                    .unwrap_err();
+            let facade_err =
+                (|| -> Result<Float, Error> { Ok(Float::try_with_prec(0, 2.0)?) })().unwrap_err();
+            assert!(pm_err.source().is_some() && facade_err.source().is_some());
+            count_visited_fields(&s_err)
+                + count_visited_fields(&pm_err)
+                + count_visited_fields(&facade_err)
+        });
+        assert!(fields >= 11);
     }
 }

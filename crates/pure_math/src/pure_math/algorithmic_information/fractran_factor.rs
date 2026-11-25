@@ -5,9 +5,7 @@ use super::fractran_programs::{
 };
 use super::fractran_vm::{FractranCompiledVm, FractranPreset, MinskyTransition};
 use crate::math_types::Rational;
-use dashu::base::Sign;
 use dashu::integer::{IBig, UBig};
-use dashu::rational::RBig;
 use std::collections::BTreeSet;
 
 pub(super) type FactoredRule = (Vec<(u64, u32)>, Vec<(u64, u32)>);
@@ -133,7 +131,7 @@ pub(super) fn parse_fraction_tokens(input: &str) -> Result<Vec<Rational>, Fractr
                 rule_index: fractions.len(),
             });
         }
-        fractions.push(Rational(RBig::from_parts(numer, denom)));
+        fractions.push(Rational::from_parts(numer, denom));
     }
     Ok(fractions)
 }
@@ -152,12 +150,12 @@ pub(super) fn compile_exponent_tables(
     }
     let mut factored_rules: Vec<FactoredRule> = Vec::with_capacity(fractions.len());
     for (rule_index, frac) in fractions.iter().enumerate() {
-        let (sign, num_mag) = frac.0.numerator().clone().into_parts();
-        if sign == Sign::Negative || num_mag.is_zero() {
+        let numer = frac.numerator();
+        if numer.is_negative() || numer.is_zero() {
             return Err(FractranError::NonPositiveFraction { rule_index });
         }
-        let num_factors = factor_ubig_smooth(num_mag)?;
-        let den_factors = factor_ubig_smooth(frac.0.denominator().clone())?;
+        let num_factors = factor_ubig_smooth(numer.unsigned_abs_ubig())?;
+        let den_factors = factor_ubig_smooth(frac.denominator().unsigned_abs_ubig())?;
         for &(p, _) in num_factors.iter().chain(den_factors.iter()) {
             basis_set.insert(p);
         }

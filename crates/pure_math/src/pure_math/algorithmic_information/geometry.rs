@@ -5,9 +5,7 @@
 //! experiments in Cholak et al.
 
 use crate::math_types::Rational;
-use dashu::base::Sign;
 use dashu::integer::{IBig, UBig};
-use dashu::rational::RBig;
 
 /// Dyadic scale bits ($2^{64}$) used when approximating irrational Euclidean distances.
 const DISTANCE_DYADIC_SCALE_BITS: usize = 64;
@@ -45,7 +43,7 @@ impl DyadicRational {
     pub fn to_rational(&self) -> Rational {
         let numer = IBig::from(self.m);
         let denom = UBig::from(1u8) << (self.r as usize);
-        Rational(RBig::from_parts(numer, denom))
+        Rational::from_parts(numer, denom)
     }
 
     /// Evaluates $m / 2^r$ as an IEEE-754 `f64` approximation.
@@ -59,17 +57,12 @@ impl DyadicRational {
     #[must_use]
     #[verified_engine::verified]
     pub fn from_rational_floor(value: &Rational, r: u32) -> Self {
-        let scale = IBig::from(1u8) << (r as usize);
-        let scaled_num = value.0.numerator() * scale;
-        let denom = IBig::from(value.0.denominator().clone());
-        let mut quotient = &scaled_num / &denom;
-        let remainder = &scaled_num % &denom;
-        if remainder < IBig::from(0u8) {
-            quotient -= IBig::from(1u8);
-        }
-        let clamped = if let Ok(v) = i64::try_from(&quotient) {
+        let scaled_num = value.numerator().shl_bits(r as usize);
+        let denom = value.denominator();
+        let quotient = scaled_num.div_floor(&denom);
+        let clamped = if let Some(v) = quotient.to_i64() {
             v
-        } else if quotient < IBig::from(0u8) {
+        } else if quotient.is_negative() {
             i64::MIN
         } else {
             i64::MAX
@@ -216,15 +209,16 @@ pub fn distance_squared(p1: &Point2D, p2: &Point2D) -> Rational {
 #[verified_engine::verified]
 pub fn distance(p1: &Point2D, p2: &Point2D) -> Rational {
     let d2 = distance_squared(p1, p2);
-    let (sign, num_mag) = d2.0.numerator().clone().into_parts();
-    if sign == Sign::Negative || num_mag == UBig::from(0u8) {
+    let numer = d2.numerator();
+    if numer.is_negative() || numer.is_zero() {
         return Rational::new();
     }
-    let den_mag = d2.0.denominator().clone();
+    let num_mag = numer.unsigned_abs_ubig();
+    let den_mag = d2.denominator().unsigned_abs_ubig();
     let scaled_radicand = (&num_mag * &den_mag) << (2 * DISTANCE_DYADIC_SCALE_BITS);
     let root = scaled_radicand.nth_root(2);
     let scaled_den = den_mag << DISTANCE_DYADIC_SCALE_BITS;
-    Rational(RBig::from_parts(IBig::from(root), scaled_den))
+    Rational::from_parts(IBig::from(root), scaled_den)
 }
 
 /// Computes the exact orthogonal projection of `point` onto `line`.
@@ -249,7 +243,7 @@ pub fn project_point_onto_line(point: &Point2D, line: &Line) -> Point2D {
     let dx = &line.direction.x;
     let dy = &line.direction.y;
     let norm_sq = (dx * dx) + (dy * dy);
-    if norm_sq.0.numerator() == &IBig::from(0u8) {
+    if norm_sq.numerator().is_zero() {
         return line.origin.clone();
     }
     let vx = point.x.clone() - line.origin.x.clone();

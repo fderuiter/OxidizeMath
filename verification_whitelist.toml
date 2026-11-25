@@ -56,6 +56,7 @@ unverified_modules = [
     "apps/xtask",
     "crates/00_foundation/math_diagnostics",
     "crates/00_foundation/math_rng",
+    "crates/00_foundation/math_scalars",
     "crates/02_engines/engine_linalg",
     "crates/diagnostics",
     "crates/engine_diffeq",
@@ -79,6 +80,14 @@ reason = "no_std_engine"
 
 [[verify_suite.opt_outs]]
 path = "crates/00_foundation/math_rng/src/"
+reason = "tests"
+
+[[verify_suite.opt_outs]]
+path = "crates/00_foundation/math_scalars/src/"
+reason = "no_std_engine"
+
+[[verify_suite.opt_outs]]
+path = "crates/00_foundation/math_scalars/tests/"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
@@ -323,6 +332,7 @@ exempt_crates = [
     "apps/xtask",
     "crates/00_foundation/math_diagnostics",
     "crates/00_foundation/math_rng",
+    "crates/00_foundation/math_scalars",
     "crates/02_engines/engine_linalg",
     "crates/diagnostics",
     "crates/engine_diffeq",
@@ -349,11 +359,12 @@ min_total_density = 0.120
 "gui_tool" = 765
 "infrastructure" = 2
 "metadata" = 2
-"no_std_engine" = 25
-"tests" = 250
+"no_std_engine" = 40
+"tests" = 253
 
 [verification_debt.crate_opt_out_caps]
 "crates/00_foundation/math_rng" = 14
+"crates/00_foundation/math_scalars" = 18
 "crates/02_engines/engine_linalg" = 15
 "crates/domain_applied" = 1
 "crates/domain_biology" = 1

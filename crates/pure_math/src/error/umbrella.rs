@@ -173,6 +173,13 @@ impl From<ShaderEmitError> for PureMathError {
     }
 }
 
+impl From<math_scalars::ScalarError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: math_scalars::ScalarError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
 impl From<&'static str> for PureMathError {
     #[verified_engine::verified]
     fn from(reason: &'static str) -> Self {

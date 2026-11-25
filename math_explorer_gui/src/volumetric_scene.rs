@@ -14,10 +14,10 @@ use eframe::egui;
 use math_explorer::ai::gaussian_splatting::{
     optimization::{determine_density_action, DensityAction},
     projection::{project_scene_into, SplatCameraProjection},
-    rendering, Gaussian2D, Gaussian3D, Scene,
+    rendering, Gaussian2D, Gaussian3D, Scene, UnitQuaternion,
 };
 use math_explorer::applied::isosurface::{CentralDifferenceEstimator, Point3D, VoxelGrid};
-use nalgebra::{Matrix2, Point2, Point3, UnitQuaternion, Vector3};
+use nalgebra::{Matrix2, Point2, Point3, Vector3};
 
 /// Raster resolution for real-time CPU/WASM Gaussian splat alpha compositing.
 pub const SPLAT_GRID_SIZE: usize = 72;
@@ -128,18 +128,13 @@ impl VolumetricSplatWorkspace {
 
 /// Aligns a local Z-axis to a unit surface normal `n` for tangentially flattened splat disks.
 pub fn rotation_from_normal(normal: Point3D) -> UnitQuaternion<f64> {
-    let target = Vector3::new(normal.x as f64, normal.y as f64, normal.z as f64);
-    let norm = target.norm();
-    if norm < 1e-6 {
+    let target = [normal.x as f64, normal.y as f64, normal.z as f64];
+    let norm = (target[0] * target[0] + target[1] * target[1] + target[2] * target[2]).sqrt();
+    if norm < 1e-6 || !norm.is_finite() {
         return UnitQuaternion::identity();
     }
-    let unit = target / norm;
-    let z_axis = Vector3::z();
-    if unit.dot(&z_axis) < -0.999_9 {
-        UnitQuaternion::from_axis_angle(&Vector3::x_axis(), std::f64::consts::PI)
-    } else {
-        UnitQuaternion::rotation_between(&z_axis, &unit).unwrap_or_else(UnitQuaternion::identity)
-    }
+    UnitQuaternion::rotation_between([0.0, 0.0, 1.0], target)
+        .unwrap_or_else(UnitQuaternion::identity)
 }
 
 fn splat_grid_steps(w: usize, h: usize, d: usize, cap: usize) -> (usize, usize, usize) {

@@ -163,6 +163,12 @@ fn facade_pure_math_and_external_reexports_roundtrip_json() {
         big_float
     );
 
+    let third_256 = Float::with_val(256, 1.0) / Float::with_val(256, 3.0);
+    let third_decoded: Float =
+        serde_json::from_str(&serde_json::to_string(&third_256).unwrap()).unwrap();
+    assert_eq!(third_decoded.precision(), 256);
+    assert_eq!(third_decoded, third_256);
+
     let rat = Rational::from((22, 7));
     assert_eq!(
         serde_json::from_str::<Rational>(&serde_json::to_string(&rat).unwrap()).unwrap(),

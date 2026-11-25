@@ -36,6 +36,13 @@ impl_error_from!(ParseError => Parse);
 impl_error_from!(ShaderEmitError => ShaderEmit);
 impl_error_from!(std::io::Error => Io);
 
+impl From<ScalarError> for Error {
+    #[verified_engine::verified]
+    fn from(err: ScalarError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
 impl From<&'static str> for Error {
     #[verified_engine::verified]
     fn from(reason: &'static str) -> Self {

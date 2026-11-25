@@ -102,6 +102,6 @@ pub use projection::{
     LensedProjectionOutcome, LensedSplatImageSpec, SplatCameraProjection,
     project_lensed_covariance, project_scene_into, project_scene_lensed_into,
 };
-pub use structs::{Gaussian2D, Gaussian3D, Scene};
+pub use structs::{Gaussian2D, Gaussian3D, Quaternion, Scene, UnitQuaternion};
 
 // [cite:gaussian_splatting]

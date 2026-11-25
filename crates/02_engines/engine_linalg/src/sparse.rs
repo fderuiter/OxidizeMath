@@ -3,7 +3,7 @@
 // [cite:advanced_linear_algebra]
 //! Zero-copy Compressed Sparse Row ([`CsrMatrixView`]) matrix views and sparse matrix-vector products.
 
-use crate::scalar::Scalar;
+use crate::scalar::FieldScalar;
 use crate::types::{LinalgError, check_all_finite};
 
 /// Immutable `#![no_std]` Compressed Sparse Row (CSR) matrix view over caller slices.
@@ -16,7 +16,7 @@ pub struct CsrMatrixView<'a, T> {
     values: &'a [T],
 }
 
-impl<'a, T: Scalar> CsrMatrixView<'a, T> {
+impl<'a, T: FieldScalar> CsrMatrixView<'a, T> {
     /// Constructs and validates a CSR sparse matrix view of shape `nrows x ncols`.
     pub fn new(
         nrows: usize,

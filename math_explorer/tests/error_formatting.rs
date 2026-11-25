@@ -1,4 +1,4 @@
-//! Verifies that all 50 public error enums tested from `math_explorer::error`
+//! Verifies that all 51 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -20,8 +20,8 @@ use math_explorer::error::{
     MarketPricingError, MarkovError, MatchModelError, MathError, MonteCarloError,
     NumberTheoryError, OptionPricingError, OuError, PdeError, PharmacokineticsError, PoissonError,
     PortfolioError, QuantumError, QueueingError, RadarError, ReactionDiffusionError, RiskError,
-    SandpileError, ShaderEmitError, SolidStateError, StandardModelError, StatMechError,
-    Su11HyperbolicError, TdaError, ZipError,
+    SandpileError, ScalarError, ShaderEmitError, SolidStateError, StandardModelError,
+    StatMechError, Su11HyperbolicError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -67,6 +67,13 @@ fn core_and_engine_errors_emit_readable_display_and_metadata() {
         &MathError::WorkspaceTooSmall {
             required: 16,
             available: 8,
+        },
+    );
+    assert_readable_diagnostic(
+        "ScalarError::DegreeOverflow",
+        &ScalarError::DegreeOverflow {
+            capacity: 8,
+            required: 12,
         },
     );
     assert_readable_diagnostic("FitError", &FitError::UnsupportedDegree { degree: 5 });

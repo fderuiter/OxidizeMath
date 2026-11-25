@@ -4,6 +4,7 @@ pub use crate::ast::{EvalError, GlslError, LexError, ParseError, ShaderEmitError
 use crate::math_kernel::types::Dimension;
 pub use engine_linalg::LinalgError;
 pub use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+pub use math_scalars::ScalarError;
 use thiserror::Error;
 
 #[cfg(feature = "serde")]

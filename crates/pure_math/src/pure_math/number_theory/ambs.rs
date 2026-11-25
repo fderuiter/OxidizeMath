@@ -1,5 +1,10 @@
 use crate::math_types::{Integer, ops::Pow, ops::RemRounding};
 use crate::pure_math::number_theory::primes::is_prime;
+mod padic_hensel;
+pub use padic_hensel::{
+    Qp, ScalarError, eval_int_poly_qp, hensel_lift_root, lift_quadratic_residue_qp,
+};
+
 use thiserror::Error;
 
 /// Computes the sum-of-divisors arithmetic function $\sigma(n) = \sum_{d \mid n} d$.
@@ -280,45 +285,6 @@ impl AmbsDsp {
             .pow_mod(&power_r, p)
             .map_err(|_| AmbsError::ModuloError)?;
         Self::tonelli_refine_root(s, c, t, r, p)
-    }
-
-    #[verified_engine::verified]
-    fn hensels_lifting(a: &Integer, p: &Integer, k: u32) -> Result<Vec<Integer>, AmbsError> {
-        let roots_mod_p = Self::tonelli_shanks(a, p)?;
-        let mut final_roots = Vec::new();
-
-        let p_k = p.clone().pow(k);
-
-        for r1 in roots_mod_p {
-            let mut x_n = r1.clone();
-            let mut p_n = p.clone();
-
-            for _ in 1..k {
-                let f_x_n = (&x_n * &x_n) - a.clone();
-                let f_prime_x_n = &x_n * Integer::from(2);
-
-                let f_prime_inv_opt = modular_inverse(&f_prime_x_n, p);
-                if let Some(f_prime_inv) = f_prime_inv_opt {
-                    let term = (f_x_n / &p_n) * f_prime_inv;
-                    let term_mod = term.rem_euc(p);
-                    x_n -= term_mod * &p_n;
-                    p_n *= p;
-                    x_n = x_n.rem_euc(&p_n);
-                } else {
-                    break;
-                }
-            }
-
-            let check = Integer::from(&x_n * &x_n).rem_euc(&p_k);
-            let a_mod = a.clone().rem_euc(&p_k);
-            if check == a_mod {
-                final_roots.push(x_n);
-            }
-        }
-
-        final_roots.sort();
-        final_roots.dedup();
-        Ok(final_roots)
     }
 
     #[verified_engine::verified]

@@ -96,7 +96,13 @@ impl FractranProgram {
     pub fn format_fractions(&self) -> String {
         self.fractions
             .iter()
-            .map(|r| format!("{}/{}", r.0.numerator(), r.0.denominator()))
+            .map(|r| {
+                format!(
+                    "{}/{}",
+                    r.numerator().unsigned_abs_ubig(),
+                    r.denominator().unsigned_abs_ubig()
+                )
+            })
             .collect::<Vec<_>>()
             .join(", ")
     }
