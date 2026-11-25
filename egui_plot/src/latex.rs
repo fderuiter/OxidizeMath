@@ -141,9 +141,9 @@ pub fn parse_latex_to_layout_job(
 
 /// Parses an axis, legend, or plot annotation label into a single-line `LayoutJob`.
 ///
-/// Labels containing `$` delegate to [`parse_prose_with_font`] (keeping unmatched currency `$`
-/// labels upright), labels containing `\` delegate to single-line LaTeX layout, and plain labels
-/// render upright while formatting full alphanumeric `_` and `^` runs as scripts.
+/// Labels containing `$` delegate to [`parse_prose_with_inline_math`] (keeping unmatched currency
+/// `$` labels upright), labels containing `\` delegate to single-line LaTeX layout, and plain
+/// labels render upright while formatting full alphanumeric `_` and `^` runs as scripts.
 pub fn parse_plot_label_to_layout_job(
     text: &str,
     style: TextStyle,

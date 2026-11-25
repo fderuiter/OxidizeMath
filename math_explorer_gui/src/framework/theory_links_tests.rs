@@ -389,13 +389,32 @@ fn test_all_registered_tools_render_clean_portal_latex_and_hyperlinks() {
         }
     }
 
-    #[cfg(all(feature = "ai", feature = "physics", feature = "pure_math"))]
-    assert!(
-        verified_tools >= 65,
-        "Expected >= 65 tools, got {verified_tools}"
-    );
-    #[cfg(not(all(feature = "ai", feature = "physics", feature = "pure_math")))]
-    assert!(verified_tools > 0);
+    assert_verified_tool_count(verified_tools);
+}
+
+fn assert_verified_tool_count(verified_tools: usize) {
+    if cfg!(all(
+        feature = "ai",
+        feature = "physics",
+        feature = "pure_math"
+    )) {
+        assert!(
+            verified_tools >= 65,
+            "Expected >= 65 tools, got {verified_tools}"
+        );
+    } else if cfg!(any(
+        feature = "ai",
+        feature = "applied",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math",
+    )) {
+        assert!(verified_tools > 0);
+    } else {
+        assert_eq!(verified_tools, 0);
+    }
 }
 
 #[test]
