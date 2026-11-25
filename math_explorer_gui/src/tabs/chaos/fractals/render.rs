@@ -110,7 +110,7 @@ fn eval_custom_mode_escape(
     }
 }
 
-pub(super) fn eval_pixel_color(
+pub(in crate::tabs::chaos::fractals) fn eval_pixel_color(
     re: f64,
     im: f64,
     req: &FractalRenderRequest,

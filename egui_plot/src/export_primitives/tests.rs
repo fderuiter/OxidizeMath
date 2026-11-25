@@ -280,3 +280,92 @@ fn test_shared_pixel_ops_and_svg_header_helpers() {
     assert!(pixels.iter().any(|&c| c.a() > 0));
     assert_eq!(blend_over(src, egui::Color32::TRANSPARENT, 1.0), src);
 }
+
+#[test]
+fn test_contour_path_and_crisp_lattice_svg_and_raster() {
+    let prims = vec![
+        ExportPrimitive::ContourPath {
+            name: "u_iso_0".to_string(),
+            iso_level: 0.25,
+            points: vec![[0.0, 0.0], [2.0, 0.0], [2.0, 2.0], [0.0, 2.0]],
+            closed: true,
+            color: egui::Color32::from_rgb(40, 200, 180),
+            stroke_width: 1.5,
+        },
+        ExportPrimitive::ContourPath {
+            name: "u_iso_1".to_string(),
+            iso_level: 0.75,
+            points: vec![[0.2, 0.5], [1.0, 1.4], [1.8, 0.5]],
+            closed: false,
+            color: egui::Color32::from_rgb(240, 180, 40),
+            stroke_width: 1.5,
+        },
+        ExportPrimitive::Bar {
+            name: "lattice_cell".to_string(),
+            min: [0.0, 0.0],
+            max: [1.0, 1.0],
+            fill: egui::Color32::from_rgb(120, 80, 220),
+            stroke_color: egui::Color32::TRANSPARENT,
+            stroke_width: 0.0,
+        },
+    ];
+    let opts = ExportOptions {
+        width: 240,
+        height: 240,
+        aspect_ratio: crate::AspectRatioOption::Free,
+        seamless_tile: true,
+        ..ExportOptions::default()
+    };
+    let svg = export_primitives_svg(&prims, &opts).expect("contour svg");
+    assert!(svg.contains("data-iso-level=\"0.250000\""));
+    assert!(svg.contains("data-iso-level=\"0.750000\""));
+    assert!(svg.contains("<path d=\"M "));
+    assert!(svg.contains(" Z\" fill=\"none\""));
+    assert!(svg.contains("shape-rendering=\"crispEdges\""));
+    assert!(!svg.contains("<image"));
+
+    let img = render_primitives_image(&prims, &opts).expect("contour raster");
+    assert_eq!(img.size, [240, 240]);
+    assert!(count_non_bg_pixels(&img, opts.background_color) > 100);
+}
+
+#[test]
+fn test_seamless_tile_bypasses_border_padding_and_serde_defaults() {
+    use super::PrimitiveCanvasLayout;
+
+    let src = egui::ColorImage::new([4, 4], vec![egui::Color32::from_rgb(200, 50, 50); 16]);
+    let padded_opts = ExportOptions {
+        width: 64,
+        height: 64,
+        aspect_ratio: crate::AspectRatioOption::Free,
+        seamless_tile: false,
+        ..ExportOptions::default()
+    };
+    let padded = scale_color_image(&src, 64, 64, &padded_opts);
+    assert_eq!(padded.pixels[0], padded_opts.background_color);
+
+    let tile_opts = ExportOptions {
+        seamless_tile: true,
+        ..padded_opts
+    };
+    let unpadded = scale_color_image(&src, 64, 64, &tile_opts);
+    assert!(
+        unpadded
+            .pixels
+            .iter()
+            .all(|&c| c == egui::Color32::from_rgb(200, 50, 50))
+    );
+
+    let layout = PrimitiveCanvasLayout::new(100, 100, [0.0, 10.0, 0.0, 10.0], &tile_opts);
+    assert_eq!(layout.to_pixel([0.0, 10.0]), (0.0, 0.0));
+    assert_eq!(layout.to_pixel([10.0, 0.0]), (100.0, 100.0));
+
+    #[cfg(feature = "serde")]
+    {
+        let legacy_json = r#"{"width":800,"height":600,"scale":1.0,"line_thickness":2.0,"background_color":[16,18,22,255],"background_opacity":1.0,"aspect_ratio":"Free","log_x":false,"log_y":false}"#;
+        let parsed: ExportOptions = serde_json::from_str(legacy_json).expect("legacy options");
+        assert!(!parsed.seamless_tile);
+        assert_eq!(parsed.contour_levels, 8);
+        assert!((parsed.normal_strength - 4.0).abs() < 1e-6);
+    }
+}

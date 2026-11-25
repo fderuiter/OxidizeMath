@@ -32,6 +32,9 @@ mod state;
 mod overlay;
 pub use overlay::*;
 
+#[path = "fractals/scalar_export.rs"]
+mod scalar_export;
+
 #[path = "fractals/shader.rs"]
 mod shader;
 
@@ -216,33 +219,30 @@ impl InteractiveTool for FractalViewer {
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
-        let raw = if self.viewport_size.0 > 0 && self.viewport_size.1 > 0 {
-            self.viewport_size
+        Some(self.export_viewport_or_fallback_image())
+    }
+
+    fn export_raster_image_sized(
+        &self,
+        target_dims: (usize, usize),
+        seamless_tile: bool,
+    ) -> Option<egui::ColorImage> {
+        if seamless_tile {
+            self.export_raster_image()
         } else {
-            DEFAULT_EXPORT_VIEWPORT_SIZE
-        };
-        let (width, height) = clamp_fractal_dimensions(raw.0, raw.1, MAX_FRACTAL_TEXTURE_SIDE);
-        if !self.dirty && self.completed_generation == self.request_generation {
-            if let Some(snap) = self.worker.latest_snapshot() {
-                if (snap.width, snap.height) == (width, height) {
-                    if let Some(img) =
-                        snapshot_to_clamped_color_image(snap, MAX_FRACTAL_TEXTURE_SIDE)
-                    {
-                        return Some(img);
-                    }
-                }
-            }
+            Some(self.render_export_image_at(target_dims))
         }
-        let req = self.build_clamped_render_request(width, height);
-        let job = self
-            .mode
-            .is_custom()
-            .then(|| CompiledFractalJob::from_bar(&self.math_input));
-        Some(render_fractal_color_image_styled(
-            &req,
-            job.as_ref(),
-            self.color_style(),
-        ))
+    }
+
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        Some(self.build_scalar_field_2d(target_dims))
     }
 
     fn export_shader_source(&self, format: ShaderExportFormat) -> Result<String, String> {
@@ -321,7 +321,11 @@ impl FractalViewer {
         self.shader_preview.invalidate();
     }
 
-    fn build_clamped_render_request(&self, width: usize, height: usize) -> FractalRenderRequest {
+    pub(super) fn build_clamped_render_request(
+        &self,
+        width: usize,
+        height: usize,
+    ) -> FractalRenderRequest {
         let zoom = if self.zoom.is_finite() && (ZOOM_MIN..=ZOOM_MAX).contains(&self.zoom) {
             self.zoom
         } else {

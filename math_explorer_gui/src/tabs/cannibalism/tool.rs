@@ -266,6 +266,28 @@ impl PopulationStructureTool {
         ColorImage::new([width, height], pixels)
     }
 
+    fn build_lexis_scalar_field(&self) -> Option<crate::framework::ScalarField2D> {
+        if self.config.view_mode != PopulationViewMode::LexisHeatmap {
+            return None;
+        }
+        let width = self.lexis_columns.len();
+        let height = self.mvf_solver.ages().len();
+        if width < 2 || height < 2 {
+            return None;
+        }
+        let mut values = vec![0.0_f64; width * height];
+        for (x, col) in self.lexis_columns.iter().enumerate() {
+            for age_idx in 0..height {
+                let raw = col.get(age_idx).copied().unwrap_or(0.0);
+                let y = height - 1 - age_idx;
+                values[flatten_2d_index(x, y, width)] = if raw.is_finite() { raw } else { 0.0 };
+            }
+        }
+        Some(crate::framework::ScalarField2D::continuous(
+            width, height, values, false,
+        ))
+    }
+
     fn age_pyramid_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         let mvf_pts: Vec<[f64; 2]> = self
             .mvf_solver
@@ -431,6 +453,17 @@ impl InteractiveTool for PopulationStructureTool {
         } else {
             None
         }
+    }
+
+    fn supports_scalar_field_2d(&self) -> bool {
+        self.config.view_mode == PopulationViewMode::LexisHeatmap
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        self.build_lexis_scalar_field()
     }
 
     fn step_simulation(&mut self) {

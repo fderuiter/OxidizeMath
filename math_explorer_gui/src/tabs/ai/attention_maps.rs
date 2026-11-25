@@ -128,6 +128,17 @@ impl InteractiveTool for AttentionMapsTool {
         preset::render_attention_raster(&self.attention_weights, &self.output_matrix)
     }
 
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        preset::build_attention_scalar_field(&self.attention_weights, &self.output_matrix)
+    }
+
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         let input_mode = parent_ui.ctx().data(|d| {
             d.get_temp(egui::Id::new("INPUT_MODE"))

@@ -14,6 +14,7 @@ use egui_plot::export_primitives::{
     scale_color_image, ExportPrimitive,
 };
 
+use super::export_scalar_field::{render_scalar_field_svg_for_tool, target_dimensions_for_options};
 use super::{ExportFormat, ExportStatusSeverity, InteractiveTool, SimulationFramework};
 
 #[derive(Default)]
@@ -77,7 +78,7 @@ pub(super) fn sample_tool_gif_payload(
     options: &ExportOptions,
     frame_count: usize,
 ) -> Result<GifJobPayload, String> {
-    let (target_w, target_h) = resolve_gif_canvas_dimensions(options)?;
+    let (target_w, target_h) = target_dimensions_for_options(options)?;
     let count = frame_count.max(1);
     let saved_state = tool.save_state();
     let result = if let Some(first_raster) = valid_raster_image(tool) {
@@ -191,20 +192,13 @@ pub(super) fn valid_raster_image(tool: &dyn InteractiveTool) -> Option<egui::Col
         .filter(|img| img.width() > 0 && img.height() > 0 && !img.pixels.is_empty())
 }
 
-pub(super) fn resolve_gif_canvas_dimensions(
-    options: &ExportOptions,
-) -> Result<(usize, usize), String> {
-    let target_w = (options.width as f32 * options.scale).round().max(1.0) as u32;
-    let mut target_h = (options.height as f32 * options.scale).round().max(1.0) as u32;
-    if let Some(ratio) = options.aspect_ratio.ratio().filter(|&r| r > 0.0) {
-        target_h = (target_w as f32 / ratio).round().max(1.0) as u32;
-    }
-    if target_w > egui_plot::MAX_EXPORT_DIMENSION || target_h > egui_plot::MAX_EXPORT_DIMENSION {
-        return Err(format!(
-            "Requested dimensions ({target_w}x{target_h}) exceed maximum limit"
-        ));
-    }
-    Ok((target_w as usize, target_h as usize))
+fn valid_raster_image_sized(
+    tool: &dyn InteractiveTool,
+    target_dims: (usize, usize),
+    seamless_tile: bool,
+) -> Option<egui::ColorImage> {
+    tool.export_raster_image_sized(target_dims, seamless_tile)
+        .filter(|img| img.width() > 0 && img.height() > 0 && !img.pixels.is_empty())
 }
 
 fn render_tool_color_image_with_fallback(
@@ -212,11 +206,16 @@ fn render_tool_color_image_with_fallback(
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
 ) -> Result<egui::ColorImage, String> {
+    let (target_w, target_h) = target_dimensions_for_options(options)?;
     let mut preloaded_prims = None;
-    if let Some(raster) = valid_raster_image(tool) {
+    if let Some(raster) =
+        valid_raster_image_sized(tool, (target_w, target_h), options.seamless_tile)
+    {
+        if options.seamless_tile {
+            return Ok(raster);
+        }
         let plot_prims = tool.export_plot_primitives();
         if !has_drawable_primitives(&plot_prims) {
-            let (target_w, target_h) = resolve_gif_canvas_dimensions(options)?;
             return Ok(scale_color_image(&raster, target_w, target_h, options));
         }
         preloaded_prims = Some(plot_prims);
@@ -246,16 +245,18 @@ fn render_tool_svg_with_fallback(
     fallback_datasets: &[(String, Vec<[f64; 2]>)],
     options: &ExportOptions,
 ) -> Result<String, String> {
-    let mut preloaded_prims = None;
+    if let Some(res) = render_scalar_field_svg_for_tool(tool, options) {
+        return res;
+    }
+    let plot_prims = tool.export_plot_primitives();
+    if has_drawable_primitives(&plot_prims) {
+        return export_primitives_svg(&plot_prims, options);
+    }
     if let Some(raster) = valid_raster_image(tool) {
-        let plot_prims = tool.export_plot_primitives();
-        if !has_drawable_primitives(&plot_prims) {
-            return export_raster_svg(&raster, options);
-        }
-        preloaded_prims = Some(plot_prims);
+        return export_raster_svg(&raster, options);
     }
     let primitives =
-        resolve_tool_primitives_with_fallback(tool, fallback_datasets, preloaded_prims);
+        resolve_tool_primitives_with_fallback(tool, fallback_datasets, Some(plot_prims));
     if !has_drawable_primitives(&primitives) {
         return Err(format!(
             "{} produced no finite plot primitives or raster image to export",
@@ -272,6 +273,7 @@ pub(super) fn has_non_polyline_primitives(primitives: &[ExportPrimitive]) -> boo
             ExportPrimitive::Bar { .. }
                 | ExportPrimitive::Arrow { .. }
                 | ExportPrimitive::BoxElem { .. }
+                | ExportPrimitive::ContourPath { .. }
                 | ExportPrimitive::RasterImage { .. }
         )
     })

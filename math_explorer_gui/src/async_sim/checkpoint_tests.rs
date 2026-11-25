@@ -37,6 +37,7 @@ fn shared_morpho_params(d_u: f64, d_v: f64, dt: f64) -> Arc<RwLock<Morphogenesis
         d_v,
         dt,
         high_contrast: false,
+        periodic_boundary: false,
         theme_mode: crate::app::ThemeMode::Dark,
         heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
         mask_rle: None,

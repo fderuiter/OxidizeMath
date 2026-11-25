@@ -27,6 +27,14 @@ Immediate mode plotting for [`egui`](https://github.com/emilk/egui).
 - Locally: `cargo run -p demo`
 - Web: `(cd demo && trunk serve)`
 
+## Export Capabilities
+
+`egui_plot` includes cold-path vector and procedural raster encoders in `egui_plot::export` and `egui_plot::export_primitives`:
+
+- **Vector SVG (`ExportPrimitive::ContourPath`)**: Serializes stitched open and closed `<path d="M ... L ... Z"/>` curves grouped by `data-iso-level` alongside polylines, bars, box plots, and points.
+- **Seamless 1:1 Tiles (`ExportOptions::seamless_tile`)**: Bypasses figure border padding to output exact unpadded grid dimensions for tileable textures.
+- **16-Bit Heightmap & PBR Normal-Map PNGs**: `encode_heightmap_png_16bit` writes monotonic big-endian 16-bit grayscale PNGs (`0..=65535`), and `encode_normal_map_png` writes central-difference tangent-space RGB normal maps with optional toroidal wrap-around.
+
 ## History
 
 This crate was originally hosted at <https://github.com/emilk/egui> but was extracted into its own repository on 2024-07-15.

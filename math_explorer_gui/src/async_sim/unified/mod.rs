@@ -8,6 +8,7 @@ mod runner;
 pub mod sculpt;
 mod sonification;
 pub mod tool;
+pub use persistence::{CompiledFormulaPayload, UnifiedFormulaSpec};
 pub use runner::UnifiedSimRunner;
 pub use tool::*;
 
@@ -15,14 +16,10 @@ use crate::async_sim::{
     CheckpointParams, RegimeCartographer, SculptStatePayload, SimCommand, StateSnapshot,
     TimeTravelCheckpoint,
 };
-use crate::framework::{
-    BrushStroke, CalloutManager, ChallengeEvaluation, SpatialBrushKit, MAX_SYNTHESIZED_PARAMS,
-};
+use crate::framework::{BrushStroke, CalloutManager, ChallengeEvaluation, SpatialBrushKit};
 use eframe::egui;
-use math_commons::ast::CompiledExpr;
 use scientific_metadata::theory::ParameterConstraint;
 use std::collections::HashMap;
-use std::ops::RangeInclusive;
 use std::sync::{Arc, RwLock};
 
 pub(crate) const SYNC_PARAMETERS_COMMAND: &str = "__sync_parameters__";
@@ -105,36 +102,6 @@ pub trait UnifiedUiExtension: Send {
     fn state_revision_salt(&self) -> u64 {
         0
     }
-}
-
-/// Specification for an opt-in custom formula input bar on a [`UnifiedModel`].
-#[derive(Clone, Debug)]
-pub struct UnifiedFormulaSpec {
-    /// Left-hand side equation label (e.g. `"V(x)"`).
-    pub lhs_label: &'static str,
-    /// Initial default expression string.
-    pub default_expr: &'static str,
-    /// Coordinate axis variable names bound to leading bytecode slots (e.g. `&["x"]`).
-    pub axes: &'static [&'static str],
-    /// Curated `(display_name, expression)` presets.
-    pub presets: &'static [(&'static str, &'static str)],
-    /// Slider range bounds for auto-synthesized free parameters.
-    pub param_range: RangeInclusive<f64>,
-    /// Default value assigned to newly discovered free parameters.
-    pub param_default: f64,
-}
-
-/// `Arc`-shared compiled formula payload streamed to [`UnifiedSimRunner`] without worker-side parsing.
-#[derive(Clone, Debug)]
-pub struct CompiledFormulaPayload {
-    /// Monotonic revision incremented on formula or parameter slider edits.
-    pub revision: u64,
-    /// Compiled postfix AST bytecode.
-    pub compiled: Arc<CompiledExpr>,
-    /// Stack-allocated parameter values aligned with `compiled`.
-    pub params: [f64; MAX_SYNTHESIZED_PARAMS],
-    /// Number of active parameter slots in `params`.
-    pub param_len: usize,
 }
 
 #[allow(missing_docs)]
@@ -297,6 +264,25 @@ pub trait UnifiedModel:
         Self: Sized,
     {
         false
+    }
+
+    /// Whether this model exposes a native 2D scalar field for vector contour, heightmap, and normal-map exports.
+    fn supports_scalar_field_2d() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+
+    /// Extracts a 2D scalar field from the latest worker or stepped [`StateSnapshot`].
+    fn extract_scalar_field_2d(
+        _snapshot: &StateSnapshot,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D>
+    where
+        Self: Sized,
+    {
+        None
     }
 
     /// Returns `(grid_w, grid_h, flip_y)` when interactive `RasterBrushCanvas` sculpting is supported.

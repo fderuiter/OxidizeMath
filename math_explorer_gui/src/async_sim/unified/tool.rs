@@ -302,6 +302,41 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
         ))
     }
 
+    fn supports_scalar_field_2d(&self) -> bool {
+        M::supports_scalar_field_2d()
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        if !M::supports_scalar_field_2d() {
+            return None;
+        }
+        if let Some(snapshot) = self
+            .stepped_snapshot
+            .as_ref()
+            .or_else(|| self.controller.latest_snapshot())
+        {
+            if let Some(field) = M::extract_scalar_field_2d(snapshot, target_dims) {
+                return Some(field);
+            }
+        }
+        let params = self.params.read().ok()?;
+        let mut model = M::new(&params);
+        if let Some(ref encoded) = *self.obstacle_rle.read().unwrap_or_else(|e| e.into_inner()) {
+            model.apply_obstacle_rle(encoded);
+        }
+        if M::supports_spatial_brush() {
+            let sculpt = self.sculpt_state.read().unwrap_or_else(|e| e.into_inner());
+            if !sculpt.is_empty() {
+                model.apply_sculpt_payload(&sculpt, &params);
+            }
+        }
+        let fresh = model.get_snapshot();
+        M::extract_scalar_field_2d(&fresh, target_dims)
+    }
+
     fn step_simulation(&mut self) {
         self.step_unified_model();
     }

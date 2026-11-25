@@ -346,4 +346,29 @@ impl ChladniWaveTankTool {
             self.select_eigenmode(m, n);
         }
     }
+
+    pub(super) fn build_scalar_field_2d(&self) -> crate::framework::ScalarField2D {
+        let w = self.solver.width();
+        let h = self.solver.height();
+        let src = if self.state.driver_enabled && !self.state.line_source {
+            self.solver.modal_field()
+        } else if self.state.colormap == super::WaveColormap::PerceptualThermal {
+            self.solver.energy_field()
+        } else {
+            self.solver.displacement()
+        };
+        let mut values = vec![0.0; w * h];
+        let mut active_mask = vec![true; w * h];
+        for grid_y in 0..h {
+            let img_row = (h - 1) - grid_y;
+            for grid_x in 0..w {
+                let s_idx = flatten_2d_index(grid_x, grid_y, w);
+                let d_idx = flatten_2d_index(grid_x, img_row, w);
+                values[d_idx] = src[s_idx];
+                active_mask[d_idx] = self.solver.wall_mask[s_idx] > 0.5;
+            }
+        }
+        crate::framework::ScalarField2D::continuous(w, h, values, false)
+            .with_active_mask(active_mask)
+    }
 }

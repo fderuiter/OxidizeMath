@@ -103,6 +103,21 @@ pub enum ExportPrimitive {
         /// Stroke width in UI points.
         stroke_width: f32,
     },
+    /// Continuous iso-contour path extracted from a 2D scalar field.
+    ContourPath {
+        /// Contour series or field name.
+        name: String,
+        /// Scalar threshold level represented by this isoline.
+        iso_level: f64,
+        /// Ordered 2D coordinates along the contour chain in plot space.
+        points: Vec<[f64; 2]>,
+        /// Whether the path forms a closed loop (`Z` command in SVG).
+        closed: bool,
+        /// Stroke color (`Color32::TRANSPARENT` falls back to [`EXPORT_PALETTE`]).
+        color: egui::Color32,
+        /// Stroke width in UI points.
+        stroke_width: f32,
+    },
     /// Embedded raster image in plot coordinates or full plot area.
     RasterImage {
         /// Image label.
@@ -522,6 +537,11 @@ impl BoundsAccumulator {
                     self.include_point(pt);
                 }
             }
+            ExportPrimitive::ContourPath { points, .. } => {
+                for &pt in points {
+                    self.include_point(pt);
+                }
+            }
             ExportPrimitive::Bar { min, max, .. } => {
                 if let Some((c0, c1)) = sanitize_bar_corners(*min, *max, self.log_x, self.log_y) {
                     self.include_point(c0);
@@ -639,8 +659,14 @@ impl PrimitiveCanvasLayout {
         projected: [f64; 4],
         options: &ExportOptions,
     ) -> Self {
-        let [min_x, max_x, min_y, max_y] = padded_bounds(projected);
-        let padding = (20.0 * options.scale as f64).clamp(10.0, 100.0);
+        let ([min_x, max_x, min_y, max_y], padding) = if options.seamless_tile {
+            (unpadded_bounds(projected), 0.0)
+        } else {
+            (
+                padded_bounds(projected),
+                (20.0 * options.scale as f64).clamp(10.0, 100.0),
+            )
+        };
         let draw_w = (width as f64 - 2.0 * padding).max(1.0);
         let draw_h = (height as f64 - 2.0 * padding).max(1.0);
         Self {
@@ -688,6 +714,19 @@ pub(crate) fn resolve_canvas_dimensions(options: &ExportOptions) -> Result<(usiz
         ));
     }
     Ok((target_w.max(1) as usize, target_h.max(1) as usize))
+}
+
+pub(crate) fn unpadded_bounds(raw: [f64; 4]) -> [f64; 4] {
+    let [mut min_x, mut max_x, mut min_y, mut max_y] = raw;
+    if min_x >= max_x {
+        min_x -= 0.5;
+        max_x += 0.5;
+    }
+    if min_y >= max_y {
+        min_y -= 0.5;
+        max_y += 0.5;
+    }
+    [min_x, max_x, min_y, max_y]
 }
 
 pub(crate) fn padded_bounds(raw: [f64; 4]) -> [f64; 4] {

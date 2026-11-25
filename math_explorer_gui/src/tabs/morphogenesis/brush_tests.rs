@@ -16,6 +16,7 @@ fn test_morphogenesis_chemical_seed_and_hybrid_spot_stripe_mask_evolution() {
         d_v: 20.0,
         dt: 0.01,
         high_contrast: false,
+        periodic_boundary: false,
         theme_mode: crate::app::ThemeMode::Dark,
         heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
         mask_rle: None,

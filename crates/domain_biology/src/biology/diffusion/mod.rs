@@ -21,8 +21,8 @@ pub mod manifold;
 
 pub use fd1d::FiniteDifference1D;
 pub use fd2d::{
-    AdvectedSpatialDiffusion, CellMask2D, FiniteDifference2D, MaskedFiniteDifference2D,
-    ReactionCellRole,
+    AdvectedSpatialDiffusion, BoundaryMode, CellMask2D, FiniteDifference2D,
+    MaskedFiniteDifference2D, PeriodicBoundary, ReactionCellRole,
 };
 pub use fd3d::FiniteDifference3D;
 pub use laplace_beltrami::LaplaceBeltramiDiffusion2D;

@@ -66,6 +66,7 @@ pub struct IsingModelTool {
     pub(crate) texture: Option<egui::TextureHandle>,
     pub(crate) pixels: Vec<egui::Color32>,
     pub(crate) stepped_pixels: Option<(usize, usize, Vec<egui::Color32>)>,
+    pub(crate) stepped_spins: Option<(usize, usize, Vec<i8>)>,
     pub(crate) last_theme: Option<crate::app::ThemeMode>,
     pub(crate) dirty: bool,
     pub topology_source: crate::app::TopologySource,
@@ -111,6 +112,7 @@ impl IsingModelTool {
         let runner = Self::build_runner(&self.params);
         self.worker.replace_runner(runner);
         self.stepped_pixels = None;
+        self.stepped_spins = None;
         self.sync_metrics_from_latest();
         self.reset_trajectory_overlays();
         self.dirty = true;
@@ -143,6 +145,7 @@ impl IsingModelTool {
             self.push_seed_layout_to_worker();
         }
         self.stepped_pixels = None;
+        self.stepped_spins = None;
         self.pending_ode_resync = true;
         self.sync_metrics_from_latest();
         self.reset_trajectory_overlays();
@@ -184,6 +187,7 @@ impl Default for IsingModelTool {
             texture: None,
             pixels: Vec::new(),
             stepped_pixels: None,
+            stepped_spins: None,
             last_theme: None,
             dirty: true,
             topology_source: crate::app::TopologySource::SharedBus,
@@ -312,17 +316,18 @@ impl InteractiveTool for IsingModelTool {
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
-        if let Some((w, h, ref px)) = self.stepped_pixels {
-            if w > 0 && h > 0 && !px.is_empty() {
-                return Some(egui::ColorImage::new([w, h], px.clone()));
-            }
-        }
-        let snap = self.worker.latest_snapshot()?;
-        let px = snap.pixels.try_read().ok()?;
-        if px.is_empty() || snap.width == 0 || snap.height == 0 {
-            return None;
-        }
-        Some(egui::ColorImage::new([snap.width, snap.height], px.clone()))
+        self.build_ising_raster_image()
+    }
+
+    fn supports_scalar_field_2d(&self) -> bool {
+        !self.is_graph_mode()
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        self.build_ising_scalar_field()
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {
@@ -399,6 +404,7 @@ impl InteractiveTool for IsingModelTool {
                 self.staggered_magnetization = ms;
                 self.record_snapshot_progress();
                 self.stepped_pixels = None;
+                self.stepped_spins = None;
                 self.dirty = true;
             }
         }

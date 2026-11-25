@@ -276,6 +276,33 @@ impl AbelianSandpileStudio {
         }
     }
 
+    pub(super) fn build_export_scalar_field(&self) -> crate::framework::ScalarField2D {
+        let n = self.state.grid_size;
+        let mut pixels = vec![Color32::BLACK; n * n];
+        populate_sandpile_pixels(
+            &self.grid,
+            &self.burning_result.max_wave_depth,
+            self.state.view_mode,
+            self.state.colormap,
+            &mut pixels,
+        );
+        let heights = self.grid.heights();
+        let depths = self.grid.burn_depths();
+        let mut values = vec![0.0_f64; n * n];
+        for grid_y in 0..n {
+            let img_row = (n - 1) - grid_y;
+            for grid_x in 0..n {
+                let src_idx = flatten_2d_index(grid_x, grid_y, n);
+                let dst_idx = flatten_2d_index(grid_x, img_row, n);
+                values[dst_idx] = match self.state.view_mode {
+                    SandpileViewMode::GrainHeights => f64::from(heights[src_idx]),
+                    SandpileViewMode::DharBurningWaves => f64::from(depths[src_idx]),
+                };
+            }
+        }
+        crate::framework::ScalarField2D::discrete_lattice(n, n, values, pixels)
+    }
+
     pub(super) fn build_export_primitives(&self) -> Vec<ExportPrimitive> {
         let mut prims = Vec::new();
         let emp: Vec<[f64; 2]> = self.survival_points[..self.survival_len]

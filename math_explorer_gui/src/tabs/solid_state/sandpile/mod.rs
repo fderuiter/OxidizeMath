@@ -384,6 +384,17 @@ impl InteractiveTool for AbelianSandpileStudio {
         Some(self.build_export_color_image())
     }
 
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        Some(self.build_export_scalar_field())
+    }
+
     fn export_plot_primitives(&self) -> Vec<ExportPrimitive> {
         self.build_export_primitives()
     }

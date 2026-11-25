@@ -247,6 +247,7 @@ fn make_test_morphogenesis_runner() -> crate::tabs::morphogenesis::Morphogenesis
         d_v: 100.0,
         dt: 0.05,
         high_contrast: false,
+        periodic_boundary: false,
         theme_mode: crate::app::ThemeMode::Dark,
         heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
         mask_rle: None,

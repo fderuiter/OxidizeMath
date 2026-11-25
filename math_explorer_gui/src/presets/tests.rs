@@ -241,6 +241,7 @@ fn test_morphogenesis_tool_state_envelope_roundtrip() {
         advection_enabled: false,
         inlet_u: 0.10,
         viscosity: 0.02,
+        periodic_boundary: false,
     };
 
     let json = serialize_preset_envelope("Stripes Test", "biology", &config).unwrap();

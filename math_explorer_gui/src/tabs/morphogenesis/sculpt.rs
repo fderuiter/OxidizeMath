@@ -367,6 +367,7 @@ impl super::MorphogenesisTool {
                 self.stepped_pixels = None;
                 self.step_runner = None;
                 self.dirty = true;
+                self.invalidate_scalar_field_cache();
                 ctx.request_repaint();
             }
             "clear_mask" => {
@@ -384,6 +385,7 @@ impl super::MorphogenesisTool {
                 self.stepped_pixels = None;
                 self.step_runner = None;
                 self.dirty = true;
+                self.invalidate_scalar_field_cache();
                 ctx.request_repaint();
             }
             _ => {}

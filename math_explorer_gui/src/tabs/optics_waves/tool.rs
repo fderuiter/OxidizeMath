@@ -131,6 +131,53 @@ impl OpticsWaveTool {
             pending_initial_start: self.pending_initial_start,
         }
     }
+
+    fn build_optics_scalar_field(&self) -> crate::framework::ScalarField2D {
+        let show_irradiance = self
+            .params
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .show_irradiance;
+        if let Some(ref runner) = self.step_runner {
+            return Self::wave_field_to_scalar(&runner.field, show_irradiance);
+        }
+        if let Some(ref frame) = self.latest_frame {
+            let n = self.grid_size * self.grid_size;
+            if frame.field.len() == n && frame.obstacle.len() == n {
+                let src = if show_irradiance {
+                    &frame.irradiance
+                } else {
+                    &frame.field
+                };
+                return crate::framework::ScalarField2D::continuous(
+                    self.grid_size,
+                    self.grid_size,
+                    src.clone(),
+                    false,
+                )
+                .with_active_mask(frame.obstacle.iter().map(|&o| o == 0).collect());
+            }
+        }
+        let mut preview = OpticsWaveRunner::new(Arc::clone(&self.params), self.grid_size);
+        for _ in 0..4 {
+            preview.step();
+        }
+        Self::wave_field_to_scalar(&preview.field, show_irradiance)
+    }
+
+    fn wave_field_to_scalar(
+        wf: &math_explorer::pure_math::analysis::pde::wave::WaveField2D,
+        show_irradiance: bool,
+    ) -> crate::framework::ScalarField2D {
+        let cfg = wf.config();
+        let values = if show_irradiance {
+            wf.irradiance().to_vec()
+        } else {
+            wf.field().to_vec()
+        };
+        crate::framework::ScalarField2D::continuous(cfg.width, cfg.height, values, false)
+            .with_active_mask(wf.obstacle_mask().iter().map(|&o| o == 0).collect())
+    }
 }
 
 impl FiniteStateGuard for OpticsWaveTool {
@@ -273,6 +320,17 @@ impl InteractiveTool for OpticsWaveTool {
             pixels: px.clone(),
             ..Default::default()
         })
+    }
+
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        Some(self.build_optics_scalar_field())
     }
 
     fn step_simulation(&mut self) {

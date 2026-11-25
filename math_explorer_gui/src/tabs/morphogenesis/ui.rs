@@ -266,6 +266,10 @@ impl MorphogenesisTool {
 
             self.draw_fault_and_recovery(ui, &ctx);
             self.draw_kinetics_selector(ui);
+            {
+                let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+                ui.checkbox(&mut p.periodic_boundary, "Periodic Boundaries (Toroidal)");
+            }
             ui.separator();
             self.draw_parameter_sliders(ui);
             ui.separator();

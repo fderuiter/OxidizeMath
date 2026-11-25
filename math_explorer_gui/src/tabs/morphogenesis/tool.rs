@@ -63,6 +63,7 @@ fn default_shared_params() -> Arc<std::sync::RwLock<MorphogenesisSharedParams>> 
         d_v: 100.0,
         dt: 0.05,
         high_contrast: false,
+        periodic_boundary: false,
         theme_mode: ThemeMode::Dark,
         heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
         mask_rle: None,
@@ -183,6 +184,17 @@ impl InteractiveTool for MorphogenesisTool {
         self.export_morpho_twin_datasets()
     }
 
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        self.build_scalar_field_2d()
+    }
+
     fn export_raster_image(&self) -> Option<ColorImage> {
         self.export_morpho_raster_image()
     }
@@ -267,6 +279,7 @@ impl InteractiveTool for MorphogenesisTool {
             p.d_u.to_bits().hash(&mut h);
             p.d_v.to_bits().hash(&mut h);
             p.dt.to_bits().hash(&mut h);
+            p.periodic_boundary.hash(&mut h);
             p.heatmap_mode.hash(&mut h);
             p.mask_rle.hash(&mut h);
         }
@@ -299,7 +312,7 @@ impl InteractiveTool for MorphogenesisTool {
             .kinetics_state
             .read()
             .unwrap_or_else(|e| e.into_inner());
-        let (a, b, d_u, d_v, dt, hm, kinetics_mask_rle) = {
+        let (a, b, d_u, d_v, dt, periodic_boundary, hm, kinetics_mask_rle) = {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (
                 p.a,
@@ -307,6 +320,7 @@ impl InteractiveTool for MorphogenesisTool {
                 p.d_u,
                 p.d_v,
                 p.dt,
+                p.periodic_boundary,
                 p.heatmap_mode,
                 p.mask_rle.clone(),
             )
@@ -346,6 +360,7 @@ impl InteractiveTool for MorphogenesisTool {
             kinetics_mask_rle,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes,
+            periodic_boundary,
             advection_enabled: adv.enabled,
             inlet_u: adv.inlet_u,
             viscosity: adv.viscosity,

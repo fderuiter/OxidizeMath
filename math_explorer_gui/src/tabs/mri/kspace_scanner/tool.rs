@@ -303,6 +303,40 @@ impl InteractiveTool for MriKSpaceScannerTool {
         ))
     }
 
+    fn export_raster_image_sized(
+        &self,
+        _target_dims: (usize, usize),
+        seamless_tile: bool,
+    ) -> Option<egui::ColorImage> {
+        if seamless_tile {
+            Some(render_grayscale_panel(
+                &self.recon.reconstructed,
+                self.last_high_contrast.unwrap_or(false),
+            ))
+        } else {
+            self.export_raster_image()
+        }
+    }
+
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        if KSPACE_DIM < 2 || self.recon.reconstructed.len() != KSPACE_DIM * KSPACE_DIM {
+            return None;
+        }
+        Some(crate::framework::ScalarField2D::continuous(
+            KSPACE_DIM,
+            KSPACE_DIM,
+            self.recon.reconstructed.clone(),
+            false,
+        ))
+    }
+
     fn step_simulation(&mut self) {
         if self.state.custom_mask_hex.is_none() {
             match self.state.trajectory {

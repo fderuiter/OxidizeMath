@@ -7,7 +7,7 @@ fn build_offload_morpho_runner() -> (
     Arc<std::sync::RwLock<crate::tabs::morphogenesis::MorphogenesisSharedParams>>,
 ) {
     use crate::tabs::morphogenesis::{
-        MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTool,
+        MorphogenesisHeatmapMode, MorphogenesisRunner, MorphogenesisSharedParams, MorphogenesisTool,
     };
     use math_explorer::biology::diffusion::FiniteDifference2D;
     use math_explorer::biology::morphogenesis::{
@@ -38,8 +38,9 @@ fn build_offload_morpho_runner() -> (
         d_v: 100.0,
         dt: 0.05,
         high_contrast: false,
+        periodic_boundary: false,
         theme_mode: crate::app::ThemeMode::Dark,
-        heatmap_mode: crate::tabs::morphogenesis::MorphogenesisHeatmapMode::ActiveUb,
+        heatmap_mode: MorphogenesisHeatmapMode::ActiveUb,
         mask_rle: None,
     }));
     let runner = MorphogenesisRunner {
@@ -59,21 +60,16 @@ fn build_offload_morpho_runner() -> (
 fn test_morphogenesis_runner_offload() {
     let (mut runner, params) = build_offload_morpho_runner();
     let snap_before = runner.get_snapshot();
-    assert_eq!(snap_before.width, 20);
-    assert_eq!(snap_before.height, 20);
+    assert_eq!((snap_before.width, snap_before.height), (20, 20));
     assert_eq!(snap_before.pixels.read().unwrap().len(), 400);
 
-    // Step simulation
     runner.step();
-
-    // Verify parameter change takes effect immediately
     params.write().unwrap().a = 0.2;
     runner.step();
 
     let snap_after = runner.get_snapshot();
     assert_eq!(snap_after.pixels.read().unwrap().len(), 400);
 
-    // Generate artifact screenshot for PR
     let datasets = vec![(
         "Morphogenesis Turing Concentration".to_string(),
         (0..snap_after.width)

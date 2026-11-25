@@ -165,6 +165,8 @@ pub struct MorphogenesisSharedParams {
     pub dt: f64,
     /// Whether high-contrast palette rendering is active.
     pub high_contrast: bool,
+    /// Whether toroidal periodic boundaries are active.
+    pub periodic_boundary: bool,
     /// Active visual theme mode (`Dark`, `Light`, or `HighContrast`).
     pub theme_mode: crate::app::ThemeMode,
     /// Active counterfactual spatial heatmap mode (`ActiveUb`, `SplitUaUb`, or `DifferenceAbs`).

@@ -5392,7 +5392,13 @@
   ],
   "crates/domain_biology/src/biology/diffusion/fd2d/boundary.rs": [
     {
+      "signature": "pub enum BoundaryMode"
+    },
+    {
       "signature": "pub struct NeumannBoundary"
+    },
+    {
+      "signature": "pub struct PeriodicBoundary"
     },
     {
       "signature": "pub trait BoundaryStrategy"
@@ -5493,6 +5499,12 @@
       "signature": "impl FiniteDifference2D { pub fn new (_ : Dimension , _ : Dimension , _ : StepSize , _ : StepSize) -> Self }"
     },
     {
+      "signature": "impl FiniteDifference2D { pub fn new_periodic (_ : Dimension , _ : Dimension , _ : StepSize , _ : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl FiniteDifference2D { pub fn with_boundary_mode (self , _ : BoundaryMode) -> Self }"
+    },
+    {
       "signature": "impl FiniteDifference2D { pub fn with_mask (self) -> MaskedFiniteDifference2D }"
     },
     {
@@ -5500,6 +5512,12 @@
     },
     {
       "signature": "pub use advection :: AdvectedSpatialDiffusion"
+    },
+    {
+      "signature": "pub use boundary :: BoundaryMode"
+    },
+    {
+      "signature": "pub use boundary :: PeriodicBoundary"
     },
     {
       "signature": "pub use mask :: CellMask2D"
@@ -5612,6 +5630,9 @@
       "signature": "pub use fd2d :: AdvectedSpatialDiffusion"
     },
     {
+      "signature": "pub use fd2d :: BoundaryMode"
+    },
+    {
       "signature": "pub use fd2d :: CellMask2D"
     },
     {
@@ -5619,6 +5640,9 @@
     },
     {
       "signature": "pub use fd2d :: MaskedFiniteDifference2D"
+    },
+    {
+      "signature": "pub use fd2d :: PeriodicBoundary"
     },
     {
       "signature": "pub use fd2d :: ReactionCellRole"
@@ -12161,6 +12185,9 @@
       "signature": "impl FusedStencilStepper { pub fn step_2d_coupled_neumann < const N : usize , F > (& self , _ : (usize , usize) , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators ,) -> [f64 ; N] , }"
     },
     {
+      "signature": "impl FusedStencilStepper { pub fn step_2d_coupled_periodic < const N : usize , F > (& self , _ : (usize , usize) , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators ,) -> [f64 ; N] , }"
+    },
+    {
       "signature": "impl FusedStencilStepper { pub fn step_3d_coupled_neumann < const N : usize , F > (& self , _ : (usize , usize , usize) , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , StencilNeighbors3D < N > , & StencilOperators) -> [f64 ; N] , }"
     },
     {
@@ -16253,7 +16280,13 @@
       "signature": "pub use particles_and_contours :: ChladniSandSystem"
     },
     {
+      "signature": "pub use particles_and_contours :: ContourChain"
+    },
+    {
       "signature": "pub use particles_and_contours :: MarchingSquares2D"
+    },
+    {
+      "signature": "pub use particles_and_contours :: extract_stitched_contours"
     },
     {
       "signature": "pub use probes :: WaveProbeSample"
@@ -16384,6 +16417,9 @@
       "signature": "impl ChladniSandSystem { pub fn step (& mut self , _ : & [f64] , _ : & [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 ,) }"
     },
     {
+      "signature": "impl MarchingSquares2D { pub fn extract_stitched_chains (& self , _ : & [f64] , _ : Option < & [bool] > , _ : usize , _ : usize , _ : & [f64] ,) -> Vec < ContourChain > }"
+    },
+    {
       "signature": "impl MarchingSquares2D { pub fn extract_zero_contours (& mut self , _ : & [f64] , _ : & [f64] , _ : usize , _ : usize , _ : f64 ,) -> & [[[f64 ; 2] ; 2]] }"
     },
     {
@@ -16400,6 +16436,27 @@
     },
     {
       "signature": "pub struct MarchingSquares2D"
+    },
+    {
+      "signature": "pub use contour_stitch :: ContourChain"
+    },
+    {
+      "signature": "pub use contour_stitch :: MAX_CONTOUR_CHAINS"
+    },
+    {
+      "signature": "pub use contour_stitch :: MAX_CONTOUR_VERTICES"
+    },
+    {
+      "signature": "pub use contour_stitch :: extract_iso_segments"
+    },
+    {
+      "signature": "pub use contour_stitch :: extract_stitched_contours"
+    },
+    {
+      "signature": "pub use contour_stitch :: saddle_decider_positive"
+    },
+    {
+      "signature": "pub use contour_stitch :: weld_segments_to_chains"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/pde/wave_2d/probes.rs": [

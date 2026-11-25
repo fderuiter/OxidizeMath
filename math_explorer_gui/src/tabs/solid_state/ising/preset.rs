@@ -300,6 +300,7 @@ impl IsingModelTool {
         self.refresh_challenge_workspace();
         self.sync_worker_target_state(s.state, s.running);
         self.stepped_pixels = None;
+        self.stepped_spins = None;
         self.dirty = true;
         Ok(())
     }
@@ -317,6 +318,46 @@ impl IsingModelTool {
             self.droplet_seeds.remove(0);
         }
         self.droplet_seeds.push(seed);
+    }
+
+    pub(super) fn build_ising_raster_image(&self) -> Option<eframe::egui::ColorImage> {
+        if let Some((w, h, ref px)) = self.stepped_pixels {
+            if w > 0 && h > 0 && !px.is_empty() {
+                return Some(eframe::egui::ColorImage::new([w, h], px.clone()));
+            }
+        }
+        let snap = self.worker.latest_snapshot()?;
+        let px = snap.pixels.try_read().ok()?;
+        if px.is_empty() || snap.width == 0 || snap.height == 0 {
+            return None;
+        }
+        Some(eframe::egui::ColorImage::new(
+            [snap.width, snap.height],
+            px.clone(),
+        ))
+    }
+
+    pub(super) fn build_ising_scalar_field(&self) -> Option<crate::framework::ScalarField2D> {
+        if self.is_graph_mode() {
+            return None;
+        }
+        if let Some((w, h, ref spins)) = self.stepped_spins {
+            if w > 0 && h > 0 && spins.len() == w * h {
+                let values: Vec<f64> = spins.iter().map(|&s| f64::from(s)).collect();
+                return Some(crate::framework::ScalarField2D::continuous(
+                    w, h, values, true,
+                ));
+            }
+        }
+        let snap = self.worker.latest_snapshot()?;
+        if snap.width == 0 || snap.height == 0 {
+            return None;
+        }
+        let spins = snap.structured_data.as_ref()?.downcast_ref::<Vec<i8>>()?;
+        (spins.len() == snap.width * snap.height).then(|| {
+            let values: Vec<f64> = spins.iter().map(|&s| f64::from(s)).collect();
+            crate::framework::ScalarField2D::continuous(snap.width, snap.height, values, true)
+        })
     }
 }
 

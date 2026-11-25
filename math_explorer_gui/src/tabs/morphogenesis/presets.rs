@@ -93,6 +93,7 @@ impl FiniteStateGuard for MorphogenesisTool {
             p.d_u = 1.0;
             p.d_v = 100.0;
             p.dt = 0.05;
+            p.periodic_boundary = false;
             p.mask_rle = None;
         }
         self.mask_cells.fill(0);
@@ -187,6 +188,9 @@ pub struct MorphogenesisToolState {
         skip_serializing_if = "super::atlas::is_default_morpho_atlas_axes"
     )]
     pub atlas_axes: [String; 2],
+    /// Whether spatial diffusion wraps toroidally (`BoundaryMode::Periodic`) instead of zero-flux Neumann walls.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub periodic_boundary: bool,
     /// Whether coupled Lattice Boltzmann wind-tunnel advection is active.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub advection_enabled: bool,

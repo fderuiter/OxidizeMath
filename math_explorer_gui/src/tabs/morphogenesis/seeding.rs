@@ -101,6 +101,7 @@ impl MorphogenesisTool {
             p.d_u = parsed.d_u;
             p.d_v = parsed.d_v;
             p.dt = parsed.dt;
+            p.periodic_boundary = parsed.periodic_boundary;
             p.mask_rle = parsed.kinetics_mask_rle.clone();
             p.heatmap_mode = parsed.fork.map_or(
                 super::counterfactual::MorphogenesisHeatmapMode::ActiveUb,
@@ -239,6 +240,11 @@ impl MorphogenesisTool {
             kinetics_mask_rle: None,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes,
+            periodic_boundary: self
+                .params
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .periodic_boundary,
             advection_enabled: adv.enabled,
             inlet_u: adv.inlet_u,
             viscosity: adv.viscosity,

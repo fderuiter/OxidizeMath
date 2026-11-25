@@ -198,6 +198,15 @@ fn sample_normalized_energy_grad(
     (val.max(0.0), gx, gy)
 }
 
+/// Multi-threshold Marching-Squares saddle disambiguation and endpoint welding.
+#[path = "contour_stitch.rs"]
+pub mod contour_stitch;
+
+pub use contour_stitch::{
+    ContourChain, MAX_CONTOUR_CHAINS, MAX_CONTOUR_VERTICES, extract_iso_segments,
+    extract_stitched_contours, saddle_decider_positive, weld_segments_to_chains,
+};
+
 /// Pre-allocated 2D Marching-Squares zero-level nodal contour extractor.
 #[derive(Debug, Clone)]
 pub struct MarchingSquares2D {
@@ -220,6 +229,19 @@ impl MarchingSquares2D {
     #[verified_engine::verified]
     pub fn segments(&self) -> &[[[f64; 2]; 2]] {
         &self.segments
+    }
+
+    /// Cold-path helper extracting stitched open and closed [`ContourChain`]s across `iso_levels`.
+    #[verified_engine::verified]
+    pub fn extract_stitched_chains(
+        &self,
+        field: &[f64],
+        active_mask: Option<&[bool]>,
+        width: usize,
+        height: usize,
+        iso_levels: &[f64],
+    ) -> Vec<ContourChain> {
+        extract_stitched_contours(field, active_mask, width, height, iso_levels)
     }
 
     /// Extracts `field == 0.0` isoline segments across active cells without dynamic allocation.
@@ -284,41 +306,18 @@ impl MarchingSquares2D {
         }
         let xf = x as f64;
         let yf = y as f64;
-        let e_bottom = [xf + interp_zero(v00, v10), yf];
-        let e_right = [xf + 1.0, yf + interp_zero(v10, v11)];
-        let e_top = [xf + interp_zero(v01, v11), yf + 1.0];
-        let e_left = [xf, yf + interp_zero(v00, v01)];
-        self.push_case_segments(mask, e_bottom, e_right, e_top, e_left);
-    }
-
-    #[verified_engine::verified]
-    fn push_case_segments(&mut self, mask: u8, b: [f64; 2], r: [f64; 2], t: [f64; 2], l: [f64; 2]) {
-        match mask {
-            1 | 14 => self.segments.push([l, b]),
-            2 | 13 => self.segments.push([b, r]),
-            3 | 12 => self.segments.push([l, r]),
-            4 | 11 => self.segments.push([r, t]),
-            5 => {
-                self.segments.push([l, t]);
-                self.segments.push([b, r]);
-            }
-            6 | 9 => self.segments.push([b, t]),
-            7 | 8 => self.segments.push([l, t]),
-            10 => {
-                self.segments.push([l, b]);
-                self.segments.push([r, t]);
-            }
-            _ => {}
-        }
+        let edges = [
+            [xf + contour_stitch::interp_edge_zero(v00, v10), yf],
+            [xf + 1.0, yf + contour_stitch::interp_edge_zero(v10, v11)],
+            [xf + interp_zero_compat(v01, v11), yf + 1.0],
+            [xf, yf + contour_stitch::interp_edge_zero(v00, v01)],
+        ];
+        contour_stitch::cell_case_segments(mask, [v00, v10, v11, v01], edges, &mut self.segments);
     }
 }
 
+#[inline(always)]
 #[verified_engine::verified]
-fn interp_zero(a: f64, b: f64) -> f64 {
-    let denom = a - b;
-    if denom.abs() < 1.0e-15 {
-        0.5
-    } else {
-        (a / denom).clamp(0.0, 1.0)
-    }
+fn interp_zero_compat(a: f64, b: f64) -> f64 {
+    contour_stitch::interp_edge_zero(a, b)
 }

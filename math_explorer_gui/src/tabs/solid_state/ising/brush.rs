@@ -189,6 +189,7 @@ impl IsingModelTool {
             self.push_seed_layout_to_worker();
             self.refresh_challenge_workspace();
             self.stepped_pixels = None;
+            self.stepped_spins = None;
             if let Some(c) = ctx {
                 c.request_repaint();
             }
@@ -229,6 +230,7 @@ impl IsingModelTool {
             self.pending_ode_resync = true;
         }
         self.stepped_pixels = None;
+        self.stepped_spins = None;
         self.dirty = true;
         if let Some(c) = ctx {
             c.request_repaint();
@@ -258,6 +260,7 @@ impl IsingModelTool {
             .worker
             .send_command(SimCommand::Custom("clear_pins".to_string()));
         self.stepped_pixels = None;
+        self.stepped_spins = None;
         self.dirty = true;
         if let Some(c) = ctx {
             c.request_repaint();
@@ -353,13 +356,19 @@ impl IsingModelTool {
             }
         }
         let palette = theme.palette();
-        let pixels: Vec<egui::Color32> = lattice
+        let spins: Vec<i8> = lattice
             .spins()
             .iter()
             .zip(lattice.pinned().iter())
-            .map(|(&s, &pin)| ising_spin_color(if pin { s.saturating_mul(2) } else { s }, &palette))
+            .map(|(&s, &pin)| if pin { s.saturating_mul(2) } else { s })
             .collect();
-        self.stepped_pixels = Some((lattice.width(), lattice.height(), pixels));
+        let pixels: Vec<egui::Color32> = spins
+            .iter()
+            .map(|&s| ising_spin_color(s, &palette))
+            .collect();
+        let (w, h) = (lattice.width(), lattice.height());
+        self.stepped_pixels = Some((w, h, pixels));
+        self.stepped_spins = Some((w, h, spins));
         self.dirty = true;
     }
 }

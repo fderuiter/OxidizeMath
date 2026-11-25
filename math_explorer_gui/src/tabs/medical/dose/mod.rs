@@ -288,6 +288,17 @@ impl InteractiveTool for DoseCalculationTool {
         Some(self.compute_dose_image_for_contrast(self.high_contrast))
     }
 
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        Some(super::dose_export::build_dose_scalar_field(self))
+    }
+
     fn state_bounds(&self) -> ToolStateBounds {
         DoseState::STATE_BOUNDS
     }
@@ -335,59 +346,14 @@ impl InteractiveTool for DoseCalculationTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let (ptv_rle, oar_rle) = if self.imrt_mode && self.active_challenge.is_none() {
-            self.imrt_workspace.encode_custom_rle_masks()
-        } else {
-            (None, None)
-        };
-        let include_current = self.imrt_mode
-            && (self.gating_4d_enabled
-                || (self.beam_current_ma - NOMINAL_BEAM_CURRENT_MA).abs() > 1.0e-6);
-        let state = DoseState {
-            amplitude: self.amplitude,
-            beta: self.beta,
-            width: self.width,
-            height: self.height,
-            imrt_mode: self.imrt_mode,
-            beam_angles_deg: self.imrt_mode.then_some(self.beam_angles_deg),
-            beam_weights: self.imrt_mode.then_some(self.beam_weights),
-            prescription_gy: self.imrt_mode.then_some(self.prescription_gy),
-            oar_limit_gy: self.imrt_mode.then_some(self.oar_limit_gy),
-            gating_4d: self.imrt_mode && self.gating_4d_enabled,
-            beam_current_ma: include_current.then_some(self.beam_current_ma),
-            ptv_rle,
-            oar_rle,
-        };
-        serde_json::to_string(&state).ok()
+        serde_json::to_string(&DoseState::from_tool(self)).ok()
     }
 
     fn try_load_state(&mut self, state: &str) -> Result<(), String> {
         self.state_bounds().validate_json(state)?;
         let loaded: DoseState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid DoseCalculation state: {e}"))?;
-        loaded.validate()?;
-        self.amplitude = loaded.amplitude;
-        self.beta = loaded.beta;
-        self.width = loaded.width;
-        self.height = loaded.height;
-        self.imrt_mode = loaded.imrt_mode;
-        self.gating_4d_enabled = loaded.imrt_mode && loaded.gating_4d;
-        self.display_mode = if self.gating_4d_enabled {
-            DoseDisplayMode::Gated4d
-        } else {
-            DoseDisplayMode::StaticPlan
-        };
-        self.beam_current_ma = loaded.beam_current_ma.unwrap_or(NOMINAL_BEAM_CURRENT_MA);
-        self.beam_angles_deg = loaded.beam_angles_deg.unwrap_or(BASELINE_IMRT_ANGLES_DEG);
-        self.beam_weights = loaded.beam_weights.unwrap_or(BASELINE_IMRT_WEIGHTS);
-        self.prescription_gy = loaded
-            .prescription_gy
-            .unwrap_or(CHALLENGE_IMRT_PRESCRIPTION_GY);
-        self.oar_limit_gy = loaded.oar_limit_gy.unwrap_or(CHALLENGE_IMRT_OAR_LIMIT_GY);
-        self.imrt_workspace
-            .restore_rle_masks(loaded.ptv_rle.as_deref(), loaded.oar_rle.as_deref())?;
-        self.refresh_model();
-        Ok(())
+        loaded.apply_to_tool(self)
     }
 
     fn apply_challenge(&mut self, challenge_id: Option<&str>) -> Result<(), String> {

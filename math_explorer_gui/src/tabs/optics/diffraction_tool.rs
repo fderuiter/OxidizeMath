@@ -111,40 +111,50 @@ impl FraunhoferDiffractionTool {
         self.render_screen_pixels(&cfg);
     }
 
-    fn render_screen_pixels(&mut self, cfg: &FraunhoferConfig) {
+    fn eval_mapped_screen_irradiance(&self, cfg: &FraunhoferConfig, col: usize, row: usize) -> f64 {
         let half = ((SCREEN_SIDE - 1) as f64) * 0.5;
-        let boost = self.state.log_intensity_view;
+        let uy = ((row as f64) - half) / half;
+        let ux = ((col as f64) - half) / half;
+        let raw_i = match cfg.aperture {
+            DiffractionAperture::CircularAiry { .. } => {
+                let r_theta = (ux * ux + uy * uy).sqrt() * cfg.half_angle_rad;
+                fraunhofer_intensity_at_angle(cfg.aperture, cfg.wavelength_nm, r_theta.min(1.4))
+            }
+            _ => {
+                let tx = ux * cfg.half_angle_rad;
+                let ix = fraunhofer_intensity_at_angle(cfg.aperture, cfg.wavelength_nm, tx);
+                ix * (-2.2 * uy * uy).exp()
+            }
+        };
+        if self.state.log_intensity_view {
+            (1.0 + 40.0 * raw_i).ln() / 41.0_f64.ln()
+        } else {
+            raw_i
+        }
+    }
+
+    fn render_screen_pixels(&mut self, cfg: &FraunhoferConfig) {
         for row in 0..SCREEN_SIDE {
-            let uy = ((row as f64) - half) / half;
             for col in 0..SCREEN_SIDE {
-                let ux = ((col as f64) - half) / half;
-                let raw_i = match cfg.aperture {
-                    DiffractionAperture::CircularAiry { .. } => {
-                        let r_theta = (ux * ux + uy * uy).sqrt() * cfg.half_angle_rad;
-                        fraunhofer_intensity_at_angle(
-                            cfg.aperture,
-                            cfg.wavelength_nm,
-                            r_theta.min(1.4),
-                        )
-                    }
-                    _ => {
-                        let tx = ux * cfg.half_angle_rad;
-                        let ix = fraunhofer_intensity_at_angle(cfg.aperture, cfg.wavelength_nm, tx);
-                        let vert_env = (-2.2 * uy * uy).exp();
-                        ix * vert_env
-                    }
-                };
-                let mapped = if boost {
-                    (1.0 + 40.0 * raw_i).ln() / 41.0_f64.ln()
-                } else {
-                    raw_i
-                };
+                let mapped = self.eval_mapped_screen_irradiance(cfg, col, row);
                 self.screen_pixels[flatten_2d_index(col, row, SCREEN_SIDE)] = self
                     .state
                     .colormap
                     .sample_irradiance(mapped, cfg.wavelength_nm);
             }
         }
+    }
+
+    fn build_scalar_field_2d(&self) -> crate::framework::ScalarField2D {
+        let cfg = self.fraunhofer_config();
+        let mut values = vec![0.0; SCREEN_SIDE * SCREEN_SIDE];
+        for row in 0..SCREEN_SIDE {
+            for col in 0..SCREEN_SIDE {
+                values[flatten_2d_index(col, row, SCREEN_SIDE)] =
+                    self.eval_mapped_screen_irradiance(&cfg, col, row);
+            }
+        }
+        crate::framework::ScalarField2D::continuous(SCREEN_SIDE, SCREEN_SIDE, values, false)
     }
 
     pub(super) fn is_valid_state(s: &FraunhoferDiffractionState) -> bool {
@@ -306,6 +316,15 @@ impl InteractiveTool for FraunhoferDiffractionTool {
             pixels: self.screen_pixels.clone(),
             ..Default::default()
         })
+    }
+    fn supports_scalar_field_2d(&self) -> bool {
+        true
+    }
+    fn export_scalar_field_2d(
+        &self,
+        _target_dims: Option<(usize, usize)>,
+    ) -> Option<crate::framework::ScalarField2D> {
+        Some(self.build_scalar_field_2d())
     }
     fn export_plot_primitives(&self) -> Vec<ExportPrimitive> {
         self.build_export_primitives()

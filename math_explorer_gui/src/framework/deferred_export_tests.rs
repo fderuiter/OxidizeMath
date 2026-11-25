@@ -219,8 +219,10 @@ fn test_raster_texture_tools_png_svg_gif_exports() {
             .as_deref()
             .unwrap_or_else(|| panic!("{tool_name} SVG missing"));
         assert!(
-            svg.contains("data:image/png;base64,"),
-            "{tool_name} SVG should embed raster PNG"
+            svg.contains("<path ")
+                && !svg.contains("data:image/png;base64,")
+                && !svg.contains("<image"),
+            "{tool_name} SVG should emit vector contour <path> tags without raster PNG embedding"
         );
 
         run_deferred_frame(&mut framework, ExportFormat::Gif);

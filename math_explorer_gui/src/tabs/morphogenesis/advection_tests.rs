@@ -13,6 +13,7 @@ use crate::framework::{
     BrushMode, BrushStroke, ExportFormat, ExportStatusSeverity, InteractiveTool, SpatialBrushKit,
 };
 use crate::presets::MorphogenesisKineticsMode;
+use crate::starter_gallery::{PRESET_TURING_SPOTS, PRESET_TURING_STRIPES};
 use crate::tabs::ExplorerTab;
 use crate::url_state::{encode_share_fragment, parse_share_location, MAX_DECODED_URL_STATE_BYTES};
 use eframe::egui::{self, CentralPanel, Frame, Key, Modifiers};
@@ -68,6 +69,7 @@ fn make_advection_test_runner(
         d_v: 0.08,
         dt: 0.9,
         high_contrast: false,
+        periodic_boundary: false,
         theme_mode: crate::app::ThemeMode::Dark,
         heatmap_mode: super::counterfactual::MorphogenesisHeatmapMode::ActiveUb,
         mask_rle: None,
@@ -284,11 +286,8 @@ fn test_keyboard_reticle_syncs_cell_mask_and_lbm_obstacles() {
 fn test_baseline_presets_omit_default_advection_fields() {
     let mut tab = MorphogenesisTab::default();
     let cases = [
-        ("Turing Spots", crate::starter_gallery::PRESET_TURING_SPOTS),
-        (
-            "Turing Stripes",
-            crate::starter_gallery::PRESET_TURING_STRIPES,
-        ),
+        ("Turing Spots", PRESET_TURING_SPOTS),
+        ("Turing Stripes", PRESET_TURING_STRIPES),
         ("Gray-Scott Mitosis", PRESET_GRAY_SCOTT_MITOSIS),
     ];
     for (title, preset_json) in cases {

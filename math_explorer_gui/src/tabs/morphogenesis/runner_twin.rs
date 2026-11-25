@@ -12,7 +12,9 @@ use super::sculpt::enforce_system_mask;
 use super::MorphogenesisTool;
 use crate::framework::decode_rle_mask;
 use crate::framework::recovery::FiniteStateGuard;
-use math_explorer::biology::diffusion::{FiniteDifference2D, MaskedFiniteDifference2D};
+use math_explorer::biology::diffusion::{
+    BoundaryMode, FiniteDifference2D, MaskedFiniteDifference2D,
+};
 use math_explorer::biology::morphogenesis::{DiffusionCoeff, TuringSystem};
 use math_explorer::math_kernel::types::{Dimension, StepSize};
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::LatticeBoltzmannD2Q9;
@@ -66,6 +68,11 @@ fn build_seeded_system(
     width: usize,
     height: usize,
 ) -> TuringSystem<2, MorphogenesisKineticsAdapter, MaskedFiniteDifference2D> {
+    let bmode = if params.periodic_boundary {
+        BoundaryMode::Periodic
+    } else {
+        BoundaryMode::Neumann
+    };
     let mut kinetics =
         MorphogenesisKineticsAdapter::new(ks.mode, params.a, params.b, ks.f, ks.k, width * height);
     super::brush::apply_mask_rle_to_kinetics(
@@ -80,6 +87,7 @@ fn build_seeded_system(
         StepSize(1.0),
         StepSize(1.0),
     )
+    .with_boundary_mode(bmode)
     .with_mask();
     let mut system = TuringSystem::new_with_kinetics(
         Dimension(width * height),
