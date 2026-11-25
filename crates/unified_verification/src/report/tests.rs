@@ -362,6 +362,9 @@ fn test_write_certificate_only_emits_9_key_schema_without_touching_tracked_files
     assert_eq!(
         keys,
         [
+            "certified_enclosures_verified",
+            "certified_interval_max_width",
+            "certified_root_max_ulp_bound",
             "native_execution_coverage_pct",
             "passed",
             "test_assertion_density",
@@ -372,5 +375,17 @@ fn test_write_certificate_only_emits_9_key_schema_without_touching_tracked_files
             "verified_production_assertion_density",
             "wasm_path_coverage_pct",
         ]
+    );
+    assert!(eval.report.certified_enclosures_verified);
+    assert!(eval.report.certified_root_max_ulp_bound <= 4);
+    assert!(eval.report.certified_interval_max_width > 0.0);
+
+    let mut bad_cert = eval.report.clone();
+    bad_cert.certified_root_max_ulp_bound = 5;
+    write_certificate_only(&bad_cert, &artifact_abs).unwrap();
+    assert!(
+        verify_certificate_against_report(&eval.report, None, 1.5, &artifact_abs, &readme_path)
+            .is_err(),
+        "Root enclosure ULP bound > 4 must fail certificate verification"
     );
 }

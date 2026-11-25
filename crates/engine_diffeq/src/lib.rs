@@ -5,6 +5,8 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+/// Zero-allocation forward-mode `Dual<T>` diffusion Jacobian adapter.
+pub mod ad_system;
 /// Symmetric `B-A-O-A-B` underdamped Langevin dynamics solver.
 pub mod baoab;
 /// Multivariate Itô and Stratonovich Euler-Maruyama / Euler-Heun SDE solver.
@@ -18,6 +20,10 @@ pub mod sriw1;
 /// Multivariate SDE and Langevin system traits and calculus definitions.
 pub mod system;
 
+pub use ad_system::{
+    AdSde, DifferentiableSde, MAX_INLINE_SDE_DIFFUSION, MAX_INLINE_SDE_DIM,
+    eval_diffusion_jacobian_dual,
+};
 pub use baoab::{BaoabLangevinSolver, BaoabParams};
 pub use euler_maruyama::EulerMaruyamaSolver;
 pub use jump::ssa_sample_event;

@@ -3,6 +3,7 @@
 
 pub mod codegen;
 pub mod compiled;
+mod compiled_ad;
 pub mod eval;
 pub mod expr;
 pub mod glsl;

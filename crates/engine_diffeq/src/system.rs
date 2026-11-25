@@ -61,7 +61,12 @@ pub trait SdeSystem<T: Scalar> {
             return;
         }
 
-        let eps_base = T::from_f64(1e-6);
+        let norm_v = norm_sq.sqrt();
+        let mut max_x = T::ONE;
+        for &xi in &x[..d] {
+            max_x = max_x.max(xi.abs());
+        }
+        let eps_base = T::EPSILON.sqrt() * max_x / norm_v;
         let inv_two_eps = T::HALF / eps_base;
         for i in 0..d {
             scratch_x[i] = x[i] + eps_base * direction[i];

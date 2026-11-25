@@ -1,5 +1,6 @@
 pub mod certificate;
 mod coverage;
+pub mod enclosures;
 
 pub use coverage::{collect_llvm_cov_json, parse_coverage};
 
@@ -32,6 +33,12 @@ pub struct IntegrityReport {
     pub verified_production_assertion_density: f64,
     #[serde(default)]
     pub test_assertion_density: f64,
+    #[serde(default)]
+    pub certified_interval_max_width: f64,
+    #[serde(default)]
+    pub certified_root_max_ulp_bound: u64,
+    #[serde(default)]
+    pub certified_enclosures_verified: bool,
     pub passed: bool,
 }
 
@@ -275,13 +282,21 @@ pub fn evaluate_integrity_gates(
 
     let (unauthorized_debt, authorized_opt_outs, authorized_unverified_crates) =
         collect_debt_violations(m, debt, config);
-    let gate_errors = build_gate_errors(
+    let mut gate_errors = build_gate_errors(
         native_cov_pct,
         verified_density,
         total_prod_density,
         verified_prod_density,
         config,
     );
+    let enc = enclosures::evaluate_certified_enclosures();
+    if !enc.verified || enc.root_max_ulp_bound > enclosures::MAX_CERTIFIED_ROOT_ULPS {
+        gate_errors.push(format!(
+            "Certified interval/ball root enclosure failed containment or exceeded {} ULPs (got {} ULPs)",
+            enclosures::MAX_CERTIFIED_ROOT_ULPS,
+            enc.root_max_ulp_bound
+        ));
+    }
     let passed = gate_errors.is_empty() && unauthorized_debt.is_empty();
 
     GateEvaluation {
@@ -294,6 +309,9 @@ pub fn evaluate_integrity_gates(
             total_production_assertion_density: total_prod_density,
             verified_production_assertion_density: verified_prod_density,
             test_assertion_density: test_density,
+            certified_interval_max_width: enc.max_width,
+            certified_root_max_ulp_bound: enc.root_max_ulp_bound,
+            certified_enclosures_verified: enc.verified,
             passed,
         },
         unauthorized_debt,
@@ -351,6 +369,12 @@ fn print_dashboard(eval: &GateEvaluation) {
     println!(
         "Authorized whitelist exemptions: {} opt-outs, {} non-domain crates",
         eval.authorized_opt_outs, eval.authorized_unverified_crates
+    );
+    println!(
+        "Certified Enclosures: max_width={:.3e}, root_max_ulp_bound={} (verified={})",
+        r.certified_interval_max_width,
+        r.certified_root_max_ulp_bound,
+        r.certified_enclosures_verified
     );
     print_gate_failures(eval);
 }

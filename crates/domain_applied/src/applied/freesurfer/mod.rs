@@ -99,7 +99,7 @@ pub use segmentation::{
 };
 pub use surface::{
     MriVolume, Surface, evolve_surface, evolve_surface_deformable, external_energy,
-    external_energy_volume, internal_energy,
+    external_energy_volume, internal_energy, normal_external_force_ad,
 };
 pub use thickness::{
     FlatSpatialGrid, SpatialGrid, ThicknessWorkspace, cortical_thickness, cortical_thickness_batch,

@@ -168,3 +168,47 @@ fn test_vandermonde_qr_conditioning_at_eps_1e8() {
     );
     assert!((c[2] - 0.4).abs() <= 2e-8);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_levenberg_marquardt_ad_single_pass_dual_vec_zero_alloc() {
+    use core::cell::Cell;
+    use math_scalars::{DualVec, Scalar};
+    use verified_engine::engine::VerifiedEngine;
+
+    let true_p = [1.2_f64, -0.35, 2.4, 0.6, 0.9, 1.7];
+    let mut pts = [[0.0_f64; 2]; 51];
+    for (i, slot) in pts.iter_mut().enumerate() {
+        let x = (i as f64) * 0.15;
+        let y = true_p[0]
+            + true_p[1] * x
+            + true_p[2] * (-true_p[3] * x).exp()
+            + true_p[4] * (true_p[5] * x).sin();
+        *slot = [x, y];
+    }
+
+    let seeds = [1.05_f64, -0.25, 2.1, 0.45, 0.7, 1.55];
+    let ad_calls = Cell::new(0usize);
+    let (fitted, _metrics) = VerifiedEngine::run_verified(|| {
+        levenberg_marquardt_ad(
+            &pts,
+            &seeds,
+            |x, p: &[DualVec<f64, MAX_FIT_PARAMS>]| -> Option<DualVec<f64, MAX_FIT_PARAMS>> {
+                ad_calls.set(ad_calls.get() + 1);
+                let xv = DualVec::from_f64(x);
+                let y = p[0] + p[1] * xv + p[2] * (-p[3] * xv).exp() + p[4] * (p[5] * xv).sin();
+                y.is_finite_val().then_some(y)
+            },
+        )
+    });
+    let fitted = fitted.expect("single-pass DualVec LM convergence");
+    for (got, want) in fitted.iter().zip(true_p.iter()) {
+        assert!((got - want).abs() < 1e-8, "got={got}, want={want}");
+    }
+    let sse = sum_squared_errors_numeric(&pts, &fitted, |x, p| {
+        Some(p[0] + p[1] * x + p[2] * (-p[3] * x).exp() + p[4] * (p[5] * x).sin())
+    })
+    .expect("finite sse");
+    assert!(sse < 1e-16, "expected SSE < 1e-16, got {sse}");
+    assert!(ad_calls.get() > 0 && ad_calls.get() < 51 * 40);
+}

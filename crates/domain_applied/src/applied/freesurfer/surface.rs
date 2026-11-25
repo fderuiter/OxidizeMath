@@ -1,5 +1,9 @@
+#[path = "surface_ad.rs"]
+mod surface_ad;
 #[path = "surface/topology.rs"]
 mod topology;
+
+pub use surface_ad::normal_external_force_ad;
 
 use topology::{
     SURFACE_CHUNK, accumulate_biharmonic_terms, accumulate_chunk_topology,
@@ -123,49 +127,18 @@ impl MriVolume {
         c0 * (1.0 - tz) + c1 * tz
     }
 
-    /// Evaluates Gaussian-smoothed intensity $(G_\sigma * I)(s)$ via a separable 3x3x3 kernel.
+    /// Evaluates $C^\infty$ separable Gaussian-smoothed intensity $(G_\sigma * I)(s)$.
     #[must_use]
     #[verified_engine::verified]
     pub fn smoothed_intensity(&self, point: &[f64; 3], sigma: f64) -> f64 {
-        if !sigma.is_finite() || sigma <= 1e-6 {
-            return self.sample_trilinear(point);
-        }
-        let offsets = [-sigma, 0.0, sigma];
-        let weights = [0.25, 0.5, 0.25];
-        let mut accum = 0.0;
-        for (ix, &ox) in offsets.iter().enumerate() {
-            for (iy, &oy) in offsets.iter().enumerate() {
-                let w_xy = weights[ix] * weights[iy];
-                for (iz, &oz) in offsets.iter().enumerate() {
-                    let q = [point[0] + ox, point[1] + oy, point[2] + oz];
-                    accum += (w_xy * weights[iz]) * self.sample_trilinear(&q);
-                }
-            }
-        }
-        accum
+        self.smoothed_intensity_scalar(point, sigma)
     }
 
-    /// Evaluates the spatial gradient $\nabla (G_\sigma * I)(s)$ via central finite differences.
+    /// Evaluates the exact spatial gradient $\nabla (G_\sigma * I)(s)$ via single-pass [`math_scalars::DualVec<f64, 3>`] AD.
     #[must_use]
     #[verified_engine::verified]
     pub fn smoothed_gradient(&self, point: &[f64; 3], sigma: f64) -> [f64; 3] {
-        let s = if sigma.is_finite() {
-            sigma.max(0.0)
-        } else {
-            0.0
-        };
-        let h = s.max(self.voxel_size).max(1e-3);
-        let inv_2h = 0.5 / h;
-        let gx = (self.smoothed_intensity(&[point[0] + h, point[1], point[2]], s)
-            - self.smoothed_intensity(&[point[0] - h, point[1], point[2]], s))
-            * inv_2h;
-        let gy = (self.smoothed_intensity(&[point[0], point[1] + h, point[2]], s)
-            - self.smoothed_intensity(&[point[0], point[1] - h, point[2]], s))
-            * inv_2h;
-        let gz = (self.smoothed_intensity(&[point[0], point[1], point[2] + h], s)
-            - self.smoothed_intensity(&[point[0], point[1], point[2] - h], s))
-            * inv_2h;
-        [gx, gy, gz]
+        self.smoothed_gradient_ad(point, sigma)
     }
 }
 
@@ -254,39 +227,7 @@ fn normal_external_force(
     volume: &MriVolume,
     sigma: f64,
 ) -> [f64; 3] {
-    let norm = (raw_normal[0] * raw_normal[0]
-        + raw_normal[1] * raw_normal[1]
-        + raw_normal[2] * raw_normal[2])
-        .sqrt();
-    if norm <= 1e-12 {
-        return [0.0; 3];
-    }
-    let (nx, ny, nz) = (
-        raw_normal[0] / norm,
-        raw_normal[1] / norm,
-        raw_normal[2] / norm,
-    );
-    let delta = 0.5 * sigma.max(volume.voxel_size).max(1e-3);
-    let gp = volume.smoothed_gradient(
-        &[
-            point[0] + delta * nx,
-            point[1] + delta * ny,
-            point[2] + delta * nz,
-        ],
-        sigma,
-    );
-    let gm = volume.smoothed_gradient(
-        &[
-            point[0] - delta * nx,
-            point[1] - delta * ny,
-            point[2] - delta * nz,
-        ],
-        sigma,
-    );
-    let e_plus = -(gp[0] * gp[0] + gp[1] * gp[1] + gp[2] * gp[2]);
-    let e_minus = -(gm[0] * gm[0] + gm[1] * gm[1] + gm[2] * gm[2]);
-    let neg_de_dn = -(e_plus - e_minus) / (2.0 * delta);
-    [neg_de_dn * nx, neg_de_dn * ny, neg_de_dn * nz]
+    normal_external_force_ad(point, raw_normal, volume, sigma)
 }
 
 #[derive(Clone, Copy)]

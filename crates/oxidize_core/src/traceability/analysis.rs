@@ -30,7 +30,7 @@ pub(super) fn extract_citations_with_lines(content: &str) -> Vec<(String, usize)
             if paper_name
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')
-                && !paper_name.is_empty()
+                && paper_name.chars().any(|c| c.is_ascii_alphanumeric())
             {
                 let line = content[..tag_start].bytes().filter(|&b| b == b'\n').count() + 1;
                 cites.push((paper_name, line));

@@ -1,4 +1,9 @@
 // [cite:modular_polynomials_review]
+pub use super::surface_ad::SurfaceJet2;
+use super::surface_ad::{
+    eval_jet2_ad, eval_partials_ad, heightfield_scalar, klein_scalar, parametric_triple_scalar,
+    sphere_scalar, torus_scalar,
+};
 use math_commons::ast::CompiledExpr;
 use nalgebra::{Matrix2, Point3, Vector3};
 
@@ -12,19 +17,24 @@ pub trait ParametricSurface {
     fn position(&self, u: f64, v: f64) -> Point3<f64>;
 
     /// Returns the partial derivative $\frac{\partial r}{\partial u}$.
-    /// Default implementation uses finite differences.
+    /// Default implementation uses scale-aware central finite differences.
     #[verified_engine::verified]
     fn partial_u(&self, u: f64, v: f64) -> Vector3<f64> {
-        let h = math_commons::registry::TOLERANCE_FAST;
+        let h = f64::EPSILON.sqrt() * u.abs().max(1.0);
         (self.position(u + h, v) - self.position(u - h, v)) / (2.0 * h)
     }
 
     /// Returns the partial derivative $\frac{\partial r}{\partial v}$.
-    /// Default implementation uses finite differences.
+    /// Default implementation uses scale-aware central finite differences.
     #[verified_engine::verified]
     fn partial_v(&self, u: f64, v: f64) -> Vector3<f64> {
-        let h = math_commons::registry::TOLERANCE_FAST;
+        let h = f64::EPSILON.sqrt() * v.abs().max(1.0);
         (self.position(u, v + h) - self.position(u, v - h)) / (2.0 * h)
+    }
+
+    /// Returns exact first- and second-order forward-AD derivatives at $(u, v)$ when available.
+    fn eval_jet2(&self, _u: f64, _v: f64) -> Option<SurfaceJet2> {
+        None
     }
 }
 
@@ -81,10 +91,14 @@ impl<T: ?Sized + ParametricSurface> SurfaceAnalysis for T {
 
     #[verified_engine::verified]
     fn second_fundamental_form(&self, u: f64, v: f64) -> (f64, f64, f64) {
+        if let Some(jet) = self.eval_jet2(u, v) {
+            let n = jet.ru.cross(&jet.rv).normalize();
+            return (jet.ruu.dot(&n), jet.ruv.dot(&n), jet.rvv.dot(&n));
+        }
         let h = 1e-5;
         let n = self.unit_normal(u, v);
 
-        // Second derivatives via finite differences
+        // Fallback second derivatives via finite differences for custom non-AD surfaces
         let p = self.position(u, v);
         let pu_plus = self.position(u + h, v);
         let pu_minus = self.position(u - h, v);
@@ -98,7 +112,7 @@ impl<T: ?Sized + ParametricSurface> SurfaceAnalysis for T {
         let puv_mm = self.position(u - h, v - h);
         let puv_pm = self.position(u + h, v - h);
         let puv_mp = self.position(u - h, v + h);
-        let ruv = (puv_pp.coords - puv_mp.coords - puv_pm.coords + puv_mm.coords) / (4.0 * h * h); // Central difference mixed
+        let ruv = (puv_pp.coords - puv_mp.coords - puv_pm.coords + puv_mm.coords) / (4.0 * h * h);
 
         (ruu.dot(&n), ruv.dot(&n), rvv.dot(&n))
     }
@@ -148,17 +162,23 @@ pub struct Sphere {
 impl ParametricSurface for Sphere {
     #[verified_engine::verified]
     fn position(&self, u: f64, v: f64) -> Point3<f64> {
-        // u = theta (azimuthal), v = phi (polar)
-        // x = R sin(v) cos(u)
-        // y = R sin(v) sin(u)
-        // z = R cos(v)
-        let x = self.radius * v.sin() * u.cos();
-        let y = self.radius * v.sin() * u.sin();
-        let z = self.radius * v.cos();
+        let [x, y, z] = sphere_scalar(self, u, v);
         Point3::new(x, y, z)
     }
 
-    // Optional: Override derivatives for analytical precision if needed
+    #[verified_engine::verified]
+    fn partial_u(&self, u: f64, v: f64) -> Vector3<f64> {
+        eval_partials_ad(u, v, |du, dv| sphere_scalar(self, du, dv)).0
+    }
+
+    #[verified_engine::verified]
+    fn partial_v(&self, u: f64, v: f64) -> Vector3<f64> {
+        eval_partials_ad(u, v, |du, dv| sphere_scalar(self, du, dv)).1
+    }
+
+    fn eval_jet2(&self, u: f64, v: f64) -> Option<SurfaceJet2> {
+        Some(eval_jet2_ad(u, v, |hu, hv| sphere_scalar(self, hu, hv)))
+    }
 }
 
 /// A Torus with major radius R and minor radius r.
@@ -172,11 +192,22 @@ pub struct Torus {
 impl ParametricSurface for Torus {
     #[verified_engine::verified]
     fn position(&self, u: f64, v: f64) -> Point3<f64> {
-        // u \in [0, 2pi), v \in [0, 2pi)
-        let x = (self.major_radius + self.minor_radius * v.cos()) * u.cos();
-        let y = (self.major_radius + self.minor_radius * v.cos()) * u.sin();
-        let z = self.minor_radius * v.sin();
+        let [x, y, z] = torus_scalar(self, u, v);
         Point3::new(x, y, z)
+    }
+
+    #[verified_engine::verified]
+    fn partial_u(&self, u: f64, v: f64) -> Vector3<f64> {
+        eval_partials_ad(u, v, |du, dv| torus_scalar(self, du, dv)).0
+    }
+
+    #[verified_engine::verified]
+    fn partial_v(&self, u: f64, v: f64) -> Vector3<f64> {
+        eval_partials_ad(u, v, |du, dv| torus_scalar(self, du, dv)).1
+    }
+
+    fn eval_jet2(&self, u: f64, v: f64) -> Option<SurfaceJet2> {
+        Some(eval_jet2_ad(u, v, |hu, hv| torus_scalar(self, hu, hv)))
     }
 }
 
@@ -190,15 +221,22 @@ pub struct KleinBottle {
 impl ParametricSurface for KleinBottle {
     #[verified_engine::verified]
     fn position(&self, u: f64, v: f64) -> Point3<f64> {
-        // Standard "figure-8" immersion:
-        // u \in [0, 2pi), v \in [0, 2pi)
-        let r = self.radius;
-        let x = (r + r / 2.0 * v.cos() * (u / 2.0).cos() - r / 2.0 * v.sin() * (u / 2.0).sin())
-            * u.cos();
-        let y = (r + r / 2.0 * v.cos() * (u / 2.0).cos() - r / 2.0 * v.sin() * (u / 2.0).sin())
-            * u.sin();
-        let z = r / 2.0 * v.sin() * (u / 2.0).cos() + r / 2.0 * v.cos() * (u / 2.0).sin();
+        let [x, y, z] = klein_scalar(self, u, v);
         Point3::new(x, y, z)
+    }
+
+    #[verified_engine::verified]
+    fn partial_u(&self, u: f64, v: f64) -> Vector3<f64> {
+        eval_partials_ad(u, v, |du, dv| klein_scalar(self, du, dv)).0
+    }
+
+    #[verified_engine::verified]
+    fn partial_v(&self, u: f64, v: f64) -> Vector3<f64> {
+        eval_partials_ad(u, v, |du, dv| klein_scalar(self, du, dv)).1
+    }
+
+    fn eval_jet2(&self, u: f64, v: f64) -> Option<SurfaceJet2> {
+        Some(eval_jet2_ad(u, v, |hu, hv| klein_scalar(self, hu, hv)))
     }
 }
 
@@ -251,6 +289,25 @@ impl ParametricSurface for CompiledHeightfieldSurface {
         let z = self.compiled.eval_2d(u, v, &self.params[..self.param_len]);
         Point3::new(u, v, sanitize_surface_coord(z))
     }
+
+    #[verified_engine::verified]
+    fn partial_u(&self, u: f64, v: f64) -> Vector3<f64> {
+        let p = &self.params[..self.param_len];
+        eval_partials_ad(u, v, |du, dv| heightfield_scalar(&self.compiled, p, du, dv)).0
+    }
+
+    #[verified_engine::verified]
+    fn partial_v(&self, u: f64, v: f64) -> Vector3<f64> {
+        let p = &self.params[..self.param_len];
+        eval_partials_ad(u, v, |du, dv| heightfield_scalar(&self.compiled, p, du, dv)).1
+    }
+
+    fn eval_jet2(&self, u: f64, v: f64) -> Option<SurfaceJet2> {
+        let p = &self.params[..self.param_len];
+        Some(eval_jet2_ad(u, v, |hu, hv| {
+            heightfield_scalar(&self.compiled, p, hu, hv)
+        }))
+    }
 }
 
 /// Parametric 3D surface $r(u, v) = (x(u, v), y(u, v), z(u, v))$ backed by [`CompiledExpr`] triples.
@@ -291,6 +348,31 @@ impl ParametricSurface for CompiledParametricSurface {
         let y = sanitize_surface_coord(self.y_expr.eval_2d(u, v, p));
         let z = sanitize_surface_coord(self.z_expr.eval_2d(u, v, p));
         Point3::new(x, y, z)
+    }
+
+    #[verified_engine::verified]
+    fn partial_u(&self, u: f64, v: f64) -> Vector3<f64> {
+        let p = &self.params[..self.param_len];
+        eval_partials_ad(u, v, |du, dv| {
+            parametric_triple_scalar(&self.x_expr, &self.y_expr, &self.z_expr, p, du, dv)
+        })
+        .0
+    }
+
+    #[verified_engine::verified]
+    fn partial_v(&self, u: f64, v: f64) -> Vector3<f64> {
+        let p = &self.params[..self.param_len];
+        eval_partials_ad(u, v, |du, dv| {
+            parametric_triple_scalar(&self.x_expr, &self.y_expr, &self.z_expr, p, du, dv)
+        })
+        .1
+    }
+
+    fn eval_jet2(&self, u: f64, v: f64) -> Option<SurfaceJet2> {
+        let p = &self.params[..self.param_len];
+        Some(eval_jet2_ad(u, v, |hu, hv| {
+            parametric_triple_scalar(&self.x_expr, &self.y_expr, &self.z_expr, p, hu, hv)
+        }))
     }
 }
 
@@ -348,7 +430,15 @@ mod compiled_surface_tests {
             (compiled_torus.gaussian_curvature(0.7, 1.1)
                 - analytic_torus.gaussian_curvature(0.7, 1.1))
             .abs()
-                < 1e-6
+                < 1e-13
+        );
+        // Exact analytical Torus Gaussian curvature K(u, v) = cos(v) / (r * (R + r cos(v)))
+        let (r_maj, r_min, v) = (2.0_f64, 0.6_f64, 1.1_f64);
+        let k_exact = v.cos() / (r_min * (r_maj + r_min * v.cos()));
+        let err = (analytic_torus.gaussian_curvature(0.7, v) - k_exact).abs();
+        assert!(
+            err < 1e-14,
+            "Torus Gaussian curvature error {err:e} >= 1e-14"
         );
     }
 }

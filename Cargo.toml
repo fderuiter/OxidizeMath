@@ -2,6 +2,7 @@
 members = [
     "crates/00_foundation/math_diagnostics",
     "crates/00_foundation/math_rng",
+    "crates/00_foundation/math_scalars",
     "crates/federated_registry",
     "crates/diagnostics",
     "crates/oxidize_core",

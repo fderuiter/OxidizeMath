@@ -10,6 +10,7 @@ pub mod mean_curvature_flow;
 pub mod operators;
 /// Submodule providing `surface` types, traits, and algorithms.
 pub mod surface;
+mod surface_ad;
 
 pub use cotangent_mesh::CotangentLaplacian;
 

@@ -8,6 +8,7 @@ use toml::Value;
 
 const RELEASE_WORKSPACE_MEMBERS: &[&str] = &[
     "crates/00_foundation/math_rng",
+    "crates/00_foundation/math_scalars",
     "crates/02_engines/engine_linalg",
     "crates/math_commons",
     "crates/scientific_metadata",

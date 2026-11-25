@@ -16,6 +16,15 @@ pub struct VerificationCertificate {
     pub verified_modules_density: f64,
     /// Assertion-to-function ratio across unverified modules.
     pub unverified_modules_density: f64,
+    /// Maximum outward-rounded width across certified reference enclosures.
+    #[serde(default)]
+    pub certified_interval_max_width: f64,
+    /// Maximum IEEE-754 ULP bound across certified Interval/Ball root enclosures (`<= 4`).
+    #[serde(default)]
+    pub certified_root_max_ulp_bound: u64,
+    /// Whether all certified interval/ball reference enclosures passed containment and ULP bounds.
+    #[serde(default)]
+    pub certified_enclosures_verified: bool,
     /// Whether all workspace verification thresholds passed.
     pub passed: bool,
 }
@@ -50,13 +59,22 @@ mod core_tests {
                 total_assertion_density: 0.65,
                 verified_modules_density: 0.55,
                 unverified_modules_density: 0.70,
+                certified_interval_max_width: 8.88e-16,
+                certified_root_max_ulp_bound: 4,
+                certified_enclosures_verified: true,
                 passed: true,
             }),
         };
         assert_eq!(payload.report.scanned_files, 2);
         assert!(payload.certificate.as_ref().is_some_and(|c| c.passed));
 
-        let sample = concat!("// [cite", ":pure_math] [cite", ":ai_01]");
+        let sample = concat!(
+            "// [cite",
+            ":pure_math] [cite",
+            ":ai_01] [cite",
+            ":...] [cite",
+            ":---]"
+        );
         let cites = TraceabilityEngine::<DefaultVfs>::extract_citations(sample);
         assert_eq!(cites, vec!["pure_math", "ai_01"]);
     }
@@ -138,6 +156,9 @@ mod tests {
                 total_assertion_density: 0.76,
                 verified_modules_density: 0.61,
                 unverified_modules_density: 0.83,
+                certified_interval_max_width: 8.88e-16,
+                certified_root_max_ulp_bound: 4,
+                certified_enclosures_verified: true,
                 passed: true,
             }),
         };

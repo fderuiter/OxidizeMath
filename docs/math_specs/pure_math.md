@@ -55,7 +55,7 @@ Initial/boundary value, Riemannian/Lorentzian manifold, and combinatorial/stocha
 
 ### Stability
 
-`SGD` converges on $L$-smooth convex objectives for $0 < \eta < 2/L$; `Adam` guards denominator division via $\epsilon > 0$ and checked step-counter conversions; explicit 2D wave/heat stencils enforce Courant-Friedrichs-Lewy bounds ($c\,\Delta t \sqrt{\Delta x^{-2} + \Delta y^{-2}} \le 1$); LU/QR linear solvers reject singular or rank-deficient systems via typed `LinearAlgebraError`.
+`SGD` converges on $L$-smooth convex objectives for $0 < \eta < 2/L$; `Adam` guards denominator division via $\epsilon > 0$ and checked step-counter conversions; outward-rounded `IntervalNewton` ($N(X) = m(X) - f(m(X))/f'(X)$) and `Krawczyk` ($K(X) = m(X) - Y f(m(X)) + (1 - Y f'(X))(X - m(X))$) contractors guarantee root containment with `<= 4` ULP final brackets near simple roots; explicit 2D wave/heat stencils enforce Courant-Friedrichs-Lewy bounds ($c\,\Delta t \sqrt{\Delta x^{-2} + \Delta y^{-2}} \le 1$); LU/QR linear solvers reject singular or rank-deficient systems via typed `LinearAlgebraError`.
 
 ### Domain of Validity
 

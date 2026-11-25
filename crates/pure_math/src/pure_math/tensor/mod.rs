@@ -35,6 +35,8 @@
 //! assert!((gamma_theta_phi_phi + 0.5).abs() < 1e-4);
 //! ```
 
+/// Forward-mode automatic differentiation metric adapters and covariant derivative operators.
+pub mod ad_metric;
 /// Submodule providing `christoffel` types, traits, and algorithms.
 pub mod christoffel;
 /// Submodule providing `differentiation` types, traits, and algorithms.
@@ -47,6 +49,10 @@ pub mod static_metric;
 pub mod types;
 
 // Re-exports for convenience
+pub use ad_metric::{
+    AdRiemannianMetric, AdStaticRiemannianMetric, covariant_derivative_contravariant_ad,
+    covariant_derivative_covariant_ad,
+};
 pub use christoffel::{christoffel_symbols, christoffel_symbols_fixed};
 pub use geodesic::{GeodesicState, GeodesicStepStatus, GeodesicSystem};
 pub use lorentzian::{LorentzianConnection4D, SchwarzschildConnection4D};

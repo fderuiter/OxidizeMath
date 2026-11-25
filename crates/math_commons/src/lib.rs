@@ -25,6 +25,10 @@ pub mod stochastic;
 /// Quantum angular-momentum coupling and Wigner $3j$ / Clebsch-Gordan coefficients.
 pub mod wigner;
 
+pub use math_scalars::{
+    self as scalars, Ball, Dual, DualVec, HyperDual, Interval, RealScalar, Scalar as DiffScalar,
+};
+
 #[cfg(test)]
 mod serde_tests;
 

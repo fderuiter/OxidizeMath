@@ -17,7 +17,9 @@ use std::pin::Pin;
 const MANIFEST_FILENAME: &str = "traceability_manifest.json";
 
 const CORE_DEP_CRATES: &[&str] = &[
+    "00_foundation/math_diagnostics",
     "00_foundation/math_rng",
+    "00_foundation/math_scalars",
     "02_engines/engine_linalg",
     "diagnostics",
     "federated_registry",
@@ -194,6 +196,7 @@ pub fn generate_traceability_snapshot(out_dir: &Path) {
     let ws_root = Path::new("..");
     let vfs = BuildSnapshotVfs::new(ws_root);
     vfs.emit_if_exists(Path::new("build_snapshot.rs"));
+    vfs.emit_if_exists(&ws_root.join("traceability.toml"));
 
     let cert_path = ws_root.join("Verification_Certificate.json");
     vfs.emit_if_exists(&cert_path);

@@ -333,3 +333,81 @@ fn test_all_engine_diffeq_solvers_zero_heap_allocations_under_verified_lock() {
     assert!(state[0].is_finite() && q[0].is_finite() && p[0].is_finite());
     assert!(receipt.function_calls > 0);
 }
+
+struct GenericSinhSde {
+    sigma: f64,
+}
+
+impl engine_diffeq::DifferentiableSde for GenericSinhSde {
+    fn state_dim(&self) -> usize {
+        1
+    }
+    fn wiener_dim(&self) -> usize {
+        1
+    }
+    fn drift_scalar<S: math_commons::DiffScalar>(&self, _t: S, _x: &[S], out_drift: &mut [S]) {
+        out_drift[0] = S::ZERO;
+    }
+    fn diffusion_scalar<S: math_commons::DiffScalar>(
+        &self,
+        _t: S,
+        x: &[S],
+        out_diffusion: &mut [S],
+    ) {
+        out_diffusion[0] = S::from_f64(self.sigma) * (S::ONE + x[0].sqr()).sqrt();
+    }
+}
+
+#[test]
+fn test_f32_sde_and_milstein_dual_derivatives_within_1_ulp_at_x_64() {
+    use engine_diffeq::AdSde;
+    use math_commons::RealScalar;
+
+    let ad_sys = AdSde(GenericSinhSde { sigma: 0.75 });
+    let x0 = 64.0_f32;
+    let sigma = 0.75_f32;
+    let g_exact = sigma * (1.0_f32 + x0 * x0).sqrt();
+    let dg_g_exact = sigma * sigma * x0;
+
+    let mut out_dg = [0.0_f32; 1];
+    let mut sx = [0.0_f32; 1];
+    let mut sp = [0.0_f32; 1];
+    let mut sm = [0.0_f32; 1];
+    let ((), _) = VerifiedEngine::run_verified(|| {
+        SdeSystem::<f32>::diffusion_jacobian_action(
+            &ad_sys,
+            0.0_f32,
+            &[x0],
+            0,
+            &[g_exact],
+            &mut out_dg,
+            &mut sx,
+            &mut sp,
+            &mut sm,
+        );
+    });
+    assert!(
+        out_dg[0].ulp_distance(dg_g_exact) <= 1,
+        "SdeSystem Dual<f32> derivative {} differed from {} by {} ULPs",
+        out_dg[0],
+        dg_g_exact,
+        out_dg[0].ulp_distance(dg_g_exact)
+    );
+
+    let milstein = MilsteinSolver::new(StochasticCalculus::Stratonovich);
+    let mut state = [x0];
+    let mut scratch = [0.0_f32; 16];
+    let dw = 1.0_f32;
+    let ((), _) = VerifiedEngine::run_verified(|| {
+        let mut ws = SolverWorkspace::new(&mut scratch);
+        milstein.step_with_increments(&ad_sys, 0.0_f32, 0.0_f32, &[dw], &mut state, &mut ws);
+    });
+    let expected_step = x0 + g_exact + 0.5_f32 * dg_g_exact;
+    assert!(
+        state[0].ulp_distance(expected_step) <= 1,
+        "Milstein Dual<f32> update {} differed from {} by {} ULPs",
+        state[0],
+        expected_step,
+        state[0].ulp_distance(expected_step)
+    );
+}

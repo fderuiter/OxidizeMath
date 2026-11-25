@@ -124,3 +124,85 @@ fn test_all_root_finders_zero_allocation_on_convergence_and_errors() {
         Err(AnalysisError::InvalidBracket { .. })
     ));
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_newton_at_3e9_and_interval_newton_krawczyk_sqrt2_enclosures() -> Result<(), AnalysisError> {
+    use math_scalars::{Dual, Interval, Scalar};
+
+    let target = 3.0e9_f64;
+    let solver = NewtonRaphson::new(64, 1e-12);
+    let ((r_fd, r_ad, iv_newt, iv_kraw, ball_newt, ball_kraw), _metrics) =
+        VerifiedEngine::run_verified(|| {
+            let fd = solver.find_root(|x| (x - target) * (x + 1.0e8), 2.5e9, 3.8e9);
+            let ad = solver.find_root_ad(
+                |x: Dual<f64>| (x - Dual::from_f64(target)) * (x + Dual::from_f64(1.0e8)),
+                3.15e9,
+            );
+
+            let bracket = Interval::new(1.0_f64, 2.0_f64);
+            let f_iv = |x: Dual<Interval<f64>>| x * x - Dual::constant(Interval::point(2.0_f64));
+            let inewt = IntervalNewton::default().enclose_root(f_iv, bracket);
+            let kraw = Krawczyk::default().enclose_root(f_iv, bracket);
+            let bnewt = IntervalNewton::default().enclose_root_ball(f_iv, bracket);
+            let bkraw = Krawczyk::default().enclose_root_ball(f_iv, bracket);
+            (fd, ad, inewt, kraw, bnewt, bkraw)
+        });
+
+    let root_fd = r_fd?;
+    let root_ad = r_ad?;
+    assert!(
+        (root_fd - target).abs() / target < 1e-13,
+        "Newton FD failed at 3.0e9: got {root_fd}"
+    );
+    assert!(
+        (root_ad - target).abs() / target < 1e-15,
+        "Newton AD failed at 3.0e9: got {root_ad}"
+    );
+
+    let enc_n = iv_newt?;
+    let enc_k = iv_kraw?;
+    let ball_n = ball_newt?;
+    let ball_k = ball_kraw?;
+    let sqrt2 = std::f64::consts::SQRT_2;
+
+    assert!(enc_n.contains(sqrt2) && (enc_n * enc_n).contains(2.0));
+    assert!(enc_k.contains(sqrt2) && (enc_k * enc_k).contains(2.0));
+    assert!(
+        enc_n.width_ulps() <= 4,
+        "IntervalNewton width {} > 4 ULPs",
+        enc_n.width_ulps()
+    );
+    assert!(
+        enc_k.width_ulps() <= 4,
+        "Krawczyk width {} > 4 ULPs",
+        enc_k.width_ulps()
+    );
+    assert!(ball_n.contains(sqrt2) && ball_n.to_interval().width_ulps() <= 4);
+    assert!(ball_k.contains(sqrt2) && ball_k.to_interval().width_ulps() <= 4);
+    Ok(())
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_interval_newton_and_krawczyk_transcendental_pi_enclosure() -> Result<(), AnalysisError> {
+    use math_scalars::{Dual, Interval, Scalar};
+
+    let ((iv_newt, iv_kraw), _metrics) = VerifiedEngine::run_verified(|| {
+        let bracket = Interval::new(3.0_f64, 3.3_f64);
+        let f_sin = |x: Dual<Interval<f64>>| x.sin();
+        (
+            IntervalNewton::default().enclose_root(f_sin, bracket),
+            Krawczyk::default().enclose_root(f_sin, bracket),
+        )
+    });
+
+    let enc_n = iv_newt?;
+    let enc_k = iv_kraw?;
+    let pi_iv = Interval::<f64>::pi_enclosure();
+    assert!(enc_n.contains(std::f64::consts::PI) && enc_n.intersect(pi_iv).is_some());
+    assert!(enc_k.contains(std::f64::consts::PI) && enc_k.intersect(pi_iv).is_some());
+    assert!(enc_n.sin().contains(0.0) && enc_n.width_ulps() <= 4);
+    assert!(enc_k.sin().contains(0.0) && enc_k.width_ulps() <= 4);
+    Ok(())
+}

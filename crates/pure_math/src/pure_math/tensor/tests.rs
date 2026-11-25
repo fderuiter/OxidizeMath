@@ -9,10 +9,13 @@ use verified_engine::metrics::{disable_verification, enable_verification};
 use crate::pure_math::analysis::ode::{ArrayState, RungeKutta4};
 
 use super::{
+    AdRiemannianMetric, AdStaticRiemannianMetric, ContravariantVector, CovariantVector,
     GeodesicState, GeodesicStepStatus, GeodesicSystem, LorentzianConnection4D,
     SchwarzschildConnection4D, StaticMetric, StaticRiemannianMetric, TensorError, TwoSphereMetric,
-    christoffel_symbols, static_christoffel_symbols,
+    christoffel_symbols, covariant_derivative_contravariant_ad, covariant_derivative_covariant_ad,
+    static_christoffel_symbols,
 };
+use math_scalars::{Dual, DualVec, Scalar};
 
 #[test]
 #[verified_engine::verified]
@@ -164,4 +167,77 @@ fn schwarzschild_connection_4d_avoids_horizon_stencil_breakdown_and_zero_allocs(
     unlock_allocations();
     disable_verification();
     assert!(acc_sum.is_finite());
+}
+
+#[test]
+#[verified_engine::verified]
+fn ad_riemannian_metric_christoffel_and_covariant_derivatives_achieve_1e_13_accuracy() {
+    let radius = 2.5_f64;
+    let sphere = TwoSphereMetric::new(radius).expect("valid sphere");
+    let pt_s = SVector::<f64, 2>::new(0.82, 1.15);
+    let exact_gammas = sphere.christoffel_at(&pt_s).expect("analytical gammas");
+    let ad_static_gammas = static_christoffel_symbols(&sphere, &pt_s).expect("static AD gammas");
+
+    let ad_static_closure = AdStaticRiemannianMetric::new(|p: &[DualVec<f64, 2>; 2]| {
+        let s = p[0].sin();
+        let r2 = DualVec::constant(radius * radius);
+        Ok([[r2, DualVec::ZERO], [DualVec::ZERO, r2 * s * s]])
+    });
+    let closure_gammas =
+        static_christoffel_symbols(&ad_static_closure, &pt_s).expect("closure AD gammas");
+
+    let dpt = DVector::from_vec(vec![pt_s[0], pt_s[1]]);
+    let ad_dyn = AdRiemannianMetric::new(|p: &[Dual<f64>]| {
+        let s = p[0].sin();
+        let r2 = Dual::constant(radius * radius);
+        Ok(vec![r2, Dual::ZERO, Dual::ZERO, r2 * s * s])
+    });
+    let dyn_gammas = christoffel_symbols(&ad_dyn, &dpt).expect("dynamic AD gammas");
+
+    for mu in 0..2 {
+        for alpha in 0..2 {
+            for beta in 0..2 {
+                let want = exact_gammas[mu][(alpha, beta)];
+                assert!((ad_static_gammas[mu][(alpha, beta)] - want).abs() < 1e-13);
+                assert!((closure_gammas[mu][(alpha, beta)] - want).abs() < 1e-13);
+                assert!((dyn_gammas[mu][(alpha, beta)] - want).abs() < 1e-13);
+            }
+        }
+    }
+
+    let contra_cov = covariant_derivative_contravariant_ad(
+        |p: &[Dual<f64>]| vec![p[0].sin() * p[1].cos(), (-p[0]).exp() * p[1].sin()],
+        &ad_dyn,
+        &dpt,
+    )
+    .expect("AD contravariant covariant derivative");
+    let cov_cov = covariant_derivative_covariant_ad(
+        |p: &[Dual<f64>]| vec![p[0].sin() * p[1].cos(), (-p[0]).exp() * p[1].sin()],
+        &ad_dyn,
+        &dpt,
+    )
+    .expect("AD covariant derivative");
+
+    let (th, ph) = (pt_s[0], pt_s[1]);
+    let v = [th.sin() * ph.cos(), (-th).exp() * ph.sin()];
+    let dv = [
+        [th.cos() * ph.cos(), -th.sin() * ph.sin()],
+        [-(-th).exp() * ph.sin(), (-th).exp() * ph.cos()],
+    ];
+    let _ = (
+        ContravariantVector::new(dpt.clone()),
+        CovariantVector::new(dpt),
+    );
+    for i in 0..2 {
+        for j in 0..2 {
+            let mut want_contra = dv[i][j];
+            let mut want_cov = dv[i][j];
+            for k in 0..2 {
+                want_contra += exact_gammas[i][(k, j)] * v[k];
+                want_cov -= exact_gammas[k][(i, j)] * v[k];
+            }
+            assert!((contra_cov.0[(i, j)] - want_contra).abs() < 1e-13);
+            assert!((cov_cov.0[(i, j)] - want_cov).abs() < 1e-13);
+        }
+    }
 }

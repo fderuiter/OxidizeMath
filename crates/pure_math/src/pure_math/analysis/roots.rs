@@ -5,6 +5,10 @@
 
 use thiserror::Error;
 
+#[path = "interval_roots.rs"]
+mod interval_roots;
+pub use interval_roots::{IntervalNewton, Krawczyk};
+
 /// Copy, zero-allocation errors that can occur during numerical root finding.
 #[derive(Debug, Clone, Copy, PartialEq, Error)]
 pub enum AnalysisError {
@@ -264,7 +268,8 @@ impl NewtonRaphson {
             if !next_x.is_finite() {
                 return Err(AnalysisError::ConvergenceError(x));
             }
-            if (next_x - x).abs() < self.tolerance {
+            let step_tol = self.tolerance.max(4.0 * f64::EPSILON * next_x.abs());
+            if (next_x - x).abs() <= step_tol {
                 return Ok(next_x);
             }
             x = next_x;
@@ -292,8 +297,10 @@ impl RootFinder for NewtonRaphson {
     {
         validate_solver_bounds(min, max, self.tolerance)?;
         let guess = 0.5 * (min + max);
-        let h = 1e-7;
-        let derivative = |x: f64| (f(x + h) - f(x - h)) / (2.0 * h);
+        let derivative = |x: f64| {
+            let h = f64::EPSILON.sqrt() * x.abs().max(1.0);
+            (f(x + h) - f(x - h)) / (2.0 * h)
+        };
         self.find_root_with_derivative(&f, derivative, guess)
     }
 }
