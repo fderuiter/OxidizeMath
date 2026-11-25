@@ -298,3 +298,65 @@ fn detects_missing_umbrella_from_for_domain_and_cross_crate_errors() {
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn enforces_tier0_foundation_errors_sealed_supertraits_and_conversions_submodules() {
+    let dir = crate::utils::test_utils::create_temp_test_dir("facade_tier0_and_sealed_ok");
+    for mod_rel in DOMAIN_INNER_MODS {
+        let p = dir.join(mod_rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, "pub use crate::error;\n").unwrap();
+    }
+    write_minimal_facade_fixture(&dir, true, "");
+    let rng_dir = dir.join("crates/00_foundation/math_rng/src");
+    fs::create_dir_all(&rng_dir).unwrap();
+    fs::write(
+        rng_dir.join("lib.rs"),
+        "mod private { pub trait Sealed {} }\npub trait RngScalar: Copy + private::Sealed {}\npub enum QmcError { InvalidBase }\n",
+    )
+    .unwrap();
+
+    let apis = extract_apis_in_dir(&dir);
+    let violations = check_facade_completeness_in_dir(&dir, &apis);
+    assert!(
+        !violations.iter().any(|v| v.contains("Sealed")),
+        "private::Sealed supertrait must not trigger unexported signature violation: {violations:?}"
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("Facade error gap") && v.contains("QmcError")),
+        "Expected Tier 0 QmcError facade gap, got: {violations:?}"
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("AIError") && v.contains("From<QmcError>")),
+        "Expected Tier 0 QmcError umbrella From gap, got: {violations:?}"
+    );
+
+    fs::write(
+        dir.join("math_explorer/src/error.rs"),
+        "pub use domain_ai::error::AIError;\npub use math_rng::QmcError;\n",
+    )
+    .unwrap();
+    fs::create_dir_all(dir.join("crates/domain_ai/src/error")).unwrap();
+    fs::write(
+        dir.join("crates/domain_ai/src/error.rs"),
+        "pub enum AIError { Invalid }\nmod conversions;\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("crates/domain_ai/src/error/conversions.rs"),
+        "impl_error_from!(QmcError => |_| AIError::Invalid);\n",
+    )
+    .unwrap();
+
+    let apis_fixed = extract_apis_in_dir(&dir);
+    let fixed_violations = check_facade_completeness_in_dir(&dir, &apis_fixed);
+    assert!(
+        fixed_violations.is_empty(),
+        "Expected zero violations once Tier 0 QmcError is re-exported and converted in submodule: {fixed_violations:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}

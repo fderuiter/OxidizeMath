@@ -169,6 +169,7 @@ impl Error {
             Self::Math(err) => Some(InnerErrorRef::Domain(err)),
             Self::MathCommons(err) => Some(InnerErrorRef::Domain(err)),
             Self::Parse(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Qmc(err) => Some(InnerErrorRef::Domain(err)),
             Self::ShaderEmit(err) => Some(InnerErrorRef::Domain(err)),
             Self::Io(err) => Some(InnerErrorRef::Io(err)),
             #[cfg(any(
@@ -182,6 +183,16 @@ impl Error {
             ))]
             _ => self.domain_inner().map(InnerErrorRef::Domain),
         }
+    }
+
+    /// Emits this error to [`diagnostics::global_bus`] with default source `"math_explorer"`.
+    pub fn emit_to_global_bus(&self) {
+        diagnostics::global_bus().emit_diagnostic(self);
+    }
+
+    /// Emits this error to [`diagnostics::global_bus`] tagged with an explicit subsystem `source`.
+    pub fn emit_with_source(&self, source: &str) {
+        diagnostics::global_bus().emit_diagnostic_with_source(source, self);
     }
 }
 

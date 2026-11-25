@@ -13235,6 +13235,9 @@
       "signature": "pub use math_diagnostics :: Severity"
     },
     {
+      "signature": "pub use math_rng :: QmcError"
+    },
+    {
       "signature": "pub use umbrella :: MathCommonsError"
     }
   ],
@@ -24215,6 +24218,9 @@
     },
     {
       "signature": "pub use math_commons :: error :: ParseError"
+    },
+    {
+      "signature": "pub use math_commons :: error :: QmcError"
     },
     {
       "signature": "pub use math_commons :: error :: ShaderEmitError"

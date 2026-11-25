@@ -1,7 +1,7 @@
 use super::{BotanicalError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError};
 use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_commons::error::{
-    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, ParseError,
+    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, ParseError, QmcError,
     ShaderEmitError,
 };
 use pure_math::error::{LinearAlgebraError, MonteCarloError, OptimizationError, TensorError};
@@ -96,6 +96,13 @@ impl From<TensorError> for BiologyError {
 impl From<LinalgError> for BiologyError {
     #[verified_engine::verified]
     fn from(err: LinalgError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<QmcError> for BiologyError {
+    #[verified_engine::verified]
+    fn from(err: QmcError) -> Self {
         Self::MathCommons(MathCommonsError::from(err))
     }
 }

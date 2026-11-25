@@ -1,41 +1,45 @@
 //! Native Abstract Syntax Tree (AST) expression parser and dynamic evaluator.
 // [cite:math_commons]
 
+#[cfg(feature = "std")]
 pub mod codegen;
 pub mod compiled;
 pub mod eval;
 pub mod expr;
 pub mod glsl;
 mod glsl_helpers;
+#[cfg(feature = "std")]
 pub mod latex;
 pub mod lexer;
 pub mod limits;
 pub mod parser;
 mod parser_diagnostics;
 pub mod shader;
+mod shader_diagnostics;
 pub mod shader_preludes;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod arity_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod budget_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod codegen_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod compiled_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod glsl_sim_test_eval;
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod glsl_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod limit_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod planar_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod shader_tests;
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests;
 
+#[cfg(feature = "std")]
 pub use codegen::{format_latex_scalar, format_python_float, format_rust_f64};
 pub use compiled::{CompiledExpr, Instruction};
 pub use eval::{EvalError, MAX_EVAL_DEPTH};

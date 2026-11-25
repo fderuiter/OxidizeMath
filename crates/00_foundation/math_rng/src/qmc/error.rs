@@ -5,7 +5,7 @@
 use core::fmt;
 
 /// Typed error returned by [`super::SobolView`], [`super::HaltonView`], and [`super::NiederreiterView`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum QmcError {
     /// Requested dimension is zero or exceeds `max_supported` (`64`).
@@ -62,3 +62,112 @@ impl fmt::Display for QmcError {
 }
 
 impl core::error::Error for QmcError {}
+
+impl math_diagnostics::Diagnostic for QmcError {
+    fn severity(&self) -> math_diagnostics::Severity {
+        math_diagnostics::Severity::Error
+    }
+
+    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
+        visitor.record_str("error_type", "QmcError");
+        visitor.record_display("description", self);
+        match *self {
+            Self::InvalidDimension {
+                dimension,
+                max_supported,
+            } => {
+                visitor.record_str("code", "RNG-QMC-001");
+                visitor.record_usize("dimension", dimension);
+                visitor.record_usize("max_supported", max_supported);
+            }
+            Self::InvalidBase { base } => {
+                visitor.record_str("code", "RNG-QMC-002");
+                visitor.record_u64("base", u64::from(base));
+            }
+            Self::BufferLengthMismatch { expected, actual } => {
+                visitor.record_str("code", "RNG-QMC-003");
+                visitor.record_usize("expected", expected);
+                visitor.record_usize("actual", actual);
+            }
+            Self::StateLengthMismatch { expected, actual } => {
+                visitor.record_str("code", "RNG-QMC-004");
+                visitor.record_usize("expected", expected);
+                visitor.record_usize("actual", actual);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+
+    struct CodeCapture {
+        code: Option<&'static str>,
+        fields: usize,
+    }
+
+    impl DiagnosticVisitor for CodeCapture {
+        fn record_str(&mut self, key: &str, value: &str) {
+            self.fields += 1;
+            if key == "code" {
+                self.code = match value {
+                    "RNG-QMC-001" => Some("RNG-QMC-001"),
+                    "RNG-QMC-002" => Some("RNG-QMC-002"),
+                    "RNG-QMC-003" => Some("RNG-QMC-003"),
+                    "RNG-QMC-004" => Some("RNG-QMC-004"),
+                    _ => None,
+                };
+            }
+        }
+
+        fn record_display(&mut self, _key: &str, _value: &dyn fmt::Display) {
+            self.fields += 1;
+        }
+    }
+
+    #[test]
+    fn qmc_error_visit_fields_is_zero_alloc_and_records_codes() {
+        let cases = [
+            (
+                QmcError::InvalidDimension {
+                    dimension: 0,
+                    max_supported: 64,
+                },
+                "RNG-QMC-001",
+            ),
+            (QmcError::InvalidBase { base: 1 }, "RNG-QMC-002"),
+            (
+                QmcError::BufferLengthMismatch {
+                    expected: 4,
+                    actual: 2,
+                },
+                "RNG-QMC-003",
+            ),
+            (
+                QmcError::StateLengthMismatch {
+                    expected: 8,
+                    actual: 3,
+                },
+                "RNG-QMC-004",
+            ),
+        ];
+
+        let (total_fields, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+            let mut sum = 0usize;
+            for (err, expected_code) in cases {
+                assert_eq!(err.severity(), Severity::Error);
+                let mut capture = CodeCapture {
+                    code: None,
+                    fields: 0,
+                };
+                err.visit_fields(&mut capture);
+                assert_eq!(capture.code, Some(expected_code));
+                sum += capture.fields;
+            }
+            sum
+        });
+        assert!(total_fields >= 16);
+    }
+}

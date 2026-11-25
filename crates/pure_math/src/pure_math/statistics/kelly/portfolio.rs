@@ -117,6 +117,14 @@ pub(crate) fn validate_covariance_inputs(
     Ok(n)
 }
 
+#[verified_engine::verified]
+fn map_kelly_linalg_error(err: engine_linalg::LinalgError) -> KellyError {
+    match err {
+        engine_linalg::LinalgError::NotPositiveDefinite => KellyError::NotPositiveDefinite,
+        other => KellyError::Linalg(other),
+    }
+}
+
 /// Computes in-place lower-triangular Cholesky factor `L` into row-major `chol_flat[..n*n]`
 /// via [`engine_linalg::cholesky_factor`].
 pub(crate) fn cholesky_into_flat(
@@ -134,7 +142,7 @@ pub(crate) fn cholesky_into_flat(
         }
     }
     cholesky_factor(&sym_flat[..n * n], &mut chol_flat[..n * n], n)
-        .map_err(|_| KellyError::NotPositiveDefinite)?;
+        .map_err(map_kelly_linalg_error)?;
     for i in 0..n {
         if chol_flat[mat_idx(i, i, n)] <= CHOL_PIVOT_TOL {
             return Err(KellyError::NotPositiveDefinite);
@@ -239,7 +247,7 @@ pub fn solve_unconstrained_kelly_into(
         out_weights,
         n,
     )
-    .map_err(|_| KellyError::NotPositiveDefinite)?;
+    .map_err(map_kelly_linalg_error)?;
 
     Ok(compute_metrics_unchecked(
         out_weights,

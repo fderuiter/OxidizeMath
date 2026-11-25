@@ -2633,6 +2633,7 @@ dependencies = [
 name = "math_rng"
 version = "0.4.0"
 dependencies = [
+ "math_diagnostics",
  "rand_chacha",
  "rand_core 0.6.4",
  "serde",

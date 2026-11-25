@@ -6,8 +6,11 @@ use super::expr::{BinaryOp, Expr, Func, UnaryOp};
 pub use super::glsl_helpers::{GLSL_COMPLEX_HELPERS, GLSL_SCALAR_HELPERS};
 use super::glsl_helpers::{glsl_func_prefix, is_valid_glsl_ident};
 use super::limits::{MAX_AST_NODES, MAX_GLSL_OUTPUT_BYTES};
-use std::f64::consts::{E, PI, TAU};
-use std::fmt::Write;
+use alloc::string::{String, ToString};
+use alloc::vec;
+use alloc::vec::Vec;
+use core::f64::consts::{E, PI, TAU};
+use core::fmt::Write;
 
 /// Errors that can occur when transpiling an [`Expr`] tree to GLSL source code.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]

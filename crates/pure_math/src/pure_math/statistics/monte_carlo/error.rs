@@ -81,6 +81,10 @@ pub enum MonteCarloError {
     /// Bootstrap replicate count was zero or exceeded preallocated capacity.
     #[error("invalid bootstrap replicate count (must be positive and within workspace capacity)")]
     ZeroReplicates,
+
+    /// Underlying Tier 0 `#![no_std]` Quasi-Monte Carlo sequence or view error.
+    #[error("{0}")]
+    Qmc(#[from] math_rng::QmcError),
 }
 
 // [cite:clinical_trials_statistics]

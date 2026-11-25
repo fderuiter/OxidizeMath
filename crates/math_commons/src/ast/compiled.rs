@@ -7,6 +7,9 @@ use super::eval::{
 };
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
 use super::limits::MAX_COMPILED_INSTRUCTIONS;
+use alloc::string::{String, ToString};
+use alloc::vec;
+use alloc::vec::Vec;
 use num_complex::Complex64;
 
 #[cfg(feature = "serde")]

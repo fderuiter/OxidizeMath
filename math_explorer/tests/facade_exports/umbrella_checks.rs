@@ -39,6 +39,7 @@ fn verify_core_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(sample_math(), bus),
         check_leaf(error::FitError::SingularMatrix, bus),
         check_leaf(error::LinalgError::SingularMatrix, bus),
+        check_leaf(error::QmcError::InvalidBase { base: 1 }, bus),
         check_leaf(error::EvalError::UnknownVariable("x".to_string()), bus),
         check_leaf(error::GlslError::DepthLimitExceeded(64), bus),
         check_leaf(
@@ -221,8 +222,12 @@ pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
             .source()
             .is_some(),
         error::StatMechError::from(sample_math()).source().is_some(),
+        error::KellyError::NotPositiveDefinite.source().is_some(),
+        error::MonteCarloError::from(error::QmcError::InvalidBase { base: 1 })
+            .source()
+            .is_some(),
     ];
-    assert_eq!(wrapper_sources_present.len(), 18);
+    assert_eq!(wrapper_sources_present.len(), 20);
     assert!(wrapper_sources_present.into_iter().all(|present| present));
 }
 
@@ -236,11 +241,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 65);
-    assert_eq!(*events.lock().unwrap(), 65);
+    assert_eq!(converted.len(), 66);
+    assert_eq!(*events.lock().unwrap(), 66);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 71);
+    assert_eq!(*events.lock().unwrap(), 72);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -349,6 +354,7 @@ pub fn verify_prelude_error_reexports() {
         p::LinalgError,
         p::MathError,
         p::ParseError,
+        p::QmcError,
         p::ShaderEmitError,
     )>();
     verify_prelude_pure_math_leaves();

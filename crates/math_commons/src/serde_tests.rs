@@ -228,17 +228,16 @@ mod active {
         );
     }
 
-    #[cfg(feature = "std")]
     #[test]
-    fn ast_and_umbrella_errors_roundtrip_std() {
+    fn ast_and_umbrella_errors_roundtrip() {
         use crate::ast::{
             BinaryOp, CompiledExpr, EvalError, Expr, Func, GlslError, Instruction, LexError,
             ParseError, ShaderEmitError, ShaderTarget, Span, Token, TokenKind, UnaryOp, parse,
         };
-        use crate::error::MathCommonsError;
-        use crate::math_kernel::colormap::ShaderPalette;
+        use crate::error::{MathCommonsError, QmcError};
 
-        for palette in ShaderPalette::ALL {
+        #[cfg(feature = "std")]
+        for palette in crate::math_kernel::colormap::ShaderPalette::ALL {
             assert_eq!(roundtrip_json(&palette), palette);
         }
 
@@ -286,6 +285,7 @@ mod active {
         assert_eq!(roundtrip_json(&token), token);
 
         let umbrella_cases = [
+            MathCommonsError::from(QmcError::InvalidBase { base: 1 }),
             MathCommonsError::from(LexError {
                 start: 0,
                 end: 1,

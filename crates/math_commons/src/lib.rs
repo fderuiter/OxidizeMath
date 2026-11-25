@@ -5,7 +5,6 @@
 extern crate alloc;
 
 /// Symbolic mathematical expression AST parser, evaluator, and GLSL emitter.
-#[cfg(feature = "std")]
 pub mod ast;
 pub mod constants;
 /// Shared numerical, bounds, and curve-fitting diagnostic error types.
