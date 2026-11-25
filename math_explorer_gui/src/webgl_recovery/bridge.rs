@@ -8,6 +8,15 @@ pub(super) const LOSS_STATUS_MSG: &str =
     "WebGL graphics context lost. Attempting automatic restoration; your workspace is preserved.";
 pub(super) const RESTORED_STATUS_MSG: &str =
     "WebGL graphics context restored. Simulation workspace resumed.";
+const CONTEXT_LOST_TITLE: &str = "WebGL Graphics Context Lost";
+const CONTEXT_LOST_MESSAGE: &str =
+    "Your browser lost its WebGL graphics context and could not restore hardware rendering automatically. Your workspace state is preserved\u{2014}select Reload Page to resume or download a workspace backup (.mws) below.";
+const CONTEXT_LOST_BLOCKED_STORAGE_MESSAGE: &str =
+    "Your browser lost its WebGL graphics context and blocked local storage writes. Select Download Saved Workspace (.mws) below before reloading so you do not lose your session.";
+const CONTEXT_LOST_ALERT: &str =
+    "WebGL graphics context lost and could not be restored automatically. Select Reload Page to recover.";
+const CONTEXT_LOST_BLOCKED_STORAGE_ALERT: &str =
+    "WebGL graphics context lost and browser storage blocked saving. Download your saved workspace envelope before selecting Reload Page.";
 
 fn boot_api(window: Option<&web_sys::Window>) -> Option<JsValue> {
     let win = window?;
@@ -60,9 +69,24 @@ where
     let _ = btn.set_attribute("data-download-bound", "true");
     let listener = Closure::wrap(Box::new(move |event: web_sys::Event| {
         event.prevent_default();
-        let (envelope_json, filename) = read_snapshot();
-        if !envelope_json.is_empty() {
-            let _ = crate::web_io::download_browser_file(&filename, envelope_json.as_bytes());
+        let (mut envelope_json, mut filename) = read_snapshot();
+        if envelope_json.is_empty() {
+            if let Some(stored) =
+                crate::read_saved_workspace_from_storage(web_sys::window().as_ref())
+            {
+                envelope_json = stored;
+            }
+        }
+        if filename.is_empty() {
+            filename = crate::DEFAULT_RECOVERY_FILENAME.to_string();
+        }
+        if !envelope_json.is_empty()
+            && crate::web_io::download_browser_file(&filename, envelope_json.as_bytes()).is_ok()
+        {
+            accessibility::announce_status_with_priority(
+                &format!("Downloaded saved workspace envelope {filename}."),
+                "polite",
+            );
         }
     }) as Box<dyn FnMut(web_sys::Event)>);
     let _ = btn.add_event_listener_with_callback("click", listener.as_ref().unchecked_ref());
@@ -70,6 +94,7 @@ where
 }
 
 fn reveal_fallback_download_button(
+    window: Option<&web_sys::Window>,
     doc: &web_sys::Document,
     envelope_json: &str,
     storage_blocked: bool,
@@ -79,8 +104,12 @@ fn reveal_fallback_download_button(
     };
     let blocked_str = if storage_blocked { "true" } else { "false" };
     let _ = btn.set_attribute("data-storage-blocked", blocked_str);
-    if !envelope_json.is_empty() {
+    let has_workspace =
+        !envelope_json.is_empty() || crate::read_saved_workspace_from_storage(window).is_some();
+    if has_workspace {
         let _ = btn.remove_attribute("hidden");
+    } else {
+        let _ = btn.set_attribute("hidden", "");
     }
 }
 
@@ -150,7 +179,72 @@ pub(super) fn notify_recovery_completed(window: Option<&web_sys::Window>, doc: &
     accessibility::announce_status_with_priority(RESTORED_STATUS_MSG, "polite");
 }
 
-pub(super) fn notify_recovery_failed(
+fn apply_context_lost_dom_copy(doc: &web_sys::Document, detail: &str, storage_blocked: bool) {
+    let blocked_str = if storage_blocked { "true" } else { "false" };
+    if let Some(error_container) = doc.get_element_by_id("error_container") {
+        let _ = error_container.set_attribute("data-error-category", "webgl");
+        let _ = error_container.set_attribute("data-error-active", "true");
+        let _ = error_container.set_attribute("data-storage-blocked", blocked_str);
+        let _ = error_container.set_attribute("style", "display: flex;");
+    }
+    if let Some(title_el) = doc.get_element_by_id("error_title") {
+        title_el.set_text_content(Some(CONTEXT_LOST_TITLE));
+    }
+    if let Some(msg_el) = doc.get_element_by_id("error_message") {
+        let message = if storage_blocked {
+            CONTEXT_LOST_BLOCKED_STORAGE_MESSAGE
+        } else {
+            CONTEXT_LOST_MESSAGE
+        };
+        msg_el.set_text_content(Some(message));
+    }
+    if let Some(details_el) = doc.get_element_by_id("error_details") {
+        if detail.is_empty() {
+            details_el.set_text_content(Some(""));
+            let _ = details_el.set_attribute("style", "display: none;");
+        } else {
+            details_el.set_text_content(Some(detail));
+            let _ = details_el.set_attribute("style", "display: block;");
+        }
+    }
+}
+
+fn render_fallback_context_lost_failure(
+    window: Option<&web_sys::Window>,
+    doc: &web_sys::Document,
+    detail: &str,
+    envelope_json: &str,
+    storage_blocked: bool,
+) {
+    if let Some(root) = doc.document_element() {
+        let _ = root.set_attribute("data-boot-initialized", "true");
+        let _ = root.set_attribute("data-boot-failed", "true");
+    }
+    if let Some(loading) = doc.get_element_by_id("loading_indicator") {
+        let _ = loading.set_attribute("aria-busy", "false");
+        loading.remove();
+    }
+    if let Some(canvas) = doc.get_element_by_id("the_canvas_id") {
+        let _ = canvas.set_attribute("style", "display: none;");
+    }
+    apply_context_lost_dom_copy(doc, detail, storage_blocked);
+    reveal_fallback_download_button(window, doc, envelope_json, storage_blocked);
+    crate::bind_fallback_reload_listener(doc);
+    let alert = if storage_blocked {
+        CONTEXT_LOST_BLOCKED_STORAGE_ALERT
+    } else {
+        CONTEXT_LOST_ALERT
+    };
+    accessibility::announce_status_with_priority(alert, "assertive");
+    if let Some(reload_btn) = doc
+        .get_element_by_id("webgl_reload_button")
+        .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok())
+    {
+        let _ = reload_btn.focus();
+    }
+}
+
+pub(crate) fn notify_recovery_failed(
     window: Option<&web_sys::Window>,
     doc: &web_sys::Document,
     detail: &str,
@@ -182,8 +276,7 @@ pub(super) fn notify_recovery_failed(
             }
         }
     }
-    crate::handle_webgl_failure(Some(doc), detail);
-    reveal_fallback_download_button(doc, envelope_json, storage_blocked);
+    render_fallback_context_lost_failure(window, doc, detail, envelope_json, storage_blocked);
 }
 
 pub(super) fn register_js_timeout_bridge<F>(window: Option<&web_sys::Window>, mut on_timeout: F)

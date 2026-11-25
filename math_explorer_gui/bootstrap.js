@@ -11,6 +11,13 @@ const MODULE_PATH = './math_explorer_gui.js';
 const WASM_PATH = './math_explorer_gui_bg.wasm';
 const FALLBACK_STALL_TIMEOUT_MS = 12000;
 const FALLBACK_COMPILE_TIMEOUT_MS = 45000;
+const DEFAULT_RECOVERY_FILENAME = 'math-explorer-recovery.mws';
+
+const SHELL_THEME_TOKENS = {
+    dark: { colorScheme: 'dark', themeColor: '#121214' },
+    light: { colorScheme: 'light', themeColor: '#f8f8f8' },
+    'high-contrast': { colorScheme: 'dark', themeColor: '#000000' },
+};
 
 const FALLBACK_CATEGORY_COPY = {
     network: {
@@ -23,51 +30,271 @@ const FALLBACK_CATEGORY_COPY = {
             'Select Reload Page below (or perform a hard refresh) to retry downloading the application.',
             'If the server is temporarily unavailable, wait a moment and reload.',
         ],
+        alert:
+            'Network error loading Math Explorer. Check your internet connection and select Reload Page to retry.',
     },
     compile: {
         title: 'WebAssembly Startup Error',
         message:
-            'Your browser downloaded the application bundle, but failed to compile, instantiate, or start the WebAssembly module.',
+            'Your browser downloaded the application bundle, but failed to compile, instantiate, or start the WebAssembly module. Cached files may be incomplete or incompatible.',
         heading: 'Recovery Steps',
         steps: [
-            'Select Reload Page or perform a hard refresh to bypass stale or corrupted cached files.',
-            'Ensure you are using a current browser release with WebAssembly enabled.',
-            'Verify that browser extensions or enterprise policies do not block WebAssembly execution.',
+            'Select Reload Page or perform a hard refresh (Ctrl+Shift+R / Cmd+Shift+R) to bypass stale or corrupted cached files.',
+            'Ensure you are using a current release of Chrome, Edge, Firefox, or Safari with WebAssembly enabled.',
+            'Verify that browser security extensions or enterprise policies do not block WebAssembly execution.',
         ],
+        alert:
+            'WebAssembly startup error. Cached files may be corrupted. Select Reload Page to retry.',
     },
     isolation: {
         title: 'Browser Isolation & Shared Memory Unavailable',
         message:
-            'Math Explorer encountered an operation requiring SharedArrayBuffer or browser isolation that is unavailable in this context.',
+            'Math Explorer encountered an operation requiring SharedArrayBuffer or cross-origin isolation that is unavailable or blocked in this browser context.',
         heading: 'Recovery Steps',
         steps: [
-            'Open Math Explorer over HTTPS or localhost in a standard browser window.',
-            'Allow site data and standard WebAssembly memory features, then select Reload Page.',
+            'Open Math Explorer over HTTPS or localhost in a standard browser window rather than a restricted embedded WebView.',
+            'Allow site data, Service Workers, and standard WebAssembly memory features for this origin.',
+            'Disable extensions or enterprise policies that strip isolation headers or block SharedArrayBuffer, then select Reload Page.',
         ],
+        alert:
+            'Browser isolation or SharedArrayBuffer is unavailable. Adjust browser settings and select Reload Page.',
     },
     timeout: {
         title: 'Startup Timed Out',
         message:
-            'Loading Math Explorer timed out before startup could complete. Select Reload Page to retry.',
+            'Loading Math Explorer stalled without progress before startup could complete. The network transfer may have frozen or stopped responding.',
         heading: 'Recovery Steps',
         steps: [
-            'Confirm your network connection is active and select Reload Page below to retry cleanly.',
+            'Confirm your network connection is active and not waiting on a captive portal or VPN.',
+            'Select Reload Page below to restart the WebAssembly download cleanly.',
+            'If you are on a slow or metered connection, pause competing downloads and try again.',
         ],
+        alert:
+            'Loading Math Explorer timed out due to a stalled transfer. Select Reload Page to retry.',
     },
     webgl: {
         title: 'WebGL Initialization Failed',
         message:
-            'Math Explorer requires WebGL and hardware acceleration to render interactive simulations.',
+            'Math Explorer requires WebGL and hardware acceleration to render mathematics and interactive simulations. Your browser was unable to initialize a WebGL rendering context.',
         heading: 'Enable Hardware Acceleration & WebGL',
         steps: [],
+        alert:
+            'WebGL initialization failed. Please enable hardware acceleration in your browser settings.',
     },
 };
+
+const FALLBACK_COMPILE_TIMEOUT_COPY = {
+    title: 'Startup Timed Out',
+    message:
+        'Math Explorer finished downloading its application bundle, but WebAssembly compilation or graphics initialization timed out before startup could complete.',
+    heading: 'Recovery Steps',
+    steps: [
+        'Select Reload Page below to retry compiling WebAssembly and initializing WebGL.',
+        'Close memory-intensive browser tabs or background applications if your device is low on CPU or memory.',
+        'Verify that browser extensions or security policies are not stalling WebAssembly compilation or WebGL context creation.',
+    ],
+    alert:
+        'Math Explorer timed out during WebAssembly compilation or graphics initialization. Select Reload Page to retry.',
+};
+
+// Start fallback twin-slot toggles at slot 1 so slot 0 stays empty when Rust's AtomicBool::new(false) takes over.
+let fallbackPoliteSlotToggle = 1;
+let fallbackAssertiveSlotToggle = 1;
+const probedResourceStatuses = new Map();
+let activeWatchdogCleanup = null;
+let isPageUnloading = false;
 
 function markBootInitialized() {
     const root = document.documentElement;
     if (root && !root.hasAttribute('data-boot-initialized')) {
         root.setAttribute('data-boot-initialized', 'true');
     }
+}
+
+function normalizeSavedTheme(rawTheme) {
+    if (typeof rawTheme !== 'string') {
+        return null;
+    }
+    const normalized = rawTheme.trim().toLowerCase();
+    if (normalized === 'dark') {
+        return 'dark';
+    }
+    if (normalized === 'light') {
+        return 'light';
+    }
+    if (
+        normalized === 'highcontrast' ||
+        normalized === 'high-contrast' ||
+        normalized === 'high_contrast'
+    ) {
+        return 'high-contrast';
+    }
+    return null;
+}
+
+function readSavedThemeFromStorage() {
+    try {
+        if (!window.localStorage) {
+            return null;
+        }
+        const raw = window.localStorage.getItem('app');
+        if (!raw) {
+            return null;
+        }
+        const parsed = JSON.parse(raw.replace(/^\uFEFF/, ''));
+        if (!parsed || typeof parsed !== 'object') {
+            return null;
+        }
+        if (typeof parsed.schema_version === 'string') {
+            const major = parseInt(parsed.schema_version.split('.')[0], 10);
+            if (
+                !Number.isFinite(major) ||
+                major > 1 ||
+                typeof parsed.app_version !== 'string' ||
+                typeof parsed.timestamp !== 'string' ||
+                !parsed.app_state ||
+                typeof parsed.app_state !== 'object'
+            ) {
+                return null;
+            }
+            return normalizeSavedTheme(parsed.app_state.theme);
+        }
+        if (
+            typeof parsed.selected_tab !== 'number' ||
+            !parsed.tab_states ||
+            typeof parsed.tab_states !== 'object'
+        ) {
+            return null;
+        }
+        return normalizeSavedTheme(parsed.theme);
+    } catch (_) {
+        // Fall back to OS media queries on SecurityError or invalid JSON
+        return null;
+    }
+}
+
+function syncShellThemeFromStorage() {
+    const savedTheme = readSavedThemeFromStorage();
+    const tokens = savedTheme && SHELL_THEME_TOKENS[savedTheme];
+    if (!tokens) {
+        return null;
+    }
+    const root = document.documentElement;
+    if (root) {
+        root.dataset.theme = savedTheme;
+        if (root.style && typeof root.style.setProperty === 'function') {
+            root.style.setProperty('color-scheme', tokens.colorScheme);
+        }
+    }
+    const schemeMeta = document.querySelector('meta[name="color-scheme"]');
+    if (schemeMeta) {
+        schemeMeta.setAttribute('content', tokens.colorScheme);
+    }
+    const themeMetas = document.querySelectorAll('meta[name="theme-color"]');
+    for (let i = 0; i < themeMetas.length; i += 1) {
+        themeMetas[i].setAttribute('content', tokens.themeColor);
+    }
+    return savedTheme;
+}
+
+function announceFallback(message, priority) {
+    if (!message || typeof document === 'undefined') {
+        return;
+    }
+    const isAssertive =
+        String(priority).toLowerCase() === 'assertive' ||
+        String(priority).toLowerCase() === 'alert';
+    const containerId = isAssertive ? 'aria-live-assertive' : 'aria-live-polite';
+    const slot0 = document.getElementById(containerId + '-slot-0');
+    const slot1 = document.getElementById(containerId + '-slot-1');
+    let slotIdx = isAssertive ? fallbackAssertiveSlotToggle : fallbackPoliteSlotToggle;
+    if (slot0 && slot1) {
+        const slot0Busy = Boolean(slot0.textContent && slot0.textContent.length > 0);
+        const slot1Busy = Boolean(slot1.textContent && slot1.textContent.length > 0);
+        if (slot0Busy && !slot1Busy) {
+            slotIdx = 1;
+        } else if (slot1Busy && !slot0Busy) {
+            slotIdx = 0;
+        }
+    }
+    if (isAssertive) {
+        fallbackAssertiveSlotToggle = 1 - slotIdx;
+    } else {
+        fallbackPoliteSlotToggle = 1 - slotIdx;
+    }
+    const activeSlot = slotIdx === 0 ? slot0 : slot1;
+    const siblingSlot = slotIdx === 0 ? slot1 : slot0;
+    if (siblingSlot) {
+        siblingSlot.textContent = '';
+    }
+    if (activeSlot) {
+        activeSlot.textContent = String(message);
+    }
+}
+
+function readFallbackEnvelopeFromStorage() {
+    try {
+        if (!window.localStorage) {
+            return '';
+        }
+        const raw = window.localStorage.getItem('app');
+        return typeof raw === 'string' && raw.trim().length > 0 ? raw : '';
+    } catch (_) {
+        return '';
+    }
+}
+
+function downloadFallbackWorkspace() {
+    const payload = readFallbackEnvelopeFromStorage();
+    if (!payload || typeof Blob === 'undefined' || !window.URL || !URL.createObjectURL) {
+        return false;
+    }
+    const blob = new Blob([payload], { type: 'application/json' });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = DEFAULT_RECOVERY_FILENAME;
+    link.rel = 'noopener';
+    link.style.display = 'none';
+    if (document.body) {
+        document.body.appendChild(link);
+    }
+    link.click();
+    if (link.parentNode) {
+        link.parentNode.removeChild(link);
+    }
+    window.setTimeout(() => {
+        URL.revokeObjectURL(objectUrl);
+    }, 0);
+    announceFallback('Downloaded saved workspace envelope ' + link.download + '.', 'polite');
+    return true;
+}
+
+function bindFallbackDownloadWorkspaceButton() {
+    const downloadButton = document.getElementById('download_workspace_button');
+    if (downloadButton && !downloadButton.dataset.downloadBound) {
+        downloadButton.dataset.downloadBound = 'true';
+        downloadButton.addEventListener('click', (event) => {
+            if (event && typeof event.preventDefault === 'function') {
+                event.preventDefault();
+            }
+            downloadFallbackWorkspace();
+        });
+    }
+    return downloadButton;
+}
+
+function syncFallbackDownloadWorkspaceButton() {
+    const btn = document.getElementById('download_workspace_button');
+    if (!btn) {
+        return null;
+    }
+    const hasPayload = readFallbackEnvelopeFromStorage().length > 0;
+    btn.hidden = !hasPayload;
+    if (btn.getAttribute('data-storage-blocked') !== 'true') {
+        btn.setAttribute('data-storage-blocked', 'false');
+    }
+    return btn;
 }
 
 function bindFallbackReloadButton() {
@@ -123,11 +350,15 @@ function lookupResourceHttpStatus(assetPath) {
             return entry.status;
         }
     }
-    if (typeof performance === 'undefined' || typeof performance.getEntriesByType !== 'function') {
-        return 0;
-    }
     const targetName = assetBaseName(assetPath);
     if (!targetName) {
+        return 0;
+    }
+    const probed = probedResourceStatuses.get(targetName);
+    if (typeof probed === 'number' && probed >= 400) {
+        return probed;
+    }
+    if (typeof performance === 'undefined' || typeof performance.getEntriesByType !== 'function') {
         return 0;
     }
     const entries = performance.getEntriesByType('resource') || [];
@@ -144,6 +375,68 @@ function lookupResourceHttpStatus(assetPath) {
         }
     }
     return 0;
+}
+
+function cancelProbeResponseBody(resp) {
+    if (resp && resp.body && typeof resp.body.cancel === 'function') {
+        void resp.body.cancel().catch(() => {});
+    }
+}
+
+async function probeAssetHttpStatus(assetPath) {
+    const targetName = assetBaseName(assetPath);
+    if (!targetName || typeof fetch !== 'function' || !/\.(?:js|mjs|wasm)$/i.test(targetName)) {
+        return 0;
+    }
+    const cached = probedResourceStatuses.get(targetName);
+    if (typeof cached === 'number' && cached >= 400) {
+        return cached;
+    }
+    let resolvedUrl;
+    try {
+        resolvedUrl = new URL(assetPath, window.location.href);
+        if (resolvedUrl.origin !== window.location.origin) {
+            return 0;
+        }
+    } catch (_) {
+        return 0;
+    }
+    let status = 0;
+    try {
+        const headResp = await fetch(resolvedUrl.href, {
+            method: 'HEAD',
+            credentials: 'same-origin',
+            cache: 'no-store',
+        });
+        cancelProbeResponseBody(headResp);
+        if (headResp.status === 405 || headResp.status === 501) {
+            const getResp = await fetch(resolvedUrl.href, {
+                method: 'GET',
+                credentials: 'same-origin',
+                cache: 'no-store',
+            });
+            cancelProbeResponseBody(getResp);
+            status = getResp.status >= 400 ? getResp.status : 0;
+        } else {
+            status = headResp.status >= 400 ? headResp.status : 0;
+        }
+    } catch (_) {
+        try {
+            const getResp = await fetch(resolvedUrl.href, {
+                method: 'GET',
+                credentials: 'same-origin',
+                cache: 'no-store',
+            });
+            cancelProbeResponseBody(getResp);
+            status = getResp.status >= 400 ? getResp.status : 0;
+        } catch (_inner) {
+            status = 0;
+        }
+    }
+    if (status >= 400) {
+        probedResourceStatuses.set(targetName, status);
+    }
+    return status;
 }
 
 function enrichAssetError(err, assetPath) {
@@ -222,6 +515,16 @@ function classifyFallbackCategory(err, detailText, assetPath) {
     return 'compile';
 }
 
+function selectFallbackCopy(category, detailText, phase) {
+    if (
+        category === 'timeout' &&
+        (phase === 'compile' || /compil|graphics|webrunner/i.test(detailText))
+    ) {
+        return FALLBACK_COMPILE_TIMEOUT_COPY;
+    }
+    return FALLBACK_CATEGORY_COPY[category] || FALLBACK_CATEGORY_COPY.compile;
+}
+
 function buildDiagnosticDetails(err, assetPath) {
     if (!err) {
         return '';
@@ -229,13 +532,25 @@ function buildDiagnosticDetails(err, assetPath) {
     return 'Initialization error: ' + enrichAssetError(err, assetPath);
 }
 
-function showBootstrapRecovery(err, assetPath) {
+function showBootstrapRecovery(err, assetPath, phase) {
+    if (isPageUnloading) {
+        return;
+    }
+    if (typeof activeWatchdogCleanup === 'function') {
+        activeWatchdogCleanup();
+    }
     const detailText = buildDiagnosticDetails(err, assetPath);
     const category = classifyFallbackCategory(err, detailText, assetPath);
-    const copy = FALLBACK_CATEGORY_COPY[category] || FALLBACK_CATEGORY_COPY.compile;
+    const copy = selectFallbackCopy(category, detailText, phase);
 
     const applyDomErrorState = () => {
+        if (isPageUnloading) {
+            return;
+        }
         markBootInitialized();
+        if (!window.__mathExplorerBoot) {
+            syncShellThemeFromStorage();
+        }
         const root = document.documentElement;
         if (root) {
             root.setAttribute('data-boot-failed', 'true');
@@ -252,15 +567,32 @@ function showBootstrapRecovery(err, assetPath) {
             loading.remove();
         }
 
+        const recoveryOverlay = document.getElementById('webgl_recovery_overlay');
+        if (recoveryOverlay) {
+            recoveryOverlay.setAttribute('aria-busy', 'false');
+            recoveryOverlay.hidden = true;
+            recoveryOverlay.setAttribute('style', 'display: none;');
+        }
+
         const canvas = document.getElementById('the_canvas_id');
         if (canvas) {
             canvas.setAttribute('style', 'display: none;');
         }
 
         const errorContainer = document.getElementById('error_container');
+        const alreadyActive =
+            Boolean(errorContainer) &&
+            errorContainer.getAttribute('data-error-active') === 'true';
+        const previousCategory = errorContainer
+            ? errorContainer.getAttribute('data-error-category')
+            : null;
+
         if (errorContainer) {
             errorContainer.setAttribute('data-error-category', category);
             errorContainer.setAttribute('data-error-active', 'true');
+            if (!errorContainer.hasAttribute('data-storage-blocked')) {
+                errorContainer.setAttribute('data-storage-blocked', 'false');
+            }
             errorContainer.setAttribute('style', 'display: flex;');
         }
 
@@ -298,9 +630,17 @@ function showBootstrapRecovery(err, assetPath) {
             detailsEl.setAttribute('style', 'display: block;');
         }
 
-        const reloadButton = bindFallbackReloadButton();
-        if (reloadButton && typeof reloadButton.focus === 'function') {
-            reloadButton.focus();
+        bindFallbackDownloadWorkspaceButton();
+        syncFallbackDownloadWorkspaceButton();
+
+        if (!alreadyActive || previousCategory !== category) {
+            announceFallback(copy.alert, 'assertive');
+            const reloadButton = bindFallbackReloadButton();
+            if (reloadButton && typeof reloadButton.focus === 'function') {
+                reloadButton.focus();
+            }
+        } else {
+            bindFallbackReloadButton();
         }
     };
 
@@ -308,6 +648,21 @@ function showBootstrapRecovery(err, assetPath) {
         document.addEventListener('DOMContentLoaded', applyDomErrorState, { once: true });
     } else {
         applyDomErrorState();
+    }
+
+    if (
+        category !== 'timeout' &&
+        category !== 'webgl' &&
+        category !== 'isolation' &&
+        assetPath &&
+        lookupResourceHttpStatus(assetPath) === 0 &&
+        !/\bHTTP\s+[45]\d\d\b/i.test(detailText)
+    ) {
+        void probeAssetHttpStatus(assetPath).then((status) => {
+            if (status >= 400 && !isPageUnloading) {
+                showBootstrapRecovery(err, assetPath, phase);
+            }
+        });
     }
 }
 
@@ -334,13 +689,23 @@ function isBootAborted(signal) {
     return false;
 }
 
-function resolveFallbackTimeout(paramName, fallbackMs) {
+function resolveFallbackTimeout(globalOverrideName, paramName, fallbackMs, minimumMs) {
+    const floorMs = typeof minimumMs === 'number' ? minimumMs : 100;
+    const overrideVal =
+        typeof window !== 'undefined' && globalOverrideName ? window[globalOverrideName] : undefined;
+    if (
+        typeof overrideVal === 'number' &&
+        Number.isFinite(overrideVal) &&
+        overrideVal >= floorMs
+    ) {
+        return Math.floor(overrideVal);
+    }
     try {
         const params = new URLSearchParams(window.location.search);
         const raw = params.get(paramName);
         if (raw !== null) {
             const parsed = Number(raw);
-            if (Number.isFinite(parsed) && parsed >= 100) {
+            if (Number.isFinite(parsed) && parsed >= floorMs) {
                 return Math.floor(parsed);
             }
         }
@@ -837,6 +1202,9 @@ async function bootstrap() {
     bindFallbackReloadButton();
 
     const boot = window.__mathExplorerBoot;
+    if (!boot) {
+        syncShellThemeFromStorage();
+    }
     const localAbort =
         !boot && typeof AbortController !== 'undefined' ? new AbortController() : null;
     const signal =
@@ -848,27 +1216,9 @@ async function bootstrap() {
     }
 
     let fallbackTimerId = null;
-    const armLocalFallbackTimer = (ms, label) => {
-        if (boot || !localAbort) {
-            return;
-        }
-        if (fallbackTimerId !== null) {
-            window.clearTimeout(fallbackTimerId);
-        }
-        fallbackTimerId = window.setTimeout(() => {
-            fallbackTimerId = null;
-            if (!document.getElementById('loading_indicator')) {
-                return;
-            }
-            const err = new Error(`Startup stalled for ${ms} ms without progress (${label}).`);
-            try {
-                localAbort.abort(err);
-            } catch (_) {
-                localAbort.abort();
-            }
-            showBootstrapRecovery(err, label);
-        }, ms);
-    };
+    let loadingObserver = null;
+    let localPhase = 'transfer';
+    let localStageLabel = WASM_PATH;
 
     const clearLocalFallbackTimer = () => {
         if (fallbackTimerId !== null) {
@@ -877,13 +1227,90 @@ async function bootstrap() {
         }
     };
 
-    const stallTimeoutMs = resolveFallbackTimeout('stall_timeout_ms', FALLBACK_STALL_TIMEOUT_MS);
+    const disconnectLoadingObserver = () => {
+        if (loadingObserver) {
+            loadingObserver.disconnect();
+            loadingObserver = null;
+        }
+    };
+
+    const handleBeforeUnload = () => {
+        isPageUnloading = true;
+        clearLocalFallbackTimer();
+        disconnectLoadingObserver();
+    };
+
+    const disposeLocalWatchdog = () => {
+        clearLocalFallbackTimer();
+        disconnectLoadingObserver();
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+        if (activeWatchdogCleanup === disposeLocalWatchdog) {
+            activeWatchdogCleanup = null;
+        }
+    };
+
+    activeWatchdogCleanup = disposeLocalWatchdog;
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    if (!boot && typeof MutationObserver !== 'undefined' && document.body) {
+        loadingObserver = new MutationObserver(() => {
+            if (!document.getElementById('loading_indicator') || isBootAborted(signal)) {
+                disposeLocalWatchdog();
+            }
+        });
+        loadingObserver.observe(document.body, { childList: true });
+    }
+
+    const armLocalFallbackTimer = (ms, label, phase = 'transfer') => {
+        if (boot || !localAbort || isPageUnloading) {
+            return;
+        }
+        localPhase = phase;
+        localStageLabel = label;
+        if (fallbackTimerId !== null) {
+            window.clearTimeout(fallbackTimerId);
+        }
+        fallbackTimerId = window.setTimeout(() => {
+            fallbackTimerId = null;
+            if (
+                isPageUnloading ||
+                !document.getElementById('loading_indicator') ||
+                isBootAborted(signal)
+            ) {
+                disposeLocalWatchdog();
+                return;
+            }
+            const activeStage = localStageLabel || label;
+            const err =
+                localPhase === 'compile'
+                    ? new Error(
+                          `WebAssembly compilation or graphics initialization timed out after ${ms} ms (${activeStage}).`,
+                      )
+                    : new Error(`Startup stalled for ${ms} ms without progress (${activeStage}).`);
+            try {
+                localAbort.abort(err);
+            } catch (_) {
+                localAbort.abort();
+            }
+            showBootstrapRecovery(err, activeStage, localPhase);
+        }, ms);
+    };
+
+    const stallTimeoutMs = resolveFallbackTimeout(
+        '__MATH_EXPLORER_STALL_TIMEOUT_MS',
+        'stall_timeout_ms',
+        FALLBACK_STALL_TIMEOUT_MS,
+        100,
+    );
     const compileTimeoutMs = resolveFallbackTimeout(
+        '__MATH_EXPLORER_COMPILE_TIMEOUT_MS',
         'compile_timeout_ms',
         FALLBACK_COMPILE_TIMEOUT_MS,
+        100,
     );
 
     let hooks = null;
+    let initCompleted = false;
     let currentAssetPath = WASM_PATH;
     let capturedStreamError = null;
     const recordStreamError = (streamErr) => {
@@ -893,22 +1320,28 @@ async function bootstrap() {
     };
 
     const hooksProxy = createStartupProgressProxy(boot, (progress) => {
+        if (initCompleted) {
+            return;
+        }
         if (progress.total > 0 && progress.current >= progress.total) {
-            armLocalFallbackTimer(compileTimeoutMs, 'Compiling WebAssembly module');
+            armLocalFallbackTimer(compileTimeoutMs, 'Compiling WebAssembly module', 'compile');
         } else {
-            armLocalFallbackTimer(stallTimeoutMs, WASM_PATH);
+            armLocalFallbackTimer(stallTimeoutMs, WASM_PATH, 'transfer');
         }
     });
 
     try {
         boot?.enterPhase?.('transfer', `Downloading ${assetBaseName(WASM_PATH)}`);
-        armLocalFallbackTimer(stallTimeoutMs, WASM_PATH);
+        armLocalFallbackTimer(stallTimeoutMs, WASM_PATH, 'transfer');
 
         const initializerTask = attachAssetPath(
             import(INITIALIZER_PATH).then((initializerModule) => {
                 if (!hooksProxy.isCancelled() && !capturedStreamError && !isBootAborted(signal)) {
                     const createInitializer = initializerModule?.default;
-                    hooks = typeof createInitializer === 'function' ? createInitializer() : null;
+                    hooks =
+                        typeof createInitializer === 'function'
+                            ? createInitializer({ signal })
+                            : null;
                     hooks?.onStart?.();
                     hooksProxy.attach(hooks);
                 }
@@ -928,7 +1361,7 @@ async function bootstrap() {
             wasmResponseTask,
         ]);
         if (isBootAborted(signal)) {
-            clearLocalFallbackTimer();
+            disposeLocalWatchdog();
             return;
         }
 
@@ -940,13 +1373,14 @@ async function bootstrap() {
 
         currentAssetPath = WASM_PATH;
         if (hooksProxy.isTransferComplete()) {
-            armLocalFallbackTimer(compileTimeoutMs, 'Compiling WebAssembly module');
+            armLocalFallbackTimer(compileTimeoutMs, 'Compiling WebAssembly module', 'compile');
         }
 
         const wasm = await init({ module_or_path: wasmResponse });
-        clearLocalFallbackTimer();
+        initCompleted = true;
 
         if (isBootAborted(signal)) {
+            disposeLocalWatchdog();
             try {
                 delete window.wasmBindings;
             } catch (_) {
@@ -959,7 +1393,21 @@ async function bootstrap() {
         hooks?.onSuccess?.(wasm);
 
         if (isBootAborted(signal)) {
+            disposeLocalWatchdog();
             return;
+        }
+
+        if (!document.getElementById('loading_indicator')) {
+            disposeLocalWatchdog();
+        } else if (!boot) {
+            localStageLabel = 'Initializing WebGL graphics context';
+            if (fallbackTimerId === null || localPhase !== 'compile') {
+                armLocalFallbackTimer(
+                    compileTimeoutMs,
+                    'Initializing WebGL graphics context',
+                    'compile',
+                );
+            }
         }
 
         window.wasmBindings = bindings;
@@ -967,7 +1415,8 @@ async function bootstrap() {
             new CustomEvent('TrunkApplicationStarted', { detail: { wasm } }),
         );
     } catch (caught) {
-        clearLocalFallbackTimer();
+        const failedPhase = localPhase;
+        disposeLocalWatchdog();
         hooksProxy.cancelPendingAnnouncements();
         hooks?.cancelPendingAnnouncements?.();
 
@@ -1013,11 +1462,22 @@ async function bootstrap() {
                     const lateDetail = enrichAssetError(effectiveError, failedAssetPath);
                     if (lateDetail !== enrichedDetail) {
                         activeBoot.showError('network', lateDetail);
+                        return;
+                    }
+                    if (category !== 'timeout' && category !== 'webgl' && category !== 'isolation') {
+                        void probeAssetHttpStatus(failedAssetPath).then((status) => {
+                            if (status >= 400 && !isPageUnloading) {
+                                activeBoot.showError(
+                                    'network',
+                                    enrichAssetError(effectiveError, failedAssetPath),
+                                );
+                            }
+                        });
                     }
                 }, 0);
             }
         } else {
-            showBootstrapRecovery(effectiveError, failedAssetPath);
+            showBootstrapRecovery(effectiveError, failedAssetPath, failedPhase);
         }
     }
 }

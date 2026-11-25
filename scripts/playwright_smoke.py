@@ -263,6 +263,19 @@ class CspDistRequestHandler(http.server.SimpleHTTPRequestHandler):
             self.close_connection = True
             return True
 
+        if mode == "stall_after_headers":
+            self.protocol_version = "HTTP/1.1"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/wasm")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            self.wfile.flush()
+            time.sleep(0.9)
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+            self.close_connection = True
+            return True
+
         if mode in ("full_br", "full_gz", "chunked_br", "chunked_gz"):
             is_br = "br" in mode
             is_chunked = mode.startswith("chunked_")
@@ -623,10 +636,9 @@ def run_internal_error_and_fallback_compile_checks(
                     expect(err_box).to_have_attribute("data-error-category", "compile")
                     expect(pg.locator("#error_title")).to_have_text("WebAssembly Startup Error")
                     expect(pg.locator("#webgl_reload_button")).to_be_focused()
-                    if not use_fallback:
-                        expect(pg.locator("#aria-live-assertive")).to_contain_text(
-                            "WebAssembly startup error"
-                        )
+                    expect(pg.locator("#aria-live-assertive")).to_contain_text(
+                        "WebAssembly startup error"
+                    )
                 except AssertionError as exc:
                     if aborted_unrouted:
                         raise TransientBrowserCrashError(
@@ -671,6 +683,9 @@ def run_internal_error_and_fallback_compile_checks(
             expect(err_box).to_have_attribute("data-error-category", "compile")
             expect(pg.locator("#error_title")).to_have_text("WebAssembly Startup Error")
             expect(pg.locator("#webgl_reload_button")).to_be_focused()
+            expect(pg.locator("#aria-live-assertive")).to_contain_text(
+                "WebAssembly startup error"
+            )
         except AssertionError as exc:
             if aborted_unrouted:
                 raise TransientBrowserCrashError(
@@ -1353,6 +1368,427 @@ def run_offline_sw_shell_recovery_check(
         context.close()
 
 
+def _seed_workspace_and_route_reload_500(
+    page: Page,
+    base_url: str,
+    theme_name: str = "HighContrast",
+) -> str:
+    envelope = (
+        '{"schema_version":"1.0","app_version":"0.4.0",'
+        '"timestamp":"2026-11-25T00:00:00Z",'
+        f'"app_state":{{"selected_tab":0,"selected_tab_name":null,'
+        f'"show_info":true,"show_warnings":true,"show_errors":true,'
+        f'"theme":"{theme_name}","tab_states":{{}}}}}}'
+    )
+    page.goto(f"{base_url}/site.webmanifest", wait_until="domcontentloaded")
+    page.evaluate("(payload) => localStorage.setItem('app', payload)", envelope)
+    page.route(
+        "**/reload.js*",
+        lambda route: route.fulfill(
+            status=500,
+            content_type="text/plain; charset=utf-8",
+            body=b"Simulated reload.js HTTP 500 failure",
+        ),
+    )
+    return envelope
+
+
+def _assert_mws_download_matches(page: Page, expected_substr: str) -> None:
+    download_btn = page.locator("#download_workspace_button")
+    expect(download_btn).to_be_visible()
+    with page.expect_download(timeout=5_000) as dl_info:
+        download_btn.click()
+    download = dl_info.value
+    if not download.suggested_filename.endswith(".mws"):
+        raise AssertionError(
+            f"Expected .mws recovery download filename, got {download.suggested_filename!r}"
+        )
+    dl_path = download.path()
+    if dl_path is None:
+        raise AssertionError("Playwright download returned None path")
+    body = Path(dl_path).read_text(encoding="utf-8")
+    if expected_substr not in body:
+        raise AssertionError(
+            f"Downloaded .mws payload missing {expected_substr!r}: {body[:200]!r}"
+        )
+
+
+def run_fallback_reload_500_boot_and_fault_checks(
+    browser: Browser,
+    base_url: str,
+    dist_dir: Path,
+    br_size: int,
+    wasm_size: int,
+) -> None:
+    # 1. Healthy standalone fallback boot (reload.js HTTP 500): theme sync + polite ARIA milestones
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    try:
+        pg = ctx.new_page()
+        csp_violations: list[str] = []
+        aborted_assets: list[str] = []
+        attach_csp_observer(pg, csp_violations)
+        pg.on(
+            "requestfailed",
+            lambda req: aborted_assets.append(f"{req.url}: {req.failure}")
+            if req.failure == "net::ERR_ABORTED"
+            else None,
+        )
+        _seed_workspace_and_route_reload_500(pg, base_url, "HighContrast")
+        instrumented_bootstrap = (
+            STARTUP_TELEMETRY_PROBE_JS + (dist_dir / "bootstrap.js").read_bytes()
+        )
+        pg.route(
+            "**/bootstrap.js*",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="text/javascript",
+                body=instrumented_bootstrap,
+            ),
+        )
+        pg.goto(f"{base_url}/?wasm_mode=chunked_br", wait_until="domcontentloaded")
+        try:
+            expect(pg.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+            expect(pg.locator("#the_canvas_id")).to_be_visible()
+            expect(pg.locator("#the_canvas_id")).to_be_focused()
+        except AssertionError as exc:
+            if aborted_assets:
+                raise TransientBrowserCrashError(
+                    f"[fallback_reload_500_polite_and_theme] Loopback request aborted: {aborted_assets}"
+                ) from exc
+            raise
+
+        if not pg.evaluate("() => typeof window.__mathExplorerBoot === 'undefined'"):
+            raise AssertionError("Expected window.__mathExplorerBoot to be undefined on reload.js 500")
+        expect(pg.locator("html")).to_have_attribute("data-theme", "high-contrast")
+        theme_color = pg.locator('meta[name="theme-color"]').first.get_attribute("content")
+        if theme_color != "#000000":
+            raise AssertionError(f"Expected high-contrast meta theme-color #000000, got {theme_color!r}")
+
+        trace = pg.evaluate("() => window.__mathExplorerSmokeTrace")
+        expected_mb = round(br_size / 1_000_000.0, 2)
+        uncompressed_mb = round(wasm_size / 1_000_000.0, 2)
+        totals = extract_reported_totals_mb(trace["bytesTexts"])
+        if not totals or any(abs(v - expected_mb) > 0.01 or abs(v - uncompressed_mb) <= 0.05 for v in totals):
+            raise AssertionError(
+                f"[fallback_reload_500_polite_and_theme] Unexpected wire totals {totals} in {trace['bytesTexts']}"
+            )
+        polite_log: list[str] = trace["politeAnnouncements"]
+        for milestone in (
+            "WebAssembly download 25% complete.",
+            "WebAssembly download 50% complete.",
+            "WebAssembly download 75% complete.",
+            "Download complete. Compiling WebAssembly module.",
+        ):
+            if milestone not in polite_log:
+                raise AssertionError(
+                    f"[fallback_reload_500_polite_and_theme] Missing polite milestone {milestone!r} in {polite_log}"
+                )
+        assert_zero_csp_violations("fallback_reload_500_polite_and_theme", csp_violations)
+    finally:
+        ctx.close()
+
+    # 2. Standalone fallback compile hang AND post-init() WebRunner::start() hang + .mws backup + theme sync
+    for sublabel, loader_body in (
+        (
+            "init_compile_hang",
+            b"export default async function init() { return new Promise(() => {}); }\n",
+        ),
+        (
+            "post_init_webrunner_hang",
+            b"export default async function init() { return {}; }\n",
+        ),
+    ):
+        ctx = browser.new_context(viewport={"width": 1280, "height": 800}, accept_downloads=True)
+        try:
+            pg = ctx.new_page()
+            csp_violations = []
+            aborted_unrouted: list[str] = []
+            attach_csp_observer(pg, csp_violations)
+            attach_unrouted_script_abort_observer(pg, aborted_unrouted)
+            seeded = _seed_workspace_and_route_reload_500(pg, base_url, "Light")
+            pg.route(
+                "**/math_explorer_gui.js*",
+                lambda route, *, payload=loader_body: route.fulfill(
+                    status=200,
+                    content_type="text/javascript",
+                    body=payload,
+                ),
+            )
+            pg.goto(f"{base_url}/?compile_timeout_ms=250", wait_until="domcontentloaded")
+            try:
+                err_box = pg.locator("#error_container")
+                expect(err_box).to_be_visible(timeout=10_000)
+                expect(err_box).to_have_attribute("data-error-category", "timeout")
+                expect(pg.locator("html")).to_have_attribute("data-theme", "light")
+                expect(pg.locator("#error_title")).to_have_text("Startup Timed Out")
+                expect(pg.locator("#error_message")).to_contain_text(
+                    "WebAssembly compilation or graphics initialization timed out before startup could complete"
+                )
+                expect(pg.locator("#aria-live-assertive")).to_contain_text(
+                    "timed out during WebAssembly compilation or graphics initialization"
+                )
+                expect(pg.locator("#webgl_reload_button")).to_be_focused()
+                _assert_mws_download_matches(pg, seeded)
+            except AssertionError as exc:
+                if aborted_unrouted:
+                    raise TransientBrowserCrashError(
+                        f"[fallback_reload_500_{sublabel}] Unrouted script aborted: {aborted_unrouted}"
+                    ) from exc
+                raise
+            assert_zero_csp_violations(f"fallback_reload_500_{sublabel}", csp_violations)
+        finally:
+            ctx.close()
+
+    # 2b. Standalone fallback post-header WASM stream stall (stall_timeout_ms stays armed until stream finishes)
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800}, accept_downloads=True)
+    try:
+        pg = ctx.new_page()
+        csp_violations = []
+        aborted_unrouted = []
+        attach_csp_observer(pg, csp_violations)
+        attach_unrouted_script_abort_observer(pg, aborted_unrouted)
+        seeded = _seed_workspace_and_route_reload_500(pg, base_url, "HighContrast")
+        pg.goto(
+            f"{base_url}/?stall_timeout_ms=250&wasm_mode=stall_after_headers",
+            wait_until="domcontentloaded",
+        )
+        try:
+            err_box = pg.locator("#error_container")
+            expect(err_box).to_be_visible(timeout=5_000)
+            expect(err_box).to_have_attribute("data-error-category", "timeout")
+            expect(pg.locator("html")).to_have_attribute("data-theme", "high-contrast")
+            expect(pg.locator("#error_title")).to_have_text("Startup Timed Out")
+            expect(pg.locator("#error_message")).to_contain_text(
+                "stalled without progress before startup could complete"
+            )
+            expect(pg.locator("#aria-live-assertive")).to_contain_text("stalled transfer")
+            expect(pg.locator("#webgl_reload_button")).to_be_focused()
+            _assert_mws_download_matches(pg, seeded)
+        except AssertionError as exc:
+            if aborted_unrouted:
+                raise TransientBrowserCrashError(
+                    f"[fallback_reload_500_post_header_stall] Unrouted script aborted: {aborted_unrouted}"
+                ) from exc
+            raise
+        assert_zero_csp_violations("fallback_reload_500_post_header_stall", csp_violations)
+    finally:
+        ctx.close()
+
+    # 2c. Standalone fallback initializer.js HTTP 404 fault
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800}, accept_downloads=True)
+    try:
+        pg = ctx.new_page()
+        csp_violations = []
+        attach_csp_observer(pg, csp_violations)
+        seeded = _seed_workspace_and_route_reload_500(pg, base_url, "Dark")
+        pg.route(
+            "**/initializer.js*",
+            lambda route: route.fulfill(
+                status=404,
+                content_type="text/plain; charset=utf-8",
+                body=b"Missing initializer.js",
+            ),
+        )
+        pg.goto(f"{base_url}/", wait_until="domcontentloaded")
+        verify_error_recovery(pg, "fallback_reload_500_initializer_404", EXPECTED_FAULTS["network"])
+        expect(pg.locator("html")).to_have_attribute("data-theme", "dark")
+        expect(pg.locator("#error_details")).to_contain_text("initializer.js")
+        _assert_mws_download_matches(pg, seeded)
+        assert_zero_csp_violations("fallback_reload_500_initializer_404", csp_violations)
+    finally:
+        ctx.close()
+
+    # 3. Standalone fallback HTTP status probe when ResourceTiming.responseStatus == 0 (WebKit parity)
+    webkit_zero_status_shim = (
+        b"(function(){\n"
+        b"  if (typeof PerformanceResourceTiming !== 'undefined') {\n"
+        b"    Object.defineProperty(PerformanceResourceTiming.prototype, 'responseStatus', {\n"
+        b"      configurable: true, get: function() { return 0; }\n"
+        b"    });\n"
+        b"  }\n"
+        b"})();\n"
+    )
+    for probe_label, head_status, get_status, expected_http in (
+        ("head_404", 404, 404, "HTTP 404"),
+        ("head_405_get_502", 405, 502, "HTTP 502"),
+    ):
+        ctx = browser.new_context(viewport={"width": 1280, "height": 800}, accept_downloads=True)
+        try:
+            pg = ctx.new_page()
+            csp_violations = []
+            observed_methods: list[str] = []
+            attach_csp_observer(pg, csp_violations)
+            seeded = _seed_workspace_and_route_reload_500(pg, base_url, "Dark")
+            shimmed_bootstrap = webkit_zero_status_shim + (dist_dir / "bootstrap.js").read_bytes()
+            pg.route(
+                "**/bootstrap.js*",
+                lambda route, *, payload=shimmed_bootstrap: route.fulfill(
+                    status=200,
+                    content_type="text/javascript",
+                    body=payload,
+                ),
+            )
+
+            def _handle_probed_loader(
+                route: object,
+                *,
+                h_code: int = head_status,
+                g_code: int = get_status,
+                methods: list[str] = observed_methods,
+            ) -> None:
+                req = getattr(route, "request")
+                method = getattr(req, "method", "GET")
+                methods.append(method)
+                code = h_code if method == "HEAD" else g_code
+                getattr(route, "fulfill")(
+                    status=code,
+                    content_type="text/plain; charset=utf-8",
+                    body=b"" if method == "HEAD" else b"Upstream asset error",
+                )
+
+            pg.route("**/math_explorer_gui.js*", _handle_probed_loader)
+            pg.goto(f"{base_url}/", wait_until="domcontentloaded")
+            verify_error_recovery(pg, f"fallback_probe_{probe_label}", EXPECTED_FAULTS["network"])
+            expect(pg.locator("html")).to_have_attribute("data-theme", "dark")
+            expect(pg.locator("#error_details")).to_contain_text(expected_http, timeout=5_000)
+            if "HEAD" not in observed_methods:
+                raise AssertionError(
+                    f"[fallback_probe_{probe_label}] Expected same-origin HEAD probe, observed {observed_methods}"
+                )
+            _assert_mws_download_matches(pg, seeded)
+            assert_zero_csp_violations(f"fallback_probe_{probe_label}", csp_violations)
+        finally:
+            ctx.close()
+
+    print(
+        "[PASS] fallback_reload_500_boot_and_faults: polite ARIA, theme sync, compile/WebRunner hangs, HEAD status probe, and .mws backup verified"
+    )
+
+
+def run_fallback_reload_500_webgl_context_loss_checks(
+    browser: Browser,
+    base_url: str,
+    screenshot_path: Path | None = None,
+) -> None:
+    for block_storage in (False, True):
+        ctx = browser.new_context(viewport={"width": 1280, "height": 800}, accept_downloads=True)
+        try:
+            pg = ctx.new_page()
+            csp_violations: list[str] = []
+            aborted_assets: list[str] = []
+            attach_csp_observer(pg, csp_violations)
+            pg.on(
+                "requestfailed",
+                lambda req: aborted_assets.append(f"{req.url}: {req.failure}")
+                if req.failure == "net::ERR_ABORTED"
+                else None,
+            )
+            _seed_workspace_and_route_reload_500(pg, base_url, "HighContrast")
+            pg.goto(f"{base_url}/?webgl_restore_timeout_ms=250", wait_until="domcontentloaded")
+            try:
+                expect(pg.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+                expect(pg.locator("#the_canvas_id")).to_be_visible()
+            except AssertionError as exc:
+                if aborted_assets:
+                    raise TransientBrowserCrashError(
+                        f"[fallback_webgl_context_loss] Loopback request aborted: {aborted_assets}"
+                    ) from exc
+                raise
+
+            if block_storage:
+                pg.evaluate(
+                    """() => {
+                        Storage.prototype.setItem = function () {
+                            throw new DOMException('QuotaExceededError', 'QuotaExceededError');
+                        };
+                    }"""
+                )
+
+            prevented = pg.evaluate(
+                """() => {
+                    const canvas = document.getElementById('the_canvas_id');
+                    const ev = new Event('webglcontextlost', { cancelable: true });
+                    canvas.dispatchEvent(ev);
+                    return ev.defaultPrevented;
+                }"""
+            )
+            if not prevented:
+                raise AssertionError("webglcontextlost event was not preventDefault()-ed")
+
+            err_box = pg.locator("#error_container")
+            expect(err_box).to_be_visible(timeout=5_000)
+            expect(err_box).to_have_attribute("data-error-category", "webgl")
+            expect(err_box).to_have_attribute(
+                "data-storage-blocked", "true" if block_storage else "false"
+            )
+            expect(pg.locator("html")).to_have_attribute("data-theme", "high-contrast")
+            expect(pg.locator("#webgl_recovery_overlay")).to_be_hidden()
+            expect(pg.locator("#error_title")).to_have_text("WebGL Graphics Context Lost")
+            expect(pg.locator("#error_details")).to_have_text(
+                "WebGL context restoration timed out after 250 ms."
+            )
+            if block_storage:
+                expect(pg.locator("#error_message")).to_contain_text(
+                    "blocked local storage writes"
+                )
+                expect(pg.locator("#aria-live-assertive")).to_contain_text(
+                    "browser storage blocked saving"
+                )
+            else:
+                expect(pg.locator("#error_message")).to_contain_text(
+                    "lost its WebGL graphics context and could not restore hardware rendering automatically"
+                )
+                expect(pg.locator("#aria-live-assertive")).to_contain_text(
+                    "WebGL graphics context lost and could not be restored automatically"
+                )
+            expect(pg.locator("#webgl_reload_button")).to_be_focused()
+            _assert_mws_download_matches(pg, '"schema_version"')
+            assert_zero_csp_violations(
+                f"fallback_webgl_context_loss_blocked_{block_storage}", csp_violations
+            )
+            if block_storage and screenshot_path is not None:
+                pg.screenshot(path=str(screenshot_path))
+        finally:
+            ctx.close()
+
+    print(
+        "[PASS] fallback_reload_500_webgl_context_loss: 'WebGL Graphics Context Lost', 250 ms timeout, storage-blocked flag, assertive ARIA, and .mws backup verified"
+    )
+
+
+def run_fallback_reload_500_disabled_webgl_check(
+    disabled_browser: Browser,
+    base_url: str,
+) -> None:
+    ctx = disabled_browser.new_context(viewport={"width": 1280, "height": 800}, accept_downloads=True)
+    try:
+        pg = ctx.new_page()
+        csp_violations: list[str] = []
+        aborted_unrouted: list[str] = []
+        attach_csp_observer(pg, csp_violations)
+        attach_unrouted_script_abort_observer(pg, aborted_unrouted)
+        seeded = _seed_workspace_and_route_reload_500(pg, base_url, "Dark")
+        pg.goto(f"{base_url}/", wait_until="domcontentloaded")
+        try:
+            verify_error_recovery(
+                pg, "fallback_reload_500_disabled_webgl", EXPECTED_FAULTS["webgl"]
+            )
+            expect(pg.locator("html")).to_have_attribute("data-theme", "dark")
+            _assert_mws_download_matches(pg, seeded)
+        except AssertionError as exc:
+            if aborted_unrouted:
+                raise TransientBrowserCrashError(
+                    f"[fallback_reload_500_disabled_webgl] Unrouted script aborted: {aborted_unrouted}"
+                ) from exc
+            raise
+        assert_zero_csp_violations("fallback_reload_500_disabled_webgl", csp_violations)
+        print(
+            "[PASS] fallback_reload_500_disabled_webgl: cold-boot 'WebGL Initialization Failed', dark theme, assertive ARIA, and .mws backup verified"
+        )
+    finally:
+        ctx.close()
+
+
 def run_smoke_suite(
     dist_dir: Path,
     trunk_toml: Path,
@@ -1550,6 +1986,26 @@ def run_smoke_suite(
                     ),
                 )
 
+                run_with_crash_retry(
+                    webgl_pool,
+                    "fallback_reload_500_boot_and_faults",
+                    lambda b: run_fallback_reload_500_boot_and_fault_checks(
+                        b, base_url, dist_dir, br_size, wasm_size
+                    ),
+                )
+
+                run_with_crash_retry(
+                    webgl_pool,
+                    "fallback_reload_500_webgl_context_loss",
+                    lambda b: run_fallback_reload_500_webgl_context_loss_checks(
+                        b,
+                        base_url,
+                        screenshot_dir / "smoke_fallback_webgl_context_lost_high_contrast.png"
+                        if screenshot_dir
+                        else None,
+                    ),
+                )
+
                 if check_regressions:
                     run_with_crash_retry(
                         webgl_pool,
@@ -1582,6 +2038,12 @@ def run_smoke_suite(
                         if screenshot_dir
                         else None,
                     ),
+                )
+
+                run_with_crash_retry(
+                    disabled_pool,
+                    "fallback_reload_500_disabled_webgl",
+                    lambda b: run_fallback_reload_500_disabled_webgl_check(b, base_url),
                 )
             finally:
                 disabled_pool.close()

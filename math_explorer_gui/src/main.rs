@@ -168,7 +168,20 @@ fn notify_js_boot_complete(window: Option<&web_sys::Window>) {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn bind_fallback_reload_listener(doc: &web_sys::Document) {
+pub(crate) const DEFAULT_RECOVERY_FILENAME: &str = "math-explorer-recovery.mws";
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn read_saved_workspace_from_storage(
+    window: Option<&web_sys::Window>,
+) -> Option<String> {
+    let win = window?;
+    let storage = win.local_storage().ok().flatten()?;
+    let raw = storage.get_item(eframe::APP_KEY).ok().flatten()?;
+    (!raw.trim().is_empty()).then_some(raw)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn bind_fallback_reload_listener(doc: &web_sys::Document) {
     use wasm_bindgen::JsCast;
     let Some(reload_btn) = doc.get_element_by_id("webgl_reload_button") else {
         return;
@@ -185,6 +198,44 @@ fn bind_fallback_reload_listener(doc: &web_sys::Document) {
     }) as Box<dyn FnMut(web_sys::Event)>);
     let _ = reload_btn.add_event_listener_with_callback("click", listener.as_ref().unchecked_ref());
     listener.forget();
+}
+
+#[cfg(target_arch = "wasm32")]
+fn sync_cold_boot_download_button(doc: &web_sys::Document) {
+    use wasm_bindgen::JsCast;
+    let Some(btn) = doc.get_element_by_id("download_workspace_button") else {
+        return;
+    };
+    if btn.get_attribute("data-download-bound").as_deref() != Some("true") {
+        let _ = btn.set_attribute("data-download-bound", "true");
+        let listener = wasm_bindgen::closure::Closure::wrap(Box::new(|event: web_sys::Event| {
+            event.prevent_default();
+            if let Some(payload) = read_saved_workspace_from_storage(web_sys::window().as_ref()) {
+                if crate::web_io::download_browser_file(
+                    DEFAULT_RECOVERY_FILENAME,
+                    payload.as_bytes(),
+                )
+                .is_ok()
+                {
+                    accessibility::announce_status_with_priority(
+                        "Downloaded saved workspace envelope math-explorer-recovery.mws.",
+                        "polite",
+                    );
+                }
+            }
+        })
+            as Box<dyn FnMut(web_sys::Event)>);
+        let _ = btn.add_event_listener_with_callback("click", listener.as_ref().unchecked_ref());
+        listener.forget();
+    }
+    if btn.get_attribute("data-storage-blocked").as_deref() != Some("true") {
+        let _ = btn.set_attribute("data-storage-blocked", "false");
+    }
+    if read_saved_workspace_from_storage(web_sys::window().as_ref()).is_some() {
+        let _ = btn.remove_attribute("hidden");
+    } else {
+        let _ = btn.set_attribute("hidden", "");
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -233,6 +284,12 @@ pub(crate) fn handle_webgl_failure(document: Option<&web_sys::Document>, error_i
         select_webgl_error_category(doc);
 
         if let Some(error_container) = doc.get_element_by_id("error_container") {
+            if error_container
+                .get_attribute("data-storage-blocked")
+                .is_none()
+            {
+                let _ = error_container.set_attribute("data-storage-blocked", "false");
+            }
             let _ = error_container.set_attribute("style", "display: flex;");
         }
 
@@ -241,6 +298,7 @@ pub(crate) fn handle_webgl_failure(document: Option<&web_sys::Document>, error_i
             let _ = details_el.set_attribute("style", "display: block;");
         }
 
+        sync_cold_boot_download_button(doc);
         bind_fallback_reload_listener(doc);
 
         use wasm_bindgen::JsCast;

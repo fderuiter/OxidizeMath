@@ -6,6 +6,8 @@ const BOOTSTRAP_JS: &str = include_str!("../bootstrap.js");
 const INITIALIZER_JS: &str = include_str!("../initializer.js");
 const SW_JS: &str = include_str!("../sw.js");
 const MAIN_RS: &str = include_str!("main.rs");
+const WEBGL_RECOVERY_RS: &str = include_str!("webgl_recovery.rs");
+const WEBGL_RECOVERY_BRIDGE_RS: &str = include_str!("webgl_recovery/bridge.rs");
 const FINALIZE_WEB_DIST_SH: &str = include_str!("../../scripts/finalize_web_dist.sh");
 const COMPRESS_DIST_SH: &str = include_str!("../../scripts/compress_dist.sh");
 
@@ -253,4 +255,88 @@ fn test_truncation_precedes_compile_error_and_internal_error_maps_to_compile() {
             );
         }
     }
+}
+
+#[test]
+fn test_standalone_bootstrap_watchdog_theme_aria_backup_and_probe_parity() {
+    for contract in [
+        "__MATH_EXPLORER_STALL_TIMEOUT_MS",
+        "__MATH_EXPLORER_COMPILE_TIMEOUT_MS",
+        "FALLBACK_COMPILE_TIMEOUT_COPY",
+        "WebAssembly compilation or graphics initialization timed out after",
+        "new MutationObserver(",
+        "loadingObserver.observe(document.body, { childList: true })",
+        "window.addEventListener('beforeunload', handleBeforeUnload)",
+        "syncShellThemeFromStorage()",
+        "meta[name=\"theme-color\"]",
+        "announceFallback(copy.alert, 'assertive')",
+        "let fallbackPoliteSlotToggle = 1;",
+        "let fallbackAssertiveSlotToggle = 1;",
+        "bindFallbackDownloadWorkspaceButton()",
+        "syncFallbackDownloadWorkspaceButton()",
+        "probeAssetHttpStatus(",
+        "method: 'HEAD'",
+        "cancelProbeResponseBody(",
+        "createInitializer({ signal })",
+    ] {
+        assert!(
+            BOOTSTRAP_JS.contains(contract),
+            "bootstrap.js must preserve standalone fallback parity contract: {contract}"
+        );
+    }
+
+    let init_call = BOOTSTRAP_JS
+        .find("await init({ module_or_path: wasmResponse })")
+        .expect("bootstrap.js must await init({ module_or_path: wasmResponse })");
+    let after_init = &BOOTSTRAP_JS[init_call..];
+    assert!(
+        after_init.contains("Initializing WebGL graphics context")
+            && !after_init.starts_with(
+                "await init({ module_or_path: wasmResponse });\n        clearLocalFallbackTimer();"
+            ),
+        "bootstrap.js must keep compileTimeoutMs armed across async WebRunner::start() until #loading_indicator is removed"
+    );
+}
+
+#[test]
+fn test_initializer_and_rust_webgl_fallback_parity_contracts() {
+    for contract in [
+        "options && options.signal",
+        "let fallbackPoliteSlotToggle = 1;",
+        "function announcePolite(message)",
+        "Downloading Math Explorer WebAssembly module.",
+        "Download complete. Compiling WebAssembly module.",
+    ] {
+        assert!(
+            INITIALIZER_JS.contains(contract),
+            "initializer.js must announce polite milestones without requiring __mathExplorerBoot: {contract}"
+        );
+    }
+    for contract in [
+        "MIN_FALLBACK_RESTORE_TIMEOUT_MS: f64 = 50.0",
+        "webgl_restore_timeout_ms",
+        "__MATH_EXPLORER_WEBGL_RESTORE_TIMEOUT_MS",
+        "WebGL context restoration timed out after {timeout_ms} ms.",
+    ] {
+        assert!(
+            WEBGL_RECOVERY_RS.contains(contract),
+            "webgl_recovery.rs must honor fallback restore timeout contract: {contract}"
+        );
+    }
+    for contract in [
+        "WebGL Graphics Context Lost",
+        "data-storage-blocked",
+        "CONTEXT_LOST_BLOCKED_STORAGE_MESSAGE",
+        "CONTEXT_LOST_BLOCKED_STORAGE_ALERT",
+        "render_fallback_context_lost_failure",
+    ] {
+        assert!(
+            WEBGL_RECOVERY_BRIDGE_RS.contains(contract),
+            "webgl_recovery/bridge.rs must render standalone context-loss recovery parity: {contract}"
+        );
+    }
+    assert!(
+        MAIN_RS.contains("sync_cold_boot_download_button(doc)"),
+        "main.rs cold-boot handle_webgl_failure must sync #download_workspace_button from localStorage"
+    );
 }

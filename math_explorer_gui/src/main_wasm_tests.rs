@@ -10,18 +10,21 @@ use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 
 wasm_bindgen_test_configure!(run_in_browser);
 
-fn reset_startup_dom() -> (web_sys::Window, web_sys::Document) {
-    let window = web_sys::window().expect("browser window must exist");
-    let doc = window.document().expect("browser document must exist");
-    if let Some(root) = doc.document_element() {
-        let _ = root.remove_attribute("data-boot-initialized");
-        let _ = root.remove_attribute("data-boot-failed");
-    }
-    let body = doc.body().expect("document body must exist");
-    for id in ["loading_indicator", "the_canvas_id", "error_container"] {
-        if let Some(el) = doc.get_element_by_id(id) {
-            el.remove();
-        }
+fn append_startup_dom_fixtures(doc: &web_sys::Document, body: &web_sys::HtmlElement) {
+    for (id, html) in [
+        (
+            "aria-live-polite",
+            "<span id=\"aria-live-polite-slot-0\"></span><span id=\"aria-live-polite-slot-1\"></span>",
+        ),
+        (
+            "aria-live-assertive",
+            "<span id=\"aria-live-assertive-slot-0\"></span><span id=\"aria-live-assertive-slot-1\"></span>",
+        ),
+    ] {
+        let region = doc.create_element("div").unwrap();
+        region.set_id(id);
+        region.set_inner_html(html);
+        let _ = body.append_child(&region);
     }
 
     let loading = doc.create_element("div").unwrap();
@@ -41,10 +44,44 @@ fn reset_startup_dom() -> (web_sys::Window, web_sys::Document) {
     err_box.set_inner_html(
         "<h1 id=\"error_title\"></h1><p id=\"error_message\"></p>\
          <button id=\"webgl_reload_button\" type=\"button\">Reload</button>\
+         <button id=\"download_workspace_button\" type=\"button\" hidden>Download</button>\
          <pre id=\"error_details\" style=\"display: none;\"></pre>",
     );
     let _ = body.append_child(&err_box);
+}
 
+fn reset_startup_dom() -> (web_sys::Window, web_sys::Document) {
+    let window = web_sys::window().expect("browser window must exist");
+    let doc = window.document().expect("browser document must exist");
+    if let Some(root) = doc.document_element() {
+        let _ = root.remove_attribute("data-boot-initialized");
+        let _ = root.remove_attribute("data-boot-failed");
+    }
+    let body = doc.body().expect("document body must exist");
+    for id in [
+        "loading_indicator",
+        "the_canvas_id",
+        "error_container",
+        "aria-live-polite",
+        "aria-live-assertive",
+    ] {
+        if let Some(el) = doc.get_element_by_id(id) {
+            el.remove();
+        }
+    }
+    if let Ok(Some(storage)) = window.local_storage() {
+        let _ = storage.remove_item(eframe::APP_KEY);
+    }
+    for prop in [
+        "__mathExplorerBoot",
+        "__MATH_EXPLORER_WEBGL_RESTORE_TIMEOUT_MS",
+    ] {
+        let _ = js_sys::Reflect::delete_property(
+            window.as_ref(),
+            &wasm_bindgen::JsValue::from_str(prop),
+        );
+    }
+    append_startup_dom_fixtures(&doc, &body);
     (window, doc)
 }
 
@@ -236,6 +273,111 @@ fn wasm_webgl_context_lost_prevents_default_and_reveals_recovery_overlay() {
     assert_eq!(overlay.get_attribute("aria-busy").as_deref(), Some("true"));
     canvas.remove();
     overlay.remove();
+}
+
+#[wasm_bindgen_test]
+fn wasm_cold_boot_webgl_failure_syncs_download_workspace_button() {
+    let (_window, doc) = reset_startup_dom();
+    handle_webgl_failure(Some(&doc), "WebGL disabled");
+    let btn = doc.get_element_by_id("download_workspace_button").unwrap();
+    assert!(
+        btn.has_attribute("hidden"),
+        "cold-boot WebGL failure without saved workspace must keep backup button hidden"
+    );
+
+    let (window, doc) = reset_startup_dom();
+    let storage = window.local_storage().unwrap().unwrap();
+    storage
+        .set_item(eframe::APP_KEY, "{\"theme\":\"HighContrast\"}")
+        .unwrap();
+    handle_webgl_failure(Some(&doc), "WebGL disabled");
+    let btn = doc.get_element_by_id("download_workspace_button").unwrap();
+    assert!(!btn.has_attribute("hidden"));
+    assert_eq!(
+        btn.get_attribute("data-download-bound").as_deref(),
+        Some("true")
+    );
+    assert_eq!(
+        doc.get_element_by_id("error_title")
+            .and_then(|el| el.text_content())
+            .as_deref(),
+        Some("WebGL Initialization Failed")
+    );
+    let _ = storage.remove_item(eframe::APP_KEY);
+}
+
+#[wasm_bindgen_test]
+fn wasm_webgl_restore_timeout_honors_query_and_window_overrides_down_to_50ms() {
+    use crate::webgl_recovery::{
+        parse_restore_timeout_ms_from_search as parse_qs, resolve_fallback_restore_timeout_ms,
+    };
+
+    assert_eq!(parse_qs("?webgl_restore_timeout_ms=50"), Some(50));
+    assert_eq!(
+        parse_qs("?foo=1&webgl_restore_timeout_ms=275&bar=2"),
+        Some(275)
+    );
+    assert_eq!(parse_qs("?webgl_restore_timeout_ms=49"), None);
+    assert_eq!(parse_qs("?webgl_restore_timeout_ms=abc"), None);
+
+    let (window, _doc) = reset_startup_dom();
+    assert_eq!(resolve_fallback_restore_timeout_ms(Some(&window)), 8_000);
+    let key = wasm_bindgen::JsValue::from_str("__MATH_EXPLORER_WEBGL_RESTORE_TIMEOUT_MS");
+    let _ = js_sys::Reflect::set(
+        window.as_ref(),
+        &key,
+        &wasm_bindgen::JsValue::from_f64(50.0),
+    );
+    assert_eq!(resolve_fallback_restore_timeout_ms(Some(&window)), 50);
+    let _ = js_sys::Reflect::set(
+        window.as_ref(),
+        &key,
+        &wasm_bindgen::JsValue::from_f64(25.0),
+    );
+    assert_eq!(resolve_fallback_restore_timeout_ms(Some(&window)), 8_000);
+    let _ = js_sys::Reflect::delete_property(window.as_ref(), &key);
+}
+
+#[wasm_bindgen_test]
+fn wasm_fallback_webgl_context_loss_failure_renders_copy_storage_flag_and_alert() {
+    let (window, doc) = reset_startup_dom();
+    crate::webgl_recovery::bridge::notify_recovery_failed(
+        Some(&window),
+        &doc,
+        "WebGL context restoration timed out after 300 ms.",
+        "{\"format\":\"math-explorer-workspace\"}",
+        "math-explorer-recovery.mws",
+        true,
+    );
+
+    let text_of = |id: &str| doc.get_element_by_id(id).and_then(|el| el.text_content());
+    let err_box = doc.get_element_by_id("error_container").unwrap();
+    assert_eq!(
+        err_box.get_attribute("data-storage-blocked").as_deref(),
+        Some("true")
+    );
+    assert_eq!(
+        text_of("error_title").as_deref(),
+        Some("WebGL Graphics Context Lost")
+    );
+    assert!(text_of("error_message").is_some_and(|m| m.contains("blocked local storage writes")));
+    assert_eq!(
+        text_of("error_details").as_deref(),
+        Some("WebGL context restoration timed out after 300 ms.")
+    );
+    let btn = doc.get_element_by_id("download_workspace_button").unwrap();
+    assert!(!btn.has_attribute("hidden"));
+    assert_eq!(
+        btn.get_attribute("data-storage-blocked").as_deref(),
+        Some("true")
+    );
+    assert!(
+        text_of("aria-live-assertive").is_some_and(|t| t.contains("WebGL graphics context lost"))
+    );
+    assert_eq!(
+        doc.active_element().map(|el| el.id()).as_deref(),
+        Some("webgl_reload_button")
+    );
 }
 
 #[cfg(feature = "biology")]

@@ -6,7 +6,7 @@
 //! hardware rendering returns before timeout, and transitions to `#error_container` via
 //! `reload.js` (with `.mws` workspace download support) when restoration times out or fails.
 
-mod bridge;
+pub(crate) mod bridge;
 
 use crate::accessibility;
 use crate::app::session::WorkspaceRecoverySnapshot;
@@ -22,6 +22,54 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 
 const DEFAULT_FALLBACK_RESTORE_TIMEOUT_MS: i32 = 8_000;
+const MIN_FALLBACK_RESTORE_TIMEOUT_MS: f64 = 50.0;
+
+fn clamp_timeout_ms(parsed: f64) -> Option<i32> {
+    if parsed.is_finite() && parsed >= MIN_FALLBACK_RESTORE_TIMEOUT_MS {
+        let clamped = parsed.floor().min(f64::from(i32::MAX));
+        format!("{clamped:.0}").parse::<i32>().ok()
+    } else {
+        None
+    }
+}
+
+pub(crate) fn parse_restore_timeout_ms_from_search(search: &str) -> Option<i32> {
+    let query = search.strip_prefix('?').unwrap_or(search);
+    for pair in query.split('&') {
+        if pair.is_empty() {
+            continue;
+        }
+        let (raw_key, raw_val) = pair.split_once('=').unwrap_or((pair, ""));
+        if raw_key == "webgl_restore_timeout_ms" {
+            let trimmed = raw_val.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            return trimmed.parse::<f64>().ok().and_then(clamp_timeout_ms);
+        }
+    }
+    None
+}
+
+pub(crate) fn resolve_fallback_restore_timeout_ms(window: Option<&web_sys::Window>) -> i32 {
+    let Some(win) = window else {
+        return DEFAULT_FALLBACK_RESTORE_TIMEOUT_MS;
+    };
+    if let Ok(override_val) = js_sys::Reflect::get(
+        win.as_ref(),
+        &JsValue::from_str("__MATH_EXPLORER_WEBGL_RESTORE_TIMEOUT_MS"),
+    ) {
+        if let Some(clamped) = override_val.as_f64().and_then(clamp_timeout_ms) {
+            return clamped;
+        }
+    }
+    if let Ok(search) = win.location().search() {
+        if let Some(clamped) = parse_restore_timeout_ms_from_search(&search) {
+            return clamped;
+        }
+    }
+    DEFAULT_FALLBACK_RESTORE_TIMEOUT_MS
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RecoveryPhase {
@@ -122,6 +170,7 @@ fn arm_fallback_restore_timer(
     let Some(win) = window else {
         return;
     };
+    let timeout_ms = resolve_fallback_restore_timeout_ms(Some(win));
     let runtime_for_timer = Rc::clone(runtime_rc);
     let cb = Closure::once(move || {
         let matches_epoch = matches!(
@@ -131,12 +180,13 @@ fn arm_fallback_restore_timer(
                 if cur == epoch
         );
         if matches_epoch {
-            handle_restore_timeout(&runtime_for_timer, "WebGL context restoration timed out.");
+            let detail = format!("WebGL context restoration timed out after {timeout_ms} ms.");
+            handle_restore_timeout(&runtime_for_timer, &detail);
         }
     });
     if let Ok(timer_id) = win.set_timeout_with_callback_and_timeout_and_arguments_0(
         cb.as_ref().unchecked_ref(),
-        DEFAULT_FALLBACK_RESTORE_TIMEOUT_MS,
+        timeout_ms,
     ) {
         runtime_rc.borrow_mut().fallback_timer_id = Some(timer_id);
     }

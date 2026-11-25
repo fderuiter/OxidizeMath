@@ -26,7 +26,7 @@ function setIndeterminateProgress(progressEl, stageLabel) {
 const POLITE_MILESTONES = [25, 50, 75];
 const POLITE_TASK_PACE_MS = 0;
 
-export default function mathExplorerInitializer() {
+export default function mathExplorerInitializer(options = {}) {
     let maxLoadedBytes = 0;
     let compileStarted = false;
     let settled = false;
@@ -34,6 +34,8 @@ export default function mathExplorerInitializer() {
     let pendingPoliteMessages = [];
     let politeTimerId = null;
     let boundAbortSignal = null;
+    // Start fallback polite toggle at slot 1 so slot 0 remains empty for Rust's AtomicBool::new(false).
+    let fallbackPoliteSlotToggle = 1;
 
     function getElements() {
         return {
@@ -44,6 +46,10 @@ export default function mathExplorerInitializer() {
     }
 
     function isStartupFailed() {
+        const optSignal = options && options.signal;
+        if ((optSignal && optSignal.aborted) || (boundAbortSignal && boundAbortSignal.aborted)) {
+            return true;
+        }
         const boot = typeof window !== 'undefined' ? window.__mathExplorerBoot : null;
         if (boot && typeof boot.isBootFailed === 'function' && boot.isBootFailed()) {
             return true;
@@ -75,7 +81,8 @@ export default function mathExplorerInitializer() {
     function bindAbortCleanup() {
         const boot = typeof window !== 'undefined' ? window.__mathExplorerBoot : null;
         const signal =
-            boot && typeof boot.getAbortSignal === 'function' ? boot.getAbortSignal() : null;
+            (options && options.signal) ||
+            (boot && typeof boot.getAbortSignal === 'function' ? boot.getAbortSignal() : null);
         if (!signal) {
             return;
         }
@@ -89,6 +96,48 @@ export default function mathExplorerInitializer() {
         }
     }
 
+    function announcePolite(message) {
+        if (!message) {
+            return;
+        }
+        const boot = typeof window !== 'undefined' ? window.__mathExplorerBoot : null;
+        if (boot && typeof boot.announce === 'function') {
+            boot.announce(message, 'polite');
+            return;
+        }
+        if (typeof document === 'undefined') {
+            return;
+        }
+        const writePoliteSlot = () => {
+            const slot0 = document.getElementById('aria-live-polite-slot-0');
+            const slot1 = document.getElementById('aria-live-polite-slot-1');
+            let slotIdx = fallbackPoliteSlotToggle;
+            if (slot0 && slot1) {
+                const slot0Busy = Boolean(slot0.textContent && slot0.textContent.length > 0);
+                const slot1Busy = Boolean(slot1.textContent && slot1.textContent.length > 0);
+                if (slot0Busy && !slot1Busy) {
+                    slotIdx = 1;
+                } else if (slot1Busy && !slot0Busy) {
+                    slotIdx = 0;
+                }
+            }
+            fallbackPoliteSlotToggle = 1 - slotIdx;
+            const activeSlot = slotIdx === 0 ? slot0 : slot1;
+            const siblingSlot = slotIdx === 0 ? slot1 : slot0;
+            if (siblingSlot) {
+                siblingSlot.textContent = '';
+            }
+            if (activeSlot) {
+                activeSlot.textContent = String(message);
+            }
+        };
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', writePoliteSlot, { once: true });
+        } else {
+            writePoliteSlot();
+        }
+    }
+
     function drainNextPoliteAnnouncement() {
         politeTimerId = null;
         if (isStartupFailed()) {
@@ -99,10 +148,7 @@ export default function mathExplorerInitializer() {
             return;
         }
         const nextMessage = pendingPoliteMessages.shift();
-        const boot = typeof window !== 'undefined' ? window.__mathExplorerBoot : null;
-        if (boot && typeof boot.announce === 'function') {
-            boot.announce(nextMessage, 'polite');
-        }
+        announcePolite(nextMessage);
         if (pendingPoliteMessages.length > 0 && typeof window !== 'undefined') {
             politeTimerId = window.setTimeout(drainNextPoliteAnnouncement, POLITE_TASK_PACE_MS);
         }
@@ -117,12 +163,8 @@ export default function mathExplorerInitializer() {
             return;
         }
         bindAbortCleanup();
-        const boot = typeof window !== 'undefined' ? window.__mathExplorerBoot : null;
-        if (!boot || typeof boot.announce !== 'function') {
-            return;
-        }
         if (immediateIfIdle && politeTimerId === null && pendingPoliteMessages.length === 0) {
-            boot.announce(message, 'polite');
+            announcePolite(message);
             if (typeof window !== 'undefined') {
                 politeTimerId = window.setTimeout(drainNextPoliteAnnouncement, POLITE_TASK_PACE_MS);
             }
@@ -163,11 +205,11 @@ export default function mathExplorerInitializer() {
                 } else {
                     boot.recordProgress('Starting WebAssembly download');
                 }
-                enqueuePoliteAnnouncement(
-                    'Downloading Math Explorer WebAssembly module.',
-                    true,
-                );
             }
+            enqueuePoliteAnnouncement(
+                'Downloading Math Explorer WebAssembly module.',
+                true,
+            );
 
             const { subtitleEl, progressEl, bytesEl } = getElements();
             if (subtitleEl) {
@@ -231,7 +273,7 @@ export default function mathExplorerInitializer() {
                     bytesEl.textContent =
                         formatBytes(safeTotal) + ' / ' + formatBytes(safeTotal) + ' (100%) — compiling...';
                 }
-                if (firstCompileTransition && boot) {
+                if (firstCompileTransition) {
                     enqueueCrossedMilestones(100);
                     enqueuePoliteAnnouncement(
                         'Download complete. Compiling WebAssembly module.',
