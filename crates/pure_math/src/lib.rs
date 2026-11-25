@@ -13,6 +13,8 @@ pub mod __macro_deps {
     pub use verified_engine;
 }
 
+pub use math_scalars;
+
 #[doc(hidden)]
 pub mod __doctest_facade {
     pub mod error {
@@ -49,7 +51,8 @@ pub mod __doctest_facade {
     pub use crate::{math_types, pure_math};
     pub use diagnostics;
     pub use math_commons::{
-        ast, constants, fit, math_kernel, poi, primitives, registry, series, stochastic, wigner,
+        ast, constants, fit, math_kernel, math_scalars, poi, primitives, registry, series,
+        stochastic, wigner,
     };
     pub use nalgebra;
     pub use num_complex;

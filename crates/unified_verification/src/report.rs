@@ -19,6 +19,8 @@ pub enum ReportMode {
     Write,
 }
 
+pub const MAX_CERTIFIED_ENCLOSURE_ULP_WIDTH: u64 = 4;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct IntegrityReport {
     pub native_execution_coverage_pct: f64,
@@ -32,6 +34,12 @@ pub struct IntegrityReport {
     pub verified_production_assertion_density: f64,
     #[serde(default)]
     pub test_assertion_density: f64,
+    #[serde(default)]
+    pub certified_interval_max_ulp_width: u64,
+    #[serde(default)]
+    pub certified_ball_max_ulp_width: u64,
+    #[serde(default)]
+    pub certified_roots_contained: bool,
     pub passed: bool,
 }
 
@@ -259,6 +267,27 @@ fn build_gate_errors(
     errors
 }
 
+fn append_enclosure_gate_errors(
+    enclosure: &math_scalars::ReferenceEnclosureSummary,
+    errors: &mut Vec<String>,
+) {
+    if !enclosure.all_contained {
+        errors.push("Certified reference roots failed enclosure containment".to_string());
+    }
+    if enclosure.max_interval_ulp_width > MAX_CERTIFIED_ENCLOSURE_ULP_WIDTH {
+        errors.push(format!(
+            "Certified interval max ULP width {} exceeds ceiling {}",
+            enclosure.max_interval_ulp_width, MAX_CERTIFIED_ENCLOSURE_ULP_WIDTH
+        ));
+    }
+    if enclosure.max_ball_ulp_width > MAX_CERTIFIED_ENCLOSURE_ULP_WIDTH {
+        errors.push(format!(
+            "Certified ball max ULP width {} exceeds ceiling {}",
+            enclosure.max_ball_ulp_width, MAX_CERTIFIED_ENCLOSURE_ULP_WIDTH
+        ));
+    }
+}
+
 pub fn evaluate_integrity_gates(
     native_cov_pct: f64,
     wasm_cov_pct: f64,
@@ -272,16 +301,18 @@ pub fn evaluate_integrity_gates(
     let total_prod_density = ratio_or_zero(m.prod_asserts, m.prod_funcs);
     let verified_prod_density = ratio_or_zero(m.verified_prod_asserts, m.verified_prod_funcs);
     let test_density = ratio_or_zero(m.test_asserts, m.test_funcs);
+    let enclosure = math_scalars::certify_reference_roots();
 
     let (unauthorized_debt, authorized_opt_outs, authorized_unverified_crates) =
         collect_debt_violations(m, debt, config);
-    let gate_errors = build_gate_errors(
+    let mut gate_errors = build_gate_errors(
         native_cov_pct,
         verified_density,
         total_prod_density,
         verified_prod_density,
         config,
     );
+    append_enclosure_gate_errors(&enclosure, &mut gate_errors);
     let passed = gate_errors.is_empty() && unauthorized_debt.is_empty();
 
     GateEvaluation {
@@ -294,6 +325,9 @@ pub fn evaluate_integrity_gates(
             total_production_assertion_density: total_prod_density,
             verified_production_assertion_density: verified_prod_density,
             test_assertion_density: test_density,
+            certified_interval_max_ulp_width: enclosure.max_interval_ulp_width,
+            certified_ball_max_ulp_width: enclosure.max_ball_ulp_width,
+            certified_roots_contained: enclosure.all_contained,
             passed,
         },
         unauthorized_debt,
@@ -349,62 +383,16 @@ fn print_dashboard(eval: &GateEvaluation) {
         r.test_assertion_density
     );
     println!(
+        "Certified Enclosures: interval <= {} ULPs, ball <= {} ULPs, roots_contained = {}",
+        r.certified_interval_max_ulp_width,
+        r.certified_ball_max_ulp_width,
+        r.certified_roots_contained
+    );
+    println!(
         "Authorized whitelist exemptions: {} opt-outs, {} non-domain crates",
         eval.authorized_opt_outs, eval.authorized_unverified_crates
     );
     print_gate_failures(eval);
-}
-
-fn apply_report_mode_io(
-    report: &IntegrityReport,
-    native_cov_pct: f64,
-    tolerance_pct: f64,
-    mode: ReportMode,
-    output_cert: Option<&Path>,
-) -> bool {
-    if let Some(target_cert) = output_cert
-        && let Err(err) = certificate::write_certificate_only(report, target_cert)
-    {
-        eprintln!("[!] {err}");
-        return false;
-    }
-
-    let cert_path = Path::new(certificate::CERT_FILE_NAME);
-    let readme_path = Path::new(certificate::README_FILE_NAME);
-    match mode {
-        ReportMode::Write => {
-            if let Err(err) =
-                certificate::write_certificate_and_readme(report, cert_path, readme_path)
-            {
-                eprintln!("[!] {err}");
-                return false;
-            }
-            true
-        }
-        ReportMode::Check => match certificate::verify_certificate_against_report(
-            report,
-            Some(native_cov_pct),
-            tolerance_pct,
-            cert_path,
-            readme_path,
-        ) {
-            Ok(()) => {
-                println!(
-                    "Verified {} and {} parity in read-only --check mode.",
-                    certificate::CERT_FILE_NAME,
-                    certificate::README_FILE_NAME
-                );
-                true
-            }
-            Err(diffs) => {
-                eprintln!("\n[!] Certificate parity check failed (--check):");
-                for diff in diffs {
-                    eprintln!("  - {diff}");
-                }
-                false
-            }
-        },
-    }
 }
 
 pub fn run_report_with_options(
@@ -440,7 +428,7 @@ pub fn run_report_with_options(
     if !eval.report.passed {
         return false;
     }
-    apply_report_mode_io(
+    certificate::apply_report_mode_io(
         &eval.report,
         native_cov_pct,
         config.coverage_tolerance_pct,

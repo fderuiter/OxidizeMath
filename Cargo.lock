@@ -1076,6 +1076,7 @@ dependencies = [
  "engine_linalg",
  "engine_pde",
  "math_commons",
+ "math_scalars",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -1365,6 +1366,7 @@ version = "0.4.0"
 dependencies = [
  "math_commons",
  "math_rng",
+ "math_scalars",
  "rand_core",
  "verified_engine",
 ]
@@ -2446,6 +2448,7 @@ dependencies = [
  "math_commons",
  "math_explorer",
  "math_rng",
+ "math_scalars",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -2466,6 +2469,7 @@ dependencies = [
  "engine_linalg",
  "libm",
  "math_rng",
+ "math_scalars",
  "num-complex",
  "num-traits",
  "rand_core",
@@ -2541,6 +2545,14 @@ dependencies = [
  "rand_chacha",
  "rand_core",
  "serde",
+ "verified_engine",
+]
+
+[[package]]
+name = "math_scalars"
+version = "0.4.0"
+dependencies = [
+ "libm",
  "verified_engine",
 ]
 
@@ -3441,6 +3453,7 @@ dependencies = [
  "engine_pde",
  "math_commons",
  "math_rng",
+ "math_scalars",
  "nalgebra 0.34.2",
  "num-complex",
  "num-traits",
@@ -4406,6 +4419,7 @@ name = "unified_verification"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "math_scalars",
  "oxidize_core",
  "proc-macro2",
  "quote",

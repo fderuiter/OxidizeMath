@@ -727,6 +727,9 @@ jobs:
           if ! jq -e '
             type == "object"
             and (keys | sort) == [
+              "certified_ball_max_ulp_width",
+              "certified_interval_max_ulp_width",
+              "certified_roots_contained",
               "native_execution_coverage_pct",
               "passed",
               "test_assertion_density",
@@ -737,6 +740,9 @@ jobs:
               "verified_production_assertion_density",
               "wasm_path_coverage_pct"
             ]
+            and (.certified_ball_max_ulp_width | type == "number" and . >= 0 and . <= 4)
+            and (.certified_interval_max_ulp_width | type == "number" and . >= 0 and . <= 4)
+            and (.certified_roots_contained | type == "boolean" and . == true)
             and (.native_execution_coverage_pct | type == "number" and . >= 0 and . <= 100)
             and (.wasm_path_coverage_pct | type == "number" and . >= 0 and . <= 100)
             and (.total_assertion_density | type == "number" and . >= 0)

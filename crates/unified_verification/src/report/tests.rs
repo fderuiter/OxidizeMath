@@ -251,6 +251,17 @@ fn test_certificate_check_mode_is_read_only_and_enforces_parity() {
         verify_certificate_against_report(&drifted, None, 1.5, &cert_path, &readme_path).is_err(),
         "Deterministic AST density drift must fail check mode"
     );
+
+    let mut drifted_ulp = eval.report.clone();
+    drifted_ulp.certified_interval_max_ulp_width = 5;
+    assert!(
+        verify_certificate_against_report(&drifted_ulp, None, 1.5, &cert_path, &readme_path)
+            .is_err(),
+        "Interval ULP width drift must fail check mode"
+    );
+    assert!(eval.report.certified_roots_contained);
+    assert!(eval.report.certified_interval_max_ulp_width <= 4);
+    assert!(eval.report.certified_ball_max_ulp_width <= 4);
     assert_eq!(fs::read_to_string(&cert_path).unwrap(), cert_before);
     assert_eq!(fs::read_to_string(&readme_path).unwrap(), readme_before);
 }
@@ -362,6 +373,9 @@ fn test_write_certificate_only_emits_9_key_schema_without_touching_tracked_files
     assert_eq!(
         keys,
         [
+            "certified_ball_max_ulp_width",
+            "certified_interval_max_ulp_width",
+            "certified_roots_contained",
             "native_execution_coverage_pct",
             "passed",
             "test_assertion_density",

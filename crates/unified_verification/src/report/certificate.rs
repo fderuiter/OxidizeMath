@@ -176,6 +176,49 @@ fn check_deterministic_fields(
     for (name, actual, recorded) in pairs {
         check_float_eq(name, actual, recorded, CERT_FLOAT_EPSILON, diffs);
     }
+    check_enclosure_fields(expected, cert, diffs);
+}
+
+fn check_enclosure_fields(
+    expected: &IntegrityReport,
+    cert: &IntegrityReport,
+    diffs: &mut Vec<String>,
+) {
+    if !cert.certified_roots_contained {
+        diffs.push("Certificate records certified_roots_contained=false".to_string());
+    }
+    if cert.certified_roots_contained != expected.certified_roots_contained {
+        diffs.push(format!(
+            "certified_roots_contained drift: workspace={}, certificate={}",
+            expected.certified_roots_contained, cert.certified_roots_contained
+        ));
+    }
+    if cert.certified_interval_max_ulp_width > super::MAX_CERTIFIED_ENCLOSURE_ULP_WIDTH {
+        diffs.push(format!(
+            "Certificate certified_interval_max_ulp_width {} exceeds ceiling {}",
+            cert.certified_interval_max_ulp_width,
+            super::MAX_CERTIFIED_ENCLOSURE_ULP_WIDTH
+        ));
+    }
+    if cert.certified_interval_max_ulp_width != expected.certified_interval_max_ulp_width {
+        diffs.push(format!(
+            "certified_interval_max_ulp_width drift: workspace={}, certificate={}",
+            expected.certified_interval_max_ulp_width, cert.certified_interval_max_ulp_width
+        ));
+    }
+    if cert.certified_ball_max_ulp_width > super::MAX_CERTIFIED_ENCLOSURE_ULP_WIDTH {
+        diffs.push(format!(
+            "Certificate certified_ball_max_ulp_width {} exceeds ceiling {}",
+            cert.certified_ball_max_ulp_width,
+            super::MAX_CERTIFIED_ENCLOSURE_ULP_WIDTH
+        ));
+    }
+    if cert.certified_ball_max_ulp_width != expected.certified_ball_max_ulp_width {
+        diffs.push(format!(
+            "certified_ball_max_ulp_width drift: workspace={}, certificate={}",
+            expected.certified_ball_max_ulp_width, cert.certified_ball_max_ulp_width
+        ));
+    }
 }
 
 fn check_readme_badge(cert: &IntegrityReport, readme_path: &Path, diffs: &mut Vec<String>) {
@@ -222,6 +265,54 @@ fn verify_on_disk_ast_parity(
             }
             false
         }
+    }
+}
+
+pub(super) fn apply_report_mode_io(
+    report: &IntegrityReport,
+    native_cov_pct: f64,
+    tolerance_pct: f64,
+    mode: ReportMode,
+    output_cert: Option<&Path>,
+) -> bool {
+    if let Some(target_cert) = output_cert
+        && let Err(err) = write_certificate_only(report, target_cert)
+    {
+        eprintln!("[!] {err}");
+        return false;
+    }
+
+    let cert_path = Path::new(CERT_FILE_NAME);
+    let readme_path = Path::new(README_FILE_NAME);
+    match mode {
+        ReportMode::Write => {
+            if let Err(err) = write_certificate_and_readme(report, cert_path, readme_path) {
+                eprintln!("[!] {err}");
+                return false;
+            }
+            true
+        }
+        ReportMode::Check => match verify_certificate_against_report(
+            report,
+            Some(native_cov_pct),
+            tolerance_pct,
+            cert_path,
+            readme_path,
+        ) {
+            Ok(()) => {
+                println!(
+                    "Verified {CERT_FILE_NAME} and {README_FILE_NAME} parity in read-only --check mode."
+                );
+                true
+            }
+            Err(diffs) => {
+                eprintln!("\n[!] Certificate parity check failed (--check):");
+                for diff in diffs {
+                    eprintln!("  - {diff}");
+                }
+                false
+            }
+        },
     }
 }
 

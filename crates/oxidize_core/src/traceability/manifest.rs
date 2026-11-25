@@ -16,6 +16,15 @@ pub struct VerificationCertificate {
     pub verified_modules_density: f64,
     /// Assertion-to-function ratio across unverified modules.
     pub unverified_modules_density: f64,
+    /// Maximum ULP width across certified `Interval<f64>` reference root enclosures.
+    #[serde(default)]
+    pub certified_interval_max_ulp_width: u64,
+    /// Maximum ULP width across certified `Ball<f64>` reference root enclosures.
+    #[serde(default)]
+    pub certified_ball_max_ulp_width: u64,
+    /// Whether all analytical reference roots are contained within their certified enclosures.
+    #[serde(default)]
+    pub certified_roots_contained: bool,
     /// Whether all workspace verification thresholds passed.
     pub passed: bool,
 }
@@ -50,6 +59,9 @@ mod core_tests {
                 total_assertion_density: 0.65,
                 verified_modules_density: 0.55,
                 unverified_modules_density: 0.70,
+                certified_interval_max_ulp_width: 2,
+                certified_ball_max_ulp_width: 2,
+                certified_roots_contained: true,
                 passed: true,
             }),
         };
@@ -138,6 +150,9 @@ mod tests {
                 total_assertion_density: 0.76,
                 verified_modules_density: 0.61,
                 unverified_modules_density: 0.83,
+                certified_interval_max_ulp_width: 2,
+                certified_ball_max_ulp_width: 2,
+                certified_roots_contained: true,
                 passed: true,
             }),
         };

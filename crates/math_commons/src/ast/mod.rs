@@ -12,6 +12,7 @@ pub mod lexer;
 pub mod limits;
 pub mod parser;
 mod parser_diagnostics;
+mod scalar_eval;
 pub mod shader;
 pub mod shader_preludes;
 

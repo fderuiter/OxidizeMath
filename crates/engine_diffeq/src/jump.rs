@@ -1,5 +1,6 @@
 // [cite:engine_diffeq]
-use math_commons::math_kernel::types::{Scalar, sample_open_unit};
+use math_commons::math_kernel::types::sample_open_unit;
+use math_scalars::RealScalar;
 use rand_core::RngCore;
 
 /// Samples the next reaction waiting time $\tau > 0$ and reaction index $j \in 0..\text{propensities.len()}$
@@ -7,7 +8,7 @@ use rand_core::RngCore;
 ///
 /// Returns `None` if `propensities` is empty or the total propensity $a_0 = \sum_j a_j \le 0$.
 #[verified_engine::verified]
-pub fn ssa_sample_event<T: Scalar, R: RngCore + ?Sized>(
+pub fn ssa_sample_event<T: RealScalar, R: RngCore + ?Sized>(
     propensities: &[T],
     rng: &mut R,
 ) -> Option<(T, usize)> {

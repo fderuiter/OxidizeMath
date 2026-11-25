@@ -51,6 +51,7 @@ coverage_tolerance_pct = 1.5
 unverified_modules = [
     "apps/xtask",
     "crates/00_foundation/math_rng",
+    "crates/00_foundation/math_scalars",
     "crates/02_engines/engine_linalg",
     "crates/diagnostics",
     "crates/engine_diffeq",
@@ -316,6 +317,7 @@ reason = "Activates the getrandom js backend feature on wasm32-unknown-unknown f
 exempt_crates = [
     "apps/xtask",
     "crates/00_foundation/math_rng",
+    "crates/00_foundation/math_scalars",
     "crates/02_engines/engine_linalg",
     "crates/diagnostics",
     "crates/engine_diffeq",

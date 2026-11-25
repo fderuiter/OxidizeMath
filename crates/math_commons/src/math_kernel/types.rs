@@ -3,6 +3,10 @@ use core::fmt::Debug;
 use core::ops::{
     Add, AddAssign, Deref, DerefMut, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign,
 };
+pub use math_scalars::{
+    Ball, DirectedRounding, Dual, DualVec, HyperDual, Interval, RealScalar,
+    Scalar as AlgebraicScalar,
+};
 use rand_core::RngCore;
 
 /// A physical step size, typically used for grid spacing.
@@ -283,11 +287,11 @@ impl Scalar for f32 {
 /// assert_eq!(stage_a[0] + stage_b[0], 3.0);
 /// ```
 #[derive(Debug)]
-pub struct SolverWorkspace<'a, T: Scalar> {
+pub struct SolverWorkspace<'a, T: Copy> {
     buf: &'a mut [T],
 }
 
-impl<'a, T: Scalar> SolverWorkspace<'a, T> {
+impl<'a, T: Copy> SolverWorkspace<'a, T> {
     /// Wraps a caller-provided mutable scratch slice as a zero-allocation [`SolverWorkspace`].
     #[inline]
     pub fn new(buf: &'a mut [T]) -> Self {
@@ -325,13 +329,6 @@ impl<'a, T: Scalar> SolverWorkspace<'a, T> {
         SolverWorkspace { buf: self.buf }
     }
 
-    /// Fills the remaining workspace buffer with [`Scalar::ZERO`].
-    #[verified_engine::verified]
-    pub fn zero_fill(&mut self) {
-        self.buf.fill(T::ZERO);
-        debug_assert!(self.buf.first().is_none_or(|v| *v == T::ZERO));
-    }
-
     /// Carves off a disjoint mutable slice of length `len` from the front of the workspace,
     /// advancing `self` to the remaining suffix without heap allocation.
     ///
@@ -351,11 +348,21 @@ impl<'a, T: Scalar> SolverWorkspace<'a, T> {
     }
 }
 
+impl<T: Copy + Default + PartialEq> SolverWorkspace<'_, T> {
+    /// Fills the remaining workspace buffer with `T::default()` (`0` for real, dual, and interval scalars).
+    #[verified_engine::verified]
+    pub fn zero_fill(&mut self) {
+        let zero = T::default();
+        self.buf.fill(zero);
+        debug_assert!(self.buf.first().is_none_or(|v| *v == zero));
+    }
+}
+
 /// Samples a deterministic uniform variate strictly in `(0, 1)` (clamped `<= 1.0` after `f32` cast)
 /// via [`math_rng::sample_open`], avoiding `0.0` so `ln(u)` in Box-Muller sampling never overflows.
 #[inline]
 #[verified_engine::verified]
-pub fn sample_open_unit<T: Scalar, R: RngCore + ?Sized>(rng: &mut R) -> T {
+pub fn sample_open_unit<T: RealScalar, R: RngCore + ?Sized>(rng: &mut R) -> T {
     let u_f64: f64 = math_rng::sample_open(rng);
     let u = T::from_f64(u_f64);
     debug_assert!(u > T::ZERO && u <= T::ONE);
@@ -365,7 +372,7 @@ pub fn sample_open_unit<T: Scalar, R: RngCore + ?Sized>(rng: &mut R) -> T {
 /// Samples an independent pair of standard normal $\mathcal{N}(0, 1)$ variates via the Box-Muller transform.
 #[inline]
 #[verified_engine::verified]
-pub fn sample_standard_normal_pair<T: Scalar, R: RngCore + ?Sized>(rng: &mut R) -> (T, T) {
+pub fn sample_standard_normal_pair<T: RealScalar, R: RngCore + ?Sized>(rng: &mut R) -> (T, T) {
     let u1 = sample_open_unit::<T, R>(rng);
     let u2 = sample_open_unit::<T, R>(rng);
     let neg_two_ln = -(T::TWO * u1.ln());
@@ -380,7 +387,7 @@ pub fn sample_standard_normal_pair<T: Scalar, R: RngCore + ?Sized>(rng: &mut R) 
 /// Samples a single standard normal $\mathcal{N}(0, 1)$ variate from `rng` via Box-Muller.
 #[inline]
 #[verified_engine::verified]
-pub fn sample_standard_normal<T: Scalar, R: RngCore + ?Sized>(rng: &mut R) -> T {
+pub fn sample_standard_normal<T: RealScalar, R: RngCore + ?Sized>(rng: &mut R) -> T {
     let (z0, _) = sample_standard_normal_pair::<T, R>(rng);
     debug_assert!(z0.is_finite());
     z0
@@ -388,7 +395,7 @@ pub fn sample_standard_normal<T: Scalar, R: RngCore + ?Sized>(rng: &mut R) -> T 
 
 /// Fills `out` in-place with independent standard normal $\mathcal{N}(0, 1)$ samples drawn from `rng`.
 #[verified_engine::verified]
-pub fn fill_standard_normal<T: Scalar, R: RngCore + ?Sized>(out: &mut [T], rng: &mut R) {
+pub fn fill_standard_normal<T: RealScalar, R: RngCore + ?Sized>(out: &mut [T], rng: &mut R) {
     let (pairs, rem) = out.as_chunks_mut::<2>();
     for [p0, p1] in pairs {
         let (z0, z1) = sample_standard_normal_pair::<T, R>(rng);

@@ -1,0 +1,19 @@
+[package]
+name = "math_scalars"
+version.workspace = true
+edition = "2024"
+description = "Tier-0 #![no_std] scalar traits, forward automatic differentiation, and outward-rounded interval/ball enclosures"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = []
+alloc = []
+
+[dependencies]
+libm = { workspace = true }
+
+[dev-dependencies]
+verified_engine = { path = "../../verified_engine" }
+
+[lints]
+workspace = true

@@ -7,7 +7,9 @@ use nalgebra::{DMatrix, DVector, SMatrix, SVector};
 ///
 /// The Christoffel symbols are derived from the metric tensor and are essential for defining
 /// the affine connection and computing covariant derivatives on a Riemannian manifold.
-/// This implementation uses a central difference numerical approximation for the metric derivatives.
+/// Evaluates exact forward-mode [`math_scalars::Dual<f64>`] metric derivatives when `metric` is an
+/// [`super::metric::AdRiemannianMetric`] (falling back to scale-aware $\varepsilon^{1/3}$ central
+/// differences for legacy closure metrics).
 ///
 /// # Arguments
 ///
@@ -59,43 +61,16 @@ pub fn christoffel_symbols(
     point: &DVector<f64>,
 ) -> Result<Vec<DMatrix<f64>>, TensorError> {
     let dim = point.len();
-    let h = 1e-5;
-
     let g_inv = metric.inverse_metric_at(point)?;
-
-    // Precompute metric derivatives: partial_g[k][i, j] = d(g_ij)/dx^k
-    let mut partial_g = vec![DMatrix::zeros(dim, dim); dim];
-
-    // Bolt Optimization: Allocate point buffer once to prevent 2*dim heap allocations
-    let mut p_eval = point.clone();
-
-    for k in 0..dim {
-        // Forward shift
-        p_eval[k] += h;
-        let g_plus = metric.metric_at(&p_eval)?;
-
-        // Backward shift
-        p_eval[k] -= 2.0 * h;
-        let g_minus = metric.metric_at(&p_eval)?;
-
-        // Restore point buffer
-        p_eval[k] += h;
-
-        partial_g[k] = (g_plus - g_minus) / (2.0 * h);
-    }
+    let partial_g = metric.metric_partials_at(point)?;
 
     let mut gammas = vec![DMatrix::zeros(dim, dim); dim];
 
     for m in 0..dim {
-        // Upper index
         for i in 0..dim {
-            // Lower index 1
             for j in 0..dim {
-                // Lower index 2
                 let mut sum = 0.0;
                 for k in 0..dim {
-                    // Summation index
-                    // \Gamma^m_{ij} = 0.5 * g^{mk} * (dg_jk/du^i + dg_ki/du^j - dg_ij/du^k)
                     let term = partial_g[i][(j, k)] + partial_g[j][(k, i)] - partial_g[k][(i, j)];
                     sum += g_inv[(m, k)] * term;
                 }
@@ -146,7 +121,11 @@ pub fn christoffel_symbols_fixed<M: StaticMetric<N> + ?Sized, const N: usize>(
 #[cfg(test)]
 mod fixed_tests {
     use super::*;
-    use crate::pure_math::tensor::{RiemannianMetric, StaticRiemannianMetric, TwoSphereMetric};
+    use crate::pure_math::tensor::{
+        AdRiemannianMetric, RiemannianMetric, StaticAdMetric, StaticRiemannianMetric,
+        TwoSphereMetric,
+    };
+    use math_scalars::{Dual, Scalar};
 
     #[test]
     #[verified_engine::verified]
@@ -181,7 +160,58 @@ mod fixed_tests {
             }
         }
         let exact_sphere = sphere.christoffel_at(&fixed_pt).expect("exact sphere");
-        assert!((sphere_gamma[0][(1, 1)] - exact_sphere[0][(1, 1)]).abs() < 1e-7);
-        assert!((sphere_gamma[1][(0, 1)] - exact_sphere[1][(0, 1)]).abs() < 1e-7);
+        assert!((sphere_gamma[0][(1, 1)] - exact_sphere[0][(1, 1)]).abs() < 1e-14);
+        assert!((sphere_gamma[1][(0, 1)] - exact_sphere[1][(0, 1)]).abs() < 1e-14);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_christoffel_ad_spherical_and_schwarzschild_within_1e_13() {
+        let sph_ad = AdRiemannianMetric::new(|p: &[Dual<f64>]| {
+            let (r, th) = (p[0], p[1]);
+            let r2 = r * r;
+            let st = th.sin();
+            vec![
+                Dual::ONE,
+                Dual::ZERO,
+                Dual::ZERO,
+                Dual::ZERO,
+                r2,
+                Dual::ZERO,
+                Dual::ZERO,
+                Dual::ZERO,
+                r2 * st * st,
+            ]
+        });
+        let (r, th, ph) = (3.4_f64, 0.85_f64, 1.2_f64);
+        let pt = DVector::from_vec(vec![r, th, ph]);
+        let g = christoffel_symbols(&sph_ad, &pt).expect("3D spherical AD christoffel");
+        assert!((g[0][(1, 1)] - (-r)).abs() < 1e-14);
+        assert!((g[0][(2, 2)] - (-r * th.sin().powi(2))).abs() < 1e-14);
+        assert!((g[1][(0, 1)] - (1.0 / r)).abs() < 1e-14);
+        assert!((g[1][(2, 2)] - (-th.sin() * th.cos())).abs() < 1e-14);
+        assert!((g[2][(0, 2)] - (1.0 / r)).abs() < 1e-14);
+        assert!((g[2][(1, 2)] - (th.cos() / th.sin())).abs() < 1e-14);
+
+        let rs = 1.0_f64;
+        let schw = StaticAdMetric::<_, 4>::new(move |x: &[Dual<f64>; 4]| {
+            let r_d = x[1];
+            let f: Dual<f64> = Dual::<f64>::ONE - Dual::<f64>::from_f64(rs) / r_d;
+            let st = x[2].sin();
+            let z: Dual<f64> = Dual::ZERO;
+            Ok([
+                [-f, z, z, z],
+                [z, Dual::<f64>::ONE / f, z, z],
+                [z, z, r_d * r_d, z],
+                [z, z, z, r_d * r_d * st * st],
+            ])
+        });
+        let spt = SVector::<f64, 4>::new(0.0, 5.0, 1.1, 0.4);
+        let sg = christoffel_symbols_fixed(&schw, &spt).expect("4D Schwarzschild AD christoffel");
+        let f_exact = 1.0 - rs / 5.0;
+        let gamma_t_tr = rs / (2.0 * 5.0 * 5.0 * f_exact);
+        let gamma_r_tt = 0.5 * f_exact * rs / (5.0 * 5.0);
+        assert!((sg[0][(0, 1)] - gamma_t_tr).abs() < 1e-14);
+        assert!((sg[1][(0, 0)] - gamma_r_tt).abs() < 1e-14);
     }
 }

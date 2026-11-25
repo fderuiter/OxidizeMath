@@ -1,8 +1,7 @@
 // [cite:engine_diffeq]
 use crate::system::{SdeSystem, StochasticCalculus};
-use math_commons::math_kernel::types::{
-    Scalar, SolverWorkspace, fill_standard_normal, flatten_2d_index,
-};
+use math_commons::math_kernel::types::{SolverWorkspace, fill_standard_normal, flatten_2d_index};
+use math_scalars::RealScalar;
 use rand_core::RngCore;
 
 /// Multivariate Euler-Maruyama (Itô) and Euler-Heun (Stratonovich) stochastic integrator for
@@ -49,7 +48,7 @@ impl EulerMaruyamaSolver {
 
     /// Advances `state` by one step `dt` using freshly sampled Wiener increments from `rng`.
     #[verified_engine::verified]
-    pub fn step<T: Scalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
+    pub fn step<T: RealScalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
         &self,
         system: &S,
         t: T,
@@ -75,7 +74,7 @@ impl EulerMaruyamaSolver {
 
     /// Advances `state` by one step `dt` given pre-sampled Wiener increments `dw` ($\Delta W \sim \mathcal{N}(0, \Delta t I_m)$).
     #[verified_engine::verified]
-    pub fn step_with_increments<T: Scalar, S: SdeSystem<T> + ?Sized>(
+    pub fn step_with_increments<T: RealScalar, S: SdeSystem<T> + ?Sized>(
         &self,
         system: &S,
         t: T,

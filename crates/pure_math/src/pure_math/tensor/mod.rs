@@ -48,11 +48,16 @@ pub mod types;
 
 // Re-exports for convenience
 pub use christoffel::{christoffel_symbols, christoffel_symbols_fixed};
+pub use differentiation::{
+    covariant_derivative_contravariant, covariant_derivative_contravariant_ad,
+    covariant_derivative_covariant, covariant_derivative_covariant_ad,
+};
 pub use geodesic::{GeodesicState, GeodesicStepStatus, GeodesicSystem};
 pub use lorentzian::{LorentzianConnection4D, SchwarzschildConnection4D};
-pub use metric::{Metric, RiemannianMetric};
+pub use metric::{AdRiemannianMetric, Metric, RiemannianMetric};
 pub use static_metric::{
-    StaticMetric, StaticRiemannianMetric, TwoSphereMetric, static_christoffel_symbols,
+    StaticAdMetric, StaticMetric, StaticRiemannianMetric, TwoSphereMetric,
+    static_christoffel_symbols,
 };
 pub use types::{ContravariantVector, CovariantVector, TensorError};
 

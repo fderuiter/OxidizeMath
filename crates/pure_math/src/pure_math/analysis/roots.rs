@@ -1,8 +1,15 @@
 //! Root finding algorithms.
 //!
 //! This module implements the **Strategy Pattern** for root finding, allowing
-//! different algorithms ([`Bisection`], [`NewtonRaphson`], and [`Brent`]) to be used interchangeably.
+//! different algorithms ([`Bisection`], [`NewtonRaphson`], [`Brent`], [`IntervalNewton`],
+//! and [`Krawczyk`]) to be used interchangeably.
 
+#[path = "enclosure_roots.rs"]
+mod enclosure_roots;
+
+pub use enclosure_roots::{IntervalNewton, Krawczyk};
+
+use math_scalars::Dual;
 use thiserror::Error;
 
 /// Copy, zero-allocation errors that can occur during numerical root finding.
@@ -264,7 +271,54 @@ impl NewtonRaphson {
             if !next_x.is_finite() {
                 return Err(AnalysisError::ConvergenceError(x));
             }
-            if (next_x - x).abs() < self.tolerance {
+            let step_tol = self.tolerance.max(4.0 * f64::EPSILON * next_x.abs());
+            if (next_x - x).abs() <= step_tol {
+                return Ok(next_x);
+            }
+            x = next_x;
+        }
+
+        Err(AnalysisError::ConvergenceError(x))
+    }
+
+    /// Finds a root using exact zero-allocation forward-mode [`Dual<f64>`] automatic differentiation.
+    ///
+    /// Reference: Griewank & Walther (2008), *Evaluating Derivatives*, SIAM, DOI: 10.1137/1.9780898717761.
+    ///
+    /// # Stability
+    /// Eliminates finite-difference step underflow (`x + h == x`) at large magnitudes such as
+    /// `|x| >= 3.0e9`, converging quadratically up to scale-aware ULP resolution.
+    ///
+    /// # Domain of Validity
+    /// Requires finite `guess`, positive `self.tolerance`, and non-vanishing derivative $|f'(x_k)| \ge 10^{-14}$.
+    #[verified_engine::verified]
+    pub fn find_root_ad<F>(&self, f: F, guess: f64) -> Result<f64, AnalysisError>
+    where
+        F: Fn(Dual<f64>) -> Dual<f64>,
+    {
+        validate_solver_bounds(guess, guess, self.tolerance)?;
+        let mut x = guess;
+
+        for _ in 0..self.max_iterations {
+            let jet = f(Dual::variable(x));
+            if !jet.val.is_finite() {
+                return Err(AnalysisError::ConvergenceError(x));
+            }
+            if jet.val.abs() < self.tolerance {
+                return Ok(x);
+            }
+            if !jet.eps.is_finite() || jet.eps.abs() < 1e-14 {
+                return Err(AnalysisError::DerivativeTooSmall {
+                    x,
+                    derivative: jet.eps,
+                });
+            }
+            let next_x = x - jet.val / jet.eps;
+            if !next_x.is_finite() {
+                return Err(AnalysisError::ConvergenceError(x));
+            }
+            let step_tol = self.tolerance.max(4.0 * f64::EPSILON * next_x.abs());
+            if (next_x - x).abs() <= step_tol {
                 return Ok(next_x);
             }
             x = next_x;
@@ -292,8 +346,10 @@ impl RootFinder for NewtonRaphson {
     {
         validate_solver_bounds(min, max, self.tolerance)?;
         let guess = 0.5 * (min + max);
-        let h = 1e-7;
-        let derivative = |x: f64| (f(x + h) - f(x - h)) / (2.0 * h);
+        let derivative = |x: f64| {
+            let h = f64::EPSILON.sqrt() * x.abs().max(1.0);
+            (f(x + h) - f(x - h)) / (2.0 * h)
+        };
         self.find_root_with_derivative(&f, derivative, guess)
     }
 }
@@ -345,46 +401,9 @@ impl Default for Brent {
     }
 }
 
-#[derive(Clone, Copy)]
-struct BrentIterate {
-    a: f64,
-    b: f64,
-    c: f64,
-    fa: f64,
-    fb: f64,
-    fc: f64,
-    d: f64,
-    e: f64,
-}
-
-#[verified_engine::verified]
-fn brent_propose_step(st: &BrentIterate, xm: f64, tol1: f64) -> (f64, f64) {
-    if st.e.abs() < tol1 || st.fa.abs() <= st.fb.abs() {
-        return (xm, xm);
-    }
-    let s = st.fb / st.fa;
-    let (mut p, mut q) = if (st.a - st.c).abs() <= f64::EPSILON {
-        (2.0 * xm * s, 1.0 - s)
-    } else {
-        let qi = st.fa / st.fc;
-        let r = st.fb / st.fc;
-        (
-            s * (2.0 * xm * qi * (qi - r) - (st.b - st.a) * (r - 1.0)),
-            (qi - 1.0) * (r - 1.0) * (s - 1.0),
-        )
-    };
-    if p > 0.0 {
-        q = -q;
-    }
-    p = p.abs();
-    let bound_bracket = 3.0 * xm * q - (tol1 * q).abs();
-    let bound_prev = (st.e * q).abs();
-    if q != 0.0 && 2.0 * p < bound_bracket.min(bound_prev) {
-        (p / q, st.d)
-    } else {
-        (xm, xm)
-    }
-}
+#[path = "brent_step.rs"]
+mod brent_step;
+use brent_step::{BrentIterate, brent_propose_step};
 
 impl RootFinder for Brent {
     #[verified_engine::verified]
