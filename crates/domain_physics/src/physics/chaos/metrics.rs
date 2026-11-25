@@ -3,7 +3,7 @@
 use super::logistic::LogisticMap;
 use crate::error::ChaosError;
 use nalgebra::Vector3;
-use pure_math::pure_math::analysis::ode::{ArrayState, OdeSystem, Solver, SolverExt};
+use pure_math::pure_math::analysis::ode::{ArrayState, OdeSystem, Solver};
 
 /// Calculates the Lyapunov Exponent for the Logistic Map.
 ///
@@ -40,23 +40,30 @@ pub fn logistic_lyapunov(r: f64, x0: f64, n: usize) -> f64 {
     sum_logs / (n as f64)
 }
 
+#[derive(Clone, Copy)]
+struct WolfEpochParams {
+    steps_per_iter: usize,
+    time_step: f64,
+    d0: f64,
+}
+
 #[verified_engine::verified]
 fn step_and_renormalize_pair<S, Sol>(
     system: &S,
     solver: &mut Sol,
     current_state: &mut Vector3<f64>,
     shadow_state: &mut Vector3<f64>,
-    steps_per_iter: usize,
-    time_step: f64,
-    d0: f64,
+    t: &mut f64,
+    params: WolfEpochParams,
 ) -> Result<f64, ChaosError>
 where
     S: OdeSystem<Vector3<f64>> + ?Sized,
     Sol: Solver<Vector3<f64>>,
 {
-    for _ in 0..steps_per_iter {
-        *current_state = solver.solve(system, 0.0, current_state, time_step);
-        *shadow_state = solver.solve(system, 0.0, shadow_state, time_step);
+    for _ in 0..params.steps_per_iter {
+        solver.step(system, *t, current_state, params.time_step);
+        solver.step(system, *t, shadow_state, params.time_step);
+        *t += params.time_step;
     }
 
     let dist_vec = *shadow_state - *current_state;
@@ -78,7 +85,7 @@ where
     } else {
         Vector3::new(1.0, 0.0, 0.0)
     };
-    *shadow_state = *current_state + unit_dir * d0;
+    *shadow_state = *current_state + unit_dir * params.d0;
     Ok(d_t)
 }
 
@@ -131,15 +138,20 @@ where
     let mut shadow_state = current_state + Vector3::new(d0, 0.0, 0.0);
     let mut sum_log_divergence = 0.0;
     let mut total_time = 0.0;
+    let mut t = 0.0;
+    let epoch = WolfEpochParams {
+        steps_per_iter,
+        time_step,
+        d0,
+    };
     for _ in 0..iterations {
         let d_t = step_and_renormalize_pair(
             system,
             solver,
             &mut current_state,
             &mut shadow_state,
-            steps_per_iter,
-            time_step,
-            d0,
+            &mut t,
+            epoch,
         )?;
         let ratio = (d_t / d0).clamp(1e-15, 1e150);
         sum_log_divergence += ratio.ln();

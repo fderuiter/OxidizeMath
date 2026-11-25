@@ -33,7 +33,7 @@
 use thiserror::Error;
 
 /// Validation errors raised when evaluating enzymatic [`KineticsModel`] rates.
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Clone)]
 pub enum KineticsError {
     /// Substrate concentration $\[S\]$ was strictly negative.
     #[error("Substrate concentration cannot be negative")]

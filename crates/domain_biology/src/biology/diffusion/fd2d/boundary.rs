@@ -15,7 +15,7 @@ pub trait BoundaryStrategy {
 }
 
 /// Zero-flux homogeneous Neumann boundary condition ($\partial_n u = 0$) on 2D grids.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct NeumannBoundary;
 
 impl BoundaryStrategy for NeumannBoundary {

@@ -14,7 +14,7 @@ use super::traits::PharmacokineticModel;
 ///
 /// # Domain of Validity
 /// Valid for linear (dose-proportional, time-invariant) ADME kinetics with finite administration times $t_k$.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SuperpositionModel<M> {
     /// The underlying model for a single dose.
     pub base_model: M,

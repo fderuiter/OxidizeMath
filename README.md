@@ -114,7 +114,7 @@ To maintain flexibility and testability across domains, Math Explorer relies hea
 classDiagram
     class OdeSystem {
         <<Trait>>
-        +derivative(t, state)
+        +derivative(t, state, out)
     }
 
     class Solver {
@@ -122,9 +122,21 @@ classDiagram
         +step(system, t, state, dt)
     }
 
+    class TuringSolverStrategy {
+        <<Trait>>
+        +step(kinetics, diffusion, coeffs, state, dt)
+        +step_at(kinetics, diffusion, coeffs, t, state, dt)
+    }
+
+    class StandardSolverAdapter~S~ {
+        +solver: S
+        +step()
+    }
+
     class TuringSystem {
         +kinetics: ReactionKinetics
         +diffusion: SpatialDiffusion
+        +solver: TuringSolverStrategy
         +step()
     }
 
@@ -138,7 +150,10 @@ classDiagram
 
     OdeSystem <|-- TuringSystem
     Solver <|.. RungeKutta4
-    TuringSystem --> Solver : Uses
+    TuringSolverStrategy <|.. StandardSolverAdapter~S~
+    TuringSolverStrategy <|.. FusedEulerSolver
+    StandardSolverAdapter~S~ --> Solver : Adapts
+    TuringSystem --> TuringSolverStrategy : Uses
     TuringSystem --> ReactionKinetics : Uses
     TuringSystem --> SpatialDiffusion : Uses
 ```

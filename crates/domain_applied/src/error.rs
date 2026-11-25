@@ -3,7 +3,7 @@ use pure_math::pure_math::analysis::roots::AnalysisError;
 use thiserror::Error;
 
 /// Errors returned by pharmacokinetic compartmental and root-finding solvers.
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, PartialEq, Error)]
 pub enum PharmacokineticsError {
     /// An invalid parameter was provided (e.g., negative volume or rate constant).
     #[error("Invalid parameter: {0}")]

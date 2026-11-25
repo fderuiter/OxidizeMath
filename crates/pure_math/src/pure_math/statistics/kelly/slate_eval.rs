@@ -107,7 +107,7 @@ impl SlateWager {
 }
 
 /// Caller-owned preallocated scratch buffers for zero-allocation slate optimization.
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SlateScratch {
     pub(super) probs: [f64; MAX_CONVOLUTION_STATES],
     pub(super) wealths: [f64; MAX_CONVOLUTION_STATES],

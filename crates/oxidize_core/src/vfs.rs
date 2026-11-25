@@ -23,6 +23,7 @@ pub trait VirtualFileSystem {
 
 /// Default host filesystem implementation of [`VirtualFileSystem`] backed by `std::fs`.
 #[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct DefaultVfs;
 
 /// Default WebAssembly alias of [`VirtualFileSystem`] backed by [`WasmVfs`].
@@ -82,6 +83,7 @@ pub(crate) fn resolve_wasm_fetch_url(path: &str) -> String {
 
 /// Browser `fetch` and Blob-download implementation of [`VirtualFileSystem`] on `wasm32`.
 #[cfg(target_arch = "wasm32")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct WasmVfs;
 
 #[cfg(target_arch = "wasm32")]

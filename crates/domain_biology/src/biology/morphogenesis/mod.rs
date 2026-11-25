@@ -90,6 +90,7 @@ pub use state::TuringState;
 /// * `K`: The reaction kinetics strategy.
 /// * `D`: The spatial diffusion strategy.
 /// * `S`: The numerical solver strategy.
+#[derive(Debug, Clone, PartialEq)]
 pub struct TuringSystem<
     const N: usize = 2,
     K: ReactionKinetics<N> = SchnakenbergKinetics,
@@ -384,6 +385,24 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
     #[verified_engine::verified]
     fn advance_time(&mut self, dt: f64) {
         self.time += dt;
+    }
+
+    #[verified_engine::verified]
+    fn step_at(&mut self, t: f64, dt: f64) {
+        let dyn_ref = TuringDynamics {
+            kinetics: &self.kinetics,
+            diffusion: &self.diffusion,
+            diffusion_coeffs: self.diffusion_coeffs,
+        };
+        let mut step_t = t;
+        Self::step_bufs(
+            &mut step_t,
+            &mut self.state,
+            &mut self.next_state,
+            dyn_ref,
+            &mut self.solver,
+            dt,
+        );
     }
 
     #[verified_engine::verified(

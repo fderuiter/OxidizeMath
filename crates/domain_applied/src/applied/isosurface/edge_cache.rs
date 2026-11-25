@@ -12,6 +12,7 @@ pub(super) const EMPTY_EDGE_VERTEX: u32 = u32::MAX;
 
 /// Lazy rolling cache mapping cube edges to mesh vertex indices across two XY
 /// planes and two Z-directed rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SliceEdgeCache {
     width: usize,
     height: usize,

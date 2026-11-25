@@ -26,7 +26,7 @@ pub(crate) fn valid_positive_scalar(value: f64) -> bool {
 
 /// Compact $O(N)$ representation of a 1D real symmetric tridiagonal Hamiltonian
 /// $\hat{H} = -\frac{\hbar^2}{2m}\frac{d^2}{dx^2} + V(x)$.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TridiagonalHamiltonian1D {
     diagonal: Vec<f64>,
     off_diagonal: Vec<f64>,
@@ -215,7 +215,7 @@ impl TridiagonalHamiltonian1D {
 /// # Domain of Validity
 /// Requires finite [`TridiagonalHamiltonian1D`] bands, strictly positive finite `dt > 0` and
 /// `h_bar > 0`, and `state.vector.len() == self.len()`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CrankNicolsonPropagator1D {
     workspace: SolverWorkspace,
     n_points: usize,

@@ -68,7 +68,7 @@ pub use types::StateType;
 /// assert_eq!(fundamental.nrows(), 2);
 /// assert_eq!(absorption_probs.nrows(), 2);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MarkovChain<T: RealField + Copy + ToPrimitive> {
     /// The transition matrix P.
     pub(crate) transition_matrix: DMatrix<T>,

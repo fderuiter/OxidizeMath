@@ -9,9 +9,20 @@ use syn::{
 
 const MAX_ANCESTOR_DEPTH: usize = 16;
 
+#[derive(Clone)]
 pub struct EmbedTheoryArgs {
     pub file_path: LitStr,
     pub labels: Vec<LitStr>,
+}
+
+impl std::fmt::Debug for EmbedTheoryArgs {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let label_vals: Vec<String> = self.labels.iter().map(LitStr::value).collect();
+        f.debug_struct("EmbedTheoryArgs")
+            .field("file_path", &self.file_path.value())
+            .field("labels", &label_vals)
+            .finish()
+    }
 }
 
 impl Parse for EmbedTheoryArgs {

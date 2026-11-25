@@ -17,7 +17,7 @@ use crate::error::PharmacokineticsError;
 ///
 /// # Domain of Validity
 /// Valid for $t_{\text{lag}} \ge 0$ and non-negative pulse fractions $f_1, f_2 \ge 0$ (typically $f_1 + f_2 = 1$).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TwoPulseModel<M> {
     /// The base (Immediate Release) model.
     pub base_model: M,

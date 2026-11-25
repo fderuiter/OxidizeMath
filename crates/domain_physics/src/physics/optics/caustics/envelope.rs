@@ -19,6 +19,7 @@ pub struct CausticPoint {
 }
 
 /// Pre-allocated buffer holding extracted caustic envelope loci and a detector intensity histogram.
+#[derive(Debug, Clone, PartialEq)]
 pub struct CausticEnvelopeBuffer {
     points: Vec<CausticPoint>,
     active_len: usize,

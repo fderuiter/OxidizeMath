@@ -3,12 +3,12 @@
 use super::model::HodgkinHuxleyModel;
 use super::types::{HodgkinHuxleyParameters, HodgkinHuxleyState};
 use crate::error::HodgkinHuxleyError;
-use pure_math::pure_math::analysis::ode::{Euler, Solver, SolverExt};
+use pure_math::pure_math::analysis::ode::{Euler, Solver};
 
 /// Builder for constructing a [`HodgkinHuxleyNeuron`] with validated parameters.
 ///
 /// Ensures that initial states (especially gating variables) are within valid ranges.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HodgkinHuxleyNeuronBuilder {
     v_initial: f64,
     n_initial: Option<f64>,
@@ -129,6 +129,7 @@ fn validate_gating_variable(val: f64) -> Result<(), HodgkinHuxleyError> {
 /// Represents the state of a Hodgkin-Huxley neuron.
 ///
 /// Stores the membrane potential and the state of the three gating variables ($n, m, h$).
+#[derive(Debug, Clone, PartialEq)]
 pub struct HodgkinHuxleyNeuron {
     /// Membrane potential (mV).
     v: f64,
@@ -277,7 +278,7 @@ impl HodgkinHuxleyNeuron {
         solver: &mut S,
     ) {
         // Convert to strongly typed state
-        let state = HodgkinHuxleyState {
+        let mut next_state = HodgkinHuxleyState {
             v: self.v,
             n: self.n,
             m: self.m,
@@ -287,17 +288,17 @@ impl HodgkinHuxleyNeuron {
         // Create the model with current parameters
         let model = HodgkinHuxleyModel::new(self.params.clone(), i_ext);
 
-        // Solve using the provided solver
-        let new_state = solver.solve(&model, 0.0, &state, dt);
+        // Step in place using the provided solver
+        solver.step(&model, 0.0, &mut next_state, dt);
 
         // Update fields
-        self.v = new_state.v;
+        self.v = next_state.v;
 
         // We clamp these to [0, 1] because numerical solvers can sometimes overshoot slightly
         // which would cause our internal invariants to break on the next access if we used checked setters.
         // However, we are setting internal state directly here.
-        self.n = new_state.n.clamp(0.0, 1.0);
-        self.m = new_state.m.clamp(0.0, 1.0);
-        self.h = new_state.h.clamp(0.0, 1.0);
+        self.n = next_state.n.clamp(0.0, 1.0);
+        self.m = next_state.m.clamp(0.0, 1.0);
+        self.h = next_state.h.clamp(0.0, 1.0);
     }
 }

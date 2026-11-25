@@ -112,6 +112,7 @@ pub struct TraceabilityReport {
 }
 
 /// Traceability scanner parameterized over a [`VirtualFileSystem`] backend.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TraceabilityEngine<V: VirtualFileSystem> {
     /// Underlying virtual file system used to read manifests, papers, and Rust sources.
     pub vfs: V,

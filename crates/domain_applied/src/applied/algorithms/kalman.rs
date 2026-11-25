@@ -5,7 +5,7 @@
 use nalgebra::{DMatrix, DVector, RealField};
 use thiserror::Error;
 /// Errors returned during Kalman filter initialization and measurement updates.
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Clone)]
 pub enum KalmanError {
     /// Innovation covariance matrix $\mathbf{S}_k = \mathbf{H}_k \mathbf{P}_{k|k-1} \mathbf{H}_k^\top + \mathbf{R}_k$ was singular.
     #[error("Failed to invert innovation covariance matrix (singular)")]
@@ -125,7 +125,7 @@ impl<T: RealField + Copy, M: KalmanModel<T>> KalmanSystem<T> for M {
 /// # Domain of Validity
 /// State vector `state` $\in \mathbb{R}^n$ aligned with symmetric positive-semidefinite
 /// `covariance` $\mathbf{P} \in \mathbb{R}^{n \times n}$ and invertible innovation covariance $\mathbf{S}_k \succ 0$.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct KalmanFilter<T: RealField + Copy, M: KalmanSystem<T>> {
     /// State vector estimate ($\hat{x}$).
     pub state: DVector<T>,
@@ -139,6 +139,7 @@ pub struct KalmanFilter<T: RealField + Copy, M: KalmanSystem<T>> {
 /// Builder for `KalmanFilter`.
 ///
 /// Ensures valid initialization by enforcing dimension checks between state and covariance.
+#[derive(Debug, Clone, PartialEq)]
 pub struct KalmanFilterBuilder<T: RealField + Copy, M: KalmanSystem<T>> {
     state: Option<DVector<T>>,
     covariance: Option<DMatrix<T>>,

@@ -24,6 +24,13 @@ pub trait ReactionModel {
     #[verified_engine::verified]
     fn reaction(&self, concentrations: &[f64], rates: &mut [f64]);
 
+    /// Evaluates reaction rates at explicit simulation time `t`, defaulting to [`Self::reaction`].
+    #[inline]
+    #[verified_engine::verified]
+    fn reaction_at_time(&self, _t: f64, concentrations: &[f64], rates: &mut [f64]) {
+        self.reaction(concentrations, rates);
+    }
+
     /// Computes and accumulates reaction rates for the entire grid.
     ///
     /// For up to [`STACK_REACTION_SPECIES_CAP`] species, local concentrations and reaction
@@ -34,6 +41,17 @@ pub trait ReactionModel {
     /// * `out_rates`: Chemical state buffer to accumulate reaction rates into.
     #[verified_engine::verified]
     fn add_reaction_batch(&self, state: &ChemicalState, out_rates: &mut ChemicalState) {
+        self.add_reaction_batch_at_time(0.0, state, out_rates);
+    }
+
+    /// Computes and accumulates reaction rates across the entire grid at explicit simulation time `t`.
+    #[verified_engine::verified]
+    fn add_reaction_batch_at_time(
+        &self,
+        t: f64,
+        state: &ChemicalState,
+        out_rates: &mut ChemicalState,
+    ) {
         let n_species = state.num_species();
         if n_species == 0 {
             return;
@@ -51,7 +69,7 @@ pub trait ReactionModel {
                     *conc = state.species(s)[i];
                 }
                 rate_slice.fill(0.0);
-                self.reaction(conc_slice, rate_slice);
+                self.reaction_at_time(t, conc_slice, rate_slice);
                 for (s, &rate) in rate_slice.iter().enumerate() {
                     out_rates.species_mut(s)[i] += rate;
                 }
@@ -67,7 +85,7 @@ pub trait ReactionModel {
                 *conc = state.species(s)[i];
             }
             local_rates.fill(0.0);
-            self.reaction(&local_concs, &mut local_rates);
+            self.reaction_at_time(t, &local_concs, &mut local_rates);
             for (s, rate) in local_rates.iter().enumerate().take(n_species) {
                 out_rates.species_mut(s)[i] += rate;
             }

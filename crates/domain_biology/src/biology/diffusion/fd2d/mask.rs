@@ -39,7 +39,7 @@ impl ReactionCellRole {
 }
 
 /// Pre-allocated 2D spatial mask storing per-cell [`ReactionCellRole`] values.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CellMask2D {
     width: usize,
     height: usize,
@@ -253,7 +253,7 @@ impl CellMask2D {
 
 /// Masked 2D finite-difference operator enforcing internal zero-flux walls,
 /// persistent `u`/`v` emitters, and sinks with zero heap allocations during stepping.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MaskedFiniteDifference2D {
     /// Underlying Cartesian 5-point stencil operator.
     pub base: FiniteDifference2D,

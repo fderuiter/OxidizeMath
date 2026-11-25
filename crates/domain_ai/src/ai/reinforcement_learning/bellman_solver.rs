@@ -14,7 +14,7 @@ use super::{GridState, Move};
 use math_commons::math_kernel::types::flatten_2d_index;
 
 /// Dense 4-action stochastic policy $\pi(a \mid s)$ over a 2D [`SculptedGridMdp`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TabularGridPolicy {
     width: usize,
     height: usize,
@@ -113,7 +113,7 @@ impl Policy<GridState, Move> for TabularGridPolicy {
 }
 
 /// Exact Bellman optimality and policy-evaluation fields over a [`SculptedGridMdp`].
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BellmanSolution {
     /// Grid column count.
     pub width: usize,

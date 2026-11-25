@@ -86,7 +86,7 @@ pub struct BaumWelchResult<T> {
 }
 
 /// Preallocated workspace buffers for zero-allocation Baum-Welch EM fitting.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BaumWelchWorkspace<T> {
     pub(super) num_states: usize,
     pub(super) num_observations: usize,

@@ -29,6 +29,16 @@ pub trait VectorOperations:
         self.copy_from(source);
         self.scale_add(other, scale);
     }
+
+    /// Moves `self` out for an in-place solver step, leaving a zero-allocation placeholder.
+    ///
+    /// Heap-backed state vectors (`VecState`, `DVector<f64>`, domain grid states) override this
+    /// with `std::mem::take` / zero-capacity placeholders so [`super::stepper::TimeStepper`] can
+    /// borrow `&Self` (as [`OdeSystem`]) and `&mut State` simultaneously without cloning.
+    #[verified_engine::verified]
+    fn take_for_step(&mut self) -> Self {
+        self.clone()
+    }
 }
 
 /// A trait defining a system of Ordinary Differential Equations.

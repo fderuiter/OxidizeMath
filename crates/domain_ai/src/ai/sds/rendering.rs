@@ -3,7 +3,7 @@ use rand::Rng;
 use std::f64::consts::PI;
 
 /// Represents a single ray: r(t) = o + t * d
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ray {
     /// World-space camera ray origin $\mathbf{o} \in \mathbb{R}^3$.
     pub origin: Vector3<f64>,
@@ -12,6 +12,7 @@ pub struct Ray {
 }
 
 /// A bundle of rays corresponding to an image grid.
+#[derive(Debug, Clone, PartialEq)]
 pub struct RayBundle {
     /// Column-major array of camera rays covering `width * height` pixels.
     pub rays: Vec<Ray>,
@@ -22,6 +23,7 @@ pub struct RayBundle {
 }
 
 /// A persistent rendering context for zero-allocation rendering.
+#[derive(Debug, Clone, PartialEq)]
 pub struct RenderContext {
     /// Scratch RGB pixel buffer of length `width * height`.
     pub image_data: Vec<Vector3<f64>>,

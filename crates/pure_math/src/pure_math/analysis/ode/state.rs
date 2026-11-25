@@ -80,6 +80,11 @@ impl VectorOperations for VecState {
             *dst = *src + *oth * scale;
         }
     }
+
+    #[verified_engine::verified]
+    fn take_for_step(&mut self) -> Self {
+        Self(std::mem::take(&mut self.0))
+    }
 }
 
 /// A zero-overhead wrapper for fixed-size arrays implementing `VectorOperations`.
@@ -186,6 +191,11 @@ impl<const N: usize> VectorOperations for ArrayState<N> {
             *dst = *src + *oth * scale;
         }
     }
+
+    #[verified_engine::verified]
+    fn take_for_step(&mut self) -> Self {
+        *self
+    }
 }
 
 // Implementations for nalgebra types
@@ -205,6 +215,11 @@ impl VectorOperations for Vector2<f64> {
     fn copy_from_scaled(&mut self, source: &Self, other: &Self, scale: f64) {
         *self = *source + *other * scale;
     }
+
+    #[verified_engine::verified]
+    fn take_for_step(&mut self) -> Self {
+        *self
+    }
 }
 
 impl VectorOperations for Vector3<f64> {
@@ -221,6 +236,11 @@ impl VectorOperations for Vector3<f64> {
     #[verified_engine::verified]
     fn copy_from_scaled(&mut self, source: &Self, other: &Self, scale: f64) {
         *self = *source + *other * scale;
+    }
+
+    #[verified_engine::verified]
+    fn take_for_step(&mut self) -> Self {
+        *self
     }
 }
 
@@ -256,5 +276,10 @@ impl VectorOperations for DVector<f64> {
         {
             *dst = *src + *oth * scale;
         }
+    }
+
+    #[verified_engine::verified]
+    fn take_for_step(&mut self) -> Self {
+        std::mem::replace(self, DVector::from_vec(Vec::new()))
     }
 }

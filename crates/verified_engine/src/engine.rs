@@ -42,6 +42,7 @@ pub fn register_cpp_dependency(dep: &str) {
 /// assert!(unwind_res.is_err());
 /// assert!(!MEMORY_LOCK.load(Ordering::SeqCst));
 /// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct VerifiedEngine;
 
 impl VerifiedEngine {

@@ -71,6 +71,7 @@ pub trait MomentumEquation {
 /// Navier-Stokes momentum equation (Viscous Flow).
 ///
 /// $$\frac{\partial \mathbf{u}}{\partial t} = -(\mathbf{u} \cdot \nabla)\mathbf{u} - \frac{1}{\rho}\nabla p + \nu \nabla^2 \mathbf{u} + \mathbf{g}$$
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct NavierStokes;
 
 impl MomentumEquation for NavierStokes {
@@ -108,6 +109,7 @@ impl MomentumEquation for NavierStokes {
 ///
 /// # Domain of Validity
 /// Valid in the inviscid continuum regime ($\text{Kn} \ll 1$) for strictly positive density $\rho > 0$, positive pressure $p > 0$, and adiabatic index $\gamma > 1$.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Euler;
 
 impl MomentumEquation for Euler {

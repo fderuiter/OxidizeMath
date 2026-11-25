@@ -27,6 +27,7 @@ pub enum Move {
 impl Action for Move {}
 
 /// Deterministic bounded 2D grid-world Markov Decision Process with goal and trap cells.
+#[derive(Debug, Clone, PartialEq)]
 pub struct GridWorldEnv {
     /// Grid width in cells.
     pub width: i32,

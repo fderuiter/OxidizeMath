@@ -1,6 +1,11 @@
 use crate::applied::clinical_trials::types::ClinicalTrialError;
-use statrs::distribution::{ContinuousCDF, Normal};
 use std::marker::PhantomData;
+
+#[path = "pair_comparison_stats.rs"]
+mod stats;
+pub use stats::{
+    WinRatioStats, calculate_statistics, calculate_win_ratio, try_calculate_statistics,
+};
 
 pub use super::censoring::{CensoredOutcome, RightCensoredComparator, TierCount};
 pub use super::u_statistic::{
@@ -53,6 +58,7 @@ pub trait OutcomeComparator<T: ?Sized> {
 /// Strategy: Higher value is better (e.g., survival time, quality of life score).
 ///
 /// If `a > b`, outcome `a` is a Win.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct HigherIsBetter;
 
 impl<T: PartialOrd> OutcomeComparator<T> for HigherIsBetter {
@@ -71,6 +77,7 @@ impl<T: PartialOrd> OutcomeComparator<T> for HigherIsBetter {
 /// Strategy: Lower value is better (e.g., number of hospitalizations, symptom severity).
 ///
 /// If `a < b`, outcome `a` is a Win.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LowerIsBetter;
 
 impl<T: PartialOrd> OutcomeComparator<T> for LowerIsBetter {
@@ -87,6 +94,7 @@ impl<T: PartialOrd> OutcomeComparator<T> for LowerIsBetter {
 }
 
 /// Strategy: Higher value is better, but only if the difference exceeds a threshold (`a - b > threshold`).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct ThresholdComparator {
     /// Minimum indifference margin $\tau \ge 0$ required to declare a win or loss.
     pub threshold: f64,
@@ -119,6 +127,14 @@ impl OutcomeComparator<f64> for ThresholdComparator {
 pub struct WinRatioAnalysis<T> {
     strategies: Vec<Box<dyn OutcomeComparator<T>>>,
     _marker: PhantomData<T>,
+}
+
+impl<T> std::fmt::Debug for WinRatioAnalysis<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WinRatioAnalysis")
+            .field("tier_count", &self.strategies.len())
+            .finish()
+    }
 }
 
 #[verified_engine::verified]
@@ -170,6 +186,7 @@ pub trait PairingStrategy<T> {
 }
 
 /// Unmatched Pair comparison (All-Pairs).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct UnmatchedPairing;
 
 impl<T> PairingStrategy<T> for UnmatchedPairing {
@@ -216,6 +233,7 @@ impl<T> PairingStrategy<T> for UnmatchedPairing {
 }
 
 /// Matched Pair comparison.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MatchedPairing;
 
 impl<T> PairingStrategy<T> for MatchedPairing {
@@ -400,97 +418,4 @@ impl<T: PartialOrd + 'static> Default for WinRatioAnalysis<T> {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// Calculates the raw Win Ratio `WR = N_wins / N_losses` (`f64::INFINITY` if `losses == 0`).
-#[verified_engine::verified]
-pub fn calculate_win_ratio(wins: i32, losses: i32) -> f64 {
-    if losses == 0 {
-        f64::INFINITY
-    } else {
-        wins as f64 / losses as f64
-    }
-}
-
-/// Statistical results for a Win Ratio analysis.
-#[derive(Debug, Clone, Copy)]
-pub struct WinRatioStats {
-    /// The calculated win ratio ($N_W / N_L$).
-    pub win_ratio: f64,
-    /// Lower bound of the 95% Confidence Interval.
-    pub ci_low: f64,
-    /// Upper bound of the 95% Confidence Interval.
-    pub ci_high: f64,
-    /// Two-sided P-value testing the null hypothesis that $WR = 1$.
-    pub p_value: f64,
-}
-
-/// Fallibly calculates 95% Confidence Intervals and P-values for the Win Ratio, rejecting negative counts.
-#[verified_engine::verified]
-pub fn try_calculate_statistics(
-    wins: i32,
-    losses: i32,
-) -> Result<Option<WinRatioStats>, math_commons::error::MathError> {
-    if wins < 0 || losses < 0 {
-        return Err(math_commons::error::MathError::OutOfBounds {
-            value: f64::from(wins.min(losses)),
-            min: 0.0,
-            max: f64::INFINITY,
-        });
-    }
-    Ok(calculate_statistics(wins, losses))
-}
-
-/// Calculates 95% Confidence Intervals and P-values for the Win Ratio (`None` if total pairs is zero).
-///
-/// Uses the normal approximation with standard error $SE = \sqrt{p(1-p)/N}$ where $p$ is the win proportion.
-#[verified_engine::verified]
-pub fn calculate_statistics(wins: i32, losses: i32) -> Option<WinRatioStats> {
-    let total_pairs = wins.checked_add(losses)?;
-    if wins < 0 || losses < 0 || total_pairs <= 0 {
-        return None;
-    }
-
-    let p_win = wins as f64 / total_pairs as f64;
-    let se = (p_win * (1.0 - p_win) / total_pairs as f64).sqrt();
-
-    if se == 0.0 {
-        let win_ratio = calculate_win_ratio(wins, losses);
-        return Some(WinRatioStats {
-            win_ratio,
-            ci_low: if p_win == 1.0 { win_ratio } else { 0.0 },
-            ci_high: if p_win == 1.0 {
-                f64::INFINITY
-            } else {
-                win_ratio
-            },
-            p_value: 0.0,
-        });
-    }
-
-    let ci_low_p = (p_win - 1.96 * se).max(0.0);
-    let ci_high_p = (p_win + 1.96 * se).min(1.0);
-
-    let ci_low = if ci_low_p == 1.0 {
-        f64::INFINITY
-    } else {
-        ci_low_p / (1.0 - ci_low_p)
-    };
-
-    let ci_high = if ci_high_p == 1.0 {
-        f64::INFINITY
-    } else {
-        ci_high_p / (1.0 - ci_high_p)
-    };
-
-    let z_score = (p_win - 0.5) / se;
-    let normal = Normal::new(0.0, 1.0).ok()?;
-    let p_value = 2.0 * (1.0 - normal.cdf(z_score.abs()));
-
-    Some(WinRatioStats {
-        win_ratio: calculate_win_ratio(wins, losses),
-        ci_low,
-        ci_high,
-        p_value,
-    })
 }

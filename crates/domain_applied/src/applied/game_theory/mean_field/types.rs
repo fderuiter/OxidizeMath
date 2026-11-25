@@ -15,7 +15,7 @@ pub struct Density(pub f64);
 /// - `viscosity` ($\nu$): Diffusion parameter representing noise/randomness in agent motion.
 /// - `time_horizon` ($T$): Duration of the game.
 /// - `dt`, `dx`: Discretization steps.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MFGConfig {
     /// Diffusion viscosity coefficient $\nu \ge 0$.
     pub viscosity: f64,
@@ -36,35 +36,45 @@ pub struct MFGConfig {
 }
 
 /// Builder type-state indicating viscosity has not yet been configured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct WithoutViscosity;
 /// Builder type-state storing a configured viscosity coefficient.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WithViscosity(f64);
 
 /// Builder type-state indicating the time horizon has not yet been configured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct WithoutTimeHorizon;
 /// Builder type-state storing a configured time horizon.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WithTimeHorizon(f64);
 
 /// Builder type-state indicating spatial grid resolution has not yet been configured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct WithoutGridPoints;
 /// Builder type-state storing a configured spatial grid node count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WithGridPoints(NonZeroUsize);
 
 /// Builder type-state indicating temporal step count has not yet been configured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct WithoutTimeSteps;
 /// Builder type-state storing a configured temporal step count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WithTimeSteps(NonZeroUsize);
 
 /// Builder type-state indicating spatial domain bounds have not yet been configured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct WithoutSpaceBounds;
 /// Builder type-state storing validated spatial domain bounds.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WithSpaceBounds {
     min: f64,
     max: f64,
 }
 
 /// Type-State Builder for `MFGConfig`.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MFGConfigBuilder<V, T, G, TS, S> {
     viscosity: V,
     time_horizon: T,
@@ -233,5 +243,50 @@ impl
             space_min,
             space_max,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_mfg_config_builder_derives_and_unwrap_err() {
+        let b0 = MFGConfigBuilder::default();
+        assert_eq!(b0, MFGConfigBuilder::new());
+        assert!(!format!("{b0:?}").is_empty());
+
+        let nx = NonZeroUsize::new(11).unwrap();
+        let nt = NonZeroUsize::new(20).unwrap();
+        let ready = b0
+            .viscosity(0.1)
+            .time_horizon(1.0)
+            .grid_points(nx)
+            .time_steps(nt)
+            .space_bounds(0.0, 1.0)
+            .unwrap();
+        let ready_copy = ready;
+        assert_eq!(ready, ready_copy);
+        assert!(!format!("{ready:?}").is_empty());
+
+        let cfg = ready.build().unwrap();
+        assert_eq!(cfg, cfg.clone());
+        assert!(!format!("{cfg:?}").is_empty());
+
+        let bounds_err = MFGConfigBuilder::new().space_bounds(2.0, 1.0).unwrap_err();
+        assert!(!format!("{bounds_err:?}").is_empty());
+
+        let one = NonZeroUsize::new(1).unwrap();
+        let grid_err = MFGConfigBuilder::new()
+            .viscosity(0.1)
+            .time_horizon(1.0)
+            .grid_points(one)
+            .time_steps(nt)
+            .space_bounds(0.0, 1.0)
+            .unwrap()
+            .build()
+            .unwrap_err();
+        assert!(!format!("{grid_err:?}").is_empty());
     }
 }

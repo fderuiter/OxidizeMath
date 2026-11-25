@@ -45,7 +45,7 @@ impl Diagnostic for DiagnosticError {
 }
 
 /// Structured diagnostic record dispatched through a [`DiagnosticBus`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiagnosticEvent {
     /// Operational severity classification of the event.
     pub severity: Severity,
@@ -99,6 +99,18 @@ pub type ListenerFn = Arc<dyn Fn(&DiagnosticEvent) + Send + Sync + 'static>;
 /// ```
 pub struct DiagnosticBus {
     listeners: Arc<Mutex<Vec<ListenerFn>>>,
+}
+
+impl std::fmt::Debug for DiagnosticBus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let listener_count = match self.listeners.lock() {
+            Ok(guard) => guard.len(),
+            Err(poisoned) => poisoned.into_inner().len(),
+        };
+        f.debug_struct("DiagnosticBus")
+            .field("listener_count", &listener_count)
+            .finish()
+    }
 }
 
 impl DiagnosticBus {

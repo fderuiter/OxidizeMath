@@ -280,7 +280,7 @@ impl ParrondoParams {
 }
 
 /// Exact Markov operators, stationary distributions, per-step drifts, and detailed-balance metrics.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParrondoReport {
     /// Transition matrix $P_A$ on $\mathbb{Z}/M\mathbb{Z}$.
     pub p_a: DMatrix<f64>,

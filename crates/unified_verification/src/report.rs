@@ -67,6 +67,7 @@ pub struct FileMetrics {
     pub legacy_funcs: Vec<(String, String)>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DebtSources<'a> {
     pub unverified_crates: &'a [String],
     pub file_length_debt: &'a [String],
@@ -74,6 +75,7 @@ pub struct DebtSources<'a> {
     pub extra_debt: &'a [String],
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct GateEvaluation {
     pub report: IntegrityReport,
     pub unauthorized_debt: Vec<String>,

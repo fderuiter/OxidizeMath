@@ -8,6 +8,7 @@ use std::ops::Add;
 
 /// Result of Dijkstra's algorithm.
 /// Contains the shortest distance to each reachable node and the predecessor map.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DijkstraResult<W> {
     /// An upper bound on the weight of the shortest path from source s to vertex v.
     /// In the end, this is the true shortest distance.

@@ -73,6 +73,7 @@ impl TimeStep {
 /// # Domain of Validity
 /// Valid for finite initial state `x0`, validated [`OuParams`] ($\theta > 0$, $\sigma \ge 0$, finite $\mu$),
 /// and strictly positive finite [`TimeStep`] ($\Delta t > 0$).
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct EulerMaruyama {
     params: OuParams,
     dt: TimeStep,

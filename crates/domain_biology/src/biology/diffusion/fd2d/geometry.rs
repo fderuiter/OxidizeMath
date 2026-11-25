@@ -22,7 +22,7 @@ pub trait GeometryStrategy {
 }
 
 /// Uniform 2D Cartesian grid geometry $(N_x, N_y, \Delta x, \Delta y)$.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Cartesian2D {
     /// Number of grid columns $N_x$.
     pub width: Dimension,

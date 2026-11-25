@@ -95,7 +95,7 @@ pub trait GalaxyModel {
 // --- Strategies ---
 
 /// Strategy for "All" irregular dwarf galaxies (General Group).
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct GeneralIrregular;
 
 impl GalaxyModel for GeneralIrregular {
@@ -121,7 +121,7 @@ impl GalaxyModel for GeneralIrregular {
 }
 
 /// Strategy for Type Code 10 irregular dwarf galaxies.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TypeCode10;
 
 impl GalaxyModel for TypeCode10 {
@@ -148,7 +148,7 @@ impl GalaxyModel for TypeCode10 {
 }
 
 /// Strategy for Type Code 9.5 - 9.9 irregular dwarf galaxies.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct TypeCode95To99;
 
 impl GalaxyModel for TypeCode95To99 {

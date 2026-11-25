@@ -12,6 +12,7 @@ use std::collections::VecDeque;
 use std::f64::consts::PI;
 
 /// Implements the MUSIC algorithm for high-resolution range estimation.
+#[derive(Debug, Clone, PartialEq)]
 pub struct MusicEstimator {
     /// Number of signal snapshots (chirps) to estimate covariance.
     snapshot_count: usize,

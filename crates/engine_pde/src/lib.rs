@@ -43,7 +43,7 @@ pub use stencil::{StencilNeighbors3D, StencilOperators};
 
 #[cfg(feature = "alloc")]
 /// Optional `alloc`-backed scratch buffer owner lending zero-allocation [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace) views.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PdeOwnedWorkspace<T: math_commons::math_kernel::types::Scalar> {
     buf: alloc::vec::Vec<T>,
 }

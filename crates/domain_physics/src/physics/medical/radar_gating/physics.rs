@@ -7,7 +7,7 @@
 use math_commons::constants::C;
 
 /// Configuration for the FMCW Radar system.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FmcwConfig {
     /// Sweep bandwidth in Hz (e.g., 4.0e9 for 4 GHz).
     pub bandwidth: f64,

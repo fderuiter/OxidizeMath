@@ -53,9 +53,10 @@ use domain_applied::applied::game_theory::evolutionary::ReplicatorDynamics;
 use domain_applied::error::GameTheoryError;
 use math_commons::primitives::UnitInterval;
 use nalgebra::{DMatrix, DVector};
-use pure_math::pure_math::analysis::ode::{ArrayState, Euler, OdeSystem, Solver, SolverExt};
+use pure_math::pure_math::analysis::ode::{ArrayState, Euler, OdeSystem, Solver};
 
 /// Represents a population playing the Hawk-Dove game.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct HawkDovePopulation {
     /// Value of the resource
     pub v: f64,
@@ -160,11 +161,11 @@ impl HawkDovePopulation {
         dt: f64,
     ) -> Result<UnitInterval, GameTheoryError> {
         // Use ArrayState (stack allocated) for zero-overhead simulation
-        let current_state = ArrayState([hawk_freq.value()]);
-        let mut solver = Euler::new(&current_state);
+        let mut next_state = ArrayState([hawk_freq.value()]);
+        let mut solver = Euler::new(&next_state);
 
-        // Solve using the efficient OdeSystem<ArrayState<1>> implementation
-        let next_state = solver.solve(self, 0.0, &current_state, dt);
+        // Step in place using the OdeSystem<ArrayState<1>> implementation
+        solver.step(self, 0.0, &mut next_state, dt);
 
         let new_p_h = next_state.0[0];
 
@@ -197,11 +198,11 @@ impl HawkDovePopulation {
         let p_h = hawk_freq.value();
         let p_d = 1.0 - p_h;
 
-        let current_state = DVector::from_vec(vec![p_h, p_d]);
+        let mut next_state = DVector::from_vec(vec![p_h, p_d]);
         let system = self.to_replicator_dynamics()?;
 
-        // Use the injected solver strategy
-        let next_state = solver.solve(&system, 0.0, &current_state, dt);
+        // Step in place using the injected solver strategy
+        solver.step(&system, 0.0, &mut next_state, dt);
         let new_p_h = next_state[0];
 
         // Return error if out of bounds instead of manual clamping

@@ -34,7 +34,7 @@ pub trait FlowElement: Send + Sync {
 }
 
 /// Uniform flow with constant velocity U at angle alpha.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct UniformFlow {
     /// Velocity magnitude.
     pub velocity: f64,
@@ -94,7 +94,7 @@ impl FlowElement for UniformFlow {
 /// assert!(velocity.x > 0.0);
 /// assert_eq!(velocity.y, 0.0);
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Source {
     /// Volumetric flow rate per unit depth (Q). Positive for a source, negative for a sink.
     pub strength: f64,
@@ -170,7 +170,7 @@ impl FlowElement for Source {
 /// assert_eq!(velocity.x, 0.0);
 /// assert!(velocity.y > 0.0);
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Vortex {
     /// Circulation strength ($\Gamma$). Positive is counter-clockwise.
     pub strength: f64,
@@ -251,7 +251,7 @@ impl FlowElement for Vortex {
 /// assert!(velocity.x < 0.0);
 /// assert_eq!(velocity.y, 0.0);
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Doublet {
     /// The strength of the doublet ($\kappa$).
     pub strength: f64,
@@ -368,6 +368,14 @@ impl FlowElement for Doublet {
 pub struct PotentialFlowField {
     /// The collection of individual flow elements.
     pub elements: Vec<Box<dyn FlowElement>>,
+}
+
+impl std::fmt::Debug for PotentialFlowField {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PotentialFlowField")
+            .field("elements_len", &self.elements.len())
+            .finish()
+    }
 }
 
 impl PotentialFlowField {

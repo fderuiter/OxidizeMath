@@ -1,24 +1,21 @@
 //! Classical Dynamics Simulator using Bloch Equations.
 
 use super::proton;
+use math_commons::error::MathError;
 use nalgebra::Vector3;
-use pure_math::pure_math::analysis::ode::{OdeSystem, TimeStepper};
+use pure_math::pure_math::analysis::ode::{
+    IntegrationMethod, OdeSystem, PreallocatedOdeSolver, Solver, TimeStepper,
+};
 
-/// Classical Dynamics Simulator using Bloch Equations.
-pub struct BlochSimulator {
-    /// Current magnetization vector $\vec{M} = (M_x, M_y, M_z)$.
-    pub magnetization: Vector3<f64>,
-    /// Equilibrium magnetization $M_0$ (aligned with z-axis).
-    pub m0: f64,
-    /// Longitudinal relaxation time ($T_1$) in seconds.
-    pub t1: f64,
-    /// Transverse relaxation time ($T_2$) in seconds.
-    pub t2: f64,
-    /// External magnetic field vector $\vec{B}$ in Tesla.
-    pub b_field: Vector3<f64>,
+#[derive(Debug, Clone, Copy)]
+struct BlochDynamics {
+    m0: f64,
+    t1: f64,
+    t2: f64,
+    b_field: Vector3<f64>,
 }
 
-impl OdeSystem<Vector3<f64>> for BlochSimulator {
+impl OdeSystem<Vector3<f64>> for BlochDynamics {
     #[verified_engine::verified]
     fn derivative(&self, _t: f64, state: &Vector3<f64>) -> Vector3<f64> {
         let gamma = proton::GYROMAGNETIC_RATIO;
@@ -44,6 +41,55 @@ impl OdeSystem<Vector3<f64>> for BlochSimulator {
         // Total derivative dM/dt
         precession - transverse_decay - longitudinal_recovery
     }
+
+    #[verified_engine::verified]
+    fn derivative_in_place(&self, t: f64, state: &Vector3<f64>, out: &mut Vector3<f64>) {
+        *out = self.derivative(t, state);
+    }
+}
+
+/// Classical Dynamics Simulator using Bloch Equations.
+#[derive(Debug, Clone)]
+pub struct BlochSimulator {
+    /// Current magnetization vector $\vec{M} = (M_x, M_y, M_z)$.
+    pub magnetization: Vector3<f64>,
+    /// Equilibrium magnetization $M_0$ (aligned with z-axis).
+    pub m0: f64,
+    /// Longitudinal relaxation time ($T_1$) in seconds.
+    pub t1: f64,
+    /// Transverse relaxation time ($T_2$) in seconds.
+    pub t2: f64,
+    /// External magnetic field vector $\vec{B}$ in Tesla.
+    pub b_field: Vector3<f64>,
+    /// Active numerical integration scheme honored by `step`.
+    pub integration_method: IntegrationMethod,
+    t: f64,
+    solver: PreallocatedOdeSolver<Vector3<f64>>,
+}
+
+impl PartialEq for BlochSimulator {
+    #[verified_engine::verified]
+    fn eq(&self, other: &Self) -> bool {
+        self.magnetization == other.magnetization
+            && self.m0 == other.m0
+            && self.t1 == other.t1
+            && self.t2 == other.t2
+            && self.b_field == other.b_field
+            && self.integration_method == other.integration_method
+            && self.t == other.t
+    }
+}
+
+impl OdeSystem<Vector3<f64>> for BlochSimulator {
+    #[verified_engine::verified]
+    fn derivative(&self, t: f64, state: &Vector3<f64>) -> Vector3<f64> {
+        self.dynamics().derivative(t, state)
+    }
+
+    #[verified_engine::verified]
+    fn derivative_in_place(&self, t: f64, state: &Vector3<f64>, out: &mut Vector3<f64>) {
+        self.dynamics().derivative_in_place(t, state, out);
+    }
 }
 
 impl TimeStepper<Vector3<f64>> for BlochSimulator {
@@ -56,18 +102,156 @@ impl TimeStepper<Vector3<f64>> for BlochSimulator {
     fn get_state_mut(&mut self) -> &mut Vector3<f64> {
         &mut self.magnetization
     }
+
+    #[verified_engine::verified]
+    fn current_time(&self) -> f64 {
+        self.t
+    }
+
+    #[verified_engine::verified]
+    fn advance_time(&mut self, dt: f64) {
+        self.t += dt;
+    }
+
+    #[verified_engine::verified]
+    fn step_at(&mut self, t: f64, dt: f64) {
+        let dynamics = self.dynamics();
+        self.solver.step_method(
+            self.integration_method,
+            &dynamics,
+            t,
+            &mut self.magnetization,
+            dt,
+        );
+    }
+
+    #[verified_engine::verified]
+    fn step_with_at<S: Solver<Vector3<f64>>>(&mut self, solver: &mut S, t: f64, dt: f64) {
+        let dynamics = self.dynamics();
+        solver.step(&dynamics, t, &mut self.magnetization, dt);
+    }
+
+    #[verified_engine::verified]
+    fn step(&mut self, dt: f64) {
+        let t = self.t;
+        self.step_at(t, dt);
+        self.t += dt;
+    }
+
+    #[verified_engine::verified]
+    fn step_with<S: Solver<Vector3<f64>>>(&mut self, solver: &mut S, dt: f64) {
+        let t = self.t;
+        self.step_with_at(solver, t, dt);
+        self.t += dt;
+    }
 }
 
 impl BlochSimulator {
-    /// Creates a new BlochSimulator.
+    #[inline]
+    #[verified_engine::verified]
+    fn dynamics(&self) -> BlochDynamics {
+        BlochDynamics {
+            m0: self.m0,
+            t1: self.t1,
+            t2: self.t2,
+            b_field: self.b_field,
+        }
+    }
+
+    /// Creates a new `BlochSimulator` with pre-allocated solver buffers and [`IntegrationMethod::RungeKutta4`].
+    #[verified_engine::verified]
     pub fn new(initial_magnetization: Vector3<f64>, m0: f64) -> Self {
+        let solver = PreallocatedOdeSolver::new(&initial_magnetization);
         Self {
             magnetization: initial_magnetization,
             m0,
             t1: f64::INFINITY,
             t2: f64::INFINITY,
             b_field: Vector3::zeros(),
+            integration_method: IntegrationMethod::RungeKutta4,
+            t: 0.0,
+            solver,
         }
+    }
+
+    /// Creates a validated `BlochSimulator`, rejecting non-finite magnetization, non-finite $M_0$,
+    /// or non-positive relaxation constants $T_1, T_2 \le 0$.
+    #[verified_engine::verified]
+    pub fn try_new(
+        initial_magnetization: Vector3<f64>,
+        m0: f64,
+        t1: f64,
+        t2: f64,
+    ) -> Result<Self, MathError> {
+        if !(initial_magnetization.x.is_finite()
+            && initial_magnetization.y.is_finite()
+            && initial_magnetization.z.is_finite())
+        {
+            return Err(MathError::NumericalError {
+                reason: "initial_magnetization components must be finite",
+            });
+        }
+        if !m0.is_finite() {
+            return Err(MathError::NumericalError {
+                reason: "equilibrium magnetization m0 must be finite",
+            });
+        }
+        if t1.is_nan() || t1 <= 0.0 {
+            return Err(MathError::StrictlyOutOfBounds {
+                value: t1,
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        if t2.is_nan() || t2 <= 0.0 {
+            return Err(MathError::StrictlyOutOfBounds {
+                value: t2,
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        let mut sim = Self::new(initial_magnetization, m0);
+        sim.set_relaxation(t1, t2);
+        Ok(sim)
+    }
+
+    /// Configures the numerical [`IntegrationMethod`] in builder style without reallocating buffers.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn with_integration_method(mut self, method: IntegrationMethod) -> Self {
+        self.integration_method = method;
+        self
+    }
+
+    /// Updates the active [`IntegrationMethod`] in place without reallocating buffers.
+    #[verified_engine::verified]
+    pub fn set_integration_method(&mut self, method: IntegrationMethod) {
+        self.integration_method = method;
+    }
+
+    /// Returns the elapsed simulation time $t$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.t
+    }
+
+    /// Sets the simulation clock to `t`.
+    #[verified_engine::verified]
+    pub fn set_time(&mut self, t: f64) {
+        self.t = t;
+    }
+
+    /// Advances the magnetization vector in place by `dt` using `self.integration_method`.
+    #[verified_engine::verified]
+    pub fn step(&mut self, dt: f64) {
+        <Self as TimeStepper<Vector3<f64>>>::step(self, dt);
+    }
+
+    /// Advances the magnetization vector in place by `dt` using a caller-supplied `solver`.
+    #[verified_engine::verified]
+    pub fn step_with<S: Solver<Vector3<f64>>>(&mut self, solver: &mut S, dt: f64) {
+        <Self as TimeStepper<Vector3<f64>>>::step_with(self, solver, dt);
     }
 
     /// Sets the magnetic field vector $\vec{B}$.
@@ -162,4 +346,41 @@ pub fn rotating_frame_effective_field(
 ) -> Vector3<f64> {
     let delta_bz = b0 - omega_rf / proton::GYROMAGNETIC_RATIO;
     Vector3::new(b1_amp * phase_rad.cos(), b1_amp * phase_rad.sin(), delta_bz)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn try_new_validates_finite_inputs_and_positive_relaxation_times() {
+        assert!(BlochSimulator::try_new(Vector3::new(f64::NAN, 0.0, 1.0), 1.0, 1.0, 0.1).is_err());
+        assert!(BlochSimulator::try_new(Vector3::z(), f64::INFINITY, 1.0, 0.1).is_err());
+        assert!(BlochSimulator::try_new(Vector3::z(), 1.0, 0.0, 0.1).is_err());
+        assert!(BlochSimulator::try_new(Vector3::z(), 1.0, -1.0, 0.1).is_err());
+        assert!(BlochSimulator::try_new(Vector3::z(), 1.0, 1.0, 0.0).is_err());
+        assert!(BlochSimulator::try_new(Vector3::z(), 1.0, 1.0, f64::NAN).is_err());
+
+        let sim = BlochSimulator::try_new(Vector3::new(1.0, 0.0, 0.0), 1.0, 1.2, 0.08).unwrap();
+        assert_eq!(sim.t1, 1.2);
+        assert_eq!(sim.t2, 0.08);
+        assert_eq!(sim.time(), 0.0);
+        assert_eq!(sim.clone(), sim);
+        assert!(!format!("{sim:?}").is_empty());
+    }
+
+    #[test]
+    fn bloch_simulator_tracks_time_and_honors_integration_methods() {
+        let m_init = Vector3::new(1.0, 0.0, 0.0);
+        let mut sim_inh = BlochSimulator::new(m_init, 1.0)
+            .with_integration_method(IntegrationMethod::ImplicitMidpoint);
+        sim_inh.set_b_field(Vector3::new(0.0, 0.0, 1e-6));
+        let mut sim_tr = sim_inh.clone();
+
+        sim_inh.step(1e-4);
+        TimeStepper::step(&mut sim_tr, 1e-4);
+        assert_eq!(sim_inh.magnetization, sim_tr.magnetization);
+        assert!((sim_inh.time() - 1e-4).abs() < 1e-15);
+        assert_eq!(TimeStepper::current_time(&sim_tr), sim_inh.time());
+    }
 }

@@ -12,6 +12,7 @@ use crate::error::LoraError;
 /// # Architecture
 /// This struct uses the Strategy Pattern to decouple the combination logic
 /// and objective evaluation from the data structure.
+#[derive(Debug, Clone, PartialEq)]
 pub struct LoraEnsemble<C = LinearCombinationStrategy, O = L1RegularizationStrategy> {
     modules: Vec<LoraStateDict>,
     combination_strategy: C,

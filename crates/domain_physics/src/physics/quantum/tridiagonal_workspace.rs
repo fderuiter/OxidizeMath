@@ -7,7 +7,7 @@ use pure_math::pure_math::analysis::pde::tridiagonal::{
 };
 
 /// Preallocated complex band and Thomas-sweep scratch buffers for zero-allocation 1D Cayley stepping.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SolverWorkspace {
     lhs_off: Vec<Complex<f64>>,
     lhs_main: Vec<Complex<f64>>,

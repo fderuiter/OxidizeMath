@@ -2,6 +2,7 @@
 pub use crate::error::NumberTheoryError;
 
 /// Data structure `UalbfSearchResult` representing UalbfSearchResult state.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct UalbfSearchResult {
     /// Value for `message` (message).
     pub message: String,
@@ -22,9 +23,15 @@ pub struct UalbfSearchResult {
 pub fn ualbf_search(
     _limit_p: u64,
     _max_exponent: u32,
-    _stop_threshold_str: &str,
-    _target_max_str: &str,
+    stop_threshold_str: &str,
+    target_max_str: &str,
 ) -> Result<UalbfSearchResult, NumberTheoryError> {
+    for raw in [stop_threshold_str, target_max_str] {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() || !trimmed.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(NumberTheoryError::ParseError(raw.to_string()));
+        }
+    }
     Ok(UalbfSearchResult {
         message: "Not supported on WASM due to GMP limitation".to_string(),
         valid_components: 0,

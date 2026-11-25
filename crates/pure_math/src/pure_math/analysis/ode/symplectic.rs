@@ -58,7 +58,7 @@ impl SymplecticMethod {
 ///
 /// # Domain of Validity
 /// Valid for separable Hamiltonian systems with smooth potential forces $-\nabla_{\mathbf{q}} V$ and step size $\Delta t < 2 / \omega_{\max}$.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StormerVerlet<Coord> {
     q: Coord,
     p: Coord,
@@ -138,7 +138,7 @@ const YOSHIDA_KICK_INNER: f64 = 0.5 * (YOSHIDA_W0 + YOSHIDA_W1);
 ///
 /// # Domain of Validity
 /// Valid for $C^4$ separable Hamiltonian systems with $\omega_{\max} |w_0| \Delta t < 2$.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Yoshida4<Coord> {
     q: Coord,
     p: Coord,
@@ -245,7 +245,7 @@ const GL4_A22: f64 = 0.25;
 ///
 /// # Domain of Validity
 /// Valid for general stiff or Hamiltonian ODEs where stage fixed-point iteration converges within the configured tolerance.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GaussLegendre4<State> {
     initial_state: State,
     k1: State,

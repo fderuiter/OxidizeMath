@@ -27,7 +27,7 @@
 /// assert!(config.aligned_channels <= config.latent_channels);
 /// assert_eq!(config.num_levels * config.aligned_channels, 20);
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CeraConfig {
     /// Learning rate for the optimizer.
     pub learning_rate: f32,

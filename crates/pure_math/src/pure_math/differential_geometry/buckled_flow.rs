@@ -109,7 +109,7 @@ pub fn detect_twisted_seam_map<S: ParametricSurface + ?Sized>(
 }
 
 /// Pre-allocated, zero-allocation morphogen-buckled mean-curvature flow solver on a flat 2D grid.
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BuckledSurfaceFlow {
     nu: usize,
     nv: usize,

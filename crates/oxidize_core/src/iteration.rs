@@ -1,5 +1,6 @@
 /// Provides high-performance iteration patterns that separate interior updates
 /// from boundary processing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct IterationPattern;
 
 impl IterationPattern {

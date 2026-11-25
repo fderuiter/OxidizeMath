@@ -95,7 +95,7 @@ impl<'a, D: OdeSystem<SEIRState>, F: Fn(f64, &SEIRState) -> SEIRState> OdeSystem
 /// $\beta, \sigma, \gamma \ge 0$.
 ///
 /// Use `SEIRModel::builder()` or `SEIRModel::new()` to construct.
-#[derive(Debug, Clone, Theory)]
+#[derive(Debug, Clone, PartialEq, Theory)]
 #[theory(
     description = "The SEIR model is a compartmental epidemic model that incorporates an exposed (latent) period before individuals become infectious.",
     citation = "Mathematical epidemiology of infectious diseases (Diekmann & Heesterbeek, 2000)"
@@ -132,21 +132,32 @@ impl<S: Solver<SEIRState>> TimeStepper<SEIRState> for SEIRModel<S> {
     }
 
     #[verified_engine::verified]
+    fn step_at(&mut self, t: f64, dt: f64) {
+        debug_assert!(t.is_finite() && dt.is_finite());
+        self.solver.step(&self.dynamics, t, &mut self.state, dt);
+    }
+
+    #[verified_engine::verified]
     fn step(&mut self, dt: f64) {
-        debug_assert!(dt.is_finite());
-        self.solver
-            .step(&self.dynamics, self.time, &mut self.state, dt);
-        self.time += dt;
+        let t = self.time;
+        self.step_at(t, dt);
+        self.advance_time(dt);
+    }
+
+    fn step_with_at<OtherS: Solver<SEIRState>>(&mut self, solver: &mut OtherS, t: f64, dt: f64) {
+        debug_assert!(t.is_finite() && dt.is_finite());
+        solver.step(&self.dynamics, t, &mut self.state, dt);
     }
 
     fn step_with<OtherS: Solver<SEIRState>>(&mut self, solver: &mut OtherS, dt: f64) {
-        solver.step(&self.dynamics, self.time, &mut self.state, dt);
-        self.time += dt;
+        let t = self.time;
+        self.step_with_at(solver, t, dt);
+        self.advance_time(dt);
     }
 }
 
 /// Builder for SEIRModel to ensure valid parameter configuration.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct SEIRModelBuilder {
     n: Option<f64>,
     i0: Option<f64>,

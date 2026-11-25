@@ -9,6 +9,7 @@ use verified_engine_macros::runtime_violation;
 /// When installed via `#[global_allocator]` and both [`MEMORY_LOCK`] and
 /// [`crate::metrics::is_verification_enabled()`] are active, any `alloc`, `alloc_zeroed`, or
 /// `realloc` call emits a structured `FATAL` JSON payload and aborts the process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct VerifiedAllocator;
 
 /// Process-wide atomic flag indicating whether dynamic heap allocations are locked.

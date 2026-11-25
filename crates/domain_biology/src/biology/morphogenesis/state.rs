@@ -160,4 +160,12 @@ impl<const N: usize> VectorOperations for TuringState<N> {
             s.copy_from_slice(r_vec);
         }
     }
+
+    #[inline]
+    #[verified_engine::verified]
+    fn take_for_step(&mut self) -> Self {
+        Self {
+            concentrations: std::array::from_fn(|i| std::mem::take(&mut self.concentrations[i])),
+        }
+    }
 }

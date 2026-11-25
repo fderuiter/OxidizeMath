@@ -9,7 +9,7 @@ pub trait HypothesisTest<Input> {
 }
 
 /// Outcome summary returned by a frequentist [`HypothesisTest`].
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TestResult {
     /// Realized test statistic ($t$ or $\chi^2$).
     pub statistic: f64,
@@ -22,6 +22,7 @@ pub struct TestResult {
 }
 
 /// Strategy for an independent two-sample t-test (assuming equal variances).
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TTestIndependent {
     /// Two-sided Type-I significance threshold $\alpha \in (0, 1)$.
     pub alpha: f64,
@@ -89,6 +90,7 @@ impl<'a> HypothesisTest<(&'a GroupData, &'a GroupData)> for TTestIndependent {
 }
 
 /// Strategy for a Chi-Square test for a 2x2 contingency table.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ChiSquare2x2 {
     /// Upper-tail Type-I significance threshold $\alpha \in (0, 1)$.
     pub alpha: f64,

@@ -30,6 +30,7 @@ use std::sync::Arc;
 /// ws.reconstruct_normalized_2d_into(&k_space, &mut image);
 /// assert!((image[(8, 8)].re - 1.0).abs() < 1e-12);
 /// ```
+#[derive(Clone)]
 pub struct Fft2dWorkspace {
     rows: usize,
     cols: usize,
@@ -39,6 +40,16 @@ pub struct Fft2dWorkspace {
     inv_col_fft: Option<Arc<dyn Fft<f64>>>,
     scratch: Vec<Complex<f64>>,
     transposed: DMatrix<Complex<f64>>,
+}
+
+impl std::fmt::Debug for Fft2dWorkspace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Fft2dWorkspace")
+            .field("rows", &self.rows)
+            .field("cols", &self.cols)
+            .field("scratch_len", &self.scratch.len())
+            .finish()
+    }
 }
 
 impl Fft2dWorkspace {
@@ -458,34 +469,15 @@ fn separable_transform(matrix: &DMatrix<Complex<f64>>, inverse: bool) -> DMatrix
     out
 }
 
-/// Simulates the raw signal $S(k)$ measured from a 2D slice of spin density.
-///
-/// Computes $S(k_x, k_y) = \sum_{x,y} \rho(x,y) e^{-i 2\pi (k_x x / R + k_y y / C)}$
-///
-/// **Optimization:** Uses transposed unit-stride 1D FFT passes ($O(R \cdot C \log(R \cdot C))$).
-///
-/// # Arguments
-/// * `density` - 2D matrix representing the spin density $\rho(x,y)$.
-///
-/// # Returns
-/// * 2D matrix of k-space samples (raw signal), same dimensions as density.
+/// Simulates the raw 2D k-space signal $S(k_x, k_y) = \sum_{x,y} \rho(x,y) e^{-i 2\pi (k_x x / R + k_y y / C)}$
+/// from spin density $\rho(x, y)$ using transposed unit-stride 1D FFT passes ($O(R \cdot C \log(R \cdot C))$).
 #[verified_engine::verified]
 pub fn simulate_signal_2d(density: &DMatrix<Complex<f64>>) -> DMatrix<Complex<f64>> {
     separable_transform(density, false)
 }
 
-/// Performs a 2D Inverse Discrete Fourier Transform (IDFT) to reconstruct the image.
-///
-/// Computes $\rho(x,y) = \sum_{k_x, k_y} S(k_x, k_y) e^{+i 2\pi (k_x x / R + k_y y / C)}$
-///
-/// **Optimization:** Uses transposed unit-stride 1D IFFT passes ($O(R \cdot C \log(R \cdot C))$).
-///
-/// # Arguments
-/// * `k_space` - 2D matrix of k-space samples $S(k_x, k_y)$.
-///
-/// # Returns
-/// * Reconstructed image density matrix $\rho(x,y)$.
-/// * Note: This implementation does not normalize by $1/(R \cdot C)$. Scale depends on definition.
+/// Performs an unnormalized 2D Inverse Discrete Fourier Transform (IDFT)
+/// $\rho(x,y) = \sum_{k_x, k_y} S(k_x, k_y) e^{+i 2\pi (k_x x / R + k_y y / C)}$ via transposed 1D IFFT passes.
 #[verified_engine::verified]
 pub fn inverse_dft_2d(k_space: &DMatrix<Complex<f64>>) -> DMatrix<Complex<f64>> {
     separable_transform(k_space, true)

@@ -48,6 +48,7 @@ pub trait TuringSolverStrategy<const N: usize = 2> {
 ///
 /// This struct implements `OdeSystem` to allow standard solvers to integrate
 /// the reaction-diffusion equations.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TuringDynamics<'a, const N: usize, K, D> {
     /// Local reaction kinetics operator $\mathbf{R}(\mathbf{u})$.
     pub kinetics: &'a K,
@@ -186,7 +187,7 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
 /// // dt = 0.01
 /// solver.step(&state, &mut next_state, &dynamics, 0.01);
 /// ```
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct FusedEulerSolver;
 
 impl FusedEulerSolver {
@@ -319,6 +320,7 @@ impl<const N: usize> TuringSolverStrategy<N> for FusedEulerSolver {
 ///
 /// # Domain of Validity
 /// Method-of-lines discretizations over finite grids with $D_i \ge 0$ and matching `TuringState` dimensions.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StandardSolverAdapter<S> {
     /// Wrapped ODE time-integrator strategy.
     pub solver: S,
@@ -381,6 +383,7 @@ use rand::RngCore;
 
 /// A wrapper to use [`FusedEulerSolver`] within the unified [`EvolutionEngine`] interface,
 /// forwarding caller `rng` streams into [`engine_pde`] spatio-temporal noise when `noise_intensity > 0.0`.
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FusedEulerEvolution<'a, const N: usize, K, D> {
     /// Underlying deterministic fused reaction-diffusion stepper.
     pub solver: FusedEulerSolver,

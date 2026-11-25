@@ -7,7 +7,7 @@ use crate::scalar::Scalar;
 use crate::types::{LinalgError, check_all_finite};
 
 /// Immutable `#![no_std]` Compressed Sparse Row (CSR) matrix view over caller slices.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct CsrMatrixView<'a, T> {
     nrows: usize,
     ncols: usize,

@@ -78,11 +78,23 @@ pub trait Metric {
 }
 
 /// A generic implementation of a Riemannian metric defined by a closure.
+#[derive(Clone, Copy)]
 pub struct RiemannianMetric<F>
 where
     F: Fn(&DVector<f64>) -> DMatrix<f64>,
 {
     metric_fn: F,
+}
+
+impl<F> std::fmt::Debug for RiemannianMetric<F>
+where
+    F: Fn(&DVector<f64>) -> DMatrix<f64>,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RiemannianMetric")
+            .field("metric_fn", &"<closure>")
+            .finish()
+    }
 }
 
 impl<F> RiemannianMetric<F>

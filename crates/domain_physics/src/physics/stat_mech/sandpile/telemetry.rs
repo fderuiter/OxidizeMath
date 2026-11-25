@@ -44,7 +44,7 @@ pub struct AvalancheStats {
 }
 
 /// Fixed-capacity zero-allocation accumulator for critical avalanche scaling statistics.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AvalancheTelemetry {
     size_counts: [u64; EXACT_AVALANCHE_BUCKET_CAP],
     size_tail: u64,

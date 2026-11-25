@@ -61,7 +61,7 @@ pub trait GapEquation {
 /// let gap = solver.solve(&model, ElectronVolts::new(0.05)).unwrap();
 /// assert!((gap / ElectronVolts::new(1.0)) > 0.0);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BcsGapSolver {
     /// Maximum number of damped fixed-point iterations before returning [`SolidStateError::ConvergenceFailure`].
     pub max_iterations: usize,
@@ -178,7 +178,7 @@ impl BcsGapSolver {
 /// # Domain of Validity
 /// Weak-to-intermediate attractive $s$-wave pairing $V > 0$, positive Debye cutoff $\hbar\omega_D > 0$,
 /// and non-negative finite bath temperature $T \ge 0\,\text{K}$ (defaults to `0.0 K`).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct IsotropicBCSModel {
     /// Single-particle kinetic energies $\xi_k = \epsilon_k - \mu$ relative to the Fermi level.
     pub energies: Vec<ElectronVolts>,

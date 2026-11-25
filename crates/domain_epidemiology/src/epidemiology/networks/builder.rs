@@ -42,6 +42,7 @@ impl std::fmt::Display for NetworkModelError {
 impl std::error::Error for NetworkModelError {}
 
 /// Fluent builder for validated [`NetworkEpidemicModel`] instances.
+#[derive(Debug, Clone, PartialEq)]
 pub struct NetworkEpidemicModelBuilder {
     num_nodes: Option<usize>,
     beta: Option<f64>,

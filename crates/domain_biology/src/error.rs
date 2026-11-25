@@ -2,7 +2,7 @@ use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use thiserror::Error;
 
 /// Biophysical parameter validation errors for Hodgkin-Huxley membrane conductance models.
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, Clone, Copy, PartialEq)]
 pub enum HodgkinHuxleyError {
     /// Ion-channel gating variable $x \in \{n, m, h\}$ fell outside the unit interval $[0, 1]$.
     #[error("Invalid gating variable value: {0} (must be between 0 and 1)")]

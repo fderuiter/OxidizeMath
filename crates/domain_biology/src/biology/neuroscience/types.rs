@@ -44,6 +44,19 @@ impl Default for HodgkinHuxleyParameters {
     }
 }
 
+impl PartialEq for HodgkinHuxleyParameters {
+    fn eq(&self, other: &Self) -> bool {
+        self.g_na == other.g_na
+            && self.e_na == other.e_na
+            && self.g_k == other.g_k
+            && self.e_k == other.e_k
+            && self.g_l == other.g_l
+            && self.e_l == other.e_l
+            && self.v_rest == other.v_rest
+            && Arc::ptr_eq(&self.kinetics, &other.kinetics)
+    }
+}
+
 /// Represents the state vector of a Hodgkin-Huxley neuron.
 ///
 /// Contains the membrane potential $V$ and the dimensionless gating variables $n, m, h$.

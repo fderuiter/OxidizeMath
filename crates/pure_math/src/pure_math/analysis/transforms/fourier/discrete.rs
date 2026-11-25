@@ -34,6 +34,13 @@ impl Default for FastFourierTransform {
     }
 }
 
+impl std::fmt::Debug for FastFourierTransform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FastFourierTransform")
+            .finish_non_exhaustive()
+    }
+}
+
 impl SpectralTransform for FastFourierTransform {
     #[verified_engine::verified]
     fn forward(&mut self, input: &[Complex64]) -> Result<Vec<Complex64>, TransformError> {

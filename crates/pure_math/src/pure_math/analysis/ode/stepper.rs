@@ -1,9 +1,9 @@
-use super::traits::{OdeSystem, Solver, SolverExt, VectorOperations};
+use super::traits::{OdeSystem, Solver, VectorOperations};
 
-/// Trait for autonomous initial-value ODE systems $\dot{y} = f(t, y)$ that advance state in time.
+/// Trait for initial-value ODE systems $\dot{y} = f(t, y)$ that advance state in place across time.
 ///
 /// Abstracts single-step propagation (`step` defaulting to classical [`RungeKutta4`](super::solvers::RungeKutta4)
-/// and `step_with` for caller-selected [`Solver`] strategies).
+/// and `step_with` for caller-selected [`Solver`] strategies) without cloning heap-backed states.
 /// Reference: Hairer, Nørsett, & Wanner (1993), *Solving Ordinary Differential Equations I*,
 /// DOI: 10.1007/978-3-540-78862-1; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
 ///
@@ -33,26 +33,39 @@ pub trait TimeStepper<State: VectorOperations>: OdeSystem<State> {
     #[verified_engine::verified]
     fn advance_time(&mut self, _dt: f64) {}
 
-    /// Advances the system by `dt` using a default strategy.
+    /// Advances the system state in place at explicit time `t` by `dt` using `solver`.
+    #[verified_engine::verified]
+    fn step_with_at<S: Solver<State>>(&mut self, solver: &mut S, t: f64, dt: f64) {
+        let mut state = self.get_state_mut().take_for_step();
+        solver.step(self, t, &mut state, dt);
+        *self.get_state_mut() = state;
+    }
+
+    /// Advances the system state in place at explicit time `t` by `dt` using [`RungeKutta4`](super::solvers::RungeKutta4).
+    #[verified_engine::verified]
+    fn step_at(&mut self, t: f64, dt: f64) {
+        use super::solvers::RungeKutta4;
+        let mut solver = RungeKutta4::new(self.get_state());
+        self.step_with_at(&mut solver, t, dt);
+    }
+
+    /// Advances the system by `dt` at [`Self::current_time`] and records [`Self::advance_time`].
     ///
-    /// The default implementation uses Runge-Kutta 4 (RK4).
+    /// The default implementation uses Runge-Kutta 4 (RK4). Steppers with pre-allocated
+    /// solvers override this method to avoid per-step scratch initialization.
     #[verified_engine::verified]
     fn step(&mut self, dt: f64) {
-        use super::solvers::RungeKutta4;
-        use super::traits::SolverExt;
         let t = self.current_time();
-        let mut solver = RungeKutta4::new(self.get_state());
-        let new_state = solver.solve(self, t, self.get_state(), dt);
-        *self.get_state_mut() = new_state;
+        self.step_at(t, dt);
         self.advance_time(dt);
     }
 
-    /// Advances the system by `dt` using a provided solver.
+    /// Advances the system in place by `dt` using a caller-supplied `solver`, passing
+    /// [`Self::current_time`] and advancing tracked simulation time by `dt`.
+    #[verified_engine::verified]
     fn step_with<S: Solver<State>>(&mut self, solver: &mut S, dt: f64) {
         let t = self.current_time();
-        let current_state = self.get_state().clone();
-        let new_state = solver.solve(self, t, &current_state, dt);
-        *self.get_state_mut() = new_state;
+        self.step_with_at(solver, t, dt);
         self.advance_time(dt);
     }
 }

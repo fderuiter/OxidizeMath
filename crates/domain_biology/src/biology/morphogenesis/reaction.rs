@@ -59,7 +59,7 @@ pub trait ReactionKinetics<const N: usize = 2> {
 /// # Domain of Validity
 /// Non-negative concentrations $u, v \ge 0$ and strictly positive feed rates $a \ge 0$, $b > 0$
 /// with $a + b > 0$.
-#[derive(Debug, Clone, Copy, Theory)]
+#[derive(Debug, Clone, Copy, PartialEq, Theory)]
 #[theory(
     description = "Schnakenberg kinetics (often used for Turing patterns).",
     citation = "Schnakenberg, J. (1979). Simple chemical reaction systems with limit cycle behaviour. Journal of theoretical biology, 81(3), 389-400."
@@ -150,6 +150,16 @@ impl ReactionModel for SchnakenbergKinetics {
         rates: &mut crate::biology::reaction_diffusion::ChemicalState,
     ) {
         add_reaction_batch_2d(self, state, rates);
+    }
+
+    #[verified_engine::verified]
+    fn add_reaction_batch_at_time(
+        &self,
+        _t: f64,
+        state: &crate::biology::reaction_diffusion::ChemicalState,
+        rates: &mut crate::biology::reaction_diffusion::ChemicalState,
+    ) {
+        self.add_reaction_batch(state, rates);
     }
 }
 
@@ -248,6 +258,16 @@ impl ReactionModel for GrayScottKinetics {
         rates: &mut crate::biology::reaction_diffusion::ChemicalState,
     ) {
         add_reaction_batch_2d(self, state, rates);
+    }
+
+    #[verified_engine::verified]
+    fn add_reaction_batch_at_time(
+        &self,
+        _t: f64,
+        state: &crate::biology::reaction_diffusion::ChemicalState,
+        rates: &mut crate::biology::reaction_diffusion::ChemicalState,
+    ) {
+        self.add_reaction_batch(state, rates);
     }
 }
 

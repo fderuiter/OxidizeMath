@@ -23,7 +23,7 @@ use nalgebra::{DMatrix, DVector};
 /// # Domain of Validity
 /// Quasi-linear inter-sample chest-wall motion over $\Delta t > 0$ with finite variances
 /// $\sigma_w^2 \ge 0$ and $\sigma_v^2 > 0$.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConstantVelocityModel {
     /// Isotropic state-transition process noise variance $\sigma_w^2 \ge 0$.
     pub process_noise_var: f64,
@@ -72,7 +72,7 @@ impl KalmanModel<f64> for ConstantVelocityModel {
 /// A wrapper around the generic Kalman Filter for 1D position and velocity tracking.
 ///
 /// This maintains the original API of the radar gating module while using the unified core algorithm.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TrackingFilter {
     inner: KalmanFilter<f64, ConstantVelocityModel>,
 }

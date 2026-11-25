@@ -44,6 +44,22 @@ where
 /// This preserves backward compatibility for existing code using `TabularQAgent`.
 pub type TabularQAgent<S, A> = QLearningAgent<S, A, TabularQFunction<S, A>>;
 
+impl<S, A, Q> std::fmt::Debug for QLearningAgent<S, A, Q>
+where
+    S: State,
+    A: Action,
+    Q: QFunction<S, A> + std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("QLearningAgent")
+            .field("q_func", &self.q_func)
+            .field("learning_rate", &self.learning_rate)
+            .field("discount_factor", &self.discount_factor)
+            .field("strategy", &"<dyn ExplorationStrategy>")
+            .finish_non_exhaustive()
+    }
+}
+
 impl<S, A, Q> QLearningAgent<S, A, Q>
 where
     S: State,

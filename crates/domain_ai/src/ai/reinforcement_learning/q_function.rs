@@ -6,7 +6,7 @@ use std::hash::Hash;
 ///
 /// Stores Q-values for discrete (State, Action) pairs.
 /// The default Q-value for unseen pairs is 0.0.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TabularQFunction<S, A>
 where
     S: State + Hash + Eq,
@@ -82,7 +82,7 @@ impl Action for DiscreteAction {}
 ///
 /// Unlike [`TabularQFunction`], lookups and Bellman updates index directly into a contiguous
 /// `[[f64; ACTIONS]; STATES]` array with zero dynamic heap allocations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FixedArrayQFunction<const STATES: usize, const ACTIONS: usize> {
     table: [[f64; ACTIONS]; STATES],
 }

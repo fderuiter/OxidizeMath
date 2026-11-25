@@ -341,7 +341,7 @@ pub fn qr_solve_least_squares<T: Scalar>(
 mod serde_impl;
 
 /// Stack-allocated streaming orthogonal Givens QR accumulator for arbitrarily tall least-squares systems.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct StreamingQr<T: Scalar, const MAX_P: usize> {
     r: [[T; MAX_P]; MAX_P],
     qty: [T; MAX_P],

@@ -1,5 +1,6 @@
 /// Represents the 2D Laplace Equation.
 /// $\nabla^2 u = 0$
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LaplaceEquation2D;
 
 impl LaplaceEquation2D {
@@ -40,6 +41,7 @@ impl LaplaceEquation2D {
 ///
 /// # Domain of Validity
 /// Valid on finite rectangles with $a > 0$, $b > 0$ and piecewise-smooth Dirichlet boundary profiles.
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct RectangularLaplaceSolver {
     /// Value for `width` (width).
     pub width: f64, // a

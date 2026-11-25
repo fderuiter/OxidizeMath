@@ -5,7 +5,7 @@
 /// * `g1`: Coupling for U(1)_Y (Hypercharge).
 /// * `g2`: Coupling for SU(2)_L (Weak Isospin).
 /// * `gs`: Coupling for SU(3)_C (Strong Color).
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct GaugeCouplings {
     /// Abelian hypercharge $U(1)_Y$ gauge coupling $g_1$.
     pub g1: f64,

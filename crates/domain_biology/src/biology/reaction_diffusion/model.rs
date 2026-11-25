@@ -1,4 +1,5 @@
 use pure_math::pure_math::analysis::ode::solvers::Euler;
+use pure_math::pure_math::analysis::ode::stepper::TimeStepper;
 use pure_math::pure_math::analysis::ode::traits::{OdeSystem, Solver};
 use verified_engine::Theory;
 
@@ -21,7 +22,7 @@ use super::{ChemicalState, DiffusionModel, ReactionDiffusionError, ReactionModel
 ///
 /// # Domain of Validity
 /// Multi-species systems with $N \ge 1$ species, positive grid size, and non-negative diffusivities $D_s \ge 0$.
-#[derive(Theory)]
+#[derive(Debug, Clone, PartialEq, Theory)]
 #[theory(
     description = "Turing patterns arise from reaction-diffusion systems where local auto-activation is coupled with long-range inhibition, leading to spontaneous symmetry breaking and the formation of stable spatial patterns.",
     citation = "The Chemical Basis of Morphogenesis (Turing, 1952)"
@@ -39,20 +40,20 @@ impl<R: ReactionModel, D: DiffusionModel> OdeSystem<ChemicalState>
     for ReactionDiffusionModel<R, D>
 {
     #[verified_engine::verified]
-    fn derivative(&self, _t: f64, state: &ChemicalState) -> ChemicalState {
+    fn derivative(&self, t: f64, state: &ChemicalState) -> ChemicalState {
         let mut out = ChemicalState::new(state.num_species(), state.grid_size());
-        self.derivative_in_place(_t, state, &mut out);
+        self.derivative_in_place(t, state, &mut out);
         out
     }
 
     #[verified_engine::verified]
-    fn derivative_in_place(&self, _t: f64, state: &ChemicalState, out: &mut ChemicalState) {
+    fn derivative_in_place(&self, t: f64, state: &ChemicalState, out: &mut ChemicalState) {
         // Compute Diffusion
         self.diffusion.apply(state, out, &self.diffusion_coeffs);
 
         // Add Reaction
         // Optimized: Use batch processing to allow vectorization and avoid gather/scatter
-        self.reaction.add_reaction_batch(state, out);
+        self.reaction.add_reaction_batch_at_time(t, state, out);
     }
 }
 
@@ -60,6 +61,7 @@ impl<R: ReactionModel, D: DiffusionModel> OdeSystem<ChemicalState>
 ///
 /// This struct manages the simulation state and the integration strategy.
 /// By default, it uses the Forward Euler method, but can be configured with other solvers.
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReactionDiffusionSystem<
     R: ReactionModel,
     D: DiffusionModel,
@@ -77,7 +79,7 @@ pub struct ReactionDiffusionSystem<
 /// Builder for `ReactionDiffusionSystem`.
 ///
 /// Ensures that parameters are physically valid before creating the system.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReactionDiffusionSystemBuilder<R, D, S> {
     num_species: Option<usize>,
     grid_size: Option<usize>,
@@ -293,9 +295,7 @@ impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>>
     /// Advances the system by a time step `dt` using the configured solver.
     #[verified_engine::verified]
     pub fn step(&mut self, dt: f64) {
-        self.solver
-            .step(&self.model, self.time, &mut self.state, dt);
-        self.time += dt;
+        <Self as TimeStepper<ChemicalState>>::step(self, dt);
     }
 
     /// Returns the elapsed simulation time $t$.
@@ -321,5 +321,75 @@ impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>>
     #[verified_engine::verified]
     pub fn diffusion(&self) -> &D {
         &self.model.diffusion
+    }
+}
+
+impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>> OdeSystem<ChemicalState>
+    for ReactionDiffusionSystem<R, D, S>
+{
+    #[verified_engine::verified]
+    fn derivative(&self, t: f64, state: &ChemicalState) -> ChemicalState {
+        self.model.derivative(t, state)
+    }
+
+    #[verified_engine::verified]
+    fn derivative_in_place(&self, t: f64, state: &ChemicalState, out: &mut ChemicalState) {
+        self.model.derivative_in_place(t, state, out);
+    }
+}
+
+impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>> TimeStepper<ChemicalState>
+    for ReactionDiffusionSystem<R, D, S>
+{
+    #[verified_engine::verified]
+    fn get_state(&self) -> &ChemicalState {
+        &self.state
+    }
+
+    #[verified_engine::verified]
+    fn get_state_mut(&mut self) -> &mut ChemicalState {
+        &mut self.state
+    }
+
+    #[inline]
+    #[verified_engine::verified]
+    fn current_time(&self) -> f64 {
+        self.time
+    }
+
+    #[inline]
+    #[verified_engine::verified]
+    fn advance_time(&mut self, dt: f64) {
+        self.time += dt;
+    }
+
+    #[verified_engine::verified]
+    fn step_at(&mut self, t: f64, dt: f64) {
+        self.solver.step(&self.model, t, &mut self.state, dt);
+    }
+
+    #[verified_engine::verified]
+    fn step(&mut self, dt: f64) {
+        let t = self.time;
+        self.step_at(t, dt);
+        self.time += dt;
+    }
+
+    #[verified_engine::verified]
+    fn step_with_at<AltSolver>(&mut self, solver: &mut AltSolver, t: f64, dt: f64)
+    where
+        AltSolver: Solver<ChemicalState>,
+    {
+        solver.step(&self.model, t, &mut self.state, dt);
+    }
+
+    #[verified_engine::verified]
+    fn step_with<AltSolver>(&mut self, solver: &mut AltSolver, dt: f64)
+    where
+        AltSolver: Solver<ChemicalState>,
+    {
+        let t = self.time;
+        self.step_with_at(solver, t, dt);
+        self.time += dt;
     }
 }
