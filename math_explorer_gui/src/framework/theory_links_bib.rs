@@ -8,9 +8,13 @@ use std::sync::OnceLock;
 
 #[derive(Clone, Debug)]
 struct BibEntry {
+    key: String,
     norm_title_words: Vec<String>,
-    first_author: String,
+    authors: Vec<String>,
     year: String,
+    ambiguous_author_year: bool,
+    unique_coauthors: Vec<String>,
+    unique_title_words: Vec<String>,
     label: String,
     url: String,
 }
@@ -19,11 +23,74 @@ const STOP_WORDS: &[&str] = &[
     "a", "an", "and", "by", "for", "from", "in", "into", "of", "on", "the", "to", "via", "with",
 ];
 
+fn fold_ascii_char(ch: char, out: &mut String) {
+    match ch {
+        'ä' | 'á' | 'à' | 'â' | 'ã' | 'å' | 'Ä' | 'Á' | 'À' | 'Â' | 'Ã' | 'Å' => {
+            out.push('a')
+        }
+        'ë' | 'é' | 'è' | 'ê' | 'Ë' | 'É' | 'È' | 'Ê' => out.push('e'),
+        'ï' | 'í' | 'ì' | 'î' | 'Ï' | 'Í' | 'Ì' | 'Î' => out.push('i'),
+        'ö' | 'ó' | 'ò' | 'ô' | 'õ' | 'ø' | 'ő' | 'Ö' | 'Ó' | 'Ò' | 'Ô' | 'Õ' | 'Ø' | 'Ő' =>
+        {
+            out.push('o');
+        }
+        'ü' | 'ú' | 'ù' | 'û' | 'ű' | 'Ü' | 'Ú' | 'Ù' | 'Û' | 'Ű' => out.push('u'),
+        'ç' | 'ć' | 'č' | 'Ç' | 'Ć' | 'Č' => out.push('c'),
+        'ñ' | 'ń' | 'Ñ' | 'Ń' => out.push('n'),
+        'ł' | 'Ł' => out.push('l'),
+        'ś' | 'š' | 'Ś' | 'Š' => out.push('s'),
+        'ź' | 'ż' | 'ž' | 'Ź' | 'Ż' | 'Ž' => out.push('z'),
+        'ß' => out.push_str("ss"),
+        other => out.push(other),
+    }
+}
+
+fn fold_bibtex_accents(text: &str) -> String {
+    let stripped = text
+        .replace("\\\"", "")
+        .replace("\\'", "")
+        .replace("\\`", "")
+        .replace("\\^", "")
+        .replace("\\~", "")
+        .replace("\\c", "")
+        .replace("\\l", "l");
+    let mut out = String::with_capacity(stripped.len());
+    for ch in stripped.chars() {
+        fold_ascii_char(ch, &mut out);
+    }
+    out
+}
+
 fn content_words(text: &str) -> Vec<String> {
-    text.split(|c: char| !c.is_ascii_alphanumeric())
+    let folded = fold_bibtex_accents(text);
+    folded
+        .split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|w| !w.is_empty())
-        .map(|w| w.to_ascii_lowercase())
+        .map(str::to_ascii_lowercase)
         .filter(|w| !STOP_WORDS.contains(&w.as_str()))
+        .collect()
+}
+
+fn clause_tokens(clause: &str) -> Vec<String> {
+    let folded = fold_bibtex_accents(clause);
+    let mut tokens = content_words(&folded);
+    for raw in folded.split_whitespace() {
+        let joined: String = raw
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        if joined.len() >= 3 && !tokens.contains(&joined) {
+            tokens.push(joined);
+        }
+    }
+    tokens
+}
+
+fn raw_key_tokens(text: &str) -> Vec<String> {
+    text.split(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-')
+        .filter(|w| w.len() >= 4)
+        .map(str::to_ascii_lowercase)
         .collect()
 }
 
@@ -43,6 +110,33 @@ fn read_balanced_braces(chars: &[char], mut idx: usize) -> Option<(String, usize
         idx += 1;
     }
     None
+}
+
+fn read_bib_field_value(chars: &[char], i: &mut usize) -> Option<String> {
+    let len = chars.len();
+    if *i >= len {
+        return None;
+    }
+    if chars[*i] == '{' {
+        let (raw, next_i) = read_balanced_braces(chars, *i + 1)?;
+        *i = next_i;
+        Some(raw)
+    } else if chars[*i] == '"' {
+        let start = *i + 1;
+        *i += 1;
+        while *i < len && chars[*i] != '"' {
+            *i += 1;
+        }
+        let raw: String = chars[start..(*i).min(len)].iter().collect();
+        *i = (*i + 1).min(len);
+        Some(raw)
+    } else {
+        let start = *i;
+        while *i < len && !chars[*i].is_whitespace() && chars[*i] != ',' && chars[*i] != '}' {
+            *i += 1;
+        }
+        Some(chars[start..*i].iter().collect())
+    }
 }
 
 fn parse_bib_fields(body: &str) -> HashMap<String, String> {
@@ -71,30 +165,8 @@ fn parse_bib_fields(body: &str) -> HashMap<String, String> {
         while i < len && chars[i].is_whitespace() {
             i += 1;
         }
-        if i >= len {
+        let Some(val) = read_bib_field_value(&chars, &mut i) else {
             break;
-        }
-        let val = if chars[i] == '{' {
-            let Some((raw, next_i)) = read_balanced_braces(&chars, i + 1) else {
-                break;
-            };
-            i = next_i;
-            raw
-        } else if chars[i] == '"' {
-            let start = i + 1;
-            i += 1;
-            while i < len && chars[i] != '"' {
-                i += 1;
-            }
-            let raw: String = chars[start..i.min(len)].iter().collect();
-            i = (i + 1).min(len);
-            raw
-        } else {
-            let start = i;
-            while i < len && !chars[i].is_whitespace() && chars[i] != ',' && chars[i] != '}' {
-                i += 1;
-            }
-            chars[start..i].iter().collect()
         };
         let cleaned = val.replace(['{', '}'], "");
         fields.insert(
@@ -159,18 +231,75 @@ fn resolve_bib_url(key: &str, fields: &HashMap<String, String>) -> Option<(Strin
     None
 }
 
-fn extract_first_author_surname(author_field: &str) -> String {
-    let first_author = author_field.split(" and ").next().unwrap_or("").trim();
-    let surname = if let Some((before_comma, _)) = first_author.split_once(',') {
-        before_comma.trim()
-    } else {
-        first_author.split_whitespace().last().unwrap_or("")
-    };
-    surname
-        .chars()
-        .filter(|c| c.is_ascii_alphabetic())
-        .collect::<String>()
-        .to_ascii_lowercase()
+fn extract_author_surnames(author_field: &str) -> Vec<String> {
+    let folded = fold_bibtex_accents(author_field);
+    let mut out = Vec::new();
+    for raw_person in folded.split(" and ") {
+        let person = raw_person.trim();
+        if person.is_empty() || person.eq_ignore_ascii_case("others") {
+            continue;
+        }
+        let raw_surname = if let Some((before_comma, _)) = person.split_once(',') {
+            before_comma.split_whitespace().last().unwrap_or("")
+        } else {
+            person.split_whitespace().last().unwrap_or("")
+        };
+        let norm: String = raw_surname
+            .chars()
+            .filter(|c| c.is_ascii_alphabetic())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        if !norm.is_empty() && !out.contains(&norm) {
+            out.push(norm);
+        }
+    }
+    out
+}
+
+fn populate_disambiguation(entries: &mut [BibEntry]) {
+    let mut groups: HashMap<(String, String), Vec<usize>> = HashMap::new();
+    for (idx, entry) in entries.iter().enumerate() {
+        if let Some(first) = entry.authors.first() {
+            if !first.is_empty() && entry.year.len() == 4 {
+                groups
+                    .entry((first.clone(), entry.year.clone()))
+                    .or_default()
+                    .push(idx);
+            }
+        }
+    }
+    for indices in groups.values() {
+        if indices.len() < 2 {
+            continue;
+        }
+        for &idx in indices {
+            let coauthors: Vec<String> = entries[idx]
+                .authors
+                .iter()
+                .skip(1)
+                .filter(|ca| {
+                    indices
+                        .iter()
+                        .all(|&other| other == idx || !entries[other].authors.contains(ca))
+                })
+                .cloned()
+                .collect();
+            let title_words: Vec<String> = entries[idx]
+                .norm_title_words
+                .iter()
+                .filter(|tw| {
+                    tw.len() >= 4
+                        && indices.iter().all(|&other| {
+                            other == idx || !entries[other].norm_title_words.contains(tw)
+                        })
+                })
+                .cloned()
+                .collect();
+            entries[idx].ambiguous_author_year = true;
+            entries[idx].unique_coauthors = coauthors;
+            entries[idx].unique_title_words = title_words;
+        }
+    }
 }
 
 fn embedded_bib_entries() -> &'static [BibEntry] {
@@ -200,13 +329,18 @@ fn embedded_bib_entries() -> &'static [BibEntry] {
                 .map(|y| y.trim().to_string())
                 .unwrap_or_default();
             entries.push(BibEntry {
+                key: key.to_ascii_lowercase(),
                 norm_title_words: content_words(title),
-                first_author: extract_first_author_surname(author),
+                authors: extract_author_surnames(author),
                 year,
+                ambiguous_author_year: false,
+                unique_coauthors: Vec::new(),
+                unique_title_words: Vec::new(),
                 label,
                 url,
             });
         }
+        populate_disambiguation(&mut entries);
         entries
     })
 }
@@ -226,7 +360,9 @@ fn extract_inline_citation_links(citation: &str) -> Vec<ExternalCitationLink> {
             url: format!("https://arxiv.org/abs/{id}"),
         });
     }
-    if let Some(idx) = citation.find("10.") {
+    let mut search_from = 0_usize;
+    while let Some(rel) = citation[search_from..].find("10.") {
+        let idx = search_from + rel;
         let candidate: String = citation[idx..]
             .chars()
             .take_while(|c| !c.is_whitespace() && !matches!(c, ')' | ']' | ';' | ','))
@@ -238,6 +374,7 @@ fn extract_inline_citation_links(citation: &str) -> Vec<ExternalCitationLink> {
                 url: format!("https://doi.org/{doi}"),
             });
         }
+        search_from = idx + candidate.len().max(3);
     }
     if let Some(url) = extract_http_url(citation) {
         if !url.contains("doi.org/") && !url.contains("arxiv.org/") {
@@ -250,12 +387,59 @@ fn extract_inline_citation_links(citation: &str) -> Vec<ExternalCitationLink> {
     links
 }
 
+fn clause_matches_author_year(entry: &BibEntry, clause: &[String]) -> bool {
+    let Some(first) = entry.authors.first() else {
+        return false;
+    };
+    if entry.year.len() != 4 || !clause.contains(&entry.year) || !clause.contains(first) {
+        return false;
+    }
+    let short_surname_ok = first.len() >= 3
+        || entry.authors.iter().skip(1).any(|ca| clause.contains(ca))
+        || entry
+            .norm_title_words
+            .iter()
+            .any(|tw| tw.len() >= 4 && clause.contains(tw));
+    if !short_surname_ok {
+        return false;
+    }
+    if !entry.ambiguous_author_year {
+        return true;
+    }
+    entry.unique_coauthors.iter().any(|ca| clause.contains(ca))
+        || entry
+            .unique_title_words
+            .iter()
+            .any(|tw| clause.contains(tw))
+}
+
+fn entry_matches_citation(
+    entry: &BibEntry,
+    key_tokens: &[String],
+    cit_words: &[String],
+    clauses: &[Vec<String>],
+) -> bool {
+    let explicit_key = entry.key.len() >= 5
+        && (entry.key.chars().any(|c| c.is_ascii_digit())
+            || entry.key.contains('_')
+            || entry.key.contains('-'))
+        && key_tokens.contains(&entry.key);
+    if explicit_key || contains_word_subsequence(cit_words, &entry.norm_title_words) {
+        return true;
+    }
+    clauses
+        .iter()
+        .any(|clause| clause_matches_author_year(entry, clause))
+}
+
 /// Matches a citation string against `papers/references.bib` DOI, arXiv, and URL entries.
 pub(crate) fn resolve_citation_reference_links(citation: &str) -> Vec<ExternalCitationLink> {
     if citation.trim().is_empty() {
         return Vec::new();
     }
+    let key_tokens = raw_key_tokens(citation);
     let cit_words = content_words(citation);
+    let clauses: Vec<Vec<String>> = citation.split(';').map(clause_tokens).collect();
     let mut seen_urls = BTreeSet::new();
     let mut out = Vec::new();
 
@@ -265,16 +449,9 @@ pub(crate) fn resolve_citation_reference_links(citation: &str) -> Vec<ExternalCi
         }
     }
     for entry in embedded_bib_entries() {
-        let title_match = contains_word_subsequence(&cit_words, &entry.norm_title_words);
-        let author_year_match = entry.first_author.len() >= 4
-            && entry.year.len() == 4
-            && cit_words.iter().any(|w| w == &entry.first_author)
-            && cit_words.iter().any(|w| w == &entry.year)
-            && entry
-                .norm_title_words
-                .iter()
-                .any(|tw| tw.len() >= 5 && cit_words.iter().any(|cw| cw == tw));
-        if (title_match || author_year_match) && seen_urls.insert(entry.url.clone()) {
+        if entry_matches_citation(entry, &key_tokens, &cit_words, &clauses)
+            && seen_urls.insert(entry.url.clone())
+        {
             out.push(ExternalCitationLink {
                 label: entry.label.clone(),
                 url: entry.url.clone(),
