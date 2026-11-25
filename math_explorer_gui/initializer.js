@@ -12,9 +12,14 @@ function formatBytes(bytes) {
     return (bytes / 1000000).toFixed(2) + ' MB';
 }
 
-function setIndeterminateProgress(progressEl, stageLabel) {
+function setIndeterminateProgress(progressEl, stageLabel, phase) {
     if (!progressEl) {
         return;
+    }
+    if (phase) {
+        progressEl.setAttribute('data-phase', phase);
+    } else {
+        progressEl.removeAttribute('data-phase');
     }
     progressEl.removeAttribute('value');
     progressEl.removeAttribute('aria-valuenow');
@@ -268,7 +273,7 @@ export default function mathExplorerInitializer(options = {}) {
                 if (subtitleEl) {
                     subtitleEl.textContent = 'Compiling WebAssembly module...';
                 }
-                setIndeterminateProgress(progressEl, 'Compiling WebAssembly module');
+                setIndeterminateProgress(progressEl, 'Compiling WebAssembly module', 'compile');
                 if (bytesEl) {
                     bytesEl.textContent =
                         formatBytes(safeTotal) + ' / ' + formatBytes(safeTotal) + ' (100%) — compiling...';
@@ -298,6 +303,7 @@ export default function mathExplorerInitializer(options = {}) {
                 subtitleEl.textContent = 'Downloading WebAssembly module...';
             }
             if (progressEl) {
+                progressEl.removeAttribute('data-phase');
                 progressEl.max = safeTotal;
                 progressEl.value = maxLoadedBytes;
                 progressEl.setAttribute('aria-valuemin', '0');
@@ -341,7 +347,7 @@ export default function mathExplorerInitializer(options = {}) {
             if (subtitleEl) {
                 subtitleEl.textContent = 'Initializing WebGL & graphics engine...';
             }
-            setIndeterminateProgress(progressEl, 'Initializing WebGL and graphics engine');
+            setIndeterminateProgress(progressEl, 'Initializing WebGL and graphics engine', 'compile');
             if (bytesEl && maxLoadedBytes > 0) {
                 bytesEl.textContent = formatBytes(maxLoadedBytes) + ' loaded — starting graphics...';
             }
