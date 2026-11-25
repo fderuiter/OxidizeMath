@@ -5,19 +5,17 @@
 use crate::error::StatMechError;
 use crate::physics::stat_mech::edwards_wilkinson::mean_field;
 use engine_pde::{
-    BoundaryCondition, ExplicitSpdeStencilStepper, SpdeNoiseKind, SplitStepSpdeStencilStepper,
-    StencilOperators,
+    BoundaryCondition, ExplicitSpdeStencilStepper, PdeError, SpdeNoiseKind,
+    SplitStepSpdeStencilStepper, StencilOperators,
 };
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::{Dimension, SolverWorkspace, StepSize, flatten_2d_index};
 use rand_core::RngCore;
 
-/// Evaluates the discrete 2D Ginzburg-Landau free-energy Lyapunov functional
-/// $F_h[\phi] = \sum_{x, y} \left[\frac{1}{4}(\phi^2 - 1)^2 + \frac{\kappa}{2}|\nabla_h^+ \phi|^2\right] \Delta x \Delta y$,
-/// whose discrete variational derivative $\delta F_h / \delta \phi = \phi^3 - \phi - \kappa \nabla_h^2 \phi$
-/// guarantees monotonic energy decay under Allen-Cahn and Cahn-Hilliard coarsening.
+/// Fallibly evaluates the discrete 2D Ginzburg-Landau free-energy Lyapunov functional
+/// $F_h[\phi] = \sum_{x, y} \left[\frac{1}{4}(\phi^2 - 1)^2 + \frac{\kappa}{2}|\nabla_h^+ \phi|^2\right] \Delta x \Delta y$.
 #[verified_engine::verified]
-pub fn ginzburg_landau_free_energy_2d(
+pub fn try_ginzburg_landau_free_energy_2d(
     phi: &[f64],
     width: usize,
     height: usize,
@@ -25,11 +23,36 @@ pub fn ginzburg_landau_free_energy_2d(
     dy: f64,
     kappa: f64,
     bc: BoundaryCondition,
-) -> f64 {
-    let total = width * height;
-    assert!(phi.len() >= total && dx > 0.0 && dy > 0.0 && kappa >= 0.0);
+) -> Result<f64, StatMechError> {
+    let total = width.checked_mul(height).ok_or(MathError::NumericalError {
+        reason: "2D Ginzburg-Landau grid dimensions overflowed usize",
+    })?;
+    if phi.len() < total {
+        return Err(PdeError::BufferTooSmall {
+            buffer: "phi",
+            required: total,
+            actual: phi.len(),
+        }
+        .into());
+    }
+    if !dx.is_finite() || dx <= 0.0 || !dy.is_finite() || dy <= 0.0 {
+        return Err(MathError::StrictlyOutOfBounds {
+            value: dx.min(dy),
+            min: 0.0,
+            max: f64::INFINITY,
+        }
+        .into());
+    }
+    if !kappa.is_finite() || kappa < 0.0 {
+        return Err(MathError::OutOfBounds {
+            value: kappa,
+            min: 0.0,
+            max: f64::INFINITY,
+        }
+        .into());
+    }
     if total == 0 {
-        return 0.0;
+        return Ok(0.0);
     }
     let inv_dx = 1.0 / dx;
     let inv_dy = 1.0 / dy;
@@ -54,7 +77,28 @@ pub fn ginzburg_landau_free_energy_2d(
             sum += bulk + 0.5 * kappa * (gx * gx + gy * gy);
         }
     }
-    sum * dx * dy
+    let energy = sum * dx * dy;
+    debug_assert!(!energy.is_finite() || energy >= 0.0);
+    debug_assert!(dx > 0.0 && dy > 0.0);
+    Ok(energy)
+}
+
+/// Evaluates the discrete 2D Ginzburg-Landau free-energy Lyapunov functional
+/// $F_h[\phi] = \sum_{x, y} \left[\frac{1}{4}(\phi^2 - 1)^2 + \frac{\kappa}{2}|\nabla_h^+ \phi|^2\right] \Delta x \Delta y$,
+/// whose discrete variational derivative $\delta F_h / \delta \phi = \phi^3 - \phi - \kappa \nabla_h^2 \phi$
+/// guarantees monotonic energy decay under Allen-Cahn and Cahn-Hilliard coarsening.
+#[verified_engine::verified]
+pub fn ginzburg_landau_free_energy_2d(
+    phi: &[f64],
+    width: usize,
+    height: usize,
+    dx: f64,
+    dy: f64,
+    kappa: f64,
+    bc: BoundaryCondition,
+) -> f64 {
+    try_ginzburg_landau_free_energy_2d(phi, width, height, dx, dy, kappa, bc)
+        .expect("Valid ginzburg_landau_free_energy_2d arguments")
 }
 
 /// 2D non-conserved Allen-Cahn (Hohenberg-Halperin Model A) phase-ordering SPDE solver evolving
@@ -202,11 +246,14 @@ impl AllenCahn2D {
         )
     }
 
-    /// Advances one explicit Euler-Maruyama step without heap allocations.
+    /// Fallibly advances one explicit Euler-Maruyama step without heap allocations.
     #[verified_engine::verified]
-    pub fn step_explicit<R: RngCore + ?Sized>(&mut self, dt: f64, rng: &mut R) {
-        assert!(dt >= 0.0);
-        let ops = StencilOperators::new_2d(StepSize(self.dx), StepSize(self.dy));
+    pub fn try_step_explicit<R: RngCore + ?Sized>(
+        &mut self,
+        dt: f64,
+        rng: &mut R,
+    ) -> Result<(), StatMechError> {
+        let ops = StencilOperators::try_new_2d(StepSize(self.dx), StepSize(self.dy))?;
         let stepper = ExplicitSpdeStencilStepper::new(
             ops,
             self.boundary,
@@ -217,7 +264,7 @@ impl AllenCahn2D {
         let m = self.mobility;
         let kappa = self.kappa;
         let mut ws = SolverWorkspace::new(&mut self.scratch);
-        stepper.step_2d(
+        stepper.try_step_2d(
             &mut self.phi,
             self.width,
             self.height,
@@ -225,19 +272,26 @@ impl AllenCahn2D {
             |_x, _y, u, _grad, lap| m * (kappa * lap + u - u * u * u),
             &mut ws,
             rng,
-        );
+        )?;
+        Ok(())
     }
 
-    /// Advances one Strang operator-split step (`diffusion_substeps >= 1`) without heap allocations.
+    /// Advances one explicit Euler-Maruyama step without heap allocations.
     #[verified_engine::verified]
-    pub fn step_split<R: RngCore + ?Sized>(
+    pub fn step_explicit<R: RngCore + ?Sized>(&mut self, dt: f64, rng: &mut R) {
+        self.try_step_explicit(dt, rng)
+            .expect("Valid AllenCahn2D::step_explicit parameters");
+    }
+
+    /// Fallibly advances one Strang operator-split step (`diffusion_substeps >= 1`) without heap allocations.
+    #[verified_engine::verified]
+    pub fn try_step_split<R: RngCore + ?Sized>(
         &mut self,
         dt: f64,
         diffusion_substeps: usize,
         rng: &mut R,
-    ) {
-        assert!(dt >= 0.0);
-        let ops = StencilOperators::new_2d(StepSize(self.dx), StepSize(self.dy));
+    ) -> Result<(), StatMechError> {
+        let ops = StencilOperators::try_new_2d(StepSize(self.dx), StepSize(self.dy))?;
         let stepper = SplitStepSpdeStencilStepper::new(
             ops,
             self.boundary,
@@ -249,7 +303,7 @@ impl AllenCahn2D {
         let m = self.mobility;
         let diffusivity = m * self.kappa;
         let mut ws = SolverWorkspace::new(&mut self.scratch);
-        stepper.step_reaction_diffusion_2d(
+        stepper.try_step_reaction_diffusion_2d(
             &mut self.phi,
             self.width,
             self.height,
@@ -258,6 +312,20 @@ impl AllenCahn2D {
             |u| m * (u - u * u * u),
             &mut ws,
             rng,
-        );
+        )?;
+        debug_assert_eq!(self.phi.len(), self.width * self.height);
+        Ok(())
+    }
+
+    /// Advances one Strang operator-split step (`diffusion_substeps >= 1`) without heap allocations.
+    #[verified_engine::verified]
+    pub fn step_split<R: RngCore + ?Sized>(
+        &mut self,
+        dt: f64,
+        diffusion_substeps: usize,
+        rng: &mut R,
+    ) {
+        self.try_step_split(dt, diffusion_substeps, rng)
+            .expect("Valid AllenCahn2D::step_split parameters");
     }
 }

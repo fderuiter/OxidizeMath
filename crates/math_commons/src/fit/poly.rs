@@ -279,4 +279,5 @@ pub(crate) fn symmetrize_upper<const N: usize>(mat: &mut [[f64; N]; N], n: usize
     }
 }
 
+#[cfg(feature = "alloc")]
 pub use super::format::format_polynomial_formula;

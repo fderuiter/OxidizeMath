@@ -12,6 +12,7 @@ Core capabilities:
 - **Unified Finite-Difference Stencils**: [`StencilOperators`] exposes 1D, 2D, and 3D central Laplacians, central gradients, squared gradients ($|\nabla h|^2$), first-order and semi-Lagrangian characteristic upwind operators, and public 2D Biharmonic ($\nabla^4 u$) evaluation across [`BoundaryCondition`] (`Periodic`, `Neumann`, `SymmetricNeumann`, and `Dirichlet`).
 - **Explicit & Operator-Split SPDE Steppers**: [`ExplicitSpdeStencilStepper`] and [`SplitStepSpdeStencilStepper`] evolve reaction-diffusion, Allen-Cahn, Edwards-Wilkinson, KPZ, and Cahn-Hilliard fields with additive white noise or staggered-face conserved-flux noise ($\nabla \cdot \vec{\eta}$).
 - **Radix-2 Dealiased Spectral Stepper**: [`SemiImplicitFourierStepper`] pairs a zero-allocation `#![no_std]` Cooley-Tukey 1D/2D FFT with Orszag 2/3-rule dealiasing for stiff fourth-order Cahn-Hilliard and nonlinear Kardar-Parisi-Zhang SPDEs.
+- **Stack-Allocated Fallible Companions**: [`PdeError`] implements `Copy`, `Eq`, `core::error::Error`, and [`math_diagnostics::Diagnostic`] without `alloc` or `std`, backing `try_*` companions across all stencil, FFT, noise-injection, and SPDE stepping APIs.
 
 ```rust
 use engine_pde::{BoundaryCondition, StencilOperators};

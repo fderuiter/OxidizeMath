@@ -308,6 +308,12 @@ pub enum StatMechError {
         /// Physical constraint violated (e.g. Bose-Einstein $\mu > \varepsilon$).
         reason: String,
     },
+    /// Wrapped differential-equation solver error.
+    #[error("{0}")]
+    Diffeq(#[from] engine_diffeq::DiffeqError),
+    /// Wrapped partial-differential-equation solver error.
+    #[error("{0}")]
+    Pde(#[from] engine_pde::PdeError),
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
     Math(#[from] math_commons::error::MathError),
@@ -429,13 +435,18 @@ impl Diagnostic for StatMechError {
     fn severity(&self) -> Severity {
         match self {
             Self::Math(err) => err.severity(),
+            Self::Diffeq(err) => err.severity(),
+            Self::Pde(err) => err.severity(),
             _ => Severity::Error,
         }
     }
     #[verified_engine::verified]
     fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
-        if let Self::Math(math_err) = self {
-            math_err.visit_fields(visitor);
+        match self {
+            Self::Math(math_err) => math_err.visit_fields(visitor),
+            Self::Diffeq(err) => err.visit_fields(visitor),
+            Self::Pde(err) => err.visit_fields(visitor),
+            _ => {}
         }
         visitor.record_str("error_type", "StatMechError");
         visitor.record_display("description", self);

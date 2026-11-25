@@ -1,4 +1,5 @@
 // [cite:engine_diffeq]
+use crate::error::DiffeqError;
 use crate::system::{SdeSystem, StochasticCalculus};
 use math_commons::math_kernel::types::{
     Scalar, SolverWorkspace, fill_standard_normal, flatten_2d_index, sample_standard_normal_pair,
@@ -70,9 +71,13 @@ impl MilsteinSolver {
         5 * state_dim + 3 * dm + wiener_dim + levy
     }
 
-    /// Advances `state` by one step `dt` drawing increments (and optional Lévy areas) from `rng`.
+    /// Fallibly advances `state` by one step `dt` drawing increments (and optional Lévy areas) from `rng`.
+    ///
+    /// # Errors
+    /// Returns [`DiffeqError`] if `dt < 0` or non-finite, `state` is undersized, or `workspace`
+    /// lacks [`Self::scratch_len`] elements.
     #[verified_engine::verified]
-    pub fn step<T: Scalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
+    pub fn try_step<T: Scalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
         &self,
         system: &S,
         t: T,
@@ -80,73 +85,46 @@ impl MilsteinSolver {
         state: &mut [T],
         workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
-    ) {
+    ) -> Result<(), DiffeqError> {
         let d = system.state_dim();
         let m = system.wiener_dim();
-        assert!(dt >= T::ZERO && state.len() >= d);
+        if !(dt >= T::ZERO && dt.is_finite()) {
+            return Err(DiffeqError::InvalidStepSize);
+        }
+        if state.len() < d {
+            return Err(DiffeqError::BufferTooSmall {
+                buffer: "state",
+                required: d,
+                actual: state.len(),
+            });
+        }
 
         let mut ws = workspace.reborrow();
-        let dw = ws.take_slice(m);
+        let dw = ws.try_take_slice(m)?;
+        let levy_slices = if self.levy_truncation > 0 && m > 1 {
+            let area = ws.try_take_slice(m * m)?;
+            let xi = ws.try_take_slice(m)?;
+            let zeta = ws.try_take_slice(m)?;
+            Some((area, xi, zeta))
+        } else {
+            None
+        };
+        let (f0, g0, g_plus, g_minus, col_vec, dg_a, dg_b, x_tmp) =
+            take_milstein_slices(&mut ws, d, d * m)?;
+
         fill_standard_normal(dw, rng);
         let sqrt_dt = dt.sqrt();
         for w in dw.iter_mut() {
             *w *= sqrt_dt;
         }
+        debug_assert!(sqrt_dt >= T::ZERO);
 
-        if self.levy_truncation > 0 && m > 1 {
-            let area = ws.take_slice(m * m);
-            let xi = ws.take_slice(m);
-            let zeta = ws.take_slice(m);
+        let area_ref = if let Some((area, xi, zeta)) = levy_slices {
             sample_levy_area(dt, dw, self.levy_truncation, area, xi, zeta, rng);
-            self.apply_milstein(system, t, dt, dw, Some(area), state, &mut ws);
+            Some(&*area)
         } else {
-            self.apply_milstein(system, t, dt, dw, None, state, &mut ws);
-        }
-    }
-
-    /// Advances `state` by one step `dt` given pre-sampled Wiener increments `dw` (commutative/diagonal mode).
-    #[verified_engine::verified]
-    pub fn step_with_increments<T: Scalar, S: SdeSystem<T> + ?Sized>(
-        &self,
-        system: &S,
-        t: T,
-        dt: T,
-        dw: &[T],
-        state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
-    ) {
-        let d = system.state_dim();
-        let m = system.wiener_dim();
-        assert!(state.len() >= d && dw.len() >= m);
-        let mut ws = workspace.reborrow();
-        self.apply_milstein(system, t, dt, dw, None, state, &mut ws);
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    #[verified_engine::verified]
-    fn apply_milstein<T: Scalar, S: SdeSystem<T> + ?Sized>(
-        &self,
-        system: &S,
-        t: T,
-        dt: T,
-        dw: &[T],
-        levy_area: Option<&[T]>,
-        state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
-    ) {
-        let d = system.state_dim();
-        let m = system.wiener_dim();
-        debug_assert!(state.len() >= d && dw.len() >= m);
-        let dm = d * m;
-        let mut ws = workspace.reborrow();
-        let f0 = ws.take_slice(d);
-        let g0 = ws.take_slice(dm);
-        let g_plus = ws.take_slice(dm);
-        let g_minus = ws.take_slice(dm);
-        let col_vec = ws.take_slice(d);
-        let dg_a = ws.take_slice(d);
-        let dg_b = ws.take_slice(d);
-        let x_tmp = ws.take_slice(d);
+            None
+        };
 
         system.drift(t, state, f0);
         system.diffusion(t, state, g0);
@@ -156,7 +134,7 @@ impl MilsteinSolver {
             t,
             dt,
             dw,
-            levy_area,
+            area_ref,
             state,
             f0,
             g0,
@@ -167,7 +145,133 @@ impl MilsteinSolver {
             dg_b,
             x_tmp,
         );
+        Ok(())
     }
+
+    /// Advances `state` by one step `dt` drawing increments (and optional Lévy areas) from `rng`.
+    ///
+    /// # Panics
+    /// Panics if `dt < 0`, `state` is undersized, or `workspace` is too small; prefer [`Self::try_step`].
+    #[verified_engine::verified]
+    pub fn step<T: Scalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
+        &self,
+        system: &S,
+        t: T,
+        dt: T,
+        state: &mut [T],
+        workspace: &mut SolverWorkspace<'_, T>,
+        rng: &mut R,
+    ) {
+        self.try_step(system, t, dt, state, workspace, rng)
+            .expect("MilsteinSolver::step preconditions violated");
+    }
+
+    /// Fallibly advances `state` by one step `dt` given pre-sampled Wiener increments `dw`.
+    ///
+    /// # Errors
+    /// Returns [`DiffeqError`] if `dt < 0` or non-finite, `state`/`dw` are undersized,
+    /// or `workspace` lacks sufficient scratch capacity.
+    #[verified_engine::verified]
+    pub fn try_step_with_increments<T: Scalar, S: SdeSystem<T> + ?Sized>(
+        &self,
+        system: &S,
+        t: T,
+        dt: T,
+        dw: &[T],
+        state: &mut [T],
+        workspace: &mut SolverWorkspace<'_, T>,
+    ) -> Result<(), DiffeqError> {
+        let d = system.state_dim();
+        let m = system.wiener_dim();
+        if !(dt >= T::ZERO && dt.is_finite()) {
+            return Err(DiffeqError::InvalidStepSize);
+        }
+        if state.len() < d {
+            return Err(DiffeqError::BufferTooSmall {
+                buffer: "state",
+                required: d,
+                actual: state.len(),
+            });
+        }
+        if dw.len() < m {
+            return Err(DiffeqError::BufferTooSmall {
+                buffer: "dw",
+                required: m,
+                actual: dw.len(),
+            });
+        }
+        let mut ws = workspace.reborrow();
+        let (f0, g0, g_plus, g_minus, col_vec, dg_a, dg_b, x_tmp) =
+            take_milstein_slices(&mut ws, d, d * m)?;
+        system.drift(t, state, f0);
+        system.diffusion(t, state, g0);
+        accumulate_milstein_update(
+            system,
+            self.calculus,
+            t,
+            dt,
+            dw,
+            None,
+            state,
+            f0,
+            g0,
+            g_plus,
+            g_minus,
+            col_vec,
+            dg_a,
+            dg_b,
+            x_tmp,
+        );
+        debug_assert!(state.len() >= d);
+        Ok(())
+    }
+
+    /// Advances `state` by one step `dt` given pre-sampled Wiener increments `dw` (commutative/diagonal mode).
+    ///
+    /// # Panics
+    /// Panics if `dt < 0`, `state`/`dw` are undersized, or `workspace` is too small; prefer [`Self::try_step_with_increments`].
+    #[verified_engine::verified]
+    pub fn step_with_increments<T: Scalar, S: SdeSystem<T> + ?Sized>(
+        &self,
+        system: &S,
+        t: T,
+        dt: T,
+        dw: &[T],
+        state: &mut [T],
+        workspace: &mut SolverWorkspace<'_, T>,
+    ) {
+        self.try_step_with_increments(system, t, dt, dw, state, workspace)
+            .expect("MilsteinSolver::step_with_increments preconditions violated");
+    }
+}
+
+type MilsteinScratch<'a, T> = (
+    &'a mut [T],
+    &'a mut [T],
+    &'a mut [T],
+    &'a mut [T],
+    &'a mut [T],
+    &'a mut [T],
+    &'a mut [T],
+    &'a mut [T],
+);
+
+#[verified_engine::verified]
+fn take_milstein_slices<'a, T: Scalar>(
+    ws: &mut SolverWorkspace<'a, T>,
+    d: usize,
+    dm: usize,
+) -> Result<MilsteinScratch<'a, T>, DiffeqError> {
+    let f0 = ws.try_take_slice(d)?;
+    let g0 = ws.try_take_slice(dm)?;
+    let g_plus = ws.try_take_slice(dm)?;
+    let g_minus = ws.try_take_slice(dm)?;
+    let col_vec = ws.try_take_slice(d)?;
+    let dg_a = ws.try_take_slice(d)?;
+    let dg_b = ws.try_take_slice(d)?;
+    let x_tmp = ws.try_take_slice(d)?;
+    debug_assert_eq!(f0.len(), d);
+    Ok((f0, g0, g_plus, g_minus, col_vec, dg_a, dg_b, x_tmp))
 }
 
 #[allow(clippy::too_many_arguments)]

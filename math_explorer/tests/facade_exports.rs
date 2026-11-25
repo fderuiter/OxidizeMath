@@ -19,8 +19,8 @@ mod kelly_checks;
 fn assert_core_error_and_prelude_exports() {
     use math_explorer::diagnostics::{Diagnostic, DiagnosticBus, Severity};
     use math_explorer::error::{
-        Error, EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult,
-        ParseError, Result,
+        DiagnosticError, DiffeqError, Error, EvalError, FitError, GlslError, LexError,
+        MathCommonsError, MathError, MathResult, ParseError, PdeError, Result,
     };
     use math_explorer::math_kernel::types::Dimension;
     use math_explorer::prelude as p;
@@ -29,7 +29,7 @@ fn assert_core_error_and_prelude_exports() {
         expected: Dimension(3),
         actual: Dimension(2),
     };
-    let res: MathResult<f64> = Err(err.clone());
+    let res: MathResult<f64> = Err(err);
     assert!(res.is_err());
     assert_eq!(Diagnostic::severity(&err), Severity::Error);
     assert_eq!(p::Diagnostic::severity(&err), p::Severity::Error);
@@ -49,9 +49,12 @@ fn assert_core_error_and_prelude_exports() {
         GlslError::DepthLimitExceeded(64),
         lex,
     );
-    let (_u, _m): (MathCommonsError, p::MathError) = (p::MathCommonsError::from(err.clone()), err);
+    let (_u, _m): (MathCommonsError, p::MathError) = (p::MathCommonsError::from(err), err);
     let _err_ty: Error = ParseError::UnexpectedEof.into();
     let _fit_ty: Error = FitError::SingularMatrix.into();
+    let _diag_ty: Error = DiagnosticError::EmptySource.into();
+    let _diffeq_ty: Error = DiffeqError::InvalidStepSize.into();
+    let _pde_ty: Error = PdeError::InvalidGridDimension { axis: "x", size: 0 }.into();
 }
 
 #[test]

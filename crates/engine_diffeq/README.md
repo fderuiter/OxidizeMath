@@ -12,6 +12,7 @@ Core design invariants:
 - **`#![no_std]` First with Optional `alloc`**: Compiles with `--no-default-features` on bare-metal and `wasm32-unknown-unknown` targets. Enabling `alloc` adds optional heap-backed workspace wrappers while all stepping loops remain strictly zero-allocation over caller-borrowed [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace) slices.
 - **Multivariate Itô & Stratonovich Calculi**: [`StochasticCalculus`] selects either Itô ($\int G \, dW_t$) or Stratonovich ($\int G \circ dW_t$) integration across [`EulerMaruyamaSolver`] (strong order $0.5$ / Euler-Heun), [`MilsteinSolver`] (strong order $1.0$ with optional truncated Karhunen-Loève Lévy area), and [`Sriw1Solver`] (Rössler-type derivative-free strong-order-$1.5$ Stochastic Runge-Kutta).
 - **Geometric Langevin Splitting**: [`BaoabLangevinSolver`] implements Leimkuhler-Matthews symmetric `B-A-O-A-B` splitting with exact Ornstein-Uhlenbeck fluctuation-dissipation thermostatting.
+- **Stack-Allocated Fallible Companions**: [`DiffeqError`] implements `Copy`, `Eq`, `core::error::Error`, and [`math_diagnostics::Diagnostic`] without `alloc` or `std`, backing `try_*` companions across all solver constructors, stepping routines, and [`try_eval_ito_effective_drift`].
 - **Explicit Deterministic Entropy**: Every stochastic step draws Box-Muller Gaussian or uniform samples exclusively from a caller-supplied `RngCore` stream.
 
 ```rust

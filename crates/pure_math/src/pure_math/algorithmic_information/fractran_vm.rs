@@ -184,20 +184,39 @@ impl FractranCompiledVm {
         Ok(None)
     }
 
+    /// Fallible companion to [`power_of_two_exponent`](Self::power_of_two_exponent).
+    #[verified_engine::verified]
+    pub fn try_power_of_two_exponent(
+        &self,
+        registers: &[u32],
+    ) -> core::result::Result<Option<u32>, math_commons::error::MathError> {
+        let width = self.primes.len();
+        if registers.len() != width {
+            return Err(math_commons::error::MathError::DimensionMismatch {
+                expected: math_commons::math_kernel::types::Dimension(width),
+                actual: math_commons::math_kernel::types::Dimension(registers.len()),
+            });
+        }
+        if width == 0 || self.primes[0] != 2 {
+            return Ok(None);
+        }
+        let exp_two = registers[0];
+        if exp_two == 0 || registers[1..width].iter().any(|&other| other != 0) {
+            return Ok(None);
+        }
+        debug_assert!(exp_two >= 1);
+        Ok(Some(exp_two))
+    }
+
     /// Returns `Some(k)` iff `registers` encodes a pure prime power of two $N = 2^k$ ($k \ge 1$).
     #[must_use]
     #[verified_engine::verified]
     pub fn power_of_two_exponent(&self, registers: &[u32]) -> Option<u32> {
-        let width = self.primes.len();
-        if registers.len() != width || width == 0 || self.primes[0] != 2 {
+        if registers.len() != self.primes.len() {
             return None;
         }
-        assert_eq!(registers.len(), width);
-        let exp_two = registers[0];
-        if exp_two == 0 || registers[1..width].iter().any(|&other| other != 0) {
-            return None;
-        }
-        Some(exp_two)
+        self.try_power_of_two_exponent(registers)
+            .expect("register slice length already validated")
     }
 }
 

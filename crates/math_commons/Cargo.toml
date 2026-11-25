@@ -5,7 +5,9 @@ edition = "2024"
 
 [features]
 default = ["std"]
+alloc = ["math_rng/alloc"]
 serde = [
+    "alloc",
     "dep:serde",
     "serde/alloc",
     "engine_linalg/serde",
@@ -14,6 +16,7 @@ serde = [
     "num-complex/serde",
 ]
 std = [
+    "alloc",
     "dep:scientific_metadata",
     "math_diagnostics/std",
     "math_rng/std",
@@ -28,7 +31,7 @@ std = [
 engine_linalg = { path = "../02_engines/engine_linalg" }
 libm = { workspace = true }
 math_diagnostics = { path = "../00_foundation/math_diagnostics", default-features = false }
-math_rng = { path = "../00_foundation/math_rng", features = ["alloc"] }
+math_rng = { path = "../00_foundation/math_rng", default-features = false }
 num-complex = { workspace = true, default-features = false, features = ["libm"] }
 num-traits = { workspace = true, default-features = false, features = ["libm"] }
 rand_core = { workspace = true }

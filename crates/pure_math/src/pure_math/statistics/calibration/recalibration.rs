@@ -66,19 +66,19 @@ fn validate_logit_outcomes(logits: &[f64], outcomes: &[bool]) -> MathResult<(usi
     }
     if logits.is_empty() {
         return Err(MathError::NumericalError {
-            reason: "Calibration logits must be non-empty".to_string(),
+            reason: "Calibration logits must be non-empty",
         });
     }
     if logits.iter().any(|z| !z.is_finite()) {
         return Err(MathError::NumericalError {
-            reason: "Calibration logits must be finite".to_string(),
+            reason: "Calibration logits must be finite",
         });
     }
     let n_pos = outcomes.iter().filter(|&&y| y).count();
     let n_neg = outcomes.len() - n_pos;
     if n_pos == 0 || n_neg == 0 {
         return Err(MathError::NumericalError {
-            reason: "Calibration fitting requires both positive and negative outcomes".to_string(),
+            reason: "Calibration fitting requires both positive and negative outcomes",
         });
     }
     Ok((n_pos, n_neg))
@@ -153,7 +153,7 @@ impl PlattScaler {
             || config.l2_reg < 0.0
         {
             return Err(MathError::NumericalError {
-                reason: "Invalid PlattConfig hyperparameters".to_string(),
+                reason: "Invalid PlattConfig hyperparameters",
             });
         }
         let targets = if config.target_smoothing {
@@ -213,7 +213,7 @@ impl PlattScaler {
     pub fn predict_proba(&self, logit: f64) -> MathResult<UnitInterval> {
         if !logit.is_finite() {
             return Err(MathError::NumericalError {
-                reason: "Input logit must be finite".to_string(),
+                reason: "Input logit must be finite",
             });
         }
         let p = stable_sigmoid(self.scale * logit + self.bias).clamp(0.0, 1.0);
@@ -354,17 +354,15 @@ impl TemperatureScaler {
     ) -> MathResult<Self> {
         if num_classes < 2 || targets.is_empty() {
             return Err(MathError::NumericalError {
-                reason: "fit_multiclass requires num_classes >= 2 and non-empty targets"
-                    .to_string(),
+                reason: "fit_multiclass requires num_classes >= 2 and non-empty targets",
             });
         }
-        let expected =
-            targets
-                .len()
-                .checked_mul(num_classes)
-                .ok_or_else(|| MathError::NumericalError {
-                    reason: "targets.len() * num_classes overflowed usize".to_string(),
-                })?;
+        let expected = targets
+            .len()
+            .checked_mul(num_classes)
+            .ok_or(MathError::NumericalError {
+                reason: "targets.len() * num_classes overflowed usize",
+            })?;
         if logits_flat.len() != expected {
             return Err(MathError::DimensionMismatch {
                 expected: Dimension(expected),
@@ -373,8 +371,7 @@ impl TemperatureScaler {
         }
         if logits_flat.iter().any(|z| !z.is_finite()) || targets.iter().any(|&t| t >= num_classes) {
             return Err(MathError::NumericalError {
-                reason: "fit_multiclass requires finite logits and in-bounds class targets"
-                    .to_string(),
+                reason: "fit_multiclass requires finite logits and in-bounds class targets",
             });
         }
         let temperature = solve_convex_beta(|beta| {
@@ -388,7 +385,7 @@ impl TemperatureScaler {
     pub fn predict_binary(&self, logit: f64) -> MathResult<UnitInterval> {
         if !logit.is_finite() {
             return Err(MathError::NumericalError {
-                reason: "Input logit must be finite".to_string(),
+                reason: "Input logit must be finite",
             });
         }
         let p = stable_sigmoid(logit / self.temperature.value()).clamp(0.0, 1.0);
@@ -410,7 +407,7 @@ impl TemperatureScaler {
         }
         if logits.is_empty() || logits.iter().any(|z| !z.is_finite()) {
             return Err(MathError::NumericalError {
-                reason: "predict_multiclass_into requires non-empty finite logits".to_string(),
+                reason: "predict_multiclass_into requires non-empty finite logits",
             });
         }
         let inv_t = 1.0 / self.temperature.value();

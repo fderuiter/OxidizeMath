@@ -51,7 +51,7 @@ fn prepare_sorted_scores(scores: &[f64], outcomes: &[bool]) -> MathResult<Sorted
     }
     if scores.is_empty() {
         return Err(MathError::NumericalError {
-            reason: "Threshold ranking inputs must be non-empty".to_string(),
+            reason: "Threshold ranking inputs must be non-empty",
         });
     }
     let mut n_pos = 0_usize;
@@ -59,7 +59,7 @@ fn prepare_sorted_scores(scores: &[f64], outcomes: &[bool]) -> MathResult<Sorted
     for (&s, &y) in scores.iter().zip(outcomes.iter()) {
         if !s.is_finite() {
             return Err(MathError::NumericalError {
-                reason: "Ranking scores must be finite numbers".to_string(),
+                reason: "Ranking scores must be finite numbers",
             });
         }
         if y {
@@ -70,7 +70,7 @@ fn prepare_sorted_scores(scores: &[f64], outcomes: &[bool]) -> MathResult<Sorted
     let n_neg = scores.len() - n_pos;
     if n_pos == 0 || n_neg == 0 {
         return Err(MathError::NumericalError {
-            reason: "ROC and PR curves require both positive and negative outcomes".to_string(),
+            reason: "ROC and PR curves require both positive and negative outcomes",
         });
     }
     pairs.sort_unstable_by(|a, b| b.0.total_cmp(&a.0));

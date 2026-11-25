@@ -1,4 +1,5 @@
 // [cite:engine_pde]
+use crate::error::PdeError;
 use math_commons::math_kernel::types::{Scalar, flatten_2d_index};
 
 /// Computes the signed integer Fourier mode $\tilde{m} \in (-N/2, N/2]$ for DFT index `m` of radix-2 size `n`.
@@ -18,23 +19,52 @@ pub fn mode_wavenumber(m: usize, n: usize, dx: f64) -> f64 {
     (<f64 as Scalar>::TAU / ((n as f64) * dx)) * signed
 }
 
+/// Fallible zero-allocation iterative radix-2 Cooley-Tukey 1D FFT/IFFT over interleaved `(re, im)` slice `buf`.
+///
+/// # Errors
+/// Returns [`PdeError::NonRadix2Dimension`] if `n == 0` or `!n.is_power_of_two()`, or
+/// [`PdeError::BufferTooSmall`] if `buf.len() < 2 * n`.
+#[verified_engine::verified]
+pub fn try_fft_1d_inplace(buf: &mut [f64], n: usize, inverse: bool) -> Result<(), PdeError> {
+    if n == 0 || !n.is_power_of_two() {
+        return Err(PdeError::NonRadix2Dimension { axis: "n", size: n });
+    }
+    let required = n
+        .checked_mul(2)
+        .ok_or(PdeError::InvalidGridDimension { axis: "n", size: n })?;
+    if buf.len() < required {
+        return Err(PdeError::BufferTooSmall {
+            buffer: "buf",
+            required,
+            actual: buf.len(),
+        });
+    }
+
+    bit_reverse_permute(buf, n);
+    run_cooley_tukey_butterflies(buf, n, inverse);
+
+    if inverse {
+        let inv_n = 1.0 / (n as f64);
+        for v in &mut buf[..required] {
+            *v *= inv_n;
+        }
+    }
+    debug_assert!(buf.len() >= required);
+    Ok(())
+}
+
 /// Zero-allocation iterative radix-2 Cooley-Tukey 1D FFT/IFFT over interleaved `(re, im)` slice `buf` (`len >= 2 * n`).
 ///
 /// # Panics
-/// Panics if `n == 0`, `!n.is_power_of_two()`, or `buf.len() < 2 * n`.
+/// Panics if `n == 0`, `!n.is_power_of_two()`, or `buf.len() < 2 * n`; prefer [`try_fft_1d_inplace`].
 #[verified_engine::verified]
 pub fn fft_1d_inplace(buf: &mut [f64], n: usize, inverse: bool) {
-    assert!(
-        n > 0 && n.is_power_of_two(),
-        "FFT size n must be a power of two"
-    );
-    assert!(
-        buf.len() >= 2 * n,
-        "interleaved complex buffer shorter than 2 * n"
-    );
+    try_fft_1d_inplace(buf, n, inverse).expect("fft_1d_inplace preconditions violated");
+}
 
-    bit_reverse_permute(buf, n);
-
+#[verified_engine::verified]
+fn run_cooley_tukey_butterflies(buf: &mut [f64], n: usize, inverse: bool) {
+    debug_assert!(n.is_power_of_two() && buf.len() >= 2 * n);
     let sign = if inverse { 1.0 } else { -1.0 };
     let mut len = 2;
     while len <= n {
@@ -68,13 +98,6 @@ pub fn fft_1d_inplace(buf: &mut [f64], n: usize, inverse: bool) {
         }
         len *= 2;
     }
-
-    if inverse {
-        let inv_n = 1.0 / (n as f64);
-        for v in &mut buf[..2 * n] {
-            *v *= inv_n;
-        }
-    }
 }
 
 fn bit_reverse_permute(buf: &mut [f64], n: usize) {
@@ -93,30 +116,57 @@ fn bit_reverse_permute(buf: &mut [f64], n: usize) {
     }
 }
 
-/// Zero-allocation radix-2 2D FFT/IFFT over interleaved `(re, im)` slice `buf` (`len >= 2 * width * height`)
-/// using `col_scratch` (`len >= 2 * height`).
+/// Fallible zero-allocation radix-2 2D FFT/IFFT over interleaved `(re, im)` slice `buf`.
+///
+/// # Errors
+/// Returns [`PdeError`] if `width` or `height` is not a power of two or `buf`/`col_scratch` is undersized.
 #[verified_engine::verified]
-pub fn fft_2d_inplace(
+pub fn try_fft_2d_inplace(
     buf: &mut [f64],
     width: usize,
     height: usize,
     col_scratch: &mut [f64],
     inverse: bool,
-) {
-    assert!(
-        width > 0 && width.is_power_of_two(),
-        "width must be power of two"
-    );
-    assert!(
-        height > 0 && height.is_power_of_two(),
-        "height must be power of two"
-    );
-    assert!(buf.len() >= 2 * width * height && col_scratch.len() >= 2 * height);
+) -> Result<(), PdeError> {
+    if width == 0 || !width.is_power_of_two() {
+        return Err(PdeError::NonRadix2Dimension {
+            axis: "width",
+            size: width,
+        });
+    }
+    if height == 0 || !height.is_power_of_two() {
+        return Err(PdeError::NonRadix2Dimension {
+            axis: "height",
+            size: height,
+        });
+    }
+    let cells = width
+        .checked_mul(height)
+        .and_then(|c| c.checked_mul(2))
+        .ok_or(PdeError::InvalidGridDimension {
+            axis: "grid",
+            size: usize::MAX,
+        })?;
+    if buf.len() < cells {
+        return Err(PdeError::BufferTooSmall {
+            buffer: "buf",
+            required: cells,
+            actual: buf.len(),
+        });
+    }
+    let req_col = height * 2;
+    if col_scratch.len() < req_col {
+        return Err(PdeError::BufferTooSmall {
+            buffer: "col_scratch",
+            required: req_col,
+            actual: col_scratch.len(),
+        });
+    }
 
     for y in 0..height {
         let row_start = 2 * flatten_2d_index(0, y, width);
         let row_end = row_start + 2 * width;
-        fft_1d_inplace(&mut buf[row_start..row_end], width, inverse);
+        try_fft_1d_inplace(&mut buf[row_start..row_end], width, inverse)?;
     }
 
     for x in 0..width {
@@ -125,20 +175,53 @@ pub fn fft_2d_inplace(
             col_scratch[2 * y] = buf[idx];
             col_scratch[2 * y + 1] = buf[idx + 1];
         }
-        fft_1d_inplace(&mut col_scratch[..2 * height], height, inverse);
+        try_fft_1d_inplace(&mut col_scratch[..req_col], height, inverse)?;
         for y in 0..height {
             let idx = 2 * flatten_2d_index(x, y, width);
             buf[idx] = col_scratch[2 * y];
             buf[idx + 1] = col_scratch[2 * y + 1];
         }
     }
+    debug_assert!(buf.len() >= cells);
+    Ok(())
 }
 
-/// Applies the Orszag 2/3-rule spectral dealiasing mask to a 1D interleaved spectrum of radix-2 size `n`,
-/// zeroing all modes with $3 |\tilde{m}| \ge n$ (including Nyquist).
+/// Zero-allocation radix-2 2D FFT/IFFT over interleaved `(re, im)` slice `buf` (`len >= 2 * width * height`)
+/// using `col_scratch` (`len >= 2 * height`).
+///
+/// # Panics
+/// Panics if `width`/`height` are not powers of two or buffers are undersized; prefer [`try_fft_2d_inplace`].
 #[verified_engine::verified]
-pub fn dealias_1d_spectrum(spec: &mut [f64], n: usize) {
-    assert!(n > 0 && spec.len() >= 2 * n);
+pub fn fft_2d_inplace(
+    buf: &mut [f64],
+    width: usize,
+    height: usize,
+    col_scratch: &mut [f64],
+    inverse: bool,
+) {
+    try_fft_2d_inplace(buf, width, height, col_scratch, inverse)
+        .expect("fft_2d_inplace preconditions violated");
+}
+
+/// Fallibly applies the Orszag 2/3-rule spectral dealiasing mask to a 1D interleaved spectrum.
+///
+/// # Errors
+/// Returns [`PdeError`] if `n == 0` or `spec.len() < 2 * n`.
+#[verified_engine::verified]
+pub fn try_dealias_1d_spectrum(spec: &mut [f64], n: usize) -> Result<(), PdeError> {
+    if n == 0 {
+        return Err(PdeError::InvalidGridDimension { axis: "n", size: 0 });
+    }
+    let required = n
+        .checked_mul(2)
+        .ok_or(PdeError::InvalidGridDimension { axis: "n", size: n })?;
+    if spec.len() < required {
+        return Err(PdeError::BufferTooSmall {
+            buffer: "spec",
+            required,
+            actual: spec.len(),
+        });
+    }
     for m in 0..n {
         let k_abs = signed_mode_index(m, n).unsigned_abs();
         if 3 * k_abs >= n {
@@ -146,13 +229,56 @@ pub fn dealias_1d_spectrum(spec: &mut [f64], n: usize) {
             spec[2 * m + 1] = 0.0;
         }
     }
+    debug_assert!(spec.len() >= required);
+    Ok(())
 }
 
-/// Applies the Orszag 2/3-rule spectral dealiasing mask to a 2D interleaved spectrum (`width x height`),
-/// zeroing modes where $3 |\tilde{m}_x| \ge \text{width}$ or $3 |\tilde{m}_y| \ge \text{height}$.
+/// Applies the Orszag 2/3-rule spectral dealiasing mask to a 1D interleaved spectrum of radix-2 size `n`,
+/// zeroing all modes with $3 |\tilde{m}| \ge n$ (including Nyquist).
+///
+/// # Panics
+/// Panics if `n == 0` or `spec.len() < 2 * n`; prefer [`try_dealias_1d_spectrum`].
 #[verified_engine::verified]
-pub fn dealias_2d_spectrum(spec: &mut [f64], width: usize, height: usize) {
-    assert!(width > 0 && height > 0 && spec.len() >= 2 * width * height);
+pub fn dealias_1d_spectrum(spec: &mut [f64], n: usize) {
+    try_dealias_1d_spectrum(spec, n).expect("dealias_1d_spectrum preconditions violated");
+}
+
+/// Fallibly applies the Orszag 2/3-rule spectral dealiasing mask to a 2D interleaved spectrum.
+///
+/// # Errors
+/// Returns [`PdeError`] if `width == 0`, `height == 0`, or `spec.len() < 2 * width * height`.
+#[verified_engine::verified]
+pub fn try_dealias_2d_spectrum(
+    spec: &mut [f64],
+    width: usize,
+    height: usize,
+) -> Result<(), PdeError> {
+    if width == 0 {
+        return Err(PdeError::InvalidGridDimension {
+            axis: "width",
+            size: 0,
+        });
+    }
+    if height == 0 {
+        return Err(PdeError::InvalidGridDimension {
+            axis: "height",
+            size: 0,
+        });
+    }
+    let required = width
+        .checked_mul(height)
+        .and_then(|c| c.checked_mul(2))
+        .ok_or(PdeError::InvalidGridDimension {
+            axis: "grid",
+            size: usize::MAX,
+        })?;
+    if spec.len() < required {
+        return Err(PdeError::BufferTooSmall {
+            buffer: "spec",
+            required,
+            actual: spec.len(),
+        });
+    }
     for y in 0..height {
         let ky_cut = 3 * signed_mode_index(y, height).unsigned_abs() >= height;
         for x in 0..width {
@@ -164,4 +290,17 @@ pub fn dealias_2d_spectrum(spec: &mut [f64], width: usize, height: usize) {
             }
         }
     }
+    debug_assert!(spec.len() >= required);
+    Ok(())
+}
+
+/// Applies the Orszag 2/3-rule spectral dealiasing mask to a 2D interleaved spectrum (`width x height`),
+/// zeroing modes where $3 |\tilde{m}_x| \ge \text{width}$ or $3 |\tilde{m}_y| \ge \text{height}$.
+///
+/// # Panics
+/// Panics if `width == 0`, `height == 0`, or `spec` is undersized; prefer [`try_dealias_2d_spectrum`].
+#[verified_engine::verified]
+pub fn dealias_2d_spectrum(spec: &mut [f64], width: usize, height: usize) {
+    try_dealias_2d_spectrum(spec, width, height)
+        .expect("dealias_2d_spectrum preconditions violated");
 }

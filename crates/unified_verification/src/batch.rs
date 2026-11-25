@@ -46,6 +46,9 @@ pub(crate) fn run_batch_ast_with_caches(
     if !crate::api_drift::check_api_drift_with_cache(cache) {
         passed = false;
     }
+    if !crate::error_contracts::check_error_contracts_with_cache(cache) {
+        passed = false;
+    }
     if !run_traceability_with_cache(false, cache) {
         passed = false;
     }

@@ -165,44 +165,22 @@ fn real_symmetric_propagator(real_h: DMatrix<f64>, omega: f64) -> Option<Quantum
 /// $$ U(t) = \exp\left(-\frac{i}{\hbar} \hat{H} t\right) $$
 ///
 /// # Arguments
-/// * `hamiltonian` - The Hamiltonian operator $\hat{H}$ (must be a square matrix).
-/// * `t` - The time duration $t$ to evolve the system.
-/// * `h_bar` - The reduced Planck constant $\hbar$.
-///
-/// # Returns
-/// The unitary operator U(t).
+/// * `hamiltonian` - Time-independent square Hamiltonian $\hat{H}$.
+/// * `t` - Evolution duration $t$.
+/// * `h_bar` - Reduced Planck constant $\hbar$.
 ///
 /// # Examples
-///
-/// Calculate the time evolution operator for a spin-1/2 system with Hamiltonian H = \sigma_z.
-///
 /// ```
 /// # use domain_physics::__doctest_facade as math_explorer;
 /// use math_explorer::physics::quantum::{time_evolution_operator, sigma_z};
 /// use std::f64::consts::PI;
 /// use math_explorer::num_complex::Complex;
 ///
-/// // 1. Define Hamiltonian H = sigma_z (Spin-1/2 Z-operator)
-/// // \sigma_z = |0><0| - |1><1| = diag(1, -1)
 /// let h_hat = sigma_z();
-///
-/// // 2. Calculate U(t) for t = PI, h_bar = 1.0
-/// // U(t) = exp(-i * H * t / h_bar)
-/// // U(PI) = exp(-i * diag(1, -1) * PI) = diag(exp(-i*PI), exp(i*PI))
-/// //       = diag(-1, -1) = -I
-/// let t = PI;
-/// let h_bar = 1.0;
-/// let u_op = time_evolution_operator(&h_hat, t, h_bar);
-///
-/// // 3. Verify result is approximately -I
-/// let u_matrix = u_op.matrix;
+/// let u_matrix = time_evolution_operator(&h_hat, PI, 1.0).matrix;
 /// let expected_diag = Complex::new(-1.0, 0.0);
-///
-/// // Check diagonal elements
 /// assert!((u_matrix[(0, 0)] - expected_diag).norm() < math_explorer::registry::TOLERANCE_STANDARD, "U(0,0) incorrect");
 /// assert!((u_matrix[(1, 1)] - expected_diag).norm() < math_explorer::registry::TOLERANCE_STANDARD, "U(1,1) incorrect");
-///
-/// // Check off-diagonal elements are zero
 /// assert!(u_matrix[(0, 1)].norm() < math_explorer::registry::TOLERANCE_STANDARD, "U(0,1) should be 0");
 /// assert!(u_matrix[(1, 0)].norm() < math_explorer::registry::TOLERANCE_STANDARD, "U(1,0) should be 0");
 /// ```
@@ -271,9 +249,6 @@ pub fn time_evolution_operator(
 /// The evolved quantum state $|\psi(t)\rangle$.
 ///
 /// # Example
-///
-/// Simulating a 2-level system (Qubit) undergoing Rabi oscillations.
-///
 /// ```
 /// # use domain_physics::__doctest_facade as math_explorer;
 /// use math_explorer::physics::quantum::schrodinger::evolve_state;
@@ -281,31 +256,20 @@ pub fn time_evolution_operator(
 /// use math_explorer::nalgebra::{DMatrix, DVector};
 /// use math_explorer::num_complex::Complex;
 ///
-/// // 1. Define the Hamiltonian for a spin in a magnetic field (Pauli X)
-/// // H = \hbar * omega * sigma_x / 2
 /// let h_bar = 1.0;
 /// let omega = 2.0;
 /// let factor = Complex::new(h_bar * omega / 2.0, 0.0);
 /// let hamiltonian_matrix = DMatrix::from_row_slice(2, 2, &[
-///     Complex::new(0.0, 0.0), Complex::new(1.0, 0.0), // 0  1
-///     Complex::new(1.0, 0.0), Complex::new(0.0, 0.0), // 1  0
+///     Complex::new(0.0, 0.0), Complex::new(1.0, 0.0),
+///     Complex::new(1.0, 0.0), Complex::new(0.0, 0.0),
 /// ]) * factor;
 /// let hamiltonian = QuantumOperator::new(hamiltonian_matrix);
-///
-/// // 2. Initialize state in |0> (Up)
-/// let initial_vector = DVector::from_vec(vec![
+/// let initial_state = QuantumState::new(DVector::from_vec(vec![
 ///     Complex::new(1.0, 0.0),
-///     Complex::new(0.0, 0.0)
-/// ]);
-/// let initial_state = QuantumState::new(initial_vector);
-///
-/// // 3. Evolve for time t = pi / omega (Should flip to |1>)
-/// let t = std::f64::consts::PI / omega;
-/// let final_state = evolve_state(&initial_state, &hamiltonian, t, h_bar);
-///
-/// // 4. Check probability of being in |1> (Down)
-/// let prob_down = final_state.probability_density()[1];
-/// assert!((prob_down - 1.0).abs() < 1e-4);
+///     Complex::new(0.0, 0.0),
+/// ]));
+/// let final_state = evolve_state(&initial_state, &hamiltonian, std::f64::consts::PI / omega, h_bar);
+/// assert!((final_state.probability_density()[1] - 1.0).abs() < 1e-4);
 /// ```
 #[verified_engine::verified]
 pub fn evolve_state(
@@ -316,6 +280,42 @@ pub fn evolve_state(
 ) -> QuantumState {
     let u = time_evolution_operator(hamiltonian, t, h_bar);
     QuantumState::new(&u.matrix * &state.vector)
+}
+
+/// Fallibly evolves `state` in place using `propagator` and `scratch` without heap allocations.
+#[verified_engine::verified]
+pub fn try_evolve_state_in_place(
+    state: &mut QuantumState,
+    propagator: &QuantumOperator,
+    scratch: &mut DVector<Complex<f64>>,
+) -> Result<(), crate::physics::quantum::QuantumError> {
+    use crate::physics::quantum::QuantumError;
+    let dim = state.vector.len();
+    if propagator.matrix.nrows() != propagator.matrix.ncols() {
+        return Err(QuantumError::DimensionMismatch {
+            context: "Propagator matrix must be square",
+            expected: propagator.matrix.nrows(),
+            actual: propagator.matrix.ncols(),
+        });
+    }
+    if propagator.matrix.ncols() != dim {
+        return Err(QuantumError::DimensionMismatch {
+            context: "Propagator dimension must match state vector length",
+            expected: dim,
+            actual: propagator.matrix.ncols(),
+        });
+    }
+    if scratch.len() != dim {
+        return Err(QuantumError::DimensionMismatch {
+            context: "Scratch vector length must match state vector length",
+            expected: dim,
+            actual: scratch.len(),
+        });
+    }
+    propagator.matrix.mul_to(&state.vector, scratch);
+    core::mem::swap(&mut state.vector, scratch);
+    debug_assert_eq!(state.vector.len(), dim);
+    Ok(())
 }
 
 /// Evolves a quantum state in place using a precomputed unitary propagator $U(\Delta t)$.
@@ -358,24 +358,8 @@ pub fn evolve_state_in_place(
     propagator: &QuantumOperator,
     scratch: &mut DVector<Complex<f64>>,
 ) {
-    let dim = state.vector.len();
-    assert_eq!(
-        propagator.matrix.nrows(),
-        propagator.matrix.ncols(),
-        "Propagator matrix must be square"
-    );
-    assert_eq!(
-        propagator.matrix.ncols(),
-        dim,
-        "Propagator dimension must match state vector length"
-    );
-    assert_eq!(
-        scratch.len(),
-        dim,
-        "Scratch vector length must match state vector length"
-    );
-    propagator.matrix.mul_to(&state.vector, scratch);
-    core::mem::swap(&mut state.vector, scratch);
+    try_evolve_state_in_place(state, propagator, scratch)
+        .expect("evolve_state_in_place dimension mismatch");
 }
 
 /// Computes the total squared norm $\sum_i |\psi_i|^2$ of `state` with zero heap allocations.

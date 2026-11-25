@@ -60,7 +60,7 @@ pub fn verify_and_digest_lean_proofs() -> Result<BTreeMap<String, String>, Strin
             proofs_dir.display()
         ));
     }
-    let digests = collect_lean4_proof_digests(&root)?;
+    let digests = collect_lean4_proof_digests(&root).map_err(|err| err.to_string())?;
     if digests.len() < 6 {
         return Err(format!(
             "Expected at least 6 Lean 4 proof modules in proofs/OxidizeMath/, found {}",

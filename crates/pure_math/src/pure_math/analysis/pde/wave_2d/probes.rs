@@ -123,13 +123,17 @@ impl Wave2DSolver {
         }
     }
 
-    /// Writes the time-averaged intensity profile $I(y)$ along the detector screen into `out`.
+    /// Fallible companion to [`read_detector_profile`](Self::read_detector_profile).
     #[verified_engine::verified]
-    pub fn read_detector_profile(&self, det_x: usize, out: &mut [f64]) {
-        assert!(
+    pub fn try_read_detector_profile(
+        &self,
+        det_x: usize,
+        out: &mut [f64],
+    ) -> core::result::Result<(), math_commons::error::MathError> {
+        crate::error::ensure_math(
             out.len() >= self.height,
-            "Output buffer shorter than grid height"
-        );
+            "read_detector_profile: precondition or invariant violated",
+        )?;
         if self.detector_samples > 0 {
             let inv = 1.0 / (self.detector_samples as f64);
             for (dst, &acc) in out.iter_mut().zip(self.detector_accum.iter()) {
@@ -141,6 +145,15 @@ impl Wave2DSolver {
                 *dst = self.energy_ema[flatten_2d_index(col, y, self.width)];
             }
         }
+
+        Ok(())
+    }
+
+    /// Writes the time-averaged intensity profile $I(y)$ along the detector screen into `out`.
+    #[verified_engine::verified]
+    pub fn read_detector_profile(&self, det_x: usize, out: &mut [f64]) {
+        self.try_read_detector_profile(det_x, out)
+            .expect("read_detector_profile preconditions must hold");
     }
 
     /// Injects a smooth 2D Gaussian displacement pulse centered at normalized `(cx_norm, cy_norm)`.

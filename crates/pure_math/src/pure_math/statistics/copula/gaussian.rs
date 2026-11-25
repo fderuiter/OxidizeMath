@@ -291,9 +291,9 @@ fn integrate_genz_sobol(
     } else {
         MultivariateIntegrator::new_halton(qmc_dim, budget)
     }
-    .map_err(|e| {
+    .map_err(|_| {
         CopulaError::Math(MathError::NumericalError {
-            reason: e.to_string(),
+            reason: "Failed to initialize multivariate QMC integrator",
         })
     })?
     .with_seed(seed);
@@ -317,9 +317,9 @@ fn integrate_genz_sobol(
             }
             prod
         })
-        .map_err(|e| {
+        .map_err(|_| {
             CopulaError::Math(MathError::NumericalError {
-                reason: e.to_string(),
+                reason: "Multivariate QMC unit-cube integration failed",
             })
         })?;
 

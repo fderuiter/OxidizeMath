@@ -62,7 +62,7 @@ pub struct CalibrationSummary {
 fn validate_num_bins(num_bins: usize) -> MathResult<()> {
     if num_bins == 0 {
         return Err(MathError::NumericalError {
-            reason: "Number of calibration bins must be at least 1".to_string(),
+            reason: "Number of calibration bins must be at least 1",
         });
     }
     Ok(())

@@ -52,18 +52,33 @@ pub struct CellMask2D {
 }
 
 impl CellMask2D {
-    /// Allocates an all-`Free` 2D cell mask for a `width x height` grid.
+    /// Fallibly allocates an all-`Free` 2D cell mask for a `width x height` grid.
     #[verified_engine::verified]
-    pub fn new(width: usize, height: usize) -> Self {
-        let len = width.checked_mul(height).expect("Mask grid size overflow");
-        Self {
+    pub fn try_new(
+        width: usize,
+        height: usize,
+    ) -> Result<Self, crate::biology::reaction_diffusion::ReactionDiffusionError> {
+        let len = width.checked_mul(height).ok_or(
+            crate::biology::reaction_diffusion::ReactionDiffusionError::Math(
+                math_commons::error::MathError::NumericalError {
+                    reason: "Mask grid size overflow",
+                },
+            ),
+        )?;
+        Ok(Self {
             width,
             height,
             roles: vec![ReactionCellRole::Free as u8; len],
             has_active: false,
             emitter_u_level: 1.8,
             emitter_v_level: 1.8,
-        }
+        })
+    }
+
+    /// Allocates an all-`Free` 2D cell mask for a `width x height` grid; prefer [`Self::try_new`].
+    #[verified_engine::verified]
+    pub fn new(width: usize, height: usize) -> Self {
+        Self::try_new(width, height).expect("Mask grid size overflow")
     }
 
     /// Returns the grid width.

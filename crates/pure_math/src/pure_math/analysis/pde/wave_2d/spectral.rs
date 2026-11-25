@@ -6,9 +6,14 @@
 
 // [cite:advanced_linear_algebra]
 
-use std::f64::consts::PI;
+mod helpers;
+
 use std::sync::Arc;
 
+use self::helpers::{
+    build_hann_weights, compute_finite_mean, ensure_eq_math, ensure_math, insert_ranked_mode,
+    insert_sorted_peak,
+};
 use math_commons::math_kernel::types::flatten_2d_index;
 use num_complex::Complex;
 use rustfft::{Fft, FftPlanner};
@@ -68,9 +73,15 @@ impl std::fmt::Debug for SpectralAnalyzer2D {
 }
 
 impl SpectralAnalyzer2D {
-    /// Plans forward 1D FFTs along rows and columns and pre-allocates all intermediate buffers.
-    pub fn new(width: usize, height: usize) -> Self {
-        assert!(width >= 2 && height >= 2, "2D FFT dimensions must be >= 2");
+    /// Fallible companion to [`new`](Self::new).
+    pub fn try_new(
+        width: usize,
+        height: usize,
+    ) -> core::result::Result<Self, math_commons::error::MathError> {
+        ensure_math(
+            width >= 2 && height >= 2,
+            "new: precondition or invariant violated",
+        )?;
         let mut planner = FftPlanner::new();
         let row_fft = planner.plan_fft_forward(width);
         let col_fft = planner.plan_fft_forward(height);
@@ -81,8 +92,10 @@ impl SpectralAnalyzer2D {
         let len = width * height;
         let hann_x = build_hann_weights(width);
         let hann_y = build_hann_weights(height);
+        debug_assert_eq!(hann_x.len(), width);
+        debug_assert_eq!(hann_y.len(), height);
 
-        Self {
+        Ok(Self {
             width,
             height,
             row_fft,
@@ -94,39 +107,55 @@ impl SpectralAnalyzer2D {
             hann_y,
             magnitude_spectrum: vec![0.0; len],
             use_hann_window: true,
-        }
+        })
+    }
+
+    /// Plans forward 1D FFTs along rows and columns and pre-allocates all intermediate buffers.
+    pub fn new(width: usize, height: usize) -> Self {
+        Self::try_new(width, height).expect("new preconditions must hold")
     }
 
     /// Configures whether separable 2D Hann windowing is applied prior to the forward FFT.
     #[verified_engine::verified]
     pub fn set_hann_window(&mut self, enabled: bool) {
         self.use_hann_window = enabled;
+        debug_assert_eq!(self.use_hann_window, enabled);
     }
 
     /// Spectrum width $W$.
     #[verified_engine::verified]
     pub fn width(&self) -> usize {
+        debug_assert!(self.width >= 2);
         self.width
     }
 
     /// Spectrum height $H$.
     #[verified_engine::verified]
     pub fn height(&self) -> usize {
+        debug_assert!(self.height >= 2);
         self.height
     }
 
     /// Centered (`fftshift`) normalized 2D magnitude spectrum from the latest pass.
     #[verified_engine::verified]
     pub fn spectrum(&self) -> &[f64] {
+        debug_assert_eq!(self.magnitude_spectrum.len(), self.width * self.height);
         &self.magnitude_spectrum
     }
 
-    /// Computes the `fftshift`-centered 2D magnitude spectrum of `field` with zero heap allocations.
+    /// Fallible companion to [`compute_spectrum`](Self::compute_spectrum).
     #[verified_engine::verified]
-    pub fn compute_spectrum(&mut self, field: &[f64]) -> &[f64] {
+    pub fn try_compute_spectrum(
+        &mut self,
+        field: &[f64],
+    ) -> core::result::Result<&[f64], math_commons::error::MathError> {
         let w = self.width;
         let h = self.height;
-        assert_eq!(field.len(), w * h, "Input field size must match W*H");
+        ensure_eq_math(
+            &(field.len()),
+            &(w * h),
+            "compute_spectrum: equality invariant violated",
+        )?;
 
         self.load_windowed_input(field);
         self.row_fft
@@ -135,8 +164,15 @@ impl SpectralAnalyzer2D {
         self.col_fft
             .process_with_scratch(&mut self.transposed, &mut self.scratch);
         self.write_shifted_magnitudes();
+        debug_assert_eq!(self.magnitude_spectrum.len(), w * h);
+        Ok(&self.magnitude_spectrum)
+    }
 
-        &self.magnitude_spectrum
+    /// Computes the `fftshift`-centered 2D magnitude spectrum of `field` with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn compute_spectrum(&mut self, field: &[f64]) -> &[f64] {
+        self.try_compute_spectrum(field)
+            .expect("compute_spectrum preconditions must hold")
     }
 
     #[verified_engine::verified]
@@ -165,12 +201,14 @@ impl SpectralAnalyzer2D {
                 self.spatial_complex[idx] = Complex::new(val, 0.0);
             }
         }
+        debug_assert_eq!(self.spatial_complex.len(), w * h);
     }
 
     #[verified_engine::verified]
     fn transpose_rows_to_cols(&mut self) {
         let w = self.width;
         let h = self.height;
+        debug_assert_eq!(self.transposed.len(), w * h);
         for y in 0..h {
             for x in 0..w {
                 let src_idx = flatten_2d_index(x, y, w);
@@ -196,13 +234,15 @@ impl SpectralAnalyzer2D {
                 self.magnitude_spectrum[dst_idx] = self.transposed[src_idx].norm() * inv_norm;
             }
         }
+        debug_assert!(inv_norm > 0.0);
     }
 
     /// Identifies the strongest non-DC peak in the centered 2D magnitude spectrum.
     #[verified_engine::verified]
     pub fn dominant_peak(&self) -> SpectralPeak2D {
         let mut top = [SpectralPeak2D::default(); 1];
-        let _ = self.top_peaks(&mut top);
+        let count = self.top_peaks(&mut top);
+        debug_assert!(count <= 1);
         top[0]
     }
 
@@ -266,6 +306,7 @@ impl SpectralAnalyzer2D {
                 count = insert_sorted_peak(out, count, candidate);
             }
         }
+        debug_assert!(count <= out.len());
         count
     }
 
@@ -334,6 +375,7 @@ impl SpectralAnalyzer2D {
                 insert_ranked_mode(out, &mut count, mode);
             }
         }
+        debug_assert!(count <= out.len());
         count
     }
 
@@ -386,14 +428,22 @@ impl SpectralAnalyzer2D {
         }
     }
 
-    /// Accumulates azimuthally averaged 1D radial spectrum $S(|k|)$ into pre-allocated `out_bins` and `counts`.
+    /// Fallible companion to [`compute_radial_profile`](Self::compute_radial_profile).
     #[verified_engine::verified]
-    pub fn compute_radial_profile(&self, out_bins: &mut [f64], counts: &mut [usize]) {
-        assert_eq!(out_bins.len(), counts.len());
+    pub fn try_compute_radial_profile(
+        &self,
+        out_bins: &mut [f64],
+        counts: &mut [usize],
+    ) -> core::result::Result<(), math_commons::error::MathError> {
+        ensure_eq_math(
+            &(out_bins.len()),
+            &(counts.len()),
+            "compute_radial_profile: equality invariant violated",
+        )?;
         out_bins.fill(0.0);
         counts.fill(0);
         if out_bins.is_empty() {
-            return;
+            return Ok(());
         }
         let w = self.width;
         let h = self.height;
@@ -416,74 +466,14 @@ impl SpectralAnalyzer2D {
                 *bin /= cnt as f64;
             }
         }
+        debug_assert_eq!(out_bins.len(), counts.len());
+        Ok(())
     }
-}
 
-#[verified_engine::verified]
-fn insert_sorted_peak(
-    out: &mut [SpectralPeak2D],
-    current_count: usize,
-    candidate: SpectralPeak2D,
-) -> usize {
-    let cap = out.len();
-    if current_count == cap && candidate.magnitude <= out[cap - 1].magnitude {
-        return current_count;
-    }
-    let next_count = (current_count + 1).min(cap);
-    let mut pos = current_count.min(cap - 1);
-    while pos > 0 && candidate.magnitude > out[pos - 1].magnitude {
-        out[pos] = out[pos - 1];
-        pos -= 1;
-    }
-    out[pos] = candidate;
-    next_count
-}
-
-#[verified_engine::verified]
-fn compute_finite_mean(field: &[f64]) -> f64 {
-    if field.is_empty() {
-        return 0.0;
-    }
-    let mut sum = 0.0_f64;
-    let mut count = 0_usize;
-    for &v in field {
-        if v.is_finite() {
-            sum += v;
-            count += 1;
-        }
-    }
-    if count > 0 { sum / (count as f64) } else { 0.0 }
-}
-
-#[verified_engine::verified]
-fn build_hann_weights(n: usize) -> Vec<f64> {
-    assert!(n >= 2, "Window length must be >= 2");
-    let denom = (n - 1) as f64;
-    let mut weights = Vec::with_capacity(n);
-    for i in 0..n {
-        let w = 0.5 * (1.0 - (2.0 * PI * (i as f64) / denom).cos());
-        weights.push(w);
-    }
-    weights
-}
-
-#[verified_engine::verified]
-fn insert_ranked_mode(out: &mut [SpectralMode2D], count: &mut usize, candidate: SpectralMode2D) {
-    let cap = out.len();
-    if *count == cap && candidate.magnitude <= out[cap - 1].magnitude {
-        return;
-    }
-    let mut pos = *count;
-    while pos > 0 && candidate.magnitude > out[pos - 1].magnitude {
-        if pos < cap {
-            out[pos] = out[pos - 1];
-        }
-        pos -= 1;
-    }
-    if pos < cap {
-        out[pos] = candidate;
-        if *count < cap {
-            *count += 1;
-        }
+    /// Accumulates azimuthally averaged 1D radial spectrum $S(|k|)$ into pre-allocated `out_bins` and `counts`.
+    #[verified_engine::verified]
+    pub fn compute_radial_profile(&self, out_bins: &mut [f64], counts: &mut [usize]) {
+        self.try_compute_radial_profile(out_bins, counts)
+            .expect("compute_radial_profile preconditions must hold");
     }
 }

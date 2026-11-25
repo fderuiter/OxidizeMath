@@ -7,25 +7,35 @@ use crate::biology::diffusion::AdvectedSpatialDiffusion;
 impl<const N: usize, K: ReactionKinetics<N>, D: AdvectedSpatialDiffusion<N>>
     TuringSystem<N, K, D, FusedEulerSolver>
 {
-    /// Advances one zero-allocation coupled advection-diffusion-reaction step over
+    /// Fallibly advances one zero-allocation coupled advection-diffusion-reaction step over
     /// row-major horizontal (`ux`) and vertical (`uy`) velocity slices.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `ux.len() < self.state.len()` or `uy.len() < self.state.len()`.
     #[verified_engine::verified]
-    pub fn step_advected(&mut self, dt: f64, ux: &[f64], uy: &[f64]) {
+    pub fn try_step_advected(
+        &mut self,
+        dt: f64,
+        ux: &[f64],
+        uy: &[f64],
+    ) -> Result<(), crate::biology::reaction_diffusion::ReactionDiffusionError> {
+        use math_commons::error::MathError;
+        use math_commons::math_kernel::types::Dimension;
         let n = self.state.len();
         if n == 0 {
-            return;
+            return Ok(());
         }
-        assert!(
-            ux.len() >= n && uy.len() >= n,
-            "Velocity slice lengths ({}, {}) must be at least grid size {}",
-            ux.len(),
-            uy.len(),
-            n
-        );
+        if ux.len() < n {
+            return Err(MathError::DimensionMismatch {
+                expected: Dimension(n),
+                actual: Dimension(ux.len()),
+            }
+            .into());
+        }
+        if uy.len() < n {
+            return Err(MathError::DimensionMismatch {
+                expected: Dimension(n),
+                actual: Dimension(uy.len()),
+            }
+            .into());
+        }
         if self.next_state.len() != n {
             self.next_state = TuringState::new(n);
         }
@@ -52,6 +62,14 @@ impl<const N: usize, K: ReactionKinetics<N>, D: AdvectedSpatialDiffusion<N>>
 
         std::mem::swap(&mut self.state, &mut self.next_state);
         self.time += dt;
+        Ok(())
+    }
+
+    /// Advances one zero-allocation coupled advection-diffusion-reaction step; prefer [`Self::try_step_advected`].
+    #[verified_engine::verified]
+    pub fn step_advected(&mut self, dt: f64, ux: &[f64], uy: &[f64]) {
+        self.try_step_advected(dt, ux, uy)
+            .expect("Velocity slice lengths must be at least grid size");
     }
 }
 

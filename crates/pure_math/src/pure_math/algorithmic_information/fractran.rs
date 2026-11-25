@@ -23,6 +23,8 @@
 //! assert_eq!(inline_regs[1], 5);
 //! ```
 
+// [cite:algorithmic_information_rust]
+
 use super::fractran_factor;
 use super::fractran_programs::{
     ADDER_PAIRS, FIBONACCI_PAIRS, MULTIPLIER_PAIRS, PRIMEGAME_PAIRS, compile_rational_rule,
@@ -204,32 +206,80 @@ impl FractranProgram {
         &self.rules
     }
 
+    /// Fallible companion to [`primegame`](Self::primegame).
+    #[verified_engine::verified]
+    pub fn try_primegame() -> core::result::Result<Self, math_commons::error::MathError> {
+        let prog = Self::try_from_pairs(&PRIMEGAME_PAIRS).map_err(|_| {
+            math_commons::error::MathError::NumericalError {
+                reason: "primegame: fallible operation failed",
+            }
+        })?;
+        debug_assert!(!prog.rules.is_empty());
+        Ok(prog)
+    }
+
     /// Constructs John Horton Conway's 14-fraction `PRIMEGAME` prime generator.
     #[must_use]
     #[verified_engine::verified]
     pub fn primegame() -> Self {
-        Self::try_from_pairs(&PRIMEGAME_PAIRS).expect("canonical PRIMEGAME fractions are valid")
+        Self::try_primegame().expect("primegame preconditions must hold")
+    }
+
+    /// Fallible companion to [`adder`](Self::adder).
+    #[verified_engine::verified]
+    pub fn try_adder() -> core::result::Result<Self, math_commons::error::MathError> {
+        let prog = Self::try_from_pairs(&ADDER_PAIRS).map_err(|_| {
+            math_commons::error::MathError::NumericalError {
+                reason: "adder: fallible operation failed",
+            }
+        })?;
+        debug_assert!(!prog.rules.is_empty());
+        Ok(prog)
     }
 
     /// Constructs the canonical 1-fraction adder ($2^a 3^b \to 3^{a+b}$).
     #[must_use]
     #[verified_engine::verified]
     pub fn adder() -> Self {
-        Self::try_from_pairs(&ADDER_PAIRS).expect("canonical adder fraction is valid")
+        Self::try_adder().expect("adder preconditions must hold")
+    }
+
+    /// Fallible companion to [`multiplier`](Self::multiplier).
+    #[verified_engine::verified]
+    pub fn try_multiplier() -> core::result::Result<Self, math_commons::error::MathError> {
+        let prog = Self::try_from_pairs(&MULTIPLIER_PAIRS).map_err(|_| {
+            math_commons::error::MathError::NumericalError {
+                reason: "multiplier: fallible operation failed",
+            }
+        })?;
+        debug_assert!(!prog.rules.is_empty());
+        Ok(prog)
     }
 
     /// Constructs the canonical 6-fraction multiplier ($2^a 3^b \to 5^{a \cdot b}$).
     #[must_use]
     #[verified_engine::verified]
     pub fn multiplier() -> Self {
-        Self::try_from_pairs(&MULTIPLIER_PAIRS).expect("canonical multiplier fractions are valid")
+        Self::try_multiplier().expect("multiplier preconditions must hold")
+    }
+
+    /// Fallible companion to [`fibonacci`](Self::fibonacci).
+    #[verified_engine::verified]
+    pub fn try_fibonacci() -> core::result::Result<Self, math_commons::error::MathError> {
+        let prog = Self::try_from_pairs(&FIBONACCI_PAIRS).map_err(|_| {
+            math_commons::error::MathError::NumericalError {
+                reason: "fibonacci: fallible operation failed",
+            }
+        })?;
+        debug_assert!(!prog.rules.is_empty());
+        Ok(prog)
     }
 
     /// Constructs the canonical 9-fraction Fibonacci register machine ($2^1 5^n \to 2^{F_{n+1}} 3^{F_n}$).
     #[must_use]
     #[verified_engine::verified]
     pub fn fibonacci() -> Self {
-        Self::try_from_pairs(&FIBONACCI_PAIRS).expect("canonical Fibonacci fractions are valid")
+        Self::try_fibonacci().expect("fibonacci preconditions must hold")
     }
 
     #[inline]
@@ -433,5 +483,3 @@ impl FractranProgram {
         }
     }
 }
-
-// [cite:algorithmic_information_rust]

@@ -14,7 +14,7 @@ use pure_math::pure_math::special_functions::legendre::real_spherical_harmonic;
 use pure_math::pure_math::special_functions::polynomials::associated_laguerre;
 
 /// Typed domain errors returned by hydrogenic orbital and quantum state constructors.
-#[derive(thiserror::Error, Debug, Clone, PartialEq)]
+#[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QuantumError {
     /// Principal quantum number `n` lies outside the supported `min..=max` range.
     #[error("Principal quantum number n={n} must be in {min}..={max}")]
@@ -41,6 +41,16 @@ pub enum QuantumError {
         m: i32,
         /// Azimuthal quantum number `l`.
         l: u32,
+    },
+    /// Hilbert-space state, operator, or grid buffer dimensions were incompatible.
+    #[error("Quantum dimension mismatch ({context}): expected {expected}, got {actual}")]
+    DimensionMismatch {
+        /// Static invariant context.
+        context: &'static str,
+        /// Expected dimension or length.
+        expected: usize,
+        /// Actual dimension or length.
+        actual: usize,
     },
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
@@ -72,6 +82,15 @@ impl diagnostics::Diagnostic for QuantumError {
             Self::InvalidMagneticQuantumNumber { m, l } => {
                 visitor.record_i64("m", i64::from(*m));
                 visitor.record_u64("l", u64::from(*l));
+            }
+            Self::DimensionMismatch {
+                context,
+                expected,
+                actual,
+            } => {
+                visitor.record_str("context", context);
+                visitor.record_usize("expected", *expected);
+                visitor.record_usize("actual", *actual);
             }
         }
         visitor.record_str("error_type", "QuantumError");

@@ -47,7 +47,7 @@ pub(crate) fn validate_binary_inputs(probs: &[UnitInterval], outcomes: &[bool]) 
     }
     if probs.is_empty() {
         return Err(MathError::NumericalError {
-            reason: "Calibration input slices must be non-empty".to_string(),
+            reason: "Calibration input slices must be non-empty",
         });
     }
     Ok(())
@@ -56,7 +56,7 @@ pub(crate) fn validate_binary_inputs(probs: &[UnitInterval], outcomes: &[bool]) 
 fn validate_clip_epsilon(epsilon: f64) -> MathResult<()> {
     if !epsilon.is_finite() || !(f64::EPSILON..0.5).contains(&epsilon) {
         return Err(MathError::NumericalError {
-            reason: "Clipping epsilon must be finite and within [f64::EPSILON, 0.5)".to_string(),
+            reason: "Clipping epsilon must be finite and within [f64::EPSILON, 0.5)",
         });
     }
     Ok(())
@@ -205,16 +205,13 @@ pub fn binary_log_loss(probs: &[UnitInterval], outcomes: &[bool], epsilon: f64) 
 fn validate_multiclass_row(row: &[UnitInterval], target: usize) -> MathResult<()> {
     if target >= row.len() {
         return Err(MathError::NumericalError {
-            reason: format!(
-                "Target class index {target} out of bounds for {} classes",
-                row.len()
-            ),
+            reason: "Target class index out of bounds for multiclass probability row",
         });
     }
     let row_sum: f64 = row.iter().map(|p| p.value()).sum();
     if (row_sum - 1.0).abs() > 1e-3 {
         return Err(MathError::NumericalError {
-            reason: format!("Multiclass probability row must sum to 1.0 (got {row_sum:.6})"),
+            reason: "Multiclass probability row must sum to 1.0",
         });
     }
     Ok(())
@@ -231,21 +228,20 @@ pub fn multiclass_log_loss(
 ) -> MathResult<f64> {
     if num_classes < 2 {
         return Err(MathError::NumericalError {
-            reason: "multiclass_log_loss requires at least 2 classes".to_string(),
+            reason: "multiclass_log_loss requires at least 2 classes",
         });
     }
     if targets.is_empty() {
         return Err(MathError::NumericalError {
-            reason: "multiclass_log_loss requires non-empty targets".to_string(),
+            reason: "multiclass_log_loss requires non-empty targets",
         });
     }
-    let expected_len =
-        targets
-            .len()
-            .checked_mul(num_classes)
-            .ok_or_else(|| MathError::NumericalError {
-                reason: "Sample count * num_classes overflowed usize".to_string(),
-            })?;
+    let expected_len = targets
+        .len()
+        .checked_mul(num_classes)
+        .ok_or(MathError::NumericalError {
+            reason: "Sample count * num_classes overflowed usize",
+        })?;
     if probs_flat.len() != expected_len {
         return Err(MathError::DimensionMismatch {
             expected: Dimension(expected_len),
@@ -272,7 +268,7 @@ fn gaussian_crps_with_normal(
 ) -> MathResult<f64> {
     if !mean.is_finite() || !observation.is_finite() {
         return Err(MathError::NumericalError {
-            reason: "Gaussian CRPS mean and observation must be finite".to_string(),
+            reason: "Gaussian CRPS mean and observation must be finite",
         });
     }
     let sigma = std_dev.value();
@@ -292,8 +288,8 @@ fn gaussian_crps_with_normal(
 /// where $z = (y - \mu)/\sigma$.
 #[verified_engine::verified]
 pub fn gaussian_crps(mean: f64, std_dev: PositiveFloat, observation: f64) -> MathResult<f64> {
-    let std_normal = Normal::new(0.0, 1.0).map_err(|e| MathError::NumericalError {
-        reason: e.to_string(),
+    let std_normal = Normal::new(0.0, 1.0).map_err(|_| MathError::NumericalError {
+        reason: "Failed to construct standard normal distribution",
     })?;
     gaussian_crps_with_normal(&std_normal, mean, std_dev, observation)
 }
@@ -319,11 +315,11 @@ pub fn dataset_gaussian_crps(
     }
     if observations.is_empty() {
         return Err(MathError::NumericalError {
-            reason: "dataset_gaussian_crps requires non-empty slices".to_string(),
+            reason: "dataset_gaussian_crps requires non-empty slices",
         });
     }
-    let std_normal = Normal::new(0.0, 1.0).map_err(|e| MathError::NumericalError {
-        reason: e.to_string(),
+    let std_normal = Normal::new(0.0, 1.0).map_err(|_| MathError::NumericalError {
+        reason: "Failed to construct standard normal distribution",
     })?;
     let mut sum = 0.0;
     for i in 0..observations.len() {
@@ -337,7 +333,7 @@ fn eval_sorted_ensemble_crps(sorted_samples: &[f64], observation: f64) -> MathRe
     let base = sorted_samples[0];
     if !base.is_finite() {
         return Err(MathError::NumericalError {
-            reason: "Ensemble sample at index 0 is non-finite".to_string(),
+            reason: "Ensemble sample at index 0 is non-finite",
         });
     }
     let mut abs_err_sum = (base - observation).abs();
@@ -346,7 +342,7 @@ fn eval_sorted_ensemble_crps(sorted_samples: &[f64], observation: f64) -> MathRe
     for (j, &x_j) in sorted_samples.iter().enumerate().skip(1) {
         if !x_j.is_finite() || x_j < sorted_samples[j - 1] {
             return Err(MathError::NumericalError {
-                reason: "ensemble_crps_sorted requires finite non-decreasing samples".to_string(),
+                reason: "ensemble_crps_sorted requires finite non-decreasing samples",
             });
         }
         abs_err_sum += (x_j - observation).abs();
@@ -367,12 +363,12 @@ fn eval_sorted_ensemble_crps(sorted_samples: &[f64], observation: f64) -> MathRe
 pub fn ensemble_crps_sorted(sorted_samples: &[f64], observation: f64) -> MathResult<f64> {
     if sorted_samples.is_empty() {
         return Err(MathError::NumericalError {
-            reason: "ensemble_crps_sorted requires at least one ensemble member".to_string(),
+            reason: "ensemble_crps_sorted requires at least one ensemble member",
         });
     }
     if !observation.is_finite() {
         return Err(MathError::NumericalError {
-            reason: "Observation must be finite for ensemble CRPS".to_string(),
+            reason: "Observation must be finite for ensemble CRPS",
         });
     }
     eval_sorted_ensemble_crps(sorted_samples, observation)

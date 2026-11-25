@@ -147,20 +147,34 @@ impl QuantumState {
         self.vector.map(|c| c.norm_sqr())
     }
 
-    /// Writes the Born probability density $P_i = |\psi_i|^2$ into `out` without heap allocations.
+    /// Fallibly writes the Born probability density $P_i = |\psi_i|^2$ into `out` without heap allocations.
+    #[verified_engine::verified]
+    pub fn try_probability_density_in_place(
+        &self,
+        out: &mut [f64],
+    ) -> Result<(), crate::physics::quantum::QuantumError> {
+        if out.len() != self.vector.len() {
+            return Err(crate::physics::quantum::QuantumError::DimensionMismatch {
+                context: "probability_density_in_place",
+                expected: self.vector.len(),
+                actual: out.len(),
+            });
+        }
+        for (dst, amp) in out.iter_mut().zip(self.vector.as_slice().iter()) {
+            *dst = amp.norm_sqr();
+        }
+        debug_assert_eq!(out.len(), self.vector.len());
+        Ok(())
+    }
+
+    /// Writes the Born probability density $P_i = |\psi_i|^2$ into `out` without heap allocations; prefer [`Self::try_probability_density_in_place`].
     ///
     /// # Panics
     /// Panics if `out.len() != self.vector.len()`.
     #[verified_engine::verified]
     pub fn probability_density_in_place(&self, out: &mut [f64]) {
-        assert_eq!(
-            out.len(),
-            self.vector.len(),
-            "Output slice length must match quantum state vector length"
-        );
-        for (dst, amp) in out.iter_mut().zip(self.vector.as_slice().iter()) {
-            *dst = amp.norm_sqr();
-        }
+        self.try_probability_density_in_place(out)
+            .expect("Output slice length must match quantum state vector length");
     }
 
     /// Projects the complex state vector onto the first `M` discrete orthonormal

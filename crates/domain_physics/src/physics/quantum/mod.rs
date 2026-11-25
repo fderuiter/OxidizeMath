@@ -107,7 +107,7 @@ pub use scattering::{
 };
 pub use schrodinger::{
     evolve_state, evolve_state_in_place, state_norm_squared, time_evolution_operator,
-    time_evolution_operator_2x2_into, transmission_probability,
+    time_evolution_operator_2x2_into, transmission_probability, try_evolve_state_in_place,
 };
 pub use spin::{set_spin_bloch_angles_in_place, sigma_x, sigma_y, sigma_z, spin_from_bloch_angles};
 pub use tridiagonal::{CrankNicolsonPropagator1D, SolverWorkspace, TridiagonalHamiltonian1D};

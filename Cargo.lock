@@ -1433,6 +1433,7 @@ name = "engine_diffeq"
 version = "0.4.0"
 dependencies = [
  "math_commons",
+ "math_diagnostics",
  "math_rng",
  "rand_core 0.6.4",
  "serde",
@@ -1455,6 +1456,7 @@ name = "engine_pde"
 version = "0.4.0"
 dependencies = [
  "math_commons",
+ "math_diagnostics",
  "math_rng",
  "rand_core 0.6.4",
  "serde",
@@ -2581,6 +2583,8 @@ dependencies = [
  "domain_climate",
  "domain_epidemiology",
  "domain_physics",
+ "engine_diffeq",
+ "engine_pde",
  "math_commons",
  "nalgebra 0.34.2",
  "num-complex",

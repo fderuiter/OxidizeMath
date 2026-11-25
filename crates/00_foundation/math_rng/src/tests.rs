@@ -91,7 +91,19 @@ fn test_generic_f32_and_f64_samplers_stay_in_strict_intervals() {
 
 #[test]
 fn test_unbiased_bounded_index_and_standard_normal_moments() {
+    use crate::{RngError, try_sample_bounded_u64, try_sample_bounded_usize};
+
     let mut rng = OxidizeRng::new(777);
+    assert_eq!(
+        try_sample_bounded_u64(&mut rng, 0),
+        Err(RngError::ZeroUpperBound)
+    );
+    assert_eq!(
+        try_sample_bounded_usize(&mut rng, 0),
+        Err(RngError::ZeroUpperBound)
+    );
+    assert_eq!(try_sample_bounded_u64(&mut rng, 1), Ok(0));
+    assert_eq!(try_sample_bounded_usize(&mut rng, 1), Ok(0));
     assert_eq!(sample_bounded_u64(&mut rng, 1), 0);
     assert_eq!(sample_bounded_usize(&mut rng, 1), 0);
 

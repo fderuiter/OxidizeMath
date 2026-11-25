@@ -65,9 +65,9 @@ impl SobolSequence {
         self.index = start_index;
         let dim = self.state.len();
         let mut tmp_shifts = [0.0_f64; MAX_SOBOL_DIM];
-        let mut view = SobolView::new(dim, &mut self.state, &mut tmp_shifts[..dim])
-            .expect("validated Sobol dimension");
-        view.seek(start_index as u64);
+        if let Ok(mut view) = SobolView::new(dim, &mut self.state, &mut tmp_shifts[..dim]) {
+            view.seek(start_index as u64);
+        }
     }
 
     /// Resets the sequence cursor to index `0` and clears any Cranley-Patterson shift.

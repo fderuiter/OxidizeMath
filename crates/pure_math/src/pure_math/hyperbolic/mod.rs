@@ -59,12 +59,16 @@ pub use billiards::{
 pub use geodesic::{
     GeodesicDisk, GeodesicHalfPlane, HorocycleDisk, HorocycleHalfPlane, gauss_bonnet_polygon_area,
     hyperbolic_polygon_angles, sample_disk_geodesic_into, sample_half_plane_geodesic_into,
+    try_sample_disk_geodesic_into, try_sample_half_plane_geodesic_into,
 };
 pub use isometry::{CircleInversion, Psl2R, Psu11};
 pub use models::{
     DiskPoint, HalfPlanePoint, MAX_DISK_MODULUS, cayley_boundary_to_real,
     cayley_complex_to_half_plane_clamped, cayley_disk_to_half_plane, cayley_half_plane_to_disk,
-    hyperbolic_distance_disk, hyperbolic_distance_half_plane,
+    hyperbolic_distance_disk, hyperbolic_distance_half_plane, try_cayley_boundary_to_real,
+    try_cayley_complex_to_half_plane_clamped, try_cayley_disk_to_half_plane,
+    try_cayley_half_plane_to_disk, try_hyperbolic_distance_disk,
+    try_hyperbolic_distance_half_plane,
 };
 pub use tiling::{
     HyperbolicTilingBuffer, MAX_POLYGON_VERTICES, MAX_TILING_DEPTH, MAX_TILING_POLYGONS,

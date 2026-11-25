@@ -159,19 +159,16 @@ pub struct WaveField2D {
 }
 
 impl WaveField2D {
-    /// Allocates a new 2D FDTD wave solver initialized to a homogeneous $n = 1$ medium at rest.
+    /// Fallible companion to [`new`](Self::new).
     #[verified_engine::verified]
-    pub fn new(config: WaveFieldConfig2D) -> Self {
-        assert!(
-            config.width >= 8 && config.height >= 8,
-            "WaveField2D dimensions must be at least 8x8"
-        );
-        assert!(
-            config.dx > 0.0 && config.dy > 0.0 && config.c0 > 0.0,
-            "WaveField2D spacings dx, dy and speed c0 must be positive"
-        );
+    pub fn try_new(config: WaveFieldConfig2D) -> Result<Self, math_commons::error::MathError> {
+        if config.width < 8 || config.height < 8 || config.c0 <= 0.0 {
+            return Err(math_commons::error::MathError::NumericalError {
+                reason: "new: precondition or invariant violated",
+            });
+        }
+        let ops = StencilOperators::try_new_2d(StepSize(config.dx), StepSize(config.dy))?;
         let len = config.width * config.height;
-        let ops = StencilOperators::new_2d(StepSize(config.dx), StepSize(config.dy));
         let c0_sq = config.c0 * config.c0;
         let mut solver = Self {
             config,
@@ -197,7 +194,15 @@ impl WaveField2D {
             step_count: 0,
         };
         solver.rebuild_sponge_damping();
-        solver
+        debug_assert_eq!(solver.u_curr.len(), len);
+        debug_assert!(solver.max_wave_speed > 0.0);
+        Ok(solver)
+    }
+
+    /// Allocates a new 2D FDTD wave solver initialized to a homogeneous $n = 1$ medium at rest.
+    #[verified_engine::verified]
+    pub fn new(config: WaveFieldConfig2D) -> Self {
+        Self::try_new(config).expect("new preconditions must hold")
     }
 
     /// Returns the grid configuration.
@@ -477,6 +482,7 @@ impl WaveField2D {
     #[verified_engine::verified]
     fn accumulate_irradiance(&mut self) {
         let beta = self.config.irradiance_decay.clamp(1e-4, 1.0);
+        debug_assert!((0.0..=1.0).contains(&beta));
         let keep = 1.0 - beta;
         for idx in 0..self.irradiance.len() {
             let u = self.u_curr[idx];

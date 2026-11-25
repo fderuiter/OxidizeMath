@@ -29,9 +29,9 @@ pub use qmc::{HaltonSequence, NiederreiterSequence, SobolSequence};
 pub use rand_core::{CryptoRng, RngCore, SeedableRng};
 pub use rng::{BASE_SEED, OxidizeRng};
 pub use scalar::{
-    RngScalar, fill_cranley_patterson_shifts, sample_bounded_u64, sample_bounded_usize,
+    RngError, RngScalar, fill_cranley_patterson_shifts, sample_bounded_u64, sample_bounded_usize,
     sample_closed_open, sample_open, sample_standard_normal, sample_standard_normal_f64,
-    sample_symmetric_open,
+    sample_symmetric_open, try_sample_bounded_u64, try_sample_bounded_usize,
 };
 pub use scramble::{dyadic_53_to_shifted_open, owen_scramble_53, splitmix64, torus_shift_open};
 

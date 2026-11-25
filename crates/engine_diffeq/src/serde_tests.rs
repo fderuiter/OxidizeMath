@@ -116,3 +116,30 @@ fn diffeq_baoab_roundtrips_and_validates_params_no_std() {
         assert!(serde_json::from_str::<BaoabLangevinSolver<f64>>(bad_json).is_err());
     }
 }
+
+#[cfg(feature = "serde")]
+#[test]
+fn diffeq_error_roundtrips_no_std() {
+    use crate::DiffeqError;
+    use math_commons::error::MathError;
+
+    let samples = [
+        DiffeqError::InvalidParameter { parameter: "mass" },
+        DiffeqError::InvalidStepSize,
+        DiffeqError::BufferTooSmall {
+            buffer: "state",
+            required: 4,
+            actual: 2,
+        },
+        DiffeqError::WorkspaceAllocationFailed { capacity: 128 },
+        DiffeqError::Math(MathError::WorkspaceTooSmall {
+            required: 8,
+            available: 4,
+        }),
+    ];
+    for sample in samples {
+        let json = serde_json::to_string(&sample).expect("serialize DiffeqError");
+        let decoded: DiffeqError = serde_json::from_str(&json).expect("deserialize DiffeqError");
+        assert_eq!(decoded, sample);
+    }
+}

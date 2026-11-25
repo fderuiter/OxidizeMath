@@ -9,6 +9,25 @@ use nalgebra::{DVector, RealField};
 use num_traits::ToPrimitive;
 
 impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
+    /// Fallible companion to [`stationary_distribution`](Self::stationary_distribution).
+    #[verified_engine::verified]
+    pub fn try_stationary_distribution(
+        &self,
+    ) -> core::result::Result<Option<DVector<T>>, math_commons::error::MathError> {
+        let n = self.num_states();
+        if n == 0 {
+            return Err(math_commons::error::MathError::NumericalError {
+                reason: "MarkovChain state space must be non-empty",
+            });
+        }
+        let mut ws = SolverWorkspace::new(n, 0);
+        let mut out = DVector::zeros(n);
+        debug_assert!(n > 0);
+        Ok(self
+            .stationary_distribution_with_workspace(&mut ws, &mut out)
+            .then_some(out))
+    }
+
     /// Computes the unique stationary distribution $\pi$ satisfying $\pi^T P = \pi^T$ and
     /// $\sum_i \pi_i = 1$ via Tarjan SCC sink isolation and Householder QR.
     ///
@@ -36,12 +55,8 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
     #[must_use]
     #[verified_engine::verified]
     pub fn stationary_distribution(&self) -> Option<DVector<T>> {
-        let n = self.num_states();
-        assert!(n > 0);
-        let mut ws = SolverWorkspace::new(n, 0);
-        let mut out = DVector::zeros(n);
-        self.stationary_distribution_with_workspace(&mut ws, &mut out)
-            .then_some(out)
+        self.try_stationary_distribution()
+            .expect("stationary_distribution preconditions must hold")
     }
 
     /// Computes the unique stationary distribution into `out` using preallocated [`SolverWorkspace`]

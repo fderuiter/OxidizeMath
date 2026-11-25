@@ -37,6 +37,12 @@ where
 fn verify_core_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     vec![
         check_leaf(sample_math(), bus),
+        check_leaf(error::DiagnosticError::EmptySource, bus),
+        check_leaf(error::DiffeqError::InvalidStepSize, bus),
+        check_leaf(
+            error::PdeError::InvalidGridDimension { axis: "x", size: 0 },
+            bus,
+        ),
         check_leaf(error::FitError::SingularMatrix, bus),
         check_leaf(error::LinalgError::SingularMatrix, bus),
         check_leaf(error::EvalError::UnknownVariable("x".to_string()), bus),
@@ -183,7 +189,7 @@ pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     leaves
 }
 
-pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
+fn verify_six_umbrellas(bus: &DiagnosticBus) {
     let umbrellas: [Error; 6] = [
         error::MathCommonsError::from(sample_math()).into(),
         error::PureMathError::from(error::KellyError::InvalidOdds { value: 0.5 }).into(),
@@ -196,6 +202,10 @@ pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
         assert!(u.source().is_some());
         bus.emit_diagnostic(u);
     }
+}
+
+pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
+    verify_six_umbrellas(bus);
 
     let wrapper_sources_present = [
         error::ParseError::from(error::LexError {
@@ -239,8 +249,14 @@ pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
             .is_some(),
         error::QuantumError::from(sample_math()).source().is_some(),
         error::StatMechError::from(sample_math()).source().is_some(),
+        error::StatMechError::from(error::DiffeqError::InvalidStepSize)
+            .source()
+            .is_some(),
+        error::StatMechError::from(error::PdeError::InvalidGridDimension { axis: "x", size: 0 })
+            .source()
+            .is_some(),
     ];
-    assert_eq!(wrapper_sources_present.len(), 19);
+    assert_eq!(wrapper_sources_present.len(), 21);
     assert!(wrapper_sources_present.into_iter().all(|present| present));
 }
 
@@ -254,11 +270,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 68);
-    assert_eq!(*events.lock().unwrap(), 68);
+    assert_eq!(converted.len(), 71);
+    assert_eq!(*events.lock().unwrap(), 71);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 74);
+    assert_eq!(*events.lock().unwrap(), 77);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -359,10 +375,13 @@ pub fn verify_prelude_error_reexports() {
         p::EpidemiologyDomainError,
         p::PhysicsError,
     )> = Err(p::Error::from(p::MathError::ConversionError {
-        reason: "bad".to_string(),
+        reason: "bad",
     }));
     assert!(res.is_err());
     let _core = core::mem::size_of::<(
+        p::DiagnosticError,
+        p::DiffeqError,
+        p::PdeError,
         p::EvalError,
         p::FitError,
         p::GlslError,

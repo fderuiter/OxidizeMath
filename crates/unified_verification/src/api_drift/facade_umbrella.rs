@@ -12,48 +12,72 @@ struct CrateUmbrellaSpec {
     crate_prefix: &'static str,
     umbrella_ident: &'static str,
     umbrella_file: &'static str,
+    engine_prefixes: &'static [&'static str],
 }
+
+const LINALG_ONLY: &[&str] = &["crates/02_engines/engine_linalg/src/"];
+const LINALG_DIFFEQ: &[&str] = &[
+    "crates/02_engines/engine_linalg/src/",
+    "crates/engine_diffeq/src/",
+];
+const LINALG_PDE: &[&str] = &[
+    "crates/02_engines/engine_linalg/src/",
+    "crates/engine_pde/src/",
+];
+const ALL_ENGINES: &[&str] = &[
+    "crates/02_engines/engine_linalg/src/",
+    "crates/engine_diffeq/src/",
+    "crates/engine_pde/src/",
+];
 
 const CRATE_UMBRELLA_SPECS: &[CrateUmbrellaSpec] = &[
     CrateUmbrellaSpec {
         crate_prefix: "crates/math_commons/src/",
         umbrella_ident: "MathCommonsError",
         umbrella_file: "crates/math_commons/src/error/umbrella.rs",
+        engine_prefixes: LINALG_ONLY,
     },
     CrateUmbrellaSpec {
         crate_prefix: "crates/pure_math/src/",
         umbrella_ident: "PureMathError",
         umbrella_file: "crates/pure_math/src/error/umbrella.rs",
+        engine_prefixes: ALL_ENGINES,
     },
     CrateUmbrellaSpec {
         crate_prefix: "crates/domain_ai/src/",
         umbrella_ident: "AIError",
         umbrella_file: "crates/domain_ai/src/error.rs",
+        engine_prefixes: LINALG_DIFFEQ,
     },
     CrateUmbrellaSpec {
         crate_prefix: "crates/domain_applied/src/",
         umbrella_ident: "AppliedError",
         umbrella_file: "crates/domain_applied/src/error/umbrella.rs",
+        engine_prefixes: LINALG_PDE,
     },
     CrateUmbrellaSpec {
         crate_prefix: "crates/domain_biology/src/",
         umbrella_ident: "BiologyError",
         umbrella_file: "crates/domain_biology/src/error/umbrella.rs",
+        engine_prefixes: LINALG_PDE,
     },
     CrateUmbrellaSpec {
         crate_prefix: "crates/domain_climate/src/",
         umbrella_ident: "ClimateError",
         umbrella_file: "crates/domain_climate/src/error.rs",
+        engine_prefixes: LINALG_ONLY,
     },
     CrateUmbrellaSpec {
         crate_prefix: "crates/domain_epidemiology/src/",
         umbrella_ident: "EpidemiologyDomainError",
         umbrella_file: "crates/domain_epidemiology/src/error/umbrella.rs",
+        engine_prefixes: LINALG_ONLY,
     },
     CrateUmbrellaSpec {
         crate_prefix: "crates/domain_physics/src/",
         umbrella_ident: "PhysicsError",
         umbrella_file: "crates/domain_physics/src/error/umbrella.rs",
+        engine_prefixes: ALL_ENGINES,
     },
 ];
 
@@ -232,6 +256,11 @@ pub(super) fn audit_crate_umbrella_conversions(
         let supported = parse_supported_from_idents(&umbrella_path, spec.umbrella_ident, cache);
         let mut required: BTreeMap<String, String> = tier2_errors
             .iter()
+            .filter(|(_, p)| {
+                spec.engine_prefixes
+                    .iter()
+                    .any(|prefix| p.starts_with(prefix))
+            })
             .map(|(e, p)| (e.clone(), format!("Tier 2 engine `{p}`")))
             .collect();
         for (err, p) in collect_defined_errors_under_prefix(apis, parsed_sigs, |p| {

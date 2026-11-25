@@ -425,13 +425,29 @@ pub struct WinRatioStats {
     pub p_value: f64,
 }
 
+/// Fallibly calculates 95% Confidence Intervals and P-values for the Win Ratio, rejecting negative counts.
+#[verified_engine::verified]
+pub fn try_calculate_statistics(
+    wins: i32,
+    losses: i32,
+) -> Result<Option<WinRatioStats>, math_commons::error::MathError> {
+    if wins < 0 || losses < 0 {
+        return Err(math_commons::error::MathError::OutOfBounds {
+            value: f64::from(wins.min(losses)),
+            min: 0.0,
+            max: f64::INFINITY,
+        });
+    }
+    Ok(calculate_statistics(wins, losses))
+}
+
 /// Calculates 95% Confidence Intervals and P-values for the Win Ratio (`None` if total pairs is zero).
 ///
 /// Uses the normal approximation with standard error $SE = \sqrt{p(1-p)/N}$ where $p$ is the win proportion.
 #[verified_engine::verified]
 pub fn calculate_statistics(wins: i32, losses: i32) -> Option<WinRatioStats> {
-    let total_pairs = wins + losses;
-    if total_pairs == 0 {
+    let total_pairs = wins.checked_add(losses)?;
+    if wins < 0 || losses < 0 || total_pairs <= 0 {
         return None;
     }
 
@@ -468,7 +484,7 @@ pub fn calculate_statistics(wins: i32, losses: i32) -> Option<WinRatioStats> {
     };
 
     let z_score = (p_win - 0.5) / se;
-    let normal = Normal::new(0.0, 1.0).unwrap();
+    let normal = Normal::new(0.0, 1.0).ok()?;
     let p_value = 2.0 * (1.0 - normal.cdf(z_score.abs()));
 
     Some(WinRatioStats {
