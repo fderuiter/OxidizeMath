@@ -5,7 +5,7 @@
 use super::OdeAtlasRegime;
 use crate::async_sim::atlas::AtlasCell;
 use crate::framework::math_input::MAX_SYNTHESIZED_PARAMS;
-use math_commons::ast::{CompiledExpr, Expr};
+use math_commons::ast::CompiledExpr;
 use math_explorer::pure_math::analysis::ode::{
     ArrayState, Euler, GaussLegendre4, Heun, ImplicitMidpoint, IntegrationMethod, OdeModel,
     OdeSystem, RungeKutta4, Solver, TimeStepper,
@@ -50,17 +50,6 @@ impl StackOdeDynamics<'_> {
             Self::DampedHarmonic { .. } | Self::Linear2D { .. } | Self::CoupledExpr { .. }
         )
     }
-}
-
-pub(super) fn compile_planar_expr_pair(
-    px: Option<&Expr>,
-    py: Option<&Expr>,
-) -> (Option<CompiledExpr>, Option<CompiledExpr>) {
-    let axes = &["t", "x", "y"];
-    let shared = &["k", "r", "cap_k", "K"];
-    let dx = px.and_then(|e| CompiledExpr::compile_with_vars_and_params(e, axes, shared).ok());
-    let dy = py.and_then(|e| CompiledExpr::compile_with_vars_and_params(e, axes, shared).ok());
-    (dx, dy)
 }
 
 impl OdeSystem<ArrayState<2>> for StackOdeDynamics<'_> {

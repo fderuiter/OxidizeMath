@@ -12,7 +12,7 @@ use super::{default_ode_math_inputs, default_scalar_ode_input, OdeSolverTool};
 use crate::framework::MAX_SYNTHESIZED_PARAMS;
 use crate::presets::{checked_ode_step_count, OdePreset, MAX_ODE_STEPS};
 use eframe::egui;
-use math_commons::ast::{Expr, LexError, MAX_COMPILED_INSTRUCTIONS, MAX_EXPR_BYTES};
+use math_commons::ast::{LexError, MAX_EXPR_BYTES};
 use math_explorer::pure_math::analysis::ode::{
     ArrayState, GaussLegendre4, ImplicitMidpoint, IntegrationMethod,
 };
@@ -41,34 +41,6 @@ pub const fn stages_for_method(method: IntegrationMethod) -> usize {
                 * (1 + 2 * GaussLegendre4::<ArrayState<1>>::DEFAULT_MAX_ITERS)
         }
     }
-}
-
-/// Counts AST nodes iteratively up to `MAX_COMPILED_INSTRUCTIONS` without recursion.
-#[must_use]
-pub fn expr_node_cost_bounded(root: &Expr) -> usize {
-    let mut stack = Vec::with_capacity(32);
-    stack.push(root);
-    let mut count = 0_usize;
-    while let Some(node) = stack.pop() {
-        count += 1;
-        if count >= MAX_COMPILED_INSTRUCTIONS {
-            return MAX_COMPILED_INSTRUCTIONS;
-        }
-        match node {
-            Expr::Number(_) | Expr::Variable(_) => {}
-            Expr::Unary { expr, .. } => stack.push(expr),
-            Expr::Binary { left, right, .. } => {
-                stack.push(right);
-                stack.push(left);
-            }
-            Expr::Function { args, .. } => {
-                for arg in args.iter().rev() {
-                    stack.push(arg);
-                }
-            }
-        }
-    }
-    count.max(1)
 }
 
 /// Tracks active step-scaling budget notices and deduplicates polite live-region announcements.
@@ -102,18 +74,13 @@ impl OdeSimSpec<'_> {
             | OdePreset::HarmonicOscillator
             | OdePreset::LogisticGrowth
             | OdePreset::LinearSystem2D => 1,
-            OdePreset::Custom => match self.custom_spec {
+            OdePreset::Custom | OdePreset::PlanarCustom => match self.custom_spec {
                 Some(CustomOdeSpec::Scalar { expr, .. }) => expr.instruction_count().max(1),
                 Some(CustomOdeSpec::Coupled { dy, dv, .. }) => {
                     (dy.instruction_count() + dv.instruction_count()).max(1)
                 }
                 None => 1,
             },
-            OdePreset::PlanarCustom => {
-                let cx = self.planar_x_expr.map_or(1, expr_node_cost_bounded);
-                let cy = self.planar_y_expr.map_or(1, expr_node_cost_bounded);
-                (cx + cy).max(1)
-            }
         }
     }
 
@@ -146,17 +113,10 @@ impl OdeSolverTool {
                 self.coupled_bank.total_instruction_count().max(1)
             }
             OdePreset::Custom => self.math_input.instruction_count().max(1),
-            OdePreset::PlanarCustom => {
-                let cx = self
-                    .planar_x_input
-                    .cached_expr()
-                    .map_or(1, expr_node_cost_bounded);
-                let cy = self
-                    .planar_y_input
-                    .cached_expr()
-                    .map_or(1, expr_node_cost_bounded);
-                (cx + cy).max(1)
-            }
+            OdePreset::PlanarCustom => self
+                .planar_bank
+                .total_instruction_count(&self.planar_x_input, &self.planar_y_input)
+                .max(1),
         }
     }
 
@@ -364,8 +324,13 @@ fn validate_deserialized_ode_scalars(s: &OdeState) -> Result<(), String> {
         || !s.matrix_a.iter().flatten().all(|v| v.is_finite())
         || s.custom_params.len() > MAX_SYNTHESIZED_PARAMS
         || s.coupled_params.len() > MAX_SYNTHESIZED_PARAMS
+        || s.planar_params.len() > MAX_SYNTHESIZED_PARAMS
         || !s.custom_params.values().all(|v| v.is_finite())
         || !s.coupled_params.values().all(|v| v.is_finite())
+        || !s
+            .planar_params
+            .values()
+            .all(|v| v.is_finite() && (-1e4..=1e4).contains(v))
     {
         return Err("ODE parameters must be finite with dt > 0 and total_time > 0".to_string());
     }
@@ -430,7 +395,21 @@ fn validate_loaded_planar_ode(s: &OdeState) -> Result<(), String> {
     let (_, mut px, mut py) = default_ode_math_inputs();
     px.set_expression(&s.planar_x_expr);
     py.set_expression(&s.planar_y_expr);
-    if let Some(err) = px.error_message().or_else(|| py.error_message()) {
+    let mut bank = super::planar_spec::PlanarCustomBank::new(&px, &py);
+    let param_k = s.planar_params.get("k").copied().unwrap_or(s.param_k);
+    let param_r = s.planar_params.get("r").copied().unwrap_or(s.param_r);
+    let param_cap_k = s
+        .planar_params
+        .get("cap_k")
+        .or_else(|| s.planar_params.get("K"))
+        .copied()
+        .unwrap_or(s.param_cap_k);
+    let mut merged = default_ode_custom_params(param_k, param_r, param_cap_k);
+    for (k, &v) in &s.planar_params {
+        merged.insert(k.clone(), v);
+    }
+    bank.load_state(&px, &py, &merged);
+    if let Some(err) = bank.first_error(&px, &py) {
         return Err(reject_ode_formula(&err));
     }
     Ok(())

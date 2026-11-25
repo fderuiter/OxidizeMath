@@ -162,29 +162,22 @@ impl CustomOdeSpec {
     #[must_use]
     pub fn with_param_overrides(&self, p_map: &HashMap<String, f64>) -> Self {
         let mut cloned = self.clone();
-        match &mut cloned {
+        let (names, params, len) = match &mut cloned {
             Self::Scalar {
                 expr,
                 params,
                 param_len,
-            } => {
-                for (idx, name) in expr.param_names().iter().take(*param_len).enumerate() {
-                    if let Some(&val) = p_map.get(name) {
-                        params[idx] = val;
-                    }
-                }
-            }
+            } => (expr.param_names(), params, *param_len),
             Self::Coupled {
                 dy,
                 params,
                 param_len,
                 ..
-            } => {
-                for (idx, name) in dy.param_names().iter().take(*param_len).enumerate() {
-                    if let Some(&val) = p_map.get(name) {
-                        params[idx] = val;
-                    }
-                }
+            } => (dy.param_names(), params, *param_len),
+        };
+        for (idx, name) in names.iter().take(len).enumerate() {
+            if let Some(&val) = p_map.get(name) {
+                params[idx] = val;
             }
         }
         cloned
@@ -294,9 +287,11 @@ pub(super) fn default_ode_custom_params(k: f64, r: f64, cap_k: f64) -> BTreeMap<
     ])
 }
 
-fn sync_one_legacy_param(
+fn sync_legacy_slot(
     math_input: &mut MathExpressionInputBar,
-    name: &str,
+    planar_bank: &mut super::planar_spec::PlanarCustomBank,
+    names: &[&str],
+    mode: (bool, bool),
     field: &mut f64,
     last_synced: &mut f64,
 ) {
@@ -305,11 +300,33 @@ fn sync_one_legacy_param(
         return;
     }
     if field.to_bits() != last_synced.to_bits() {
-        math_input.set_param(name, *field);
+        for &n in names {
+            math_input.set_param(n, *field);
+            planar_bank.set_param(n, *field);
+        }
         *last_synced = *field;
-    } else if let Some(val) = math_input.active_param_value(name) {
-        *field = val;
-        *last_synced = val;
+    } else if mode.0 {
+        if let Some(val) = names.iter().find_map(|n| planar_bank.active_value(n)) {
+            *field = val;
+            *last_synced = val;
+            for &n in names {
+                math_input.set_param(n, val);
+                if planar_bank.active_value(n).is_none() {
+                    planar_bank.set_param(n, val);
+                }
+            }
+        }
+    } else if mode.1 {
+        if let Some(val) = names.iter().find_map(|n| math_input.active_param_value(n)) {
+            *field = val;
+            *last_synced = val;
+            for &n in names {
+                planar_bank.set_param(n, val);
+                if math_input.active_param_value(n).is_none() {
+                    math_input.set_param(n, val);
+                }
+            }
+        }
     }
 }
 
@@ -328,11 +345,10 @@ fn format_named_param_summary(names: &[String], vals: &[f64], dt: f64) -> String
 
 impl OdeSolverTool {
     pub(crate) fn seed_default_custom_params(&mut self) {
-        self.math_input.set_params_map(&default_ode_custom_params(
-            self.param_k,
-            self.param_r,
-            self.param_cap_k,
-        ));
+        let defaults = default_ode_custom_params(self.param_k, self.param_r, self.param_cap_k);
+        self.math_input.set_params_map(&defaults);
+        self.planar_bank
+            .load_state(&self.planar_x_input, &self.planar_y_input, &defaults);
         self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
     }
 
@@ -345,11 +361,32 @@ impl OdeSolverTool {
         self.math_input.set_expression("-k * y * sin(t)");
     }
 
+    pub(crate) fn reset_planar_custom_parameters(&mut self) {
+        self.param_k = 1.0;
+        self.param_r = 1.0;
+        self.param_cap_k = 10.0;
+        self.ic_y0 = 1.0;
+        self.ic_v0 = 0.0;
+        self.planar_x_input
+            .set_expression(super::phase_plane::DEFAULT_PLANAR_X_EXPR);
+        self.planar_y_input
+            .set_expression(super::phase_plane::DEFAULT_PLANAR_Y_EXPR);
+        let defaults = default_ode_custom_params(self.param_k, self.param_r, self.param_cap_k);
+        self.planar_bank
+            .load_state(&self.planar_x_input, &self.planar_y_input, &defaults);
+        self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
+    }
+
     pub(crate) fn push_clamped_legacy_params_to_bar(&mut self) {
-        self.math_input.set_param("k", self.param_k);
-        self.math_input.set_param("r", self.param_r);
-        self.math_input.set_param("cap_k", self.param_cap_k);
-        self.math_input.set_param("K", self.param_cap_k);
+        for (name, val) in [
+            ("k", self.param_k),
+            ("r", self.param_r),
+            ("cap_k", self.param_cap_k),
+            ("K", self.param_cap_k),
+        ] {
+            self.math_input.set_param(name, val);
+            self.planar_bank.set_param(name, val);
+        }
         self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
     }
 
@@ -367,32 +404,59 @@ impl OdeSolverTool {
         {
             self.param_cap_k = cap_k;
         }
-        self.synced_legacy_params = [self.param_k, self.param_r, self.param_cap_k];
+        self.push_clamped_legacy_params_to_bar();
+    }
+
+    pub(crate) fn sync_legacy_params_from_planar_bank(&mut self) {
+        if let Some(k) = self.planar_bank.active_value("k") {
+            self.param_k = k;
+        }
+        if let Some(r) = self.planar_bank.active_value("r") {
+            self.param_r = r;
+        }
+        if let Some(cap_k) = self
+            .planar_bank
+            .active_value("cap_k")
+            .or_else(|| self.planar_bank.active_value("K"))
+        {
+            self.param_cap_k = cap_k;
+        }
+        self.push_clamped_legacy_params_to_bar();
     }
 
     pub(crate) fn sync_custom_params(&mut self) {
-        sync_one_legacy_param(
+        if !self
+            .planar_bank
+            .is_synced(&self.planar_x_input, &self.planar_y_input)
+        {
+            self.planar_bank
+                .recompile(&self.planar_x_input, &self.planar_y_input);
+        }
+        let mode = (
+            self.preset == crate::presets::OdePreset::PlanarCustom,
+            self.preset == crate::presets::OdePreset::Custom && !self.custom_coupled,
+        );
+        sync_legacy_slot(
             &mut self.math_input,
-            "k",
+            &mut self.planar_bank,
+            &["k"],
+            mode,
             &mut self.param_k,
             &mut self.synced_legacy_params[0],
         );
-        sync_one_legacy_param(
+        sync_legacy_slot(
             &mut self.math_input,
-            "r",
+            &mut self.planar_bank,
+            &["r"],
+            mode,
             &mut self.param_r,
             &mut self.synced_legacy_params[1],
         );
-        let cap_symbol = if self.math_input.active_param_value("K").is_some()
-            && self.math_input.active_param_value("cap_k").is_none()
-        {
-            "K"
-        } else {
-            "cap_k"
-        };
-        sync_one_legacy_param(
+        sync_legacy_slot(
             &mut self.math_input,
-            cap_symbol,
+            &mut self.planar_bank,
+            &["cap_k", "K"],
+            mode,
             &mut self.param_cap_k,
             &mut self.synced_legacy_params[2],
         );
@@ -410,6 +474,14 @@ impl OdeSolverTool {
         format_named_param_summary(
             self.coupled_bank.param_names(),
             self.coupled_bank.param_slice(),
+            self.dt,
+        )
+    }
+
+    pub(crate) fn planar_param_summary(&self) -> String {
+        format_named_param_summary(
+            self.planar_bank.param_names(),
+            self.planar_bank.param_slice(),
             self.dt,
         )
     }

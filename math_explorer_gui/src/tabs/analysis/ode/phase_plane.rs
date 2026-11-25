@@ -5,7 +5,6 @@
 
 use super::comparison::{simulate_ode, OdeSimSpec, SolverTrajectory};
 use super::recovery;
-use super::systems::build_ode_param_map;
 use super::OdeSolverTool;
 use crate::framework::recovery::FiniteStateGuard;
 use eframe::egui;
@@ -147,8 +146,6 @@ impl OdeSolverTool {
             .max((self.total_time / max_steps_each as f64).max(1e-6));
 
         let custom_spec = self.build_custom_ode_spec();
-        let px_expr = self.planar_x_input.cached_expr();
-        let py_expr = self.planar_y_input.cached_expr();
 
         for &[sx, sy] in self.seeded_ic.iter().take(MAX_SEEDED_ORBITS) {
             let traj = simulate_ode(&OdeSimSpec {
@@ -163,8 +160,6 @@ impl OdeSolverTool {
                 ic_v0: sy,
                 matrix_a: self.matrix_a,
                 custom_spec: custom_spec.as_ref(),
-                planar_x_expr: px_expr,
-                planar_y_expr: py_expr,
             });
             self.seeded_trajectories.push(traj);
         }
@@ -176,7 +171,7 @@ impl OdeSolverTool {
         let n = self.quiver_density.clamp(2, MAX_QUIVER_GRID);
         let ext = self.phase_window_extent();
         let step = (2.0 * ext) / (n.saturating_sub(1).max(1) as f64);
-        let p_map = build_ode_param_map(self.param_k, self.param_r, self.param_cap_k);
+        let custom_spec = self.build_custom_ode_spec();
         let mut origins = Vec::with_capacity(n * n);
         let mut tips = Vec::with_capacity(n * n);
 
@@ -184,7 +179,7 @@ impl OdeSolverTool {
             let x = -ext + ix as f64 * step;
             for iy in 0..n {
                 let y = -ext + iy as f64 * step;
-                let [dx, dy] = self.eval_planar_rhs_at(0.0, x, y, &p_map);
+                let [dx, dy] = self.eval_planar_rhs_at(0.0, x, y, custom_spec.as_ref());
                 let mag = dx.hypot(dy);
                 if !dx.is_finite() || !dy.is_finite() || !mag.is_finite() || mag < 1e-12 {
                     continue;
@@ -206,12 +201,13 @@ impl OdeSolverTool {
         const GRID_N: usize = 36;
         let ext = self.phase_window_extent();
         let step = (2.0 * ext) / GRID_N as f64;
-        let p_map = build_ode_param_map(self.param_k, self.param_r, self.param_cap_k);
+        let custom_spec = self.build_custom_ode_spec();
         let mut grid = vec![[[0.0_f64; 2]; GRID_N + 1]; GRID_N + 1];
         for (ix, col) in grid.iter_mut().enumerate() {
             let x = -ext + ix as f64 * step;
             for (iy, cell) in col.iter_mut().enumerate() {
-                *cell = self.eval_planar_rhs_at(0.0, x, -ext + iy as f64 * step, &p_map);
+                *cell =
+                    self.eval_planar_rhs_at(0.0, x, -ext + iy as f64 * step, custom_spec.as_ref());
             }
         }
         let mut x_segs = Vec::new();
