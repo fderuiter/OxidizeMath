@@ -12,7 +12,7 @@ When you submit a PR, you aren't just merging code; you are merging knowledge. E
 
 Before implementing new features or making structural changes, review our centralized architecture documentation:
 
-- [System Overview & Crate Topology](docs/architecture/system_overview.md): System layers and crate dependencies across all 25 crates.
+- [System Overview & Crate Topology](docs/architecture/system_overview.md): System layers and crate dependencies across all 26 crates.
 - [CERA Framework Guide](docs/architecture/cera_framework.md): Climate-invariant encoding, representation alignment, and modeling pipelines.
 - [Zero-Allocation Runtime Guide](docs/architecture/zero_allocation_runtime.md): NASA Power of 10 Rule 3 enforcement and `VerifiedEngine` runtime rules.
 - [Interactive Tool Walkthrough](docs/architecture/interactive_tool_walkthrough.md): Step-by-step tutorial to implement and register simulation tabs.
@@ -106,7 +106,7 @@ This command builds `unified_verification` once with Cargo's development profile
    - **CI Workflows** (`lint-workflows`): validates GitHub Actions workflows, local reusable workflows, and `.github/actions` composite actions for read-only permissions, concurrency controls, job timeouts, commit-pinned actions, and safe `run` expressions.
    - **Crate Documentation Audit** (`check-docs`): verifies README files and entrypoint docs.
    - **Single-Pass AST Verification** (`batch-ast`): parses each unique workspace `.rs` file at most once with `syn::parse_file` and runs AST clone detection (`check-duplicates`), public API drift against `crates/unified_verification/api_baseline.json` (`check-api-drift`), in-process literature/test traceability (`traceability`), entropy/secret scanning (`check-entropy`), and lint-bypass/unused-dependency policy auditing (`test-policy-audit`).
-   - **Verification Certificate & Quality Floors** (`check-certificate`): verifies the checked-in 9-key `Verification_Certificate.json` schema and `README.md` coverage badge alongside workspace AST/WASM metrics, ratcheted `[verify_suite]` assertion density and WASM path coverage floors, and whitelist debt rules without invoking `cargo llvm-cov` or failing when live PR metrics shift above ratcheted floors.
+   - **Verification Certificate & Quality Floors** (`check-certificate`): verifies the checked-in 14-key `Verification_Certificate.json` schema and `README.md` coverage badge alongside workspace AST/WASM/pyramid metrics, ratcheted `[verify_suite]` assertion density and WASM path coverage floors, and whitelist debt rules without invoking `cargo llvm-cov` or failing when live PR metrics shift above ratcheted floors.
 3. **Clippy Lints (Host & WebAssembly)**:
    ```bash
    cargo clippy --workspace --all-targets --all-features -- -D warnings
@@ -116,6 +116,7 @@ This command builds `unified_verification` once with Cargo's development profile
 5. **Documentation Tests**: `cargo test --doc --workspace --all-features`
 6. **Markdown Links**: `cargo run -p xtask -- check-markdown-links` (validates all internal relative markdown links)
 7. **Dependency Vulnerabilities**: `cargo run -p xtask -- check-vulnerabilities` (scans dependencies against OSV advisories)
+8. **6-Tier Scientific Verification Pyramid**: `cargo run -p xtask -- verify-pyramid` (certifies all 55 numerical solvers via MMS convergence, property sweeps, golden fixtures, stochastic moments, outward-rounded interval enclosures, and `sorry`-free Lean 4 proof digests)
 
 Individual gates, baseline regeneration, and the full coverage-backed verification suite can also be invoked directly:
 

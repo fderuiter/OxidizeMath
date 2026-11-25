@@ -3,7 +3,10 @@
 pub use crate::error::*;
 pub use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 pub use math_commons::fit::FitModel;
-pub use math_commons::primitives::{NonNegativeFloat, PositiveFloat, UnitInterval};
+pub use math_commons::primitives::{
+    Interval, NonNegativeFloat, NonNegativeInterval, PositiveFloat, PositiveInterval, UnitInterval,
+    UnitIntervalEnclosure,
+};
 pub use math_commons::series::{PointSeries, Sample2D};
 pub use scientific_metadata::theory::{MaturityTier, ParameterConstraint, TheoryDescribable};
 

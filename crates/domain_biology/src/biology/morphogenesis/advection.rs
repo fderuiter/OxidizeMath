@@ -51,6 +51,7 @@ impl<const N: usize, K: ReactionKinetics<N>, D: AdvectedSpatialDiffusion<N>>
         );
 
         std::mem::swap(&mut self.state, &mut self.next_state);
+        self.time += dt;
     }
 }
 

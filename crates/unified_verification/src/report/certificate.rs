@@ -86,10 +86,15 @@ fn check_float_eq(field: &str, actual: f64, cert_val: f64, eps: f64, diffs: &mut
     }
 }
 
-const REQUIRED_CERT_KEYS: [&str; 9] = [
+const REQUIRED_CERT_KEYS: [&str; 14] = [
+    "certified_solvers",
+    "interval_bounds",
+    "lean4_proof_digests",
+    "max_interval_width",
     "native_execution_coverage_pct",
     "passed",
     "test_assertion_density",
+    "tier_counts",
     "total_assertion_density",
     "total_production_assertion_density",
     "unverified_modules_density",
@@ -98,7 +103,7 @@ const REQUIRED_CERT_KEYS: [&str; 9] = [
     "wasm_path_coverage_pct",
 ];
 
-fn parse_certificate_strict_9_keys(
+fn parse_certificate_strict_14_keys(
     raw: &str,
     cert_path: &Path,
 ) -> Result<IntegrityReport, Vec<String>> {
@@ -114,7 +119,7 @@ fn parse_certificate_strict_9_keys(
     keys.sort_unstable();
     if keys != REQUIRED_CERT_KEYS {
         return Err(vec![format!(
-            "Invalid 9-key schema in {}: expected keys {:?}, found {:?}",
+            "Invalid 14-key schema in {}: expected keys {:?}, found {:?}",
             cert_path.display(),
             REQUIRED_CERT_KEYS,
             keys
@@ -164,6 +169,7 @@ fn validate_certificate_bounds(cert: &IntegrityReport, cert_path: &Path, diffs: 
             ));
         }
     }
+    crate::pyramid_cli::validate_pyramid_certificate_bounds(cert, diffs);
 }
 
 fn load_and_validate_certificate(
@@ -177,7 +183,7 @@ fn load_and_validate_certificate(
             cert_path.display()
         )]
     })?;
-    let cert = parse_certificate_strict_9_keys(&raw, cert_path)?;
+    let cert = parse_certificate_strict_14_keys(&raw, cert_path)?;
 
     let mut diffs = Vec::new();
     validate_certificate_bounds(&cert, cert_path, &mut diffs);
@@ -274,10 +280,16 @@ fn check_deterministic_fields(
             expected.test_assertion_density,
             cert.test_assertion_density,
         ),
+        (
+            "max_interval_width",
+            expected.max_interval_width,
+            cert.max_interval_width,
+        ),
     ];
     for (name, actual, recorded) in pairs {
         check_float_eq(name, actual, recorded, CERT_FLOAT_EPSILON, diffs);
     }
+    crate::pyramid_cli::check_pyramid_strict_parity(expected, cert, CERT_FLOAT_EPSILON, diffs);
 }
 
 fn check_readme_badge(cert: &IntegrityReport, readme_path: &Path, diffs: &mut Vec<String>) {

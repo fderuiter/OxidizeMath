@@ -30,7 +30,7 @@ pub(super) fn extract_citations_with_lines(content: &str) -> Vec<(String, usize)
             if paper_name
                 .chars()
                 .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')
-                && !paper_name.is_empty()
+                && paper_name.chars().any(|c| c.is_ascii_alphanumeric())
             {
                 let line = content[..tag_start].bytes().filter(|&b| b == b'\n').count() + 1;
                 cites.push((paper_name, line));
@@ -347,6 +347,9 @@ pub(super) fn analyze_parsed_ast(
             file.to_string(),
             [visitor.verified_asserts, visitor.verified_funcs],
         );
+    }
+    for (tier, &count) in &visitor.tier_counts {
+        *report.tier_counts.entry(tier.clone()).or_insert(0) += count;
     }
     report
         .deterministic_contract_modules

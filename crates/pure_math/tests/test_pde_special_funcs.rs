@@ -283,3 +283,38 @@ fn test_3d_coupled_neumann_mass_conservation() {
     let final_mass: f64 = dst.iter().sum();
     assert_abs_diff_eq!(initial_mass, final_mass, epsilon = 1e-11);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_bessel_large_argument_asymptotic_accuracy() {
+    assert_abs_diff_eq!(
+        bessel::bessel_j(0.0, 40.0),
+        0.007_366_890_584_237_29,
+        epsilon = 1e-12
+    );
+    assert_abs_diff_eq!(
+        bessel::bessel_j(0.0, 50.0),
+        0.055_812_327_669_252_09,
+        epsilon = 1e-13
+    );
+    assert_abs_diff_eq!(
+        bessel::bessel_j(0.0, 100.0),
+        0.019_985_850_304_223_33,
+        epsilon = 1e-13
+    );
+    assert_abs_diff_eq!(
+        bessel::bessel_y(0.0, 40.0),
+        0.125_936_417_058_260_95,
+        epsilon = 1e-13
+    );
+    assert_abs_diff_eq!(
+        bessel::bessel_y(1.0, 50.0),
+        -0.056_795_668_562_014_87,
+        epsilon = 1e-13
+    );
+    assert_abs_diff_eq!(
+        bessel::spherical_bessel_j(0, 40.0),
+        40.0_f64.sin() / 40.0,
+        epsilon = 1e-13
+    );
+}

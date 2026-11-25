@@ -306,6 +306,13 @@ fn test_certificate_check_mode_allows_metric_drift_and_strict_parity_catches_it(
         verify_certificate_strict_parity(&improved, None, 1.5, &cert_path, &readme_path).is_err(),
         "Strict parity must reject deterministic AST density drift"
     );
+    let mut pyramid_drifted = eval.report.clone();
+    pyramid_drifted.certified_solvers += 1;
+    assert!(
+        verify_certificate_strict_parity(&pyramid_drifted, None, 1.5, &cert_path, &readme_path)
+            .is_err(),
+        "Strict parity must reject pyramid certified_solvers drift"
+    );
     assert_eq!(fs::read_to_string(&cert_path).unwrap(), cert_before);
     assert_eq!(fs::read_to_string(&readme_path).unwrap(), readme_before);
 }
@@ -429,7 +436,7 @@ fn test_comment_markers_in_vfs_and_accessibility_never_mark_files_or_crates_veri
 }
 
 #[test]
-fn test_write_certificate_only_emits_9_key_schema_without_touching_tracked_files() {
+fn test_write_certificate_only_emits_14_key_schema_without_touching_tracked_files() {
     let tmp = TempTestDir::new("report_output_cert_only");
     let readme_path = tmp.join("README.md");
     let orig_readme = "# Demo\n![Coverage](https://img.shields.io/badge/coverage-10.0%25-yellow)\n";
@@ -444,6 +451,8 @@ fn test_write_certificate_only_emits_9_key_schema_without_touching_tracked_files
         extra_debt: &[],
     };
     let eval = evaluate_integrity_gates(92.4, 81.0, &metrics, &debt, &cfg);
+    assert_eq!(eval.report.certified_solvers, 55);
+    assert_eq!(eval.report.tier_counts.len(), 6);
     let artifact_abs = tmp.join(PathBuf::from(
         "target/verification/Verification_Certificate.json",
     ));
@@ -464,9 +473,14 @@ fn test_write_certificate_only_emits_9_key_schema_without_touching_tracked_files
     assert_eq!(
         keys,
         [
+            "certified_solvers",
+            "interval_bounds",
+            "lean4_proof_digests",
+            "max_interval_width",
             "native_execution_coverage_pct",
             "passed",
             "test_assertion_density",
+            "tier_counts",
             "total_assertion_density",
             "total_production_assertion_density",
             "unverified_modules_density",

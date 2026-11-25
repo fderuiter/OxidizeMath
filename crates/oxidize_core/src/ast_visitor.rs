@@ -1,6 +1,7 @@
 mod attrs;
 mod debt;
 mod maturity;
+mod pyramid;
 mod vacuous;
 
 pub use attrs::{attrs_mark_test_fn, attrs_require_cfg_test, extract_opt_out_reasons_from_attr};
@@ -8,19 +9,15 @@ pub use debt::collect_ast_file_debt;
 
 use attrs::{
     attrs_require_cfg_test_filtered, count_block_assertions, extract_opt_outs_filtered,
-    non_fn_impl_item_attrs, non_fn_item_attrs, non_fn_trait_item_attrs,
-    parse_verification_macro_tokens, scan_attributes,
+    non_fn_impl_item_attrs, non_fn_item_attrs, non_fn_trait_item_attrs, scan_attributes,
 };
-use maturity::{
-    FileEvidenceScanner, collect_item_maturity_decls, inspect_theory_verification_macro,
-};
+use maturity::{FileEvidenceScanner, collect_item_maturity_decls};
 use scientific_metadata::theory::MaturityTier;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
-use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{Attribute, ImplItem, ImplItemFn, Item, ItemFn, ItemMacro, TraitItem, TraitItemFn};
-use vacuous::{find_stochastic_zero_init_line, span_line};
+use vacuous::span_line;
 
 /// Returns `true` when `filepath` resides in a dedicated test, benchmark, or example path.
 pub fn is_dedicated_test_path(filepath: &Path) -> bool {
@@ -42,6 +39,8 @@ pub struct AstVisitor {
     pub verified_modules: Vec<String>,
     /// Verification tier (`Deterministic` or `Stochastic`) recorded per module key.
     pub module_tiers: HashMap<String, String>,
+    /// Per-tier verification macro counts across the 6-tier scientific pyramid.
+    pub tier_counts: BTreeMap<String, usize>,
     /// First 1-indexed source line recorded for each verified module key.
     pub module_spans: HashMap<String, usize>,
     /// Modules with a non-vacuous `theory_verification!` deterministic contract (`test = { ... }`).
@@ -129,6 +128,7 @@ impl AstVisitor {
         Self {
             verified_modules: Vec::new(),
             module_tiers: HashMap::new(),
+            tier_counts: BTreeMap::new(),
             module_spans: HashMap::new(),
             non_vacuous_deterministic_modules: Vec::new(),
             vacuous_deterministic_modules: Vec::new(),
@@ -247,59 +247,6 @@ impl AstVisitor {
         );
         (effective_opt_out, fn_in_test)
     }
-
-    fn record_verification_macro(&mut self, name: &str, node: &ItemMacro) {
-        let tier_name = match name {
-            "theory_verification" => "Deterministic",
-            "stochastic_signature_verification" => "Stochastic",
-            _ => return,
-        };
-        self.has_verification_macro = true;
-        let macro_line = span_line(node.span());
-        if name == "stochastic_signature_verification"
-            && let Some(zero_line) = find_stochastic_zero_init_line(&node.mac)
-        {
-            self.has_vacuous_bypass = true;
-            let recorded = if zero_line > 0 { zero_line } else { macro_line };
-            if self.vacuous_bypass_line.is_none() && recorded > 0 {
-                self.vacuous_bypass_line = Some(recorded);
-            }
-        }
-        let tv_info =
-            (name == "theory_verification").then(|| inspect_theory_verification_macro(&node.mac));
-        let parsed = parse_verification_macro_tokens(&node.mac.tokens);
-        let Some(module_name) = parsed.module_name else {
-            return;
-        };
-        self.record_module(module_name.clone(), macro_line);
-        self.module_tiers
-            .insert(module_name.clone(), tier_name.to_string());
-        if let Some(info) = tv_info {
-            if info.has_non_empty_constants {
-                self.has_golden_fixture = true;
-            }
-            if info.has_non_empty_test {
-                self.non_vacuous_deterministic_modules.push(module_name);
-                self.has_seeded_rng = true;
-            } else {
-                self.vacuous_deterministic_modules
-                    .push((module_name, macro_line));
-            }
-        } else {
-            self.stochastic_modules.push(module_name);
-        }
-        self.semantic_integrity_funcs += 1;
-        self.total_funcs += 1;
-        self.active_funcs += 1;
-        self.verified_funcs += 1;
-        self.test_funcs += 1;
-        self.verified_test_funcs += 1;
-        self.total_asserts += parsed.assert_count;
-        self.verified_asserts += parsed.assert_count;
-        self.test_asserts += parsed.assert_count;
-        self.verified_test_asserts += parsed.assert_count;
-        self.maturity_asserts += parsed.assert_count;
-    }
 }
 
 impl<'ast> Visit<'ast> for AstVisitor {
@@ -396,9 +343,7 @@ impl<'ast> Visit<'ast> for AstVisitor {
     }
 
     fn visit_item_macro(&mut self, node: &'ast ItemMacro) {
-        if let Some(ident) = node.mac.path.segments.last().map(|s| &s.ident) {
-            self.record_verification_macro(&ident.to_string(), node);
-        }
+        pyramid::record_verification_macro(self, node);
         visit::visit_item_macro(self, node);
     }
 

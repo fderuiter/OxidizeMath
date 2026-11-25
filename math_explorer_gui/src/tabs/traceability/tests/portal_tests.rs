@@ -65,6 +65,15 @@ fn test_packaged_desktop_outside_workspace_renders_embedded_28_papers() {
     assert!(render_tab_text_hit(&mut tab, "[CERT]"));
     assert!(render_tab_text_hit(&mut tab, "[VAL]"));
     assert!(render_tab_text_hit(&mut tab, "[EXP]"));
+    assert!(render_tab_text_hit(
+        &mut tab,
+        "6-Tier Scientific Verification Pyramid"
+    ));
+    assert!(render_tab_text_hit(&mut tab, "Certified Solvers: 55"));
+    assert!(render_tab_text_hit(&mut tab, "Tier1_Convergence:"));
+    assert!(render_tab_text_hit(&mut tab, "Tier5_Interval:"));
+    assert!(render_tab_text_hit(&mut tab, "Tier6_Formal:"));
+    assert!(render_tab_text_hit(&mut tab, "IntervalSoundness.lean"));
     assert!(tab.online_document_url("cera_framework.tex").is_some());
 }
 
