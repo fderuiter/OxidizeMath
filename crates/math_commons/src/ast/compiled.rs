@@ -9,8 +9,13 @@ use super::expr::{BinaryOp, Expr, Func, UnaryOp};
 use super::limits::MAX_COMPILED_INSTRUCTIONS;
 use num_complex::Complex64;
 
+#[cfg(feature = "serde")]
+#[path = "compiled_serde.rs"]
+mod compiled_serde;
+
 /// Single postfix bytecode instruction executed by [`CompiledExpr`].
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Instruction {
     /// Push a literal real constant onto the evaluation stack.
     PushConst(f64),
@@ -32,6 +37,7 @@ pub enum Instruction {
 /// `0..axis_count` store explicit coordinate axes (matched case-insensitively), followed by
 /// discovered free parameters in left-to-right source order.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct CompiledExpr {
     instructions: Vec<Instruction>,
     var_names: Vec<String>,
@@ -345,7 +351,7 @@ fn resolve_variable_instruction(
     Ok(Instruction::LoadVar(slot))
 }
 
-fn verify_stack_depth(instructions: &[Instruction]) -> Result<(), EvalError> {
+pub(super) fn verify_stack_depth(instructions: &[Instruction]) -> Result<(), EvalError> {
     if instructions.len() > MAX_COMPILED_INSTRUCTIONS {
         return Err(EvalError::InstructionLimitExceeded(
             MAX_COMPILED_INSTRUCTIONS,

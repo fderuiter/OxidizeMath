@@ -8,11 +8,14 @@ license = "MIT OR Apache-2.0"
 [features]
 default = []
 alloc = []
+serde = ["dep:serde", "math_diagnostics/serde"]
 
 [dependencies]
 math_diagnostics = { path = "../../00_foundation/math_diagnostics", default-features = false }
+serde = { workspace = true, optional = true }
 
 [dev-dependencies]
+serde_json = { workspace = true, default-features = false, features = ["alloc", "float_roundtrip"] }
 verified_engine = { path = "../../verified_engine" }
 
 [lints]

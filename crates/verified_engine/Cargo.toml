@@ -5,7 +5,7 @@ edition = "2024"
 
 [features]
 default = ["std"]
-std = ["dep:scientific_metadata", "dep:serde"]
+std = ["dep:scientific_metadata", "dep:serde", "serde/std"]
 
 [dependencies]
 scientific_metadata = { path = "../scientific_metadata", optional = true }

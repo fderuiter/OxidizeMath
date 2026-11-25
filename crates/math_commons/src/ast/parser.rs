@@ -11,11 +11,11 @@ pub const MAX_PARSE_DEPTH: usize = 64;
 
 /// Error encountered during expression parsing.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ParseError {
     /// Error during tokenization.
     #[error("{}", .0.user_message())]
     Lex(#[from] LexError),
-
     /// Unexpected token encountered.
     #[error("At character {}: expected {expected}, found {}", span.start + 1, format_found_token(found))]
     UnexpectedToken {

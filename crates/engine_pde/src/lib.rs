@@ -58,3 +58,6 @@ impl<T: math_commons::math_kernel::types::Scalar> PdeOwnedWorkspace<T> {
         math_commons::math_kernel::types::SolverWorkspace::new(&mut self.buf)
     }
 }
+
+#[cfg(test)]
+mod serde_tests;

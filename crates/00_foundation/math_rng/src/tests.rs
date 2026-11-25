@@ -125,13 +125,34 @@ fn test_unbiased_bounded_index_and_standard_normal_moments() {
     assert!(z32.is_finite());
 }
 
+#[test]
+fn math_rng_serde_json_dev_dep_linked() {
+    let v: u64 = serde_json::from_str("42").expect("json u64");
+    assert_eq!(v, 42);
+}
+
 #[cfg(feature = "serde")]
 #[test]
 fn test_serde_roundtrip_preserves_exact_stream_and_position() {
+    use crate::QmcError;
+
     let mut rng = OxidizeRng::new(12345).with_stream(9);
     let _ = rng.next_u64();
     let _ = rng.next_u64();
-    let encoded = core::hint::black_box(&rng);
-    let cloned = encoded.clone();
-    assert_eq!(rng, cloned);
+    let json = serde_json::to_string(&rng).expect("serialize OxidizeRng");
+    let mut decoded: OxidizeRng = serde_json::from_str(&json).expect("deserialize OxidizeRng");
+    assert_eq!(rng, decoded);
+    assert_eq!(rng.stream(), decoded.stream());
+    assert_eq!(rng.word_pos(), decoded.word_pos());
+    assert_eq!(rng.next_u64(), decoded.next_u64());
+
+    let err = QmcError::InvalidDimension {
+        dimension: 0,
+        max_supported: 64,
+    };
+    let err_json = serde_json::to_string(&err).expect("serialize QmcError");
+    assert_eq!(
+        serde_json::from_str::<QmcError>(&err_json).expect("deserialize QmcError"),
+        err
+    );
 }

@@ -6,6 +6,7 @@ use core::fmt;
 
 /// Typed error returned by [`super::SobolView`], [`super::HaltonView`], and [`super::NiederreiterView`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum QmcError {
     /// Requested dimension is zero or exceeds `max_supported` (`64`).
     InvalidDimension {

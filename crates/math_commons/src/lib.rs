@@ -25,6 +25,9 @@ pub mod stochastic;
 /// Quantum angular-momentum coupling and Wigner $3j$ / Clebsch-Gordan coefficients.
 pub mod wigner;
 
+#[cfg(test)]
+mod serde_tests;
+
 #[cfg(all(test, feature = "std"))]
 #[global_allocator]
 static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =

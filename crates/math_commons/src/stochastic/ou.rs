@@ -8,6 +8,7 @@ const CONSTANT_SERIES_VAR_TOL: f64 = 1e-30;
 /// Calibrated Ornstein-Uhlenbeck parameters $(\mu, \theta, \sigma)$ for
 /// $dX_t = \theta(\mu - X_t)\,dt + \sigma\,dW_t$.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OuCalibration {
     /// Long-term mean level $\mu$.
     pub mu: f64,
@@ -19,6 +20,7 @@ pub struct OuCalibration {
 
 /// Zero-allocation ensemble summary statistics over a 1D sample slice.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SampleSummary {
     /// Arithmetic sample mean.
     pub mean: f64,

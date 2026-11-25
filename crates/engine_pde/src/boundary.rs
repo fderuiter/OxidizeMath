@@ -3,6 +3,7 @@ use math_commons::math_kernel::types::{flatten_2d_index, flatten_3d_index};
 
 /// Spatial boundary condition applied along regular Cartesian grid boundaries.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BoundaryCondition {
     /// Periodic wrap-around ($u(-1) = u(N - 1)$, $u(N) = u(0)$).
     #[default]

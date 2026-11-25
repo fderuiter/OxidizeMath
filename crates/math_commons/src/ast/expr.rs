@@ -3,6 +3,7 @@
 
 /// Supported binary mathematical operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BinaryOp {
     /// Addition (`+`).
     Add,
@@ -32,6 +33,7 @@ impl BinaryOp {
 
 /// Supported unary mathematical operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum UnaryOp {
     /// Unary positive (`+`).
     Pos,
@@ -52,6 +54,7 @@ impl UnaryOp {
 
 /// Supported built-in mathematical functions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Func {
     /// Sine function.
     Sin,
@@ -179,6 +182,7 @@ impl Func {
 
 /// Abstract Syntax Tree node representing a mathematical expression.
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Expr {
     /// Numeric constant.
     Number(f64),

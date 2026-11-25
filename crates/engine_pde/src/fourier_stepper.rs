@@ -29,6 +29,7 @@ use rand_core::RngCore;
 /// Requires periodic boundaries, power-of-two grid dimensions $\ge 4$, finite positive `dx > 0` and
 /// `dy > 0`, `dt >= 0`, and `SolverWorkspace` capacity [`Self::scratch_len_1d`] / [`Self::scratch_len_2d`].
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SemiImplicitFourierStepper {
     /// Grid spacing $\Delta x > 0$.
     pub dx: f64,

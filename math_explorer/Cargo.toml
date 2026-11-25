@@ -38,10 +38,19 @@ biology = ["applied", "pure_math", "dep:domain_biology"]
 climate = ["ai", "pure_math", "dep:domain_climate"]
 epidemiology = ["pure_math", "dep:domain_epidemiology"]
 physics = ["applied", "pure_math", "dep:domain_physics"]
+serde = [
+    "math_commons/serde",
+    "pure_math?/serde",
+    "nalgebra?/serde-serialize",
+    "num-complex?/serde",
+    "petgraph?/serde-1",
+    "rand?/serde1",
+]
 
 [dev-dependencies]
 approx = { workspace = true }
 criterion = { workspace = true }
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 
 [[bench]]
 name = "sorting_benchmark"

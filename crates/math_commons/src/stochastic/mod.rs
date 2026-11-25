@@ -24,6 +24,7 @@ pub use ou::{OuCalibration, SampleSummary, calibrate_ou};
 
 /// Summary of a Tarjan strongly connected component (SCC) decomposition over an $n$-state graph.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SccSummary {
     /// Total number of strongly connected components discovered.
     pub num_components: usize,

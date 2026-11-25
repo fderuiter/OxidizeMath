@@ -4,8 +4,7 @@
 use super::poly::symmetrize_upper;
 use crate::error::FitError;
 use crate::series::PointSeries;
-#[cfg(not(feature = "std"))]
-use num_traits::Float as _;
+use num_traits::Float;
 
 /// Maximum outer Levenberg-Marquardt iterations before returning [`FitError::NonConvergence`].
 pub const MAX_LM_ITERATIONS: usize = 80;
@@ -339,8 +338,8 @@ where
             step_norm += delta[c] * delta[c];
             param_norm += theta[c] * theta[c];
         }
-        step_norm = step_norm.sqrt();
-        param_norm = param_norm.sqrt();
+        step_norm = Float::sqrt(step_norm);
+        param_norm = Float::sqrt(param_norm);
 
         let new_sse = sum_squared_errors(points, domain_ok, &candidate, eval_val);
         if new_sse.is_finite() && new_sse < *current_sse {
@@ -429,10 +428,10 @@ where
     }
     symmetrize_upper(&mut jtj, k);
 
-    let r_norm = current_sse.sqrt().max(1e-15);
+    let r_norm = Float::sqrt(current_sse).max(1e-15);
     let mut scaled_grad = 0.0_f64;
     for row in 0..k {
-        let col_norm = jtj[row][row].sqrt();
+        let col_norm = Float::sqrt(jtj[row][row]);
         let denom = (col_norm * r_norm).max(1.0);
         scaled_grad = scaled_grad.max(jtr[row].abs() / denom);
     }
