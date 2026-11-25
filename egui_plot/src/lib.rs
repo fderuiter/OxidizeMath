@@ -50,6 +50,10 @@ use emath::Float as _;
 pub use crate::{
     a11y::{contrast_ratio, focus_ring_stroke},
     axis::{Axis, AxisHints, HPlacement, Placement, VPlacement},
+    data_table::{
+        MAX_INLINE_SERIES_TABS,
+        format::{TableSeriesRef, format_tsv, series_share_x},
+    },
     export::{
         AspectRatioOption, DEFAULT_GIF_SPEED, ExportOptions, ImportedDataset, MAX_EXPORT_DIMENSION,
         StreamingGifEncoder, color32_image_to_png, color32_images_to_gif,
@@ -65,9 +69,10 @@ pub use crate::{
         show_export_modal,
     },
     export_primitives::{
-        ExportPrimitive, append_last_plot_primitives, clear_last_plot_primitives,
-        export_primitives_svg, export_raster_gif, export_raster_svg, get_last_plot_primitives,
-        has_finite_shared_dataset_points, render_primitives_image, shared_datasets_to_primitives,
+        DeferredPlotPrimitive, ExportPrimitive, LazyPlotPrimitives, append_last_plot_primitives,
+        clear_last_plot_primitives, export_primitives_svg, export_raster_gif, export_raster_svg,
+        get_last_plot_primitives, has_finite_shared_dataset_points, render_primitives_image,
+        shared_datasets_to_primitives,
     },
     fit::{
         CustomEvaluatorHandle, CustomFitCallback, CustomFitEvaluator, FitError, FitResult, FitType,
@@ -80,8 +85,8 @@ pub use crate::{
     items::{
         Arrows, Bar, BarChart, BoxElem, BoxPlot, BoxSpread, Callout, ClosestElem, HLine, Line,
         LineStyle, MarkerShape, Orientation, PlotConfig, PlotGeometry, PlotImage, PlotItem,
-        PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, SavedCallout, SharedPoints, Text,
-        VLine,
+        PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, SavedCallout, SharedPoints,
+        TabularSeries, Text, VLine, render_snapped_hover_point_named,
     },
     latex::{parse_latex_to_layout_job, parse_prose_with_inline_math, render_math_label},
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
@@ -93,12 +98,13 @@ pub use crate::{
     poi::{CriticalPoint, CriticalPointKind, MAX_CRITICAL_POINTS, detect_critical_points},
     sidecar_3d::{
         Plot3DSeries, Plot3DSeriesSidecar, append_last_plot_datasets_3d,
-        clear_last_plot_datasets_3d, format_world_coord, get_last_plot_datasets_3d,
+        append_last_plot_sidecar_3d, clear_last_plot_datasets_3d, format_world_coord,
+        get_last_plot_datasets_3d,
     },
     snapshot::{
         OrderedId, PlotOverlaySnapshot, begin_plot_persistence_scope, end_plot_persistence_scope,
     },
-    transform::{PlotBounds, PlotTransform},
+    transform::{LinearProjector, PlotBounds, PlotTransform},
 };
 
 #[doc(hidden)]
@@ -1964,10 +1970,9 @@ impl<'a> Plot<'a> {
             access_state.focused_poi = None;
             mem.runtime_cache.clear_fit();
         }
-        let export_datasets_3d: Vec<(String, Vec<[f64; 3]>)> = sidecar_3d
-            .as_ref()
-            .map_or_else(Vec::new, Plot3DSeriesSidecar::export_datasets_3d);
-        append_last_plot_datasets_3d(&export_datasets_3d);
+        if let Some(ref sidecar) = sidecar_3d {
+            append_last_plot_sidecar_3d(sidecar);
+        }
 
         let base_count = items.len();
         let mut item_shared_points: Vec<SharedPoints> = Vec::new();
@@ -2274,8 +2279,11 @@ impl<'a> Plot<'a> {
             .as_ref()
             .filter(|s| !s.series().is_empty())
             .map_or(logical_item_count, |s| s.series().len());
+        let has_3d_export_points = sidecar_3d
+            .as_ref()
+            .is_some_and(Plot3DSeriesSidecar::has_export_points);
         let has_any_export_points =
-            !export_datasets_3d.is_empty() || items.iter().any(|it| it.has_any_points());
+            has_3d_export_points || items.iter().any(|it| it.has_any_points());
         let has_table_content = has_any_export_points
             || !critical_points.is_empty()
             || (effective_allow_csv_import && items.is_empty());
@@ -2306,7 +2314,7 @@ impl<'a> Plot<'a> {
                 items: &items,
                 item_shared_points: &item_shared_points,
                 base_series_for_menu: &base_series_for_menu,
-                export_datasets_3d: &export_datasets_3d,
+                sidecar_3d: sidecar_3d.as_ref(),
                 fit_status: &fit_status,
                 viewport_sync: plot_overlays::OverlayViewportSync {
                     data_aspect,
@@ -2874,8 +2882,8 @@ impl<'a> Plot<'a> {
                 ui.close();
             }
             if ui.button("Export CSV").clicked() {
-                if !export_datasets_3d.is_empty() {
-                    export::export_csv_3d(&export_datasets_3d);
+                if let Some(sidecar) = sidecar_3d.as_ref().filter(|s| s.has_export_points()) {
+                    export::export_csv_3d(&sidecar.export_datasets_3d());
                 } else {
                     let export_datasets = collect_export_datasets(&items, &item_shared_points);
                     export::export_csv(&export_datasets);
@@ -2883,8 +2891,8 @@ impl<'a> Plot<'a> {
                 ui.close();
             }
             if ui.button("Export JSON").clicked() {
-                if !export_datasets_3d.is_empty() {
-                    export::export_json_3d(&export_datasets_3d);
+                if let Some(sidecar) = sidecar_3d.as_ref().filter(|s| s.has_export_points()) {
+                    export::export_json_3d(&sidecar.export_datasets_3d());
                 } else {
                     let export_datasets = collect_export_datasets(&items, &item_shared_points);
                     export::export_json(&export_datasets);
@@ -2947,14 +2955,7 @@ impl<'a> Plot<'a> {
         if let Some(ref sidecar) = sidecar_3d
             && !sidecar.series().is_empty()
         {
-            for s in sidecar.series() {
-                if !s.projected.is_empty() {
-                    deferred_datasets.push(DeferredDatasetEntry::Owned {
-                        name: s.name.clone(),
-                        points: s.projected.clone(),
-                    });
-                }
-            }
+            sidecar.push_deferred_2d_datasets(&mut deferred_datasets);
             let mut ignored_datasets = Vec::new();
             for (idx, item) in items.iter_mut().enumerate() {
                 let cached = item_shared_points.get(idx).filter(|pts| !pts.is_empty());

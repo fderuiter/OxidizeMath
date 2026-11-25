@@ -115,6 +115,55 @@ fn test_all_six_3d_tools_emit_camera_invariant_world_xyz() {
     let crys_b = run_tool_and_capture_3d(&mut crystal);
     assert_datasets_3d_invariant("CrystalViewer", &crys_a, &crys_b);
     assert_eq!(crys_a[0].1[0], [0.0, 0.0, 0.0]);
+
+    let mut loss_tool = crate::tabs::ai::loss_landscape::LossLandscapeTool::default();
+    let loss_a = run_tool_and_capture_3d(&mut loss_tool);
+    loss_tool.camera = transformed_camera(loss_tool.camera);
+    let loss_b = run_tool_and_capture_3d(&mut loss_tool);
+    assert_datasets_3d_invariant("LossLandscapeTool", &loss_a, &loss_b);
+}
+
+#[test]
+fn test_120x120_surfaces_preserve_camera_invariant_world_xyz() {
+    let mut surface = SurfaceViewer::default();
+    let mut s_state: serde_json::Value =
+        serde_json::from_str(&surface.save_state().unwrap()).unwrap();
+    s_state["u_resolution"] = serde_json::json!(120);
+    s_state["v_resolution"] = serde_json::json!(120);
+    surface.try_load_state(&s_state.to_string()).unwrap();
+    let surf_a = run_tool_and_capture_3d(&mut surface);
+    surface.camera = transformed_camera(surface.camera);
+    let surf_b = run_tool_and_capture_3d(&mut surface);
+    assert_datasets_3d_invariant("SurfaceViewer(120x120)", &surf_a, &surf_b);
+    assert_eq!(surf_a[0].1.len(), 14_641);
+
+    let mut curvature = CurvatureHeatmap::default();
+    let mut c_state: serde_json::Value =
+        serde_json::from_str(&curvature.save_state().unwrap()).unwrap();
+    c_state["u_resolution"] = serde_json::json!(120);
+    c_state["v_resolution"] = serde_json::json!(120);
+    curvature.try_load_state(&c_state.to_string()).unwrap();
+    let curv_a = run_tool_and_capture_3d(&mut curvature);
+    curvature.camera = transformed_camera(curvature.camera);
+    let curv_b = run_tool_and_capture_3d(&mut curvature);
+    assert_datasets_3d_invariant("CurvatureHeatmap(120x120)", &curv_a, &curv_b);
+    assert_eq!(curv_a[0].1.len(), 14_641);
+
+    #[cfg(feature = "biology")]
+    {
+        let mut morpho =
+            crate::tabs::geometry_topology::surface_morphogenesis::SurfaceMorphogenesisTool::default();
+        let mut m_state: serde_json::Value =
+            serde_json::from_str(&morpho.save_state().unwrap()).unwrap();
+        m_state["u_resolution"] = serde_json::json!(120);
+        m_state["v_resolution"] = serde_json::json!(120);
+        morpho.try_load_state(&m_state.to_string()).unwrap();
+        let morpho_a = run_tool_and_capture_3d(&mut morpho);
+        morpho.camera = transformed_camera(morpho.camera);
+        let morpho_b = run_tool_and_capture_3d(&mut morpho);
+        assert_datasets_3d_invariant("SurfaceMorphogenesis(120x120)", &morpho_a, &morpho_b);
+        assert_eq!(morpho_a[0].1.len(), 14_400);
+    }
 }
 
 #[test]

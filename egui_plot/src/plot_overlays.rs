@@ -36,7 +36,7 @@ pub(crate) struct PlotToolbarConfig<'a, 'b> {
     pub items: &'a [Box<dyn PlotItem + 'b>],
     pub item_shared_points: &'a [SharedPoints],
     pub base_series_for_menu: &'a [CachedItemSeries],
-    pub export_datasets_3d: &'a [(String, Vec<[f64; 3]>)],
+    pub sidecar_3d: Option<&'a crate::Plot3DSeriesSidecar>,
     pub fit_status: &'a fit_overlay::FitOverlayStatus,
     pub viewport_sync: OverlayViewportSync<'a>,
 }
@@ -432,8 +432,8 @@ fn render_secondary_toolbar_actions(
         }
     }
     if ui.button("Export CSV").clicked() {
-        if !cfg.export_datasets_3d.is_empty() {
-            export::export_csv_3d(cfg.export_datasets_3d);
+        if let Some(sidecar) = cfg.sidecar_3d.filter(|s| s.has_export_points()) {
+            export::export_csv_3d(&sidecar.export_datasets_3d());
         } else {
             export::export_csv(&crate::collect_export_datasets(
                 cfg.items,
@@ -445,8 +445,8 @@ fn render_secondary_toolbar_actions(
         }
     }
     if ui.button("Export JSON").clicked() {
-        if !cfg.export_datasets_3d.is_empty() {
-            export::export_json_3d(cfg.export_datasets_3d);
+        if let Some(sidecar) = cfg.sidecar_3d.filter(|s| s.has_export_points()) {
+            export::export_json_3d(&sidecar.export_datasets_3d());
         } else {
             export::export_json(&crate::collect_export_datasets(
                 cfg.items,
