@@ -143,6 +143,7 @@ fn test_disconnected_faulted_worker_preserves_diagnostic_until_respawn() {
         state_rx,
         latest_snapshot: Some(seed),
         timeline_metadata: None,
+        snapshot_history: None,
         pending_snapshot: false,
         awaiting_pause_ack: false,
         suspended: false,

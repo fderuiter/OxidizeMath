@@ -135,6 +135,8 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>> OdeSyst
 ///
 /// The stability condition for 1D diffusion is approximately:
 /// $$ \Delta t \le \frac{\Delta x^2}{2 D} $$
+/// and for a 2D isotropic 5-point Laplacian stencil:
+/// $$ \Delta t \le \frac{\Delta x^2}{4 \max(D_u, D_v)} $$
 ///
 /// Reference: Turing (1952), DOI: `10.1098/rstb.1952.0012`; see
 /// [`docs/math_specs/domain_biology.md`](../../../../../docs/math_specs/domain_biology.md).
@@ -183,6 +185,49 @@ impl FusedEulerSolver {
     #[verified_engine::verified]
     pub fn new() -> Self {
         Self
+    }
+
+    /// Computes the damped 2D Forward Euler CFL time-step bound (`0.8 * dx^2 / (4.0 * max(|d_u|, |d_v|))`)
+    /// for a 5-point isotropic finite-difference Laplacian on grid spacing `dx`.
+    #[inline]
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn cfl_dt_2d(dx: f64, d_u: f64, d_v: f64) -> f64 {
+        let max_d = d_u.abs().max(d_v.abs());
+        if !dx.is_finite() || dx <= 0.0 || !max_d.is_finite() || max_d <= 1e-15 {
+            return f64::INFINITY;
+        }
+        0.8 * (dx * dx) / (4.0 * max_d)
+    }
+
+    /// Splits `target_dt` into `(substeps, sub_dt)` bounded by `max_substeps` (`>= 1`) so each
+    /// substep satisfies `sub_dt <= Self::cfl_dt_2d(dx, d_u, d_v)`.
+    #[inline]
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn cfl_substeps_2d(
+        target_dt: f64,
+        dx: f64,
+        d_u: f64,
+        d_v: f64,
+        max_substeps: usize,
+    ) -> (usize, f64) {
+        let cap = max_substeps.max(1);
+        if !target_dt.is_finite() || target_dt <= 0.0 {
+            return (1, 0.0);
+        }
+        let cfl = Self::cfl_dt_2d(dx, d_u, d_v);
+        if !cfl.is_finite() || target_dt <= cfl {
+            return (1, target_dt);
+        }
+        let needed = (target_dt / cfl).ceil();
+        let substeps = if needed.is_finite() && needed < (cap as f64) {
+            (needed as usize).max(1)
+        } else {
+            cap
+        };
+        let sub_dt = (target_dt / (substeps as f64)).min(cfl);
+        (substeps, sub_dt)
     }
 }
 
@@ -401,5 +446,25 @@ mod stochastic_evolution_tests {
             .copied()
             .fold(f64::NEG_INFINITY, f64::max);
         assert!(u_max - u_min > 1e-4);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_cfl_2d_helpers_guarantee_substep_bound() {
+        let cfl = FusedEulerSolver::cfl_dt_2d(1.0, 1.0, 100.0);
+        assert!((cfl - 0.002).abs() < 1e-15);
+
+        let (substeps, sub_dt) = FusedEulerSolver::cfl_substeps_2d(0.05, 1.0, 1.0, 100.0, 100);
+        assert!((25..=100).contains(&substeps));
+        assert!(sub_dt <= cfl + 1e-15);
+        assert!(((substeps as f64) * sub_dt - 0.05).abs() < 1e-12);
+
+        let (capped_n, capped_dt) = FusedEulerSolver::cfl_substeps_2d(1.0, 1.0, 1.0, 100.0, 10);
+        assert_eq!(capped_n, 10);
+        assert!(capped_dt <= cfl + 1e-15);
+        assert_eq!(
+            FusedEulerSolver::cfl_substeps_2d(0.5, 1.0, 0.16, 0.08, 100),
+            (1, 0.5)
+        );
     }
 }

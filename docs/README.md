@@ -73,6 +73,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Enforce Mathematical Docstring AST Gates and Canonical Specifications](adr/20261123-enforce-math-docstring-ast-gates.md)
 - [ADR 20261123: Feature-Gate Core AST Tools and Unify Workspace Crates](adr/20261123-feature-gate-core-ast-tools-and-unify-crates.md)
 - [ADR 20261123: Zero-Allocation 2D FFT Lenia Engine and Promoted Gray-Scott Kinetics](adr/20261123-fft-lenia-engine-and-gray-scott-kinetics.md)
+- [ADR 20261123: Finite-Temperature BCS Superconductivity, CODATA SI Unit Bridges, and Solid-State Workbenches](adr/20261123-finite-temperature-bcs-si-unit-bridges-and-solid-state-workbenches.md)
 - [ADR 20261123: Zero-Allocation Prime-Exponent FRACTRAN VM, Kolmogorov Bounds, and Auto-Discovered `AlgorithmicInfoTab`](adr/20261123-fractran-vm-kolmogorov-and-algorithmic-info-tab.md)
 - [ADR 20261123: Framework-Hosted 2D Parameter Atlases and Zero-Allocation Cartographers](adr/20261123-framework-hosted-2d-parameter-atlases.md)
 - [ADR 20261123: Framework-Scoped Sonification Persistence, `<= 20 ms` Gain-Ramp Guards, and `ExportQueue` WAV Dispatch](adr/20261123-framework-sonification-persistence-and-wav-export.md)
@@ -137,6 +138,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261124: `#![no_std]` Visitor-Based `math_diagnostics`, Causal `LinalgError` Retention, and Umbrella `api_drift` Guards](adr/20261124-no-std-math-diagnostics-and-causal-error-wiring.md)
 - [ADR 20261124: `#![no_std]` Scalar Foundation (`math_scalars`), Forward-Mode AD, and Outward-Rounded Enclosures](adr/20261124-no-std-math-scalars-ad-and-intervals.md)
 - [ADR 20261124: Optional `#![no_std]` Serde Across Substrate, Plot Outputs, and Facade](adr/20261124-optional-no-std-serde-substrate-and-facade.md)
+- [ADR 20261124: Zero-Allocation Alternate-Kinetics Stepping, 2D CFL Substepping Helpers, and Analytical Bifurcation Minimap](adr/20261124-promote-gray-scott-kinetics-and-2d-cfl-helpers.md)
 
 ## Contributing
 

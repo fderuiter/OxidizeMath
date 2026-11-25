@@ -238,10 +238,19 @@ impl MorphogenesisTwinState {
         }
     }
 
-    /// Steps frozen baseline `Branch A` by `dt` with zero heap allocations.
+    /// Steps frozen baseline `Branch A` by `subs` substeps of `sub_dt` with zero heap allocations.
     #[inline]
-    pub fn step_branch_a(&mut self, dt: f64, width: usize, height: usize, noise_amp: f64) {
-        self.system_a.step(dt);
+    pub fn step_branch_a(
+        &mut self,
+        subs: usize,
+        sub_dt: f64,
+        width: usize,
+        height: usize,
+        noise_amp: f64,
+    ) {
+        for _ in 0..subs {
+            self.system_a.step(sub_dt);
+        }
         super::runner::apply_uniform_noise(
             &mut self.system_a,
             width * height,

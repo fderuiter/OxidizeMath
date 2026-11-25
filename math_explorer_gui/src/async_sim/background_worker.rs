@@ -26,10 +26,20 @@ impl<T: SimulationRunner> BackgroundWorker<T> {
         }
     }
 
-    /// Replaces the background runner while preserving the current visibility suspension flag.
+    /// Replaces the background runner while preserving the current visibility suspension flag
+    /// and any custom [`super::SnapshotHistory`] capacity configuration.
     pub fn replace_runner(&mut self, runner: T) {
         let was_suspended = self.controller.is_suspended();
-        *self = Self::new_with_suspended(runner, was_suspended);
+        let prev_limits = self
+            .controller
+            .snapshot_history()
+            .map(super::SnapshotHistory::limits);
+        let mut next = Self::new_with_suspended(runner, was_suspended);
+        if let Some((max_frames, max_bytes)) = prev_limits {
+            next.controller
+                .enable_snapshot_history(max_frames, max_bytes);
+        }
+        *self = next;
     }
 
     /// Suspends or resumes worker execution while preserving logical [`SimWorkerState::Running`].

@@ -4,10 +4,14 @@ use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
 pub mod band_structure;
+pub mod bcs;
 pub mod crystal_viewer;
+pub mod datasheet;
 pub mod ising;
+pub mod quantum_stats;
 pub mod sandpile;
 
+/// Explorer tab hosting solid-state band theory, crystal lattices, Ising spins, BCS superconductivity, quantum statistics, and Abelian sandpiles.
 pub struct SolidStateTab {
     framework: crate::framework::SimulationFramework,
 }

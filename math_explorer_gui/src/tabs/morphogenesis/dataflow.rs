@@ -56,14 +56,7 @@ impl MorphogenesisTool {
                 return;
             }
         }
-        let runner = Self::create_kinetics_runner_with_advection(
-            &self.params,
-            &self.kinetics_state,
-            &self.advection_state,
-            &self.mask_rle,
-            self.width,
-            self.height,
-        );
+        let runner = self.create_live_runner();
         let snap = crate::async_sim::SimulationRunner::get_snapshot(&runner);
         self.field_stream.record_snapshot(&snap);
     }
@@ -87,13 +80,13 @@ impl MorphogenesisTool {
             return;
         }
         let runner = self.step_runner.get_or_insert_with(|| {
-            Self::create_kinetics_runner_with_advection(
+            super::runner::MorphogenesisKineticsRunner::new_with_advection_and_cfl(
                 &self.params,
                 &self.kinetics_state,
                 &self.advection_state,
+                &self.auto_dt,
                 &self.mask_rle,
-                self.width,
-                self.height,
+                (self.width, self.height),
             )
         });
         for _ in 0..5 {

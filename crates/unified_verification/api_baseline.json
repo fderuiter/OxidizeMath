@@ -6747,6 +6747,9 @@
       "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : SpatialDiffusion < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , D , S > { pub fn step (& mut self , _ : f64) }"
     },
     {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : SpatialDiffusion < N > , S : TuringSolverStrategy < N > > TuringSystem < N , K , D , S > { pub fn step_with_kinetics < KAlt : ReactionKinetics < N > > (& mut self , _ : & KAlt , _ : f64) }"
+    },
+    {
       "signature": "impl TuringSystem < 2 , SchnakenbergKinetics , FiniteDifference1D , FusedEulerSolver > { pub fn new (_ : Dimension , _ : DiffusionCoeff , _ : DiffusionCoeff , _ : StepSize) -> Self }"
     },
     {
@@ -6827,6 +6830,12 @@
     },
     {
       "signature": "impl < S > StandardSolverAdapter < S > { pub fn new (_ : S) -> Self }"
+    },
+    {
+      "signature": "impl FusedEulerSolver { pub fn cfl_dt_2d (_ : f64 , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl FusedEulerSolver { pub fn cfl_substeps_2d (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : usize ,) -> (usize , f64) }"
     },
     {
       "signature": "impl FusedEulerSolver { pub fn new () -> Self }"
@@ -11654,10 +11663,25 @@
       "signature": "impl BcsGapSolver { pub fn with_tolerance (self , _ : f64) -> Self }"
     },
     {
+      "signature": "impl IsotropicBCSModel { pub fn critical_temperature (& self) -> Result < Kelvin , SolidStateError > }"
+    },
+    {
       "signature": "impl IsotropicBCSModel { pub fn new (_ : Vec < f64 > , _ : f64 , _ : f64 ,) -> Result < Self , SolidStateError > }"
     },
     {
+      "signature": "impl IsotropicBCSModel { pub fn pairing_kernel (& self , _ : ElectronVolts) -> Result < f64 , SolidStateError > }"
+    },
+    {
+      "signature": "impl IsotropicBCSModel { pub fn with_temperature (self , _ : Kelvin) -> Self }"
+    },
+    {
+      "signature": "pub fn coherence_factors_normal_limit (_ : ElectronVolts , _ : ElectronVolts ,) -> Result < (f64 , f64) , SolidStateError >"
+    },
+    {
       "signature": "pub fn coherence_factors_strong (_ : ElectronVolts , _ : ElectronVolts ,) -> Result < (f64 , f64) , SolidStateError >"
+    },
+    {
+      "signature": "pub fn quasiparticle_energy (_ : ElectronVolts , _ : ElectronVolts) -> ElectronVolts"
     },
     {
       "signature": "pub struct BcsGapSolver"
@@ -11670,6 +11694,12 @@
     },
     {
       "signature": "pub trait GapEquation { fn calculate_next_gap (& self , _ : ElectronVolts ,) -> Result < ElectronVolts , SolidStateError > }"
+    },
+    {
+      "signature": "pub use tunneling :: dynes_dos_ratio"
+    },
+    {
+      "signature": "pub use tunneling :: nis_tunneling_conductance"
     }
   ],
   "crates/domain_physics/src/physics/solid_state/interactions.rs": [
@@ -11785,6 +11815,9 @@
       "signature": "impl ElectronVolts { pub fn exp (& self) -> Self }"
     },
     {
+      "signature": "impl ElectronVolts { pub fn from_joules (_ : f64) -> Self }"
+    },
+    {
       "signature": "impl ElectronVolts { pub fn ln (& self) -> Self }"
     },
     {
@@ -11797,6 +11830,9 @@
       "signature": "impl ElectronVolts { pub fn sqrt (& self) -> Self }"
     },
     {
+      "signature": "impl ElectronVolts { pub fn to_joules (self) -> f64 }"
+    },
+    {
       "signature": "impl Kelvin { pub fn abs (& self) -> Self }"
     },
     {
@@ -11804,6 +11840,12 @@
     },
     {
       "signature": "impl Kelvin { pub fn exp (& self) -> Self }"
+    },
+    {
+      "signature": "impl Kelvin { pub fn from_joules (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl Kelvin { pub fn from_thermal_energy_ev (_ : ElectronVolts) -> Self }"
     },
     {
       "signature": "impl Kelvin { pub fn ln (& self) -> Self }"
@@ -11816,6 +11858,15 @@
     },
     {
       "signature": "impl Kelvin { pub fn sqrt (& self) -> Self }"
+    },
+    {
+      "signature": "impl Kelvin { pub fn thermal_energy_ev (self) -> ElectronVolts }"
+    },
+    {
+      "signature": "impl Kelvin { pub fn to_joules (self) -> f64 }"
+    },
+    {
+      "signature": "pub const ELEMENTARY_CHARGE_C : f64"
     },
     {
       "signature": "pub struct ElectronVolts"
@@ -12006,16 +12057,37 @@
       "signature": "pub fn average_energy (_ : & [f64] , _ : f64) -> f64"
     },
     {
+      "signature": "pub fn average_energy_ev (_ : & [ElectronVolts] , _ : Kelvin) -> ElectronVolts"
+    },
+    {
       "signature": "pub fn boltzmann_factor (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn boltzmann_factor_ev (_ : ElectronVolts , _ : Kelvin) -> f64"
     },
     {
       "signature": "pub fn calculate_partition_function (_ : & [f64] , _ : f64) -> f64"
     },
     {
+      "signature": "pub fn calculate_partition_function_ev (_ : & [ElectronVolts] , _ : Kelvin) -> f64"
+    },
+    {
+      "signature": "pub fn canonical_thermodynamics_ev (_ : & [ElectronVolts] , _ : Kelvin ,) -> Result < CanonicalThermodynamics , StatMechError >"
+    },
+    {
       "signature": "pub fn entropy (_ : f64 , _ : f64 , _ : f64) -> f64"
     },
     {
+      "signature": "pub fn entropy_ev_per_kelvin (_ : ElectronVolts , _ : ElectronVolts , _ : Kelvin ,) -> f64"
+    },
+    {
       "signature": "pub fn helmholtz_free_energy (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn helmholtz_free_energy_ev (_ : & [ElectronVolts] , _ : Kelvin) -> ElectronVolts"
+    },
+    {
+      "signature": "pub struct CanonicalThermodynamics"
     }
   ],
   "crates/domain_physics/src/physics/stat_mech/graph_ising.rs": [
@@ -12278,6 +12350,9 @@
   "crates/domain_physics/src/physics/stat_mech/quantum_stats.rs": [
     {
       "signature": "pub fn calculate_occupancy < D : StatisticalDistribution > (_ : D , _ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , StatMechError >"
+    },
+    {
+      "signature": "pub fn calculate_occupancy_ev < D : StatisticalDistribution > (_ : D , _ : ElectronVolts , _ : ElectronVolts , _ : Kelvin ,) -> Result < f64 , StatMechError >"
     },
     {
       "signature": "pub struct BoseEinstein"

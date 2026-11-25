@@ -299,6 +299,7 @@ fn mri_and_attractor_enforce_single_step_slice_budgets() {
         mode: AttractorMode::Lorenz,
         custom_flow: None,
         sim_bus: None,
+        ..Default::default()
     }));
     let mut attr = AttractorRunner::from_params(attr_params);
     attr.step_sliced(Some(Duration::ZERO));

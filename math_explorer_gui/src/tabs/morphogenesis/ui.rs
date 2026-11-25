@@ -178,6 +178,9 @@ impl MorphogenesisTool {
                 let c = GrayScottKinetics::coral();
                 self.apply_gray_scott_preset(c.f, c.k);
             }
+            if ui.button("Solitons").clicked() {
+                self.apply_gray_scott_preset(0.030, 0.060);
+            }
         });
         super::sculpt::draw_morpho_3d_bridges(self, ui);
         let _ = self.atlas.show_toggle_button(ui);
@@ -268,6 +271,7 @@ impl MorphogenesisTool {
             self.draw_kinetics_selector(ui);
             ui.separator();
             self.draw_parameter_sliders(ui);
+            self.draw_cfl_and_minimap(ui);
             ui.separator();
             self.draw_wind_tunnel_controls(ui);
             ui.separator();

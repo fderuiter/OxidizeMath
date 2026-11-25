@@ -23,12 +23,15 @@ use crate::async_sim::{
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::MorphogenesisKineticsMode;
 use math_explorer::biology::diffusion::MaskedFiniteDifference2D;
-use math_explorer::biology::morphogenesis::TuringSystem;
+use math_explorer::biology::morphogenesis::{FusedEulerSolver, TuringSystem};
 use oxidize_core::rng::OxidizeRng;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 /// Default PRNG seed for deterministic morphogenesis perturbation streams.
 pub const DEFAULT_MORPHOGENESIS_SEED: u64 = 0x4D4F_5250_484F_3244;
+/// Upper bound on automatic 2D Forward Euler CFL substeps per simulation step.
+pub const MAX_CFL_SUBSTEPS: usize = 100;
 
 /// Multi-kinetics worker runner supporting [`super::kinetics::MorphogenesisKineticsAdapter`],
 /// [`MaskedFiniteDifference2D`] microfluidic field sculpting, `K = 16` zero-allocation
@@ -39,6 +42,7 @@ pub struct MorphogenesisKineticsRunner {
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) kinetics_state: Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
     pub(crate) advection_state: Arc<std::sync::RwLock<MorphogenesisAdvectionState>>,
+    pub(crate) auto_dt: Arc<AtomicBool>,
     pub(crate) width: usize,
     pub(crate) height: usize,
     pub(crate) step_count: usize,
@@ -129,8 +133,18 @@ impl MorphogenesisKineticsRunner {
         self.system.kinetics.k = k;
         self.system.diffusion_coeffs[0] = d_u;
         self.system.diffusion_coeffs[1] = d_v;
+        let eff_dt = if self.auto_dt.load(Ordering::Relaxed) && !self.read_advection().enabled {
+            FusedEulerSolver::cfl_substeps_2d(dt, 1.0, d_u, d_v, MAX_CFL_SUBSTEPS).1
+        } else {
+            dt
+        };
         if !self.has_counterfactual_twin()
-            && super::gray_scott_atlas::should_reseed_washed_out_system(&self.system, d_u, d_v, dt)
+            && super::gray_scott_atlas::should_reseed_washed_out_system(
+                &self.system,
+                d_u,
+                d_v,
+                eff_dt,
+            )
         {
             MorphogenesisTool::initialize_adapter_system(&mut self.system, self.width, self.height);
             self.enforce_mask_concentrations();
@@ -169,6 +183,9 @@ impl MorphogenesisKineticsRunner {
             return None;
         }
         self.noise_amplitude = p[8];
+        if p.len() >= 10 {
+            self.auto_dt.store(p[9] >= 0.5, Ordering::Relaxed);
+        }
         let mode = Self::scalar_to_mode(p[0]);
         self.apply_explicit_params(mode, p[1], p[2], p[3], p[4], p[5], p[6], p[7])
     }
@@ -361,6 +378,11 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
     fn capture_active_params(&self) -> Option<CheckpointParams> {
         let p = self.params.read().unwrap_or_else(|e| e.into_inner());
         let ks = self.read_kinetics();
+        let auto_dt_scalar = if self.auto_dt.load(Ordering::Relaxed) {
+            1.0
+        } else {
+            0.0
+        };
         Some(CheckpointParams::scalars(&[
             Self::mode_to_scalar(ks.mode),
             p.a,
@@ -371,6 +393,7 @@ impl SimulationRunner for MorphogenesisKineticsRunner {
             p.d_v,
             p.dt,
             self.noise_amplitude,
+            auto_dt_scalar,
         ]))
     }
 

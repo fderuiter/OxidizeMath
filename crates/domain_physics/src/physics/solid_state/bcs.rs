@@ -1,12 +1,17 @@
 //! Superconductivity (BCS Theory).
 //!
 //! Models phonon-mediated Cooper pairing of electrons near the Fermi surface via
-//! self-consistent gap equations and Bogoliubov quasiparticle coherence factors.
+//! self-consistent finite-temperature gap equations, Bogoliubov quasiparticle coherence
+//! factors, and Dynes-broadened NIS tunneling spectroscopy.
 //!
 //! Errors during iterative gap solving are reported via [`SolidStateError`].
 
-use super::types::ElectronVolts;
+use super::types::{ElectronVolts, Kelvin};
 use crate::error::SolidStateError;
+
+#[path = "bcs_tunneling.rs"]
+mod tunneling;
+pub use tunneling::{dynes_dos_ratio, nis_tunneling_conductance};
 
 // --- Traits ---
 
@@ -158,19 +163,22 @@ impl BcsGapSolver {
 
 // --- Models ---
 
-/// Zero-temperature isotropic s-wave BCS pairing model over discrete single-particle levels:
-/// $$\Delta = V \sum_{|\xi_k| \le \hbar\omega_D} \frac{\Delta}{2\sqrt{\xi_k^2 + \Delta^2}}$$
+/// Finite-temperature isotropic $s$-wave BCS pairing model over discrete single-particle levels:
+/// $$\Delta = V \sum_{|\xi_k| \le \hbar\omega_D} \frac{\Delta}{2\sqrt{\xi_k^2 + \Delta^2}} \tanh\!\left(\frac{\sqrt{\xi_k^2 + \Delta^2}}{2 k_B T}\right)$$
 ///
-/// Reference: Bardeen, Cooper & Schrieffer (1957), DOI: `10.1103/PhysRev.108.1175`; see
+/// Reference: Bardeen, Cooper & Schrieffer (1957), DOI: `10.1103/PhysRev.108.1175`; Dynes,
+/// Narayanamurti & Garno (1978), DOI: `10.1103/PhysRevLett.41.1509`; see
 /// [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
 ///
 /// # Stability
-/// Guards quasiparticle denominators $E_k = \sqrt{\xi_k^2 + \Delta^2} \le 10^{-12}\,\text{eV}$
+/// Evaluates $\tanh(x)/x \approx 1 - x^2/3$ analytically near $x = E_k / (2 k_B T) \to 0$ and
+/// guards $T \to 0\,\text{K}$ quasiparticle denominators $E_k = \sqrt{\xi_k^2 + \Delta^2} \le 10^{-12}\,\text{eV}$
 /// against division-by-zero when $\xi_k = \Delta = 0$.
 ///
 /// # Domain of Validity
-/// Weak-to-intermediate attractive s-wave pairing $V > 0$, positive Debye cutoff $\hbar\omega_D > 0$,
-/// and zero-temperature ($T = 0\,\text{K}$) discrete level spectra.
+/// Weak-to-intermediate attractive $s$-wave pairing $V > 0$, positive Debye cutoff $\hbar\omega_D > 0$,
+/// and non-negative finite bath temperature $T \ge 0\,\text{K}$ (defaults to `0.0 K`).
+#[derive(Debug, Clone)]
 pub struct IsotropicBCSModel {
     /// Single-particle kinetic energies $\xi_k = \epsilon_k - \mu$ relative to the Fermi level.
     pub energies: Vec<ElectronVolts>,
@@ -178,10 +186,31 @@ pub struct IsotropicBCSModel {
     pub potential: ElectronVolts,
     /// Debye phonon cutoff energy $\hbar\omega_D$ (`eV`) bounding active pairing states.
     pub debye_cutoff: ElectronVolts,
+    /// Bath temperature $T$ (`K`); defaults to `0.0 K` when constructed via [`Self::new`].
+    pub temperature: Kelvin,
+}
+
+#[inline]
+fn thermal_pair_weight(e_k_ev: f64, two_kt_ev: f64) -> f64 {
+    if two_kt_ev <= 1e-15 {
+        if e_k_ev > 1e-12 {
+            1.0 / (2.0 * e_k_ev)
+        } else {
+            1.0e12
+        }
+    } else {
+        let x = e_k_ev / two_kt_ev;
+        let sinc_tanh = if x < 1e-6 {
+            1.0 - (x * x) / 3.0
+        } else {
+            x.tanh() / x
+        };
+        sinc_tanh / (2.0 * two_kt_ev)
+    }
 }
 
 impl IsotropicBCSModel {
-    /// Constructs an [`IsotropicBCSModel`] from raw `eV` energy levels, pairing `potential`, and `debye_cutoff`.
+    /// Constructs an [`IsotropicBCSModel`] at `0.0 K` from raw `eV` energy levels, `potential`, and `debye_cutoff`.
     ///
     /// # Errors
     ///
@@ -196,7 +225,107 @@ impl IsotropicBCSModel {
             energies: energies.into_iter().map(ElectronVolts::new).collect(),
             potential: ElectronVolts::new(potential),
             debye_cutoff: ElectronVolts::new(debye_cutoff),
+            temperature: Kelvin::new(0.0),
         })
+    }
+
+    /// Sets the bath temperature $T$ (`K`) used in finite-temperature $\tanh(E_k / (2 k_B T))$ weighting.
+    #[verified_engine::verified]
+    pub fn with_temperature(mut self, temperature: Kelvin) -> Self {
+        self.temperature = temperature;
+        self
+    }
+
+    #[inline]
+    fn evaluate_kernel_at(&self, delta_ev: f64, temperature: Kelvin) -> f64 {
+        let v_ev = self.potential.as_f64();
+        let cutoff = self.debye_cutoff.as_f64();
+        if v_ev <= 0.0 || cutoff <= 0.0 {
+            return 0.0;
+        }
+        let two_kt_ev = 2.0 * temperature.thermal_energy_ev().as_f64();
+        let mut sum = 0.0;
+        for &xi in &self.energies {
+            let xi_ev = xi.as_f64().abs();
+            if xi_ev <= cutoff {
+                let e_k = xi_ev.hypot(delta_ev);
+                sum += thermal_pair_weight(e_k, two_kt_ev);
+            }
+        }
+        v_ev * sum
+    }
+
+    #[inline]
+    fn zero_seed_condensation_step(&self, k0: f64) -> f64 {
+        let cutoff = self.debye_cutoff.as_f64().max(1e-6);
+        let probe =
+            (0.02 * cutoff * (k0 - 1.0).sqrt().min(1.0)).clamp(1e-6 * cutoff, 0.25 * cutoff);
+        let k_probe = self.evaluate_kernel_at(probe, self.temperature);
+        probe * k_probe
+    }
+
+    /// Evaluates the dimensionless BCS pairing kernel $K(\Delta, T) = V \sum_{|\xi_k| \le \hbar\omega_D} \frac{\tanh(E_k / (2 k_B T))}{2 E_k}$.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SolidStateError::InvalidParameter`] if `temperature < 0` or inputs are non-finite.
+    #[verified_engine::verified]
+    pub fn pairing_kernel(&self, gap: ElectronVolts) -> Result<f64, SolidStateError> {
+        let t_k = self.temperature.as_f64();
+        let d_ev = gap.as_f64();
+        if !t_k.is_finite() || t_k < 0.0 || !d_ev.is_finite() {
+            return Err(SolidStateError::InvalidParameter(
+                "Temperature must be non-negative and gap must be finite".to_string(),
+            ));
+        }
+        Ok(self.evaluate_kernel_at(d_ev.abs(), self.temperature))
+    }
+
+    /// Solves the linearized Thouless criterion $K(0, T_c) = 1$ for the critical temperature $T_c$ (`K`).
+    ///
+    /// Returns `0.0 K` if pairing is repulsive (`potential <= 0`) or sub-critical even as $T \to 0^+$.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SolidStateError::InvalidParameter`] if model energies or parameters are non-finite.
+    #[verified_engine::verified]
+    pub fn critical_temperature(&self) -> Result<Kelvin, SolidStateError> {
+        let v_ev = self.potential.as_f64();
+        let cutoff = self.debye_cutoff.as_f64();
+        if !v_ev.is_finite() || !cutoff.is_finite() {
+            return Err(SolidStateError::InvalidParameter(
+                "BCS potential and Debye cutoff must be finite".to_string(),
+            ));
+        }
+        if v_ev <= 0.0 || cutoff <= 0.0 || self.energies.is_empty() {
+            return Ok(Kelvin::new(0.0));
+        }
+        let mut lo = 0.0_f64;
+        if self.evaluate_kernel_at(0.0, Kelvin::new(1e-9)) <= 1.0 {
+            return Ok(Kelvin::new(0.0));
+        }
+        let mut hi = Kelvin::from_thermal_energy_ev(ElectronVolts::new(cutoff))
+            .as_f64()
+            .max(1.0);
+        for _ in 0..64 {
+            if self.evaluate_kernel_at(0.0, Kelvin::new(hi)) <= 1.0 {
+                break;
+            }
+            lo = hi;
+            hi *= 2.0;
+        }
+        for _ in 0..80 {
+            let mid = 0.5 * (lo + hi);
+            if self.evaluate_kernel_at(0.0, Kelvin::new(mid)) > 1.0 {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+            if (hi - lo) <= 1e-12 * (1.0 + hi) {
+                break;
+            }
+        }
+        Ok(Kelvin::new(0.5 * (lo + hi)))
     }
 }
 
@@ -206,22 +335,33 @@ impl GapEquation for IsotropicBCSModel {
         &self,
         current_gap: ElectronVolts,
     ) -> Result<ElectronVolts, SolidStateError> {
-        let mut summation = 0.0;
-        let delta_sq = current_gap.powf(2.0);
-
-        for &xi in &self.energies {
-            if xi.abs() <= self.debye_cutoff {
-                let e_k = (xi.powf(2.0) + delta_sq).sqrt();
-                let e_k_raw = e_k / ElectronVolts::new(1.0);
-                if e_k_raw > 1e-12 {
-                    summation += 1.0 / (2.0 * e_k_raw);
-                }
-            }
+        let t_k = self.temperature.as_f64();
+        let gap_raw = current_gap.as_f64();
+        if !t_k.is_finite() || t_k < 0.0 || !gap_raw.is_finite() {
+            return Err(SolidStateError::InvalidParameter(
+                "Temperature must be finite and non-negative".to_string(),
+            ));
         }
 
-        let factor = summation * (self.potential / ElectronVolts::new(1.0));
-        Ok(current_gap * factor)
+        let k0 = self.evaluate_kernel_at(0.0, self.temperature);
+        if k0 <= 1.0 {
+            return Ok(ElectronVolts::new(0.0));
+        }
+
+        let gap_abs = gap_raw.abs();
+        if gap_abs <= 1e-15 {
+            return Ok(ElectronVolts::new(self.zero_seed_condensation_step(k0)));
+        }
+
+        let factor = self.evaluate_kernel_at(gap_abs, self.temperature);
+        Ok(ElectronVolts::new(gap_abs * factor))
     }
+}
+
+/// Evaluates Bogoliubov quasiparticle excitation energy $E_k = \sqrt{\xi_k^2 + \Delta^2}$.
+#[verified_engine::verified]
+pub fn quasiparticle_energy(xi_k: ElectronVolts, delta: ElectronVolts) -> ElectronVolts {
+    ElectronVolts::new(xi_k.as_f64().hypot(delta.as_f64()))
 }
 
 /// Computes strongly typed Bogoliubov coherence factors `(u_k, v_k)` for quasiparticle dispersion
@@ -261,58 +401,45 @@ pub fn coherence_factors_strong(
     Ok((u_sq.sqrt(), v_sq.value().sqrt()))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_bcs_probability_conservation() {
-        let xi = ElectronVolts::new(1.5);
-        let delta = ElectronVolts::new(0.2);
-        let (u, v) = coherence_factors_strong(xi, delta).unwrap();
-        let prob = u * u + v * v;
-        assert!((prob - 1.0).abs() < math_commons::registry::TOLERANCE_STANDARD);
+/// Evaluates Bogoliubov coherence factors `(u_k, v_k)` with continuous normal-state limits at $\Delta = 0$.
+///
+/// For $\Delta \to 0^+$, returns `(0.0, 1.0)` below the Fermi level ($\xi_k < 0$), `(1.0, 0.0)` above
+/// the Fermi level ($\xi_k > 0$), and `(1/√2, 1/√2)` ($u_k^2 = v_k^2 = 0.5$) right at $\xi_k = 0$.
+///
+/// # Errors
+///
+/// Returns [`SolidStateError::InvalidParameter`] if `xi_k` or `delta` is non-finite.
+#[verified_engine::verified]
+pub fn coherence_factors_normal_limit(
+    xi_k: ElectronVolts,
+    delta: ElectronVolts,
+) -> Result<(f64, f64), SolidStateError> {
+    let xi = xi_k.as_f64();
+    let d = delta.as_f64().abs();
+    if !xi.is_finite() || !d.is_finite() {
+        return Err(SolidStateError::InvalidParameter(
+            "Coherence factor energies must be finite".to_string(),
+        ));
     }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_solver_convergence() {
-        let energies: Vec<f64> = (0..100).map(|i| (i as f64 - 50.0) * 0.1).collect();
-        let potential = 0.5;
-        let debye = 5.0;
-
-        let model = IsotropicBCSModel::new(energies.clone(), potential, debye).unwrap();
-        let solver = BcsGapSolver::default();
-        let initial = ElectronVolts::new(0.05);
-
-        let result = solver.solve(&model, initial);
-        assert!(result.is_ok());
-        let delta = result.unwrap();
-        assert!((delta / ElectronVolts::new(1.0)) > 0.0);
+    let e_k = xi.hypot(d);
+    if e_k <= 1e-15 {
+        let half_sqrt = std::f64::consts::FRAC_1_SQRT_2;
+        return Ok((half_sqrt, half_sqrt));
     }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_bcs_gap_solver_direct() {
-        let energies: Vec<f64> = (0..100).map(|i| (i as f64 - 50.0) * 0.1).collect();
-        let potential = 0.5;
-        let debye = 5.0;
-
-        let model = IsotropicBCSModel::new(energies, potential, debye).unwrap();
-        let solver = BcsGapSolver::default()
-            .with_max_iterations(1000)
-            .with_tolerance(math_commons::registry::TOLERANCE_STANDARD)
-            .with_mixing_param(0.5);
-
-        let initial_guess = ElectronVolts::new(0.01 * debye);
-        let res = solver.solve(&model, initial_guess);
-
-        let delta = match res {
-            Ok(delta) => delta,
-            Err(SolidStateError::ConvergenceFailure(_, last_val)) => last_val,
-            Err(e) => panic!("Unexpected solver error: {:?}", e),
+    if d <= 1e-15 {
+        return if xi < 0.0 {
+            Ok((0.0, 1.0))
+        } else {
+            Ok((1.0, 0.0))
         };
-        assert!((delta / ElectronVolts::new(1.0)) > 0.0);
     }
+    let raw_v_sq = (0.5 * (1.0 - xi / e_k)).clamp(0.0, 1.0);
+    let u_sq = 1.0 - raw_v_sq;
+    Ok((u_sq.sqrt(), raw_v_sq.sqrt()))
 }
+
+// [cite:mmwave_radiotherapy_setup]
+
+#[cfg(test)]
+#[path = "bcs_tests.rs"]
+mod tests;
