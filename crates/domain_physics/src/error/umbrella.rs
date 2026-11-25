@@ -1,6 +1,6 @@
 use super::{
     ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
-    RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError,
+    QuantumError, RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError,
 };
 use diagnostics::{Diagnostic, Severity};
 use domain_applied::error::{AppliedError, KalmanError};
@@ -28,6 +28,27 @@ impl Diagnostic for NuclearError {
     }
 }
 
+impl Diagnostic for QuantumError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        match self {
+            Self::Math(err) => err.severity(),
+            _ => Severity::Error,
+        }
+    }
+
+    #[verified_engine::verified]
+    fn metadata(&self) -> HashMap<String, String> {
+        let mut map = HashMap::new();
+        map.insert("error_type".to_string(), "QuantumError".to_string());
+        if let Self::Math(math_err) = self {
+            map.extend(math_err.metadata());
+        }
+        map.insert("description".to_string(), self.to_string());
+        map
+    }
+}
+
 /// Extensible crate-level umbrella error for `domain_physics` models and upstream math/applied errors.
 #[non_exhaustive]
 #[derive(Debug, Error)]
@@ -50,6 +71,9 @@ pub enum PhysicsError {
     /// Nuclear structure and reaction error.
     #[error("{0}")]
     Nuclear(#[from] NuclearError),
+    /// Quantum mechanics orbital and Hilbert-space state error.
+    #[error("{0}")]
+    Quantum(#[from] QuantumError),
     /// Radar array and MUSIC estimation error.
     #[error("{0}")]
     Radar(#[from] RadarError),
@@ -159,6 +183,7 @@ impl PhysicsError {
             Self::Gating(err) => err,
             Self::HighEnergy(err) => err,
             Self::Nuclear(err) => err,
+            Self::Quantum(err) => err,
             Self::Radar(err) => err,
             Self::Sandpile(err) => err,
             Self::SolidState(err) => err,

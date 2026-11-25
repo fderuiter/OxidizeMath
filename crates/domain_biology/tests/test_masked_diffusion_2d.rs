@@ -164,3 +164,31 @@ fn test_pin_cell_mask_persists_after_turing_dynamics_standard_solver_updates() {
     assert_eq!((system.u()[sk], system.v()[sk]), (0.0, 0.0));
     assert_eq!((system.u()[wl], system.v()[wl]), (0.0, 0.0));
 }
+
+#[test]
+fn test_cell_mask_set_roles_slice_returns_typed_error_with_zero_allocations() {
+    use domain_biology::biology::diffusion::CellMask2D;
+    use domain_biology::biology::reaction_diffusion::ReactionDiffusionError;
+
+    let mut mask = CellMask2D::new(4, 3);
+    let short_roles = [0_u8; 11];
+    let mut valid_roles = [0_u8; 12];
+    valid_roles[5] = ReactionCellRole::ZeroFluxWall as u8;
+
+    let ((err_res, ok_res), _) = VerifiedEngine::run_verified(|| {
+        let err = mask.set_roles_slice(&short_roles);
+        let ok = mask.set_roles_slice(&valid_roles);
+        (err, ok)
+    });
+
+    assert!(matches!(
+        err_res,
+        Err(ReactionDiffusionError::MaskLengthMismatch {
+            actual: 11,
+            expected: 12,
+        })
+    ));
+    assert!(ok_res.is_ok());
+    assert!(mask.has_active_cells());
+    assert!(!err_res.unwrap_err().to_string().contains('{'));
+}

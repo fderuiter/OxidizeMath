@@ -54,6 +54,26 @@ pub enum MathError {
         len: usize,
     },
 
+    /// Pre-allocated solver scratch workspace lacked enough remaining elements.
+    #[error(
+        "Solver workspace too small: required at least {required} elements, available {available}"
+    )]
+    WorkspaceTooSmall {
+        /// Minimum number of contiguous scalar elements required.
+        required: usize,
+        /// Remaining scalar elements available in the workspace slice.
+        available: usize,
+    },
+
+    /// Radix-2 spectral or grid dimension failed power-of-two or minimum size bounds.
+    #[error("Grid size {size} must be a power of two and at least {min}")]
+    InvalidRadix2GridSize {
+        /// Supplied spatial or spectral grid dimension.
+        size: usize,
+        /// Minimum required power-of-two grid dimension.
+        min: usize,
+    },
+
     /// Numerical computation failures (e.g., singular matrix, non-positive definite).
     #[error("Numerical error: {reason}")]
     NumericalError {
@@ -94,6 +114,17 @@ impl Diagnostic for MathError {
                 map.insert("index".to_string(), index.to_string());
                 map.insert("value".to_string(), value.to_string());
                 map.insert("len".to_string(), len.to_string());
+            }
+            Self::WorkspaceTooSmall {
+                required,
+                available,
+            } => {
+                map.insert("required".to_string(), required.to_string());
+                map.insert("available".to_string(), available.to_string());
+            }
+            Self::InvalidRadix2GridSize { size, min } => {
+                map.insert("size".to_string(), size.to_string());
+                map.insert("min".to_string(), min.to_string());
             }
             Self::NumericalError { reason } | Self::ConversionError { reason } => {
                 map.insert("reason".to_string(), reason.clone());

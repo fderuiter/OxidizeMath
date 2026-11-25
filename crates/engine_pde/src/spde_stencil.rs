@@ -334,6 +334,9 @@ impl SplitStepSpdeStencilStepper {
     }
 }
 
+/// Checked `#![no_std]` companion steppers returning [`MathError`](math_commons::error::MathError).
+pub mod checked;
+
 fn apply_local_reaction_2d<F: FnMut(f64) -> f64>(
     u: &mut [f64],
     width: usize,

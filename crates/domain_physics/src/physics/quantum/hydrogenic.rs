@@ -5,7 +5,7 @@ use crate::physics::quantum::hamiltonian::construct_two_state_eigen_hamiltonian_
 use crate::physics::quantum::schrodinger::{
     evolve_state_in_place, time_evolution_operator_2x2_into,
 };
-use crate::physics::quantum::types::{QuantumOperator, QuantumState};
+use crate::physics::quantum::types::{QuantumError, QuantumOperator, QuantumState};
 use core::f64::consts::FRAC_1_SQRT_2;
 use math_commons::math_kernel::types::flatten_3d_index;
 use nalgebra::{DMatrix, DVector};
@@ -27,20 +27,17 @@ pub struct OrbitalQuantumNumbers {
 impl OrbitalQuantumNumbers {
     /// Validates and constructs `(n, l, m)` within interactive bounds `1 <= n <= 6`.
     #[verified_engine::verified]
-    pub fn new(n: u32, l: u32, m: i32) -> Result<Self, String> {
+    pub fn new(n: u32, l: u32, m: i32) -> Result<Self, QuantumError> {
         if !(1..=6).contains(&n) {
-            return Err(format!("Principal quantum number n={n} must be in 1..=6"));
+            return Err(QuantumError::InvalidPrincipalQuantumNumber { n, max_n: 6 });
         }
         if l >= n {
-            return Err(format!(
-                "Orbital quantum number l={l} must satisfy l < n={n}"
-            ));
+            return Err(QuantumError::InvalidOrbitalQuantumNumber { l, n });
         }
         if m.unsigned_abs() > l {
-            return Err(format!(
-                "Magnetic quantum number m={m} must satisfy |m| <= l={l}"
-            ));
+            return Err(QuantumError::InvalidMagneticQuantumNumber { m, l });
         }
+        debug_assert!(l < n && m.unsigned_abs() <= l);
         Ok(Self { n, l, m })
     }
 

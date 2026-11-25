@@ -1,7 +1,9 @@
 // [cite:engine_diffeq]
 use crate::system::{SdeSystem, StochasticCalculus};
+use math_commons::error::MathError;
 use math_commons::math_kernel::types::{
-    Scalar, SolverWorkspace, fill_standard_normal, flatten_2d_index, sample_standard_normal_pair,
+    Dimension, Scalar, SolverWorkspace, fill_standard_normal, flatten_2d_index,
+    sample_standard_normal_pair,
 };
 use rand_core::RngCore;
 
@@ -119,6 +121,115 @@ impl MilsteinSolver {
         assert!(state.len() >= d && dw.len() >= m);
         let mut ws = workspace.reborrow();
         self.apply_milstein(system, t, dt, dw, None, state, &mut ws);
+    }
+
+    /// Checked companion to [`Self::step`] validating `dt >= 0`, `state.len() >= state_dim`, and workspace capacity.
+    #[verified_engine::verified]
+    pub fn try_step<T: Scalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
+        &self,
+        system: &S,
+        t: T,
+        dt: T,
+        state: &mut [T],
+        workspace: &mut SolverWorkspace<'_, T>,
+        rng: &mut R,
+    ) -> Result<(), MathError> {
+        if !(dt >= T::ZERO && dt.is_finite()) {
+            return Err(MathError::OutOfBounds {
+                value: dt.to_f64(),
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        let d = system.state_dim();
+        let m = system.wiener_dim();
+        if state.len() != d {
+            return Err(MathError::DimensionMismatch {
+                expected: Dimension(d),
+                actual: Dimension(state.len()),
+            });
+        }
+        let base = d.checked_mul(5).and_then(|d5| {
+            d.checked_mul(m)
+                .and_then(|dm| dm.checked_mul(3))
+                .and_then(|dm3| d5.checked_add(dm3))
+        });
+        let levy = if self.levy_truncation > 0 && m > 1 {
+            m.checked_mul(m)
+                .and_then(|mm| m.checked_mul(2).and_then(|m2| mm.checked_add(m2)))
+        } else {
+            Some(0)
+        };
+        let required = base
+            .and_then(|b| b.checked_add(m))
+            .and_then(|bm| levy.and_then(|l| bm.checked_add(l)))
+            .ok_or(MathError::WorkspaceTooSmall {
+                required: usize::MAX,
+                available: workspace.len(),
+            })?;
+        if workspace.len() < required {
+            return Err(MathError::WorkspaceTooSmall {
+                required,
+                available: workspace.len(),
+            });
+        }
+        self.step(system, t, dt, state, workspace, rng);
+        debug_assert_eq!(state.len(), d);
+        Ok(())
+    }
+
+    /// Checked companion to [`Self::step_with_increments`] validating `dt >= 0`, `(state, dw)` slices, and workspace capacity.
+    #[verified_engine::verified]
+    pub fn try_step_with_increments<T: Scalar, S: SdeSystem<T> + ?Sized>(
+        &self,
+        system: &S,
+        t: T,
+        dt: T,
+        dw: &[T],
+        state: &mut [T],
+        workspace: &mut SolverWorkspace<'_, T>,
+    ) -> Result<(), MathError> {
+        if !(dt >= T::ZERO && dt.is_finite()) {
+            return Err(MathError::OutOfBounds {
+                value: dt.to_f64(),
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        let d = system.state_dim();
+        let m = system.wiener_dim();
+        if state.len() != d {
+            return Err(MathError::DimensionMismatch {
+                expected: Dimension(d),
+                actual: Dimension(state.len()),
+            });
+        }
+        if dw.len() != m {
+            return Err(MathError::DimensionMismatch {
+                expected: Dimension(m),
+                actual: Dimension(dw.len()),
+            });
+        }
+        let required = d
+            .checked_mul(5)
+            .and_then(|d5| {
+                d.checked_mul(m)
+                    .and_then(|dm| dm.checked_mul(3))
+                    .and_then(|dm3| d5.checked_add(dm3))
+            })
+            .ok_or(MathError::WorkspaceTooSmall {
+                required: usize::MAX,
+                available: workspace.len(),
+            })?;
+        if workspace.len() < required {
+            return Err(MathError::WorkspaceTooSmall {
+                required,
+                available: workspace.len(),
+            });
+        }
+        self.step_with_increments(system, t, dt, dw, state, workspace);
+        debug_assert_eq!(state.len(), d);
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]

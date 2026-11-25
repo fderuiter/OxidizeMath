@@ -139,14 +139,24 @@ impl CellMask2D {
 
     /// Replaces the mask buffer from a validated byte slice without reallocating.
     #[verified_engine::verified]
-    pub fn set_roles_slice(&mut self, bytes: &[u8]) -> Result<(), &'static str> {
-        if bytes.len() != self.roles.len() {
-            return Err("CellMask2D byte slice length mismatch");
+    pub fn set_roles_slice(
+        &mut self,
+        bytes: &[u8],
+    ) -> Result<(), crate::biology::reaction_diffusion::ReactionDiffusionError> {
+        let expected = self.roles.len();
+        if bytes.len() != expected {
+            return Err(
+                crate::biology::reaction_diffusion::ReactionDiffusionError::MaskLengthMismatch {
+                    expected,
+                    actual: bytes.len(),
+                },
+            );
         }
         for (dst, &code) in self.roles.iter_mut().zip(bytes.iter()) {
             *dst = ReactionCellRole::from_u8(code) as u8;
         }
         self.recompute_active_flag();
+        debug_assert_eq!(self.roles.len(), expected);
         Ok(())
     }
 

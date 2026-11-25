@@ -26,6 +26,9 @@ fn test_physics_leaf_wrappers_preserve_source_chain() {
 
     let sm = StatMechError::from(sample_math_err());
     assert!(sm.source().is_some());
+
+    let qm = QuantumError::from(sample_math_err());
+    assert!(qm.source().is_some());
 }
 
 #[test]
@@ -38,6 +41,7 @@ fn test_physics_umbrella_variants_preserve_source_and_diagnostics() {
         GatingError::InterlockLatched.into(),
         HighEnergyError::InvalidMomentum.into(),
         NuclearError::InvalidHalfLife.into(),
+        QuantumError::InvalidPrincipalQuantumNumber { n: 0, max_n: 6 }.into(),
         RadarError::from(sample_math_err()).into(),
         SolidStateError::InvalidParameter("band".to_string()).into(),
         StandardModelError::LandauPole { scale: 100.0 }.into(),

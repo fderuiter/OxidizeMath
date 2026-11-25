@@ -1,6 +1,7 @@
 // [cite:engine_diffeq]
 use crate::system::LangevinSystem;
-use math_commons::math_kernel::types::{Scalar, SolverWorkspace, fill_standard_normal};
+use math_commons::error::MathError;
+use math_commons::math_kernel::types::{Dimension, Scalar, SolverWorkspace, fill_standard_normal};
 use rand_core::RngCore;
 
 /// Physical parameters for underdamped Langevin dynamics
@@ -43,6 +44,42 @@ pub struct BaoabLangevinSolver<T: Scalar> {
 }
 
 impl<T: Scalar> BaoabLangevinSolver<T> {
+    /// Constructs a precomputed [`BaoabLangevinSolver`] after validating physical parameter bounds.
+    #[verified_engine::verified]
+    pub fn try_new(params: BaoabParams<T>) -> Result<Self, MathError> {
+        if !(params.mass > T::ZERO && params.mass.is_finite()) {
+            return Err(MathError::StrictlyOutOfBounds {
+                value: params.mass.to_f64(),
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        if !(params.friction >= T::ZERO && params.friction.is_finite()) {
+            return Err(MathError::OutOfBounds {
+                value: params.friction.to_f64(),
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        if !(params.temperature >= T::ZERO && params.temperature.is_finite()) {
+            return Err(MathError::OutOfBounds {
+                value: params.temperature.to_f64(),
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        if !(params.dt > T::ZERO && params.dt.is_finite()) {
+            return Err(MathError::StrictlyOutOfBounds {
+                value: params.dt.to_f64(),
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        let solver = Self::new(params);
+        debug_assert!(solver.half_dt > T::ZERO);
+        Ok(solver)
+    }
+
     /// Constructs a precomputed [`BaoabLangevinSolver`] from [`BaoabParams`].
     ///
     /// # Panics
@@ -137,5 +174,43 @@ impl<T: Scalar> BaoabLangevinSolver<T> {
         for (pi, &gi) in p.iter_mut().take(d).zip(grad.iter()) {
             *pi -= self.half_dt * gi;
         }
+    }
+
+    /// Checked companion to [`Self::step`] validating `(q, p)` lengths and `workspace` capacity (`>= 2 * dim`).
+    #[verified_engine::verified]
+    pub fn try_step<S: LangevinSystem<T> + ?Sized, R: RngCore + ?Sized>(
+        &self,
+        system: &S,
+        q: &mut [T],
+        p: &mut [T],
+        workspace: &mut SolverWorkspace<'_, T>,
+        rng: &mut R,
+    ) -> Result<(), MathError> {
+        let d = system.dim();
+        if q.len() != d {
+            return Err(MathError::DimensionMismatch {
+                expected: Dimension(d),
+                actual: Dimension(q.len()),
+            });
+        }
+        if p.len() != d {
+            return Err(MathError::DimensionMismatch {
+                expected: Dimension(d),
+                actual: Dimension(p.len()),
+            });
+        }
+        let required = d.checked_mul(2).ok_or(MathError::WorkspaceTooSmall {
+            required: usize::MAX,
+            available: workspace.len(),
+        })?;
+        if workspace.len() < required {
+            return Err(MathError::WorkspaceTooSmall {
+                required,
+                available: workspace.len(),
+            });
+        }
+        self.step(system, q, p, workspace, rng);
+        debug_assert_eq!(q.len(), d);
+        Ok(())
     }
 }

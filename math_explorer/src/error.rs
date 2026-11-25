@@ -30,7 +30,8 @@ pub use domain_epidemiology::error::{
 #[cfg(feature = "physics")]
 pub use domain_physics::error::{
     ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
-    PhysicsError, RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError,
+    PhysicsError, QuantumError, RadarError, SandpileError, SolidStateError, StandardModelError,
+    StatMechError,
 };
 
 #[cfg(feature = "pure_math")]
@@ -155,6 +156,9 @@ pub enum Error {
     /// Nuclear physics error.
     #[cfg(feature = "physics")]
     Nuclear(NuclearError),
+    /// Quantum mechanics orbital and Hilbert-space error.
+    #[cfg(feature = "physics")]
+    Quantum(QuantumError),
     /// Radar array estimation error.
     #[cfg(feature = "physics")]
     Radar(RadarError),

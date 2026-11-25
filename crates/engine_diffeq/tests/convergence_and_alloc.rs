@@ -4,11 +4,16 @@
 use engine_diffeq::{
     BaoabLangevinSolver, BaoabParams, CorrelatedWienerIncrement, EulerMaruyamaSolver,
     LangevinSystem, MilsteinSolver, OwnedWorkspace, SdeSystem, Sriw1Solver, StochasticCalculus,
-    ssa_sample_event,
+    ssa_sample_event, try_eval_ito_effective_drift,
 };
-use math_commons::math_kernel::types::SolverWorkspace;
+use math_commons::error::MathError;
+use math_commons::math_kernel::types::{Dimension, SolverWorkspace};
 use math_rng::OxidizeRng;
+use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
+
+#[global_allocator]
+static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 /// Nonlinear hyperbolic-sine SDE whose exact solution is $X_t = \sinh(\operatorname{arsinh}(X_0) + \mu t + \sigma W_t)$.
 ///
@@ -332,4 +337,141 @@ fn test_all_engine_diffeq_solvers_zero_heap_allocations_under_verified_lock() {
     });
     assert!(state[0].is_finite() && q[0].is_finite() && p[0].is_finite());
     assert!(receipt.function_calls > 0);
+}
+
+#[test]
+fn test_checked_em_and_milstein_domain_errors() {
+    let sys = NonlinearSinhSde {
+        mu: 0.2,
+        sigma: 0.4,
+        calculus: StochasticCalculus::Stratonovich,
+    };
+    let em = EulerMaruyamaSolver::new(StochasticCalculus::Stratonovich);
+    let mil = MilsteinSolver::new(StochasticCalculus::Ito);
+    let mut rng = OxidizeRng::new(0xCECC_ED00_2026_0002);
+    let mut state = [0.25_f64];
+    let mut bad_state = [0.25_f64, 0.5];
+    let mut tiny = [0.0_f64; 1];
+    let mut full = [0.0_f64; 32];
+    let mut tiny_ws = SolverWorkspace::new(&mut tiny);
+    let mut full_ws = SolverWorkspace::new(&mut full);
+
+    assert_eq!(
+        em.try_step(&sys, 0.0, 0.01, &mut bad_state, &mut full_ws, &mut rng),
+        Err(MathError::DimensionMismatch {
+            expected: Dimension(1),
+            actual: Dimension(2),
+        })
+    );
+    assert!(matches!(
+        em.try_step_with_increments(&sys, 0.0, -0.01, &[0.0], &mut state, &mut full_ws),
+        Err(MathError::OutOfBounds { .. })
+    ));
+    assert!(matches!(
+        mil.try_step(&sys, 0.0, 0.01, &mut state, &mut tiny_ws, &mut rng),
+        Err(MathError::WorkspaceTooSmall { .. })
+    ));
+    assert!(
+        mil.try_step_with_increments(&sys, 0.0, 0.01, &[0.0, 0.0], &mut state, &mut full_ws)
+            .is_err()
+    );
+}
+
+#[test]
+fn test_checked_sriw1_and_ito_drift_domain_errors() {
+    let sys = NonlinearSinhSde {
+        mu: 0.2,
+        sigma: 0.4,
+        calculus: StochasticCalculus::Stratonovich,
+    };
+    let srk = Sriw1Solver::new(StochasticCalculus::Stratonovich);
+    let mut rng = OxidizeRng::new(0xCECC_ED00_2026_0022);
+    let mut state = [0.25_f64];
+    let mut out_drift = [0.0_f64; 1];
+    let mut tiny = [0.0_f64; 1];
+    let mut full = [0.0_f64; 32];
+    let mut tiny_ws = SolverWorkspace::new(&mut tiny);
+    let mut full_ws = SolverWorkspace::new(&mut full);
+
+    assert!(
+        srk.try_step(&sys, 0.0, 0.01, &mut state, &mut tiny_ws, &mut rng)
+            .is_err()
+    );
+    assert!(
+        srk.try_step_with_correlated_increments(
+            &sys,
+            0.0,
+            0.01,
+            &[0.0],
+            &[0.0, 0.0],
+            &mut state,
+            &mut full_ws
+        )
+        .is_err()
+    );
+    let calc = StochasticCalculus::Stratonovich;
+    assert!(
+        try_eval_ito_effective_drift(&sys, calc, 0.0, &state, &mut out_drift, &mut tiny_ws)
+            .is_err()
+    );
+    assert!(
+        try_eval_ito_effective_drift(&sys, calc, 0.0, &state, &mut out_drift, &mut full_ws).is_ok()
+    );
+}
+
+#[test]
+fn test_checked_baoab_and_zero_alloc_checked_solvers() {
+    assert!(matches!(
+        BaoabLangevinSolver::try_new(BaoabParams {
+            mass: 0.0,
+            friction: 1.0,
+            temperature: 1.0,
+            dt: 0.01,
+        }),
+        Err(MathError::StrictlyOutOfBounds { .. })
+    ));
+    assert!(matches!(
+        BaoabLangevinSolver::try_new(BaoabParams {
+            mass: 1.0,
+            friction: -0.1,
+            temperature: 1.0,
+            dt: 0.01,
+        }),
+        Err(MathError::OutOfBounds { .. })
+    ));
+
+    let baoab = BaoabLangevinSolver::try_new(BaoabParams {
+        mass: 1.0,
+        friction: 1.0,
+        temperature: 1.0,
+        dt: 0.01,
+    })
+    .unwrap();
+    let harm = HarmonicPotential2D { k: 2.0 };
+    let mut q = [1.0_f64, -0.5];
+    let mut p_bad = [0.1_f64];
+    let mut p = [0.1_f64, 0.2];
+    let mut tiny = [0.0_f64; 1];
+    let mut full = [0.0_f64; 16];
+    let mut rng = OxidizeRng::new(0xBA0A_CECC_2026_0003);
+
+    VerifiedEngine::run_verified(|| {
+        let mut tiny_ws = SolverWorkspace::new(&mut tiny);
+        let mut full_ws = SolverWorkspace::new(&mut full);
+        assert!(
+            baoab
+                .try_step(&harm, &mut q, &mut p_bad, &mut full_ws, &mut rng)
+                .is_err()
+        );
+        assert!(
+            baoab
+                .try_step(&harm, &mut q, &mut p, &mut tiny_ws, &mut rng)
+                .is_err()
+        );
+        assert!(
+            baoab
+                .try_step(&harm, &mut q, &mut p, &mut full_ws, &mut rng)
+                .is_ok()
+        );
+    });
 }

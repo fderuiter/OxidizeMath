@@ -190,3 +190,35 @@ fn test_1000_steps_dense_rl_workspace_zero_heap_allocations() {
     assert!(ws_q.episodes_completed > 0);
     assert!(ws_pg.episodes_completed > 0);
 }
+
+#[test]
+fn test_apply_cells_u8_returns_typed_ai_errors_with_zero_allocations() {
+    use domain_ai::error::AIError;
+
+    let mut mdp = SculptedGridMdp::new(3, 2, 0.9, 0.0);
+    let short_cells = [0_u8; 5];
+    let bad_tag_cells = [0_u8, 1, 2, 99, 0, 0];
+    let valid_cells = [0_u8, 1, 2, 3, 4, 5];
+
+    let ((err_len, err_tag, ok_res), _) = VerifiedEngine::run_verified(|| {
+        let e1 = mdp.apply_cells_u8(&short_cells);
+        let e2 = mdp.apply_cells_u8(&bad_tag_cells);
+        let ok = mdp.apply_cells_u8(&valid_cells);
+        (e1, e2, ok)
+    });
+
+    assert_eq!(
+        err_len,
+        Err(AIError::CellMaskLengthMismatch {
+            expected: 6,
+            actual: 5,
+        })
+    );
+    assert_eq!(
+        err_tag,
+        Err(AIError::InvalidCellRoleTag { index: 3, code: 99 })
+    );
+    assert_eq!(ok_res, Ok(()));
+    let msg = err_len.unwrap_err().to_string();
+    assert!(!msg.contains('{') && msg.contains("expected 6 cells, got 5"));
+}

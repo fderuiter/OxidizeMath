@@ -1,4 +1,4 @@
-//! Verifies that all 43 public error enums tested from `math_explorer::error`
+//! Verifies that all 45 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -18,9 +18,9 @@ use math_explorer::error::{
     GameTheoryError, Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError,
     HyperbolicError, IsosurfaceError, KellyError, KnotError, LoraError, MarketPricingError,
     MarkovError, MatchModelError, MathError, MonteCarloError, NumberTheoryError,
-    OptionPricingError, OuError, PharmacokineticsError, PoissonError, QueueingError, RadarError,
-    SandpileError, ShaderEmitError, SolidStateError, StandardModelError, StatMechError,
-    Su11HyperbolicError, TdaError, ZipError,
+    OptionPricingError, OuError, PharmacokineticsError, PoissonError, QuantumError, QueueingError,
+    RadarError, ReactionDiffusionError, SandpileError, ShaderEmitError, SolidStateError,
+    StandardModelError, StatMechError, Su11HyperbolicError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -60,6 +60,17 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
             min: 0.0,
             max: 1.0,
         },
+    );
+    assert_readable_diagnostic(
+        "MathError::WorkspaceTooSmall",
+        &MathError::WorkspaceTooSmall {
+            required: 32,
+            available: 16,
+        },
+    );
+    assert_readable_diagnostic(
+        "MathError::InvalidRadix2GridSize",
+        &MathError::InvalidRadix2GridSize { size: 6, min: 4 },
     );
     assert_readable_diagnostic("FitError", &FitError::UnsupportedDegree { degree: 5 });
     assert_readable_diagnostic(
@@ -256,6 +267,10 @@ fn applied_ai_bio_climate_epi_errors_emit_readable_display_and_metadata() {
             heads: 8,
         },
     );
+    assert_readable_diagnostic(
+        "AIError::InvalidCellRoleTag",
+        &AIError::InvalidCellRoleTag { index: 3, code: 99 },
+    );
     assert_readable_diagnostic("BatteryError", &BatteryError::NegativeCycles(-5.0));
     assert_readable_diagnostic(
         "ClimateError",
@@ -266,6 +281,17 @@ fn applied_ai_bio_climate_epi_errors_emit_readable_display_and_metadata() {
         },
     );
     assert_readable_diagnostic("EngineeringError", &EngineeringError::SingularDesignMatrix);
+    assert_readable_diagnostic(
+        "EngineeringError::ZeroVolumeDimension",
+        &EngineeringError::ZeroVolumeDimension { dims: [0, 4, 4] },
+    );
+    assert_readable_diagnostic(
+        "ReactionDiffusionError::MaskLengthMismatch",
+        &ReactionDiffusionError::MaskLengthMismatch {
+            expected: 16,
+            actual: 12,
+        },
+    );
     assert_readable_diagnostic(
         "GameTheoryError",
         &GameTheoryError::NonSquarePayoffMatrix { rows: 2, cols: 3 },
@@ -297,7 +323,7 @@ fn applied_ai_bio_climate_epi_errors_emit_readable_display_and_metadata() {
 }
 
 #[test]
-fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
+fn physics_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic(
         "ChaosError",
         &ChaosError::InvalidParameter("dt".to_string()),
@@ -319,6 +345,10 @@ fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic(
         "HighEnergyError",
         &HighEnergyError::InvalidLorentzFactor { gamma: 0.5 },
+    );
+    assert_readable_diagnostic(
+        "QuantumError",
+        &QuantumError::InvalidOrbitalQuantumNumber { l: 2, n: 2 },
     );
     assert_readable_diagnostic(
         "RadarError",
@@ -344,7 +374,10 @@ fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
         &StandardModelError::UnbrokenSymmetry { mu2: 1.0 },
     );
     assert_readable_diagnostic("StatMechError", &StatMechError::InvalidTemperature(-5.0));
+}
 
+#[test]
+fn wrapped_math_errors_emit_readable_display_and_metadata() {
     let math_err = MathError::StrictlyOutOfBounds {
         value: 0.0,
         min: 0.0,
@@ -356,4 +389,12 @@ fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
         &EngineeringError::from(math_err.clone()),
     );
     assert_readable_diagnostic("DoseFluenceError::Math", &DoseFluenceError::from(math_err));
+    assert_readable_diagnostic(
+        "QuantumError::Math",
+        &QuantumError::from(MathError::OutOfBounds {
+            value: -1.0,
+            min: 0.0,
+            max: 1.0,
+        }),
+    );
 }

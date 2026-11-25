@@ -121,3 +121,46 @@ fn test_hydrogenic_superposition_zero_allocation_hot_path() {
     assert!(voxels.iter().all(|v| v.is_finite()));
     assert!(voxels.iter().any(|&v| v > 0.0));
 }
+
+#[test]
+fn test_quantum_numbers_and_probability_density_return_typed_quantum_errors() {
+    use domain_physics::physics::quantum::{QuantumError, QuantumState};
+    use num_complex::Complex;
+
+    let state = QuantumState::new(vec![Complex::new(0.6, 0.0), Complex::new(0.0, 0.8)].into());
+    let mut short_out = [0.0_f64; 1];
+    let mut exact_out = [0.0_f64; 2];
+
+    let ((e_n, e_l, e_m, e_len, ok_prob), _) = VerifiedEngine::run_verified(|| {
+        (
+            OrbitalQuantumNumbers::new(0, 0, 0),
+            OrbitalQuantumNumbers::new(2, 2, 0),
+            OrbitalQuantumNumbers::new(2, 1, -2),
+            state.try_probability_density_in_place(&mut short_out),
+            state.try_probability_density_in_place(&mut exact_out),
+        )
+    });
+
+    assert_eq!(
+        e_n,
+        Err(QuantumError::InvalidPrincipalQuantumNumber { n: 0, max_n: 6 })
+    );
+    assert_eq!(
+        e_l,
+        Err(QuantumError::InvalidOrbitalQuantumNumber { n: 2, l: 2 })
+    );
+    assert_eq!(
+        e_m,
+        Err(QuantumError::InvalidMagneticQuantumNumber { l: 1, m: -2 })
+    );
+    assert_eq!(
+        e_len,
+        Err(QuantumError::StateLengthMismatch {
+            expected: 2,
+            actual: 1,
+        })
+    );
+    assert_eq!(ok_prob, Ok(()));
+    assert_relative_eq!(exact_out[0] + exact_out[1], 1.0, epsilon = 1e-12);
+    assert!(!e_m.unwrap_err().to_string().contains('{'));
+}

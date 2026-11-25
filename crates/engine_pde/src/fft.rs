@@ -165,3 +165,140 @@ pub fn dealias_2d_spectrum(spec: &mut [f64], width: usize, height: usize) {
         }
     }
 }
+
+/// Checked companion to [`fft_1d_inplace`] returning [`MathError`](math_commons::error::MathError)
+/// when `n` is not a positive power of two or `buf.len() < 2 * n`.
+#[verified_engine::verified]
+pub fn try_fft_1d_inplace(
+    buf: &mut [f64],
+    n: usize,
+    inverse: bool,
+) -> Result<(), math_commons::error::MathError> {
+    if n == 0 || !n.is_power_of_two() {
+        return Err(math_commons::error::MathError::InvalidRadix2GridSize { size: n, min: 1 });
+    }
+    let required = n
+        .checked_mul(2)
+        .ok_or(math_commons::error::MathError::InvalidRadix2GridSize { size: n, min: 1 })?;
+    if buf.len() < required {
+        return Err(math_commons::error::MathError::WorkspaceTooSmall {
+            required,
+            available: buf.len(),
+        });
+    }
+    fft_1d_inplace(buf, n, inverse);
+    debug_assert!(buf.len() >= required);
+    Ok(())
+}
+
+/// Checked companion to [`fft_2d_inplace`] validating radix-2 `(width, height)` and slice capacities.
+#[verified_engine::verified]
+pub fn try_fft_2d_inplace(
+    buf: &mut [f64],
+    width: usize,
+    height: usize,
+    col_scratch: &mut [f64],
+    inverse: bool,
+) -> Result<(), math_commons::error::MathError> {
+    if width == 0 || !width.is_power_of_two() {
+        return Err(math_commons::error::MathError::InvalidRadix2GridSize {
+            size: width,
+            min: 1,
+        });
+    }
+    if height == 0 || !height.is_power_of_two() {
+        return Err(math_commons::error::MathError::InvalidRadix2GridSize {
+            size: height,
+            min: 1,
+        });
+    }
+    let req_buf = width
+        .checked_mul(height)
+        .and_then(|wh| wh.checked_mul(2))
+        .ok_or(math_commons::error::MathError::InvalidRadix2GridSize {
+            size: width,
+            min: 1,
+        })?;
+    if buf.len() < req_buf {
+        return Err(math_commons::error::MathError::WorkspaceTooSmall {
+            required: req_buf,
+            available: buf.len(),
+        });
+    }
+    let req_col =
+        height
+            .checked_mul(2)
+            .ok_or(math_commons::error::MathError::InvalidRadix2GridSize {
+                size: height,
+                min: 1,
+            })?;
+    if col_scratch.len() < req_col {
+        return Err(math_commons::error::MathError::WorkspaceTooSmall {
+            required: req_col,
+            available: col_scratch.len(),
+        });
+    }
+    fft_2d_inplace(buf, width, height, col_scratch, inverse);
+    debug_assert!(buf.len() >= req_buf && col_scratch.len() >= req_col);
+    Ok(())
+}
+
+/// Checked companion to [`dealias_1d_spectrum`] validating `n > 0` and `spec.len() >= 2 * n`.
+#[verified_engine::verified]
+pub fn try_dealias_1d_spectrum(
+    spec: &mut [f64],
+    n: usize,
+) -> Result<(), math_commons::error::MathError> {
+    if n == 0 || !n.is_power_of_two() {
+        return Err(math_commons::error::MathError::InvalidRadix2GridSize { size: n, min: 1 });
+    }
+    let required = n
+        .checked_mul(2)
+        .ok_or(math_commons::error::MathError::InvalidRadix2GridSize { size: n, min: 1 })?;
+    if spec.len() < required {
+        return Err(math_commons::error::MathError::WorkspaceTooSmall {
+            required,
+            available: spec.len(),
+        });
+    }
+    dealias_1d_spectrum(spec, n);
+    debug_assert!(spec.len() >= required);
+    Ok(())
+}
+
+/// Checked companion to [`dealias_2d_spectrum`] validating positive `(width, height)` and `spec` capacity.
+#[verified_engine::verified]
+pub fn try_dealias_2d_spectrum(
+    spec: &mut [f64],
+    width: usize,
+    height: usize,
+) -> Result<(), math_commons::error::MathError> {
+    if width == 0 || !width.is_power_of_two() {
+        return Err(math_commons::error::MathError::InvalidRadix2GridSize {
+            size: width,
+            min: 1,
+        });
+    }
+    if height == 0 || !height.is_power_of_two() {
+        return Err(math_commons::error::MathError::InvalidRadix2GridSize {
+            size: height,
+            min: 1,
+        });
+    }
+    let required = width
+        .checked_mul(height)
+        .and_then(|wh| wh.checked_mul(2))
+        .ok_or(math_commons::error::MathError::InvalidRadix2GridSize {
+            size: width,
+            min: 1,
+        })?;
+    if spec.len() < required {
+        return Err(math_commons::error::MathError::WorkspaceTooSmall {
+            required,
+            available: spec.len(),
+        });
+    }
+    dealias_2d_spectrum(spec, width, height);
+    debug_assert!(spec.len() >= required);
+    Ok(())
+}

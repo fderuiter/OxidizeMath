@@ -11,37 +11,31 @@ pub struct FusedStencilStepper {
 
 impl FusedStencilStepper {
     /// Creates a 1D fused stencil stepper after validating `dx > 0.0`.
-    #[cfg(feature = "std")]
     #[verified_engine::verified]
     pub fn try_new(dx: StepSize) -> Result<Self, math_commons::error::MathError> {
-        debug_assert!(dx.is_finite() || !dx.is_finite());
-        Ok(Self {
-            ops: StencilOperators::try_new(dx)?,
-        })
+        let ops = StencilOperators::try_new(dx)?;
+        debug_assert!(*ops.dx > 0.0);
+        Ok(Self { ops })
     }
 
     /// Creates a 2D fused stencil stepper after validating `dx > 0.0` and `dy > 0.0`.
-    #[cfg(feature = "std")]
     #[verified_engine::verified]
     pub fn try_new_2d(dx: StepSize, dy: StepSize) -> Result<Self, math_commons::error::MathError> {
-        debug_assert!(dx.is_finite() || !dx.is_finite());
-        Ok(Self {
-            ops: StencilOperators::try_new_2d(dx, dy)?,
-        })
+        let ops = StencilOperators::try_new_2d(dx, dy)?;
+        debug_assert!(*ops.dx > 0.0 && *ops.dy > 0.0);
+        Ok(Self { ops })
     }
 
     /// Creates a 3D fused stencil stepper after validating `dx > 0.0`, `dy > 0.0`, and `dz > 0.0`.
-    #[cfg(feature = "std")]
     #[verified_engine::verified]
     pub fn try_new_3d(
         dx: StepSize,
         dy: StepSize,
         dz: StepSize,
     ) -> Result<Self, math_commons::error::MathError> {
-        debug_assert!(dx.is_finite() || !dx.is_finite());
-        Ok(Self {
-            ops: StencilOperators::try_new_3d(dx, dy, dz)?,
-        })
+        let ops = StencilOperators::try_new_3d(dx, dy, dz)?;
+        debug_assert!(*ops.dx > 0.0 && *ops.dy > 0.0 && *ops.dz > 0.0);
+        Ok(Self { ops })
     }
 
     /// Constructs a 1D fused stencil stepper, panicking if `*dx <= 0.0`.

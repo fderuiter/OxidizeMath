@@ -1,7 +1,8 @@
 // [cite:engine_pde]
 use crate::boundary::BoundaryCondition;
+use math_commons::error::MathError;
 use math_commons::math_kernel::types::{
-    Scalar, SolverWorkspace, fill_standard_normal, flatten_2d_index,
+    Dimension, Scalar, SolverWorkspace, fill_standard_normal, flatten_2d_index,
 };
 use rand_core::RngCore;
 
@@ -266,4 +267,165 @@ pub(crate) fn apply_noise_2d<R: RngCore + ?Sized>(
             );
         }
     }
+}
+
+fn validate_step_and_dt(dx: f64, dt: f64) -> Result<(), MathError> {
+    if !(dx > 0.0 && dx.is_finite()) {
+        return Err(MathError::StrictlyOutOfBounds {
+            value: dx,
+            min: 0.0,
+            max: f64::INFINITY,
+        });
+    }
+    if !(dt >= 0.0 && dt.is_finite()) {
+        return Err(MathError::OutOfBounds {
+            value: dt,
+            min: 0.0,
+            max: f64::INFINITY,
+        });
+    }
+    Ok(())
+}
+
+/// Checked companion to [`inject_additive_noise_1d`] validating `dx > 0`, `dt >= 0`, and workspace length `>= field.len()`.
+#[verified_engine::verified]
+pub fn try_inject_additive_noise_1d<R: RngCore + ?Sized>(
+    field: &mut [f64],
+    dx: f64,
+    dt: f64,
+    intensity: f64,
+    bc: BoundaryCondition,
+    workspace: &mut SolverWorkspace<'_, f64>,
+    rng: &mut R,
+) -> Result<(), MathError> {
+    validate_step_and_dt(dx, dt)?;
+    if workspace.len() < field.len() {
+        return Err(MathError::WorkspaceTooSmall {
+            required: field.len(),
+            available: workspace.len(),
+        });
+    }
+    inject_additive_noise_1d(field, dx, dt, intensity, bc, workspace, rng);
+    debug_assert!(dx > 0.0);
+    Ok(())
+}
+
+/// Checked companion to [`inject_additive_noise_2d`] validating grid, spacings, `dt >= 0`, and workspace length `>= width * height`.
+#[allow(clippy::too_many_arguments)]
+#[verified_engine::verified]
+pub fn try_inject_additive_noise_2d<R: RngCore + ?Sized>(
+    field: &mut [f64],
+    width: usize,
+    height: usize,
+    dx: f64,
+    dy: f64,
+    dt: f64,
+    intensity: f64,
+    bc: BoundaryCondition,
+    workspace: &mut SolverWorkspace<'_, f64>,
+    rng: &mut R,
+) -> Result<(), MathError> {
+    validate_step_and_dt(dx, dt)?;
+    validate_step_and_dt(dy, dt)?;
+    let total = width
+        .checked_mul(height)
+        .ok_or(MathError::WorkspaceTooSmall {
+            required: usize::MAX,
+            available: field.len(),
+        })?;
+    if field.len() < total {
+        return Err(MathError::DimensionMismatch {
+            expected: Dimension(total),
+            actual: Dimension(field.len()),
+        });
+    }
+    if workspace.len() < total {
+        return Err(MathError::WorkspaceTooSmall {
+            required: total,
+            available: workspace.len(),
+        });
+    }
+    inject_additive_noise_2d(
+        field, width, height, dx, dy, dt, intensity, bc, workspace, rng,
+    );
+    debug_assert!(dx > 0.0 && dy > 0.0);
+    Ok(())
+}
+
+/// Checked companion to [`inject_conserved_flux_noise_1d`] validating `dx > 0`, `dt >= 0`, and workspace length `>= field.len()`.
+#[verified_engine::verified]
+pub fn try_inject_conserved_flux_noise_1d<R: RngCore + ?Sized>(
+    field: &mut [f64],
+    dx: f64,
+    dt: f64,
+    mobility_temp: f64,
+    bc: BoundaryCondition,
+    workspace: &mut SolverWorkspace<'_, f64>,
+    rng: &mut R,
+) -> Result<(), MathError> {
+    validate_step_and_dt(dx, dt)?;
+    if workspace.len() < field.len() {
+        return Err(MathError::WorkspaceTooSmall {
+            required: field.len(),
+            available: workspace.len(),
+        });
+    }
+    inject_conserved_flux_noise_1d(field, dx, dt, mobility_temp, bc, workspace, rng);
+    debug_assert!(dx > 0.0);
+    Ok(())
+}
+
+/// Checked companion to [`inject_conserved_flux_noise_2d`] validating grid, spacings, `dt >= 0`, and workspace length `>= 2 * width * height`.
+#[allow(clippy::too_many_arguments)]
+#[verified_engine::verified]
+pub fn try_inject_conserved_flux_noise_2d<R: RngCore + ?Sized>(
+    field: &mut [f64],
+    width: usize,
+    height: usize,
+    dx: f64,
+    dy: f64,
+    dt: f64,
+    mobility_temp: f64,
+    bc: BoundaryCondition,
+    workspace: &mut SolverWorkspace<'_, f64>,
+    rng: &mut R,
+) -> Result<(), MathError> {
+    validate_step_and_dt(dx, dt)?;
+    validate_step_and_dt(dy, dt)?;
+    let total = width
+        .checked_mul(height)
+        .ok_or(MathError::WorkspaceTooSmall {
+            required: usize::MAX,
+            available: field.len(),
+        })?;
+    if field.len() < total {
+        return Err(MathError::DimensionMismatch {
+            expected: Dimension(total),
+            actual: Dimension(field.len()),
+        });
+    }
+    let required = total.checked_mul(2).ok_or(MathError::WorkspaceTooSmall {
+        required: usize::MAX,
+        available: workspace.len(),
+    })?;
+    if workspace.len() < required {
+        return Err(MathError::WorkspaceTooSmall {
+            required,
+            available: workspace.len(),
+        });
+    }
+    inject_conserved_flux_noise_2d(
+        field,
+        width,
+        height,
+        dx,
+        dy,
+        dt,
+        mobility_temp,
+        bc,
+        workspace,
+        rng,
+    );
+    debug_assert!(dx > 0.0 && dy > 0.0);
+    Ok(())
 }

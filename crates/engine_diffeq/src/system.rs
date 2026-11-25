@@ -136,3 +136,48 @@ pub fn eval_ito_effective_drift<T: Scalar, S: SdeSystem<T> + ?Sized>(
         }
     }
 }
+
+/// Checked companion to [`eval_ito_effective_drift`] validating `x`, `out_drift`, and Stratonovich `workspace` capacity.
+#[verified_engine::verified]
+pub fn try_eval_ito_effective_drift<T: Scalar, S: SdeSystem<T> + ?Sized>(
+    system: &S,
+    calculus: StochasticCalculus,
+    t: T,
+    x: &[T],
+    out_drift: &mut [T],
+    workspace: &mut SolverWorkspace<'_, T>,
+) -> Result<(), math_commons::error::MathError> {
+    let d = system.state_dim();
+    let m = system.wiener_dim();
+    if x.len() != d {
+        return Err(math_commons::error::MathError::DimensionMismatch {
+            expected: math_commons::math_kernel::types::Dimension(d),
+            actual: math_commons::math_kernel::types::Dimension(x.len()),
+        });
+    }
+    if out_drift.len() != d {
+        return Err(math_commons::error::MathError::DimensionMismatch {
+            expected: math_commons::math_kernel::types::Dimension(d),
+            actual: math_commons::math_kernel::types::Dimension(out_drift.len()),
+        });
+    }
+    if calculus == StochasticCalculus::Stratonovich && m > 0 {
+        let required = d
+            .checked_mul(m)
+            .and_then(|dm| dm.checked_mul(3))
+            .and_then(|dm3| d.checked_mul(3).and_then(|d3| dm3.checked_add(d3)))
+            .ok_or(math_commons::error::MathError::WorkspaceTooSmall {
+                required: usize::MAX,
+                available: workspace.len(),
+            })?;
+        if workspace.len() < required {
+            return Err(math_commons::error::MathError::WorkspaceTooSmall {
+                required,
+                available: workspace.len(),
+            });
+        }
+    }
+    eval_ito_effective_drift(system, calculus, t, x, out_drift, workspace);
+    debug_assert!(x.len() >= d && out_drift.len() >= d);
+    Ok(())
+}

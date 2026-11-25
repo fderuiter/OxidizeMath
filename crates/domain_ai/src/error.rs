@@ -87,6 +87,24 @@ pub enum AIError {
         actual: (usize, usize),
     },
 
+    /// Row-major `u8` cell role buffer length did not match `width * height`.
+    #[error("Cell mask length mismatch: expected {expected} cells, got {actual}")]
+    CellMaskLengthMismatch {
+        /// Expected grid cell count (`width * height`).
+        expected: usize,
+        /// Supplied raw slice length.
+        actual: usize,
+    },
+
+    /// Encoded `u8` byte did not correspond to a valid `GridCellRole` discriminant.
+    #[error("Invalid GridCellRole tag {code} at cell index {index}")]
+    InvalidCellRoleTag {
+        /// Zero-based cell index in row-major order.
+        index: usize,
+        /// Unrecognized `u8` role tag.
+        code: u8,
+    },
+
     /// Wrapped foundational error from `math_commons`.
     #[error("{0}")]
     Math(#[from] math_commons::error::MathError),

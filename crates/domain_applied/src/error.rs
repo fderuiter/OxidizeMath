@@ -102,6 +102,45 @@ pub enum EngineeringError {
         /// Actual dimension length.
         actual: usize,
     },
+    /// Structural MRI volume has at least one zero axis dimension.
+    #[error(
+        "MRI volume dimensions ({}, {}, {}) must all be non-zero",
+        dims[0],
+        dims[1],
+        dims[2]
+    )]
+    ZeroVolumeDimension {
+        /// Supplied `[nx, ny, nz]` voxel counts.
+        dims: [usize; 3],
+    },
+    /// Structural MRI isotropic voxel spacing is non-positive or non-finite.
+    #[error("MRI voxel_size ({voxel_size}) must be finite and strictly positive")]
+    InvalidVoxelSize {
+        /// Rejected voxel spacing in millimeters.
+        voxel_size: f64,
+    },
+    /// Structural MRI world-space origin contains a non-finite coordinate.
+    #[error(
+        "MRI origin coordinates ({}, {}, {}) must all be finite",
+        origin[0],
+        origin[1],
+        origin[2]
+    )]
+    NonFiniteOrigin {
+        /// Supplied `[x0, y0, z0]` origin coordinates in millimeters.
+        origin: [f64; 3],
+    },
+    /// Product `nx * ny * nz` overflowed `usize`.
+    #[error(
+        "MRI volume dimensions ({}, {}, {}) overflow addressable voxel count",
+        dims[0],
+        dims[1],
+        dims[2]
+    )]
+    VolumeDimensionsOverflow {
+        /// Supplied `[nx, ny, nz]` voxel counts.
+        dims: [usize; 3],
+    },
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
     Math(#[from] math_commons::error::MathError),

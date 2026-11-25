@@ -93,7 +93,7 @@ pub use state::ChemicalState;
 pub use traits::{DiffusionModel, ReactionModel, STACK_REACTION_SPECIES_CAP};
 
 /// Errors related to Reaction-Diffusion systems.
-#[derive(Debug, thiserror::Error, PartialEq)]
+#[derive(Debug, Clone, thiserror::Error, PartialEq)]
 pub enum ReactionDiffusionError {
     /// Underlying dimension-mismatch or numerical error from `math_commons`.
     #[error("Mathematical error: {0}")]
@@ -107,6 +107,14 @@ pub enum ReactionDiffusionError {
     /// Required builder field was omitted prior to `build()`.
     #[error("Missing parameter: {0}")]
     MissingParameter(&'static str),
+    /// Byte slice length did not match the 2D reaction-diffusion cell mask buffer.
+    #[error("CellMask2D byte slice length mismatch: expected {expected} bytes, got {actual}")]
+    MaskLengthMismatch {
+        /// Expected cell mask buffer length (`width * height`).
+        expected: usize,
+        /// Supplied raw byte slice length.
+        actual: usize,
+    },
 }
 
 #[cfg(test)]

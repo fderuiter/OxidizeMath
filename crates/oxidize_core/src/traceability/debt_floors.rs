@@ -1,7 +1,43 @@
 //! Ratcheted assertion density floor loader for workspace traceability gates.
 
+use std::fmt;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::{Path, PathBuf};
+
+/// Typed error returned when parsing `[verification_debt]` density floors from TOML.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DensityFloorsError {
+    /// Whitelist TOML syntax could not be parsed.
+    InvalidTomlSyntax(String),
+    /// `[verification_debt]` entry exists but is not a TOML table.
+    InvalidVerificationDebtSection,
+    /// One or more configured density floor bounds are negative or non-finite.
+    InvalidDensityFloorBounds,
+}
+
+impl fmt::Display for DensityFloorsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidTomlSyntax(reason) => {
+                write!(f, "Failed to parse verification_whitelist.toml: {reason}")
+            }
+            Self::InvalidVerificationDebtSection => {
+                write!(
+                    f,
+                    "Section [verification_debt] in verification_whitelist.toml must be a TOML table"
+                )
+            }
+            Self::InvalidDensityFloorBounds => {
+                write!(
+                    f,
+                    "Density floors in [verification_debt] must be finite and non-negative"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for DensityFloorsError {}
 
 /// Minimum assertion density floors enforced during traceability evaluation.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -41,15 +77,17 @@ fn find_workspace_whitelist_file() -> Option<PathBuf> {
 }
 
 /// Parses `[verification_debt]` density floors from `verification_whitelist.toml` TOML content.
-pub fn parse_density_floors_toml(content: &str) -> Result<Option<DensityFloors>, String> {
+pub fn parse_density_floors_toml(
+    content: &str,
+) -> Result<Option<DensityFloors>, DensityFloorsError> {
     let parsed: toml::Table = content
         .parse()
-        .map_err(|err| format!("Invalid TOML in verification_whitelist.toml: {err}"))?;
+        .map_err(|err: toml::de::Error| DensityFloorsError::InvalidTomlSyntax(err.to_string()))?;
     let Some(debt_val) = parsed.get("verification_debt") else {
         return Ok(None);
     };
     let Some(debt) = debt_val.as_table() else {
-        return Err("[verification_debt] must be a TOML table".to_string());
+        return Err(DensityFloorsError::InvalidVerificationDebtSection);
     };
     let min_verified_density = debt
         .get("min_verified_density")
@@ -68,7 +106,7 @@ pub fn parse_density_floors_toml(content: &str) -> Result<Option<DensityFloors>,
         || min_total_density < 0.0
         || min_unverified_density.is_some_and(|u| !u.is_finite() || u < 0.0)
     {
-        return Err("[verification_debt] density floors must be finite and >= 0.0".to_string());
+        return Err(DensityFloorsError::InvalidDensityFloorBounds);
     }
     Ok(Some(DensityFloors {
         min_verified_density,
@@ -91,7 +129,37 @@ pub fn load_workspace_density_floors() -> Result<DensityFloors, std::io::Error> 
         };
         let content = std::fs::read_to_string(&path)?;
         let parsed = parse_density_floors_toml(&content)
-            .map_err(|msg| std::io::Error::new(std::io::ErrorKind::InvalidData, msg))?;
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err.to_string()))?;
         Ok(parsed.unwrap_or_default())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_density_floors_toml_typed_errors_and_valid_tables() {
+        assert_eq!(parse_density_floors_toml("[other]\nx = 1\n"), Ok(None));
+        let floors = parse_density_floors_toml(
+            "[verification_debt]\nmin_verified_density = 0.65\nmin_total_density = 0.2\n",
+        )
+        .expect("valid floors")
+        .expect("present section");
+        assert_eq!(floors.min_verified_density, 0.65);
+        assert_eq!(floors.min_total_density, 0.2);
+
+        assert!(matches!(
+            parse_density_floors_toml("not_toml = [[["),
+            Err(DensityFloorsError::InvalidTomlSyntax(_))
+        ));
+        assert_eq!(
+            parse_density_floors_toml("verification_debt = 42\n"),
+            Err(DensityFloorsError::InvalidVerificationDebtSection)
+        );
+        assert_eq!(
+            parse_density_floors_toml("[verification_debt]\nmin_verified_density = -0.1\n"),
+            Err(DensityFloorsError::InvalidDensityFloorBounds)
+        );
     }
 }

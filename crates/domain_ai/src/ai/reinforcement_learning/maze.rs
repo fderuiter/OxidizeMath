@@ -276,29 +276,35 @@ impl SculptedGridMdp {
     }
 
     /// Restores row-major `u8` role tags, validating length, tag bounds, `start`, and `goal`.
-    pub fn apply_cells_u8(&mut self, raw: &[u8]) -> Result<(), String> {
+    pub fn apply_cells_u8(&mut self, raw: &[u8]) -> Result<(), crate::error::AIError> {
         let expected = (self.width as usize) * (self.height as usize);
         if raw.len() != expected {
-            return Err(format!("Cell mask length {} != {expected}", raw.len()));
+            return Err(crate::error::AIError::CellMaskLengthMismatch {
+                expected,
+                actual: raw.len(),
+            });
         }
-        let mut parsed = Vec::with_capacity(expected);
-        let mut found_goal = None;
-        for (i, &code) in raw.iter().enumerate() {
-            let role = GridCellRole::from_u8(code)
-                .ok_or_else(|| format!("Invalid GridCellRole tag {code} at cell {i}"))?;
-            if role == GridCellRole::Goal && found_goal.is_none() {
-                found_goal = Some(GridState {
-                    x: (i % (self.width as usize)) as i32,
-                    y: (i / (self.width as usize)) as i32,
-                });
-                parsed.push(GridCellRole::Goal);
-            } else if role == GridCellRole::Goal {
-                parsed.push(GridCellRole::Free);
-            } else {
-                parsed.push(role);
+        for (index, &code) in raw.iter().enumerate() {
+            if GridCellRole::from_u8(code).is_none() {
+                return Err(crate::error::AIError::InvalidCellRoleTag { index, code });
             }
         }
-        self.cells = parsed;
+        self.cells.resize(expected, GridCellRole::Free);
+        let mut found_goal = None;
+        for (index, &code) in raw.iter().enumerate() {
+            let role = GridCellRole::from_u8(code).unwrap_or(GridCellRole::Free);
+            if role == GridCellRole::Goal && found_goal.is_none() {
+                found_goal = Some(GridState {
+                    x: (index % (self.width as usize)) as i32,
+                    y: (index / (self.width as usize)) as i32,
+                });
+                self.cells[index] = GridCellRole::Goal;
+            } else if role == GridCellRole::Goal {
+                self.cells[index] = GridCellRole::Free;
+            } else {
+                self.cells[index] = role;
+            }
+        }
         let g = found_goal.unwrap_or(GridState {
             x: self.width - 1,
             y: self.height - 1,

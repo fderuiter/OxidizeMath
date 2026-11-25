@@ -54,3 +54,37 @@ fn glm_estimators_return_typed_engineering_errors() {
         Err(EngineeringError::ZeroContrastVariance)
     );
 }
+
+#[test]
+fn mri_volume_new_returns_typed_engineering_errors() {
+    use domain_applied::applied::freesurfer::MriVolume;
+
+    assert_eq!(
+        MriVolume::new([0, 2, 2], [0.0, 0.0, 0.0], 1.0, Vec::new()),
+        Err(EngineeringError::ZeroVolumeDimension { dims: [0, 2, 2] })
+    );
+    assert_eq!(
+        MriVolume::new([2, 2, 2], [0.0, 0.0, 0.0], -0.5, vec![0.0; 8]),
+        Err(EngineeringError::InvalidVoxelSize { voxel_size: -0.5 })
+    );
+    assert!(matches!(
+        MriVolume::new([2, 2, 2], [0.0, f64::INFINITY, 0.0], 1.0, vec![0.0; 8]),
+        Err(EngineeringError::NonFiniteOrigin { .. })
+    ));
+    assert_eq!(
+        MriVolume::new([usize::MAX, 2, 2], [0.0, 0.0, 0.0], 1.0, Vec::new()),
+        Err(EngineeringError::VolumeDimensionsOverflow {
+            dims: [usize::MAX, 2, 2],
+        })
+    );
+    let mismatch = MriVolume::new([2, 2, 2], [0.0, 0.0, 0.0], 1.0, vec![0.0; 7]).unwrap_err();
+    assert!(matches!(
+        mismatch,
+        EngineeringError::DimensionMismatch {
+            expected: 8,
+            actual: 7,
+            ..
+        }
+    ));
+    assert!(!mismatch.to_string().contains('{'));
+}

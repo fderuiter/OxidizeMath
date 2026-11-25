@@ -153,6 +153,10 @@ pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::HighEnergyError::InvalidMomentum, bus),
         check_leaf(error::NuclearError::InvalidHalfLife, bus),
         check_leaf(
+            error::QuantumError::InvalidPrincipalQuantumNumber { n: 0, max_n: 6 },
+            bus,
+        ),
+        check_leaf(
             error::RadarError::InvalidConfiguration("cfg".to_string()),
             bus,
         ),
@@ -219,9 +223,10 @@ pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
         error::HighEnergyError::from(sample_math())
             .source()
             .is_some(),
+        error::QuantumError::from(sample_math()).source().is_some(),
         error::StatMechError::from(sample_math()).source().is_some(),
     ];
-    assert_eq!(wrapper_sources_present.len(), 18);
+    assert_eq!(wrapper_sources_present.len(), 19);
     assert!(wrapper_sources_present.into_iter().all(|present| present));
 }
 
@@ -235,11 +240,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 64);
-    assert_eq!(*events.lock().unwrap(), 64);
+    assert_eq!(converted.len(), 65);
+    assert_eq!(*events.lock().unwrap(), 65);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 70);
+    assert_eq!(*events.lock().unwrap(), 71);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -274,6 +279,7 @@ fn verify_prelude_domain_leaves() {
         p::GatingError,
         p::HighEnergyError,
         p::NuclearError,
+        p::QuantumError,
         p::RadarError,
         p::SolidStateError,
         p::StandardModelError,

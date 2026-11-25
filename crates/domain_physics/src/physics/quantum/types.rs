@@ -3,6 +3,47 @@ use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
+use thiserror::Error;
+
+/// Errors returned by quantum orbital validation and Hilbert-space state helpers.
+#[derive(Debug, Clone, PartialEq, Error)]
+pub enum QuantumError {
+    /// Principal quantum number `n` fell outside `1..=max_n`.
+    #[error("Principal quantum number n ({n}) must be between 1 and {max_n}")]
+    InvalidPrincipalQuantumNumber {
+        /// Supplied principal quantum number `n`.
+        n: u32,
+        /// Maximum supported principal quantum number.
+        max_n: u32,
+    },
+    /// Azimuthal quantum number `l` violated `l < n`.
+    #[error("Orbital quantum number l ({l}) must be strictly less than n ({n})")]
+    InvalidOrbitalQuantumNumber {
+        /// Supplied azimuthal quantum number `l`.
+        l: u32,
+        /// Principal quantum number `n`.
+        n: u32,
+    },
+    /// Magnetic quantum number `m` violated `|m| <= l`.
+    #[error("Magnetic quantum number m ({m}) must satisfy |m| <= l ({l})")]
+    InvalidMagneticQuantumNumber {
+        /// Supplied magnetic quantum number `m`.
+        m: i32,
+        /// Azimuthal quantum number `l`.
+        l: u32,
+    },
+    /// Output slice length did not match the quantum state vector dimension.
+    #[error("Quantum state buffer length mismatch: expected {expected}, got {actual}")]
+    StateLengthMismatch {
+        /// Expected Hilbert-space dimension.
+        expected: usize,
+        /// Supplied slice length.
+        actual: usize,
+    },
+    /// Wrapped centralized mathematical error.
+    #[error("{0}")]
+    Math(#[from] math_commons::error::MathError),
+}
 
 /// Represents the state of a quantum system as a vector in a Hilbert space.
 ///
@@ -147,20 +188,33 @@ impl QuantumState {
         self.vector.map(|c| c.norm_sqr())
     }
 
+    /// Writes the Born probability density $P_i = |\psi_i|^2$ into `out` without heap allocations,
+    /// returning [`QuantumError::StateLengthMismatch`] when `out.len() != self.vector.len()`.
+    #[verified_engine::verified]
+    pub fn try_probability_density_in_place(&self, out: &mut [f64]) -> Result<(), QuantumError> {
+        let expected = self.vector.len();
+        if out.len() != expected {
+            return Err(QuantumError::StateLengthMismatch {
+                expected,
+                actual: out.len(),
+            });
+        }
+        for (dst, amp) in out.iter_mut().zip(self.vector.as_slice().iter()) {
+            *dst = amp.norm_sqr();
+        }
+        debug_assert_eq!(out.len(), expected);
+        Ok(())
+    }
+
     /// Writes the Born probability density $P_i = |\psi_i|^2$ into `out` without heap allocations.
     ///
     /// # Panics
     /// Panics if `out.len() != self.vector.len()`.
     #[verified_engine::verified]
     pub fn probability_density_in_place(&self, out: &mut [f64]) {
-        assert_eq!(
-            out.len(),
-            self.vector.len(),
-            "Output slice length must match quantum state vector length"
-        );
-        for (dst, amp) in out.iter_mut().zip(self.vector.as_slice().iter()) {
-            *dst = amp.norm_sqr();
-        }
+        self.try_probability_density_in_place(out)
+            .expect("Output slice length must match quantum state vector length");
+        debug_assert_eq!(out.len(), self.vector.len());
     }
 
     /// Projects the complex state vector onto the first `M` discrete orthonormal
