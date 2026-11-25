@@ -66,24 +66,37 @@ impl TarjanWorkspace {
 }
 
 impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
+    /// Fallible companion to [`communicating_classes`](Self::communicating_classes).
+    #[verified_engine::verified]
+    pub fn try_communicating_classes(
+        &self,
+    ) -> core::result::Result<Vec<CommunicatingClass>, math_commons::error::MathError> {
+        #[allow(unused_braces)]
+        Ok({
+            let n = self.num_states();
+            let eps = T::from_f64(1e-15)
+                .__into_math_result("communicating_classes: fallible operation failed")?;
+            let mut ws = TarjanWorkspace::new(n);
+
+            for start in 0..n {
+                if ws.indices[start].is_none() {
+                    ws.discover(start);
+                    self.drain_tarjan_component(&mut ws, eps);
+                }
+            }
+
+            let mut classes = self.classify_sccs(ws.sccs, eps);
+            classes.sort_by_key(|c| c.states.first().copied().unwrap_or(usize::MAX));
+            classes
+        })
+    }
+
     /// Computes all communicating classes via iterative Tarjan strongly connected components.
     #[must_use]
     #[verified_engine::verified]
     pub fn communicating_classes(&self) -> Vec<CommunicatingClass> {
-        let n = self.num_states();
-        let eps = T::from_f64(1e-15).unwrap();
-        let mut ws = TarjanWorkspace::new(n);
-
-        for start in 0..n {
-            if ws.indices[start].is_none() {
-                ws.discover(start);
-                self.drain_tarjan_component(&mut ws, eps);
-            }
-        }
-
-        let mut classes = self.classify_sccs(ws.sccs, eps);
-        classes.sort_by_key(|c| c.states.first().copied().unwrap_or(usize::MAX));
-        classes
+        self.try_communicating_classes()
+            .expect("communicating_classes preconditions must hold")
     }
 
     /// Returns only the closed (recurrent) communicating classes of the chain.
@@ -151,3 +164,30 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
 }
 
 // [cite:clinical_trials_statistics]
+
+trait __FallibleUnwrap<T> {
+    fn __into_math_result(
+        self,
+        reason: &'static str,
+    ) -> core::result::Result<T, math_commons::error::MathError>;
+}
+
+impl<T> __FallibleUnwrap<T> for Option<T> {
+    #[inline]
+    fn __into_math_result(
+        self,
+        reason: &'static str,
+    ) -> core::result::Result<T, math_commons::error::MathError> {
+        self.ok_or(math_commons::error::MathError::NumericalError { reason })
+    }
+}
+
+impl<T, E> __FallibleUnwrap<T> for core::result::Result<T, E> {
+    #[inline]
+    fn __into_math_result(
+        self,
+        reason: &'static str,
+    ) -> core::result::Result<T, math_commons::error::MathError> {
+        self.map_err(|_| math_commons::error::MathError::NumericalError { reason })
+    }
+}

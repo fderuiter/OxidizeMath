@@ -5,6 +5,7 @@ use super::poly::{solve_dense_small_raw, symmetrize_upper};
 use crate::error::FitError;
 use crate::series::PointSeries;
 #[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
 use num_traits::Float as _;
 
 const MAX_SIN_SAMPLES: usize = 256;

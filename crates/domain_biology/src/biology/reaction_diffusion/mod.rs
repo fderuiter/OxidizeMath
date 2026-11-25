@@ -93,7 +93,7 @@ pub use state::ChemicalState;
 pub use traits::{DiffusionModel, ReactionModel, STACK_REACTION_SPECIES_CAP};
 
 /// Errors related to Reaction-Diffusion systems.
-#[derive(Debug, thiserror::Error, PartialEq)]
+#[derive(Debug, Clone, Copy, thiserror::Error, PartialEq, Eq)]
 pub enum ReactionDiffusionError {
     #[allow(missing_docs)]
     #[error("Mathematical error: {0}")]
@@ -107,6 +107,20 @@ pub enum ReactionDiffusionError {
     #[error("Missing parameter: {0}")]
     #[allow(missing_docs)]
     MissingParameter(&'static str),
+    /// Spatial step size along an axis was non-positive or non-finite.
+    #[error("Invalid spatial step size on axis '{axis}'")]
+    InvalidStepSize {
+        /// Axis identifier (`"dx"`, `"dy"`, or `"dz"`).
+        axis: &'static str,
+    },
+    /// Cell role mask slice length did not match `width * height`.
+    #[error("CellMask2D byte slice length mismatch: expected {expected}, got {actual}")]
+    MaskLengthMismatch {
+        /// Expected cell count (`width * height`).
+        expected: usize,
+        /// Supplied byte slice length.
+        actual: usize,
+    },
 }
 
 #[cfg(test)]

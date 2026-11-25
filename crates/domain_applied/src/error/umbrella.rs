@@ -118,9 +118,9 @@ impl From<ParseError> for AppliedError {
     }
 }
 
-impl From<String> for AppliedError {
+impl From<&'static str> for AppliedError {
     #[verified_engine::verified]
-    fn from(reason: String) -> Self {
+    fn from(reason: &'static str) -> Self {
         Self::Math(MathError::from(reason))
     }
 }

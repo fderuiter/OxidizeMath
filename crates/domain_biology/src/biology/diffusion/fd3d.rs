@@ -26,7 +26,38 @@ pub struct FiniteDifference3D {
 }
 
 impl FiniteDifference3D {
-    /// Constructs an anisotropic 3D 7-point finite-difference operator.
+    /// Fallibly constructs an anisotropic 3D 7-point finite-difference operator.
+    #[verified_engine::verified]
+    pub fn try_new(
+        width: Dimension,
+        height: Dimension,
+        depth: Dimension,
+        dx: StepSize,
+        dy: StepSize,
+        dz: StepSize,
+    ) -> Result<Self, crate::biology::reaction_diffusion::ReactionDiffusionError> {
+        use crate::biology::reaction_diffusion::ReactionDiffusionError;
+        if !(*dx > 0.0 && dx.is_finite()) {
+            return Err(ReactionDiffusionError::InvalidStepSize { axis: "dx" });
+        }
+        if !(*dy > 0.0 && dy.is_finite()) {
+            return Err(ReactionDiffusionError::InvalidStepSize { axis: "dy" });
+        }
+        if !(*dz > 0.0 && dz.is_finite()) {
+            return Err(ReactionDiffusionError::InvalidStepSize { axis: "dz" });
+        }
+        debug_assert!(*dx > 0.0 && *dy > 0.0 && *dz > 0.0);
+        Ok(Self {
+            width,
+            height,
+            depth,
+            dx,
+            dy,
+            dz,
+        })
+    }
+
+    /// Constructs an anisotropic 3D 7-point finite-difference operator; prefer [`Self::try_new`].
     #[verified_engine::verified]
     pub fn new(
         width: Dimension,
@@ -36,24 +67,24 @@ impl FiniteDifference3D {
         dy: StepSize,
         dz: StepSize,
     ) -> Self {
-        assert!(
-            *dx > 0.0 && *dy > 0.0 && *dz > 0.0,
-            "3D step sizes must be positive"
-        );
-        Self {
-            width,
-            height,
-            depth,
-            dx,
-            dy,
-            dz,
-        }
+        Self::try_new(width, height, depth, dx, dy, dz).expect("3D step sizes must be positive")
     }
 
-    /// Constructs an isotropic 3D 7-point finite-difference operator (`dx = dy = dz = h`).
+    /// Fallibly constructs an isotropic 3D 7-point finite-difference operator (`dx = dy = dz = h`).
+    #[verified_engine::verified]
+    pub fn try_isotropic(
+        width: Dimension,
+        height: Dimension,
+        depth: Dimension,
+        h: StepSize,
+    ) -> Result<Self, crate::biology::reaction_diffusion::ReactionDiffusionError> {
+        Self::try_new(width, height, depth, h, h, h)
+    }
+
+    /// Constructs an isotropic 3D 7-point finite-difference operator (`dx = dy = dz = h`); prefer [`Self::try_isotropic`].
     #[verified_engine::verified]
     pub fn isotropic(width: Dimension, height: Dimension, depth: Dimension, h: StepSize) -> Self {
-        Self::new(width, height, depth, h, h, h)
+        Self::try_isotropic(width, height, depth, h).expect("3D step sizes must be positive")
     }
 
     /// Total number of voxels `width * height * depth`.

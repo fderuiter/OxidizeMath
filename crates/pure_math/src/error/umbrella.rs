@@ -133,9 +133,9 @@ impl From<ParseError> for PureMathError {
     }
 }
 
-impl From<String> for PureMathError {
+impl From<&'static str> for PureMathError {
     #[verified_engine::verified]
-    fn from(reason: String) -> Self {
+    fn from(reason: &'static str) -> Self {
         Self::Math(MathError::from(reason))
     }
 }

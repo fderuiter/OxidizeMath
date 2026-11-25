@@ -1,0 +1,30 @@
+# ADR 20261124: Stack-Allocated Core Errors, Fallible Companion APIs, and AST Error Contract Verification
+
+## Status
+Accepted (extends [ADR 20261123](20261123-checked-apis-and-typed-domain-errors.md), [ADR 20261123](20261123-nostd-diffeq-and-pde-engines.md), and [ADR 20261123](20261123-hierarchical-umbrella-errors-and-diagnostic-bus-helpers.md))
+
+## Context
+Following the initial wave of checked companion APIs and `#![no_std]` numerical engine extraction, five structural gaps remained across Tier 0–3 crates:
+1. **`std`-Coupled Core Errors and Heap-Backed Variants**: [`crates/math_commons/src/error.rs`](../../crates/math_commons/src/error.rs) stored `String` payloads inside `MathError`, preventing `Copy` semantics and forcing `#[cfg(feature = "std")]` gates on [`StencilOperators`](../../crates/engine_pde/src/stencil.rs) and `FusedStencilStepper` `try_new*` constructors. [`crates/diagnostics`](../../crates/diagnostics/src/lib.rs) also required `std` unconditionally, preventing `#![no_std]` error metadata reporting.
+2. **Missing `#![no_std]` Engine Error Enums and Fallible Workspace Slices**: `engine_diffeq` and `engine_pde` panicked via `assert!` on mismatched state buffers, non-positive steps, non-radix-2 FFT grids, and undersized [`SolverWorkspace`](../../crates/math_commons/src/math_kernel/types.rs) slices (`take_slice` lacked a non-mutating `try_take_slice` companion).
+3. **Residual Untyped `Result` Signatures**: Public methods (`SculptedGridMdp::apply_cells_u8`, `MriVolume::new`, `CellMask2D::set_roles_slice`, `OrbitalQuantumNumbers::new`, and `parse_density_floors_toml`) still returned `Result` with `String` or `&'static str`, and root [`Cargo.toml`](../../Cargo.toml) did not deny `clippy::result_unit_err`.
+4. **Uncompanioned Panicking Public Library Functions**: Remaining public constructors and numerical routines across `pure_math`, `domain_*`, `oxidize_core`, and `scientific_metadata` crates asserted or unwrapped preconditions without exposing fallible `try_*` / `checked_*` companions.
+5. **No Automated AST Gate Against Regression**: `unified_verification` lacked an in-process AST pass in `batch-ast` to reject newly added untyped `Result` signatures or uncompanioned panicking public library functions.
+
+## Decision
+1. **Stack-Allocated `Copy` `#![no_std]` Core and Engine Errors**:
+   - Make [`crates/diagnostics`](../../crates/diagnostics/src/lib.rs) `#![cfg_attr(not(feature = "std"), no_std)]`, exposing `Severity`, `CoreDiagnostic`, `DiagnosticError` (`EmptySource`), and `try_emit_diagnostic_with_source` while gating `Diagnostic` (`std::error::Error`) and `DiagnosticBus` behind `feature = "std"`.
+   - Introduce an optional `alloc` feature in [`crates/math_commons/Cargo.toml`](../../crates/math_commons/Cargo.toml) (`default = ["std"]`, `alloc = []`, `std = ["alloc", ...]`) and convert [`MathError`](../../crates/math_commons/src/error.rs) to a stack-only `Copy + Eq` `#![no_std]` enum implementing `core::fmt::Display`, `core::error::Error`, and `CoreDiagnostic` without `alloc` or `std` (replacing heap `String` reasons on `NumericalError` and `ConversionError` with `&'static str` and adding `WorkspaceTooSmall { required, available }`).
+   - Add [`SolverWorkspace::try_take_slice`](../../crates/math_commons/src/math_kernel/types.rs), returning `Err(MathError::WorkspaceTooSmall { required, available })` without mutating the remaining workspace slice when capacity is insufficient.
+   - Define `Copy + Eq` `#![no_std]` [`DiffeqError`](../../crates/engine_diffeq/src/error.rs) and [`PdeError`](../../crates/engine_pde/src/error.rs) enums, ungate all six `StencilOperators` and `FusedStencilStepper` `try_new` / `try_new_2d` / `try_new_3d` constructors in `#![no_std]` builds, and expose `try_*` companions across `engine_diffeq` and `engine_pde`.
+2. **Complete Typed Domain `Result` Migration and Fallible Companions**:
+   - Deny `result_unit_err = "deny"` under `[workspace.lints.clippy]` in root [`Cargo.toml`](../../Cargo.toml).
+   - Migrate all remaining untyped `Result` signatures (`SculptedGridMdp::apply_cells_u8`, `MriVolume::new`, `CellMask2D::set_roles_slice`, `OrbitalQuantumNumbers::new`, and `parse_density_floors_toml`) to typed error enums (`AIError`, `VoxelGridError`, `ReactionDiffusionError`, `QuantumError`, and `WorkspaceError`), add `CitationRegistry::{try_get, try_register}` returning `CitationRegistryError`, and wire `DiagnosticError`, `DiffeqError`, `PdeError`, and `QuantumError` into [`math_explorer/src/error.rs`](../../math_explorer/src/error.rs).
+   - Add `try_*` / `checked_*` companion functions across `pure_math` and `domain_*` crates while retaining existing convenience wrappers (`new`, operator traits, and solver trait implementations) that delegate to their fallible counterparts.
+3. **Enforce Error Contracts in `unified_verification` `batch-ast`**:
+   - Add [`crates/unified_verification/src/error_contracts.rs`](../../crates/unified_verification/src/error_contracts.rs) into `batch-ast` (and therefore `batch-static`) to audit public library items from the shared `AstCache`, rejecting untyped `Result` error types (`()`, `String`, `&str`, `&'static str`) and uncompanioned panicking public library functions outside trait-contract allowlists (`Index`, `IndexMut`, `Add`, `Sub`, `Mul`, `Div`, `Rem`, `Neg`, etc.).
+
+## Consequences
+- **Positive**: `diagnostics`, `math_commons`, `engine_diffeq`, and `engine_pde` compile and pass unit tests under `--no-default-features` without `alloc` or `std`, with zero heap allocations on any core or engine error path.
+- **Positive**: Zero public signatures in `crates/unified_verification/api_baseline.json` return `Result` with `String`, `&'static str`, or `()`, and `batch-ast` / `batch-static` deterministically prevent regressions in typed error contracts and fallible companion coverage.
+- **Neutral**: Convenience panicking wrappers and trait implementations remain available for ergonomic trusted-input callers while delegating precondition checks to `try_*` / `checked_*` companions.

@@ -45,6 +45,32 @@ fn test_solver_workspace_reborrow_and_partition() {
 
 #[test]
 #[verified_engine::verified]
+fn test_solver_workspace_try_take_slice_preserves_buffer_on_overflow() {
+    let mut backing = [0.0_f64; 6];
+    let mut ws = SolverWorkspace::new(&mut backing);
+    assert_eq!(
+        ws.try_take_slice(8),
+        Err(crate::error::MathError::WorkspaceTooSmall {
+            required: 8,
+            available: 6,
+        })
+    );
+    assert_eq!(ws.len(), 6);
+    let head = ws.try_take_slice(4).expect("4 <= 6");
+    head.fill(3.0);
+    assert_eq!(ws.len(), 2);
+    assert_eq!(
+        ws.try_take_slice(3),
+        Err(crate::error::MathError::WorkspaceTooSmall {
+            required: 3,
+            available: 2,
+        })
+    );
+    assert_eq!(ws.len(), 2);
+}
+
+#[test]
+#[verified_engine::verified]
 fn test_box_muller_moments_and_open_unit_bounds() {
     let mut rng = OxidizeRng::new(0xDEC0_DED0_1234_5678);
     for _ in 0..256 {

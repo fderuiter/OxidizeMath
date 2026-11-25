@@ -275,6 +275,12 @@ pub enum StatMechError {
         #[allow(missing_docs)]
         reason: String,
     },
+    /// Wrapped differential-equation solver error.
+    #[error("{0}")]
+    Diffeq(#[from] engine_diffeq::DiffeqError),
+    /// Wrapped partial-differential-equation solver error.
+    #[error("{0}")]
+    Pde(#[from] engine_pde::PdeError),
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
     Math(#[from] math_commons::error::MathError),
@@ -405,6 +411,8 @@ impl Diagnostic for StatMechError {
     fn severity(&self) -> Severity {
         match self {
             Self::Math(err) => err.severity(),
+            Self::Diffeq(err) => err.severity(),
+            Self::Pde(err) => err.severity(),
             _ => Severity::Error,
         }
     }
@@ -422,7 +430,7 @@ impl Diagnostic for StatMechError {
 mod umbrella;
 
 pub use crate::physics::{
-    medical::radar_gating::GatingError, nuclear::types::NuclearError,
+    medical::radar_gating::GatingError, nuclear::types::NuclearError, quantum::types::QuantumError,
     stat_mech::sandpile::SandpileError,
 };
 pub use umbrella::PhysicsError;

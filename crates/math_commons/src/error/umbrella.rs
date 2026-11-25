@@ -57,8 +57,8 @@ impl Diagnostic for MathCommonsError {
     }
 }
 
-impl From<String> for MathCommonsError {
-    fn from(reason: String) -> Self {
+impl From<&'static str> for MathCommonsError {
+    fn from(reason: &'static str) -> Self {
         Self::Math(MathError::from(reason))
     }
 }

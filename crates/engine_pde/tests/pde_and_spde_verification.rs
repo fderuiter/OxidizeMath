@@ -1,5 +1,6 @@
 // [cite:engine_pde]
 //! Stencil, boundary, conserved-flux noise, radix-2 2/3-dealiased Fourier, Cahn-Hilliard, and zero-alloc tests.
+#![cfg(feature = "std")]
 
 use engine_pde::{
     BoundaryCondition, ExplicitSpdeStencilStepper, PdeOwnedWorkspace, SemiImplicitFourierStepper,

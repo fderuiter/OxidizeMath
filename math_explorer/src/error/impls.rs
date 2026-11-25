@@ -90,6 +90,7 @@ impl Error {
             Self::Gating(err) => Some(err),
             Self::HighEnergy(err) => Some(err),
             Self::Nuclear(err) => Some(err),
+            Self::Quantum(err) => Some(err),
             Self::Radar(err) => Some(err),
             Self::Sandpile(err) => Some(err),
             Self::SolidState(err) => Some(err),
@@ -159,6 +160,9 @@ impl Error {
     #[verified_engine::verified]
     fn classify(&self) -> Option<InnerErrorRef<'_>> {
         match self {
+            Self::Diagnostic(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Diffeq(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Pde(err) => Some(InnerErrorRef::Domain(err)),
             Self::Eval(err) => Some(InnerErrorRef::Domain(err)),
             Self::Fit(err) => Some(InnerErrorRef::Domain(err)),
             Self::Glsl(err) => Some(InnerErrorRef::Domain(err)),

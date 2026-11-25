@@ -22,6 +22,9 @@ macro_rules! impl_error_from {
     };
 }
 
+impl_error_from!(DiagnosticError => Diagnostic);
+impl_error_from!(DiffeqError => Diffeq);
+impl_error_from!(PdeError => Pde);
 impl_error_from!(EvalError => Eval);
 impl_error_from!(FitError => Fit);
 impl_error_from!(GlslError => Glsl);
@@ -32,9 +35,9 @@ impl_error_from!(ParseError => Parse);
 impl_error_from!(ShaderEmitError => ShaderEmit);
 impl_error_from!(std::io::Error => Io);
 
-impl From<String> for Error {
+impl From<&'static str> for Error {
     #[verified_engine::verified]
-    fn from(reason: String) -> Self {
+    fn from(reason: &'static str) -> Self {
         Self::Math(MathError::from(reason))
     }
 }
@@ -82,6 +85,7 @@ impl_error_from!(@cfg "physics":
     GatingError => Gating,
     HighEnergyError => HighEnergy,
     NuclearError => Nuclear,
+    QuantumError => Quantum,
     RadarError => Radar,
     SandpileError => Sandpile,
     SolidStateError => SolidState,

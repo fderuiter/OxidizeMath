@@ -68,7 +68,7 @@ where
     {
         return Err(ChaosError::Math(
             math_commons::error::MathError::NumericalError {
-                reason: String::new(),
+                reason: "Non-finite state during Lyapunov integration",
             },
         ));
     }

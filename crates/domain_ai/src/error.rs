@@ -81,6 +81,24 @@ pub enum AIError {
         actual: (usize, usize),
     },
 
+    /// Sculpted grid cell mask byte slice length did not match `width * height`.
+    #[error("Cell mask length {actual} != {expected}")]
+    CellMaskLengthMismatch {
+        /// Expected cell count (`width * height`).
+        expected: usize,
+        /// Supplied byte slice length.
+        actual: usize,
+    },
+
+    /// Sculpted grid cell mask contained an unrecognized role byte tag.
+    #[error("Invalid GridCellRole tag {tag} at cell {index}")]
+    InvalidCellRoleTag {
+        /// Zero-based cell index.
+        index: usize,
+        /// Rejected role tag byte.
+        tag: u8,
+    },
+
     #[error("{0}")]
     #[allow(missing_docs)]
     Math(#[from] math_commons::error::MathError),

@@ -1,5 +1,6 @@
 // [cite:engine_diffeq]
 //! Convergence-order, Itô/Stratonovich calculus, BAOAB equilibrium, and zero-allocation verification.
+#![cfg(feature = "std")]
 
 use engine_diffeq::{
     BaoabLangevinSolver, BaoabParams, CorrelatedWienerIncrement, EulerMaruyamaSolver,

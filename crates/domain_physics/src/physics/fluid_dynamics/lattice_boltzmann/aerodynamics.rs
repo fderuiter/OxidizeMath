@@ -235,24 +235,28 @@ pub fn advance_wind_tunnel_step(solver: &mut LatticeBoltzmannD2Q9<BgkCollision>,
     apply_outflow_right_boundary(solver);
 }
 
-/// Computes discrete 2D vorticity $\omega_z = \partial_x u_y - \partial_y u_x$ into
+/// Fallibly computes discrete 2D vorticity $\omega_z = \partial_x u_y - \partial_y u_x$ into
 /// `out_vorticity` (row-major `y * width + x`) with zero heap allocations.
 #[verified_engine::verified]
-pub fn compute_vorticity_into<C: CollisionModel<9, D2Q9>>(
+pub fn try_compute_vorticity_into<C: CollisionModel<9, D2Q9>>(
     solver: &LatticeBoltzmannD2Q9<C>,
     out_vorticity: &mut [f64],
-) {
+) -> Result<(), crate::error::FluidError> {
+    use math_commons::math_kernel::types::Dimension;
     let width = solver.width();
     let height = solver.height();
     let total = width * height;
-    assert_eq!(
-        out_vorticity.len(),
-        total,
-        "Vorticity buffer length must equal width * height"
-    );
+    if out_vorticity.len() != total {
+        return Err(crate::error::FluidError::Math(
+            math_commons::error::MathError::DimensionMismatch {
+                expected: Dimension(total),
+                actual: Dimension(out_vorticity.len()),
+            },
+        ));
+    }
     out_vorticity.fill(0.0);
     if width < 3 || height < 3 {
-        return;
+        return Ok(());
     }
 
     for y in 1..(height - 1) {
@@ -266,6 +270,19 @@ pub fn compute_vorticity_into<C: CollisionModel<9, D2Q9>>(
             out_vorticity[idx] = duy_dx - dux_dy;
         }
     }
+    debug_assert_eq!(out_vorticity.len(), total);
+    Ok(())
+}
+
+/// Computes discrete 2D vorticity $\omega_z = \partial_x u_y - \partial_y u_x$ into
+/// `out_vorticity`; prefer [`try_compute_vorticity_into`].
+#[verified_engine::verified]
+pub fn compute_vorticity_into<C: CollisionModel<9, D2Q9>>(
+    solver: &LatticeBoltzmannD2Q9<C>,
+    out_vorticity: &mut [f64],
+) {
+    try_compute_vorticity_into(solver, out_vorticity)
+        .expect("Vorticity buffer length must equal width * height");
 }
 
 /// Integrates hydrodynamic drag and lift on interior solid obstacles via the D2Q9

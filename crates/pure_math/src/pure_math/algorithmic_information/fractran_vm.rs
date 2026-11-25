@@ -184,20 +184,37 @@ impl FractranCompiledVm {
         Ok(None)
     }
 
+    /// Fallible companion to [`power_of_two_exponent`](Self::power_of_two_exponent).
+    #[verified_engine::verified]
+    pub fn try_power_of_two_exponent(
+        &self,
+        registers: &[u32],
+    ) -> core::result::Result<Option<u32>, math_commons::error::MathError> {
+        #[allow(unused_braces)]
+        Ok({
+            let width = self.primes.len();
+            if registers.len() != width || width == 0 || self.primes[0] != 2 {
+                return Ok(None);
+            }
+            __ensure_eq_math(
+                &(registers.len()),
+                &(width),
+                "power_of_two_exponent: equality invariant violated",
+            )?;
+            let exp_two = registers[0];
+            if exp_two == 0 || registers[1..width].iter().any(|&other| other != 0) {
+                return Ok(None);
+            }
+            Some(exp_two)
+        })
+    }
+
     /// Returns `Some(k)` iff `registers` encodes a pure prime power of two $N = 2^k$ ($k \ge 1$).
     #[must_use]
     #[verified_engine::verified]
     pub fn power_of_two_exponent(&self, registers: &[u32]) -> Option<u32> {
-        let width = self.primes.len();
-        if registers.len() != width || width == 0 || self.primes[0] != 2 {
-            return None;
-        }
-        assert_eq!(registers.len(), width);
-        let exp_two = registers[0];
-        if exp_two == 0 || registers[1..width].iter().any(|&other| other != 0) {
-            return None;
-        }
-        Some(exp_two)
+        self.try_power_of_two_exponent(registers)
+            .expect("power_of_two_exponent preconditions must hold")
     }
 }
 
@@ -365,3 +382,16 @@ impl FractranState {
 }
 
 // [cite:algorithmic_information_rust]
+
+#[inline]
+fn __ensure_eq_math<A: PartialEq<B> + ?Sized, B: ?Sized>(
+    left: &A,
+    right: &B,
+    reason: &'static str,
+) -> core::result::Result<(), math_commons::error::MathError> {
+    if left == right {
+        Ok(())
+    } else {
+        Err(math_commons::error::MathError::NumericalError { reason })
+    }
+}

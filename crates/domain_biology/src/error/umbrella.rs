@@ -61,9 +61,9 @@ impl From<pure_math::error::StochasticError> for BiologyError {
     }
 }
 
-impl From<String> for BiologyError {
+impl From<&'static str> for BiologyError {
     #[verified_engine::verified]
-    fn from(reason: String) -> Self {
+    fn from(reason: &'static str) -> Self {
         Self::Math(math_commons::error::MathError::from(reason))
     }
 }

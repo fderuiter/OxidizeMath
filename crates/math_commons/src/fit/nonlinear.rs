@@ -2,6 +2,7 @@
 //! `Logarithmic`, `Logistic`, and `Sinusoidal`).
 // [cite:math_commons]
 
+#[cfg(feature = "alloc")]
 pub use super::format::format_nonlinear_formula;
 use super::lm::{levenberg_marquardt, levenberg_marquardt_filtered};
 use super::seeds::{
@@ -12,6 +13,7 @@ use super::{CurveFit, FitModel};
 use crate::error::FitError;
 use crate::series::PointSeries;
 #[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
 use num_traits::Float as _;
 
 /// Fits a nonlinear [`FitModel`] to `points` on the stack, returning [`FitError`] on failure.

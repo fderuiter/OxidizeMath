@@ -5,6 +5,7 @@ use super::{CurveFit, FitModel};
 use crate::error::FitError;
 use crate::series::PointSeries;
 #[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
 use num_traits::Float as _;
 
 /// Fits a polynomial of `degree` (`1..=4`) in linear coordinates with zero heap allocations.
@@ -276,4 +277,5 @@ pub(crate) fn symmetrize_upper<const N: usize>(mat: &mut [[f64; N]; N], n: usize
     }
 }
 
+#[cfg(feature = "alloc")]
 pub use super::format::format_polynomial_formula;

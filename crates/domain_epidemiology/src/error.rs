@@ -95,7 +95,7 @@ mod tests {
             expected: Dimension(1),
             actual: Dimension(2),
         };
-        let epi = EpidemiologyError::from(sample_math.clone());
+        let epi = EpidemiologyError::from(sample_math);
         assert!(epi.source().is_some());
 
         let cases: Vec<EpidemiologyDomainError> = vec![

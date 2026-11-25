@@ -3,6 +3,53 @@ use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
+use thiserror::Error;
+
+/// Stack-allocated error contract for quantum mechanics states, operators, and orbital solvers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum QuantumError {
+    /// Principal quantum number $n$ fell outside the supported interactive range `1..=6`.
+    #[error("Principal quantum number n={n} must be in 1..=6")]
+    InvalidPrincipalNumber {
+        /// Rejected principal quantum number $n$.
+        n: u32,
+    },
+    /// Azimuthal quantum number $\ell$ violated $0 \le \ell < n$.
+    #[error("Orbital quantum number l={l} must satisfy l < n={n}")]
+    InvalidOrbitalNumber {
+        /// Principal quantum number $n$.
+        n: u32,
+        /// Rejected orbital quantum number $\ell$.
+        l: u32,
+    },
+    /// Magnetic quantum number $m$ violated $|m| \le \ell$.
+    #[error("Magnetic quantum number m={m} must satisfy |m| <= l={l}")]
+    InvalidMagneticNumber {
+        /// Azimuthal quantum number $\ell$.
+        l: u32,
+        /// Rejected magnetic quantum number $m$.
+        m: i32,
+    },
+    /// Hilbert-space state, operator, or grid buffer dimensions were incompatible.
+    #[error("Quantum dimension mismatch ({context}): expected {expected}, got {actual}")]
+    DimensionMismatch {
+        /// Static invariant context.
+        context: &'static str,
+        /// Expected dimension or length.
+        expected: usize,
+        /// Actual dimension or length.
+        actual: usize,
+    },
+    /// Physical or discretization parameter (`hbar`, `mass`, `dx`, `dt`, `width`) was invalid.
+    #[error("Invalid quantum parameter: {parameter}")]
+    InvalidParameter {
+        /// Static parameter identifier.
+        parameter: &'static str,
+    },
+    /// Wrapped foundational mathematical error.
+    #[error("{0}")]
+    Math(#[from] math_commons::error::MathError),
+}
 
 /// Represents the state of a quantum system as a vector in a Hilbert space.
 ///
@@ -147,20 +194,31 @@ impl QuantumState {
         self.vector.map(|c| c.norm_sqr())
     }
 
-    /// Writes the Born probability density $P_i = |\psi_i|^2$ into `out` without heap allocations.
+    /// Fallibly writes the Born probability density $P_i = |\psi_i|^2$ into `out` without heap allocations.
+    #[verified_engine::verified]
+    pub fn try_probability_density_in_place(&self, out: &mut [f64]) -> Result<(), QuantumError> {
+        if out.len() != self.vector.len() {
+            return Err(QuantumError::DimensionMismatch {
+                context: "probability_density_in_place",
+                expected: self.vector.len(),
+                actual: out.len(),
+            });
+        }
+        for (dst, amp) in out.iter_mut().zip(self.vector.as_slice().iter()) {
+            *dst = amp.norm_sqr();
+        }
+        debug_assert_eq!(out.len(), self.vector.len());
+        Ok(())
+    }
+
+    /// Writes the Born probability density $P_i = |\psi_i|^2$ into `out` without heap allocations; prefer [`Self::try_probability_density_in_place`].
     ///
     /// # Panics
     /// Panics if `out.len() != self.vector.len()`.
     #[verified_engine::verified]
     pub fn probability_density_in_place(&self, out: &mut [f64]) {
-        assert_eq!(
-            out.len(),
-            self.vector.len(),
-            "Output slice length must match quantum state vector length"
-        );
-        for (dst, amp) in out.iter_mut().zip(self.vector.as_slice().iter()) {
-            *dst = amp.norm_sqr();
-        }
+        self.try_probability_density_in_place(out)
+            .expect("Output slice length must match quantum state vector length");
     }
 
     /// Projects the complex state vector onto the first `M` discrete orthonormal

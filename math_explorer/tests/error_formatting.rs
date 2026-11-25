@@ -1,4 +1,4 @@
-//! Verifies that all 38 public error enums tested from `math_explorer::error`
+//! Verifies that all 42 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -13,13 +13,13 @@
 
 use math_explorer::diagnostics::Diagnostic;
 use math_explorer::error::{
-    AIError, BatteryError, BotanicalError, ChaosError, ClimateError, CopulaError, DoseFluenceError,
-    EloError, EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError,
-    Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError, IsosurfaceError,
-    KellyError, LoraError, MarketPricingError, MarkovError, MatchModelError, MathError,
-    MonteCarloError, NumberTheoryError, OptionPricingError, OuError, PharmacokineticsError,
-    PoissonError, QueueingError, RadarError, SandpileError, SolidStateError, StandardModelError,
-    StatMechError, TdaError, ZipError,
+    AIError, BatteryError, BotanicalError, ChaosError, ClimateError, CopulaError, DiagnosticError,
+    DiffeqError, DoseFluenceError, EloError, EngineeringError, EpidemiologyError, FitError,
+    FluidError, GameTheoryError, Glicko2Error, GraphTheoryError, HighEnergyError,
+    HodgkinHuxleyError, IsosurfaceError, KellyError, LoraError, MarketPricingError, MarkovError,
+    MatchModelError, MathError, MonteCarloError, NumberTheoryError, OptionPricingError, OuError,
+    PdeError, PharmacokineticsError, PoissonError, QuantumError, QueueingError, RadarError,
+    SandpileError, SolidStateError, StandardModelError, StatMechError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -44,7 +44,7 @@ fn assert_readable_diagnostic<E: Diagnostic>(name: &str, err: &E) {
 }
 
 #[test]
-fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
+fn core_and_engine_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic(
         "MathError",
         &MathError::DimensionMismatch {
@@ -60,7 +60,17 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
             max: 1.0,
         },
     );
+    assert_readable_diagnostic("DiagnosticError", &DiagnosticError::EmptySource);
+    assert_readable_diagnostic("DiffeqError", &DiffeqError::InvalidStepSize);
+    assert_readable_diagnostic(
+        "PdeError",
+        &PdeError::InvalidGridDimension { axis: "x", size: 0 },
+    );
     assert_readable_diagnostic("FitError", &FitError::UnsupportedDegree { degree: 5 });
+}
+
+#[test]
+fn pure_math_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic(
         "NumberTheoryError",
         &NumberTheoryError::DivisionByZeroQSeries,
@@ -324,17 +334,29 @@ fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
         "StandardModelError",
         &StandardModelError::UnbrokenSymmetry { mu2: 1.0 },
     );
+    assert_readable_diagnostic(
+        "QuantumError",
+        &QuantumError::InvalidPrincipalNumber { n: 0 },
+    );
     assert_readable_diagnostic("StatMechError", &StatMechError::InvalidTemperature(-5.0));
+}
 
+#[test]
+fn wrapped_math_and_engine_errors_emit_readable_display_and_metadata() {
     let math_err = MathError::StrictlyOutOfBounds {
         value: 0.0,
         min: 0.0,
         max: f64::INFINITY,
     };
-    assert_readable_diagnostic("ClimateError::Math", &ClimateError::from(math_err.clone()));
-    assert_readable_diagnostic(
-        "EngineeringError::Math",
-        &EngineeringError::from(math_err.clone()),
-    );
+    assert_readable_diagnostic("ClimateError::Math", &ClimateError::from(math_err));
+    assert_readable_diagnostic("EngineeringError::Math", &EngineeringError::from(math_err));
     assert_readable_diagnostic("DoseFluenceError::Math", &DoseFluenceError::from(math_err));
+    assert_readable_diagnostic(
+        "StatMechError::Diffeq",
+        &StatMechError::from(DiffeqError::InvalidStepSize),
+    );
+    assert_readable_diagnostic(
+        "StatMechError::Pde",
+        &StatMechError::from(PdeError::InvalidGridDimension { axis: "x", size: 0 }),
+    );
 }

@@ -5,6 +5,7 @@ use super::poly::symmetrize_upper;
 use crate::error::FitError;
 use crate::series::PointSeries;
 #[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
 use num_traits::Float as _;
 
 /// Maximum outer Levenberg-Marquardt iterations before returning [`FitError::NonConvergence`].

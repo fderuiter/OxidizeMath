@@ -181,7 +181,7 @@ pub fn global_registry() -> &'static FederatedRegistry {
             if sender
                 .send(TelemetryEvent {
                     source: source.clone(),
-                    severity: event.severity.clone(),
+                    severity: event.severity,
                     message: event.message.clone(),
                     metadata: event.metadata.clone(),
                     thread_name: event.thread_name.clone(),

@@ -352,30 +352,51 @@ pub fn evolve_state(
 ///
 /// assert!((state.probability_density()[1] - 1.0).abs() < 1e-6);
 /// ```
+/// Fallibly evolves `state` in place using `propagator` and `scratch` without heap allocations.
+#[verified_engine::verified]
+pub fn try_evolve_state_in_place(
+    state: &mut QuantumState,
+    propagator: &QuantumOperator,
+    scratch: &mut DVector<Complex<f64>>,
+) -> Result<(), crate::physics::quantum::types::QuantumError> {
+    use crate::physics::quantum::types::QuantumError;
+    let dim = state.vector.len();
+    if propagator.matrix.nrows() != propagator.matrix.ncols() {
+        return Err(QuantumError::DimensionMismatch {
+            context: "Propagator matrix must be square",
+            expected: propagator.matrix.nrows(),
+            actual: propagator.matrix.ncols(),
+        });
+    }
+    if propagator.matrix.ncols() != dim {
+        return Err(QuantumError::DimensionMismatch {
+            context: "Propagator dimension must match state vector length",
+            expected: dim,
+            actual: propagator.matrix.ncols(),
+        });
+    }
+    if scratch.len() != dim {
+        return Err(QuantumError::DimensionMismatch {
+            context: "Scratch vector length must match state vector length",
+            expected: dim,
+            actual: scratch.len(),
+        });
+    }
+    propagator.matrix.mul_to(&state.vector, scratch);
+    core::mem::swap(&mut state.vector, scratch);
+    debug_assert_eq!(state.vector.len(), dim);
+    Ok(())
+}
+
+/// Evolves `state` in-place under `propagator` using pre-allocated `scratch` with zero heap allocations.
 #[verified_engine::verified]
 pub fn evolve_state_in_place(
     state: &mut QuantumState,
     propagator: &QuantumOperator,
     scratch: &mut DVector<Complex<f64>>,
 ) {
-    let dim = state.vector.len();
-    assert_eq!(
-        propagator.matrix.nrows(),
-        propagator.matrix.ncols(),
-        "Propagator matrix must be square"
-    );
-    assert_eq!(
-        propagator.matrix.ncols(),
-        dim,
-        "Propagator dimension must match state vector length"
-    );
-    assert_eq!(
-        scratch.len(),
-        dim,
-        "Scratch vector length must match state vector length"
-    );
-    propagator.matrix.mul_to(&state.vector, scratch);
-    core::mem::swap(&mut state.vector, scratch);
+    try_evolve_state_in_place(state, propagator, scratch)
+        .expect("evolve_state_in_place dimension mismatch");
 }
 
 /// Computes the total squared norm $\sum_i |\psi_i|^2$ of `state` with zero heap allocations.

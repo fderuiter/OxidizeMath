@@ -1,6 +1,7 @@
 //! Zero-copy 2D coordinate series views for curve fitting and critical-point solvers.
 // [cite:math_commons]
 
+#[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
 /// Unrolled 16-wide branchless plateau scan over contiguous `(x, y)` sample slices.
@@ -251,6 +252,7 @@ impl<S: Sample2D, const N: usize> PointSeries for [S; N] {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<S: Sample2D> PointSeries for Vec<S> {
     #[inline(always)]
     fn len(&self) -> usize {
@@ -328,6 +330,7 @@ impl PointSeries for (&[f64], &[f64]) {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl PointSeries for (&Vec<f64>, &Vec<f64>) {
     #[inline(always)]
     fn len(&self) -> usize {

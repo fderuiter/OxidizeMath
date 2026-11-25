@@ -12,15 +12,33 @@ impl LatticeBoltzmannD2Q9<BgkCollision> {
 }
 
 impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<Q, L, C> {
-    /// Creates a new solver with a specific collision model.
+    /// Fallibly creates a new solver with a specific collision model after validating lattice stencils.
     #[verified_engine::verified]
-    pub fn new_with_model(width: usize, height: usize, collision_model: C) -> Self {
-        // Validation: Ensure lattice directions are within [-1, 1] range supported by stream()
+    pub fn try_new_with_model(
+        width: usize,
+        height: usize,
+        collision_model: C,
+    ) -> Result<Self, crate::error::FluidError> {
+        if width.checked_mul(height).is_none() {
+            return Err(crate::error::FluidError::GridDimensionsOverflow { width, height });
+        }
         for &dx in &L::directions_x() {
-            assert!(dx.abs() <= 1, "Lattice directions must be within [-1, 1]");
+            if dx.abs() > 1 {
+                return Err(crate::error::FluidError::Math(
+                    math_commons::error::MathError::NumericalError {
+                        reason: "Lattice directions must be within [-1, 1]",
+                    },
+                ));
+            }
         }
         for &dy in &L::directions_y() {
-            assert!(dy.abs() <= 1, "Lattice directions must be within [-1, 1]");
+            if dy.abs() > 1 {
+                return Err(crate::error::FluidError::Math(
+                    math_commons::error::MathError::NumericalError {
+                        reason: "Lattice directions must be within [-1, 1]",
+                    },
+                ));
+            }
         }
 
         let mut solver = Self {
@@ -29,7 +47,14 @@ impl<const Q: usize, L: Lattice2D<Q>, C: CollisionModel<Q, L>> LatticeBoltzmann<
             _marker: PhantomData,
         };
         solver.init_equilibrium();
-        solver
+        Ok(solver)
+    }
+
+    /// Creates a new solver with a specific collision model; prefer [`Self::try_new_with_model`].
+    #[verified_engine::verified]
+    pub fn new_with_model(width: usize, height: usize, collision_model: C) -> Self {
+        Self::try_new_with_model(width, height, collision_model)
+            .expect("Lattice directions and grid dimensions must be valid")
     }
 
     /// Initializes the grid to a uniform equilibrium state (rho=1, u=0).

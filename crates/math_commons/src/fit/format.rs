@@ -6,6 +6,7 @@ use alloc::borrow::ToOwned;
 use alloc::format;
 use alloc::string::{String, ToString};
 #[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
 use num_traits::Float as _;
 
 const SCI_LOWER: f64 = 1e-3;

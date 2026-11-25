@@ -153,7 +153,7 @@ mod tests {
             expected: Dimension(2),
             actual: Dimension(3),
         };
-        let rd = ReactionDiffusionError::from(sample_math.clone());
+        let rd = ReactionDiffusionError::from(sample_math);
         assert!(rd.source().is_some());
 
         let cases: Vec<BiologyError> = vec![

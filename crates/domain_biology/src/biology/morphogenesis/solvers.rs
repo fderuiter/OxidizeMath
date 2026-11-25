@@ -267,8 +267,33 @@ impl<'a, const N: usize, K, D> FusedEulerEvolution<'a, N, K, D> {
         }
     }
 
-    /// Creates a stochastic [`FusedEulerEvolution`] adapter injecting white noise of `noise_intensity`
+    /// Fallibly creates a stochastic [`FusedEulerEvolution`] adapter injecting white noise of `noise_intensity`
     /// scaled by `cell_measure` ($\Delta x$ or $\Delta x \Delta y$) via [`engine_pde`].
+    #[verified_engine::verified]
+    pub fn try_with_stochastic_noise(
+        solver: FusedEulerSolver,
+        dynamics: &'a TuringDynamics<'a, N, K, D>,
+        noise_intensity: f64,
+        cell_measure: f64,
+    ) -> Result<Self, EvolutionError> {
+        if !(noise_intensity >= 0.0
+            && noise_intensity.is_finite()
+            && cell_measure > 0.0
+            && cell_measure.is_finite())
+        {
+            return Err(EvolutionError::InvalidState);
+        }
+        debug_assert!(noise_intensity >= 0.0 && cell_measure > 0.0);
+        Ok(Self {
+            solver,
+            dynamics,
+            noise_intensity,
+            cell_measure,
+        })
+    }
+
+    /// Creates a stochastic [`FusedEulerEvolution`] adapter injecting white noise of `noise_intensity`
+    /// scaled by `cell_measure`; prefer [`Self::try_with_stochastic_noise`].
     #[verified_engine::verified]
     pub fn with_stochastic_noise(
         solver: FusedEulerSolver,
@@ -276,13 +301,8 @@ impl<'a, const N: usize, K, D> FusedEulerEvolution<'a, N, K, D> {
         noise_intensity: f64,
         cell_measure: f64,
     ) -> Self {
-        assert!(noise_intensity >= 0.0 && cell_measure > 0.0);
-        Self {
-            solver,
-            dynamics,
-            noise_intensity,
-            cell_measure,
-        }
+        Self::try_with_stochastic_noise(solver, dynamics, noise_intensity, cell_measure)
+            .expect("noise_intensity must be >= 0 and cell_measure > 0")
     }
 }
 

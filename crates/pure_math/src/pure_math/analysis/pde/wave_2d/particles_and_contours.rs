@@ -21,25 +21,53 @@ pub struct ChladniSandSystem {
 }
 
 impl ChladniSandSystem {
-    /// Pre-allocates `capacity` sand grains seeded deterministically via [`OxidizeRng`].
-    pub fn new(capacity: usize, seed: u64, width: usize, height: usize, wall_mask: &[f64]) -> Self {
-        assert!(capacity >= 1, "Particle capacity must be >= 1");
-        assert!(width >= 4 && height >= 4, "Grid dimensions must be >= 4");
-        let mut sys = Self {
-            capacity,
-            pos_x: vec![0.0; capacity],
-            pos_y: vec![0.0; capacity],
-            vel_x: vec![0.0; capacity],
-            vel_y: vec![0.0; capacity],
-            rng: OxidizeRng::new(seed),
-        };
-        sys.reseed(seed, width, height, wall_mask);
-        sys
+    /// Fallible companion to [`new`](Self::new).
+    pub fn try_new(
+        capacity: usize,
+        seed: u64,
+        width: usize,
+        height: usize,
+        wall_mask: &[f64],
+    ) -> core::result::Result<Self, math_commons::error::MathError> {
+        #[allow(unused_braces)]
+        Ok({
+            __ensure_math(capacity >= 1, "new: precondition or invariant violated")?;
+            __ensure_math(
+                width >= 4 && height >= 4,
+                "new: precondition or invariant violated",
+            )?;
+            let mut sys = Self {
+                capacity,
+                pos_x: vec![0.0; capacity],
+                pos_y: vec![0.0; capacity],
+                vel_x: vec![0.0; capacity],
+                vel_y: vec![0.0; capacity],
+                rng: OxidizeRng::new(seed),
+            };
+            sys.reseed(seed, width, height, wall_mask);
+            sys
+        })
     }
 
-    /// Deterministically scatters all grains across active (`wall_mask > 0.5`) plate cells.
-    pub fn reseed(&mut self, seed: u64, width: usize, height: usize, wall_mask: &[f64]) {
-        assert_eq!(wall_mask.len(), width * height);
+    /// Pre-allocates `capacity` sand grains seeded deterministically via [`OxidizeRng`].
+    pub fn new(capacity: usize, seed: u64, width: usize, height: usize, wall_mask: &[f64]) -> Self {
+        Self::try_new(capacity, seed, width, height, wall_mask)
+            .expect("new preconditions must hold")
+    }
+
+    /// Fallible companion to [`reseed`](Self::reseed).
+    pub fn try_reseed(
+        &mut self,
+        seed: u64,
+        width: usize,
+        height: usize,
+        wall_mask: &[f64],
+    ) -> core::result::Result<(), math_commons::error::MathError> {
+        __ensure_eq_math(
+            &(wall_mask.len()),
+            &(width * height),
+            "reseed: equality invariant violated",
+        )?;
         self.rng = OxidizeRng::new(seed);
         let x_span = (width - 3) as f64;
         let y_span = (height - 3) as f64;
@@ -62,6 +90,14 @@ impl ChladniSandSystem {
             self.vel_x[i] = 0.0;
             self.vel_y[i] = 0.0;
         }
+
+        Ok(())
+    }
+
+    /// Deterministically scatters all grains across active (`wall_mask > 0.5`) plate cells.
+    pub fn reseed(&mut self, seed: u64, width: usize, height: usize, wall_mask: &[f64]) {
+        self.try_reseed(seed, width, height, wall_mask)
+            .expect("reseed preconditions must hold");
     }
 
     /// Number of tracked sand grains.
@@ -88,10 +124,10 @@ impl ChladniSandSystem {
         &self.pos_y
     }
 
-    /// Drifts all sand grains down $-\nabla E(x, y)$ with amplitude-scaled agitation in zero allocations.
+    /// Fallible companion to [`step`](Self::step).
     #[allow(clippy::too_many_arguments)]
     #[verified_engine::verified]
-    pub fn step(
+    pub fn try_step(
         &mut self,
         energy_field: &[f64],
         wall_mask: &[f64],
@@ -100,12 +136,20 @@ impl ChladniSandSystem {
         mobility: f64,
         agitation: f64,
         dt: f64,
-    ) {
-        assert_eq!(energy_field.len(), width * height);
-        assert_eq!(wall_mask.len(), width * height);
+    ) -> core::result::Result<(), math_commons::error::MathError> {
+        __ensure_eq_math(
+            &(energy_field.len()),
+            &(width * height),
+            "step: equality invariant violated",
+        )?;
+        __ensure_eq_math(
+            &(wall_mask.len()),
+            &(width * height),
+            "step: equality invariant violated",
+        )?;
         let max_e = max_slice_value(energy_field);
         if max_e <= 1.0e-18 || dt <= 0.0 {
-            return;
+            return Ok(());
         }
         let inv_max_e = 1.0 / max_e;
         let max_x = (width - 2) as f64;
@@ -135,6 +179,33 @@ impl ChladniSandSystem {
                 self.vel_y[i] = -0.3 * vy;
             }
         }
+
+        Ok(())
+    }
+
+    /// Drifts all sand grains down $-\nabla E(x, y)$ with amplitude-scaled agitation in zero allocations.
+    #[allow(clippy::too_many_arguments)]
+    #[verified_engine::verified]
+    pub fn step(
+        &mut self,
+        energy_field: &[f64],
+        wall_mask: &[f64],
+        width: usize,
+        height: usize,
+        mobility: f64,
+        agitation: f64,
+        dt: f64,
+    ) {
+        self.try_step(
+            energy_field,
+            wall_mask,
+            width,
+            height,
+            mobility,
+            agitation,
+            dt,
+        )
+        .expect("step preconditions must hold");
     }
 
     /// Computes mean normalized wave energy sampled at the current sand grain positions.
@@ -224,7 +295,34 @@ impl MarchingSquares2D {
         &self.segments
     }
 
-    /// Extracts `field == 0.0` isoline segments across active cells without dynamic allocation.
+    /// Fallibly extracts `field == 0.0` isoline segments across active cells without dynamic allocation.
+    #[verified_engine::verified]
+    pub fn try_extract_zero_contours(
+        &mut self,
+        field: &[f64],
+        wall_mask: &[f64],
+        width: usize,
+        height: usize,
+        amplitude_floor: f64,
+    ) -> core::result::Result<&[[[f64; 2]; 2]], math_commons::error::MathError> {
+        let total = width * height;
+        __ensure_math(field.len() == total, "field length mismatch")?;
+        __ensure_math(wall_mask.len() == total, "wall_mask length mismatch")?;
+        self.segments.clear();
+        for y in 0..(height.saturating_sub(1)) {
+            for x in 0..(width.saturating_sub(1)) {
+                if self.segments.len() + 2 > self.max_segments {
+                    debug_assert!(self.segments.len() <= self.max_segments);
+                    return Ok(&self.segments);
+                }
+                self.process_cell(field, wall_mask, width, x, y, amplitude_floor);
+            }
+        }
+        debug_assert!(self.segments.len() <= self.max_segments);
+        Ok(&self.segments)
+    }
+
+    /// Extracts `field == 0.0` isoline segments across active cells; prefer [`Self::try_extract_zero_contours`].
     #[verified_engine::verified]
     pub fn extract_zero_contours(
         &mut self,
@@ -234,18 +332,8 @@ impl MarchingSquares2D {
         height: usize,
         amplitude_floor: f64,
     ) -> &[[[f64; 2]; 2]] {
-        assert_eq!(field.len(), width * height);
-        assert_eq!(wall_mask.len(), width * height);
-        self.segments.clear();
-        for y in 0..(height.saturating_sub(1)) {
-            for x in 0..(width.saturating_sub(1)) {
-                if self.segments.len() + 2 > self.max_segments {
-                    return &self.segments;
-                }
-                self.process_cell(field, wall_mask, width, x, y, amplitude_floor);
-            }
-        }
-        &self.segments
+        self.try_extract_zero_contours(field, wall_mask, width, height, amplitude_floor)
+            .expect("MarchingSquares2D::extract_zero_contours preconditions must hold")
     }
 
     #[verified_engine::verified]
@@ -322,5 +410,30 @@ fn interp_zero(a: f64, b: f64) -> f64 {
         0.5
     } else {
         (a / denom).clamp(0.0, 1.0)
+    }
+}
+
+#[inline]
+fn __ensure_math(
+    cond: bool,
+    reason: &'static str,
+) -> core::result::Result<(), math_commons::error::MathError> {
+    if cond {
+        Ok(())
+    } else {
+        Err(math_commons::error::MathError::NumericalError { reason })
+    }
+}
+
+#[inline]
+fn __ensure_eq_math<A: PartialEq<B> + ?Sized, B: ?Sized>(
+    left: &A,
+    right: &B,
+    reason: &'static str,
+) -> core::result::Result<(), math_commons::error::MathError> {
+    if left == right {
+        Ok(())
+    } else {
+        Err(math_commons::error::MathError::NumericalError { reason })
     }
 }

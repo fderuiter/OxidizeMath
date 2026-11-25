@@ -29,7 +29,7 @@ By standardizing universal constants, color mapping formulas, and spatial coordi
 - **`stochastic`**: `#![no_std]` zero-allocation [`SolverWorkspace`](crate::stochastic::SolverWorkspace) for iterative Tarjan SCC sink-class decomposition, scale-normalized Householder QR DTMC/CTMC stationary solvers, exact discrete-time AR(1) Ornstein-Uhlenbeck calibration, and quantile summaries.
 - **`wigner`**: Clebsch-Gordan coefficients and quantum angular momentum arithmetic.
 
-`math_commons` enables `default = ["std"]` and compiles under `#![no_std]` (`core` + `alloc` + `libm`) when built with `--no-default-features`.
+`math_commons` enables `default = ["std"]`, supports an optional `alloc` feature (`--no-default-features --features alloc`), and compiles in bare `#![no_std]` mode (`core` + `libm` only) when built with `--no-default-features`.
 
 ---
 
@@ -63,7 +63,6 @@ Utilize spatial index flattening and scientific color palette evaluation:
 
 ```rust
 use math_commons::constants::C;
-use math_commons::math_kernel::colormap::heatmap_color;
 use math_commons::math_kernel::types::flatten_2d_index;
 
 // Access standardized physical constants
@@ -73,12 +72,17 @@ assert_eq!(C, 299_792_458.0);
 let index = flatten_2d_index(3, 2, 10);
 assert_eq!(index, 23);
 
-// Evaluate normalized scalar values to RGB heatmaps for visualizers
-let min_color = heatmap_color(0.0);
-assert_eq!(min_color, [0, 0, 255]); // Blue at lower bound
+#[cfg(feature = "std")]
+{
+    use math_commons::math_kernel::colormap::heatmap_color;
 
-let max_color = heatmap_color(1.0);
-assert_eq!(max_color, [255, 0, 0]); // Red at upper bound
+    // Evaluate normalized scalar values to RGB heatmaps for visualizers
+    let min_color = heatmap_color(0.0);
+    assert_eq!(min_color, [0, 0, 255]); // Blue at lower bound
+
+    let max_color = heatmap_color(1.0);
+    assert_eq!(max_color, [255, 0, 0]); // Red at upper bound
+}
 ```
 
 ### Iterative AST-to-GLSL Transpilation
@@ -86,15 +90,18 @@ assert_eq!(max_color, [255, 0, 0]); // Red at upper bound
 Compile scalar (`float`) and complex (`vec2`) AST expressions into standalone GLSL ES 3.00 expressions:
 
 ```rust
-use math_commons::ast::parse;
-use math_commons::math_kernel::glsl_colormap::glsl_colormap_library;
+#[cfg(feature = "std")]
+{
+    use math_commons::ast::parse;
+    use math_commons::math_kernel::glsl_colormap::glsl_colormap_library;
 
-let expr = parse("z^3 - 1/z").unwrap();
-let glsl = expr.to_glsl_complex_with_vars(&["z"]).unwrap();
-assert_eq!(glsl, "cpow(z, vec2(3.0, 0.0)) - cdiv(vec2(1.0, 0.0), z)");
+    let expr = parse("z^3 - 1/z").unwrap();
+    let glsl = expr.to_glsl_complex_with_vars(&["z"]).unwrap();
+    assert_eq!(glsl, "cpow(z, vec2(3.0, 0.0)) - cdiv(vec2(1.0, 0.0), z)");
 
-let palette_glsl = glsl_colormap_library();
-assert!(palette_glsl.contains("vec3 ensure_dark_canvas_contrast(vec3 srgb)"));
+    let palette_glsl = glsl_colormap_library();
+    assert!(palette_glsl.contains("vec3 ensure_dark_canvas_contrast(vec3 srgb)"));
+}
 ```
 
 Example emitted GLSL helper signature (`text` block):

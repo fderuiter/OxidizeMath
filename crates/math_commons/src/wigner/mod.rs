@@ -1,5 +1,6 @@
 // [cite:math_commons]
 #[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
 use num_traits::Float as _;
 
 /// Clebsch-Gordan coefficient calculator for angular momentum coupling.

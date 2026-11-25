@@ -11,7 +11,6 @@ pub struct FusedStencilStepper {
 
 impl FusedStencilStepper {
     /// Creates a 1D fused stencil stepper after validating `dx > 0.0`.
-    #[cfg(feature = "std")]
     #[verified_engine::verified]
     pub fn try_new(dx: StepSize) -> Result<Self, math_commons::error::MathError> {
         debug_assert!(dx.is_finite() || !dx.is_finite());
@@ -21,7 +20,6 @@ impl FusedStencilStepper {
     }
 
     /// Creates a 2D fused stencil stepper after validating `dx > 0.0` and `dy > 0.0`.
-    #[cfg(feature = "std")]
     #[verified_engine::verified]
     pub fn try_new_2d(dx: StepSize, dy: StepSize) -> Result<Self, math_commons::error::MathError> {
         debug_assert!(dx.is_finite() || !dx.is_finite());
@@ -31,7 +29,6 @@ impl FusedStencilStepper {
     }
 
     /// Creates a 3D fused stencil stepper after validating `dx > 0.0`, `dy > 0.0`, and `dz > 0.0`.
-    #[cfg(feature = "std")]
     #[verified_engine::verified]
     pub fn try_new_3d(
         dx: StepSize,
@@ -47,28 +44,21 @@ impl FusedStencilStepper {
     /// Constructs a 1D fused stencil stepper, panicking if `*dx <= 0.0`.
     #[verified_engine::verified]
     pub fn new(dx: StepSize) -> Self {
-        assert!(*dx > 0.0 && dx.is_finite());
-        Self {
-            ops: StencilOperators::new(dx),
-        }
+        Self::try_new(dx).expect("FusedStencilStepper::new requires finite positive dx")
     }
 
     /// Constructs a 2D fused stencil stepper, panicking if `*dx <= 0.0` or `*dy <= 0.0`.
     #[verified_engine::verified]
     pub fn new_2d(dx: StepSize, dy: StepSize) -> Self {
-        assert!(*dx > 0.0 && *dy > 0.0);
-        Self {
-            ops: StencilOperators::new_2d(dx, dy),
-        }
+        Self::try_new_2d(dx, dy)
+            .expect("FusedStencilStepper::new_2d requires finite positive dx and dy")
     }
 
     /// Constructs a 3D fused stencil stepper for `(dx, dy, dz)`.
     #[verified_engine::verified]
     pub fn new_3d(dx: StepSize, dy: StepSize, dz: StepSize) -> Self {
-        assert!(*dx > 0.0 && *dy > 0.0 && *dz > 0.0);
-        Self {
-            ops: StencilOperators::new_3d(dx, dy, dz),
-        }
+        Self::try_new_3d(dx, dy, dz)
+            .expect("FusedStencilStepper::new_3d requires finite positive dx, dy, and dz")
     }
 
     /// Applies a 1D interior fused stencil pass (`1..n-1`) over a single array.

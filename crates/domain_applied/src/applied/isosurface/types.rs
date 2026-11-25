@@ -20,7 +20,7 @@ pub struct VoxelGrid {
     origin: Point3D,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(missing_docs)]
 pub enum VoxelGridError {
     #[allow(missing_docs)]
@@ -29,6 +29,8 @@ pub enum VoxelGridError {
     DataSizeMismatch,
     #[allow(missing_docs)]
     InvalidVoxelSize,
+    /// Origin coordinates contained non-finite values.
+    InvalidOrigin,
 }
 
 impl std::fmt::Display for VoxelGridError {
@@ -40,6 +42,7 @@ impl std::fmt::Display for VoxelGridError {
                 write!(f, "Data vector size does not match width * height * depth")
             }
             Self::InvalidVoxelSize => write!(f, "Voxel size components must be strictly positive"),
+            Self::InvalidOrigin => write!(f, "Grid origin coordinates must be finite"),
         }
     }
 }

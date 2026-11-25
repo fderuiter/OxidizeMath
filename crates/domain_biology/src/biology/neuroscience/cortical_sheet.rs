@@ -106,15 +106,28 @@ impl CorticalSheetRunner {
         &self.laplacian
     }
 
-    /// Replaces the CSR [`CotangentLaplacian`] when vertex positions deform (must preserve vertex count).
+    /// Fallibly replaces the CSR [`CotangentLaplacian`] when vertex positions deform (must preserve vertex count).
+    #[verified_engine::verified]
+    pub fn try_set_laplacian(
+        &mut self,
+        laplacian: CotangentLaplacian,
+    ) -> Result<(), math_commons::error::MathError> {
+        use math_commons::math_kernel::types::Dimension;
+        if laplacian.num_vertices() != self.neurons.len() {
+            return Err(math_commons::error::MathError::DimensionMismatch {
+                expected: Dimension(self.neurons.len()),
+                actual: Dimension(laplacian.num_vertices()),
+            });
+        }
+        self.laplacian = laplacian;
+        Ok(())
+    }
+
+    /// Replaces the CSR [`CotangentLaplacian`] when vertex positions deform; prefer [`Self::try_set_laplacian`].
     #[verified_engine::verified]
     pub fn set_laplacian(&mut self, laplacian: CotangentLaplacian) {
-        assert_eq!(
-            laplacian.num_vertices(),
-            self.neurons.len(),
-            "Updated CotangentLaplacian vertex count mismatch"
-        );
-        self.laplacian = laplacian;
+        self.try_set_laplacian(laplacian)
+            .expect("Updated CotangentLaplacian vertex count mismatch");
     }
 
     /// Sheet lateral coupling conductance ($\text{mS}/\text{cm}^2 \cdot \text{mm}^2$).

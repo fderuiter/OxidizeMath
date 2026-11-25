@@ -58,9 +58,9 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
         let mut solver = GillespieSolver::with_capacity(rng, self.num_states);
 
         while current_time < max_time {
-            let holding_time = solver.step(self, &mut current_state).map_err(|err| {
+            let holding_time = solver.step(self, &mut current_state).map_err(|_| {
                 MarkovError::Math(math_commons::error::MathError::NumericalError {
-                    reason: err.to_string(),
+                    reason: "Gillespie CTMC step failed",
                 })
             })?;
             if !holding_time.is_finite() {
@@ -69,7 +69,7 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
             let Some(dt_val) = T::from_f64(holding_time) else {
                 return Err(MarkovError::Math(
                     math_commons::error::MathError::ConversionError {
-                        reason: format!("Failed to convert holding time {holding_time}"),
+                        reason: "Failed to convert holding time",
                     },
                 ));
             };

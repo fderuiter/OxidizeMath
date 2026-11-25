@@ -5,9 +5,10 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-mod biharmonic;
 /// Boundary condition specifications and ghost-cell lookup helpers for 1D, 2D, and 3D grids.
 pub mod boundary;
+/// `#![no_std]` stack-allocated PDE and SPDE solver error contracts.
+pub mod error;
 /// `#![no_std]` zero-allocation radix-2 1D/2D Cooley-Tukey FFT and Orszag 2/3-rule dealiasing.
 pub mod fft;
 mod fourier_kernels;
@@ -21,14 +22,22 @@ pub mod spde_noise;
 pub mod spde_stencil;
 /// 1D, 2D, and 3D Laplacian, gradient, upwind, and public 2D Biharmonic stencil operators.
 pub mod stencil;
+#[cfg(test)]
+mod tests;
 
 pub use boundary::BoundaryCondition;
-pub use fft::{dealias_1d_spectrum, dealias_2d_spectrum, fft_1d_inplace, fft_2d_inplace};
+pub use error::PdeError;
+pub use fft::{
+    dealias_1d_spectrum, dealias_2d_spectrum, fft_1d_inplace, fft_2d_inplace,
+    try_dealias_1d_spectrum, try_dealias_2d_spectrum, try_fft_1d_inplace, try_fft_2d_inplace,
+};
 pub use fourier_stepper::SemiImplicitFourierStepper;
 pub use fused_stepper::FusedStencilStepper;
 pub use spde_noise::{
     SpdeNoiseKind, inject_additive_noise_1d, inject_additive_noise_2d,
-    inject_conserved_flux_noise_1d, inject_conserved_flux_noise_2d,
+    inject_conserved_flux_noise_1d, inject_conserved_flux_noise_2d, try_inject_additive_noise_1d,
+    try_inject_additive_noise_2d, try_inject_conserved_flux_noise_1d,
+    try_inject_conserved_flux_noise_2d,
 };
 pub use spde_stencil::{ExplicitSpdeStencilStepper, SplitStepSpdeStencilStepper};
 pub use stencil::{StencilNeighbors3D, StencilOperators};
@@ -42,13 +51,21 @@ pub struct PdeOwnedWorkspace<T: math_commons::math_kernel::types::Scalar> {
 
 #[cfg(feature = "alloc")]
 impl<T: math_commons::math_kernel::types::Scalar> PdeOwnedWorkspace<T> {
-    /// Allocates a zero-initialized scratch buffer of `capacity` scalars once up front.
+    /// Fallibly allocates a zero-initialized scratch buffer of `capacity` scalars once up front.
+    #[verified_engine::verified]
+    pub fn try_with_capacity(capacity: usize) -> Result<Self, PdeError> {
+        let mut buf = alloc::vec::Vec::new();
+        buf.try_reserve_exact(capacity)
+            .map_err(|_| PdeError::WorkspaceAllocationFailed { capacity })?;
+        buf.resize(capacity, T::ZERO);
+        debug_assert_eq!(buf.len(), capacity);
+        Ok(Self { buf })
+    }
+
+    /// Allocates a zero-initialized scratch buffer of `capacity` scalars once up front; prefer [`Self::try_with_capacity`].
     #[verified_engine::verified]
     pub fn with_capacity(capacity: usize) -> Self {
-        let mut buf = alloc::vec::Vec::new();
-        buf.resize(capacity, T::ZERO);
-        assert_eq!(buf.len(), capacity);
-        Self { buf }
+        Self::try_with_capacity(capacity).expect("PdeOwnedWorkspace::with_capacity failed")
     }
 
     /// Borrows this buffer as a zero-allocation [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace).

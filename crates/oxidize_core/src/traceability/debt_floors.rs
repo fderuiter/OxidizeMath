@@ -1,5 +1,6 @@
 //! Ratcheted assertion density floor loader for workspace traceability gates.
 
+use crate::workspace::WorkspaceError;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::{Path, PathBuf};
 
@@ -41,15 +42,19 @@ fn find_workspace_whitelist_file() -> Option<PathBuf> {
 }
 
 /// Parses `[verification_debt]` density floors from `verification_whitelist.toml` TOML content.
-pub fn parse_density_floors_toml(content: &str) -> Result<Option<DensityFloors>, String> {
-    let parsed: toml::Table = content
-        .parse()
-        .map_err(|err| format!("Invalid TOML in verification_whitelist.toml: {err}"))?;
+pub fn parse_density_floors_toml(content: &str) -> Result<Option<DensityFloors>, WorkspaceError> {
+    let parsed: toml::Table = content.parse().map_err(|err| {
+        WorkspaceError::InvalidManifestSyntax(format!(
+            "Invalid TOML in verification_whitelist.toml: {err}"
+        ))
+    })?;
     let Some(debt_val) = parsed.get("verification_debt") else {
         return Ok(None);
     };
     let Some(debt) = debt_val.as_table() else {
-        return Err("[verification_debt] must be a TOML table".to_string());
+        return Err(WorkspaceError::InvalidManifestSyntax(
+            "[verification_debt] must be a TOML table".to_string(),
+        ));
     };
     let min_verified_density = debt
         .get("min_verified_density")
@@ -68,7 +73,9 @@ pub fn parse_density_floors_toml(content: &str) -> Result<Option<DensityFloors>,
         || min_total_density < 0.0
         || min_unverified_density.is_some_and(|u| !u.is_finite() || u < 0.0)
     {
-        return Err("[verification_debt] density floors must be finite and >= 0.0".to_string());
+        return Err(WorkspaceError::InvalidManifestSyntax(
+            "[verification_debt] density floors must be finite and >= 0.0".to_string(),
+        ));
     }
     Ok(Some(DensityFloors {
         min_verified_density,
@@ -91,7 +98,7 @@ pub fn load_workspace_density_floors() -> Result<DensityFloors, std::io::Error> 
         };
         let content = std::fs::read_to_string(&path)?;
         let parsed = parse_density_floors_toml(&content)
-            .map_err(|msg| std::io::Error::new(std::io::ErrorKind::InvalidData, msg))?;
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err.to_string()))?;
         Ok(parsed.unwrap_or_default())
     }
 }

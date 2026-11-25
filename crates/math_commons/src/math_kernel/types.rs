@@ -332,22 +332,37 @@ impl<'a, T: Scalar> SolverWorkspace<'a, T> {
         debug_assert!(self.buf.first().is_none_or(|v| *v == T::ZERO));
     }
 
+    /// Fallibly carves off a disjoint mutable slice of length `len` from the front of the
+    /// workspace, advancing `self` to the remaining suffix without heap allocation.
+    ///
+    /// # Errors
+    /// Returns [`crate::error::MathError::WorkspaceTooSmall`] without mutating `self` if
+    /// `len > self.len()`.
+    #[verified_engine::verified]
+    pub fn try_take_slice(&mut self, len: usize) -> Result<&'a mut [T], crate::error::MathError> {
+        let available = self.buf.len();
+        if len > available {
+            return Err(crate::error::MathError::WorkspaceTooSmall {
+                required: len,
+                available,
+            });
+        }
+        let full = core::mem::take(&mut self.buf);
+        let (head, tail) = full.split_at_mut(len);
+        self.buf = tail;
+        debug_assert_eq!(head.len(), len);
+        Ok(head)
+    }
+
     /// Carves off a disjoint mutable slice of length `len` from the front of the workspace,
     /// advancing `self` to the remaining suffix without heap allocation.
     ///
     /// # Panics
-    /// Panics if `len > self.len()`.
+    /// Panics if `len > self.len()`; prefer [`Self::try_take_slice`] for fallible callers.
     #[verified_engine::verified]
     pub fn take_slice(&mut self, len: usize) -> &'a mut [T] {
-        assert!(
-            len <= self.buf.len(),
-            "SolverWorkspace::take_slice requested {len} elements from buffer of length {}",
-            self.buf.len()
-        );
-        let full = core::mem::take(&mut self.buf);
-        let (head, tail) = full.split_at_mut(len);
-        self.buf = tail;
-        head
+        self.try_take_slice(len)
+            .expect("SolverWorkspace::take_slice requested more elements than available")
     }
 }
 

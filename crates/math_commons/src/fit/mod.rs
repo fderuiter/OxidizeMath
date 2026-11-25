@@ -5,31 +5,36 @@
 //! backed by fixed stack buffers and typed [`FitError`] diagnostics.
 // [cite:math_commons]
 
+#[cfg(feature = "alloc")]
 mod format;
 mod lm;
 mod nonlinear;
 mod poly;
 mod seeds;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests;
 
 use crate::error::FitError;
 use crate::series::PointSeries;
+#[cfg(feature = "alloc")]
 use alloc::string::String;
+#[cfg(feature = "alloc")]
 use alloc::{vec, vec::Vec};
 #[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
 use num_traits::Float as _;
 
 pub use lm::{
     MAX_FIT_PARAMS, MAX_LM_ITERATIONS, levenberg_marquardt, levenberg_marquardt_filtered,
     levenberg_marquardt_numeric, sum_squared_errors_numeric,
 };
-pub use nonlinear::{eval_nonlinear, fit_nonlinear, format_nonlinear_formula};
-pub use poly::{
-    eval_polynomial_horner, fit_polynomial, fit_polynomial_scaled, format_polynomial_formula,
-    solve_dense_small,
-};
+#[cfg(feature = "alloc")]
+pub use nonlinear::format_nonlinear_formula;
+pub use nonlinear::{eval_nonlinear, fit_nonlinear};
+#[cfg(feature = "alloc")]
+pub use poly::format_polynomial_formula;
+pub use poly::{eval_polynomial_horner, fit_polynomial, fit_polynomial_scaled, solve_dense_small};
 pub use seeds::{
     WeightedOlsAccum, seed_exponential, seed_logarithmic, seed_logistic, seed_power_law,
     seed_sinusoidal, weighted_ols_line,
@@ -306,6 +311,7 @@ impl CurveFit {
     }
 
     /// Convenience helper collecting `[x, y - y_hat]` residuals into a `Vec<[f64; 2]>`.
+    #[cfg(feature = "alloc")]
     #[must_use]
     pub fn residuals<P: PointSeries + ?Sized>(&self, points: &P) -> Vec<[f64; 2]> {
         let mut out = vec![[0.0_f64; 2]; points.len()];
@@ -315,6 +321,7 @@ impl CurveFit {
     }
 
     /// Formats a human-readable equation string for UI legends and export captions.
+    #[cfg(feature = "alloc")]
     #[must_use]
     pub fn format_formula(&self) -> String {
         match self.fit_model {

@@ -97,6 +97,49 @@ impl Default for Wave2DParams {
     }
 }
 
+/// Fallible companion to [`analytic_clamped_square_omega`].
+#[verified_engine::verified]
+pub fn try_analytic_clamped_square_omega(
+    mode_m: usize,
+    mode_n: usize,
+    length: f64,
+    plate_stiffness: f64,
+) -> core::result::Result<f64, math_commons::error::MathError> {
+    #[allow(unused_braces)]
+    Ok({
+        __ensure_math(
+            mode_m >= 1 && mode_n >= 1,
+            "analytic_clamped_square_omega: precondition or invariant violated",
+        )?;
+        __ensure_math(
+            length > 0.0 && plate_stiffness >= 0.0,
+            "analytic_clamped_square_omega: precondition or invariant violated",
+        )?;
+        let pair = if mode_m <= mode_n {
+            (mode_m, mode_n)
+        } else {
+            (mode_n, mode_m)
+        };
+        let lambda_sq = match pair {
+            (1, 1) => 35.9852,
+            (1, 2) => 73.3938,
+            (2, 2) => 108.2165,
+            (1, 3) => 131.5808,
+            (2, 3) => 165.0004,
+            (3, 3) => 220.06,
+            _ => {
+                let bm = (mode_m as f64 + 0.5) * PI;
+                let bn = (mode_n as f64 + 0.5) * PI;
+                (bm * bm * bm * bm
+                    + bn * bn * bn * bn
+                    + 2.0 * (bm * bm - 2.0 * bm) * (bn * bn - 2.0 * bn))
+                    .sqrt()
+            }
+        };
+        plate_stiffness.sqrt() * lambda_sq / (length * length)
+    })
+}
+
 /// Analytic angular eigenfrequency $\omega_{m,n}$ (rad/s) of a square clamped Kirchhoff-Love plate
 /// of side length `length` and flexural stiffness `plate_stiffness` ($D / (\rho h)$),
 /// tabulated from Leissa (1969, NASA SP-160 Table 4.1) and Warburton's Rayleigh-Ritz beam formula.
@@ -107,33 +150,31 @@ pub fn analytic_clamped_square_omega(
     length: f64,
     plate_stiffness: f64,
 ) -> f64 {
-    assert!(mode_m >= 1 && mode_n >= 1, "Mode indices must be >= 1");
-    assert!(
-        length > 0.0 && plate_stiffness >= 0.0,
-        "Invalid plate geometry"
-    );
-    let pair = if mode_m <= mode_n {
-        (mode_m, mode_n)
-    } else {
-        (mode_n, mode_m)
-    };
-    let lambda_sq = match pair {
-        (1, 1) => 35.9852,
-        (1, 2) => 73.3938,
-        (2, 2) => 108.2165,
-        (1, 3) => 131.5808,
-        (2, 3) => 165.0004,
-        (3, 3) => 220.06,
-        _ => {
-            let bm = (mode_m as f64 + 0.5) * PI;
-            let bn = (mode_n as f64 + 0.5) * PI;
-            (bm * bm * bm * bm
-                + bn * bn * bn * bn
-                + 2.0 * (bm * bm - 2.0 * bm) * (bn * bn - 2.0 * bn))
-                .sqrt()
+    try_analytic_clamped_square_omega(mode_m, mode_n, length, plate_stiffness)
+        .expect("analytic_clamped_square_omega preconditions must hold")
+}
+
+/// Fallible companion to [`young_double_slit_fringe_spacing`].
+#[verified_engine::verified]
+pub fn try_young_double_slit_fringe_spacing(
+    wavelength: f64,
+    slit_separation: f64,
+    screen_distance: f64,
+) -> core::result::Result<f64, math_commons::error::MathError> {
+    #[allow(unused_braces)]
+    Ok({
+        __ensure_math(
+            wavelength > 0.0 && slit_separation > 0.0 && screen_distance > 0.0,
+            "young_double_slit_fringe_spacing: precondition or invariant violated",
+        )?;
+        let diff_sq = slit_separation * slit_separation - wavelength * wavelength;
+        if diff_sq > 1.0e-9 {
+            let numer = 4.0 * screen_distance * screen_distance + diff_sq;
+            0.5 * wavelength * (numer / diff_sq).sqrt()
+        } else {
+            wavelength * screen_distance / slit_separation
         }
-    };
-    plate_stiffness.sqrt() * lambda_sq / (length * length)
+    })
 }
 
 /// Analytic Young double-slit first-order bright fringe spacing $y_1$ satisfying
@@ -145,15 +186,18 @@ pub fn young_double_slit_fringe_spacing(
     slit_separation: f64,
     screen_distance: f64,
 ) -> f64 {
-    assert!(
-        wavelength > 0.0 && slit_separation > 0.0 && screen_distance > 0.0,
-        "Young interference parameters must be strictly positive"
-    );
-    let diff_sq = slit_separation * slit_separation - wavelength * wavelength;
-    if diff_sq > 1.0e-9 {
-        let numer = 4.0 * screen_distance * screen_distance + diff_sq;
-        0.5 * wavelength * (numer / diff_sq).sqrt()
+    try_young_double_slit_fringe_spacing(wavelength, slit_separation, screen_distance)
+        .expect("young_double_slit_fringe_spacing preconditions must hold")
+}
+
+#[inline]
+fn __ensure_math(
+    cond: bool,
+    reason: &'static str,
+) -> core::result::Result<(), math_commons::error::MathError> {
+    if cond {
+        Ok(())
     } else {
-        wavelength * screen_distance / slit_separation
+        Err(math_commons::error::MathError::NumericalError { reason })
     }
 }

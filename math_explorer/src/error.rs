@@ -1,5 +1,8 @@
 //! Unified feature-gated error re-exports and facade umbrella error across all OxidizeMath domains.
 
+pub use diagnostics::DiagnosticError;
+pub use engine_diffeq::DiffeqError;
+pub use engine_pde::PdeError;
 pub use math_commons::error::{
     EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
     ShaderEmitError,
@@ -30,7 +33,8 @@ pub use domain_epidemiology::error::{
 #[cfg(feature = "physics")]
 pub use domain_physics::error::{
     ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
-    PhysicsError, RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError,
+    PhysicsError, QuantumError, RadarError, SandpileError, SolidStateError, StandardModelError,
+    StatMechError,
 };
 
 #[cfg(feature = "pure_math")]
@@ -49,6 +53,12 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Error {
+    /// Diagnostic bus emission error.
+    Diagnostic(DiagnosticError),
+    /// Differential-equation and stochastic integrator engine error.
+    Diffeq(DiffeqError),
+    /// Partial differential equation and SPDE engine error.
+    Pde(PdeError),
     /// AST evaluation error.
     Eval(EvalError),
     /// Zero-allocation curve-fitting solver error.
@@ -154,6 +164,9 @@ pub enum Error {
     /// Nuclear physics error.
     #[cfg(feature = "physics")]
     Nuclear(NuclearError),
+    /// Quantum mechanics error.
+    #[cfg(feature = "physics")]
+    Quantum(QuantumError),
     /// Radar array estimation error.
     #[cfg(feature = "physics")]
     Radar(RadarError),

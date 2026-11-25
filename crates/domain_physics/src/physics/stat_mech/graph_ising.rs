@@ -61,29 +61,29 @@ fn validate_csr_inputs(
 ) -> Result<(), MathError> {
     if n_nodes > MAX_GRAPH_SPIN_NODES || col_idx.len() > MAX_GRAPH_SPIN_CSR_ENTRIES {
         return Err(MathError::NumericalError {
-            reason: "CSR graph exceeds maximum spin system bounds".to_string(),
+            reason: "CSR graph exceeds maximum spin system bounds",
         });
     }
     if row_ptr.len() != n_nodes + 1 || row_ptr.first().copied() != Some(0) {
         return Err(MathError::NumericalError {
-            reason: "CSR row_ptr must have length n_nodes + 1 starting at 0".to_string(),
+            reason: "CSR row_ptr must have length n_nodes + 1 starting at 0",
         });
     }
     if row_ptr[n_nodes] != col_idx.len() || col_idx.len() != weights.len() {
         return Err(MathError::NumericalError {
-            reason: "CSR col_idx and weights lengths must match row_ptr[n_nodes]".to_string(),
+            reason: "CSR col_idx and weights lengths must match row_ptr[n_nodes]",
         });
     }
     for u in 0..n_nodes {
         if row_ptr[u] > row_ptr[u + 1] {
             return Err(MathError::NumericalError {
-                reason: "CSR row_ptr must be monotonically non-decreasing".to_string(),
+                reason: "CSR row_ptr must be monotonically non-decreasing",
             });
         }
     }
     if col_idx.iter().any(|&v| v >= n_nodes) || weights.iter().any(|w| !w.is_finite()) {
         return Err(MathError::NumericalError {
-            reason: "CSR column indices must be < n_nodes and weights must be finite".to_string(),
+            reason: "CSR column indices must be < n_nodes and weights must be finite",
         });
     }
     Ok(())

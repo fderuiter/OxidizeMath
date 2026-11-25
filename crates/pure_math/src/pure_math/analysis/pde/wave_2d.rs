@@ -29,7 +29,8 @@
 
 use std::f64::consts::PI;
 
-use math_commons::math_kernel::types::{StepSize, flatten_2d_index};
+use math_commons::error::MathError;
+use math_commons::math_kernel::types::{Dimension, StepSize, flatten_2d_index};
 
 use super::fused_stepper::{BoundaryCondition, StencilOperators};
 
@@ -94,16 +95,21 @@ pub struct Wave2DSolver {
 }
 
 impl Wave2DSolver {
-    /// Constructs a pre-allocated 2D solver with explicit cell spacings `dx` and `dy`.
+    /// Fallibly constructs a pre-allocated 2D solver with explicit cell spacings `dx` and `dy`.
     #[verified_engine::verified]
-    pub fn new(width: usize, height: usize, dx: f64, dy: f64) -> Self {
-        assert!(width >= 4 && height >= 4, "Grid dimensions must be >= 4");
-        assert!(dx > 0.0 && dy > 0.0, "Grid spacings must be positive");
+    pub fn try_new(width: usize, height: usize, dx: f64, dy: f64) -> Result<Self, MathError> {
+        if width < 4 || height < 4 {
+            return Err(MathError::NumericalError {
+                reason: "Wave2DSolver grid dimensions must be >= 4",
+            });
+        }
+        let ops = StencilOperators::try_new_2d(StepSize(dx), StepSize(dy))?;
         let len = width * height;
-        Self {
+        debug_assert!(width >= 4 && height >= 4 && len >= 16);
+        Ok(Self {
             width,
             height,
-            ops: StencilOperators::new_2d(StepSize(dx), StepSize(dy)),
+            ops,
             time: 0.0,
             last_dt: 0.0,
             u_prev: vec![0.0; len],
@@ -118,15 +124,32 @@ impl Wave2DSolver {
             detector_accum: vec![0.0; height],
             detector_samples: 0,
             stationary_start: false,
-        }
+        })
     }
 
-    /// Constructs a pre-allocated `size x size` solver over the unit square $[0, 1]^2$.
+    /// Constructs a pre-allocated 2D solver with explicit cell spacings `dx` and `dy`; prefer [`Self::try_new`].
+    #[verified_engine::verified]
+    pub fn new(width: usize, height: usize, dx: f64, dy: f64) -> Self {
+        Self::try_new(width, height, dx, dy).expect("Wave2DSolver::new preconditions must hold")
+    }
+
+    /// Fallibly constructs a pre-allocated `size x size` solver over the unit square $[0, 1]^2$.
+    #[verified_engine::verified]
+    pub fn try_new_unit_square(size: usize) -> Result<Self, MathError> {
+        if size < 4 {
+            return Err(MathError::NumericalError {
+                reason: "Square grid size must be >= 4",
+            });
+        }
+        let h = 1.0 / ((size - 1) as f64);
+        debug_assert!(h > 0.0);
+        Self::try_new(size, size, h, h)
+    }
+
+    /// Constructs a pre-allocated `size x size` solver over the unit square $[0, 1]^2`; prefer [`Self::try_new_unit_square`].
     #[verified_engine::verified]
     pub fn new_unit_square(size: usize) -> Self {
-        assert!(size >= 4, "Square grid size must be >= 4");
-        let h = 1.0 / ((size - 1) as f64);
-        Self::new(size, size, h, h)
+        Self::try_new_unit_square(size).expect("Square grid size must be >= 4")
     }
 
     /// Grid width $W$ in cells.
@@ -169,10 +192,15 @@ impl Wave2DSolver {
     pub fn modal_field(&self) -> &[f64] {
         &self.modal_field
     }
-    /// Initializes a stationary displacement field ($u(0) = \text{values}, u_t(0) = 0$).
+    /// Fallibly initializes a stationary displacement field ($u(0) = \text{values}, u_t(0) = 0$).
     #[verified_engine::verified]
-    pub fn set_stationary_displacement(&mut self, values: &[f64]) {
-        assert_eq!(values.len(), self.u_curr.len(), "Field length mismatch");
+    pub fn try_set_stationary_displacement(&mut self, values: &[f64]) -> Result<(), MathError> {
+        if values.len() != self.u_curr.len() {
+            return Err(MathError::DimensionMismatch {
+                expected: Dimension(self.u_curr.len()),
+                actual: Dimension(values.len()),
+            });
+        }
         self.u_curr.copy_from_slice(values);
         self.u_prev.copy_from_slice(values);
         self.modal_field.copy_from_slice(values);
@@ -183,6 +211,15 @@ impl Wave2DSolver {
         self.time = 0.0;
         self.last_dt = 0.0;
         self.stationary_start = true;
+        debug_assert_eq!(self.u_curr.len(), values.len());
+        Ok(())
+    }
+
+    /// Initializes a stationary displacement field ($u(0) = \text{values}, u_t(0) = 0$); prefer [`Self::try_set_stationary_displacement`].
+    #[verified_engine::verified]
+    pub fn set_stationary_displacement(&mut self, values: &[f64]) {
+        self.try_set_stationary_displacement(values)
+            .expect("Field length mismatch");
     }
     /// Clears wave displacement, energy envelope, and detector accumulators while keeping masks.
     #[verified_engine::verified]
@@ -214,12 +251,19 @@ impl Wave2DSolver {
         self.detector_samples = 0;
     }
 
-    /// Computes `(substeps, dt_sub)` guaranteed to satisfy both wave Courant (`<= 0.65`)
-    /// and biharmonic plate stability (`<= 0.18`) bounds.
+    /// Fallibly computes `(substeps, dt_sub)` satisfying wave Courant and biharmonic stability bounds.
     #[verified_engine::verified]
-    pub fn safe_substep_plan(&self, params: &Wave2DParams, requested_dt: f64) -> (usize, f64) {
+    pub fn try_safe_substep_plan(
+        &self,
+        params: &Wave2DParams,
+        requested_dt: f64,
+    ) -> Result<(usize, f64), MathError> {
         let min_h = self.dx().min(self.dy());
-        assert!(min_h > 0.0, "Minimum grid step must be positive");
+        if !(min_h > 0.0 && min_h.is_finite()) {
+            return Err(MathError::NumericalError {
+                reason: "Minimum grid step must be positive",
+            });
+        }
         let dt_pos = if requested_dt.is_finite() && requested_dt > 0.0 {
             requested_dt
         } else {
@@ -242,12 +286,21 @@ impl Wave2DSolver {
             };
         let dt_limit = dt_wave.min(dt_plate);
         if dt_pos <= dt_limit {
-            return (1, dt_pos);
+            debug_assert!(dt_pos > 0.0);
+            return Ok((1, dt_pos));
         }
         let needed = (dt_pos / dt_limit).ceil() as usize;
         let substeps = needed.clamp(1, MAX_VERLET_SUBSTEPS);
         let dt_sub = (dt_pos / (substeps as f64)).min(dt_limit);
-        (substeps, dt_sub)
+        debug_assert!(substeps >= 1 && dt_sub > 0.0);
+        Ok((substeps, dt_sub))
+    }
+
+    /// Computes `(substeps, dt_sub)` satisfying Courant and biharmonic bounds; prefer [`Self::try_safe_substep_plan`].
+    #[verified_engine::verified]
+    pub fn safe_substep_plan(&self, params: &Wave2DParams, requested_dt: f64) -> (usize, f64) {
+        self.try_safe_substep_plan(params, requested_dt)
+            .expect("Minimum grid step must be positive")
     }
 
     /// Effective peak wave Courant number $c_{\max} \Delta t_{\text{sub}} / \min(\Delta x, \Delta y)$.
@@ -269,7 +322,35 @@ impl Wave2DSolver {
         self.step_driven(params, &idle_driver, requested_dt, None)
     }
 
-    /// Advances the 2D solver with optional harmonic forcing and detector accumulation.
+    /// Fallibly advances the 2D solver with optional harmonic forcing and detector accumulation.
+    #[verified_engine::verified]
+    pub fn try_step_driven(
+        &mut self,
+        params: &Wave2DParams,
+        driver: &DriverConfig2D,
+        requested_dt: f64,
+        detector_x: Option<usize>,
+    ) -> Result<usize, MathError> {
+        let expected = self.width * self.height;
+        if self.u_curr.len() != expected {
+            return Err(MathError::DimensionMismatch {
+                expected: Dimension(expected),
+                actual: Dimension(self.u_curr.len()),
+            });
+        }
+        let (substeps, dt_sub) = self.try_safe_substep_plan(params, requested_dt)?;
+        for _ in 0..substeps {
+            self.compute_laplacian_pass(params.boundary);
+            self.verlet_substep(params, driver, dt_sub);
+            if let Some(det_col) = detector_x {
+                self.accumulate_detector_column(det_col);
+            }
+        }
+        debug_assert!(substeps >= 1);
+        Ok(substeps)
+    }
+
+    /// Advances the 2D solver with optional harmonic forcing; prefer [`Self::try_step_driven`].
     #[verified_engine::verified]
     pub fn step_driven(
         &mut self,
@@ -278,16 +359,8 @@ impl Wave2DSolver {
         requested_dt: f64,
         detector_x: Option<usize>,
     ) -> usize {
-        assert_eq!(self.u_curr.len(), self.width * self.height);
-        let (substeps, dt_sub) = self.safe_substep_plan(params, requested_dt);
-        for _ in 0..substeps {
-            self.compute_laplacian_pass(params.boundary);
-            self.verlet_substep(params, driver, dt_sub);
-            if let Some(det_col) = detector_x {
-                self.accumulate_detector_column(det_col);
-            }
-        }
-        substeps
+        self.try_step_driven(params, driver, requested_dt, detector_x)
+            .expect("Wave2DSolver::step_driven preconditions must hold")
     }
 
     fn compute_laplacian_pass(&mut self, boundary: BoundaryMode2D) {
@@ -310,7 +383,17 @@ impl Wave2DSolver {
             return 0.0;
         }
         if on_edge {
-            return self.eval_boundary_laplacian(x, y, idx, boundary);
+            return masks::eval_boundary_laplacian_2d(
+                &self.u_curr,
+                &self.wall_mask,
+                &self.ops,
+                w,
+                h,
+                x,
+                y,
+                idx,
+                boundary,
+            );
         }
         let curr = self.u_curr[idx];
         let left = self.u_curr[idx - 1];
@@ -318,27 +401,6 @@ impl Wave2DSolver {
         let up = self.u_curr[idx - w];
         let down = self.u_curr[idx + w];
         self.ops.central_diff_2nd_2d(curr, left, right, up, down)
-    }
-
-    #[inline]
-    fn eval_boundary_laplacian(
-        &self,
-        x: usize,
-        y: usize,
-        idx: usize,
-        boundary: BoundaryMode2D,
-    ) -> f64 {
-        masks::eval_boundary_laplacian_2d(
-            &self.u_curr,
-            &self.wall_mask,
-            &self.ops,
-            self.width,
-            self.height,
-            x,
-            y,
-            idx,
-            boundary,
-        )
     }
 
     #[inline]

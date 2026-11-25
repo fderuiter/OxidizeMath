@@ -2,15 +2,20 @@
 #[cfg(feature = "std")]
 pub use crate::ast::{EvalError, GlslError, LexError, ParseError, ShaderEmitError};
 use crate::math_kernel::types::Dimension;
-use alloc::string::String;
+use diagnostics::CoreDiagnostic;
 #[cfg(feature = "std")]
 use diagnostics::{Diagnostic, Severity};
 #[cfg(feature = "std")]
 use std::collections::HashMap;
 use thiserror::Error;
 
-/// Centralized mathematical error type.
-#[derive(Debug, Clone, PartialEq, Error)]
+#[inline]
+fn f64_eq_canonical(a: f64, b: f64) -> bool {
+    (a == 0.0 && b == 0.0) || a.to_bits() == b.to_bits()
+}
+
+/// Centralized `#![no_std]` `Copy` stack mathematical error type.
+#[derive(Debug, Clone, Copy, Error)]
 pub enum MathError {
     /// Dimension mismatch between tensors/matrices or expected sizes.
     #[error("Dimension mismatch: expected {}, actual {}", expected.0, actual.0)]
@@ -54,15 +59,105 @@ pub enum MathError {
         len: usize,
     },
 
+    /// Preallocated solver scratch buffer could not satisfy the requested slice length.
+    #[error("Workspace buffer too small: required {required} elements, available {available}")]
+    WorkspaceTooSmall {
+        /// Minimum number of elements requested by the caller.
+        required: usize,
+        /// Remaining elements available in the workspace buffer.
+        available: usize,
+    },
+
     /// Numerical computation failures (e.g., singular matrix, non-positive definite).
     #[error("Numerical error: {reason}")]
     #[allow(missing_docs)]
-    NumericalError { reason: String },
+    NumericalError { reason: &'static str },
 
     /// Conversion failures (e.g., failed to convert between numeric types).
     #[error("Conversion error: {reason}")]
     #[allow(missing_docs)]
-    ConversionError { reason: String },
+    ConversionError { reason: &'static str },
+}
+
+#[inline]
+fn bounds_key(err: MathError) -> Option<(bool, f64, f64, f64)> {
+    match err {
+        MathError::OutOfBounds { value, min, max } => Some((false, value, min, max)),
+        MathError::StrictlyOutOfBounds { value, min, max } => Some((true, value, min, max)),
+        _ => None,
+    }
+}
+
+impl PartialEq for MathError {
+    fn eq(&self, other: &Self) -> bool {
+        if let (Some((s1, v1, mn1, mx1)), Some((s2, v2, mn2, mx2))) =
+            (bounds_key(*self), bounds_key(*other))
+        {
+            return s1 == s2
+                && f64_eq_canonical(v1, v2)
+                && f64_eq_canonical(mn1, mn2)
+                && f64_eq_canonical(mx1, mx2);
+        }
+        match (*self, *other) {
+            (
+                Self::DimensionMismatch {
+                    expected: e1,
+                    actual: a1,
+                },
+                Self::DimensionMismatch {
+                    expected: e2,
+                    actual: a2,
+                },
+            ) => e1 == e2 && a1 == a2,
+            (
+                Self::InvalidPermutation {
+                    index: i1,
+                    value: v1,
+                    len: l1,
+                },
+                Self::InvalidPermutation {
+                    index: i2,
+                    value: v2,
+                    len: l2,
+                },
+            ) => (i1, v1, l1) == (i2, v2, l2),
+            (
+                Self::WorkspaceTooSmall {
+                    required: r1,
+                    available: a1,
+                },
+                Self::WorkspaceTooSmall {
+                    required: r2,
+                    available: a2,
+                },
+            ) => (r1, a1) == (r2, a2),
+            (Self::NumericalError { reason: r1 }, Self::NumericalError { reason: r2 })
+            | (Self::ConversionError { reason: r1 }, Self::ConversionError { reason: r2 }) => {
+                r1 == r2
+            }
+            _ => false,
+        }
+    }
+}
+
+impl Eq for MathError {}
+
+impl CoreDiagnostic for MathError {
+    fn error_type(&self) -> &'static str {
+        "MathError"
+    }
+
+    fn code(&self) -> &'static str {
+        match self {
+            Self::DimensionMismatch { .. } => "MATH-001",
+            Self::OutOfBounds { .. } => "MATH-002",
+            Self::StrictlyOutOfBounds { .. } => "MATH-003",
+            Self::InvalidPermutation { .. } => "MATH-004",
+            Self::WorkspaceTooSmall { .. } => "MATH-005",
+            Self::NumericalError { .. } => "MATH-006",
+            Self::ConversionError { .. } => "MATH-007",
+        }
+    }
 }
 
 #[cfg(feature = "std")]
@@ -73,7 +168,8 @@ impl Diagnostic for MathError {
 
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "MathError".to_string());
+        map.insert("error_type".to_string(), self.error_type().to_string());
+        map.insert("code".to_string(), self.code().to_string());
         map.insert("description".to_string(), self.to_string());
         match self {
             Self::DimensionMismatch { expected, actual } => {
@@ -91,8 +187,15 @@ impl Diagnostic for MathError {
                 map.insert("value".to_string(), value.to_string());
                 map.insert("len".to_string(), len.to_string());
             }
+            Self::WorkspaceTooSmall {
+                required,
+                available,
+            } => {
+                map.insert("required".to_string(), required.to_string());
+                map.insert("available".to_string(), available.to_string());
+            }
             Self::NumericalError { reason } | Self::ConversionError { reason } => {
-                map.insert("reason".to_string(), reason.clone());
+                map.insert("reason".to_string(), (*reason).to_string());
             }
         }
         map
@@ -102,8 +205,8 @@ impl Diagnostic for MathError {
 #[allow(missing_docs)]
 pub type MathResult<T> = core::result::Result<T, MathError>;
 
-impl From<String> for MathError {
-    fn from(reason: String) -> Self {
+impl From<&'static str> for MathError {
+    fn from(reason: &'static str) -> Self {
         Self::ConversionError { reason }
     }
 }
@@ -146,6 +249,22 @@ pub enum FitError {
     },
 }
 
+impl CoreDiagnostic for FitError {
+    fn error_type(&self) -> &'static str {
+        "FitError"
+    }
+
+    fn code(&self) -> &'static str {
+        match self {
+            Self::InsufficientPoints { .. } => "MATH-FIT-001",
+            Self::UnsupportedDegree { .. } => "MATH-FIT-002",
+            Self::InvalidDomain { .. } => "MATH-FIT-003",
+            Self::SingularMatrix => "MATH-FIT-004",
+            Self::NonConvergence { .. } => "MATH-FIT-005",
+        }
+    }
+}
+
 #[cfg(feature = "std")]
 impl Diagnostic for FitError {
     fn severity(&self) -> Severity {
@@ -154,27 +273,22 @@ impl Diagnostic for FitError {
 
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "FitError".to_string());
+        map.insert("error_type".to_string(), self.error_type().to_string());
+        map.insert("code".to_string(), self.code().to_string());
         map.insert("description".to_string(), self.to_string());
         match self {
             Self::InsufficientPoints { required, actual } => {
-                map.insert("code".to_string(), "MATH-FIT-001".to_string());
                 map.insert("required".to_string(), required.to_string());
                 map.insert("actual".to_string(), actual.to_string());
             }
             Self::UnsupportedDegree { degree } => {
-                map.insert("code".to_string(), "MATH-FIT-002".to_string());
                 map.insert("degree".to_string(), degree.to_string());
             }
             Self::InvalidDomain { reason } => {
-                map.insert("code".to_string(), "MATH-FIT-003".to_string());
                 map.insert("reason".to_string(), (*reason).to_string());
             }
-            Self::SingularMatrix => {
-                map.insert("code".to_string(), "MATH-FIT-004".to_string());
-            }
+            Self::SingularMatrix => {}
             Self::NonConvergence { iterations } => {
-                map.insert("code".to_string(), "MATH-FIT-005".to_string());
                 map.insert("iterations".to_string(), iterations.to_string());
             }
         }
@@ -186,6 +300,46 @@ impl Diagnostic for FitError {
 mod umbrella;
 #[cfg(feature = "std")]
 pub use umbrella::MathCommonsError;
+
+#[cfg(test)]
+mod core_tests {
+    use super::*;
+
+    fn assert_stack_error_traits<
+        E: Copy + Clone + PartialEq + Eq + core::fmt::Display + core::error::Error + CoreDiagnostic,
+    >() {
+    }
+
+    #[test]
+    fn math_error_is_copy_eq_and_core_diagnostic_without_alloc() {
+        assert_stack_error_traits::<MathError>();
+        let ws = MathError::WorkspaceTooSmall {
+            required: 16,
+            available: 8,
+        };
+        let ws_copy = ws;
+        assert_eq!(ws, ws_copy);
+        assert_eq!(ws.code(), "MATH-005");
+        assert_eq!(ws.error_type(), "MathError");
+        assert!(core::error::Error::source(&ws).is_none());
+
+        let nan_bounds = MathError::OutOfBounds {
+            value: f64::NAN,
+            min: -0.0,
+            max: 1.0,
+        };
+        let pos_zero_bounds = MathError::OutOfBounds {
+            value: f64::NAN,
+            min: 0.0,
+            max: 1.0,
+        };
+        assert_eq!(nan_bounds, pos_zero_bounds);
+        assert_eq!(
+            MathError::from("overflow"),
+            MathError::ConversionError { reason: "overflow" }
+        );
+    }
+}
 
 #[cfg(all(test, feature = "std"))]
 mod tests {
@@ -232,6 +386,10 @@ mod tests {
             MathCommonsError::from(MathError::DimensionMismatch {
                 expected: Dimension(2),
                 actual: Dimension(3),
+            }),
+            MathCommonsError::from(MathError::WorkspaceTooSmall {
+                required: 10,
+                available: 4,
             }),
             MathCommonsError::from(FitError::SingularMatrix),
             MathCommonsError::from(lex),

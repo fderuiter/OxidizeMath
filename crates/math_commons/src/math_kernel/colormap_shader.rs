@@ -9,6 +9,7 @@ use super::{
 use crate::ast::ShaderTarget;
 use core::f64::consts::{PI, TAU};
 #[cfg(not(feature = "std"))]
+#[allow(unused_imports)]
 use num_traits::Float as _;
 
 /// Analytical shader palette family shared across CPU rasterizers and exported WGSL/GLSL shaders.

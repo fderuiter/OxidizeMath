@@ -5,8 +5,10 @@ edition = "2024"
 
 [features]
 default = ["std"]
+alloc = []
 std = [
-    "dep:diagnostics",
+    "alloc",
+    "diagnostics/std",
     "num-complex/std",
     "num-traits/std",
     "thiserror/std",
@@ -14,7 +16,7 @@ std = [
 ]
 
 [dependencies]
-diagnostics = { path = "../diagnostics", optional = true }
+diagnostics = { path = "../diagnostics", default-features = false }
 engine_linalg = { path = "../02_engines/engine_linalg" }
 libm = { workspace = true }
 num-complex = { workspace = true, default-features = false, features = ["libm"] }

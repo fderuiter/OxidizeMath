@@ -34,9 +34,15 @@ where
     facade_err
 }
 
-pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
+fn verify_core_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     vec![
         check_leaf(sample_math(), bus),
+        check_leaf(error::DiagnosticError::EmptySource, bus),
+        check_leaf(error::DiffeqError::InvalidStepSize, bus),
+        check_leaf(
+            error::PdeError::InvalidGridDimension { axis: "x", size: 0 },
+            bus,
+        ),
         check_leaf(error::FitError::SingularMatrix, bus),
         check_leaf(error::EvalError::UnknownVariable("x".to_string()), bus),
         check_leaf(error::GlslError::DepthLimitExceeded(64), bus),
@@ -50,6 +56,12 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         ),
         check_leaf(error::ParseError::UnexpectedEof, bus),
         check_leaf(error::ShaderEmitError::RecursionLimitExceeded(64), bus),
+    ]
+}
+
+pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
+    let mut leaves = verify_core_leaves(bus);
+    leaves.extend([
         check_leaf(error::AmbsError::ConversionError, bus),
         check_leaf(error::AnalysisError::ConvergenceError(1.0), bus),
         check_leaf(error::CopulaError::NotSymmetric, bus),
@@ -93,7 +105,8 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::TensorError::SingularMetric, bus),
         check_leaf(error::TransformError::EmptyInput, bus),
         check_leaf(error::ZipError::InvalidRate { value: 0.0 }, bus),
-    ]
+    ]);
+    leaves
 }
 
 pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
@@ -139,6 +152,7 @@ pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::GatingError::InterlockLatched, bus),
         check_leaf(error::HighEnergyError::InvalidMomentum, bus),
         check_leaf(error::NuclearError::InvalidHalfLife, bus),
+        check_leaf(error::QuantumError::InvalidPrincipalNumber { n: 0 }, bus),
         check_leaf(
             error::RadarError::InvalidConfiguration("cfg".to_string()),
             bus,
@@ -204,8 +218,14 @@ pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
             .source()
             .is_some(),
         error::StatMechError::from(sample_math()).source().is_some(),
+        error::StatMechError::from(error::DiffeqError::InvalidStepSize)
+            .source()
+            .is_some(),
+        error::StatMechError::from(error::PdeError::InvalidGridDimension { axis: "x", size: 0 })
+            .source()
+            .is_some(),
     ];
-    assert_eq!(wrapper_sources_present.len(), 17);
+    assert_eq!(wrapper_sources_present.len(), 19);
     assert!(wrapper_sources_present.into_iter().all(|present| present));
 }
 
@@ -219,11 +239,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 61);
-    assert_eq!(*events.lock().unwrap(), 61);
+    assert_eq!(converted.len(), 65);
+    assert_eq!(*events.lock().unwrap(), 65);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 67);
+    assert_eq!(*events.lock().unwrap(), 71);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -258,6 +278,7 @@ fn verify_prelude_domain_leaves() {
         p::GatingError,
         p::HighEnergyError,
         p::NuclearError,
+        p::QuantumError,
         p::RadarError,
         p::SolidStateError,
         p::StandardModelError,
@@ -265,37 +286,9 @@ fn verify_prelude_domain_leaves() {
     )>();
 }
 
-pub fn verify_prelude_error_reexports() {
+fn verify_prelude_pure_leaves() {
     use math_explorer::prelude as p;
 
-    let res: p::Result<(
-        p::MathCommonsError,
-        p::PureMathError,
-        p::AppliedError,
-        p::BiologyError,
-        p::EpidemiologyDomainError,
-        p::PhysicsError,
-    )> = Err(p::Error::from(p::MathError::ConversionError {
-        reason: "bad".to_string(),
-    }));
-    assert!(res.is_err());
-    let _core = core::mem::size_of::<(
-        p::EvalError,
-        p::FitError,
-        p::GlslError,
-        p::LexError,
-        p::MathError,
-        p::ParseError,
-        p::ShaderEmitError,
-        p::AIError,
-        p::ClimateError,
-        p::BotanicalError,
-        p::HodgkinHuxleyError,
-        p::KineticsError,
-        p::ReactionDiffusionError,
-        p::EpidemiologyError,
-        p::NetworkModelError,
-    )>();
     let _pure = core::mem::size_of::<(
         p::AmbsError,
         p::AnalysisError,
@@ -325,5 +318,42 @@ pub fn verify_prelude_error_reexports() {
         p::TransformError,
         p::ZipError,
     )>();
+}
+
+pub fn verify_prelude_error_reexports() {
+    use math_explorer::prelude as p;
+
+    let res: p::Result<(
+        p::MathCommonsError,
+        p::PureMathError,
+        p::AppliedError,
+        p::BiologyError,
+        p::EpidemiologyDomainError,
+        p::PhysicsError,
+    )> = Err(p::Error::from(p::MathError::ConversionError {
+        reason: "bad",
+    }));
+    assert!(res.is_err());
+    let _core = core::mem::size_of::<(
+        p::DiagnosticError,
+        p::DiffeqError,
+        p::PdeError,
+        p::EvalError,
+        p::FitError,
+        p::GlslError,
+        p::LexError,
+        p::MathError,
+        p::ParseError,
+        p::ShaderEmitError,
+        p::AIError,
+        p::ClimateError,
+        p::BotanicalError,
+        p::HodgkinHuxleyError,
+        p::KineticsError,
+        p::ReactionDiffusionError,
+        p::EpidemiologyError,
+        p::NetworkModelError,
+    )>();
+    verify_prelude_pure_leaves();
     verify_prelude_domain_leaves();
 }

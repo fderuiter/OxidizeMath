@@ -40,7 +40,7 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
         )
         .map_err(|_| {
             crate::error::MarkovError::Math(math_commons::error::MathError::NumericalError {
-                reason: "Failed to create initial distribution".to_string(),
+                reason: "Failed to create initial distribution",
             })
         })?;
         let mut current_state = initial_dist.sample(rng);
@@ -55,7 +55,7 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
             .collect();
         let emission_dist = WeightedIndex::new(&emission_weights).map_err(|_| {
             crate::error::MarkovError::Math(math_commons::error::MathError::NumericalError {
-                reason: "Failed to create emission distribution".to_string(),
+                reason: "Failed to create emission distribution",
             })
         })?;
         observations.push(emission_dist.sample(rng));
@@ -71,7 +71,7 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
                 .collect();
             let transition_dist = WeightedIndex::new(&transition_weights).map_err(|_| {
                 crate::error::MarkovError::Math(math_commons::error::MathError::NumericalError {
-                    reason: "Failed to create transition distribution".to_string(),
+                    reason: "Failed to create transition distribution",
                 })
             })?;
             current_state = transition_dist.sample(rng);
@@ -86,7 +86,7 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
                 .collect();
             let emission_dist = WeightedIndex::new(&emission_weights).map_err(|_| {
                 crate::error::MarkovError::Math(math_commons::error::MathError::NumericalError {
-                    reason: "Failed to create emission distribution".to_string(),
+                    reason: "Failed to create emission distribution",
                 })
             })?;
             observations.push(emission_dist.sample(rng));

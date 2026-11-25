@@ -2,6 +2,7 @@
 #![doc = include_str!("../README.md")]
 // [cite:math_commons]
 
+#[cfg(feature = "alloc")]
 extern crate alloc;
 
 #[cfg(feature = "std")]
@@ -18,6 +19,7 @@ pub mod poi;
 pub mod primitives;
 pub mod registry;
 pub mod series;
+#[cfg(feature = "alloc")]
 pub mod stochastic;
 #[allow(missing_docs)]
 pub mod wigner;
