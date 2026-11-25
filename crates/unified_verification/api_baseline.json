@@ -1,4 +1,559 @@
 {
+  "crates/00_foundation/math_rng/src/lib.rs": [
+    {
+      "signature": "pub use qmc :: FIRST_64_PRIMES"
+    },
+    {
+      "signature": "pub use qmc :: HaltonSequence"
+    },
+    {
+      "signature": "pub use qmc :: HaltonView"
+    },
+    {
+      "signature": "pub use qmc :: MAX_HALTON_DIM"
+    },
+    {
+      "signature": "pub use qmc :: MAX_NIEDERREITER_DIM"
+    },
+    {
+      "signature": "pub use qmc :: MAX_QMC_DIM"
+    },
+    {
+      "signature": "pub use qmc :: MAX_SOBOL_DIM"
+    },
+    {
+      "signature": "pub use qmc :: NiederreiterSequence"
+    },
+    {
+      "signature": "pub use qmc :: NiederreiterView"
+    },
+    {
+      "signature": "pub use qmc :: QmcError"
+    },
+    {
+      "signature": "pub use qmc :: SobolSequence"
+    },
+    {
+      "signature": "pub use qmc :: SobolView"
+    },
+    {
+      "signature": "pub use qmc :: radical_inverse"
+    },
+    {
+      "signature": "pub use rand_core :: CryptoRng"
+    },
+    {
+      "signature": "pub use rand_core :: RngCore"
+    },
+    {
+      "signature": "pub use rand_core :: SeedableRng"
+    },
+    {
+      "signature": "pub use rng :: BASE_SEED"
+    },
+    {
+      "signature": "pub use rng :: OxidizeRng"
+    },
+    {
+      "signature": "pub use scalar :: RngScalar"
+    },
+    {
+      "signature": "pub use scalar :: fill_cranley_patterson_shifts"
+    },
+    {
+      "signature": "pub use scalar :: sample_bounded_u64"
+    },
+    {
+      "signature": "pub use scalar :: sample_bounded_usize"
+    },
+    {
+      "signature": "pub use scalar :: sample_closed_open"
+    },
+    {
+      "signature": "pub use scalar :: sample_open"
+    },
+    {
+      "signature": "pub use scalar :: sample_standard_normal"
+    },
+    {
+      "signature": "pub use scalar :: sample_standard_normal_f64"
+    },
+    {
+      "signature": "pub use scalar :: sample_symmetric_open"
+    },
+    {
+      "signature": "pub use scramble :: dyadic_53_to_shifted_open"
+    },
+    {
+      "signature": "pub use scramble :: owen_scramble_53"
+    },
+    {
+      "signature": "pub use scramble :: splitmix64"
+    },
+    {
+      "signature": "pub use scramble :: torus_shift_open"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/error.rs": [
+    {
+      "signature": "pub enum QmcError"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/faure_data.rs": [
+    {
+      "signature": "pub const MAX_HALTON_DIM : usize"
+    },
+    {
+      "signature": "pub fn faure_owen_permute (_ : usize , _ : u32 , _ : u32 , _ : u64 , _ : u32 , _ : Option < u64 > ,) -> u32"
+    },
+    {
+      "signature": "pub fn faure_permute (_ : usize , _ : u32) -> u32"
+    },
+    {
+      "signature": "pub fn faure_static_bytes () -> usize"
+    },
+    {
+      "signature": "pub static FIRST_64_PRIMES : [u32 ; MAX_HALTON_DIM]"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/halton.rs": [
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub const fn current_index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub const fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub const fn raw_unpermuted (self) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub const fn unscrambled (self) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub const fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub fn apply_cranley_patterson_shift < R : RngCore + ? Sized > (& mut self , _ : & mut R) }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub fn new (_ : usize , _ : & 'a mut [f64]) -> Result < Self , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub fn next_point < T : RngScalar > (& mut self , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub fn point_at < T : RngScalar > (& self , _ : u64 , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub fn reset_index (& mut self) }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub fn set_scramble_seed (& mut self , _ : Option < u64 >) }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub const fn current_index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub const fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub const fn raw_unpermuted (self) -> Self }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub const fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn apply_cranley_patterson_shift < R : RngCore + ? Sized > (& mut self , _ : & mut R) }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn new (_ : usize) -> Result < Self , QmcError > }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn next_point < T : RngScalar > (& mut self , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn point_at < T : RngScalar > (& self , _ : u64 , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn reset_index (& mut self) }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn set_scramble_seed (& mut self , _ : Option < u64 >) }"
+    },
+    {
+      "signature": "pub fn radical_inverse (_ : u64 , _ : u32) -> Result < f64 , QmcError >"
+    },
+    {
+      "signature": "pub struct HaltonSequence"
+    },
+    {
+      "signature": "pub struct HaltonView < 'a >"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/mod.rs": [
+    {
+      "signature": "pub const MAX_QMC_DIM : usize"
+    },
+    {
+      "signature": "pub fn total_qmc_static_table_bytes () -> usize"
+    },
+    {
+      "signature": "pub use error :: QmcError"
+    },
+    {
+      "signature": "pub use faure_data :: FIRST_64_PRIMES"
+    },
+    {
+      "signature": "pub use faure_data :: MAX_HALTON_DIM"
+    },
+    {
+      "signature": "pub use faure_data :: faure_permute"
+    },
+    {
+      "signature": "pub use faure_data :: faure_static_bytes"
+    },
+    {
+      "signature": "pub use halton :: HaltonSequence"
+    },
+    {
+      "signature": "pub use halton :: HaltonView"
+    },
+    {
+      "signature": "pub use halton :: radical_inverse"
+    },
+    {
+      "signature": "pub use niederreiter :: NiederreiterSequence"
+    },
+    {
+      "signature": "pub use niederreiter :: NiederreiterView"
+    },
+    {
+      "signature": "pub use niederreiter_data :: MAX_NIEDERREITER_DIM"
+    },
+    {
+      "signature": "pub use niederreiter_data :: NIEDERREITER_BITS"
+    },
+    {
+      "signature": "pub use niederreiter_data :: niederreiter_generator_53"
+    },
+    {
+      "signature": "pub use niederreiter_data :: niederreiter_static_bytes"
+    },
+    {
+      "signature": "pub use sobol :: SobolSequence"
+    },
+    {
+      "signature": "pub use sobol :: SobolView"
+    },
+    {
+      "signature": "pub use sobol_data :: MAX_SOBOL_DIM"
+    },
+    {
+      "signature": "pub use sobol_data :: SOBOL_BITS"
+    },
+    {
+      "signature": "pub use sobol_data :: sobol_direction_53"
+    },
+    {
+      "signature": "pub use sobol_data :: sobol_static_bytes"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/niederreiter.rs": [
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub const fn current_index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub const fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub const fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn apply_cranley_patterson_shift < R : RngCore + ? Sized > (& mut self , _ : & mut R) }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn new (_ : usize , _ : & 'a mut [u64] , _ : & 'a mut [f64] ,) -> Result < Self , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn next_point < T : RngScalar > (& mut self , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn point_at < T : RngScalar > (& self , _ : u64 , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn reset_index (& mut self) }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn seek (& mut self , _ : u64) }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn set_scramble_seed (& mut self , _ : Option < u64 >) }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub const fn current_index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub const fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub const fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn apply_cranley_patterson_shift < R : RngCore + ? Sized > (& mut self , _ : & mut R) }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn new (_ : usize) -> Result < Self , QmcError > }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn next_point < T : RngScalar > (& mut self , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn point_at < T : RngScalar > (& self , _ : u64 , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn reset_index (& mut self) }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn set_scramble_seed (& mut self , _ : Option < u64 >) }"
+    },
+    {
+      "signature": "pub struct NiederreiterSequence"
+    },
+    {
+      "signature": "pub struct NiederreiterView < 'a >"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/niederreiter_data.rs": [
+    {
+      "signature": "pub const MAX_NIEDERREITER_DIM : usize"
+    },
+    {
+      "signature": "pub const NIEDERREITER_BITS : usize"
+    },
+    {
+      "signature": "pub fn niederreiter_generator_53 (_ : usize , _ : usize) -> u64"
+    },
+    {
+      "signature": "pub fn niederreiter_static_bytes () -> usize"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/sobol.rs": [
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub const fn current_index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub const fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub const fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn apply_cranley_patterson_shift < R : RngCore + ? Sized > (& mut self , _ : & mut R) }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn new (_ : usize , _ : & 'a mut [u64] , _ : & 'a mut [f64] ,) -> Result < Self , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn next_point < T : RngScalar > (& mut self , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn point_at < T : RngScalar > (& self , _ : u64 , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn reset_index (& mut self) }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn seek (& mut self , _ : u64) }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn set_scramble_seed (& mut self , _ : Option < u64 >) }"
+    },
+    {
+      "signature": "impl SobolSequence { pub const fn current_index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl SobolSequence { pub const fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl SobolSequence { pub const fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn apply_cranley_patterson_shift < R : RngCore + ? Sized > (& mut self , _ : & mut R) }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn new (_ : usize) -> Result < Self , QmcError > }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn next_point < T : RngScalar > (& mut self , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn point_at < T : RngScalar > (& self , _ : u64 , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn reset_index (& mut self) }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn set_scramble_seed (& mut self , _ : Option < u64 >) }"
+    },
+    {
+      "signature": "pub struct SobolSequence"
+    },
+    {
+      "signature": "pub struct SobolView < 'a >"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/sobol_data.rs": [
+    {
+      "signature": "pub const MAX_SOBOL_DIM : usize"
+    },
+    {
+      "signature": "pub const SOBOL_BITS : usize"
+    },
+    {
+      "signature": "pub fn sobol_direction_53 (_ : usize , _ : usize) -> u64"
+    },
+    {
+      "signature": "pub fn sobol_static_bytes () -> usize"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/rng.rs": [
+    {
+      "signature": "impl OxidizeRng { pub fn bounded_u64 (& mut self , _ : u64) -> u64 }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn bounded_usize (& mut self , _ : usize) -> usize }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn from_seed (_ : u64) -> Self }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn from_seed_bytes (_ : [u8 ; 32]) -> Self }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn jump_words (& mut self , _ : u128) }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn new (_ : u64) -> Self }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn set_stream (& mut self , _ : u64) }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn set_word_pos (& mut self , _ : u128) }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn split_stream (& self , _ : u64) -> Self }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn stream (& self) -> u64 }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn uniform_closed_open < T : RngScalar > (& mut self) -> T }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn uniform_open < T : RngScalar > (& mut self) -> T }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn uniform_symmetric < T : RngScalar > (& mut self) -> T }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn with_stream (self , _ : u64) -> Self }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn word_pos (& self) -> u128 }"
+    },
+    {
+      "signature": "pub const BASE_SEED : u64"
+    },
+    {
+      "signature": "pub struct OxidizeRng"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/scalar.rs": [
+    {
+      "signature": "pub fn fill_cranley_patterson_shifts < T : RngScalar , R : RngCore + ? Sized > (_ : & mut [T] , _ : & mut R ,)"
+    },
+    {
+      "signature": "pub fn sample_bounded_u64 < R : RngCore + ? Sized > (_ : & mut R , _ : u64) -> u64"
+    },
+    {
+      "signature": "pub fn sample_bounded_usize < R : RngCore + ? Sized > (_ : & mut R , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn sample_closed_open < T : RngScalar , R : RngCore + ? Sized > (_ : & mut R) -> T"
+    },
+    {
+      "signature": "pub fn sample_open < T : RngScalar , R : RngCore + ? Sized > (_ : & mut R) -> T"
+    },
+    {
+      "signature": "pub fn sample_standard_normal < T : RngScalar , R : RngCore + ? Sized > (_ : & mut R) -> T"
+    },
+    {
+      "signature": "pub fn sample_standard_normal_f64 < R : RngCore + ? Sized > (_ : & mut R) -> f64"
+    },
+    {
+      "signature": "pub fn sample_symmetric_open < T : RngScalar , R : RngCore + ? Sized > (_ : & mut R) -> T"
+    },
+    {
+      "signature": "pub trait RngScalar : Copy + PartialOrd + private :: Sealed"
+    },
+    {
+      "signature": "pub trait RngScalar { const ONE : Self }"
+    },
+    {
+      "signature": "pub trait RngScalar { const ZERO : Self }"
+    },
+    {
+      "signature": "pub trait RngScalar { fn clamp_open_unit_f64 (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub trait RngScalar { fn from_dyadic_53_open (_ : u64) -> Self }"
+    },
+    {
+      "signature": "pub trait RngScalar { fn from_unit_f64 (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub trait RngScalar { fn sample_closed_open < R : RngCore + ? Sized > (_ : & mut R) -> Self }"
+    },
+    {
+      "signature": "pub trait RngScalar { fn sample_open < R : RngCore + ? Sized > (_ : & mut R) -> Self }"
+    },
+    {
+      "signature": "pub trait RngScalar { fn sample_symmetric_open < R : RngCore + ? Sized > (_ : & mut R) -> Self }"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/scramble.rs": [
+    {
+      "signature": "pub const fn owen_scramble_53 (_ : u64 , _ : u64 , _ : usize) -> u64"
+    },
+    {
+      "signature": "pub const fn splitmix64 (_ : u64) -> u64"
+    },
+    {
+      "signature": "pub fn dyadic_53_to_shifted_open < T : RngScalar > (_ : u64 , _ : usize , _ : Option < u64 > , _ : f64 ,) -> T"
+    },
+    {
+      "signature": "pub fn torus_shift_open < T : RngScalar > (_ : f64 , _ : f64) -> T"
+    }
+  ],
   "crates/02_engines/engine_linalg/src/cholesky.rs": [
     {
       "signature": "pub const fn cholesky_semidefinite_workspace_len (_ : usize) -> usize"
@@ -11403,6 +11958,12 @@
       "signature": "pub use jump :: ssa_sample_event"
     },
     {
+      "signature": "pub use math_rng :: BASE_SEED"
+    },
+    {
+      "signature": "pub use math_rng :: OxidizeRng"
+    },
+    {
       "signature": "pub use milstein :: MilsteinSolver"
     },
     {
@@ -11645,6 +12206,12 @@
     },
     {
       "signature": "pub use fused_stepper :: FusedStencilStepper"
+    },
+    {
+      "signature": "pub use math_rng :: BASE_SEED"
+    },
+    {
+      "signature": "pub use math_rng :: OxidizeRng"
     },
     {
       "signature": "pub use spde_noise :: SpdeNoiseKind"
@@ -13240,16 +13807,7 @@
   ],
   "crates/oxidize_core/src/rng.rs": [
     {
-      "signature": "impl OxidizeRng { pub fn from_seed (_ : u64) -> Self }"
-    },
-    {
-      "signature": "impl OxidizeRng { pub fn new (_ : u64) -> Self }"
-    },
-    {
-      "signature": "pub const BASE_SEED : u64"
-    },
-    {
-      "signature": "pub struct OxidizeRng"
+      "signature": "pub use math_rng :: *"
     }
   ],
   "crates/oxidize_core/src/traceability.rs": [
@@ -14882,6 +15440,9 @@
     },
     {
       "signature": "impl MultivariateIntegrator { pub fn new_monte_carlo (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn new_niederreiter (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
     },
     {
       "signature": "impl MultivariateIntegrator { pub fn new_sobol (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
@@ -19685,6 +20246,9 @@
     },
     {
       "signature": "pub use tail_risk :: simulated_portfolio_tail_risk"
+    },
+    {
+      "signature": "pub use tail_risk :: simulated_portfolio_tail_risk_with_rng"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/kelly/portfolio.rs": [
@@ -19898,6 +20462,9 @@
     },
     {
       "signature": "pub fn simulated_portfolio_tail_risk (_ : & [f64] , _ : & [f64] , _ : & DMatrix < f64 > , _ : PortfolioHorizonSpec , _ : usize , _ : u64 ,) -> Result < TailRiskMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn simulated_portfolio_tail_risk_with_rng (_ : & [f64] , _ : & [f64] , _ : & DMatrix < f64 > , _ : PortfolioHorizonSpec , _ : usize , _ : & mut OxidizeRng ,) -> Result < TailRiskMetrics , KellyError >"
     },
     {
       "signature": "pub struct PortfolioHorizonSpec"
@@ -21428,6 +21995,9 @@
       "signature": "impl HaltonSequence { pub fn with_bases (_ : & [u64]) -> Result < Self , MonteCarloError > }"
     },
     {
+      "signature": "impl HaltonSequence { pub fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
       "signature": "pub const FIRST_64_PRIMES : [u64 ; MAX_HALTON_DIM]"
     },
     {
@@ -21454,10 +22024,57 @@
       "signature": "pub use halton :: radical_inverse"
     },
     {
-      "signature": "pub use sobol :: SobolSequence"
+      "signature": "pub use math_rng :: HaltonView"
     },
     {
-      "signature": "pub use sobol_data :: MAX_SOBOL_DIM"
+      "signature": "pub use math_rng :: MAX_NIEDERREITER_DIM"
+    },
+    {
+      "signature": "pub use math_rng :: MAX_SOBOL_DIM"
+    },
+    {
+      "signature": "pub use math_rng :: NiederreiterView"
+    },
+    {
+      "signature": "pub use math_rng :: SobolView"
+    },
+    {
+      "signature": "pub use niederreiter :: NiederreiterSequence"
+    },
+    {
+      "signature": "pub use sobol :: SobolSequence"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/qmc/niederreiter.rs": [
+    {
+      "signature": "impl NiederreiterSequence { pub fn apply_cranley_patterson_shift (& mut self , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn new (_ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn next_point (& mut self , _ : & mut [f64]) -> Result < () , MonteCarloError > }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn point_at (& self , _ : u64 , _ : & mut [f64]) -> Result < () , MonteCarloError > }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn reset_index (& mut self , _ : u64) }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "pub struct NiederreiterSequence"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/qmc/sobol.rs": [
@@ -21486,12 +22103,10 @@
       "signature": "impl SobolSequence { pub fn reset_index (& mut self , _ : u32) }"
     },
     {
-      "signature": "pub struct SobolSequence"
-    }
-  ],
-  "crates/pure_math/src/pure_math/statistics/qmc/sobol_data.rs": [
+      "signature": "impl SobolSequence { pub fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
     {
-      "signature": "pub const MAX_SOBOL_DIM : usize"
+      "signature": "pub struct SobolSequence"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/queueing.rs": [
@@ -23226,7 +23841,22 @@
       "signature": "pub use oxidize_core :: mesh :: VertexColor"
     },
     {
+      "signature": "pub use oxidize_core :: rng :: BASE_SEED"
+    },
+    {
+      "signature": "pub use oxidize_core :: rng :: HaltonView"
+    },
+    {
+      "signature": "pub use oxidize_core :: rng :: NiederreiterView"
+    },
+    {
       "signature": "pub use oxidize_core :: rng :: OxidizeRng"
+    },
+    {
+      "signature": "pub use oxidize_core :: rng :: RngScalar"
+    },
+    {
+      "signature": "pub use oxidize_core :: rng :: SobolView"
     },
     {
       "signature": "pub use pure_math :: math_types :: Float"

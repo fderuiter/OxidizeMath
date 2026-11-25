@@ -3,7 +3,7 @@
 use super::error::MonteCarloError;
 use super::stats::{MonteCarloEstimate, two_sided_normal_z, welford_mean_m2};
 use super::workspace::{DEFAULT_QMC_REPLICATES, MonteCarloWorkspace};
-use crate::pure_math::statistics::qmc::{MAX_HALTON_DIM, MAX_SOBOL_DIM};
+use crate::pure_math::statistics::qmc::{MAX_HALTON_DIM, MAX_NIEDERREITER_DIM, MAX_SOBOL_DIM};
 use oxidize_core::rng::OxidizeRng;
 
 impl MonteCarloWorkspace {
@@ -158,6 +158,89 @@ impl MonteCarloWorkspace {
         sobol.apply_cranley_patterson_shift(rng);
         for idx in 0..n_samples {
             sobol.next_point(&mut self.point_buf)?;
+            let val = integrand(&self.point_buf);
+            if !val.is_finite() {
+                return Err(MonteCarloError::NonFiniteEvaluation);
+            }
+            self.values_buf[idx] = val;
+        }
+        MonteCarloEstimate::from_samples(&self.values_buf[..n_samples], self.confidence_level)
+    }
+
+    /// Scrambled + Cranley-Patterson randomized 64D base-2 Niederreiter QMC estimator over `(0, 1)^d`.
+    #[verified_engine::verified]
+    pub fn estimate_qmc_niederreiter<F>(
+        &mut self,
+        n_samples: usize,
+        rng: &mut OxidizeRng,
+        mut integrand: F,
+    ) -> Result<MonteCarloEstimate, MonteCarloError>
+    where
+        F: FnMut(&[f64]) -> f64,
+    {
+        self.check_budget(n_samples)?;
+        if self.dimension > MAX_NIEDERREITER_DIM {
+            return Err(MonteCarloError::InvalidDimension {
+                dimension: self.dimension,
+                max_dimension: MAX_NIEDERREITER_DIM,
+            });
+        }
+        let z = two_sided_normal_z(self.confidence_level)?;
+        if n_samples < DEFAULT_QMC_REPLICATES * 2 {
+            return self.estimate_single_niederreiter_run(n_samples, rng, &mut integrand);
+        }
+        let reps = DEFAULT_QMC_REPLICATES;
+        let base_pts = n_samples / reps;
+        let rem = n_samples % reps;
+        let nied = self
+            .niederreiter
+            .as_mut()
+            .ok_or(MonteCarloError::InvalidDimension {
+                dimension: self.dimension,
+                max_dimension: MAX_NIEDERREITER_DIM,
+            })?;
+        for r in 0..reps {
+            let pts = base_pts + usize::from(r < rem);
+            nied.apply_cranley_patterson_shift(rng);
+            let mut batch_sum = 0.0;
+            for _ in 0..pts {
+                nied.next_point(&mut self.point_buf)?;
+                let val = integrand(&self.point_buf);
+                if !val.is_finite() {
+                    return Err(MonteCarloError::NonFiniteEvaluation);
+                }
+                batch_sum += val;
+            }
+            self.batch_means_buf[r] = batch_sum / (pts as f64);
+        }
+        estimate_from_qmc_batches(
+            &self.batch_means_buf[..reps],
+            n_samples,
+            self.confidence_level,
+            z,
+        )
+    }
+
+    #[verified_engine::verified]
+    fn estimate_single_niederreiter_run<F>(
+        &mut self,
+        n_samples: usize,
+        rng: &mut OxidizeRng,
+        integrand: &mut F,
+    ) -> Result<MonteCarloEstimate, MonteCarloError>
+    where
+        F: FnMut(&[f64]) -> f64,
+    {
+        let nied = self
+            .niederreiter
+            .as_mut()
+            .ok_or(MonteCarloError::InvalidDimension {
+                dimension: self.dimension,
+                max_dimension: MAX_NIEDERREITER_DIM,
+            })?;
+        nied.apply_cranley_patterson_shift(rng);
+        for idx in 0..n_samples {
+            nied.next_point(&mut self.point_buf)?;
             let val = integrand(&self.point_buf);
             if !val.is_finite() {
                 return Err(MonteCarloError::NonFiniteEvaluation);

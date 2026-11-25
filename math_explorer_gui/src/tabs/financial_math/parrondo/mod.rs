@@ -263,10 +263,10 @@ impl ParrondoParadoxTool {
 
     fn run_ensembles(&mut self, params: &ParrondoParams) {
         self.ensure_ensemble_capacity();
-        let mut rng_a = OxidizeRng::new(self.seed ^ 0x000A_11CE_0001);
-        let mut rng_b = OxidizeRng::new(self.seed ^ 0x000B_22DF_0002);
-        let mut rng_mix = OxidizeRng::new(self.seed ^ 0x000C_33E0_0003);
         let mut rng_sched = OxidizeRng::new(self.seed);
+        let mut rng_a = rng_sched.split_stream(1);
+        let mut rng_b = rng_sched.split_stream(2);
+        let mut rng_mix = rng_sched.split_stream(3);
 
         self.ensemble_a
             .simulate_pure_game(params, ParrondoGame::GameA, self.num_steps, &mut rng_a);

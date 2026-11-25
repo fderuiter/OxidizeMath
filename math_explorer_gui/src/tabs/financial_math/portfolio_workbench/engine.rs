@@ -11,7 +11,7 @@ use math_explorer::pure_math::statistics::copula::{
 use math_explorer::pure_math::statistics::kelly::{
     empirical_tail_risk, evaluate_portfolio_kelly_metrics, independent_kelly_weights,
     long_only_kelly_projected_gradient, parametric_lognormal_tail_risk,
-    simulated_portfolio_tail_risk, unconstrained_covariance_kelly, PortfolioHorizonSpec,
+    simulated_portfolio_tail_risk_with_rng, unconstrained_covariance_kelly, PortfolioHorizonSpec,
     PortfolioKellySolution, TailRiskMetrics,
 };
 use math_explorer::pure_math::statistics::ou_process::{
@@ -185,37 +185,41 @@ fn populate_tail_metrics(
     else {
         return;
     };
+    let base_rng = OxidizeRng::new(state.seed);
     if let Some(ref cov_sol) = out.cov_kelly {
+        let mut rng_cov = base_rng.split_stream(0);
         out.cov_param_tail = parametric_lognormal_tail_risk(&cov_sol.weights, mu, cov, spec).ok();
-        out.cov_sim_tail = simulated_portfolio_tail_risk(
+        out.cov_sim_tail = simulated_portfolio_tail_risk_with_rng(
             &cov_sol.weights,
             mu,
             cov,
             spec,
             TAIL_MC_PATHS,
-            state.seed,
+            &mut rng_cov,
         )
         .ok();
     }
     if let Some(ref lo) = out.long_only_capped {
-        out.long_sim_tail = simulated_portfolio_tail_risk(
+        let mut rng_lo = base_rng.split_stream(1);
+        out.long_sim_tail = simulated_portfolio_tail_risk_with_rng(
             &lo.weights,
             mu,
             cov,
             spec,
             TAIL_MC_PATHS,
-            state.seed ^ 0x55AA,
+            &mut rng_lo,
         )
         .ok();
     }
     if let Some(ref ind) = out.indep_kelly {
-        out.indep_sim_tail = simulated_portfolio_tail_risk(
+        let mut rng_ind = base_rng.split_stream(2);
+        out.indep_sim_tail = simulated_portfolio_tail_risk_with_rng(
             &ind.weights,
             mu,
             cov,
             spec,
             TAIL_MC_PATHS,
-            state.seed ^ 0xAA55,
+            &mut rng_ind,
         )
         .ok();
     }
@@ -396,7 +400,7 @@ fn populate_ou_cones(
 ) {
     let n_steps = ((horizon / dt.value()).ceil() as usize).clamp(4, 1_000);
     let solver = EulerMaruyama::new(params, dt);
-    let mut rng = OxidizeRng::new(seed ^ 0x0D15_EA5E);
+    let mut rng = OxidizeRng::new(seed).with_stream(3);
     let paths = solver.simulate_paths(x0, n_steps, n_paths, &mut rng);
     let mut slice_vals = vec![0.0; n_paths];
     let mu = params.mu.value();

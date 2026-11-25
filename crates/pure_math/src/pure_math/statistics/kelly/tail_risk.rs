@@ -7,9 +7,9 @@ use super::portfolio::{
 use crate::error::KellyError;
 use crate::pure_math::statistics::copula::transforms::{fast_norm_cdf, fast_norm_inv};
 use engine_linalg::mat_idx;
+use math_rng::sample_open;
 use nalgebra::DMatrix;
 use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
 
 /// Paired Value-at-Risk (`VaR`) and Conditional Value-at-Risk (`CVaR`) at a single confidence level.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -218,7 +218,7 @@ pub fn parametric_lognormal_tail_risk(
 
 #[inline]
 fn next_standard_normal(rng: &mut OxidizeRng) -> f64 {
-    let u = ((rng.next_u64() as f64) + 0.5) / ((u64::MAX as f64) + 1.0);
+    let u: f64 = sample_open(rng);
     fast_norm_inv(u)
 }
 
@@ -304,6 +304,36 @@ pub fn simulate_portfolio_tail_risk_into(
     empirical_tail_risk_in_place(out_losses)
 }
 
+/// Simulates `n_paths` correlated portfolio wealth outcomes using `rng`
+/// and returns `95%` and `99%` `VaR` and `CVaR`.
+#[verified_engine::verified]
+pub fn simulated_portfolio_tail_risk_with_rng(
+    weights: &[f64],
+    expected_returns: &[f64],
+    covariance: &DMatrix<f64>,
+    spec: PortfolioHorizonSpec,
+    n_paths: usize,
+    rng: &mut OxidizeRng,
+) -> Result<TailRiskMetrics, KellyError> {
+    if n_paths == 0 {
+        return Err(KellyError::InsufficientData {
+            required: 1,
+            actual: 0,
+        });
+    }
+    let mut losses = vec![0.0; n_paths];
+    let mut ws = PortfolioKellyWorkspace::with_capacity(weights.len().max(1));
+    simulate_portfolio_tail_risk_into(
+        weights,
+        expected_returns,
+        covariance,
+        spec,
+        rng,
+        &mut losses,
+        &mut ws,
+    )
+}
+
 /// Simulates `n_paths` correlated portfolio wealth outcomes from deterministic `seed`
 /// and returns `95%` and `99%` `VaR` and `CVaR`.
 #[verified_engine::verified]
@@ -315,23 +345,14 @@ pub fn simulated_portfolio_tail_risk(
     n_paths: usize,
     seed: u64,
 ) -> Result<TailRiskMetrics, KellyError> {
-    if n_paths == 0 {
-        return Err(KellyError::InsufficientData {
-            required: 1,
-            actual: 0,
-        });
-    }
-    let mut losses = vec![0.0; n_paths];
-    let mut ws = PortfolioKellyWorkspace::with_capacity(weights.len().max(1));
     let mut rng = OxidizeRng::new(seed);
-    simulate_portfolio_tail_risk_into(
+    simulated_portfolio_tail_risk_with_rng(
         weights,
         expected_returns,
         covariance,
         spec,
+        n_paths,
         &mut rng,
-        &mut losses,
-        &mut ws,
     )
 }
 

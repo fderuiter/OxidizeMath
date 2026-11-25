@@ -3,7 +3,7 @@ use super::{
     Scalar, SolverWorkspace, fill_standard_normal, sample_open_unit, sample_standard_normal,
     sample_standard_normal_pair,
 };
-use oxidize_core::rng::OxidizeRng;
+use math_rng::OxidizeRng;
 
 #[test]
 #[verified_engine::verified]

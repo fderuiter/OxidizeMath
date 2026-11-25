@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/00_foundation/math_rng",
     "crates/federated_registry",
     "crates/diagnostics",
     "crates/oxidize_core",
@@ -61,7 +62,7 @@ proc-macro2 = { version = "1.0.106", features = ["span-locations"] }
 quadrature = "0.1.2"
 quote = "1.0.45"
 rand = { version = "0.8.6", default-features = false, features = ["std", "alloc"] }
-rand_chacha = { version = "0.3.1", default-features = false, features = ["std"] }
+rand_chacha = { version = "0.3.1", default-features = false }
 rand_core = { version = "0.6.4", default-features = false }
 rand_distr = "0.4.3"
 regex = "1.10"

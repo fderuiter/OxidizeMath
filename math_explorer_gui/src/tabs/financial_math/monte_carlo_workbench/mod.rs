@@ -21,7 +21,7 @@ use math_explorer::pure_math::statistics::bootstrap::{
 };
 use math_explorer::pure_math::statistics::monte_carlo::{MonteCarloEstimate, MonteCarloWorkspace};
 use math_explorer::registry::MAX_ITERATIONS;
-use oxidize_core::rng::OxidizeRng;
+use oxidize_core::rng::{sample_open, OxidizeRng};
 use scientific_metadata::theory::TheoryDescribable;
 
 pub(super) const MIN_SAMPLES: usize = 32;
@@ -182,13 +182,9 @@ impl MonteCarloWorkbenchTool {
         let ws = self.active_mc_ws_mut(bench);
         let _ = ws.set_confidence_level(conf);
 
-        let mut rng_iid = OxidizeRng::new(seed ^ 0x1111_A001);
-        let mut rng_anti = OxidizeRng::new(seed ^ 0x2222_B002);
-        let mut rng_ctrl = OxidizeRng::new(seed ^ 0x3333_C003);
-        let mut rng_lhs = OxidizeRng::new(seed ^ 0x4444_D004);
-        let mut rng_halton = OxidizeRng::new(seed ^ 0x5555_E005);
-        let mut rng_sobol = OxidizeRng::new(seed ^ 0x6666_F006);
-        let mut rng_snis = OxidizeRng::new(seed ^ 0x7777_0007);
+        let base_rng = OxidizeRng::new(seed);
+        let [mut rng_iid, mut rng_anti, mut rng_ctrl, mut rng_lhs, mut rng_halton, mut rng_sobol, mut rng_snis] =
+            [1, 2, 3, 4, 5, 6, 7].map(|s| base_rng.split_stream(s));
 
         let iid = ws
             .estimate_iid(n, &mut rng_iid, |u| evaluate_iid(bench, u))
@@ -268,14 +264,12 @@ impl MonteCarloWorkbenchTool {
             let ws = self.active_mc_ws_mut(bench);
             let _ = ws.set_confidence_level(conf);
             for rep in 0..MICRO_REPEATS {
-                let base = seed.wrapping_add((rep as u64).wrapping_mul(0x9E37_79B9))
-                    ^ ((budget as u64).wrapping_mul(0x517C_C1B7));
-                let mut r0 = OxidizeRng::new(base ^ 0x101);
-                let mut r1 = OxidizeRng::new(base ^ 0x202);
-                let mut r2 = OxidizeRng::new(base ^ 0x303);
-                let mut r3 = OxidizeRng::new(base ^ 0x404);
-                let mut r4 = OxidizeRng::new(base ^ 0x505);
-                let mut r5 = OxidizeRng::new(base ^ 0x606);
+                let base = OxidizeRng::new(
+                    seed.wrapping_add((rep as u64).wrapping_mul(0x9E37_79B9))
+                        .wrapping_add((budget as u64).wrapping_mul(0x517C_C1B7)),
+                );
+                let [mut r0, mut r1, mut r2, mut r3, mut r4, mut r5] =
+                    [11, 12, 13, 14, 15, 16].map(|s| base.split_stream(s));
 
                 if let Ok(e) = ws.estimate_iid(budget, &mut r0, |u| evaluate_iid(bench, u)) {
                     sq[0] += (e.mean - exact).powi(2);
@@ -326,17 +320,17 @@ impl MonteCarloWorkbenchTool {
         b_reps: usize,
         conf: f64,
     ) {
-        let mut rng_data = OxidizeRng::new(self.seed ^ 0xABCD_1234);
+        let mut rng_data = OxidizeRng::new(self.seed).with_stream(21);
         let mut unit_point = [0.0_f64; 4];
         let dim = bench.dimension();
         for slot in self.payoff_samples.iter_mut().take(n) {
             for coord in unit_point.iter_mut().take(dim) {
-                *coord = rand::Rng::r#gen::<f64>(&mut rng_data).clamp(1e-12, 1.0 - 1e-12);
+                *coord = sample_open(&mut rng_data);
             }
             *slot = evaluate_iid(bench, &unit_point[..dim]);
         }
 
-        let mut rng_boot = OxidizeRng::new(self.seed ^ 0xDCBA_9876);
+        let mut rng_boot = OxidizeRng::new(self.seed).with_stream(22);
         let data_slice = &self.payoff_samples[..n];
         self.boot_comparison = match self.bootstrap_statistic {
             BootstrapStatKind::Mean => self

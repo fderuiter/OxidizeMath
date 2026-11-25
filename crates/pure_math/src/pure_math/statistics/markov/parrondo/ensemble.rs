@@ -7,10 +7,9 @@ use crate::error::MarkovError;
 use crate::pure_math::statistics::monte_carlo::{
     MonteCarloError, MonteCarloEstimate, two_sided_normal_z,
 };
+use math_rng::sample_closed_open;
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
-
-const INV_TWO_POW_53: f64 = 1.0 / 9_007_199_254_740_992.0;
 
 /// Preallocated zero-allocation Monte Carlo ensemble workspace driven by [`OxidizeRng`].
 #[derive(Debug, Clone)]
@@ -72,7 +71,7 @@ impl ParrondoEnsemble {
             let residue = w.rem_euclid(m_i64) as usize;
             self.occupancy_counts[residue] = self.occupancy_counts[residue].saturating_add(1);
             let p_win = params.win_probability(game, residue);
-            let u = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53;
+            let u: f64 = sample_closed_open(rng);
             *w += if u < p_win { 1 } else { -1 };
             sum_wealth += *w;
         }
@@ -93,7 +92,7 @@ impl ParrondoEnsemble {
                 ParrondoGame::GameB
             };
             let p_win = params.win_probability(game, residue);
-            let u = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53;
+            let u: f64 = sample_closed_open(rng);
             *w += if u < p_win { 1 } else { -1 };
             sum_wealth += *w;
         }

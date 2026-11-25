@@ -266,13 +266,14 @@ impl DiscreteQController {
         let alpha = UnitInterval::new(cfg.q_alpha.clamp(0.01, 0.99)).expect("clamped alpha");
         let gamma = UnitInterval::new(cfg.q_gamma.clamp(0.01, 0.999)).expect("clamped gamma");
         let eps = UnitInterval::new(cfg.q_epsilon.clamp(0.0, 0.99)).expect("clamped epsilon");
-        let agent = QLearningAgent::new_generic(
+        let mut agent = QLearningAgent::new_generic(
             FixedArrayQFunction::new(),
             alpha,
             gamma,
             Box::new(EpsilonGreedy::new(eps)),
-            Some(cfg.rng_seed ^ 0x9E37_79B9_7F4A_7C15),
+            Some(cfg.rng_seed),
         );
+        agent.rng.set_stream(2);
         Self {
             agent,
             actions: [
@@ -295,7 +296,7 @@ impl DiscreteQController {
         let gamma = UnitInterval::new(cfg.q_gamma.clamp(0.01, 0.999)).expect("clamped gamma");
         self.agent.q_func.reset();
         self.agent.set_learning_params(alpha, gamma);
-        self.agent.reseed(cfg.rng_seed ^ 0x9E37_79B9_7F4A_7C15);
+        self.agent.rng = OxidizeRng::new(cfg.rng_seed).with_stream(2);
         self.last_episode_return = 0.0;
     }
 

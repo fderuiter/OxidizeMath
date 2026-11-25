@@ -5,6 +5,16 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 const EMBEDDED_TRACEABILITY_TOML: &str = include_str!("../../../../traceability.toml");
+const SKIP_PATH_SEGMENTS: &[&str] = &[
+    "crates",
+    "00_foundation",
+    "02_engines",
+    "src",
+    "tests",
+    "tabs",
+    "applied",
+    "physics",
+];
 
 /// Expected library and mathematical crates that must declare an explicit tier under `[crates]`.
 pub const EXPECTED_WORKSPACE_CRATES: &[&str] = &[
@@ -21,6 +31,7 @@ pub const EXPECTED_WORKSPACE_CRATES: &[&str] = &[
     "federated_registry",
     "math_commons",
     "math_explorer",
+    "math_rng",
     "oxidize_core",
     "pure_math",
     "scientific_metadata",
@@ -192,7 +203,7 @@ impl MaturityRegistry {
         if let Some(rest) = norm.strip_prefix("crates/") {
             let mut parts = rest.split('/').filter(|s| !s.is_empty());
             let first = parts.next()?;
-            if first == "02_engines" {
+            if matches!(first, "00_foundation" | "02_engines") {
                 return parts.next();
             }
             return Some(first);
@@ -218,10 +229,7 @@ impl MaturityRegistry {
             out.push("cera_framework".to_string());
         }
         for seg in segments.iter().rev().skip(1) {
-            if matches!(
-                *seg,
-                "crates" | "02_engines" | "src" | "tests" | "tabs" | "applied" | "physics"
-            ) {
+            if SKIP_PATH_SEGMENTS.contains(seg) {
                 continue;
             }
             if self.modules.contains_key(*seg) && !out.iter().any(|m| m == seg) {
@@ -231,21 +239,17 @@ impl MaturityRegistry {
         if trimmed.contains("/tests/") {
             self.append_test_stem_modules(trimmed, stem, &mut out);
         }
-        if let Some(crate_name) = Self::crate_for_repo_path(trimmed) {
-            let root_mod = match crate_name {
-                "domain_biology" => Some("biology"),
-                "domain_epidemiology" => Some("epidemiology"),
-                "domain_climate" => Some("climate"),
-                "pure_math" => Some("pure_math"),
-                "math_commons" => Some("math_commons"),
-                _ => None,
-            };
-            if let Some(m) = root_mod
-                && self.modules.contains_key(m)
-                && !out.iter().any(|x| x == m)
-            {
-                out.push(m.to_string());
-            }
+        if let Some(m) = Self::crate_for_repo_path(trimmed).and_then(|c| match c {
+            "domain_biology" => Some("biology"),
+            "domain_epidemiology" => Some("epidemiology"),
+            "domain_climate" => Some("climate"),
+            "pure_math" => Some("pure_math"),
+            "math_commons" => Some("math_commons"),
+            _ => None,
+        }) && self.modules.contains_key(m)
+            && !out.iter().any(|x| x == m)
+        {
+            out.push(m.to_string());
         }
         if out.is_empty()
             && let Some(rest) = trimmed.strip_prefix("math_explorer_gui/src/tabs/")

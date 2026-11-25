@@ -17,7 +17,7 @@ fn deterministic_tool_seed(tool_name: &str, state_json: Option<&str>) -> u64 {
     if let Some(json) = state_json {
         json.hash(&mut hasher);
     }
-    hasher.finish() ^ 0x534F_4E49_4659_3136
+    oxidize_core::rng::splitmix64(hasher.finish().wrapping_add(0x534F_4E49_4659_3136))
 }
 
 impl SimulationFramework {
