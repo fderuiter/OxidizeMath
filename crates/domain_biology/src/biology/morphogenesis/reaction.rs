@@ -87,17 +87,46 @@ impl ReactionKinetics<2> for SchnakenbergKinetics {
     }
 }
 
+#[inline]
+#[verified_engine::verified]
+fn reaction_2d_slice<K: ReactionKinetics<2>>(
+    kinetics: &K,
+    concentrations: &[f64],
+    rates: &mut [f64],
+) {
+    if concentrations.len() < 2 || rates.len() < 2 {
+        return;
+    }
+    let out = kinetics.reaction([concentrations[0], concentrations[1]]);
+    rates[0] = out[0];
+    rates[1] = out[1];
+}
+
+#[verified_engine::verified]
+fn add_reaction_batch_2d<K: ReactionKinetics<2>>(
+    kinetics: &K,
+    state: &crate::biology::reaction_diffusion::ChemicalState,
+    rates: &mut crate::biology::reaction_diffusion::ChemicalState,
+) {
+    if state.num_species() < 2 || rates.num_species() < 2 {
+        return;
+    }
+    let u_vec = state.species(0);
+    let v_vec = state.species(1);
+    let rates_stride = rates.grid_size();
+    let n = state.grid_size().min(rates_stride);
+    let (rates_u, rates_v) = rates.grid.as_mut_slice().split_at_mut(rates_stride);
+    for i in 0..n {
+        let out = kinetics.reaction([u_vec[i], v_vec[i]]);
+        rates_u[i] += out[0];
+        rates_v[i] += out[1];
+    }
+}
+
 impl ReactionModel for SchnakenbergKinetics {
     #[verified_engine::verified]
     fn reaction(&self, concentrations: &[f64], rates: &mut [f64]) {
-        if concentrations.len() < 2 || rates.len() < 2 {
-            return;
-        }
-        // We can safely assume Schnakenberg is 2D
-        let inp = [concentrations[0], concentrations[1]];
-        let out = <Self as ReactionKinetics<2>>::reaction(self, inp);
-        rates[0] = out[0];
-        rates[1] = out[1];
+        reaction_2d_slice(self, concentrations, rates);
     }
 
     #[verified_engine::verified]
@@ -106,25 +135,7 @@ impl ReactionModel for SchnakenbergKinetics {
         state: &crate::biology::reaction_diffusion::ChemicalState,
         rates: &mut crate::biology::reaction_diffusion::ChemicalState,
     ) {
-        if state.num_species() < 2 {
-            return;
-        }
-
-        let u_vec = state.species(0);
-        let v_vec = state.species(1);
-
-        let n = state.grid_size();
-
-        // Split mutable borrow to access both rate vectors simultaneously
-        let (rates_u, rates_v) = rates.grid.as_mut_slice().split_at_mut(n);
-
-        // Vectorized loop: Access memory linearly, enabling prefetch and SIMD
-        for i in 0..n {
-            let inp = [u_vec[i], v_vec[i]];
-            let out = <Self as ReactionKinetics<2>>::reaction(self, inp);
-            rates_u[i] += out[0];
-            rates_v[i] += out[1];
-        }
+        add_reaction_batch_2d(self, state, rates);
     }
 }
 
@@ -213,13 +224,7 @@ impl ReactionKinetics<2> for GrayScottKinetics {
 impl ReactionModel for GrayScottKinetics {
     #[verified_engine::verified]
     fn reaction(&self, concentrations: &[f64], rates: &mut [f64]) {
-        if concentrations.len() < 2 || rates.len() < 2 {
-            return;
-        }
-        let inp = [concentrations[0], concentrations[1]];
-        let out = <Self as ReactionKinetics<2>>::reaction(self, inp);
-        rates[0] = out[0];
-        rates[1] = out[1];
+        reaction_2d_slice(self, concentrations, rates);
     }
 
     #[verified_engine::verified]
@@ -228,18 +233,49 @@ impl ReactionModel for GrayScottKinetics {
         state: &crate::biology::reaction_diffusion::ChemicalState,
         rates: &mut crate::biology::reaction_diffusion::ChemicalState,
     ) {
-        if state.num_species() < 2 {
-            return;
-        }
-        let u_vec = state.species(0);
-        let v_vec = state.species(1);
-        let n = state.grid_size();
-        let (rates_u, rates_v) = rates.grid.as_mut_slice().split_at_mut(n);
-        for i in 0..n {
-            let inp = [u_vec[i], v_vec[i]];
-            let out = <Self as ReactionKinetics<2>>::reaction(self, inp);
-            rates_u[i] += out[0];
-            rates_v[i] += out[1];
+        add_reaction_batch_2d(self, state, rates);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::biology::reaction_diffusion::ChemicalState;
+    use scientific_metadata::theory::TheoryDescribable;
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_gray_scott_trivial_equilibrium_and_autocatalysis() {
+        let mitosis = GrayScottKinetics::mitosis();
+        assert_eq!(GrayScottKinetics::default(), mitosis);
+        let eq = ReactionKinetics::reaction(&mitosis, [1.0, 0.0]);
+        assert!(eq[0].abs() < 1e-15 && eq[1].abs() < 1e-15);
+
+        let coral = GrayScottKinetics::coral();
+        let active = ReactionKinetics::reaction(&coral, [0.5, 0.25]);
+        assert!((active[0] - (-0.5 * 0.0625 + coral.f * 0.5)).abs() < 1e-15);
+        assert!((active[1] - (0.5 * 0.0625 - (coral.f + coral.k) * 0.25)).abs() < 1e-15);
+        assert!(coral.theory_citation().contains("Pearson"));
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_reaction_model_batch_matches_pointwise_rates() {
+        let gs = GrayScottKinetics::new(0.030, 0.060);
+        let mut state = ChemicalState::new(2, 3);
+        state.species_mut(0).copy_from_slice(&[1.0, 0.5, 0.75]);
+        state.species_mut(1).copy_from_slice(&[0.0, 0.25, 0.2]);
+        let mut rates = ChemicalState::new(2, 3);
+        gs.add_reaction_batch(&state, &mut rates);
+        for i in 0..3 {
+            let mut single = [0.0; 2];
+            <GrayScottKinetics as ReactionModel>::reaction(
+                &gs,
+                &[state.species(0)[i], state.species(1)[i]],
+                &mut single,
+            );
+            assert!((rates.species(0)[i] - single[0]).abs() < 1e-15);
+            assert!((rates.species(1)[i] - single[1]).abs() < 1e-15);
         }
     }
 }

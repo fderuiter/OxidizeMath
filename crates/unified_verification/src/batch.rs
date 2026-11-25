@@ -130,7 +130,7 @@ pub(crate) fn run_batch_static_with_caches(
         passed = false;
     }
 
-    println!("\n--- Static Gate 7: Verification Certificate AST Parity ---");
+    println!("\n--- Static Gate 7: Verification Certificate & Quality Floors ---");
     if !crate::report::certificate::check_ast_certificate_parity_with_cache(&members, cache) {
         passed = false;
     }

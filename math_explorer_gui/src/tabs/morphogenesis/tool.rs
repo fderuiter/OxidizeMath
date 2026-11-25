@@ -21,6 +21,7 @@ use eframe::egui;
 use eframe::egui::ColorImage;
 use scientific_metadata::theory::TheoryDescribable;
 use std::hash::{Hash, Hasher};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 /// Interactive tool for 2D Schnakenberg and Gray-Scott reaction-diffusion morphogenesis.
@@ -32,7 +33,9 @@ pub struct MorphogenesisTool {
     pub(crate) params: Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
     pub(crate) kinetics_state: Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
     pub(crate) advection_state: Arc<std::sync::RwLock<MorphogenesisAdvectionState>>,
+    pub(crate) auto_dt: Arc<AtomicBool>,
     pub(crate) mask_rle: Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
+    pub(crate) minimap_cache: super::minimap::AtlasCache,
     pub(crate) brush_kit: SpatialBrushKit,
     pub(crate) width: usize,
     pub(crate) height: usize,
@@ -44,6 +47,7 @@ pub struct MorphogenesisTool {
     pub(crate) step_runner: Option<MorphogenesisKineticsRunner>,
     pub(crate) local_runner: MorphogenesisKineticsRunner,
     pub(crate) pending_initial_start: bool,
+    pub(crate) has_rendered: bool,
     pub(crate) last_theme_mode: Option<ThemeMode>,
     pub(crate) brush_state: crate::framework::RasterBrushState,
     pub(crate) brush_mode: super::brush::MorphoBrushMode,
@@ -78,15 +82,16 @@ impl Default for MorphogenesisTool {
         let advection_state = Arc::new(std::sync::RwLock::new(
             MorphogenesisAdvectionState::default(),
         ));
+        let auto_dt = Arc::new(AtomicBool::new(true));
         let mask_rle = Arc::new(std::sync::RwLock::new(Vec::new()));
         let mk_runner = || {
-            Self::create_kinetics_runner_with_advection(
+            MorphogenesisKineticsRunner::new_with_advection_and_cfl(
                 &params,
                 &kinetics_state,
                 &advection_state,
+                &auto_dt,
                 &mask_rle,
-                width,
-                height,
+                (width, height),
             )
         };
         let worker = BackgroundWorker::new(mk_runner());
@@ -98,7 +103,9 @@ impl Default for MorphogenesisTool {
             params,
             kinetics_state,
             advection_state,
+            auto_dt,
             mask_rle,
+            minimap_cache: super::minimap::AtlasCache::default(),
             brush_kit: default_morpho_brush_kit(),
             width,
             height,
@@ -110,6 +117,7 @@ impl Default for MorphogenesisTool {
             step_runner: None,
             local_runner,
             pending_initial_start: true,
+            has_rendered: false,
             last_theme_mode: None,
             brush_state: crate::framework::RasterBrushState::default(),
             brush_mode: super::brush::MorphoBrushMode::default(),
@@ -126,22 +134,8 @@ impl MorphogenesisTool {
     #[cfg(test)]
     #[allow(missing_docs)]
     pub fn restart_worker(&mut self) {
-        self.local_runner = Self::create_kinetics_runner_with_advection(
-            &self.params,
-            &self.kinetics_state,
-            &self.advection_state,
-            &self.mask_rle,
-            self.width,
-            self.height,
-        );
-        let runner = Self::create_kinetics_runner_with_advection(
-            &self.params,
-            &self.kinetics_state,
-            &self.advection_state,
-            &self.mask_rle,
-            self.width,
-            self.height,
-        );
+        self.local_runner = self.create_live_runner();
+        let runner = self.create_live_runner();
         self.worker.replace_runner(runner);
         self.branch_engine.clear();
         self.stepped_pixels = None;
@@ -214,6 +208,7 @@ impl InteractiveTool for MorphogenesisTool {
             drop(p);
             self.dirty = true;
         }
+        self.has_rendered = true;
         if std::mem::take(&mut self.pending_initial_start) && self.worker.state().is_ready() {
             let _ = self.worker.send_command(SimCommand::Start);
         }
@@ -279,6 +274,7 @@ impl InteractiveTool for MorphogenesisTool {
             adv.inlet_u.to_bits().hash(&mut h);
             adv.viscosity.to_bits().hash(&mut h);
         }
+        self.auto_dt.load(Ordering::Relaxed).hash(&mut h);
         self.width.hash(&mut h);
         self.height.hash(&mut h);
         self.is_forked().hash(&mut h);
@@ -333,6 +329,7 @@ impl InteractiveTool for MorphogenesisTool {
             d_u,
             d_v,
             dt,
+            auto_dt: self.auto_dt.load(Ordering::Relaxed),
             width: self.width,
             height: self.height,
             kinetics_mode: ks.mode,
@@ -371,7 +368,13 @@ impl InteractiveTool for MorphogenesisTool {
                 .set_axis_keys(&parsed.atlas_axes[0], &parsed.atlas_axes[1])?;
         }
         self.atlas.set_visible(parsed.atlas_visible);
-        let target_state = parsed.resolve_target_state();
+        let defer_unrendered_preset =
+            !self.has_rendered && parsed.state.is_none() && parsed.paused.is_none();
+        let (target_state, pending) = if defer_unrendered_preset {
+            (SimWorkerState::Ready, true)
+        } else {
+            (parsed.resolve_target_state(), parsed.pending_initial_start)
+        };
         self.stage_loaded_params(&parsed, decoded_mask);
         *self.mask_rle.write().unwrap_or_else(|e| e.into_inner()) = parsed.mask_rle;
         if let Some(fork_desc) = parsed.fork {
@@ -380,14 +383,14 @@ impl InteractiveTool for MorphogenesisTool {
                 parsed.height,
                 fork_desc,
                 target_state,
-                parsed.pending_initial_start,
+                pending,
             )?;
         } else {
             self.apply_dimensions_and_target_state(
                 parsed.width,
                 parsed.height,
                 target_state,
-                parsed.pending_initial_start,
+                pending,
             );
         }
         Ok(())
@@ -442,6 +445,7 @@ inventory::submit! {
             "gray-scott",
             "mitosis",
             "coral",
+            "solitons",
             "reaction-diffusion",
             "spots",
             "stripes",

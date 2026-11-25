@@ -236,31 +236,59 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
         }
     }
 
-    /// Updates the grid using the solver strategy.
+    #[inline]
     #[verified_engine::verified]
-    pub fn step(&mut self, dt: f64) {
-        let n = self.state.len();
+    fn step_bufs<KAlt: ReactionKinetics<N>>(
+        state: &mut TuringState<N>,
+        next_state: &mut TuringState<N>,
+        dynamics: TuringDynamics<'_, N, KAlt, D>,
+        solver: &mut S,
+        dt: f64,
+    ) {
+        let n = state.len();
         if n == 0 {
             return;
         }
-
-        // Ensure buffers are the right size
-        if self.next_state.len() != n {
-            self.next_state = TuringState::new(n);
+        if next_state.len() != n {
+            *next_state = TuringState::new(n);
         }
+        solver.step(state, next_state, &dynamics, dt);
+        std::mem::swap(state, next_state);
+    }
 
-        let dynamics = TuringDynamics {
+    /// Updates the grid using the solver strategy.
+    #[verified_engine::verified]
+    pub fn step(&mut self, dt: f64) {
+        let dyn_ref = TuringDynamics {
             kinetics: &self.kinetics,
             diffusion: &self.diffusion,
             diffusion_coeffs: self.diffusion_coeffs,
         };
+        Self::step_bufs(
+            &mut self.state,
+            &mut self.next_state,
+            dyn_ref,
+            &mut self.solver,
+            dt,
+        );
+    }
 
-        // Delegate time-stepping to the strategy
-        self.solver
-            .step(&self.state, &mut self.next_state, &dynamics, dt);
-
-        // Swap buffers (states)
-        std::mem::swap(&mut self.state, &mut self.next_state);
+    /// Advances one time step `dt` using alternate reaction `kinetics` while reusing pre-allocated
+    /// `state` and `next_state` buffers with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn step_with_kinetics<KAlt: ReactionKinetics<N>>(&mut self, kinetics: &KAlt, dt: f64) {
+        let dyn_ref = TuringDynamics {
+            kinetics,
+            diffusion: &self.diffusion,
+            diffusion_coeffs: self.diffusion_coeffs,
+        };
+        Self::step_bufs(
+            &mut self.state,
+            &mut self.next_state,
+            dyn_ref,
+            &mut self.solver,
+            dt,
+        );
     }
 }
 
@@ -437,6 +465,35 @@ mod tests {
                 expected_v[i]
             );
         }
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_step_with_kinetics_reuses_buffers_zero_alloc() {
+        let (dim, du, dv, dx) = (
+            Dimension(16),
+            DiffusionCoeff(0.16),
+            DiffusionCoeff(0.08),
+            StepSize(1.0),
+        );
+        let gs = GrayScottKinetics::mitosis();
+        let mut alt_sys = TuringSystem::new(dim, du, dv, dx);
+        let mut dedicated =
+            TuringSystem::new_with_kinetics(dim, du, dv, gs, FiniteDifference1D::new(dx));
+        alt_sys.u_mut().fill(1.0);
+        dedicated.u_mut().fill(1.0);
+        for i in 6..=9 {
+            alt_sys.u_mut()[i] = 0.5;
+            alt_sys.v_mut()[i] = 0.25;
+            dedicated.u_mut()[i] = 0.5;
+            dedicated.v_mut()[i] = 0.25;
+        }
+        verified_engine::engine::VerifiedEngine::run_verified(|| {
+            alt_sys.step_with_kinetics(&gs, 0.5);
+            dedicated.step(0.5);
+        });
+        assert_eq!(alt_sys.u(), dedicated.u());
+        assert_eq!(alt_sys.v(), dedicated.v());
     }
 }
 

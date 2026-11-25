@@ -44,7 +44,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "smoke-examples" => smoke::smoke_examples(),
         "test-features" => features::test_features(rest),
         "verify-suite" => gates::verify_suite(rest),
-        "check-certificate" => gates::check_certificate(),
+        "check-certificate" => gates::check_certificate(rest),
         "verify-records" => gates::verify_records(rest),
         "compile-papers" => papers::compile_papers(),
         "traceability" => gates::traceability(),
@@ -76,7 +76,9 @@ fn print_help() {
     println!(
         "  check-cargo-docs         - Verify workspace documentation builds with --all-features and zero warnings"
     );
-    println!("  check-certificate        - Verify Verification_Certificate.json AST parity");
+    println!(
+        "  check-certificate        - Verify Verification_Certificate.json schema and [verify_suite] floors"
+    );
     println!("  check-docs               - Run crate documentation audit");
     println!("  check-duplicates         - Run AST-level code clone detector across crates");
     println!("  check-entropy            - Scan codebase for high entropy strings and secrets");

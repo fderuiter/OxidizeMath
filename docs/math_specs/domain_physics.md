@@ -6,10 +6,10 @@ Canonical governing equations, bibliography references, stability bounds, and va
 
 ### Governing Equations
 
-Self-consistent zero-temperature s-wave BCS pairing (`BcsGapSolver`, `IsotropicBCSModel`) iterates the damped gap operator over single-particle states $|\xi_k| \le \hbar\omega_D$:
+Self-consistent finite-temperature $s$-wave BCS pairing (`BcsGapSolver`, `IsotropicBCSModel`) iterates the damped gap operator over single-particle states $|\xi_k| \le \hbar\omega_D$ at bath temperature $T \ge 0\,\text{K}$:
 
 $$
-\Delta_{n+1} = (1 - \alpha)\Delta_n + \alpha \sum_{|\xi_k| \le \hbar\omega_D} \frac{V\,\Delta_n}{2\sqrt{\xi_k^2 + \Delta_n^2}}
+\Delta_{n+1} = (1 - \alpha)\Delta_n + \alpha \sum_{|\xi_k| \le \hbar\omega_D} \frac{V\,\Delta_n}{2\sqrt{\xi_k^2 + \Delta_n^2}} \tanh\!\left(\frac{\sqrt{\xi_k^2 + \Delta_n^2}}{2 k_B T}\right)
 $$
 
 Discrete-velocity BGK Lattice Boltzmann (`D2Q9Model`, `CollisionModel`) relaxes populations $f_i^{\text{out}} = f_i - \frac{1}{\tau}(f_i - f_i^{\text{eq}}(\rho, \mathbf{u}))$, `PotentialTracerSystem` advects Lagrangian streamlines $\dot{\mathbf{x}} = \nabla\phi(\mathbf{x})$ via fourth-order `RungeKutta4` coupled to steady Bernoulli head $p + \frac{1}{2}\rho|\mathbf{u}|^2 = H_0$, `GalaxyModel` evaluates axisymmetric/spherical circular velocity profiles $v_c^2(R) = R\,\partial_R \Phi(R, 0)$, `SchwarzschildBlackHole` and `SchwarzschildGeodesicBundle` integrate relativistic 4D Schwarzschild geodesics $\ddot{x}^\mu + \Gamma^\mu_{\alpha\beta}\dot{x}^\alpha\dot{x}^\beta = 0$ against Newtonian orbits, and Bethe-Weizsaecker `LiquidDropModel` (`BindingEnergyModel`) computes nuclear binding energy $B(A, Z)$.

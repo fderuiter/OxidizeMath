@@ -1,6 +1,6 @@
 use super::certificate::{
-    format_coverage_badge, verify_certificate_against_report, write_certificate_and_readme,
-    write_certificate_only,
+    format_coverage_badge, verify_certificate_against_report, verify_certificate_strict_parity,
+    write_certificate_and_readme, write_certificate_only,
 };
 use super::coverage::collect_llvm_cov_json_with;
 use super::*;
@@ -116,12 +116,60 @@ fn test_fail_closed_gates_reject_unwhitelisted_modules_opt_outs_and_legacy_fns()
     leg.legacy_funcs
         .push(("crates/pure_math/src/lib.rs".into(), "f_legacy".into()));
     assert!(!eval(80.0, 50.0, &leg, &debt, &cfg).report.passed);
+}
 
-    let strict = VerifySuiteConfig {
-        min_verified_production_density: 0.90,
-        ..cfg
+#[test]
+fn test_evaluate_integrity_gates_enforces_ratcheted_floors() {
+    let m = baseline_metrics();
+    let cfg = VerifySuiteConfig {
+        min_native_execution_coverage_pct: 75.0,
+        min_wasm_path_coverage_pct: 45.0,
+        min_total_assertion_density: 0.90,
+        min_total_production_density: 0.20,
+        min_verified_production_density: 0.25,
+        min_test_assertion_density: 1.50,
+        ..VerifySuiteConfig::default()
     };
-    assert!(!eval(80.0, 50.0, &m, &debt, &strict).report.passed);
+    let debt = DebtSources {
+        unverified_crates: &[],
+        file_length_debt: &[],
+        entropy_debt: &[],
+        extra_debt: &[],
+    };
+    assert!(
+        evaluate_integrity_gates(80.0, 50.0, &m, &debt, &cfg)
+            .report
+            .passed
+    );
+
+    for bad_floor_cfg in [
+        VerifySuiteConfig {
+            min_verified_production_density: 0.90,
+            ..cfg.clone()
+        },
+        VerifySuiteConfig {
+            min_native_execution_coverage_pct: 85.0,
+            ..cfg.clone()
+        },
+        VerifySuiteConfig {
+            min_wasm_path_coverage_pct: 70.0,
+            ..cfg.clone()
+        },
+        VerifySuiteConfig {
+            min_total_assertion_density: 1.50,
+            ..cfg.clone()
+        },
+        VerifySuiteConfig {
+            min_test_assertion_density: 2.50,
+            ..cfg
+        },
+    ] {
+        assert!(
+            !evaluate_integrity_gates(80.0, 50.0, &m, &debt, &bad_floor_cfg)
+                .report
+                .passed
+        );
+    }
 }
 
 #[test]
@@ -209,7 +257,7 @@ fn test_wasm_coverage_counts_real_wasm_bindgen_tests() {
 }
 
 #[test]
-fn test_certificate_check_mode_is_read_only_and_enforces_parity() {
+fn test_certificate_check_mode_allows_metric_drift_and_strict_parity_catches_it() {
     let dir = TempTestDir::new("cert_parity");
     let cert_path = dir.join("Verification_Certificate.json");
     let readme_path = dir.join("README.md");
@@ -234,25 +282,79 @@ fn test_certificate_check_mode_is_read_only_and_enforces_parity() {
     let readme_before = fs::read_to_string(&readme_path).unwrap();
     assert!(readme_before.contains(&format_coverage_badge(84.5)));
 
+    let mut improved = eval.report.clone();
+    improved.native_execution_coverage_pct = 93.2;
+    improved.wasm_path_coverage_pct = 88.0;
+    improved.total_assertion_density += 0.25;
+    improved.verified_modules_density += 0.15;
+    improved.test_assertion_density += 0.50;
     assert!(
-        verify_certificate_against_report(&eval.report, Some(85.2), 1.5, &cert_path, &readme_path)
+        verify_certificate_against_report(&improved, &cert_path, &readme_path).is_ok(),
+        "Default --check must allow live metric shifts above ratcheted floors"
+    );
+    assert!(
+        verify_certificate_strict_parity(&eval.report, Some(85.2), 1.5, &cert_path, &readme_path)
             .is_ok(),
-        "Coverage jitter within 1.5% tolerance must pass"
+        "Strict parity must allow coverage jitter within 1.5%"
     );
     assert!(
-        verify_certificate_against_report(&eval.report, Some(87.0), 1.5, &cert_path, &readme_path)
+        verify_certificate_strict_parity(&eval.report, Some(87.0), 1.5, &cert_path, &readme_path)
             .is_err(),
-        "Coverage drift beyond 1.5% tolerance must fail"
+        "Strict parity must reject coverage drift beyond 1.5%"
     );
-
-    let mut drifted = eval.report.clone();
-    drifted.verified_modules_density += 0.01;
     assert!(
-        verify_certificate_against_report(&drifted, None, 1.5, &cert_path, &readme_path).is_err(),
-        "Deterministic AST density drift must fail check mode"
+        verify_certificate_strict_parity(&improved, None, 1.5, &cert_path, &readme_path).is_err(),
+        "Strict parity must reject deterministic AST density drift"
     );
     assert_eq!(fs::read_to_string(&cert_path).unwrap(), cert_before);
     assert_eq!(fs::read_to_string(&readme_path).unwrap(), readme_before);
+}
+
+#[test]
+fn test_certificate_check_rejects_missing_malformed_failed_and_bad_badge() {
+    let dir = TempTestDir::new("cert_schema_rejections");
+    let cert_path = dir.join("Verification_Certificate.json");
+    let readme_path = dir.join("README.md");
+    let eval = evaluate_integrity_gates(
+        84.5,
+        75.0,
+        &baseline_metrics(),
+        &DebtSources {
+            unverified_crates: &[],
+            file_length_debt: &[],
+            entropy_debt: &[],
+            extra_debt: &[],
+        },
+        &VerifySuiteConfig::default(),
+    );
+
+    assert!(verify_certificate_against_report(&eval.report, &cert_path, &readme_path).is_err());
+
+    for invalid_payload in [
+        "not-json",
+        "[84.5, 75.0, 1.0, 1.0, 1.0, 0.5, 0.5, 1.75, true]",
+        r#"{"native_execution_coverage_pct":84.5,"passed":true}"#,
+        r#"{"native_execution_coverage_pct":84.5,"wasm_path_coverage_pct":75.0,"total_assertion_density":1.0,"verified_modules_density":1.0,"unverified_modules_density":1.0,"total_production_assertion_density":0.5,"verified_production_assertion_density":0.5,"test_assertion_density":1.75,"passed":false}"#,
+        r#"{"native_execution_coverage_pct":105.0,"wasm_path_coverage_pct":75.0,"total_assertion_density":1.0,"verified_modules_density":1.0,"unverified_modules_density":1.0,"total_production_assertion_density":0.5,"verified_production_assertion_density":0.5,"test_assertion_density":1.75,"passed":true}"#,
+        r#"{"native_execution_coverage_pct":84.5,"wasm_path_coverage_pct":75.0,"total_assertion_density":-0.1,"verified_modules_density":1.0,"unverified_modules_density":1.0,"total_production_assertion_density":0.5,"verified_production_assertion_density":0.5,"test_assertion_density":1.75,"passed":true}"#,
+        r#"{"native_execution_coverage_pct":84.5,"wasm_path_coverage_pct":75.0,"total_assertion_density":1.0,"verified_modules_density":1.0,"unverified_modules_density":1.0,"total_production_assertion_density":0.5,"verified_production_assertion_density":0.5,"test_assertion_density":1.75,"passed":true,"extra":1}"#,
+    ] {
+        fs::write(&cert_path, invalid_payload).unwrap();
+        assert!(
+            verify_certificate_against_report(&eval.report, &cert_path, &readme_path).is_err(),
+            "Payload must fail schema validation: {invalid_payload}"
+        );
+    }
+
+    write_certificate_and_readme(&eval.report, &cert_path, &readme_path).unwrap();
+    fs::write(&readme_path, "# Demo\n![Coverage](broken_unclosed\n").unwrap();
+    assert!(verify_certificate_against_report(&eval.report, &cert_path, &readme_path).is_err());
+    fs::write(
+        &readme_path,
+        "# Demo\n![Coverage](https://img.shields.io/badge/coverage-10.0%25-yellow)\n",
+    )
+    .unwrap();
+    assert!(verify_certificate_against_report(&eval.report, &cert_path, &readme_path).is_err());
 }
 
 #[test]
