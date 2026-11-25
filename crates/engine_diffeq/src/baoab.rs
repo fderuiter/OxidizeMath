@@ -76,6 +76,56 @@ impl<T: Scalar> BaoabLangevinSolver<T> {
         }
     }
 
+    /// Constructs a precomputed [`BaoabLangevinSolver`] from [`BaoabParams`], returning a typed
+    /// [`MathError`](math_commons::error::MathError) when any physical parameter is out of range.
+    #[verified_engine::verified]
+    pub fn try_new(params: BaoabParams<T>) -> Result<Self, math_commons::error::MathError> {
+        use math_commons::error::MathError;
+        if !params.mass.is_finite() || params.mass <= T::ZERO {
+            return Err(MathError::StrictlyOutOfBounds {
+                value: params.mass.to_f64(),
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        if !params.friction.is_finite() || params.friction < T::ZERO {
+            return Err(MathError::OutOfBounds {
+                value: params.friction.to_f64(),
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        if !params.temperature.is_finite() || params.temperature < T::ZERO {
+            return Err(MathError::OutOfBounds {
+                value: params.temperature.to_f64(),
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+        if !params.dt.is_finite() || params.dt <= T::ZERO {
+            return Err(MathError::StrictlyOutOfBounds {
+                value: params.dt.to_f64(),
+                min: 0.0,
+                max: f64::INFINITY,
+            });
+        }
+
+        let half_dt = T::HALF * params.dt;
+        let half_dt_inv_mass = half_dt / params.mass;
+        let ou_decay = (-(params.friction * params.dt)).exp();
+        let one_minus_c1_sq = (T::ONE - ou_decay * ou_decay).max(T::ZERO);
+        let ou_noise_scale = (params.mass * params.temperature * one_minus_c1_sq).sqrt();
+        debug_assert!(ou_decay.is_finite() && ou_noise_scale >= T::ZERO);
+
+        Ok(Self {
+            params,
+            half_dt,
+            half_dt_inv_mass,
+            ou_decay,
+            ou_noise_scale,
+        })
+    }
+
     /// Returns the underlying [`BaoabParams`].
     #[inline]
     pub const fn params(&self) -> BaoabParams<T> {

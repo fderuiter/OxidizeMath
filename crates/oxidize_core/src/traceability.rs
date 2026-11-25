@@ -15,7 +15,9 @@ mod runner;
 #[cfg(feature = "ast-analysis")]
 pub use cache::{AstCache, CachedRustFile};
 #[cfg(feature = "ast-analysis")]
-pub use debt_floors::{DensityFloors, load_workspace_density_floors, parse_density_floors_toml};
+pub use debt_floors::{
+    DensityFloors, DensityFloorsError, load_workspace_density_floors, parse_density_floors_toml,
+};
 pub use manifest::{TraceabilityManifestPayload, VerificationCertificate};
 pub use maturity::{EXPECTED_WORKSPACE_CRATES, MaturityRegistry};
 #[cfg(feature = "ast-analysis")]

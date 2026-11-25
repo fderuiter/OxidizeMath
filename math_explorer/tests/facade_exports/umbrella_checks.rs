@@ -110,8 +110,40 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     leaves
 }
 
-pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
+fn verify_physics_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     vec![
+        check_leaf(
+            error::ChaosError::InvalidParameter("sigma".to_string()),
+            bus,
+        ),
+        check_leaf(error::DoseFluenceError::Singularity, bus),
+        check_leaf(error::FluidError::InvalidViscosity { value: -0.1 }, bus),
+        check_leaf(error::GatingError::InterlockLatched, bus),
+        check_leaf(error::HighEnergyError::InvalidMomentum, bus),
+        check_leaf(error::NuclearError::InvalidHalfLife, bus),
+        check_leaf(
+            error::QuantumError::InvalidPrincipalQuantumNumber {
+                n: 0,
+                min: 1,
+                max: 6,
+            },
+            bus,
+        ),
+        check_leaf(
+            error::RadarError::InvalidConfiguration("cfg".to_string()),
+            bus,
+        ),
+        check_leaf(
+            error::SolidStateError::ComputationError("err".to_string()),
+            bus,
+        ),
+        check_leaf(error::StandardModelError::InvalidFlavors { nf: -1.0 }, bus),
+        check_leaf(error::StatMechError::InvalidTemperature(-5.0), bus),
+    ]
+}
+
+pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
+    let mut leaves = vec![
         check_leaf(error::AIError::OptimizationDivergence, bus),
         check_leaf(error::BatteryError::NegativeCycles(-5.0), bus),
         check_leaf(error::ClinicalTrialError::ZeroTotalCount, bus),
@@ -144,26 +176,9 @@ pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::ClimateError::ZeroLevels, bus),
         check_leaf(error::EpidemiologyError::SingularTransitionMatrix, bus),
         check_leaf(error::NetworkModelError::InvalidNodeCount, bus),
-        check_leaf(
-            error::ChaosError::InvalidParameter("sigma".to_string()),
-            bus,
-        ),
-        check_leaf(error::DoseFluenceError::Singularity, bus),
-        check_leaf(error::FluidError::InvalidViscosity { value: -0.1 }, bus),
-        check_leaf(error::GatingError::InterlockLatched, bus),
-        check_leaf(error::HighEnergyError::InvalidMomentum, bus),
-        check_leaf(error::NuclearError::InvalidHalfLife, bus),
-        check_leaf(
-            error::RadarError::InvalidConfiguration("cfg".to_string()),
-            bus,
-        ),
-        check_leaf(
-            error::SolidStateError::ComputationError("err".to_string()),
-            bus,
-        ),
-        check_leaf(error::StandardModelError::InvalidFlavors { nf: -1.0 }, bus),
-        check_leaf(error::StatMechError::InvalidTemperature(-5.0), bus),
-    ]
+    ];
+    leaves.extend(verify_physics_leaves(bus));
+    leaves
 }
 
 pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
@@ -220,9 +235,10 @@ pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
         error::HighEnergyError::from(sample_math())
             .source()
             .is_some(),
+        error::QuantumError::from(sample_math()).source().is_some(),
         error::StatMechError::from(sample_math()).source().is_some(),
     ];
-    assert_eq!(wrapper_sources_present.len(), 18);
+    assert_eq!(wrapper_sources_present.len(), 19);
     assert!(wrapper_sources_present.into_iter().all(|present| present));
 }
 
@@ -236,11 +252,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 65);
-    assert_eq!(*events.lock().unwrap(), 65);
+    assert_eq!(converted.len(), 66);
+    assert_eq!(*events.lock().unwrap(), 66);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 71);
+    assert_eq!(*events.lock().unwrap(), 72);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -283,6 +299,7 @@ fn verify_prelude_domain_leaves() {
         p::GatingError,
         p::HighEnergyError,
         p::NuclearError,
+        p::QuantumError,
         p::RadarError,
         p::SolidStateError,
         p::StandardModelError,

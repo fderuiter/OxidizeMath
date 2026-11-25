@@ -336,6 +336,25 @@ impl<'a, T: Scalar> SolverWorkspace<'a, T> {
     }
 
     /// Carves off a disjoint mutable slice of length `len` from the front of the workspace,
+    /// returning [`MathError::WorkspaceTooSmall`](crate::error::MathError::WorkspaceTooSmall)
+    /// without heap allocation when `len > self.len()`.
+    #[verified_engine::verified]
+    pub fn try_take_slice(&mut self, len: usize) -> Result<&'a mut [T], crate::error::MathError> {
+        let available = self.buf.len();
+        if len > available {
+            return Err(crate::error::MathError::WorkspaceTooSmall {
+                required: len,
+                available,
+            });
+        }
+        debug_assert!(len <= available);
+        let full = core::mem::take(&mut self.buf);
+        let (head, tail) = full.split_at_mut(len);
+        self.buf = tail;
+        Ok(head)
+    }
+
+    /// Carves off a disjoint mutable slice of length `len` from the front of the workspace,
     /// advancing `self` to the remaining suffix without heap allocation.
     ///
     /// # Panics

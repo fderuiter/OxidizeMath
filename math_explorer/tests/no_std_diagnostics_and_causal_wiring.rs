@@ -44,6 +44,10 @@ fn core_only_zero_alloc_diagnostics_and_linalg_error_wiring() {
         expected: Dimension(4),
         actual: Dimension(2),
     };
+    let ws = MathError::WorkspaceTooSmall {
+        required: 32,
+        available: 8,
+    };
     let fit = FitError::from(linalg);
     let commons = MathCommonsError::from(linalg);
     let facade = Error::from(linalg);
@@ -56,11 +60,12 @@ fn core_only_zero_alloc_diagnostics_and_linalg_error_wiring() {
         assert_eq!(linalg.severity(), Severity::Error);
         count_visited_fields(&linalg)
             + count_visited_fields(&math)
+            + count_visited_fields(&ws)
             + count_visited_fields(&fit)
             + count_visited_fields(&commons)
             + count_visited_fields(&facade)
     });
-    assert!(total_fields >= 18);
+    assert!(total_fields >= 22);
 }
 
 #[cfg(all(
@@ -77,7 +82,7 @@ mod full_domain_wiring {
     use math_explorer::error::{
         AIError, AppliedError, BatteryError, BiologyError, BraidError, ClimateError,
         EpidemiologyDomainError, GameTheoryError, HighEnergyError, KnotError, LinearAlgebraError,
-        PhysicsError, PureMathError, SandpileError, Su11HyperbolicError,
+        PhysicsError, PureMathError, QuantumError, SandpileError, Su11HyperbolicError,
     };
 
     #[test]
@@ -382,5 +387,27 @@ mod full_domain_wiring {
         assert!(errs.iter().all(|e| e.source().is_some()));
         let phys_err: PhysicsError = errs[0].clone().into();
         assert!(phys_err.source().is_some());
+    }
+
+    #[test]
+    fn quantum_error_converts_into_physics_and_facade_and_visits_zero_alloc() {
+        use math_explorer::physics::quantum::OrbitalQuantumNumbers;
+
+        let (fields, _metrics) = VerifiedEngine::run_verified(|| {
+            let q_err: QuantumError = OrbitalQuantumNumbers::new(0, 0, 0).unwrap_err();
+            let phys_err = (|| -> Result<OrbitalQuantumNumbers, PhysicsError> {
+                Ok(OrbitalQuantumNumbers::new(3, 3, 0)?)
+            })()
+            .unwrap_err();
+            let facade_err = (|| -> Result<OrbitalQuantumNumbers, Error> {
+                Ok(OrbitalQuantumNumbers::new(2, 1, -2)?)
+            })()
+            .unwrap_err();
+            assert!(phys_err.source().is_some() && facade_err.source().is_some());
+            count_visited_fields(&q_err)
+                + count_visited_fields(&phys_err)
+                + count_visited_fields(&facade_err)
+        });
+        assert!(fields >= 14);
     }
 }

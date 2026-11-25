@@ -276,20 +276,23 @@ impl SculptedGridMdp {
     }
 
     /// Restores row-major `u8` role tags, validating length, tag bounds, `start`, and `goal`.
-    pub fn apply_cells_u8(&mut self, raw: &[u8]) -> Result<(), String> {
+    pub fn apply_cells_u8(&mut self, raw: &[u8]) -> Result<(), crate::error::AIError> {
         let expected = (self.width as usize) * (self.height as usize);
         if raw.len() != expected {
-            return Err(format!("Cell mask length {} != {expected}", raw.len()));
+            return Err(crate::error::AIError::CellMaskLengthMismatch {
+                expected,
+                actual: raw.len(),
+            });
         }
         let mut parsed = Vec::with_capacity(expected);
         let mut found_goal = None;
-        for (i, &code) in raw.iter().enumerate() {
+        for (index, &code) in raw.iter().enumerate() {
             let role = GridCellRole::from_u8(code)
-                .ok_or_else(|| format!("Invalid GridCellRole tag {code} at cell {i}"))?;
+                .ok_or(crate::error::AIError::InvalidCellRoleTag { index, code })?;
             if role == GridCellRole::Goal && found_goal.is_none() {
                 found_goal = Some(GridState {
-                    x: (i % (self.width as usize)) as i32,
-                    y: (i / (self.width as usize)) as i32,
+                    x: (index % (self.width as usize)) as i32,
+                    y: (index / (self.width as usize)) as i32,
                 });
                 parsed.push(GridCellRole::Goal);
             } else if role == GridCellRole::Goal {

@@ -432,7 +432,8 @@ fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
     use math_explorer::diagnostics::{Diagnostic, Severity};
     use math_explorer::error::{
         ChaosError, DoseFluenceError, Error, FluidError, GatingError, HighEnergyError,
-        NuclearError, PhysicsError, RadarError, SolidStateError, StandardModelError, StatMechError,
+        NuclearError, PhysicsError, QuantumError, RadarError, SolidStateError, StandardModelError,
+        StatMechError,
     };
     use math_explorer::physics::error as inner_error;
 
@@ -444,6 +445,12 @@ fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
         GatingError::NotInterlocked.severity(),
         HighEnergyError::InvalidMomentum.severity(),
         NuclearError::InvalidVelocity.severity(),
+        QuantumError::InvalidPrincipalQuantumNumber {
+            n: 0,
+            min: 1,
+            max: 6,
+        }
+        .severity(),
         RadarError::InvalidConfiguration("antennas".to_string()).severity(),
         SolidStateError::InvalidParameter("gap".to_string()).severity(),
         StandardModelError::LandauPole { scale: 1e12 }.severity(),
