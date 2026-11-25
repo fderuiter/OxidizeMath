@@ -100,7 +100,7 @@ graph TD
 - **[nuclear](nuclear)**: Liquid drop model, decays, shell model.
 - **[optics](optics)**: Ray tracing, diffraction.
 - **[quantum](quantum)**: Clebsch-Gordan coefficients, Schrödinger solvers.
-- **[solid_state](solid_state)**: Crystal lattices, band structures.
+- **[solid_state](solid_state)**: Bravais crystal lattices, cut-and-project quasicrystals, reciprocal-space Bragg diffraction, quasiperiodic Fibonacci/Aubry-André bands, BCS superconductivity, phonons, and Thomas-Fermi screening.
 - **[standard_model](standard_model)**: Elementary particles and interactions.
 - **[stat_mech](stat_mech)**: Ising models, partition functions.
 

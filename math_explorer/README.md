@@ -25,7 +25,7 @@ The `math_explorer` crate serves as the primary library entrypoint for downstrea
   - **`biology`**: Biological modeling, including **Neuroscience** (Hodgkin-Huxley) and **Morphogenesis** (Turing Reaction-Diffusion).
   - **`climate`**: Climate modeling tools featuring the **CERA** representation-alignment autoencoder framework.
   - **`epidemiology`**: Disease transmission modeling across **SIR/SEIR** compartmental ODEs, stochastic Gillespie processes, and contact networks.
-  - **`physics`**: Physical simulations spanning **Quantum Mechanics**, **Fluid Dynamics**, **Solid State** (BCS Superconductivity, Ising), **Chaos Theory** (Lorenz System), and **MRI Physics**.
+  - **`physics`**: Physical simulations spanning **Quantum Mechanics**, **Fluid Dynamics**, **Solid State** (Bravais Lattices, Cut-and-Project Quasicrystals, Reciprocal Bragg Diffraction, Periodic & Fibonacci/Aubry-André Bands, BCS Superconductivity, Debye Phonons, Thomas-Fermi Screening, Ising), **Chaos Theory** (Lorenz & Symplectic Hamiltonian Systems), and **MRI Physics**.
   - **`pure_math`**: Foundational mathematics covering **Abstract Algebra**, **Number Theory** (Partitions, Q-Series), **Graph Theory**, **Analysis** (`MultivariateIntegrator`), **Statistics** (`monte_carlo`, `qmc`, `bootstrap`, Multivariate Copulas, Glicko-2, Markov, TDA), and **Differential Geometry**.
   - **`serde`**: Opt-in `serde` serialization across foundational primitives (`UnitInterval`, `PositiveFloat`, `NonNegativeFloat`, `StepSize`, `GridIndex`, `Dimension`, `CurveFit`, `LocalExtremum`, `MathError`) and active external math re-exports (`nalgebra`, `num_complex`, `petgraph`, `rand`, `dashu`).
 
@@ -36,7 +36,7 @@ The `math_explorer` crate serves as the primary library entrypoint for downstrea
 | `fit`, `poi`, `ast`, `math_kernel`, `wigner` | `[CERT] Certified` | `FitModel`, Hermite/Lagrange `poi`, stack bytecode `CompiledExpr` | Non-vacuous `theory_verification!`, `VerifiedAllocator` zero-alloc proofs, SemVer-locked |
 | `scientific_metadata`, `verified_engine` | `[CERT] Certified` | `MaturityTier`, `TheoryDescribable`, `VerifiedEngine::run_verified` | Deterministic metadata & zero-allocation runtime harness, SemVer-locked |
 | `pure_math` | `[VAL] Validated` | `[CERT]` `analysis::ode` (`OdeModel`), `roots`, `wave_2d`, `algebra`, `number_theory`, `elliptic_curves`; `[EXP]` `algorithmic_info` | `Certified` solvers SemVer-locked; `Validated` modules seeded & golden-tested |
-| `physics` | `[VAL] Validated` | `[CERT]` `quantum`, `chaos`, `stat_mech::sandpile`; `[EXP]` `nuclear`, `solid_state` | Symplectic & conservation invariants verified |
+| `physics` | `[VAL] Validated` | `[CERT]` `quantum`, `chaos`, `solid_state`, `stat_mech::sandpile`; `[EXP]` `nuclear` | Symplectic, crystallographic, & conservation invariants verified |
 | `biology` | `[VAL] Validated` | `[CERT]` `neuroscience` (Hodgkin-Huxley), `kinetics`, `morphogenesis` | Deterministic ODE/PDE spike & pattern benchmarks |
 | `epidemiology` | `[VAL] Validated` | `[VAL]` `compartmental` (`SIRModel`, `SEIRModel`), `networks`, `stochastic` | Seeded `OxidizeRng` & conservation assertions |
 | `applied` | `[VAL] Validated` | `[CERT]` `clinical_trials`, `pharmacokinetics`; `[VAL]` `win_ratio`, `battery_degradation`; `[EXP]` `favoritism`, `lorahub`, `grpo` | Clinical & ADME solvers SemVer-locked; `favoritism` fluid `Experimental` |
