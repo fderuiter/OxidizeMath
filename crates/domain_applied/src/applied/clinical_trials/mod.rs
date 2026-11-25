@@ -103,3 +103,29 @@ theory_verification!(
         );
     }
 );
+
+pure_math::property_invariant_verification!(
+    module = "clinical_trials",
+    test = {
+        let obs = [survival_analysis::Observation {
+            time: types::SurvivalTime::new(2.0).unwrap(),
+            event_occurred: false,
+        }];
+        let curve = survival_analysis::kaplan_meier(&obs);
+        assert_eq!(curve.len(), 1);
+        assert!((curve[0].survival_probability - 1.0).abs() < 1e-15);
+    }
+);
+
+pure_math::formal_proof_verification!(
+    module = "clinical_trials",
+    proof = "SurvivalBounds.lean",
+    test = {
+        let obs = [survival_analysis::Observation {
+            time: types::SurvivalTime::new(3.0).unwrap(),
+            event_occurred: true,
+        }];
+        let curve = survival_analysis::kaplan_meier(&obs);
+        assert!(curve[0].survival_probability >= 0.0 && curve[0].survival_probability <= 1.0);
+    }
+);

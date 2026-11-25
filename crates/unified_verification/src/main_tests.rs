@@ -290,7 +290,7 @@ fn test_verify_suite_check_allows_metric_shifts_and_emits_9_key_artifact() {
     assert_eq!(fs::read_to_string("README.md").unwrap(), readme_before);
     let live_val: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(out_cert).unwrap()).unwrap();
-    assert_eq!(live_val.as_object().unwrap().len(), 9);
+    assert_eq!(live_val.as_object().unwrap().len(), 14);
     assert_eq!(live_val["native_execution_coverage_pct"], 91.0);
     assert!(!run_cov_only_suite(
         &["--coverage-only", "--strict-parity"],

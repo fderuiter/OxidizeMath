@@ -71,6 +71,7 @@ pub struct ReactionDiffusionSystem<
     pub state: ChemicalState,
     /// Configured ODE time-stepping solver strategy.
     pub solver: S,
+    time: f64,
 }
 
 /// Builder for `ReactionDiffusionSystem`.
@@ -216,6 +217,7 @@ impl<R: ReactionModel, D: DiffusionModel>
             },
             state,
             solver,
+            time: 0.0,
         })
     }
 }
@@ -272,6 +274,7 @@ impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>>
             },
             state: ChemicalState::new(num_species, grid_size),
             solver,
+            time: 0.0,
         })
     }
 }
@@ -290,9 +293,22 @@ impl<R: ReactionModel, D: DiffusionModel, S: Solver<ChemicalState>>
     /// Advances the system by a time step `dt` using the configured solver.
     #[verified_engine::verified]
     pub fn step(&mut self, dt: f64) {
-        // The solver manages the integration logic.
-        // We pass 0.0 as the current time since most RD systems are autonomous (time-invariant).
-        self.solver.step(&self.model, 0.0, &mut self.state, dt);
+        self.solver
+            .step(&self.model, self.time, &mut self.state, dt);
+        self.time += dt;
+    }
+
+    /// Returns the elapsed simulation time $t$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.time
+    }
+
+    /// Sets the simulation clock to `t`.
+    #[verified_engine::verified]
+    pub fn set_time(&mut self, t: f64) {
+        self.time = t;
     }
 
     /// Accessor for the reaction model.

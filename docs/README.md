@@ -6,7 +6,7 @@ Welcome to the OxidizeMath documentation directory.
 
 The [Architecture Guide Suite](architecture/README.md) provides centralized blueprints, diagrams, and developer walkthroughs:
 
-- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 25 crates.
+- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 26 crates.
 - **[CERA Framework Guide](architecture/cera_framework.md)**: Climate-invariant Encoding through Representation Alignment and climate modeling pipelines.
 - **[Zero-Allocation Runtime Guide](architecture/zero_allocation_runtime.md)**: NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and verified engine execution rules.
 - **[Interactive Tool Walkthrough](architecture/interactive_tool_walkthrough.md)**: Step-by-step developer guide to implement interactive simulations with `InteractiveTool`.
@@ -116,6 +116,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Relativistic Gravitational Lensing, Canvas Slingshot Gestures, and Redshift Sonification Studio](adr/20261123-relativistic-lensing-slingshot-and-sonification.md)
 - [ADR 20261123: Reusable Flat CSR Spatial Grid for Cortical Thickness](adr/20261123-reusable-flat-spatial-grid-cortical-thickness.md)
 - [ADR 20261123: Closed-Form Schwarzschild 4D Connection, Geodesic Bundle, and Relativistic Jet Workbench](adr/20261123-schwarzschild-connection-and-jet-beaming-workbench.md)
+- [ADR 20261123: Six-Tier Scientific Verification Pyramid, Outward-Rounded Interval Enclosures, and Proof Certificates](adr/20261123-scientific-verification-pyramid-and-proof-certificates.md)
 - [ADR 20261123: Scope Pre-Commit Gates, Add Pre-Push Tiering, and Eliminate Build-Script `CARGO_MANIFEST_DIR` Drift](adr/20261123-scope-pre-commit-gates-and-pre-push-tiering.md)
 - [ADR 20261123: Workspace-Scoped `SharedSimulationBus`, Copy-on-Write CSR Topologies, and Zero-Allocation Graph Kernels](adr/20261123-shared-simulation-topology-bus.md)
 - [ADR 20261123: Intrinsic `SU(1,1)` Hyperbolic Geometry Engine and Standalone Playground Tab](adr/20261123-su11-hyperbolic-geometry-engine-and-tab.md)

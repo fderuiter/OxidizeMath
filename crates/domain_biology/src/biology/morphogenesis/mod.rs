@@ -110,6 +110,7 @@ pub struct TuringSystem<
     pub diffusion: D,
     /// Numerical solver strategy
     pub solver: S,
+    pub(crate) time: f64,
 }
 
 use math_commons::math_kernel::types::{Dimension, StepSize};
@@ -149,6 +150,7 @@ impl TuringSystem<2, SchnakenbergKinetics, FiniteDifference1D, FusedEulerSolver>
             kinetics: SchnakenbergKinetics::default(),
             diffusion: FiniteDifference1D::new(dx),
             solver: FusedEulerSolver::new(),
+            time: 0.0,
         }
     }
 }
@@ -171,6 +173,7 @@ impl<K: ReactionKinetics<2>, D: SpatialDiffusion<2>> TuringSystem<2, K, D, Fused
             kinetics,
             diffusion,
             solver: FusedEulerSolver::new(),
+            time: 0.0,
         }
     }
 }
@@ -233,12 +236,27 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
             kinetics,
             diffusion,
             solver,
+            time: 0.0,
         }
+    }
+
+    /// Returns the elapsed simulation time $t$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.time
+    }
+
+    /// Sets the simulation clock to `t`.
+    #[verified_engine::verified]
+    pub fn set_time(&mut self, t: f64) {
+        self.time = t;
     }
 
     #[inline]
     #[verified_engine::verified]
     fn step_bufs<KAlt: ReactionKinetics<N>>(
+        time: &mut f64,
         state: &mut TuringState<N>,
         next_state: &mut TuringState<N>,
         dynamics: TuringDynamics<'_, N, KAlt, D>,
@@ -252,8 +270,9 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
         if next_state.len() != n {
             *next_state = TuringState::new(n);
         }
-        solver.step(state, next_state, &dynamics, dt);
+        solver.step_at(*time, state, next_state, &dynamics, dt);
         std::mem::swap(state, next_state);
+        *time += dt;
     }
 
     /// Updates the grid using the solver strategy.
@@ -265,6 +284,7 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
             diffusion_coeffs: self.diffusion_coeffs,
         };
         Self::step_bufs(
+            &mut self.time,
             &mut self.state,
             &mut self.next_state,
             dyn_ref,
@@ -283,6 +303,7 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
             diffusion_coeffs: self.diffusion_coeffs,
         };
         Self::step_bufs(
+            &mut self.time,
             &mut self.state,
             &mut self.next_state,
             dyn_ref,
@@ -355,6 +376,16 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
         &mut self.state
     }
 
+    #[verified_engine::verified]
+    fn current_time(&self) -> f64 {
+        self.time
+    }
+
+    #[verified_engine::verified]
+    fn advance_time(&mut self, dt: f64) {
+        self.time += dt;
+    }
+
     #[verified_engine::verified(
         allow_recursion = "delegates trait step to inherent TuringSystem::step"
     )]
@@ -365,136 +396,6 @@ impl<const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>, S: TuringSo
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    #[should_panic(expected = "State vector 1 length mismatch")]
-    #[verified_engine::verified]
-    fn test_derivative_in_place_safety_check() {
-        let n = 10;
-        let system = TuringSystem::new(
-            math_commons::math_kernel::types::Dimension(n),
-            DiffusionCoeff(1.0),
-            DiffusionCoeff(1.0),
-            math_commons::math_kernel::types::StepSize(1.0),
-        );
-        let mut state = TuringState::new(n);
-
-        // Corrupt the state (simulate internal bug or misuse)
-        // Access concentrations directly via pub(crate)
-        state.concentrations[1].pop(); // Make v shorter than u
-
-        let mut out = TuringState::new(n);
-
-        system.derivative_in_place(0.0, &state, &mut out);
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_turing_system_logic_preservation() {
-        // Setup a small system
-        let n = 10;
-        let d_u = 1.0;
-        let d_v = 0.5;
-        let dx = 1.0;
-        let mut system = TuringSystem::new(
-            math_commons::math_kernel::types::Dimension(n),
-            DiffusionCoeff(d_u),
-            DiffusionCoeff(d_v),
-            math_commons::math_kernel::types::StepSize(dx),
-        );
-
-        // Initialize with some pattern
-        for i in 0..n {
-            system.state.u_mut()[i] = 1.0 + 0.1 * (i as f64);
-            system.state.v_mut()[i] = 0.5 - 0.05 * (i as f64);
-        }
-
-        // Run for a few steps
-        let dt = 0.01;
-        for _ in 0..5 {
-            system.step(dt);
-        }
-
-        // Capture output
-        let u_out = system.u().to_vec();
-        let v_out = system.v().to_vec();
-
-        // Expected values captured from baseline run (from original morphogenesis.rs)
-        let expected_u = [
-            0.9798926377401955,
-            1.0722504645444493,
-            1.1685990805783317,
-            1.2642647090938448,
-            1.359028327357602,
-            1.4527705800845148,
-            1.5453811790730032,
-            1.6367576303434268,
-            1.7267186541725483,
-            1.8109737170223916,
-        ];
-        let expected_v = [
-            0.47709091921002866,
-            0.4263770084483741,
-            0.3750152156844884,
-            0.32443296992262166,
-            0.2747722006954079,
-            0.22615405798594523,
-            0.1786914141249832,
-            0.1324883911255509,
-            0.08765106523936222,
-            0.04531981611374585,
-        ];
-
-        // Assert with tolerance
-        let tolerance = math_commons::registry::TOLERANCE_HIGH;
-        for i in 0..n {
-            assert!(
-                (u_out[i] - expected_u[i]).abs() < tolerance,
-                "U mismatch at {}: {} vs {}",
-                i,
-                u_out[i],
-                expected_u[i]
-            );
-            assert!(
-                (v_out[i] - expected_v[i]).abs() < tolerance,
-                "V mismatch at {}: {} vs {}",
-                i,
-                v_out[i],
-                expected_v[i]
-            );
-        }
-    }
-
-    #[test]
-    #[verified_engine::verified]
-    fn test_step_with_kinetics_reuses_buffers_zero_alloc() {
-        let (dim, du, dv, dx) = (
-            Dimension(16),
-            DiffusionCoeff(0.16),
-            DiffusionCoeff(0.08),
-            StepSize(1.0),
-        );
-        let gs = GrayScottKinetics::mitosis();
-        let mut alt_sys = TuringSystem::new(dim, du, dv, dx);
-        let mut dedicated =
-            TuringSystem::new_with_kinetics(dim, du, dv, gs, FiniteDifference1D::new(dx));
-        alt_sys.u_mut().fill(1.0);
-        dedicated.u_mut().fill(1.0);
-        for i in 6..=9 {
-            alt_sys.u_mut()[i] = 0.5;
-            alt_sys.v_mut()[i] = 0.25;
-            dedicated.u_mut()[i] = 0.5;
-            dedicated.v_mut()[i] = 0.25;
-        }
-        verified_engine::engine::VerifiedEngine::run_verified(|| {
-            alt_sys.step_with_kinetics(&gs, 0.5);
-            dedicated.step(0.5);
-        });
-        assert_eq!(alt_sys.u(), dedicated.u());
-        assert_eq!(alt_sys.v(), dedicated.v());
-    }
-}
+mod tests;
 
 // [cite:dwarf_galaxy_empirical_dependencies]

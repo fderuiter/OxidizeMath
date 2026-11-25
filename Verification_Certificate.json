@@ -1,11 +1,51 @@
 {
   "native_execution_coverage_pct": 84.44307966417406,
-  "wasm_path_coverage_pct": 73.39449541284404,
-  "total_assertion_density": 0.7096214511041009,
-  "verified_modules_density": 0.7002063983488133,
-  "unverified_modules_density": 0.7124219789215185,
-  "total_production_assertion_density": 0.03739208994177876,
-  "verified_production_assertion_density": 0.12664125370605675,
-  "test_assertion_density": 3.1734731420161886,
-  "passed": true
+  "wasm_path_coverage_pct": 72.07207207207207,
+  "total_assertion_density": 0.7094017094017094,
+  "verified_modules_density": 0.7037037037037037,
+  "unverified_modules_density": 0.7111111111111111,
+  "total_production_assertion_density": 0.039416203335980934,
+  "verified_production_assertion_density": 0.1327212020033389,
+  "test_assertion_density": 3.172659244387662,
+  "passed": true,
+  "certified_solvers": 55,
+  "max_interval_width": 7.958078640513122e-13,
+  "tier_counts": {
+    "Tier1_Convergence": 55,
+    "Tier2_Property": 5,
+    "Tier3_Golden": 183,
+    "Tier4_Stochastic": 4,
+    "Tier5_Interval": 5,
+    "Tier6_Formal": 6
+  },
+  "interval_bounds": {
+    "bessel_j0_at_1": [
+      0.7651976865579648,
+      0.7651976865579683
+    ],
+    "exp_ln_roundtrip_2_5": [
+      2.4999999999999987,
+      2.5000000000000018
+    ],
+    "logistic_peak_at_0_5": [
+      0.9999999999999997,
+      1.0000000000000007
+    ],
+    "pythagorean_unit_at_0_7": [
+      0.9999999999999992,
+      1.000000000000001
+    ],
+    "sir_total_population_step": [
+      999.9999999999995,
+      1000.0000000000003
+    ]
+  },
+  "lean4_proof_digests": {
+    "CompartmentalConservation.lean": "fcd9ae3a95781914fb8a9e1fcd07677d933579278cb1792921d14444236d6f0d",
+    "CopulaFrechet.lean": "2821baa2ef66647a3a18981b0b93e3facf097e371d0a70c219822db04e9bdcb5",
+    "IntervalSoundness.lean": "8e11884048f13c335363a1ee3328cb2b48932cda3ab75e740f09eb9c7b8f7ecd",
+    "QuantumUnitarity.lean": "fb0e0c33eadc32077619eefad7e983fc1734466b181ffce5969942ad920c7e3c",
+    "SurvivalBounds.lean": "a339a078c0076534970d7d859c4a2c9dceac16969f43f314dac32d4e4b8609ca",
+    "SymplecticComposition.lean": "376d26d76d882bd5e4ae018de1ba128c6d0638c3d68bdca3a6a0229ae059feb4"
+  }
 }

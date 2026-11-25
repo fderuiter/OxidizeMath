@@ -56,8 +56,12 @@ impl fmt::Display for WorkspaceError {
 impl std::error::Error for WorkspaceError {}
 
 /// Host-only workspace packages excluded from `wasm32-unknown-unknown` test execution.
-pub const HOST_ONLY_WORKSPACE_PACKAGES: &[&str] =
-    &["xtask", "unified_verification", "markdown_tests"];
+pub const HOST_ONLY_WORKSPACE_PACKAGES: &[&str] = &[
+    "xtask",
+    "unified_verification",
+    "scientific_verification",
+    "markdown_tests",
+];
 
 /// Target selection flag kind for testing a workspace crate on `wasm32-unknown-unknown`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

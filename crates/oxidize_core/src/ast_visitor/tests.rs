@@ -222,6 +222,49 @@ fn test_ast_visitor_ignores_embed_theory_and_verified_tokens_inside_doc_comments
 }
 
 #[test]
+fn test_six_tier_pyramid_macro_classification_and_counts() {
+    let code = r#"
+        theory_verification!(module = "pure_math", constants = {}, test = {});
+        mms_convergence_verification!(module = "epidemiology", test = { assert!(true); });
+        property_invariant_verification!(module = "quantum", test = { assert!(true); });
+        golden_fixture_verification!(module = "pure_math_golden", test = { assert_eq!(1, 1); });
+        stochastic_signature_verification!(
+            module = "ai",
+            external_dependencies = [],
+            signatures = {},
+            statistical_bounds = {},
+            stochastic_test = { let v = 1.5; let _ = v; }
+        );
+        interval_enclosure_verification!(module = "math_commons", test = { assert!(true); });
+        formal_proof_verification!(module = "clinical_trials", proof = "SurvivalBounds.lean", test = { assert!(true); });
+    "#;
+    let file = syn::parse_file(code).unwrap();
+    let mut visitor = AstVisitor::default();
+    visitor.visit_file(&file);
+
+    assert_eq!(visitor.tier_counts.get("Tier1_Convergence"), Some(&2));
+    assert_eq!(visitor.tier_counts.get("Tier2_Property"), Some(&1));
+    assert_eq!(visitor.tier_counts.get("Tier3_Golden"), Some(&1));
+    assert_eq!(visitor.tier_counts.get("Tier4_Stochastic"), Some(&1));
+    assert_eq!(visitor.tier_counts.get("Tier5_Interval"), Some(&1));
+    assert_eq!(visitor.tier_counts.get("Tier6_Formal"), Some(&1));
+    assert_eq!(visitor.verified_funcs, 7);
+    assert_eq!(
+        visitor.module_tiers.get("ai"),
+        Some(&"Stochastic".to_string())
+    );
+    assert_eq!(
+        visitor.module_tiers.get("epidemiology"),
+        Some(&"Deterministic".to_string())
+    );
+    assert!(
+        visitor
+            .non_vacuous_deterministic_modules
+            .contains(&"epidemiology".to_string())
+    );
+}
+
+#[test]
 fn test_ast_visitor_counts_exact_macro_assertions_without_max3_padding() {
     let empty_macro = r#"
         crate::theory_verification!(module = "pure_math", constants = {}, test = {});
