@@ -121,3 +121,39 @@ fn pde_steppers_roundtrip_no_std() {
         split
     );
 }
+
+#[cfg(feature = "serde")]
+#[test]
+fn pde_error_roundtrips_no_std() {
+    use crate::PdeError;
+    use math_commons::error::MathError;
+
+    let samples = [
+        PdeError::InvalidGridDimension {
+            axis: "width",
+            size: 0,
+        },
+        PdeError::NonRadix2Dimension { axis: "n", size: 6 },
+        PdeError::IndexOutOfBounds {
+            axis: "y",
+            index: 9,
+            len: 4,
+        },
+        PdeError::BufferTooSmall {
+            buffer: "phi",
+            required: 16,
+            actual: 8,
+        },
+        PdeError::InvalidParameter { parameter: "dx" },
+        PdeError::WorkspaceAllocationFailed { capacity: 256 },
+        PdeError::Math(MathError::WorkspaceTooSmall {
+            required: 32,
+            available: 12,
+        }),
+    ];
+    for sample in samples {
+        let json = serde_json::to_string(&sample).expect("serialize PdeError");
+        let decoded: PdeError = serde_json::from_str(&json).expect("deserialize PdeError");
+        assert_eq!(decoded, sample);
+    }
+}

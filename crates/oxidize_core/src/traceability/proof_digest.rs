@@ -1,8 +1,69 @@
 //! Pure-`std` FIPS 180-4 SHA-256 digest and Lean 4 proof certificate verification helpers.
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::fs;
 use std::path::Path;
+
+/// Typed error returned when reading or validating Lean 4 proof sources and SHA-256 digests.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ProofDigestError {
+    /// A forbidden unproven keyword (`sorry`, `admit`, or `axiom`) appeared outside comments.
+    ForbiddenKeyword {
+        /// Lean 4 proof file name.
+        filename: String,
+        /// Matched forbidden keyword token.
+        keyword: String,
+    },
+    /// Proof file contained zero `theorem` or `lemma` declarations outside comments.
+    MissingTheoremDeclaration {
+        /// Lean 4 proof file name.
+        filename: String,
+    },
+    /// Reading the `proofs/OxidizeMath` directory failed.
+    ReadProofDirectory {
+        /// Directory path string.
+        path: String,
+        /// Underlying I/O error message.
+        reason: String,
+    },
+    /// Reading an individual `.lean` proof file failed.
+    ReadProofFile {
+        /// File path string.
+        path: String,
+        /// Underlying I/O error message.
+        reason: String,
+    },
+    /// No `.lean` proof files were found in `proofs/OxidizeMath`.
+    EmptyProofDirectory {
+        /// Directory path string.
+        path: String,
+    },
+}
+
+impl fmt::Display for ProofDigestError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ForbiddenKeyword { filename, keyword } => write!(
+                f,
+                "Forbidden unproven keyword `{keyword}` found in Lean 4 proof `{filename}`"
+            ),
+            Self::MissingTheoremDeclaration { filename } => write!(
+                f,
+                "Lean 4 proof `{filename}` contains no `theorem` or `lemma` declarations"
+            ),
+            Self::ReadProofDirectory { path, reason } => {
+                write!(f, "Failed reading Lean 4 proof directory {path}: {reason}")
+            }
+            Self::ReadProofFile { path, reason } => write!(f, "Failed reading {path}: {reason}"),
+            Self::EmptyProofDirectory { path } => {
+                write!(f, "No `.lean` proof files found in {path}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ProofDigestError {}
 
 /// Canonical 6-tier scientific verification pyramid names recorded in AST scans and certificates.
 pub const CANONICAL_PYRAMID_TIERS: [&str; 6] = [
@@ -142,24 +203,25 @@ pub fn strip_lean_comments(src: &str) -> String {
 
 /// Validates that a Lean 4 source file contains at least one `theorem` or `lemma` and zero
 /// `sorry`, `admit`, or `axiom` tokens outside comments.
-pub fn validate_lean_proof_source(filename: &str, src: &str) -> Result<(), String> {
+pub fn validate_lean_proof_source(filename: &str, src: &str) -> Result<(), ProofDigestError> {
     let stripped = strip_lean_comments(src);
     let mut has_theorem = false;
     for tok in stripped.split(|c: char| !c.is_ascii_alphanumeric() && c != '_') {
         match tok {
             "sorry" | "admit" | "axiom" => {
-                return Err(format!(
-                    "Forbidden unproven keyword `{tok}` found in Lean 4 proof `{filename}`"
-                ));
+                return Err(ProofDigestError::ForbiddenKeyword {
+                    filename: filename.to_string(),
+                    keyword: tok.to_string(),
+                });
             }
             "theorem" | "lemma" => has_theorem = true,
             _ => {}
         }
     }
     if !has_theorem {
-        return Err(format!(
-            "Lean 4 proof `{filename}` contains no `theorem` or `lemma` declarations"
-        ));
+        return Err(ProofDigestError::MissingTheoremDeclaration {
+            filename: filename.to_string(),
+        });
     }
     Ok(())
 }
@@ -168,13 +230,11 @@ pub fn validate_lean_proof_source(filename: &str, src: &str) -> Result<(), Strin
 /// of `sorry`/`admit`/`axiom`, and returns deterministic SHA-256 digests keyed by file name.
 pub fn collect_lean4_proof_digests(
     workspace_root: &Path,
-) -> Result<BTreeMap<String, String>, String> {
+) -> Result<BTreeMap<String, String>, ProofDigestError> {
     let dir = workspace_root.join("proofs").join("OxidizeMath");
-    let entries = fs::read_dir(&dir).map_err(|err| {
-        format!(
-            "Failed reading Lean 4 proof directory {}: {err}",
-            dir.display()
-        )
+    let entries = fs::read_dir(&dir).map_err(|err| ProofDigestError::ReadProofDirectory {
+        path: dir.display().to_string(),
+        reason: err.to_string(),
     })?;
     let mut digests = BTreeMap::new();
     for entry in entries.flatten() {
@@ -186,13 +246,18 @@ pub fn collect_lean4_proof_digests(
             continue;
         };
         let normalized = fs::read_to_string(&path)
-            .map_err(|err| format!("Failed reading {}: {err}", path.display()))?
+            .map_err(|err| ProofDigestError::ReadProofFile {
+                path: path.display().to_string(),
+                reason: err.to_string(),
+            })?
             .replace("\r\n", "\n");
         validate_lean_proof_source(name, &normalized)?;
         digests.insert(name.to_string(), sha256_hex(normalized.as_bytes()));
     }
     if digests.is_empty() {
-        return Err(format!("No `.lean` proof files found in {}", dir.display()));
+        return Err(ProofDigestError::EmptyProofDirectory {
+            path: dir.display().to_string(),
+        });
     }
     Ok(digests)
 }

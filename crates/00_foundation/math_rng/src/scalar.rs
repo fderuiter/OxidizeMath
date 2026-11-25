@@ -164,16 +164,35 @@ pub fn sample_symmetric_open<T: RngScalar, R: RngCore + ?Sized>(rng: &mut R) -> 
     T::sample_symmetric_open(rng)
 }
 
-/// Samples an unbiased `u64` in `0..upper` via rejection sampling (`upper >= 1`).
-///
-/// # Panics
-///
-/// Panics if `upper == 0`.
+/// Typed stack-resident error returned by fallible bounded-index samplers in [`crate::scalar`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum RngError {
+    /// Requested exclusive `upper` bound was `0`, leaving the sampling interval `0..0` empty.
+    ZeroUpperBound,
+}
+
+impl core::fmt::Display for RngError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match *self {
+            Self::ZeroUpperBound => f.write_str("Bounded sampler upper bound must be > 0"),
+        }
+    }
+}
+
+impl core::error::Error for RngError {}
+
+/// Fallible companion to [`sample_bounded_u64`] returning [`RngError::ZeroUpperBound`] if `upper == 0`.
 #[inline]
-pub fn sample_bounded_u64<R: RngCore + ?Sized>(rng: &mut R, upper: u64) -> u64 {
-    assert!(upper > 0, "sample_bounded_u64 upper bound must be > 0");
+pub fn try_sample_bounded_u64<R: RngCore + ?Sized>(
+    rng: &mut R,
+    upper: u64,
+) -> Result<u64, RngError> {
+    if upper == 0 {
+        return Err(RngError::ZeroUpperBound);
+    }
     if upper == 1 {
-        return 0;
+        return Ok(0);
     }
     let threshold = upper.wrapping_neg() % upper;
     loop {
@@ -182,9 +201,33 @@ pub fn sample_bounded_u64<R: RngCore + ?Sized>(rng: &mut R, upper: u64) -> u64 {
         if (prod as u64) >= threshold {
             let idx = (prod >> 64) as u64;
             debug_assert!(idx < upper);
-            return idx;
+            return Ok(idx);
         }
     }
+}
+
+/// Samples an unbiased `u64` in `0..upper` via rejection sampling (`upper >= 1`).
+///
+/// # Panics
+///
+/// Panics if `upper == 0`. Prefer [`try_sample_bounded_u64`] when `upper` is caller-supplied.
+#[inline]
+pub fn sample_bounded_u64<R: RngCore + ?Sized>(rng: &mut R, upper: u64) -> u64 {
+    try_sample_bounded_u64(rng, upper).expect("sample_bounded_u64 upper bound must be > 0")
+}
+
+/// Fallible companion to [`sample_bounded_usize`] returning [`RngError::ZeroUpperBound`] if `upper == 0`.
+#[inline]
+pub fn try_sample_bounded_usize<R: RngCore + ?Sized>(
+    rng: &mut R,
+    upper: usize,
+) -> Result<usize, RngError> {
+    if upper == 0 {
+        return Err(RngError::ZeroUpperBound);
+    }
+    let idx = try_sample_bounded_u64(rng, upper as u64)? as usize;
+    debug_assert!(idx < upper);
+    Ok(idx)
 }
 
 /// Samples an unbiased `usize` in `0..upper` using 64-bit Lemire multiplication so 32-bit `wasm32`
@@ -192,13 +235,10 @@ pub fn sample_bounded_u64<R: RngCore + ?Sized>(rng: &mut R, upper: u64) -> u64 {
 ///
 /// # Panics
 ///
-/// Panics if `upper == 0`.
+/// Panics if `upper == 0`. Prefer [`try_sample_bounded_usize`] when `upper` is caller-supplied.
 #[inline]
 pub fn sample_bounded_usize<R: RngCore + ?Sized>(rng: &mut R, upper: usize) -> usize {
-    assert!(upper > 0, "sample_bounded_usize upper bound must be > 0");
-    let idx = sample_bounded_u64(rng, upper as u64) as usize;
-    debug_assert!(idx < upper);
-    idx
+    try_sample_bounded_usize(rng, upper).expect("sample_bounded_usize upper bound must be > 0")
 }
 
 /// Fills `shifts` with independent `[0, 1)` Cranley-Patterson shift scalars without heap allocation.

@@ -2,7 +2,9 @@
 // [cite:math_commons]
 
 use crate::series::PointSeries;
+#[cfg(feature = "alloc")]
 use alloc::vec::Vec;
+#[allow(unused_imports)]
 use num_traits::Float;
 
 /// Writes sub-segment `x` coordinates where `pts` crosses `y = y_target` into `out`.
@@ -88,6 +90,7 @@ fn closest_threshold_crossing_raw<P: PointSeries + ?Sized>(
 }
 
 /// Convenience wrapper collecting all sub-segment `y = y_target` crossings into a `Vec<f64>`.
+#[cfg(feature = "alloc")]
 pub fn interpolate_threshold_crossings<P: PointSeries + ?Sized>(
     pts: &P,
     y_target: f64,
@@ -321,6 +324,7 @@ fn y_at_x_into_raw<P: PointSeries + ?Sized>(pts: &P, x_target: f64, out: &mut [f
 }
 
 /// Convenience wrapper collecting interpolated `y` values at `x = x_target` into a `Vec<f64>`.
+#[cfg(feature = "alloc")]
 pub fn interpolate_y_at_x<P: PointSeries + ?Sized>(pts: &P, x_target: f64) -> Vec<f64> {
     let n = pts.len();
     let mut out = Vec::new();
@@ -383,6 +387,7 @@ fn push_unique_scalar(out: &mut [f64], written: usize, val: f64) -> usize {
     }
 }
 
+#[cfg(feature = "alloc")]
 #[inline(always)]
 pub(super) fn push_unique_vec(out: &mut Vec<f64>, val: f64) {
     if out.last().is_none_or(|&prev| (prev - val).abs() > 1e-9) {

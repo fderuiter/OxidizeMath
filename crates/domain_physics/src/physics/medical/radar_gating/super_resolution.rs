@@ -204,7 +204,7 @@ impl MusicEstimator {
         if eigen.eigenvalues.iter().any(|v| v.is_nan()) {
             return Err(RadarError::Math(
                 math_commons::error::MathError::NumericalError {
-                    reason: "Eigenvalues contain NaN".into(),
+                    reason: "Eigenvalues contain NaN",
                 },
             ));
         }

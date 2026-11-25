@@ -21,7 +21,7 @@ pub struct VoxelGrid {
 }
 
 /// Validation errors returned when constructing or reconfiguring a [`VoxelGrid`].
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VoxelGridError {
     /// Grid width, height, or depth was zero or overflowed `usize`.
     InvalidDimensions,

@@ -58,22 +58,34 @@ impl FluidProperties {
         self.dynamic_viscosity / self.density
     }
 
-    /// Standard properties for Water at 20°C.
+    /// Fallibly returns standard properties for Water at 20°C.
+    #[verified_engine::verified]
+    pub fn try_water() -> Result<Self, FluidError> {
+        Self::new(998.2, 1.002e-3)
+    }
+
+    /// Standard properties for Water at 20°C; prefer [`Self::try_water`].
     ///
     /// # Panics
     /// Panics if internal values are invalid (should never happen).
     #[verified_engine::verified]
     pub fn water() -> Self {
-        Self::new(998.2, 1.002e-3).expect("Standard water properties should be valid")
+        Self::try_water().expect("Standard water properties should be valid")
     }
 
-    /// Standard properties for Air at 15°C (Sea Level).
+    /// Fallibly returns standard properties for Air at 15°C (Sea Level).
+    #[verified_engine::verified]
+    pub fn try_air() -> Result<Self, FluidError> {
+        Self::new(1.225, 1.81e-5)
+    }
+
+    /// Standard properties for Air at 15°C (Sea Level); prefer [`Self::try_air`].
     ///
     /// # Panics
     /// Panics if internal values are invalid (should never happen).
     #[verified_engine::verified]
     pub fn air() -> Self {
-        Self::new(1.225, 1.81e-5).expect("Standard air properties should be valid")
+        Self::try_air().expect("Standard air properties should be valid")
     }
 }
 

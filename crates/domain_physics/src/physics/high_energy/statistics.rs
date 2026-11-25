@@ -35,7 +35,7 @@ pub fn li_ma_significance(n_on: f64, n_off: f64, alpha: f64) -> Result<f64, High
         // Formula has sqrt.
         return Err(HighEnergyError::Math(
             math_commons::error::MathError::NumericalError {
-                reason: "Negative argument for sqrt in Li & Ma".to_string(),
+                reason: "Negative argument for sqrt in Li & Ma",
             },
         ));
     }

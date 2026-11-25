@@ -110,6 +110,12 @@ pub enum PureMathError {
     /// Spectral transform error.
     #[error("{0}")]
     Transform(#[from] TransformError),
+    /// Foundational `#![no_std]` differential-equation engine error.
+    #[error("{0}")]
+    Diffeq(#[from] engine_diffeq::DiffeqError),
+    /// Foundational `#![no_std]` PDE and SPDE engine error.
+    #[error("{0}")]
+    Pde(#[from] engine_pde::PdeError),
     /// Foundational mathematical kernel error.
     #[error("{0}")]
     Math(#[from] MathError),
@@ -167,9 +173,9 @@ impl From<ShaderEmitError> for PureMathError {
     }
 }
 
-impl From<String> for PureMathError {
+impl From<&'static str> for PureMathError {
     #[verified_engine::verified]
-    fn from(reason: String) -> Self {
+    fn from(reason: &'static str) -> Self {
         Self::Math(MathError::from(reason))
     }
 }
@@ -209,6 +215,8 @@ impl PureMathError {
             Self::Stochastic(err) => err,
             Self::Tensor(err) => err,
             Self::Transform(err) => err,
+            Self::Diffeq(err) => err,
+            Self::Pde(err) => err,
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
         }

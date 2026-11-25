@@ -5,8 +5,8 @@
 use crate::error::StatMechError;
 use crate::physics::stat_mech::edwards_wilkinson::{interface_roughness, mean_field};
 use engine_pde::{
-    BoundaryCondition, ExplicitSpdeStencilStepper, SemiImplicitFourierStepper, SpdeNoiseKind,
-    StencilOperators,
+    BoundaryCondition, ExplicitSpdeStencilStepper, PdeError, SemiImplicitFourierStepper,
+    SpdeNoiseKind, StencilOperators,
 };
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::{Dimension, SolverWorkspace, StepSize};
@@ -129,24 +129,38 @@ impl KpzModel1D {
         interface_roughness(&self.h)
     }
 
+    /// Fallibly computes the spatial mean squared slope $\langle (\partial_x h)^2 \rangle$.
+    #[verified_engine::verified]
+    pub fn try_mean_slope_squared(&self) -> Result<f64, StatMechError> {
+        let n = self.h.len();
+        if n < 2 {
+            return Err(PdeError::InvalidGridDimension { axis: "x", size: n }.into());
+        }
+        let ops = StencilOperators::try_new(StepSize(self.dx))?;
+        let mut sum_sq = 0.0;
+        for x in 0..n {
+            sum_sq += ops.try_grad_sq_1d_at(&self.h, n, x, self.boundary)?;
+        }
+        debug_assert!(n >= 2);
+        Ok(sum_sq / (n as f64))
+    }
+
     /// Computes the spatial mean squared slope $\langle (\partial_x h)^2 \rangle$, which governs
     /// the excess nonlinear KPZ drift velocity $\partial_t \bar{h} = \frac{\lambda}{2}\langle (\partial_x h)^2 \rangle$.
     #[verified_engine::verified]
     pub fn mean_slope_squared(&self) -> f64 {
-        let n = self.h.len();
-        assert!(n >= 2);
-        let ops = StencilOperators::new(StepSize(self.dx));
-        let sum_sq: f64 = (0..n)
-            .map(|x| ops.grad_sq_1d_at(&self.h, n, x, self.boundary))
-            .sum();
-        sum_sq / (n as f64)
+        self.try_mean_slope_squared()
+            .expect("Valid KpzModel1D::mean_slope_squared state")
     }
 
-    /// Advances one explicit finite-difference step without heap allocations.
+    /// Fallibly advances one explicit finite-difference step without heap allocations.
     #[verified_engine::verified]
-    pub fn step_stencil<R: RngCore + ?Sized>(&mut self, dt: f64, rng: &mut R) {
-        assert!(dt >= 0.0);
-        let ops = StencilOperators::new(StepSize(self.dx));
+    pub fn try_step_stencil<R: RngCore + ?Sized>(
+        &mut self,
+        dt: f64,
+        rng: &mut R,
+    ) -> Result<(), StatMechError> {
+        let ops = StencilOperators::try_new(StepSize(self.dx))?;
         let stepper = ExplicitSpdeStencilStepper::new(
             ops,
             self.boundary,
@@ -157,26 +171,40 @@ impl KpzModel1D {
         let nu = self.nu;
         let half_lambda = 0.5 * self.lambda;
         let mut ws = SolverWorkspace::new(&mut self.scratch);
-        stepper.step_1d(
+        stepper.try_step_1d(
             &mut self.h,
             dt,
             |_x, _u, grad, lap| nu * lap + half_lambda * grad * grad,
             &mut ws,
             rng,
-        );
+        )?;
+        debug_assert!(self.h.len() >= 4);
+        Ok(())
     }
 
-    /// Advances one radix-2 2/3-rule dealiased semi-implicit Fourier step without heap allocations.
+    /// Advances one explicit finite-difference step without heap allocations.
     #[verified_engine::verified]
-    pub fn step_fourier_dealiased<R: RngCore + ?Sized>(&mut self, dt: f64, rng: &mut R) {
-        assert!(
-            self.boundary == BoundaryCondition::Periodic
-                && self.h.len().is_power_of_two()
-                && dt >= 0.0
-        );
-        let stepper = SemiImplicitFourierStepper::new_1d(self.dx);
+    pub fn step_stencil<R: RngCore + ?Sized>(&mut self, dt: f64, rng: &mut R) {
+        self.try_step_stencil(dt, rng)
+            .expect("Valid KpzModel1D::step_stencil parameters");
+    }
+
+    /// Fallibly advances one radix-2 2/3-rule dealiased semi-implicit Fourier step without heap allocations.
+    #[verified_engine::verified]
+    pub fn try_step_fourier_dealiased<R: RngCore + ?Sized>(
+        &mut self,
+        dt: f64,
+        rng: &mut R,
+    ) -> Result<(), StatMechError> {
+        if self.boundary != BoundaryCondition::Periodic {
+            return Err(PdeError::InvalidParameter {
+                parameter: "boundary (Fourier step requires Periodic)",
+            }
+            .into());
+        }
+        let stepper = SemiImplicitFourierStepper::try_new_1d(self.dx)?;
         let mut ws = SolverWorkspace::new(&mut self.scratch);
-        stepper.step_kpz_1d(
+        stepper.try_step_kpz_1d(
             &mut self.h,
             self.nu,
             self.lambda,
@@ -184,7 +212,16 @@ impl KpzModel1D {
             dt,
             &mut ws,
             rng,
-        );
+        )?;
+        debug_assert!(self.h.len().is_power_of_two());
+        Ok(())
+    }
+
+    /// Advances one radix-2 2/3-rule dealiased semi-implicit Fourier step without heap allocations.
+    #[verified_engine::verified]
+    pub fn step_fourier_dealiased<R: RngCore + ?Sized>(&mut self, dt: f64, rng: &mut R) {
+        self.try_step_fourier_dealiased(dt, rng)
+            .expect("Valid KpzModel1D::step_fourier_dealiased parameters");
     }
 }
 
@@ -217,6 +254,64 @@ pub struct KpzModel2D {
 }
 
 impl KpzModel2D {
+    /// Creates a validated 2D KPZ solver with pre-allocated zero-allocation workspace.
+    #[allow(clippy::too_many_arguments)]
+    #[verified_engine::verified]
+    pub fn try_new(
+        width: usize,
+        height: usize,
+        dx: f64,
+        dy: f64,
+        nu: f64,
+        lambda: f64,
+        noise_intensity: f64,
+        boundary: BoundaryCondition,
+    ) -> Result<Self, StatMechError> {
+        if width < 4 || height < 4 {
+            return Err(MathError::DimensionMismatch {
+                expected: Dimension(4),
+                actual: Dimension(width.min(height)),
+            }
+            .into());
+        }
+        if !nu.is_finite() || nu <= 0.0 {
+            return Err(MathError::StrictlyOutOfBounds {
+                value: nu,
+                min: 0.0,
+                max: f64::INFINITY,
+            }
+            .into());
+        }
+        if !lambda.is_finite() || !noise_intensity.is_finite() || noise_intensity < 0.0 {
+            return Err(MathError::OutOfBounds {
+                value: noise_intensity,
+                min: 0.0,
+                max: f64::INFINITY,
+            }
+            .into());
+        }
+        let _ = StencilOperators::try_new_2d(StepSize(dx), StepSize(dy))?;
+        let fourier_len = if width.is_power_of_two() && height.is_power_of_two() {
+            SemiImplicitFourierStepper::scratch_len_2d(width, height)
+        } else {
+            0
+        };
+        let cap = ExplicitSpdeStencilStepper::scratch_len_2d(width, height).max(fourier_len);
+        debug_assert!(width >= 4 && height >= 4 && cap >= width * height);
+        Ok(Self {
+            h: vec![0.0; width * height],
+            width,
+            height,
+            dx,
+            dy,
+            nu,
+            lambda,
+            noise_intensity,
+            boundary,
+            scratch: vec![0.0; cap],
+        })
+    }
+
     /// Creates a 2D KPZ solver with pre-allocated zero-allocation workspace.
     #[allow(clippy::too_many_arguments)]
     #[verified_engine::verified]
@@ -230,26 +325,8 @@ impl KpzModel2D {
         noise_intensity: f64,
         boundary: BoundaryCondition,
     ) -> Self {
-        assert!(width >= 4 && height >= 4 && dx > 0.0 && dy > 0.0 && nu > 0.0);
-        assert!(lambda.is_finite() && noise_intensity >= 0.0);
-        let fourier_len = if width.is_power_of_two() && height.is_power_of_two() {
-            SemiImplicitFourierStepper::scratch_len_2d(width, height)
-        } else {
-            0
-        };
-        let cap = ExplicitSpdeStencilStepper::scratch_len_2d(width, height).max(fourier_len);
-        Self {
-            h: vec![0.0; width * height],
-            width,
-            height,
-            dx,
-            dy,
-            nu,
-            lambda,
-            noise_intensity,
-            boundary,
-            scratch: vec![0.0; cap],
-        }
+        Self::try_new(width, height, dx, dy, nu, lambda, noise_intensity, boundary)
+            .expect("Valid KpzModel2D parameters")
     }
 
     /// Immutable view of the 2D height surface $h(x, y, t)$.
@@ -276,11 +353,14 @@ impl KpzModel2D {
         interface_roughness(&self.h)
     }
 
-    /// Advances one explicit 2D finite-difference KPZ step without heap allocations.
+    /// Fallibly advances one explicit 2D finite-difference KPZ step without heap allocations.
     #[verified_engine::verified]
-    pub fn step_stencil<R: RngCore + ?Sized>(&mut self, dt: f64, rng: &mut R) {
-        assert!(dt >= 0.0);
-        let ops = StencilOperators::new_2d(StepSize(self.dx), StepSize(self.dy));
+    pub fn try_step_stencil<R: RngCore + ?Sized>(
+        &mut self,
+        dt: f64,
+        rng: &mut R,
+    ) -> Result<(), StatMechError> {
+        let ops = StencilOperators::try_new_2d(StepSize(self.dx), StepSize(self.dy))?;
         let stepper = ExplicitSpdeStencilStepper::new(
             ops,
             self.boundary,
@@ -291,7 +371,7 @@ impl KpzModel2D {
         let nu = self.nu;
         let half_lambda = 0.5 * self.lambda;
         let mut ws = SolverWorkspace::new(&mut self.scratch);
-        stepper.step_2d(
+        stepper.try_step_2d(
             &mut self.h,
             self.width,
             self.height,
@@ -299,21 +379,34 @@ impl KpzModel2D {
             |_x, _y, _u, (gx, gy), lap| nu * lap + half_lambda * (gx * gx + gy * gy),
             &mut ws,
             rng,
-        );
+        )?;
+        debug_assert_eq!(self.h.len(), self.width * self.height);
+        Ok(())
     }
 
-    /// Advances one 2D radix-2 2/3-rule dealiased semi-implicit Fourier KPZ step without heap allocations.
+    /// Advances one explicit 2D finite-difference KPZ step without heap allocations.
     #[verified_engine::verified]
-    pub fn step_fourier_dealiased<R: RngCore + ?Sized>(&mut self, dt: f64, rng: &mut R) {
-        assert!(
-            self.boundary == BoundaryCondition::Periodic
-                && self.width.is_power_of_two()
-                && self.height.is_power_of_two()
-                && dt >= 0.0
-        );
-        let stepper = SemiImplicitFourierStepper::new_2d(self.dx, self.dy);
+    pub fn step_stencil<R: RngCore + ?Sized>(&mut self, dt: f64, rng: &mut R) {
+        self.try_step_stencil(dt, rng)
+            .expect("Valid KpzModel2D::step_stencil parameters");
+    }
+
+    /// Fallibly advances one 2D radix-2 2/3-rule dealiased semi-implicit Fourier KPZ step without heap allocations.
+    #[verified_engine::verified]
+    pub fn try_step_fourier_dealiased<R: RngCore + ?Sized>(
+        &mut self,
+        dt: f64,
+        rng: &mut R,
+    ) -> Result<(), StatMechError> {
+        if self.boundary != BoundaryCondition::Periodic {
+            return Err(PdeError::InvalidParameter {
+                parameter: "boundary (Fourier step requires Periodic)",
+            }
+            .into());
+        }
+        let stepper = SemiImplicitFourierStepper::try_new_2d(self.dx, self.dy)?;
         let mut ws = SolverWorkspace::new(&mut self.scratch);
-        stepper.step_kpz_2d(
+        stepper.try_step_kpz_2d(
             &mut self.h,
             self.width,
             self.height,
@@ -323,6 +416,15 @@ impl KpzModel2D {
             dt,
             &mut ws,
             rng,
-        );
+        )?;
+        debug_assert_eq!(self.h.len(), self.width * self.height);
+        Ok(())
+    }
+
+    /// Advances one 2D radix-2 2/3-rule dealiased semi-implicit Fourier KPZ step without heap allocations.
+    #[verified_engine::verified]
+    pub fn step_fourier_dealiased<R: RngCore + ?Sized>(&mut self, dt: f64, rng: &mut R) {
+        self.try_step_fourier_dealiased(dt, rng)
+            .expect("Valid KpzModel2D::step_fourier_dealiased parameters");
     }
 }

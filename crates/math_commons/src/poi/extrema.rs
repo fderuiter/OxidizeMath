@@ -2,11 +2,15 @@
 // [cite:math_commons]
 
 use super::LocalExtremum;
-use super::interp::{is_finite_pair, push_unique_vec, segment_threshold_hit, segment_vertical_hit};
+use super::interp::is_finite_pair;
+#[cfg(feature = "alloc")]
+use super::interp::{push_unique_vec, segment_threshold_hit, segment_vertical_hit};
 use crate::series::PointSeries;
+#[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
 /// Output of a fused single-pass critical-point scan over a single 2D series.
+#[cfg(feature = "alloc")]
 #[derive(Debug, Clone, Default, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LinePoiScan {
@@ -39,6 +43,7 @@ impl PlateauTracker {
         }
     }
 
+    #[cfg(feature = "alloc")]
     #[inline(always)]
     fn step_vec(&mut self, p0: [f64; 2], p1: [f64; 2], out: &mut Vec<LocalExtremum>) {
         if self.mode != 0 && p1[1] == self.start[1] {
@@ -100,6 +105,7 @@ impl PlateauTracker {
         }
     }
 
+    #[cfg(feature = "alloc")]
     #[cold]
     fn finish_into_vec(&self, after: [f64; 2], out: &mut Vec<LocalExtremum>) {
         if let Some(ext) = self.finish(after) {
@@ -131,6 +137,7 @@ impl PlateauTracker {
     }
 }
 
+#[cfg(feature = "alloc")]
 #[inline(always)]
 fn fast_forward_plateau<P: PointSeries + ?Sized>(
     pts: &P,
@@ -162,6 +169,7 @@ fn fast_forward_plateau<P: PointSeries + ?Sized>(
 }
 
 /// Fused $O(N)$ single-pass scan extracting $y = 0$ roots, $x = 0$ intercepts, and local extrema.
+#[cfg(feature = "alloc")]
 pub fn scan_line_pois<P: PointSeries + ?Sized>(
     pts: &P,
     want_roots: bool,
@@ -253,6 +261,7 @@ fn detect_local_extrema_into_raw<P: PointSeries + ?Sized>(
 }
 
 /// Convenience wrapper collecting interior local extrema into a `Vec<LocalExtremum>`.
+#[cfg(feature = "alloc")]
 pub fn detect_local_extrema<P: PointSeries + ?Sized>(pts: &P) -> Vec<LocalExtremum> {
     scan_line_pois(pts, false, false).extrema
 }

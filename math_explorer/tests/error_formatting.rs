@@ -1,4 +1,4 @@
-//! Verifies that all 47 public error enums tested from `math_explorer::error`
+//! Verifies that all 50 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -14,13 +14,14 @@
 use math_explorer::diagnostics::Diagnostic;
 use math_explorer::error::{
     AIError, BatteryError, BotanicalError, BraidError, ChaosError, ClimateError, CopulaError,
-    DoseFluenceError, EloError, EngineeringError, EpidemiologyError, FitError, FluidError,
-    GameTheoryError, Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError,
-    HyperbolicError, IsosurfaceError, KellyError, KnotError, LoraError, MarketPricingError,
-    MarkovError, MatchModelError, MathError, MonteCarloError, NumberTheoryError,
-    OptionPricingError, OuError, PharmacokineticsError, PoissonError, PortfolioError, QuantumError,
-    QueueingError, RadarError, ReactionDiffusionError, RiskError, SandpileError, ShaderEmitError,
-    SolidStateError, StandardModelError, StatMechError, Su11HyperbolicError, TdaError, ZipError,
+    DiagnosticError, DiffeqError, DoseFluenceError, EloError, EngineeringError, EpidemiologyError,
+    FitError, FluidError, GameTheoryError, Glicko2Error, GraphTheoryError, HighEnergyError,
+    HodgkinHuxleyError, HyperbolicError, IsosurfaceError, KellyError, KnotError, LoraError,
+    MarketPricingError, MarkovError, MatchModelError, MathError, MonteCarloError,
+    NumberTheoryError, OptionPricingError, OuError, PdeError, PharmacokineticsError, PoissonError,
+    PortfolioError, QuantumError, QueueingError, RadarError, ReactionDiffusionError, RiskError,
+    SandpileError, ShaderEmitError, SolidStateError, StandardModelError, StatMechError,
+    Su11HyperbolicError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -45,7 +46,7 @@ fn assert_readable_diagnostic<E: Diagnostic>(name: &str, err: &E) {
 }
 
 #[test]
-fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
+fn core_and_engine_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic(
         "MathError",
         &MathError::DimensionMismatch {
@@ -69,10 +70,20 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         },
     );
     assert_readable_diagnostic("FitError", &FitError::UnsupportedDegree { degree: 5 });
+    assert_readable_diagnostic("DiagnosticError", &DiagnosticError::EmptySource);
+    assert_readable_diagnostic("DiffeqError", &DiffeqError::InvalidStepSize);
+    assert_readable_diagnostic(
+        "PdeError",
+        &PdeError::InvalidGridDimension { axis: "x", size: 0 },
+    );
     assert_readable_diagnostic(
         "ShaderEmitError",
         &ShaderEmitError::RecursionLimitExceeded(64),
     );
+}
+
+#[test]
+fn pure_math_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic(
         "NumberTheoryError",
         &NumberTheoryError::DivisionByZeroQSeries,
@@ -359,11 +370,8 @@ fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
         min: 0.0,
         max: f64::INFINITY,
     };
-    assert_readable_diagnostic("ClimateError::Math", &ClimateError::from(math_err.clone()));
-    assert_readable_diagnostic(
-        "EngineeringError::Math",
-        &EngineeringError::from(math_err.clone()),
-    );
+    assert_readable_diagnostic("ClimateError::Math", &ClimateError::from(math_err));
+    assert_readable_diagnostic("EngineeringError::Math", &EngineeringError::from(math_err));
     assert_readable_diagnostic("DoseFluenceError::Math", &DoseFluenceError::from(math_err));
 }
 

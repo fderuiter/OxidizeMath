@@ -1,3 +1,5 @@
+use crate::error::StatMechError;
+use math_commons::error::MathError;
 use rand::Rng;
 
 /// Simulates a 1D Random Walk.
@@ -100,6 +102,45 @@ impl engine_diffeq::LangevinSystem<f64> for HarmonicPotential1D {
     }
 }
 
+/// Fallibly advances a 1D overdamped Brownian particle in harmonic potential $V(x) = \frac{1}{2} k x^2$
+/// using [`engine_diffeq::EulerMaruyamaSolver`] without heap allocations.
+#[verified_engine::verified]
+pub fn try_step_overdamped_brownian_1d<R: rand_core::RngCore + ?Sized>(
+    x: f64,
+    stiffness: f64,
+    mobility: f64,
+    temperature_kb: f64,
+    dt: f64,
+    rng: &mut R,
+) -> Result<f64, StatMechError> {
+    if !mobility.is_finite()
+        || mobility < 0.0
+        || !temperature_kb.is_finite()
+        || temperature_kb < 0.0
+        || !dt.is_finite()
+        || dt < 0.0
+    {
+        return Err(MathError::OutOfBounds {
+            value: mobility.min(temperature_kb).min(dt),
+            min: 0.0,
+            max: f64::INFINITY,
+        }
+        .into());
+    }
+    let sigma = (2.0 * mobility * temperature_kb).sqrt();
+    let sys = OverdampedHarmonic1D {
+        stiffness,
+        mobility,
+        sigma,
+    };
+    let solver = engine_diffeq::EulerMaruyamaSolver::new(engine_diffeq::StochasticCalculus::Ito);
+    let mut state = [x];
+    let mut scratch = [0.0; 3];
+    let mut ws = math_commons::math_kernel::types::SolverWorkspace::new(&mut scratch);
+    solver.try_step(&sys, 0.0, dt, &mut state, &mut ws, rng)?;
+    Ok(state[0])
+}
+
 /// Advances a 1D overdamped Brownian particle in harmonic potential $V(x) = \frac{1}{2} k x^2$
 /// using [`engine_diffeq::EulerMaruyamaSolver`] without heap allocations.
 #[verified_engine::verified]
@@ -111,19 +152,37 @@ pub fn step_overdamped_brownian_1d<R: rand_core::RngCore + ?Sized>(
     dt: f64,
     rng: &mut R,
 ) -> f64 {
-    assert!(mobility >= 0.0 && temperature_kb >= 0.0 && dt >= 0.0);
-    let sigma = (2.0 * mobility * temperature_kb).sqrt();
-    let sys = OverdampedHarmonic1D {
-        stiffness,
-        mobility,
-        sigma,
-    };
-    let solver = engine_diffeq::EulerMaruyamaSolver::new(engine_diffeq::StochasticCalculus::Ito);
-    let mut state = [x];
-    let mut scratch = [0.0; 3];
+    try_step_overdamped_brownian_1d(x, stiffness, mobility, temperature_kb, dt, rng)
+        .expect("Valid step_overdamped_brownian_1d parameters")
+}
+
+/// Fallibly advances a 1D underdamped Langevin particle $(q, p)$ in harmonic potential $V(q) = \frac{1}{2} k q^2$
+/// via [`engine_diffeq::BaoabLangevinSolver`] without heap allocations.
+#[allow(clippy::too_many_arguments)]
+#[verified_engine::verified]
+pub fn try_step_underdamped_langevin_1d<R: rand_core::RngCore + ?Sized>(
+    q: f64,
+    p: f64,
+    mass: f64,
+    stiffness: f64,
+    friction: f64,
+    temperature_kb: f64,
+    dt: f64,
+    rng: &mut R,
+) -> Result<(f64, f64), StatMechError> {
+    let solver = engine_diffeq::BaoabLangevinSolver::try_new(engine_diffeq::BaoabParams {
+        mass,
+        friction,
+        temperature: temperature_kb,
+        dt,
+    })?;
+    let sys = HarmonicPotential1D { stiffness };
+    let mut q_arr = [q];
+    let mut p_arr = [p];
+    let mut scratch = [0.0; 2];
     let mut ws = math_commons::math_kernel::types::SolverWorkspace::new(&mut scratch);
-    solver.step(&sys, 0.0, dt, &mut state, &mut ws, rng);
-    state[0]
+    solver.try_step(&sys, &mut q_arr, &mut p_arr, &mut ws, rng)?;
+    Ok((q_arr[0], p_arr[0]))
 }
 
 /// Advances a 1D underdamped Langevin particle $(q, p)$ in harmonic potential $V(q) = \frac{1}{2} k q^2$
@@ -140,20 +199,8 @@ pub fn step_underdamped_langevin_1d<R: rand_core::RngCore + ?Sized>(
     dt: f64,
     rng: &mut R,
 ) -> (f64, f64) {
-    assert!(mass > 0.0 && friction >= 0.0 && temperature_kb >= 0.0 && dt > 0.0);
-    let solver = engine_diffeq::BaoabLangevinSolver::new(engine_diffeq::BaoabParams {
-        mass,
-        friction,
-        temperature: temperature_kb,
-        dt,
-    });
-    let sys = HarmonicPotential1D { stiffness };
-    let mut q_arr = [q];
-    let mut p_arr = [p];
-    let mut scratch = [0.0; 2];
-    let mut ws = math_commons::math_kernel::types::SolverWorkspace::new(&mut scratch);
-    solver.step(&sys, &mut q_arr, &mut p_arr, &mut ws, rng);
-    (q_arr[0], p_arr[0])
+    try_step_underdamped_langevin_1d(q, p, mass, stiffness, friction, temperature_kb, dt, rng)
+        .expect("Valid step_underdamped_langevin_1d parameters")
 }
 
 #[cfg(test)]

@@ -141,6 +141,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261124: `#![no_std]` Visitor-Based `math_diagnostics`, Causal `LinalgError` Retention, and Umbrella `api_drift` Guards](adr/20261124-no-std-math-diagnostics-and-causal-error-wiring.md)
 - [ADR 20261124: Optional `#![no_std]` Serde Across Substrate, Plot Outputs, and Facade](adr/20261124-optional-no-std-serde-substrate-and-facade.md)
 - [ADR 20261124: Zero-Allocation Alternate-Kinetics Stepping, 2D CFL Substepping Helpers, and Analytical Bifurcation Minimap](adr/20261124-promote-gray-scott-kinetics-and-2d-cfl-helpers.md)
+- [ADR 20261124: Stack-Allocated Core Errors, Fallible Companion APIs, and AST Error Contract Verification](adr/20261124-stack-core-errors-and-fallible-companion-apis.md)
 
 ## Contributing
 

@@ -62,9 +62,9 @@ impl NiederreiterSequence {
         self.index = start_index;
         let dim = self.state.len();
         let mut tmp_shifts = [0.0_f64; MAX_NIEDERREITER_DIM];
-        let mut view = NiederreiterView::new(dim, &mut self.state, &mut tmp_shifts[..dim])
-            .expect("validated Niederreiter dimension");
-        view.seek(start_index);
+        if let Ok(mut view) = NiederreiterView::new(dim, &mut self.state, &mut tmp_shifts[..dim]) {
+            view.seek(start_index);
+        }
     }
 
     /// Resets the sequence cursor to index `0` and clears any Cranley-Patterson shift.

@@ -172,8 +172,7 @@ pub fn ensemble_crps_loss<S: Storage<f32, Dyn, Dyn>>(
     }
     if observations.is_empty() || ensemble_forecasts.nrows() == 0 {
         return Err(MathError::NumericalError {
-            reason: "ensemble_crps_loss requires non-empty ensemble members and observations"
-                .to_string(),
+            reason: "ensemble_crps_loss requires non-empty ensemble members and observations",
         });
     }
 
@@ -184,7 +183,7 @@ pub fn ensemble_crps_loss<S: Storage<f32, Dyn, Dyn>>(
         for &val in ensemble_forecasts.column(col_idx).iter() {
             if !val.is_finite() {
                 return Err(MathError::NumericalError {
-                    reason: "Ensemble forecast contains non-finite value".to_string(),
+                    reason: "Ensemble forecast contains non-finite value",
                 });
             }
             sorted_col.push(f64::from(val));

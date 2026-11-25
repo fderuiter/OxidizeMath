@@ -191,21 +191,30 @@ pub fn sample_shepp_logan_tissue(x_norm: f64, y_norm: f64) -> TissueParameters {
     }
 }
 
-/// Fills pre-allocated row-major $(\rho, T_1, T_2)$ slices of length `rows * cols` with the Modified Shepp-Logan phantom.
+/// Fallibly fills pre-allocated row-major $(\rho, T_1, T_2)$ slices of length `rows * cols` with the Modified Shepp-Logan phantom.
 #[verified_engine::verified]
-pub fn fill_shepp_logan_grid(
+pub fn try_fill_shepp_logan_grid(
     rows: usize,
     cols: usize,
     out_rho: &mut [f64],
     out_t1: &mut [f64],
     out_t2: &mut [f64],
-) {
-    let total = rows * cols;
-    assert_eq!(out_rho.len(), total, "out_rho length mismatch");
-    assert_eq!(out_t1.len(), total, "out_t1 length mismatch");
-    assert_eq!(out_t2.len(), total, "out_t2 length mismatch");
+) -> Result<(), math_commons::error::MathError> {
+    use math_commons::error::MathError;
+    use math_commons::math_kernel::types::Dimension;
+    let total = rows.checked_mul(cols).ok_or(MathError::NumericalError {
+        reason: "Shepp-Logan grid dimensions overflow",
+    })?;
+    for actual in [out_rho.len(), out_t1.len(), out_t2.len()] {
+        if actual != total {
+            return Err(MathError::DimensionMismatch {
+                expected: Dimension(total),
+                actual: Dimension(actual),
+            });
+        }
+    }
     if total == 0 {
-        return;
+        return Ok(());
     }
 
     let inv_r = if rows > 1 {
@@ -231,6 +240,21 @@ pub fn fill_shepp_logan_grid(
             out_t2[idx] = tissue.t2;
         }
     }
+    debug_assert_eq!(out_rho.len(), total);
+    Ok(())
+}
+
+/// Fills pre-allocated row-major $(\rho, T_1, T_2)$ slices of length `rows * cols` with the Modified Shepp-Logan phantom; prefer [`try_fill_shepp_logan_grid`].
+#[verified_engine::verified]
+pub fn fill_shepp_logan_grid(
+    rows: usize,
+    cols: usize,
+    out_rho: &mut [f64],
+    out_t1: &mut [f64],
+    out_t2: &mut [f64],
+) {
+    try_fill_shepp_logan_grid(rows, cols, out_rho, out_t1, out_t2)
+        .expect("Shepp-Logan output buffer length mismatch");
 }
 
 #[cfg(test)]

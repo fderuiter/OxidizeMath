@@ -45,29 +45,42 @@ fn safe_face_avg(va: f64, vb: f64) -> f64 {
     0.5 * (a + b)
 }
 
-/// Evaluates 2D conservative donor-cell upwind advection $-\nabla \cdot (\mathbf{u} c)$
+/// Fallibly evaluates 2D conservative donor-cell upwind advection $-\nabla \cdot (\mathbf{u} c)$
 /// over a row-major `width x height` scalar grid into `out` with zero-normal-flux outer
 /// walls ($\mathbf{u} \cdot \mathbf{n} = 0$ on domain boundaries) and zero heap allocations.
+///
+/// # Errors
+/// Returns [`math_commons::error::MathError::DimensionMismatch`] if `width * height` overflows
+/// or any slice (`src`, `ux`, `uy`, `out`) is shorter than `width * height`.
 #[verified_engine::verified]
-pub fn upwind_advection_2d(
+pub fn try_upwind_advection_2d(
     dim: (usize, usize),
     src: &[f64],
     ux: &[f64],
     uy: &[f64],
     out: &mut [f64],
     ops: &StencilOperators,
-) {
+) -> Result<(), math_commons::error::MathError> {
+    use crate::error::IntoMathResult;
+    use math_commons::error::MathError;
+    use math_commons::math_kernel::types::Dimension;
+
     let (width, height) = dim;
-    let total = width.saturating_mul(height);
+    let total = width
+        .checked_mul(height)
+        .into_math_result("2D upwind advection grid dimensions overflow usize")?;
     if total == 0 {
-        return;
+        return Ok(());
     }
-    assert!(
-        src.len() >= total && ux.len() >= total && uy.len() >= total && out.len() >= total,
-        "upwind_advection_2d buffer length mismatch for {}x{} grid",
-        width,
-        height
-    );
+    for actual in [src.len(), ux.len(), uy.len(), out.len()] {
+        if actual < total {
+            return Err(MathError::DimensionMismatch {
+                expected: Dimension(total),
+                actual: Dimension(actual),
+            });
+        }
+    }
+    debug_assert!(src.len() >= total && out.len() >= total);
 
     for y in 0..height {
         for x in 0..width {
@@ -107,6 +120,30 @@ pub fn upwind_advection_2d(
             );
         }
     }
+    Ok(())
+}
+
+/// Evaluates 2D conservative donor-cell upwind advection $-\nabla \cdot (\mathbf{u} c)$
+/// over a row-major `width x height` scalar grid into `out` with zero-normal-flux outer
+/// walls ($\mathbf{u} \cdot \mathbf{n} = 0$ on domain boundaries) and zero heap allocations.
+///
+/// # Panics
+/// Panics if any buffer length is smaller than `dim.0 * dim.1`; prefer [`try_upwind_advection_2d`].
+#[verified_engine::verified]
+pub fn upwind_advection_2d(
+    dim: (usize, usize),
+    src: &[f64],
+    ux: &[f64],
+    uy: &[f64],
+    out: &mut [f64],
+    ops: &StencilOperators,
+) {
+    try_upwind_advection_2d(dim, src, ux, uy, out, ops).unwrap_or_else(|_| {
+        panic!(
+            "upwind_advection_2d buffer length mismatch for {}x{} grid",
+            dim.0, dim.1
+        )
+    });
 }
 
 /// Computes the 2D directional advective Courant number

@@ -37,7 +37,7 @@ impl UnitIntervalEnclosure {
     pub fn clamp_from(interval: Interval) -> Self {
         let lo = interval.lo().clamp(0.0, 1.0);
         let hi = interval.hi().clamp(0.0, 1.0).max(lo);
-        assert!(lo <= hi);
+        debug_assert!(lo <= hi);
         Self(Interval::from_raw_checked(lo, hi))
     }
 
@@ -128,7 +128,7 @@ impl UnitInterval {
     #[verified_engine::verified]
     pub fn to_interval(&self) -> UnitIntervalEnclosure {
         let v = self.value();
-        assert!((0.0..=1.0).contains(&v));
+        debug_assert!((0.0..=1.0).contains(&v));
         UnitIntervalEnclosure(Interval::from_raw_checked(v, v))
     }
 }
@@ -139,7 +139,7 @@ impl PositiveFloat {
     #[verified_engine::verified]
     pub fn to_interval(&self) -> PositiveInterval {
         let v = self.value();
-        assert!(v > 0.0);
+        debug_assert!(v > 0.0);
         PositiveInterval(Interval::from_raw_checked(v, v))
     }
 }
@@ -150,7 +150,7 @@ impl NonNegativeFloat {
     #[verified_engine::verified]
     pub fn to_interval(&self) -> NonNegativeInterval {
         let v = self.value();
-        assert!(v >= 0.0);
+        debug_assert!(v >= 0.0);
         NonNegativeInterval(Interval::from_raw_checked(v, v))
     }
 }

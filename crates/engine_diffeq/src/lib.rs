@@ -7,6 +7,8 @@ extern crate alloc;
 
 /// Symmetric `B-A-O-A-B` underdamped Langevin dynamics solver.
 pub mod baoab;
+/// Stack-allocated `#![no_std]` error types for differential equation solvers.
+pub mod error;
 /// Multivariate Itô and Stratonovich Euler-Maruyama / Euler-Heun SDE solver.
 pub mod euler_maruyama;
 /// Zero-allocation discrete stochastic jump (Gillespie SSA) selection helpers.
@@ -19,12 +21,16 @@ pub mod sriw1;
 pub mod system;
 
 pub use baoab::{BaoabLangevinSolver, BaoabParams};
+pub use error::DiffeqError;
 pub use euler_maruyama::EulerMaruyamaSolver;
 pub use jump::ssa_sample_event;
 pub use math_rng::{BASE_SEED, OxidizeRng};
 pub use milstein::MilsteinSolver;
 pub use sriw1::{CorrelatedWienerIncrement, Sriw1Solver};
-pub use system::{LangevinSystem, SdeSystem, StochasticCalculus};
+pub use system::{
+    LangevinSystem, SdeSystem, StochasticCalculus, eval_ito_effective_drift,
+    try_eval_ito_effective_drift,
+};
 
 #[cfg(feature = "alloc")]
 /// Optional `alloc`-backed scratch buffer owner that lends zero-allocation [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace) views.
@@ -35,13 +41,27 @@ pub struct OwnedWorkspace<T: math_commons::math_kernel::types::Scalar> {
 
 #[cfg(feature = "alloc")]
 impl<T: math_commons::math_kernel::types::Scalar> OwnedWorkspace<T> {
+    /// Fallibly allocates a reusable scratch buffer of `capacity` zero-initialized scalars.
+    ///
+    /// # Errors
+    /// Returns [`DiffeqError::WorkspaceAllocationFailed`] if the allocator rejects `capacity`.
+    #[verified_engine::verified]
+    pub fn try_with_capacity(capacity: usize) -> Result<Self, DiffeqError> {
+        let mut buf = alloc::vec::Vec::new();
+        buf.try_reserve_exact(capacity)
+            .map_err(|_| DiffeqError::WorkspaceAllocationFailed { capacity })?;
+        buf.resize(capacity, T::ZERO);
+        debug_assert_eq!(buf.len(), capacity);
+        Ok(Self { buf })
+    }
+
     /// Allocates a reusable scratch buffer of `capacity` zero-initialized scalars once up front.
+    ///
+    /// # Panics
+    /// Panics if heap allocation fails; prefer [`Self::try_with_capacity`] for fallible callers.
     #[verified_engine::verified]
     pub fn with_capacity(capacity: usize) -> Self {
-        let mut buf = alloc::vec::Vec::new();
-        buf.resize(capacity, T::ZERO);
-        assert_eq!(buf.len(), capacity);
-        Self { buf }
+        Self::try_with_capacity(capacity).expect("OwnedWorkspace::with_capacity allocation failed")
     }
 
     /// Borrows this buffer as a zero-allocation [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace).
@@ -53,3 +73,5 @@ impl<T: math_commons::math_kernel::types::Scalar> OwnedWorkspace<T> {
 
 #[cfg(test)]
 mod serde_tests;
+#[cfg(test)]
+mod tests;

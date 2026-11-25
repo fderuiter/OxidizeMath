@@ -2,6 +2,7 @@
 //! `Logarithmic`, `Logistic`, and `Sinusoidal`).
 // [cite:math_commons]
 
+#[cfg(feature = "alloc")]
 pub use super::format::format_nonlinear_formula;
 use super::lm::{levenberg_marquardt, levenberg_marquardt_filtered};
 use super::seeds::{

@@ -1,5 +1,8 @@
 //! Unified feature-gated error re-exports and facade umbrella error across all OxidizeMath domains.
 
+pub use diagnostics::DiagnosticError;
+pub use engine_diffeq::DiffeqError;
+pub use engine_pde::PdeError;
 pub use math_commons::error::{
     EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, MathResult,
     ParseError, ShaderEmitError,
@@ -51,6 +54,12 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Error {
+    /// Diagnostic bus emission error.
+    Diagnostic(DiagnosticError),
+    /// Differential-equation and stochastic integrator engine error.
+    Diffeq(DiffeqError),
+    /// Partial differential equation and SPDE engine error.
+    Pde(PdeError),
     /// AST evaluation error.
     Eval(EvalError),
     /// Zero-allocation curve-fitting solver error.
