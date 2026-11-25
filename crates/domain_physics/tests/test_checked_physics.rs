@@ -1,7 +1,8 @@
 //! Integration tests for checked constructors and typed error enums across `domain_physics`.
 
 use domain_physics::error::{
-    DoseFluenceError, FluidError, RadarError, SolidStateError, StandardModelError, StatMechError,
+    DoseFluenceError, FluidError, QuantumError, RadarError, SolidStateError, StandardModelError,
+    StatMechError,
 };
 use domain_physics::physics::fluid_dynamics::lattice_boltzmann::state::LatticeState;
 use domain_physics::physics::medical::calibration::hu_to_density;
@@ -11,10 +12,16 @@ use domain_physics::physics::medical::radar_gating::tracking::{
     ConstantVelocityModel, TrackingFilter,
 };
 use domain_physics::physics::mri::proton::boltzmann_ratio;
+use domain_physics::physics::quantum::OrbitalQuantumNumbers;
 use domain_physics::physics::solid_state::bcs::coherence_factors_strong;
 use domain_physics::physics::solid_state::second_quantization::{Boson, Fermion, FockState};
 use domain_physics::physics::solid_state::types::ElectronVolts;
 use domain_physics::physics::standard_model::higgs::HiggsPotential;
+use verified_engine::allocator::VerifiedAllocator;
+use verified_engine::engine::VerifiedEngine;
+
+#[global_allocator]
+static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 #[test]
 fn fluid_and_radar_checked_apis_reject_invalid_configurations() {
@@ -105,4 +112,36 @@ fn medical_mri_solid_state_and_higgs_return_typed_domain_errors() {
         unstable.vev(),
         Err(StandardModelError::UnstableHiggsPotential { lambda: 0.0 })
     );
+}
+
+#[test]
+fn orbital_quantum_numbers_new_returns_typed_quantum_errors_without_allocating() {
+    let (ok, _) = VerifiedEngine::run_verified(|| {
+        assert_eq!(
+            OrbitalQuantumNumbers::new(0, 0, 0),
+            Err(QuantumError::InvalidPrincipalQuantumNumber {
+                n: 0,
+                min: 1,
+                max: 6,
+            })
+        );
+        assert_eq!(
+            OrbitalQuantumNumbers::new(7, 0, 0),
+            Err(QuantumError::InvalidPrincipalQuantumNumber {
+                n: 7,
+                min: 1,
+                max: 6,
+            })
+        );
+        assert_eq!(
+            OrbitalQuantumNumbers::new(2, 2, 0),
+            Err(QuantumError::InvalidOrbitalQuantumNumber { l: 2, n: 2 })
+        );
+        assert_eq!(
+            OrbitalQuantumNumbers::new(3, 1, -2),
+            Err(QuantumError::InvalidMagneticQuantumNumber { m: -2, l: 1 })
+        );
+        OrbitalQuantumNumbers::new(3, 2, -1).is_ok()
+    });
+    assert!(ok);
 }

@@ -86,6 +86,24 @@ pub enum AIError {
         actual: (usize, usize),
     },
 
+    /// Row-major cell mask slice length did not match `width * height`.
+    #[error("Cell mask length {actual} does not match expected grid size {expected}")]
+    CellMaskLengthMismatch {
+        /// Expected cell count (`width * height`).
+        expected: usize,
+        /// Actual slice length supplied.
+        actual: usize,
+    },
+
+    /// Byte tag in a serialized grid mask did not map to a valid `GridCellRole`.
+    #[error("Invalid GridCellRole tag {code} at cell index {index}")]
+    InvalidCellRoleTag {
+        /// Zero-based cell index where the invalid tag occurred.
+        index: usize,
+        /// Rejected raw byte tag.
+        code: u8,
+    },
+
     /// Wrapped foundational error from `math_commons`.
     #[error("{0}")]
     Math(#[from] math_commons::error::MathError),
@@ -131,6 +149,18 @@ impl Diagnostic for AIError {
             Self::Fit(err) => err.visit_fields(visitor),
             Self::Optimization(err) => err.visit_fields(visitor),
             Self::LinearAlgebra(err) => err.visit_fields(visitor),
+            Self::CellMaskLengthMismatch { expected, actual } => {
+                visitor.record_str("error_type", "AIError");
+                visitor.record_display("description", self);
+                visitor.record_usize("expected", *expected);
+                visitor.record_usize("actual", *actual);
+            }
+            Self::InvalidCellRoleTag { index, code } => {
+                visitor.record_str("error_type", "AIError");
+                visitor.record_display("description", self);
+                visitor.record_usize("index", *index);
+                visitor.record_u64("code", u64::from(*code));
+            }
             _ => {
                 visitor.record_str("error_type", "AIError");
                 visitor.record_display("description", self);
