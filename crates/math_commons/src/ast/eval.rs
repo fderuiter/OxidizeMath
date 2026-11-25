@@ -2,7 +2,7 @@
 // [cite:math_commons]
 
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
-use num_complex::{Complex64, ComplexFloat};
+use math_scalars::{Complex64, ComplexField, RealField};
 use std::collections::HashMap;
 use std::f64::consts::{E, PI, TAU};
 
@@ -83,17 +83,22 @@ impl math_diagnostics::Diagnostic for EvalError {
 }
 
 impl Expr {
-    /// Evaluates the expression with the given variable map.
+    /// Evaluates the expression with the given `f64` variable map.
     pub fn eval(&self, vars: &HashMap<String, f64>) -> Result<f64, EvalError> {
+        self.eval_checked(vars, 0)
+    }
+
+    /// Evaluates the expression over any [`ComplexField`] (`f32`, `f64`, `Complex32`, `Complex64`, `Dual<T>`).
+    pub fn eval_generic<T: ComplexField>(&self, vars: &HashMap<String, T>) -> Result<T, EvalError> {
         self.eval_checked(vars, 0)
     }
 
     /// Evaluates the expression for an ODE solver given `t` (time), `y` (state), and parameter map.
     ///
     /// Optimized for high-throughput loops without per-step heap allocations.
-    /// Returns `f64::NAN` on divergence or error.
+    /// Returns `T::NAN` on divergence or error.
     #[must_use]
-    pub fn eval_2d(&self, t: f64, y: f64, params: &HashMap<String, f64>) -> f64 {
+    pub fn eval_2d<T: RealField>(&self, t: T, y: T, params: &HashMap<String, T>) -> T {
         self.eval_fast(0, &|name| {
             if name.eq_ignore_ascii_case("t") {
                 Some(t)
@@ -108,9 +113,9 @@ impl Expr {
     /// Evaluates a 2D planar ODE expression given `t` (time), `x`, `y`, and parameter map.
     ///
     /// Optimized for high-throughput vector-field and phase-portrait loops without per-step heap allocations.
-    /// Returns `f64::NAN` on divergence or error.
+    /// Returns `T::NAN` on divergence or error.
     #[must_use]
-    pub fn eval_planar(&self, t: f64, x: f64, y: f64, params: &HashMap<String, f64>) -> f64 {
+    pub fn eval_planar<T: RealField>(&self, t: T, x: T, y: T, params: &HashMap<String, T>) -> T {
         self.eval_fast(0, &|name| {
             if name.eq_ignore_ascii_case("t") {
                 Some(t)
@@ -129,15 +134,15 @@ impl Expr {
         self.eval_checked(vars, 0)
     }
 
-    /// Evaluates the expression for conformal complex mapping given complex coordinate `z`.
+    /// Evaluates the expression for conformal complex mapping given coordinate `z`.
     #[must_use]
-    pub fn eval_complex_z(&self, z: Complex64) -> Complex64 {
+    pub fn eval_complex_z<T: ComplexField>(&self, z: T) -> T {
         self.eval_fast(0, &|name| name.eq_ignore_ascii_case("z").then_some(z))
     }
 
     /// Evaluates the expression for complex recurrences given state `z` and parameter `c`.
     #[must_use]
-    pub fn eval_complex_zc(&self, z: Complex64, c: Complex64) -> Complex64 {
+    pub fn eval_complex_zc<T: ComplexField>(&self, z: T, c: T) -> T {
         self.eval_fast(0, &|name| {
             if name.eq_ignore_ascii_case("z") {
                 Some(z)
@@ -149,7 +154,7 @@ impl Expr {
         })
     }
 
-    fn eval_checked<T: EvalScalar>(
+    fn eval_checked<T: ComplexField>(
         &self,
         vars: &HashMap<String, T>,
         depth: usize,
@@ -159,7 +164,7 @@ impl Expr {
         }
 
         match self {
-            Self::Number(n) => Ok(T::from_real(*n)),
+            Self::Number(n) => Ok(T::from_real_f64(*n)),
             Self::Variable(name) => lookup_const(name)
                 .or_else(|| lookup_var(vars, name))
                 .ok_or_else(|| EvalError::UnknownVariable(name.clone())),
@@ -178,7 +183,7 @@ impl Expr {
                         found: args.len(),
                     });
                 }
-                let mut buf = [T::NAN; 3];
+                let mut buf = [T::nan(); 3];
                 for (slot, arg) in buf[..expected].iter_mut().zip(args.iter()) {
                     *slot = arg.eval_checked(vars, depth + 1)?;
                 }
@@ -187,20 +192,20 @@ impl Expr {
         }
     }
 
-    fn eval_fast<T: EvalScalar, F: Fn(&str) -> Option<T>>(
+    fn eval_fast<T: ComplexField, F: Fn(&str) -> Option<T>>(
         &self,
         depth: usize,
         resolve_var: &F,
     ) -> T {
         if depth > MAX_EVAL_DEPTH {
-            return T::NAN;
+            return T::nan();
         }
 
         match self {
-            Self::Number(n) => T::from_real(*n),
+            Self::Number(n) => T::from_real_f64(*n),
             Self::Variable(name) => lookup_const(name)
                 .or_else(|| resolve_var(name))
-                .unwrap_or(T::NAN),
+                .unwrap_or_else(T::nan),
             Self::Binary { op, left, right } => {
                 let l = self_eval_fast(left, depth + 1, resolve_var);
                 let r = self_eval_fast(right, depth + 1, resolve_var);
@@ -212,9 +217,9 @@ impl Expr {
             Self::Function { func, args } => {
                 let expected = func.arity();
                 if args.len() != expected {
-                    return T::NAN;
+                    return T::nan();
                 }
-                let mut buf = [T::NAN; 3];
+                let mut buf = [T::nan(); 3];
                 for (slot, arg) in buf[..expected].iter_mut().zip(args.iter()) {
                     *slot = self_eval_fast(arg, depth + 1, resolve_var);
                 }
@@ -225,7 +230,7 @@ impl Expr {
 }
 
 #[inline]
-fn self_eval_fast<T: EvalScalar, F: Fn(&str) -> Option<T>>(
+fn self_eval_fast<T: ComplexField, F: Fn(&str) -> Option<T>>(
     expr: &Expr,
     depth: usize,
     resolve_var: &F,
@@ -233,91 +238,8 @@ fn self_eval_fast<T: EvalScalar, F: Fn(&str) -> Option<T>>(
     expr.eval_fast(depth, resolve_var)
 }
 
-pub(super) trait EvalScalar: ComplexFloat<Real = f64> {
-    const NAN: Self;
-
-    fn from_real(val: f64) -> Self;
-    fn imag_unit() -> Self;
-    fn real_part(self) -> f64;
-    fn is_invalid_scalar(self) -> bool;
-    fn div_checked(self, rhs: Self) -> Self;
-    fn pow_scalar(self, rhs: Self) -> Self;
-    fn extra_const(name: &str) -> Option<Self> {
-        let _ = name;
-        None
-    }
-}
-
-impl EvalScalar for f64 {
-    const NAN: Self = f64::NAN;
-
-    fn from_real(val: f64) -> Self {
-        val
-    }
-
-    fn imag_unit() -> Self {
-        f64::NAN
-    }
-
-    fn real_part(self) -> f64 {
-        self
-    }
-
-    fn is_invalid_scalar(self) -> bool {
-        self.is_nan()
-    }
-
-    fn div_checked(self, rhs: Self) -> Self {
-        if rhs == 0.0 { f64::NAN } else { self / rhs }
-    }
-
-    fn pow_scalar(self, rhs: Self) -> Self {
-        self.powf(rhs)
-    }
-}
-
-impl EvalScalar for Complex64 {
-    const NAN: Self = Self::new(f64::NAN, f64::NAN);
-
-    fn from_real(val: f64) -> Self {
-        Self::new(val, 0.0)
-    }
-
-    fn imag_unit() -> Self {
-        Self::i()
-    }
-
-    fn real_part(self) -> f64 {
-        self.re
-    }
-
-    fn is_invalid_scalar(self) -> bool {
-        self.re.is_nan() || self.im.is_nan()
-    }
-
-    fn div_checked(self, rhs: Self) -> Self {
-        if rhs.norm_sqr() < 1e-12 {
-            Self::NAN
-        } else {
-            self / rhs
-        }
-    }
-
-    fn pow_scalar(self, rhs: Self) -> Self {
-        if rhs.im == 0.0 {
-            self.powf(rhs.re)
-        } else {
-            self.powc(rhs)
-        }
-    }
-
-    fn extra_const(name: &str) -> Option<Self> {
-        name.eq_ignore_ascii_case("i").then(Self::i)
-    }
-}
-
 #[inline]
-pub(super) fn eval_unary<T: EvalScalar>(op: UnaryOp, val: T) -> T {
+pub(super) fn eval_unary<T: ComplexField>(op: UnaryOp, val: T) -> T {
     match op {
         UnaryOp::Pos => val,
         UnaryOp::Neg => -val,
@@ -325,19 +247,37 @@ pub(super) fn eval_unary<T: EvalScalar>(op: UnaryOp, val: T) -> T {
 }
 
 #[inline]
-pub(super) fn eval_binop<T: EvalScalar>(op: BinaryOp, l: T, r: T) -> T {
+pub(super) fn eval_binop<T: ComplexField>(op: BinaryOp, l: T, r: T) -> T {
     match op {
         BinaryOp::Add => l + r,
         BinaryOp::Sub => l - r,
         BinaryOp::Mul => l * r,
-        BinaryOp::Div => l.div_checked(r),
-        BinaryOp::Pow => l.pow_scalar(r),
+        BinaryOp::Div => {
+            if !T::imag_unit().is_any_nan() {
+                if r.norm_sqr() < T::Real::from_f64(1e-12) {
+                    T::nan()
+                } else {
+                    l / r
+                }
+            } else if r.real().to_f64() == 0.0 {
+                T::nan()
+            } else {
+                l / r
+            }
+        }
+        BinaryOp::Pow => {
+            if r.imag() == T::Real::ZERO {
+                l.powf(r.real())
+            } else {
+                l.powc(r)
+            }
+        }
     }
 }
 
-pub(super) fn eval_func<T: EvalScalar>(func: Func, args: &[T]) -> T {
+pub(super) fn eval_func<T: ComplexField>(func: Func, args: &[T]) -> T {
     if args.len() != func.arity() {
-        return T::NAN;
+        return T::nan();
     }
     match func {
         Func::Sin => args[0].sin(),
@@ -346,7 +286,7 @@ pub(super) fn eval_func<T: EvalScalar>(func: Func, args: &[T]) -> T {
         Func::Exp => args[0].exp(),
         Func::Ln => args[0].ln(),
         Func::Log10 => args[0].log10(),
-        Func::Sqrt => args[0].sqrt(),
+        Func::Sqrt => args[0].csqrt(),
         Func::Abs => T::from_real(args[0].abs()),
         Func::Sinh => args[0].sinh(),
         Func::Cosh => args[0].cosh(),
@@ -360,38 +300,42 @@ pub(super) fn eval_func<T: EvalScalar>(func: Func, args: &[T]) -> T {
     }
 }
 
-fn eval_real_projected_func<T: EvalScalar>(func: Func, args: &[T]) -> T {
-    if args.iter().any(|v| v.is_invalid_scalar()) {
-        return T::NAN;
+fn eval_real_projected_func<T: ComplexField>(func: Func, args: &[T]) -> T {
+    if args.iter().any(|v| v.is_any_nan()) {
+        return T::nan();
     }
+    let r0 = args[0].real();
     let val = match func {
         Func::Step => {
-            if args[0].real_part() < 0.0 {
-                0.0
+            if r0 < T::Real::ZERO {
+                T::Real::ZERO
             } else {
-                1.0
+                T::Real::ONE
             }
         }
         Func::Rect => {
-            if args[0].real_part().abs() <= 0.5 {
-                1.0
+            if ComplexField::abs(r0) <= T::Real::HALF {
+                T::Real::ONE
             } else {
-                0.0
+                T::Real::ZERO
             }
         }
-        Func::Min => args[0].real_part().min(args[1].real_part()),
-        Func::Max => args[0].real_part().max(args[1].real_part()),
-        Func::Atan2 => args[0].real_part().atan2(args[1].real_part()),
+        Func::Min => r0.min(args[1].real()),
+        Func::Max => r0.max(args[1].real()),
+        Func::Atan2 => r0.atan2(args[1].real()),
         Func::Clamp => {
-            let x = args[0].real_part();
-            let lo = args[1].real_part();
-            let hi = args[2].real_part();
-            if lo > hi { f64::NAN } else { x.max(lo).min(hi) }
+            let lo = args[1].real();
+            let hi = args[2].real();
+            if lo > hi {
+                T::Real::NAN
+            } else {
+                r0.max(lo).min(hi)
+            }
         }
-        _ => f64::NAN,
+        _ => T::Real::NAN,
     };
     if val.is_nan() {
-        T::NAN
+        T::nan()
     } else {
         T::from_real(val)
     }
@@ -418,8 +362,16 @@ pub(super) fn lookup_universal_real_const(name: &str) -> Option<f64> {
     }
 }
 
-fn lookup_const<T: EvalScalar>(name: &str) -> Option<T> {
-    lookup_universal_real_const(name)
-        .map(T::from_real)
-        .or_else(|| T::extra_const(name))
+fn lookup_const<T: ComplexField>(name: &str) -> Option<T> {
+    if name.eq_ignore_ascii_case("pi") {
+        Some(T::from_real(T::Real::PI))
+    } else if name.eq_ignore_ascii_case("e") {
+        Some(T::from_real(T::Real::E))
+    } else if name.eq_ignore_ascii_case("tau") {
+        Some(T::from_real(T::Real::TAU))
+    } else if !T::imag_unit().is_any_nan() && name.eq_ignore_ascii_case("i") {
+        Some(T::imag_unit())
+    } else {
+        None
+    }
 }

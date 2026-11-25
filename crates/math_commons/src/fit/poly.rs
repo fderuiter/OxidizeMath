@@ -1,28 +1,29 @@
 //! Stack-allocated centered polynomial ordinary least-squares regression (degrees 1–4).
 // [cite:math_commons]
 
+use super::micro_solvers::{StreamingGivensQr, solve_givens_dense_small};
 use super::{CurveFit, FitModel};
 use crate::error::FitError;
 use crate::series::PointSeries;
-use num_traits::Float;
+use math_scalars::RealField;
 
 /// Fits a polynomial of `degree` (`1..=4`) in linear coordinates with zero heap allocations.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub fn fit_polynomial<P: PointSeries + ?Sized>(
+pub fn fit_polynomial<T: RealField, P: PointSeries<T> + ?Sized>(
     points: &P,
     degree: usize,
-) -> Result<CurveFit, FitError> {
+) -> Result<CurveFit<T>, FitError> {
     fit_polynomial_scaled(points, degree, false, false)
 }
 
 /// Fits a polynomial of `degree` (`1..=4`) with optional $\log_{10}$ axis transforms.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub fn fit_polynomial_scaled<P: PointSeries + ?Sized>(
+pub fn fit_polynomial_scaled<T: RealField, P: PointSeries<T> + ?Sized>(
     points: &P,
     degree: usize,
     log_x: bool,
     log_y: bool,
-) -> Result<CurveFit, FitError> {
+) -> Result<CurveFit<T>, FitError> {
     let fit_model = FitModel::from_degree(degree)?;
     let required = degree + 1;
     let (finite_count, valid_count, sum_tx, sum_ty, min_tx, max_tx) =
@@ -40,15 +41,16 @@ pub fn fit_polynomial_scaled<P: PointSeries + ?Sized>(
         });
     }
 
-    let u_mean = sum_tx / (valid_count as f64);
+    let inv_valid = T::ONE / T::from_usize(valid_count);
+    let u_mean = sum_tx * inv_valid;
     let u_scale = (u_mean - min_tx).abs().max((max_tx - u_mean).abs());
-    if !u_mean.is_finite() || !u_scale.is_finite() || u_scale <= 1e-12 {
+    if !u_mean.is_finite() || !u_scale.is_finite() || u_scale <= T::from_f64(1e-12) {
         return Err(FitError::SingularMatrix);
     }
 
     let centered = solve_centered_poly_system(points, degree, (log_x, log_y), (u_mean, u_scale))?;
     let coeffs = uncenter_polynomial_coeffs(u_mean, u_scale, &centered, required);
-    let mean_ty = sum_ty / (valid_count as f64);
+    let mean_ty = sum_ty * inv_valid;
     let (r_squared, rmse) = compute_poly_metrics(
         points,
         &centered[..required],
@@ -73,17 +75,17 @@ pub fn fit_polynomial_scaled<P: PointSeries + ?Sized>(
     .with_centered_poly(u_mean, u_scale, centered))
 }
 
-fn scan_poly_domain<P: PointSeries + ?Sized>(
+fn scan_poly_domain<T: RealField, P: PointSeries<T> + ?Sized>(
     points: &P,
     log_x: bool,
     log_y: bool,
-) -> (usize, usize, f64, f64, f64, f64) {
+) -> (usize, usize, T, T, T, T) {
     let mut finite_count = 0usize;
     let mut valid_count = 0usize;
-    let mut sum_tx = 0.0_f64;
-    let mut sum_ty = 0.0_f64;
-    let mut min_tx = f64::INFINITY;
-    let mut max_tx = f64::NEG_INFINITY;
+    let mut sum_tx = T::ZERO;
+    let mut sum_ty = T::ZERO;
+    let mut min_tx = T::INFINITY;
+    let mut max_tx = T::NEG_INFINITY;
 
     for idx in 0..points.len() {
         let p = points.point_at(idx);
@@ -91,11 +93,11 @@ fn scan_poly_domain<P: PointSeries + ?Sized>(
             continue;
         }
         finite_count += 1;
-        if (log_x && p[0] <= 0.0) || (log_y && p[1] <= 0.0) {
+        if (log_x && p[0] <= T::ZERO) || (log_y && p[1] <= T::ZERO) {
             continue;
         }
-        let tx = if log_x { Float::log10(p[0]) } else { p[0] };
-        let ty = if log_y { Float::log10(p[1]) } else { p[1] };
+        let tx = if log_x { p[0].log10() } else { p[0] };
+        let ty = if log_y { p[1].log10() } else { p[1] };
         valid_count += 1;
         sum_tx += tx;
         sum_ty += ty;
@@ -105,30 +107,30 @@ fn scan_poly_domain<P: PointSeries + ?Sized>(
     (finite_count, valid_count, sum_tx, sum_ty, min_tx, max_tx)
 }
 
-fn solve_centered_poly_system<P: PointSeries + ?Sized>(
+fn solve_centered_poly_system<T: RealField, P: PointSeries<T> + ?Sized>(
     points: &P,
     deg: usize,
     axes: (bool, bool),
-    center_scale: (f64, f64),
-) -> Result<[f64; 5], FitError> {
+    center_scale: (T, T),
+) -> Result<[T; 5], FitError> {
     let required = deg + 1;
     let (log_x, log_y) = axes;
     let (u_mean, u_scale) = center_scale;
-    let mut qr = engine_linalg::StreamingQr::<f64, 5>::new(required)?;
+    let mut qr = StreamingGivensQr::<T>::new(required)?;
 
     for idx in 0..points.len() {
         let p = points.point_at(idx);
         if !p[0].is_finite() || !p[1].is_finite() {
             continue;
         }
-        if (log_x && p[0] <= 0.0) || (log_y && p[1] <= 0.0) {
+        if (log_x && p[0] <= T::ZERO) || (log_y && p[1] <= T::ZERO) {
             continue;
         }
-        let tx = if log_x { Float::log10(p[0]) } else { p[0] };
-        let ty = if log_y { Float::log10(p[1]) } else { p[1] };
+        let tx = if log_x { p[0].log10() } else { p[0] };
+        let ty = if log_y { p[1].log10() } else { p[1] };
         let z = (tx - u_mean) / u_scale;
-        let mut row = [0.0_f64; 5];
-        let mut zp = 1.0_f64;
+        let mut row = [T::ZERO; 5];
+        let mut zp = T::ONE;
         for slot in row.iter_mut().take(required) {
             *slot = zp;
             zp *= z;
@@ -136,16 +138,16 @@ fn solve_centered_poly_system<P: PointSeries + ?Sized>(
         qr.push_row(&row[..required], ty)?;
     }
 
-    Ok(qr.solve(1e-13)?)
+    qr.solve::<5>(T::from_f64(1e-13))
 }
 
-fn uncenter_polynomial_coeffs(
-    u_mean: f64,
-    u_scale: f64,
-    centered: &[f64; 5],
+fn uncenter_polynomial_coeffs<T: RealField>(
+    u_mean: T,
+    u_scale: T,
+    centered: &[T; 5],
     count: usize,
-) -> [f64; 5] {
-    let mut out = [0.0_f64; 5];
+) -> [T; 5] {
+    let mut out = [T::ZERO; 5];
     if count == 0 {
         return out;
     }
@@ -164,28 +166,28 @@ fn uncenter_polynomial_coeffs(
     out
 }
 
-fn compute_poly_metrics<P: PointSeries + ?Sized>(
+fn compute_poly_metrics<T: RealField, P: PointSeries<T> + ?Sized>(
     points: &P,
-    centered_coeffs: &[f64],
-    center_scale: (f64, f64),
+    centered_coeffs: &[T],
+    center_scale: (T, T),
     axes: (bool, bool),
-    mean_ty: f64,
+    mean_ty: T,
     valid_count: usize,
-) -> (f64, f64) {
+) -> (T, T) {
     let (u_mean, u_scale) = center_scale;
     let (log_x, log_y) = axes;
-    let mut ss_tot = 0.0_f64;
-    let mut ss_res = 0.0_f64;
+    let mut ss_tot = T::ZERO;
+    let mut ss_res = T::ZERO;
     for idx in 0..points.len() {
         let p = points.point_at(idx);
         if !p[0].is_finite() || !p[1].is_finite() {
             continue;
         }
-        if (log_x && p[0] <= 0.0) || (log_y && p[1] <= 0.0) {
+        if (log_x && p[0] <= T::ZERO) || (log_y && p[1] <= T::ZERO) {
             continue;
         }
-        let tx = if log_x { Float::log10(p[0]) } else { p[0] };
-        let ty = if log_y { Float::log10(p[1]) } else { p[1] };
+        let tx = if log_x { p[0].log10() } else { p[0] };
+        let ty = if log_y { p[1].log10() } else { p[1] };
         let z = (tx - u_mean) / u_scale;
         let pred = eval_polynomial_horner_raw(centered_coeffs, z);
         let diff = ty - pred;
@@ -193,14 +195,14 @@ fn compute_poly_metrics<P: PointSeries + ?Sized>(
         ss_res += diff * diff;
         ss_tot += tot * tot;
     }
-    let r_squared = if ss_tot > 1e-15 {
-        (1.0 - ss_res / ss_tot).clamp(-10.0, 1.0)
-    } else if ss_res <= 1e-12 {
-        1.0
+    let r_squared = if ss_tot > T::from_f64(1e-15) {
+        (T::ONE - ss_res / ss_tot).clamp(T::from_f64(-10.0), T::ONE)
+    } else if ss_res <= T::from_f64(1e-12) {
+        T::ONE
     } else {
-        0.0
+        T::ZERO
     };
-    let rmse = Float::sqrt(ss_res / (valid_count as f64));
+    let rmse = (ss_res / T::from_usize(valid_count)).sqrt();
     (r_squared, rmse)
 }
 
@@ -208,13 +210,13 @@ fn compute_poly_metrics<P: PointSeries + ?Sized>(
 #[inline]
 #[must_use]
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub fn eval_polynomial_horner(coeffs: &[f64], x: f64) -> f64 {
+pub fn eval_polynomial_horner<T: RealField>(coeffs: &[T], x: T) -> T {
     eval_polynomial_horner_raw(coeffs, x)
 }
 
 #[inline(always)]
-pub(super) fn eval_polynomial_horner_raw(coeffs: &[f64], x: f64) -> f64 {
-    let mut acc = 0.0_f64;
+pub(super) fn eval_polynomial_horner_raw<T: RealField>(coeffs: &[T], x: T) -> T {
+    let mut acc = T::ZERO;
     let mut k = coeffs.len();
     while k > 0 {
         k -= 1;
@@ -223,53 +225,33 @@ pub(super) fn eval_polynomial_horner_raw(coeffs: &[f64], x: f64) -> f64 {
     acc
 }
 
-/// Solves an $n \times n$ ($1 \le n \le 5$) dense linear system $A x = b$ on the stack via Gaussian elimination with partial pivoting.
+/// Solves an $n \times n$ ($1 \le n \le 5$) dense linear system $A x = b$ on the stack via orthogonal Givens QR rotations.
 ///
 /// Reference: Golub & Van Loan (2013), DOI: 10.56021/9781421407944; [math_commons specification](../../../../docs/math_specs/math_commons.md).
 ///
 /// # Stability
-/// Partial column pivoting bounds element growth for $n \le 5$; pivots with $|p| < 10^{-12}$ fail closed with [`FitError::SingularMatrix`].
+/// Coupled Givens plane rotations orthogonalize the leading $n \times n$ block on stack arrays; near-singular diagonal entries fail closed with [`FitError::SingularMatrix`].
 ///
 /// # Domain of Validity
 /// Requires $1 \le n \le 5$, finite entries in the leading $n \times n$ block of `mat` and `rhs`, and $\det(A) \neq 0$.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub fn solve_dense_small(
-    mat: &mut [[f64; 5]; 5],
-    rhs: &[f64; 5],
+pub fn solve_dense_small<T: RealField>(
+    mat: &mut [[T; 5]; 5],
+    rhs: &[T; 5],
     n: usize,
-) -> Result<[f64; 5], FitError> {
-    solve_dense_n_raw(mat, rhs, n)
+) -> Result<[T; 5], FitError> {
+    solve_givens_dense_small(mat, rhs, n)
 }
 
-pub(super) fn solve_dense_small_raw(
-    mat: &mut [[f64; 5]; 5],
-    rhs: &[f64; 5],
+pub(super) fn solve_dense_small_raw<T: RealField>(
+    mat: &mut [[T; 5]; 5],
+    rhs: &[T; 5],
     n: usize,
-) -> Result<[f64; 5], FitError> {
-    solve_dense_n_raw(mat, rhs, n)
+) -> Result<[T; 5], FitError> {
+    solve_givens_dense_small(mat, rhs, n)
 }
 
-pub(super) fn solve_dense_n_raw<const N: usize>(
-    mat: &mut [[f64; N]; N],
-    rhs: &[f64; N],
-    n: usize,
-) -> Result<[f64; N], FitError> {
-    if n == 0 || n > N || n > 16 {
-        return Err(FitError::SingularMatrix);
-    }
-    let mut flat = [0.0_f64; 256];
-    for (r, row) in mat.iter().enumerate().take(n) {
-        let dst_start = r * n;
-        flat[dst_start..(dst_start + n)].copy_from_slice(&row[..n]);
-    }
-    let mut pivots = [0_usize; 16];
-    engine_linalg::lu_factor_in_place(&mut flat[..(n * n)], n, &mut pivots[..n], 1e-12)?;
-    let mut x = [0.0_f64; N];
-    engine_linalg::lu_solve_factored(&flat[..(n * n)], n, &pivots[..n], &rhs[..n], &mut x[..n])?;
-    Ok(x)
-}
-
-pub(crate) fn symmetrize_upper<const N: usize>(mat: &mut [[f64; N]; N], n: usize) {
+pub(crate) fn symmetrize_upper<T: Copy, const N: usize>(mat: &mut [[T; N]; N], n: usize) {
     for row in 0..n {
         let (head, tail) = mat[..n].split_at_mut(row + 1);
         let src = &head[row][row + 1..n];

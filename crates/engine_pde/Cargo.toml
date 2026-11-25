@@ -5,13 +5,20 @@ edition = "2024"
 
 [features]
 default = []
-alloc = ["math_commons/alloc", "math_rng/alloc"]
-serde = ["dep:serde", "math_commons/serde", "math_diagnostics/serde", "math_rng/serde"]
+alloc = ["math_commons/alloc", "math_rng/alloc", "math_scalars/alloc"]
+serde = [
+    "dep:serde",
+    "math_commons/serde",
+    "math_diagnostics/serde",
+    "math_rng/serde",
+    "math_scalars/serde",
+]
 std = [
     "alloc",
     "math_commons/std",
     "math_diagnostics/std",
     "math_rng/std",
+    "math_scalars/std",
     "serde?/std",
     "verified_engine/std",
 ]
@@ -20,6 +27,7 @@ std = [
 math_commons = { path = "../math_commons", default-features = false }
 math_diagnostics = { path = "../00_foundation/math_diagnostics", default-features = false }
 math_rng = { path = "../00_foundation/math_rng", default-features = false }
+math_scalars = { path = "../00_foundation/math_scalars", default-features = false }
 rand_core = { workspace = true }
 serde = { workspace = true, optional = true }
 verified_engine = { version = "0.1.0", path = "../verified_engine", default-features = false }

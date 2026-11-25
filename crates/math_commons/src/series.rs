@@ -3,6 +3,7 @@
 
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
+use math_scalars::RealField;
 
 /// Unrolled 16-wide branchless plateau scan over contiguous `(x, y)` sample slices.
 #[doc(hidden)]
@@ -73,12 +74,12 @@ macro_rules! advance_sample2d_plateau {
 }
 
 /// Single 2D `(x, y)` coordinate sample enabling blanket [`PointSeries`] slice implementations.
-pub trait Sample2D {
+pub trait Sample2D<T = f64> {
     /// Returns the horizontal (`x`) coordinate of this sample.
-    fn sample_x(&self) -> f64;
+    fn sample_x(&self) -> T;
 
     /// Returns the vertical (`y`) coordinate of this sample.
-    fn sample_y(&self) -> f64;
+    fn sample_y(&self) -> T;
 
     /// Advances from `start` up to `end` across `slice` while `y == flat_y` and `x_min <= x <= x_max`.
     #[inline(always)]
@@ -86,12 +87,13 @@ pub trait Sample2D {
         slice: &[Self],
         mut start: usize,
         end: usize,
-        flat_y: f64,
-        x_min: f64,
-        x_max: f64,
+        flat_y: T,
+        x_min: T,
+        x_max: T,
     ) -> usize
     where
         Self: Sized,
+        T: Copy + PartialOrd,
     {
         let end = end.min(slice.len());
         while start < end {
@@ -106,14 +108,14 @@ pub trait Sample2D {
     }
 }
 
-impl Sample2D for [f64; 2] {
+impl<T: RealField> Sample2D<T> for [T; 2] {
     #[inline(always)]
-    fn sample_x(&self) -> f64 {
+    fn sample_x(&self) -> T {
         self[0]
     }
 
     #[inline(always)]
-    fn sample_y(&self) -> f64 {
+    fn sample_y(&self) -> T {
         self[1]
     }
 
@@ -122,22 +124,22 @@ impl Sample2D for [f64; 2] {
         slice: &[Self],
         start: usize,
         end: usize,
-        flat_y: f64,
-        x_min: f64,
-        x_max: f64,
+        flat_y: T,
+        x_min: T,
+        x_max: T,
     ) -> usize {
         advance_sample2d_plateau!(slice, start, end, flat_y, x_min, x_max, |p| (p[0], p[1]))
     }
 }
 
-impl Sample2D for (f64, f64) {
+impl<T: RealField> Sample2D<T> for (T, T) {
     #[inline(always)]
-    fn sample_x(&self) -> f64 {
+    fn sample_x(&self) -> T {
         self.0
     }
 
     #[inline(always)]
-    fn sample_y(&self) -> f64 {
+    fn sample_y(&self) -> T {
         self.1
     }
 
@@ -146,20 +148,16 @@ impl Sample2D for (f64, f64) {
         slice: &[Self],
         start: usize,
         end: usize,
-        flat_y: f64,
-        x_min: f64,
-        x_max: f64,
+        flat_y: T,
+        x_min: T,
+        x_max: T,
     ) -> usize {
         advance_sample2d_plateau!(slice, start, end, flat_y, x_min, x_max, |p| (p.0, p.1))
     }
 }
 
-/// Zero-copy indexed view over a sequence of 2D `(x, y)` observations.
-///
-/// Implemented for `[f64; 2]` slices/arrays/vectors, `(f64, f64)` slices/arrays/vectors,
-/// paired coordinate slices `(&[f64], &[f64])`, and downstream UI point types implementing
-/// [`Sample2D`].
-pub trait PointSeries {
+/// Zero-copy indexed view over a sequence of 2D `(x, y)` observations over scalar `T`.
+pub trait PointSeries<T = f64> {
     /// Number of accessible `(x, y)` points in the series.
     fn len(&self) -> usize;
 
@@ -170,20 +168,23 @@ pub trait PointSeries {
     }
 
     /// Horizontal (`x`) coordinate at `index`.
-    fn x_at(&self, index: usize) -> f64;
+    fn x_at(&self, index: usize) -> T;
 
     /// Vertical (`y`) coordinate at `index`.
-    fn y_at(&self, index: usize) -> f64;
+    fn y_at(&self, index: usize) -> T;
 
     /// Returns `[x, y]` at `index`.
     #[inline(always)]
-    fn point_at(&self, index: usize) -> [f64; 2] {
+    fn point_at(&self, index: usize) -> [T; 2] {
         [self.x_at(index), self.y_at(index)]
     }
 
     /// Advances from `start` while each sample satisfies `(y == flat_y) & (x >= x_min) & (x <= x_max)`.
     #[inline(always)]
-    fn advance_plateau_run(&self, mut start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+    fn advance_plateau_run(&self, mut start: usize, flat_y: T, x_min: T, x_max: T) -> usize
+    where
+        T: Copy + PartialOrd,
+    {
         let n = self.len();
         while start < n {
             let [x, y] = self.point_at(start);
@@ -196,159 +197,159 @@ pub trait PointSeries {
     }
 }
 
-impl<S: Sample2D> PointSeries for [S] {
+impl<T: Copy + PartialOrd, S: Sample2D<T>> PointSeries<T> for [S] {
     #[inline(always)]
     fn len(&self) -> usize {
         <[S]>::len(self)
     }
 
     #[inline(always)]
-    fn x_at(&self, index: usize) -> f64 {
+    fn x_at(&self, index: usize) -> T {
         self[index].sample_x()
     }
 
     #[inline(always)]
-    fn y_at(&self, index: usize) -> f64 {
+    fn y_at(&self, index: usize) -> T {
         self[index].sample_y()
     }
 
     #[inline(always)]
-    fn point_at(&self, index: usize) -> [f64; 2] {
+    fn point_at(&self, index: usize) -> [T; 2] {
         let s = &self[index];
         [s.sample_x(), s.sample_y()]
     }
 
     #[inline(always)]
-    fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+    fn advance_plateau_run(&self, start: usize, flat_y: T, x_min: T, x_max: T) -> usize {
         S::advance_slice_plateau(self, start, <[S]>::len(self), flat_y, x_min, x_max)
     }
 }
 
-impl<S: Sample2D, const N: usize> PointSeries for [S; N] {
+impl<T: Copy + PartialOrd, S: Sample2D<T>, const N: usize> PointSeries<T> for [S; N] {
     #[inline(always)]
     fn len(&self) -> usize {
         N
     }
 
     #[inline(always)]
-    fn x_at(&self, index: usize) -> f64 {
+    fn x_at(&self, index: usize) -> T {
         self[index].sample_x()
     }
 
     #[inline(always)]
-    fn y_at(&self, index: usize) -> f64 {
+    fn y_at(&self, index: usize) -> T {
         self[index].sample_y()
     }
 
     #[inline(always)]
-    fn point_at(&self, index: usize) -> [f64; 2] {
+    fn point_at(&self, index: usize) -> [T; 2] {
         let s = &self[index];
         [s.sample_x(), s.sample_y()]
     }
 
     #[inline(always)]
-    fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+    fn advance_plateau_run(&self, start: usize, flat_y: T, x_min: T, x_max: T) -> usize {
         S::advance_slice_plateau(self, start, N, flat_y, x_min, x_max)
     }
 }
 
 #[cfg(feature = "alloc")]
-impl<S: Sample2D> PointSeries for Vec<S> {
+impl<T: Copy + PartialOrd, S: Sample2D<T>> PointSeries<T> for Vec<S> {
     #[inline(always)]
     fn len(&self) -> usize {
         Vec::len(self)
     }
 
     #[inline(always)]
-    fn x_at(&self, index: usize) -> f64 {
+    fn x_at(&self, index: usize) -> T {
         self[index].sample_x()
     }
 
     #[inline(always)]
-    fn y_at(&self, index: usize) -> f64 {
+    fn y_at(&self, index: usize) -> T {
         self[index].sample_y()
     }
 
     #[inline(always)]
-    fn point_at(&self, index: usize) -> [f64; 2] {
+    fn point_at(&self, index: usize) -> [T; 2] {
         let s = &self[index];
         [s.sample_x(), s.sample_y()]
     }
 
     #[inline(always)]
-    fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+    fn advance_plateau_run(&self, start: usize, flat_y: T, x_min: T, x_max: T) -> usize {
         S::advance_slice_plateau(self, start, Vec::len(self), flat_y, x_min, x_max)
     }
 }
 
-impl<T: PointSeries + ?Sized> PointSeries for &T {
+impl<T: Copy + PartialOrd, P: PointSeries<T> + ?Sized> PointSeries<T> for &P {
     #[inline(always)]
     fn len(&self) -> usize {
         (**self).len()
     }
 
     #[inline(always)]
-    fn x_at(&self, index: usize) -> f64 {
+    fn x_at(&self, index: usize) -> T {
         (**self).x_at(index)
     }
 
     #[inline(always)]
-    fn y_at(&self, index: usize) -> f64 {
+    fn y_at(&self, index: usize) -> T {
         (**self).y_at(index)
     }
 
     #[inline(always)]
-    fn point_at(&self, index: usize) -> [f64; 2] {
+    fn point_at(&self, index: usize) -> [T; 2] {
         (**self).point_at(index)
     }
 
     #[inline(always)]
-    fn advance_plateau_run(&self, start: usize, flat_y: f64, x_min: f64, x_max: f64) -> usize {
+    fn advance_plateau_run(&self, start: usize, flat_y: T, x_min: T, x_max: T) -> usize {
         (**self).advance_plateau_run(start, flat_y, x_min, x_max)
     }
 }
 
-impl PointSeries for (&[f64], &[f64]) {
+impl<T: RealField> PointSeries<T> for (&[T], &[T]) {
     #[inline(always)]
     fn len(&self) -> usize {
         self.0.len().min(self.1.len())
     }
 
     #[inline(always)]
-    fn x_at(&self, index: usize) -> f64 {
+    fn x_at(&self, index: usize) -> T {
         self.0[index]
     }
 
     #[inline(always)]
-    fn y_at(&self, index: usize) -> f64 {
+    fn y_at(&self, index: usize) -> T {
         self.1[index]
     }
 
     #[inline(always)]
-    fn point_at(&self, index: usize) -> [f64; 2] {
+    fn point_at(&self, index: usize) -> [T; 2] {
         [self.0[index], self.1[index]]
     }
 }
 
 #[cfg(feature = "alloc")]
-impl PointSeries for (&Vec<f64>, &Vec<f64>) {
+impl<T: RealField> PointSeries<T> for (&Vec<T>, &Vec<T>) {
     #[inline(always)]
     fn len(&self) -> usize {
         self.0.len().min(self.1.len())
     }
 
     #[inline(always)]
-    fn x_at(&self, index: usize) -> f64 {
+    fn x_at(&self, index: usize) -> T {
         self.0[index]
     }
 
     #[inline(always)]
-    fn y_at(&self, index: usize) -> f64 {
+    fn y_at(&self, index: usize) -> T {
         self.1[index]
     }
 
     #[inline(always)]
-    fn point_at(&self, index: usize) -> [f64; 2] {
+    fn point_at(&self, index: usize) -> [T; 2] {
         [self.0[index], self.1[index]]
     }
 }

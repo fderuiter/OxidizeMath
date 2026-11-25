@@ -7,9 +7,7 @@ use super::{
 };
 #[cfg(feature = "std")]
 use crate::ast::ShaderTarget;
-use core::f64::consts::{PI, TAU};
-#[cfg(not(feature = "std"))]
-use num_traits::Float as _;
+use math_scalars::RealField;
 
 /// Analytical shader palette family shared across CPU rasterizers and exported WGSL/GLSL shaders.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -96,45 +94,49 @@ impl ShaderPalette {
 }
 
 #[inline]
-fn wrap_unit(x: f64) -> f64 {
-    (x - x.floor()).clamp(0.0, 1.0)
+fn wrap_unit<T: RealField>(x: T) -> T {
+    (x - x.floor()).clamp(T::ZERO, T::ONE)
 }
 
-fn phase_wheel_unit(phase_rad: f64) -> [f64; 3] {
+fn phase_wheel_unit<T: RealField>(phase_rad: T) -> [T; 3] {
     if !phase_rad.is_finite() {
-        return [0.0, 0.0, 0.0];
+        return [T::ZERO, T::ZERO, T::ZERO];
     }
-    let h = wrap_unit(phase_rad / TAU);
-    let r = (((h * 6.0 - 3.0).abs()) - 1.0).clamp(0.0, 1.0);
-    let g = (((wrap_unit(h + 2.0 / 3.0) * 6.0 - 3.0).abs()) - 1.0).clamp(0.0, 1.0);
-    let b = (((wrap_unit(h + 1.0 / 3.0) * 6.0 - 3.0).abs()) - 1.0).clamp(0.0, 1.0);
+    let six = T::from_f64(6.0);
+    let three = T::from_f64(3.0);
+    let third = T::ONE / three;
+    let two_thirds = T::from_f64(2.0) * third;
+    let h = wrap_unit(phase_rad / T::TAU);
+    let r = ((h * six - three).abs() - T::ONE).clamp(T::ZERO, T::ONE);
+    let g = ((wrap_unit(h + two_thirds) * six - three).abs() - T::ONE).clamp(T::ZERO, T::ONE);
+    let b = ((wrap_unit(h + third) * six - three).abs() - T::ONE).clamp(T::ZERO, T::ONE);
     [r, g, b]
 }
 
 /// Maps a complex phase angle in radians to an RGB color on a continuous $2\pi$-periodic hue wheel.
 #[inline]
 #[must_use]
-pub fn phase_wheel_color(phase_rad: f64) -> [u8; 3] {
-    phase_wheel_unit(phase_rad).map(|ch| (ch * 255.0) as u8)
+pub fn phase_wheel_color<T: RealField>(phase_rad: T) -> [u8; 3] {
+    phase_wheel_unit(phase_rad).map(|ch| (ch.to_f64() * 255.0) as u8)
 }
 
 /// High-contrast variant of [`phase_wheel_color`] guaranteed to exceed `3.0:1` contrast on `#000000`.
 #[inline]
 #[must_use]
-pub fn phase_wheel_color_high_contrast(phase_rad: f64) -> [u8; 3] {
+pub fn phase_wheel_color_high_contrast<T: RealField>(phase_rad: T) -> [u8; 3] {
     ensure_dark_canvas_contrast(phase_wheel_color(phase_rad))
 }
 
 /// Evaluates an escape-time scalar `iter_val` in `[0, max_iter]` under `palette` and optional WCAG `3.0:1` contrast lifting.
 #[must_use]
-pub fn evaluate_fractal_palette(
-    iter_val: f64,
+pub fn evaluate_fractal_palette<T: RealField>(
+    iter_val: T,
     max_iter: u32,
     palette: ShaderPalette,
     high_contrast: bool,
 ) -> [u8; 3] {
-    let denom = f64::from(max_iter.max(1));
-    let norm_t = (iter_val / denom).clamp(0.0, 1.0);
+    let denom = T::from_f64(f64::from(max_iter.max(1)));
+    let norm_t = (iter_val / denom).clamp(T::ZERO, T::ONE);
     let base = match palette {
         ShaderPalette::CyclicCosine => {
             if high_contrast {
@@ -148,8 +150,8 @@ pub fn evaluate_fractal_palette(
             }
             heatmap_color(norm_t)
         }
-        ShaderPalette::MappedGradient => mapped_gradient(norm_t, 0.0, 1.0),
-        ShaderPalette::PhaseWheel => phase_wheel_color(iter_val * 0.25),
+        ShaderPalette::MappedGradient => mapped_gradient(norm_t, T::ZERO, T::ONE),
+        ShaderPalette::PhaseWheel => phase_wheel_color(iter_val * T::from_f64(0.25)),
     };
     if high_contrast {
         ensure_dark_canvas_contrast(base)
@@ -160,9 +162,9 @@ pub fn evaluate_fractal_palette(
 
 /// Computes continuous complex domain coloring (phase hue + octave log-modulus contours) for $w = \text{re} + i\,\text{im}$.
 #[must_use]
-pub fn domain_color_with_palette(
-    re: f64,
-    im: f64,
+pub fn domain_color_with_palette<T: RealField>(
+    re: T,
+    im: T,
     palette: ShaderPalette,
     high_contrast: bool,
 ) -> [u8; 3] {
@@ -175,24 +177,23 @@ pub fn domain_color_with_palette(
         };
     }
     let phase = im.atan2(re);
-    let norm_phase = ((phase + PI) / TAU).clamp(0.0, 1.0);
+    let norm_phase = ((phase + T::PI) / T::TAU).clamp(T::ZERO, T::ONE);
     let r = re.hypot(im);
-    let log_r = r.max(1.0e-12).log2();
-    let ring = 0.78 + 0.22 * (0.5 + 0.5 * (TAU * log_r).cos());
-    let env = 0.20 + 0.80 * (r / (r + 1.0));
-    let shade = (ring * env).clamp(0.0, 1.0);
+    let log_r = r.max(T::from_f64(1.0e-12)).log2();
+    let half = T::from_f64(0.5);
+    let ring = T::from_f64(0.78) + T::from_f64(0.22) * (half + half * (T::TAU * log_r).cos());
+    let env = T::from_f64(0.20) + T::from_f64(0.80) * (r / (r + T::ONE));
+    let shade = (ring * env).clamp(T::ZERO, T::ONE).to_f64();
 
     let base_u8 = match palette {
         ShaderPalette::PhaseWheel => phase_wheel_color(phase),
-        ShaderPalette::CyclicCosine => cyclic_cosine_palette(norm_phase * 40.0 + log_r * 2.0),
+        ShaderPalette::CyclicCosine => {
+            cyclic_cosine_palette(norm_phase * T::from_f64(40.0) + log_r * T::from_f64(2.0))
+        }
         ShaderPalette::Heatmap => heatmap_color(norm_phase),
-        ShaderPalette::MappedGradient => mapped_gradient(norm_phase, 0.0, 1.0),
+        ShaderPalette::MappedGradient => mapped_gradient(norm_phase, T::ZERO, T::ONE),
     };
-    let shaded = [
-        (f64::from(base_u8[0]) * shade) as u8,
-        (f64::from(base_u8[1]) * shade) as u8,
-        (f64::from(base_u8[2]) * shade) as u8,
-    ];
+    let shaded = base_u8.map(|ch| (f64::from(ch) * shade) as u8);
     if high_contrast {
         ensure_dark_canvas_contrast(shaded)
     } else {
@@ -203,7 +204,7 @@ pub fn domain_color_with_palette(
 /// Computes phase-wheel continuous domain coloring for $w = \text{re} + i\,\text{im}$.
 #[inline]
 #[must_use]
-pub fn domain_color(re: f64, im: f64, high_contrast: bool) -> [u8; 3] {
+pub fn domain_color<T: RealField>(re: T, im: T, high_contrast: bool) -> [u8; 3] {
     domain_color_with_palette(re, im, ShaderPalette::PhaseWheel, high_contrast)
 }
 

@@ -32,9 +32,9 @@ pub use intersect::{
 /// Sub-segment interior local extremum (maximum or minimum) refined via parabolic interpolation.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct LocalExtremum {
+pub struct LocalExtremum<T = f64> {
     /// Refined `[x, y]` coordinate of the local extremum.
-    pub point: [f64; 2],
+    pub point: [T; 2],
     /// `true` for a local maximum, `false` for a local minimum.
     pub is_max: bool,
 }

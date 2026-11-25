@@ -77,7 +77,7 @@ fn test_exact_byte_node_and_instruction_boundaries() {
     let compiled_256 =
         CompiledExpr::compile_with_vars(&expr_256, &["x"]).expect("256 instructions must compile");
     assert_eq!(compiled_256.instruction_count(), MAX_COMPILED_INSTRUCTIONS);
-    assert!((compiled_256.eval_1d(1.0, &[]) + 128.0).abs() < 1e-12);
+    assert!((compiled_256.eval_1d(1.0_f64, &[]) + 128.0).abs() < 1e-12);
 
     let over_257 = format!("{h7}+x");
     assert_eq!(

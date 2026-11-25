@@ -5,7 +5,7 @@ use math_commons::math_kernel::types::StepSize;
 
 #[test]
 fn test_stencil_operators_precomputation() {
-    let ops = StencilOperators::new_2d(StepSize(0.5), StepSize(0.25));
+    let ops = StencilOperators::new_2d(StepSize(0.5_f64), StepSize(0.25_f64));
     assert!((ops.inv_dx - 2.0).abs() < 1e-12);
     assert!((ops.inv_dy - 4.0).abs() < 1e-12);
     assert!((ops.inv_two_dx - 1.0).abs() < 1e-12);
@@ -14,12 +14,16 @@ fn test_stencil_operators_precomputation() {
     assert!((ops.inv_dz_sq - 1.0).abs() < 1e-12);
 
     let ops_3d =
-        StencilOperators::try_new_3d(StepSize(0.5), StepSize(0.25), StepSize(0.2)).unwrap();
+        StencilOperators::try_new_3d(StepSize(0.5_f64), StepSize(0.25_f64), StepSize(0.2_f64))
+            .unwrap();
     assert!((ops_3d.inv_dy - 4.0).abs() < 1e-12);
     assert!((ops_3d.inv_dz_sq - 25.0).abs() < 1e-12);
-    assert!(FusedStencilStepper::try_new_3d(StepSize(1.0), StepSize(1.0), StepSize(0.0)).is_err());
+    assert!(
+        FusedStencilStepper::try_new_3d(StepSize(1.0_f64), StepSize(1.0_f64), StepSize(0.0_f64))
+            .is_err()
+    );
 
-    let ops_1d = StencilOperators::new(StepSize(2.0));
+    let ops_1d = StencilOperators::new(StepSize(2.0_f64));
     assert!((ops_1d.inv_dx - 0.5).abs() < 1e-12);
     assert!((ops_1d.inv_dy - 1.0).abs() < 1e-12);
     assert!((ops_1d.inv_two_dx - 0.25).abs() < 1e-12);
@@ -30,19 +34,19 @@ fn test_stencil_operators_precomputation() {
 #[test]
 #[should_panic(expected = "Step size dx must be positive and non-zero")]
 fn test_stencil_operators_invalid_dx() {
-    StencilOperators::new(StepSize(0.0));
+    StencilOperators::new(StepSize(0.0_f64));
 }
 
 #[test]
 #[should_panic(expected = "Step size dy must be positive and non-zero")]
 fn test_stencil_operators_invalid_dy() {
-    StencilOperators::new_2d(StepSize(1.0), StepSize(-0.5));
+    StencilOperators::new_2d(StepSize(1.0_f64), StepSize(-0.5_f64));
 }
 
 #[test]
 fn test_stencil_operator_evaluations() {
-    let dx = 0.2;
-    let dy = 0.4;
+    let dx = 0.2_f64;
+    let dy = 0.4_f64;
     let ops = StencilOperators::new_2d(StepSize(dx), StepSize(dy));
 
     let cd1 = ops.central_diff_1st(1.0, 3.0);

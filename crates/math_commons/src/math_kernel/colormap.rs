@@ -2,6 +2,7 @@
 //! Handles custom color-gradient and step-linear mappings across the codebase.
 // [cite:math_commons]
 
+use math_scalars::RealField;
 #[cfg(not(feature = "std"))]
 use num_traits::Float as _;
 
@@ -15,28 +16,27 @@ use num_traits::Float as _;
 /// assert_eq!(heatmap_color(1.0), [255, 0, 0]);
 /// ```
 #[inline(always)]
-pub fn heatmap_color(mut t: f64) -> [u8; 3] {
-    t = t.clamp(0.0, 1.0);
+pub fn heatmap_color<T: RealField>(t: T) -> [u8; 3] {
+    let tc = t.clamp(T::ZERO, T::ONE);
+    let two = T::from_f64(2.0);
 
     // Low: Blue, Mid: Green, High: Red
-    let r = (t * 2.0 - 1.0).max(0.0);
-    let g = (1.0 - (t * 2.0 - 1.0).abs()).max(0.0);
-    let b = (1.0 - t * 2.0).max(0.0);
+    let r = (tc * two - T::ONE).max(T::ZERO);
+    let g = (T::ONE - (tc * two - T::ONE).abs()).max(T::ZERO);
+    let b = (T::ONE - tc * two).max(T::ZERO);
 
-    let r_u8 = (r * 255.0) as u8;
-    let g_u8 = (g * 255.0) as u8;
-    let b_u8 = (b * 255.0) as u8;
-
-    [r_u8, g_u8, b_u8]
+    [r, g, b].map(|ch| (ch.to_f64() * 255.0) as u8)
 }
 
 /// Maps a cyclic scalar parameter `n` to an RGB color via phase-shifted cosine channels.
 #[inline(always)]
-pub fn cyclic_cosine_palette(n: f64) -> [u8; 3] {
-    let r = (0.5 + 0.5 * (3.0 + n * 0.15).cos()) * 255.0;
-    let g = (0.5 + 0.5 * (3.0 + n * 0.15 + 2.0).cos()) * 255.0;
-    let b = (0.5 + 0.5 * (3.0 + n * 0.15 + 4.0).cos()) * 255.0;
-    [r as u8, g as u8, b as u8]
+pub fn cyclic_cosine_palette<T: RealField>(n: T) -> [u8; 3] {
+    let half = T::from_f64(0.5);
+    let phase = T::from_f64(3.0) + n * T::from_f64(0.15);
+    let r = half + half * phase.cos();
+    let g = half + half * (phase + T::from_f64(2.0)).cos();
+    let b = half + half * (phase + T::from_f64(4.0)).cos();
+    [r, g, b].map(|ch| (ch.to_f64() * 255.0) as u8)
 }
 
 /// Maps a normalized scalar value using a step-linear gradient.
@@ -51,12 +51,12 @@ pub fn cyclic_cosine_palette(n: f64) -> [u8; 3] {
 /// assert_eq!(red, [255, 0, 0]);
 /// ```
 #[inline(always)]
-pub fn mapped_gradient(value: f64, min_val: f64, max_val: f64) -> [u8; 3] {
+pub fn mapped_gradient<T: RealField>(value: T, min_val: T, max_val: T) -> [u8; 3] {
     let range = max_val - min_val;
-    let normalized = if range == 0.0 {
+    let normalized = if range == T::ZERO {
         0.5
     } else {
-        ((value - min_val) / range).clamp(0.0, 1.0)
+        ((value - min_val) / range).clamp(T::ZERO, T::ONE).to_f64()
     };
 
     // Blue -> Cyan -> Green -> Yellow -> Red
@@ -150,7 +150,7 @@ pub fn ensure_dark_canvas_contrast(rgb: [u8; 3]) -> [u8; 3] {
 /// ```
 #[inline]
 #[must_use]
-pub fn heatmap_color_high_contrast(t: f64) -> [u8; 3] {
+pub fn heatmap_color_high_contrast<T: RealField>(t: T) -> [u8; 3] {
     ensure_dark_canvas_contrast(heatmap_color(t))
 }
 
@@ -165,7 +165,7 @@ pub fn heatmap_color_high_contrast(t: f64) -> [u8; 3] {
 /// ```
 #[inline]
 #[must_use]
-pub fn cyclic_cosine_palette_high_contrast(n: f64) -> [u8; 3] {
+pub fn cyclic_cosine_palette_high_contrast<T: RealField>(n: T) -> [u8; 3] {
     ensure_dark_canvas_contrast(cyclic_cosine_palette(n))
 }
 

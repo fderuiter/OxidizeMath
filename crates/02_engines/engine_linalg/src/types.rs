@@ -4,7 +4,7 @@
 //! Error types, caller-owned [`SolverWorkspace`] buffers, row-major views, and stack array kernels.
 
 use crate::scalar::Scalar;
-use core::fmt;
+pub use math_diagnostics::LinalgError;
 
 /// Computes the flat row-major index for `(row, col)` in a matrix with `ncols` columns.
 /// `[cite:engine_linalg]`
@@ -23,92 +23,6 @@ pub fn check_all_finite<T: Scalar>(slice: &[T]) -> Result<(), LinalgError> {
         }
     }
     Ok(())
-}
-
-/// Typed `#![no_std]` error returned by [`crate`] factorizations and iterative solvers.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum LinalgError {
-    /// Matrix or vector dimensions do not conform to the requested operation.
-    DimensionMismatch,
-    /// Caller-supplied [`SolverWorkspace`] slice does not have enough capacity.
-    WorkspaceTooSmall {
-        /// Minimum scalar elements required by the routine.
-        required: usize,
-        /// Available scalar elements in the workspace.
-        available: usize,
-    },
-    /// Input contains `NaN`, `Infinity`, or an out-of-domain parameter (such as negative ridge $\lambda$).
-    InvalidInput,
-    /// Matrix is numerically singular or rank-deficient beyond the solver's requirements.
-    SingularMatrix,
-    /// Matrix is asymmetric or fails positive-definite / positive-semidefinite checks.
-    NotPositiveDefinite,
-    /// Iterative decomposition or Krylov solver exceeded its iteration budget without converging.
-    NonConvergence,
-}
-
-impl fmt::Display for LinalgError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::DimensionMismatch => f.write_str("matrix or vector dimensions do not match"),
-            Self::WorkspaceTooSmall {
-                required,
-                available,
-            } => write!(
-                f,
-                "solver workspace too small: required {required} scalars, available {available}"
-            ),
-            Self::InvalidInput => {
-                f.write_str("linear algebra input contains non-finite values or invalid parameters")
-            }
-            Self::SingularMatrix => f.write_str("matrix is numerically singular or rank-deficient"),
-            Self::NotPositiveDefinite => {
-                f.write_str("matrix is not symmetric positive-definite or positive-semidefinite")
-            }
-            Self::NonConvergence => {
-                f.write_str("iterative linear algebra algorithm failed to converge within budget")
-            }
-        }
-    }
-}
-
-impl core::error::Error for LinalgError {}
-
-impl math_diagnostics::Diagnostic for LinalgError {
-    fn severity(&self) -> math_diagnostics::Severity {
-        math_diagnostics::Severity::Error
-    }
-
-    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
-        visitor.record_str("error_type", "LinalgError");
-        visitor.record_display("description", self);
-        match self {
-            Self::DimensionMismatch => {
-                visitor.record_str("code", "LINALG-001");
-            }
-            Self::WorkspaceTooSmall {
-                required,
-                available,
-            } => {
-                visitor.record_str("code", "LINALG-002");
-                visitor.record_usize("required", *required);
-                visitor.record_usize("available", *available);
-            }
-            Self::InvalidInput => {
-                visitor.record_str("code", "LINALG-003");
-            }
-            Self::SingularMatrix => {
-                visitor.record_str("code", "LINALG-004");
-            }
-            Self::NotPositiveDefinite => {
-                visitor.record_str("code", "LINALG-005");
-            }
-            Self::NonConvergence => {
-                visitor.record_str("code", "LINALG-006");
-            }
-        }
-    }
 }
 
 /// Caller-owned mutable scratch slice used by `#![no_std]` solvers without heap allocation.

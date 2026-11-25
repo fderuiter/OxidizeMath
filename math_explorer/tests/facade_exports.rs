@@ -100,7 +100,7 @@ fn default_headless_curve_fitting_and_poi_solvers_work_without_gui_deps() {
     };
     use math_explorer::prelude::{FitError as PreludeFitError, FitModel as PreludeFitModel};
 
-    let xs = [0.0, 1.0, 2.0, 3.0, 4.0];
+    let xs = [0.0_f64, 1.0, 2.0, 3.0, 4.0];
     let ys = [1.0, 0.0, 1.0, 4.0, 9.0];
     let paired = (&xs[..], &ys[..]);
 

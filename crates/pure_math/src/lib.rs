@@ -7,6 +7,8 @@ pub mod pure_math;
 /// Submodule providing `theory_macro` types, traits, and algorithms.
 pub mod theory_macro;
 
+pub use math_scalars;
+
 #[doc(hidden)]
 pub mod __macro_deps {
     pub use oxidize_core;

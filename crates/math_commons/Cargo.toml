@@ -5,14 +5,14 @@ edition = "2024"
 
 [features]
 default = ["std"]
-alloc = ["math_rng/alloc"]
+alloc = ["math_rng/alloc", "math_scalars/alloc"]
 serde = [
     "alloc",
     "dep:serde",
     "serde/alloc",
-    "engine_linalg/serde",
     "math_diagnostics/serde",
     "math_rng/serde",
+    "math_scalars/serde",
     "num-complex/serde",
 ]
 std = [
@@ -20,6 +20,7 @@ std = [
     "dep:scientific_metadata",
     "math_diagnostics/std",
     "math_rng/std",
+    "math_scalars/std",
     "num-complex/std",
     "num-traits/std",
     "serde?/std",
@@ -28,10 +29,10 @@ std = [
 ]
 
 [dependencies]
-engine_linalg = { path = "../02_engines/engine_linalg" }
 libm = { workspace = true }
 math_diagnostics = { path = "../00_foundation/math_diagnostics", default-features = false }
 math_rng = { path = "../00_foundation/math_rng", default-features = false }
+math_scalars = { path = "../00_foundation/math_scalars", default-features = false }
 num-complex = { workspace = true, default-features = false, features = ["libm"] }
 num-traits = { workspace = true, default-features = false, features = ["libm"] }
 rand_core = { workspace = true }
@@ -63,10 +64,6 @@ required-features = ["std"]
 [[test]]
 name = "verified_stochastic_kernel"
 required-features = ["std"]
-
-
-
-
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 

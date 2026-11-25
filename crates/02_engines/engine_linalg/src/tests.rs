@@ -262,3 +262,45 @@ fn test_norms_condition_estimators_and_tikhonov() {
     assert!((x_ridge[0] - expected_0).abs() < 1e-12);
     assert!((x_ridge[1] - expected_1).abs() < 1e-12);
 }
+
+#[test]
+fn test_sqrt_f64_zero_ulp_parity_200k_normals_and_4k_predecessors() {
+    let pred_four = 3.9999999999999996_f64;
+    assert_eq!(
+        sqrt_f64(pred_four).to_bits(),
+        1.9999999999999998_f64.to_bits()
+    );
+    for k in -500..=500_i32 {
+        let exp_bits = ((1023 + 2 * k) as u64) << 52;
+        let pow4 = f64::from_bits(exp_bits);
+        if pow4.is_normal() {
+            let pred = f64::from_bits(pow4.to_bits() - 1);
+            let succ = f64::from_bits(pow4.to_bits() + 1);
+            assert_eq!(
+                sqrt_f64(pred).to_bits(),
+                <f64 as math_scalars::RealField>::sqrt(pred).to_bits()
+            );
+            assert_eq!(
+                sqrt_f64(pow4).to_bits(),
+                <f64 as math_scalars::RealField>::sqrt(pow4).to_bits()
+            );
+            assert_eq!(
+                sqrt_f64(succ).to_bits(),
+                <f64 as math_scalars::RealField>::sqrt(succ).to_bits()
+            );
+        }
+    }
+    let mut state = 0x9E37_79B9_7F4A_7C15_u64;
+    for _ in 0..200_000 {
+        state ^= state >> 12;
+        state ^= state << 25;
+        state ^= state >> 27;
+        let raw = state.wrapping_mul(0x2545_F491_4F6C_DD1D);
+        let exp_bits = ((raw >> 52) & 0x7FF).clamp(1, 0x7FE);
+        let x = f64::from_bits((exp_bits << 52) | (raw & 0x000F_FFFF_FFFF_FFFF));
+        assert_eq!(
+            sqrt_f64(x).to_bits(),
+            <f64 as math_scalars::RealField>::sqrt(x).to_bits()
+        );
+    }
+}

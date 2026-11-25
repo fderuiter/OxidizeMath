@@ -3,8 +3,10 @@
 // [cite:knot_braid_topology]
 
 use super::laurent::LaurentPolynomial;
-use crate::pure_math::algebra::traits::Ring;
+use crate::pure_math::algebra::traits::{Ring, Scalar};
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+
+impl<T: Ring> Scalar for LaurentPolynomial<T> {}
 
 impl<T: Ring> Ring for LaurentPolynomial<T> {
     #[verified_engine::verified]

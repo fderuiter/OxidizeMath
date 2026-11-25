@@ -383,10 +383,18 @@ impl<T: Scalar, const MAX_P: usize> StreamingQr<T, MAX_P> {
                 continue;
             }
             let rjj = self.r[j][j];
-            let hyp = rjj.hypot(xj);
-            let c = rjj / hyp;
-            let s = xj / hyp;
-            self.r[j][j] = hyp;
+            let (c, s, r_new) = if xj.abs() > rjj.abs() {
+                let t = rjj / xj;
+                let u = (T::ONE + t * t).sqrt().copysign(xj);
+                let s_val = T::ONE / u;
+                (s_val * t, s_val, xj * u)
+            } else {
+                let t = xj / rjj;
+                let u = (T::ONE + t * t).sqrt().copysign(rjj);
+                let c_val = T::ONE / u;
+                (c_val, c_val * t, rjj * u)
+            };
+            self.r[j][j] = r_new;
             for (rk, wk) in self.r[j][(j + 1)..self.ncols]
                 .iter_mut()
                 .zip(&mut work[(j + 1)..self.ncols])

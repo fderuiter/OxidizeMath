@@ -2,12 +2,11 @@
 // [cite:math_commons]
 
 use super::eval::{
-    EvalError, EvalScalar, MAX_EVAL_DEPTH, eval_binop, eval_func, eval_unary,
-    lookup_universal_real_const,
+    EvalError, MAX_EVAL_DEPTH, eval_binop, eval_func, eval_unary, lookup_universal_real_const,
 };
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
 use super::limits::MAX_COMPILED_INSTRUCTIONS;
-use num_complex::Complex64;
+use math_scalars::{Complex64, ComplexField, RealField};
 
 #[cfg(feature = "serde")]
 #[path = "compiled_serde.rs"]
@@ -189,76 +188,82 @@ impl CompiledExpr {
         })
     }
 
-    /// Evaluates the bytecode over an arbitrary slice of real variable values.
+    /// Evaluates the bytecode over an arbitrary slice of `f64` variable values.
     #[must_use]
     pub fn eval_slice(&self, vars: &[f64]) -> f64 {
-        self.exec_bytecode(|slot| vars.get(slot).copied().unwrap_or(f64::NAN))
+        self.eval_generic_slice(vars)
+    }
+
+    /// Evaluates the bytecode over an arbitrary slice of [`ComplexField`] variable values.
+    #[must_use]
+    pub fn eval_generic_slice<T: ComplexField>(&self, vars: &[T]) -> T {
+        self.exec_bytecode(|slot| vars.get(slot).copied().unwrap_or_else(T::nan))
     }
 
     /// Evaluates a 1D real formula (`slot 0 = x`, `slots 1.. = params`) with zero allocations.
     #[must_use]
-    pub fn eval_1d(&self, x: f64, params: &[f64]) -> f64 {
+    pub fn eval_1d<T: RealField>(&self, x: T, params: &[T]) -> T {
         self.exec_bytecode(|slot| match slot {
             0 => x,
-            idx => params.get(idx - 1).copied().unwrap_or(f64::NAN),
+            idx => params.get(idx - 1).copied().unwrap_or(T::NAN),
         })
     }
 
     /// Evaluates a 2D real formula (`slot 0 = x`, `slot 1 = y`, `slots 2.. = params`).
     #[must_use]
-    pub fn eval_2d(&self, x: f64, y: f64, params: &[f64]) -> f64 {
+    pub fn eval_2d<T: RealField>(&self, x: T, y: T, params: &[T]) -> T {
         self.exec_bytecode(|slot| match slot {
             0 => x,
             1 => y,
-            idx => params.get(idx - 2).copied().unwrap_or(f64::NAN),
+            idx => params.get(idx - 2).copied().unwrap_or(T::NAN),
         })
     }
 
     /// Evaluates a 3D real formula (`slot 0 = x`, `slot 1 = y`, `slot 2 = z`, `slots 3.. = params`).
     #[must_use]
-    pub fn eval_3d(&self, x: f64, y: f64, z: f64, params: &[f64]) -> f64 {
+    pub fn eval_3d<T: RealField>(&self, x: T, y: T, z: T, params: &[T]) -> T {
         self.exec_bytecode(|slot| match slot {
             0 => x,
             1 => y,
             2 => z,
-            idx => params.get(idx - 3).copied().unwrap_or(f64::NAN),
+            idx => params.get(idx - 3).copied().unwrap_or(T::NAN),
         })
     }
 
-    /// Evaluates the bytecode over an arbitrary slice of complex variable values.
+    /// Evaluates the bytecode over an arbitrary slice of `Complex64` variable values.
     #[must_use]
     pub fn eval_complex_slice(&self, vars: &[Complex64]) -> Complex64 {
-        self.exec_bytecode(|slot| vars.get(slot).copied().unwrap_or(Complex64::NAN))
+        self.eval_generic_slice(vars)
     }
 
     /// Evaluates a complex conformal map `w = f(z)` with no free parameters.
     #[must_use]
-    pub fn eval_complex_z(&self, z: Complex64) -> Complex64 {
+    pub fn eval_complex_z<T: ComplexField>(&self, z: T) -> T {
         self.eval_complex_z_params(z, &[])
     }
 
     /// Evaluates a parameterized complex map `w = f(z; params)` (`slot 0 = z`, `slots 1.. = real params`).
     #[must_use]
-    pub fn eval_complex_z_params(&self, z: Complex64, params: &[f64]) -> Complex64 {
+    pub fn eval_complex_z_params<T: ComplexField>(&self, z: T, params: &[T::Real]) -> T {
         self.exec_bytecode(|slot| match slot {
             0 => z,
             idx => params
                 .get(idx - 1)
                 .copied()
-                .map_or(Complex64::NAN, Complex64::from_real),
+                .map_or_else(T::nan, T::from_real),
         })
     }
 
     #[inline]
-    fn exec_bytecode<T: EvalScalar, F: Fn(usize) -> T>(&self, load_var: F) -> T {
-        let mut stack = [T::NAN; MAX_EVAL_DEPTH];
+    fn exec_bytecode<T: ComplexField, F: Fn(usize) -> T>(&self, load_var: F) -> T {
+        let mut stack = [T::nan(); MAX_EVAL_DEPTH];
         let mut sp = 0usize;
         for &inst in &self.instructions {
             if !exec_instruction(inst, &mut stack, &mut sp, &load_var) {
-                return T::NAN;
+                return T::nan();
             }
         }
-        if sp == 1 { stack[0] } else { T::NAN }
+        if sp == 1 { stack[0] } else { T::nan() }
     }
 }
 
@@ -390,14 +395,14 @@ pub(super) fn verify_stack_depth(instructions: &[Instruction]) -> Result<(), Eva
 }
 
 #[inline]
-fn exec_instruction<T: EvalScalar, F: Fn(usize) -> T>(
+fn exec_instruction<T: ComplexField, F: Fn(usize) -> T>(
     inst: Instruction,
     stack: &mut [T; MAX_EVAL_DEPTH],
     sp: &mut usize,
     load_var: &F,
 ) -> bool {
     match inst {
-        Instruction::PushConst(c) => push_val(stack, sp, T::from_real(c)),
+        Instruction::PushConst(c) => push_val(stack, sp, T::from_real_f64(c)),
         Instruction::PushImagUnit => push_val(stack, sp, T::imag_unit()),
         Instruction::LoadVar(slot) => push_val(stack, sp, load_var(usize::from(slot))),
         Instruction::Unary(op) => {

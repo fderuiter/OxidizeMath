@@ -1,0 +1,32 @@
+[package]
+name = "math_scalars"
+version.workspace = true
+edition = "2024"
+
+[features]
+default = []
+alloc = ["dep:dashu"]
+serde = [
+    "dep:serde",
+    "dashu?/serde",
+    "math_diagnostics/serde",
+    "num-complex/serde",
+]
+std = [
+    "alloc",
+    "math_diagnostics/std",
+    "num-complex/std",
+    "num-traits/std",
+    "serde?/std",
+]
+
+[dependencies]
+dashu = { workspace = true, optional = true, default-features = false, features = ["num-traits_v02"] }
+libm = { workspace = true }
+math_diagnostics = { path = "../math_diagnostics", default-features = false }
+num-complex = { workspace = true, default-features = false, features = ["libm"] }
+num-traits = { workspace = true, default-features = false, features = ["libm"] }
+serde = { workspace = true, optional = true }
+
+[lints]
+workspace = true

@@ -7,11 +7,13 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = []
-alloc = []
-serde = ["dep:serde", "math_diagnostics/serde"]
+alloc = ["math_scalars/alloc"]
+serde = ["dep:serde", "math_diagnostics/serde", "math_scalars/serde"]
+std = ["math_scalars/std"]
 
 [dependencies]
 math_diagnostics = { path = "../../00_foundation/math_diagnostics", default-features = false }
+math_scalars = { path = "../../00_foundation/math_scalars", default-features = false }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]

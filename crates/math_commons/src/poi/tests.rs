@@ -73,7 +73,7 @@ fn test_monotone_and_parametric_polyline_intersections() {
 #[test]
 #[verified_engine::verified]
 fn test_vertical_line_crossings_with_tuple_series() {
-    let pts = [(0.0, 1.0), (2.0, 5.0), (4.0, 1.0)];
+    let pts = [(0.0_f64, 1.0), (2.0, 5.0), (4.0, 1.0)];
     let ys = interpolate_y_at_x(&pts, 1.0);
     assert_eq!(ys.len(), 1);
     assert!((ys[0] - 3.0).abs() < 1e-12);
@@ -83,7 +83,7 @@ fn test_vertical_line_crossings_with_tuple_series() {
 #[verified_engine::verified]
 fn test_plateau_extrema_and_fused_line_scan() {
     let pts = [
-        [-1.0, -1.0],
+        [-1.0_f64, -1.0],
         [1.0, 4.0],
         [2.0, 4.0],
         [3.0, 4.0],

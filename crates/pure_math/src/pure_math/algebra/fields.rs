@@ -3,7 +3,7 @@
 //! Implementation of Finite Fields (Integers Modulo Prime P).
 
 use crate::error::NumberTheoryError;
-use crate::pure_math::algebra::traits::{Field, Ring};
+use crate::pure_math::algebra::traits::{Field, Ring, Scalar};
 use std::fmt;
 use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 
@@ -105,6 +105,8 @@ impl<const P: i64> Neg for Fp<P> {
     }
 }
 
+impl<const P: i64> Scalar for Fp<P> {}
+
 impl<const P: i64> Ring for Fp<P> {
     #[verified_engine::verified]
     fn zero() -> Self {
@@ -141,8 +143,13 @@ impl<const P: i64> Div for Fp<P> {
 
 impl<const P: i64> Field for Fp<P> {
     #[verified_engine::verified]
+    fn checked_inverse(&self) -> Option<Self> {
+        Fp::checked_inverse(self).ok()
+    }
+
+    #[verified_engine::verified]
     fn multiplicative_inverse(&self) -> Self {
-        match self.checked_inverse() {
+        match Fp::checked_inverse(self) {
             Ok(inv) => inv,
             Err(NumberTheoryError::DivisionByZeroFieldElement) => {
                 panic!("Division by zero in Fp")

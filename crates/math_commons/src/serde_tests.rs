@@ -85,7 +85,7 @@ mod active {
     }
 
     #[test]
-    fn kernel_fit_poi_stochastic_and_wigner_roundtrip_no_std() {
+    fn kernel_and_fit_roundtrip_no_std() {
         assert_eq!(roundtrip_json(&StepSize(0.0125)), StepSize(0.0125));
         assert_eq!(roundtrip_json(&GridIndex(17)), GridIndex(17));
         assert_eq!(roundtrip_json(&Dimension(256)), Dimension(256));
@@ -93,7 +93,12 @@ mod active {
         for model in FitModel::MENU_PRESETS {
             assert_eq!(roundtrip_json(&model), model);
         }
-        let pts = [[1000.0, 2.0], [1001.0, 5.0], [1002.0, 10.0], [1003.0, 17.0]];
+        let pts = [
+            [1000.0_f64, 2.0],
+            [1001.0, 5.0],
+            [1002.0, 10.0],
+            [1003.0, 17.0],
+        ];
         let curve = fit_polynomial_scaled(&pts, 2, false, false).expect("quadratic fit");
         let decoded_curve = roundtrip_json(&curve);
         assert_eq!(decoded_curve, curve);
@@ -107,7 +112,10 @@ mod active {
         accum.push(1.0, 2.0, 0.5);
         accum.push(2.0, 4.0, 1.5);
         assert_eq!(roundtrip_json(&accum), accum);
+    }
 
+    #[test]
+    fn poi_stochastic_and_wigner_roundtrip_no_std() {
         let ext = LocalExtremum {
             point: [1.25, -3.5],
             is_max: false,
@@ -250,7 +258,8 @@ mod active {
         assert_eq!(decoded_compiled, compiled);
         assert_eq!(decoded_compiled.param_names(), &["a".to_string()]);
         assert!(
-            (decoded_compiled.eval_1d(0.5, &[1.25]) - compiled.eval_1d(0.5, &[1.25])).abs() < 1e-12
+            (decoded_compiled.eval_1d(0.5_f64, &[1.25]) - compiled.eval_1d(0.5_f64, &[1.25])).abs()
+                < 1e-12
         );
 
         let bad_axis = r#"{"instructions":[{"PushConst":1.0}],"var_names":[],"axis_count":2}"#;

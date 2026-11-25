@@ -2,11 +2,10 @@
 use math_commons::math_kernel::types::{flatten_2d_index, flatten_3d_index};
 
 /// Spatial boundary condition applied along regular Cartesian grid boundaries.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum BoundaryCondition {
+pub enum BoundaryCondition<T = f64> {
     /// Periodic wrap-around ($u(-1) = u(N - 1)$, $u(N) = u(0)$).
-    #[default]
     Periodic,
     /// Cell-centered zero-flux Neumann boundary ($u(-1) = u(0)$, $u(N) = u(N - 1)$),
     /// strictly conserving discrete finite-volume sums.
@@ -14,10 +13,17 @@ pub enum BoundaryCondition {
     /// Node-centered symmetric reflection Neumann boundary ($u(-1) = u(1)$, $u(N) = u(N - 2)$).
     SymmetricNeumann,
     /// Fixed exterior/boundary Dirichlet value $u_{\partial\Omega} = c$.
-    Dirichlet(f64),
+    Dirichlet(T),
 }
 
-impl BoundaryCondition {
+impl<T> Default for BoundaryCondition<T> {
+    #[inline]
+    fn default() -> Self {
+        Self::Periodic
+    }
+}
+
+impl<T: Copy> BoundaryCondition<T> {
     /// Returns `true` when boundary nodes `(0, n - 1)` are pinned to a fixed value.
     #[inline]
     pub const fn is_dirichlet(self) -> bool {
@@ -27,7 +33,7 @@ impl BoundaryCondition {
     /// Resolves `(prev_val, curr_val, next_val)` around 1D cell `x` of a slice `u` of length `n`.
     #[inline]
     #[verified_engine::verified]
-    pub fn sample_1d(self, u: &[f64], n: usize, x: usize) -> (f64, f64, f64) {
+    pub fn sample_1d(self, u: &[T], n: usize, x: usize) -> (T, T, T) {
         debug_assert!(n > 0 && x < n && u.len() >= n);
         let curr = u[x];
         if n == 1 {
@@ -66,12 +72,12 @@ impl BoundaryCondition {
     #[verified_engine::verified]
     pub fn sample_2d(
         self,
-        u: &[f64],
+        u: &[T],
         width: usize,
         height: usize,
         x: usize,
         y: usize,
-    ) -> (f64, f64, f64, f64, f64) {
+    ) -> (T, T, T, T, T) {
         debug_assert!(width > 0 && height > 0 && x < width && y < height);
         debug_assert!(u.len() >= width * height);
         let curr = u[flatten_2d_index(x, y, width)];
@@ -161,14 +167,14 @@ impl BoundaryCondition {
     #[verified_engine::verified]
     pub fn sample_3d(
         self,
-        u: &[f64],
+        u: &[T],
         width: usize,
         height: usize,
         depth: usize,
         x: usize,
         y: usize,
         z: usize,
-    ) -> (f64, [f64; 6]) {
+    ) -> (T, [T; 6]) {
         debug_assert!(width > 0 && height > 0 && depth > 0);
         debug_assert!(x < width && y < height && z < depth);
         debug_assert!(u.len() >= width * height * depth);
@@ -228,7 +234,7 @@ impl BoundaryCondition {
 }
 
 #[inline]
-fn axis_indices(bc: BoundaryCondition, i: usize, len: usize) -> (usize, usize) {
+fn axis_indices<T: Copy>(bc: BoundaryCondition<T>, i: usize, len: usize) -> (usize, usize) {
     match bc {
         BoundaryCondition::Periodic => (
             if i > 0 { i - 1 } else { len - 1 },

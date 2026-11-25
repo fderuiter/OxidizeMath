@@ -168,3 +168,31 @@ fn test_vandermonde_qr_conditioning_at_eps_1e8() {
     );
     assert!((c[2] - 0.4).abs() <= 2e-8);
 }
+
+#[test]
+fn test_generic_f32_curve_fitting_and_dual_ad_evaluation() {
+    use math_scalars::Dual;
+
+    let pts_f32 = [
+        [0.0_f32, 1.5],
+        [1.0, 3.0],
+        [2.0, 5.5],
+        [3.0, 9.0],
+        [4.0, 13.5],
+    ];
+    let fit32 = fit_polynomial_scaled(&pts_f32, 2, false, false).expect("f32 quadratic fit");
+    assert!((fit32.eval(2.5_f32) - 7.125_f32).abs() < 1e-4);
+    assert!(fit32.r_squared > 0.9999);
+
+    let pts_dual = [
+        [Dual::constant(0.0_f64), Dual::constant(1.0)],
+        [Dual::constant(1.0), Dual::constant(3.0)],
+        [Dual::constant(2.0), Dual::constant(9.0)],
+        [Dual::constant(3.0), Dual::constant(19.0)],
+    ];
+    // y = 1 + 2 x^2 => dy/dx = 4 x; at x = 2.5, y = 13.5, dy/dx = 10.0
+    let fit_dual = fit_polynomial(&pts_dual, 2).expect("Dual<f64> quadratic fit");
+    let y_ad = fit_dual.eval(Dual::variable(2.5));
+    assert!((y_ad.re - 13.5).abs() < 1e-11);
+    assert!((y_ad.eps - 10.0).abs() < 1e-11);
+}

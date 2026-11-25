@@ -8,14 +8,15 @@ use crate::fourier_kernels::{
 };
 use crate::spde_noise::{try_inject_conserved_flux_noise_1d, try_inject_conserved_flux_noise_2d};
 use math_commons::math_kernel::types::SolverWorkspace;
+use math_scalars::RealField;
 use rand_core::RngCore;
 
 /// Kardar-Parisi-Zhang (KPZ) and Edwards-Wilkinson semi-implicit Fourier steppers.
 pub mod kpz;
 
 #[inline]
-pub(crate) fn check_non_neg(param: &'static str, val: f64) -> Result<(), PdeError> {
-    if !(val >= 0.0 && val.is_finite()) {
+pub(crate) fn check_non_neg<T: RealField>(param: &'static str, val: T) -> Result<(), PdeError> {
+    if !(val >= T::ZERO && val.is_finite()) {
         return Err(PdeError::InvalidParameter { parameter: param });
     }
     Ok(())
@@ -45,60 +46,17 @@ pub(crate) fn check_radix2_min4(axis: &'static str, size: usize) -> Result<(), P
 ///
 /// # Domain of Validity
 /// Requires periodic boundaries, power-of-two grid dimensions $\ge 4$, finite positive `dx > 0` and
-/// `dy > 0`, `dt >= 0`, and `SolverWorkspace` capacity [`Self::scratch_len_1d`] / [`Self::scratch_len_2d`].
+/// `dy > 0`, `dt >= 0`, and `SolverWorkspace` capacity [`SemiImplicitFourierStepper::scratch_len_1d`] / [`SemiImplicitFourierStepper::scratch_len_2d`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct SemiImplicitFourierStepper {
+pub struct SemiImplicitFourierStepper<T = f64> {
     /// Grid spacing $\Delta x > 0$.
-    pub dx: f64,
+    pub dx: T,
     /// Secondary grid spacing $\Delta y > 0$ (used in 2D solvers).
-    pub dy: f64,
+    pub dy: T,
 }
 
 impl SemiImplicitFourierStepper {
-    /// Creates a 1D radix-2 Fourier stepper after validating `dx > 0` and finite.
-    #[verified_engine::verified]
-    pub fn try_new_1d(dx: f64) -> Result<Self, math_commons::error::MathError> {
-        Self::try_new_2d(dx, 1.0)
-    }
-
-    /// Creates a 2D radix-2 Fourier stepper after validating `dx > 0` and `dy > 0` are finite.
-    #[verified_engine::verified]
-    pub fn try_new_2d(dx: f64, dy: f64) -> Result<Self, math_commons::error::MathError> {
-        for step in [dx, dy] {
-            if !(step > 0.0 && step.is_finite()) {
-                return Err(math_commons::error::MathError::StrictlyOutOfBounds {
-                    value: step,
-                    min: 0.0,
-                    max: f64::INFINITY,
-                });
-            }
-        }
-        debug_assert!(dx > 0.0 && dy > 0.0);
-        Ok(Self { dx, dy })
-    }
-
-    /// Creates a 1D radix-2 Fourier stepper for uniform spacing `dx > 0`.
-    ///
-    /// # Panics
-    /// Panics if `dx <= 0.0` or `dx` is non-finite.
-    #[verified_engine::verified]
-    pub fn new_1d(dx: f64) -> Self {
-        assert!(dx > 0.0 && dx.is_finite(), "dx must be positive and finite");
-        Self { dx, dy: 1.0 }
-    }
-
-    /// Creates a 2D radix-2 Fourier stepper for spacings `dx > 0` and `dy > 0`.
-    ///
-    /// # Panics
-    /// Panics if `dx <= 0.0`, `dy <= 0.0`, or either spacing is non-finite.
-    #[verified_engine::verified]
-    pub fn new_2d(dx: f64, dy: f64) -> Self {
-        assert!(dx > 0.0 && dx.is_finite(), "dx must be positive and finite");
-        assert!(dy > 0.0 && dy.is_finite(), "dy must be positive and finite");
-        Self { dx, dy }
-    }
-
     /// Returns the scratch slice length required for 1D semi-implicit Fourier steps (`9 * n`).
     #[inline]
     pub const fn scratch_len_1d(n: usize) -> usize {
@@ -110,6 +68,60 @@ impl SemiImplicitFourierStepper {
     pub const fn scratch_len_2d(width: usize, height: usize) -> usize {
         10 * width * height + 2 * height
     }
+}
+
+impl<T: RealField> SemiImplicitFourierStepper<T> {
+    /// Creates a 1D radix-2 Fourier stepper after validating `dx > 0` and finite.
+    #[verified_engine::verified]
+    pub fn try_new_1d(dx: T) -> Result<Self, math_commons::error::MathError> {
+        Self::try_new_2d(dx, T::ONE)
+    }
+
+    /// Creates a 2D radix-2 Fourier stepper after validating `dx > 0` and `dy > 0` are finite.
+    #[verified_engine::verified]
+    pub fn try_new_2d(dx: T, dy: T) -> Result<Self, math_commons::error::MathError> {
+        for step in [dx, dy] {
+            if !(step > T::ZERO && step.is_finite()) {
+                return Err(math_commons::error::MathError::StrictlyOutOfBounds {
+                    value: step.to_f64(),
+                    min: 0.0,
+                    max: f64::INFINITY,
+                });
+            }
+        }
+        debug_assert!(dx > T::ZERO && dy > T::ZERO);
+        Ok(Self { dx, dy })
+    }
+
+    /// Creates a 1D radix-2 Fourier stepper for uniform spacing `dx > 0`.
+    ///
+    /// # Panics
+    /// Panics if `dx <= 0.0` or `dx` is non-finite.
+    #[verified_engine::verified]
+    pub fn new_1d(dx: T) -> Self {
+        assert!(
+            dx > T::ZERO && dx.is_finite(),
+            "dx must be positive and finite"
+        );
+        Self { dx, dy: T::ONE }
+    }
+
+    /// Creates a 2D radix-2 Fourier stepper for spacings `dx > 0` and `dy > 0`.
+    ///
+    /// # Panics
+    /// Panics if `dx <= 0.0`, `dy <= 0.0`, or either spacing is non-finite.
+    #[verified_engine::verified]
+    pub fn new_2d(dx: T, dy: T) -> Self {
+        assert!(
+            dx > T::ZERO && dx.is_finite(),
+            "dx must be positive and finite"
+        );
+        assert!(
+            dy > T::ZERO && dy.is_finite(),
+            "dy must be positive and finite"
+        );
+        Self { dx, dy }
+    }
 
     /// Fallibly advances the 1D Cahn-Hilliard SPDE
     /// $\partial_t \phi = M \partial_{xx}(\phi^3 - \phi - \kappa \partial_{xx}\phi) + \partial_x \eta$
@@ -118,12 +130,12 @@ impl SemiImplicitFourierStepper {
     #[verified_engine::verified]
     pub fn try_step_cahn_hilliard_1d<R: RngCore + ?Sized>(
         &self,
-        phi: &mut [f64],
-        mobility: f64,
-        kappa: f64,
-        mobility_temp: f64,
-        dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        phi: &mut [T],
+        mobility: T,
+        kappa: T,
+        mobility_temp: T,
+        dt: T,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) -> Result<(), PdeError> {
         let n = phi.len();
@@ -131,7 +143,7 @@ impl SemiImplicitFourierStepper {
         check_non_neg("mobility", mobility)?;
         check_non_neg("kappa", kappa)?;
         check_non_neg("dt", dt)?;
-        if dt == 0.0 {
+        if dt == T::ZERO {
             return Ok(());
         }
 
@@ -145,8 +157,8 @@ impl SemiImplicitFourierStepper {
         try_fft_1d_inplace(phi_hat, n, false)?;
         try_eval_dealiased_cubic_1d(phi_hat, deal_buf, n)?;
 
-        noise_phys.fill(0.0);
-        if mobility_temp > 0.0 {
+        noise_phys.fill(T::ZERO);
+        if mobility_temp > T::ZERO {
             try_inject_conserved_flux_noise_1d(
                 noise_phys,
                 self.dx,
@@ -158,10 +170,10 @@ impl SemiImplicitFourierStepper {
             )?;
             pack_real(noise_phys, noise_spec, n);
             try_fft_1d_inplace(noise_spec, n, false)?;
-            noise_spec[0] = 0.0;
-            noise_spec[1] = 0.0;
+            noise_spec[0] = T::ZERO;
+            noise_spec[1] = T::ZERO;
         } else {
-            noise_spec.fill(0.0);
+            noise_spec.fill(T::ZERO);
         }
 
         update_cahn_hilliard_1d_modes(
@@ -178,12 +190,12 @@ impl SemiImplicitFourierStepper {
     #[verified_engine::verified]
     pub fn step_cahn_hilliard_1d<R: RngCore + ?Sized>(
         &self,
-        phi: &mut [f64],
-        mobility: f64,
-        kappa: f64,
-        mobility_temp: f64,
-        dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        phi: &mut [T],
+        mobility: T,
+        kappa: T,
+        mobility_temp: T,
+        dt: T,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) {
         self.try_step_cahn_hilliard_1d(phi, mobility, kappa, mobility_temp, dt, workspace, rng)
@@ -195,14 +207,14 @@ impl SemiImplicitFourierStepper {
     #[verified_engine::verified]
     pub fn try_step_cahn_hilliard_2d<R: RngCore + ?Sized>(
         &self,
-        phi: &mut [f64],
+        phi: &mut [T],
         width: usize,
         height: usize,
-        mobility: f64,
-        kappa: f64,
-        mobility_temp: f64,
-        dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        mobility: T,
+        kappa: T,
+        mobility_temp: T,
+        dt: T,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) -> Result<(), PdeError> {
         check_radix2_min4("width", width)?;
@@ -218,7 +230,7 @@ impl SemiImplicitFourierStepper {
         check_non_neg("mobility", mobility)?;
         check_non_neg("kappa", kappa)?;
         check_non_neg("dt", dt)?;
-        if dt == 0.0 {
+        if dt == T::ZERO {
             return Ok(());
         }
 
@@ -233,8 +245,8 @@ impl SemiImplicitFourierStepper {
         try_fft_2d_inplace(phi_hat, width, height, col_scratch, false)?;
         try_eval_dealiased_cubic_2d(phi_hat, deal_buf, col_scratch, width, height)?;
 
-        noise_phys.fill(0.0);
-        if mobility_temp > 0.0 {
+        noise_phys.fill(T::ZERO);
+        if mobility_temp > T::ZERO {
             try_inject_conserved_flux_noise_2d(
                 noise_phys,
                 width,
@@ -249,10 +261,10 @@ impl SemiImplicitFourierStepper {
             )?;
             pack_real(noise_phys, noise_spec, total);
             try_fft_2d_inplace(noise_spec, width, height, col_scratch, false)?;
-            noise_spec[0] = 0.0;
-            noise_spec[1] = 0.0;
+            noise_spec[0] = T::ZERO;
+            noise_spec[1] = T::ZERO;
         } else {
-            noise_spec.fill(0.0);
+            noise_spec.fill(T::ZERO);
         }
 
         update_cahn_hilliard_2d_modes(
@@ -269,14 +281,14 @@ impl SemiImplicitFourierStepper {
     #[verified_engine::verified]
     pub fn step_cahn_hilliard_2d<R: RngCore + ?Sized>(
         &self,
-        phi: &mut [f64],
+        phi: &mut [T],
         width: usize,
         height: usize,
-        mobility: f64,
-        kappa: f64,
-        mobility_temp: f64,
-        dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        mobility: T,
+        kappa: T,
+        mobility_temp: T,
+        dt: T,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) {
         self.try_step_cahn_hilliard_2d(

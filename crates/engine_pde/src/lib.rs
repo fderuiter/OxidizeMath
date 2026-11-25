@@ -44,12 +44,12 @@ pub use stencil::{StencilNeighbors3D, StencilOperators};
 #[cfg(feature = "alloc")]
 /// Optional `alloc`-backed scratch buffer owner lending zero-allocation [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace) views.
 #[derive(Debug, Clone)]
-pub struct PdeOwnedWorkspace<T: math_commons::math_kernel::types::Scalar> {
+pub struct PdeOwnedWorkspace<T: math_scalars::RealField = f64> {
     buf: alloc::vec::Vec<T>,
 }
 
 #[cfg(feature = "alloc")]
-impl<T: math_commons::math_kernel::types::Scalar> PdeOwnedWorkspace<T> {
+impl<T: math_scalars::RealField> PdeOwnedWorkspace<T> {
     /// Fallibly allocates a zero-initialized scratch buffer of `capacity` scalars.
     ///
     /// # Errors

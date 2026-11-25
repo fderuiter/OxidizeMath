@@ -66,7 +66,7 @@ fn test_parser_counts_cumulative_ast_nodes_across_balanced_branches() {
     let expr_255 = parse(&height_7).expect("255-node balanced tree should parse");
     let compiled_255 = CompiledExpr::compile_with_vars(&expr_255, &["x"]).expect("255 insts ok");
     assert_eq!(compiled_255.instruction_count(), 255);
-    assert!((compiled_255.eval_1d(1.0, &[]) - 128.0).abs() < 1e-12);
+    assert!((compiled_255.eval_1d(1.0_f64, &[]) - 128.0).abs() < 1e-12);
 
     // Adding "+x" brings total AST nodes to 257 > MAX_AST_NODES (256) at height 8 << 64!
     let nodes_257 = format!("{height_7}+x");

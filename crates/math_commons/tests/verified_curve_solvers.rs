@@ -153,7 +153,7 @@ fn verify_zero_alloc_poi(
     assert!(n_ext >= 2);
     assert!(peak_extremum(&paired).is_some());
 
-    let v = parabolic_vertex([0.0, 0.0], [1.0, 2.0], [2.0, 0.0]);
+    let v = parabolic_vertex([0.0_f64, 0.0], [1.0, 2.0], [2.0, 0.0]);
     assert!((v[0] - 1.0).abs() < 1e-12);
 
     let mut intersections = [[0.0_f64; 2]; 16];

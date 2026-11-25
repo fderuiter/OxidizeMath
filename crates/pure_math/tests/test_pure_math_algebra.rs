@@ -163,3 +163,46 @@ fn test_abelian_group_reexport_and_left_cosets() {
     let left = generate_left_coset(&subgroup, &a);
     assert_eq!(left, vec![Zn::<6>::new(2), Zn::<6>::new(5)]);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_unified_math_scalars_polynomials_and_domains() {
+    use pure_math::math_scalars::Complex;
+    use pure_math::math_types::{Integer, Rational};
+
+    // 1. Polynomial over Complex<f64>: (1 + i*x)(1 - i*x) = 1 + x^2
+    let p_c1 = Polynomial::new(vec![Complex::new(1.0_f64, 0.0), Complex::new(0.0, 1.0)]);
+    let p_c2 = Polynomial::new(vec![Complex::new(1.0_f64, 0.0), Complex::new(0.0, -1.0)]);
+    let prod_c = p_c1 * p_c2;
+    assert_eq!(prod_c.degree(), Some(2));
+    assert_eq!(prod_c.eval(Complex::new(2.0, 0.0)), Complex::new(5.0, 0.0));
+
+    // 2. Polynomial over exact Rational and Integer
+    let p_q = Polynomial::new(vec![Rational::from((1, 2)), Rational::from((3, 4))]);
+    assert_eq!(p_q.eval(Rational::from((2, 3))), Rational::one());
+    let p_z = Polynomial::new(vec![Integer::from(2i64), Integer::from(-3i64)]);
+    assert_eq!(p_z.eval(Integer::from(4i64)), Integer::from(-10i64));
+
+    // 3. Runtime prime field GF(p) via ModPrimeContext without global state
+    let gf = ModPrimeContext::new(65_537);
+    // P(x) = 5 + 3x + 2x^2 at x = 10 => 235 mod 65537
+    let coeffs_gf = [5_u64, 3, 2];
+    assert_eq!(eval_in_domain(&gf, &coeffs_gf, &10), 235);
+    let inv_3 = gf.try_inv(&3).expect("3 is invertible in GF(65537)");
+    assert_eq!(gf.mul(&3, &inv_3), 1);
+
+    // 4. Dynamic-precision DashuFloatContext polynomial evaluation (256-bit)
+    let fctx = DashuFloatContext::new(256);
+    let coeffs_fb = [fctx.from_i64(-2), fctx.from_i64(0), fctx.from_i64(1)];
+    let root2 = fctx
+        .try_sqrt(&fctx.from_i64(2))
+        .expect("sqrt(2) succeeds at 256-bit precision");
+    // x^2 - 2 evaluated at 256-bit sqrt(2) is ~0 within 2^-250
+    let residual = eval_in_domain(&fctx, &coeffs_fb, &root2);
+    assert!(residual.to_f64().value().abs() < 1e-70);
+
+    // 5. StatelessContext<f64> matches Polynomial::eval identically
+    let sctx = StatelessContext::<f64>::new();
+    let p_f = Polynomial::new(vec![1.5_f64, -2.25, 0.75]);
+    assert_eq!(eval_in_domain(&sctx, &p_f.coeffs, &3.5), p_f.eval(3.5_f64));
+}

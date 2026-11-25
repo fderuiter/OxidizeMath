@@ -136,3 +136,57 @@ fn spde_noise_and_stencil_steppers_validate_inputs() {
         Err(PdeError::InvalidParameter { parameter: "dx" })
     );
 }
+
+#[test]
+fn pde_fft_stencils_and_steppers_support_f32_and_dual_ad() {
+    use crate::fft_1d_inplace;
+    use math_scalars::Dual;
+
+    // 1. f32 FFT + inverse round-trip
+    let orig_f32 = [1.0_f32, 0.0, -0.5, 0.25, 0.75, -0.25, 0.0, 0.5];
+    let mut buf_f32 = orig_f32;
+    fft_1d_inplace(&mut buf_f32, 4, false);
+    fft_1d_inplace(&mut buf_f32, 4, true);
+    for (got, exp) in buf_f32.iter().zip(orig_f32.iter()) {
+        assert!((got - exp).abs() < 1e-6_f32);
+    }
+
+    // 2. f32 FusedStencilStepper + StencilOperators
+    let stepper_f32 = FusedStencilStepper::<f32>::new(StepSize(0.5_f32));
+    let src_f32 = [1.0_f32, 0.0, 1.0];
+    let mut dst_f32 = [0.0_f32; 3];
+    stepper_f32.step_1d_slice(
+        &src_f32,
+        &mut dst_f32,
+        0.1_f32,
+        1.0_f32,
+        |_, prev, curr, next, ops| ops.central_diff_2nd(prev, curr, next),
+    );
+    assert!((dst_f32[1] - 0.8_f32).abs() < 1e-6_f32);
+
+    // 3. Dual<f64> forward-mode AD wrt diffusivity D on 1D heat step u^{n+1}_i = u_i + dt * D * u_xx
+    let d_dual = Dual::variable(0.35_f64);
+    let ops_dual = StencilOperators::<Dual<f64>>::new(StepSize(Dual::constant(0.5)));
+    let spde_dual =
+        ExplicitSpdeStencilStepper::new(ops_dual, BoundaryCondition::Periodic, SpdeNoiseKind::None);
+    let mut u_dual = [
+        Dual::constant(0.0),
+        Dual::constant(1.0),
+        Dual::constant(0.0),
+        Dual::constant(-1.0),
+    ];
+    let expected_lap_1 = (0.0 + 0.0 - 2.0 * 1.0) / (0.5 * 0.5); // -8.0
+    let dt = 0.02_f64;
+    let mut scratch_dual = [Dual::constant(0.0); 8];
+    let mut ws_dual = SolverWorkspace::new(&mut scratch_dual);
+    let mut rng = OxidizeRng::new(19);
+    spde_dual.step_1d(
+        &mut u_dual,
+        Dual::constant(dt),
+        |_, _u, _grad, lap| d_dual * lap,
+        &mut ws_dual,
+        &mut rng,
+    );
+    assert!((u_dual[1].re - (1.0 + dt * 0.35 * expected_lap_1)).abs() < 1e-14);
+    assert!((u_dual[1].eps - (dt * expected_lap_1)).abs() < 1e-14);
+}

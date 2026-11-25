@@ -2,7 +2,7 @@
 #![allow(clippy::needless_range_loop)]
 
 use pure_math::pure_math::algebra::polynomial::Polynomial;
-use pure_math::pure_math::algebra::traits::Ring;
+use pure_math::pure_math::algebra::traits::{Ring, Scalar};
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 fn gcd(mut a: i64, mut b: i64) -> i64 {
@@ -82,6 +82,8 @@ impl Neg for TestRational {
         Self::new(-self.num, self.den)
     }
 }
+
+impl Scalar for TestRational {}
 
 impl Ring for TestRational {
     fn zero() -> Self {
@@ -182,6 +184,8 @@ impl Neg for TestMat2 {
         Self::new(res)
     }
 }
+
+impl Scalar for TestMat2 {}
 
 impl Ring for TestMat2 {
     fn zero() -> Self {

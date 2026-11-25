@@ -32,7 +32,7 @@ fn check_compiled_hot_loops(
         }
     }
 
-    let mse_term = c3d.eval_3d(0.5, 1.2, -0.4, &[0.25]);
+    let mse_term = c3d.eval_3d(0.5_f64, 1.2, -0.4, &[0.25]);
     assert!(mse_term.is_finite());
 
     for step in 1..=100 {
@@ -44,7 +44,7 @@ fn check_compiled_hot_loops(
     let dt = 0.01;
     let ode_params = [1.2, 0.4];
     let mut t = 0.0;
-    let mut y = -1.5;
+    let mut y = -1.5_f64;
     for _ in 0..200 {
         let k1 = code_ode.eval_2d(t, y, &ode_params);
         let k2 = code_ode.eval_2d(t + 0.5 * dt, y + 0.5 * dt * k1, &ode_params);

@@ -30,7 +30,7 @@ fn test_eval_planar_coupled_variables_and_constants() {
 
 #[test]
 fn test_eval_planar_error_and_nan_propagation() {
-    let params = HashMap::new();
+    let params: HashMap<String, f64> = HashMap::new();
     let div_expr = parse("1 / (x - y)").expect("parse division");
     assert!(div_expr.eval_planar(0.0, 2.0, 2.0, &params).is_nan());
     assert!((div_expr.eval_planar(0.0, 5.0, 3.0, &params) - 0.5).abs() < 1e-12);

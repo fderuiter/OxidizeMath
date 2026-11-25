@@ -4,8 +4,7 @@
 use crate::series::PointSeries;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
-#[allow(unused_imports)]
-use num_traits::Float;
+use math_scalars::RealField;
 
 /// Writes sub-segment `x` coordinates where `pts` crosses `y = y_target` into `out`.
 ///
@@ -13,18 +12,18 @@ use num_traits::Float;
 /// on strictly monotone 4-point stencils and falls back to linear interpolation otherwise.
 /// Returns the number of crossings written (up to `out.len()`).
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub fn threshold_crossings_into<P: PointSeries + ?Sized>(
+pub fn threshold_crossings_into<T: RealField, P: PointSeries<T> + ?Sized>(
     pts: &P,
-    y_target: f64,
-    out: &mut [f64],
+    y_target: T,
+    out: &mut [T],
 ) -> usize {
     threshold_crossings_into_raw(pts, y_target, out)
 }
 
-pub(super) fn threshold_crossings_into_raw<P: PointSeries + ?Sized>(
+pub(super) fn threshold_crossings_into_raw<T: RealField, P: PointSeries<T> + ?Sized>(
     pts: &P,
-    y_target: f64,
-    out: &mut [f64],
+    y_target: T,
+    out: &mut [T],
 ) -> usize {
     let n = pts.len();
     if n < 2 || out.is_empty() || !y_target.is_finite() {
@@ -53,24 +52,24 @@ pub(super) fn threshold_crossings_into_raw<P: PointSeries + ?Sized>(
 
 /// Finds the sub-segment `y = y_target` crossing closest to `x_ref` with zero heap allocations.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub fn closest_threshold_crossing<P: PointSeries + ?Sized>(
+pub fn closest_threshold_crossing<T: RealField, P: PointSeries<T> + ?Sized>(
     pts: &P,
-    y_target: f64,
-    x_ref: f64,
-) -> Option<f64> {
+    y_target: T,
+    x_ref: T,
+) -> Option<T> {
     closest_threshold_crossing_raw(pts, y_target, x_ref)
 }
 
-fn closest_threshold_crossing_raw<P: PointSeries + ?Sized>(
+fn closest_threshold_crossing_raw<T: RealField, P: PointSeries<T> + ?Sized>(
     pts: &P,
-    y_target: f64,
-    x_ref: f64,
-) -> Option<f64> {
+    y_target: T,
+    x_ref: T,
+) -> Option<T> {
     let n = pts.len();
     if n < 2 || !y_target.is_finite() || !x_ref.is_finite() {
         return None;
     }
-    let mut best: Option<f64> = None;
+    let mut best: Option<T> = None;
     let mut p0 = pts.point_at(0);
     let mut p0_fin = is_finite_pair(p0);
     for i in 0..(n - 1) {
@@ -89,12 +88,12 @@ fn closest_threshold_crossing_raw<P: PointSeries + ?Sized>(
     best
 }
 
-/// Convenience wrapper collecting all sub-segment `y = y_target` crossings into a `Vec<f64>`.
+/// Convenience wrapper collecting all sub-segment `y = y_target` crossings into a `Vec<T>`.
 #[cfg(feature = "alloc")]
-pub fn interpolate_threshold_crossings<P: PointSeries + ?Sized>(
+pub fn interpolate_threshold_crossings<T: RealField, P: PointSeries<T> + ?Sized>(
     pts: &P,
-    y_target: f64,
-) -> Vec<f64> {
+    y_target: T,
+) -> Vec<T> {
     let n = pts.len();
     let mut out = Vec::new();
     if n < 2 || !y_target.is_finite() {
@@ -118,55 +117,56 @@ pub fn interpolate_threshold_crossings<P: PointSeries + ?Sized>(
 }
 
 #[inline]
-pub(super) fn segment_threshold_hit<P: PointSeries + ?Sized>(
+pub(super) fn segment_threshold_hit<T: RealField, P: PointSeries<T> + ?Sized>(
     pts: &P,
     i: usize,
     n: usize,
-    p0: [f64; 2],
-    p1: [f64; 2],
-    y_target: f64,
-) -> Option<f64> {
+    p0: [T; 2],
+    p1: [T; 2],
+    y_target: T,
+) -> Option<T> {
+    let tol = T::from_f64(1e-12);
     let d0 = p0[1] - y_target;
     let d1 = p1[1] - y_target;
-    if d0.abs() <= 1e-12 && d1.abs() <= 1e-12 {
+    if d0.abs() <= tol && d1.abs() <= tol {
         None
-    } else if d0.abs() <= 1e-12 {
+    } else if d0.abs() <= tol {
         Some(p0[0])
-    } else if d1.abs() <= 1e-12 {
+    } else if d1.abs() <= tol {
         (i + 2 == n).then_some(p1[0])
-    } else if (d0 < 0.0 && d1 > 0.0) || (d0 > 0.0 && d1 < 0.0) {
+    } else if (d0 < T::ZERO && d1 > T::ZERO) || (d0 > T::ZERO && d1 < T::ZERO) {
         Some(crossing_on_segment(pts, i, p0, p1, y_target))
     } else {
         None
     }
 }
 
-pub(super) fn crossing_on_segment<P: PointSeries + ?Sized>(
+pub(super) fn crossing_on_segment<T: RealField, P: PointSeries<T> + ?Sized>(
     pts: &P,
     i: usize,
-    p0: [f64; 2],
-    p1: [f64; 2],
-    y_target: f64,
-) -> f64 {
+    p0: [T; 2],
+    p1: [T; 2],
+    y_target: T,
+) -> T {
     let dx = p1[0] - p0[0];
-    if dx > 1e-12
+    if dx > T::from_f64(1e-12)
         && let Some(xh) = hermite_root_on_segment(pts, i, p0, p1, y_target)
     {
         return xh;
     }
-    let t = ((y_target - p0[1]) / (p1[1] - p0[1])).clamp(0.0, 1.0);
+    let t = ((y_target - p0[1]) / (p1[1] - p0[1])).clamp(T::ZERO, T::ONE);
     p0[0] + t * dx
 }
 
-fn hermite_root_on_segment<P: PointSeries + ?Sized>(
+fn hermite_root_on_segment<T: RealField, P: PointSeries<T> + ?Sized>(
     pts: &P,
     i: usize,
-    p0: [f64; 2],
-    p1: [f64; 2],
-    y_target: f64,
-) -> Option<f64> {
+    p0: [T; 2],
+    p1: [T; 2],
+    y_target: T,
+) -> Option<T> {
     let h = p1[0] - p0[0];
-    if h <= 1e-12 {
+    if h <= T::from_f64(1e-12) {
         return None;
     }
     let sec = (p1[1] - p0[1]) / h;
@@ -175,129 +175,143 @@ fn hermite_root_on_segment<P: PointSeries + ?Sized>(
     solve_hermite_bracket(p0, p1, h, m0, m1, y_target)
 }
 
-fn endpoint_monotone_slope_left<P: PointSeries + ?Sized>(
+fn endpoint_monotone_slope_left<T: RealField, P: PointSeries<T> + ?Sized>(
     pts: &P,
     i: usize,
-    p0: [f64; 2],
-    sec: f64,
-) -> Option<f64> {
+    p0: [T; 2],
+    sec: T,
+) -> Option<T> {
     if i == 0 {
         return Some(sec);
     }
     let pm1 = pts.point_at(i - 1);
-    if !is_finite_pair(pm1) || p0[0] - pm1[0] <= 1e-12 {
+    if !is_finite_pair(pm1) || p0[0] - pm1[0] <= T::from_f64(1e-12) {
         return None;
     }
     let s_prev = (p0[1] - pm1[1]) / (p0[0] - pm1[0]);
-    Some(if s_prev * sec > 0.0 {
-        0.5 * (s_prev + sec)
+    Some(if s_prev * sec > T::ZERO {
+        T::HALF * (s_prev + sec)
     } else {
-        0.0
+        T::ZERO
     })
 }
 
-fn endpoint_monotone_slope_right<P: PointSeries + ?Sized>(
+fn endpoint_monotone_slope_right<T: RealField, P: PointSeries<T> + ?Sized>(
     pts: &P,
     i: usize,
-    p1: [f64; 2],
-    sec: f64,
-) -> Option<f64> {
+    p1: [T; 2],
+    sec: T,
+) -> Option<T> {
     if i + 2 >= pts.len() {
         return Some(sec);
     }
     let p2 = pts.point_at(i + 2);
-    if !is_finite_pair(p2) || p2[0] - p1[0] <= 1e-12 {
+    if !is_finite_pair(p2) || p2[0] - p1[0] <= T::from_f64(1e-12) {
         return None;
     }
     let s_next = (p2[1] - p1[1]) / (p2[0] - p1[0]);
-    Some(if sec * s_next > 0.0 {
-        0.5 * (sec + s_next)
+    Some(if sec * s_next > T::ZERO {
+        T::HALF * (sec + s_next)
     } else {
-        0.0
+        T::ZERO
     })
 }
 
-fn solve_hermite_bracket(
-    p0: [f64; 2],
-    p1: [f64; 2],
-    h: f64,
-    mut m0: f64,
-    mut m1: f64,
-    y_target: f64,
-) -> Option<f64> {
+fn solve_hermite_bracket<T: RealField>(
+    p0: [T; 2],
+    p1: [T; 2],
+    h: T,
+    mut m0: T,
+    mut m1: T,
+    y_target: T,
+) -> Option<T> {
     let sec = (p1[1] - p0[1]) / h;
-    if sec.abs() <= 1e-15 {
-        m0 = 0.0;
-        m1 = 0.0;
+    let three = T::from_f64(3.0);
+    if sec.abs() <= T::from_f64(1e-15) {
+        m0 = T::ZERO;
+        m1 = T::ZERO;
     } else {
         let a = m0 / sec;
         let b = m1 / sec;
-        let hypot = Float::sqrt(a * a + b * b);
-        if hypot > 3.0 {
-            let tau = 3.0 / hypot;
+        let hypot = a.hypot(b);
+        if hypot > three {
+            let tau = three / hypot;
             m0 = tau * a * sec;
             m1 = tau * b * sec;
         }
     }
-    let mut lo = 0.0_f64;
-    let mut hi = 1.0_f64;
+    let mut lo = T::ZERO;
+    let mut hi = T::ONE;
     let f_lo = p0[1] - y_target;
-    let mut t = (-f_lo / (p1[1] - p0[1])).clamp(0.0, 1.0);
+    let mut t = (-f_lo / (p1[1] - p0[1])).clamp(T::ZERO, T::ONE);
+    let root_tol = T::from_f64(1e-12).max(T::EPSILON * T::from_f64(4.0));
+    let deriv_tol = T::from_f64(1e-14).max(T::EPSILON);
     for _ in 0..16 {
         let (ft, dft) = eval_hermite_val_deriv(p0[1], p1[1], h, m0, m1, t, y_target);
-        if ft.abs() <= 1e-12 {
+        if ft.abs() <= root_tol {
             break;
         }
-        if (ft > 0.0) == (f_lo > 0.0) {
+        if (ft > T::ZERO) == (f_lo > T::ZERO) {
             lo = t;
         } else {
             hi = t;
         }
-        let cand = if dft.abs() > 1e-14 {
+        let cand = if dft.abs() > deriv_tol {
             t - ft / dft
         } else {
-            -1.0
+            -T::ONE
         };
         t = if cand > lo && cand < hi {
             cand
         } else {
-            0.5 * (lo + hi)
+            T::HALF * (lo + hi)
         };
     }
-    Some(p0[0] + t.clamp(0.0, 1.0) * h)
+    Some(p0[0] + t.clamp(T::ZERO, T::ONE) * h)
 }
 
 #[inline(always)]
-fn eval_hermite_val_deriv(
-    y0: f64,
-    y1: f64,
-    h: f64,
-    m0: f64,
-    m1: f64,
-    t: f64,
-    y_target: f64,
-) -> (f64, f64) {
+fn eval_hermite_val_deriv<T: RealField>(
+    y0: T,
+    y1: T,
+    h: T,
+    m0: T,
+    m1: T,
+    t: T,
+    y_target: T,
+) -> (T, T) {
     let t2 = t * t;
     let t3 = t2 * t;
-    let val = (2.0 * t3 - 3.0 * t2 + 1.0) * y0
-        + (t3 - 2.0 * t2 + t) * h * m0
-        + (-2.0 * t3 + 3.0 * t2) * y1
+    let three = T::from_f64(3.0);
+    let four = T::from_f64(4.0);
+    let six = T::from_f64(6.0);
+    let val = (T::TWO * t3 - three * t2 + T::ONE) * y0
+        + (t3 - T::TWO * t2 + t) * h * m0
+        + (-T::TWO * t3 + three * t2) * y1
         + (t3 - t2) * h * m1
         - y_target;
-    let deriv = (6.0 * t2 - 6.0 * t) * y0
-        + (3.0 * t2 - 4.0 * t + 1.0) * h * m0
-        + (-6.0 * t2 + 6.0 * t) * y1
-        + (3.0 * t2 - 2.0 * t) * h * m1;
+    let deriv = (six * t2 - six * t) * y0
+        + (three * t2 - four * t + T::ONE) * h * m0
+        + (-six * t2 + six * t) * y1
+        + (three * t2 - T::TWO * t) * h * m1;
     (val, deriv)
 }
 
 /// Writes interpolated `y` values where `pts` crosses vertical line `x = x_target` into `out`.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub fn y_at_x_into<P: PointSeries + ?Sized>(pts: &P, x_target: f64, out: &mut [f64]) -> usize {
+pub fn y_at_x_into<T: RealField, P: PointSeries<T> + ?Sized>(
+    pts: &P,
+    x_target: T,
+    out: &mut [T],
+) -> usize {
     y_at_x_into_raw(pts, x_target, out)
 }
 
-fn y_at_x_into_raw<P: PointSeries + ?Sized>(pts: &P, x_target: f64, out: &mut [f64]) -> usize {
+fn y_at_x_into_raw<T: RealField, P: PointSeries<T> + ?Sized>(
+    pts: &P,
+    x_target: T,
+    out: &mut [T],
+) -> usize {
     let n = pts.len();
     if n < 2 || out.is_empty() || !x_target.is_finite() {
         return 0;
@@ -323,9 +337,12 @@ fn y_at_x_into_raw<P: PointSeries + ?Sized>(pts: &P, x_target: f64, out: &mut [f
     written
 }
 
-/// Convenience wrapper collecting interpolated `y` values at `x = x_target` into a `Vec<f64>`.
+/// Convenience wrapper collecting interpolated `y` values at `x = x_target` into a `Vec<T>`.
 #[cfg(feature = "alloc")]
-pub fn interpolate_y_at_x<P: PointSeries + ?Sized>(pts: &P, x_target: f64) -> Vec<f64> {
+pub fn interpolate_y_at_x<T: RealField, P: PointSeries<T> + ?Sized>(
+    pts: &P,
+    x_target: T,
+) -> Vec<T> {
     let n = pts.len();
     let mut out = Vec::new();
     if n < 2 || !x_target.is_finite() {
@@ -349,23 +366,24 @@ pub fn interpolate_y_at_x<P: PointSeries + ?Sized>(pts: &P, x_target: f64) -> Ve
 }
 
 #[inline]
-pub(super) fn segment_vertical_hit(
+pub(super) fn segment_vertical_hit<T: RealField>(
     i: usize,
     n: usize,
-    p0: [f64; 2],
-    p1: [f64; 2],
-    x_target: f64,
-) -> Option<f64> {
+    p0: [T; 2],
+    p1: [T; 2],
+    x_target: T,
+) -> Option<T> {
+    let tol = T::from_f64(1e-12);
     let d0 = p0[0] - x_target;
     let d1 = p1[0] - x_target;
-    if d0.abs() <= 1e-12 && d1.abs() <= 1e-12 {
+    if d0.abs() <= tol && d1.abs() <= tol {
         None
-    } else if d0.abs() <= 1e-12 {
+    } else if d0.abs() <= tol {
         Some(p0[1])
-    } else if d1.abs() <= 1e-12 {
+    } else if d1.abs() <= tol {
         (i + 2 == n).then_some(p1[1])
-    } else if (d0 < 0.0 && d1 > 0.0) || (d0 > 0.0 && d1 < 0.0) {
-        let t = ((x_target - p0[0]) / (p1[0] - p0[0])).clamp(0.0, 1.0);
+    } else if (d0 < T::ZERO && d1 > T::ZERO) || (d0 > T::ZERO && d1 < T::ZERO) {
+        let t = ((x_target - p0[0]) / (p1[0] - p0[0])).clamp(T::ZERO, T::ONE);
         Some(p0[1] + t * (p1[1] - p0[1]))
     } else {
         None
@@ -373,13 +391,13 @@ pub(super) fn segment_vertical_hit(
 }
 
 #[inline(always)]
-pub(super) fn is_finite_pair(p: [f64; 2]) -> bool {
-    (p[0] * 0.0 + p[1] * 0.0) == 0.0
+pub(super) fn is_finite_pair<T: RealField>(p: [T; 2]) -> bool {
+    p[0].is_finite() && p[1].is_finite()
 }
 
 #[inline(always)]
-fn push_unique_scalar(out: &mut [f64], written: usize, val: f64) -> usize {
-    if written > 0 && (out[written - 1] - val).abs() <= 1e-9 {
+fn push_unique_scalar<T: RealField>(out: &mut [T], written: usize, val: T) -> usize {
+    if written > 0 && (out[written - 1] - val).abs() <= T::from_f64(1e-9) {
         written
     } else {
         out[written] = val;
@@ -389,8 +407,11 @@ fn push_unique_scalar(out: &mut [f64], written: usize, val: f64) -> usize {
 
 #[cfg(feature = "alloc")]
 #[inline(always)]
-pub(super) fn push_unique_vec(out: &mut Vec<f64>, val: f64) {
-    if out.last().is_none_or(|&prev| (prev - val).abs() > 1e-9) {
+pub(super) fn push_unique_vec<T: RealField>(out: &mut Vec<T>, val: T) {
+    if out
+        .last()
+        .is_none_or(|&prev| (prev - val).abs() > T::from_f64(1e-9))
+    {
         out.push(val);
     }
 }

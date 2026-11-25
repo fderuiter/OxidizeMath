@@ -2,38 +2,43 @@
 use crate::boundary::BoundaryCondition;
 use crate::error::PdeError;
 use crate::stencil::StencilOperators;
-use math_commons::math_kernel::types::{Scalar, flatten_2d_index};
+use math_commons::math_kernel::types::flatten_2d_index;
+use math_scalars::RealField;
 
-impl StencilOperators {
+impl<T: RealField> StencilOperators<T> {
     /// Advances one CFL-safe semi-Lagrangian characteristic upwind step (`dt <= dx`) for
     /// $\partial_t u + \partial_x u = -\mu(x) u$ with inflow boundary `boundary_inflow`.
     #[verified_engine::verified]
     pub fn step_characteristic_upwind_1d(
         &self,
-        src: &[f64],
-        damping_rate: &[f64],
-        boundary_inflow: f64,
-        dt: f64,
-        dst: &mut [f64],
+        src: &[T],
+        damping_rate: &[T],
+        boundary_inflow: T,
+        dt: T,
+        dst: &mut [T],
     ) {
         let n = src.len().min(damping_rate.len()).min(dst.len());
         if n == 0 {
             return;
         }
-        debug_assert!(*self.dx > 0.0);
+        debug_assert!(*self.dx > T::ZERO);
         let lambda = if dt.is_finite() {
-            (dt * self.inv_dx).clamp(0.0, 1.0)
+            (dt * self.inv_dx).clamp(T::ZERO, T::ONE)
         } else {
-            0.0
+            T::ZERO
         };
         dst[0] = sanitize_nonnegative(boundary_inflow);
-        let dt_pos = if dt.is_finite() && dt > 0.0 { dt } else { 0.0 };
+        let dt_pos = if dt.is_finite() && dt > T::ZERO {
+            dt
+        } else {
+            T::ZERO
+        };
         for i in 1..n {
             let u_curr = sanitize_nonnegative(src[i]);
             let u_prev = sanitize_nonnegative(src[i - 1]);
-            let foot = (1.0 - lambda) * u_curr + lambda * u_prev;
+            let foot = (T::ONE - lambda) * u_curr + lambda * u_prev;
             let mu = sanitize_nonnegative(damping_rate[i]);
-            let survival = <f64 as Scalar>::exp(-mu * dt_pos);
+            let survival = (-mu * dt_pos).exp();
             dst[i] = sanitize_nonnegative(foot * survival);
         }
     }
@@ -45,11 +50,11 @@ impl StencilOperators {
     #[verified_engine::verified]
     pub fn try_compute_laplacian_2d(
         &self,
-        u: &[f64],
+        u: &[T],
         width: usize,
         height: usize,
-        bc: BoundaryCondition,
-        out_lap: &mut [f64],
+        bc: BoundaryCondition<T>,
+        out_lap: &mut [T],
     ) -> Result<(), PdeError> {
         let total = width
             .checked_mul(height)
@@ -88,11 +93,11 @@ impl StencilOperators {
     #[verified_engine::verified]
     pub fn compute_laplacian_2d(
         &self,
-        u: &[f64],
+        u: &[T],
         width: usize,
         height: usize,
-        bc: BoundaryCondition,
-        out_lap: &mut [f64],
+        bc: BoundaryCondition<T>,
+        out_lap: &mut [T],
     ) {
         self.try_compute_laplacian_2d(u, width, height, bc, out_lap)
             .expect("compute_laplacian_2d preconditions violated");
@@ -107,17 +112,17 @@ impl StencilOperators {
     #[verified_engine::verified]
     pub fn try_eval_biharmonic_2d_from_laplacian(
         &self,
-        laplacian: &[f64],
+        laplacian: &[T],
         width: usize,
         height: usize,
         x: usize,
         y: usize,
-        bc: BoundaryCondition,
-    ) -> Result<f64, PdeError> {
+        bc: BoundaryCondition<T>,
+    ) -> Result<T, PdeError> {
         validate_2d_cell(laplacian, "laplacian", width, height, x, y)?;
         let on_edge = x == 0 || x + 1 == width || y == 0 || y + 1 == height;
         if on_edge && bc.is_dirichlet() {
-            return Ok(0.0);
+            return Ok(T::ZERO);
         }
         let (curr, left, right, up, down) = bc.sample_2d(laplacian, width, height, x, y);
         debug_assert!(x < width && y < height);
@@ -134,13 +139,13 @@ impl StencilOperators {
     #[verified_engine::verified]
     pub fn eval_biharmonic_2d_from_laplacian(
         &self,
-        laplacian: &[f64],
+        laplacian: &[T],
         width: usize,
         height: usize,
         x: usize,
         y: usize,
-        bc: BoundaryCondition,
-    ) -> f64 {
+        bc: BoundaryCondition<T>,
+    ) -> T {
         self.try_eval_biharmonic_2d_from_laplacian(laplacian, width, height, x, y, bc)
             .expect("eval_biharmonic_2d_from_laplacian preconditions violated")
     }
@@ -152,17 +157,17 @@ impl StencilOperators {
     #[verified_engine::verified]
     pub fn try_eval_biharmonic_2d(
         &self,
-        u: &[f64],
+        u: &[T],
         width: usize,
         height: usize,
         x: usize,
         y: usize,
-        bc: BoundaryCondition,
-    ) -> Result<f64, PdeError> {
+        bc: BoundaryCondition<T>,
+    ) -> Result<T, PdeError> {
         validate_2d_cell(u, "u", width, height, x, y)?;
         let on_edge = x == 0 || x + 1 == width || y == 0 || y + 1 == height;
         if on_edge && bc.is_dirichlet() {
-            return Ok(0.0);
+            return Ok(T::ZERO);
         }
         let (xm, xp) = neighbor_coords(bc, x, width);
         let (ym, yp) = neighbor_coords(bc, y, height);
@@ -183,13 +188,13 @@ impl StencilOperators {
     #[verified_engine::verified]
     pub fn eval_biharmonic_2d(
         &self,
-        u: &[f64],
+        u: &[T],
         width: usize,
         height: usize,
         x: usize,
         y: usize,
-        bc: BoundaryCondition,
-    ) -> f64 {
+        bc: BoundaryCondition<T>,
+    ) -> T {
         self.try_eval_biharmonic_2d(u, width, height, x, y, bc)
             .expect("eval_biharmonic_2d preconditions violated")
     }
@@ -197,8 +202,8 @@ impl StencilOperators {
 
 #[inline]
 #[verified_engine::verified]
-fn validate_2d_cell(
-    buf: &[f64],
+fn validate_2d_cell<T>(
+    buf: &[T],
     buffer: &'static str,
     width: usize,
     height: usize,
@@ -237,12 +242,20 @@ fn validate_2d_cell(
 }
 
 #[inline]
-fn sanitize_nonnegative(v: f64) -> f64 {
-    if v.is_finite() && v > 0.0 { v } else { 0.0 }
+fn sanitize_nonnegative<T: RealField>(v: T) -> T {
+    if v.is_finite() && v > T::ZERO {
+        v
+    } else {
+        T::ZERO
+    }
 }
 
 #[inline]
-fn neighbor_coords(bc: BoundaryCondition, i: usize, len: usize) -> (Option<usize>, Option<usize>) {
+fn neighbor_coords<T: Copy>(
+    bc: BoundaryCondition<T>,
+    i: usize,
+    len: usize,
+) -> (Option<usize>, Option<usize>) {
     if len <= 1 {
         return match bc {
             BoundaryCondition::Dirichlet(_) => (None, None),
@@ -267,17 +280,17 @@ fn neighbor_coords(bc: BoundaryCondition, i: usize, len: usize) -> (Option<usize
 }
 
 #[inline]
-fn neighbor_laplacian(
-    ops: &StencilOperators,
-    u: &[f64],
+fn neighbor_laplacian<T: RealField>(
+    ops: &StencilOperators<T>,
+    u: &[T],
     width: usize,
     height: usize,
     x: Option<usize>,
     y: Option<usize>,
-    bc: BoundaryCondition,
-) -> Result<f64, PdeError> {
+    bc: BoundaryCondition<T>,
+) -> Result<T, PdeError> {
     match (x, y) {
         (Some(xi), Some(yi)) => ops.try_laplacian_2d_at(u, width, height, xi, yi, bc),
-        _ => Ok(0.0),
+        _ => Ok(T::ZERO),
     }
 }

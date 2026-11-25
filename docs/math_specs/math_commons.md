@@ -25,7 +25,7 @@ $$
 
 ### Stability
 
-Standardizing abscissae before forming Vandermonde moments bounds polynomial condition numbers for $d \le 4$, while Marquardt multiplicative diagonal damping ($\lambda_t \in [10^{-12}, 10^{12}]$) with partial-pivoted Gaussian elimination (`solve_dense_small`) prevents singular Jacobian steps without heap allocation.
+Standardizing abscissae before streaming Vandermonde rows through coupled Givens plane rotations (`StreamingGivensQr`) bounds polynomial condition numbers for $d \le 4$ without squaring the condition number, while Marquardt multiplicative diagonal damping ($\lambda_t \in [10^{-12}, 10^{12}]$) with square-root-free symmetric $L D L^\top$ factorization (`solve_marquardt_ldlt`) and Givens dense micro-solvers (`solve_dense_small`, $N \le 8$) prevents singular Jacobian steps without heap allocation or upward engine dependencies.
 
 ### Domain of Validity
 
@@ -34,7 +34,7 @@ Requires at least $p$ finite $(x_i, y_i)$ observations ($p = d + 1$ for degree-$
 ```rust
 use math_explorer::fit::{FitModel, fit_model};
 
-let pts = [[0.0, 1.0], [1.0, 3.0], [2.0, 5.0], [3.0, 7.0]];
+let pts = [[0.0_f64, 1.0], [1.0, 3.0], [2.0, 5.0], [3.0, 7.0]];
 let fit = fit_model(&pts[..], FitModel::Linear, false).unwrap();
 assert!((fit.r_squared - 1.0).abs() < 1e-12);
 assert!((fit.eval(4.0) - 9.0).abs() < 1e-9);

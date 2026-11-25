@@ -1,10 +1,11 @@
 //! Stack-allocated damped Levenberg-Marquardt nonlinear least-squares solvers (`k <= 6`).
 // [cite:math_commons]
 
+use super::micro_solvers::solve_marquardt_ldlt;
 use super::poly::symmetrize_upper;
 use crate::error::FitError;
 use crate::series::PointSeries;
-use num_traits::Float;
+use math_scalars::RealField;
 
 /// Maximum outer Levenberg-Marquardt iterations before returning [`FitError::NonConvergence`].
 pub const MAX_LM_ITERATIONS: usize = 80;
@@ -20,24 +21,25 @@ const MAX_DAMPING_SUBSTEPS: usize = 12;
 /// [math_commons specification](../../../../docs/math_specs/math_commons.md).
 ///
 /// # Stability
-/// Diagonal Marquardt damping $\lambda > 0$ regularizes rank-deficient Jacobians up to [`MAX_LM_ITERATIONS`] outer steps.
+/// Diagonal Marquardt damping $\lambda > 0$ solved via stack symmetric $L D L^\top$ regularizes rank-deficient Jacobians up to [`MAX_LM_ITERATIONS`] outer steps.
 ///
 /// # Domain of Validity
 /// Requires `1 <= initial_params.len() <= 4`, at least `initial_params.len()` finite `(x, y)` pairs, and finite `eval_jac` outputs.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub fn levenberg_marquardt<P, F>(
+pub fn levenberg_marquardt<T, P, F>(
     points: &P,
-    initial_params: &[f64],
+    initial_params: &[T],
     eval_jac: F,
-) -> Result<[f64; 4], FitError>
+) -> Result<[T; 4], FitError>
 where
-    P: PointSeries + ?Sized,
-    F: Fn(f64, &[f64; 4]) -> (f64, [f64; 4]),
+    T: RealField,
+    P: PointSeries<T> + ?Sized,
+    F: Fn(T, &[T; 4]) -> (T, [T; 4]),
 {
-    lm_core::<4, P, _, _>(
+    lm_core::<T, 4, P, _, _>(
         points,
         initial_params,
-        finite_xy,
+        finite_xy::<T>,
         false,
         &|x, th| eval_jac(x, th).0,
         &eval_jac,
@@ -54,17 +56,18 @@ where
 /// # Domain of Validity
 /// Requires `1 <= initial_params.len() <= 4` and at least `initial_params.len()` observations satisfying `domain_ok(x, y)`.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub fn levenberg_marquardt_filtered<P, F>(
+pub fn levenberg_marquardt_filtered<T, P, F>(
     points: &P,
-    initial_params: &[f64],
-    domain_ok: fn(f64, f64) -> bool,
+    initial_params: &[T],
+    domain_ok: fn(T, T) -> bool,
     eval_jac: F,
-) -> Result<[f64; 4], FitError>
+) -> Result<[T; 4], FitError>
 where
-    P: PointSeries + ?Sized,
-    F: Fn(f64, &[f64; 4]) -> (f64, [f64; 4]),
+    T: RealField,
+    P: PointSeries<T> + ?Sized,
+    F: Fn(T, &[T; 4]) -> (T, [T; 4]),
 {
-    lm_core::<4, P, _, _>(
+    lm_core::<T, 4, P, _, _>(
         points,
         initial_params,
         domain_ok,
@@ -84,26 +87,26 @@ where
 /// # Domain of Validity
 /// Requires `1 <= initial_params.len() <= 6`, at least `initial_params.len()` finite points, and smooth finite `eval_fn` values near $\theta$.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub fn levenberg_marquardt_numeric<P, F>(
+pub fn levenberg_marquardt_numeric<T, P, F>(
     points: &P,
-    initial_params: &[f64],
+    initial_params: &[T],
     eval_fn: F,
-) -> Result<[f64; MAX_FIT_PARAMS], FitError>
+) -> Result<[T; MAX_FIT_PARAMS], FitError>
 where
-    P: PointSeries + ?Sized,
-    F: Fn(f64, &[f64]) -> Option<f64>,
+    T: RealField,
+    P: PointSeries<T> + ?Sized,
+    F: Fn(T, &[T]) -> Option<T>,
 {
     let k = initial_params.len();
-    let eval_val = |x: f64, theta: &[f64; MAX_FIT_PARAMS]| -> f64 {
-        eval_fn(x, &theta[..k]).unwrap_or(f64::NAN)
-    };
-    let eval_jac = |x: f64, theta: &[f64; MAX_FIT_PARAMS]| -> (f64, [f64; MAX_FIT_PARAMS]) {
+    let eval_val =
+        |x: T, theta: &[T; MAX_FIT_PARAMS]| -> T { eval_fn(x, &theta[..k]).unwrap_or(T::NAN) };
+    let eval_jac = |x: T, theta: &[T; MAX_FIT_PARAMS]| -> (T, [T; MAX_FIT_PARAMS]) {
         numeric_central_jacobian(x, theta, k, &eval_fn)
     };
-    lm_core::<MAX_FIT_PARAMS, P, _, _>(
+    lm_core::<T, MAX_FIT_PARAMS, P, _, _>(
         points,
         initial_params,
-        finite_xy,
+        finite_xy::<T>,
         true,
         &eval_val,
         &eval_jac,
@@ -113,20 +116,22 @@ where
 /// Evaluates $\sum_i (y_i - \hat{f}(x_i; \theta))^2$ over finite points in `points`, returning
 /// `None` if no finite points exist or any evaluation produces a non-finite residual.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub fn sum_squared_errors_numeric<P, F>(points: &P, params: &[f64], eval_fn: F) -> Option<f64>
+pub fn sum_squared_errors_numeric<T, P, F>(points: &P, params: &[T], eval_fn: F) -> Option<T>
 where
-    P: PointSeries + ?Sized,
-    F: Fn(f64, &[f64]) -> Option<f64>,
+    T: RealField,
+    P: PointSeries<T> + ?Sized,
+    F: Fn(T, &[T]) -> Option<T>,
 {
     sum_squared_errors_slice(points, params, &eval_fn)
 }
 
-fn sum_squared_errors_slice<P, F>(points: &P, params: &[f64], eval_fn: &F) -> Option<f64>
+fn sum_squared_errors_slice<T, P, F>(points: &P, params: &[T], eval_fn: &F) -> Option<T>
 where
-    P: PointSeries + ?Sized,
-    F: Fn(f64, &[f64]) -> Option<f64>,
+    T: RealField,
+    P: PointSeries<T> + ?Sized,
+    F: Fn(T, &[T]) -> Option<T>,
 {
-    let mut sse = 0.0_f64;
+    let mut sse = T::ZERO;
     let mut any = false;
     for idx in 0..points.len() {
         let p = points.point_at(idx);
@@ -147,63 +152,70 @@ where
     any.then_some(sse)
 }
 
-fn numeric_central_jacobian<F>(
-    x: f64,
-    theta: &[f64; MAX_FIT_PARAMS],
+fn numeric_central_jacobian<T, F>(
+    x: T,
+    theta: &[T; MAX_FIT_PARAMS],
     k: usize,
     eval_fn: &F,
-) -> (f64, [f64; MAX_FIT_PARAMS])
+) -> (T, [T; MAX_FIT_PARAMS])
 where
-    F: Fn(f64, &[f64]) -> Option<f64>,
+    T: RealField,
+    F: Fn(T, &[T]) -> Option<T>,
 {
     let Some(y0) = eval_fn(x, &theta[..k]) else {
-        return (f64::NAN, [0.0; MAX_FIT_PARAMS]);
+        return (T::NAN, [T::ZERO; MAX_FIT_PARAMS]);
     };
     if !y0.is_finite() {
-        return (f64::NAN, [0.0; MAX_FIT_PARAMS]);
+        return (T::NAN, [T::ZERO; MAX_FIT_PARAMS]);
     }
     let mut work = *theta;
-    let mut jac = [0.0_f64; MAX_FIT_PARAMS];
+    let mut jac = [T::ZERO; MAX_FIT_PARAMS];
+    let step_scale = T::EPSILON.cbrt().max(T::from_f64(1e-6));
     for j in 0..k {
-        let h = 1e-6 * theta[j].abs().max(1.0);
+        let h = step_scale * theta[j].abs().max(T::ONE);
         work[j] = theta[j] + h;
         let Some(yp) = eval_fn(x, &work[..k]) else {
-            return (f64::NAN, [0.0; MAX_FIT_PARAMS]);
+            return (T::NAN, [T::ZERO; MAX_FIT_PARAMS]);
         };
         work[j] = theta[j] - h;
         let Some(ym) = eval_fn(x, &work[..k]) else {
-            return (f64::NAN, [0.0; MAX_FIT_PARAMS]);
+            return (T::NAN, [T::ZERO; MAX_FIT_PARAMS]);
         };
         work[j] = theta[j];
-        jac[j] = (yp - ym) / (2.0 * h);
+        jac[j] = (yp - ym) / (T::TWO * h);
     }
     (y0, jac)
 }
 
-fn lm_core<const M: usize, P, V, J>(
+fn lm_core<T: RealField, const M: usize, P, V, J>(
     points: &P,
-    initial_params: &[f64],
-    domain_ok: fn(f64, f64) -> bool,
+    initial_params: &[T],
+    domain_ok: fn(T, T) -> bool,
     allow_improved: bool,
     eval_val: &V,
     eval_jac: &J,
-) -> Result<[f64; M], FitError>
+) -> Result<[T; M], FitError>
 where
-    P: PointSeries + ?Sized,
-    V: Fn(f64, &[f64; M]) -> f64,
-    J: Fn(f64, &[f64; M]) -> (f64, [f64; M]),
+    P: PointSeries<T> + ?Sized,
+    V: Fn(T, &[T; M]) -> T,
+    J: Fn(T, &[T; M]) -> (T, [T; M]),
 {
     let (k, mut theta, initial_sse) = init_lm_state(points, initial_params, domain_ok, eval_val)?;
-    if initial_sse <= 1e-24 {
+    let sse_floor = (T::EPSILON * T::EPSILON).max(T::from_f64(1e-24));
+    if initial_sse <= sse_floor {
         return Ok(theta);
     }
 
     let mut current_sse = initial_sse;
-    let mut lambda = 1e-3_f64;
+    let mut lambda = T::from_f64(1e-3);
+    let grad_tol = T::from_f64(1e-6).max(T::EPSILON.sqrt());
+    let step_tol = T::from_f64(1e-8).max(T::EPSILON.sqrt());
+    let imp_tol = T::from_f64(1e-12).max(T::EPSILON * T::from_f64(16.0));
+
     for _ in 0..MAX_LM_ITERATIONS {
         let (jtj, jtr, scaled_grad) =
             accumulate_normal_system(points, domain_ok, &theta, k, current_sse, eval_jac)?;
-        if scaled_grad <= 1e-6 || current_sse <= 1e-24 {
+        if scaled_grad <= grad_tol || current_sse <= sse_floor {
             return Ok(theta);
         }
         let prev_sse = current_sse;
@@ -224,9 +236,9 @@ where
         if !accepted {
             return finish_lm(theta, scaled_grad, current_sse, initial_sse, allow_improved);
         }
-        let small_step = step_norm <= 1e-8 * (1.0 + param_norm);
-        let small_improve = (prev_sse - current_sse).abs() <= 1e-12 * (1.0 + current_sse);
-        if lambda <= 1e4 && (small_step || small_improve) {
+        let small_step = step_norm <= step_tol * (T::ONE + param_norm);
+        let small_improve = (prev_sse - current_sse).abs() <= imp_tol * (T::ONE + current_sse);
+        if lambda <= T::from_f64(1e4) && (small_step || small_improve) {
             return Ok(theta);
         }
     }
@@ -236,14 +248,18 @@ where
     finish_lm(theta, final_grad, current_sse, initial_sse, allow_improved)
 }
 
-fn finish_lm<const M: usize>(
-    theta: [f64; M],
-    grad: f64,
-    current_sse: f64,
-    initial_sse: f64,
+fn finish_lm<T: RealField, const M: usize>(
+    theta: [T; M],
+    grad: T,
+    current_sse: T,
+    initial_sse: T,
     allow_improved: bool,
-) -> Result<[f64; M], FitError> {
-    if grad <= 1e-4 || current_sse <= 1e-24 || (allow_improved && current_sse < initial_sse) {
+) -> Result<[T; M], FitError> {
+    let sse_floor = (T::EPSILON * T::EPSILON).max(T::from_f64(1e-24));
+    if grad <= T::from_f64(1e-4)
+        || current_sse <= sse_floor
+        || (allow_improved && current_sse < initial_sse)
+    {
         Ok(theta)
     } else {
         Err(FitError::NonConvergence {
@@ -252,15 +268,15 @@ fn finish_lm<const M: usize>(
     }
 }
 
-fn init_lm_state<const M: usize, P, V>(
+fn init_lm_state<T: RealField, const M: usize, P, V>(
     points: &P,
-    initial_params: &[f64],
-    domain_ok: fn(f64, f64) -> bool,
+    initial_params: &[T],
+    domain_ok: fn(T, T) -> bool,
     eval_val: &V,
-) -> Result<(usize, [f64; M], f64), FitError>
+) -> Result<(usize, [T; M], T), FitError>
 where
-    P: PointSeries + ?Sized,
-    V: Fn(f64, &[f64; M]) -> f64,
+    P: PointSeries<T> + ?Sized,
+    V: Fn(T, &[T; M]) -> T,
 {
     let k = initial_params.len();
     if k == 0 || k > M {
@@ -273,7 +289,7 @@ where
             actual: valid_n,
         });
     }
-    let mut theta = [0.0_f64; M];
+    let mut theta = [T::ZERO; M];
     theta[..k].copy_from_slice(initial_params);
     let current_sse = sum_squared_errors(points, domain_ok, &theta, eval_val);
     if !current_sse.is_finite() {
@@ -285,13 +301,13 @@ where
 }
 
 #[inline]
-fn finite_xy(x: f64, y: f64) -> bool {
+fn finite_xy<T: RealField>(x: T, y: T) -> bool {
     x.is_finite() && y.is_finite()
 }
 
-fn count_domain_points<P: PointSeries + ?Sized>(
+fn count_domain_points<T: RealField, P: PointSeries<T> + ?Sized>(
     points: &P,
-    domain_ok: fn(f64, f64) -> bool,
+    domain_ok: fn(T, T) -> bool,
 ) -> usize {
     let mut n = 0usize;
     for i in 0..points.len() {
@@ -303,107 +319,78 @@ fn count_domain_points<P: PointSeries + ?Sized>(
     n
 }
 
-struct LmLinearSystem<'a, const M: usize> {
+struct LmLinearSystem<'a, T, const M: usize> {
     k: usize,
-    jtj: &'a [[f64; M]; M],
-    jtr: &'a [f64; M],
+    jtj: &'a [[T; M]; M],
+    jtr: &'a [T; M],
 }
 
-fn try_lm_step<const M: usize, P, V>(
+fn try_lm_step<T: RealField, const M: usize, P, V>(
     points: &P,
-    domain_ok: fn(f64, f64) -> bool,
-    theta: &mut [f64; M],
-    current_sse: &mut f64,
-    lambda: &mut f64,
-    sys: &LmLinearSystem<'_, M>,
+    domain_ok: fn(T, T) -> bool,
+    theta: &mut [T; M],
+    current_sse: &mut T,
+    lambda: &mut T,
+    sys: &LmLinearSystem<'_, T, M>,
     eval_val: &V,
-) -> (bool, f64, f64)
+) -> (bool, T, T)
 where
-    P: PointSeries + ?Sized,
-    V: Fn(f64, &[f64; M]) -> f64,
+    P: PointSeries<T> + ?Sized,
+    V: Fn(T, &[T; M]) -> T,
 {
     let k = sys.k;
-    let mut step_norm = 0.0_f64;
-    let mut param_norm = 0.0_f64;
+    let mut step_norm = T::ZERO;
+    let mut param_norm = T::ZERO;
+    let ten = T::from_f64(10.0);
+    let quarter = T::from_f64(0.25);
+    let diag_floor = T::from_f64(1e-6);
     for _ in 0..MAX_DAMPING_SUBSTEPS {
-        let Ok(delta) = solve_lm_damped_step(sys.jtj, sys.jtr, k, *lambda) else {
-            *lambda *= 10.0;
+        let Ok(delta) = solve_marquardt_ldlt(sys.jtj, sys.jtr, k, *lambda, diag_floor) else {
+            *lambda *= ten;
             continue;
         };
         let mut candidate = *theta;
-        step_norm = 0.0;
-        param_norm = 0.0;
+        step_norm = T::ZERO;
+        param_norm = T::ZERO;
         for c in 0..k {
             candidate[c] += delta[c];
             step_norm += delta[c] * delta[c];
             param_norm += theta[c] * theta[c];
         }
-        step_norm = Float::sqrt(step_norm);
-        param_norm = Float::sqrt(param_norm);
+        step_norm = step_norm.sqrt();
+        param_norm = param_norm.sqrt();
 
         let new_sse = sum_squared_errors(points, domain_ok, &candidate, eval_val);
         if new_sse.is_finite() && new_sse < *current_sse {
             *theta = candidate;
             *current_sse = new_sse;
-            *lambda = (*lambda * 0.25).max(1e-12);
+            *lambda = (*lambda * quarter).max(T::from_f64(1e-12));
             return (true, step_norm, param_norm);
         }
-        *lambda *= 10.0;
-        if *lambda > 1e12 || !lambda.is_finite() {
+        *lambda *= ten;
+        if *lambda > T::from_f64(1e12) || !lambda.is_finite() {
             break;
         }
     }
     (false, step_norm, param_norm)
 }
 
-fn solve_lm_damped_step<const M: usize>(
-    jtj: &[[f64; M]; M],
-    jtr: &[f64; M],
-    k: usize,
-    lambda: f64,
-) -> Result<[f64; M], FitError> {
-    if k == 0 || k > M || k > 8 {
-        return Err(FitError::SingularMatrix);
-    }
-    let mut flat_jtj = [0.0_f64; 64];
-    for (r, row) in jtj.iter().enumerate().take(k) {
-        let start = r * k;
-        flat_jtj[start..(start + k)].copy_from_slice(&row[..k]);
-    }
-    let mut delta = [0.0_f64; M];
-    let mut pivots = [0_usize; 8];
-    let mut scratch = [0.0_f64; 128];
-    engine_linalg::solve_damped_normal(
-        &flat_jtj[..(k * k)],
-        &jtr[..k],
-        k,
-        engine_linalg::DampingStyle::Marquardt {
-            lambda,
-            diag_floor: 1e-6,
-        },
-        &mut delta[..k],
-        &mut pivots[..k],
-        &mut engine_linalg::SolverWorkspace::new(&mut scratch),
-    )?;
-    Ok(delta)
-}
+type NormalSystem<T, const M: usize> = ([[T; M]; M], [T; M], T);
 
-type NormalSystem<const M: usize> = ([[f64; M]; M], [f64; M], f64);
-
-fn accumulate_normal_system<const M: usize, P, J>(
+fn accumulate_normal_system<T: RealField, const M: usize, P, J>(
     points: &P,
-    domain_ok: fn(f64, f64) -> bool,
-    theta: &[f64; M],
+    domain_ok: fn(T, T) -> bool,
+    theta: &[T; M],
     k: usize,
-    current_sse: f64,
+    current_sse: T,
     eval_jac: &J,
-) -> Result<NormalSystem<M>, FitError>
+) -> Result<NormalSystem<T, M>, FitError>
 where
-    P: PointSeries + ?Sized,
-    J: Fn(f64, &[f64; M]) -> (f64, [f64; M]),
+    P: PointSeries<T> + ?Sized,
+    J: Fn(T, &[T; M]) -> (T, [T; M]),
 {
-    let mut jtj = [[0.0_f64; M]; M];
-    let mut jtr = [0.0_f64; M];
+    let mut jtj = [[T::ZERO; M]; M];
+    let mut jtr = [T::ZERO; M];
 
     for idx in 0..points.len() {
         let p = points.point_at(idx);
@@ -428,27 +415,27 @@ where
     }
     symmetrize_upper(&mut jtj, k);
 
-    let r_norm = Float::sqrt(current_sse).max(1e-15);
-    let mut scaled_grad = 0.0_f64;
+    let r_norm = current_sse.sqrt().max(T::from_f64(1e-15));
+    let mut scaled_grad = T::ZERO;
     for row in 0..k {
-        let col_norm = Float::sqrt(jtj[row][row]);
-        let denom = (col_norm * r_norm).max(1.0);
+        let col_norm = jtj[row][row].sqrt();
+        let denom = (col_norm * r_norm).max(T::ONE);
         scaled_grad = scaled_grad.max(jtr[row].abs() / denom);
     }
     Ok((jtj, jtr, scaled_grad))
 }
 
-fn sum_squared_errors<const M: usize, P, V>(
+fn sum_squared_errors<T: RealField, const M: usize, P, V>(
     points: &P,
-    domain_ok: fn(f64, f64) -> bool,
-    theta: &[f64; M],
+    domain_ok: fn(T, T) -> bool,
+    theta: &[T; M],
     eval_val: &V,
-) -> f64
+) -> T
 where
-    P: PointSeries + ?Sized,
-    V: Fn(f64, &[f64; M]) -> f64,
+    P: PointSeries<T> + ?Sized,
+    V: Fn(T, &[T; M]) -> T,
 {
-    let mut sse = 0.0_f64;
+    let mut sse = T::ZERO;
     for idx in 0..points.len() {
         let p = points.point_at(idx);
         if !domain_ok(p[0], p[1]) {
@@ -456,12 +443,12 @@ where
         }
         let f_hat = eval_val(p[0], theta);
         if !f_hat.is_finite() {
-            return f64::NAN;
+            return T::NAN;
         }
         let r = p[1] - f_hat;
         sse += r * r;
         if !sse.is_finite() {
-            return f64::NAN;
+            return T::NAN;
         }
     }
     sse

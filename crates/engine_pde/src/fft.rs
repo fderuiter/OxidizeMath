@@ -1,6 +1,7 @@
 // [cite:engine_pde]
 use crate::error::PdeError;
-use math_commons::math_kernel::types::{Scalar, flatten_2d_index};
+use math_commons::math_kernel::types::flatten_2d_index;
+use math_scalars::RealField;
 
 /// Computes the signed integer Fourier mode $\tilde{m} \in (-N/2, N/2]$ for DFT index `m` of radix-2 size `n`.
 #[inline]
@@ -14,9 +15,14 @@ pub const fn signed_mode_index(m: usize, n: usize) -> isize {
 
 /// Computes the physical wavenumber $k_m = \frac{2\pi}{n \Delta x} \tilde{m}$ (zeroing Nyquist $m = n / 2$ for odd derivatives).
 #[inline]
-pub fn mode_wavenumber(m: usize, n: usize, dx: f64) -> f64 {
-    let signed = signed_mode_index(m, n) as f64;
-    (<f64 as Scalar>::TAU / ((n as f64) * dx)) * signed
+pub fn mode_wavenumber<T: RealField>(m: usize, n: usize, dx: T) -> T {
+    let signed_i = signed_mode_index(m, n);
+    let signed = if signed_i >= 0 {
+        T::from_usize(signed_i as usize)
+    } else {
+        -T::from_usize(signed_i.unsigned_abs())
+    };
+    (T::TAU / (T::from_usize(n) * dx)) * signed
 }
 
 /// Fallible zero-allocation iterative radix-2 Cooley-Tukey 1D FFT/IFFT over interleaved `(re, im)` slice `buf`.
@@ -25,7 +31,11 @@ pub fn mode_wavenumber(m: usize, n: usize, dx: f64) -> f64 {
 /// Returns [`PdeError::NonRadix2Dimension`] if `n == 0` or `!n.is_power_of_two()`, or
 /// [`PdeError::BufferTooSmall`] if `buf.len() < 2 * n`.
 #[verified_engine::verified]
-pub fn try_fft_1d_inplace(buf: &mut [f64], n: usize, inverse: bool) -> Result<(), PdeError> {
+pub fn try_fft_1d_inplace<T: RealField>(
+    buf: &mut [T],
+    n: usize,
+    inverse: bool,
+) -> Result<(), PdeError> {
     if n == 0 || !n.is_power_of_two() {
         return Err(PdeError::NonRadix2Dimension { axis: "n", size: n });
     }
@@ -44,7 +54,7 @@ pub fn try_fft_1d_inplace(buf: &mut [f64], n: usize, inverse: bool) -> Result<()
     run_cooley_tukey_butterflies(buf, n, inverse);
 
     if inverse {
-        let inv_n = 1.0 / (n as f64);
+        let inv_n = T::ONE / T::from_usize(n);
         for v in &mut buf[..required] {
             *v *= inv_n;
         }
@@ -58,25 +68,24 @@ pub fn try_fft_1d_inplace(buf: &mut [f64], n: usize, inverse: bool) -> Result<()
 /// # Panics
 /// Panics if `n == 0`, `!n.is_power_of_two()`, or `buf.len() < 2 * n`; prefer [`try_fft_1d_inplace`].
 #[verified_engine::verified]
-pub fn fft_1d_inplace(buf: &mut [f64], n: usize, inverse: bool) {
+pub fn fft_1d_inplace<T: RealField>(buf: &mut [T], n: usize, inverse: bool) {
     try_fft_1d_inplace(buf, n, inverse).expect("fft_1d_inplace preconditions violated");
 }
 
 #[verified_engine::verified]
-fn run_cooley_tukey_butterflies(buf: &mut [f64], n: usize, inverse: bool) {
+fn run_cooley_tukey_butterflies<T: RealField>(buf: &mut [T], n: usize, inverse: bool) {
     debug_assert!(n.is_power_of_two() && buf.len() >= 2 * n);
-    let sign = if inverse { 1.0 } else { -1.0 };
+    let sign = if inverse { T::ONE } else { -T::ONE };
     let mut len = 2;
     while len <= n {
         let half = len / 2;
-        let angle = sign * <f64 as Scalar>::TAU / (len as f64);
-        let w_step_re = <f64 as Scalar>::cos(angle);
-        let w_step_im = <f64 as Scalar>::sin(angle);
+        let angle = sign * T::TAU / T::from_usize(len);
+        let (w_step_im, w_step_re) = angle.sin_cos();
 
         let mut base = 0;
         while base < n {
-            let mut w_re = 1.0_f64;
-            let mut w_im = 0.0_f64;
+            let mut w_re = T::ONE;
+            let mut w_im = T::ZERO;
             for j in 0..half {
                 let i0 = 2 * (base + j);
                 let i1 = 2 * (base + j + half);
@@ -100,7 +109,7 @@ fn run_cooley_tukey_butterflies(buf: &mut [f64], n: usize, inverse: bool) {
     }
 }
 
-fn bit_reverse_permute(buf: &mut [f64], n: usize) {
+fn bit_reverse_permute<T>(buf: &mut [T], n: usize) {
     let mut j = 0_usize;
     for i in 1..n {
         let mut bit = n >> 1;
@@ -121,11 +130,11 @@ fn bit_reverse_permute(buf: &mut [f64], n: usize) {
 /// # Errors
 /// Returns [`PdeError`] if `width` or `height` is not a power of two or `buf`/`col_scratch` is undersized.
 #[verified_engine::verified]
-pub fn try_fft_2d_inplace(
-    buf: &mut [f64],
+pub fn try_fft_2d_inplace<T: RealField>(
+    buf: &mut [T],
     width: usize,
     height: usize,
-    col_scratch: &mut [f64],
+    col_scratch: &mut [T],
     inverse: bool,
 ) -> Result<(), PdeError> {
     if width == 0 || !width.is_power_of_two() {
@@ -192,11 +201,11 @@ pub fn try_fft_2d_inplace(
 /// # Panics
 /// Panics if `width`/`height` are not powers of two or buffers are undersized; prefer [`try_fft_2d_inplace`].
 #[verified_engine::verified]
-pub fn fft_2d_inplace(
-    buf: &mut [f64],
+pub fn fft_2d_inplace<T: RealField>(
+    buf: &mut [T],
     width: usize,
     height: usize,
-    col_scratch: &mut [f64],
+    col_scratch: &mut [T],
     inverse: bool,
 ) {
     try_fft_2d_inplace(buf, width, height, col_scratch, inverse)
@@ -208,7 +217,7 @@ pub fn fft_2d_inplace(
 /// # Errors
 /// Returns [`PdeError`] if `n == 0` or `spec.len() < 2 * n`.
 #[verified_engine::verified]
-pub fn try_dealias_1d_spectrum(spec: &mut [f64], n: usize) -> Result<(), PdeError> {
+pub fn try_dealias_1d_spectrum<T: RealField>(spec: &mut [T], n: usize) -> Result<(), PdeError> {
     if n == 0 {
         return Err(PdeError::InvalidGridDimension { axis: "n", size: 0 });
     }
@@ -225,8 +234,8 @@ pub fn try_dealias_1d_spectrum(spec: &mut [f64], n: usize) -> Result<(), PdeErro
     for m in 0..n {
         let k_abs = signed_mode_index(m, n).unsigned_abs();
         if 3 * k_abs >= n {
-            spec[2 * m] = 0.0;
-            spec[2 * m + 1] = 0.0;
+            spec[2 * m] = T::ZERO;
+            spec[2 * m + 1] = T::ZERO;
         }
     }
     debug_assert!(spec.len() >= required);
@@ -239,7 +248,7 @@ pub fn try_dealias_1d_spectrum(spec: &mut [f64], n: usize) -> Result<(), PdeErro
 /// # Panics
 /// Panics if `n == 0` or `spec.len() < 2 * n`; prefer [`try_dealias_1d_spectrum`].
 #[verified_engine::verified]
-pub fn dealias_1d_spectrum(spec: &mut [f64], n: usize) {
+pub fn dealias_1d_spectrum<T: RealField>(spec: &mut [T], n: usize) {
     try_dealias_1d_spectrum(spec, n).expect("dealias_1d_spectrum preconditions violated");
 }
 
@@ -248,8 +257,8 @@ pub fn dealias_1d_spectrum(spec: &mut [f64], n: usize) {
 /// # Errors
 /// Returns [`PdeError`] if `width == 0`, `height == 0`, or `spec.len() < 2 * width * height`.
 #[verified_engine::verified]
-pub fn try_dealias_2d_spectrum(
-    spec: &mut [f64],
+pub fn try_dealias_2d_spectrum<T: RealField>(
+    spec: &mut [T],
     width: usize,
     height: usize,
 ) -> Result<(), PdeError> {
@@ -285,8 +294,8 @@ pub fn try_dealias_2d_spectrum(
             let kx_cut = 3 * signed_mode_index(x, width).unsigned_abs() >= width;
             if kx_cut || ky_cut {
                 let idx = 2 * flatten_2d_index(x, y, width);
-                spec[idx] = 0.0;
-                spec[idx + 1] = 0.0;
+                spec[idx] = T::ZERO;
+                spec[idx + 1] = T::ZERO;
             }
         }
     }
@@ -300,7 +309,7 @@ pub fn try_dealias_2d_spectrum(
 /// # Panics
 /// Panics if `width == 0`, `height == 0`, or `spec` is undersized; prefer [`try_dealias_2d_spectrum`].
 #[verified_engine::verified]
-pub fn dealias_2d_spectrum(spec: &mut [f64], width: usize, height: usize) {
+pub fn dealias_2d_spectrum<T: RealField>(spec: &mut [T], width: usize, height: usize) {
     try_dealias_2d_spectrum(spec, width, height)
         .expect("dealias_2d_spectrum preconditions violated");
 }

@@ -272,11 +272,37 @@ fn test_root_config_edits_escalate_to_full_workspace_checks() {
     }
 }
 
+const EXPECTED_WEB_CRATES: &[&str] = &[
+    "diagnostics",
+    "domain_ai",
+    "domain_applied",
+    "domain_biology",
+    "domain_climate",
+    "domain_epidemiology",
+    "domain_physics",
+    "egui_plot",
+    "engine_diffeq",
+    "engine_linalg",
+    "engine_pde",
+    "federated_registry",
+    "math_commons",
+    "math_diagnostics",
+    "math_explorer",
+    "math_explorer_gui",
+    "math_rng",
+    "math_scalars",
+    "oxidize_core",
+    "pure_math",
+    "scientific_metadata",
+    "verified_engine",
+    "verified_engine_macros",
+];
+
 #[test]
 fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
     let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let crates = load_workspace_crates(&ws_root);
-    assert_eq!(crates.len(), 26);
+    assert_eq!(crates.len(), 27);
 
     let mut web_names: Vec<&str> = crates
         .iter()
@@ -284,33 +310,7 @@ fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
         .map(|c| c.package_name.as_str())
         .collect();
     web_names.sort_unstable();
-    assert_eq!(
-        web_names,
-        vec![
-            "diagnostics",
-            "domain_ai",
-            "domain_applied",
-            "domain_biology",
-            "domain_climate",
-            "domain_epidemiology",
-            "domain_physics",
-            "egui_plot",
-            "engine_diffeq",
-            "engine_linalg",
-            "engine_pde",
-            "federated_registry",
-            "math_commons",
-            "math_diagnostics",
-            "math_explorer",
-            "math_explorer_gui",
-            "math_rng",
-            "oxidize_core",
-            "pure_math",
-            "scientific_metadata",
-            "verified_engine",
-            "verified_engine_macros",
-        ]
-    );
+    assert_eq!(web_names.as_slice(), EXPECTED_WEB_CRATES);
 
     for host_only in [
         "markdown_tests",

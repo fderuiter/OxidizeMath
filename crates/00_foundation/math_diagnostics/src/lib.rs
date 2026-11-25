@@ -3,6 +3,9 @@
 
 use core::fmt;
 
+mod linalg_error;
+pub use linalg_error::LinalgError;
+
 /// Operational severity level attached to structured diagnostics and telemetry events.
 ///
 /// # Example

@@ -3,18 +3,27 @@
 
 use super::{SccSummary, SolverWorkspace};
 use crate::math_kernel::types::flatten_2d_index;
+use math_scalars::RealField;
 
 const UNVISITED: usize = usize::MAX;
-const EDGE_REL_TOL: f64 = 1e-14;
+
+#[inline]
+fn edge_rel_tol<T: RealField>() -> T {
+    (T::EPSILON * T::from_f64(64.0)).max(T::from_f64(1e-14))
+}
 
 /// Computes per-row off-diagonal maximum positive magnitude for scale-invariant edge detection.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub(super) fn compute_off_diagonal_scales(matrix: &[f64], n: usize, row_scales: &mut [f64]) {
+pub(super) fn compute_off_diagonal_scales<T: RealField>(
+    matrix: &[T],
+    n: usize,
+    row_scales: &mut [T],
+) {
     debug_assert!(matrix.len() >= n * n);
     debug_assert!(row_scales.len() >= n);
     for (i, row_scale) in row_scales.iter_mut().enumerate().take(n) {
         let row_offset = i * n;
-        let mut max_pos = 0.0_f64;
+        let mut max_pos = T::ZERO;
         for j in 0..n {
             if i != j {
                 let v = matrix[row_offset + j];
@@ -28,15 +37,25 @@ pub(super) fn compute_off_diagonal_scales(matrix: &[f64], n: usize, row_scales: 
 }
 
 #[inline]
-fn has_directed_edge(matrix: &[f64], row_scales: &[f64], n: usize, u: usize, v: usize) -> bool {
+fn has_directed_edge<T: RealField>(
+    matrix: &[T],
+    row_scales: &[T],
+    n: usize,
+    u: usize,
+    v: usize,
+) -> bool {
     let scale = row_scales[u];
-    u != v && scale > 0.0 && matrix[flatten_2d_index(v, u, n)] > scale * EDGE_REL_TOL
+    u != v && scale > T::ZERO && matrix[flatten_2d_index(v, u, n)] > scale * edge_rel_tol::<T>()
 }
 
 /// Runs iterative Tarjan SCC traversal on `matrix` ($n \times n$) using `ws` buffers and
 /// identifies closed sink components.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub(super) fn decompose_tarjan(ws: &mut SolverWorkspace, matrix: &[f64], n: usize) -> SccSummary {
+pub(super) fn decompose_tarjan<T: RealField>(
+    ws: &mut SolverWorkspace<T>,
+    matrix: &[T],
+    n: usize,
+) -> SccSummary {
     debug_assert!(n > 0 && matrix.len() >= n * n);
     compute_off_diagonal_scales(matrix, n, &mut ws.row_scales[..n]);
     ws.tarjan_index[..n].fill(UNVISITED);
@@ -67,9 +86,9 @@ pub(super) fn decompose_tarjan(ws: &mut SolverWorkspace, matrix: &[f64], n: usiz
 }
 
 #[cfg_attr(feature = "std", verified_engine::verified)]
-fn tarjan_visit_root(
-    ws: &mut SolverWorkspace,
-    matrix: &[f64],
+fn tarjan_visit_root<T: RealField>(
+    ws: &mut SolverWorkspace<T>,
+    matrix: &[T],
     n: usize,
     start: usize,
     next_index: &mut usize,
@@ -104,8 +123,8 @@ fn tarjan_visit_root(
 }
 
 #[inline]
-fn push_tarjan_node(
-    ws: &mut SolverWorkspace,
+fn push_tarjan_node<T>(
+    ws: &mut SolverWorkspace<T>,
     node: usize,
     call_sp: usize,
     next_index: &mut usize,
@@ -122,8 +141,8 @@ fn push_tarjan_node(
 }
 
 #[inline]
-fn finish_tarjan_node(
-    ws: &mut SolverWorkspace,
+fn finish_tarjan_node<T>(
+    ws: &mut SolverWorkspace<T>,
     u: usize,
     call_sp: usize,
     num_components: &mut usize,
@@ -151,9 +170,9 @@ fn finish_tarjan_node(
 }
 
 #[cfg_attr(feature = "std", verified_engine::verified)]
-fn classify_closed_sinks(
-    ws: &mut SolverWorkspace,
-    matrix: &[f64],
+fn classify_closed_sinks<T: RealField>(
+    ws: &mut SolverWorkspace<T>,
+    matrix: &[T],
     n: usize,
     num_components: usize,
 ) -> SccSummary {

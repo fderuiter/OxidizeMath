@@ -4,6 +4,8 @@ use dashu::float::FBig;
 pub use dashu::integer::IBig;
 use dashu::rational::RBig;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, RemAssign, Sub, SubAssign};
+
+mod scalar_impls;
 /// Arbitrary-precision signed integer wrapper over [`dashu::integer::IBig`].
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

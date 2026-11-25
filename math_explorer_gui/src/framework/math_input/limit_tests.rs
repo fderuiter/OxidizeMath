@@ -9,7 +9,7 @@ fn test_math_input_enforces_byte_and_instruction_caps_while_keeping_last_valid()
         .with_axes(&["t", "y"])
         .with_max_instructions(16);
     assert!(bar.is_valid());
-    let initial_eval = bar
+    let initial_eval: f64 = bar
         .active_compiled()
         .expect("compiled")
         .eval_2d(0.0, 2.0, &[3.0]);

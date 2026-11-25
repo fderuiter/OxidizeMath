@@ -2,7 +2,7 @@
 //!
 //! Implementation of polynomials with coefficients in a Ring.
 
-use crate::pure_math::algebra::traits::Ring;
+use crate::pure_math::algebra::traits::{DomainRing, Ring, Scalar};
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 pub mod laurent;
@@ -81,6 +81,29 @@ impl<T: Ring> Polynomial<T> {
         }
         Polynomial::new(new_coeffs)
     }
+}
+
+/// Evaluates ascending-degree polynomial `coeffs` at `x` inside an explicit [`DomainRing`]
+/// using Horner's method (`coeffs[0] + coeffs[1] * x + ...`).
+///
+/// Supports runtime-modulus finite fields ([`math_scalars::ModPrimeContext`],
+/// [`math_scalars::DashuModContext`]) and dynamic-precision floats
+/// ([`math_scalars::DashuFloatContext`]) without thread-local state.
+#[verified_engine::verified]
+pub fn eval_in_domain<D: DomainRing>(
+    domain: &D,
+    coeffs: &[D::Element],
+    x: &D::Element,
+) -> D::Element {
+    if coeffs.is_empty() {
+        return domain.zero();
+    }
+    let mut acc = domain.zero();
+    for coeff in coeffs.iter().rev() {
+        let prod = domain.mul(&acc, x);
+        acc = domain.add(&prod, coeff);
+    }
+    acc
 }
 
 impl<T: Ring> Add for Polynomial<T> {
@@ -245,6 +268,8 @@ impl<T: Ring> Mul<T> for &Polynomial<T> {
 // To satisfy the generic constraints for testing, I'll implement a subset or all if possible.
 // For now, let's stick to basic operations demonstrated above. The user can use basic operators.
 // Note: To implement `Ring` trait for `Polynomial<T>`, we need all of them.
+
+impl<T: Ring> Scalar for Polynomial<T> {}
 
 impl<T: Ring> Ring for Polynomial<T> {
     #[verified_engine::verified]

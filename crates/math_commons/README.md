@@ -47,8 +47,8 @@ Fit canonical polynomial or nonlinear curves and query sub-segment crossings dir
 use math_commons::fit::{FitModel, fit_model};
 use math_commons::poi::{closest_threshold_crossing, parabolic_vertex};
 
-let xs = [0.0, 1.0, 2.0, 3.0, 4.0];
-let ys = [0.0, 3.0, 4.0, 3.0, 0.0];
+let xs = [0.0_f64, 1.0, 2.0, 3.0, 4.0];
+let ys = [0.0_f64, 3.0, 4.0, 3.0, 0.0];
 let series = (&xs[..], &ys[..]);
 
 let fit = fit_model(&series, FitModel::Quadratic, false).expect("quadratic fit");

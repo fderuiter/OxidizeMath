@@ -136,7 +136,9 @@ fn test_compiled_expr_1d_2d_3d_and_complex_parity() {
     let expr_2d = parse("a * (x^2 - y^2) + step(x) * rect(y)").unwrap();
     let compiled_2d = CompiledExpr::compile_with_vars(&expr_2d, &["x", "y"]).unwrap();
     assert_eq!(compiled_2d.param_names(), &["a"]);
-    assert!((compiled_2d.eval_2d(0.5, 0.25, &[2.0]) - (2.0 * (0.25 - 0.0625) + 1.0)).abs() < 1e-12);
+    assert!(
+        (compiled_2d.eval_2d(0.5_f64, 0.25, &[2.0]) - (2.0 * (0.25 - 0.0625) + 1.0)).abs() < 1e-12
+    );
 
     let expr_3d = parse("w * sin(b * x + phi)").unwrap();
     let compiled_3d = CompiledExpr::compile_with_vars(&expr_3d, &["x", "w", "b"]).unwrap();
@@ -171,8 +173,8 @@ fn test_compiled_expr_deep_ast_respects_max_eval_depth() {
 fn test_pipe_absolute_value_bars_nested_adjacent_and_errors() {
     let compiled_1d = CompiledExpr::compile_with_vars(&parse("||x| - 1|").unwrap(), &["x"])
         .expect("compile nested abs");
-    assert!((compiled_1d.eval_1d(-2.5, &[]) - 1.5).abs() < 1e-12);
-    assert!((compiled_1d.eval_1d(0.25, &[]) - 0.75).abs() < 1e-12);
+    assert!((compiled_1d.eval_1d(-2.5_f64, &[]) - 1.5).abs() < 1e-12);
+    assert!((compiled_1d.eval_1d(0.25_f64, &[]) - 0.75).abs() < 1e-12);
     assert_eq!(
         parse("||x| - 1|").unwrap().to_latex(),
         r"\left|\left|x\right| - 1\right|"
@@ -184,7 +186,7 @@ fn test_pipe_absolute_value_bars_nested_adjacent_and_errors() {
     )
     .expect("compile adjacent and parenthesized abs");
     // x = -3, y = -2 => 2*2 + 3*2 + |2*2 - 1| = 4 + 6 + 3 = 13
-    assert!((adj.eval_2d(-3.0, -2.0, &[]) - 13.0).abs() < 1e-12);
+    assert!((adj.eval_2d(-3.0_f64, -2.0, &[]) - 13.0).abs() < 1e-12);
 
     let c_abs = CompiledExpr::compile_complex(&parse("|z| + i").unwrap(), &["z"]).unwrap();
     let w = c_abs.eval_complex_z(Complex64::new(3.0, -4.0));
@@ -237,4 +239,29 @@ fn test_unary_function_exponent_desmos_notation_and_depth_bounds() {
         parse(&format!("sin^2({chain_63})")),
         Err(ParseError::RecursionLimitExceeded(MAX_PARSE_DEPTH))
     );
+}
+
+#[test]
+fn test_generic_f32_complex32_and_dual_ast_and_bytecode_evaluation() {
+    use math_scalars::{Complex32, Dual};
+
+    let expr = parse("sin(x^2) + exp(-2 * x)").unwrap();
+    let compiled = CompiledExpr::compile_with_vars(&expr, &["x"]).unwrap();
+
+    let x0 = 0.75_f64;
+    let dual_val = compiled.eval_1d(Dual::variable(x0), &[]);
+    let expected_val = (x0 * x0).sin() + (-2.0 * x0).exp();
+    let expected_deriv = 2.0 * x0 * (x0 * x0).cos() - 2.0 * (-2.0 * x0).exp();
+    assert!((dual_val.re - expected_val).abs() < 1e-13);
+    assert!((dual_val.eps - expected_deriv).abs() < 1e-13);
+
+    let f32_val = compiled.eval_1d(0.75_f32, &[]);
+    assert!((f64::from(f32_val) - expected_val).abs() < 1e-6);
+
+    let c_expr = parse("z^2 + i * z + c").unwrap();
+    let z32 = Complex32::new(0.5, -0.25);
+    let c32 = Complex32::new(-0.1, 0.3);
+    let w32 = c_expr.eval_complex_zc(z32, c32);
+    let expected_w32 = z32 * z32 + Complex32::new(0.0, 1.0) * z32 + c32;
+    assert!((w32 - expected_w32).norm() < 1e-6);
 }

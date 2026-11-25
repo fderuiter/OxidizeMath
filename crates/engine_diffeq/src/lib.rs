@@ -25,6 +25,7 @@ pub use error::DiffeqError;
 pub use euler_maruyama::EulerMaruyamaSolver;
 pub use jump::ssa_sample_event;
 pub use math_rng::{BASE_SEED, OxidizeRng};
+pub use math_scalars::{RealField, RealField as Scalar};
 pub use milstein::MilsteinSolver;
 pub use sriw1::{CorrelatedWienerIncrement, Sriw1Solver};
 pub use system::{

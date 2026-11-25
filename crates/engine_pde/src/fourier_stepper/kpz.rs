@@ -9,9 +9,10 @@ use crate::fourier_kernels::{
 use crate::fourier_stepper::{SemiImplicitFourierStepper, check_non_neg, check_radix2_min4};
 use crate::spde_noise::{try_inject_additive_noise_1d, try_inject_additive_noise_2d};
 use math_commons::math_kernel::types::SolverWorkspace;
+use math_scalars::RealField;
 use rand_core::RngCore;
 
-impl SemiImplicitFourierStepper {
+impl<T: RealField> SemiImplicitFourierStepper<T> {
     /// Fallibly advances the 1D Kardar-Parisi-Zhang (KPZ) SPDE
     /// $\partial_t h = \nu \partial_{xx} h + \frac{\lambda}{2}(\partial_x h)^2 + \eta(x, t)$
     /// with 2/3-rule dealiasing.
@@ -19,19 +20,19 @@ impl SemiImplicitFourierStepper {
     #[verified_engine::verified]
     pub fn try_step_kpz_1d<R: RngCore + ?Sized>(
         &self,
-        h: &mut [f64],
-        nu: f64,
-        lambda: f64,
-        noise_intensity: f64,
-        dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        h: &mut [T],
+        nu: T,
+        lambda: T,
+        noise_intensity: T,
+        dt: T,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) -> Result<(), PdeError> {
         let n = h.len();
         check_radix2_min4("n", n)?;
         check_non_neg("nu", nu)?;
         check_non_neg("dt", dt)?;
-        if dt == 0.0 {
+        if dt == T::ZERO {
             return Ok(());
         }
 
@@ -43,14 +44,14 @@ impl SemiImplicitFourierStepper {
 
         pack_real(h, h_hat, n);
         try_fft_1d_inplace(h_hat, n, false)?;
-        if lambda.abs() > 0.0 {
+        if lambda.abs() > T::ZERO {
             try_eval_dealiased_grad_sq_1d(h_hat, grad_buf, n, self.dx)?;
         } else {
-            grad_buf.fill(0.0);
+            grad_buf.fill(T::ZERO);
         }
 
-        noise_phys.fill(0.0);
-        if noise_intensity > 0.0 {
+        noise_phys.fill(T::ZERO);
+        if noise_intensity > T::ZERO {
             try_inject_additive_noise_1d(
                 noise_phys,
                 self.dx,
@@ -63,7 +64,7 @@ impl SemiImplicitFourierStepper {
             pack_real(noise_phys, noise_spec, n);
             try_fft_1d_inplace(noise_spec, n, false)?;
         } else {
-            noise_spec.fill(0.0);
+            noise_spec.fill(T::ZERO);
         }
 
         update_kpz_1d_modes(h_hat, grad_buf, noise_spec, n, self.dx, nu, lambda, dt);
@@ -78,12 +79,12 @@ impl SemiImplicitFourierStepper {
     #[verified_engine::verified]
     pub fn step_kpz_1d<R: RngCore + ?Sized>(
         &self,
-        h: &mut [f64],
-        nu: f64,
-        lambda: f64,
-        noise_intensity: f64,
-        dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        h: &mut [T],
+        nu: T,
+        lambda: T,
+        noise_intensity: T,
+        dt: T,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) {
         self.try_step_kpz_1d(h, nu, lambda, noise_intensity, dt, workspace, rng)
@@ -97,14 +98,14 @@ impl SemiImplicitFourierStepper {
     #[verified_engine::verified]
     pub fn try_step_kpz_2d<R: RngCore + ?Sized>(
         &self,
-        h: &mut [f64],
+        h: &mut [T],
         width: usize,
         height: usize,
-        nu: f64,
-        lambda: f64,
-        noise_intensity: f64,
-        dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        nu: T,
+        lambda: T,
+        noise_intensity: T,
+        dt: T,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) -> Result<(), PdeError> {
         check_radix2_min4("width", width)?;
@@ -119,7 +120,7 @@ impl SemiImplicitFourierStepper {
         }
         check_non_neg("nu", nu)?;
         check_non_neg("dt", dt)?;
-        if dt == 0.0 {
+        if dt == T::ZERO {
             return Ok(());
         }
 
@@ -133,7 +134,7 @@ impl SemiImplicitFourierStepper {
 
         pack_real(&h[..total], h_hat, total);
         try_fft_2d_inplace(h_hat, width, height, col_scratch, false)?;
-        if lambda.abs() > 0.0 {
+        if lambda.abs() > T::ZERO {
             try_eval_dealiased_grad_sq_2d(
                 h_hat,
                 gx_buf,
@@ -145,11 +146,11 @@ impl SemiImplicitFourierStepper {
                 self.dy,
             )?;
         } else {
-            gx_buf.fill(0.0);
+            gx_buf.fill(T::ZERO);
         }
 
-        noise_phys.fill(0.0);
-        if noise_intensity > 0.0 {
+        noise_phys.fill(T::ZERO);
+        if noise_intensity > T::ZERO {
             try_inject_additive_noise_2d(
                 noise_phys,
                 width,
@@ -165,7 +166,7 @@ impl SemiImplicitFourierStepper {
             pack_real(noise_phys, noise_spec, total);
             try_fft_2d_inplace(noise_spec, width, height, col_scratch, false)?;
         } else {
-            noise_spec.fill(0.0);
+            noise_spec.fill(T::ZERO);
         }
 
         update_kpz_2d_modes(
@@ -182,14 +183,14 @@ impl SemiImplicitFourierStepper {
     #[verified_engine::verified]
     pub fn step_kpz_2d<R: RngCore + ?Sized>(
         &self,
-        h: &mut [f64],
+        h: &mut [T],
         width: usize,
         height: usize,
-        nu: f64,
-        lambda: f64,
-        noise_intensity: f64,
-        dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        nu: T,
+        lambda: T,
+        noise_intensity: T,
+        dt: T,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) {
         self.try_step_kpz_2d(
@@ -210,25 +211,25 @@ impl SemiImplicitFourierStepper {
     #[verified_engine::verified]
     pub fn try_step_edwards_wilkinson_1d<R: RngCore + ?Sized>(
         &self,
-        h: &mut [f64],
-        nu: f64,
-        noise_intensity: f64,
-        dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        h: &mut [T],
+        nu: T,
+        noise_intensity: T,
+        dt: T,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) -> Result<(), PdeError> {
-        self.try_step_kpz_1d(h, nu, 0.0, noise_intensity, dt, workspace, rng)
+        self.try_step_kpz_1d(h, nu, T::ZERO, noise_intensity, dt, workspace, rng)
     }
 
     /// Advances the 1D linear Edwards-Wilkinson SPDE $\partial_t h = \nu \partial_{xx} h + \eta$; prefer [`Self::try_step_edwards_wilkinson_1d`].
     #[verified_engine::verified]
     pub fn step_edwards_wilkinson_1d<R: RngCore + ?Sized>(
         &self,
-        h: &mut [f64],
-        nu: f64,
-        noise_intensity: f64,
-        dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        h: &mut [T],
+        nu: T,
+        noise_intensity: T,
+        dt: T,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) {
         self.try_step_edwards_wilkinson_1d(h, nu, noise_intensity, dt, workspace, rng)
@@ -240,13 +241,13 @@ impl SemiImplicitFourierStepper {
     #[verified_engine::verified]
     pub fn try_step_edwards_wilkinson_2d<R: RngCore + ?Sized>(
         &self,
-        h: &mut [f64],
+        h: &mut [T],
         width: usize,
         height: usize,
-        nu: f64,
-        noise_intensity: f64,
-        dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        nu: T,
+        noise_intensity: T,
+        dt: T,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) -> Result<(), PdeError> {
         self.try_step_kpz_2d(
@@ -254,7 +255,7 @@ impl SemiImplicitFourierStepper {
             width,
             height,
             nu,
-            0.0,
+            T::ZERO,
             noise_intensity,
             dt,
             workspace,
@@ -267,13 +268,13 @@ impl SemiImplicitFourierStepper {
     #[verified_engine::verified]
     pub fn step_edwards_wilkinson_2d<R: RngCore + ?Sized>(
         &self,
-        h: &mut [f64],
+        h: &mut [T],
         width: usize,
         height: usize,
-        nu: f64,
-        noise_intensity: f64,
-        dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        nu: T,
+        noise_intensity: T,
+        dt: T,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) {
         self.try_step_edwards_wilkinson_2d(

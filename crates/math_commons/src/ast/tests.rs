@@ -455,7 +455,7 @@ fn test_rk4_sub_microsecond_throughput() {
 
     let dt = 0.01;
     let mut t = 0.0;
-    let mut y = 1.0;
+    let mut y = 1.0_f64;
 
     // Warm-up
     for _ in 0..100 {

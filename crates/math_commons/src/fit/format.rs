@@ -5,6 +5,7 @@ use super::FitModel;
 use alloc::borrow::ToOwned;
 use alloc::format;
 use alloc::string::{String, ToString};
+use math_scalars::RealField;
 use num_traits::Float;
 
 const SCI_LOWER: f64 = 1e-3;
@@ -53,42 +54,42 @@ fn fmt_shifted_x(x0: f64) -> String {
 
 /// Formats a human-readable polynomial or log-log power-law formula string.
 #[must_use]
-pub fn format_polynomial_formula(coeffs: &[f64], log_x: bool, log_y: bool) -> String {
-    format_polynomial_with_scale(coeffs, 1.0, log_x, log_y)
+pub fn format_polynomial_formula<T: RealField>(coeffs: &[T], log_x: bool, log_y: bool) -> String {
+    format_polynomial_with_scale(coeffs, T::ONE, log_x, log_y)
 }
 
-pub(super) fn format_polynomial_with_scale(
-    coeffs: &[f64],
-    u_scale: f64,
+pub(super) fn format_polynomial_with_scale<T: RealField>(
+    coeffs: &[T],
+    u_scale: T,
     log_x: bool,
     log_y: bool,
 ) -> String {
     if log_x && log_y && coeffs.len() == 2 {
-        let a = Float::powf(10.0_f64, coeffs[0]);
+        let a = Float::powf(10.0_f64, coeffs[0].to_f64());
         return format!(
             "y = {}·x^({})",
             fmt_param_sig4(a),
-            fmt_param_sig4(coeffs[1])
+            fmt_param_sig4(coeffs[1].to_f64())
         );
     }
     let lhs = if log_y { "log10(y)" } else { "y" };
     let var = if log_x { "log10(x)" } else { "x" };
     let degree = coeffs.len().saturating_sub(1);
     if degree == 0 {
-        let c0 = coeffs.first().copied().unwrap_or(0.0);
+        let c0 = coeffs.first().map_or(0.0, |c| c.to_f64());
         return format!("{lhs} = {}", fmt_param_sig4(c0));
     }
-    let scale = u_scale.abs().max(1.0);
+    let scale = u_scale.to_f64().abs().max(1.0);
     let max_contrib = coeffs
         .iter()
         .enumerate()
-        .map(|(p, &c)| c.abs() * Float::powi(scale, p as i32))
+        .map(|(p, c)| c.to_f64().abs() * Float::powi(scale, p as i32))
         .fold(0.0_f64, f64::max);
 
     let mut out = format!("{lhs} = ");
     let mut emitted = 0usize;
     for power in (0..=degree).rev() {
-        let coeff = coeffs[power];
+        let coeff = coeffs[power].to_f64();
         let contrib = coeff.abs() * Float::powi(scale, power as i32);
         if max_contrib > 0.0 && contrib <= 1e-12 * max_contrib && emitted < degree && power > 0 {
             continue;
@@ -138,49 +139,53 @@ fn format_poly_term(coeff: f64, power: usize, var: &str, log_x: bool, is_first: 
 
 /// Formats a human-readable equation string for nonlinear [`FitModel`] presets.
 #[must_use]
-pub fn format_nonlinear_formula(model: FitModel, params: &[f64]) -> String {
+pub fn format_nonlinear_formula<T: RealField>(model: FitModel, params: &[T]) -> String {
     match model {
         FitModel::Exponential if params.len() >= 2 => {
-            let x_var = fmt_shifted_x(params.get(2).copied().unwrap_or(0.0));
+            let x_var = fmt_shifted_x(params.get(2).map_or(0.0, |v| v.to_f64()));
             format!(
                 "y = {}·exp({}·{x_var})",
-                fmt_param_sig4(params[0]),
-                fmt_signed_param(params[1])
+                fmt_param_sig4(params[0].to_f64()),
+                fmt_signed_param(params[1].to_f64())
             )
         }
         FitModel::PowerLaw if params.len() >= 2 => {
             format!(
                 "y = {}·x^({})",
-                fmt_param_sig4(params[0]),
-                fmt_param_sig4(params[1])
+                fmt_param_sig4(params[0].to_f64()),
+                fmt_param_sig4(params[1].to_f64())
             )
         }
         FitModel::Logarithmic if params.len() >= 2 => {
-            let sign = if params[1] >= 0.0 { "+" } else { "-" };
+            let p1 = params[1].to_f64();
+            let sign = if p1 >= 0.0 { "+" } else { "-" };
             format!(
                 "y = {} {sign} {}·ln(x)",
-                fmt_param_sig4(params[0]),
-                fmt_param_sig4(params[1].abs())
+                fmt_param_sig4(params[0].to_f64()),
+                fmt_param_sig4(p1.abs())
             )
         }
         FitModel::Logistic if params.len() >= 3 => {
-            let sign = if params[2] >= 0.0 { "-" } else { "+" };
+            let p2 = params[2].to_f64();
+            let sign = if p2 >= 0.0 { "-" } else { "+" };
             format!(
                 "y = {} / (1 + exp(-{}·(x {sign} {})))",
-                fmt_param_sig4(params[0]),
-                fmt_param_sig4(params[1]),
-                fmt_param_sig4(params[2].abs())
+                fmt_param_sig4(params[0].to_f64()),
+                fmt_param_sig4(params[1].to_f64()),
+                fmt_param_sig4(p2.abs())
             )
         }
         FitModel::Sinusoidal if params.len() >= 4 => {
-            let c_sign = if params[2] >= 0.0 { "+" } else { "-" };
-            let d_sign = if params[3] >= 0.0 { "+" } else { "-" };
+            let p2 = params[2].to_f64();
+            let p3 = params[3].to_f64();
+            let c_sign = if p2 >= 0.0 { "+" } else { "-" };
+            let d_sign = if p3 >= 0.0 { "+" } else { "-" };
             format!(
                 "y = {}·sin({}·x {c_sign} {}) {d_sign} {}",
-                fmt_param_sig4(params[0]),
-                fmt_param_sig4(params[1]),
-                fmt_param_sig4(params[2].abs()),
-                fmt_param_sig4(params[3].abs())
+                fmt_param_sig4(params[0].to_f64()),
+                fmt_param_sig4(params[1].to_f64()),
+                fmt_param_sig4(p2.abs()),
+                fmt_param_sig4(p3.abs())
             )
         }
         _ => "y = NaN".to_string(),

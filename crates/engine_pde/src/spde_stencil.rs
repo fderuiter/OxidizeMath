@@ -9,6 +9,7 @@ use helpers::{
     advance_cahn_hilliard_stencil_2d, advance_diffusion_substeps_2d, apply_local_reaction_2d,
 };
 use math_commons::math_kernel::types::{SolverWorkspace, flatten_2d_index};
+use math_scalars::RealField;
 use rand_core::RngCore;
 /// Explicit Euler-Maruyama finite-difference SPDE stepper evolving
 /// $\partial_t u = \mathcal{N}(u, \nabla_h u, \nabla_h^2 u) + \xi$ across Periodic, Neumann, and Dirichlet
@@ -23,31 +24,18 @@ use rand_core::RngCore;
 ///
 /// # Domain of Validity
 /// Requires positive finite stencil spacings (`dx, dy > 0`), `dt >= 0`, non-negative noise intensity,
-/// and `SolverWorkspace` capacity [`Self::scratch_len_1d`] / [`Self::scratch_len_2d`].
+/// and `SolverWorkspace` capacity [`ExplicitSpdeStencilStepper::scratch_len_1d`] / [`ExplicitSpdeStencilStepper::scratch_len_2d`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ExplicitSpdeStencilStepper {
+pub struct ExplicitSpdeStencilStepper<T = f64> {
     /// Spatial finite-difference stencil operators.
-    pub ops: StencilOperators,
+    pub ops: StencilOperators<T>,
     /// Boundary condition enforced on all spatial axes.
-    pub boundary: BoundaryCondition,
+    pub boundary: BoundaryCondition<T>,
     /// Stochastic noise structure.
-    pub noise: SpdeNoiseKind,
+    pub noise: SpdeNoiseKind<T>,
 }
 impl ExplicitSpdeStencilStepper {
-    /// Creates an [`ExplicitSpdeStencilStepper`] from prevalidated [`StencilOperators`].
-    #[inline]
-    pub const fn new(
-        ops: StencilOperators,
-        boundary: BoundaryCondition,
-        noise: SpdeNoiseKind,
-    ) -> Self {
-        Self {
-            ops,
-            boundary,
-            noise,
-        }
-    }
     /// Returns the scratch buffer length required for 1D SPDE steps (`2 * n`).
     #[inline]
     pub const fn scratch_len_1d(n: usize) -> usize {
@@ -58,23 +46,40 @@ impl ExplicitSpdeStencilStepper {
     pub const fn scratch_len_2d(width: usize, height: usize) -> usize {
         5 * width * height
     }
+}
+impl<T> ExplicitSpdeStencilStepper<T> {
+    /// Creates an [`ExplicitSpdeStencilStepper`] from prevalidated [`StencilOperators`].
+    #[inline]
+    pub const fn new(
+        ops: StencilOperators<T>,
+        boundary: BoundaryCondition<T>,
+        noise: SpdeNoiseKind<T>,
+    ) -> Self {
+        Self {
+            ops,
+            boundary,
+            noise,
+        }
+    }
+}
+impl<T: RealField> ExplicitSpdeStencilStepper<T> {
     /// Fallibly advances a 1D SPDE $\partial_t u = \mathcal{N}(x, u, \partial_x u, \partial_{xx} u) + \xi$ in-place.
     #[verified_engine::verified]
     pub fn try_step_1d<F, R>(
         &self,
-        u: &mut [f64],
-        dt: f64,
+        u: &mut [T],
+        dt: T,
         mut deterministic_rhs: F,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) -> Result<(), PdeError>
     where
-        F: FnMut(usize, f64, f64, f64) -> f64,
+        F: FnMut(usize, T, T, T) -> T,
         R: RngCore + ?Sized,
     {
         let n = u.len();
         check_non_neg("dt", dt)?;
-        if n == 0 || dt == 0.0 {
+        if n == 0 || dt == T::ZERO {
             return Ok(());
         }
         let mut ws = workspace.reborrow();
@@ -98,13 +103,13 @@ impl ExplicitSpdeStencilStepper {
     #[verified_engine::verified]
     pub fn step_1d<F, R>(
         &self,
-        u: &mut [f64],
-        dt: f64,
+        u: &mut [T],
+        dt: T,
         deterministic_rhs: F,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) where
-        F: FnMut(usize, f64, f64, f64) -> f64,
+        F: FnMut(usize, T, T, T) -> T,
         R: RngCore + ?Sized,
     {
         self.try_step_1d(u, dt, deterministic_rhs, workspace, rng)
@@ -115,16 +120,16 @@ impl ExplicitSpdeStencilStepper {
     #[verified_engine::verified]
     pub fn try_step_2d<F, R>(
         &self,
-        u: &mut [f64],
+        u: &mut [T],
         width: usize,
         height: usize,
-        dt: f64,
+        dt: T,
         mut deterministic_rhs: F,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) -> Result<(), PdeError>
     where
-        F: FnMut(usize, usize, f64, (f64, f64), f64) -> f64,
+        F: FnMut(usize, usize, T, (T, T), T) -> T,
         R: RngCore + ?Sized,
     {
         let total = width * height;
@@ -136,7 +141,7 @@ impl ExplicitSpdeStencilStepper {
             });
         }
         check_non_neg("dt", dt)?;
-        if total == 0 || dt == 0.0 {
+        if total == 0 || dt == T::ZERO {
             return Ok(());
         }
         let mut ws = workspace.reborrow();
@@ -179,15 +184,15 @@ impl ExplicitSpdeStencilStepper {
     #[verified_engine::verified]
     pub fn step_2d<F, R>(
         &self,
-        u: &mut [f64],
+        u: &mut [T],
         width: usize,
         height: usize,
-        dt: f64,
+        dt: T,
         deterministic_rhs: F,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) where
-        F: FnMut(usize, usize, f64, (f64, f64), f64) -> f64,
+        F: FnMut(usize, usize, T, (T, T), T) -> T,
         R: RngCore + ?Sized,
     {
         self.try_step_2d(u, width, height, dt, deterministic_rhs, workspace, rng)
@@ -199,13 +204,13 @@ impl ExplicitSpdeStencilStepper {
     #[verified_engine::verified]
     pub fn try_step_cahn_hilliard_2d<R: RngCore + ?Sized>(
         &self,
-        phi: &mut [f64],
+        phi: &mut [T],
         width: usize,
         height: usize,
-        mobility: f64,
-        kappa: f64,
-        dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        mobility: T,
+        kappa: T,
+        dt: T,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) -> Result<(), PdeError> {
         let total = width * height;
@@ -219,7 +224,7 @@ impl ExplicitSpdeStencilStepper {
         check_non_neg("mobility", mobility)?;
         check_non_neg("kappa", kappa)?;
         check_non_neg("dt", dt)?;
-        if total == 0 || dt == 0.0 {
+        if total == 0 || dt == T::ZERO {
             return Ok(());
         }
         let mut ws = workspace.reborrow();
@@ -265,13 +270,13 @@ impl ExplicitSpdeStencilStepper {
     #[verified_engine::verified]
     pub fn step_cahn_hilliard_2d<R: RngCore + ?Sized>(
         &self,
-        phi: &mut [f64],
+        phi: &mut [T],
         width: usize,
         height: usize,
-        mobility: f64,
-        kappa: f64,
-        dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        mobility: T,
+        kappa: T,
+        dt: T,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) {
         self.try_step_cahn_hilliard_2d(phi, width, height, mobility, kappa, dt, workspace, rng)
@@ -290,26 +295,33 @@ impl ExplicitSpdeStencilStepper {
 ///
 /// # Domain of Validity
 /// Requires positive grid spacings (`dx, dy > 0`), `diffusivity >= 0`, `dt >= 0`, `u.len() >= width * height`,
-/// and `SolverWorkspace` capacity at least [`Self::scratch_len_2d`]`(width, height)`.
+/// and `SolverWorkspace` capacity at least [`SplitStepSpdeStencilStepper::scratch_len_2d`]`(width, height)`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct SplitStepSpdeStencilStepper {
+pub struct SplitStepSpdeStencilStepper<T = f64> {
     /// Spatial finite-difference stencil operators.
-    pub ops: StencilOperators,
+    pub ops: StencilOperators<T>,
     /// Boundary condition enforced during diffusive substeps.
-    pub boundary: BoundaryCondition,
+    pub boundary: BoundaryCondition<T>,
     /// Stochastic noise structure applied after operator splitting.
-    pub noise: SpdeNoiseKind,
+    pub noise: SpdeNoiseKind<T>,
     /// Number of diffusive substeps executed between half-reaction kicks (`>= 1`).
     pub diffusion_substeps: usize,
 }
 impl SplitStepSpdeStencilStepper {
+    /// Returns the scratch buffer length required for 2D split-step integration (`3 * width * height`).
+    #[inline]
+    pub const fn scratch_len_2d(width: usize, height: usize) -> usize {
+        3 * width * height
+    }
+}
+impl<T> SplitStepSpdeStencilStepper<T> {
     /// Creates a [`SplitStepSpdeStencilStepper`] with `diffusion_substeps.max(1)` diffusive substeps.
     #[inline]
     pub const fn new(
-        ops: StencilOperators,
-        boundary: BoundaryCondition,
-        noise: SpdeNoiseKind,
+        ops: StencilOperators<T>,
+        boundary: BoundaryCondition<T>,
+        noise: SpdeNoiseKind<T>,
         diffusion_substeps: usize,
     ) -> Self {
         let subs = if diffusion_substeps == 0 {
@@ -324,27 +336,24 @@ impl SplitStepSpdeStencilStepper {
             diffusion_substeps: subs,
         }
     }
-    /// Returns the scratch buffer length required for 2D split-step integration (`3 * width * height`).
-    #[inline]
-    pub const fn scratch_len_2d(width: usize, height: usize) -> usize {
-        3 * width * height
-    }
+}
+impl<T: RealField> SplitStepSpdeStencilStepper<T> {
     /// Fallibly advances a 2D reaction-diffusion SPDE $\partial_t u = D \nabla^2 u + R(u) + \xi$ via Strang splitting.
     #[allow(clippy::too_many_arguments)]
     #[verified_engine::verified]
     pub fn try_step_reaction_diffusion_2d<F, R>(
         &self,
-        u: &mut [f64],
+        u: &mut [T],
         width: usize,
         height: usize,
-        diffusivity: f64,
-        dt: f64,
+        diffusivity: T,
+        dt: T,
         mut reaction: F,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) -> Result<(), PdeError>
     where
-        F: FnMut(f64) -> f64,
+        F: FnMut(T) -> T,
         R: RngCore + ?Sized,
     {
         let total = width * height;
@@ -357,14 +366,14 @@ impl SplitStepSpdeStencilStepper {
         }
         check_non_neg("diffusivity", diffusivity)?;
         check_non_neg("dt", dt)?;
-        if total == 0 || dt == 0.0 {
+        if total == 0 || dt == T::ZERO {
             return Ok(());
         }
         let mut ws = workspace.reborrow();
         let src = ws.try_take_slice(total)?;
-        let half_dt = 0.5 * dt;
+        let half_dt = T::HALF * dt;
         apply_local_reaction_2d(u, width, height, half_dt, self.boundary, &mut reaction);
-        let sub_dt = dt / (self.diffusion_substeps as f64);
+        let sub_dt = dt / T::from_usize(self.diffusion_substeps);
         advance_diffusion_substeps_2d(
             &self.ops,
             self.boundary,
@@ -396,16 +405,16 @@ impl SplitStepSpdeStencilStepper {
     #[verified_engine::verified]
     pub fn step_reaction_diffusion_2d<F, R>(
         &self,
-        u: &mut [f64],
+        u: &mut [T],
         width: usize,
         height: usize,
-        diffusivity: f64,
-        dt: f64,
+        diffusivity: T,
+        dt: T,
         reaction: F,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
     ) where
-        F: FnMut(f64) -> f64,
+        F: FnMut(T) -> T,
         R: RngCore + ?Sized,
     {
         self.try_step_reaction_diffusion_2d(

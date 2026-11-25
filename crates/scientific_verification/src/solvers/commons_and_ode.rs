@@ -83,7 +83,7 @@ fn certify_algebraic_fit_solvers() -> Result<Vec<SolverCertificate>, String> {
     let mut mat = raw_a;
     let x_num = solve_dense_small(&mut mat, &b, 5).map_err(|e| format!("{e:?}"))?;
     let err_dense = (0..5)
-        .map(|i| (x_num[i] - x_true[i]).abs())
+        .map(|i| f64::abs(x_num[i] - x_true[i]))
         .fold(0.0_f64, f64::max);
 
     let mut ols = WeightedOlsAccum::default();

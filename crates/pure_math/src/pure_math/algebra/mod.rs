@@ -88,7 +88,11 @@ pub use group::{
     generate_left_coset, generate_right_coset, is_normal_subgroup, is_subgroup,
 };
 pub use linear_algebra::LinearAlgebraError;
-pub use polynomial::{LaurentPolynomial, Polynomial};
-pub use traits::{AbelianGroup, EuclideanDomain, Field, Group, Monoid, Ring, Semigroup};
+pub use polynomial::{LaurentPolynomial, Polynomial, eval_in_domain};
+pub use traits::{
+    AbelianGroup, ComplexField, DashuFloatContext, DashuModContext, DomainField, DomainRing,
+    EuclideanDomain, Field, Group, ModPrimeContext, Monoid, RealField, Ring, Scalar, Semigroup,
+    StatelessContext,
+};
 
 // [cite:advanced_linear_algebra]

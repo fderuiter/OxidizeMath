@@ -3,22 +3,34 @@
 
 use super::{SolverWorkspace, tarjan};
 use crate::math_kernel::types::flatten_2d_index;
+use math_scalars::RealField;
 
-const NEGATIVE_CLAMP_TOL: f64 = -1e-10;
-const RESIDUAL_REL_TOL: f64 = 1e-12;
-const DIAG_PIVOT_TOL: f64 = 1e-14;
+#[inline]
+fn negative_clamp_tol<T: RealField>() -> T {
+    -((T::EPSILON * T::from_f64(65_536.0)).max(T::from_f64(1e-10)))
+}
+
+#[inline]
+fn residual_rel_tol<T: RealField>() -> T {
+    (T::EPSILON * T::from_f64(4096.0)).max(T::from_f64(1e-12))
+}
+
+#[inline]
+fn diag_pivot_tol<T: RealField>() -> T {
+    (T::EPSILON * T::from_f64(64.0)).max(T::from_f64(1e-14))
+}
 
 /// Solves for the unique stationary/steady-state distribution on a slice `matrix` ($n \times n$).
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub(super) fn solve_stationary_slice(
-    ws: &mut SolverWorkspace,
-    matrix: &[f64],
+pub(super) fn solve_stationary_slice<T: RealField>(
+    ws: &mut SolverWorkspace<T>,
+    matrix: &[T],
     n: usize,
     is_generator: bool,
-    out_pi: &mut [f64],
+    out_pi: &mut [T],
 ) -> bool {
     debug_assert!(matrix.len() >= n * n && out_pi.len() == n);
-    if !matrix.iter().all(|x| x.is_finite()) {
+    if !matrix.iter().copied().all(T::is_finite) {
         return false;
     }
     let summary = tarjan::decompose_tarjan(ws, matrix, n);
@@ -37,27 +49,26 @@ pub(super) fn solve_stationary_slice(
 
 /// Solves for the unique stationary/steady-state distribution on `ws.operator_buf[..n*n]`.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub(super) fn solve_staged_stationary(
-    ws: &mut SolverWorkspace,
+pub(super) fn solve_staged_stationary<T: RealField>(
+    ws: &mut SolverWorkspace<T>,
     n: usize,
     is_generator: bool,
-    out_pi: &mut [f64],
+    out_pi: &mut [T],
 ) -> bool {
     debug_assert!(ws.operator_buf.len() >= n * n && out_pi.len() == n);
-    if !ws.operator_buf[..n * n].iter().all(|x| x.is_finite()) {
+    if !ws.operator_buf[..n * n].iter().copied().all(T::is_finite) {
         return false;
     }
-    // Temporarily swap out operator_buf slice reference via indices without allocating.
     let summary = decompose_staged(ws, n);
     if summary.num_sink_components != 1 || summary.unique_sink_size == 0 {
         return false;
     }
     let m = summary.unique_sink_size;
-    out_pi.fill(0.0);
+    out_pi.fill(T::ZERO);
     if m == 1 {
         let s = ws.sink_members[0];
-        out_pi[s] = 1.0;
-        return verify_residual(&ws.operator_buf[..n * n], n, is_generator, 1.0, out_pi);
+        out_pi[s] = T::ONE;
+        return verify_residual(&ws.operator_buf[..n * n], n, is_generator, T::ONE, out_pi);
     }
     let Some(scale) = assemble_qr_from_buf(
         &ws.operator_buf[..n * n],
@@ -84,7 +95,7 @@ pub(super) fn solve_staged_stationary(
     verify_residual(&ws.operator_buf[..n * n], n, is_generator, scale, out_pi)
 }
 
-fn decompose_staged(ws: &mut SolverWorkspace, n: usize) -> super::SccSummary {
+fn decompose_staged<T: RealField>(ws: &mut SolverWorkspace<T>, n: usize) -> super::SccSummary {
     let mut buf = core::mem::take(&mut ws.operator_buf);
     let summary = tarjan::decompose_tarjan(ws, &buf[..n * n], n);
     ws.operator_buf = core::mem::take(&mut buf);
@@ -92,20 +103,20 @@ fn decompose_staged(ws: &mut SolverWorkspace, n: usize) -> super::SccSummary {
 }
 
 #[cfg_attr(feature = "std", verified_engine::verified)]
-fn solve_on_unique_sink(
-    ws: &mut SolverWorkspace,
-    matrix: &[f64],
+fn solve_on_unique_sink<T: RealField>(
+    ws: &mut SolverWorkspace<T>,
+    matrix: &[T],
     n: usize,
     m: usize,
     is_generator: bool,
-    out_pi: &mut [f64],
+    out_pi: &mut [T],
 ) -> bool {
     debug_assert!(m >= 1 && m <= n);
-    out_pi.fill(0.0);
+    out_pi.fill(T::ZERO);
     if m == 1 {
         let s = ws.sink_members[0];
-        out_pi[s] = 1.0;
-        return verify_residual(matrix, n, is_generator, 1.0, out_pi);
+        out_pi[s] = T::ONE;
+        return verify_residual(matrix, n, is_generator, T::ONE, out_pi);
     }
 
     let Some(scale) = assemble_qr_from_buf(
@@ -140,59 +151,60 @@ fn solve_on_unique_sink(
 /// rows $0..m$ hold $(P_C^T - I) / \alpha$ or $G_C^T / \alpha$ with RHS $0$, and row $m$ holds
 /// $[1, \dots, 1]$ with RHS $1$.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-fn assemble_qr_from_buf(
-    matrix: &[f64],
+fn assemble_qr_from_buf<T: RealField>(
+    matrix: &[T],
     n: usize,
     sink: &[usize],
     is_generator: bool,
-    qr_mat: &mut [f64],
-    qr_rhs: &mut [f64],
-) -> Option<f64> {
+    qr_mat: &mut [T],
+    qr_rhs: &mut [T],
+) -> Option<T> {
     let m = sink.len();
     debug_assert!(m >= 2 && qr_mat.len() >= (m + 1) * m && qr_rhs.len() > m);
 
-    let mut max_abs = 0.0_f64;
+    let mut max_abs = T::ZERO;
     for (r, &sr) in sink.iter().enumerate() {
         for (c, &sc) in sink.iter().enumerate() {
             let mut val = matrix[flatten_2d_index(sr, sc, n)];
             if !is_generator && r == c {
-                val -= 1.0;
+                val -= T::ONE;
             }
             qr_mat[flatten_2d_index(c, r, m)] = val;
-            let a = libm::fabs(val);
+            let a = val.abs();
             if a > max_abs {
                 max_abs = a;
             }
         }
-        qr_rhs[r] = 0.0;
+        qr_rhs[r] = T::ZERO;
     }
 
-    if !max_abs.is_finite() || max_abs == 0.0 {
+    if !max_abs.is_finite() || max_abs == T::ZERO {
         return None;
     }
 
-    let inv_scale = 1.0 / max_abs;
+    let inv_scale = T::ONE / max_abs;
     for val in &mut qr_mat[..m * m] {
         *val *= inv_scale;
     }
-    qr_mat[m * m..(m + 1) * m].fill(1.0);
-    qr_rhs[m] = 1.0;
+    qr_mat[m * m..(m + 1) * m].fill(T::ONE);
+    qr_rhs[m] = T::ONE;
     Some(max_abs)
 }
 
 /// Solves a full-column-rank overdetermined `rows x cols` linear least-squares system in-place
 /// via Householder reflections followed by upper-triangular back-substitution.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub(super) fn householder_qr_solve(
-    mat: &mut [f64],
-    rhs: &mut [f64],
-    sol: &mut [f64],
+pub(super) fn householder_qr_solve<T: RealField>(
+    mat: &mut [T],
+    rhs: &mut [T],
+    sol: &mut [T],
     rows: usize,
     cols: usize,
 ) -> bool {
     debug_assert!(
         rows >= cols && mat.len() >= rows * cols && rhs.len() >= rows && sol.len() >= cols
     );
+    let piv_tol = diag_pivot_tol::<T>();
 
     for k in 0..cols {
         if !apply_householder_column(mat, rhs, rows, cols, k) {
@@ -202,7 +214,7 @@ pub(super) fn householder_qr_solve(
 
     for i in (0..cols).rev() {
         let diag = mat[flatten_2d_index(i, i, cols)];
-        if !diag.is_finite() || libm::fabs(diag) <= DIAG_PIVOT_TOL {
+        if !diag.is_finite() || diag.abs() <= piv_tol {
             return false;
         }
         let mut sum = rhs[i];
@@ -215,35 +227,35 @@ pub(super) fn householder_qr_solve(
 }
 
 #[cfg_attr(feature = "std", verified_engine::verified)]
-fn apply_householder_column(
-    mat: &mut [f64],
-    rhs: &mut [f64],
+fn apply_householder_column<T: RealField>(
+    mat: &mut [T],
+    rhs: &mut [T],
     rows: usize,
     cols: usize,
     k: usize,
 ) -> bool {
     debug_assert!(k < cols && cols <= rows);
-    let mut tail_sq = 0.0_f64;
+    let mut tail_sq = T::ZERO;
     for i in (k + 1)..rows {
         let v = mat[flatten_2d_index(k, i, cols)];
         tail_sq += v * v;
     }
     let x0 = mat[flatten_2d_index(k, k, cols)];
-    let norm_x = libm::hypot(x0, libm::sqrt(tail_sq));
-    if !norm_x.is_finite() || norm_x <= DIAG_PIVOT_TOL {
+    let norm_x = x0.hypot(tail_sq.sqrt());
+    if !norm_x.is_finite() || norm_x <= diag_pivot_tol::<T>() {
         return false;
     }
-    if tail_sq == 0.0 {
+    if tail_sq == T::ZERO {
         return true;
     }
 
-    let alpha = if x0 >= 0.0 { -norm_x } else { norm_x };
+    let alpha = if x0 >= T::ZERO { -norm_x } else { norm_x };
     let v0 = x0 - alpha;
     let v_norm_sq = v0 * v0 + tail_sq;
-    if v_norm_sq <= 0.0 || !v_norm_sq.is_finite() {
+    if v_norm_sq <= T::ZERO || !v_norm_sq.is_finite() {
         return false;
     }
-    let beta = 2.0 / v_norm_sq;
+    let beta = T::from_f64(2.0) / v_norm_sq;
 
     for j in (k + 1)..cols {
         let kj = flatten_2d_index(j, k, cols);
@@ -274,47 +286,50 @@ fn apply_householder_column(
 }
 
 #[cfg_attr(feature = "std", verified_engine::verified)]
-fn normalize_and_scatter(sink: &[usize], sol: &[f64], out_pi: &mut [f64]) -> bool {
+fn normalize_and_scatter<T: RealField>(sink: &[usize], sol: &[T], out_pi: &mut [T]) -> bool {
     debug_assert_eq!(sink.len(), sol.len());
-    let mut sum = 0.0_f64;
+    let clamp_tol = negative_clamp_tol::<T>();
+    let mut sum = T::ZERO;
     for &w in sol {
-        if !w.is_finite() || w < NEGATIVE_CLAMP_TOL {
+        if !w.is_finite() || w < clamp_tol {
             return false;
         }
-        if w > 0.0 {
+        if w > T::ZERO {
             sum += w;
         }
     }
-    if !sum.is_finite() || sum <= 0.0 {
+    if !sum.is_finite() || sum <= T::ZERO {
         return false;
     }
-    let inv_sum = 1.0 / sum;
+    let inv_sum = T::ONE / sum;
     for (&state, &w) in sink.iter().enumerate().map(|(idx, s)| (s, &sol[idx])) {
-        out_pi[state] = if w > 0.0 { w * inv_sum } else { 0.0 };
+        out_pi[state] = if w > T::ZERO { w * inv_sum } else { T::ZERO };
     }
     true
 }
 
 #[cfg_attr(feature = "std", verified_engine::verified)]
-fn verify_residual(
-    matrix: &[f64],
+fn verify_residual<T: RealField>(
+    matrix: &[T],
     n: usize,
     is_generator: bool,
-    operator_scale: f64,
-    pi: &[f64],
+    operator_scale: T,
+    pi: &[T],
 ) -> bool {
     debug_assert!(pi.len() == n && matrix.len() >= n * n);
-    let mut res_sq = 0.0_f64;
+    let rel_tol = residual_rel_tol::<T>();
+    let mut res_sq = T::ZERO;
     let mut full_scale = operator_scale;
     for col in 0..n {
-        let mut dot = 0.0_f64;
+        let mut dot = T::ZERO;
         for row in 0..n {
             let entry = matrix[flatten_2d_index(col, row, n)];
-            let mag = libm::fabs(if !is_generator && row == col {
-                entry - 1.0
+            let mag = (if !is_generator && row == col {
+                entry - T::ONE
             } else {
                 entry
-            });
+            })
+            .abs();
             if mag > full_scale {
                 full_scale = mag;
             }
@@ -323,8 +338,8 @@ fn verify_residual(
         let r = if is_generator { dot } else { dot - pi[col] };
         res_sq += r * r;
     }
-    if full_scale == 0.0 {
-        return res_sq <= RESIDUAL_REL_TOL * RESIDUAL_REL_TOL;
+    if full_scale == T::ZERO {
+        return res_sq <= rel_tol * rel_tol;
     }
-    (libm::sqrt(res_sq) / full_scale) < RESIDUAL_REL_TOL
+    (res_sq.sqrt() / full_scale) < rel_tol
 }

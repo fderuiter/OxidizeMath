@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 26 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 27 workspace crates:
 
 ```mermaid
 graph TD
@@ -81,6 +81,7 @@ graph TD
         Macros[verified_engine_macros]
         CoreCrate[oxidize_core]
         Rng[math_rng]
+        Scalars[math_scalars]
         Linalg[engine_linalg]
         Diag[diagnostics]
         MathDiag[math_diagnostics]
@@ -104,12 +105,12 @@ graph TD
     Clim --> Commons & Engine & Meta
     Epi --> Commons & Engine & Meta & Pure
 
-    Pure --> Commons & Meta & DiffEq & Pde & Linalg & Rng
-    DiffEq --> Commons & Engine & Rng
-    Pde --> Commons & Engine & Rng
-    Commons --> CoreCrate & Linalg & Rng & MathDiag
+    Pure --> Commons & Meta & DiffEq & Pde & Linalg & Rng & Scalars
+    DiffEq --> Commons & Engine & Rng & Scalars
+    Pde --> Commons & Engine & Rng & Scalars
+    Commons --> CoreCrate & Rng & MathDiag & Scalars
     CoreCrate --> Rng
-    Linalg --> MathDiag
+    Linalg --> MathDiag & Scalars
     Diag --> MathDiag
     Engine --> Macros & CoreCrate
     Meta --> CoreCrate
@@ -123,12 +124,13 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 26 member crates declared in `Cargo.toml`:
+The workspace contains all 27 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
 | `crates/00_foundation/math_diagnostics` | `#![no_std]` zero-allocation diagnostic visitor contract | [math_diagnostics](../../crates/00_foundation/math_diagnostics/README.md) |
 | `crates/00_foundation/math_rng` | `#![no_std]` ChaCha8 stream PRNG, generic float/index samplers, and 64D QMC views | [math_rng](../../crates/00_foundation/math_rng/README.md) |
+| `crates/00_foundation/math_scalars` | `#![no_std]` algebraic scalar traits, `Complex<T>`, `Dual<T>`, and runtime domain contexts | [math_scalars](../../crates/00_foundation/math_scalars/README.md) |
 | `crates/oxidize_core` | Core utilities, file systems, and traceability | [oxidize_core](../../crates/oxidize_core/README.md) |
 | `crates/02_engines/engine_linalg` | `#![no_std]` numerical linear algebra engine | [engine_linalg](../../crates/02_engines/engine_linalg/README.md) |
 | `crates/verified_engine` | Zero-allocation runtime and execution tracking | [zero_allocation_runtime](zero_allocation_runtime.md) |

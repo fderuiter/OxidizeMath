@@ -1,32 +1,33 @@
 // [cite:math_commons]
 use core::ops::Deref;
+use math_scalars::RealField;
 
 /// Internal `#![no_std]` float power helper used by bounded float macros.
 #[doc(hidden)]
 #[inline]
-pub fn bounded_powf(x: f64, n: f64) -> f64 {
-    libm::pow(x, n)
+pub fn bounded_powf<T: RealField>(x: T, n: T) -> T {
+    x.powf(n)
 }
 
 /// Internal `#![no_std]` square-root helper used by bounded float macros.
 #[doc(hidden)]
 #[inline]
-pub fn bounded_sqrt(x: f64) -> f64 {
-    libm::sqrt(x)
+pub fn bounded_sqrt<T: RealField>(x: T) -> T {
+    x.sqrt()
 }
 
 /// Internal `#![no_std]` natural-logarithm helper used by bounded float macros.
 #[doc(hidden)]
 #[inline]
-pub fn bounded_ln(x: f64) -> f64 {
-    libm::log(x)
+pub fn bounded_ln<T: RealField>(x: T) -> T {
+    x.ln()
 }
 
 /// Internal `#![no_std]` exponential helper used by bounded float macros.
 #[doc(hidden)]
 #[inline]
-pub fn bounded_exp(x: f64) -> f64 {
-    libm::exp(x)
+pub fn bounded_exp<T: RealField>(x: T) -> T {
+    x.exp()
 }
 
 /// Implements checked scalar multiplication/division or delegating binary operators for wrapper types.

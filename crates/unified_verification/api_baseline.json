@@ -41,6 +41,20 @@
     },
     {
       "signature": "pub trait DiagnosticVisitor { fn record_usize (& mut self , _ : & str , _ : usize) }"
+    },
+    {
+      "signature": "pub use linalg_error :: LinalgError"
+    }
+  ],
+  "crates/00_foundation/math_diagnostics/src/linalg_error.rs": [
+    {
+      "signature": "impl LinalgError { pub const fn code (& self) -> & 'static str }"
+    },
+    {
+      "signature": "impl LinalgError { pub const fn error_type (& self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum LinalgError"
     }
   ],
   "crates/00_foundation/math_rng/src/lib.rs": [
@@ -616,6 +630,511 @@
       "signature": "pub fn torus_shift_open < T : RngScalar > (_ : f64 , _ : f64) -> T"
     }
   ],
+  "crates/00_foundation/math_scalars/src/complex.rs": [
+    {
+      "signature": "pub use num_complex :: Complex"
+    },
+    {
+      "signature": "pub use num_complex :: Complex32"
+    },
+    {
+      "signature": "pub use num_complex :: Complex64"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/context.rs": [
+    {
+      "signature": "impl < T > StatelessContext < T > { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "pub struct StatelessContext < T >"
+    },
+    {
+      "signature": "pub trait DomainField : DomainRing"
+    },
+    {
+      "signature": "pub trait DomainField { fn try_div (& self , _ : & Self :: Element , _ : & Self :: Element ,) -> Result < Self :: Element , ScalarDomainError > }"
+    },
+    {
+      "signature": "pub trait DomainField { fn try_inv (& self , _ : & Self :: Element) -> Result < Self :: Element , ScalarDomainError > }"
+    },
+    {
+      "signature": "pub trait DomainRing"
+    },
+    {
+      "signature": "pub trait DomainRing { fn add (& self , _ : & Self :: Element , _ : & Self :: Element) -> Self :: Element }"
+    },
+    {
+      "signature": "pub trait DomainRing { fn eval_horner (& self , _ : & [Self :: Element] , _ : & Self :: Element) -> Self :: Element }"
+    },
+    {
+      "signature": "pub trait DomainRing { fn is_zero (& self , _ : & Self :: Element) -> bool }"
+    },
+    {
+      "signature": "pub trait DomainRing { fn mul (& self , _ : & Self :: Element , _ : & Self :: Element) -> Self :: Element }"
+    },
+    {
+      "signature": "pub trait DomainRing { fn neg (& self , _ : & Self :: Element) -> Self :: Element }"
+    },
+    {
+      "signature": "pub trait DomainRing { fn one (& self) -> Self :: Element }"
+    },
+    {
+      "signature": "pub trait DomainRing { fn pow_u64 (& self , _ : & Self :: Element , _ : u64) -> Self :: Element }"
+    },
+    {
+      "signature": "pub trait DomainRing { fn sub (& self , _ : & Self :: Element , _ : & Self :: Element) -> Self :: Element }"
+    },
+    {
+      "signature": "pub trait DomainRing { fn zero (& self) -> Self :: Element }"
+    },
+    {
+      "signature": "pub trait DomainRing { type Element : Clone + PartialEq + fmt :: Debug }"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/dashu_support.rs": [
+    {
+      "signature": "impl DashuFloatContext { pub const fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "impl DashuFloatContext { pub const fn precision_bits (& self) -> usize }"
+    },
+    {
+      "signature": "impl DashuFloatContext { pub const fn try_new (_ : usize) -> Result < Self , ScalarDomainError > }"
+    },
+    {
+      "signature": "impl DashuFloatContext { pub fn from_i64 (& self , _ : i64) -> FBig }"
+    },
+    {
+      "signature": "impl DashuFloatContext { pub fn try_from_f64 (& self , _ : f64) -> Option < FBig > }"
+    },
+    {
+      "signature": "impl DashuFloatContext { pub fn try_sqrt (& self , _ : & FBig) -> Option < FBig > }"
+    },
+    {
+      "signature": "impl DashuModContext { pub const fn modulus (& self) -> & IBig }"
+    },
+    {
+      "signature": "impl DashuModContext { pub fn new (_ : IBig) -> Self }"
+    },
+    {
+      "signature": "impl DashuModContext { pub fn reduce (& self , _ : & IBig) -> IBig }"
+    },
+    {
+      "signature": "impl DashuModContext { pub fn try_new (_ : IBig) -> Result < Self , ScalarDomainError > }"
+    },
+    {
+      "signature": "pub struct DashuFloatContext"
+    },
+    {
+      "signature": "pub struct DashuModContext"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/dual.rs": [
+    {
+      "signature": "impl < T : RealField > Dual < T > { pub const fn constant (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealField > Dual < T > { pub const fn new (_ : T , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealField > Dual < T > { pub const fn variable (_ : T) -> Self }"
+    },
+    {
+      "signature": "pub struct Dual < T >"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/error.rs": [
+    {
+      "signature": "impl ScalarDomainError { pub const fn code (& self) -> & 'static str }"
+    },
+    {
+      "signature": "impl ScalarDomainError { pub const fn error_type (& self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum ScalarDomainError"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/lib.rs": [
+    {
+      "signature": "pub mod prelude"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: Complex }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: Complex32 }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: Complex64 }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: ComplexField }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: DashuFloatContext }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: DashuModContext }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: DomainField }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: DomainRing }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: Dual }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: Field }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: ModPrimeContext }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: RealField }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: Ring }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: Scalar }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: ScalarDomainError }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: StatelessContext }"
+    },
+    {
+      "signature": "pub use complex :: Complex"
+    },
+    {
+      "signature": "pub use complex :: Complex32"
+    },
+    {
+      "signature": "pub use complex :: Complex64"
+    },
+    {
+      "signature": "pub use context :: DomainField"
+    },
+    {
+      "signature": "pub use context :: DomainRing"
+    },
+    {
+      "signature": "pub use context :: StatelessContext"
+    },
+    {
+      "signature": "pub use dashu_support :: DashuFloatContext"
+    },
+    {
+      "signature": "pub use dashu_support :: DashuModContext"
+    },
+    {
+      "signature": "pub use dual :: Dual"
+    },
+    {
+      "signature": "pub use error :: ScalarDomainError"
+    },
+    {
+      "signature": "pub use mod_prime :: ModPrimeContext"
+    },
+    {
+      "signature": "pub use traits :: ComplexField"
+    },
+    {
+      "signature": "pub use traits :: Field"
+    },
+    {
+      "signature": "pub use traits :: RealField"
+    },
+    {
+      "signature": "pub use traits :: Ring"
+    },
+    {
+      "signature": "pub use traits :: Scalar"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/mod_prime.rs": [
+    {
+      "signature": "impl ModPrimeContext { pub const fn modulus (& self) -> u64 }"
+    },
+    {
+      "signature": "impl ModPrimeContext { pub const fn new (_ : u64) -> Self }"
+    },
+    {
+      "signature": "impl ModPrimeContext { pub const fn reduce (& self , _ : u64) -> u64 }"
+    },
+    {
+      "signature": "impl ModPrimeContext { pub const fn reduce_i128 (& self , _ : i128) -> u64 }"
+    },
+    {
+      "signature": "impl ModPrimeContext { pub const fn try_new (_ : u64) -> Result < Self , ScalarDomainError > }"
+    },
+    {
+      "signature": "pub struct ModPrimeContext"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/traits.rs": [
+    {
+      "signature": "pub trait ComplexField : Field + Copy + DivAssign"
+    },
+    {
+      "signature": "pub trait ComplexField { fn abs (self) -> Self :: Real }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn acos (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn acosh (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn arg (self) -> Self :: Real }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn asin (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn asinh (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn atan (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn atanh (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn cbrt (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn ceil (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn conj (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn cos (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn cosh (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn csqrt (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn exp (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn floor (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn from_real (_ : Self :: Real) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn from_real_f64 (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn imag (self) -> Self :: Real }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn imag_unit () -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn is_all_finite (self) -> bool }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn is_any_nan (self) -> bool }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn ln (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn log10 (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn log2 (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn nan () -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn norm_sqr (self) -> Self :: Real }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn powc (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn powf (self , _ : Self :: Real) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn powi (self , _ : i32) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn real (self) -> Self :: Real }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn round (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn scale (self , _ : Self :: Real) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn signum (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn sin (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn sin_cos (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn sinh (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn tan (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { fn tanh (self) -> Self }"
+    },
+    {
+      "signature": "pub trait ComplexField { type Real : RealField }"
+    },
+    {
+      "signature": "pub trait Field : Ring + Div < Output = Self >"
+    },
+    {
+      "signature": "pub trait Field { fn checked_div (& self , _ : & Self) -> Option < Self > }"
+    },
+    {
+      "signature": "pub trait Field { fn checked_inverse (& self) -> Option < Self > }"
+    },
+    {
+      "signature": "pub trait Field { fn multiplicative_inverse (& self) -> Self }"
+    },
+    {
+      "signature": "pub trait Field { fn try_inverse (& self) -> Result < Self , ScalarDomainError > }"
+    },
+    {
+      "signature": "pub trait RealField : ComplexField < Real = Self > + PartialOrd + fmt :: Display + Default + Rem < Output = Self > + RemAssign + num_traits :: Num"
+    },
+    {
+      "signature": "pub trait RealField { const DEFAULT_TOL_SCALE : Self }"
+    },
+    {
+      "signature": "pub trait RealField { const E : Self }"
+    },
+    {
+      "signature": "pub trait RealField { const EPSILON : Self }"
+    },
+    {
+      "signature": "pub trait RealField { const FRAC_PI_2 : Self }"
+    },
+    {
+      "signature": "pub trait RealField { const HALF : Self }"
+    },
+    {
+      "signature": "pub trait RealField { const INFINITY : Self }"
+    },
+    {
+      "signature": "pub trait RealField { const MAX_VALUE : Self }"
+    },
+    {
+      "signature": "pub trait RealField { const MIN_POSITIVE : Self }"
+    },
+    {
+      "signature": "pub trait RealField { const MIN_VALUE : Self }"
+    },
+    {
+      "signature": "pub trait RealField { const NAN : Self }"
+    },
+    {
+      "signature": "pub trait RealField { const NEG_INFINITY : Self }"
+    },
+    {
+      "signature": "pub trait RealField { const ONE : Self }"
+    },
+    {
+      "signature": "pub trait RealField { const PI : Self }"
+    },
+    {
+      "signature": "pub trait RealField { const TAU : Self }"
+    },
+    {
+      "signature": "pub trait RealField { const TWO : Self }"
+    },
+    {
+      "signature": "pub trait RealField { const ZERO : Self }"
+    },
+    {
+      "signature": "pub trait RealField { fn atan2 (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealField { fn clamp (self , _ : Self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealField { fn copysign (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealField { fn expm1 (self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealField { fn from_f64 (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub trait RealField { fn from_i32 (_ : i32) -> Self }"
+    },
+    {
+      "signature": "pub trait RealField { fn from_usize (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub trait RealField { fn hypot (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealField { fn is_finite (self) -> bool }"
+    },
+    {
+      "signature": "pub trait RealField { fn is_nan (self) -> bool }"
+    },
+    {
+      "signature": "pub trait RealField { fn ln_1p (self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealField { fn max (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealField { fn min (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealField { fn rem_euclid (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealField { fn sqrt (self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealField { fn to_f64 (self) -> f64 }"
+    },
+    {
+      "signature": "pub trait RealField { fn total_cmp (& self , _ : & Self) -> core :: cmp :: Ordering }"
+    },
+    {
+      "signature": "pub trait Ring : Scalar + Sized + Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + Neg < Output = Self > + AddAssign + SubAssign + MulAssign"
+    },
+    {
+      "signature": "pub trait Ring { fn is_zero (& self) -> bool }"
+    },
+    {
+      "signature": "pub trait Ring { fn one () -> Self }"
+    },
+    {
+      "signature": "pub trait Ring { fn pow_u64 (& self , _ : u64) -> Self }"
+    },
+    {
+      "signature": "pub trait Ring { fn zero () -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar : Clone + PartialEq + fmt :: Debug + Send + Sync + 'static"
+    }
+  ],
   "crates/02_engines/engine_linalg/src/cholesky.rs": [
     {
       "signature": "pub const fn cholesky_semidefinite_workspace_len (_ : usize) -> usize"
@@ -963,67 +1482,7 @@
       "signature": "pub fn sqrt_f64 (_ : f64) -> f64"
     },
     {
-      "signature": "pub trait Scalar : Copy + Clone + PartialEq + PartialOrd + Debug + Display + Default + Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + Div < Output = Self > + Neg < Output = Self > + AddAssign + SubAssign + MulAssign + DivAssign + 'static"
-    },
-    {
-      "signature": "pub trait Scalar { const DEFAULT_TOL_SCALE : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const EPSILON : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const HALF : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const MAX_VALUE : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const MIN_POSITIVE : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const NAN : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const ONE : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const TWO : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const ZERO : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn abs (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn copysign (self , _ : Self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn from_f64 (_ : f64) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn from_usize (_ : usize) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn hypot (self , _ : Self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn is_finite (self) -> bool }"
-    },
-    {
-      "signature": "pub trait Scalar { fn is_nan (self) -> bool }"
-    },
-    {
-      "signature": "pub trait Scalar { fn max (self , _ : Self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn min (self , _ : Self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn sqrt (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn to_f64 (self) -> f64 }"
+      "signature": "pub use math_scalars :: RealField as Scalar"
     }
   ],
   "crates/02_engines/engine_linalg/src/sparse.rs": [
@@ -1158,9 +1617,6 @@
       "signature": "pub const fn mat_idx (_ : usize , _ : usize , _ : usize) -> usize"
     },
     {
-      "signature": "pub enum LinalgError"
-    },
-    {
       "signature": "pub fn add_scaled_vec_array < T : Scalar , const N : usize > (_ : & [T ; N] , _ : & [T ; N] , _ : T ,) -> [T ; N]"
     },
     {
@@ -1195,6 +1651,9 @@
     },
     {
       "signature": "pub struct SolverWorkspace < 'a , T >"
+    },
+    {
+      "signature": "pub use math_diagnostics :: LinalgError"
     }
   ],
   "crates/diagnostics/src/lib.rs": [
@@ -12570,6 +13029,12 @@
       "signature": "pub use math_rng :: OxidizeRng"
     },
     {
+      "signature": "pub use math_scalars :: RealField"
+    },
+    {
+      "signature": "pub use math_scalars :: RealField as Scalar"
+    },
+    {
       "signature": "pub use milstein :: MilsteinSolver"
     },
     {
@@ -12698,19 +13163,19 @@
   ],
   "crates/engine_pde/src/boundary.rs": [
     {
-      "signature": "impl BoundaryCondition { pub const fn is_dirichlet (self) -> bool }"
+      "signature": "impl < T : Copy > BoundaryCondition < T > { pub const fn is_dirichlet (self) -> bool }"
     },
     {
-      "signature": "impl BoundaryCondition { pub fn sample_1d (self , _ : & [f64] , _ : usize , _ : usize) -> (f64 , f64 , f64) }"
+      "signature": "impl < T : Copy > BoundaryCondition < T > { pub fn sample_1d (self , _ : & [T] , _ : usize , _ : usize) -> (T , T , T) }"
     },
     {
-      "signature": "impl BoundaryCondition { pub fn sample_2d (self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize ,) -> (f64 , f64 , f64 , f64 , f64) }"
+      "signature": "impl < T : Copy > BoundaryCondition < T > { pub fn sample_2d (self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize ,) -> (T , T , T , T , T) }"
     },
     {
-      "signature": "impl BoundaryCondition { pub fn sample_3d (self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize ,) -> (f64 , [f64 ; 6]) }"
+      "signature": "impl < T : Copy > BoundaryCondition < T > { pub fn sample_3d (self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize ,) -> (T , [T ; 6]) }"
     },
     {
-      "signature": "pub enum BoundaryCondition"
+      "signature": "pub enum BoundaryCondition < T = f64 >"
     }
   ],
   "crates/engine_pde/src/error.rs": [
@@ -12729,34 +13194,58 @@
       "signature": "pub const fn signed_mode_index (_ : usize , _ : usize) -> isize"
     },
     {
-      "signature": "pub fn dealias_1d_spectrum (_ : & mut [f64] , _ : usize)"
+      "signature": "pub fn dealias_1d_spectrum < T : RealField > (_ : & mut [T] , _ : usize)"
     },
     {
-      "signature": "pub fn dealias_2d_spectrum (_ : & mut [f64] , _ : usize , _ : usize)"
+      "signature": "pub fn dealias_2d_spectrum < T : RealField > (_ : & mut [T] , _ : usize , _ : usize)"
     },
     {
-      "signature": "pub fn fft_1d_inplace (_ : & mut [f64] , _ : usize , _ : bool)"
+      "signature": "pub fn fft_1d_inplace < T : RealField > (_ : & mut [T] , _ : usize , _ : bool)"
     },
     {
-      "signature": "pub fn fft_2d_inplace (_ : & mut [f64] , _ : usize , _ : usize , _ : & mut [f64] , _ : bool ,)"
+      "signature": "pub fn fft_2d_inplace < T : RealField > (_ : & mut [T] , _ : usize , _ : usize , _ : & mut [T] , _ : bool ,)"
     },
     {
-      "signature": "pub fn mode_wavenumber (_ : usize , _ : usize , _ : f64) -> f64"
+      "signature": "pub fn mode_wavenumber < T : RealField > (_ : usize , _ : usize , _ : T) -> T"
     },
     {
-      "signature": "pub fn try_dealias_1d_spectrum (_ : & mut [f64] , _ : usize) -> Result < () , PdeError >"
+      "signature": "pub fn try_dealias_1d_spectrum < T : RealField > (_ : & mut [T] , _ : usize) -> Result < () , PdeError >"
     },
     {
-      "signature": "pub fn try_dealias_2d_spectrum (_ : & mut [f64] , _ : usize , _ : usize ,) -> Result < () , PdeError >"
+      "signature": "pub fn try_dealias_2d_spectrum < T : RealField > (_ : & mut [T] , _ : usize , _ : usize ,) -> Result < () , PdeError >"
     },
     {
-      "signature": "pub fn try_fft_1d_inplace (_ : & mut [f64] , _ : usize , _ : bool) -> Result < () , PdeError >"
+      "signature": "pub fn try_fft_1d_inplace < T : RealField > (_ : & mut [T] , _ : usize , _ : bool ,) -> Result < () , PdeError >"
     },
     {
-      "signature": "pub fn try_fft_2d_inplace (_ : & mut [f64] , _ : usize , _ : usize , _ : & mut [f64] , _ : bool ,) -> Result < () , PdeError >"
+      "signature": "pub fn try_fft_2d_inplace < T : RealField > (_ : & mut [T] , _ : usize , _ : usize , _ : & mut [T] , _ : bool ,) -> Result < () , PdeError >"
     }
   ],
   "crates/engine_pde/src/fourier_stepper.rs": [
+    {
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn new_1d (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn new_2d (_ : T , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn step_cahn_hilliard_1d < R : RngCore + ? Sized > (& self , _ : & mut [T] , _ : T , _ : T , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
+    },
+    {
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [T] , _ : usize , _ : usize , _ : T , _ : T , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
+    },
+    {
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn try_new_1d (_ : T) -> Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn try_new_2d (_ : T , _ : T) -> Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn try_step_cahn_hilliard_1d < R : RngCore + ? Sized > (& self , _ : & mut [T] , _ : T , _ : T , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , PdeError > }"
+    },
+    {
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn try_step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [T] , _ : usize , _ : usize , _ : T , _ : T , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , PdeError > }"
+    },
     {
       "signature": "impl SemiImplicitFourierStepper { pub const fn scratch_len_1d (_ : usize) -> usize }"
     },
@@ -12764,106 +13253,82 @@
       "signature": "impl SemiImplicitFourierStepper { pub const fn scratch_len_2d (_ : usize , _ : usize) -> usize }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn new_1d (_ : f64) -> Self }"
-    },
-    {
-      "signature": "impl SemiImplicitFourierStepper { pub fn new_2d (_ : f64 , _ : f64) -> Self }"
-    },
-    {
-      "signature": "impl SemiImplicitFourierStepper { pub fn step_cahn_hilliard_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
-    },
-    {
-      "signature": "impl SemiImplicitFourierStepper { pub fn step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
-    },
-    {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_new_1d (_ : f64) -> Result < Self , math_commons :: error :: MathError > }"
-    },
-    {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_new_2d (_ : f64 , _ : f64) -> Result < Self , math_commons :: error :: MathError > }"
-    },
-    {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_cahn_hilliard_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > }"
-    },
-    {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > }"
-    },
-    {
-      "signature": "pub struct SemiImplicitFourierStepper"
+      "signature": "pub struct SemiImplicitFourierStepper < T = f64 >"
     }
   ],
   "crates/engine_pde/src/fourier_stepper/kpz.rs": [
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn step_edwards_wilkinson_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn step_edwards_wilkinson_1d < R : RngCore + ? Sized > (& self , _ : & mut [T] , _ : T , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn step_edwards_wilkinson_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn step_edwards_wilkinson_2d < R : RngCore + ? Sized > (& self , _ : & mut [T] , _ : usize , _ : usize , _ : T , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn step_kpz_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn step_kpz_1d < R : RngCore + ? Sized > (& self , _ : & mut [T] , _ : T , _ : T , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn step_kpz_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn step_kpz_2d < R : RngCore + ? Sized > (& self , _ : & mut [T] , _ : usize , _ : usize , _ : T , _ : T , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_edwards_wilkinson_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > }"
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn try_step_edwards_wilkinson_1d < R : RngCore + ? Sized > (& self , _ : & mut [T] , _ : T , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , PdeError > }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_edwards_wilkinson_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > }"
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn try_step_edwards_wilkinson_2d < R : RngCore + ? Sized > (& self , _ : & mut [T] , _ : usize , _ : usize , _ : T , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , PdeError > }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_kpz_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > }"
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn try_step_kpz_1d < R : RngCore + ? Sized > (& self , _ : & mut [T] , _ : T , _ : T , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , PdeError > }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_kpz_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > }"
+      "signature": "impl < T : RealField > SemiImplicitFourierStepper < T > { pub fn try_step_kpz_2d < R : RngCore + ? Sized > (& self , _ : & mut [T] , _ : usize , _ : usize , _ : T , _ : T , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , PdeError > }"
     }
   ],
   "crates/engine_pde/src/fused_stepper.rs": [
     {
-      "signature": "impl FusedStencilStepper { pub fn new (_ : StepSize) -> Self }"
+      "signature": "impl < T : RealField > FusedStencilStepper < T > { pub fn new (_ : StepSize < T >) -> Self }"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn new_2d (_ : StepSize , _ : StepSize) -> Self }"
+      "signature": "impl < T : RealField > FusedStencilStepper < T > { pub fn new_2d (_ : StepSize < T > , _ : StepSize < T >) -> Self }"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Self }"
+      "signature": "impl < T : RealField > FusedStencilStepper < T > { pub fn new_3d (_ : StepSize < T > , _ : StepSize < T > , _ : StepSize < T >) -> Self }"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn step_1d_coupled_neumann < const N : usize , F > (& self , _ : usize , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators) -> [f64 ; N] , }"
+      "signature": "impl < T : RealField > FusedStencilStepper < T > { pub fn step_1d_coupled_neumann < const N : usize , F > (& self , _ : usize , _ : [& [T] ; N] , _ : [& mut [T] ; N] , _ : T , _ : T , _ : F ,) where F : FnMut (usize , [T ; N] , [T ; N] , [T ; N] , & StencilOperators < T >) -> [T ; N] , }"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn step_1d_slice < F > (& self , _ : & [f64] , _ : & mut [f64] , _ : f64 , _ : f64 , _ : F) where F : FnMut (usize , f64 , f64 , f64 , & StencilOperators) -> f64 , }"
+      "signature": "impl < T : RealField > FusedStencilStepper < T > { pub fn step_1d_slice < F > (& self , _ : & [T] , _ : & mut [T] , _ : T , _ : T , _ : F) where F : FnMut (usize , T , T , T , & StencilOperators < T >) -> T , }"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn step_2d_coupled_neumann < const N : usize , F > (& self , _ : (usize , usize) , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , [f64 ; N] , & StencilOperators ,) -> [f64 ; N] , }"
+      "signature": "impl < T : RealField > FusedStencilStepper < T > { pub fn step_2d_coupled_neumann < const N : usize , F > (& self , _ : (usize , usize) , _ : [& [T] ; N] , _ : [& mut [T] ; N] , _ : T , _ : T , _ : F ,) where F : FnMut (usize , [T ; N] , [T ; N] , [T ; N] , [T ; N] , [T ; N] , & StencilOperators < T >) -> [T ; N] , }"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn step_3d_coupled_neumann < const N : usize , F > (& self , _ : (usize , usize , usize) , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : f64 , _ : f64 , _ : F ,) where F : FnMut (usize , [f64 ; N] , StencilNeighbors3D < N > , & StencilOperators) -> [f64 ; N] , }"
+      "signature": "impl < T : RealField > FusedStencilStepper < T > { pub fn step_3d_coupled_neumann < const N : usize , F > (& self , _ : (usize , usize , usize) , _ : [& [T] ; N] , _ : [& mut [T] ; N] , _ : T , _ : T , _ : F ,) where F : FnMut (usize , [T ; N] , StencilNeighbors3D < N , T > , & StencilOperators < T >) -> [T ; N] , }"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn try_new (_ : StepSize) -> Result < Self , math_commons :: error :: MathError > }"
+      "signature": "impl < T : RealField > FusedStencilStepper < T > { pub fn try_new (_ : StepSize < T >) -> Result < Self , math_commons :: error :: MathError > }"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn try_new_2d (_ : StepSize , _ : StepSize) -> Result < Self , math_commons :: error :: MathError > }"
+      "signature": "impl < T : RealField > FusedStencilStepper < T > { pub fn try_new_2d (_ : StepSize < T > , _ : StepSize < T > ,) -> Result < Self , math_commons :: error :: MathError > }"
     },
     {
-      "signature": "impl FusedStencilStepper { pub fn try_new_3d (_ : StepSize , _ : StepSize , _ : StepSize ,) -> Result < Self , math_commons :: error :: MathError > }"
+      "signature": "impl < T : RealField > FusedStencilStepper < T > { pub fn try_new_3d (_ : StepSize < T > , _ : StepSize < T > , _ : StepSize < T > ,) -> Result < Self , math_commons :: error :: MathError > }"
     },
     {
-      "signature": "pub struct FusedStencilStepper"
+      "signature": "pub struct FusedStencilStepper < T = f64 >"
     }
   ],
   "crates/engine_pde/src/lib.rs": [
     {
-      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > PdeOwnedWorkspace < T > { pub fn as_workspace (& mut self) -> math_commons :: math_kernel :: types :: SolverWorkspace < '_ , T > }"
+      "signature": "impl < T : math_scalars :: RealField > PdeOwnedWorkspace < T > { pub fn as_workspace (& mut self) -> math_commons :: math_kernel :: types :: SolverWorkspace < '_ , T > }"
     },
     {
-      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > PdeOwnedWorkspace < T > { pub fn try_with_capacity (_ : usize) -> Result < Self , PdeError > }"
+      "signature": "impl < T : math_scalars :: RealField > PdeOwnedWorkspace < T > { pub fn try_with_capacity (_ : usize) -> Result < Self , PdeError > }"
     },
     {
-      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > PdeOwnedWorkspace < T > { pub fn with_capacity (_ : usize) -> Self }"
+      "signature": "impl < T : math_scalars :: RealField > PdeOwnedWorkspace < T > { pub fn with_capacity (_ : usize) -> Self }"
     },
     {
-      "signature": "pub struct PdeOwnedWorkspace < T : math_commons :: math_kernel :: types :: Scalar >"
+      "signature": "pub struct PdeOwnedWorkspace < T : math_scalars :: RealField = f64 >"
     },
     {
       "signature": "pub use boundary :: BoundaryCondition"
@@ -12949,36 +13414,63 @@
   ],
   "crates/engine_pde/src/spde_noise.rs": [
     {
-      "signature": "pub enum SpdeNoiseKind"
+      "signature": "pub enum SpdeNoiseKind < T = f64 >"
     },
     {
-      "signature": "pub fn inject_additive_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,)"
+      "signature": "pub fn inject_additive_noise_1d < T : RealField , R : RngCore + ? Sized > (_ : & mut [T] , _ : T , _ : T , _ : T , _ : BoundaryCondition < T > , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,)"
     },
     {
-      "signature": "pub fn inject_additive_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,)"
+      "signature": "pub fn inject_additive_noise_2d < T : RealField , R : RngCore + ? Sized > (_ : & mut [T] , _ : usize , _ : usize , _ : T , _ : T , _ : T , _ : T , _ : BoundaryCondition < T > , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,)"
     },
     {
-      "signature": "pub fn inject_conserved_flux_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,)"
+      "signature": "pub fn inject_conserved_flux_noise_1d < T : RealField , R : RngCore + ? Sized > (_ : & mut [T] , _ : T , _ : T , _ : T , _ : BoundaryCondition < T > , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,)"
     },
     {
-      "signature": "pub fn inject_conserved_flux_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,)"
+      "signature": "pub fn inject_conserved_flux_noise_2d < T : RealField , R : RngCore + ? Sized > (_ : & mut [T] , _ : usize , _ : usize , _ : T , _ : T , _ : T , _ : T , _ : BoundaryCondition < T > , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,)"
     },
     {
-      "signature": "pub fn try_inject_additive_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError >"
+      "signature": "pub fn try_inject_additive_noise_1d < T : RealField , R : RngCore + ? Sized > (_ : & mut [T] , _ : T , _ : T , _ : T , _ : BoundaryCondition < T > , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , PdeError >"
     },
     {
-      "signature": "pub fn try_inject_additive_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError >"
+      "signature": "pub fn try_inject_additive_noise_2d < T : RealField , R : RngCore + ? Sized > (_ : & mut [T] , _ : usize , _ : usize , _ : T , _ : T , _ : T , _ : T , _ : BoundaryCondition < T > , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , PdeError >"
     },
     {
-      "signature": "pub fn try_inject_conserved_flux_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError >"
+      "signature": "pub fn try_inject_conserved_flux_noise_1d < T : RealField , R : RngCore + ? Sized > (_ : & mut [T] , _ : T , _ : T , _ : T , _ : BoundaryCondition < T > , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , PdeError >"
     },
     {
-      "signature": "pub fn try_inject_conserved_flux_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError >"
+      "signature": "pub fn try_inject_conserved_flux_noise_2d < T : RealField , R : RngCore + ? Sized > (_ : & mut [T] , _ : usize , _ : usize , _ : T , _ : T , _ : T , _ : T , _ : BoundaryCondition < T > , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , PdeError >"
     }
   ],
   "crates/engine_pde/src/spde_stencil.rs": [
     {
-      "signature": "impl ExplicitSpdeStencilStepper { pub const fn new (_ : StencilOperators , _ : BoundaryCondition , _ : SpdeNoiseKind ,) -> Self }"
+      "signature": "impl < T : RealField > ExplicitSpdeStencilStepper < T > { pub fn step_1d < F , R > (& self , _ : & mut [T] , _ : T , _ : F , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) where F : FnMut (usize , T , T , T) -> T , R : RngCore + ? Sized , }"
+    },
+    {
+      "signature": "impl < T : RealField > ExplicitSpdeStencilStepper < T > { pub fn step_2d < F , R > (& self , _ : & mut [T] , _ : usize , _ : usize , _ : T , _ : F , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) where F : FnMut (usize , usize , T , (T , T) , T) -> T , R : RngCore + ? Sized , }"
+    },
+    {
+      "signature": "impl < T : RealField > ExplicitSpdeStencilStepper < T > { pub fn step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [T] , _ : usize , _ : usize , _ : T , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
+    },
+    {
+      "signature": "impl < T : RealField > ExplicitSpdeStencilStepper < T > { pub fn try_step_1d < F , R > (& self , _ : & mut [T] , _ : T , _ : F , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , PdeError > where F : FnMut (usize , T , T , T) -> T , R : RngCore + ? Sized , }"
+    },
+    {
+      "signature": "impl < T : RealField > ExplicitSpdeStencilStepper < T > { pub fn try_step_2d < F , R > (& self , _ : & mut [T] , _ : usize , _ : usize , _ : T , _ : F , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , PdeError > where F : FnMut (usize , usize , T , (T , T) , T) -> T , R : RngCore + ? Sized , }"
+    },
+    {
+      "signature": "impl < T : RealField > ExplicitSpdeStencilStepper < T > { pub fn try_step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [T] , _ : usize , _ : usize , _ : T , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , PdeError > }"
+    },
+    {
+      "signature": "impl < T : RealField > SplitStepSpdeStencilStepper < T > { pub fn step_reaction_diffusion_2d < F , R > (& self , _ : & mut [T] , _ : usize , _ : usize , _ : T , _ : T , _ : F , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) where F : FnMut (T) -> T , R : RngCore + ? Sized , }"
+    },
+    {
+      "signature": "impl < T : RealField > SplitStepSpdeStencilStepper < T > { pub fn try_step_reaction_diffusion_2d < F , R > (& self , _ : & mut [T] , _ : usize , _ : usize , _ : T , _ : T , _ : F , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , PdeError > where F : FnMut (T) -> T , R : RngCore + ? Sized , }"
+    },
+    {
+      "signature": "impl < T > ExplicitSpdeStencilStepper < T > { pub const fn new (_ : StencilOperators < T > , _ : BoundaryCondition < T > , _ : SpdeNoiseKind < T > ,) -> Self }"
+    },
+    {
+      "signature": "impl < T > SplitStepSpdeStencilStepper < T > { pub const fn new (_ : StencilOperators < T > , _ : BoundaryCondition < T > , _ : SpdeNoiseKind < T > , _ : usize ,) -> Self }"
     },
     {
       "signature": "impl ExplicitSpdeStencilStepper { pub const fn scratch_len_1d (_ : usize) -> usize }"
@@ -12987,175 +13479,130 @@
       "signature": "impl ExplicitSpdeStencilStepper { pub const fn scratch_len_2d (_ : usize , _ : usize) -> usize }"
     },
     {
-      "signature": "impl ExplicitSpdeStencilStepper { pub fn step_1d < F , R > (& self , _ : & mut [f64] , _ : f64 , _ : F , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) where F : FnMut (usize , f64 , f64 , f64) -> f64 , R : RngCore + ? Sized , }"
-    },
-    {
-      "signature": "impl ExplicitSpdeStencilStepper { pub fn step_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : F , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) where F : FnMut (usize , usize , f64 , (f64 , f64) , f64) -> f64 , R : RngCore + ? Sized , }"
-    },
-    {
-      "signature": "impl ExplicitSpdeStencilStepper { pub fn step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
-    },
-    {
-      "signature": "impl ExplicitSpdeStencilStepper { pub fn try_step_1d < F , R > (& self , _ : & mut [f64] , _ : f64 , _ : F , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > where F : FnMut (usize , f64 , f64 , f64) -> f64 , R : RngCore + ? Sized , }"
-    },
-    {
-      "signature": "impl ExplicitSpdeStencilStepper { pub fn try_step_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : F , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > where F : FnMut (usize , usize , f64 , (f64 , f64) , f64) -> f64 , R : RngCore + ? Sized , }"
-    },
-    {
-      "signature": "impl ExplicitSpdeStencilStepper { pub fn try_step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > }"
-    },
-    {
-      "signature": "impl SplitStepSpdeStencilStepper { pub const fn new (_ : StencilOperators , _ : BoundaryCondition , _ : SpdeNoiseKind , _ : usize ,) -> Self }"
-    },
-    {
       "signature": "impl SplitStepSpdeStencilStepper { pub const fn scratch_len_2d (_ : usize , _ : usize) -> usize }"
     },
     {
-      "signature": "impl SplitStepSpdeStencilStepper { pub fn step_reaction_diffusion_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : F , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) where F : FnMut (f64) -> f64 , R : RngCore + ? Sized , }"
+      "signature": "pub struct ExplicitSpdeStencilStepper < T = f64 >"
     },
     {
-      "signature": "impl SplitStepSpdeStencilStepper { pub fn try_step_reaction_diffusion_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : F , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > where F : FnMut (f64) -> f64 , R : RngCore + ? Sized , }"
-    },
-    {
-      "signature": "pub struct ExplicitSpdeStencilStepper"
-    },
-    {
-      "signature": "pub struct SplitStepSpdeStencilStepper"
+      "signature": "pub struct SplitStepSpdeStencilStepper < T = f64 >"
     }
   ],
   "crates/engine_pde/src/stencil.rs": [
     {
-      "signature": "impl StencilOperators { pub fn central_diff_1st (& self , _ : f64 , _ : f64) -> f64 }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn central_diff_1st (& self , _ : T , _ : T) -> T }"
     },
     {
-      "signature": "impl StencilOperators { pub fn central_diff_2nd (& self , _ : f64 , _ : f64 , _ : f64) -> f64 }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn central_diff_2nd (& self , _ : T , _ : T , _ : T) -> T }"
     },
     {
-      "signature": "impl StencilOperators { pub fn central_diff_2nd_2d (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn central_diff_2nd_2d (& self , _ : T , _ : T , _ : T , _ : T , _ : T) -> T }"
     },
     {
-      "signature": "impl StencilOperators { pub fn central_diff_2nd_3d (& self , _ : f64 , _ : [f64 ; 6]) -> f64 }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn central_diff_2nd_3d (& self , _ : T , _ : [T ; 6]) -> T }"
     },
     {
-      "signature": "impl StencilOperators { pub fn new (_ : StepSize) -> Self }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn new (_ : StepSize < T >) -> Self }"
     },
     {
-      "signature": "impl StencilOperators { pub fn new_2d (_ : StepSize , _ : StepSize) -> Self }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn new_2d (_ : StepSize < T > , _ : StepSize < T >) -> Self }"
     },
     {
-      "signature": "impl StencilOperators { pub fn new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Self }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn new_3d (_ : StepSize < T > , _ : StepSize < T > , _ : StepSize < T >) -> Self }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_new (_ : StepSize) -> Result < Self , MathError > }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn try_new (_ : StepSize < T >) -> Result < Self , MathError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_new_2d (_ : StepSize , _ : StepSize) -> Result < Self , MathError > }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn try_new_2d (_ : StepSize < T > , _ : StepSize < T >) -> Result < Self , MathError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Result < Self , MathError > }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn try_new_3d (_ : StepSize < T > , _ : StepSize < T > , _ : StepSize < T > ,) -> Result < Self , MathError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_new_checked (_ : StepSize , _ : StepSize , _ : StepSize) -> Option < Self > }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn try_new_checked (_ : StepSize < T > , _ : StepSize < T > , _ : StepSize < T >) -> Option < Self > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn upwind_flux (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn upwind_flux (& self , _ : T , _ : T , _ : T , _ : T) -> T }"
     },
     {
-      "signature": "pub struct StencilNeighbors3D < const N : usize >"
+      "signature": "pub struct StencilNeighbors3D < const N : usize , T = f64 >"
     },
     {
-      "signature": "pub struct StencilOperators"
+      "signature": "pub struct StencilOperators < T = f64 >"
     }
   ],
   "crates/engine_pde/src/stencil/biharmonic.rs": [
     {
-      "signature": "impl StencilOperators { pub fn compute_laplacian_2d (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition , _ : & mut [f64] ,) }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn compute_laplacian_2d (& self , _ : & [T] , _ : usize , _ : usize , _ : BoundaryCondition < T > , _ : & mut [T] ,) }"
     },
     {
-      "signature": "impl StencilOperators { pub fn eval_biharmonic_2d (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> f64 }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn eval_biharmonic_2d (& self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> T }"
     },
     {
-      "signature": "impl StencilOperators { pub fn eval_biharmonic_2d_from_laplacian (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> f64 }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn eval_biharmonic_2d_from_laplacian (& self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> T }"
     },
     {
-      "signature": "impl StencilOperators { pub fn step_characteristic_upwind_1d (& self , _ : & [f64] , _ : & [f64] , _ : f64 , _ : f64 , _ : & mut [f64] ,) }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn step_characteristic_upwind_1d (& self , _ : & [T] , _ : & [T] , _ : T , _ : T , _ : & mut [T] ,) }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_compute_laplacian_2d (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition , _ : & mut [f64] ,) -> Result < () , PdeError > }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn try_compute_laplacian_2d (& self , _ : & [T] , _ : usize , _ : usize , _ : BoundaryCondition < T > , _ : & mut [T] ,) -> Result < () , PdeError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_eval_biharmonic_2d (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn try_eval_biharmonic_2d (& self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> Result < T , PdeError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_eval_biharmonic_2d_from_laplacian (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn try_eval_biharmonic_2d_from_laplacian (& self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> Result < T , PdeError > }"
     }
   ],
   "crates/engine_pde/src/stencil/eval.rs": [
     {
-      "signature": "impl StencilOperators { pub fn grad_sq_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition) -> f64 }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn grad_sq_1d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : BoundaryCondition < T >) -> T }"
     },
     {
-      "signature": "impl StencilOperators { pub fn grad_sq_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> f64 }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn grad_sq_2d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> T }"
     },
     {
-      "signature": "impl StencilOperators { pub fn gradient_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition) -> f64 }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn gradient_1d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : BoundaryCondition < T >) -> T }"
     },
     {
-      "signature": "impl StencilOperators { pub fn gradient_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> (f64 , f64) }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn gradient_2d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> (T , T) }"
     },
     {
-      "signature": "impl StencilOperators { pub fn gradient_3d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> (f64 , f64 , f64) }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn gradient_3d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> (T , T , T) }"
     },
     {
-      "signature": "impl StencilOperators { pub fn laplacian_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition) -> f64 }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn laplacian_1d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : BoundaryCondition < T >) -> T }"
     },
     {
-      "signature": "impl StencilOperators { pub fn laplacian_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> f64 }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn laplacian_2d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> T }"
     },
     {
-      "signature": "impl StencilOperators { pub fn laplacian_3d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> f64 }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn laplacian_3d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> T }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_grad_sq_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn try_grad_sq_1d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> Result < T , PdeError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_grad_sq_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn try_grad_sq_2d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> Result < T , PdeError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_gradient_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn try_gradient_1d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> Result < T , PdeError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_gradient_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < (f64 , f64) , PdeError > }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn try_gradient_2d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> Result < (T , T) , PdeError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_gradient_3d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < (f64 , f64 , f64) , PdeError > }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn try_gradient_3d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> Result < (T , T , T) , PdeError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_laplacian_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn try_laplacian_1d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> Result < T , PdeError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_laplacian_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn try_laplacian_2d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> Result < T , PdeError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_laplacian_3d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn try_upwind_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : f64 , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn try_upwind_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : (f64 , f64) , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn try_upwind_3d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : (f64 , f64 , f64) , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn upwind_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : f64 , _ : BoundaryCondition ,) -> f64 }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn upwind_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : (f64 , f64) , _ : BoundaryCondition ,) -> f64 }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn upwind_3d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : (f64 , f64 , f64) , _ : BoundaryCondition ,) -> f64 }"
+      "signature": "impl < T : RealField > StencilOperators < T > { pub fn try_laplacian_3d_at (& self , _ : & [T] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition < T > ,) -> Result < T , PdeError > }"
     }
   ],
   "crates/federated_registry/src/lib.rs": [
@@ -13236,22 +13683,25 @@
       "signature": "impl CompiledExpr { pub fn compile_with_vars_and_params (_ : & Expr , _ : & [& str] , _ : & [& str] ,) -> Result < Self , EvalError > }"
     },
     {
-      "signature": "impl CompiledExpr { pub fn eval_1d (& self , _ : f64 , _ : & [f64]) -> f64 }"
+      "signature": "impl CompiledExpr { pub fn eval_1d < T : RealField > (& self , _ : T , _ : & [T]) -> T }"
     },
     {
-      "signature": "impl CompiledExpr { pub fn eval_2d (& self , _ : f64 , _ : f64 , _ : & [f64]) -> f64 }"
+      "signature": "impl CompiledExpr { pub fn eval_2d < T : RealField > (& self , _ : T , _ : T , _ : & [T]) -> T }"
     },
     {
-      "signature": "impl CompiledExpr { pub fn eval_3d (& self , _ : f64 , _ : f64 , _ : f64 , _ : & [f64]) -> f64 }"
+      "signature": "impl CompiledExpr { pub fn eval_3d < T : RealField > (& self , _ : T , _ : T , _ : T , _ : & [T]) -> T }"
     },
     {
       "signature": "impl CompiledExpr { pub fn eval_complex_slice (& self , _ : & [Complex64]) -> Complex64 }"
     },
     {
-      "signature": "impl CompiledExpr { pub fn eval_complex_z (& self , _ : Complex64) -> Complex64 }"
+      "signature": "impl CompiledExpr { pub fn eval_complex_z < T : ComplexField > (& self , _ : T) -> T }"
     },
     {
-      "signature": "impl CompiledExpr { pub fn eval_complex_z_params (& self , _ : Complex64 , _ : & [f64]) -> Complex64 }"
+      "signature": "impl CompiledExpr { pub fn eval_complex_z_params < T : ComplexField > (& self , _ : T , _ : & [T :: Real]) -> T }"
+    },
+    {
+      "signature": "impl CompiledExpr { pub fn eval_generic_slice < T : ComplexField > (& self , _ : & [T]) -> T }"
     },
     {
       "signature": "impl CompiledExpr { pub fn eval_slice (& self , _ : & [f64]) -> f64 }"
@@ -13286,19 +13736,22 @@
       "signature": "impl Expr { pub fn eval (& self , _ : & HashMap < String , f64 >) -> Result < f64 , EvalError > }"
     },
     {
-      "signature": "impl Expr { pub fn eval_2d (& self , _ : f64 , _ : f64 , _ : & HashMap < String , f64 >) -> f64 }"
+      "signature": "impl Expr { pub fn eval_2d < T : RealField > (& self , _ : T , _ : T , _ : & HashMap < String , T >) -> T }"
     },
     {
       "signature": "impl Expr { pub fn eval_complex (& self , _ : & HashMap < String , Complex64 >) -> Result < Complex64 , EvalError > }"
     },
     {
-      "signature": "impl Expr { pub fn eval_complex_z (& self , _ : Complex64) -> Complex64 }"
+      "signature": "impl Expr { pub fn eval_complex_z < T : ComplexField > (& self , _ : T) -> T }"
     },
     {
-      "signature": "impl Expr { pub fn eval_complex_zc (& self , _ : Complex64 , _ : Complex64) -> Complex64 }"
+      "signature": "impl Expr { pub fn eval_complex_zc < T : ComplexField > (& self , _ : T , _ : T) -> T }"
     },
     {
-      "signature": "impl Expr { pub fn eval_planar (& self , _ : f64 , _ : f64 , _ : f64 , _ : & HashMap < String , f64 >) -> f64 }"
+      "signature": "impl Expr { pub fn eval_generic < T : ComplexField > (& self , _ : & HashMap < String , T >) -> Result < T , EvalError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn eval_planar < T : RealField > (& self , _ : T , _ : T , _ : T , _ : & HashMap < String , T >) -> T }"
     },
     {
       "signature": "pub const MAX_EVAL_DEPTH : usize"
@@ -13725,16 +14178,19 @@
       "signature": "pub use crate :: ast :: ShaderEmitError"
     },
     {
-      "signature": "pub use engine_linalg :: LinalgError"
-    },
-    {
       "signature": "pub use math_diagnostics :: Diagnostic"
     },
     {
       "signature": "pub use math_diagnostics :: DiagnosticVisitor"
     },
     {
+      "signature": "pub use math_diagnostics :: LinalgError"
+    },
+    {
       "signature": "pub use math_diagnostics :: Severity"
+    },
+    {
+      "signature": "pub use math_scalars :: ScalarDomainError"
     },
     {
       "signature": "pub use umbrella :: MathCommonsError"
@@ -13753,39 +14209,44 @@
       "signature": "pub const MAX_LM_ITERATIONS : usize"
     },
     {
-      "signature": "pub fn levenberg_marquardt < P , F > (_ : & P , _ : & [f64] , _ : F ,) -> Result < [f64 ; 4] , FitError > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64 ; 4]) -> (f64 , [f64 ; 4]) ,"
+      "signature": "pub fn levenberg_marquardt < T , P , F > (_ : & P , _ : & [T] , _ : F ,) -> Result < [T ; 4] , FitError > where T : RealField , P : PointSeries < T > + ? Sized , F : Fn (T , & [T ; 4]) -> (T , [T ; 4]) ,"
     },
     {
-      "signature": "pub fn levenberg_marquardt_filtered < P , F > (_ : & P , _ : & [f64] , _ : fn (f64 , f64) -> bool , _ : F ,) -> Result < [f64 ; 4] , FitError > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64 ; 4]) -> (f64 , [f64 ; 4]) ,"
+      "signature": "pub fn levenberg_marquardt_filtered < T , P , F > (_ : & P , _ : & [T] , _ : fn (T , T) -> bool , _ : F ,) -> Result < [T ; 4] , FitError > where T : RealField , P : PointSeries < T > + ? Sized , F : Fn (T , & [T ; 4]) -> (T , [T ; 4]) ,"
     },
     {
-      "signature": "pub fn levenberg_marquardt_numeric < P , F > (_ : & P , _ : & [f64] , _ : F ,) -> Result < [f64 ; MAX_FIT_PARAMS] , FitError > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64]) -> Option < f64 > ,"
+      "signature": "pub fn levenberg_marquardt_numeric < T , P , F > (_ : & P , _ : & [T] , _ : F ,) -> Result < [T ; MAX_FIT_PARAMS] , FitError > where T : RealField , P : PointSeries < T > + ? Sized , F : Fn (T , & [T]) -> Option < T > ,"
     },
     {
-      "signature": "pub fn sum_squared_errors_numeric < P , F > (_ : & P , _ : & [f64] , _ : F) -> Option < f64 > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64]) -> Option < f64 > ,"
+      "signature": "pub fn sum_squared_errors_numeric < T , P , F > (_ : & P , _ : & [T] , _ : F) -> Option < T > where T : RealField , P : PointSeries < T > + ? Sized , F : Fn (T , & [T]) -> Option < T > ,"
+    }
+  ],
+  "crates/math_commons/src/fit/micro_solvers.rs": [
+    {
+      "signature": "pub const MAX_INLINE_SYSTEM_DIM : usize"
     }
   ],
   "crates/math_commons/src/fit/mod.rs": [
     {
-      "signature": "impl CurveFit { pub fn centered_polynomial (& self) -> Option < (f64 , f64 , & [f64]) > }"
+      "signature": "impl < T : RealField > CurveFit < T > { pub fn centered_polynomial (& self) -> Option < (T , T , & [T]) > }"
     },
     {
-      "signature": "impl CurveFit { pub fn coefficients (& self) -> & [f64] }"
+      "signature": "impl < T : RealField > CurveFit < T > { pub fn coefficients (& self) -> & [T] }"
     },
     {
-      "signature": "impl CurveFit { pub fn eval (& self , _ : f64) -> f64 }"
+      "signature": "impl < T : RealField > CurveFit < T > { pub fn eval (& self , _ : T) -> T }"
     },
     {
-      "signature": "impl CurveFit { pub fn format_formula (& self) -> String }"
+      "signature": "impl < T : RealField > CurveFit < T > { pub fn format_formula (& self) -> String }"
     },
     {
-      "signature": "impl CurveFit { pub fn new (_ : FitModel , _ : [f64 ; 5] , _ : usize , _ : f64 , _ : f64 , _ : usize , _ : usize , _ : bool , _ : bool , _ : bool ,) -> Self }"
+      "signature": "impl < T : RealField > CurveFit < T > { pub fn new (_ : FitModel , _ : [T ; 5] , _ : usize , _ : T , _ : T , _ : usize , _ : usize , _ : bool , _ : bool , _ : bool ,) -> Self }"
     },
     {
-      "signature": "impl CurveFit { pub fn residuals < P : PointSeries + ? Sized > (& self , _ : & P) -> Vec < [f64 ; 2] > }"
+      "signature": "impl < T : RealField > CurveFit < T > { pub fn residuals < P : PointSeries < T > + ? Sized > (& self , _ : & P) -> Vec < [T ; 2] > }"
     },
     {
-      "signature": "impl CurveFit { pub fn residuals_into < P : PointSeries + ? Sized > (& self , _ : & P , _ : & mut [[f64 ; 2]] ,) -> usize }"
+      "signature": "impl < T : RealField > CurveFit < T > { pub fn residuals_into < P : PointSeries < T > + ? Sized > (& self , _ : & P , _ : & mut [[T ; 2]] ,) -> usize }"
     },
     {
       "signature": "impl FitModel { pub const MENU_PRESETS : [Self ; 9] }"
@@ -13812,13 +14273,13 @@
       "signature": "pub enum FitModel"
     },
     {
-      "signature": "pub fn fit_model < P : PointSeries + ? Sized > (_ : & P , _ : FitModel , _ : bool ,) -> Result < CurveFit , FitError >"
+      "signature": "pub fn fit_model < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P , _ : FitModel , _ : bool ,) -> Result < CurveFit < T > , FitError >"
     },
     {
-      "signature": "pub fn fit_model_with_axes < P : PointSeries + ? Sized > (_ : & P , _ : FitModel , _ : bool , _ : bool , _ : bool ,) -> Result < CurveFit , FitError >"
+      "signature": "pub fn fit_model_with_axes < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P , _ : FitModel , _ : bool , _ : bool , _ : bool ,) -> Result < CurveFit < T > , FitError >"
     },
     {
-      "signature": "pub struct CurveFit"
+      "signature": "pub struct CurveFit < T = f64 >"
     },
     {
       "signature": "pub use lm :: MAX_FIT_PARAMS"
@@ -13837,6 +14298,9 @@
     },
     {
       "signature": "pub use lm :: sum_squared_errors_numeric"
+    },
+    {
+      "signature": "pub use micro_solvers :: MAX_INLINE_SYSTEM_DIM"
     },
     {
       "signature": "pub use nonlinear :: eval_nonlinear"
@@ -13886,10 +14350,10 @@
   ],
   "crates/math_commons/src/fit/nonlinear.rs": [
     {
-      "signature": "pub fn eval_nonlinear (_ : FitModel , _ : & [f64] , _ : f64) -> f64"
+      "signature": "pub fn eval_nonlinear < T : RealField > (_ : FitModel , _ : & [T] , _ : T) -> T"
     },
     {
-      "signature": "pub fn fit_nonlinear < P : PointSeries + ? Sized > (_ : & P , _ : FitModel , _ : bool ,) -> Result < CurveFit , FitError >"
+      "signature": "pub fn fit_nonlinear < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P , _ : FitModel , _ : bool ,) -> Result < CurveFit < T > , FitError >"
     },
     {
       "signature": "pub use super :: format :: format_nonlinear_formula"
@@ -13897,16 +14361,16 @@
   ],
   "crates/math_commons/src/fit/poly.rs": [
     {
-      "signature": "pub fn eval_polynomial_horner (_ : & [f64] , _ : f64) -> f64"
+      "signature": "pub fn eval_polynomial_horner < T : RealField > (_ : & [T] , _ : T) -> T"
     },
     {
-      "signature": "pub fn fit_polynomial < P : PointSeries + ? Sized > (_ : & P , _ : usize ,) -> Result < CurveFit , FitError >"
+      "signature": "pub fn fit_polynomial < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P , _ : usize ,) -> Result < CurveFit < T > , FitError >"
     },
     {
-      "signature": "pub fn fit_polynomial_scaled < P : PointSeries + ? Sized > (_ : & P , _ : usize , _ : bool , _ : bool ,) -> Result < CurveFit , FitError >"
+      "signature": "pub fn fit_polynomial_scaled < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P , _ : usize , _ : bool , _ : bool ,) -> Result < CurveFit < T > , FitError >"
     },
     {
-      "signature": "pub fn solve_dense_small (_ : & mut [[f64 ; 5] ; 5] , _ : & [f64 ; 5] , _ : usize ,) -> Result < [f64 ; 5] , FitError >"
+      "signature": "pub fn solve_dense_small < T : RealField > (_ : & mut [[T ; 5] ; 5] , _ : & [T ; 5] , _ : usize ,) -> Result < [T ; 5] , FitError >"
     },
     {
       "signature": "pub use super :: format :: format_polynomial_formula"
@@ -13914,54 +14378,101 @@
   ],
   "crates/math_commons/src/fit/seeds.rs": [
     {
-      "signature": "impl WeightedOlsAccum { pub const fn sample_count (& self) -> usize }"
+      "signature": "impl < T : RealField > WeightedOlsAccum < T > { pub const fn sample_count (& self) -> usize }"
     },
     {
-      "signature": "impl WeightedOlsAccum { pub fn push (& mut self , _ : f64 , _ : f64 , _ : f64) }"
+      "signature": "impl < T : RealField > WeightedOlsAccum < T > { pub fn push (& mut self , _ : T , _ : T , _ : T) }"
     },
     {
-      "signature": "impl WeightedOlsAccum { pub fn solve (& self) -> Result < (f64 , f64) , FitError > }"
+      "signature": "impl < T : RealField > WeightedOlsAccum < T > { pub fn solve (& self) -> Result < (T , T) , FitError > }"
     },
     {
-      "signature": "pub fn seed_exponential < P : PointSeries + ? Sized > (_ : & P) -> Result < [f64 ; 2] , FitError >"
+      "signature": "pub fn seed_exponential < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P ,) -> Result < [T ; 2] , FitError >"
     },
     {
-      "signature": "pub fn seed_logarithmic < P : PointSeries + ? Sized > (_ : & P) -> Result < [f64 ; 2] , FitError >"
+      "signature": "pub fn seed_logarithmic < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P ,) -> Result < [T ; 2] , FitError >"
     },
     {
-      "signature": "pub fn seed_logistic < P : PointSeries + ? Sized > (_ : & P) -> Result < [f64 ; 3] , FitError >"
+      "signature": "pub fn seed_logistic < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P ,) -> Result < [T ; 3] , FitError >"
     },
     {
-      "signature": "pub fn seed_power_law < P : PointSeries + ? Sized > (_ : & P) -> Result < [f64 ; 2] , FitError >"
+      "signature": "pub fn seed_power_law < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P ,) -> Result < [T ; 2] , FitError >"
     },
     {
-      "signature": "pub fn seed_sinusoidal < P : PointSeries + ? Sized > (_ : & P) -> Result < [f64 ; 4] , FitError >"
+      "signature": "pub fn seed_sinusoidal < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P ,) -> Result < [T ; 4] , FitError >"
     },
     {
-      "signature": "pub fn weighted_ols_line (_ : & [[f64 ; 3]]) -> Result < (f64 , f64) , FitError >"
+      "signature": "pub fn weighted_ols_line < T : RealField > (_ : & [[T ; 3]]) -> Result < (T , T) , FitError >"
     },
     {
-      "signature": "pub struct WeightedOlsAccum"
+      "signature": "pub struct WeightedOlsAccum < T = f64 >"
+    }
+  ],
+  "crates/math_commons/src/lib.rs": [
+    {
+      "signature": "pub use math_scalars :: Complex"
+    },
+    {
+      "signature": "pub use math_scalars :: Complex32"
+    },
+    {
+      "signature": "pub use math_scalars :: Complex64"
+    },
+    {
+      "signature": "pub use math_scalars :: ComplexField"
+    },
+    {
+      "signature": "pub use math_scalars :: DomainField"
+    },
+    {
+      "signature": "pub use math_scalars :: DomainRing"
+    },
+    {
+      "signature": "pub use math_scalars :: Dual"
+    },
+    {
+      "signature": "pub use math_scalars :: Field"
+    },
+    {
+      "signature": "pub use math_scalars :: ModPrimeContext"
+    },
+    {
+      "signature": "pub use math_scalars :: RealField"
+    },
+    {
+      "signature": "pub use math_scalars :: Ring"
+    },
+    {
+      "signature": "pub use math_scalars :: Scalar as AlgebraicScalar"
+    },
+    {
+      "signature": "pub use math_scalars :: ScalarDomainError"
+    },
+    {
+      "signature": "pub use math_scalars :: StatelessContext"
+    },
+    {
+      "signature": "pub use math_scalars :: self as scalars"
     }
   ],
   "crates/math_commons/src/math_kernel/colormap.rs": [
     {
-      "signature": "pub fn cyclic_cosine_palette (_ : f64) -> [u8 ; 3]"
+      "signature": "pub fn cyclic_cosine_palette < T : RealField > (_ : T) -> [u8 ; 3]"
     },
     {
-      "signature": "pub fn cyclic_cosine_palette_high_contrast (_ : f64) -> [u8 ; 3]"
+      "signature": "pub fn cyclic_cosine_palette_high_contrast < T : RealField > (_ : T) -> [u8 ; 3]"
     },
     {
       "signature": "pub fn ensure_dark_canvas_contrast (_ : [u8 ; 3]) -> [u8 ; 3]"
     },
     {
-      "signature": "pub fn heatmap_color (_ : f64) -> [u8 ; 3]"
+      "signature": "pub fn heatmap_color < T : RealField > (_ : T) -> [u8 ; 3]"
     },
     {
-      "signature": "pub fn heatmap_color_high_contrast (_ : f64) -> [u8 ; 3]"
+      "signature": "pub fn heatmap_color_high_contrast < T : RealField > (_ : T) -> [u8 ; 3]"
     },
     {
-      "signature": "pub fn mapped_gradient (_ : f64 , _ : f64 , _ : f64) -> [u8 ; 3]"
+      "signature": "pub fn mapped_gradient < T : RealField > (_ : T , _ : T , _ : T) -> [u8 ; 3]"
     },
     {
       "signature": "pub use colormap_shader :: *"
@@ -13983,31 +14494,31 @@
   ],
   "crates/math_commons/src/math_kernel/types.rs": [
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn as_mut_slice (& mut self) -> & mut [T] }"
+      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn as_mut_slice (& mut self) -> & mut [T] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn as_slice (& self) -> & [T] }"
+      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn as_slice (& self) -> & [T] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn is_empty (& self) -> bool }"
+      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn is_empty (& self) -> bool }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn len (& self) -> usize }"
+      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn len (& self) -> usize }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn new (_ : & 'a mut [T]) -> Self }"
+      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn new (_ : & 'a mut [T]) -> Self }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn reborrow (& mut self) -> SolverWorkspace < '_ , T > }"
+      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn reborrow (& mut self) -> SolverWorkspace < '_ , T > }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn take_slice (& mut self , _ : usize) -> & 'a mut [T] }"
+      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn take_slice (& mut self , _ : usize) -> & 'a mut [T] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn try_take_slice (& mut self , _ : usize) -> Result < & 'a mut [T] , crate :: error :: MathError > }"
+      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn try_take_slice (& mut self , _ : usize) -> Result < & 'a mut [T] , crate :: error :: MathError > }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn zero_fill (& mut self) }"
+      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn zero_fill (& mut self) where T : Ring , }"
     },
     {
       "signature": "pub fn fill_standard_normal < T : Scalar , R : RngCore + ? Sized > (_ : & mut [T] , _ : & mut R)"
@@ -14034,107 +14545,50 @@
       "signature": "pub struct GridIndex"
     },
     {
-      "signature": "pub struct SolverWorkspace < 'a , T : Scalar >"
+      "signature": "pub struct SolverWorkspace < 'a , T = f64 >"
     },
     {
-      "signature": "pub struct StepSize"
+      "signature": "pub struct StepSize < T = f64 >"
     },
     {
-      "signature": "pub trait Scalar : Copy + Clone + PartialEq + PartialOrd + Debug + Default + Send + Sync + 'static + Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + Div < Output = Self > + Neg < Output = Self > + AddAssign + SubAssign + MulAssign + DivAssign"
-    },
-    {
-      "signature": "pub trait Scalar { const EPSILON : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const HALF : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const ONE : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const PI : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const TAU : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const TWO : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { const ZERO : Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn abs (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn cos (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn exp (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn from_f64 (_ : f64) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn from_usize (_ : usize) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn is_finite (self) -> bool }"
-    },
-    {
-      "signature": "pub trait Scalar { fn ln (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn max (self , _ : Self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn min (self , _ : Self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn sin (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn sqrt (self) -> Self }"
-    },
-    {
-      "signature": "pub trait Scalar { fn to_f64 (self) -> f64 }"
+      "signature": "pub use math_scalars :: RealField as Scalar"
     }
   ],
   "crates/math_commons/src/poi/extrema.rs": [
     {
-      "signature": "pub fn detect_local_extrema < P : PointSeries + ? Sized > (_ : & P) -> Vec < LocalExtremum >"
+      "signature": "pub fn detect_local_extrema < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P ,) -> Vec < LocalExtremum < T > >"
     },
     {
-      "signature": "pub fn detect_local_extrema_into < P : PointSeries + ? Sized > (_ : & P , _ : & mut [LocalExtremum] ,) -> usize"
+      "signature": "pub fn detect_local_extrema_into < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P , _ : & mut [LocalExtremum < T >] ,) -> usize"
     },
     {
-      "signature": "pub fn parabolic_vertex (_ : [f64 ; 2] , _ : [f64 ; 2] , _ : [f64 ; 2]) -> [f64 ; 2]"
+      "signature": "pub fn parabolic_vertex < T : RealField > (_ : [T ; 2] , _ : [T ; 2] , _ : [T ; 2]) -> [T ; 2]"
     },
     {
-      "signature": "pub fn peak_extremum < P : PointSeries + ? Sized > (_ : & P) -> Option < [f64 ; 2] >"
+      "signature": "pub fn peak_extremum < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P) -> Option < [T ; 2] >"
     },
     {
-      "signature": "pub fn scan_line_pois < P : PointSeries + ? Sized > (_ : & P , _ : bool , _ : bool ,) -> LinePoiScan"
+      "signature": "pub fn scan_line_pois < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P , _ : bool , _ : bool ,) -> LinePoiScan < T >"
     },
     {
-      "signature": "pub struct LinePoiScan"
+      "signature": "pub struct LinePoiScan < T = f64 >"
     }
   ],
   "crates/math_commons/src/poi/interp.rs": [
     {
-      "signature": "pub fn closest_threshold_crossing < P : PointSeries + ? Sized > (_ : & P , _ : f64 , _ : f64 ,) -> Option < f64 >"
+      "signature": "pub fn closest_threshold_crossing < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P , _ : T , _ : T ,) -> Option < T >"
     },
     {
-      "signature": "pub fn interpolate_threshold_crossings < P : PointSeries + ? Sized > (_ : & P , _ : f64 ,) -> Vec < f64 >"
+      "signature": "pub fn interpolate_threshold_crossings < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P , _ : T ,) -> Vec < T >"
     },
     {
-      "signature": "pub fn interpolate_y_at_x < P : PointSeries + ? Sized > (_ : & P , _ : f64) -> Vec < f64 >"
+      "signature": "pub fn interpolate_y_at_x < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P , _ : T ,) -> Vec < T >"
     },
     {
-      "signature": "pub fn threshold_crossings_into < P : PointSeries + ? Sized > (_ : & P , _ : f64 , _ : & mut [f64] ,) -> usize"
+      "signature": "pub fn threshold_crossings_into < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P , _ : T , _ : & mut [T] ,) -> usize"
     },
     {
-      "signature": "pub fn y_at_x_into < P : PointSeries + ? Sized > (_ : & P , _ : f64 , _ : & mut [f64]) -> usize"
+      "signature": "pub fn y_at_x_into < T : RealField , P : PointSeries < T > + ? Sized > (_ : & P , _ : T , _ : & mut [T] ,) -> usize"
     }
   ],
   "crates/math_commons/src/poi/intersect.rs": [
@@ -14142,21 +14596,21 @@
       "signature": "pub const MAX_POLYLINE_INTERSECTIONS : usize"
     },
     {
-      "signature": "pub fn eval_segment_at_x (_ : [f64 ; 2] , _ : [f64 ; 2] , _ : f64) -> f64"
+      "signature": "pub fn eval_segment_at_x < T : RealField > (_ : [T ; 2] , _ : [T ; 2] , _ : T) -> T"
     },
     {
-      "signature": "pub fn intersect_polylines < A , B > (_ : & A , _ : & B , _ : [f64 ; 2]) -> Vec < [f64 ; 2] > where A : PointSeries + ? Sized , B : PointSeries + ? Sized ,"
+      "signature": "pub fn intersect_polylines < T , A , B > (_ : & A , _ : & B , _ : [T ; 2]) -> Vec < [T ; 2] > where T : RealField , A : PointSeries < T > + ? Sized , B : PointSeries < T > + ? Sized ,"
     },
     {
-      "signature": "pub fn intersect_polylines_into < A , B > (_ : & A , _ : & B , _ : [f64 ; 2] , _ : & mut [[f64 ; 2]] ,) -> usize where A : PointSeries + ? Sized , B : PointSeries + ? Sized ,"
+      "signature": "pub fn intersect_polylines_into < T , A , B > (_ : & A , _ : & B , _ : [T ; 2] , _ : & mut [[T ; 2]] ,) -> usize where T : RealField , A : PointSeries < T > + ? Sized , B : PointSeries < T > + ? Sized ,"
     },
     {
-      "signature": "pub fn segment_intersection_2d (_ : [f64 ; 2] , _ : [f64 ; 2] , _ : [f64 ; 2] , _ : [f64 ; 2] ,) -> Option < [f64 ; 2] >"
+      "signature": "pub fn segment_intersection_2d < T : RealField > (_ : [T ; 2] , _ : [T ; 2] , _ : [T ; 2] , _ : [T ; 2] ,) -> Option < [T ; 2] >"
     }
   ],
   "crates/math_commons/src/poi/mod.rs": [
     {
-      "signature": "pub struct LocalExtremum"
+      "signature": "pub struct LocalExtremum < T = f64 >"
     },
     {
       "signature": "pub use crate :: series :: PointSeries"
@@ -14218,16 +14672,16 @@
       "signature": "impl UnitInterval { pub fn complement (& self) -> f64 }"
     },
     {
-      "signature": "pub fn bounded_exp (_ : f64) -> f64"
+      "signature": "pub fn bounded_exp < T : RealField > (_ : T) -> T"
     },
     {
-      "signature": "pub fn bounded_ln (_ : f64) -> f64"
+      "signature": "pub fn bounded_ln < T : RealField > (_ : T) -> T"
     },
     {
-      "signature": "pub fn bounded_powf (_ : f64 , _ : f64) -> f64"
+      "signature": "pub fn bounded_powf < T : RealField > (_ : T , _ : T) -> T"
     },
     {
-      "signature": "pub fn bounded_sqrt (_ : f64) -> f64"
+      "signature": "pub fn bounded_sqrt < T : RealField > (_ : T) -> T"
     },
     {
       "signature": "pub use interval :: Interval"
@@ -14382,99 +14836,99 @@
   ],
   "crates/math_commons/src/series.rs": [
     {
-      "signature": "pub trait PointSeries"
+      "signature": "pub trait PointSeries < T = f64 >"
     },
     {
-      "signature": "pub trait PointSeries { fn advance_plateau_run (& self , _ : usize , _ : f64 , _ : f64 , _ : f64) -> usize }"
+      "signature": "pub trait PointSeries < T = f64 > { fn advance_plateau_run (& self , _ : usize , _ : T , _ : T , _ : T) -> usize where T : Copy + PartialOrd , }"
     },
     {
-      "signature": "pub trait PointSeries { fn is_empty (& self) -> bool }"
+      "signature": "pub trait PointSeries < T = f64 > { fn is_empty (& self) -> bool }"
     },
     {
-      "signature": "pub trait PointSeries { fn len (& self) -> usize }"
+      "signature": "pub trait PointSeries < T = f64 > { fn len (& self) -> usize }"
     },
     {
-      "signature": "pub trait PointSeries { fn point_at (& self , _ : usize) -> [f64 ; 2] }"
+      "signature": "pub trait PointSeries < T = f64 > { fn point_at (& self , _ : usize) -> [T ; 2] }"
     },
     {
-      "signature": "pub trait PointSeries { fn x_at (& self , _ : usize) -> f64 }"
+      "signature": "pub trait PointSeries < T = f64 > { fn x_at (& self , _ : usize) -> T }"
     },
     {
-      "signature": "pub trait PointSeries { fn y_at (& self , _ : usize) -> f64 }"
+      "signature": "pub trait PointSeries < T = f64 > { fn y_at (& self , _ : usize) -> T }"
     },
     {
-      "signature": "pub trait Sample2D"
+      "signature": "pub trait Sample2D < T = f64 >"
     },
     {
-      "signature": "pub trait Sample2D { fn advance_slice_plateau (_ : & [Self] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 ,) -> usize where Self : Sized , }"
+      "signature": "pub trait Sample2D < T = f64 > { fn advance_slice_plateau (_ : & [Self] , _ : usize , _ : usize , _ : T , _ : T , _ : T ,) -> usize where Self : Sized , T : Copy + PartialOrd , }"
     },
     {
-      "signature": "pub trait Sample2D { fn sample_x (& self) -> f64 }"
+      "signature": "pub trait Sample2D < T = f64 > { fn sample_x (& self) -> T }"
     },
     {
-      "signature": "pub trait Sample2D { fn sample_y (& self) -> f64 }"
+      "signature": "pub trait Sample2D < T = f64 > { fn sample_y (& self) -> T }"
     }
   ],
   "crates/math_commons/src/stochastic/mod.rs": [
     {
-      "signature": "impl SolverWorkspace { pub fn analyze_scc (& mut self , _ : & [f64] , _ : usize) -> Option < SccSummary > }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn analyze_scc (& mut self , _ : & [T] , _ : usize) -> Option < SccSummary > }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn calibrate_ou (& self , _ : & [f64] , _ : f64) -> Option < OuCalibration > }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn calibrate_ou (& self , _ : & [T] , _ : T) -> Option < OuCalibration < T > > }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn ensure_sample_capacity (& mut self , _ : usize) }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn ensure_sample_capacity (& mut self , _ : usize) }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn ensure_state_capacity (& mut self , _ : usize) }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn ensure_state_capacity (& mut self , _ : usize) }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn new (_ : usize , _ : usize) -> Self }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn operator_staging_mut (& mut self , _ : usize) -> & mut [f64] }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn operator_staging_mut (& mut self , _ : usize) -> & mut [T] }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn sample_capacity (& self) -> usize }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn sample_capacity (& self) -> usize }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn solve_ctmc_steady_state (& mut self , _ : & [f64] , _ : usize , _ : & mut [f64] ,) -> bool }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn solve_ctmc_steady_state (& mut self , _ : & [T] , _ : usize , _ : & mut [T] ,) -> bool }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn solve_dtmc_stationary (& mut self , _ : & [f64] , _ : usize , _ : & mut [f64] ,) -> bool }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn solve_dtmc_stationary (& mut self , _ : & [T] , _ : usize , _ : & mut [T] ,) -> bool }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn solve_staged_ctmc_steady_state (& mut self , _ : usize , _ : & mut [f64] ,) -> bool }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn solve_staged_ctmc_steady_state (& mut self , _ : usize , _ : & mut [T]) -> bool }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn solve_staged_ctmc_steady_state_slice (& mut self , _ : usize) -> Option < & [f64] > }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn solve_staged_ctmc_steady_state_slice (& mut self , _ : usize) -> Option < & [T] > }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn solve_staged_dtmc_stationary (& mut self , _ : usize , _ : & mut [f64]) -> bool }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn solve_staged_dtmc_stationary (& mut self , _ : usize , _ : & mut [T]) -> bool }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn solve_staged_dtmc_stationary_slice (& mut self , _ : usize) -> Option < & [f64] > }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn solve_staged_dtmc_stationary_slice (& mut self , _ : usize) -> Option < & [T] > }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn state_capacity (& self) -> usize }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn state_capacity (& self) -> usize }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn summarize_samples (& mut self , _ : & [f64] , _ : Option < f64 > ,) -> Option < SampleSummary > }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn summarize_samples (& mut self , _ : & [T] , _ : Option < T > ,) -> Option < SampleSummary < T > > }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn unique_sink_members (& self , _ : usize) -> & [usize] }"
+      "signature": "impl < T : RealField > SolverWorkspace < T > { pub fn unique_sink_members (& self , _ : usize) -> & [usize] }"
     },
     {
-      "signature": "pub fn ctmc_steady_state (_ : & [f64] , _ : usize) -> Option < Vec < f64 > >"
+      "signature": "pub fn ctmc_steady_state < T : RealField > (_ : & [T] , _ : usize) -> Option < Vec < T > >"
     },
     {
-      "signature": "pub fn dtmc_stationary_distribution (_ : & [f64] , _ : usize) -> Option < Vec < f64 > >"
+      "signature": "pub fn dtmc_stationary_distribution < T : RealField > (_ : & [T] , _ : usize ,) -> Option < Vec < T > >"
     },
     {
       "signature": "pub struct SccSummary"
     },
     {
-      "signature": "pub struct SolverWorkspace"
+      "signature": "pub struct SolverWorkspace < T = f64 >"
     },
     {
       "signature": "pub use ou :: OuCalibration"
@@ -14488,18 +14942,21 @@
   ],
   "crates/math_commons/src/stochastic/ou.rs": [
     {
-      "signature": "pub fn calibrate_ou (_ : & [f64] , _ : f64) -> Option < OuCalibration >"
+      "signature": "pub fn calibrate_ou < T : RealField > (_ : & [T] , _ : T) -> Option < OuCalibration < T > >"
     },
     {
-      "signature": "pub struct OuCalibration"
+      "signature": "pub struct OuCalibration < T = f64 >"
     },
     {
-      "signature": "pub struct SampleSummary"
+      "signature": "pub struct SampleSummary < T = f64 >"
     }
   ],
   "crates/math_commons/src/wigner/mod.rs": [
     {
       "signature": "impl ClebschGordan { pub fn value (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ClebschGordan { pub fn value_as < T : RealField > (& self) -> T }"
     },
     {
       "signature": "pub struct ClebschGordan"
@@ -15527,6 +15984,9 @@
     },
     {
       "signature": "pub mod __macro_deps { pub use verified_engine }"
+    },
+    {
+      "signature": "pub use math_scalars"
     }
   ],
   "crates/pure_math/src/math_types.rs": [
@@ -15933,7 +16393,25 @@
       "signature": "pub use polynomial :: Polynomial"
     },
     {
+      "signature": "pub use polynomial :: eval_in_domain"
+    },
+    {
       "signature": "pub use traits :: AbelianGroup"
+    },
+    {
+      "signature": "pub use traits :: ComplexField"
+    },
+    {
+      "signature": "pub use traits :: DashuFloatContext"
+    },
+    {
+      "signature": "pub use traits :: DashuModContext"
+    },
+    {
+      "signature": "pub use traits :: DomainField"
+    },
+    {
+      "signature": "pub use traits :: DomainRing"
     },
     {
       "signature": "pub use traits :: EuclideanDomain"
@@ -15945,13 +16423,25 @@
       "signature": "pub use traits :: Group"
     },
     {
+      "signature": "pub use traits :: ModPrimeContext"
+    },
+    {
       "signature": "pub use traits :: Monoid"
+    },
+    {
+      "signature": "pub use traits :: RealField"
     },
     {
       "signature": "pub use traits :: Ring"
     },
     {
+      "signature": "pub use traits :: Scalar"
+    },
+    {
       "signature": "pub use traits :: Semigroup"
+    },
+    {
+      "signature": "pub use traits :: StatelessContext"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/polynomial.rs": [
@@ -15966,6 +16456,9 @@
     },
     {
       "signature": "impl < T : Ring > Polynomial < T > { pub fn scale (& self , _ : & T) -> Self }"
+    },
+    {
+      "signature": "pub fn eval_in_domain < D : DomainRing > (_ : & D , _ : & [D :: Element] , _ : & D :: Element ,) -> D :: Element"
     },
     {
       "signature": "pub struct Polynomial < T : Ring >"
@@ -16047,12 +16540,6 @@
       "signature": "pub trait EuclideanDomain : Ring + Div < Output = Self > + Rem < Output = Self >"
     },
     {
-      "signature": "pub trait Field : Ring + Div < Output = Self >"
-    },
-    {
-      "signature": "pub trait Field { fn multiplicative_inverse (& self) -> Self }"
-    },
-    {
       "signature": "pub trait Group : Monoid"
     },
     {
@@ -16065,22 +16552,43 @@
       "signature": "pub trait Monoid { fn identity () -> Self }"
     },
     {
-      "signature": "pub trait Ring : Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + AddAssign + SubAssign + MulAssign + Neg < Output = Self > + Clone + PartialEq + Debug + Sized"
-    },
-    {
-      "signature": "pub trait Ring { fn is_zero (& self) -> bool }"
-    },
-    {
-      "signature": "pub trait Ring { fn one () -> Self }"
-    },
-    {
-      "signature": "pub trait Ring { fn zero () -> Self }"
-    },
-    {
       "signature": "pub trait Semigroup : Clone + PartialEq + Debug"
     },
     {
       "signature": "pub trait Semigroup { fn operate (_ : & Self , _ : & Self) -> Self }"
+    },
+    {
+      "signature": "pub use math_scalars :: ComplexField"
+    },
+    {
+      "signature": "pub use math_scalars :: DashuFloatContext"
+    },
+    {
+      "signature": "pub use math_scalars :: DashuModContext"
+    },
+    {
+      "signature": "pub use math_scalars :: DomainField"
+    },
+    {
+      "signature": "pub use math_scalars :: DomainRing"
+    },
+    {
+      "signature": "pub use math_scalars :: Field"
+    },
+    {
+      "signature": "pub use math_scalars :: ModPrimeContext"
+    },
+    {
+      "signature": "pub use math_scalars :: RealField"
+    },
+    {
+      "signature": "pub use math_scalars :: Ring"
+    },
+    {
+      "signature": "pub use math_scalars :: Scalar"
+    },
+    {
+      "signature": "pub use math_scalars :: StatelessContext"
     }
   ],
   "crates/pure_math/src/pure_math/algorithmic_information/combinatorics.rs": [

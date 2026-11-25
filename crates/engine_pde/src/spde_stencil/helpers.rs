@@ -3,20 +3,21 @@ use crate::boundary::BoundaryCondition;
 use crate::error::PdeError;
 use crate::stencil::StencilOperators;
 use math_commons::math_kernel::types::flatten_2d_index;
+use math_scalars::RealField;
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn advance_cahn_hilliard_stencil_2d(
-    ops: &StencilOperators,
-    boundary: BoundaryCondition,
-    src: &[f64],
-    bulk_mu: &[f64],
-    lap_phi: &[f64],
-    phi: &mut [f64],
+pub(super) fn advance_cahn_hilliard_stencil_2d<T: RealField>(
+    ops: &StencilOperators<T>,
+    boundary: BoundaryCondition<T>,
+    src: &[T],
+    bulk_mu: &[T],
+    lap_phi: &[T],
+    phi: &mut [T],
     width: usize,
     height: usize,
-    mobility: f64,
-    kappa: f64,
-    dt: f64,
+    mobility: T,
+    kappa: T,
+    dt: T,
 ) -> Result<(), PdeError> {
     for y in 0..height {
         for x in 0..width {
@@ -37,16 +38,16 @@ pub(super) fn advance_cahn_hilliard_stencil_2d(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn advance_diffusion_substeps_2d(
-    ops: &StencilOperators,
-    boundary: BoundaryCondition,
+pub(super) fn advance_diffusion_substeps_2d<T: RealField>(
+    ops: &StencilOperators<T>,
+    boundary: BoundaryCondition<T>,
     substeps: usize,
-    src: &mut [f64],
-    u: &mut [f64],
+    src: &mut [T],
+    u: &mut [T],
     width: usize,
     height: usize,
-    diffusivity: f64,
-    sub_dt: f64,
+    diffusivity: T,
+    sub_dt: T,
 ) -> Result<(), PdeError> {
     for _ in 0..substeps {
         src.copy_from_slice(u);
@@ -67,12 +68,12 @@ pub(super) fn advance_diffusion_substeps_2d(
     Ok(())
 }
 
-pub(super) fn apply_local_reaction_2d<F: FnMut(f64) -> f64>(
-    u: &mut [f64],
+pub(super) fn apply_local_reaction_2d<T: RealField, F: FnMut(T) -> T>(
+    u: &mut [T],
     width: usize,
     height: usize,
-    dt_react: f64,
-    bc: BoundaryCondition,
+    dt_react: T,
+    bc: BoundaryCondition<T>,
     reaction: &mut F,
 ) {
     for y in 0..height {

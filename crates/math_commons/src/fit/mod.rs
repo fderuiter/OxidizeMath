@@ -11,6 +11,7 @@
 #[cfg(feature = "alloc")]
 mod format;
 mod lm;
+mod micro_solvers;
 mod nonlinear;
 mod poly;
 mod seeds;
@@ -24,13 +25,13 @@ use crate::series::PointSeries;
 use alloc::string::String;
 #[cfg(feature = "alloc")]
 use alloc::{vec, vec::Vec};
-#[allow(unused_imports)]
-use num_traits::Float;
+use math_scalars::RealField;
 
 pub use lm::{
     MAX_FIT_PARAMS, MAX_LM_ITERATIONS, levenberg_marquardt, levenberg_marquardt_filtered,
     levenberg_marquardt_numeric, sum_squared_errors_numeric,
 };
+pub use micro_solvers::MAX_INLINE_SYSTEM_DIM;
 #[cfg(feature = "alloc")]
 pub use nonlinear::format_nonlinear_formula;
 pub use nonlinear::{eval_nonlinear, fit_nonlinear};
@@ -51,7 +52,7 @@ pub const MAX_POLYNOMIAL_DEGREE: usize = 4;
 /// [math_commons specification](../../../../docs/math_specs/math_commons.md).
 ///
 /// # Stability
-/// Polynomial presets scale $x \in [-1, 1]$ before solving normal equations; nonlinear presets use damped Levenberg-Marquardt.
+/// Polynomial presets scale $x \in [-1, 1]$ before solving via streaming Givens QR; nonlinear presets use damped Levenberg-Marquardt.
 ///
 /// # Domain of Validity
 /// Finite `(x, y)` observations; `PowerLaw` and `Logarithmic` require $x > 0$ (and $y > 0$ for log-linear seeding).
@@ -209,19 +210,19 @@ where
     }
 }
 
-/// Stack-backed result of a polynomial or nonlinear least-squares fit.
+/// Stack-backed result of a polynomial or nonlinear least-squares fit over scalar `T`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct CurveFit {
+pub struct CurveFit<T = f64> {
     /// Fitted canonical regression model.
     pub fit_model: FitModel,
-    coeffs: [f64; 5],
+    coeffs: [T; 5],
     #[cfg_attr(feature = "serde", serde(deserialize_with = "deserialize_coeff_len"))]
     coeff_len: usize,
     /// Coefficient of determination ($R^2$).
-    pub r_squared: f64,
+    pub r_squared: T,
     /// Root-mean-square error in fit space.
-    pub rmse: f64,
+    pub rmse: T,
     /// Polynomial degree (`1..=4`) for polynomial fits, or `0` for nonlinear models.
     pub degree: usize,
     /// Number of valid points used to estimate parameters.
@@ -232,20 +233,20 @@ pub struct CurveFit {
     pub log_y: bool,
     /// Whether linearized log-space regression was used.
     pub log_mode: bool,
-    poly_center_scale: Option<(f64, f64, [f64; 5])>,
+    poly_center_scale: Option<(T, T, [T; 5])>,
 }
 
-impl CurveFit {
+impl<T: RealField> CurveFit<T> {
     /// Constructs a new stack-backed [`CurveFit`].
     #[must_use]
     #[allow(clippy::too_many_arguments)]
     #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn new(
         fit_model: FitModel,
-        coeffs: [f64; 5],
+        coeffs: [T; 5],
         coeff_len: usize,
-        r_squared: f64,
-        rmse: f64,
+        r_squared: T,
+        rmse: T,
         degree: usize,
         valid_points: usize,
         log_x: bool,
@@ -267,12 +268,7 @@ impl CurveFit {
         }
     }
 
-    pub(super) fn with_centered_poly(
-        mut self,
-        u_mean: f64,
-        u_scale: f64,
-        centered: [f64; 5],
-    ) -> Self {
+    pub(super) fn with_centered_poly(mut self, u_mean: T, u_scale: T, centered: [T; 5]) -> Self {
         self.poly_center_scale = Some((u_mean, u_scale, centered));
         self
     }
@@ -280,14 +276,14 @@ impl CurveFit {
     /// Returns the active fitted parameter slice (`c_0..=c_d` or nonlinear parameters).
     #[inline]
     #[must_use]
-    pub fn coefficients(&self) -> &[f64] {
+    pub fn coefficients(&self) -> &[T] {
         &self.coeffs[..self.coeff_len]
     }
 
     /// Returns `(u_mean, u_scale, centered_coeffs)` when centered polynomial conditioning was used.
     #[inline]
     #[must_use]
-    pub fn centered_polynomial(&self) -> Option<(f64, f64, &[f64])> {
+    pub fn centered_polynomial(&self) -> Option<(T, T, &[T])> {
         self.poly_center_scale
             .as_ref()
             .map(|(m, s, c)| (*m, *s, &c[..self.coeff_len]))
@@ -297,21 +293,21 @@ impl CurveFit {
     #[inline]
     #[must_use]
     #[cfg_attr(feature = "std", verified_engine::verified)]
-    pub fn eval(&self, x: f64) -> f64 {
+    pub fn eval(&self, x: T) -> T {
         self.eval_raw(x)
     }
 
     #[inline]
-    fn eval_raw(&self, x: f64) -> f64 {
+    fn eval_raw(&self, x: T) -> T {
         if !x.is_finite() {
-            return f64::NAN;
+            return T::NAN;
         }
         match self.fit_model {
             FitModel::Linear | FitModel::Quadratic | FitModel::Cubic | FitModel::Quartic => {
-                if self.log_x && x <= 0.0 {
-                    return f64::NAN;
+                if self.log_x && x <= T::ZERO {
+                    return T::NAN;
                 }
-                let tx = if self.log_x { Float::log10(x) } else { x };
+                let tx = if self.log_x { x.log10() } else { x };
                 let ty = if let Some((u_mean, u_scale, ref centered)) = self.poly_center_scale {
                     let z = (tx - u_mean) / u_scale;
                     poly::eval_polynomial_horner_raw(&centered[..self.coeff_len], z)
@@ -319,11 +315,13 @@ impl CurveFit {
                     poly::eval_polynomial_horner_raw(&self.coeffs[..self.coeff_len], tx)
                 };
                 let out = if self.log_y {
-                    Float::powf(10.0_f64, ty.clamp(-300.0, 300.0)).clamp(1e-300, 1e300)
+                    T::from_f64(10.0)
+                        .powf(ty.clamp(T::from_f64(-300.0), T::from_f64(300.0)))
+                        .clamp(T::MIN_POSITIVE, T::MAX_VALUE)
                 } else {
                     ty
                 };
-                if out.is_finite() { out } else { f64::NAN }
+                if out.is_finite() { out } else { T::NAN }
             }
             FitModel::Exponential
             | FitModel::PowerLaw
@@ -337,18 +335,18 @@ impl CurveFit {
 
     /// Writes `[x, y - y_hat]` residuals in original data space into `out` with zero allocations.
     #[cfg_attr(feature = "std", verified_engine::verified)]
-    pub fn residuals_into<P: PointSeries + ?Sized>(
+    pub fn residuals_into<P: PointSeries<T> + ?Sized>(
         &self,
         points: &P,
-        out: &mut [[f64; 2]],
+        out: &mut [[T; 2]],
     ) -> usize {
         self.residuals_into_raw(points, out)
     }
 
-    fn residuals_into_raw<P: PointSeries + ?Sized>(
+    fn residuals_into_raw<P: PointSeries<T> + ?Sized>(
         &self,
         points: &P,
-        out: &mut [[f64; 2]],
+        out: &mut [[T; 2]],
     ) -> usize {
         let mut written = 0usize;
         for i in 0..points.len() {
@@ -368,11 +366,11 @@ impl CurveFit {
         written
     }
 
-    /// Convenience helper collecting `[x, y - y_hat]` residuals into a `Vec<[f64; 2]>`.
+    /// Convenience helper collecting `[x, y - y_hat]` residuals into a `Vec<[T; 2]>`.
     #[cfg(feature = "alloc")]
     #[must_use]
-    pub fn residuals<P: PointSeries + ?Sized>(&self, points: &P) -> Vec<[f64; 2]> {
-        let mut out = vec![[0.0_f64; 2]; points.len()];
+    pub fn residuals<P: PointSeries<T> + ?Sized>(&self, points: &P) -> Vec<[T; 2]> {
+        let mut out = vec![[T::ZERO; 2]; points.len()];
         let count = self.residuals_into(points, &mut out);
         out.truncate(count);
         out
@@ -384,9 +382,11 @@ impl CurveFit {
     pub fn format_formula(&self) -> String {
         match self.fit_model {
             FitModel::Linear | FitModel::Quadratic | FitModel::Cubic | FitModel::Quartic => {
-                let u_scale = self.poly_center_scale.map_or(1.0, |(u_mean, u_span, _)| {
-                    (u_mean.abs() + u_span.abs()).max(1.0)
-                });
+                let u_scale = self
+                    .poly_center_scale
+                    .map_or(T::ONE, |(u_mean, u_span, _)| {
+                        (u_mean.abs() + u_span.abs()).max(T::ONE)
+                    });
                 format::format_polynomial_with_scale(
                     self.coefficients(),
                     u_scale,
@@ -413,11 +413,11 @@ impl CurveFit {
 /// # Domain of Validity
 /// Requires at least $k$ finite observations for a $k$-parameter model and model-specific domain positivity where applicable.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub fn fit_model<P: PointSeries + ?Sized>(
+pub fn fit_model<T: RealField, P: PointSeries<T> + ?Sized>(
     points: &P,
     model: FitModel,
     log_mode: bool,
-) -> Result<CurveFit, FitError> {
+) -> Result<CurveFit<T>, FitError> {
     fit_model_with_axes(points, model, log_mode, false, false)
 }
 
@@ -431,13 +431,13 @@ pub fn fit_model<P: PointSeries + ?Sized>(
 /// # Domain of Validity
 /// Finite observations with $x_i > 0$ when `plot_log_x` is enabled and $y_i > 0$ when `plot_log_y` is enabled.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub fn fit_model_with_axes<P: PointSeries + ?Sized>(
+pub fn fit_model_with_axes<T: RealField, P: PointSeries<T> + ?Sized>(
     points: &P,
     model: FitModel,
     log_mode: bool,
     plot_log_x: bool,
     plot_log_y: bool,
-) -> Result<CurveFit, FitError> {
+) -> Result<CurveFit<T>, FitError> {
     if let Some(deg) = model.degree() {
         fit_polynomial_scaled(points, deg, plot_log_x, plot_log_y)
     } else {
