@@ -82,6 +82,7 @@ impl_error_from!(@cfg "physics":
     GatingError => Gating,
     HighEnergyError => HighEnergy,
     NuclearError => Nuclear,
+    QuantumError => Quantum,
     RadarError => Radar,
     SandpileError => Sandpile,
     SolidStateError => SolidState,

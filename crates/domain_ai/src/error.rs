@@ -87,6 +87,24 @@ pub enum AIError {
         actual: (usize, usize),
     },
 
+    /// Row-major cell mask slice length did not match `width * height`.
+    #[error("Cell mask length {actual} does not match expected grid size {expected}")]
+    CellMaskLengthMismatch {
+        /// Expected cell count (`width * height`).
+        expected: usize,
+        /// Actual slice length supplied.
+        actual: usize,
+    },
+
+    /// Byte tag in a serialized grid mask did not map to a valid `GridCellRole`.
+    #[error("Invalid GridCellRole tag {code} at cell index {index}")]
+    InvalidCellRoleTag {
+        /// Zero-based cell index where the invalid tag occurred.
+        index: usize,
+        /// Rejected raw byte tag.
+        code: u8,
+    },
+
     /// Wrapped foundational error from `math_commons`.
     #[error("{0}")]
     Math(#[from] math_commons::error::MathError),

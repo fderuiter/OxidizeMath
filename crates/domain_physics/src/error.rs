@@ -456,7 +456,7 @@ mod umbrella;
 
 pub use crate::physics::{
     medical::radar_gating::GatingError, nuclear::types::NuclearError,
-    stat_mech::sandpile::SandpileError,
+    quantum::hydrogenic::QuantumError, stat_mech::sandpile::SandpileError,
 };
 pub use umbrella::PhysicsError;
 

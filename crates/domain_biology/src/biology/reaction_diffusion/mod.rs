@@ -107,6 +107,14 @@ pub enum ReactionDiffusionError {
     /// Required builder field was omitted prior to `build()`.
     #[error("Missing parameter: {0}")]
     MissingParameter(&'static str),
+    /// Byte slice supplied to `CellMask2D::set_roles_slice` did not match `width * height`.
+    #[error("CellMask2D byte slice length {actual} does not match expected grid size {expected}")]
+    CellMaskLengthMismatch {
+        /// Expected byte length (`width * height`).
+        expected: usize,
+        /// Actual byte slice length supplied.
+        actual: usize,
+    },
 }
 
 #[cfg(test)]

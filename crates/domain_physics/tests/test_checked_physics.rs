@@ -106,3 +106,31 @@ fn medical_mri_solid_state_and_higgs_return_typed_domain_errors() {
         Err(StandardModelError::UnstableHiggsPotential { lambda: 0.0 })
     );
 }
+
+#[test]
+fn orbital_quantum_numbers_new_returns_typed_quantum_errors_without_allocating() {
+    use domain_physics::error::QuantumError;
+    use domain_physics::physics::quantum::OrbitalQuantumNumbers;
+    use verified_engine::engine::VerifiedEngine;
+
+    let (ok, _) = VerifiedEngine::run_verified(|| {
+        assert_eq!(
+            OrbitalQuantumNumbers::new(0, 0, 0),
+            Err(QuantumError::InvalidPrincipalQuantumNumber {
+                n: 0,
+                min: 1,
+                max: 6,
+            })
+        );
+        assert_eq!(
+            OrbitalQuantumNumbers::new(2, 2, 0),
+            Err(QuantumError::InvalidOrbitalQuantumNumber { l: 2, n: 2 })
+        );
+        assert_eq!(
+            OrbitalQuantumNumbers::new(3, 1, -2),
+            Err(QuantumError::InvalidMagneticQuantumNumber { m: -2, l: 1 })
+        );
+        OrbitalQuantumNumbers::new(3, 2, -1).is_ok()
+    });
+    assert!(ok);
+}

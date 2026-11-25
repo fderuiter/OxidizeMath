@@ -303,3 +303,31 @@ fn test_fused_projection_latency_and_throughput() {
         allocation_reduction_pct
     );
 }
+
+#[test]
+fn sculpted_grid_mdp_apply_cells_u8_returns_typed_ai_errors() {
+    use domain_ai::ai::reinforcement_learning::maze::SculptedGridMdp;
+    use domain_ai::error::AIError;
+
+    let mut mdp = SculptedGridMdp::default_with_traps(4, 3, 0.95);
+    assert_eq!(
+        mdp.apply_cells_u8(&[0; 5]),
+        Err(AIError::CellMaskLengthMismatch {
+            expected: 12,
+            actual: 5,
+        })
+    );
+
+    let mut invalid_tag = mdp.cells_to_u8();
+    invalid_tag[7] = 250;
+    assert_eq!(
+        mdp.apply_cells_u8(&invalid_tag),
+        Err(AIError::InvalidCellRoleTag {
+            index: 7,
+            code: 250,
+        })
+    );
+
+    let valid = mdp.cells_to_u8();
+    assert!(mdp.apply_cells_u8(&valid).is_ok());
+}

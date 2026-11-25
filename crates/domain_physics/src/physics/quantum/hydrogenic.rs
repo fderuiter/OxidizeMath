@@ -13,6 +13,40 @@ use num_complex::Complex;
 use pure_math::pure_math::special_functions::legendre::real_spherical_harmonic;
 use pure_math::pure_math::special_functions::polynomials::associated_laguerre;
 
+/// Typed domain errors returned by hydrogenic orbital and quantum state constructors.
+#[derive(thiserror::Error, Debug, Clone, PartialEq)]
+pub enum QuantumError {
+    /// Principal quantum number `n` lies outside the supported `min..=max` range.
+    #[error("Principal quantum number n={n} must be in {min}..={max}")]
+    InvalidPrincipalQuantumNumber {
+        /// Rejected principal quantum number `n`.
+        n: u32,
+        /// Inclusive lower bound (`1`).
+        min: u32,
+        /// Inclusive upper bound (`6`).
+        max: u32,
+    },
+    /// Azimuthal quantum number `l` violated `l < n`.
+    #[error("Orbital quantum number l={l} must satisfy l < n={n}")]
+    InvalidOrbitalQuantumNumber {
+        /// Rejected azimuthal quantum number `l`.
+        l: u32,
+        /// Principal quantum number `n`.
+        n: u32,
+    },
+    /// Magnetic quantum number `m` violated `|m| <= l`.
+    #[error("Magnetic quantum number m={m} must satisfy |m| <= l={l}")]
+    InvalidMagneticQuantumNumber {
+        /// Rejected magnetic quantum number `m`.
+        m: i32,
+        /// Azimuthal quantum number `l`.
+        l: u32,
+    },
+    /// Wrapped centralized mathematical error.
+    #[error("{0}")]
+    Math(#[from] math_commons::error::MathError),
+}
+
 /// Validated hydrogenic orbital quantum numbers $(n, \ell, m)$ with $1 \le n \le 6$, $\ell < n$, $|m| \le \ell$.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct OrbitalQuantumNumbers {
@@ -27,20 +61,17 @@ pub struct OrbitalQuantumNumbers {
 impl OrbitalQuantumNumbers {
     /// Validates and constructs `(n, l, m)` within interactive bounds `1 <= n <= 6`.
     #[verified_engine::verified]
-    pub fn new(n: u32, l: u32, m: i32) -> Result<Self, String> {
+    pub fn new(n: u32, l: u32, m: i32) -> Result<Self, QuantumError> {
         if !(1..=6).contains(&n) {
-            return Err(format!("Principal quantum number n={n} must be in 1..=6"));
+            return Err(QuantumError::InvalidPrincipalQuantumNumber { n, min: 1, max: 6 });
         }
         if l >= n {
-            return Err(format!(
-                "Orbital quantum number l={l} must satisfy l < n={n}"
-            ));
+            return Err(QuantumError::InvalidOrbitalQuantumNumber { l, n });
         }
         if m.unsigned_abs() > l {
-            return Err(format!(
-                "Magnetic quantum number m={m} must satisfy |m| <= l={l}"
-            ));
+            return Err(QuantumError::InvalidMagneticQuantumNumber { m, l });
         }
+        debug_assert!((1..=6).contains(&n) && l < n && m.unsigned_abs() <= l);
         Ok(Self { n, l, m })
     }
 

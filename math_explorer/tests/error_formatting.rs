@@ -18,9 +18,9 @@ use math_explorer::error::{
     GameTheoryError, Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError,
     HyperbolicError, IsosurfaceError, KellyError, KnotError, LoraError, MarketPricingError,
     MarkovError, MatchModelError, MathError, MonteCarloError, NumberTheoryError,
-    OptionPricingError, OuError, PharmacokineticsError, PoissonError, QueueingError, RadarError,
-    SandpileError, ShaderEmitError, SolidStateError, StandardModelError, StatMechError,
-    Su11HyperbolicError, TdaError, ZipError,
+    OptionPricingError, OuError, PharmacokineticsError, PoissonError, QuantumError, QueueingError,
+    RadarError, ReactionDiffusionError, SandpileError, ShaderEmitError, SolidStateError,
+    StandardModelError, StatMechError, Su11HyperbolicError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -59,6 +59,13 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
             value: 1.5,
             min: 0.0,
             max: 1.0,
+        },
+    );
+    assert_readable_diagnostic(
+        "MathError::WorkspaceTooSmall",
+        &MathError::WorkspaceTooSmall {
+            required: 16,
+            available: 8,
         },
     );
     assert_readable_diagnostic("FitError", &FitError::UnsupportedDegree { degree: 5 });
@@ -356,4 +363,54 @@ fn physics_and_wrapped_math_errors_emit_readable_display_and_metadata() {
         &EngineeringError::from(math_err.clone()),
     );
     assert_readable_diagnostic("DoseFluenceError::Math", &DoseFluenceError::from(math_err));
+}
+
+#[test]
+fn checked_api_and_quantum_errors_emit_readable_display_and_metadata() {
+    assert_readable_diagnostic(
+        "AIError::CellMaskLengthMismatch",
+        &AIError::CellMaskLengthMismatch {
+            expected: 16,
+            actual: 9,
+        },
+    );
+    assert_readable_diagnostic(
+        "AIError::InvalidCellRoleTag",
+        &AIError::InvalidCellRoleTag { index: 3, code: 99 },
+    );
+    assert_readable_diagnostic(
+        "EngineeringError::ZeroVolumeDimension",
+        &EngineeringError::ZeroVolumeDimension { dims: [0, 4, 4] },
+    );
+    assert_readable_diagnostic(
+        "EngineeringError::InvalidVoxelSize",
+        &EngineeringError::InvalidVoxelSize { voxel_size: -1.0 },
+    );
+    assert_readable_diagnostic(
+        "EngineeringError::NonFiniteOrigin",
+        &EngineeringError::NonFiniteOrigin {
+            origin: [0.0, f64::NAN, 1.0],
+        },
+    );
+    assert_readable_diagnostic(
+        "EngineeringError::VolumeDimensionsOverflow",
+        &EngineeringError::VolumeDimensionsOverflow {
+            dims: [usize::MAX, 2, 2],
+        },
+    );
+    assert_readable_diagnostic(
+        "ReactionDiffusionError::CellMaskLengthMismatch",
+        &ReactionDiffusionError::CellMaskLengthMismatch {
+            expected: 64,
+            actual: 32,
+        },
+    );
+    assert_readable_diagnostic(
+        "QuantumError",
+        &QuantumError::InvalidPrincipalQuantumNumber {
+            n: 0,
+            min: 1,
+            max: 6,
+        },
+    );
 }

@@ -93,6 +93,7 @@ impl Error {
             Self::Gating(err) => Some(err),
             Self::HighEnergy(err) => Some(err),
             Self::Nuclear(err) => Some(err),
+            Self::Quantum(err) => Some(err),
             Self::Radar(err) => Some(err),
             Self::Sandpile(err) => Some(err),
             Self::SolidState(err) => Some(err),

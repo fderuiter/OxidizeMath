@@ -53,22 +53,27 @@ impl MriVolume {
         origin: [f64; 3],
         voxel_size: f64,
         intensities: Vec<f64>,
-    ) -> Result<Self, &'static str> {
+    ) -> Result<Self, crate::error::EngineeringError> {
+        use crate::error::EngineeringError;
         if dims[0] == 0 || dims[1] == 0 || dims[2] == 0 {
-            return Err("MRI volume dimensions must be non-zero");
+            return Err(EngineeringError::ZeroVolumeDimension { dims });
         }
         if !voxel_size.is_finite() || voxel_size <= 0.0 {
-            return Err("MRI voxel_size must be finite and positive");
+            return Err(EngineeringError::InvalidVoxelSize { voxel_size });
         }
         if !origin[0].is_finite() || !origin[1].is_finite() || !origin[2].is_finite() {
-            return Err("MRI origin coordinates must be finite");
+            return Err(EngineeringError::NonFiniteOrigin { origin });
         }
         let expected = dims[0]
             .checked_mul(dims[1])
             .and_then(|xy| xy.checked_mul(dims[2]))
-            .ok_or("MRI volume dimensions overflow")?;
+            .ok_or(EngineeringError::VolumeDimensionsOverflow { dims })?;
         if intensities.len() != expected {
-            return Err("MRI intensities length does not match dims product");
+            return Err(EngineeringError::DimensionMismatch {
+                context: "MRI volume intensities length",
+                expected,
+                actual: intensities.len(),
+            });
         }
         Ok(Self {
             dims,
