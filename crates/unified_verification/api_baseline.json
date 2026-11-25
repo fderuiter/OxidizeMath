@@ -1,4 +1,48 @@
 {
+  "crates/00_foundation/math_diagnostics/src/lib.rs": [
+    {
+      "signature": "pub enum Severity"
+    },
+    {
+      "signature": "pub fn collect_diagnostic_metadata < D : Diagnostic + ? Sized > (_ : & D ,) -> std :: collections :: HashMap < std :: string :: String , std :: string :: String >"
+    },
+    {
+      "signature": "pub trait Diagnostic : core :: error :: Error + Send + Sync + 'static"
+    },
+    {
+      "signature": "pub trait Diagnostic { fn metadata (& self) -> std :: collections :: HashMap < std :: string :: String , std :: string :: String > }"
+    },
+    {
+      "signature": "pub trait Diagnostic { fn severity (& self) -> Severity }"
+    },
+    {
+      "signature": "pub trait Diagnostic { fn visit_fields (& self , _ : & mut dyn DiagnosticVisitor) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_bool (& mut self , _ : & str , _ : bool) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_display (& mut self , _ : & str , _ : & dyn fmt :: Display) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_f64 (& mut self , _ : & str , _ : f64) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_i64 (& mut self , _ : & str , _ : i64) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_str (& mut self , _ : & str , _ : & str) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_u64 (& mut self , _ : & str , _ : u64) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_usize (& mut self , _ : & str , _ : usize) }"
+    }
+  ],
   "crates/00_foundation/math_rng/src/lib.rs": [
     {
       "signature": "pub use qmc :: FIRST_64_PRIMES"
@@ -1152,9 +1196,6 @@
       "signature": "impl DiagnosticBus { pub fn register_listener < F > (& self , _ : F) where F : Fn (& DiagnosticEvent) + Send + Sync + 'static , }"
     },
     {
-      "signature": "pub enum Severity"
-    },
-    {
       "signature": "pub fn global_bus () -> & 'static DiagnosticBus"
     },
     {
@@ -1167,16 +1208,19 @@
       "signature": "pub struct DiagnosticEvent"
     },
     {
-      "signature": "pub trait Diagnostic : std :: error :: Error + Send + Sync + 'static"
-    },
-    {
-      "signature": "pub trait Diagnostic { fn metadata (& self) -> HashMap < String , String > }"
-    },
-    {
-      "signature": "pub trait Diagnostic { fn severity (& self) -> Severity }"
-    },
-    {
       "signature": "pub type ListenerFn = Arc < dyn Fn (& DiagnosticEvent) + Send + Sync + 'static >"
+    },
+    {
+      "signature": "pub use math_diagnostics :: Diagnostic"
+    },
+    {
+      "signature": "pub use math_diagnostics :: DiagnosticVisitor"
+    },
+    {
+      "signature": "pub use math_diagnostics :: Severity"
+    },
+    {
+      "signature": "pub use math_diagnostics :: collect_diagnostic_metadata"
     }
   ],
   "crates/domain_ai/src/ai/activations.rs": [
@@ -13053,6 +13097,18 @@
       "signature": "pub use crate :: ast :: ShaderEmitError"
     },
     {
+      "signature": "pub use engine_linalg :: LinalgError"
+    },
+    {
+      "signature": "pub use math_diagnostics :: Diagnostic"
+    },
+    {
+      "signature": "pub use math_diagnostics :: DiagnosticVisitor"
+    },
+    {
+      "signature": "pub use math_diagnostics :: Severity"
+    },
+    {
       "signature": "pub use umbrella :: MathCommonsError"
     }
   ],
@@ -14494,6 +14550,9 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: LexError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: LinalgError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: MathCommonsError } }"
     },
     {
@@ -14504,6 +14563,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: ParseError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: ShaderEmitError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error }"
@@ -14519,6 +14581,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use diagnostics :: Diagnostic } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use diagnostics :: DiagnosticVisitor } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use diagnostics :: Severity } }"
@@ -23704,6 +23769,9 @@
       "signature": "pub use math_commons :: error :: LexError"
     },
     {
+      "signature": "pub use math_commons :: error :: LinalgError"
+    },
+    {
       "signature": "pub use math_commons :: error :: MathCommonsError"
     },
     {
@@ -23910,6 +23978,9 @@
     },
     {
       "signature": "pub use diagnostics :: Diagnostic"
+    },
+    {
+      "signature": "pub use diagnostics :: DiagnosticVisitor"
     },
     {
       "signature": "pub use diagnostics :: Severity"

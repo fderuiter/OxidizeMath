@@ -30,6 +30,7 @@ pub const EXPECTED_WORKSPACE_CRATES: &[&str] = &[
     "engine_pde",
     "federated_registry",
     "math_commons",
+    "math_diagnostics",
     "math_explorer",
     "math_rng",
     "oxidize_core",

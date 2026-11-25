@@ -1,5 +1,4 @@
-use diagnostics::{Diagnostic, Severity};
-use std::collections::HashMap;
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use thiserror::Error;
 
 /// Domain error variants for compartmental ODE, next-generation matrix, and final-size solvers.
@@ -56,14 +55,12 @@ impl Diagnostic for EpidemiologyError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "EpidemiologyError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "EpidemiologyError");
+        visitor.record_display("description", self);
     }
 }
 pub use crate::epidemiology::networks::NetworkModelError;
@@ -75,11 +72,9 @@ impl Diagnostic for NetworkModelError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "NetworkModelError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "NetworkModelError");
+        visitor.record_display("description", self);
     }
 }
 

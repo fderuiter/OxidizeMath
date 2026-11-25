@@ -1,5 +1,4 @@
-use diagnostics::{Diagnostic, Severity};
-use std::collections::HashMap;
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use thiserror::Error;
 
 use crate::physics::solid_state::types::ElectronVolts;
@@ -24,14 +23,12 @@ impl Diagnostic for ChaosError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "ChaosError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "ChaosError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -260,6 +257,9 @@ pub enum HighEnergyError {
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
     Math(#[from] math_commons::error::MathError),
+    /// Wrapped differential-geometry tensor error.
+    #[error("{0}")]
+    Tensor(#[from] pure_math::error::TensorError),
 }
 
 /// Error variants for continuum and Lattice Boltzmann fluid-dynamics simulations.
@@ -322,14 +322,12 @@ impl Diagnostic for StandardModelError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "StandardModelError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "StandardModelError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -342,14 +340,12 @@ impl Diagnostic for SolidStateError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "SolidStateError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "SolidStateError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -362,14 +358,12 @@ impl Diagnostic for DoseFluenceError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "DoseFluenceError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "DoseFluenceError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -382,14 +376,12 @@ impl Diagnostic for RadarError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "RadarError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "RadarError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -398,18 +390,19 @@ impl Diagnostic for HighEnergyError {
     fn severity(&self) -> Severity {
         match self {
             Self::Math(err) => err.severity(),
+            Self::Tensor(err) => err.severity(),
             _ => Severity::Error,
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "HighEnergyError".to_string());
-        if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        match self {
+            Self::Math(math_err) => math_err.visit_fields(visitor),
+            Self::Tensor(tensor_err) => tensor_err.visit_fields(visitor),
+            _ => {}
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "HighEnergyError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -422,14 +415,12 @@ impl Diagnostic for FluidError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "FluidError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "FluidError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -442,14 +433,12 @@ impl Diagnostic for StatMechError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "StatMechError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "StatMechError");
+        visitor.record_display("description", self);
     }
 }
 mod umbrella;

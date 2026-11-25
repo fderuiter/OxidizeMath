@@ -9,7 +9,7 @@ use nalgebra::{DMatrix, DVector};
 use thiserror::Error;
 
 /// Errors related to tensor operations.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone, PartialEq)]
 pub enum TensorError {
     /// Indicates that an operation was attempted with tensors or vectors of incompatible dimensions.
     #[error("Dimension mismatch: expected {expected}, got {got}")]

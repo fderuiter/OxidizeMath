@@ -34,8 +34,7 @@
 //! assert!((gb.area - gb.angular_defect).abs() < 1e-12);
 //! ```
 
-use diagnostics::{Diagnostic, Severity};
-use std::collections::HashMap;
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 
 /// Exact analytical geodesic billiards and finite-time Lyapunov divergence inside $\{p, q\}$ polygons.
 pub mod billiards;
@@ -171,11 +170,9 @@ impl Diagnostic for Su11HyperbolicError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "Su11HyperbolicError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "Su11HyperbolicError");
+        visitor.record_display("description", self);
     }
 }
 
