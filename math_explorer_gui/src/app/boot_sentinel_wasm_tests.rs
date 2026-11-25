@@ -47,4 +47,10 @@ fn wasm_boot_sentinel_quarantines_local_storage_and_clears_share_hash() {
 
     let _ = ls.remove_item(QUARANTINED_WORKSPACE_STORAGE_KEY);
     let _ = ls.remove_item(PRESERVED_THEME_STORAGE_KEY);
+    if let Some(root) = win.document().and_then(|d| d.document_element()) {
+        let _ = root.remove_attribute("data-theme");
+    }
+    if let Ok(hist) = win.history() {
+        let _ = hist.replace_state_with_url(&JsValue::NULL, "", Some("/"));
+    }
 }

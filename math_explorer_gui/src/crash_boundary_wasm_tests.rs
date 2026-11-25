@@ -58,6 +58,21 @@ fn setup_runtime_crash_dom() -> (web_sys::Window, web_sys::Document) {
     (win, doc)
 }
 
+fn cleanup_runtime_crash_dom(win: &web_sys::Window, doc: &web_sys::Document) {
+    if let Ok(Some(ls)) = win.local_storage() {
+        let _ = ls.remove_item("app");
+    }
+    if let Some(root) = doc.document_element() {
+        let _ = root.remove_attribute("data-boot-initialized");
+        let _ = root.remove_attribute("data-boot-failed");
+    }
+    for id in ["the_canvas_id", "error_container", "aria-live-assertive"] {
+        if let Some(el) = doc.get_element_by_id(id) {
+            el.remove();
+        }
+    }
+}
+
 #[wasm_bindgen_test]
 fn wasm_fatal_panic_forwards_to_js_bridge_and_fallback_dom() {
     reset_fatal_panic_state_for_tests();
@@ -112,13 +127,12 @@ fn wasm_fatal_panic_forwards_to_js_bridge_and_fallback_dom() {
         .and_then(|el| el.text_content())
         .unwrap_or_default();
     assert!(details.contains("fallback DOM check") && details.contains("src/tabs/demo.rs:88"));
-    assert!(!doc
-        .get_element_by_id("reset_workspace_button")
-        .unwrap()
-        .has_attribute("hidden"));
-    assert!(!doc
-        .get_element_by_id("download_workspace_button")
-        .unwrap()
-        .has_attribute("hidden"));
+    for btn_id in ["reset_workspace_button", "download_workspace_button"] {
+        assert!(!doc
+            .get_element_by_id(btn_id)
+            .unwrap()
+            .has_attribute("hidden"));
+    }
+    cleanup_runtime_crash_dom(&win, &doc);
     reset_fatal_panic_state_for_tests();
 }

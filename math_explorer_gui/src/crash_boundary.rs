@@ -191,6 +191,9 @@ mod tests {
 
     #[test]
     fn fatal_listener_formats_location_silences_audio_and_sets_flag() {
+        let _guard = crate::reflective_ui::tests::TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         reset_fatal_panic_state_for_tests();
         install_fatal_panic_bridge();
 
