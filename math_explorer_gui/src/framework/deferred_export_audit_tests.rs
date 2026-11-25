@@ -267,8 +267,11 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
     let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader, audio] =
         counts;
     let has_riemannian = cfg!(feature = "pure_math");
+    let has_knot_studio = cfg!(feature = "pure_math");
     let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
-    let extra = usize::from(has_riemannian) + usize::from(has_surface_morpho);
+    let extra = usize::from(has_riemannian)
+        + usize::from(has_knot_studio)
+        + usize::from(has_surface_morpho);
     let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
     let stochastic_extra = if cfg!(feature = "pure_math") { 3 } else { 0 };
     let optics_bonus = if cfg!(feature = "physics") { 2 } else { 0 };
@@ -282,21 +285,10 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         audio, expected_audio,
         "Expected {expected_audio} WAV audio-capable tools"
     );
-    let expected_plot = 78
-        + extra
-        + bio_extra
-        + stochastic_extra
-        + optics_bonus
-        + extra_su11_hyp
-        + usize::from(has_ai);
+    let bonus = bio_extra + stochastic_extra + optics_bonus + extra_su11_hyp + usize::from(has_ai);
+    let expected_plot = 78 + extra + bonus;
     let expected_solid = 7 + extra;
-    let expected_non_shader = 92
-        + extra
-        + bio_extra
-        + stochastic_extra
-        + optics_bonus
-        + extra_su11_hyp
-        + usize::from(has_ai);
+    let expected_non_shader = 92 + extra + bonus;
     assert_eq!(
         plot, expected_plot,
         "Expected {expected_plot} Plot dataset+figure tools"
@@ -444,6 +436,8 @@ fn test_all_eight_3d_tools_deferred_stl_ply_payloads_and_live_region() {
         "SpinVisualizer",
         "CorticalMorphometryTool",
         "VolumetricFieldStudioTool",
+        #[cfg(feature = "pure_math")]
+        "KnotBraidStudio",
     ];
     for id in solid_ids {
         let meta = inventory::iter::<crate::framework::ToolMetadata>

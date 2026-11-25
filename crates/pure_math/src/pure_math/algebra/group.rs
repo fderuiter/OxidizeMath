@@ -14,6 +14,9 @@ use math_commons::math_kernel::types::Dimension;
 use std::collections::HashSet;
 use std::hash::Hash;
 
+pub mod braid;
+pub use braid::{BraidError, BraidWord, MAX_BRAID_STRANDS, MAX_BRAID_WORD_LEN};
+
 // ============================================================================
 // Cyclic Group (Integers Modulo n)
 // ============================================================================

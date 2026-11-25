@@ -387,7 +387,7 @@ mod submodule_diagnostics;
 mod umbrella;
 
 pub use crate::pure_math::{
-    algebra::linear_algebra::numerical::LinearAlgebraError,
+    algebra::{BraidError, linear_algebra::numerical::LinearAlgebraError},
     algorithmic_information::FractranError,
     analysis::{
         evolution::EvolutionError, optimization::OptimizationError, roots::AnalysisError,
@@ -397,6 +397,7 @@ pub use crate::pure_math::{
     elliptic_curves::EllipticCurveError,
     graph_theory::GraphTheoryError,
     hyperbolic::HyperbolicError,
+    knot_theory::KnotError,
     number_theory::ambs::AmbsError,
     statistics::{
         black_scholes::OptionPricingError, monte_carlo::MonteCarloError, poisson::PoissonError,

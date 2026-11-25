@@ -86,6 +86,7 @@ pub(crate) fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         | "RelativisticJetBeamingLab" => &["general_relativity_geodesics"],
         "MarkovSequenceWorkbenchTool" => &["clinical_trials_statistics"],
         "CorticalMorphometryTool" | "RiemannianPdeStudio" => &["freesurfer"],
+        "KnotBraidStudio" => &["knot_braid_topology", "knot_theory"],
         "PhyllotaxisLSystemTool" | "BiochemicalDynamicsTool" | "EvolutionaryBiologyTool" => {
             &["computational_biology", "biology"]
         }
