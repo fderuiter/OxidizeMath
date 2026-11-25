@@ -9,7 +9,12 @@ use super::eval::MAX_EVAL_DEPTH;
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
 use super::limits::{MAX_AST_NODES, MAX_GLSL_OUTPUT_BYTES};
 use super::shader_preludes::ShaderTarget;
-use std::f64::consts::{E, PI, TAU};
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
+use core::f64::consts::{E, PI, TAU};
 
 /// Errors produced when lowering an [`Expr`] to WGSL or GLSL shader source.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -44,46 +49,6 @@ pub enum ShaderEmitError {
     /// Variable identifier is invalid or unsafe for shader code generation.
     #[error("Invalid or reserved shader variable identifier '{0}'")]
     InvalidIdentifier(String),
-}
-
-impl diagnostics::Diagnostic for ShaderEmitError {
-    fn severity(&self) -> diagnostics::Severity {
-        diagnostics::Severity::Error
-    }
-
-    fn metadata(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::from([
-            ("error_type".to_string(), "ShaderEmitError".to_string()),
-            ("description".to_string(), self.to_string()),
-        ]);
-        match self {
-            Self::RecursionLimitExceeded(max_depth) => {
-                map.insert("max_depth".to_string(), max_depth.to_string());
-            }
-            Self::NodeLimitExceeded(max_nodes) => {
-                map.insert("max_nodes".to_string(), max_nodes.to_string());
-            }
-            Self::OutputLimitExceeded(max_bytes) => {
-                map.insert("max_output_bytes".to_string(), max_bytes.to_string());
-            }
-            Self::WrongArgumentCount {
-                func,
-                expected,
-                found,
-            } => {
-                map.insert("function".to_string(), func.as_str().to_string());
-                map.insert("expected_args".to_string(), expected.to_string());
-                map.insert("found_args".to_string(), found.to_string());
-            }
-            Self::NonFiniteLiteral => {
-                map.insert("reason".to_string(), "non_finite_literal".to_string());
-            }
-            Self::InvalidIdentifier(ident) => {
-                map.insert("identifier".to_string(), ident.clone());
-            }
-        }
-        map
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

@@ -1,10 +1,12 @@
 // [cite:math_commons]
-#[cfg(feature = "std")]
 pub use crate::ast::{EvalError, GlslError, LexError, ParseError, ShaderEmitError};
 use crate::math_kernel::types::Dimension;
 use alloc::string::String;
 #[cfg(feature = "std")]
+use alloc::string::ToString;
 use diagnostics::{Diagnostic, Severity};
+pub use engine_linalg::LinalgError;
+pub use math_rng::QmcError;
 #[cfg(feature = "std")]
 use std::collections::HashMap;
 use thiserror::Error;
@@ -69,16 +71,34 @@ pub enum MathError {
     },
 }
 
-#[cfg(feature = "std")]
 impl Diagnostic for MathError {
     fn severity(&self) -> Severity {
         Severity::Error
     }
 
+    fn error_type(&self) -> &'static str {
+        "MathError"
+    }
+
+    fn code(&self) -> Option<&'static str> {
+        match self {
+            Self::DimensionMismatch { .. } => Some("MATH-CORE-001"),
+            Self::OutOfBounds { .. } => Some("MATH-CORE-002"),
+            Self::StrictlyOutOfBounds { .. } => Some("MATH-CORE-003"),
+            Self::InvalidPermutation { .. } => Some("MATH-CORE-004"),
+            Self::NumericalError { .. } => Some("MATH-CORE-005"),
+            Self::ConversionError { .. } => Some("MATH-CORE-006"),
+        }
+    }
+
+    #[cfg(feature = "std")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "MathError".to_string());
         map.insert("description".to_string(), self.to_string());
+        if let Some(code) = self.code() {
+            map.insert("code".to_string(), code.to_string());
+        }
         match self {
             Self::DimensionMismatch { expected, actual } => {
                 map.insert("expected_dim".to_string(), expected.0.to_string());
@@ -148,14 +168,33 @@ pub enum FitError {
         /// Number of iterations executed before termination.
         iterations: usize,
     },
+
+    /// Underlying `#![no_std]` linear-algebra factorization or solve failure.
+    #[error("Curve-fitting linear system failed: {0}")]
+    Linalg(#[from] LinalgError),
 }
 
-#[cfg(feature = "std")]
 impl Diagnostic for FitError {
     fn severity(&self) -> Severity {
         Severity::Error
     }
 
+    fn error_type(&self) -> &'static str {
+        "FitError"
+    }
+
+    fn code(&self) -> Option<&'static str> {
+        match self {
+            Self::InsufficientPoints { .. } => Some("MATH-FIT-001"),
+            Self::UnsupportedDegree { .. } => Some("MATH-FIT-002"),
+            Self::InvalidDomain { .. } => Some("MATH-FIT-003"),
+            Self::SingularMatrix => Some("MATH-FIT-004"),
+            Self::NonConvergence { .. } => Some("MATH-FIT-005"),
+            Self::Linalg(_) => Some("MATH-FIT-006"),
+        }
+    }
+
+    #[cfg(feature = "std")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "FitError".to_string());
@@ -181,14 +220,16 @@ impl Diagnostic for FitError {
                 map.insert("code".to_string(), "MATH-FIT-005".to_string());
                 map.insert("iterations".to_string(), iterations.to_string());
             }
+            Self::Linalg(err) => {
+                map.insert("code".to_string(), "MATH-FIT-006".to_string());
+                map.insert("cause_error_type".to_string(), err.error_type().to_string());
+            }
         }
         map
     }
 }
 
-#[cfg(feature = "std")]
 mod umbrella;
-#[cfg(feature = "std")]
 pub use umbrella::MathCommonsError;
 
 #[cfg(all(test, feature = "std"))]
@@ -197,13 +238,13 @@ mod tests {
     use std::error::Error as StdError;
 
     #[test]
-    fn math_commons_umbrella_preserves_sources_and_diagnostics() {
+    fn parse_and_fit_wrapper_metadata_preserved() {
         let lex = LexError {
             start: 0,
             end: 1,
             message: "bad char".to_string(),
         };
-        let parse = ParseError::from(lex.clone());
+        let parse = ParseError::from(lex);
         assert!(parse.source().is_some());
 
         let unknown_fn = ParseError::UnknownFunction {
@@ -232,6 +273,25 @@ mod tests {
         assert_eq!(arity_meta.get("found").map(String::as_str), Some("1"));
         assert_eq!(arity_meta.get("start").map(String::as_str), Some("4"));
 
+        let fit_linalg = FitError::from(LinalgError::SingularMatrix);
+        assert!(fit_linalg.source().is_some());
+        assert_eq!(
+            fit_linalg
+                .metadata()
+                .get("cause_error_type")
+                .map(String::as_str),
+            Some("LinalgError")
+        );
+    }
+
+    #[test]
+    fn math_commons_umbrella_preserves_sources_and_diagnostics() {
+        let lex = LexError {
+            start: 0,
+            end: 1,
+            message: "bad char".to_string(),
+        };
+        let parse = ParseError::from(lex.clone());
         let variants = [
             MathCommonsError::from(MathError::DimensionMismatch {
                 expected: Dimension(2),
@@ -240,11 +300,11 @@ mod tests {
             MathCommonsError::from(FitError::SingularMatrix),
             MathCommonsError::from(lex),
             MathCommonsError::from(parse),
-            MathCommonsError::from(unknown_fn),
-            MathCommonsError::from(wrong_arity),
             MathCommonsError::from(EvalError::UnknownVariable("x".to_string())),
             MathCommonsError::from(GlslError::DepthLimitExceeded(64)),
             MathCommonsError::from(ShaderEmitError::RecursionLimitExceeded(64)),
+            MathCommonsError::from(LinalgError::SingularMatrix),
+            MathCommonsError::from(QmcError::InvalidBase { base: 1 }),
         ];
 
         for err in &variants {
@@ -257,5 +317,26 @@ mod tests {
             );
             assert!(meta.contains_key("error_type"));
         }
+    }
+}
+
+#[cfg(test)]
+mod nostd_tests {
+    use super::*;
+    use core::error::Error as CoreError;
+
+    #[test]
+    fn math_commons_diagnostics_work_in_nostd() {
+        let fit = FitError::from(LinalgError::SingularMatrix);
+        assert!(fit.source().is_some());
+        assert_eq!(fit.severity(), Severity::Error);
+        assert_eq!(fit.error_type(), "FitError");
+        assert_eq!(fit.code(), Some("MATH-FIT-006"));
+
+        let umbrella = MathCommonsError::from(QmcError::InvalidBase { base: 1 });
+        assert!(umbrella.source().is_some());
+        assert_eq!(umbrella.severity(), Severity::Error);
+        assert_eq!(umbrella.error_type(), "QmcError");
+        assert_eq!(umbrella.code(), Some("RNG-QMC-002"));
     }
 }

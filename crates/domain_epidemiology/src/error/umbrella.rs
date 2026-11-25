@@ -1,5 +1,9 @@
 use super::{EpidemiologyError, NetworkModelError};
 use diagnostics::{Diagnostic, Severity};
+use math_commons::error::{
+    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, ParseError, QmcError,
+    ShaderEmitError,
+};
 use std::collections::HashMap;
 
 /// Extensible crate-level umbrella error for `domain_epidemiology` models and upstream math errors.
@@ -100,6 +104,69 @@ impl From<pure_math::error::EvolutionError> for EpidemiologyDomainError {
     }
 }
 
+impl From<pure_math::error::LinearAlgebraError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: pure_math::error::LinearAlgebraError) -> Self {
+        Self::PureMath(pure_math::error::PureMathError::from(err))
+    }
+}
+
+impl From<FitError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: FitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<EvalError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: EvalError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<GlslError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: GlslError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<LexError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: LexError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<ParseError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: ParseError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<ShaderEmitError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: ShaderEmitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<LinalgError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: LinalgError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<QmcError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: QmcError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
 impl From<String> for EpidemiologyDomainError {
     #[verified_engine::verified]
     fn from(reason: String) -> Self {
@@ -124,6 +191,16 @@ impl Diagnostic for EpidemiologyDomainError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
         self.as_diagnostic().severity()
+    }
+
+    #[verified_engine::verified]
+    fn error_type(&self) -> &'static str {
+        self.as_diagnostic().error_type()
+    }
+
+    #[verified_engine::verified]
+    fn code(&self) -> Option<&'static str> {
+        self.as_diagnostic().code()
     }
 
     #[verified_engine::verified]

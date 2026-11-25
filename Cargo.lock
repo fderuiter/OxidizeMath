@@ -1373,6 +1373,7 @@ dependencies = [
 name = "engine_linalg"
 version = "0.4.0"
 dependencies = [
+ "diagnostics",
  "verified_engine",
 ]
 
@@ -2538,6 +2539,7 @@ dependencies = [
 name = "math_rng"
 version = "0.4.0"
 dependencies = [
+ "diagnostics",
  "rand_chacha",
  "rand_core",
  "serde",

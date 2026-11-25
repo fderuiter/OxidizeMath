@@ -5,7 +5,7 @@
 use core::fmt;
 
 /// Typed error returned by [`super::SobolView`], [`super::HaltonView`], and [`super::NiederreiterView`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum QmcError {
     /// Requested dimension is zero or exceeds `max_supported` (`64`).
     InvalidDimension {
@@ -61,3 +61,18 @@ impl fmt::Display for QmcError {
 }
 
 impl core::error::Error for QmcError {}
+
+impl diagnostics::Diagnostic for QmcError {
+    fn error_type(&self) -> &'static str {
+        "QmcError"
+    }
+
+    fn code(&self) -> Option<&'static str> {
+        match *self {
+            Self::InvalidDimension { .. } => Some("RNG-QMC-001"),
+            Self::InvalidBase { .. } => Some("RNG-QMC-002"),
+            Self::BufferLengthMismatch { .. } => Some("RNG-QMC-003"),
+            Self::StateLengthMismatch { .. } => Some("RNG-QMC-004"),
+        }
+    }
+}

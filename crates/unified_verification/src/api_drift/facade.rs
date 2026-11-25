@@ -19,6 +19,10 @@ use facade_signatures::{ParsedSignatureMap, build_parsed_signatures_counted};
 
 const FACADE_REACHABLE_PREFIXES: &[&str] = &[
     "math_explorer/src/",
+    "crates/00_foundation/math_rng/src/",
+    "crates/02_engines/engine_linalg/src/",
+    "crates/engine_diffeq/src/",
+    "crates/engine_pde/src/",
     "crates/math_commons/src/",
     "crates/diagnostics/src/",
     "crates/pure_math/src/",
@@ -236,7 +240,9 @@ impl SignatureTypeCollector {
     fn record_path(&mut self, path: &syn::Path) {
         if path.segments.len() >= 2
             && let Some(first) = path.segments.first()
-            && (first.ident == "Self" || self.generics.contains(&first.ident.to_string()))
+            && (first.ident == "Self"
+                || first.ident == "private"
+                || self.generics.contains(&first.ident.to_string()))
         {
             for seg in &path.segments {
                 self.visit_path_arguments(&seg.arguments);

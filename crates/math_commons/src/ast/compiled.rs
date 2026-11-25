@@ -7,6 +7,11 @@ use super::eval::{
 };
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
 use super::limits::MAX_COMPILED_INSTRUCTIONS;
+use alloc::{
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use num_complex::Complex64;
 
 /// Single postfix bytecode instruction executed by [`CompiledExpr`].

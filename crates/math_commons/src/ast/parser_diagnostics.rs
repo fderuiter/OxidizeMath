@@ -1,5 +1,9 @@
 // [cite:math_commons]
 use super::parser::ParseError;
+use alloc::{
+    format,
+    string::{String, ToString},
+};
 
 pub(super) fn format_found_token(found: &str) -> String {
     if found == "<EOF>" || found == "end of expression" {
@@ -27,6 +31,11 @@ impl diagnostics::Diagnostic for ParseError {
         diagnostics::Severity::Error
     }
 
+    fn error_type(&self) -> &'static str {
+        "ParseError"
+    }
+
+    #[cfg(feature = "std")]
     fn metadata(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
         if let Self::Lex(lex_err) = self {

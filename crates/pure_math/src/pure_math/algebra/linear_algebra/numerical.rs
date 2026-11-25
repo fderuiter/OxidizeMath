@@ -34,20 +34,9 @@ pub enum LinearAlgebraError {
     /// Iterative decomposition or Krylov solver failed to converge within budget.
     #[error("Iterative linear algebra solver failed to converge")]
     NonConvergence,
-}
-
-#[verified_engine::verified]
-pub(crate) fn map_linalg_error(err: LinalgError) -> LinearAlgebraError {
-    match err {
-        LinalgError::DimensionMismatch => LinearAlgebraError::DimensionMismatch,
-        LinalgError::SingularMatrix => LinearAlgebraError::SingularMatrix,
-        LinalgError::InvalidInput => {
-            LinearAlgebraError::InvalidInput("non-finite matrix entry or invalid parameter")
-        }
-        LinalgError::NotPositiveDefinite => LinearAlgebraError::NotPositiveDefinite,
-        LinalgError::NonConvergence => LinearAlgebraError::NonConvergence,
-        LinalgError::WorkspaceTooSmall { .. } => LinearAlgebraError::SolutionNotFound,
-    }
+    /// Underlying `#![no_std]` `engine_linalg` factorization or Krylov solver failure.
+    #[error("{0}")]
+    Linalg(#[from] LinalgError),
 }
 
 #[verified_engine::verified]
@@ -94,11 +83,7 @@ pub fn solve_linear_system(
         n,
         &mut pivots,
         &mut SolverWorkspace::new(&mut scratch),
-    )
-    .map_err(|err| match err {
-        LinalgError::SingularMatrix => LinearAlgebraError::SolutionNotFound,
-        other => map_linalg_error(other),
-    })?;
+    )?;
     Ok(DVector::from_vec(x))
 }
 
@@ -135,8 +120,7 @@ pub fn solve_normal_equation(
         &mut x,
         &mut perm,
         &mut SolverWorkspace::new(&mut scratch),
-    )
-    .map_err(map_linalg_error)?;
+    )?;
     if rank == 0 {
         return Err(LinearAlgebraError::SingularMatrix);
     }
@@ -165,8 +149,7 @@ pub fn try_moore_penrose_pseudoinverse(
         epsilon,
         &mut pinv,
         &mut SolverWorkspace::new(&mut scratch),
-    )
-    .map_err(map_linalg_error)?;
+    )?;
     Ok(DMatrix::from_row_slice(n, m, &pinv))
 }
 
@@ -204,8 +187,7 @@ pub fn solve_cholesky_system(
         &mut x,
         n,
         &mut SolverWorkspace::new(&mut scratch),
-    )
-    .map_err(map_linalg_error)?;
+    )?;
     Ok(DVector::from_vec(x))
 }
 
@@ -239,8 +221,7 @@ pub fn solve_tikhonov_system(
         lambda,
         &mut x,
         &mut SolverWorkspace::new(&mut scratch),
-    )
-    .map_err(map_linalg_error)?;
+    )?;
     Ok(DVector::from_vec(x))
 }
 
@@ -291,7 +272,7 @@ pub fn solve_conjugate_gradient(
         return Err(LinearAlgebraError::DimensionMismatch);
     }
     let (row_ptr, col_ind, values) = dense_to_csr_parts(a)?;
-    let csr = CsrMatrixView::new(n, n, &row_ptr, &col_ind, &values).map_err(map_linalg_error)?;
+    let csr = CsrMatrixView::new(n, n, &row_ptr, &col_ind, &values)?;
     let mut x = vec![0.0_f64; n];
     let mut scratch = vec![0.0_f64; cg_workspace_len(n)];
     cg_solve(
@@ -301,8 +282,7 @@ pub fn solve_conjugate_gradient(
         tol,
         max_iter,
         &mut SolverWorkspace::new(&mut scratch),
-    )
-    .map_err(map_linalg_error)?;
+    )?;
     Ok(DVector::from_vec(x))
 }
 
@@ -328,7 +308,7 @@ pub fn solve_gmres_restarted(
         return Err(LinearAlgebraError::DimensionMismatch);
     }
     let (row_ptr, col_ind, values) = dense_to_csr_parts(a)?;
-    let csr = CsrMatrixView::new(n, n, &row_ptr, &col_ind, &values).map_err(map_linalg_error)?;
+    let csr = CsrMatrixView::new(n, n, &row_ptr, &col_ind, &values)?;
     let mut x = vec![0.0_f64; n];
     let mut scratch = vec![0.0_f64; gmres_workspace_len(n, restart)];
     gmres_solve(
@@ -339,8 +319,7 @@ pub fn solve_gmres_restarted(
         tol,
         max_restarts,
         &mut SolverWorkspace::new(&mut scratch),
-    )
-    .map_err(map_linalg_error)?;
+    )?;
     Ok(DVector::from_vec(x))
 }
 

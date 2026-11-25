@@ -49,8 +49,17 @@ impl Diagnostic for KellyError {
     }
 
     #[verified_engine::verified]
+    fn error_type(&self) -> &'static str {
+        "KellyError"
+    }
+
+    #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("KellyError", self.to_string())
+        let mut map = error_metadata("KellyError", self.to_string());
+        if matches!(self, Self::NotPositiveDefinite | Self::Linalg(_)) {
+            map.insert("cause_error_type".to_string(), "LinalgError".to_string());
+        }
+        map
     }
 }
 
@@ -241,8 +250,20 @@ impl Diagnostic for LinearAlgebraError {
     }
 
     #[verified_engine::verified]
+    fn error_type(&self) -> &'static str {
+        "LinearAlgebraError"
+    }
+
+    #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("LinearAlgebraError", self.to_string())
+        let mut map = error_metadata("LinearAlgebraError", self.to_string());
+        if let Self::Linalg(err) = self {
+            map.insert("cause_error_type".to_string(), err.error_type().to_string());
+            if let Some(code) = err.code() {
+                map.insert("cause_code".to_string(), code.to_string());
+            }
+        }
+        map
     }
 }
 
@@ -337,8 +358,20 @@ impl Diagnostic for MonteCarloError {
     }
 
     #[verified_engine::verified]
+    fn error_type(&self) -> &'static str {
+        "MonteCarloError"
+    }
+
+    #[verified_engine::verified]
     fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("MonteCarloError", self.to_string())
+        let mut map = error_metadata("MonteCarloError", self.to_string());
+        if let Self::Qmc(err) = self {
+            map.insert("cause_error_type".to_string(), err.error_type().to_string());
+            if let Some(code) = err.code() {
+                map.insert("cause_code".to_string(), code.to_string());
+            }
+        }
+        map
     }
 }
 

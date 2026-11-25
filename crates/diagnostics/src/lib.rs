@@ -1,6 +1,9 @@
+#![cfg_attr(not(feature = "std"), no_std)]
 #![doc = include_str!("../README.md")]
 
+#[cfg(feature = "std")]
 use std::collections::HashMap;
+#[cfg(feature = "std")]
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// Standardized operational severity levels for diagnostic events and domain errors.
@@ -26,8 +29,8 @@ pub enum Severity {
     Fatal,
 }
 
-impl std::fmt::Display for Severity {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl core::fmt::Display for Severity {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Severity::Info => write!(f, "INFO"),
             Severity::Warning => write!(f, "WARNING"),
@@ -37,10 +40,11 @@ impl std::fmt::Display for Severity {
     }
 }
 
-/// Unified error telemetry contract for routing structured domain errors onto a [`DiagnosticBus`].
+/// Unified error telemetry contract for `#![no_std]` and `std` domain errors.
 ///
-/// Implementors automatically default to [`Severity::Error`] and an empty metadata map unless
-/// overridden to attach domain-specific diagnostic context.
+/// Implementors automatically default to [`Severity::Error`], zero-allocation static
+/// [`Diagnostic::error_type`] / [`Diagnostic::code`] identifiers, and (when `std` is enabled) a
+/// default metadata map containing `"error_type"`, `"description"`, and optional `"code"`.
 ///
 /// # Example
 /// ```
@@ -66,6 +70,10 @@ impl std::fmt::Display for Severity {
 ///         Severity::Warning
 ///     }
 ///
+///     fn error_type(&self) -> &'static str {
+///         "StepDivergenceError"
+///     }
+///
 ///     fn metadata(&self) -> HashMap<String, String> {
 ///         HashMap::from([("iteration".to_string(), self.iteration.to_string())])
 ///     }
@@ -73,21 +81,51 @@ impl std::fmt::Display for Severity {
 ///
 /// let err = StepDivergenceError { iteration: 42 };
 /// assert_eq!(err.severity(), Severity::Warning);
+/// assert_eq!(err.error_type(), "StepDivergenceError");
 /// assert_eq!(err.metadata().get("iteration").map(String::as_str), Some("42"));
 /// ```
-pub trait Diagnostic: std::error::Error + Send + Sync + 'static {
+pub trait Diagnostic: core::error::Error + Send + Sync + 'static {
     /// Returns the operational [`Severity`] associated with this error (defaults to [`Severity::Error`]).
     fn severity(&self) -> Severity {
         Severity::Error
     }
 
+    /// Returns a zero-allocation static error type identifier suitable for `#![no_std]` kernels.
+    fn error_type(&self) -> &'static str {
+        core::any::type_name::<Self>()
+    }
+
+    /// Returns an optional zero-allocation static diagnostic code (defaults to `None`).
+    fn code(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Returns structured key-value diagnostic attributes describing the failure context.
+    #[cfg(feature = "std")]
     fn metadata(&self) -> HashMap<String, String> {
-        HashMap::new()
+        let mut map = HashMap::new();
+        map.insert("error_type".to_string(), self.error_type().to_string());
+        map.insert("description".to_string(), self.to_string());
+        if let Some(code) = self.code() {
+            map.insert("code".to_string(), code.to_string());
+        }
+        map
     }
 }
 
+#[cfg(feature = "std")]
+fn current_thread_label() -> Option<String> {
+    let current = std::thread::current();
+    Some(
+        current
+            .name()
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("{:?}", current.id())),
+    )
+}
+
 /// Structured diagnostic record dispatched through a [`DiagnosticBus`].
+#[cfg(feature = "std")]
 #[derive(Debug, Clone)]
 pub struct DiagnosticEvent {
     /// Operational severity classification of the event.
@@ -101,6 +139,7 @@ pub struct DiagnosticEvent {
 }
 
 /// Thread-safe callback signature invoked synchronously when a [`DiagnosticBus`] emits an event.
+#[cfg(feature = "std")]
 pub type ListenerFn = Arc<dyn Fn(&DiagnosticEvent) + Send + Sync + 'static>;
 
 /// Thread-safe synchronous pub-sub bus for broadcasting [`DiagnosticEvent`] records.
@@ -140,10 +179,12 @@ pub type ListenerFn = Arc<dyn Fn(&DiagnosticEvent) + Send + Sync + 'static>;
 ///     vec![(Severity::Error, "Matrix singular".to_string())]
 /// );
 /// ```
+#[cfg(feature = "std")]
 pub struct DiagnosticBus {
     listeners: Arc<Mutex<Vec<ListenerFn>>>,
 }
 
+#[cfg(feature = "std")]
 impl DiagnosticBus {
     /// Creates an empty [`DiagnosticBus`] with no registered listeners.
     pub fn new() -> Self {
@@ -185,10 +226,19 @@ impl DiagnosticBus {
 
     /// Converts a [`Diagnostic`] error into a [`DiagnosticEvent`] and dispatches it to all listeners.
     ///
-    /// If `diagnostic.metadata()` omits `"source"` and provides `"error_type"`, `"source"` is
-    /// populated automatically so downstream telemetry listeners retain structured attribution.
+    /// Missing `"error_type"`, `"code"`, and `"source"` keys are populated automatically from
+    /// [`Diagnostic::error_type`] and [`Diagnostic::code`] so downstream telemetry listeners retain
+    /// structured attribution.
     pub fn emit_diagnostic<D: Diagnostic + ?Sized>(&self, diagnostic: &D) {
         let mut metadata = diagnostic.metadata();
+        metadata
+            .entry("error_type".to_string())
+            .or_insert_with(|| diagnostic.error_type().to_string());
+        if let Some(code) = diagnostic.code() {
+            metadata
+                .entry("code".to_string())
+                .or_insert_with(|| code.to_string());
+        }
         if !metadata.contains_key("source")
             && let Some(err_type) = metadata.get("error_type").cloned()
         {
@@ -198,7 +248,7 @@ impl DiagnosticBus {
             severity: diagnostic.severity(),
             message: diagnostic.to_string(),
             metadata,
-            thread_name: std::thread::current().name().map(str::to_string),
+            thread_name: current_thread_label(),
         });
     }
 
@@ -211,16 +261,25 @@ impl DiagnosticBus {
     ) {
         assert!(!source.is_empty(), "diagnostic source must not be empty");
         let mut metadata = diagnostic.metadata();
+        metadata
+            .entry("error_type".to_string())
+            .or_insert_with(|| diagnostic.error_type().to_string());
+        if let Some(code) = diagnostic.code() {
+            metadata
+                .entry("code".to_string())
+                .or_insert_with(|| code.to_string());
+        }
         metadata.insert("source".to_string(), source.to_string());
         self.emit(DiagnosticEvent {
             severity: diagnostic.severity(),
             message: diagnostic.to_string(),
             metadata,
-            thread_name: std::thread::current().name().map(str::to_string),
+            thread_name: current_thread_label(),
         });
     }
 }
 
+#[cfg(feature = "std")]
 impl Default for DiagnosticBus {
     fn default() -> Self {
         Self::new()
@@ -252,6 +311,7 @@ impl Default for DiagnosticBus {
 ///
 /// assert_eq!(*captured.lock().unwrap(), vec![Severity::Info]);
 /// ```
+#[cfg(feature = "std")]
 pub fn global_bus() -> &'static DiagnosticBus {
     static BUS: OnceLock<DiagnosticBus> = OnceLock::new();
     BUS.get_or_init(DiagnosticBus::new)
@@ -259,6 +319,7 @@ pub fn global_bus() -> &'static DiagnosticBus {
 
 /// Installs a process-wide panic hook that emits a [`Severity::Fatal`] [`DiagnosticEvent`] on
 /// [`global_bus`] (including `location` and thread identity) before delegating to the prior panic hook.
+#[cfg(feature = "std")]
 pub fn init_panic_hook() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
@@ -281,159 +342,12 @@ pub fn init_panic_hook() {
             severity: Severity::Fatal,
             message: format!("Thread panicked: {}", message),
             metadata,
-            thread_name: std::thread::current().name().map(|s| s.to_string()),
+            thread_name: current_thread_label(),
         });
 
         default_hook(panic_info);
     }));
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_diagnostic_bus_delivers_events_to_registered_listeners() {
-        let bus = DiagnosticBus::default();
-        let first_log = Arc::new(Mutex::new(Vec::new()));
-        let second_log = Arc::new(Mutex::new(Vec::new()));
-
-        let first_clone = Arc::clone(&first_log);
-        bus.register_listener(move |ev| {
-            first_clone
-                .lock()
-                .unwrap()
-                .push((ev.severity.clone(), ev.message.clone()));
-        });
-
-        let second_clone = Arc::clone(&second_log);
-        bus.register_listener(move |ev| {
-            second_clone
-                .lock()
-                .unwrap()
-                .push((ev.metadata.get("source").cloned(), ev.thread_name.clone()));
-        });
-
-        let mut metadata = HashMap::new();
-        metadata.insert("source".to_string(), "solver".to_string());
-        bus.emit(DiagnosticEvent {
-            severity: Severity::Warning,
-            message: "Step clamped".to_string(),
-            metadata,
-            thread_name: Some("worker-1".to_string()),
-        });
-
-        assert_eq!(
-            *first_log.lock().unwrap(),
-            vec![(Severity::Warning, "Step clamped".to_string())]
-        );
-        assert_eq!(
-            *second_log.lock().unwrap(),
-            vec![(Some("solver".to_string()), Some("worker-1".to_string()))]
-        );
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    #[test]
-    fn test_diagnostic_bus_isolates_listener_panics() {
-        let bus = DiagnosticBus::new();
-        let delivered = Arc::new(Mutex::new(Vec::new()));
-
-        bus.register_listener(|_ev| {
-            panic!("intentional listener failure");
-        });
-
-        let delivered_clone = Arc::clone(&delivered);
-        bus.register_listener(move |ev| {
-            delivered_clone.lock().unwrap().push(ev.message.clone());
-        });
-
-        bus.emit(DiagnosticEvent {
-            severity: Severity::Error,
-            message: "Survives preceding panic".to_string(),
-            metadata: HashMap::new(),
-            thread_name: None,
-        });
-
-        assert_eq!(
-            *delivered.lock().unwrap(),
-            vec!["Survives preceding panic".to_string()]
-        );
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    #[test]
-    fn test_diagnostic_bus_recovers_from_poisoned_listener_lock() {
-        let bus = DiagnosticBus::new();
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let _guard = bus.listeners.lock().unwrap();
-            panic!("poison listeners mutex");
-        }));
-        assert!(bus.listeners.is_poisoned());
-
-        let received = Arc::new(Mutex::new(Vec::new()));
-        let received_clone = Arc::clone(&received);
-        bus.register_listener(move |ev| {
-            received_clone.lock().unwrap().push(ev.severity.to_string());
-        });
-
-        bus.emit(DiagnosticEvent {
-            severity: Severity::Fatal,
-            message: "Recovered after poison".to_string(),
-            metadata: HashMap::new(),
-            thread_name: None,
-        });
-
-        assert_eq!(*received.lock().unwrap(), vec!["FATAL".to_string()]);
-    }
-
-    #[derive(Debug, thiserror::Error)]
-    #[error("step divergence at k={step}")]
-    struct SolverTestError {
-        step: usize,
-    }
-
-    impl Diagnostic for SolverTestError {
-        fn severity(&self) -> Severity {
-            Severity::Warning
-        }
-
-        fn metadata(&self) -> HashMap<String, String> {
-            let mut map = HashMap::new();
-            map.insert("error_type".to_string(), "SolverTestError".to_string());
-            map.insert("step".to_string(), self.step.to_string());
-            map
-        }
-    }
-
-    #[test]
-    fn test_emit_diagnostic_helpers_populate_source_and_metadata() {
-        let bus = DiagnosticBus::new();
-        let captured = Arc::new(Mutex::new(Vec::new()));
-        let captured_clone = Arc::clone(&captured);
-        bus.register_listener(move |ev| {
-            captured_clone.lock().unwrap().push(ev.clone());
-        });
-
-        let err = SolverTestError { step: 7 };
-        bus.emit_diagnostic(&err);
-        bus.emit_diagnostic_with_source("rk4_integrator", &err);
-
-        let events = captured.lock().unwrap();
-        assert_eq!(events.len(), 2);
-        assert_eq!(events[0].severity, Severity::Warning);
-        assert_eq!(events[0].message, "step divergence at k=7");
-        assert_eq!(
-            events[0].metadata.get("source").map(String::as_str),
-            Some("SolverTestError")
-        );
-        assert_eq!(
-            events[1].metadata.get("source").map(String::as_str),
-            Some("rk4_integrator")
-        );
-        assert_eq!(
-            events[1].metadata.get("step").map(String::as_str),
-            Some("7")
-        );
-    }
-}
+#[cfg(all(test, feature = "std"))]
+mod tests;

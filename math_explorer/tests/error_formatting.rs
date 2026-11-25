@@ -16,11 +16,11 @@ use math_explorer::error::{
     AIError, BatteryError, BotanicalError, BraidError, ChaosError, ClimateError, CopulaError,
     DoseFluenceError, EloError, EngineeringError, EpidemiologyError, FitError, FluidError,
     GameTheoryError, Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError,
-    HyperbolicError, IsosurfaceError, KellyError, KnotError, LoraError, MarketPricingError,
-    MarkovError, MatchModelError, MathError, MonteCarloError, NumberTheoryError,
-    OptionPricingError, OuError, PharmacokineticsError, PoissonError, QueueingError, RadarError,
-    SandpileError, ShaderEmitError, SolidStateError, StandardModelError, StatMechError,
-    Su11HyperbolicError, TdaError, ZipError,
+    HyperbolicError, IsosurfaceError, KellyError, KnotError, LinalgError, LoraError,
+    MarketPricingError, MarkovError, MatchModelError, MathError, MonteCarloError,
+    NumberTheoryError, OptionPricingError, OuError, PharmacokineticsError, PoissonError, QmcError,
+    QueueingError, RadarError, SandpileError, ShaderEmitError, SolidStateError, StandardModelError,
+    StatMechError, Su11HyperbolicError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -62,6 +62,15 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         },
     );
     assert_readable_diagnostic("FitError", &FitError::UnsupportedDegree { degree: 5 });
+    assert_readable_diagnostic("LinalgError", &LinalgError::SingularMatrix);
+    assert_readable_diagnostic(
+        "LinalgError::WorkspaceTooSmall",
+        &LinalgError::WorkspaceTooSmall {
+            required: 16,
+            available: 8,
+        },
+    );
+    assert_readable_diagnostic("QmcError", &QmcError::InvalidBase { base: 1 });
     assert_readable_diagnostic(
         "ShaderEmitError",
         &ShaderEmitError::RecursionLimitExceeded(64),

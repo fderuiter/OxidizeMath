@@ -166,9 +166,11 @@ impl Error {
             Self::Fit(err) => Some(InnerErrorRef::Domain(err)),
             Self::Glsl(err) => Some(InnerErrorRef::Domain(err)),
             Self::Lex(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Linalg(err) => Some(InnerErrorRef::Domain(err)),
             Self::Math(err) => Some(InnerErrorRef::Domain(err)),
             Self::MathCommons(err) => Some(InnerErrorRef::Domain(err)),
             Self::Parse(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Qmc(err) => Some(InnerErrorRef::Domain(err)),
             Self::ShaderEmit(err) => Some(InnerErrorRef::Domain(err)),
             Self::Io(err) => Some(InnerErrorRef::Io(err)),
             #[cfg(any(
@@ -182,6 +184,18 @@ impl Error {
             ))]
             _ => self.domain_inner().map(InnerErrorRef::Domain),
         }
+    }
+
+    /// Emits this structured error onto [`diagnostics::global_bus()`].
+    #[verified_engine::verified]
+    pub fn emit_to_global_bus(&self) {
+        diagnostics::global_bus().emit_diagnostic(self);
+    }
+
+    /// Emits this structured error onto [`diagnostics::global_bus()`] with an explicit subsystem `source`.
+    #[verified_engine::verified]
+    pub fn emit_with_source(&self, source: &str) {
+        diagnostics::global_bus().emit_diagnostic_with_source(source, self);
     }
 }
 
@@ -213,6 +227,23 @@ impl Diagnostic for Error {
         match self.classify() {
             Some(InnerErrorRef::Domain(err)) => err.as_diagnostic().severity(),
             Some(InnerErrorRef::Io(_)) | None => Severity::Error,
+        }
+    }
+
+    #[verified_engine::verified]
+    fn error_type(&self) -> &'static str {
+        match self.classify() {
+            Some(InnerErrorRef::Domain(err)) => err.as_diagnostic().error_type(),
+            Some(InnerErrorRef::Io(_)) => "IoError",
+            None => "Error",
+        }
+    }
+
+    #[verified_engine::verified]
+    fn code(&self) -> Option<&'static str> {
+        match self.classify() {
+            Some(InnerErrorRef::Domain(err)) => err.as_diagnostic().code(),
+            Some(InnerErrorRef::Io(_)) | None => None,
         }
     }
 

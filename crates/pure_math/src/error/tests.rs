@@ -29,6 +29,27 @@ fn test_pure_math_leaf_wrappers_preserve_source_chain() {
 
     let pricing = MarketPricingError::from(AnalysisError::ConvergenceError(0.25));
     assert!(pricing.source().is_some());
+
+    let linalg = LinearAlgebraError::from(engine_linalg::LinalgError::SingularMatrix);
+    assert!(linalg.source().is_some());
+
+    let kelly_spd = KellyError::NotPositiveDefinite;
+    assert!(kelly_spd.source().is_some());
+    let kelly_linalg = KellyError::from(engine_linalg::LinalgError::DimensionMismatch);
+    assert!(kelly_linalg.source().is_some());
+
+    let mc_qmc = MonteCarloError::from(math_rng::QmcError::InvalidBase { base: 1 });
+    assert!(mc_qmc.source().is_some());
+
+    let fit_umbrella = PureMathError::from(math_commons::error::FitError::SingularMatrix);
+    assert!(fit_umbrella.source().is_some());
+    let shader_umbrella =
+        PureMathError::from(math_commons::error::ShaderEmitError::RecursionLimitExceeded(64));
+    assert!(shader_umbrella.source().is_some());
+    let linalg_umbrella = PureMathError::from(engine_linalg::LinalgError::SingularMatrix);
+    assert!(linalg_umbrella.source().is_some());
+    let qmc_umbrella = PureMathError::from(math_rng::QmcError::InvalidBase { base: 1 });
+    assert!(qmc_umbrella.source().is_some());
 }
 
 #[test]

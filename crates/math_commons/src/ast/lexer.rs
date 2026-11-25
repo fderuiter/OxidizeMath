@@ -2,7 +2,12 @@
 // [cite:math_commons]
 
 use super::limits::{MAX_EXPR_BYTES, MAX_EXPR_TOKENS};
-use std::fmt;
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
+use core::fmt;
 
 /// Spanned byte position range in the source string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,6 +134,11 @@ impl diagnostics::Diagnostic for LexError {
         diagnostics::Severity::Error
     }
 
+    fn error_type(&self) -> &'static str {
+        "LexError"
+    }
+
+    #[cfg(feature = "std")]
     fn metadata(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
         map.insert("error_type".to_string(), "LexError".to_string());

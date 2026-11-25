@@ -50,6 +50,8 @@ fn verify_core_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         ),
         check_leaf(error::ParseError::UnexpectedEof, bus),
         check_leaf(error::ShaderEmitError::RecursionLimitExceeded(64), bus),
+        check_leaf(error::LinalgError::SingularMatrix, bus),
+        check_leaf(error::QmcError::InvalidBase { base: 1 }, bus),
     ]
 }
 
@@ -109,7 +111,7 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     leaves
 }
 
-pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
+fn verify_applied_ai_bio_epi_climate_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     vec![
         check_leaf(error::AIError::OptimizationDivergence, bus),
         check_leaf(error::BatteryError::NegativeCycles(-5.0), bus),
@@ -143,6 +145,12 @@ pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
         check_leaf(error::ClimateError::ZeroLevels, bus),
         check_leaf(error::EpidemiologyError::SingularTransitionMatrix, bus),
         check_leaf(error::NetworkModelError::InvalidNodeCount, bus),
+    ]
+}
+
+pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
+    let mut leaves = verify_applied_ai_bio_epi_climate_leaves(bus);
+    leaves.extend([
         check_leaf(
             error::ChaosError::InvalidParameter("sigma".to_string()),
             bus,
@@ -157,12 +165,56 @@ pub fn verify_domain_leaves(bus: &DiagnosticBus) -> Vec<Error> {
             bus,
         ),
         check_leaf(
+            error::SandpileError::InvalidDimensions {
+                width: 0,
+                height: 4,
+                max_dim: 128,
+            },
+            bus,
+        ),
+        check_leaf(
             error::SolidStateError::ComputationError("err".to_string()),
             bus,
         ),
         check_leaf(error::StandardModelError::InvalidFlavors { nf: -1.0 }, bus),
         check_leaf(error::StatMechError::InvalidTemperature(-5.0), bus),
-    ]
+    ]);
+    leaves
+}
+
+fn verify_engine_and_upstream_wrapper_sources() {
+    let upstream_sources_present = [
+        error::FitError::from(error::LinalgError::SingularMatrix)
+            .source()
+            .is_some(),
+        error::LinearAlgebraError::from(error::LinalgError::SingularMatrix)
+            .source()
+            .is_some(),
+        error::KellyError::NotPositiveDefinite.source().is_some(),
+        error::MonteCarloError::from(error::QmcError::InvalidBase { base: 1 })
+            .source()
+            .is_some(),
+        error::AIError::from(error::OptimizationError::ConversionError)
+            .source()
+            .is_some(),
+        error::ClimateError::from(error::OptimizationError::ConversionError)
+            .source()
+            .is_some(),
+        error::AppliedError::from(error::MonteCarloError::ZeroReplicates)
+            .source()
+            .is_some(),
+        error::PhysicsError::from(error::TensorError::SingularMetric)
+            .source()
+            .is_some(),
+        error::BiologyError::from(error::FitError::SingularMatrix)
+            .source()
+            .is_some(),
+        error::EpidemiologyDomainError::from(error::FitError::SingularMatrix)
+            .source()
+            .is_some(),
+    ];
+    assert_eq!(upstream_sources_present.len(), 10);
+    assert!(upstream_sources_present.into_iter().all(|present| present));
 }
 
 pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
@@ -223,6 +275,7 @@ pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
     ];
     assert_eq!(wrapper_sources_present.len(), 18);
     assert!(wrapper_sources_present.into_iter().all(|present| present));
+    verify_engine_and_upstream_wrapper_sources();
 }
 
 pub fn verify_bus_capture_and_zero_alloc_facade_result() {
@@ -235,24 +288,28 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 64);
-    assert_eq!(*events.lock().unwrap(), 64);
+    assert_eq!(converted.len(), 67);
+    assert_eq!(*events.lock().unwrap(), 67);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 70);
+    assert_eq!(*events.lock().unwrap(), 73);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
         let y: f64 = Ok::<f64, error::BatteryError>(0.5)?;
-        Ok(x + y)
+        let z: f64 = Ok::<f64, error::LinalgError>(0.25)?;
+        let w: f64 = Ok::<f64, error::QmcError>(0.25)?;
+        Ok(x + y + z + w)
     });
-    assert_eq!(ok_run.unwrap(), 1.0);
+    assert_eq!(ok_run.unwrap(), 1.5);
 
     let (err_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
-        let _: f64 = Err(error::NuclearError::VolumeZero)?;
+        let _: f64 = Err(error::LinalgError::SingularMatrix)?;
         Ok(0.0)
     });
-    assert!(err_run.is_err());
+    let facade_linalg = err_run.expect_err("must convert LinalgError with zero heap allocation");
+    assert_eq!(facade_linalg.code(), Some("ENGINE-LINALG-004"));
+    facade_linalg.emit_with_source("FacadeUmbrellaTest");
 }
 
 fn verify_prelude_domain_leaves() {
@@ -275,6 +332,7 @@ fn verify_prelude_domain_leaves() {
         p::HighEnergyError,
         p::NuclearError,
         p::RadarError,
+        p::SandpileError,
         p::SolidStateError,
         p::StandardModelError,
         p::StatMechError,
@@ -337,8 +395,10 @@ pub fn verify_prelude_error_reexports() {
         p::FitError,
         p::GlslError,
         p::LexError,
+        p::LinalgError,
         p::MathError,
         p::ParseError,
+        p::QmcError,
         p::ShaderEmitError,
         p::AIError,
         p::ClimateError,

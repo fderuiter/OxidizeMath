@@ -1,5 +1,9 @@
 use super::{BotanicalError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError};
 use diagnostics::{Diagnostic, Severity};
+use math_commons::error::{
+    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, ParseError, QmcError,
+    ShaderEmitError,
+};
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -61,6 +65,69 @@ impl From<pure_math::error::StochasticError> for BiologyError {
     }
 }
 
+impl From<pure_math::error::LinearAlgebraError> for BiologyError {
+    #[verified_engine::verified]
+    fn from(err: pure_math::error::LinearAlgebraError) -> Self {
+        Self::PureMath(pure_math::error::PureMathError::from(err))
+    }
+}
+
+impl From<FitError> for BiologyError {
+    #[verified_engine::verified]
+    fn from(err: FitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<EvalError> for BiologyError {
+    #[verified_engine::verified]
+    fn from(err: EvalError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<GlslError> for BiologyError {
+    #[verified_engine::verified]
+    fn from(err: GlslError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<LexError> for BiologyError {
+    #[verified_engine::verified]
+    fn from(err: LexError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<ParseError> for BiologyError {
+    #[verified_engine::verified]
+    fn from(err: ParseError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<ShaderEmitError> for BiologyError {
+    #[verified_engine::verified]
+    fn from(err: ShaderEmitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<LinalgError> for BiologyError {
+    #[verified_engine::verified]
+    fn from(err: LinalgError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<QmcError> for BiologyError {
+    #[verified_engine::verified]
+    fn from(err: QmcError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
 impl From<String> for BiologyError {
     #[verified_engine::verified]
     fn from(reason: String) -> Self {
@@ -88,6 +155,16 @@ impl Diagnostic for BiologyError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
         self.as_diagnostic().severity()
+    }
+
+    #[verified_engine::verified]
+    fn error_type(&self) -> &'static str {
+        self.as_diagnostic().error_type()
+    }
+
+    #[verified_engine::verified]
+    fn code(&self) -> Option<&'static str> {
+        self.as_diagnostic().code()
     }
 
     #[verified_engine::verified]

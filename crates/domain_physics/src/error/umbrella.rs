@@ -5,10 +5,11 @@ use super::{
 use diagnostics::{Diagnostic, Severity};
 use domain_applied::error::{AppliedError, KalmanError};
 use math_commons::error::{
-    EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
+    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, ParseError,
+    QmcError, ShaderEmitError,
 };
 use pure_math::error::{
-    AnalysisError, EvolutionError, LinearAlgebraError, PureMathError, TransformError,
+    AnalysisError, EvolutionError, LinearAlgebraError, PureMathError, TensorError, TransformError,
 };
 use std::collections::HashMap;
 use thiserror::Error;
@@ -114,6 +115,13 @@ impl From<TransformError> for PhysicsError {
     }
 }
 
+impl From<TensorError> for PhysicsError {
+    #[verified_engine::verified]
+    fn from(err: TensorError) -> Self {
+        Self::PureMath(PureMathError::from(err))
+    }
+}
+
 impl From<EvalError> for PhysicsError {
     #[verified_engine::verified]
     fn from(err: EvalError) -> Self {
@@ -138,6 +146,34 @@ impl From<LexError> for PhysicsError {
 impl From<ParseError> for PhysicsError {
     #[verified_engine::verified]
     fn from(err: ParseError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<FitError> for PhysicsError {
+    #[verified_engine::verified]
+    fn from(err: FitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<ShaderEmitError> for PhysicsError {
+    #[verified_engine::verified]
+    fn from(err: ShaderEmitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<LinalgError> for PhysicsError {
+    #[verified_engine::verified]
+    fn from(err: LinalgError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<QmcError> for PhysicsError {
+    #[verified_engine::verified]
+    fn from(err: QmcError) -> Self {
         Self::MathCommons(MathCommonsError::from(err))
     }
 }
@@ -176,6 +212,16 @@ impl Diagnostic for PhysicsError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
         self.as_diagnostic().severity()
+    }
+
+    #[verified_engine::verified]
+    fn error_type(&self) -> &'static str {
+        self.as_diagnostic().error_type()
+    }
+
+    #[verified_engine::verified]
+    fn code(&self) -> Option<&'static str> {
+        self.as_diagnostic().code()
     }
 
     #[verified_engine::verified]

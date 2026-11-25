@@ -10,6 +10,7 @@ default = []
 alloc = []
 
 [dependencies]
+diagnostics = { path = "../../diagnostics", default-features = false }
 
 [dev-dependencies]
 verified_engine = { path = "../../verified_engine" }

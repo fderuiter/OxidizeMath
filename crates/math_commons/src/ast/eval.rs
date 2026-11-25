@@ -2,9 +2,13 @@
 // [cite:math_commons]
 
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
+use alloc::string::String;
+#[cfg(feature = "std")]
+use alloc::{format, string::ToString};
+use core::f64::consts::{E, PI, TAU};
 use num_complex::{Complex64, ComplexFloat};
+#[cfg(feature = "std")]
 use std::collections::HashMap;
-use std::f64::consts::{E, PI, TAU};
 
 /// Maximum allowed recursion and operand stack depth during expression evaluation.
 pub const MAX_EVAL_DEPTH: usize = 64;
@@ -49,6 +53,11 @@ impl diagnostics::Diagnostic for EvalError {
         diagnostics::Severity::Error
     }
 
+    fn error_type(&self) -> &'static str {
+        "EvalError"
+    }
+
+    #[cfg(feature = "std")]
     fn metadata(&self) -> HashMap<String, String> {
         let mut map = HashMap::new();
         map.insert("error_type".to_string(), "EvalError".to_string());
@@ -85,6 +94,7 @@ impl diagnostics::Diagnostic for EvalError {
 
 impl Expr {
     /// Evaluates the expression with the given variable map.
+    #[cfg(feature = "std")]
     pub fn eval(&self, vars: &HashMap<String, f64>) -> Result<f64, EvalError> {
         self.eval_checked(vars, 0)
     }
@@ -93,6 +103,7 @@ impl Expr {
     ///
     /// Optimized for high-throughput loops without per-step heap allocations.
     /// Returns `f64::NAN` on divergence or error.
+    #[cfg(feature = "std")]
     #[must_use]
     pub fn eval_2d(&self, t: f64, y: f64, params: &HashMap<String, f64>) -> f64 {
         self.eval_fast(0, &|name| {
@@ -110,6 +121,7 @@ impl Expr {
     ///
     /// Optimized for high-throughput vector-field and phase-portrait loops without per-step heap allocations.
     /// Returns `f64::NAN` on divergence or error.
+    #[cfg(feature = "std")]
     #[must_use]
     pub fn eval_planar(&self, t: f64, x: f64, y: f64, params: &HashMap<String, f64>) -> f64 {
         self.eval_fast(0, &|name| {
@@ -126,6 +138,7 @@ impl Expr {
     }
 
     /// Evaluates the expression over complex numbers `Complex64`.
+    #[cfg(feature = "std")]
     pub fn eval_complex(&self, vars: &HashMap<String, Complex64>) -> Result<Complex64, EvalError> {
         self.eval_checked(vars, 0)
     }
@@ -150,6 +163,7 @@ impl Expr {
         })
     }
 
+    #[cfg(feature = "std")]
     fn eval_checked<T: EvalScalar>(
         &self,
         vars: &HashMap<String, T>,
@@ -382,7 +396,7 @@ fn eval_real_projected_func<T: EvalScalar>(func: Func, args: &[T]) -> T {
         }
         Func::Min => args[0].real_part().min(args[1].real_part()),
         Func::Max => args[0].real_part().max(args[1].real_part()),
-        Func::Atan2 => args[0].real_part().atan2(args[1].real_part()),
+        Func::Atan2 => libm::atan2(args[0].real_part(), args[1].real_part()),
         Func::Clamp => {
             let x = args[0].real_part();
             let lo = args[1].real_part();
@@ -398,6 +412,7 @@ fn eval_real_projected_func<T: EvalScalar>(func: Func, args: &[T]) -> T {
     }
 }
 
+#[cfg(feature = "std")]
 fn lookup_var<V: Copy>(map: &HashMap<String, V>, name: &str) -> Option<V> {
     if let Some(&val) = map.get(name) {
         return Some(val);

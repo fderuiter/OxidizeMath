@@ -10,6 +10,7 @@ alloc = []
 serde = ["dep:serde", "rand_chacha/serde1"]
 
 [dependencies]
+diagnostics = { path = "../../diagnostics", default-features = false }
 rand_chacha = { workspace = true, default-features = false }
 rand_core = { workspace = true }
 serde = { version = "1.0.228", default-features = false, features = ["derive"], optional = true }

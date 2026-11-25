@@ -26,7 +26,7 @@ pub fn check_all_finite<T: Scalar>(slice: &[T]) -> Result<(), LinalgError> {
 }
 
 /// Typed `#![no_std]` error returned by [`crate`] factorizations and iterative solvers.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum LinalgError {
     /// Matrix or vector dimensions do not conform to the requested operation.
     DimensionMismatch,
@@ -73,6 +73,23 @@ impl fmt::Display for LinalgError {
 }
 
 impl core::error::Error for LinalgError {}
+
+impl diagnostics::Diagnostic for LinalgError {
+    fn error_type(&self) -> &'static str {
+        "LinalgError"
+    }
+
+    fn code(&self) -> Option<&'static str> {
+        match self {
+            Self::DimensionMismatch => Some("ENGINE-LINALG-001"),
+            Self::WorkspaceTooSmall { .. } => Some("ENGINE-LINALG-002"),
+            Self::InvalidInput => Some("ENGINE-LINALG-003"),
+            Self::SingularMatrix => Some("ENGINE-LINALG-004"),
+            Self::NotPositiveDefinite => Some("ENGINE-LINALG-005"),
+            Self::NonConvergence => Some("ENGINE-LINALG-006"),
+        }
+    }
+}
 
 /// Caller-owned mutable scratch slice used by `#![no_std]` solvers without heap allocation.
 pub struct SolverWorkspace<'a, T> {

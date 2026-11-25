@@ -103,7 +103,10 @@ pub fn compile_custom_fit_expr(raw_formula: &str) -> Result<Arc<dyn CustomFitEva
 
     let param_refs: Vec<&str> = params.iter().map(String::as_str).collect();
     let compiled = CompiledExpr::compile_with_vars_and_params(&expr, &[axis], &param_refs)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            crate::telemetry::emit_diagnostic("CustomFitBridge", &e);
+            e.to_string()
+        })?;
 
     Ok(Arc::new(CompiledCustomFitEvaluator {
         expr,

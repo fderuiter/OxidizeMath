@@ -6,8 +6,15 @@ use super::expr::{BinaryOp, Expr, Func, UnaryOp};
 pub use super::glsl_helpers::{GLSL_COMPLEX_HELPERS, GLSL_SCALAR_HELPERS};
 use super::glsl_helpers::{glsl_func_prefix, is_valid_glsl_ident};
 use super::limits::{MAX_AST_NODES, MAX_GLSL_OUTPUT_BYTES};
-use std::f64::consts::{E, PI, TAU};
-use std::fmt::Write;
+#[cfg(feature = "std")]
+use alloc::format;
+use alloc::{
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
+use core::f64::consts::{E, PI, TAU};
+use core::fmt::Write;
 
 /// Errors that can occur when transpiling an [`Expr`] tree to GLSL source code.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -49,6 +56,11 @@ impl diagnostics::Diagnostic for GlslError {
         diagnostics::Severity::Error
     }
 
+    fn error_type(&self) -> &'static str {
+        "GlslError"
+    }
+
+    #[cfg(feature = "std")]
     fn metadata(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::from([
             ("error_type".to_string(), "GlslError".to_string()),

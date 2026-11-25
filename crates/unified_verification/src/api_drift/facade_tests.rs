@@ -186,3 +186,65 @@ fn parses_signature_forms_on_first_filtered_suffix_and_deduplicates() {
     assert_eq!(parsed.len(), 2);
     assert_eq!(total_attempts, 2);
 }
+
+#[test]
+fn detects_unreexported_foundation_and_engine_errors_and_allows_sealed_supertraits() {
+    let dir = crate::utils::test_utils::create_temp_test_dir("facade_engine_error_gaps");
+    for mod_rel in DOMAIN_INNER_MODS {
+        let p = dir.join(mod_rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, "pub use crate::error;\n").unwrap();
+    }
+    write_minimal_facade_fixture(&dir, true, "");
+
+    let cases = [
+        (
+            "crates/00_foundation/math_rng/src",
+            "qmc",
+            "mod private { pub trait Sealed {} }\npub trait RngScalar: Copy + private::Sealed {}\npub enum UnexportedRngError { BadSeed }\n",
+            "UnexportedRngError",
+        ),
+        (
+            "crates/02_engines/engine_linalg/src",
+            "types",
+            "pub enum UnexportedLinalgError { Singular }\n",
+            "UnexportedLinalgError",
+        ),
+        (
+            "crates/engine_diffeq/src",
+            "types",
+            "pub enum UnexportedDiffeqError { Diverged }\n",
+            "UnexportedDiffeqError",
+        ),
+        (
+            "crates/engine_pde/src",
+            "types",
+            "pub enum UnexportedPdeError { CflViolated }\n",
+            "UnexportedPdeError",
+        ),
+    ];
+
+    for (src_dir, mod_name, content, _) in cases {
+        let base = dir.join(src_dir);
+        fs::create_dir_all(&base).unwrap();
+        fs::write(base.join("lib.rs"), format!("pub mod {mod_name};\n")).unwrap();
+        fs::write(base.join(format!("{mod_name}.rs")), content).unwrap();
+    }
+
+    let apis = extract_apis_in_dir(&dir);
+    let violations = check_facade_completeness_in_dir(&dir, &apis);
+    for (src_dir, mod_name, _, err_name) in cases {
+        let rel_path = format!("{src_dir}/{mod_name}.rs");
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains(err_name) && v.contains(&rel_path)),
+            "Expected Facade error gap for `{err_name}` in `{rel_path}`, got: {violations:?}"
+        );
+    }
+    assert!(
+        !violations.iter().any(|v| v.contains("Sealed")),
+        "Sealed supertrait should not be flagged as un-reexported: {violations:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}

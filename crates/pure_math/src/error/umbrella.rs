@@ -8,7 +8,8 @@ use super::{
 };
 use diagnostics::{Diagnostic, Severity};
 use math_commons::error::{
-    EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
+    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, ParseError,
+    QmcError, ShaderEmitError,
 };
 use std::collections::HashMap;
 use thiserror::Error;
@@ -143,6 +144,34 @@ impl From<ParseError> for PureMathError {
     }
 }
 
+impl From<FitError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: FitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<ShaderEmitError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: ShaderEmitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<LinalgError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: LinalgError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<QmcError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: QmcError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
 impl From<String> for PureMathError {
     #[verified_engine::verified]
     fn from(reason: String) -> Self {
@@ -194,6 +223,16 @@ impl Diagnostic for PureMathError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
         self.as_diagnostic().severity()
+    }
+
+    #[verified_engine::verified]
+    fn error_type(&self) -> &'static str {
+        self.as_diagnostic().error_type()
+    }
+
+    #[verified_engine::verified]
+    fn code(&self) -> Option<&'static str> {
+        self.as_diagnostic().code()
     }
 
     #[verified_engine::verified]

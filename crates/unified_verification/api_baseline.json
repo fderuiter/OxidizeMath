@@ -1167,7 +1167,13 @@
       "signature": "pub struct DiagnosticEvent"
     },
     {
-      "signature": "pub trait Diagnostic : std :: error :: Error + Send + Sync + 'static"
+      "signature": "pub trait Diagnostic : core :: error :: Error + Send + Sync + 'static"
+    },
+    {
+      "signature": "pub trait Diagnostic { fn code (& self) -> Option < & 'static str > }"
+    },
+    {
+      "signature": "pub trait Diagnostic { fn error_type (& self) -> & 'static str }"
     },
     {
       "signature": "pub trait Diagnostic { fn metadata (& self) -> HashMap < String , String > }"
@@ -12934,6 +12940,12 @@
       "signature": "pub use crate :: ast :: ShaderEmitError"
     },
     {
+      "signature": "pub use engine_linalg :: LinalgError"
+    },
+    {
+      "signature": "pub use math_rng :: QmcError"
+    },
+    {
       "signature": "pub use umbrella :: MathCommonsError"
     }
   ],
@@ -23582,6 +23594,9 @@
       "signature": "pub use math_commons :: error :: LexError"
     },
     {
+      "signature": "pub use math_commons :: error :: LinalgError"
+    },
+    {
       "signature": "pub use math_commons :: error :: MathCommonsError"
     },
     {
@@ -23592,6 +23607,9 @@
     },
     {
       "signature": "pub use math_commons :: error :: ParseError"
+    },
+    {
+      "signature": "pub use math_commons :: error :: QmcError"
     },
     {
       "signature": "pub use math_commons :: error :: ShaderEmitError"
