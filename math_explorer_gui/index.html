@@ -139,6 +139,11 @@
             margin: 0 0 16px 0;
         }
 
+        @keyframes loading-progress-sweep {
+            0% { background-position: 200% 0; }
+            100% { background-position: 0% 0; }
+        }
+
         .loading-progress {
             appearance: none;
             -webkit-appearance: none;
@@ -166,6 +171,63 @@
             background-color: #60a5fa;
             border-radius: 999px;
             transition: width 0.12s linear;
+        }
+
+        .loading-progress:indeterminate {
+            background-color: #1e293b;
+            background-image: linear-gradient(90deg, transparent 25%, rgba(59, 130, 246, 0.55) 40%, #60a5fa 50%, rgba(59, 130, 246, 0.55) 60%, transparent 75%);
+            background-size: 200% 100%;
+            background-repeat: repeat-x;
+            animation: loading-progress-sweep 1.6s linear infinite;
+        }
+
+        .loading-progress:indeterminate::-webkit-progress-bar {
+            background-color: #1e293b;
+            background-image: linear-gradient(90deg, transparent 25%, rgba(59, 130, 246, 0.55) 40%, #60a5fa 50%, rgba(59, 130, 246, 0.55) 60%, transparent 75%);
+            background-size: 200% 100%;
+            background-repeat: repeat-x;
+            border-radius: 999px;
+            animation: loading-progress-sweep 1.6s linear infinite;
+        }
+
+        .loading-progress:indeterminate::-moz-progress-bar {
+            width: 100%;
+            background-color: #1e293b;
+            background-image: linear-gradient(90deg, transparent 25%, rgba(59, 130, 246, 0.55) 40%, #60a5fa 50%, rgba(59, 130, 246, 0.55) 60%, transparent 75%);
+            background-size: 200% 100%;
+            background-repeat: repeat-x;
+            border-radius: 999px;
+            transition: none;
+            animation: loading-progress-sweep 1.6s linear infinite;
+        }
+
+        .loading-progress[data-phase="compile"] {
+            border-color: #3b82f6;
+            background-color: #2563eb;
+            background-image: linear-gradient(90deg, transparent 22%, rgba(125, 211, 252, 0.85) 50%, transparent 78%);
+            background-size: 200% 100%;
+            background-repeat: repeat-x;
+            animation: loading-progress-sweep 1.6s linear infinite;
+        }
+
+        .loading-progress[data-phase="compile"]::-webkit-progress-bar {
+            background-color: #2563eb;
+            background-image: linear-gradient(90deg, transparent 22%, rgba(125, 211, 252, 0.85) 50%, transparent 78%);
+            background-size: 200% 100%;
+            background-repeat: repeat-x;
+            border-radius: 999px;
+            animation: loading-progress-sweep 1.6s linear infinite;
+        }
+
+        .loading-progress[data-phase="compile"]::-moz-progress-bar {
+            width: 100%;
+            background-color: #2563eb;
+            background-image: linear-gradient(90deg, transparent 22%, rgba(125, 211, 252, 0.85) 50%, transparent 78%);
+            background-size: 200% 100%;
+            background-repeat: repeat-x;
+            border-radius: 999px;
+            transition: none;
+            animation: loading-progress-sweep 1.6s linear infinite;
         }
 
         .loading-bytes {
@@ -517,6 +579,37 @@
                 background-color: #2563eb;
             }
 
+            html:not([data-theme]) .loading-progress:indeterminate {
+                background-color: #e2e8f0;
+                background-image: linear-gradient(90deg, transparent 25%, rgba(37, 99, 235, 0.45) 40%, #2563eb 50%, rgba(37, 99, 235, 0.45) 60%, transparent 75%);
+            }
+
+            html:not([data-theme]) .loading-progress:indeterminate::-webkit-progress-bar {
+                background-color: #e2e8f0;
+                background-image: linear-gradient(90deg, transparent 25%, rgba(37, 99, 235, 0.45) 40%, #2563eb 50%, rgba(37, 99, 235, 0.45) 60%, transparent 75%);
+            }
+
+            html:not([data-theme]) .loading-progress:indeterminate::-moz-progress-bar {
+                background-color: #e2e8f0;
+                background-image: linear-gradient(90deg, transparent 25%, rgba(37, 99, 235, 0.45) 40%, #2563eb 50%, rgba(37, 99, 235, 0.45) 60%, transparent 75%);
+            }
+
+            html:not([data-theme]) .loading-progress[data-phase="compile"] {
+                border-color: #1d4ed8;
+                background-color: #2563eb;
+                background-image: linear-gradient(90deg, transparent 22%, rgba(147, 197, 253, 0.9) 50%, transparent 78%);
+            }
+
+            html:not([data-theme]) .loading-progress[data-phase="compile"]::-webkit-progress-bar {
+                background-color: #2563eb;
+                background-image: linear-gradient(90deg, transparent 22%, rgba(147, 197, 253, 0.9) 50%, transparent 78%);
+            }
+
+            html:not([data-theme]) .loading-progress[data-phase="compile"]::-moz-progress-bar {
+                background-color: #2563eb;
+                background-image: linear-gradient(90deg, transparent 22%, rgba(147, 197, 253, 0.9) 50%, transparent 78%);
+            }
+
             html:not([data-theme]) .loading-bytes {
                 color: #334155;
             }
@@ -649,6 +742,37 @@
                 background-color: #ffff00;
             }
 
+            html:not([data-theme]) .loading-progress:indeterminate {
+                background-color: #000000;
+                background-image: linear-gradient(90deg, transparent 28%, #ffff00 42%, #ffffff 50%, #ffff00 58%, transparent 72%);
+            }
+
+            html:not([data-theme]) .loading-progress:indeterminate::-webkit-progress-bar {
+                background-color: #000000;
+                background-image: linear-gradient(90deg, transparent 28%, #ffff00 42%, #ffffff 50%, #ffff00 58%, transparent 72%);
+            }
+
+            html:not([data-theme]) .loading-progress:indeterminate::-moz-progress-bar {
+                background-color: #000000;
+                background-image: linear-gradient(90deg, transparent 28%, #ffff00 42%, #ffffff 50%, #ffff00 58%, transparent 72%);
+            }
+
+            html:not([data-theme]) .loading-progress[data-phase="compile"] {
+                border-color: #ffffff;
+                background-color: #ffff00;
+                background-image: linear-gradient(90deg, transparent 28%, rgba(0, 0, 0, 0.65) 50%, transparent 72%);
+            }
+
+            html:not([data-theme]) .loading-progress[data-phase="compile"]::-webkit-progress-bar {
+                background-color: #ffff00;
+                background-image: linear-gradient(90deg, transparent 28%, rgba(0, 0, 0, 0.65) 50%, transparent 72%);
+            }
+
+            html:not([data-theme]) .loading-progress[data-phase="compile"]::-moz-progress-bar {
+                background-color: #ffff00;
+                background-image: linear-gradient(90deg, transparent 28%, rgba(0, 0, 0, 0.65) 50%, transparent 72%);
+            }
+
             html:not([data-theme]) .loading-bytes {
                 color: #ffffff;
             }
@@ -741,8 +865,53 @@
             }
 
             .loading-progress {
+                forced-color-adjust: none;
                 border-color: CanvasText;
+                background-color: Canvas;
                 accent-color: Highlight;
+            }
+
+            .loading-progress::-webkit-progress-bar {
+                background-color: Canvas;
+            }
+
+            .loading-progress::-webkit-progress-value {
+                background-color: Highlight;
+            }
+
+            .loading-progress::-moz-progress-bar {
+                background-color: Highlight;
+            }
+
+            .loading-progress:indeterminate {
+                background-color: Canvas;
+                background-image: linear-gradient(90deg, transparent 28%, Highlight 42%, Highlight 58%, transparent 72%);
+            }
+
+            .loading-progress:indeterminate::-webkit-progress-bar {
+                background-color: Canvas;
+                background-image: linear-gradient(90deg, transparent 28%, Highlight 42%, Highlight 58%, transparent 72%);
+            }
+
+            .loading-progress:indeterminate::-moz-progress-bar {
+                background-color: Canvas;
+                background-image: linear-gradient(90deg, transparent 28%, Highlight 42%, Highlight 58%, transparent 72%);
+            }
+
+            .loading-progress[data-phase="compile"] {
+                border-color: CanvasText;
+                background-color: Highlight;
+                background-image: linear-gradient(90deg, transparent 28%, HighlightText 46%, HighlightText 54%, transparent 72%);
+            }
+
+            .loading-progress[data-phase="compile"]::-webkit-progress-bar {
+                background-color: Highlight;
+                background-image: linear-gradient(90deg, transparent 28%, HighlightText 46%, HighlightText 54%, transparent 72%);
+            }
+
+            .loading-progress[data-phase="compile"]::-moz-progress-bar {
+                background-color: Highlight;
+                background-image: linear-gradient(90deg, transparent 28%, HighlightText 46%, HighlightText 54%, transparent 72%);
             }
 
             #webgl_recovery_overlay {
@@ -769,6 +938,55 @@
         html[data-theme="dark"] .spinner {
             border-color: rgba(255, 255, 255, 0.12);
             border-top-color: #3b82f6;
+        }
+
+        html[data-theme="dark"] .loading-progress {
+            border: 1px solid #64748b;
+            background-color: #1e293b;
+            accent-color: #60a5fa;
+        }
+
+        html[data-theme="dark"] .loading-progress::-webkit-progress-bar {
+            background-color: #1e293b;
+        }
+
+        html[data-theme="dark"] .loading-progress::-webkit-progress-value {
+            background-color: #60a5fa;
+        }
+
+        html[data-theme="dark"] .loading-progress::-moz-progress-bar {
+            background-color: #60a5fa;
+        }
+
+        html[data-theme="dark"] .loading-progress:indeterminate {
+            background-color: #1e293b;
+            background-image: linear-gradient(90deg, transparent 25%, rgba(59, 130, 246, 0.55) 40%, #60a5fa 50%, rgba(59, 130, 246, 0.55) 60%, transparent 75%);
+        }
+
+        html[data-theme="dark"] .loading-progress:indeterminate::-webkit-progress-bar {
+            background-color: #1e293b;
+            background-image: linear-gradient(90deg, transparent 25%, rgba(59, 130, 246, 0.55) 40%, #60a5fa 50%, rgba(59, 130, 246, 0.55) 60%, transparent 75%);
+        }
+
+        html[data-theme="dark"] .loading-progress:indeterminate::-moz-progress-bar {
+            background-color: #1e293b;
+            background-image: linear-gradient(90deg, transparent 25%, rgba(59, 130, 246, 0.55) 40%, #60a5fa 50%, rgba(59, 130, 246, 0.55) 60%, transparent 75%);
+        }
+
+        html[data-theme="dark"] .loading-progress[data-phase="compile"] {
+            border-color: #3b82f6;
+            background-color: #2563eb;
+            background-image: linear-gradient(90deg, transparent 22%, rgba(125, 211, 252, 0.85) 50%, transparent 78%);
+        }
+
+        html[data-theme="dark"] .loading-progress[data-phase="compile"]::-webkit-progress-bar {
+            background-color: #2563eb;
+            background-image: linear-gradient(90deg, transparent 22%, rgba(125, 211, 252, 0.85) 50%, transparent 78%);
+        }
+
+        html[data-theme="dark"] .loading-progress[data-phase="compile"]::-moz-progress-bar {
+            background-color: #2563eb;
+            background-image: linear-gradient(90deg, transparent 22%, rgba(125, 211, 252, 0.85) 50%, transparent 78%);
         }
 
         html[data-theme="dark"] #error_container {
@@ -831,6 +1049,37 @@
 
         html[data-theme="light"] .loading-progress::-moz-progress-bar {
             background-color: #2563eb;
+        }
+
+        html[data-theme="light"] .loading-progress:indeterminate {
+            background-color: #e2e8f0;
+            background-image: linear-gradient(90deg, transparent 25%, rgba(37, 99, 235, 0.45) 40%, #2563eb 50%, rgba(37, 99, 235, 0.45) 60%, transparent 75%);
+        }
+
+        html[data-theme="light"] .loading-progress:indeterminate::-webkit-progress-bar {
+            background-color: #e2e8f0;
+            background-image: linear-gradient(90deg, transparent 25%, rgba(37, 99, 235, 0.45) 40%, #2563eb 50%, rgba(37, 99, 235, 0.45) 60%, transparent 75%);
+        }
+
+        html[data-theme="light"] .loading-progress:indeterminate::-moz-progress-bar {
+            background-color: #e2e8f0;
+            background-image: linear-gradient(90deg, transparent 25%, rgba(37, 99, 235, 0.45) 40%, #2563eb 50%, rgba(37, 99, 235, 0.45) 60%, transparent 75%);
+        }
+
+        html[data-theme="light"] .loading-progress[data-phase="compile"] {
+            border-color: #1d4ed8;
+            background-color: #2563eb;
+            background-image: linear-gradient(90deg, transparent 22%, rgba(147, 197, 253, 0.9) 50%, transparent 78%);
+        }
+
+        html[data-theme="light"] .loading-progress[data-phase="compile"]::-webkit-progress-bar {
+            background-color: #2563eb;
+            background-image: linear-gradient(90deg, transparent 22%, rgba(147, 197, 253, 0.9) 50%, transparent 78%);
+        }
+
+        html[data-theme="light"] .loading-progress[data-phase="compile"]::-moz-progress-bar {
+            background-color: #2563eb;
+            background-image: linear-gradient(90deg, transparent 22%, rgba(147, 197, 253, 0.9) 50%, transparent 78%);
         }
 
         html[data-theme="light"] .loading-bytes {
@@ -966,6 +1215,37 @@
             background-color: #ffff00;
         }
 
+        html[data-theme="high-contrast"] .loading-progress:indeterminate {
+            background-color: #000000;
+            background-image: linear-gradient(90deg, transparent 28%, #ffff00 42%, #ffffff 50%, #ffff00 58%, transparent 72%);
+        }
+
+        html[data-theme="high-contrast"] .loading-progress:indeterminate::-webkit-progress-bar {
+            background-color: #000000;
+            background-image: linear-gradient(90deg, transparent 28%, #ffff00 42%, #ffffff 50%, #ffff00 58%, transparent 72%);
+        }
+
+        html[data-theme="high-contrast"] .loading-progress:indeterminate::-moz-progress-bar {
+            background-color: #000000;
+            background-image: linear-gradient(90deg, transparent 28%, #ffff00 42%, #ffffff 50%, #ffff00 58%, transparent 72%);
+        }
+
+        html[data-theme="high-contrast"] .loading-progress[data-phase="compile"] {
+            border-color: #ffffff;
+            background-color: #ffff00;
+            background-image: linear-gradient(90deg, transparent 28%, rgba(0, 0, 0, 0.65) 50%, transparent 72%);
+        }
+
+        html[data-theme="high-contrast"] .loading-progress[data-phase="compile"]::-webkit-progress-bar {
+            background-color: #ffff00;
+            background-image: linear-gradient(90deg, transparent 28%, rgba(0, 0, 0, 0.65) 50%, transparent 72%);
+        }
+
+        html[data-theme="high-contrast"] .loading-progress[data-phase="compile"]::-moz-progress-bar {
+            background-color: #ffff00;
+            background-image: linear-gradient(90deg, transparent 28%, rgba(0, 0, 0, 0.65) 50%, transparent 72%);
+        }
+
         html[data-theme="high-contrast"] .loading-bytes {
             color: #ffffff;
         }
@@ -1063,6 +1343,42 @@
 
             .loading-progress::-moz-progress-bar {
                 transition: none !important;
+            }
+
+            .loading-progress:indeterminate {
+                animation: none !important;
+                transition: none !important;
+                background-position: 50% 0 !important;
+            }
+
+            .loading-progress:indeterminate::-webkit-progress-bar {
+                animation: none !important;
+                transition: none !important;
+                background-position: 50% 0 !important;
+            }
+
+            .loading-progress:indeterminate::-moz-progress-bar {
+                animation: none !important;
+                transition: none !important;
+                background-position: 50% 0 !important;
+            }
+
+            .loading-progress[data-phase="compile"] {
+                animation: none !important;
+                transition: none !important;
+                background-image: none !important;
+            }
+
+            .loading-progress[data-phase="compile"]::-webkit-progress-bar {
+                animation: none !important;
+                transition: none !important;
+                background-image: none !important;
+            }
+
+            .loading-progress[data-phase="compile"]::-moz-progress-bar {
+                animation: none !important;
+                transition: none !important;
+                background-image: none !important;
             }
         }
 
