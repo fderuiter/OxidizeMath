@@ -139,6 +139,152 @@ pub fn parse_latex_to_layout_job(
     parse_latex_with_font(text, font_id, default_color)
 }
 
+/// Parses an axis, legend, or plot annotation label into a single-line `LayoutJob`.
+///
+/// Labels containing `$` delegate to [`parse_prose_with_font`] (keeping unmatched currency `$`
+/// labels upright), labels containing `\` delegate to single-line LaTeX layout, and plain labels
+/// render upright while formatting full alphanumeric `_` and `^` runs as scripts.
+pub fn parse_plot_label_to_layout_job(
+    text: &str,
+    style: TextStyle,
+    ui: &Ui,
+    default_color: Color32,
+) -> LayoutJob {
+    let font_id = style.resolve(ui.style());
+    parse_plot_label_with_font(text, font_id, default_color)
+}
+
+/// Parses a plot label using an explicit `FontId` and base `Color32`.
+pub fn parse_plot_label_with_font(text: &str, font_id: FontId, color: Color32) -> LayoutJob {
+    if text.is_empty() {
+        return LayoutJob::default();
+    }
+    if text.contains('$') {
+        return parse_prose_with_font(text, font_id, color);
+    }
+    if text.contains('\\') {
+        return parse_latex_single_line_with_font(text, font_id, color);
+    }
+    if text.len() > MAX_LATEX_INPUT_BYTES {
+        let mut job = LayoutJob::default();
+        append_upright_fallback(&mut job, text, font_id, color, MAX_FALLBACK_CHARS);
+        return job;
+    }
+    layout_plain_plot_label(text, font_id, color)
+}
+
+fn parse_latex_single_line_with_font(text: &str, font_id: FontId, color: Color32) -> LayoutJob {
+    let mut job = LayoutJob::default();
+    match parse_latex_to_box(text, &font_id, color) {
+        Ok(math_box) => {
+            let mut remaining_chars = MAX_LAYOUT_CHARS;
+            math_box_to_layout_job_mode(&math_box, &mut job, 0, &mut remaining_chars, true);
+        }
+        Err(_) => append_upright_fallback(&mut job, text, font_id, color, MAX_FALLBACK_CHARS),
+    }
+    job
+}
+
+fn read_plain_label_script(rest: &str) -> Option<(&str, usize)> {
+    let first = rest.chars().next()?;
+    if first == '{' {
+        let mut depth = 0_usize;
+        for (idx, ch) in rest.char_indices() {
+            if ch == '\n' {
+                return None;
+            }
+            if ch == '{' {
+                depth += 1;
+                if depth > MAX_LATEX_DEPTH {
+                    return None;
+                }
+            } else if ch == '}' {
+                depth -= 1;
+                if depth == 0 {
+                    let inner = &rest[1..idx];
+                    return (!inner.is_empty()).then_some((inner, idx + 1));
+                }
+            }
+        }
+        return None;
+    }
+    let sign_len = if matches!(first, '+' | '-') {
+        first.len_utf8()
+    } else {
+        0
+    };
+    let alnum_len: usize = rest[sign_len..]
+        .chars()
+        .take_while(|c| c.is_alphanumeric())
+        .map(char::len_utf8)
+        .sum();
+    if alnum_len > 0 {
+        let end = sign_len + alnum_len;
+        return Some((&rest[..end], end));
+    }
+    if matches!(first, '+' | '-' | '*' | '′') {
+        let len = first.len_utf8();
+        return Some((&rest[..len], len));
+    }
+    None
+}
+
+fn layout_plain_plot_label(text: &str, font_id: FontId, color: Color32) -> LayoutJob {
+    let mut job = LayoutJob::default();
+    let script_font_id = FontId::new((font_id.size * 0.75).max(8.0), font_id.family.clone());
+    let base_fmt = TextFormat {
+        font_id,
+        color,
+        valign: Align::Center,
+        ..Default::default()
+    };
+    let mut remaining_chars = MAX_LAYOUT_CHARS;
+    let mut remaining_nodes = MAX_MATH_BOX_NODES;
+    let mut plain_start = 0_usize;
+    let mut cursor = 0_usize;
+    let mut has_base = false;
+
+    while cursor < text.len() && remaining_chars > 0 {
+        let ch = text[cursor..].chars().next().unwrap_or('\0');
+        let ch_len = ch.len_utf8();
+        if (ch == '_' || ch == '^')
+            && has_base
+            && remaining_nodes > 0
+            && let Some((script, consumed)) = read_plain_label_script(&text[cursor + ch_len..])
+        {
+            append_bounded(
+                &mut job,
+                &text[plain_start..cursor],
+                0.0,
+                base_fmt.clone(),
+                &mut remaining_chars,
+            );
+            let script_fmt = TextFormat {
+                font_id: script_font_id.clone(),
+                color,
+                valign: if ch == '_' { Align::Max } else { Align::Min },
+                ..Default::default()
+            };
+            append_bounded(&mut job, script, 0.0, script_fmt, &mut remaining_chars);
+            remaining_nodes -= 1;
+            cursor += ch_len + consumed;
+            plain_start = cursor;
+            has_base = true;
+            continue;
+        }
+        has_base = !ch.is_whitespace() && !matches!(ch, '(' | '[' | '{' | '=' | '/' | ',' | ':');
+        cursor += ch_len;
+    }
+    append_bounded(
+        &mut job,
+        &text[plain_start..],
+        0.0,
+        base_fmt,
+        &mut remaining_chars,
+    );
+    job
+}
+
 /// Parses prose containing optional `$...$` or `$$...$$` inline LaTeX math into a `LayoutJob`.
 ///
 /// Text outside `$...$` delimiters renders as upright prose without math italicization or
@@ -589,14 +735,14 @@ fn process_command_box(
             false,
             remaining_nodes,
         ),
-        _ => push_text_box(
-            boxes,
-            cmd.to_string(),
-            base_font_id,
-            color,
-            false,
-            remaining_nodes,
-        ),
+        _ => {
+            let fallback = if !cmd.is_empty() && cmd.chars().all(|c| c.is_ascii_alphabetic()) {
+                format!("\\{cmd}")
+            } else {
+                cmd.to_string()
+            };
+            push_text_box(boxes, fallback, base_font_id, color, false, remaining_nodes)
+        }
     }
 }
 
@@ -965,10 +1111,13 @@ fn map_escaped_or_set_symbol(cmd: &str) -> Option<&'static str> {
         "in" => Some("∈"),
         "notin" => Some("∉"),
         "subset" => Some("⊂"),
+        "subseteq" => Some("⊆"),
+        "supseteq" => Some("⊇"),
         "cup" => Some("∪"),
         "cap" => Some("∩"),
         "forall" => Some("∀"),
         "exists" => Some("∃"),
+        "neg" => Some("¬"),
         "odot" => Some("⊙"),
         "oplus" => Some("⊕"),
         "otimes" => Some("⊗"),
@@ -1024,10 +1173,12 @@ fn map_latex_symbol(cmd: &str) -> Option<&'static str> {
         "equiv" => Some("≡"),
         "sim" => Some("~"),
         "propto" => Some("∝"),
-        "perp" => Some("⊥"),
+        "perp" | "bot" => Some("⊥"),
+        "top" => Some("⊤"),
         "to" | "rightarrow" => Some("→"),
+        "mapsto" => Some("↦"),
         "leftarrow" => Some("←"),
-        "Rightarrow" => Some("⇒"),
+        "Rightarrow" | "implies" => Some("⇒"),
         "Leftarrow" => Some("⇐"),
         "leftrightarrow" => Some("↔"),
         "vdots" => Some("⋮"),
@@ -1035,6 +1186,7 @@ fn map_latex_symbol(cmd: &str) -> Option<&'static str> {
         "lvert" | "rvert" | "mid" => Some("|"),
         "circ" => Some("∘"),
         "vee" => Some("∨"),
+        "wedge" => Some("∧"),
         _ => None,
     }
 }

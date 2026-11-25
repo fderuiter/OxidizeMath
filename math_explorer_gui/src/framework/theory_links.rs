@@ -56,40 +56,50 @@ pub(crate) fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         }
     }
     let explicit: &[&str] = match tool_id.trim() {
-        "AttentionMapsTool" => &["attention_is_all_you_need_rust"],
-        "CalibrationWorkbenchTool" => &["clinical_trials_statistics", "self_calibration_paper"],
+        "AttentionMapsTool" | "TokenizationTool" => &["attention_is_all_you_need_rust"],
+        "CalibrationWorkbenchTool" => &[
+            "calibration",
+            "supervised_calibration",
+            "self_calibration_paper",
+        ],
+        "ClosedLoopControlTool" => &["grpo"],
         "CeraTool" => &["cera_framework"],
-        "Co2ProjectionsTool" => &["isosurface_extraction"],
         "TurbulenceTool" => &["generative_turbulence"],
         "PartitionsWidget" => &["partitions_implementation"],
-        "UalbfWidget" => &["ualbf_quasiperfect"],
+        "UalbfWidget" => &["ualbf_quasiperfect", "quasiperfect_alcf"],
         "EllipticCurvePlayground" | "WeierstrassPlaygroundTool" | "ModularInvariantsTool" => {
             &["modular_polynomials_review", "hurwitz_kronecker"]
         }
-        "HyperbolicDiskTool" | "HyperbolicBilliardsTool" => &["modular_polynomials_review"],
         "RadarGatingTool" => &["mmwave_radiotherapy_setup"],
-        "OpticsWaveTool" => &["mmwave_radiotherapy_setup", "quantum_mechanics"],
-        "CausticsRayBenchTool" | "FraunhoferDiffractionTool" => {
+        "PharmacokineticRegimenTool" => &["pharmacokinetics"],
+        "CausticsRayBenchTool" | "FraunhoferDiffractionTool" | "OpticsWaveTool" => {
             &["geometric_optics_and_caustics", "optics"]
         }
-        "TokenizationTool"
-        | "FactorizationTool"
-        | "FractranMachineTool"
-        | "AlgorithmicFractranTool"
-        | "AlgorithmicComplexityTool" => &["algorithmic_information_rust"],
+        "FractranMachineTool" | "AlgorithmicFractranTool" | "AlgorithmicComplexityTool" => {
+            &["algorithmic_information_rust"]
+        }
         "WinRatioWorkbenchTool" | "WinRatioStressTesterTool" | "WinRatioTool" => &["win_ratio"],
         "AlgorithmVisualizerTool" | "GraphEditorTool" => &["dijkstra"],
+        "NetworkMetricsTool" => &["graph_parameters_rust"],
         "VolumetricFieldStudioTool" => &["isosurface_extraction", "gaussian_splatting"],
         "GeodesicPlaygroundTool"
         | "ChristoffelInspectorTool"
         | "BlackHoleGeodesicWorkbench"
         | "RelativisticJetBeamingLab" => &["general_relativity_geodesics", "general_relativity"],
-        "MarkovSequenceWorkbenchTool" => &["clinical_trials_statistics"],
+        "GalacticOrbitSimulator" | "RotationCurveExplorer" => {
+            &["dwarf_galaxy_empirical_dependencies", "engine_diffeq"]
+        }
+        "AttractorPlotter" => &["chaos_theory", "chaos"],
+        "PopulationStructureTool" => &["cannibalism"],
+        "ClebschGordanTool" => &["tensors"],
         "CorticalMorphometryTool" | "RiemannianPdeStudio" => &["freesurfer"],
         "KnotBraidStudio" => &["knot_braid_topology", "knot_theory"],
-        "PhyllotaxisLSystemTool" | "BiochemicalDynamicsTool" | "EvolutionaryBiologyTool" => {
-            &["computational_biology", "biology"]
-        }
+        "PhyllotaxisLSystemTool"
+        | "BiochemicalDynamicsTool"
+        | "EvolutionaryBiologyTool"
+        | "HodgkinHuxleyTool"
+        | "SpikeAnalysisTool" => &["computational_biology", "biology"],
+        "SurfaceMorphogenesisTool" => &["computational_biology", "pure_math"],
         _ => &[],
     };
     tokens.extend(explicit.iter().map(|s| (*s).to_string()));
@@ -103,40 +113,17 @@ pub(crate) fn domain_module_tokens(domain: &str) -> Vec<String> {
         tokens.push(clean.clone());
     }
     let aliases: &[&str] = match clean.as_str() {
-        "algorithmic_information" => &["algorithmic_information_rust", "pure_math", "algorithms"],
-        "chaos" => &["chaos_theory"],
-        "elliptic_curves" => &[
-            "modular_polynomials_review",
-            "hurwitz_kronecker",
-            "pure_math",
-        ],
-        "game_theory" => &["graph_parameters_rust"],
+        "algorithmic_information" => &["algorithmic_information_rust", "algorithms"],
+        "elliptic_curves" => &["modular_polynomials_review", "hurwitz_kronecker"],
         "graph_theory" => &["dijkstra", "graph_parameters_rust"],
-        "hyperbolic_geometry" => &["modular_polynomials_review", "pure_math"],
         "analysis" | "geometry_topology" | "number_theory" => &["pure_math", "math_commons"],
-        "financial_math" => &["clinical_trials_statistics"],
-        "stochastic_processes" => &[
-            "clinical_trials_statistics",
-            "advanced_linear_algebra",
-            "pure_math",
-        ],
+        "financial_math" | "stochastic_processes" | "hyperbolic_geometry" => &["engine_diffeq"],
         "biology" | "biochemical" => &["biology", "computational_biology"],
-        "neuroscience" => &["biology", "computational_biology", "graph_parameters_rust"],
         "optics" => &["geometric_optics_and_caustics", "optics"],
-        "optics_waves" => &["domain_physics", "mmwave_radiotherapy_setup"],
-        "solid_state" => &["stat_mech", "pure_math"],
-        "ai" => &["graph_parameters_rust"],
-        "paradox_lab" => &["paradox_lab", "game_theory", "graph_parameters_rust"],
-        "astrophysics" => &[
-            "dwarf_galaxy_empirical_dependencies",
-            "general_relativity_geodesics",
-            "high_energy",
-        ],
-        "relativity" => &[
-            "general_relativity_geodesics",
-            "general_relativity",
-            "tensors",
-        ],
+        "optics_waves" => &["domain_physics"],
+        "solid_state" => &["stat_mech"],
+        "paradox_lab" => &["paradox_lab", "game_theory"],
+        "relativity" => &["general_relativity_geodesics", "general_relativity"],
         _ => &[],
     };
     tokens.extend(aliases.iter().map(|s| (*s).to_string()));

@@ -101,10 +101,10 @@ pub(super) fn accent_kind_from_cmd(cmd: &str) -> Option<MathAccent> {
     match cmd {
         "dot" => Some(MathAccent::Dot),
         "ddot" => Some(MathAccent::Ddot),
-        "hat" => Some(MathAccent::Hat),
+        "hat" | "widehat" => Some(MathAccent::Hat),
         "bar" | "overline" => Some(MathAccent::Bar),
         "vec" => Some(MathAccent::VecArrow),
-        "tilde" => Some(MathAccent::Tilde),
+        "tilde" | "widetilde" => Some(MathAccent::Tilde),
         _ => None,
     }
 }

@@ -239,7 +239,7 @@ impl<'a> AxisWidget<'a> {
         }
 
         let label_text = self.hints.label.text();
-        let job = crate::latex::parse_latex_to_layout_job(
+        let job = crate::latex::parse_plot_label_to_layout_job(
             label_text,
             TextStyle::Body,
             ui,
