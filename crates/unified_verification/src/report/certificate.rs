@@ -86,29 +86,134 @@ fn check_float_eq(field: &str, actual: f64, cert_val: f64, eps: f64, diffs: &mut
     }
 }
 
-pub fn verify_certificate_against_report(
+const REQUIRED_CERT_KEYS: [&str; 9] = [
+    "native_execution_coverage_pct",
+    "passed",
+    "test_assertion_density",
+    "total_assertion_density",
+    "total_production_assertion_density",
+    "unverified_modules_density",
+    "verified_modules_density",
+    "verified_production_assertion_density",
+    "wasm_path_coverage_pct",
+];
+
+fn parse_certificate_strict_9_keys(
+    raw: &str,
+    cert_path: &Path,
+) -> Result<IntegrityReport, Vec<String>> {
+    let val: serde_json::Value = serde_json::from_str(raw)
+        .map_err(|err| vec![format!("Invalid JSON in {}: {err}", cert_path.display())])?;
+    let Some(obj) = val.as_object() else {
+        return Err(vec![format!(
+            "Invalid schema in {}: expected top-level JSON object",
+            cert_path.display()
+        )]);
+    };
+    let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    if keys != REQUIRED_CERT_KEYS {
+        return Err(vec![format!(
+            "Invalid 9-key schema in {}: expected keys {:?}, found {:?}",
+            cert_path.display(),
+            REQUIRED_CERT_KEYS,
+            keys
+        )]);
+    }
+    serde_json::from_str::<IntegrityReport>(raw)
+        .map_err(|err| vec![format!("Invalid JSON in {}: {err}", cert_path.display())])
+}
+
+fn validate_certificate_bounds(cert: &IntegrityReport, cert_path: &Path, diffs: &mut Vec<String>) {
+    if !cert.passed {
+        diffs.push(format!("{} records passed=false", cert_path.display()));
+    }
+    for (field, val) in [
+        (
+            "native_execution_coverage_pct",
+            cert.native_execution_coverage_pct,
+        ),
+        ("wasm_path_coverage_pct", cert.wasm_path_coverage_pct),
+    ] {
+        if !val.is_finite() || !(0.0..=100.0).contains(&val) {
+            diffs.push(format!(
+                "Certificate {field} must be finite within 0.0..=100.0 (got {val})"
+            ));
+        }
+    }
+    for (field, val) in [
+        ("total_assertion_density", cert.total_assertion_density),
+        ("verified_modules_density", cert.verified_modules_density),
+        (
+            "unverified_modules_density",
+            cert.unverified_modules_density,
+        ),
+        (
+            "total_production_assertion_density",
+            cert.total_production_assertion_density,
+        ),
+        (
+            "verified_production_assertion_density",
+            cert.verified_production_assertion_density,
+        ),
+        ("test_assertion_density", cert.test_assertion_density),
+    ] {
+        if !val.is_finite() || val < 0.0 {
+            diffs.push(format!(
+                "Certificate {field} must be finite and >= 0.0 (got {val})"
+            ));
+        }
+    }
+}
+
+fn load_and_validate_certificate(
     expected: &IntegrityReport,
-    measured_native_cov: Option<f64>,
-    coverage_tolerance_pct: f64,
     cert_path: &Path,
     readme_path: &Path,
-) -> Result<(), Vec<String>> {
+) -> Result<IntegrityReport, Vec<String>> {
     let raw = fs::read_to_string(cert_path).map_err(|err| {
         vec![format!(
             "Missing or unreadable {}: {err} (run `cargo run -p unified_verification -- verify-suite --write` locally to refresh)",
             cert_path.display()
         )]
     })?;
-    let cert: IntegrityReport = serde_json::from_str(&raw)
-        .map_err(|err| vec![format!("Invalid JSON in {}: {err}", cert_path.display())])?;
+    let cert = parse_certificate_strict_9_keys(&raw, cert_path)?;
 
     let mut diffs = Vec::new();
-    if !cert.passed {
-        diffs.push(format!("{} records passed=false", cert_path.display()));
-    }
+    validate_certificate_bounds(&cert, cert_path, &mut diffs);
     if !expected.passed {
         diffs.push("Current workspace failed integrity gates".to_string());
     }
+    if cert.native_execution_coverage_pct.is_finite()
+        && (0.0..=100.0).contains(&cert.native_execution_coverage_pct)
+    {
+        check_readme_badge(&cert, readme_path, &mut diffs);
+    }
+
+    if diffs.is_empty() {
+        Ok(cert)
+    } else {
+        Err(diffs)
+    }
+}
+
+pub fn verify_certificate_against_report(
+    expected: &IntegrityReport,
+    cert_path: &Path,
+    readme_path: &Path,
+) -> Result<(), Vec<String>> {
+    load_and_validate_certificate(expected, cert_path, readme_path).map(|_| ())
+}
+
+pub fn verify_certificate_strict_parity(
+    expected: &IntegrityReport,
+    measured_native_cov: Option<f64>,
+    coverage_tolerance_pct: f64,
+    cert_path: &Path,
+    readme_path: &Path,
+) -> Result<(), Vec<String>> {
+    let cert = load_and_validate_certificate(expected, cert_path, readme_path)?;
+    let mut diffs = Vec::new();
     if cert.native_execution_coverage_pct < 50.0 {
         diffs.push(format!(
             "Certificate native_execution_coverage_pct {:.2}% is below 50.0%",
@@ -124,10 +229,7 @@ pub fn verify_certificate_against_report(
             &mut diffs,
         );
     }
-
     check_deterministic_fields(expected, &cert, &mut diffs);
-    check_readme_badge(&cert, readme_path, &mut diffs);
-
     if diffs.is_empty() { Ok(()) } else { Err(diffs) }
 }
 
@@ -182,41 +284,79 @@ fn check_readme_badge(cert: &IntegrityReport, readme_path: &Path, diffs: &mut Ve
     let Ok(readme) = fs::read_to_string(readme_path) else {
         return;
     };
-    if !readme.contains("![Coverage](") {
+    let marker = "![Coverage](";
+    if !readme.contains(marker) {
         return;
     }
     let expected_badge = format_coverage_badge(cert.native_execution_coverage_pct);
-    if !readme.contains(&expected_badge) {
-        diffs.push(format!(
-            "{} coverage badge does not match {} (expected `{expected_badge}`)",
-            readme_path.display(),
-            CERT_FILE_NAME
-        ));
+    let mut rest = readme.as_str();
+    while let Some(start) = rest.find(marker) {
+        let from_marker = &rest[start..];
+        let line_slice = from_marker.lines().next().unwrap_or(from_marker);
+        let Some(close_rel) = line_slice.find(')') else {
+            diffs.push(format!(
+                "{} contains malformed coverage badge (expected `{expected_badge}`)",
+                readme_path.display()
+            ));
+            return;
+        };
+        let actual_badge = &line_slice[..=close_rel];
+        if actual_badge != expected_badge {
+            diffs.push(format!(
+                "{} coverage badge does not match {} (expected `{expected_badge}`, found `{actual_badge}`)",
+                readme_path.display(),
+                CERT_FILE_NAME
+            ));
+            return;
+        }
+        rest = &from_marker[close_rel + 1..];
     }
 }
 
-fn verify_on_disk_ast_parity(
+pub(super) fn run_check_certificate_io(
     expected: &IntegrityReport,
+    cert_path: &Path,
+    readme_path: &Path,
+    ok_message: &str,
+) -> bool {
+    match verify_certificate_against_report(expected, cert_path, readme_path) {
+        Ok(()) => {
+            println!("{ok_message}");
+            true
+        }
+        Err(diffs) => {
+            eprintln!("\n[!] Verification_Certificate.json validation failed (--check):");
+            for diff in diffs {
+                eprintln!("  - {diff}");
+            }
+            false
+        }
+    }
+}
+
+pub(super) fn run_strict_parity_io(
+    expected: &IntegrityReport,
+    measured_native_cov: Option<f64>,
     coverage_tolerance_pct: f64,
     cert_path: &Path,
     readme_path: &Path,
 ) -> bool {
-    if std::env::var_os(super::VERIFY_SUITE_WRITE_ENV).is_some() {
-        return true;
-    }
-    match verify_certificate_against_report(
+    match verify_certificate_strict_parity(
         expected,
-        None,
+        measured_native_cov,
         coverage_tolerance_pct,
         cert_path,
         readme_path,
     ) {
         Ok(()) => {
-            println!("Verification_Certificate.json AST parity verified.");
+            println!(
+                "Verified {} and {} strict parity.",
+                CERT_FILE_NAME, README_FILE_NAME
+            );
             true
         }
         Err(diffs) => {
-            eprintln!("\n[!] Verification_Certificate.json parity check failed:");
+            eprintln!("\n[!] Certificate strict parity check failed (--strict-parity):");
             for diff in diffs {
                 eprintln!("  - {diff}");
             }
@@ -227,6 +367,47 @@ fn verify_on_disk_ast_parity(
 
 pub fn check_ast_certificate_parity_with_cache(members: &[String], cache: &mut AstCache) -> bool {
     sync_ast_certificate_with_cache(members, ReportMode::Check, cache)
+}
+
+fn resolve_static_cert_coverage(cert_path: &Path, mode: ReportMode) -> f64 {
+    if mode != ReportMode::Write && std::env::var_os(super::VERIFY_SUITE_WRITE_ENV).is_some() {
+        return 100.0;
+    }
+    fs::read_to_string(cert_path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<IntegrityReport>(&raw).ok())
+        .map(|c| c.native_execution_coverage_pct)
+        .unwrap_or(100.0)
+}
+
+fn apply_static_certificate_mode(
+    report: &IntegrityReport,
+    mode: ReportMode,
+    tolerance_pct: f64,
+    cert_path: &Path,
+    readme_path: &Path,
+) -> bool {
+    if mode != ReportMode::Write && std::env::var_os(super::VERIFY_SUITE_WRITE_ENV).is_some() {
+        return true;
+    }
+    match mode {
+        ReportMode::Check => run_check_certificate_io(
+            report,
+            cert_path,
+            readme_path,
+            "Verification_Certificate.json schema and [verify_suite] quality floors verified.",
+        ),
+        ReportMode::StrictParity => {
+            run_strict_parity_io(report, None, tolerance_pct, cert_path, readme_path)
+        }
+        ReportMode::Write => match write_certificate_and_readme(report, cert_path, readme_path) {
+            Ok(()) => true,
+            Err(err) => {
+                eprintln!("[!] {err}");
+                false
+            }
+        },
+    }
 }
 
 pub fn sync_ast_certificate_with_cache(
@@ -243,11 +424,7 @@ pub fn sync_ast_certificate_with_cache(
     };
     let cert_path = Path::new(CERT_FILE_NAME);
     let readme_path = Path::new(README_FILE_NAME);
-    let cert_cov = fs::read_to_string(cert_path)
-        .ok()
-        .and_then(|raw| serde_json::from_str::<IntegrityReport>(&raw).ok())
-        .map(|c| c.native_execution_coverage_pct)
-        .unwrap_or(100.0);
+    let cert_cov = resolve_static_cert_coverage(cert_path, mode);
 
     let rs_files = collect_rs_files();
     let metrics = analyze_files_with_cache(&rs_files, cache);
@@ -275,21 +452,11 @@ pub fn sync_ast_certificate_with_cache(
         super::print_gate_failures(&eval);
         return false;
     }
-    match mode {
-        ReportMode::Check => verify_on_disk_ast_parity(
-            &eval.report,
-            config.coverage_tolerance_pct,
-            cert_path,
-            readme_path,
-        ),
-        ReportMode::Write => {
-            match write_certificate_and_readme(&eval.report, cert_path, readme_path) {
-                Ok(()) => true,
-                Err(err) => {
-                    eprintln!("[!] {err}");
-                    false
-                }
-            }
-        }
-    }
+    apply_static_certificate_mode(
+        &eval.report,
+        mode,
+        config.coverage_tolerance_pct,
+        cert_path,
+        readme_path,
+    )
 }

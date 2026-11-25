@@ -100,6 +100,15 @@ fn verify_suite_defaults_to_read_only_check_and_validates_flags() {
         }
     );
     assert_eq!(
+        parse(&["--strict-parity", "--coverage-only"]).unwrap(),
+        VerifySuiteOptions {
+            mode: ReportMode::StrictParity,
+            auto_fix: false,
+            coverage_only: true,
+            output_cert: None,
+        }
+    );
+    assert_eq!(
         parse(&[
             "--write-tracked",
             "--auto-fix",
@@ -119,9 +128,12 @@ fn verify_suite_defaults_to_read_only_check_and_validates_flags() {
 #[test]
 fn verify_suite_and_check_certificate_reject_invalid_flag_combinations() {
     assert!(parse(&["--check", "--write"]).is_err());
+    assert!(parse(&["--strict-parity", "--write"]).is_err());
+    assert!(parse(&["--strict-certificate", "--write-tracked"]).is_err());
     assert!(parse(&["--check", "--write-tracked"]).is_err());
     assert!(parse(&["--auto-fix"]).is_err());
     assert!(parse(&["--check", "--auto-fix"]).is_err());
+    assert!(parse(&["--strict-parity", "--auto-fix"]).is_err());
     assert!(parse(&["--coverage-only", "--auto-fix"]).is_err());
     assert!(parse(&["--output-cert"]).is_err());
     assert!(parse(&["--output-cert="]).is_err());
@@ -132,8 +144,16 @@ fn verify_suite_and_check_certificate_reject_invalid_flag_combinations() {
         Ok(ReportMode::Check)
     );
     assert_eq!(
+        parse_check_certificate_mode(&["--strict-parity".to_string()]),
+        Ok(ReportMode::StrictParity)
+    );
+    assert_eq!(
         parse_check_certificate_mode(&["--write".to_string()]),
         Ok(ReportMode::Write)
+    );
+    assert!(
+        parse_check_certificate_mode(&["--write".to_string(), "--strict-parity".to_string()])
+            .is_err()
     );
     assert!(parse_check_certificate_mode(&["--bad".to_string()]).is_err());
 }
@@ -195,14 +215,135 @@ fn test_verify_suite_coverage_only_skips_static_gates_and_enforces_thresholds() 
             static_calls += 1;
             Vec::new()
         },
-        |_| Ok(sample_cov_json(1000, 505)),
+        |_| Ok(sample_cov_json(1000, 920)),
     )
     .expect("coverage JSON should evaluate cleanly");
     assert!(
         ok_cov && static_calls == 0,
-        "50.5% within 1.5% tolerance must pass"
+        "92.0% coverage above ratcheted floor must pass --check even when checked-in cert has 50.0%"
     );
     assert!(std::path::Path::new(out_artifact).is_file());
+}
+
+fn run_cov_only_suite(args: &[&str], members: &[String], covered: u64) -> bool {
+    run_verify_suite_with(
+        parse(args).unwrap(),
+        members,
+        &mut oxidize_core::traceability::AstCache::new(),
+        |_, _, _| Vec::new(),
+        |_| Ok(sample_cov_json(1000, covered)),
+    )
+    .unwrap()
+}
+
+#[test]
+fn test_verify_suite_check_allows_metric_shifts_and_emits_9_key_artifact() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let _guard = CurrentDirGuard(env::current_dir().unwrap());
+    let temp = TempTestDir::new("verify_suite_ratchet_check");
+    seed_temp_verify_suite_workspace(&temp);
+    env::set_current_dir(&*temp).unwrap();
+
+    let members = vec!["crates/demo".to_string()];
+    assert!(run_cov_only_suite(
+        &["--write", "--coverage-only"],
+        &members,
+        820
+    ));
+    let cert_before = fs::read_to_string("Verification_Certificate.json").unwrap();
+    let readme_before = fs::read_to_string("README.md").unwrap();
+
+    fs::write(
+        "crates/demo/src/lib.rs",
+        concat!(
+            "#[verified_engine::verified]\n",
+            "pub fn step(x: f64) -> f64 { assert!(x.is_finite()); assert!(x >= 0.0); x }\n",
+            "theory_verification! { module = \"demo\", test = { assert_eq!(step(1.0), 1.0); assert_eq!(step(2.0), 2.0); } }\n",
+        ),
+    )
+    .unwrap();
+    fs::write(
+        "verification_whitelist.toml",
+        concat!(
+            "[verify_suite]\n",
+            "min_native_execution_coverage_pct = 80.0\n",
+            "min_total_assertion_density = 1.50\n",
+            "min_verified_assertion_density = 0.40\n",
+            "min_total_production_density = 0.20\n",
+            "min_verified_production_density = 0.20\n",
+            "min_test_assertion_density = 1.50\n",
+            "coverage_tolerance_pct = 1.5\n",
+        ),
+    )
+    .unwrap();
+
+    let out_cert = "target/verification/Verification_Certificate.json";
+    assert!(run_cov_only_suite(
+        &["--coverage-only", "--check", "--output-cert", out_cert],
+        &members,
+        910,
+    ));
+    assert_eq!(
+        fs::read_to_string("Verification_Certificate.json").unwrap(),
+        cert_before
+    );
+    assert_eq!(fs::read_to_string("README.md").unwrap(), readme_before);
+    let live_val: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(out_cert).unwrap()).unwrap();
+    assert_eq!(live_val.as_object().unwrap().len(), 9);
+    assert_eq!(live_val["native_execution_coverage_pct"], 91.0);
+    assert!(!run_cov_only_suite(
+        &["--coverage-only", "--strict-parity"],
+        &members,
+        910
+    ));
+}
+
+#[test]
+fn test_verify_suite_check_fails_violated_floors_and_invalid_certificates() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let _guard = CurrentDirGuard(env::current_dir().unwrap());
+    let temp = TempTestDir::new("verify_suite_ratchet_failures");
+    seed_temp_verify_suite_workspace(&temp);
+    env::set_current_dir(&*temp).unwrap();
+
+    let members = vec!["crates/demo".to_string()];
+    let check = ["--coverage-only", "--check"];
+    assert!(run_cov_only_suite(
+        &["--write", "--coverage-only"],
+        &members,
+        850
+    ));
+    let valid_cert = fs::read_to_string("Verification_Certificate.json").unwrap();
+
+    fs::write(
+        "verification_whitelist.toml",
+        "[verify_suite]\nmin_native_execution_coverage_pct = 80.0\nmin_total_assertion_density = 0.80\n",
+    )
+    .unwrap();
+    assert!(!run_cov_only_suite(&check, &members, 790));
+
+    fs::write(
+        "verification_whitelist.toml",
+        "[verify_suite]\nmin_native_execution_coverage_pct = 80.0\nmin_total_assertion_density = 2.50\n",
+    )
+    .unwrap();
+    assert!(!run_cov_only_suite(&check, &members, 900));
+
+    fs::write(
+        "verification_whitelist.toml",
+        "[verify_suite]\nmin_native_execution_coverage_pct = 80.0\n",
+    )
+    .unwrap();
+    let failed_cert = valid_cert.replace("\"passed\": true", "\"passed\": false");
+    fs::write("Verification_Certificate.json", failed_cert).unwrap();
+    assert!(!run_cov_only_suite(&check, &members, 900));
+
+    fs::write("Verification_Certificate.json", "{malformed-json").unwrap();
+    assert!(!run_cov_only_suite(&check, &members, 900));
+
+    fs::remove_file("Verification_Certificate.json").unwrap();
+    assert!(!run_cov_only_suite(&check, &members, 900));
 }
 
 #[test]
@@ -214,17 +355,11 @@ fn test_verify_suite_shares_ast_cache_and_propagates_coverage_errors() {
     env::set_current_dir(&*temp).unwrap();
 
     let members = vec!["crates/demo".to_string()];
-    let mut seed_cache = oxidize_core::traceability::AstCache::new();
-    assert!(
-        run_verify_suite_with(
-            parse(&["--write", "--coverage-only"]).unwrap(),
-            &members,
-            &mut seed_cache,
-            |_, _, _| Vec::new(),
-            |_| Ok(sample_cov_json(1000, 500)),
-        )
-        .unwrap()
-    );
+    assert!(run_cov_only_suite(
+        &["--write", "--coverage-only"],
+        &members,
+        500
+    ));
 
     let mut static_calls = 0usize;
     let mut shared_cache = oxidize_core::traceability::AstCache::new();
