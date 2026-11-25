@@ -361,10 +361,23 @@ fn wasm_astrophysics_tab_url_roundtrip_and_symplectic_stepping() {
     orbits.cfg.lens_overlay.enabled = true;
     orbits.rebuild_system(4);
     orbits.drag_orbit_lens_to([1.5, -0.8]);
+    orbits.launch_probe_at_cursor(1.6, -0.9);
+    assert_eq!(orbits.system.slingshot_probe_count(), 1);
     let initial_t = orbits.system.elapsed_myr();
     orbits.step_simulation();
     assert!(orbits.system.elapsed_myr() > initial_t);
     assert!(orbits.has_finite_parameters());
+    let wav = crate::audio::wav::synthesize_frames_to_wav(
+        &[orbits.build_audio_frame()],
+        44_100,
+        128,
+        0.8,
+    );
+    assert_eq!(&wav[0..4], b"RIFF");
+    assert!(orbits
+        .export_glsl_shader(crate::framework::ShaderDialect::WebGl2Es300)
+        .unwrap()
+        .starts_with("#version 300 es"));
     egui_plot::clear_last_plot_datasets();
     let ds = orbits.export_datasets();
     assert_valid_dataset_and_figure_exports(&ds);

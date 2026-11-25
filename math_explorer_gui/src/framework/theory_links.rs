@@ -83,7 +83,7 @@ pub(crate) fn tool_module_tokens(tool_id: &str) -> Vec<String> {
         "GeodesicPlaygroundTool"
         | "ChristoffelInspectorTool"
         | "BlackHoleGeodesicWorkbench"
-        | "RelativisticJetBeamingLab" => &["general_relativity_geodesics"],
+        | "RelativisticJetBeamingLab" => &["general_relativity_geodesics", "general_relativity"],
         "MarkovSequenceWorkbenchTool" => &["clinical_trials_statistics"],
         "CorticalMorphometryTool" | "RiemannianPdeStudio" => &["freesurfer"],
         "KnotBraidStudio" => &["knot_braid_topology", "knot_theory"],

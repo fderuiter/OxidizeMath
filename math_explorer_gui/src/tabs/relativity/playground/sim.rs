@@ -1,9 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 //! Zero-allocation RK4 trajectory integration, normalized photon launch ($e = 1$),
-//! and twin worldline sampling for [`GeodesicPlaygroundTool`].
+//! `PhotonFan` ray bundles, and twin worldline sampling for [`GeodesicPlaygroundTool`].
 
-use std::f64::consts::FRAC_PI_2;
+use std::f64::consts::{FRAC_PI_2, TAU};
 
 use math_explorer::nalgebra::SVector;
 use math_explorer::physics::high_energy::{
@@ -14,12 +14,36 @@ use math_explorer::pure_math::tensor::{
     GeodesicState, GeodesicStepStatus, GeodesicSystem, StaticMetric,
 };
 
-use super::{GeodesicMode, GeodesicPlaygroundTool, SpacetimePreset};
+use super::{GeodesicInteractionMode, GeodesicMode, GeodesicPlaygroundTool, SpacetimePreset};
 
 /// Fixed upper bound on RK4 steps per trajectory (`samples` reserves `MAX_TRAJECTORY_SAMPLES + 8`).
 pub const MAX_TRAJECTORY_SAMPLES: usize = 720;
+/// Maximum simultaneous geodesics integrated in `PhotonFan` mode.
+pub const MAX_BUNDLE_RAYS: usize = 16;
 
-/// Single integrated worldline sample with 3D embedding coordinates and clock readouts.
+/// Pre-allocated trajectory storage for a single ray in a geodesic bundle.
+#[derive(Debug, Clone)]
+pub struct BundleRay {
+    /// Sampled worldline points up to [`MAX_TRAJECTORY_SAMPLES`].
+    pub samples: Vec<TrajectorySample>,
+    /// Whether this ray halted at the horizon singularity guard.
+    pub halted: bool,
+    /// Impact parameter $b$ or angular momentum $\ell$ assigned to this ray.
+    pub impact_b: f64,
+}
+
+impl BundleRay {
+    /// Pre-allocates sample buffer for zero-allocation stepping.
+    pub fn with_capacity(cap: usize) -> Self {
+        Self {
+            samples: Vec::with_capacity(cap),
+            halted: false,
+            impact_b: 0.0,
+        }
+    }
+}
+
+/// Single integrated worldline sample with 3D embedding coordinates, Kerr clocks, and Doppler velocity.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TrajectorySample {
     /// Coordinate time $ct$.
@@ -32,13 +56,17 @@ pub struct TrajectorySample {
     pub phi: f64,
     /// Radial derivative $dr/d\lambda$ or $dl/d\lambda$.
     pub radial_vel: f64,
+    /// Coordinate angular velocity $\Omega = d\varphi / d(ct)$.
+    pub dphi_dct: f64,
+    /// Local spatial three-velocity $\boldsymbol{\beta} = \mathbf{v} / c$ for Doppler beaming.
+    pub velocity_beta: [f64; 3],
     /// Embedded 3D point $[x, y, z]$ on Flamm's paraboloid or Morris-Thorne surface.
     pub embed_xyz: [f64; 3],
     /// Quadratic metric norm $g_{\mu\nu}\dot{x}^\mu\dot{x}^\nu$.
     pub metric_norm: f64,
     /// Instantaneous proper-to-coordinate clock rate $d\tau / dt$.
     pub clock_rate: f64,
-    /// Instantaneous gravitational/lapse dilation factor.
+    /// Instantaneous static/ZAMO gravitational lapse dilation factor.
     pub grav_dilation: f64,
     /// Instantaneous local Lorentz factor $\gamma(v)$.
     pub lorentz_gamma: f64,
@@ -120,21 +148,70 @@ impl GeodesicPlaygroundTool {
         s.radial_bias = finite_clamp(s.radial_bias, -0.98, 0.98, -0.82);
         s.step_size = finite_clamp(s.step_size, 0.005, 0.12, 0.04);
         s.steps_per_frame = s.steps_per_frame.clamp(1, 32);
+        s.fan_count = s.fan_count.clamp(2, MAX_BUNDLE_RAYS);
+        s.fan_spread = finite_clamp(s.fan_spread, 0.1, 8.0, 2.4);
+        s.launch_azimuth = finite_clamp(s.launch_azimuth, -TAU, TAU, 0.0);
         if !s.camera.is_valid() {
             s.camera = crate::camera::Camera3D::new(0.48, -0.62, 1.0);
         }
     }
 
-    /// Recomputes primary and twin geodesic buffers up to `step_budget` RK4 steps with zero heap allocations.
+    /// Recomputes primary/twin or up to 16 `PhotonFan` geodesic buffers with zero heap allocations.
     pub fn rebuild_trajectory(&mut self, step_budget: usize) {
+        let count = step_budget.clamp(2, MAX_TRAJECTORY_SAMPLES);
+        if self.state.interaction_mode == GeodesicInteractionMode::PhotonFan {
+            self.rebuild_photon_fan_bundle(count);
+        } else {
+            self.rebuild_primary_and_twin(count);
+        }
+        self.state.scrub_index = if self.samples.is_empty() {
+            0
+        } else {
+            self.state.scrub_index.min(self.samples.len() - 1)
+        };
+    }
+
+    fn rebuild_photon_fan_bundle(&mut self, count: usize) {
+        let ray_count = self.state.fan_count.clamp(2, MAX_BUNDLE_RAYS);
+        self.active_ray_count = ray_count;
+        self.twin_samples.clear();
+        self.twin_halted_near_singularity = false;
+        let center_idx = ray_count / 2;
+
+        for idx in 0..ray_count {
+            let frac = (idx as f64) / ((ray_count - 1) as f64) - 0.5;
+            let impact_b =
+                (self.state.impact_or_momentum + frac * self.state.fan_spread).clamp(-16.0, 16.0);
+            let mut ray_buf = core::mem::take(&mut self.bundle_rays[idx].samples);
+            ray_buf.clear();
+            let (halted, e_val) = self.integrate_single_worldline(count, impact_b, &mut ray_buf);
+            self.bundle_rays[idx].samples = ray_buf;
+            self.bundle_rays[idx].halted = halted;
+            self.bundle_rays[idx].impact_b = impact_b;
+            if idx == center_idx {
+                self.launch_energy = e_val;
+                self.twin_launch_energy = e_val;
+            }
+        }
+        self.samples.clear();
+        self.samples
+            .extend_from_slice(&self.bundle_rays[center_idx].samples);
+        self.halted_near_singularity = self.bundle_rays[..ray_count].iter().all(|r| r.halted);
+    }
+
+    fn rebuild_primary_and_twin(&mut self, count: usize) {
+        self.active_ray_count = 1;
         self.samples.clear();
         self.twin_samples.clear();
         self.halted_near_singularity = false;
         self.twin_halted_near_singularity = false;
-        let count = step_budget.clamp(2, MAX_TRAJECTORY_SAMPLES);
         let b0 = self.state.impact_or_momentum;
         let mut primary = core::mem::take(&mut self.samples);
         let (halted, e_val) = self.integrate_single_worldline(count, b0, &mut primary);
+        self.bundle_rays[0].samples.clear();
+        self.bundle_rays[0].samples.extend_from_slice(&primary);
+        self.bundle_rays[0].halted = halted;
+        self.bundle_rays[0].impact_b = b0;
         self.samples = primary;
         self.halted_near_singularity = halted;
         self.launch_energy = e_val;
@@ -149,12 +226,6 @@ impl GeodesicPlaygroundTool {
         } else {
             self.twin_launch_energy = e_val;
         }
-
-        self.state.scrub_index = if self.samples.is_empty() {
-            0
-        } else {
-            self.state.scrub_index.min(self.samples.len() - 1)
-        };
     }
 
     fn integrate_single_worldline(
@@ -180,18 +251,22 @@ impl GeodesicPlaygroundTool {
         }
     }
 
-    /// Appends up to `extra_steps` RK4 steps onto the active trajectory during live playback.
+    /// Appends up to `extra_steps` RK4 steps onto all active rays during live playback.
     pub fn advance_steps(&mut self, extra_steps: usize) {
         if self.samples.is_empty() {
             self.rebuild_trajectory(260);
         }
         let current_len = self.samples.len();
         if self.halted_near_singularity || current_len > MAX_TRAJECTORY_SAMPLES {
-            self.state.is_playing = false;
+            if self.state.is_playing {
+                self.state.is_playing = false;
+                crate::audio::notify_playback_paused();
+            }
             return;
         }
         self.rebuild_trajectory((current_len + extra_steps).min(MAX_TRAJECTORY_SAMPLES));
         self.state.scrub_index = self.samples.len().saturating_sub(1);
+        self.step_lensing_backgrounds();
     }
 
     fn integrate_schwarzschild_into(
@@ -327,7 +402,7 @@ impl GeodesicPlaygroundTool {
         );
         let sys = GeodesicSystem::new(wh);
         let mut state = ArrayState::<6>::from_pos_vel(
-            &SVector::<f64, 3>::new(0.0, l0, 0.0),
+            &SVector::<f64, 3>::new(0.0, l0, self.state.launch_azimuth),
             &SVector::<f64, 3>::new(ut, ul, uphi),
         );
         let mut solver = RungeKutta4::new(&state);
@@ -369,6 +444,7 @@ impl GeodesicPlaygroundTool {
         let g03 = -(spin_a * rs) / r0;
         let g11 = (r0 * r0) / delta;
         let g33 = r0 * r0 + spin_a * spin_a + (spin_a * spin_a * rs) / r0;
+        let phi0 = self.state.launch_azimuth;
 
         match self.state.mode {
             GeodesicMode::NullPhoton => {
@@ -388,7 +464,7 @@ impl GeodesicPlaygroundTool {
                     -1.0
                 };
                 (
-                    SVector::<f64, 4>::new(0.0, r0, FRAC_PI_2, 0.0),
+                    SVector::<f64, 4>::new(0.0, r0, FRAC_PI_2, phi0),
                     SVector::<f64, 4>::new(ut.max(1e-4), sign * ur_sq.sqrt(), 0.0, uphi),
                     1.0,
                 )
@@ -403,7 +479,7 @@ impl GeodesicPlaygroundTool {
                 let e = omega0 * ell + (delta / g33) * ut;
                 let uphi = ((spin_a * rs / r0) * e + (1.0 - rs / r0) * ell) / delta;
                 (
-                    SVector::<f64, 4>::new(0.0, r0, FRAC_PI_2, 0.0),
+                    SVector::<f64, 4>::new(0.0, r0, FRAC_PI_2, phi0),
                     SVector::<f64, 4>::new(ut, ur, 0.0, uphi),
                     e,
                 )

@@ -12,7 +12,10 @@ pub mod presets;
 #[cfg(test)]
 pub use inspector::{ChristoffelInspectorTool, InspectorManifold};
 #[cfg(test)]
-pub use playground::{GeodesicPlaygroundTool, SpacetimePreset};
+pub use playground::{
+    GeodesicInteractionMode, GeodesicMode, GeodesicPlaygroundTool, LensingBackgroundKind,
+    SpacetimePreset, ViewportViewMode, MAX_BUNDLE_RAYS,
+};
 
 /// Explorer tab grouping curved-spacetime geodesic and tensor inspection tools.
 pub struct RelativityTab {
@@ -53,6 +56,10 @@ impl ExplorerTab for RelativityTab {
         self.framework.select_tool_by_name(name)
     }
 
+    fn focused_canvas_id(&self) -> Option<egui::Id> {
+        self.framework.focused_canvas_id()
+    }
+
     fn framework(&self) -> Option<&crate::framework::SimulationFramework> {
         Some(&self.framework)
     }
@@ -76,6 +83,8 @@ inventory::submit! {
 mod tests;
 #[cfg(test)]
 mod tests_atlas;
+#[cfg(test)]
+mod tests_lensing;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;

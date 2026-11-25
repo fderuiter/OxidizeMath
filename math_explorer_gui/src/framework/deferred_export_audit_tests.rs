@@ -277,8 +277,9 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
     let optics_bonus = if cfg!(feature = "physics") { 2 } else { 0 };
     let extra_su11_hyp = if cfg!(feature = "pure_math") { 2 } else { 0 };
     let has_ai = cfg!(feature = "ai");
+    let phys_shader = if cfg!(feature = "physics") { 2 } else { 0 };
     let expected_audio = usize::from(cfg!(feature = "biology")) * 2
-        + usize::from(cfg!(feature = "physics")) * 3
+        + usize::from(cfg!(feature = "physics")) * 5
         + usize::from(cfg!(feature = "pure_math"))
         + usize::from(has_riemannian);
     assert_eq!(
@@ -288,7 +289,8 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
     let bonus = bio_extra + stochastic_extra + optics_bonus + extra_su11_hyp + usize::from(has_ai);
     let expected_plot = 78 + extra + bonus;
     let expected_solid = 7 + extra;
-    let expected_non_shader = 92 + extra + bonus;
+    let expected_shader = 3 + phys_shader;
+    let expected_non_shader = 92 + extra + bonus - phys_shader;
     assert_eq!(
         plot, expected_plot,
         "Expected {expected_plot} Plot dataset+figure tools"
@@ -301,7 +303,10 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         "Expected {expected_solid} solid 3D geometric tools"
     );
     assert_eq!(splat_3d, 1, "Expected 1 3DGS splat PLY tool");
-    assert_eq!(shader, 3, "Expected 3 analytical GPU shader tools");
+    assert_eq!(
+        shader, expected_shader,
+        "Expected {expected_shader} analytical GPU shader tools"
+    );
     assert_eq!(
         non_shader, expected_non_shader,
         "Expected {expected_non_shader} non-shader tools"

@@ -12,6 +12,7 @@ pub mod halo_lensing;
 pub mod lensing;
 pub mod nbody;
 pub mod orbits;
+mod orbits_slingshot;
 pub mod paczynski_wiita;
 pub mod rotation_curves;
 
@@ -27,7 +28,7 @@ pub use lensing::{
 };
 pub use orbits::{
     GalacticDiskSystem, KPC_PER_MYR_PER_KMS, OrbitParticleKind, OrbitPopulationConfig,
-    OrbitalInvariants, OrbitalState, SECONDS_PER_MYR, planar_acceleration,
+    OrbitalInvariants, OrbitalState, SECONDS_PER_MYR, SLINGSHOT_RING_CAPACITY, planar_acceleration,
 };
 pub use paczynski_wiita::{
     CentralBlackHoleConfig, HORIZON_CLEARANCE_FACTOR, MAX_RELATIVISTIC_BETA,

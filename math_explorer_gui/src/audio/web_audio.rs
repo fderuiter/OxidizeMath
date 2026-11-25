@@ -167,14 +167,13 @@ impl SonificationBackend for WebAudioNodeBackend {
             .current_frame
             .estimate_meter(self.master_volume, self.muted);
         if !self.muted {
-            if let Some(graph) = &self.graph {
-                let now = graph.ctx.current_time();
+            if let Some(g) = &self.graph {
                 let target = self.current_frame.master_gain * self.master_volume;
-                let _ =
-                    graph
-                        .master_gain
-                        .gain()
-                        .set_target_at_time(target, now, PARAM_SMOOTH_TAU_SEC);
+                let _ = g.master_gain.gain().set_target_at_time(
+                    target,
+                    g.ctx.current_time(),
+                    PARAM_SMOOTH_TAU_SEC,
+                );
             }
         }
     }
@@ -394,33 +393,35 @@ fn apply_frame_to_graph(
     }
 
     let active = frame.active_voices as usize;
+    let master_tau = if active == 0 && frame.master_gain <= 1e-5 {
+        MUTE_RAMP_TAU_SEC
+    } else {
+        PARAM_SMOOTH_TAU_SEC
+    };
     for (idx, nodes) in graph.voices.iter_mut().enumerate() {
         let spec = if idx < active {
             frame.voices[idx]
         } else {
             VoiceSpec::silent()
         };
-        update_voice_params(nodes, &spec, now)?;
+        update_voice_params(nodes, &spec, now, master_tau)?;
     }
 
+    let noise_hz = clamp_freq_hz(frame.noise_cutoff_hz);
     graph
         .noise_filter
         .frequency()
-        .set_target_at_time(
-            clamp_freq_hz(frame.noise_cutoff_hz),
-            now,
-            PARAM_SMOOTH_TAU_SEC,
-        )
+        .set_target_at_time(noise_hz, now, PARAM_SMOOTH_TAU_SEC)
         .map_err(format_js_err)?;
     graph
         .noise_gain
         .gain()
-        .set_target_at_time(frame.noise_gain * 0.25, now, PARAM_SMOOTH_TAU_SEC)
+        .set_target_at_time(frame.noise_gain * 0.25, now, master_tau)
         .map_err(format_js_err)?;
     graph
         .master_gain
         .gain()
-        .set_target_at_time(frame.master_gain * master_volume, now, PARAM_SMOOTH_TAU_SEC)
+        .set_target_at_time(frame.master_gain * master_volume, now, master_tau)
         .map_err(format_js_err)?;
     Ok(())
 }
@@ -429,62 +430,51 @@ fn update_voice_params(
     nodes: &mut WebVoiceNodes,
     spec: &VoiceSpec,
     now: f64,
+    gain_tau: f64,
 ) -> Result<(), String> {
     let freq = clamp_freq_hz(spec.freq_hz);
     let mod_hz = spec.fm_mod_hz.clamp(0.0, 4000.0);
     let dev_hz = (spec.fm_index * mod_hz).clamp(0.0, 3000.0);
-    nodes
-        .carrier
-        .frequency()
-        .set_target_at_time(freq, now, PARAM_SMOOTH_TAU_SEC)
-        .map_err(format_js_err)?;
-    nodes
-        .mod_osc
-        .frequency()
-        .set_target_at_time(mod_hz.max(0.5), now, PARAM_SMOOTH_TAU_SEC)
-        .map_err(format_js_err)?;
-    nodes
-        .mod_gain
-        .gain()
-        .set_target_at_time(dev_hz, now, PARAM_SMOOTH_TAU_SEC)
-        .map_err(format_js_err)?;
-    nodes
-        .filter
-        .frequency()
-        .set_target_at_time(
-            clamp_freq_hz(spec.filter_cutoff_hz),
-            now,
-            PARAM_SMOOTH_TAU_SEC,
-        )
-        .map_err(format_js_err)?;
-    nodes
-        .panner
-        .pan()
-        .set_target_at_time(spec.pan.clamp(-1.0, 1.0), now, PARAM_SMOOTH_TAU_SEC)
-        .map_err(format_js_err)?;
+    let cutoff_hz = clamp_freq_hz(spec.filter_cutoff_hz);
+    let pan = spec.pan.clamp(-1.0, 1.0);
+    set_param(&nodes.carrier.frequency(), freq, now, PARAM_SMOOTH_TAU_SEC)?;
+    set_param(
+        &nodes.mod_osc.frequency(),
+        mod_hz.max(0.5),
+        now,
+        PARAM_SMOOTH_TAU_SEC,
+    )?;
+    set_param(&nodes.mod_gain.gain(), dev_hz, now, PARAM_SMOOTH_TAU_SEC)?;
+    set_param(
+        &nodes.filter.frequency(),
+        cutoff_hz,
+        now,
+        PARAM_SMOOTH_TAU_SEC,
+    )?;
+    set_param(&nodes.panner.pan(), pan, now, PARAM_SMOOTH_TAU_SEC)?;
 
     let triggered = spec.transient_impulse > 0.25 && nodes.prev_impulse <= 0.25;
     nodes.prev_impulse = spec.transient_impulse;
     if triggered {
         let burst = (spec.gain + 0.35 * spec.transient_impulse).clamp(0.0, 1.0);
-        nodes
-            .voice_gain
-            .gain()
-            .set_target_at_time(burst, now, 0.002)
-            .map_err(format_js_err)?;
-        nodes
-            .voice_gain
-            .gain()
-            .set_target_at_time(spec.gain, now + 0.006, PARAM_SMOOTH_TAU_SEC)
-            .map_err(format_js_err)?;
+        set_param(&nodes.voice_gain.gain(), burst, now, 0.002)?;
+        set_param(
+            &nodes.voice_gain.gain(),
+            spec.gain,
+            now + 0.006,
+            PARAM_SMOOTH_TAU_SEC,
+        )?;
     } else {
-        nodes
-            .voice_gain
-            .gain()
-            .set_target_at_time(spec.gain, now, PARAM_SMOOTH_TAU_SEC)
-            .map_err(format_js_err)?;
+        set_param(&nodes.voice_gain.gain(), spec.gain, now, gain_tau)?;
     }
     Ok(())
+}
+
+fn set_param(param: &web_sys::AudioParam, val: f32, now: f64, tau: f64) -> Result<(), String> {
+    param
+        .set_target_at_time(val, now, tau)
+        .map(|_| ())
+        .map_err(format_js_err)
 }
 
 fn format_js_err(err: JsValue) -> String {
