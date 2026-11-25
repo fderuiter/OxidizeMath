@@ -305,13 +305,38 @@ impl MorphogenesisTool {
         });
     }
 
+    fn build_morphogenesis_a11y_summary(&self) -> String {
+        let mode = self
+            .kinetics_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .mode;
+        let kinetics_lbl = match mode {
+            MorphogenesisKineticsMode::Schnakenberg => "Schnakenberg",
+            MorphogenesisKineticsMode::GrayScott => "Gray-Scott",
+        };
+        let masked = self.mask_cells.iter().filter(|&&c| c != 0).count();
+        let fork_note = if self.is_forked() {
+            ", counterfactual twin branch active"
+        } else {
+            ""
+        };
+        format!(
+            "{}x{} Turing {kinetics_lbl} reaction-diffusion grid, {masked} sculpted boundary/sink/emitter cells{fork_note}; Color/shape key: blue-cyan-green-yellow-red concentration ramp from low to high morphogen density; sculpted walls and sinks rendered as dark masked cells",
+            self.width, self.height
+        )
+    }
+
     fn draw_turing_field_plot(&mut self, ui: &mut egui::Ui, tex: &egui::TextureHandle) {
         let (w, h) = (self.width as f32, self.height as f32);
         let forked = self.local_runner.twin.as_ref().map(|t| t.fork_step);
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         let allow_pan = !self.brush_kit.is_sculpting();
+        let summary = self.build_morphogenesis_a11y_summary();
         let mut brush_frame: Option<PlotBrushFrame> = None;
         let plot_resp = Plot::new("morphogenesis_plot")
+            .title("Turing Morphogenesis Field")
+            .description(&summary)
             .data_aspect(1.0)
             .view_aspect(1.0)
             .show_grid(false)
@@ -358,8 +383,7 @@ impl MorphogenesisTool {
             self.draw_turing_field_plot(ui, &tex);
             return;
         }
-        let masked = self.mask_cells.iter().filter(|&&c| c != 0).count();
-        let summary = format!("{}x{} grid, {masked} masked cells", self.width, self.height);
+        let summary = self.build_morphogenesis_a11y_summary();
         let (resp, stroke) = RasterBrushCanvas::new(
             "morphogenesis_canvas",
             self.width,

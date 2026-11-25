@@ -45,6 +45,7 @@ pub struct UnifiedSimTool<M: UnifiedModel> {
     pub(crate) callout_manager: CalloutManager,
     pub(super) ui_extension: Option<Box<dyn UnifiedUiExtension>>,
     pub(crate) atlas: Option<crate::async_sim::atlas::ParameterAtlasController>,
+    pub(super) last_theme: crate::app::ThemeMode,
     _marker: std::marker::PhantomData<M>,
 }
 
@@ -127,6 +128,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             callout_manager,
             ui_extension,
             atlas: Self::create_optional_atlas(),
+            last_theme: crate::app::ThemeMode::Dark,
             _marker: std::marker::PhantomData,
         }
     }
@@ -208,6 +210,7 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         self.controller.reset_or_respawn(|| {
             UnifiedSimRunner::<M>::with_shared_and_obstacles(params, sculpt, formula, obstacle_rle)
         });
+        self.last_theme = crate::app::ThemeMode::Dark;
         self.dirty = true;
         if let Some(c) = ctx {
             c.request_repaint();
@@ -414,6 +417,22 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
+        let current_theme = crate::app::ThemeMode::from_visuals(ui.visuals());
+        if self.last_theme != current_theme {
+            self.last_theme = current_theme;
+            if M::is_raster_model() {
+                let tag = match current_theme {
+                    crate::app::ThemeMode::Dark => "ThemeMode:Dark",
+                    crate::app::ThemeMode::Light => "ThemeMode:Light",
+                    crate::app::ThemeMode::HighContrast => "ThemeMode:HighContrast",
+                };
+                let _ = self
+                    .controller
+                    .send_command(SimCommand::Custom(tag.to_string()));
+                self.clear_stepped_state();
+                self.dirty = true;
+            }
+        }
         let has_update = self.controller.update().is_some();
         if has_update {
             self.clear_stepped_state();

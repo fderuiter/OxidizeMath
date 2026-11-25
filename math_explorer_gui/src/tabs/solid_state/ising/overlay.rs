@@ -338,11 +338,11 @@ impl IsingModelTool {
         if snap_pixels.is_empty() {
             return;
         }
+        let palette = crate::app::SemanticPalette::from_visuals(&ctx.style().visuals);
         let num_pixels = snapshot.width * snapshot.height;
         if self.pixels.len() != num_pixels {
-            self.pixels.resize(num_pixels, egui::Color32::BLACK);
+            self.pixels.resize(num_pixels, palette.surface_fill);
         }
-        let palette = crate::app::SemanticPalette::from_visuals(&ctx.style().visuals);
         if let Some(spins) = snapshot
             .structured_data
             .as_ref()

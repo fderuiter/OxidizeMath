@@ -3,12 +3,13 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use eframe::egui::{self, Pos2, Rect, Sense, Stroke, Vec2};
+use eframe::egui::{self, Pos2, Rect, Sense, Vec2};
 use math_commons::math_kernel::types::flatten_2d_index;
 
 use super::PrimeSpiralWidget;
 use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    announce_live_status, draw_legend_swatch, lock_canvas_arrow_keys, paint_canvas_border,
+    paint_canvas_focus_ring, paint_two_tone_circle, paint_two_tone_line, paint_two_tone_reticle,
     register_canvas_accessibility, AccessibleHoverText, AccessibleTheoryHover,
 };
 use crate::app::SemanticPalette;
@@ -310,15 +311,15 @@ impl PrimeSpiralWidget {
 
     pub(super) fn render_spiral_canvas(&mut self, ui: &mut egui::Ui) {
         let avail = ui.available_size().max(Vec2::splat(200.0));
-        let side = avail.x.min(avail.y).max(180.0);
+        let side = avail.x.min((avail.y - 26.0).max(180.0)).max(180.0);
         let (raw_resp, painter) = ui.allocate_painter(Vec2::splat(side), Sense::click_and_drag());
         let primary = self.sample_playhead_voices()[0];
         let alt_label = format!(
-            "Ulam Prime Spiral visualization ({0}x{0} grid)",
+            "Ulam Prime Spiral visualization ({0}x{0} grid; origin m=1 framed cell, primes high-contrast dots, composites background, playhead two-tone ring)",
             self.grid_size
         );
         let value_desc = format!(
-            "Step {}, value {}, prime={}, tempo {:.0} BPM",
+            "Step {}, value {}, prime={}, tempo {:.0} BPM; Legend: m=1 framed origin, primes bright/dark ink dots, composites background, playhead two-tone ring",
             self.cursor_step, primary.value, primary.is_prime, self.tempo_bpm
         );
         register_canvas_accessibility(
@@ -341,14 +342,20 @@ impl PrimeSpiralWidget {
         }
         let palette = SemanticPalette::from_visuals(ui.visuals());
         self.paint_playhead_overlay(&painter, response.rect, &palette);
-        painter.rect_stroke(
-            response.rect,
-            0.0,
-            ui.visuals().widgets.noninteractive.bg_stroke,
-            egui::StrokeKind::Inside,
-        );
+        paint_canvas_border(ui, response.rect);
         paint_canvas_focus_ring(ui, &response);
         self.handle_canvas_interactions(ui, &response);
+        Self::draw_ulam_legend(ui, &palette);
+    }
+
+    fn draw_ulam_legend(ui: &mut egui::Ui, palette: &SemanticPalette) {
+        let bg = ui.visuals().extreme_bg_color;
+        ui.horizontal_wrapped(|ui| {
+            draw_legend_swatch(ui, palette.axis_x, Some("□"), "Origin m=1 (framed)");
+            draw_legend_swatch(ui, palette.node_stroke, Some("•"), "Prime");
+            draw_legend_swatch(ui, bg, None, "Composite");
+            draw_legend_swatch(ui, palette.warning, Some("◎"), "Playhead");
+        });
     }
 
     fn paint_playhead_overlay(
@@ -369,6 +376,12 @@ impl PrimeSpiralWidget {
             ))
         };
 
+        if let Some(origin_pt) = to_screen(1) {
+            let cell_px = (rect.width() / size).max(7.0_f32);
+            let origin_rect = Rect::from_center_size(origin_pt, Vec2::splat(cell_px));
+            paint_two_tone_reticle(painter, origin_rect, 1.0_f32, palette.axis_x);
+        }
+
         if self.playhead_mode == UlamPlayheadMode::QuadraticRay {
             let max_step = self.max_visible_step();
             let mut prev: Option<Pos2> = None;
@@ -376,7 +389,7 @@ impl PrimeSpiralWidget {
                 let m = eval_ulam_quadratic(step, self.ray_b, self.ray_c);
                 if let Some(pt) = to_screen(m) {
                     if let Some(p0) = prev {
-                        painter.line_segment([p0, pt], Stroke::new(1.4_f32, palette.accent));
+                        paint_two_tone_line(painter, [p0, pt], palette.accent, 1.4_f32);
                     }
                     prev = Some(pt);
                 }
@@ -393,7 +406,7 @@ impl PrimeSpiralWidget {
                 } else {
                     palette.info
                 };
-                painter.circle_stroke(pt, rad, Stroke::new(1.8_f32, col));
+                paint_two_tone_circle(painter, pt, rad, col, 1.8_f32);
             }
         }
     }

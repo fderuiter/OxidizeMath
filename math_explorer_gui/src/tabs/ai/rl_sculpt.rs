@@ -401,44 +401,40 @@ pub fn render_rl_sculpt_toolbar(
         egui::ComboBox::from_id_salt((id_salt, "rl_maze_preset"))
             .selected_text(preset.label())
             .show_ui(ui, |ui| {
-                for candidate in RlMazePreset::ALL {
-                    if ui
-                        .selectable_value(preset, candidate, candidate.label())
-                        .clicked()
-                    {
-                        *mdp = candidate.build_mdp(mdp.width, mdp.height, mdp.gamma);
+                for c in RlMazePreset::ALL {
+                    if ui.selectable_value(preset, c, c.label()).clicked() {
+                        *mdp = c.build_mdp(mdp.width, mdp.height, mdp.gamma);
                         changed = true;
                     }
                 }
             });
     });
-
     ui.horizontal_wrapped(|ui| {
         for (mode, text) in RL_BRUSH_MODES {
-            if ui
-                .selectable_label(brush_kit.mode == mode, text)
-                .accessible_hover_text(mode.label())
-                .clicked()
-            {
+            let r = ui.selectable_label(brush_kit.mode == mode, text);
+            if r.accessible_hover_text(mode.label()).clicked() {
                 brush_kit.mode = mode;
             }
         }
     });
-
     ui.horizontal(|ui| {
         ui.label("Brush r:");
         ui.add(egui::Slider::new(&mut brush_kit.radius, 0.5..=3.5).step_by(1.0));
     });
-
+    let slip_slider = egui::Slider::new(&mut mdp.wind_slip_prob, 0.0..=0.8).text("Wind Slip p");
+    let slip_tip = "Probability that wind cells push the agent 1 extra cell";
     if ui
-        .add(egui::Slider::new(&mut mdp.wind_slip_prob, 0.0..=0.8).text("Wind Slip p"))
-        .accessible_hover_text("Probability that wind cells push the agent 1 extra cell")
+        .add(slip_slider)
+        .accessible_hover_text(slip_tip)
         .changed()
     {
         changed = true;
     }
     changed
 }
+
+/// Non-color badge glyph rendered on the MDP start cell across all overlay modes.
+pub const START_BADGE_GLYPH: &str = "S";
 
 /// Short non-color glyph indicating non-free [`GridCellRole`]s (WCAG 1.4.1 non-color cue).
 #[must_use]
@@ -452,6 +448,16 @@ pub const fn role_glyph(role: GridCellRole) -> Option<&'static str> {
         GridCellRole::WindDown => Some("↓"),
         GridCellRole::WindLeft => Some("←"),
         GridCellRole::WindRight => Some("→"),
+    }
+}
+
+/// Resolves the non-color glyph for `role`, falling back to [`START_BADGE_GLYPH`] on the start cell.
+#[must_use]
+pub const fn cell_role_or_start_glyph(role: GridCellRole, is_start: bool) -> Option<&'static str> {
+    match (role_glyph(role), is_start) {
+        (Some(g), _) => Some(g),
+        (None, true) => Some(START_BADGE_GLYPH),
+        (None, false) => None,
     }
 }
 

@@ -13,7 +13,8 @@ pub(super) fn render_attention_raster(
     let gap = 1usize;
     let total_cols = weights.ncols() + gap + output.ncols();
     let total_rows = weights.nrows().max(output.nrows());
-    let mut pixels = vec![eframe::egui::Color32::from_gray(24); total_cols * total_rows];
+    let mut pixels =
+        vec![super::ThemeContrastMode::Dark.palette().surface_fill; total_cols * total_rows];
 
     let paint_mat = |mat: &DMatrix<f64>, col_offset: usize, buf: &mut [eframe::egui::Color32]| {
         let (min_v, max_v) = mat

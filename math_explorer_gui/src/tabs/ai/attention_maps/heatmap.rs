@@ -1,59 +1,21 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
+    announce_live_status, draw_legend_swatch, lock_canvas_arrow_keys, paint_canvas_border,
+    paint_canvas_focus_ring, paint_two_tone_rect_frame, paint_two_tone_reticle,
     register_canvas_accessibility,
 };
-use crate::app::ThemeMode as ThemeContrastMode;
+use crate::app::{SemanticPalette, ThemeMode as ThemeContrastMode};
 use crate::framework::InputMode;
 use eframe::egui;
 use nalgebra::DMatrix;
-
-#[inline(always)]
-fn scale_channel_255(v: f64) -> u8 {
-    (v * 255.0) as u8
-}
-
-#[inline(always)]
-fn to_channel_u8(v: f64) -> u8 {
-    v as u8
-}
-
-fn color_high_contrast(normalized: f64) -> egui::Color32 {
-    egui::Color32::from_rgb(
-        scale_channel_255(normalized),
-        scale_channel_255(normalized),
-        to_channel_u8((1.0 - normalized) * 40.0),
-    )
-}
-
-fn color_dark(normalized: f64) -> egui::Color32 {
-    egui::Color32::from_rgb(
-        scale_channel_255(normalized),
-        to_channel_u8(normalized * 200.0),
-        to_channel_u8((1.0 - normalized) * 200.0 + 55.0),
-    )
-}
-
-fn color_light(normalized: f64) -> egui::Color32 {
-    egui::Color32::from_rgb(
-        to_channel_u8((1.0 - normalized * 0.9) * 240.0),
-        to_channel_u8((1.0 - normalized * 0.8) * 245.0),
-        scale_channel_255(1.0 - normalized * 0.5),
-    )
-}
 
 /// Maps a normalized `[0.0, 1.0]` weight to a theme-aware heatmap cell color.
 pub fn compute_attention_cell_color(
     normalized: f64,
     theme_mode: ThemeContrastMode,
 ) -> egui::Color32 {
-    let normalized = normalized.clamp(0.0, 1.0);
-    match theme_mode {
-        ThemeContrastMode::HighContrast => color_high_contrast(normalized),
-        ThemeContrastMode::Dark => color_dark(normalized),
-        ThemeContrastMode::Light => color_light(normalized),
-    }
+    theme_mode.palette().attention_ramp_color(normalized)
 }
 
 /// Computes the matrix `(row, col)` cell coordinates under cursor position `pos`.
@@ -231,20 +193,11 @@ impl HeatmapTexture {
 
         let current_theme = ThemeContrastMode::from_visuals(ui.visuals());
         let palette = current_theme.palette();
-        let border_width = if current_theme == ThemeContrastMode::HighContrast {
-            2.0_f32
-        } else {
-            1.0_f32
-        };
-        ui.painter().rect_stroke(
-            rect,
-            0.0_f32,
-            egui::Stroke::new(border_width, palette.graph_edge),
-            egui::StrokeKind::Middle,
-        );
+        paint_canvas_border(ui, rect);
 
-        self.handle_cell_interaction(ui, &response, rect, name, matrix, current_theme);
-        Self::draw_hover_overlay(ui, response, rect, matrix, current_theme);
+        self.handle_cell_interaction(ui, &response, rect, name, matrix, &palette);
+        Self::draw_hover_overlay(ui, response, rect, matrix, current_theme, &palette);
+        draw_attention_ramp_legend(ui, &palette);
     }
 
     fn handle_cell_interaction(
@@ -254,7 +207,7 @@ impl HeatmapTexture {
         rect: egui::Rect,
         name: &str,
         matrix: &DMatrix<f64>,
-        current_theme: ThemeContrastMode,
+        palette: &SemanticPalette,
     ) {
         if matrix.nrows() == 0 || matrix.ncols() == 0 {
             register_canvas_accessibility(
@@ -298,24 +251,20 @@ impl HeatmapTexture {
                 self.cursor.0,
                 self.cursor.1,
             );
-            let focus_color = crate::app::SemanticPalette::from_visuals(ui.visuals()).accent;
-            ui.painter().rect_stroke(
-                active_rect,
-                1.0_f32,
-                egui::Stroke::new(2.5_f32, focus_color),
-                egui::StrokeKind::Inside,
-            );
-            let _ = current_theme;
+            paint_two_tone_rect_frame(ui.painter(), active_rect, 1.0_f32, palette.accent, 2.0_f32);
         }
 
         let (row, col) = self.cursor;
         let readout = format_cell_readout(row, col, matrix[(row, col)]);
+        let description = format!(
+            "{readout}; Color key: 3-stop luminance ramp from low to mid to high attention weight"
+        );
         register_canvas_accessibility(
             ui,
             response,
             egui::accesskit::Role::GraphicsDocument,
             &format!("{name} Heatmap"),
-            Some(&readout),
+            Some(&description),
         );
         if announce {
             announce_live_status(ui.ctx(), format!("{name} — {readout}"));
@@ -356,6 +305,7 @@ impl HeatmapTexture {
         rect: egui::Rect,
         matrix: &DMatrix<f64>,
         current_theme: ThemeContrastMode,
+        palette: &SemanticPalette,
     ) {
         if !response.hovered() {
             return;
@@ -369,17 +319,24 @@ impl HeatmapTexture {
         let val = matrix[(row, col)];
         let target_rect = cell_rect(rect, matrix.nrows(), matrix.ncols(), row, col);
 
-        let palette = current_theme.palette();
-        let hover_stroke = match current_theme {
-            ThemeContrastMode::HighContrast => egui::Stroke::new(2.0_f32, palette.accent),
-            _ => egui::Stroke::new(1.5_f32, palette.node_stroke),
+        let hover_primary = if current_theme == ThemeContrastMode::HighContrast {
+            palette.accent
+        } else {
+            palette.node_stroke
         };
-        ui.painter()
-            .rect_stroke(target_rect, 0.0_f32, hover_stroke, egui::StrokeKind::Middle);
+        paint_two_tone_reticle(ui.painter(), target_rect, 0.0_f32, hover_primary);
 
         response.on_hover_ui(|ui| {
             ui.label(format!("Token: [Row {}, Col {}]", row, col));
             ui.label(format!("Weight: {}", val));
         });
     }
+}
+
+fn draw_attention_ramp_legend(ui: &mut egui::Ui, palette: &SemanticPalette) {
+    ui.horizontal_wrapped(|ui| {
+        draw_legend_swatch(ui, palette.attention_ramp_color(0.0), None, "Low (0.0)");
+        draw_legend_swatch(ui, palette.attention_ramp_color(0.5), None, "Mid (0.5)");
+        draw_legend_swatch(ui, palette.attention_ramp_color(1.0), None, "High (1.0)");
+    });
 }

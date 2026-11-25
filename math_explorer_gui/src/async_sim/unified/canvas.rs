@@ -3,7 +3,7 @@
 use super::{UnifiedModel, UnifiedSimTool};
 use crate::accessibility::AccessibleTheoryHover;
 use crate::async_sim::ui::render_empty_plot_guidance;
-use crate::async_sim::SimCommand;
+use crate::async_sim::{SimCommand, StateSnapshot};
 use crate::framework::{
     encode_bool_grid, BrushMode, InteractionContext, InteractiveTool, PlotBrushController,
     PlotBrushFrame, RasterBrushCanvas, RasterBrushStroke,
@@ -12,7 +12,43 @@ use eframe::egui::{self, ColorImage, TextureOptions};
 use egui_plot::{HLine, Line, LineStyle, Plot, PlotImage, PlotPoint, PlotPoints, Points};
 use math_commons::math_kernel::types::flatten_2d_index;
 
+pub(super) fn default_snapshot_datasets<M: UnifiedModel>(
+    snapshot: &StateSnapshot,
+) -> Vec<(String, Vec<[f64; 2]>)> {
+    if M::is_raster_model() {
+        return Vec::new();
+    }
+    #[cfg(feature = "physics")]
+    if let Some(wave) = snapshot
+        .structured_data
+        .as_ref()
+        .and_then(|d| d.downcast_ref::<crate::tabs::quantum::wave_sim::WaveData>())
+    {
+        return crate::tabs::quantum::wave_sim::presets::build_wave_datasets(wave);
+    }
+    let pairs = snapshot.custom_data.as_chunks::<2>().0;
+    let points: Vec<[f64; 2]> = pairs
+        .iter()
+        .copied()
+        .filter(|[x, y]| x.is_finite() && y.is_finite())
+        .collect();
+    if points.is_empty() {
+        Vec::new()
+    } else {
+        vec![(M::name().to_string(), points)]
+    }
+}
+
 impl<M: UnifiedModel> UnifiedSimTool<M> {
+    fn current_canvas_summary(&self, theme: crate::app::ThemeMode) -> Option<String> {
+        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
+        let snap = self
+            .stepped_snapshot
+            .as_ref()
+            .or_else(|| self.controller.latest_snapshot());
+        M::canvas_a11y_summary(snap, &p, theme)
+    }
+
     fn draw_raster_brush_canvas(
         &mut self,
         ui: &mut egui::Ui,
@@ -20,12 +56,17 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         texture: &egui::TextureHandle,
         grid: (usize, usize, bool),
     ) {
+        let theme = crate::app::ThemeMode::from_visuals(ui.visuals());
+        M::draw_canvas_legend(ui, theme);
         let (grid_w, grid_h, flip_y) = grid;
         let id_salt = format!("{}_raster_canvas", M::name());
         let label = format!("{} raster simulation canvas", M::name());
-        let (response, stroke) = RasterBrushCanvas::new(&id_salt, grid_w, grid_h, &label)
-            .flip_y(flip_y)
-            .show_texture(ui, texture, &mut self.brush_state);
+        let summary = self.current_canvas_summary(theme);
+        let mut canvas = RasterBrushCanvas::new(&id_salt, grid_w, grid_h, &label).flip_y(flip_y);
+        if let Some(ref s) = summary {
+            canvas = canvas.value_summary(s);
+        }
+        let (response, stroke) = canvas.show_texture(ui, texture, &mut self.brush_state);
         let _ = response.accessible_theory_hover(self);
         if let Some(stroke) = stroke {
             self.apply_brush_stroke(stroke, ctx);
@@ -189,6 +230,17 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
     }
 
+    fn image_plot_summary(&self, theme: crate::app::ThemeMode, size: [usize; 2]) -> String {
+        self.current_canvas_summary(theme).unwrap_or_else(|| {
+            format!(
+                "{} {}x{} raster field; use side-panel controls and presets to inspect state",
+                M::name(),
+                size[0],
+                size[1]
+            )
+        })
+    }
+
     fn draw_image_plot(
         &mut self,
         ui: &mut egui::Ui,
@@ -204,14 +256,19 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
             }
         }
 
-        let width = texture.size()[0] as f32;
-        let height = texture.size()[1] as f32;
+        let theme = crate::app::ThemeMode::from_visuals(ui.visuals());
+        M::draw_canvas_legend(ui, theme);
+        let [tex_w, tex_h] = texture.size();
+        let (width, height) = (tex_w as f32, tex_h as f32);
         let allow_pan = !M::supports_spatial_brush() || !self.brush_kit.is_sculpting();
         let mut brush_frame: Option<PlotBrushFrame> = None;
         let visuals = ui.visuals().clone();
         let mut ext_cmds = Vec::new();
+        let summary = self.image_plot_summary(theme, [tex_w, tex_h]);
 
         let plot_resp = Plot::new(format!("{}_plot_img", M::name()))
+            .title(M::name())
+            .description(summary)
             .data_aspect(1.0)
             .view_aspect(1.0)
             .show_grid(false)

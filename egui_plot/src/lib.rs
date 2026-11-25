@@ -426,6 +426,7 @@ pub struct Plot<'a> {
     plot_key: String,
     id: Option<Id>,
     title: Option<String>,
+    a11y_description: Option<String>,
 
     center_axis: Vec2b,
     allow_zoom: Vec2b,
@@ -487,6 +488,7 @@ impl<'a> Plot<'a> {
             plot_key,
             id: None,
             title,
+            a11y_description: None,
 
             center_axis: false.into(),
             allow_zoom: true.into(),
@@ -566,6 +568,16 @@ impl<'a> Plot<'a> {
         let raw = title.into();
         let trimmed = raw.trim();
         self.title = (!trimmed.is_empty()).then(|| trimmed.to_owned());
+        self
+    }
+
+    /// Set a programmatic accessibility summary and visual color key exposed to `AccessKit`
+    /// (`description` and `value`) and `WidgetInfo` for screen readers.
+    #[inline]
+    pub fn description(mut self, description: impl Into<String>) -> Self {
+        let raw = description.into();
+        let trimmed = raw.trim();
+        self.a11y_description = (!trimmed.is_empty()).then(|| trimmed.to_owned());
         self
     }
 
@@ -1183,6 +1195,7 @@ impl<'a> Plot<'a> {
             plot_key,
             id,
             title,
+            a11y_description,
             center_axis,
             allow_zoom,
             allow_drag,
@@ -2266,6 +2279,35 @@ impl<'a> Plot<'a> {
         }
 
         let focus_response = &response;
+        let fg_border_color = a11y::accessible_marker_color(
+            ui.visuals(),
+            ui.visuals().widgets.inactive.fg_stroke.color,
+            ui.visuals().panel_fill,
+        );
+        ui.painter().rect_stroke(
+            plot_rect,
+            2.0_f32,
+            epaint::Stroke::new(1.25_f32, fg_border_color),
+            egui::StrokeKind::Inside,
+        );
+        if focus_response.has_focus() {
+            let ring = a11y::focus_ring_stroke(ui.visuals(), ui.visuals().panel_fill);
+            let halo_color = if a11y::contrast_ratio(ring.color, Color32::BLACK)
+                >= a11y::contrast_ratio(ring.color, Color32::WHITE)
+            {
+                Color32::BLACK
+            } else {
+                Color32::WHITE
+            };
+            ui.painter().rect_stroke(
+                plot_rect,
+                2.0_f32,
+                epaint::Stroke::new(ring.width + 2.0_f32, halo_color),
+                egui::StrokeKind::Inside,
+            );
+            ui.painter()
+                .rect_stroke(plot_rect, 2.0_f32, ring, egui::StrokeKind::Inside);
+        }
         let logical_item_count = items
             .iter()
             .filter(|it| !it.is_companion_visual_only())
@@ -2283,15 +2325,48 @@ impl<'a> Plot<'a> {
             Some(t) => format!("Interactive Plot ({t}), {series_count} series"),
             None => format!("Interactive Plot, {series_count} series"),
         };
+        let resolved_a11y_desc = a11y_description.or_else(|| {
+            if !has_any_export_points && logical_item_count > 0 {
+                let mut names: Vec<&str> = items
+                    .iter()
+                    .filter(|it| !it.is_companion_visual_only() && !it.name().is_empty())
+                    .map(|it| it.name())
+                    .collect();
+                if names.is_empty() {
+                    names.push("raster field");
+                }
+                let b = transform.bounds();
+                Some(format!(
+                    "Layers: {}; bounds x [{:.2}, {:.2}], y [{:.2}, {:.2}]",
+                    names.join(", "),
+                    b.min()[0],
+                    b.max()[0],
+                    b.min()[1],
+                    b.max()[1]
+                ))
+            } else {
+                None
+            }
+        });
         let plot_enabled = ui.is_enabled();
         focus_response.widget_info({
             let label = plot_a11y_label.clone();
-            move || egui::WidgetInfo::labeled(egui::WidgetType::Other, plot_enabled, label.clone())
+            let desc = resolved_a11y_desc.clone();
+            move || {
+                let mut info =
+                    egui::WidgetInfo::labeled(egui::WidgetType::Other, plot_enabled, label.clone());
+                info.current_text_value = desc.clone();
+                info
+            }
         });
         ui.ctx()
             .accesskit_node_builder(focus_response.id, |builder| {
                 builder.set_role(egui::accesskit::Role::GraphicsDocument);
                 builder.set_label(plot_a11y_label);
+                if let Some(desc) = resolved_a11y_desc.as_deref() {
+                    builder.set_description(desc);
+                    builder.set_value(desc);
+                }
             });
 
         if header_h > 0.0 {

@@ -266,13 +266,6 @@ pub(crate) fn draw_lbm_brush_panel(
     snapshot: Option<&StateSnapshot>,
 ) -> Vec<SimCommand> {
     let mut cmds = Vec::new();
-    let hc =
-        crate::app::ThemeMode::from_visuals(ui.visuals()) == crate::app::ThemeMode::HighContrast;
-    let hc_id = ui.id().with("lbm_last_hc");
-    if ui.ctx().data_mut(|d| d.get_temp::<bool>(hc_id)) != Some(hc) {
-        ui.ctx().data_mut(|d| d.insert_temp(hc_id, hc));
-        cmds.push(SimCommand::Custom(format!("HighContrast:{}", u8::from(hc))));
-    }
     ui.label("Wind-Tunnel Sculpting");
     ui.horizontal(|ui| {
         for (m, lbl) in [

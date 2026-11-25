@@ -236,7 +236,7 @@ fn test_lbm_fast_drag_radii_forces_signed_vorticity_and_fairing_url() {
     let min_neg = lbm.vorticity_buf.iter().copied().fold(0.0, f64::min);
     assert!(max_pos > 1e-3 && min_neg < -1e-3);
 
-    lbm.high_contrast = true;
+    lbm.theme = crate::app::ThemeMode::HighContrast;
     params.insert("field_view".to_string(), 0.0);
     lbm.step(&params);
     let speed_px = lbm.get_snapshot().pixels.read().unwrap().clone();

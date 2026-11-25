@@ -210,53 +210,30 @@ fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     }
 }
 
-fn find_literal_from_rgb_lines(prod_part: &str) -> Vec<usize> {
-    let stripped: String = prod_part
-        .lines()
-        .map(|l| l.split("//").next().unwrap_or(l))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let needle = "Color32::from_rgb(";
-    let mut lines = Vec::new();
-    let mut offset = 0;
-    while let Some(pos) = stripped[offset..].find(needle) {
-        let abs_pos = offset + pos;
-        let after = &stripped[abs_pos + needle.len()..];
-        if after
-            .chars()
-            .find(|c| !c.is_whitespace())
-            .is_some_and(|c| c.is_ascii_digit())
-        {
-            let line_no = stripped[..abs_pos].bytes().filter(|&b| b == b'\n').count() + 1;
-            lines.push(line_no);
-        }
-        offset = abs_pos + needle.len();
-    }
-    lines
-}
-
 #[test]
 fn test_no_unguarded_hardcoded_color32_regressions() {
+    use crate::app::palette::color_guard_tests::{
+        audit_source_for_color32_violations, find_constructor_lines,
+    };
     assert_eq!(
-        find_literal_from_rgb_lines("let a = egui::Color32::from_rgb(\n 200, 50, 50);\nlet b = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);"),
+        find_constructor_lines(
+            "let a = egui::Color32::from_rgb(\n 200, 50, 50);\nlet b = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);",
+            "Color32::from_rgb(",
+            true,
+        ),
         vec![1]
     );
-    const BANNED: &[&str] = &[
-        "Color32::YELLOW",
-        "Color32::LIGHT_BLUE",
-        "Color32::LIGHT_GREEN",
-        "Color32::LIGHT_RED",
-        "Color32::LIGHT_GRAY",
-        "Color32::GOLD",
-        "Color32::GREEN",
-        "Color32::RED",
-        "Color32::BLUE",
-        "Color32::GRAY",
-        "Color32::DARK_GRAY",
-        "Color32::DARK_RED",
-        "Color32::KHAKI",
-        "Color32::BROWN",
-    ];
+    let post_cfg_sample = "#[cfg(test)]\nmod t { fn ok() { let _ = egui::Color32::YELLOW; } }\npub fn leak(c: u8) { let _ = (egui::Color32::from_gray(50), egui::Color32::from_rgb(c, c, c), egui::Color32::BLACK, egui::Color32::WHITE); }\n";
+    let sample_hits = audit_source_for_color32_violations(
+        "math_explorer_gui/src/tabs/solid_state/ising/ui.rs",
+        post_cfg_sample,
+    );
+    assert_eq!(
+        sample_hits.len(),
+        4,
+        "expected 4 post-cfg(test) violations: {sample_hits:?}"
+    );
+
     let manifest_dir_raw =
         std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set");
     let manifest_dir = std::path::Path::new(&manifest_dir_raw);
@@ -276,20 +253,7 @@ fn test_no_unguarded_hardcoded_color32_regressions() {
             continue;
         }
         let content = std::fs::read_to_string(&file).expect("read source file");
-        let prod_part = content.split("#[cfg(test)]").next().unwrap_or(&content);
-        for (line_idx, line) in prod_part.lines().enumerate() {
-            let code = line.split("//").next().unwrap_or(line);
-            for banned in BANNED {
-                if code.contains(banned) {
-                    violations.push(format!("{rel_str}:{}: {banned}", line_idx + 1));
-                }
-            }
-        }
-        if rel_str.starts_with("math_explorer_gui/") {
-            for line_no in find_literal_from_rgb_lines(prod_part) {
-                violations.push(format!("{rel_str}:{line_no}: Color32::from_rgb(literal)"));
-            }
-        }
+        violations.extend(audit_source_for_color32_violations(&rel_str, &content));
     }
     assert!(
         violations.is_empty(),
@@ -303,6 +267,7 @@ fn test_no_unguarded_hardcoded_color32_regressions() {
 fn test_high_contrast_rasters_and_progress_bars_meet_wcag() {
     for mode in ALL_THEMES {
         let v = mode.visuals();
+        let p = mode.palette();
         let text_fg = v.selection.stroke.color;
         assert!(contrast_ratio(v.extreme_bg_color, text_fg) >= 4.5);
         assert!(contrast_ratio(v.selection.bg_fill, text_fg) >= 4.5);
@@ -313,24 +278,43 @@ fn test_high_contrast_rasters_and_progress_bars_meet_wcag() {
                 assert!(contrast_ratio(fill, egui::Color32::BLACK) >= 3.0);
             }
         }
-    }
 
+        let s_up = crate::tabs::solid_state::ising::ising_spin_color(1, &p);
+        let s_down = crate::tabs::solid_state::ising::ising_spin_color(-1, &p);
+        let p_up = crate::tabs::solid_state::ising::ising_spin_color(2, &p);
+        let p_down = crate::tabs::solid_state::ising::ising_spin_color(-2, &p);
+        assert_ne!(
+            p_down, s_down,
+            "{mode:?} pinned -2 must not collide with free -1"
+        );
+        for up in [s_up, p_up] {
+            for down in [s_down, p_down] {
+                assert!(contrast_ratio(up, down) >= 3.0);
+            }
+        }
+
+        let (mut lookup, mut ulam_px) = (Vec::new(), Vec::new());
+        crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget::populate_ulam_pixels(
+            21,
+            mode,
+            &mut lookup,
+            &mut ulam_px,
+        );
+        let ulam_bg = v.extreme_bg_color;
+        for px in ulam_px.into_iter().filter(|&c| c != ulam_bg) {
+            assert!(contrast_ratio(px, ulam_bg) >= 3.0);
+        }
+    }
+    assert_high_contrast_black_floor();
+}
+
+#[cfg(all(feature = "pure_math", feature = "physics", feature = "biology"))]
+fn assert_high_contrast_black_floor() {
     let black = egui::Color32::BLACK;
     let hc_palette = ThemeMode::HighContrast.palette();
-    for spin in [-1_i8, 1_i8] {
+    for spin in [-2_i8, -1, 1, 2] {
         let c = crate::tabs::solid_state::ising::ising_spin_color(spin, &hc_palette);
         assert!(contrast_ratio(c, black) >= 3.0);
-    }
-
-    let (mut lookup, mut ulam_px) = (Vec::new(), Vec::new());
-    crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget::populate_ulam_pixels(
-        21,
-        ThemeMode::HighContrast,
-        &mut lookup,
-        &mut ulam_px,
-    );
-    for px in ulam_px.into_iter().filter(|&c| c != black) {
-        assert!(contrast_ratio(px, black) >= 3.0);
     }
 
     let dose = crate::tabs::medical::dose::DoseCalculationTool::default()

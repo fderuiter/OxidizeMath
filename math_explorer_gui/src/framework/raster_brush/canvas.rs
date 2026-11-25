@@ -4,11 +4,12 @@ use super::bresenham::{cell_screen_rect, compute_aspect_locked_rect, map_pointer
 use super::state::{RasterBrushState, RasterBrushStroke};
 use super::stencils::{generate_brush_cells, BrushStencil};
 use crate::accessibility::{
-    announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
-    register_canvas_accessibility, AccessibleHoverText,
+    announce_live_status, lock_canvas_arrow_keys, paint_canvas_border, paint_canvas_focus_ring,
+    paint_two_tone_line, paint_two_tone_reticle, register_canvas_accessibility,
+    AccessibleHoverText,
 };
 use crate::app::SemanticPalette;
-use eframe::egui::{self, Color32, Key, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Vec2};
+use eframe::egui::{self, Color32, Key, Pos2, Rect, Response, Sense, Vec2};
 
 /// Reusable aspect-locked 2D raster sculpting widget with Bresenham strokes and WCAG 2.2 AA reticle.
 pub struct RasterBrushCanvas<'a> {
@@ -122,12 +123,7 @@ impl<'a> RasterBrushCanvas<'a> {
         let palette = SemanticPalette::from_visuals(ui.visuals());
         let painter = ui.painter_at(target_rect);
         paint_grid(&painter, target_rect, &palette);
-        painter.rect_stroke(
-            target_rect,
-            0.0,
-            ui.visuals().widgets.noninteractive.bg_stroke,
-            StrokeKind::Inside,
-        );
+        paint_canvas_border(ui, target_rect);
 
         let a11y_value = self.compose_a11y_value(state);
         register_canvas_accessibility(ui, &response, self.role, self.label, Some(&a11y_value));
@@ -414,7 +410,7 @@ impl<'a> RasterBrushCanvas<'a> {
                 self.flip_y,
             )
             .center();
-            painter.line_segment([start_c, end_c], Stroke::new(2.0_f32, palette.accent));
+            paint_two_tone_line(painter, [start_c, end_c], palette.accent, 2.0_f32);
         }
 
         if response.has_focus() {
@@ -428,18 +424,7 @@ impl<'a> RasterBrushCanvas<'a> {
             );
             let min_box = Vec2::new(cell_r.width().max(8.0), cell_r.height().max(8.0));
             let reticle_rect = Rect::from_center_size(cell_r.center(), min_box);
-            painter.rect_stroke(
-                reticle_rect,
-                1.0,
-                Stroke::new(3.0_f32, palette.surface_fill),
-                StrokeKind::Outside,
-            );
-            painter.rect_stroke(
-                reticle_rect,
-                1.0,
-                Stroke::new(2.0_f32, palette.warning),
-                StrokeKind::Middle,
-            );
+            paint_two_tone_reticle(painter, reticle_rect, 1.0_f32, palette.warning);
         }
     }
 }

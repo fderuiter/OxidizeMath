@@ -84,11 +84,17 @@ fn test_lbm_on_brush_y_alignment() {
     let mut tool = UnifiedSimTool::<LbmUnified>::new();
     wait_for_unified_snapshot(&mut tool);
 
+    let is_obs = |px: egui::Color32| {
+        crate::tabs::fluid_dynamics::lattice_boltzmann::render::is_lbm_obstacle_pixel(
+            px,
+            crate::app::ThemeMode::Dark,
+        )
+    };
     let _ = tool.controller.send_command(SimCommand::ClearObstacles);
     poll_until(WORKER_POLL_TIMEOUT, || {
         let _ = tool.controller.update();
         tool.export_raster_image()
-            .is_some_and(|img| img.pixels[25 * LBM_WIDTH + 30] != egui::Color32::from_gray(50))
+            .is_some_and(|img| !is_obs(img.pixels[25 * LBM_WIDTH + 30]))
     });
 
     send_brush_stroke(
@@ -98,15 +104,15 @@ fn test_lbm_on_brush_y_alignment() {
     poll_until(WORKER_POLL_TIMEOUT, || {
         let _ = tool.controller.update();
         tool.export_raster_image()
-            .is_some_and(|img| img.pixels[41 * LBM_WIDTH + 20] == egui::Color32::from_gray(50))
+            .is_some_and(|img| is_obs(img.pixels[41 * LBM_WIDTH + 20]))
     });
 
     let img = tool.export_raster_image().expect("LBM raster image");
     assert_eq!(img.size, [LBM_WIDTH, LBM_HEIGHT]);
     let bottom_px = img.pixels[41 * LBM_WIDTH + 20];
     let mirrored_top_px = img.pixels[8 * LBM_WIDTH + 20];
-    assert_eq!(bottom_px, egui::Color32::from_gray(50));
-    assert_ne!(mirrored_top_px, egui::Color32::from_gray(50));
+    assert!(is_obs(bottom_px));
+    assert!(!is_obs(mirrored_top_px));
 }
 
 #[test]

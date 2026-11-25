@@ -5,7 +5,7 @@ use crate::framework::{
     generate_brush_cells, BrushStencil, InteractiveTool, RasterBrushStroke, SymmetryMode,
 };
 use crate::url_state::{encode_share_fragment, parse_share_location};
-use eframe::egui::{Color32, Context};
+use eframe::egui::Context;
 
 #[test]
 fn test_lbm_unified_persists_airfoil_across_save_load_reset_and_url() {
@@ -57,8 +57,11 @@ fn test_lbm_unified_persists_airfoil_across_save_load_reset_and_url() {
     assert_eq!(restored.save_state().as_deref(), Some(saved.as_str()));
     restored.step_simulation();
     let img = restored.export_raster_image().expect("LBM raster image");
-    // Image row y = 50 - 1 - 25 = 24 at x = 45 must be obstacle gray(50):
-    assert_eq!(img.pixels[24 * 100 + 45], Color32::from_gray(50));
+    // Image row y = 50 - 1 - 25 = 24 at x = 45 must belong to the semantic obstacle palette:
+    assert!(super::render::is_lbm_obstacle_pixel(
+        img.pixels[24 * 100 + 45],
+        crate::app::ThemeMode::Dark,
+    ));
 
     // Reject dimension-mismatched RLE:
     let bad_rle = crate::framework::encode_bool_grid(20, 20, &[true; 400]).unwrap();

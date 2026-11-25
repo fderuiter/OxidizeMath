@@ -4,8 +4,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::{CanvasKeyTarget, DoseCalculationTool, DoseDisplayMode};
-use crate::accessibility::{announce_live_status, register_canvas_accessibility};
-use crate::app::SemanticPalette;
+use crate::accessibility::{
+    announce_live_status, lock_arrow_keys_for_id, paint_canvas_focus_ring,
+    register_canvas_accessibility,
+};
+use crate::app::{SemanticPalette, ThemeMode};
 use crate::framework::{
     scoped_panel_id, BrushMode, BrushStroke, InteractionContext, InteractiveTool,
 };
@@ -15,7 +18,7 @@ use crate::tabs::medical::imrt::{
     IMRT_TUMOR_CENTER, IMRT_TUMOR_RADIUS_CM, IMRT_VOXEL_COUNT,
 };
 use eframe::egui::{
-    self, Color32, ColorImage, EventFilter, Key, Modifiers, Pos2, RichText, Stroke, TextureOptions,
+    self, Color32, ColorImage, Key, Modifiers, Pos2, RichText, Stroke, TextureOptions,
 };
 use egui_plot::{Line, Plot, PlotImage, PlotPoint, PlotPoints, PlotUi, Points, Polygon, Text};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
@@ -36,7 +39,12 @@ pub(crate) fn compute_dose_image_for_contrast(
         return compute_imrt_image(tool, high_contrast);
     }
     let (width, height) = (tool.width.max(1), tool.height.max(1));
-    let mut pixels = vec![Color32::BLACK; width * height];
+    let bg = if high_contrast {
+        ThemeMode::HighContrast.palette().surface_fill
+    } else {
+        ThemeMode::Dark.palette().surface_fill
+    };
+    let mut pixels = vec![bg; width * height];
     let kernel = ExponentialKernel::new(tool.amplitude, tool.beta);
     let (dx, dy) = (
         IMRT_PHANTOM_SIZE_CM / width as f64,
@@ -54,7 +62,7 @@ pub(crate) fn compute_dose_image_for_contrast(
                 kernel.value_at(r).unwrap_or(0.0)
             };
             let rgb = map_intensity((dose / max_dose).clamp(0.0, 1.0), high_contrast);
-            pixels[flatten_2d_index(x, y, width)] = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+            pixels[flatten_2d_index(x, y, width)] = SemanticPalette::colormap_to_color32(rgb);
         }
     }
     ColorImage::new([width, height], pixels)
@@ -79,7 +87,12 @@ fn active_imrt_dose_slice(tool: &DoseCalculationTool) -> &[f64] {
 }
 
 fn compute_imrt_image(tool: &DoseCalculationTool, high_contrast: bool) -> ColorImage {
-    let mut pixels = vec![Color32::BLACK; IMRT_VOXEL_COUNT];
+    let bg = if high_contrast {
+        ThemeMode::HighContrast.palette().surface_fill
+    } else {
+        ThemeMode::Dark.palette().surface_fill
+    };
+    let mut pixels = vec![bg; IMRT_VOXEL_COUNT];
     let scale_gy = (tool.prescription_gy * 1.25).max(10.0);
     let dose_slice = active_imrt_dose_slice(tool);
     for y in 0..IMRT_GRID_DIM {
@@ -88,7 +101,7 @@ fn compute_imrt_image(tool: &DoseCalculationTool, high_contrast: bool) -> ColorI
             let dose = dose_slice[flatten_2d_index(x, y, IMRT_GRID_DIM)];
             let rgb = map_intensity((dose / scale_gy).clamp(0.0, 1.0), high_contrast);
             pixels[flatten_2d_index(x, img_y, IMRT_GRID_DIM)] =
-                Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
+                SemanticPalette::colormap_to_color32(rgb);
         }
     }
     ColorImage::new([IMRT_GRID_DIM, IMRT_GRID_DIM], pixels)
@@ -123,7 +136,11 @@ pub fn render_dose_canvas(tool: &mut DoseCalculationTool, ui: &mut egui::Ui, ctx
     let mut gantry_changed = false;
     let mut plot_resp_out: Option<egui::Response> = None;
 
+    let summary = tool.imrt_workspace.summary.format_dose_a11y_summary(tool);
+
     Plot::new(scoped_panel_id(ui, "dose_heatmap"))
+        .title("Radiotherapy Dose Distribution")
+        .description(&summary)
         .data_aspect(1.0)
         .view_aspect(1.0)
         .allow_drag(allow_drag)
@@ -148,7 +165,7 @@ pub fn render_dose_canvas(tool: &mut DoseCalculationTool, ui: &mut egui::Ui, ctx
         });
 
     if let Some(resp) = plot_resp_out {
-        update_focus_and_a11y(tool, ui, &resp);
+        update_focus_and_a11y(tool, ui, &resp, &summary);
         for stroke in pending_strokes {
             tool.on_brush(&InteractionContext::from_brush_stroke(&resp, stroke));
         }
@@ -157,39 +174,6 @@ pub fn render_dose_canvas(tool: &mut DoseCalculationTool, ui: &mut egui::Ui, ctx
         tool.imrt_workspace.reset_4d_dose();
         tool.refresh_model();
     }
-}
-
-fn update_focus_and_a11y(tool: &mut DoseCalculationTool, ui: &mut egui::Ui, resp: &egui::Response) {
-    if resp.clicked() || tool.dragging_beam.is_some() {
-        resp.request_focus();
-    }
-    if resp.has_focus() {
-        tool.focused_canvas = Some(resp.id);
-    } else if tool.focused_canvas == Some(resp.id) {
-        tool.focused_canvas = None;
-    }
-    let summary = if tool.imrt_mode {
-        format!(
-            "IMRT phantom ({}) — Beam {} at {:.0} deg, PTV mean {:.1} Gy, OAR max {:.1} Gy",
-            tool.display_mode.label(),
-            tool.selected_beam + 1,
-            tool.beam_angles_deg[tool.selected_beam],
-            tool.imrt_workspace.summary.tumor_mean_gy,
-            tool.imrt_workspace.summary.oar_max_gy.0
-        )
-    } else {
-        format!(
-            "Point-source exponential dose kernel A={:.1}, beta={:.2}",
-            tool.amplitude, tool.beta
-        )
-    };
-    register_canvas_accessibility(
-        ui,
-        resp,
-        egui::accesskit::Role::Canvas,
-        "Radiotherapy dose and contouring canvas",
-        Some(&summary),
-    );
 }
 
 /// Computes `(x_cm, y_cm)` on the perimeter ring for coplanar gantry angle `angle_deg`.
@@ -303,18 +287,7 @@ fn sample_gantry_keyboard(
     if !resp.has_focus() {
         return false;
     }
-    // Lock ONLY arrow keys; never trap Tab, Shift+Tab, or Escape.
-    ctx.memory_mut(|m| {
-        m.set_focus_lock_filter(
-            resp.id,
-            EventFilter {
-                tab: false,
-                horizontal_arrows: true,
-                vertical_arrows: true,
-                escape: false,
-            },
-        );
-    });
+    lock_arrow_keys_for_id(ctx, resp.id);
     let (changed, announcement) = ctx.input_mut(|i| consume_gantry_key_inputs(tool, i));
     if let Some(msg) = announcement {
         announce_live_status(ctx, msg);
@@ -410,21 +383,21 @@ fn draw_contour_overlays(
     plot_ui: &mut PlotUi<'_>,
 ) {
     if !tool.imrt_workspace.custom_contours {
-        plot_ui.polygon(
-            Polygon::new(
-                "PTV Target (D_Rx)",
-                circle_ring(IMRT_TUMOR_CENTER, IMRT_TUMOR_RADIUS_CM),
-            )
-            .fill_color(Color32::TRANSPARENT)
-            .stroke(Stroke::new(2.0_f32, palette.success)),
+        let ptv = Polygon::new(
+            "PTV Target (D_Rx)",
+            circle_ring(IMRT_TUMOR_CENTER, IMRT_TUMOR_RADIUS_CM),
         );
         plot_ui.polygon(
-            Polygon::new(
-                "OAR (D_lim)",
-                circle_ring(IMRT_OAR_CENTER, IMRT_OAR_RADIUS_CM),
-            )
-            .fill_color(Color32::TRANSPARENT)
-            .stroke(Stroke::new(2.0_f32, palette.error)),
+            ptv.fill_color(Color32::TRANSPARENT)
+                .stroke(Stroke::new(2.0_f32, palette.success)),
+        );
+        let oar = Polygon::new(
+            "OAR (D_lim)",
+            circle_ring(IMRT_OAR_CENTER, IMRT_OAR_RADIUS_CM),
+        );
+        plot_ui.polygon(
+            oar.fill_color(Color32::TRANSPARENT)
+                .stroke(Stroke::new(2.0_f32, palette.error)),
         );
     } else {
         draw_custom_mask_edges(
@@ -487,6 +460,31 @@ fn circle_ring(center: [f64; 2], radius: f64) -> Vec<[f64; 2]> {
             [center[0] + radius * a.cos(), center[1] + radius * a.sin()]
         })
         .collect()
+}
+
+fn update_focus_and_a11y(
+    tool: &mut DoseCalculationTool,
+    ui: &egui::Ui,
+    resp: &egui::Response,
+    summary: &str,
+) {
+    if resp.clicked() || tool.dragging_beam.is_some() {
+        resp.request_focus();
+    }
+    if resp.has_focus() {
+        tool.focused_canvas = Some(resp.id);
+    } else if tool.focused_canvas == Some(resp.id) {
+        tool.focused_canvas = None;
+    }
+    paint_canvas_focus_ring(ui, resp);
+    let label = "Radiotherapy dose and contouring canvas";
+    register_canvas_accessibility(
+        ui,
+        resp,
+        egui::accesskit::Role::Canvas,
+        label,
+        Some(summary),
+    );
 }
 
 // [cite:graph_parameters_rust]

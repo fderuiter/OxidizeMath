@@ -2,15 +2,13 @@
 
 use super::atlas::onsager_critical_temp;
 use super::preset::{FermiGamePreset, IsingInteractionMode};
-use super::{ising_spin_color, IsingBrushMode, IsingModelTool, DEFAULT_ISING_SIZE};
-use crate::accessibility::{AccessibleHoverText, AccessibleTheoryHover};
+use super::{IsingBrushMode, IsingModelTool};
+use crate::accessibility::AccessibleHoverText;
 use crate::async_sim::ui::{
     render_empty_plot_guidance, render_worker_fault_banner, WorkerFaultAction,
 };
 use crate::async_sim::SimCommand;
-use crate::framework::{
-    draw_brush_palette_controls, PlaybackAction, PlaybackTransport, RasterBrushCanvas,
-};
+use crate::framework::{draw_brush_palette_controls, PlaybackAction, PlaybackTransport};
 use crate::reflective_ui::AnimatedSlider;
 use eframe::egui;
 
@@ -400,49 +398,6 @@ impl IsingModelTool {
             });
     }
 
-    fn draw_lattice_canvas(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, side: f32) {
-        let Some(texture) = self.texture.clone() else {
-            return;
-        };
-        let alt_label = format!(
-            "2D Ising Model spin lattice visualization (T = {:.3}, M = {:.3}, E = {:.3}, C = {:.1}%)",
-            self.temperature,
-            self.magnetization,
-            self.energy,
-            self.cooperator_fraction() * 100.0
-        );
-        let pinned_count = self.pin_cells.iter().filter(|&&c| c != 0).count();
-        let summary = format!(
-            "M = {:.3}, E = {:.1}, C = {:.1}%, {pinned_count} pinned sites",
-            self.magnetization,
-            self.energy,
-            self.cooperator_fraction() * 100.0
-        );
-        let (response, stroke) = RasterBrushCanvas::new(
-            "ising_lattice_canvas",
-            DEFAULT_ISING_SIZE,
-            DEFAULT_ISING_SIZE,
-            &alt_label,
-        )
-        .value_summary(&summary)
-        .max_canvas_size(egui::vec2(side, side))
-        .show_texture(ui, &texture, &mut self.brush_state);
-        let response = response.accessible_theory_hover(self);
-        self.last_canvas_rect = Some(response.rect);
-        self.sync_brush_fields_from_palette();
-        if let Some(stroke) = stroke {
-            self.apply_brush_stroke(stroke, Some(ctx));
-        }
-
-        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-        ui.horizontal_wrapped(|ui| {
-            ui.colored_label(ising_spin_color(1, &palette), "■ +1 (C / ↑)");
-            ui.colored_label(ising_spin_color(-1, &palette), "■ -1 (D / ↓)");
-            ui.colored_label(ising_spin_color(2, &palette), "■ Pin +1");
-            ui.colored_label(ising_spin_color(-2, &palette), "■ Pin -1");
-        });
-    }
-
     fn draw_active_spin_canvas(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, side: f32) {
         if self.is_graph_mode() {
             self.draw_graph_spin_canvas(ui, side);
@@ -467,21 +422,18 @@ impl IsingModelTool {
             let avail = ui.available_size();
             match self.mode {
                 IsingInteractionMode::Ferromagnetic => {
-                    let side = avail.x.min((avail.y - 28.0).max(100.0)).clamp(100.0, 620.0);
+                    let side = avail.x.min((avail.y - 32.0).max(100.0)).clamp(100.0, 620.0);
                     self.draw_active_spin_canvas(ui, ctx, side);
                 }
                 IsingInteractionMode::FermiGame if avail.x >= 520.0 => {
                     let side = (avail.x * 0.46)
-                        .min((avail.y - 32.0).max(120.0))
+                        .min((avail.y - 36.0).max(120.0))
                         .clamp(120.0, 520.0);
                     ui.horizontal(|ui| {
-                        ui.vertical(|ui| {
-                            self.draw_active_spin_canvas(ui, ctx, side);
-                        });
+                        ui.vertical(|ui| self.draw_active_spin_canvas(ui, ctx, side));
                         ui.separator();
                         ui.vertical(|ui| {
-                            let plot_h = (avail.y - 32.0).max(160.0);
-                            self.draw_replicator_overlay_plot(ui, plot_h);
+                            self.draw_replicator_overlay_plot(ui, (avail.y - 32.0).max(160.0));
                         });
                     });
                 }
@@ -489,8 +441,10 @@ impl IsingModelTool {
                     let side = avail.x.min((avail.y * 0.5).max(100.0)).clamp(100.0, 360.0);
                     self.draw_active_spin_canvas(ui, ctx, side);
                     ui.separator();
-                    let plot_h = (ui.available_height() - 24.0).max(140.0);
-                    self.draw_replicator_overlay_plot(ui, plot_h);
+                    self.draw_replicator_overlay_plot(
+                        ui,
+                        (ui.available_height() - 24.0).max(140.0),
+                    );
                 }
             }
         });

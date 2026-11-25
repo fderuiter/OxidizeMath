@@ -4,18 +4,65 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::GridWorldTool;
-use crate::accessibility::AccessibleTheoryHover;
+use crate::accessibility::{
+    draw_legend_swatch, paint_two_tone_circle, paint_two_tone_rect_frame, AccessibleTheoryHover,
+};
 use crate::app::{contrasting_text_color, SemanticPalette};
 use crate::framework::{
     cell_screen_rect, BrushMode, InputMode, RasterBrushCanvas, RasterBrushStroke,
 };
 use crate::tabs::ai::q_table_inspector::q_value_cell_color;
+pub use crate::tabs::ai::rl_sculpt::START_BADGE_GLYPH;
 use crate::tabs::ai::rl_sculpt::{
-    brush_mode_to_cell_role, mean_bellman_residual, paint_policy_arrow, role_base_fill, role_glyph,
-    RlOverlayMode, RlSolverMode,
+    brush_mode_to_cell_role, cell_role_or_start_glyph, mean_bellman_residual, paint_policy_arrow,
+    role_base_fill, role_glyph, RlOverlayMode, RlSolverMode,
 };
 use eframe::egui;
 use math_explorer::ai::reinforcement_learning::{GridCellRole, GridState, MarkovDecisionProcess};
+
+fn paint_start_marker(painter: &egui::Painter, cell_rect: egui::Rect, palette: &SemanticPalette) {
+    paint_two_tone_rect_frame(
+        painter,
+        cell_rect.shrink(2.0_f32),
+        2.0_f32,
+        palette.info,
+        1.6_f32,
+    );
+    let badge_size = (cell_rect.width().min(cell_rect.height()) * 0.34).clamp(11.0_f32, 16.0_f32);
+    let badge_rect = egui::Rect::from_min_size(
+        egui::pos2(
+            cell_rect.right() - badge_size - 2.0_f32,
+            cell_rect.top() + 2.0_f32,
+        ),
+        egui::vec2(badge_size, badge_size),
+    );
+    let badge_fg = contrasting_text_color(palette.info);
+    painter.rect_filled(badge_rect, 2.0_f32, palette.info);
+    painter.rect_stroke(
+        badge_rect,
+        2.0_f32,
+        egui::Stroke::new(1.0_f32, badge_fg),
+        egui::StrokeKind::Inside,
+    );
+    painter.text(
+        badge_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        cell_role_or_start_glyph(GridCellRole::Free, true).unwrap_or(START_BADGE_GLYPH),
+        egui::FontId::proportional(10.0),
+        badge_fg,
+    );
+}
+
+fn draw_grid_world_legend(ui: &mut egui::Ui, palette: &SemanticPalette) {
+    ui.horizontal_wrapped(|ui| {
+        draw_legend_swatch(ui, palette.info, Some(START_BADGE_GLYPH), "Start [S]");
+        draw_legend_swatch(ui, palette.success, Some("★"), "Goal [★]");
+        draw_legend_swatch(ui, palette.error, Some("✕"), "Trap [✕]");
+        draw_legend_swatch(ui, palette.graph_edge, Some("■"), "Wall [■]");
+        draw_legend_swatch(ui, palette.surface_fill, Some("↑"), "Wind [↑↓←→]");
+        draw_legend_swatch(ui, palette.accent, Some("◎"), "Agent [◎]");
+    });
+}
 
 impl GridWorldTool {
     fn overlay_scalar(&self, state: GridState) -> Option<f64> {
@@ -77,8 +124,6 @@ impl GridWorldTool {
         }
         if state == self.current_state {
             palette.accent
-        } else if state == self.mdp.start {
-            palette.info
         } else {
             role_base_fill(role, palette)
         }
@@ -102,24 +147,7 @@ impl GridWorldTool {
         );
 
         let fg = contrasting_text_color(fill);
-        let role = self.mdp.cell_role(state);
-        if let Some(glyph) = role_glyph(role) {
-            let pos = if matches!(
-                role,
-                GridCellRole::Goal | GridCellRole::Trap | GridCellRole::SolidWall
-            ) {
-                cell_rect.center()
-            } else {
-                cell_rect.left_top() + egui::vec2(8.0, 9.0)
-            };
-            painter.text(
-                pos,
-                egui::Align2::CENTER_CENTER,
-                glyph,
-                egui::FontId::proportional(13.0),
-                fg,
-            );
-        }
+        paint_cell_role_glyph(painter, cell_rect, self.mdp.cell_role(state), fg);
 
         if let Some(action) = self.greedy_action_for_display(state) {
             let arrow_center = if self.overlay_scalar(state).is_some() {
@@ -146,10 +174,49 @@ impl GridWorldTool {
             );
         }
 
-        if state == self.current_state {
-            let ring_stroke = egui::Stroke::new(2.5_f32, fg);
-            painter.circle_stroke(cell_rect.center(), cell_rect.width() * 0.34, ring_stroke);
+        if state == self.mdp.start {
+            paint_start_marker(painter, cell_rect, palette);
         }
+
+        if state == self.current_state {
+            paint_two_tone_circle(
+                painter,
+                cell_rect.center(),
+                cell_rect.width() * 0.34,
+                palette.accent,
+                2.2_f32,
+            );
+        }
+    }
+
+    fn build_grid_summary(&self) -> String {
+        let (mut traps, mut walls, mut winds) = (0_usize, 0_usize, 0_usize);
+        for y in 0..self.mdp.height {
+            for x in 0..self.mdp.width {
+                match self.mdp.cell_role(GridState { x, y }) {
+                    GridCellRole::Trap => traps += 1,
+                    GridCellRole::SolidWall => walls += 1,
+                    GridCellRole::WindUp
+                    | GridCellRole::WindDown
+                    | GridCellRole::WindLeft
+                    | GridCellRole::WindRight => winds += 1,
+                    GridCellRole::Free | GridCellRole::Goal => {}
+                }
+            }
+        }
+        format!(
+            "Agent at ({}, {}) [◎], Start ({}, {}) [S], Goal ({}, {}) [★], Traps {traps} [✕], Walls {walls} [■], Wind cells {winds} [↑↓←→] (slip {:.2}), Episode {}, Reward {:.2}, Overlay {}; Color/shape key: Start [S] framed badge, Goal [★], Trap [✕], Wall [■], Wind [↑↓←→], Agent [◎] two-tone ring",
+            self.current_state.x,
+            self.current_state.y,
+            self.mdp.start.x,
+            self.mdp.start.y,
+            self.mdp.goal.x,
+            self.mdp.goal.y,
+            self.mdp.wind_slip_prob,
+            self.episodes,
+            self.total_reward,
+            self.overlay_mode.label()
+        )
     }
 
     fn draw_telemetry_header(&self, ui: &mut egui::Ui) {
@@ -180,8 +247,8 @@ impl GridWorldTool {
             44.0_f32
         };
         let max_dim = self.mdp.width.max(self.mdp.height).max(1) as f32;
-        let fit_cell =
-            ((ui.available_width().min(ui.available_height()) - 16.0) / max_dim).clamp(24.0, 64.0);
+        let fit_cell = ((ui.available_width().min(ui.available_height() - 28.0) - 16.0) / max_dim)
+            .clamp(24.0, 64.0);
         let cell_size = base_cell.max(fit_cell).min(64.0);
         egui::vec2(
             self.mdp.width as f32 * cell_size,
@@ -223,15 +290,7 @@ impl GridWorldTool {
             let grid_size = self.compute_grid_layout(ui, input_mode);
             let gw = self.mdp.width.max(1) as usize;
             let gh = self.mdp.height.max(1) as usize;
-            let summary = format!(
-                "Agent at ({}, {}), Episode {}, Reward {:.2}, Overlay {}, Wind {:.2}",
-                self.current_state.x,
-                self.current_state.y,
-                self.episodes,
-                self.total_reward,
-                self.overlay_mode.label(),
-                self.mdp.wind_slip_prob
-            );
+            let summary = self.build_grid_summary();
             let bounds = self.overlay_bounds();
             let mut brush_state = std::mem::take(&mut self.brush_state);
             let (response, stroke) =
@@ -253,9 +312,36 @@ impl GridWorldTool {
                     });
             self.brush_state = brush_state;
             let _ = response.accessible_theory_hover(self);
+            let legend_palette = SemanticPalette::from_visuals(ui.visuals());
+            draw_grid_world_legend(ui, &legend_palette);
             if let Some(stroke) = stroke {
                 self.apply_canvas_stroke(stroke);
             }
         });
+    }
+}
+
+fn paint_cell_role_glyph(
+    painter: &egui::Painter,
+    cell_rect: egui::Rect,
+    role: GridCellRole,
+    fg: egui::Color32,
+) {
+    if let Some(glyph) = role_glyph(role) {
+        let pos = if matches!(
+            role,
+            GridCellRole::Goal | GridCellRole::Trap | GridCellRole::SolidWall
+        ) {
+            cell_rect.center()
+        } else {
+            cell_rect.left_top() + egui::vec2(8.0, 9.0)
+        };
+        painter.text(
+            pos,
+            egui::Align2::CENTER_CENTER,
+            glyph,
+            egui::FontId::proportional(13.0),
+            fg,
+        );
     }
 }

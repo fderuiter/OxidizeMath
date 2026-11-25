@@ -242,38 +242,28 @@ fn test_unified_tools_render_non_empty_panels_on_frame_zero() {
 #[test]
 #[cfg(all(not(target_arch = "wasm32"), feature = "physics"))]
 fn test_lbm_paused_apply_brush_emits_fresh_snapshot() {
+    use crate::app::ThemeMode;
     use crate::async_sim::unified::UnifiedSimTool;
+    use crate::tabs::fluid_dynamics::lattice_boltzmann::render::is_lbm_obstacle_pixel;
     use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
-
     let mut lbm = UnifiedSimTool::<LbmUnified>::new();
     let _ = lbm.controller.update();
     assert_eq!(lbm.state(), SimWorkerState::Ready);
-
-    assert!(lbm
-        .controller
-        .send_command(SimCommand::ApplyBrush {
-            cx: 80,
-            cy: 10,
-            r: 3,
-            is_obstacle: true,
-        })
-        .is_ok());
-
-    let mut updated = false;
-    for _ in 0..400 {
-        std::thread::sleep(Duration::from_millis(10));
-        if lbm.controller.update().is_some() {
-            updated = true;
-            break;
-        }
-    }
-    assert!(updated, "Paused ApplyBrush must emit a fresh snapshot");
-
+    let cmd = SimCommand::ApplyBrush {
+        cx: 80,
+        cy: 10,
+        r: 3,
+        is_obstacle: true,
+    };
+    assert!(lbm.controller.send_command(cmd).is_ok());
+    assert!(
+        wait_for_fresh_snapshot(&mut lbm),
+        "Paused ApplyBrush must emit a fresh snapshot"
+    );
     let snap = lbm.controller.latest_snapshot().expect("snapshot present");
     let pixels = snap.pixels.read().expect("pixels lock");
-    let flipped_y = snap.height - 1 - 10;
-    let obstacle_idx = flipped_y * snap.width + 80;
-    assert_eq!(pixels[obstacle_idx], egui::Color32::from_gray(50));
+    let idx = (snap.height - 1 - 10) * snap.width + 80;
+    assert!(is_lbm_obstacle_pixel(pixels[idx], ThemeMode::Dark));
     let rgb_flat: Vec<[u8; 3]> = pixels.iter().map(|c| [c.r(), c.g(), c.b()]).collect();
     if let Ok(json) = serde_json::to_string(&(snap.width, snap.height, rgb_flat)) {
         let _ = std::fs::write("/tmp/seeded_lbm_pixels.json", json);
@@ -402,8 +392,8 @@ fn test_unpolled_running_worker_diverges_without_blocking_sender() {
 fn wait_for_fresh_snapshot<M: crate::async_sim::unified::UnifiedModel>(
     tool: &mut crate::async_sim::unified::UnifiedSimTool<M>,
 ) -> bool {
-    for _ in 0..200 {
-        std::thread::sleep(Duration::from_millis(5));
+    for _ in 0..400 {
+        std::thread::sleep(Duration::from_millis(10));
         if tool.controller.update().is_some() {
             return true;
         }
@@ -448,6 +438,7 @@ fn test_unified_sim_paused_parameter_edits_refresh_snapshot_and_preserve_ready_s
         use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};
         use crate::framework::InteractiveTool;
         use crate::reflective_ui::slider::{save_slider_state, AnimatedSliderState, SweepMode};
+        use crate::tabs::fluid_dynamics::lattice_boltzmann::render::is_lbm_obstacle_pixel;
         use crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified;
 
         let ctx = egui::Context::default();
@@ -464,18 +455,22 @@ fn test_unified_sim_paused_parameter_edits_refresh_snapshot_and_preserve_ready_s
         let _ = wait_for_fresh_snapshot(&mut lbm);
 
         let visc_before = *lbm.params.read().unwrap().get("viscosity").unwrap();
-        let state = AnimatedSliderState {
-            playing: true,
-            direction: 1.0,
-            sweep_mode: SweepMode::Oscillate,
-        };
-        let id = egui::Id::new(("unified_sim_param", LbmUnified::name(), "viscosity"));
-        save_slider_state(&ctx, id, state);
-        let raw = egui::RawInput {
-            predicted_dt: 0.1,
-            ..Default::default()
-        };
-        let _ = ctx.run(raw, |ctx| lbm.show(ctx));
+        save_slider_state(
+            &ctx,
+            egui::Id::new(("unified_sim_param", LbmUnified::name(), "viscosity")),
+            AnimatedSliderState {
+                playing: true,
+                direction: 1.0,
+                sweep_mode: SweepMode::Oscillate,
+            },
+        );
+        let _ = ctx.run(
+            egui::RawInput {
+                predicted_dt: 0.1,
+                ..Default::default()
+            },
+            |c| lbm.show(c),
+        );
         assert_ne!(
             *lbm.params.read().unwrap().get("viscosity").unwrap(),
             visc_before
@@ -484,9 +479,11 @@ fn test_unified_sim_paused_parameter_edits_refresh_snapshot_and_preserve_ready_s
         assert_eq!(lbm.state(), SimWorkerState::Ready);
 
         let snap = lbm.controller.latest_snapshot().unwrap();
-        let pixels = snap.pixels.read().unwrap();
         let idx = (snap.height - 1 - 12) * snap.width + 75;
-        assert_eq!(pixels[idx], egui::Color32::from_gray(50));
+        assert!(is_lbm_obstacle_pixel(
+            snap.pixels.read().unwrap()[idx],
+            crate::app::ThemeMode::Dark
+        ));
     }
 
     #[cfg(feature = "biology")]

@@ -31,6 +31,28 @@ pub struct ImrtSummary {
     pub passed: bool,
 }
 
+impl ImrtSummary {
+    /// Formats a programmatic `AccessKit` summary and color/contour key for the dose canvas.
+    #[must_use]
+    pub fn format_dose_a11y_summary(
+        &self,
+        tool: &crate::tabs::medical::dose::DoseCalculationTool,
+    ) -> String {
+        if tool.imrt_mode {
+            let b = tool.selected_beam;
+            format!(
+                "IMRT phantom ({}) — Beam {} at {:.0} deg, PTV mean {:.1} Gy (Rx {:.1} Gy), OAR max {:.1} Gy (limit {:.1} Gy); Color/shape key: blue-cyan-yellow-red dose intensity ramp; PTV target green contour; OAR organ-at-risk red contour; 4 coplanar gantry rays and circular handles",
+                tool.display_mode.label(), b + 1, tool.beam_angles_deg[b], self.tumor_mean_gy, tool.prescription_gy, self.oar_max_gy.0, tool.oar_limit_gy
+            )
+        } else {
+            format!(
+                "Point-source exponential dose kernel A={:.1}, beta={:.2}; Color key: blue-cyan-yellow-red dose intensity ramp from low peripheral dose to central isocenter peak",
+                tool.amplitude, tool.beta
+            )
+        }
+    }
+}
+
 /// Selects which dose matrix is rendered on the `64 x 64` IMRT phantom heatmap.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum DoseDisplayMode {

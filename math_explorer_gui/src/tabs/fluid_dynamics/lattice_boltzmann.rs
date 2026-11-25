@@ -1,6 +1,9 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use self::render::{inspect_solver_solid_and_core, render_lbm_snapshot_pixels};
+use self::render::{
+    build_lbm_a11y_summary, draw_lbm_legend, inspect_solver_solid_and_core,
+    render_lbm_snapshot_pixels,
+};
 use super::lattice_boltzmann_sculpt::{
     apply_lbm_brush_cells, apply_lbm_custom_action, apply_lbm_sculpt_payload, apply_stroke_to_lbm,
     draw_lbm_brush_panel, export_solver_rle, record_stroke_in_rle,
@@ -52,7 +55,7 @@ pub struct LbmUnified {
     pub(crate) active_profile_param: f64,
     pub(crate) challenge_core_locked: bool,
     pub(crate) display_vorticity: bool,
-    pub(crate) high_contrast: bool,
+    pub(crate) theme: crate::app::ThemeMode,
     pub(crate) diverged: bool,
     pub(crate) diagnostic_report: Option<DiagnosticReport>,
     pub(crate) step_count: usize,
@@ -176,7 +179,7 @@ impl UnifiedModel for LbmUnified {
             active_profile_param,
             challenge_core_locked: false,
             display_vorticity,
-            high_contrast: false,
+            theme: crate::app::ThemeMode::Dark,
             diverged: false,
             diagnostic_report: None,
             step_count: 0,
@@ -267,7 +270,7 @@ impl UnifiedModel for LbmUnified {
             &self.solver,
             &self.vorticity_buf,
             self.display_vorticity,
-            self.high_contrast,
+            self.theme,
         );
 
         let (f_drag, f_lift) = self.solver.hydrodynamic_forces();
@@ -327,22 +330,18 @@ impl UnifiedModel for LbmUnified {
             SimCommand::Custom(ref action) if action.starts_with("ChallengeLockCore:") => {
                 self.challenge_core_locked = action.ends_with('1');
             }
-            SimCommand::Custom(ref action) if action.starts_with("HighContrast:") => {
-                self.high_contrast = action.ends_with('1');
-            }
-            SimCommand::Custom(ref action)
-                if apply_lbm_custom_action(
+            SimCommand::Custom(ref action) => {
+                if let Some(theme) = render::parse_lbm_theme_command(action) {
+                    self.theme = theme;
+                } else if apply_lbm_custom_action(
                     &mut self.solver,
                     &mut self.stamped_airfoil,
                     action,
                     params,
-                ) =>
-            {
-                self.active_profile_param = *params.get("naca_profile").unwrap_or(&0.0);
-                self.refresh_diagnostics();
-            }
-            SimCommand::Custom(ref action) => {
-                if let Some(stamp) = FairingStamp::from_command(action) {
+                ) {
+                    self.active_profile_param = *params.get("naca_profile").unwrap_or(&0.0);
+                    self.refresh_diagnostics();
+                } else if let Some(stamp) = FairingStamp::from_command(action) {
                     let mut mask = [false; LBM_CELL_COUNT];
                     stamp.write_mask(&mut mask);
                     self.apply_mask(&mask, params);
@@ -462,6 +461,18 @@ impl UnifiedModel for LbmUnified {
 
     fn name() -> &'static str {
         "Lattice Boltzmann (Demo)"
+    }
+
+    fn canvas_a11y_summary(
+        snapshot: Option<&StateSnapshot>,
+        params: &HashMap<String, f64>,
+        theme: crate::app::ThemeMode,
+    ) -> Option<String> {
+        Some(build_lbm_a11y_summary(snapshot, params, theme))
+    }
+
+    fn draw_canvas_legend(ui: &mut eframe::egui::Ui, theme: crate::app::ThemeMode) {
+        draw_lbm_legend(ui, theme);
     }
 }
 

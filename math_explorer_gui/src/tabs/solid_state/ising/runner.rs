@@ -135,15 +135,7 @@ impl Default for IsingSharedParams {
 #[inline]
 #[must_use]
 pub fn ising_spin_color(spin: i8, palette: &crate::app::SemanticPalette) -> egui::Color32 {
-    if spin >= 2 {
-        palette.warning
-    } else if spin <= -2 {
-        palette.info
-    } else if spin > 0 {
-        palette.axis_x
-    } else {
-        palette.axis_z
-    }
+    palette.ising_spin_color(spin)
 }
 
 #[allow(missing_docs)]

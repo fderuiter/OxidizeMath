@@ -176,32 +176,26 @@ pub trait UnifiedModel:
     where
         Self: Sized,
     {
-        if Self::is_raster_model() {
-            return Vec::new();
-        }
-        #[cfg(feature = "physics")]
-        if let Some(wave) = snapshot
-            .structured_data
-            .as_ref()
-            .and_then(|d| d.downcast_ref::<crate::tabs::quantum::wave_sim::WaveData>())
-        {
-            return crate::tabs::quantum::wave_sim::presets::build_wave_datasets(wave);
-        }
-        let pairs = snapshot.custom_data.as_chunks::<2>().0;
-        if pairs.is_empty() {
-            return Vec::new();
-        }
-        let mut points = Vec::with_capacity(pairs.len());
-        for &[x, y] in pairs {
-            if x.is_finite() && y.is_finite() {
-                points.push([x, y]);
-            }
-        }
-        if points.is_empty() {
-            Vec::new()
-        } else {
-            vec![(Self::name().to_string(), points)]
-        }
+        canvas::default_snapshot_datasets::<Self>(snapshot)
+    }
+
+    /// Optional accessible state summary and color/shape key for raster simulation canvases and plots.
+    fn canvas_a11y_summary(
+        _snapshot: Option<&StateSnapshot>,
+        _params: &HashMap<String, f64>,
+        _theme: crate::app::ThemeMode,
+    ) -> Option<String>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
+    /// Optional inline legend strip rendered alongside a raster simulation canvas or plot.
+    fn draw_canvas_legend(_ui: &mut eframe::egui::Ui, _theme: crate::app::ThemeMode)
+    where
+        Self: Sized,
+    {
     }
 
     /// Process any custom commands (e.g. ApplyBrush). Default is no-op.

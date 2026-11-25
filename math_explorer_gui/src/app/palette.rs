@@ -41,6 +41,14 @@ pub struct SemanticPalette {
     pub accent: Color32,
     /// Categorical plot series colors (`>= 4.5:1` for both curves and colored labels).
     pub series: [Color32; 6],
+    /// Four-state Ising spin fills `[+1 free, -1 free, +2 pinned, -2 pinned]` (`>= 3.0:1` polarity separation).
+    pub ising_spins: [Color32; 4],
+    /// Three-stop attention heatmap ramp `[low, mid, high]` (`>= 3.0:1` endpoint separation).
+    pub attention_stops: [Color32; 3],
+    /// Dark obstacle hatch/rim tone for solid boundaries.
+    pub obstacle_dark: Color32,
+    /// Light obstacle hatch/rim tone (`>= 3.0:1` against `obstacle_dark` and dark fluid).
+    pub obstacle_light: Color32,
 }
 
 /// Semantic palette tuned for [`ThemeMode::Dark`].
@@ -68,13 +76,26 @@ pub const DARK_PALETTE: SemanticPalette = SemanticPalette {
         Color32::from_rgb(196, 148, 255),
         Color32::from_rgb(245, 198, 66),
     ],
+    ising_spins: [
+        Color32::from_rgb(255, 184, 108),
+        Color32::from_rgb(28, 72, 156),
+        Color32::from_rgb(255, 232, 104),
+        Color32::from_rgb(18, 96, 128),
+    ],
+    attention_stops: [
+        Color32::from_rgb(24, 34, 68),
+        Color32::from_rgb(64, 128, 204),
+        Color32::from_rgb(250, 212, 84),
+    ],
+    obstacle_dark: Color32::from_rgb(20, 24, 34),
+    obstacle_light: Color32::from_rgb(236, 240, 248),
 };
 
 /// Semantic palette tuned for [`ThemeMode::Light`] (classroom projection and print).
 pub const LIGHT_PALETTE: SemanticPalette = SemanticPalette {
-    info: Color32::from_rgb(0, 92, 178),
+    info: Color32::from_rgb(0, 66, 138),
     success: Color32::from_rgb(15, 115, 54),
-    warning: Color32::from_rgb(146, 84, 0),
+    warning: Color32::from_rgb(92, 46, 0),
     error: Color32::from_rgb(180, 28, 28),
     fatal: Color32::from_rgb(136, 19, 55),
     muted_text: Color32::from_rgb(82, 88, 98),
@@ -86,7 +107,7 @@ pub const LIGHT_PALETTE: SemanticPalette = SemanticPalette {
     axis_x: Color32::from_rgb(190, 28, 28),
     axis_y: Color32::from_rgb(16, 118, 52),
     axis_z: Color32::from_rgb(12, 88, 184),
-    accent: Color32::from_rgb(152, 82, 0),
+    accent: Color32::from_rgb(96, 42, 0),
     series: [
         Color32::from_rgb(12, 88, 184),
         Color32::from_rgb(176, 68, 0),
@@ -95,6 +116,19 @@ pub const LIGHT_PALETTE: SemanticPalette = SemanticPalette {
         Color32::from_rgb(112, 42, 172),
         Color32::from_rgb(138, 90, 0),
     ],
+    ising_spins: [
+        Color32::from_rgb(255, 192, 124),
+        Color32::from_rgb(22, 68, 152),
+        Color32::from_rgb(255, 234, 112),
+        Color32::from_rgb(12, 94, 122),
+    ],
+    attention_stops: [
+        Color32::from_rgb(238, 243, 252),
+        Color32::from_rgb(108, 152, 218),
+        Color32::from_rgb(18, 48, 124),
+    ],
+    obstacle_dark: Color32::from_rgb(28, 34, 46),
+    obstacle_light: Color32::from_rgb(246, 248, 252),
 };
 
 /// Semantic palette tuned for [`ThemeMode::HighContrast`].
@@ -122,6 +156,19 @@ pub const HIGH_CONTRAST_PALETTE: SemanticPalette = SemanticPalette {
         Color32::from_rgb(214, 158, 255),
         Color32::from_rgb(255, 230, 0),
     ],
+    ising_spins: [
+        Color32::from_rgb(255, 202, 104),
+        Color32::from_rgb(44, 88, 212),
+        Color32::from_rgb(255, 244, 72),
+        Color32::from_rgb(24, 108, 154),
+    ],
+    attention_stops: [
+        Color32::from_rgb(52, 96, 196),
+        Color32::from_rgb(140, 190, 250),
+        Color32::from_rgb(255, 238, 56),
+    ],
+    obstacle_dark: Color32::BLACK,
+    obstacle_light: Color32::from_rgb(255, 255, 255),
 };
 
 impl SemanticPalette {
@@ -145,6 +192,77 @@ impl SemanticPalette {
     #[inline]
     pub const fn series_color(self, index: usize) -> Color32 {
         self.series[index % self.series.len()]
+    }
+
+    /// Maps discrete Ising spin values (`+1`, `-1`, `+2` pinned up, `-2` pinned down) to
+    /// luminance-separated semantic tokens (`>= 3.0:1` up-vs-down contrast across all themes).
+    #[inline]
+    #[must_use]
+    pub const fn ising_spin_color(self, spin: i8) -> Color32 {
+        match spin {
+            2 => self.ising_spins[2],
+            -2 => self.ising_spins[3],
+            s if s >= 0 => self.ising_spins[0],
+            _ => self.ising_spins[1],
+        }
+    }
+
+    /// Evaluates the stack-allocated three-stop attention ramp for `weight` in `[0.0, 1.0]`.
+    #[inline]
+    #[must_use]
+    pub fn attention_ramp_color(self, weight: f64) -> Color32 {
+        let clamped = if weight.is_finite() {
+            weight.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let (a, b, t) = if clamped <= 0.5 {
+            (
+                self.attention_stops[0],
+                self.attention_stops[1],
+                clamped * 2.0,
+            )
+        } else {
+            (
+                self.attention_stops[1],
+                self.attention_stops[2],
+                (clamped - 0.5) * 2.0,
+            )
+        };
+        let lerp_u8 = |lo: u8, hi: u8| -> u8 {
+            let v = f64::from(lo) + (f64::from(hi) - f64::from(lo)) * t;
+            v.round().clamp(0.0, 255.0) as u8
+        };
+        Color32::from_rgb(
+            lerp_u8(a.r(), b.r()),
+            lerp_u8(a.g(), b.g()),
+            lerp_u8(a.b(), b.b()),
+        )
+    }
+
+    /// Selects the obstacle rim tone (`obstacle_light` or `obstacle_dark`) maximizing WCAG 2.2
+    /// contrast (`>= 3.5:1`) against an adjacent fluid fill.
+    #[inline]
+    #[must_use]
+    pub fn obstacle_rim_color(self, adjacent_fluid: Color32) -> Color32 {
+        let light_cr = super::theme::contrast_ratio(adjacent_fluid, self.obstacle_light);
+        let dark_cr = super::theme::contrast_ratio(adjacent_fluid, self.obstacle_dark);
+        if light_cr >= dark_cr {
+            self.obstacle_light
+        } else {
+            self.obstacle_dark
+        }
+    }
+
+    /// Returns the diagonal interior hatch color (`>= 14.9:1` internal stripe contrast) for an obstacle cell.
+    #[inline]
+    #[must_use]
+    pub const fn obstacle_interior_hatch(self, x: usize, y: usize) -> Color32 {
+        if (x + y).is_multiple_of(3) {
+            self.obstacle_light
+        } else {
+            self.obstacle_dark
+        }
     }
 
     /// Returns a severity fill for [`egui::ProgressBar`] that preserves `>= 4.5:1` contrast
@@ -199,4 +317,19 @@ impl SemanticPalette {
             (ThemeMode::HighContrast, _) => Color32::BLACK,
         }
     }
+
+    /// Converts an approved `math_commons::math_kernel::colormap` `[r, g, b]` triple into [`Color32`].
+    #[inline]
+    #[must_use]
+    pub const fn colormap_to_color32(rgb: [u8; 3]) -> Color32 {
+        Color32::from_rgb(rgb[0], rgb[1], rgb[2])
+    }
 }
+
+#[cfg(test)]
+#[path = "color_guard_tests.rs"]
+pub(crate) mod color_guard_tests;
+
+#[cfg(test)]
+#[path = "canvas_overlay_tests.rs"]
+mod canvas_overlay_tests;
