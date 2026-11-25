@@ -15,10 +15,24 @@ use super::MorphogenesisTool;
 use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
 use crate::async_sim::{SimCommand, SimWorkerState};
 use crate::presets::MorphogenesisKineticsMode;
+use math_explorer::biology::morphogenesis::FusedEulerSolver;
 use std::hash::{Hash, Hasher};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 impl MorphogenesisTool {
+    fn effective_reseed_dt(&self, d_u: f64, d_v: f64, dt: f64) -> f64 {
+        let adv_on = self
+            .advection_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .enabled;
+        if self.auto_dt.load(Ordering::Relaxed) && !adv_on {
+            FusedEulerSolver::cfl_substeps_2d(dt, 1.0, d_u, d_v, super::runner::MAX_CFL_SUBSTEPS).1
+        } else {
+            dt
+        }
+    }
     pub(crate) fn sync_atlas_options_for_mode(&mut self, mode: MorphogenesisKineticsMode) {
         let pairs = match mode {
             MorphogenesisKineticsMode::Schnakenberg => MORPHO_ATLAS_AXIS_PAIRS.to_vec(),
@@ -169,7 +183,10 @@ impl MorphogenesisTool {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.d_u, p.d_v, p.dt)
         };
-        if !is_gray_scott_pattern_viable(f, k, d_u, d_v, dt) || !self.is_active_grid_washed_out() {
+        let eff_dt = self.effective_reseed_dt(d_u, d_v, dt);
+        if !is_gray_scott_pattern_viable(f, k, d_u, d_v, eff_dt)
+            || !self.is_active_grid_washed_out()
+        {
             return false;
         }
         if let Some(sr) = &mut self.step_runner {
@@ -204,7 +221,8 @@ impl MorphogenesisTool {
             let p = self.params.read().unwrap_or_else(|e| e.into_inner());
             (p.a, p.b, p.d_u, p.d_v, p.dt)
         };
-        if !is_pattern_forming_regime(a, b, d_u, d_v, dt) || !self.is_active_grid_washed_out() {
+        let eff_dt = self.effective_reseed_dt(d_u, d_v, dt);
+        if !is_pattern_forming_regime(a, b, d_u, d_v, eff_dt) || !self.is_active_grid_washed_out() {
             return false;
         }
         if let Some(sr) = &mut self.step_runner {

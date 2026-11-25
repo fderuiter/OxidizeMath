@@ -7,17 +7,19 @@ use super::counterfactual::{active_morphogen_slice, MorphogenesisTwinState};
 use super::runner::{
     apply_uniform_noise, MorphogenesisKineticsAdapter, MorphogenesisKineticsRunner,
     MorphogenesisKineticsState, MorphogenesisSharedParams, DEFAULT_MORPHOGENESIS_SEED,
+    MAX_CFL_SUBSTEPS,
 };
 use super::sculpt::enforce_system_mask;
 use super::MorphogenesisTool;
 use crate::framework::decode_rle_mask;
 use crate::framework::recovery::FiniteStateGuard;
 use math_explorer::biology::diffusion::{FiniteDifference2D, MaskedFiniteDifference2D};
-use math_explorer::biology::morphogenesis::{DiffusionCoeff, TuringSystem};
+use math_explorer::biology::morphogenesis::{DiffusionCoeff, FusedEulerSolver, TuringSystem};
 use math_explorer::math_kernel::types::{Dimension, StepSize};
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::LatticeBoltzmannD2Q9;
 use math_explorer::pure_math::analysis::pde::advection_2d::advection_diffusion_cfl_limit;
 use oxidize_core::rng::OxidizeRng;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 /// Clones a 2D masked `TuringSystem` (pre-allocating `state`, `next_state`, and `CellMask2D`).
@@ -98,15 +100,16 @@ fn build_seeded_system(
 }
 
 impl MorphogenesisKineticsRunner {
-    /// Creates a deterministically seeded multi-kinetics runner with shared wind-tunnel advection state.
-    pub fn new_with_advection(
+    /// Creates a deterministically seeded runner sharing `auto_dt` and wind-tunnel advection state.
+    pub fn new_with_advection_and_cfl(
         params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
         kinetics_state: &Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
         advection_state: &Arc<std::sync::RwLock<MorphogenesisAdvectionState>>,
+        auto_dt: &Arc<AtomicBool>,
         mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
-        width: usize,
-        height: usize,
+        dims: (usize, usize),
     ) -> Self {
+        let (width, height) = dims;
         let ks = *kinetics_state.read().unwrap_or_else(|e| e.into_inner());
         let visc = advection_state
             .read()
@@ -125,6 +128,7 @@ impl MorphogenesisKineticsRunner {
             params: Arc::clone(params),
             kinetics_state: Arc::clone(kinetics_state),
             advection_state: Arc::clone(advection_state),
+            auto_dt: Arc::clone(auto_dt),
             width,
             height,
             step_count: 0,
@@ -134,6 +138,27 @@ impl MorphogenesisKineticsRunner {
         };
         runner.enforce_mask_concentrations();
         runner
+    }
+
+    /// Creates a deterministically seeded multi-kinetics runner with shared wind-tunnel advection state.
+    #[cfg(test)]
+    pub fn new_with_advection(
+        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+        kinetics_state: &Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+        advection_state: &Arc<std::sync::RwLock<MorphogenesisAdvectionState>>,
+        mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
+        width: usize,
+        height: usize,
+    ) -> Self {
+        let auto_dt = Arc::new(AtomicBool::new(true));
+        Self::new_with_advection_and_cfl(
+            params,
+            kinetics_state,
+            advection_state,
+            &auto_dt,
+            mask_rle,
+            (width, height),
+        )
     }
 
     /// Creates a deterministically seeded multi-kinetics runner at `step_count = 0`.
@@ -172,6 +197,7 @@ impl MorphogenesisKineticsRunner {
             params: Arc::clone(&self.params),
             kinetics_state: Arc::clone(&self.kinetics_state),
             advection_state: Arc::clone(&self.advection_state),
+            auto_dt: Arc::clone(&self.auto_dt),
             width: self.width,
             height: self.height,
             step_count: self.step_count,
@@ -188,9 +214,21 @@ impl MorphogenesisKineticsRunner {
         let adv = self.read_advection();
         if !adv.enabled {
             self.wind_tunnel.twin_step_ready = false;
+            let use_cfl = self.auto_dt.load(Ordering::Relaxed);
             if let Some(ref mut twin) = self.twin {
                 enforce_system_mask(&mut twin.system_a, self.width, self.height);
-                twin.step_branch_a(dt, self.width, self.height, noise_amp);
+                let (subs, sub_dt) = if use_cfl {
+                    FusedEulerSolver::cfl_substeps_2d(
+                        dt,
+                        1.0,
+                        twin.system_a.diffusion_coeffs[0],
+                        twin.system_a.diffusion_coeffs[1],
+                        MAX_CFL_SUBSTEPS,
+                    )
+                } else {
+                    (1, dt)
+                };
+                twin.step_branch_a(subs, sub_dt, self.width, self.height, noise_amp);
             }
             return;
         }

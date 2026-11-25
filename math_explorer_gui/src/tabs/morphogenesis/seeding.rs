@@ -2,12 +2,12 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[cfg(test)]
 use super::advection::MorphogenesisAdvectionState;
 use super::presets::MorphogenesisToolState;
-use super::runner::{
-    MorphogenesisKineticsAdapter, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
-    MorphogenesisSharedParams,
-};
+use super::runner::{MorphogenesisKineticsAdapter, MorphogenesisKineticsRunner};
+#[cfg(test)]
+use super::runner::{MorphogenesisKineticsState, MorphogenesisSharedParams};
 use super::{MorphogenesisTool, SimpleRng};
 use crate::async_sim::{SculptStatePayload, SimCommand, SimWorkerState};
 use crate::framework::InteractiveTool;
@@ -61,6 +61,7 @@ impl MorphogenesisTool {
         )
     }
 
+    #[cfg(test)]
     pub(crate) fn create_kinetics_runner_with_advection(
         params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
         kinetics_state: &Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
@@ -76,6 +77,17 @@ impl MorphogenesisTool {
             mask_rle,
             width,
             height,
+        )
+    }
+
+    pub(crate) fn create_live_runner(&self) -> MorphogenesisKineticsRunner {
+        MorphogenesisKineticsRunner::new_with_advection_and_cfl(
+            &self.params,
+            &self.kinetics_state,
+            &self.advection_state,
+            &self.auto_dt,
+            &self.mask_rle,
+            (self.width, self.height),
         )
     }
 
@@ -116,6 +128,8 @@ impl MorphogenesisTool {
             adv.inlet_u = parsed.inlet_u;
             adv.viscosity = parsed.viscosity;
         }
+        self.auto_dt
+            .store(parsed.auto_dt, std::sync::atomic::Ordering::Relaxed);
         self.mask_cells = decoded_mask;
     }
 
@@ -124,14 +138,15 @@ impl MorphogenesisTool {
         let params = Arc::clone(&self.params);
         let ks = Arc::clone(&self.kinetics_state);
         let adv = Arc::clone(&self.advection_state);
+        let auto_dt = Arc::clone(&self.auto_dt);
         let mask = Arc::clone(&self.mask_rle);
-        let width = self.width;
-        let height = self.height;
-        self.local_runner =
-            Self::create_kinetics_runner_with_advection(&params, &ks, &adv, &mask, width, height);
+        let dims = (self.width, self.height);
+        self.local_runner = self.create_live_runner();
         self.branch_engine.clear();
         self.worker.reset_or_respawn(|| {
-            Self::create_kinetics_runner_with_advection(&params, &ks, &adv, &mask, width, height)
+            MorphogenesisKineticsRunner::new_with_advection_and_cfl(
+                &params, &ks, &adv, &auto_dt, &mask, dims,
+            )
         });
         self.stepped_pixels = None;
         self.step_runner = None;
@@ -222,6 +237,7 @@ impl MorphogenesisTool {
             d_u,
             d_v,
             dt,
+            auto_dt: self.auto_dt.load(std::sync::atomic::Ordering::Relaxed),
             width: self.width,
             height: self.height,
             kinetics_mode,
@@ -258,22 +274,8 @@ impl MorphogenesisTool {
         if width != self.width || height != self.height {
             self.width = width;
             self.height = height;
-            self.local_runner = Self::create_kinetics_runner_with_advection(
-                &self.params,
-                &self.kinetics_state,
-                &self.advection_state,
-                &self.mask_rle,
-                self.width,
-                self.height,
-            );
-            let runner = Self::create_kinetics_runner_with_advection(
-                &self.params,
-                &self.kinetics_state,
-                &self.advection_state,
-                &self.mask_rle,
-                self.width,
-                self.height,
-            );
+            self.local_runner = self.create_live_runner();
+            let runner = self.create_live_runner();
             self.worker.replace_runner(runner);
             self.branch_engine.clear();
             self.stepped_pixels = None;

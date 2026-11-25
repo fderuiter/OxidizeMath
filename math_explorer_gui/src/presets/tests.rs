@@ -225,6 +225,7 @@ fn test_morphogenesis_tool_state_envelope_roundtrip() {
         d_u: 1.0,
         d_v: 50.0,
         dt: 0.02,
+        auto_dt: true,
         width: 80,
         height: 80,
         kinetics_mode: MorphogenesisKineticsMode::Schnakenberg,

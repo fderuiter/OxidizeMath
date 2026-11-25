@@ -2,6 +2,8 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use math_commons::math_kernel::types::flatten_2d_index;
+
 /// JSON preset envelope for Gray-Scott Mitosis reaction-diffusion.
 pub const PRESET_GRAY_SCOTT_MITOSIS: &str = r#"{
   "metadata": {
@@ -24,6 +26,50 @@ pub const PRESET_GRAY_SCOTT_MITOSIS: &str = r#"{
   }
 }"#;
 
+/// JSON preset envelope for Gray-Scott Coral dendritic branching (`f = 0.0545`, `k = 0.0620`).
+pub const PRESET_GRAY_SCOTT_CORAL: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Turing Morphogenesis - Gray-Scott Coral",
+    "domain": "biology",
+    "timestamp": "2026-11-24T00:00:00Z"
+  },
+  "config": {
+    "a": 0.1,
+    "b": 0.9,
+    "d_u": 0.16,
+    "d_v": 0.08,
+    "dt": 1.0,
+    "width": 100,
+    "height": 100,
+    "kinetics_mode": "GrayScott",
+    "f": 0.0545,
+    "k": 0.0620
+  }
+}"#;
+
+/// JSON preset envelope for Gray-Scott Solitons excitable pulses (`f = 0.030`, `k = 0.060`).
+pub const PRESET_GRAY_SCOTT_SOLITONS: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Turing Morphogenesis - Gray-Scott Solitons",
+    "domain": "biology",
+    "timestamp": "2026-11-24T00:00:00Z"
+  },
+  "config": {
+    "a": 0.1,
+    "b": 0.9,
+    "d_u": 0.16,
+    "d_v": 0.08,
+    "dt": 1.0,
+    "width": 100,
+    "height": 100,
+    "kinetics_mode": "GrayScott",
+    "f": 0.030,
+    "k": 0.060
+  }
+}"#;
+
 fn generate_hybrid_turing_mask_preset() -> &'static str {
     static HYBRID_PRESET: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     HYBRID_PRESET
@@ -31,7 +77,7 @@ fn generate_hybrid_turing_mask_preset() -> &'static str {
             let mut mask = vec![0u8; 100 * 100];
             for y in 15..85 {
                 for x in 50..90 {
-                    mask[y * 100 + x] = 1;
+                    mask[flatten_2d_index(x, y, 100)] = 1;
                 }
             }
             let rle = crate::framework::encode_u8_grid(100, 100, &mask, 2)
@@ -121,5 +167,31 @@ inventory::submit! {
         domain: "biology",
         tool_name: Some("MorphogenesisTool"),
         preset_generator: || PRESET_GRAY_SCOTT_MITOSIS,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "gray_scott_coral",
+        title: "Gray-Scott Coral",
+        description: "∂v/∂t = D_v∇²v + uv² - (f+k)v: Dendritic coral labyrinth growth at f = 0.0545, k = 0.0620.",
+        category: "Morphogenesis",
+        icon: "🪸",
+        domain: "biology",
+        tool_name: Some("MorphogenesisTool"),
+        preset_generator: || PRESET_GRAY_SCOTT_CORAL,
+    }
+}
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "gray_scott_solitons",
+        title: "Gray-Scott Solitons",
+        description: "∂u/∂t = D_u∇²u - uv² + f(1-u): Localized self-sustaining excitable soliton pulses at f = 0.030, k = 0.060.",
+        category: "Reaction-Diffusion",
+        icon: "🫧",
+        domain: "biology",
+        tool_name: Some("MorphogenesisTool"),
+        preset_generator: || PRESET_GRAY_SCOTT_SOLITONS,
     }
 }
