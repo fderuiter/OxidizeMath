@@ -17,27 +17,27 @@ Core design invariants:
 
 ```rust
 use engine_diffeq::{
-    EulerMaruyamaSolver, SdeSystem, StochasticCalculus,
+    MilsteinSolver, Scalar, SdeSystem, StochasticCalculus,
 };
 use math_commons::math_kernel::types::SolverWorkspace;
 use math_rng::OxidizeRng;
 
 struct OrnsteinUhlenbeck;
 
-impl SdeSystem<f64> for OrnsteinUhlenbeck {
+impl<S: Scalar> SdeSystem<S> for OrnsteinUhlenbeck {
     fn state_dim(&self) -> usize { 1 }
     fn wiener_dim(&self) -> usize { 1 }
-    fn drift(&self, _t: f64, x: &[f64], out: &mut [f64]) {
-        out[0] = -2.0 * x[0];
+    fn drift(&self, _t: S, x: &[S], out: &mut [S]) {
+        out[0] = S::from_f64(-2.0) * x[0];
     }
-    fn diffusion(&self, _t: f64, _x: &[f64], out: &mut [f64]) {
-        out[0] = 0.5;
+    fn diffusion(&self, _t: S, _x: &[S], out: &mut [S]) {
+        out[0] = S::from_f64(0.5);
     }
 }
 
-let solver = EulerMaruyamaSolver::new(StochasticCalculus::Ito);
+let solver = MilsteinSolver::new(StochasticCalculus::Ito);
 let mut state = [1.0_f64];
-let mut scratch = [0.0_f64; 8];
+let mut scratch = [0.0_f64; 16];
 let mut ws = SolverWorkspace::new(&mut scratch);
 let mut rng = OxidizeRng::new(42);
 solver.step(&OrnsteinUhlenbeck, 0.0, 0.01, &mut state, &mut ws, &mut rng);

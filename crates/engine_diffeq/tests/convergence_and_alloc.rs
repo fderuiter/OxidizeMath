@@ -3,8 +3,8 @@
 
 use engine_diffeq::{
     BaoabLangevinSolver, BaoabParams, CorrelatedWienerIncrement, EulerMaruyamaSolver,
-    LangevinSystem, MilsteinSolver, OwnedWorkspace, SdeSystem, Sriw1Solver, StochasticCalculus,
-    ssa_sample_event,
+    LangevinSystem, MilsteinSolver, OwnedWorkspace, RealScalar, Scalar, SdeSystem, Sriw1Solver,
+    StochasticCalculus, ssa_sample_event,
 };
 use math_commons::math_kernel::types::SolverWorkspace;
 use math_rng::OxidizeRng;
@@ -20,22 +20,24 @@ struct NonlinearSinhSde {
     calculus: StochasticCalculus,
 }
 
-impl SdeSystem<f64> for NonlinearSinhSde {
+impl<S: Scalar> SdeSystem<S> for NonlinearSinhSde {
     fn state_dim(&self) -> usize {
         1
     }
     fn wiener_dim(&self) -> usize {
         1
     }
-    fn drift(&self, _t: f64, x: &[f64], out_drift: &mut [f64]) {
-        let base = self.mu * (1.0 + x[0] * x[0]).sqrt();
+    fn drift(&self, _t: S, x: &[S], out_drift: &mut [S]) {
+        let mu = S::from_f64(self.mu);
+        let sigma = S::from_f64(self.sigma);
+        let base = mu * (S::ONE + x[0] * x[0]).sqrt();
         out_drift[0] = match self.calculus {
-            StochasticCalculus::Ito => base + 0.5 * self.sigma * self.sigma * x[0],
+            StochasticCalculus::Ito => base + S::HALF * sigma * sigma * x[0],
             StochasticCalculus::Stratonovich => base,
         };
     }
-    fn diffusion(&self, _t: f64, x: &[f64], out_diffusion: &mut [f64]) {
-        out_diffusion[0] = self.sigma * (1.0 + x[0] * x[0]).sqrt();
+    fn diffusion(&self, _t: S, x: &[S], out_diffusion: &mut [S]) {
+        out_diffusion[0] = S::from_f64(self.sigma) * (S::ONE + x[0] * x[0]).sqrt();
     }
 }
 
@@ -332,4 +334,66 @@ fn test_all_engine_diffeq_solvers_zero_heap_allocations_under_verified_lock() {
     });
     assert!(state[0].is_finite() && q[0].is_finite() && p[0].is_finite());
     assert!(receipt.function_calls > 0);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_f32_large_scale_dual_diffusion_jacobian_and_milstein_at_64() {
+    let sys = NonlinearSinhSde {
+        mu: 0.25,
+        sigma: 0.75,
+        calculus: StochasticCalculus::Ito,
+    };
+    let x0 = 64.0_f32;
+    let direction = [1.0_f32];
+    let mut dg = [0.0_f32; 1];
+    let mut sx = [0.0_f32; 1];
+    let mut sgp = [0.0_f32; 1];
+    let mut sgm = [0.0_f32; 1];
+
+    let milstein = MilsteinSolver::new(StochasticCalculus::Ito);
+    let mut state = [x0];
+    let dt = 0.0625_f32;
+    let dw = [0.5_f32];
+    let mut scratch = [0.0_f32; 16];
+
+    let ((), _) = VerifiedEngine::run_verified(|| {
+        sys.diffusion_jacobian_action(
+            0.0_f32,
+            &[x0],
+            0,
+            &direction,
+            &mut dg,
+            &mut sx,
+            &mut sgp,
+            &mut sgm,
+        );
+        let mut ws = SolverWorkspace::new(&mut scratch);
+        milstein.step_with_increments(&sys, 0.0_f32, dt, &dw, &mut state, &mut ws);
+    });
+
+    // Analytical g(x) = sigma * sqrt(1 + x^2), g'(x) = sigma * x / sqrt(1 + x^2)
+    let sigma = 0.75_f32;
+    let r = (1.0_f32 + x0 * x0).sqrt();
+    let exact_dg = sigma * x0 / r;
+    assert!(
+        dg[0].ulp_distance(exact_dg) <= 1,
+        "SdeSystem::diffusion_jacobian_action at x=64_f32 got {} vs analytical {} ({} ULPs)",
+        dg[0],
+        exact_dg,
+        dg[0].ulp_distance(exact_dg)
+    );
+
+    // Analytical Milstein update: x1 = x0 + f(x0)*dt + g(x0)*dw + 0.5 * g(x0)*g'(x0)*(dw^2 - dt)
+    let g0 = sigma * r;
+    let f0 = 0.25_f32 * r + 0.5_f32 * sigma * sigma * x0;
+    let exact_milstein =
+        x0 + (f0 * dt + g0 * dw[0]) + 0.5_f32 * (dw[0] * dw[0] - dt) * (g0 * exact_dg);
+    assert!(
+        state[0].ulp_distance(exact_milstein) <= 1,
+        "Milstein f32 step at x=64_f32 got {} vs analytical {} ({} ULPs)",
+        state[0],
+        exact_milstein,
+        state[0].ulp_distance(exact_milstein)
+    );
 }

@@ -2,8 +2,9 @@
 use crate::error::DiffeqError;
 use crate::system::{SdeSystem, StochasticCalculus};
 use math_commons::math_kernel::types::{
-    Scalar, SolverWorkspace, fill_standard_normal, flatten_2d_index, sample_standard_normal_pair,
+    SolverWorkspace, fill_standard_normal, flatten_2d_index, sample_standard_normal_pair,
 };
+use math_scalars::{Dual, RealScalar};
 use rand_core::RngCore;
 
 /// Multivariate strong-order-1.0 Milstein SDE solver supporting both Itô and Stratonovich calculi:
@@ -77,7 +78,7 @@ impl MilsteinSolver {
     /// Returns [`DiffeqError`] if `dt < 0` or non-finite, `state` is undersized, or `workspace`
     /// lacks [`Self::scratch_len`] elements.
     #[verified_engine::verified]
-    pub fn try_step<T: Scalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
+    pub fn try_step<T, S, R>(
         &self,
         system: &S,
         t: T,
@@ -85,9 +86,14 @@ impl MilsteinSolver {
         state: &mut [T],
         workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
-    ) -> Result<(), DiffeqError> {
-        let d = system.state_dim();
-        let m = system.wiener_dim();
+    ) -> Result<(), DiffeqError>
+    where
+        T: RealScalar,
+        S: SdeSystem<T> + SdeSystem<Dual<T>> + ?Sized,
+        R: RngCore + ?Sized,
+    {
+        let d = <S as SdeSystem<T>>::state_dim(system);
+        let m = <S as SdeSystem<T>>::wiener_dim(system);
         if !(dt >= T::ZERO && dt.is_finite()) {
             return Err(DiffeqError::InvalidStepSize);
         }
@@ -144,7 +150,7 @@ impl MilsteinSolver {
             dg_a,
             dg_b,
             x_tmp,
-        );
+        )?;
         Ok(())
     }
 
@@ -153,7 +159,7 @@ impl MilsteinSolver {
     /// # Panics
     /// Panics if `dt < 0`, `state` is undersized, or `workspace` is too small; prefer [`Self::try_step`].
     #[verified_engine::verified]
-    pub fn step<T: Scalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
+    pub fn step<T, S, R>(
         &self,
         system: &S,
         t: T,
@@ -161,7 +167,11 @@ impl MilsteinSolver {
         state: &mut [T],
         workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
-    ) {
+    ) where
+        T: RealScalar,
+        S: SdeSystem<T> + SdeSystem<Dual<T>> + ?Sized,
+        R: RngCore + ?Sized,
+    {
         self.try_step(system, t, dt, state, workspace, rng)
             .expect("MilsteinSolver::step preconditions violated");
     }
@@ -172,7 +182,7 @@ impl MilsteinSolver {
     /// Returns [`DiffeqError`] if `dt < 0` or non-finite, `state`/`dw` are undersized,
     /// or `workspace` lacks sufficient scratch capacity.
     #[verified_engine::verified]
-    pub fn try_step_with_increments<T: Scalar, S: SdeSystem<T> + ?Sized>(
+    pub fn try_step_with_increments<T, S>(
         &self,
         system: &S,
         t: T,
@@ -180,9 +190,13 @@ impl MilsteinSolver {
         dw: &[T],
         state: &mut [T],
         workspace: &mut SolverWorkspace<'_, T>,
-    ) -> Result<(), DiffeqError> {
-        let d = system.state_dim();
-        let m = system.wiener_dim();
+    ) -> Result<(), DiffeqError>
+    where
+        T: RealScalar,
+        S: SdeSystem<T> + SdeSystem<Dual<T>> + ?Sized,
+    {
+        let d = <S as SdeSystem<T>>::state_dim(system);
+        let m = <S as SdeSystem<T>>::wiener_dim(system);
         if !(dt >= T::ZERO && dt.is_finite()) {
             return Err(DiffeqError::InvalidStepSize);
         }
@@ -221,7 +235,7 @@ impl MilsteinSolver {
             dg_a,
             dg_b,
             x_tmp,
-        );
+        )?;
         debug_assert!(state.len() >= d);
         Ok(())
     }
@@ -231,7 +245,7 @@ impl MilsteinSolver {
     /// # Panics
     /// Panics if `dt < 0`, `state`/`dw` are undersized, or `workspace` is too small; prefer [`Self::try_step_with_increments`].
     #[verified_engine::verified]
-    pub fn step_with_increments<T: Scalar, S: SdeSystem<T> + ?Sized>(
+    pub fn step_with_increments<T, S>(
         &self,
         system: &S,
         t: T,
@@ -239,7 +253,10 @@ impl MilsteinSolver {
         dw: &[T],
         state: &mut [T],
         workspace: &mut SolverWorkspace<'_, T>,
-    ) {
+    ) where
+        T: RealScalar,
+        S: SdeSystem<T> + SdeSystem<Dual<T>> + ?Sized,
+    {
         self.try_step_with_increments(system, t, dt, dw, state, workspace)
             .expect("MilsteinSolver::step_with_increments preconditions violated");
     }
@@ -257,7 +274,7 @@ type MilsteinScratch<'a, T> = (
 );
 
 #[verified_engine::verified]
-fn take_milstein_slices<'a, T: Scalar>(
+fn take_milstein_slices<'a, T: RealScalar>(
     ws: &mut SolverWorkspace<'a, T>,
     d: usize,
     dm: usize,
@@ -276,7 +293,7 @@ fn take_milstein_slices<'a, T: Scalar>(
 
 #[allow(clippy::too_many_arguments)]
 #[verified_engine::verified]
-fn accumulate_milstein_update<T: Scalar, S: SdeSystem<T> + ?Sized>(
+fn accumulate_milstein_update<T, S>(
     system: &S,
     calculus: StochasticCalculus,
     t: T,
@@ -292,9 +309,13 @@ fn accumulate_milstein_update<T: Scalar, S: SdeSystem<T> + ?Sized>(
     dg_a: &mut [T],
     dg_b: &mut [T],
     x_tmp: &mut [T],
-) {
-    let d = system.state_dim();
-    let m = system.wiener_dim();
+) -> Result<(), DiffeqError>
+where
+    T: RealScalar,
+    S: SdeSystem<T> + SdeSystem<Dual<T>> + ?Sized,
+{
+    let d = <S as SdeSystem<T>>::state_dim(system);
+    let m = <S as SdeSystem<T>>::wiener_dim(system);
     debug_assert!(state.len() >= d && f0.len() >= d);
     let ito_shift = match calculus {
         StochasticCalculus::Ito => dt,
@@ -313,7 +334,8 @@ fn accumulate_milstein_update<T: Scalar, S: SdeSystem<T> + ?Sized>(
         for i in 0..d {
             col_vec[i] = g0[flatten_2d_index(j1, i, m)];
         }
-        system.diffusion_jacobian_action(t, state, j1, col_vec, dg_a, x_tmp, g_plus, g_minus);
+        system
+            .try_diffusion_jacobian_action(t, state, j1, col_vec, dg_a, x_tmp, g_plus, g_minus)?;
         let w_diag = T::HALF * (dw[j1] * dw[j1] - ito_shift);
         for i in 0..d {
             dg_b[i] += w_diag * dg_a[i];
@@ -322,7 +344,9 @@ fn accumulate_milstein_update<T: Scalar, S: SdeSystem<T> + ?Sized>(
         for j2 in (j1 + 1)..m {
             let area = levy_area.map_or(T::ZERO, |a| a[flatten_2d_index(j2, j1, m)]);
             // dg_a holds (D g_{j2}) * g_{j1}
-            system.diffusion_jacobian_action(t, state, j2, col_vec, dg_a, x_tmp, g_plus, g_minus);
+            system.try_diffusion_jacobian_action(
+                t, state, j2, col_vec, dg_a, x_tmp, g_plus, g_minus,
+            )?;
             let w_12 = T::HALF * dw[j1] * dw[j2] + area;
             for i in 0..d {
                 dg_b[i] += w_12 * dg_a[i];
@@ -331,7 +355,9 @@ fn accumulate_milstein_update<T: Scalar, S: SdeSystem<T> + ?Sized>(
             for i in 0..d {
                 col_vec[i] = g0[flatten_2d_index(j2, i, m)];
             }
-            system.diffusion_jacobian_action(t, state, j1, col_vec, dg_a, x_tmp, g_plus, g_minus);
+            system.try_diffusion_jacobian_action(
+                t, state, j1, col_vec, dg_a, x_tmp, g_plus, g_minus,
+            )?;
             let w_21 = T::HALF * dw[j1] * dw[j2] - area;
             for i in 0..d {
                 dg_b[i] += w_21 * dg_a[i];
@@ -343,12 +369,13 @@ fn accumulate_milstein_update<T: Scalar, S: SdeSystem<T> + ?Sized>(
     for i in 0..d {
         state[i] += dg_b[i];
     }
+    Ok(())
 }
 
 /// Samples the anti-symmetric Lévy area matrix $A_{j_1, j_2} = \frac{1}{2}(I_{(j_1, j_2)} - I_{(j_2, j_1)})$
 /// via Kloeden-Platen truncated Fourier series with `modes` harmonics.
 #[verified_engine::verified]
-fn sample_levy_area<T: Scalar, R: RngCore + ?Sized>(
+fn sample_levy_area<T: RealScalar, R: RngCore + ?Sized>(
     dt: T,
     dw: &[T],
     modes: usize,

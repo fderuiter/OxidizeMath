@@ -1,6 +1,9 @@
+#[path = "mri_scalar.rs"]
+mod mri_scalar;
 #[path = "surface/topology.rs"]
 mod topology;
 
+use math_scalars::{DualVec, HyperDual};
 use topology::{
     SURFACE_CHUNK, accumulate_biharmonic_terms, accumulate_chunk_topology,
     evolve_sequential_polyline, mesh_bending_energy, mesh_tension_energy,
@@ -99,58 +102,17 @@ impl MriVolume {
     #[must_use]
     #[verified_engine::verified]
     pub fn sample_trilinear(&self, point: &[f64; 3]) -> f64 {
-        if self.intensities.is_empty() {
-            return 0.0;
-        }
-        let inv_h = 1.0 / self.voxel_size.max(1e-9);
-        let gx = ((point[0] - self.origin[0]) * inv_h).clamp(0.0, (self.dims[0] - 1) as f64);
-        let gy = ((point[1] - self.origin[1]) * inv_h).clamp(0.0, (self.dims[1] - 1) as f64);
-        let gz = ((point[2] - self.origin[2]) * inv_h).clamp(0.0, (self.dims[2] - 1) as f64);
-
-        let (x0, y0, z0) = (
-            gx.floor() as usize,
-            gy.floor() as usize,
-            gz.floor() as usize,
-        );
-        let (x1, y1, z1) = (
-            (x0 + 1).min(self.dims[0] - 1),
-            (y0 + 1).min(self.dims[1] - 1),
-            (z0 + 1).min(self.dims[2] - 1),
-        );
-        let (tx, ty, tz) = (gx - x0 as f64, gy - y0 as f64, gz - z0 as f64);
-
-        let c00 = self.voxel(x0, y0, z0) * (1.0 - tx) + self.voxel(x1, y0, z0) * tx;
-        let c10 = self.voxel(x0, y1, z0) * (1.0 - tx) + self.voxel(x1, y1, z0) * tx;
-        let c01 = self.voxel(x0, y0, z1) * (1.0 - tx) + self.voxel(x1, y0, z1) * tx;
-        let c11 = self.voxel(x0, y1, z1) * (1.0 - tx) + self.voxel(x1, y1, z1) * tx;
-        let c0 = c00 * (1.0 - ty) + c10 * ty;
-        let c1 = c01 * (1.0 - ty) + c11 * ty;
-        c0 * (1.0 - tz) + c1 * tz
+        self.sample_trilinear_scalar(point, point)
     }
 
-    /// Evaluates Gaussian-smoothed intensity $(G_\sigma * I)(s)$ via a separable 3x3x3 kernel.
+    /// Evaluates Gaussian-smoothed intensity $(G_\sigma * I)(s)$ via a $C^2$ B-spline + 3x3x3 kernel.
     #[must_use]
     #[verified_engine::verified]
     pub fn smoothed_intensity(&self, point: &[f64; 3], sigma: f64) -> f64 {
-        if !sigma.is_finite() || sigma <= 1e-6 {
-            return self.sample_trilinear(point);
-        }
-        let offsets = [-sigma, 0.0, sigma];
-        let weights = [0.25, 0.5, 0.25];
-        let mut accum = 0.0;
-        for (ix, &ox) in offsets.iter().enumerate() {
-            for (iy, &oy) in offsets.iter().enumerate() {
-                let w_xy = weights[ix] * weights[iy];
-                for (iz, &oz) in offsets.iter().enumerate() {
-                    let q = [point[0] + ox, point[1] + oy, point[2] + oz];
-                    accum += (w_xy * weights[iz]) * self.sample_trilinear(&q);
-                }
-            }
-        }
-        accum
+        self.smoothed_intensity_scalar(point, point, sigma)
     }
 
-    /// Evaluates the spatial gradient $\nabla (G_\sigma * I)(s)$ via central finite differences.
+    /// Evaluates the exact spatial gradient $\nabla (G_\sigma * I)(s)$ in a single [`DualVec<f64, 3>`] pass.
     #[must_use]
     #[verified_engine::verified]
     pub fn smoothed_gradient(&self, point: &[f64; 3], sigma: f64) -> [f64; 3] {
@@ -159,18 +121,8 @@ impl MriVolume {
         } else {
             0.0
         };
-        let h = s.max(self.voxel_size).max(1e-3);
-        let inv_2h = 0.5 / h;
-        let gx = (self.smoothed_intensity(&[point[0] + h, point[1], point[2]], s)
-            - self.smoothed_intensity(&[point[0] - h, point[1], point[2]], s))
-            * inv_2h;
-        let gy = (self.smoothed_intensity(&[point[0], point[1] + h, point[2]], s)
-            - self.smoothed_intensity(&[point[0], point[1] - h, point[2]], s))
-            * inv_2h;
-        let gz = (self.smoothed_intensity(&[point[0], point[1], point[2] + h], s)
-            - self.smoothed_intensity(&[point[0], point[1], point[2] - h], s))
-            * inv_2h;
-        [gx, gy, gz]
+        let seed = DualVec::<f64, 3>::jacobian_seed(*point);
+        self.smoothed_intensity_scalar(point, &seed, s).eps
     }
 }
 
@@ -252,8 +204,10 @@ pub fn evolve_surface(surface: &mut Surface, learning_rate: f64, gradient_streng
     }
 }
 
+/// Evaluates the exact outward normal external MRI force $-\partial_n E_{\text{ext}}(x)\hat{n}
+/// = 2 (\nabla I_\sigma(x) \cdot \partial_n \nabla I_\sigma(x)) \hat{n}$ via [`HyperDual<f64>`].
 #[verified_engine::verified]
-fn normal_external_force(
+pub fn normal_external_force(
     point: &[f64; 3],
     raw_normal: &[f64; 3],
     volume: &MriVolume,
@@ -271,26 +225,22 @@ fn normal_external_force(
         raw_normal[1] / norm,
         raw_normal[2] / norm,
     );
-    let delta = 0.5 * sigma.max(volume.voxel_size).max(1e-3);
-    let gp = volume.smoothed_gradient(
-        &[
-            point[0] + delta * nx,
-            point[1] + delta * ny,
-            point[2] + delta * nz,
-        ],
-        sigma,
-    );
-    let gm = volume.smoothed_gradient(
-        &[
-            point[0] - delta * nx,
-            point[1] - delta * ny,
-            point[2] - delta * nz,
-        ],
-        sigma,
-    );
-    let e_plus = -(gp[0] * gp[0] + gp[1] * gp[1] + gp[2] * gp[2]);
-    let e_minus = -(gm[0] * gm[0] + gm[1] * gm[1] + gm[2] * gm[2]);
-    let neg_de_dn = -(e_plus - e_minus) / (2.0 * delta);
+    let s = if sigma.is_finite() {
+        sigma.max(0.0)
+    } else {
+        0.0
+    };
+
+    let mut neg_de_dn = 0.0_f64;
+    for axis in 0..3 {
+        let pt_hd = [
+            HyperDual::new(point[0], f64::from(u8::from(axis == 0)), nx, 0.0),
+            HyperDual::new(point[1], f64::from(u8::from(axis == 1)), ny, 0.0),
+            HyperDual::new(point[2], f64::from(u8::from(axis == 2)), nz, 0.0),
+        ];
+        let jet = volume.smoothed_intensity_scalar(point, &pt_hd, s);
+        neg_de_dn += 2.0 * jet.eps1 * jet.eps12;
+    }
     [neg_de_dn * nx, neg_de_dn * ny, neg_de_dn * nz]
 }
 
@@ -405,26 +355,5 @@ pub fn evolve_surface_deformable(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use verified_engine::engine::VerifiedEngine;
-
-    #[test]
-    fn test_internal_energy_100_steps_zero_alloc_and_exact_value() {
-        let mut surface =
-            Surface::from_vertices(vec![[0.0, 0.0, 0.0], [1.0, 2.0, 2.0], [1.0, 2.0, 5.0]]);
-        // Tension: (1+4+4) + (0+0+9) = 18.0; bending: (-1)^2 + (-2)^2 + 1^2 = 6.0 -> 0.5*18 + 0.25*6 = 10.5
-        let initial = internal_energy(&surface, 0.5, 0.25);
-        assert!((initial - 10.5).abs() < 1e-12);
-
-        let (accum, _metrics) = VerifiedEngine::run_verified(|| {
-            let mut sum = 0.0;
-            for _ in 0..100 {
-                evolve_surface(&mut surface, 1e-4, 0.2);
-                sum += internal_energy(&surface, 0.5, 0.25) + external_energy(&surface, 0.2);
-            }
-            sum
-        });
-        assert!(accum.is_finite());
-    }
-}
+#[path = "surface_tests.rs"]
+mod tests;

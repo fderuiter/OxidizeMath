@@ -4,15 +4,16 @@ use crate::system::{
     SdeSystem, StochasticCalculus, ito_drift_scratch_len, try_eval_ito_effective_drift,
 };
 use math_commons::math_kernel::types::{
-    Scalar, SolverWorkspace, flatten_2d_index, sample_standard_normal_pair,
+    SolverWorkspace, flatten_2d_index, sample_standard_normal_pair,
 };
+use math_scalars::{Dual, RealScalar};
 use rand_core::RngCore;
 
 /// Correlated Gaussian increments $(\Delta W_j, \Delta Z_j)$ for strong-order-1.5 Stochastic Runge-Kutta,
 /// where $\Delta W_j = \int_{t_n}^{t_{n+1}} dW_s^j$ and $\Delta Z_j = \int_{t_n}^{t_{n+1}} (W_s^j - W_{t_n}^j)\,ds$.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct CorrelatedWienerIncrement<T: Scalar> {
+pub struct CorrelatedWienerIncrement<T: RealScalar> {
     /// First-order Wiener increment $\Delta W_j \sim \mathcal{N}(0, \Delta t)$.
     pub dw: T,
     /// Coupled time-Wiener integral $\Delta Z_j$ with $\mathbb{E}[\Delta W_j \Delta Z_j] = \frac{1}{2}\Delta t^2$
@@ -20,7 +21,7 @@ pub struct CorrelatedWienerIncrement<T: Scalar> {
     pub dz: T,
 }
 
-impl<T: Scalar> CorrelatedWienerIncrement<T> {
+impl<T: RealScalar> CorrelatedWienerIncrement<T> {
     /// Samples a correlated pair $(\Delta W, \Delta Z)$ for step size `dt` from `rng`.
     #[inline]
     #[verified_engine::verified]
@@ -82,7 +83,7 @@ impl Sriw1Solver {
     /// Returns [`DiffeqError`] if `dt < 0` or non-finite, `state` is undersized, or `workspace`
     /// lacks [`Self::scratch_len`] elements.
     #[verified_engine::verified]
-    pub fn try_step<T: Scalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
+    pub fn try_step<T, S, R>(
         &self,
         system: &S,
         t: T,
@@ -90,9 +91,14 @@ impl Sriw1Solver {
         state: &mut [T],
         workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
-    ) -> Result<(), DiffeqError> {
-        let d = system.state_dim();
-        let m = system.wiener_dim();
+    ) -> Result<(), DiffeqError>
+    where
+        T: RealScalar,
+        S: SdeSystem<T> + SdeSystem<Dual<T>> + ?Sized,
+        R: RngCore + ?Sized,
+    {
+        let d = <S as SdeSystem<T>>::state_dim(system);
+        let m = <S as SdeSystem<T>>::wiener_dim(system);
         if !(dt >= T::ZERO && dt.is_finite()) {
             return Err(DiffeqError::InvalidStepSize);
         }
@@ -124,7 +130,7 @@ impl Sriw1Solver {
     /// # Panics
     /// Panics if `dt < 0`, `state` is undersized, or `workspace` is too small; prefer [`Self::try_step`].
     #[verified_engine::verified]
-    pub fn step<T: Scalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
+    pub fn step<T, S, R>(
         &self,
         system: &S,
         t: T,
@@ -132,7 +138,11 @@ impl Sriw1Solver {
         state: &mut [T],
         workspace: &mut SolverWorkspace<'_, T>,
         rng: &mut R,
-    ) {
+    ) where
+        T: RealScalar,
+        S: SdeSystem<T> + SdeSystem<Dual<T>> + ?Sized,
+        R: RngCore + ?Sized,
+    {
         self.try_step(system, t, dt, state, workspace, rng)
             .expect("Sriw1Solver::step preconditions violated");
     }
@@ -144,7 +154,7 @@ impl Sriw1Solver {
     /// or `workspace` lacks sufficient scratch capacity.
     #[allow(clippy::too_many_arguments)]
     #[verified_engine::verified]
-    pub fn try_step_with_correlated_increments<T: Scalar, S: SdeSystem<T> + ?Sized>(
+    pub fn try_step_with_correlated_increments<T, S>(
         &self,
         system: &S,
         t: T,
@@ -153,9 +163,13 @@ impl Sriw1Solver {
         dz: &[T],
         state: &mut [T],
         workspace: &mut SolverWorkspace<'_, T>,
-    ) -> Result<(), DiffeqError> {
-        let d = system.state_dim();
-        let m = system.wiener_dim();
+    ) -> Result<(), DiffeqError>
+    where
+        T: RealScalar,
+        S: SdeSystem<T> + SdeSystem<Dual<T>> + ?Sized,
+    {
+        let d = <S as SdeSystem<T>>::state_dim(system);
+        let m = <S as SdeSystem<T>>::wiener_dim(system);
         validate_sriw1_inputs(dt, d, m, state, dw, dz)?;
         if dt <= T::EPSILON {
             return Ok(());
@@ -208,7 +222,7 @@ impl Sriw1Solver {
     /// prefer [`Self::try_step_with_correlated_increments`].
     #[allow(clippy::too_many_arguments)]
     #[verified_engine::verified]
-    pub fn step_with_correlated_increments<T: Scalar, S: SdeSystem<T> + ?Sized>(
+    pub fn step_with_correlated_increments<T, S>(
         &self,
         system: &S,
         t: T,
@@ -217,14 +231,17 @@ impl Sriw1Solver {
         dz: &[T],
         state: &mut [T],
         workspace: &mut SolverWorkspace<'_, T>,
-    ) {
+    ) where
+        T: RealScalar,
+        S: SdeSystem<T> + SdeSystem<Dual<T>> + ?Sized,
+    {
         self.try_step_with_correlated_increments(system, t, dt, dw, dz, state, workspace)
             .expect("Sriw1Solver::step_with_correlated_increments preconditions violated");
     }
 }
 
 #[verified_engine::verified]
-fn validate_sriw1_inputs<T: Scalar>(
+fn validate_sriw1_inputs<T: RealScalar>(
     dt: T,
     d: usize,
     m: usize,
@@ -262,7 +279,7 @@ fn validate_sriw1_inputs<T: Scalar>(
 
 #[allow(clippy::too_many_arguments)]
 #[verified_engine::verified]
-fn eval_sriw1_drift_stages<T: Scalar, S: SdeSystem<T> + ?Sized>(
+fn eval_sriw1_drift_stages<T, S>(
     system: &S,
     calculus: StochasticCalculus,
     t: T,
@@ -275,9 +292,13 @@ fn eval_sriw1_drift_stages<T: Scalar, S: SdeSystem<T> + ?Sized>(
     g1: &mut [T],
     delta_x: &mut [T],
     ws: &mut SolverWorkspace<'_, T>,
-) -> Result<(), DiffeqError> {
-    let d = system.state_dim();
-    let m = system.wiener_dim();
+) -> Result<(), DiffeqError>
+where
+    T: RealScalar,
+    S: SdeSystem<T> + SdeSystem<Dual<T>> + ?Sized,
+{
+    let d = <S as SdeSystem<T>>::state_dim(system);
+    let m = <S as SdeSystem<T>>::wiener_dim(system);
     debug_assert!(dt > T::EPSILON && state.len() >= d);
     try_eval_ito_effective_drift(system, calculus, t, state, a1, ws)?;
     system.diffusion(t, state, g1);
@@ -303,7 +324,7 @@ fn eval_sriw1_drift_stages<T: Scalar, S: SdeSystem<T> + ?Sized>(
 
 #[allow(clippy::too_many_arguments)]
 #[verified_engine::verified]
-fn accumulate_sriw1_diffusion<T: Scalar, S: SdeSystem<T> + ?Sized>(
+fn accumulate_sriw1_diffusion<T: RealScalar, S: SdeSystem<T> + ?Sized>(
     system: &S,
     t: T,
     dt: T,

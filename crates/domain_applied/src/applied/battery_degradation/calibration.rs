@@ -4,8 +4,9 @@
 use super::model::{ElectrochemicalAgingModel, MAX_EXPONENT_Z, MIN_EXPONENT_Z};
 use super::types::DepthOfDischarge;
 use math_commons::error::FitError;
-use math_commons::fit::{levenberg_marquardt_numeric, sum_squared_errors_numeric};
+use math_commons::fit::{MAX_FIT_PARAMS, levenberg_marquardt_ad, sum_squared_errors_numeric};
 use math_commons::series::PointSeries;
+use math_scalars::{DualVec, Scalar};
 
 const Z_SPAN: f64 = MAX_EXPONENT_Z - MIN_EXPONENT_Z;
 
@@ -36,6 +37,41 @@ fn decode_theta(params: &[f64]) -> Option<(f64, f64)> {
     let n70_eff = ln_n70.exp();
     let z = MIN_EXPONENT_Z + Z_SPAN / (1.0 + (-logit_z).exp());
     Some((n70_eff, z))
+}
+
+type FitDual = DualVec<f64, MAX_FIT_PARAMS>;
+
+#[inline]
+fn clamp_dual_param(p: FitDual, lo: f64, hi: f64) -> FitDual {
+    if p.val < lo {
+        FitDual::from_f64(lo)
+    } else if p.val > hi {
+        FitDual::from_f64(hi)
+    } else {
+        p
+    }
+}
+
+#[inline]
+fn eval_capacity_ad(cycles: f64, params: &[FitDual]) -> Option<FitDual> {
+    if !cycles.is_finite() || cycles < 0.0 || params.len() < 2 {
+        return None;
+    }
+    if !params[0].val.is_finite() || !params[1].val.is_finite() {
+        return None;
+    }
+    if cycles == 0.0 {
+        return Some(FitDual::ONE);
+    }
+    let ln_n70 = clamp_dual_param(params[0], -2.0, 18.0);
+    let logit_z = clamp_dual_param(params[1], -20.0, 20.0);
+    let n70_eff = ln_n70.exp();
+    let z = FitDual::from_f64(MIN_EXPONENT_Z)
+        + FitDual::from_f64(Z_SPAN) / (FitDual::ONE + (-logit_z).exp());
+    let ratio = FitDual::from_f64(cycles) / n70_eff;
+    let raw_loss = FitDual::from_f64(0.3) * ratio.powf(z);
+    let loss = clamp_dual_param(raw_loss, 0.0, 1.0);
+    Some(FitDual::ONE - loss)
 }
 
 #[inline]
@@ -105,7 +141,7 @@ fn total_sum_of_squares<P: PointSeries + ?Sized>(samples: &P, mean_y: f64) -> f6
 }
 
 /// Fits $\alpha$ and stretched exponent $z$ of `base` to `(cycles, capacity)` observations at `dod`
-/// on the stack via [`levenberg_marquardt_numeric`] with zero dynamic heap allocations.
+/// on the stack via single-pass forward-AD [`levenberg_marquardt_ad`] with zero dynamic heap allocations.
 #[verified_engine::verified]
 pub fn calibrate_electrochemical_model<P: PointSeries + ?Sized>(
     base: &ElectrochemicalAgingModel,
@@ -127,7 +163,7 @@ pub fn calibrate_electrochemical_model<P: PointSeries + ?Sized>(
     let seed_logit_z = ((seed_z - MIN_EXPONENT_Z) / (MAX_EXPONENT_Z - seed_z)).ln();
     let initial = [seed_n70.max(5.0).ln(), seed_logit_z];
 
-    let theta_full = levenberg_marquardt_numeric(samples, &initial, eval_capacity_at)?;
+    let theta_full = levenberg_marquardt_ad(samples, &initial, eval_capacity_ad)?;
     let theta_pair = [theta_full[0], theta_full[1]];
     let (fitted_n70, fitted_z) = decode_theta(&theta_pair).ok_or(FitError::InvalidDomain {
         reason: "non-finite calibrated battery aging parameters",

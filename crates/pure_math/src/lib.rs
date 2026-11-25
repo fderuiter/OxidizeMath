@@ -7,6 +7,8 @@ pub mod pure_math;
 /// Submodule providing `theory_macro` types, traits, and algorithms.
 pub mod theory_macro;
 
+pub use math_scalars;
+
 #[doc(hidden)]
 pub mod __macro_deps {
     pub use oxidize_core;
@@ -51,6 +53,7 @@ pub mod __doctest_facade {
     pub use math_commons::{
         ast, constants, fit, math_kernel, poi, primitives, registry, series, stochastic, wigner,
     };
+    pub use math_scalars;
     pub use nalgebra;
     pub use num_complex;
     pub use oxidize_core::{mesh, rng};

@@ -11,6 +11,7 @@
 #[cfg(feature = "alloc")]
 mod format;
 mod lm;
+mod lm_ad;
 mod nonlinear;
 mod poly;
 mod seeds;
@@ -31,6 +32,7 @@ pub use lm::{
     MAX_FIT_PARAMS, MAX_LM_ITERATIONS, levenberg_marquardt, levenberg_marquardt_filtered,
     levenberg_marquardt_numeric, sum_squared_errors_numeric,
 };
+pub use lm_ad::{levenberg_marquardt_ad, levenberg_marquardt_ad_filtered};
 #[cfg(feature = "alloc")]
 pub use nonlinear::format_nonlinear_formula;
 pub use nonlinear::{eval_nonlinear, fit_nonlinear};

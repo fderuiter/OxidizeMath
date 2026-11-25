@@ -12,6 +12,7 @@ domain_climate = { path = "../domain_climate" }
 domain_epidemiology = { path = "../domain_epidemiology" }
 domain_physics = { path = "../domain_physics" }
 math_commons = { path = "../math_commons" }
+math_scalars = { path = "../00_foundation/math_scalars" }
 nalgebra = { workspace = true }
 num-complex = { workspace = true }
 oxidize_core = { path = "../oxidize_core" }

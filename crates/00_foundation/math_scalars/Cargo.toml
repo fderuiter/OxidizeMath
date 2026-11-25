@@ -1,0 +1,22 @@
+[package]
+name = "math_scalars"
+version.workspace = true
+edition = "2024"
+description = "Tier-0 #![no_std] scalar traits, forward automatic differentiation, and outward-rounded interval/ball enclosures."
+
+[features]
+default = []
+alloc = []
+serde = ["dep:serde"]
+std = ["alloc", "serde?/std"]
+
+[dependencies]
+libm = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true, default-features = false, features = ["alloc", "float_roundtrip"] }
+verified_engine = { path = "../../verified_engine" }
+
+[lints]
+workspace = true

@@ -5,6 +5,8 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+pub use math_scalars;
+
 /// Symbolic mathematical expression AST parser, evaluator, and GLSL emitter.
 #[cfg(feature = "std")]
 pub mod ast;

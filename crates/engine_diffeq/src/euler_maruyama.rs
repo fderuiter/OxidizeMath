@@ -1,9 +1,8 @@
 // [cite:engine_diffeq]
 use crate::error::DiffeqError;
 use crate::system::{SdeSystem, StochasticCalculus};
-use math_commons::math_kernel::types::{
-    Scalar, SolverWorkspace, fill_standard_normal, flatten_2d_index,
-};
+use math_commons::math_kernel::types::{SolverWorkspace, fill_standard_normal, flatten_2d_index};
+use math_scalars::RealScalar;
 use rand_core::RngCore;
 
 /// Multivariate Euler-Maruyama (Itô) and Euler-Heun (Stratonovich) stochastic integrator for
@@ -55,7 +54,7 @@ impl EulerMaruyamaSolver {
     /// Returns [`DiffeqError::InvalidStepSize`] if `dt < 0` or non-finite, [`DiffeqError::BufferTooSmall`]
     /// if `state.len() < system.state_dim()`, or [`DiffeqError::Math`] if `workspace` is undersized.
     #[verified_engine::verified]
-    pub fn try_step<T: Scalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
+    pub fn try_step<T: RealScalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
         &self,
         system: &S,
         t: T,
@@ -93,7 +92,7 @@ impl EulerMaruyamaSolver {
     /// # Panics
     /// Panics if `dt < 0`, `state` is undersized, or `workspace` is too small; prefer [`Self::try_step`].
     #[verified_engine::verified]
-    pub fn step<T: Scalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
+    pub fn step<T: RealScalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
         &self,
         system: &S,
         t: T,
@@ -112,7 +111,7 @@ impl EulerMaruyamaSolver {
     /// Returns [`DiffeqError`] if `dt < 0` or non-finite, `state` or `dw` is undersized,
     /// or `workspace` lacks sufficient scratch capacity.
     #[verified_engine::verified]
-    pub fn try_step_with_increments<T: Scalar, S: SdeSystem<T> + ?Sized>(
+    pub fn try_step_with_increments<T: RealScalar, S: SdeSystem<T> + ?Sized>(
         &self,
         system: &S,
         t: T,
@@ -166,7 +165,7 @@ impl EulerMaruyamaSolver {
     /// # Panics
     /// Panics if `dt < 0`, `state`/`dw` are undersized, or `workspace` is too small; prefer [`Self::try_step_with_increments`].
     #[verified_engine::verified]
-    pub fn step_with_increments<T: Scalar, S: SdeSystem<T> + ?Sized>(
+    pub fn step_with_increments<T: RealScalar, S: SdeSystem<T> + ?Sized>(
         &self,
         system: &S,
         t: T,
@@ -182,7 +181,7 @@ impl EulerMaruyamaSolver {
 
 #[allow(clippy::too_many_arguments)]
 #[verified_engine::verified]
-fn apply_euler_update<T: Scalar, S: SdeSystem<T> + ?Sized>(
+fn apply_euler_update<T: RealScalar, S: SdeSystem<T> + ?Sized>(
     system: &S,
     t: T,
     dt: T,

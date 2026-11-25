@@ -19,7 +19,7 @@ impl LangevinSystem<f64> for Harmonic1D {
 
 struct ToySde;
 
-impl SdeSystem<f64> for ToySde {
+impl<S: Scalar> SdeSystem<S> for ToySde {
     fn state_dim(&self) -> usize {
         2
     }
@@ -28,16 +28,16 @@ impl SdeSystem<f64> for ToySde {
         2
     }
 
-    fn drift(&self, _t: f64, x: &[f64], out_drift: &mut [f64]) {
+    fn drift(&self, _t: S, x: &[S], out_drift: &mut [S]) {
         out_drift[0] = -x[0];
-        out_drift[1] = -0.5 * x[1];
+        out_drift[1] = -S::HALF * x[1];
     }
 
-    fn diffusion(&self, _t: f64, x: &[f64], out_diffusion: &mut [f64]) {
-        out_diffusion[0] = 0.2 * x[0];
-        out_diffusion[1] = 0.0;
-        out_diffusion[2] = 0.0;
-        out_diffusion[3] = 0.1 * x[1];
+    fn diffusion(&self, _t: S, x: &[S], out_diffusion: &mut [S]) {
+        out_diffusion[0] = S::from_f64(0.2) * x[0];
+        out_diffusion[1] = S::ZERO;
+        out_diffusion[2] = S::ZERO;
+        out_diffusion[3] = S::from_f64(0.1) * x[1];
     }
 }
 

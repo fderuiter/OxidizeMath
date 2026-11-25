@@ -616,6 +616,473 @@
       "signature": "pub fn torus_shift_open < T : RngScalar > (_ : f64 , _ : f64) -> T"
     }
   ],
+  "crates/00_foundation/math_scalars/src/ball.rs": [
+    {
+      "signature": "impl < T : DirectedRounding > Ball < T > { pub fn contains (self , _ : T) -> bool }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Ball < T > { pub fn contains_zero (self) -> bool }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Ball < T > { pub fn from_interval (_ : Interval < T >) -> Self }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Ball < T > { pub fn new (_ : T , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Ball < T > { pub fn point (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Ball < T > { pub fn to_interval (self) -> Interval < T > }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Ball < T > { pub fn ulp_width (self) -> u64 }"
+    },
+    {
+      "signature": "pub struct Ball < T >"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/directed.rs": [
+    {
+      "signature": "pub trait DirectedRounding : RealScalar"
+    },
+    {
+      "signature": "pub trait DirectedRounding { const PI_HI : Self }"
+    },
+    {
+      "signature": "pub trait DirectedRounding { const PI_LO : Self }"
+    },
+    {
+      "signature": "pub trait DirectedRounding { const PI_RAD : Self }"
+    },
+    {
+      "signature": "pub trait DirectedRounding { const TAU_HI : Self }"
+    },
+    {
+      "signature": "pub trait DirectedRounding { const TAU_LO : Self }"
+    },
+    {
+      "signature": "pub trait DirectedRounding { const TAU_RAD : Self }"
+    },
+    {
+      "signature": "pub trait DirectedRounding { fn add_down (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait DirectedRounding { fn add_up (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait DirectedRounding { fn div_down (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait DirectedRounding { fn div_up (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait DirectedRounding { fn mul_down (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait DirectedRounding { fn mul_up (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait DirectedRounding { fn sqrt_down (self) -> Self }"
+    },
+    {
+      "signature": "pub trait DirectedRounding { fn sqrt_up (self) -> Self }"
+    },
+    {
+      "signature": "pub trait DirectedRounding { fn sub_down (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait DirectedRounding { fn sub_up (self , _ : Self) -> Self }"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/dual.rs": [
+    {
+      "signature": "impl < T : Scalar > Dual < T > { pub const fn constant (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar > Dual < T > { pub const fn new (_ : T , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar > Dual < T > { pub const fn variable (_ : T) -> Self }"
+    },
+    {
+      "signature": "pub struct Dual < T >"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/dual_vec.rs": [
+    {
+      "signature": "impl < T : Scalar , const N : usize > DualVec < T , N > { pub const fn constant (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar , const N : usize > DualVec < T , N > { pub const fn new (_ : T , _ : [T ; N]) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar , const N : usize > DualVec < T , N > { pub fn jacobian_seed (_ : [T ; N]) -> [Self ; N] }"
+    },
+    {
+      "signature": "impl < T : Scalar , const N : usize > DualVec < T , N > { pub fn variable (_ : T , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct DualVec < T , const N : usize >"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/enclosure_cert.rs": [
+    {
+      "signature": "pub fn certify_reference_roots () -> ReferenceEnclosureSummary"
+    },
+    {
+      "signature": "pub fn interval_newton_enclose < T , F > (_ : F , _ : Interval < T > , _ : usize ,) -> Option < CertifiedIntervalRoot < T > > where T : DirectedRounding , F : Fn (Dual < Interval < T > >) -> Dual < Interval < T > > ,"
+    },
+    {
+      "signature": "pub fn krawczyk_enclose < T , F > (_ : F , _ : Ball < T > , _ : usize ,) -> Option < CertifiedBallRoot < T > > where T : DirectedRounding , F : Fn (Dual < Interval < T > >) -> Dual < Interval < T > > ,"
+    },
+    {
+      "signature": "pub struct CertifiedBallRoot < T >"
+    },
+    {
+      "signature": "pub struct CertifiedIntervalRoot < T >"
+    },
+    {
+      "signature": "pub struct ReferenceEnclosureSummary"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/hyper_dual.rs": [
+    {
+      "signature": "impl < T : Scalar > HyperDual < T > { pub const fn bivariate_u (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar > HyperDual < T > { pub const fn bivariate_v (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar > HyperDual < T > { pub const fn constant (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar > HyperDual < T > { pub const fn new (_ : T , _ : T , _ : T , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : Scalar > HyperDual < T > { pub const fn univariate (_ : T) -> Self }"
+    },
+    {
+      "signature": "pub struct HyperDual < T >"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/interval.rs": [
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub const fn entire () -> Self }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn bisect (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn contains (self , _ : T) -> bool }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn contains_subset (self , _ : Self) -> bool }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn contains_zero (self) -> bool }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn from_f64_enclosure (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn hull (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn interior_contains (self , _ : Self) -> bool }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn intersect (self , _ : Self) -> Option < Self > }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn mag (self) -> T }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn midpoint (self) -> T }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn mig (self) -> T }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn new (_ : T , _ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn point (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn radius (self) -> T }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn sqr (self) -> Self }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn ulp_width (self) -> u64 }"
+    },
+    {
+      "signature": "impl < T : DirectedRounding > Interval < T > { pub fn width (self) -> T }"
+    },
+    {
+      "signature": "pub struct Interval < T >"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/lib.rs": [
+    {
+      "signature": "pub use ball :: Ball"
+    },
+    {
+      "signature": "pub use directed :: DirectedRounding"
+    },
+    {
+      "signature": "pub use dual :: Dual"
+    },
+    {
+      "signature": "pub use dual_vec :: DualVec"
+    },
+    {
+      "signature": "pub use enclosure_cert :: CertifiedBallRoot"
+    },
+    {
+      "signature": "pub use enclosure_cert :: CertifiedIntervalRoot"
+    },
+    {
+      "signature": "pub use enclosure_cert :: ReferenceEnclosureSummary"
+    },
+    {
+      "signature": "pub use enclosure_cert :: certify_reference_roots"
+    },
+    {
+      "signature": "pub use enclosure_cert :: interval_newton_enclose"
+    },
+    {
+      "signature": "pub use enclosure_cert :: krawczyk_enclose"
+    },
+    {
+      "signature": "pub use hyper_dual :: HyperDual"
+    },
+    {
+      "signature": "pub use interval :: Interval"
+    },
+    {
+      "signature": "pub use traits :: RealScalar"
+    },
+    {
+      "signature": "pub use traits :: Scalar"
+    },
+    {
+      "signature": "pub use ulp :: next_down_f32"
+    },
+    {
+      "signature": "pub use ulp :: next_down_f64"
+    },
+    {
+      "signature": "pub use ulp :: next_up_f32"
+    },
+    {
+      "signature": "pub use ulp :: next_up_f64"
+    },
+    {
+      "signature": "pub use ulp :: pad_ulp_down_f32"
+    },
+    {
+      "signature": "pub use ulp :: pad_ulp_down_f64"
+    },
+    {
+      "signature": "pub use ulp :: pad_ulp_up_f32"
+    },
+    {
+      "signature": "pub use ulp :: pad_ulp_up_f64"
+    },
+    {
+      "signature": "pub use ulp :: ulp_distance_f32"
+    },
+    {
+      "signature": "pub use ulp :: ulp_distance_f64"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/traits.rs": [
+    {
+      "signature": "pub trait RealScalar : Scalar + PartialOrd"
+    },
+    {
+      "signature": "pub trait RealScalar { const EPSILON : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { const INFINITY : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { const MAX_VALUE : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { const MIN_POSITIVE : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { const NAN : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { const NEG_INFINITY : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { const SQRT_EPSILON : Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn ceil (self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn copysign (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn floor (self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn is_nan (self) -> bool }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn max (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn min (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn next_down (self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn next_up (self) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn pad_ulp_down (self , _ : u32) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn pad_ulp_up (self , _ : u32) -> Self }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn to_f64 (self) -> f64 }"
+    },
+    {
+      "signature": "pub trait RealScalar { fn ulp_distance (self , _ : Self) -> u64 }"
+    },
+    {
+      "signature": "pub trait Scalar : Copy + Clone + Debug + Default + PartialEq + Send + Sync + 'static + Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + Div < Output = Self > + Neg < Output = Self > + AddAssign + SubAssign + MulAssign + DivAssign"
+    },
+    {
+      "signature": "pub trait Scalar { const HALF : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const ONE : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const PI : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const TAU : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const TWO : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { const ZERO : Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn abs (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn acos (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn asin (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn atan (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn atan2 (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn cos (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn cosh (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn exp (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn from_f64 (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn from_usize (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn hypot (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn is_finite (self) -> bool }"
+    },
+    {
+      "signature": "pub trait Scalar { fn ln (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn powf (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn powi (self , _ : i32) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn recip (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn signum (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn sin (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn sin_cos (self) -> (Self , Self) }"
+    },
+    {
+      "signature": "pub trait Scalar { fn sinh (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn sqrt (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn tan (self) -> Self }"
+    },
+    {
+      "signature": "pub trait Scalar { fn tanh (self) -> Self }"
+    }
+  ],
+  "crates/00_foundation/math_scalars/src/ulp.rs": [
+    {
+      "signature": "pub fn next_down_f32 (_ : f32) -> f32"
+    },
+    {
+      "signature": "pub fn next_down_f64 (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn next_up_f32 (_ : f32) -> f32"
+    },
+    {
+      "signature": "pub fn next_up_f64 (_ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn pad_ulp_down_f32 (_ : f32 , _ : u32) -> f32"
+    },
+    {
+      "signature": "pub fn pad_ulp_down_f64 (_ : f64 , _ : u32) -> f64"
+    },
+    {
+      "signature": "pub fn pad_ulp_up_f32 (_ : f32 , _ : u32) -> f32"
+    },
+    {
+      "signature": "pub fn pad_ulp_up_f64 (_ : f64 , _ : u32) -> f64"
+    },
+    {
+      "signature": "pub fn ulp_distance_f32 (_ : f32 , _ : f32) -> u64"
+    },
+    {
+      "signature": "pub fn ulp_distance_f64 (_ : f64 , _ : f64) -> u64"
+    }
+  ],
   "crates/02_engines/engine_linalg/src/cholesky.rs": [
     {
       "signature": "pub const fn cholesky_semidefinite_workspace_len (_ : usize) -> usize"
@@ -3813,6 +4280,9 @@
     },
     {
       "signature": "pub fn internal_energy (_ : & Surface , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn normal_external_force (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & MriVolume , _ : f64 ,) -> [f64 ; 3]"
     },
     {
       "signature": "pub struct MriVolume"
@@ -12469,28 +12939,28 @@
   ],
   "crates/engine_diffeq/src/baoab.rs": [
     {
-      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub const fn params (& self) -> BaoabParams < T > }"
+      "signature": "impl < T : RealScalar > BaoabLangevinSolver < T > { pub const fn params (& self) -> BaoabParams < T > }"
     },
     {
-      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub const fn scratch_len (_ : usize) -> usize }"
+      "signature": "impl < T : RealScalar > BaoabLangevinSolver < T > { pub const fn scratch_len (_ : usize) -> usize }"
     },
     {
-      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn new (_ : BaoabParams < T >) -> Self }"
+      "signature": "impl < T : RealScalar > BaoabLangevinSolver < T > { pub fn new (_ : BaoabParams < T >) -> Self }"
     },
     {
-      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn step < S : LangevinSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : & mut [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
+      "signature": "impl < T : RealScalar > BaoabLangevinSolver < T > { pub fn step < S : LangevinSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : & mut [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
     },
     {
-      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn try_new (_ : BaoabParams < T >) -> Result < Self , math_commons :: error :: MathError > }"
+      "signature": "impl < T : RealScalar > BaoabLangevinSolver < T > { pub fn try_new (_ : BaoabParams < T >) -> Result < Self , math_commons :: error :: MathError > }"
     },
     {
-      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn try_step < S : LangevinSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : & mut [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , DiffeqError > }"
+      "signature": "impl < T : RealScalar > BaoabLangevinSolver < T > { pub fn try_step < S : LangevinSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : & mut [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , DiffeqError > }"
     },
     {
-      "signature": "pub struct BaoabLangevinSolver < T : Scalar >"
+      "signature": "pub struct BaoabLangevinSolver < T : RealScalar >"
     },
     {
-      "signature": "pub struct BaoabParams < T : Scalar >"
+      "signature": "pub struct BaoabParams < T : RealScalar >"
     }
   ],
   "crates/engine_diffeq/src/error.rs": [
@@ -12515,16 +12985,16 @@
       "signature": "impl EulerMaruyamaSolver { pub const fn scratch_len (& self , _ : usize , _ : usize) -> usize }"
     },
     {
-      "signature": "impl EulerMaruyamaSolver { pub fn step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
+      "signature": "impl EulerMaruyamaSolver { pub fn step < T : RealScalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
     },
     {
-      "signature": "impl EulerMaruyamaSolver { pub fn step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) }"
+      "signature": "impl EulerMaruyamaSolver { pub fn step_with_increments < T : RealScalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) }"
     },
     {
-      "signature": "impl EulerMaruyamaSolver { pub fn try_step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , DiffeqError > }"
+      "signature": "impl EulerMaruyamaSolver { pub fn try_step < T : RealScalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , DiffeqError > }"
     },
     {
-      "signature": "impl EulerMaruyamaSolver { pub fn try_step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , DiffeqError > }"
+      "signature": "impl EulerMaruyamaSolver { pub fn try_step_with_increments < T : RealScalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , DiffeqError > }"
     },
     {
       "signature": "pub struct EulerMaruyamaSolver"
@@ -12532,21 +13002,21 @@
   ],
   "crates/engine_diffeq/src/jump.rs": [
     {
-      "signature": "pub fn ssa_sample_event < T : Scalar , R : RngCore + ? Sized > (_ : & [T] , _ : & mut R ,) -> Option < (T , usize) >"
+      "signature": "pub fn ssa_sample_event < T : RealScalar , R : RngCore + ? Sized > (_ : & [T] , _ : & mut R ,) -> Option < (T , usize) >"
     }
   ],
   "crates/engine_diffeq/src/lib.rs": [
     {
-      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > OwnedWorkspace < T > { pub fn as_workspace (& mut self) -> math_commons :: math_kernel :: types :: SolverWorkspace < '_ , T > }"
+      "signature": "impl < T : math_scalars :: Scalar > OwnedWorkspace < T > { pub fn as_workspace (& mut self) -> math_commons :: math_kernel :: types :: SolverWorkspace < '_ , T > }"
     },
     {
-      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > OwnedWorkspace < T > { pub fn try_with_capacity (_ : usize) -> Result < Self , DiffeqError > }"
+      "signature": "impl < T : math_scalars :: Scalar > OwnedWorkspace < T > { pub fn try_with_capacity (_ : usize) -> Result < Self , DiffeqError > }"
     },
     {
-      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > OwnedWorkspace < T > { pub fn with_capacity (_ : usize) -> Self }"
+      "signature": "impl < T : math_scalars :: Scalar > OwnedWorkspace < T > { pub fn with_capacity (_ : usize) -> Self }"
     },
     {
-      "signature": "pub struct OwnedWorkspace < T : math_commons :: math_kernel :: types :: Scalar >"
+      "signature": "pub struct OwnedWorkspace < T : math_scalars :: Scalar >"
     },
     {
       "signature": "pub use baoab :: BaoabLangevinSolver"
@@ -12568,6 +13038,21 @@
     },
     {
       "signature": "pub use math_rng :: OxidizeRng"
+    },
+    {
+      "signature": "pub use math_scalars :: Dual"
+    },
+    {
+      "signature": "pub use math_scalars :: DualVec"
+    },
+    {
+      "signature": "pub use math_scalars :: HyperDual"
+    },
+    {
+      "signature": "pub use math_scalars :: RealScalar"
+    },
+    {
+      "signature": "pub use math_scalars :: Scalar"
     },
     {
       "signature": "pub use milstein :: MilsteinSolver"
@@ -12608,16 +13093,16 @@
       "signature": "impl MilsteinSolver { pub const fn with_levy_truncation (self , _ : usize) -> Self }"
     },
     {
-      "signature": "impl MilsteinSolver { pub fn step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
+      "signature": "impl MilsteinSolver { pub fn step < T , S , R > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) where T : RealScalar , S : SdeSystem < T > + SdeSystem < Dual < T > > + ? Sized , R : RngCore + ? Sized , }"
     },
     {
-      "signature": "impl MilsteinSolver { pub fn step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) }"
+      "signature": "impl MilsteinSolver { pub fn step_with_increments < T , S > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) where T : RealScalar , S : SdeSystem < T > + SdeSystem < Dual < T > > + ? Sized , }"
     },
     {
-      "signature": "impl MilsteinSolver { pub fn try_step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , DiffeqError > }"
+      "signature": "impl MilsteinSolver { pub fn try_step < T , S , R > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , DiffeqError > where T : RealScalar , S : SdeSystem < T > + SdeSystem < Dual < T > > + ? Sized , R : RngCore + ? Sized , }"
     },
     {
-      "signature": "impl MilsteinSolver { pub fn try_step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , DiffeqError > }"
+      "signature": "impl MilsteinSolver { pub fn try_step_with_increments < T , S > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , DiffeqError > where T : RealScalar , S : SdeSystem < T > + SdeSystem < Dual < T > > + ? Sized , }"
     },
     {
       "signature": "pub struct MilsteinSolver"
@@ -12625,7 +13110,7 @@
   ],
   "crates/engine_diffeq/src/sriw1.rs": [
     {
-      "signature": "impl < T : Scalar > CorrelatedWienerIncrement < T > { pub fn sample < R : RngCore + ? Sized > (_ : T , _ : & mut R) -> Self }"
+      "signature": "impl < T : RealScalar > CorrelatedWienerIncrement < T > { pub fn sample < R : RngCore + ? Sized > (_ : T , _ : & mut R) -> Self }"
     },
     {
       "signature": "impl Sriw1Solver { pub const fn calculus (& self) -> StochasticCalculus }"
@@ -12637,19 +13122,19 @@
       "signature": "impl Sriw1Solver { pub const fn scratch_len (& self , _ : usize , _ : usize) -> usize }"
     },
     {
-      "signature": "impl Sriw1Solver { pub fn step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
+      "signature": "impl Sriw1Solver { pub fn step < T , S , R > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) where T : RealScalar , S : SdeSystem < T > + SdeSystem < Dual < T > > + ? Sized , R : RngCore + ? Sized , }"
     },
     {
-      "signature": "impl Sriw1Solver { pub fn step_with_correlated_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) }"
+      "signature": "impl Sriw1Solver { pub fn step_with_correlated_increments < T , S > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) where T : RealScalar , S : SdeSystem < T > + SdeSystem < Dual < T > > + ? Sized , }"
     },
     {
-      "signature": "impl Sriw1Solver { pub fn try_step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , DiffeqError > }"
+      "signature": "impl Sriw1Solver { pub fn try_step < T , S , R > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , DiffeqError > where T : RealScalar , S : SdeSystem < T > + SdeSystem < Dual < T > > + ? Sized , R : RngCore + ? Sized , }"
     },
     {
-      "signature": "impl Sriw1Solver { pub fn try_step_with_correlated_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , DiffeqError > }"
+      "signature": "impl Sriw1Solver { pub fn try_step_with_correlated_increments < T , S > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , DiffeqError > where T : RealScalar , S : SdeSystem < T > + SdeSystem < Dual < T > > + ? Sized , }"
     },
     {
-      "signature": "pub struct CorrelatedWienerIncrement < T : Scalar >"
+      "signature": "pub struct CorrelatedWienerIncrement < T : RealScalar >"
     },
     {
       "signature": "pub struct Sriw1Solver"
@@ -12663,10 +13148,10 @@
       "signature": "pub enum StochasticCalculus"
     },
     {
-      "signature": "pub fn eval_ito_effective_drift < T : Scalar , S : SdeSystem < T > + ? Sized > (_ : & S , _ : StochasticCalculus , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,)"
+      "signature": "pub fn eval_ito_effective_drift < T , S > (_ : & S , _ : StochasticCalculus , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) where T : RealScalar , S : SdeSystem < T > + SdeSystem < Dual < T > > + ? Sized ,"
     },
     {
-      "signature": "pub fn try_eval_ito_effective_drift < T : Scalar , S : SdeSystem < T > + ? Sized > (_ : & S , _ : StochasticCalculus , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , DiffeqError >"
+      "signature": "pub fn try_eval_ito_effective_drift < T , S > (_ : & S , _ : StochasticCalculus , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , DiffeqError > where T : RealScalar , S : SdeSystem < T > + SdeSystem < Dual < T > > + ? Sized ,"
     },
     {
       "signature": "pub trait LangevinSystem < T : Scalar >"
@@ -12684,13 +13169,16 @@
       "signature": "pub trait SdeSystem < T : Scalar > { fn diffusion (& self , _ : T , _ : & [T] , _ : & mut [T]) }"
     },
     {
-      "signature": "pub trait SdeSystem < T : Scalar > { fn diffusion_jacobian_action (& self , _ : T , _ : & [T] , _ : usize , _ : & [T] , _ : & mut [T] , _ : & mut [T] , _ : & mut [T] , _ : & mut [T] ,) }"
+      "signature": "pub trait SdeSystem < T : Scalar > { fn diffusion_jacobian_action (& self , _ : T , _ : & [T] , _ : usize , _ : & [T] , _ : & mut [T] , _ : & mut [T] , _ : & mut [T] , _ : & mut [T] ,) where Self : SdeSystem < Dual < T > > , }"
     },
     {
       "signature": "pub trait SdeSystem < T : Scalar > { fn drift (& self , _ : T , _ : & [T] , _ : & mut [T]) }"
     },
     {
       "signature": "pub trait SdeSystem < T : Scalar > { fn state_dim (& self) -> usize }"
+    },
+    {
+      "signature": "pub trait SdeSystem < T : Scalar > { fn try_diffusion_jacobian_action (& self , _ : T , _ : & [T] , _ : usize , _ : & [T] , _ : & mut [T] , _ : & mut [T] , _ : & mut [T] , _ : & mut [T] ,) -> Result < () , DiffeqError > where Self : SdeSystem < Dual < T > > , }"
     },
     {
       "signature": "pub trait SdeSystem < T : Scalar > { fn wiener_dim (& self) -> usize }"
@@ -13765,6 +14253,14 @@
       "signature": "pub fn sum_squared_errors_numeric < P , F > (_ : & P , _ : & [f64] , _ : F) -> Option < f64 > where P : PointSeries + ? Sized , F : Fn (f64 , & [f64]) -> Option < f64 > ,"
     }
   ],
+  "crates/math_commons/src/fit/lm_ad.rs": [
+    {
+      "signature": "pub fn levenberg_marquardt_ad < P , F > (_ : & P , _ : & [f64] , _ : F ,) -> Result < [f64 ; MAX_FIT_PARAMS] , FitError > where P : PointSeries + ? Sized , F : Fn (f64 , & [DualVec < f64 , MAX_FIT_PARAMS >]) -> Option < DualVec < f64 , MAX_FIT_PARAMS > > ,"
+    },
+    {
+      "signature": "pub fn levenberg_marquardt_ad_filtered < P , F > (_ : & P , _ : & [f64] , _ : fn (f64 , f64) -> bool , _ : F ,) -> Result < [f64 ; MAX_FIT_PARAMS] , FitError > where P : PointSeries + ? Sized , F : Fn (f64 , & [DualVec < f64 , MAX_FIT_PARAMS >]) -> Option < DualVec < f64 , MAX_FIT_PARAMS > > ,"
+    }
+  ],
   "crates/math_commons/src/fit/mod.rs": [
     {
       "signature": "impl CurveFit { pub fn centered_polynomial (& self) -> Option < (f64 , f64 , & [f64]) > }"
@@ -13837,6 +14333,12 @@
     },
     {
       "signature": "pub use lm :: sum_squared_errors_numeric"
+    },
+    {
+      "signature": "pub use lm_ad :: levenberg_marquardt_ad"
+    },
+    {
+      "signature": "pub use lm_ad :: levenberg_marquardt_ad_filtered"
     },
     {
       "signature": "pub use nonlinear :: eval_nonlinear"
@@ -13944,6 +14446,11 @@
       "signature": "pub struct WeightedOlsAccum"
     }
   ],
+  "crates/math_commons/src/lib.rs": [
+    {
+      "signature": "pub use math_scalars"
+    }
+  ],
   "crates/math_commons/src/math_kernel/colormap.rs": [
     {
       "signature": "pub fn cyclic_cosine_palette (_ : f64) -> [u8 ; 3]"
@@ -13983,34 +14490,34 @@
   ],
   "crates/math_commons/src/math_kernel/types.rs": [
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn as_mut_slice (& mut self) -> & mut [T] }"
+      "signature": "impl < 'a , T : Copy > SolverWorkspace < 'a , T > { pub fn as_mut_slice (& mut self) -> & mut [T] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn as_slice (& self) -> & [T] }"
+      "signature": "impl < 'a , T : Copy > SolverWorkspace < 'a , T > { pub fn as_slice (& self) -> & [T] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn is_empty (& self) -> bool }"
+      "signature": "impl < 'a , T : Copy > SolverWorkspace < 'a , T > { pub fn is_empty (& self) -> bool }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn len (& self) -> usize }"
+      "signature": "impl < 'a , T : Copy > SolverWorkspace < 'a , T > { pub fn len (& self) -> usize }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn new (_ : & 'a mut [T]) -> Self }"
+      "signature": "impl < 'a , T : Copy > SolverWorkspace < 'a , T > { pub fn new (_ : & 'a mut [T]) -> Self }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn reborrow (& mut self) -> SolverWorkspace < '_ , T > }"
+      "signature": "impl < 'a , T : Copy > SolverWorkspace < 'a , T > { pub fn reborrow (& mut self) -> SolverWorkspace < '_ , T > }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn take_slice (& mut self , _ : usize) -> & 'a mut [T] }"
+      "signature": "impl < 'a , T : Copy > SolverWorkspace < 'a , T > { pub fn take_slice (& mut self , _ : usize) -> & 'a mut [T] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn try_take_slice (& mut self , _ : usize) -> Result < & 'a mut [T] , crate :: error :: MathError > }"
+      "signature": "impl < 'a , T : Copy > SolverWorkspace < 'a , T > { pub fn try_take_slice (& mut self , _ : usize) -> Result < & 'a mut [T] , crate :: error :: MathError > }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn zero_fill (& mut self) }"
+      "signature": "impl < T : Copy + Default + PartialEq > SolverWorkspace < '_ , T > { pub fn zero_fill (& mut self) }"
     },
     {
-      "signature": "pub fn fill_standard_normal < T : Scalar , R : RngCore + ? Sized > (_ : & mut [T] , _ : & mut R)"
+      "signature": "pub fn fill_standard_normal < T : RealScalar , R : RngCore + ? Sized > (_ : & mut [T] , _ : & mut R)"
     },
     {
       "signature": "pub fn flatten_2d_index (_ : usize , _ : usize , _ : usize) -> usize"
@@ -14019,13 +14526,13 @@
       "signature": "pub fn flatten_3d_index (_ : usize , _ : usize , _ : usize , _ : usize , _ : usize) -> usize"
     },
     {
-      "signature": "pub fn sample_open_unit < T : Scalar , R : RngCore + ? Sized > (_ : & mut R) -> T"
+      "signature": "pub fn sample_open_unit < T : RealScalar , R : RngCore + ? Sized > (_ : & mut R) -> T"
     },
     {
-      "signature": "pub fn sample_standard_normal < T : Scalar , R : RngCore + ? Sized > (_ : & mut R) -> T"
+      "signature": "pub fn sample_standard_normal < T : RealScalar , R : RngCore + ? Sized > (_ : & mut R) -> T"
     },
     {
-      "signature": "pub fn sample_standard_normal_pair < T : Scalar , R : RngCore + ? Sized > (_ : & mut R) -> (T , T)"
+      "signature": "pub fn sample_standard_normal_pair < T : RealScalar , R : RngCore + ? Sized > (_ : & mut R) -> (T , T)"
     },
     {
       "signature": "pub struct Dimension"
@@ -14034,7 +14541,7 @@
       "signature": "pub struct GridIndex"
     },
     {
-      "signature": "pub struct SolverWorkspace < 'a , T : Scalar >"
+      "signature": "pub struct SolverWorkspace < 'a , T : Copy >"
     },
     {
       "signature": "pub struct StepSize"
@@ -14098,6 +14605,30 @@
     },
     {
       "signature": "pub trait Scalar { fn to_f64 (self) -> f64 }"
+    },
+    {
+      "signature": "pub use math_scalars :: Ball"
+    },
+    {
+      "signature": "pub use math_scalars :: DirectedRounding"
+    },
+    {
+      "signature": "pub use math_scalars :: Dual"
+    },
+    {
+      "signature": "pub use math_scalars :: DualVec"
+    },
+    {
+      "signature": "pub use math_scalars :: HyperDual"
+    },
+    {
+      "signature": "pub use math_scalars :: Interval"
+    },
+    {
+      "signature": "pub use math_scalars :: RealScalar"
+    },
+    {
+      "signature": "pub use math_scalars :: Scalar as AlgebraicScalar"
     }
   ],
   "crates/math_commons/src/poi/extrema.rs": [
@@ -15502,6 +16033,9 @@
       "signature": "pub mod __doctest_facade { pub use math_commons :: wigner }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub use math_scalars }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub use nalgebra }"
     },
     {
@@ -15527,6 +16061,9 @@
     },
     {
       "signature": "pub mod __macro_deps { pub use verified_engine }"
+    },
+    {
+      "signature": "pub use math_scalars"
     }
   ],
   "crates/pure_math/src/math_types.rs": [
@@ -17630,6 +18167,9 @@
       "signature": "impl Brent { pub fn new (_ : usize , _ : f64) -> Self }"
     },
     {
+      "signature": "impl NewtonRaphson { pub fn find_root_ad < F > (& self , _ : F , _ : f64) -> Result < f64 , AnalysisError > where F : Fn (Dual < f64 >) -> Dual < f64 > , }"
+    },
+    {
       "signature": "impl NewtonRaphson { pub fn find_root_with_derivative < F , D > (& self , _ : F , _ : D , _ : f64 ,) -> Result < f64 , AnalysisError > where F : Fn (f64) -> f64 , D : Fn (f64) -> f64 , }"
     },
     {
@@ -17652,6 +18192,12 @@
     },
     {
       "signature": "pub trait RootFinder { fn find_root < F > (& self , _ : F , _ : f64 , _ : f64) -> Result < f64 , AnalysisError > where F : Fn (f64) -> f64 }"
+    },
+    {
+      "signature": "pub use enclosure_roots :: IntervalNewton"
+    },
+    {
+      "signature": "pub use enclosure_roots :: Krawczyk"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/stochastic.rs": [
@@ -18233,27 +18779,24 @@
   ],
   "crates/pure_math/src/pure_math/differential_geometry/operators.rs": [
     {
-      "signature": "pub fn laplace_beltrami < S , F > (_ : & S , _ : f64 , _ : f64 , _ : & F) -> f64 where S : ParametricSurface , F : Fn (f64 , f64) -> f64 ,"
+      "signature": "pub fn laplace_beltrami < S , F > (_ : & S , _ : f64 , _ : f64 , _ : & F) -> f64 where S : ParametricSurface + ? Sized , F : Fn (f64 , f64) -> f64 ,"
+    },
+    {
+      "signature": "pub fn laplace_beltrami_ad < S , F > (_ : & S , _ : f64 , _ : f64 , _ : F) -> f64 where S : ParametricSurface + ? Sized , F : Fn (HyperDual < f64 > , HyperDual < f64 >) -> HyperDual < f64 > ,"
     }
   ],
   "crates/pure_math/src/pure_math/differential_geometry/surface.rs": [
     {
-      "signature": "impl CompiledHeightfieldSurface { pub const fn compiled (& self) -> & CompiledExpr }"
-    },
-    {
-      "signature": "impl CompiledHeightfieldSurface { pub fn new (_ : CompiledExpr , _ : & [f64]) -> Self }"
-    },
-    {
-      "signature": "impl CompiledParametricSurface { pub fn new (_ : CompiledExpr , _ : CompiledExpr , _ : CompiledExpr , _ : & [f64] ,) -> Self }"
-    },
-    {
       "signature": "pub const MAX_SURFACE_PARAMS : usize"
     },
     {
-      "signature": "pub struct CompiledHeightfieldSurface"
+      "signature": "pub fn eval_partial_u_ad < T : DifferentiableSurface + ? Sized > (_ : & T , _ : f64 , _ : f64 ,) -> Vector3 < f64 >"
     },
     {
-      "signature": "pub struct CompiledParametricSurface"
+      "signature": "pub fn eval_partial_v_ad < T : DifferentiableSurface + ? Sized > (_ : & T , _ : f64 , _ : f64 ,) -> Vector3 < f64 >"
+    },
+    {
+      "signature": "pub fn eval_second_partials_ad < T : DifferentiableSurface + ? Sized > (_ : & T , _ : f64 , _ : f64 ,) -> (Vector3 < f64 > , Vector3 < f64 > , Vector3 < f64 >)"
     },
     {
       "signature": "pub struct KleinBottle"
@@ -18263,6 +18806,12 @@
     },
     {
       "signature": "pub struct Torus"
+    },
+    {
+      "signature": "pub trait DifferentiableSurface : ParametricSurface"
+    },
+    {
+      "signature": "pub trait DifferentiableSurface { fn position_scalar < S : Scalar > (& self , _ : S , _ : S) -> [S ; 3] }"
     },
     {
       "signature": "pub trait ParametricSurface"
@@ -18275,6 +18824,9 @@
     },
     {
       "signature": "pub trait ParametricSurface { fn position (& self , _ : f64 , _ : f64) -> Point3 < f64 > }"
+    },
+    {
+      "signature": "pub trait ParametricSurface { fn second_partials (& self , _ : f64 , _ : f64) -> (Vector3 < f64 > , Vector3 < f64 > , Vector3 < f64 >) }"
     },
     {
       "signature": "pub trait SurfaceAnalysis"
@@ -18299,6 +18851,12 @@
     },
     {
       "signature": "pub trait SurfaceAnalysis { fn unit_normal (& self , _ : f64 , _ : f64) -> Vector3 < f64 > }"
+    },
+    {
+      "signature": "pub use surface_compiled :: CompiledHeightfieldSurface"
+    },
+    {
+      "signature": "pub use surface_compiled :: CompiledParametricSurface"
     }
   ],
   "crates/pure_math/src/pure_math/elliptic_curves/mod.rs": [
@@ -24449,7 +25007,13 @@
       "signature": "pub fn covariant_derivative_contravariant < F > (_ : F , _ : & impl Metric , _ : & DVector < f64 > ,) -> Result < Rank2Tensor , TensorError > where F : Fn (& DVector < f64 >) -> ContravariantVector ,"
     },
     {
+      "signature": "pub fn covariant_derivative_contravariant_ad < F > (_ : F , _ : & impl Metric , _ : & DVector < f64 > ,) -> Result < Rank2Tensor , TensorError > where F : Fn (& [Dual < f64 >]) -> Vec < Dual < f64 > > ,"
+    },
+    {
       "signature": "pub fn covariant_derivative_covariant < F > (_ : F , _ : & impl Metric , _ : & DVector < f64 > ,) -> Result < Rank2Tensor , TensorError > where F : Fn (& DVector < f64 >) -> CovariantVector ,"
+    },
+    {
+      "signature": "pub fn covariant_derivative_covariant_ad < F > (_ : F , _ : & impl Metric , _ : & DVector < f64 > ,) -> Result < Rank2Tensor , TensorError > where F : Fn (& [Dual < f64 >]) -> Vec < Dual < f64 > > ,"
     }
   ],
   "crates/pure_math/src/pure_math/tensor/geodesic.rs": [
@@ -24524,7 +25088,13 @@
   ],
   "crates/pure_math/src/pure_math/tensor/metric.rs": [
     {
+      "signature": "impl < F > AdRiemannianMetric < F > where F : Fn (& [Dual < f64 >]) -> Vec < Dual < f64 > > , { pub const fn new (_ : F) -> Self }"
+    },
+    {
       "signature": "impl < F > RiemannianMetric < F > where F : Fn (& DVector < f64 >) -> DMatrix < f64 > , { pub fn new (_ : F) -> Self }"
+    },
+    {
+      "signature": "pub struct AdRiemannianMetric < F > where F : Fn (& [Dual < f64 >]) -> Vec < Dual < f64 > > ,"
     },
     {
       "signature": "pub struct RiemannianMetric < F > where F : Fn (& DVector < f64 >) -> DMatrix < f64 > ,"
@@ -24542,6 +25112,9 @@
       "signature": "pub trait Metric { fn metric_at (& self , _ : & DVector < f64 >) -> Result < DMatrix < f64 > , TensorError > }"
     },
     {
+      "signature": "pub trait Metric { fn metric_partials_at (& self , _ : & DVector < f64 >) -> Result < Vec < DMatrix < f64 > > , TensorError > }"
+    },
+    {
       "signature": "pub trait Metric { fn raise_index (& self , _ : & CovariantVector , _ : & DVector < f64 > ,) -> Result < ContravariantVector , TensorError > }"
     }
   ],
@@ -24551,6 +25124,18 @@
     },
     {
       "signature": "pub use christoffel :: christoffel_symbols_fixed"
+    },
+    {
+      "signature": "pub use differentiation :: covariant_derivative_contravariant"
+    },
+    {
+      "signature": "pub use differentiation :: covariant_derivative_contravariant_ad"
+    },
+    {
+      "signature": "pub use differentiation :: covariant_derivative_covariant"
+    },
+    {
+      "signature": "pub use differentiation :: covariant_derivative_covariant_ad"
     },
     {
       "signature": "pub use geodesic :: GeodesicState"
@@ -24568,10 +25153,16 @@
       "signature": "pub use lorentzian :: SchwarzschildConnection4D"
     },
     {
+      "signature": "pub use metric :: AdRiemannianMetric"
+    },
+    {
       "signature": "pub use metric :: Metric"
     },
     {
       "signature": "pub use metric :: RiemannianMetric"
+    },
+    {
+      "signature": "pub use static_metric :: StaticAdMetric"
     },
     {
       "signature": "pub use static_metric :: StaticMetric"
@@ -24597,6 +25188,9 @@
   ],
   "crates/pure_math/src/pure_math/tensor/static_metric.rs": [
     {
+      "signature": "impl < F , const N : usize > StaticAdMetric < F , N > where F : Fn (& [Dual < f64 > ; N]) -> Result < [[Dual < f64 > ; N] ; N] , TensorError > , { pub const fn new (_ : F) -> Self }"
+    },
+    {
       "signature": "impl < F , const N : usize > StaticRiemannianMetric < F , N > where F : Fn (& SVector < f64 , N >) -> Result < SMatrix < f64 , N , N > , TensorError > , { pub fn new (_ : F) -> Self }"
     },
     {
@@ -24604,6 +25198,9 @@
     },
     {
       "signature": "pub fn static_christoffel_symbols < M : StaticMetric < N > + ? Sized , const N : usize > (_ : & M , _ : & SVector < f64 , N > ,) -> Result < [SMatrix < f64 , N , N > ; N] , TensorError >"
+    },
+    {
+      "signature": "pub struct StaticAdMetric < F , const N : usize >"
     },
     {
       "signature": "pub struct StaticRiemannianMetric < F , const N : usize >"
@@ -24628,6 +25225,9 @@
     },
     {
       "signature": "pub trait StaticMetric < const N : usize > { fn metric_norm (& self , _ : & SVector < f64 , N > , _ : & SVector < f64 , N > ,) -> Result < f64 , TensorError > }"
+    },
+    {
+      "signature": "pub trait StaticMetric < const N : usize > { fn metric_partials_at (& self , _ : & SVector < f64 , N > ,) -> Result < [SMatrix < f64 , N , N > ; N] , TensorError > }"
     }
   ],
   "crates/pure_math/src/pure_math/tensor/types.rs": [
@@ -24670,6 +25270,12 @@
       "signature": "pub struct Spherical"
     },
     {
+      "signature": "pub trait DifferentiableCoordinates : OrthogonalCoordinateSystem"
+    },
+    {
+      "signature": "pub trait DifferentiableCoordinates { fn scale_factors_scalar < S : Scalar > (& self , _ : & [S ; 3]) -> [S ; 3] }"
+    },
+    {
       "signature": "pub trait OrthogonalCoordinateSystem"
     },
     {
@@ -24679,21 +25285,36 @@
       "signature": "pub trait OrthogonalCoordinateSystem { fn local_to_cartesian (& self , _ : & Vector3 < f64 >) -> Vector3 < f64 > }"
     },
     {
+      "signature": "pub trait OrthogonalCoordinateSystem { fn scale_factor_partials (& self , _ : & Vector3 < f64 >) -> [[f64 ; 3] ; 3] }"
+    },
+    {
       "signature": "pub trait OrthogonalCoordinateSystem { fn scale_factors (& self , _ : & Vector3 < f64 >) -> Vector3 < f64 > }"
     }
   ],
   "crates/pure_math/src/pure_math/vector_calculus/operators.rs": [
     {
-      "signature": "pub fn curl < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> Vector3 < f64 > where S : OrthogonalCoordinateSystem , F : Fn (& Vector3 < f64 >) -> Vector3 < f64 > ,"
+      "signature": "pub fn curl < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> Vector3 < f64 > where S : OrthogonalCoordinateSystem + ? Sized , F : Fn (& Vector3 < f64 >) -> Vector3 < f64 > ,"
     },
     {
-      "signature": "pub fn divergence < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> f64 where S : OrthogonalCoordinateSystem , F : Fn (& Vector3 < f64 >) -> Vector3 < f64 > ,"
+      "signature": "pub fn curl_ad < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> Vector3 < f64 > where S : DifferentiableCoordinates + ? Sized , F : Fn (& [DualVec < f64 , 3 > ; 3]) -> [DualVec < f64 , 3 > ; 3] ,"
     },
     {
-      "signature": "pub fn gradient < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> Vector3 < f64 > where S : OrthogonalCoordinateSystem , F : Fn (& Vector3 < f64 >) -> f64 ,"
+      "signature": "pub fn divergence < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> f64 where S : OrthogonalCoordinateSystem + ? Sized , F : Fn (& Vector3 < f64 >) -> Vector3 < f64 > ,"
     },
     {
-      "signature": "pub fn laplacian < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> f64 where S : OrthogonalCoordinateSystem , F : Fn (& Vector3 < f64 >) -> f64 ,"
+      "signature": "pub fn divergence_ad < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> f64 where S : DifferentiableCoordinates + ? Sized , F : Fn (& [DualVec < f64 , 3 > ; 3]) -> [DualVec < f64 , 3 > ; 3] ,"
+    },
+    {
+      "signature": "pub fn gradient < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> Vector3 < f64 > where S : OrthogonalCoordinateSystem + ? Sized , F : Fn (& Vector3 < f64 >) -> f64 ,"
+    },
+    {
+      "signature": "pub fn gradient_ad < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> Vector3 < f64 > where S : DifferentiableCoordinates + ? Sized , F : Fn (& [DualVec < f64 , 3 > ; 3]) -> DualVec < f64 , 3 > ,"
+    },
+    {
+      "signature": "pub fn laplacian < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> f64 where S : OrthogonalCoordinateSystem + ? Sized , F : Fn (& Vector3 < f64 >) -> f64 ,"
+    },
+    {
+      "signature": "pub fn laplacian_ad < S , F > (_ : & S , _ : F , _ : & Vector3 < f64 >) -> f64 where S : DifferentiableCoordinates + ? Sized , F : Fn (& [HyperDual < f64 > ; 3]) -> HyperDual < f64 > ,"
     }
   ],
   "crates/pure_math/src/pure_math/vector_calculus/theorems.rs": [
@@ -25270,6 +25891,9 @@
     },
     {
       "signature": "pub use math_commons :: math_kernel"
+    },
+    {
+      "signature": "pub use math_commons :: math_scalars"
     },
     {
       "signature": "pub use math_commons :: poi"

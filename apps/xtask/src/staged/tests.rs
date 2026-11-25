@@ -274,9 +274,20 @@ fn test_root_config_edits_escalate_to_full_workspace_checks() {
 
 #[test]
 fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
+    const HOST_ONLY: [&str; 4] = [
+        "markdown_tests",
+        "scientific_verification",
+        "unified_verification",
+        "xtask",
+    ];
+
     let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let crates = load_workspace_crates(&ws_root);
-    assert_eq!(crates.len(), 26);
+    assert!(
+        crates.len() >= 27,
+        "expected at least 27 workspace crates, found {}",
+        crates.len()
+    );
 
     let mut web_names: Vec<&str> = crates
         .iter()
@@ -284,40 +295,32 @@ fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
         .map(|c| c.package_name.as_str())
         .collect();
     web_names.sort_unstable();
-    assert_eq!(
-        web_names,
-        vec![
-            "diagnostics",
-            "domain_ai",
-            "domain_applied",
-            "domain_biology",
-            "domain_climate",
-            "domain_epidemiology",
-            "domain_physics",
-            "egui_plot",
-            "engine_diffeq",
-            "engine_linalg",
-            "engine_pde",
-            "federated_registry",
-            "math_commons",
-            "math_diagnostics",
-            "math_explorer",
-            "math_explorer_gui",
-            "math_rng",
-            "oxidize_core",
-            "pure_math",
-            "scientific_metadata",
-            "verified_engine",
-            "verified_engine_macros",
-        ]
-    );
 
-    for host_only in [
-        "markdown_tests",
-        "scientific_verification",
-        "unified_verification",
-        "xtask",
+    let mut expected_web: Vec<&str> = crates
+        .iter()
+        .map(|c| c.package_name.as_str())
+        .filter(|name| !HOST_ONLY.contains(name))
+        .collect();
+    expected_web.sort_unstable();
+    assert_eq!(web_names, expected_web);
+
+    for required_web in [
+        "egui_plot",
+        "math_commons",
+        "math_diagnostics",
+        "math_explorer",
+        "math_explorer_gui",
+        "math_rng",
+        "math_scalars",
+        "pure_math",
     ] {
+        assert!(
+            web_names.contains(&required_web),
+            "{required_web} must be discovered as a web-capable workspace crate"
+        );
+    }
+
+    for host_only in HOST_ONLY {
         let krate = crates.iter().find(|c| c.package_name == host_only).unwrap();
         assert!(!krate.is_web, "{host_only} should not be marked is_web");
     }

@@ -1,14 +1,15 @@
 // [cite:engine_diffeq]
 use crate::error::DiffeqError;
 use crate::system::LangevinSystem;
-use math_commons::math_kernel::types::{Scalar, SolverWorkspace, fill_standard_normal};
+use math_commons::math_kernel::types::{SolverWorkspace, fill_standard_normal};
+use math_scalars::RealScalar;
 use rand_core::RngCore;
 
 /// Physical parameters for underdamped Langevin dynamics
 /// $dq = M^{-1} p \, dt$, $dp = -\nabla V(q)\,dt - \gamma p \, dt + \sqrt{2 \gamma m k_B T}\,dW_t$.
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct BaoabParams<T: Scalar> {
+pub struct BaoabParams<T: RealScalar> {
     /// Particle mass $m > 0$.
     pub mass: T,
     /// Friction / damping rate $\gamma \ge 0$.
@@ -36,7 +37,7 @@ pub struct BaoabParams<T: Scalar> {
 /// Requires `mass > 0`, `friction >= 0`, `temperature >= 0`, `dt > 0`, `q.len() >= dim`,
 /// `p.len() >= dim`, and `SolverWorkspace` length at least `2 * dim`.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct BaoabLangevinSolver<T: Scalar> {
+pub struct BaoabLangevinSolver<T: RealScalar> {
     params: BaoabParams<T>,
     half_dt: T,
     half_dt_inv_mass: T,
@@ -44,7 +45,7 @@ pub struct BaoabLangevinSolver<T: Scalar> {
     ou_noise_scale: T,
 }
 
-impl<T: Scalar> BaoabLangevinSolver<T> {
+impl<T: RealScalar> BaoabLangevinSolver<T> {
     /// Constructs a precomputed [`BaoabLangevinSolver`] from [`BaoabParams`].
     ///
     /// # Panics
@@ -224,14 +225,16 @@ impl<T: Scalar> BaoabLangevinSolver<T> {
 }
 
 #[cfg(feature = "serde")]
-impl<T: Scalar + serde::Serialize> serde::Serialize for BaoabLangevinSolver<T> {
+impl<T: RealScalar + serde::Serialize> serde::Serialize for BaoabLangevinSolver<T> {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.params.serialize(serializer)
     }
 }
 
 #[cfg(feature = "serde")]
-impl<'de, T: Scalar + serde::Deserialize<'de>> serde::Deserialize<'de> for BaoabLangevinSolver<T> {
+impl<'de, T: RealScalar + serde::Deserialize<'de>> serde::Deserialize<'de>
+    for BaoabLangevinSolver<T>
+{
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let params = BaoabParams::<T>::deserialize(deserializer)?;
         if !(params.mass.is_finite() && params.mass > T::ZERO) {

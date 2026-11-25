@@ -286,6 +286,7 @@ define_bounded_float!(
 
 mod interval;
 mod interval_wrappers;
+mod scalar_bridge;
 pub use interval::Interval;
 pub use interval_wrappers::{NonNegativeInterval, PositiveInterval, UnitIntervalEnclosure};
 

@@ -1,3 +1,6 @@
+#[path = "root_enclosures.rs"]
+mod root_enclosures;
+
 use math_commons::primitives::{Interval, NonNegativeFloat, PositiveFloat, UnitInterval};
 use pure_math::pure_math::special_functions::bessel::bessel_j;
 use std::collections::BTreeMap;
@@ -127,6 +130,7 @@ pub fn compute_certified_interval_enclosures() -> Result<IntervalCertification, 
     let mut bounds = BTreeMap::new();
     record_special_and_elementary_enclosures(&mut bounds)?;
     record_domain_conservation_enclosures(&mut bounds)?;
+    root_enclosures::record_certified_root_enclosures(&mut bounds)?;
 
     let max_width = bounds
         .values()
