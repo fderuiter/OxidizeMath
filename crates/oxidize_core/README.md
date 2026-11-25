@@ -31,8 +31,7 @@ use oxidize_core::mesh::{
     ColoredMesh, Point3D, VertexColor, build_uv_sphere, export_colored_mesh_to_ply_binary,
     export_mesh_to_obj_string, export_mesh_to_stl_binary, extrude_polyline_tube,
 };
-use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
+use oxidize_core::rng::{OxidizeRng, RngCore};
 
 // Initialize a deterministic random provider
 let mut rng = OxidizeRng::new(42);
