@@ -15,6 +15,35 @@ fn current_thread_label() -> Option<String> {
     )
 }
 
+/// Typed stack-resident error returned by fallible [`DiagnosticBus`] emission helpers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DiagnosticError {
+    /// Explicit diagnostic `source` tag was empty.
+    EmptySource,
+}
+
+impl std::fmt::Display for DiagnosticError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            Self::EmptySource => f.write_str("Diagnostic source tag must not be empty"),
+        }
+    }
+}
+
+impl std::error::Error for DiagnosticError {}
+
+impl Diagnostic for DiagnosticError {
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "DiagnosticError");
+        visitor.record_str("code", "DIAG-001");
+        visitor.record_display("description", self);
+    }
+}
+
 /// Structured diagnostic record dispatched through a [`DiagnosticBus`].
 #[derive(Debug, Clone)]
 pub struct DiagnosticEvent {
@@ -130,14 +159,16 @@ impl DiagnosticBus {
         });
     }
 
-    /// Materializes a [`Diagnostic`] error into a [`DiagnosticEvent`] tagged with an explicit `source`
-    /// and dispatches it to all registered listeners.
-    pub fn emit_diagnostic_with_source<D: Diagnostic + ?Sized>(
+    /// Fallible companion to [`Self::emit_diagnostic_with_source`] returning
+    /// [`DiagnosticError::EmptySource`] when `source` is empty instead of panicking.
+    pub fn try_emit_diagnostic_with_source<D: Diagnostic + ?Sized>(
         &self,
         source: &str,
         diagnostic: &D,
-    ) {
-        assert!(!source.is_empty(), "diagnostic source must not be empty");
+    ) -> Result<(), DiagnosticError> {
+        if source.is_empty() {
+            return Err(DiagnosticError::EmptySource);
+        }
         let mut metadata = diagnostic.metadata();
         metadata.insert("source".to_string(), source.to_string());
         self.emit(DiagnosticEvent {
@@ -146,6 +177,23 @@ impl DiagnosticBus {
             metadata,
             thread_name: current_thread_label(),
         });
+        Ok(())
+    }
+
+    /// Materializes a [`Diagnostic`] error into a [`DiagnosticEvent`] tagged with an explicit `source`
+    /// and dispatches it to all registered listeners.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `source` is empty. Prefer [`Self::try_emit_diagnostic_with_source`] when `source`
+    /// originates from dynamic input.
+    pub fn emit_diagnostic_with_source<D: Diagnostic + ?Sized>(
+        &self,
+        source: &str,
+        diagnostic: &D,
+    ) {
+        self.try_emit_diagnostic_with_source(source, diagnostic)
+            .expect("diagnostic source must not be empty");
     }
 }
 
@@ -362,5 +410,21 @@ mod tests {
             Some("7")
         );
         assert!(events[0].thread_name.is_some());
+    }
+
+    #[test]
+    fn test_try_emit_diagnostic_with_source_rejects_empty_source() {
+        let bus = DiagnosticBus::new();
+        let err = SolverTestError { step: 3 };
+        assert_eq!(
+            bus.try_emit_diagnostic_with_source("", &err),
+            Err(DiagnosticError::EmptySource)
+        );
+        let meta = DiagnosticError::EmptySource.metadata();
+        assert_eq!(
+            meta.get("error_type").map(String::as_str),
+            Some("DiagnosticError")
+        );
+        assert_eq!(meta.get("code").map(String::as_str), Some("DIAG-001"));
     }
 }

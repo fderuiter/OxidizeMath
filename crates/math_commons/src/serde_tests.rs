@@ -186,23 +186,15 @@ mod active {
                 value: 5,
                 len: 3,
             },
+            MathError::WorkspaceTooSmall {
+                required: 12,
+                available: 4,
+            },
+            MathError::NumericalError { reason: "singular" },
+            MathError::ConversionError { reason: "overflow" },
         ];
         for err in math_errors {
             assert_eq!(roundtrip_json(&err), err);
-        }
-        #[cfg(feature = "alloc")]
-        {
-            let alloc_errors = [
-                MathError::NumericalError {
-                    reason: "singular".to_string(),
-                },
-                MathError::ConversionError {
-                    reason: "overflow".to_string(),
-                },
-            ];
-            for err in alloc_errors {
-                assert_eq!(roundtrip_json(&err), err);
-            }
         }
     }
 

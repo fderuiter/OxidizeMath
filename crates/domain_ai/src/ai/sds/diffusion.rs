@@ -134,8 +134,42 @@ pub fn generate_noise_with_rng<R: Rng + ?Sized>(
     Ok(mat)
 }
 
-/// Advances latent pixels in-place by one variance-preserving SDE step
+/// Fallibly advances latent pixels in-place by one variance-preserving SDE step
 /// $dx = -\frac{1}{2}\beta x\,dt + \sqrt{\beta}\,dW_t$ via [`engine_diffeq::EulerMaruyamaSolver`].
+#[verified_engine::verified]
+pub fn try_step_vp_sde_in_place<R: Rng + ?Sized>(
+    latent: &mut DMatrix<f64>,
+    beta: f64,
+    dt: f64,
+    rng: &mut R,
+) -> Result<(), crate::error::AIError> {
+    if !(beta >= 0.0 && beta.is_finite()) {
+        return Err(crate::error::AIError::InvalidParameter {
+            name: "beta".to_string(),
+            value: beta,
+        });
+    }
+    if !(dt >= 0.0 && dt.is_finite()) {
+        return Err(crate::error::AIError::InvalidParameter {
+            name: "dt".to_string(),
+            value: dt,
+        });
+    }
+    let sde = VariancePreservingPixelSde { beta };
+    let solver = EulerMaruyamaSolver::new(StochasticCalculus::Ito);
+    let mut scratch = [0.0_f64; 4];
+    let mut ws = ByteArena::from_slice(&mut scratch);
+    for px in latent.as_mut_slice() {
+        let mut state = [*px];
+        solver.try_step(&sde, 0.0, dt, &mut state, &mut ws, rng)?;
+        *px = state[0];
+    }
+    debug_assert!(beta >= 0.0 && dt >= 0.0);
+    Ok(())
+}
+
+/// Advances latent pixels in-place by one variance-preserving SDE step
+/// $dx = -\frac{1}{2}\beta x\,dt + \sqrt{\beta}\,dW_t$; prefer [`try_step_vp_sde_in_place`].
 #[verified_engine::verified]
 pub fn step_vp_sde_in_place<R: Rng + ?Sized>(
     latent: &mut DMatrix<f64>,
@@ -143,16 +177,7 @@ pub fn step_vp_sde_in_place<R: Rng + ?Sized>(
     dt: f64,
     rng: &mut R,
 ) {
-    assert!(beta >= 0.0 && dt >= 0.0);
-    let sde = VariancePreservingPixelSde { beta };
-    let solver = EulerMaruyamaSolver::new(StochasticCalculus::Ito);
-    let mut scratch = [0.0_f64; 4];
-    let mut ws = ByteArena::from_slice(&mut scratch);
-    for px in latent.as_mut_slice() {
-        let mut state = [*px];
-        solver.step(&sde, 0.0, dt, &mut state, &mut ws, rng);
-        *px = state[0];
-    }
+    try_step_vp_sde_in_place(latent, beta, dt, rng).expect("step_vp_sde_in_place failed");
 }
 
 #[cfg(test)]

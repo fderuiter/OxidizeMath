@@ -6,7 +6,7 @@ use super::core::{CorrelationMatrix, Probability};
 use super::transforms::{fast_norm_cdf, fast_norm_inv};
 use crate::error::CopulaError;
 use crate::pure_math::statistics::qmc::{FIRST_64_PRIMES, radical_inverse};
-use math_memory::{ArenaLayout, OwnedByteArena};
+use math_memory::{ArenaError, ArenaLayout, OwnedByteArena};
 use oxidize_core::rng::OxidizeRng;
 
 /// Maximum copula dimension handled purely on the stack with zero heap allocations.
@@ -26,19 +26,25 @@ pub struct CopulaQmcWorkspace {
 
 impl CopulaQmcWorkspace {
     /// Preallocates scratch buffers for a copula with up to `max_legs` dimensions.
+    ///
+    /// Panics only if arena layout or allocation fails; see [`Self::try_with_capacity`].
     #[verified_engine::verified]
     pub fn with_capacity(max_legs: usize) -> Self {
+        Self::try_with_capacity(max_legs).expect("CopulaQmcWorkspace::with_capacity failed")
+    }
+
+    /// Fallibly preallocates scratch buffers for a copula with up to `max_legs` dimensions.
+    #[verified_engine::verified]
+    pub fn try_with_capacity(max_legs: usize) -> Result<Self, ArenaError> {
         let cap = max_legs.max(1);
         let mut layout = ArenaLayout::new();
-        let _ = layout
-            .add_slice::<f64>(cap)
-            .expect("copula z_scores layout");
-        let _ = layout.add_slice::<f64>(cap).expect("copula y_state layout");
-        let _ = layout.add_slice::<f64>(cap).expect("copula shifts layout");
-        Self {
-            arena: OwnedByteArena::with_capacity(layout.total_bytes()),
-            cap,
+        for _ in 0..3 {
+            let _ = layout.add_slice::<f64>(cap)?;
         }
+        Ok(Self {
+            arena: OwnedByteArena::try_with_capacity(layout.total_bytes())?,
+            cap,
+        })
     }
 
     /// Ensures the workspace can hold at least `dim` legs (allocates only if growing).

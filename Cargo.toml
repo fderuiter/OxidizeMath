@@ -39,6 +39,7 @@ missing_docs = "warn"
 [workspace.lints.clippy]
 too_many_lines = "deny"
 cognitive_complexity = "deny"
+result_unit_err = "deny"
 
 [workspace.lints.rustdoc]
 broken_intra_doc_links = "warn"

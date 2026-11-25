@@ -1,9 +1,11 @@
 // [cite:engine_diffeq]
+use crate::error::DiffeqError;
 use crate::system::{
-    SdeSystem, StochasticCalculus, eval_ito_effective_drift, ito_drift_scratch_len,
+    SdeSystem, StochasticCalculus, ito_drift_scratch_len, try_eval_ito_effective_drift,
 };
 use math_commons::math_kernel::types::{
     Scalar, SolverWorkspace, flatten_2d_index, sample_standard_normal_pair,
+    try_take_workspace_slice,
 };
 use rand_core::RngCore;
 
@@ -75,7 +77,53 @@ impl Sriw1Solver {
         2 * wiener_dim + 7 * state_dim + 4 * dm + drift_sub
     }
 
+    /// Fallibly advances `state` by one step `dt` drawing correlated $(\Delta W, \Delta Z)$ pairs from `rng`.
+    ///
+    /// # Errors
+    /// Returns [`DiffeqError`] if `dt < 0` or non-finite, `state` is undersized, or `workspace`
+    /// lacks [`Self::scratch_len`] elements.
+    #[verified_engine::verified]
+    pub fn try_step<T: Scalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
+        &self,
+        system: &S,
+        t: T,
+        dt: T,
+        state: &mut [T],
+        workspace: &mut impl SolverWorkspace,
+        rng: &mut R,
+    ) -> Result<(), DiffeqError> {
+        let d = system.state_dim();
+        let m = system.wiener_dim();
+        if !(dt >= T::ZERO && dt.is_finite()) {
+            return Err(DiffeqError::InvalidStepSize);
+        }
+        if state.len() < d {
+            return Err(DiffeqError::BufferTooSmall {
+                buffer: "state",
+                required: d,
+                actual: state.len(),
+            });
+        }
+        if dt <= T::EPSILON {
+            return Ok(());
+        }
+
+        let mut ws = workspace.reborrow();
+        let dw = try_take_workspace_slice(&mut ws, m)?;
+        let dz = try_take_workspace_slice(&mut ws, m)?;
+        for j in 0..m {
+            let inc = CorrelatedWienerIncrement::sample(dt, rng);
+            dw[j] = inc.dw;
+            dz[j] = inc.dz;
+        }
+        debug_assert_eq!(dw.len(), m);
+        self.try_step_with_correlated_increments(system, t, dt, dw, dz, state, &mut ws)
+    }
+
     /// Advances `state` by one step `dt` drawing correlated $(\Delta W, \Delta Z)$ pairs from `rng`.
+    ///
+    /// # Panics
+    /// Panics if `dt < 0`, `state` is undersized, or `workspace` is too small; prefer [`Self::try_step`].
     #[verified_engine::verified]
     pub fn step<T: Scalar, S: SdeSystem<T> + ?Sized, R: RngCore + ?Sized>(
         &self,
@@ -86,25 +134,79 @@ impl Sriw1Solver {
         workspace: &mut impl SolverWorkspace,
         rng: &mut R,
     ) {
+        self.try_step(system, t, dt, state, workspace, rng)
+            .expect("Sriw1Solver::step preconditions violated");
+    }
+
+    /// Fallibly advances `state` by one step `dt` using caller-supplied correlated slices `dw` and `dz`.
+    ///
+    /// # Errors
+    /// Returns [`DiffeqError`] if `dt < 0` or non-finite, `state`/`dw`/`dz` are undersized,
+    /// or `workspace` lacks sufficient scratch capacity.
+    #[allow(clippy::too_many_arguments)]
+    #[verified_engine::verified]
+    pub fn try_step_with_correlated_increments<T: Scalar, S: SdeSystem<T> + ?Sized>(
+        &self,
+        system: &S,
+        t: T,
+        dt: T,
+        dw: &[T],
+        dz: &[T],
+        state: &mut [T],
+        workspace: &mut impl SolverWorkspace,
+    ) -> Result<(), DiffeqError> {
         let d = system.state_dim();
         let m = system.wiener_dim();
-        assert!(dt >= T::ZERO && state.len() >= d);
+        validate_sriw1_inputs(dt, d, m, state, dw, dz)?;
         if dt <= T::EPSILON {
-            return;
+            return Ok(());
         }
 
+        let dm = d * m;
         let mut ws = workspace.reborrow();
-        let dw = ws.take_slice::<T>(m);
-        let dz = ws.take_slice::<T>(m);
-        for j in 0..m {
-            let inc = CorrelatedWienerIncrement::sample(dt, rng);
-            dw[j] = inc.dw;
-            dz[j] = inc.dz;
+        let a1 = try_take_workspace_slice(&mut ws, d)?;
+        let a2 = try_take_workspace_slice(&mut ws, d)?;
+        let h0 = try_take_workspace_slice(&mut ws, d)?;
+        let y_plus = try_take_workspace_slice(&mut ws, d)?;
+        let y_minus = try_take_workspace_slice(&mut ws, d)?;
+        let psi_plus = try_take_workspace_slice(&mut ws, d)?;
+        let delta_x = try_take_workspace_slice(&mut ws, d)?;
+        let g1 = try_take_workspace_slice(&mut ws, dm)?;
+        let g_yp = try_take_workspace_slice(&mut ws, dm)?;
+        let g_ym = try_take_workspace_slice(&mut ws, dm)?;
+        let g_phi = try_take_workspace_slice(&mut ws, dm)?;
+
+        eval_sriw1_drift_stages(
+            system,
+            self.calculus,
+            t,
+            dt,
+            dz,
+            state,
+            a1,
+            a2,
+            h0,
+            g1,
+            delta_x,
+            &mut ws,
+        )?;
+
+        accumulate_sriw1_diffusion(
+            system, t, dt, dw, dz, state, a1, g1, y_plus, y_minus, psi_plus, g_yp, g_ym, g_phi,
+            delta_x,
+        );
+        for i in 0..d {
+            state[i] += delta_x[i];
         }
-        self.step_with_correlated_increments(system, t, dt, dw, dz, state, &mut ws);
+        debug_assert!(state.len() >= d);
+        Ok(())
     }
 
     /// Advances `state` by one step `dt` using caller-supplied correlated slices `dw` ($\Delta W$) and `dz` ($\Delta Z$).
+    ///
+    /// # Panics
+    /// Panics if `dt < 0`, `state`/`dw`/`dz` are undersized, or `workspace` is too small;
+    /// prefer [`Self::try_step_with_correlated_increments`].
     #[allow(clippy::too_many_arguments)]
     #[verified_engine::verified]
     pub fn step_with_correlated_increments<T: Scalar, S: SdeSystem<T> + ?Sized>(
@@ -117,62 +219,87 @@ impl Sriw1Solver {
         state: &mut [T],
         workspace: &mut impl SolverWorkspace,
     ) {
-        let d = system.state_dim();
-        let m = system.wiener_dim();
-        assert!(state.len() >= d && dw.len() >= m && dz.len() >= m);
-        if dt <= T::EPSILON {
-            return;
-        }
-
-        let dm = d * m;
-        let mut ws = workspace.reborrow();
-        let a1 = ws.take_slice::<T>(d);
-        let a2 = ws.take_slice::<T>(d);
-        let h0 = ws.take_slice::<T>(d);
-        let y_plus = ws.take_slice::<T>(d);
-        let y_minus = ws.take_slice::<T>(d);
-        let psi_plus = ws.take_slice::<T>(d);
-        let delta_x = ws.take_slice::<T>(d);
-        let g1 = ws.take_slice::<T>(dm);
-        let g_yp = ws.take_slice::<T>(dm);
-        let g_ym = ws.take_slice::<T>(dm);
-        let g_phi = ws.take_slice::<T>(dm);
-
-        eval_ito_effective_drift(system, self.calculus, t, state, a1, &mut ws);
-        system.diffusion(t, state, g1);
-
-        let three_quarters = T::from_f64(0.75);
-        let three_halves_inv_dt = T::from_f64(1.5) / dt;
-        for i in 0..d {
-            let mut b_dz = T::ZERO;
-            for j in 0..m {
-                b_dz += g1[flatten_2d_index(j, i, m)] * dz[j];
-            }
-            h0[i] = state[i] + three_quarters * a1[i] * dt + three_halves_inv_dt * b_dz;
-        }
-        eval_ito_effective_drift(
-            system,
-            self.calculus,
-            t + three_quarters * dt,
-            h0,
-            a2,
-            &mut ws,
-        );
-
-        let one_third = T::ONE / T::from_f64(3.0);
-        let two_thirds = T::TWO * one_third;
-        for i in 0..d {
-            delta_x[i] = (one_third * a1[i] + two_thirds * a2[i]) * dt;
-        }
-
-        accumulate_sriw1_diffusion(
-            system, t, dt, dw, dz, state, a1, g1, y_plus, y_minus, psi_plus, g_yp, g_ym, g_phi,
-            delta_x,
-        );
-        for i in 0..d {
-            state[i] += delta_x[i];
-        }
+        self.try_step_with_correlated_increments(system, t, dt, dw, dz, state, workspace)
+            .expect("Sriw1Solver::step_with_correlated_increments preconditions violated");
     }
+}
+
+#[verified_engine::verified]
+fn validate_sriw1_inputs<T: Scalar>(
+    dt: T,
+    d: usize,
+    m: usize,
+    state: &[T],
+    dw: &[T],
+    dz: &[T],
+) -> Result<(), DiffeqError> {
+    if !(dt >= T::ZERO && dt.is_finite()) {
+        return Err(DiffeqError::InvalidStepSize);
+    }
+    if state.len() < d {
+        return Err(DiffeqError::BufferTooSmall {
+            buffer: "state",
+            required: d,
+            actual: state.len(),
+        });
+    }
+    if dw.len() < m {
+        return Err(DiffeqError::BufferTooSmall {
+            buffer: "dw",
+            required: m,
+            actual: dw.len(),
+        });
+    }
+    if dz.len() < m {
+        return Err(DiffeqError::BufferTooSmall {
+            buffer: "dz",
+            required: m,
+            actual: dz.len(),
+        });
+    }
+    debug_assert!(state.len() >= d && dw.len() >= m && dz.len() >= m);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+#[verified_engine::verified]
+fn eval_sriw1_drift_stages<T: Scalar, S: SdeSystem<T> + ?Sized>(
+    system: &S,
+    calculus: StochasticCalculus,
+    t: T,
+    dt: T,
+    dz: &[T],
+    state: &[T],
+    a1: &mut [T],
+    a2: &mut [T],
+    h0: &mut [T],
+    g1: &mut [T],
+    delta_x: &mut [T],
+    ws: &mut impl SolverWorkspace,
+) -> Result<(), DiffeqError> {
+    let d = system.state_dim();
+    let m = system.wiener_dim();
+    debug_assert!(dt > T::EPSILON && state.len() >= d);
+    try_eval_ito_effective_drift(system, calculus, t, state, a1, ws)?;
+    system.diffusion(t, state, g1);
+
+    let three_quarters = T::from_f64(0.75);
+    let three_halves_inv_dt = T::from_f64(1.5) / dt;
+    for i in 0..d {
+        let mut b_dz = T::ZERO;
+        for j in 0..m {
+            b_dz += g1[flatten_2d_index(j, i, m)] * dz[j];
+        }
+        h0[i] = state[i] + three_quarters * a1[i] * dt + three_halves_inv_dt * b_dz;
+    }
+    try_eval_ito_effective_drift(system, calculus, t + three_quarters * dt, h0, a2, ws)?;
+
+    let one_third = T::ONE / T::from_f64(3.0);
+    let two_thirds = T::TWO * one_third;
+    for i in 0..d {
+        delta_x[i] = (one_third * a1[i] + two_thirds * a2[i]) * dt;
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]

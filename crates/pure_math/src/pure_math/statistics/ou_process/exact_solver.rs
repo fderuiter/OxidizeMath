@@ -34,6 +34,30 @@ pub struct ExactOuSolver {
 }
 
 impl ExactOuSolver {
+    /// Fallible companion to [`new`](Self::new).
+    #[verified_engine::verified]
+    pub fn try_new(
+        params: OuParams,
+        dt: TimeStep,
+    ) -> core::result::Result<Self, math_commons::error::MathError> {
+        let normal =
+            Normal::new(0.0, 1.0).map_err(|_| math_commons::error::MathError::NumericalError {
+                reason: "Standard normal distribution initialization failed",
+            })?;
+        let theta = params.theta.value();
+        let dt_val = dt.value();
+        let decay = (-theta * dt_val).exp();
+        let std_step = exact_conditional_variance(theta, params.sigma.value(), dt_val).sqrt();
+        debug_assert!(decay.is_finite() && std_step.is_finite());
+        Ok(Self {
+            params,
+            dt,
+            normal,
+            decay,
+            std_step,
+        })
+    }
+
     /// Creates an [`ExactOuSolver`] precomputing exact exponential decay and innovation scale.
     ///
     /// # Panics
@@ -42,18 +66,7 @@ impl ExactOuSolver {
     #[must_use]
     #[verified_engine::verified]
     pub fn new(params: OuParams, dt: TimeStep) -> Self {
-        let normal = Normal::new(0.0, 1.0).unwrap();
-        let theta = params.theta.value();
-        let dt_val = dt.value();
-        let decay = (-theta * dt_val).exp();
-        let std_step = exact_conditional_variance(theta, params.sigma.value(), dt_val).sqrt();
-        Self {
-            params,
-            dt,
-            normal,
-            decay,
-            std_step,
-        }
+        Self::try_new(params, dt).expect("new preconditions must hold")
     }
 
     /// Exact conditional expectation $\mathbb{E}[X_{t+\tau} \mid X_t = x_0] = \mu + (x_0 - \mu)e^{-\theta \tau}$.

@@ -127,10 +127,7 @@ impl VirtualFileSystem for WasmVfs {
     ) -> Pin<Box<dyn Future<Output = Result<(), std::io::Error>> + '_>> {
         let path = path.to_string();
         let content = content.to_vec();
-        Box::pin(async move {
-            trigger_download(&path, &content);
-            Ok(())
-        })
+        Box::pin(async move { try_trigger_download(&path, &content) })
     }
 
     fn list_dir(
@@ -146,29 +143,43 @@ impl VirtualFileSystem for WasmVfs {
     }
 }
 
-/// Triggers an anchor-element browser file download of `content` named `filename` on `wasm32`.
+/// Fallibly triggers an anchor-element browser file download of `content` named `filename` on `wasm32`.
 #[cfg(target_arch = "wasm32")]
-pub fn trigger_download(filename: &str, content: &[u8]) {
+pub fn try_trigger_download(filename: &str, content: &[u8]) -> Result<(), std::io::Error> {
     use wasm_bindgen::JsCast;
-    let window = web_sys::window().unwrap();
-    let document = window.document().unwrap();
+    let io_err = |msg: &'static str| std::io::Error::other(msg);
+    let window = web_sys::window().ok_or_else(|| io_err("Missing browser window"))?;
+    let document = window
+        .document()
+        .ok_or_else(|| io_err("Missing browser document"))?;
     let uint8_array = js_sys::Uint8Array::from(content);
     let array = js_sys::Array::new();
     array.push(&uint8_array.buffer());
     let options = web_sys::BlobPropertyBag::new();
     options.set_type("application/octet-stream");
-    let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&array, &options).unwrap();
-    let url = web_sys::Url::create_object_url_with_blob(&blob).unwrap();
+    let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&array, &options)
+        .map_err(|_| io_err("Failed to create Blob"))?;
+    let url = web_sys::Url::create_object_url_with_blob(&blob)
+        .map_err(|_| io_err("Failed to create object URL"))?;
 
     let a = document
         .create_element("a")
-        .unwrap()
+        .map_err(|_| io_err("Failed to create anchor element"))?
         .dyn_into::<web_sys::HtmlElement>()
-        .unwrap();
-    a.set_attribute("href", &url).unwrap();
-    a.set_attribute("download", filename).unwrap();
+        .map_err(|_| io_err("Anchor element is not HtmlElement"))?;
+    a.set_attribute("href", &url)
+        .map_err(|_| io_err("Failed to set href attribute"))?;
+    a.set_attribute("download", filename)
+        .map_err(|_| io_err("Failed to set download attribute"))?;
     a.click();
-    web_sys::Url::revoke_object_url(&url).unwrap();
+    web_sys::Url::revoke_object_url(&url).map_err(|_| io_err("Failed to revoke object URL"))?;
+    Ok(())
+}
+
+/// Triggers an anchor-element browser file download of `content` named `filename` on `wasm32`.
+#[cfg(target_arch = "wasm32")]
+pub fn trigger_download(filename: &str, content: &[u8]) {
+    try_trigger_download(filename, content).expect("Browser download trigger failed");
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]

@@ -9,7 +9,7 @@ use super::space3d::Point3D;
 use super::workspace_sweep::uf_union;
 use crate::error::TdaError;
 use math_commons::math_kernel::types::flatten_2d_index;
-use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
+use math_memory::{ArenaError, ArenaLayout, ArenaRegion, OwnedByteArena};
 
 pub(super) const DEFAULT_RADII_SCRATCH_CAP: usize = 512;
 
@@ -93,50 +93,60 @@ impl TdaFiltrationWorkspace {
     /// ```
     #[verified_engine::verified]
     pub fn with_capacity(max_points: usize) -> Self {
+        Self::try_with_capacity(max_points).expect("TdaFiltrationWorkspace::with_capacity failed")
+    }
+
+    /// Fallibly allocates reusable filtration and `ℤ₂` reduction buffers for up to `max_points` vertices.
+    #[verified_engine::verified]
+    pub fn try_with_capacity(max_points: usize) -> Result<Self, ArenaError> {
         let cap = max_points.max(1);
-        let max_edges = cap.saturating_mul(cap.saturating_sub(1)) / 2;
-        let edge_cap = max_edges.max(1);
-        let max_tris = cap
+        let cap_sq = cap.checked_mul(cap).ok_or(ArenaError::CapacityOverflow {
+            elem_size: core::mem::size_of::<f64>(),
+            count: cap,
+        })?;
+        let edge_cap = (cap.saturating_mul(cap.saturating_sub(1)) / 2).max(1);
+        let tri_cap = (cap
             .saturating_mul(cap.saturating_sub(1))
             .saturating_mul(cap.saturating_sub(2))
-            / 6;
-        let tri_cap = max_tris.max(1);
+            / 6)
+        .max(1);
         let max_edge_words = edge_cap.div_ceil(64).max(1);
         let max_vertex_words = cap.div_ceil(64).max(1);
+        let adj_len = cap
+            .checked_mul(max_vertex_words)
+            .ok_or(ArenaError::CapacityOverflow {
+                elem_size: 8,
+                count: cap,
+            })?;
+        let basis_len =
+            edge_cap
+                .checked_mul(max_edge_words)
+                .ok_or(ArenaError::CapacityOverflow {
+                    elem_size: 8,
+                    count: edge_cap,
+                })?;
 
         let mut layout = ArenaLayout::new();
-        let dist_reg = layout.add_slice::<f64>(cap * cap).expect("tda dist");
-        let comp_births_reg = layout.add_slice::<f64>(cap).expect("tda comp_births");
-        let hole_births_reg = layout.add_slice::<f64>(edge_cap).expect("tda hole_births");
-        let radii_scratch_reg = layout
-            .add_slice::<f64>(DEFAULT_RADII_SCRATCH_CAP)
-            .expect("tda radii_scratch");
-        let _ = layout
-            .add_slice::<[u64; 2]>(edge_cap)
-            .expect("tda sorted_edges");
-        let _ = layout
-            .add_slice::<u64>(cap * max_vertex_words)
-            .expect("tda adj_words");
-        let _ = layout
-            .add_slice::<u64>(edge_cap * max_edge_words)
-            .expect("tda basis_words");
-        let _ = layout
-            .add_slice::<u64>(max_edge_words)
-            .expect("tda col_scratch");
-        let _ = layout.add_slice::<usize>(cap).expect("tda uf_parent");
-        let _ = layout.add_slice::<usize>(cap).expect("tda uf_rank");
-        let edges_reg = layout.add_slice::<[usize; 2]>(edge_cap).expect("tda edges");
-        let lookup_reg = layout.add_slice::<usize>(cap * cap).expect("tda lookup");
-        let triangles_reg = layout
-            .add_slice::<[usize; 3]>(tri_cap)
-            .expect("tda triangles");
-        let pivot_reg = layout.add_slice::<usize>(edge_cap).expect("tda pivots");
+        let dist_reg = layout.add_slice::<f64>(cap_sq)?;
+        let comp_births_reg = layout.add_slice::<f64>(cap)?;
+        let hole_births_reg = layout.add_slice::<f64>(edge_cap)?;
+        let radii_scratch_reg = layout.add_slice::<f64>(DEFAULT_RADII_SCRATCH_CAP)?;
+        let _ = layout.add_slice::<[u64; 2]>(edge_cap)?;
+        let _ = layout.add_slice::<u64>(adj_len)?;
+        let _ = layout.add_slice::<u64>(basis_len)?;
+        let _ = layout.add_slice::<u64>(max_edge_words)?;
+        let _ = layout.add_slice::<usize>(cap)?;
+        let _ = layout.add_slice::<usize>(cap)?;
+        let edges_reg = layout.add_slice::<[usize; 2]>(edge_cap)?;
+        let lookup_reg = layout.add_slice::<usize>(cap_sq)?;
+        let triangles_reg = layout.add_slice::<[usize; 3]>(tri_cap)?;
+        let pivot_reg = layout.add_slice::<usize>(edge_cap)?;
 
-        let mut arena = OwnedByteArena::with_capacity(layout.total_bytes());
+        let mut arena = OwnedByteArena::try_with_capacity(layout.total_bytes())?;
         arena.region_mut(lookup_reg).fill(usize::MAX);
         arena.region_mut(pivot_reg).fill(usize::MAX);
 
-        Self {
+        Ok(Self {
             max_points: cap,
             edge_cap,
             tri_cap,
@@ -160,7 +170,7 @@ impl TdaFiltrationWorkspace {
             edge_cursor: 0,
             basis_rank: 0,
             prev_radius: None,
-        }
+        })
     }
 
     fn slices_mut(&mut self) -> FiltrationSlices<'_> {

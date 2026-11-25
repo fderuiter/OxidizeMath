@@ -2,7 +2,7 @@
 
 // [cite:optics]
 
-use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
+use math_memory::{ArenaError, ArenaLayout, ArenaRegion, OwnedByteArena};
 use pure_math::pure_math::analysis::ode::{ArrayState, RungeKutta4};
 
 /// Per-ray metadata indexing polyline slices returned by [`RayFanWorkspace::ray_vertices`].
@@ -41,29 +41,30 @@ pub struct RayFanWorkspace {
 
 impl RayFanWorkspace {
     /// Allocates a workspace capable of storing `max_rays` polylines with `max_points_per_ray` vertices each.
+    ///
+    /// Panics only if layout capacity overflows or allocation fails; see [`Self::try_new`].
     #[must_use]
     pub fn new(max_rays: usize, max_points_per_ray: usize) -> Self {
+        Self::try_new(max_rays, max_points_per_ray).expect("RayFanWorkspace::new allocation failed")
+    }
+
+    /// Fallibly allocates a workspace capable of storing `max_rays` polylines with `max_points_per_ray` vertices each.
+    pub fn try_new(max_rays: usize, max_points_per_ray: usize) -> Result<Self, ArenaError> {
         let caps_r = max_rays.max(1);
         let caps_p = max_points_per_ray.max(4);
+        let total_points = caps_r
+            .checked_mul(caps_p)
+            .ok_or(ArenaError::CapacityOverflow {
+                elem_size: core::mem::size_of::<[f64; 2]>(),
+                count: caps_r,
+            })?;
         let mut layout = ArenaLayout::new();
-        let points = layout
-            .add_slice::<[f64; 2]>(
-                caps_r
-                    .checked_mul(caps_p)
-                    .expect("ray vertex count overflow"),
-            )
-            .expect("ray points layout");
-        let ray_f64 = layout
-            .add_slice::<[f64; 6]>(caps_r)
-            .expect("ray f64 layout");
-        let ray_spans = layout
-            .add_slice::<[usize; 2]>(caps_r)
-            .expect("ray spans layout");
-        let ray_flags = layout
-            .add_slice::<[u8; 2]>(caps_r)
-            .expect("ray flags layout");
-        let arena = OwnedByteArena::with_capacity(layout.total_bytes());
-        Self {
+        let points = layout.add_slice::<[f64; 2]>(total_points)?;
+        let ray_f64 = layout.add_slice::<[f64; 6]>(caps_r)?;
+        let ray_spans = layout.add_slice::<[usize; 2]>(caps_r)?;
+        let ray_flags = layout.add_slice::<[u8; 2]>(caps_r)?;
+        let arena = OwnedByteArena::try_with_capacity(layout.total_bytes())?;
+        Ok(Self {
             rk4: RungeKutta4::new(&ArrayState([0.0; 4])),
             arena,
             points,
@@ -73,7 +74,7 @@ impl RayFanWorkspace {
             max_rays: caps_r,
             active_rays: 0,
             max_points_per_ray: caps_p,
-        }
+        })
     }
 
     /// Number of active traced rays from the most recent `trace_ray_fan` call.
@@ -83,10 +84,22 @@ impl RayFanWorkspace {
     }
 
     /// Reconstructs the metadata record for traced ray `index`.
+    ///
+    /// Panics if `index >= self.ray_count()`; see [`Self::checked_ray`].
     #[must_use]
     pub fn ray(&self, index: usize) -> TracedRayMeta {
-        assert!(index < self.active_rays, "ray index out of bounds");
-        self.read_meta_unchecked(index)
+        self.checked_ray(index).expect("ray index out of bounds")
+    }
+
+    /// Bounds-checked accessor for the metadata record of traced ray `index`.
+    pub fn checked_ray(&self, index: usize) -> Result<TracedRayMeta, ArenaError> {
+        if index >= self.active_rays {
+            return Err(ArenaError::InsufficientCapacity {
+                requested: index.saturating_add(1),
+                available: self.active_rays,
+            });
+        }
+        Ok(self.read_meta_unchecked(index))
     }
 
     pub(super) fn read_meta_unchecked(&self, index: usize) -> TracedRayMeta {
@@ -125,10 +138,23 @@ impl RayFanWorkspace {
     }
 
     /// Returns the vertex slice for traced ray `index`.
+    ///
+    /// Panics if `index >= self.ray_count()`; see [`Self::checked_ray_vertices`].
     #[must_use]
     pub fn ray_vertices(&self, index: usize) -> &[[f64; 2]] {
-        assert!(index < self.active_rays, "ray index out of bounds");
+        self.checked_ray_vertices(index)
+            .expect("ray index out of bounds")
+    }
+
+    /// Bounds-checked accessor for the vertex slice of traced ray `index`.
+    pub fn checked_ray_vertices(&self, index: usize) -> Result<&[[f64; 2]], ArenaError> {
+        if index >= self.active_rays {
+            return Err(ArenaError::InsufficientCapacity {
+                requested: index.saturating_add(1),
+                available: self.active_rays,
+            });
+        }
         let span = self.arena.region(self.ray_spans)[index];
-        &self.arena.region(self.points)[span[0]..span[0] + span[1]]
+        Ok(&self.arena.region(self.points)[span[0]..span[0] + span[1]])
     }
 }

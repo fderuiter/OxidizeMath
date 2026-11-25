@@ -60,12 +60,25 @@ impl Default for TiledPolygon {
 }
 
 impl TiledPolygon {
+    /// Fallible companion to [`active_vertices`](Self::active_vertices).
+    #[verified_engine::verified]
+    pub fn try_active_vertices(
+        &self,
+    ) -> core::result::Result<&[Complex64], math_commons::error::MathError> {
+        crate::error::ensure_math(
+            self.vertex_count <= MAX_POLYGON_VERTICES,
+            "active_vertices: precondition or invariant violated",
+        )?;
+        debug_assert!(self.vertex_count <= MAX_POLYGON_VERTICES);
+        Ok(&self.vertices[..self.vertex_count])
+    }
+
     /// Returns the active vertices slice `&self.vertices[..self.vertex_count]`.
     #[must_use]
     #[verified_engine::verified]
     pub fn active_vertices(&self) -> &[Complex64] {
-        assert!(self.vertex_count <= MAX_POLYGON_VERTICES);
-        &self.vertices[..self.vertex_count]
+        self.try_active_vertices()
+            .expect("active_vertices preconditions must hold")
     }
 }
 
@@ -291,41 +304,85 @@ impl HyperbolicTilingBuffer {
         self.kind
     }
 
+    /// Fallible companion to [`depth`](Self::depth).
+    #[verified_engine::verified]
+    pub fn try_depth(&self) -> core::result::Result<usize, math_commons::error::MathError> {
+        crate::error::ensure_math(
+            self.depth <= MAX_TILING_DEPTH,
+            "depth: precondition or invariant violated",
+        )?;
+        debug_assert!(self.depth <= MAX_TILING_DEPTH);
+        Ok(self.depth)
+    }
+
     /// Returns the capped BFS reflection depth (`<= 5`).
     #[must_use]
     #[verified_engine::verified]
     pub fn depth(&self) -> usize {
-        assert!(self.depth <= MAX_TILING_DEPTH);
-        self.depth
+        self.try_depth().expect("depth preconditions must hold")
+    }
+
+    /// Fallible companion to [`polygons`](Self::polygons).
+    #[verified_engine::verified]
+    pub fn try_polygons(
+        &self,
+    ) -> core::result::Result<&[TiledPolygon], math_commons::error::MathError> {
+        crate::error::ensure_math(
+            self.polygons.len() <= MAX_TILING_POLYGONS,
+            "polygons: precondition or invariant violated",
+        )?;
+        debug_assert!(self.polygons.len() <= MAX_TILING_POLYGONS);
+        Ok(&self.polygons)
     }
 
     /// Returns the generated immutable base polygons in $\overline{\mathbb{D}}$.
     #[must_use]
     #[verified_engine::verified]
     pub fn polygons(&self) -> &[TiledPolygon] {
-        assert!(self.polygons.len() <= MAX_TILING_POLYGONS);
-        &self.polygons
+        self.try_polygons()
+            .expect("polygons preconditions must hold")
+    }
+
+    /// Fallible companion to [`transform_into`](Self::transform_into).
+    #[verified_engine::verified]
+    pub fn try_transform_into(
+        &self,
+        isometry: Psu11,
+        out: &mut [TiledPolygon],
+    ) -> core::result::Result<usize, math_commons::error::MathError> {
+        #[allow(unused_braces)]
+        Ok({
+            crate::error::ensure_math(
+                (isometry.determinant() - 1.0).abs() < 1.0e-6,
+                "transform_into: precondition or invariant violated",
+            )?;
+            let count = self.polygons.len().min(out.len());
+            for (src, dst) in self.polygons.iter().zip(out.iter_mut()).take(count) {
+                dst.vertex_count = src.vertex_count;
+                dst.depth = src.depth;
+                dst.anchor = isometry.apply_complex(src.anchor);
+                for (v_dst, &v_src) in dst
+                    .vertices
+                    .iter_mut()
+                    .zip(src.vertices.iter())
+                    .take(src.vertex_count)
+                {
+                    *v_dst = isometry.apply_complex(v_src);
+                }
+            }
+            crate::error::ensure_math(
+                count <= MAX_TILING_POLYGONS,
+                "transform_into: precondition or invariant violated",
+            )?;
+            debug_assert!(count <= out.len() && count <= MAX_TILING_POLYGONS);
+            count
+        })
     }
 
     /// Applies `isometry` to every polygon into pre-allocated `out` with zero heap allocations.
     #[verified_engine::verified]
     pub fn transform_into(&self, isometry: Psu11, out: &mut [TiledPolygon]) -> usize {
-        assert!((isometry.determinant() - 1.0).abs() < 1.0e-6);
-        let count = self.polygons.len().min(out.len());
-        for (src, dst) in self.polygons.iter().zip(out.iter_mut()).take(count) {
-            dst.vertex_count = src.vertex_count;
-            dst.depth = src.depth;
-            dst.anchor = isometry.apply_complex(src.anchor);
-            for (v_dst, &v_src) in dst
-                .vertices
-                .iter_mut()
-                .zip(src.vertices.iter())
-                .take(src.vertex_count)
-            {
-                *v_dst = isometry.apply_complex(v_src);
-            }
-        }
-        assert!(count <= MAX_TILING_POLYGONS);
-        count
+        self.try_transform_into(isometry, out)
+            .expect("transform_into preconditions must hold")
     }
 }

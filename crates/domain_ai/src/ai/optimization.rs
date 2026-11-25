@@ -21,10 +21,8 @@ pub fn mean_squared_error<T: RealField + Copy>(
     y_true: &DVector<T>,
 ) -> Result<T, AIError> {
     let diff = y_pred - y_true;
-    let n = T::from_usize(y_pred.len()).ok_or_else(|| {
-        math_commons::error::MathError::ConversionError {
-            reason: "Failed to convert usize to T".to_string(),
-        }
+    let n = T::from_usize(y_pred.len()).ok_or(math_commons::error::MathError::ConversionError {
+        reason: "Failed to convert usize to T",
     })?;
     Ok(diff.dot(&diff) / n)
 }
@@ -36,27 +34,22 @@ pub fn mse_prime<T: RealField + Copy>(
     y_pred: &DVector<T>,
     y_true: &DVector<T>,
 ) -> Result<DVector<T>, AIError> {
-    let n = T::from_usize(y_pred.len()).ok_or_else(|| {
-        math_commons::error::MathError::ConversionError {
-            reason: "Failed to convert usize to T".to_string(),
-        }
+    let n = T::from_usize(y_pred.len()).ok_or(math_commons::error::MathError::ConversionError {
+        reason: "Failed to convert usize to T",
     })?;
-    let two = T::from_f64(2.0).ok_or_else(|| math_commons::error::MathError::ConversionError {
-        reason: "Failed to convert 2.0 to T".to_string(),
+    let two = T::from_f64(2.0).ok_or(math_commons::error::MathError::ConversionError {
+        reason: "Failed to convert 2.0 to T",
     })?;
     Ok((y_pred - y_true) * (two / n))
 }
 
-fn validate_probability_vector<T: RealField + Copy>(
-    values: &DVector<T>,
-    name: &str,
-) -> Result<(), AIError> {
+fn validate_probability_vector<T: RealField + Copy>(values: &DVector<T>) -> Result<(), AIError> {
     let zero = T::zero();
     let one = T::one();
     for &v in values.iter() {
         if !v.is_finite() || !(v >= zero && v <= one) {
             return Err(math_commons::error::MathError::NumericalError {
-                reason: format!("{name} contains non-finite or out-of-[0, 1] probability value"),
+                reason: "Probability vector contains non-finite or out-of-[0, 1] value",
             }
             .into());
         }
@@ -93,21 +86,19 @@ pub fn cross_entropy_loss<T: RealField + Copy>(
     }
     if y_pred.is_empty() {
         return Err(math_commons::error::MathError::NumericalError {
-            reason: "cross_entropy_loss requires non-empty vectors".to_string(),
+            reason: "cross_entropy_loss requires non-empty vectors",
         }
         .into());
     }
-    validate_probability_vector(y_pred, "y_pred")?;
-    validate_probability_vector(y_true, "y_true")?;
+    validate_probability_vector(y_pred)?;
+    validate_probability_vector(y_true)?;
 
-    let eps_base =
-        T::from_f64(1e-15).ok_or_else(|| math_commons::error::MathError::ConversionError {
-            reason: "Failed to convert 1e-15 to T".to_string(),
-        })?;
-    let sixteen =
-        T::from_f64(16.0).ok_or_else(|| math_commons::error::MathError::ConversionError {
-            reason: "Failed to convert 16.0 to T".to_string(),
-        })?;
+    let eps_base = T::from_f64(1e-15).ok_or(math_commons::error::MathError::ConversionError {
+        reason: "Failed to convert 1e-15 to T",
+    })?;
+    let sixteen = T::from_f64(16.0).ok_or(math_commons::error::MathError::ConversionError {
+        reason: "Failed to convert 16.0 to T",
+    })?;
     let min_eps = T::default_epsilon() * sixteen;
     let epsilon = if eps_base > min_eps {
         eps_base

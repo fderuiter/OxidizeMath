@@ -154,11 +154,11 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
         let lhs = v.clone() - &u;
         let rhs = v + u;
 
-        let r = lhs.try_inverse().ok_or_else(|| {
-            MarkovError::Math(math_commons::error::MathError::NumericalError {
-                reason: "Failed to invert (V-U) in Padé approximation".to_string(),
-            })
-        })? * rhs;
+        let r = lhs.try_inverse().ok_or(MarkovError::Math(
+            math_commons::error::MathError::NumericalError {
+                reason: "Failed to invert (V-U) in Padé approximation",
+            },
+        ))? * rhs;
 
         let mut result = r;
         for _ in 0..s {

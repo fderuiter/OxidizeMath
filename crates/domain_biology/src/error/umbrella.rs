@@ -31,6 +31,9 @@ pub enum BiologyError {
     /// Foundational `math_commons` umbrella error.
     #[error("{0}")]
     MathCommons(#[from] math_commons::error::MathCommonsError),
+    /// Foundational `#![no_std]` partial-differential-equation solver error.
+    #[error("{0}")]
+    Pde(#[from] engine_pde::PdeError),
     /// Upstream `pure_math` umbrella error.
     #[error("{0}")]
     PureMath(#[from] pure_math::error::PureMathError),
@@ -151,9 +154,9 @@ impl From<ShaderEmitError> for BiologyError {
     }
 }
 
-impl From<String> for BiologyError {
+impl From<&'static str> for BiologyError {
     #[verified_engine::verified]
-    fn from(reason: String) -> Self {
+    fn from(reason: &'static str) -> Self {
         Self::Math(math_commons::error::MathError::from(reason))
     }
 }
@@ -168,6 +171,7 @@ impl BiologyError {
             Self::ReactionDiffusion(err) => err,
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
+            Self::Pde(err) => err,
             Self::PureMath(err) => err,
             Self::Applied(err) => err,
         }

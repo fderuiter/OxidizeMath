@@ -1,6 +1,13 @@
 //! Image Reconstruction algorithms and pre-planned zero-allocation 2D FFT workspaces.
 
-use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
+#[path = "reconstruction_kernels.rs"]
+mod kernels;
+
+use kernels::{
+    apply_kspace_modulation, check_len, check_mat_shape, scale_complex_slice, shift_2d_columns,
+    transpose_blocked,
+};
+use math_memory::{ArenaError, ArenaLayout, ArenaRegion, OwnedByteArena};
 use nalgebra::DMatrix;
 use num_complex::Complex;
 use rustfft::{Fft, FftDirection, FftPlanner};
@@ -45,10 +52,18 @@ pub struct Fft2dWorkspace {
 
 impl Fft2dWorkspace {
     /// Creates a pre-planned 2D FFT workspace for `rows x cols` complex matrices.
+    ///
+    /// Panics only if scratch layout capacity overflows `usize`; see [`Self::try_new`] for a
+    /// fallible constructor.
     #[must_use]
     pub fn new(rows: usize, cols: usize) -> Self {
+        Self::try_new(rows, cols).expect("Fft2dWorkspace::new allocation failed")
+    }
+
+    /// Fallibly creates a pre-planned 2D FFT workspace for `rows x cols` complex matrices.
+    pub fn try_new(rows: usize, cols: usize) -> Result<Self, ArenaError> {
         if rows == 0 || cols == 0 {
-            return Self {
+            return Ok(Self {
                 rows,
                 cols,
                 fwd_row_fft: None,
@@ -58,7 +73,7 @@ impl Fft2dWorkspace {
                 arena: OwnedByteArena::new(),
                 scratch_reg: ArenaRegion::empty(),
                 transposed: DMatrix::zeros(cols, rows),
-            };
+            });
         }
 
         let mut planner = FftPlanner::new();
@@ -74,21 +89,19 @@ impl Fft2dWorkspace {
             .max(inv_col.get_inplace_scratch_len());
 
         let mut layout = ArenaLayout::new();
-        let scratch_reg = layout
-            .add_slice::<Complex<f64>>(scratch_len)
-            .expect("Fft2dWorkspace scratch layout");
+        let scratch_reg = layout.add_slice::<Complex<f64>>(scratch_len)?;
 
-        Self {
+        Ok(Self {
             rows,
             cols,
             fwd_row_fft: Some(fwd_row),
             fwd_col_fft: Some(fwd_col),
             inv_row_fft: Some(inv_row),
             inv_col_fft: Some(inv_col),
-            arena: OwnedByteArena::with_capacity(layout.total_bytes()),
+            arena: OwnedByteArena::try_with_capacity(layout.total_bytes())?,
             scratch_reg,
             transposed: DMatrix::zeros(cols, rows),
-        }
+        })
     }
 
     /// Returns the configured row count `R` of this workspace.
@@ -196,16 +209,11 @@ impl Fft2dWorkspace {
         }
     }
 
-    /// Executes a fused zero-allocation 2D forward DFT, frequency-domain mask/spike modulation,
+    /// Fallibly executes a fused zero-allocation 2D forward DFT, frequency-domain mask/spike modulation,
     /// and $1/(R \cdot C)$-scaled inverse 2D DFT.
-    ///
-    /// `dft_mask` and `dft_spikes` match the transposed k-space layout produced after `fwd_col` ->
-    /// transpose -> `fwd_row` (i.e., `r * cols + c` for column-major `density`). When `identity_pass`
-    /// is `true` (all `dft_mask == 1.0` and `dft_spikes == 0`), computes `out_kspace` via a single
-    /// 2D forward DFT and copies `density` into `out_image` directly by Fourier inversion identity.
     #[verified_engine::verified]
     #[allow(clippy::too_many_arguments)]
-    pub fn filter_kspace_2d_into(
+    pub fn try_filter_kspace_2d_into(
         &mut self,
         density: &DMatrix<Complex<f64>>,
         dft_mask: &[f64],
@@ -213,20 +221,20 @@ impl Fft2dWorkspace {
         identity_pass: bool,
         out_kspace: &mut [Complex<f64>],
         out_image: &mut DMatrix<Complex<f64>>,
-    ) {
+    ) -> Result<(), math_commons::error::MathError> {
         let total = self.rows * self.cols;
-        assert_eq!(density.shape(), (self.rows, self.cols));
-        assert_eq!(out_image.shape(), (self.rows, self.cols));
-        assert_eq!(dft_mask.len(), total);
-        assert_eq!(dft_spikes.len(), total);
-        assert_eq!(out_kspace.len(), total);
+        check_mat_shape(density, self.rows, self.cols)?;
+        check_mat_shape(out_image, self.rows, self.cols)?;
+        check_len(total, dft_mask.len())?;
+        check_len(total, dft_spikes.len())?;
+        check_len(total, out_kspace.len())?;
         if total == 0 {
-            return;
+            return Ok(());
         }
         if identity_pass {
             self.forward_transposed_into(density, out_kspace);
             out_image.copy_from(density);
-            return;
+            return Ok(());
         }
         let scratch_reg = self.scratch_reg;
         out_image.copy_from(density);
@@ -265,21 +273,45 @@ impl Fft2dWorkspace {
             inv_c.process_with_scratch(out_image.as_mut_slice(), scratch);
         }
         scale_complex_slice(out_image.as_mut_slice(), 1.0 / (total as f64));
+        debug_assert_eq!(out_kspace.len(), total);
+        Ok(())
     }
 
-    /// Transforms `density` in-place along columns, transposes directly into `out_kspace`
-    /// (`cols x rows` layout), and transforms rows in-place with zero extra buffer copies.
+    /// Executes a fused zero-allocation 2D forward DFT, mask/spike modulation, and inverse 2D DFT; prefer [`Self::try_filter_kspace_2d_into`].
     #[verified_engine::verified]
-    pub fn forward_transposed_in_place(
+    #[allow(clippy::too_many_arguments)]
+    pub fn filter_kspace_2d_into(
+        &mut self,
+        density: &DMatrix<Complex<f64>>,
+        dft_mask: &[f64],
+        dft_spikes: &[Complex<f64>],
+        identity_pass: bool,
+        out_kspace: &mut [Complex<f64>],
+        out_image: &mut DMatrix<Complex<f64>>,
+    ) {
+        self.try_filter_kspace_2d_into(
+            density,
+            dft_mask,
+            dft_spikes,
+            identity_pass,
+            out_kspace,
+            out_image,
+        )
+        .expect("filter_kspace_2d_into shape mismatch");
+    }
+
+    /// Fallibly transforms `density` in-place along columns, transposes into `out_kspace`, and transforms rows in-place.
+    #[verified_engine::verified]
+    pub fn try_forward_transposed_in_place(
         &mut self,
         density: &mut DMatrix<Complex<f64>>,
         out_kspace: &mut [Complex<f64>],
-    ) {
+    ) -> Result<(), math_commons::error::MathError> {
         let total = self.rows * self.cols;
-        assert_eq!(density.shape(), (self.rows, self.cols));
-        assert_eq!(out_kspace.len(), total);
+        check_mat_shape(density, self.rows, self.cols)?;
+        check_len(total, out_kspace.len())?;
         if total == 0 {
-            return;
+            return Ok(());
         }
         let scratch_reg = self.scratch_reg;
         if let Some(ref fwd_c) = self.fwd_col_fft {
@@ -291,6 +323,19 @@ impl Fft2dWorkspace {
             let scratch = self.arena.region_mut(scratch_reg);
             fwd_r.process_with_scratch(out_kspace, scratch);
         }
+        debug_assert_eq!(out_kspace.len(), total);
+        Ok(())
+    }
+
+    /// Transforms `density` in-place along columns, transposes into `out_kspace`, and transforms rows in-place; prefer [`Self::try_forward_transposed_in_place`].
+    #[verified_engine::verified]
+    pub fn forward_transposed_in_place(
+        &mut self,
+        density: &mut DMatrix<Complex<f64>>,
+        out_kspace: &mut [Complex<f64>],
+    ) {
+        self.try_forward_transposed_in_place(density, out_kspace)
+            .expect("forward_transposed_in_place shape mismatch");
     }
 
     fn forward_transposed_into(
@@ -314,92 +359,44 @@ impl Fft2dWorkspace {
     }
 }
 
-fn apply_kspace_modulation(
-    buf: &mut [Complex<f64>],
-    mask: &[f64],
-    spikes: &[Complex<f64>],
-    out_kspace: &mut [Complex<f64>],
-) {
-    for (((b, &m), &sp), out) in buf.iter_mut().zip(mask).zip(spikes).zip(out_kspace) {
-        let v = *b * m + sp;
-        *b = v;
-        *out = v;
-    }
-}
-
-fn scale_complex_slice(slice: &mut [Complex<f64>], scale: f64) {
-    for elem in slice {
-        *elem *= scale;
-    }
-}
-
-/// Cache-blocked `8x8` transpose of a column-major `rows x cols` slice into a column-major `cols x rows` slice.
-fn transpose_blocked(src: &[Complex<f64>], dst: &mut [Complex<f64>], rows: usize, cols: usize) {
-    if rows == 0 || cols == 0 {
-        return;
-    }
-    const TILE: usize = 8;
-    let mut r0 = 0;
-    for dst_band in dst.chunks_mut(cols * TILE) {
-        let r_len = dst_band.len() / cols;
-        for (c, src_col) in src.chunks_exact(rows).enumerate() {
-            for (&val, dst_row) in src_col[r0..r0 + r_len]
-                .iter()
-                .zip(dst_band.chunks_exact_mut(cols))
-            {
-                dst_row[c] = val;
-            }
-        }
-        r0 += r_len;
-    }
-}
-
-fn shift_2d_columns(
+/// Fallibly shifts zero-frequency (DC) k-space component `(0, 0)` to grid center `(R/2, C/2)` without allocation.
+#[verified_engine::verified]
+pub fn try_fftshift_2d_into(
     src: &DMatrix<Complex<f64>>,
     dst: &mut DMatrix<Complex<f64>>,
-    shift_r: usize,
-    shift_c: usize,
-) {
-    let rows = src.nrows();
-    let cols = src.ncols();
-    let split_r = rows - shift_r;
-    let src_slice = src.as_slice();
-    let dst_slice = dst.as_mut_slice();
-    for c in 0..cols {
-        let dc = (c + shift_c) % cols;
-        let src_col = &src_slice[c * rows..(c + 1) * rows];
-        let dst_col = &mut dst_slice[dc * rows..(dc + 1) * rows];
-        dst_col[shift_r..].copy_from_slice(&src_col[..split_r]);
-        dst_col[..shift_r].copy_from_slice(&src_col[split_r..]);
+) -> Result<(), math_commons::error::MathError> {
+    let (rows, cols) = src.shape();
+    check_mat_shape(dst, rows, cols)?;
+    if rows > 0 && cols > 0 {
+        shift_2d_columns(src, dst, rows / 2, cols / 2);
     }
+    Ok(())
 }
 
-/// Shifts zero-frequency (DC) k-space component `(0, 0)` to grid center `(R/2, C/2)` without allocation.
+/// Shifts zero-frequency (DC) k-space component `(0, 0)` to grid center `(R/2, C/2)`; prefer [`try_fftshift_2d_into`].
 #[verified_engine::verified]
 pub fn fftshift_2d_into(src: &DMatrix<Complex<f64>>, dst: &mut DMatrix<Complex<f64>>) {
-    let rows = src.nrows();
-    let cols = src.ncols();
-    assert_eq!(dst.shape(), (rows, cols), "fftshift_2d_into shape mismatch");
-    if rows == 0 || cols == 0 {
-        return;
-    }
-    shift_2d_columns(src, dst, rows / 2, cols / 2);
+    try_fftshift_2d_into(src, dst).expect("fftshift_2d_into shape mismatch");
 }
 
-/// Inverse-shifts centered k-space `(R/2, C/2)` back to standard DFT layout `(0, 0)` without allocation.
+/// Fallibly inverse-shifts centered k-space `(R/2, C/2)` back to standard DFT layout `(0, 0)` without allocation.
+#[verified_engine::verified]
+pub fn try_ifftshift_2d_into(
+    src: &DMatrix<Complex<f64>>,
+    dst: &mut DMatrix<Complex<f64>>,
+) -> Result<(), math_commons::error::MathError> {
+    let (rows, cols) = src.shape();
+    check_mat_shape(dst, rows, cols)?;
+    if rows > 0 && cols > 0 {
+        shift_2d_columns(src, dst, rows - (rows / 2), cols - (cols / 2));
+    }
+    Ok(())
+}
+
+/// Inverse-shifts centered k-space `(R/2, C/2)` back to standard DFT layout `(0, 0)`; prefer [`try_ifftshift_2d_into`].
 #[verified_engine::verified]
 pub fn ifftshift_2d_into(src: &DMatrix<Complex<f64>>, dst: &mut DMatrix<Complex<f64>>) {
-    let rows = src.nrows();
-    let cols = src.ncols();
-    assert_eq!(
-        dst.shape(),
-        (rows, cols),
-        "ifftshift_2d_into shape mismatch"
-    );
-    if rows == 0 || cols == 0 {
-        return;
-    }
-    shift_2d_columns(src, dst, rows - (rows / 2), cols - (cols / 2));
+    try_ifftshift_2d_into(src, dst).expect("ifftshift_2d_into shape mismatch");
 }
 
 #[verified_engine::verified]

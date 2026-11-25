@@ -1,5 +1,8 @@
 // [cite:engine_diffeq]
-use math_commons::math_kernel::types::{Scalar, SolverWorkspace, flatten_2d_index};
+use crate::error::DiffeqError;
+use math_commons::math_kernel::types::{
+    Scalar, SolverWorkspace, flatten_2d_index, try_take_workspace_slice,
+};
 
 /// Stochastic integral interpretation governing drift-diffusion coupling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -95,36 +98,50 @@ pub const fn ito_drift_scratch_len(state_dim: usize, wiener_dim: usize) -> usize
     3 * state_dim * wiener_dim + 3 * state_dim
 }
 
-/// Evaluates the equivalent Itô drift $f_{\text{Itô}}(t, x)$ into `out_drift`.
+/// Fallibly evaluates the equivalent Itô drift $f_{\text{Itô}}(t, x)$ into `out_drift`.
 ///
-/// Under [`StochasticCalculus::Ito`], evaluates `system.drift(t, x, out_drift)` directly.
-/// Under [`StochasticCalculus::Stratonovich`], adds the Wong-Zakai correction
-/// $\frac{1}{2} \sum_{j=0}^{m-1} (D_x G_{\cdot, j}(t, x)) G_{\cdot, j}(t, x)$.
+/// # Errors
+/// Returns [`DiffeqError::BufferTooSmall`] if `x` or `out_drift` is shorter than `system.state_dim()`,
+/// or [`DiffeqError::Math`] if `workspace` lacks [`ito_drift_scratch_len`] scalars under Stratonovich calculus.
 #[verified_engine::verified]
-pub fn eval_ito_effective_drift<T: Scalar, S: SdeSystem<T> + ?Sized>(
+pub fn try_eval_ito_effective_drift<T: Scalar, S: SdeSystem<T> + ?Sized>(
     system: &S,
     calculus: StochasticCalculus,
     t: T,
     x: &[T],
     out_drift: &mut [T],
     workspace: &mut impl SolverWorkspace,
-) {
+) -> Result<(), DiffeqError> {
     let d = system.state_dim();
     let m = system.wiener_dim();
-    assert!(x.len() >= d && out_drift.len() >= d);
+    if x.len() < d {
+        return Err(DiffeqError::BufferTooSmall {
+            buffer: "x",
+            required: d,
+            actual: x.len(),
+        });
+    }
+    if out_drift.len() < d {
+        return Err(DiffeqError::BufferTooSmall {
+            buffer: "out_drift",
+            required: d,
+            actual: out_drift.len(),
+        });
+    }
     system.drift(t, x, out_drift);
     if calculus == StochasticCalculus::Ito || m == 0 {
-        return;
+        debug_assert!(out_drift.len() >= d);
+        return Ok(());
     }
 
     let dm = d * m;
     let mut ws = workspace.reborrow();
-    let g_base = ws.take_slice::<T>(dm);
-    let g_plus = ws.take_slice::<T>(dm);
-    let g_minus = ws.take_slice::<T>(dm);
-    let col_vec = ws.take_slice::<T>(d);
-    let dg_vec = ws.take_slice::<T>(d);
-    let x_tmp = ws.take_slice::<T>(d);
+    let g_base = try_take_workspace_slice(&mut ws, dm)?;
+    let g_plus = try_take_workspace_slice(&mut ws, dm)?;
+    let g_minus = try_take_workspace_slice(&mut ws, dm)?;
+    let col_vec = try_take_workspace_slice(&mut ws, d)?;
+    let dg_vec = try_take_workspace_slice(&mut ws, d)?;
+    let x_tmp = try_take_workspace_slice(&mut ws, d)?;
 
     system.diffusion(t, x, g_base);
     for j in 0..m {
@@ -136,4 +153,27 @@ pub fn eval_ito_effective_drift<T: Scalar, S: SdeSystem<T> + ?Sized>(
             out_drift[i] += T::HALF * dg_vec[i];
         }
     }
+    debug_assert!(out_drift.len() >= d);
+    Ok(())
+}
+
+/// Evaluates the equivalent Itô drift $f_{\text{Itô}}(t, x)$ into `out_drift`.
+///
+/// Under [`StochasticCalculus::Ito`], evaluates `system.drift(t, x, out_drift)` directly.
+/// Under [`StochasticCalculus::Stratonovich`], adds the Wong-Zakai correction
+/// $\frac{1}{2} \sum_{j=0}^{m-1} (D_x G_{\cdot, j}(t, x)) G_{\cdot, j}(t, x)$.
+///
+/// # Panics
+/// Panics if `x`, `out_drift`, or `workspace` is undersized; prefer [`try_eval_ito_effective_drift`].
+#[verified_engine::verified]
+pub fn eval_ito_effective_drift<T: Scalar, S: SdeSystem<T> + ?Sized>(
+    system: &S,
+    calculus: StochasticCalculus,
+    t: T,
+    x: &[T],
+    out_drift: &mut [T],
+    workspace: &mut impl SolverWorkspace,
+) {
+    try_eval_ito_effective_drift(system, calculus, t, x, out_drift, workspace)
+        .expect("eval_ito_effective_drift preconditions violated");
 }

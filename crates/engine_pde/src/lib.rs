@@ -2,9 +2,10 @@
 #![doc = include_str!("../README.md")]
 // [cite:engine_pde]
 
-mod biharmonic;
 /// Boundary condition specifications and ghost-cell lookup helpers for 1D, 2D, and 3D grids.
 pub mod boundary;
+/// Stack-allocated `#![no_std]` error types for continuum PDE and SPDE solvers.
+pub mod error;
 /// `#![no_std]` zero-allocation radix-2 1D/2D Cooley-Tukey FFT and Orszag 2/3-rule dealiasing.
 pub mod fft;
 mod fourier_kernels;
@@ -20,17 +21,25 @@ pub mod spde_stencil;
 pub mod stencil;
 
 pub use boundary::BoundaryCondition;
-pub use fft::{dealias_1d_spectrum, dealias_2d_spectrum, fft_1d_inplace, fft_2d_inplace};
+pub use error::PdeError;
+pub use fft::{
+    dealias_1d_spectrum, dealias_2d_spectrum, fft_1d_inplace, fft_2d_inplace,
+    try_dealias_1d_spectrum, try_dealias_2d_spectrum, try_fft_1d_inplace, try_fft_2d_inplace,
+};
 pub use fourier_stepper::SemiImplicitFourierStepper;
 pub use fused_stepper::FusedStencilStepper;
 pub use math_memory::{ArenaScope, ByteArena, SolverWorkspace};
 pub use math_rng::{BASE_SEED, OxidizeRng};
 pub use spde_noise::{
     SpdeNoiseKind, inject_additive_noise_1d, inject_additive_noise_2d,
-    inject_conserved_flux_noise_1d, inject_conserved_flux_noise_2d,
+    inject_conserved_flux_noise_1d, inject_conserved_flux_noise_2d, try_inject_additive_noise_1d,
+    try_inject_additive_noise_2d, try_inject_conserved_flux_noise_1d,
+    try_inject_conserved_flux_noise_2d,
 };
 pub use spde_stencil::{ExplicitSpdeStencilStepper, SplitStepSpdeStencilStepper};
 pub use stencil::{StencilNeighbors3D, StencilOperators};
 
 #[cfg(test)]
 mod serde_tests;
+#[cfg(test)]
+mod tests;

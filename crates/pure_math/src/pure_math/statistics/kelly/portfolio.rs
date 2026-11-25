@@ -3,7 +3,7 @@
 
 use crate::error::KellyError;
 use engine_linalg::{cholesky_factor, cholesky_solve_factored, mat_idx};
-use math_memory::{ArenaLayout, OwnedByteArena};
+use math_memory::{ArenaError, ArenaLayout, OwnedByteArena};
 use nalgebra::DMatrix;
 
 const CHOL_PIVOT_TOL: f64 = 1e-12;
@@ -58,19 +58,25 @@ impl PortfolioKellyWorkspace {
     /// Allocates reusable scratch storage for portfolios up to `max_assets` legs.
     #[verified_engine::verified]
     pub fn with_capacity(max_assets: usize) -> Self {
+        Self::try_with_capacity(max_assets).expect("PortfolioKellyWorkspace::with_capacity failed")
+    }
+
+    /// Fallibly allocates reusable scratch storage for portfolios up to `max_assets` legs.
+    #[verified_engine::verified]
+    pub fn try_with_capacity(max_assets: usize) -> Result<Self, ArenaError> {
         let n = max_assets.max(1);
-        let nn = n.checked_mul(n).expect("kelly matrix capacity overflow");
+        let nn = n.checked_mul(n).ok_or(ArenaError::CapacityOverflow {
+            elem_size: core::mem::size_of::<f64>(),
+            count: n,
+        })?;
         let mut layout = ArenaLayout::new();
-        let _ = layout.add_slice::<f64>(nn).expect("kelly sym_flat");
-        let _ = layout.add_slice::<f64>(nn).expect("kelly chol_flat");
-        let _ = layout.add_slice::<f64>(n).expect("kelly excess");
-        let _ = layout.add_slice::<f64>(n).expect("kelly grad");
-        let _ = layout.add_slice::<f64>(n).expect("kelly candidate");
-        let _ = layout.add_slice::<f64>(n).expect("kelly sort_scratch");
-        Self {
-            arena: OwnedByteArena::with_capacity(layout.total_bytes()),
-            max_assets: n,
+        for count in [nn, nn, n, n, n, n] {
+            let _ = layout.add_slice::<f64>(count)?;
         }
+        Ok(Self {
+            arena: OwnedByteArena::try_with_capacity(layout.total_bytes())?,
+            max_assets: n,
+        })
     }
 
     pub(crate) fn check_capacity(&self, n: usize) -> Result<(), KellyError> {

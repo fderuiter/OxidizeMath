@@ -165,6 +165,9 @@ impl Error {
     fn classify(&self) -> Option<InnerErrorRef<'_>> {
         match self {
             Self::Arena(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Diagnostic(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Diffeq(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Pde(err) => Some(InnerErrorRef::Domain(err)),
             Self::Eval(err) => Some(InnerErrorRef::Domain(err)),
             Self::Fit(err) => Some(InnerErrorRef::Domain(err)),
             Self::Glsl(err) => Some(InnerErrorRef::Domain(err)),

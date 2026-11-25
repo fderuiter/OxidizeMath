@@ -9,6 +9,8 @@ math_memory = { path = "../crates/00_foundation/math_memory", features = ["alloc
 engine_linalg = { path = "../crates/02_engines/engine_linalg", features = ["alloc", "std"] }
 math_commons = { path = "../crates/math_commons" }
 diagnostics = { path = "../crates/diagnostics" }
+engine_diffeq = { path = "../crates/engine_diffeq" }
+engine_pde = { path = "../crates/engine_pde" }
 pure_math = { path = "../crates/pure_math", optional = true }
 domain_applied = { path = "../crates/domain_applied", optional = true }
 domain_ai = { path = "../crates/domain_ai", optional = true }
@@ -43,6 +45,8 @@ physics = ["applied", "pure_math", "dep:domain_physics"]
 serde = [
     "math_memory/serde",
     "engine_linalg/serde",
+    "engine_diffeq/serde",
+    "engine_pde/serde",
     "math_commons/serde",
     "pure_math?/serde",
     "nalgebra?/serde-serialize",

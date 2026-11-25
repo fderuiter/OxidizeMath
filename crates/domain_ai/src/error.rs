@@ -112,6 +112,10 @@ pub enum AIError {
     #[error("{0}")]
     Linalg(#[from] pure_math::error::LinalgError),
 
+    /// Foundational `#![no_std]` differential-equation solver error.
+    #[error("{0}")]
+    Diffeq(#[from] engine_diffeq::DiffeqError),
+
     /// Foundational curve-fitting solver error.
     #[error("{0}")]
     Fit(#[from] math_commons::error::FitError),
@@ -123,6 +127,10 @@ pub enum AIError {
     /// Upstream numerical linear algebra error.
     #[error("{0}")]
     LinearAlgebra(#[from] pure_math::error::LinearAlgebraError),
+
+    /// Foundational `#![no_std]` byte-arena layout or capacity error.
+    #[error("{0}")]
+    Arena(#[from] math_memory::ArenaError),
 }
 
 /// Standard result alias used across `domain_ai` computations.
@@ -134,9 +142,11 @@ impl Diagnostic for AIError {
         match self {
             Self::Math(err) => err.severity(),
             Self::Linalg(err) => err.severity(),
+            Self::Diffeq(err) => err.severity(),
             Self::Fit(err) => err.severity(),
             Self::Optimization(err) => err.severity(),
             Self::LinearAlgebra(err) => err.severity(),
+            Self::Arena(err) => err.severity(),
             _ => Severity::Error,
         }
     }
@@ -146,9 +156,11 @@ impl Diagnostic for AIError {
         match self {
             Self::Math(err) => err.visit_fields(visitor),
             Self::Linalg(err) => err.visit_fields(visitor),
+            Self::Diffeq(err) => err.visit_fields(visitor),
             Self::Fit(err) => err.visit_fields(visitor),
             Self::Optimization(err) => err.visit_fields(visitor),
             Self::LinearAlgebra(err) => err.visit_fields(visitor),
+            Self::Arena(err) => err.visit_fields(visitor),
             Self::CellMaskLengthMismatch { expected, actual } => {
                 visitor.record_str("error_type", "AIError");
                 visitor.record_display("description", self);

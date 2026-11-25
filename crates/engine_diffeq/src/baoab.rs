@@ -1,6 +1,9 @@
 // [cite:engine_diffeq]
+use crate::error::DiffeqError;
 use crate::system::LangevinSystem;
-use math_commons::math_kernel::types::{Scalar, SolverWorkspace, fill_standard_normal};
+use math_commons::math_kernel::types::{
+    Scalar, SolverWorkspace, fill_standard_normal, try_take_workspace_slice,
+};
 use rand_core::RngCore;
 
 /// Physical parameters for underdamped Langevin dynamics
@@ -138,35 +141,50 @@ impl<T: Scalar> BaoabLangevinSolver<T> {
         2 * dim
     }
 
-    /// Advances `(q, p)` by one symmetric `B-A-O-A-B` step drawing Gaussian impulses from `rng`.
+    /// Fallibly advances `(q, p)` by one symmetric `B-A-O-A-B` step drawing Gaussian impulses from `rng`.
+    ///
+    /// # Errors
+    /// Returns [`DiffeqError::BufferTooSmall`] if `q` or `p` has length `< system.dim()`, or
+    /// [`DiffeqError::Math`] if `workspace` has fewer than `2 * system.dim()` scalars.
     #[verified_engine::verified]
-    pub fn step<S: LangevinSystem<T> + ?Sized, R: RngCore + ?Sized>(
+    pub fn try_step<S: LangevinSystem<T> + ?Sized, R: RngCore + ?Sized>(
         &self,
         system: &S,
         q: &mut [T],
         p: &mut [T],
         workspace: &mut impl SolverWorkspace,
         rng: &mut R,
-    ) {
+    ) -> Result<(), DiffeqError> {
         let d = system.dim();
-        assert!(q.len() >= d && p.len() >= d);
+        if q.len() < d {
+            return Err(DiffeqError::BufferTooSmall {
+                buffer: "q",
+                required: d,
+                actual: q.len(),
+            });
+        }
+        if p.len() < d {
+            return Err(DiffeqError::BufferTooSmall {
+                buffer: "p",
+                required: d,
+                actual: p.len(),
+            });
+        }
 
         let mut ws = workspace.reborrow();
-        let grad = ws.take_slice::<T>(d);
-        let noise = ws.take_slice::<T>(d);
+        let grad = try_take_workspace_slice(&mut ws, d)?;
+        let noise = try_take_workspace_slice(&mut ws, d)?;
+        debug_assert_eq!(grad.len(), d);
 
-        // B: half-step momentum kick
         system.grad_potential(q, grad);
         for (pi, &gi) in p.iter_mut().take(d).zip(grad.iter()) {
             *pi -= self.half_dt * gi;
         }
 
-        // A: half-step position drift
         for (qi, &pi) in q.iter_mut().take(d).zip(p.iter()) {
             *qi += self.half_dt_inv_mass * pi;
         }
 
-        // O: exact Ornstein-Uhlenbeck momentum thermostat
         if self.ou_noise_scale > T::ZERO {
             fill_standard_normal(noise, rng);
             for (pi, &ni) in p.iter_mut().take(d).zip(noise.iter()) {
@@ -178,16 +196,32 @@ impl<T: Scalar> BaoabLangevinSolver<T> {
             }
         }
 
-        // A: second half-step position drift
         for (qi, &pi) in q.iter_mut().take(d).zip(p.iter()) {
             *qi += self.half_dt_inv_mass * pi;
         }
 
-        // B: second half-step momentum kick
         system.grad_potential(q, grad);
         for (pi, &gi) in p.iter_mut().take(d).zip(grad.iter()) {
             *pi -= self.half_dt * gi;
         }
+        Ok(())
+    }
+
+    /// Advances `(q, p)` by one symmetric `B-A-O-A-B` step drawing Gaussian impulses from `rng`.
+    ///
+    /// # Panics
+    /// Panics if `q`, `p`, or `workspace` is undersized; prefer [`Self::try_step`] for fallible callers.
+    #[verified_engine::verified]
+    pub fn step<S: LangevinSystem<T> + ?Sized, R: RngCore + ?Sized>(
+        &self,
+        system: &S,
+        q: &mut [T],
+        p: &mut [T],
+        workspace: &mut impl SolverWorkspace,
+        rng: &mut R,
+    ) {
+        self.try_step(system, q, p, workspace, rng)
+            .expect("BaoabLangevinSolver::step preconditions violated");
     }
 }
 

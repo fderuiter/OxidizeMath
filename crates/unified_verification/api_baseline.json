@@ -90,6 +90,9 @@
       "signature": "impl < 'a > ArenaScope < 'a > { pub fn take_slice < T : Pod + Zeroable > (& mut self , _ : usize) -> & 'a mut [T] }"
     },
     {
+      "signature": "impl < 'a > ArenaScope < 'a > { pub fn try_take_slice < T : Pod + Zeroable > (& mut self , _ : usize ,) -> Result < & 'a mut [T] , ArenaError > }"
+    },
+    {
       "signature": "impl < 'a > ByteArena < 'a > { pub const fn capacity (& self) -> usize }"
     },
     {
@@ -261,6 +264,12 @@
       "signature": "impl OwnedByteArena { pub fn region_mut < T : Pod + Zeroable > (& mut self , _ : ArenaRegion < T >) -> & mut [T] }"
     },
     {
+      "signature": "impl OwnedByteArena { pub fn try_ensure_capacity (& mut self , _ : usize) -> Result < () , ArenaError > }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn try_with_capacity (_ : usize) -> Result < Self , ArenaError > }"
+    },
+    {
       "signature": "impl OwnedByteArena { pub fn with_capacity (_ : usize) -> Self }"
     },
     {
@@ -291,6 +300,12 @@
     },
     {
       "signature": "impl < 'a > BitSlice < 'a > { pub const fn words (& self) -> & [u64] }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub fn checked_get (& self , _ : usize) -> Result < bool , ArenaError > }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub fn checked_set (& mut self , _ : usize , _ : bool) -> Result < () , ArenaError > }"
     },
     {
       "signature": "impl < 'a > BitSlice < 'a > { pub fn clear_all (& mut self) }"
@@ -435,6 +450,9 @@
       "signature": "pub use rng :: OxidizeRng"
     },
     {
+      "signature": "pub use scalar :: RngError"
+    },
+    {
       "signature": "pub use scalar :: RngScalar"
     },
     {
@@ -460,6 +478,12 @@
     },
     {
       "signature": "pub use scalar :: sample_symmetric_open"
+    },
+    {
+      "signature": "pub use scalar :: try_sample_bounded_u64"
+    },
+    {
+      "signature": "pub use scalar :: try_sample_bounded_usize"
     },
     {
       "signature": "pub use scramble :: dyadic_53_to_shifted_open"
@@ -869,6 +893,9 @@
   ],
   "crates/00_foundation/math_rng/src/scalar.rs": [
     {
+      "signature": "pub enum RngError"
+    },
+    {
       "signature": "pub fn fill_cranley_patterson_shifts < T : RngScalar , R : RngCore + ? Sized > (_ : & mut [T] , _ : & mut R ,)"
     },
     {
@@ -891,6 +918,12 @@
     },
     {
       "signature": "pub fn sample_symmetric_open < T : RngScalar , R : RngCore + ? Sized > (_ : & mut R) -> T"
+    },
+    {
+      "signature": "pub fn try_sample_bounded_u64 < R : RngCore + ? Sized > (_ : & mut R , _ : u64 ,) -> Result < u64 , RngError >"
+    },
+    {
+      "signature": "pub fn try_sample_bounded_usize < R : RngCore + ? Sized > (_ : & mut R , _ : usize ,) -> Result < usize , RngError >"
     },
     {
       "signature": "pub trait RngScalar : Copy + PartialOrd + private :: Sealed"
@@ -1515,6 +1548,12 @@
     },
     {
       "signature": "impl DiagnosticBus { pub fn register_listener < F > (& self , _ : F) where F : Fn (& DiagnosticEvent) + Send + Sync + 'static , }"
+    },
+    {
+      "signature": "impl DiagnosticBus { pub fn try_emit_diagnostic_with_source < D : Diagnostic + ? Sized > (& self , _ : & str , _ : & D ,) -> Result < () , DiagnosticError > }"
+    },
+    {
+      "signature": "pub enum DiagnosticError"
     },
     {
       "signature": "pub fn global_bus () -> & 'static DiagnosticBus"
@@ -2374,6 +2413,9 @@
       "signature": "impl DenseRlWorkspace { pub fn theta_logits_mut (& mut self) -> & mut [[f64 ; 4]] }"
     },
     {
+      "signature": "impl DenseRlWorkspace { pub fn try_new (_ : usize , _ : usize , _ : usize , _ : Option < u64 > ,) -> Result < Self , ArenaError > }"
+    },
+    {
       "signature": "pub const ALL_MOVES : [Move ; 4]"
     },
     {
@@ -2410,6 +2452,9 @@
     },
     {
       "signature": "pub fn step_vp_sde_in_place < R : Rng + ? Sized > (_ : & mut DMatrix < f64 > , _ : f64 , _ : f64 , _ : & mut R ,)"
+    },
+    {
+      "signature": "pub fn try_step_vp_sde_in_place < R : Rng + ? Sized > (_ : & mut DMatrix < f64 > , _ : f64 , _ : f64 , _ : & mut R ,) -> Result < () , crate :: error :: AIError >"
     },
     {
       "signature": "pub struct NoiseSchedule"
@@ -2493,6 +2538,9 @@
   "crates/domain_ai/src/ai/sds/training.rs": [
     {
       "signature": "impl AdamOptimizer { pub fn new (_ : PositiveFloat) -> Self }"
+    },
+    {
+      "signature": "impl AdamOptimizer { pub fn try_new (_ : PositiveFloat) -> Result < Self , AIError > }"
     },
     {
       "signature": "impl SgdOptimizer { pub fn new (_ : PositiveFloat , _ : UnitInterval) -> Self }"
@@ -5427,6 +5475,9 @@
       "signature": "pub fn calculate_win_ratio (_ : i32 , _ : i32) -> f64"
     },
     {
+      "signature": "pub fn try_calculate_statistics (_ : i32 , _ : i32 ,) -> Result < Option < WinRatioStats > , math_commons :: error :: MathError >"
+    },
+    {
       "signature": "pub struct HigherIsBetter"
     },
     {
@@ -5502,6 +5553,9 @@
     },
     {
       "signature": "impl PowerSweepWorkspace { pub fn set_point (& mut self , _ : usize , _ : SampleSizePowerPoint) }"
+    },
+    {
+      "signature": "impl PowerSweepWorkspace { pub fn try_with_capacity (_ : usize , _ : usize ,) -> Result < Self , math_memory :: ArenaError > }"
     },
     {
       "signature": "impl PowerSweepWorkspace { pub fn with_capacity (_ : usize , _ : usize) -> Self }"
@@ -5935,7 +5989,13 @@
       "signature": "impl FiniteDifference2D { pub fn step_advected_fused < const N : usize , K : ReactionKinetics < N > > (& self , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : & [f64] , _ : & [f64] , _ : f64 , _ : [f64 ; N] , _ : & K ,) }"
     },
     {
+      "signature": "impl FiniteDifference2D { pub fn try_step_advected_fused < const N : usize , K : ReactionKinetics < N > > (& self , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : & [f64] , _ : & [f64] , _ : f64 , _ : [f64 ; N] , _ : & K ,) -> Result < () , crate :: biology :: reaction_diffusion :: ReactionDiffusionError > }"
+    },
+    {
       "signature": "impl MaskedFiniteDifference2D { pub fn step_advected_fused < const N : usize , K : ReactionKinetics < N > > (& self , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : & [f64] , _ : & [f64] , _ : f64 , _ : [f64 ; N] , _ : & K ,) }"
+    },
+    {
+      "signature": "impl MaskedFiniteDifference2D { pub fn try_step_advected_fused < const N : usize , K : ReactionKinetics < N > > (& self , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : & [f64] , _ : & [f64] , _ : f64 , _ : [f64 ; N] , _ : & K ,) -> Result < () , crate :: biology :: reaction_diffusion :: ReactionDiffusionError > }"
     },
     {
       "signature": "pub trait AdvectedSpatialDiffusion < const N : usize > : SpatialDiffusion < N >"
@@ -6024,6 +6084,9 @@
       "signature": "impl CellMask2D { pub fn stamp_microfluidic_maze (& mut self) }"
     },
     {
+      "signature": "impl CellMask2D { pub fn try_new (_ : usize , _ : usize ,) -> Result < Self , crate :: biology :: reaction_diffusion :: ReactionDiffusionError > }"
+    },
+    {
       "signature": "impl CellMask2D { pub fn width (& self) -> usize }"
     },
     {
@@ -6074,6 +6137,12 @@
     },
     {
       "signature": "impl FiniteDifference3D { pub fn new (_ : Dimension , _ : Dimension , _ : Dimension , _ : StepSize , _ : StepSize , _ : StepSize ,) -> Self }"
+    },
+    {
+      "signature": "impl FiniteDifference3D { pub fn try_isotropic (_ : Dimension , _ : Dimension , _ : Dimension , _ : StepSize ,) -> Result < Self , crate :: biology :: reaction_diffusion :: ReactionDiffusionError > }"
+    },
+    {
+      "signature": "impl FiniteDifference3D { pub fn try_new (_ : Dimension , _ : Dimension , _ : Dimension , _ : StepSize , _ : StepSize , _ : StepSize ,) -> Result < Self , crate :: biology :: reaction_diffusion :: ReactionDiffusionError > }"
     },
     {
       "signature": "pub struct FiniteDifference3D"
@@ -6799,6 +6868,9 @@
   "crates/domain_biology/src/biology/morphogenesis/advection.rs": [
     {
       "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : AdvectedSpatialDiffusion < N > > TuringSystem < N , K , D , FusedEulerSolver > { pub fn step_advected (& mut self , _ : f64 , _ : & [f64] , _ : & [f64]) }"
+    },
+    {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : AdvectedSpatialDiffusion < N > > TuringSystem < N , K , D , FusedEulerSolver > { pub fn try_step_advected (& mut self , _ : f64 , _ : & [f64] , _ : & [f64] ,) -> Result < () , crate :: biology :: reaction_diffusion :: ReactionDiffusionError > }"
     }
   ],
   "crates/domain_biology/src/biology/morphogenesis/mod.rs": [
@@ -6913,6 +6985,9 @@
   "crates/domain_biology/src/biology/morphogenesis/solvers.rs": [
     {
       "signature": "impl < 'a , const N : usize , K , D > FusedEulerEvolution < 'a , N , K , D > { pub fn new (_ : FusedEulerSolver , _ : & 'a TuringDynamics < 'a , N , K , D >) -> Self }"
+    },
+    {
+      "signature": "impl < 'a , const N : usize , K , D > FusedEulerEvolution < 'a , N , K , D > { pub fn try_with_stochastic_noise (_ : FusedEulerSolver , _ : & 'a TuringDynamics < 'a , N , K , D > , _ : f64 , _ : f64 ,) -> Result < Self , EvolutionError > }"
     },
     {
       "signature": "impl < 'a , const N : usize , K , D > FusedEulerEvolution < 'a , N , K , D > { pub fn with_stochastic_noise (_ : FusedEulerSolver , _ : & 'a TuringDynamics < 'a , N , K , D > , _ : f64 , _ : f64 ,) -> Self }"
@@ -7057,6 +7132,9 @@
     },
     {
       "signature": "impl CorticalSheetRunner { pub fn thickness_weights (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl CorticalSheetRunner { pub fn try_set_laplacian (& mut self , _ : CotangentLaplacian ,) -> Result < () , math_commons :: error :: MathError > }"
     },
     {
       "signature": "impl CorticalSheetRunner { pub fn update_thickness_map (& mut self , _ : & [f64] , _ : f64 ,) }"
@@ -9331,25 +9409,22 @@
       "signature": "pub fn inject_velocity_jet < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > , _ : i32 , _ : i32 , _ : i32 , _ : f64 , _ : f64 ,)"
     },
     {
-      "signature": "pub fn project_obstacles_row_major_into < C : CollisionModel < 9 , D2Q9 > > (_ : & LatticeBoltzmannD2Q9 < C > , _ : & mut [bool] ,)"
-    },
-    {
-      "signature": "pub fn project_velocity_row_major_into < C : CollisionModel < 9 , D2Q9 > > (_ : & LatticeBoltzmannD2Q9 < C > , _ : & mut [f64] , _ : & mut [f64] ,)"
-    },
-    {
       "signature": "pub fn stamp_naca4_airfoil < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > , _ : & Naca4Airfoil ,)"
     },
     {
       "signature": "pub fn stamp_venturi_nozzle < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > , _ : f64 ,)"
     },
     {
-      "signature": "pub fn sync_obstacles_row_major < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > , _ : & [bool] ,)"
+      "signature": "pub fn try_compute_vorticity_into < C : CollisionModel < 9 , D2Q9 > > (_ : & LatticeBoltzmannD2Q9 < C > , _ : & mut [f64] ,) -> Result < () , crate :: error :: FluidError >"
     },
     {
       "signature": "pub struct AerodynamicCoefficients"
     },
     {
       "signature": "pub struct Naca4Airfoil"
+    },
+    {
+      "signature": "pub use projection :: *"
     }
   ],
   "crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/algorithms.rs": [
@@ -9385,6 +9460,9 @@
     },
     {
       "signature": "impl < const Q : usize , L : Lattice2D < Q > , C : CollisionModel < Q , L > > LatticeBoltzmann < Q , L , C > { pub fn step (& mut self) }"
+    },
+    {
+      "signature": "impl < const Q : usize , L : Lattice2D < Q > , C : CollisionModel < Q , L > > LatticeBoltzmann < Q , L , C > { pub fn try_new_with_model (_ : usize , _ : usize , _ : C ,) -> Result < Self , crate :: error :: FluidError > }"
     },
     {
       "signature": "impl < const Q : usize , L : Lattice2D < Q > , C : CollisionModel < Q , L > > LatticeBoltzmann < Q , L , C > { pub fn width (& self) -> usize }"
@@ -9628,6 +9706,12 @@
     },
     {
       "signature": "impl FluidProperties { pub fn new (_ : f64 , _ : f64) -> Result < Self , FluidError > }"
+    },
+    {
+      "signature": "impl FluidProperties { pub fn try_air () -> Result < Self , FluidError > }"
+    },
+    {
+      "signature": "impl FluidProperties { pub fn try_water () -> Result < Self , FluidError > }"
     },
     {
       "signature": "impl FluidProperties { pub fn water () -> Self }"
@@ -10644,6 +10728,9 @@
       "signature": "pub fn sample_shepp_logan_tissue (_ : f64 , _ : f64) -> TissueParameters"
     },
     {
+      "signature": "pub fn try_fill_shepp_logan_grid (_ : usize , _ : usize , _ : & mut [f64] , _ : & mut [f64] , _ : & mut [f64] ,) -> Result < () , math_commons :: error :: MathError >"
+    },
+    {
       "signature": "pub struct SheppLoganEllipse"
     },
     {
@@ -10696,6 +10783,15 @@
       "signature": "impl Fft2dWorkspace { pub fn simulate_signal_2d_into (& mut self , _ : & DMatrix < Complex < f64 > > , _ : & mut DMatrix < Complex < f64 > > ,) }"
     },
     {
+      "signature": "impl Fft2dWorkspace { pub fn try_filter_kspace_2d_into (& mut self , _ : & DMatrix < Complex < f64 > > , _ : & [f64] , _ : & [Complex < f64 >] , _ : bool , _ : & mut [Complex < f64 >] , _ : & mut DMatrix < Complex < f64 > > ,) -> Result < () , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn try_forward_transposed_in_place (& mut self , _ : & mut DMatrix < Complex < f64 > > , _ : & mut [Complex < f64 >] ,) -> Result < () , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Fft2dWorkspace { pub fn try_new (_ : usize , _ : usize) -> Result < Self , ArenaError > }"
+    },
+    {
       "signature": "pub fn fftshift_2d_into (_ : & DMatrix < Complex < f64 > > , _ : & mut DMatrix < Complex < f64 > >)"
     },
     {
@@ -10706,6 +10802,12 @@
     },
     {
       "signature": "pub fn simulate_signal_2d (_ : & DMatrix < Complex < f64 > >) -> DMatrix < Complex < f64 > >"
+    },
+    {
+      "signature": "pub fn try_fftshift_2d_into (_ : & DMatrix < Complex < f64 > > , _ : & mut DMatrix < Complex < f64 > > ,) -> Result < () , math_commons :: error :: MathError >"
+    },
+    {
+      "signature": "pub fn try_ifftshift_2d_into (_ : & DMatrix < Complex < f64 > > , _ : & mut DMatrix < Complex < f64 > > ,) -> Result < () , math_commons :: error :: MathError >"
     },
     {
       "signature": "pub struct Fft2dWorkspace"
@@ -11138,6 +11240,12 @@
       "signature": "impl RayFanWorkspace { pub const fn ray_count (& self) -> usize }"
     },
     {
+      "signature": "impl RayFanWorkspace { pub fn checked_ray (& self , _ : usize) -> Result < TracedRayMeta , ArenaError > }"
+    },
+    {
+      "signature": "impl RayFanWorkspace { pub fn checked_ray_vertices (& self , _ : usize) -> Result < & [[f64 ; 2]] , ArenaError > }"
+    },
+    {
       "signature": "impl RayFanWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
     },
     {
@@ -11148,6 +11256,9 @@
     },
     {
       "signature": "impl RayFanWorkspace { pub fn rays (& self) -> impl ExactSizeIterator < Item = TracedRayMeta > + '_ }"
+    },
+    {
+      "signature": "impl RayFanWorkspace { pub fn try_new (_ : usize , _ : usize) -> Result < Self , ArenaError > }"
     },
     {
       "signature": "pub struct RayFanWorkspace"
@@ -11566,6 +11677,9 @@
       "signature": "pub use schrodinger :: transmission_probability"
     },
     {
+      "signature": "pub use schrodinger :: try_evolve_state_in_place"
+    },
+    {
       "signature": "pub use spin :: set_spin_bloch_angles_in_place"
     },
     {
@@ -11652,6 +11766,9 @@
     },
     {
       "signature": "pub fn transmission_probability (_ : & QuantumState , _ : usize) -> f64"
+    },
+    {
+      "signature": "pub fn try_evolve_state_in_place (_ : & mut QuantumState , _ : & QuantumOperator , _ : & mut DVector < Complex < f64 > > ,) -> Result < () , crate :: physics :: quantum :: QuantumError >"
     }
   ],
   "crates/domain_physics/src/physics/quantum/spin.rs": [
@@ -11697,6 +11814,12 @@
       "signature": "impl CrankNicolsonPropagator1D { pub fn new (_ : & TridiagonalHamiltonian1D , _ : f64 , _ : f64) -> Self }"
     },
     {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn try_evolve_in_place (& mut self , _ : & mut QuantumState) -> Result < () , QuantumError > }"
+    },
+    {
+      "signature": "impl CrankNicolsonPropagator1D { pub fn try_evolve_substeps_in_place (& mut self , _ : & mut QuantumState , _ : usize ,) -> Result < () , QuantumError > }"
+    },
+    {
       "signature": "impl CrankNicolsonPropagator1D { pub fn with_capacity (_ : usize) -> Self }"
     },
     {
@@ -11724,6 +11847,12 @@
       "signature": "impl TridiagonalHamiltonian1D { pub fn off_diagonal (& self) -> & [f64] }"
     },
     {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn try_expectation_value (& self , _ : & QuantumState) -> Result < f64 , QuantumError > }"
+    },
+    {
+      "signature": "impl TridiagonalHamiltonian1D { pub fn try_new (_ : Vec < f64 > , _ : Vec < f64 >) -> Result < Self , QuantumError > }"
+    },
+    {
       "signature": "impl TridiagonalHamiltonian1D { pub fn update_from_potential (& mut self , _ : & DVector < f64 > , _ : f64 , _ : f64 , _ : f64 ,) }"
     },
     {
@@ -11733,25 +11862,16 @@
       "signature": "impl TridiagonalHamiltonian1D { pub fn with_capacity (_ : usize) -> Self }"
     },
     {
-      "signature": "impl TridiagonalWorkspace { pub fn capacity (& self) -> usize }"
-    },
-    {
-      "signature": "impl TridiagonalWorkspace { pub fn ensure_capacity (& mut self , _ : usize) }"
-    },
-    {
-      "signature": "impl TridiagonalWorkspace { pub fn with_capacity (_ : usize) -> Self }"
-    },
-    {
       "signature": "pub struct CrankNicolsonPropagator1D"
     },
     {
       "signature": "pub struct TridiagonalHamiltonian1D"
     },
     {
-      "signature": "pub struct TridiagonalWorkspace"
+      "signature": "pub use crate :: physics :: quantum :: crank_nicolson :: CrankNicolson1D"
     },
     {
-      "signature": "pub use crate :: physics :: quantum :: crank_nicolson :: CrankNicolson1D"
+      "signature": "pub use workspace :: TridiagonalWorkspace"
     }
   ],
   "crates/domain_physics/src/physics/quantum/types.rs": [
@@ -11793,6 +11913,9 @@
     },
     {
       "signature": "impl QuantumState { pub fn spin_zero () -> Self }"
+    },
+    {
+      "signature": "impl QuantumState { pub fn try_probability_density_in_place (& self , _ : & mut [f64] ,) -> Result < () , crate :: physics :: quantum :: QuantumError > }"
     },
     {
       "signature": "pub struct QuantumOperator"
@@ -12101,7 +12224,16 @@
       "signature": "impl AllenCahn2D { pub fn try_new (_ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Result < Self , StatMechError > }"
     },
     {
+      "signature": "impl AllenCahn2D { pub fn try_step_explicit < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R ,) -> Result < () , StatMechError > }"
+    },
+    {
+      "signature": "impl AllenCahn2D { pub fn try_step_split < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : usize , _ : & mut R ,) -> Result < () , StatMechError > }"
+    },
+    {
       "signature": "pub fn ginzburg_landau_free_energy_2d (_ : & [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> f64"
+    },
+    {
+      "signature": "pub fn try_ginzburg_landau_free_energy_2d (_ : & [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Result < f64 , StatMechError >"
     },
     {
       "signature": "pub struct AllenCahn2D"
@@ -12133,7 +12265,16 @@
       "signature": "impl CahnHilliard2D { pub fn step_stencil < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R) }"
     },
     {
+      "signature": "impl CahnHilliard2D { pub fn try_init_spinodal_perturbation < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : f64 , _ : & mut R ,) -> Result < () , StatMechError > }"
+    },
+    {
       "signature": "impl CahnHilliard2D { pub fn try_new (_ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Result < Self , StatMechError > }"
+    },
+    {
+      "signature": "impl CahnHilliard2D { pub fn try_step_fourier_dealiased < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R ,) -> Result < () , StatMechError > }"
+    },
+    {
+      "signature": "impl CahnHilliard2D { pub fn try_step_stencil < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R ,) -> Result < () , StatMechError > }"
     },
     {
       "signature": "pub struct CahnHilliard2D"
@@ -12157,6 +12298,12 @@
     },
     {
       "signature": "pub fn step_underdamped_langevin_1d < R : rand_core :: RngCore + ? Sized > (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut R ,) -> (f64 , f64)"
+    },
+    {
+      "signature": "pub fn try_step_overdamped_brownian_1d < R : rand_core :: RngCore + ? Sized > (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut R ,) -> Result < f64 , StatMechError >"
+    },
+    {
+      "signature": "pub fn try_step_underdamped_langevin_1d < R : rand_core :: RngCore + ? Sized > (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut R ,) -> Result < (f64 , f64) , StatMechError >"
     }
   ],
   "crates/domain_physics/src/physics/stat_mech/edwards_wilkinson.rs": [
@@ -12185,6 +12332,12 @@
       "signature": "impl EdwardsWilkinson1D { pub fn try_new (_ : usize , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Result < Self , StatMechError > }"
     },
     {
+      "signature": "impl EdwardsWilkinson1D { pub fn try_step_fourier < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R ,) -> Result < () , StatMechError > }"
+    },
+    {
+      "signature": "impl EdwardsWilkinson1D { pub fn try_step_stencil < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R ,) -> Result < () , StatMechError > }"
+    },
+    {
       "signature": "impl EdwardsWilkinson2D { pub fn field (& self) -> & [f64] }"
     },
     {
@@ -12200,6 +12353,15 @@
       "signature": "impl EdwardsWilkinson2D { pub fn step_stencil < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R) }"
     },
     {
+      "signature": "impl EdwardsWilkinson2D { pub fn try_new (_ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Result < Self , StatMechError > }"
+    },
+    {
+      "signature": "impl EdwardsWilkinson2D { pub fn try_step_fourier < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R ,) -> Result < () , StatMechError > }"
+    },
+    {
+      "signature": "impl EdwardsWilkinson2D { pub fn try_step_stencil < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R ,) -> Result < () , StatMechError > }"
+    },
+    {
       "signature": "pub fn interface_roughness (_ : & [f64]) -> f64"
     },
     {
@@ -12207,6 +12369,9 @@
     },
     {
       "signature": "pub fn theoretical_steady_state_roughness_sq_1d (_ : f64 , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn try_theoretical_steady_state_roughness_sq_1d (_ : f64 , _ : f64 , _ : f64 ,) -> Result < f64 , StatMechError >"
     },
     {
       "signature": "pub struct EdwardsWilkinson1D"
@@ -12442,7 +12607,16 @@
       "signature": "impl KpzModel1D { pub fn step_stencil < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R) }"
     },
     {
+      "signature": "impl KpzModel1D { pub fn try_mean_slope_squared (& self) -> Result < f64 , StatMechError > }"
+    },
+    {
       "signature": "impl KpzModel1D { pub fn try_new (_ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Result < Self , StatMechError > }"
+    },
+    {
+      "signature": "impl KpzModel1D { pub fn try_step_fourier_dealiased < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R ,) -> Result < () , StatMechError > }"
+    },
+    {
+      "signature": "impl KpzModel1D { pub fn try_step_stencil < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R ,) -> Result < () , StatMechError > }"
     },
     {
       "signature": "impl KpzModel2D { pub fn field (& self) -> & [f64] }"
@@ -12466,6 +12640,15 @@
       "signature": "impl KpzModel2D { pub fn step_stencil < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R) }"
     },
     {
+      "signature": "impl KpzModel2D { pub fn try_new (_ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition ,) -> Result < Self , StatMechError > }"
+    },
+    {
+      "signature": "impl KpzModel2D { pub fn try_step_fourier_dealiased < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R ,) -> Result < () , StatMechError > }"
+    },
+    {
+      "signature": "impl KpzModel2D { pub fn try_step_stencil < R : RngCore + ? Sized > (& mut self , _ : f64 , _ : & mut R ,) -> Result < () , StatMechError > }"
+    },
+    {
       "signature": "pub struct KpzModel1D"
     },
     {
@@ -12481,6 +12664,9 @@
     },
     {
       "signature": "pub use allen_cahn :: ginzburg_landau_free_energy_2d"
+    },
+    {
+      "signature": "pub use allen_cahn :: try_ginzburg_landau_free_energy_2d"
     },
     {
       "signature": "pub use cahn_hilliard :: CahnHilliard2D"
@@ -12499,6 +12685,9 @@
     },
     {
       "signature": "pub use edwards_wilkinson :: theoretical_steady_state_roughness_sq_1d"
+    },
+    {
+      "signature": "pub use edwards_wilkinson :: try_theoretical_steady_state_roughness_sq_1d"
     },
     {
       "signature": "pub use graph_ising :: GraphSpinSystem"
@@ -12741,10 +12930,24 @@
       "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn try_new (_ : BaoabParams < T >) -> Result < Self , math_commons :: error :: MathError > }"
     },
     {
+      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn try_step < S : LangevinSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : & mut [T] , _ : & mut [T] , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , DiffeqError > }"
+    },
+    {
       "signature": "pub struct BaoabLangevinSolver < T : Scalar >"
     },
     {
       "signature": "pub struct BaoabParams < T : Scalar >"
+    }
+  ],
+  "crates/engine_diffeq/src/error.rs": [
+    {
+      "signature": "impl DiffeqError { pub const fn code (& self) -> & 'static str }"
+    },
+    {
+      "signature": "impl DiffeqError { pub const fn error_type (& self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum DiffeqError"
     }
   ],
   "crates/engine_diffeq/src/euler_maruyama.rs": [
@@ -12764,6 +12967,12 @@
       "signature": "impl EulerMaruyamaSolver { pub fn step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut impl SolverWorkspace ,) }"
     },
     {
+      "signature": "impl EulerMaruyamaSolver { pub fn try_step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , DiffeqError > }"
+    },
+    {
+      "signature": "impl EulerMaruyamaSolver { pub fn try_step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut impl SolverWorkspace ,) -> Result < () , DiffeqError > }"
+    },
+    {
       "signature": "pub struct EulerMaruyamaSolver"
     }
   ],
@@ -12778,6 +12987,9 @@
     },
     {
       "signature": "pub use baoab :: BaoabParams"
+    },
+    {
+      "signature": "pub use error :: DiffeqError"
     },
     {
       "signature": "pub use euler_maruyama :: EulerMaruyamaSolver"
@@ -12817,6 +13029,12 @@
     },
     {
       "signature": "pub use system :: StochasticCalculus"
+    },
+    {
+      "signature": "pub use system :: eval_ito_effective_drift"
+    },
+    {
+      "signature": "pub use system :: try_eval_ito_effective_drift"
     }
   ],
   "crates/engine_diffeq/src/milstein.rs": [
@@ -12837,6 +13055,12 @@
     },
     {
       "signature": "impl MilsteinSolver { pub fn step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut impl SolverWorkspace ,) }"
+    },
+    {
+      "signature": "impl MilsteinSolver { pub fn try_step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , DiffeqError > }"
+    },
+    {
+      "signature": "impl MilsteinSolver { pub fn try_step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut impl SolverWorkspace ,) -> Result < () , DiffeqError > }"
     },
     {
       "signature": "pub struct MilsteinSolver"
@@ -12862,6 +13086,12 @@
       "signature": "impl Sriw1Solver { pub fn step_with_correlated_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & [T] , _ : & mut [T] , _ : & mut impl SolverWorkspace ,) }"
     },
     {
+      "signature": "impl Sriw1Solver { pub fn try_step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , DiffeqError > }"
+    },
+    {
+      "signature": "impl Sriw1Solver { pub fn try_step_with_correlated_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & [T] , _ : & mut [T] , _ : & mut impl SolverWorkspace ,) -> Result < () , DiffeqError > }"
+    },
+    {
       "signature": "pub struct CorrelatedWienerIncrement < T : Scalar >"
     },
     {
@@ -12877,6 +13107,9 @@
     },
     {
       "signature": "pub fn eval_ito_effective_drift < T : Scalar , S : SdeSystem < T > + ? Sized > (_ : & S , _ : StochasticCalculus , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut impl SolverWorkspace ,)"
+    },
+    {
+      "signature": "pub fn try_eval_ito_effective_drift < T : Scalar , S : SdeSystem < T > + ? Sized > (_ : & S , _ : StochasticCalculus , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut impl SolverWorkspace ,) -> Result < () , DiffeqError >"
     },
     {
       "signature": "pub trait LangevinSystem < T : Scalar >"
@@ -12923,6 +13156,17 @@
       "signature": "pub enum BoundaryCondition"
     }
   ],
+  "crates/engine_pde/src/error.rs": [
+    {
+      "signature": "impl PdeError { pub const fn code (& self) -> & 'static str }"
+    },
+    {
+      "signature": "impl PdeError { pub const fn error_type (& self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum PdeError"
+    }
+  ],
   "crates/engine_pde/src/fft.rs": [
     {
       "signature": "pub const fn signed_mode_index (_ : usize , _ : usize) -> isize"
@@ -12941,6 +13185,18 @@
     },
     {
       "signature": "pub fn mode_wavenumber (_ : usize , _ : usize , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn try_dealias_1d_spectrum (_ : & mut [f64] , _ : usize) -> Result < () , PdeError >"
+    },
+    {
+      "signature": "pub fn try_dealias_2d_spectrum (_ : & mut [f64] , _ : usize , _ : usize ,) -> Result < () , PdeError >"
+    },
+    {
+      "signature": "pub fn try_fft_1d_inplace (_ : & mut [f64] , _ : usize , _ : bool) -> Result < () , PdeError >"
+    },
+    {
+      "signature": "pub fn try_fft_2d_inplace (_ : & mut [f64] , _ : usize , _ : usize , _ : & mut [f64] , _ : bool ,) -> Result < () , PdeError >"
     }
   ],
   "crates/engine_pde/src/fourier_stepper.rs": [
@@ -12963,6 +13219,23 @@
       "signature": "impl SemiImplicitFourierStepper { pub fn step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut impl SolverWorkspace , _ : & mut R ,) }"
     },
     {
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_new_1d (_ : f64) -> Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_new_2d (_ : f64 , _ : f64) -> Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_cahn_hilliard_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , PdeError > }"
+    },
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , PdeError > }"
+    },
+    {
+      "signature": "pub struct SemiImplicitFourierStepper"
+    }
+  ],
+  "crates/engine_pde/src/fourier_stepper/kpz.rs": [
+    {
       "signature": "impl SemiImplicitFourierStepper { pub fn step_edwards_wilkinson_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : & mut impl SolverWorkspace , _ : & mut R ,) }"
     },
     {
@@ -12975,13 +13248,16 @@
       "signature": "impl SemiImplicitFourierStepper { pub fn step_kpz_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut impl SolverWorkspace , _ : & mut R ,) }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_new_1d (_ : f64) -> Result < Self , math_commons :: error :: MathError > }"
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_edwards_wilkinson_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , PdeError > }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_new_2d (_ : f64 , _ : f64) -> Result < Self , math_commons :: error :: MathError > }"
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_edwards_wilkinson_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , PdeError > }"
     },
     {
-      "signature": "pub struct SemiImplicitFourierStepper"
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_kpz_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , PdeError > }"
+    },
+    {
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_kpz_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , PdeError > }"
     }
   ],
   "crates/engine_pde/src/fused_stepper.rs": [
@@ -13024,6 +13300,9 @@
       "signature": "pub use boundary :: BoundaryCondition"
     },
     {
+      "signature": "pub use error :: PdeError"
+    },
+    {
       "signature": "pub use fft :: dealias_1d_spectrum"
     },
     {
@@ -13034,6 +13313,18 @@
     },
     {
       "signature": "pub use fft :: fft_2d_inplace"
+    },
+    {
+      "signature": "pub use fft :: try_dealias_1d_spectrum"
+    },
+    {
+      "signature": "pub use fft :: try_dealias_2d_spectrum"
+    },
+    {
+      "signature": "pub use fft :: try_fft_1d_inplace"
+    },
+    {
+      "signature": "pub use fft :: try_fft_2d_inplace"
     },
     {
       "signature": "pub use fourier_stepper :: SemiImplicitFourierStepper"
@@ -13072,6 +13363,18 @@
       "signature": "pub use spde_noise :: inject_conserved_flux_noise_2d"
     },
     {
+      "signature": "pub use spde_noise :: try_inject_additive_noise_1d"
+    },
+    {
+      "signature": "pub use spde_noise :: try_inject_additive_noise_2d"
+    },
+    {
+      "signature": "pub use spde_noise :: try_inject_conserved_flux_noise_1d"
+    },
+    {
+      "signature": "pub use spde_noise :: try_inject_conserved_flux_noise_2d"
+    },
+    {
       "signature": "pub use spde_stencil :: ExplicitSpdeStencilStepper"
     },
     {
@@ -13099,6 +13402,18 @@
     },
     {
       "signature": "pub fn inject_conserved_flux_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut impl SolverWorkspace , _ : & mut R ,)"
+    },
+    {
+      "signature": "pub fn try_inject_additive_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , PdeError >"
+    },
+    {
+      "signature": "pub fn try_inject_additive_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , PdeError >"
+    },
+    {
+      "signature": "pub fn try_inject_conserved_flux_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , PdeError >"
+    },
+    {
+      "signature": "pub fn try_inject_conserved_flux_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , PdeError >"
     }
   ],
   "crates/engine_pde/src/spde_stencil.rs": [
@@ -13121,6 +13436,15 @@
       "signature": "impl ExplicitSpdeStencilStepper { pub fn step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut impl SolverWorkspace , _ : & mut R ,) }"
     },
     {
+      "signature": "impl ExplicitSpdeStencilStepper { pub fn try_step_1d < F , R > (& self , _ : & mut [f64] , _ : f64 , _ : F , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , PdeError > where F : FnMut (usize , f64 , f64 , f64) -> f64 , R : RngCore + ? Sized , }"
+    },
+    {
+      "signature": "impl ExplicitSpdeStencilStepper { pub fn try_step_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : F , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , PdeError > where F : FnMut (usize , usize , f64 , (f64 , f64) , f64) -> f64 , R : RngCore + ? Sized , }"
+    },
+    {
+      "signature": "impl ExplicitSpdeStencilStepper { pub fn try_step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , PdeError > }"
+    },
+    {
       "signature": "impl SplitStepSpdeStencilStepper { pub const fn new (_ : StencilOperators , _ : BoundaryCondition , _ : SpdeNoiseKind , _ : usize ,) -> Self }"
     },
     {
@@ -13128,6 +13452,9 @@
     },
     {
       "signature": "impl SplitStepSpdeStencilStepper { pub fn step_reaction_diffusion_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : F , _ : & mut impl SolverWorkspace , _ : & mut R ,) where F : FnMut (f64) -> f64 , R : RngCore + ? Sized , }"
+    },
+    {
+      "signature": "impl SplitStepSpdeStencilStepper { pub fn try_step_reaction_diffusion_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : F , _ : & mut impl SolverWorkspace , _ : & mut R ,) -> Result < () , PdeError > where F : FnMut (f64) -> f64 , R : RngCore + ? Sized , }"
     },
     {
       "signature": "pub struct ExplicitSpdeStencilStepper"
@@ -13149,6 +13476,61 @@
     {
       "signature": "impl StencilOperators { pub fn central_diff_2nd_3d (& self , _ : f64 , _ : [f64 ; 6]) -> f64 }"
     },
+    {
+      "signature": "impl StencilOperators { pub fn new (_ : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn new_2d (_ : StepSize , _ : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Self }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_new (_ : StepSize) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_new_2d (_ : StepSize , _ : StepSize) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_new_checked (_ : StepSize , _ : StepSize , _ : StepSize) -> Option < Self > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn upwind_flux (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub struct StencilNeighbors3D < const N : usize >"
+    },
+    {
+      "signature": "pub struct StencilOperators"
+    }
+  ],
+  "crates/engine_pde/src/stencil/biharmonic.rs": [
+    {
+      "signature": "impl StencilOperators { pub fn compute_laplacian_2d (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition , _ : & mut [f64] ,) }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn eval_biharmonic_2d (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn eval_biharmonic_2d_from_laplacian (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> f64 }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn step_characteristic_upwind_1d (& self , _ : & [f64] , _ : & [f64] , _ : f64 , _ : f64 , _ : & mut [f64] ,) }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_compute_laplacian_2d (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition , _ : & mut [f64] ,) -> Result < () , PdeError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_eval_biharmonic_2d (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_eval_biharmonic_2d_from_laplacian (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
+    }
+  ],
+  "crates/engine_pde/src/stencil/eval.rs": [
     {
       "signature": "impl StencilOperators { pub fn grad_sq_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition) -> f64 }"
     },
@@ -13174,25 +13556,37 @@
       "signature": "impl StencilOperators { pub fn laplacian_3d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> f64 }"
     },
     {
-      "signature": "impl StencilOperators { pub fn new (_ : StepSize) -> Self }"
+      "signature": "impl StencilOperators { pub fn try_grad_sq_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn new_2d (_ : StepSize , _ : StepSize) -> Self }"
+      "signature": "impl StencilOperators { pub fn try_grad_sq_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn new_3d (_ : StepSize , _ : StepSize , _ : StepSize) -> Self }"
+      "signature": "impl StencilOperators { pub fn try_gradient_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_new (_ : StepSize) -> Result < Self , math_commons :: error :: MathError > }"
+      "signature": "impl StencilOperators { pub fn try_gradient_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < (f64 , f64) , PdeError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_new_2d (_ : StepSize , _ : StepSize) -> Result < Self , math_commons :: error :: MathError > }"
+      "signature": "impl StencilOperators { pub fn try_gradient_3d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < (f64 , f64 , f64) , PdeError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_new_3d (_ : StepSize , _ : StepSize , _ : StepSize ,) -> Result < Self , math_commons :: error :: MathError > }"
+      "signature": "impl StencilOperators { pub fn try_laplacian_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
     },
     {
-      "signature": "impl StencilOperators { pub fn try_new_checked (_ : StepSize , _ : StepSize , _ : StepSize) -> Option < Self > }"
+      "signature": "impl StencilOperators { pub fn try_laplacian_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_laplacian_3d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_upwind_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : f64 , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_upwind_2d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : (f64 , f64) , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_upwind_3d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : (f64 , f64 , f64) , _ : BoundaryCondition ,) -> Result < f64 , PdeError > }"
     },
     {
       "signature": "impl StencilOperators { pub fn upwind_1d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : f64 , _ : BoundaryCondition ,) -> f64 }"
@@ -13202,15 +13596,6 @@
     },
     {
       "signature": "impl StencilOperators { pub fn upwind_3d_at (& self , _ : & [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : (f64 , f64 , f64) , _ : BoundaryCondition ,) -> f64 }"
-    },
-    {
-      "signature": "impl StencilOperators { pub fn upwind_flux (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
-    },
-    {
-      "signature": "pub struct StencilNeighbors3D < const N : usize >"
-    },
-    {
-      "signature": "pub struct StencilOperators"
     }
   ],
   "crates/federated_registry/src/lib.rs": [
@@ -13753,6 +14138,9 @@
   ],
   "crates/math_commons/src/error.rs": [
     {
+      "signature": "impl MathError { pub const fn code (& self) -> & 'static str }"
+    },
+    {
       "signature": "pub enum FitError"
     },
     {
@@ -14056,6 +14444,9 @@
     },
     {
       "signature": "pub fn sample_standard_normal_pair < T : Scalar , R : RngCore + ? Sized > (_ : & mut R) -> (T , T)"
+    },
+    {
+      "signature": "pub fn try_take_workspace_slice < 'a , T : Scalar > (_ : & mut ArenaScope < 'a > , _ : usize ,) -> Result < & 'a mut [T] , crate :: error :: MathError >"
     },
     {
       "signature": "pub struct Dimension"
@@ -14859,6 +15250,9 @@
       "signature": "pub use proof_digest :: CERTIFIED_SOLVER_COUNT"
     },
     {
+      "signature": "pub use proof_digest :: ProofDigestError"
+    },
+    {
       "signature": "pub use proof_digest :: collect_lean4_proof_digests"
     },
     {
@@ -15022,7 +15416,10 @@
       "signature": "pub const CERTIFIED_SOLVER_COUNT : usize"
     },
     {
-      "signature": "pub fn collect_lean4_proof_digests (_ : & Path ,) -> Result < BTreeMap < String , String > , String >"
+      "signature": "pub enum ProofDigestError"
+    },
+    {
+      "signature": "pub fn collect_lean4_proof_digests (_ : & Path ,) -> Result < BTreeMap < String , String > , ProofDigestError >"
     },
     {
       "signature": "pub fn sha256_hex (_ : & [u8]) -> String"
@@ -15031,7 +15428,7 @@
       "signature": "pub fn strip_lean_comments (_ : & str) -> String"
     },
     {
-      "signature": "pub fn validate_lean_proof_source (_ : & str , _ : & str) -> Result < () , String >"
+      "signature": "pub fn validate_lean_proof_source (_ : & str , _ : & str) -> Result < () , ProofDigestError >"
     }
   ],
   "crates/oxidize_core/src/traceability/qualification.rs": [
@@ -15098,6 +15495,9 @@
   "crates/oxidize_core/src/vfs.rs": [
     {
       "signature": "pub fn trigger_download (_ : & str , _ : & [u8])"
+    },
+    {
+      "signature": "pub fn try_trigger_download (_ : & str , _ : & [u8]) -> Result < () , std :: io :: Error >"
     },
     {
       "signature": "pub struct DefaultVfs"
@@ -15683,6 +16083,9 @@
   ],
   "crates/pure_math/src/pure_math/algebra/fields.rs": [
     {
+      "signature": "impl < const P : i64 > Fp < P > { pub fn checked_div (self , _ : Self) -> Result < Self , NumberTheoryError > }"
+    },
+    {
       "signature": "impl < const P : i64 > Fp < P > { pub fn checked_inverse (& self) -> Result < Self , NumberTheoryError > }"
     },
     {
@@ -16239,10 +16642,22 @@
       "signature": "impl FractranProgram { pub fn step_exponents (& self , _ : & mut [u32]) -> Result < Option < usize > , FractranError > }"
     },
     {
+      "signature": "impl FractranProgram { pub fn try_adder () -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn try_fibonacci () -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
       "signature": "impl FractranProgram { pub fn try_from_pairs (_ : & [(i128 , i128)]) -> Result < Self , FractranError > }"
     },
     {
+      "signature": "impl FractranProgram { pub fn try_multiplier () -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
       "signature": "impl FractranProgram { pub fn try_new (_ : Vec < Rational >) -> Result < Self , FractranError > }"
+    },
+    {
+      "signature": "impl FractranProgram { pub fn try_primegame () -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
     },
     {
       "signature": "pub struct FractranProgram"
@@ -17057,6 +17472,9 @@
       "signature": "pub fn grid_peclet_number (_ : f64 , _ : f64 , _ : f64) -> f64"
     },
     {
+      "signature": "pub fn try_upwind_advection_2d (_ : (usize , usize) , _ : & [f64] , _ : & [f64] , _ : & [f64] , _ : & mut [f64] , _ : & StencilOperators ,) -> Result < () , math_commons :: error :: MathError >"
+    },
+    {
       "signature": "pub fn upwind_advection_2d (_ : (usize , usize) , _ : & [f64] , _ : & [f64] , _ : & [f64] , _ : & mut [f64] , _ : & StencilOperators ,)"
     },
     {
@@ -17268,6 +17686,21 @@
       "signature": "impl Wave2DSolver { pub fn time (& self) -> f64 }"
     },
     {
+      "signature": "impl Wave2DSolver { pub fn try_new (_ : usize , _ : usize , _ : f64 , _ : f64) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn try_new_unit_square (_ : usize) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn try_safe_substep_plan (& self , _ : & Wave2DParams , _ : f64 ,) -> Result < (usize , f64) , MathError > }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn try_set_stationary_displacement (& mut self , _ : & [f64]) -> Result < () , MathError > }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn try_step_driven (& mut self , _ : & Wave2DParams , _ : & DriverConfig2D , _ : f64 , _ : Option < usize > ,) -> Result < usize , MathError > }"
+    },
+    {
       "signature": "impl Wave2DSolver { pub fn width (& self) -> usize }"
     },
     {
@@ -17390,6 +17823,12 @@
       "signature": "pub fn analytic_clamped_square_omega (_ : usize , _ : usize , _ : f64 , _ : f64 ,) -> f64"
     },
     {
+      "signature": "pub fn try_analytic_clamped_square_omega (_ : usize , _ : usize , _ : f64 , _ : f64 ,) -> core :: result :: Result < f64 , math_commons :: error :: MathError >"
+    },
+    {
+      "signature": "pub fn try_young_double_slit_fringe_spacing (_ : f64 , _ : f64 , _ : f64 ,) -> core :: result :: Result < f64 , math_commons :: error :: MathError >"
+    },
+    {
       "signature": "pub fn young_double_slit_fringe_spacing (_ : f64 , _ : f64 , _ : f64 ,) -> f64"
     },
     {
@@ -17458,6 +17897,24 @@
     },
     {
       "signature": "pub fn clamped_beam_eigenfunction (_ : usize , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn try_apply_biconvex_lens (_ : & mut [f64] , _ : usize , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 ,) -> core :: result :: Result < () , math_commons :: error :: MathError >"
+    },
+    {
+      "signature": "pub fn try_apply_circular_drumhead_mask (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 ,) -> core :: result :: Result < () , math_commons :: error :: MathError >"
+    },
+    {
+      "signature": "pub fn try_apply_multi_slit_barrier (_ : & mut [f64] , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : usize , _ : f64 ,) -> core :: result :: Result < () , math_commons :: error :: MathError >"
+    },
+    {
+      "signature": "pub fn try_apply_point_clamp (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 ,) -> core :: result :: Result < () , math_commons :: error :: MathError >"
+    },
+    {
+      "signature": "pub fn try_apply_sponge_layer (_ : & mut [f64] , _ : usize , _ : usize , _ : usize , _ : f64 ,) -> core :: result :: Result < () , math_commons :: error :: MathError >"
+    },
+    {
+      "signature": "pub fn try_clamped_beam_eigenfunction (_ : usize , _ : f64 ,) -> core :: result :: Result < f64 , math_commons :: error :: MathError >"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/pde/wave_2d/particles_and_contours.rs": [
@@ -17486,6 +17943,15 @@
       "signature": "impl ChladniSandSystem { pub fn step (& mut self , _ : & [f64] , _ : & [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 ,) }"
     },
     {
+      "signature": "impl ChladniSandSystem { pub fn try_new (_ : usize , _ : u64 , _ : usize , _ : usize , _ : & [f64] ,) -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn try_reseed (& mut self , _ : u64 , _ : usize , _ : usize , _ : & [f64] ,) -> core :: result :: Result < () , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl ChladniSandSystem { pub fn try_step (& mut self , _ : & [f64] , _ : & [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 ,) -> core :: result :: Result < () , math_commons :: error :: MathError > }"
+    },
+    {
       "signature": "impl MarchingSquares2D { pub fn extract_zero_contours (& mut self , _ : & [f64] , _ : & [f64] , _ : usize , _ : usize , _ : f64 ,) -> & [[[f64 ; 2] ; 2]] }"
     },
     {
@@ -17493,6 +17959,9 @@
     },
     {
       "signature": "impl MarchingSquares2D { pub fn segments (& self) -> & [[[f64 ; 2] ; 2]] }"
+    },
+    {
+      "signature": "impl MarchingSquares2D { pub fn try_extract_zero_contours (& mut self , _ : & [f64] , _ : & [f64] , _ : usize , _ : usize , _ : f64 ,) -> core :: result :: Result < & [[[f64 ; 2] ; 2]] , math_commons :: error :: MathError > }"
     },
     {
       "signature": "pub const DEFAULT_SAND_PARTICLES : usize"
@@ -17519,6 +17988,9 @@
     },
     {
       "signature": "impl Wave2DSolver { pub fn sample_velocity_bilinear (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl Wave2DSolver { pub fn try_read_detector_profile (& self , _ : usize , _ : & mut [f64] ,) -> core :: result :: Result < () , math_commons :: error :: MathError > }"
     },
     {
       "signature": "pub struct WaveProbeSample"
@@ -17551,6 +18023,15 @@
     },
     {
       "signature": "impl SpectralAnalyzer2D { pub fn top_peaks (& self , _ : & mut [SpectralPeak2D]) -> usize }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn try_compute_radial_profile (& self , _ : & mut [f64] , _ : & mut [usize] ,) -> core :: result :: Result < () , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn try_compute_spectrum (& mut self , _ : & [f64] ,) -> core :: result :: Result < & [f64] , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl SpectralAnalyzer2D { pub fn try_new (_ : usize , _ : usize ,) -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
     },
     {
       "signature": "impl SpectralAnalyzer2D { pub fn width (& self) -> usize }"
@@ -17613,6 +18094,9 @@
     },
     {
       "signature": "impl WaveField2D { pub fn time (& self) -> f64 }"
+    },
+    {
+      "signature": "impl WaveField2D { pub fn try_new (_ : WaveFieldConfig2D) -> Result < Self , math_commons :: error :: MathError > }"
     },
     {
       "signature": "impl WaveSource2D { pub fn evaluate_at_time (& self , _ : f64) -> f64 }"
@@ -17843,6 +18327,15 @@
     },
     {
       "signature": "impl CotangentLaplacian { pub fn step_heat_euler (& self , _ : & [f64] , _ : & mut [f64] , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn try_apply (& self , _ : & [f64] , _ : & mut [f64] ,) -> core :: result :: Result < () , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn try_compute_mean_curvature (& self , _ : & [[f64 ; 3]] , _ : & mut [f64] ,) -> core :: result :: Result < () , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl CotangentLaplacian { pub fn try_step_heat_euler (& self , _ : & [f64] , _ : & mut [f64] , _ : f64 , _ : f64 ,) -> core :: result :: Result < () , math_commons :: error :: MathError > }"
     },
     {
       "signature": "impl CotangentLaplacian { pub fn vertex_area (& self , _ : usize) -> f64 }"
@@ -18929,11 +19422,34 @@
       "signature": "impl BilliardTable { pub fn new (_ : BilliardDomainKind) -> Result < Self , HyperbolicError > }"
     },
     {
+      "signature": "impl BilliardTable { pub fn try_vertices (& self ,) -> core :: result :: Result < & [Complex64] , math_commons :: error :: MathError > }"
+    },
+    {
       "signature": "impl BilliardTable { pub fn vertices (& self) -> & [Complex64] }"
     },
     {
       "signature": "impl GeodesicRay { pub fn new (_ : DiskPoint , _ : Complex64) -> Result < Self , HyperbolicError > }"
     },
+    {
+      "signature": "pub const MAX_BILLIARD_SEGMENTS : usize"
+    },
+    {
+      "signature": "pub enum BilliardDomainKind"
+    },
+    {
+      "signature": "pub struct BilliardTable"
+    },
+    {
+      "signature": "pub struct GeodesicRay"
+    },
+    {
+      "signature": "pub struct GeodesicSegment"
+    },
+    {
+      "signature": "pub use twin :: *"
+    }
+  ],
+  "crates/pure_math/src/pure_math/hyperbolic/billiards/twin.rs": [
     {
       "signature": "impl TwinBilliardSystem { pub fn advance_reflections (& mut self , _ : usize) }"
     },
@@ -18980,22 +19496,16 @@
       "signature": "impl TwinBilliardSystem { pub fn total_bounces (& self) -> u64 }"
     },
     {
+      "signature": "impl TwinBilliardSystem { pub fn try_current_log_separation (& self ,) -> core :: result :: Result < f64 , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn try_elapsed_length (& self) -> core :: result :: Result < f64 , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl TwinBilliardSystem { pub fn try_step (& mut self , _ : f64 ,) -> core :: result :: Result < () , math_commons :: error :: MathError > }"
+    },
+    {
       "signature": "impl TwinBilliardSystem { pub fn twin_ray (& self) -> GeodesicRay }"
-    },
-    {
-      "signature": "pub const MAX_BILLIARD_SEGMENTS : usize"
-    },
-    {
-      "signature": "pub enum BilliardDomainKind"
-    },
-    {
-      "signature": "pub struct BilliardTable"
-    },
-    {
-      "signature": "pub struct GeodesicRay"
-    },
-    {
-      "signature": "pub struct GeodesicSegment"
     },
     {
       "signature": "pub struct TwinBilliardSystem"
@@ -19024,6 +19534,12 @@
       "signature": "impl HorocycleDisk { pub fn to_half_plane (self) -> HorocycleHalfPlane }"
     },
     {
+      "signature": "impl HorocycleDisk { pub fn try_sample_into (self , _ : & mut [[f64 ; 2]] ,) -> core :: result :: Result < usize , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl HorocycleDisk { pub fn try_to_half_plane (self ,) -> core :: result :: Result < HorocycleHalfPlane , math_commons :: error :: MathError > }"
+    },
+    {
       "signature": "pub enum GeodesicDisk"
     },
     {
@@ -19033,64 +19549,33 @@
       "signature": "pub enum HorocycleHalfPlane"
     },
     {
-      "signature": "pub fn gauss_bonnet_polygon_area (_ : & [Complex64]) -> Result < f64 , HyperbolicError >"
-    },
-    {
-      "signature": "pub fn hyperbolic_polygon_angles (_ : & [Complex64] , _ : & mut [f64] ,) -> Result < usize , HyperbolicError >"
-    },
-    {
       "signature": "pub fn sample_disk_geodesic_into (_ : Complex64 , _ : Complex64 , _ : & mut [[f64 ; 2]]) -> usize"
     },
     {
       "signature": "pub fn sample_half_plane_geodesic_into (_ : HalfPlanePoint , _ : HalfPlanePoint , _ : & mut [[f64 ; 2]] ,) -> usize"
     },
     {
+      "signature": "pub fn try_sample_disk_geodesic_into (_ : Complex64 , _ : Complex64 , _ : & mut [[f64 ; 2]] ,) -> core :: result :: Result < usize , math_commons :: error :: MathError >"
+    },
+    {
+      "signature": "pub fn try_sample_half_plane_geodesic_into (_ : HalfPlanePoint , _ : HalfPlanePoint , _ : & mut [[f64 ; 2]] ,) -> core :: result :: Result < usize , math_commons :: error :: MathError >"
+    },
+    {
       "signature": "pub struct HorocycleDisk"
+    },
+    {
+      "signature": "pub use polygon :: *"
+    }
+  ],
+  "crates/pure_math/src/pure_math/hyperbolic/geodesic/polygon.rs": [
+    {
+      "signature": "pub fn gauss_bonnet_polygon_area (_ : & [Complex64]) -> Result < f64 , HyperbolicError >"
+    },
+    {
+      "signature": "pub fn hyperbolic_polygon_angles (_ : & [Complex64] , _ : & mut [f64] ,) -> Result < usize , HyperbolicError >"
     }
   ],
   "crates/pure_math/src/pure_math/hyperbolic/isometry.rs": [
-    {
-      "signature": "impl CircleInversion { pub fn reflect_complex (self , _ : Complex64) -> Complex64 }"
-    },
-    {
-      "signature": "impl CircleInversion { pub fn reflect_disk_point (self , _ : DiskPoint) -> DiskPoint }"
-    },
-    {
-      "signature": "impl Psl2R { pub fn apply (self , _ : HalfPlanePoint) -> HalfPlanePoint }"
-    },
-    {
-      "signature": "impl Psl2R { pub fn compose (self , _ : Self) -> Self }"
-    },
-    {
-      "signature": "impl Psl2R { pub fn determinant (self) -> f64 }"
-    },
-    {
-      "signature": "impl Psl2R { pub fn dilation (_ : f64) -> Result < Self , HyperbolicError > }"
-    },
-    {
-      "signature": "impl Psl2R { pub fn drag_between (_ : HalfPlanePoint , _ : HalfPlanePoint) -> Self }"
-    },
-    {
-      "signature": "impl Psl2R { pub fn entries (self) -> [f64 ; 4] }"
-    },
-    {
-      "signature": "impl Psl2R { pub fn identity () -> Self }"
-    },
-    {
-      "signature": "impl Psl2R { pub fn inverse (self) -> Self }"
-    },
-    {
-      "signature": "impl Psl2R { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> Result < Self , HyperbolicError > }"
-    },
-    {
-      "signature": "impl Psl2R { pub fn renormalize (& mut self) }"
-    },
-    {
-      "signature": "impl Psl2R { pub fn to_psu11 (self) -> Psu11 }"
-    },
-    {
-      "signature": "impl Psl2R { pub fn translation (_ : f64) -> Self }"
-    },
     {
       "signature": "impl Psu11 { pub fn a (self) -> Complex64 }"
     },
@@ -19137,13 +19622,108 @@
       "signature": "impl Psu11 { pub fn translation_to_origin (_ : DiskPoint) -> Self }"
     },
     {
+      "signature": "impl Psu11 { pub fn try_apply (self , _ : DiskPoint ,) -> core :: result :: Result < DiskPoint , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn try_apply_complex (self , _ : Complex64 ,) -> core :: result :: Result < Complex64 , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn try_compose (self , _ : Self ,) -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn try_drag_between (_ : DiskPoint , _ : DiskPoint ,) -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn try_renormalize (& mut self) -> core :: result :: Result < () , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn try_rotation (_ : f64) -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn try_to_psl2r (self) -> core :: result :: Result < Psl2R , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn try_translation_from_origin (_ : DiskPoint ,) -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Psu11 { pub fn try_translation_to_origin (_ : DiskPoint ,) -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "pub struct Psu11"
+    },
+    {
+      "signature": "pub use psl2r :: *"
+    }
+  ],
+  "crates/pure_math/src/pure_math/hyperbolic/isometry/psl2r.rs": [
+    {
+      "signature": "impl CircleInversion { pub fn reflect_complex (self , _ : Complex64) -> Complex64 }"
+    },
+    {
+      "signature": "impl CircleInversion { pub fn reflect_disk_point (self , _ : DiskPoint) -> DiskPoint }"
+    },
+    {
+      "signature": "impl CircleInversion { pub fn try_reflect_complex (self , _ : Complex64 ,) -> core :: result :: Result < Complex64 , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn apply (self , _ : HalfPlanePoint) -> HalfPlanePoint }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn compose (self , _ : Self) -> Self }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn determinant (self) -> f64 }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn dilation (_ : f64) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn drag_between (_ : HalfPlanePoint , _ : HalfPlanePoint) -> Self }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn entries (self) -> [f64 ; 4] }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn identity () -> Self }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn inverse (self) -> Self }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> Result < Self , HyperbolicError > }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn renormalize (& mut self) }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn to_psu11 (self) -> Psu11 }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn translation (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn try_apply (self , _ : HalfPlanePoint ,) -> core :: result :: Result < HalfPlanePoint , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn try_compose (self , _ : Self ,) -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn try_drag_between (_ : HalfPlanePoint , _ : HalfPlanePoint ,) -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn try_renormalize (& mut self) -> core :: result :: Result < () , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn try_to_psu11 (self) -> core :: result :: Result < Psu11 , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl Psl2R { pub fn try_translation (_ : f64) -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
       "signature": "pub enum CircleInversion"
     },
     {
       "signature": "pub struct Psl2R"
-    },
-    {
-      "signature": "pub struct Psu11"
     }
   ],
   "crates/pure_math/src/pure_math/hyperbolic/mod.rs": [
@@ -19193,6 +19773,12 @@
       "signature": "pub use geodesic :: sample_half_plane_geodesic_into"
     },
     {
+      "signature": "pub use geodesic :: try_sample_disk_geodesic_into"
+    },
+    {
+      "signature": "pub use geodesic :: try_sample_half_plane_geodesic_into"
+    },
+    {
       "signature": "pub use isometry :: CircleInversion"
     },
     {
@@ -19227,6 +19813,24 @@
     },
     {
       "signature": "pub use models :: hyperbolic_distance_half_plane"
+    },
+    {
+      "signature": "pub use models :: try_cayley_boundary_to_real"
+    },
+    {
+      "signature": "pub use models :: try_cayley_complex_to_half_plane_clamped"
+    },
+    {
+      "signature": "pub use models :: try_cayley_disk_to_half_plane"
+    },
+    {
+      "signature": "pub use models :: try_cayley_half_plane_to_disk"
+    },
+    {
+      "signature": "pub use models :: try_hyperbolic_distance_disk"
+    },
+    {
+      "signature": "pub use models :: try_hyperbolic_distance_half_plane"
     },
     {
       "signature": "pub use tiling :: HyperbolicTilingBuffer"
@@ -19291,6 +19895,9 @@
       "signature": "impl DiskPoint { pub fn re (self) -> f64 }"
     },
     {
+      "signature": "impl DiskPoint { pub fn try_new_clamped (_ : f64 , _ : f64 ,) -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
       "signature": "impl HalfPlanePoint { pub fn as_complex (self) -> Complex64 }"
     },
     {
@@ -19312,6 +19919,9 @@
       "signature": "impl HalfPlanePoint { pub fn re (self) -> f64 }"
     },
     {
+      "signature": "impl HalfPlanePoint { pub fn try_new_clamped (_ : f64 , _ : f64 ,) -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
+    },
+    {
       "signature": "pub const MAX_DISK_MODULUS : f64"
     },
     {
@@ -19331,6 +19941,24 @@
     },
     {
       "signature": "pub fn hyperbolic_distance_half_plane (_ : HalfPlanePoint , _ : HalfPlanePoint) -> f64"
+    },
+    {
+      "signature": "pub fn try_cayley_boundary_to_real (_ : Complex64 ,) -> core :: result :: Result < Option < f64 > , math_commons :: error :: MathError >"
+    },
+    {
+      "signature": "pub fn try_cayley_complex_to_half_plane_clamped (_ : Complex64 ,) -> core :: result :: Result < Complex64 , math_commons :: error :: MathError >"
+    },
+    {
+      "signature": "pub fn try_cayley_disk_to_half_plane (_ : DiskPoint ,) -> core :: result :: Result < HalfPlanePoint , math_commons :: error :: MathError >"
+    },
+    {
+      "signature": "pub fn try_cayley_half_plane_to_disk (_ : HalfPlanePoint ,) -> core :: result :: Result < DiskPoint , math_commons :: error :: MathError >"
+    },
+    {
+      "signature": "pub fn try_hyperbolic_distance_disk (_ : DiskPoint , _ : DiskPoint ,) -> core :: result :: Result < f64 , math_commons :: error :: MathError >"
+    },
+    {
+      "signature": "pub fn try_hyperbolic_distance_half_plane (_ : HalfPlanePoint , _ : HalfPlanePoint ,) -> core :: result :: Result < f64 , math_commons :: error :: MathError >"
     },
     {
       "signature": "pub struct DiskPoint"
@@ -19359,7 +19987,19 @@
       "signature": "impl HyperbolicTilingBuffer { pub fn transform_into (& self , _ : Psu11 , _ : & mut [TiledPolygon]) -> usize }"
     },
     {
+      "signature": "impl HyperbolicTilingBuffer { pub fn try_depth (& self) -> core :: result :: Result < usize , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn try_polygons (& self ,) -> core :: result :: Result < & [TiledPolygon] , math_commons :: error :: MathError > }"
+    },
+    {
+      "signature": "impl HyperbolicTilingBuffer { pub fn try_transform_into (& self , _ : Psu11 , _ : & mut [TiledPolygon] ,) -> core :: result :: Result < usize , math_commons :: error :: MathError > }"
+    },
+    {
       "signature": "impl TiledPolygon { pub fn active_vertices (& self) -> & [Complex64] }"
+    },
+    {
+      "signature": "impl TiledPolygon { pub fn try_active_vertices (& self ,) -> core :: result :: Result < & [Complex64] , math_commons :: error :: MathError > }"
     },
     {
       "signature": "pub const MAX_POLYGON_VERTICES : usize"
@@ -20555,6 +21195,9 @@
       "signature": "impl CopulaQmcWorkspace { pub fn ensure_capacity (& mut self , _ : usize) }"
     },
     {
+      "signature": "impl CopulaQmcWorkspace { pub fn try_with_capacity (_ : usize) -> Result < Self , ArenaError > }"
+    },
+    {
       "signature": "impl CopulaQmcWorkspace { pub fn with_capacity (_ : usize) -> Self }"
     },
     {
@@ -21367,6 +22010,9 @@
   ],
   "crates/pure_math/src/pure_math/statistics/kelly/portfolio.rs": [
     {
+      "signature": "impl PortfolioKellyWorkspace { pub fn try_with_capacity (_ : usize) -> Result < Self , ArenaError > }"
+    },
+    {
       "signature": "impl PortfolioKellyWorkspace { pub fn with_capacity (_ : usize) -> Self }"
     },
     {
@@ -21873,6 +22519,9 @@
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn steady_state_with_workspace (& self , _ : & mut StochasticWorkspace , _ : & mut DVector < T > ,) -> bool }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn try_steady_state (& self ,) -> core :: result :: Result < Option < DVector < T > > , math_commons :: error :: MathError > }"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/dtmc/hitting.rs": [
@@ -21958,6 +22607,9 @@
       "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn is_irreducible (& self) -> bool }"
     },
     {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn try_communicating_classes (& self ,) -> core :: result :: Result < Vec < CommunicatingClass > , math_commons :: error :: MathError > }"
+    },
+    {
       "signature": "pub struct CommunicatingClass"
     }
   ],
@@ -21981,6 +22633,9 @@
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn stationary_distribution_with_workspace (& self , _ : & mut StochasticWorkspace , _ : & mut DVector < T > ,) -> bool }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn try_stationary_distribution (& self ,) -> core :: result :: Result < Option < DVector < T > > , math_commons :: error :: MathError > }"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/markov/dtmc/types.rs": [
@@ -22005,6 +22660,9 @@
     },
     {
       "signature": "impl < T : RealField + Copy + Pod + Zeroable > BaumWelchWorkspace < T > { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + Pod + Zeroable > BaumWelchWorkspace < T > { pub fn try_new (_ : usize , _ : usize , _ : usize ,) -> Result < Self , ArenaError > }"
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > BaumWelchConfig < T > { pub fn new (_ : usize , _ : T , _ : T ,) -> Result < Self , MarkovError > }"
@@ -22111,6 +22769,9 @@
     },
     {
       "signature": "impl < T : RealField + Copy + Pod + Zeroable > ViterbiWorkspace < T > { pub fn num_states (& self) -> usize }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + Pod + Zeroable > ViterbiWorkspace < T > { pub fn try_new (_ : usize , _ : usize , _ : usize ,) -> core :: result :: Result < Self , ArenaError > }"
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive + Pod + Zeroable > HiddenMarkovModel < T > { pub fn viterbi (& self , _ : & [usize]) -> Result < Vec < usize > > }"
@@ -22940,6 +23601,9 @@
     },
     {
       "signature": "impl ExactOuSolver { pub fn time_step (& self) -> TimeStep }"
+    },
+    {
+      "signature": "impl ExactOuSolver { pub fn try_new (_ : OuParams , _ : TimeStep ,) -> core :: result :: Result < Self , math_commons :: error :: MathError > }"
     },
     {
       "signature": "pub struct ExactOuSolver"
@@ -23982,6 +24646,9 @@
       "signature": "impl TdaFiltrationWorkspace { pub fn load_points_3d (& mut self , _ : & [Point3D]) -> Result < () , TdaError > }"
     },
     {
+      "signature": "impl TdaFiltrationWorkspace { pub fn try_with_capacity (_ : usize) -> Result < Self , ArenaError > }"
+    },
+    {
       "signature": "impl TdaFiltrationWorkspace { pub fn with_capacity (_ : usize) -> Self }"
     },
     {
@@ -24564,6 +25231,15 @@
       "signature": "impl CitationRegistry { pub fn register (_ : String , _ : String) }"
     },
     {
+      "signature": "impl CitationRegistry { pub fn try_get (_ : & str) -> Result < Option < String > , CitationRegistryError > }"
+    },
+    {
+      "signature": "impl CitationRegistry { pub fn try_register (_ : String , _ : String) -> Result < () , CitationRegistryError > }"
+    },
+    {
+      "signature": "pub enum CitationRegistryError"
+    },
+    {
       "signature": "pub struct CitationRegistry"
     }
   ],
@@ -24840,6 +25516,9 @@
       "signature": "pub type Result < T , E = Error > = std :: result :: Result < T , E >"
     },
     {
+      "signature": "pub use diagnostics :: DiagnosticError"
+    },
+    {
       "signature": "pub use domain_ai :: error :: AIError"
     },
     {
@@ -24942,7 +25621,13 @@
       "signature": "pub use domain_physics :: error :: StatMechError"
     },
     {
+      "signature": "pub use engine_diffeq :: DiffeqError"
+    },
+    {
       "signature": "pub use engine_linalg :: LinalgError"
+    },
+    {
+      "signature": "pub use engine_pde :: PdeError"
     },
     {
       "signature": "pub use math_commons :: error :: EvalError"

@@ -274,6 +274,22 @@ impl Scalar for f32 {
 
 pub use math_memory::{ArenaScope, ByteArena, SolverWorkspace};
 
+/// Fallibly carves `required` zero-initialized [`Scalar`] elements from `ws`, mapping insufficient
+/// aligned byte capacity to [`crate::error::MathError::WorkspaceTooSmall`].
+#[inline]
+pub fn try_take_workspace_slice<'a, T: Scalar>(
+    ws: &mut ArenaScope<'a>,
+    required: usize,
+) -> Result<&'a mut [T], crate::error::MathError> {
+    let elem_bytes = core::mem::size_of::<T>().max(1);
+    let available = ws.remaining() / elem_bytes;
+    ws.alloc_slice::<T>(required)
+        .map_err(|_| crate::error::MathError::WorkspaceTooSmall {
+            required,
+            available,
+        })
+}
+
 /// Samples a deterministic uniform variate strictly in `(0, 1)` (clamped `<= 1.0` after `f32` cast)
 /// via [`math_rng::sample_open`], avoiding `0.0` so `ln(u)` in Box-Muller sampling never overflows.
 #[inline]

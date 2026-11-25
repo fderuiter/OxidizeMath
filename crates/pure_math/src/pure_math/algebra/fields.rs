@@ -116,12 +116,26 @@ impl<const P: i64> Ring for Fp<P> {
     }
 }
 
+impl<const P: i64> Fp<P> {
+    /// Fallibly divides `self` by `other` in $\mathbb{F}_p$, returning an error when `other` is not invertible.
+    #[verified_engine::verified]
+    pub fn checked_div(self, other: Self) -> Result<Self, NumberTheoryError> {
+        Ok(self * other.checked_inverse()?)
+    }
+}
+
 impl<const P: i64> Div for Fp<P> {
     type Output = Self;
     #[allow(clippy::suspicious_arithmetic_impl)]
     #[verified_engine::verified]
     fn div(self, other: Self) -> Self {
-        self * other.multiplicative_inverse()
+        match self.checked_div(other) {
+            Ok(q) => q,
+            Err(NumberTheoryError::DivisionByZeroFieldElement) => {
+                panic!("Division by zero in Fp")
+            }
+            Err(_) => panic!("Element has no inverse (P might not be prime)"),
+        }
     }
 }
 

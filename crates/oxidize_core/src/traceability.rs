@@ -22,8 +22,8 @@ pub use debt_floors::{
 pub use manifest::{TraceabilityManifestPayload, VerificationCertificate};
 pub use maturity::{EXPECTED_WORKSPACE_CRATES, MaturityRegistry};
 pub use proof_digest::{
-    CANONICAL_PYRAMID_TIERS, CERTIFIED_SOLVER_COUNT, collect_lean4_proof_digests, sha256_hex,
-    strip_lean_comments, validate_lean_proof_source,
+    CANONICAL_PYRAMID_TIERS, CERTIFIED_SOLVER_COUNT, ProofDigestError, collect_lean4_proof_digests,
+    sha256_hex, strip_lean_comments, validate_lean_proof_source,
 };
 #[cfg(feature = "ast-analysis")]
 pub use qualification::{

@@ -405,10 +405,19 @@ impl<'a> ArenaScope<'a> {
         BitSlice::new_zeroed(words, bit_len)
     }
 
+    /// Fallible companion to [`Self::take_slice`], equivalent to [`Self::alloc_slice`].
+    #[inline]
+    pub fn try_take_slice<T: Pod + Zeroable>(
+        &mut self,
+        count: usize,
+    ) -> Result<&'a mut [T], ArenaError> {
+        self.alloc_slice(count)
+    }
+
     /// Convenience helper carving `count` zero-initialized `T` elements when capacity was pre-verified.
     ///
     /// # Panics
-    /// Panics if the scope lacks sufficient aligned byte capacity.
+    /// Panics if the scope lacks sufficient aligned byte capacity; prefer [`Self::try_take_slice`].
     #[inline]
     pub fn take_slice<T: Pod + Zeroable>(&mut self, count: usize) -> &'a mut [T] {
         self.alloc_slice(count)

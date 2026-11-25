@@ -4,9 +4,7 @@
 use super::LocalExtremum;
 use super::interp::is_finite_pair;
 #[cfg(feature = "alloc")]
-use super::interp::push_unique_vec;
-#[cfg(feature = "alloc")]
-use super::interp::{segment_threshold_hit, segment_vertical_hit};
+use super::interp::{push_unique_vec, segment_threshold_hit, segment_vertical_hit};
 use crate::series::PointSeries;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;

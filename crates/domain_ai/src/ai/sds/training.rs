@@ -103,18 +103,24 @@ pub struct AdamOptimizer {
 }
 
 impl AdamOptimizer {
-    /// Creates an `AdamOptimizer` with standard defaults ($\beta_1 = 0.9$, $\beta_2 = 0.999$, $\epsilon = 10^{-8}$).
+    /// Fallibly constructs an [`AdamOptimizer`] with standard $(\beta_1, \beta_2, \epsilon) = (0.9, 0.999, 10^{-8})$.
     #[verified_engine::verified]
-    pub fn new(learning_rate: PositiveFloat) -> Self {
-        Self {
+    pub fn try_new(learning_rate: PositiveFloat) -> Result<Self, AIError> {
+        Ok(Self {
             learning_rate,
-            beta1: UnitInterval::new(0.9).unwrap(),
-            beta2: UnitInterval::new(0.999).unwrap(),
-            epsilon: PositiveFloat::new(1e-8).unwrap(),
+            beta1: UnitInterval::new(0.9)?,
+            beta2: UnitInterval::new(0.999)?,
+            epsilon: PositiveFloat::new(1e-8)?,
             m: None,
             v: None,
             t: 0,
-        }
+        })
+    }
+
+    /// Creates an `AdamOptimizer` with standard defaults ($\beta_1 = 0.9$, $\beta_2 = 0.999$, $\epsilon = 10^{-8}$).
+    #[verified_engine::verified]
+    pub fn new(learning_rate: PositiveFloat) -> Self {
+        Self::try_new(learning_rate).expect("Default Adam hyperparameters are valid")
     }
 }
 
@@ -143,7 +149,7 @@ impl Optimizer for AdamOptimizer {
 
         let t_i32 =
             i32::try_from(self.t).map_err(|_| math_commons::error::MathError::ConversionError {
-                reason: "Adam step counter exceeded i32::MAX".to_string(),
+                reason: "Adam step counter exceeded i32::MAX",
             })?;
         let m = self.m.take().ok_or(AIError::UninitializedState {
             name: "m".to_string(),

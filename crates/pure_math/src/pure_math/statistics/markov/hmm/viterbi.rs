@@ -3,7 +3,7 @@ use crate::error::MarkovError;
 use core::marker::PhantomData;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
-use math_memory::{ArenaLayout, OwnedByteArena, Pod, Zeroable};
+use math_memory::{ArenaError, ArenaLayout, OwnedByteArena, Pod, Zeroable};
 use nalgebra::RealField;
 use num_traits::ToPrimitive;
 
@@ -31,31 +31,52 @@ pub struct ViterbiWorkspace<T> {
 
 impl<T: RealField + Copy + Pod + Zeroable> ViterbiWorkspace<T> {
     /// Allocates a workspace sized for up to `num_states`, `num_observations`, and `max_len` steps.
+    ///
+    /// Panics only if layout capacity overflows or allocation fails; see [`Self::try_new`].
     #[verified_engine::verified]
     pub fn new(num_states: usize, num_observations: usize, max_len: usize) -> Self {
-        let nn = num_states.saturating_mul(num_states);
-        let nm = num_states.saturating_mul(num_observations);
-        let bp = num_states.saturating_mul(max_len);
+        Self::try_new(num_states, num_observations, max_len)
+            .expect("ViterbiWorkspace::new allocation failed")
+    }
+
+    /// Fallibly allocates a workspace sized for up to `num_states`, `num_observations`, and `max_len` steps.
+    #[verified_engine::verified]
+    pub fn try_new(
+        num_states: usize,
+        num_observations: usize,
+        max_len: usize,
+    ) -> core::result::Result<Self, ArenaError> {
+        let elem_size = core::mem::size_of::<T>();
+        let nn = num_states
+            .checked_mul(num_states)
+            .ok_or(ArenaError::CapacityOverflow {
+                elem_size,
+                count: num_states,
+            })?;
+        let nm = num_states
+            .checked_mul(num_observations)
+            .ok_or(ArenaError::CapacityOverflow {
+                elem_size,
+                count: num_observations,
+            })?;
+        let bp = num_states
+            .checked_mul(max_len)
+            .ok_or(ArenaError::CapacityOverflow {
+                elem_size: core::mem::size_of::<usize>(),
+                count: max_len,
+            })?;
         let mut layout = ArenaLayout::new();
-        let _ = layout
-            .add_slice::<T>(num_states)
-            .expect("viterbi prev_log_delta");
-        let _ = layout
-            .add_slice::<T>(num_states)
-            .expect("viterbi curr_log_delta");
-        let _ = layout
-            .add_slice::<T>(num_states)
-            .expect("viterbi log_initial");
-        let _ = layout.add_slice::<T>(nn).expect("viterbi log_transitions");
-        let _ = layout.add_slice::<T>(nm).expect("viterbi log_emissions");
-        let _ = layout.add_slice::<usize>(bp).expect("viterbi backpointers");
-        Self {
+        for count in [num_states, num_states, num_states, nn, nm] {
+            let _ = layout.add_slice::<T>(count)?;
+        }
+        let _ = layout.add_slice::<usize>(bp)?;
+        Ok(Self {
             num_states,
             num_observations,
             max_len,
-            arena: OwnedByteArena::with_capacity(layout.total_bytes()),
+            arena: OwnedByteArena::try_with_capacity(layout.total_bytes())?,
             _marker: PhantomData,
-        }
+        })
     }
 
     /// Grows internal buffers if needed to accommodate the requested capacities.

@@ -193,10 +193,22 @@ impl<'a> BitSlice<'a> {
         self.words.len()
     }
 
+    /// Reads bit `bit_index`, returning [`ArenaError::InsufficientCapacity`] when out of bounds.
+    #[inline]
+    pub fn checked_get(&self, bit_index: usize) -> Result<bool, ArenaError> {
+        if bit_index >= self.bit_len {
+            return Err(ArenaError::InsufficientCapacity {
+                requested: bit_index.saturating_add(1),
+                available: self.bit_len,
+            });
+        }
+        Ok(((self.words[bit_index >> 6] >> (bit_index & 63)) & 1) != 0)
+    }
+
     /// Reads bit `bit_index`.
     ///
     /// # Panics
-    /// Panics if `bit_index >= self.bit_len()`.
+    /// Panics if `bit_index >= self.bit_len()`; prefer [`Self::checked_get`] or [`Self::try_get`].
     #[inline]
     #[must_use]
     pub fn get(&self, bit_index: usize) -> bool {
@@ -219,10 +231,28 @@ impl<'a> BitSlice<'a> {
         Some(((self.words[bit_index >> 6] >> (bit_index & 63)) & 1) != 0)
     }
 
+    /// Sets or clears bit `bit_index`, returning [`ArenaError::InsufficientCapacity`] when out of bounds.
+    #[inline]
+    pub fn checked_set(&mut self, bit_index: usize, value: bool) -> Result<(), ArenaError> {
+        if bit_index >= self.bit_len {
+            return Err(ArenaError::InsufficientCapacity {
+                requested: bit_index.saturating_add(1),
+                available: self.bit_len,
+            });
+        }
+        let mask = 1_u64 << (bit_index & 63);
+        if value {
+            self.words[bit_index >> 6] |= mask;
+        } else {
+            self.words[bit_index >> 6] &= !mask;
+        }
+        Ok(())
+    }
+
     /// Sets or clears bit `bit_index`.
     ///
     /// # Panics
-    /// Panics if `bit_index >= self.bit_len()`.
+    /// Panics if `bit_index >= self.bit_len()`; prefer [`Self::checked_set`].
     #[inline]
     pub fn set(&mut self, bit_index: usize, value: bool) {
         assert!(

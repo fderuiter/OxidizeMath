@@ -2,8 +2,6 @@
 use super::{ArenaError, Diagnostic, DiagnosticVisitor, FitError, MathError, Severity};
 #[cfg(feature = "std")]
 use super::{EvalError, GlslError, LexError, ParseError, ShaderEmitError};
-#[cfg(feature = "alloc")]
-use alloc::string::String;
 use thiserror::Error;
 
 /// Extensible crate-level umbrella error for `math_commons` workflows.
@@ -73,9 +71,8 @@ impl Diagnostic for MathCommonsError {
     }
 }
 
-#[cfg(feature = "alloc")]
-impl From<String> for MathCommonsError {
-    fn from(reason: String) -> Self {
+impl From<&'static str> for MathCommonsError {
+    fn from(reason: &'static str) -> Self {
         Self::Math(MathError::from(reason))
     }
 }

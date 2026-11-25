@@ -166,11 +166,31 @@ impl OwnedByteArena {
         }
     }
 
+    /// Fallibly preallocates at least `byte_cap` zero-initialized bytes with 8-byte base alignment.
+    pub fn try_with_capacity(byte_cap: usize) -> Result<Self, ArenaError> {
+        let word_count = Self::words_for_bytes(byte_cap);
+        let byte_len = word_count.checked_mul(core::mem::size_of::<u64>()).ok_or(
+            ArenaError::CapacityOverflow {
+                elem_size: core::mem::size_of::<u64>(),
+                count: word_count,
+            },
+        )?;
+        let mut words = alloc::vec::Vec::new();
+        words
+            .try_reserve_exact(word_count)
+            .map_err(|_| ArenaError::CapacityOverflow {
+                elem_size: core::mem::size_of::<u64>(),
+                count: word_count,
+            })?;
+        words.resize(word_count, 0);
+        Ok(Self { words, byte_len })
+    }
+
     /// Preallocates enough aligned bytes for `count` elements of `T`.
     pub fn with_elements<T: Pod>(count: usize) -> Result<Self, ArenaError> {
         let mut layout = ArenaLayout::new();
         let _ = layout.add_slice::<T>(count)?;
-        Ok(Self::with_capacity(layout.total_bytes()))
+        Self::try_with_capacity(layout.total_bytes())
     }
 
     /// Active 8-byte-aligned byte capacity.
@@ -194,6 +214,29 @@ impl OwnedByteArena {
             self.words.resize(word_count, 0);
             self.byte_len = word_count.saturating_mul(core::mem::size_of::<u64>());
         }
+    }
+
+    /// Fallibly ensures at least `min_bytes` are allocated, growing the backing `u64` buffer if needed.
+    pub fn try_ensure_capacity(&mut self, min_bytes: usize) -> Result<(), ArenaError> {
+        if min_bytes > self.byte_len {
+            let word_count = Self::words_for_bytes(min_bytes);
+            let byte_len = word_count.checked_mul(core::mem::size_of::<u64>()).ok_or(
+                ArenaError::CapacityOverflow {
+                    elem_size: core::mem::size_of::<u64>(),
+                    count: word_count,
+                },
+            )?;
+            let extra = word_count.saturating_sub(self.words.len());
+            self.words
+                .try_reserve_exact(extra)
+                .map_err(|_| ArenaError::CapacityOverflow {
+                    elem_size: core::mem::size_of::<u64>(),
+                    count: word_count,
+                })?;
+            self.words.resize(word_count, 0);
+            self.byte_len = byte_len;
+        }
+        Ok(())
     }
 
     /// Fallible capacity growth helper for `count` elements of `T`.

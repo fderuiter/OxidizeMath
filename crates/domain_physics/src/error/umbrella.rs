@@ -73,6 +73,12 @@ pub enum PhysicsError {
     /// Foundational `math_commons` umbrella error.
     #[error("{0}")]
     MathCommons(#[from] MathCommonsError),
+    /// Foundational `#![no_std]` differential-equation solver error.
+    #[error("{0}")]
+    Diffeq(#[from] engine_diffeq::DiffeqError),
+    /// Foundational `#![no_std]` partial-differential-equation solver error.
+    #[error("{0}")]
+    Pde(#[from] engine_pde::PdeError),
     /// Upstream `pure_math` umbrella error.
     #[error("{0}")]
     PureMath(#[from] PureMathError),
@@ -193,9 +199,9 @@ impl From<ParseError> for PhysicsError {
     }
 }
 
-impl From<String> for PhysicsError {
+impl From<&'static str> for PhysicsError {
     #[verified_engine::verified]
-    fn from(reason: String) -> Self {
+    fn from(reason: &'static str) -> Self {
         Self::Math(MathError::from(reason))
     }
 }
@@ -218,6 +224,8 @@ impl PhysicsError {
             Self::StatMech(err) => err,
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
+            Self::Diffeq(err) => err,
+            Self::Pde(err) => err,
             Self::PureMath(err) => err,
             Self::Applied(err) => err,
         }

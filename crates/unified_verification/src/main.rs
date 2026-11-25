@@ -6,6 +6,7 @@ mod ast_visitor;
 mod batch;
 mod doc_audit;
 mod entropy_guard;
+mod error_contracts;
 mod manifest_cache;
 mod maturity;
 mod policy_audit;

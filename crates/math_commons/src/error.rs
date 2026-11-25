@@ -2,15 +2,21 @@
 #[cfg(feature = "std")]
 pub use crate::ast::{EvalError, GlslError, LexError, ParseError, ShaderEmitError};
 use crate::math_kernel::types::Dimension;
-#[cfg(feature = "alloc")]
-use alloc::string::String;
 pub use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 pub use math_memory::ArenaError;
 use thiserror::Error;
 
-/// Centralized mathematical error type.
-#[derive(Debug, Clone, PartialEq, Error)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg(feature = "serde")]
+mod math_serde;
+
+#[inline]
+fn f64_eq_canonical(a: f64, b: f64) -> bool {
+    (a == 0.0 && b == 0.0) || a.to_bits() == b.to_bits()
+}
+
+/// Centralized `#![no_std]` `Copy` stack mathematical error type.
+#[derive(Debug, Clone, Copy, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum MathError {
     /// Dimension mismatch between tensors/matrices or expected sizes.
     #[error("Dimension mismatch: expected {}, actual {}", expected.0, actual.0)]
@@ -64,20 +70,97 @@ pub enum MathError {
     },
 
     /// Numerical computation failures (e.g., singular matrix, non-positive definite).
-    #[cfg(feature = "alloc")]
     #[error("Numerical error: {reason}")]
     NumericalError {
-        /// Human-readable description of the numerical failure.
-        reason: String,
+        /// Static human-readable description of the numerical failure.
+        reason: &'static str,
     },
 
     /// Conversion failures (e.g., failed to convert between numeric types).
-    #[cfg(feature = "alloc")]
     #[error("Conversion error: {reason}")]
     ConversionError {
-        /// Human-readable description of the conversion failure.
-        reason: String,
+        /// Static human-readable description of the conversion failure.
+        reason: &'static str,
     },
+}
+
+#[inline]
+fn bounds_key(err: MathError) -> Option<(bool, f64, f64, f64)> {
+    match err {
+        MathError::OutOfBounds { value, min, max } => Some((false, value, min, max)),
+        MathError::StrictlyOutOfBounds { value, min, max } => Some((true, value, min, max)),
+        _ => None,
+    }
+}
+
+impl PartialEq for MathError {
+    fn eq(&self, other: &Self) -> bool {
+        if let (Some((s1, v1, mn1, mx1)), Some((s2, v2, mn2, mx2))) =
+            (bounds_key(*self), bounds_key(*other))
+        {
+            return s1 == s2
+                && f64_eq_canonical(v1, v2)
+                && f64_eq_canonical(mn1, mn2)
+                && f64_eq_canonical(mx1, mx2);
+        }
+        match (*self, *other) {
+            (
+                Self::DimensionMismatch {
+                    expected: e1,
+                    actual: a1,
+                },
+                Self::DimensionMismatch {
+                    expected: e2,
+                    actual: a2,
+                },
+            ) => e1 == e2 && a1 == a2,
+            (
+                Self::InvalidPermutation {
+                    index: i1,
+                    value: v1,
+                    len: l1,
+                },
+                Self::InvalidPermutation {
+                    index: i2,
+                    value: v2,
+                    len: l2,
+                },
+            ) => (i1, v1, l1) == (i2, v2, l2),
+            (
+                Self::WorkspaceTooSmall {
+                    required: r1,
+                    available: a1,
+                },
+                Self::WorkspaceTooSmall {
+                    required: r2,
+                    available: a2,
+                },
+            ) => (r1, a1) == (r2, a2),
+            (Self::NumericalError { reason: r1 }, Self::NumericalError { reason: r2 })
+            | (Self::ConversionError { reason: r1 }, Self::ConversionError { reason: r2 }) => {
+                r1 == r2
+            }
+            _ => false,
+        }
+    }
+}
+
+impl Eq for MathError {}
+
+impl MathError {
+    /// Stable diagnostic code identifying this [`MathError`] variant.
+    #[inline]
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::DimensionMismatch { .. } => "MATH-001",
+            Self::OutOfBounds { .. } => "MATH-002",
+            Self::StrictlyOutOfBounds { .. } => "MATH-003",
+            Self::InvalidPermutation { .. } => "MATH-004",
+            Self::WorkspaceTooSmall { .. } => "MATH-005",
+            Self::NumericalError { .. } => "MATH-006",
+            Self::ConversionError { .. } => "MATH-007",
+        }
+    }
 }
 
 impl Diagnostic for MathError {
@@ -111,7 +194,6 @@ impl Diagnostic for MathError {
                 visitor.record_usize("required", *required);
                 visitor.record_usize("available", *available);
             }
-            #[cfg(feature = "alloc")]
             Self::NumericalError { reason } | Self::ConversionError { reason } => {
                 visitor.record_str("reason", reason);
             }
@@ -122,9 +204,8 @@ impl Diagnostic for MathError {
 /// Convenience result alias returning [`MathError`] on failure.
 pub type MathResult<T> = core::result::Result<T, MathError>;
 
-#[cfg(feature = "alloc")]
-impl From<String> for MathError {
-    fn from(reason: String) -> Self {
+impl From<&'static str> for MathError {
+    fn from(reason: &'static str) -> Self {
         Self::ConversionError { reason }
     }
 }
@@ -206,6 +287,65 @@ impl Diagnostic for FitError {
 
 mod umbrella;
 pub use umbrella::MathCommonsError;
+
+#[cfg(test)]
+mod core_tests {
+    use super::*;
+
+    fn assert_stack_error_traits<
+        E: Copy + Clone + PartialEq + Eq + core::fmt::Display + core::error::Error + Diagnostic,
+    >() {
+    }
+
+    #[test]
+    fn math_error_is_copy_eq_and_diagnostic_without_alloc() {
+        assert_stack_error_traits::<MathError>();
+        let ws = MathError::WorkspaceTooSmall {
+            required: 16,
+            available: 8,
+        };
+        let ws_copy = ws;
+        assert_eq!(ws, ws_copy);
+        assert_eq!(ws.code(), "MATH-005");
+        assert!(core::error::Error::source(&ws).is_none());
+
+        let nan_bounds = MathError::OutOfBounds {
+            value: f64::NAN,
+            min: -0.0,
+            max: 1.0,
+        };
+        let pos_zero_bounds = MathError::OutOfBounds {
+            value: f64::NAN,
+            min: 0.0,
+            max: 1.0,
+        };
+        assert_eq!(nan_bounds, pos_zero_bounds);
+        assert_eq!(
+            MathError::from("overflow"),
+            MathError::ConversionError { reason: "overflow" }
+        );
+    }
+
+    #[test]
+    fn interval_enclosure_errors_are_copy_eq_in_bare_no_std() {
+        use crate::primitives::Interval;
+
+        assert_eq!(
+            Interval::from_approx(f64::NAN),
+            Err(MathError::NumericalError {
+                reason: "non-finite scalar cannot form an interval enclosure",
+            })
+        );
+        let one = Interval::point(1.0).expect("finite point interval");
+        let straddles_zero = Interval::new(-1.0, 1.0).expect("valid interval");
+        assert_eq!(
+            one.checked_div(straddles_zero),
+            Err(MathError::NumericalError {
+                reason: "interval division by zero-containing enclosure",
+            })
+        );
+    }
+}
 
 #[cfg(all(test, feature = "std"))]
 mod tests {

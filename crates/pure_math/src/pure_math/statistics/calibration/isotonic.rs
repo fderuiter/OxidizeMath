@@ -53,7 +53,7 @@ fn validate_pava_inputs(
     }
     if n == 0 {
         return Err(MathError::NumericalError {
-            reason: "PAVA isotonic regression requires at least one observation".to_string(),
+            reason: "PAVA isotonic regression requires at least one observation",
         });
     }
     if blocks_scratch.len() < n {
@@ -83,13 +83,12 @@ fn pool_pava_core(
             || w <= 0.0
         {
             return Err(MathError::NumericalError {
-                reason: "PAVA requires finite scores, targets in [0, 1], and positive weights"
-                    .to_string(),
+                reason: "PAVA requires finite scores, targets in [0, 1], and positive weights",
             });
         }
         if i > 0 && x < sorted_scores[i - 1] {
             return Err(MathError::NumericalError {
-                reason: "fit_pava_sorted_into requires non-decreasing sorted_scores".to_string(),
+                reason: "fit_pava_sorted_into requires non-decreasing sorted_scores",
             });
         }
         if top > 0 && blocks[top - 1].max_x.to_bits() == x.to_bits() {
@@ -139,12 +138,12 @@ pub fn fit_pava_sorted_into(
 pub fn predict_pava_blocks(blocks: &[PavaBlock], score: f64) -> MathResult<UnitInterval> {
     if blocks.is_empty() {
         return Err(MathError::NumericalError {
-            reason: "Cannot predict with an empty PAVA block slice".to_string(),
+            reason: "Cannot predict with an empty PAVA block slice",
         });
     }
     if !score.is_finite() {
         return Err(MathError::NumericalError {
-            reason: "Prediction score must be finite".to_string(),
+            reason: "Prediction score must be finite",
         });
     }
     let prob = if score <= blocks[0].min_x {
@@ -206,7 +205,7 @@ impl IsotonicCalibrator {
         }
         if scores.is_empty() {
             return Err(MathError::NumericalError {
-                reason: "IsotonicCalibrator::fit requires non-empty inputs".to_string(),
+                reason: "IsotonicCalibrator::fit requires non-empty inputs",
             });
         }
         let mut pairs: Vec<(f64, f64)> = scores
@@ -216,7 +215,7 @@ impl IsotonicCalibrator {
             .collect();
         if pairs.iter().any(|(s, _)| !s.is_finite()) {
             return Err(MathError::NumericalError {
-                reason: "IsotonicCalibrator::fit requires finite scores".to_string(),
+                reason: "IsotonicCalibrator::fit requires finite scores",
             });
         }
         pairs.sort_unstable_by(|a, b| a.0.total_cmp(&b.0));

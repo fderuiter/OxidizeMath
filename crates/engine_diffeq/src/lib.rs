@@ -4,6 +4,8 @@
 
 /// Symmetric `B-A-O-A-B` underdamped Langevin dynamics solver.
 pub mod baoab;
+/// Stack-allocated `#![no_std]` error types for differential equation solvers.
+pub mod error;
 /// Multivariate Itô and Stratonovich Euler-Maruyama / Euler-Heun SDE solver.
 pub mod euler_maruyama;
 /// Zero-allocation discrete stochastic jump (Gillespie SSA) selection helpers.
@@ -16,13 +18,19 @@ pub mod sriw1;
 pub mod system;
 
 pub use baoab::{BaoabLangevinSolver, BaoabParams};
+pub use error::DiffeqError;
 pub use euler_maruyama::EulerMaruyamaSolver;
 pub use jump::ssa_sample_event;
 pub use math_memory::{ArenaScope, ByteArena, SolverWorkspace};
 pub use math_rng::{BASE_SEED, OxidizeRng};
 pub use milstein::MilsteinSolver;
 pub use sriw1::{CorrelatedWienerIncrement, Sriw1Solver};
-pub use system::{LangevinSystem, SdeSystem, StochasticCalculus};
+pub use system::{
+    LangevinSystem, SdeSystem, StochasticCalculus, eval_ito_effective_drift,
+    try_eval_ito_effective_drift,
+};
 
 #[cfg(test)]
 mod serde_tests;
+#[cfg(test)]
+mod tests;

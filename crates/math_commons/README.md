@@ -33,7 +33,7 @@ By standardizing universal constants, color mapping formulas, and spatial coordi
 - **`stochastic`**: `#![no_std]` zero-allocation [`StochasticWorkspace`](crate::stochastic::StochasticWorkspace) (with `alloc`) and [`ByteArena`](math_memory::ByteArena) entry points for iterative Tarjan SCC sink-class decomposition, scale-normalized Householder QR DTMC/CTMC stationary solvers, exact discrete-time AR(1) Ornstein-Uhlenbeck calibration, and quantile summaries.
 - **`wigner`**: Clebsch-Gordan coefficients and quantum angular momentum arithmetic.
 
-`math_commons` enables `default = ["std"]`, supports optional `alloc`, and compiles in bare `#![no_std]` (`core` + `libm` + `math_memory`) when built with `--no-default-features`.
+`math_commons` enables `default = ["std"]`, supports optional `alloc` and `serde` features (`--no-default-features --features alloc` / `--features serde`), and compiles in bare `#![no_std]` mode (`core` + `libm` + `math_memory`) when built with `--no-default-features`.
 
 ---
 

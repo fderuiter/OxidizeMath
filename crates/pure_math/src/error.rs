@@ -381,10 +381,12 @@ pub enum Glicko2Error {
     },
 }
 
+mod helpers;
 mod sports;
 mod stochastic;
 mod submodule_diagnostics;
 mod umbrella;
+pub(crate) use helpers::{IntoMathResult, ensure_math};
 
 pub use crate::pure_math::{
     algebra::{BraidError, linear_algebra::numerical::LinearAlgebraError},

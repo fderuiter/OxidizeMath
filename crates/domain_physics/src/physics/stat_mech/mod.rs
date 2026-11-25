@@ -22,11 +22,13 @@ pub mod kpz;
 pub mod quantum_stats;
 pub mod sandpile;
 
-pub use allen_cahn::{AllenCahn2D, ginzburg_landau_free_energy_2d};
+pub use allen_cahn::{
+    AllenCahn2D, ginzburg_landau_free_energy_2d, try_ginzburg_landau_free_energy_2d,
+};
 pub use cahn_hilliard::CahnHilliard2D;
 pub use edwards_wilkinson::{
     EdwardsWilkinson1D, EdwardsWilkinson2D, interface_roughness, mean_field,
-    theoretical_steady_state_roughness_sq_1d,
+    theoretical_steady_state_roughness_sq_1d, try_theoretical_steady_state_roughness_sq_1d,
 };
 pub use graph_ising::GraphSpinSystem;
 pub use kpz::{KpzModel1D, KpzModel2D};

@@ -190,9 +190,9 @@ impl From<ShaderEmitError> for EpidemiologyDomainError {
     }
 }
 
-impl From<String> for EpidemiologyDomainError {
+impl From<&'static str> for EpidemiologyDomainError {
     #[verified_engine::verified]
-    fn from(reason: String) -> Self {
+    fn from(reason: &'static str) -> Self {
         Self::Math(math_commons::error::MathError::from(reason))
     }
 }

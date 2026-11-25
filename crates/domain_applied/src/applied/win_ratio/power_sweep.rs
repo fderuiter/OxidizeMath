@@ -28,27 +28,38 @@ pub struct PowerSweepWorkspace {
 impl PowerSweepWorkspace {
     /// Allocates buffers sized for up to `max_arm` subjects per arm and `max_steps` grid points
     /// inside a single [`math_memory::OwnedByteArena`].
+    ///
+    /// Panics only if arena layout or allocation fails; see [`Self::try_with_capacity`].
     #[must_use]
     pub fn with_capacity(max_arm: usize, max_steps: usize) -> Self {
+        Self::try_with_capacity(max_arm, max_steps)
+            .expect("PowerSweepWorkspace::with_capacity allocation failed")
+    }
+
+    /// Fallibly allocates buffers sized for up to `max_arm` subjects per arm and `max_steps` grid points.
+    pub fn try_with_capacity(
+        max_arm: usize,
+        max_steps: usize,
+    ) -> Result<Self, math_memory::ArenaError> {
         let mut layout = math_memory::ArenaLayout::new();
-        let point_scalars_reg = layout.add_slice::<[f64; 7]>(max_steps).expect("pts");
-        let point_n_arm_reg = layout.add_slice::<usize>(max_steps).expect("n_arm");
+        let point_scalars_reg = layout.add_slice::<[f64; 7]>(max_steps)?;
+        let point_n_arm_reg = layout.add_slice::<usize>(max_steps)?;
         for _ in 0..2 {
-            let _ = layout.add_slice::<[f64; 2]>(max_arm).expect("times");
+            let _ = layout.add_slice::<[f64; 2]>(max_arm)?;
         }
         for _ in 0..4 {
-            let _ = layout.add_slice::<u32>(max_arm).expect("counts");
+            let _ = layout.add_slice::<u32>(max_arm)?;
         }
         for _ in 0..2 {
-            let _ = layout.add_slice::<[u8; 2]>(max_arm).expect("events");
+            let _ = layout.add_slice::<[u8; 2]>(max_arm)?;
         }
-        Self {
-            arena: math_memory::OwnedByteArena::with_capacity(layout.total_bytes()),
+        Ok(Self {
+            arena: math_memory::OwnedByteArena::try_with_capacity(layout.total_bytes())?,
             max_arm,
             max_steps,
             point_scalars_reg,
             point_n_arm_reg,
-        }
+        })
     }
 
     /// Maximum per-arm cohort capacity supported without reallocation.

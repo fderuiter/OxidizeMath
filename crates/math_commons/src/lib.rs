@@ -24,6 +24,7 @@ pub mod primitives;
 pub mod registry;
 /// Contiguous and strided 2D `(x, y)` series traits for zero-allocation numerical kernels.
 pub mod series;
+#[cfg(feature = "alloc")]
 pub mod stochastic;
 /// Quantum angular-momentum coupling and Wigner $3j$ / Clebsch-Gordan coefficients.
 pub mod wigner;

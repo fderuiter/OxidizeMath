@@ -2,7 +2,7 @@
 // [cite:clinical_trials_statistics]
 
 use crate::error::MarkovError;
-use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena, Pod, Zeroable};
+use math_memory::{ArenaError, ArenaLayout, ArenaRegion, OwnedByteArena, Pod, Zeroable};
 use nalgebra::RealField;
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
@@ -119,39 +119,66 @@ pub struct BaumWelchWorkspace<T> {
 
 impl<T: RealField + Copy + Pod + Zeroable> BaumWelchWorkspace<T> {
     /// Allocates scratch buffers sized for `(num_states, num_observations, max_len)`.
+    ///
+    /// Panics only if layout capacity overflows or allocation fails; see [`Self::try_new`].
     #[verified_engine::verified]
     pub fn new(num_states: usize, num_observations: usize, max_len: usize) -> Self {
-        let nn = num_states.saturating_mul(num_states);
-        let nm = num_states.saturating_mul(num_observations);
-        let tn = max_len.saturating_mul(num_states);
+        Self::try_new(num_states, num_observations, max_len)
+            .expect("BaumWelchWorkspace::new allocation failed")
+    }
+
+    /// Fallibly allocates scratch buffers sized for `(num_states, num_observations, max_len)`.
+    #[verified_engine::verified]
+    pub fn try_new(
+        num_states: usize,
+        num_observations: usize,
+        max_len: usize,
+    ) -> Result<Self, ArenaError> {
+        let elem_size = core::mem::size_of::<T>();
+        let nn = num_states
+            .checked_mul(num_states)
+            .ok_or(ArenaError::CapacityOverflow {
+                elem_size,
+                count: num_states,
+            })?;
+        let nm = num_states
+            .checked_mul(num_observations)
+            .ok_or(ArenaError::CapacityOverflow {
+                elem_size,
+                count: num_observations,
+            })?;
+        let tn = max_len
+            .checked_mul(num_states)
+            .ok_or(ArenaError::CapacityOverflow {
+                elem_size,
+                count: max_len,
+            })?;
         let mut layout = ArenaLayout::new();
-        let _ = layout.add_slice::<T>(tn).expect("bw alpha");
-        let _ = layout.add_slice::<T>(max_len).expect("bw scales");
-        let _ = layout.add_slice::<T>(num_states).expect("bw beta_curr");
-        let _ = layout.add_slice::<T>(num_states).expect("bw beta_next");
-        let _ = layout.add_slice::<T>(num_states).expect("bw obs_beta");
-        let init_gamma_reg = layout.add_slice::<T>(num_states).expect("bw init_gamma");
-        let _ = layout
-            .add_slice::<T>(num_states)
-            .expect("bw gamma_trans_sum");
-        let _ = layout.add_slice::<T>(num_states).expect("bw gamma_all_sum");
-        let xi_sum_reg = layout.add_slice::<T>(nn).expect("bw xi_sum");
-        let emission_sum_reg = layout.add_slice::<T>(nm).expect("bw emission_sum");
-        let prev_initial_reg = layout.add_slice::<T>(num_states).expect("bw prev_initial");
-        let prev_transitions_reg = layout.add_slice::<T>(nn).expect("bw prev_transitions");
-        let prev_emissions_reg = layout.add_slice::<T>(nm).expect("bw prev_emissions");
-        Self {
+        let _ = layout.add_slice::<T>(tn)?;
+        let _ = layout.add_slice::<T>(max_len)?;
+        for _ in 0..3 {
+            let _ = layout.add_slice::<T>(num_states)?;
+        }
+        let init_gamma_reg = layout.add_slice::<T>(num_states)?;
+        let _ = layout.add_slice::<T>(num_states)?;
+        let _ = layout.add_slice::<T>(num_states)?;
+        let xi_sum_reg = layout.add_slice::<T>(nn)?;
+        let emission_sum_reg = layout.add_slice::<T>(nm)?;
+        let prev_initial_reg = layout.add_slice::<T>(num_states)?;
+        let prev_transitions_reg = layout.add_slice::<T>(nn)?;
+        let prev_emissions_reg = layout.add_slice::<T>(nm)?;
+        Ok(Self {
             num_states,
             num_observations,
             max_len,
-            arena: OwnedByteArena::with_capacity(layout.total_bytes()),
+            arena: OwnedByteArena::try_with_capacity(layout.total_bytes())?,
             init_gamma_reg,
             xi_sum_reg,
             emission_sum_reg,
             prev_initial_reg,
             prev_transitions_reg,
             prev_emissions_reg,
-        }
+        })
     }
 
     /// Grows internal scratch buffers if needed to support `(num_states, num_observations, max_len)`.

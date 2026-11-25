@@ -78,10 +78,8 @@ impl Interval {
     #[verified_engine::verified]
     pub fn from_approx(x: f64) -> Result<Self, MathError> {
         if !x.is_finite() {
-            return Err(MathError::OutOfBounds {
-                value: x,
-                min: f64::MIN,
-                max: f64::MAX,
+            return Err(MathError::NumericalError {
+                reason: "non-finite scalar cannot form an interval enclosure",
             });
         }
         let lo = ulp_down_1(x);
@@ -119,7 +117,7 @@ impl Interval {
             return 0.0;
         }
         let w = ulp_up_1(self.hi - self.lo).max(0.0);
-        assert!(w >= 0.0);
+        debug_assert!(w >= 0.0);
         w
     }
 
@@ -131,7 +129,7 @@ impl Interval {
             return 0.0;
         }
         let r = ulp_up_1(0.5 * (self.hi - self.lo)).max(0.0);
-        assert!(r >= 0.0);
+        debug_assert!(r >= 0.0);
         r
     }
 
@@ -140,7 +138,7 @@ impl Interval {
     #[verified_engine::verified]
     pub fn midpoint(&self) -> f64 {
         let mid = (0.5 * self.lo + 0.5 * self.hi).clamp(self.lo, self.hi);
-        assert!(mid >= self.lo && mid <= self.hi);
+        debug_assert!(mid >= self.lo && mid <= self.hi);
         mid
     }
 
@@ -163,7 +161,7 @@ impl Interval {
     #[verified_engine::verified]
     pub fn hull(self, other: Self) -> Self {
         let (lo, hi) = (self.lo.min(other.lo), self.hi.max(other.hi));
-        assert!(lo <= hi);
+        debug_assert!(lo <= hi);
         Self { lo, hi }
     }
 
@@ -192,7 +190,7 @@ impl Interval {
         } else {
             (0.0, (-self.lo).max(self.hi))
         };
-        assert!(lo >= 0.0 && lo <= hi);
+        debug_assert!(lo >= 0.0 && lo <= hi);
         Self { lo, hi }
     }
 
@@ -207,7 +205,7 @@ impl Interval {
             ulp_down_1(a2.min(b2)).max(0.0)
         };
         let hi = ulp_up_1(a2.max(b2));
-        assert!(lo <= hi);
+        debug_assert!(lo <= hi);
         Self { lo, hi }
     }
 
@@ -240,7 +238,7 @@ impl Interval {
                 base = base * base;
             }
         }
-        assert!(acc.lo <= acc.hi);
+        debug_assert!(acc.lo <= acc.hi);
         acc
     }
 
@@ -248,10 +246,8 @@ impl Interval {
     #[verified_engine::verified]
     pub fn checked_div(self, rhs: Self) -> Result<Self, MathError> {
         if rhs.lo <= 0.0 && rhs.hi >= 0.0 {
-            return Err(MathError::StrictlyOutOfBounds {
-                value: 0.0,
-                min: rhs.lo,
-                max: rhs.hi,
+            return Err(MathError::NumericalError {
+                reason: "interval division by zero-containing enclosure",
             });
         }
         let (c0, c1, c2, c3) = (
@@ -292,7 +288,7 @@ impl Interval {
     pub fn exp(self) -> Self {
         let lo = ulp_down_2(libm::exp(self.lo)).max(0.0);
         let hi = ulp_up_2(libm::exp(self.hi));
-        assert!(lo <= hi);
+        debug_assert!(lo <= hi);
         Self { lo, hi }
     }
 
@@ -327,7 +323,7 @@ impl Interval {
         if libm::ceil((self.lo - PI) / TAU) * TAU + PI <= self.hi + 1e-15 {
             lo = -1.0;
         }
-        assert!(lo <= hi && lo >= -1.0 && hi <= 1.0);
+        debug_assert!(lo <= hi && lo >= -1.0 && hi <= 1.0);
         Self { lo, hi }
     }
 

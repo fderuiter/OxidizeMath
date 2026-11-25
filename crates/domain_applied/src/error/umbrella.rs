@@ -53,6 +53,9 @@ pub enum AppliedError {
     /// Foundational `math_commons` umbrella error.
     #[error("{0}")]
     MathCommons(#[from] MathCommonsError),
+    /// Foundational `#![no_std]` partial-differential-equation solver error.
+    #[error("{0}")]
+    Pde(#[from] engine_pde::PdeError),
     /// Upstream `pure_math` umbrella error.
     #[error("{0}")]
     PureMath(#[from] PureMathError),
@@ -170,9 +173,9 @@ impl From<ParseError> for AppliedError {
     }
 }
 
-impl From<String> for AppliedError {
+impl From<&'static str> for AppliedError {
     #[verified_engine::verified]
-    fn from(reason: String) -> Self {
+    fn from(reason: &'static str) -> Self {
         Self::Math(MathError::from(reason))
     }
 }
@@ -193,6 +196,7 @@ impl AppliedError {
             Self::VoxelGrid(err) => err,
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
+            Self::Pde(err) => err,
             Self::PureMath(err) => err,
         }
     }

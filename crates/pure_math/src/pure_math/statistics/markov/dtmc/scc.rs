@@ -141,15 +141,18 @@ impl TarjanWorkspace {
 }
 
 impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
-    /// Computes all communicating classes via iterative Tarjan strongly connected components.
-    #[must_use]
+    /// Fallible companion to [`communicating_classes`](Self::communicating_classes).
     #[verified_engine::verified]
-    pub fn communicating_classes(&self) -> Vec<CommunicatingClass> {
+    pub fn try_communicating_classes(
+        &self,
+    ) -> core::result::Result<Vec<CommunicatingClass>, math_commons::error::MathError> {
         let n = self.num_states();
         if n == 0 {
-            return Vec::new();
+            return Ok(Vec::new());
         }
-        let eps = T::from_f64(1e-15).unwrap();
+        let eps = T::from_f64(1e-15).ok_or(math_commons::error::MathError::ConversionError {
+            reason: "Failed to convert Tarjan tolerance 1e-15 to scalar type",
+        })?;
         let mut ws = TarjanWorkspace::new(n);
 
         for start in 0..n {
@@ -161,7 +164,16 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
 
         let mut classes = self.classify_sccs(&ws, eps);
         classes.sort_by_key(|c| c.states.first().copied().unwrap_or(usize::MAX));
-        classes
+        debug_assert!(!classes.is_empty() || n == 0);
+        Ok(classes)
+    }
+
+    /// Computes all communicating classes via iterative Tarjan strongly connected components.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn communicating_classes(&self) -> Vec<CommunicatingClass> {
+        self.try_communicating_classes()
+            .expect("communicating_classes preconditions must hold")
     }
 
     /// Returns only the closed (recurrent) communicating classes of the chain.

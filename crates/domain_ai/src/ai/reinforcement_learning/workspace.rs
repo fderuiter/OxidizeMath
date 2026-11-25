@@ -5,7 +5,7 @@
 use super::maze::{GridCellRole, MAX_RL_GRID_DIM, MIN_RL_GRID_DIM, SculptedGridMdp};
 use super::{GridState, Move};
 use math_commons::math_kernel::types::flatten_2d_index;
-use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
+use math_memory::{ArenaError, ArenaLayout, ArenaRegion, OwnedByteArena};
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
 
@@ -78,33 +78,36 @@ pub struct DenseRlWorkspace {
 
 impl DenseRlWorkspace {
     /// Allocates all dense RL tables and episode trajectory buffers in a single [`OwnedByteArena`].
+    ///
+    /// Panics only if arena layout or allocation fails; see [`Self::try_new`].
     #[must_use]
     pub fn new(width: usize, height: usize, max_episode_steps: usize, seed: Option<u64>) -> Self {
+        Self::try_new(width, height, max_episode_steps, seed)
+            .expect("DenseRlWorkspace::new allocation failed")
+    }
+
+    /// Fallibly allocates all dense RL tables and episode trajectory buffers in a single [`OwnedByteArena`].
+    pub fn try_new(
+        width: usize,
+        height: usize,
+        max_episode_steps: usize,
+        seed: Option<u64>,
+    ) -> Result<Self, ArenaError> {
         let w = width.clamp(MIN_RL_GRID_DIM as usize, MAX_RL_GRID_DIM as usize);
         let h = height.clamp(MIN_RL_GRID_DIM as usize, MAX_RL_GRID_DIM as usize);
         let cap = max_episode_steps.max(4);
         let count = w * h;
 
         let mut layout = ArenaLayout::new();
-        let states_reg = layout
-            .add_slice::<GridState>(count)
-            .expect("RL states layout");
-        let q_table_reg = layout
-            .add_slice::<[f64; 4]>(count)
-            .expect("RL q_table layout");
-        let theta_logits_reg = layout
-            .add_slice::<[f64; 4]>(count)
-            .expect("RL theta_logits layout");
-        let state_values_reg = layout
-            .add_slice::<f64>(count)
-            .expect("RL state_values layout");
-        let ep_states_reg = layout.add_slice::<usize>(cap).expect("RL ep_states layout");
-        let ep_actions_reg = layout
-            .add_slice::<usize>(cap)
-            .expect("RL ep_actions layout");
-        let ep_rewards_reg = layout.add_slice::<f64>(cap).expect("RL ep_rewards layout");
+        let states_reg = layout.add_slice::<GridState>(count)?;
+        let q_table_reg = layout.add_slice::<[f64; 4]>(count)?;
+        let theta_logits_reg = layout.add_slice::<[f64; 4]>(count)?;
+        let state_values_reg = layout.add_slice::<f64>(count)?;
+        let ep_states_reg = layout.add_slice::<usize>(cap)?;
+        let ep_actions_reg = layout.add_slice::<usize>(cap)?;
+        let ep_rewards_reg = layout.add_slice::<f64>(cap)?;
 
-        let mut arena = OwnedByteArena::with_capacity(layout.total_bytes());
+        let mut arena = OwnedByteArena::try_with_capacity(layout.total_bytes())?;
         let states = arena.region_mut(states_reg);
         for y in 0..h {
             for x in 0..w {
@@ -115,7 +118,7 @@ impl DenseRlWorkspace {
             }
         }
         let rng = seed.map_or_else(OxidizeRng::default, OxidizeRng::new);
-        Self {
+        Ok(Self {
             width: w,
             height: h,
             arena,
@@ -133,7 +136,7 @@ impl DenseRlWorkspace {
             episode_return: 0.0,
             episodes_completed: 0,
             rng,
-        }
+        })
     }
 
     /// Row-major `GridState` lookup table of length `width * height`.

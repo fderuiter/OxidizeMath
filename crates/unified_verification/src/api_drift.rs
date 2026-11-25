@@ -24,7 +24,7 @@ pub struct ApiItem {
 
 const BASELINE_REL_PATH: &str = "crates/unified_verification/api_baseline.json";
 
-fn collect_crate_roots(workspace_root: &Path) -> Vec<PathBuf> {
+pub(crate) fn collect_crate_roots(workspace_root: &Path) -> Vec<PathBuf> {
     let mut roots = vec![workspace_root.join("math_explorer/src/lib.rs")];
     let crates_dir = workspace_root.join("crates");
 

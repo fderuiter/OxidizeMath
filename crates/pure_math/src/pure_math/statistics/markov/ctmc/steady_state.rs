@@ -91,6 +91,24 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
             .collect()
     }
 
+    /// Fallible companion to [`steady_state`](Self::steady_state).
+    #[verified_engine::verified]
+    pub fn try_steady_state(
+        &self,
+    ) -> core::result::Result<Option<DVector<T>>, math_commons::error::MathError> {
+        if self.num_states == 0 {
+            return Err(math_commons::error::MathError::NumericalError {
+                reason: "ContinuousMarkovChain state space must be non-empty",
+            });
+        }
+        let mut ws = StochasticWorkspace::new(self.num_states, 0);
+        let mut out = DVector::zeros(self.num_states);
+        debug_assert!(self.num_states > 0);
+        Ok(self
+            .steady_state_with_workspace(&mut ws, &mut out)
+            .then_some(out))
+    }
+
     /// Computes the unique steady-state distribution $\pi$ satisfying $\pi^T G = 0$ and
     /// $\sum_i \pi_i = 1$ via Tarjan SCC sink isolation and scale-normalized Householder QR.
     ///
@@ -98,11 +116,8 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     #[must_use]
     #[verified_engine::verified]
     pub fn steady_state(&self) -> Option<DVector<T>> {
-        assert!(self.num_states > 0);
-        let mut ws = StochasticWorkspace::new(self.num_states, 0);
-        let mut out = DVector::zeros(self.num_states);
-        self.steady_state_with_workspace(&mut ws, &mut out)
-            .then_some(out)
+        self.try_steady_state()
+            .expect("steady_state preconditions must hold")
     }
 
     /// Computes the unique steady-state distribution into `out` using preallocated

@@ -1,7 +1,25 @@
 #![cfg_attr(any(), verified(opt_out = "metadata"))]
 
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::{OnceLock, RwLock};
+
+/// Stack-allocated error returned when the global [`CitationRegistry`] lock is poisoned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CitationRegistryError {
+    /// A thread panicked while holding the global citation registry `RwLock`.
+    PoisonedLock,
+}
+
+impl fmt::Display for CitationRegistryError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::PoisonedLock => write!(f, "Global CitationRegistry RwLock is poisoned"),
+        }
+    }
+}
+
+impl std::error::Error for CitationRegistryError {}
 
 /// A thread-safe global registry for storing and retrieving academic citations.
 ///
@@ -52,6 +70,16 @@ impl CitationRegistry {
         })
     }
 
+    /// Fallibly registers an academic citation in the global registry without panicking on lock poison.
+    pub fn try_register(id: String, citation: String) -> Result<(), CitationRegistryError> {
+        Self::global()
+            .write()
+            .map_err(|_| CitationRegistryError::PoisonedLock)?
+            .citations
+            .insert(id, citation);
+        Ok(())
+    }
+
     /// Registers an academic citation for the specified identifier in the global registry.
     ///
     /// If an entry already exists for `id`, its citation text is overwritten.
@@ -72,11 +100,17 @@ impl CitationRegistry {
     /// );
     /// ```
     pub fn register(id: String, citation: String) {
-        Self::global()
-            .write()
-            .unwrap()
+        Self::try_register(id, citation).expect("Global CitationRegistry write lock poisoned");
+    }
+
+    /// Fallibly retrieves the academic citation associated with `id` without panicking on lock poison.
+    pub fn try_get(id: &str) -> Result<Option<String>, CitationRegistryError> {
+        Ok(Self::global()
+            .read()
+            .map_err(|_| CitationRegistryError::PoisonedLock)?
             .citations
-            .insert(id, citation);
+            .get(id)
+            .cloned())
     }
 
     /// Retrieves the academic citation associated with the specified identifier, if registered.
@@ -98,6 +132,6 @@ impl CitationRegistry {
     /// assert_eq!(CitationRegistry::get("non_existent_model"), None);
     /// ```
     pub fn get(id: &str) -> Option<String> {
-        Self::global().read().unwrap().citations.get(id).cloned()
+        Self::try_get(id).expect("Global CitationRegistry read lock poisoned")
     }
 }
