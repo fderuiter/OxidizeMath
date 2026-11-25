@@ -63,7 +63,15 @@ pub trait OdeSystem<State: VectorOperations> {
     }
 }
 
-/// A trait defining a numerical ODE solver strategy.
+/// Single-step discrete propagator $\mathbf{y}_{n+1} = \Phi_{\Delta t}(t_n, \mathbf{y}_n)$ for $\frac{d\mathbf{y}}{dt} = \mathbf{f}(t, \mathbf{y})$.
+///
+/// Reference: Hairer, Norsett & Wanner (1993), *Solving Ordinary Differential Equations I*, DOI: 10.1007/978-3-540-78862-1; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Consistent zero-stable one-step methods converge at global order $O(\Delta t^p)$ whenever $\lambda \Delta t$ remains inside the absolute stability region $\mathcal{S}$.
+///
+/// # Domain of Validity
+/// Valid for smooth trajectories and finite step sizes $\Delta t$ respecting the stability limit of stiff or oscillatory modes.
 pub trait Solver<State: VectorOperations> {
     /// Advances the system state by one time step `dt` in-place.
     #[verified_engine::verified]

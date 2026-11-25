@@ -445,7 +445,7 @@ fn evaluate_schedule_cycle(
     (total_gain * inv_len, accum_pi * inv_len)
 }
 
-/// Solves exact stationary distributions, asymptotic drifts, and broken detailed-balance metrics.
+#[doc = include_str!("../../../../../../docs/math_specs/snippets/parrondo_ratchet.md")]
 #[verified_engine::verified]
 pub fn solve_parrondo_ratchet(
     params: &ParrondoParams,

@@ -65,13 +65,14 @@
 //! println!("Concentration of Activator at center: {:.4}", u_center);
 //! ```
 
-#[allow(missing_docs)]
+pub mod advection;
+/// Local N-species autocatalytic reaction kinetics (Schnakenberg and Gray-Scott).
 pub mod reaction;
-#[allow(missing_docs)]
+/// Fused forward-Euler and generic ODE-adapter Turing time-stepping strategies.
 pub mod solvers;
 /// Spatially heterogeneous Schnakenberg kinetics with preallocated masks.
 pub mod spatial_reaction;
-#[allow(missing_docs)]
+/// Contiguous N-species spatial concentration state buffers.
 pub mod state;
 
 use crate::biology::diffusion::{FiniteDifference1D, SpatialDiffusion};
@@ -116,7 +117,10 @@ use std::ops::{Deref, DerefMut};
 
 /// Diffusion coefficient
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
-pub struct DiffusionCoeff(pub f64);
+pub struct DiffusionCoeff(
+    /// Non-negative species diffusivity $D \ge 0$.
+    pub f64,
+);
 
 impl Deref for DiffusionCoeff {
     type Target = f64;

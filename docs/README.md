@@ -6,10 +6,16 @@ Welcome to the OxidizeMath documentation directory.
 
 The [Architecture Guide Suite](architecture/README.md) provides centralized blueprints, diagrams, and developer walkthroughs:
 
-- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 24 crates.
+- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 26 crates.
 - **[CERA Framework Guide](architecture/cera_framework.md)**: Climate-invariant Encoding through Representation Alignment and climate modeling pipelines.
 - **[Zero-Allocation Runtime Guide](architecture/zero_allocation_runtime.md)**: NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and verified engine execution rules.
 - **[Interactive Tool Walkthrough](architecture/interactive_tool_walkthrough.md)**: Step-by-step developer guide to implement interactive simulations with `InteractiveTool`.
+
+## Mathematical Specifications
+
+The [Canonical Mathematical Specifications](math_specs/README.md) document governing equations, bibliography citations, numerical stability bounds, and domains of validity across the 11 mathematical and solver crates:
+
+- **[`math_commons`](math_specs/math_commons.md)**, **[`engine_linalg`](math_specs/engine_linalg.md)**, **[`engine_diffeq`](math_specs/engine_diffeq.md)**, **[`engine_pde`](math_specs/engine_pde.md)**, **[`pure_math`](math_specs/pure_math.md)**, **[`domain_ai`](math_specs/domain_ai.md)**, **[`domain_applied`](math_specs/domain_applied.md)**, **[`domain_biology`](math_specs/domain_biology.md)**, **[`domain_climate`](math_specs/domain_climate.md)**, **[`domain_epidemiology`](math_specs/domain_epidemiology.md)**, and **[`domain_physics`](math_specs/domain_physics.md)**.
 
 ## Architectural Decision Records (ADRs)
 
@@ -60,9 +66,11 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Counterfactual Shadow Twin Branching](adr/20261123-counterfactual-shadow-twin-branching.md)
 - [ADR 20261123: Coupled Electrochemical Battery Aging, Zero-Allocation CSV Calibration, and Multi-Segment Lifetime Exports](adr/20261123-coupled-battery-aging-and-lifetime-exports.md)
 - [ADR 20261123: Coupled Chaos Parameter Atlases and Zero-Allocation Lyapunov Kernels](adr/20261123-coupled-chaos-parameter-atlases-and-zero-alloc-metrics.md)
+- [ADR 20261123: Coupled Lattice Boltzmann D2Q9 and First-Order Upwind Advection Morphogenesis Studio](adr/20261123-coupled-lbm-upwind-advection-morphogenesis.md)
 - [ADR 20261123: Zero-Allocation CSR Spatial Grid and Cortical Thickness Workspace](adr/20261123-csr-spatial-grid-thickness-workspace.md)
 - [ADR 20261123: Elliptic Curve Discriminant Atlas, Singular Cubic Rendering, and Hasse-Weil Challenges](adr/20261123-elliptic-curve-atlas-singular-loci-and-challenges.md)
 - [ADR 20261123: Enforce AST Complexity Limits and Synchronous Solver Instruction Budgets](adr/20261123-enforce-ast-limits-and-solver-budgets.md)
+- [ADR 20261123: Enforce Mathematical Docstring AST Gates and Canonical Specifications](adr/20261123-enforce-math-docstring-ast-gates.md)
 - [ADR 20261123: Feature-Gate Core AST Tools and Unify Workspace Crates](adr/20261123-feature-gate-core-ast-tools-and-unify-crates.md)
 - [ADR 20261123: Zero-Allocation 2D FFT Lenia Engine and Promoted Gray-Scott Kinetics](adr/20261123-fft-lenia-engine-and-gray-scott-kinetics.md)
 - [ADR 20261123: Zero-Allocation Prime-Exponent FRACTRAN VM, Kolmogorov Bounds, and Auto-Discovered `AlgorithmicInfoTab`](adr/20261123-fractran-vm-kolmogorov-and-algorithmic-info-tab.md)
@@ -79,9 +87,11 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Implicit CAD Volumetric Studio, Boundary-Capped Marching Cubes, and Millimeter STL Export](adr/20261123-implicit-cad-capped-isosurface-and-mm-stl.md)
 - [ADR 20261123: Incremental Vietoris-Rips Filtration, Bitset Simplex Discovery, and Distance Reuse](adr/20261123-incremental-vietoris-rips-filtration.md)
 - [ADR 20261123: Static Inventory Tab Registration and Scoped Build Scripts](adr/20261123-inventory-tabs-and-scoped-build-scripts.md)
+- [ADR 20261123: Verified Knot, Artin Braid, and Laurent Skein Studio](adr/20261123-knot-braid-and-laurent-skein-studio.md)
 - [ADR 20261123: Downsampled 2D FFT Lenia Soliton Viability Atlas, Potential Histograms, and AST Rule Sandboxes](adr/20261123-lenia-viability-atlas-and-sandboxes.md)
 - [ADR 20261123: Zero-Allocation Brent Root-Finder, Market Pricing Devigging, and Execution Calculators](adr/20261123-market-pricing-brent-and-execution-calculators.md)
 - [ADR 20261123: Log-Space HMM Solvers, Zero-Allocation Baum-Welch EM, Validated Serde, and Markov Sequence Workbench](adr/20261123-markov-sequence-and-reliability-workbench.md)
+- [ADR 20261123: Three-Tier Maturity Qualification Gates, SemVer Signature Locks, and Accessible Badge Surfaces](adr/20261123-maturity-tiers-and-qualification-gates.md)
 - [ADR 20261123: Modular Stochastic Engines and Dedicated Workbench Tab](adr/20261123-modular-stochastic-engines-and-workbench-tab.md)
 - [ADR 20261123: Modularize Setup and Enforce Static Documentation Gates](adr/20261123-modularize-setup-and-enforce-doc-gates.md)
 - [ADR 20261123: Multi-State, Portfolio, and Drawdown-Constrained Kelly Convex Solvers](adr/20261123-multi-state-kelly-convex-solvers.md)
@@ -102,6 +112,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Live 4D Radar-Gated IMRT Contouring Workbench](adr/20261123-radar-gated-4d-imrt-contouring-workbench.md)
 - [ADR 20261123: Shared `RasterBrushCanvas`, Pre-Allocation RLE `base64url` Spatial Masks, and Live 2D Field Sculpting](adr/20261123-raster-brush-canvas-and-spatial-masks.md)
 - [ADR 20261123: Zero-Allocation Fixed-Size Christoffel Symbols, Relativistic Thin-Lens Splat Jacobians, and Paczyński-Wiita Galactic Orbits](adr/20261123-relativistic-lensed-splats-and-orbits.md)
+- [ADR 20261123: Relativistic Gravitational Lensing, Canvas Slingshot Gestures, and Redshift Sonification Studio](adr/20261123-relativistic-lensing-slingshot-and-sonification.md)
 - [ADR 20261123: Reusable Flat CSR Spatial Grid for Cortical Thickness](adr/20261123-reusable-flat-spatial-grid-cortical-thickness.md)
 - [ADR 20261123: Closed-Form Schwarzschild 4D Connection, Geodesic Bundle, and Relativistic Jet Workbench](adr/20261123-schwarzschild-connection-and-jet-beaming-workbench.md)
 - [ADR 20261123: Scope Pre-Commit Gates, Add Pre-Push Tiering, and Eliminate Build-Script `CARGO_MANIFEST_DIR` Drift](adr/20261123-scope-pre-commit-gates-and-pre-push-tiering.md)
@@ -119,9 +130,13 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Quantum Tunneling and 2D Chladni Resonance Parameter Atlases](adr/20261123-wave-and-chladni-resonance-atlases.md)
 - [ADR 20261123: Pre-Allocated 2D FDTD Wave Solver, Hamiltonian Ray Caustics, and Optics Playground](adr/20261123-wave-optics-fdtd-and-ray-caustics.md)
 - [ADR 20261123: Composite Win Ratio Workbench and Clinical Trial Biostatistics Upgrades](adr/20261123-win-ratio-workbench-and-clinical-trial-upgrades.md)
+- [ADR 20261123: `WorkspaceDataBus` Cross-Domain Graph Coupling and Zero-Allocation Graph Solvers](adr/20261123-workspace-data-bus-cross-domain-graph-coupling.md)
 - [ADR 20261123: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping](adr/20261123-workspace-release-version-guards-and-wix-mapping.md)
 - [ADR 20261123: Add xtask Smoke Gates and Zero-Allocation Benchmark Checks](adr/20261123-xtask-smoke-gates-and-zero-allocation-bench-checks.md)
 - [ADR 20261124: Tier 0 `math_memory` ByteArena, Optional-`alloc` Engines, and Arena-Backed Workspaces](adr/20261124-math-memory-byte-arena-workspaces.md)
+- [ADR 20261124: Tier 0 `math_rng` Crate, Stream-Split ChaCha8 Samplers, and 64D Static QMC Views](adr/20261124-math-rng-static-qmc-views.md)
+- [ADR 20261124: `#![no_std]` Visitor-Based `math_diagnostics`, Causal `LinalgError` Retention, and Umbrella `api_drift` Guards](adr/20261124-no-std-math-diagnostics-and-causal-error-wiring.md)
+- [ADR 20261124: Optional `#![no_std]` Serde Across Substrate, Plot Outputs, and Facade](adr/20261124-optional-no-std-serde-substrate-and-facade.md)
 
 ## Contributing
 

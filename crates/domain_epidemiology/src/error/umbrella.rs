@@ -1,6 +1,12 @@
 use super::{EpidemiologyError, NetworkModelError};
-use diagnostics::{Diagnostic, Severity};
-use std::collections::HashMap;
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use math_commons::error::{
+    ArenaError, EvalError, FitError, GlslError, LexError, MathCommonsError, ParseError,
+    ShaderEmitError,
+};
+use pure_math::error::{
+    LinalgError, LinearAlgebraError, MonteCarloError, OptimizationError, TensorError,
+};
 
 /// Extensible crate-level umbrella error for `domain_epidemiology` models and upstream math errors.
 #[non_exhaustive]
@@ -100,6 +106,90 @@ impl From<pure_math::error::EvolutionError> for EpidemiologyDomainError {
     }
 }
 
+impl From<LinearAlgebraError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: LinearAlgebraError) -> Self {
+        Self::PureMath(pure_math::error::PureMathError::from(err))
+    }
+}
+
+impl From<OptimizationError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: OptimizationError) -> Self {
+        Self::PureMath(pure_math::error::PureMathError::from(err))
+    }
+}
+
+impl From<MonteCarloError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: MonteCarloError) -> Self {
+        Self::PureMath(pure_math::error::PureMathError::from(err))
+    }
+}
+
+impl From<TensorError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: TensorError) -> Self {
+        Self::PureMath(pure_math::error::PureMathError::from(err))
+    }
+}
+
+impl From<ArenaError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: ArenaError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<LinalgError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: LinalgError) -> Self {
+        Self::PureMath(pure_math::error::PureMathError::from(err))
+    }
+}
+
+impl From<FitError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: FitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<EvalError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: EvalError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<GlslError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: GlslError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<LexError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: LexError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<ParseError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: ParseError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<ShaderEmitError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: ShaderEmitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
 impl From<String> for EpidemiologyDomainError {
     #[verified_engine::verified]
     fn from(reason: String) -> Self {
@@ -127,12 +217,8 @@ impl Diagnostic for EpidemiologyDomainError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = self.as_diagnostic().metadata();
-        map.insert(
-            "umbrella_type".to_string(),
-            "EpidemiologyDomainError".to_string(),
-        );
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        self.as_diagnostic().visit_fields(visitor);
+        visitor.record_str("umbrella_type", "EpidemiologyDomainError");
     }
 }

@@ -1,21 +1,26 @@
-use diagnostics::{Diagnostic, Severity};
-use std::collections::HashMap;
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use thiserror::Error;
 
+/// Domain error variants for compartmental ODE, next-generation matrix, and final-size solvers.
 #[derive(Debug, Clone, PartialEq, Error)]
-#[allow(missing_docs)]
 pub enum EpidemiologyError {
     /// Matrix V (Transition Matrix) is singular and cannot be inverted.
     #[error("Transition matrix V is singular and cannot be inverted")]
     SingularTransitionMatrix,
     /// Invalid Parameter (e.g., negative rate).
     #[error("Invalid epidemiological parameter {name}: {value}")]
-    #[allow(missing_docs)]
-    InvalidParameter { name: String, value: f64 },
+    InvalidParameter {
+        /// Identifier of the rejected epidemiological parameter.
+        name: String,
+        /// Rejected numerical parameter value.
+        value: f64,
+    },
     /// Missing Parameter (e.g., required field not set in builder).
     #[error("Missing required epidemiological parameter: {name}")]
-    #[allow(missing_docs)]
-    MissingParameter { name: String },
+    MissingParameter {
+        /// Name of the omitted required builder parameter.
+        name: String,
+    },
     /// Basic reproduction number `R0` was non-positive or non-finite.
     #[error("Basic reproduction number R0 must be finite and positive, got {r0}")]
     InvalidReproductionNumber {
@@ -50,14 +55,12 @@ impl Diagnostic for EpidemiologyError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "EpidemiologyError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "EpidemiologyError");
+        visitor.record_display("description", self);
     }
 }
 pub use crate::epidemiology::networks::NetworkModelError;
@@ -69,11 +72,9 @@ impl Diagnostic for NetworkModelError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "NetworkModelError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "NetworkModelError");
+        visitor.record_display("description", self);
     }
 }
 

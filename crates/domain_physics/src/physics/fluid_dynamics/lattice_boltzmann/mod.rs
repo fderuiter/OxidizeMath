@@ -5,13 +5,13 @@
 //! distribution functions on a discrete lattice.
 
 pub mod aerodynamics;
-#[allow(missing_docs)]
+/// Streaming, bounce-back obstacle, Zou-He inlet, and collision step kernels.
 pub mod algorithms;
-#[allow(missing_docs)]
+/// Momentum-exchange aerodynamic drag and lift force estimators.
 pub mod forces;
-#[allow(missing_docs)]
+/// Discrete velocity lattices (`Lattice2D`, `D2Q9`) and BGK collision operators.
 pub mod model;
-#[allow(missing_docs)]
+/// Double-buffered mesoscopic particle distribution grids (`LatticeState`).
 pub mod state;
 
 #[cfg(test)]

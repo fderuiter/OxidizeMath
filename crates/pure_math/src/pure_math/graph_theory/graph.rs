@@ -6,7 +6,7 @@ use petgraph::graph::{Graph as PetgraphGraph, NodeIndex};
 /// A wrapper around petgraph::Graph to represent an undirected graph.
 /// The nodes (N) and edges (E) are generic.
 pub struct Graph<N, E> {
-    #[allow(missing_docs)]
+    /// Value for `graph` (graph).
     pub graph: PetgraphGraph<N, E, Undirected>,
 }
 

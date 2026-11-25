@@ -363,6 +363,10 @@ impl MathExplorerApp {
         record_undo_from: Option<super::AppState>,
     ) {
         self.show_starter_gallery = false;
+        self.data_bus = super::data_bus::WorkspaceDataBus::default();
+        if let Some(egui_ctx) = ctx {
+            super::data_bus::sync_app_bus_before_viewport(self, egui_ctx);
+        }
         self.clear_active_pane_caches();
         self.session_manager.clear_toast();
 

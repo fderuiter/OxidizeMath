@@ -11,16 +11,19 @@
 //! 2. Unroll loops for better instruction pipelining.
 //! 3. Use `unsafe` indexing (with rigorous safety proofs) to eliminate bounds checks.
 
-#[allow(missing_docs)]
+/// 1D three-point Neumann finite-difference Laplacian operator.
 pub mod fd1d;
-#[allow(missing_docs)]
+/// 2D five-point loop-split finite-difference Laplacian and masked domain operators.
 pub mod fd2d;
 pub mod fd3d;
 pub mod laplace_beltrami;
 pub mod manifold;
 
 pub use fd1d::FiniteDifference1D;
-pub use fd2d::{CellMask2D, FiniteDifference2D, MaskedFiniteDifference2D, ReactionCellRole};
+pub use fd2d::{
+    AdvectedSpatialDiffusion, CellMask2D, FiniteDifference2D, MaskedFiniteDifference2D,
+    ReactionCellRole,
+};
 pub use fd3d::FiniteDifference3D;
 pub use laplace_beltrami::LaplaceBeltramiDiffusion2D;
 pub use manifold::CotangentMeshDiffusion;

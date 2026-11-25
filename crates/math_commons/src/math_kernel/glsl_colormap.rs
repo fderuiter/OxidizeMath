@@ -1,4 +1,4 @@
-//! GLSL ES 3.00 colormap and WCAG 2.2 dark-canvas contrast emitters mirroring [`super::colormap`].
+//! GLSL ES 3.00 colormap and WCAG 2.2 dark-canvas contrast emitters mirroring [`crate::math_kernel::colormap`].
 // [cite:math_commons]
 
 #[cfg(feature = "alloc")]

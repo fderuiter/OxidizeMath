@@ -1,4 +1,48 @@
 {
+  "crates/00_foundation/math_diagnostics/src/lib.rs": [
+    {
+      "signature": "pub enum Severity"
+    },
+    {
+      "signature": "pub fn collect_diagnostic_metadata < D : Diagnostic + ? Sized > (_ : & D ,) -> std :: collections :: HashMap < std :: string :: String , std :: string :: String >"
+    },
+    {
+      "signature": "pub trait Diagnostic : core :: error :: Error + Send + Sync + 'static"
+    },
+    {
+      "signature": "pub trait Diagnostic { fn metadata (& self) -> std :: collections :: HashMap < std :: string :: String , std :: string :: String > }"
+    },
+    {
+      "signature": "pub trait Diagnostic { fn severity (& self) -> Severity }"
+    },
+    {
+      "signature": "pub trait Diagnostic { fn visit_fields (& self , _ : & mut dyn DiagnosticVisitor) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_bool (& mut self , _ : & str , _ : bool) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_display (& mut self , _ : & str , _ : & dyn fmt :: Display) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_f64 (& mut self , _ : & str , _ : f64) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_i64 (& mut self , _ : & str , _ : i64) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_str (& mut self , _ : & str , _ : & str) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_u64 (& mut self , _ : & str , _ : u64) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_usize (& mut self , _ : & str , _ : usize) }"
+    }
+  ],
   "crates/00_foundation/math_memory/src/arena.rs": [
     {
       "signature": "impl < 'a > ArenaScope < 'a > { pub const fn capacity (& self) -> usize }"
@@ -333,6 +377,561 @@
     },
     {
       "signature": "pub trait SolverWorkspace { fn reset (& mut self) }"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/lib.rs": [
+    {
+      "signature": "pub use qmc :: FIRST_64_PRIMES"
+    },
+    {
+      "signature": "pub use qmc :: HaltonSequence"
+    },
+    {
+      "signature": "pub use qmc :: HaltonView"
+    },
+    {
+      "signature": "pub use qmc :: MAX_HALTON_DIM"
+    },
+    {
+      "signature": "pub use qmc :: MAX_NIEDERREITER_DIM"
+    },
+    {
+      "signature": "pub use qmc :: MAX_QMC_DIM"
+    },
+    {
+      "signature": "pub use qmc :: MAX_SOBOL_DIM"
+    },
+    {
+      "signature": "pub use qmc :: NiederreiterSequence"
+    },
+    {
+      "signature": "pub use qmc :: NiederreiterView"
+    },
+    {
+      "signature": "pub use qmc :: QmcError"
+    },
+    {
+      "signature": "pub use qmc :: SobolSequence"
+    },
+    {
+      "signature": "pub use qmc :: SobolView"
+    },
+    {
+      "signature": "pub use qmc :: radical_inverse"
+    },
+    {
+      "signature": "pub use rand_core :: CryptoRng"
+    },
+    {
+      "signature": "pub use rand_core :: RngCore"
+    },
+    {
+      "signature": "pub use rand_core :: SeedableRng"
+    },
+    {
+      "signature": "pub use rng :: BASE_SEED"
+    },
+    {
+      "signature": "pub use rng :: OxidizeRng"
+    },
+    {
+      "signature": "pub use scalar :: RngScalar"
+    },
+    {
+      "signature": "pub use scalar :: fill_cranley_patterson_shifts"
+    },
+    {
+      "signature": "pub use scalar :: sample_bounded_u64"
+    },
+    {
+      "signature": "pub use scalar :: sample_bounded_usize"
+    },
+    {
+      "signature": "pub use scalar :: sample_closed_open"
+    },
+    {
+      "signature": "pub use scalar :: sample_open"
+    },
+    {
+      "signature": "pub use scalar :: sample_standard_normal"
+    },
+    {
+      "signature": "pub use scalar :: sample_standard_normal_f64"
+    },
+    {
+      "signature": "pub use scalar :: sample_symmetric_open"
+    },
+    {
+      "signature": "pub use scramble :: dyadic_53_to_shifted_open"
+    },
+    {
+      "signature": "pub use scramble :: owen_scramble_53"
+    },
+    {
+      "signature": "pub use scramble :: splitmix64"
+    },
+    {
+      "signature": "pub use scramble :: torus_shift_open"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/error.rs": [
+    {
+      "signature": "pub enum QmcError"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/faure_data.rs": [
+    {
+      "signature": "pub const MAX_HALTON_DIM : usize"
+    },
+    {
+      "signature": "pub fn faure_owen_permute (_ : usize , _ : u32 , _ : u32 , _ : u64 , _ : u32 , _ : Option < u64 > ,) -> u32"
+    },
+    {
+      "signature": "pub fn faure_permute (_ : usize , _ : u32) -> u32"
+    },
+    {
+      "signature": "pub fn faure_static_bytes () -> usize"
+    },
+    {
+      "signature": "pub static FIRST_64_PRIMES : [u32 ; MAX_HALTON_DIM]"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/halton.rs": [
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub const fn current_index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub const fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub const fn raw_unpermuted (self) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub const fn unscrambled (self) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub const fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub fn apply_cranley_patterson_shift < R : RngCore + ? Sized > (& mut self , _ : & mut R) }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub fn new (_ : usize , _ : & 'a mut [f64]) -> Result < Self , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub fn next_point < T : RngScalar > (& mut self , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub fn point_at < T : RngScalar > (& self , _ : u64 , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub fn reset_index (& mut self) }"
+    },
+    {
+      "signature": "impl < 'a > HaltonView < 'a > { pub fn set_scramble_seed (& mut self , _ : Option < u64 >) }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub const fn current_index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub const fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub const fn raw_unpermuted (self) -> Self }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub const fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn apply_cranley_patterson_shift < R : RngCore + ? Sized > (& mut self , _ : & mut R) }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn new (_ : usize) -> Result < Self , QmcError > }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn next_point < T : RngScalar > (& mut self , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn point_at < T : RngScalar > (& self , _ : u64 , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn reset_index (& mut self) }"
+    },
+    {
+      "signature": "impl HaltonSequence { pub fn set_scramble_seed (& mut self , _ : Option < u64 >) }"
+    },
+    {
+      "signature": "pub fn radical_inverse (_ : u64 , _ : u32) -> Result < f64 , QmcError >"
+    },
+    {
+      "signature": "pub struct HaltonSequence"
+    },
+    {
+      "signature": "pub struct HaltonView < 'a >"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/mod.rs": [
+    {
+      "signature": "pub const MAX_QMC_DIM : usize"
+    },
+    {
+      "signature": "pub fn total_qmc_static_table_bytes () -> usize"
+    },
+    {
+      "signature": "pub use error :: QmcError"
+    },
+    {
+      "signature": "pub use faure_data :: FIRST_64_PRIMES"
+    },
+    {
+      "signature": "pub use faure_data :: MAX_HALTON_DIM"
+    },
+    {
+      "signature": "pub use faure_data :: faure_permute"
+    },
+    {
+      "signature": "pub use faure_data :: faure_static_bytes"
+    },
+    {
+      "signature": "pub use halton :: HaltonSequence"
+    },
+    {
+      "signature": "pub use halton :: HaltonView"
+    },
+    {
+      "signature": "pub use halton :: radical_inverse"
+    },
+    {
+      "signature": "pub use niederreiter :: NiederreiterSequence"
+    },
+    {
+      "signature": "pub use niederreiter :: NiederreiterView"
+    },
+    {
+      "signature": "pub use niederreiter_data :: MAX_NIEDERREITER_DIM"
+    },
+    {
+      "signature": "pub use niederreiter_data :: NIEDERREITER_BITS"
+    },
+    {
+      "signature": "pub use niederreiter_data :: niederreiter_generator_53"
+    },
+    {
+      "signature": "pub use niederreiter_data :: niederreiter_static_bytes"
+    },
+    {
+      "signature": "pub use sobol :: SobolSequence"
+    },
+    {
+      "signature": "pub use sobol :: SobolView"
+    },
+    {
+      "signature": "pub use sobol_data :: MAX_SOBOL_DIM"
+    },
+    {
+      "signature": "pub use sobol_data :: SOBOL_BITS"
+    },
+    {
+      "signature": "pub use sobol_data :: sobol_direction_53"
+    },
+    {
+      "signature": "pub use sobol_data :: sobol_static_bytes"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/niederreiter.rs": [
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub const fn current_index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub const fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub const fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn apply_cranley_patterson_shift < R : RngCore + ? Sized > (& mut self , _ : & mut R) }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn new (_ : usize , _ : & 'a mut [u64] , _ : & 'a mut [f64] ,) -> Result < Self , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn next_point < T : RngScalar > (& mut self , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn point_at < T : RngScalar > (& self , _ : u64 , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn reset_index (& mut self) }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn seek (& mut self , _ : u64) }"
+    },
+    {
+      "signature": "impl < 'a > NiederreiterView < 'a > { pub fn set_scramble_seed (& mut self , _ : Option < u64 >) }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub const fn current_index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub const fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub const fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn apply_cranley_patterson_shift < R : RngCore + ? Sized > (& mut self , _ : & mut R) }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn new (_ : usize) -> Result < Self , QmcError > }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn next_point < T : RngScalar > (& mut self , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn point_at < T : RngScalar > (& self , _ : u64 , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn reset_index (& mut self) }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn set_scramble_seed (& mut self , _ : Option < u64 >) }"
+    },
+    {
+      "signature": "pub struct NiederreiterSequence"
+    },
+    {
+      "signature": "pub struct NiederreiterView < 'a >"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/niederreiter_data.rs": [
+    {
+      "signature": "pub const MAX_NIEDERREITER_DIM : usize"
+    },
+    {
+      "signature": "pub const NIEDERREITER_BITS : usize"
+    },
+    {
+      "signature": "pub fn niederreiter_generator_53 (_ : usize , _ : usize) -> u64"
+    },
+    {
+      "signature": "pub fn niederreiter_static_bytes () -> usize"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/sobol.rs": [
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub const fn current_index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub const fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub const fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn apply_cranley_patterson_shift < R : RngCore + ? Sized > (& mut self , _ : & mut R) }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn new (_ : usize , _ : & 'a mut [u64] , _ : & 'a mut [f64] ,) -> Result < Self , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn next_point < T : RngScalar > (& mut self , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn point_at < T : RngScalar > (& self , _ : u64 , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn reset_index (& mut self) }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn seek (& mut self , _ : u64) }"
+    },
+    {
+      "signature": "impl < 'a > SobolView < 'a > { pub fn set_scramble_seed (& mut self , _ : Option < u64 >) }"
+    },
+    {
+      "signature": "impl SobolSequence { pub const fn current_index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl SobolSequence { pub const fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl SobolSequence { pub const fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn apply_cranley_patterson_shift < R : RngCore + ? Sized > (& mut self , _ : & mut R) }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn new (_ : usize) -> Result < Self , QmcError > }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn next_point < T : RngScalar > (& mut self , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn point_at < T : RngScalar > (& self , _ : u64 , _ : & mut [T]) -> Result < () , QmcError > }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn reset_index (& mut self) }"
+    },
+    {
+      "signature": "impl SobolSequence { pub fn set_scramble_seed (& mut self , _ : Option < u64 >) }"
+    },
+    {
+      "signature": "pub struct SobolSequence"
+    },
+    {
+      "signature": "pub struct SobolView < 'a >"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/qmc/sobol_data.rs": [
+    {
+      "signature": "pub const MAX_SOBOL_DIM : usize"
+    },
+    {
+      "signature": "pub const SOBOL_BITS : usize"
+    },
+    {
+      "signature": "pub fn sobol_direction_53 (_ : usize , _ : usize) -> u64"
+    },
+    {
+      "signature": "pub fn sobol_static_bytes () -> usize"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/rng.rs": [
+    {
+      "signature": "impl OxidizeRng { pub fn bounded_u64 (& mut self , _ : u64) -> u64 }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn bounded_usize (& mut self , _ : usize) -> usize }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn from_seed (_ : u64) -> Self }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn from_seed_bytes (_ : [u8 ; 32]) -> Self }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn jump_words (& mut self , _ : u128) }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn new (_ : u64) -> Self }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn set_stream (& mut self , _ : u64) }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn set_word_pos (& mut self , _ : u128) }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn split_stream (& self , _ : u64) -> Self }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn stream (& self) -> u64 }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn uniform_closed_open < T : RngScalar > (& mut self) -> T }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn uniform_open < T : RngScalar > (& mut self) -> T }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn uniform_symmetric < T : RngScalar > (& mut self) -> T }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn with_stream (self , _ : u64) -> Self }"
+    },
+    {
+      "signature": "impl OxidizeRng { pub fn word_pos (& self) -> u128 }"
+    },
+    {
+      "signature": "pub const BASE_SEED : u64"
+    },
+    {
+      "signature": "pub struct OxidizeRng"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/scalar.rs": [
+    {
+      "signature": "pub fn fill_cranley_patterson_shifts < T : RngScalar , R : RngCore + ? Sized > (_ : & mut [T] , _ : & mut R ,)"
+    },
+    {
+      "signature": "pub fn sample_bounded_u64 < R : RngCore + ? Sized > (_ : & mut R , _ : u64) -> u64"
+    },
+    {
+      "signature": "pub fn sample_bounded_usize < R : RngCore + ? Sized > (_ : & mut R , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn sample_closed_open < T : RngScalar , R : RngCore + ? Sized > (_ : & mut R) -> T"
+    },
+    {
+      "signature": "pub fn sample_open < T : RngScalar , R : RngCore + ? Sized > (_ : & mut R) -> T"
+    },
+    {
+      "signature": "pub fn sample_standard_normal < T : RngScalar , R : RngCore + ? Sized > (_ : & mut R) -> T"
+    },
+    {
+      "signature": "pub fn sample_standard_normal_f64 < R : RngCore + ? Sized > (_ : & mut R) -> f64"
+    },
+    {
+      "signature": "pub fn sample_symmetric_open < T : RngScalar , R : RngCore + ? Sized > (_ : & mut R) -> T"
+    },
+    {
+      "signature": "pub trait RngScalar : Copy + PartialOrd + private :: Sealed"
+    },
+    {
+      "signature": "pub trait RngScalar { const ONE : Self }"
+    },
+    {
+      "signature": "pub trait RngScalar { const ZERO : Self }"
+    },
+    {
+      "signature": "pub trait RngScalar { fn clamp_open_unit_f64 (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub trait RngScalar { fn from_dyadic_53_open (_ : u64) -> Self }"
+    },
+    {
+      "signature": "pub trait RngScalar { fn from_unit_f64 (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub trait RngScalar { fn sample_closed_open < R : RngCore + ? Sized > (_ : & mut R) -> Self }"
+    },
+    {
+      "signature": "pub trait RngScalar { fn sample_open < R : RngCore + ? Sized > (_ : & mut R) -> Self }"
+    },
+    {
+      "signature": "pub trait RngScalar { fn sample_symmetric_open < R : RngCore + ? Sized > (_ : & mut R) -> Self }"
+    }
+  ],
+  "crates/00_foundation/math_rng/src/scramble.rs": [
+    {
+      "signature": "pub const fn owen_scramble_53 (_ : u64 , _ : u64 , _ : usize) -> u64"
+    },
+    {
+      "signature": "pub const fn splitmix64 (_ : u64) -> u64"
+    },
+    {
+      "signature": "pub fn dyadic_53_to_shifted_open < T : RngScalar > (_ : u64 , _ : usize , _ : Option < u64 > , _ : f64 ,) -> T"
+    },
+    {
+      "signature": "pub fn torus_shift_open < T : RngScalar > (_ : f64 , _ : f64) -> T"
     }
   ],
   "crates/02_engines/engine_linalg/src/cholesky.rs": [
@@ -918,9 +1517,6 @@
       "signature": "impl DiagnosticBus { pub fn register_listener < F > (& self , _ : F) where F : Fn (& DiagnosticEvent) + Send + Sync + 'static , }"
     },
     {
-      "signature": "pub enum Severity"
-    },
-    {
       "signature": "pub fn global_bus () -> & 'static DiagnosticBus"
     },
     {
@@ -933,16 +1529,19 @@
       "signature": "pub struct DiagnosticEvent"
     },
     {
-      "signature": "pub trait Diagnostic : std :: error :: Error + Send + Sync + 'static"
-    },
-    {
-      "signature": "pub trait Diagnostic { fn metadata (& self) -> HashMap < String , String > }"
-    },
-    {
-      "signature": "pub trait Diagnostic { fn severity (& self) -> Severity }"
-    },
-    {
       "signature": "pub type ListenerFn = Arc < dyn Fn (& DiagnosticEvent) + Send + Sync + 'static >"
+    },
+    {
+      "signature": "pub use math_diagnostics :: Diagnostic"
+    },
+    {
+      "signature": "pub use math_diagnostics :: DiagnosticVisitor"
+    },
+    {
+      "signature": "pub use math_diagnostics :: Severity"
+    },
+    {
+      "signature": "pub use math_diagnostics :: collect_diagnostic_metadata"
     }
   ],
   "crates/domain_ai/src/ai/activations.rs": [
@@ -3684,6 +4283,35 @@
       "signature": "pub struct GraphReplicatorFitness"
     }
   ],
+  "crates/domain_applied/src/applied/game_theory/evolutionary/graph_replicator_system.rs": [
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn evolve (& mut self , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn from_population_mean (_ : usize , _ : & DMatrix < f64 > , _ : & [(usize , usize , f64)] , _ : & [f64] ,) -> Result < Self , GameTheoryError > }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn mean_frequencies (& self , _ : & mut [f64]) }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn new (_ : usize , _ : & DMatrix < f64 > , _ : & [(usize , usize , f64)] , _ : & [f64] ,) -> Result < Self , GameTheoryError > }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn node_state (& self , _ : usize) -> & [f64] }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn num_nodes (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn num_strategies (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphReplicatorSystem { pub fn step (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "pub struct GraphReplicatorSystem"
+    }
+  ],
   "crates/domain_applied/src/applied/game_theory/evolutionary/mod.rs": [
     {
       "signature": "pub use graph_replicator :: GraphReplicatorFitness"
@@ -3696,6 +4324,9 @@
     },
     {
       "signature": "pub use graph_replicator :: mean_active_degree_from_csr"
+    },
+    {
+      "signature": "pub use graph_replicator_system :: GraphReplicatorSystem"
     },
     {
       "signature": "pub use replicator :: ReplicatorDynamics"
@@ -5176,6 +5807,20 @@
       "signature": "pub struct FiniteDifference1D"
     }
   ],
+  "crates/domain_biology/src/biology/diffusion/fd2d/advection.rs": [
+    {
+      "signature": "impl FiniteDifference2D { pub fn step_advected_fused < const N : usize , K : ReactionKinetics < N > > (& self , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : & [f64] , _ : & [f64] , _ : f64 , _ : [f64 ; N] , _ : & K ,) }"
+    },
+    {
+      "signature": "impl MaskedFiniteDifference2D { pub fn step_advected_fused < const N : usize , K : ReactionKinetics < N > > (& self , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : & [f64] , _ : & [f64] , _ : f64 , _ : [f64 ; N] , _ : & K ,) }"
+    },
+    {
+      "signature": "pub trait AdvectedSpatialDiffusion < const N : usize > : SpatialDiffusion < N >"
+    },
+    {
+      "signature": "pub trait AdvectedSpatialDiffusion < const N : usize > { fn step_advected_fused < K : ReactionKinetics < N > > (& self , _ : [& [f64] ; N] , _ : [& mut [f64] ; N] , _ : & [f64] , _ : & [f64] , _ : f64 , _ : [f64 ; N] , _ : & K ,) }"
+    }
+  ],
   "crates/domain_biology/src/biology/diffusion/fd2d/boundary.rs": [
     {
       "signature": "pub struct NeumannBoundary"
@@ -5285,6 +5930,9 @@
       "signature": "pub struct FiniteDifference2D"
     },
     {
+      "signature": "pub use advection :: AdvectedSpatialDiffusion"
+    },
+    {
       "signature": "pub use mask :: CellMask2D"
     },
     {
@@ -5390,6 +6038,9 @@
     },
     {
       "signature": "pub use fd1d :: FiniteDifference1D"
+    },
+    {
+      "signature": "pub use fd2d :: AdvectedSpatialDiffusion"
     },
     {
       "signature": "pub use fd2d :: CellMask2D"
@@ -6020,6 +6671,11 @@
     },
     {
       "signature": "pub use reaction_diffusion :: ReactionDiffusionError"
+    }
+  ],
+  "crates/domain_biology/src/biology/morphogenesis/advection.rs": [
+    {
+      "signature": "impl < const N : usize , K : ReactionKinetics < N > , D : AdvectedSpatialDiffusion < N > > TuringSystem < N , K , D , FusedEulerSolver > { pub fn step_advected (& mut self , _ : f64 , _ : & [f64] , _ : & [f64]) }"
     }
   ],
   "crates/domain_biology/src/biology/morphogenesis/mod.rs": [
@@ -7899,6 +8555,9 @@
       "signature": "pub use orbits :: SECONDS_PER_MYR"
     },
     {
+      "signature": "pub use orbits :: SLINGSHOT_RING_CAPACITY"
+    },
+    {
       "signature": "pub use orbits :: planar_acceleration"
     },
     {
@@ -8039,6 +8698,9 @@
     },
     {
       "signature": "pub const SECONDS_PER_MYR : f64"
+    },
+    {
+      "signature": "pub const SLINGSHOT_RING_CAPACITY : usize"
     },
     {
       "signature": "pub enum OrbitParticleKind"
@@ -8483,10 +9145,19 @@
       "signature": "pub fn inject_velocity_jet < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > , _ : i32 , _ : i32 , _ : i32 , _ : f64 , _ : f64 ,)"
     },
     {
+      "signature": "pub fn project_obstacles_row_major_into < C : CollisionModel < 9 , D2Q9 > > (_ : & LatticeBoltzmannD2Q9 < C > , _ : & mut [bool] ,)"
+    },
+    {
+      "signature": "pub fn project_velocity_row_major_into < C : CollisionModel < 9 , D2Q9 > > (_ : & LatticeBoltzmannD2Q9 < C > , _ : & mut [f64] , _ : & mut [f64] ,)"
+    },
+    {
       "signature": "pub fn stamp_naca4_airfoil < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > , _ : & Naca4Airfoil ,)"
     },
     {
       "signature": "pub fn stamp_venturi_nozzle < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > , _ : f64 ,)"
+    },
+    {
+      "signature": "pub fn sync_obstacles_row_major < C : CollisionModel < 9 , D2Q9 > > (_ : & mut LatticeBoltzmannD2Q9 < C > , _ : & [bool] ,)"
     },
     {
       "signature": "pub struct AerodynamicCoefficients"
@@ -8866,6 +9537,15 @@
   ],
   "crates/domain_physics/src/physics/high_energy/general_relativity/kerr.rs": [
     {
+      "signature": "impl KerrEquatorialMetric { pub fn clock_dilation (& self , _ : f64 , _ : f64) -> Result < f64 , HighEnergyError > }"
+    },
+    {
+      "signature": "impl KerrEquatorialMetric { pub fn critical_impact_parameter (& self , _ : bool) -> f64 }"
+    },
+    {
+      "signature": "impl KerrEquatorialMetric { pub fn effective_potential (& self , _ : f64 , _ : f64 , _ : f64 , _ : GeodesicKind ,) -> Result < f64 , HighEnergyError > }"
+    },
+    {
       "signature": "impl KerrEquatorialMetric { pub fn ergosphere_radius (& self) -> f64 }"
     },
     {
@@ -8881,7 +9561,63 @@
       "signature": "impl KerrEquatorialMetric { pub fn outer_horizon_radius (& self) -> f64 }"
     },
     {
+      "signature": "impl KerrEquatorialMetric { pub fn photon_orbit_radius (& self , _ : bool) -> f64 }"
+    },
+    {
+      "signature": "impl KerrEquatorialMetric { pub fn zamo_clock_dilation (& self , _ : f64) -> Result < f64 , HighEnergyError > }"
+    },
+    {
       "signature": "pub struct KerrEquatorialMetric"
+    }
+  ],
+  "crates/domain_physics/src/physics/high_energy/general_relativity/lensing.rs": [
+    {
+      "signature": "impl DeflectionTable { pub fn build (_ : LensingMetricSpec , _ : f64 , _ : f64 , _ : usize ,) -> Result < Self , HighEnergyError > }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn critical_impact_bounds (& self) -> (f64 , f64) }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn map_image_uv (& self , _ : f64 , _ : f64 , _ : f64) -> LensedRayHit }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn max_impact_b (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn rebuild_in_place (& mut self , _ : LensingMetricSpec , _ : f64 , _ : f64 ,) -> Result < () , HighEnergyError > }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn sample_impact (& self , _ : f64) -> DeflectionSample }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn samples (& self) -> & [DeflectionSample] }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn spec (& self) -> LensingMetricSpec }"
+    },
+    {
+      "signature": "impl DeflectionTable { pub fn with_capacity (_ : LensingMetricSpec , _ : usize) -> Result < Self , HighEnergyError > }"
+    },
+    {
+      "signature": "impl LensingMetricSpec { pub fn critical_impact_bounds (& self) -> Result < (f64 , f64) , HighEnergyError > }"
+    },
+    {
+      "signature": "pub const DEFAULT_DEFLECTION_BINS : usize"
+    },
+    {
+      "signature": "pub const EINSTEIN_RING_IMPACT_FACTOR : f64"
+    },
+    {
+      "signature": "pub enum LensingMetricSpec"
+    },
+    {
+      "signature": "pub struct DeflectionSample"
+    },
+    {
+      "signature": "pub struct DeflectionTable"
+    },
+    {
+      "signature": "pub struct LensedRayHit"
     }
   ],
   "crates/domain_physics/src/physics/high_energy/general_relativity/mod.rs": [
@@ -8902,6 +9638,24 @@
     },
     {
       "signature": "pub use kerr :: KerrEquatorialMetric"
+    },
+    {
+      "signature": "pub use lensing :: DEFAULT_DEFLECTION_BINS"
+    },
+    {
+      "signature": "pub use lensing :: DeflectionSample"
+    },
+    {
+      "signature": "pub use lensing :: DeflectionTable"
+    },
+    {
+      "signature": "pub use lensing :: EINSTEIN_RING_IMPACT_FACTOR"
+    },
+    {
+      "signature": "pub use lensing :: LensedRayHit"
+    },
+    {
+      "signature": "pub use lensing :: LensingMetricSpec"
     },
     {
       "signature": "pub use schwarzschild :: GeodesicKind"
@@ -9021,6 +9775,18 @@
   ],
   "crates/domain_physics/src/physics/high_energy/mod.rs": [
     {
+      "signature": "pub use general_relativity :: DEFAULT_DEFLECTION_BINS"
+    },
+    {
+      "signature": "pub use general_relativity :: DeflectionSample"
+    },
+    {
+      "signature": "pub use general_relativity :: DeflectionTable"
+    },
+    {
+      "signature": "pub use general_relativity :: EINSTEIN_RING_IMPACT_FACTOR"
+    },
+    {
       "signature": "pub use general_relativity :: GeodesicKind"
     },
     {
@@ -9028,6 +9794,12 @@
     },
     {
       "signature": "pub use general_relativity :: KerrEquatorialMetric"
+    },
+    {
+      "signature": "pub use general_relativity :: LensedRayHit"
+    },
+    {
+      "signature": "pub use general_relativity :: LensingMetricSpec"
     },
     {
       "signature": "pub use general_relativity :: MAX_GEODESIC_TRAJECTORIES"
@@ -9075,6 +9847,9 @@
       "signature": "pub use math_commons :: constants :: SOLAR_MASS"
     },
     {
+      "signature": "pub use observer :: FourVector"
+    },
+    {
       "signature": "pub use observer :: apparent_superluminal_beta"
     },
     {
@@ -9102,6 +9877,12 @@
       "signature": "pub use radiation :: evaluate_jet_knot_observables"
     },
     {
+      "signature": "pub use radiation :: inverse_compton_spectral_index"
+    },
+    {
+      "signature": "pub use radiation :: synchrotron_power"
+    },
+    {
       "signature": "pub use radiation :: twin_jet_flux_asymmetry"
     }
   ],
@@ -9120,6 +9901,9 @@
     },
     {
       "signature": "impl FourVector { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl FourVector { pub fn relativistic_doppler_factor (& self , _ : [f64 ; 3] ,) -> Result < f64 , HighEnergyError > }"
     },
     {
       "signature": "pub fn apparent_superluminal_beta (_ : f64 , _ : f64 ,) -> Result < f64 , HighEnergyError >"
@@ -11234,19 +12018,49 @@
       "signature": "impl GraphSpinSystem { pub fn flip_spin (& mut self , _ : usize) }"
     },
     {
+      "signature": "impl GraphSpinSystem { pub fn frustrated_edge_count (& self , _ : f64) -> usize }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn hamiltonian (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
       "signature": "impl GraphSpinSystem { pub fn magnetization (& self) -> i64 }"
     },
     {
       "signature": "impl GraphSpinSystem { pub fn mean_game_payoff (& self , _ : & MatrixPayoff) -> f64 }"
     },
     {
+      "signature": "impl GraphSpinSystem { pub fn mean_magnetization (& self) -> f64 }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn metropolis_step (& mut self , _ : f64 , _ : f64 , _ : f64) }"
+    },
+    {
       "signature": "impl GraphSpinSystem { pub fn n_nodes (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn neighbors_of (& self , _ : usize) -> (& [usize] , & [f64]) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn new (_ : usize , _ : & [(usize , usize , f64)] , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn new_with_spins (_ : Vec < i8 > , _ : & [(usize , usize , f64)] , _ : Option < u64 > ,) -> Self }"
     },
     {
       "signature": "impl GraphSpinSystem { pub fn normalized_magnetization (& self) -> f64 }"
     },
     {
+      "signature": "impl GraphSpinSystem { pub fn num_edges (& self) -> usize }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn num_nodes (& self) -> usize }"
+    },
+    {
       "signature": "impl GraphSpinSystem { pub fn randomize (& mut self) }"
+    },
+    {
+      "signature": "impl GraphSpinSystem { pub fn reseed (& mut self , _ : u64) }"
     },
     {
       "signature": "impl GraphSpinSystem { pub fn row_ptr (& self) -> & [usize] }"
@@ -11342,6 +12156,9 @@
     },
     {
       "signature": "pub struct SpinLattice"
+    },
+    {
+      "signature": "pub use super :: graph_ising :: GraphSpinSystem"
     }
   ],
   "crates/domain_physics/src/physics/stat_mech/kpz.rs": [
@@ -11717,6 +12534,12 @@
       "signature": "pub use math_memory :: SolverWorkspace"
     },
     {
+      "signature": "pub use math_rng :: BASE_SEED"
+    },
+    {
+      "signature": "pub use math_rng :: OxidizeRng"
+    },
+    {
       "signature": "pub use milstein :: MilsteinSolver"
     },
     {
@@ -11959,6 +12782,12 @@
     },
     {
       "signature": "pub use math_memory :: SolverWorkspace"
+    },
+    {
+      "signature": "pub use math_rng :: BASE_SEED"
+    },
+    {
+      "signature": "pub use math_rng :: OxidizeRng"
     },
     {
       "signature": "pub use spde_noise :: SpdeNoiseKind"
@@ -12679,6 +13508,18 @@
     },
     {
       "signature": "pub use crate :: ast :: ShaderEmitError"
+    },
+    {
+      "signature": "pub use math_diagnostics :: Diagnostic"
+    },
+    {
+      "signature": "pub use math_diagnostics :: DiagnosticVisitor"
+    },
+    {
+      "signature": "pub use math_diagnostics :: Severity"
+    },
+    {
+      "signature": "pub use math_memory :: ArenaError"
     },
     {
       "signature": "pub use umbrella :: MathCommonsError"
@@ -13559,16 +14400,7 @@
   ],
   "crates/oxidize_core/src/rng.rs": [
     {
-      "signature": "impl OxidizeRng { pub fn from_seed (_ : u64) -> Self }"
-    },
-    {
-      "signature": "impl OxidizeRng { pub fn new (_ : u64) -> Self }"
-    },
-    {
-      "signature": "pub const BASE_SEED : u64"
-    },
-    {
-      "signature": "pub struct OxidizeRng"
+      "signature": "pub use math_rng :: *"
     }
   ],
   "crates/oxidize_core/src/traceability.rs": [
@@ -13621,6 +14453,33 @@
       "signature": "pub use manifest :: VerificationCertificate"
     },
     {
+      "signature": "pub use maturity :: EXPECTED_WORKSPACE_CRATES"
+    },
+    {
+      "signature": "pub use maturity :: MaturityRegistry"
+    },
+    {
+      "signature": "pub use qualification :: MaturityEvidence"
+    },
+    {
+      "signature": "pub use qualification :: MaturityGateReport"
+    },
+    {
+      "signature": "pub use qualification :: VALIDATED_MIN_ASSERTION_DENSITY"
+    },
+    {
+      "signature": "pub use qualification :: discover_maturity_scan_files"
+    },
+    {
+      "signature": "pub use qualification :: evaluate_maturity_with_registry_and_cache"
+    },
+    {
+      "signature": "pub use qualification :: evaluate_workspace_maturity"
+    },
+    {
+      "signature": "pub use qualification :: evaluate_workspace_maturity_with_cache"
+    },
+    {
       "signature": "pub use runner :: WorkspaceAstMetrics"
     },
     {
@@ -13646,6 +14505,9 @@
     },
     {
       "signature": "pub use runner :: run_workspace_traceability_with_cache"
+    },
+    {
+      "signature": "pub use scientific_metadata :: theory :: MaturityTier"
     }
   ],
   "crates/oxidize_core/src/traceability/cache.rs": [
@@ -13703,6 +14565,70 @@
     },
     {
       "signature": "pub struct VerificationCertificate"
+    }
+  ],
+  "crates/oxidize_core/src/traceability/maturity.rs": [
+    {
+      "signature": "impl MaturityRegistry { pub fn crate_for_repo_path (_ : & str) -> Option < & str > }"
+    },
+    {
+      "signature": "impl MaturityRegistry { pub fn crate_tier (& self , _ : & str) -> Option < MaturityTier > }"
+    },
+    {
+      "signature": "impl MaturityRegistry { pub fn embedded () -> Self }"
+    },
+    {
+      "signature": "impl MaturityRegistry { pub fn load_or_embedded (_ : Option < & Path >) -> Self }"
+    },
+    {
+      "signature": "impl MaturityRegistry { pub fn module_tier (& self , _ : & str) -> Option < MaturityTier > }"
+    },
+    {
+      "signature": "impl MaturityRegistry { pub fn parse_toml_str (_ : & str) -> Self }"
+    },
+    {
+      "signature": "impl MaturityRegistry { pub fn path_owned_modules (& self , _ : & str) -> Vec < String > }"
+    },
+    {
+      "signature": "impl MaturityRegistry { pub fn tier_for_repo_path (& self , _ : & str) -> MaturityTier }"
+    },
+    {
+      "signature": "pub const EXPECTED_WORKSPACE_CRATES : & [& str]"
+    },
+    {
+      "signature": "pub struct MaturityRegistry"
+    }
+  ],
+  "crates/oxidize_core/src/traceability/qualification.rs": [
+    {
+      "signature": "impl MaturityEvidence { pub fn assertion_density (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MaturityEvidence { pub fn effective_funcs (& self) -> usize }"
+    },
+    {
+      "signature": "impl MaturityGateReport { pub fn passed (& self) -> bool }"
+    },
+    {
+      "signature": "pub const VALIDATED_MIN_ASSERTION_DENSITY : f64"
+    },
+    {
+      "signature": "pub fn discover_maturity_scan_files (_ : & Path) -> Vec < PathBuf >"
+    },
+    {
+      "signature": "pub fn evaluate_maturity_with_registry_and_cache (_ : & Path , _ : MaturityRegistry , _ : & mut AstCache ,) -> MaturityGateReport"
+    },
+    {
+      "signature": "pub fn evaluate_workspace_maturity (_ : & Path) -> MaturityGateReport"
+    },
+    {
+      "signature": "pub fn evaluate_workspace_maturity_with_cache (_ : & Path , _ : & mut AstCache ,) -> MaturityGateReport"
+    },
+    {
+      "signature": "pub struct MaturityEvidence"
+    },
+    {
+      "signature": "pub struct MaturityGateReport"
     }
   ],
   "crates/oxidize_core/src/traceability/runner.rs": [
@@ -13800,9 +14726,6 @@
   ],
   "crates/pure_math/src/error.rs": [
     {
-      "signature": "pub enum CopulaError"
-    },
-    {
       "signature": "pub enum Glicko2Error"
     },
     {
@@ -13812,22 +14735,13 @@
       "signature": "pub enum MarketPricingError"
     },
     {
-      "signature": "pub enum MarkovError"
-    },
-    {
       "signature": "pub enum NumberTheoryError"
     },
     {
-      "signature": "pub enum OuError"
-    },
-    {
-      "signature": "pub enum TdaError"
-    },
-    {
-      "signature": "pub enum ZipError"
-    },
-    {
       "signature": "pub type Result < T > = math_commons :: error :: MathResult < T >"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: algebra :: BraidError"
     },
     {
       "signature": "pub use crate :: pure_math :: algebra :: linear_algebra :: numerical :: LinearAlgebraError"
@@ -13863,6 +14777,9 @@
       "signature": "pub use crate :: pure_math :: hyperbolic :: HyperbolicError"
     },
     {
+      "signature": "pub use crate :: pure_math :: knot_theory :: KnotError"
+    },
+    {
       "signature": "pub use crate :: pure_math :: number_theory :: ambs :: AmbsError"
     },
     {
@@ -13881,10 +14798,28 @@
       "signature": "pub use crate :: pure_math :: tensor :: types :: TensorError"
     },
     {
+      "signature": "pub use engine_linalg :: LinalgError"
+    },
+    {
       "signature": "pub use sports :: EloError"
     },
     {
       "signature": "pub use sports :: MatchModelError"
+    },
+    {
+      "signature": "pub use stochastic :: CopulaError"
+    },
+    {
+      "signature": "pub use stochastic :: MarkovError"
+    },
+    {
+      "signature": "pub use stochastic :: OuError"
+    },
+    {
+      "signature": "pub use stochastic :: TdaError"
+    },
+    {
+      "signature": "pub use stochastic :: ZipError"
     },
     {
       "signature": "pub use umbrella :: PureMathError"
@@ -13896,6 +14831,23 @@
     },
     {
       "signature": "pub enum MatchModelError"
+    }
+  ],
+  "crates/pure_math/src/error/stochastic.rs": [
+    {
+      "signature": "pub enum CopulaError"
+    },
+    {
+      "signature": "pub enum MarkovError"
+    },
+    {
+      "signature": "pub enum OuError"
+    },
+    {
+      "signature": "pub enum TdaError"
+    },
+    {
+      "signature": "pub enum ZipError"
     }
   ],
   "crates/pure_math/src/error/umbrella.rs": [
@@ -13915,6 +14867,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: AnalysisError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: BraidError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: CopulaError } }"
@@ -13942,6 +14897,12 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: KellyError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: KnotError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: LinalgError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: LinearAlgebraError } }"
@@ -14001,6 +14962,9 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ZipError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: ArenaError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: EvalError } }"
     },
     {
@@ -14025,6 +14989,9 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: ParseError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: ShaderEmitError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error }"
     },
     {
@@ -14038,6 +15005,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use diagnostics :: Diagnostic } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use diagnostics :: DiagnosticVisitor } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use diagnostics :: Severity } }"
@@ -14077,6 +15047,15 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use oxidize_core :: rng :: OxidizeRng } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use scientific_metadata :: theory :: MaturityTier } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use scientific_metadata :: theory :: ParameterConstraint } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use scientific_metadata :: theory :: TheoryDescribable } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use super :: error :: * } }"
@@ -14320,6 +15299,92 @@
     },
     {
       "signature": "pub struct Zn < const N : usize >"
+    },
+    {
+      "signature": "pub use braid :: BraidError"
+    },
+    {
+      "signature": "pub use braid :: BraidWord"
+    },
+    {
+      "signature": "pub use braid :: MAX_BRAID_STRANDS"
+    },
+    {
+      "signature": "pub use braid :: MAX_BRAID_WORD_LEN"
+    }
+  ],
+  "crates/pure_math/src/pure_math/algebra/group/braid.rs": [
+    {
+      "signature": "impl BraidWord { pub const fn strands (& self) -> usize }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn apply_artin_relation (& mut self , _ : usize) -> Result < () , BraidError > }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn apply_far_commutativity (& mut self , _ : usize) -> Result < () , BraidError > }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn can_apply_artin_relation (& self , _ : usize) -> bool }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn can_apply_far_commutativity (& self , _ : usize) -> bool }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn component_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn compose (& self , _ : & Self) -> Result < Self , BraidError > }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn free_reduce (& self) -> Self }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn free_reduce_in_place (& mut self) -> usize }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn generators (& self) -> & [i32] }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn identity (_ : usize) -> Result < Self , BraidError > }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn inverse (& self) -> Self }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn markov_stabilize (& self , _ : bool) -> Result < Self , BraidError > }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn mirror (& self) -> Self }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn new (_ : usize , _ : Vec < i32 >) -> Result < Self , BraidError > }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn push_generator (& mut self , _ : i32) -> Result < () , BraidError > }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn strand_permutation (& self) -> Permutation }"
+    },
+    {
+      "signature": "impl BraidWord { pub fn writhe (& self) -> i64 }"
+    },
+    {
+      "signature": "pub const MAX_BRAID_STRANDS : usize"
+    },
+    {
+      "signature": "pub const MAX_BRAID_WORD_LEN : usize"
+    },
+    {
+      "signature": "pub enum BraidError"
+    },
+    {
+      "signature": "pub struct BraidWord"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/linear_algebra/canonical.rs": [
@@ -14474,7 +15539,19 @@
       "signature": "pub use fields :: Fp"
     },
     {
+      "signature": "pub use group :: BraidError"
+    },
+    {
+      "signature": "pub use group :: BraidWord"
+    },
+    {
       "signature": "pub use group :: CyclicElement"
+    },
+    {
+      "signature": "pub use group :: MAX_BRAID_STRANDS"
+    },
+    {
+      "signature": "pub use group :: MAX_BRAID_WORD_LEN"
     },
     {
       "signature": "pub use group :: Permutation"
@@ -14496,6 +15573,9 @@
     },
     {
       "signature": "pub use linear_algebra :: LinearAlgebraError"
+    },
+    {
+      "signature": "pub use polynomial :: LaurentPolynomial"
     },
     {
       "signature": "pub use polynomial :: Polynomial"
@@ -14537,6 +15617,74 @@
     },
     {
       "signature": "pub struct Polynomial < T : Ring >"
+    },
+    {
+      "signature": "pub use laurent :: LaurentPolynomial"
+    }
+  ],
+  "crates/pure_math/src/pure_math/algebra/polynomial/laurent.rs": [
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn coeff (& self , _ : i32) -> T }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn constant (_ : T) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn eval_with_inverse (& self , _ : T , _ : T) -> T }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn from_polynomial (_ : Polynomial < T >) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn from_terms (_ : & [(i32 , T)]) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn invert_variable (& self) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn is_reciprocal (& self) -> bool }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn is_reciprocal_up_to_shift (& self) -> bool }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn max_degree (& self) -> Option < i32 > }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn min_degree (& self) -> Option < i32 > }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn monomial (_ : T , _ : i32) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn new (_ : i32 , _ : Vec < T >) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn scale (& self , _ : & T) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn shift (& self , _ : i32) -> Self }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn span (& self) -> usize }"
+    },
+    {
+      "signature": "impl LaurentPolynomial < i64 > { pub fn eval_at_one (& self) -> i64 }"
+    },
+    {
+      "signature": "impl LaurentPolynomial < i64 > { pub fn format_half_power_in_var (& self , _ : & str) -> String }"
+    },
+    {
+      "signature": "impl LaurentPolynomial < i64 > { pub fn format_in_var (& self , _ : & str) -> String }"
+    },
+    {
+      "signature": "impl LaurentPolynomial < i64 > { pub fn is_reciprocal_up_to_unit (& self) -> bool }"
+    },
+    {
+      "signature": "impl LaurentPolynomial < i64 > { pub fn normalize_alexander (& self) -> Self }"
+    },
+    {
+      "signature": "pub struct LaurentPolynomial < T : Ring >"
     }
   ],
   "crates/pure_math/src/pure_math/algebra/traits.rs": [
@@ -14941,6 +16089,9 @@
     },
     {
       "signature": "impl MultivariateIntegrator { pub fn new_monte_carlo (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl MultivariateIntegrator { pub fn new_niederreiter (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
     },
     {
       "signature": "impl MultivariateIntegrator { pub fn new_sobol (_ : usize , _ : usize) -> Result < Self , MonteCarloError > }"
@@ -15437,6 +16588,26 @@
     },
     {
       "signature": "pub trait Trainable < T : nalgebra :: RealField + Copy = f64 > { fn forward (& self , _ : & nalgebra :: DVector < T >) -> nalgebra :: DVector < T > }"
+    }
+  ],
+  "crates/pure_math/src/pure_math/analysis/pde/advection_2d.rs": [
+    {
+      "signature": "pub fn advection_courant_number (_ : f64 , _ : StepSize , _ : StepSize , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn advection_diffusion_cfl_limit (_ : StepSize , _ : StepSize , _ : f64 , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn donor_cell_face_flux (_ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn grid_peclet_number (_ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn upwind_advection_2d (_ : (usize , usize) , _ : & [f64] , _ : & [f64] , _ : & [f64] , _ : & mut [f64] , _ : & StencilOperators ,)"
+    },
+    {
+      "signature": "pub fn upwind_advection_cell_2d (_ : f64 , _ : [f64 ; 4] , _ : [f64 ; 4] , _ : f64 , _ : f64 ,) -> f64"
     }
   ],
   "crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs": [
@@ -17768,6 +18939,370 @@
       "signature": "pub struct TiledPolygon"
     }
   ],
+  "crates/pure_math/src/pure_math/knot_theory/burau_workspace.rs": [
+    {
+      "signature": "impl BurauWorkspace { pub const fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl BurauWorkspace { pub fn eval_alexander_in_place (& mut self , _ : & BraidWord , _ : f64) -> Result < f64 , KnotError > }"
+    },
+    {
+      "signature": "impl BurauWorkspace { pub fn matrix_slice (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl BurauWorkspace { pub fn new (_ : usize) -> Result < Self , KnotError > }"
+    },
+    {
+      "signature": "impl BurauWorkspace { pub fn reset_identity (& mut self) }"
+    },
+    {
+      "signature": "impl BurauWorkspace { pub fn step_generator_in_place (& mut self , _ : i32 , _ : f64) -> Result < () , KnotError > }"
+    },
+    {
+      "signature": "pub struct BurauWorkspace"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/curves.rs": [
+    {
+      "signature": "impl ClosedLink3D { pub fn bounding_radius (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ClosedLink3D { pub fn component_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl ClosedLink3D { pub fn from_braid_closure (_ : & BraidWord , _ : f64 , _ : f64 , _ : usize ,) -> Result < Self , KnotError > }"
+    },
+    {
+      "signature": "impl ClosedLink3D { pub fn new (_ : Vec < Vec < Point3 < f64 > > >) -> Result < Self , KnotError > }"
+    },
+    {
+      "signature": "impl ClosedLink3D { pub fn total_samples (& self) -> usize }"
+    },
+    {
+      "signature": "impl LissajousKnot { pub fn new (_ : (usize , usize , usize) , _ : (f64 , f64 , f64) , _ : f64 ,) -> Result < Self , KnotError > }"
+    },
+    {
+      "signature": "impl LissajousKnot { pub fn sample_in_place (& self , _ : & mut [Point3 < f64 >]) -> Result < () , KnotError > }"
+    },
+    {
+      "signature": "impl LissajousKnot { pub fn three_twist () -> Self }"
+    },
+    {
+      "signature": "impl LissajousKnot { pub fn to_link (& self , _ : usize) -> Result < ClosedLink3D , KnotError > }"
+    },
+    {
+      "signature": "impl TorusKnot { pub fn component_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl TorusKnot { pub fn eval_component_point (& self , _ : usize , _ : f64) -> Point3 < f64 > }"
+    },
+    {
+      "signature": "impl TorusKnot { pub fn left_trefoil () -> Self }"
+    },
+    {
+      "signature": "impl TorusKnot { pub fn new (_ : usize , _ : i32 , _ : f64 , _ : f64) -> Result < Self , KnotError > }"
+    },
+    {
+      "signature": "impl TorusKnot { pub fn right_trefoil () -> Self }"
+    },
+    {
+      "signature": "impl TorusKnot { pub fn sample_component_in_place (& self , _ : usize , _ : & mut [Point3 < f64 >] ,) -> Result < () , KnotError > }"
+    },
+    {
+      "signature": "impl TorusKnot { pub fn to_link (& self , _ : usize) -> Result < ClosedLink3D , KnotError > }"
+    },
+    {
+      "signature": "pub fn borromean_rings (_ : f64 , _ : f64 , _ : usize ,) -> Result < ClosedLink3D , KnotError >"
+    },
+    {
+      "signature": "pub fn figure_eight_knot (_ : f64 , _ : usize) -> Result < ClosedLink3D , KnotError >"
+    },
+    {
+      "signature": "pub fn hopf_link (_ : f64 , _ : bool , _ : usize ,) -> Result < ClosedLink3D , KnotError >"
+    },
+    {
+      "signature": "pub struct ClosedLink3D"
+    },
+    {
+      "signature": "pub struct LissajousKnot"
+    },
+    {
+      "signature": "pub struct TorusKnot"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/diagram.rs": [
+    {
+      "signature": "impl Crossing { pub const fn over_in (& self) -> usize }"
+    },
+    {
+      "signature": "impl Crossing { pub const fn over_out (& self) -> usize }"
+    },
+    {
+      "signature": "impl Crossing { pub const fn under_in (& self) -> usize }"
+    },
+    {
+      "signature": "impl Crossing { pub const fn under_out (& self) -> usize }"
+    },
+    {
+      "signature": "impl CrossingSign { pub const fn flipped (self) -> Self }"
+    },
+    {
+      "signature": "impl CrossingSign { pub const fn is_outgoing_slot (self , _ : u8) -> bool }"
+    },
+    {
+      "signature": "impl CrossingSign { pub const fn over_in_slot (self) -> u8 }"
+    },
+    {
+      "signature": "impl CrossingSign { pub const fn over_out_slot (self) -> u8 }"
+    },
+    {
+      "signature": "impl CrossingSign { pub const fn value (self) -> i64 }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn combinatorial_linking_matrix (& self) -> Vec < Vec < i64 > > }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn component_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn crossing_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn from_braid (_ : & BraidWord) -> Self }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn mirror (& self) -> Self }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn segment_components (& self) -> (usize , Vec < usize >) }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn unknot () -> Self }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn unlink (_ : usize) -> Result < Self , KnotError > }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn validate (& self) -> Result < () , KnotError > }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn writhe (& self) -> i64 }"
+    },
+    {
+      "signature": "pub const MAX_DIAGRAM_CROSSINGS : usize"
+    },
+    {
+      "signature": "pub enum CrossingSign"
+    },
+    {
+      "signature": "pub struct Crossing"
+    },
+    {
+      "signature": "pub struct DiagramSegment"
+    },
+    {
+      "signature": "pub struct Endpoint"
+    },
+    {
+      "signature": "pub struct PlanarDiagram"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/frames.rs": [
+    {
+      "signature": "pub fn compute_bishop_frames (_ : & [Point3 < f64 >]) -> Result < Vec < BishopFrame > , KnotError >"
+    },
+    {
+      "signature": "pub fn compute_bishop_frames_in_place (_ : & [Point3 < f64 >] , _ : & mut [BishopFrame] ,) -> Result < () , KnotError >"
+    },
+    {
+      "signature": "pub struct BishopFrame"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/gauss.rs": [
+    {
+      "signature": "pub fn gauss_linking_number (_ : & [Point3 < f64 >] , _ : & [Point3 < f64 >] ,) -> Result < i64 , KnotError >"
+    },
+    {
+      "signature": "pub fn gauss_linking_quadrature (_ : & [Point3 < f64 >] , _ : & [Point3 < f64 >] ,) -> Result < f64 , KnotError >"
+    },
+    {
+      "signature": "pub fn gauss_writhe_quadrature (_ : & [Point3 < f64 >]) -> Result < f64 , KnotError >"
+    },
+    {
+      "signature": "pub fn pairwise_linking_matrix (_ : & ClosedLink3D) -> Result < Vec < Vec < i64 > > , KnotError >"
+    },
+    {
+      "signature": "pub fn pairwise_linking_numbers_in_place (_ : & ClosedLink3D , _ : & mut [i64] ,) -> Result < () , KnotError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/invariants.rs": [
+    {
+      "signature": "pub fn alexander_polynomial_burau (_ : & BraidWord) -> Result < LaurentPolynomial < i64 > , KnotError >"
+    },
+    {
+      "signature": "pub fn alexander_polynomial_fox (_ : & PlanarDiagram ,) -> Result < LaurentPolynomial < i64 > , KnotError >"
+    },
+    {
+      "signature": "pub fn reduced_burau_matrix (_ : & BraidWord) -> Vec < Vec < LaurentPolynomial < i64 > > >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/kauffman_jones.rs": [
+    {
+      "signature": "pub fn format_jones_polynomial (_ : & PlanarDiagram) -> Result < String , KnotError >"
+    },
+    {
+      "signature": "pub fn is_chiral_by_jones (_ : & PlanarDiagram) -> Result < bool , KnotError >"
+    },
+    {
+      "signature": "pub fn jones_polynomial (_ : & PlanarDiagram) -> Result < LaurentPolynomial < i64 > , KnotError >"
+    },
+    {
+      "signature": "pub fn jones_polynomial_half_power (_ : & PlanarDiagram ,) -> Result < LaurentPolynomial < i64 > , KnotError >"
+    },
+    {
+      "signature": "pub fn kauffman_bracket (_ : & PlanarDiagram) -> Result < LaurentPolynomial < i64 > , KnotError >"
+    },
+    {
+      "signature": "pub fn normalized_kauffman_polynomial (_ : & PlanarDiagram ,) -> Result < LaurentPolynomial < i64 > , KnotError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/mesh_tube.rs": [
+    {
+      "signature": "pub fn build_link_tubular_mesh (_ : & ClosedLink3D , _ : f64 , _ : usize ,) -> Result < Mesh , KnotError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/mod.rs": [
+    {
+      "signature": "pub const MAX_KAUFFMAN_CROSSINGS : usize"
+    },
+    {
+      "signature": "pub enum KnotError"
+    },
+    {
+      "signature": "pub use burau_workspace :: BurauWorkspace"
+    },
+    {
+      "signature": "pub use curves :: ClosedLink3D"
+    },
+    {
+      "signature": "pub use curves :: LissajousKnot"
+    },
+    {
+      "signature": "pub use curves :: TorusKnot"
+    },
+    {
+      "signature": "pub use curves :: borromean_rings"
+    },
+    {
+      "signature": "pub use curves :: figure_eight_knot"
+    },
+    {
+      "signature": "pub use curves :: hopf_link"
+    },
+    {
+      "signature": "pub use diagram :: Crossing"
+    },
+    {
+      "signature": "pub use diagram :: CrossingSign"
+    },
+    {
+      "signature": "pub use diagram :: DiagramSegment"
+    },
+    {
+      "signature": "pub use diagram :: Endpoint"
+    },
+    {
+      "signature": "pub use diagram :: MAX_DIAGRAM_CROSSINGS"
+    },
+    {
+      "signature": "pub use diagram :: PlanarDiagram"
+    },
+    {
+      "signature": "pub use frames :: BishopFrame"
+    },
+    {
+      "signature": "pub use frames :: compute_bishop_frames"
+    },
+    {
+      "signature": "pub use frames :: compute_bishop_frames_in_place"
+    },
+    {
+      "signature": "pub use gauss :: gauss_linking_number"
+    },
+    {
+      "signature": "pub use gauss :: gauss_linking_quadrature"
+    },
+    {
+      "signature": "pub use gauss :: gauss_writhe_quadrature"
+    },
+    {
+      "signature": "pub use gauss :: pairwise_linking_matrix"
+    },
+    {
+      "signature": "pub use gauss :: pairwise_linking_numbers_in_place"
+    },
+    {
+      "signature": "pub use invariants :: alexander_polynomial_burau"
+    },
+    {
+      "signature": "pub use invariants :: alexander_polynomial_fox"
+    },
+    {
+      "signature": "pub use invariants :: reduced_burau_matrix"
+    },
+    {
+      "signature": "pub use kauffman_jones :: format_jones_polynomial"
+    },
+    {
+      "signature": "pub use kauffman_jones :: is_chiral_by_jones"
+    },
+    {
+      "signature": "pub use kauffman_jones :: jones_polynomial"
+    },
+    {
+      "signature": "pub use kauffman_jones :: jones_polynomial_half_power"
+    },
+    {
+      "signature": "pub use kauffman_jones :: kauffman_bracket"
+    },
+    {
+      "signature": "pub use kauffman_jones :: normalized_kauffman_polynomial"
+    },
+    {
+      "signature": "pub use mesh_tube :: build_link_tubular_mesh"
+    },
+    {
+      "signature": "pub use reidemeister :: ReidemeisterTriangle"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/reidemeister.rs": [
+    {
+      "signature": "impl PlanarDiagram { pub fn apply_reidemeister_i_add (& mut self , _ : usize , _ : CrossingSign ,) -> Result < usize , KnotError > }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn apply_reidemeister_i_remove (& mut self , _ : usize) -> Result < () , KnotError > }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn apply_reidemeister_ii_add (& mut self , _ : usize , _ : usize ,) -> Result < (usize , usize) , KnotError > }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn apply_reidemeister_ii_remove (& mut self , _ : usize , _ : usize) -> Result < () , KnotError > }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn can_apply_reidemeister_i_remove (& self , _ : usize) -> bool }"
+    },
+    {
+      "signature": "impl PlanarDiagram { pub fn can_apply_reidemeister_ii_remove (& self , _ : usize , _ : usize) -> bool }"
+    },
+    {
+      "signature": "pub use reidemeister_iii :: ReidemeisterTriangle"
+    }
+  ],
+  "crates/pure_math/src/pure_math/knot_theory/reidemeister/reidemeister_iii.rs": [
+    {
+      "signature": "pub struct ReidemeisterTriangle"
+    }
+  ],
   "crates/pure_math/src/pure_math/logic.rs": [
     {
       "signature": "pub fn exists < I , F > (_ : I , _ : F) -> bool where I : Iterator , F : Fn (I :: Item) -> bool ,"
@@ -19372,6 +20907,9 @@
     },
     {
       "signature": "pub use tail_risk :: simulated_portfolio_tail_risk"
+    },
+    {
+      "signature": "pub use tail_risk :: simulated_portfolio_tail_risk_with_rng"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/kelly/portfolio.rs": [
@@ -19585,6 +21123,9 @@
     },
     {
       "signature": "pub fn simulated_portfolio_tail_risk (_ : & [f64] , _ : & [f64] , _ : & DMatrix < f64 > , _ : PortfolioHorizonSpec , _ : usize , _ : u64 ,) -> Result < TailRiskMetrics , KellyError >"
+    },
+    {
+      "signature": "pub fn simulated_portfolio_tail_risk_with_rng (_ : & [f64] , _ : & [f64] , _ : & DMatrix < f64 > , _ : PortfolioHorizonSpec , _ : usize , _ : & mut OxidizeRng ,) -> Result < TailRiskMetrics , KellyError >"
     },
     {
       "signature": "pub struct PortfolioHorizonSpec"
@@ -21115,6 +22656,9 @@
       "signature": "impl HaltonSequence { pub fn with_bases (_ : & [u64]) -> Result < Self , MonteCarloError > }"
     },
     {
+      "signature": "impl HaltonSequence { pub fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
       "signature": "pub const FIRST_64_PRIMES : [u64 ; MAX_HALTON_DIM]"
     },
     {
@@ -21141,10 +22685,57 @@
       "signature": "pub use halton :: radical_inverse"
     },
     {
-      "signature": "pub use sobol :: SobolSequence"
+      "signature": "pub use math_rng :: HaltonView"
     },
     {
-      "signature": "pub use sobol_data :: MAX_SOBOL_DIM"
+      "signature": "pub use math_rng :: MAX_NIEDERREITER_DIM"
+    },
+    {
+      "signature": "pub use math_rng :: MAX_SOBOL_DIM"
+    },
+    {
+      "signature": "pub use math_rng :: NiederreiterView"
+    },
+    {
+      "signature": "pub use math_rng :: SobolView"
+    },
+    {
+      "signature": "pub use niederreiter :: NiederreiterSequence"
+    },
+    {
+      "signature": "pub use sobol :: SobolSequence"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/qmc/niederreiter.rs": [
+    {
+      "signature": "impl NiederreiterSequence { pub fn apply_cranley_patterson_shift (& mut self , _ : & mut OxidizeRng) }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn dimension (& self) -> usize }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn index (& self) -> u64 }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn new (_ : usize) -> Result < Self , MonteCarloError > }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn next_point (& mut self , _ : & mut [f64]) -> Result < () , MonteCarloError > }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn point_at (& self , _ : u64 , _ : & mut [f64]) -> Result < () , MonteCarloError > }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn reset_index (& mut self , _ : u64) }"
+    },
+    {
+      "signature": "impl NiederreiterSequence { pub fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
+    {
+      "signature": "pub struct NiederreiterSequence"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/qmc/sobol.rs": [
@@ -21173,12 +22764,10 @@
       "signature": "impl SobolSequence { pub fn reset_index (& mut self , _ : u32) }"
     },
     {
-      "signature": "pub struct SobolSequence"
-    }
-  ],
-  "crates/pure_math/src/pure_math/statistics/qmc/sobol_data.rs": [
+      "signature": "impl SobolSequence { pub fn with_scramble_seed (self , _ : Option < u64 >) -> Self }"
+    },
     {
-      "signature": "pub const MAX_SOBOL_DIM : usize"
+      "signature": "pub struct SobolSequence"
     }
   ],
   "crates/pure_math/src/pure_math/statistics/queueing.rs": [
@@ -22142,6 +23731,9 @@
   ],
   "crates/pure_math/src/pure_math/tensor/geodesic.rs": [
     {
+      "signature": "impl < M : StaticMetric < N > , const N : usize > GeodesicSystem < M , N > { pub fn integrate_bounded_rk4 < S , F > (& self , _ : & mut RungeKutta4 < S > , _ : & mut S , _ : f64 , _ : usize , _ : F ,) -> (usize , GeodesicStepStatus) where S : GeodesicState < N > , Self : OdeSystem < S > , F : FnMut (& S) -> bool , }"
+    },
+    {
       "signature": "impl < M : StaticMetric < N > , const N : usize > GeodesicSystem < M , N > { pub fn into_metric (self) -> M }"
     },
     {
@@ -22405,6 +23997,24 @@
   ],
   "crates/scientific_metadata/src/theory.rs": [
     {
+      "signature": "impl MaturityTier { pub const fn as_str (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl MaturityTier { pub const fn badge_label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl MaturityTier { pub const fn screen_reader_label (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl MaturityTier { pub const fn short_badge (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl MaturityTier { pub fn parse_label (_ : & str) -> Option < Self > }"
+    },
+    {
+      "signature": "pub enum MaturityTier"
+    },
+    {
       "signature": "pub struct ParameterConstraint"
     },
     {
@@ -22412,6 +24022,9 @@
     },
     {
       "signature": "pub trait TheoryDescribable { fn available_descriptions (& self) -> HashMap < String , String > }"
+    },
+    {
+      "signature": "pub trait TheoryDescribable { fn maturity_tier (& self) -> MaturityTier }"
     },
     {
       "signature": "pub trait TheoryDescribable { fn phonetic_description (& self) -> String }"
@@ -22618,6 +24231,9 @@
       "signature": "pub use domain_physics :: error :: StatMechError"
     },
     {
+      "signature": "pub use engine_linalg :: LinalgError"
+    },
+    {
       "signature": "pub use math_commons :: error :: EvalError"
     },
     {
@@ -22654,6 +24270,9 @@
       "signature": "pub use pure_math :: error :: AnalysisError"
     },
     {
+      "signature": "pub use pure_math :: error :: BraidError"
+    },
+    {
       "signature": "pub use pure_math :: error :: CopulaError"
     },
     {
@@ -22679,6 +24298,9 @@
     },
     {
       "signature": "pub use pure_math :: error :: KellyError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: KnotError"
     },
     {
       "signature": "pub use pure_math :: error :: LinearAlgebraError"
@@ -22838,6 +24460,9 @@
       "signature": "pub use diagnostics :: Diagnostic"
     },
     {
+      "signature": "pub use diagnostics :: DiagnosticVisitor"
+    },
+    {
       "signature": "pub use diagnostics :: Severity"
     },
     {
@@ -22889,7 +24514,22 @@
       "signature": "pub use oxidize_core :: mesh :: VertexColor"
     },
     {
+      "signature": "pub use oxidize_core :: rng :: BASE_SEED"
+    },
+    {
+      "signature": "pub use oxidize_core :: rng :: HaltonView"
+    },
+    {
+      "signature": "pub use oxidize_core :: rng :: NiederreiterView"
+    },
+    {
       "signature": "pub use oxidize_core :: rng :: OxidizeRng"
+    },
+    {
+      "signature": "pub use oxidize_core :: rng :: RngScalar"
+    },
+    {
+      "signature": "pub use oxidize_core :: rng :: SobolView"
     },
     {
       "signature": "pub use pure_math :: math_types :: Float"
@@ -22902,6 +24542,15 @@
     },
     {
       "signature": "pub use pure_math :: pure_math :: differential_geometry :: CotangentLaplacian"
+    },
+    {
+      "signature": "pub use scientific_metadata :: theory :: MaturityTier"
+    },
+    {
+      "signature": "pub use scientific_metadata :: theory :: ParameterConstraint"
+    },
+    {
+      "signature": "pub use scientific_metadata :: theory :: TheoryDescribable"
     }
   ]
 }

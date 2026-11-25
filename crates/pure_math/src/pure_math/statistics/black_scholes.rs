@@ -209,7 +209,25 @@ fn std_norm_pdf(x: f64) -> f64 {
     inv_sqrt_2pi * (-0.5 * x * x).exp()
 }
 
-/// Computes both Call and Put prices and analytical Greeks in a single zero-allocation pass.
+/// Computes closed-form Black-Scholes-Merton European Call and Put prices and analytical Greeks
+/// in a single zero-allocation pass:
+/// $$C = S e^{-qT}\Phi(d_1) - K e^{-rT}\Phi(d_2), \quad P = K e^{-rT}\Phi(-d_2) - S e^{-qT}\Phi(-d_1), \quad d_{1,2} = \frac{\ln(S/K) + (r - q \pm \tfrac{1}{2}\sigma^2)T}{\sigma\sqrt{T}}.$$
+///
+/// Reference: Black & Scholes (1973), *J. Polit. Econ.* 81(3), DOI: 10.1086/260062;
+/// Merton (1973), *Bell J. Econ. Manag. Sci.* 4(1), DOI: 10.2307/3003143;
+/// [`docs/math_specs/pure_math.md`](../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Evaluates $\Phi(\pm d_{1,2}) = \tfrac{1}{2}\operatorname{erfc}(\mp d_{1,2}/\sqrt{2})$ directly
+/// via complementary error functions to avoid catastrophic $1 - \Phi(x)$ tail cancellation for
+/// deep out-of-the-money contracts, preserving put-call parity $C - P = S e^{-qT} - K e^{-rT}$ to
+/// machine precision.
+///
+/// # Domain of Validity
+/// Validated via [`BlackScholesParams`]: requires strictly positive finite spot $S > 0$, strike
+/// $K > 0$, volatility $\sigma > 0$, and time to expiry $T > 0$, finite risk-free rate $r$, and
+/// finite non-negative continuous dividend yield $q \ge 0$ under constant-parameter geometric
+/// Brownian motion without early exercise.
 ///
 /// # Example
 /// ```

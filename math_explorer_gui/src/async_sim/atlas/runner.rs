@@ -175,7 +175,12 @@ impl AtlasRunner {
         }
     }
 
-    fn advance_pass_slice(&mut self, stride: usize, slice_start: crate::web_io::PlatformInstant) {
+    fn advance_pass_slice(
+        &mut self,
+        stride: usize,
+        slice_start: crate::web_io::PlatformInstant,
+        budget: Duration,
+    ) {
         let width = self.active.width;
         let height = self.active.height;
         let prev_stride = stride.saturating_mul(2);
@@ -191,7 +196,7 @@ impl AtlasRunner {
                         let _ = self.sync_request();
                         return;
                     }
-                    if slice_start.elapsed() >= ATLAS_SLICE_BUDGET {
+                    if slice_start.elapsed() >= budget {
                         self.next_sample_x = sx;
                         self.next_sample_y = sy;
                         self.completed_stride = stride;
@@ -280,6 +285,10 @@ impl SimulationRunner for AtlasRunner {
     }
 
     fn step(&mut self) {
+        self.step_sliced(None);
+    }
+
+    fn step_sliced(&mut self, max_slice: Option<Duration>) {
         let _ = self.sync_request();
         if self.stride_idx >= ATLAS_STRIDES.len()
             || self.active.width == 0
@@ -289,8 +298,9 @@ impl SimulationRunner for AtlasRunner {
             return;
         }
         let stride = ATLAS_STRIDES[self.stride_idx];
+        let budget = max_slice.map_or(ATLAS_SLICE_BUDGET, |b| b.min(ATLAS_SLICE_BUDGET));
         let slice_start = crate::web_io::PlatformInstant::now();
-        self.advance_pass_slice(stride, slice_start);
+        self.advance_pass_slice(stride, slice_start, budget);
     }
 
     fn get_snapshot(&self) -> StateSnapshot {

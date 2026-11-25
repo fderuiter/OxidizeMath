@@ -90,23 +90,23 @@
 //! assert_eq!(dec_output.shape(), (seq_len, d_model));
 //! ```
 
-#[allow(missing_docs)]
+/// Scaled dot-product and multi-head attention layers.
 pub mod attention;
-#[allow(missing_docs)]
+/// Autoregressive Transformer decoder layers and stack.
 pub mod decoder;
-#[allow(missing_docs)]
+/// Bidirectional Transformer encoder layers and stack.
 pub mod encoder;
-#[allow(missing_docs)]
+/// Position-wise two-layer ReLU feed-forward network.
 pub mod feed_forward;
-#[allow(missing_docs)]
+/// Per-token affine layer normalization.
 pub mod layer_norm;
-#[allow(missing_docs)]
+/// High-level encoder-decoder `Transformer` container.
 pub mod model;
-#[allow(missing_docs)]
+/// Sinusoidal positional encoding matrix generation.
 pub mod positional_encoding;
-#[allow(missing_docs)]
+/// Word/character tokenizers and deterministic pseudo-embeddings.
 pub mod tokenization;
-#[allow(missing_docs)]
+/// Pluggable attention, feed-forward, and normalization traits.
 pub mod traits;
 
 pub use attention::MultiHeadAttention;

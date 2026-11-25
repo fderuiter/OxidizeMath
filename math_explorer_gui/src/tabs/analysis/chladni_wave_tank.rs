@@ -350,6 +350,10 @@ impl InteractiveTool for ChladniWaveTankTool {
         self.refresh_analysis_outputs();
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.atlas.set_suspended(suspended);
+    }
+
     #[cfg(test)]
     fn as_any(&self) -> Option<&dyn std::any::Any> {
         Some(self)

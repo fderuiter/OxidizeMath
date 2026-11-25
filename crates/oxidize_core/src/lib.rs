@@ -1,20 +1,20 @@
 #![doc = include_str!("../README.md")]
+/// Single-pass `syn` AST visitor for verification and traceability metrics.
 #[cfg(feature = "ast-analysis")]
-#[allow(missing_docs)]
 pub mod ast_visitor;
-#[allow(missing_docs)]
+/// Discrete 2D grid boundary-condition index resolvers.
 pub mod boundary;
-#[allow(missing_docs)]
+/// Zero-allocation interior/boundary split iteration helpers for 2D grids.
 pub mod iteration;
-#[allow(missing_docs)]
+/// 3D triangle mesh primitives and OBJ, PLY, STL, and Gaussian-splat exporters.
 pub mod mesh;
-#[allow(missing_docs)]
+/// Cross-platform forward-slash path normalization utilities.
 pub mod path_utils;
-#[allow(missing_docs)]
+/// Deterministic `ChaCha8Rng` random-number generator enforcing the No-Entropy policy.
 pub mod rng;
-#[allow(missing_docs)]
+/// Unified workspace traceability engine, AST cache, and certificate schema.
 pub mod traceability;
-#[allow(missing_docs)]
+/// Asynchronous virtual file system abstraction across native and WebAssembly targets.
 pub mod vfs;
-#[allow(missing_docs)]
+/// Workspace `Cargo.toml` root discovery and member manifest parsers.
 pub mod workspace;

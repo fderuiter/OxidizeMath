@@ -9,11 +9,12 @@ use crate::app::SemanticPalette;
 use egui_plot::{Line, LineStyle, PlotPoints};
 use math_explorer::physics::high_energy::{
     combined_clock_rate, effective_potential, flamm_paraboloid_z, GeodesicKind,
-    MorrisThorneWormhole, C,
+    KerrEquatorialMetric, MorrisThorneWormhole, C,
 };
 use math_explorer::pure_math::analysis::ode::ArrayState;
 
 use super::sim::Sample4dMeta;
+use super::sim_integrators::planar_velocity_beta;
 use super::{
     GeodesicMode, GeodesicPlaygroundTool, SpacetimePreset, TrajectorySample, MAX_TRAJECTORY_SAMPLES,
 };
@@ -34,17 +35,21 @@ impl GeodesicPlaygroundTool {
         let z = flamm_paraboloid_z(meta.throat_r, r).unwrap_or(0.0);
         let (sin_p, cos_p) = phi.sin_cos();
         let ut = state.0[4].max(1e-6);
+        let dphi_dct = state.0[7] / ut;
+        let velocity_beta = planar_velocity_beta(r, phi, state.0[5] / ut, dphi_dct);
         let dtau_dt = match meta.mode {
             GeodesicMode::NullPhoton => 0.0,
             GeodesicMode::TimelikeParticle => (1.0 / ut).clamp(0.0, 1.0),
         };
-        let (grav, rate, gamma) = compute_4d_clock_factors(meta, r, dtau_dt);
+        let (grav, rate, gamma) = compute_4d_clock_factors(meta, r, dtau_dt, dphi_dct);
         buf.push(TrajectorySample {
             coord_ct: state.0[0],
             proper_tau,
             radial_coord: r,
             phi,
             radial_vel: state.0[5],
+            dphi_dct,
+            velocity_beta,
             embed_xyz: [r * cos_p, r * sin_p, z],
             metric_norm,
             clock_rate: rate,
@@ -68,6 +73,9 @@ impl GeodesicPlaygroundTool {
         let phi = state.0[2];
         let xyz = wh.embedding_xyz(l, phi).unwrap_or([0.0, 0.0, 0.0]);
         let ut = state.0[3].max(1.0);
+        let dphi_dct = state.0[5] / ut;
+        let r_areal = wh.areal_radius(l).unwrap_or(wh.throat_radius);
+        let velocity_beta = planar_velocity_beta(r_areal, phi, state.0[4] / ut, dphi_dct);
         let clock_rate = match mode {
             GeodesicMode::NullPhoton => 0.0,
             GeodesicMode::TimelikeParticle => (1.0 / ut).clamp(0.0, 1.0),
@@ -78,6 +86,8 @@ impl GeodesicPlaygroundTool {
             radial_coord: l,
             phi,
             radial_vel: state.0[4],
+            dphi_dct,
+            velocity_beta,
             embed_xyz: xyz,
             metric_norm,
             clock_rate,
@@ -315,7 +325,12 @@ impl GeodesicPlaygroundTool {
     }
 }
 
-fn compute_4d_clock_factors(meta: Sample4dMeta<'_>, r: f64, dtau_dt: f64) -> (f64, f64, f64) {
+fn compute_4d_clock_factors(
+    meta: Sample4dMeta<'_>,
+    r: f64,
+    dtau_dt: f64,
+    dphi_dct: f64,
+) -> (f64, f64, f64) {
     if let Some(schwarz) = meta.bh {
         let r_safe = r.max(1.001 * meta.throat_r);
         let g = schwarz.gravitational_time_dilation(r_safe).unwrap_or(0.0);
@@ -337,15 +352,24 @@ fn compute_4d_clock_factors(meta: Sample4dMeta<'_>, r: f64, dtau_dt: f64) -> (f6
     } else {
         let rs =
             (meta.throat_r * meta.throat_r + meta.spin_a * meta.spin_a) / meta.throat_r.max(1e-6);
-        let delta = (r * r - rs * r + meta.spin_a * meta.spin_a).max(0.0);
-        let g33 =
-            (r * r + meta.spin_a * meta.spin_a + (meta.spin_a * meta.spin_a * rs) / r).max(1e-6);
-        let zamo_lapse = (delta / g33).sqrt();
-        let gam = if zamo_lapse > 1e-6 && dtau_dt > 0.0 {
-            (zamo_lapse / dtau_dt).max(1.0)
+        let kerr = KerrEquatorialMetric::new(rs, meta.spin_a).ok();
+        let zamo_lapse = kerr
+            .and_then(|k| k.zamo_clock_dilation(r.max(1.005 * meta.throat_r)).ok())
+            .unwrap_or(0.0);
+        let rate = if dtau_dt > 0.0 {
+            kerr.and_then(|k| {
+                k.clock_dilation(r.max(1.005 * meta.throat_r), dphi_dct)
+                    .ok()
+            })
+            .unwrap_or(dtau_dt)
+        } else {
+            0.0
+        };
+        let gam = if zamo_lapse > 1e-6 && rate > 0.0 {
+            (zamo_lapse / rate).max(1.0)
         } else {
             1.0
         };
-        (zamo_lapse, dtau_dt, gam)
+        (zamo_lapse, rate, gam)
     }
 }

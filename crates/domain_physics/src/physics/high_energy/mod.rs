@@ -81,34 +81,36 @@
 //! - **`fluid_dynamics`**: Relativistic Euler equations and shock waves.
 //! - **`statistics`**: Significance calculations (Li & Ma) for signal detection.
 
-#[allow(missing_docs)]
+/// Relativistic hydrodynamics, sound speeds, and Rankine-Hugoniot shock jump conditions.
 pub mod fluid_dynamics;
-#[allow(missing_docs)]
+/// Schwarzschild, Kerr equatorial, and Morris-Thorne spacetime metrics and geodesics.
 pub mod general_relativity;
-#[allow(missing_docs)]
+/// Special-relativistic Lorentz boosts, four-vectors, and Doppler beaming factors.
 pub mod observer;
-#[allow(missing_docs)]
+/// Synchrotron, inverse-Compton, and thermal bremsstrahlung radiative transfer models.
 pub mod radiation;
-#[allow(missing_docs)]
+/// Li & Ma Poisson likelihood-ratio significance for gamma-ray source detection.
 pub mod statistics;
 
 // Re-export constants to match original API
 pub use math_commons::constants::{C, G, SIGMA_T, SOLAR_MASS};
 
-// Re-export SchwarzschildBlackHole, geodesic bundle, and jet beaming helpers
+// Re-export SchwarzschildBlackHole, lensing deflection tables, geodesic bundle, and jet beaming helpers
 pub use general_relativity::{
-    GeodesicKind, GeodesicTrajectoryState, KerrEquatorialMetric, MAX_GEODESIC_TRAJECTORIES,
-    MorrisThorneWormhole, NewtonianOrbitState, SchwarzschildBlackHole, SchwarzschildGeodesicBundle,
-    combined_clock_rate, critical_impact_parameter, effective_potential, flamm_paraboloid_z,
-    newtonian_periapsis_radius, photon_sphere_radius,
+    DEFAULT_DEFLECTION_BINS, DeflectionSample, DeflectionTable, EINSTEIN_RING_IMPACT_FACTOR,
+    GeodesicKind, GeodesicTrajectoryState, KerrEquatorialMetric, LensedRayHit, LensingMetricSpec,
+    MAX_GEODESIC_TRAJECTORIES, MorrisThorneWormhole, NewtonianOrbitState, SchwarzschildBlackHole,
+    SchwarzschildGeodesicBundle, combined_clock_rate, critical_impact_parameter,
+    effective_potential, flamm_paraboloid_z, newtonian_periapsis_radius, photon_sphere_radius,
 };
 pub use observer::{
-    apparent_superluminal_beta, calculate_lorentz_factor_from_beta, relativistic_doppler_factor,
+    FourVector, apparent_superluminal_beta, calculate_lorentz_factor_from_beta,
+    relativistic_doppler_factor,
 };
 pub use radiation::{
     JetKnotConfig, JetKnotObservables, accretion_ring_beaming_factor,
     accretion_ring_flux_asymmetry, beamed_synchrotron_flux_factor, evaluate_jet_knot_observables,
-    twin_jet_flux_asymmetry,
+    inverse_compton_spectral_index, synchrotron_power, twin_jet_flux_asymmetry,
 };
 
 // [cite:dwarf_galaxy_empirical_dependencies]
@@ -120,6 +122,7 @@ theory_verification!(
     module = "high_energy",
     constants = {
         CRITICAL_IMPACT_RATIO = 2.598_076_211_353_316;
+        EINSTEIN_IMPACT_RATIO_SQ = 6.75;
         ISCO_SHELL_BETA = 0.5;
         RELATIVISTIC_SHOCK_COMPRESSION = 7.0;
     },
@@ -130,6 +133,11 @@ theory_verification!(
         assert_relative_eq!(
             bh.critical_impact_parameter().unwrap(),
             CRITICAL_IMPACT_RATIO,
+            epsilon = math_commons::registry::TOLERANCE_FAST
+        );
+        assert_relative_eq!(
+            EINSTEIN_RING_IMPACT_FACTOR * EINSTEIN_RING_IMPACT_FACTOR,
+            EINSTEIN_IMPACT_RATIO_SQ,
             epsilon = math_commons::registry::TOLERANCE_FAST
         );
         assert_relative_eq!(

@@ -38,6 +38,7 @@ fn verify_core_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     vec![
         check_leaf(sample_math(), bus),
         check_leaf(error::FitError::SingularMatrix, bus),
+        check_leaf(error::LinalgError::SingularMatrix, bus),
         check_leaf(error::EvalError::UnknownVariable("x".to_string()), bus),
         check_leaf(error::GlslError::DepthLimitExceeded(64), bus),
         check_leaf(
@@ -58,6 +59,7 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
     leaves.extend([
         check_leaf(error::AmbsError::ConversionError, bus),
         check_leaf(error::AnalysisError::ConvergenceError(1.0), bus),
+        check_leaf(error::BraidError::InvalidStrandCount { strands: 0 }, bus),
         check_leaf(error::CopulaError::NotSymmetric, bus),
         check_leaf(error::EllipticCurveError::InvalidDegree, bus),
         check_leaf(error::EloError::InvalidScale { value: 0.0 }, bus),
@@ -70,6 +72,7 @@ pub fn verify_core_and_pure_math_leaves(bus: &DiagnosticBus) -> Vec<Error> {
             bus,
         ),
         check_leaf(error::KellyError::InvalidBankroll { value: -1.0 }, bus),
+        check_leaf(error::KnotError::EmptyCurve, bus),
         check_leaf(error::LinearAlgebraError::SingularMatrix, bus),
         check_leaf(
             error::MarketPricingError::NoArbitrage {
@@ -194,6 +197,9 @@ pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
         error::MarketPricingError::from(error::AnalysisError::ConvergenceError(0.0))
             .source()
             .is_some(),
+        error::KnotError::from(error::BraidError::InvalidStrandCount { strands: 0 })
+            .source()
+            .is_some(),
         error::AIError::from(sample_math()).source().is_some(),
         error::PharmacokineticsError::from(error::AnalysisError::ConvergenceError(0.0))
             .source()
@@ -216,7 +222,7 @@ pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
             .is_some(),
         error::StatMechError::from(sample_math()).source().is_some(),
     ];
-    assert_eq!(wrapper_sources_present.len(), 17);
+    assert_eq!(wrapper_sources_present.len(), 18);
     assert!(wrapper_sources_present.into_iter().all(|present| present));
 }
 
@@ -230,11 +236,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 62);
-    assert_eq!(*events.lock().unwrap(), 62);
+    assert_eq!(converted.len(), 65);
+    assert_eq!(*events.lock().unwrap(), 65);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 68);
+    assert_eq!(*events.lock().unwrap(), 71);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -253,7 +259,15 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 fn verify_prelude_domain_leaves() {
     use math_explorer::prelude as p;
 
-    let _applied_and_phys = core::mem::size_of::<(
+    let _domain_leaves = core::mem::size_of::<(
+        p::AIError,
+        p::ClimateError,
+        p::BotanicalError,
+        p::HodgkinHuxleyError,
+        p::KineticsError,
+        p::ReactionDiffusionError,
+        p::EpidemiologyError,
+        p::NetworkModelError,
         p::BatteryError,
         p::ClinicalTrialError,
         p::EngineeringError,
@@ -276,6 +290,43 @@ fn verify_prelude_domain_leaves() {
     )>();
 }
 
+fn verify_prelude_pure_math_leaves() {
+    use math_explorer::prelude as p;
+
+    let _pure = core::mem::size_of::<(
+        p::AmbsError,
+        p::AnalysisError,
+        p::BraidError,
+        p::CopulaError,
+        p::EllipticCurveError,
+        p::EloError,
+        p::EvolutionError,
+        p::FractranError,
+        p::Glicko2Error,
+        p::GraphTheoryError,
+        p::HyperbolicError,
+        p::KellyError,
+        p::KnotError,
+        p::LinearAlgebraError,
+        p::MarketPricingError,
+        p::MarkovError,
+        p::MatchModelError,
+        p::MonteCarloError,
+        p::NumberTheoryError,
+        p::OptimizationError,
+        p::OptionPricingError,
+        p::OuError,
+        p::PoissonError,
+        p::QueueingError,
+        p::StochasticError,
+        p::Su11HyperbolicError,
+        p::TdaError,
+        p::TensorError,
+        p::TransformError,
+        p::ZipError,
+    )>();
+}
+
 pub fn verify_prelude_error_reexports() {
     use math_explorer::prelude as p;
 
@@ -295,47 +346,11 @@ pub fn verify_prelude_error_reexports() {
         p::FitError,
         p::GlslError,
         p::LexError,
+        p::LinalgError,
         p::MathError,
         p::ParseError,
         p::ShaderEmitError,
-        p::AIError,
-        p::ClimateError,
-        p::BotanicalError,
-        p::HodgkinHuxleyError,
-        p::KineticsError,
-        p::ReactionDiffusionError,
-        p::EpidemiologyError,
-        p::NetworkModelError,
     )>();
-    let _pure = core::mem::size_of::<(
-        p::AmbsError,
-        p::AnalysisError,
-        p::CopulaError,
-        p::EllipticCurveError,
-        p::EloError,
-        p::EvolutionError,
-        p::FractranError,
-        p::Glicko2Error,
-        p::GraphTheoryError,
-        p::HyperbolicError,
-        p::KellyError,
-        p::LinearAlgebraError,
-        p::MarketPricingError,
-        p::MarkovError,
-        p::MatchModelError,
-        p::MonteCarloError,
-        p::NumberTheoryError,
-        p::OptimizationError,
-        p::OptionPricingError,
-        p::OuError,
-        p::PoissonError,
-        p::QueueingError,
-        p::StochasticError,
-        p::Su11HyperbolicError,
-        p::TdaError,
-        p::TensorError,
-        p::TransformError,
-        p::ZipError,
-    )>();
+    verify_prelude_pure_math_leaves();
     verify_prelude_domain_leaves();
 }

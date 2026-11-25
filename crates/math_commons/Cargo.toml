@@ -5,29 +5,59 @@ edition = "2024"
 
 [features]
 default = ["std"]
-alloc = ["math_memory/alloc"]
+alloc = ["math_memory/alloc", "math_rng/alloc", "serde?/alloc"]
+serde = [
+    "dep:serde",
+    "math_diagnostics/serde",
+    "math_memory/serde",
+    "math_rng/serde",
+    "num-complex/serde",
+]
 std = [
     "alloc",
-    "dep:diagnostics",
+    "dep:scientific_metadata",
+    "math_diagnostics/std",
     "math_memory/std",
+    "math_rng/std",
     "num-complex/std",
     "num-traits/std",
+    "serde?/std",
     "thiserror/std",
     "verified_engine/std",
 ]
 
 [dependencies]
-diagnostics = { path = "../diagnostics", optional = true }
 libm = { workspace = true }
+math_diagnostics = { path = "../00_foundation/math_diagnostics", default-features = false }
 math_memory = { path = "../00_foundation/math_memory", default-features = false }
+math_rng = { path = "../00_foundation/math_rng", default-features = false }
 num-complex = { workspace = true, default-features = false, features = ["libm"] }
 num-traits = { workspace = true, default-features = false, features = ["libm"] }
 rand_core = { workspace = true }
+scientific_metadata = { path = "../scientific_metadata", optional = true }
+serde = { workspace = true, optional = true }
 thiserror = { workspace = true, default-features = false }
 verified_engine = { version = "0.1.0", path = "../verified_engine", default-features = false }
 
 [dev-dependencies]
-oxidize_core = { path = "../oxidize_core" }
+diagnostics = { path = "../diagnostics" }
+serde_json = { workspace = true, default-features = false, features = ["alloc", "float_roundtrip"] }
+
+[[test]]
+name = "test_bounded_primitives_errors"
+required-features = ["std"]
+
+[[test]]
+name = "verified_ast_eval"
+required-features = ["std"]
+
+[[test]]
+name = "verified_curve_solvers"
+required-features = ["std"]
+
+[[test]]
+name = "verified_stochastic_kernel"
+required-features = ["std"]
 
 
 

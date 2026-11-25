@@ -176,9 +176,7 @@ impl PhasePoint2D {
     }
 }
 
-/// Zero-allocation 2D conformal symplectic Leapfrog (Störmer-Verlet) momentum integrator.
-///
-/// When `damping == 0.0`, reduces to exact volume-preserving Velocity-Verlet.
+#[doc = include_str!("../../../../../docs/math_specs/snippets/hamiltonian_leapfrog_2d.md")]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct HamiltonianLeapfrog2D {
     /// Inertial mass $m \in [0.05, 50.0]$.
@@ -302,12 +300,7 @@ impl EvolutionEngine<PhasePoint2D, Vector2<f64>> for HamiltonianLeapfrog2D {
     }
 }
 
-/// Zero-allocation 2D Langevin BAOAB stochastic momentum integrator.
-///
-/// Splits the underdamped Langevin SDE $dq = \partial_p H(p)\,dt$,
-/// $dp = -\nabla V(q)\,dt - \gamma p\,dt + \sqrt{2 m \gamma k_B T}\,dW_t$ into
-/// half-kick (B), half-drift (A), exact Ornstein-Uhlenbeck thermostat (O), half-drift (A),
-/// and half-kick (B).
+#[doc = include_str!("../../../../../docs/math_specs/snippets/langevin_baoab_2d.md")]
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct LangevinBaoab2D {
     /// Inertial mass $m \in [0.05, 50.0]$.

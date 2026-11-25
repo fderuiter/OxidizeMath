@@ -7,7 +7,7 @@ use math_memory::{ArenaLayout, OwnedByteArena, Pod, Zeroable};
 use nalgebra::RealField;
 use num_traits::ToPrimitive;
 
-#[allow(missing_docs)]
+/// Type alias `Result` used across this module.
 pub type Result<T> = std::result::Result<T, MarkovError>;
 
 struct ViterbiSlices<'a, T> {

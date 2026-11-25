@@ -1,9 +1,19 @@
 use super::traits::{OdeSystem, Solver, SolverExt, VectorOperations};
 
-/// A trait for systems that can advance in time.
+/// Trait for autonomous initial-value ODE systems $\dot{y} = f(t, y)$ that advance state in time.
 ///
-/// This trait abstracts over the `step` and `step_with` methods,
-/// enforcing a consistent interface for time-stepping simulations.
+/// Abstracts single-step propagation (`step` defaulting to classical [`RungeKutta4`](super::solvers::RungeKutta4)
+/// and `step_with` for caller-selected [`Solver`] strategies).
+/// Reference: Hairer, Nørsett, & Wanner (1993), *Solving Ordinary Differential Equations I*,
+/// DOI: 10.1007/978-3-540-78862-1; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Default `step` inherits classical RK4 absolute stability ($|1 + z + z^2/2 + z^3/6 + z^4/24| \le 1$,
+/// requiring $|h\lambda| \lesssim 2.785$ along the negative real axis).
+///
+/// # Domain of Validity
+/// Requires locally Lipschitz right-hand side `f(t, y)` and finite step size `dt` within the
+/// stability region of the active [`Solver`].
 pub trait TimeStepper<State: VectorOperations>: OdeSystem<State> {
     /// Returns a reference to the current state.
     #[verified_engine::verified]

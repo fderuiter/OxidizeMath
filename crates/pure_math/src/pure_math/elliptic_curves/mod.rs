@@ -18,27 +18,49 @@ pub use modular_bridge::*;
 pub use singular::*;
 pub use weierstrass::*;
 
+/// Enumeration `EllipticCurveError` classifying EllipticCurveError variants.
 #[derive(Error, Clone, Debug, PartialEq, Eq)]
-#[allow(missing_docs)]
 pub enum EllipticCurveError {
+    /// Variant `InvalidDegree` (InvalidDegree).
     #[error("The theorem applies only for i + j < psi(N).")]
-    #[allow(missing_docs)]
     InvalidDegree,
+    /// Variant `InvalidModulus` (InvalidModulus).
     #[error("Modulus p = {p} must be a prime in 5..=1000000000 for short Weierstrass curves.")]
-    #[allow(missing_docs)]
-    InvalidModulus { p: i64 },
+    InvalidModulus {
+        /// Value for `p` (p).
+        p: i64,
+    },
+    /// Variant `SingularCurve` (SingularCurve).
     #[error("Singular Weierstrass curve over F_{p}: 4*{a}^3 + 27*{b}^2 ≡ 0 (mod {p}).")]
-    #[allow(missing_docs)]
-    SingularCurve { p: i64, a: i64, b: i64 },
+    SingularCurve {
+        /// Value for `p` (p).
+        p: i64,
+        /// Value for `a` (a).
+        a: i64,
+        /// Value for `b` (b).
+        b: i64,
+    },
     /// Real short-Weierstrass curve has zero discriminant $4a^3 + 27b^2 = 0$.
     #[error("Elliptic curve over R is singular because discriminant 4a^3 + 27b^2 vanishes.")]
     SingularRealCurve,
+    /// Variant `PointNotOnCurve` (PointNotOnCurve).
     #[error("Point ({x}, {y}) does not satisfy y^2 ≡ x^3 + ax + b (mod {p}).")]
-    #[allow(missing_docs)]
-    PointNotOnCurve { x: i64, y: i64, p: i64 },
+    PointNotOnCurve {
+        /// Value for `x` (x).
+        x: i64,
+        /// Value for `y` (y).
+        y: i64,
+        /// Value for `p` (p).
+        p: i64,
+    },
+    /// Variant `BufferTooSmall` (BufferTooSmall).
     #[error("Caller buffer length {provided} is smaller than required {required} elements.")]
-    #[allow(missing_docs)]
-    BufferTooSmall { required: usize, provided: usize },
+    BufferTooSmall {
+        /// Value for `required` (required).
+        required: usize,
+        /// Value for `provided` (provided).
+        provided: usize,
+    },
     /// Prime modulus exceeds the interactive lattice enumeration bound.
     #[error("Lattice point enumeration requires prime p <= {max_modulus} (got {modulus}).")]
     ModulusExceedsLatticeCap {
@@ -121,11 +143,11 @@ pub fn psi(n: u64) -> u64 {
 /// Represents the lower bounds on p-adic valuations from Theorem 1.1.
 #[derive(Debug, PartialEq)]
 pub struct Theorem11Bounds {
-    #[allow(missing_docs)]
+    /// Value for `v2_bound` (v2 bound).
     pub v2_bound: Option<u64>,
-    #[allow(missing_docs)]
+    /// Value for `v3_bound` (v3 bound).
     pub v3_bound: Option<u64>,
-    #[allow(missing_docs)]
+    /// Value for `v5_bound` (v5 bound).
     pub v5_bound: Option<u64>,
 }
 
@@ -204,11 +226,11 @@ pub fn theorem_1_1_bounds(n: u64, i: u64, j: u64) -> Result<Theorem11Bounds, Ell
 /// Represents the lower bounds on p-adic valuations from Theorem 1.2.
 #[derive(Debug, PartialEq)]
 pub struct Theorem12Bounds {
-    #[allow(missing_docs)]
+    /// Value for `v2_bound` (v2 bound).
     pub v2_bound: Option<u64>,
-    #[allow(missing_docs)]
+    /// Value for `v3_bound` (v3 bound).
     pub v3_bound: Option<u64>,
-    #[allow(missing_docs)]
+    /// Value for `v7_bound` (v7 bound).
     pub v7_bound: Option<u64>,
 }
 

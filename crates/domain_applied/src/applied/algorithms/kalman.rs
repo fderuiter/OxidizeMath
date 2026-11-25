@@ -4,33 +4,34 @@
 //! This module allows for state estimation of linear systems with arbitrary state and measurement dimensions.
 use nalgebra::{DMatrix, DVector, RealField};
 use thiserror::Error;
+/// Errors returned during Kalman filter initialization and measurement updates.
 #[derive(Error, Debug, PartialEq)]
-#[allow(missing_docs)]
 pub enum KalmanError {
+    /// Innovation covariance matrix $\mathbf{S}_k = \mathbf{H}_k \mathbf{P}_{k|k-1} \mathbf{H}_k^\top + \mathbf{R}_k$ was singular.
     #[error("Failed to invert innovation covariance matrix (singular)")]
-    #[allow(missing_docs)]
     MatrixInversionError,
-    #[allow(missing_docs)]
+    /// Underlying dimension mismatch or linear algebra error from `math_commons`.
     #[error("Mathematical error: {0}")]
     Math(#[from] math_commons::error::MathError),
+    /// Required builder field (`initial_state` or `initial_covariance`) was omitted.
     #[error("Missing required initialization field: {0}")]
-    #[allow(missing_docs)]
     InitializationError(String),
 }
-/// Defines the physics/dynamics model for the Kalman Filter.
+/// Defines the linear state-space dynamics model for the discrete-time Kalman Filter.
 ///
-/// Implementors provide the system matrices that define how the state evolves and how it is measured.
+/// State Evolution: $\mathbf{x}_k = \mathbf{F}_k \mathbf{x}_{k-1} + \mathbf{w}_k$, Measurement: $\mathbf{z}_k = \mathbf{H}_k \mathbf{x}_k + \mathbf{v}_k$,
+/// with $\mathbf{w}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{Q}_k)$ and $\mathbf{v}_k \sim \mathcal{N}(\mathbf{0}, \mathbf{R}_k)$.
 ///
-/// # Mathematical Model
+/// Reference: Kalman (1960), DOI: 10.1115/1.3662552; see
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
 ///
-/// State Evolution: $x_k = F_k x_{k-1} + w_k$
-/// Measurement: $z_k = H_k x_k + v_k$
+/// # Stability
+/// Positive-semidefinite $\mathbf{Q}_k \succeq 0$ and strictly positive-definite $\mathbf{R}_k \succ 0$
+/// keep the innovation covariance $\mathbf{S}_k = \mathbf{H}_k \mathbf{P}_{k|k-1} \mathbf{H}_k^\top + \mathbf{R}_k$ invertible.
 ///
-/// Where:
-/// - $F_k$: Transition Matrix
-/// - $H_k$: Measurement Matrix
-/// - $w_k \sim N(0, Q_k)$: Process Noise
-/// - $v_k \sim N(0, R_k)$: Measurement Noise
+/// # Domain of Validity
+/// Finite matrices of conformable state dimension $n \ge 1$ and measurement dimension $m \ge 1$,
+/// with positive time step `dt` $> 0$.
 pub trait KalmanModel<T: RealField + Copy> {
     /// Returns the State Transition Matrix ($F_k$) of size $(n \times n)$.
     #[verified_engine::verified]
@@ -108,10 +109,22 @@ impl<T: RealField + Copy, M: KalmanModel<T>> KalmanSystem<T> for M {
         KalmanModel::measurement_noise(self)
     }
 }
-/// A generic Discrete Kalman Filter.
+/// Minimum-variance discrete-time linear and Extended Kalman Filter (`EKF`) estimator.
 ///
-/// Uses the **Strategy Pattern** via the `KalmanSystem` trait to decouple the estimation algorithm
-/// from the specific system dynamics.
+/// Propagates state mean $\hat{\mathbf{x}}$ and error covariance $\mathbf{P}$ via predict-update recursion:
+///
+/// $$\hat{\mathbf{x}}_{k|k-1} = f(\hat{\mathbf{x}}_{k-1|k-1}), \quad \mathbf{P}_{k|k-1} = \mathbf{F}_k \mathbf{P}_{k-1|k-1}\mathbf{F}_k^\top + \mathbf{Q}_k, \quad \mathbf{K}_k = \mathbf{P}_{k|k-1}\mathbf{H}_k^\top\left(\mathbf{H}_k\mathbf{P}_{k|k-1}\mathbf{H}_k^\top + \mathbf{R}_k\right)^{-1}$$
+///
+/// Reference: Kalman (1960), DOI: 10.1115/1.3662552; see
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Exact MMSE optimal for linear-Gaussian systems; returns [`KalmanError::MatrixInversionError`] if
+/// $\mathbf{S}_k$ becomes singular, and requires small linearization error over `dt` in EKF mode.
+///
+/// # Domain of Validity
+/// State vector `state` $\in \mathbb{R}^n$ aligned with symmetric positive-semidefinite
+/// `covariance` $\mathbf{P} \in \mathbb{R}^{n \times n}$ and invertible innovation covariance $\mathbf{S}_k \succ 0$.
 #[derive(Debug, Clone)]
 pub struct KalmanFilter<T: RealField + Copy, M: KalmanSystem<T>> {
     /// State vector estimate ($\hat{x}$).

@@ -7,6 +7,7 @@ pub mod curvature_heatmap;
 pub mod custom_surface;
 pub mod export_utils;
 pub mod hyperbolic_geometry;
+pub mod knot_braid_studio;
 pub mod riemannian_studio;
 pub mod surface_brush;
 pub mod surface_brush_kernel;
@@ -70,3 +71,4 @@ inventory::submit! {
 }
 
 // [cite:graph_parameters_rust]
+// [cite:knot_braid_topology]

@@ -1,8 +1,9 @@
 //! Quasi-Monte Carlo (QMC) low-discrepancy point generators and randomized shifts.
 //!
-//! Provides preallocated prime-base [`HaltonSequence`] (up to 64 dimensions) and Joe-Kuo
-//! Gray-code [`SobolSequence`] (up to 32 dimensions) with Cranley-Patterson random shifts
-//! seeded explicitly from [`oxidize_core::rng::OxidizeRng`].
+//! Delegates to Tier 0 [`math_rng`] static 53-bit tables and zero-allocation views, providing
+//! 64-dimensional scrambled [`HaltonSequence`], 64-dimensional Joe-Kuo [`SobolSequence`], and
+//! 64-dimensional base-2 [`NiederreiterSequence`] alongside borrowed-slice [`HaltonView`],
+//! [`SobolView`], and [`NiederreiterView`].
 //!
 //! ## Example
 //!
@@ -24,12 +25,13 @@
 //! ```
 
 mod halton;
+mod niederreiter;
 mod sobol;
-mod sobol_data;
 
 pub use halton::{FIRST_64_PRIMES, HaltonSequence, MAX_HALTON_DIM, radical_inverse};
+pub use math_rng::{HaltonView, MAX_NIEDERREITER_DIM, MAX_SOBOL_DIM, NiederreiterView, SobolView};
+pub use niederreiter::NiederreiterSequence;
 pub use sobol::SobolSequence;
-pub use sobol_data::MAX_SOBOL_DIM;
 
 #[cfg(test)]
 mod tests;

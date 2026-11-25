@@ -1,4 +1,4 @@
-//! Verifies that all 39 public error enums tested from `math_explorer::error`
+//! Verifies that all 43 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -13,13 +13,14 @@
 
 use math_explorer::diagnostics::Diagnostic;
 use math_explorer::error::{
-    AIError, BatteryError, BotanicalError, ChaosError, ClimateError, CopulaError, DoseFluenceError,
-    EloError, EngineeringError, EpidemiologyError, FitError, FluidError, GameTheoryError,
-    Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError, IsosurfaceError,
-    KellyError, LoraError, MarketPricingError, MarkovError, MatchModelError, MathError,
-    MonteCarloError, NumberTheoryError, OptionPricingError, OuError, PharmacokineticsError,
-    PoissonError, QueueingError, RadarError, SandpileError, SolidStateError, StandardModelError,
-    StatMechError, Su11HyperbolicError, TdaError, ZipError,
+    AIError, BatteryError, BotanicalError, BraidError, ChaosError, ClimateError, CopulaError,
+    DoseFluenceError, EloError, EngineeringError, EpidemiologyError, FitError, FluidError,
+    GameTheoryError, Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError,
+    HyperbolicError, IsosurfaceError, KellyError, KnotError, LoraError, MarketPricingError,
+    MarkovError, MatchModelError, MathError, MonteCarloError, NumberTheoryError,
+    OptionPricingError, OuError, PharmacokineticsError, PoissonError, QueueingError, RadarError,
+    SandpileError, ShaderEmitError, SolidStateError, StandardModelError, StatMechError,
+    Su11HyperbolicError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -62,6 +63,10 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
     );
     assert_readable_diagnostic("FitError", &FitError::UnsupportedDegree { degree: 5 });
     assert_readable_diagnostic(
+        "ShaderEmitError",
+        &ShaderEmitError::RecursionLimitExceeded(64),
+    );
+    assert_readable_diagnostic(
         "NumberTheoryError",
         &NumberTheoryError::DivisionByZeroQSeries,
     );
@@ -76,6 +81,10 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         &QueueingError::InvalidServerCount { servers: 0 },
     );
     assert_readable_diagnostic("ZipError", &ZipError::InvalidRate { value: -0.5 });
+}
+
+#[test]
+fn topology_graph_and_pricing_errors_emit_readable_display_and_metadata() {
     assert_readable_diagnostic("TdaError", &TdaError::EmptyPointCloud);
     assert_readable_diagnostic("CopulaError", &CopulaError::NotPositiveDefinite);
     assert_readable_diagnostic("EloError", &EloError::InvalidScale { value: 0.0 });
@@ -95,6 +104,12 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         "MatchModelError",
         &MatchModelError::InvalidGoalRate { value: 0.0 },
     );
+    assert_readable_diagnostic("BraidError", &BraidError::InvalidStrandCount { strands: 0 });
+    assert_readable_diagnostic(
+        "HyperbolicError",
+        &HyperbolicError::DegenerateIsometry { determinant: 0.0 },
+    );
+    assert_readable_diagnostic("KnotError", &KnotError::EmptyCurve);
     assert_readable_diagnostic(
         "MonteCarloError",
         &MonteCarloError::DegenerateWeights {

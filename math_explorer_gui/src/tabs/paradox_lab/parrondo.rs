@@ -289,7 +289,10 @@ impl Default for ParrondoParadoxTool {
             walkers_b: Vec::new(),
             walkers_abb: Vec::new(),
             walkers_mix: Vec::new(),
-            ssa_solver: GillespieSolver::with_capacity(OxidizeRng::new(state.seed ^ 0x9E37), 8),
+            ssa_solver: GillespieSolver::with_capacity(
+                OxidizeRng::new(state.seed).with_stream(1),
+                8,
+            ),
             ssa_system: ParrondoGillespieSystem {
                 win_a,
                 win_b,
@@ -336,7 +339,7 @@ impl ParrondoParadoxTool {
         };
         self.rng = OxidizeRng::new(self.state.seed);
         self.ssa_solver =
-            GillespieSolver::with_capacity(OxidizeRng::new(self.state.seed ^ 0x9E37), 8);
+            GillespieSolver::with_capacity(OxidizeRng::new(self.state.seed).with_stream(1), 8);
         self.ssa_state = ParrondoSsaState::default();
         self.ssa_time = 0.0;
         self.current_step = 0;

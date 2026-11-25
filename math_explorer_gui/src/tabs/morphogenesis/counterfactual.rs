@@ -14,8 +14,7 @@ use eframe::egui::{Color32, ColorImage};
 use math_commons::math_kernel::colormap::{heatmap_color, heatmap_color_high_contrast};
 use math_explorer::biology::diffusion::{MaskedFiniteDifference2D, SpatialDiffusion};
 use math_explorer::biology::morphogenesis::TuringSystem;
-use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
+use oxidize_core::rng::{sample_closed_open, OxidizeRng};
 use serde::{Deserialize, Serialize};
 
 /// Spatial heatmap visualization mode when a counterfactual Turing fork is active.
@@ -120,6 +119,10 @@ pub struct MorphogenesisSnapshotData {
     pub u_a: Option<Vec<f64>>,
     /// Optional row-major `ReactionCellRole` byte grid when any cell is non-`Free`.
     pub mask_roles: Vec<u8>,
+    /// Peak horizontal Lattice Boltzmann speed `|ux|_max` on the worker grid.
+    pub max_abs_ux: f64,
+    /// Peak vertical Lattice Boltzmann speed `|uy|_max` on the worker grid.
+    pub max_abs_uy: f64,
     /// Current step index `k`.
     pub step_count: usize,
     /// Live spatial divergence snapshot when forked.
@@ -185,15 +188,14 @@ impl MorphogenesisTwinState {
         let rng_a = rng_b.clone();
 
         if clean_delta > 0.0 {
-            const INV_2_POW_53: f64 = 1.0 / ((1u64 << 53) as f64);
-            let mut fork_rng = OxidizeRng::new(0x5457_494E_464F_524B ^ (fork_step as u64));
+            let mut fork_rng = OxidizeRng::new(0x5457_494E_464F_524B).with_stream(fork_step as u64);
             let field_b = active_morphogen_slice_mut(system_b);
             let center = field_b.len() / 2;
             for (idx, cell) in field_b.iter_mut().enumerate() {
                 let jitter = if idx == center {
                     1.0
                 } else {
-                    2.0 * (((fork_rng.next_u64() >> 11) as f64) * INV_2_POW_53) - 1.0
+                    2.0 * sample_closed_open::<f64, _>(&mut fork_rng) - 1.0
                 };
                 *cell += clean_delta * jitter;
             }

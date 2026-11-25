@@ -15,7 +15,7 @@
 //! *   **Rank:** The number of non-zero singular values equals the **rank** of the matrix.
 //! *   **Application:** SVD is used for least squares estimation, low-rank Eckart-Young approximation, and determining the effective rank of a matrix.
 
-use super::numerical::{LinearAlgebraError, dmatrix_to_row_major, map_linalg_error};
+use super::numerical::{LinearAlgebraError, dmatrix_to_row_major};
 use engine_linalg::{
     ByteArena, SolverWorkspace, svd_effective_rank, svd_low_rank_approx, svd_ops_workspace_len,
 };
@@ -59,8 +59,7 @@ pub fn try_low_rank_approximation(
         k,
         &mut approx,
         &mut ByteArena::from_slice(&mut scratch),
-    )
-    .map_err(map_linalg_error)?;
+    )?;
     Ok(DMatrix::from_row_slice(m, n, &approx))
 }
 
@@ -92,15 +91,13 @@ where
     let len = m
         .checked_mul(n)
         .ok_or(LinearAlgebraError::DimensionMismatch)?;
-    let a_row = scope
-        .alloc_slice::<T>(len)
-        .map_err(|e| map_linalg_error(engine_linalg::LinalgError::from(e)))?;
+    let a_row = scope.alloc_slice::<T>(len)?;
     for r in 0..m {
         for c in 0..n {
             a_row[flatten_2d_index(c, r, n)] = a[(r, c)];
         }
     }
-    let rank = svd_effective_rank(a_row, m, n, tol, &mut scope).map_err(map_linalg_error)?;
+    let rank = svd_effective_rank(a_row, m, n, tol, &mut scope)?;
     debug_assert!(rank <= m.min(n));
     Ok(rank)
 }
@@ -130,18 +127,14 @@ where
         .checked_mul(n)
         .ok_or(LinearAlgebraError::DimensionMismatch)?;
     let mut scope = ws.reborrow();
-    let a_row = scope
-        .alloc_slice::<T>(len)
-        .map_err(|e| map_linalg_error(engine_linalg::LinalgError::from(e)))?;
-    let out_row = scope
-        .alloc_slice::<T>(len)
-        .map_err(|e| map_linalg_error(engine_linalg::LinalgError::from(e)))?;
+    let a_row = scope.alloc_slice::<T>(len)?;
+    let out_row = scope.alloc_slice::<T>(len)?;
     for r in 0..m {
         for c in 0..n {
             a_row[flatten_2d_index(c, r, n)] = a[(r, c)];
         }
     }
-    svd_low_rank_approx(a_row, m, n, target_rank, out_row, &mut scope).map_err(map_linalg_error)?;
+    svd_low_rank_approx(a_row, m, n, target_rank, out_row, &mut scope)?;
     for r in 0..m {
         for c in 0..n {
             out[(r, c)] = out_row[flatten_2d_index(c, r, n)];

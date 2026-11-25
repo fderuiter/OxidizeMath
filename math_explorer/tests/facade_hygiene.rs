@@ -136,6 +136,7 @@ mod native {
         for rel in [
             "crates/math_commons/src/error.rs",
             "crates/pure_math/src/error.rs",
+            "crates/pure_math/src/error/stochastic.rs",
             "crates/domain_ai/src/error.rs",
             "crates/domain_applied/src/error.rs",
             "crates/domain_biology/src/error.rs",

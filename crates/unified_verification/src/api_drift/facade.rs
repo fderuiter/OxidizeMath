@@ -19,6 +19,7 @@ use facade_signatures::{ParsedSignatureMap, build_parsed_signatures_counted};
 
 const FACADE_REACHABLE_PREFIXES: &[&str] = &[
     "math_explorer/src/",
+    "crates/00_foundation/math_diagnostics/src/",
     "crates/00_foundation/math_memory/src/",
     "crates/math_commons/src/",
     "crates/diagnostics/src/",
@@ -88,8 +89,20 @@ const STD_AND_REEXPORTED_TYPES: &[&str] = &[
     "Vector4", "Vector6", "VectorView", "VectorViewMut", "VisitMap", "Visitable", "Zeroable",
 ];
 
+const TIER2_ENGINE_PREFIXES: &[&str] = &[
+    "crates/02_engines/engine_linalg/src/",
+    "crates/engine_diffeq/src/",
+    "crates/engine_pde/src/",
+];
+
 fn is_facade_reachable_file(rel_path: &str) -> bool {
     FACADE_REACHABLE_PREFIXES
+        .iter()
+        .any(|prefix| rel_path.starts_with(prefix))
+}
+
+fn is_tier2_engine_file(rel_path: &str) -> bool {
+    TIER2_ENGINE_PREFIXES
         .iter()
         .any(|prefix| rel_path.starts_with(prefix))
 }

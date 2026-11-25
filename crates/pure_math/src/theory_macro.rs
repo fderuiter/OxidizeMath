@@ -1,5 +1,5 @@
+/// Declarative verification macro `theory_verification`.
 #[macro_export]
-#[allow(missing_docs)]
 macro_rules! theory_verification {
     (
         module = $module_name:expr,
@@ -31,8 +31,8 @@ macro_rules! theory_verification {
     };
 }
 
+/// Declarative verification macro `stochastic_signature_verification`.
 #[macro_export]
-#[allow(missing_docs)]
 macro_rules! stochastic_signature_verification {
     (
         module = $module_name:expr,

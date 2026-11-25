@@ -68,7 +68,7 @@ pub use particles_and_contours::{ChladniSandSystem, MarchingSquares2D};
 pub use probes::WaveProbeSample;
 pub use spectral::{SpectralAnalyzer2D, SpectralMode2D, SpectralPeak2D};
 
-/// Zero-allocation 2D Verlet PDE solver with pre-allocated mask and stencil buffers.
+#[doc = include_str!("../../../../../../docs/math_specs/snippets/pde_wave2d.md")]
 #[derive(Debug, Clone)]
 pub struct Wave2DSolver {
     width: usize,

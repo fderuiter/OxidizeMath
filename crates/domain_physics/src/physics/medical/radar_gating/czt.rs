@@ -61,6 +61,18 @@ fn direct_chirp_z_transform(
 /// # Returns
 ///
 /// A vector of complex numbers representing the frequency spectrum in the specified band.
+///
+/// Reference: Rabiner, Schafer & Rader (1969), DOI: `10.1109/TAU.1969.1162034`; Bluestein (1970),
+/// DOI: `10.1109/TAU.1970.1162132`; see
+/// [`docs/math_specs/domain_physics.md`](../../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Unitary-modulus chirp phase factors lie strictly on the unit circle $|W^{n^2/2}| = 1$, avoiding
+/// off-circle geometric overflow; zero-padded radix-2 FFT convolution maintains $O(\varepsilon \log(N+K))$ accuracy.
+///
+/// # Domain of Validity
+/// Non-empty complex baseband signals (`!signal.is_empty()`), strictly positive sampling rate
+/// $f_s > 0$, and zoom bands $[f_0, f_0 + B]$ within Nyquist limits.
 #[verified_engine::verified]
 pub fn chirp_z_transform(
     signal: &[Complex<f64>],

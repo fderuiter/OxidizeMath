@@ -20,6 +20,7 @@ pub use ou::{OuCalibration, SampleSummary, calibrate_ou, summarize_samples_into}
 
 /// Summary of a Tarjan strongly connected component (SCC) decomposition over an $n$-state graph.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SccSummary {
     /// Total number of strongly connected components discovered.
     pub num_components: usize,
@@ -72,7 +73,16 @@ pub fn analyze_scc_with_workspace(
     )
 }
 
-/// Solves $(P^T - I)\pi = 0$ with $\sum_i \pi_i = 1$ in `#![no_std]` using `ws`.
+/// Solves $(P^T - I)\pi = 0$ with $\sum_{i=1}^n \pi_i = 1$ in `#![no_std]` using `ws`
+/// (`docs/math_specs/math_commons.md`, DOI: `10.1007/978-1-4612-2670-3`).
+///
+/// # Stability
+/// Isolates the unique closed recurrent sink class via iterative Tarjan SCC traversal before
+/// solving the augmented overdetermined Householder QR system with equilibrium row equilibration.
+///
+/// # Domain of Validity
+/// Requires `num_states >= 1`, `transition.len() >= num_states * num_states`, `out_pi.len() >= num_states`,
+/// a row-stochastic matrix with a unique closed sink SCC, and `ws` sized via [`stochastic_scratch_bytes`].
 #[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn solve_dtmc_stationary_with_workspace(
     transition: &[f64],
@@ -100,7 +110,16 @@ pub fn solve_dtmc_stationary_with_workspace(
     )
 }
 
-/// Solves $G^T \pi = 0$ with $\sum_i \pi_i = 1$ in `#![no_std]` using `ws`.
+/// Solves $Q^T \pi = 0$ with $\sum_{i=1}^n \pi_i = 1$ in `#![no_std]` using `ws`
+/// (`docs/math_specs/math_commons.md`, DOI: `10.1007/978-1-4612-2670-3`).
+///
+/// # Stability
+/// Restricts the system to the unique closed recurrent sink SCC and equilibrates generator rows
+/// prior to augmented Householder QR factorization to handle stiff rate separation.
+///
+/// # Domain of Validity
+/// Requires `num_states >= 1`, `generator.len() >= num_states * num_states`, `out_pi.len() >= num_states`,
+/// a conservative rate generator with a unique closed sink SCC, and `ws` sized via [`stochastic_scratch_bytes`].
 #[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn solve_ctmc_steady_state_with_workspace(
     generator: &[f64],

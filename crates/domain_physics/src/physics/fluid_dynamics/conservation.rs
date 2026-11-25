@@ -99,9 +99,15 @@ impl MomentumEquation for NavierStokes {
     }
 }
 
-/// Euler momentum equation (Inviscid Flow).
+/// Compressible inviscid Euler conservation law system $\partial_t \mathbf{U} + \nabla \cdot \mathbf{F}(\mathbf{U}) = \mathbf{0}$.
 ///
-/// $$\frac{\partial \mathbf{u}}{\partial t} = -(\mathbf{u} \cdot \nabla)\mathbf{u} - \frac{1}{\rho}\nabla p + \mathbf{g}$$
+/// Reference: Toro (2009), *Riemann Solvers and Numerical Methods for Fluid Dynamics*, DOI: 10.1007/b79761; [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Hyperbolic acoustic wave speeds $|\mathbf{u}| + c_s$ require CFL time-step bounds and entropy-consistent numerical fluxes across discontinuities.
+///
+/// # Domain of Validity
+/// Valid in the inviscid continuum regime ($\text{Kn} \ll 1$) for strictly positive density $\rho > 0$, positive pressure $p > 0$, and adiabatic index $\gamma > 1$.
 pub struct Euler;
 
 impl MomentumEquation for Euler {

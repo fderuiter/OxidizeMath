@@ -13,6 +13,14 @@ const MIN_DENOM: f64 = 1e-12;
 ///
 /// Evaluates $(\Delta_S u)_i = \frac{1}{A_i} \sum_{j \in \mathcal{N}(i)} w_{ij} (u_j - u_i)$
 /// with zero heap allocations on hot stepping paths.
+///
+/// Reference: Meyer, Desbrun, Schröder & Barr (2003), DOI: 10.1007/978-3-662-05105-4_2; [`docs/math_specs/pure_math.md`](../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Mixed Voronoi vertex areas $A_i \ge 10^{-12}$ and clamped cotangent denominators guard against obtuse-triangle negative area inversions and degenerate sliver division-by-zero; explicit heat stepping requires $\alpha \Delta t \max_i \frac{1}{A_i}\sum_j |w_{ij}| \le 1$.
+///
+/// # Domain of Validity
+/// Valid on orientable 2-manifold triangle meshes in $\mathbb{R}^3$ with non-degenerate face areas and finite vertex coordinates.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CotangentLaplacian {
     row_ptr: Vec<usize>,

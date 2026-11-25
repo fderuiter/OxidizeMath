@@ -2,8 +2,9 @@
 use crate::stencil::{StencilNeighbors3D, StencilOperators};
 use math_commons::math_kernel::types::{StepSize, flatten_2d_index, flatten_3d_index};
 
-/// Generic fused finite-difference stencil stepper evaluating spatial derivatives in a single grid pass.
+#[doc = include_str!("../../../docs/math_specs/snippets/pde_stepper.md")]
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FusedStencilStepper {
     /// Precomputed spatial finite-difference operators.
     pub ops: StencilOperators,
@@ -11,7 +12,6 @@ pub struct FusedStencilStepper {
 
 impl FusedStencilStepper {
     /// Creates a 1D fused stencil stepper after validating `dx > 0.0`.
-    #[cfg(feature = "std")]
     #[verified_engine::verified]
     pub fn try_new(dx: StepSize) -> Result<Self, math_commons::error::MathError> {
         debug_assert!(dx.is_finite() || !dx.is_finite());
@@ -21,7 +21,6 @@ impl FusedStencilStepper {
     }
 
     /// Creates a 2D fused stencil stepper after validating `dx > 0.0` and `dy > 0.0`.
-    #[cfg(feature = "std")]
     #[verified_engine::verified]
     pub fn try_new_2d(dx: StepSize, dy: StepSize) -> Result<Self, math_commons::error::MathError> {
         debug_assert!(dx.is_finite() || !dx.is_finite());
@@ -31,7 +30,6 @@ impl FusedStencilStepper {
     }
 
     /// Creates a 3D fused stencil stepper after validating `dx > 0.0`, `dy > 0.0`, and `dz > 0.0`.
-    #[cfg(feature = "std")]
     #[verified_engine::verified]
     pub fn try_new_3d(
         dx: StepSize,

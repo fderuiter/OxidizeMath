@@ -152,6 +152,7 @@ pub use tail_risk::{
     PortfolioHorizonSpec, TailRiskEstimate, TailRiskMetrics, empirical_tail_risk,
     empirical_tail_risk_in_place, empirical_var_cvar_in_place, parametric_lognormal_tail_risk,
     simulate_portfolio_tail_risk_into, simulated_portfolio_tail_risk,
+    simulated_portfolio_tail_risk_with_rng,
 };
 
 // [cite:clinical_trials_statistics]

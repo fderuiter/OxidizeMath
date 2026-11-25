@@ -1,52 +1,52 @@
 use super::{Action, MarkovDecisionProcess, State};
 
+/// Discrete 2D integer cell coordinate in [`GridWorldEnv`].
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
-#[allow(missing_docs)]
 pub struct GridState {
-    #[allow(missing_docs)]
+    /// Horizontal column index ($0 \le x < \text{width}$).
     pub x: i32,
-    #[allow(missing_docs)]
+    /// Vertical row index ($0 \le y < \text{height}$).
     pub y: i32,
 }
 
 impl State for GridState {}
 
+/// Cardinal grid movement action in [`GridWorldEnv`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[allow(missing_docs)]
 pub enum Move {
-    #[allow(missing_docs)]
+    /// Decrements row coordinate `y` by 1.
     Up,
-    #[allow(missing_docs)]
+    /// Increments row coordinate `y` by 1.
     Down,
-    #[allow(missing_docs)]
+    /// Decrements column coordinate `x` by 1.
     Left,
-    #[allow(missing_docs)]
+    /// Increments column coordinate `x` by 1.
     Right,
 }
 
 impl Action for Move {}
 
-#[allow(missing_docs)]
+/// Deterministic bounded 2D grid-world Markov Decision Process with goal and trap cells.
 pub struct GridWorldEnv {
-    #[allow(missing_docs)]
+    /// Grid width in cells.
     pub width: i32,
-    #[allow(missing_docs)]
+    /// Grid height in cells.
     pub height: i32,
-    #[allow(missing_docs)]
+    /// Terminal goal state yielding $+10.0$ reward.
     pub goal: GridState,
-    #[allow(missing_docs)]
+    /// Initial agent spawn state.
     pub start: GridState,
-    #[allow(missing_docs)]
+    /// Terminal hazard states yielding $-10.0$ reward.
     pub traps: Vec<GridState>,
     /// Impassable wall cells that block agent transitions in [`Self::step`].
     pub walls: Vec<GridState>,
-    #[allow(missing_docs)]
+    /// Future-reward discount factor $\gamma \in [0, 1]$.
     pub gamma: f64,
 }
 
 impl GridWorldEnv {
-    #[allow(missing_docs)]
+    /// Computes the deterministic next [`GridState`] after applying `action`, clamping at grid boundaries and [`Self::walls`].
     #[verified_engine::verified]
     pub fn step(&self, current_state: &GridState, action: &Move) -> GridState {
         let mut expected_next = *current_state;

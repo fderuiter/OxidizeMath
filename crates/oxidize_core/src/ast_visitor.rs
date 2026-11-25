@@ -1,5 +1,6 @@
 mod attrs;
 mod debt;
+mod maturity;
 mod vacuous;
 
 pub use attrs::{attrs_mark_test_fn, attrs_require_cfg_test, extract_opt_out_reasons_from_attr};
@@ -7,8 +8,13 @@ pub use debt::collect_ast_file_debt;
 
 use attrs::{
     attrs_require_cfg_test_filtered, count_block_assertions, extract_opt_outs_filtered,
+    non_fn_impl_item_attrs, non_fn_item_attrs, non_fn_trait_item_attrs,
     parse_verification_macro_tokens, scan_attributes,
 };
+use maturity::{
+    FileEvidenceScanner, collect_item_maturity_decls, inspect_theory_verification_macro,
+};
+use scientific_metadata::theory::MaturityTier;
 use std::collections::HashMap;
 use std::path::Path;
 use syn::spanned::Spanned;
@@ -30,29 +36,49 @@ pub fn is_dedicated_test_path(filepath: &Path) -> bool {
     })
 }
 
-#[allow(missing_docs)]
+/// Single-pass `syn` visitor collecting verification attributes, citations, and stochastic integrity metrics.
 pub struct AstVisitor {
-    #[allow(missing_docs)]
+    /// Registered module keys verified via macros, `#[embed_theory]`, or `[cite:...]` annotations.
     pub verified_modules: Vec<String>,
-    #[allow(missing_docs)]
+    /// Verification tier (`Deterministic` or `Stochastic`) recorded per module key.
     pub module_tiers: HashMap<String, String>,
-    #[allow(missing_docs)]
+    /// First 1-indexed source line recorded for each verified module key.
     pub module_spans: HashMap<String, usize>,
-    #[allow(missing_docs)]
+    /// Modules with a non-vacuous `theory_verification!` deterministic contract (`test = { ... }`).
+    pub non_vacuous_deterministic_modules: Vec<String>,
+    /// Modules with an empty `theory_verification!` test block and their source line numbers.
+    pub vacuous_deterministic_modules: Vec<(String, usize)>,
+    /// Modules verified via `stochastic_signature_verification!`.
+    pub stochastic_modules: Vec<String>,
+    /// Explicit item-level `MaturityTier` declarations (`(type_name, tier, line)`).
+    pub declared_item_maturities: Vec<(String, MaturityTier, usize)>,
+    /// Whether this file contains a `VerifiedAllocator` or `VerifiedEngine::run_verified` proof.
+    pub has_zero_alloc_proof: bool,
+    /// Whether this file initializes a deterministic seeded RNG or deterministic contract.
+    pub has_seeded_rng: bool,
+    /// Whether this file invokes unseeded `thread_rng`.
+    pub has_unseeded_rng: bool,
+    /// Whether this file defines golden constants, equality assertions, or fixture includes.
+    pub has_golden_fixture: bool,
+    /// Total assertion macros counted for maturity density qualification.
+    pub maturity_asserts: usize,
+    /// Total non-opted-out functions counted for maturity density qualification.
+    pub active_funcs: usize,
+    /// Whether a stochastic verification block contained a vacuous zero-initialized buffer.
     pub has_vacuous_bypass: bool,
-    #[allow(missing_docs)]
+    /// First 1-indexed source line where a vacuous zero-initialized bypass occurred.
     pub vacuous_bypass_line: Option<usize>,
     /// Whether the file invokes `theory_verification!` or `stochastic_signature_verification!`.
     pub has_verification_macro: bool,
-    #[allow(missing_docs)]
+    /// Name and 1-indexed line of the first function missing `#[verified]` when not opted out.
     pub first_unverified_fn: Option<(String, usize)>,
-    #[allow(missing_docs)]
+    /// Total function items visited in the file.
     pub total_funcs: usize,
-    #[allow(missing_docs)]
+    /// Total assertion macro invocations visited across functions and verification macros.
     pub total_asserts: usize,
-    #[allow(missing_docs)]
+    /// Count of functions carrying `#[verified]` or `#[embed_theory]`.
     pub verified_funcs: usize,
-    #[allow(missing_docs)]
+    /// Count of assertions occurring inside verified functions and verification macros.
     pub verified_asserts: usize,
     /// Total non-test production functions visited in the file.
     pub prod_funcs: usize,
@@ -70,13 +96,13 @@ pub struct AstVisitor {
     pub verified_test_funcs: usize,
     /// Assertions recorded inside `#[verified]` test-scoped functions and verification macro blocks.
     pub verified_test_asserts: usize,
-    #[allow(missing_docs)]
+    /// Count of functions or macros carrying semantic theory links or citations.
     pub semantic_integrity_funcs: usize,
     /// Count of functions explicitly exempted via `opt_out = "..."`.
     pub opted_out_funcs: usize,
-    #[allow(missing_docs)]
+    /// Out-of-line child module identifiers (`mod foo;`) discovered in the file.
     pub active_submodules: Vec<String>,
-    #[allow(missing_docs)]
+    /// Whether the active scope is opted out of verification tracking (`opt_out`).
     pub opted_out: bool,
     /// Ordered list of `opt_out` reason strings encountered across file and item attributes.
     pub opt_outs: Vec<String>,
@@ -93,7 +119,7 @@ impl Default for AstVisitor {
 }
 
 impl AstVisitor {
-    #[allow(missing_docs)]
+    /// Constructs a zeroed [`AstVisitor`] ready to inspect a parsed `syn::File`.
     pub fn new() -> Self {
         Self::with_test_scope(false)
     }
@@ -104,6 +130,16 @@ impl AstVisitor {
             verified_modules: Vec::new(),
             module_tiers: HashMap::new(),
             module_spans: HashMap::new(),
+            non_vacuous_deterministic_modules: Vec::new(),
+            vacuous_deterministic_modules: Vec::new(),
+            stochastic_modules: Vec::new(),
+            declared_item_maturities: Vec::new(),
+            has_zero_alloc_proof: false,
+            has_seeded_rng: false,
+            has_unseeded_rng: false,
+            has_golden_fixture: false,
+            maturity_asserts: 0,
+            active_funcs: 0,
             has_vacuous_bypass: false,
             vacuous_bypass_line: None,
             has_verification_macro: false,
@@ -150,6 +186,8 @@ impl AstVisitor {
         self.total_asserts += assert_count;
         if effective_opt_out {
             self.opted_out_funcs += 1;
+        } else {
+            self.active_funcs += 1;
         }
         if has_semantic {
             self.semantic_integrity_funcs += 1;
@@ -209,26 +247,58 @@ impl AstVisitor {
         );
         (effective_opt_out, fn_in_test)
     }
-}
 
-fn non_fn_item_attrs(node: &Item) -> Option<&[Attribute]> {
-    match node {
-        Item::Fn(_) => None,
-        Item::Const(i) => Some(&i.attrs),
-        Item::Enum(i) => Some(&i.attrs),
-        Item::ExternCrate(i) => Some(&i.attrs),
-        Item::ForeignMod(i) => Some(&i.attrs),
-        Item::Impl(i) => Some(&i.attrs),
-        Item::Macro(i) => Some(&i.attrs),
-        Item::Mod(i) => Some(&i.attrs),
-        Item::Static(i) => Some(&i.attrs),
-        Item::Struct(i) => Some(&i.attrs),
-        Item::Trait(i) => Some(&i.attrs),
-        Item::TraitAlias(i) => Some(&i.attrs),
-        Item::Type(i) => Some(&i.attrs),
-        Item::Union(i) => Some(&i.attrs),
-        Item::Use(i) => Some(&i.attrs),
-        _ => Some(&[]),
+    fn record_verification_macro(&mut self, name: &str, node: &ItemMacro) {
+        let tier_name = match name {
+            "theory_verification" => "Deterministic",
+            "stochastic_signature_verification" => "Stochastic",
+            _ => return,
+        };
+        self.has_verification_macro = true;
+        let macro_line = span_line(node.span());
+        if name == "stochastic_signature_verification"
+            && let Some(zero_line) = find_stochastic_zero_init_line(&node.mac)
+        {
+            self.has_vacuous_bypass = true;
+            let recorded = if zero_line > 0 { zero_line } else { macro_line };
+            if self.vacuous_bypass_line.is_none() && recorded > 0 {
+                self.vacuous_bypass_line = Some(recorded);
+            }
+        }
+        let tv_info =
+            (name == "theory_verification").then(|| inspect_theory_verification_macro(&node.mac));
+        let parsed = parse_verification_macro_tokens(&node.mac.tokens);
+        let Some(module_name) = parsed.module_name else {
+            return;
+        };
+        self.record_module(module_name.clone(), macro_line);
+        self.module_tiers
+            .insert(module_name.clone(), tier_name.to_string());
+        if let Some(info) = tv_info {
+            if info.has_non_empty_constants {
+                self.has_golden_fixture = true;
+            }
+            if info.has_non_empty_test {
+                self.non_vacuous_deterministic_modules.push(module_name);
+                self.has_seeded_rng = true;
+            } else {
+                self.vacuous_deterministic_modules
+                    .push((module_name, macro_line));
+            }
+        } else {
+            self.stochastic_modules.push(module_name);
+        }
+        self.semantic_integrity_funcs += 1;
+        self.total_funcs += 1;
+        self.active_funcs += 1;
+        self.verified_funcs += 1;
+        self.test_funcs += 1;
+        self.verified_test_funcs += 1;
+        self.total_asserts += parsed.assert_count;
+        self.verified_asserts += parsed.assert_count;
+        self.test_asserts += parsed.assert_count;
+        self.verified_test_asserts += parsed.assert_count;
+        self.maturity_asserts += parsed.assert_count;
     }
 }
 
@@ -243,6 +313,14 @@ impl<'ast> Visit<'ast> for AstVisitor {
         if attrs_require_cfg_test_filtered(&node.attrs, true, false) {
             self.in_test_scope = true;
         }
+        let mut scanner = FileEvidenceScanner::default();
+        scanner.visit_file(node);
+        self.has_zero_alloc_proof |= scanner.has_zero_alloc_proof;
+        self.has_seeded_rng |= scanner.has_seeded_rng;
+        self.has_unseeded_rng |= scanner.has_unseeded_rng;
+        self.has_golden_fixture |= scanner.has_golden_fixture;
+        self.maturity_asserts += scanner.maturity_asserts;
+
         visit::visit_file(self, node);
     }
 
@@ -262,20 +340,16 @@ impl<'ast> Visit<'ast> for AstVisitor {
         if attrs_require_cfg_test_filtered(attrs, allow_inner, true) {
             self.in_test_scope = true;
         }
+        if !self.in_test_scope {
+            collect_item_maturity_decls(node, &mut self.declared_item_maturities);
+        }
         visit::visit_item(self, node);
         self.in_opt_out_scope = prev_opt;
         self.in_test_scope = prev_test;
     }
 
     fn visit_impl_item(&mut self, node: &'ast ImplItem) {
-        let attrs: Option<&[Attribute]> = match node {
-            ImplItem::Fn(_) => None,
-            ImplItem::Const(i) => Some(&i.attrs),
-            ImplItem::Type(i) => Some(&i.attrs),
-            ImplItem::Macro(i) => Some(&i.attrs),
-            _ => Some(&[]),
-        };
-        let Some(attrs) = attrs else {
+        let Some(attrs) = non_fn_impl_item_attrs(node) else {
             visit::visit_impl_item(self, node);
             return;
         };
@@ -295,14 +369,7 @@ impl<'ast> Visit<'ast> for AstVisitor {
     }
 
     fn visit_trait_item(&mut self, node: &'ast TraitItem) {
-        let attrs: Option<&[Attribute]> = match node {
-            TraitItem::Fn(_) => None,
-            TraitItem::Const(i) => Some(&i.attrs),
-            TraitItem::Type(i) => Some(&i.attrs),
-            TraitItem::Macro(i) => Some(&i.attrs),
-            _ => Some(&[]),
-        };
-        let Some(attrs) = attrs else {
+        let Some(attrs) = non_fn_trait_item_attrs(node) else {
             visit::visit_trait_item(self, node);
             return;
         };
@@ -330,42 +397,7 @@ impl<'ast> Visit<'ast> for AstVisitor {
 
     fn visit_item_macro(&mut self, node: &'ast ItemMacro) {
         if let Some(ident) = node.mac.path.segments.last().map(|s| &s.ident) {
-            let name = ident.to_string();
-            let tier = if name == "theory_verification" {
-                Some("Deterministic")
-            } else if name == "stochastic_signature_verification" {
-                Some("Stochastic")
-            } else {
-                None
-            };
-
-            if let Some(tier_name) = tier {
-                self.has_verification_macro = true;
-                let macro_line = span_line(node.span());
-                if name == "stochastic_signature_verification"
-                    && let Some(zero_line) = find_stochastic_zero_init_line(&node.mac)
-                {
-                    self.has_vacuous_bypass = true;
-                    let recorded = if zero_line > 0 { zero_line } else { macro_line };
-                    if self.vacuous_bypass_line.is_none() && recorded > 0 {
-                        self.vacuous_bypass_line = Some(recorded);
-                    }
-                }
-                let parsed = parse_verification_macro_tokens(&node.mac.tokens);
-                if let Some(module_name) = parsed.module_name {
-                    self.record_module(module_name.clone(), macro_line);
-                    self.module_tiers.insert(module_name, tier_name.to_string());
-                    self.semantic_integrity_funcs += 1;
-                    self.total_funcs += 1;
-                    self.verified_funcs += 1;
-                    self.test_funcs += 1;
-                    self.verified_test_funcs += 1;
-                    self.total_asserts += parsed.assert_count;
-                    self.verified_asserts += parsed.assert_count;
-                    self.test_asserts += parsed.assert_count;
-                    self.verified_test_asserts += parsed.assert_count;
-                }
-            }
+            self.record_verification_macro(&ident.to_string(), node);
         }
         visit::visit_item_macro(self, node);
     }

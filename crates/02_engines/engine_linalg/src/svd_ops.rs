@@ -136,7 +136,17 @@ pub fn svd_low_rank_approx<T: Scalar>(
 }
 
 /// Computes the minimum-norm least-squares solution $x = V \Sigma^+ U^T b$ via [`svd_bidiagonal`].
-/// `[cite:advanced_linear_algebra]`
+///
+/// Reference: Golub & Kahan (1965), DOI: 10.1137/0702016;
+/// [`docs/math_specs/engine_linalg.md`](../../../../docs/math_specs/engine_linalg.md). `[cite:advanced_linear_algebra]`
+///
+/// # Stability
+/// Orthogonal bidiagonalization and implicit Wilkinson-shift QR sweeps achieve backward error
+/// $O(\max(m,n)\varepsilon_{\text{mach}}\|A\|_2)$ while zeroing singular modes $\sigma_i \le \max(\text{tol}, \max(m,n)\varepsilon_{\text{mach}}\sigma_1)$.
+///
+/// # Domain of Validity
+/// Requires finite `a` (`m * n`), finite `b` (`m`), finite `tol >= 0`, `x` (`n`), and `ws`
+/// capacity at least [`svd_ops_workspace_len`]`(m, n)`.
 pub fn svd_solve_least_squares<T: Scalar>(
     a: &[T],
     m: usize,
@@ -185,8 +195,18 @@ pub fn svd_solve_least_squares<T: Scalar>(
     Ok(rank)
 }
 
-/// Solves $\min_x \|A x - b\|_2$ via Householder QR when full column rank, falling back to SVD when rank-deficient.
-/// `[cite:advanced_linear_algebra]`
+/// Solves $\min_x \|A x - b\|_2$ via Householder QR when full column rank, falling back to minimum-norm SVD when rank-deficient.
+///
+/// Reference: Golub & Van Loan (2013), DOI: 10.56021/9781421407944;
+/// [`docs/math_specs/engine_linalg.md`](../../../../docs/math_specs/engine_linalg.md). `[cite:advanced_linear_algebra]`
+///
+/// # Stability
+/// Combines fast $O(m n^2)$ orthogonal Householder QR on well-conditioned full-rank systems with
+/// minimum-2-norm Moore-Penrose SVD regularization whenever $m < n$ or numerical rank $< n$.
+///
+/// # Domain of Validity
+/// Requires finite `a` (`m * n`), finite `b` (`m`), `x` (`n`), `col_perm` (`n`), and `ws`
+/// capacity at least [`qr_or_svd_workspace_len`]`(m, n)`.
 pub fn qr_or_svd_solve<T: Scalar>(
     a: &[T],
     m: usize,

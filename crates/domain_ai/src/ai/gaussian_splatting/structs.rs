@@ -6,13 +6,13 @@ use nalgebra::{Matrix2, Matrix3, Point2, Point3, UnitQuaternion, Vector3};
 /// opacity, and color (Spherical Harmonics).
 #[derive(Clone, Debug)]
 pub struct Gaussian3D {
-    #[allow(missing_docs)]
+    /// World-space 3D center position $\boldsymbol{\mu} \in \mathbb{R}^3$.
     pub mean: Point3<f64>,
-    #[allow(missing_docs)]
+    /// Principal-axis standard deviations $\mathbf{s} = (s_x, s_y, s_z)$.
     pub scale: Vector3<f64>,
-    #[allow(missing_docs)]
+    /// Unit quaternion encoding orientation matrix $\mathbf{R} \in \mathrm{SO}(3)$.
     pub rotation: UnitQuaternion<f64>,
-    #[allow(missing_docs)]
+    /// Scalar opacity $\alpha \in [0, 1]$ before kernel attenuation.
     pub opacity: f64,
     /// Simplified color representation (e.g., DC component of SH or RGB)
     pub color: Vector3<f64>,
@@ -65,13 +65,13 @@ impl Gaussian3D {
 /// Represents the 2D projection of a Gaussian on the image plane.
 #[derive(Clone, Debug)]
 pub struct Gaussian2D {
-    #[allow(missing_docs)]
+    /// Projected screen-space 2D center coordinates.
     pub mean: Point2<f64>,
     /// The conic matrix (inverse covariance with -0.5 factor) for fast evaluation.
     pub conic: Matrix2<f64>,
-    #[allow(missing_docs)]
+    /// Scalar opacity $\alpha \in [0, 1]$ used in alpha compositing.
     pub opacity: f64,
-    #[allow(missing_docs)]
+    /// Linear RGB radiance contribution of the splat.
     pub color: Vector3<f64>,
     /// Depth is needed for sorting
     pub depth: f64,
@@ -79,7 +79,7 @@ pub struct Gaussian2D {
 
 /// A collection of 3D Gaussians.
 pub struct Scene {
-    #[allow(missing_docs)]
+    /// Ordered list of 3D Gaussian primitives comprising the scene.
     pub gaussians: Vec<Gaussian3D>,
 }
 

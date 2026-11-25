@@ -3,6 +3,8 @@
 use super::analytics::{compute_network_analytics, render_compartment_and_analytics_panel};
 use super::{ContainmentMode, NetworkPropagationTool, MAX_SLIDER_BUDGET};
 use crate::accessibility::{announce_live_status, AccessibleHoverText};
+use crate::app::data_bus::ui::{render_follow_workspace_toggle, render_node_budget_banner};
+use crate::app::data_bus::MAX_EPIDEMIC_NODE_BUDGET;
 use crate::framework::{PlaybackAction, PlaybackTransport};
 use eframe::egui;
 
@@ -13,6 +15,30 @@ impl NetworkPropagationTool {
             self.render_topology_sync_bar(ui);
             ui.separator();
         }
+
+        let rev_opt = (self.applied_bus_revision > 0).then_some(self.applied_bus_revision);
+        let locked = self.is_challenge_locked();
+        ui.add_enabled_ui(!locked, |ui| {
+            if render_follow_workspace_toggle(
+                ui,
+                &mut self.follow_workspace_graph,
+                "Network Propagation",
+                rev_opt,
+            ) {
+                if self.follow_workspace_graph {
+                    self.applied_bus_revision = 0;
+                    self.sync_from_bus(ui.ctx());
+                }
+                self.bump_revision();
+            }
+        });
+        render_node_budget_banner(
+            ui,
+            self.clamped_source_nodes,
+            MAX_EPIDEMIC_NODE_BUDGET,
+            "epidemic nodes",
+        );
+        ui.separator();
 
         self.render_transport_controls(ui);
         ui.separator();
@@ -71,6 +97,8 @@ impl NetworkPropagationTool {
             );
             return;
         }
+        let external_bus_active = self.synced_bus_revision.is_some()
+            || (self.active_shared_graph.is_some() && self.follow_workspace_graph);
         let mut num_nodes = if locked {
             self.model.num_nodes()
         } else {
@@ -78,12 +106,15 @@ impl NetworkPropagationTool {
         };
         if ui
             .add_enabled(
-                !locked && self.synced_bus_revision.is_none(),
+                !locked && !external_bus_active,
                 egui::Slider::new(&mut num_nodes, 10..=200).text("Nodes"),
             )
             .changed()
         {
             self.local_num_nodes = num_nodes;
+            self.active_shared_graph = None;
+            self.seeded_graph = None;
+            self.clamped_source_nodes = None;
             let _ = self.model.set_num_nodes(num_nodes);
             self.vaccinated_nodes.clear();
             self.quarantined_edges.clear();
@@ -105,6 +136,7 @@ impl NetworkPropagationTool {
         {
             let _ = self.model.set_beta(beta);
             let _ = self.baseline_model.set_beta(beta);
+            self.trace_dirty = true;
             self.bump_revision();
         }
 
@@ -118,6 +150,7 @@ impl NetworkPropagationTool {
         {
             let _ = self.model.set_gamma(gamma);
             let _ = self.baseline_model.set_gamma(gamma);
+            self.trace_dirty = true;
             self.bump_revision();
         }
 

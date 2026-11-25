@@ -11,11 +11,23 @@ use crate::physics::quantum::tridiagonal::{
 use crate::physics::quantum::types::QuantumState;
 use num_complex::Complex;
 
-/// Self-contained $O(N)$ 1D Crank-Nicolson quantum solver over preallocated [`TridiagonalWorkspace`] buffers.
+/// Self-contained $O(N)$ 1D Crank-Nicolson quantum solver evolving
+/// $\bigl(I + \frac{i\Delta t}{2\hbar}\hat{H}\bigr)\psi^{n+1} = \bigl(I - \frac{i\Delta t}{2\hbar}\hat{H}\bigr)\psi^n$
+/// over preallocated [`TridiagonalWorkspace`] buffers.
 ///
 /// Combines in-place tridiagonal Hamiltonian assembly and Thomas LU Cayley stepping so spatial
 /// potential sculpting and dynamic $\Delta t$ updates execute in linear $O(N)$ time with zero
 /// post-initialization heap allocations.
+/// Reference: Crank & Nicolson (1947), DOI: 10.1017/S0305004100023197;
+/// [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Unconditionally unitary in discrete $\ell^2$ norm ($\|\psi^{n+1}\|_2 = \|\psi^n\|_2$ to machine
+/// precision) for any real symmetric tridiagonal Hamiltonian $\hat{H}$ and $\Delta t > 0$.
+///
+/// # Domain of Validity
+/// Requires finite potential samples `potential[i]` and strictly positive finite `(dx, dt, mass, h_bar)`;
+/// invalid scalars mark `is_valid() == false` and reject stepping before division.
 ///
 /// # Example
 ///

@@ -57,7 +57,19 @@ pub fn ginzburg_landau_free_energy_2d(
     sum * dx * dy
 }
 
-/// 2D non-conserved Allen-Cahn (Model A) phase-ordering SPDE solver.
+/// 2D non-conserved Allen-Cahn (Hohenberg-Halperin Model A) phase-ordering SPDE solver evolving
+/// $\partial_t \phi = M(\kappa \nabla^2 \phi + \phi - \phi^3) + \eta$.
+///
+/// Reference: Allen & Cahn (1979), DOI: 10.1016/0001-6160(79)90196-2; Hohenberg & Halperin (1977),
+/// DOI: 10.1103/RevModPhys.49.435; [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Deterministic coarsening monotonically decreases the Ginzburg-Landau free energy when `dt` satisfies
+/// $M\kappa\,\Delta t(\Delta x^{-2} + \Delta y^{-2}) \le \frac{1}{2}$ (partitioned over `diffusion_substeps` in [`Self::step_split`]).
+///
+/// # Domain of Validity
+/// Requires `width >= 3`, `height >= 3`, positive finite spacings `dx, dy > 0`, `mobility > 0`,
+/// `kappa >= 0`, and `noise_intensity >= 0` (`StatMechError` otherwise).
 #[derive(Debug, Clone)]
 pub struct AllenCahn2D {
     phi: Vec<f64>,

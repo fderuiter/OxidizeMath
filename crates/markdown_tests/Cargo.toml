@@ -13,6 +13,7 @@ oxidize_core = { path = "../oxidize_core" }
 verified_engine = { path = "../verified_engine" }
 verified_engine_macros = { path = "../verified_engine_macros" }
 diagnostics = { path = "../diagnostics" }
+math_rng = { path = "../00_foundation/math_rng", features = ["alloc", "serde"] }
 engine_linalg = { path = "../02_engines/engine_linalg" }
 math_commons = { path = "../math_commons" }
 pure_math = { path = "../pure_math" }
@@ -26,7 +27,7 @@ math_explorer = { path = "../../math_explorer", features = ["pure_math", "applie
 
 nalgebra = { workspace = true }
 rand = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["std", "derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 

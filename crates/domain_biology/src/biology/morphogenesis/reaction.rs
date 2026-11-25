@@ -34,6 +34,17 @@ pub trait ReactionKinetics<const N: usize = 2> {
 /// - $a$: Production rate of the activator.
 /// - $b$: Production rate of the inhibitor.
 /// - $u^2 v$: Non-linear autocatalysis term (Activator requires Inhibitor to grow, but consumes it).
+///
+/// Reference: Schnakenberg (1979), DOI: `10.1016/0022-5193(79)90002-4`; see
+/// [`docs/math_specs/domain_biology.md`](../../../../../docs/math_specs/domain_biology.md).
+///
+/// # Stability
+/// Exhibits a unique homogeneous steady state $(u^*, v^*) = (a + b, b / (a + b)^2)$; cubic $u^2 v$
+/// stiffness requires bounded $\Delta t$ so explicit updates do not overshoot positive orthant bounds.
+///
+/// # Domain of Validity
+/// Non-negative concentrations $u, v \ge 0$ and strictly positive feed rates $a \ge 0$, $b > 0$
+/// with $a + b > 0$.
 #[derive(Debug, Clone, Copy, Theory)]
 #[theory(
     description = "Schnakenberg kinetics (often used for Turing patterns).",
@@ -129,6 +140,16 @@ impl ReactionModel for SchnakenbergKinetics {
 /// Where:
 /// - $f$: Dimensionless feed rate replenishing substrate $u$.
 /// - $k$: Dimensionless kill rate removing autocatalyst $v$.
+///
+/// Reference: Pearson (1993), DOI: `10.1126/science.261.5118.189`; see
+/// [`docs/math_specs/domain_biology.md`](../../../../../docs/math_specs/domain_biology.md).
+///
+/// # Stability
+/// Preserves $u, v \in [0, 1]$ analytically; explicit time-stepping requires $\Delta t \lesssim 1$
+/// alongside the diffusive CFL constraint $\Delta t \le h^2 / (2 d \max(D_u, D_v))$.
+///
+/// # Domain of Validity
+/// Dimensionless concentrations $u, v \in [0, 1]$ and feed/kill rates $f, k \in [0, 0.1]$.
 #[derive(Debug, Clone, Copy, PartialEq, Theory)]
 #[theory(
     description = "Gray-Scott autocatalytic reaction kinetics generating spot mitosis and coral morphologies.",

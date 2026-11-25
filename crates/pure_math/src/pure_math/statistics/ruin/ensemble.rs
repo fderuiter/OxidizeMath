@@ -5,11 +5,9 @@ use super::barrier::ProportionalPortfolioBet;
 use crate::error::KellyError;
 use crate::pure_math::statistics::validation::Z_95_TWO_SIDED;
 use math_memory::{ArenaLayout, ArenaRegion, FlagSlice, OwnedByteArena};
+use math_rng::sample_closed_open;
 use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
 use statrs::distribution::{ContinuousCDF, Normal};
-
-const INV_TWO_POW_53: f64 = 1.0 / 9_007_199_254_740_992.0;
 
 /// Wilson score binomial proportion confidence interval.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -321,7 +319,7 @@ impl BankrollEnsembleWorkspace {
             let mut s = self.slices_mut();
             for step in 1..=num_steps {
                 for idx in 0..n {
-                    let u = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53;
+                    let u: f64 = sample_closed_open(rng);
                     let w = s.wealth[idx] * if u < p { win_mult } else { loss_mult };
                     s.record_walker(idx, w, barrier_floor);
                 }
@@ -361,9 +359,9 @@ impl BankrollEnsembleWorkspace {
             let mut s = self.slices_mut();
             for _ in 0..num_steps {
                 for idx in 0..n {
-                    let u_pick = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53 * total_w;
+                    let u_pick = sample_closed_open::<f64, _>(rng) * total_w;
                     let bet = pick_weighted(portfolio, |b| b.weight, u_pick);
-                    let u_win = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53;
+                    let u_win: f64 = sample_closed_open(rng);
                     let mult = if u_win < bet.win_prob.value() {
                         1.0 + bet.fraction.value() * bet.odds.net_profit_multiplier()
                     } else {
@@ -416,9 +414,9 @@ impl BankrollEnsembleWorkspace {
                     {
                         continue;
                     }
-                    let u_pick = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53 * total_w;
+                    let u_pick = sample_closed_open::<f64, _>(rng) * total_w;
                     let bet = pick_weighted(portfolio, |b| b.weight, u_pick);
-                    let u_win = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53;
+                    let u_win: f64 = sample_closed_open(rng);
                     let delta = if u_win < bet.win_prob.value() {
                         bet.stake * bet.odds.net_profit_multiplier()
                     } else {

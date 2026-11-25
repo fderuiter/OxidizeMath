@@ -18,23 +18,25 @@
 /// let expected = (3.0_f64 / 10.0).sqrt();
 /// assert!((val - expected).abs() < 1e-6);
 /// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClebschGordan {
-    #[allow(missing_docs)]
+    /// Twice the first angular momentum quantum number ($2 j_1$).
     pub tj1: i32,
-    #[allow(missing_docs)]
+    /// Twice the first magnetic projection quantum number ($2 m_1$).
     pub tm1: i32,
-    #[allow(missing_docs)]
+    /// Twice the second angular momentum quantum number ($2 j_2$).
     pub tj2: i32,
-    #[allow(missing_docs)]
+    /// Twice the second magnetic projection quantum number ($2 m_2$).
     pub tm2: i32,
-    #[allow(missing_docs)]
+    /// Twice the coupled total angular momentum quantum number ($2 J$).
     pub tj12: i32,
-    #[allow(missing_docs)]
+    /// Twice the coupled magnetic projection quantum number ($2 M$).
     pub tm12: i32,
 }
 
 impl ClebschGordan {
-    #[allow(missing_docs)]
+    /// Evaluates the Clebsch-Gordan coefficient $\langle j_1 m_1 j_2 m_2 \mid J M \rangle$ via Wigner $3j$ symbols.
     #[cfg_attr(feature = "std", verified_engine::verified)]
     pub fn value(&self) -> f64 {
         let (tj1, tm1, tj2, tm2, tj, tm) =
@@ -142,7 +144,7 @@ mod tests {
             tm12: 1,
         };
         let val = cg.value();
-        let expected = (3.0_f64 / 10.0).sqrt();
+        let expected = libm::sqrt(3.0_f64 / 10.0);
         assert!((val - expected).abs() < 1e-6);
     }
 }

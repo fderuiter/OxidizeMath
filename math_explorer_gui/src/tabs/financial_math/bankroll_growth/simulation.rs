@@ -314,7 +314,7 @@ impl BankrollGrowthTool {
         self.active_fraction = active_f;
         self.active_growth_rate = finite_binary_growth_rate(&p, o, active_f);
 
-        let mut rng = OxidizeRng::from_seed(BASE_SEED ^ self.seed_counter);
+        let mut rng = OxidizeRng::new(BASE_SEED).with_stream(self.seed_counter);
         let net_b = o.net_profit_multiplier();
         let mut w = PathWealths::splat(self.initial_bankroll.max(0.0));
         self.push_trajectory_point(0.0, w);
@@ -331,7 +331,7 @@ impl BankrollGrowthTool {
     }
 
     fn run_push_paths(&mut self, wager: &PushWager, fk: f64, rc: f64, active_f: f64) {
-        let mut rng = OxidizeRng::from_seed(BASE_SEED ^ self.seed_counter);
+        let mut rng = OxidizeRng::new(BASE_SEED).with_stream(self.seed_counter);
         let net_b = wager.odds().net_profit_multiplier();
         let mut w = PathWealths::splat(self.initial_bankroll.max(0.0));
         self.push_trajectory_point(0.0, w);
@@ -386,7 +386,7 @@ impl BankrollGrowthTool {
     }
 
     fn run_quarter_paths(&mut self, wager: &QuarterLineWager, fk: f64, rc: f64, active_f: f64) {
-        let mut rng = OxidizeRng::from_seed(BASE_SEED ^ self.seed_counter);
+        let mut rng = OxidizeRng::new(BASE_SEED).with_stream(self.seed_counter);
         let net_b = wager.odds().net_profit_multiplier();
         let mut w = PathWealths::splat(self.initial_bankroll.max(0.0));
         self.push_trajectory_point(0.0, w);
@@ -449,7 +449,7 @@ impl BankrollGrowthTool {
         rc_game: f64,
         act_game: f64,
     ) {
-        let mut rng = OxidizeRng::from_seed(BASE_SEED ^ self.seed_counter);
+        let mut rng = OxidizeRng::new(BASE_SEED).with_stream(self.seed_counter);
         let mut w = PathWealths::splat(self.initial_bankroll.max(0.0));
         self.push_trajectory_point(0.0, w);
 

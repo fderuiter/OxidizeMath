@@ -1,0 +1,18 @@
+[package]
+name = "math_diagnostics"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = []
+serde = ["dep:serde"]
+std = ["serde?/std"]
+
+[dependencies]
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+verified_engine = { version = "0.1.0", path = "../../verified_engine" }
+
+[lints]
+workspace = true

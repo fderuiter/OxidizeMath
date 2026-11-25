@@ -2,10 +2,14 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+use super::advection::MorphogenesisAdvectionState;
 use super::presets::MorphogenesisToolState;
-use super::runner::MorphogenesisKineticsAdapter;
+use super::runner::{
+    MorphogenesisKineticsAdapter, MorphogenesisKineticsRunner, MorphogenesisKineticsState,
+    MorphogenesisSharedParams,
+};
 use super::{MorphogenesisTool, SimpleRng};
-use crate::async_sim::{BackgroundWorker, SculptStatePayload, SimCommand, SimWorkerState};
+use crate::async_sim::{SculptStatePayload, SimCommand, SimWorkerState};
 use crate::framework::InteractiveTool;
 use crate::presets::MorphogenesisKineticsMode;
 #[cfg(test)]
@@ -23,8 +27,125 @@ use math_explorer::biology::morphogenesis::ReactionKinetics;
 use math_explorer::biology::morphogenesis::TuringSystem;
 use math_explorer::rand::Rng;
 use math_explorer::rng::OxidizeRng;
+use std::sync::Arc;
 
 impl MorphogenesisTool {
+    pub(super) fn sync_suspended(&mut self, suspended: bool) {
+        self.worker.set_suspended(suspended);
+        self.atlas.set_suspended(suspended);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn create_runner(
+        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+        width: usize,
+        height: usize,
+    ) -> MorphogenesisKineticsRunner {
+        MorphogenesisKineticsRunner::new_seeded(params, width, height)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn create_kinetics_runner(
+        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+        kinetics_state: &Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+        mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
+        width: usize,
+        height: usize,
+    ) -> MorphogenesisKineticsRunner {
+        MorphogenesisKineticsRunner::new_with_kinetics(
+            params,
+            kinetics_state,
+            mask_rle,
+            width,
+            height,
+        )
+    }
+
+    pub(crate) fn create_kinetics_runner_with_advection(
+        params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
+        kinetics_state: &Arc<std::sync::RwLock<MorphogenesisKineticsState>>,
+        advection_state: &Arc<std::sync::RwLock<MorphogenesisAdvectionState>>,
+        mask_rle: &Arc<std::sync::RwLock<Vec<[u32; 2]>>>,
+        width: usize,
+        height: usize,
+    ) -> MorphogenesisKineticsRunner {
+        MorphogenesisKineticsRunner::new_with_advection(
+            params,
+            kinetics_state,
+            advection_state,
+            mask_rle,
+            width,
+            height,
+        )
+    }
+
+    pub(super) fn stage_loaded_params(
+        &mut self,
+        parsed: &MorphogenesisToolState,
+        decoded_mask: Vec<u8>,
+    ) {
+        self.theory.mode = parsed.kinetics_mode;
+        {
+            let mut ks = self
+                .kinetics_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            ks.mode = parsed.kinetics_mode;
+            ks.f = parsed.f;
+            ks.k = parsed.k;
+        }
+        {
+            let mut p = self.params.write().unwrap_or_else(|e| e.into_inner());
+            p.a = parsed.a;
+            p.b = parsed.b;
+            p.d_u = parsed.d_u;
+            p.d_v = parsed.d_v;
+            p.dt = parsed.dt;
+            p.mask_rle = parsed.kinetics_mask_rle.clone();
+            p.heatmap_mode = parsed.fork.map_or(
+                super::counterfactual::MorphogenesisHeatmapMode::ActiveUb,
+                |fk| fk.heatmap_mode,
+            );
+        }
+        {
+            let mut adv = self
+                .advection_state
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            adv.enabled = parsed.advection_enabled;
+            adv.inlet_u = parsed.inlet_u;
+            adv.viscosity = parsed.viscosity;
+        }
+        self.mask_cells = decoded_mask;
+    }
+
+    /// Resets the worker in place (or respawns if disconnected) and clears any active fork.
+    pub fn reset(&mut self) {
+        let params = Arc::clone(&self.params);
+        let ks = Arc::clone(&self.kinetics_state);
+        let adv = Arc::clone(&self.advection_state);
+        let mask = Arc::clone(&self.mask_rle);
+        let width = self.width;
+        let height = self.height;
+        self.local_runner =
+            Self::create_kinetics_runner_with_advection(&params, &ks, &adv, &mask, width, height);
+        self.branch_engine.clear();
+        self.worker.reset_or_respawn(|| {
+            Self::create_kinetics_runner_with_advection(&params, &ks, &adv, &mask, width, height)
+        });
+        self.stepped_pixels = None;
+        self.step_runner = None;
+        self.live_velocity_peaks = [0.0, 0.0];
+        self.pending_initial_start = false;
+        self.dirty = true;
+        self.invalidate_scalar_field_cache();
+    }
+
+    pub(crate) fn reset_system(&mut self) {
+        self.reset();
+        let _ = self.worker.send_command(SimCommand::Start);
+    }
+
     pub(crate) fn apply_named_preset(&mut self, a: f64, b: f64, d_u: f64, d_v: f64, dt: f64) {
         let (f, k) = {
             let ks = self
@@ -79,6 +200,10 @@ impl MorphogenesisTool {
         } else {
             SimWorkerState::Ready
         };
+        let adv = *self
+            .advection_state
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
         let current_mode = self
             .kinetics_state
             .read()
@@ -114,6 +239,9 @@ impl MorphogenesisTool {
             kinetics_mask_rle: None,
             atlas_visible: self.atlas.is_visible(),
             atlas_axes,
+            advection_enabled: adv.enabled,
+            inlet_u: adv.inlet_u,
+            viscosity: adv.viscosity,
         };
         if let Ok(json) = serde_json::to_string(&preset_state) {
             let _ = self.try_load_state(&json);
@@ -130,25 +258,29 @@ impl MorphogenesisTool {
         if width != self.width || height != self.height {
             self.width = width;
             self.height = height;
-            self.local_runner = Self::create_kinetics_runner(
+            self.local_runner = Self::create_kinetics_runner_with_advection(
                 &self.params,
                 &self.kinetics_state,
+                &self.advection_state,
                 &self.mask_rle,
                 self.width,
                 self.height,
             );
-            let runner = Self::create_kinetics_runner(
+            let runner = Self::create_kinetics_runner_with_advection(
                 &self.params,
                 &self.kinetics_state,
+                &self.advection_state,
                 &self.mask_rle,
                 self.width,
                 self.height,
             );
-            self.worker = BackgroundWorker::new(runner);
+            self.worker.replace_runner(runner);
             self.branch_engine.clear();
             self.stepped_pixels = None;
             self.step_runner = None;
+            self.live_velocity_peaks = [0.0, 0.0];
             self.dirty = true;
+            self.invalidate_scalar_field_cache();
         } else {
             self.reset();
             let rle_mask = self

@@ -9,6 +9,7 @@ use crate::types::{LinalgError, SolverWorkspace, carve_scalars, check_all_finite
 
 /// Convergence summary returned by [`cg_solve`] and [`gmres_solve`].
 #[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct KrylovReport<T> {
     /// Total inner Krylov iterations executed.
     pub iterations: usize,
@@ -60,7 +61,17 @@ fn norm2_vec<T: Scalar>(v: &[T]) -> T {
 }
 
 /// Solves a symmetric positive-definite sparse system $A x = b$ via preallocated Conjugate Gradient.
-/// `[cite:advanced_linear_algebra]`
+///
+/// Reference: Hestenes & Stiefel (1952), DOI: 10.6028/jres.049.044;
+/// [`docs/math_specs/engine_linalg.md`](../../../../docs/math_specs/engine_linalg.md). `[cite:advanced_linear_algebra]`
+///
+/// # Stability
+/// Minimizes the $A$-energy norm $\|x - x^*\|_A$ over $\mathcal{K}_k(A, r_0)$ with rate governed
+/// by $(\sqrt{\kappa_2(A)} - 1) / (\sqrt{\kappa_2(A)} + 1)$ and guards $p_k^T A p_k > 0$ at each step.
+///
+/// # Domain of Validity
+/// Requires square SPD `a` (`n x n`), finite `b` and initial guess `x` (`len == n`), strictly
+/// positive finite `tol > 0`, and `ws` capacity at least [`cg_workspace_len`]`(n)`.
 pub fn cg_solve<T: Scalar>(
     a: &CsrMatrixView<'_, T>,
     b: &[T],
@@ -222,7 +233,17 @@ fn update_gmres_x<T: Scalar>(
 }
 
 /// Solves a general nonsymmetric sparse linear system $A x = b$ via preallocated restarted $\text{GMRES}(m)$.
-/// `[cite:advanced_linear_algebra]`
+///
+/// Reference: Saad & Schultz (1986), DOI: 10.1137/0907058;
+/// [`docs/math_specs/engine_linalg.md`](../../../../docs/math_specs/engine_linalg.md). `[cite:advanced_linear_algebra]`
+///
+/// # Stability
+/// Orthogonalizes the Arnoldi basis via Modified Gram-Schmidt and solves each $m$-step upper-Hessenberg
+/// least-squares problem $\min_y \|\beta e_1 - \bar{H}_m y\|_2$ via plane Givens rotations.
+///
+/// # Domain of Validity
+/// Requires square `a` (`n x n`), finite `b` and initial `x` (`n`), `restart >= 1`, strictly
+/// positive finite `tol > 0`, and `ws` capacity at least [`gmres_workspace_len`]`(n, restart)`.
 pub fn gmres_solve<T: Scalar>(
     a: &CsrMatrixView<'_, T>,
     b: &[T],

@@ -86,7 +86,7 @@ impl OpticsWaveTool {
         let was_running = self.worker.is_running();
         self.grid_size = clamped;
         let runner = OpticsWaveRunner::new(Arc::clone(&self.params), self.grid_size);
-        self.worker = BackgroundWorker::new(runner);
+        self.worker.replace_runner(runner);
         self.pixels.clear();
         self.latest_frame = None;
         self.stepped_pixels = None;
@@ -215,6 +215,10 @@ impl InteractiveTool for OpticsWaveTool {
 
     fn domain(&self) -> &'static str {
         "optics_waves"
+    }
+
+    fn set_suspended(&mut self, suspended: bool) {
+        self.worker.set_suspended(suspended);
     }
 
     fn theory(&self) -> &dyn TheoryDescribable {
@@ -360,7 +364,7 @@ impl InteractiveTool for OpticsWaveTool {
         if parsed.grid_size != self.grid_size {
             self.grid_size = parsed.grid_size;
             let runner = OpticsWaveRunner::new(Arc::clone(&self.params), self.grid_size);
-            self.worker = BackgroundWorker::new(runner);
+            self.worker.replace_runner(runner);
             self.pixels.clear();
             self.latest_frame = None;
             self.stepped_pixels = None;

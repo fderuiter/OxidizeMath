@@ -7,6 +7,7 @@
 #[path = "engine_mesh.rs"]
 pub mod mesh_ops;
 
+use super::ast_field::{CompiledAstFieldKernel, PREVIEW_DRAG_GRID};
 use super::export_3d::extract_implicit_splats_into;
 use super::implicit::ImplicitRuntimeEvaluator;
 use super::state::{
@@ -51,35 +52,22 @@ type TuringStructKey = (usize, u64, u64, u64, u64);
 
 /// Pre-allocated workspace executing zero-allocation 3D stepping, `MarchingCubes`, and `Gaussian3D` projection.
 pub struct VolumetricEngine {
-    /// Reusable `VoxelGrid` pre-allocated to `MAX_VOLUMETRIC_GRID^3`.
     pub voxel_grid: VoxelGrid,
-    /// Pre-allocated `(MAX_VOLUMETRIC_GRID + 2)^3` apron grid for watertight boundary capping.
     pub padded_grid: VoxelGrid,
-    /// Two-state 3D hydrogenic superposition engine.
     pub quantum: HydrogenicSuperposition3D,
-    /// Two-species 3D Schnakenberg reaction-diffusion grid over `FiniteDifference3D`.
     pub turing: TuringSystem<2, SchnakenbergKinetics, FiniteDifference3D>,
-    /// Zero-allocation `CompiledExpr::eval_3d` implicit CAD evaluator.
     pub implicit_eval: ImplicitRuntimeEvaluator,
-    /// Pre-allocated `MarchingCubes` rolling-slice workspace.
+    pub ast_kernel: CompiledAstFieldKernel,
+    pub preview_drag_active: bool,
     pub iso_ws: IsosurfaceWorkspace,
-    /// Positive-phase (`>= +iso_threshold`) manifold mesh.
     pub pos_mesh: Mesh,
-    /// Negative-phase (`<= -iso_threshold`) manifold mesh.
     pub neg_mesh: Mesh,
-    /// Pre-allocated `Gaussian3D` extraction, projection, and rasterization workspace.
     pub splat_ws: VolumetricSplatWorkspace,
-    /// Depth-sorted projected 2D triangles ready for `egui_plot::Polygon`.
     pub projected_facets: Vec<ProjectedFacet>,
-    /// Nodal contour segments (`[[p0, p1]; ...]`) on the active 3D cutting plane.
     pub slice_contours: Vec<[[f64; 3]; 2]>,
-    /// Latest interactive probe / perturbation sample.
     pub probe: Option<ProbeReadout>,
-    /// Cumulative integration steps executed since reset.
     pub step_count: usize,
-    /// Numerical divergence flag monitored by `FiniteStateGuard`.
     pub diverged: bool,
-    /// Structured divergence report when `diverged` is set.
     pub diagnostic_report: Option<DiagnosticReport>,
     cached_q_key: QuantumStructKey,
     cached_mix_phase: (u64, u64),
@@ -87,7 +75,7 @@ pub struct VolumetricEngine {
 }
 
 impl VolumetricEngine {
-    /// Allocates all 3D voxel, PDE, `MarchingCubes`, and `Gaussian3D` buffers up front.
+    /// Allocates all 3D voxel, PDE, implicit CAD/AST, `MarchingCubes`, and `Gaussian3D` buffers up front.
     pub fn new(cfg: &VolumetricStudioConfig) -> Self {
         let dim = cfg
             .grid_resolution
@@ -106,12 +94,16 @@ impl VolumetricEngine {
         quantum.set_superposition(cfg.superposition_mix, cfg.relative_phase);
         let mut turing = build_turing_3d(dim, cfg);
         seed_3d_turing_gyroid(&mut turing, dim, cfg.turing_a, cfg.turing_b, TURING_SEED);
+        let mut ast_kernel = CompiledAstFieldKernel::default();
+        let _ = ast_kernel.sync_from_config_expr(&cfg.custom_expr, &cfg.custom_params);
         let mut engine = Self {
             voxel_grid,
             padded_grid,
             quantum,
             turing,
             implicit_eval: ImplicitRuntimeEvaluator::new(cfg),
+            ast_kernel,
+            preview_drag_active: false,
             iso_ws: IsosurfaceWorkspace::with_locked_capacity(
                 MAX_VOLUMETRIC_GRID + 2,
                 MAX_VOLUMETRIC_GRID + 2,
@@ -136,17 +128,45 @@ impl VolumetricEngine {
         engine
     }
 
-    /// Synchronizes basis grids or 3D Turing lattices when structural parameters change.
+    /// Synchronizes basis grids, 3D Turing lattices, and implicit kernels at full `grid_resolution^3`.
     pub fn sync_structural_config(&mut self, cfg: &VolumetricStudioConfig) {
-        let dim = cfg
+        let _ = self
+            .ast_kernel
+            .sync_from_config_expr(&cfg.custom_expr, &cfg.custom_params);
+        self.sync_structural_config_with_preview(cfg, false);
+    }
+
+    /// Reconfigures `voxel_grid` in place, using a `20^3` preview grid during active 3D AST drags.
+    pub fn sync_structural_config_with_preview(
+        &mut self,
+        cfg: &VolumetricStudioConfig,
+        drag_preview: bool,
+    ) {
+        let full_dim = cfg
             .grid_resolution
             .clamp(MIN_VOLUMETRIC_GRID, MAX_VOLUMETRIC_GRID);
-        let (step, orig) = grid_step_and_origin_3d(dim, cfg.viewport_half_extents());
-        let _ = self
-            .voxel_grid
-            .reconfigure_in_place((dim, dim, dim), step, orig);
-        self.implicit_eval.sync_zero_alloc(cfg);
+        let use_preview = drag_preview && cfg.source == FieldSourceMode::CustomImplicitAst;
+        self.preview_drag_active = use_preview;
+        let active_dim = if use_preview {
+            PREVIEW_DRAG_GRID
+        } else {
+            full_dim
+        };
+        let (step, orig) = grid_step_and_origin_3d(active_dim, cfg.viewport_half_extents());
+        let _ =
+            self.voxel_grid
+                .reconfigure_in_place((active_dim, active_dim, active_dim), step, orig);
+        match cfg.source {
+            FieldSourceMode::QuantumSuperposition => self.sync_quantum_basis(cfg, full_dim),
+            FieldSourceMode::TuringMorphogenesis => self.sync_turing_lattice(cfg, full_dim),
+            FieldSourceMode::CustomImplicit => self.implicit_eval.sync_zero_alloc(cfg),
+            FieldSourceMode::CustomImplicitAst => {}
+        }
+    }
+
+    fn sync_quantum_basis(&mut self, cfg: &VolumetricStudioConfig, dim: usize) {
         let qk = quantum_key(cfg, dim);
+        let mp = mix_phase_bits(cfg);
         if self.cached_q_key != qk {
             let q1 = OrbitalQuantumNumbers::clamped(cfg.n1, cfg.l1, cfg.m1);
             let q2 = OrbitalQuantumNumbers::clamped(cfg.n2, cfg.l2, cfg.m2);
@@ -156,21 +176,15 @@ impl VolumetricEngine {
             self.quantum
                 .set_superposition(cfg.superposition_mix, cfg.relative_phase);
             self.cached_q_key = qk;
-            self.cached_mix_phase = (
-                cfg.superposition_mix.to_bits(),
-                cfg.relative_phase.to_bits(),
-            );
-        } else {
-            let mp = (
-                cfg.superposition_mix.to_bits(),
-                cfg.relative_phase.to_bits(),
-            );
-            if self.cached_mix_phase != mp {
-                self.quantum
-                    .set_superposition(cfg.superposition_mix, cfg.relative_phase);
-                self.cached_mix_phase = mp;
-            }
+            self.cached_mix_phase = mp;
+        } else if self.cached_mix_phase != mp {
+            self.quantum
+                .set_superposition(cfg.superposition_mix, cfg.relative_phase);
+            self.cached_mix_phase = mp;
         }
+    }
+
+    fn sync_turing_lattice(&mut self, cfg: &VolumetricStudioConfig, dim: usize) {
         let tk = turing_key(cfg, dim);
         if self.cached_t_key != tk {
             self.turing = build_turing_3d(dim, cfg);
@@ -185,12 +199,13 @@ impl VolumetricEngine {
         }
     }
 
-    /// Resets quantum phase or re-seeds the 3D Turing gyroid field.
+    /// Resets quantum phase, re-seeds the 3D Turing gyroid field, or refreshes the 3D implicit grid.
     pub fn reset_simulation(&mut self, cfg: &VolumetricStudioConfig) {
         self.diverged = false;
         self.diagnostic_report = None;
         self.step_count = 0;
         self.probe = None;
+        self.preview_drag_active = false;
         let dim = cfg
             .grid_resolution
             .clamp(MIN_VOLUMETRIC_GRID, MAX_VOLUMETRIC_GRID);
@@ -201,19 +216,11 @@ impl VolumetricEngine {
                     .set_superposition(cfg.superposition_mix, cfg.relative_phase);
             }
             FieldSourceMode::TuringMorphogenesis => {
-                self.turing = build_turing_3d(dim, cfg);
-                seed_3d_turing_gyroid(
-                    &mut self.turing,
-                    dim,
-                    cfg.turing_a,
-                    cfg.turing_b,
-                    TURING_SEED,
-                );
-                self.cached_t_key = turing_key(cfg, dim);
+                self.cached_t_key = (0, 0, 0, 0, 0);
+                self.sync_turing_lattice(cfg, dim);
             }
-            FieldSourceMode::CustomImplicit => {
-                self.implicit_eval.sync_zero_alloc(cfg);
-            }
+            FieldSourceMode::CustomImplicit => self.implicit_eval.sync_zero_alloc(cfg),
+            FieldSourceMode::CustomImplicitAst => {}
         }
         self.step_and_extract_zero_alloc(cfg, false);
     }
@@ -319,7 +326,7 @@ impl VolumetricEngine {
                     ));
                 }
             }
-            FieldSourceMode::CustomImplicit => {}
+            FieldSourceMode::CustomImplicit | FieldSourceMode::CustomImplicitAst => {}
         }
     }
 
@@ -340,6 +347,10 @@ impl VolumetricEngine {
             FieldSourceMode::CustomImplicit => {
                 self.implicit_eval
                     .populate_grid_in_place(cfg, &mut self.voxel_grid);
+            }
+            FieldSourceMode::CustomImplicitAst => {
+                self.ast_kernel
+                    .populate_voxel_grid_in_place(&mut self.voxel_grid);
             }
         }
     }
@@ -362,10 +373,9 @@ impl VolumetricEngine {
                     inject_turing_pulse(&mut self.turing, self.voxel_grid.width(), clamped);
                 }
                 FieldSourceMode::QuantumSuperposition => {
-                    let wrapped = ((cfg.relative_phase + 0.45 + std::f64::consts::PI)
-                        .rem_euclid(std::f64::consts::TAU))
-                        - std::f64::consts::PI;
-                    cfg.relative_phase = wrapped;
+                    let pi = std::f64::consts::PI;
+                    cfg.relative_phase =
+                        ((cfg.relative_phase + 0.45 + pi).rem_euclid(std::f64::consts::TAU)) - pi;
                     self.quantum
                         .set_superposition(cfg.superposition_mix, cfg.relative_phase);
                     self.cached_mix_phase = (
@@ -373,7 +383,7 @@ impl VolumetricEngine {
                         cfg.relative_phase.to_bits(),
                     );
                 }
-                FieldSourceMode::CustomImplicit => {}
+                FieldSourceMode::CustomImplicit | FieldSourceMode::CustomImplicitAst => {}
             }
             self.step_and_extract_zero_alloc(cfg, false);
         }
@@ -399,12 +409,17 @@ impl VolumetricEngine {
 
 pub(super) fn is_signed_field(cfg: &VolumetricStudioConfig) -> bool {
     matches!(
-        (cfg.source, cfg.observable),
-        (
-            FieldSourceMode::QuantumSuperposition,
-            QuantumObservableChoice::SignedWavefunction
-        )
-    ) || matches!(cfg.source, FieldSourceMode::TuringMorphogenesis)
+        cfg.source,
+        FieldSourceMode::TuringMorphogenesis | FieldSourceMode::CustomImplicitAst
+    ) || (cfg.source == FieldSourceMode::QuantumSuperposition
+        && cfg.observable == QuantumObservableChoice::SignedWavefunction)
+}
+
+fn mix_phase_bits(cfg: &VolumetricStudioConfig) -> (u64, u64) {
+    (
+        cfg.superposition_mix.to_bits(),
+        cfg.relative_phase.to_bits(),
+    )
 }
 
 fn build_studio_grids(dim: usize, half_extents: [f64; 3]) -> (VoxelGrid, VoxelGrid) {
@@ -431,42 +446,33 @@ fn build_studio_grids(dim: usize, half_extents: [f64; 3]) -> (VoxelGrid, VoxelGr
     (voxel_grid, padded_grid)
 }
 
-fn grid_step_and_origin_3d(dim: usize, half_extents: [f64; 3]) -> (Point3D, Point3D) {
-    let d = (dim.max(2) - 1) as f64;
+fn grid_step_and_origin_3d(dim: usize, ext: [f64; 3]) -> (Point3D, Point3D) {
+    let s = 2.0 / ((dim.max(2) - 1) as f64);
     let step = Point3D::new(
-        (2.0 * half_extents[0] / d) as f32,
-        (2.0 * half_extents[1] / d) as f32,
-        (2.0 * half_extents[2] / d) as f32,
+        (ext[0] * s) as f32,
+        (ext[1] * s) as f32,
+        (ext[2] * s) as f32,
     );
-    let orig = Point3D::new(
-        -(half_extents[0] as f32),
-        -(half_extents[1] as f32),
-        -(half_extents[2] as f32),
-    );
+    let orig = Point3D::new(-(ext[0] as f32), -(ext[1] as f32), -(ext[2] as f32));
     (step, orig)
 }
 
-fn quantum_key(cfg: &VolumetricStudioConfig, dim: usize) -> QuantumStructKey {
+fn quantum_key(c: &VolumetricStudioConfig, d: usize) -> QuantumStructKey {
     (
-        cfg.n1,
-        cfg.l1,
-        cfg.m1,
-        cfg.n2,
-        cfg.l2,
-        cfg.m2,
-        dim,
-        cfg.quantum_dt.to_bits(),
+        c.n1,
+        c.l1,
+        c.m1,
+        c.n2,
+        c.l2,
+        c.m2,
+        d,
+        c.quantum_dt.to_bits(),
     )
 }
 
-fn turing_key(cfg: &VolumetricStudioConfig, dim: usize) -> TuringStructKey {
-    (
-        dim,
-        cfg.turing_a.to_bits(),
-        cfg.turing_b.to_bits(),
-        cfg.turing_du.to_bits(),
-        cfg.turing_dv.to_bits(),
-    )
+fn turing_key(c: &VolumetricStudioConfig, d: usize) -> TuringStructKey {
+    let (a, b) = (c.turing_a.to_bits(), c.turing_b.to_bits());
+    (d, a, b, c.turing_du.to_bits(), c.turing_dv.to_bits())
 }
 
 fn build_turing_3d(

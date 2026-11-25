@@ -4,8 +4,7 @@
 //! and latency compensation to control the LINAC beam-off switch via a formal
 //! finite state machine with validation guards.
 
-use diagnostics::{Diagnostic, Severity};
-use std::collections::HashMap;
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 
 /// Operational lifecycle states for the radiation beam gating controller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -49,11 +48,9 @@ impl Diagnostic for GatingError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "GatingError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "GatingError");
+        visitor.record_display("description", self);
     }
 }
 

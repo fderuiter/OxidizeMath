@@ -11,6 +11,7 @@ use std::fmt::Write;
 
 /// Errors that can occur when transpiling an [`Expr`] tree to GLSL source code.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum GlslError {
     /// AST subtree height exceeded [`MAX_EVAL_DEPTH`].
     #[error("GLSL transpilation depth limit exceeded (max depth {0})")]
@@ -44,42 +45,39 @@ pub enum GlslError {
     InvalidIdentifier(String),
 }
 
-impl diagnostics::Diagnostic for GlslError {
-    fn severity(&self) -> diagnostics::Severity {
-        diagnostics::Severity::Error
+impl math_diagnostics::Diagnostic for GlslError {
+    fn severity(&self) -> math_diagnostics::Severity {
+        math_diagnostics::Severity::Error
     }
 
-    fn metadata(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::from([
-            ("error_type".to_string(), "GlslError".to_string()),
-            ("description".to_string(), self.to_string()),
-        ]);
+    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
+        visitor.record_str("error_type", "GlslError");
+        visitor.record_display("description", self);
         match self {
             Self::DepthLimitExceeded(limit) => {
-                map.insert("glsl_max_depth".to_string(), limit.to_string());
+                visitor.record_usize("glsl_max_depth", *limit);
             }
             Self::NodeLimitExceeded(limit) => {
-                map.insert("glsl_max_nodes".to_string(), limit.to_string());
+                visitor.record_usize("glsl_max_nodes", *limit);
             }
             Self::OutputLimitExceeded(limit) => {
-                map.insert("glsl_max_output_bytes".to_string(), limit.to_string());
+                visitor.record_usize("glsl_max_output_bytes", *limit);
             }
             Self::WrongArgumentCount {
                 func,
                 expected,
                 found,
             } => {
-                map.insert("glsl_func".to_string(), func.as_str().to_string());
-                map.insert("arity".to_string(), format!("{expected}/{found}"));
+                visitor.record_str("glsl_func", func.as_str());
+                visitor.record_display("arity", &format_args!("{expected}/{found}"));
             }
             Self::NonFiniteLiteral(literal) => {
-                map.insert("literal".to_string(), literal.to_string());
+                visitor.record_f64("literal", *literal);
             }
             Self::InvalidIdentifier(ident) => {
-                map.insert("glsl_identifier".to_string(), ident.clone());
+                visitor.record_str("glsl_identifier", ident);
             }
         }
-        map
     }
 }
 

@@ -8,7 +8,8 @@ use crate::series::PointSeries;
 const MAX_SIN_SAMPLES: usize = 256;
 
 /// Streaming accumulator for weighted linear regression $v = \alpha + \beta u$ on the stack.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct WeightedOlsAccum {
     sw: f64,
     su: f64,

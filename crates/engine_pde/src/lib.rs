@@ -24,9 +24,13 @@ pub use fft::{dealias_1d_spectrum, dealias_2d_spectrum, fft_1d_inplace, fft_2d_i
 pub use fourier_stepper::SemiImplicitFourierStepper;
 pub use fused_stepper::FusedStencilStepper;
 pub use math_memory::{ArenaScope, ByteArena, SolverWorkspace};
+pub use math_rng::{BASE_SEED, OxidizeRng};
 pub use spde_noise::{
     SpdeNoiseKind, inject_additive_noise_1d, inject_additive_noise_2d,
     inject_conserved_flux_noise_1d, inject_conserved_flux_noise_2d,
 };
 pub use spde_stencil::{ExplicitSpdeStencilStepper, SplitStepSpdeStencilStepper};
 pub use stencil::{StencilNeighbors3D, StencilOperators};
+
+#[cfg(test)]
+mod serde_tests;

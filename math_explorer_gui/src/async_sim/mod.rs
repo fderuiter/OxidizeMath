@@ -9,6 +9,8 @@ mod mvp_time_travel_tests;
 #[cfg(test)]
 mod runner_tests;
 #[cfg(test)]
+mod scheduler_and_suspension_tests;
+#[cfg(test)]
 mod step_tests;
 #[cfg(test)]
 mod tests;
@@ -29,12 +31,18 @@ pub mod channel;
 pub use channel::*;
 pub mod checkpoint;
 pub use checkpoint::*;
+mod controller_suspend;
+pub mod snapshot_history;
+use snapshot_history::{initial_runner_timeline, initial_snapshot_history};
+pub use snapshot_history::{
+    SnapshotHistory, DEFAULT_MAX_SNAPSHOT_FRAMES, MAX_SNAPSHOT_HISTORY_BYTES,
+};
 pub mod state;
 pub use state::*;
 pub mod twin;
 pub use twin::*;
 
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::Sender;
 pub use std::sync::Arc;
 
 #[allow(missing_docs)]
@@ -43,6 +51,10 @@ pub trait SimulationRunner: Send + 'static {
     fn process_command(&mut self, cmd: SimCommand);
     #[allow(missing_docs)]
     fn step(&mut self);
+    /// Advances one simulation step bounded by an optional cooperative `max_slice` wall-clock budget.
+    fn step_sliced(&mut self, _max_slice: Option<std::time::Duration>) {
+        self.step();
+    }
     #[allow(missing_docs)]
     fn step_once(&mut self) {
         self.step();
@@ -89,6 +101,10 @@ pub trait SimulationRunner: Send + 'static {
     fn capture_active_params(&self) -> Option<CheckpointParams> {
         None
     }
+    /// Fast allocation-free check returning `true` when active parameters match `last`.
+    fn active_params_match(&self, _last: &CheckpointParams) -> bool {
+        false
+    }
     /// Restores dynamical fields, active parameters, step index, and cloned `OxidizeRng`.
     fn restore_checkpoint(&mut self, _checkpoint: &TimeTravelCheckpoint) {}
     /// Reconstructs bounded trajectory histories from retained keyframes `..=kf_idx`.
@@ -108,15 +124,17 @@ pub trait SimulationRunner: Send + 'static {
     }
 }
 
-fn initial_runner_timeline<T: SimulationRunner>(runner: &T) -> Option<TimelineMetadata> {
-    let stride = runner.checkpoint_stride()?.max(1);
-    let step = runner.current_step();
-    Some(TimelineMetadata {
-        current_step: step,
-        min_step: step,
-        max_step: step,
-        stride,
-    })
+pub(super) fn seed_controller_channel<T: SimulationRunner + ?Sized>(
+    runner: &T,
+    state_tx: &SimStateSender,
+) -> (StateSnapshot, Option<TimelineMetadata>) {
+    let initial_snapshot = runner.get_snapshot();
+    let initial_timeline = initial_runner_timeline(runner);
+    state_tx.set_timeline(initial_timeline);
+    if !state_tx.mark_seeded() {
+        let _ = state_tx.send_snapshot_and_status(runner.get_snapshot(), WorkerStatusEvent::Ready);
+    }
+    (initial_snapshot, initial_timeline)
 }
 
 #[allow(missing_docs)]
@@ -125,10 +143,14 @@ pub struct SimulationController {
     state_rx: SimStateReceiver,
     latest_snapshot: Option<StateSnapshot>,
     timeline_metadata: Option<TimelineMetadata>,
+    snapshot_history: Option<SnapshotHistory>,
     pending_snapshot: bool,
     awaiting_pause_ack: bool,
+    suspended: bool,
     state: SimWorkerState,
     diagnostic_report: Option<crate::framework::recovery::DiagnosticReport>,
+    #[cfg(not(target_arch = "wasm32"))]
+    native_suspension: controller_suspend::NativeSuspensionDropGuard,
     #[cfg(target_arch = "wasm32")]
     handle: u32,
 }
@@ -138,69 +160,14 @@ impl Drop for SimulationController {
     fn drop(&mut self) {
         let _ = unregister_worker_context(self.handle);
         wake_worker(self.handle);
+        clear_wasm_worker_state(self.handle);
     }
 }
 
 impl SimulationController {
-    #[cfg(not(target_arch = "wasm32"))]
     #[allow(missing_docs)]
     pub fn new<T: SimulationRunner>(runner: T) -> Self {
-        let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-        let (state_tx, state_rx) = sim_state_channel();
-        let initial_snapshot = runner.get_snapshot();
-        let initial_timeline = initial_runner_timeline(&runner);
-        state_tx.set_timeline(initial_timeline);
-        if !state_tx.mark_seeded() {
-            let _ =
-                state_tx.send_snapshot_and_status(runner.get_snapshot(), WorkerStatusEvent::Ready);
-        }
-
-        worker::spawn_native_worker(runner, cmd_rx, state_tx);
-
-        Self {
-            cmd_tx,
-            state_rx,
-            latest_snapshot: Some(initial_snapshot),
-            timeline_metadata: initial_timeline,
-            pending_snapshot: false,
-            awaiting_pause_ack: false,
-            state: SimWorkerState::Ready,
-            diagnostic_report: None,
-        }
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    pub fn new<T: SimulationRunner>(runner: T) -> Self {
-        let (cmd_tx, cmd_rx) = mpsc::channel::<SimCommand>();
-        let (state_tx, state_rx) = sim_state_channel();
-        let initial_snapshot = runner.get_snapshot();
-        let initial_timeline = initial_runner_timeline(&runner);
-        state_tx.set_timeline(initial_timeline);
-        if !state_tx.mark_seeded() {
-            let _ =
-                state_tx.send_snapshot_and_status(runner.get_snapshot(), WorkerStatusEvent::Ready);
-        }
-
-        let handle = register_worker_context(WorkerContext {
-            runner: Box::new(runner),
-            cmd_rx,
-            state_tx,
-        });
-        wasm_bindgen_futures::spawn_local(async move {
-            run_simulation_worker(handle).await;
-        });
-
-        Self {
-            cmd_tx,
-            state_rx,
-            latest_snapshot: Some(initial_snapshot),
-            timeline_metadata: initial_timeline,
-            pending_snapshot: false,
-            awaiting_pause_ack: false,
-            state: SimWorkerState::Ready,
-            diagnostic_report: None,
-            handle,
-        }
+        Self::new_with_suspended(runner, false)
     }
 
     #[allow(missing_docs)]
@@ -211,6 +178,21 @@ impl SimulationController {
     /// Latest scrubbable timeline metadata if the underlying runner opted into time travel.
     pub fn timeline_metadata(&self) -> Option<TimelineMetadata> {
         self.timeline_metadata
+    }
+
+    /// Opt-in UI-side [`SnapshotHistory`] ring buffer (`<= 2 MiB`) if active on this controller.
+    pub fn snapshot_history(&self) -> Option<&SnapshotHistory> {
+        self.snapshot_history.as_ref()
+    }
+
+    /// Enables or reconfigures the bounded UI-side [`SnapshotHistory`] ring (`<= 2 MiB`).
+    pub fn enable_snapshot_history(&mut self, max_frames: usize, max_bytes: usize) {
+        self.snapshot_history = Some(SnapshotHistory::seeded(
+            max_frames,
+            max_bytes,
+            self.timeline_metadata,
+            self.latest_snapshot.as_ref(),
+        ));
     }
 
     #[cfg(test)]
@@ -247,16 +229,19 @@ impl SimulationController {
         }
     }
 
+    fn record_incoming_snapshot(&mut self, snapshot: StateSnapshot) {
+        if let (Some(hist), Some(meta)) = (self.snapshot_history.as_mut(), self.timeline_metadata) {
+            hist.record(meta.current_step, &snapshot);
+        }
+        self.latest_snapshot = Some(snapshot);
+    }
+
     fn drain_pre_command_updates(&mut self, is_reset: bool) {
         let batch = self.state_rx.drain();
         for event in batch.events {
             match event {
-                SimControlEvent::Divergence(report) => {
-                    self.diagnostic_report = Some(report);
-                }
-                SimControlEvent::Status(event) => {
-                    self.record_status_pause_ack(&event);
-                }
+                SimControlEvent::Divergence(report) => self.diagnostic_report = Some(report),
+                SimControlEvent::Status(event) => self.record_status_pause_ack(&event),
             }
         }
         if !is_reset && !self.state.is_terminated() {
@@ -266,7 +251,7 @@ impl SimulationController {
             if is_reset {
                 self.pending_snapshot = false;
             } else if !self.state.is_faulted() && !self.state.is_terminated() {
-                self.latest_snapshot = Some(snapshot);
+                self.record_incoming_snapshot(snapshot);
                 self.pending_snapshot = true;
             }
         }
@@ -291,6 +276,11 @@ impl SimulationController {
     }
 
     fn apply_optimistic_timeline(&mut self, cmd: &SimCommand) {
+        if matches!(cmd, SimCommand::Reset) {
+            if let Some(hist) = self.snapshot_history.as_mut() {
+                hist.clear();
+            }
+        }
         let Some(meta) = &mut self.timeline_metadata else {
             return;
         };
@@ -302,6 +292,12 @@ impl SimulationController {
             }
             SimCommand::SeekStep(target) => {
                 meta.current_step = target.clamp(meta.min_step, meta.max_step);
+            }
+            SimCommand::Start | SimCommand::Step(_) => {
+                if let Some(hist) = self.snapshot_history.as_mut() {
+                    hist.truncate_after(meta.current_step);
+                }
+                meta.max_step = meta.current_step;
             }
             _ => {}
         }
@@ -339,7 +335,7 @@ impl SimulationController {
             return Err(SimCommandError::ChannelDisconnected);
         }
 
-        self.awaiting_pause_ack = pauses_running && was_running;
+        self.awaiting_pause_ack = pauses_running && was_running && !self.suspended;
         if is_reset {
             self.diagnostic_report = None;
             self.pending_snapshot = false;
@@ -348,15 +344,14 @@ impl SimulationController {
             self.state = target;
         }
 
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.suspended {
+            self.native_suspension.0.notify();
+        }
         #[cfg(target_arch = "wasm32")]
         self.wake_wasm_worker();
 
         Ok(())
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    fn wake_wasm_worker(&self) {
-        wake_worker(self.handle);
     }
 
     /// Resets the simulation worker in place if the command channel is alive,
@@ -368,12 +363,18 @@ impl SimulationController {
         R: SimulationRunner,
         F: FnOnce() -> R,
     {
+        let was_suspended = self.suspended;
+        let prev_limits = self.snapshot_history.as_ref().map(SnapshotHistory::limits);
         match self.send_command(SimCommand::Reset) {
             Ok(()) => false,
             Err(
                 SimCommandError::ChannelDisconnected | SimCommandError::InvalidTransition { .. },
             ) => {
-                *self = Self::new(make_runner());
+                let mut next = Self::new_with_suspended(make_runner(), was_suspended);
+                if let Some((max_frames, max_bytes)) = prev_limits {
+                    next.enable_snapshot_history(max_frames, max_bytes);
+                }
+                *self = next;
                 true
             }
         }
@@ -420,7 +421,7 @@ impl SimulationController {
         }
         if let Some(snapshot) = batch.latest_snapshot {
             if !self.state.is_faulted() && !self.state.is_terminated() {
-                self.latest_snapshot = Some(snapshot);
+                self.record_incoming_snapshot(snapshot);
                 received_new_snapshot = true;
             }
         }
@@ -457,10 +458,13 @@ use registry::{
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 #[cfg(target_arch = "wasm32")]
-use wasm::{run_simulation_worker, wake_worker};
-#[cfg(all(
-    test,
-    target_arch = "wasm32",
-    any(feature = "biology", feature = "physics")
-))]
+mod wasm_scheduler;
+#[cfg(target_arch = "wasm32")]
+use wasm::run_simulation_worker;
+#[cfg(target_arch = "wasm32")]
+use wasm_scheduler::{
+    clear_worker_entries as clear_wasm_worker_state, register_wasm_worker,
+    sync_controller_state as sync_wasm_worker_state, wake_worker,
+};
+#[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;

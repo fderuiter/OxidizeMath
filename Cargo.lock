@@ -948,6 +948,7 @@ dependencies = [
  "num-order",
  "num-traits",
  "rustversion",
+ "serde",
  "static_assertions",
 ]
 
@@ -963,6 +964,7 @@ dependencies = [
  "num-order",
  "num-traits",
  "rustversion",
+ "serde",
  "static_assertions",
 ]
 
@@ -995,12 +997,14 @@ dependencies = [
  "num-order",
  "num-traits",
  "rustversion",
+ "serde",
 ]
 
 [[package]]
 name = "diagnostics"
 version = "0.1.0"
 dependencies = [
+ "math_diagnostics",
  "thiserror 2.0.21",
 ]
 
@@ -1369,8 +1373,10 @@ version = "0.4.0"
 dependencies = [
  "math_commons",
  "math_memory",
- "oxidize_core",
+ "math_rng",
  "rand_core",
+ "serde",
+ "serde_json",
  "verified_engine",
 ]
 
@@ -1378,7 +1384,10 @@ dependencies = [
 name = "engine_linalg"
 version = "0.4.0"
 dependencies = [
+ "math_diagnostics",
  "math_memory",
+ "serde",
+ "serde_json",
  "verified_engine",
 ]
 
@@ -1388,8 +1397,10 @@ version = "0.4.0"
 dependencies = [
  "math_commons",
  "math_memory",
- "oxidize_core",
+ "math_rng",
  "rand_core",
+ "serde",
+ "serde_json",
  "verified_engine",
 ]
 
@@ -2452,6 +2463,7 @@ dependencies = [
  "federated_registry",
  "math_commons",
  "math_explorer",
+ "math_rng",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -2470,12 +2482,24 @@ version = "0.4.0"
 dependencies = [
  "diagnostics",
  "libm",
+ "math_diagnostics",
  "math_memory",
+ "math_rng",
  "num-complex",
  "num-traits",
- "oxidize_core",
  "rand_core",
+ "scientific_metadata",
+ "serde",
+ "serde_json",
  "thiserror 2.0.21",
+ "verified_engine",
+]
+
+[[package]]
+name = "math_diagnostics"
+version = "0.1.0"
+dependencies = [
+ "serde",
  "verified_engine",
 ]
 
@@ -2492,6 +2516,7 @@ dependencies = [
  "domain_climate",
  "domain_epidemiology",
  "domain_physics",
+ "engine_linalg",
  "math_commons",
  "math_memory",
  "nalgebra 0.34.2",
@@ -2501,6 +2526,7 @@ dependencies = [
  "pure_math",
  "rand",
  "scientific_metadata",
+ "serde_json",
  "verified_engine",
 ]
 
@@ -2545,7 +2571,20 @@ name = "math_memory"
 version = "0.4.0"
 dependencies = [
  "bytemuck",
+ "math_diagnostics",
  "num-complex",
+ "serde",
+ "verified_engine",
+]
+
+[[package]]
+name = "math_rng"
+version = "0.4.0"
+dependencies = [
+ "rand_chacha",
+ "rand_core",
+ "serde",
+ "serde_json",
  "verified_engine",
 ]
 
@@ -2726,6 +2765,7 @@ dependencies = [
  "num-complex",
  "num-rational",
  "num-traits",
+ "serde",
  "simba",
  "typenum",
 ]
@@ -2804,6 +2844,7 @@ checksum = "73f88a1307638156682bada9d7604135552957b7818057dcef22705b4d509495"
 dependencies = [
  "bytemuck",
  "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -3211,9 +3252,10 @@ dependencies = [
  "futures",
  "getrandom 0.2.17",
  "js-sys",
+ "math_rng",
  "proc-macro2",
  "rand",
- "rand_chacha",
+ "scientific_metadata",
  "serde",
  "syn 2.0.119",
  "toml",
@@ -3278,6 +3320,8 @@ checksum = "b4c5cc86750666a3ed20bdaf5ca2a0344f9c67674cae0515bec2da16fbaa47db"
 dependencies = [
  "fixedbitset",
  "indexmap",
+ "serde",
+ "serde_derive",
 ]
 
 [[package]]
@@ -3446,6 +3490,7 @@ dependencies = [
  "engine_pde",
  "math_commons",
  "math_memory",
+ "math_rng",
  "nalgebra 0.34.2",
  "num-complex",
  "num-traits",
@@ -3455,6 +3500,7 @@ dependencies = [
  "rand",
  "rand_distr",
  "rustfft",
+ "scientific_metadata",
  "serde",
  "serde_json",
  "statrs",
@@ -3519,6 +3565,7 @@ dependencies = [
  "libc",
  "rand_chacha",
  "rand_core",
+ "serde",
 ]
 
 [[package]]
@@ -3529,6 +3576,7 @@ checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
 dependencies = [
  "ppv-lite86",
  "rand_core",
+ "serde",
 ]
 
 [[package]]
@@ -3538,6 +3586,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom 0.2.17",
+ "serde",
 ]
 
 [[package]]

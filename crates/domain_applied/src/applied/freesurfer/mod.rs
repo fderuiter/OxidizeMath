@@ -82,13 +82,13 @@
 //! - `thickness`: Zero-allocation CSR `FlatSpatialGrid`, `SpatialGrid`, `ThicknessWorkspace`, and cortical thickness estimation.
 //! - `glm`: Ordinary least squares parameter estimation and contrast `t_statistic` evaluation.
 
-#[allow(missing_docs)]
+/// Vertex-wise ordinary least-squares general linear model (`GLM`) and contrast $t$-statistics.
 pub mod glm;
-#[allow(missing_docs)]
+/// Multi-label Gaussian Bayesian classification and 6-connected Potts MRF ICM segmentation.
 pub mod segmentation;
-#[allow(missing_docs)]
+/// Triangulated cortical surface meshes, thin-plate energies, and deformable MRI evolution.
 pub mod surface;
-#[allow(missing_docs)]
+/// Spatial-grid accelerated symmetric cortical thickness estimation between white and pial meshes.
 pub mod thickness;
 
 // Re-export public items preserving baseline compatibility and exposing upgraded kernels

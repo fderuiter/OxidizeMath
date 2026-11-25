@@ -85,7 +85,7 @@ impl ClosedLoopPipeline {
             grpo: GrpoController::new_untrained(),
             q_ctrl: DiscreteQController::new(cfg),
             live_rng: OxidizeRng::new(cfg.rng_seed),
-            train_rng: OxidizeRng::new(cfg.rng_seed ^ 0x517C_C1B7_2722_0A95),
+            train_rng: OxidizeRng::new(cfg.rng_seed).with_stream(1),
             episodes_trained: 0,
             last_output: zero_step_output(),
             last_kick_vec: None,
@@ -125,7 +125,7 @@ impl ClosedLoopPipeline {
     pub fn reset_untrained(&mut self, cfg: &ClosedLoopState) {
         self.grpo.reset_untrained();
         self.q_ctrl.reset_untrained(cfg);
-        self.train_rng = OxidizeRng::new(cfg.rng_seed ^ 0x517C_C1B7_2722_0A95);
+        self.train_rng = OxidizeRng::new(cfg.rng_seed).with_stream(1);
         self.episodes_trained = 0;
         self.return_history.clear();
         self.reset_live_traces_only(cfg);

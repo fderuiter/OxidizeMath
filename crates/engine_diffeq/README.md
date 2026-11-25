@@ -1,11 +1,15 @@
 # `engine_diffeq` — `#![no_std]` Stochastic Differential Equation & Langevin Engine
 
+![Maturity: Validated](https://img.shields.io/badge/maturity-Validated-1f6feb.svg)
+
+> **Maturity Tier:** `Validated` — `#![no_std]` stochastic and Langevin differential equation engine verified with seeded `OxidizeRng` convergence-order benchmarks and zero-allocation runtime tests.
+
 ## 1. Overview & Architecture
 
-`engine_diffeq` is OxidizeMath's Tier 2 `#![no_std]` ordinary, stochastic, and geometric Langevin differential equation solver crate. It consolidates 0D stochastic differential equation (SDE) integrators, underdamped Hamiltonian/Langevin splittings, and discrete jump propensities over the Tier 0 [`Scalar`](math_commons::math_kernel::types::Scalar), [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace), and `rand_core::RngCore` contracts.
+`engine_diffeq` is OxidizeMath's Tier 2 `#![no_std]` ordinary, stochastic, and geometric Langevin differential equation solver crate. It consolidates 0D stochastic differential equation (SDE) integrators, underdamped Hamiltonian/Langevin splittings, and discrete jump propensities over the Tier 0/1 [`Scalar`](math_commons::math_kernel::types::Scalar), [`SolverWorkspace`](math_memory::SolverWorkspace), and `rand_core::RngCore` contracts.
 
 Core design invariants:
-- **`#![no_std]` First with Optional `alloc`**: Compiles with `--no-default-features` on bare-metal and `wasm32-unknown-unknown` targets. Enabling `alloc` adds optional heap-backed workspace wrappers while all stepping loops remain strictly zero-allocation over caller-borrowed [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace) slices.
+- **`#![no_std]` First with Optional `alloc`**: Compiles with `--no-default-features` on bare-metal and `wasm32-unknown-unknown` targets. Enabling `alloc` adds [`OwnedByteArena`](math_memory::OwnedByteArena) support while all stepping loops remain strictly zero-allocation over caller-borrowed [`SolverWorkspace`](math_memory::SolverWorkspace) / [`ByteArena`] slices.
 - **Multivariate Itô & Stratonovich Calculi**: [`StochasticCalculus`] selects either Itô ($\int G \, dW_t$) or Stratonovich ($\int G \circ dW_t$) integration across [`EulerMaruyamaSolver`] (strong order $0.5$ / Euler-Heun), [`MilsteinSolver`] (strong order $1.0$ with optional truncated Karhunen-Loève Lévy area), and [`Sriw1Solver`] (Rössler-type derivative-free strong-order-$1.5$ Stochastic Runge-Kutta).
 - **Geometric Langevin Splitting**: [`BaoabLangevinSolver`] implements Leimkuhler-Matthews symmetric `B-A-O-A-B` splitting with exact Ornstein-Uhlenbeck fluctuation-dissipation thermostatting.
 - **Explicit Deterministic Entropy**: Every stochastic step draws Box-Muller Gaussian or uniform samples exclusively from a caller-supplied `RngCore` stream.
@@ -14,7 +18,7 @@ Core design invariants:
 use engine_diffeq::{
     ByteArena, EulerMaruyamaSolver, SdeSystem, StochasticCalculus,
 };
-use oxidize_core::rng::OxidizeRng;
+use math_rng::OxidizeRng;
 
 struct OrnsteinUhlenbeck;
 

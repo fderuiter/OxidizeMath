@@ -1,8 +1,11 @@
 //! Zero-allocation polynomial and nonlinear least-squares curve-fitting solvers (`fit`).
 //!
-//! Exposes canonical [`FitModel`] presets (degrees 1–4 polynomial OLS plus Exponential,
+//! **Maturity Tier:** `[CERT] Certified` — stack-allocated solver buffers, deterministic
+//! `theory_verification!` contracts, `VerifiedAllocator` zero-heap-allocation proofs, and SemVer lock.
+//!
+//! Exposes canonical [`crate::fit::FitModel`] presets (degrees 1–4 polynomial OLS plus Exponential,
 //! Power-Law, Logarithmic, Logistic, and Sinusoidal damped Levenberg-Marquardt regression)
-//! backed by fixed stack buffers and typed [`FitError`] diagnostics.
+//! backed by fixed stack buffers and typed [`crate::error::FitError`] diagnostics.
 // [cite:math_commons]
 
 #[cfg(feature = "alloc")]
@@ -40,8 +43,18 @@ pub use seeds::{
 /// Maximum polynomial regression degree supported on stack buffers without heap allocation.
 pub const MAX_POLYNOMIAL_DEGREE: usize = 4;
 
-/// Canonical parametric regression model presets without degree clamping or hash collisions.
+/// Canonical parametric regression model presets $\hat{y} = f(x; \theta)$ without degree clamping or hash collisions.
+///
+/// Reference: Golub & Van Loan (2013), *Matrix Computations*, DOI: 10.56021/9781421407944;
+/// [math_commons specification](../../../../docs/math_specs/math_commons.md).
+///
+/// # Stability
+/// Polynomial presets scale $x \in [-1, 1]$ before solving normal equations; nonlinear presets use damped Levenberg-Marquardt.
+///
+/// # Domain of Validity
+/// Finite `(x, y)` observations; `PowerLaw` and `Logarithmic` require $x > 0$ (and $y > 0$ for log-linear seeding).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FitModel {
     /// Degree-1 polynomial regression ($y = c_0 + c_1 x$).
     Linear,
@@ -150,12 +163,58 @@ impl core::fmt::Display for FitModel {
     }
 }
 
+#[cfg(feature = "std")]
+impl scientific_metadata::theory::TheoryDescribable for FitModel {
+    fn theory_description(&self) -> String {
+        format!(
+            "Zero-allocation least-squares curve solver preset: {}",
+            self.label()
+        )
+    }
+
+    fn phonetic_description(&self) -> String {
+        format!("Zero allocation curve solver {}", self.short_label())
+    }
+
+    fn theory_citation(&self) -> String {
+        "Levenberg (1944); Marquardt (1963); Press et al. (2007), Numerical Recipes, Ch. 15."
+            .to_string()
+    }
+
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        let mut map = std::collections::HashMap::new();
+        map.insert("default".to_string(), self.label().to_string());
+        map
+    }
+
+    fn maturity_tier(&self) -> scientific_metadata::theory::MaturityTier {
+        scientific_metadata::theory::MaturityTier::Certified
+    }
+}
+
+#[cfg(feature = "serde")]
+fn deserialize_coeff_len<'de, D>(deserializer: D) -> Result<usize, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let len = <usize as serde::Deserialize>::deserialize(deserializer)?;
+    if len <= 5 {
+        Ok(len)
+    } else {
+        Err(serde::de::Error::custom(
+            "CurveFit coeff_len exceeds stack capacity 5",
+        ))
+    }
+}
+
 /// Stack-backed result of a polynomial or nonlinear least-squares fit.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CurveFit {
     /// Fitted canonical regression model.
     pub fit_model: FitModel,
     coeffs: [f64; 5],
+    #[cfg_attr(feature = "serde", serde(deserialize_with = "deserialize_coeff_len"))]
     coeff_len: usize,
     /// Coefficient of determination ($R^2$).
     pub r_squared: f64,
@@ -342,7 +401,15 @@ impl CurveFit {
     }
 }
 
-/// Fits a canonical [`FitModel`] to `points` with zero heap allocations.
+/// Fits a canonical [`FitModel`] minimizing $\sum_i (y_i - \hat{f}(x_i; \theta))^2$ on stack buffers with zero heap allocations.
+///
+/// Reference: Moré (1978), DOI: 10.1007/BFb0067700; [math_commons specification](../../../../docs/math_specs/math_commons.md).
+///
+/// # Stability
+/// Uses affine $[-1, 1]$ coordinate scaling for polynomials and adaptive Marquardt damping $\lambda > 0$ for nonlinear models.
+///
+/// # Domain of Validity
+/// Requires at least $k$ finite observations for a $k$-parameter model and model-specific domain positivity where applicable.
 #[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn fit_model<P: PointSeries + ?Sized>(
     points: &P,
@@ -352,7 +419,15 @@ pub fn fit_model<P: PointSeries + ?Sized>(
     fit_model_with_axes(points, model, log_mode, false, false)
 }
 
-/// Fits a canonical [`FitModel`] respecting optional logarithmic plot axes for polynomials.
+/// Fits a canonical [`FitModel`] minimizing $\sum_i (\tilde{y}_i - \hat{f}(\tilde{x}_i; \theta))^2$ under optional log-axis transforms.
+///
+/// Reference: Golub & Van Loan (2013), DOI: 10.56021/9781421407944; [math_commons specification](../../../../docs/math_specs/math_commons.md).
+///
+/// # Stability
+/// Rejects singular normal equations (`|pivot| < 1e-12`) and non-convergent nonlinear iterations via [`FitError`].
+///
+/// # Domain of Validity
+/// Finite observations with $x_i > 0$ when `plot_log_x` is enabled and $y_i > 0$ when `plot_log_y` is enabled.
 #[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn fit_model_with_axes<P: PointSeries + ?Sized>(
     points: &P,

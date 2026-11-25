@@ -1,7 +1,7 @@
 # ADR 20261123: Preallocated Monte Carlo, Randomized QMC, and Nonparametric Bootstrap Suite
 
 ## Status
-Accepted (2026-11-23)
+Accepted (2026-11-23); Amended by [ADR 20261124](20261124-math-rng-static-qmc-views.md) (lifting `oxidize_core::rng` into Tier 0 `math_rng`, extending Sobol to 64D/53-bit, scrambling Halton, and adding base-2 Niederreiter QMC)
 
 ## Context
 
@@ -13,8 +13,8 @@ Downstream stochastic simulators across `pure_math`, `domain_applied`, and `math
 
 ## Decision
 
-1. **`pure_math::statistics::qmc` (`HaltonSequence` & Joe-Kuo `SobolSequence`):**
-   - Implement prime-base radical-inverse `HaltonSequence` up to 64 dimensions and Gray-code `O(d)` `SobolSequence` up to 32 dimensions backed by embedded `new-joe-kuo-6.21201` direction numbers (`sobol_data.rs`), starting at Gray-code index `0` with half-ULP midpoint offset so $2^m$ prefixes form exact $(t, m, s)$-digital nets strictly inside `(0, 1)^d`, plus `OxidizeRng`-seeded Cranley-Patterson torus shifts.
+1. **`pure_math::statistics::qmc` (`HaltonSequence`, Joe-Kuo `SobolSequence`, and base-2 `NiederreiterSequence`):**
+   - Initially implemented prime-base radical-inverse `HaltonSequence` up to 64 dimensions and Gray-code `O(d)` `SobolSequence` up to 32 dimensions; amended by [ADR 20261124](20261124-math-rng-static-qmc-views.md) to delegate to Tier 0 `math_rng` static 53-bit tables (`< 16 KiB` `.rodata`), lifting `SobolSequence` to 64D/53-bit, scrambling `HaltonSequence` via static Faure permutations + stateless hash Owen scrambling, and adding 64D/53-bit base-2 `NiederreiterSequence`.
 
 2. **`pure_math::statistics::monte_carlo` (`MonteCarloWorkspace` & Kong `ESS`):**
    - Provide `MonteCarloEstimate`, `MonteCarloError` (`Copy`, zero-allocation), `effective_sample_size` ($(\sum w_i)^2 / \sum w_i^2$ with `DegenerateWeights` guard), and preallocated `MonteCarloWorkspace` supporting crude IID, antithetic variates, optimal-$\hat{\beta}^*$ control variates, self-normalized importance sampling (delta-method SE + Kong `ESS`), Latin Hypercube sampling, and randomized Halton/Sobol QMC replicates.

@@ -18,7 +18,7 @@ use eframe::egui;
 use math_explorer::applied::clinical_trials::design::{
     AllocationStrategy, BlockRandomizer, Group, SimpleRandomizer, StratifiedRandomizer,
 };
-use oxidize_core::rng::{OxidizeRng, BASE_SEED};
+use oxidize_core::rng::OxidizeRng;
 
 /// Clinical trial subject allocation scheme.
 #[derive(PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -126,7 +126,8 @@ impl RandomizationTool {
         if self.seed_counter == 0 {
             self.seed
         } else {
-            BASE_SEED ^ self.seed ^ self.seed_counter
+            self.seed
+                .wrapping_add(self.seed_counter.wrapping_mul(0x9E37_79B9_7F4A_7C15))
         }
     }
 
@@ -157,7 +158,7 @@ impl RandomizationTool {
         self.error_message = None;
         self.schedule.clear();
         self.assignments.clear();
-        let mut rng = OxidizeRng::from_seed(self.effective_seed());
+        let mut rng = OxidizeRng::new(self.seed).with_stream(self.seed_counter);
 
         match self.randomization_type {
             RandomizationType::Simple => match SimpleRandomizer.assign(&mut rng, self.n_subjects) {
@@ -324,10 +325,13 @@ impl InteractiveTool for RandomizationTool {
         "clinical_trials"
     }
 
+    fn set_suspended(&mut self, suspended: bool) {
+        self.simpson_lab.atlas.set_suspended(suspended);
+    }
+
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
     }
-
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         build_cumulative_balance_datasets(self.active_schedule())
     }

@@ -89,7 +89,7 @@ impl SimulationFramework {
             let mut tool_to_select = None;
             let mut open_portal_for_tool = None;
             for &(i, meta) in &filtered_tools {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     let is_selected = self.selected_tool_index == Some(i);
                     if ui
                         .selectable_label(is_selected, meta.display_name)
@@ -97,6 +97,12 @@ impl SimulationFramework {
                     {
                         tool_to_select = Some(i);
                     }
+                    super::maturity_badge::render_maturity_badge(
+                        ui,
+                        meta.maturity_tier(),
+                        true,
+                        meta.display_name,
+                    );
                     let tool_help_btn = ui
                         .add(egui::Button::new("❓").small())
                         .accessible_hover_text(format!(

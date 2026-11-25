@@ -198,7 +198,17 @@ pub fn qr_apply_qt<T: Scalar>(
 }
 
 /// Solves $R_{0..\text{rank}, 0..\text{rank}} z = (Q^T b)_{0..\text{rank}}$ and unpermutes $x = P z$.
-/// `[cite:engine_linalg]`
+///
+/// Reference: Golub & Van Loan (2013), *Matrix Computations*, DOI: 10.56021/9781421407944;
+/// [`docs/math_specs/engine_linalg.md`](../../../../docs/math_specs/engine_linalg.md). `[cite:engine_linalg]`
+///
+/// # Stability
+/// Truncates trailing zero/near-zero rows beyond `rank` and back-substitutes on the leading
+/// column-pivoted upper-triangular block $R_{11}$ without forming normal equations.
+///
+/// # Domain of Validity
+/// Requires `qr.len() == m * n`, `col_perm.len() == n`, `qt_b.len() >= rank`, `x.len() == n`,
+/// `z_work.len() >= n`, `rank <= m.min(n)`, and non-zero leading diagonal $R_{ii} \ne 0$ for `i < rank`.
 pub fn qr_solve_r_pivoted<T: Scalar>(
     qr: &[T],
     dims: (usize, usize),
@@ -238,7 +248,17 @@ pub fn qr_solve_r_pivoted<T: Scalar>(
 }
 
 /// Computes $c^T (A^T A)^{-1} c = \| R^{-T} (P^T c) \|_2^2$ directly from pivoted QR without forming $A^T A$.
-/// `[cite:engine_linalg]`
+///
+/// Reference: Golub & Van Loan (2013), DOI: 10.56021/9781421407944;
+/// [`docs/math_specs/engine_linalg.md`](../../../../docs/math_specs/engine_linalg.md). `[cite:engine_linalg]`
+///
+/// # Stability
+/// Evaluates contrast variance at condition number $\kappa_2(A)$ rather than $\kappa_2(A)^2$ by
+/// forward-solving $R^T w = P^T c$ directly on the orthogonal QR factor.
+///
+/// # Domain of Validity
+/// Requires tall/square `m >= n`, full column rank (`rank == n`), `qr.len() == m * n`,
+/// `col_perm.len() == n`, finite `c` (`n`), and `w_work.len() >= n`.
 pub fn qr_solve_rt_permuted<T: Scalar>(
     qr: &[T],
     m: usize,
@@ -279,8 +299,18 @@ pub fn qr_solve_rt_permuted<T: Scalar>(
     Ok(sq_norm)
 }
 
-/// Solves $\min_x \|A x - b\|_2$ via Householder QR with column pivoting in `ws`, returning numerical rank.
-/// `[cite:engine_linalg]`
+/// Solves $\min_x \|A x - b\|_2$ via Householder QR with column pivoting ($A P = Q R$) in `ws`, returning numerical rank.
+///
+/// Reference: Golub & Van Loan (2013), DOI: 10.56021/9781421407944;
+/// [`docs/math_specs/engine_linalg.md`](../../../../docs/math_specs/engine_linalg.md). `[cite:engine_linalg]`
+///
+/// # Stability
+/// Unconditionally backward-stable orthogonal Householder reflectors with scaled 2-norm column
+/// pivoting avoid squaring $\kappa_2(A)$ and reveal numerical rank via $|R_{ii}| > \max(m,n)\varepsilon_{\text{mach}}|R_{00}|$.
+///
+/// # Domain of Validity
+/// Requires finite `a` (`m * n`), finite `b` (`m`), `x` (`n`), `col_perm` (`n`), and `ws` capacity
+/// at least [`qr_least_squares_workspace_len`]`(m, n)`.
 pub fn qr_solve_least_squares<T: Scalar>(
     a: &[T],
     m: usize,
@@ -308,7 +338,12 @@ pub fn qr_solve_least_squares<T: Scalar>(
     Ok(rank)
 }
 
+#[cfg(feature = "serde")]
+#[path = "qr/serde_impl.rs"]
+mod serde_impl;
+
 /// Stack-allocated streaming orthogonal Givens QR accumulator for arbitrarily tall least-squares systems.
+#[derive(Clone, Debug, PartialEq)]
 pub struct StreamingQr<T: Scalar, const MAX_P: usize> {
     r: [[T; MAX_P]; MAX_P],
     qty: [T; MAX_P],

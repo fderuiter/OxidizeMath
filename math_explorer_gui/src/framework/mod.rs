@@ -54,6 +54,9 @@ mod export_ui_tests;
 pub mod fit_bridge;
 mod history_ui;
 pub mod math_input;
+pub mod maturity_badge;
+#[cfg(test)]
+mod maturity_badge_tests;
 #[cfg(all(
     test,
     feature = "ai",
@@ -177,15 +180,8 @@ pub trait InteractiveTool {
     }
 
     /// Show the tool inside a scoped parent `egui::Ui` (supporting multi-pane layouts on a single root `Context`).
-    ///
-    /// # Accessibility Requirements for Custom `show_inside` Overrides
-    ///
-    /// Default canvases use [`egui::Sense::click_and_drag`] and dispatch [`Self::on_keyboard`] when focused.
-    /// Custom overrides must:
-    /// - Allocate regions with [`egui::Sense::focusable_noninteractive`], [`egui::Sense::click`], or [`egui::Sense::click_and_drag`].
-    /// - Render raster textures via `ui.add(egui::Image::new(texture).alt_text(...).sense(...))` for `AccessKit` `Role::Image`.
-    /// - Populate `AccessKit` metadata (`Role`, `label`, `value`) via `crate::accessibility::register_canvas_accessibility` and draw a focus ring.
-    /// - Guard arrow-key `Memory::set_focus_lock_filter` (`tab: false`, `escape: false`) strictly while `response.has_focus()`.
+    /// Custom overrides must allocate focusable senses (`Sense::focusable_noninteractive`/`click`/`click_and_drag`),
+    /// attach `alt_text` + `register_canvas_accessibility` with focus rings, and guard `set_focus_lock_filter` (`tab: false`).
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         pane_scope::render_default_tool_inside(self, ui);
     }
@@ -392,6 +388,9 @@ pub trait InteractiveTool {
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
 
+    /// Suspends or resumes background simulation workers when this tool enters or leaves an active viewport.
+    fn set_suspended(&mut self, _suspended: bool) {}
+
     /// Optional hook returning the active counterfactual divergence snapshot for `SimulationFramework`.
     fn counterfactual_snapshot(&self) -> Option<DivergenceSnapshot> {
         None
@@ -482,6 +481,7 @@ pub struct SimulationFramework {
     pub(super) sync_state: FrameworkSyncState,
     pub(super) rev_cache: FrameworkRevisionCache,
     pub atlas_host: atlas_host::FrameworkAtlasHost,
+    pub(super) suspended: bool,
 }
 
 pub use crate::camera::{

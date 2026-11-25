@@ -10,6 +10,7 @@ use rand_core::RngCore;
 /// Correlated Gaussian increments $(\Delta W_j, \Delta Z_j)$ for strong-order-1.5 Stochastic Runge-Kutta,
 /// where $\Delta W_j = \int_{t_n}^{t_{n+1}} dW_s^j$ and $\Delta Z_j = \int_{t_n}^{t_{n+1}} (W_s^j - W_{t_n}^j)\,ds$.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct CorrelatedWienerIncrement<T: Scalar> {
     /// First-order Wiener increment $\Delta W_j \sim \mathcal{N}(0, \Delta t)$.
     pub dw: T,
@@ -34,8 +35,21 @@ impl<T: Scalar> CorrelatedWienerIncrement<T> {
 }
 
 /// Derivative-free strong-order-1.5 Rössler-type Stochastic Runge-Kutta (`SRIW1`) solver for
-/// multivariate SDEs under Itô or Stratonovich calculus.
+/// multivariate SDEs $dX_t = f(t, X_t)\,dt + G(t, X_t)\,dW_t$ under Itô or Stratonovich calculus.
+///
+/// Reference: Rössler (2010), *SIAM J. Numer. Anal.* 48(3), DOI: 10.1137/09076636X;
+/// [`docs/math_specs/engine_diffeq.md`](../../../docs/math_specs/engine_diffeq.md).
+///
+/// # Stability
+/// Supporting-value Runge-Kutta stages avoid explicit Jacobian evaluations while attaining strong
+/// order $1.5$ for scalar/diagonal/commutative noise under explicit RK mean-square step bounds.
+///
+/// # Domain of Validity
+/// Requires smooth ($C^2$/$C^3$) drift and commutative/diagonal diffusion for order $1.5$ (reduces to
+/// strong order $0.5$ on non-commutative multi-channel noise without Lévy areas), `dt >= 0`,
+/// `state.len() >= state_dim`, and `SolverWorkspace` capacity [`Self::scratch_len`]`(state_dim, wiener_dim)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Sriw1Solver {
     calculus: StochasticCalculus,
 }

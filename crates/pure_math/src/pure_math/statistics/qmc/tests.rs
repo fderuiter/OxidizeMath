@@ -1,7 +1,7 @@
 use super::*;
 use crate::pure_math::statistics::monte_carlo::MonteCarloError;
+use math_rng::sample_closed_open;
 use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
 use verified_engine::engine::VerifiedEngine;
 
 #[test]
@@ -103,7 +103,7 @@ fn test_halton_and_sobol_beat_iid_rmse_on_smooth_5d_integral() {
         for _ in 0..budget {
             let mut val = 0.0;
             for _ in 0..5 {
-                let u = ((rng.next_u64() >> 11) as f64) / ((1_u64 << 53) as f64);
+                let u: f64 = sample_closed_open(&mut rng);
                 val += u.exp();
             }
             iid_sum += val;

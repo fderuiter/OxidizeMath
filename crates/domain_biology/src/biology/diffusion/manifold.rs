@@ -12,7 +12,15 @@ use oxidize_core::mesh::Mesh;
 use pure_math::pure_math::analysis::pde::fused_stepper::FusedStencilStepper;
 use pure_math::pure_math::differential_geometry::cotangent_mesh::CotangentLaplacian;
 
-/// Intrinsic Riemannian diffusion operator over a 3D triangulated 2-manifold backed by [`CotangentLaplacian`].
+/// Intrinsic Riemannian diffusion operator $(D \Delta_S u)_i = \frac{D}{A_i} \sum_{j \in \mathcal{N}(i)} w_{ij}(u_j - u_i)$ over a 3D triangulated 2-manifold backed by [`CotangentLaplacian`].
+///
+/// Reference: Meyer, Desbrun, Schröder & Barr (2003), DOI: 10.1007/978-3-662-05105-4_2; [`docs/math_specs/domain_biology.md`](../../../../../docs/math_specs/domain_biology.md).
+///
+/// # Stability
+/// Explicit forward-Euler reaction-diffusion stepping requires the intrinsic parabolic CFL bound $\Delta t \max_s D_s \max_i \frac{1}{A_i}\sum_{j \in \mathcal{N}(i)} |w_{ij}| \le 1$.
+///
+/// # Domain of Validity
+/// Valid for non-negative species diffusivities $D_s \ge 0$, finite concentration slices matching `num_vertices()`, and non-degenerate triangulated 2-manifolds.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CotangentMeshDiffusion {
     laplacian: CotangentLaplacian,

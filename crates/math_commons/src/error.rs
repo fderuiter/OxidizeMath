@@ -4,21 +4,20 @@ pub use crate::ast::{EvalError, GlslError, LexError, ParseError, ShaderEmitError
 use crate::math_kernel::types::Dimension;
 #[cfg(feature = "alloc")]
 use alloc::string::String;
-#[cfg(feature = "std")]
-use diagnostics::{Diagnostic, Severity};
-#[cfg(feature = "std")]
-use std::collections::HashMap;
+pub use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+pub use math_memory::ArenaError;
 use thiserror::Error;
 
 /// Centralized mathematical error type.
 #[derive(Debug, Clone, PartialEq, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum MathError {
     /// Dimension mismatch between tensors/matrices or expected sizes.
     #[error("Dimension mismatch: expected {}, actual {}", expected.0, actual.0)]
     DimensionMismatch {
-        #[allow(missing_docs)]
+        /// Expected structural dimension.
         expected: Dimension,
-        #[allow(missing_docs)]
+        /// Actual encountered dimension.
         actual: Dimension,
     },
 
@@ -58,51 +57,53 @@ pub enum MathError {
     /// Numerical computation failures (e.g., singular matrix, non-positive definite).
     #[cfg(feature = "alloc")]
     #[error("Numerical error: {reason}")]
-    #[allow(missing_docs)]
-    NumericalError { reason: String },
+    NumericalError {
+        /// Human-readable description of the numerical failure.
+        reason: String,
+    },
 
     /// Conversion failures (e.g., failed to convert between numeric types).
     #[cfg(feature = "alloc")]
     #[error("Conversion error: {reason}")]
-    #[allow(missing_docs)]
-    ConversionError { reason: String },
+    ConversionError {
+        /// Human-readable description of the conversion failure.
+        reason: String,
+    },
 }
 
-#[cfg(feature = "std")]
 impl Diagnostic for MathError {
     fn severity(&self) -> Severity {
         Severity::Error
     }
 
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "MathError".to_string());
-        map.insert("description".to_string(), self.to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "MathError");
+        visitor.record_display("description", self);
         match self {
             Self::DimensionMismatch { expected, actual } => {
-                map.insert("expected_dim".to_string(), expected.0.to_string());
-                map.insert("actual_dim".to_string(), actual.0.to_string());
+                visitor.record_usize("expected_dim", expected.0);
+                visitor.record_usize("actual_dim", actual.0);
             }
             Self::OutOfBounds { value, min, max }
             | Self::StrictlyOutOfBounds { value, min, max } => {
-                map.insert("value".to_string(), value.to_string());
-                map.insert("min".to_string(), min.to_string());
-                map.insert("max".to_string(), max.to_string());
+                visitor.record_f64("value", *value);
+                visitor.record_f64("min", *min);
+                visitor.record_f64("max", *max);
             }
             Self::InvalidPermutation { index, value, len } => {
-                map.insert("index".to_string(), index.to_string());
-                map.insert("value".to_string(), value.to_string());
-                map.insert("len".to_string(), len.to_string());
+                visitor.record_usize("index", *index);
+                visitor.record_usize("value", *value);
+                visitor.record_usize("len", *len);
             }
+            #[cfg(feature = "alloc")]
             Self::NumericalError { reason } | Self::ConversionError { reason } => {
-                map.insert("reason".to_string(), reason.clone());
+                visitor.record_str("reason", reason);
             }
         }
-        map
     }
 }
 
-#[allow(missing_docs)]
+/// Convenience result alias returning [`MathError`] on failure.
 pub type MathResult<T> = core::result::Result<T, MathError>;
 
 #[cfg(feature = "alloc")]
@@ -112,8 +113,12 @@ impl From<String> for MathError {
     }
 }
 
+#[cfg(feature = "serde")]
+mod fit_serde;
+
 /// Typed diagnostic error returned by zero-allocation curve-fitting solvers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub enum FitError {
     /// Fewer finite data points were supplied than required by the target model.
     #[error("Insufficient finite points: required at least {required}, found {actual}")]
@@ -150,51 +155,81 @@ pub enum FitError {
     },
 }
 
-#[cfg(feature = "std")]
 impl Diagnostic for FitError {
     fn severity(&self) -> Severity {
         Severity::Error
     }
 
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "FitError".to_string());
-        map.insert("description".to_string(), self.to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "FitError");
+        visitor.record_display("description", self);
         match self {
             Self::InsufficientPoints { required, actual } => {
-                map.insert("code".to_string(), "MATH-FIT-001".to_string());
-                map.insert("required".to_string(), required.to_string());
-                map.insert("actual".to_string(), actual.to_string());
+                visitor.record_str("code", "MATH-FIT-001");
+                visitor.record_usize("required", *required);
+                visitor.record_usize("actual", *actual);
             }
             Self::UnsupportedDegree { degree } => {
-                map.insert("code".to_string(), "MATH-FIT-002".to_string());
-                map.insert("degree".to_string(), degree.to_string());
+                visitor.record_str("code", "MATH-FIT-002");
+                visitor.record_usize("degree", *degree);
             }
             Self::InvalidDomain { reason } => {
-                map.insert("code".to_string(), "MATH-FIT-003".to_string());
-                map.insert("reason".to_string(), (*reason).to_string());
+                visitor.record_str("code", "MATH-FIT-003");
+                visitor.record_str("reason", reason);
             }
             Self::SingularMatrix => {
-                map.insert("code".to_string(), "MATH-FIT-004".to_string());
+                visitor.record_str("code", "MATH-FIT-004");
             }
             Self::NonConvergence { iterations } => {
-                map.insert("code".to_string(), "MATH-FIT-005".to_string());
-                map.insert("iterations".to_string(), iterations.to_string());
+                visitor.record_str("code", "MATH-FIT-005");
+                visitor.record_usize("iterations", *iterations);
             }
         }
-        map
     }
 }
 
-#[cfg(feature = "std")]
 mod umbrella;
-#[cfg(feature = "std")]
 pub use umbrella::MathCommonsError;
 
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
     use std::error::Error as StdError;
+    use verified_engine::engine::VerifiedEngine;
+
+    struct NullVisitor(usize);
+
+    impl DiagnosticVisitor for NullVisitor {
+        fn record_str(&mut self, _key: &str, _value: &str) {
+            self.0 += 1;
+        }
+
+        fn record_display(&mut self, _key: &str, _value: &dyn core::fmt::Display) {
+            self.0 += 1;
+        }
+    }
+
+    #[test]
+    fn zero_allocation_diagnostic_visitation_for_arena_math_and_fit() {
+        let arena_err = ArenaError::InsufficientCapacity {
+            requested: 32,
+            available: 16,
+        };
+        let math_err = MathError::DimensionMismatch {
+            expected: Dimension(3),
+            actual: Dimension(2),
+        };
+        let fit_err = FitError::SingularMatrix;
+
+        let (count, _metrics) = VerifiedEngine::run_verified(|| {
+            let mut v = NullVisitor(0);
+            arena_err.visit_fields(&mut v);
+            math_err.visit_fields(&mut v);
+            fit_err.visit_fields(&mut v);
+            v.0
+        });
+        assert!(count >= 10);
+    }
 
     #[test]
     fn math_commons_umbrella_preserves_sources_and_diagnostics() {
@@ -238,6 +273,7 @@ mod tests {
                 actual: Dimension(3),
             }),
             MathCommonsError::from(FitError::SingularMatrix),
+            MathCommonsError::from(ArenaError::InvalidAlignment { align: 3 }),
             MathCommonsError::from(lex),
             MathCommonsError::from(parse),
             MathCommonsError::from(unknown_fn),

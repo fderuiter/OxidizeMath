@@ -86,7 +86,7 @@
 
 pub mod bmi;
 pub mod censoring;
-#[allow(missing_docs)]
+/// Matched and unmatched hierarchical pairwise outcome comparison strategies and statistics.
 pub mod pair_comparison;
 pub mod power_sweep;
 mod power_sweep_types;

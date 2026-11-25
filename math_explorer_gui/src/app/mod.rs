@@ -1,3 +1,4 @@
+pub mod data_bus;
 pub mod dataflow_bus;
 pub mod domain_bar;
 pub(crate) mod global_shortcuts;
@@ -22,6 +23,7 @@ pub(crate) mod state_history;
 pub mod theme;
 pub(crate) mod ui_panels;
 pub(crate) mod viewport;
+mod visibility;
 mod workspace_url;
 mod workspace_url_pipeline;
 
@@ -33,6 +35,15 @@ mod tests_adaptive_chrome;
 mod tests_cold_start_and_palette;
 #[cfg(test)]
 mod tests_command_palette;
+#[cfg(all(
+    test,
+    feature = "biology",
+    feature = "applied",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
+mod tests_data_bus_coupling;
 #[cfg(test)]
 mod tests_dataflow_bus;
 #[cfg(all(
@@ -84,7 +95,19 @@ mod tests_split_view;
 mod tests_tab_cache_perf;
 #[cfg(all(test, target_arch = "wasm32"))]
 mod wasm_tests;
+#[cfg(all(
+    test,
+    target_arch = "wasm32",
+    feature = "biology",
+    feature = "applied",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
+mod wasm_tests_data_bus;
 
+#[allow(unused_imports)]
+pub use data_bus::{EpidemicTraceSignal, SharedGraph, SharedNode, WorkspaceDataBus};
 pub use dataflow_bus::{DataflowStreamKind, PaneDataflowBus, PanePipelineDag};
 #[allow(unused_imports)]
 pub use domain_bar::AcademicDomain;
@@ -166,6 +189,7 @@ pub struct MathExplorerApp {
     pub dataflow_bus: PaneDataflowBus,
     pub pipeline_dag: PanePipelineDag,
     pub(super) url_sync: crate::url_state::UrlSyncController,
+    pub data_bus: data_bus::WorkspaceDataBus,
 }
 
 impl Default for MathExplorerApp {
@@ -175,7 +199,7 @@ impl Default for MathExplorerApp {
         crate::framework::ensure_custom_fit_bridge();
         let tabs: Vec<Box<dyn ExplorerTab>> = crate::tabs::instantiate_tabs();
 
-        Self {
+        let mut app = Self {
             tabs,
             selected_tab: 0,
             split_layout_mode: SplitLayoutMode::Single,
@@ -207,7 +231,10 @@ impl Default for MathExplorerApp {
             dataflow_bus: PaneDataflowBus::default(),
             pipeline_dag: PanePipelineDag::default(),
             url_sync: crate::url_state::UrlSyncController::default(),
-        }
+            data_bus: data_bus::WorkspaceDataBus::default(),
+        };
+        app.sync_viewport_visibility();
+        app
     }
 }
 
@@ -237,6 +264,7 @@ impl MathExplorerApp {
         for pane_idx in 1..self.viewport_layout.pane_count() {
             let _ = self.pane_tab_mut(pane_idx);
         }
+        self.sync_viewport_visibility();
     }
 
     /// Serializes the entire application state (selected tab, panel toggles, individual tab states) to JSON.
@@ -331,7 +359,9 @@ impl MathExplorerApp {
         let active_layout = self.resolve_active_viewport_layout();
         self.prune_inactive_pane_slots(active_layout.pane_count());
         domain_bar::poll_cross_tab_tool_handoffs(self, ctx);
+        self.sync_viewport_visibility();
         self.sync_workspace_history_bridge(ctx);
+        data_bus::sync_app_bus_before_viewport(self, ctx);
 
         if active_layout != ViewportLayout::Single {
             viewport::render_multi_pane_manager(self, ctx, frame);
@@ -339,6 +369,7 @@ impl MathExplorerApp {
         } else {
             viewport::render_single_pane_viewport(self, ctx, frame);
         }
+        data_bus::commit_app_bus_after_viewport(self, ctx);
         self.drain_workspace_history_bridge(ctx);
     }
 }
@@ -353,6 +384,7 @@ impl eframe::App for MathExplorerApp {
         ui_panels::render_help_window(ctx, &mut self.show_help_menu);
         self.render_global_starter_gallery(ctx);
         self.apply_command_palette_selection(ctx);
+        self.sync_viewport_visibility();
         crate::accessibility::sync_context_live_messages(ctx, false);
 
         self.last_frame_had_input =

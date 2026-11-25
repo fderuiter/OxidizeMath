@@ -11,6 +11,7 @@ pub const MAX_EVAL_DEPTH: usize = 64;
 
 /// Errors that can occur during AST compilation or evaluation.
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum EvalError {
     /// Variable was not defined in the scope.
     #[error("Unknown variable '{0}'")]
@@ -44,42 +45,40 @@ pub enum EvalError {
     DomainError(String),
 }
 
-impl diagnostics::Diagnostic for EvalError {
-    fn severity(&self) -> diagnostics::Severity {
-        diagnostics::Severity::Error
+impl math_diagnostics::Diagnostic for EvalError {
+    fn severity(&self) -> math_diagnostics::Severity {
+        math_diagnostics::Severity::Error
     }
 
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "EvalError".to_string());
-        map.insert("description".to_string(), self.to_string());
+    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
+        visitor.record_str("error_type", "EvalError");
+        visitor.record_display("description", self);
         match self {
             Self::UnknownVariable(name) => {
-                map.insert("variable".to_string(), name.clone());
+                visitor.record_str("variable", name);
             }
             Self::WrongArgumentCount {
                 func,
                 expected,
                 found,
             } => {
-                map.insert("function".to_string(), format!("{func:?}"));
-                map.insert("expected_args".to_string(), expected.to_string());
-                map.insert("found_args".to_string(), found.to_string());
+                visitor.record_display("function", &format_args!("{func:?}"));
+                visitor.record_usize("expected_args", *expected);
+                visitor.record_usize("found_args", *found);
             }
             Self::RecursionLimitExceeded(max_depth) => {
-                map.insert("max_depth".to_string(), max_depth.to_string());
+                visitor.record_usize("max_depth", *max_depth);
             }
             Self::InstructionLimitExceeded(max_instructions) => {
-                map.insert("max_instructions".to_string(), max_instructions.to_string());
+                visitor.record_usize("max_instructions", *max_instructions);
             }
             Self::OutputLimitExceeded(max_bytes) => {
-                map.insert("max_output_bytes".to_string(), max_bytes.to_string());
+                visitor.record_usize("max_output_bytes", *max_bytes);
             }
             Self::DomainError(reason) => {
-                map.insert("reason".to_string(), reason.clone());
+                visitor.record_str("reason", reason);
             }
         }
-        map
     }
 }
 

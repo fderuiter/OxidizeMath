@@ -58,20 +58,21 @@ impl TimeStep {
     }
 }
 
-/// Euler-Maruyama solver for the OU process SDE.
+/// Euler-Maruyama solver for the scalar Ornstein-Uhlenbeck SDE
+/// $dX_t = \theta(\mu - X_t)\,dt + \sigma\,dW_t$, advancing
+/// $X_{t+\Delta t} = X_t + \theta(\mu - X_t)\Delta t + \sigma\sqrt{\Delta t}\,Z$ with $Z \sim \mathcal{N}(0, 1)$
+/// via [`engine_diffeq::EulerMaruyamaSolver`].
 ///
-/// Implements the numerical approximation:
+/// Reference: Kloeden & Platen (1992), *Numerical Solution of Stochastic Differential Equations*,
+/// DOI: 10.1007/978-3-662-12616-5; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
 ///
-/// ```text
-/// X_{t+Δt} = X_t + θ(μ - X_t)Δt + σ√(Δt)Z
-/// ```
+/// # Stability
+/// Mean-reverting drift contraction requires $0 < \theta \Delta t < 2$ (asymptotic stationary variance
+/// approaches $\frac{\sigma^2}{2\theta(1 - \theta\Delta t / 2)}$ as $\theta\Delta t \to 0$).
 ///
-/// where Z ~ N(0,1) is a standard normal random variable, delegating to [`engine_diffeq::EulerMaruyamaSolver`].
-///
-/// # References
-///
-/// Kloeden, P. E., & Platen, E. (1992). *Numerical Solution of Stochastic Differential Equations*.
-/// Springer-Verlag.
+/// # Domain of Validity
+/// Valid for finite initial state `x0`, validated [`OuParams`] ($\theta > 0$, $\sigma \ge 0$, finite $\mu$),
+/// and strictly positive finite [`TimeStep`] ($\Delta t > 0$).
 pub struct EulerMaruyama {
     params: OuParams,
     dt: TimeStep,

@@ -37,6 +37,9 @@ mod tests {
             check_one::<crate::tabs::geometry_topology::hyperbolic_geometry::HyperbolicGeometryTool>(
                 ctx,
             );
+            check_one::<crate::tabs::geometry_topology::knot_braid_studio::KnotBraidStudioTool>(
+                ctx,
+            );
             check_one::<crate::tabs::algorithmic_information::state::FractranMachineTool>(ctx);
             check_one::<crate::tabs::number_theory::fractran_machine::FractranMachineTool>(ctx);
             check_one::<crate::tabs::number_theory::ualbf_widget::UalbfWidget>(ctx);

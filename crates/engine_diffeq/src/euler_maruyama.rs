@@ -5,8 +5,21 @@ use math_commons::math_kernel::types::{
 };
 use rand_core::RngCore;
 
-/// Multivariate Euler-Maruyama (Itô) and Euler-Heun (Stratonovich) stochastic integrator.
+/// Multivariate Euler-Maruyama (Itô) and Euler-Heun (Stratonovich) stochastic integrator for
+/// $dX_t = f(t, X_t)\,dt + G(t, X_t)\,dW_t$.
+///
+/// Reference: Kloeden & Platen (1992), *Numerical Solution of Stochastic Differential Equations*,
+/// DOI: 10.1007/978-3-662-12616-5; [`docs/math_specs/engine_diffeq.md`](../../../docs/math_specs/engine_diffeq.md).
+///
+/// # Stability
+/// Achieves strong convergence order $0.5$ (weak order $1.0$) for general non-commutative noise;
+/// mean-square linear stability requires $|1 + \lambda \Delta t|^2 + |\mu|^2 \Delta t < 1$.
+///
+/// # Domain of Validity
+/// Requires Lipschitz drift and diffusion coefficients, `dt >= 0`, `state.len() >= state_dim`,
+/// and `SolverWorkspace` capacity at least [`Self::scratch_len`]`(state_dim, wiener_dim)`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EulerMaruyamaSolver {
     calculus: StochasticCalculus,
 }

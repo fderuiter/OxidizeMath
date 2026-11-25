@@ -27,7 +27,16 @@ pub const fn damped_normal_workspace_len(n: usize) -> usize {
 ///
 /// Uses $x = \sum_i \frac{\sigma_i}{\sigma_i^2 + \lambda^2} (u_i^T b) v_i$ directly on $A$, avoiding
 /// condition-number squaring in $A^T A + \lambda^2 I$.
-/// `[cite:advanced_linear_algebra]`
+/// Reference: Golub, Hansen, & O'Leary (1999), DOI: 10.1137/S0895479897326432;
+/// [`docs/math_specs/engine_linalg.md`](../../../../docs/math_specs/engine_linalg.md). `[cite:advanced_linear_algebra]`
+///
+/// # Stability
+/// Spectral filter weights $\sigma_i / (\sigma_i^2 + \lambda^2)$ are bounded by $1 / (2\lambda)$ for
+/// $\lambda > 0$ and truncate $\sigma_i \le \max(m,n)\varepsilon_{\text{mach}}\sigma_1$ when $\lambda = 0$.
+///
+/// # Domain of Validity
+/// Requires finite `a` (`m * n`), finite `b` (`m`), finite regularization `lambda >= 0`, `x` (`n`),
+/// and `ws` capacity at least [`tikhonov_workspace_len`]`(m, n)`.
 pub fn tikhonov_solve<T: Scalar>(
     a: &[T],
     m: usize,
@@ -80,6 +89,7 @@ pub fn tikhonov_solve<T: Scalar>(
 
 /// Diagonal regularization strategy for [`solve_damped_normal`].
 #[derive(Copy, Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum DampingStyle<T> {
     /// Isotropic additive diagonal damping $H_{ii} + \lambda$.
     Isotropic(T),
@@ -93,7 +103,18 @@ pub enum DampingStyle<T> {
 }
 
 /// Solves a damped Levenberg-Marquardt / ridge normal system $(H + \lambda D) \delta = g$ via pivoted LU.
-/// `[cite:engine_linalg]`
+///
+/// Reference: Marquardt (1963), DOI: 10.1137/0111030;
+/// [`docs/math_specs/engine_linalg.md`](../../../../docs/math_specs/engine_linalg.md). `[cite:engine_linalg]`
+///
+/// # Stability
+/// Positive diagonal shifts (`Isotropic` or scale-invariant `Marquardt` with `diag_floor`) lift
+/// singular normal-matrix eigenvalues away from zero prior to partial-pivoting LU factorization.
+///
+/// # Domain of Validity
+/// Requires finite `jtj` (`n * n`), finite `jtr` (`n`), finite non-negative damping parameters
+/// (`lambda >= 0`, `diag_floor >= 0`), `delta` (`n`), `pivots` (`n`), and `ws` capacity at least
+/// [`damped_normal_workspace_len`]`(n)`.
 pub fn solve_damped_normal<T: Scalar>(
     jtj: &[T],
     jtr: &[T],

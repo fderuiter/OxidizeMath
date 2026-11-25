@@ -50,7 +50,7 @@ pub trait Ring:
     #[verified_engine::verified]
     fn one() -> Self;
 
-    #[allow(missing_docs)]
+    /// Returns `true` if `self` equals the additive identity [`Self::zero`].
     #[verified_engine::verified]
     fn is_zero(&self) -> bool {
         *self == Self::zero()
@@ -82,6 +82,19 @@ impl Ring for i64 {
 }
 
 impl EuclideanDomain for i64 {}
+
+impl Ring for i128 {
+    #[verified_engine::verified]
+    fn zero() -> Self {
+        0
+    }
+    #[verified_engine::verified]
+    fn one() -> Self {
+        1
+    }
+}
+
+impl EuclideanDomain for i128 {}
 
 impl Ring for f64 {
     #[verified_engine::verified]

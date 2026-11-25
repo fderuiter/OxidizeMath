@@ -31,6 +31,10 @@ impl CachedAttractorInvariants {
 }
 
 impl AttractorPlotter {
+    fn configured_initial_vec(&self) -> Vector3<f64> {
+        self.twin_cfg.sanitized().initial_state
+    }
+
     pub(super) fn flow_config_hash(&self) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -39,6 +43,10 @@ impl AttractorPlotter {
         self.system.rho.to_bits().hash(&mut h);
         self.system.beta.to_bits().hash(&mut h);
         self.dt.to_bits().hash(&mut h);
+        let init = self.configured_initial_vec();
+        init.x.to_bits().hash(&mut h);
+        init.y.to_bits().hash(&mut h);
+        init.z.to_bits().hash(&mut h);
         if self.mode == super::AttractorMode::Custom {
             for bar in self.flow_bank.bars() {
                 bar.raw_text.hash(&mut h);
@@ -58,38 +66,51 @@ impl AttractorPlotter {
         let key = self.flow_config_hash();
         if self.invariants_cache.param_key != Some(key) {
             let step = self.dt.clamp(0.002, 0.02);
-            let mut init = Vector3::new(1.0, 1.0, 1.0);
-            let mut rk4 = RungeKutta4::new(&init);
+            let init = self.configured_initial_vec();
             self.invariants_cache.lyapunov = match self.mode {
-                super::AttractorMode::Lorenz => {
-                    let probe = LorenzBuilder::new()
-                        .sigma(self.system.sigma)
-                        .rho(self.system.rho)
-                        .beta(self.system.beta)
-                        .build(LorenzState::new(1.0, 1.0, 1.0));
-                    lorenz_lyapunov(&probe, &mut rk4, init, step, 60, 0.25)
-                        .ok()
-                        .filter(|v| v.is_finite())
-                }
-                super::AttractorMode::Custom => {
-                    let job = super::CompiledFlowJob::from_bank(&self.flow_bank);
-                    for _ in 0..200 {
-                        let next = job.rk4_step(init, step);
-                        if !(next.x.is_finite() && next.y.is_finite() && next.z.is_finite())
-                            || next.norm() > 1e6
-                        {
-                            break;
-                        }
-                        init = next;
-                    }
-                    lorenz_lyapunov(&job, &mut rk4, init, step, 60, 0.25)
-                        .ok()
-                        .filter(|v| v.is_finite())
-                }
+                super::AttractorMode::Lorenz => self.compute_lorenz_lyapunov(init, step),
+                super::AttractorMode::Custom => self.compute_custom_lyapunov(init, step),
             };
             self.invariants_cache.param_key = Some(key);
         }
         self.invariants_cache.lyapunov
+    }
+
+    fn compute_lorenz_lyapunov(&self, init: Vector3<f64>, step: f64) -> Option<f64> {
+        let mut probe = LorenzBuilder::new()
+            .sigma(self.system.sigma)
+            .rho(self.system.rho)
+            .beta(self.system.beta)
+            .build(LorenzState::new(init.x, init.y, init.z));
+        let mut rk4 = RungeKutta4::new(&init);
+        for _ in 0..1200 {
+            probe.step_with(&mut rk4, step);
+            let v = probe.state.vec;
+            if !(v.x.is_finite() && v.y.is_finite() && v.z.is_finite()) {
+                break;
+            }
+        }
+        let settled = probe.state.vec;
+        lorenz_lyapunov(&probe, &mut rk4, settled, step, 160, 0.25)
+            .ok()
+            .filter(|v| v.is_finite())
+    }
+
+    fn compute_custom_lyapunov(&self, mut init: Vector3<f64>, step: f64) -> Option<f64> {
+        let job = super::CompiledFlowJob::from_bank(&self.flow_bank);
+        for _ in 0..200 {
+            let next = job.rk4_step(init, step);
+            if !(next.x.is_finite() && next.y.is_finite() && next.z.is_finite())
+                || next.norm() > 1e6
+            {
+                break;
+            }
+            init = next;
+        }
+        let mut rk4 = RungeKutta4::new(&init);
+        lorenz_lyapunov(&job, &mut rk4, init, step, 60, 0.25)
+            .ok()
+            .filter(|v| v.is_finite())
     }
 
     /// Computes and caches Grassberger-Procaccia `(C(ε), D₂)` invariants via zero-alloc in-place sorting.
@@ -100,7 +121,7 @@ impl AttractorPlotter {
         let key = (self.flow_config_hash(), self.step_count / 25);
         if self.invariants_cache.corr_key != Some(key) {
             let mut scratch = std::mem::take(&mut self.invariants_cache.scratch);
-            self.fill_or_seed_trajectory(&mut scratch, 600);
+            self.fill_or_seed_trajectory(&mut scratch, 32, 600);
             let c1 = correlation_dimension_in_place(&mut scratch, 2.5);
             let c2 = correlation_dimension_in_place(&mut scratch, 7.5);
             self.invariants_cache.scratch = scratch;
@@ -121,7 +142,8 @@ impl AttractorPlotter {
 
     fn seed_custom_trajectory(&self, out: &mut Vec<Vector3<f64>>, dt: f64, fallback_steps: usize) {
         let job = super::CompiledFlowJob::from_bank(&self.flow_bank);
-        let mut pos = Vector3::new(1.0, 1.0, 1.0);
+        let init = self.configured_initial_vec();
+        let mut pos = init;
         for _ in 0..400 {
             let next = job.rk4_step(pos, dt);
             if !(next.x.is_finite() && next.y.is_finite() && next.z.is_finite()) {
@@ -140,17 +162,22 @@ impl AttractorPlotter {
             }
         }
         if out.is_empty() {
-            out.push(Vector3::new(1.0, 1.0, 1.0));
+            out.push(init);
         }
     }
 
     pub(super) fn collect_or_seed_trajectory(&self, fallback_steps: usize) -> Vec<Vector3<f64>> {
         let mut out = Vec::with_capacity(fallback_steps);
-        self.fill_or_seed_trajectory(&mut out, fallback_steps);
+        self.fill_or_seed_trajectory(&mut out, MAX_CHAOS_LANDMARKS, fallback_steps);
         out
     }
 
-    fn fill_or_seed_trajectory(&self, out: &mut Vec<Vector3<f64>>, fallback_steps: usize) {
+    fn fill_or_seed_trajectory(
+        &self,
+        out: &mut Vec<Vector3<f64>>,
+        min_points: usize,
+        fallback_steps: usize,
+    ) {
         out.clear();
         out.extend(
             self.history
@@ -158,7 +185,7 @@ impl AttractorPlotter {
                 .copied()
                 .filter(|v| v.x.is_finite() && v.y.is_finite() && v.z.is_finite()),
         );
-        if out.len() >= 32 {
+        if out.len() >= min_points {
             return;
         }
         let dt = self.dt.clamp(0.001, 0.05);
@@ -166,11 +193,12 @@ impl AttractorPlotter {
             self.seed_custom_trajectory(out, dt, fallback_steps);
             return;
         }
+        let init = self.configured_initial_vec();
         let mut sim = LorenzBuilder::new()
             .sigma(self.system.sigma)
             .rho(self.system.rho)
             .beta(self.system.beta)
-            .build(LorenzState::new(1.0, 1.0, 1.0));
+            .build(LorenzState::new(init.x, init.y, init.z));
         let mut rk4 = RungeKutta4::new(&Vector3::zeros());
         for _ in 0..400 {
             sim.step_with(&mut rk4, dt);
@@ -187,7 +215,7 @@ impl AttractorPlotter {
             }
         }
         if out.is_empty() {
-            out.push(Vector3::new(1.0, 1.0, 1.0));
+            out.push(init);
         }
     }
 
@@ -200,7 +228,7 @@ impl AttractorPlotter {
             return Err("Cannot export landmarks from non-finite attractor state".to_string());
         }
         let mut traj = Vec::with_capacity(1200);
-        self.fill_or_seed_trajectory(&mut traj, 1200);
+        self.fill_or_seed_trajectory(&mut traj, MAX_CHAOS_LANDMARKS, 1200);
         let pts: Vec<Point3D> = traj
             .into_iter()
             .map(|v| Point3D::new(v.x, v.y, v.z))
@@ -242,6 +270,12 @@ impl AttractorPlotter {
         ui.label(format!("X: {:.2}", state.x));
         ui.label(format!("Y: {:.2}", state.y));
         ui.label(format!("Z: {:.2}", state.z));
+        if self.twin_cfg.enabled {
+            let sep = (self.twin_state.shadow_vec - state).norm();
+            if sep.is_finite() {
+                ui.label(format!("||Δx||: {sep:.2e}"));
+            }
+        }
         if let Some(lyap) = self.current_lyapunov_exponent() {
             let prefix = if self.mode == super::AttractorMode::Lorenz {
                 "Lorenz Lyapunov"

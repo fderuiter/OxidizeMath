@@ -313,20 +313,20 @@
 
 pub mod ctmc;
 pub mod dtmc;
-#[allow(missing_docs)]
+/// Submodule providing `hmm` types, traits, and algorithms.
 pub mod hmm;
 pub mod parrondo;
 pub mod tensor;
-#[allow(missing_docs)]
+/// Submodule providing `time_index` types, traits, and algorithms.
 pub mod time_index;
-#[allow(missing_docs)]
+/// Submodule providing `validation` types, traits, and algorithms.
 pub mod validation;
 
 // Re-export commonly used types
 pub use crate::error::MarkovError;
 pub use ctmc::ContinuousMarkovChain;
 pub use dtmc::{CommunicatingClass, MarkovChain, StateType};
-#[allow(missing_docs)]
+/// Type alias `Result` used across this module.
 pub type Result<T> = std::result::Result<T, MarkovError>;
 pub use hmm::{
     BaumWelchConfig, BaumWelchReport, BaumWelchResult, BaumWelchWorkspace, HiddenMarkovModel,

@@ -186,3 +186,115 @@ fn parses_signature_forms_on_first_filtered_suffix_and_deduplicates() {
     assert_eq!(parsed.len(), 2);
     assert_eq!(total_attempts, 2);
 }
+
+#[test]
+fn detects_unreexported_tier2_engine_error_and_missing_umbrella_from() {
+    let dir = crate::utils::test_utils::create_temp_test_dir("facade_tier2_engine_error_gap");
+    for mod_rel in DOMAIN_INNER_MODS {
+        let p = dir.join(mod_rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, "pub use crate::error;\n").unwrap();
+    }
+    write_minimal_facade_fixture(&dir, true, "");
+    let linalg_dir = dir.join("crates/02_engines/engine_linalg/src");
+    fs::create_dir_all(&linalg_dir).unwrap();
+    fs::write(linalg_dir.join("lib.rs"), "pub mod types;\n").unwrap();
+    fs::write(
+        linalg_dir.join("types.rs"),
+        "pub struct SolverWorkspace;\npub enum EngineKernelError { Singular }\n",
+    )
+    .unwrap();
+
+    let apis = extract_apis_in_dir(&dir);
+    let violations = check_facade_completeness_in_dir(&dir, &apis);
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("Facade error gap") && v.contains("EngineKernelError")),
+        "Expected Tier 2 engine facade error gap, got: {violations:?}"
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("Umbrella conversion gap")
+                && v.contains("AIError")
+                && v.contains("From<EngineKernelError>")),
+        "Expected Tier 2 engine umbrella From gap, got: {violations:?}"
+    );
+    assert!(
+        !violations.iter().any(|v| v.contains("SolverWorkspace")),
+        "Non-error engine structs must not be flagged as errors: {violations:?}"
+    );
+
+    fs::write(
+        dir.join("math_explorer/src/error.rs"),
+        "pub use domain_ai::error::AIError;\npub use engine_linalg::EngineKernelError;\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("crates/domain_ai/src/error.rs"),
+        "pub enum AIError { Invalid, Engine(#[from] EngineKernelError) }\n",
+    )
+    .unwrap();
+    let apis_fixed = extract_apis_in_dir(&dir);
+    let fixed_violations = check_facade_completeness_in_dir(&dir, &apis_fixed);
+    assert!(
+        fixed_violations.is_empty(),
+        "Expected zero violations once Tier 2 error is re-exported and converted, got: {fixed_violations:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn detects_missing_umbrella_from_for_domain_and_cross_crate_errors() {
+    let dir = crate::utils::test_utils::create_temp_test_dir("facade_umbrella_from_gap");
+    for mod_rel in DOMAIN_INNER_MODS {
+        let p = dir.join(mod_rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, "pub use crate::error;\n").unwrap();
+    }
+    write_minimal_facade_fixture(
+        &dir,
+        true,
+        "pub mod sub;\npub struct OptimizationError;\npub fn step() -> Result<(), OptimizationError> { todo!() }",
+    );
+    fs::write(
+        dir.join("crates/domain_ai/src/ai/sub.rs"),
+        "pub enum AttentionKernelError { Diverged }\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("math_explorer/src/error.rs"),
+        "pub use domain_ai::error::AIError;\npub use domain_ai::ai::OptimizationError;\npub use domain_ai::ai::sub::AttentionKernelError;\n",
+    )
+    .unwrap();
+    let conv_dir = dir.join("math_explorer/src/error");
+    fs::create_dir_all(&conv_dir).unwrap();
+    fs::write(
+        conv_dir.join("conversions.rs"),
+        "impl_error_from!(AIError => AI);\n",
+    )
+    .unwrap();
+
+    let apis = extract_apis_in_dir(&dir);
+    let violations = check_facade_completeness_in_dir(&dir, &apis);
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("AIError") && v.contains("From<AttentionKernelError>")),
+        "Expected domain leaf umbrella From gap, got: {violations:?}"
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("AIError") && v.contains("From<OptimizationError>")),
+        "Expected cross-crate signature umbrella From gap, got: {violations:?}"
+    );
+    assert!(
+        violations
+            .iter()
+            .any(|v| v.contains("conversions.rs") && v.contains("From<AttentionKernelError>")),
+        "Expected facade Error From gap in conversions.rs, got: {violations:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}

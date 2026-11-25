@@ -1,3 +1,7 @@
+//! Generic state-dynamics-solver ODE facade (`OdeModel`).
+//!
+//! **Maturity Tier:** `[CERT] Certified` — verified zero-allocation time-stepping contract and SemVer signature lock.
+
 use super::stepper::TimeStepper;
 use super::traits::{OdeSystem, Solver, VectorOperations};
 use verified_engine::Theory;
@@ -7,14 +11,25 @@ use verified_engine::Theory;
 /// This struct implements the Facade pattern, providing a unified interface
 /// to simulate a system defined by `Dynamics` using a `Solver`.
 ///
+/// Initial-value problem wrapper for autonomous/non-autonomous ODE systems $\frac{d\mathbf{y}}{dt} = \mathbf{f}(t, \mathbf{y})$, $\mathbf{y}(t_0) = \mathbf{y}_0$.
+///
+/// Reference: Hairer, Norsett & Wanner (1993), *Solving Ordinary Differential Equations I*, DOI: 10.1007/978-3-540-78862-1; [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
 /// # Generics
 /// * `State` - The state vector type (must implement `VectorOperations`).
 /// * `Dynamics` - The system definition (must implement `OdeSystem<State>`).
 /// * `S` - The numerical solver strategy (must implement `Solver<State>`).
+///
+/// # Stability
+/// Numerical stability is governed by the paired [`Solver`] stability polynomial $R(\lambda \Delta t)$ along the Jacobian spectrum.
+///
+/// # Domain of Validity
+/// Valid for locally Lipschitz right-hand sides $\mathbf{f}(t, \mathbf{y})$ over finite time horizons with finite step sizes $\Delta t$.
 #[derive(Debug, Clone, Theory)]
 #[theory(
     description = "An Ordinary Differential Equation (ODE) model encapsulates a dynamical system's state, its governing differential equations, and a numerical solver to simulate its evolution over time.",
-    citation = "Numerical Recipes: The Art of Scientific Computing (Press et al., 2007)"
+    citation = "Numerical Recipes: The Art of Scientific Computing (Press et al., 2007)",
+    maturity = "Certified"
 )]
 pub struct OdeModel<State, Dynamics, S> {
     /// The current state of the system.

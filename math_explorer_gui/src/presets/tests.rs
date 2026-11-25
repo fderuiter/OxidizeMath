@@ -238,6 +238,9 @@ fn test_morphogenesis_tool_state_envelope_roundtrip() {
         kinetics_mask_rle: None,
         atlas_visible: false,
         atlas_axes: default_morpho_atlas_axes(),
+        advection_enabled: false,
+        inlet_u: 0.10,
+        viscosity: 0.02,
     };
 
     let json = serialize_preset_envelope("Stripes Test", "biology", &config).unwrap();

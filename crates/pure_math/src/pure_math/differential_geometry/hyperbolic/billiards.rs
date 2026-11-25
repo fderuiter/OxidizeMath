@@ -96,7 +96,24 @@ impl Default for HyperbolicBilliardConfig {
     }
 }
 
-/// Pre-allocated twin-particle geodesic billiard engine inside a regular $\{p, q\}$ hyperbolic polygon.
+/// Pre-allocated twin-particle geodesic billiard engine inside a regular $\{p, q\}$ hyperbolic polygon,
+/// advancing intrinsic arc-length flow via $\mathrm{SU}(1,1)$ isometric centering, exact orthogonal
+/// circle-inversion specular reflections, and finite-time Lyapunov divergence:
+/// $$\mathcal{I}(z) = C + \frac{R^2}{\overline{z - C}}, \qquad \lambda(s) = \frac{1}{s}\ln\!\left(\frac{d_{\mathbb{D}}(z_1(s), z_2(s))}{\epsilon_0}\right).$$
+///
+/// Reference: Balazs & Voros (1986), *Phys. Rep.* 143(3), DOI: 10.1016/0370-1573(86)90159-6;
+/// Cannon, Floyd, Kenyon, & Parry (1997), *Flavors of Geometry*, MSRI Publ. 31;
+/// [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Propagates geodesic segments analytically in centered $\mathrm{SU}(1,1)$ coordinates without ODE
+/// time-stepping discretization drift, caps per-step wall reflections to a deterministic finite
+/// bounce budget, and stores trajectories in fixed-capacity ring buffers (`MAX_BILLIARD_HISTORY`).
+///
+/// # Domain of Validity
+/// Requires a hyperbolic Schläfli pair $\{p, q\}$ satisfying $3 \le p, q \le 16$ and
+/// $(p - 2)(q - 2) > 4$, initial position strictly inside the fundamental $\{p, q\}$ polygon,
+/// finite launch angle, perturbation $\epsilon \in \[10^{-10}, 10^{-1}\]$, and step size `ds > 0`.
 ///
 /// # Example
 ///

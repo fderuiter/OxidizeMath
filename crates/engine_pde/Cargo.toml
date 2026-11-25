@@ -4,18 +4,25 @@ version.workspace = true
 edition = "2024"
 
 [features]
-default = ["std"]
-alloc = ["math_commons/alloc", "math_memory/alloc"]
-std = ["alloc", "math_commons/std", "math_memory/std", "verified_engine/std"]
+default = []
+alloc = ["math_commons/alloc", "math_memory/alloc", "math_rng/alloc"]
+serde = ["dep:serde", "math_commons/serde", "math_memory/serde", "math_rng/serde"]
+std = ["alloc", "math_commons/std", "math_memory/std", "math_rng/std", "serde?/std", "verified_engine/std"]
 
 [dependencies]
 math_commons = { path = "../math_commons", default-features = false }
 math_memory = { path = "../00_foundation/math_memory", default-features = false }
+math_rng = { path = "../00_foundation/math_rng", default-features = false }
 rand_core = { workspace = true }
+serde = { workspace = true, optional = true }
 verified_engine = { version = "0.1.0", path = "../verified_engine", default-features = false }
 
 [dev-dependencies]
-oxidize_core = { path = "../oxidize_core" }
+serde_json = { workspace = true, default-features = false, features = ["alloc", "float_roundtrip"] }
+
+[[test]]
+name = "pde_and_spde_verification"
+required-features = ["std"]
 
 [lints]
 workspace = true

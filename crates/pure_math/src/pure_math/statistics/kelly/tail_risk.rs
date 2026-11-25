@@ -7,9 +7,9 @@ use super::portfolio::{
 use crate::error::KellyError;
 use crate::pure_math::statistics::copula::transforms::{fast_norm_cdf, fast_norm_inv};
 use engine_linalg::mat_idx;
+use math_rng::sample_open;
 use nalgebra::DMatrix;
 use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
 
 /// Paired Value-at-Risk (`VaR`) and Conditional Value-at-Risk (`CVaR`) at a single confidence level.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -172,8 +172,24 @@ fn lognormal_var_cvar_at(
     }
 }
 
-/// Computes exact closed-form log-normal wealth `95%` and `99%` `VaR` and `CVaR` dollar losses
-/// for a portfolio with weights `w` over `spec.horizon` years on `spec.bankroll`.
+/// Computes exact closed-form log-normal wealth `95%` and `99%` Value-at-Risk (`VaR`) and
+/// Conditional Value-at-Risk (`CVaR`) dollar losses for portfolio weights $\mathbf{w}$ over
+/// horizon $T$ (`spec.horizon`) on initial bankroll $W_0$ (`spec.bankroll`):
+/// $$\operatorname{VaR}_\alpha = W_0\Bigl(1 - \exp\bigl(\mu_g T + \sigma_p \sqrt{T}\,\Phi^{-1}(1 - \alpha)\bigr)\Bigr), \qquad \operatorname{CVaR}_\alpha = W_0\left(1 - \frac{\exp\bigl(\mu_g T + \tfrac{1}{2}\sigma_p^2 T\bigr)\,\Phi\bigl(\Phi^{-1}(1 - \alpha) - \sigma_p\sqrt{T}\bigr)}{1 - \alpha}\right),$$
+/// where $\mu_g = r + \mathbf{w}^\top(\boldsymbol{\mu} - r\mathbf{1}) - \tfrac{1}{2}\mathbf{w}^\top \Sigma \mathbf{w}$ and $\sigma_p = \sqrt{\mathbf{w}^\top \Sigma \mathbf{w}}$.
+///
+/// Reference: Rockafellar & Uryasev (2000), *J. Risk* 2(3), DOI: 10.21314/JOR.2000.038;
+/// [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Short-circuits deterministic zero-volatility portfolios ($\sigma_p \sqrt{T} \le 10^{-15}$) to
+/// $W_0(1 - e^{\mu_g T})$ to avoid $0/0$ tail-quantile conditioning and clamps quadratic variance
+/// $\mathbf{w}^\top \Sigma \mathbf{w} \ge 0$ against floating-point roundoff.
+///
+/// # Domain of Validity
+/// Requires $N \ge 1$ finite weights and expected returns, symmetric positive-definite $N \times N$
+/// `covariance`, finite `spec.risk_free_rate`, strictly positive `spec.bankroll > 0`, and strictly
+/// positive `spec.horizon > 0`.
 #[verified_engine::verified]
 pub fn parametric_lognormal_tail_risk(
     weights: &[f64],
@@ -202,7 +218,7 @@ pub fn parametric_lognormal_tail_risk(
 
 #[inline]
 fn next_standard_normal(rng: &mut OxidizeRng) -> f64 {
-    let u = ((rng.next_u64() as f64) + 0.5) / ((u64::MAX as f64) + 1.0);
+    let u: f64 = sample_open(rng);
     fast_norm_inv(u)
 }
 
@@ -284,6 +300,36 @@ pub fn simulate_portfolio_tail_risk_into(
     empirical_tail_risk_in_place(out_losses)
 }
 
+/// Simulates `n_paths` correlated portfolio wealth outcomes using `rng`
+/// and returns `95%` and `99%` `VaR` and `CVaR`.
+#[verified_engine::verified]
+pub fn simulated_portfolio_tail_risk_with_rng(
+    weights: &[f64],
+    expected_returns: &[f64],
+    covariance: &DMatrix<f64>,
+    spec: PortfolioHorizonSpec,
+    n_paths: usize,
+    rng: &mut OxidizeRng,
+) -> Result<TailRiskMetrics, KellyError> {
+    if n_paths == 0 {
+        return Err(KellyError::InsufficientData {
+            required: 1,
+            actual: 0,
+        });
+    }
+    let mut losses = vec![0.0; n_paths];
+    let mut ws = PortfolioKellyWorkspace::with_capacity(weights.len().max(1));
+    simulate_portfolio_tail_risk_into(
+        weights,
+        expected_returns,
+        covariance,
+        spec,
+        rng,
+        &mut losses,
+        &mut ws,
+    )
+}
+
 /// Simulates `n_paths` correlated portfolio wealth outcomes from deterministic `seed`
 /// and returns `95%` and `99%` `VaR` and `CVaR`.
 #[verified_engine::verified]
@@ -295,23 +341,14 @@ pub fn simulated_portfolio_tail_risk(
     n_paths: usize,
     seed: u64,
 ) -> Result<TailRiskMetrics, KellyError> {
-    if n_paths == 0 {
-        return Err(KellyError::InsufficientData {
-            required: 1,
-            actual: 0,
-        });
-    }
-    let mut losses = vec![0.0; n_paths];
-    let mut ws = PortfolioKellyWorkspace::with_capacity(weights.len().max(1));
     let mut rng = OxidizeRng::new(seed);
-    simulate_portfolio_tail_risk_into(
+    simulated_portfolio_tail_risk_with_rng(
         weights,
         expected_returns,
         covariance,
         spec,
+        n_paths,
         &mut rng,
-        &mut losses,
-        &mut ws,
     )
 }
 

@@ -1,15 +1,16 @@
 use super::{
-    AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
-    FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError, LinearAlgebraError,
-    MarketPricingError, MarkovError, MatchModelError, MonteCarloError, NumberTheoryError,
-    OptimizationError, OptionPricingError, OuError, PoissonError, QueueingError, StochasticError,
-    Su11HyperbolicError, TdaError, TensorError, TransformError, ZipError,
+    AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
+    EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
+    KnotError, LinalgError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
+    MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError, OuError,
+    PoissonError, QueueingError, StochasticError, Su11HyperbolicError, TdaError, TensorError,
+    TransformError, ZipError,
 };
-use diagnostics::{Diagnostic, Severity};
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_commons::error::{
-    EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
+    ArenaError, EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, ParseError,
+    ShaderEmitError,
 };
-use std::collections::HashMap;
 use thiserror::Error;
 
 /// Extensible crate-level umbrella error for `pure_math` algorithms and foundational math errors.
@@ -67,9 +68,15 @@ pub enum PureMathError {
     /// Numerical root-finding and analysis error.
     #[error("{0}")]
     Analysis(#[from] AnalysisError),
+    /// Artin braid group error.
+    #[error("{0}")]
+    Braid(#[from] BraidError),
     /// Elliptic curve error.
     #[error("{0}")]
     EllipticCurve(#[from] EllipticCurveError),
+    /// Knot theory and skein invariant error.
+    #[error("{0}")]
+    Knot(#[from] KnotError),
     /// Unified numerical evolution engine error.
     #[error("{0}")]
     Evolution(#[from] EvolutionError),
@@ -136,6 +143,34 @@ impl From<ParseError> for PureMathError {
     }
 }
 
+impl From<FitError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: FitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<ArenaError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: ArenaError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<LinalgError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: LinalgError) -> Self {
+        Self::LinearAlgebra(LinearAlgebraError::from(err))
+    }
+}
+
+impl From<ShaderEmitError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: ShaderEmitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
 impl From<String> for PureMathError {
     #[verified_engine::verified]
     fn from(reason: String) -> Self {
@@ -162,7 +197,9 @@ impl PureMathError {
             Self::Zip(err) => err,
             Self::Ambs(err) => err,
             Self::Analysis(err) => err,
+            Self::Braid(err) => err,
             Self::EllipticCurve(err) => err,
+            Self::Knot(err) => err,
             Self::Evolution(err) => err,
             Self::Fractran(err) => err,
             Self::GraphTheory(err) => err,
@@ -188,9 +225,8 @@ impl Diagnostic for PureMathError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = self.as_diagnostic().metadata();
-        map.insert("umbrella_type".to_string(), "PureMathError".to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        self.as_diagnostic().visit_fields(visitor);
+        visitor.record_str("umbrella_type", "PureMathError");
     }
 }

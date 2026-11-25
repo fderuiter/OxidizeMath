@@ -163,9 +163,49 @@ fn test_monte_carlo_workspace_zero_allocations_under_verified_allocator() {
         let e7 = ws
             .estimate_qmc_halton(128, &mut rng, |u| u[0].sin() + u[3].cos())
             .unwrap();
-        e1.mean + e2.mean + e3.mean + e4.mean + e5.mean + e6.mean + e7.mean
+        let e8 = ws
+            .estimate_qmc_niederreiter(128, &mut rng, |u| u[0].sin() + u[3].cos())
+            .unwrap();
+        e1.mean + e2.mean + e3.mean + e4.mean + e5.mean + e6.mean + e7.mean + e8.mean
     });
     assert!(results.is_finite());
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_64d_sobol_halton_and_niederreiter_qmc_estimators() {
+    let mut ws = MonteCarloWorkspace::new(1024, 64).expect("64D workspace");
+    let mut rng = OxidizeRng::new(2026);
+    let exact = 32.0; // E[sum_{j=0..64} U_j] = 64 * 0.5 = 32.0
+
+    let (sobol_est, _) = VerifiedEngine::run_verified(|| {
+        ws.estimate_qmc_sobol(1024, &mut rng, |u| u.iter().sum::<f64>())
+            .expect("64D Sobol QMC")
+    });
+    let (nied_est, _) = VerifiedEngine::run_verified(|| {
+        ws.estimate_qmc_niederreiter(1024, &mut rng, |u| u.iter().sum::<f64>())
+            .expect("64D Niederreiter QMC")
+    });
+    let (halton_est, _) = VerifiedEngine::run_verified(|| {
+        ws.estimate_qmc_halton(1024, &mut rng, |u| u.iter().sum::<f64>())
+            .expect("64D Halton QMC")
+    });
+
+    assert!(
+        (sobol_est.mean - exact).abs() < 0.15,
+        "sobol={}",
+        sobol_est.mean
+    );
+    assert!(
+        (nied_est.mean - exact).abs() < 0.15,
+        "nied={}",
+        nied_est.mean
+    );
+    assert!(
+        (halton_est.mean - exact).abs() < 0.15,
+        "halton={}",
+        halton_est.mean
+    );
 }
 
 // [cite:clinical_trials_statistics]

@@ -1,5 +1,6 @@
 //! Unified feature-gated error re-exports and facade umbrella error across all OxidizeMath domains.
 
+pub use engine_linalg::LinalgError;
 pub use math_commons::error::{
     EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
     ShaderEmitError,
@@ -36,11 +37,12 @@ pub use domain_physics::error::{
 
 #[cfg(feature = "pure_math")]
 pub use pure_math::error::{
-    AmbsError, AnalysisError, CopulaError, EllipticCurveError, EloError, EvolutionError,
-    FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError, LinearAlgebraError,
-    MarketPricingError, MarkovError, MatchModelError, MonteCarloError, NumberTheoryError,
-    OptimizationError, OptionPricingError, OuError, PoissonError, PureMathError, QueueingError,
-    StochasticError, Su11HyperbolicError, TdaError, TensorError, TransformError, ZipError,
+    AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
+    EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
+    KnotError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
+    MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError, OuError,
+    PoissonError, PureMathError, QueueingError, StochasticError, Su11HyperbolicError, TdaError,
+    TensorError, TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -60,6 +62,8 @@ pub enum Error {
     Glsl(GlslError),
     /// AST lexer error.
     Lex(LexError),
+    /// Foundational `#![no_std]` linear algebra engine error.
+    Linalg(LinalgError),
     /// Foundational mathematical kernel error.
     Math(MathError),
     /// Foundational `math_commons` umbrella error.
@@ -182,6 +186,9 @@ pub enum Error {
     /// Numerical root-finding and analysis error.
     #[cfg(feature = "pure_math")]
     Analysis(AnalysisError),
+    /// Artin braid group error.
+    #[cfg(feature = "pure_math")]
+    Braid(BraidError),
     /// Copula modeling error.
     #[cfg(feature = "pure_math")]
     Copula(CopulaError),
@@ -191,6 +198,9 @@ pub enum Error {
     /// Sports Elo rating error.
     #[cfg(feature = "pure_math")]
     Elo(EloError),
+    /// Knot theory and skein invariant error.
+    #[cfg(feature = "pure_math")]
+    Knot(KnotError),
     /// Unified numerical evolution engine error.
     #[cfg(feature = "pure_math")]
     Evolution(EvolutionError),

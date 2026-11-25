@@ -7,7 +7,7 @@ use engine_diffeq::{
     LangevinSystem, MilsteinSolver, SdeSystem, Sriw1Solver, StochasticCalculus, ssa_sample_event,
 };
 use math_memory::OwnedByteArena;
-use oxidize_core::rng::OxidizeRng;
+use math_rng::OxidizeRng;
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
 

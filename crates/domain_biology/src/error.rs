@@ -1,15 +1,14 @@
-use diagnostics::{Diagnostic, Severity};
-use std::collections::HashMap;
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use thiserror::Error;
 
+/// Biophysical parameter validation errors for Hodgkin-Huxley membrane conductance models.
 #[derive(Error, Debug, PartialEq)]
-#[allow(missing_docs)]
 pub enum HodgkinHuxleyError {
+    /// Ion-channel gating variable $x \in \{n, m, h\}$ fell outside the unit interval $[0, 1]$.
     #[error("Invalid gating variable value: {0} (must be between 0 and 1)")]
-    #[allow(missing_docs)]
     InvalidGatingVariable(f64),
+    /// Maximal ionic or leak conductance $g$ was negative.
     #[error("Invalid conductance value: {0} (must be non-negative)")]
-    #[allow(missing_docs)]
     InvalidConductance(f64),
 }
 
@@ -19,11 +18,9 @@ impl Diagnostic for HodgkinHuxleyError {
         Severity::Error
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "HodgkinHuxleyError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "HodgkinHuxleyError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -89,11 +86,9 @@ impl Diagnostic for BotanicalError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "BotanicalError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "BotanicalError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -104,11 +99,9 @@ impl Diagnostic for KineticsError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "KineticsError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "KineticsError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -119,19 +112,12 @@ impl Diagnostic for ReactionDiffusionError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert(
-            "error_type".to_string(),
-            "ReactionDiffusionError".to_string(),
-        );
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            for (k, v) in math_err.metadata() {
-                map.entry(k).or_insert(v);
-            }
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "ReactionDiffusionError");
+        visitor.record_display("description", self);
     }
 }
 

@@ -1,5 +1,5 @@
 use crate::error::MarkovError;
-#[allow(missing_docs)]
+/// Type alias `Result` used across this module.
 pub type Result<T> = std::result::Result<T, MarkovError>;
 use nalgebra::{DMatrix, DVector, RealField};
 use num_traits::ToPrimitive;
@@ -60,6 +60,15 @@ use verified_engine::Theory;
     description = "A Hidden Markov Model (HMM) is a statistical Markov model in which the system being modeled is assumed to be a Markov process with unobservable (hidden) states.",
     citation = "A tutorial on hidden Markov models and selected applications in speech recognition (Rabiner, 1989)"
 )]
+/// Discrete-time Hidden Markov Model $\lambda = (\boldsymbol{\pi}, A, B)$ with joint likelihood $P(\mathbf{O}, \mathbf{Q} \mid \lambda) = \pi_{q_0} b_{q_0}(o_0) \prod_{t=1}^{T-1} a_{q_{t-1}, q_t} b_{q_t}(o_t)$.
+///
+/// Reference: Rabiner (1989), DOI: 10.1109/5.18626; [`docs/math_specs/pure_math.md`](../../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Forward-backward and Viterbi inference normalize per-step scaling factors (or operate in log-probability space) to prevent floating-point underflow on long observation sequences.
+///
+/// # Domain of Validity
+/// Requires row-stochastic transition matrix $A$, row-stochastic emission matrix $B$, and probability simplex initial vector $\boldsymbol{\pi}$.
 pub struct HiddenMarkovModel<T: RealField + Copy + ToPrimitive> {
     /// Initial state probabilities π.
     pub(crate) initial: DVector<T>,

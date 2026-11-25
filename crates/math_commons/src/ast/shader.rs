@@ -13,6 +13,7 @@ use std::f64::consts::{E, PI, TAU};
 
 /// Errors produced when lowering an [`Expr`] to WGSL or GLSL shader source.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ShaderEmitError {
     /// AST height exceeded [`MAX_EVAL_DEPTH`].
     #[error("Shader transpilation depth limit exceeded (max depth {0})")]
@@ -46,43 +47,40 @@ pub enum ShaderEmitError {
     InvalidIdentifier(String),
 }
 
-impl diagnostics::Diagnostic for ShaderEmitError {
-    fn severity(&self) -> diagnostics::Severity {
-        diagnostics::Severity::Error
+impl math_diagnostics::Diagnostic for ShaderEmitError {
+    fn severity(&self) -> math_diagnostics::Severity {
+        math_diagnostics::Severity::Error
     }
 
-    fn metadata(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::from([
-            ("error_type".to_string(), "ShaderEmitError".to_string()),
-            ("description".to_string(), self.to_string()),
-        ]);
+    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
+        visitor.record_str("error_type", "ShaderEmitError");
+        visitor.record_display("description", self);
         match self {
             Self::RecursionLimitExceeded(max_depth) => {
-                map.insert("max_depth".to_string(), max_depth.to_string());
+                visitor.record_usize("max_depth", *max_depth);
             }
             Self::NodeLimitExceeded(max_nodes) => {
-                map.insert("max_nodes".to_string(), max_nodes.to_string());
+                visitor.record_usize("max_nodes", *max_nodes);
             }
             Self::OutputLimitExceeded(max_bytes) => {
-                map.insert("max_output_bytes".to_string(), max_bytes.to_string());
+                visitor.record_usize("max_output_bytes", *max_bytes);
             }
             Self::WrongArgumentCount {
                 func,
                 expected,
                 found,
             } => {
-                map.insert("function".to_string(), func.as_str().to_string());
-                map.insert("expected_args".to_string(), expected.to_string());
-                map.insert("found_args".to_string(), found.to_string());
+                visitor.record_str("function", func.as_str());
+                visitor.record_usize("expected_args", *expected);
+                visitor.record_usize("found_args", *found);
             }
             Self::NonFiniteLiteral => {
-                map.insert("reason".to_string(), "non_finite_literal".to_string());
+                visitor.record_str("reason", "non_finite_literal");
             }
             Self::InvalidIdentifier(ident) => {
-                map.insert("identifier".to_string(), ident.clone());
+                visitor.record_str("identifier", ident);
             }
         }
-        map
     }
 }
 

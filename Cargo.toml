@@ -1,6 +1,8 @@
 [workspace]
 members = [
+    "crates/00_foundation/math_diagnostics",
     "crates/00_foundation/math_memory",
+    "crates/00_foundation/math_rng",
     "crates/federated_registry",
     "crates/diagnostics",
     "crates/oxidize_core",
@@ -63,13 +65,13 @@ proc-macro2 = { version = "1.0.106", features = ["span-locations"] }
 quadrature = "0.1.2"
 quote = "1.0.45"
 rand = { version = "0.8.6", default-features = false, features = ["std", "alloc"] }
-rand_chacha = { version = "0.3.1", default-features = false, features = ["std"] }
+rand_chacha = { version = "0.3.1", default-features = false }
 rand_core = { version = "0.6.4", default-features = false }
 rand_distr = "0.4.3"
 regex = "1.10"
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
 rustfft = "6.2.0"
-serde = { version = "1.0.228", features = ["derive"] }
+serde = { version = "1.0.228", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.150", features = ["raw_value"] }
 serde-saphyr = "2.1.1"
 statrs = { version = "0.18.0", default-features = false, features = ["rand"] }

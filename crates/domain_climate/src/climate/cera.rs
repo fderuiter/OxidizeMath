@@ -1,5 +1,8 @@
 // [cite:cera_framework]
-//! This module defines the core CERA framework, integrating the autoencoder and predictor.
+//! Core CERA climate-emulation framework integrating the autoencoder and downstream predictor.
+//!
+//! **Maturity Tier:** `[EXP] Experimental` — exploratory research prototype; fluid API evolution
+//! permitted prior to deterministic `theory_verification!` and zero-allocation qualification.
 
 use crate::climate::autoencoder::{Autoencoder, AutoencoderModel};
 use crate::climate::predictor::{Predictor, PredictorModel};
@@ -9,11 +12,24 @@ use nalgebra::{DMatrix, Dyn, Matrix, Storage};
 pub use crate::climate::config::CeraConfig;
 use verified_engine::Theory;
 
-/// The main CERA model.
+/// Climate-Emulation and Response Architecture (`Experimental` prototype tier) minimizing
+/// $\mathcal{L} = \mathcal{L}_{\mathrm{rec}} + \lambda_{\mathrm{pred}}\mathcal{L}_{\mathrm{pred}} + \lambda_{\mathrm{emd}} W_1(P_s, P_t)$.
+///
+/// Reference: Rasp, Pritchard, & Gentine (2018), DOI: 10.1073/pnas.1810286115;
+/// [domain_climate specification](../../../../docs/math_specs/domain_climate.md).
+///
+/// # Stability
+/// 1D Wasserstein ($W_1$) alignment has bounded subgradients $|\partial W_1 / \partial z_i| \le 1 / B$
+/// across finite batch activations when $\eta > 0$ and $\lambda_{\mathrm{pred}}, \lambda_{\mathrm{emd}} \ge 0$.
+///
+/// # Domain of Validity
+/// Requires `aligned_channels <= latent_channels`, `in_channels > 0`, `num_levels > 0`, `output_size > 0`,
+/// and finite `f32` vertical atmospheric profiles.
 #[derive(Theory)]
 #[theory(
     description = "CERA is a Climate-Emulation and Response Architecture that combines autoencoders with a predictive downstream model to map local atmospheric states to global cloud properties under varying climate forcing.",
-    citation = "Climate-Emulation and Response Architecture (CERA) paper"
+    citation = "Climate-Emulation and Response Architecture (CERA) paper",
+    maturity = "Experimental"
 )]
 pub struct Cera<A: AutoencoderModel, P: PredictorModel> {
     /// The autoencoder component.

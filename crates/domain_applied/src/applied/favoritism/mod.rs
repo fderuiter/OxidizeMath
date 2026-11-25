@@ -1,5 +1,7 @@
 //! # Favoritism
 //!
+//! **Maturity Tier:** `[EXP] Experimental` — satirical socio-mathematical model; fluid API evolution permitted.
+//!
 //! A **satirical** yet mathematically rigorous framework for quantifying parental affection.
 //!
 //! This module implements the "Unified Favoritism Theory" (UFT), which postulates that
@@ -79,13 +81,13 @@
 //! println!("Your Favoritism Score: {:.2}", score);
 //! ```
 
-#[allow(missing_docs)]
+/// Argmax ranking helper selecting the highest-scoring [`favorite_child::Child`].
 pub mod favorite_child;
-#[allow(missing_docs)]
+/// Top-level quadrature-backed favoritism score evaluators.
 pub mod scoring;
-#[allow(missing_docs)]
+/// Composable numerator and denominator [`strategies::ScoringStrategy`] factors and [`strategies::UnifiedFavoritismModel`].
 pub mod strategies;
-#[allow(missing_docs)]
+/// Parameter structs configuring proximity, gifts, personality, social, and sibling inputs.
 pub mod types;
 
 pub use scoring::{

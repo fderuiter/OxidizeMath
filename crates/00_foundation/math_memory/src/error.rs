@@ -5,6 +5,7 @@ use core::fmt;
 
 /// Fallible error returned when carving or rewinding byte-arena scratch regions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ArenaError {
     /// Requested element count multiplied by element size (or alignment padding) overflowed `usize`.
     CapacityOverflow {
@@ -66,3 +67,41 @@ impl fmt::Display for ArenaError {
 }
 
 impl core::error::Error for ArenaError {}
+
+impl math_diagnostics::Diagnostic for ArenaError {
+    fn severity(&self) -> math_diagnostics::Severity {
+        math_diagnostics::Severity::Error
+    }
+
+    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
+        visitor.record_str("error_type", "ArenaError");
+        visitor.record_display("description", self);
+        match *self {
+            Self::CapacityOverflow { elem_size, count } => {
+                visitor.record_str("code", "ARENA-001");
+                visitor.record_usize("elem_size", elem_size);
+                visitor.record_usize("count", count);
+            }
+            Self::InsufficientCapacity {
+                requested,
+                available,
+            } => {
+                visitor.record_str("code", "ARENA-002");
+                visitor.record_usize("requested", requested);
+                visitor.record_usize("available", available);
+            }
+            Self::InvalidAlignment { align } => {
+                visitor.record_str("code", "ARENA-003");
+                visitor.record_usize("align", align);
+            }
+            Self::InvalidCheckpoint {
+                checkpoint_offset,
+                current_offset,
+            } => {
+                visitor.record_str("code", "ARENA-004");
+                visitor.record_usize("checkpoint_offset", checkpoint_offset);
+                visitor.record_usize("current_offset", current_offset);
+            }
+        }
+    }
+}

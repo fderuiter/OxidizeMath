@@ -8,12 +8,16 @@ license = "MIT OR Apache-2.0"
 [features]
 default = []
 alloc = ["math_memory/alloc"]
-std = ["alloc", "math_memory/std"]
+serde = ["dep:serde", "math_diagnostics/serde", "math_memory/serde"]
+std = ["alloc", "math_diagnostics/std", "math_memory/std", "serde?/std"]
 
 [dependencies]
+math_diagnostics = { path = "../../00_foundation/math_diagnostics", default-features = false }
 math_memory = { path = "../../00_foundation/math_memory", default-features = false }
+serde = { workspace = true, optional = true }
 
 [dev-dependencies]
+serde_json = { workspace = true, default-features = false, features = ["alloc", "float_roundtrip"] }
 verified_engine = { path = "../../verified_engine" }
 
 [lints]

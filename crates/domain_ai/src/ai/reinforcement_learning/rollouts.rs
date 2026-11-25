@@ -8,8 +8,7 @@ use super::types::MarkovDecisionProcess;
 use super::{GridState, Move};
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_commons::primitives::UnitInterval;
-use oxidize_core::rng::OxidizeRng;
-use rand::RngCore;
+use oxidize_core::rng::{OxidizeRng, sample_bounded_usize, sample_closed_open};
 
 /// Telemetry emitted by a single zero-allocation RL step on [`SculptedGridMdp`].
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -77,8 +76,7 @@ pub fn compute_softmax_pg_delta(
 
 #[inline]
 fn next_uniform_f64(rng: &mut OxidizeRng) -> f64 {
-    let bits = rng.next_u64() >> 11;
-    (bits as f64) * (1.0 / ((1_u64 << 53) as f64))
+    sample_closed_open(rng)
 }
 
 #[inline]
@@ -98,7 +96,7 @@ fn ensure_active_episode(mdp: &SculptedGridMdp, ws: &mut DenseRlWorkspace) {
 #[inline]
 fn select_eps_greedy_action_index(q_row: [f64; 4], epsilon: f64, rng: &mut OxidizeRng) -> usize {
     if next_uniform_f64(rng) < epsilon {
-        (rng.next_u32() as usize) & 3
+        sample_bounded_usize(rng, 4)
     } else {
         let mut best = 0usize;
         for k in 1..4 {

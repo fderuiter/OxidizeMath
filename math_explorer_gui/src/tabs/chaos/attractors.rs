@@ -25,6 +25,10 @@ pub use counterfactual::*;
 pub mod flow;
 pub use flow::{default_flow_bank, AttractorMode, CompiledFlowJob, DEFAULT_FLOW_EXPRS};
 
+#[path = "attractors/twin.rs"]
+pub mod twin;
+pub use twin::{TwinConfig, TwinRunnerState};
+
 #[path = "attractors/dataflow.rs"]
 mod dataflow;
 #[path = "attractors/invariants.rs"]
@@ -41,6 +45,9 @@ mod theory;
 #[path = "attractors/timeline.rs"]
 mod timeline;
 
+#[path = "attractors/divergence_plot.rs"]
+mod divergence_plot;
+
 #[path = "attractors/ui.rs"]
 mod ui;
 
@@ -56,6 +63,8 @@ pub struct AttractorPlotter {
     pub(crate) mode: AttractorMode,
     pub(crate) flow_bank: CoupledExpressionBank,
     pub(crate) system: LorenzSystem,
+    pub(crate) twin_cfg: TwinConfig,
+    pub(crate) twin_state: TwinRunnerState,
     pub(crate) execution_state: SolverExecutionState,
     pub(crate) step_count: usize,
     pub(crate) simulation_speed: usize,
@@ -66,6 +75,7 @@ pub struct AttractorPlotter {
     pub(crate) camera: Camera3D,
     pub(crate) scene_builder: Scene3DBuilder,
     pub(crate) trajectory_scratch: Vec<Point3<f64>>,
+    pub(crate) twin_scratch: Vec<Point3<f64>>,
     pub(crate) params: Arc<std::sync::RwLock<AttractorSharedParams>>,
     pub(crate) worker: BackgroundWorker<AttractorRunner>,
     pub show_annotations: bool,
@@ -82,8 +92,9 @@ pub struct AttractorPlotter {
 
 impl Default for AttractorPlotter {
     fn default() -> Self {
-        let initial_state = LorenzState::new(1.0, 1.0, 1.0);
-        let system = LorenzBuilder::new().build(initial_state);
+        let twin = TwinConfig::default();
+        let init = twin.initial_state;
+        let system = LorenzBuilder::new().build(LorenzState::new(init.x, init.y, init.z));
         let flow_bank = default_flow_bank();
         let custom_flow = Some(Arc::new(CompiledFlowJob::from_bank(&flow_bank)));
         let params = Arc::new(std::sync::RwLock::new(AttractorSharedParams {
@@ -95,6 +106,7 @@ impl Default for AttractorPlotter {
             max_points: 2000,
             mode: AttractorMode::Lorenz,
             custom_flow,
+            twin,
             sim_bus: None,
         }));
         let runner = AttractorRunner::from_params(Arc::clone(&params));
@@ -104,6 +116,8 @@ impl Default for AttractorPlotter {
             mode: AttractorMode::Lorenz,
             flow_bank,
             system,
+            twin_cfg: twin,
+            twin_state: TwinRunnerState::from_config(twin, 2000),
             execution_state: SolverExecutionState::Ready,
             step_count: 0,
             simulation_speed: 5,
@@ -114,6 +128,7 @@ impl Default for AttractorPlotter {
             camera,
             scene_builder: Scene3DBuilder::new(camera),
             trajectory_scratch: Vec::with_capacity(2000),
+            twin_scratch: Vec::new(),
             params,
             worker,
             show_annotations: true,
@@ -123,7 +138,7 @@ impl Default for AttractorPlotter {
             twin: None,
             branch_engine: crate::framework::CounterfactualBranchEngine::default(),
             latest_sonification: crate::audio::mappings::attractor_frame(
-                [1.0, 1.0, 1.0],
+                [init.x, init.y, init.z],
                 [0.0, 26.0, -1.67],
                 false,
             ),
@@ -151,6 +166,9 @@ impl AttractorPlotter {
     #[must_use]
     pub fn is_finite_state(&self) -> bool {
         let v = self.system.state.vec;
+        let sv = self.twin_state.shadow_vec;
+        let shadow_ok =
+            !self.twin_cfg.enabled || (sv.x.is_finite() && sv.y.is_finite() && sv.z.is_finite());
         let lorenz_ok = self.mode != AttractorMode::Lorenz
             || (self.system.sigma.is_finite()
                 && self.system.rho.is_finite()
@@ -158,6 +176,8 @@ impl AttractorPlotter {
         v.x.is_finite()
             && v.y.is_finite()
             && v.z.is_finite()
+            && shadow_ok
+            && self.twin_cfg.is_finite()
             && lorenz_ok
             && self.dt.is_finite()
             && self.tube_radius.is_finite()
@@ -188,6 +208,7 @@ impl AttractorPlotter {
         p.max_points = self.max_points;
         p.mode = self.mode;
         p.custom_flow = Some(job);
+        p.twin = self.twin_cfg;
     }
 
     pub fn on_slider_changed(&mut self) {
@@ -198,7 +219,8 @@ impl AttractorPlotter {
     }
 
     pub fn reset(&mut self) {
-        let initial_state = LorenzState::new(1.0, 1.0, 1.0);
+        self.twin_cfg = self.twin_cfg.sanitized();
+        let init = self.twin_cfg.initial_state;
         let sigma = if self.system.sigma.is_finite() {
             self.system.sigma
         } else {
@@ -222,11 +244,13 @@ impl AttractorPlotter {
             .sigma(sigma)
             .rho(rho)
             .beta(beta)
-            .build(initial_state);
+            .build(LorenzState::new(init.x, init.y, init.z));
         self.history.clear();
+        self.twin_state.reset(self.twin_cfg, self.max_points);
         self.step_count = 0;
         self.twin = None;
         self.branch_engine.clear();
+        self.bus_cache = dataflow::AttractorBusCache::default();
         self.execution_state = SolverExecutionState::Ready;
         self.invariants_cache.invalidate();
         self.sync_shared_params();
@@ -269,6 +293,10 @@ impl AttractorPlotter {
                 {
                     self.history = data.history.clone();
                     self.system.state.vec = data.current_vec;
+                    self.twin_state.twin_history = data.twin_history.clone();
+                    self.twin_state.shadow_vec = data.shadow_vec;
+                    self.twin_state.divergence_history = data.divergence_history.clone();
+                    self.twin_state.enabled = data.twin_enabled;
                     self.step_count = data.step_count;
                     self.twin = data.twin.clone();
                     if matches!(data.execution_state, SolverExecutionState::Diverged { .. })
@@ -311,6 +339,11 @@ impl InteractiveTool for AttractorPlotter {
     }
     fn domain(&self) -> &'static str {
         "chaos"
+    }
+
+    fn set_suspended(&mut self, suspended: bool) {
+        self.worker.set_suspended(suspended);
+        self.atlas.set_suspended(suspended);
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
@@ -419,6 +452,7 @@ impl InteractiveTool for AttractorPlotter {
 
 #[path = "attractors/preset.rs"]
 mod preset;
+pub use preset::PRESET_3D_ATTRACTOR_TWIN;
 
 #[cfg(test)]
 #[path = "attractors/attractor_tests.rs"]
@@ -439,3 +473,7 @@ mod custom_flow_tests;
 #[cfg(test)]
 #[path = "attractors/export_tests.rs"]
 mod export_tests;
+
+#[cfg(test)]
+#[path = "attractors/twin_tests.rs"]
+mod twin_tests;

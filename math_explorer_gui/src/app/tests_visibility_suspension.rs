@@ -1,0 +1,338 @@
+//! Integration tests for viewport visibility suspension, tool switching suspension,
+//! logical `SimWorkerState::Running` session preservation, and `MorphogenesisTab::default` deduplication.
+
+#[cfg(feature = "physics")]
+use crate::app::domain_bar;
+#[cfg(feature = "physics")]
+use crate::app::state::AppState;
+use crate::app::{MathExplorerApp, SplitLayoutMode, ViewportLayout};
+use crate::async_sim::atlas::ParameterAtlasController;
+#[cfg(all(feature = "biology", feature = "physics"))]
+use crate::tabs::morphogenesis::MorphogenesisTab;
+#[cfg(any(feature = "physics", feature = "pure_math"))]
+use crate::tabs::ExplorerTab;
+#[cfg(feature = "physics")]
+use eframe::egui;
+
+#[test]
+fn core_only_app_default_and_legacy_split_mode_sync_visibility() {
+    let mut app = MathExplorerApp::default();
+    assert_eq!(app.active_primary_tab_index(), 0);
+    app.split_layout_mode = SplitLayoutMode::Horizontal;
+    assert_eq!(
+        app.resolve_active_viewport_layout(),
+        ViewportLayout::SplitHorizontal
+    );
+    assert_eq!(app.viewport_layout, ViewportLayout::SplitHorizontal);
+
+    let mut atlas = ParameterAtlasController::new(vec![("a", "b")]);
+    assert!(!atlas.is_suspended());
+    atlas.set_suspended(true);
+    assert!(atlas.is_suspended());
+    atlas.set_suspended(false);
+    assert!(!atlas.is_suspended());
+}
+
+#[cfg(feature = "physics")]
+fn find_tab_index(app: &MathExplorerApp, tab_name: &str) -> usize {
+    app.tabs
+        .iter()
+        .position(|t| t.name() == tab_name)
+        .unwrap_or_else(|| panic!("Expected tab '{tab_name}' in MathExplorerApp::tabs"))
+}
+
+#[cfg(feature = "physics")]
+fn load_tab_with_running_active_tool(tab: &mut dyn ExplorerTab) {
+    let active_key = tab
+        .framework()
+        .and_then(|fw| fw.active_tool.as_ref())
+        .map(|t| t.name().to_string())
+        .expect("Expected active tool on framework tab");
+    let base = tab.save_state().expect("Framework tab should save JSON");
+    let mut root: serde_json::Value = serde_json::from_str(&base).unwrap();
+    let tool_entry = &mut root["tool_states"][&active_key];
+    if let Some(obj) = tool_entry.as_object_mut() {
+        obj.insert(
+            "state".to_string(),
+            serde_json::Value::String("Running".to_string()),
+        );
+    } else if let Some(s) = tool_entry.as_str() {
+        let mut inner: serde_json::Value = serde_json::from_str(s).unwrap();
+        inner["state"] = serde_json::Value::String("Running".to_string());
+        *tool_entry = serde_json::Value::String(serde_json::to_string(&inner).unwrap());
+    }
+    tab.load_state(&serde_json::to_string(&root).unwrap());
+}
+
+#[cfg(all(feature = "biology", feature = "physics"))]
+#[test]
+fn default_app_suspends_hidden_tabs_and_deduplicates_morphogenesis_init() {
+    let morph = MorphogenesisTab::default();
+    assert_eq!(
+        morph.framework.active_tool.as_ref().map(|t| t.name()),
+        Some("Turing Morphogenesis")
+    );
+    let saved_json = morph
+        .framework
+        .save_state()
+        .expect("MorphogenesisTab::default should serialize framework state");
+    assert!(
+        !saved_json.contains("Lenia Continuous CA"),
+        "MorphogenesisTab::default must reuse initial MorphogenesisTool without stashing Lenia in saved_tool_states: {saved_json}"
+    );
+
+    let app = MathExplorerApp::default();
+    assert_eq!(app.active_primary_tab_index(), 0);
+
+    let mri_idx = find_tab_index(&app, "MRI Physics");
+    assert_ne!(mri_idx, 0);
+    assert!(
+        app.tabs[mri_idx].framework().unwrap().is_suspended(),
+        "Non-primary tabs must start suspended in MathExplorerApp::default()"
+    );
+    if let Some(primary_fw) = app.tabs[0].framework() {
+        assert!(
+            !primary_fw.is_suspended(),
+            "Primary visible tab must start unsuspended"
+        );
+    }
+}
+
+#[cfg(feature = "physics")]
+#[test]
+fn tab_switch_suspends_running_worker_preserves_json_state_and_resumes_on_return() {
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let solid_idx = find_tab_index(&app, "Solid State Physics");
+
+    domain_bar::select_tab(&mut app, &ctx, solid_idx);
+    assert!(!app.tabs[solid_idx].framework().unwrap().is_suspended());
+    load_tab_with_running_active_tool(app.tabs[solid_idx].as_mut());
+    assert!(app.tabs[solid_idx]
+        .save_state()
+        .unwrap()
+        .contains("Running"));
+
+    // Switch away to tab 0: hidden Solid State tab suspends immediately while preserving Running in JSON.
+    domain_bar::select_tab(&mut app, &ctx, 0);
+    assert!(app.tabs[solid_idx].framework().unwrap().is_suspended());
+    let saved_while_hidden = app.save_state_to_json();
+    assert!(
+        saved_while_hidden.contains("Running"),
+        "Hidden suspended tab must preserve logical Running state in serialized session JSON"
+    );
+
+    // Restoring that session JSON via AppState::apply keeps hidden tabs suspended while retaining Running.
+    let parsed: AppState = serde_json::from_str(&saved_while_hidden).expect("Valid AppState JSON");
+    let mut restored_app = MathExplorerApp::default();
+    parsed.apply(&mut restored_app);
+    assert!(restored_app.tabs[solid_idx]
+        .framework()
+        .unwrap()
+        .is_suspended());
+    let re_saved = restored_app.save_state_to_json();
+    assert!(
+        re_saved.contains("Running"),
+        "AppState::apply on hidden tab must preserve Running metadata without unsuspending"
+    );
+
+    // Switching back to Solid State unsuspends it automatically and preserves Running state.
+    domain_bar::select_tab(&mut restored_app, &ctx, solid_idx);
+    assert!(!restored_app.tabs[solid_idx]
+        .framework()
+        .unwrap()
+        .is_suspended());
+    assert!(restored_app.tabs[solid_idx]
+        .save_state()
+        .unwrap()
+        .contains("Running"));
+}
+
+#[cfg(feature = "physics")]
+#[test]
+fn tool_switch_stashes_running_state_and_respects_framework_suspension() {
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let mri_idx = find_tab_index(&app, "MRI Physics");
+    domain_bar::select_tab(&mut app, &ctx, mri_idx);
+
+    assert!(app.tabs[mri_idx].select_tool_by_name("MriTool"));
+    load_tab_with_running_active_tool(app.tabs[mri_idx].as_mut());
+    assert!(!app.tabs[mri_idx].framework().unwrap().is_suspended());
+
+    // Switch to another tool in the same visible tab: outgoing tool state stays Running in JSON,
+    // and returning to MriTool restores Running on the visible framework.
+    app.tabs[mri_idx].framework_mut().unwrap().select_tool(1);
+    assert!(!app.tabs[mri_idx].framework().unwrap().is_suspended());
+    assert!(app.tabs[mri_idx].save_state().unwrap().contains("Running"));
+    assert!(app.tabs[mri_idx].select_tool_by_name("MriTool"));
+    assert!(app.tabs[mri_idx].save_state().unwrap().contains("Running"));
+}
+
+#[cfg(all(feature = "biology", feature = "physics"))]
+#[test]
+fn multi_pane_layouts_and_swap_panes_keep_only_visible_panes_active() {
+    let mut app = MathExplorerApp::default();
+    let mri_idx = find_tab_index(&app, "MRI Physics");
+    let morph_idx = find_tab_index(&app, "Morphogenesis");
+    let quantum_idx = find_tab_index(&app, "Quantum Mechanics");
+    let chaos_idx = find_tab_index(&app, "Chaos Theory");
+
+    app.set_layout(ViewportLayout::QuadGrid);
+    app.set_pane_tab(0, mri_idx);
+    app.set_pane_tab(1, morph_idx);
+    app.set_pane_tab(2, quantum_idx);
+    app.set_pane_tab(3, chaos_idx);
+    for pane in 1..=3 {
+        let _ = app.pane_tab_mut(pane);
+    }
+    app.sync_viewport_visibility();
+
+    for (idx, tab) in app.tabs.iter().enumerate() {
+        if let Some(fw) = tab.framework() {
+            assert_eq!(
+                fw.is_suspended(),
+                idx != mri_idx,
+                "Only active_primary_tab_index ({mri_idx}) in app.tabs may be unsuspended (idx={idx})"
+            );
+        }
+    }
+    for pane in 1..=3 {
+        let slot_tab = &app
+            .pane_slots
+            .slot(pane)
+            .unwrap()
+            .active
+            .as_ref()
+            .unwrap()
+            .1;
+        assert!(!slot_tab.framework().unwrap().is_suspended());
+    }
+
+    // Start MRI in Pane 0, then swap Pane 0 <-> Pane 1 in SplitHorizontal.
+    app.set_layout(ViewportLayout::SplitHorizontal);
+    assert!(app.pane_tab_mut(0).unwrap().select_tool_by_name("MriTool"));
+    load_tab_with_running_active_tool(app.pane_tab_mut(0).unwrap().as_mut());
+    app.swap_panes();
+    assert_eq!(app.active_primary_tab_index(), morph_idx);
+    assert!(app.tabs[mri_idx].framework().unwrap().is_suspended());
+
+    let (_, ref pane1_tab) = app.pane_slots.slot(1).unwrap().active.as_ref().unwrap();
+    assert_eq!(pane1_tab.name(), "MRI Physics");
+    assert!(!pane1_tab.framework().unwrap().is_suspended());
+    assert!(pane1_tab.save_state().unwrap().contains("Running"));
+
+    // Collapsing to Single leaves only Pane 0 unsuspended.
+    app.set_layout(ViewportLayout::Single);
+    assert!(!app.tabs[morph_idx].framework().unwrap().is_suspended());
+    assert!(app.tabs[mri_idx].framework().unwrap().is_suspended());
+}
+
+#[cfg(feature = "physics")]
+fn render_tab_frame(ctx: &egui::Context, tab: &mut dyn ExplorerTab, domain: &str) {
+    let _ = ctx.run(egui::RawInput::default(), |c| {
+        egui::CentralPanel::default().show(c, |ui| {
+            tab.framework_mut().unwrap().show_inside(ui, domain);
+        });
+    });
+}
+
+#[cfg(feature = "physics")]
+#[test]
+fn suspending_unmuted_framework_silences_audio_within_20ms_and_preserves_unmuted_state() {
+    let ctx = egui::Context::default();
+    let mut app = MathExplorerApp::default();
+    let chaos_idx = find_tab_index(&app, "Chaos Theory");
+    domain_bar::select_tab(&mut app, &ctx, chaos_idx);
+    assert!(app.tabs[chaos_idx].select_tool_by_name("AttractorPlotter"));
+
+    app.tabs[chaos_idx]
+        .framework_mut()
+        .unwrap()
+        .unmute_audio_with_gesture();
+    render_tab_frame(&ctx, app.tabs[chaos_idx].as_mut(), "chaos");
+    let twenty_ms = std::time::Duration::from_millis(20);
+    assert!(
+        app.tabs[chaos_idx]
+            .framework()
+            .unwrap()
+            .audio_controller
+            .current_gain_after_elapsed(twenty_ms)
+            > 0.0
+    );
+
+    // Switching away suspends the framework and ramps audio gain to 0.0 within 20 ms without muting user state.
+    domain_bar::select_tab(&mut app, &ctx, 0);
+    let suspended_fw = app.tabs[chaos_idx].framework().unwrap();
+    assert!(suspended_fw.is_suspended() && !suspended_fw.is_audio_muted());
+    assert_eq!(
+        suspended_fw.audio_controller.last_silence_reason(),
+        crate::audio::AutoSilenceReason::Paused
+    );
+    assert_eq!(
+        suspended_fw
+            .audio_controller
+            .current_gain_after_elapsed(twenty_ms),
+        0.0
+    );
+
+    // Returning to Chaos Theory unsuspends and resumes audible gain on the next rendered frame.
+    domain_bar::select_tab(&mut app, &ctx, chaos_idx);
+    render_tab_frame(&ctx, app.tabs[chaos_idx].as_mut(), "chaos");
+    assert!(
+        app.tabs[chaos_idx]
+            .framework()
+            .unwrap()
+            .audio_controller
+            .current_gain_after_elapsed(twenty_ms)
+            > 0.0
+    );
+}
+
+#[cfg(feature = "pure_math")]
+#[test]
+fn ode_solver_tool_suspends_parameter_atlas_when_framework_suspends() {
+    let mut tab = crate::tabs::analysis::AnalysisTab::default();
+    assert!(tab.select_tool_by_name("ODE Solvers"));
+
+    let ode = tab
+        .framework()
+        .unwrap()
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .as_any()
+        .unwrap()
+        .downcast_ref::<crate::tabs::analysis::ode::OdeSolverTool>()
+        .expect("Expected active ODE Solvers tool");
+    assert!(!ode.atlas.is_suspended());
+
+    tab.set_suspended(true);
+    let ode_suspended = tab
+        .framework()
+        .unwrap()
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .as_any()
+        .unwrap()
+        .downcast_ref::<crate::tabs::analysis::ode::OdeSolverTool>()
+        .unwrap();
+    assert!(
+        ode_suspended.atlas.is_suspended(),
+        "Suspending AnalysisTab must propagate suspension to OdeSolverTool.atlas"
+    );
+
+    tab.set_suspended(false);
+    let ode_resumed = tab
+        .framework()
+        .unwrap()
+        .active_tool
+        .as_ref()
+        .unwrap()
+        .as_any()
+        .unwrap()
+        .downcast_ref::<crate::tabs::analysis::ode::OdeSolverTool>()
+        .unwrap();
+    assert!(!ode_resumed.atlas.is_suspended());
+}

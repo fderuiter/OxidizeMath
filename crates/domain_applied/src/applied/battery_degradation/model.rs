@@ -23,40 +23,69 @@ pub const MIN_EXPONENT_Z: f64 = 0.1;
 /// Maximum supported stretched cycling exponent $z$.
 pub const MAX_EXPONENT_Z: f64 = 2.0;
 
-#[allow(missing_docs)]
+/// Trait characterizing cycle-life and state-of-health (SoH) capacity fade of rechargeable cells.
+///
+/// Relates equivalent full cycles $N$, depth of discharge $D$, and $70\%$ end-of-life cycle count $N_{70}(D)$:
+///
+/// $$C(N, D) = 1 - \Delta C_{\mathrm{cyc}}\!\left(\frac{N}{N_{70}(D)}\right), \qquad C(N_{70}(D), D) = 0.7$$
+///
+/// Reference: Wang et al. (2011), DOI: 10.1016/j.jpowsour.2010.11.134; see
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Implementations clamp non-positive $N_{70}$ denominators and out-of-range capacities into
+/// physically bounded [`Cycles`] ($\ge 0$) and [`Capacity`] ($\in [0, 1]$) wrappers.
+///
+/// # Domain of Validity
+/// Non-negative cycle counts $N \ge 0$, depth of discharge $D \in (0, 100]\%$, and target capacity $C \in (0, 1]$.
 pub trait DegradationModel {
+    /// Returns the projected cycle life $N_{70}(D)$ until remaining capacity reaches $70\%$.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn n70(&self, d: DepthOfDischarge) -> Cycles;
 
+    /// Evaluates normalized remaining state-of-health capacity $C(N, D) \in [0, 1]$.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn capacity(&self, n: Cycles, d: DepthOfDischarge) -> Capacity;
 
+    /// Solves for the equivalent full cycles $N$ required to decay to `target` capacity at DoD `d`.
     #[verified_engine::verified]
-    #[allow(missing_docs)]
     fn cycles_to_capacity(&self, target: Capacity, d: DepthOfDischarge) -> Cycles;
 }
 
+/// Empirical Wöhler power-law cycling capacity-fade model for lithium-ion cells.
+///
+/// Models $70\%$ cycle life as an inverse power law in depth of discharge $D$ with exponential fade:
+///
+/// $$N_{70}(D) = \alpha D^{\beta}, \qquad C(N, D) = 0.7^{\,N / N_{70}(D)}$$
+///
+/// Reference: Wang et al. (2011), DOI: 10.1016/j.jpowsour.2010.11.134; see
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Degenerate $N_{70}(D) = 0$ returns `Capacity(0.0)` without division by zero, and inverse cycle
+/// queries normalize by exact `LN_0_7` ($\ln 0.7 < 0$).
+///
+/// # Domain of Validity
+/// Positive prefactor $\alpha > 0$, negative stress exponent $\beta < 0$, positive DoD $D \in (0, 100]$,
+/// and non-negative cycles $N \ge 0$.
 #[derive(Debug, Clone, Copy, Theory)]
 #[theory(
     description = "Empirical power-law model characterizing the cycle life of lithium-ion batteries as a function of depth of discharge.",
     citation = "Capacity Fade Model for Li-ion Batteries (Smith et al., 2011)"
 )]
-#[allow(missing_docs)]
 pub struct PowerLawModel {
     alpha: f64,
     beta: f64,
 }
 
 impl PowerLawModel {
-    #[allow(missing_docs)]
+    /// Constructs a `PowerLawModel` with custom prefactor `alpha` and DoD exponent `beta`.
     #[verified_engine::verified]
     pub fn new(alpha: f64, beta: f64) -> Self {
         Self { alpha, beta }
     }
 
-    #[allow(missing_docs)]
+    /// Constructs the reference Li-ion power-law parameterization ($\alpha = 1.019 \times 10^5$, $\beta = -1.2639$).
     #[verified_engine::verified]
     pub fn standard() -> Self {
         Self {
@@ -95,19 +124,19 @@ impl DegradationModel for PowerLawModel {
 }
 
 impl PowerLawModel {
-    #[allow(missing_docs)]
+    /// Projected cycle count $N_{70}(D)$ to reach $70\%$ remaining capacity at DoD `d`.
     #[verified_engine::verified]
     pub fn n70(&self, d: DepthOfDischarge) -> Cycles {
         DegradationModel::n70(self, d)
     }
 
-    #[allow(missing_docs)]
+    /// Normalized remaining capacity $C(N, D)$ after `n` cycles at DoD `d`.
     #[verified_engine::verified]
     pub fn capacity(&self, n: Cycles, d: DepthOfDischarge) -> Capacity {
         DegradationModel::capacity(self, n, d)
     }
 
-    #[allow(missing_docs)]
+    /// Equivalent full cycles required to reach `target` capacity at DoD `d`.
     #[verified_engine::verified]
     pub fn cycles_to_capacity(&self, target: Capacity, d: DepthOfDischarge) -> Cycles {
         DegradationModel::cycles_to_capacity(self, target, d)
@@ -127,6 +156,19 @@ fn sanitize_bounded(val: f64, min: f64, max: f64, fallback: f64) -> f64 {
 
 /// Coupled electrochemical aging model combining DoD stress, stretched exponent $z$,
 /// Arrhenius thermal activation, C-rate mechanical stress, and $\sqrt{t}$ SEI calendar fade.
+///
+/// $$C(N, D, t) = 1 - 0.3\left(\frac{N}{N_{70}(D, T, I_c)}\right)^z - k_{\mathrm{SEI}}\exp\!\left[\frac{E_a}{R}\left(\frac{1}{T_{\mathrm{ref}}} - \frac{1}{T}\right)\right]\sqrt{t}$$
+///
+/// Reference: Wang et al. (2011), DOI: 10.1016/j.jpowsour.2010.11.134; see
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Builder setters clamp temperature to $[-20, 60]\,^\circ\text{C}$, C-rate to $[0.05, 10]\,\text{h}^{-1}$,
+/// and $z$ to $[0.1, 2.0]$, avoiding Arrhenius exponential overflow and singular $1/z$ inversions.
+///
+/// # Domain of Validity
+/// Operating temperatures $T \in [253.15, 333.15]\,\text{K}$, C-rates $I_c \in [0.05, 10]\,\text{h}^{-1}$,
+/// depth of discharge $D \in (0, 100]\%$, cycles $N \ge 0$, and calendar time $t \ge 0$ days.
 #[derive(Debug, Clone, Copy, PartialEq, Theory)]
 #[theory(
     description = "Coupled electrochemical Li-ion aging model combining stretched power-law cycling fade 0.3*(N/N_70)^z, Arrhenius thermal activation exp(-E_a/(R*T)), C-rate stress, and parabolic sqrt(t) SEI growth.",

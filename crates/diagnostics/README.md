@@ -23,8 +23,7 @@ The `diagnostics` crate provides a unified `Diagnostic` error contract and centr
 When defining a domain error type, implement `Diagnostic` so structured context can be routed through local or global diagnostic buses:
 
 ```rust
-use diagnostics::{Diagnostic, DiagnosticBus, DiagnosticEvent, Severity};
-use std::collections::HashMap;
+use diagnostics::{Diagnostic, DiagnosticBus, DiagnosticVisitor, Severity};
 use std::sync::{Arc, Mutex};
 use thiserror::Error;
 
@@ -41,14 +40,13 @@ impl Diagnostic for MyModuleError {
         }
     }
 
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut meta = HashMap::new();
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "MyModuleError");
         match self {
             Self::Instability { state } => {
-                meta.insert("simulation_state".to_string(), state.clone());
+                visitor.record_str("simulation_state", state);
             }
         }
-        meta
     }
 }
 
@@ -62,13 +60,9 @@ bus.register_listener(move |event| {
     observed_clone.lock().unwrap().push(event.message.clone());
 });
 
-bus.emit(DiagnosticEvent {
-    severity: err.severity(),
-    message: err.to_string(),
-    metadata: err.metadata(),
-    thread_name: None,
-});
+bus.emit_diagnostic_with_source("my_module", &err);
 assert_eq!(observed.lock().unwrap().len(), 1);
+assert_eq!(err.metadata().get("simulation_state").map(String::as_str), Some("t=1.0"));
 ```
 
 Subscribe downstream consumers with `DiagnosticBus::register_listener` and dispatch structured `DiagnosticEvent` records via `DiagnosticBus::emit` (or `diagnostics::global_bus().emit(...)` for process-wide panic and telemetry forwarding).

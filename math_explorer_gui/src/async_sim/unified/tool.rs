@@ -223,18 +223,13 @@ impl<M: UnifiedModel> UnifiedSimTool<M> {
         }
         if M::supports_spatial_brush() {
             *self.obstacle_rle.write().unwrap_or_else(|e| e.into_inner()) = None;
-            let params_snap = self
-                .params
-                .read()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone();
-            let formula_snap = self
+            let params_guard = self.params.read().unwrap_or_else(|e| e.into_inner());
+            let formula_guard = self
                 .shared_formula
                 .read()
-                .unwrap_or_else(|e| e.into_inner())
-                .clone();
+                .unwrap_or_else(|e| e.into_inner());
             let mut sculpt = self.sculpt_state.write().unwrap_or_else(|e| e.into_inner());
-            M::record_ui_brush_stroke(&stroke, &params_snap, formula_snap.as_ref(), &mut sculpt);
+            M::record_ui_brush_stroke(&stroke, &params_guard, formula_guard.as_ref(), &mut sculpt);
         }
         if self
             .controller
@@ -409,6 +404,13 @@ impl<M: UnifiedModel> InteractiveTool for UnifiedSimTool<M> {
             None,
         );
         true
+    }
+
+    fn set_suspended(&mut self, suspended: bool) {
+        self.controller.set_suspended(suspended);
+        if let Some(atlas) = &mut self.atlas {
+            atlas.set_suspended(suspended);
+        }
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {

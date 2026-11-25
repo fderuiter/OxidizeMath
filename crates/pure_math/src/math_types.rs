@@ -4,8 +4,9 @@ use dashu::float::FBig;
 pub use dashu::integer::IBig;
 use dashu::rational::RBig;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, RemAssign, Sub, SubAssign};
+/// Arbitrary-precision signed integer wrapper over [`dashu::integer::IBig`].
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
-#[allow(missing_docs)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Integer(pub IBig);
 impl From<Integer> for IBig {
     fn from(i: Integer) -> Self {
@@ -18,44 +19,44 @@ impl Default for Integer {
     }
 }
 impl Integer {
-    #[allow(missing_docs)]
+    /// Constructs a new instance from the supplied parameters.
     pub fn new() -> Self {
         Integer(IBig::from(0u8))
     }
-    #[allow(missing_docs)]
+    /// Computes `from` (from).
     pub fn from<T>(v: T) -> Self
     where
         IBig: From<T>,
     {
         Integer(IBig::from(v))
     }
-    #[allow(missing_docs)]
+    /// Computes `to_f64` (to f64).
     pub fn to_f64(&self) -> f64 {
         use dashu::float::round::mode::HalfAway;
         let f: FBig<HalfAway, 2> = FBig::from(self.0.clone());
         f.to_f64().value()
     }
-    #[allow(missing_docs)]
+    /// Computes `to_i32` (to i32).
     pub fn to_i32(&self) -> Option<i32> {
         i32::try_from(&self.0).ok()
     }
-    #[allow(missing_docs)]
+    /// Computes `to_usize` (to usize).
     pub fn to_usize(&self) -> Option<usize> {
         usize::try_from(&self.0).ok()
     }
-    #[allow(missing_docs)]
+    /// Computes `to_u64` (to u64).
     pub fn to_u64(&self) -> Option<u64> {
         u64::try_from(&self.0).ok()
     }
-    #[allow(missing_docs)]
+    /// Computes `assign` (assign).
     pub fn assign(&mut self, v: i128) {
         self.0 = IBig::from(v);
     }
-    #[allow(missing_docs)]
+    /// Computes `parse` (parse).
     pub fn parse(s: &str) -> Result<Self, NumberTheoryError> {
         Self::from_str_radix(s, 10)
     }
-    #[allow(missing_docs)]
+    /// Computes `from_str_radix` (from str radix).
     pub fn from_str_radix(s: &str, radix: u32) -> Result<Self, NumberTheoryError> {
         if !(2..=36).contains(&radix) {
             return Err(NumberTheoryError::InvalidRadix { radix });
@@ -64,22 +65,22 @@ impl Integer {
             .map(Integer)
             .map_err(|_| NumberTheoryError::InvalidIntegerLiteral { radix })
     }
-    #[allow(missing_docs)]
+    /// Returns `true` if `self` is an even integer ($n \equiv 0 \pmod{2}$).
     #[verified_engine::verified]
     pub fn is_even(&self) -> bool {
         &self.0 % IBig::from(2u8) == IBig::from(0u8)
     }
-    #[allow(missing_docs)]
+    /// Returns `true` if `other` divides `self` with zero remainder.
     #[verified_engine::verified]
     pub fn is_divisible(&self, other: &Integer) -> bool {
         (&self.0 % &other.0) == IBig::from(0u8)
     }
-    #[allow(missing_docs)]
+    /// Computes the integer square root $\lfloor \sqrt{n} \rfloor$.
     #[verified_engine::verified]
     pub fn sqrt(&self) -> Self {
         Integer(self.0.nth_root(2))
     }
-    #[allow(missing_docs)]
+    #[doc = include_str!("../../../docs/math_specs/snippets/int_pow_mod.md")]
     #[verified_engine::verified]
     pub fn pow_mod(&self, exp: &Integer, m: &Integer) -> Result<Self, NumberTheoryError> {
         if m.0 == IBig::from(0u8) {
@@ -102,7 +103,7 @@ impl Integer {
         }
         Ok(Integer(result))
     }
-    #[allow(missing_docs)]
+    #[doc = include_str!("../../../docs/math_specs/snippets/int_invert.md")]
     #[verified_engine::verified]
     pub fn invert(&self, m: &Integer) -> Result<Self, NumberTheoryError> {
         if m.0 == IBig::from(0u8) {
@@ -119,7 +120,7 @@ impl Integer {
             Err(NumberTheoryError::NoModularInverse)
         }
     }
-    #[allow(missing_docs)]
+    /// Returns the non-negative magnitude $|n|$.
     #[verified_engine::verified]
     pub fn abs(self) -> Self {
         Integer(self.0.abs())
@@ -208,11 +209,12 @@ impl SubAssign<&Integer> for Integer {
 
 type F = dashu::float::FBig;
 
+/// Data structure `Float` representing Float state.
 #[derive(Clone, Debug)]
-#[allow(missing_docs)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Float(pub F);
 impl Float {
-    #[allow(missing_docs)]
+    /// Computes `with_val` (with val).
     pub fn with_val(_prec: u32, v: f64) -> Self {
         if let Ok(f) = F::try_from(v) {
             Float(f)
@@ -220,11 +222,11 @@ impl Float {
             Float(F::from(0u8))
         }
     }
-    #[allow(missing_docs)]
+    /// Computes `abs` (abs).
     pub fn abs(self) -> Self {
         Float(self.0.abs())
     }
-    #[allow(missing_docs)]
+    /// Rounds the arbitrary-precision float to the nearest `f64` integer value.
     #[verified_engine::verified]
     pub fn round(self) -> f64 {
         use dashu::float::round::mode::HalfAway;
@@ -337,8 +339,9 @@ impl PartialOrd<f64> for Float {
     }
 }
 
+/// Data structure `Rational` representing Rational state.
 #[derive(Clone, Debug, PartialEq)]
-#[allow(missing_docs)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Rational(pub RBig);
 impl Default for Rational {
     fn default() -> Self {
@@ -347,11 +350,11 @@ impl Default for Rational {
 }
 
 impl Rational {
-    #[allow(missing_docs)]
+    /// Constructs a new instance from the supplied parameters.
     pub fn new() -> Self {
         Rational(RBig::from(0u8))
     }
-    #[allow(missing_docs)]
+    /// Computes `from` (from).
     pub fn from(v: (i128, i128)) -> Self {
         let n = dashu::integer::IBig::from(v.0);
         let d = dashu::integer::IBig::from(v.1);
@@ -362,14 +365,14 @@ impl Rational {
         }
         Rational(RBig::from_parts(real_n, mag_d))
     }
-    #[allow(missing_docs)]
+    /// Converts the numerator of the reduced fraction to `f64`.
     #[verified_engine::verified]
     pub fn numer(&self) -> f64 {
         use dashu::float::round::mode::HalfAway;
         let n_f: FBig<HalfAway, 2> = FBig::from(self.0.numerator().clone());
         n_f.to_f64().value()
     }
-    #[allow(missing_docs)]
+    /// Converts the positive denominator of the reduced fraction to `f64`.
     #[verified_engine::verified]
     pub fn denom(&self) -> f64 {
         use dashu::float::round::mode::HalfAway;
@@ -426,13 +429,13 @@ impl Add<Rational> for &Rational {
     }
 }
 
-#[allow(missing_docs)]
+/// Submodule providing `ops` types, traits, and algorithms.
 pub mod ops {
-    #[allow(missing_docs)]
+    /// Trait `Pow` defining Pow operations.
     pub trait Pow<Rhs> {
-        #[allow(missing_docs)]
+        /// Variant `type` (type).
         type Output;
-        #[allow(missing_docs)]
+        /// Computes `pow` (pow).
         fn pow(self, rhs: Rhs) -> Self::Output;
     }
     impl Pow<u32> for super::Integer {
@@ -441,11 +444,11 @@ pub mod ops {
             super::Integer(self.0.pow(rhs as usize))
         }
     }
-    #[allow(missing_docs)]
+    /// Trait `RemRounding` defining RemRounding operations.
     pub trait RemRounding<Rhs> {
-        #[allow(missing_docs)]
+        /// Variant `type` (type).
         type Output;
-        #[allow(missing_docs)]
+        /// Computes `rem_euc` (rem euc).
         fn rem_euc(self, rhs: Rhs) -> Self::Output;
     }
     impl RemRounding<super::Integer> for super::Integer {

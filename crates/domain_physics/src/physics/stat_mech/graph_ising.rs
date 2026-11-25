@@ -2,7 +2,11 @@
 //!
 //! Provides [`GraphSpinSystem`] for zero-allocation Metropolis-Hastings Ising spin flips
 //! and pairwise Fermi evolutionary games on arbitrary weighted Compressed Sparse Row (CSR)
-//! contact networks.
+//! contact networks, supporting both ferromagnetic ($w_{ij} > 0$) and frustrated
+//! antiferromagnetic ($w_{ij} < 0$) couplings.
+
+#[path = "graph_ising_evolution.rs"]
+mod evolution;
 
 use super::KB;
 use domain_applied::applied::game_theory::evolutionary::MatrixPayoff;
@@ -11,17 +15,25 @@ use oxidize_core::rng::OxidizeRng;
 use rand::Rng;
 use verified_engine::Theory;
 
-/// Maximum supported node count for [`GraphSpinSystem`] CSR topologies.
+/// Maximum supported node count for [`GraphSpinSystem::try_from_csr`] topologies.
 pub const MAX_GRAPH_SPIN_NODES: usize = 256;
 
 /// Maximum supported directed/symmetric CSR half-edge count (`2 * 2_048 = 4_096`).
 pub const MAX_GRAPH_SPIN_CSR_ENTRIES: usize = 4_096;
 
-/// Discrete spin (`+1` or `-1`) system defined over a weighted Compressed Sparse Row (CSR) graph.
+/// Discrete spin ($s_i \in \{-1, +1\}$) system governed by Hamiltonian $\mathcal{H}(\mathbf{s}) = -\sum_{(i,j)} J_{ij} w_{ij} s_i s_j - h \sum_i s_i$ over a weighted Compressed Sparse Row (CSR) graph.
 ///
 /// Supports both ferromagnetic/antiferromagnetic Metropolis-Hastings dynamics ([`Self::evolve`])
 /// and spatial 2x2 evolutionary games under pairwise Fermi imitation ([`Self::evolve_fermi_game`])
 /// with zero post-initialization heap allocations.
+///
+/// Reference: Metropolis et al. (1953), *J. Chem. Phys.* 21, 1087, DOI: 10.1063/1.1699114; Szabó & Tőke (1998), *Phys. Rev. E* 58, 69, DOI: 10.1103/PhysRevE.58.69; [`docs/math_specs/domain_physics.md`](../../../../../docs/math_specs/domain_physics.md).
+///
+/// # Stability
+/// Detailed-balance acceptance probabilities $\min(1, e^{-\beta \Delta E})$ and logistic Fermi probabilities $(1 + e^{\Delta \pi / K})^{-1}$ clamp extreme exponents to prevent IEEE-754 overflow.
+///
+/// # Domain of Validity
+/// Requires validated CSR topology with `n_nodes <= 256`, `col_idx.len() <= 4_096`, finite edge weights $w_{ij}$, and strictly positive temperature $T > 0$ (or noise $K > 0$).
 ///
 /// # Examples
 ///
@@ -30,13 +42,13 @@ pub const MAX_GRAPH_SPIN_CSR_ENTRIES: usize = 4_096;
 /// use math_explorer::physics::stat_mech::graph_ising::GraphSpinSystem;
 /// use math_explorer::physics::stat_mech::KB;
 ///
-/// // 4-node cycle: 0-1-2-3-0 (symmetric CSR)
-/// let row_ptr = vec![0, 2, 4, 6, 8];
-/// let col_idx = vec![1, 3, 0, 2, 1, 3, 0, 2];
-/// let weights = vec![1.0; 8];
-/// let mut sys = GraphSpinSystem::try_from_csr(4, row_ptr, col_idx, weights, Some(7)).unwrap();
-/// sys.evolve(2_000, 0.5 / KB, 1.0, 0.0);
-/// assert_eq!(sys.spins().len(), 4);
+/// // Antiferromagnetic triangle (odd cycle) cannot satisfy all three bonds simultaneously
+/// let edges = vec![(0, 1, -1.0), (1, 2, -1.0), (2, 0, -1.0)];
+/// let mut system = GraphSpinSystem::new(3, &edges, Some(42));
+/// system.evolve(1_000, 0.2 / KB, 1.0, 0.0);
+///
+/// assert_eq!(system.frustrated_edge_count(1.0), 1);
+/// assert!((system.hamiltonian(1.0, 0.0) - (-1.0)).abs() < 1e-9);
 /// ```
 #[derive(Debug, Clone, Theory)]
 #[theory(
@@ -44,12 +56,83 @@ pub const MAX_GRAPH_SPIN_CSR_ENTRIES: usize = 4_096;
     citation = "Metropolis et al. (1953) J. Chem. Phys. 21, 1087; Szabó & Tőke (1998) Phys. Rev. E 58, 69"
 )]
 pub struct GraphSpinSystem {
-    n_nodes: usize,
-    spins: Vec<i8>,
-    row_ptr: Vec<usize>,
-    col_idx: Vec<usize>,
-    weights: Vec<f64>,
-    rng: OxidizeRng,
+    pub(super) n_nodes: usize,
+    pub(super) num_edges: usize,
+    pub(super) spins: Vec<i8>,
+    pub(super) row_ptr: Vec<usize>,
+    pub(super) col_idx: Vec<usize>,
+    pub(super) weights: Vec<f64>,
+    pub(super) rng: OxidizeRng,
+}
+
+#[verified_engine::verified]
+fn sanitize_edges(num_nodes: usize, edges: &[(usize, usize, f64)]) -> Vec<(usize, usize, f64)> {
+    let mut clean: Vec<(usize, usize, f64)> = Vec::with_capacity(edges.len());
+    for &(u, v, w) in edges {
+        if u >= num_nodes || v >= num_nodes || u == v || !w.is_finite() {
+            continue;
+        }
+        let (a, b) = if u < v { (u, v) } else { (v, u) };
+        if let Some(existing) = clean.iter_mut().find(|(ea, eb, _)| *ea == a && *eb == b) {
+            existing.2 = w;
+        } else {
+            clean.push((a, b, w));
+        }
+    }
+    clean
+}
+
+#[verified_engine::verified]
+fn build_csr(
+    num_nodes: usize,
+    edges: &[(usize, usize, f64)],
+) -> (Vec<usize>, Vec<usize>, Vec<f64>, usize) {
+    let clean = sanitize_edges(num_nodes, edges);
+    let mut degrees = vec![0usize; num_nodes];
+    for &(u, v, _) in &clean {
+        degrees[u] += 1;
+        degrees[v] += 1;
+    }
+
+    let mut row_ptr = vec![0usize; num_nodes + 1];
+    for i in 0..num_nodes {
+        row_ptr[i + 1] = row_ptr[i] + degrees[i];
+    }
+
+    let total_directed = row_ptr[num_nodes];
+    let mut col_idx = vec![0usize; total_directed];
+    let mut weights = vec![0.0_f64; total_directed];
+    let mut cursors = row_ptr[..num_nodes].to_vec();
+
+    for &(u, v, w) in &clean {
+        let cu = cursors[u];
+        col_idx[cu] = v;
+        weights[cu] = w;
+        cursors[u] += 1;
+
+        let cv = cursors[v];
+        col_idx[cv] = u;
+        weights[cv] = w;
+        cursors[v] += 1;
+    }
+
+    (row_ptr, col_idx, weights, clean.len())
+}
+
+#[verified_engine::verified]
+fn count_csr_undirected_edges(n_nodes: usize, row_ptr: &[usize], col_idx: &[usize]) -> usize {
+    let mut upper = 0usize;
+    let mut asymmetric = 0usize;
+    for u in 0..n_nodes {
+        for &v in &col_idx[row_ptr[u]..row_ptr[u + 1]] {
+            if v > u {
+                upper += 1;
+            } else if v < u && !col_idx[row_ptr[v]..row_ptr[v + 1]].contains(&u) {
+                asymmetric += 1;
+            }
+        }
+    }
+    upper + asymmetric
 }
 
 #[verified_engine::verified]
@@ -90,6 +173,52 @@ fn validate_csr_inputs(
 }
 
 impl GraphSpinSystem {
+    /// Creates a new random [`GraphSpinSystem`] from undirected weighted edges `(u, v, weight)`.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn new(num_nodes: usize, edges: &[(usize, usize, f64)], seed: Option<u64>) -> Self {
+        let mut rng = seed.map_or_else(OxidizeRng::default, OxidizeRng::new);
+        let spins: Vec<i8> = (0..num_nodes)
+            .map(|_| if rng.gen_bool(0.5) { 1 } else { -1 })
+            .collect();
+        let (row_ptr, col_idx, weights, num_edges) = build_csr(num_nodes, edges);
+        Self {
+            n_nodes: num_nodes,
+            num_edges,
+            spins,
+            row_ptr,
+            col_idx,
+            weights,
+            rng,
+        }
+    }
+
+    /// Creates a [`GraphSpinSystem`] with explicit initial spins (`>= 0` mapped to `+1`, `< 0` to `-1`).
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn new_with_spins(
+        spins: Vec<i8>,
+        edges: &[(usize, usize, f64)],
+        seed: Option<u64>,
+    ) -> Self {
+        let num_nodes = spins.len();
+        let normalized_spins = spins
+            .into_iter()
+            .map(|s| if s >= 0 { 1 } else { -1 })
+            .collect();
+        let rng = seed.map_or_else(OxidizeRng::default, OxidizeRng::new);
+        let (row_ptr, col_idx, weights, num_edges) = build_csr(num_nodes, edges);
+        Self {
+            n_nodes: num_nodes,
+            num_edges,
+            spins: normalized_spins,
+            row_ptr,
+            col_idx,
+            weights,
+            rng,
+        }
+    }
+
     /// Constructs a validated [`GraphSpinSystem`] from CSR buffers and an optional RNG seed.
     ///
     /// # Errors
@@ -103,6 +232,7 @@ impl GraphSpinSystem {
         seed: Option<u64>,
     ) -> Result<Self, MathError> {
         validate_csr_inputs(n_nodes, &row_ptr, &col_idx, &weights)?;
+        let num_edges = count_csr_undirected_edges(n_nodes, &row_ptr, &col_idx);
         let mut rng = match seed {
             Some(s) => OxidizeRng::from_seed(s),
             None => OxidizeRng::default(),
@@ -113,6 +243,7 @@ impl GraphSpinSystem {
         }
         Ok(Self {
             n_nodes,
+            num_edges,
             spins,
             row_ptr,
             col_idx,
@@ -122,13 +253,31 @@ impl GraphSpinSystem {
     }
 
     /// Returns the number of nodes in the CSR spin graph.
+    #[inline]
     #[must_use]
     #[verified_engine::verified]
     pub fn n_nodes(&self) -> usize {
         self.n_nodes
     }
 
+    /// Returns the number of spin sites in the graph.
+    #[inline]
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn num_nodes(&self) -> usize {
+        self.n_nodes
+    }
+
+    /// Returns the number of unique undirected edges in the CSR topology.
+    #[inline]
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn num_edges(&self) -> usize {
+        self.num_edges
+    }
+
     /// Returns the number of CSR adjacency entries.
+    #[inline]
     #[must_use]
     #[verified_engine::verified]
     pub fn csr_len(&self) -> usize {
@@ -136,6 +285,7 @@ impl GraphSpinSystem {
     }
 
     /// Returns the slice of spin states (`+1` or `-1`).
+    #[inline]
     #[must_use]
     #[verified_engine::verified]
     pub fn spins(&self) -> &[i8] {
@@ -143,6 +293,7 @@ impl GraphSpinSystem {
     }
 
     /// Returns CSR row pointers (`len == n_nodes + 1`).
+    #[inline]
     #[must_use]
     #[verified_engine::verified]
     pub fn row_ptr(&self) -> &[usize] {
@@ -150,6 +301,7 @@ impl GraphSpinSystem {
     }
 
     /// Returns CSR column neighbor indices.
+    #[inline]
     #[must_use]
     #[verified_engine::verified]
     pub fn col_idx(&self) -> &[usize] {
@@ -157,13 +309,28 @@ impl GraphSpinSystem {
     }
 
     /// Returns CSR edge coupling weights.
+    #[inline]
     #[must_use]
     #[verified_engine::verified]
     pub fn weights(&self) -> &[f64] {
         &self.weights
     }
 
+    /// Returns the CSR neighbor indices and weights for `node`.
+    #[inline]
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn neighbors_of(&self, node: usize) -> (&[usize], &[f64]) {
+        if node >= self.n_nodes {
+            return (&[], &[]);
+        }
+        let start = self.row_ptr[node];
+        let end = self.row_ptr[node + 1];
+        (&self.col_idx[start..end], &self.weights[start..end])
+    }
+
     /// Sets the spin of `node` to `+1` (for `spin >= 0`) or `-1` (for `spin < 0`).
+    #[inline]
     #[verified_engine::verified]
     pub fn set_spin(&mut self, node: usize, spin: i8) {
         if node < self.spins.len() {
@@ -172,6 +339,7 @@ impl GraphSpinSystem {
     }
 
     /// Flips the spin of `node` in place without heap allocation.
+    #[inline]
     #[verified_engine::verified]
     pub fn flip_spin(&mut self, node: usize) {
         if node < self.spins.len() {
@@ -194,6 +362,11 @@ impl GraphSpinSystem {
         }
     }
 
+    /// Re-seeds the internal deterministic [`OxidizeRng`].
+    pub fn reseed(&mut self, seed: u64) {
+        self.rng = OxidizeRng::new(seed);
+    }
+
     /// Computes total integer magnetization $\sum_i s_i$.
     #[must_use]
     #[verified_engine::verified]
@@ -211,6 +384,14 @@ impl GraphSpinSystem {
         (self.magnetization() as f64) / (self.n_nodes as f64)
     }
 
+    /// Computes normalized magnetization per spin $m = \frac{1}{N}\sum_i s_i \in [-1, 1]$.
+    #[inline]
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn mean_magnetization(&self) -> f64 {
+        self.normalized_magnetization()
+    }
+
     /// Computes the fraction of `+1` (Cooperator) nodes in `[0.0, 1.0]`.
     #[must_use]
     #[verified_engine::verified]
@@ -220,19 +401,6 @@ impl GraphSpinSystem {
         }
         let coop = self.spins.iter().filter(|&&s| s > 0).count();
         (coop as f64) / (self.n_nodes as f64)
-    }
-
-    #[inline]
-    #[verified_engine::verified]
-    fn weighted_neighbor_sum(&self, node: usize) -> f64 {
-        let start = self.row_ptr[node];
-        let end = self.row_ptr[node + 1];
-        let mut acc = 0.0_f64;
-        for idx in start..end {
-            let nbr = self.col_idx[idx];
-            acc += self.weights[idx] * f64::from(self.spins[nbr]);
-        }
-        acc
     }
 
     /// Computes total Ising Hamiltonian energy $E = -\frac{1}{2} J \sum_{i, j} w_{ij} s_i s_j - h \sum_i s_i$.
@@ -249,173 +417,67 @@ impl GraphSpinSystem {
         interaction + zeeman
     }
 
-    /// Computes mean game payoff per node on the CSR graph for a 2x2 [`MatrixPayoff`].
+    /// Computes total Ising Hamiltonian $H = -J \sum_{(i,j)} w_{ij} s_i s_j - h \sum_i s_i$.
+    #[inline]
     #[must_use]
     #[verified_engine::verified]
-    pub fn mean_game_payoff(&self, payoff: &MatrixPayoff) -> f64 {
-        let mat = payoff.payoff_matrix();
-        if self.n_nodes == 0 || mat.nrows() != 2 || mat.ncols() != 2 {
-            return 0.0;
-        }
-        let (r, s, t, p) = (mat[(0, 0)], mat[(0, 1)], mat[(1, 0)], mat[(1, 1)]);
-        let mut total = 0.0_f64;
+    pub fn hamiltonian(&self, j_coupling: f64, h_field: f64) -> f64 {
+        self.total_energy(j_coupling, h_field)
+    }
+
+    /// Counts frustrated undirected bonds where $J w_{ij} s_i s_j < 0$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn frustrated_edge_count(&self, j_coupling: f64) -> usize {
+        let mut frustrated = 0usize;
         for i in 0..self.n_nodes {
-            total += self.node_game_payoff(i, r, s, t, p);
-        }
-        total / (self.n_nodes as f64)
-    }
-
-    #[inline]
-    #[verified_engine::verified]
-    fn node_game_payoff(&self, node: usize, r: f64, s: f64, t: f64, p: f64) -> f64 {
-        let s_i = self.spins[node];
-        let start = self.row_ptr[node];
-        let end = self.row_ptr[node + 1];
-        // Self-interaction baseline plus weighted neighbor interactions, matching SpinLattice convention.
-        let mut acc = if s_i > 0 { r } else { p };
-        for idx in start..end {
-            let w = self.weights[idx].max(0.0);
-            let s_nbr = self.spins[self.col_idx[idx]];
-            let pair = match (s_i > 0, s_nbr > 0) {
-                (true, true) => r,
-                (true, false) => s,
-                (false, true) => t,
-                (false, false) => p,
-            };
-            acc += w * pair;
-        }
-        acc
-    }
-
-    /// Advances Metropolis-Hastings Ising spin dynamics by `steps` elementary trials with zero heap allocations.
-    #[verified_engine::verified]
-    pub fn evolve(&mut self, steps: usize, temperature: f64, j_coupling: f64, h_field: f64) {
-        if steps == 0
-            || self.n_nodes == 0
-            || !temperature.is_finite()
-            || !j_coupling.is_finite()
-            || !h_field.is_finite()
-        {
-            return;
-        }
-        let k_bt = (KB * temperature).max(1e-30);
-        let beta = 1.0 / k_bt;
-        for _ in 0..steps {
-            let idx = self.rng.gen_range(0..self.n_nodes);
-            let s_i = self.spins[idx];
-            let nbr_sum = self.weighted_neighbor_sum(idx);
-            let delta_e = 2.0 * f64::from(s_i) * (j_coupling * nbr_sum + h_field);
-            let accept = if delta_e <= 0.0 {
-                true
-            } else {
-                let exponent = (-beta * delta_e).clamp(-500.0, 0.0);
-                self.rng.r#gen::<f64>() < exponent.exp()
-            };
-            if accept {
-                self.spins[idx] = -s_i;
-            }
-        }
-    }
-
-    /// Evolves a 2x2 evolutionary game via pairwise Fermi imitation over CSR edges with zero heap allocations.
-    #[verified_engine::verified]
-    pub fn evolve_fermi_game(&mut self, steps: usize, temperature: f64, payoff: &MatrixPayoff) {
-        let mat = payoff.payoff_matrix();
-        if steps == 0
-            || self.n_nodes == 0
-            || mat.nrows() != 2
-            || mat.ncols() != 2
-            || !temperature.is_finite()
-        {
-            return;
-        }
-        let (r, s, t, p) = (mat[(0, 0)], mat[(0, 1)], mat[(1, 0)], mat[(1, 1)]);
-        if !r.is_finite() || !s.is_finite() || !t.is_finite() || !p.is_finite() {
-            return;
-        }
-        let inv_temp = 1.0 / temperature.max(1e-3);
-        for _ in 0..steps {
-            let i = self.rng.gen_range(0..self.n_nodes);
+            let si = f64::from(self.spins[i]);
             let start = self.row_ptr[i];
             let end = self.row_ptr[i + 1];
-            if start == end {
-                continue;
-            }
-            let j = self.col_idx[self.rng.gen_range(start..end)];
-            let s_i = self.spins[i];
-            let s_j = self.spins[j];
-            if s_i != s_j {
-                let pi_i = self.node_game_payoff(i, r, s, t, p);
-                let pi_j = self.node_game_payoff(j, r, s, t, p);
-                let arg = ((pi_i - pi_j) * inv_temp).clamp(-500.0, 500.0);
-                let adopt_prob = 1.0 / (1.0 + arg.exp());
-                if self.rng.r#gen::<f64>() < adopt_prob {
-                    self.spins[i] = s_j;
+            for k in start..end {
+                let j = self.col_idx[k];
+                if j > i {
+                    let bond_alignment =
+                        j_coupling * self.weights[k] * si * f64::from(self.spins[j]);
+                    if bond_alignment < -1e-12 {
+                        frustrated += 1;
+                    }
                 }
             }
         }
+        frustrated
+    }
+
+    /// Computes mean game payoff per node on the CSR graph for a 2x2 [`MatrixPayoff`].
+    #[inline]
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn mean_game_payoff(&self, payoff: &MatrixPayoff) -> f64 {
+        self.mean_game_payoff_inner(payoff)
+    }
+
+    /// Performs one single-spin Metropolis update with zero heap allocations.
+    #[inline]
+    #[verified_engine::verified]
+    pub fn metropolis_step(&mut self, temperature: f64, j_coupling: f64, h_field: f64) {
+        self.evolve_inner(1, temperature, j_coupling, h_field);
+    }
+
+    /// Advances Metropolis-Hastings Ising spin dynamics by `steps` elementary trials with zero heap allocations.
+    #[inline]
+    #[verified_engine::verified]
+    pub fn evolve(&mut self, steps: usize, temperature: f64, j_coupling: f64, h_field: f64) {
+        self.evolve_inner(steps, temperature, j_coupling, h_field);
+    }
+
+    /// Evolves a 2x2 evolutionary game via pairwise Fermi imitation over CSR edges with zero heap allocations.
+    #[inline]
+    #[verified_engine::verified]
+    pub fn evolve_fermi_game(&mut self, steps: usize, temperature: f64, payoff: &MatrixPayoff) {
+        self.evolve_fermi_game_inner(steps, temperature, payoff);
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use nalgebra::DMatrix;
-    use verified_engine::engine::VerifiedEngine;
-
-    fn sample_wheel_csr() -> (usize, Vec<usize>, Vec<usize>, Vec<f64>) {
-        // 5-node hub-and-rim graph: hub 0 connected to 1..=4, plus cycle 1-2-3-4-1
-        let adj: [&[usize]; 5] = [
-            &[1, 2, 3, 4],
-            &[0, 2, 4],
-            &[0, 1, 3],
-            &[0, 2, 4],
-            &[0, 1, 3],
-        ];
-        let mut row_ptr = Vec::with_capacity(6);
-        let mut col_idx = Vec::new();
-        row_ptr.push(0);
-        for nbrs in adj {
-            col_idx.extend_from_slice(nbrs);
-            row_ptr.push(col_idx.len());
-        }
-        let weights = vec![1.0; col_idx.len()];
-        (5, row_ptr, col_idx, weights)
-    }
-
-    #[test]
-    fn test_graph_spin_system_csr_validation_and_ferromagnetic_alignment() {
-        let (n, row_ptr, col_idx, weights) = sample_wheel_csr();
-        let mut sys =
-            GraphSpinSystem::try_from_csr(n, row_ptr, col_idx, weights, Some(123)).unwrap();
-        sys.evolve(10_000, 0.25 / KB, 1.0, 0.25);
-        assert!(sys.normalized_magnetization() > 0.6);
-        assert!(sys.total_energy(1.0, 0.25).is_finite());
-
-        assert!(GraphSpinSystem::try_from_csr(2, vec![0, 1], vec![0], vec![1.0], Some(1)).is_err());
-        assert!(
-            GraphSpinSystem::try_from_csr(2, vec![0, 1, 1], vec![5], vec![1.0], Some(1)).is_err()
-        );
-    }
-
-    #[test]
-    fn test_graph_spin_system_zero_alloc_1000_steps_under_verified_engine() {
-        let (n, row_ptr, col_idx, weights) = sample_wheel_csr();
-        let mut sys =
-            GraphSpinSystem::try_from_csr(n, row_ptr, col_idx, weights, Some(42)).unwrap();
-        let payoff =
-            MatrixPayoff::new(DMatrix::from_row_slice(2, 2, &[1.0, -0.15, 1.2, 0.0])).unwrap();
-
-        let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let ((mag, coop), metrics) = VerifiedEngine::run_verified(|| {
-            sys.evolve(1_000, 1.2 / KB, 1.0, 0.0);
-            sys.evolve_fermi_game(1_000, 0.1, &payoff);
-            (sys.magnetization(), sys.cooperator_fraction())
-        });
-        assert!(mag.abs() <= 5);
-        assert!((0.0..=1.0).contains(&coop));
-        assert!(metrics.function_calls > 0);
-    }
-}
+#[path = "graph_ising_tests.rs"]
+mod tests;

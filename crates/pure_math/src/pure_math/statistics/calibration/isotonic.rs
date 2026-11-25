@@ -171,7 +171,24 @@ pub fn predict_pava_blocks(blocks: &[PavaBlock], score: f64) -> MathResult<UnitI
     UnitInterval::new(prob.clamp(0.0, 1.0))
 }
 
-/// Non-parametric post-hoc isotonic probability calibrator backed by `PAVA` and piecewise-linear interpolation.
+/// Non-parametric post-hoc isotonic probability calibrator solving the monotonic least-squares problem
+/// $$\min_{\hat{y}_1 \le \dots \le \hat{y}_N} \sum_{i=1}^N w_i (y_i - \hat{y}_i)^2$$
+/// via the $O(N)$ Pool Adjacent Violators Algorithm (`PAVA`) with piecewise-linear inter-block interpolation.
+///
+/// Reference: Ayer, Brunk, Ewing, Reid, & Silverman (1955), *Ann. Math. Statist.* 26(4),
+/// DOI: 10.1214/aoms/1177728423; Zadrozny & Elkan (2002), *Proc. 8th ACM SIGKDD*,
+/// DOI: 10.1145/775047.775151;
+/// [`docs/math_specs/pure_math.md`](../../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Sorts arbitrary scores via `f64::total_cmp`, merges adjacent monotonicity violations in a single
+/// linear stack pass, regularizes extreme block plateaus to $\[\epsilon_N, 1 - \epsilon_N\]$ with
+/// $\epsilon_N = \min(0.25, 0.5 / (N + 1))$ to prevent unbounded log-loss spikes, and clamps all
+/// interpolated predictions to $\[0, 1\]$.
+///
+/// # Domain of Validity
+/// Requires non-empty matching `scores` and `outcomes` slices with finite scalar `scores` for
+/// [`Self::fit`], and finite query scores for [`Self::predict`] and [`Self::predict_into`].
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IsotonicCalibrator {
     blocks: Vec<PavaBlock>,

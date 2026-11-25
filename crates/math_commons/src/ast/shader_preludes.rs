@@ -3,6 +3,7 @@
 
 /// Target shading language for AST expression transpilation and prelude emission.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ShaderTarget {
     /// WebGPU Shading Language (`WGSL`, WebGPU / Bevy).
     Wgsl,

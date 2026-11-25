@@ -142,6 +142,11 @@ pub struct AppState {
     pub pane_tab_states: Vec<HashMap<String, SharedTabJson>>,
     #[serde(default)]
     pub compare_sync: ComparisonSyncConfig,
+    #[serde(
+        default,
+        skip_serializing_if = "super::data_bus::WorkspaceDataBus::is_empty"
+    )]
+    pub data_bus: super::data_bus::WorkspaceDataBus,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pipeline_links: Vec<super::dataflow_bus::PaneLink>,
 }
@@ -168,6 +173,7 @@ impl Default for AppState {
             focused_pane: 0,
             pane_tab_states: Vec::new(),
             compare_sync: ComparisonSyncConfig::default(),
+            data_bus: super::data_bus::WorkspaceDataBus::default(),
             pipeline_links: Vec::new(),
         }
     }
@@ -239,6 +245,7 @@ impl AppState {
             focused_pane: app.active_focused_pane(),
             pane_tab_states: app.extract_pane_tab_states(),
             compare_sync: app.compare_sync,
+            data_bus: app.data_bus.clone(),
             pipeline_links: if viewport_layout == ViewportLayout::Single {
                 Vec::new()
             } else {
@@ -284,6 +291,7 @@ impl AppState {
         );
         app.viewport_layout = self.viewport_layout;
         app.compare_sync = self.compare_sync;
+        app.data_bus = self.data_bus.clone();
 
         if app.viewport_layout == ViewportLayout::Single
             && app.split_layout_mode != SplitLayoutMode::Single
@@ -297,13 +305,15 @@ impl AppState {
             app.sync_layout();
         }
 
-        for tab in &mut app.tabs {
+        Self::apply_pane_indices_and_focus(&self, app);
+        let active_primary = app.active_primary_tab_index();
+        for (idx, tab) in app.tabs.iter_mut().enumerate() {
+            tab.set_suspended(idx != active_primary);
             if let Some(tab_str) = self.tab_states.get(tab.name()) {
                 tab.load_state(tab_str);
             }
         }
         app.tab_state_cache.clear();
-        Self::apply_pane_indices_and_focus(&self, app);
         app.restore_pane_tab_states(self.pane_tab_states, &self.tab_states);
         let active_panes = app.viewport_layout.pane_count();
         if active_panes <= 1
@@ -316,6 +326,7 @@ impl AppState {
             app.pipeline_dag.clear();
         }
         app.prune_incompatible_pipeline_links();
+        app.sync_viewport_visibility();
     }
 
     fn resolve_saved_pane_tab(

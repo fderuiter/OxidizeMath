@@ -16,6 +16,8 @@ pub mod atlas;
 mod brush;
 #[path = "ising/challenge.rs"]
 pub mod challenge;
+#[path = "ising/graph_canvas.rs"]
+mod graph_canvas;
 #[path = "ising/graph_mode.rs"]
 mod graph_mode;
 #[path = "ising/overlay.rs"]
@@ -80,6 +82,7 @@ pub struct IsingModelTool {
     pub(crate) pin_cells: Vec<u8>,
     pub(crate) params: Arc<std::sync::RwLock<IsingSharedParams>>,
     pub worker: BackgroundWorker<IsingRunner>,
+    graph_mode: graph_mode::GraphSpinMode,
 }
 
 impl IsingModelTool {
@@ -106,7 +109,7 @@ impl IsingModelTool {
             .total_trials
             .store(0, Ordering::Relaxed);
         let runner = Self::build_runner(&self.params);
-        self.worker = BackgroundWorker::new(runner);
+        self.worker.replace_runner(runner);
         self.stepped_pixels = None;
         self.sync_metrics_from_latest();
         self.reset_trajectory_overlays();
@@ -121,6 +124,9 @@ impl IsingModelTool {
 
     /// Resets the worker lattice in place or respawns a disconnected worker.
     pub fn reset(&mut self) {
+        if self.is_graph_mode() && self.reset_graph_spins() {
+            return;
+        }
         if self.active_challenge.is_none() {
             self.defector_sea = false;
             self.droplet_seeds.clear();
@@ -194,6 +200,7 @@ impl Default for IsingModelTool {
             pin_cells: vec![0; DEFAULT_ISING_SIZE * DEFAULT_ISING_SIZE],
             params,
             worker,
+            graph_mode: graph_mode::GraphSpinMode::default(),
         };
         tool.sync_metrics_from_latest();
         tool.reset_trajectory_overlays();
@@ -210,6 +217,11 @@ impl InteractiveTool for IsingModelTool {
     }
     fn domain(&self) -> &'static str {
         "solid_state"
+    }
+
+    fn set_suspended(&mut self, suspended: bool) {
+        self.worker.set_suspended(suspended);
+        self.atlas.set_suspended(suspended);
     }
 
     fn focused_canvas_id(&self) -> Option<egui::Id> {
@@ -237,6 +249,8 @@ impl InteractiveTool for IsingModelTool {
         self.topology_source.hash(&mut h);
         self.atlas.is_visible().hash(&mut h);
         self.atlas.axis_keys().hash(&mut h);
+        self.graph_mode.follow_workspace_graph.hash(&mut h);
+        self.graph_mode.applied_bus_revision.hash(&mut h);
         self.params
             .read()
             .unwrap_or_else(|e| e.into_inner())
@@ -292,6 +306,7 @@ impl InteractiveTool for IsingModelTool {
             ),
         ]
     }
+
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
         crate::framework::ExportCapabilities::raster_only()
     }
@@ -354,6 +369,9 @@ impl InteractiveTool for IsingModelTool {
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.sync_shared_topology(&ctx);
+        if !crate::app::SharedSimulationBus::is_link_topology_enabled(&ctx) {
+            self.sync_graph_from_bus(&ctx);
+        }
         self.sync_brush_fields_before_frame();
         let theme = crate::app::ThemeMode::from_visuals(ui.visuals());
         if self.last_theme != Some(theme) {
@@ -362,7 +380,7 @@ impl InteractiveTool for IsingModelTool {
             self.dirty = true;
         }
         if self.is_graph_mode() {
-            if self.graph_running {
+            if self.graph_running || self.worker.state() == SimWorkerState::Running {
                 let trials = self.steps_per_frame.clamp(16, 4_000);
                 self.step_graph_trials(trials);
                 ctx.request_repaint();

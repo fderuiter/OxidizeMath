@@ -1,5 +1,9 @@
 # `math_memory`
 
+![Maturity: Validated](https://img.shields.io/badge/maturity-Validated-1f6feb.svg)
+
+> **Maturity Tier:** `Validated` — Tier 0 `#![no_std]` `#![forbid(unsafe_code)]` byte-arena scratch memory foundation crate verified with overflow/alignment proofs, `ArenaScope` cursor-reset invariants, and `VerifiedAllocator` zero-allocation tests.
+
 ## 1. Overview & Architecture
 
 `math_memory` is a Tier 0 `#![no_std]` foundation crate (`crates/00_foundation/math_memory`) providing fallible, zero-allocation byte-arena scratch partitioning and unified workspace contracts across OxidizeMath.

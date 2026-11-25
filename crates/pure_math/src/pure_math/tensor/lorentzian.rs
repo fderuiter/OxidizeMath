@@ -112,12 +112,24 @@ pub trait LorentzianConnection4D {
 }
 
 /// Closed-form 4D Schwarzschild spacetime connection in Boyer-Lindquist / Droste coordinates
-/// $x^\mu = (ct, r, \theta, \varphi)$ with signature $(-, +, +, +)$.
+/// $x^\mu = (ct, r, \theta, \varphi)$ with signature $(-, +, +, +)$ and line element
+/// $ds^2 = -(1 - R_s/r)\,d(ct)^2 + (1 - R_s/r)^{-1}dr^2 + r^2(d\theta^2 + \sin^2\theta\,d\varphi^2)$.
 ///
 /// Unlike finite-difference [`super::christoffel::christoffel_symbols`], which allocates 21 heap
 /// buffers per 4D evaluation and breaks down within stencil width $h = 10^{-5}$ of $r = R_s$,
 /// [`SchwarzschildConnection4D`] evaluates exact analytical connection coefficients directly into
 /// stack [`Matrix4`] registers for every exterior radius $r > R_s$.
+///
+/// Reference: Schwarzschild (1916), [`schwarzschild1916`](../../../../../papers/references.bib#schwarzschild1916);
+/// Misner, Thorne, & Wheeler (1973), [`misner1973gravitation`](../../../../../papers/references.bib#misner1973gravitation);
+/// [`docs/math_specs/pure_math.md`](../../../../../docs/math_specs/pure_math.md).
+///
+/// # Stability
+/// Closed-form algebraic evaluation eliminates finite-difference truncation and cancellation error near $r \to R_s^+$,
+/// failing closed with [`TensorError::SingularMetric`] inside horizon ($r \le R_s(1 + 10^{-9})$) or polar ($\sin\theta \le 10^{-9}$) guards.
+///
+/// # Domain of Validity
+/// Valid for strictly positive finite `schwarzschild_radius` $R_s > 0$, exterior radii $r > R_s$, and non-polar colatitudes $\theta \in (0, \pi)$.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SchwarzschildConnection4D {
     /// Schwarzschild event-horizon radius $R_s = \frac{2GM}{c^2} > 0$.

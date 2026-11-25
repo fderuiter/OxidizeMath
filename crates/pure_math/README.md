@@ -1,6 +1,10 @@
 # Pure Math
 
+![Maturity: Certified](https://img.shields.io/badge/maturity-Certified%20Core%20%2F%20Validated%20Statistics-2ea44f.svg)
+
 Rigorous abstract algebra, number theory, differential geometry, and statistical algorithms.
+
+> **Maturity Tier:** Crate `Certified` — `Certified` core solvers (`analysis::ode`, `analysis::roots`, `analysis::pde::wave_2d`, `algebra`, `number_theory`, `elliptic_curves`, `statistics::market_pricing`, `statistics::black_scholes`), `Validated` geometry/statistics modules, and `Experimental` algorithmic-information prototypes.
 
 ## 1. Overview & Architecture
 
@@ -11,14 +15,15 @@ Implementations prioritize mathematical correctness, transparent algorithmic str
 ### Module Structure
 
 - **`algebra`**: Abstract algebraic structures and type hierarchies:
-  - Semigroups, monoids, groups (`Group`, `AbelianGroup`, `Zn<N>`, `is_subgroup`, `generate_left_coset`), rings, and finite fields (`Fp`).
-  - Polynomial rings and polynomial arithmetic over arbitrary fields.
+  - Semigroups, monoids, groups (`Group`, `AbelianGroup`, `Zn<N>`, `is_subgroup`, `generate_left_coset`), infinite Artin braid groups (`BraidWord`) with word reduction, Yang-Baxter braid relations, and smooth 3D Alexander closures, rings, and finite fields (`Fp`).
+  - Polynomial rings (`Polynomial`) over arbitrary fields and signed-exponent Laurent polynomial rings (`LaurentPolynomial<T>`) with reciprocal checks and Alexander canonical normalization.
 - **`number_theory`**: Prime number generation (`primes_up_to`), primality testing, integer partition theory, and Q-series.
 - **`analysis`**: Differential equation solvers (`OdeSystem`, explicit Runge-Kutta and zero-allocation symplectic `ImplicitMidpoint`, `StormerVerlet`, `Yoshida4`, and `GaussLegendre4` steppers), zero-allocation bracketed and derivative root-finding (`roots::Bisection`, `roots::NewtonRaphson`, `roots::Brent`), 1D and zero-allocation 2D partial differential equation solvers (`pde::tridiagonal` for `core`-slice complex Thomas sweeps, `pde::wave_2d::Wave2DSolver` for hyperbolic wave tanks, Kirchhoff-Love biharmonic Chladni plates, Chladni sand drift, Marching-Squares nodal contours, and pre-planned 2D FFT spectra), numerical integration (`Integrator` with Richardson trapezoidal error estimates and preallocated hyperrectangle `MultivariateIntegrator`), and calculus algorithms.
 - **`differential_geometry`**: Manifolds, metric tensors, Riemannian curvature, and intrinsic $\mathrm{SU}(1,1)$ hyperbolic geometry (`hyperbolic` Poincaré/Klein disk models, Fuchsian $\{p, q\}$ tilings, and geodesic billiards).
 - **`hyperbolic`**: Poincaré disk and upper half-plane models, `PSU(1,1)` / `PSL(2,R)` Möbius isometries, `{p,q}` / `{infinity,q}` tilings, and chaotic geodesic billiards.
 - **`elliptic_curves`**: Zero-allocation short-Weierstrass curve group arithmetic ($P + Q$, $\[k\]P$, cyclic orbits) over $\mathbb{R}$ and prime fields $\mathbb{F}_p$, Frobenius traces $a_p$, Hasse-Weil verification, Breuer modular polynomial valuation bounds, and bridges to binary quadratic forms (`BQF`), Hurwitz-Kronecker class numbers, and modular $q$-series (`QSeries<i64>`).
 - **`graph_theory`**: Network graph structures, centrality metrics, structural parameters (`degeneracy`, 2-approx `vertex_cover`, and exact bitmask branch-and-bound elimination `treewidth` for `|V| <= 24` with preallocated min-fill fallback), traversal and combinatorial optimization solvers (`dijkstra`, `bfs`, `dfs`, zero-allocation Edmonds-Karp `max_flow_min_cut`, and Kruskal `minimum_spanning_tree`), and deterministic `.dot`, `.graphml`, and `.csv` graph interchange codecs.
+- **`knot_theory`**: Parametric 3D knots and multi-component links (torus knots, Lissajous knots, figure-eight, Hopf link, Borromean rings), rotation-minimizing Bishop parallel-transport frames and watertight tubular meshes, zero-allocation Gauss writhe and pairwise Gauss linking integrals, oriented planar link diagrams (`PlanarDiagram`) with validated Reidemeister I/II/III ambient isotopy moves, Fox and reduced Burau Alexander polynomials, and state-sum Kauffman/Jones skein invariants.
 - **`statistics`**: Proper scoring rules and probabilistic calibration (`calibration`: Brier score with Murphy decomposition, dataset `log_loss`, Gaussian and ensemble `CRPS`, `ECE`/`MCE`, `ROC`/`PR-AUC`, Platt/temperature/`PAVA` recalibrators), preallocated Monte Carlo and variance-reduction workspaces (`monte_carlo::MonteCarloWorkspace` with antithetic, optimal-beta control variates, Kong-`ESS` self-normalized importance sampling, and Latin Hypercube), low-discrepancy quasi-Monte Carlo (`qmc::HaltonSequence` and Joe-Kuo `qmc::SobolSequence` with Cranley-Patterson shifts), nonparametric `Percentile` and jackknife-accelerated `BCa` bootstrap (`bootstrap::BootstrapWorkspace`), multivariate Gaussian copula integration (`copula::GaussianCopula::multivariate_cdf` and `cdf_with_seed`), closed-form Black-Scholes-Merton option pricing and Greeks (`black_scholes`), stochastic processes (Markov chains, Parrondo ensembles, Ornstein-Uhlenbeck), rating systems (Glicko-2, venue-adjusted sports Elo), calibrated 2D match score grids (Maher Poisson, Karlis-Ntzoufras bivariate Poisson, Dixon-Coles MLE), single-wager, multi-state, and multi-asset covariance Kelly criterion models with `VaR`/`CVaR` tail risk (`kelly`), solvency and drawdown ruin bounds (`ruin`), CLV and calibration validation (`validation`), and zero-allocation bookmaker market pricing (`market_pricing` for Multiplicative, Additive, Power, and Shin devigging, `+EV`, arbitrage, Dutching, middles, and hedging).
 - **`special_functions`**: Classical mathematical functions (Bessel functions, Legendre polynomials).
 

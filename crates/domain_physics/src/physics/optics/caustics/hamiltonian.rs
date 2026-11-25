@@ -29,7 +29,7 @@ impl OdeSystem<ArrayState<4>> for OpticalMediumConfig {
     }
 }
 
-/// Zero-allocation RK4 Hamiltonian ray bundle and caustic envelope tracer.
+#[doc = include_str!("../../../../../../docs/math_specs/snippets/hamiltonian_ray_tracer.md")]
 ///
 /// # Examples
 ///

@@ -11,12 +11,25 @@ use crate::spde_noise::{
     inject_additive_noise_1d, inject_additive_noise_2d, inject_conserved_flux_noise_1d,
     inject_conserved_flux_noise_2d,
 };
-use math_commons::math_kernel::types::SolverWorkspace;
+use math_memory::SolverWorkspace;
 use rand_core::RngCore;
 
 /// `#![no_std]` radix-2 semi-implicit Fourier SPDE stepper with Orszag 2/3-rule dealiasing
-/// for periodic Cahn-Hilliard, Kardar-Parisi-Zhang (KPZ), and Edwards-Wilkinson fields.
+/// for periodic Cahn-Hilliard ($\partial_t \phi = M \nabla^2(\phi^3 - \phi - \kappa \nabla^2 \phi) + \nabla \cdot \vec{\eta}$),
+/// Kardar-Parisi-Zhang ($\partial_t h = \nu \nabla^2 h + \frac{\lambda}{2}|\nabla h|^2 + \eta$), and Edwards-Wilkinson fields.
+///
+/// Reference: Orszag (1972), DOI: 10.1103/PhysRevLett.28.76; Kardar, Parisi, & Zhang (1986), DOI: 10.1103/PhysRevLett.56.889;
+/// [`docs/math_specs/engine_pde.md`](../../../docs/math_specs/engine_pde.md).
+///
+/// # Stability
+/// Treats linear $+\nu |\mathbf{k}|^2$ and $+M\kappa |\mathbf{k}|^4$ operators implicitly while truncating
+/// modes above $\frac{2}{3} k_{\text{Nyq}}$ to suppress cubic/quadratic pseudospectral aliasing instabilities.
+///
+/// # Domain of Validity
+/// Requires periodic boundaries, power-of-two grid dimensions $\ge 4$, finite positive `dx > 0` and
+/// `dy > 0`, `dt >= 0`, and `SolverWorkspace` capacity [`Self::scratch_len_1d`] / [`Self::scratch_len_2d`].
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SemiImplicitFourierStepper {
     /// Grid spacing $\Delta x > 0$.
     pub dx: f64,

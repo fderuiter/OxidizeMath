@@ -33,6 +33,7 @@
 //! *   **[Elliptic Curves](elliptic_curves)**: Cryptography primitives and geometric arithmetic.
 //! *   **[Graph Theory](graph_theory)**: Network analysis and traversal algorithms.
 //! *   **[Hyperbolic Geometry](hyperbolic)**: Poincaré disk/half-plane models, Möbius isometries, `{p,q}` tilings, and geodesic billiards.
+//! *   **[Knot Theory](knot_theory)**: 3D knots, Artin braid closures, Reidemeister moves, and Laurent skein polynomials.
 //! *   **[Number Theory](number_theory)**: Primes, Partitions, and Modular Arithmetic.
 //! *   **[Statistics](statistics)**: Competitive modeling (Glicko-2), Stochastic processes (Markov), and Data Analysis.
 //!
@@ -43,20 +44,21 @@
 
 pub mod algebra;
 pub mod algorithmic_information;
-#[allow(missing_docs)]
+/// Submodule providing `analysis` types, traits, and algorithms.
 pub mod analysis;
-#[allow(missing_docs)]
+/// Submodule providing `differential_geometry` types, traits, and algorithms.
 pub mod differential_geometry;
 pub mod elliptic_curves;
-#[allow(missing_docs)]
+/// Submodule providing `graph_theory` types, traits, and algorithms.
 pub mod graph_theory;
 pub mod hyperbolic;
+pub mod knot_theory;
 pub mod logic;
 pub mod number_theory;
 pub mod special_functions;
 pub mod statistics;
 pub mod tensor;
-#[allow(missing_docs)]
+/// Submodule providing `vector_calculus` types, traits, and algorithms.
 pub mod vector_calculus;
 
 /// Error types for pure mathematics modules.
@@ -64,4 +66,20 @@ pub use crate::error;
 
 // [cite:graph_parameters_rust]
 
-crate::theory_verification!(module = "pure_math", constants = {}, test = {});
+crate::theory_verification!(
+    module = "pure_math",
+    constants = {
+        MERSENNE_SEVEN = 127.0;
+        HARMONIC_OMEGA_SQ = 1.0;
+    },
+    test = {
+        use analysis::ode::OdeModel;
+        use scientific_metadata::theory::{MaturityTier, TheoryDescribable};
+
+        assert!(number_theory::is_prime(MERSENNE_SEVEN as u64));
+        assert!(!number_theory::is_prime(128));
+        let model = OdeModel::new(HARMONIC_OMEGA_SQ, (), ());
+        assert_eq!(model.maturity_tier(), MaturityTier::Certified);
+        assert!(!model.theory_description().is_empty());
+    }
+);

@@ -11,10 +11,20 @@ pub use super::power_sweep::{
 };
 pub use super::weibull_sampler::SimulatedSubject;
 
-/// Represents a Bivariate Survival Model (Weibull-like) used in the simulation.
+/// Shared-frailty bivariate Weibull joint survival model for composite fatal and non-fatal endpoints.
 ///
-/// The joint survival function is defined as:
-/// S(t, x) = exp( - (lambda1 * t + lambda2 * x)^alpha )
+/// $$
+/// S(t, x) = \exp\!\left(-(\lambda_1 t + \lambda_2 x)^\alpha\right)
+/// $$
+///
+/// Reference: Pocock et al. (2012), DOI: 10.1093/eurheartj/ehr352; Oakes (2016), DOI: 10.1111/biom.12512;
+/// [`docs/math_specs/domain_applied.md`](../../../../../docs/math_specs/domain_applied.md).
+///
+/// # Stability
+/// Evaluates conditional survival $G(x \mid c) = S(c, x)/S(c, 0)$ with explicit underflow protection when $S(c, 0) = 0$.
+///
+/// # Domain of Validity
+/// Valid for hazard scales $\lambda_1, \lambda_2 > 0$, association shape $\alpha > 0$, and event times $t, x \ge 0$.
 #[derive(Debug, Clone, Copy)]
 pub struct BivariateWeibullModel {
     /// Scale parameter for the first event (T).

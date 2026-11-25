@@ -46,16 +46,16 @@ pub fn sample_timestep_with_rng<R: Rng + ?Sized>(max_timesteps: usize, rng: &mut
 /// Operation: Retrieve pre-defined noise variance coefficients beta_t and calculate cumulative product alpha_bar_t.
 /// Output: Signal scale sqrt(alpha_bar_t) and Noise scale sqrt(1 - alpha_bar_t).
 pub struct NoiseSchedule {
-    #[allow(missing_docs)]
+    /// Per-step forward diffusion variance schedule $\beta_t \in (0, 1)$.
     pub betas: Vec<f64>,
-    #[allow(missing_docs)]
+    /// Per-step signal retention factors $\alpha_t = 1 - \beta_t$.
     pub alphas: Vec<f64>,
-    #[allow(missing_docs)]
+    /// Cumulative signal products $\bar{\alpha}_t = \prod_{s=1}^{t} \alpha_s$.
     pub alpha_bars: Vec<f64>,
 }
 
 impl NoiseSchedule {
-    #[allow(missing_docs)]
+    /// Builds a linear variance schedule over `timesteps` forward diffusion steps.
     #[verified_engine::verified]
     pub fn new(timesteps: usize) -> Self {
         // Linear schedule for betas as an example (e.g. 1e-4 to 0.02)
@@ -84,7 +84,7 @@ impl NoiseSchedule {
         }
     }
 
-    #[allow(missing_docs)]
+    /// Returns the `(signal_scale, noise_scale)` pair $(\sqrt{\bar{\alpha}_t}, \sqrt{1 - \bar{\alpha}_t})$ at step `t`.
     #[verified_engine::verified]
     pub fn get_scales(&self, t: usize) -> (f64, f64) {
         // t is 1-indexed in the prompt, let's assume 0-indexed internally or handle offset.

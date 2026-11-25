@@ -1,11 +1,10 @@
-use diagnostics::{Diagnostic, Severity};
-use std::collections::HashMap;
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use thiserror::Error;
 
 use crate::physics::solid_state::types::ElectronVolts;
 
+/// Error variants raised by chaotic dynamical system simulations.
 #[derive(Error, Debug, Clone, PartialEq)]
-#[allow(missing_docs)]
 pub enum ChaosError {
     /// The simulation parameters are invalid (e.g., negative time step).
     #[error("Invalid chaos simulation parameter: {0}")]
@@ -24,36 +23,44 @@ impl Diagnostic for ChaosError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "ChaosError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "ChaosError");
+        visitor.record_display("description", self);
     }
 }
 
+/// Error variants for Standard Model renormalization-group and Higgs-sector calculations.
 #[derive(Error, Debug, Clone, PartialEq)]
-#[allow(missing_docs)]
 pub enum StandardModelError {
     /// Energy scale must be positive.
     #[error("Invalid energy scale {scale} in {context}: must be positive")]
-    #[allow(missing_docs)]
-    InvalidEnergyScale { scale: f64, context: String },
+    InvalidEnergyScale {
+        /// Rejected energy scale $\mu$.
+        scale: f64,
+        /// Caller context where the scale was evaluated.
+        context: String,
+    },
     /// Coupling constant must be positive.
     #[error("Invalid coupling constant alpha = {alpha}: must be positive")]
-    #[allow(missing_docs)]
-    InvalidCouplingConstant { alpha: f64 },
+    InvalidCouplingConstant {
+        /// Rejected coupling constant $\alpha$.
+        alpha: f64,
+    },
     /// The coupling constant diverges at this scale (Landau Pole).
     #[error("Coupling constant diverges at Landau pole scale {scale}")]
-    #[allow(missing_docs)]
-    LandauPole { scale: f64 },
+    LandauPole {
+        /// Energy scale at which the running coupling hits a Landau pole.
+        scale: f64,
+    },
     /// Invalid number of quark flavors (e.g., negative).
     #[error("Invalid quark flavor count nf = {nf}")]
-    #[allow(missing_docs)]
-    InvalidFlavors { nf: f64 },
+    InvalidFlavors {
+        /// Rejected active quark flavor count $n_f$.
+        nf: f64,
+    },
     /// Spontaneous symmetry breaking requires a negative mass-squared parameter (`mu2 < 0`).
     #[error("Spontaneous symmetry breaking requires mu^2 < 0, got {mu2}")]
     UnbrokenSymmetry {
@@ -71,21 +78,18 @@ pub enum StandardModelError {
     Math(#[from] math_commons::error::MathError),
 }
 
+/// Error variants for solid-state BCS gap solvers, Fock states, and lattice models.
 #[derive(Error, Debug, Clone, PartialEq)]
-#[allow(missing_docs)]
 pub enum SolidStateError {
     /// The iterative solver failed to converge within the maximum number of iterations.
     #[error("Convergence failed after {0} iterations. Last value: {1}")]
     ConvergenceFailure(usize, ElectronVolts),
-
     /// A parameter provided to the model or solver was invalid.
     #[error("Invalid parameter: {0}")]
     InvalidParameter(String),
-
     /// A general computation error occurred.
     #[error("Computation error: {0}")]
     ComputationError(String),
-
     /// Fock state mode index exceeded the number of allocated modes.
     #[error("Fock state index {index} is out of bounds for {len} modes")]
     FockIndexOutOfBounds {
@@ -94,37 +98,34 @@ pub enum SolidStateError {
         /// Number of allocated Fock modes.
         len: usize,
     },
-
     /// Attempted to place more than one fermion into a single quantum state.
     #[error("Pauli exclusion principle violated: fermion occupation count {requested} exceeds 1")]
     PauliExclusionViolation {
         /// Invalid requested fermion occupation number.
         requested: u8,
     },
-
     /// Bosonic mode occupation reached the maximum representable count (`u8::MAX`).
     #[error("Boson occupation saturated at maximum representable count ({max})")]
     BosonOccupationOverflow {
         /// Maximum representable occupation count.
         max: u8,
     },
-
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
     Math(#[from] math_commons::error::MathError),
 }
 
+/// Error variants for radiotherapy dose-kernel evaluation and ion-chamber fluence calibration.
 #[derive(Error, Debug, Clone, PartialEq)]
-#[allow(missing_docs)]
 pub enum DoseFluenceError {
+    /// Point-spread kernel evaluated at singular origin $r = 0$.
     #[error("Radius cannot be zero (singularity at r=0)")]
-    #[allow(missing_docs)]
     Singularity,
+    /// Radial distance $r$ was negative.
     #[error("Radius must be non-negative")]
-    #[allow(missing_docs)]
     NegativeRadius,
+    /// Non-negative dosimetric quantity received an invalid value.
     #[error("Physical quantity must be non-negative: {0}")]
-    #[allow(missing_docs)]
     InvalidPhysicalQuantity(String),
     /// Ordinary least-squares linear calibration requires at least two paired samples.
     #[error("Linear calibration requires at least {minimum} data points, got {actual}")]
@@ -142,23 +143,28 @@ pub enum DoseFluenceError {
     Math(#[from] math_commons::error::MathError),
 }
 
+/// Error variants for mmWave FMCW radar signal processing, MUSIC DOA, and respiratory tracking.
 #[derive(Error, Debug, Clone, PartialEq)]
-#[allow(missing_docs)]
 pub enum RadarError {
     /// Insufficient snapshots for MUSIC algorithm.
     #[error("Not enough snapshots to compute stable Covariance Matrix: {actual} < {required}")]
-    #[allow(missing_docs)]
-    InsufficientSnapshots { required: usize, actual: usize },
-
+    InsufficientSnapshots {
+        /// Minimum snapshot count required.
+        required: usize,
+        /// Provided snapshot count.
+        actual: usize,
+    },
     /// Signal subspace dimension error (e.g. >= samples).
     #[error("Signal subspace dimension {subspace} equals or exceeds sample size {samples}")]
-    #[allow(missing_docs)]
-    InvalidSignalSubspace { samples: usize, subspace: usize },
-
+    InvalidSignalSubspace {
+        /// Total antenna / sample dimension.
+        samples: usize,
+        /// Requested signal-subspace rank.
+        subspace: usize,
+    },
     /// Invalid configuration parameters.
     #[error("Invalid configuration: {0}")]
     InvalidConfiguration(String),
-
     /// Antenna weight slice length did not match the configured antenna array size.
     #[error("Antenna weight count ({actual}) must match antenna count ({expected})")]
     AntennaWeightCountMismatch {
@@ -167,7 +173,6 @@ pub enum RadarError {
         /// Supplied weight vector length.
         actual: usize,
     },
-
     /// Invalid scalar parameter passed to a radar tracking filter.
     #[error("Invalid tracking filter parameter {parameter}: {value}")]
     InvalidTrackingParameter {
@@ -176,74 +181,102 @@ pub enum RadarError {
         /// Rejected parameter value.
         value: f64,
     },
-
     /// Wrapped centralized mathematical error.
     #[error("Mathematical error: {0}")]
     Math(#[from] math_commons::error::MathError),
 }
 
+/// Error variants for relativistic astrophysics, black-hole metrics, and radiation processes.
 #[derive(Error, Debug, Clone, PartialEq)]
-#[allow(missing_docs)]
 pub enum HighEnergyError {
     /// Mass must be positive.
     #[error("Mass must be positive, got {mass}")]
-    #[allow(missing_docs)]
-    InvalidMass { mass: f64 },
+    InvalidMass {
+        /// Rejected non-positive mass $M$.
+        mass: f64,
+    },
     /// Radius must be greater than Schwarzschild radius.
     #[error("Radius {radius} must exceed Schwarzschild limit {limit}")]
-    #[allow(missing_docs)]
-    InvalidRadius { radius: f64, limit: f64 },
+    InvalidRadius {
+        /// Requested radial coordinate $r$.
+        radius: f64,
+        /// Event-horizon / Schwarzschild lower bound $r_s$.
+        limit: f64,
+    },
     /// Energy density cannot be negative.
     #[error("Magnetic energy density cannot be negative, got {u_b}")]
-    #[allow(missing_docs)]
-    InvalidEnergyDensity { u_b: f64 },
+    InvalidEnergyDensity {
+        /// Rejected magnetic energy density $U_B$.
+        u_b: f64,
+    },
     /// Lorentz factor must be >= 1.
     #[error("Lorentz factor gamma must be at least 1, got {gamma}")]
-    #[allow(missing_docs)]
-    InvalidLorentzFactor { gamma: f64 },
+    InvalidLorentzFactor {
+        /// Rejected Lorentz factor $\gamma$.
+        gamma: f64,
+    },
     /// Power law index p must be > 1.
     #[error("Power-law spectral index p must exceed 1, got {p}")]
-    #[allow(missing_docs)]
-    InvalidPowerLawIndex { p: f64 },
+    InvalidPowerLawIndex {
+        /// Rejected spectral index $p$.
+        p: f64,
+    },
     /// Adiabatic index must be > 1.
     #[error("Adiabatic index gamma must exceed 1, got {gamma}")]
-    #[allow(missing_docs)]
-    InvalidAdiabaticIndex { gamma: f64 },
+    InvalidAdiabaticIndex {
+        /// Rejected adiabatic index $\gamma$.
+        gamma: f64,
+    },
     /// Density must be positive.
     #[error("Density rho must be positive, got {rho}")]
-    #[allow(missing_docs)]
-    InvalidDensity { rho: f64 },
+    InvalidDensity {
+        /// Rejected rest-mass density $\rho$.
+        rho: f64,
+    },
     /// Pressure cannot be negative.
     #[error("Pressure p cannot be negative, got {p}")]
-    #[allow(missing_docs)]
-    InvalidPressure { p: f64 },
+    InvalidPressure {
+        /// Rejected pressure $p$.
+        p: f64,
+    },
     /// Velocity is invalid (e.g. >= c or < 0 if speed).
     #[error("Relativistic velocity v is out of valid subluminal bounds: {v}")]
-    #[allow(missing_docs)]
-    InvalidVelocity { v: f64 },
+    InvalidVelocity {
+        /// Rejected coordinate speed $v$.
+        v: f64,
+    },
     /// Momentum is invalid (e.g. m^2 + p^2 < 0 somehow? or just checking validity).
     #[error("Invalid relativistic four-momentum")]
     InvalidMomentum,
     /// Invalid statistics parameters (e.g. negative counts).
     #[error("Invalid counting statistics parameters: {reason}")]
-    #[allow(missing_docs)]
-    InvalidStatisticsParams { reason: String },
+    InvalidStatisticsParams {
+        /// Human-readable validation failure reason.
+        reason: String,
+    },
     /// Wrapped centralized mathematical error.
     #[error("{0}")]
     Math(#[from] math_commons::error::MathError),
+    /// Wrapped differential-geometry tensor error.
+    #[error("{0}")]
+    Tensor(#[from] pure_math::error::TensorError),
 }
 
+/// Error variants for continuum and Lattice Boltzmann fluid-dynamics simulations.
 #[derive(Error, Debug, Clone, PartialEq)]
-#[allow(missing_docs)]
 pub enum FluidError {
     /// Density must be strictly positive.
     #[error("Fluid density must be strictly positive, got {value}")]
-    #[allow(missing_docs)]
-    InvalidDensity { value: f64 },
+    InvalidDensity {
+        /// Rejected fluid density $\rho$.
+        value: f64,
+    },
     /// Dynamic viscosity must be non-negative.
     #[error("Dynamic viscosity must be non-negative, got {value}")]
-    #[allow(missing_docs)]
-    InvalidViscosity { value: f64 },
+    InvalidViscosity {
+        /// Rejected viscosity $\mu$.
+        value: f64,
+    },
     /// Lattice Boltzmann grid dimensions overflowed addressable capacity or were empty.
     #[error("Invalid or overflowing Lattice Boltzmann grid dimensions ({width}x{height})")]
     GridDimensionsOverflow {
@@ -257,8 +290,8 @@ pub enum FluidError {
     Math(#[from] math_commons::error::MathError),
 }
 
+/// Error variants for statistical-mechanics ensembles and Bose/Fermi distributions.
 #[derive(Error, Debug, Clone, PartialEq)]
-#[allow(missing_docs)]
 pub enum StatMechError {
     /// Temperature must be non-negative (absolute zero is allowed as a limit).
     #[error("Invalid thermodynamic temperature: {0} K")]
@@ -268,11 +301,11 @@ pub enum StatMechError {
         "Invalid chemical potential ({chemical_potential}) for state energy ({energy}): {reason}"
     )]
     InvalidChemicalPotential {
-        #[allow(missing_docs)]
+        /// Rejected chemical potential $\mu$.
         chemical_potential: f64,
-        #[allow(missing_docs)]
+        /// Single-particle state energy $\varepsilon$.
         energy: f64,
-        #[allow(missing_docs)]
+        /// Physical constraint violated (e.g. Bose-Einstein $\mu > \varepsilon$).
         reason: String,
     },
     /// Wrapped centralized mathematical error.
@@ -289,14 +322,12 @@ impl Diagnostic for StandardModelError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "StandardModelError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "StandardModelError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -309,14 +340,12 @@ impl Diagnostic for SolidStateError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "SolidStateError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "SolidStateError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -329,14 +358,12 @@ impl Diagnostic for DoseFluenceError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "DoseFluenceError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "DoseFluenceError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -349,14 +376,12 @@ impl Diagnostic for RadarError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "RadarError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "RadarError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -365,18 +390,19 @@ impl Diagnostic for HighEnergyError {
     fn severity(&self) -> Severity {
         match self {
             Self::Math(err) => err.severity(),
+            Self::Tensor(err) => err.severity(),
             _ => Severity::Error,
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "HighEnergyError".to_string());
-        if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        match self {
+            Self::Math(math_err) => math_err.visit_fields(visitor),
+            Self::Tensor(tensor_err) => tensor_err.visit_fields(visitor),
+            _ => {}
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "HighEnergyError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -389,14 +415,12 @@ impl Diagnostic for FluidError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "FluidError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "FluidError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -409,14 +433,12 @@ impl Diagnostic for StatMechError {
         }
     }
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "StatMechError".to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            map.extend(math_err.metadata());
+            math_err.visit_fields(visitor);
         }
-        map.insert("description".to_string(), self.to_string());
-        map
+        visitor.record_str("error_type", "StatMechError");
+        visitor.record_display("description", self);
     }
 }
 mod umbrella;

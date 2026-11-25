@@ -28,6 +28,14 @@ pub(super) const MAX_SIR_DURATION: f64 = 365.0;
 const MAX_SIR_HARD_DURATION: f64 = 10_000.0;
 const MAX_SIR_STEPS: usize = 100_000;
 
+fn default_true() -> bool {
+    true
+}
+
+const fn is_true(v: &bool) -> bool {
+    *v
+}
+
 #[derive(serde::Serialize)]
 struct SirStateRef<'a> {
     n: f64,
@@ -35,6 +43,8 @@ struct SirStateRef<'a> {
     beta: f64,
     gamma: f64,
     duration: f64,
+    #[serde(skip_serializing_if = "is_true")]
+    show_network_overlay: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     fork: Option<SirForkDescriptor>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -53,6 +63,8 @@ struct SirState {
     beta: f64,
     gamma: f64,
     duration: f64,
+    #[serde(default = "default_true")]
+    show_network_overlay: bool,
     #[serde(default)]
     fork: Option<SirForkDescriptor>,
     #[serde(default)]
@@ -70,6 +82,7 @@ pub struct SirTool {
     pub(crate) beta: f64,
     pub(crate) gamma: f64,
     pub(crate) duration: f64,
+    pub(crate) show_network_overlay: bool,
     pub(crate) atlas: ParameterAtlasController,
 
     // Cached plot data (full-resolution trajectories for metrics and exports)
@@ -99,6 +112,7 @@ impl Default for SirTool {
             beta: 0.5,
             gamma: 0.1,
             duration: 100.0,
+            show_network_overlay: true,
             atlas: ParameterAtlasController::new(SIR_ATLAS_AXIS_PAIRS.to_vec()),
             s_points: vec![],
             i_points: vec![],
@@ -282,6 +296,7 @@ impl SirTool {
         self.beta = s.beta;
         self.gamma = s.gamma;
         self.duration = s.duration.clamp(MIN_SIR_DURATION, MAX_SIR_DURATION);
+        self.show_network_overlay = s.show_network_overlay;
         self.cf.is_playing = false;
         self.cf.playhead_step = None;
         self.cf.fork = s.fork;
@@ -302,6 +317,7 @@ impl SirTool {
         for val in [self.n, self.i0, self.beta, self.gamma, self.duration] {
             val.to_bits().hash(h);
         }
+        self.show_network_overlay.hash(h);
         if let Some(ref f) = self.cf.fork {
             true.hash(h);
             f.fork_step.hash(h);
@@ -327,6 +343,7 @@ impl SirTool {
             beta: self.beta,
             gamma: self.gamma,
             duration: self.duration,
+            show_network_overlay: self.show_network_overlay,
             fork: self.cf.fork,
             snapshot_manager,
             atlas_visible: self.atlas.is_visible(),
@@ -345,6 +362,10 @@ impl InteractiveTool for SirTool {
     }
     fn domain(&self) -> &'static str {
         "epidemiology"
+    }
+
+    fn set_suspended(&mut self, suspended: bool) {
+        self.atlas.set_suspended(suspended);
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
@@ -459,7 +480,8 @@ impl InteractiveTool for SirTool {
                 self.render_sir_readouts_and_atlas(ui);
                 self.render_counterfactual_bar(ui);
                 ui.separator();
-                metrics::render_simulation_plot(ui, self);
+                let net_trace = crate::app::data_bus::read_epidemic_trace(ui.ctx());
+                metrics::render_simulation_plot(ui, self, net_trace.as_deref());
                 ui.add_space(6.0);
                 self.render_snapshot_bar(ui);
                 let defer_sensitivity =

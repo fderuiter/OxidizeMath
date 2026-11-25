@@ -6,6 +6,7 @@ use rand_core::RngCore;
 /// Physical parameters for underdamped Langevin dynamics
 /// $dq = M^{-1} p \, dt$, $dp = -\nabla V(q)\,dt - \gamma p \, dt + \sqrt{2 \gamma m k_B T}\,dW_t$.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BaoabParams<T: Scalar> {
     /// Particle mass $m > 0$.
     pub mass: T,
@@ -17,11 +18,22 @@ pub struct BaoabParams<T: Scalar> {
     pub dt: T,
 }
 
-/// Symmetric Leimkuhler-Matthews `B-A-O-A-B` geometric Langevin integrator.
+/// Symmetric Leimkuhler-Matthews `B-A-O-A-B` geometric Langevin integrator for
+/// $dq = m^{-1} p\,dt$, $dp = -\nabla V(q)\,dt - \gamma p\,dt + \sqrt{2 \gamma m k_B T}\,dW_t$.
 ///
 /// Splits kick (`B`), drift (`A`), and exact Ornstein-Uhlenbeck thermostat (`O`) substeps so the
 /// deterministic limit ($\gamma = 0$) reduces to symplectic Velocity Verlet while harmonic potentials
-/// preserve the exact configurational Gibbs-Boltzmann variance for any stable step size $\Delta t$.
+/// preserve the exact configurational Gibbs-Boltzmann variance.
+/// Reference: Leimkuhler & Matthews (2013), DOI: 10.1093/amrx/abs010;
+/// [`docs/math_specs/engine_diffeq.md`](../../../docs/math_specs/engine_diffeq.md).
+///
+/// # Stability
+/// Stable on harmonic oscillators of frequency $\omega_{\max}$ for $0 < \omega_{\max} \Delta t < 2$,
+/// with unconditionally contractive thermostat decay $c_1 = e^{-\gamma \Delta t} \in (0, 1]$.
+///
+/// # Domain of Validity
+/// Requires `mass > 0`, `friction >= 0`, `temperature >= 0`, `dt > 0`, `q.len() >= dim`,
+/// `p.len() >= dim`, and `SolverWorkspace` length at least `2 * dim`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BaoabLangevinSolver<T: Scalar> {
     params: BaoabParams<T>,
@@ -126,5 +138,40 @@ impl<T: Scalar> BaoabLangevinSolver<T> {
         for (pi, &gi) in p.iter_mut().take(d).zip(grad.iter()) {
             *pi -= self.half_dt * gi;
         }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<T: Scalar + serde::Serialize> serde::Serialize for BaoabLangevinSolver<T> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.params.serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de, T: Scalar + serde::Deserialize<'de>> serde::Deserialize<'de> for BaoabLangevinSolver<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let params = BaoabParams::<T>::deserialize(deserializer)?;
+        if !(params.mass.is_finite() && params.mass > T::ZERO) {
+            return Err(serde::de::Error::custom(
+                "BAOAB mass must be finite and positive",
+            ));
+        }
+        if !(params.friction.is_finite() && params.friction >= T::ZERO) {
+            return Err(serde::de::Error::custom(
+                "BAOAB friction must be finite and non-negative",
+            ));
+        }
+        if !(params.temperature.is_finite() && params.temperature >= T::ZERO) {
+            return Err(serde::de::Error::custom(
+                "BAOAB temperature must be finite and non-negative",
+            ));
+        }
+        if !(params.dt.is_finite() && params.dt > T::ZERO) {
+            return Err(serde::de::Error::custom(
+                "BAOAB dt must be finite and positive",
+            ));
+        }
+        Ok(Self::new(params))
     }
 }

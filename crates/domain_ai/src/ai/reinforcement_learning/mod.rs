@@ -83,18 +83,18 @@
 //! assert!(q_value != 0.0);
 //! ```
 
-#[allow(missing_docs)]
+/// Off-policy Q-learning and REINFORCE policy-gradient update algorithms.
 pub mod algorithms;
-#[allow(missing_docs)]
+/// Bellman expectation and optimality backup operators.
 pub mod bellman;
 pub mod bellman_solver;
 pub mod maze;
-#[allow(missing_docs)]
+/// Tabular and zero-allocation fixed-array action-value representations.
 pub mod q_function;
 pub mod rollouts;
-#[allow(missing_docs)]
+/// Action-selection exploration policies such as $\epsilon$-greedy.
 pub mod strategies;
-#[allow(missing_docs)]
+/// Core `State`, `Action`, `MarkovDecisionProcess`, `Policy`, and `QFunction` traits.
 pub mod types;
 pub mod workspace;
 
@@ -113,6 +113,6 @@ pub use strategies::{EpsilonGreedy, ExplorationStrategy};
 pub use types::{Action, MarkovDecisionProcess, Policy, QFunction, State};
 
 // [cite:algorithmic_information_rust]
-#[allow(missing_docs)]
+/// Deterministic 2D grid-world benchmark environment.
 pub mod grid_world;
 pub use grid_world::*;

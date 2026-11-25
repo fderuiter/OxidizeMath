@@ -49,6 +49,9 @@ pub(crate) fn run_batch_ast_with_caches(
     if !run_traceability_with_cache(false, cache) {
         passed = false;
     }
+    if !crate::maturity::check_maturity_with_cache(cache) {
+        passed = false;
+    }
     if !print_debt_items(crate::entropy_guard::check_entropy_with_cache(&[], cache)) {
         passed = false;
     }
@@ -66,9 +69,18 @@ pub(crate) fn run_batch_ast_with_caches(
 
 pub fn run_batch_ast() -> bool {
     let _root_guard = crate::manifest_cache::WorkspaceRootGuard::enter();
-    let (_, members) = crate::manifest_cache::discover_workspace();
+    let (workspace_root, members) = crate::manifest_cache::discover_workspace();
     let mut cache = AstCache::new();
-    run_batch_ast_with_cache(&members, &mut cache)
+    let math_violations = crate::doc_audit::math_contracts::audit_math_contracts_with_cache(
+        &workspace_root,
+        &members,
+        &mut cache,
+    );
+    for v in &math_violations {
+        eprintln!("[!] {v}");
+    }
+    let batch_ok = run_batch_ast_with_cache(&members, &mut cache);
+    math_violations.is_empty() && batch_ok
 }
 
 pub fn run_batch_static(args: &[String]) -> bool {
@@ -109,7 +121,7 @@ pub(crate) fn run_batch_static_with_caches(
     }
 
     println!("\n--- Static Gate 5: Crate Documentation Audit ---");
-    if !crate::doc_audit::run_doc_audit_for_members(&members, &[]) {
+    if !crate::doc_audit::run_doc_audit_for_members_with_cache(&members, &[], cache) {
         passed = false;
     }
 
@@ -154,6 +166,7 @@ pub(crate) fn is_root_escalation_path(path: &str) -> bool {
         path,
         "Cargo.toml"
             | "Cargo.lock"
+            | "traceability.toml"
             | "rust-toolchain.toml"
             | "rust-toolchain"
             | ".clippy.toml"
@@ -307,35 +320,24 @@ fn run_staged_ast_and_policy_gates(
     passed
 }
 
-pub(crate) fn run_batch_staged_for_paths_in_dir(
-    repo_dir: &Path,
+fn run_staged_profile_and_length_gates(
     all_staged: &[String],
     existing_staged: &[String],
     workspace_members: &[String],
-    cache: &mut AstCache,
+    touched_members: &[String],
+    escalate: bool,
+    manifest_cache: &mut crate::manifest_cache::ManifestCache,
 ) -> bool {
-    if all_staged.is_empty() {
-        return true;
-    }
-
     let mut passed = true;
-    if !crate::records::verify_records_in_dir_opts(repo_dir, None, None, true) {
-        passed = false;
-    }
-
-    let escalate = all_staged.iter().any(|p| is_root_escalation_path(p));
-    let touched_members = select_touched_members(all_staged, workspace_members);
     let readme_staged = all_staged.iter().any(|p| p == "README.md");
-    let mut manifest_cache = crate::manifest_cache::ManifestCache::new();
-
     if !workspace_members.is_empty() && (escalate || !touched_members.is_empty() || readme_staged) {
         let profile_targets = if escalate {
             workspace_members
         } else {
-            &touched_members
+            touched_members
         };
         let member_refs: Vec<&str> = profile_targets.iter().map(String::as_str).collect();
-        if !crate::profile::check_profiles_with_cache(&member_refs, false, &mut manifest_cache) {
+        if !crate::profile::check_profiles_with_cache(&member_refs, false, manifest_cache) {
             passed = false;
         }
     }
@@ -354,12 +356,47 @@ pub(crate) fn run_batch_staged_for_paths_in_dir(
     {
         passed = false;
     }
+    passed
+}
+
+pub(crate) fn run_batch_staged_for_paths_in_dir(
+    repo_dir: &Path,
+    all_staged: &[String],
+    existing_staged: &[String],
+    workspace_members: &[String],
+    cache: &mut AstCache,
+) -> bool {
+    if all_staged.is_empty() {
+        return true;
+    }
+
+    let mut passed = crate::records::verify_records_in_dir_opts(repo_dir, None, None, true);
+    let escalate = all_staged.iter().any(|p| is_root_escalation_path(p));
+    let touched_members = select_touched_members(all_staged, workspace_members);
+    let mut manifest_cache = crate::manifest_cache::ManifestCache::new();
+
+    if !run_staged_profile_and_length_gates(
+        all_staged,
+        existing_staged,
+        workspace_members,
+        &touched_members,
+        escalate,
+        &mut manifest_cache,
+    ) {
+        passed = false;
+    }
 
     if !workspace_members.is_empty() {
         let doc_ok = if escalate {
-            crate::doc_audit::run_doc_audit_for_members(workspace_members, &[])
+            crate::doc_audit::run_doc_audit_for_members_with_cache(workspace_members, &[], cache)
         } else {
-            crate::doc_audit::run_staged_doc_audit(&touched_members, all_staged, existing_staged)
+            crate::doc_audit::run_staged_doc_audit(
+                &touched_members,
+                all_staged,
+                existing_staged,
+                workspace_members,
+                cache,
+            )
         };
         if !doc_ok {
             passed = false;

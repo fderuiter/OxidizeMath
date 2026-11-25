@@ -1,7 +1,11 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+#[path = "algorithm_visualizer/bus_sync.rs"]
+mod bus_sync;
+
 use super::shared_topology::CompactTopologyState;
-use crate::app::TopologySource;
+use crate::app::data_bus::SharedGraph;
+use crate::app::{SharedSimulationBus, TopologySource};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use eframe::egui::Pos2;
@@ -9,6 +13,15 @@ use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::pure_math::graph_theory::graph::Graph;
 use petgraph::graph::NodeIndex;
 use std::collections::HashMap;
+use std::sync::Arc;
+
+fn default_true() -> bool {
+    true
+}
+
+const fn is_true(value: &bool) -> bool {
+    *value
+}
 
 #[path = "algorithm_visualizer/canvas.rs"]
 mod canvas;
@@ -45,6 +58,10 @@ pub(crate) struct AlgorithmVisualizerState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) sink_node: Option<usize>,
     pub(crate) playback_speed: f32,
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub(crate) follow_workspace_graph: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) frozen_graph: Option<SharedGraph>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) custom_topology: Option<CompactTopologyState>,
     #[serde(default, skip_serializing_if = "TopologySource::is_default")]
@@ -81,6 +98,9 @@ pub struct AlgorithmVisualizerTool {
     step_timer: f32,
     revision: u64,
     file_io: super::io_helpers::GraphFileIoState,
+    pub(crate) follow_workspace_graph: bool,
+    pub(crate) applied_bus_revision: u64,
+    active_shared_graph: Option<Arc<SharedGraph>>,
 }
 
 impl Default for AlgorithmVisualizerTool {
@@ -111,6 +131,9 @@ impl Default for AlgorithmVisualizerTool {
             step_timer: 0.0,
             revision: 1,
             file_io: super::io_helpers::GraphFileIoState::default(),
+            follow_workspace_graph: true,
+            applied_bus_revision: 0,
+            active_shared_graph: None,
         };
         tool.build_sample_graph();
         tool
@@ -282,7 +305,7 @@ impl AlgorithmVisualizerTool {
         self.run_algorithm();
     }
 
-    fn run_algorithm(&mut self) {
+    pub(super) fn run_algorithm(&mut self) {
         self.visit_order.clear();
         self.distances.clear();
         self.predecessors.clear();
@@ -341,6 +364,7 @@ impl InteractiveTool for AlgorithmVisualizerTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
         self
     }
+
     fn name(&self) -> &'static str {
         "Algorithm Visualizer"
     }
@@ -384,11 +408,15 @@ impl InteractiveTool for AlgorithmVisualizerTool {
     }
 
     fn save_state(&self) -> Option<String> {
-        let on_bus = self.synced_bus_revision.is_some();
+        let on_bus = self.synced_bus_revision.is_some()
+            || (self.active_shared_graph.is_some() && self.follow_workspace_graph);
         let include_sink = !on_bus
             && (self.selected_algorithm == Algorithm::MaxFlowMinCut || self.is_custom_topology);
         let custom_topology = (!on_bus && self.is_custom_topology)
             .then(|| self.export_shared_topology().to_compact_state());
+        let frozen_graph = (!self.follow_workspace_graph && !self.is_custom_topology)
+            .then(|| self.active_shared_graph.as_deref().cloned())
+            .flatten();
         serde_json::to_string(&AlgorithmVisualizerState {
             selected_algorithm: self.selected_algorithm,
             start_node: if on_bus {
@@ -400,6 +428,8 @@ impl InteractiveTool for AlgorithmVisualizerTool {
                 .then(|| self.effective_sink_node(self.start_node))
                 .flatten(),
             playback_speed: self.playback_speed,
+            follow_workspace_graph: self.follow_workspace_graph,
+            frozen_graph,
             custom_topology,
             topology_source: self.topology_source,
         })
@@ -415,25 +445,11 @@ impl InteractiveTool for AlgorithmVisualizerTool {
                 loaded.playback_speed
             ));
         }
-        if let Some(compact) = &loaded.custom_topology {
-            compact.validate()?;
-            self.synced_bus_revision = None;
-            self.load_compact_topology(compact);
-        } else if self.is_custom_topology || self.synced_bus_revision.take().is_some() {
-            self.build_sample_graph();
-        }
-        if let Some(id) = loaded.start_node {
-            if !self.node_indices.contains_key(&id) {
-                return Err(format!("Unknown start_node id: {id}"));
-            }
-        }
-        if let Some(sink) = loaded.sink_node {
-            if !self.node_indices.contains_key(&sink) || Some(sink) == loaded.start_node {
-                return Err(format!("Invalid sink_node id: {sink}"));
-            }
-        }
+        self.apply_loaded_topology_state(&loaded)?;
         self.selected_algorithm = loaded.selected_algorithm;
         self.topology_source = loaded.topology_source;
+        self.follow_workspace_graph =
+            loaded.follow_workspace_graph && loaded.custom_topology.is_none();
         self.start_node = loaded.start_node;
         self.local_start_node = loaded.start_node;
         if let Some(id) = loaded.start_node {
@@ -443,6 +459,9 @@ impl InteractiveTool for AlgorithmVisualizerTool {
             .sink_node
             .or_else(|| self.effective_sink_node(self.start_node));
         self.playback_speed = loaded.playback_speed;
+        if self.follow_workspace_graph {
+            self.applied_bus_revision = 0;
+        }
         self.bump_revision();
         self.run_algorithm();
         Ok(())
@@ -451,8 +470,14 @@ impl InteractiveTool for AlgorithmVisualizerTool {
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.sync_shared_topology(&ctx);
+        if !SharedSimulationBus::is_link_topology_enabled(&ctx) {
+            self.sync_from_bus(&ctx);
+        }
         self.update_animation(&ctx);
         self.render_controls(ui);
+        if !SharedSimulationBus::is_link_topology_enabled(&ctx) {
+            self.sync_from_bus(&ctx);
+        }
         self.render_canvas(ui);
     }
 }
