@@ -228,18 +228,20 @@ mod active {
         );
     }
 
-    #[cfg(feature = "std")]
     #[test]
-    fn ast_and_umbrella_errors_roundtrip_std() {
+    fn ast_and_umbrella_errors_roundtrip_no_std() {
         use crate::ast::{
-            BinaryOp, CompiledExpr, EvalError, Expr, Func, GlslError, Instruction, LexError,
-            ParseError, ShaderEmitError, ShaderTarget, Span, Token, TokenKind, UnaryOp, parse,
+            BinaryOp, CompiledExpr, Expr, Func, Instruction, ShaderTarget, Span, Token, TokenKind,
+            UnaryOp, parse,
         };
-        use crate::error::MathCommonsError;
-        use crate::math_kernel::colormap::ShaderPalette;
+        use alloc::string::ToString;
 
-        for palette in ShaderPalette::ALL {
-            assert_eq!(roundtrip_json(&palette), palette);
+        #[cfg(feature = "std")]
+        {
+            use crate::math_kernel::colormap::ShaderPalette;
+            for palette in ShaderPalette::ALL {
+                assert_eq!(roundtrip_json(&palette), palette);
+            }
         }
 
         let expr: Expr = parse("sin(2 * x) + a").expect("parse expr");
@@ -284,8 +286,20 @@ mod active {
             span: Span::new(0, 5),
         };
         assert_eq!(roundtrip_json(&token), token);
+    }
+
+    #[test]
+    fn umbrella_ast_qmc_and_rng_errors_roundtrip_no_std() {
+        use crate::ast::{EvalError, GlslError, LexError, ParseError, ShaderEmitError};
+        use crate::error::{MathCommonsError, QmcError, RngError};
+        use alloc::string::ToString;
 
         let umbrella_cases = [
+            MathCommonsError::from(QmcError::InvalidDimension {
+                dimension: 0,
+                max_supported: 64,
+            }),
+            MathCommonsError::from(RngError::ZeroUpperBound),
             MathCommonsError::from(LexError {
                 start: 0,
                 end: 1,

@@ -20,6 +20,7 @@ use facade_signatures::{ParsedSignatureMap, build_parsed_signatures_counted};
 const FACADE_REACHABLE_PREFIXES: &[&str] = &[
     "math_explorer/src/",
     "crates/00_foundation/math_diagnostics/src/",
+    "crates/00_foundation/math_rng/src/",
     "crates/math_commons/src/",
     "crates/diagnostics/src/",
     "crates/pure_math/src/",
@@ -87,6 +88,11 @@ const STD_AND_REEXPORTED_TYPES: &[&str] = &[
     "Vector4", "Vector6", "VectorView", "VectorViewMut", "VisitMap", "Visitable",
 ];
 
+const TIER0_FOUNDATION_PREFIXES: &[&str] = &[
+    "crates/00_foundation/math_diagnostics/src/",
+    "crates/00_foundation/math_rng/src/",
+];
+
 const TIER2_ENGINE_PREFIXES: &[&str] = &[
     "crates/02_engines/engine_linalg/src/",
     "crates/engine_diffeq/src/",
@@ -95,6 +101,12 @@ const TIER2_ENGINE_PREFIXES: &[&str] = &[
 
 fn is_facade_reachable_file(rel_path: &str) -> bool {
     FACADE_REACHABLE_PREFIXES
+        .iter()
+        .any(|prefix| rel_path.starts_with(prefix))
+}
+
+pub(super) fn is_tier0_foundation_file(rel_path: &str) -> bool {
+    TIER0_FOUNDATION_PREFIXES
         .iter()
         .any(|prefix| rel_path.starts_with(prefix))
 }
@@ -247,6 +259,14 @@ impl SignatureTypeCollector {
     }
 
     fn record_path(&mut self, path: &syn::Path) {
+        if path.segments.len() >= 2
+            && path
+                .segments
+                .first()
+                .is_some_and(|first| first.ident == "private")
+        {
+            return;
+        }
         if path.segments.len() >= 2
             && let Some(first) = path.segments.first()
             && (first.ident == "Self" || self.generics.contains(&first.ident.to_string()))

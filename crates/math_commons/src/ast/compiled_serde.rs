@@ -2,6 +2,7 @@
 // [cite:math_commons]
 
 use super::{CompiledExpr, Instruction, verify_stack_depth};
+use alloc::{string::String, vec::Vec};
 use serde::{Deserialize, Deserializer};
 
 #[derive(Deserialize)]

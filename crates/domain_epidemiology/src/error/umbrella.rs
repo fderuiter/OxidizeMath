@@ -1,8 +1,8 @@
 use super::{EpidemiologyError, NetworkModelError};
 use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_commons::error::{
-    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, ParseError,
-    ShaderEmitError,
+    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, ParseError, QmcError,
+    RngError, ShaderEmitError,
 };
 use pure_math::error::{LinearAlgebraError, MonteCarloError, OptimizationError, TensorError};
 
@@ -135,6 +135,20 @@ impl From<TensorError> for EpidemiologyDomainError {
 impl From<LinalgError> for EpidemiologyDomainError {
     #[verified_engine::verified]
     fn from(err: LinalgError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<QmcError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: QmcError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<RngError> for EpidemiologyDomainError {
+    #[verified_engine::verified]
+    fn from(err: RngError) -> Self {
         Self::MathCommons(MathCommonsError::from(err))
     }
 }

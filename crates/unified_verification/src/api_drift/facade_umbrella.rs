@@ -1,11 +1,14 @@
 use super::extract_defined_error_idents;
 use crate::api_drift::ApiItem;
 use crate::api_drift::facade::{
-    ParsedSignatureMap, is_facade_reachable_file, is_tier2_engine_file,
+    ParsedSignatureMap, is_facade_reachable_file, is_tier0_foundation_file, is_tier2_engine_file,
+};
+use crate::api_drift::traversal::{
+    child_module_dir_for_file, has_cfg_test, resolve_child_mod_file,
 };
 use oxidize_core::traceability::AstCache;
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use syn::visit::Visit;
 
 struct CrateUmbrellaSpec {
@@ -127,15 +130,13 @@ fn collect_macro_from_sources(tokens: proc_macro2::TokenStream, out: &mut BTreeS
     }
 }
 
-fn parse_supported_from_idents(
-    path: &Path,
+fn scan_from_items_in_ast(
+    ast: &syn::File,
+    module_dir: &Path,
     umbrella_ident: &str,
-    cache: &mut AstCache,
-) -> BTreeSet<String> {
-    let mut supported = BTreeSet::new();
-    let Some(ast) = cache.get_or_load_fs(path).and_then(|e| e.ast.as_ref()) else {
-        return supported;
-    };
+    supported: &mut BTreeSet<String>,
+    children: &mut Vec<PathBuf>,
+) {
     for item in &ast.items {
         match item {
             syn::Item::Enum(en) if en.ident == umbrella_ident => {
@@ -154,10 +155,41 @@ fn parse_supported_from_idents(
                 }
             }
             syn::Item::Macro(mac) if mac.mac.path.is_ident("impl_error_from") => {
-                collect_macro_from_sources(mac.mac.tokens.clone(), &mut supported);
+                collect_macro_from_sources(mac.mac.tokens.clone(), supported);
+            }
+            syn::Item::Mod(item_mod)
+                if item_mod.content.is_none() && !has_cfg_test(&item_mod.attrs) =>
+            {
+                if let Some(child_path) =
+                    resolve_child_mod_file(module_dir, &item_mod.ident.to_string(), &item_mod.attrs)
+                {
+                    children.push(child_path);
+                }
             }
             _ => {}
         }
+    }
+}
+
+fn parse_supported_from_idents(
+    path: &Path,
+    umbrella_ident: &str,
+    cache: &mut AstCache,
+) -> BTreeSet<String> {
+    let mut supported = BTreeSet::new();
+    let mut visited = BTreeSet::new();
+    let mut worklist = vec![path.to_path_buf()];
+
+    while let Some(curr) = worklist.pop() {
+        if !visited.insert(curr.clone()) {
+            continue;
+        }
+        let mod_dir = child_module_dir_for_file(&curr);
+        let mut children = Vec::new();
+        if let Some(ast) = cache.get_or_load_fs(&curr).and_then(|e| e.ast.as_ref()) {
+            scan_from_items_in_ast(ast, &mod_dir, umbrella_ident, &mut supported, &mut children);
+        }
+        worklist.extend(children);
     }
     supported
 }
@@ -239,6 +271,38 @@ fn collect_signature_result_errors(
     out
 }
 
+fn build_required_umbrella_errors(
+    spec: &CrateUmbrellaSpec,
+    apis: &BTreeMap<String, Vec<ApiItem>>,
+    parsed_sigs: &ParsedSignatureMap<'_>,
+    tier0_errors: &BTreeMap<String, String>,
+    tier2_errors: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
+    let mut required: BTreeMap<String, String> = tier0_errors
+        .iter()
+        .map(|(e, p)| (e.clone(), format!("Tier 0 foundation `{p}`")))
+        .collect();
+    for (e, p) in tier2_errors {
+        if spec.engine_prefixes.iter().any(|pre| p.starts_with(pre)) {
+            required
+                .entry(e.clone())
+                .or_insert_with(|| format!("Tier 2 engine `{p}`"));
+        }
+    }
+    for (err, p) in
+        collect_defined_errors_under_prefix(apis, parsed_sigs, |p| p.starts_with(spec.crate_prefix))
+    {
+        required
+            .entry(err)
+            .or_insert_with(|| format!("crate error in `{p}`"));
+    }
+    for (err, origin) in collect_signature_result_errors(apis, parsed_sigs, spec.crate_prefix) {
+        required.entry(err).or_insert(origin);
+    }
+    required.remove(spec.umbrella_ident);
+    required
+}
+
 pub(super) fn audit_crate_umbrella_conversions(
     workspace_root: &Path,
     apis: &BTreeMap<String, Vec<ApiItem>>,
@@ -246,6 +310,8 @@ pub(super) fn audit_crate_umbrella_conversions(
     cache: &mut AstCache,
     violations: &mut Vec<String>,
 ) {
+    let tier0_errors =
+        collect_defined_errors_under_prefix(apis, parsed_sigs, is_tier0_foundation_file);
     let tier2_errors = collect_defined_errors_under_prefix(apis, parsed_sigs, is_tier2_engine_file);
 
     for spec in CRATE_UMBRELLA_SPECS {
@@ -254,26 +320,8 @@ pub(super) fn audit_crate_umbrella_conversions(
             continue;
         }
         let supported = parse_supported_from_idents(&umbrella_path, spec.umbrella_ident, cache);
-        let mut required: BTreeMap<String, String> = tier2_errors
-            .iter()
-            .filter(|(_, p)| {
-                spec.engine_prefixes
-                    .iter()
-                    .any(|prefix| p.starts_with(prefix))
-            })
-            .map(|(e, p)| (e.clone(), format!("Tier 2 engine `{p}`")))
-            .collect();
-        for (err, p) in collect_defined_errors_under_prefix(apis, parsed_sigs, |p| {
-            p.starts_with(spec.crate_prefix)
-        }) {
-            required
-                .entry(err)
-                .or_insert_with(|| format!("crate error in `{p}`"));
-        }
-        for (err, origin) in collect_signature_result_errors(apis, parsed_sigs, spec.crate_prefix) {
-            required.entry(err).or_insert(origin);
-        }
-        required.remove(spec.umbrella_ident);
+        let required =
+            build_required_umbrella_errors(spec, apis, parsed_sigs, &tier0_errors, &tier2_errors);
 
         for (err_name, origin) in required {
             if !supported.contains(&err_name) {
@@ -290,7 +338,7 @@ pub(super) fn audit_crate_umbrella_conversions(
     if facade_conv_path.is_file() {
         let supported = parse_supported_from_idents(&facade_conv_path, "Error", cache);
         let all_reachable = collect_defined_errors_under_prefix(apis, parsed_sigs, |p| {
-            (is_facade_reachable_file(p) || is_tier2_engine_file(p))
+            (is_facade_reachable_file(p) || is_tier0_foundation_file(p) || is_tier2_engine_file(p))
                 && !p.starts_with("math_explorer/src/")
         });
         for (err_name, path) in all_reachable {

@@ -182,6 +182,20 @@ impl core::fmt::Display for RngError {
 
 impl core::error::Error for RngError {}
 
+impl math_diagnostics::Diagnostic for RngError {
+    fn severity(&self) -> math_diagnostics::Severity {
+        math_diagnostics::Severity::Error
+    }
+
+    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
+        visitor.record_str("error_type", "RngError");
+        visitor.record_display("description", self);
+        match *self {
+            Self::ZeroUpperBound => visitor.record_str("code", "RNG-001"),
+        }
+    }
+}
+
 /// Fallible companion to [`sample_bounded_u64`] returning [`RngError::ZeroUpperBound`] if `upper == 0`.
 #[inline]
 pub fn try_sample_bounded_u64<R: RngCore + ?Sized>(

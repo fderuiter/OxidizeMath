@@ -96,22 +96,26 @@ impl CeraTool {
         (control_inputs, control_targets, warm_inputs)
     }
 
+    fn build_cera_config(&self, epochs: usize) -> CeraConfig {
+        CeraConfig {
+            in_channels: self.in_channels,
+            latent_channels: self.latent_channels,
+            aligned_channels: self.aligned_channels,
+            num_levels: self.num_levels,
+            output_size: self.output_size,
+            epochs,
+            batch_size: TRAIN_BATCH_SIZE,
+            learning_rate: 0.05,
+            lambda_pred: 0.2,
+            lambda_emd: 0.1,
+        }
+    }
+
     pub(crate) fn train_epochs(&mut self, epochs: usize) {
         let bounded_epochs = epochs.clamp(1, 5);
         let sig = self.current_signature();
         if self.model.is_none() || self.model_signature != Some(sig) {
-            let config = CeraConfig {
-                in_channels: self.in_channels,
-                latent_channels: self.latent_channels,
-                aligned_channels: self.aligned_channels,
-                num_levels: self.num_levels,
-                output_size: self.output_size,
-                epochs: bounded_epochs,
-                batch_size: TRAIN_BATCH_SIZE,
-                learning_rate: 0.05,
-                lambda_pred: 0.2,
-                lambda_emd: 0.1,
-            };
+            let config = self.build_cera_config(bounded_epochs);
             match Cera::new(config) {
                 Ok(new_model) => {
                     self.model = Some(new_model);
@@ -120,6 +124,7 @@ impl CeraTool {
                     self.epochs_trained = 0;
                 }
                 Err(e) => {
+                    crate::telemetry::emit_diagnostic("CeraEmulator", &e);
                     self.clear_persisted_model();
                     self.prediction_result = Some(Err(e.to_string()));
                     return;

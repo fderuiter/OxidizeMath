@@ -1,6 +1,6 @@
 use super::ApiItem;
 use super::{
-    ParsedSignatureMap, is_facade_reachable_file, is_tier2_engine_file,
+    ParsedSignatureMap, is_facade_reachable_file, is_tier0_foundation_file, is_tier2_engine_file,
     parse_exported_idents_in_file,
 };
 use oxidize_core::traceability::AstCache;
@@ -11,6 +11,8 @@ use std::path::Path;
 mod facade_umbrella;
 
 pub(super) const ERROR_CRATE_FILES: &[&str] = &[
+    "crates/00_foundation/math_rng/src/qmc/error.rs",
+    "crates/02_engines/engine_linalg/src/error.rs",
     "crates/math_commons/src/error.rs",
     "crates/pure_math/src/error.rs",
     "crates/domain_ai/src/error.rs",
@@ -66,7 +68,9 @@ fn audit_reachable_submodule_errors(
     let mut definitions_by_name: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
     for (path, items) in apis {
-        let in_scope = is_facade_reachable_file(path) || is_tier2_engine_file(path);
+        let in_scope = is_facade_reachable_file(path)
+            || is_tier0_foundation_file(path)
+            || is_tier2_engine_file(path);
         if !in_scope || path.starts_with("math_explorer/src/") {
             continue;
         }

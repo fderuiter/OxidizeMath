@@ -29,3 +29,27 @@ fn test_cera_tool_reduces_loss_and_emits_distinct_channels() {
         "Expected distinct channel outputs, got {preds:?}"
     );
 }
+
+#[test]
+fn test_cera_tool_invalid_alignment_emits_climate_error_telemetry() {
+    let _guard = crate::reflective_ui::tests::lock_test_mutex();
+    let _ = federated_registry::global_registry().try_recv_all();
+
+    let mut tool = CeraTool {
+        latent_channels: 2,
+        aligned_channels: 4,
+        ..CeraTool::default()
+    };
+    tool.train_epochs(1);
+
+    assert!(matches!(tool.prediction_result, Some(Err(_))));
+    let events = crate::telemetry::poll_app_telemetry();
+    let ev = events
+        .iter()
+        .find(|e| e.source == "CeraEmulator")
+        .expect("CeraEmulator diagnostic event emitted");
+    assert_eq!(
+        ev.metadata.get("error_type").map(String::as_str),
+        Some("ClimateError")
+    );
+}

@@ -1,5 +1,9 @@
 // [cite:math_commons]
 use super::parser::ParseError;
+use alloc::{
+    format,
+    string::{String, ToString},
+};
 
 pub(super) fn format_found_token(found: &str) -> String {
     if found == "<EOF>" || found == "end of expression" {

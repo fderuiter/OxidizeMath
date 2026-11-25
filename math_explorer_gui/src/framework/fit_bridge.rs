@@ -80,7 +80,10 @@ impl CustomFitEvaluator for CompiledCustomFitEvaluator {
 /// Compiles a raw user formula (e.g. `"a * exp(-b * x) + c"`) into a zero-allocation
 /// [`CustomFitEvaluator`] with up to [`MAX_FIT_PARAMS`] (6) free parameters.
 pub fn compile_custom_fit_expr(raw_formula: &str) -> Result<Arc<dyn CustomFitEvaluator>, String> {
-    let (_lhs, expr) = parse_equation(raw_formula).map_err(|e| e.user_message())?;
+    let (_lhs, expr) = parse_equation(raw_formula).map_err(|e| {
+        crate::telemetry::emit_diagnostic("CustomFitBridge", &e);
+        e.user_message()
+    })?;
     let free = expr.free_variables();
     let axis = if free.iter().any(|v| v == "x") || !free.iter().any(|v| v == "t") {
         "x"
@@ -103,7 +106,10 @@ pub fn compile_custom_fit_expr(raw_formula: &str) -> Result<Arc<dyn CustomFitEva
 
     let param_refs: Vec<&str> = params.iter().map(String::as_str).collect();
     let compiled = CompiledExpr::compile_with_vars_and_params(&expr, &[axis], &param_refs)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            crate::telemetry::emit_diagnostic("CustomFitBridge", &e);
+            e.to_string()
+        })?;
 
     Ok(Arc::new(CompiledCustomFitEvaluator {
         expr,
@@ -165,5 +171,22 @@ mod tests {
 
         // Reject > 6 free parameters cleanly
         assert!(compile_custom_fit_expr("p1 + p2 + p3 + p4 + p5 + p6 + p7 * x").is_err());
+    }
+
+    #[test]
+    fn test_custom_fit_bridge_emits_ast_parse_diagnostic_telemetry() {
+        let _guard = crate::reflective_ui::tests::lock_test_mutex();
+        let _ = federated_registry::global_registry().try_recv_all();
+
+        assert!(compile_custom_fit_expr("a * (x + ").is_err());
+        let events = crate::telemetry::poll_app_telemetry();
+        let ev = events
+            .iter()
+            .find(|e| e.source == "CustomFitBridge")
+            .expect("CustomFitBridge AST parse diagnostic emitted");
+        assert_eq!(
+            ev.metadata.get("error_type").map(String::as_str),
+            Some("ParseError")
+        );
     }
 }

@@ -1,6 +1,8 @@
 // [cite:math_commons]
-use super::{Diagnostic, DiagnosticVisitor, FitError, LinalgError, MathError, Severity};
-#[cfg(feature = "std")]
+use super::{
+    Diagnostic, DiagnosticVisitor, FitError, LinalgError, MathError, QmcError, RngError, Severity,
+};
+#[cfg(feature = "alloc")]
 use super::{EvalError, GlslError, LexError, ParseError, ShaderEmitError};
 use thiserror::Error;
 
@@ -18,24 +20,30 @@ pub enum MathCommonsError {
     /// `#![no_std]` linear algebra engine failure.
     #[error("{0}")]
     Linalg(#[from] LinalgError),
+    /// `#![no_std]` Quasi-Monte Carlo sequence or dimension failure.
+    #[error("{0}")]
+    Qmc(#[from] QmcError),
+    /// `#![no_std]` bounded random-number sampler failure.
+    #[error("{0}")]
+    Rng(#[from] RngError),
     /// AST lexical analysis failure.
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     #[error("{0}")]
     Lex(#[from] LexError),
     /// AST syntax parsing failure.
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     #[error("{0}")]
     Parse(#[from] ParseError),
     /// AST runtime evaluation failure.
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     #[error("{0}")]
     Eval(#[from] EvalError),
     /// AST-to-GLSL transpilation failure.
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     #[error("{0}")]
     Glsl(#[from] GlslError),
     /// AST-to-WGSL/GLSL shader emission failure.
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     #[error("{0}")]
     ShaderEmit(#[from] ShaderEmitError),
 }
@@ -46,15 +54,17 @@ impl MathCommonsError {
             Self::Math(err) => err,
             Self::Fit(err) => err,
             Self::Linalg(err) => err,
-            #[cfg(feature = "std")]
+            Self::Qmc(err) => err,
+            Self::Rng(err) => err,
+            #[cfg(feature = "alloc")]
             Self::Lex(err) => err,
-            #[cfg(feature = "std")]
+            #[cfg(feature = "alloc")]
             Self::Parse(err) => err,
-            #[cfg(feature = "std")]
+            #[cfg(feature = "alloc")]
             Self::Eval(err) => err,
-            #[cfg(feature = "std")]
+            #[cfg(feature = "alloc")]
             Self::Glsl(err) => err,
-            #[cfg(feature = "std")]
+            #[cfg(feature = "alloc")]
             Self::ShaderEmit(err) => err,
         }
     }

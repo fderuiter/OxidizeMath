@@ -137,6 +137,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261123: Workspace Release Version Governance, Tag Parity Guards, and WiX Pre-Release Mapping](adr/20261123-workspace-release-version-guards-and-wix-mapping.md)
 - [ADR 20261123: Add xtask Smoke Gates and Zero-Allocation Benchmark Checks](adr/20261123-xtask-smoke-gates-and-zero-allocation-bench-checks.md)
 - [ADR 20261124: Complete Checked Companion APIs and Eliminate Untyped Public Result Signatures](adr/20261124-complete-checked-apis-and-typed-domain-errors.md)
+- [ADR 20261124: Tier 0 RNG/QMC Diagnostics, Alloc-Gated `#![no_std]` AST, and Causal Kelly Error Wiring](adr/20261124-hierarchical-qmc-nostd-ast-and-kelly-errors.md)
 - [ADR 20261124: Tier 0 `math_rng` Crate, Stream-Split ChaCha8 Samplers, and 64D Static QMC Views](adr/20261124-math-rng-static-qmc-views.md)
 - [ADR 20261124: `#![no_std]` Visitor-Based `math_diagnostics`, Causal `LinalgError` Retention, and Umbrella `api_drift` Guards](adr/20261124-no-std-math-diagnostics-and-causal-error-wiring.md)
 - [ADR 20261124: Optional `#![no_std]` Serde Across Substrate, Plot Outputs, and Facade](adr/20261124-optional-no-std-serde-substrate-and-facade.md)

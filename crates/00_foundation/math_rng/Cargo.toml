@@ -7,10 +7,11 @@ description = "Zero-allocation Tier 0 no_std ChaCha8 PRNG streams, generic IEEE-
 [features]
 default = []
 alloc = []
-serde = ["dep:serde", "rand_chacha/serde1"]
-std = ["alloc", "serde?/std"]
+serde = ["dep:serde", "math_diagnostics/serde", "rand_chacha/serde1"]
+std = ["alloc", "math_diagnostics/std", "serde?/std"]
 
 [dependencies]
+math_diagnostics = { path = "../math_diagnostics", default-features = false }
 rand_chacha = { workspace = true, default-features = false }
 rand_core = { workspace = true }
 serde = { workspace = true, optional = true }

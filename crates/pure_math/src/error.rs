@@ -45,36 +45,29 @@ pub enum NumberTheoryError {
 }
 
 /// Enumeration `KellyError` classifying KellyError variants.
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum KellyError {
     /// Invalid probability (must be between 0 and 1).
-    #[error("Invalid probability: {value} (must be between 0 and 1)")]
     InvalidProbability {
         /// Value for `value` (value).
         value: f64,
     },
     /// Invalid odds (must be greater than 1.0 for decimal odds).
-    #[error("Invalid odds: {value} (must be > 1.0)")]
     InvalidOdds {
         /// Value for `value` (value).
         value: f64,
     },
     /// Invalid net profit multiplier (must be finite and strictly positive).
-    #[error("Invalid net odds: {value} (must be finite and > 0.0)")]
     InvalidNetOdds {
         /// Rejected net profit multiplier `b`.
         value: f64,
     },
     /// Invalid American odds (must be finite with magnitude at least 100).
-    #[error("Invalid American odds: {value} (must be finite with |odds| >= 100.0)")]
     InvalidAmericanOdds {
         /// Rejected American odds input.
         value: f64,
     },
     /// Invalid fractional odds (numerator and denominator must both be finite and strictly positive).
-    #[error(
-        "Invalid fractional odds: {numerator}/{denominator} (numerator and denominator must be finite and > 0.0)"
-    )]
     InvalidFractionalOdds {
         /// Rejected fractional profit numerator.
         numerator: f64,
@@ -82,21 +75,16 @@ pub enum KellyError {
         denominator: f64,
     },
     /// Invalid implied probability (must be finite and strictly inside `(0.0, 1.0)`).
-    #[error(
-        "Invalid implied probability: {value} (must be finite and strictly between 0.0 and 1.0)"
-    )]
     InvalidImpliedProbability {
         /// Rejected implied probability input.
         value: f64,
     },
     /// Invalid fraction (must be between 0 and 1).
-    #[error("Invalid fraction: {value} (must be between 0 and 1)")]
     InvalidFraction {
         /// Value for `value` (value).
         value: f64,
     },
     /// No edge (negative expected value - should not bet).
-    #[error("No edge: p={probability}, odds={odds} results in negative expectation")]
     NoEdge {
         /// Value for `probability` (probability).
         probability: f64,
@@ -104,19 +92,16 @@ pub enum KellyError {
         odds: f64,
     },
     /// Invalid bankroll amount (must be positive).
-    #[error("Invalid bankroll: {value} (must be positive)")]
     InvalidBankroll {
         /// Value for `value` (value).
         value: f64,
     },
     /// Invalid stake or portfolio weight (must be finite and strictly positive).
-    #[error("Invalid stake or weight: {value} (must be finite and > 0)")]
     InvalidStake {
         /// Rejected stake or portfolio weight value.
         value: f64,
     },
     /// Invalid drawdown floor, target barrier, or confidence level.
-    #[error("Invalid barrier configuration: floor={floor}, initial_wealth={initial_wealth}")]
     InvalidBarrier {
         /// Configured wealth floor or barrier threshold.
         floor: f64,
@@ -124,7 +109,6 @@ pub enum KellyError {
         initial_wealth: f64,
     },
     /// Empty or insufficient bet ledger for statistical estimation.
-    #[error("Insufficient bets: required at least {required}, got {actual}")]
     InsufficientBets {
         /// Minimum required number of bets.
         required: usize,
@@ -132,7 +116,6 @@ pub enum KellyError {
         actual: usize,
     },
     /// Mismatched slice or matrix dimensions across probabilities, odds, stakes, or covariances.
-    #[error("Slice length mismatch: expected {expected}, got {actual}")]
     DimensionMismatch {
         /// Expected slice or matrix dimension.
         expected: usize,
@@ -140,10 +123,8 @@ pub enum KellyError {
         actual: usize,
     },
     /// Covariance matrix is not symmetric positive-definite.
-    #[error("Covariance matrix is not positive definite")]
     NotPositiveDefinite,
     /// Insufficient observations or assets for portfolio estimation.
-    #[error("Insufficient data: required at least {required}, got {actual}")]
     InsufficientData {
         /// Minimum required observation or asset count.
         required: usize,
@@ -151,40 +132,33 @@ pub enum KellyError {
         actual: usize,
     },
     /// Confidence level for VaR/CVaR must lie strictly inside `(0, 1)`.
-    #[error("Invalid confidence level: {value} (must be in (0, 1))")]
     InvalidConfidenceLevel {
         /// Rejected confidence level input.
         value: f64,
     },
     /// Non-finite or out-of-range portfolio / horizon parameter.
-    #[error("Invalid portfolio parameter: {reason}")]
     InvalidParameter {
         /// Static diagnostic describing the invalid parameter.
         reason: &'static str,
     },
     /// Root-finding or adjustment-coefficient solver failed to bracket or converge.
-    #[error("Solvency root solver failed to converge: {reason}")]
     ConvergenceFailed {
         /// Static diagnostic describing why convergence failed.
         reason: &'static str,
     },
     /// Outcome probabilities for a complete multi-state wager do not sum to 1.0.
-    #[error("Invalid probability distribution: sum={sum} (must equal 1.0)")]
     InvalidProbabilityDistribution {
         /// Observed sum of state probabilities.
         sum: f64,
     },
     /// Mutually exclusive market outcome probabilities exceed 1.0.
-    #[error("Invalid mutually exclusive market probabilities: sum={sum} (must be <= 1.0)")]
     InvalidMarketProbabilitySum {
         /// Observed sum of market outcome probabilities.
         sum: f64,
     },
     /// Empty market or simultaneous slate provided.
-    #[error("Portfolio or market must contain at least one wager")]
     EmptyPortfolio,
     /// Market or simultaneous slate exceeds preallocated scratch capacity.
-    #[error("Portfolio size {count} exceeds maximum supported capacity {max}")]
     PortfolioTooLarge {
         /// Requested portfolio wager or outcome count.
         count: usize,
@@ -192,9 +166,6 @@ pub enum KellyError {
         max: usize,
     },
     /// Invalid Busseti-Ryu-Boyd drawdown floor `alpha` or risk tolerance `beta`.
-    #[error(
-        "Invalid drawdown bounds: alpha={alpha}, beta={beta} (both must lie strictly in (0, 1))"
-    )]
     InvalidDrawdownBounds {
         /// Drawdown fraction floor `alpha`.
         alpha: f64,
@@ -202,13 +173,14 @@ pub enum KellyError {
         beta: f64,
     },
     /// Numerical root or convex Kelly solver failed to reach target residual within iteration cap.
-    #[error("Kelly solver failed to converge after {iterations} iterations (residual={residual})")]
     SolverConvergenceFailed {
         /// Iterations executed before stopping.
         iterations: usize,
         /// Final KKT or root residual magnitude.
         residual: f64,
     },
+    /// Underlying `#![no_std]` linear algebra engine failure preserving causal `source()`.
+    Linalg(engine_linalg::LinalgError),
 }
 
 /// Errors returned by bookmaker devigging, `+EV`, arbitrage, Dutching, middle, and hedge calculators.
@@ -382,6 +354,7 @@ pub enum Glicko2Error {
 }
 
 mod helpers;
+mod kelly;
 mod sports;
 mod stochastic;
 mod submodule_diagnostics;

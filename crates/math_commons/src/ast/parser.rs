@@ -5,6 +5,11 @@ use super::expr::{BinaryOp, Expr, Func, UnaryOp};
 use super::lexer::{LexError, Span, Token, TokenKind, tokenize};
 use super::limits::{MAX_AST_NODES, MAX_EXPR_BYTES};
 use super::parser_diagnostics::{format_found_token, format_user_message_for_input};
+use alloc::{
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 
 /// Maximum allowed recursion nesting depth to prevent stack overflow.
 pub const MAX_PARSE_DEPTH: usize = 64;

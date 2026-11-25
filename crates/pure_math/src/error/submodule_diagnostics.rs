@@ -51,6 +51,13 @@ impl Diagnostic for KellyError {
 
     #[verified_engine::verified]
     fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        match self {
+            Self::Linalg(linalg_err) => linalg_err.visit_fields(visitor),
+            Self::NotPositiveDefinite => {
+                engine_linalg::LinalgError::NotPositiveDefinite.visit_fields(visitor);
+            }
+            _ => {}
+        }
         visit_named_error(visitor, "KellyError", self);
     }
 }
@@ -339,6 +346,11 @@ impl Diagnostic for MonteCarloError {
 
     #[verified_engine::verified]
     fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        match self {
+            Self::Qmc(qmc_err) => qmc_err.visit_fields(visitor),
+            Self::Rng(rng_err) => rng_err.visit_fields(visitor),
+            _ => {}
+        }
         visit_named_error(visitor, "MonteCarloError", self);
     }
 }

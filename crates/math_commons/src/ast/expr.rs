@@ -1,6 +1,8 @@
 //! Abstract Syntax Tree (AST) definitions for mathematical expressions.
 // [cite:math_commons]
 
+use alloc::{boxed::Box, string::String, vec, vec::Vec};
+
 /// Supported binary mathematical operators.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -279,8 +281,8 @@ impl Expr {
         match self {
             Self::Number(_) | Self::Variable(_) => {}
             Self::Binary { left, right, .. } => {
-                let lhs = std::mem::replace(&mut **left, Self::Number(0.0));
-                let rhs = std::mem::replace(&mut **right, Self::Number(0.0));
+                let lhs = core::mem::replace(&mut **left, Self::Number(0.0));
+                let rhs = core::mem::replace(&mut **right, Self::Number(0.0));
                 if lhs.has_children() {
                     worklist.push(lhs);
                 }
@@ -289,13 +291,13 @@ impl Expr {
                 }
             }
             Self::Unary { expr, .. } => {
-                let inner = std::mem::replace(&mut **expr, Self::Number(0.0));
+                let inner = core::mem::replace(&mut **expr, Self::Number(0.0));
                 if inner.has_children() {
                     worklist.push(inner);
                 }
             }
             Self::Function { args, .. } => {
-                for arg in std::mem::take(args) {
+                for arg in core::mem::take(args) {
                     if arg.has_children() {
                         worklist.push(arg);
                     }

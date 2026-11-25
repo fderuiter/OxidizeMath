@@ -56,6 +56,8 @@ fn verify_core_leaves(bus: &DiagnosticBus) -> Vec<Error> {
             bus,
         ),
         check_leaf(error::ParseError::UnexpectedEof, bus),
+        check_leaf(error::QmcError::InvalidBase { base: 1 }, bus),
+        check_leaf(error::RngError::ZeroUpperBound, bus),
         check_leaf(error::ShaderEmitError::RecursionLimitExceeded(64), bus),
     ]
 }
@@ -258,6 +260,23 @@ pub fn verify_six_umbrellas_and_seventeen_wrappers(bus: &DiagnosticBus) {
     ];
     assert_eq!(wrapper_sources_present.len(), 21);
     assert!(wrapper_sources_present.into_iter().all(|present| present));
+    verify_kelly_and_monte_carlo_causal_sources();
+}
+
+fn verify_kelly_and_monte_carlo_causal_sources() {
+    let causal_sources = [
+        error::KellyError::NotPositiveDefinite.source().is_some(),
+        error::KellyError::from(error::LinalgError::SingularMatrix)
+            .source()
+            .is_some(),
+        error::MonteCarloError::from(error::QmcError::InvalidBase { base: 1 })
+            .source()
+            .is_some(),
+        error::MonteCarloError::from(error::RngError::ZeroUpperBound)
+            .source()
+            .is_some(),
+    ];
+    assert!(causal_sources.into_iter().all(|present| present));
 }
 
 pub fn verify_bus_capture_and_zero_alloc_facade_result() {
@@ -270,11 +289,11 @@ pub fn verify_bus_capture_and_zero_alloc_facade_result() {
 
     let mut converted = verify_core_and_pure_math_leaves(&bus);
     converted.extend(verify_domain_leaves(&bus));
-    assert_eq!(converted.len(), 71);
-    assert_eq!(*events.lock().unwrap(), 71);
+    assert_eq!(converted.len(), 73);
+    assert_eq!(*events.lock().unwrap(), 73);
 
     verify_six_umbrellas_and_seventeen_wrappers(&bus);
-    assert_eq!(*events.lock().unwrap(), 77);
+    assert_eq!(*events.lock().unwrap(), 79);
 
     let (ok_run, _) = VerifiedEngine::run_verified(|| -> Result<f64> {
         let x: f64 = Ok::<f64, error::KellyError>(0.5)?;
@@ -389,6 +408,8 @@ pub fn verify_prelude_error_reexports() {
         p::LinalgError,
         p::MathError,
         p::ParseError,
+        p::QmcError,
+        p::RngError,
         p::ShaderEmitError,
     )>();
     verify_prelude_pure_math_leaves();

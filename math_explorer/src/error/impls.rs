@@ -175,6 +175,8 @@ impl Error {
             Self::Math(err) => Some(InnerErrorRef::Domain(err)),
             Self::MathCommons(err) => Some(InnerErrorRef::Domain(err)),
             Self::Parse(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Qmc(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Rng(err) => Some(InnerErrorRef::Domain(err)),
             Self::ShaderEmit(err) => Some(InnerErrorRef::Domain(err)),
             Self::Io(err) => Some(InnerErrorRef::Io(err)),
             #[cfg(any(
@@ -188,6 +190,35 @@ impl Error {
             ))]
             _ => self.domain_inner().map(InnerErrorRef::Domain),
         }
+    }
+
+    /// Emits this facade error as a structured event onto [`diagnostics::global_bus`].
+    #[verified_engine::verified]
+    pub fn emit_to_global_bus(&self) {
+        diagnostics::global_bus().emit_diagnostic(self);
+    }
+
+    /// Fallibly emits this facade error onto [`diagnostics::global_bus`] tagged with a non-empty `source` label.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`super::DiagnosticError::EmptySource`] if `source.is_empty()`.
+    #[verified_engine::verified]
+    pub fn try_emit_with_source(
+        &self,
+        source: &str,
+    ) -> std::result::Result<(), super::DiagnosticError> {
+        diagnostics::global_bus().try_emit_diagnostic_with_source(source, self)
+    }
+
+    /// Emits this facade error onto [`diagnostics::global_bus`] tagged with `source`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `source.is_empty()`; use [`Self::try_emit_with_source`] for fallible validation.
+    #[verified_engine::verified]
+    pub fn emit_with_source(&self, source: &str) {
+        diagnostics::global_bus().emit_diagnostic_with_source(source, self);
     }
 }
 

@@ -5,7 +5,7 @@
 use core::fmt;
 
 /// Typed error returned by [`super::SobolView`], [`super::HaltonView`], and [`super::NiederreiterView`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum QmcError {
     /// Requested dimension is zero or exceeds `max_supported` (`64`).
@@ -62,3 +62,38 @@ impl fmt::Display for QmcError {
 }
 
 impl core::error::Error for QmcError {}
+
+impl math_diagnostics::Diagnostic for QmcError {
+    fn severity(&self) -> math_diagnostics::Severity {
+        math_diagnostics::Severity::Error
+    }
+
+    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
+        visitor.record_str("error_type", "QmcError");
+        visitor.record_display("description", self);
+        match *self {
+            Self::InvalidDimension {
+                dimension,
+                max_supported,
+            } => {
+                visitor.record_str("code", "RNG-QMC-001");
+                visitor.record_usize("dimension", dimension);
+                visitor.record_usize("max_supported", max_supported);
+            }
+            Self::InvalidBase { base } => {
+                visitor.record_str("code", "RNG-QMC-002");
+                visitor.record_u64("base", u64::from(base));
+            }
+            Self::BufferLengthMismatch { expected, actual } => {
+                visitor.record_str("code", "RNG-QMC-003");
+                visitor.record_usize("expected", expected);
+                visitor.record_usize("actual", actual);
+            }
+            Self::StateLengthMismatch { expected, actual } => {
+                visitor.record_str("code", "RNG-QMC-004");
+                visitor.record_usize("expected", expected);
+                visitor.record_usize("actual", actual);
+            }
+        }
+    }
+}

@@ -6,7 +6,9 @@ use core::fmt;
 use std::error::Error as StdError;
 
 use math_explorer::diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
-use math_explorer::error::{Error, FitError, LinalgError, MathCommonsError, MathError};
+use math_explorer::error::{
+    DiagnosticError, Error, FitError, LinalgError, MathCommonsError, MathError, QmcError, RngError,
+};
 use math_explorer::math_kernel::types::Dimension;
 use math_explorer::verified_engine::allocator::VerifiedAllocator;
 use math_explorer::verified_engine::engine::VerifiedEngine;
@@ -57,15 +59,48 @@ fn core_only_zero_alloc_diagnostics_and_linalg_error_wiring() {
     assert!(facade.source().is_some());
 
     let (total_fields, _metrics) = VerifiedEngine::run_verified(|| {
+        let qmc = QmcError::InvalidDimension {
+            dimension: 0,
+            max_supported: 64,
+        };
+        let rng = RngError::ZeroUpperBound;
         assert_eq!(linalg.severity(), Severity::Error);
+        assert_eq!(qmc.severity(), Severity::Error);
+        assert_eq!(rng.severity(), Severity::Error);
         count_visited_fields(&linalg)
             + count_visited_fields(&math)
             + count_visited_fields(&ws)
             + count_visited_fields(&fit)
             + count_visited_fields(&commons)
             + count_visited_fields(&facade)
+            + count_visited_fields(&qmc)
+            + count_visited_fields(&rng)
     });
-    assert!(total_fields >= 22);
+    assert!(total_fields >= 29);
+
+    facade.emit_to_global_bus();
+    assert_eq!(
+        facade.try_emit_with_source(""),
+        Err(DiagnosticError::EmptySource)
+    );
+    assert!(facade.try_emit_with_source("CoreFacadeTest").is_ok());
+    facade.emit_with_source("CoreFacadeTest");
+
+    #[cfg(feature = "serde")]
+    {
+        let qmc = QmcError::InvalidBase { base: 1 };
+        let qmc_json = serde_json::to_string(&qmc).expect("serialize QmcError");
+        assert_eq!(
+            serde_json::from_str::<QmcError>(&qmc_json).expect("deserialize QmcError"),
+            qmc
+        );
+        let rng = RngError::ZeroUpperBound;
+        let rng_json = serde_json::to_string(&rng).expect("serialize RngError");
+        assert_eq!(
+            serde_json::from_str::<RngError>(&rng_json).expect("deserialize RngError"),
+            rng
+        );
+    }
 }
 
 #[cfg(all(
@@ -81,8 +116,9 @@ mod full_domain_wiring {
     use super::*;
     use math_explorer::error::{
         AIError, AppliedError, BatteryError, BiologyError, BraidError, ClimateError,
-        EpidemiologyDomainError, GameTheoryError, HighEnergyError, KnotError, LinearAlgebraError,
-        PhysicsError, PureMathError, QuantumError, SandpileError, Su11HyperbolicError,
+        EpidemiologyDomainError, GameTheoryError, HighEnergyError, KellyError, KnotError,
+        LinearAlgebraError, MonteCarloError, PhysicsError, PureMathError, QuantumError,
+        SandpileError, Su11HyperbolicError,
     };
 
     #[test]
@@ -409,5 +445,50 @@ mod full_domain_wiring {
                 + count_visited_fields(&facade_err)
         });
         assert!(fields >= 14);
+    }
+
+    #[test]
+    fn all_umbrellas_implement_from_qmc_rng_and_kelly_retains_source() {
+        let qmc = QmcError::InvalidBase { base: 1 };
+        let rng = RngError::ZeroUpperBound;
+        let kelly_spd = KellyError::NotPositiveDefinite;
+        let kelly_la = KellyError::from(LinalgError::SingularMatrix);
+        let mc_qmc = MonteCarloError::from(qmc);
+        let mc_rng = MonteCarloError::from(rng);
+
+        for has_src in [
+            kelly_spd.source().is_some(),
+            kelly_la.source().is_some(),
+            mc_qmc.source().is_some(),
+            mc_rng.source().is_some(),
+            MathCommonsError::from(qmc).source().is_some(),
+            MathCommonsError::from(rng).source().is_some(),
+            PureMathError::from(qmc).source().is_some(),
+            PureMathError::from(rng).source().is_some(),
+            AIError::from(qmc).source().is_some(),
+            AIError::from(rng).source().is_some(),
+            AppliedError::from(qmc).source().is_some(),
+            AppliedError::from(rng).source().is_some(),
+            BiologyError::from(qmc).source().is_some(),
+            BiologyError::from(rng).source().is_some(),
+            ClimateError::from(qmc).source().is_some(),
+            ClimateError::from(rng).source().is_some(),
+            EpidemiologyDomainError::from(qmc).source().is_some(),
+            EpidemiologyDomainError::from(rng).source().is_some(),
+            PhysicsError::from(qmc).source().is_some(),
+            PhysicsError::from(rng).source().is_some(),
+            Error::from(qmc).source().is_some(),
+            Error::from(rng).source().is_some(),
+        ] {
+            assert!(has_src);
+        }
+
+        let (visited, _metrics) = VerifiedEngine::run_verified(|| {
+            count_visited_fields(&kelly_spd)
+                + count_visited_fields(&kelly_la)
+                + count_visited_fields(&mc_qmc)
+                + count_visited_fields(&mc_rng)
+        });
+        assert!(visited >= 14);
     }
 }

@@ -92,6 +92,17 @@ fn test_generic_f32_and_f64_samplers_stay_in_strict_intervals() {
 #[test]
 fn test_unbiased_bounded_index_and_standard_normal_moments() {
     use crate::{RngError, try_sample_bounded_u64, try_sample_bounded_usize};
+    use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+
+    struct CountVisitor(usize);
+    impl DiagnosticVisitor for CountVisitor {
+        fn record_str(&mut self, _key: &str, _value: &str) {
+            self.0 += 1;
+        }
+        fn record_display(&mut self, _key: &str, _value: &dyn core::fmt::Display) {
+            self.0 += 1;
+        }
+    }
 
     let mut rng = OxidizeRng::new(777);
     assert_eq!(
@@ -102,6 +113,13 @@ fn test_unbiased_bounded_index_and_standard_normal_moments() {
         try_sample_bounded_usize(&mut rng, 0),
         Err(RngError::ZeroUpperBound)
     );
+    let (visited, _) = VerifiedEngine::run_verified(|| {
+        assert_eq!(RngError::ZeroUpperBound.severity(), Severity::Error);
+        let mut v = CountVisitor(0);
+        RngError::ZeroUpperBound.visit_fields(&mut v);
+        v.0
+    });
+    assert_eq!(visited, 3);
     assert_eq!(try_sample_bounded_u64(&mut rng, 1), Ok(0));
     assert_eq!(try_sample_bounded_usize(&mut rng, 1), Ok(0));
     assert_eq!(sample_bounded_u64(&mut rng, 1), 0);
@@ -141,6 +159,81 @@ fn test_unbiased_bounded_index_and_standard_normal_moments() {
 fn math_rng_serde_json_dev_dep_linked() {
     let v: u64 = serde_json::from_str("42").expect("json u64");
     assert_eq!(v, 42);
+}
+
+struct QmcCountingVisitor {
+    fields: usize,
+    last_code: Option<&'static str>,
+}
+
+impl math_diagnostics::DiagnosticVisitor for QmcCountingVisitor {
+    fn record_str(&mut self, key: &str, value: &str) {
+        self.fields += 1;
+        if key == "code" {
+            self.last_code = match value {
+                "RNG-QMC-001" => Some("RNG-QMC-001"),
+                "RNG-QMC-002" => Some("RNG-QMC-002"),
+                "RNG-QMC-003" => Some("RNG-QMC-003"),
+                "RNG-QMC-004" => Some("RNG-QMC-004"),
+                _ => None,
+            };
+        }
+    }
+
+    fn record_display(&mut self, _key: &str, _value: &dyn core::fmt::Display) {
+        self.fields += 1;
+    }
+}
+
+#[test]
+fn qmc_error_visits_structured_diagnostic_fields_zero_alloc() {
+    use crate::QmcError;
+    use math_diagnostics::{Diagnostic, Severity};
+
+    let cases = [
+        (
+            QmcError::InvalidDimension {
+                dimension: 0,
+                max_supported: 64,
+            },
+            "RNG-QMC-001",
+            5,
+        ),
+        (QmcError::InvalidBase { base: 1 }, "RNG-QMC-002", 4),
+        (
+            QmcError::BufferLengthMismatch {
+                expected: 4,
+                actual: 2,
+            },
+            "RNG-QMC-003",
+            5,
+        ),
+        (
+            QmcError::StateLengthMismatch {
+                expected: 8,
+                actual: 3,
+            },
+            "RNG-QMC-004",
+            5,
+        ),
+    ];
+
+    let (total, _metrics) = VerifiedEngine::run_verified(|| {
+        let mut sum = 0;
+        for (err, expected_code, expected_fields) in cases {
+            assert_eq!(err.severity(), Severity::Error);
+            let mut v = QmcCountingVisitor {
+                fields: 0,
+                last_code: None,
+            };
+            err.visit_fields(&mut v);
+            assert_eq!(v.fields, expected_fields);
+            assert_eq!(v.last_code, Some(expected_code));
+            sum += v.fields;
+        }
+        sum
+    });
+    assert_eq!(total, 19);
 }
 
 #[cfg(feature = "serde")]

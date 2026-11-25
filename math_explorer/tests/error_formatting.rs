@@ -1,4 +1,4 @@
-//! Verifies that all 50 public error enums tested from `math_explorer::error`
+//! Verifies that all 53 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -16,12 +16,12 @@ use math_explorer::error::{
     AIError, BatteryError, BotanicalError, BraidError, ChaosError, ClimateError, CopulaError,
     DiagnosticError, DiffeqError, DoseFluenceError, EloError, EngineeringError, EpidemiologyError,
     FitError, FluidError, GameTheoryError, Glicko2Error, GraphTheoryError, HighEnergyError,
-    HodgkinHuxleyError, HyperbolicError, IsosurfaceError, KellyError, KnotError, LoraError,
-    MarketPricingError, MarkovError, MatchModelError, MathError, MonteCarloError,
+    HodgkinHuxleyError, HyperbolicError, IsosurfaceError, KellyError, KnotError, LinalgError,
+    LoraError, MarketPricingError, MarkovError, MatchModelError, MathError, MonteCarloError,
     NumberTheoryError, OptionPricingError, OuError, PdeError, PharmacokineticsError, PoissonError,
-    PortfolioError, QuantumError, QueueingError, RadarError, ReactionDiffusionError, RiskError,
-    SandpileError, ShaderEmitError, SolidStateError, StandardModelError, StatMechError,
-    Su11HyperbolicError, TdaError, ZipError,
+    PortfolioError, QmcError, QuantumError, QueueingError, RadarError, ReactionDiffusionError,
+    RiskError, RngError, SandpileError, ShaderEmitError, SolidStateError, StandardModelError,
+    StatMechError, Su11HyperbolicError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -70,6 +70,15 @@ fn core_and_engine_errors_emit_readable_display_and_metadata() {
         },
     );
     assert_readable_diagnostic("FitError", &FitError::UnsupportedDegree { degree: 5 });
+    assert_readable_diagnostic("LinalgError", &LinalgError::SingularMatrix);
+    assert_readable_diagnostic(
+        "QmcError",
+        &QmcError::InvalidDimension {
+            dimension: 0,
+            max_supported: 64,
+        },
+    );
+    assert_readable_diagnostic("RngError", &RngError::ZeroUpperBound);
     assert_readable_diagnostic("DiagnosticError", &DiagnosticError::EmptySource);
     assert_readable_diagnostic("DiffeqError", &DiffeqError::InvalidStepSize);
     assert_readable_diagnostic(
@@ -261,6 +270,10 @@ fn kelly_convex_solver_errors_emit_readable_display_and_metadata() {
                 iterations: 64,
                 residual: 1e-4,
             },
+        ),
+        (
+            "KellyError::Linalg",
+            KellyError::from(LinalgError::SingularMatrix),
         ),
     ] {
         assert_readable_diagnostic(label, &err);

@@ -9,7 +9,7 @@ use super::{
 use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_commons::error::{
     EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, ParseError,
-    ShaderEmitError,
+    QmcError, RngError, ShaderEmitError,
 };
 use thiserror::Error;
 
@@ -162,6 +162,20 @@ impl From<FitError> for PureMathError {
 impl From<LinalgError> for PureMathError {
     #[verified_engine::verified]
     fn from(err: LinalgError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<QmcError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: QmcError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<RngError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: RngError) -> Self {
         Self::MathCommons(MathCommonsError::from(err))
     }
 }
