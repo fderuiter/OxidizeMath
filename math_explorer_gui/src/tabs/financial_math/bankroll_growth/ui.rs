@@ -5,9 +5,13 @@
 use super::super::bankroll_ensemble::BankrollLabMode;
 use super::state::{is_default_stake_multiplier, BankrollWagerModel};
 use super::BankrollGrowthTool;
-use crate::accessibility::{announce_live_status, AccessibleHoverText};
+use crate::accessibility::{
+    announce_live_status, paint_canvas_focus_ring, register_canvas_accessibility,
+    AccessibleHoverText,
+};
 use crate::app::SemanticPalette;
 use eframe::egui;
+use eframe::egui::accesskit::Role;
 use egui_plot::{Legend, Line, Plot};
 
 impl BankrollGrowthTool {
@@ -172,8 +176,9 @@ impl BankrollGrowthTool {
                 *changed = false;
             }
             ui.small(format!(
-                "(Seed #{}) f* = {:.3} | Active f = {:.3} | EV = {:+.3} | Log-Growth g = {:+.4}",
+                "(Seed #{}, {:.2} ms) f* = {:.3} | Active f = {:.3} | EV = {:+.3} | Log-Growth g = {:+.4}",
                 self.seed_counter,
+                self.last_compute_ms,
                 self.kelly_f_star,
                 self.active_fraction,
                 self.unit_expected_value,
@@ -196,29 +201,24 @@ impl BankrollGrowthTool {
                 qk_b * 100.0
             ));
         }
-        Plot::new("bankroll_growth_plot")
+        let resp = Plot::new("bankroll_growth_plot")
             .view_aspect(2.0)
+            .x_axis_label("Allocation Step t")
+            .y_axis_label("Capital W(t)")
             .legend(Legend::default())
             .show(ui, |plot_ui| {
-                plot_ui.line(
-                    Line::new("Full Kelly", &self.full_kelly_points[..])
-                        .color(palette.series_color(3)),
-                );
-                plot_ui.line(
-                    Line::new("Half Kelly", &self.half_kelly_points[..])
-                        .color(palette.series_color(5)),
-                );
-                plot_ui.line(
-                    Line::new("Quarter Kelly", &self.quarter_kelly_points[..])
-                        .color(palette.series_color(2)),
-                );
-                plot_ui.line(
-                    Line::new(
+                for (name, pts, idx) in [
+                    ("Full Kelly", &self.full_kelly_points[..], 3),
+                    ("Half Kelly", &self.half_kelly_points[..], 5),
+                    ("Quarter Kelly", &self.quarter_kelly_points[..], 2),
+                    (
                         "Drawdown-Constrained Kelly",
                         &self.risk_constrained_points[..],
-                    )
-                    .color(palette.series_color(1)),
-                );
+                        1,
+                    ),
+                ] {
+                    plot_ui.line(Line::new(name, pts).color(palette.series_color(idx)));
+                }
                 if !is_default_stake_multiplier(&self.stake_multiplier) {
                     let label = format!("Active Stake ({:.2}× f*)", self.stake_multiplier);
                     plot_ui.line(
@@ -229,6 +229,25 @@ impl BankrollGrowthTool {
                 }
                 self.callout_manager.render_on_plot(plot_ui);
             });
+        self.register_kelly_plot_a11y(ui, &resp.response);
+    }
+
+    fn register_kelly_plot_a11y(&self, ui: &mut egui::Ui, response: &egui::Response) {
+        let summary = format!(
+            "Full Kelly terminal {:.2}, Half Kelly {:.2}, Quarter Kelly {:.2}, Drawdown-Constrained {:.2}",
+            self.full_kelly_points.last().map_or(0.0, |p| p.y),
+            self.half_kelly_points.last().map_or(0.0, |p| p.y),
+            self.quarter_kelly_points.last().map_or(0.0, |p| p.y),
+            self.risk_constrained_points.last().map_or(0.0, |p| p.y)
+        );
+        register_canvas_accessibility(
+            ui,
+            response,
+            Role::GraphicsDocument,
+            "Fractional and Drawdown-Constrained Kelly Capital Compounding Plot",
+            Some(&summary),
+        );
+        paint_canvas_focus_ring(ui, response);
     }
 }
 

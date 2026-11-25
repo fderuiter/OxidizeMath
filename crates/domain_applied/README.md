@@ -4,7 +4,7 @@
 
 Applied mathematical modeling for clinical trials, engineering systems, game theory, and surface extraction.
 
-> **Maturity Tier:** Crate `Validated` — `Certified` biostatistics & ADME modules (`clinical_trials`, `pharmacokinetics`), `Validated` clinical & engineering solvers (`win_ratio`, `battery_degradation`, `freesurfer`, `cannibalism`, `isosurface`), and `Experimental` exploratory/satirical modules (`favoritism`, `lorahub`, `grpo`).
+> **Maturity Tier:** Crate `Validated` — `Certified` biostatistics & ADME modules (`clinical_trials`, `pharmacokinetics`), `Validated` clinical, portfolio & engineering solvers (`win_ratio`, `portfolio`, `battery_degradation`, `freesurfer`, `cannibalism`, `isosurface`), and `Experimental` exploratory/satirical modules (`favoritism`, `lorahub`, `grpo`).
 
 ## 1. Overview & Architecture
 
@@ -25,6 +25,7 @@ The crate spans life sciences, material engineering, distributed systems, and qu
 - **`battery_degradation`**: Coupled lithium-ion electrochemical aging (`ChemistryPreset`, `ElectrochemicalAgingModel`, `PowerLawModel`) combining DoD stress, stretched exponent $z$, Arrhenius thermal activation, C-rate stress, parabolic $\sqrt{t}$ SEI calendar fade, stack-allocated Levenberg-Marquardt CSV calibration (`calibrate_electrochemical_model`), and multi-segment duty warranty solvers (`DutySegment`, `estimate_duty_lifetime`).
 - **`isosurface`**: 3D volumetric surface and watertight scalar-collar solid extraction (`MarchingCubes`, `IsosurfaceWorkspace`, `SolidClosureConfig`), including cutting-plane cap closure and dual contouring.
 - **`freesurfer`**: Triangulated cortical surface reconstruction (`Surface`, `MriVolume`, thin-plate `internal_energy`, Gaussian-smoothed `external_energy_volume`, `evolve_surface_deformable`), 6-connected Potts MRF Bayesian segmentation (`TissueClass`, `normalized_posteriors`, `mrf_segment_volume`), zero-allocation CSR spatial-grid cortical thickness (`FlatSpatialGrid`, `SpatialGrid`, `ThicknessWorkspace`, `cortical_thickness`, `cortical_thickness_indexed`, `cortical_thickness_with_grid`, `cortical_thickness_into`, `cortical_thickness_map_into`, `cortical_thickness_mesh`, `cortical_thickness_map`), and vertex-wise OLS GLM contrasts (`estimate_beta`, `t_statistic`).
+- **`portfolio`**: Zero-allocation Markowitz mean-variance portfolio optimization (`PortfolioSpec`, `PortfolioAllocation`, analytical Merton two-fund `unconstrained_min_variance` / `unconstrained_tangency` / `unconstrained_frontier_in_place`, and primal-dual active-set box-simplex `long_only_*` / `constrained_*` solvers with `CapitalAllocationLine`).
 - **`game_theory`**: Mean Field Games, evolutionary matrix dynamics, and mechanism design.
 - **`lorahub` & `grpo`**: Machine learning parameter merging and group relative policy optimization.
 - **`cannibalism`**: Zero-allocation upwind solvers for McKendrick-von Foerster age-structured PDEs (`McKendrickSolver`), Diekmann mortality and Ricker saturation kernels (`CannibalismKernel`), van den Bosch juvenile-adult delay dynamics (`JuvenileAdultSolver`), and lumped 2D ODE models (`CannibalismModel`).
