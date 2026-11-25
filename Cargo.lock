@@ -1056,9 +1056,11 @@ name = "domain_ai"
 version = "0.4.0"
 dependencies = [
  "approx",
+ "bytemuck",
  "diagnostics",
  "engine_diffeq",
  "math_commons",
+ "math_memory",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -1076,6 +1078,7 @@ dependencies = [
  "engine_linalg",
  "engine_pde",
  "math_commons",
+ "math_memory",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -1143,6 +1146,7 @@ dependencies = [
  "engine_linalg",
  "engine_pde",
  "math_commons",
+ "math_memory",
  "nalgebra 0.34.2",
  "num-complex",
  "oxidize_core",
@@ -1364,6 +1368,7 @@ name = "engine_diffeq"
 version = "0.4.0"
 dependencies = [
  "math_commons",
+ "math_memory",
  "oxidize_core",
  "rand_core",
  "verified_engine",
@@ -1373,6 +1378,7 @@ dependencies = [
 name = "engine_linalg"
 version = "0.4.0"
 dependencies = [
+ "math_memory",
  "verified_engine",
 ]
 
@@ -1381,6 +1387,7 @@ name = "engine_pde"
 version = "0.4.0"
 dependencies = [
  "math_commons",
+ "math_memory",
  "oxidize_core",
  "rand_core",
  "verified_engine",
@@ -2462,8 +2469,8 @@ name = "math_commons"
 version = "0.4.0"
 dependencies = [
  "diagnostics",
- "engine_linalg",
  "libm",
+ "math_memory",
  "num-complex",
  "num-traits",
  "oxidize_core",
@@ -2486,6 +2493,7 @@ dependencies = [
  "domain_epidemiology",
  "domain_physics",
  "math_commons",
+ "math_memory",
  "nalgebra 0.34.2",
  "num-complex",
  "oxidize_core",
@@ -2530,6 +2538,15 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
  "web-sys",
+]
+
+[[package]]
+name = "math_memory"
+version = "0.4.0"
+dependencies = [
+ "bytemuck",
+ "num-complex",
+ "verified_engine",
 ]
 
 [[package]]
@@ -2785,6 +2802,7 @@ version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73f88a1307638156682bada9d7604135552957b7818057dcef22705b4d509495"
 dependencies = [
+ "bytemuck",
  "num-traits",
 ]
 
@@ -3427,6 +3445,7 @@ dependencies = [
  "engine_linalg",
  "engine_pde",
  "math_commons",
+ "math_memory",
  "nalgebra 0.34.2",
  "num-complex",
  "num-traits",

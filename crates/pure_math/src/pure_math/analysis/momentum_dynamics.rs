@@ -29,7 +29,7 @@
 use super::evolution::{EvolutionEngine, EvolutionError};
 use core::cell::RefCell;
 use engine_diffeq::{BaoabLangevinSolver, BaoabParams, LangevinSystem};
-use math_commons::math_kernel::types::{SolverWorkspace, sample_standard_normal_pair};
+use math_commons::math_kernel::types::{ByteArena, sample_standard_normal_pair};
 use nalgebra::Vector2;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -462,7 +462,7 @@ where
         let mut q = [state.q.x, state.q.y];
         let mut p = [state.p.x, state.p.y];
         let mut scratch = [0.0_f64; 4];
-        let mut ws = SolverWorkspace::new(&mut scratch);
+        let mut ws = ByteArena::from_slice(&mut scratch);
         solver.step(&adapter, &mut q, &mut p, &mut ws, rng);
         let [qx, qy] = q;
         let [px, py] = p;

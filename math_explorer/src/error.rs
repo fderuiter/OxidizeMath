@@ -4,6 +4,7 @@ pub use math_commons::error::{
     EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
     ShaderEmitError,
 };
+pub use math_memory::ArenaError;
 
 #[cfg(feature = "ai")]
 pub use domain_ai::error::AIError;
@@ -49,6 +50,8 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Error {
+    /// Fallible byte-arena allocation or checkpoint error.
+    Arena(ArenaError),
     /// AST evaluation error.
     Eval(EvalError),
     /// Zero-allocation curve-fitting solver error.

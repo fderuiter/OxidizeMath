@@ -1,5 +1,5 @@
 // [cite:quantum_mechanics]
-//! # Tridiagonal 1D Quantum Hamiltonian, `SolverWorkspace`, & Propagators
+//! # Tridiagonal 1D Quantum Hamiltonian, `TridiagonalWorkspace`, & Propagators
 //!
 //! Provides $O(N)$-memory tridiagonal representations of 1D finite-difference Schrödinger
 //! Hamiltonians and zero-allocation, strictly unitary Crank-Nicolson (Cayley transform)
@@ -10,6 +10,7 @@
 
 pub use crate::physics::quantum::crank_nicolson::CrankNicolson1D;
 use crate::physics::quantum::types::QuantumState;
+use math_memory::{ArenaLayout, OwnedByteArena};
 use nalgebra::DVector;
 use num_complex::Complex;
 use pure_math::pure_math::analysis::pde::tridiagonal::{
@@ -22,35 +23,35 @@ pub(crate) fn valid_positive_scalar(value: f64) -> bool {
     value.is_finite() && value > 0.0
 }
 
-/// Preallocated complex band and Thomas-sweep scratch buffers for zero-allocation 1D Cayley stepping.
+/// Preallocated complex band and Thomas-sweep scratch buffers backed by [`OwnedByteArena`]
+/// for zero-allocation 1D Cayley stepping.
 #[derive(Clone, Debug)]
-pub struct SolverWorkspace {
-    lhs_off: Vec<Complex<f64>>,
-    lhs_main: Vec<Complex<f64>>,
-    rhs_off: Vec<Complex<f64>>,
-    rhs_main: Vec<Complex<f64>>,
-    c_prime: Vec<Complex<f64>>,
-    inv_denom: Vec<Complex<f64>>,
-    rhs_vec: Vec<Complex<f64>>,
-    sweep_scratch: Vec<Complex<f64>>,
+pub struct TridiagonalWorkspace {
+    arena: OwnedByteArena,
+    max_points: usize,
 }
 
-impl SolverWorkspace {
-    /// Preallocates all complex tridiagonal bands and Thomas scratch buffers for up to `max_points`.
+impl TridiagonalWorkspace {
+    fn required_bytes(max_points: usize) -> usize {
+        let off_cap = max_points.saturating_sub(1);
+        let mut layout = ArenaLayout::new();
+        for len in [
+            off_cap, max_points, off_cap, max_points, off_cap, max_points, max_points, max_points,
+        ] {
+            let _ = layout
+                .add_slice::<Complex<f64>>(len)
+                .expect("TridiagonalWorkspace layout");
+        }
+        layout.total_bytes()
+    }
+
+    /// Preallocates all complex tridiagonal bands and Thomas scratch buffers in a single [`OwnedByteArena`].
     #[verified_engine::verified]
     #[must_use]
     pub fn with_capacity(max_points: usize) -> Self {
-        let zero = Complex::new(0.0, 0.0);
-        let off_cap = max_points.saturating_sub(1);
         Self {
-            lhs_off: vec![zero; off_cap],
-            lhs_main: vec![zero; max_points],
-            rhs_off: vec![zero; off_cap],
-            rhs_main: vec![zero; max_points],
-            c_prime: vec![zero; off_cap],
-            inv_denom: vec![zero; max_points],
-            rhs_vec: vec![zero; max_points],
-            sweep_scratch: vec![zero; max_points],
+            arena: OwnedByteArena::with_capacity(Self::required_bytes(max_points)),
+            max_points,
         }
     }
 
@@ -58,39 +59,75 @@ impl SolverWorkspace {
     #[verified_engine::verified]
     #[must_use]
     pub fn capacity(&self) -> usize {
-        self.lhs_main.len()
+        self.max_points
     }
 
     /// Ensures workspace buffers hold at least `n` grid points (zero heap allocations if `n <= capacity()`).
     #[verified_engine::verified]
     pub fn ensure_capacity(&mut self, n: usize) {
-        let zero = Complex::new(0.0, 0.0);
-        if n > self.lhs_main.len() {
-            self.lhs_main.resize(n, zero);
-            self.rhs_main.resize(n, zero);
-            self.inv_denom.resize(n, zero);
-            self.rhs_vec.resize(n, zero);
-            self.sweep_scratch.resize(n, zero);
+        if n > self.max_points {
+            self.arena.ensure_capacity(Self::required_bytes(n));
+            self.max_points = n;
         }
-        let n_off = n.saturating_sub(1);
-        if n_off > self.lhs_off.len() {
-            self.lhs_off.resize(n_off, zero);
-            self.rhs_off.resize(n_off, zero);
-            self.c_prime.resize(n_off, zero);
-        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn slices_mut(
+        &mut self,
+    ) -> (
+        &mut [Complex<f64>],
+        &mut [Complex<f64>],
+        &mut [Complex<f64>],
+        &mut [Complex<f64>],
+        &mut [Complex<f64>],
+        &mut [Complex<f64>],
+        &mut [Complex<f64>],
+        &mut [Complex<f64>],
+    ) {
+        let cap = self.max_points;
+        let off_cap = cap.saturating_sub(1);
+        let mut scope = self.arena.reborrow();
+        let lhs_off = scope
+            .retain_slice::<Complex<f64>>(off_cap)
+            .expect("lhs_off");
+        let lhs_main = scope.retain_slice::<Complex<f64>>(cap).expect("lhs_main");
+        let rhs_off = scope
+            .retain_slice::<Complex<f64>>(off_cap)
+            .expect("rhs_off");
+        let rhs_main = scope.retain_slice::<Complex<f64>>(cap).expect("rhs_main");
+        let c_prime = scope
+            .retain_slice::<Complex<f64>>(off_cap)
+            .expect("c_prime");
+        let inv_denom = scope.retain_slice::<Complex<f64>>(cap).expect("inv_denom");
+        let rhs_vec = scope.retain_slice::<Complex<f64>>(cap).expect("rhs_vec");
+        let sweep_scratch = scope
+            .retain_slice::<Complex<f64>>(cap)
+            .expect("sweep_scratch");
+        (
+            lhs_off,
+            lhs_main,
+            rhs_off,
+            rhs_main,
+            c_prime,
+            inv_denom,
+            rhs_vec,
+            sweep_scratch,
+        )
     }
 
     #[verified_engine::verified]
     pub(crate) fn poison(&mut self, n: usize) {
+        self.ensure_capacity(n);
         let nan = Complex::new(f64::NAN, f64::NAN);
         let zero = Complex::new(0.0, 0.0);
-        self.lhs_main[..n].fill(nan);
-        self.rhs_main[..n].fill(nan);
-        self.inv_denom[..n].fill(nan);
         let n_off = n.saturating_sub(1);
-        self.lhs_off[..n_off].fill(zero);
-        self.rhs_off[..n_off].fill(zero);
-        self.c_prime[..n_off].fill(zero);
+        let (lhs_off, lhs_main, rhs_off, rhs_main, c_prime, inv_denom, _, _) = self.slices_mut();
+        lhs_main[..n].fill(nan);
+        rhs_main[..n].fill(nan);
+        inv_denom[..n].fill(nan);
+        lhs_off[..n_off].fill(zero);
+        rhs_off[..n_off].fill(zero);
+        c_prime[..n_off].fill(zero);
     }
 
     #[verified_engine::verified]
@@ -105,28 +142,29 @@ impl SolverWorkspace {
             self.poison(n);
             return false;
         }
+        let (lhs_off, lhs_main, rhs_off, rhs_main, c_prime, inv_denom, _, _) = self.slices_mut();
         for (i, &d) in diag.iter().enumerate() {
             if !d.is_finite() {
                 self.poison(n);
                 return false;
             }
-            self.lhs_main[i] = Complex::new(1.0, alpha * d);
-            self.rhs_main[i] = Complex::new(1.0, -alpha * d);
+            lhs_main[i] = Complex::new(1.0, alpha * d);
+            rhs_main[i] = Complex::new(1.0, -alpha * d);
         }
         for (i, &e) in off.iter().enumerate() {
             if !e.is_finite() {
                 self.poison(n);
                 return false;
             }
-            self.lhs_off[i] = Complex::new(0.0, alpha * e);
-            self.rhs_off[i] = Complex::new(0.0, -alpha * e);
+            lhs_off[i] = Complex::new(0.0, alpha * e);
+            rhs_off[i] = Complex::new(0.0, -alpha * e);
         }
         let ok = factor_tridiagonal(
-            &self.lhs_off[..n_off],
-            &self.lhs_main[..n],
-            &self.lhs_off[..n_off],
-            &mut self.c_prime[..n_off],
-            &mut self.inv_denom[..n],
+            &lhs_off[..n_off],
+            &lhs_main[..n],
+            &lhs_off[..n_off],
+            &mut c_prime[..n_off],
+            &mut inv_denom[..n],
         );
         if !ok {
             self.poison(n);
@@ -142,27 +180,29 @@ impl SolverWorkspace {
         if n == 0 {
             return true;
         }
+        let (lhs_off, _lhs_main, rhs_off, rhs_main, c_prime, inv_denom, rhs_vec, sweep_scratch) =
+            self.slices_mut();
         if n == 1 {
-            psi[0] = (self.rhs_main[0] * psi[0]) * self.inv_denom[0];
+            psi[0] = (rhs_main[0] * psi[0]) * inv_denom[0];
             return psi[0].re.is_finite() && psi[0].im.is_finite();
         }
         let n_off = n - 1;
         if !apply_tridiagonal(
-            &self.rhs_off[..n_off],
-            &self.rhs_main[..n],
-            &self.rhs_off[..n_off],
+            &rhs_off[..n_off],
+            &rhs_main[..n],
+            &rhs_off[..n_off],
             psi,
-            &mut self.rhs_vec[..n],
+            &mut rhs_vec[..n],
         ) {
             psi.fill(Complex::new(f64::NAN, f64::NAN));
             return false;
         }
         let ok = solve_tridiagonal_factored(
-            &self.lhs_off[..n_off],
-            &self.c_prime[..n_off],
-            &self.inv_denom[..n],
-            &self.rhs_vec[..n],
-            &mut self.sweep_scratch[..n],
+            &lhs_off[..n_off],
+            &c_prime[..n_off],
+            &inv_denom[..n],
+            &rhs_vec[..n],
+            &mut sweep_scratch[..n],
             psi,
         );
         if !ok {
@@ -333,7 +373,7 @@ impl TridiagonalHamiltonian1D {
 /// $(I + i\alpha\hat{H})\psi^{n+1} = (I - i\alpha\hat{H})\psi^n$ with $\alpha = \frac{\Delta t}{2\hbar}$.
 #[derive(Clone, Debug)]
 pub struct CrankNicolsonPropagator1D {
-    workspace: SolverWorkspace,
+    workspace: TridiagonalWorkspace,
     n_points: usize,
     configured_dt: Option<f64>,
     configured_h_bar: Option<f64>,
@@ -345,7 +385,7 @@ impl CrankNicolsonPropagator1D {
     #[must_use]
     pub fn with_capacity(max_points: usize) -> Self {
         Self {
-            workspace: SolverWorkspace::with_capacity(max_points),
+            workspace: TridiagonalWorkspace::with_capacity(max_points),
             n_points: 0,
             configured_dt: None,
             configured_h_bar: None,

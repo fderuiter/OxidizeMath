@@ -6,7 +6,7 @@
 use crate::lu::{lu_factor_in_place, lu_solve_factored, lu_solve_transpose_factored};
 use crate::scalar::Scalar;
 use crate::svd_bidiag::{svd_bidiagonal, svd_bidiagonal_workspace_len};
-use crate::types::{LinalgError, SolverWorkspace, check_all_finite, mat_idx};
+use crate::types::{LinalgError, SolverWorkspace, carve_scalars, check_all_finite, mat_idx};
 
 /// Workspace scalar capacity required by [`norm_spectral`] and [`cond_spectral`] for an `m x n` matrix.
 /// `[cite:engine_linalg]`
@@ -90,7 +90,7 @@ pub fn norm_spectral<T: Scalar>(
     a: &[T],
     m: usize,
     n: usize,
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut impl SolverWorkspace,
 ) -> Result<T, LinalgError> {
     let k = m.min(n);
     if m.checked_mul(n) != Some(a.len()) {
@@ -100,10 +100,11 @@ pub fn norm_spectral<T: Scalar>(
     if k == 0 {
         return Ok(T::ZERO);
     }
-    let (u, mut r1) = ws.try_split(m * k)?;
-    let (s, mut r2) = r1.try_split(k)?;
-    let (vt, mut inner_ws) = r2.try_split(k * n)?;
-    svd_bidiagonal(a, m, n, u, s, vt, &mut inner_ws)?;
+    let mut scope = ws.reborrow();
+    let u = carve_scalars::<T>(&mut scope, m * k)?;
+    let s = carve_scalars::<T>(&mut scope, k)?;
+    let vt = carve_scalars::<T>(&mut scope, k * n)?;
+    svd_bidiagonal(a, m, n, u, s, vt, &mut scope)?;
     Ok(s[0])
 }
 
@@ -113,17 +114,18 @@ pub fn cond_spectral<T: Scalar>(
     a: &[T],
     m: usize,
     n: usize,
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut impl SolverWorkspace,
 ) -> Result<T, LinalgError> {
     let k = m.min(n);
     if k == 0 || m.checked_mul(n) != Some(a.len()) {
         return Err(LinalgError::DimensionMismatch);
     }
     check_all_finite(a)?;
-    let (u, mut r1) = ws.try_split(m * k)?;
-    let (s, mut r2) = r1.try_split(k)?;
-    let (vt, mut inner_ws) = r2.try_split(k * n)?;
-    svd_bidiagonal(a, m, n, u, s, vt, &mut inner_ws)?;
+    let mut scope = ws.reborrow();
+    let u = carve_scalars::<T>(&mut scope, m * k)?;
+    let s = carve_scalars::<T>(&mut scope, k)?;
+    let vt = carve_scalars::<T>(&mut scope, k * n)?;
+    svd_bidiagonal(a, m, n, u, s, vt, &mut scope)?;
     let s_max = s[0];
     let s_min = s[k - 1];
     let tol = T::from_usize(m.max(n)) * T::EPSILON * s_max;
@@ -139,7 +141,7 @@ pub fn cond_l1<T: Scalar>(
     a: &[T],
     n: usize,
     pivots: &mut [usize],
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut impl SolverWorkspace,
 ) -> Result<T, LinalgError> {
     if n == 0 || n.checked_mul(n) != Some(a.len()) || pivots.len() != n {
         return Err(LinalgError::DimensionMismatch);
@@ -149,11 +151,12 @@ pub fn cond_l1<T: Scalar>(
         return Err(LinalgError::SingularMatrix);
     }
 
-    let (lu, mut r1) = ws.try_split(n * n)?;
-    let (x, mut r2) = r1.try_split(n)?;
-    let (xi, mut r3) = r2.try_split(n)?;
-    let (z, mut r4) = r3.try_split(n)?;
-    let (work, _) = r4.try_split(n)?;
+    let mut scope = ws.reborrow();
+    let lu = carve_scalars::<T>(&mut scope, n * n)?;
+    let x = carve_scalars::<T>(&mut scope, n)?;
+    let xi = carve_scalars::<T>(&mut scope, n)?;
+    let z = carve_scalars::<T>(&mut scope, n)?;
+    let work = carve_scalars::<T>(&mut scope, n)?;
 
     lu.copy_from_slice(a);
     lu_factor_in_place(lu, n, pivots, T::ZERO)?;

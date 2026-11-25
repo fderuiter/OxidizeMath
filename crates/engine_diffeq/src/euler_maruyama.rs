@@ -43,7 +43,7 @@ impl EulerMaruyamaSolver {
         t: T,
         dt: T,
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut impl SolverWorkspace,
         rng: &mut R,
     ) {
         let d = system.state_dim();
@@ -52,7 +52,7 @@ impl EulerMaruyamaSolver {
         assert!(state.len() >= d, "state slice shorter than state_dim");
 
         let mut ws = workspace.reborrow();
-        let dw = ws.take_slice(m);
+        let dw = ws.take_slice::<T>(m);
         fill_standard_normal(dw, rng);
         let sqrt_dt = dt.sqrt();
         for w in dw.iter_mut() {
@@ -70,7 +70,7 @@ impl EulerMaruyamaSolver {
         dt: T,
         dw: &[T],
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut impl SolverWorkspace,
     ) {
         let d = system.state_dim();
         let m = system.wiener_dim();
@@ -78,8 +78,8 @@ impl EulerMaruyamaSolver {
 
         let dm = d * m;
         let mut ws = workspace.reborrow();
-        let f0 = ws.take_slice(d);
-        let g0 = ws.take_slice(dm);
+        let f0 = ws.take_slice::<T>(d);
+        let g0 = ws.take_slice::<T>(dm);
         system.drift(t, state, f0);
         system.diffusion(t, state, g0);
 
@@ -95,9 +95,9 @@ impl EulerMaruyamaSolver {
                 }
             }
             StochasticCalculus::Stratonovich => {
-                let x_pred = ws.take_slice(d);
-                let f1 = ws.take_slice(d);
-                let g1 = ws.take_slice(dm);
+                let x_pred = ws.take_slice::<T>(d);
+                let f1 = ws.take_slice::<T>(d);
+                let g1 = ws.take_slice::<T>(dm);
                 for i in 0..d {
                     let mut diff_sum = T::ZERO;
                     let row = &g0[i * m..(i + 1) * m];

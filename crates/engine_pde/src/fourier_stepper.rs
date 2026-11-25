@@ -64,7 +64,7 @@ impl SemiImplicitFourierStepper {
         kappa: f64,
         mobility_temp: f64,
         dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut impl SolverWorkspace,
         rng: &mut R,
     ) {
         let n = phi.len();
@@ -78,10 +78,10 @@ impl SemiImplicitFourierStepper {
         }
 
         let mut ws = workspace.reborrow();
-        let phi_hat = ws.take_slice(2 * n);
-        let deal_buf = ws.take_slice(2 * n);
-        let noise_spec = ws.take_slice(2 * n);
-        let noise_phys = ws.take_slice(n);
+        let phi_hat = ws.take_slice::<f64>(2 * n);
+        let deal_buf = ws.take_slice::<f64>(2 * n);
+        let noise_spec = ws.take_slice::<f64>(2 * n);
+        let noise_phys = ws.take_slice::<f64>(n);
 
         pack_real(phi, phi_hat, n);
         fft_1d_inplace(phi_hat, n, false);
@@ -143,7 +143,7 @@ impl SemiImplicitFourierStepper {
         kappa: f64,
         mobility_temp: f64,
         dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut impl SolverWorkspace,
         rng: &mut R,
     ) {
         let total = width * height;
@@ -154,11 +154,11 @@ impl SemiImplicitFourierStepper {
         }
 
         let mut ws = workspace.reborrow();
-        let phi_hat = ws.take_slice(2 * total);
-        let deal_buf = ws.take_slice(2 * total);
-        let noise_spec = ws.take_slice(2 * total);
-        let col_scratch = ws.take_slice(2 * height);
-        let noise_phys = ws.take_slice(total);
+        let phi_hat = ws.take_slice::<f64>(2 * total);
+        let deal_buf = ws.take_slice::<f64>(2 * total);
+        let noise_spec = ws.take_slice::<f64>(2 * total);
+        let col_scratch = ws.take_slice::<f64>(2 * height);
+        let noise_phys = ws.take_slice::<f64>(total);
 
         pack_real(&phi[..total], phi_hat, total);
         fft_2d_inplace(phi_hat, width, height, col_scratch, false);
@@ -215,7 +215,7 @@ impl SemiImplicitFourierStepper {
         lambda: f64,
         noise_intensity: f64,
         dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut impl SolverWorkspace,
         rng: &mut R,
     ) {
         let n = h.len();
@@ -225,10 +225,10 @@ impl SemiImplicitFourierStepper {
         }
 
         let mut ws = workspace.reborrow();
-        let h_hat = ws.take_slice(2 * n);
-        let grad_buf = ws.take_slice(2 * n);
-        let noise_spec = ws.take_slice(2 * n);
-        let noise_phys = ws.take_slice(n);
+        let h_hat = ws.take_slice::<f64>(2 * n);
+        let grad_buf = ws.take_slice::<f64>(2 * n);
+        let noise_spec = ws.take_slice::<f64>(2 * n);
+        let noise_phys = ws.take_slice::<f64>(n);
 
         pack_real(h, h_hat, n);
         fft_1d_inplace(h_hat, n, false);
@@ -303,7 +303,7 @@ impl SemiImplicitFourierStepper {
         lambda: f64,
         noise_intensity: f64,
         dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut impl SolverWorkspace,
         rng: &mut R,
     ) {
         let total = width * height;
@@ -314,12 +314,12 @@ impl SemiImplicitFourierStepper {
         }
 
         let mut ws = workspace.reborrow();
-        let h_hat = ws.take_slice(2 * total);
-        let gx_buf = ws.take_slice(2 * total);
-        let gy_buf = ws.take_slice(2 * total);
-        let noise_spec = ws.take_slice(2 * total);
-        let col_scratch = ws.take_slice(2 * height);
-        let noise_phys = ws.take_slice(total);
+        let h_hat = ws.take_slice::<f64>(2 * total);
+        let gx_buf = ws.take_slice::<f64>(2 * total);
+        let gy_buf = ws.take_slice::<f64>(2 * total);
+        let noise_spec = ws.take_slice::<f64>(2 * total);
+        let col_scratch = ws.take_slice::<f64>(2 * height);
+        let noise_phys = ws.take_slice::<f64>(total);
 
         pack_real(&h[..total], h_hat, total);
         fft_2d_inplace(h_hat, width, height, col_scratch, false);
@@ -374,7 +374,7 @@ impl SemiImplicitFourierStepper {
         nu: f64,
         noise_intensity: f64,
         dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut impl SolverWorkspace,
         rng: &mut R,
     ) {
         assert!(!h.is_empty());
@@ -392,7 +392,7 @@ impl SemiImplicitFourierStepper {
         nu: f64,
         noise_intensity: f64,
         dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut impl SolverWorkspace,
         rng: &mut R,
     ) {
         assert!(h.len() >= width * height);

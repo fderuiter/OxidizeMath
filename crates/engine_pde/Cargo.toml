@@ -5,11 +5,12 @@ edition = "2024"
 
 [features]
 default = ["std"]
-alloc = []
-std = ["alloc", "math_commons/std", "verified_engine/std"]
+alloc = ["math_commons/alloc", "math_memory/alloc"]
+std = ["alloc", "math_commons/std", "math_memory/std", "verified_engine/std"]
 
 [dependencies]
 math_commons = { path = "../math_commons", default-features = false }
+math_memory = { path = "../00_foundation/math_memory", default-features = false }
 rand_core = { workspace = true }
 verified_engine = { version = "0.1.0", path = "../verified_engine", default-features = false }
 

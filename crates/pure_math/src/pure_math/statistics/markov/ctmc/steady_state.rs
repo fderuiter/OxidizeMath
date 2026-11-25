@@ -3,7 +3,7 @@
 use super::ContinuousMarkovChain;
 use crate::pure_math::statistics::markov::dtmc::CommunicatingClass;
 use math_commons::math_kernel::types::flatten_2d_index;
-use math_commons::stochastic::SolverWorkspace;
+use math_commons::stochastic::StochasticWorkspace;
 use nalgebra::{DVector, RealField};
 use num_traits::ToPrimitive;
 
@@ -99,19 +99,19 @@ impl<T: RealField + Copy + ToPrimitive> ContinuousMarkovChain<T> {
     #[verified_engine::verified]
     pub fn steady_state(&self) -> Option<DVector<T>> {
         assert!(self.num_states > 0);
-        let mut ws = SolverWorkspace::new(self.num_states, 0);
+        let mut ws = StochasticWorkspace::new(self.num_states, 0);
         let mut out = DVector::zeros(self.num_states);
         self.steady_state_with_workspace(&mut ws, &mut out)
             .then_some(out)
     }
 
     /// Computes the unique steady-state distribution into `out` using preallocated
-    /// [`SolverWorkspace`] buffers with zero heap allocations when
+    /// [`StochasticWorkspace`] buffers with zero heap allocations when
     /// `ws.state_capacity() >= self.num_states`.
     #[verified_engine::verified]
     pub fn steady_state_with_workspace(
         &self,
-        ws: &mut SolverWorkspace,
+        ws: &mut StochasticWorkspace,
         out: &mut DVector<T>,
     ) -> bool {
         let n = self.num_states;

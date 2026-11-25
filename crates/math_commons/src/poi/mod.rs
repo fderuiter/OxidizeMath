@@ -9,20 +9,20 @@ mod extrema;
 mod interp;
 mod intersect;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests;
 
 pub use crate::series::{PointSeries, Sample2D};
-pub use extrema::{
-    LinePoiScan, detect_local_extrema, detect_local_extrema_into, parabolic_vertex, peak_extremum,
-    scan_line_pois,
-};
-pub use interp::{
-    closest_threshold_crossing, interpolate_threshold_crossings, interpolate_y_at_x,
-    threshold_crossings_into, y_at_x_into,
-};
+#[cfg(feature = "alloc")]
+pub use extrema::{LinePoiScan, detect_local_extrema, scan_line_pois};
+pub use extrema::{detect_local_extrema_into, parabolic_vertex, peak_extremum};
+pub use interp::{closest_threshold_crossing, threshold_crossings_into, y_at_x_into};
+#[cfg(feature = "alloc")]
+pub use interp::{interpolate_threshold_crossings, interpolate_y_at_x};
+#[cfg(feature = "alloc")]
+pub use intersect::intersect_polylines;
 pub use intersect::{
-    MAX_POLYLINE_INTERSECTIONS, eval_segment_at_x, intersect_polylines, intersect_polylines_into,
+    MAX_POLYLINE_INTERSECTIONS, eval_segment_at_x, intersect_polylines_into,
     segment_intersection_2d,
 };
 

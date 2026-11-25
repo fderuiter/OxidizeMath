@@ -6,13 +6,11 @@ use crate::error::StatMechError;
 use crate::physics::stat_mech::allen_cahn::ginzburg_landau_free_energy_2d;
 use crate::physics::stat_mech::edwards_wilkinson::mean_field;
 use engine_pde::{
-    BoundaryCondition, ExplicitSpdeStencilStepper, SemiImplicitFourierStepper, SpdeNoiseKind,
-    StencilOperators,
+    BoundaryCondition, ByteArena, ExplicitSpdeStencilStepper, SemiImplicitFourierStepper,
+    SpdeNoiseKind, StencilOperators,
 };
 use math_commons::error::MathError;
-use math_commons::math_kernel::types::{
-    Dimension, SolverWorkspace, StepSize, fill_standard_normal,
-};
+use math_commons::math_kernel::types::{Dimension, StepSize, fill_standard_normal};
 use rand_core::RngCore;
 
 /// 2D conserved Cahn-Hilliard-Cook (Model B) phase-separation SPDE solver supporting both
@@ -181,7 +179,7 @@ impl CahnHilliard2D {
                 mobility_temp: self.mobility_temp,
             },
         );
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ByteArena::from_slice(&mut self.scratch);
         stepper.step_cahn_hilliard_2d(
             &mut self.phi,
             self.width,
@@ -205,7 +203,7 @@ impl CahnHilliard2D {
                 && dt >= 0.0
         );
         let stepper = SemiImplicitFourierStepper::new_2d(self.dx, self.dy);
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ByteArena::from_slice(&mut self.scratch);
         stepper.step_cahn_hilliard_2d(
             &mut self.phi,
             self.width,

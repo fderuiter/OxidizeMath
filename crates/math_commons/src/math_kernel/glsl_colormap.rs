@@ -1,6 +1,7 @@
 //! GLSL ES 3.00 colormap and WCAG 2.2 dark-canvas contrast emitters mirroring [`super::colormap`].
 // [cite:math_commons]
 
+#[cfg(feature = "alloc")]
 use alloc::string::String;
 
 /// Emits the GLSL ES 3.00 `heatmap_color(float t)` function mapping `[0.0, 1.0]` to RGB (`vec3`).
@@ -66,6 +67,7 @@ vec3 ensure_dark_canvas_contrast(vec3 srgb) {
 
 /// Returns a concatenated GLSL ES 3.00 colormap library containing `heatmap_color`,
 /// `cyclic_cosine_palette`, and WCAG 2.2 `ensure_dark_canvas_contrast`.
+#[cfg(feature = "alloc")]
 #[must_use]
 pub fn glsl_colormap_library() -> String {
     let mut out = String::with_capacity(1024);
@@ -77,7 +79,7 @@ pub fn glsl_colormap_library() -> String {
     out
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
     use crate::math_kernel::colormap::{

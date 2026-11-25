@@ -4,9 +4,6 @@
 // [cite:engine_linalg]
 // [cite:advanced_linear_algebra]
 
-#[cfg(feature = "alloc")]
-extern crate alloc;
-
 pub mod cholesky;
 pub mod krylov;
 pub mod lu;
@@ -52,11 +49,9 @@ pub use tikhonov::{
     DampingStyle, damped_normal_workspace_len, solve_damped_normal, tikhonov_solve,
     tikhonov_workspace_len,
 };
-#[cfg(feature = "alloc")]
-pub use types::OwnedWorkspace;
 pub use types::{
-    DenseView, LinalgError, SolverWorkspace, add_scaled_vec_array, check_all_finite,
-    identity_array, identity_plus_scaled_array, mat_idx, mat_mul, mat_mul_array,
+    ArenaScope, ByteArena, DenseView, LinalgError, SolverWorkspace, add_scaled_vec_array,
+    check_all_finite, identity_array, identity_plus_scaled_array, mat_idx, mat_mul, mat_mul_array,
     mat_mul_transpose_right, mat_mul_transpose_right_array, mat_vec_mul,
 };
 

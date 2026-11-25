@@ -22,6 +22,7 @@ macro_rules! impl_error_from {
     };
 }
 
+impl_error_from!(ArenaError => Arena);
 impl_error_from!(EvalError => Eval);
 impl_error_from!(FitError => Fit);
 impl_error_from!(GlslError => Glsl);

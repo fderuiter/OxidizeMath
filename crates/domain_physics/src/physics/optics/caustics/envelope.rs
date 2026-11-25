@@ -190,10 +190,10 @@ pub fn extract_caustic_envelope(
     out: &mut CausticEnvelopeBuffer,
 ) -> usize {
     out.detector_bins.fill(0.0);
-    let rays = workspace.rays();
+    let ray_len = workspace.ray_count();
     let y_min = out.detector_y_min;
     let y_max = out.detector_y_max;
-    for (idx, ray) in rays.iter().enumerate() {
+    for (idx, ray) in workspace.rays().enumerate() {
         accumulate_detector_hits(
             workspace.ray_vertices(idx),
             ray.power,
@@ -207,12 +207,12 @@ pub fn extract_caustic_envelope(
     let cap = out.points.len();
     let mut count = 0usize;
     let bound = max_bench_extent.max(1.0);
-    for i in 0..rays.len().saturating_sub(1) {
+    for i in 0..ray_len.saturating_sub(1) {
         if count >= cap {
             break;
         }
-        let r0 = &rays[i];
-        let r1 = &rays[i + 1];
+        let r0 = &workspace.ray(i);
+        let r1 = &workspace.ray(i + 1);
         if r0.spectral_band != r1.spectral_band {
             continue;
         }

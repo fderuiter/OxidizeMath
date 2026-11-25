@@ -366,14 +366,13 @@ impl SpatialGrid {
     }
 }
 
-/// Reusable CSR buffer workspace enabling zero-allocation [`FlatSpatialGrid`] indexing and
-/// full-mesh [`super::cortical_thickness_map_into`] evaluation inside `VerifiedAllocator`-locked frames.
+/// Reusable CSR buffer workspace backed by [`math_memory::OwnedByteArena`] enabling zero-allocation
+/// [`FlatSpatialGrid`] indexing and full-mesh [`super::cortical_thickness_map_into`] evaluation
+/// inside `VerifiedAllocator`-locked frames.
 #[derive(Clone, Debug, Default)]
 pub struct ThicknessWorkspace {
-    white_offsets: Vec<usize>,
-    white_vertices: Vec<[f64; 3]>,
-    pial_offsets: Vec<usize>,
-    pial_vertices: Vec<[f64; 3]>,
+    arena: math_memory::OwnedByteArena,
+    max_vertices: usize,
 }
 
 impl ThicknessWorkspace {
@@ -381,39 +380,45 @@ impl ThicknessWorkspace {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            white_offsets: Vec::new(),
-            white_vertices: Vec::new(),
-            pial_offsets: Vec::new(),
-            pial_vertices: Vec::new(),
+            arena: math_memory::OwnedByteArena::new(),
+            max_vertices: 0,
         }
     }
 
-    /// Preallocates CSR offset and vertex buffers for surfaces with up to `max_vertices` vertices.
+    fn required_bytes(max_vertices: usize) -> usize {
+        let offsets_len = FlatSpatialGrid::required_offsets_len(max_vertices);
+        let mut layout = math_memory::ArenaLayout::new();
+        let _ = layout
+            .add_slice::<usize>(offsets_len)
+            .expect("white_offsets layout");
+        let _ = layout
+            .add_slice::<[f64; 3]>(max_vertices)
+            .expect("white_vertices layout");
+        let _ = layout
+            .add_slice::<usize>(offsets_len)
+            .expect("pial_offsets layout");
+        let _ = layout
+            .add_slice::<[f64; 3]>(max_vertices)
+            .expect("pial_vertices layout");
+        layout.total_bytes()
+    }
+
+    /// Preallocates CSR offset and vertex buffers in a single [`math_memory::OwnedByteArena`]
+    /// for surfaces with up to `max_vertices` vertices.
     #[must_use]
     pub fn with_max_vertices(max_vertices: usize) -> Self {
-        let offsets_len = FlatSpatialGrid::required_offsets_len(max_vertices);
         Self {
-            white_offsets: vec![0; offsets_len],
-            white_vertices: vec![[0.0; 3]; max_vertices],
-            pial_offsets: vec![0; offsets_len],
-            pial_vertices: vec![[0.0; 3]; max_vertices],
+            arena: math_memory::OwnedByteArena::with_capacity(Self::required_bytes(max_vertices)),
+            max_vertices,
         }
     }
 
-    /// Grows internal CSR buffers if needed to accommodate at least `max_vertices` per surface.
+    /// Grows internal CSR arena capacity if needed to accommodate at least `max_vertices` per surface.
     pub fn ensure_capacity(&mut self, max_vertices: usize) {
-        let offsets_len = FlatSpatialGrid::required_offsets_len(max_vertices);
-        if self.white_offsets.len() < offsets_len {
-            self.white_offsets.resize(offsets_len, 0);
-        }
-        if self.white_vertices.len() < max_vertices {
-            self.white_vertices.resize(max_vertices, [0.0; 3]);
-        }
-        if self.pial_offsets.len() < offsets_len {
-            self.pial_offsets.resize(offsets_len, 0);
-        }
-        if self.pial_vertices.len() < max_vertices {
-            self.pial_vertices.resize(max_vertices, [0.0; 3]);
+        if max_vertices > self.max_vertices {
+            self.arena
+                .ensure_capacity(Self::required_bytes(max_vertices));
+            self.max_vertices = max_vertices;
         }
     }
 
@@ -427,16 +432,19 @@ impl ThicknessWorkspace {
         white_surface: &Surface,
         pial_surface: &Surface,
     ) -> Option<(FlatSpatialGrid<'a>, FlatSpatialGrid<'a>)> {
-        let white_grid = FlatSpatialGrid::from_surface(
-            white_surface,
-            &mut self.white_offsets,
-            &mut self.white_vertices,
-        )?;
-        let pial_grid = FlatSpatialGrid::from_surface(
-            pial_surface,
-            &mut self.pial_offsets,
-            &mut self.pial_vertices,
-        )?;
+        let cap = self.max_vertices;
+        if white_surface.vertices.len() > cap || pial_surface.vertices.len() > cap {
+            return None;
+        }
+        let offsets_len = FlatSpatialGrid::required_offsets_len(cap);
+        let mut scope = self.arena.reborrow();
+        let white_offsets = scope.retain_slice::<usize>(offsets_len).ok()?;
+        let white_vertices = scope.retain_slice::<[f64; 3]>(cap).ok()?;
+        let pial_offsets = scope.retain_slice::<usize>(offsets_len).ok()?;
+        let pial_vertices = scope.retain_slice::<[f64; 3]>(cap).ok()?;
+        let white_grid =
+            FlatSpatialGrid::from_surface(white_surface, white_offsets, white_vertices)?;
+        let pial_grid = FlatSpatialGrid::from_surface(pial_surface, pial_offsets, pial_vertices)?;
         Some((white_grid, pial_grid))
     }
 }

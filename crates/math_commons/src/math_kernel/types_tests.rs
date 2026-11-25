@@ -1,7 +1,7 @@
 // [cite:math_commons]
 use super::{
-    Scalar, SolverWorkspace, fill_standard_normal, sample_open_unit, sample_standard_normal,
-    sample_standard_normal_pair,
+    ByteArena, Scalar, SolverWorkspace, fill_standard_normal, sample_open_unit,
+    sample_standard_normal, sample_standard_normal_pair,
 };
 use oxidize_core::rng::OxidizeRng;
 
@@ -25,22 +25,19 @@ fn test_scalar_f64_and_f32_identities() {
 #[verified_engine::verified]
 fn test_solver_workspace_reborrow_and_partition() {
     let mut backing = [1.0_f64; 10];
-    let mut ws = SolverWorkspace::new(&mut backing);
-    assert_eq!(ws.len(), 10);
-    ws.zero_fill();
-    assert!(ws.as_slice().iter().all(|&v| v == 0.0));
+    let mut ws = ByteArena::from_slice(&mut backing);
+    assert_eq!(ws.byte_capacity(), 80);
 
     for iter in 0..3 {
         let mut step_ws = ws.reborrow();
-        let a = step_ws.take_slice(4);
-        let b = step_ws.take_slice(6);
-        assert_eq!(step_ws.len(), 0);
+        let a: &mut [f64] = step_ws.take_slice(4);
+        let b: &mut [f64] = step_ws.take_slice(6);
         assert!(step_ws.is_empty());
         a.fill(iter as f64 + 1.0);
         b.fill(iter as f64 + 10.0);
         assert_eq!(a[3] + b[5], 2.0 * (iter as f64) + 11.0);
     }
-    assert_eq!(ws.len(), 10);
+    assert_eq!(ws.used(), 0);
 }
 
 #[test]

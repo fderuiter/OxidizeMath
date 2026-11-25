@@ -5,11 +5,11 @@
 use crate::error::StatMechError;
 use crate::physics::stat_mech::edwards_wilkinson::{interface_roughness, mean_field};
 use engine_pde::{
-    BoundaryCondition, ExplicitSpdeStencilStepper, SemiImplicitFourierStepper, SpdeNoiseKind,
-    StencilOperators,
+    BoundaryCondition, ByteArena, ExplicitSpdeStencilStepper, SemiImplicitFourierStepper,
+    SpdeNoiseKind, StencilOperators,
 };
 use math_commons::error::MathError;
-use math_commons::math_kernel::types::{Dimension, SolverWorkspace, StepSize};
+use math_commons::math_kernel::types::{Dimension, StepSize};
 use rand_core::RngCore;
 
 /// 1D Kardar-Parisi-Zhang (KPZ) nonlinear interface growth solver.
@@ -143,7 +143,7 @@ impl KpzModel1D {
         );
         let nu = self.nu;
         let half_lambda = 0.5 * self.lambda;
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ByteArena::from_slice(&mut self.scratch);
         stepper.step_1d(
             &mut self.h,
             dt,
@@ -162,7 +162,7 @@ impl KpzModel1D {
                 && dt >= 0.0
         );
         let stepper = SemiImplicitFourierStepper::new_1d(self.dx);
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ByteArena::from_slice(&mut self.scratch);
         stepper.step_kpz_1d(
             &mut self.h,
             self.nu,
@@ -264,7 +264,7 @@ impl KpzModel2D {
         );
         let nu = self.nu;
         let half_lambda = 0.5 * self.lambda;
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ByteArena::from_slice(&mut self.scratch);
         stepper.step_2d(
             &mut self.h,
             self.width,
@@ -286,7 +286,7 @@ impl KpzModel2D {
                 && dt >= 0.0
         );
         let stepper = SemiImplicitFourierStepper::new_2d(self.dx, self.dy);
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ByteArena::from_slice(&mut self.scratch);
         stepper.step_kpz_2d(
             &mut self.h,
             self.width,

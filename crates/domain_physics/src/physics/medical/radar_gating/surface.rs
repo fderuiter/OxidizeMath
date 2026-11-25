@@ -11,8 +11,21 @@
 //! or if the patient is lying down, $z$ (vertical) is the height).
 
 use crate::physics::medical::signal;
-use engine_linalg::{SolverWorkspace, svd_ops_workspace_len, svd_solve_least_squares};
+use engine_linalg::{ByteArena, SolverWorkspace, svd_ops_workspace_len, svd_solve_least_squares};
+use math_memory::ArenaLayout;
 use nalgebra::{DVector, Point3};
+
+/// Returns the byte capacity required by [`BiQuadraticSurface::fit_with_workspace`] for `num_points` samples.
+#[verified_engine::verified]
+#[must_use]
+pub fn biquadratic_fit_workspace_bytes(num_points: usize) -> usize {
+    let n = num_points.max(6);
+    let mut layout = ArenaLayout::new();
+    let _ = layout.add_slice::<f64>(n.saturating_mul(6));
+    let _ = layout.add_slice::<f64>(n);
+    let _ = layout.add_slice::<f64>(svd_ops_workspace_len(n, 6));
+    layout.total_bytes().saturating_add(64)
+}
 
 /// A fitted bi-quadratic surface.
 #[derive(Debug, Clone)]
@@ -22,6 +35,52 @@ pub struct BiQuadraticSurface {
 }
 
 impl BiQuadraticSurface {
+    /// Fits a bi-quadratic surface into `out_coeffs` (`[c_0, .., c_5]`) using caller-provided `ws`
+    /// with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn fit_with_workspace<W: SolverWorkspace>(
+        points: &[Point3<f64>],
+        out_coeffs: &mut [f64; 6],
+        ws: &mut W,
+    ) -> Option<()> {
+        let n = points.len();
+        if n < 6 {
+            return None;
+        }
+        let mut scope = ws.reborrow();
+        let a_data = scope.alloc_slice::<f64>(n.checked_mul(6)?).ok()?;
+        let b_data = scope.alloc_slice::<f64>(n).ok()?;
+        for (i, p) in points.iter().enumerate() {
+            let base = i * 6;
+            a_data[base] = 1.0;
+            a_data[base + 1] = p.x;
+            a_data[base + 2] = p.y;
+            a_data[base + 3] = p.x * p.y;
+            a_data[base + 4] = p.x.powi(2);
+            a_data[base + 5] = p.y.powi(2);
+            b_data[i] = p.z;
+        }
+        let epsilon = math_commons::registry::TOLERANCE_STANDARD;
+        svd_solve_least_squares(a_data, n, 6, b_data, epsilon, out_coeffs, &mut scope).ok()?;
+        Some(())
+    }
+
+    /// Updates `self.coefficients` in place from `points` using caller-provided `ws` with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn fit_into_with_workspace<W: SolverWorkspace>(
+        &mut self,
+        points: &[Point3<f64>],
+        ws: &mut W,
+    ) -> Option<()> {
+        if self.coefficients.len() != 6 {
+            return None;
+        }
+        let mut coeffs = [0.0_f64; 6];
+        Self::fit_with_workspace(points, &mut coeffs, ws)?;
+        self.coefficients.copy_from_slice(&coeffs);
+        Some(())
+    }
+
     /// Fits a bi-quadratic surface to a set of 3D points using Least Squares.
     ///
     /// Solve for $c$ in $A c = b$.
@@ -38,33 +97,10 @@ impl BiQuadraticSurface {
         if n < 6 {
             return None;
         }
-
-        let mut a_data = Vec::with_capacity(n * 6);
-        let mut b_data = Vec::with_capacity(n);
-
-        for p in points {
-            a_data.push(1.0);
-            a_data.push(p.x);
-            a_data.push(p.y);
-            a_data.push(p.x * p.y);
-            a_data.push(p.x.powi(2));
-            a_data.push(p.y.powi(2));
-            b_data.push(p.z);
-        }
-
-        let epsilon = math_commons::registry::TOLERANCE_STANDARD;
         let mut coeffs = [0.0_f64; 6];
-        let mut scratch = vec![0.0_f64; svd_ops_workspace_len(n, 6)];
-        svd_solve_least_squares(
-            &a_data,
-            n,
-            6,
-            &b_data,
-            epsilon,
-            &mut coeffs,
-            &mut SolverWorkspace::new(&mut scratch),
-        )
-        .ok()?;
+        let mut scratch = vec![0_u8; biquadratic_fit_workspace_bytes(n)];
+        let mut arena = ByteArena::from_slice(&mut scratch);
+        Self::fit_with_workspace(points, &mut coeffs, &mut arena)?;
         Some(Self {
             coefficients: DVector::from_column_slice(&coeffs),
         })

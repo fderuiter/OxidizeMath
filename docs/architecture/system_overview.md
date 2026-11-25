@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 23 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 24 workspace crates:
 
 ```mermaid
 graph TD
@@ -79,6 +79,7 @@ graph TD
         Engine[verified_engine]
         Macros[verified_engine_macros]
         CoreCrate[oxidize_core]
+        MathMemory[math_memory]
         Linalg[engine_linalg]
         Diag[diagnostics]
     end
@@ -91,7 +92,7 @@ graph TD
     GUI --> Plot
     GUI --> Meta & Registry & Diag & Linalg
     Explorer --> AI & Phys & Bio & App & Clim & Epi
-    Explorer --> Pure & Commons
+    Explorer --> Pure & Commons & MathMemory
 
     AI --> Commons & Engine & Meta & DiffEq
     Phys --> Commons & Engine & Meta & Pure & DiffEq & Pde & Linalg
@@ -100,10 +101,11 @@ graph TD
     Clim --> Commons & Engine & Meta
     Epi --> Commons & Engine & Meta & Pure
 
-    Pure --> Commons & Meta & DiffEq & Pde & Linalg
-    DiffEq --> Commons & Engine
-    Pde --> Commons & Engine
-    Commons --> CoreCrate & Linalg
+    Pure --> Commons & Meta & DiffEq & Pde & Linalg & MathMemory
+    DiffEq --> Commons & Engine & MathMemory
+    Pde --> Commons & Engine & MathMemory
+    Commons --> CoreCrate & MathMemory
+    Linalg --> MathMemory
     Engine --> Macros & CoreCrate
     Meta --> CoreCrate
 
@@ -116,10 +118,11 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 23 member crates declared in `Cargo.toml`:
+The workspace contains all 24 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
+| `crates/00_foundation/math_memory` | `#![no_std]` `#![forbid(unsafe_code)]` byte-arena scratch memory (`ByteArena`, `OwnedByteArena`, `SolverWorkspace`) | [math_memory](../../crates/00_foundation/math_memory/README.md) |
 | `crates/oxidize_core` | Core utilities, file systems, and traceability | [oxidize_core](../../crates/oxidize_core/README.md) |
 | `crates/02_engines/engine_linalg` | `#![no_std]` numerical linear algebra engine | [engine_linalg](../../crates/02_engines/engine_linalg/README.md) |
 | `crates/verified_engine` | Zero-allocation runtime and execution tracking | [zero_allocation_runtime](zero_allocation_runtime.md) |

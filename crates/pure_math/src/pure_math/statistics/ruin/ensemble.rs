@@ -4,6 +4,7 @@ use super::analytical::PortfolioBet;
 use super::barrier::ProportionalPortfolioBet;
 use crate::error::KellyError;
 use crate::pure_math::statistics::validation::Z_95_TWO_SIDED;
+use math_memory::{ArenaLayout, ArenaRegion, FlagSlice, OwnedByteArena};
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
 use statrs::distribution::{ContinuousCDF, Normal};
@@ -145,6 +146,49 @@ fn validate_wealth_and_barrier(initial_wealth: f64, barrier_floor: f64) -> Resul
     Ok(())
 }
 
+struct EnsembleSlices<'a> {
+    wealth: &'a mut [f64],
+    peak_wealth: &'a mut [f64],
+    max_drawdown: &'a mut [f64],
+    median_trajectory: &'a mut [f64],
+    scratch: &'a mut [f64],
+    hit_barrier: FlagSlice<'a>,
+}
+
+impl EnsembleSlices<'_> {
+    #[inline]
+    fn record_walker(&mut self, idx: usize, new_wealth: f64, barrier_floor: f64) {
+        let w = new_wealth.max(0.0);
+        self.wealth[idx] = w;
+        if w > self.peak_wealth[idx] {
+            self.peak_wealth[idx] = w;
+        }
+        let peak = self.peak_wealth[idx];
+        if peak > 0.0 {
+            let dd = (peak - w) / peak;
+            if dd > self.max_drawdown[idx] {
+                self.max_drawdown[idx] = dd;
+            }
+        }
+        if w <= barrier_floor {
+            self.hit_barrier.set(idx, true);
+        }
+    }
+
+    fn fast_median_from_wealth(&mut self) -> f64 {
+        let n = self.wealth.len();
+        self.scratch.copy_from_slice(self.wealth);
+        let mid = n / 2;
+        let (left, mid_val, _) = self.scratch.select_nth_unstable_by(mid, f64::total_cmp);
+        if n % 2 == 1 {
+            *mid_val
+        } else {
+            let max_left = left.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+            0.5 * (max_left + *mid_val)
+        }
+    }
+}
+
 /// Preallocated zero-allocation Monte Carlo bankroll ensemble workspace driven by [`OxidizeRng`].
 ///
 /// Modeled on [`crate::pure_math::statistics::markov::parrondo::ParrondoEnsemble`]: all walker
@@ -152,12 +196,12 @@ fn validate_wealth_and_barrier(initial_wealth: f64, barrier_floor: f64) -> Resul
 /// [`Self::with_capacity`] and reused across simulations without heap allocations.
 #[derive(Debug, Clone)]
 pub struct BankrollEnsembleWorkspace {
-    wealth: Vec<f64>,
-    peak_wealth: Vec<f64>,
-    max_drawdown: Vec<f64>,
-    hit_barrier: Vec<u8>,
-    median_trajectory: Vec<f64>,
-    scratch: Vec<f64>,
+    arena: OwnedByteArena,
+    wealth_reg: ArenaRegion<f64>,
+    drawdown_reg: ArenaRegion<f64>,
+    traj_reg: ArenaRegion<f64>,
+    num_paths: usize,
+    traj_len: usize,
     steps_recorded: usize,
 }
 
@@ -175,74 +219,70 @@ impl BankrollEnsembleWorkspace {
         } else {
             0
         };
+        let mut layout = ArenaLayout::new();
+        let map_err = |_| KellyError::InvalidParameter {
+            reason: "bankroll ensemble capacity overflow",
+        };
+        let wealth_reg = layout.add_slice::<f64>(num_paths).map_err(map_err)?;
+        let _ = layout.add_slice::<f64>(num_paths).map_err(map_err)?;
+        let drawdown_reg = layout.add_slice::<f64>(num_paths).map_err(map_err)?;
+        let traj_reg = layout.add_slice::<f64>(traj_len).map_err(map_err)?;
+        let _ = layout.add_slice::<f64>(num_paths).map_err(map_err)?;
+        let _ = layout.add_slice::<u8>(num_paths).map_err(map_err)?;
         Ok(Self {
-            wealth: vec![0.0; num_paths],
-            peak_wealth: vec![0.0; num_paths],
-            max_drawdown: vec![0.0; num_paths],
-            hit_barrier: vec![0; num_paths],
-            median_trajectory: vec![0.0; traj_len],
-            scratch: vec![0.0; num_paths],
+            arena: OwnedByteArena::with_capacity(layout.total_bytes()),
+            wealth_reg,
+            drawdown_reg,
+            traj_reg,
+            num_paths,
+            traj_len,
             steps_recorded: 0,
         })
+    }
+
+    fn slices_mut(&mut self) -> EnsembleSlices<'_> {
+        let (n, t) = (self.num_paths, self.traj_len);
+        let mut scope = self.arena.reborrow();
+        EnsembleSlices {
+            wealth: scope.retain_slice::<f64>(n).expect("wealth"),
+            peak_wealth: scope.retain_slice::<f64>(n).expect("peak"),
+            max_drawdown: scope.retain_slice::<f64>(n).expect("drawdown"),
+            median_trajectory: scope.retain_slice::<f64>(t).expect("traj"),
+            scratch: scope.retain_slice::<f64>(n).expect("scratch"),
+            hit_barrier: FlagSlice::from_bytes(scope.retain_slice::<u8>(n).expect("barrier")),
+        }
     }
 
     /// Resets walker wealth, peaks, drawdowns, and barrier flags in place with zero allocations.
     #[verified_engine::verified]
     pub fn reset(&mut self, initial_wealth: f64) {
-        self.wealth.fill(initial_wealth);
-        self.peak_wealth.fill(initial_wealth);
-        self.max_drawdown.fill(0.0);
-        self.hit_barrier.fill(0);
-        if !self.median_trajectory.is_empty() {
-            self.median_trajectory[0] = initial_wealth;
+        {
+            let mut s = self.slices_mut();
+            s.wealth.fill(initial_wealth);
+            s.peak_wealth.fill(initial_wealth);
+            s.max_drawdown.fill(0.0);
+            s.hit_barrier.clear_all();
+            if !s.median_trajectory.is_empty() {
+                s.median_trajectory[0] = initial_wealth;
+            }
         }
         self.steps_recorded = 0;
     }
 
-    fn record_walker_wealth(&mut self, idx: usize, new_wealth: f64, barrier_floor: f64) {
-        let w = new_wealth.max(0.0);
-        self.wealth[idx] = w;
-        if w > self.peak_wealth[idx] {
-            self.peak_wealth[idx] = w;
-        }
-        let peak = self.peak_wealth[idx];
-        if peak > 0.0 {
-            let dd = (peak - w) / peak;
-            if dd > self.max_drawdown[idx] {
-                self.max_drawdown[idx] = dd;
-            }
-        }
-        if w <= barrier_floor {
-            self.hit_barrier[idx] = 1;
-        }
-    }
-
-    fn fast_median_from_wealth(&mut self) -> f64 {
-        let n = self.wealth.len();
-        self.scratch.copy_from_slice(&self.wealth);
-        let mid = n / 2;
-        let (left, mid_val, _) = self.scratch.select_nth_unstable_by(mid, f64::total_cmp);
-        if n % 2 == 1 {
-            *mid_val
-        } else {
-            let max_left = left.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-            0.5 * (max_left + *mid_val)
-        }
-    }
-
     fn finalize_report(&mut self, num_steps: usize) -> Result<EnsembleSolvencyReport, KellyError> {
-        let n = self.wealth.len();
-        let ruin_count = self.hit_barrier.iter().filter(|&&h| h != 0).count();
-        let terminal_mean_wealth = self.wealth.iter().sum::<f64>() / (n as f64);
-        let terminal_median_wealth = self.fast_median_from_wealth();
+        let n = self.num_paths;
+        let mut s = self.slices_mut();
+        let ruin_count = s.hit_barrier.count_ones();
+        let terminal_mean_wealth = s.wealth.iter().sum::<f64>() / (n as f64);
+        let terminal_median_wealth = s.fast_median_from_wealth();
 
-        self.scratch.copy_from_slice(&self.max_drawdown);
-        self.scratch.sort_unstable_by(f64::total_cmp);
+        s.scratch.copy_from_slice(s.max_drawdown);
+        s.scratch.sort_unstable_by(f64::total_cmp);
         let drawdown_quantiles = DrawdownQuantiles {
-            p50: sorted_quantile(&self.scratch, 0.50),
-            p90: sorted_quantile(&self.scratch, 0.90),
-            p95: sorted_quantile(&self.scratch, 0.95),
-            p99: sorted_quantile(&self.scratch, 0.99),
+            p50: sorted_quantile(s.scratch, 0.50),
+            p90: sorted_quantile(s.scratch, 0.90),
+            p95: sorted_quantile(s.scratch, 0.95),
+            p99: sorted_quantile(s.scratch, 0.99),
         };
         let wilson_95 = wilson_interval_95(ruin_count, n)?;
 
@@ -274,19 +314,24 @@ impl BankrollEnsembleWorkspace {
         let f = bet.fraction.value();
         let win_mult = 1.0 + f * bet.odds.net_profit_multiplier();
         let loss_mult = (1.0 - f).max(0.0);
-        let record_traj =
-            self.median_trajectory.len() > num_steps && !self.median_trajectory.is_empty();
+        let record_traj = self.traj_len > num_steps && self.traj_len > 0;
+        let n = self.num_paths;
 
-        for step in 1..=num_steps {
-            for idx in 0..self.wealth.len() {
-                let u = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53;
-                let w = self.wealth[idx] * if u < p { win_mult } else { loss_mult };
-                self.record_walker_wealth(idx, w, barrier_floor);
+        {
+            let mut s = self.slices_mut();
+            for step in 1..=num_steps {
+                for idx in 0..n {
+                    let u = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53;
+                    let w = s.wealth[idx] * if u < p { win_mult } else { loss_mult };
+                    s.record_walker(idx, w, barrier_floor);
+                }
+                if record_traj {
+                    s.median_trajectory[step] = s.fast_median_from_wealth();
+                }
             }
-            if record_traj {
-                self.median_trajectory[step] = self.fast_median_from_wealth();
-                self.steps_recorded = step;
-            }
+        }
+        if record_traj {
+            self.steps_recorded = num_steps;
         }
         self.finalize_report(num_steps)
     }
@@ -310,18 +355,23 @@ impl BankrollEnsembleWorkspace {
         validate_wealth_and_barrier(initial_wealth, barrier_floor)?;
         self.reset(initial_wealth);
         let total_w: f64 = portfolio.iter().map(|b| b.weight).sum();
+        let n = self.num_paths;
 
-        for _ in 0..num_steps {
-            for idx in 0..self.wealth.len() {
-                let u_pick = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53 * total_w;
-                let bet = pick_weighted_prop_bet(portfolio, u_pick);
-                let u_win = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53;
-                let mult = if u_win < bet.win_prob.value() {
-                    1.0 + bet.fraction.value() * bet.odds.net_profit_multiplier()
-                } else {
-                    (1.0 - bet.fraction.value()).max(0.0)
-                };
-                self.record_walker_wealth(idx, self.wealth[idx] * mult, barrier_floor);
+        {
+            let mut s = self.slices_mut();
+            for _ in 0..num_steps {
+                for idx in 0..n {
+                    let u_pick = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53 * total_w;
+                    let bet = pick_weighted(portfolio, |b| b.weight, u_pick);
+                    let u_win = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53;
+                    let mult = if u_win < bet.win_prob.value() {
+                        1.0 + bet.fraction.value() * bet.odds.net_profit_multiplier()
+                    } else {
+                        (1.0 - bet.fraction.value()).max(0.0)
+                    };
+                    let new_w = s.wealth[idx] * mult;
+                    s.record_walker(idx, new_w, barrier_floor);
+                }
             }
         }
         self.finalize_report(num_steps)
@@ -356,22 +406,27 @@ impl BankrollEnsembleWorkspace {
 
         self.reset(initial_wealth);
         let total_w: f64 = portfolio.iter().map(|b| b.weight).sum();
-        for _ in 0..num_steps {
-            for idx in 0..self.wealth.len() {
-                if self.hit_barrier[idx] != 0
-                    || upper_target.is_some_and(|tgt| self.wealth[idx] >= tgt)
-                {
-                    continue;
+        let n = self.num_paths;
+        {
+            let mut s = self.slices_mut();
+            for _ in 0..num_steps {
+                for idx in 0..n {
+                    if s.hit_barrier.get(idx)
+                        || upper_target.is_some_and(|tgt| s.wealth[idx] >= tgt)
+                    {
+                        continue;
+                    }
+                    let u_pick = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53 * total_w;
+                    let bet = pick_weighted(portfolio, |b| b.weight, u_pick);
+                    let u_win = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53;
+                    let delta = if u_win < bet.win_prob.value() {
+                        bet.stake * bet.odds.net_profit_multiplier()
+                    } else {
+                        -bet.stake
+                    };
+                    let new_w = s.wealth[idx] + delta;
+                    s.record_walker(idx, new_w, barrier_floor);
                 }
-                let u_pick = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53 * total_w;
-                let bet = pick_weighted_fixed_bet(portfolio, u_pick);
-                let u_win = ((rng.next_u64() >> 11) as f64) * INV_TWO_POW_53;
-                let delta = if u_win < bet.win_prob.value() {
-                    bet.stake * bet.odds.net_profit_multiplier()
-                } else {
-                    -bet.stake
-                };
-                self.record_walker_wealth(idx, self.wealth[idx] + delta, barrier_floor);
             }
         }
         self.finalize_report(num_steps)
@@ -383,19 +438,21 @@ impl BankrollEnsembleWorkspace {
         if !q.is_finite() || !(0.0..=1.0).contains(&q) {
             return Err(KellyError::InvalidProbability { value: q });
         }
-        self.scratch.copy_from_slice(&self.max_drawdown);
-        self.scratch.sort_unstable_by(f64::total_cmp);
-        Ok(sorted_quantile(&self.scratch, q))
+        let s = self.slices_mut();
+        s.scratch.copy_from_slice(s.max_drawdown);
+        s.scratch.sort_unstable_by(f64::total_cmp);
+        Ok(sorted_quantile(s.scratch, q))
     }
 
     /// Returns the recorded step-by-step median wealth slice `0..=steps_recorded`.
     #[must_use]
     #[verified_engine::verified]
     pub fn median_trajectory(&self) -> &[f64] {
-        if self.median_trajectory.is_empty() {
+        let traj = self.arena.region(self.traj_reg);
+        if traj.is_empty() {
             &[]
         } else {
-            &self.median_trajectory[..=self.steps_recorded]
+            &traj[..=self.steps_recorded]
         }
     }
 
@@ -403,40 +460,26 @@ impl BankrollEnsembleWorkspace {
     #[must_use]
     #[verified_engine::verified]
     pub fn terminal_wealths(&self) -> &[f64] {
-        &self.wealth
+        self.arena.region(self.wealth_reg)
     }
 
     /// Returns realized pathwise maximum drawdowns across all walkers.
     #[must_use]
     #[verified_engine::verified]
     pub fn max_drawdowns(&self) -> &[f64] {
-        &self.max_drawdown
+        self.arena.region(self.drawdown_reg)
     }
 }
 
-fn pick_weighted_prop_bet(
-    portfolio: &[ProportionalPortfolioBet],
-    target_w: f64,
-) -> &ProportionalPortfolioBet {
+fn pick_weighted<T>(items: &[T], weight_of: impl Fn(&T) -> f64, target_w: f64) -> &T {
     let mut acc = 0.0;
-    for item in portfolio {
-        acc += item.weight;
+    for item in items {
+        acc += weight_of(item);
         if target_w <= acc {
             return item;
         }
     }
-    &portfolio[portfolio.len() - 1]
-}
-
-fn pick_weighted_fixed_bet(portfolio: &[PortfolioBet], target_w: f64) -> &PortfolioBet {
-    let mut acc = 0.0;
-    for item in portfolio {
-        acc += item.weight;
-        if target_w <= acc {
-            return item;
-        }
-    }
-    &portfolio[portfolio.len() - 1]
+    &items[items.len() - 1]
 }
 
 // [cite:clinical_trials_statistics]

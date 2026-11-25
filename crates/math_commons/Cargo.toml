@@ -5,8 +5,11 @@ edition = "2024"
 
 [features]
 default = ["std"]
+alloc = ["math_memory/alloc"]
 std = [
+    "alloc",
     "dep:diagnostics",
+    "math_memory/std",
     "num-complex/std",
     "num-traits/std",
     "thiserror/std",
@@ -15,8 +18,8 @@ std = [
 
 [dependencies]
 diagnostics = { path = "../diagnostics", optional = true }
-engine_linalg = { path = "../02_engines/engine_linalg" }
 libm = { workspace = true }
+math_memory = { path = "../00_foundation/math_memory", default-features = false }
 num-complex = { workspace = true, default-features = false, features = ["libm"] }
 num-traits = { workspace = true, default-features = false, features = ["libm"] }
 rand_core = { workspace = true }

@@ -110,7 +110,7 @@ pub use schrodinger::{
     time_evolution_operator_2x2_into, transmission_probability,
 };
 pub use spin::{set_spin_bloch_angles_in_place, sigma_x, sigma_y, sigma_z, spin_from_bloch_angles};
-pub use tridiagonal::{CrankNicolsonPropagator1D, SolverWorkspace, TridiagonalHamiltonian1D};
+pub use tridiagonal::{CrankNicolsonPropagator1D, TridiagonalHamiltonian1D, TridiagonalWorkspace};
 pub use types::{QuantumOperator, QuantumState};
 
 // [cite:quantum_mechanics]

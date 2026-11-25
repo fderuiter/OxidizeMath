@@ -5,6 +5,7 @@ edition = "2024"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
+math_memory = { path = "../crates/00_foundation/math_memory", features = ["alloc", "std"] }
 math_commons = { path = "../crates/math_commons" }
 diagnostics = { path = "../crates/diagnostics" }
 pure_math = { path = "../crates/pure_math", optional = true }

@@ -22,7 +22,7 @@ fn test_lauchli_and_near_collinear_glm_conditioning_at_eps_1e8() {
         &y,
         &mut beta_est,
         &mut perm,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .unwrap();
     assert_eq!(rank, 3);
@@ -94,7 +94,7 @@ fn test_vandermonde_streaming_qr_and_cohort_glm_contrast_at_eps_1e8() {
         3,
         &mut tau,
         &mut perm,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .unwrap();
     assert_eq!(rank, 3);
@@ -119,7 +119,7 @@ fn test_nan_and_non_convergence_errors() {
             2,
             1e-10,
             &mut pinv,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut ByteArena::from_slice(&mut scratch),
         ),
         Err(LinalgError::InvalidInput)
     );
@@ -130,7 +130,7 @@ fn test_nan_and_non_convergence_errors() {
             2,
             1,
             &mut approx,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut ByteArena::from_slice(&mut scratch),
         ),
         Err(LinalgError::InvalidInput)
     );
@@ -148,7 +148,7 @@ fn test_nan_and_non_convergence_errors() {
             &mut s,
             &mut vt,
             0,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut ByteArena::from_slice(&mut scratch),
         ),
         Err(LinalgError::NonConvergence)
     );
@@ -174,10 +174,10 @@ fn test_zero_heap_allocations_dense_solvers() {
             &b,
             &mut x,
             &mut perm,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut ByteArena::from_slice(&mut scratch),
         )
         .unwrap();
-        cholesky_solve(&a, &b, &mut x, 2, &mut SolverWorkspace::new(&mut scratch)).unwrap();
+        cholesky_solve(&a, &b, &mut x, 2, &mut ByteArena::from_slice(&mut scratch)).unwrap();
         svd_jacobi(
             &a,
             (2, 2),
@@ -185,7 +185,7 @@ fn test_zero_heap_allocations_dense_solvers() {
             &mut s,
             &mut vt,
             32,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut ByteArena::from_slice(&mut scratch),
         )
         .unwrap();
         svd_bidiagonal(
@@ -195,7 +195,7 @@ fn test_zero_heap_allocations_dense_solvers() {
             &mut u,
             &mut s,
             &mut vt,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut ByteArena::from_slice(&mut scratch),
         )
         .unwrap();
     });
@@ -218,7 +218,7 @@ fn test_zero_heap_allocations_krylov_solvers() {
             &mut x,
             1e-12,
             20,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut ByteArena::from_slice(&mut scratch),
         )
         .unwrap();
         x = [0.0; 2];
@@ -229,7 +229,7 @@ fn test_zero_heap_allocations_krylov_solvers() {
             2,
             1e-12,
             10,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut ByteArena::from_slice(&mut scratch),
         )
         .unwrap();
     });

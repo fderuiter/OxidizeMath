@@ -5,7 +5,7 @@
 
 use crate::scalar::Scalar;
 use crate::sparse::CsrMatrixView;
-use crate::types::{LinalgError, SolverWorkspace, check_all_finite, mat_idx};
+use crate::types::{LinalgError, SolverWorkspace, carve_scalars, check_all_finite, mat_idx};
 
 /// Convergence summary returned by [`cg_solve`] and [`gmres_solve`].
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -67,7 +67,7 @@ pub fn cg_solve<T: Scalar>(
     x: &mut [T],
     tol: T,
     max_iter: usize,
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut impl SolverWorkspace,
 ) -> Result<KrylovReport<T>, LinalgError> {
     let n = a.nrows();
     if a.ncols() != n || b.len() != n || x.len() != n {
@@ -79,9 +79,10 @@ pub fn cg_solve<T: Scalar>(
     check_all_finite(b)?;
     check_all_finite(x)?;
 
-    let (r, mut r1) = ws.try_split(n)?;
-    let (p, mut r2) = r1.try_split(n)?;
-    let (ap, _) = r2.try_split(n)?;
+    let mut scope = ws.reborrow();
+    let r = carve_scalars::<T>(&mut scope, n)?;
+    let p = carve_scalars::<T>(&mut scope, n)?;
+    let ap = carve_scalars::<T>(&mut scope, n)?;
 
     a.spmv(x, ap)?;
     for i in 0..n {
@@ -229,7 +230,7 @@ pub fn gmres_solve<T: Scalar>(
     restart: usize,
     tol: T,
     max_restarts: usize,
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut impl SolverWorkspace,
 ) -> Result<KrylovReport<T>, LinalgError> {
     let n = a.nrows();
     if a.ncols() != n || b.len() != n || x.len() != n {
@@ -242,13 +243,14 @@ pub fn gmres_solve<T: Scalar>(
     check_all_finite(x)?;
 
     let m = restart;
-    let (v_basis, mut r1) = ws.try_split((m + 1) * n)?;
-    let (h_mat, mut r2) = r1.try_split((m + 1) * m)?;
-    let (cs, mut r3) = r2.try_split(m)?;
-    let (sn, mut r4) = r3.try_split(m)?;
-    let (g, mut r5) = r4.try_split(m + 1)?;
-    let (y, mut r6) = r5.try_split(m)?;
-    let (w, _) = r6.try_split(n)?;
+    let mut scope = ws.reborrow();
+    let v_basis = carve_scalars::<T>(&mut scope, (m + 1) * n)?;
+    let h_mat = carve_scalars::<T>(&mut scope, (m + 1) * m)?;
+    let cs = carve_scalars::<T>(&mut scope, m)?;
+    let sn = carve_scalars::<T>(&mut scope, m)?;
+    let g = carve_scalars::<T>(&mut scope, m + 1)?;
+    let y = carve_scalars::<T>(&mut scope, m)?;
+    let w = carve_scalars::<T>(&mut scope, n)?;
 
     let stop = tol * norm2_vec(b).max(T::ONE);
     let mut total_iters = 0;

@@ -83,7 +83,7 @@ pub mod qmc;
 pub mod transforms;
 
 pub use bivariate::{RHO_SPLIT, bivariate_copula_cdf, bivariate_normal_cdf};
-pub use core::{Correlation, CorrelationMatrix, Probability};
+pub use core::{Correlation, CorrelationMatrix, Probability, cholesky_factor_with_workspace};
 pub use gaussian::{
     GaussianCopula, MAX_STACK_LEGS, sgp_joint_probability, sgp_joint_probability_with_scratch,
 };

@@ -1,6 +1,4 @@
 // [cite:math_commons]
-#[cfg(not(feature = "std"))]
-use num_traits::Float as _;
 
 /// Clebsch-Gordan coefficient calculator for angular momentum coupling.
 ///
@@ -58,7 +56,7 @@ impl ClebschGordan {
             cg_sign = -1.0;
         }
 
-        cg_sign * (tj as f64 + 1.0).sqrt() * w3j
+        cg_sign * libm::sqrt(tj as f64 + 1.0) * w3j
     }
 }
 
@@ -126,7 +124,7 @@ fn wigner_3j(tj1: i32, tj2: i32, tj3: i32, tm1: i32, tm2: i32, tm3: i32) -> f64 
     } else {
         1.0
     };
-    sign * prefactor.sqrt() * sum
+    sign * libm::sqrt(prefactor) * sum
 }
 
 #[cfg(test)]

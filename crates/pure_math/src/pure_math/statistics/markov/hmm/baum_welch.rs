@@ -2,11 +2,12 @@
 // [cite:clinical_trials_statistics]
 
 pub use super::baum_welch_types::BaumWelchResult;
-use super::baum_welch_types::{BaumWelchConfig, BaumWelchReport, BaumWelchWorkspace};
+use super::baum_welch_types::{BaumWelchConfig, BaumWelchReport, BaumWelchWorkspace, BwSlices};
 use super::model::HiddenMarkovModel;
 use crate::error::MarkovError;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
+use math_memory::{Pod, Zeroable};
 use nalgebra::RealField;
 use num_traits::ToPrimitive;
 
@@ -52,7 +53,7 @@ fn validate_bw_inputs<T: RealField + Copy + ToPrimitive>(
     Ok(())
 }
 
-pub(super) fn run_forward_into<T: RealField + Copy + ToPrimitive>(
+pub(super) fn run_forward_into<T: RealField + Copy + ToPrimitive + Pod + Zeroable>(
     hmm: &HiddenMarkovModel<T>,
     observations: &[usize],
     ws: &mut BaumWelchWorkspace<T>,
@@ -62,20 +63,21 @@ pub(super) fn run_forward_into<T: RealField + Copy + ToPrimitive>(
     let neg_inf = T::from_f64(f64::NEG_INFINITY)
         .or_else(T::min_value)
         .unwrap_or_else(|| zero.ln());
+    let s = ws.slices_mut();
     let y0 = observations[0];
     let mut scale0 = zero;
     for i in 0..n {
         let v = hmm.initial[i] * hmm.emissions[(i, y0)];
-        ws.alpha[i] = v;
+        s.alpha[i] = v;
         scale0 += v;
     }
     if scale0 <= zero {
         return neg_inf;
     }
     for i in 0..n {
-        ws.alpha[i] /= scale0;
+        s.alpha[i] /= scale0;
     }
-    ws.scales[0] = scale0;
+    s.scales[0] = scale0;
     let mut ll = scale0.ln();
 
     let mut prev_off = 0;
@@ -85,19 +87,19 @@ pub(super) fn run_forward_into<T: RealField + Copy + ToPrimitive>(
         for j in 0..n {
             let mut sum = zero;
             for i in 0..n {
-                sum += ws.alpha[prev_off + i] * hmm.transitions[(i, j)];
+                sum += s.alpha[prev_off + i] * hmm.transitions[(i, j)];
             }
             let v = sum * hmm.emissions[(j, y_t)];
-            ws.alpha[curr_off + j] = v;
+            s.alpha[curr_off + j] = v;
             scale_t += v;
         }
         if scale_t <= zero {
             return neg_inf;
         }
         for j in 0..n {
-            ws.alpha[curr_off + j] /= scale_t;
+            s.alpha[curr_off + j] /= scale_t;
         }
-        ws.scales[step_idx] = scale_t;
+        s.scales[step_idx] = scale_t;
         ll += scale_t.ln();
         prev_off = curr_off;
     }
@@ -107,7 +109,7 @@ pub(super) fn run_forward_into<T: RealField + Copy + ToPrimitive>(
 fn init_backward_accumulators<T: RealField + Copy + ToPrimitive>(
     hmm: &HiddenMarkovModel<T>,
     observations: &[usize],
-    ws: &mut BaumWelchWorkspace<T>,
+    s: &mut BwSlices<'_, T>,
 ) -> usize {
     let n = hmm.num_states;
     let m = hmm.num_observations;
@@ -115,29 +117,29 @@ fn init_backward_accumulators<T: RealField + Copy + ToPrimitive>(
     let zero = T::zero();
     let one = T::one();
 
-    ws.init_gamma[..n].fill(zero);
-    ws.gamma_trans_sum[..n].fill(zero);
-    ws.gamma_all_sum[..n].fill(zero);
-    ws.xi_sum[..n * n].fill(zero);
-    ws.emission_sum[..n * m].fill(zero);
-    ws.beta_next[..n].fill(one);
+    s.init_gamma[..n].fill(zero);
+    s.gamma_trans_sum[..n].fill(zero);
+    s.gamma_all_sum[..n].fill(zero);
+    s.xi_sum[..n * n].fill(zero);
+    s.emission_sum[..n * m].fill(zero);
+    s.beta_next[..n].fill(one);
 
     let last_off = (t_max - 1) * n;
     let y_last = observations[t_max - 1];
     let mut emit_off = 0;
     for i in 0..n {
-        let g = ws.alpha[last_off + i];
-        ws.gamma_all_sum[i] += g;
-        ws.emission_sum[emit_off + y_last] += g;
+        let g = s.alpha[last_off + i];
+        s.gamma_all_sum[i] += g;
+        s.emission_sum[emit_off + y_last] += g;
         if t_max == 1 {
-            ws.init_gamma[i] = g;
+            s.init_gamma[i] = g;
         }
         emit_off += m;
     }
     last_off
 }
 
-pub(super) fn accumulate_backward_stats<T: RealField + Copy + ToPrimitive>(
+pub(super) fn accumulate_backward_stats<T: RealField + Copy + ToPrimitive + Pod + Zeroable>(
     hmm: &HiddenMarkovModel<T>,
     observations: &[usize],
     ws: &mut BaumWelchWorkspace<T>,
@@ -147,56 +149,58 @@ pub(super) fn accumulate_backward_stats<T: RealField + Copy + ToPrimitive>(
     let t_max = observations.len();
     let zero = T::zero();
     let one = T::one();
-    let mut step_off = init_backward_accumulators(hmm, observations, ws);
+    let mut s = ws.slices_mut();
+    let mut step_off = init_backward_accumulators(hmm, observations, &mut s);
 
     for t in (0..t_max - 1).rev() {
         step_off -= n;
         let y_t = observations[t];
         let y_next = observations[t + 1];
-        let inv_s_next = one / ws.scales[t + 1];
+        let inv_s_next = one / s.scales[t + 1];
         for j in 0..n {
-            ws.obs_beta[j] = hmm.emissions[(j, y_next)] * ws.beta_next[j];
+            s.obs_beta[j] = hmm.emissions[(j, y_next)] * s.beta_next[j];
         }
         let mut norm = zero;
         for i in 0..n {
             let mut sum = zero;
             for j in 0..n {
-                sum += hmm.transitions[(i, j)] * ws.obs_beta[j];
+                sum += hmm.transitions[(i, j)] * s.obs_beta[j];
             }
-            ws.beta_curr[i] = sum * inv_s_next;
-            norm += ws.alpha[step_off + i] * ws.beta_curr[i];
+            s.beta_curr[i] = sum * inv_s_next;
+            norm += s.alpha[step_off + i] * s.beta_curr[i];
         }
         let inv_norm = if norm > zero { one / norm } else { one };
         let mut xi_row_off = 0;
         let mut em_row_off = 0;
         for i in 0..n {
-            let alpha_i = ws.alpha[step_off + i];
-            let gamma_i = alpha_i * ws.beta_curr[i] * inv_norm;
-            ws.gamma_trans_sum[i] += gamma_i;
-            ws.gamma_all_sum[i] += gamma_i;
-            ws.emission_sum[em_row_off + y_t] += gamma_i;
+            let alpha_i = s.alpha[step_off + i];
+            let gamma_i = alpha_i * s.beta_curr[i] * inv_norm;
+            s.gamma_trans_sum[i] += gamma_i;
+            s.gamma_all_sum[i] += gamma_i;
+            s.emission_sum[em_row_off + y_t] += gamma_i;
             if t == 0 {
-                ws.init_gamma[i] = gamma_i;
+                s.init_gamma[i] = gamma_i;
             }
             let scale_xi = alpha_i * inv_s_next * inv_norm;
             for j in 0..n {
-                ws.xi_sum[xi_row_off + j] += scale_xi * hmm.transitions[(i, j)] * ws.obs_beta[j];
+                s.xi_sum[xi_row_off + j] += scale_xi * hmm.transitions[(i, j)] * s.obs_beta[j];
             }
             xi_row_off += n;
             em_row_off += m;
         }
-        ws.beta_next[..n].copy_from_slice(&ws.beta_curr[..n]);
+        s.beta_next[..n].copy_from_slice(&s.beta_curr[..n]);
     }
 }
 
-pub(super) fn snapshot_parameters<T: RealField + Copy + ToPrimitive>(
+pub(super) fn snapshot_parameters<T: RealField + Copy + ToPrimitive + Pod + Zeroable>(
     hmm: &HiddenMarkovModel<T>,
     ws: &mut BaumWelchWorkspace<T>,
 ) {
-    for (dst, src) in ws.prev_initial.iter_mut().zip(hmm.initial.iter()) {
+    let s = ws.slices_mut();
+    for (dst, src) in s.prev_initial.iter_mut().zip(hmm.initial.iter()) {
         *dst = *src;
     }
-    for (i, row) in ws
+    for (i, row) in s
         .prev_transitions
         .chunks_mut(hmm.num_states)
         .take(hmm.num_states)
@@ -206,7 +210,7 @@ pub(super) fn snapshot_parameters<T: RealField + Copy + ToPrimitive>(
             *slot = hmm.transitions[(i, j)];
         }
     }
-    for (i, row) in ws
+    for (i, row) in s
         .prev_emissions
         .chunks_mut(hmm.num_observations)
         .take(hmm.num_states)
@@ -218,15 +222,17 @@ pub(super) fn snapshot_parameters<T: RealField + Copy + ToPrimitive>(
     }
 }
 
-pub(super) fn restore_parameters<T: RealField + Copy + ToPrimitive>(
+pub(super) fn restore_parameters<T: RealField + Copy + ToPrimitive + Pod>(
     hmm: &mut HiddenMarkovModel<T>,
     ws: &BaumWelchWorkspace<T>,
 ) {
-    for (dst, &src) in hmm.initial.iter_mut().zip(ws.prev_initial.iter()) {
+    let prev_initial = ws.arena.region(ws.prev_initial_reg);
+    let prev_transitions = ws.arena.region(ws.prev_transitions_reg);
+    let prev_emissions = ws.arena.region(ws.prev_emissions_reg);
+    for (dst, &src) in hmm.initial.iter_mut().zip(prev_initial.iter()) {
         *dst = src;
     }
-    for (i, row) in ws
-        .prev_transitions
+    for (i, row) in prev_transitions
         .chunks(hmm.num_states)
         .take(hmm.num_states)
         .enumerate()
@@ -235,8 +241,7 @@ pub(super) fn restore_parameters<T: RealField + Copy + ToPrimitive>(
             hmm.transitions[(i, j)] = val;
         }
     }
-    for (i, row) in ws
-        .prev_emissions
+    for (i, row) in prev_emissions
         .chunks(hmm.num_observations)
         .take(hmm.num_states)
         .enumerate()
@@ -247,7 +252,7 @@ pub(super) fn restore_parameters<T: RealField + Copy + ToPrimitive>(
     }
 }
 
-pub(super) fn apply_m_step<T: RealField + Copy + ToPrimitive>(
+pub(super) fn apply_m_step<T: RealField + Copy + ToPrimitive + Pod>(
     hmm: &mut HiddenMarkovModel<T>,
     ws: &BaumWelchWorkspace<T>,
     prior: T,
@@ -256,10 +261,13 @@ pub(super) fn apply_m_step<T: RealField + Copy + ToPrimitive>(
     let n = hmm.num_states;
     let m = hmm.num_observations;
     let zero = T::zero();
+    let init_gamma = ws.arena.region(ws.init_gamma_reg);
+    let xi_sum = ws.arena.region(ws.xi_sum_reg);
+    let emission_sum = ws.arena.region(ws.emission_sum_reg);
 
     let mut pi_sum = zero;
-    for i in 0..n {
-        let v = ws.init_gamma[i] + prior;
+    for (i, &gamma_i) in init_gamma.iter().enumerate().take(n) {
+        let v = gamma_i + prior;
         hmm.initial[i] = v;
         pi_sum += v;
     }
@@ -274,11 +282,11 @@ pub(super) fn apply_m_step<T: RealField + Copy + ToPrimitive>(
         for i in 0..n {
             let mut row_sum = zero;
             for j in 0..n {
-                row_sum += ws.xi_sum[xi_off + j] + prior;
+                row_sum += xi_sum[xi_off + j] + prior;
             }
             if row_sum > zero {
                 for j in 0..n {
-                    hmm.transitions[(i, j)] = (ws.xi_sum[xi_off + j] + prior) / row_sum;
+                    hmm.transitions[(i, j)] = (xi_sum[xi_off + j] + prior) / row_sum;
                 }
             }
             xi_off += n;
@@ -289,18 +297,18 @@ pub(super) fn apply_m_step<T: RealField + Copy + ToPrimitive>(
     for i in 0..n {
         let mut row_sum = zero;
         for k in 0..m {
-            row_sum += ws.emission_sum[em_off + k] + prior;
+            row_sum += emission_sum[em_off + k] + prior;
         }
         if row_sum > zero {
             for k in 0..m {
-                hmm.emissions[(i, k)] = (ws.emission_sum[em_off + k] + prior) / row_sum;
+                hmm.emissions[(i, k)] = (emission_sum[em_off + k] + prior) / row_sum;
             }
         }
         em_off += m;
     }
 }
 
-impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
+impl<T: RealField + Copy + ToPrimitive + Pod + Zeroable> HiddenMarkovModel<T> {
     /// Fits `(initial, transitions, emissions)` via Baum-Welch EM in-place using preallocated
     /// [`BaumWelchWorkspace`] buffers with zero heap allocations.
     #[verified_engine::verified]

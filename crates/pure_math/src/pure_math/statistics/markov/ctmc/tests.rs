@@ -246,7 +246,7 @@ fn test_ctmc_serde_roundtrip_and_invalid_generator_rejection() {
 
 #[test]
 fn test_slow_ctmc_steady_state_multi_sink_rejection_and_zero_alloc() {
-    use math_commons::stochastic::SolverWorkspace;
+    use math_commons::stochastic::StochasticWorkspace;
     use verified_engine::engine::VerifiedEngine;
 
     let slow_gen = DMatrix::from_row_slice(2, 2, &[-1e-7, 1e-7, 3e-7, -3e-7]);
@@ -263,7 +263,7 @@ fn test_slow_ctmc_steady_state_multi_sink_rejection_and_zero_alloc() {
         "expected scale-relative residual < 1e-12, got {scale_rel_res:e}"
     );
 
-    let mut ws = SolverWorkspace::new(2, 0);
+    let mut ws = StochasticWorkspace::new(2, 0);
     let mut out = DVector::zeros(2);
     VerifiedEngine::run_verified(|| {
         assert!(slow_chain.steady_state_with_workspace(&mut ws, &mut out));

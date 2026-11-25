@@ -106,7 +106,7 @@ pub fn eval_ito_effective_drift<T: Scalar, S: SdeSystem<T> + ?Sized>(
     t: T,
     x: &[T],
     out_drift: &mut [T],
-    workspace: &mut SolverWorkspace<'_, T>,
+    workspace: &mut impl SolverWorkspace,
 ) {
     let d = system.state_dim();
     let m = system.wiener_dim();
@@ -118,12 +118,12 @@ pub fn eval_ito_effective_drift<T: Scalar, S: SdeSystem<T> + ?Sized>(
 
     let dm = d * m;
     let mut ws = workspace.reborrow();
-    let g_base = ws.take_slice(dm);
-    let g_plus = ws.take_slice(dm);
-    let g_minus = ws.take_slice(dm);
-    let col_vec = ws.take_slice(d);
-    let dg_vec = ws.take_slice(d);
-    let x_tmp = ws.take_slice(d);
+    let g_base = ws.take_slice::<T>(dm);
+    let g_plus = ws.take_slice::<T>(dm);
+    let g_minus = ws.take_slice::<T>(dm);
+    let col_vec = ws.take_slice::<T>(d);
+    let dg_vec = ws.take_slice::<T>(d);
+    let x_tmp = ws.take_slice::<T>(d);
 
     system.diffusion(t, x, g_base);
     for j in 0..m {

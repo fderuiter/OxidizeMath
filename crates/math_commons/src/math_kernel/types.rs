@@ -98,6 +98,8 @@ pub trait Scalar:
     + Send
     + Sync
     + 'static
+    + math_memory::Pod
+    + math_memory::Zeroable
     + Add<Output = Self>
     + Sub<Output = Self>
     + Mul<Output = Self>
@@ -267,89 +269,7 @@ impl Scalar for f32 {
     }
 }
 
-/// Zero-allocation borrowed scratch workspace partitioning caller-supplied mutable slices across solver stages.
-///
-/// # Example
-/// ```
-/// use math_commons::math_kernel::types::SolverWorkspace;
-///
-/// let mut raw = [0.0_f64; 8];
-/// let mut ws = SolverWorkspace::new(&mut raw);
-/// let mut step_ws = ws.reborrow();
-/// let stage_a = step_ws.take_slice(4);
-/// let stage_b = step_ws.take_slice(4);
-/// stage_a[0] = 1.0;
-/// stage_b[0] = 2.0;
-/// assert_eq!(stage_a[0] + stage_b[0], 3.0);
-/// ```
-#[derive(Debug)]
-pub struct SolverWorkspace<'a, T: Scalar> {
-    buf: &'a mut [T],
-}
-
-impl<'a, T: Scalar> SolverWorkspace<'a, T> {
-    /// Wraps a caller-provided mutable scratch slice as a zero-allocation [`SolverWorkspace`].
-    #[inline]
-    pub fn new(buf: &'a mut [T]) -> Self {
-        Self { buf }
-    }
-
-    /// Returns the remaining number of unpartitioned scalar elements in this workspace.
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.buf.len()
-    }
-
-    /// Returns `true` if no unpartitioned scalar elements remain in this workspace.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.buf.is_empty()
-    }
-
-    /// Borrows the remaining workspace buffer as an immutable slice.
-    #[inline]
-    pub fn as_slice(&self) -> &[T] {
-        self.buf
-    }
-
-    /// Borrows the remaining workspace buffer as a mutable slice.
-    #[inline]
-    pub fn as_mut_slice(&mut self) -> &mut [T] {
-        self.buf
-    }
-
-    /// Creates a scoped sub-workspace over the remaining slice so per-step scratch slices can be
-    /// partitioned repeatedly inside loops without consuming the outer workspace.
-    #[inline]
-    pub fn reborrow(&mut self) -> SolverWorkspace<'_, T> {
-        SolverWorkspace { buf: self.buf }
-    }
-
-    /// Fills the remaining workspace buffer with [`Scalar::ZERO`].
-    #[verified_engine::verified]
-    pub fn zero_fill(&mut self) {
-        self.buf.fill(T::ZERO);
-        debug_assert!(self.buf.first().is_none_or(|v| *v == T::ZERO));
-    }
-
-    /// Carves off a disjoint mutable slice of length `len` from the front of the workspace,
-    /// advancing `self` to the remaining suffix without heap allocation.
-    ///
-    /// # Panics
-    /// Panics if `len > self.len()`.
-    #[verified_engine::verified]
-    pub fn take_slice(&mut self, len: usize) -> &'a mut [T] {
-        assert!(
-            len <= self.buf.len(),
-            "SolverWorkspace::take_slice requested {len} elements from buffer of length {}",
-            self.buf.len()
-        );
-        let full = core::mem::take(&mut self.buf);
-        let (head, tail) = full.split_at_mut(len);
-        self.buf = tail;
-        head
-    }
-}
+pub use math_memory::{ArenaScope, ByteArena, SolverWorkspace};
 
 /// Samples a deterministic uniform variate strictly in `(0, 1]` using 53 bits from `rng`.
 ///

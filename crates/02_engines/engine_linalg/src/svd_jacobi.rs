@@ -4,7 +4,7 @@
 //! Symmetric Jacobi eigensolver and one-sided Hestenes-Jacobi Singular Value Decomposition.
 
 use crate::scalar::Scalar;
-use crate::types::{LinalgError, SolverWorkspace, check_all_finite, mat_idx};
+use crate::types::{LinalgError, SolverWorkspace, carve_scalars, check_all_finite, mat_idx};
 
 /// Workspace scalar capacity required by [`symmetric_eigen_jacobi`] for an `n x n` matrix.
 /// `[cite:engine_linalg]`
@@ -89,13 +89,14 @@ pub fn symmetric_eigen_jacobi<T: Scalar>(
     eigvals: &mut [T],
     eigvecs: &mut [T],
     max_sweeps: usize,
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut impl SolverWorkspace,
 ) -> Result<(), LinalgError> {
     if n.checked_mul(n) != Some(a.len()) || eigvals.len() != n || eigvecs.len() != a.len() {
         return Err(LinalgError::DimensionMismatch);
     }
     check_all_finite(a)?;
-    let (work, _) = ws.try_split(symmetric_eigen_workspace_len(n))?;
+    let mut scope = ws.reborrow();
+    let work = carve_scalars::<T>(&mut scope, symmetric_eigen_workspace_len(n))?;
     work.copy_from_slice(a);
 
     eigvecs.fill(T::ZERO);
@@ -235,11 +236,12 @@ fn svd_jacobi_tall<T: Scalar>(
     s: &mut [T],
     vt: &mut [T],
     max_sweeps: usize,
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut impl SolverWorkspace,
 ) -> Result<(), LinalgError> {
     let (m, n) = dims;
-    let (w, mut rest) = ws.try_split(m * n)?;
-    let (v, _) = rest.try_split(n * n)?;
+    let mut scope = ws.reborrow();
+    let w = carve_scalars::<T>(&mut scope, m * n)?;
+    let v = carve_scalars::<T>(&mut scope, n * n)?;
     w.copy_from_slice(a);
     v.fill(T::ZERO);
     for i in 0..n {
@@ -294,7 +296,7 @@ pub fn svd_jacobi<T: Scalar>(
     s: &mut [T],
     vt: &mut [T],
     max_sweeps: usize,
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut impl SolverWorkspace,
 ) -> Result<(), LinalgError> {
     let (m, n) = dims;
     let k = m.min(n);
@@ -313,15 +315,16 @@ pub fn svd_jacobi<T: Scalar>(
         return svd_jacobi_tall(a, (m, n), u, s, vt, max_sweeps, ws);
     }
 
-    let (at, mut rest1) = ws.try_split(n * m)?;
-    let (u_at, mut rest2) = rest1.try_split(n * m)?;
-    let (vt_at, mut inner_ws) = rest2.try_split(m * m)?;
+    let mut scope = ws.reborrow();
+    let at = carve_scalars::<T>(&mut scope, n * m)?;
+    let u_at = carve_scalars::<T>(&mut scope, n * m)?;
+    let vt_at = carve_scalars::<T>(&mut scope, m * m)?;
     for r in 0..m {
         for c in 0..n {
             at[mat_idx(c, r, m)] = a[mat_idx(r, c, n)];
         }
     }
-    svd_jacobi_tall(at, (n, m), u_at, s, vt_at, max_sweeps, &mut inner_ws)?;
+    svd_jacobi_tall(at, (n, m), u_at, s, vt_at, max_sweeps, &mut scope)?;
     for r in 0..m {
         for c in 0..m {
             u[mat_idx(r, c, m)] = vt_at[mat_idx(c, r, m)];

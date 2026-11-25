@@ -26,6 +26,7 @@ mod bca;
 use crate::pure_math::statistics::monte_carlo::workspace::draw_bounded_index;
 use crate::pure_math::statistics::monte_carlo::{MonteCarloError, two_sided_normal_z};
 use bca::{build_bca_estimate, sorted_quantile};
+use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
 use oxidize_core::rng::OxidizeRng;
 
 /// Arithmetic mean of a non-empty slice without heap allocation.
@@ -109,10 +110,8 @@ pub struct BootstrapWorkspace {
     max_data_len: usize,
     max_replicates: usize,
     last_replicate_count: usize,
-    resample_buf: Vec<f64>,
-    replicates_buf: Vec<f64>,
-    jackknife_buf: Vec<f64>,
-    scratch_buf: Vec<f64>,
+    arena: OwnedByteArena,
+    replicates_reg: ArenaRegion<f64>,
 }
 
 impl BootstrapWorkspace {
@@ -128,14 +127,33 @@ impl BootstrapWorkspace {
         if max_replicates == 0 {
             return Err(MonteCarloError::ZeroReplicates);
         }
+        let mut layout = ArenaLayout::new();
+        let _ = layout.add_slice::<f64>(max_data_len).map_err(|_| {
+            MonteCarloError::InvalidSampleCount {
+                samples: max_data_len,
+            }
+        })?;
+        let replicates_reg = layout.add_slice::<f64>(max_replicates).map_err(|_| {
+            MonteCarloError::InvalidSampleCount {
+                samples: max_replicates,
+            }
+        })?;
+        let _ = layout.add_slice::<f64>(max_data_len).map_err(|_| {
+            MonteCarloError::InvalidSampleCount {
+                samples: max_data_len,
+            }
+        })?;
+        let _ = layout.add_slice::<f64>(max_data_len).map_err(|_| {
+            MonteCarloError::InvalidSampleCount {
+                samples: max_data_len,
+            }
+        })?;
         Ok(Self {
             max_data_len,
             max_replicates,
             last_replicate_count: 0,
-            resample_buf: vec![0.0; max_data_len],
-            replicates_buf: vec![0.0; max_replicates],
-            jackknife_buf: vec![0.0; max_data_len],
-            scratch_buf: vec![0.0; max_data_len],
+            arena: OwnedByteArena::with_capacity(layout.total_bytes()),
+            replicates_reg,
         })
     }
 
@@ -157,7 +175,18 @@ impl BootstrapWorkspace {
     #[inline]
     #[verified_engine::verified]
     pub fn last_replicates(&self) -> &[f64] {
-        &self.replicates_buf[..self.last_replicate_count]
+        &self.arena.region(self.replicates_reg)[..self.last_replicate_count]
+    }
+
+    fn split_buffers(&mut self) -> (&mut [f64], &mut [f64], &mut [f64], &mut [f64]) {
+        let cap_d = self.max_data_len;
+        let cap_r = self.max_replicates;
+        let mut scope = self.arena.reborrow();
+        let resample_buf = scope.retain_slice::<f64>(cap_d).expect("resample slice");
+        let replicates_buf = scope.retain_slice::<f64>(cap_r).expect("replicates slice");
+        let jackknife_buf = scope.retain_slice::<f64>(cap_d).expect("jackknife slice");
+        let scratch_buf = scope.retain_slice::<f64>(cap_d).expect("scratch slice");
+        (resample_buf, replicates_buf, jackknife_buf, scratch_buf)
     }
 
     #[verified_engine::verified]
@@ -202,31 +231,34 @@ impl BootstrapWorkspace {
         F: FnMut(&[f64], &mut [f64]) -> f64,
     {
         let n = data.len();
-        let point_est = statistic(data, &mut self.scratch_buf[..n]);
-        if !point_est.is_finite() {
-            return Err(MonteCarloError::NonFiniteEvaluation);
-        }
-        for rep_idx in 0..n_replicates {
-            for slot in &mut self.resample_buf[..n] {
-                *slot = data[draw_bounded_index(rng, n)];
-            }
-            let star = statistic(&self.resample_buf[..n], &mut self.scratch_buf[..n]);
-            if !star.is_finite() {
+        let (point_est, mean, se) = {
+            let (resample_buf, replicates_buf, _jackknife_buf, scratch_buf) = self.split_buffers();
+            let point_est = statistic(data, &mut scratch_buf[..n]);
+            if !point_est.is_finite() {
                 return Err(MonteCarloError::NonFiniteEvaluation);
             }
-            self.replicates_buf[rep_idx] = star;
-        }
-        let reps = &mut self.replicates_buf[..n_replicates];
-        reps.sort_unstable_by(f64::total_cmp);
-        self.last_replicate_count = n_replicates;
-
-        let mean = sample_mean(reps);
-        let se = if n_replicates > 1 {
-            let ss: f64 = reps.iter().map(|&v| (v - mean) * (v - mean)).sum();
-            (ss / ((n_replicates - 1) as f64)).sqrt()
-        } else {
-            0.0
+            for rep_slot in replicates_buf.iter_mut().take(n_replicates) {
+                for slot in &mut resample_buf[..n] {
+                    *slot = data[draw_bounded_index(rng, n)];
+                }
+                let star = statistic(&resample_buf[..n], &mut scratch_buf[..n]);
+                if !star.is_finite() {
+                    return Err(MonteCarloError::NonFiniteEvaluation);
+                }
+                *rep_slot = star;
+            }
+            let reps = &mut replicates_buf[..n_replicates];
+            reps.sort_unstable_by(f64::total_cmp);
+            let mean = sample_mean(reps);
+            let se = if n_replicates > 1 {
+                let ss: f64 = reps.iter().map(|&v| (v - mean) * (v - mean)).sum();
+                (ss / ((n_replicates - 1) as f64)).sqrt()
+            } else {
+                0.0
+            };
+            (point_est, mean, se)
         };
+        self.last_replicate_count = n_replicates;
         Ok((point_est, mean, se))
     }
 
@@ -241,19 +273,17 @@ impl BootstrapWorkspace {
     {
         let n = data.len();
         let loo_len = n - 1;
+        let (resample_buf, _replicates_buf, jackknife_buf, scratch_buf) = self.split_buffers();
         for leave_out in 0..n {
-            self.resample_buf[..leave_out].copy_from_slice(&data[..leave_out]);
-            self.resample_buf[leave_out..loo_len].copy_from_slice(&data[leave_out + 1..]);
-            let val = statistic(
-                &self.resample_buf[..loo_len],
-                &mut self.scratch_buf[..loo_len],
-            );
+            resample_buf[..leave_out].copy_from_slice(&data[..leave_out]);
+            resample_buf[leave_out..loo_len].copy_from_slice(&data[leave_out + 1..]);
+            let val = statistic(&resample_buf[..loo_len], &mut scratch_buf[..loo_len]);
             if !val.is_finite() {
                 return Err(MonteCarloError::NonFiniteEvaluation);
             }
-            self.jackknife_buf[leave_out] = val;
+            jackknife_buf[leave_out] = val;
         }
-        let jack = &self.jackknife_buf[..n];
+        let jack = &jackknife_buf[..n];
         let jack_mean = sample_mean(jack);
         let mut sum_d2 = 0.0;
         let mut sum_d3 = 0.0;
@@ -306,7 +336,7 @@ impl BootstrapWorkspace {
         let (point_estimate, bootstrap_mean, standard_error) =
             self.populate_sorted_replicates(data, n_replicates, rng, &mut statistic)?;
         let alpha_half = 0.5 * (1.0 - confidence_level);
-        let reps = &self.replicates_buf[..n_replicates];
+        let reps = &self.arena.region(self.replicates_reg)[..n_replicates];
         Ok(BootstrapEstimate {
             point_estimate,
             bootstrap_mean,
@@ -397,7 +427,7 @@ impl BootstrapWorkspace {
         let (point_estimate, bootstrap_mean, standard_error) =
             self.populate_sorted_replicates(data, n_replicates, rng, &mut statistic)?;
         let acceleration = self.compute_jackknife_acceleration(data, &mut statistic)?;
-        let reps = &self.replicates_buf[..n_replicates];
+        let reps = &self.arena.region(self.replicates_reg)[..n_replicates];
         let alpha_half = 0.5 * (1.0 - confidence_level);
         let bias = bootstrap_mean - point_estimate;
 

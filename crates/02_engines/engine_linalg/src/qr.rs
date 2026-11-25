@@ -4,7 +4,7 @@
 //! Householder QR with column pivoting ($A P = Q R$), contrast variance solvers, and streaming Givens QR.
 
 use crate::scalar::Scalar;
-use crate::types::{LinalgError, SolverWorkspace, check_all_finite, mat_idx};
+use crate::types::{LinalgError, SolverWorkspace, carve_scalars, check_all_finite, mat_idx};
 
 /// Workspace scalar capacity required by [`qr_factor_pivoted`] for an `m x n` matrix.
 /// `[cite:engine_linalg]`
@@ -132,14 +132,15 @@ pub fn qr_factor_pivoted<T: Scalar>(
     n: usize,
     tau: &mut [T],
     col_perm: &mut [usize],
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut impl SolverWorkspace,
 ) -> Result<usize, LinalgError> {
     let k_max = m.min(n);
     if m.checked_mul(n) != Some(qr.len()) || tau.len() < k_max || col_perm.len() != n {
         return Err(LinalgError::DimensionMismatch);
     }
     check_all_finite(qr)?;
-    let (col_norms, _) = ws.try_split(qr_factor_workspace_len(n))?;
+    let mut scope = ws.reborrow();
+    let col_norms = carve_scalars::<T>(&mut scope, qr_factor_workspace_len(n))?;
     for j in 0..n {
         col_perm[j] = j;
         col_norms[j] = col_norm_from_row(qr, m, n, j, 0);
@@ -287,19 +288,20 @@ pub fn qr_solve_least_squares<T: Scalar>(
     b: &[T],
     x: &mut [T],
     col_perm: &mut [usize],
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut impl SolverWorkspace,
 ) -> Result<usize, LinalgError> {
     let k_max = m.min(n);
     if m.checked_mul(n) != Some(a.len()) || b.len() != m || x.len() != n || col_perm.len() != n {
         return Err(LinalgError::DimensionMismatch);
     }
-    let (qr_buf, mut rest1) = ws.try_split(m * n)?;
-    let (tau, mut rest2) = rest1.try_split(k_max)?;
-    let (qt_b, mut rest3) = rest2.try_split(m)?;
-    let (z_work, mut factor_ws) = rest3.try_split(n)?;
+    let mut scope = ws.reborrow();
+    let qr_buf = carve_scalars::<T>(&mut scope, m * n)?;
+    let tau = carve_scalars::<T>(&mut scope, k_max)?;
+    let qt_b = carve_scalars::<T>(&mut scope, m)?;
+    let z_work = carve_scalars::<T>(&mut scope, n)?;
 
     qr_buf.copy_from_slice(a);
-    let rank = qr_factor_pivoted(qr_buf, m, n, tau, col_perm, &mut factor_ws)?;
+    let rank = qr_factor_pivoted(qr_buf, m, n, tau, col_perm, &mut scope)?;
     qt_b.copy_from_slice(b);
     qr_apply_qt(qr_buf, m, n, tau, qt_b)?;
     qr_solve_r_pivoted(qr_buf, (m, n), rank, col_perm, qt_b, x, z_work)?;

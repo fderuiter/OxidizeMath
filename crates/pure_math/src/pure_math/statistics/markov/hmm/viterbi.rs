@@ -1,12 +1,23 @@
 use super::model::HiddenMarkovModel;
 use crate::error::MarkovError;
+use core::marker::PhantomData;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
+use math_memory::{ArenaLayout, OwnedByteArena, Pod, Zeroable};
 use nalgebra::RealField;
 use num_traits::ToPrimitive;
 
 #[allow(missing_docs)]
 pub type Result<T> = std::result::Result<T, MarkovError>;
+
+struct ViterbiSlices<'a, T> {
+    prev_log_delta: &'a mut [T],
+    curr_log_delta: &'a mut [T],
+    log_initial: &'a mut [T],
+    log_transitions: &'a mut [T],
+    log_emissions: &'a mut [T],
+    backpointers: &'a mut [usize],
+}
 
 /// Preallocated scratch buffers for zero-allocation log-domain Viterbi decoding.
 #[derive(Debug, Clone)]
@@ -14,56 +25,48 @@ pub struct ViterbiWorkspace<T> {
     num_states: usize,
     num_observations: usize,
     max_len: usize,
-    prev_log_delta: Vec<T>,
-    curr_log_delta: Vec<T>,
-    log_initial: Vec<T>,
-    log_transitions: Vec<T>,
-    log_emissions: Vec<T>,
-    backpointers: Vec<usize>,
+    arena: OwnedByteArena,
+    _marker: PhantomData<fn() -> T>,
 }
 
-impl<T: RealField + Copy> ViterbiWorkspace<T> {
+impl<T: RealField + Copy + Pod + Zeroable> ViterbiWorkspace<T> {
     /// Allocates a workspace sized for up to `num_states`, `num_observations`, and `max_len` steps.
     #[verified_engine::verified]
     pub fn new(num_states: usize, num_observations: usize, max_len: usize) -> Self {
-        let z = T::zero();
+        let nn = num_states.saturating_mul(num_states);
+        let nm = num_states.saturating_mul(num_observations);
+        let bp = num_states.saturating_mul(max_len);
+        let mut layout = ArenaLayout::new();
+        let _ = layout
+            .add_slice::<T>(num_states)
+            .expect("viterbi prev_log_delta");
+        let _ = layout
+            .add_slice::<T>(num_states)
+            .expect("viterbi curr_log_delta");
+        let _ = layout
+            .add_slice::<T>(num_states)
+            .expect("viterbi log_initial");
+        let _ = layout.add_slice::<T>(nn).expect("viterbi log_transitions");
+        let _ = layout.add_slice::<T>(nm).expect("viterbi log_emissions");
+        let _ = layout.add_slice::<usize>(bp).expect("viterbi backpointers");
         Self {
             num_states,
             num_observations,
             max_len,
-            prev_log_delta: vec![z; num_states],
-            curr_log_delta: vec![z; num_states],
-            log_initial: vec![z; num_states],
-            log_transitions: vec![z; num_states.saturating_mul(num_states)],
-            log_emissions: vec![z; num_states.saturating_mul(num_observations)],
-            backpointers: vec![0; num_states.saturating_mul(max_len)],
+            arena: OwnedByteArena::with_capacity(layout.total_bytes()),
+            _marker: PhantomData,
         }
     }
 
     /// Grows internal buffers if needed to accommodate the requested capacities.
     #[verified_engine::verified]
     pub fn ensure_capacity(&mut self, num_states: usize, num_observations: usize, max_len: usize) {
-        let z = T::zero();
-        if num_states > self.num_states {
-            self.prev_log_delta.resize(num_states, z);
-            self.curr_log_delta.resize(num_states, z);
-            self.log_initial.resize(num_states, z);
+        let n = self.num_states.max(num_states);
+        let m = self.num_observations.max(num_observations);
+        let t = self.max_len.max(max_len);
+        if n > self.num_states || m > self.num_observations || t > self.max_len {
+            *self = Self::new(n, m, t);
         }
-        if num_states > self.num_states || num_observations > self.num_observations {
-            self.log_transitions
-                .resize(num_states.saturating_mul(num_states), z);
-            self.log_emissions
-                .resize(num_states.saturating_mul(num_observations), z);
-        }
-        let needed_bp = num_states
-            .max(self.num_states)
-            .saturating_mul(max_len.max(self.max_len));
-        if needed_bp > self.backpointers.len() {
-            self.backpointers.resize(needed_bp, 0);
-        }
-        self.num_states = self.num_states.max(num_states);
-        self.num_observations = self.num_observations.max(num_observations);
-        self.max_len = self.max_len.max(max_len);
     }
 
     /// Returns the maximum number of hidden states supported without reallocation.
@@ -82,6 +85,22 @@ impl<T: RealField + Copy> ViterbiWorkspace<T> {
     #[verified_engine::verified]
     pub fn max_len(&self) -> usize {
         self.max_len
+    }
+
+    fn slices_mut(&mut self) -> ViterbiSlices<'_, T> {
+        let n = self.num_states;
+        let nn = n.saturating_mul(n);
+        let nm = n.saturating_mul(self.num_observations);
+        let bp = n.saturating_mul(self.max_len);
+        let mut scope = self.arena.reborrow();
+        ViterbiSlices {
+            prev_log_delta: scope.retain_slice::<T>(n).expect("prev_log_delta"),
+            curr_log_delta: scope.retain_slice::<T>(n).expect("curr_log_delta"),
+            log_initial: scope.retain_slice::<T>(n).expect("log_initial"),
+            log_transitions: scope.retain_slice::<T>(nn).expect("log_transitions"),
+            log_emissions: scope.retain_slice::<T>(nm).expect("log_emissions"),
+            backpointers: scope.retain_slice::<usize>(bp).expect("backpointers"),
+        }
     }
 }
 
@@ -135,25 +154,25 @@ fn validate_viterbi_inputs<T: RealField + Copy + ToPrimitive>(
 
 fn populate_log_tables<T: RealField + Copy + ToPrimitive>(
     hmm: &HiddenMarkovModel<T>,
-    workspace: &mut ViterbiWorkspace<T>,
+    s: &mut ViterbiSlices<'_, T>,
     neg_inf: T,
 ) {
     let n = hmm.num_states;
     let m = hmm.num_observations;
     for i in 0..n {
-        workspace.log_initial[i] = log_prob(hmm.initial[i], neg_inf);
+        s.log_initial[i] = log_prob(hmm.initial[i], neg_inf);
     }
     let mut trans_off = 0;
     for i in 0..n {
         for j in 0..n {
-            workspace.log_transitions[trans_off + j] = log_prob(hmm.transitions[(i, j)], neg_inf);
+            s.log_transitions[trans_off + j] = log_prob(hmm.transitions[(i, j)], neg_inf);
         }
         trans_off += n;
     }
     let mut emit_off = 0;
     for i in 0..n {
         for k in 0..m {
-            workspace.log_emissions[emit_off + k] = log_prob(hmm.emissions[(i, k)], neg_inf);
+            s.log_emissions[emit_off + k] = log_prob(hmm.emissions[(i, k)], neg_inf);
         }
         emit_off += m;
     }
@@ -200,7 +219,7 @@ fn viterbi_step<T: RealField + Copy>(
     }
 }
 
-impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
+impl<T: RealField + Copy + ToPrimitive + Pod + Zeroable> HiddenMarkovModel<T> {
     /// Decodes the most likely hidden state sequence into `out_path` using exact log-domain
     /// dynamic programming and preallocated [`ViterbiWorkspace`] buffers with zero heap allocations.
     #[verified_engine::verified]
@@ -215,19 +234,20 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
         let m = self.num_observations;
         let t_max = observations.len();
         let neg_inf = neg_infinity::<T>();
-        populate_log_tables(self, workspace, neg_inf);
+        let mut s = workspace.slices_mut();
+        populate_log_tables(self, &mut s, neg_inf);
 
         let y0 = observations[0];
         let mut emit_off = 0;
         for i in 0..n {
-            let log_pi = workspace.log_initial[i];
-            let log_b = workspace.log_emissions[emit_off + y0];
-            workspace.prev_log_delta[i] = if log_pi > neg_inf && log_b > neg_inf {
+            let log_pi = s.log_initial[i];
+            let log_b = s.log_emissions[emit_off + y0];
+            s.prev_log_delta[i] = if log_pi > neg_inf && log_b > neg_inf {
                 log_pi + log_b
             } else {
                 neg_inf
             };
-            workspace.backpointers[i] = 0;
+            s.backpointers[i] = 0;
             emit_off += m;
         }
 
@@ -238,13 +258,13 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
                 m,
                 y_t,
                 neg_inf,
-                &workspace.prev_log_delta,
-                &workspace.log_transitions,
-                &workspace.log_emissions,
-                &mut workspace.curr_log_delta,
-                &mut workspace.backpointers[bp_off..bp_off + n],
+                s.prev_log_delta,
+                s.log_transitions,
+                s.log_emissions,
+                s.curr_log_delta,
+                &mut s.backpointers[bp_off..bp_off + n],
             );
-            std::mem::swap(&mut workspace.prev_log_delta, &mut workspace.curr_log_delta);
+            std::mem::swap(&mut s.prev_log_delta, &mut s.curr_log_delta);
             bp_off += n;
         }
 
@@ -252,7 +272,7 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
         let mut last_state = 0;
         let mut found = false;
         for i in 0..n {
-            let val = workspace.prev_log_delta[i];
+            let val = s.prev_log_delta[i];
             if val > neg_inf && (!found || val > best_final) {
                 found = true;
                 best_final = val;
@@ -264,7 +284,7 @@ impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
         let mut step_bp_off = bp_off;
         for t in (0..t_max - 1).rev() {
             step_bp_off -= n;
-            out_path[t] = workspace.backpointers[step_bp_off + out_path[t + 1]];
+            out_path[t] = s.backpointers[step_bp_off + out_path[t + 1]];
         }
         Ok(())
     }

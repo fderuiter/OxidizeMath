@@ -4,8 +4,6 @@
 use super::poly::symmetrize_upper;
 use crate::error::FitError;
 use crate::series::PointSeries;
-#[cfg(not(feature = "std"))]
-use num_traits::Float as _;
 
 /// Maximum outer Levenberg-Marquardt iterations before returning [`FitError::NonConvergence`].
 pub const MAX_LM_ITERATIONS: usize = 80;
@@ -315,8 +313,8 @@ where
             step_norm += delta[c] * delta[c];
             param_norm += theta[c] * theta[c];
         }
-        step_norm = step_norm.sqrt();
-        param_norm = param_norm.sqrt();
+        step_norm = libm::sqrt(step_norm);
+        param_norm = libm::sqrt(param_norm);
 
         let new_sse = sum_squared_errors(points, domain_ok, &candidate, eval_val);
         if new_sse.is_finite() && new_sse < *current_sse {
@@ -339,30 +337,21 @@ fn solve_lm_damped_step<const M: usize>(
     k: usize,
     lambda: f64,
 ) -> Result<[f64; M], FitError> {
-    if k == 0 || k > M || k > 8 {
+    if k == 0 || k > M || k > 8 || !lambda.is_finite() || lambda < 0.0 {
         return Err(FitError::SingularMatrix);
     }
-    let mut flat_jtj = [0.0_f64; 64];
-    for (r, row) in jtj.iter().enumerate().take(k) {
-        let start = r * k;
-        flat_jtj[start..(start + k)].copy_from_slice(&row[..k]);
+    let mut damped = [[0.0_f64; 8]; 8];
+    let mut rhs = [0.0_f64; 8];
+    for r in 0..k {
+        damped[r][..k].copy_from_slice(&jtj[r][..k]);
+        let d_rr = damped[r][r];
+        let base = d_rr.abs().max(1e-6);
+        damped[r][r] = d_rr + lambda * base;
+        rhs[r] = jtr[r];
     }
+    let sol8 = super::poly::solve_dense_n_raw(&mut damped, &rhs, k)?;
     let mut delta = [0.0_f64; M];
-    let mut pivots = [0_usize; 8];
-    let mut scratch = [0.0_f64; 128];
-    engine_linalg::solve_damped_normal(
-        &flat_jtj[..(k * k)],
-        &jtr[..k],
-        k,
-        engine_linalg::DampingStyle::Marquardt {
-            lambda,
-            diag_floor: 1e-6,
-        },
-        &mut delta[..k],
-        &mut pivots[..k],
-        &mut engine_linalg::SolverWorkspace::new(&mut scratch),
-    )
-    .map_err(|_| FitError::SingularMatrix)?;
+    delta[..k].copy_from_slice(&sol8[..k]);
     Ok(delta)
 }
 
@@ -406,10 +395,10 @@ where
     }
     symmetrize_upper(&mut jtj, k);
 
-    let r_norm = current_sse.sqrt().max(1e-15);
+    let r_norm = libm::sqrt(current_sse).max(1e-15);
     let mut scaled_grad = 0.0_f64;
     for row in 0..k {
-        let col_norm = jtj[row][row].sqrt();
+        let col_norm = libm::sqrt(jtj[row][row]);
         let denom = (col_norm * r_norm).max(1.0);
         scaled_grad = scaled_grad.max(jtr[row].abs() / denom);
     }

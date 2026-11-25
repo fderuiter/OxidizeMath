@@ -3,11 +3,11 @@
 
 use crate::error::StatMechError;
 use engine_pde::{
-    BoundaryCondition, ExplicitSpdeStencilStepper, SemiImplicitFourierStepper, SpdeNoiseKind,
-    StencilOperators,
+    BoundaryCondition, ByteArena, ExplicitSpdeStencilStepper, SemiImplicitFourierStepper,
+    SpdeNoiseKind, StencilOperators,
 };
 use math_commons::error::MathError;
-use math_commons::math_kernel::types::{Dimension, SolverWorkspace, StepSize};
+use math_commons::math_kernel::types::{Dimension, StepSize};
 use rand_core::RngCore;
 
 /// Computes the spatial arithmetic mean $\bar{u} = \frac{1}{N} \sum_{i=0}^{N-1} u_i$ of a continuum field.
@@ -165,7 +165,7 @@ impl EdwardsWilkinson1D {
             },
         );
         let nu = self.nu;
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ByteArena::from_slice(&mut self.scratch);
         stepper.step_1d(&mut self.h, dt, |_x, _u, _grad, lap| nu * lap, &mut ws, rng);
     }
 
@@ -178,7 +178,7 @@ impl EdwardsWilkinson1D {
                 && dt >= 0.0
         );
         let stepper = SemiImplicitFourierStepper::new_1d(self.dx);
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ByteArena::from_slice(&mut self.scratch);
         stepper.step_edwards_wilkinson_1d(
             &mut self.h,
             self.nu,
@@ -262,7 +262,7 @@ impl EdwardsWilkinson2D {
             },
         );
         let nu = self.nu;
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ByteArena::from_slice(&mut self.scratch);
         stepper.step_2d(
             &mut self.h,
             self.width,
@@ -284,7 +284,7 @@ impl EdwardsWilkinson2D {
                 && dt >= 0.0
         );
         let stepper = SemiImplicitFourierStepper::new_2d(self.dx, self.dy);
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ByteArena::from_slice(&mut self.scratch);
         stepper.step_edwards_wilkinson_2d(
             &mut self.h,
             self.width,

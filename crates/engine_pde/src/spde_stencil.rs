@@ -51,7 +51,7 @@ impl ExplicitSpdeStencilStepper {
         u: &mut [f64],
         dt: f64,
         mut deterministic_rhs: F,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut impl SolverWorkspace,
         rng: &mut R,
     ) where
         F: FnMut(usize, f64, f64, f64) -> f64,
@@ -63,7 +63,7 @@ impl ExplicitSpdeStencilStepper {
             return;
         }
         let mut ws = workspace.reborrow();
-        let src = ws.take_slice(n);
+        let src = ws.take_slice::<f64>(n);
         src.copy_from_slice(u);
         for x in 0..n {
             if let BoundaryCondition::Dirichlet(val) = self.boundary
@@ -89,7 +89,7 @@ impl ExplicitSpdeStencilStepper {
         height: usize,
         dt: f64,
         mut deterministic_rhs: F,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut impl SolverWorkspace,
         rng: &mut R,
     ) where
         F: FnMut(usize, usize, f64, (f64, f64), f64) -> f64,
@@ -101,7 +101,7 @@ impl ExplicitSpdeStencilStepper {
             return;
         }
         let mut ws = workspace.reborrow();
-        let src = ws.take_slice(total);
+        let src = ws.take_slice::<f64>(total);
         src.copy_from_slice(&u[..total]);
         for y in 0..height {
             for x in 0..width {
@@ -148,7 +148,7 @@ impl ExplicitSpdeStencilStepper {
         mobility: f64,
         kappa: f64,
         dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut impl SolverWorkspace,
         rng: &mut R,
     ) {
         let total = width * height;
@@ -157,9 +157,9 @@ impl ExplicitSpdeStencilStepper {
             return;
         }
         let mut ws = workspace.reborrow();
-        let src = ws.take_slice(total);
-        let bulk_mu = ws.take_slice(total);
-        let lap_phi = ws.take_slice(total);
+        let src = ws.take_slice::<f64>(total);
+        let bulk_mu = ws.take_slice::<f64>(total);
+        let lap_phi = ws.take_slice::<f64>(total);
         src.copy_from_slice(&phi[..total]);
         for i in 0..total {
             let p = src[i];
@@ -258,7 +258,7 @@ impl SplitStepSpdeStencilStepper {
         diffusivity: f64,
         dt: f64,
         mut reaction: F,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut impl SolverWorkspace,
         rng: &mut R,
     ) where
         F: FnMut(f64) -> f64,
@@ -274,7 +274,7 @@ impl SplitStepSpdeStencilStepper {
 
         let sub_dt = dt / (self.diffusion_substeps as f64);
         let mut ws = workspace.reborrow();
-        let src = ws.take_slice(total);
+        let src = ws.take_slice::<f64>(total);
         for _ in 0..self.diffusion_substeps {
             src.copy_from_slice(&u[..total]);
             for y in 0..height {

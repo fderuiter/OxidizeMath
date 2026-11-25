@@ -121,7 +121,7 @@ pub fn step_overdamped_brownian_1d<R: rand_core::RngCore + ?Sized>(
     let solver = engine_diffeq::EulerMaruyamaSolver::new(engine_diffeq::StochasticCalculus::Ito);
     let mut state = [x];
     let mut scratch = [0.0; 3];
-    let mut ws = math_commons::math_kernel::types::SolverWorkspace::new(&mut scratch);
+    let mut ws = engine_diffeq::ByteArena::from_slice(&mut scratch);
     solver.step(&sys, 0.0, dt, &mut state, &mut ws, rng);
     state[0]
 }
@@ -151,7 +151,7 @@ pub fn step_underdamped_langevin_1d<R: rand_core::RngCore + ?Sized>(
     let mut q_arr = [q];
     let mut p_arr = [p];
     let mut scratch = [0.0; 2];
-    let mut ws = math_commons::math_kernel::types::SolverWorkspace::new(&mut scratch);
+    let mut ws = engine_diffeq::ByteArena::from_slice(&mut scratch);
     solver.step(&sys, &mut q_arr, &mut p_arr, &mut ws, rng);
     (q_arr[0], p_arr[0])
 }

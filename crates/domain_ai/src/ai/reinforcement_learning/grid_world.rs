@@ -1,6 +1,7 @@
 use super::{Action, MarkovDecisionProcess, State};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
 #[allow(missing_docs)]
 pub struct GridState {
     #[allow(missing_docs)]

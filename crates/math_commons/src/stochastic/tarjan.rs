@@ -1,11 +1,25 @@
 //! Iterative zero-allocation Tarjan strongly connected component (SCC) decomposition.
 // [cite:math_commons]
 
-use super::{SccSummary, SolverWorkspace};
+use math_memory::{ArenaScope, FlagSlice};
+
+use super::SccSummary;
 use crate::math_kernel::types::flatten_2d_index;
 
 const UNVISITED: usize = usize::MAX;
 const EDGE_REL_TOL: f64 = 1e-14;
+
+struct TarjanBuffers<'a> {
+    tarjan_index: &'a mut [usize],
+    tarjan_lowlink: &'a mut [usize],
+    tarjan_on_stack: FlagSlice<'a>,
+    tarjan_stack: &'a mut [usize],
+    call_node: &'a mut [usize],
+    call_next_edge: &'a mut [usize],
+    component_id: &'a mut [usize],
+    component_is_sink: FlagSlice<'a>,
+    row_scales: &'a mut [f64],
+}
 
 /// Computes per-row off-diagonal maximum positive magnitude for scale-invariant edge detection.
 #[cfg_attr(feature = "std", verified_engine::verified)]
@@ -33,27 +47,43 @@ fn has_directed_edge(matrix: &[f64], row_scales: &[f64], n: usize, u: usize, v: 
     u != v && scale > 0.0 && matrix[flatten_2d_index(v, u, n)] > scale * EDGE_REL_TOL
 }
 
-/// Runs iterative Tarjan SCC traversal on `matrix` ($n \times n$) using `ws` buffers and
-/// identifies closed sink components.
+/// Runs iterative Tarjan SCC traversal on `matrix` ($n \times n$) carving transient buffers from
+/// `scratch` and writing unique sink members into `sink_members`.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub(super) fn decompose_tarjan(ws: &mut SolverWorkspace, matrix: &[f64], n: usize) -> SccSummary {
-    debug_assert!(n > 0 && matrix.len() >= n * n);
-    compute_off_diagonal_scales(matrix, n, &mut ws.row_scales[..n]);
-    ws.tarjan_index[..n].fill(UNVISITED);
-    ws.tarjan_lowlink[..n].fill(0);
-    ws.tarjan_on_stack[..n].fill(false);
-    ws.component_id[..n].fill(UNVISITED);
+pub(super) fn decompose_tarjan(
+    scratch: &mut ArenaScope<'_>,
+    sink_members: &mut [usize],
+    matrix: &[f64],
+    n: usize,
+) -> Option<SccSummary> {
+    debug_assert!(n > 0 && matrix.len() >= n * n && sink_members.len() >= n);
+    let mut sub = scratch.reborrow();
+    let mut bufs = TarjanBuffers {
+        tarjan_index: sub.alloc_slice::<usize>(n).ok()?,
+        tarjan_lowlink: sub.alloc_slice::<usize>(n).ok()?,
+        tarjan_on_stack: sub.alloc_flags(n).ok()?,
+        tarjan_stack: sub.alloc_slice::<usize>(n).ok()?,
+        call_node: sub.alloc_slice::<usize>(n).ok()?,
+        call_next_edge: sub.alloc_slice::<usize>(n).ok()?,
+        component_id: sub.alloc_slice::<usize>(n).ok()?,
+        component_is_sink: sub.alloc_flags(n).ok()?,
+        row_scales: sub.alloc_slice::<f64>(n).ok()?,
+    };
+
+    compute_off_diagonal_scales(matrix, n, bufs.row_scales);
+    bufs.tarjan_index.fill(UNVISITED);
+    bufs.component_id.fill(UNVISITED);
 
     let mut next_index = 0usize;
     let mut num_components = 0usize;
     let mut tarjan_sp = 0usize;
 
     for start in 0..n {
-        if ws.tarjan_index[start] != UNVISITED {
+        if bufs.tarjan_index[start] != UNVISITED {
             continue;
         }
         tarjan_visit_root(
-            ws,
+            &mut bufs,
             matrix,
             n,
             start,
@@ -63,12 +93,18 @@ pub(super) fn decompose_tarjan(ws: &mut SolverWorkspace, matrix: &[f64], n: usiz
         );
     }
 
-    classify_closed_sinks(ws, matrix, n, num_components)
+    Some(classify_closed_sinks(
+        &mut bufs,
+        sink_members,
+        matrix,
+        n,
+        num_components,
+    ))
 }
 
 #[cfg_attr(feature = "std", verified_engine::verified)]
 fn tarjan_visit_root(
-    ws: &mut SolverWorkspace,
+    bufs: &mut TarjanBuffers<'_>,
     matrix: &[f64],
     n: usize,
     start: usize,
@@ -77,72 +113,72 @@ fn tarjan_visit_root(
     tarjan_sp: &mut usize,
 ) {
     debug_assert!(start < n);
-    push_tarjan_node(ws, start, 0, next_index, tarjan_sp);
+    push_tarjan_node(bufs, start, 0, next_index, tarjan_sp);
     let mut call_sp = 1usize;
 
     while call_sp > 0 {
         let top = call_sp - 1;
-        let u = ws.call_node[top];
-        let v = ws.call_next_edge[top];
+        let u = bufs.call_node[top];
+        let v = bufs.call_next_edge[top];
 
         if v < n {
-            ws.call_next_edge[top] = v + 1;
-            if !has_directed_edge(matrix, &ws.row_scales[..n], n, u, v) {
+            bufs.call_next_edge[top] = v + 1;
+            if !has_directed_edge(matrix, bufs.row_scales, n, u, v) {
                 continue;
             }
-            if ws.tarjan_index[v] == UNVISITED {
-                push_tarjan_node(ws, v, call_sp, next_index, tarjan_sp);
+            if bufs.tarjan_index[v] == UNVISITED {
+                push_tarjan_node(bufs, v, call_sp, next_index, tarjan_sp);
                 call_sp += 1;
-            } else if ws.tarjan_on_stack[v] && ws.tarjan_index[v] < ws.tarjan_lowlink[u] {
-                ws.tarjan_lowlink[u] = ws.tarjan_index[v];
+            } else if bufs.tarjan_on_stack.get(v) && bufs.tarjan_index[v] < bufs.tarjan_lowlink[u] {
+                bufs.tarjan_lowlink[u] = bufs.tarjan_index[v];
             }
         } else {
             call_sp -= 1;
-            finish_tarjan_node(ws, u, call_sp, num_components, tarjan_sp);
+            finish_tarjan_node(bufs, u, call_sp, num_components, tarjan_sp);
         }
     }
 }
 
 #[inline]
 fn push_tarjan_node(
-    ws: &mut SolverWorkspace,
+    bufs: &mut TarjanBuffers<'_>,
     node: usize,
     call_sp: usize,
     next_index: &mut usize,
     tarjan_sp: &mut usize,
 ) {
-    ws.tarjan_index[node] = *next_index;
-    ws.tarjan_lowlink[node] = *next_index;
+    bufs.tarjan_index[node] = *next_index;
+    bufs.tarjan_lowlink[node] = *next_index;
     *next_index += 1;
-    ws.tarjan_stack[*tarjan_sp] = node;
+    bufs.tarjan_stack[*tarjan_sp] = node;
     *tarjan_sp += 1;
-    ws.tarjan_on_stack[node] = true;
-    ws.call_node[call_sp] = node;
-    ws.call_next_edge[call_sp] = 0;
+    bufs.tarjan_on_stack.set(node, true);
+    bufs.call_node[call_sp] = node;
+    bufs.call_next_edge[call_sp] = 0;
 }
 
 #[inline]
 fn finish_tarjan_node(
-    ws: &mut SolverWorkspace,
+    bufs: &mut TarjanBuffers<'_>,
     u: usize,
     call_sp: usize,
     num_components: &mut usize,
     tarjan_sp: &mut usize,
 ) {
     if call_sp > 0 {
-        let parent = ws.call_node[call_sp - 1];
-        if ws.tarjan_lowlink[u] < ws.tarjan_lowlink[parent] {
-            ws.tarjan_lowlink[parent] = ws.tarjan_lowlink[u];
+        let parent = bufs.call_node[call_sp - 1];
+        if bufs.tarjan_lowlink[u] < bufs.tarjan_lowlink[parent] {
+            bufs.tarjan_lowlink[parent] = bufs.tarjan_lowlink[u];
         }
     }
-    if ws.tarjan_lowlink[u] == ws.tarjan_index[u] {
+    if bufs.tarjan_lowlink[u] == bufs.tarjan_index[u] {
         let cid = *num_components;
         *num_components += 1;
         loop {
             *tarjan_sp -= 1;
-            let w = ws.tarjan_stack[*tarjan_sp];
-            ws.tarjan_on_stack[w] = false;
-            ws.component_id[w] = cid;
+            let w = bufs.tarjan_stack[*tarjan_sp];
+            bufs.tarjan_on_stack.set(w, false);
+            bufs.component_id[w] = cid;
             if w == u {
                 break;
             }
@@ -152,22 +188,25 @@ fn finish_tarjan_node(
 
 #[cfg_attr(feature = "std", verified_engine::verified)]
 fn classify_closed_sinks(
-    ws: &mut SolverWorkspace,
+    bufs: &mut TarjanBuffers<'_>,
+    sink_members: &mut [usize],
     matrix: &[f64],
     n: usize,
     num_components: usize,
 ) -> SccSummary {
     debug_assert!(num_components >= 1 && num_components <= n);
-    ws.component_is_sink[..num_components].fill(true);
+    for c in 0..num_components {
+        bufs.component_is_sink.set(c, true);
+    }
 
     for u in 0..n {
-        let cu = ws.component_id[u];
-        if !ws.component_is_sink[cu] {
+        let cu = bufs.component_id[u];
+        if !bufs.component_is_sink.get(cu) {
             continue;
         }
         for v in 0..n {
-            if ws.component_id[v] != cu && has_directed_edge(matrix, &ws.row_scales[..n], n, u, v) {
-                ws.component_is_sink[cu] = false;
+            if bufs.component_id[v] != cu && has_directed_edge(matrix, bufs.row_scales, n, u, v) {
+                bufs.component_is_sink.set(cu, false);
                 break;
             }
         }
@@ -175,8 +214,8 @@ fn classify_closed_sinks(
 
     let mut num_sink_components = 0usize;
     let mut unique_sink_cid = 0usize;
-    for (cid, &is_sink) in ws.component_is_sink[..num_components].iter().enumerate() {
-        if is_sink {
+    for cid in 0..num_components {
+        if bufs.component_is_sink.get(cid) {
             num_sink_components += 1;
             unique_sink_cid = cid;
         }
@@ -184,9 +223,9 @@ fn classify_closed_sinks(
 
     let mut unique_sink_size = 0usize;
     if num_sink_components == 1 {
-        for (state, &cid) in ws.component_id[..n].iter().enumerate() {
+        for (state, &cid) in bufs.component_id[..n].iter().enumerate() {
             if cid == unique_sink_cid {
-                ws.sink_members[unique_sink_size] = state;
+                sink_members[unique_sink_size] = state;
                 unique_sink_size += 1;
             }
         }

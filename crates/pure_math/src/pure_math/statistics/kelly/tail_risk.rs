@@ -261,24 +261,20 @@ pub fn simulate_portfolio_tail_risk_into(
     )?;
     let n = weights.len();
     workspace.check_capacity(n)?;
-    cholesky_into_flat(
-        covariance,
-        n,
-        &mut workspace.sym_flat,
-        &mut workspace.chol_flat,
-    )?;
+    let s = workspace.slices_mut(n);
+    cholesky_into_flat(covariance, n, s.sym_flat, s.chol_flat)?;
 
     for k in 0..n {
         let mut col_dot = 0.0;
         for (i, &wi) in weights.iter().enumerate().skip(k) {
-            col_dot += workspace.chol_flat[mat_idx(i, k, n)] * wi;
+            col_dot += s.chol_flat[mat_idx(i, k, n)] * wi;
         }
-        workspace.grad[k] = col_dot;
+        s.grad[k] = col_dot;
     }
 
     let drift = metrics.total_log_growth * valid.horizon;
     sample_antithetic_wealth_losses(
-        &workspace.grad[..n],
+        s.grad,
         valid.bankroll,
         drift,
         valid.horizon.sqrt(),

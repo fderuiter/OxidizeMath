@@ -6,7 +6,7 @@
 use crate::lu::{lu_solve, lu_workspace_len};
 use crate::scalar::Scalar;
 use crate::svd_bidiag::{svd_bidiagonal, svd_bidiagonal_workspace_len};
-use crate::types::{LinalgError, SolverWorkspace, check_all_finite, mat_idx};
+use crate::types::{LinalgError, SolverWorkspace, carve_scalars, check_all_finite, mat_idx};
 
 /// Workspace scalar capacity required by [`tikhonov_solve`] for an `m x n` matrix.
 /// `[cite:engine_linalg]`
@@ -35,7 +35,7 @@ pub fn tikhonov_solve<T: Scalar>(
     b: &[T],
     lambda: T,
     x: &mut [T],
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut impl SolverWorkspace,
 ) -> Result<(), LinalgError> {
     if !lambda.is_finite() || lambda < T::ZERO {
         return Err(LinalgError::InvalidInput);
@@ -52,10 +52,11 @@ pub fn tikhonov_solve<T: Scalar>(
         return Ok(());
     }
 
-    let (u, mut r1) = ws.try_split(m * k)?;
-    let (s, mut r2) = r1.try_split(k)?;
-    let (vt, mut inner_ws) = r2.try_split(k * n)?;
-    svd_bidiagonal(a, m, n, u, s, vt, &mut inner_ws)?;
+    let mut scope = ws.reborrow();
+    let u = carve_scalars::<T>(&mut scope, m * k)?;
+    let s = carve_scalars::<T>(&mut scope, k)?;
+    let vt = carve_scalars::<T>(&mut scope, k * n)?;
+    svd_bidiagonal(a, m, n, u, s, vt, &mut scope)?;
 
     let lam_sq = lambda * lambda;
     let zero_cut = T::from_usize(m.max(n)) * T::EPSILON * s[0];
@@ -100,7 +101,7 @@ pub fn solve_damped_normal<T: Scalar>(
     damping: DampingStyle<T>,
     delta: &mut [T],
     pivots: &mut [usize],
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut impl SolverWorkspace,
 ) -> Result<(), LinalgError> {
     match damping {
         DampingStyle::Isotropic(lambda) => {
@@ -128,7 +129,8 @@ pub fn solve_damped_normal<T: Scalar>(
     check_all_finite(jtj)?;
     check_all_finite(jtr)?;
 
-    let (damped, mut lu_ws) = ws.try_split(n * n)?;
+    let mut scope = ws.reborrow();
+    let damped = carve_scalars::<T>(&mut scope, n * n)?;
     damped.copy_from_slice(jtj);
     for i in 0..n {
         let ii = mat_idx(i, i, n);
@@ -141,5 +143,5 @@ pub fn solve_damped_normal<T: Scalar>(
             }
         };
     }
-    lu_solve(damped, jtr, delta, n, pivots, &mut lu_ws)
+    lu_solve(damped, jtr, delta, n, pivots, &mut scope)
 }

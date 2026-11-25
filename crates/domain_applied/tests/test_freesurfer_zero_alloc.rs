@@ -2,9 +2,12 @@
 //! `internal_energy`, `external_energy`, and `evolve_surface` under `VerifiedAllocator` across 100 steps.
 
 use domain_applied::applied::freesurfer::{
-    Surface, ThicknessWorkspace, cortical_thickness_batch, cortical_thickness_map_into,
-    evolve_surface, external_energy, internal_energy,
+    GlmDesignQr, Surface, ThicknessWorkspace, cortical_thickness_batch,
+    cortical_thickness_map_into, estimate_beta_with_workspace, evolve_surface, external_energy,
+    glm_workspace_bytes, internal_energy, t_statistic_with_workspace,
 };
+use math_memory::OwnedByteArena;
+use nalgebra::{DMatrix, DVector};
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
 
@@ -52,4 +55,44 @@ fn test_freesurfer_internal_energy_and_surface_evolution_100_steps_verified_allo
 
     assert!(energy_accum.is_finite());
     assert!(metrics.function_calls >= 300);
+}
+
+#[test]
+fn test_freesurfer_glm_with_workspace_zero_allocations_under_verified_allocator() {
+    let x = DMatrix::from_row_slice(
+        6,
+        3,
+        &[
+            1.0, 0.0, 0.2, 1.0, 0.0, -0.1, 1.0, 0.5, 0.4, 1.0, 1.0, 0.8, 1.0, 1.0, 1.1, 1.0, 1.5,
+            1.4,
+        ],
+    );
+    let beta_true = DVector::from_column_slice(&[1.8, -0.6, 0.5]);
+    let y = &x * &beta_true;
+    let c = DVector::from_column_slice(&[0.0, 0.0, 1.0]);
+    let qr = GlmDesignQr::try_new(&x).expect("valid QR");
+    let mut arena = OwnedByteArena::with_capacity(glm_workspace_bytes::<f64>(6, 3) + 128);
+    let mut beta_out = [0.0_f64; 3];
+    let mut beta_cached = [0.0_f64; 3];
+
+    let ((t_full, t_cached), _metrics) = VerifiedEngine::run_verified(|| {
+        let mut ws = arena.as_arena();
+        estimate_beta_with_workspace(&x, &y, &mut beta_out, &mut ws).expect("zero-alloc beta");
+        ws.reset();
+        let t_full = t_statistic_with_workspace(c.as_slice(), &beta_out, &x, 1e-4, &mut ws)
+            .expect("zero-alloc t_statistic");
+        ws.reset();
+        qr.estimate_beta_with_workspace(y.as_slice(), &mut beta_cached, &mut ws)
+            .expect("zero-alloc cached beta");
+        ws.reset();
+        let t_cached = qr
+            .t_statistic_with_workspace(c.as_slice(), &beta_cached, 1e-4, &mut ws)
+            .expect("zero-alloc cached t_statistic");
+        (t_full, t_cached)
+    });
+
+    assert!((beta_out[2] - 0.5).abs() < 1e-12);
+    assert!((beta_cached[2] - 0.5).abs() < 1e-12);
+    assert!((t_full - t_cached).abs() < 1e-12);
+    assert!(t_full > 0.0 && t_full.is_finite());
 }

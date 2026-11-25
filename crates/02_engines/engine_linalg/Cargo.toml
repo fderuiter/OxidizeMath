@@ -7,9 +7,11 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = []
-alloc = []
+alloc = ["math_memory/alloc"]
+std = ["alloc", "math_memory/std"]
 
 [dependencies]
+math_memory = { path = "../../00_foundation/math_memory", default-features = false }
 
 [dev-dependencies]
 verified_engine = { path = "../../verified_engine" }

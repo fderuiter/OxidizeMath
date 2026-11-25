@@ -17,6 +17,7 @@ use std::pin::Pin;
 const MANIFEST_FILENAME: &str = "traceability_manifest.json";
 
 const CORE_DEP_CRATES: &[&str] = &[
+    "00_foundation/math_memory",
     "02_engines/engine_linalg",
     "diagnostics",
     "federated_registry",

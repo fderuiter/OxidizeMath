@@ -1,0 +1,21 @@
+[package]
+name = "math_memory"
+version.workspace = true
+edition = "2024"
+description = "Tier 0 #![no_std] fallible byte-arena scratch allocators, safe boolean/bit views, and unified SolverWorkspace traits"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = []
+alloc = ["bytemuck/extern_crate_alloc"]
+std = ["alloc"]
+
+[dependencies]
+bytemuck = { workspace = true, features = ["derive", "min_const_generics"] }
+num-complex = { workspace = true, default-features = false, features = ["bytemuck"] }
+
+[dev-dependencies]
+verified_engine = { path = "../../verified_engine" }
+
+[lints]
+workspace = true

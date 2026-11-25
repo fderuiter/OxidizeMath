@@ -8,6 +8,7 @@ use super::baum_welch::{
 use super::baum_welch_types::{BaumWelchResult, BaumWelchWorkspace};
 use super::model::HiddenMarkovModel;
 use crate::error::MarkovError;
+use math_memory::{Pod, Zeroable};
 use nalgebra::RealField;
 use num_traits::ToPrimitive;
 
@@ -75,7 +76,7 @@ fn project_floored_simplex<T: RealField + Copy>(probs: &mut [T], floor: T) {
     }
 }
 
-impl<T: RealField + Copy + ToPrimitive> HiddenMarkovModel<T> {
+impl<T: RealField + Copy + ToPrimitive + Pod + Zeroable> HiddenMarkovModel<T> {
     /// Estimates $(\pi, A, B)$ via Baum-Welch Expectation-Maximization with probability floor `prob_floor`.
     ///
     /// Enforces simplex floor constraints $p_k \ge \text{prob\_floor}$ across initial, transition,

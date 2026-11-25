@@ -242,7 +242,7 @@ impl CausticsRayBenchTool {
                 DARK_PALETTE.node_stroke,
             );
         });
-        for (idx, meta) in self.workspace.rays().iter().enumerate() {
+        for (idx, meta) in self.workspace.rays().enumerate() {
             let col = self.state.colormap.ray_stroke_color(meta.wavelength_nm);
             for seg in self.workspace.ray_vertices(idx).windows(2) {
                 rasterize_line(
@@ -269,7 +269,7 @@ impl CausticsRayBenchTool {
 
     fn build_export_primitives(&self) -> Vec<ExportPrimitive> {
         let mut out = Vec::new();
-        for (idx, meta) in self.workspace.rays().iter().enumerate() {
+        for (idx, meta) in self.workspace.rays().enumerate() {
             let pts: Vec<[f64; 2]> = self
                 .workspace
                 .ray_vertices(idx)

@@ -17,7 +17,7 @@
 
 use super::numerical::{LinearAlgebraError, dmatrix_to_row_major, map_linalg_error};
 use engine_linalg::{
-    SolverWorkspace, svd_effective_rank, svd_low_rank_approx, svd_ops_workspace_len,
+    ByteArena, SolverWorkspace, svd_effective_rank, svd_low_rank_approx, svd_ops_workspace_len,
 };
 use nalgebra::DMatrix;
 
@@ -39,7 +39,7 @@ pub fn effective_rank(matrix: &DMatrix<f64>, tolerance: Option<f64>) -> usize {
     let (m, n) = matrix.shape();
     let a_row = dmatrix_to_row_major(matrix);
     let mut scratch = vec![0.0_f64; svd_ops_workspace_len(m, n)];
-    svd_effective_rank(&a_row, m, n, tol, &mut SolverWorkspace::new(&mut scratch)).unwrap_or(0)
+    svd_effective_rank(&a_row, m, n, tol, &mut ByteArena::from_slice(&mut scratch)).unwrap_or(0)
 }
 
 /// Checked Eckart-Young rank-`k` SVD matrix approximation returning [`LinearAlgebraError`] on `NaN` or non-convergence.
@@ -58,7 +58,7 @@ pub fn try_low_rank_approximation(
         n,
         k,
         &mut approx,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .map_err(map_linalg_error)?;
     Ok(DMatrix::from_row_slice(m, n, &approx))
@@ -69,6 +69,86 @@ pub fn try_low_rank_approximation(
 pub fn low_rank_approximation(matrix: &DMatrix<f64>, k: usize) -> DMatrix<f64> {
     try_low_rank_approximation(matrix, k)
         .unwrap_or_else(|_| DMatrix::zeros(matrix.nrows(), matrix.ncols()))
+}
+
+/// Computes the numerical effective rank of `a` at singular-value threshold `tol` using `ws`
+/// with zero heap allocations.
+#[verified_engine::verified]
+pub fn effective_rank_with_workspace<T, W>(
+    a: &DMatrix<T>,
+    tol: T,
+    ws: &mut W,
+) -> Result<usize, LinearAlgebraError>
+where
+    T: nalgebra::RealField + Copy + engine_linalg::Scalar,
+    W: SolverWorkspace,
+{
+    use math_commons::math_kernel::types::flatten_2d_index;
+    let (m, n) = a.shape();
+    if m == 0 || n == 0 {
+        return Ok(0);
+    }
+    let mut scope = ws.reborrow();
+    let len = m
+        .checked_mul(n)
+        .ok_or(LinearAlgebraError::DimensionMismatch)?;
+    let a_row = scope
+        .alloc_slice::<T>(len)
+        .map_err(|e| map_linalg_error(engine_linalg::LinalgError::from(e)))?;
+    for r in 0..m {
+        for c in 0..n {
+            a_row[flatten_2d_index(c, r, n)] = a[(r, c)];
+        }
+    }
+    let rank = svd_effective_rank(a_row, m, n, tol, &mut scope).map_err(map_linalg_error)?;
+    debug_assert!(rank <= m.min(n));
+    Ok(rank)
+}
+
+/// Computes the best rank-`target_rank` Eckart-Young approximation of `a` into preallocated `out`
+/// using `ws` with zero heap allocations.
+#[verified_engine::verified]
+pub fn try_low_rank_approximation_with_workspace<T, W>(
+    a: &DMatrix<T>,
+    target_rank: usize,
+    out: &mut DMatrix<T>,
+    ws: &mut W,
+) -> Result<(), LinearAlgebraError>
+where
+    T: nalgebra::RealField + Copy + engine_linalg::Scalar,
+    W: SolverWorkspace,
+{
+    use math_commons::math_kernel::types::flatten_2d_index;
+    let (m, n) = a.shape();
+    if out.shape() != (m, n) {
+        return Err(LinearAlgebraError::DimensionMismatch);
+    }
+    if m == 0 || n == 0 {
+        return Ok(());
+    }
+    let len = m
+        .checked_mul(n)
+        .ok_or(LinearAlgebraError::DimensionMismatch)?;
+    let mut scope = ws.reborrow();
+    let a_row = scope
+        .alloc_slice::<T>(len)
+        .map_err(|e| map_linalg_error(engine_linalg::LinalgError::from(e)))?;
+    let out_row = scope
+        .alloc_slice::<T>(len)
+        .map_err(|e| map_linalg_error(engine_linalg::LinalgError::from(e)))?;
+    for r in 0..m {
+        for c in 0..n {
+            a_row[flatten_2d_index(c, r, n)] = a[(r, c)];
+        }
+    }
+    svd_low_rank_approx(a_row, m, n, target_rank, out_row, &mut scope).map_err(map_linalg_error)?;
+    for r in 0..m {
+        for c in 0..n {
+            out[(r, c)] = out_row[flatten_2d_index(c, r, n)];
+        }
+    }
+    debug_assert_eq!(out.shape(), (m, n));
+    Ok(())
 }
 
 #[cfg(test)]

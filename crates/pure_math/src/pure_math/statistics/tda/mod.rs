@@ -258,6 +258,7 @@
 //!   Mathematical Society, 46(2), 255-308.
 
 pub mod boundary;
+mod boundary_filtration;
 pub mod complex;
 pub mod core;
 mod filtration;
@@ -265,6 +266,7 @@ pub mod homology;
 pub mod persistence;
 pub mod space3d;
 pub mod workspace;
+mod workspace_sweep;
 
 // Re-export main types and functions
 pub use boundary::{Z2BoundaryWorkspace, rank_z2_boundary};

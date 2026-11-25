@@ -1,14 +1,18 @@
 // [cite:engine_diffeq]
 //! Convergence-order, Itô/Stratonovich calculus, BAOAB equilibrium, and zero-allocation verification.
+#![cfg(feature = "std")]
 
 use engine_diffeq::{
-    BaoabLangevinSolver, BaoabParams, CorrelatedWienerIncrement, EulerMaruyamaSolver,
-    LangevinSystem, MilsteinSolver, OwnedWorkspace, SdeSystem, Sriw1Solver, StochasticCalculus,
-    ssa_sample_event,
+    BaoabLangevinSolver, BaoabParams, ByteArena, CorrelatedWienerIncrement, EulerMaruyamaSolver,
+    LangevinSystem, MilsteinSolver, SdeSystem, Sriw1Solver, StochasticCalculus, ssa_sample_event,
 };
-use math_commons::math_kernel::types::SolverWorkspace;
+use math_memory::OwnedByteArena;
 use oxidize_core::rng::OxidizeRng;
+use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
+
+#[global_allocator]
+static ALLOC: VerifiedAllocator = VerifiedAllocator;
 
 /// Nonlinear hyperbolic-sine SDE whose exact solution is $X_t = \sinh(\operatorname{arsinh}(X_0) + \mu t + \sigma W_t)$.
 ///
@@ -86,7 +90,7 @@ fn integrate_coarsened_path(
             dw_c += fine_dw[idx];
         }
         let t = (s as f64) * dt;
-        let mut ws = SolverWorkspace::new(&mut scratch);
+        let mut ws = ByteArena::from_slice(&mut scratch);
         em.step_with_increments(sys, t, dt, &[dw_c], &mut x_em, &mut ws);
         milstein.step_with_increments(sys, t, dt, &[dw_c], &mut x_mil, &mut ws);
         sriw1.step_with_correlated_increments(sys, t, dt, &[dw_c], &[dz_c], &mut x_srk, &mut ws);
@@ -189,7 +193,7 @@ fn test_stratonovich_solvers_match_exact_chain_rule_solution() {
         let inc = CorrelatedWienerIncrement::sample(dt, &mut rng);
         w_total += inc.dw;
         let t = (s as f64) * dt;
-        let mut ws = SolverWorkspace::new(&mut scratch);
+        let mut ws = ByteArena::from_slice(&mut scratch);
         heun.step_with_increments(&sys_strat, t, dt, &[inc.dw], &mut x_heun, &mut ws);
         mil_strat.step_with_increments(&sys_strat, t, dt, &[inc.dw], &mut x_mil, &mut ws);
         srk_strat.step_with_correlated_increments(
@@ -249,7 +253,7 @@ fn test_baoab_deterministic_second_order_and_gibbs_boltzmann_variance() {
         let mut q = [1.0_f64, 0.0];
         let mut p = [0.0_f64, 0.0];
         let n_steps = (0.5 / dt).round() as usize;
-        let mut ws = SolverWorkspace::new(&mut scratch);
+        let mut ws = ByteArena::from_slice(&mut scratch);
         for _ in 0..n_steps {
             solver.step(&sys, &mut q, &mut p, &mut ws, &mut rng);
         }
@@ -269,7 +273,7 @@ fn test_baoab_deterministic_second_order_and_gibbs_boltzmann_variance() {
     });
     let mut q = [0.5_f64, -0.5];
     let mut p = [0.0_f64, 0.0];
-    let mut ws = SolverWorkspace::new(&mut scratch);
+    let mut ws = ByteArena::from_slice(&mut scratch);
     for _ in 0..500 {
         solver.step(&sys, &mut q, &mut p, &mut ws, &mut rng);
     }
@@ -311,7 +315,7 @@ fn test_all_engine_diffeq_solvers_zero_heap_allocations_under_verified_lock() {
         dt: 0.01,
     });
 
-    let mut owned = OwnedWorkspace::<f64>::with_capacity(64);
+    let mut owned = OwnedByteArena::with_elements::<f64>(64).unwrap();
     let mut state = [0.25_f64];
     let mut q = [1.0_f64, -0.5];
     let mut p = [0.1_f64, 0.2];
@@ -319,7 +323,7 @@ fn test_all_engine_diffeq_solvers_zero_heap_allocations_under_verified_lock() {
     let mut rng = OxidizeRng::new(0x0A11_0C00_2026_9999);
 
     let ((), receipt) = VerifiedEngine::run_verified(|| {
-        let mut ws = owned.as_workspace();
+        let mut ws = owned.reborrow();
         for k in 0..16 {
             let t = (k as f64) * 0.01;
             em.step(&sys, t, 0.01, &mut state, &mut ws, &mut rng);

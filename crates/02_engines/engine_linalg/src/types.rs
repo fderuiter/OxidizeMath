@@ -74,75 +74,55 @@ impl fmt::Display for LinalgError {
 
 impl core::error::Error for LinalgError {}
 
-/// Caller-owned mutable scratch slice used by `#![no_std]` solvers without heap allocation.
-pub struct SolverWorkspace<'a, T> {
-    buf: &'a mut [T],
-}
-
-impl<'a, T: Scalar> SolverWorkspace<'a, T> {
-    /// Wraps a caller-owned mutable slice as a reusable solver workspace.
+impl From<math_memory::ArenaError> for LinalgError {
     #[inline]
-    pub fn new(buf: &'a mut [T]) -> Self {
-        Self { buf }
-    }
-
-    /// Creates an empty zero-capacity workspace for routines that operate strictly in-place.
-    #[inline]
-    pub fn empty() -> Self {
-        Self { buf: &mut [] }
-    }
-
-    /// Returns the number of scalar elements available in this workspace.
-    #[inline]
-    pub const fn len(&self) -> usize {
-        self.buf.len()
-    }
-
-    /// Returns `true` if the workspace holds zero scalar elements.
-    #[inline]
-    pub const fn is_empty(&self) -> bool {
-        self.buf.is_empty()
-    }
-
-    /// Splits off `count` zero-initialized scalar elements and returns the remaining sub-workspace.
-    #[inline]
-    pub fn try_split(
-        &mut self,
-        count: usize,
-    ) -> Result<(&mut [T], SolverWorkspace<'_, T>), LinalgError> {
-        let available = self.buf.len();
-        if available < count {
-            return Err(LinalgError::WorkspaceTooSmall {
-                required: count,
+    fn from(err: math_memory::ArenaError) -> Self {
+        match err {
+            math_memory::ArenaError::InsufficientCapacity {
+                requested,
                 available,
-            });
+            } => Self::WorkspaceTooSmall {
+                required: requested,
+                available,
+            },
+            math_memory::ArenaError::CapacityOverflow { count, .. } => Self::WorkspaceTooSmall {
+                required: count,
+                available: 0,
+            },
+            math_memory::ArenaError::InvalidAlignment { .. }
+            | math_memory::ArenaError::InvalidCheckpoint { .. } => Self::WorkspaceTooSmall {
+                required: 1,
+                available: 0,
+            },
         }
-        let (head, tail) = self.buf.split_at_mut(count);
-        head.fill(T::ZERO);
-        Ok((head, SolverWorkspace { buf: tail }))
     }
 }
 
-/// Optional heap-backed workspace convenience wrapper enabled by the `alloc` Cargo feature.
-#[cfg(feature = "alloc")]
-pub struct OwnedWorkspace<T> {
-    buf: alloc::vec::Vec<T>,
-}
+pub use math_memory::{ArenaScope, ByteArena, SolverWorkspace};
 
-#[cfg(feature = "alloc")]
-impl<T: Scalar> OwnedWorkspace<T> {
-    /// Allocates a workspace of `capacity` zeroed scalars once for repeated zero-alloc solver calls.
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            buf: alloc::vec![T::ZERO; capacity],
-        }
-    }
-
-    /// Borrows the owned buffer as a [`SolverWorkspace`].
-    #[inline]
-    pub fn as_workspace(&mut self) -> SolverWorkspace<'_, T> {
-        SolverWorkspace::new(&mut self.buf)
-    }
+/// Carves `count` zero-initialized scalars of type `T` from `scope`, mapping capacity errors to [`LinalgError::WorkspaceTooSmall`].
+#[inline]
+pub(crate) fn carve_scalars<'a, T: Scalar>(
+    scope: &mut ArenaScope<'a>,
+    count: usize,
+) -> Result<&'a mut [T], LinalgError> {
+    let elem = core::mem::size_of::<T>().max(1);
+    let avail_before = scope.remaining() / elem;
+    scope.alloc_slice::<T>(count).map_err(|err| match err {
+        math_memory::ArenaError::InsufficientCapacity {
+            requested,
+            available,
+        } => LinalgError::WorkspaceTooSmall {
+            required: requested.div_ceil(elem),
+            available: available / elem,
+        },
+        math_memory::ArenaError::CapacityOverflow { .. }
+        | math_memory::ArenaError::InvalidAlignment { .. }
+        | math_memory::ArenaError::InvalidCheckpoint { .. } => LinalgError::WorkspaceTooSmall {
+            required: count,
+            available: avail_before,
+        },
+    })
 }
 
 /// Immutable row-major dense matrix view over a caller slice.

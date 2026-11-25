@@ -2,6 +2,7 @@
 // [cite:clinical_trials_statistics]
 
 use crate::error::MarkovError;
+use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena, Pod, Zeroable};
 use nalgebra::RealField;
 use num_traits::ToPrimitive;
 use serde::{Deserialize, Serialize};
@@ -85,52 +86,71 @@ pub struct BaumWelchResult<T> {
     pub converged: bool,
 }
 
+pub(super) struct BwSlices<'a, T> {
+    pub(super) alpha: &'a mut [T],
+    pub(super) scales: &'a mut [T],
+    pub(super) beta_curr: &'a mut [T],
+    pub(super) beta_next: &'a mut [T],
+    pub(super) obs_beta: &'a mut [T],
+    pub(super) init_gamma: &'a mut [T],
+    pub(super) gamma_trans_sum: &'a mut [T],
+    pub(super) gamma_all_sum: &'a mut [T],
+    pub(super) xi_sum: &'a mut [T],
+    pub(super) emission_sum: &'a mut [T],
+    pub(super) prev_initial: &'a mut [T],
+    pub(super) prev_transitions: &'a mut [T],
+    pub(super) prev_emissions: &'a mut [T],
+}
+
 /// Preallocated workspace buffers for zero-allocation Baum-Welch EM fitting.
 #[derive(Debug, Clone)]
 pub struct BaumWelchWorkspace<T> {
     pub(super) num_states: usize,
     pub(super) num_observations: usize,
     pub(super) max_len: usize,
-    pub(super) alpha: Vec<T>,
-    pub(super) scales: Vec<T>,
-    pub(super) beta_curr: Vec<T>,
-    pub(super) beta_next: Vec<T>,
-    pub(super) obs_beta: Vec<T>,
-    pub(super) init_gamma: Vec<T>,
-    pub(super) gamma_trans_sum: Vec<T>,
-    pub(super) gamma_all_sum: Vec<T>,
-    pub(super) xi_sum: Vec<T>,
-    pub(super) emission_sum: Vec<T>,
-    pub(super) prev_initial: Vec<T>,
-    pub(super) prev_transitions: Vec<T>,
-    pub(super) prev_emissions: Vec<T>,
+    pub(super) arena: OwnedByteArena,
+    pub(super) init_gamma_reg: ArenaRegion<T>,
+    pub(super) xi_sum_reg: ArenaRegion<T>,
+    pub(super) emission_sum_reg: ArenaRegion<T>,
+    pub(super) prev_initial_reg: ArenaRegion<T>,
+    pub(super) prev_transitions_reg: ArenaRegion<T>,
+    pub(super) prev_emissions_reg: ArenaRegion<T>,
 }
 
-impl<T: RealField + Copy> BaumWelchWorkspace<T> {
+impl<T: RealField + Copy + Pod + Zeroable> BaumWelchWorkspace<T> {
     /// Allocates scratch buffers sized for `(num_states, num_observations, max_len)`.
     #[verified_engine::verified]
     pub fn new(num_states: usize, num_observations: usize, max_len: usize) -> Self {
-        let z = T::zero();
         let nn = num_states.saturating_mul(num_states);
         let nm = num_states.saturating_mul(num_observations);
         let tn = max_len.saturating_mul(num_states);
+        let mut layout = ArenaLayout::new();
+        let _ = layout.add_slice::<T>(tn).expect("bw alpha");
+        let _ = layout.add_slice::<T>(max_len).expect("bw scales");
+        let _ = layout.add_slice::<T>(num_states).expect("bw beta_curr");
+        let _ = layout.add_slice::<T>(num_states).expect("bw beta_next");
+        let _ = layout.add_slice::<T>(num_states).expect("bw obs_beta");
+        let init_gamma_reg = layout.add_slice::<T>(num_states).expect("bw init_gamma");
+        let _ = layout
+            .add_slice::<T>(num_states)
+            .expect("bw gamma_trans_sum");
+        let _ = layout.add_slice::<T>(num_states).expect("bw gamma_all_sum");
+        let xi_sum_reg = layout.add_slice::<T>(nn).expect("bw xi_sum");
+        let emission_sum_reg = layout.add_slice::<T>(nm).expect("bw emission_sum");
+        let prev_initial_reg = layout.add_slice::<T>(num_states).expect("bw prev_initial");
+        let prev_transitions_reg = layout.add_slice::<T>(nn).expect("bw prev_transitions");
+        let prev_emissions_reg = layout.add_slice::<T>(nm).expect("bw prev_emissions");
         Self {
             num_states,
             num_observations,
             max_len,
-            alpha: vec![z; tn],
-            scales: vec![z; max_len],
-            beta_curr: vec![z; num_states],
-            beta_next: vec![z; num_states],
-            obs_beta: vec![z; num_states],
-            init_gamma: vec![z; num_states],
-            gamma_trans_sum: vec![z; num_states],
-            gamma_all_sum: vec![z; num_states],
-            xi_sum: vec![z; nn],
-            emission_sum: vec![z; nm],
-            prev_initial: vec![z; num_states],
-            prev_transitions: vec![z; nn],
-            prev_emissions: vec![z; nm],
+            arena: OwnedByteArena::with_capacity(layout.total_bytes()),
+            init_gamma_reg,
+            xi_sum_reg,
+            emission_sum_reg,
+            prev_initial_reg,
+            prev_transitions_reg,
+            prev_emissions_reg,
         }
     }
 
@@ -142,6 +162,29 @@ impl<T: RealField + Copy> BaumWelchWorkspace<T> {
         let t = self.max_len.max(max_len);
         if n > self.num_states || m > self.num_observations || t > self.max_len {
             *self = Self::new(n, m, t);
+        }
+    }
+
+    pub(super) fn slices_mut(&mut self) -> BwSlices<'_, T> {
+        let n = self.num_states;
+        let nn = n.saturating_mul(n);
+        let nm = n.saturating_mul(self.num_observations);
+        let tn = self.max_len.saturating_mul(n);
+        let mut scope = self.arena.reborrow();
+        BwSlices {
+            alpha: scope.retain_slice::<T>(tn).expect("alpha"),
+            scales: scope.retain_slice::<T>(self.max_len).expect("scales"),
+            beta_curr: scope.retain_slice::<T>(n).expect("beta_curr"),
+            beta_next: scope.retain_slice::<T>(n).expect("beta_next"),
+            obs_beta: scope.retain_slice::<T>(n).expect("obs_beta"),
+            init_gamma: scope.retain_slice::<T>(n).expect("init_gamma"),
+            gamma_trans_sum: scope.retain_slice::<T>(n).expect("gamma_trans_sum"),
+            gamma_all_sum: scope.retain_slice::<T>(n).expect("gamma_all_sum"),
+            xi_sum: scope.retain_slice::<T>(nn).expect("xi_sum"),
+            emission_sum: scope.retain_slice::<T>(nm).expect("emission_sum"),
+            prev_initial: scope.retain_slice::<T>(n).expect("prev_initial"),
+            prev_transitions: scope.retain_slice::<T>(nn).expect("prev_transitions"),
+            prev_emissions: scope.retain_slice::<T>(nm).expect("prev_emissions"),
         }
     }
 }

@@ -66,7 +66,7 @@ impl MilsteinSolver {
         t: T,
         dt: T,
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut impl SolverWorkspace,
         rng: &mut R,
     ) {
         let d = system.state_dim();
@@ -74,7 +74,7 @@ impl MilsteinSolver {
         assert!(dt >= T::ZERO && state.len() >= d);
 
         let mut ws = workspace.reborrow();
-        let dw = ws.take_slice(m);
+        let dw = ws.take_slice::<T>(m);
         fill_standard_normal(dw, rng);
         let sqrt_dt = dt.sqrt();
         for w in dw.iter_mut() {
@@ -82,9 +82,9 @@ impl MilsteinSolver {
         }
 
         if self.levy_truncation > 0 && m > 1 {
-            let area = ws.take_slice(m * m);
-            let xi = ws.take_slice(m);
-            let zeta = ws.take_slice(m);
+            let area = ws.take_slice::<T>(m * m);
+            let xi = ws.take_slice::<T>(m);
+            let zeta = ws.take_slice::<T>(m);
             sample_levy_area(dt, dw, self.levy_truncation, area, xi, zeta, rng);
             self.apply_milstein(system, t, dt, dw, Some(area), state, &mut ws);
         } else {
@@ -101,7 +101,7 @@ impl MilsteinSolver {
         dt: T,
         dw: &[T],
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut impl SolverWorkspace,
     ) {
         let d = system.state_dim();
         let m = system.wiener_dim();
@@ -120,21 +120,21 @@ impl MilsteinSolver {
         dw: &[T],
         levy_area: Option<&[T]>,
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut impl SolverWorkspace,
     ) {
         let d = system.state_dim();
         let m = system.wiener_dim();
         debug_assert!(state.len() >= d && dw.len() >= m);
         let dm = d * m;
         let mut ws = workspace.reborrow();
-        let f0 = ws.take_slice(d);
-        let g0 = ws.take_slice(dm);
-        let g_plus = ws.take_slice(dm);
-        let g_minus = ws.take_slice(dm);
-        let col_vec = ws.take_slice(d);
-        let dg_a = ws.take_slice(d);
-        let dg_b = ws.take_slice(d);
-        let x_tmp = ws.take_slice(d);
+        let f0 = ws.take_slice::<T>(d);
+        let g0 = ws.take_slice::<T>(dm);
+        let g_plus = ws.take_slice::<T>(dm);
+        let g_minus = ws.take_slice::<T>(dm);
+        let col_vec = ws.take_slice::<T>(d);
+        let dg_a = ws.take_slice::<T>(d);
+        let dg_b = ws.take_slice::<T>(d);
+        let x_tmp = ws.take_slice::<T>(d);
 
         system.drift(t, state, f0);
         system.diffusion(t, state, g0);

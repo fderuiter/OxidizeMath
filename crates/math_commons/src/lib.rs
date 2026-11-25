@@ -2,7 +2,10 @@
 #![doc = include_str!("../README.md")]
 // [cite:math_commons]
 
+#[cfg(feature = "alloc")]
 extern crate alloc;
+
+pub use math_memory;
 
 #[cfg(feature = "std")]
 #[allow(missing_docs)]

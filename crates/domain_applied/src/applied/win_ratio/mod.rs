@@ -89,6 +89,7 @@ pub mod censoring;
 #[allow(missing_docs)]
 pub mod pair_comparison;
 pub mod power_sweep;
+mod power_sweep_types;
 pub mod probability_win_ratio;
 pub mod sample_win_ratio;
 pub mod simulation;

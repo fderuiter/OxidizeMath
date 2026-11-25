@@ -69,7 +69,7 @@ impl Sriw1Solver {
         t: T,
         dt: T,
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut impl SolverWorkspace,
         rng: &mut R,
     ) {
         let d = system.state_dim();
@@ -80,8 +80,8 @@ impl Sriw1Solver {
         }
 
         let mut ws = workspace.reborrow();
-        let dw = ws.take_slice(m);
-        let dz = ws.take_slice(m);
+        let dw = ws.take_slice::<T>(m);
+        let dz = ws.take_slice::<T>(m);
         for j in 0..m {
             let inc = CorrelatedWienerIncrement::sample(dt, rng);
             dw[j] = inc.dw;
@@ -101,7 +101,7 @@ impl Sriw1Solver {
         dw: &[T],
         dz: &[T],
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut impl SolverWorkspace,
     ) {
         let d = system.state_dim();
         let m = system.wiener_dim();
@@ -112,17 +112,17 @@ impl Sriw1Solver {
 
         let dm = d * m;
         let mut ws = workspace.reborrow();
-        let a1 = ws.take_slice(d);
-        let a2 = ws.take_slice(d);
-        let h0 = ws.take_slice(d);
-        let y_plus = ws.take_slice(d);
-        let y_minus = ws.take_slice(d);
-        let psi_plus = ws.take_slice(d);
-        let delta_x = ws.take_slice(d);
-        let g1 = ws.take_slice(dm);
-        let g_yp = ws.take_slice(dm);
-        let g_ym = ws.take_slice(dm);
-        let g_phi = ws.take_slice(dm);
+        let a1 = ws.take_slice::<T>(d);
+        let a2 = ws.take_slice::<T>(d);
+        let h0 = ws.take_slice::<T>(d);
+        let y_plus = ws.take_slice::<T>(d);
+        let y_minus = ws.take_slice::<T>(d);
+        let psi_plus = ws.take_slice::<T>(d);
+        let delta_x = ws.take_slice::<T>(d);
+        let g1 = ws.take_slice::<T>(dm);
+        let g_yp = ws.take_slice::<T>(dm);
+        let g_ym = ws.take_slice::<T>(dm);
+        let g_phi = ws.take_slice::<T>(dm);
 
         eval_ito_effective_drift(system, self.calculus, t, state, a1, &mut ws);
         system.diffusion(t, state, g1);

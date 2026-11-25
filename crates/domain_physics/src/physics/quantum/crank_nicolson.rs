@@ -2,16 +2,16 @@
 //! # 1D Crank-Nicolson Quantum Solver (`CrankNicolson1D`)
 //!
 //! Provides a self-contained $O(N)$ unitary 1D Schrödinger stepper backed by
-//! [`TridiagonalHamiltonian1D`] and [`SolverWorkspace`], enabling instant zero-allocation
+//! [`TridiagonalHamiltonian1D`] and [`TridiagonalWorkspace`], enabling instant zero-allocation
 //! potential sculpting and $\Delta t$ updates.
 
 use crate::physics::quantum::tridiagonal::{
-    SolverWorkspace, TridiagonalHamiltonian1D, valid_positive_scalar,
+    TridiagonalHamiltonian1D, TridiagonalWorkspace, valid_positive_scalar,
 };
 use crate::physics::quantum::types::QuantumState;
 use num_complex::Complex;
 
-/// Self-contained $O(N)$ 1D Crank-Nicolson quantum solver over preallocated [`SolverWorkspace`] buffers.
+/// Self-contained $O(N)$ 1D Crank-Nicolson quantum solver over preallocated [`TridiagonalWorkspace`] buffers.
 ///
 /// Combines in-place tridiagonal Hamiltonian assembly and Thomas LU Cayley stepping so spatial
 /// potential sculpting and dynamic $\Delta t$ updates execute in linear $O(N)$ time with zero
@@ -35,7 +35,7 @@ use num_complex::Complex;
 #[derive(Clone, Debug)]
 pub struct CrankNicolson1D {
     hamiltonian: TridiagonalHamiltonian1D,
-    workspace: SolverWorkspace,
+    workspace: TridiagonalWorkspace,
     configured_dx: Option<f64>,
     configured_dt: Option<f64>,
     configured_h_bar: Option<f64>,
@@ -43,13 +43,13 @@ pub struct CrankNicolson1D {
 }
 
 impl CrankNicolson1D {
-    /// Preallocates Hamiltonian and [`SolverWorkspace`] buffers for grids up to `max_points`.
+    /// Preallocates Hamiltonian and [`TridiagonalWorkspace`] buffers for grids up to `max_points`.
     #[verified_engine::verified]
     #[must_use]
     pub fn with_capacity(max_points: usize) -> Self {
         Self {
             hamiltonian: TridiagonalHamiltonian1D::with_capacity(max_points),
-            workspace: SolverWorkspace::with_capacity(max_points),
+            workspace: TridiagonalWorkspace::with_capacity(max_points),
             configured_dx: None,
             configured_dt: None,
             configured_h_bar: None,
@@ -140,17 +140,17 @@ impl CrankNicolson1D {
         self.valid = false;
     }
 
-    /// Immutable access to the preallocated [`SolverWorkspace`].
+    /// Immutable access to the preallocated [`TridiagonalWorkspace`].
     #[verified_engine::verified]
     #[must_use]
-    pub fn workspace(&self) -> &SolverWorkspace {
+    pub fn workspace(&self) -> &TridiagonalWorkspace {
         &self.workspace
     }
 
-    /// Mutable access to the preallocated [`SolverWorkspace`].
+    /// Mutable access to the preallocated [`TridiagonalWorkspace`].
     #[verified_engine::verified]
     #[must_use]
-    pub fn workspace_mut(&mut self) -> &mut SolverWorkspace {
+    pub fn workspace_mut(&mut self) -> &mut TridiagonalWorkspace {
         &mut self.workspace
     }
 

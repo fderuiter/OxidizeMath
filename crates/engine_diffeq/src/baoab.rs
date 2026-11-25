@@ -83,15 +83,15 @@ impl<T: Scalar> BaoabLangevinSolver<T> {
         system: &S,
         q: &mut [T],
         p: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut impl SolverWorkspace,
         rng: &mut R,
     ) {
         let d = system.dim();
         assert!(q.len() >= d && p.len() >= d);
 
         let mut ws = workspace.reborrow();
-        let grad = ws.take_slice(d);
-        let noise = ws.take_slice(d);
+        let grad = ws.take_slice::<T>(d);
+        let noise = ws.take_slice::<T>(d);
 
         // B: half-step momentum kick
         system.grad_potential(q, grad);

@@ -2,6 +2,7 @@
 #[cfg(feature = "std")]
 pub use crate::ast::{EvalError, GlslError, LexError, ParseError, ShaderEmitError};
 use crate::math_kernel::types::Dimension;
+#[cfg(feature = "alloc")]
 use alloc::string::String;
 #[cfg(feature = "std")]
 use diagnostics::{Diagnostic, Severity};
@@ -55,11 +56,13 @@ pub enum MathError {
     },
 
     /// Numerical computation failures (e.g., singular matrix, non-positive definite).
+    #[cfg(feature = "alloc")]
     #[error("Numerical error: {reason}")]
     #[allow(missing_docs)]
     NumericalError { reason: String },
 
     /// Conversion failures (e.g., failed to convert between numeric types).
+    #[cfg(feature = "alloc")]
     #[error("Conversion error: {reason}")]
     #[allow(missing_docs)]
     ConversionError { reason: String },
@@ -102,6 +105,7 @@ impl Diagnostic for MathError {
 #[allow(missing_docs)]
 pub type MathResult<T> = core::result::Result<T, MathError>;
 
+#[cfg(feature = "alloc")]
 impl From<String> for MathError {
     fn from(reason: String) -> Self {
         Self::ConversionError { reason }

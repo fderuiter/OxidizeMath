@@ -37,10 +37,10 @@ fn test_lu_and_cholesky_f32_and_f64() {
         &mut x_lu,
         3,
         &mut piv,
-        &mut SolverWorkspace::new(&mut buf),
+        &mut ByteArena::from_slice(&mut buf),
     )
     .unwrap();
-    cholesky_solve(&a, &b, &mut x_chol, 3, &mut SolverWorkspace::new(&mut buf)).unwrap();
+    cholesky_solve(&a, &b, &mut x_chol, 3, &mut ByteArena::from_slice(&mut buf)).unwrap();
     for i in 0..3 {
         assert!((x_lu[i] - 1.0).abs() < 1e-12);
         assert!((x_chol[i] - 1.0).abs() < 1e-12);
@@ -55,7 +55,7 @@ fn test_lu_and_cholesky_f32_and_f64() {
         &b32,
         &mut x32,
         2,
-        &mut SolverWorkspace::new(&mut buf32),
+        &mut ByteArena::from_slice(&mut buf32),
     )
     .unwrap();
     assert!((x32[0] - 1.0 / 11.0).abs() < 1e-6);
@@ -74,7 +74,7 @@ fn test_semidefinite_cholesky_rank_deficient_and_indefinite_rejection() {
         3,
         1e-10,
         1e-10,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .unwrap();
     mat_mul_transpose_right(&l, 3, 3, &l, 3, &mut recon).unwrap();
@@ -90,7 +90,7 @@ fn test_semidefinite_cholesky_rank_deficient_and_indefinite_rejection() {
             3,
             1e-10,
             1e-10,
-            &mut SolverWorkspace::new(&mut scratch),
+            &mut ByteArena::from_slice(&mut scratch),
         ),
         Err(LinalgError::NotPositiveDefinite)
     );
@@ -116,7 +116,7 @@ fn test_jacobi_and_bidiagonal_svd_tall() {
         &mut s_j,
         &mut vt_j,
         64,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .unwrap();
     svd_bidiagonal(
@@ -126,7 +126,7 @@ fn test_jacobi_and_bidiagonal_svd_tall() {
         &mut u_b,
         &mut s_b,
         &mut vt_b,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .unwrap();
 
@@ -163,7 +163,7 @@ fn test_bidiagonal_svd_wide() {
         &mut uw,
         &mut sw,
         &mut vtw,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .unwrap();
     for r in 0..2 {
@@ -194,7 +194,7 @@ fn test_csr_cg_and_gmres_solvers() {
         &mut x,
         1e-12,
         50,
-        &mut SolverWorkspace::new(&mut scratch[..cg_workspace_len(4)]),
+        &mut ByteArena::from_slice(&mut scratch[..cg_workspace_len(4)]),
     )
     .unwrap();
     assert!(rep_cg.residual_norm < 1e-11);
@@ -214,7 +214,7 @@ fn test_csr_cg_and_gmres_solvers() {
         2,
         1e-12,
         20,
-        &mut SolverWorkspace::new(&mut scratch[..gmres_workspace_len(4, 2)]),
+        &mut ByteArena::from_slice(&mut scratch[..gmres_workspace_len(4, 2)]),
     )
     .unwrap();
     assert!(rep_gm.residual_norm < 1e-11);
@@ -233,15 +233,15 @@ fn test_norms_condition_estimators_and_tikhonov() {
     assert!((norm_linf(&a, 2, 2).unwrap() - 3.0).abs() < 1e-12);
     assert!((norm_frobenius(&a, 2, 2).unwrap() - (11.25_f64).sqrt()).abs() < 1e-12);
     assert!(
-        (norm_spectral(&a, 2, 2, &mut SolverWorkspace::new(&mut scratch)).unwrap() - 3.0).abs()
+        (norm_spectral(&a, 2, 2, &mut ByteArena::from_slice(&mut scratch)).unwrap() - 3.0).abs()
             < 1e-12
     );
     assert!(
-        (cond_spectral(&a, 2, 2, &mut SolverWorkspace::new(&mut scratch)).unwrap() - 2.0).abs()
+        (cond_spectral(&a, 2, 2, &mut ByteArena::from_slice(&mut scratch)).unwrap() - 2.0).abs()
             < 1e-12
     );
     assert!(
-        (cond_l1(&a, 2, &mut piv, &mut SolverWorkspace::new(&mut scratch)).unwrap() - 2.0).abs()
+        (cond_l1(&a, 2, &mut piv, &mut ByteArena::from_slice(&mut scratch)).unwrap() - 2.0).abs()
             < 1e-12
     );
 
@@ -254,7 +254,7 @@ fn test_norms_condition_estimators_and_tikhonov() {
         &b,
         0.5,
         &mut x_ridge,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .unwrap();
     let expected_0 = (3.0 * 6.0) / (9.0 + 0.25);

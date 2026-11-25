@@ -61,7 +61,7 @@ pub use mimo::Beamformer;
 pub use phase::PhaseUnwrapper;
 pub use physics::FmcwConfig;
 pub use super_resolution::MusicEstimator;
-pub use surface::BiQuadraticSurface;
+pub use surface::{BiQuadraticSurface, biquadratic_fit_workspace_bytes};
 pub use tracking::{ConstantVelocityModel, TrackingFilter};
 
 // Re-export the core KalmanModel so users can implement their own models if needed

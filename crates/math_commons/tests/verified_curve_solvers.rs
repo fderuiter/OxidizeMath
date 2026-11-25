@@ -1,5 +1,6 @@
 //! Integration test verifying zero heap allocations across promoted `math_commons`
 //! curve-fitting and critical-point solvers under `VerifiedAllocator::lock_allocations()`.
+#![cfg(feature = "std")]
 
 use math_commons::error::FitError;
 use math_commons::fit::{

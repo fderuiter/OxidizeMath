@@ -3,24 +3,30 @@
 //! Because `MarchingCubes::extract` visits voxel cubes in `z -> y -> x` order,
 //! cube `(x, y, z)` only shares edges with cubes in the active XY plane `z`,
 //! the next XY plane `z + 1`, the active Z-edge row `(y, z)`, and the next
-//! Z-edge row `(y + 1, z)`. Storing only those rolling slices replaces global
-//! `HashMap` hashing and rehashing with `O(1)` direct array indexing while
-//! deferring buffer allocation until the first intersected surface cube.
+//! Z-edge row `(y + 1, z)`. Storing only those rolling slices inside a single
+//! [`math_memory::OwnedByteArena`] replaces global `HashMap` hashing and
+//! multi-`Vec` allocations with `O(1)` direct array indexing while deferring
+//! buffer allocation until the first intersected surface cube.
+
+use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
 
 /// Sentinel value marking an unpopulated edge slot in [`SliceEdgeCache`].
 pub(super) const EMPTY_EDGE_VERTEX: u32 = u32::MAX;
 
 /// Lazy rolling cache mapping cube edges to mesh vertex indices across two XY
-/// planes and two Z-directed rows.
+/// planes and two Z-directed rows backed by a single [`OwnedByteArena`].
 pub(super) struct SliceEdgeCache {
     width: usize,
     height: usize,
     xy_len: usize,
+    max_xy_len: usize,
+    max_width: usize,
     allocated: bool,
-    curr_xy: Vec<u32>,
-    next_xy: Vec<u32>,
-    curr_z_row: Vec<u32>,
-    next_z_row: Vec<u32>,
+    arena: OwnedByteArena,
+    xy_regs: [ArenaRegion<u32>; 2],
+    z_regs: [ArenaRegion<u32>; 2],
+    xy_parity: u8,
+    z_parity: u8,
     curr_xy_dirty: bool,
     next_xy_dirty: bool,
     curr_z_dirty: bool,
@@ -48,11 +54,14 @@ impl SliceEdgeCache {
             width,
             height,
             xy_len,
+            max_xy_len: 0,
+            max_width: 0,
             allocated: false,
-            curr_xy: Vec::new(),
-            next_xy: Vec::new(),
-            curr_z_row: Vec::new(),
-            next_z_row: Vec::new(),
+            arena: OwnedByteArena::new(),
+            xy_regs: [ArenaRegion::empty(); 2],
+            z_regs: [ArenaRegion::empty(); 2],
+            xy_parity: 0,
+            z_parity: 0,
             curr_xy_dirty: false,
             next_xy_dirty: false,
             curr_z_dirty: false,
@@ -60,17 +69,35 @@ impl SliceEdgeCache {
         }
     }
 
+    fn build_layout(
+        xy_len: usize,
+        width: usize,
+    ) -> (ArenaLayout, [ArenaRegion<u32>; 2], [ArenaRegion<u32>; 2]) {
+        let mut layout = ArenaLayout::new();
+        let xy0 = layout.add_slice::<u32>(xy_len).expect("xy0 layout");
+        let xy1 = layout.add_slice::<u32>(xy_len).expect("xy1 layout");
+        let z0 = layout.add_slice::<u32>(width).expect("z0 layout");
+        let z1 = layout.add_slice::<u32>(width).expect("z1 layout");
+        (layout, [xy0, xy1], [z0, z1])
+    }
+
     #[cold]
     #[inline(never)]
     #[verified_engine::verified]
     fn allocate_buffers(&mut self) {
-        self.curr_xy.resize(self.xy_len, EMPTY_EDGE_VERTEX);
-        self.next_xy.resize(self.xy_len, EMPTY_EDGE_VERTEX);
-        self.curr_z_row.resize(self.width, EMPTY_EDGE_VERTEX);
-        self.next_z_row.resize(self.width, EMPTY_EDGE_VERTEX);
+        let (layout, xy_regs, z_regs) = Self::build_layout(self.xy_len, self.width);
+        self.arena.ensure_capacity(layout.total_bytes());
+        self.xy_regs = xy_regs;
+        self.z_regs = z_regs;
+        self.max_xy_len = self.xy_len;
+        self.max_width = self.width;
+        self.xy_parity = 0;
+        self.z_parity = 0;
+        self.arena.region_mut(xy_regs[0]).fill(EMPTY_EDGE_VERTEX);
+        self.arena.region_mut(xy_regs[1]).fill(EMPTY_EDGE_VERTEX);
+        self.arena.region_mut(z_regs[0]).fill(EMPTY_EDGE_VERTEX);
+        self.arena.region_mut(z_regs[1]).fill(EMPTY_EDGE_VERTEX);
         self.allocated = true;
-        debug_assert_eq!(self.curr_xy.len(), self.xy_len);
-        debug_assert_eq!(self.curr_z_row.len(), self.width);
     }
 
     /// Pre-allocates rolling slice edge buffers up to `max_width x max_height` for zero-allocation reuse.
@@ -79,20 +106,49 @@ impl SliceEdgeCache {
         let w = max_width.max(2);
         let h = max_height.max(2);
         let xy_len = w * h * 2;
+        let (layout, xy_regs, z_regs) = Self::build_layout(xy_len, w);
+        let mut arena = OwnedByteArena::with_capacity(layout.total_bytes());
+        arena.region_mut(xy_regs[0]).fill(EMPTY_EDGE_VERTEX);
+        arena.region_mut(xy_regs[1]).fill(EMPTY_EDGE_VERTEX);
+        arena.region_mut(z_regs[0]).fill(EMPTY_EDGE_VERTEX);
+        arena.region_mut(z_regs[1]).fill(EMPTY_EDGE_VERTEX);
         Self {
             width: w,
             height: h,
             xy_len,
+            max_xy_len: xy_len,
+            max_width: w,
             allocated: true,
-            curr_xy: vec![EMPTY_EDGE_VERTEX; xy_len],
-            next_xy: vec![EMPTY_EDGE_VERTEX; xy_len],
-            curr_z_row: vec![EMPTY_EDGE_VERTEX; w],
-            next_z_row: vec![EMPTY_EDGE_VERTEX; w],
+            arena,
+            xy_regs,
+            z_regs,
+            xy_parity: 0,
+            z_parity: 0,
             curr_xy_dirty: false,
             next_xy_dirty: false,
             curr_z_dirty: false,
             next_z_dirty: false,
         }
+    }
+
+    #[inline]
+    fn curr_xy_reg(&self) -> ArenaRegion<u32> {
+        self.xy_regs[usize::from(self.xy_parity & 1)]
+    }
+
+    #[inline]
+    fn next_xy_reg(&self) -> ArenaRegion<u32> {
+        self.xy_regs[usize::from((self.xy_parity ^ 1) & 1)]
+    }
+
+    #[inline]
+    fn curr_z_reg(&self) -> ArenaRegion<u32> {
+        self.z_regs[usize::from(self.z_parity & 1)]
+    }
+
+    #[inline]
+    fn next_z_reg(&self) -> ArenaRegion<u32> {
+        self.z_regs[usize::from((self.z_parity ^ 1) & 1)]
     }
 
     /// Resets active XY dimensions and clears any dirty edge slots in-place without reallocating if capacity suffices.
@@ -107,20 +163,16 @@ impl SliceEdgeCache {
         if !self.allocated {
             return;
         }
-        if self.curr_xy.len() >= xy_len
-            && self.next_xy.len() >= xy_len
-            && self.curr_z_row.len() >= w
-            && self.next_z_row.len() >= w
-        {
-            clear_if_dirty(&mut self.curr_xy, &mut self.curr_xy_dirty);
-            clear_if_dirty(&mut self.next_xy, &mut self.next_xy_dirty);
-            clear_if_dirty(&mut self.curr_z_row, &mut self.curr_z_dirty);
-            clear_if_dirty(&mut self.next_z_row, &mut self.next_z_dirty);
+        if self.max_xy_len >= xy_len && self.max_width >= w {
+            let c_xy = self.curr_xy_reg();
+            let n_xy = self.next_xy_reg();
+            let c_z = self.curr_z_reg();
+            let n_z = self.next_z_reg();
+            clear_if_dirty(self.arena.region_mut(c_xy), &mut self.curr_xy_dirty);
+            clear_if_dirty(self.arena.region_mut(n_xy), &mut self.next_xy_dirty);
+            clear_if_dirty(self.arena.region_mut(c_z), &mut self.curr_z_dirty);
+            clear_if_dirty(self.arena.region_mut(n_z), &mut self.next_z_dirty);
         } else {
-            self.curr_xy.fill(EMPTY_EDGE_VERTEX);
-            self.next_xy.fill(EMPTY_EDGE_VERTEX);
-            self.curr_z_row.fill(EMPTY_EDGE_VERTEX);
-            self.next_z_row.fill(EMPTY_EDGE_VERTEX);
             self.curr_xy_dirty = false;
             self.next_xy_dirty = false;
             self.curr_z_dirty = false;
@@ -136,11 +188,14 @@ impl SliceEdgeCache {
         if !self.allocated {
             return;
         }
-        std::mem::swap(&mut self.curr_xy, &mut self.next_xy);
+        self.xy_parity ^= 1;
         std::mem::swap(&mut self.curr_xy_dirty, &mut self.next_xy_dirty);
-        clear_if_dirty(&mut self.next_xy, &mut self.next_xy_dirty);
-        clear_if_dirty(&mut self.curr_z_row, &mut self.curr_z_dirty);
-        clear_if_dirty(&mut self.next_z_row, &mut self.next_z_dirty);
+        let n_xy = self.next_xy_reg();
+        let c_z = self.curr_z_reg();
+        let n_z = self.next_z_reg();
+        clear_if_dirty(self.arena.region_mut(n_xy), &mut self.next_xy_dirty);
+        clear_if_dirty(self.arena.region_mut(c_z), &mut self.curr_z_dirty);
+        clear_if_dirty(self.arena.region_mut(n_z), &mut self.next_z_dirty);
         debug_assert!(!self.next_xy_dirty && !self.curr_z_dirty && !self.next_z_dirty);
     }
 
@@ -151,9 +206,10 @@ impl SliceEdgeCache {
         if !self.allocated {
             return;
         }
-        std::mem::swap(&mut self.curr_z_row, &mut self.next_z_row);
+        self.z_parity ^= 1;
         std::mem::swap(&mut self.curr_z_dirty, &mut self.next_z_dirty);
-        clear_if_dirty(&mut self.next_z_row, &mut self.next_z_dirty);
+        let n_z = self.next_z_reg();
+        clear_if_dirty(self.arena.region_mut(n_z), &mut self.next_z_dirty);
         debug_assert!(!self.next_z_dirty);
     }
 
@@ -181,7 +237,8 @@ impl SliceEdgeCache {
                     2 => base_xy + w * 2,
                     _ => base_xy + 1,
                 };
-                &mut self.curr_xy[idx]
+                let reg = self.curr_xy_reg();
+                &mut self.arena.region_mut(reg)[idx]
             }
             4..=7 => {
                 self.next_xy_dirty = true;
@@ -192,17 +249,20 @@ impl SliceEdgeCache {
                     6 => base_xy + w * 2,
                     _ => base_xy + 1,
                 };
-                &mut self.next_xy[idx]
+                let reg = self.next_xy_reg();
+                &mut self.arena.region_mut(reg)[idx]
             }
             8 | 9 => {
                 self.curr_z_dirty = true;
                 let idx = if edge_num == 8 { x } else { x + 1 };
-                &mut self.curr_z_row[idx]
+                let reg = self.curr_z_reg();
+                &mut self.arena.region_mut(reg)[idx]
             }
             10 | 11 => {
                 self.next_z_dirty = true;
                 let idx = if edge_num == 11 { x } else { x + 1 };
-                &mut self.next_z_row[idx]
+                let reg = self.next_z_reg();
+                &mut self.arena.region_mut(reg)[idx]
             }
             _ => unreachable!(),
         }
@@ -218,18 +278,12 @@ mod tests {
     fn test_lazy_zero_allocation_until_active_edge() {
         let mut cache = SliceEdgeCache::new(8, 6);
         assert!(!cache.allocated);
-        assert_eq!(cache.curr_xy.capacity(), 0);
-        assert_eq!(cache.next_xy.capacity(), 0);
-        assert_eq!(cache.curr_z_row.capacity(), 0);
-        assert_eq!(cache.next_z_row.capacity(), 0);
+        assert_eq!(cache.arena.byte_capacity(), 0);
 
         cache.advance_y();
         cache.advance_z();
         assert!(!cache.allocated);
-        assert_eq!(cache.curr_xy.capacity(), 0);
-        assert_eq!(cache.next_xy.capacity(), 0);
-        assert_eq!(cache.curr_z_row.capacity(), 0);
-        assert_eq!(cache.next_z_row.capacity(), 0);
+        assert_eq!(cache.arena.byte_capacity(), 0);
     }
 
     #[test]

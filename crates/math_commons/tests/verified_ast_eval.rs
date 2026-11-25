@@ -1,4 +1,5 @@
 //! Zero-allocation runtime verification tests for AST expression evaluators.
+#![cfg(feature = "std")]
 
 use math_commons::ast::{CompiledExpr, Expr, parse};
 use num_complex::Complex64;

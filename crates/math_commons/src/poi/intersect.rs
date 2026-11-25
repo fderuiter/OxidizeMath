@@ -2,6 +2,7 @@
 // [cite:math_commons]
 
 use crate::series::PointSeries;
+#[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
 /// Default maximum intersections collected by [`intersect_polylines`].
@@ -47,6 +48,7 @@ where
 }
 
 /// Convenience wrapper returning up to [`MAX_POLYLINE_INTERSECTIONS`] polyline intersections.
+#[cfg(feature = "alloc")]
 pub fn intersect_polylines<A, B>(a: &A, b: &B, x_bounds: [f64; 2]) -> Vec<[f64; 2]>
 where
     A: PointSeries + ?Sized,

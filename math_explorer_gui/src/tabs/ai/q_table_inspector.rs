@@ -139,11 +139,13 @@ impl QTableInspectorTool {
     fn sync_sculpt_to_worker(&mut self) {
         let mut temp_ws =
             DenseRlWorkspace::new(self.mdp.width as usize, self.mdp.height as usize, 100, None);
-        if self.latest_snap.q_table.len() == temp_ws.q_table.len() {
-            temp_ws.q_table.clone_from(&self.latest_snap.q_table);
+        if self.latest_snap.q_table.len() == temp_ws.q_table().len() {
             temp_ws
-                .state_values
-                .clone_from(&self.latest_snap.state_values);
+                .q_table_mut()
+                .copy_from_slice(&self.latest_snap.q_table);
+            temp_ws
+                .state_values_mut()
+                .copy_from_slice(&self.latest_snap.state_values);
         }
         self.latest_snap.mdp = self.mdp.clone();
         self.latest_snap.solver_mode = self.solver_mode;
@@ -171,9 +173,9 @@ impl QTableInspectorTool {
             episodes_trained: 0,
             mdp: self.mdp.clone(),
             solver_mode: self.solver_mode,
-            q_table: ws.q_table.clone(),
-            state_values: ws.state_values.clone(),
-            greedy_actions: vec![None; ws.q_table.len()],
+            q_table: ws.q_table().to_vec(),
+            state_values: ws.state_values().to_vec(),
+            greedy_actions: vec![None; ws.q_table().len()],
             bellman: solve_bellman_with_policy(&self.mdp, &ws, self.solver_mode),
         };
         self.episodes_trained = 0;
@@ -408,11 +410,13 @@ impl InteractiveTool for QTableInspectorTool {
         if apply_rl_brush_stroke(&mut self.mdp, &stroke) {
             let mut temp_ws =
                 DenseRlWorkspace::new(self.mdp.width as usize, self.mdp.height as usize, 100, None);
-            if self.latest_snap.q_table.len() == temp_ws.q_table.len() {
-                temp_ws.q_table.clone_from(&self.latest_snap.q_table);
+            if self.latest_snap.q_table.len() == temp_ws.q_table().len() {
                 temp_ws
-                    .state_values
-                    .clone_from(&self.latest_snap.state_values);
+                    .q_table_mut()
+                    .copy_from_slice(&self.latest_snap.q_table);
+                temp_ws
+                    .state_values_mut()
+                    .copy_from_slice(&self.latest_snap.state_values);
             }
             self.latest_snap.mdp = self.mdp.clone();
             self.latest_snap.bellman =

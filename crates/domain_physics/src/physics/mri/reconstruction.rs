@@ -1,5 +1,6 @@
 //! Image Reconstruction algorithms and pre-planned zero-allocation 2D FFT workspaces.
 
+use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
 use nalgebra::DMatrix;
 use num_complex::Complex;
 use rustfft::{Fft, FftDirection, FftPlanner};
@@ -37,7 +38,8 @@ pub struct Fft2dWorkspace {
     fwd_col_fft: Option<Arc<dyn Fft<f64>>>,
     inv_row_fft: Option<Arc<dyn Fft<f64>>>,
     inv_col_fft: Option<Arc<dyn Fft<f64>>>,
-    scratch: Vec<Complex<f64>>,
+    arena: OwnedByteArena,
+    scratch_reg: ArenaRegion<Complex<f64>>,
     transposed: DMatrix<Complex<f64>>,
 }
 
@@ -53,7 +55,8 @@ impl Fft2dWorkspace {
                 fwd_col_fft: None,
                 inv_row_fft: None,
                 inv_col_fft: None,
-                scratch: Vec::new(),
+                arena: OwnedByteArena::new(),
+                scratch_reg: ArenaRegion::empty(),
                 transposed: DMatrix::zeros(cols, rows),
             };
         }
@@ -70,6 +73,11 @@ impl Fft2dWorkspace {
             .max(inv_row.get_inplace_scratch_len())
             .max(inv_col.get_inplace_scratch_len());
 
+        let mut layout = ArenaLayout::new();
+        let scratch_reg = layout
+            .add_slice::<Complex<f64>>(scratch_len)
+            .expect("Fft2dWorkspace scratch layout");
+
         Self {
             rows,
             cols,
@@ -77,7 +85,8 @@ impl Fft2dWorkspace {
             fwd_col_fft: Some(fwd_col),
             inv_row_fft: Some(inv_row),
             inv_col_fft: Some(inv_col),
-            scratch: vec![Complex::new(0.0, 0.0); scratch_len],
+            arena: OwnedByteArena::with_capacity(layout.total_bytes()),
+            scratch_reg,
             transposed: DMatrix::zeros(cols, rows),
         }
     }
@@ -136,8 +145,10 @@ impl Fft2dWorkspace {
             self.rows,
             self.cols,
         );
+        let scratch_reg = self.scratch_reg;
         if let Some(fft_r) = row_plan {
-            fft_r.process_with_scratch(self.transposed.as_mut_slice(), &mut self.scratch);
+            let scratch = self.arena.region_mut(scratch_reg);
+            fft_r.process_with_scratch(self.transposed.as_mut_slice(), scratch);
         }
         transpose_blocked(
             self.transposed.as_slice(),
@@ -146,7 +157,8 @@ impl Fft2dWorkspace {
             self.rows,
         );
         if let Some(fft_c) = col_plan {
-            fft_c.process_with_scratch(output.as_mut_slice(), &mut self.scratch);
+            let scratch = self.arena.region_mut(scratch_reg);
+            fft_c.process_with_scratch(output.as_mut_slice(), scratch);
         }
     }
 
@@ -216,9 +228,11 @@ impl Fft2dWorkspace {
             out_image.copy_from(density);
             return;
         }
+        let scratch_reg = self.scratch_reg;
         out_image.copy_from(density);
         if let Some(ref fwd_c) = self.fwd_col_fft {
-            fwd_c.process_with_scratch(out_image.as_mut_slice(), &mut self.scratch);
+            let scratch = self.arena.region_mut(scratch_reg);
+            fwd_c.process_with_scratch(out_image.as_mut_slice(), scratch);
         }
         transpose_blocked(
             out_image.as_slice(),
@@ -227,7 +241,8 @@ impl Fft2dWorkspace {
             self.cols,
         );
         if let Some(ref fwd_r) = self.fwd_row_fft {
-            fwd_r.process_with_scratch(self.transposed.as_mut_slice(), &mut self.scratch);
+            let scratch = self.arena.region_mut(scratch_reg);
+            fwd_r.process_with_scratch(self.transposed.as_mut_slice(), scratch);
         }
         apply_kspace_modulation(
             self.transposed.as_mut_slice(),
@@ -236,7 +251,8 @@ impl Fft2dWorkspace {
             out_kspace,
         );
         if let Some(ref inv_r) = self.inv_row_fft {
-            inv_r.process_with_scratch(self.transposed.as_mut_slice(), &mut self.scratch);
+            let scratch = self.arena.region_mut(scratch_reg);
+            inv_r.process_with_scratch(self.transposed.as_mut_slice(), scratch);
         }
         transpose_blocked(
             self.transposed.as_slice(),
@@ -245,7 +261,8 @@ impl Fft2dWorkspace {
             self.rows,
         );
         if let Some(ref inv_c) = self.inv_col_fft {
-            inv_c.process_with_scratch(out_image.as_mut_slice(), &mut self.scratch);
+            let scratch = self.arena.region_mut(scratch_reg);
+            inv_c.process_with_scratch(out_image.as_mut_slice(), scratch);
         }
         scale_complex_slice(out_image.as_mut_slice(), 1.0 / (total as f64));
     }
@@ -264,12 +281,15 @@ impl Fft2dWorkspace {
         if total == 0 {
             return;
         }
+        let scratch_reg = self.scratch_reg;
         if let Some(ref fwd_c) = self.fwd_col_fft {
-            fwd_c.process_with_scratch(density.as_mut_slice(), &mut self.scratch);
+            let scratch = self.arena.region_mut(scratch_reg);
+            fwd_c.process_with_scratch(density.as_mut_slice(), scratch);
         }
         transpose_blocked(density.as_slice(), out_kspace, self.rows, self.cols);
         if let Some(ref fwd_r) = self.fwd_row_fft {
-            fwd_r.process_with_scratch(out_kspace, &mut self.scratch);
+            let scratch = self.arena.region_mut(scratch_reg);
+            fwd_r.process_with_scratch(out_kspace, scratch);
         }
     }
 
@@ -278,15 +298,18 @@ impl Fft2dWorkspace {
         density: &DMatrix<Complex<f64>>,
         out_kspace: &mut [Complex<f64>],
     ) {
+        let scratch_reg = self.scratch_reg;
         self.transposed
             .as_mut_slice()
             .copy_from_slice(density.as_slice());
         if let Some(ref fwd_c) = self.fwd_col_fft {
-            fwd_c.process_with_scratch(self.transposed.as_mut_slice(), &mut self.scratch);
+            let scratch = self.arena.region_mut(scratch_reg);
+            fwd_c.process_with_scratch(self.transposed.as_mut_slice(), scratch);
         }
         transpose_blocked(self.transposed.as_slice(), out_kspace, self.rows, self.cols);
         if let Some(ref fwd_r) = self.fwd_row_fft {
-            fwd_r.process_with_scratch(out_kspace, &mut self.scratch);
+            let scratch = self.arena.region_mut(scratch_reg);
+            fwd_r.process_with_scratch(out_kspace, scratch);
         }
     }
 }

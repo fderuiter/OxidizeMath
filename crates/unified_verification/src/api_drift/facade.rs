@@ -19,6 +19,7 @@ use facade_signatures::{ParsedSignatureMap, build_parsed_signatures_counted};
 
 const FACADE_REACHABLE_PREFIXES: &[&str] = &[
     "math_explorer/src/",
+    "crates/00_foundation/math_memory/src/",
     "crates/math_commons/src/",
     "crates/diagnostics/src/",
     "crates/pure_math/src/",
@@ -38,6 +39,7 @@ const REQUIRED_ROOT_EXPORTS: &[&str] = &[
     "diagnostics",
     "fit",
     "math_kernel",
+    "math_memory",
     "math_types",
     "mesh",
     "nalgebra",
@@ -77,13 +79,13 @@ const STD_AND_REEXPORTED_TYPES: &[&str] = &[
     "DimMin", "DimName", "Directed", "Dyn", "EdgeIndex", "EdgeRef", "Field", "Graph",
     "IntoEdgeReferences", "IntoEdges", "IntoNeighbors", "IntoNodeIdentifiers", "Isometry2",
     "Isometry3", "LU", "Matrix", "Matrix2", "Matrix3", "Matrix4", "Matrix6", "MatrixView",
-    "MatrixViewMut", "NodeIndex", "OMatrix", "OVector", "Owned", "Point2", "Point3", "QR",
+    "MatrixViewMut", "NodeIndex", "OMatrix", "OVector", "Owned", "Pod", "Point2", "Point3", "QR",
     "RealField", "Rng", "RngCore", "Rotation2", "Rotation3", "RowDVector", "RowSVector",
     "RowVector2", "RowVector3", "RowVector4", "SMatrix", "SVD", "SVector", "Scalar",
     "SeedableRng", "SimdComplexField", "SimdRealField", "Storage", "StorageMut", "StdRng",
     "SymmetricEigen", "Translation2", "Translation3", "U1", "U2", "U3", "U4", "U6", "UnGraph",
     "Undirected", "Unit", "UnitComplex", "UnitQuaternion", "UnitVector3", "Vector2", "Vector3",
-    "Vector4", "Vector6", "VectorView", "VectorViewMut", "VisitMap", "Visitable",
+    "Vector4", "Vector6", "VectorView", "VectorViewMut", "VisitMap", "Visitable", "Zeroable",
 ];
 
 fn is_facade_reachable_file(rel_path: &str) -> bool {

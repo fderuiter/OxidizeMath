@@ -194,7 +194,7 @@ fn calibrate_interior_ar1(
 /// Computes summary statistics and empirical quantiles over `samples` using `scratch` for
 /// in-place sorting with zero heap allocations.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub(super) fn summarize_samples_into(
+pub fn summarize_samples_into(
     samples: &[f64],
     threshold: Option<f64>,
     scratch: &mut [f64],

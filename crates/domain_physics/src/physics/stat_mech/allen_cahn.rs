@@ -5,11 +5,11 @@
 use crate::error::StatMechError;
 use crate::physics::stat_mech::edwards_wilkinson::mean_field;
 use engine_pde::{
-    BoundaryCondition, ExplicitSpdeStencilStepper, SpdeNoiseKind, SplitStepSpdeStencilStepper,
-    StencilOperators,
+    BoundaryCondition, ByteArena, ExplicitSpdeStencilStepper, SpdeNoiseKind,
+    SplitStepSpdeStencilStepper, StencilOperators,
 };
 use math_commons::error::MathError;
-use math_commons::math_kernel::types::{Dimension, SolverWorkspace, StepSize, flatten_2d_index};
+use math_commons::math_kernel::types::{Dimension, StepSize, flatten_2d_index};
 use rand_core::RngCore;
 
 /// Evaluates the discrete 2D Ginzburg-Landau free-energy Lyapunov functional
@@ -204,7 +204,7 @@ impl AllenCahn2D {
         );
         let m = self.mobility;
         let kappa = self.kappa;
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ByteArena::from_slice(&mut self.scratch);
         stepper.step_2d(
             &mut self.phi,
             self.width,
@@ -236,7 +236,7 @@ impl AllenCahn2D {
         );
         let m = self.mobility;
         let diffusivity = m * self.kappa;
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ByteArena::from_slice(&mut self.scratch);
         stepper.step_reaction_diffusion_2d(
             &mut self.phi,
             self.width,

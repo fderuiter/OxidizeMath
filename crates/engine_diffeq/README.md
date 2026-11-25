@@ -12,9 +12,8 @@ Core design invariants:
 
 ```rust
 use engine_diffeq::{
-    EulerMaruyamaSolver, SdeSystem, StochasticCalculus,
+    ByteArena, EulerMaruyamaSolver, SdeSystem, StochasticCalculus,
 };
-use math_commons::math_kernel::types::SolverWorkspace;
 use oxidize_core::rng::OxidizeRng;
 
 struct OrnsteinUhlenbeck;
@@ -33,7 +32,7 @@ impl SdeSystem<f64> for OrnsteinUhlenbeck {
 let solver = EulerMaruyamaSolver::new(StochasticCalculus::Ito);
 let mut state = [1.0_f64];
 let mut scratch = [0.0_f64; 8];
-let mut ws = SolverWorkspace::new(&mut scratch);
+let mut ws = ByteArena::from_slice(&mut scratch);
 let mut rng = OxidizeRng::new(42);
 solver.step(&OrnsteinUhlenbeck, 0.0, 0.01, &mut state, &mut ws, &mut rng);
 assert!(state[0].is_finite());

@@ -2,7 +2,9 @@
 
 use crate::error::CopulaError;
 use crate::pure_math::algebra::linear_algebra::numerical::dmatrix_to_row_major;
-use engine_linalg::{SolverWorkspace, cholesky_semidefinite, cholesky_semidefinite_workspace_len};
+use engine_linalg::{
+    ByteArena, SolverWorkspace, cholesky_semidefinite, cholesky_semidefinite_workspace_len,
+};
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
 use math_commons::registry::TOLERANCE_HIGH;
@@ -133,7 +135,7 @@ fn compute_psd_factor(sym: DMatrix<f64>) -> Result<DMatrix<f64>, CopulaError> {
         n,
         TOLERANCE_HIGH,
         TOLERANCE_HIGH,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .map_err(|_| CopulaError::NotPositiveDefinite)?;
     Ok(DMatrix::from_row_slice(n, n, &lower))
@@ -209,6 +211,109 @@ impl CorrelationMatrix {
             None
         }
     }
+
+    /// Validates `matrix` and writes its positive-semidefinite lower-triangular Cholesky factor
+    /// into `cholesky_out` using `ws` with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn factor_into_with_workspace<W: SolverWorkspace>(
+        matrix: &DMatrix<f64>,
+        cholesky_out: &mut DMatrix<f64>,
+        ws: &mut W,
+    ) -> Result<(), CopulaError> {
+        let n = matrix.nrows();
+        if n != matrix.ncols() || cholesky_out.shape() != (n, n) {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(n),
+                actual: Dimension(cholesky_out.ncols()),
+            }));
+        }
+        if n == 0 {
+            return Err(CopulaError::Math(MathError::DimensionMismatch {
+                expected: Dimension(1),
+                actual: Dimension(0),
+            }));
+        }
+        let nn = n.checked_mul(n).ok_or(CopulaError::NotPositiveDefinite)?;
+        let mut scope = ws.reborrow();
+        let sym_row = scope
+            .alloc_slice::<f64>(nn)
+            .map_err(|_| CopulaError::NotPositiveDefinite)?;
+        let lower = scope
+            .alloc_slice::<f64>(nn)
+            .map_err(|_| CopulaError::NotPositiveDefinite)?;
+        for i in 0..n {
+            let diag = matrix[(i, i)];
+            if !diag.is_finite() || (diag - 1.0).abs() > TOLERANCE_HIGH {
+                return Err(CopulaError::InvalidCorrelation { value: diag });
+            }
+            sym_row[math_commons::math_kernel::types::flatten_2d_index(i, i, n)] = 1.0;
+            for j in (i + 1)..n {
+                let a = matrix[(i, j)];
+                let b = matrix[(j, i)];
+                if !a.is_finite() || a.abs() > 1.0 + TOLERANCE_HIGH {
+                    return Err(CopulaError::InvalidCorrelation { value: a });
+                }
+                if !b.is_finite() || b.abs() > 1.0 + TOLERANCE_HIGH {
+                    return Err(CopulaError::InvalidCorrelation { value: b });
+                }
+                if (a - b).abs() > TOLERANCE_HIGH {
+                    return Err(CopulaError::NotSymmetric);
+                }
+                let avg = (0.5 * (a + b)).clamp(-1.0, 1.0);
+                sym_row[math_commons::math_kernel::types::flatten_2d_index(i, j, n)] = avg;
+                sym_row[math_commons::math_kernel::types::flatten_2d_index(j, i, n)] = avg;
+            }
+        }
+        cholesky_semidefinite(
+            sym_row,
+            lower,
+            n,
+            TOLERANCE_HIGH,
+            TOLERANCE_HIGH,
+            &mut scope,
+        )
+        .map_err(|_| CopulaError::NotPositiveDefinite)?;
+        for i in 0..n {
+            for j in 0..n {
+                cholesky_out[(i, j)] =
+                    lower[math_commons::math_kernel::types::flatten_2d_index(j, i, n)];
+            }
+        }
+        debug_assert_eq!(cholesky_out.shape(), (n, n));
+        Ok(())
+    }
+
+    /// Updates this correlation matrix and its cached Cholesky factor in place from `matrix`
+    /// using `ws` with zero heap allocations.
+    #[verified_engine::verified]
+    pub fn update_with_workspace<W: SolverWorkspace>(
+        &mut self,
+        matrix: &DMatrix<f64>,
+        ws: &mut W,
+    ) -> Result<(), CopulaError> {
+        Self::factor_into_with_workspace(matrix, &mut self.cholesky, ws)?;
+        self.matrix.copy_from(matrix);
+        Ok(())
+    }
+}
+
+/// Computes the lower-triangular positive-semidefinite Cholesky factor $L$ ($R \approx L L^T$)
+/// of a validated `dim x dim` row-major correlation matrix into `l_out` using caller-supplied `ws`
+/// with zero heap allocations.
+#[verified_engine::verified]
+pub fn cholesky_factor_with_workspace<W: SolverWorkspace>(
+    corr_row_major: &[f64],
+    dim: usize,
+    jitter: f64,
+    l_out: &mut [f64],
+    ws: &mut W,
+) -> Result<(), CopulaError> {
+    let base = if jitter > 0.0 { jitter } else { 1.0e-12 };
+    let max_jitter = (base * 1.0e6).max(1.0e-6);
+    cholesky_semidefinite(corr_row_major, l_out, dim, base, max_jitter, ws)
+        .map_err(|_| CopulaError::NotPositiveDefinite)?;
+    debug_assert_eq!(l_out.len(), corr_row_major.len());
+    Ok(())
 }
 
 #[cfg(test)]

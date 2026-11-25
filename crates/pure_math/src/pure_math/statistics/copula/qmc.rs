@@ -6,6 +6,7 @@ use super::core::{CorrelationMatrix, Probability};
 use super::transforms::{fast_norm_cdf, fast_norm_inv};
 use crate::error::CopulaError;
 use crate::pure_math::statistics::qmc::{FIRST_64_PRIMES, radical_inverse};
+use math_memory::{ArenaLayout, OwnedByteArena};
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
 
@@ -20,9 +21,8 @@ const PROB_CLAMP_EPS: f64 = 1e-15;
 /// Preallocated workspace for arbitrary-dimension (`d > 12`) zero-allocation Gaussian copula QMC.
 #[derive(Debug, Clone)]
 pub struct CopulaQmcWorkspace {
-    z_scores: Vec<f64>,
-    y_state: Vec<f64>,
-    shifts: Vec<f64>,
+    arena: OwnedByteArena,
+    cap: usize,
 }
 
 impl CopulaQmcWorkspace {
@@ -30,20 +30,23 @@ impl CopulaQmcWorkspace {
     #[verified_engine::verified]
     pub fn with_capacity(max_legs: usize) -> Self {
         let cap = max_legs.max(1);
+        let mut layout = ArenaLayout::new();
+        let _ = layout
+            .add_slice::<f64>(cap)
+            .expect("copula z_scores layout");
+        let _ = layout.add_slice::<f64>(cap).expect("copula y_state layout");
+        let _ = layout.add_slice::<f64>(cap).expect("copula shifts layout");
         Self {
-            z_scores: vec![0.0; cap],
-            y_state: vec![0.0; cap],
-            shifts: vec![0.0; cap],
+            arena: OwnedByteArena::with_capacity(layout.total_bytes()),
+            cap,
         }
     }
 
     /// Ensures the workspace can hold at least `dim` legs (allocates only if growing).
     #[verified_engine::verified]
     pub fn ensure_capacity(&mut self, dim: usize) {
-        if self.z_scores.len() < dim {
-            self.z_scores.resize(dim, 0.0);
-            self.y_state.resize(dim, 0.0);
-            self.shifts.resize(dim, 0.0);
+        if self.cap < dim {
+            *self = Self::with_capacity(dim);
         }
     }
 }
@@ -198,23 +201,19 @@ pub(crate) fn multivariate_cdf_with_workspace(
     workspace: &mut CopulaQmcWorkspace,
 ) -> Result<Probability, CopulaError> {
     let dim = u.len();
-    if workspace.z_scores.len() < dim {
+    if workspace.cap < dim {
         return Err(CopulaError::Math(
             math_commons::error::MathError::DimensionMismatch {
                 expected: math_commons::math_kernel::types::Dimension(dim),
-                actual: math_commons::math_kernel::types::Dimension(workspace.z_scores.len()),
+                actual: math_commons::math_kernel::types::Dimension(workspace.cap),
             },
         ));
     }
-    integrate_genz_slices(
-        corr,
-        u,
-        seed,
-        n_pairs,
-        &mut workspace.z_scores[..dim],
-        &mut workspace.y_state[..dim],
-        &mut workspace.shifts[..dim],
-    )
+    let mut scope = workspace.arena.reborrow();
+    let z_scores = scope.retain_slice::<f64>(dim).expect("copula z_scores");
+    let y_state = scope.retain_slice::<f64>(dim).expect("copula y_state");
+    let shifts = scope.retain_slice::<f64>(dim).expect("copula shifts");
+    integrate_genz_slices(corr, u, seed, n_pairs, z_scores, y_state, shifts)
 }
 
 // [cite:clinical_trials_statistics]

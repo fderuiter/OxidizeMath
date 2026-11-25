@@ -5,7 +5,7 @@
 //! backed by `#![no_std]` [`engine_linalg`].
 
 use engine_linalg::{
-    CsrMatrixView, LinalgError, SolverWorkspace, cg_solve, cg_workspace_len, cholesky_solve,
+    ByteArena, CsrMatrixView, LinalgError, cg_solve, cg_workspace_len, cholesky_solve,
     cholesky_workspace_len, gmres_solve, gmres_workspace_len, lu_solve, lu_workspace_len,
     qr_or_svd_solve, qr_or_svd_workspace_len, svd_ops_workspace_len, svd_pseudoinverse,
     tikhonov_solve, tikhonov_workspace_len,
@@ -85,7 +85,7 @@ pub fn solve_linear_system(
         &mut x,
         n,
         &mut pivots,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .map_err(|err| match err {
         LinalgError::SingularMatrix => LinearAlgebraError::SolutionNotFound,
@@ -121,7 +121,7 @@ pub fn solve_normal_equation(
         b.as_slice(),
         &mut x,
         &mut perm,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .map_err(map_linalg_error)?;
     if rank == 0 {
@@ -151,7 +151,7 @@ pub fn try_moore_penrose_pseudoinverse(
         n,
         epsilon,
         &mut pinv,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .map_err(map_linalg_error)?;
     Ok(DMatrix::from_row_slice(n, m, &pinv))
@@ -182,7 +182,7 @@ pub fn solve_cholesky_system(
         b.as_slice(),
         &mut x,
         n,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .map_err(map_linalg_error)?;
     Ok(DVector::from_vec(x))
@@ -209,7 +209,7 @@ pub fn solve_tikhonov_system(
         b.as_slice(),
         lambda,
         &mut x,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .map_err(map_linalg_error)?;
     Ok(DVector::from_vec(x))
@@ -263,7 +263,7 @@ pub fn solve_conjugate_gradient(
         &mut x,
         tol,
         max_iter,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .map_err(map_linalg_error)?;
     Ok(DVector::from_vec(x))
@@ -293,11 +293,13 @@ pub fn solve_gmres_restarted(
         restart,
         tol,
         max_restarts,
-        &mut SolverWorkspace::new(&mut scratch),
+        &mut ByteArena::from_slice(&mut scratch),
     )
     .map_err(map_linalg_error)?;
     Ok(DVector::from_vec(x))
 }
+
+pub use super::numerical_workspace::*;
 
 #[cfg(test)]
 mod tests {

@@ -4,6 +4,8 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
+bytemuck = { workspace = true, features = ["derive"] }
+math_memory = { path = "../00_foundation/math_memory", features = ["alloc"] }
 nalgebra = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }

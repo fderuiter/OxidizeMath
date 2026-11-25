@@ -1,5 +1,6 @@
 //! Verifies typed `MathError` bounds diagnostics and zero-allocation failure paths
 //! on `UnitInterval`, `PositiveFloat`, and `NonNegativeFloat`.
+#![cfg(feature = "std")]
 
 use diagnostics::Diagnostic;
 use math_commons::error::MathError;

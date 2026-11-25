@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/00_foundation/math_memory",
     "crates/federated_registry",
     "crates/diagnostics",
     "crates/oxidize_core",
@@ -42,6 +43,7 @@ broken_intra_doc_links = "warn"
 [workspace.dependencies]
 approx = "0.5.1"
 arboard = "3.4"
+bytemuck = { version = "1.25.2", default-features = false }
 chrono = "0.4"
 console_error_panic_hook = "0.1.7"
 dashu = { version = "0.4.4", features = ["num-traits_v02"] }
@@ -53,7 +55,7 @@ js-sys = "0.3.107"
 libm = "0.2.16"
 muda = { version = "0.19.3", default-features = false }
 nalgebra = "0.34.0"
-num-complex = "0.4.6"
+num-complex = { version = "0.4.6", features = ["bytemuck"] }
 num-traits = "0.2.19"
 petgraph = "0.6.4"
 png = "0.18"

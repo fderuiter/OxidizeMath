@@ -4,7 +4,7 @@ use super::core::OuParams;
 pub use super::exact_solver::ExactOuSolver;
 use crate::error::OuError;
 use engine_diffeq::{EulerMaruyamaSolver, SdeSystem, StochasticCalculus};
-use math_commons::math_kernel::types::SolverWorkspace;
+use math_commons::math_kernel::types::ByteArena;
 use oxidize_core::rng::OxidizeRng;
 use rand::Rng;
 
@@ -146,7 +146,7 @@ impl EulerMaruyama {
         };
         let mut state = [x_current];
         let mut scratch = [0.0_f64; 4];
-        let mut ws = SolverWorkspace::new(&mut scratch);
+        let mut ws = ByteArena::from_slice(&mut scratch);
         self.engine
             .step(&sde, 0.0, self.dt.value(), &mut state, &mut ws, rng);
         debug_assert!(state[0].is_finite() || !x_current.is_finite());

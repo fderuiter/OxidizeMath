@@ -76,6 +76,8 @@ pub trait Scalar:
     + SubAssign
     + MulAssign
     + DivAssign
+    + math_memory::Pod
+    + math_memory::Zeroable
     + 'static
 {
     /// Additive identity `0`.

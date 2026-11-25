@@ -2,7 +2,7 @@
 #![cfg(feature = "std")]
 
 use math_commons::stochastic::{
-    SolverWorkspace, calibrate_ou, ctmc_steady_state, dtmc_stationary_distribution,
+    StochasticWorkspace, calibrate_ou, ctmc_steady_state, dtmc_stationary_distribution,
 };
 use std::hint::black_box;
 use verified_engine::allocator::VerifiedAllocator;
@@ -65,7 +65,7 @@ fn periodic_three_state_dtmc_and_multi_sink_rejection_are_zero_alloc() {
         0.0, 1.0, 0.0, //
     ];
 
-    let mut ws = SolverWorkspace::new(4, 0);
+    let mut ws = StochasticWorkspace::new(4, 0);
     let mut pi3 = [0.0_f64; 3];
     let mut pi4 = [0.0_f64; 4];
 
@@ -98,7 +98,7 @@ fn periodic_three_state_dtmc_and_multi_sink_rejection_are_zero_alloc() {
 #[test]
 fn slow_ctmc_rates_solve_accurately_with_zero_allocations() {
     let g_slow = [-1e-7, 1e-7, 3e-7, -3e-7];
-    let mut ws = SolverWorkspace::new(4, 0);
+    let mut ws = StochasticWorkspace::new(4, 0);
     let mut pi = [0.0_f64; 2];
 
     VerifiedEngine::run_verified(|| {
@@ -131,7 +131,7 @@ fn ou_calibration_and_quantile_summary_are_zero_alloc_and_accurate() {
     let slow_obs = simulate_exact_ou(2.0, 0.08, 0.35, 2.0, 0.02, 4_000, 0xCAFE_BABE_1234_5678);
     let fast_obs = simulate_exact_ou(-1.2, 6.0, 0.45, -1.2, 0.05, 4_000, 0xDEAD_BEEF_8765_4321);
 
-    let mut ws = SolverWorkspace::new(0, 4_096);
+    let mut ws = StochasticWorkspace::new(0, 4_096);
 
     VerifiedEngine::run_verified(|| {
         let slow_cal = ws

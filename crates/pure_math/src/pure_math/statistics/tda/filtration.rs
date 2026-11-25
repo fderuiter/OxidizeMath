@@ -184,60 +184,77 @@ fn scan_common_forward_neighbors(
 
 #[verified_engine::verified]
 pub(super) fn prepare_sorted_workspace_edges(
-    dist: &[Vec<f64>],
+    dist_flat: &[f64],
+    stride: usize,
     n: usize,
-    out: &mut Vec<FilteredEdge>,
-) {
-    out.clear();
-    for (i, row) in dist.iter().enumerate().take(n) {
-        for (j, &d) in row.iter().enumerate().take(n).skip(i + 1) {
-            out.push(FilteredEdge {
-                diameter: d,
-                u: i as u16,
-                v: j as u16,
-            });
+    out: &mut [[u64; 2]],
+) -> usize {
+    let mut count = 0_usize;
+    for i in 0..n {
+        let row = &dist_flat[i * stride..i * stride + n];
+        for (j, &d) in row.iter().enumerate().skip(i + 1) {
+            out[count] = [d.to_bits(), ((i as u64) << 16) | (j as u64)];
+            count += 1;
         }
     }
-    out.sort_unstable_by(FilteredEdge::cmp_filtration);
+    out[..count].sort_unstable_by(|a, b| {
+        f64::from_bits(a[0])
+            .total_cmp(&f64::from_bits(b[0]))
+            .then_with(|| a[1].cmp(&b[1]))
+    });
+    count
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(super) struct EdgeTriangleCtx<'a> {
+    pub(super) u: usize,
+    pub(super) v: usize,
+    pub(super) e_uv: usize,
+    pub(super) n_words: usize,
+    pub(super) vertex_stride: usize,
+    pub(super) lookup_stride: usize,
+    pub(super) edge_words: usize,
+    pub(super) curr_cycles: usize,
+    pub(super) adj_words: &'a [u64],
+    pub(super) edge_lookup: &'a [usize],
+}
+
 #[verified_engine::verified]
 pub(super) fn append_edge_triangles_and_reduce(
-    u: usize,
-    v: usize,
-    e_uv: usize,
-    n_words: usize,
-    edge_words: usize,
-    curr_cycles: usize,
-    adj_words: &[Vec<u64>],
-    edge_lookup: &[Vec<usize>],
-    triangles: &mut Vec<[usize; 3]>,
+    ctx: &EdgeTriangleCtx<'_>,
+    triangles: &mut [[usize; 3]],
+    triangles_len: &mut usize,
     col_scratch: &mut [u64],
     pivot_for_row: &mut [usize],
-    basis_words: &mut [Vec<u64>],
+    basis_words: &mut [u64],
     basis_rank: &mut usize,
 ) {
-    let bits_u = &adj_words[u];
-    let bits_v = &adj_words[v];
-    for w_idx in 0..n_words {
+    let u = ctx.u;
+    let v = ctx.v;
+    let vs = ctx.vertex_stride;
+    let ls = ctx.lookup_stride;
+    let bits_u = &ctx.adj_words[u * vs..u * vs + ctx.n_words];
+    let bits_v = &ctx.adj_words[v * vs..v * vs + ctx.n_words];
+    for w_idx in 0..ctx.n_words {
         let mut common = bits_u[w_idx] & bits_v[w_idx];
         while common != 0 {
             let tz = common.trailing_zeros() as usize;
             common &= common - 1;
             let w = (w_idx << 6) | tz;
-            let tri = canonical_triple(u, v, w);
-            triangles.push(tri);
-            if *basis_rank < curr_cycles
-                && !has_earlier_common_apex(bits_u, bits_v, &adj_words[w], w_idx, tz)
+            triangles[*triangles_len] = canonical_triple(u, v, w);
+            *triangles_len += 1;
+            let bits_w = &ctx.adj_words[w * vs..w * vs + ctx.n_words];
+            if *basis_rank < ctx.curr_cycles
+                && !has_earlier_common_apex(bits_u, bits_v, bits_w, w_idx, tz)
             {
-                let e_uw = edge_lookup[u][w];
-                let e_vw = edge_lookup[v][w];
+                let e_uw =
+                    ctx.edge_lookup[math_commons::math_kernel::types::flatten_2d_index(u, w, ls)];
+                let e_vw =
+                    ctx.edge_lookup[math_commons::math_kernel::types::flatten_2d_index(v, w, ls)];
                 reduce_incremental_triangle(
                     e_uw,
                     e_vw,
-                    e_uv,
-                    edge_words,
+                    ctx.e_uv,
+                    ctx.edge_words,
                     col_scratch,
                     pivot_for_row,
                     basis_words,
