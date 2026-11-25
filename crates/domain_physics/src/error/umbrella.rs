@@ -6,7 +6,7 @@ use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use domain_applied::error::{AppliedError, KalmanError};
 use math_commons::error::{
     EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, ParseError,
-    ShaderEmitError,
+    QmcError, ShaderEmitError,
 };
 use pure_math::error::{
     AnalysisError, EvolutionError, LinearAlgebraError, MonteCarloError, OptimizationError,
@@ -144,6 +144,13 @@ impl From<FitError> for PhysicsError {
 impl From<LinalgError> for PhysicsError {
     #[verified_engine::verified]
     fn from(err: LinalgError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<QmcError> for PhysicsError {
+    #[verified_engine::verified]
+    fn from(err: QmcError) -> Self {
         Self::MathCommons(MathCommonsError::from(err))
     }
 }

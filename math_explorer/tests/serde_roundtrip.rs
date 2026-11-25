@@ -50,9 +50,24 @@ fn facade_primitives_and_grid_types_roundtrip_json() {
 #[test]
 fn facade_fit_poi_ast_and_errors_roundtrip_json() {
     use math_explorer::ast::{CompiledExpr, parse};
-    use math_explorer::error::MathError;
+    use math_explorer::error::{MathCommonsError, MathError, QmcError};
     use math_explorer::fit::{CurveFit, FitModel, fit_model};
     use math_explorer::poi::LocalExtremum;
+
+    let qmc_err = QmcError::InvalidDimension {
+        dimension: 0,
+        max_supported: 64,
+    };
+    let commons_qmc = MathCommonsError::from(qmc_err);
+    assert_eq!(
+        serde_json::from_str::<QmcError>(&serde_json::to_string(&qmc_err).unwrap()).unwrap(),
+        qmc_err
+    );
+    assert_eq!(
+        serde_json::from_str::<MathCommonsError>(&serde_json::to_string(&commons_qmc).unwrap())
+            .unwrap(),
+        commons_qmc
+    );
 
     let pts = [[0.0, 1.0], [1.0, 3.0], [2.0, 5.0]];
     let curve = fit_model(&pts, FitModel::Linear, false).expect("linear fit");

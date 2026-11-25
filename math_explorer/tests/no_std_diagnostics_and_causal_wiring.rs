@@ -6,7 +6,7 @@ use core::fmt;
 use std::error::Error as StdError;
 
 use math_explorer::diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
-use math_explorer::error::{Error, FitError, LinalgError, MathCommonsError, MathError};
+use math_explorer::error::{Error, FitError, LinalgError, MathCommonsError, MathError, QmcError};
 use math_explorer::math_kernel::types::Dimension;
 use math_explorer::verified_engine::allocator::VerifiedAllocator;
 use math_explorer::verified_engine::engine::VerifiedEngine;
@@ -45,22 +45,34 @@ fn core_only_zero_alloc_diagnostics_and_linalg_error_wiring() {
         actual: Dimension(2),
     };
     let fit = FitError::from(linalg);
+    let qmc = QmcError::InvalidDimension {
+        dimension: 0,
+        max_supported: 64,
+    };
     let commons = MathCommonsError::from(linalg);
+    let commons_qmc = MathCommonsError::from(qmc);
     let facade = Error::from(linalg);
+    let facade_qmc = Error::from(qmc);
 
     assert!(fit.source().is_some());
     assert!(commons.source().is_some());
+    assert!(commons_qmc.source().is_some());
     assert!(facade.source().is_some());
+    assert!(facade_qmc.source().is_some());
 
     let (total_fields, _metrics) = VerifiedEngine::run_verified(|| {
         assert_eq!(linalg.severity(), Severity::Error);
+        assert_eq!(qmc.severity(), Severity::Error);
         count_visited_fields(&linalg)
+            + count_visited_fields(&qmc)
             + count_visited_fields(&math)
             + count_visited_fields(&fit)
             + count_visited_fields(&commons)
+            + count_visited_fields(&commons_qmc)
             + count_visited_fields(&facade)
+            + count_visited_fields(&facade_qmc)
     });
-    assert!(total_fields >= 18);
+    assert!(total_fields >= 28);
 }
 
 #[cfg(all(
@@ -76,9 +88,60 @@ mod full_domain_wiring {
     use super::*;
     use math_explorer::error::{
         AIError, AppliedError, BatteryError, BiologyError, BraidError, ClimateError,
-        EpidemiologyDomainError, GameTheoryError, HighEnergyError, KnotError, LinearAlgebraError,
-        PhysicsError, PureMathError, SandpileError, Su11HyperbolicError,
+        EpidemiologyDomainError, GameTheoryError, HighEnergyError, KellyError, KnotError,
+        LinearAlgebraError, MonteCarloError, PhysicsError, PureMathError, SandpileError,
+        Su11HyperbolicError,
     };
+
+    #[test]
+    fn all_umbrellas_implement_from_qmc_error_and_kelly_retains_linalg_source() {
+        let qmc = QmcError::InvalidBase { base: 1 };
+        let mc = MonteCarloError::from(qmc);
+        let commons = MathCommonsError::from(qmc);
+        let pm = PureMathError::from(qmc);
+        let ai = AIError::from(qmc);
+        let applied = AppliedError::from(qmc);
+        let bio = BiologyError::from(qmc);
+        let climate = ClimateError::from(qmc);
+        let epi = EpidemiologyDomainError::from(qmc);
+        let phys = PhysicsError::from(qmc);
+        let facade = Error::from(qmc);
+
+        let kelly_spd = KellyError::NotPositiveDefinite;
+        let kelly_linalg = KellyError::from(LinalgError::SingularMatrix);
+
+        for has_src in [
+            mc.source().is_some(),
+            commons.source().is_some(),
+            pm.source().is_some(),
+            ai.source().is_some(),
+            applied.source().is_some(),
+            bio.source().is_some(),
+            climate.source().is_some(),
+            epi.source().is_some(),
+            phys.source().is_some(),
+            facade.source().is_some(),
+            kelly_spd.source().is_some(),
+            kelly_linalg.source().is_some(),
+        ] {
+            assert!(has_src);
+        }
+
+        let (visited, _metrics) = VerifiedEngine::run_verified(|| {
+            count_visited_fields(&mc)
+                + count_visited_fields(&pm)
+                + count_visited_fields(&ai)
+                + count_visited_fields(&applied)
+                + count_visited_fields(&bio)
+                + count_visited_fields(&climate)
+                + count_visited_fields(&epi)
+                + count_visited_fields(&phys)
+                + count_visited_fields(&facade)
+                + count_visited_fields(&kelly_spd)
+                + count_visited_fields(&kelly_linalg)
+        });
+        assert!(visited >= 36);
+    }
 
     #[test]
     fn all_umbrellas_implement_from_linalg_error_and_retain_source() {

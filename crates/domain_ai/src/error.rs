@@ -1,7 +1,7 @@
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use thiserror::Error;
 
 /// Error variants produced by AI architectures, optimizers, and training loops.
+#[non_exhaustive]
 #[derive(Error, Debug, Clone, PartialEq)]
 pub enum AIError {
     /// Invalid parameter value (e.g. negative learning rate).
@@ -90,6 +90,10 @@ pub enum AIError {
     #[error("{0}")]
     Math(#[from] math_commons::error::MathError),
 
+    /// Wrapped foundational `math_commons` umbrella error.
+    #[error("{0}")]
+    MathCommons(#[from] math_commons::error::MathCommonsError),
+
     /// Foundational `#![no_std]` linear algebra engine error.
     #[error("{0}")]
     Linalg(#[from] math_commons::error::LinalgError),
@@ -110,49 +114,43 @@ pub enum AIError {
 /// Standard result alias used across `domain_ai` computations.
 pub type Result<T> = math_commons::error::MathResult<T>;
 
-impl Diagnostic for AIError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        match self {
-            Self::Math(err) => err.severity(),
-            Self::Linalg(err) => err.severity(),
-            Self::Fit(err) => err.severity(),
-            Self::Optimization(err) => err.severity(),
-            Self::LinearAlgebra(err) => err.severity(),
-            _ => Severity::Error,
-        }
-    }
-
-    #[verified_engine::verified]
-    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
-        match self {
-            Self::Math(err) => err.visit_fields(visitor),
-            Self::Linalg(err) => err.visit_fields(visitor),
-            Self::Fit(err) => err.visit_fields(visitor),
-            Self::Optimization(err) => err.visit_fields(visitor),
-            Self::LinearAlgebra(err) => err.visit_fields(visitor),
-            _ => {
-                visitor.record_str("error_type", "AIError");
-                visitor.record_display("description", self);
-            }
-        }
-        visitor.record_str("umbrella_type", "AIError");
-    }
-}
+mod conversions;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use diagnostics::{Diagnostic, Severity};
+    use math_commons::error::{
+        EvalError, FitError, GlslError, LexError, LinalgError, ParseError, QmcError,
+        ShaderEmitError,
+    };
     use std::error::Error as StdError;
 
     #[test]
     #[verified_engine::verified]
-    fn test_ai_error_math_preserves_source() {
-        let err = AIError::from(math_commons::error::MathError::DimensionMismatch {
-            expected: math_commons::math_kernel::types::Dimension(2),
-            actual: math_commons::math_kernel::types::Dimension(3),
-        });
-        assert!(err.source().is_some());
-        assert_eq!(err.severity(), Severity::Error);
+    fn test_ai_error_umbrella_preserves_sources_and_diagnostics() {
+        let cases = [
+            AIError::from(math_commons::error::MathError::DimensionMismatch {
+                expected: math_commons::math_kernel::types::Dimension(2),
+                actual: math_commons::math_kernel::types::Dimension(3),
+            }),
+            AIError::from(QmcError::InvalidBase { base: 1 }),
+            AIError::from(LinalgError::SingularMatrix),
+            AIError::from(FitError::SingularMatrix),
+            AIError::from(EvalError::UnknownVariable("w".to_string())),
+            AIError::from(GlslError::DepthLimitExceeded(64)),
+            AIError::from(LexError::input_too_long(9000)),
+            AIError::from(ParseError::EmptyExpression),
+            AIError::from(ShaderEmitError::NonFiniteLiteral),
+            AIError::from("custom conversion".to_string()),
+        ];
+        for err in &cases {
+            assert!(err.source().is_some());
+            assert_eq!(err.severity(), Severity::Error);
+            assert_eq!(
+                err.metadata().get("umbrella_type").map(String::as_str),
+                Some("AIError")
+            );
+        }
     }
 }

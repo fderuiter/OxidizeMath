@@ -14,12 +14,12 @@
 use math_explorer::diagnostics::Diagnostic;
 use math_explorer::error::{
     AIError, BatteryError, BotanicalError, BraidError, ChaosError, ClimateError, CopulaError,
-    DoseFluenceError, EloError, EngineeringError, EpidemiologyError, FitError, FluidError,
+    DoseFluenceError, EloError, EngineeringError, EpidemiologyError, Error, FitError, FluidError,
     GameTheoryError, Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError,
     HyperbolicError, IsosurfaceError, KellyError, KnotError, LoraError, MarketPricingError,
     MarkovError, MatchModelError, MathError, MonteCarloError, NumberTheoryError,
-    OptionPricingError, OuError, PharmacokineticsError, PoissonError, QueueingError, RadarError,
-    SandpileError, ShaderEmitError, SolidStateError, StandardModelError, StatMechError,
+    OptionPricingError, OuError, PharmacokineticsError, PoissonError, QmcError, QueueingError,
+    RadarError, SandpileError, ShaderEmitError, SolidStateError, StandardModelError, StatMechError,
     Su11HyperbolicError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
@@ -62,6 +62,16 @@ fn pure_math_and_core_errors_emit_readable_display_and_metadata() {
         },
     );
     assert_readable_diagnostic("FitError", &FitError::UnsupportedDegree { degree: 5 });
+    assert_readable_diagnostic(
+        "QmcError",
+        &QmcError::InvalidDimension {
+            dimension: 0,
+            max_supported: 64,
+        },
+    );
+    let facade_qmc = Error::from(QmcError::InvalidBase { base: 1 });
+    facade_qmc.emit_to_global_bus();
+    facade_qmc.emit_with_source("ErrorFormattingTest");
     assert_readable_diagnostic(
         "ShaderEmitError",
         &ShaderEmitError::RecursionLimitExceeded(64),

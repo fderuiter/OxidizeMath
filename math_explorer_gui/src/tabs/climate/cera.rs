@@ -120,6 +120,7 @@ impl CeraTool {
                     self.epochs_trained = 0;
                 }
                 Err(e) => {
+                    crate::telemetry::emit_diagnostic("CeraEmulator", &e);
                     self.clear_persisted_model();
                     self.prediction_result = Some(Err(e.to_string()));
                     return;

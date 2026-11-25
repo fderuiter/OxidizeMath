@@ -9,7 +9,10 @@ use super::eval::MAX_EVAL_DEPTH;
 use super::expr::{BinaryOp, Expr, Func, UnaryOp};
 use super::limits::{MAX_AST_NODES, MAX_GLSL_OUTPUT_BYTES};
 use super::shader_preludes::ShaderTarget;
-use std::f64::consts::{E, PI, TAU};
+use alloc::format;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use core::f64::consts::{E, PI, TAU};
 
 /// Errors produced when lowering an [`Expr`] to WGSL or GLSL shader source.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -45,43 +48,6 @@ pub enum ShaderEmitError {
     /// Variable identifier is invalid or unsafe for shader code generation.
     #[error("Invalid or reserved shader variable identifier '{0}'")]
     InvalidIdentifier(String),
-}
-
-impl math_diagnostics::Diagnostic for ShaderEmitError {
-    fn severity(&self) -> math_diagnostics::Severity {
-        math_diagnostics::Severity::Error
-    }
-
-    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
-        visitor.record_str("error_type", "ShaderEmitError");
-        visitor.record_display("description", self);
-        match self {
-            Self::RecursionLimitExceeded(max_depth) => {
-                visitor.record_usize("max_depth", *max_depth);
-            }
-            Self::NodeLimitExceeded(max_nodes) => {
-                visitor.record_usize("max_nodes", *max_nodes);
-            }
-            Self::OutputLimitExceeded(max_bytes) => {
-                visitor.record_usize("max_output_bytes", *max_bytes);
-            }
-            Self::WrongArgumentCount {
-                func,
-                expected,
-                found,
-            } => {
-                visitor.record_str("function", func.as_str());
-                visitor.record_usize("expected_args", *expected);
-                visitor.record_usize("found_args", *found);
-            }
-            Self::NonFiniteLiteral => {
-                visitor.record_str("reason", "non_finite_literal");
-            }
-            Self::InvalidIdentifier(ident) => {
-                visitor.record_str("identifier", ident);
-            }
-        }
-    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

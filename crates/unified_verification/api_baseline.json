@@ -6399,10 +6399,10 @@
       "signature": "impl < S > StandardSolverAdapter < S > { pub fn new (_ : S) -> Self }"
     },
     {
-      "signature": "impl FusedEulerSolver { pub fn cfl_substeps_2d (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : usize ,) -> (usize , f64) }"
+      "signature": "impl FusedEulerSolver { pub fn cfl_dt_2d (_ : f64 , _ : f64 , _ : f64) -> f64 }"
     },
     {
-      "signature": "impl FusedEulerSolver { pub fn cfl_dt_2d (_ : f64 , _ : f64 , _ : f64) -> f64 }"
+      "signature": "impl FusedEulerSolver { pub fn cfl_substeps_2d (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : usize ,) -> (usize , f64) }"
     },
     {
       "signature": "impl FusedEulerSolver { pub fn new () -> Self }"
@@ -13182,6 +13182,9 @@
     },
     {
       "signature": "pub use math_diagnostics :: Severity"
+    },
+    {
+      "signature": "pub use math_rng :: QmcError"
     },
     {
       "signature": "pub use umbrella :: MathCommonsError"
@@ -23857,6 +23860,9 @@
     },
     {
       "signature": "pub use math_commons :: error :: ParseError"
+    },
+    {
+      "signature": "pub use math_commons :: error :: QmcError"
     },
     {
       "signature": "pub use math_commons :: error :: ShaderEmitError"

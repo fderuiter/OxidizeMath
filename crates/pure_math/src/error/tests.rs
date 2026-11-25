@@ -217,7 +217,32 @@ fn test_kelly_validation_and_solvency_variants_umbrella_and_diagnostics() {
             iterations: 512,
             residual: 1e-3,
         },
+        KellyError::from(engine_linalg::LinalgError::SingularMatrix),
     ];
+    assert!(KellyError::NotPositiveDefinite.source().is_some());
+    assert_eq!(
+        KellyError::NotPositiveDefinite
+            .metadata()
+            .get("code")
+            .map(String::as_str),
+        Some("LINALG-005")
+    );
+    assert_eq!(
+        KellyError::from(engine_linalg::LinalgError::SingularMatrix)
+            .metadata()
+            .get("code")
+            .map(String::as_str),
+        Some("LINALG-004")
+    );
+    let qmc_mc = MonteCarloError::from(math_rng::QmcError::InvalidBase { base: 1 });
+    assert!(qmc_mc.source().is_some());
+    assert_eq!(
+        qmc_mc.metadata().get("code").map(String::as_str),
+        Some("RNG-QMC-002")
+    );
+    let qmc_umbrella = PureMathError::from(math_rng::QmcError::InvalidBase { base: 1 });
+    assert!(qmc_umbrella.source().is_some());
+
     let bus = DiagnosticBus::new();
     for leaf in variants {
         let msg = leaf.to_string();

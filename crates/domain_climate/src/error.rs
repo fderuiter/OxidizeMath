@@ -1,11 +1,11 @@
 //! Error types for the climate modeling domain.
 
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
-use math_commons::error::{FitError, LinalgError, MathError};
+use math_commons::error::{FitError, LinalgError, MathCommonsError, MathError};
 use pure_math::error::{LinearAlgebraError, OptimizationError};
 use thiserror::Error;
 
 /// Domain-specific errors for climate emulation, tensor layers, and loss functions.
+#[non_exhaustive]
 #[derive(Error, Debug, Clone, PartialEq)]
 pub enum ClimateError {
     /// Configured `aligned_channels` exceeded `latent_channels`.
@@ -59,6 +59,10 @@ pub enum ClimateError {
     #[error("{0}")]
     Math(#[from] MathError),
 
+    /// Foundational `math_commons` umbrella error.
+    #[error("{0}")]
+    MathCommons(#[from] MathCommonsError),
+
     /// Foundational `#![no_std]` linear algebra engine error.
     #[error("{0}")]
     Linalg(#[from] LinalgError),
@@ -76,32 +80,42 @@ pub enum ClimateError {
     LinearAlgebra(#[from] LinearAlgebraError),
 }
 
-impl Diagnostic for ClimateError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        match self {
-            Self::Math(err) => err.severity(),
-            Self::Linalg(err) => err.severity(),
-            Self::Fit(err) => err.severity(),
-            Self::Optimization(err) => err.severity(),
-            Self::LinearAlgebra(err) => err.severity(),
-            _ => Severity::Error,
-        }
-    }
+mod conversions;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use diagnostics::{Diagnostic, Severity};
+    use math_commons::error::{
+        EvalError, GlslError, LexError, ParseError, QmcError, ShaderEmitError,
+    };
+    use std::error::Error as StdError;
+
+    #[test]
     #[verified_engine::verified]
-    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
-        match self {
-            Self::Math(err) => err.visit_fields(visitor),
-            Self::Linalg(err) => err.visit_fields(visitor),
-            Self::Fit(err) => err.visit_fields(visitor),
-            Self::Optimization(err) => err.visit_fields(visitor),
-            Self::LinearAlgebra(err) => err.visit_fields(visitor),
-            _ => {
-                visitor.record_str("error_type", "ClimateError");
-                visitor.record_display("description", self);
-            }
+    fn test_climate_error_umbrella_preserves_sources_and_diagnostics() {
+        let cases = [
+            ClimateError::from(MathError::DimensionMismatch {
+                expected: math_commons::math_kernel::types::Dimension(2),
+                actual: math_commons::math_kernel::types::Dimension(3),
+            }),
+            ClimateError::from(QmcError::InvalidBase { base: 1 }),
+            ClimateError::from(LinalgError::SingularMatrix),
+            ClimateError::from(FitError::SingularMatrix),
+            ClimateError::from(EvalError::UnknownVariable("t".to_string())),
+            ClimateError::from(GlslError::DepthLimitExceeded(64)),
+            ClimateError::from(LexError::input_too_long(9000)),
+            ClimateError::from(ParseError::EmptyExpression),
+            ClimateError::from(ShaderEmitError::NonFiniteLiteral),
+            ClimateError::from("custom conversion".to_string()),
+        ];
+        for err in &cases {
+            assert!(err.source().is_some());
+            assert_eq!(err.severity(), Severity::Error);
+            assert_eq!(
+                err.metadata().get("umbrella_type").map(String::as_str),
+                Some("ClimateError")
+            );
         }
-        visitor.record_str("umbrella_type", "ClimateError");
     }
 }

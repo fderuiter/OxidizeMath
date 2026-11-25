@@ -1,10 +1,10 @@
 // [cite:math_commons]
-#[cfg(feature = "std")]
 pub use crate::ast::{EvalError, GlslError, LexError, ParseError, ShaderEmitError};
 use crate::math_kernel::types::Dimension;
 use alloc::string::String;
 pub use engine_linalg::LinalgError;
 pub use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+pub use math_rng::QmcError;
 use thiserror::Error;
 
 /// Centralized mathematical error type.
@@ -78,21 +78,34 @@ impl Diagnostic for MathError {
         visitor.record_display("description", self);
         match self {
             Self::DimensionMismatch { expected, actual } => {
+                visitor.record_str("code", "MATH-CORE-001");
                 visitor.record_usize("expected_dim", expected.0);
                 visitor.record_usize("actual_dim", actual.0);
             }
-            Self::OutOfBounds { value, min, max }
-            | Self::StrictlyOutOfBounds { value, min, max } => {
+            Self::OutOfBounds { value, min, max } => {
+                visitor.record_str("code", "MATH-CORE-002");
+                visitor.record_f64("value", *value);
+                visitor.record_f64("min", *min);
+                visitor.record_f64("max", *max);
+            }
+            Self::StrictlyOutOfBounds { value, min, max } => {
+                visitor.record_str("code", "MATH-CORE-003");
                 visitor.record_f64("value", *value);
                 visitor.record_f64("min", *min);
                 visitor.record_f64("max", *max);
             }
             Self::InvalidPermutation { index, value, len } => {
+                visitor.record_str("code", "MATH-CORE-004");
                 visitor.record_usize("index", *index);
                 visitor.record_usize("value", *value);
                 visitor.record_usize("len", *len);
             }
-            Self::NumericalError { reason } | Self::ConversionError { reason } => {
+            Self::NumericalError { reason } => {
+                visitor.record_str("code", "MATH-CORE-005");
+                visitor.record_str("reason", reason);
+            }
+            Self::ConversionError { reason } => {
+                visitor.record_str("code", "MATH-CORE-006");
                 visitor.record_str("reason", reason);
             }
         }
@@ -280,6 +293,7 @@ mod tests {
             }),
             MathCommonsError::from(FitError::SingularMatrix),
             MathCommonsError::from(LinalgError::SingularMatrix),
+            MathCommonsError::from(QmcError::InvalidBase { base: 1 }),
             MathCommonsError::from(lex),
             MathCommonsError::from(parse),
             MathCommonsError::from(unknown_fn),
@@ -298,6 +312,59 @@ mod tests {
                 Some("MathCommonsError")
             );
             assert!(meta.contains_key("error_type"));
+        }
+    }
+}
+
+#[cfg(test)]
+mod nostd_tests {
+    use super::*;
+    use alloc::string::ToString;
+    use core::error::Error as CoreError;
+
+    struct CountVisitor(usize);
+
+    impl DiagnosticVisitor for CountVisitor {
+        fn record_str(&mut self, _key: &str, _value: &str) {
+            self.0 += 1;
+        }
+
+        fn record_display(&mut self, _key: &str, _value: &dyn core::fmt::Display) {
+            self.0 += 1;
+        }
+    }
+
+    #[test]
+    fn nostd_umbrella_and_ast_errors_compile_and_visit_fields() {
+        let expr = crate::ast::parse("atan2(y, x) + 1").expect("parse in no_std");
+        let compiled =
+            crate::ast::CompiledExpr::compile_with_vars(&expr, &["x", "y"]).expect("compile");
+        assert!(
+            (compiled.eval_2d(1.0, 1.0, &[]) - (core::f64::consts::FRAC_PI_4 + 1.0)).abs() < 1e-12
+        );
+
+        let all = [
+            MathCommonsError::from(MathError::DimensionMismatch {
+                expected: Dimension(2),
+                actual: Dimension(3),
+            }),
+            MathCommonsError::from(FitError::Linalg(LinalgError::NotPositiveDefinite)),
+            MathCommonsError::from(LinalgError::SingularMatrix),
+            MathCommonsError::from(QmcError::InvalidDimension {
+                dimension: 0,
+                max_supported: 64,
+            }),
+            MathCommonsError::from(LexError::input_too_long(9999)),
+            MathCommonsError::from(ParseError::EmptyExpression),
+            MathCommonsError::from(EvalError::UnknownVariable("k".to_string())),
+            MathCommonsError::from(GlslError::DepthLimitExceeded(64)),
+            MathCommonsError::from(ShaderEmitError::NonFiniteLiteral),
+        ];
+        for err in &all {
+            assert!(err.source().is_some());
+            let mut v = CountVisitor(0);
+            err.visit_fields(&mut v);
+            assert!(v.0 >= 3);
         }
     }
 }

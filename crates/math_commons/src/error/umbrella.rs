@@ -1,7 +1,8 @@
 // [cite:math_commons]
-use super::{Diagnostic, DiagnosticVisitor, FitError, LinalgError, MathError, Severity};
-#[cfg(feature = "std")]
-use super::{EvalError, GlslError, LexError, ParseError, ShaderEmitError};
+use super::{
+    Diagnostic, DiagnosticVisitor, EvalError, FitError, GlslError, LexError, LinalgError,
+    MathError, ParseError, QmcError, Severity, ShaderEmitError,
+};
 use alloc::string::String;
 use thiserror::Error;
 
@@ -19,24 +20,22 @@ pub enum MathCommonsError {
     /// `#![no_std]` linear algebra engine failure.
     #[error("{0}")]
     Linalg(#[from] LinalgError),
+    /// `#![no_std]` Quasi-Monte Carlo sequence or view failure.
+    #[error("{0}")]
+    Qmc(#[from] QmcError),
     /// AST lexical analysis failure.
-    #[cfg(feature = "std")]
     #[error("{0}")]
     Lex(#[from] LexError),
     /// AST syntax parsing failure.
-    #[cfg(feature = "std")]
     #[error("{0}")]
     Parse(#[from] ParseError),
     /// AST runtime evaluation failure.
-    #[cfg(feature = "std")]
     #[error("{0}")]
     Eval(#[from] EvalError),
     /// AST-to-GLSL transpilation failure.
-    #[cfg(feature = "std")]
     #[error("{0}")]
     Glsl(#[from] GlslError),
     /// AST-to-WGSL/GLSL shader emission failure.
-    #[cfg(feature = "std")]
     #[error("{0}")]
     ShaderEmit(#[from] ShaderEmitError),
 }
@@ -47,15 +46,11 @@ impl MathCommonsError {
             Self::Math(err) => err,
             Self::Fit(err) => err,
             Self::Linalg(err) => err,
-            #[cfg(feature = "std")]
+            Self::Qmc(err) => err,
             Self::Lex(err) => err,
-            #[cfg(feature = "std")]
             Self::Parse(err) => err,
-            #[cfg(feature = "std")]
             Self::Eval(err) => err,
-            #[cfg(feature = "std")]
             Self::Glsl(err) => err,
-            #[cfg(feature = "std")]
             Self::ShaderEmit(err) => err,
         }
     }

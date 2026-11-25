@@ -1,7 +1,7 @@
 use super::extract_defined_error_idents;
 use crate::api_drift::ApiItem;
 use crate::api_drift::facade::{
-    ParsedSignatureMap, is_facade_reachable_file, is_tier2_engine_file,
+    ParsedSignatureMap, is_facade_reachable_file, is_tier0_foundation_file, is_tier2_engine_file,
 };
 use oxidize_core::traceability::AstCache;
 use std::collections::{BTreeMap, BTreeSet};
@@ -103,6 +103,40 @@ fn collect_macro_from_sources(tokens: proc_macro2::TokenStream, out: &mut BTreeS
     }
 }
 
+fn resolve_child_mod_path(
+    parent_file: &Path,
+    item_mod: &syn::ItemMod,
+) -> Option<std::path::PathBuf> {
+    if let Some(attr_path) = item_mod
+        .attrs
+        .iter()
+        .find(|a| a.path().is_ident("path"))
+        .and_then(|a| match &a.meta {
+            syn::Meta::NameValue(nv) => match &nv.value {
+                syn::Expr::Lit(el) => match &el.lit {
+                    syn::Lit::Str(s) => Some(s.value()),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        })
+    {
+        return parent_file.parent().map(|p| p.join(attr_path));
+    }
+    if parent_file.file_name().and_then(|n| n.to_str()) == Some("mod.rs") {
+        parent_file
+            .parent()
+            .map(|p| p.join(format!("{}.rs", item_mod.ident)))
+    } else {
+        Some(
+            parent_file
+                .with_extension("")
+                .join(format!("{}.rs", item_mod.ident)),
+        )
+    }
+}
+
 fn parse_supported_from_idents(
     path: &Path,
     umbrella_ident: &str,
@@ -112,6 +146,7 @@ fn parse_supported_from_idents(
     let Some(ast) = cache.get_or_load_fs(path).and_then(|e| e.ast.as_ref()) else {
         return supported;
     };
+    let mut child_paths = Vec::new();
     for item in &ast.items {
         match item {
             syn::Item::Enum(en) if en.ident == umbrella_ident => {
@@ -132,7 +167,17 @@ fn parse_supported_from_idents(
             syn::Item::Macro(mac) if mac.mac.path.is_ident("impl_error_from") => {
                 collect_macro_from_sources(mac.mac.tokens.clone(), &mut supported);
             }
+            syn::Item::Mod(item_mod) if item_mod.content.is_none() => {
+                if let Some(child) = resolve_child_mod_path(path, item_mod) {
+                    child_paths.push(child);
+                }
+            }
             _ => {}
+        }
+    }
+    for child in child_paths {
+        if child.is_file() {
+            supported.extend(parse_supported_from_idents(&child, umbrella_ident, cache));
         }
     }
     supported
@@ -222,6 +267,8 @@ pub(super) fn audit_crate_umbrella_conversions(
     cache: &mut AstCache,
     violations: &mut Vec<String>,
 ) {
+    let tier0_errors =
+        collect_defined_errors_under_prefix(apis, parsed_sigs, is_tier0_foundation_file);
     let tier2_errors = collect_defined_errors_under_prefix(apis, parsed_sigs, is_tier2_engine_file);
 
     for spec in CRATE_UMBRELLA_SPECS {
@@ -230,9 +277,14 @@ pub(super) fn audit_crate_umbrella_conversions(
             continue;
         }
         let supported = parse_supported_from_idents(&umbrella_path, spec.umbrella_ident, cache);
-        let mut required: BTreeMap<String, String> = tier2_errors
+        let mut required: BTreeMap<String, String> = tier0_errors
             .iter()
-            .map(|(e, p)| (e.clone(), format!("Tier 2 engine `{p}`")))
+            .map(|(e, p)| (e.clone(), format!("Tier 0 foundation `{p}`")))
+            .chain(
+                tier2_errors
+                    .iter()
+                    .map(|(e, p)| (e.clone(), format!("Tier 2 engine `{p}`"))),
+            )
             .collect();
         for (err, p) in collect_defined_errors_under_prefix(apis, parsed_sigs, |p| {
             p.starts_with(spec.crate_prefix)
@@ -261,7 +313,7 @@ pub(super) fn audit_crate_umbrella_conversions(
     if facade_conv_path.is_file() {
         let supported = parse_supported_from_idents(&facade_conv_path, "Error", cache);
         let all_reachable = collect_defined_errors_under_prefix(apis, parsed_sigs, |p| {
-            (is_facade_reachable_file(p) || is_tier2_engine_file(p))
+            (is_facade_reachable_file(p) || is_tier0_foundation_file(p) || is_tier2_engine_file(p))
                 && !p.starts_with("math_explorer/src/")
         });
         for (err_name, path) in all_reachable {

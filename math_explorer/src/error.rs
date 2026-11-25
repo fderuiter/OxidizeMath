@@ -2,7 +2,7 @@
 
 pub use math_commons::error::{
     EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, MathResult,
-    ParseError, ShaderEmitError,
+    ParseError, QmcError, ShaderEmitError,
 };
 
 #[cfg(feature = "ai")]
@@ -66,6 +66,8 @@ pub enum Error {
     MathCommons(MathCommonsError),
     /// AST parser error.
     Parse(ParseError),
+    /// Foundational `#![no_std]` Quasi-Monte Carlo sequence or view error.
+    Qmc(QmcError),
     /// AST-to-WGSL/GLSL shader emission error.
     ShaderEmit(ShaderEmitError),
     /// Standard I/O error (e.g., mesh export or file serialization).
