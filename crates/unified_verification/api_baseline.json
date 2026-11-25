@@ -4857,6 +4857,120 @@
       "signature": "pub struct TwoPulseModel < M >"
     }
   ],
+  "crates/domain_applied/src/applied/portfolio/frontier.rs": [
+    {
+      "signature": "pub fn constrained_frontier_in_place (_ : & PortfolioSpec , _ : f64 , _ : & [f64] , _ : & mut [PortfolioAllocation] ,) -> Result < usize , PortfolioError >"
+    },
+    {
+      "signature": "pub fn constrained_min_variance (_ : & PortfolioSpec , _ : f64 , _ : & [f64] ,) -> Result < PortfolioAllocation , PortfolioError >"
+    },
+    {
+      "signature": "pub fn constrained_tangency (_ : & PortfolioSpec , _ : f64 , _ : & [f64] ,) -> Result < PortfolioAllocation , PortfolioError >"
+    },
+    {
+      "signature": "pub fn constrained_target_return (_ : & PortfolioSpec , _ : f64 , _ : f64 , _ : & [f64] ,) -> Result < PortfolioAllocation , PortfolioError >"
+    },
+    {
+      "signature": "pub fn long_only_frontier_in_place (_ : & PortfolioSpec , _ : f64 , _ : & mut [PortfolioAllocation] ,) -> Result < usize , PortfolioError >"
+    },
+    {
+      "signature": "pub fn long_only_min_variance (_ : & PortfolioSpec , _ : f64 ,) -> Result < PortfolioAllocation , PortfolioError >"
+    },
+    {
+      "signature": "pub fn long_only_tangency (_ : & PortfolioSpec , _ : f64 ,) -> Result < PortfolioAllocation , PortfolioError >"
+    },
+    {
+      "signature": "pub fn long_only_target_return (_ : & PortfolioSpec , _ : f64 , _ : f64 ,) -> Result < PortfolioAllocation , PortfolioError >"
+    }
+  ],
+  "crates/domain_applied/src/applied/portfolio/mod.rs": [
+    {
+      "signature": "impl PortfolioAllocation { pub fn weights_slice (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl PortfolioSpec { pub fn asset_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl PortfolioSpec { pub fn covariance_at (& self , _ : usize , _ : usize) -> Result < f64 , PortfolioError > }"
+    },
+    {
+      "signature": "impl PortfolioSpec { pub fn evaluate_weights (& self , _ : & [f64] , _ : f64 ,) -> Result < PortfolioAllocation , PortfolioError > }"
+    },
+    {
+      "signature": "impl PortfolioSpec { pub fn expected_returns (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl PortfolioSpec { pub fn from_covariance (_ : & [f64] , _ : & [f64] ,) -> Result < Self , PortfolioError > }"
+    },
+    {
+      "signature": "impl PortfolioSpec { pub fn from_upper_correlations (_ : & [f64] , _ : & [f64] , _ : & [f64] ,) -> Result < Self , PortfolioError > }"
+    },
+    {
+      "signature": "impl PortfolioSpec { pub fn from_volatilities_and_correlations (_ : & [f64] , _ : & [f64] , _ : & [f64] ,) -> Result < Self , PortfolioError > }"
+    },
+    {
+      "signature": "pub const MAX_PORTFOLIO_ASSETS : usize"
+    },
+    {
+      "signature": "pub enum PortfolioError"
+    },
+    {
+      "signature": "pub struct PortfolioAllocation"
+    },
+    {
+      "signature": "pub struct PortfolioSpec"
+    },
+    {
+      "signature": "pub use frontier :: constrained_frontier_in_place"
+    },
+    {
+      "signature": "pub use frontier :: constrained_min_variance"
+    },
+    {
+      "signature": "pub use frontier :: constrained_tangency"
+    },
+    {
+      "signature": "pub use frontier :: constrained_target_return"
+    },
+    {
+      "signature": "pub use frontier :: long_only_frontier_in_place"
+    },
+    {
+      "signature": "pub use frontier :: long_only_min_variance"
+    },
+    {
+      "signature": "pub use frontier :: long_only_tangency"
+    },
+    {
+      "signature": "pub use frontier :: long_only_target_return"
+    },
+    {
+      "signature": "pub use unconstrained :: unconstrained_frontier_in_place"
+    },
+    {
+      "signature": "pub use unconstrained :: unconstrained_min_variance"
+    },
+    {
+      "signature": "pub use unconstrained :: unconstrained_tangency"
+    },
+    {
+      "signature": "pub use unconstrained :: unconstrained_target_return"
+    }
+  ],
+  "crates/domain_applied/src/applied/portfolio/unconstrained.rs": [
+    {
+      "signature": "pub fn unconstrained_frontier_in_place (_ : & PortfolioSpec , _ : f64 , _ : f64 , _ : f64 , _ : & mut [PortfolioAllocation] ,) -> Result < usize , PortfolioError >"
+    },
+    {
+      "signature": "pub fn unconstrained_min_variance (_ : & PortfolioSpec , _ : f64 ,) -> Result < PortfolioAllocation , PortfolioError >"
+    },
+    {
+      "signature": "pub fn unconstrained_tangency (_ : & PortfolioSpec , _ : f64 ,) -> Result < PortfolioAllocation , PortfolioError >"
+    },
+    {
+      "signature": "pub fn unconstrained_target_return (_ : & PortfolioSpec , _ : f64 , _ : f64 ,) -> Result < PortfolioAllocation , PortfolioError >"
+    }
+  ],
   "crates/domain_applied/src/applied/win_ratio/bmi.rs": [
     {
       "signature": "pub fn calculate_bmi (_ : f64 , _ : f64) -> f64"
@@ -5261,6 +5375,9 @@
       "signature": "pub use crate :: applied :: isosurface :: types :: VoxelGridError"
     },
     {
+      "signature": "pub use crate :: applied :: portfolio :: PortfolioError"
+    },
+    {
       "signature": "pub use umbrella :: AppliedError"
     }
   ],
@@ -5301,6 +5418,9 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: PharmacokineticsError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: PortfolioError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: VoxelGridError } }"
     },
     {
@@ -5335,6 +5455,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: PharmacokineticsError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: PortfolioError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: VoxelGridError } }"
@@ -14377,6 +14500,9 @@
       "signature": "pub use crate :: pure_math :: statistics :: queueing :: QueueingError"
     },
     {
+      "signature": "pub use crate :: pure_math :: statistics :: risk :: RiskError"
+    },
+    {
       "signature": "pub use crate :: pure_math :: tensor :: types :: TensorError"
     },
     {
@@ -14518,6 +14644,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: QueueingError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: RiskError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: StochasticError } }"
@@ -22369,6 +22498,125 @@
       "signature": "pub fn multivariate_linear_regression (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Option < DVector < f64 > >"
     }
   ],
+  "crates/pure_math/src/pure_math/statistics/risk/drawdown.rs": [
+    {
+      "signature": "pub fn drawdown_series_from_returns (_ : & [f64] , _ : & mut [f64] ,) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn drawdown_series_from_wealth (_ : & [f64] , _ : & mut [f64] ,) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn max_drawdown_returns (_ : & [f64]) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn max_drawdown_wealth (_ : & [f64]) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn max_underwater_duration_returns (_ : & [f64]) -> Result < usize , RiskError >"
+    },
+    {
+      "signature": "pub fn max_underwater_duration_wealth (_ : & [f64]) -> Result < usize , RiskError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/risk/mod.rs": [
+    {
+      "signature": "pub enum RiskError"
+    },
+    {
+      "signature": "pub fn summarize_return_risk (_ : & [f64] , _ : f64 , _ : f64 , _ : f64 , _ : & mut [f64] ,) -> Result < RiskSummary , RiskError >"
+    },
+    {
+      "signature": "pub struct RiskSummary"
+    },
+    {
+      "signature": "pub use drawdown :: drawdown_series_from_returns"
+    },
+    {
+      "signature": "pub use drawdown :: drawdown_series_from_wealth"
+    },
+    {
+      "signature": "pub use drawdown :: max_drawdown_returns"
+    },
+    {
+      "signature": "pub use drawdown :: max_drawdown_wealth"
+    },
+    {
+      "signature": "pub use drawdown :: max_underwater_duration_returns"
+    },
+    {
+      "signature": "pub use drawdown :: max_underwater_duration_wealth"
+    },
+    {
+      "signature": "pub use ratios :: calmar_ratio"
+    },
+    {
+      "signature": "pub use ratios :: calmar_ratio_wealth"
+    },
+    {
+      "signature": "pub use ratios :: sharpe_ratio"
+    },
+    {
+      "signature": "pub use ratios :: sortino_ratio"
+    },
+    {
+      "signature": "pub use tail :: cornish_fisher_cvar"
+    },
+    {
+      "signature": "pub use tail :: cornish_fisher_var"
+    },
+    {
+      "signature": "pub use tail :: gaussian_cvar"
+    },
+    {
+      "signature": "pub use tail :: gaussian_var"
+    },
+    {
+      "signature": "pub use tail :: historical_cvar"
+    },
+    {
+      "signature": "pub use tail :: historical_var"
+    },
+    {
+      "signature": "pub use tail :: validate_confidence"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/risk/ratios.rs": [
+    {
+      "signature": "pub fn calmar_ratio (_ : & [f64] , _ : f64) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn calmar_ratio_wealth (_ : & [f64] , _ : f64) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn sharpe_ratio (_ : & [f64] , _ : f64 , _ : f64 ,) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn sortino_ratio (_ : & [f64] , _ : f64 , _ : f64 ,) -> Result < f64 , RiskError >"
+    }
+  ],
+  "crates/pure_math/src/pure_math/statistics/risk/tail.rs": [
+    {
+      "signature": "pub fn cornish_fisher_cvar (_ : & [f64] , _ : f64) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn cornish_fisher_var (_ : & [f64] , _ : f64) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn gaussian_cvar (_ : & [f64] , _ : f64) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn gaussian_var (_ : & [f64] , _ : f64) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn historical_cvar (_ : & [f64] , _ : f64 , _ : & mut [f64] ,) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn historical_var (_ : & [f64] , _ : f64 , _ : & mut [f64] ,) -> Result < f64 , RiskError >"
+    },
+    {
+      "signature": "pub fn validate_confidence (_ : f64) -> Result < f64 , RiskError >"
+    }
+  ],
   "crates/pure_math/src/pure_math/statistics/ruin/analytical.rs": [
     {
       "signature": "impl PortfolioBet { pub fn new (_ : UnitInterval , _ : Odds , _ : f64 , _ : f64 ,) -> Result < Self , KellyError > }"
@@ -23691,6 +23939,9 @@
       "signature": "pub use domain_applied :: error :: PharmacokineticsError"
     },
     {
+      "signature": "pub use domain_applied :: error :: PortfolioError"
+    },
+    {
       "signature": "pub use domain_applied :: error :: VoxelGridError"
     },
     {
@@ -23860,6 +24111,9 @@
     },
     {
       "signature": "pub use pure_math :: error :: QueueingError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: RiskError"
     },
     {
       "signature": "pub use pure_math :: error :: StochasticError"

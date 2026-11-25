@@ -266,27 +266,28 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
 fn assert_expected_capability_counts(counts: [usize; 9]) {
     let [plot, raster, dataset_only, unsupported, solid_3d, splat_3d, shader, non_shader, audio] =
         counts;
-    let has_riemannian = cfg!(feature = "pure_math");
-    let has_knot_studio = cfg!(feature = "pure_math");
-    let has_surface_morpho = cfg!(all(feature = "pure_math", feature = "biology"));
-    let extra = usize::from(has_riemannian)
-        + usize::from(has_knot_studio)
-        + usize::from(has_surface_morpho);
+    let has_pm = cfg!(feature = "pure_math");
+    let extra = usize::from(has_pm) * 2 + usize::from(has_pm && cfg!(feature = "biology"));
     let bio_extra = if cfg!(feature = "biology") { 3 } else { 0 };
-    let stochastic_extra = if cfg!(feature = "pure_math") { 3 } else { 0 };
+    let stochastic_extra = if has_pm { 3 } else { 0 };
     let optics_bonus = if cfg!(feature = "physics") { 2 } else { 0 };
-    let extra_su11_hyp = if cfg!(feature = "pure_math") { 2 } else { 0 };
+    let extra_su11_hyp = if has_pm { 2 } else { 0 };
+    let fin_extra = usize::from(has_pm) + usize::from(has_pm && cfg!(feature = "applied"));
     let has_ai = cfg!(feature = "ai");
     let phys_shader = if cfg!(feature = "physics") { 2 } else { 0 };
     let expected_audio = usize::from(cfg!(feature = "biology")) * 2
         + usize::from(cfg!(feature = "physics")) * 5
-        + usize::from(cfg!(feature = "pure_math"))
-        + usize::from(has_riemannian);
+        + usize::from(has_pm) * 2;
     assert_eq!(
         audio, expected_audio,
         "Expected {expected_audio} WAV audio-capable tools"
     );
-    let bonus = bio_extra + stochastic_extra + optics_bonus + extra_su11_hyp + usize::from(has_ai);
+    let bonus = bio_extra
+        + stochastic_extra
+        + optics_bonus
+        + extra_su11_hyp
+        + usize::from(has_ai)
+        + fin_extra;
     let expected_plot = 78 + extra + bonus;
     let expected_solid = 7 + extra;
     let expected_shader = 3 + phys_shader;

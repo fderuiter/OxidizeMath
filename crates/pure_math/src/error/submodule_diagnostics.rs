@@ -15,7 +15,7 @@ use crate::pure_math::{
     number_theory::ambs::AmbsError,
     statistics::{
         black_scholes::OptionPricingError, monte_carlo::MonteCarloError, poisson::PoissonError,
-        queueing::QueueingError,
+        queueing::QueueingError, risk::RiskError,
     },
     tensor::types::TensorError,
 };
@@ -376,5 +376,17 @@ impl Diagnostic for QueueingError {
     #[verified_engine::verified]
     fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         visit_named_error(visitor, "QueueingError", self);
+    }
+}
+
+impl Diagnostic for RiskError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "RiskError", self);
     }
 }

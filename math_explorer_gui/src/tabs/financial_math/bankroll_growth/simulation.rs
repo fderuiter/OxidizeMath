@@ -4,6 +4,7 @@
 
 use super::state::BankrollWagerModel;
 use super::BankrollGrowthTool;
+use crate::web_io::PlatformInstant;
 use egui_plot::PlotPoint;
 use math_explorer::pure_math::statistics::kelly::{
     drawdown_constrained_kelly, drawdown_constrained_push_kelly,
@@ -166,6 +167,7 @@ fn settle_quarter_step(bankroll: f64, frac: f64, net_b: f64, outcome: QuarterLin
 
 impl BankrollGrowthTool {
     pub(super) fn recalculate(&mut self) {
+        let start = PlatformInstant::now();
         self.clear_trajectory_buffers();
         let o = match Odds::from_net_odds(self.odds) {
             Ok(o) => o,
@@ -182,6 +184,7 @@ impl BankrollGrowthTool {
             BankrollWagerModel::QuarterLine => self.simulate_quarter_line(&o, dc.as_ref()),
             BankrollWagerModel::SimultaneousSlate => self.simulate_slate(&o, dc.as_ref()),
         }
+        self.last_compute_ms = start.elapsed().as_secs_f64() * 1000.0;
     }
 
     fn clear_trajectory_buffers(&mut self) {

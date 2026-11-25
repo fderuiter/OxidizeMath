@@ -1,6 +1,6 @@
 use crate::applied::{
     algorithms::kalman::KalmanError, clinical_trials::types::ClinicalTrialError,
-    isosurface::types::VoxelGridError,
+    isosurface::types::VoxelGridError, portfolio::PortfolioError,
 };
 use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 
@@ -42,6 +42,19 @@ impl Diagnostic for VoxelGridError {
     #[verified_engine::verified]
     fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         visitor.record_str("error_type", "VoxelGridError");
+        visitor.record_display("description", self);
+    }
+}
+
+impl Diagnostic for PortfolioError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "PortfolioError");
         visitor.record_display("description", self);
     }
 }

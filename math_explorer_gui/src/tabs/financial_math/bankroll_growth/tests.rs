@@ -112,16 +112,40 @@ fn test_f_030_overbetting_divergence_callout_and_zero_allocation() {
     assert!(lab.last_growth_rate < 0.0);
     assert!((lab.last_median_terminal - 3.9137).abs() < 1e-3);
     assert!((lab.last_expected_terminal - 36_935.58).abs() < 0.05);
-    assert!(
-        lab.callout_manager
-            .callouts()
-            .iter()
-            .any(|c| c.tag.as_deref() == Some("ruin_warning")),
-        "Ruin warning callout must be set when f > 2 * f*"
-    );
+    assert_eq!(lab.p05_points.len(), 201);
+    assert_eq!(lab.p25_points.len(), 201);
+    assert_eq!(lab.p75_points.len(), 201);
+    assert_eq!(lab.p95_points.len(), 201);
+    assert_eq!(lab.fan_5_95_poly.len(), 402);
+    assert_eq!(lab.fan_25_75_poly.len(), 402);
+    assert_eq!(lab.underwater_points.len(), 201);
+    assert!(lab.last_underwater_duration > 0);
+    assert!(lab.last_terminal_var_95 > 0.50);
+    assert!(lab.last_terminal_cvar_95 >= lab.last_terminal_var_95);
     assert!(lab.last_empirical_median_ci_lower.is_finite());
     assert!(lab.last_empirical_median_ci_upper.is_finite());
     assert!(lab.last_empirical_median_ci_lower <= lab.last_empirical_median_ci_upper);
+    for required_tag in ["ruin_warning", "var_95", "cvar_95"] {
+        assert!(
+            lab.callout_manager
+                .callouts()
+                .iter()
+                .any(|c| c.tag.as_deref() == Some(required_tag)),
+            "Expected callout '{required_tag}' on canonical overbetting preset"
+        );
+    }
+
+    // Verify rendering percentile fan bands, underwater plot, and VaR/CVaR callouts succeeds cleanly.
+    let ctx = eframe::egui::Context::default();
+    let mut w0 = 100.0;
+    let mut prob = 0.55;
+    let mut net_b = 1.0;
+    let mut bets = 200_usize;
+    let _ = ctx.run(eframe::egui::RawInput::default(), |ctx| {
+        eframe::egui::CentralPanel::default().show(ctx, |ui| {
+            let _ = lab.show_lab_ui(ui, &mut w0, &mut prob, &mut net_b, &mut bets);
+        });
+    });
 }
 
 #[test]
