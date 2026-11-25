@@ -129,6 +129,7 @@ impl DtmcTensorWorkbenchTool {
         let chain = match MarkovChain::new(matrix, state_types) {
             Ok(c) => c,
             Err(err) => {
+                crate::telemetry::emit_diagnostic("DtmcWorkbench", &err);
                 self.error_msg = Some(format!("MarkovChain error: {err}"));
                 return;
             }

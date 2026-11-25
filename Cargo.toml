@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/00_foundation/math_diagnostics",
     "crates/00_foundation/math_rng",
     "crates/federated_registry",
     "crates/diagnostics",

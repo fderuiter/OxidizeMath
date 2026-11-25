@@ -1,6 +1,5 @@
 use super::Error;
-use diagnostics::{Diagnostic, Severity};
-use std::collections::HashMap;
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 
 trait FacadeInnerError: std::error::Error + Diagnostic + 'static {
     fn as_std_error(&self) -> &(dyn std::error::Error + 'static);
@@ -166,6 +165,7 @@ impl Error {
             Self::Fit(err) => Some(InnerErrorRef::Domain(err)),
             Self::Glsl(err) => Some(InnerErrorRef::Domain(err)),
             Self::Lex(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Linalg(err) => Some(InnerErrorRef::Domain(err)),
             Self::Math(err) => Some(InnerErrorRef::Domain(err)),
             Self::MathCommons(err) => Some(InnerErrorRef::Domain(err)),
             Self::Parse(err) => Some(InnerErrorRef::Domain(err)),
@@ -217,21 +217,15 @@ impl Diagnostic for Error {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = match self.classify() {
-            Some(InnerErrorRef::Domain(err)) => err.as_diagnostic().metadata(),
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        match self.classify() {
+            Some(InnerErrorRef::Domain(err)) => err.as_diagnostic().visit_fields(visitor),
             Some(InnerErrorRef::Io(err)) => {
-                let mut m = HashMap::new();
-                m.insert("error_type".to_string(), "IoError".to_string());
-                m.insert("description".to_string(), err.to_string());
-                m
+                visitor.record_str("error_type", "IoError");
+                visitor.record_display("description", err);
             }
-            None => HashMap::new(),
-        };
-        map.insert(
-            "umbrella_type".to_string(),
-            "math_explorer::error::Error".to_string(),
-        );
-        map
+            None => {}
+        }
+        visitor.record_str("umbrella_type", "math_explorer::error::Error");
     }
 }

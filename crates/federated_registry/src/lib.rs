@@ -181,7 +181,7 @@ pub fn global_registry() -> &'static FederatedRegistry {
             if sender
                 .send(TelemetryEvent {
                     source: source.clone(),
-                    severity: event.severity.clone(),
+                    severity: event.severity,
                     message: event.message.clone(),
                     metadata: event.metadata.clone(),
                     thread_name: event.thread_name.clone(),
@@ -259,11 +259,9 @@ mod tests {
             Severity::Error
         }
 
-        fn metadata(&self) -> HashMap<String, String> {
-            let mut map = HashMap::new();
-            map.insert("error_type".to_string(), "SampleDomainError".to_string());
-            map.insert("description".to_string(), self.to_string());
-            map
+        fn visit_fields(&self, visitor: &mut dyn diagnostics::DiagnosticVisitor) {
+            visitor.record_str("error_type", "SampleDomainError");
+            visitor.record_display("description", self);
         }
     }
 

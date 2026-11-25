@@ -124,18 +124,16 @@ impl LexError {
     }
 }
 
-impl diagnostics::Diagnostic for LexError {
-    fn severity(&self) -> diagnostics::Severity {
-        diagnostics::Severity::Error
+impl math_diagnostics::Diagnostic for LexError {
+    fn severity(&self) -> math_diagnostics::Severity {
+        math_diagnostics::Severity::Error
     }
 
-    fn metadata(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
-        map.insert("error_type".to_string(), "LexError".to_string());
-        map.insert("start".to_string(), self.start.to_string());
-        map.insert("end".to_string(), self.end.to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
+        visitor.record_str("error_type", "LexError");
+        visitor.record_usize("start", self.start);
+        visitor.record_usize("end", self.end);
+        visitor.record_display("description", self);
     }
 }
 

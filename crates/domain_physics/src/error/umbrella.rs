@@ -2,15 +2,16 @@ use super::{
     ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
     RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError,
 };
-use diagnostics::{Diagnostic, Severity};
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use domain_applied::error::{AppliedError, KalmanError};
 use math_commons::error::{
-    EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
+    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, ParseError,
+    ShaderEmitError,
 };
 use pure_math::error::{
-    AnalysisError, EvolutionError, LinearAlgebraError, PureMathError, TransformError,
+    AnalysisError, EvolutionError, LinearAlgebraError, MonteCarloError, OptimizationError,
+    PureMathError, TensorError, TransformError,
 };
-use std::collections::HashMap;
 use thiserror::Error;
 
 impl Diagnostic for NuclearError {
@@ -20,11 +21,9 @@ impl Diagnostic for NuclearError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "NuclearError".to_string());
-        map.insert("description".to_string(), self.to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "NuclearError");
+        visitor.record_display("description", self);
     }
 }
 
@@ -114,6 +113,48 @@ impl From<TransformError> for PhysicsError {
     }
 }
 
+impl From<TensorError> for PhysicsError {
+    #[verified_engine::verified]
+    fn from(err: TensorError) -> Self {
+        Self::PureMath(PureMathError::from(err))
+    }
+}
+
+impl From<MonteCarloError> for PhysicsError {
+    #[verified_engine::verified]
+    fn from(err: MonteCarloError) -> Self {
+        Self::PureMath(PureMathError::from(err))
+    }
+}
+
+impl From<OptimizationError> for PhysicsError {
+    #[verified_engine::verified]
+    fn from(err: OptimizationError) -> Self {
+        Self::PureMath(PureMathError::from(err))
+    }
+}
+
+impl From<FitError> for PhysicsError {
+    #[verified_engine::verified]
+    fn from(err: FitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<LinalgError> for PhysicsError {
+    #[verified_engine::verified]
+    fn from(err: LinalgError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<ShaderEmitError> for PhysicsError {
+    #[verified_engine::verified]
+    fn from(err: ShaderEmitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
 impl From<EvalError> for PhysicsError {
     #[verified_engine::verified]
     fn from(err: EvalError) -> Self {
@@ -179,9 +220,8 @@ impl Diagnostic for PhysicsError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = self.as_diagnostic().metadata();
-        map.insert("umbrella_type".to_string(), "PhysicsError".to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        self.as_diagnostic().visit_fields(visitor);
+        visitor.record_str("umbrella_type", "PhysicsError");
     }
 }

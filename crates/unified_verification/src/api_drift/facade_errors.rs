@@ -1,8 +1,14 @@
 use super::ApiItem;
-use super::{ParsedSignatureMap, is_facade_reachable_file, parse_exported_idents_in_file};
+use super::{
+    ParsedSignatureMap, is_facade_reachable_file, is_tier2_engine_file,
+    parse_exported_idents_in_file,
+};
 use oxidize_core::traceability::AstCache;
 use std::collections::BTreeMap;
 use std::path::Path;
+
+#[path = "facade_umbrella.rs"]
+mod facade_umbrella;
 
 pub(super) const ERROR_CRATE_FILES: &[&str] = &[
     "crates/math_commons/src/error.rs",
@@ -34,7 +40,7 @@ fn is_reachable_error_ident(ident: &str, rel_path: &str) -> bool {
     ident.ends_with("Error") || ident == "Error" || is_crate_error_module_path(rel_path)
 }
 
-fn extract_defined_error_idents(file: &syn::File, rel_path: &str) -> Vec<String> {
+pub(super) fn extract_defined_error_idents(file: &syn::File, rel_path: &str) -> Vec<String> {
     let mut found = Vec::new();
     for item in &file.items {
         let candidate = match item {
@@ -60,7 +66,8 @@ fn audit_reachable_submodule_errors(
     let mut definitions_by_name: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
     for (path, items) in apis {
-        if !is_facade_reachable_file(path) || path.starts_with("math_explorer/src/") {
+        let in_scope = is_facade_reachable_file(path) || is_tier2_engine_file(path);
+        if !in_scope || path.starts_with("math_explorer/src/") {
             continue;
         }
         for item in items {
@@ -133,4 +140,11 @@ pub(super) fn check_crate_error_reexports(
         }
     }
     audit_reachable_submodule_errors(apis, parsed_sigs, &facade_errors, violations);
+    facade_umbrella::audit_crate_umbrella_conversions(
+        workspace_root,
+        apis,
+        parsed_sigs,
+        cache,
+        violations,
+    );
 }

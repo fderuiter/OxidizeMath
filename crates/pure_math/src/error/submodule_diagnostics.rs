@@ -19,15 +19,16 @@ use crate::pure_math::{
     },
     tensor::types::TensorError,
 };
-use diagnostics::{Diagnostic, Severity};
-use std::collections::HashMap;
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 
 #[verified_engine::verified]
-fn error_metadata(error_type: &str, description: String) -> HashMap<String, String> {
-    let mut map = HashMap::new();
-    map.insert("error_type".to_string(), error_type.to_string());
-    map.insert("description".to_string(), description);
-    map
+fn visit_named_error<D: core::fmt::Display>(
+    visitor: &mut dyn DiagnosticVisitor,
+    error_type: &'static str,
+    err: &D,
+) {
+    visitor.record_str("error_type", error_type);
+    visitor.record_display("description", err);
 }
 
 impl Diagnostic for NumberTheoryError {
@@ -37,8 +38,8 @@ impl Diagnostic for NumberTheoryError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("NumberTheoryError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "NumberTheoryError", self);
     }
 }
 
@@ -49,8 +50,8 @@ impl Diagnostic for KellyError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("KellyError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "KellyError", self);
     }
 }
 
@@ -61,8 +62,8 @@ impl Diagnostic for MarketPricingError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("MarketPricingError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "MarketPricingError", self);
     }
 }
 
@@ -73,14 +74,11 @@ impl Diagnostic for MarkovError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = error_metadata("MarkovError", self.to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            for (k, v) in math_err.metadata() {
-                map.entry(k).or_insert(v);
-            }
+            math_err.visit_fields(visitor);
         }
-        map
+        visit_named_error(visitor, "MarkovError", self);
     }
 }
 
@@ -91,8 +89,8 @@ impl Diagnostic for OuError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("OuError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "OuError", self);
     }
 }
 
@@ -103,8 +101,8 @@ impl Diagnostic for ZipError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("ZipError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "ZipError", self);
     }
 }
 
@@ -115,8 +113,8 @@ impl Diagnostic for TdaError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("TdaError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "TdaError", self);
     }
 }
 
@@ -127,14 +125,11 @@ impl Diagnostic for CopulaError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = error_metadata("CopulaError", self.to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         if let Self::Math(math_err) = self {
-            for (k, v) in math_err.metadata() {
-                map.entry(k).or_insert(v);
-            }
+            math_err.visit_fields(visitor);
         }
-        map
+        visit_named_error(visitor, "CopulaError", self);
     }
 }
 
@@ -145,8 +140,8 @@ impl Diagnostic for Glicko2Error {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("Glicko2Error", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "Glicko2Error", self);
     }
 }
 
@@ -157,8 +152,8 @@ impl Diagnostic for EloError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("EloError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "EloError", self);
     }
 }
 
@@ -169,8 +164,8 @@ impl Diagnostic for MatchModelError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("MatchModelError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "MatchModelError", self);
     }
 }
 
@@ -181,8 +176,8 @@ impl Diagnostic for AmbsError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("AmbsError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "AmbsError", self);
     }
 }
 
@@ -193,8 +188,8 @@ impl Diagnostic for AnalysisError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("AnalysisError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "AnalysisError", self);
     }
 }
 
@@ -205,8 +200,8 @@ impl Diagnostic for EllipticCurveError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("EllipticCurveError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "EllipticCurveError", self);
     }
 }
 
@@ -217,8 +212,8 @@ impl Diagnostic for GraphTheoryError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("GraphTheoryError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "GraphTheoryError", self);
     }
 }
 
@@ -229,8 +224,8 @@ impl Diagnostic for EvolutionError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("EvolutionError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "EvolutionError", self);
     }
 }
 
@@ -241,8 +236,11 @@ impl Diagnostic for LinearAlgebraError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("LinearAlgebraError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        if let Self::Linalg(linalg_err) = self {
+            linalg_err.visit_fields(visitor);
+        }
+        visit_named_error(visitor, "LinearAlgebraError", self);
     }
 }
 
@@ -253,8 +251,8 @@ impl Diagnostic for OptimizationError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("OptimizationError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "OptimizationError", self);
     }
 }
 
@@ -265,8 +263,8 @@ impl Diagnostic for StochasticError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("StochasticError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "StochasticError", self);
     }
 }
 
@@ -277,8 +275,11 @@ impl Diagnostic for TensorError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("TensorError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        if let Self::Math(math_err) = self {
+            math_err.visit_fields(visitor);
+        }
+        visit_named_error(visitor, "TensorError", self);
     }
 }
 
@@ -289,8 +290,8 @@ impl Diagnostic for TransformError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("TransformError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "TransformError", self);
     }
 }
 
@@ -301,8 +302,8 @@ impl Diagnostic for BraidError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("BraidError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "BraidError", self);
     }
 }
 
@@ -313,8 +314,8 @@ impl Diagnostic for HyperbolicError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("HyperbolicError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "HyperbolicError", self);
     }
 }
 
@@ -325,8 +326,8 @@ impl Diagnostic for KnotError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("KnotError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "KnotError", self);
     }
 }
 
@@ -337,8 +338,8 @@ impl Diagnostic for MonteCarloError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("MonteCarloError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "MonteCarloError", self);
     }
 }
 
@@ -349,8 +350,8 @@ impl Diagnostic for OptionPricingError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("OptionPricingError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "OptionPricingError", self);
     }
 }
 
@@ -361,8 +362,8 @@ impl Diagnostic for PoissonError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("PoissonError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "PoissonError", self);
     }
 }
 
@@ -373,7 +374,7 @@ impl Diagnostic for QueueingError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        error_metadata("QueueingError", self.to_string())
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visit_named_error(visitor, "QueueingError", self);
     }
 }

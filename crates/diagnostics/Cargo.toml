@@ -3,6 +3,9 @@ name = "diagnostics"
 version = "0.1.0"
 edition = "2024"
 
+[dependencies]
+math_diagnostics = { path = "../00_foundation/math_diagnostics", features = ["std"] }
+
 [dev-dependencies]
 thiserror = { workspace = true }
 

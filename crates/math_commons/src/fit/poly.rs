@@ -115,8 +115,7 @@ fn solve_centered_poly_system<P: PointSeries + ?Sized>(
     let required = deg + 1;
     let (log_x, log_y) = axes;
     let (u_mean, u_scale) = center_scale;
-    let mut qr = engine_linalg::StreamingQr::<f64, 5>::new(required)
-        .map_err(|_| FitError::SingularMatrix)?;
+    let mut qr = engine_linalg::StreamingQr::<f64, 5>::new(required)?;
 
     for idx in 0..points.len() {
         let p = points.point_at(idx);
@@ -135,11 +134,10 @@ fn solve_centered_poly_system<P: PointSeries + ?Sized>(
             *slot = zp;
             zp *= z;
         }
-        qr.push_row(&row[..required], ty)
-            .map_err(|_| FitError::SingularMatrix)?;
+        qr.push_row(&row[..required], ty)?;
     }
 
-    qr.solve(1e-13).map_err(|_| FitError::SingularMatrix)
+    Ok(qr.solve(1e-13)?)
 }
 
 fn uncenter_polynomial_coeffs(
@@ -266,11 +264,9 @@ pub(super) fn solve_dense_n_raw<const N: usize>(
         flat[dst_start..(dst_start + n)].copy_from_slice(&row[..n]);
     }
     let mut pivots = [0_usize; 16];
-    engine_linalg::lu_factor_in_place(&mut flat[..(n * n)], n, &mut pivots[..n], 1e-12)
-        .map_err(|_| FitError::SingularMatrix)?;
+    engine_linalg::lu_factor_in_place(&mut flat[..(n * n)], n, &mut pivots[..n], 1e-12)?;
     let mut x = [0.0_f64; N];
-    engine_linalg::lu_solve_factored(&flat[..(n * n)], n, &pivots[..n], &rhs[..n], &mut x[..n])
-        .map_err(|_| FitError::SingularMatrix)?;
+    engine_linalg::lu_solve_factored(&flat[..(n * n)], n, &pivots[..n], &rhs[..n], &mut x[..n])?;
     Ok(x)
 }
 

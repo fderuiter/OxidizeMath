@@ -1,8 +1,8 @@
 //! Unified feature-gated error re-exports and facade umbrella error across all OxidizeMath domains.
 
 pub use math_commons::error::{
-    EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
-    ShaderEmitError,
+    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, MathResult,
+    ParseError, ShaderEmitError,
 };
 
 #[cfg(feature = "ai")]
@@ -58,6 +58,8 @@ pub enum Error {
     Glsl(GlslError),
     /// AST lexer error.
     Lex(LexError),
+    /// Foundational `#![no_std]` linear algebra engine error.
+    Linalg(LinalgError),
     /// Foundational mathematical kernel error.
     Math(MathError),
     /// Foundational `math_commons` umbrella error.
