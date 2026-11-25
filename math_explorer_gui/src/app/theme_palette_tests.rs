@@ -422,3 +422,19 @@ fn test_creation_context_startup_theme_and_saved_override() {
     cc_corrupt.storage = Some(&storage);
     assert_eq!(MathExplorerApp::new(&cc_corrupt).theme, ThemeMode::Light);
 }
+
+#[cfg(feature = "physics")]
+#[test]
+fn test_quasicrystal_high_contrast_bragg_raster_meets_wcag_3_to_1() {
+    let tool =
+        crate::tabs::solid_state::quasicrystal_diffraction::QuasicrystalDiffractionTool::default();
+    let hc_img = tool.bragg_color_image(true);
+    assert!(!hc_img.pixels.is_empty());
+    for px in hc_img.pixels {
+        let ratio = contrast_ratio(px, egui::Color32::BLACK);
+        assert!(
+            ratio >= 3.0,
+            "HighContrast Bragg diffraction pixel {px:?} achieved {ratio:.2}:1 (< 3.0:1 on BLACK)"
+        );
+    }
+}

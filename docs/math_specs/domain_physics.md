@@ -2,30 +2,30 @@
 
 Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/domain_physics`](../../crates/domain_physics/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace physics manuscripts.
 
-## 1. BCS Superconductivity, Lattice Boltzmann & Galactic/Nuclear Models (`solid_state`, `fluid_dynamics`, `astrophysics`, `nuclear`)
+## 1. Condensed-Matter Quasicrystals, Bragg Diffraction, BCS Superconductivity, Lattice Boltzmann & Galactic/Nuclear Models (`solid_state`, `fluid_dynamics`, `astrophysics`, `nuclear`)
 
 ### Governing Equations
 
-Self-consistent zero-temperature s-wave BCS pairing (`BcsGapSolver`, `IsotropicBCSModel`) iterates the damped gap operator over single-particle states $|\xi_k| \le \hbar\omega_D$:
+Self-consistent zero-temperature s-wave BCS pairing (`BcsGapSolver`, `IsotropicBCSModel`) iterates the damped gap operator over single-particle states $|\xi_k| \le \hbar\omega_D$, while higher-dimensional cut-and-project quasicrystal generators (`QuasicrystalWorkspace`), kinematic Bragg diffraction workspaces (`BraggWorkspace`), and 1D Fibonacci / Aubry-André tight-binding eigensolvers (`QuasiperiodicChainModel`, `QuasiperiodicWorkspace`) evaluate:
 
 $$
-\Delta_{n+1} = (1 - \alpha)\Delta_n + \alpha \sum_{|\xi_k| \le \hbar\omega_D} \frac{V\,\Delta_n}{2\sqrt{\xi_k^2 + \Delta_n^2}}
+\Delta_{n+1} = (1 - \alpha)\Delta_n + \alpha \sum_{|\xi_k| \le \hbar\omega_D} \frac{V\,\Delta_n}{2\sqrt{\xi_k^2 + \Delta_n^2}}, \qquad S(\mathbf{q}) = \frac{1}{N}\left|\sum_{j=1}^N e^{-i\mathbf{q}\cdot\mathbf{r}_j}\right|^2, \qquad H = \sum_i \epsilon_i |i\rangle\langle i| - \sum_i t_i \bigl(|i\rangle\langle i+1| + \text{h.c.}\bigr)
 $$
 
 Discrete-velocity BGK Lattice Boltzmann (`D2Q9Model`, `CollisionModel`) relaxes populations $f_i^{\text{out}} = f_i - \frac{1}{\tau}(f_i - f_i^{\text{eq}}(\rho, \mathbf{u}))$, `PotentialTracerSystem` advects Lagrangian streamlines $\dot{\mathbf{x}} = \nabla\phi(\mathbf{x})$ via fourth-order `RungeKutta4` coupled to steady Bernoulli head $p + \frac{1}{2}\rho|\mathbf{u}|^2 = H_0$, `GalaxyModel` evaluates axisymmetric/spherical circular velocity profiles $v_c^2(R) = R\,\partial_R \Phi(R, 0)$, `SchwarzschildBlackHole` and `SchwarzschildGeodesicBundle` integrate relativistic 4D Schwarzschild geodesics $\ddot{x}^\mu + \Gamma^\mu_{\alpha\beta}\dot{x}^\alpha\dot{x}^\beta = 0$ against Newtonian orbits, and Bethe-Weizsaecker `LiquidDropModel` (`BindingEnergyModel`) computes nuclear binding energy $B(A, Z)$.
 
 ### Citations
 
-- BibTeX keys: [`misner1973gravitation`](../../papers/references.bib#misner1973gravitation), [`schwarzschild1916`](../../papers/references.bib#schwarzschild1916), [`orszag1972numerical`](../../papers/references.bib#orszag1972numerical) (DOI: `10.1103/PhysRevLett.28.76`), [`Rosner`](../../papers/references.bib#Rosner).
+- BibTeX keys: [`shechtman1984metallic`](../../papers/references.bib#shechtman1984metallic) (DOI: `10.1103/PhysRevLett.53.1951`), [`levine1984quasicrystals`](../../papers/references.bib#levine1984quasicrystals) (DOI: `10.1103/PhysRevLett.53.2477`), [`duneau1985quasiperiodic`](../../papers/references.bib#duneau1985quasiperiodic) (DOI: `10.1103/PhysRevLett.54.2688`), [`kohmoto1983localization`](../../papers/references.bib#kohmoto1983localization) (DOI: `10.1103/PhysRevLett.50.1870`), [`aubry1980analyticity`](../../papers/references.bib#aubry1980analyticity), [`bardeen1957theory`](../../papers/references.bib#bardeen1957theory) (DOI: `10.1103/PhysRev.108.1175`), [`misner1973gravitation`](../../papers/references.bib#misner1973gravitation), [`schwarzschild1916`](../../papers/references.bib#schwarzschild1916), [`orszag1972numerical`](../../papers/references.bib#orszag1972numerical) (DOI: `10.1103/PhysRevLett.28.76`), [`Rosner`](../../papers/references.bib#Rosner).
 - Manuscripts: [`papers/quantum_mechanics.tex`](../../papers/quantum_mechanics.tex), [`papers/dwarf_galaxy_empirical_dependencies.tex`](../../papers/dwarf_galaxy_empirical_dependencies.tex), [`papers/general_relativity_geodesics.tex`](../../papers/general_relativity_geodesics.tex), [`papers/chaos_theory.tex`](../../papers/chaos_theory.tex).
 
 ### Stability
 
-Linear mixing $\alpha \in (0, 1]$ damps fixed-point oscillations in `BcsGapSolver`; D2Q9 BGK relaxation requires $\tau > 0.5$ and low Mach number $|\mathbf{u}| \ll c_s = 1/\sqrt{3}$ for positivity and $L^2$ stability.
+Linear mixing $\alpha \in (0, 1]$ damps fixed-point oscillations in `BcsGapSolver`; separable 1D phasor recurrences in `BraggWorkspace` and implicit Wilkinson-shifted QL tridiagonal Givens rotations in `QuasiperiodicWorkspace` execute with `0` heap allocations inside `VerifiedEngine::run_verified`; D2Q9 BGK relaxation requires $\tau > 0.5$ and low Mach number $|\mathbf{u}| \ll c_s = 1/\sqrt{3}$ for positivity and $L^2$ stability.
 
 ### Domain of Validity
 
-Requires attractive pairing potential $V > 0$, Debye cutoff $\hbar\omega_D > 0$, tolerance $> 0$, relaxation time $\tau > 0.5$, positive galactic mass/scale radii ($R > 0$), and nucleon counts $A \ge 1$, $0 \le Z \le A$ (`NuclearError`).
+Requires attractive pairing potential $V > 0$, Debye cutoff $\hbar\omega_D > 0$, tolerance $> 0$, quasicrystal aperture $R_\parallel \in [1.0, 6.0]$, Bragg grid $8 \le G \le 192$, quasiperiodic chain length $2 \le N \le 256$, relaxation time $\tau > 0.5$, positive galactic mass/scale radii ($R > 0$), and nucleon counts $A \ge 1$, $0 \le Z \le A$ (`NuclearError`).
 
 ```rust
 use math_explorer::physics::nuclear::models::{BindingEnergyModel, LiquidDropModel};
