@@ -83,6 +83,12 @@ EXPECTED_FAULTS: dict[str, FaultExpectation] = {
         message_substr="could not finish downloading",
         alert_substr="Network error loading Math Explorer",
     ),
+    "offline": FaultExpectation(
+        category="offline",
+        title="Offline — Unable to Start Simulations",
+        message_substr="currently offline",
+        alert_substr="currently offline",
+    ),
     "compile": FaultExpectation(
         category="compile",
         title="WebAssembly Startup Error",
@@ -398,6 +404,7 @@ def attach_unrouted_script_abort_observer(page: Page, aborted_unrouted: list[str
         and any(
             req.url.split("?")[0].endswith(s)
             for s in (
+                "/theme-init.js",
                 "/reload.js",
                 "/initializer.js",
                 "/bootstrap.js",
@@ -850,6 +857,7 @@ def run_happy_path_check(
         expect(canvas).to_be_focused()
 
         required_assets = [
+            "/theme-init.js",
             "/reload.js",
             "/bootstrap.js",
             "/initializer.js",
@@ -931,7 +939,7 @@ def run_fault_scenario(
             if req.failure == "net::ERR_ABORTED"
             and any(
                 req.url.split("?")[0].endswith(s)
-                for s in ("/reload.js", "/initializer.js")
+                for s in ("/theme-init.js", "/reload.js", "/initializer.js")
                 + (("/bootstrap.js",) if scenario != "fault_broken_bootstrap_script" else ())
                 + (("/math_explorer_gui.js",) if scenario != "fault_broken_loader_script" else ())
                 + (
@@ -1048,12 +1056,14 @@ def run_parallel_preload_and_sw_http_cache_check(
 ) -> None:
     origin_hits: list[tuple[str, int]] = []
     origin_lock = threading.Lock()
-    revision_state = {"rev": 1}
+    revision_state = {"rev": 1, "stall_nav_sec": 0.0, "max_age": 600}
 
     class CacheableOriginHandler(http.server.SimpleHTTPRequestHandler):
         def do_GET(self) -> None:
             clean_path = self.path.split("?")[0]
             rel_name = "index.html" if clean_path in ("", "/") else clean_path.lstrip("/")
+            if clean_path in ("", "/", "/index.html") and revision_state["stall_nav_sec"] > 0:
+                time.sleep(revision_state["stall_nav_sec"])
             target = (dist_dir / rel_name).resolve()
             if not str(target).startswith(str(dist_dir.resolve())) or not target.is_file():
                 with origin_lock:
@@ -1099,12 +1109,16 @@ def run_parallel_preload_and_sw_http_cache_check(
             etag = f'"{rel_name}-{enc_tag}-v{rev}-{len(payload)}"'
             content_type = mimetypes.guess_type(str(target))[0] or "application/octet-stream"
 
+            max_age = revision_state["max_age"]
+            cache_ctrl = (
+                f"public, max-age={max_age}" if max_age > 0 else "no-cache, max-age=0"
+            )
             if self.headers.get("If-None-Match") == etag:
                 with origin_lock:
                     origin_hits.append((clean_path, 304))
                 self.send_response(304)
                 self.send_header("ETag", etag)
-                self.send_header("Cache-Control", "public, max-age=600")
+                self.send_header("Cache-Control", cache_ctrl)
                 if clean_path.endswith(".wasm"):
                     self.send_header("Vary", "Accept-Encoding")
                 self.send_header("Content-Security-Policy", csp)
@@ -1121,7 +1135,7 @@ def run_parallel_preload_and_sw_http_cache_check(
                 self.send_header("Vary", "Accept-Encoding")
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("ETag", etag)
-            self.send_header("Cache-Control", "public, max-age=600")
+            self.send_header("Cache-Control", cache_ctrl)
             self.send_header("Content-Security-Policy", csp)
             self.end_headers()
             try:
@@ -1136,8 +1150,49 @@ def run_parallel_preload_and_sw_http_cache_check(
     cache_url = f"http://127.0.0.1:{cache_server.server_address[1]}"
     threading.Thread(target=cache_server.serve_forever, daemon=True).start()
 
-    context = browser.new_context(viewport={"width": 1280, "height": 800})
+    context = browser.new_context(
+        viewport={"width": 1280, "height": 800},
+        color_scheme="dark",
+    )
     try:
+        saved_light_envelope = (
+            '{"schema_version":"1.0","app_version":"0.4.0",'
+            '"timestamp":"2026-11-25T00:00:00Z",'
+            '"app_state":{"selected_tab":0,"selected_tab_name":null,'
+            '"show_info":true,"show_warnings":true,"show_errors":true,'
+            '"theme":"Light","tab_states":{}}}'
+        )
+        context.add_init_script(
+            f"""(() => {{
+                try {{
+                    if (!window.localStorage.getItem('app')) {{
+                        window.localStorage.setItem('app', {saved_light_envelope!r});
+                    }}
+                }} catch (_) {{}}
+                const capturePrePaintTheme = () => {{
+                    if (window.__prePaintThemeCheck || !document.body) {{
+                        return false;
+                    }}
+                    const fcpEntries = performance.getEntriesByName('first-contentful-paint');
+                    window.__prePaintThemeCheck = {{
+                        dataTheme: document.documentElement.getAttribute('data-theme'),
+                        bgColor: window.getComputedStyle(document.documentElement).backgroundColor,
+                        fcpCountAtBody: fcpEntries.length,
+                    }};
+                    return true;
+                }};
+                const obs = new MutationObserver(() => {{
+                    if (capturePrePaintTheme()) {{
+                        obs.disconnect();
+                    }}
+                }});
+                obs.observe(document, {{ childList: true, subtree: true }});
+                document.addEventListener('DOMContentLoaded', () => {{
+                    obs.disconnect();
+                    capturePrePaintTheme();
+                }}, {{ once: true }});
+            }})();"""
+        )
         page1 = context.new_page()
         csp_violations: list[str] = []
         preload_warnings: list[str] = []
@@ -1175,18 +1230,30 @@ def run_parallel_preload_and_sw_http_cache_check(
 
         expected_preboot = {
             "/",
+            "/theme-init.js",
             "/reload.js",
             "/bootstrap.js",
             "/initializer.js",
             "/math_explorer_gui.js",
             "/math_explorer_gui_bg.wasm",
         }
-        if len(pre_sw_requests) != 6 or set(pre_sw_requests) != expected_preboot:
+        if len(pre_sw_requests) != 7 or set(pre_sw_requests) != expected_preboot:
             raise AssertionError(
-                f"[cold_parallel_wave] Expected 6 pre-boot requests {sorted(expected_preboot)}, got {pre_sw_requests}"
+                f"[cold_parallel_wave] Expected 7 pre-boot requests {sorted(expected_preboot)}, got {pre_sw_requests}"
             )
 
-        # Wait for post-boot sw.js registration, precacheShell completion, and client claim.
+        cold_theme_probe = page1.evaluate("() => window.__prePaintThemeCheck")
+        if (
+            not cold_theme_probe
+            or cold_theme_probe.get("dataTheme") != "light"
+            or cold_theme_probe.get("bgColor") != "rgb(248, 248, 248)"
+            or cold_theme_probe.get("fcpCountAtBody") != 0
+        ):
+            raise AssertionError(
+                f"[cold_theme_sync] Expected saved light theme before FCP on dark OS, got {cold_theme_probe}"
+            )
+
+        # Wait for post-Frame-1 idle sw.js registration, parallel precacheShell completion, and client claim.
         page1.wait_for_function(
             """async () => {
                 if (!navigator.serviceWorker) return false;
@@ -1194,7 +1261,23 @@ def run_parallel_preload_and_sw_http_cache_check(
                 if (!navigator.serviceWorker.controller) return false;
                 const cache = await caches.open('math-explorer-shell-v1');
                 const keys = (await cache.keys()).map((r) => new URL(r.url).pathname);
-                return keys.includes('/index.html') && keys.includes('/bootstrap.js');
+                const required = [
+                    '/',
+                    '/index.html',
+                    '/theme-init.js',
+                    '/reload.js',
+                    '/bootstrap.js',
+                    '/initializer.js',
+                    '/site.webmanifest',
+                    '/favicon.svg',
+                    '/32x32.png',
+                    '/128x128.png',
+                    '/192x192.png',
+                    '/256x256.png',
+                    '/512x512.png',
+                    '/512x512-maskable.png',
+                ];
+                return required.every((k) => keys.includes(k));
             }""",
             timeout=10_000,
         )
@@ -1203,6 +1286,7 @@ def run_parallel_preload_and_sw_http_cache_check(
             post_install_hits = list(origin_hits)
         for boot_asset in (
             "/",
+            "/theme-init.js",
             "/reload.js",
             "/bootstrap.js",
             "/initializer.js",
@@ -1214,6 +1298,11 @@ def run_parallel_preload_and_sw_http_cache_check(
                 raise AssertionError(
                     f"[sw_precache_http_reuse] Expected single origin 200 for {boot_asset} across boot+precacheShell, got {asset_hits}"
                 )
+        dup_index_hits = [code for path, code in post_install_hits if path == "/index.html"]
+        if dup_index_hits:
+            raise AssertionError(
+                f"[sw_precache_dedup] Expected zero duplicate /index.html origin hits during precacheShell, got {dup_index_hits}"
+            )
 
         # Repeat navigation within max-age must trigger zero 304s and zero origin fetches for cached boot assets.
         with origin_lock:
@@ -1280,8 +1369,83 @@ def run_parallel_preload_and_sw_http_cache_check(
                 f"[sw_hard_refresh_passthrough] Expected origin hits for reload/no-cache modes, got {bypass_hits}"
             )
 
+        warm_theme_probe = page2.evaluate("() => window.__prePaintThemeCheck")
+        if (
+            not warm_theme_probe
+            or warm_theme_probe.get("dataTheme") != "light"
+            or warm_theme_probe.get("bgColor") != "rgb(248, 248, 248)"
+            or warm_theme_probe.get("fcpCountAtBody") != 0
+        ):
+            raise AssertionError(
+                f"[warm_theme_sync] Expected saved light theme before FCP on warm navigation, got {warm_theme_probe}"
+            )
+
+        # Stalled soft reload and stalled post-TTL navigation must abort after ~1,200 ms and serve cached index.html.
+        revision_state["stall_nav_sec"] = 3.6
+        t_reload_start = time.monotonic()
+        stalled_reload_resp = page2.reload(wait_until="domcontentloaded")
+        stalled_reload_ms = (time.monotonic() - t_reload_start) * 1000.0
+        if stalled_reload_resp is None or stalled_reload_resp.status != 200:
+            raise AssertionError(
+                f"[stalled_soft_reload] Expected HTTP 200 cached shell fallback, got {stalled_reload_resp.status if stalled_reload_resp else None}"
+            )
+        if stalled_reload_ms >= 2800.0 or stalled_reload_ms < 900.0:
+            raise AssertionError(
+                f"[stalled_soft_reload] Expected ~1,200 ms bounded navigation abort (not 3.6s hang), took {stalled_reload_ms:.1f} ms"
+            )
+
+        # Expire/evict browser HTTP cache while preserving CacheStorage + localStorage before post-TTL checks
+        revision_state["stall_nav_sec"] = 0.0
+        revision_state["max_age"] = 0
+        page3 = context.new_page()
+        attach_csp_observer(page3, csp_violations)
+        cdp3 = context.new_cdp_session(page3)
+        cdp3.send("Network.clearBrowserCache")
+        cdp3.detach()
+        revision_state["stall_nav_sec"] = 3.6
+        t_nav_start = time.monotonic()
+        stalled_nav_resp = page3.goto(f"{cache_url}/", wait_until="domcontentloaded")
+        stalled_nav_ms = (time.monotonic() - t_nav_start) * 1000.0
+        revision_state["stall_nav_sec"] = 0.0
+        if stalled_nav_resp is None or stalled_nav_resp.status != 200:
+            raise AssertionError(
+                f"[stalled_post_ttl_nav] Expected HTTP 200 cached shell fallback, got {stalled_nav_resp.status if stalled_nav_resp else None}"
+            )
+        if stalled_nav_ms >= 2800.0 or stalled_nav_ms < 900.0:
+            raise AssertionError(
+                f"[stalled_post_ttl_nav] Expected ~1,200 ms bounded post-TTL navigation abort, took {stalled_nav_ms:.1f} ms"
+            )
+        post_ttl_theme_probe = page3.evaluate("() => window.__prePaintThemeCheck")
+        if (
+            not post_ttl_theme_probe
+            or post_ttl_theme_probe.get("dataTheme") != "light"
+            or post_ttl_theme_probe.get("bgColor") != "rgb(248, 248, 248)"
+            or post_ttl_theme_probe.get("fcpCountAtBody") != 0
+        ):
+            raise AssertionError(
+                f"[post_ttl_theme_sync] Expected saved light theme before FCP on post-TTL navigation, got {post_ttl_theme_probe}"
+            )
+
+        # Offline post-TTL navigation (with evicted/expired HTTP cache) must render data-error-category='offline' without (HTTP 503).
+        cdp3_offline = context.new_cdp_session(page3)
+        cdp3_offline.send("Network.clearBrowserCache")
+        cdp3_offline.detach()
+        context.set_offline(True)
+        offline_post_ttl_resp = page3.goto(f"{cache_url}/", wait_until="domcontentloaded")
+        if offline_post_ttl_resp is None or offline_post_ttl_resp.status != 200:
+            raise AssertionError(
+                f"[offline_post_ttl_nav] Expected HTTP 200 cached shell offline post-TTL, got {offline_post_ttl_resp.status if offline_post_ttl_resp else None}"
+            )
+        verify_error_recovery(page3, "offline_post_ttl_nav", EXPECTED_FAULTS["offline"])
+        post_ttl_offline_text = page3.locator("#error_container").inner_text()
+        if re.search(r"\bHTTP\s*503\b|\b503\s+Service\b|\(503\)", post_ttl_offline_text, re.IGNORECASE):
+            raise AssertionError(
+                f"[offline_post_ttl_nav] Unexpected HTTP 503 text in post-TTL offline view: {post_ttl_offline_text!r}"
+            )
+        context.set_offline(False)
+
         print(
-            "[PASS] parallel_preload_and_sw_http_cache: 6 pre-boot requests in 1 wave, HTTP-cached precacheShell, 0 warm 304s, reload/no-cache forwarded"
+            f"[PASS] parallel_preload_and_sw_http_cache: 7 pre-boot requests, deduped parallel precacheShell, 0 warm 304s, stalled reload={stalled_reload_ms:.0f}ms, post-TTL={stalled_nav_ms:.0f}ms, 0ms theme flash"
         )
     finally:
         context.close()
@@ -1294,30 +1458,65 @@ def run_offline_sw_shell_recovery_check(
     base_url: str,
     screenshot_path: Path | None = None,
 ) -> None:
-    context = browser.new_context(viewport={"width": 1280, "height": 800})
+    context = browser.new_context(
+        viewport={"width": 1280, "height": 800},
+        color_scheme="dark",
+        accept_downloads=True,
+    )
     try:
+        saved_workspace_json = (
+            '{"schema_version":"1.0","app_version":"0.4.0",'
+            '"timestamp":"2026-11-25T00:00:00Z",'
+            '"app_state":{"selected_tab":0,"selected_tab_name":null,'
+            '"show_info":true,"show_warnings":true,"show_errors":true,'
+            '"theme":"Light","tab_states":{}}}'
+        )
+        context.add_init_script(
+            f"""(() => {{
+                try {{
+                    if (!window.localStorage.getItem('app')) {{
+                        window.localStorage.setItem('app', {saved_workspace_json!r});
+                    }}
+                }} catch (_) {{}}
+            }})();"""
+        )
+
         page = context.new_page()
         csp_violations: list[str] = []
         attach_csp_observer(page, csp_violations)
 
-        page.goto(f"{base_url}/", wait_until="domcontentloaded")
+        page.goto(f"{base_url}/?probe=1#tab=chaos", wait_until="domcontentloaded")
         expect(page.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
         expect(page.locator("#the_canvas_id")).to_be_focused()
 
+        manifest_icons = [
+            "/favicon.svg",
+            "/32x32.png",
+            "/128x128.png",
+            "/192x192.png",
+            "/256x256.png",
+            "/512x512.png",
+            "/512x512-maskable.png",
+        ]
+
         page.wait_for_function(
-            """async () => {
+            """async (icons) => {
                 if (!navigator.serviceWorker) return false;
                 await navigator.serviceWorker.ready;
                 if (!navigator.serviceWorker.controller) return false;
                 const cache = await caches.open('math-explorer-shell-v1');
                 const keys = (await cache.keys()).map((r) => new URL(r.url).pathname);
-                return (
-                    keys.includes('/index.html') &&
-                    keys.includes('/reload.js') &&
-                    keys.includes('/bootstrap.js') &&
-                    keys.includes('/initializer.js')
-                );
+                const shellEntries = [
+                    '/index.html',
+                    '/theme-init.js',
+                    '/reload.js',
+                    '/bootstrap.js',
+                    '/initializer.js',
+                    '/site.webmanifest',
+                ];
+                return shellEntries.concat(icons).every((k) => keys.includes(k));
             }""",
+            arg=manifest_icons,
             timeout=10_000,
         )
 
@@ -1336,18 +1535,116 @@ def run_offline_sw_shell_recovery_check(
                 f"[offline_sw_shell_recovery] Expected HTTP 200 shell navigation from SHELL_CACHE_NAME, got {doc_resp.status if doc_resp else None}"
             )
 
-        verify_error_recovery(page, "offline_sw_shell_recovery", EXPECTED_FAULTS["network"])
-        wasm_codes = offline_statuses.get("/math_explorer_gui_bg.wasm", [])
-        if 503 not in wasm_codes:
+        expect(page.locator("html")).to_have_attribute("data-theme", "light")
+        verify_error_recovery(page, "offline_sw_shell_recovery", EXPECTED_FAULTS["offline"])
+
+        # Preserve URL search query and #tab= fragment across offline reload.
+        current_loc = page.evaluate("() => ({ search: location.search, hash: location.hash })")
+        if current_loc["search"] != "?probe=1" or not current_loc["hash"].startswith("#tab="):
             raise AssertionError(
-                f"[offline_sw_shell_recovery] Expected HTTP 503 for uncached .wasm offline, observed: {offline_statuses}"
+                f"[offline_sw_shell_recovery] Expected query+hash preserved across offline reload, got {current_loc}"
             )
-        assert_zero_csp_violations("offline_sw_shell_recovery", csp_violations)
+
+        # Ensure zero synthetic HTTP 503 statuses or '(HTTP 503)' text offline.
+        any_503 = {p: codes for p, codes in offline_statuses.items() if 503 in codes}
+        if any_503:
+            raise AssertionError(
+                f"[offline_sw_shell_recovery] Unexpected synthetic HTTP 503 responses offline: {any_503}"
+            )
+        error_text = page.locator("#error_container").inner_text()
+        if re.search(r"\bHTTP\s*503\b|\b503\s+Service\b|\(503\)", error_text, re.IGNORECASE):
+            raise AssertionError(
+                f"[offline_sw_shell_recovery] Unexpected HTTP 503 text in offline error view: {error_text!r}"
+            )
+
+        # All 7 manifest icons must resolve with HTTP 200 image responses while offline.
+        icon_results = page.evaluate(
+            """async (icons) => {
+                const out = [];
+                for (const iconPath of icons) {
+                    const resp = await fetch('.' + iconPath);
+                    const buf = await resp.arrayBuffer();
+                    out.push({
+                        path: iconPath,
+                        status: resp.status,
+                        contentType: resp.headers.get('content-type') || '',
+                        bytes: buf.byteLength,
+                    });
+                }
+                return out;
+            }""",
+            manifest_icons,
+        )
+        for item in icon_results:
+            if (
+                item["status"] != 200
+                or not item["contentType"].startswith("image/")
+                or item["bytes"] <= 0
+            ):
+                raise AssertionError(
+                    f"[offline_sw_shell_recovery] Expected offline HTTP 200 image for manifest icon, got {item}"
+                )
+
+        # Verify live connection badge and workspace backup export button while offline.
+        conn_badge = page.locator("#offline_connection_status")
+        expect(conn_badge).to_be_visible()
+        expect(conn_badge).to_have_attribute("data-connection-state", "offline")
+
+        expected_storage_payload = page.evaluate("() => window.localStorage.getItem('app') || ''")
+        download_btn = page.locator("#download_workspace_button")
+        expect(download_btn).to_be_visible()
+        with page.expect_download() as dl_info:
+            download_btn.click()
+        dl = dl_info.value
+        dl_path = dl.path()
+        if (
+            dl_path is None
+            or not expected_storage_payload
+            or '"theme":"Light"' not in expected_storage_payload.replace(" ", "")
+            or Path(dl_path).read_text(encoding="utf-8") != expected_storage_payload
+        ):
+            raise AssertionError(
+                "[offline_sw_shell_recovery] Exported .mws workspace backup did not match saved localStorage['app']"
+            )
 
         if screenshot_path is not None:
             page.screenshot(path=str(screenshot_path))
+
+        # Reconnect and verify live connection status transitions to online.
+        context.set_offline(False)
+        expect(conn_badge).to_have_attribute("data-connection-state", "online", timeout=5_000)
+
+        # Verify bootstrap.js standalone offline fallback (without reload.js) also renders offline recovery.
+        fallback_page = context.new_page()
+        attach_csp_observer(fallback_page, csp_violations)
+        fallback_page.route(
+            "**/reload.js*",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="text/javascript",
+                body=b"// standalone bootstrap.js offline recovery check\n",
+            ),
+        )
+        context.set_offline(True)
+        fallback_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+        err_box = fallback_page.locator("#error_container")
+        expect(err_box).to_be_visible(timeout=12_000)
+        expect(err_box).to_have_attribute("data-error-category", "offline")
+        expect(fallback_page.locator("#offline_connection_status")).to_be_visible()
+        expect(fallback_page.locator("#download_workspace_button")).to_be_visible()
+        fb_text = err_box.inner_text()
+        if re.search(r"\bHTTP\s*503\b|\b503\s+Service\b|\(503\)", fb_text, re.IGNORECASE):
+            raise AssertionError(
+                f"[offline_bootstrap_fallback] Unexpected HTTP 503 text in bootstrap fallback: {fb_text!r}"
+            )
+        context.set_offline(False)
+        expect(fallback_page.locator("#offline_connection_status")).to_have_attribute(
+            "data-connection-state", "online", timeout=5_000
+        )
+
+        assert_zero_csp_violations("offline_sw_shell_recovery", csp_violations)
         print(
-            "[PASS] offline_sw_shell_recovery: cached shell 200, uncached .wasm 503, #error_container active"
+            "[PASS] offline_sw_shell_recovery: cached shell + all 7 icons HTTP 200, 0 synthetic 503s, category='offline', live reconnect + .mws backup verified"
         )
     finally:
         context.close()

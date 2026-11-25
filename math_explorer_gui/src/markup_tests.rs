@@ -193,13 +193,23 @@ mod tests {
         let style_end = INDEX_HTML
             .find("</style>")
             .expect("</style> closing tag must exist in index.html");
+        let head_end = INDEX_HTML
+            .find("</head>")
+            .expect("</head> closing tag must exist in index.html");
         let first_script = INDEX_HTML
             .find("<script")
             .expect("startup <script> tags must exist in index.html");
+        let theme_init_pos = INDEX_HTML
+            .find("<script src=\"theme-init.js\"></script>")
+            .expect("synchronous theme-init.js <script> tag must exist in <head>");
 
         assert!(
-            style_start < style_end && style_end < first_script,
-            "Critical inline <style> block must appear before any <script> tag"
+            style_start < style_end && style_end < first_script && first_script < head_end,
+            "Critical inline <style> block must appear before any <script> tag inside <head>"
+        );
+        assert_eq!(
+            first_script, theme_init_pos,
+            "theme-init.js must be the first <script> immediately after </style> in <head>"
         );
     }
 
@@ -220,10 +230,19 @@ mod tests {
                 open_tag.contains("src=\""),
                 "All <script> tags must reference external files (no inline scripts): {open_tag}"
             );
-            assert!(
-                open_tag.contains(" defer") || open_tag.contains("\tdefer"),
-                "All startup <script> tags must be marked defer: {open_tag}"
-            );
+            if open_tag.contains("src=\"theme-init.js\"") {
+                assert!(
+                    !open_tag.contains("defer")
+                        && !open_tag.contains("async")
+                        && !open_tag.contains("module"),
+                    "theme-init.js must execute synchronously before first paint: {open_tag}"
+                );
+            } else {
+                assert!(
+                    open_tag.contains(" defer") || open_tag.contains("\tdefer"),
+                    "Non-theme startup <script> tags must be marked defer: {open_tag}"
+                );
+            }
 
             let close_start = INDEX_HTML[(tag_end + 1)..]
                 .find("</script>")
@@ -239,25 +258,33 @@ mod tests {
             search_from = close_start + "</script>".len();
         }
 
-        for script_file in ["reload.js", "bootstrap.js"] {
+        for script_file in ["theme-init.js", "reload.js", "bootstrap.js"] {
             let src_attr = format!("src=\"{script_file}\"");
             assert!(
                 script_sources.iter().any(|t| t.contains(&src_attr)),
-                "index.html must include deferred {script_file}"
+                "index.html must include external {script_file}"
             );
         }
         assert!(
             !INDEX_HTML.contains("coi-serviceworker"),
             "index.html must not register or copy coi-serviceworker.min.js"
         );
-        assert!(
-            INDEX_HTML.contains("<link data-trunk rel=\"copy-file\" href=\"bootstrap.js\"/>"),
-            "index.html must copy bootstrap.js via data-trunk copy-file"
-        );
-        assert!(
-            INDEX_HTML.contains("<link data-trunk rel=\"copy-file\" href=\"initializer.js\"/>"),
-            "index.html must copy initializer.js via data-trunk copy-file"
-        );
+    }
+
+    #[test]
+    fn test_startup_scripts_copied_via_trunk() {
+        for copied in [
+            "theme-init.js",
+            "reload.js",
+            "bootstrap.js",
+            "initializer.js",
+        ] {
+            let copy_link = format!("<link data-trunk rel=\"copy-file\" href=\"{copied}\"/>");
+            assert!(
+                INDEX_HTML.contains(&copy_link),
+                "index.html must copy {copied} via data-trunk copy-file"
+            );
+        }
     }
 
     #[test]
@@ -322,6 +349,7 @@ mod tests {
 
     #[test]
     fn test_reload_and_startup_scripts_preserve_url_hash_and_search() {
+        const THEME_INIT_JS: &str = include_str!("../theme-init.js");
         const RELOAD_JS: &str = include_str!("../reload.js");
         const INITIALIZER_JS: &str = include_str!("../initializer.js");
         const SW_JS: &str = include_str!("../sw.js");
@@ -330,7 +358,13 @@ mod tests {
             RELOAD_JS.contains("window.location.reload()"),
             "reload.js must reload in-place so shared #tab=... hashes survive recovery reloads"
         );
-        for script in [RELOAD_JS, BOOTSTRAP_JS, INITIALIZER_JS, SW_JS] {
+        for script in [
+            THEME_INIT_JS,
+            RELOAD_JS,
+            BOOTSTRAP_JS,
+            INITIALIZER_JS,
+            SW_JS,
+        ] {
             for forbidden in [
                 "location.hash =",
                 "location.href =",

@@ -1,10 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 const INDEX_HTML: &str = include_str!("../index.html");
+const THEME_INIT_JS: &str = include_str!("../theme-init.js");
 const RELOAD_JS: &str = include_str!("../reload.js");
 const BOOTSTRAP_JS: &str = include_str!("../bootstrap.js");
 const INITIALIZER_JS: &str = include_str!("../initializer.js");
 const SW_JS: &str = include_str!("../sw.js");
+const SITE_WEBMANIFEST: &str = include_str!("../site.webmanifest");
 const MAIN_RS: &str = include_str!("main.rs");
 const FINALIZE_WEB_DIST_SH: &str = include_str!("../../scripts/finalize_web_dist.sh");
 const COMPRESS_DIST_SH: &str = include_str!("../../scripts/compress_dist.sh");
@@ -18,10 +20,12 @@ fn test_service_worker_caches_shell_only_and_returns_valid_offline_responses() {
     for shell_entry in [
         "'./'",
         "'./index.html'",
+        "'./theme-init.js'",
         "'./reload.js'",
         "'./bootstrap.js'",
         "'./initializer.js'",
         "'./sw.js'",
+        "'./site.webmanifest'",
     ] {
         assert!(
             SW_JS.contains(shell_entry),
@@ -33,8 +37,8 @@ fn test_service_worker_caches_shell_only_and_returns_valid_offline_responses() {
         "sw.js must not pre-cache the multi-MB math_explorer_gui_bg.wasm bundle"
     );
     assert!(
-        SW_JS.contains("status: 503") && SW_JS.contains("new Response("),
-        "sw.js must resolve uncached offline requests with an HTTP 503 Response"
+        !SW_JS.contains("status: 503") && !SW_JS.contains("buildOfflineUnavailableResponse"),
+        "sw.js must pass uncached non-shell requests natively without synthetic HTTP 503 responses"
     );
     for forbidden_cache_override in ["cache: 'no-cache'", "cache: 'reload'"] {
         assert!(
@@ -42,10 +46,17 @@ fn test_service_worker_caches_shell_only_and_returns_valid_offline_responses() {
             "sw.js must honor fresh HTTP cache entries without forcing {forbidden_cache_override}"
         );
     }
-    assert!(
-        RELOAD_JS.contains("serviceWorker.register('./sw.js')"),
-        "reload.js must register ./sw.js asynchronously"
-    );
+    for sw_defer_contract in [
+        "serviceWorker.register('./sw.js')",
+        "requestAnimationFrame",
+        "requestIdleCallback",
+        "scheduleAppShellServiceWorkerRegistration",
+    ] {
+        assert!(
+            RELOAD_JS.contains(sw_defer_contract),
+            "reload.js must defer ./sw.js registration until post-Frame-1 idle time: {sw_defer_contract}"
+        );
+    }
 }
 
 #[test]
@@ -252,5 +263,79 @@ fn test_truncation_precedes_compile_error_and_internal_error_maps_to_compile() {
                 "{name} must route Firefox InternalError token '{token}' to compile recovery"
             );
         }
+    }
+}
+
+#[test]
+fn test_sw_swr_bounded_navigation_timeout_and_all_manifest_icons_cached() {
+    let manifest: serde_json::Value =
+        serde_json::from_str(SITE_WEBMANIFEST).expect("site.webmanifest must parse as valid JSON");
+    let icons = manifest["icons"]
+        .as_array()
+        .expect("site.webmanifest must declare an icons array");
+    assert_eq!(icons.len(), 7, "site.webmanifest must declare all 7 icons");
+    for icon in icons {
+        let src = icon["src"]
+            .as_str()
+            .expect("manifest icon must specify src");
+        let sw_token = format!("'./{src}'");
+        assert!(
+            SW_JS.contains(&sw_token),
+            "sw.js OPTIONAL_SHELL_PATHS must include manifest icon {sw_token}"
+        );
+    }
+    for contract in [
+        "NAVIGATION_FETCH_TIMEOUT_MS = 1200",
+        "new AbortController()",
+        "controller.abort()",
+        "buildDeduplicatedPrecachePaths",
+        "Promise.all(",
+        "revalidateShellAsset",
+        "event.waitUntil(",
+    ] {
+        assert!(
+            SW_JS.contains(contract),
+            "sw.js must implement SWR, 1,200 ms navigation abort, and parallel deduplicated precache: {contract}"
+        );
+    }
+}
+
+#[test]
+fn test_preboot_theme_init_and_offline_recovery_contracts() {
+    for token in [
+        "window.localStorage",
+        "getItem('app')",
+        "JSON.parse",
+        "schema_version",
+        "app_state",
+        "dataset.theme",
+        "color-scheme",
+        "meta[name=\"theme-color\"]",
+        "#121214",
+        "#f8f8f8",
+        "#000000",
+        "high-contrast",
+    ] {
+        assert!(
+            THEME_INIT_JS.contains(token),
+            "theme-init.js must synchronize saved theme before first paint: {token}"
+        );
+    }
+    assert!(
+        !THEME_INIT_JS.contains("data-boot-initialized"),
+        "theme-init.js must not prematurely mark data-boot-initialized before reload.js/bootstrap.js"
+    );
+    for offline_contract in [
+        "offline:",
+        "navigator.onLine === false",
+        "offline_connection_status",
+        "addEventListener('online'",
+        "addEventListener('offline'",
+        "download_workspace_button",
+    ] {
+        assert!(
+            RELOAD_JS.contains(offline_contract) && BOOTSTRAP_JS.contains(offline_contract),
+            "reload.js and bootstrap.js must support dedicated offline recovery contract: {offline_contract}"
+        );
     }
 }

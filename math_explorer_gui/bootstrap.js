@@ -11,6 +11,7 @@ const MODULE_PATH = './math_explorer_gui.js';
 const WASM_PATH = './math_explorer_gui_bg.wasm';
 const FALLBACK_STALL_TIMEOUT_MS = 12000;
 const FALLBACK_COMPILE_TIMEOUT_MS = 45000;
+const FALLBACK_RECOVERY_FILENAME = 'math-explorer-recovery.mws';
 
 const FALLBACK_CATEGORY_COPY = {
     network: {
@@ -22,6 +23,17 @@ const FALLBACK_CATEGORY_COPY = {
             'Check your internet connection and verify that firewalls, proxies, or content blockers allow .js and .wasm requests.',
             'Select Reload Page below (or perform a hard refresh) to retry downloading the application.',
             'If the server is temporarily unavailable, wait a moment and reload.',
+        ],
+    },
+    offline: {
+        title: 'Offline — Unable to Start Simulations',
+        message:
+            'Math Explorer loaded its cached startup shell, but your device is currently offline and the WebAssembly simulation bundle is not cached locally. Your saved workspace remains intact in browser storage.',
+        heading: 'Offline Recovery Steps',
+        steps: [
+            'Reconnect to Wi-Fi or cellular data—the connection status badge above updates automatically as soon as your network returns.',
+            'Select Reload Page below once reconnected to download and launch the interactive simulations.',
+            'If you have saved local workspace state, select Download Saved Workspace (.mws) below to export a backup copy while offline.',
         ],
     },
     compile: {
@@ -185,19 +197,30 @@ function isFirefoxInternalError(err, detailText) {
     return FIREFOX_INTERNAL_ERROR_PATTERN.test(detailText || formatError(err));
 }
 
+function isBrowserOffline() {
+    try {
+        return typeof navigator !== 'undefined' && navigator.onLine === false;
+    } catch (_) {
+        return false;
+    }
+}
+
 function classifyFallbackCategory(err, detailText, assetPath) {
     if (/timeout|timed out|stalled/i.test(detailText)) {
         return 'timeout';
     }
-    if (lookupResourceHttpStatus(assetPath) >= 400) {
+    const statusCode = lookupResourceHttpStatus(assetPath);
+    if (statusCode >= 400 || /\bhttp\s+[45]\d\d\b|status code is not ok/i.test(detailText)) {
         return 'network';
     }
-    if (
-        STREAM_TRUNCATION_PATTERN.test(detailText) ||
-        /http\s+[45]\d\d|status code is not ok|failed to fetch|networkerror|network error|load failed|dynamically imported module|importing a module script failed|failed to load startup|aborted|aborterror|err_aborted|err_failed|err_connection|err_internet|err_content_length_mismatch/i.test(
+    const isFetchFailure =
+        /failed to fetch|networkerror|network error|load failed|dynamically imported module|importing a module script failed|failed to load startup|aborted|aborterror|err_aborted|err_failed|err_connection|err_internet|err_content_length_mismatch|offline/i.test(
             detailText,
-        )
-    ) {
+        );
+    if ((isBrowserOffline() || /err_internet_disconnected/i.test(detailText)) && isFetchFailure) {
+        return 'offline';
+    }
+    if (STREAM_TRUNCATION_PATTERN.test(detailText) || isFetchFailure) {
         return 'network';
     }
     if (/webgl|hardware acceleration|rendering context/i.test(detailText)) {
@@ -219,7 +242,7 @@ function classifyFallbackCategory(err, detailText, assetPath) {
     ) {
         return 'compile';
     }
-    return 'compile';
+    return isBrowserOffline() ? 'offline' : 'compile';
 }
 
 function buildDiagnosticDetails(err, assetPath) {
@@ -227,6 +250,78 @@ function buildDiagnosticDetails(err, assetPath) {
         return '';
     }
     return 'Initialization error: ' + enrichAssetError(err, assetPath);
+}
+
+function bindFallbackOfflineRecoveryControls(category) {
+    const badge = document.getElementById('offline_connection_status');
+    const textEl = document.getElementById('offline_connection_text');
+    if (badge) {
+        if (category === 'offline') {
+            const syncBadge = () => {
+                const online = !isBrowserOffline();
+                badge.hidden = false;
+                badge.setAttribute('data-connection-state', online ? 'online' : 'offline');
+                if (textEl) {
+                    textEl.textContent = online
+                        ? 'Connection restored — select Reload Page to launch Math Explorer'
+                        : 'Offline — waiting for network connection';
+                }
+            };
+            syncBadge();
+            if (!badge.dataset.offlineBound) {
+                badge.dataset.offlineBound = 'true';
+                window.addEventListener('online', syncBadge);
+                window.addEventListener('offline', syncBadge);
+            }
+        } else {
+            badge.hidden = true;
+        }
+    }
+
+    const downloadBtn = document.getElementById('download_workspace_button');
+    if (!downloadBtn) {
+        return;
+    }
+    if (category !== 'offline') {
+        downloadBtn.hidden = true;
+        return;
+    }
+    let savedPayload = '';
+    try {
+        const raw = window.localStorage && window.localStorage.getItem('app');
+        savedPayload = typeof raw === 'string' && raw.trim().length > 0 ? raw : '';
+    } catch (_) {
+        savedPayload = '';
+    }
+    downloadBtn.hidden = savedPayload.length === 0;
+    if (savedPayload.length > 0 && !downloadBtn.dataset.downloadBound) {
+        downloadBtn.dataset.downloadBound = 'true';
+        downloadBtn.addEventListener('click', (event) => {
+            if (event && typeof event.preventDefault === 'function') {
+                event.preventDefault();
+            }
+            if (typeof Blob === 'undefined' || !window.URL || !URL.createObjectURL) {
+                return;
+            }
+            const blob = new Blob([savedPayload], { type: 'application/json' });
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = FALLBACK_RECOVERY_FILENAME;
+            link.rel = 'noopener';
+            link.style.display = 'none';
+            if (document.body) {
+                document.body.appendChild(link);
+            }
+            link.click();
+            if (link.parentNode) {
+                link.parentNode.removeChild(link);
+            }
+            window.setTimeout(() => {
+                URL.revokeObjectURL(objectUrl);
+            }, 0);
+        });
+    }
 }
 
 function showBootstrapRecovery(err, assetPath) {
@@ -297,6 +392,8 @@ function showBootstrapRecovery(err, assetPath) {
             detailsEl.textContent = detailText;
             detailsEl.setAttribute('style', 'display: block;');
         }
+
+        bindFallbackOfflineRecoveryControls(category);
 
         const reloadButton = bindFallbackReloadButton();
         if (reloadButton && typeof reloadButton.focus === 'function') {
@@ -1008,11 +1105,13 @@ async function bootstrap() {
         ) {
             const category = activeBoot.classifyError(effectiveError, failedAssetPath);
             activeBoot.showError(category, enrichedDetail);
-            if (lookupResourceHttpStatus(failedAssetPath) === 0) {
+            if (category !== 'offline' && lookupResourceHttpStatus(failedAssetPath) === 0) {
                 window.setTimeout(() => {
-                    const lateDetail = enrichAssetError(effectiveError, failedAssetPath);
-                    if (lateDetail !== enrichedDetail) {
-                        activeBoot.showError('network', lateDetail);
+                    if (lookupResourceHttpStatus(failedAssetPath) >= 400) {
+                        const lateDetail = enrichAssetError(effectiveError, failedAssetPath);
+                        if (lateDetail !== enrichedDetail) {
+                            activeBoot.showError('network', lateDetail);
+                        }
                     }
                 }, 0);
             }

@@ -320,7 +320,9 @@ fn test_error_container_supports_categories_and_webgl_instructions() {
         "id=\"error_recovery_list\"",
         "id=\"webgl_instructions\"",
         "id=\"error_details\"",
+        "id=\"offline_connection_status\"",
         "data-error-category=\"network\"",
+        "data-error-category=\"offline\"",
         "data-error-category=\"compile\"",
         "data-error-category=\"timeout\"",
     ] {

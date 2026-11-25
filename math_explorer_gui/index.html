@@ -271,10 +271,51 @@
         }
 
         #error_container[data-error-category="network"] #error_recovery_steps,
+        #error_container[data-error-category="offline"] #error_recovery_steps,
         #error_container[data-error-category="compile"] #error_recovery_steps,
         #error_container[data-error-category="timeout"] #error_recovery_steps,
         #error_container[data-error-category="isolation"] #error_recovery_steps {
             display: block;
+        }
+
+        #error_container:not([data-error-category="offline"]) #offline_connection_status {
+            display: none !important;
+        }
+
+        .connection-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            margin: 0 0 18px 0;
+            border-radius: 999px;
+            border: 1px solid #3f3f4e;
+            background-color: #141419;
+            color: #e2e8f0;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .connection-status[hidden] {
+            display: none !important;
+        }
+
+        .connection-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background-color: #f59e0b;
+            flex-shrink: 0;
+        }
+
+        .connection-status[data-connection-state="online"] {
+            border-color: rgba(34, 197, 94, 0.45);
+            background-color: rgba(22, 101, 52, 0.22);
+            color: #bbf7d0;
+        }
+
+        .connection-status[data-connection-state="online"] .connection-dot {
+            background-color: #22c55e;
         }
 
         #error_container:not([data-error-category="webgl"]) #webgl_instructions {
@@ -589,6 +630,18 @@
                 color: #991b1b;
             }
 
+            html:not([data-theme]) .connection-status {
+                background-color: #f1f5f9;
+                border-color: #cbd5e1;
+                color: #1e293b;
+            }
+
+            html:not([data-theme]) .connection-status[data-connection-state="online"] {
+                background-color: #dcfce7;
+                border-color: #86efac;
+                color: #14532d;
+            }
+
             html:not([data-theme]) noscript .noscript-banner {
                 background-color: #f8f8f8;
                 color: #b91c1c;
@@ -661,10 +714,19 @@
 
             html:not([data-theme]) .error-card,
             html:not([data-theme]) .instructions-card,
-            html:not([data-theme]) .error-details {
+            html:not([data-theme]) .error-details,
+            html:not([data-theme]) .connection-status {
                 background-color: #000000;
                 border: 2px solid #ffffff;
                 box-shadow: none;
+            }
+
+            html:not([data-theme]) .connection-status {
+                color: #ffffff;
+            }
+
+            html:not([data-theme]) .connection-dot {
+                background-color: #ffff00;
             }
 
             html:not([data-theme]) .error-title,
@@ -754,6 +816,17 @@
                 background-color: ButtonFace;
                 color: ButtonText;
                 border-color: ButtonText;
+            }
+
+            .connection-status {
+                background-color: Canvas;
+                color: CanvasText;
+                border-color: CanvasText;
+            }
+
+            .connection-dot {
+                forced-color-adjust: none;
+                background-color: Highlight;
             }
         }
 
@@ -908,6 +981,18 @@
             color: #991b1b;
         }
 
+        html[data-theme="light"] .connection-status {
+            background-color: #f1f5f9;
+            border-color: #cbd5e1;
+            color: #1e293b;
+        }
+
+        html[data-theme="light"] .connection-status[data-connection-state="online"] {
+            background-color: #dcfce7;
+            border-color: #86efac;
+            color: #14532d;
+        }
+
         html[data-theme="light"] noscript .noscript-banner {
             background-color: #f8f8f8;
             color: #b91c1c;
@@ -981,10 +1066,19 @@
 
         html[data-theme="high-contrast"] .error-card,
         html[data-theme="high-contrast"] .instructions-card,
-        html[data-theme="high-contrast"] .error-details {
+        html[data-theme="high-contrast"] .error-details,
+        html[data-theme="high-contrast"] .connection-status {
             background-color: #000000;
             border: 2px solid #ffffff;
             box-shadow: none;
+        }
+
+        html[data-theme="high-contrast"] .connection-status {
+            color: #ffffff;
+        }
+
+        html[data-theme="high-contrast"] .connection-dot {
+            background-color: #ffff00;
         }
 
         html[data-theme="high-contrast"] .error-title,
@@ -1087,6 +1181,8 @@
             }
         }
     </style>
+    <script src="theme-init.js"></script>
+    <link data-trunk rel="copy-file" href="theme-init.js"/>
     <script src="reload.js" defer></script>
     <link data-trunk rel="copy-file" href="reload.js"/>
     <link data-trunk rel="copy-file" href="sw.js"/>
@@ -1140,6 +1236,10 @@
             <p id="error_message" class="error-message">
                 Math Explorer requires WebGL and hardware acceleration to render mathematics and interactive simulations. Your browser was unable to initialize a WebGL rendering context.
             </p>
+            <div id="offline_connection_status" class="connection-status" role="status" aria-live="polite" data-connection-state="offline" hidden>
+                <span class="connection-dot" aria-hidden="true"></span>
+                <span id="offline_connection_text">Offline — waiting for network connection</span>
+            </div>
             <div id="error_recovery_steps" class="instructions-card">
                 <h2 id="error_recovery_heading">Recovery Steps</h2>
                 <ol id="error_recovery_list" class="recovery-list">

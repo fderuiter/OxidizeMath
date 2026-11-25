@@ -5,8 +5,9 @@
     const DEFAULT_COMPILE_TIMEOUT_MS = 45000;
     const DEFAULT_WEBGL_RESTORE_TIMEOUT_MS = 8000;
     const DEFAULT_RECOVERY_FILENAME = 'math-explorer-recovery.mws';
+    const SW_IDLE_TIMEOUT_MS = 1500;
     const STARTUP_ASSET_PATTERN =
-        /(?:^|\/)(reload\.js|bootstrap\.js|initializer\.js|math_explorer_gui\.js|math_explorer_gui_bg\.wasm)(?:[?#]|$)/i;
+        /(?:^|\/)(theme-init\.js|reload\.js|bootstrap\.js|initializer\.js|math_explorer_gui\.js|math_explorer_gui_bg\.wasm)(?:[?#]|$)/i;
 
     const SHELL_THEME_TOKENS = {
         dark: { colorScheme: 'dark', themeColor: '#121214' },
@@ -84,6 +85,9 @@
     }
 
     function syncShellThemeFromStorage() {
+        if (typeof window.__mathExplorerSyncShellTheme === 'function') {
+            return window.__mathExplorerSyncShellTheme();
+        }
         const savedTheme = readSavedThemeFromStorage();
         const tokens = savedTheme && SHELL_THEME_TOKENS[savedTheme];
         if (!tokens) {
@@ -108,6 +112,7 @@
     }
 
     let swRegistered = false;
+    let swRegistrationScheduled = false;
 
     function registerAppShellServiceWorker() {
         if (swRegistered) {
@@ -130,6 +135,41 @@
         }
     }
 
+    function scheduleAppShellServiceWorkerRegistration() {
+        if (swRegistered || swRegistrationScheduled || isUnloading || isBootFailed()) {
+            return;
+        }
+        swRegistrationScheduled = true;
+        const scheduleDuringIdle = function () {
+            if (isUnloading || isBootFailed()) {
+                return;
+            }
+            if (typeof window.requestIdleCallback === 'function') {
+                window.requestIdleCallback(
+                    function () {
+                        if (!isUnloading && !isBootFailed()) {
+                            registerAppShellServiceWorker();
+                        }
+                    },
+                    { timeout: SW_IDLE_TIMEOUT_MS }
+                );
+            } else {
+                window.setTimeout(function () {
+                    if (!isUnloading && !isBootFailed()) {
+                        registerAppShellServiceWorker();
+                    }
+                }, 1);
+            }
+        };
+        if (typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(function () {
+                window.setTimeout(scheduleDuringIdle, 0);
+            });
+        } else {
+            scheduleDuringIdle();
+        }
+    }
+
     markBootManaged();
     syncShellThemeFromStorage();
 
@@ -146,6 +186,19 @@
             ],
             alert:
                 'Network error loading Math Explorer. Check your internet connection and select Reload Page to retry.'
+        },
+        offline: {
+            title: 'Offline — Unable to Start Simulations',
+            message:
+                'Math Explorer loaded its cached startup shell, but your device is currently offline and the WebAssembly simulation bundle is not cached locally. Your saved workspace remains intact in browser storage.',
+            heading: 'Offline Recovery Steps',
+            steps: [
+                'Reconnect to Wi-Fi or cellular data—the connection status badge above updates automatically as soon as your network returns.',
+                'Select Reload Page below once reconnected to download and launch the interactive simulations.',
+                'If you have saved local workspace state, select Download Saved Workspace (.mws) below to export a backup copy while offline.'
+            ],
+            alert:
+                'You are currently offline and Math Explorer cannot download its WebAssembly simulation bundle. Reconnect and select Reload Page, or download your saved workspace backup.'
         },
         compile: {
             title: 'WebAssembly Startup Error',
@@ -235,6 +288,8 @@
     let savedWorkspaceEnvelope = '';
     let savedWorkspaceFilename = DEFAULT_RECOVERY_FILENAME;
     let storageWriteBlocked = false;
+    let offlineListenersBound = false;
+    let activeErrorCategory = '';
     let webglRecoveryHandlers = null;
     let currentPhase = 'transfer';
     let lastStageLabel = 'Initializing startup scripts';
@@ -585,6 +640,61 @@
         return FIREFOX_INTERNAL_ERROR_PATTERN.test(text);
     }
 
+    function isBrowserOffline() {
+        try {
+            return typeof navigator !== 'undefined' && navigator.onLine === false;
+        } catch (_err) {
+            return false;
+        }
+    }
+
+    function syncOfflineConnectionStatus(announceTransition) {
+        const badge = document.getElementById('offline_connection_status');
+        const textEl = document.getElementById('offline_connection_text');
+        if (!badge) {
+            return;
+        }
+        if (activeErrorCategory !== 'offline') {
+            badge.hidden = true;
+            return;
+        }
+        const onlineNow = !isBrowserOffline();
+        const prevState = badge.getAttribute('data-connection-state');
+        const nextState = onlineNow ? 'online' : 'offline';
+        badge.hidden = false;
+        badge.setAttribute('data-connection-state', nextState);
+        if (textEl) {
+            textEl.textContent = onlineNow
+                ? 'Connection restored — select Reload Page to launch Math Explorer'
+                : 'Offline — waiting for network connection';
+        }
+        if (announceTransition && prevState !== nextState) {
+            announce(
+                onlineNow
+                    ? 'Network connection restored. Select Reload Page to launch Math Explorer.'
+                    : 'Network connection lost. Waiting for reconnection.',
+                'polite'
+            );
+        }
+    }
+
+    function bindOfflineConnectionListeners() {
+        if (offlineListenersBound) {
+            return;
+        }
+        offlineListenersBound = true;
+        window.addEventListener('online', function () {
+            if (!isUnloading && activeErrorCategory === 'offline') {
+                syncOfflineConnectionStatus(true);
+            }
+        });
+        window.addEventListener('offline', function () {
+            if (!isUnloading && activeErrorCategory === 'offline') {
+                syncOfflineConnectionStatus(true);
+            }
+        });
+    }
+
     function classifyError(reason, resourceUrl) {
         const text = formatReason(reason);
         if (/timeout|timed out|stalled/i.test(text)) {
@@ -593,12 +703,21 @@
         if (resourceUrl && hasFailedResourceStatus(resourceUrl)) {
             return 'network';
         }
-        if (
-            STREAM_TRUNCATION_PATTERN.test(text) ||
-            /http\s+[45]\d\d|status code is not ok|failed to fetch|networkerror|network error|load failed|error loading dynamically imported module|importing a module script failed|failed to load module|dynamically imported module|aborted|aborterror|err_aborted|err_failed|err_connection|err_internet|err_content_length_mismatch|failed to load required startup|failed to load startup/i.test(
+        if (/\bhttp\s+[45]\d\d\b|status code is not ok/i.test(text)) {
+            return 'network';
+        }
+        const isFetchFailureText =
+            /failed to fetch|networkerror|network error|load failed|error loading dynamically imported module|importing a module script failed|failed to load module|dynamically imported module|aborted|aborterror|err_aborted|err_failed|err_connection|err_internet|err_content_length_mismatch|failed to load required startup|failed to load startup|offline/i.test(
                 text
-            )
+            );
+        if (
+            (isBrowserOffline() || /err_internet_disconnected/i.test(text)) &&
+            !hasFailedResourceStatus(resourceUrl) &&
+            (isFetchFailureText || !text)
         ) {
+            return 'offline';
+        }
+        if (STREAM_TRUNCATION_PATTERN.test(text) || isFetchFailureText) {
             return 'network';
         }
         if (/webgl|hardware acceleration|rendering context/i.test(text)) {
@@ -627,6 +746,9 @@
         }
         if (hasFailedResourceStatus()) {
             return 'network';
+        }
+        if (isBrowserOffline()) {
+            return 'offline';
         }
         return 'network';
     }
@@ -776,6 +898,7 @@
 
         const detailText = formatReason(details);
         bootFailed = true;
+        activeErrorCategory = resolvedCategory;
         clearWatchdog();
         clearWebglRestoreTimer();
         abortBoot(detailText || resolvedCategory);
@@ -869,9 +992,19 @@
                 errorContainer.style.display = 'flex';
             }
 
+            if (resolvedCategory === 'offline') {
+                bindOfflineConnectionListeners();
+            }
+            syncOfflineConnectionStatus(false);
+
             bindDownloadWorkspaceButton();
-            if (resolvedCategory === 'webgl') {
+            if (resolvedCategory === 'webgl' || resolvedCategory === 'offline') {
                 syncDownloadWorkspaceButton();
+            } else {
+                const downloadBtn = document.getElementById('download_workspace_button');
+                if (downloadBtn) {
+                    downloadBtn.hidden = true;
+                }
             }
 
             announce(cfg.alert, 'assertive');
@@ -975,7 +1108,7 @@
         if (root) {
             root.setAttribute('data-boot-initialized', 'true');
         }
-        registerAppShellServiceWorker();
+        scheduleAppShellServiceWorkerRegistration();
     }
 
     function scanStartupResourceErrors() {
@@ -1074,9 +1207,25 @@
                 if (tag === 'SCRIPT' || (tag === 'LINK' && (rel === 'modulepreload' || rel === 'preload'))) {
                     const assetUrl = target.src || target.href || 'startup resource';
                     const statusCode = getFailedResourceStatus(assetUrl);
-                    const suffix = statusCode >= 400 ? ' (HTTP ' + statusCode + ')' : '';
-                    showError('network', 'Failed to load required startup asset: ' + assetUrl + suffix);
-                    if (statusCode < 400) {
+                    if (statusCode >= 400) {
+                        showError(
+                            'network',
+                            'Failed to load required startup asset: ' +
+                                assetUrl +
+                                ' (HTTP ' +
+                                statusCode +
+                                ')'
+                        );
+                    } else if (isBrowserOffline()) {
+                        const shortName = normalizeHintToken(assetUrl) || assetUrl;
+                        showError(
+                            'offline',
+                            'Offline: unable to fetch startup asset ' +
+                                shortName +
+                                ' without an active network connection.'
+                        );
+                    } else {
+                        showError('network', 'Failed to load required startup asset: ' + assetUrl);
                         window.setTimeout(function () {
                             const lateStatus = getFailedResourceStatus(assetUrl);
                             if (lateStatus >= 400) {
