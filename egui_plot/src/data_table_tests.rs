@@ -1204,6 +1204,7 @@ fn test_combobox_series_selector_supports_keyboard_arrow_stepping() {
     let (mut open, mut st) = (true, DataTableState::default());
     let id = Id::new("combo_kbd_nav");
     let _ = run_modal(&ctx, screen_input(), id, &mut open, &mut st, &series);
+    let _ = run_modal(&ctx, screen_input(), id, &mut open, &mut st, &series);
     let _ = run_modal(&ctx, key_input(Key::Tab), id, &mut open, &mut st, &series);
     let _ = run_modal(&ctx, key_input(Key::Tab), id, &mut open, &mut st, &series);
     let _ = run_modal(
@@ -1224,4 +1225,49 @@ fn test_combobox_series_selector_supports_keyboard_arrow_stepping() {
         &series,
     );
     assert_eq!(st.selected_series, 0);
+}
+
+#[test]
+fn test_series_selector_bar_controls_lock_horizontal_arrows_across_tabs() {
+    let (ctx, c) = (Context::default(), Color32::from_rgb(80, 160, 240));
+    let series: Vec<(String, Vec<[f64; 2]>, Color32)> = (0..20)
+        .map(|i| (format!("Unshared {i}"), vec![[i as f64, 1.0]], c))
+        .collect();
+    let (mut open, mut st) = (true, DataTableState::default());
+    let id = Id::new("combo_kbd_all_controls");
+    let _ = run_modal(&ctx, screen_input(), id, &mut open, &mut st, &series);
+    let _ = run_modal(&ctx, screen_input(), id, &mut open, &mut st, &series);
+    let _ = run_modal(&ctx, key_input(Key::Tab), id, &mut open, &mut st, &series);
+    let _ = run_modal(&ctx, key_input(Key::Tab), id, &mut open, &mut st, &series);
+    for expected in [1, 2, 3] {
+        let _ = run_modal(
+            &ctx,
+            key_input(Key::ArrowRight),
+            id,
+            &mut open,
+            &mut st,
+            &series,
+        );
+        assert_eq!(st.selected_series, expected);
+    }
+    let _ = run_modal(&ctx, key_input(Key::Tab), id, &mut open, &mut st, &series);
+    let _ = run_modal(
+        &ctx,
+        key_input(Key::ArrowRight),
+        id,
+        &mut open,
+        &mut st,
+        &series,
+    );
+    assert_eq!(st.selected_series, 4);
+    let _ = run_modal(&ctx, key_input(Key::Tab), id, &mut open, &mut st, &series);
+    let _ = run_modal(
+        &ctx,
+        key_input(Key::ArrowLeft),
+        id,
+        &mut open,
+        &mut st,
+        &series,
+    );
+    assert_eq!(st.selected_series, 3);
 }

@@ -224,7 +224,7 @@ fn render_virtualized_series_combo(
     active_idx: usize,
     active_label: &str,
     format_item: &mut impl FnMut(usize) -> String,
-) -> Option<usize> {
+) -> (Option<usize>, Option<egui::Id>) {
     let mut chosen = None;
     let combo_resp = egui::ComboBox::from_id_salt(combo_id)
         .selected_text(active_label)
@@ -251,16 +251,35 @@ fn render_virtualized_series_combo(
     ui.ctx().accesskit_node_builder(btn_id, |builder| {
         builder.set_label(format!("Select plot series, current {active_label}"));
     });
-    if combo_resp.response.has_focus() && combo_resp.inner.is_none() {
-        ui.input(|i| {
-            if i.key_pressed(egui::Key::ArrowLeft) {
-                chosen = Some(step_series_index(active_idx, count, false));
-            } else if i.key_pressed(egui::Key::ArrowRight) {
-                chosen = Some(step_series_index(active_idx, count, true));
-            }
-        });
-    }
-    chosen
+    let closed_focused_id =
+        (combo_resp.response.has_focus() && combo_resp.inner.is_none()).then_some(btn_id);
+    (chosen, closed_focused_id)
+}
+
+fn step_selector_bar_arrows(
+    ui: &egui::Ui,
+    focused_id: egui::Id,
+    active_idx: usize,
+    count: usize,
+) -> Option<usize> {
+    crate::a11y::lock_horizontal_arrows_for_tab(ui.ctx(), focused_id);
+    let forward = if ui
+        .ctx()
+        .input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight))
+    {
+        true
+    } else if ui
+        .ctx()
+        .input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft))
+    {
+        false
+    } else {
+        return None;
+    };
+    ui.ctx()
+        .memory_mut(|m| m.move_focus(egui::FocusDirection::None));
+    ui.ctx().request_repaint();
+    Some(step_series_index(active_idx, count, forward))
 }
 
 /// Renders a compact, virtualized, keyboard-accessible [`egui::ComboBox`] series selector bar.
@@ -283,35 +302,45 @@ pub(crate) fn render_series_selector_bar(
                 .small()
                 .weak(),
         );
-        if crate::a11y::focusable_action_button(
+        let prev_resp = crate::a11y::focusable_action_button(
             ui,
             count > 1,
             egui::Button::new("◀").small(),
             Some("Previous series"),
-        )
-        .clicked()
-        {
+        );
+        if prev_resp.clicked() {
             chosen = Some(step_series_index(active_idx, count, false));
         }
-        if let Some(idx) = render_virtualized_series_combo(
+        let (combo_chosen, combo_focused_id) = render_virtualized_series_combo(
             ui,
             combo_id,
             count,
             active_idx,
             &active_label,
             &mut format_item,
-        ) {
+        );
+        if let Some(idx) = combo_chosen {
             chosen = Some(idx);
         }
-        if crate::a11y::focusable_action_button(
+        let next_resp = crate::a11y::focusable_action_button(
             ui,
             count > 1,
             egui::Button::new("▶").small(),
             Some("Next series"),
-        )
-        .clicked()
-        {
+        );
+        if next_resp.clicked() {
             chosen = Some(step_series_index(active_idx, count, true));
+        }
+        let focused_bar_id = prev_resp
+            .has_focus()
+            .then_some(prev_resp.id)
+            .or(combo_focused_id)
+            .or_else(|| next_resp.has_focus().then_some(next_resp.id));
+        if count > 1
+            && chosen.is_none()
+            && let Some(fid) = focused_bar_id
+        {
+            chosen = step_selector_bar_arrows(ui, fid, active_idx, count);
         }
     });
     chosen.filter(|&idx| idx != active_idx && idx < count)

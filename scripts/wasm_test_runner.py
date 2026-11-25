@@ -671,7 +671,7 @@ def _launch_chromium_suite(out_dir: Path) -> tuple[str | None, str, list[str], l
                         page.goto(url, wait_until="domcontentloaded")
                         page.locator("#output[data-test-status]").wait_for(
                             state="attached",
-                            timeout=90_000,
+                            timeout=60_000,
                         )
                         status = page.locator("#output").get_attribute("data-test-status")
                         rendered_output = page.locator("#output").inner_text()
@@ -680,7 +680,8 @@ def _launch_chromium_suite(out_dir: Path) -> tuple[str | None, str, list[str], l
                 break
             except PlaywrightError as exc:
                 if attempt < 2 and any(
-                    t in str(exc) for t in ("Page crashed", "Target crashed", "net::ERR_ABORTED")
+                    t in str(exc)
+                    for t in ("Page crashed", "Target crashed", "net::ERR_ABORTED", "Timeout")
                 ):
                     continue
                 raise
