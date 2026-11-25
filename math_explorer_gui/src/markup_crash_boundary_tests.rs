@@ -92,6 +92,10 @@ fn reload_js_exposes_panic_audio_and_reset_hooks_and_keeps_post_boot_listeners()
         "reset handlers must clear share URL parameters via History.replaceState"
     );
     assert!(
+        RELOAD_JS.contains("tag === 'SCRIPT' || statusCode >= 400"),
+        "reload.js must ignore status-0 advisory <link rel=preload> evictions during post-boot reloads"
+    );
+    assert!(
         RELOAD_JS.contains("math_explorer_boot_sentinel")
             && RELOAD_JS.contains("math_explorer_quarantined_workspace")
             && RELOAD_JS.contains("math_explorer_preserved_theme"),

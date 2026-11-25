@@ -136,6 +136,9 @@ STARTUP_TELEMETRY_PROBE_JS = b"""(function () {
         politeAnnouncements: [],
         sawHundredPercent: false,
         sawDownloadCompleteAnnouncement: false,
+        sawIndeterminateFill: false,
+        sawDeterminateClearPhase: false,
+        sawCompilePhaseShimmer: false,
     };
     window.__mathExplorerSmokeTrace = trace;
 
@@ -155,6 +158,31 @@ STARTUP_TELEMETRY_PROBE_JS = b"""(function () {
             const vText = progressEl.getAttribute('aria-valuetext') || '';
             if (/^100%\\b/.test(vText)) {
                 trace.sawHundredPercent = true;
+            }
+            const rect = progressEl.getBoundingClientRect();
+            const barStyle = window.getComputedStyle(progressEl, '::-webkit-progress-bar');
+            const phase = progressEl.getAttribute('data-phase');
+            if (
+                progressEl.matches(':indeterminate') &&
+                !phase &&
+                rect.width >= 100 &&
+                rect.height >= 8 &&
+                (barStyle.backgroundImage || '').indexOf('linear-gradient') !== -1
+            ) {
+                trace.sawIndeterminateFill = true;
+            }
+            if (progressEl.hasAttribute('value') && !phase) {
+                trace.sawDeterminateClearPhase = true;
+            }
+            if (
+                progressEl.matches(':indeterminate') &&
+                phase === 'compile' &&
+                rect.width >= 100 &&
+                rect.height >= 8 &&
+                barStyle.backgroundColor === 'rgb(37, 99, 235)' &&
+                (barStyle.backgroundImage || '').indexOf('linear-gradient') !== -1
+            ) {
+                trace.sawCompilePhaseShimmer = true;
             }
         }
         const slot0 = document.getElementById('aria-live-polite-slot-0');
@@ -187,7 +215,7 @@ STARTUP_TELEMETRY_PROBE_JS = b"""(function () {
             childList: true,
             characterData: true,
             attributes: true,
-            attributeFilter: ['value', 'max', 'aria-valuenow', 'aria-valuetext'],
+            attributeFilter: ['value', 'max', 'aria-valuenow', 'aria-valuetext', 'data-phase'],
         });
     };
 
@@ -539,6 +567,12 @@ def run_compressed_progress_and_aria_check(
                 )
 
         polite_log: list[str] = trace["politeAnnouncements"]
+        if not trace["sawIndeterminateFill"]:
+            raise AssertionError(f"[{scenario}] Missing visible :indeterminate sweep fill on #loading_progress")
+        if not trace["sawDeterminateClearPhase"]:
+            raise AssertionError(f"[{scenario}] Expected determinate transfer to clear data-phase on #loading_progress")
+        if not trace["sawCompilePhaseShimmer"]:
+            raise AssertionError(f"[{scenario}] Missing [data-phase='compile'] full-track shimmer on #loading_progress")
         required_sequence = [
             "WebAssembly download 25% complete.",
             "WebAssembly download 50% complete.",
@@ -693,6 +727,163 @@ def run_internal_error_and_fallback_compile_checks(
     )
 
 
+def run_html_wasm_and_reduced_motion_checks(
+    browser: Browser,
+    base_url: str,
+    dist_dir: Path,
+    screenshot_path: Path | None = None,
+) -> None:
+    html_fallback_body = b"<!DOCTYPE html><html><head><title>Portal</title></head><body>Sign in</body></html>"
+
+    # 1. HTTP 200 text/html fallback on .wasm -> network recovery (reload.js & bootstrap.js fallback)
+    for mode_label, use_fallback in (("reload", False), ("bootstrap_fallback", True)):
+        ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+        try:
+            pg = ctx.new_page()
+            csp_violations: list[str] = []
+            aborted_unrouted: list[str] = []
+            attach_csp_observer(pg, csp_violations)
+            attach_unrouted_script_abort_observer(pg, aborted_unrouted)
+            if use_fallback:
+                pg.route(
+                    "**/reload.js*",
+                    lambda route: route.fulfill(
+                        status=200,
+                        content_type="text/javascript",
+                        body=b"// fallback handler html wasm check\n",
+                    ),
+                )
+            pg.route(
+                "**/math_explorer_gui_bg.wasm*",
+                lambda route: route.fulfill(
+                    status=200,
+                    content_type="text/html; charset=utf-8",
+                    body=html_fallback_body,
+                ),
+            )
+            pg.goto(f"{base_url}/", wait_until="domcontentloaded")
+            try:
+                if not use_fallback:
+                    verify_error_recovery(pg, "fault_html_wasm_fallback", EXPECTED_FAULTS["network"])
+                else:
+                    err_box = pg.locator("#error_container")
+                    expect(err_box).to_be_visible(timeout=12_000)
+                    expect(err_box).to_have_attribute("data-error-category", "network")
+                    expect(pg.locator("#error_title")).to_have_text("Network Error Loading Math Explorer")
+                    expect(pg.locator("#webgl_reload_button")).to_be_focused()
+                expect(pg.locator("#error_details")).to_contain_text("text/html")
+            except AssertionError as exc:
+                if aborted_unrouted:
+                    raise TransientBrowserCrashError(
+                        f"[fault_html_wasm_{mode_label}] Unrouted script aborted by Chromium NetworkService: {aborted_unrouted}"
+                    ) from exc
+                raise
+            assert_zero_csp_violations(f"fault_html_wasm_{mode_label}", csp_violations)
+            if screenshot_path is not None and not use_fallback:
+                pg.screenshot(path=str(screenshot_path))
+        finally:
+            ctx.close()
+
+    # 2. HTTP 200 application/octet-stream with non-WASM payload -> network recovery
+    run_fault_scenario(
+        browser,
+        base_url,
+        "fault_octet_stream_html_wasm",
+        "network",
+        "/",
+        lambda page: page.route(
+            "**/math_explorer_gui_bg.wasm*",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/octet-stream",
+                body=html_fallback_body,
+            ),
+        ),
+    )
+
+    # 3. Valid .wasm served with application/octet-stream + prefers-reduced-motion: reduce
+    valid_wasm_bytes = (dist_dir / "math_explorer_gui_bg.wasm").read_bytes()
+    ctx = browser.new_context(
+        viewport={"width": 1280, "height": 800},
+        reduced_motion="reduce",
+    )
+    try:
+        pg = ctx.new_page()
+        csp_violations = []
+        page_errors: list[str] = []
+        aborted_unrouted = []
+        attach_csp_observer(pg, csp_violations)
+        attach_unrouted_script_abort_observer(pg, aborted_unrouted)
+        pg.on("pageerror", lambda exc: page_errors.append(str(exc)))
+        pg.route(
+            "**/math_explorer_gui_bg.wasm*",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/octet-stream",
+                body=valid_wasm_bytes,
+            ),
+        )
+        pg.goto(f"{base_url}/", wait_until="domcontentloaded")
+        try:
+            expect(pg.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+            expect(pg.locator("#error_container")).to_be_hidden()
+            expect(pg.locator("#the_canvas_id")).to_be_visible()
+            expect(pg.locator("#the_canvas_id")).to_be_focused()
+        except AssertionError as exc:
+            if aborted_unrouted:
+                raise TransientBrowserCrashError(
+                    f"[octet_stream_valid_wasm] Unrouted script aborted by Chromium NetworkService: {aborted_unrouted}"
+                ) from exc
+            raise
+        reduced_info = pg.evaluate(
+            """() => {
+                const probe = document.createElement('progress');
+                probe.className = 'loading-progress';
+                document.body.appendChild(probe);
+                const indBar = window.getComputedStyle(probe, '::-webkit-progress-bar');
+                const indState = {
+                    anim: indBar.animationName,
+                    bgImg: indBar.backgroundImage,
+                    bgPos: indBar.backgroundPosition,
+                };
+                probe.setAttribute('data-phase', 'compile');
+                const compBar = window.getComputedStyle(probe, '::-webkit-progress-bar');
+                const compState = {
+                    anim: compBar.animationName,
+                    bgImg: compBar.backgroundImage,
+                    bgColor: compBar.backgroundColor,
+                };
+                probe.remove();
+                return { indState, compState };
+            }"""
+        )
+        if (
+            reduced_info["indState"]["anim"] != "none"
+            or "linear-gradient" not in reduced_info["indState"]["bgImg"]
+            or not reduced_info["indState"]["bgPos"].startswith("50%")
+        ):
+            raise AssertionError(
+                f"[reduced_motion_progress] Expected static centered :indeterminate band, got {reduced_info}"
+            )
+        if (
+            reduced_info["compState"]["anim"] != "none"
+            or reduced_info["compState"]["bgImg"] != "none"
+            or reduced_info["compState"]["bgColor"] != "rgb(37, 99, 235)"
+        ):
+            raise AssertionError(
+                f"[reduced_motion_progress] Expected solid [data-phase='compile'] fill without shimmer, got {reduced_info}"
+            )
+        assert_zero_csp_violations("octet_stream_valid_wasm", csp_violations)
+        if page_errors:
+            raise AssertionError(f"[octet_stream_valid_wasm] Uncaught page errors: {page_errors}")
+    finally:
+        ctx.close()
+
+    print(
+        "[PASS] fault_html_wasm_fallback: HTTP 200 text/html and non-WASM octet-stream route to 'network'; valid octet-stream WASM and reduced-motion styles verified"
+    )
+
+
 def run_runtime_crash_boundary_and_boot_sentinel_checks(
     browser: Browser,
     base_url: str,
@@ -749,10 +940,22 @@ def run_runtime_crash_boundary_and_boot_sentinel_checks(
     try:
         pg = ctx.new_page()
         csp_violations = []
+        failed_requests: list[str] = []
         attach_csp_observer(pg, csp_violations)
+        pg.on(
+            "requestfailed",
+            lambda req: failed_requests.append(f"{req.method} {req.url}: {req.failure}"),
+        )
         pg.goto(f"{base_url}/#tab=chaos_theory", wait_until="domcontentloaded")
-        expect(pg.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
-        expect(pg.locator("#the_canvas_id")).to_be_focused()
+        try:
+            expect(pg.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+            expect(pg.locator("#the_canvas_id")).to_be_focused()
+        except AssertionError as exc:
+            if any("net::ERR_ABORTED" in req for req in failed_requests):
+                raise TransientBrowserCrashError(
+                    f"[post_boot_runtime_trap] Loopback request aborted by Chromium NetworkService: {failed_requests}"
+                ) from exc
+            raise
 
         saved_payload = (
             '{"schema_version":"1.0","app_version":"0.4.0","timestamp":"2026-11-25T00:00:00Z",'
@@ -818,11 +1021,20 @@ def run_runtime_crash_boundary_and_boot_sentinel_checks(
         if dl_path is None or Path(dl_path).read_text(encoding="utf-8") != saved_payload:
             raise AssertionError("[post_boot_runtime_trap] Exported .mws backup content mismatch")
 
-        pg.locator("#reset_workspace_button").click()
-        expect(pg.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
-        expect(pg.locator("#error_container")).to_be_hidden()
-        expect(pg.locator("#the_canvas_id")).to_be_visible()
-        expect(pg.locator("#the_canvas_id")).to_be_focused()
+        failed_requests.clear()
+        with pg.expect_navigation(wait_until="domcontentloaded"):
+            pg.locator("#reset_workspace_button").click()
+        try:
+            expect(pg.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+            expect(pg.locator("#error_container")).to_be_hidden()
+            expect(pg.locator("#the_canvas_id")).to_be_visible()
+            expect(pg.locator("#the_canvas_id")).to_be_focused()
+        except AssertionError as exc:
+            if any("net::ERR_ABORTED" in req for req in failed_requests):
+                raise TransientBrowserCrashError(
+                    f"[post_boot_runtime_trap_reset] Loopback request aborted by Chromium NetworkService: {failed_requests}"
+                ) from exc
+            raise
         reset_state = pg.evaluate(
             """() => ({
                 hash: window.location.hash,
@@ -849,7 +1061,12 @@ def run_runtime_crash_boundary_and_boot_sentinel_checks(
     try:
         pg = ctx.new_page()
         csp_violations = []
+        failed_requests = []
         attach_csp_observer(pg, csp_violations)
+        pg.on(
+            "requestfailed",
+            lambda req: failed_requests.append(f"{req.method} {req.url}: {req.failure}"),
+        )
         poisoned_payload = (
             '{"schema_version":"1.0","app_version":"0.4.0","timestamp":"2026-11-25T00:00:00Z",'
             '"app_state":{"theme":"HighContrast","corrupt_payload":true}}'
@@ -864,10 +1081,17 @@ def run_runtime_crash_boundary_and_boot_sentinel_checks(
             }})();"""
         )
         pg.goto(f"{base_url}/?keep=1&tab=bad#ws=poisoned", wait_until="domcontentloaded")
-        expect(pg.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
-        expect(pg.locator("#error_container")).to_be_hidden()
-        expect(pg.locator("#the_canvas_id")).to_be_visible()
-        expect(pg.locator("#the_canvas_id")).to_be_focused()
+        try:
+            expect(pg.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+            expect(pg.locator("#error_container")).to_be_hidden()
+            expect(pg.locator("#the_canvas_id")).to_be_visible()
+            expect(pg.locator("#the_canvas_id")).to_be_focused()
+        except AssertionError as exc:
+            if any("net::ERR_ABORTED" in req for req in failed_requests):
+                raise TransientBrowserCrashError(
+                    f"[boot_sentinel_quarantine] Loopback request aborted by Chromium NetworkService: {failed_requests}"
+                ) from exc
+            raise
         pg.wait_for_function(
             "() => window.sessionStorage.getItem('math_explorer_boot_sentinel') === null",
             timeout=5_000,
@@ -1044,6 +1268,30 @@ def run_happy_path_check(
                 f"[happy_path] Response CSP header mismatch: {actual_csp!r} != {expected_csp!r}"
             )
 
+        live_progress = page.evaluate(
+            """() => {
+                const el = document.getElementById('loading_progress');
+                if (!el) return null;
+                const rect = el.getBoundingClientRect();
+                const bar = window.getComputedStyle(el, '::-webkit-progress-bar');
+                return {
+                    width: rect.width,
+                    height: rect.height,
+                    indeterminate: el.matches(':indeterminate'),
+                    phase: el.getAttribute('data-phase'),
+                    bgImage: bar.backgroundImage,
+                    bgColor: bar.backgroundColor,
+                };
+            }"""
+        )
+        if live_progress is not None:
+            if live_progress["width"] < 100 or live_progress["height"] < 8:
+                raise AssertionError(f"[happy_path] Collapsed #loading_progress rect: {live_progress}")
+            if live_progress["indeterminate"] and "linear-gradient" not in live_progress["bgImage"]:
+                raise AssertionError(
+                    f"[happy_path] Expected gradient fill on live indeterminate #loading_progress: {live_progress}"
+                )
+
         expect(page.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
         if any("net::ERR_ABORTED" in req for req in failed_requests):
             raise TransientBrowserCrashError(
@@ -1054,6 +1302,57 @@ def run_happy_path_check(
         if page.locator("html").get_attribute("data-boot-failed") is not None:
             raise AssertionError("[happy_path] html[data-boot-failed] must not be set on clean boot")
         expect(page.locator("#error_container")).to_be_hidden()
+
+        progress_styles = page.evaluate(
+            """() => {
+                const root = document.documentElement;
+                const prevTheme = root.getAttribute('data-theme');
+                const probe = document.createElement('progress');
+                probe.className = 'loading-progress';
+                document.body.appendChild(probe);
+                const readTheme = (theme) => {
+                    if (theme) root.setAttribute('data-theme', theme);
+                    else root.removeAttribute('data-theme');
+                    probe.removeAttribute('value');
+                    probe.removeAttribute('data-phase');
+                    const rect = probe.getBoundingClientRect();
+                    const indBar = window.getComputedStyle(probe, '::-webkit-progress-bar');
+                    const indBg = indBar.backgroundImage;
+                    const indAnim = indBar.animationName;
+                    probe.setAttribute('data-phase', 'compile');
+                    const compBar = window.getComputedStyle(probe, '::-webkit-progress-bar');
+                    return {
+                        width: rect.width,
+                        height: rect.height,
+                        indBg,
+                        indAnim,
+                        compBg: compBar.backgroundImage,
+                        compColor: compBar.backgroundColor,
+                    };
+                };
+                const result = {
+                    dark: readTheme('dark'),
+                    light: readTheme('light'),
+                    highContrast: readTheme('high-contrast'),
+                };
+                probe.remove();
+                if (prevTheme !== null) root.setAttribute('data-theme', prevTheme);
+                else root.removeAttribute('data-theme');
+                return result;
+            }"""
+        )
+        for theme_key, expected_comp_color in (
+            ("dark", "rgb(37, 99, 235)"),
+            ("light", "rgb(37, 99, 235)"),
+            ("highContrast", "rgb(255, 255, 0)"),
+        ):
+            info = progress_styles[theme_key]
+            if info["width"] < 100 or info["height"] < 8:
+                raise AssertionError(f"[happy_path] Unexpected .loading-progress dimensions for {theme_key}: {info}")
+            if "linear-gradient" not in info["indBg"] or info["indAnim"] == "none":
+                raise AssertionError(f"[happy_path] Missing animated :indeterminate sweep for {theme_key}: {info}")
+            if "linear-gradient" not in info["compBg"] or info["compColor"] != expected_comp_color:
+                raise AssertionError(f"[happy_path] Missing compile shimmer fill for {theme_key}: {info}")
 
         canvas = page.locator("#the_canvas_id")
         expect(canvas).to_be_visible()
@@ -1161,7 +1460,14 @@ def run_fault_scenario(
                 + (("/math_explorer_gui.js",) if scenario != "fault_broken_loader_script" else ())
                 + (
                     ("/math_explorer_gui_bg.wasm",)
-                    if scenario not in ("fault_missing_wasm", "fault_corrupt_wasm", "fault_stall_timeout")
+                    if scenario
+                    not in (
+                        "fault_missing_wasm",
+                        "fault_corrupt_wasm",
+                        "fault_html_wasm_fallback",
+                        "fault_octet_stream_html_wasm",
+                        "fault_stall_timeout",
+                    )
                     else ()
                 )
             )
@@ -1708,6 +2014,19 @@ def run_smoke_suite(
                             ),
                         ),
                         screenshot_dir / "smoke_fault_compile_corrupt_wasm.png"
+                        if screenshot_dir
+                        else None,
+                    ),
+                )
+
+                run_with_crash_retry(
+                    webgl_pool,
+                    "fault_html_wasm_fallback",
+                    lambda b: run_html_wasm_and_reduced_motion_checks(
+                        b,
+                        base_url,
+                        dist_dir,
+                        screenshot_dir / "smoke_fault_network_html_wasm.png"
                         if screenshot_dir
                         else None,
                     ),

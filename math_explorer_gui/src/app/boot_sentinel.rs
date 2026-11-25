@@ -22,8 +22,12 @@ pub const PRESERVED_THEME_STORAGE_KEY: &str = "math_explorer_preserved_theme";
 pub const QUARANTINED_BACKUP_FILENAME: &str = "math-explorer-quarantined-backup.mws";
 const BOOT_SENTINEL_ACTIVE_VALUE: &str = "hydrating";
 
+thread_local! {
+    static LIVE_ARMED_SENTINELS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Runtime state tracking Frame 1 sentinel completion and the dismissible safe-mode banner.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct BootSentinelState {
     /// `true` while startup hydration or Frame 1 has not yet disarmed the boot sentinel.
     pub sentinel_armed: bool,
@@ -31,6 +35,35 @@ pub struct BootSentinelState {
     pub safe_mode_banner_open: bool,
     /// Serialized `.mws` / JSON backup payload available for one-click download from safe mode.
     pub quarantined_backup_json: String,
+}
+
+impl Clone for BootSentinelState {
+    fn clone(&self) -> Self {
+        if self.sentinel_armed {
+            LIVE_ARMED_SENTINELS.with(|c| c.set(c.get().saturating_add(1)));
+        }
+        Self {
+            sentinel_armed: self.sentinel_armed,
+            safe_mode_banner_open: self.safe_mode_banner_open,
+            quarantined_backup_json: self.quarantined_backup_json.clone(),
+        }
+    }
+}
+
+impl Drop for BootSentinelState {
+    fn drop(&mut self) {
+        if self.sentinel_armed {
+            self.sentinel_armed = false;
+            let remaining = LIVE_ARMED_SENTINELS.with(|c| {
+                let next = c.get().saturating_sub(1);
+                c.set(next);
+                next
+            });
+            if remaining == 0 && !std::thread::panicking() {
+                remove_session_storage_item(BOOT_SENTINEL_SESSION_KEY);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -50,6 +83,9 @@ thread_local! {
 
 #[cfg(test)]
 pub(crate) fn set_mock_boot_storage(mock: Option<MockBootStorage>) {
+    if mock.is_some() {
+        LIVE_ARMED_SENTINELS.with(|c| c.set(0));
+    }
     MOCK_BOOT_STORAGE.with(|slot| *slot.borrow_mut() = mock);
 }
 
@@ -58,124 +94,114 @@ pub(crate) fn snapshot_mock_boot_storage() -> Option<MockBootStorage> {
     MOCK_BOOT_STORAGE.with(|slot| slot.borrow().clone())
 }
 
-fn read_session_storage_item(key: &str) -> Option<String> {
+#[cfg(test)]
+fn mutate_mock_map(is_session: bool, f: impl FnOnce(&mut HashMap<String, String>)) -> bool {
+    MOCK_BOOT_STORAGE.with(|slot| {
+        let mut guard = slot.borrow_mut();
+        let Some(mock) = guard.as_mut() else {
+            return false;
+        };
+        f(if is_session {
+            &mut mock.session
+        } else {
+            &mut mock.local
+        });
+        true
+    })
+}
+
+fn read_storage_item(key: &str, is_session: bool) -> Option<String> {
     #[cfg(test)]
-    if let Some(res) =
-        MOCK_BOOT_STORAGE.with(|slot| slot.borrow().as_ref().map(|m| m.session.get(key).cloned()))
-    {
+    if let Some(res) = MOCK_BOOT_STORAGE.with(|slot| {
+        slot.borrow().as_ref().map(|m| {
+            let map = if is_session { &m.session } else { &m.local };
+            map.get(key).cloned()
+        })
+    }) {
         return res;
     }
     #[cfg(target_arch = "wasm32")]
     {
-        web_sys::window()
-            .and_then(|w| w.session_storage().ok().flatten())
-            .and_then(|s| s.get_item(key).ok().flatten())
+        let storage = web_sys::window().and_then(|w| {
+            if is_session {
+                w.session_storage().ok().flatten()
+            } else {
+                w.local_storage().ok().flatten()
+            }
+        });
+        storage.and_then(|s| s.get_item(key).ok().flatten())
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = key;
+        let _ = (key, is_session);
         None
     }
+}
+
+fn write_storage_item(key: &str, value: &str, is_session: bool) {
+    #[cfg(test)]
+    if mutate_mock_map(is_session, |m| {
+        m.insert(key.to_string(), value.to_string());
+    }) {
+        return;
+    }
+    #[cfg(target_arch = "wasm32")]
+    if let Some(storage) = web_sys::window().and_then(|w| {
+        if is_session {
+            w.session_storage().ok().flatten()
+        } else {
+            w.local_storage().ok().flatten()
+        }
+    }) {
+        let _ = storage.set_item(key, value);
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = (key, value, is_session);
+}
+
+fn remove_storage_item(key: &str, is_session: bool) {
+    #[cfg(test)]
+    if mutate_mock_map(is_session, |m| {
+        m.remove(key);
+    }) {
+        return;
+    }
+    #[cfg(target_arch = "wasm32")]
+    if let Some(storage) = web_sys::window().and_then(|w| {
+        if is_session {
+            w.session_storage().ok().flatten()
+        } else {
+            w.local_storage().ok().flatten()
+        }
+    }) {
+        let _ = storage.remove_item(key);
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    let _ = (key, is_session);
+}
+
+fn read_session_storage_item(key: &str) -> Option<String> {
+    read_storage_item(key, true)
 }
 
 fn write_session_storage_item(key: &str, value: &str) {
-    #[cfg(test)]
-    if MOCK_BOOT_STORAGE.with(|slot| {
-        if let Some(mock) = slot.borrow_mut().as_mut() {
-            mock.session.insert(key.to_string(), value.to_string());
-            true
-        } else {
-            false
-        }
-    }) {
-        return;
-    }
-    #[cfg(target_arch = "wasm32")]
-    if let Some(storage) = web_sys::window().and_then(|w| w.session_storage().ok().flatten()) {
-        let _ = storage.set_item(key, value);
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    let _ = (key, value);
+    write_storage_item(key, value, true);
 }
 
 fn remove_session_storage_item(key: &str) {
-    #[cfg(test)]
-    if MOCK_BOOT_STORAGE.with(|slot| {
-        if let Some(mock) = slot.borrow_mut().as_mut() {
-            mock.session.remove(key);
-            true
-        } else {
-            false
-        }
-    }) {
-        return;
-    }
-    #[cfg(target_arch = "wasm32")]
-    if let Some(storage) = web_sys::window().and_then(|w| w.session_storage().ok().flatten()) {
-        let _ = storage.remove_item(key);
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    let _ = key;
+    remove_storage_item(key, true);
 }
 
 fn read_local_storage_item(key: &str) -> Option<String> {
-    #[cfg(test)]
-    if let Some(res) =
-        MOCK_BOOT_STORAGE.with(|slot| slot.borrow().as_ref().map(|m| m.local.get(key).cloned()))
-    {
-        return res;
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        web_sys::window()
-            .and_then(|w| w.local_storage().ok().flatten())
-            .and_then(|s| s.get_item(key).ok().flatten())
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let _ = key;
-        None
-    }
+    read_storage_item(key, false)
 }
 
 fn write_local_storage_item(key: &str, value: &str) {
-    #[cfg(test)]
-    if MOCK_BOOT_STORAGE.with(|slot| {
-        if let Some(mock) = slot.borrow_mut().as_mut() {
-            mock.local.insert(key.to_string(), value.to_string());
-            true
-        } else {
-            false
-        }
-    }) {
-        return;
-    }
-    #[cfg(target_arch = "wasm32")]
-    if let Some(storage) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
-        let _ = storage.set_item(key, value);
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    let _ = (key, value);
+    write_storage_item(key, value, false);
 }
 
 fn remove_local_storage_item(key: &str) {
-    #[cfg(test)]
-    if MOCK_BOOT_STORAGE.with(|slot| {
-        if let Some(mock) = slot.borrow_mut().as_mut() {
-            mock.local.remove(key);
-            true
-        } else {
-            false
-        }
-    }) {
-        return;
-    }
-    #[cfg(target_arch = "wasm32")]
-    if let Some(storage) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
-        let _ = storage.remove_item(key);
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    let _ = key;
+    remove_storage_item(key, false);
 }
 
 fn read_dom_theme_fallback() -> Option<ThemeMode> {
@@ -236,8 +262,17 @@ fn sync_js_quarantined_envelope(backup_json: &str) {
     }
 }
 
-fn is_boot_sentinel_active() -> bool {
+fn is_crashed_boot_sentinel_present() -> bool {
     read_session_storage_item(BOOT_SENTINEL_SESSION_KEY).is_some_and(|val| !val.trim().is_empty())
+        && LIVE_ARMED_SENTINELS.with(std::cell::Cell::get) == 0
+}
+
+fn arm_sentinel_for_app(app: &mut MathExplorerApp) {
+    write_session_storage_item(BOOT_SENTINEL_SESSION_KEY, BOOT_SENTINEL_ACTIVE_VALUE);
+    if !app.boot_sentinel.sentinel_armed {
+        app.boot_sentinel.sentinel_armed = true;
+        LIVE_ARMED_SENTINELS.with(|c| c.set(c.get().saturating_add(1)));
+    }
 }
 
 fn read_raw_saved_app_payload(cc: &eframe::CreationContext<'_>) -> Option<String> {
@@ -290,10 +325,11 @@ fn quarantine_crashing_startup_state(app: &mut MathExplorerApp, cc: &eframe::Cre
     sync_js_quarantined_envelope(&backup_json);
 
     app.boot_sentinel = BootSentinelState {
-        sentinel_armed: true,
+        sentinel_armed: false,
         safe_mode_banner_open: true,
         quarantined_backup_json: backup_json,
     };
+    arm_sentinel_for_app(app);
 
     let notice =
         "Previous startup crashed; entered safe mode and quarantined saved workspace state.";
@@ -311,13 +347,12 @@ pub(super) fn hydrate_with_boot_sentinel(
     app: &mut MathExplorerApp,
     cc: &eframe::CreationContext<'_>,
 ) {
-    if is_boot_sentinel_active() {
+    if is_crashed_boot_sentinel_present() {
         quarantine_crashing_startup_state(app, cc);
         return;
     }
 
-    write_session_storage_item(BOOT_SENTINEL_SESSION_KEY, BOOT_SENTINEL_ACTIVE_VALUE);
-    app.boot_sentinel.sentinel_armed = true;
+    arm_sentinel_for_app(app);
 
     let restored = theme::init_startup_theme(app, cc);
     if restored {
@@ -342,7 +377,14 @@ pub(super) fn hydrate_with_boot_sentinel(
 pub(crate) fn complete_first_frame(app: &mut MathExplorerApp) {
     if app.boot_sentinel.sentinel_armed {
         app.boot_sentinel.sentinel_armed = false;
-        remove_session_storage_item(BOOT_SENTINEL_SESSION_KEY);
+        let remaining = LIVE_ARMED_SENTINELS.with(|c| {
+            let next = c.get().saturating_sub(1);
+            c.set(next);
+            next
+        });
+        if remaining == 0 {
+            remove_session_storage_item(BOOT_SENTINEL_SESSION_KEY);
+        }
     }
 }
 

@@ -182,3 +182,28 @@ fn lenient_theme_extractor_handles_envelope_legacy_and_corrupt_json() {
     );
     assert_eq!(extract_theme_token_lenient("not valid json {{{"), None);
 }
+
+#[test]
+fn sequential_in_process_hydrations_do_not_false_quarantine_and_clean_up_on_drop() {
+    let _guard = ScopedMockBootGuard::install(MockBootStorage::default());
+    let ctx = egui::Context::default();
+    {
+        let cc_first = eframe::CreationContext::_new_kittest(ctx.clone());
+        let mut first = MathExplorerApp::default();
+        hydrate_with_boot_sentinel(&mut first, &cc_first);
+        assert!(!first.boot_sentinel.safe_mode_banner_open);
+
+        let cc_second = eframe::CreationContext::_new_kittest(ctx);
+        let mut second = MathExplorerApp::default();
+        hydrate_with_boot_sentinel(&mut second, &cc_second);
+        assert!(
+            !second.boot_sentinel.safe_mode_banner_open,
+            "second live in-process MathExplorerApp must not mistake first instance for a crashed reload"
+        );
+    }
+    let after_drop = snapshot_mock_boot_storage().expect("mock storage active");
+    assert!(
+        !after_drop.session.contains_key(BOOT_SENTINEL_SESSION_KEY),
+        "cleanly dropping all non-panicking MathExplorerApp instances must clear session sentinel"
+    );
+}

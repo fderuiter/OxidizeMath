@@ -341,6 +341,9 @@ function enrichAssetError(err, assetPath) {
 const STREAM_TRUNCATION_PATTERN =
     /stream truncated|truncated stream|stream interrupted|stream closed early|ended early|empty response|0 bytes received|unexpected eof|unexpected end of|premature eof|incomplete download|incomplete transfer|err_incomplete_chunked_encoding|err_content_decoding_failed|err_http2_protocol_error|failed to read from a readablestream|buffersource argument is empty|fell off end|extends past end of the module/i;
 
+const NON_WASM_RESPONSE_PATTERN =
+    /unexpected content-type|unexpected response mime type|unsupported mime type|incorrect response mime type|disallowed mime type|not a valid javascript mime type|mime type of|expected ['"]?application\/wasm['"]?|non-webassembly response|lacks \\0asm binary header/i;
+
 const FIREFOX_INTERNAL_ERROR_PATTERN =
     /internalerror|out of memory|too much recursion|allocation size overflow/i;
 
@@ -379,6 +382,7 @@ function classifyFallbackCategory(err, detailText, assetPath) {
     }
     if (
         STREAM_TRUNCATION_PATTERN.test(combinedText) ||
+        NON_WASM_RESPONSE_PATTERN.test(combinedText) ||
         /http\s+[45]\d\d|status code is not ok|failed to fetch|networkerror|network error|load failed|dynamically imported module|importing a module script failed|failed to load startup|aborted|aborterror|err_aborted|err_failed|err_connection|err_internet|err_content_length_mismatch/i.test(
             combinedText,
         )
@@ -582,6 +586,22 @@ function normalizeContentEncoding(rawHeader) {
     return typeof rawHeader === 'string' ? rawHeader.trim().toLowerCase() : '';
 }
 
+function normalizeContentType(rawHeader) {
+    if (typeof rawHeader !== 'string') {
+        return '';
+    }
+    return rawHeader.split(';')[0].trim().toLowerCase();
+}
+
+function isAllowedWasmContentType(contentType) {
+    return (
+        !contentType ||
+        contentType === 'application/wasm' ||
+        contentType === 'application/octet-stream' ||
+        contentType === 'binary/octet-stream'
+    );
+}
+
 function isCompressedContentEncoding(encoding) {
     return Boolean(encoding && encoding !== 'identity');
 }
@@ -644,6 +664,7 @@ function evaluateStreamCompletion(
     headerBytes,
     expectedIdentityBytes,
     expectedWasmBytes,
+    contentType,
 ) {
     if (decodedBytes <= 0) {
         return {
@@ -677,7 +698,16 @@ function evaluateStreamCompletion(
         }
     }
     if (!hasWasmMagic) {
-        return { status: 'invalid_header', error: null };
+        if (contentType === 'application/wasm') {
+            return { status: 'invalid_header', error: null };
+        }
+        const mimeLabel = contentType || 'missing Content-Type';
+        return {
+            status: 'invalid_header',
+            error: new Error(
+                `Non-WebAssembly response payload (${mimeLabel}) lacks \\0asm binary header.`,
+            ),
+        };
     }
     if (expectedWasmBytes > 0 && decodedBytes < expectedWasmBytes) {
         return {
@@ -769,6 +799,21 @@ async function fetchWasmWithProgress(source, hooks, signal, recordStreamError) {
         );
     }
 
+    const contentType = normalizeContentType(response.headers.get('content-type'));
+    if (!isAllowedWasmContentType(contentType)) {
+        if (response.body && typeof response.body.cancel === 'function') {
+            void response.body.cancel().catch(() => {});
+        }
+        hooks?.cancelPendingAnnouncements?.();
+        const mimeErr = new Error(
+            `Unexpected Content-Type "${contentType}" while fetching ${source} (expected application/wasm)`,
+        );
+        if (typeof recordStreamError === 'function') {
+            recordStreamError(mimeErr);
+        }
+        throw mimeErr;
+    }
+
     const contentEncoding = normalizeContentEncoding(response.headers.get('content-encoding'));
     const isCompressed = isCompressedContentEncoding(contentEncoding);
     const rawContentLength = Number(response.headers.get('content-length') || 0);
@@ -790,8 +835,9 @@ async function fetchWasmWithProgress(source, hooks, signal, recordStreamError) {
             headerBytes,
             expectedIdentityBytes,
             expectedWasmBytes,
+            contentType,
         );
-        if (verdict.status === 'truncated') {
+        if (verdict.error) {
             hooks?.cancelPendingAnnouncements?.();
             if (typeof recordStreamError === 'function') {
                 recordStreamError(verdict.error);
@@ -878,6 +924,7 @@ async function fetchWasmWithProgress(source, hooks, signal, recordStreamError) {
                                 headerBytes,
                                 expectedIdentityBytes,
                                 expectedWasmBytes,
+                                contentType,
                             );
                             if (verdict.status === 'truncated') {
                                 hooks?.cancelPendingAnnouncements?.();
@@ -889,6 +936,13 @@ async function fetchWasmWithProgress(source, hooks, signal, recordStreamError) {
                             }
                             if (verdict.status === 'invalid_header') {
                                 hooks?.cancelPendingAnnouncements?.();
+                                if (verdict.error) {
+                                    if (typeof recordStreamError === 'function') {
+                                        recordStreamError(verdict.error);
+                                    }
+                                    controller.error(verdict.error);
+                                    return;
+                                }
                                 controller.close();
                                 return;
                             }

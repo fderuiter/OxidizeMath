@@ -98,24 +98,26 @@ fn test_resolve_portal_paper_and_bibtex_links_filters_specs() {
         .is_some_and(|u| u.ends_with("/papers/quantum_mechanics.tex")));
 
     let ai_links = resolve_portal_paper_links("TrainingMonitorTool", "ai");
-    assert!(!ai_links.is_empty());
-    assert!(ai_links
-        .iter()
-        .all(|l| !l.paper_name.starts_with("spec:") && !l.paper_name.starts_with("registry:")));
+    assert!(
+        ai_links.is_empty(),
+        "TrainingMonitorTool (ai) must filter spec: targets without fallbacks: {ai_links:?}"
+    );
 
     let fractran_links = resolve_portal_paper_links("FractranMachineTool", "number_theory");
-    assert!(!fractran_links.is_empty());
     assert_eq!(
         fractran_links[0].paper_name,
         "algorithmic_information_rust.tex"
     );
 
     let glicko_links = resolve_portal_paper_links("Glicko2TournamentTool", "game_theory");
-    assert!(!glicko_links.is_empty());
-    assert_eq!(glicko_links[0].paper_name, "graph_parameters_rust.tex");
+    assert!(
+        glicko_links.is_empty(),
+        "Unexpected fallback: {glicko_links:?}"
+    );
+    let net_metrics_links = resolve_portal_paper_links("NetworkMetricsTool", "graph_theory");
+    assert_eq!(net_metrics_links[0].paper_name, "graph_parameters_rust.tex");
 
     let astro_links = resolve_portal_paper_links("GalacticOrbitSimulator", "astrophysics");
-    assert!(!astro_links.is_empty());
     assert_eq!(
         astro_links[0].paper_name,
         "dwarf_galaxy_empirical_dependencies.tex"
@@ -182,18 +184,55 @@ fn test_cortical_morphometry_resolves_freesurfer_paper_and_doi_links() {
         .any(|e| e.url == "https://doi.org/10.1006/nimg.1998.0395"));
 }
 
-fn assert_clean_portal_output(tool_id: &str, out: &egui::FullOutput) -> usize {
-    const FORBIDDEN_RAW_TEX: &[&str] = &[
-        r"\hbar", r"\langle", r"\rangle", r"\vec", r"\hat", r"\bar", r"\dot", r"\ddot", r"\tilde",
-        r"\mathbb", r"\left", r"\right", r"\frac", r"\text", r"\mathrm", r"\mathbf", r"\AA",
-        r"\deg", r"\dots", r"\pmod", "──", "ddot",
-    ];
+const FORBIDDEN_RAW_TEX: &[&str] = &[
+    "\\",
+    r"\hbar",
+    r"\langle",
+    r"\rangle",
+    r"\vec",
+    r"\hat",
+    r"\widehat",
+    r"\bar",
+    r"\dot",
+    r"\ddot",
+    r"\tilde",
+    r"\widetilde",
+    r"\wedge",
+    r"\top",
+    r"\bot",
+    r"\mapsto",
+    r"\implies",
+    r"\neg",
+    r"\subseteq",
+    r"\supseteq",
+    r"\mathbb",
+    r"\left",
+    r"\right",
+    r"\frac",
+    r"\text",
+    r"\mathrm",
+    r"\mathbf",
+    r"\AA",
+    r"\deg",
+    r"\dots",
+    r"\pmod",
+    "──",
+    "ddot",
+    "widehat",
+    "widetilde",
+];
+
+fn assert_clean_portal_output(
+    tool_id: &str,
+    domain: &str,
+    out: &egui::FullOutput,
+) -> (usize, usize) {
     let ak = out
         .platform_output
         .accesskit_update
         .as_ref()
         .expect("AccessKit tree must exist");
-    let mut link_count = 0;
+    let (mut paper_links, mut ext_links) = (0_usize, 0_usize);
     for (_, node) in &ak.nodes {
         for text in node.label().into_iter().chain(node.value()) {
             for raw in FORBIDDEN_RAW_TEX {
@@ -206,20 +245,30 @@ fn assert_clean_portal_output(tool_id: &str, out: &egui::FullOutput) -> usize {
                 !text.contains("spec:") && !text.contains("registry:"),
                 "Tool `{tool_id}` leaked spec:/registry: token in `{text}`"
             );
+            if domain != "favoritism" {
+                assert!(
+                    !text.contains("favorite_child.pdf") && !text.contains("favorite_child.tex"),
+                    "Tool `{tool_id}` ({domain}) leaked favorite_child link in `{text}`"
+                );
+            }
         }
-        if node.label().is_some_and(|l| {
-            l.starts_with("📄 View PDF")
-                || l.starts_with("📝 View .tex Source")
-                || l.starts_with("🔗 ")
-        }) {
-            link_count += 1;
+        if let Some(lbl) = node.label() {
+            if lbl.starts_with("📄 View PDF") || lbl.starts_with("📝 View .tex Source") {
+                paper_links += 1;
+            } else if lbl.starts_with("🔗 ") {
+                ext_links += 1;
+            }
         }
     }
     assert!(
-        link_count >= 2,
-        "Tool `{tool_id}` must expose at least PDF + .tex hyperlinks in portal, got {link_count}"
+        paper_links == 0 || (paper_links >= 2 && paper_links % 2 == 0),
+        "Tool `{tool_id}` must expose paired PDF + .tex hyperlinks when matched, got {paper_links}"
     );
-    link_count
+    assert!(
+        paper_links + ext_links >= 1 && (domain == "favoritism" || ext_links >= 1),
+        "Tool `{tool_id}` ({domain}) must expose portal hyperlinks (paper={paper_links}, ext={ext_links})"
+    );
+    (paper_links, ext_links)
 }
 
 fn find_hyperlink_center(out: &egui::FullOutput, prefix: &str) -> Option<egui::Pos2> {
@@ -320,7 +369,7 @@ fn test_all_registered_tools_render_clean_portal_latex_and_hyperlinks() {
             let ctx = egui::Context::default();
             ctx.enable_accesskit();
             let out = run_portal_frame(&ctx, &mut framework, screen_rect, Vec::new());
-            let _ = assert_clean_portal_output(tool_id, &out);
+            let _ = assert_clean_portal_output(tool_id, domain, &out);
             if tool_id == "SpinVisualizer" {
                 assert_portal_hyperlink_opens_url(
                     &mut framework,
@@ -340,11 +389,85 @@ fn test_all_registered_tools_render_clean_portal_latex_and_hyperlinks() {
         }
     }
 
-    #[cfg(all(feature = "ai", feature = "physics", feature = "pure_math"))]
-    assert!(
-        verified_tools >= 65,
-        "Expected >= 65 tools, got {verified_tools}"
+    assert_verified_tool_count(verified_tools);
+}
+
+fn assert_verified_tool_count(verified_tools: usize) {
+    if cfg!(all(
+        feature = "ai",
+        feature = "physics",
+        feature = "pure_math"
+    )) {
+        assert!(
+            verified_tools >= 65,
+            "Expected >= 65 tools, got {verified_tools}"
+        );
+    } else if cfg!(any(
+        feature = "ai",
+        feature = "applied",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math",
+    )) {
+        assert!(verified_tools > 0);
+    } else {
+        assert_eq!(verified_tools, 0);
+    }
+}
+
+#[test]
+fn test_bibtex_key_matching_disambiguation_and_zero_favorite_child_leaks() {
+    for (tool_id, domain) in [
+        ("MriTool", "mri"),
+        ("MriKSpaceScannerTool", "mri"),
+        ("BeamProfilingTool", "medical"),
+        ("DoseCalculationTool", "medical"),
+        ("Co2ProjectionsTool", "climate"),
+        ("HyperbolicDiskTool", "hyperbolic_geometry"),
+        ("MarkovSequenceWorkbenchTool", "game_theory"),
+        ("CapacityFadeTool", "battery_degradation"),
+    ] {
+        let links = resolve_portal_paper_links(tool_id, domain);
+        assert!(
+            links.is_empty(),
+            "{tool_id} ({domain}) must not inherit unrelated fallback PDFs, got {links:?}"
+        );
+    }
+    let fav_links = resolve_portal_paper_links("FavoritismTool", "favoritism");
+    assert_eq!(fav_links.len(), 1);
+    assert_eq!(fav_links[0].paper_name, "favorite_child.tex");
+
+    let optics_ext = resolve_citation_reference_links(
+        "Born & Wolf (1999), Principles of Optics (born1999principles); Luneburg (1964) (luneburg1964mathematical); Berry & Upstill (1980) (berry1980catastrophe)",
     );
-    #[cfg(not(all(feature = "ai", feature = "physics", feature = "pure_math")))]
-    assert!(verified_tools > 0);
+    assert!(optics_ext
+        .iter()
+        .any(|e| e.url.contains("10.1017/CBO9781139644181")));
+    assert!(optics_ext
+        .iter()
+        .any(|e| e.url.contains("10.1525/9780520328266")));
+    assert!(optics_ext
+        .iter()
+        .any(|e| e.url.contains("10.1016/S0079-6638(08)70215-4")));
+
+    let bh_ext = resolve_citation_reference_links(
+        "Schwarzschild (1916); Misner, Thorne & Wheeler (1973), Gravitation; Chandrasekhar (1983), The Mathematical Theory of Black Holes",
+    );
+    assert!(
+        bh_ext.len() >= 3,
+        "Expected >= 3 black hole citation links, got {bh_ext:?}"
+    );
+
+    let ambig_bare = resolve_citation_reference_links("Lutz et al. (2024)");
+    assert!(
+        ambig_bare.is_empty(),
+        "Ambiguous surname+year without co-author or title word must not guess: {ambig_bare:?}"
+    );
+    let lutz_qi = resolve_citation_reference_links("Lutz, Qi & Yu (2024)");
+    assert_eq!(lutz_qi.len(), 1);
+    let lutz_stull = resolve_citation_reference_links("Lutz & Stull (2024)");
+    assert_eq!(lutz_stull.len(), 1);
+    assert_ne!(lutz_qi[0].url, lutz_stull[0].url);
 }

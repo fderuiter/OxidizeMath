@@ -83,7 +83,10 @@ pub use crate::{
         PlotItemBase, PlotPoint, PlotPoints, Points, Polygon, SavedCallout, SharedPoints, Text,
         VLine,
     },
-    latex::{parse_latex_to_layout_job, parse_prose_with_inline_math, render_math_label},
+    latex::{
+        parse_latex_to_layout_job, parse_plot_label_to_layout_job, parse_prose_with_inline_math,
+        render_math_label,
+    },
     legend::{ColorConflictHandling, Corner, Legend, LegendGrouping},
     memory::{CanvasCallout, PlotMemory},
     modal_lifecycle::{
