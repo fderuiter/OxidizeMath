@@ -187,6 +187,13 @@ fn test_finalize_web_dist_stamps_compressed_sizes_before_compressing_bootstrap()
 fn test_bootstrap_guards_wasm_stream_header_length_and_wire_byte_counters() {
     for contract in [
         "WASM_MAGIC_BYTES = [0x00, 0x61, 0x73, 0x6d]",
+        "normalizeContentType",
+        "isAllowedWasmContentType",
+        "content-type",
+        "application/wasm",
+        "application/octet-stream",
+        "response.body.cancel",
+        "lacks \\\\0asm binary header",
         "evaluateStreamCompletion",
         "resolveWireByteTotal",
         "scaleInFlightWireProgress",
@@ -233,12 +240,15 @@ fn test_truncation_precedes_compile_error_and_internal_error_maps_to_compile() {
         let trunc_check = script
             .find("STREAM_TRUNCATION_PATTERN.test(")
             .unwrap_or_else(|| panic!("{name} must test STREAM_TRUNCATION_PATTERN"));
+        let mime_check = script
+            .find("NON_WASM_RESPONSE_PATTERN.test(")
+            .unwrap_or_else(|| panic!("{name} must test NON_WASM_RESPONSE_PATTERN"));
         let compile_err_check = script
             .find("WebAssembly.CompileError")
             .unwrap_or_else(|| panic!("{name} must check WebAssembly.CompileError"));
         assert!(
-            trunc_check < compile_err_check,
-            "{name} must classify stream truncation as network before WebAssembly.CompileError"
+            trunc_check < compile_err_check && mime_check < compile_err_check,
+            "{name} must classify stream truncation and non-WASM responses as network before WebAssembly.CompileError"
         );
 
         for token in [
@@ -252,5 +262,65 @@ fn test_truncation_precedes_compile_error_and_internal_error_maps_to_compile() {
                 "{name} must route Firefox InternalError token '{token}' to compile recovery"
             );
         }
+    }
+}
+
+#[test]
+fn test_indeterminate_and_compile_progress_styles_across_themes_and_reduced_motion() {
+    for selector in [
+        "@keyframes loading-progress-sweep",
+        ".loading-progress:indeterminate::-webkit-progress-bar",
+        ".loading-progress:indeterminate::-moz-progress-bar",
+        ".loading-progress[data-phase=\"compile\"]::-webkit-progress-bar",
+        ".loading-progress[data-phase=\"compile\"]::-moz-progress-bar",
+        "html:not([data-theme]) .loading-progress[data-phase=\"compile\"]",
+        "html[data-theme=\"dark\"] .loading-progress[data-phase=\"compile\"]",
+        "html[data-theme=\"light\"] .loading-progress[data-phase=\"compile\"]",
+        "html[data-theme=\"high-contrast\"] .loading-progress[data-phase=\"compile\"]",
+    ] {
+        assert!(
+            INDEX_HTML.contains(selector),
+            "index.html must define startup progress selector: {selector}"
+        );
+    }
+
+    let forced_start = INDEX_HTML
+        .find("@media (forced-colors: active)")
+        .expect("forced-colors block must exist");
+    let dark_theme_start = INDEX_HTML
+        .find("html[data-theme=\"dark\"]")
+        .expect("dark data-theme block must exist");
+    assert!(
+        INDEX_HTML[forced_start..dark_theme_start]
+            .contains(".loading-progress[data-phase=\"compile\"]"),
+        "forced-colors block must style .loading-progress[data-phase=\"compile\"]"
+    );
+
+    let reduced_motion_start = INDEX_HTML
+        .find("@media (prefers-reduced-motion: reduce)")
+        .expect("prefers-reduced-motion block must exist");
+    let reduced_motion_css = &INDEX_HTML[reduced_motion_start..];
+    assert!(
+        reduced_motion_css.contains("background-position: 50% 0 !important;")
+            && reduced_motion_css.contains("background-image: none !important;"),
+        "prefers-reduced-motion must freeze :indeterminate band and render solid [data-phase=\"compile\"] fill"
+    );
+}
+
+#[test]
+fn test_initializer_tags_and_clears_compile_phase_on_loading_progress() {
+    for contract in [
+        "function setIndeterminateProgress(progressEl, stageLabel, phase)",
+        "progressEl.setAttribute('data-phase', phase)",
+        "progressEl.removeAttribute('data-phase')",
+        "setIndeterminateProgress(progressEl, 'Starting WebAssembly download')",
+        "setIndeterminateProgress(progressEl, statusCopy)",
+        "setIndeterminateProgress(progressEl, 'Compiling WebAssembly module', 'compile')",
+        "setIndeterminateProgress(progressEl, 'Initializing WebGL and graphics engine', 'compile')",
+    ] {
+        assert!(
+            INITIALIZER_JS.contains(contract),
+            "initializer.js must manage #loading_progress data-phase across stages: {contract}"
+        );
     }
 }
