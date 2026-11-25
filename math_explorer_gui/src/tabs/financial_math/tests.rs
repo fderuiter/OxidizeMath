@@ -9,6 +9,30 @@ use crate::framework::{ExportFormat, InteractiveTool, SimulationFramework};
 use crate::tabs::ExplorerTab;
 use eframe::egui;
 
+fn smoke_check_tool<T: InteractiveTool + Default>(ctx: &egui::Context) {
+    let mut tool = T::default();
+    let _ = tool.name();
+    let _ = tool.theory();
+    let _ = tool.export_datasets();
+    let _ = tool.export_figure_options();
+    let _ = ctx.run(egui::RawInput::default(), |ctx| {
+        tool.show(ctx);
+    });
+}
+
+pub(crate) fn check_financial_math_tools(ctx: &egui::Context) {
+    smoke_check_tool::<super::bet_size::BetSizeCalculatorTool>(ctx);
+    smoke_check_tool::<super::bankroll_growth::BankrollGrowthTool>(ctx);
+    smoke_check_tool::<super::correlated_risk::CorrelatedRiskScenarioTool>(ctx);
+    smoke_check_tool::<MarketDeviggingTool>(ctx);
+    smoke_check_tool::<MarketExecutionTool>(ctx);
+    smoke_check_tool::<super::monte_carlo_workbench::MonteCarloWorkbenchTool>(ctx);
+    smoke_check_tool::<super::portfolio_workbench::PortfolioCopulaWorkbenchTool>(ctx);
+    smoke_check_tool::<super::tail_risk::TailRiskDrawdownTool>(ctx);
+    #[cfg(feature = "applied")]
+    smoke_check_tool::<super::markowitz::MarkowitzFrontierTool>(ctx);
+}
+
 fn run_export_frame(framework: &mut SimulationFramework, format: ExportFormat) {
     let ctx = egui::Context::default();
     let raw_input = egui::RawInput {
@@ -31,8 +55,57 @@ fn test_financial_math_tab_selects_market_pricing_tools() {
     let mut tab = FinancialMathTab::default();
     assert!(tab.select_tool_by_name("Fair Odds & +EV Devigger"));
     assert!(tab.select_tool_by_name("Arbitrage, Dutching & Hedge"));
+    assert!(tab.select_tool_by_name("Tail Risk & Drawdown"));
+    assert!(tab.select_tool_by_name("Portfolio & Copula Risk Workbench"));
+    #[cfg(feature = "applied")]
+    assert!(tab.select_tool_by_name("Markowitz Efficient Frontier"));
     let saved = tab.save_state().expect("tab state serializes");
     tab.load_state(&saved);
+}
+
+#[cfg(feature = "applied")]
+#[test]
+fn test_financial_math_workbenches_deferred_csv_json_png_svg_exports() {
+    for id in [
+        "BetSizeCalculatorTool",
+        "BankrollGrowthTool",
+        "CorrelatedRiskScenarioTool",
+        "PortfolioCopulaWorkbenchTool",
+        "TailRiskDrawdownTool",
+        "MarkowitzFrontierTool",
+    ] {
+        let meta = inventory::iter::<crate::framework::ToolMetadata>
+            .into_iter()
+            .find(|m| m.id == id)
+            .unwrap_or_else(|| panic!("Missing financial_math tool {id}"));
+        let mut fw = SimulationFramework::new("__fin_export_audit__");
+        fw.active_tool = Some((meta.build)());
+
+        run_export_frame(&mut fw, ExportFormat::Csv);
+        let csv = fw.export_queue.last_exported_content.as_deref();
+        assert!(
+            csv.is_some_and(|s| s.lines().count() >= 5),
+            "Short CSV for {id}"
+        );
+
+        run_export_frame(&mut fw, ExportFormat::Json);
+        let json = fw.export_queue.last_exported_content.as_deref();
+        assert!(json.is_some_and(|s| serde_json::from_str::<serde_json::Value>(s).is_ok()));
+
+        run_export_frame(&mut fw, ExportFormat::Png);
+        assert!(fw
+            .export_queue
+            .last_exported_bytes
+            .as_deref()
+            .is_some_and(|b| b.len() > 200));
+
+        run_export_frame(&mut fw, ExportFormat::Svg);
+        assert!(fw
+            .export_queue
+            .last_exported_content
+            .as_deref()
+            .is_some_and(|s| s.contains("<svg")));
+    }
 }
 
 #[test]

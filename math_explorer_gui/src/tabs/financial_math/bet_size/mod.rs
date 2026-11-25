@@ -86,6 +86,9 @@ pub struct BetSizeCalculatorTool {
     pub(crate) zero_line_points: [PlotPoint; 2],
     pub(crate) strategy_rows: Vec<KellyStrategyRow>,
     pub(crate) ev_per_unit: Option<f64>,
+    pub(crate) optimal_f_star: Option<f64>,
+    pub(crate) optimal_growth_rate: f64,
+    pub(crate) last_compute_ms: f64,
     pub(crate) lundberg_summary: Option<LundbergSolution>,
     pub(crate) sample_size_95: Option<SampleSize95>,
     pub(crate) clv_audit: Option<Result<(f64, ClvMetrics), &'static str>>,
@@ -135,6 +138,9 @@ impl Default for BetSizeCalculatorTool {
             zero_line_points: [PlotPoint::new(0.0, 0.0), PlotPoint::new(0.25, 0.0)],
             strategy_rows: Vec::with_capacity(8),
             ev_per_unit: None,
+            optimal_f_star: None,
+            optimal_growth_rate: 0.0,
+            last_compute_ms: 0.0,
             lundberg_summary: None,
             sample_size_95: None,
             clv_audit: None,
@@ -366,8 +372,20 @@ impl InteractiveTool for BetSizeCalculatorTool {
         self.to_serializable_state(true).validate().is_ok()
     }
 
+    fn observables(&self) -> Vec<(&'static str, f64)> {
+        vec![
+            ("expected_value", self.ev_per_unit.unwrap_or(0.0)),
+            ("optimal_fraction", self.optimal_f_star.unwrap_or(0.0)),
+            ("optimal_growth_rate", self.optimal_growth_rate),
+        ]
+    }
+
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         self.build_export_datasets()
+    }
+
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_export_primitives()
     }
 
     fn save_state(&self) -> Option<String> {

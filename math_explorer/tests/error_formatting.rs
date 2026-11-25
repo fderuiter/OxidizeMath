@@ -1,4 +1,4 @@
-//! Verifies that all 43 public error enums tested from `math_explorer::error`
+//! Verifies that all 45 public error enums tested from `math_explorer::error`
 //! emit human-readable `Display` sentences and `Diagnostic::metadata` without `{:?}` Debug formatting.
 
 #![cfg(all(
@@ -18,9 +18,9 @@ use math_explorer::error::{
     GameTheoryError, Glicko2Error, GraphTheoryError, HighEnergyError, HodgkinHuxleyError,
     HyperbolicError, IsosurfaceError, KellyError, KnotError, LoraError, MarketPricingError,
     MarkovError, MatchModelError, MathError, MonteCarloError, NumberTheoryError,
-    OptionPricingError, OuError, PharmacokineticsError, PoissonError, QueueingError, RadarError,
-    SandpileError, ShaderEmitError, SolidStateError, StandardModelError, StatMechError,
-    Su11HyperbolicError, TdaError, ZipError,
+    OptionPricingError, OuError, PharmacokineticsError, PoissonError, PortfolioError,
+    QueueingError, RadarError, RiskError, SandpileError, ShaderEmitError, SolidStateError,
+    StandardModelError, StatMechError, Su11HyperbolicError, TdaError, ZipError,
 };
 use math_explorer::math_kernel::types::Dimension;
 
@@ -150,6 +150,8 @@ fn kelly_and_market_pricing_errors_emit_readable_display_and_metadata() {
             reciprocal_sum: 1.05,
         },
     );
+    assert_readable_diagnostic("RiskError", &RiskError::InvalidConfidence { value: 0.5 });
+    assert_readable_diagnostic("PortfolioError", &PortfolioError::NotPositiveDefinite);
 }
 
 #[test]

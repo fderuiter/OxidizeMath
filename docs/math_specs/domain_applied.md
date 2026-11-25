@@ -2,7 +2,7 @@
 
 Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/domain_applied`](../../crates/domain_applied/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace manuscripts.
 
-## 1. Kalman Filtering, Battery Aging, Mean-Field Games, GRPO & LoRAHub (`algorithms`, `battery_degradation`, `game_theory`, `grpo`, `lorahub`)
+## 1. Kalman Filtering, Markowitz Portfolio QP, Battery Aging, Mean-Field Games, GRPO & LoRAHub (`algorithms`, `portfolio`, `battery_degradation`, `game_theory`, `grpo`, `lorahub`)
 
 ### Governing Equations
 
@@ -12,7 +12,7 @@ $$
 \hat{x}_{k|k-1} = F \hat{x}_{k-1|k-1} + B u_k, \qquad K_k = P_{k|k-1} H^T (H P_{k|k-1} H^T + R)^{-1}, \qquad \hat{x}_{k|k} = \hat{x}_{k|k-1} + K_k (z_k - H \hat{x}_{k|k-1})
 $$
 
-Electrochemical SEI/plating degradation (`PowerLawModel`, `ElectrochemicalAgingModel`, `DegradationModel`) tracks Arrhenius capacity fade $Q_{\text{loss}}(N) = a N^b$, `FixedPointSolver` (`MFGSolver`) and CSR-backed `GraphReplicatorSystem` couple backward Hamilton-Jacobi-Bellman / spatial replicator imitation with forward density transport, and LoRAHub/GRPO normalize group advantages and convex adapter mixtures.
+Electrochemical SEI/plating degradation (`PowerLawModel`, `ElectrochemicalAgingModel`, `DegradationModel`) tracks Arrhenius capacity fade $Q_{\text{loss}}(N) = a N^b$, `PortfolioSpec` solves analytical Merton two-fund Lagrangian and primal-dual active-set box-simplex Markowitz quadratic programs $\min_{0 \le w_i \le u_i} \frac{1}{2} w^T \Sigma w$ subject to $\mathbf{1}^T w = 1$ (`long_only_tangency`, `constrained_frontier_in_place`, DOI: `10.2307/2975974`, DOI: `10.2307/2329621`), `FixedPointSolver` (`MFGSolver`) and CSR-backed `GraphReplicatorSystem` couple backward Hamilton-Jacobi-Bellman / spatial replicator imitation with forward density transport, and LoRAHub/GRPO normalize group advantages and convex adapter mixtures.
 
 ### Citations
 

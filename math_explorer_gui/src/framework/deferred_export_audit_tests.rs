@@ -282,36 +282,27 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         + usize::from(cfg!(feature = "physics")) * 5
         + usize::from(cfg!(feature = "pure_math"))
         + usize::from(has_riemannian);
-    assert_eq!(
-        audio, expected_audio,
-        "Expected {expected_audio} WAV audio-capable tools"
-    );
-    let bonus =
-        bio_extra + stochastic_extra + phys_plot_bonus + extra_su11_hyp + usize::from(has_ai);
-    let expected_plot = 78 + extra + bonus;
-    let expected_solid = 7 + extra;
-    let expected_shader = 3 + phys_shader;
-    let expected_non_shader = 92 + extra + bonus - phys_shader;
-    assert_eq!(
-        plot, expected_plot,
-        "Expected {expected_plot} Plot dataset+figure tools"
-    );
-    assert_eq!(raster, 8, "Expected 8 raster figure tools");
-    assert_eq!(dataset_only, 0, "Expected 0 dataset-only registered tools");
-    assert_eq!(unsupported, 9, "Expected 9 non-figure tools");
-    assert_eq!(
-        solid_3d, expected_solid,
-        "Expected {expected_solid} solid 3D geometric tools"
-    );
-    assert_eq!(splat_3d, 1, "Expected 1 3DGS splat PLY tool");
-    assert_eq!(
-        shader, expected_shader,
-        "Expected {expected_shader} analytical GPU shader tools"
-    );
-    assert_eq!(
-        non_shader, expected_non_shader,
-        "Expected {expected_non_shader} non-shader tools"
-    );
+    let fin_extra = usize::from(has_riemannian)
+        + usize::from(cfg!(all(feature = "pure_math", feature = "applied")));
+    let bonus = bio_extra
+        + stochastic_extra
+        + phys_plot_bonus
+        + extra_su11_hyp
+        + usize::from(has_ai)
+        + fin_extra;
+    for (actual, exp, label) in [
+        (plot, 78 + extra + bonus, "Plot dataset+figure"),
+        (raster, 8, "raster figure"),
+        (dataset_only, 0, "dataset-only registered"),
+        (unsupported, 9, "non-figure"),
+        (solid_3d, 7 + extra, "solid 3D geometric"),
+        (splat_3d, 1, "3DGS splat PLY"),
+        (shader, 3 + phys_shader, "analytical GPU shader"),
+        (non_shader, 92 + extra + bonus - phys_shader, "non-shader"),
+        (audio, expected_audio, "WAV audio-capable"),
+    ] {
+        assert_eq!(actual, exp, "Expected {exp} {label} tools");
+    }
 }
 
 #[derive(Default)]
