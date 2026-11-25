@@ -268,7 +268,8 @@ fn test_attractor_runner_set_speed_and_factorization_boundary_caps() {
     {
         use crate::async_sim::{SimCommand, SimulationRunner};
         use crate::tabs::chaos::attractors::{
-            AttractorPlotter, AttractorRunner, SolverExecutionState, MAX_SIMULATION_SPEED,
+            AttractorPlotter, AttractorRunner, SolverExecutionState, TwinRunnerState,
+            MAX_SIMULATION_SPEED,
         };
         use std::collections::VecDeque;
         use std::sync::Arc;
@@ -280,6 +281,7 @@ fn test_attractor_runner_set_speed_and_factorization_boundary_caps() {
             ),
             params: Arc::clone(&plotter.params),
             history: VecDeque::with_capacity(100),
+            twin_state: TwinRunnerState::default(),
             step_count: 0,
             execution_state: SolverExecutionState::Ready,
             twin: None,

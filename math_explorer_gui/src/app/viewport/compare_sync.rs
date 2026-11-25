@@ -16,7 +16,7 @@ pub struct ComparisonSyncConfig {
     /// Synchronizes hover crosshair cursors across matching 2D plots.
     #[serde(default)]
     pub link_cursors: bool,
-    /// Broadcasts `Play`, `Pause`, `Step`, and `Reset` across all active `PlaybackTransport` panes.
+    /// Broadcasts `Play`, `Pause`, `Step`, `StepBack`, `ScrubTo`, and `Reset` across all active `PlaybackTransport` panes.
     #[serde(default)]
     pub sync_playback: bool,
     /// Streams immutable CSR graph topologies from `GraphEditorTool` to linked sibling panes.
@@ -36,6 +36,18 @@ pub(crate) struct PlaybackSyncFrameState {
 pub(crate) enum PendingSyncKey {
     TogglePlayPause,
     StepForward,
+    StepBack,
+    PreviousKeyframe,
+}
+
+/// Capabilities of an active [`crate::framework::PlaybackTransport`] when claiming workspace sync shortcuts.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SyncTransportCaps {
+    pub can_toggle: bool,
+    pub is_playing: bool,
+    pub can_step: bool,
+    pub can_step_back: bool,
+    pub prev_keyframe_step: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -50,7 +62,7 @@ pub(crate) struct PlaybackBroadcastEvent {
 fn detect_workspace_sync_key(ctx: &egui::Context) -> Option<PendingSyncKey> {
     let shell_or_modal = crate::framework::is_text_edit_focused(ctx)
         || egui::Popup::is_any_open(ctx)
-        || ctx.memory(|m| m.top_modal_layer().is_some())
+        || egui_plot::active_top_modal_layer(ctx).is_some()
         || ctx.data(|d| {
             d.get_temp::<bool>(egui::Id::new(super::focus::SHELL_MODAL_OR_SASH_FOCUSED_KEY))
                 .unwrap_or(false)
@@ -58,12 +70,19 @@ fn detect_workspace_sync_key(ctx: &egui::Context) -> Option<PendingSyncKey> {
     if shell_or_modal {
         return None;
     }
-    let space_allowed = !crate::framework::is_button_activation_focused(ctx);
+    let activation_allowed = !crate::framework::is_button_activation_focused(ctx);
     ctx.input(|i| {
-        if space_allowed && i.key_pressed(egui::Key::Space) && i.modifiers.is_none() {
+        if !i.modifiers.is_none() {
+            return None;
+        }
+        if activation_allowed && i.key_pressed(egui::Key::Space) {
             Some(PendingSyncKey::TogglePlayPause)
-        } else if i.key_pressed(egui::Key::Period) && i.modifiers.is_none() {
+        } else if i.key_pressed(egui::Key::Period) {
             Some(PendingSyncKey::StepForward)
+        } else if i.key_pressed(egui::Key::Comma) {
+            Some(PendingSyncKey::StepBack)
+        } else if activation_allowed && i.key_pressed(egui::Key::OpenBracket) {
+            Some(PendingSyncKey::PreviousKeyframe)
         } else {
             None
         }
@@ -114,12 +133,10 @@ pub(super) fn clear_single_pane_sync_context(ctx: &egui::Context) {
     });
 }
 
-/// Consumes a pre-detected workspace sync shortcut (`Space` or `Period`) for the first eligible transport.
+/// Consumes a pre-detected workspace sync shortcut (`Space`, `.`, `,`, or `[`) for the first eligible transport.
 pub(crate) fn claim_pending_sync_key(
     ctx: &egui::Context,
-    can_toggle: bool,
-    is_playing: bool,
-    can_step: bool,
+    caps: SyncTransportCaps,
 ) -> Option<(PlaybackAction, egui::Key)> {
     let (key, action) = ctx.data_mut(|d| {
         let state: &mut PlaybackSyncFrameState =
@@ -128,20 +145,29 @@ pub(crate) fn claim_pending_sync_key(
             return None;
         }
         match state.pending_key {
-            Some(PendingSyncKey::TogglePlayPause) if can_toggle => {
+            Some(PendingSyncKey::TogglePlayPause) if caps.can_toggle => {
                 state.pending_key = None;
                 Some((
                     egui::Key::Space,
-                    if is_playing {
+                    if caps.is_playing {
                         PlaybackAction::Pause
                     } else {
                         PlaybackAction::Play
                     },
                 ))
             }
-            Some(PendingSyncKey::StepForward) if can_step => {
+            Some(PendingSyncKey::StepForward) if caps.can_step => {
                 state.pending_key = None;
                 Some((egui::Key::Period, PlaybackAction::Step))
+            }
+            Some(PendingSyncKey::StepBack) if caps.can_step_back => {
+                state.pending_key = None;
+                Some((egui::Key::Comma, PlaybackAction::StepBack))
+            }
+            Some(PendingSyncKey::PreviousKeyframe) if caps.can_step_back => {
+                let target = caps.prev_keyframe_step?;
+                state.pending_key = None;
+                Some((egui::Key::OpenBracket, PlaybackAction::ScrubTo(target)))
             }
             _ => None,
         }
@@ -306,3 +332,7 @@ impl MathExplorerApp {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "compare_sync_tests.rs"]
+mod compare_sync_tests;

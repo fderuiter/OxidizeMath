@@ -34,28 +34,11 @@ impl AttractorPlotter {
                 }
             }
 
-            ui.horizontal(|ui| {
-                let prev_mode = self.mode;
-                ui.radio_value(&mut self.mode, super::AttractorMode::Lorenz, "Lorenz");
-                ui.radio_value(
-                    &mut self.mode,
-                    super::AttractorMode::Custom,
-                    "Custom 3D Flow",
-                );
-                if self.mode != prev_mode {
-                    if self.mode == super::AttractorMode::Custom {
-                        let _ = self.atlas.set_axis_keys("param_0", "param_1");
-                    } else if self.atlas.axis_keys().0 == "param_0" {
-                        let _ = self.atlas.set_axis_keys("sigma", "rho");
-                    }
-                    self.reset();
-                    ctx.request_repaint();
-                }
-            });
-            let _ = self.atlas.show_toggle_button(ui);
+            self.draw_mode_and_atlas_selector(ui, ctx);
             ui.separator();
 
             self.draw_parameter_sliders(ui);
+            self.draw_initial_and_twin_controls(ui, ctx);
             self.draw_simulation_controls(ui, ctx, worker_faulted);
             ui.separator();
             crate::audio::render_sonification_panel(
@@ -77,6 +60,28 @@ impl AttractorPlotter {
             ui.separator();
             self.draw_telemetry_and_handoff(ui, ctx);
         });
+    }
+
+    fn draw_mode_and_atlas_selector(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+        ui.horizontal(|ui| {
+            let prev_mode = self.mode;
+            ui.radio_value(&mut self.mode, super::AttractorMode::Lorenz, "Lorenz");
+            ui.radio_value(
+                &mut self.mode,
+                super::AttractorMode::Custom,
+                "Custom 3D Flow",
+            );
+            if self.mode != prev_mode {
+                if self.mode == super::AttractorMode::Custom {
+                    let _ = self.atlas.set_axis_keys("param_0", "param_1");
+                } else if self.atlas.axis_keys().0 == "param_0" {
+                    let _ = self.atlas.set_axis_keys("sigma", "rho");
+                }
+                self.reset();
+                ctx.request_repaint();
+            }
+        });
+        let _ = self.atlas.show_toggle_button(ui);
     }
 
     fn draw_parameter_sliders(&mut self, ui: &mut egui::Ui) {
@@ -373,10 +378,12 @@ impl AttractorPlotter {
 
     fn draw_3d_viewport(&mut self, ui: &mut egui::Ui) {
         if self.history.is_empty() && !self.diverged() {
-            render_empty_plot_guidance(
-                ui,
-                "Initial state (1, 1, 1) ready — click ▶ Play or ⏭ Step to trace the strange attractor.",
+            let init = self.twin_cfg.initial_state;
+            let guidance = format!(
+                "Initial state ({:.2}, {:.2}, {:.2}) ready — click ▶ Play or ⏭ Step to trace the strange attractor.",
+                init.x, init.y, init.z
             );
+            render_empty_plot_guidance(ui, &guidance);
         }
         let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
         self.populate_scene_with_palette(&palette);
@@ -406,6 +413,7 @@ impl AttractorPlotter {
     }
 
     pub(super) fn draw_central_panel(&mut self, parent_ui: &mut egui::Ui, ctx: &egui::Context) {
+        self.draw_divergence_panel(parent_ui);
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             self.draw_central_fault_banner(ui, ctx);
             if let Some(ref snap) = self.branch_engine.active_snapshot {

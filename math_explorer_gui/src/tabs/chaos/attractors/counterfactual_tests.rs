@@ -120,6 +120,7 @@ fn test_attractor_and_sir_zero_allocation_verified_twin_step() {
         ),
         params: std::sync::Arc::clone(&plotter.params),
         history: std::collections::VecDeque::with_capacity(ATTRACTOR_RING_CAPACITY),
+        twin_state: TwinRunnerState::default(),
         step_count: 0,
         execution_state: SolverExecutionState::Running,
         twin: None,
