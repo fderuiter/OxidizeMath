@@ -26,6 +26,7 @@ impl_error_from!(EvalError => Eval);
 impl_error_from!(FitError => Fit);
 impl_error_from!(GlslError => Glsl);
 impl_error_from!(LexError => Lex);
+impl_error_from!(LinalgError => Linalg);
 impl_error_from!(MathError => Math);
 impl_error_from!(MathCommonsError => MathCommons);
 impl_error_from!(ParseError => Parse);

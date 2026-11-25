@@ -2,15 +2,15 @@ use super::{
     BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError, IsosurfaceError,
     KalmanError, LoraError, PharmacokineticsError, VoxelGridError,
 };
-use diagnostics::{Diagnostic, Severity};
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_commons::error::{
-    EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
+    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, ParseError,
+    ShaderEmitError,
 };
 use pure_math::error::{
-    AnalysisError, EvolutionError, LinearAlgebraError, OptimizationError, PureMathError,
-    StochasticError,
+    AnalysisError, EvolutionError, LinearAlgebraError, MonteCarloError, OptimizationError,
+    PureMathError, StochasticError, TensorError,
 };
-use std::collections::HashMap;
 use thiserror::Error;
 
 /// Extensible crate-level umbrella error for `domain_applied` modules and upstream math errors.
@@ -90,6 +90,41 @@ impl From<StochasticError> for AppliedError {
     }
 }
 
+impl From<MonteCarloError> for AppliedError {
+    #[verified_engine::verified]
+    fn from(err: MonteCarloError) -> Self {
+        Self::PureMath(PureMathError::from(err))
+    }
+}
+
+impl From<TensorError> for AppliedError {
+    #[verified_engine::verified]
+    fn from(err: TensorError) -> Self {
+        Self::PureMath(PureMathError::from(err))
+    }
+}
+
+impl From<FitError> for AppliedError {
+    #[verified_engine::verified]
+    fn from(err: FitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<LinalgError> for AppliedError {
+    #[verified_engine::verified]
+    fn from(err: LinalgError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<ShaderEmitError> for AppliedError {
+    #[verified_engine::verified]
+    fn from(err: ShaderEmitError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
 impl From<EvalError> for AppliedError {
     #[verified_engine::verified]
     fn from(err: EvalError) -> Self {
@@ -152,9 +187,8 @@ impl Diagnostic for AppliedError {
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = self.as_diagnostic().metadata();
-        map.insert("umbrella_type".to_string(), "AppliedError".to_string());
-        map
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        self.as_diagnostic().visit_fields(visitor);
+        visitor.record_str("umbrella_type", "AppliedError");
     }
 }

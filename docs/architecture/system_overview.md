@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 24 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 25 workspace crates:
 
 ```mermaid
 graph TD
@@ -82,6 +82,7 @@ graph TD
         Rng[math_rng]
         Linalg[engine_linalg]
         Diag[diagnostics]
+        MathDiag[math_diagnostics]
     end
 
     Xtask -.-> Verify
@@ -104,8 +105,10 @@ graph TD
     Pure --> Commons & Meta & DiffEq & Pde & Linalg & Rng
     DiffEq --> Commons & Engine & Rng
     Pde --> Commons & Engine & Rng
-    Commons --> CoreCrate & Linalg & Rng
+    Commons --> CoreCrate & Linalg & Rng & MathDiag
     CoreCrate --> Rng
+    Linalg --> MathDiag
+    Diag --> MathDiag
     Engine --> Macros & CoreCrate
     Meta --> CoreCrate
 
@@ -118,10 +121,11 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 24 member crates declared in `Cargo.toml`:
+The workspace contains all 25 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
+| `crates/00_foundation/math_diagnostics` | `#![no_std]` zero-allocation diagnostic visitor contract | [math_diagnostics](../../crates/00_foundation/math_diagnostics/README.md) |
 | `crates/00_foundation/math_rng` | `#![no_std]` ChaCha8 stream PRNG, generic float/index samplers, and 64D QMC views | [math_rng](../../crates/00_foundation/math_rng/README.md) |
 | `crates/oxidize_core` | Core utilities, file systems, and traceability | [oxidize_core](../../crates/oxidize_core/README.md) |
 | `crates/02_engines/engine_linalg` | `#![no_std]` numerical linear algebra engine | [engine_linalg](../../crates/02_engines/engine_linalg/README.md) |

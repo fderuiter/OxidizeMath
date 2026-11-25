@@ -1,8 +1,8 @@
 //! Error types for the climate modeling domain.
 
-use diagnostics::{Diagnostic, Severity};
-use math_commons::error::MathError;
-use std::collections::HashMap;
+use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use math_commons::error::{FitError, LinalgError, MathError};
+use pure_math::error::{LinearAlgebraError, OptimizationError};
 use thiserror::Error;
 
 /// Domain-specific errors for climate emulation, tensor layers, and loss functions.
@@ -58,6 +58,22 @@ pub enum ClimateError {
     /// Shared mathematical error forwarded from `math_commons`.
     #[error("{0}")]
     Math(#[from] MathError),
+
+    /// Foundational `#![no_std]` linear algebra engine error.
+    #[error("{0}")]
+    Linalg(#[from] LinalgError),
+
+    /// Foundational curve-fitting solver error.
+    #[error("{0}")]
+    Fit(#[from] FitError),
+
+    /// Upstream numerical optimization error.
+    #[error("{0}")]
+    Optimization(#[from] OptimizationError),
+
+    /// Upstream numerical linear algebra error.
+    #[error("{0}")]
+    LinearAlgebra(#[from] LinearAlgebraError),
 }
 
 impl Diagnostic for ClimateError {
@@ -65,20 +81,27 @@ impl Diagnostic for ClimateError {
     fn severity(&self) -> Severity {
         match self {
             Self::Math(err) => err.severity(),
+            Self::Linalg(err) => err.severity(),
+            Self::Fit(err) => err.severity(),
+            Self::Optimization(err) => err.severity(),
+            Self::LinearAlgebra(err) => err.severity(),
             _ => Severity::Error,
         }
     }
 
     #[verified_engine::verified]
-    fn metadata(&self) -> HashMap<String, String> {
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         match self {
-            Self::Math(err) => err.metadata(),
+            Self::Math(err) => err.visit_fields(visitor),
+            Self::Linalg(err) => err.visit_fields(visitor),
+            Self::Fit(err) => err.visit_fields(visitor),
+            Self::Optimization(err) => err.visit_fields(visitor),
+            Self::LinearAlgebra(err) => err.visit_fields(visitor),
             _ => {
-                let mut map = HashMap::new();
-                map.insert("error_type".to_string(), "ClimateError".to_string());
-                map.insert("description".to_string(), self.to_string());
-                map
+                visitor.record_str("error_type", "ClimateError");
+                visitor.record_display("description", self);
             }
         }
+        visitor.record_str("umbrella_type", "ClimateError");
     }
 }

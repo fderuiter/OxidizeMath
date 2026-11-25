@@ -15,7 +15,7 @@
 //! *   **Rank:** The number of non-zero singular values equals the **rank** of the matrix.
 //! *   **Application:** SVD is used for least squares estimation, low-rank Eckart-Young approximation, and determining the effective rank of a matrix.
 
-use super::numerical::{LinearAlgebraError, dmatrix_to_row_major, map_linalg_error};
+use super::numerical::{LinearAlgebraError, dmatrix_to_row_major};
 use engine_linalg::{
     SolverWorkspace, svd_effective_rank, svd_low_rank_approx, svd_ops_workspace_len,
 };
@@ -59,8 +59,7 @@ pub fn try_low_rank_approximation(
         k,
         &mut approx,
         &mut SolverWorkspace::new(&mut scratch),
-    )
-    .map_err(map_linalg_error)?;
+    )?;
     Ok(DMatrix::from_row_slice(m, n, &approx))
 }
 

@@ -3,10 +3,8 @@
 pub use crate::ast::{EvalError, GlslError, LexError, ParseError, ShaderEmitError};
 use crate::math_kernel::types::Dimension;
 use alloc::string::String;
-#[cfg(feature = "std")]
-use diagnostics::{Diagnostic, Severity};
-#[cfg(feature = "std")]
-use std::collections::HashMap;
+pub use engine_linalg::LinalgError;
+pub use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use thiserror::Error;
 
 /// Centralized mathematical error type.
@@ -69,37 +67,34 @@ pub enum MathError {
     },
 }
 
-#[cfg(feature = "std")]
 impl Diagnostic for MathError {
     fn severity(&self) -> Severity {
         Severity::Error
     }
 
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "MathError".to_string());
-        map.insert("description".to_string(), self.to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", "MathError");
+        visitor.record_display("description", self);
         match self {
             Self::DimensionMismatch { expected, actual } => {
-                map.insert("expected_dim".to_string(), expected.0.to_string());
-                map.insert("actual_dim".to_string(), actual.0.to_string());
+                visitor.record_usize("expected_dim", expected.0);
+                visitor.record_usize("actual_dim", actual.0);
             }
             Self::OutOfBounds { value, min, max }
             | Self::StrictlyOutOfBounds { value, min, max } => {
-                map.insert("value".to_string(), value.to_string());
-                map.insert("min".to_string(), min.to_string());
-                map.insert("max".to_string(), max.to_string());
+                visitor.record_f64("value", *value);
+                visitor.record_f64("min", *min);
+                visitor.record_f64("max", *max);
             }
             Self::InvalidPermutation { index, value, len } => {
-                map.insert("index".to_string(), index.to_string());
-                map.insert("value".to_string(), value.to_string());
-                map.insert("len".to_string(), len.to_string());
+                visitor.record_usize("index", *index);
+                visitor.record_usize("value", *value);
+                visitor.record_usize("len", *len);
             }
             Self::NumericalError { reason } | Self::ConversionError { reason } => {
-                map.insert("reason".to_string(), reason.clone());
+                visitor.record_str("reason", reason);
             }
         }
-        map
     }
 }
 
@@ -148,53 +143,94 @@ pub enum FitError {
         /// Number of iterations executed before termination.
         iterations: usize,
     },
+
+    /// Underlying `#![no_std]` linear algebra engine failure preserving causal `source()`.
+    #[error("{0}")]
+    Linalg(#[from] LinalgError),
 }
 
-#[cfg(feature = "std")]
 impl Diagnostic for FitError {
     fn severity(&self) -> Severity {
         Severity::Error
     }
 
-    fn metadata(&self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        map.insert("error_type".to_string(), "FitError".to_string());
-        map.insert("description".to_string(), self.to_string());
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        if let Self::Linalg(linalg_err) = self {
+            linalg_err.visit_fields(visitor);
+        }
+        visitor.record_str("error_type", "FitError");
+        visitor.record_display("description", self);
         match self {
             Self::InsufficientPoints { required, actual } => {
-                map.insert("code".to_string(), "MATH-FIT-001".to_string());
-                map.insert("required".to_string(), required.to_string());
-                map.insert("actual".to_string(), actual.to_string());
+                visitor.record_str("code", "MATH-FIT-001");
+                visitor.record_usize("required", *required);
+                visitor.record_usize("actual", *actual);
             }
             Self::UnsupportedDegree { degree } => {
-                map.insert("code".to_string(), "MATH-FIT-002".to_string());
-                map.insert("degree".to_string(), degree.to_string());
+                visitor.record_str("code", "MATH-FIT-002");
+                visitor.record_usize("degree", *degree);
             }
             Self::InvalidDomain { reason } => {
-                map.insert("code".to_string(), "MATH-FIT-003".to_string());
-                map.insert("reason".to_string(), (*reason).to_string());
+                visitor.record_str("code", "MATH-FIT-003");
+                visitor.record_str("reason", reason);
             }
             Self::SingularMatrix => {
-                map.insert("code".to_string(), "MATH-FIT-004".to_string());
+                visitor.record_str("code", "MATH-FIT-004");
             }
             Self::NonConvergence { iterations } => {
-                map.insert("code".to_string(), "MATH-FIT-005".to_string());
-                map.insert("iterations".to_string(), iterations.to_string());
+                visitor.record_str("code", "MATH-FIT-005");
+                visitor.record_usize("iterations", *iterations);
+            }
+            Self::Linalg(_) => {
+                visitor.record_str("code", "MATH-FIT-006");
             }
         }
-        map
     }
 }
 
-#[cfg(feature = "std")]
 mod umbrella;
-#[cfg(feature = "std")]
 pub use umbrella::MathCommonsError;
 
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
     use std::error::Error as StdError;
+    use verified_engine::engine::VerifiedEngine;
+
+    struct NullVisitor(usize);
+
+    impl DiagnosticVisitor for NullVisitor {
+        fn record_str(&mut self, _key: &str, _value: &str) {
+            self.0 += 1;
+        }
+
+        fn record_display(&mut self, _key: &str, _value: &dyn core::fmt::Display) {
+            self.0 += 1;
+        }
+    }
+
+    #[test]
+    fn zero_allocation_diagnostic_visitation_for_linalg_math_and_fit() {
+        let linalg_err = LinalgError::WorkspaceTooSmall {
+            required: 32,
+            available: 16,
+        };
+        let math_err = MathError::DimensionMismatch {
+            expected: Dimension(3),
+            actual: Dimension(2),
+        };
+        let fit_err = FitError::from(linalg_err);
+        assert!(fit_err.source().is_some());
+
+        let (count, _metrics) = VerifiedEngine::run_verified(|| {
+            let mut v = NullVisitor(0);
+            linalg_err.visit_fields(&mut v);
+            math_err.visit_fields(&mut v);
+            fit_err.visit_fields(&mut v);
+            v.0
+        });
+        assert!(count >= 12);
+    }
 
     #[test]
     fn math_commons_umbrella_preserves_sources_and_diagnostics() {
@@ -238,6 +274,7 @@ mod tests {
                 actual: Dimension(3),
             }),
             MathCommonsError::from(FitError::SingularMatrix),
+            MathCommonsError::from(LinalgError::SingularMatrix),
             MathCommonsError::from(lex),
             MathCommonsError::from(parse),
             MathCommonsError::from(unknown_fn),
