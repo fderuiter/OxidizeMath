@@ -3,6 +3,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
+mod export;
 pub mod playhead;
 mod sonification;
 
@@ -212,7 +213,11 @@ impl InteractiveTool for PrimeSpiralWidget {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::raster_only().with_audio()
+        ExportCapabilities::plot().with_audio()
+    }
+
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        export::build_prime_spiral_tables(self)
     }
 
     fn sonification_frame(&self) -> Option<crate::audio::SonificationFrame> {

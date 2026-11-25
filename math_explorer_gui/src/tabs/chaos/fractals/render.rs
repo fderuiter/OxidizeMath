@@ -110,6 +110,40 @@ fn eval_custom_mode_escape(
     }
 }
 
+pub(in crate::tabs::chaos) fn eval_escape_iterations(
+    re: f64,
+    im: f64,
+    req: &FractalRenderRequest,
+    formula: Option<&CompiledFractalJob>,
+    smooth: bool,
+) -> f64 {
+    let pt = Complex::new(re, im);
+    match (req.mode, smooth) {
+        (FractalMode::Mandelbrot, true) => smooth_escape_mandelbrot(pt, req.max_iter),
+        (FractalMode::Mandelbrot, false) => f64::from(escape_time_mandelbrot(pt, req.max_iter)),
+        (FractalMode::Julia, true) => smooth_escape_julia(pt, req.julia_c, req.max_iter),
+        (FractalMode::Julia, false) => f64::from(escape_time_julia(pt, req.julia_c, req.max_iter)),
+        (FractalMode::CustomMandelbrot, s) => {
+            eval_custom_mode_escape(Complex::new(0.0, 0.0), pt, req.max_iter, s, formula, || {
+                if s {
+                    smooth_escape_mandelbrot(pt, req.max_iter)
+                } else {
+                    f64::from(escape_time_mandelbrot(pt, req.max_iter))
+                }
+            })
+        }
+        (FractalMode::CustomJulia, s) => {
+            eval_custom_mode_escape(pt, req.julia_c, req.max_iter, s, formula, || {
+                if s {
+                    smooth_escape_julia(pt, req.julia_c, req.max_iter)
+                } else {
+                    f64::from(escape_time_julia(pt, req.julia_c, req.max_iter))
+                }
+            })
+        }
+    }
+}
+
 pub(super) fn eval_pixel_color(
     re: f64,
     im: f64,
@@ -117,36 +151,7 @@ pub(super) fn eval_pixel_color(
     formula: Option<&CompiledFractalJob>,
     style: FractalColorStyle,
 ) -> egui::Color32 {
-    let pt = Complex::new(re, im);
-    let iter_val = match (req.mode, style.smooth_coloring) {
-        (FractalMode::Mandelbrot, true) => smooth_escape_mandelbrot(pt, req.max_iter),
-        (FractalMode::Mandelbrot, false) => f64::from(escape_time_mandelbrot(pt, req.max_iter)),
-        (FractalMode::Julia, true) => smooth_escape_julia(pt, req.julia_c, req.max_iter),
-        (FractalMode::Julia, false) => f64::from(escape_time_julia(pt, req.julia_c, req.max_iter)),
-        (FractalMode::CustomMandelbrot, smooth) => eval_custom_mode_escape(
-            Complex::new(0.0, 0.0),
-            pt,
-            req.max_iter,
-            smooth,
-            formula,
-            || {
-                if smooth {
-                    smooth_escape_mandelbrot(pt, req.max_iter)
-                } else {
-                    f64::from(escape_time_mandelbrot(pt, req.max_iter))
-                }
-            },
-        ),
-        (FractalMode::CustomJulia, smooth) => {
-            eval_custom_mode_escape(pt, req.julia_c, req.max_iter, smooth, formula, || {
-                if smooth {
-                    smooth_escape_julia(pt, req.julia_c, req.max_iter)
-                } else {
-                    f64::from(escape_time_julia(pt, req.julia_c, req.max_iter))
-                }
-            })
-        }
-    };
+    let iter_val = eval_escape_iterations(re, im, req, formula, style.smooth_coloring);
     map_escape_to_color32(iter_val, req.max_iter, style.palette, req.high_contrast)
 }
 

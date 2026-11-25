@@ -8,6 +8,9 @@ use crate::tabs::geometry_topology::export_utils::{
 use eframe::egui;
 use std::collections::HashSet;
 
+#[path = "deferred_export_audit_helpers.rs"]
+mod audit_helpers;
+
 fn run_deferred_export_frame(
     framework: &mut SimulationFramework,
     format: ExportFormat,
@@ -71,6 +74,7 @@ fn verify_single_figure_tool(meta_name: &str, tool: Box<dyn InteractiveTool>) {
         svg.contains("<svg") && svg.len() > 250,
         "Deferred modal SVG for {meta_name} was empty"
     );
+    audit_helpers::verify_tool_csv_and_json_exports(meta_name, &mut framework, true);
 }
 
 fn verify_shader_capability(
@@ -138,40 +142,7 @@ fn verify_audio_capability(meta_id: &str, caps: ExportCapabilities) -> bool {
 fn verify_dataset_only_tool(meta_name: &str, tool: Box<dyn InteractiveTool>) {
     let mut framework = SimulationFramework::new("__audit_dataset_only__");
     framework.active_tool = Some(tool);
-
-    run_deferred_export_frame(&mut framework, ExportFormat::Csv, false);
-    assert_eq!(
-        framework.export_status_severity,
-        ExportStatusSeverity::Success,
-        "Deferred CSV failed for {meta_name}: {:?}",
-        framework.export_status_message
-    );
-    let csv = framework
-        .export_queue
-        .last_exported_content
-        .as_deref()
-        .unwrap_or_else(|| panic!("Missing CSV content for {meta_name}"));
-    assert!(
-        csv.starts_with("Dataset,X,Y\n") && csv.lines().count() >= 2,
-        "Invalid CSV content for {meta_name}: {csv}"
-    );
-
-    run_deferred_export_frame(&mut framework, ExportFormat::Json, false);
-    assert_eq!(
-        framework.export_status_severity,
-        ExportStatusSeverity::Success,
-        "Deferred JSON failed for {meta_name}: {:?}",
-        framework.export_status_message
-    );
-    let json = framework
-        .export_queue
-        .last_exported_content
-        .as_deref()
-        .unwrap_or_else(|| panic!("Missing JSON content for {meta_name}"));
-    assert!(
-        json.contains("\"dataset\":") && !json.contains("NaN"),
-        "Invalid JSON content for {meta_name}: {json}"
-    );
+    audit_helpers::verify_tool_csv_and_json_exports(meta_name, &mut framework, false);
 
     run_deferred_export_frame(&mut framework, ExportFormat::Png, false);
     assert_eq!(
@@ -242,7 +213,17 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
             );
             continue;
         }
+        assert!(
+            caps.figure_disabled_reason.is_empty(),
+            "{} advertises figure export but has non-empty disabled reason",
+            meta.id
+        );
         if caps.dataset {
+            assert!(
+                caps.dataset_disabled_reason.is_empty(),
+                "{} advertises dataset export but has non-empty disabled reason",
+                meta.id
+            );
             plot_tool_count += 1;
         } else {
             raster_tool_count += 1;
@@ -291,10 +272,10 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         + usize::from(has_ai)
         + fin_extra;
     for (actual, exp, label) in [
-        (plot, 78 + extra + bonus, "Plot dataset+figure"),
-        (raster, 8, "raster figure"),
-        (dataset_only, 0, "dataset-only registered"),
-        (unsupported, 9, "non-figure"),
+        (plot, 92 + extra + bonus, "Plot dataset+figure"),
+        (raster, 0, "raster figure"),
+        (dataset_only, 3, "dataset-only registered"),
+        (unsupported, 0, "non-figure"),
         (solid_3d, 7 + extra, "solid 3D geometric"),
         (splat_3d, 1, "3DGS splat PLY"),
         (shader, 3 + phys_shader, "analytical GPU shader"),

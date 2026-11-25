@@ -13,6 +13,8 @@ use std::sync::{Arc, RwLock};
 
 #[path = "fractals/atlas.rs"]
 pub mod atlas;
+#[path = "fractals/export.rs"]
+mod export;
 #[cfg(test)]
 pub use atlas::FractalCartographer;
 use atlas::FRACTAL_ATLAS_AXIS_PAIRS;
@@ -205,7 +207,7 @@ impl InteractiveTool for FractalViewer {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::raster_with_shader()
+        crate::framework::ExportCapabilities::plot().with_shader()
     }
 
     fn export_glsl_shader(
@@ -216,33 +218,11 @@ impl InteractiveTool for FractalViewer {
     }
 
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
-        let raw = if self.viewport_size.0 > 0 && self.viewport_size.1 > 0 {
-            self.viewport_size
-        } else {
-            DEFAULT_EXPORT_VIEWPORT_SIZE
-        };
-        let (width, height) = clamp_fractal_dimensions(raw.0, raw.1, MAX_FRACTAL_TEXTURE_SIDE);
-        if !self.dirty && self.completed_generation == self.request_generation {
-            if let Some(snap) = self.worker.latest_snapshot() {
-                if (snap.width, snap.height) == (width, height) {
-                    if let Some(img) =
-                        snapshot_to_clamped_color_image(snap, MAX_FRACTAL_TEXTURE_SIDE)
-                    {
-                        return Some(img);
-                    }
-                }
-            }
-        }
-        let req = self.build_clamped_render_request(width, height);
-        let job = self
-            .mode
-            .is_custom()
-            .then(|| CompiledFractalJob::from_bar(&self.math_input));
-        Some(render_fractal_color_image_styled(
-            &req,
-            job.as_ref(),
-            self.color_style(),
-        ))
+        self.build_fractal_raster_export()
+    }
+
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_fractal_export_tables()
     }
 
     fn export_shader_source(&self, format: ShaderExportFormat) -> Result<String, String> {
@@ -321,7 +301,11 @@ impl FractalViewer {
         self.shader_preview.invalidate();
     }
 
-    fn build_clamped_render_request(&self, width: usize, height: usize) -> FractalRenderRequest {
+    pub(super) fn build_clamped_render_request(
+        &self,
+        width: usize,
+        height: usize,
+    ) -> FractalRenderRequest {
         let zoom = if self.zoom.is_finite() && (ZOOM_MIN..=ZOOM_MAX).contains(&self.zoom) {
             self.zoom
         } else {

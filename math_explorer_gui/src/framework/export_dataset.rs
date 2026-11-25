@@ -42,6 +42,22 @@ impl SimulationFramework {
         tool_name: &str,
         format: ExportFormat,
     ) -> Result<String, String> {
+        if let Some(tool) = &self.active_tool {
+            let tables = tool.export_tables();
+            if tables.iter().any(ExportTable::is_non_empty) {
+                return match format {
+                    ExportFormat::Csv => super::export_tables::format_tables_csv(&tables)
+                        .ok_or_else(|| {
+                            format!("No table rows available to export from {tool_name}.")
+                        }),
+                    ExportFormat::Json => super::export_tables::format_tables_json(&tables)
+                        .ok_or_else(|| {
+                            format!("No table rows available to export from {tool_name}.")
+                        }),
+                    _ => Err("Unsupported dataset format".to_string()),
+                };
+            }
+        }
         let datasets_3d: Vec<(String, Vec<[f64; 3]>)> = self
             .export_datasets_3d_with_fallback()
             .into_iter()
@@ -62,16 +78,16 @@ impl SimulationFramework {
             .into_iter()
             .filter(|(_, pts)| pts.iter().any(|p| p[0].is_finite() && p[1].is_finite()))
             .collect();
-        if !egui_plot::export_primitives::has_finite_dataset_points(&datasets) {
-            return Err(format!(
-                "No dataset points available to export from {tool_name}."
-            ));
+        if egui_plot::export_primitives::has_finite_dataset_points(&datasets) {
+            return match format {
+                ExportFormat::Csv => Ok(egui_plot::export::format_csv(&datasets)),
+                ExportFormat::Json => Ok(egui_plot::export::format_json(&datasets)),
+                _ => Err("Unsupported dataset format".to_string()),
+            };
         }
-        match format {
-            ExportFormat::Csv => Ok(egui_plot::export::format_csv(&datasets)),
-            ExportFormat::Json => Ok(egui_plot::export::format_json(&datasets)),
-            _ => Err("Unsupported dataset format".to_string()),
-        }
+        Err(format!(
+            "No dataset points available to export from {tool_name}."
+        ))
     }
 
     pub(super) fn dispatch_dataset_export(
