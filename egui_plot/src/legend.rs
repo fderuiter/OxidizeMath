@@ -176,7 +176,7 @@ impl LegendEntry {
     }
 
     fn ui(&self, ui: &mut Ui, text_style: &TextStyle, min_row_height: f32) -> Response {
-        let job = crate::latex::parse_latex_to_layout_job(
+        let job = crate::latex::parse_plot_label_to_layout_job(
             &self.name,
             text_style.clone(),
             ui,
