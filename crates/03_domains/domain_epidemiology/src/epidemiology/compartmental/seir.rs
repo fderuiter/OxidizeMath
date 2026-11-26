@@ -1,0 +1,460 @@
+use super::common::{validate_initial_infected, validate_population, validate_rate};
+use crate::error::EpidemiologyError;
+use crate::impl_compartmental_ops;
+use pure_math::pure_math::analysis::ode::{OdeSystem, RungeKutta4, Solver, TimeStepper};
+use verified_engine::Theory;
+
+/// State for the SEIR Model.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SEIRState {
+    /// Number of susceptible individuals $S(t)$.
+    pub s: f64,
+    /// Number of exposed (latent, non-infectious) individuals $E(t)$.
+    pub e: f64,
+    /// Number of actively infectious individuals $I(t)$.
+    pub i: f64,
+    /// Number of recovered or removed individuals $R(t)$.
+    pub r: f64,
+}
+
+impl_compartmental_ops!(SEIRState, s, e, i, r);
+
+/// Pure dynamics of the SEIR Model.
+///
+/// This struct holds the parameters and defines the differential equations,
+/// but does not hold the simulation state.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SEIRDynamics {
+    /// Constant closed population size $N = S + E + I + R > 0$.
+    pub n: f64,
+    /// Effective transmission rate $\beta \ge 0$.
+    pub beta: f64,
+    /// Latent progression rate $\sigma \ge 0$ (mean incubation period $1/\sigma$).
+    pub sigma: f64,
+    /// Per-capita recovery rate $\gamma \ge 0$.
+    pub gamma: f64,
+}
+
+impl OdeSystem<SEIRState> for SEIRDynamics {
+    #[verified_engine::verified]
+    fn derivative(&self, _t: f64, state: &SEIRState) -> SEIRState {
+        let s = state.s;
+        let e = state.e;
+        let i = state.i;
+
+        let new_exposed = self.beta * s * i / self.n;
+        let ds = -new_exposed;
+        let de = new_exposed - self.sigma * e;
+        let di = self.sigma * e - self.gamma * i;
+        let dr = self.gamma * i;
+
+        SEIRState {
+            s: ds,
+            e: de,
+            i: di,
+            r: dr,
+        }
+    }
+}
+
+struct ForcedSeirDynamics<'a, D, F> {
+    base: &'a D,
+    forcing: F,
+}
+
+impl<'a, D: OdeSystem<SEIRState>, F: Fn(f64, &SEIRState) -> SEIRState> OdeSystem<SEIRState>
+    for ForcedSeirDynamics<'a, D, F>
+{
+    #[verified_engine::verified]
+    fn derivative(&self, t: f64, state: &SEIRState) -> SEIRState {
+        self.base.derivative(t, state) + (self.forcing)(t, state)
+    }
+
+    #[verified_engine::verified]
+    fn derivative_in_place(&self, t: f64, state: &SEIRState, out: &mut SEIRState) {
+        self.base.derivative_in_place(t, state, out);
+        let source = (self.forcing)(t, state);
+        *out += source;
+    }
+}
+
+/// SEIR Model: Susceptible, Exposed, Infectious, Recovered.
+///
+/// Equations:
+/// $$dS/dt = -\beta S I / N, \quad dE/dt = \beta S I / N - \sigma E, \quad dI/dt = \sigma E - \gamma I, \quad dR/dt = \gamma I$$
+///
+/// Reference: Kermack & McKendrick (1927), DOI: `10.1098/rspa.1927.0118`; Diekmann & Heesterbeek
+/// (2000), [`docs/math_specs/domain_epidemiology.md`](../../../../../../docs/math_specs/domain_epidemiology.md#diekmann2000mathematical).
+///
+/// # Stability
+/// Conserves $S(t) + E(t) + I(t) + R(t) = N$ to floating-point precision; explicit RK4 remains
+/// stable and positivity-preserving when $\Delta t \cdot \max(\beta, \sigma, \gamma) \lesssim 1$.
+///
+/// # Domain of Validity
+/// Closed homogeneous populations with $N > 0$, $0 \le I_0 \le N$, and finite rates
+/// $\beta, \sigma, \gamma \ge 0$.
+///
+/// Use `SEIRModel::builder()` or `SEIRModel::new()` to construct.
+#[derive(Debug, Clone, Theory)]
+#[theory(
+    description = "The SEIR model is a compartmental epidemic model that incorporates an exposed (latent) period before individuals become infectious.",
+    citation = "Mathematical epidemiology of infectious diseases (Diekmann & Heesterbeek, 2000)"
+)]
+pub struct SEIRModel<S: Solver<SEIRState> = RungeKutta4<SEIRState>> {
+    state: SEIRState,
+    /// The underlying dynamics model (parameters + equations).
+    pub dynamics: SEIRDynamics,
+    /// The numerical solver strategy.
+    solver: S,
+    time: f64,
+}
+
+impl<S: Solver<SEIRState>> TimeStepper<SEIRState> for SEIRModel<S> {
+    #[verified_engine::verified]
+    fn get_state(&self) -> &SEIRState {
+        &self.state
+    }
+
+    #[verified_engine::verified]
+    fn get_state_mut(&mut self) -> &mut SEIRState {
+        &mut self.state
+    }
+
+    #[verified_engine::verified]
+    fn current_time(&self) -> f64 {
+        self.time
+    }
+
+    #[verified_engine::verified]
+    fn advance_time(&mut self, dt: f64) {
+        debug_assert!(dt.is_finite());
+        self.time += dt;
+    }
+
+    #[verified_engine::verified]
+    fn step(&mut self, dt: f64) {
+        debug_assert!(dt.is_finite());
+        self.solver
+            .step(&self.dynamics, self.time, &mut self.state, dt);
+        self.time += dt;
+    }
+
+    fn step_with<OtherS: Solver<SEIRState>>(&mut self, solver: &mut OtherS, dt: f64) {
+        solver.step(&self.dynamics, self.time, &mut self.state, dt);
+        self.time += dt;
+    }
+}
+
+/// Builder for SEIRModel to ensure valid parameter configuration.
+#[derive(Debug, Default, Clone)]
+pub struct SEIRModelBuilder {
+    n: Option<f64>,
+    i0: Option<f64>,
+    beta: Option<f64>,
+    sigma: Option<f64>,
+    gamma: Option<f64>,
+}
+
+impl SEIRModelBuilder {
+    /// Sets the total population size N.
+    #[verified_engine::verified]
+    pub fn n(mut self, n: f64) -> Self {
+        self.n = Some(n);
+        self
+    }
+
+    /// Sets the initial infected count I0.
+    #[verified_engine::verified]
+    pub fn i0(mut self, i0: f64) -> Self {
+        self.i0 = Some(i0);
+        self
+    }
+
+    /// Sets the transmission rate beta.
+    #[verified_engine::verified]
+    pub fn beta(mut self, beta: f64) -> Self {
+        self.beta = Some(beta);
+        self
+    }
+
+    /// Sets the incubation rate sigma.
+    #[verified_engine::verified]
+    pub fn sigma(mut self, sigma: f64) -> Self {
+        self.sigma = Some(sigma);
+        self
+    }
+
+    /// Sets the recovery rate gamma.
+    #[verified_engine::verified]
+    pub fn gamma(mut self, gamma: f64) -> Self {
+        self.gamma = Some(gamma);
+        self
+    }
+
+    /// Builds the SEIRModel, validating all parameters.
+    #[verified_engine::verified]
+    pub fn build(self) -> Result<SEIRModel<RungeKutta4<SEIRState>>, EpidemiologyError> {
+        let n = self.n.ok_or(EpidemiologyError::MissingParameter {
+            name: "n (population)".to_string(),
+        })?;
+        let i0 = self.i0.ok_or(EpidemiologyError::MissingParameter {
+            name: "i0 (initial infected)".to_string(),
+        })?;
+        let beta = self.beta.ok_or(EpidemiologyError::MissingParameter {
+            name: "beta (transmission rate)".to_string(),
+        })?;
+        let sigma = self.sigma.ok_or(EpidemiologyError::MissingParameter {
+            name: "sigma (incubation rate)".to_string(),
+        })?;
+        let gamma = self.gamma.ok_or(EpidemiologyError::MissingParameter {
+            name: "gamma (recovery rate)".to_string(),
+        })?;
+
+        validate_population(n)?;
+        validate_initial_infected(i0, n)?;
+        validate_rate("beta (transmission rate)", beta)?;
+        validate_rate("sigma (incubation rate)", sigma)?;
+        validate_rate("gamma (recovery rate)", gamma)?;
+
+        let state = SEIRState {
+            s: n - i0,
+            e: 0.0,
+            i: i0,
+            r: 0.0,
+        };
+
+        Ok(SEIRModel {
+            state,
+            dynamics: SEIRDynamics {
+                n,
+                beta,
+                sigma,
+                gamma,
+            },
+            solver: RungeKutta4::new(&state),
+            time: 0.0,
+        })
+    }
+}
+
+impl SEIRModel<RungeKutta4<SEIRState>> {
+    /// Returns a new builder for the SEIRModel.
+    #[verified_engine::verified]
+    pub fn builder() -> SEIRModelBuilder {
+        SEIRModelBuilder::default()
+    }
+
+    /// Constructs a new SEIRModel with the given parameters using RungeKutta4.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use domain_epidemiology::__doctest_facade as math_explorer;
+    /// use math_explorer::epidemiology::compartmental::SEIRModel;
+    ///
+    /// let mut model = SEIRModel::new(10_000.0, 10.0, 0.6, 0.2, 0.1).unwrap();
+    /// model.step(1.0);
+    /// let st = model.state();
+    /// assert!(st.e > 0.0);
+    /// assert!((st.s + st.e + st.i + st.r - 10_000.0).abs() < 1e-8);
+    /// ```
+    #[verified_engine::verified]
+    pub fn new(
+        n: f64,
+        i0: f64,
+        beta: f64,
+        sigma: f64,
+        gamma: f64,
+    ) -> Result<SEIRModel<RungeKutta4<SEIRState>>, EpidemiologyError> {
+        Self::builder()
+            .n(n)
+            .i0(i0)
+            .beta(beta)
+            .sigma(sigma)
+            .gamma(gamma)
+            .build()
+    }
+}
+
+impl<S: Solver<SEIRState>> SEIRModel<S> {
+    /// Advances the state by dt using the configured solver.
+    #[verified_engine::verified]
+    pub fn step(&mut self, dt: f64) {
+        <Self as TimeStepper<SEIRState>>::step(self, dt);
+    }
+
+    /// Advances the state by dt using a provided solver strategy.
+    pub fn step_with<OtherS: Solver<SEIRState>>(&mut self, solver: &mut OtherS, dt: f64) {
+        <Self as TimeStepper<SEIRState>>::step_with(self, solver, dt);
+    }
+
+    /// Advances the state by `dt` with an explicit time-dependent source term $Q(t, \mathbf{y})$ and zero heap allocation.
+    #[verified_engine::verified]
+    pub fn step_forced<F: Fn(f64, &SEIRState) -> SEIRState>(&mut self, dt: f64, forcing: F) {
+        debug_assert!(dt.is_finite() && self.time.is_finite());
+        let forced = ForcedSeirDynamics {
+            base: &self.dynamics,
+            forcing,
+        };
+        self.solver.step(&forced, self.time, &mut self.state, dt);
+        self.time += dt;
+    }
+
+    /// Returns the elapsed simulation time $t$.
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn time(&self) -> f64 {
+        self.time
+    }
+
+    /// Sets the simulation clock to `t`.
+    #[verified_engine::verified]
+    pub fn set_time(&mut self, t: f64) {
+        debug_assert!(t.is_finite());
+        self.time = t;
+    }
+
+    /// Resets the simulation clock to `0.0`.
+    #[verified_engine::verified]
+    pub fn reset_time(&mut self) {
+        self.time = 0.0;
+    }
+
+    /// Replaces the current solver with a new one.
+    pub fn with_solver<NewS: Solver<SEIRState>>(self, new_solver: NewS) -> SEIRModel<NewS> {
+        SEIRModel {
+            state: self.state,
+            dynamics: self.dynamics,
+            solver: new_solver,
+            time: self.time,
+        }
+    }
+
+    /// Returns the transmission rate beta.
+    #[verified_engine::verified]
+    pub fn beta(&self) -> f64 {
+        self.dynamics.beta
+    }
+
+    /// Returns the incubation rate sigma.
+    #[verified_engine::verified]
+    pub fn sigma(&self) -> f64 {
+        self.dynamics.sigma
+    }
+
+    /// Returns the recovery rate gamma.
+    #[verified_engine::verified]
+    pub fn gamma(&self) -> f64 {
+        self.dynamics.gamma
+    }
+
+    /// Returns the total population size N.
+    #[verified_engine::verified]
+    pub fn n(&self) -> f64 {
+        self.dynamics.n
+    }
+
+    /// Returns the current state.
+    #[verified_engine::verified]
+    pub fn state(&self) -> &SEIRState {
+        &self.state
+    }
+}
+
+impl<S: Solver<SEIRState>> OdeSystem<SEIRState> for SEIRModel<S> {
+    #[verified_engine::verified]
+    fn derivative(&self, t: f64, state: &SEIRState) -> SEIRState {
+        // Delegate to the pure dynamics component
+        self.dynamics.derivative(t, state)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pure_math::pure_math::analysis::ode::{Euler, RungeKutta4};
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_builder() {
+        let model = SEIRModel::builder()
+            .n(1000.0)
+            .i0(10.0)
+            .beta(0.5)
+            .sigma(0.2)
+            .gamma(0.1)
+            .build();
+        assert!(model.is_ok());
+        let model = model.unwrap();
+        assert_eq!(model.n(), 1000.0);
+        assert_eq!(model.beta(), 0.5);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_builder_missing_param() {
+        let model = SEIRModel::builder().n(1000.0).build();
+        assert!(matches!(
+            model,
+            Err(EpidemiologyError::MissingParameter { .. })
+        ));
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_seir_step_with_rk4() {
+        let n = 1000.0;
+        let i0 = 10.0;
+        let mut model_std = SEIRModel::new(n, i0, 0.5, 0.2, 0.1).unwrap();
+        let mut model_with = SEIRModel::new(n, i0, 0.5, 0.2, 0.1).unwrap();
+
+        let dt = 0.1;
+        model_std.step(dt);
+        let state = *model_with.state();
+        model_with.step_with(&mut RungeKutta4::new(&state), dt);
+
+        assert_eq!(
+            model_std.state(),
+            model_with.state(),
+            "step and step_with(RK4) should yield identical results"
+        );
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_swapping_solver() {
+        let n = 1000.0;
+        let i0 = 10.0;
+        let model = SEIRModel::new(n, i0, 0.5, 0.2, 0.1).unwrap();
+
+        // Swap from RK4 (default) to Euler
+        let state = *model.state();
+        let mut model_euler = model.with_solver(Euler::new(&state));
+
+        model_euler.step(0.1);
+
+        // Just check it ran
+        assert!(model_euler.state().s <= n);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_time_propagation_and_forced_stepping() {
+        let mut model = SEIRModel::new(1000.0, 10.0, 0.5, 0.2, 0.1).unwrap();
+        assert_eq!(model.time(), 0.0);
+        model.step(0.25);
+        assert!((model.time() - 0.25).abs() < 1e-12);
+        model.set_time(1.5);
+        assert!((model.time() - 1.5).abs() < 1e-12);
+        model.step_forced(0.5, |t, _| SEIRState {
+            s: 0.0,
+            e: 0.0,
+            i: 0.0,
+            r: t,
+        });
+        assert!((model.time() - 2.0).abs() < 1e-12);
+        assert!(model.state().r > 0.0);
+        model.reset_time();
+        assert_eq!(model.time(), 0.0);
+    }
+}

@@ -1,0 +1,36 @@
+[package]
+name = "math_explorer"
+version.workspace = true
+edition = "2024"
+license = "AGPL-3.0-or-later"
+
+[package.metadata.oxidize]
+tier = "04_bindings"
+release_role = "release"
+facade_role = "compat_facade"
+traceability = false
+
+[dependencies]
+oxidizemath = { path = "../oxidizemath", default-features = false }
+
+[features]
+default = []
+pure_math = ["oxidizemath/pure_math"]
+applied = ["pure_math", "oxidizemath/applied"]
+ai = ["applied", "pure_math", "oxidizemath/ai"]
+biology = ["applied", "pure_math", "oxidizemath/biology"]
+climate = ["ai", "pure_math", "oxidizemath/climate"]
+epidemiology = ["pure_math", "oxidizemath/epidemiology"]
+physics = ["applied", "pure_math", "oxidizemath/physics"]
+serde = ["oxidizemath/serde"]
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "sorting_benchmark"
+harness = false
+required-features = ["applied"]
+
+[lints]
+workspace = true

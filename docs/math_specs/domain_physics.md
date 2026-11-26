@@ -1,6 +1,6 @@
 # Canonical Mathematical Specification: `domain_physics`
 
-Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/domain_physics`](../../crates/domain_physics/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace physics manuscripts.
+Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/domain_physics`](../../crates/03_domains/domain_physics/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace physics manuscripts.
 
 ## 1. BCS Superconductivity, Lattice Boltzmann & Galactic/Nuclear Models (`solid_state`, `fluid_dynamics`, `astrophysics`, `nuclear`)
 

@@ -1,0 +1,161 @@
+[package]
+name = "oxidize-cli"
+version.workspace = true
+edition = "2024"
+license = "AGPL-3.0-or-later"
+
+[package.metadata.oxidize]
+tier = "apps"
+release_role = "release"
+facade_role = "none"
+traceability = false
+
+[[bin]]
+name = "oxidize-cli"
+path = "src/main.rs"
+bench = false
+
+[dependencies]
+oxidizemath = { path = "../../crates/04_bindings/oxidizemath", default-features = false }
+
+[features]
+default = []
+pure_math = ["oxidizemath/pure_math"]
+applied = ["pure_math", "oxidizemath/applied"]
+ai = ["applied", "pure_math", "oxidizemath/ai"]
+biology = ["applied", "pure_math", "oxidizemath/biology"]
+climate = ["ai", "pure_math", "oxidizemath/climate"]
+epidemiology = ["pure_math", "oxidizemath/epidemiology"]
+physics = ["applied", "pure_math", "oxidizemath/physics"]
+serde = ["oxidizemath/serde"]
+
+[[example]]
+name = "bench_morphogenesis"
+required-features = ["biology"]
+
+[[example]]
+name = "bench_music"
+required-features = ["physics"]
+
+[[example]]
+name = "hodgkin_huxley_demo"
+required-features = ["biology"]
+
+[[example]]
+name = "bench_replicator"
+required-features = ["applied", "pure_math"]
+
+[[example]]
+name = "tensor_demo"
+required-features = ["pure_math"]
+
+[[example]]
+name = "statistics_demo"
+required-features = ["pure_math"]
+
+[[example]]
+name = "hello_world"
+required-features = ["physics"]
+
+[[example]]
+name = "transformer_demo"
+required-features = ["ai"]
+
+[[example]]
+name = "profile_isosurface"
+required-features = ["applied"]
+
+[[example]]
+name = "cera_demo"
+required-features = ["climate"]
+
+[[example]]
+name = "grpo_demo"
+required-features = ["applied"]
+
+[[example]]
+name = "bench_mfg"
+required-features = ["applied"]
+
+[[example]]
+name = "bench_ising_custom"
+required-features = ["physics"]
+
+[[example]]
+name = "mmwave_setup"
+required-features = ["physics"]
+
+[[example]]
+name = "isosurface_torus"
+required-features = ["applied"]
+
+[[example]]
+name = "bench_evolution"
+required-features = ["biology"]
+
+[[example]]
+name = "glicko2_demo"
+required-features = ["pure_math"]
+
+[[example]]
+name = "bench_lorahub"
+required-features = ["applied"]
+
+[[example]]
+name = "bench_lbm_custom"
+required-features = ["physics"]
+
+[[example]]
+name = "bench_stochastic"
+required-features = ["epidemiology"]
+
+[[example]]
+name = "bench_gaussian"
+required-features = ["ai"]
+
+[[example]]
+name = "algebra_demo"
+required-features = ["pure_math"]
+
+[[example]]
+name = "battery_degradation_demo"
+required-features = ["applied"]
+
+[[example]]
+name = "bench_rk4_alloc"
+required-features = ["pure_math"]
+
+[[example]]
+name = "bench_generic_rd"
+required-features = ["biology"]
+
+[[example]]
+name = "security_repro_lbm"
+required-features = ["physics"]
+
+[[example]]
+name = "favoritism_demo"
+required-features = ["applied"]
+
+[[example]]
+name = "transformer_simple"
+required-features = ["ai"]
+
+[[example]]
+name = "sports_analytics_demo"
+required-features = ["pure_math"]
+
+[[example]]
+name = "demo_neuron_builder"
+required-features = ["biology"]
+
+[[example]]
+name = "markov_demo"
+required-features = ["pure_math"]
+
+[[example]]
+name = "lorenz_chaos"
+required-features = ["physics"]
+
+[lints]
+workspace = true
