@@ -132,8 +132,21 @@ async function runWbgAndOptionalUnit(cfg) {
     return wbgPassed && unitPassed;
 }
 
+async function fetchHarnessAsset(url) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+            return await fetch(url);
+        } catch (err) {
+            if (attempt === 2) {
+                throw err;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+    }
+}
+
 async function runRawUnit(cfg) {
-    const resp = await fetch("./raw_unit_test.wasm");
+    const resp = await fetchHarnessAsset("./raw_unit_test.wasm");
     if (!resp.ok) {
         throw new Error("Failed to fetch raw_unit_test.wasm: HTTP " + resp.status);
     }
@@ -164,7 +177,7 @@ async function runRawUnit(cfg) {
 
 async function runSuite() {
     try {
-        const cfgResp = await fetch("./runner_config.json");
+        const cfgResp = await fetchHarnessAsset("./runner_config.json");
         if (!cfgResp.ok) {
             throw new Error("Failed to load runner_config.json: HTTP " + cfgResp.status);
         }
@@ -677,6 +690,12 @@ def _launch_chromium_suite(out_dir: Path) -> tuple[str | None, str, list[str], l
                         rendered_output = page.locator("#output").inner_text()
                     finally:
                         browser.close()
+                if (
+                    attempt < 2
+                    and status != "ok"
+                    and "Runner fatal error: TypeError: Failed to fetch" in rendered_output
+                ):
+                    continue
                 break
             except PlaywrightError as exc:
                 if attempt < 2 and any(

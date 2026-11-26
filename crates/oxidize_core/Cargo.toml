@@ -3,6 +3,9 @@ name = "oxidize_core"
 version = "0.1.0"
 edition = "2024"
 
+[package.metadata.cargo-machete]
+ignored = ["rand"]
+
 [features]
 default = []
 ast-analysis = ["dep:futures", "dep:proc-macro2", "dep:syn", "dep:toml"]

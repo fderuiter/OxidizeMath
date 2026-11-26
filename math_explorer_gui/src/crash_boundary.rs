@@ -223,6 +223,9 @@ mod tests {
 
     #[test]
     fn non_fatal_diagnostics_do_not_trip_crash_boundary() {
+        let _guard = crate::reflective_ui::tests::TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         reset_fatal_panic_state_for_tests();
         handle_diagnostic_event(&DiagnosticEvent {
             severity: Severity::Error,
