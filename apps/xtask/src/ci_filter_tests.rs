@@ -4,8 +4,8 @@ use std::path::Path;
 
 const NON_INSTALLER_MEMBERS: &[&str] = &[
     "apps/xtask",
-    "crates/markdown_tests",
-    "crates/unified_verification",
+    "crates/04_bindings/markdown_tests",
+    "apps/unified_verification",
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -315,12 +315,14 @@ pub(super) fn assert_workspace_members_parity(blocks: &[Vec<CaseArm>], root_toml
 pub(super) fn assert_scoped_triggers_and_skips(blocks: &[Vec<CaseArm>]) {
     let expected_cases: &[(&str, bool, bool)] = &[
         ("LICENSE", false, true),
-        ("math_explorer_gui/src/main.rs", false, true),
-        ("math_explorer/src/lib.rs", false, true),
+        ("apps/math_explorer_gui/src/main.rs", false, true),
+        ("apps/oxidize-cli/src/main.rs", false, true),
+        ("crates/04_bindings/oxidizemath/src/lib.rs", false, true),
+        ("crates/04_bindings/math_explorer/src/lib.rs", false, true),
         ("egui_plot/src/lib.rs", false, true),
-        ("crates/oxidize_core/build.rs", false, true),
+        ("crates/01_core/oxidize_core/build.rs", false, true),
         (
-            "crates/verified_engine_macros/src/embed_theory.rs",
+            "crates/00_foundation/verified_engine_macros/src/embed_theory.rs",
             false,
             true,
         ),
@@ -341,8 +343,8 @@ pub(super) fn assert_scoped_triggers_and_skips(blocks: &[Vec<CaseArm>]) {
         ("docs/adr/0001-dynamic-workspace-discovery.md", false, false),
         ("AGENTS.md", false, false),
         ("CONTRIBUTING.md", false, false),
-        ("crates/unified_verification/src/main.rs", false, false),
-        ("crates/markdown_tests/build.rs", false, false),
+        ("apps/unified_verification/src/main.rs", false, false),
+        ("crates/04_bindings/markdown_tests/build.rs", false, false),
     ];
     for &(path, exp_papers, exp_installer) in expected_cases {
         assert_eq!(
@@ -355,8 +357,8 @@ pub(super) fn assert_scoped_triggers_and_skips(blocks: &[Vec<CaseArm>]) {
         evaluate_pull_request_diff(
             blocks,
             &[
-                "crates/domain_physics/src/lib.rs",
-                "crates/unified_verification/src/main.rs",
+                "crates/03_domains/domain_physics/src/lib.rs",
+                "apps/unified_verification/src/main.rs",
                 "docs/README.md",
             ],
         ),
@@ -379,11 +381,10 @@ fn test_glob_matcher_and_agents_md_parity() {
         .expect("failed to read AGENTS.md")
         .replace("\r\n", "\n");
     for expected_doc_token in [
-        "crates/markdown_tests/*",
-        "crates/unified_verification/*",
+        "crates/04_bindings/markdown_tests/*",
+        "apps/unified_verification/*",
         "crates/*",
-        "math_explorer_gui/*",
-        "math_explorer/*",
+        "apps/*",
         "egui_plot/*",
         "LICENSE",
         "papers/*",
@@ -429,15 +430,15 @@ fn test_detect_changes_bash_case_equivalence() {
 
     for sample in [
         "LICENSE",
-        "crates/domain_ai/src/lib.rs",
-        "crates/unified_verification/src/main.rs",
-        "crates/markdown_tests/build.rs",
+        "crates/03_domains/domain_ai/src/lib.rs",
+        "apps/unified_verification/src/main.rs",
+        "crates/04_bindings/markdown_tests/build.rs",
         "apps/xtask/src/main.rs",
         "Verification_Certificate.json",
         ".cargo/config.toml",
         ".github/actions/cargo-cache/action.yml",
         "docs/README.md",
-        "crates/pure_math/src/lib.rs\ncrates/unified_verification/src/main.rs",
+        "crates/03_domains/pure_math/src/lib.rs\napps/unified_verification/src/main.rs",
     ] {
         let out = Command::new("bash")
             .arg("-c")

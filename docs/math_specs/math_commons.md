@@ -1,6 +1,6 @@
 # Canonical Mathematical Specification: `math_commons`
 
-Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/math_commons`](../../crates/math_commons/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and [`papers/essay.tex`](../../papers/essay.tex).
+Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/math_commons`](../../crates/02_engines/math_commons/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and [`papers/essay.tex`](../../papers/essay.tex).
 
 ## 1. Polynomial & Nonlinear Curve Fitting (`fit`)
 
@@ -12,7 +12,7 @@ $$
 \hat{y}(x) = \sum_{k=0}^{d} c_k x^k, \qquad \min_{\theta \in \mathbb{R}^p} \sum_{i=1}^{N} \bigl(y_i - f(x_i; \theta)\bigr)^2
 $$
 
-Nonlinear [`FitModel`](../../crates/math_commons/src/fit/mod.rs) presets (`Exponential`, `PowerLaw`, `Logarithmic`, `Logistic`, `Sinusoidal`) and arbitrary scalar callbacks iterate damped Levenberg-Marquardt normal equations on fixed stack buffers (`k <= 6`):
+Nonlinear [`FitModel`](../../crates/02_engines/math_commons/src/fit/mod.rs) presets (`Exponential`, `PowerLaw`, `Logarithmic`, `Logistic`, `Sinusoidal`) and arbitrary scalar callbacks iterate damped Levenberg-Marquardt normal equations on fixed stack buffers (`k <= 6`):
 
 $$
 \bigl(J(\theta_t)^T J(\theta_t) + \lambda_t \operatorname{diag}(J^T J + I)\bigr)\,\Delta\theta_t = J(\theta_t)^T r(\theta_t)

@@ -14,19 +14,19 @@ Prior to this decision, 0D stochastic differential equation (SDE) integrators, u
 
 ## Decision
 
-1. **`#![no_std]` Tier 0 Kernel Primitives ([`math_commons`](../../crates/math_commons/src/math_kernel/types.rs) & [`verified_engine`](../../crates/verified_engine/src/metrics.rs))**:
+1. **`#![no_std]` Tier 0 Kernel Primitives ([`math_commons`](../../crates/02_engines/math_commons/src/math_kernel/types.rs) & [`verified_engine`](../../crates/00_foundation/verified_engine/src/metrics.rs))**:
    - Gate thread-local runtime metrics and `VerifiedAllocator` in `verified_engine` behind `feature = "std"` with zero-cost `#![no_std]` no-op shims when `std` is disabled.
-   - Make `math_commons::math_kernel::types` compile under `#![no_std]` via `libm` and `rand_core` (`default-features = false`), introducing the [`Scalar`](../../crates/math_commons/src/math_kernel/types.rs) trait (`f32`, `f64`), zero-allocation borrowed [`SolverWorkspace`](../../crates/math_commons/src/math_kernel/types.rs) bump-slice arenas, and deterministic Box-Muller Gaussian sampling (`sample_open_unit`, `sample_standard_normal_pair`, `fill_standard_normal`) over `RngCore`.
+   - Make `math_commons::math_kernel::types` compile under `#![no_std]` via `libm` and `rand_core` (`default-features = false`), introducing the [`Scalar`](../../crates/02_engines/math_commons/src/math_kernel/types.rs) trait (`f32`, `f64`), zero-allocation borrowed [`SolverWorkspace`](../../crates/02_engines/math_commons/src/math_kernel/types.rs) bump-slice arenas, and deterministic Box-Muller Gaussian sampling (`sample_open_unit`, `sample_standard_normal_pair`, `fill_standard_normal`) over `RngCore`.
 
-2. **Tier 2 `#![no_std]` Differential Equation Engine ([`crates/engine_diffeq`](../../crates/engine_diffeq/README.md))**:
+2. **Tier 2 `#![no_std]` Differential Equation Engine ([`crates/engine_diffeq`](../../crates/02_engines/engine_diffeq/README.md))**:
    - Provide multivariate Itô and Stratonovich integrators over `Scalar`, `RngCore`, and `SolverWorkspace`: `EulerMaruyamaSolver` (strong order $0.5$ / Euler-Heun), `MilsteinSolver` (strong order $1.0$ with optional truncated Karhunen-Loève Lévy area), derivative-free Rössler `Sriw1Solver` (strong order $1.5$), symmetric Leimkuhler-Matthews `BaoabLangevinSolver`, and discrete-event Gillespie `ssa_sample_event`.
 
-3. **Tier 2 `#![no_std]` Continuum PDE & SPDE Engine ([`crates/engine_pde`](../../crates/engine_pde/README.md))**:
+3. **Tier 2 `#![no_std]` Continuum PDE & SPDE Engine ([`crates/engine_pde`](../../crates/02_engines/engine_pde/README.md))**:
    - Consolidate `BoundaryCondition` (`Periodic`, `Neumann`, `SymmetricNeumann`, `Dirichlet`) and `StencilOperators` (1D/2D/3D Laplacians, central gradients, $|\nabla u|^2$, directional and characteristic upwind advection, and public 2D Biharmonic `eval_biharmonic_2d_from_laplacian` / `eval_biharmonic_2d`).
    - Implement `ExplicitSpdeStencilStepper` and Strang-split `SplitStepSpdeStencilStepper` with additive white noise and staggered-face conserved-flux noise ($\nabla \cdot \vec{\eta}$) preserving spatial mean to machine precision.
    - Implement `SemiImplicitFourierStepper` pairing a zero-allocation `#![no_std]` radix-2 1D/2D Cooley-Tukey FFT with Orszag 2/3-rule dealiasing for Cahn-Hilliard, KPZ, and Edwards-Wilkinson fields.
 
-4. **Domain Delegations & Verified Continuum Statistical Mechanics ([`crates/domain_physics`](../../crates/domain_physics/src/physics/stat_mech/mod.rs))**:
+4. **Domain Delegations & Verified Continuum Statistical Mechanics ([`crates/domain_physics`](../../crates/03_domains/domain_physics/src/physics/stat_mech/mod.rs))**:
    - Delegate existing domain callers in `pure_math` (`fused_stepper`, `wave_2d`, `ou_process`, `momentum_dynamics`, `stochastic`), `domain_biology` (`morphogenesis::solvers::FusedEulerEvolution` forwarding `rng`), `domain_applied` (`cannibalism::{mckendrick_von_foerster, death_rate}`), and `domain_ai` (`sds::diffusion`) to `engine_diffeq` and `engine_pde` without breaking public facade signatures.
    - Implement verified zero-allocation `EdwardsWilkinson1D`/`EdwardsWilkinson2D`, `KpzModel1D`/`KpzModel2D`, `AllenCahn2D`, and `CahnHilliard2D` solvers in `domain_physics::physics::stat_mech` with real `theory_verification!` checks and updated `traceability.toml` specification links.
 
@@ -34,4 +34,4 @@ Prior to this decision, 0D stochastic differential equation (SDE) integrators, u
 
 - **Positive**: `engine_diffeq` and `engine_pde` compile cleanly under `--no-default-features` (`#![no_std]`), `--no-default-features --features alloc`, native `std`, and `wasm32-unknown-unknown` while executing stepping loops with zero heap allocations under `VerifiedAllocator`.
 - **Positive**: Both Kirchhoff-Love plate bending (`wave_2d.rs`) and conserved 2D Cahn-Hilliard solvers share a single verified Biharmonic operator on `StencilOperators`, and staggered-face conserved-flux noise guarantees discrete mass conservation.
-- **Trade-offs**: Workspace member count increases from 20 to 22 crates, reflected in [`system_overview.md`](../architecture/system_overview.md) and [`api_baseline.json`](../../crates/unified_verification/api_baseline.json).
+- **Trade-offs**: Workspace member count increases from 20 to 22 crates, reflected in [`system_overview.md`](../architecture/system_overview.md) and [`api_baseline.json`](../../apps/unified_verification/api_baseline.json).

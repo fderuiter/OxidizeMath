@@ -48,7 +48,7 @@ sequenceDiagram
 
 ### Memory Lock State Machine
 
-The module [`crates/verified_engine/src/allocator.rs`](../../crates/verified_engine/src/allocator.rs) defines the `MEMORY_LOCK` atomic flag:
+The module [`crates/verified_engine/src/allocator.rs`](../../crates/00_foundation/verified_engine/src/allocator.rs) defines the `MEMORY_LOCK` atomic flag:
 
 - **Initialization Phase**: `MEMORY_LOCK` is `false`. Simulation setups allocate needed memory buffers, look-up tables, and state matrices.
 - **Verification Phase**: `lock_allocations()` sets `MEMORY_LOCK` to `true`. Any subsequent call to `alloc`, `alloc_zeroed`, or `realloc` immediately triggers a `runtime_violation!` panic when verification is enabled.
@@ -97,7 +97,7 @@ To comply with zero-allocation constraints in core simulation code:
 1. **Pre-allocate Collections**: Always construct vectors with `Vec::with_capacity(n)`.
 2. **Reuse Scratch Buffers**: Pass mutable references to existing storage buffers rather than returning newly allocated instances.
 3. **Avoid Dynamic Formatting**: Avoid `format!` or string concatenations in inner loops.
-4. **Use Fixed Arrays**: Use stack-allocated arrays (`[T; N]`) or static matrices (`SMatrix`) when array dimensions are fixed at compile time. For example, [`SonificationFrame`](../../math_explorer_gui/src/audio/frame.rs) stores 8 polyphonic voice descriptors and 8-partial Fourier `HarmonicWeights` entirely on the stack (`Copy`), and [`OfflinePcmSynthesizer`](../../math_explorer_gui/src/audio/synth.rs) pre-allocates its stereo PCM buffer once during initialization so 1,000-step acoustic extraction and synthesis loops execute with zero dynamic allocations under `VerifiedEngine::run_verified` (see [ADR 0040](../adr/0040-dual-backend-web-audio-sonification.md)).
+4. **Use Fixed Arrays**: Use stack-allocated arrays (`[T; N]`) or static matrices (`SMatrix`) when array dimensions are fixed at compile time. For example, [`SonificationFrame`](../../apps/math_explorer_gui/src/audio/frame.rs) stores 8 polyphonic voice descriptors and 8-partial Fourier `HarmonicWeights` entirely on the stack (`Copy`), and [`OfflinePcmSynthesizer`](../../apps/math_explorer_gui/src/audio/synth.rs) pre-allocates its stereo PCM buffer once during initialization so 1,000-step acoustic extraction and synthesis loops execute with zero dynamic allocations under `VerifiedEngine::run_verified` (see [ADR 0040](../adr/0040-dual-backend-web-audio-sonification.md)).
 
 ## Time-Travel Sub-Step Replay
 
@@ -108,8 +108,8 @@ Opt-in `SimulationRunner` and `UnifiedModel` implementations support determinist
 
 ## Related References
 
-- Verified engine entry point: [`crates/verified_engine/src/lib.rs`](../../crates/verified_engine/src/lib.rs)
-- Verified allocator implementation: [`crates/verified_engine/src/allocator.rs`](../../crates/verified_engine/src/allocator.rs)
-- Verified engine execution harness: [`crates/verified_engine/src/engine.rs`](../../crates/verified_engine/src/engine.rs)
-- Metrics tracking implementation: [`crates/verified_engine/src/metrics.rs`](../../crates/verified_engine/src/metrics.rs)
+- Verified engine entry point: [`crates/verified_engine/src/lib.rs`](../../crates/00_foundation/verified_engine/src/lib.rs)
+- Verified allocator implementation: [`crates/verified_engine/src/allocator.rs`](../../crates/00_foundation/verified_engine/src/allocator.rs)
+- Verified engine execution harness: [`crates/verified_engine/src/engine.rs`](../../crates/00_foundation/verified_engine/src/engine.rs)
+- Metrics tracking implementation: [`crates/verified_engine/src/metrics.rs`](../../crates/00_foundation/verified_engine/src/metrics.rs)
 - [System Overview](system_overview.md)

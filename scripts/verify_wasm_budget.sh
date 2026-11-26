@@ -2,7 +2,7 @@
 # Verify that compressed WebAssembly binaries satisfy size budget constraints
 set -euo pipefail
 
-DIST_DIR="${1:-math_explorer_gui/dist}"
+DIST_DIR="${1:-apps/math_explorer_gui/dist}"
 MAX_BYTES="${2:-4194304}" # 4 MB default threshold
 
 if [ ! -d "$DIST_DIR" ]; then

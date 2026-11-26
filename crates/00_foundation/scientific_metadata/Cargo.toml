@@ -1,0 +1,15 @@
+[package]
+name = "scientific_metadata"
+version.workspace = true
+edition = "2024"
+
+[package.metadata.oxidize]
+tier = "00_foundation"
+release_role = "release"
+facade_role = "none"
+traceability = false
+
+[dependencies]
+
+[lints]
+workspace = true

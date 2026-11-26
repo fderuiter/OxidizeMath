@@ -4,6 +4,12 @@ version.workspace = true
 edition = "2024"
 description = "Zero-allocation Tier 0 no_std ChaCha8 PRNG streams, generic IEEE-754 samplers, and 64D static-table QMC views."
 
+[package.metadata.oxidize]
+tier = "00_foundation"
+release_role = "release"
+facade_role = "none"
+traceability = true
+
 [features]
 default = []
 alloc = []
@@ -17,7 +23,7 @@ serde = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true, default-features = false, features = ["alloc", "float_roundtrip"] }
-verified_engine = { path = "../../verified_engine" }
+verified_engine = { path = "../verified_engine" }
 
 [lints]
 workspace = true

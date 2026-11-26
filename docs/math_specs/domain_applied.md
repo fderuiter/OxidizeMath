@@ -1,6 +1,6 @@
 # Canonical Mathematical Specification: `domain_applied`
 
-Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/domain_applied`](../../crates/domain_applied/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace manuscripts.
+Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/domain_applied`](../../crates/03_domains/domain_applied/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace manuscripts.
 
 ## 1. Kalman Filtering, Markowitz Portfolio QP, Battery Aging, Mean-Field Games, GRPO & LoRAHub (`algorithms`, `portfolio`, `battery_degradation`, `game_theory`, `grpo`, `lorahub`)
 

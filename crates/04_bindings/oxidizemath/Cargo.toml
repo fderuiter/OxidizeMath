@@ -1,0 +1,67 @@
+[package]
+name = "oxidizemath"
+version.workspace = true
+edition = "2024"
+license = "AGPL-3.0-or-later"
+
+[package.metadata.oxidize]
+tier = "04_bindings"
+release_role = "release"
+facade_role = "facade"
+traceability = true
+
+[dependencies]
+math_commons = { path = "../../02_engines/math_commons" }
+diagnostics = { path = "../../01_core/diagnostics" }
+engine_diffeq = { path = "../../02_engines/engine_diffeq" }
+engine_linalg = { path = "../../02_engines/engine_linalg" }
+engine_pde = { path = "../../02_engines/engine_pde" }
+pure_math = { path = "../../03_domains/pure_math", optional = true }
+domain_applied = { path = "../../03_domains/domain_applied", optional = true }
+domain_ai = { path = "../../03_domains/domain_ai", optional = true }
+domain_physics = { path = "../../03_domains/domain_physics", optional = true }
+domain_biology = { path = "../../03_domains/domain_biology", optional = true }
+domain_climate = { path = "../../03_domains/domain_climate", optional = true }
+domain_epidemiology = { path = "../../03_domains/domain_epidemiology", optional = true }
+nalgebra = { workspace = true, optional = true }
+num-complex = { workspace = true, optional = true }
+oxidize_core = { path = "../../01_core/oxidize_core", optional = true }
+petgraph = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
+scientific_metadata = { path = "../../00_foundation/scientific_metadata" }
+verified_engine = { path = "../../00_foundation/verified_engine" }
+
+[features]
+default = []
+pure_math = [
+    "dep:pure_math",
+    "dep:nalgebra",
+    "dep:num-complex",
+    "dep:oxidize_core",
+    "dep:petgraph",
+    "dep:rand",
+]
+applied = ["pure_math", "dep:domain_applied"]
+ai = ["applied", "pure_math", "dep:domain_ai"]
+biology = ["applied", "pure_math", "dep:domain_biology"]
+climate = ["ai", "pure_math", "dep:domain_climate"]
+epidemiology = ["pure_math", "dep:domain_epidemiology"]
+physics = ["applied", "pure_math", "dep:domain_physics"]
+serde = [
+    "engine_diffeq/serde",
+    "engine_linalg/serde",
+    "engine_pde/serde",
+    "math_commons/serde",
+    "pure_math?/serde",
+    "nalgebra?/serde-serialize",
+    "num-complex?/serde",
+    "petgraph?/serde-1",
+    "rand?/serde1",
+]
+
+[dev-dependencies]
+approx = { workspace = true }
+serde_json = { workspace = true, features = ["float_roundtrip"] }
+
+[lints]
+workspace = true
