@@ -25,7 +25,7 @@ Prior to this decision, deterministic pseudorandom number generation and Quasi-M
 
 3. **Workspace Re-Exports, QMC Delegation, and Call-Site Cleanup:**
    - Re-export `math_rng::*` in `oxidize_core::rng` and surface `BASE_SEED`, `OxidizeRng`, `RngScalar`, `SobolView`, `HaltonView`, and `NiederreiterView` in `math_explorer::prelude`.
-   - Link `math_rng` directly into `math_commons`, `engine_diffeq`, `engine_pde`, `oxidize_core`, `pure_math`, and `markdown_tests`.
+   - Link `math_rng` directly into `math_commons`, `engine_diffeq`, `engine_pde`, `oxidize_core`, `pure_math`, and `markdown_tests`, and drop the redundant direct `rand` dependencies from `oxidize_core` and `markdown_tests` (re-exporting `RngCore` via `oxidize_core::rng` while retaining the `wasm32` `getrandom` JS backend target entry for downstream workspace crates).
    - Upgrade `pure_math::statistics::qmc`, `MonteCarloWorkspace` (`estimate_qmc_niederreiter`), and `MultivariateIntegrator` (`integrate_qmc_niederreiter`) to 64D/53-bit precision, and replace all `seed ^ HEX` hacks and manual 53-bit float / bounded-index conversions across `crates/` and `math_explorer_gui/`.
 
 ## Consequences

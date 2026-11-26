@@ -199,13 +199,8 @@ fn test_egui_plot_raster_descriptions_populate_accesskit_nodes() {
     }
 }
 
-#[cfg(all(
-    feature = "pure_math",
-    feature = "physics",
-    feature = "ai",
-    feature = "biology"
-))]
-fn assert_sync_tools_accesskit(ctx: &egui::Context, mode: ThemeMode) {
+#[cfg(feature = "pure_math")]
+fn assert_pure_math_ulam_overlay_and_accesskit(ctx: &egui::Context, mode: ThemeMode) {
     use crate::framework::InteractiveTool;
     let mut ulam = crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget::default();
     let ulam_texts = collect_accesskit_texts(&ctx.run(egui::RawInput::default(), |c| ulam.show(c)));
@@ -216,6 +211,20 @@ fn assert_sync_tools_accesskit(ctx: &egui::Context, mode: ThemeMode) {
         "{mode:?} PrimeSpiral AccessKit missing key: {ulam_texts:?}"
     );
 
+    let (mut lookup, mut ulam_px) = (Vec::new(), Vec::new());
+    crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget::populate_ulam_pixels(
+        31,
+        mode,
+        &mut lookup,
+        &mut ulam_px,
+    );
+    assert_eq!(ulam_px.len(), 31 * 31);
+    assert!(ulam_px.iter().any(|&c| c != mode.palette().surface_fill));
+}
+
+#[cfg(feature = "physics")]
+fn assert_physics_ising_and_dose_accesskit(ctx: &egui::Context, mode: ThemeMode) {
+    use crate::framework::InteractiveTool;
     let mut ising = crate::tabs::solid_state::ising::IsingModelTool::default();
     if ising.pin_cells.len() >= 2 {
         ising.pin_cells[0] = 1;
@@ -230,18 +239,6 @@ fn assert_sync_tools_accesskit(ctx: &egui::Context, mode: ThemeMode) {
         "{mode:?} Ising AccessKit missing pin markers: {ising_texts:?}"
     );
 
-    let mut att = crate::tabs::ai::attention_maps::AttentionMapsTool::default();
-    let att_texts = collect_accesskit_texts(&ctx.run(egui::RawInput::default(), |c| att.show(c)));
-    assert!(att_texts
-        .iter()
-        .any(|t| t.contains("Color key: 3-stop luminance ramp")));
-
-    let mut gw = crate::tabs::ai::grid_world::GridWorldTool::default();
-    let gw_texts = collect_accesskit_texts(&ctx.run(egui::RawInput::default(), |c| gw.show(c)));
-    assert!(gw_texts
-        .iter()
-        .any(|t| t.contains("Start (") && t.contains("[S]") && t.contains("Goal (")));
-
     let mut dose = crate::tabs::medical::dose::DoseCalculationTool {
         imrt_mode: true,
         ..Default::default()
@@ -251,33 +248,42 @@ fn assert_sync_tools_accesskit(ctx: &egui::Context, mode: ThemeMode) {
         .iter()
         .any(|t| t.contains("PTV target green contour")
             && t.contains("OAR organ-at-risk red contour")));
+}
 
+#[cfg(feature = "ai")]
+fn assert_ai_attention_and_gridworld_accesskit(ctx: &egui::Context, mode: ThemeMode) {
+    use crate::framework::InteractiveTool;
+    let mut att = crate::tabs::ai::attention_maps::AttentionMapsTool::default();
+    let att_texts = collect_accesskit_texts(&ctx.run(egui::RawInput::default(), |c| att.show(c)));
+    assert!(
+        att_texts
+            .iter()
+            .any(|t| t.contains("Color key: 3-stop luminance ramp")),
+        "{mode:?} AttentionMaps AccessKit missing color key: {att_texts:?}"
+    );
+
+    let mut gw = crate::tabs::ai::grid_world::GridWorldTool::default();
+    let gw_texts = collect_accesskit_texts(&ctx.run(egui::RawInput::default(), |c| gw.show(c)));
+    assert!(
+        gw_texts
+            .iter()
+            .any(|t| t.contains("Start (") && t.contains("[S]") && t.contains("Goal (")),
+        "{mode:?} GridWorld AccessKit missing state badges: {gw_texts:?}"
+    );
+}
+
+#[cfg(feature = "biology")]
+fn assert_biology_morphogenesis_accesskit(ctx: &egui::Context, mode: ThemeMode) {
+    use crate::framework::InteractiveTool;
     let mut morpho = crate::tabs::morphogenesis::MorphogenesisTool::default();
     morpho.step_simulation();
     let m_texts = collect_accesskit_texts(&ctx.run(egui::RawInput::default(), |c| morpho.show(c)));
-    assert!(m_texts
-        .iter()
-        .any(|t| t.contains("concentration ramp") && t.contains("Turing")));
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn write_color_image_png(path: &str, img: &egui::ColorImage, scale: usize) {
-    let (w, h) = (img.size[0] * scale, img.size[1] * scale);
-    let mut rgba = Vec::with_capacity(w * h * 4);
-    for y in 0..h {
-        for x in 0..w {
-            let c = img.pixels[(y / scale) * img.size[0] + (x / scale)];
-            rgba.extend_from_slice(&[c.r(), c.g(), c.b(), 255]);
-        }
-    }
-    if let Ok(file) = std::fs::File::create(path) {
-        let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
-        enc.set_color(png::ColorType::Rgba);
-        enc.set_depth(png::BitDepth::Eight);
-        if let Ok(mut writer) = enc.write_header() {
-            let _ = writer.write_image_data(&rgba);
-        }
-    }
+    assert!(
+        m_texts
+            .iter()
+            .any(|t| t.contains("concentration ramp") && t.contains("Turing")),
+        "{mode:?} Morphogenesis AccessKit missing summary: {m_texts:?}"
+    );
 }
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "physics"))]
@@ -299,7 +305,6 @@ fn assert_lbm_theme_sync_and_accesskit(
             if is_lbm_obstacle_pixel(img.pixels[24 * 100 + 30], mode) {
                 matched_theme = true;
                 assert!(!img.pixels.contains(&Color32::from_gray(50)));
-                write_color_image_png(&format!("/tmp/a11y_raw_lbm_{mode:?}.png"), &img, 4);
                 break;
             }
         }
@@ -315,48 +320,9 @@ fn assert_lbm_theme_sync_and_accesskit(
     );
 }
 
-#[cfg(all(
-    not(target_arch = "wasm32"),
-    feature = "pure_math",
-    feature = "physics"
-))]
-fn export_ulam_and_ising_theme_rasters(mode: ThemeMode) {
-    let (mut lookup, mut ulam_px) = (Vec::new(), Vec::new());
-    crate::tabs::number_theory::prime_spiral::PrimeSpiralWidget::populate_ulam_pixels(
-        31,
-        mode,
-        &mut lookup,
-        &mut ulam_px,
-    );
-    let ulam_img = egui::ColorImage::new([31, 31], ulam_px);
-    write_color_image_png(&format!("/tmp/a11y_raw_ulam_{mode:?}.png"), &ulam_img, 8);
-
-    let p = mode.palette();
-    let mut ising_px = Vec::with_capacity(16 * 16);
-    for y in 0..16_usize {
-        for x in 0..16_usize {
-            let spin = match ((x / 4 + y / 4) % 2, x < 4 && y < 4, x >= 12 && y >= 12) {
-                (_, true, _) => 2_i8,
-                (_, _, true) => -2_i8,
-                (0, _, _) => 1_i8,
-                _ => -1_i8,
-            };
-            ising_px.push(p.ising_spin_color(spin));
-        }
-    }
-    let ising_img = egui::ColorImage::new([16, 16], ising_px);
-    write_color_image_png(&format!("/tmp/a11y_raw_ising_{mode:?}.png"), &ising_img, 14);
-}
-
-#[cfg(all(
-    feature = "pure_math",
-    feature = "physics",
-    feature = "ai",
-    feature = "biology"
-))]
 #[test]
 fn test_simulations_and_raster_plots_across_all_three_themes() {
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), feature = "physics"))]
     let mut lbm = crate::async_sim::unified::UnifiedSimTool::<
         crate::tabs::fluid_dynamics::lattice_boltzmann::LbmUnified,
     >::new();
@@ -365,11 +331,15 @@ fn test_simulations_and_raster_plots_across_all_three_themes() {
         let ctx = egui::Context::default();
         ctx.enable_accesskit();
         ctx.set_visuals(mode.visuals());
-        assert_sync_tools_accesskit(&ctx, mode);
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            assert_lbm_theme_sync_and_accesskit(&ctx, &mut lbm, mode);
-            export_ulam_and_ising_theme_rasters(mode);
-        }
+        #[cfg(feature = "pure_math")]
+        assert_pure_math_ulam_overlay_and_accesskit(&ctx, mode);
+        #[cfg(feature = "physics")]
+        assert_physics_ising_and_dose_accesskit(&ctx, mode);
+        #[cfg(feature = "ai")]
+        assert_ai_attention_and_gridworld_accesskit(&ctx, mode);
+        #[cfg(feature = "biology")]
+        assert_biology_morphogenesis_accesskit(&ctx, mode);
+        #[cfg(all(not(target_arch = "wasm32"), feature = "physics"))]
+        assert_lbm_theme_sync_and_accesskit(&ctx, &mut lbm, mode);
     }
 }
