@@ -16,7 +16,6 @@ required-features = ["ast-analysis"]
 futures = { workspace = true, optional = true }
 math_rng = { path = "../00_foundation/math_rng", features = ["alloc", "serde"] }
 proc-macro2 = { workspace = true, optional = true }
-rand = { workspace = true, features = ["std", "alloc"] }
 scientific_metadata = { path = "../scientific_metadata" }
 serde = { workspace = true, features = ["std", "derive"] }
 syn = { workspace = true, features = ["full", "visit"], optional = true }

@@ -133,4 +133,9 @@ runs:
           exit 1
         fi
 
-        "$bin_path" --version
+        if [[ "$BIN_NAME" == cargo-* ]]; then
+          subcmd="${BIN_NAME#cargo-}"
+          "$bin_path" "$subcmd" --version 2>/dev/null || "$bin_path" --version
+        else
+          "$bin_path" --version
+        fi
