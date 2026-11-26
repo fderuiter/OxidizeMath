@@ -117,7 +117,7 @@ assert_eq!(predictions.ncols(), 5);
 
 ## Related References
 
-- CERA implementation: [`crates/domain_climate/src/climate/cera.rs`](../../crates/domain_climate/src/climate/cera.rs)
-- Climate module entry point: [`crates/domain_climate/src/climate/mod.rs`](../../crates/domain_climate/src/climate/mod.rs)
-- Interactive CERA simulation tab: [`math_explorer_gui/src/tabs/climate/cera.rs`](../../math_explorer_gui/src/tabs/climate/cera.rs)
+- CERA implementation: [`crates/domain_climate/src/climate/cera.rs`](../../crates/03_domains/domain_climate/src/climate/cera.rs)
+- Climate module entry point: [`crates/domain_climate/src/climate/mod.rs`](../../crates/03_domains/domain_climate/src/climate/mod.rs)
+- Interactive CERA simulation tab: [`math_explorer_gui/src/tabs/climate/cera.rs`](../../apps/math_explorer_gui/src/tabs/climate/cera.rs)
 - [System Overview](system_overview.md)

@@ -261,7 +261,12 @@ pub fn lint_push(args: &[String]) {
 
     if plan.run_markdown_doctest_policy {
         println!("\n--- Pre-Push Workspace Markdown Doctest Policy Audit ---");
-        run_verification_with_args("test-policy-audit", &["crates/markdown_tests"]);
+        let md_dir = crates
+            .iter()
+            .find(|c| c.package_name == "markdown_tests")
+            .map(|c| c.dir.as_str())
+            .unwrap_or("crates/04_bindings/markdown_tests");
+        run_verification_with_args("test-policy-audit", &[md_dir]);
     }
 
     if plan.run_full_traceability {

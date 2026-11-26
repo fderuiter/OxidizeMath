@@ -1,6 +1,6 @@
 # Canonical Mathematical Specification: `pure_math`
 
-Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/pure_math`](../../crates/pure_math/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace manuscripts.
+Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/pure_math`](../../crates/03_domains/pure_math/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace manuscripts.
 
 ## 1. Arbitrary-Precision Modular Arithmetic & Number Theory (`math_types`, `number_theory`)
 

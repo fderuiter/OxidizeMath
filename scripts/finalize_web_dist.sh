@@ -3,7 +3,7 @@
 # favicon, and exact WASM byte size into Trunk's web distribution directory.
 set -euo pipefail
 
-STAGING_DIR="${1:-${TRUNK_STAGING_DIR:-math_explorer_gui/dist}}"
+STAGING_DIR="${1:-${TRUNK_STAGING_DIR:-apps/math_explorer_gui/dist}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BOOTSTRAP_JS="$STAGING_DIR/bootstrap.js"

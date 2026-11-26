@@ -1,0 +1,44 @@
+[package]
+name = "markdown_tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[package.metadata.oxidize]
+tier = "04_bindings"
+release_role = "internal"
+facade_role = "none"
+traceability = false
+
+[dependencies]
+
+[dev-dependencies]
+federated_registry = { path = "../../01_core/federated_registry" }
+scientific_metadata = { path = "../../00_foundation/scientific_metadata" }
+oxidize_core = { path = "../../01_core/oxidize_core" }
+verified_engine = { path = "../../00_foundation/verified_engine" }
+verified_engine_macros = { path = "../../00_foundation/verified_engine_macros" }
+diagnostics = { path = "../../01_core/diagnostics" }
+math_diagnostics = { path = "../../00_foundation/math_diagnostics" }
+math_rng = { path = "../../00_foundation/math_rng", features = ["alloc", "serde"] }
+engine_linalg = { path = "../../02_engines/engine_linalg" }
+engine_diffeq = { path = "../../02_engines/engine_diffeq" }
+engine_pde = { path = "../../02_engines/engine_pde" }
+math_commons = { path = "../../02_engines/math_commons" }
+pure_math = { path = "../../03_domains/pure_math" }
+domain_ai = { path = "../../03_domains/domain_ai" }
+domain_physics = { path = "../../03_domains/domain_physics" }
+domain_biology = { path = "../../03_domains/domain_biology" }
+domain_applied = { path = "../../03_domains/domain_applied" }
+domain_climate = { path = "../../03_domains/domain_climate" }
+domain_epidemiology = { path = "../../03_domains/domain_epidemiology" }
+oxidizemath = { path = "../oxidizemath", features = ["pure_math", "applied", "ai", "biology", "climate", "epidemiology", "physics"] }
+math_explorer = { path = "../math_explorer", features = ["pure_math", "applied", "ai", "biology", "climate", "epidemiology", "physics"] }
+
+nalgebra = { workspace = true }
+serde = { workspace = true, features = ["std", "derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

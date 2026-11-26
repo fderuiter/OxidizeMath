@@ -2,6 +2,7 @@
 
 use crate::gates::{
     ensure_verification_built_in, resolve_target_dir, resolve_workspace_root, run_cmd_in_path,
+    workspace_wasm,
 };
 use std::env;
 use std::fs::{self, File};
@@ -102,9 +103,17 @@ pub(crate) fn discover_registered_examples(
         .map(ToOwned::to_owned)
         .collect();
     if examples.is_empty() {
-        return Err("No `[[example]]` targets discovered in `math_explorer/Cargo.toml`.".into());
+        return Err("No `[[example]]` targets discovered in workspace CLI manifest.".into());
     }
     Ok(examples)
+}
+
+fn discover_examples_package(ws_root: &Path) -> String {
+    if workspace_wasm::find_package_member_path_std(ws_root, "oxidize-cli").is_some() {
+        "oxidize-cli".to_string()
+    } else {
+        "math_explorer".to_string()
+    }
 }
 
 fn resolve_example_binary(target_dir: &Path, name: &str) -> Option<PathBuf> {
@@ -219,25 +228,20 @@ fn run_single_example_smoke(bin_path: &Path, name: &str, timeout: Duration) -> R
     run_command_in_smoke_sandbox(&mut cmd, name, timeout)
 }
 
-/// Builds and executes every registered `math_explorer` example under `MATH_EXPLORER_SMOKE=1`.
+/// Builds and executes every registered workspace CLI example under `MATH_EXPLORER_SMOKE=1`.
 pub fn smoke_examples() {
-    println!("=== Smoke Test Registered math_explorer Examples ===");
+    println!("=== Smoke Test Registered CLI Examples ===");
     let ws_root = resolve_workspace_root();
     let target_dir = resolve_target_dir(&ws_root);
     let examples = discover_registered_examples(&ws_root, &target_dir).unwrap_or_else(|err| {
         eprintln!("Error discovering registered examples: {err}");
         exit(1);
     });
+    let examples_pkg = discover_examples_package(&ws_root);
 
     run_cmd_in_path(
         "cargo",
-        &[
-            "build",
-            "-p",
-            "math_explorer",
-            "--examples",
-            "--all-features",
-        ],
+        &["build", "-p", &examples_pkg, "--examples", "--all-features"],
         &ws_root,
     );
 
@@ -267,7 +271,7 @@ mod tests {
 
     #[test]
     fn test_discover_registered_examples_matches_manifest() {
-        let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ws_root = resolve_workspace_root();
         let target_dir = resolve_target_dir(&ws_root);
         let examples = discover_registered_examples(&ws_root, &target_dir)
             .expect("must list registered math_explorer examples");

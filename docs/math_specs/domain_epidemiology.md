@@ -1,6 +1,6 @@
 # Canonical Mathematical Specification: `domain_epidemiology`
 
-Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/domain_epidemiology`](../../crates/domain_epidemiology/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and [`papers/graph_parameters_rust.tex`](../../papers/graph_parameters_rust.tex).
+Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/domain_epidemiology`](../../crates/03_domains/domain_epidemiology/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and [`papers/graph_parameters_rust.tex`](../../papers/graph_parameters_rust.tex).
 
 ## 1. Compartmental & Contact-Network Epidemic Models (`SIRModel`, `SEIRModel`, `NetworkEpidemicModel`)
 

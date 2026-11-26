@@ -1,0 +1,34 @@
+[package]
+name = "scientific_verification"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[package.metadata.oxidize]
+tier = "04_bindings"
+release_role = "internal"
+facade_role = "none"
+traceability = false
+
+[dependencies]
+domain_ai = { path = "../../03_domains/domain_ai" }
+domain_applied = { path = "../../03_domains/domain_applied" }
+domain_biology = { path = "../../03_domains/domain_biology" }
+domain_climate = { path = "../../03_domains/domain_climate" }
+domain_epidemiology = { path = "../../03_domains/domain_epidemiology" }
+domain_physics = { path = "../../03_domains/domain_physics" }
+engine_pde = { path = "../../02_engines/engine_pde" }
+math_commons = { path = "../../02_engines/math_commons" }
+nalgebra = { workspace = true }
+num-complex = { workspace = true }
+oxidize_core = { path = "../../01_core/oxidize_core" }
+pure_math = { path = "../../03_domains/pure_math" }
+serde = { workspace = true, features = ["std", "derive"] }
+serde_json = { workspace = true }
+verified_engine = { path = "../../00_foundation/verified_engine" }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true
