@@ -2,6 +2,13 @@
 name = "xtask"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
+
+[package.metadata.oxidize]
+tier = "apps"
+release_role = "internal"
+facade_role = "none"
+traceability = false
 
 [dependencies]
 

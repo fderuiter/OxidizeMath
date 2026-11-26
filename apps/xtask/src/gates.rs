@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, exit};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-#[path = "../../../crates/oxidize_core/src/workspace_wasm.rs"]
-pub mod workspace_wasm;
+pub mod workspace_wasm {
+    include!(concat!(env!("OUT_DIR"), "/workspace_wasm.rs"));
+}
 
 static VERIFICATION_BUILT: AtomicBool = AtomicBool::new(false);
-const MAX_ANCESTOR_DEPTH: usize = 32;
 
 pub(crate) fn resolve_workspace_root() -> PathBuf {
     std::env::current_dir()
@@ -99,14 +99,7 @@ pub(crate) fn workspace_root() -> PathBuf {
             return candidate;
         }
     }
-    if let Ok(cwd) = std::env::current_dir() {
-        for ancestor in cwd.ancestors().take(MAX_ANCESTOR_DEPTH) {
-            if has_workspace_section(&ancestor.join("Cargo.toml")) {
-                return ancestor.to_path_buf();
-            }
-        }
-    }
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    resolve_workspace_root()
 }
 
 pub(crate) fn resolve_target_dir(root: &Path) -> PathBuf {
@@ -460,16 +453,15 @@ pub fn test_wasm(args: &[String]) {
         run_cmd_in_path("cargo", &arg_refs, &ws_root);
     }
 
+    let gui_rel = workspace_wasm::find_package_member_path_std(&ws_root, "math_explorer_gui")
+        .unwrap_or_else(|| "apps/math_explorer_gui".to_string());
+    let gui_dist = format!("{gui_rel}/dist");
     if !skip_build {
         println!("\n--- Step 2: Build Release Web Bundle & Verify Budget ---");
-        run_cmd_in_path(
-            "trunk",
-            &["build", "--release"],
-            &ws_root.join("math_explorer_gui"),
-        );
+        run_cmd_in_path("trunk", &["build", "--release"], &ws_root.join(&gui_rel));
         run_cmd_in_path(
             "bash",
-            &["scripts/verify_wasm_budget.sh", "math_explorer_gui/dist"],
+            &["scripts/verify_wasm_budget.sh", &gui_dist],
             &ws_root,
         );
     }
@@ -479,7 +471,7 @@ pub fn test_wasm(args: &[String]) {
     let mut smoke_args = vec![
         "scripts/playwright_smoke.py",
         "--dist",
-        "math_explorer_gui/dist",
+        &gui_dist,
         "--verify-regression-detection",
     ];
     if let Some(dir) = screenshot_str.as_deref() {

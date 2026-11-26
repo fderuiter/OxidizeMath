@@ -1,6 +1,6 @@
 # Canonical Mathematical Specification: `engine_diffeq`
 
-Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/engine_diffeq`](../../crates/engine_diffeq/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace stochastic/dynamical manuscripts.
+Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/engine_diffeq`](../../crates/02_engines/engine_diffeq/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace stochastic/dynamical manuscripts.
 
 ## 1. Multivariate Itô & Stratonovich SDE Solvers (`euler_maruyama`, `milstein`, `sriw1`)
 
@@ -35,6 +35,28 @@ let solver = EulerMaruyama::new(params, TimeStep::new(0.01).unwrap());
 let mut rng = OxidizeRng::new(7);
 let x1 = solver.step(1.0, &mut rng);
 assert!(x1.is_finite());
+```
+
+```rust
+use engine_diffeq::{EulerMaruyamaSolver, SdeSystem, StochasticCalculus};
+use math_commons::math_kernel::types::SolverWorkspace;
+use math_rng::OxidizeRng;
+
+struct LinearOu;
+impl SdeSystem<f64> for LinearOu {
+    fn state_dim(&self) -> usize { 1 }
+    fn wiener_dim(&self) -> usize { 1 }
+    fn drift(&self, _t: f64, x: &[f64], out: &mut [f64]) { out[0] = -2.0 * x[0]; }
+    fn diffusion(&self, _t: f64, _x: &[f64], out: &mut [f64]) { out[0] = 0.25; }
+}
+
+let solver = EulerMaruyamaSolver::new(StochasticCalculus::Ito);
+let mut x = [1.0_f64];
+let mut buf = [0.0_f64; 8];
+let mut ws = SolverWorkspace::new(&mut buf);
+let mut rng = OxidizeRng::new(7);
+solver.step(&LinearOu, 0.0, 0.01, &mut x, &mut ws, &mut rng);
+assert!(x[0].is_finite());
 ```
 
 ## 2. Geometric Underdamped Langevin Splitting (`baoab`)

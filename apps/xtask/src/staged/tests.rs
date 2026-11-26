@@ -273,10 +273,10 @@ fn test_root_config_edits_escalate_to_full_workspace_checks() {
 }
 
 #[test]
-fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
+fn test_load_real_workspace_discovers_all_web_and_host_crates() {
     let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let crates = load_workspace_crates(&ws_root);
-    assert_eq!(crates.len(), 26);
+    assert_eq!(crates.len(), 28);
 
     let mut web_names: Vec<&str> = crates
         .iter()
@@ -284,59 +284,69 @@ fn test_load_real_workspace_discovers_all_web_crates_and_dependents() {
         .map(|c| c.package_name.as_str())
         .collect();
     web_names.sort_unstable();
-    assert_eq!(
-        web_names,
-        vec![
-            "diagnostics",
-            "domain_ai",
-            "domain_applied",
-            "domain_biology",
-            "domain_climate",
-            "domain_epidemiology",
-            "domain_physics",
-            "egui_plot",
-            "engine_diffeq",
-            "engine_linalg",
-            "engine_pde",
-            "federated_registry",
-            "math_commons",
-            "math_diagnostics",
-            "math_explorer",
-            "math_explorer_gui",
-            "math_rng",
-            "oxidize_core",
-            "pure_math",
-            "scientific_metadata",
-            "verified_engine",
-            "verified_engine_macros",
-        ]
-    );
+    let expected_web = [
+        "diagnostics",
+        "domain_ai",
+        "domain_applied",
+        "domain_biology",
+        "domain_climate",
+        "domain_epidemiology",
+        "domain_physics",
+        "egui_plot",
+        "engine_diffeq",
+        "engine_linalg",
+        "engine_pde",
+        "federated_registry",
+        "math_commons",
+        "math_diagnostics",
+        "math_explorer",
+        "math_explorer_gui",
+        "math_rng",
+        "oxidize_core",
+        "oxidizemath",
+        "pure_math",
+        "scientific_metadata",
+        "verified_engine",
+        "verified_engine_macros",
+    ];
+    assert_eq!(web_names, expected_web);
 
-    for host_only in [
+    for host in [
         "markdown_tests",
+        "oxidize-cli",
         "scientific_verification",
         "unified_verification",
         "xtask",
     ] {
-        let krate = crates.iter().find(|c| c.package_name == host_only).unwrap();
-        assert!(!krate.is_web, "{host_only} should not be marked is_web");
+        assert!(
+            !crates
+                .iter()
+                .find(|c| c.package_name == host)
+                .unwrap()
+                .is_web
+        );
     }
+}
 
-    let meta_staged = vec!["crates/scientific_metadata/src/lib.rs".to_string()];
-    let meta_commit_plan = build_staged_plan(&meta_staged, &meta_staged, &crates);
+#[test]
+fn test_load_real_workspace_scientific_metadata_reverse_dependents() {
+    let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let crates = load_workspace_crates(&ws_root);
+    let meta_staged = vec!["crates/00_foundation/scientific_metadata/src/lib.rs".to_string()];
+    let meta_commit = build_staged_plan(&meta_staged, &meta_staged, &crates);
     assert_eq!(
-        meta_commit_plan.host_clippy_packages,
+        meta_commit.host_clippy_packages,
         vec!["scientific_metadata"]
     );
 
-    let meta_push_plan = push::build_push_plan(&meta_staged, &crates);
-    for expected_dep in ["verified_engine", "math_explorer", "math_explorer_gui"] {
-        assert!(
-            meta_push_plan
-                .host_clippy_packages
-                .contains(&expected_dep.to_string()),
-            "scientific_metadata push must lint reverse dependent {expected_dep}"
-        );
+    let meta_push = push::build_push_plan(&meta_staged, &crates);
+    for dep in [
+        "verified_engine",
+        "oxidizemath",
+        "math_explorer",
+        "math_explorer_gui",
+    ] {
+        assert!(meta_push.host_clippy_packages.iter().any(|p| p == dep));
     }
 }
 
