@@ -151,13 +151,10 @@ fn test_bounded_plot_import_queue_evicts_oldest_unrendered_entries() {
     assert_eq!(datasets[0].points, vec![[0.0, 3.0], [1.0, 6.0]]);
     let _ = drain_import_status(target_plot);
 
-    // Clear remaining synthetic stale entries
-    pending_imports_queue()
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .clear();
-    pending_status_queue()
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .clear();
+    // Drain only synthetic stale entries created by this test
+    for idx in 0..(MAX_PENDING_PLOT_IMPORTS + 8) {
+        let stale_id = egui::Id::new(("stale_unrendered_plot", idx));
+        let _ = drain_imported_datasets(stale_id);
+        let _ = drain_import_status(stale_id);
+    }
 }

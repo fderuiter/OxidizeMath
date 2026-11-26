@@ -19,52 +19,72 @@ macro_rules! advance_sample2d_plateau {
             let x_min = $x_min;
             let x_max = $x_max;
             let (chunks, rem) = slice_ref[start..end].as_chunks::<16>();
-            let n_chunks = chunks.len();
+            let mut chunk_iter = chunks;
             let mut ci = 0usize;
-            while ci < n_chunks {
-                let c = &chunks[ci];
-                macro_rules! ok_at {
-                    ($idx:literal) => {{
-                        let $p = &c[$idx];
+            while let [c, rest @ ..] = chunk_iter {
+                let [
+                    s0,
+                    s1,
+                    s2,
+                    s3,
+                    s4,
+                    s5,
+                    s6,
+                    s7,
+                    s8,
+                    s9,
+                    s10,
+                    s11,
+                    s12,
+                    s13,
+                    s14,
+                    s15,
+                ] = c;
+                macro_rules! ok_ref {
+                    ($elem:ident) => {{
+                        let $p = $elem;
                         ($y == flat_y) & ($x >= x_min) & ($x <= x_max)
                     }};
                 }
-                let ok = ok_at!(0)
-                    & ok_at!(1)
-                    & ok_at!(2)
-                    & ok_at!(3)
-                    & ok_at!(4)
-                    & ok_at!(5)
-                    & ok_at!(6)
-                    & ok_at!(7)
-                    & ok_at!(8)
-                    & ok_at!(9)
-                    & ok_at!(10)
-                    & ok_at!(11)
-                    & ok_at!(12)
-                    & ok_at!(13)
-                    & ok_at!(14)
-                    & ok_at!(15);
+                let ok = ok_ref!(s0)
+                    & ok_ref!(s1)
+                    & ok_ref!(s2)
+                    & ok_ref!(s3)
+                    & ok_ref!(s4)
+                    & ok_ref!(s5)
+                    & ok_ref!(s6)
+                    & ok_ref!(s7)
+                    & ok_ref!(s8)
+                    & ok_ref!(s9)
+                    & ok_ref!(s10)
+                    & ok_ref!(s11)
+                    & ok_ref!(s12)
+                    & ok_ref!(s13)
+                    & ok_ref!(s14)
+                    & ok_ref!(s15);
                 if !ok {
                     let base = start + (ci << 4);
+                    let mut sub = c.as_slice();
                     let mut k = 0usize;
-                    while k < 16 {
-                        let $p = &c[k];
+                    while let [$p, sub_rest @ ..] = sub {
                         if !(($y == flat_y) & ($x >= x_min) & ($x <= x_max)) {
                             return base + k;
                         }
+                        sub = sub_rest;
                         k += 1;
                     }
                 }
+                chunk_iter = rest;
                 ci += 1;
             }
-            let base = start + (n_chunks << 4);
+            let base = start + (chunks.len() << 4);
+            let mut rem_iter = rem;
             let mut k = 0usize;
-            while k < rem.len() {
-                let $p = &rem[k];
+            while let [$p, rem_rest @ ..] = rem_iter {
                 if !(($y == flat_y) & ($x >= x_min) & ($x <= x_max)) {
                     break;
                 }
+                rem_iter = rem_rest;
                 k += 1;
             }
             base + k

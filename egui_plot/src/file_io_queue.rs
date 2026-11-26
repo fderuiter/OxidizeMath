@@ -17,7 +17,7 @@ pub(super) fn pending_imports_queue() -> &'static Mutex<VecDeque<PendingImport>>
     QUEUE.get_or_init(|| Mutex::new(VecDeque::new()))
 }
 
-pub(super) fn pending_status_queue() -> &'static Mutex<VecDeque<PendingImportStatus>> {
+fn pending_status_queue() -> &'static Mutex<VecDeque<PendingImportStatus>> {
     static QUEUE: OnceLock<Mutex<VecDeque<PendingImportStatus>>> = OnceLock::new();
     QUEUE.get_or_init(|| Mutex::new(VecDeque::new()))
 }

@@ -11,7 +11,7 @@ mod file_io_queue;
 use std::sync::PoisonError;
 
 #[cfg(test)]
-use file_io_queue::{MAX_PENDING_PLOT_IMPORTS, pending_imports_queue, pending_status_queue};
+use file_io_queue::{MAX_PENDING_PLOT_IMPORTS, pending_imports_queue};
 pub use file_io_queue::{drain_import_status, drain_imported_datasets};
 pub(crate) use file_io_queue::{
     enqueue_csv_text_import, parse_immediate_csv_overlay, process_plot_csv_import,
@@ -96,16 +96,14 @@ pub use wasm_file_io::{
 };
 
 #[cfg(test)]
-static TEST_IMPORT_DIALOG_TRIGGERS: std::sync::Mutex<Vec<egui::Id>> =
-    std::sync::Mutex::new(Vec::new());
+std::thread_local! {
+    static TEST_IMPORT_DIALOG_TRIGGERS: std::cell::RefCell<Vec<egui::Id>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
 
 #[cfg(test)]
 pub(crate) fn take_test_import_triggers() -> Vec<egui::Id> {
-    std::mem::take(
-        &mut *TEST_IMPORT_DIALOG_TRIGGERS
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner),
-    )
+    TEST_IMPORT_DIALOG_TRIGGERS.with(|slot| std::mem::take(&mut *slot.borrow_mut()))
 }
 
 /// Triggers a CSV/TSV file import dialog scoped to a specific target `plot_id`.
@@ -114,10 +112,7 @@ pub fn trigger_import_csv_for_plot(ctx: &egui::Context, plot_id: egui::Id) {
     {
         #[cfg(not(target_arch = "wasm32"))]
         let _ = ctx;
-        TEST_IMPORT_DIALOG_TRIGGERS
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(plot_id);
+        TEST_IMPORT_DIALOG_TRIGGERS.with(|slot| slot.borrow_mut().push(plot_id));
     }
 
     #[cfg(all(not(test), not(target_arch = "wasm32")))]
