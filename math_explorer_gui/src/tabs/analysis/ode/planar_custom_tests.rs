@@ -321,7 +321,10 @@ fn assert_planar_export_and_recovery(tool: &mut OdeSolverTool) {
     );
 
     let src_path = std::env::temp_dir().join("test_planar_custom_ode_export.rs");
-    let bin_path = std::env::temp_dir().join("test_planar_custom_ode_export_bin");
+    let bin_path = std::env::temp_dir().join(format!(
+        "test_planar_custom_ode_export_bin{}",
+        std::env::consts::EXE_SUFFIX
+    ));
     std::fs::write(&src_path, &art.rust_source).expect("write exported rust source");
     let status = std::process::Command::new("rustc")
         .arg("--edition=2024")
@@ -332,6 +335,7 @@ fn assert_planar_export_and_recovery(tool: &mut OdeSolverTool) {
         .expect("invoke rustc on exported planar solver");
     let _ = std::fs::remove_file(&src_path);
     let _ = std::fs::remove_file(&bin_path);
+    let _ = std::fs::remove_file(bin_path.with_extension("pdb"));
     assert!(
         status.success(),
         "exported planar Rust code must compile cleanly"

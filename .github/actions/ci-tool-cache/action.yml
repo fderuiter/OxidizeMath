@@ -133,4 +133,8 @@ runs:
           exit 1
         fi
 
-        "$bin_path" --version
+        if [[ "$BIN_NAME" == cargo-* ]] && ! "$bin_path" --version >/dev/null 2>&1; then
+          "$bin_path" "${BIN_NAME#cargo-}" --version
+        else
+          "$bin_path" --version
+        fi

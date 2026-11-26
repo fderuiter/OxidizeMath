@@ -8,66 +8,85 @@ use alloc::vec::Vec;
 #[doc(hidden)]
 #[macro_export]
 macro_rules! advance_sample2d_plateau {
-    ($slice:expr, $start:expr, $end:expr, $flat_y:expr, $x_min:expr, $x_max:expr, |$p:ident| ($x:expr, $y:expr)) => {{
+    ($slice:expr, $start:expr, $end:expr, $flat_y:expr, $x_min:expr, $x_max:expr, |$p:pat_param| ($x:expr, $y:expr)) => {{
         let slice_ref = $slice;
         let start = $start;
         let end = ($end).min(slice_ref.len());
         if start >= end {
             start
         } else {
-            let flat_y = $flat_y;
-            let x_min = $x_min;
-            let x_max = $x_max;
-            let (chunks, rem) = slice_ref[start..end].as_chunks::<16>();
-            let n_chunks = chunks.len();
-            let mut ci = 0usize;
-            while ci < n_chunks {
-                let c = &chunks[ci];
-                macro_rules! ok_at {
-                    ($idx:literal) => {{
-                        let $p = &c[$idx];
-                        ($y == flat_y) & ($x >= x_min) & ($x <= x_max)
-                    }};
-                }
-                let ok = ok_at!(0)
-                    & ok_at!(1)
-                    & ok_at!(2)
-                    & ok_at!(3)
-                    & ok_at!(4)
-                    & ok_at!(5)
-                    & ok_at!(6)
-                    & ok_at!(7)
-                    & ok_at!(8)
-                    & ok_at!(9)
-                    & ok_at!(10)
-                    & ok_at!(11)
-                    & ok_at!(12)
-                    & ok_at!(13)
-                    & ok_at!(14)
-                    & ok_at!(15);
-                if !ok {
-                    let base = start + (ci << 4);
-                    let mut k = 0usize;
-                    while k < 16 {
-                        let $p = &c[k];
-                        if !(($y == flat_y) & ($x >= x_min) & ($x <= x_max)) {
-                            return base + k;
-                        }
-                        k += 1;
+            'plateau: {
+                let flat_y = $flat_y;
+                let x_min = $x_min;
+                let x_max = $x_max;
+                let (chunks, rem) = slice_ref[start..end].as_chunks::<16>();
+                let mut base = start;
+                let mut chunk_slice = chunks;
+                while let [c, rest @ ..] = chunk_slice {
+                    let [
+                        s0,
+                        s1,
+                        s2,
+                        s3,
+                        s4,
+                        s5,
+                        s6,
+                        s7,
+                        s8,
+                        s9,
+                        s10,
+                        s11,
+                        s12,
+                        s13,
+                        s14,
+                        s15,
+                    ] = c;
+                    macro_rules! ok_sample {
+                        ($s:ident) => {{
+                            let $p = $s;
+                            ($y == flat_y) & ($x >= x_min) & ($x <= x_max)
+                        }};
                     }
+                    let ok = ok_sample!(s0)
+                        & ok_sample!(s1)
+                        & ok_sample!(s2)
+                        & ok_sample!(s3)
+                        & ok_sample!(s4)
+                        & ok_sample!(s5)
+                        & ok_sample!(s6)
+                        & ok_sample!(s7)
+                        & ok_sample!(s8)
+                        & ok_sample!(s9)
+                        & ok_sample!(s10)
+                        & ok_sample!(s11)
+                        & ok_sample!(s12)
+                        & ok_sample!(s13)
+                        & ok_sample!(s14)
+                        & ok_sample!(s15);
+                    if !ok {
+                        let mut tail: &[_] = c;
+                        while let [$p, tail_rest @ ..] = tail {
+                            if !(($y == flat_y) & ($x >= x_min) & ($x <= x_max)) {
+                                break 'plateau base;
+                            }
+                            base += 1;
+                            tail = tail_rest;
+                        }
+                        break 'plateau base;
+                    }
+                    base += 16;
+                    chunk_slice = rest;
                 }
-                ci += 1;
-            }
-            let base = start + (n_chunks << 4);
-            let mut k = 0usize;
-            while k < rem.len() {
-                let $p = &rem[k];
-                if !(($y == flat_y) & ($x >= x_min) & ($x <= x_max)) {
-                    break;
+                let mut rem_slice = rem;
+                while let [$p, rest @ ..] = rem_slice {
+                    if !(($y == flat_y) & ($x >= x_min) & ($x <= x_max)) {
+                        break;
+                    }
+                    base += 1;
+                    rem_slice = rest;
                 }
-                k += 1;
+                base
             }
-            base + k
         }
     }};
 }
@@ -126,7 +145,9 @@ impl Sample2D for [f64; 2] {
         x_min: f64,
         x_max: f64,
     ) -> usize {
-        advance_sample2d_plateau!(slice, start, end, flat_y, x_min, x_max, |p| (p[0], p[1]))
+        advance_sample2d_plateau!(slice, start, end, flat_y, x_min, x_max, |[px, py]| (
+            *px, *py
+        ))
     }
 }
 
@@ -150,7 +171,9 @@ impl Sample2D for (f64, f64) {
         x_min: f64,
         x_max: f64,
     ) -> usize {
-        advance_sample2d_plateau!(slice, start, end, flat_y, x_min, x_max, |p| (p.0, p.1))
+        advance_sample2d_plateau!(slice, start, end, flat_y, x_min, x_max, |(px, py)| (
+            *px, *py
+        ))
     }
 }
 
