@@ -1,138 +1,161 @@
-//! Fast 8-wide plateau compaction for dense constant-value polylines.
+//! Fast 32/8-wide zero-copy plateau compaction for dense constant-value polylines.
 
 use crate::items::PlotPoint;
 
 use super::SeriesCoords;
 
-trait PlateauSample: Copy {
-    fn xy(self) -> [f64; 2];
-    fn chunk8(slice: &[Self]) -> Option<[[f64; 2]; 8]>;
+const X_GAP: f64 = 1e-12_f64.next_up();
+
+macro_rules! ok_pt {
+    ($c:expr, $k:literal, $y_plat:expr, $x_lo:expr, $x_hi:expr, |$p:ident| ($px:expr, $py:expr)) => {{
+        let $p = &$c[$k];
+        ($py == $y_plat) & ($px >= $x_lo) & ($px <= $x_hi)
+    }};
 }
 
-impl PlateauSample for PlotPoint {
-    #[inline(always)]
-    fn xy(self) -> [f64; 2] {
-        [self.x, self.y]
-    }
-
-    #[inline(always)]
-    fn chunk8(slice: &[Self]) -> Option<[[f64; 2]; 8]> {
-        let &[a, b, c, d, e, f, g, h, ..] = slice else {
-            return None;
-        };
-        Some([
-            [a.x, a.y],
-            [b.x, b.y],
-            [c.x, c.y],
-            [d.x, d.y],
-            [e.x, e.y],
-            [f.x, f.y],
-            [g.x, g.y],
-            [h.x, h.y],
-        ])
-    }
+macro_rules! same_plateau8 {
+    ($c:expr, $y_plat:expr, $x_lo:expr, $x_hi:expr, |$p:ident| ($px:expr, $py:expr)) => {{
+        let c8 = $c;
+        ok_pt!(c8, 0, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c8, 1, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c8, 2, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c8, 3, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c8, 4, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c8, 5, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c8, 6, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c8, 7, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+    }};
 }
 
-impl PlateauSample for [f64; 2] {
-    #[inline(always)]
-    fn xy(self) -> [f64; 2] {
-        self
-    }
-
-    #[inline(always)]
-    fn chunk8(slice: &[Self]) -> Option<[[f64; 2]; 8]> {
-        let &[a, b, c, d, e, f, g, h, ..] = slice else {
-            return None;
-        };
-        Some([a, b, c, d, e, f, g, h])
-    }
+macro_rules! same_plateau32 {
+    ($c:expr, $y_plat:expr, $x_lo:expr, $x_hi:expr, |$p:ident| ($px:expr, $py:expr)) => {{
+        let c32 = $c;
+        ok_pt!(c32, 0, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 1, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 2, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 3, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 4, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 5, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 6, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 7, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 8, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 9, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 10, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 11, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 12, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 13, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 14, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 15, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 16, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 17, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 18, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 19, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 20, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 21, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 22, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 23, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 24, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 25, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 26, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 27, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 28, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 29, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 30, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+            & ok_pt!(c32, 31, $y_plat, $x_lo, $x_hi, |$p| ($px, $py))
+    }};
 }
 
-#[inline(always)]
-fn chunk8_same_plateau(c: &[[f64; 2]; 8], y_plat: f64, x_dir: f64) -> bool {
-    let same_y = (c[0][1] == y_plat)
-        & (c[1][1] == y_plat)
-        & (c[2][1] == y_plat)
-        & (c[3][1] == y_plat)
-        & (c[4][1] == y_plat)
-        & (c[5][1] == y_plat)
-        & (c[6][1] == y_plat)
-        & (c[7][1] == y_plat);
-    let fin_x = ((c[0][0] * 0.0)
-        + (c[1][0] * 0.0)
-        + (c[2][0] * 0.0)
-        + (c[3][0] * 0.0)
-        + (c[4][0] * 0.0)
-        + (c[5][0] * 0.0)
-        + (c[6][0] * 0.0)
-        + (c[7][0] * 0.0))
-        == 0.0;
-    let safe_x = (x_dir == 0.0)
-        | ((c[0][0] * x_dir > 1e-12)
-            & (c[1][0] * x_dir > 1e-12)
-            & (c[2][0] * x_dir > 1e-12)
-            & (c[3][0] * x_dir > 1e-12)
-            & (c[4][0] * x_dir > 1e-12)
-            & (c[5][0] * x_dir > 1e-12)
-            & (c[6][0] * x_dir > 1e-12)
-            & (c[7][0] * x_dir > 1e-12));
-    same_y & fin_x & safe_x
-}
-
-fn compact_slice<T: PlateauSample>(pts: &[T], want_y_ints: bool) -> Option<Vec<[f64; 2]>> {
-    if pts.len() < 32 {
-        return None;
-    }
-    let mut out: Option<Vec<[f64; 2]>> = None;
-    let mut copied_up_to = 0usize;
-    let mut i = 2usize;
-    while let Some(&[s0, s1, ref tail @ ..]) = pts.get(i - 2..) {
-        let Some(chunk) = T::chunk8(tail) else {
-            break;
-        };
-        let [x0, y_plat] = s0.xy();
-        let [x1, y1] = s1.xy();
-        let pre_ok = (x0 * 0.0 + y_plat * 0.0 + x1 * 0.0) == 0.0 && y1 == y_plat;
-        let x_dir = if !want_y_ints {
-            0.0
-        } else if x0 > 1e-12 && x1 > 1e-12 {
-            1.0
-        } else if x0 < -1e-12 && x1 < -1e-12 {
-            -1.0
-        } else {
-            i += 8;
-            continue;
-        };
-        if pre_ok && chunk8_same_plateau(&chunk, y_plat, x_dir) {
-            let mut end = i + 8;
-            while let Some(next) = pts.get(end..).and_then(T::chunk8) {
-                if !chunk8_same_plateau(&next, y_plat, x_dir) {
-                    break;
-                }
-                end += 8;
+macro_rules! define_compact_fn {
+    ($fn_name:ident, $elem:ty, |$p:ident| ($px:expr, $py:expr)) => {
+        fn $fn_name(pts: &[$elem], want_y_ints: bool) -> Option<Vec<[f64; 2]>> {
+            let n = pts.len();
+            if n < 32 {
+                return None;
             }
-            let buf = out.get_or_insert_with(|| Vec::with_capacity(64));
-            buf.extend(pts[copied_up_to..i].iter().copied().map(T::xy));
-            buf.push(pts[end - 2].xy());
-            buf.push(pts[end - 1].xy());
-            copied_up_to = end;
-            i = end + 2;
-        } else {
-            i += 8;
+            let mut out: Option<Vec<[f64; 2]>> = None;
+            let mut copied_up_to = 0usize;
+            let mut i = 2usize;
+            while i + 8 <= n {
+                let (x0, y_plat) = {
+                    let $p = &pts[i - 2];
+                    ($px, $py)
+                };
+                let (x1, y1) = {
+                    let $p = &pts[i - 1];
+                    ($px, $py)
+                };
+                let (x_lo, x_hi) = if !want_y_ints {
+                    (-f64::MAX, f64::MAX)
+                } else if x0 >= X_GAP && x1 >= X_GAP {
+                    (X_GAP, f64::MAX)
+                } else if x0 <= -X_GAP && x1 <= -X_GAP {
+                    (-f64::MAX, -X_GAP)
+                } else {
+                    i += 8;
+                    continue;
+                };
+                let pre_ok = (y1 == y_plat)
+                    && y_plat.is_finite()
+                    && (x0 >= x_lo)
+                    && (x0 <= x_hi)
+                    && (x1 >= x_lo)
+                    && (x1 <= x_hi);
+                if pre_ok {
+                    let (first8, _) = pts[i..i + 8].as_chunks::<8>();
+                    if same_plateau8!(&first8[0], y_plat, x_lo, x_hi, |$p| ($px, $py)) {
+                        let mut end = i + 8;
+                        let (chunks32, _) = pts[end..].as_chunks::<32>();
+                        let mut c32_idx = 0usize;
+                        while c32_idx < chunks32.len()
+                            && same_plateau32!(&chunks32[c32_idx], y_plat, x_lo, x_hi, |$p| (
+                                $px, $py
+                            ))
+                        {
+                            c32_idx += 1;
+                        }
+                        end += c32_idx << 5;
+                        let (chunks8, _) = pts[end..].as_chunks::<8>();
+                        let mut c8_idx = 0usize;
+                        while c8_idx < chunks8.len()
+                            && same_plateau8!(&chunks8[c8_idx], y_plat, x_lo, x_hi, |$p| ($px, $py))
+                        {
+                            c8_idx += 1;
+                        }
+                        end += c8_idx << 3;
+                        let buf = out.get_or_insert_with(|| Vec::with_capacity(64));
+                        for $p in &pts[copied_up_to..i] {
+                            buf.push([$px, $py]);
+                        }
+                        let $p = &pts[end - 2];
+                        buf.push([$px, $py]);
+                        let $p = &pts[end - 1];
+                        buf.push([$px, $py]);
+                        copied_up_to = end;
+                        i = end + 2;
+                        continue;
+                    }
+                }
+                i += 8;
+            }
+            if let Some(ref mut buf) = out {
+                for $p in &pts[copied_up_to..] {
+                    buf.push([$px, $py]);
+                }
+            }
+            out
         }
-    }
-    if let Some(ref mut buf) = out {
-        buf.extend(pts[copied_up_to..].iter().copied().map(T::xy));
-    }
-    out
+    };
 }
+
+define_compact_fn!(compact_plot_points, PlotPoint, |p| (p.x, p.y));
+define_compact_fn!(compact_shared, [f64; 2], |p| (p[0], p[1]));
 
 pub(super) fn compact_long_plateaus(
     coords: SeriesCoords<'_>,
     want_y_ints: bool,
 ) -> Option<Vec<[f64; 2]>> {
     match coords {
-        SeriesCoords::PlotPoints(pts) => compact_slice(pts, want_y_ints),
-        SeriesCoords::Shared(pts) => compact_slice(pts, want_y_ints),
+        SeriesCoords::PlotPoints(pts) => compact_plot_points(pts, want_y_ints),
+        SeriesCoords::Shared(pts) => compact_shared(pts, want_y_ints),
     }
 }
