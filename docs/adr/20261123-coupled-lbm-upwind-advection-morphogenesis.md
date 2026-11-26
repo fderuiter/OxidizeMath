@@ -18,20 +18,20 @@ In addition, `domain_biology` and `domain_physics` are independent domain crates
 ## Decision
 
 1. **`#![no_std]` Stencil Reciprocal & Pure-Math 2D Donor-Cell Upwind Advection** (`engine_pde`, `pure_math`):
-   - Added `inv_dy: f64` (`1.0 / *dy`) to `StencilOperators` in [stencil.rs](../../crates/engine_pde/src/stencil.rs) (re-exported via [fused_stepper.rs](../../crates/pure_math/src/pure_math/analysis/pde/fused_stepper.rs)) and reused `self.inv_dy` across `upwind_2d_at` and `upwind_3d_at`.
-   - Created [advection_2d.rs](../../crates/pure_math/src/pure_math/analysis/pde/advection_2d.rs) providing conservative face-velocity donor-cell upwind divergence (`-∇ · (v c)`), `advection_courant_number`, `advection_diffusion_cfl_limit`, and `grid_peclet_number`, all verified zero-allocation under `#[verified_engine::verified]`.
+   - Added `inv_dy: f64` (`1.0 / *dy`) to `StencilOperators` in [stencil.rs](../../crates/02_engines/engine_pde/src/stencil.rs) (re-exported via [fused_stepper.rs](../../crates/03_domains/pure_math/src/pure_math/analysis/pde/fused_stepper.rs)) and reused `self.inv_dy` across `upwind_2d_at` and `upwind_3d_at`.
+   - Created [advection_2d.rs](../../crates/03_domains/pure_math/src/pure_math/analysis/pde/advection_2d.rs) providing conservative face-velocity donor-cell upwind divergence (`-∇ · (v c)`), `advection_courant_number`, `advection_diffusion_cfl_limit`, and `grid_peclet_number`, all verified zero-allocation under `#[verified_engine::verified]`.
 
 2. **Wall-Aware Patankar Advection-Diffusion-Reaction Stepping** (`domain_biology`):
-   - Created [advection.rs](../../crates/domain_biology/src/biology/diffusion/fd2d/advection.rs) defining `AdvectedSpatialDiffusion<N>` for `FiniteDifference2D` and `MaskedFiniteDifference2D`.
+   - Created [advection.rs](../../crates/03_domains/domain_biology/src/biology/diffusion/fd2d/advection.rs) defining `AdvectedSpatialDiffusion<N>` for `FiniteDifference2D` and `MaskedFiniteDifference2D`.
    - On unmasked grids (`!mask.has_active_cells()`), explicit conservative donor-cell fluxes preserve discrete mass to machine precision (`< 1e-12`) under zero-normal-flux outer boundaries.
    - On sculpted grids (`mask.has_active_cells()`), solid `ZeroFluxWall` faces enforce zero normal diffusive and advective flux (`u_face = 0`, `c_neighbor = c_center`) while outflow flux sinks are folded into the semi-implicit Patankar denominator so morphogen concentrations remain strictly non-negative (`c >= 0.0`) without wall leakage.
-   - Created [advection.rs](../../crates/domain_biology/src/biology/morphogenesis/advection.rs) exposing `TuringSystem::step_advected(dt, ux, uy)` over borrowed row-major velocity slices, preserving strict crate independence between `domain_biology` and `domain_physics`.
+   - Created [advection.rs](../../crates/03_domains/domain_biology/src/biology/morphogenesis/advection.rs) exposing `TuringSystem::step_advected(dt, ux, uy)` over borrowed row-major velocity slices, preserving strict crate independence between `domain_biology` and `domain_physics`.
 
 3. **Zero-Allocation Column-to-Row-Major LBM Projection** (`domain_physics`):
-   - Extended [aerodynamics.rs](../../crates/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/aerodynamics.rs) with `project_velocity_row_major_into`, `project_obstacles_row_major_into`, and `sync_obstacles_row_major`, translating internal `D2Q9` column-major state into row-major buffers via `flatten_2d_index` with zero heap allocations.
+   - Extended [aerodynamics.rs](../../crates/03_domains/domain_physics/src/physics/fluid_dynamics/lattice_boltzmann/aerodynamics.rs) with `project_velocity_row_major_into`, `project_obstacles_row_major_into`, and `sync_obstacles_row_major`, translating internal `D2Q9` column-major state into row-major buffers via `flatten_2d_index` with zero heap allocations.
 
 4. **GUI Multiphysics Co-Stepping, Serpentine Portal Sealing, and CFL Guard** (`math_explorer_gui`):
-   - Created [advection.rs](../../math_explorer_gui/src/tabs/morphogenesis/advection.rs) hosting `MorphoWindTunnel` (pre-allocated `LatticeBoltzmannD2Q9<BgkCollision>`, `ux_buf`, `uy_buf`, and `obstacle_buf`) inside `MorphogenesisKineticsRunner`.
+   - Created [advection.rs](../../apps/math_explorer_gui/src/tabs/morphogenesis/advection.rs) hosting `MorphoWindTunnel` (pre-allocated `LatticeBoltzmannD2Q9<BgkCollision>`, `ux_buf`, `uy_buf`, and `obstacle_buf`) inside `MorphogenesisKineticsRunner`.
    - Synchronized `ReactionCellRole::ZeroFluxWall` edits (pointer `BrushStroke`, keyboard reticle `Arrow` + `Space`/`Enter`, `stamp_microfluidic_maze`, and RLE preset loads) directly into `D2Q9` bounce-back obstacles, sealing dead-end side portals when alternating serpentine baffles are stamped so channel flow traverses all three passes.
    - Added wind-tunnel toggle, `inlet_u` and `viscosity` sliders, live Péclet (`Pe`), Courant (`Co`), and combined advective-diffusive CFL readouts (using `SemanticPalette`), keyboard-accessible `"⚡ Stabilize Step (CFL)"` recovery with `TwinSlotLiveRegion` announcements, and the `"Vortex Wake Morphogenesis"` starter gallery preset while keeping default advection fields omitted (`#[serde(skip_serializing_if = ...)]`) for backward-compatible `< 4 KiB` URL share payloads.
 

@@ -1,0 +1,61 @@
+[package]
+name = "pure_math"
+version.workspace = true
+edition = "2024"
+
+[package.metadata.oxidize]
+tier = "03_domains"
+release_role = "release"
+facade_role = "domain"
+facade_module = "pure_math"
+traceability = true
+math_contract = true
+
+[features]
+default = []
+serde = [
+    "dashu/serde",
+    "engine_diffeq/serde",
+    "engine_linalg/serde",
+    "engine_pde/serde",
+    "math_commons/serde",
+    "math_rng/serde",
+    "nalgebra/serde-serialize",
+    "num-complex/serde",
+    "petgraph/serde-1",
+    "rand/serde1",
+]
+
+[dependencies]
+rustfft = { workspace = true }
+nalgebra = { workspace = true }
+quadrature = { workspace = true }
+rand = { workspace = true }
+statrs = { workspace = true }
+petgraph = { workspace = true }
+rand_distr = { workspace = true }
+num-complex = { workspace = true }
+thiserror = { workspace = true }
+num-traits = { workspace = true }
+serde = { workspace = true, features = ["std", "derive"] }
+oxidize_core = { path = "../../01_core/oxidize_core" }
+scientific_metadata = { path = "../../00_foundation/scientific_metadata" }
+verified_engine = { version = "0.1.0", path = "../../00_foundation/verified_engine" }
+
+math_commons = { path = "../../02_engines/math_commons" }
+math_rng = { path = "../../00_foundation/math_rng", features = ["alloc", "serde"] }
+engine_diffeq = { path = "../../02_engines/engine_diffeq", features = ["std"] }
+engine_linalg = { path = "../../02_engines/engine_linalg" }
+engine_pde = { path = "../../02_engines/engine_pde", features = ["std"] }
+diagnostics = { path = "../../01_core/diagnostics" }
+dashu = { workspace = true, features = ["num-traits_v02"] }
+
+[dev-dependencies]
+approx = { workspace = true }
+serde_json = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true

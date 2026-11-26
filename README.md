@@ -28,7 +28,7 @@ Alternatively, you can manually build the library using Cargo:
 
 ```bash
 # Build the core library manually
-cargo build --release --package math_explorer
+cargo build --release --package oxidizemath
 ```
 
 **Note:** `cargo run -p xtask -- setup` configures version-controlled Git hooks with executable permissions (`.githooks/pre-commit` and `.githooks/pre-push`) first, adds the `wasm32-unknown-unknown` target, warns if optional browser tools are absent (use `--web` to require them or `--hooks-only` for instant hook setup), and runs `cargo check --workspace` (unless `--check-only` is passed). At commit time, `.githooks/pre-commit` runs `cargo run -p xtask -- lint-staged` scoped to staged files and directly touched crates for fast offline feedback, while `.githooks/pre-push` runs `cargo run -p xtask -- lint-push` for offline reverse-dependent host/`wasm32` Clippy and full workspace traceability before pushing. Before opening or updating a pull request, run `cargo run -p xtask -- lint-all` to execute the full workspace verification suite.
@@ -39,13 +39,13 @@ cargo build --release --package math_explorer
 Experience the library in action by running our pre-built Quantum Mechanics example within 30 seconds of installation:
 
 ```bash
-cargo run --package math_explorer --features physics --example hello_world
+cargo run --package oxidize-cli --features physics --example hello_world
 ```
 
 ### 1. The Interactive GUI (Recommended)
 We provide a native eframe/egui application to explore simulations (Physics, Biology, Chaos Theory, etc.) interactively.
 
-> **See the [Math Explorer GUI Documentation](math_explorer_gui/README.md) for architecture details and contribution guides.**
+> **See the [Math Explorer GUI Documentation](apps/math_explorer_gui/README.md) for architecture details and contribution guides.**
 
 ```bash
 cargo run --release --package math_explorer_gui
@@ -100,7 +100,7 @@ graph TD
 
 #### Maturity Tiers & Qualification Gates
 
-Every registered mathematical crate and `[links]` module in `traceability.toml` carries an explicit [`MaturityTier`](crates/scientific_metadata/src/theory.rs) (`Experimental`, `Validated`, or `Certified`) enforced by `cargo run -p xtask -- check-maturity` and `api_drift`:
+Every registered mathematical crate and `[links]` module in `traceability.toml` carries an explicit [`MaturityTier`](crates/00_foundation/scientific_metadata/src/theory.rs) (`Experimental`, `Validated`, or `Certified`) enforced by `cargo run -p xtask -- check-maturity` and `api_drift`:
 
 | Tier | Badge | Required Evidence | API & SemVer Policy |
 | :--- | :--- | :--- | :--- |
@@ -147,7 +147,7 @@ classDiagram
 
 Explore 32 specialized, runnable examples spanning AI, Applied Math, Biology, Climate, Epidemiology, Physics, and Pure Math.
 
-> **See the [Examples Catalog](math_explorer/examples/README.md) for the full list of simulations and their commands.**
+> **See the [Examples Catalog](apps/oxidize-cli/examples/README.md) for the full list of simulations and their commands.**
 
 ---
 
@@ -159,7 +159,7 @@ To selectively compile domains (e.g., `physics` and `ai`), update your `Cargo.to
 
 ```toml
 [dependencies]
-math_explorer = { version = "0.4.0", features = ["physics", "ai"] }
+oxidizemath = { version = "0.4.0", features = ["physics", "ai"] }
 ```
 
 Available feature flags include: `ai`, `applied`, `biology`, `climate`, `epidemiology`, `physics`, and `pure_math`.
@@ -171,7 +171,7 @@ Available feature flags include: `ai`, `applied`, `biology`, `climate`, `epidemi
 
 For detailed system architecture, runtime constraints, and simulation guides, explore the [Centralized Architecture Guide Suite](docs/architecture/README.md):
 
-*   **[System Overview & Crate Topology](docs/architecture/system_overview.md):** 5-layer system design, crate dependency graphs, and catalog of all 26 crates.
+*   **[System Overview & Crate Topology](docs/architecture/system_overview.md):** 5-layer system design, crate dependency graphs, and catalog of all 28 crates.
 *   **[CERA Framework Guide](docs/architecture/cera_framework.md):** Climate-invariant encoding, representation alignment pipelines, and Earth Mover's Distance loss.
 *   **[Zero-Allocation Runtime Guide](docs/architecture/zero_allocation_runtime.md):** NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and `VerifiedEngine` runtime metrics.
 *   **[Interactive Tool Walkthrough](docs/architecture/interactive_tool_walkthrough.md):** Contributor onboarding tutorial to build and register interactive simulation tabs.

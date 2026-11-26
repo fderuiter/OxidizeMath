@@ -13,7 +13,7 @@ Several verified mathematical engines across `pure_math` and `domain_applied`—
    - Register `ParrondoParadoxTool` (`"Parrondo's Paradox"`) connecting `MarkovChain::stationary_distribution`, `TransitionTensor`, `OxidizeRng` ensembles, and pre-sized `GillespieSolver` buffers so `step_parrondo_zero_alloc` passes `VerifiedEngine::run_verified` with zero dynamic allocations.
    - Register `BraessNetworkParadoxTool` (`"Braess's Paradox"`) modeling the 4-node Wheatstone network (Wardrop equilibrium, Pigou social optimum, Pigouvian shortcut toll, Price of Anarchy), verifying Nash fixed points via `BoxSet`, `BestResponseCorrespondence`, and `is_fixed_point`, and solving continuum crowd congestion via `MFGConfigBuilder` + `FixedPointSolver` with explicit CFL clamping (`viscosity * dt / dx^2 < 0.25`).
 3. **Documentation & Traceability Linkage**:
-   - Update [`crates/pure_math/src/pure_math/statistics/markov/README.md`](../../crates/pure_math/src/pure_math/statistics/markov/README.md) to document interactive GUI exploration alongside `markov_demo`, and bind `paradox_lab` in [`traceability.toml`](../../traceability.toml).
+   - Update [`crates/pure_math/src/pure_math/statistics/markov/README.md`](../../crates/03_domains/pure_math/src/pure_math/statistics/markov/README.md) to document interactive GUI exploration alongside `markov_demo`, and bind `paradox_lab` in [`traceability.toml`](../../traceability.toml).
 
 ## Consequences
 - **Positive**: Exposes both stochastic ratchets and game-theoretic congestion/mean-field PDE solvers in native desktop and `wasm32-unknown-unknown` builds with shareable `#tab=paradox_lab` URLs, starter presets, `SemanticPalette` contrast, AccessKit keyboard navigation, and offline plot/dataset exports.

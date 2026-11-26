@@ -84,7 +84,7 @@ pub(crate) fn cargo_invocations_for_selector(selector: &FeatureSelector) -> Vec<
     let mut lib_test = vec![
         "test".to_string(),
         "-p".to_string(),
-        "math_explorer".to_string(),
+        "oxidizemath".to_string(),
     ];
     lib_test.extend(flags.iter().cloned());
 
@@ -138,7 +138,6 @@ pub(crate) fn test_features(args: &[String]) {
 mod tests {
     use super::*;
     use std::fs;
-    use std::path::Path;
 
     fn strs(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| (*s).to_string()).collect()
@@ -157,7 +156,7 @@ mod tests {
             assert_eq!(
                 cmds,
                 vec![
-                    strs(&["test", "-p", "math_explorer", "--no-default-features"]),
+                    strs(&["test", "-p", "oxidizemath", "--no-default-features"]),
                     strs(&[
                         "test",
                         "-p",
@@ -204,7 +203,7 @@ mod tests {
                 strs(&[
                     "test",
                     "-p",
-                    "math_explorer",
+                    "oxidizemath",
                     "--no-default-features",
                     "--features",
                     "physics",
@@ -265,9 +264,7 @@ mod tests {
         assert_eq!(
             cmds,
             vec![
-                words(
-                    "test -p math_explorer --no-default-features --features biology,epidemiology"
-                ),
+                words("test -p oxidizemath --no-default-features --features biology,epidemiology"),
                 words(
                     "test -p math_explorer --benches --no-default-features --features biology,epidemiology"
                 ),
@@ -290,7 +287,7 @@ mod tests {
             assert_eq!(
                 cmds,
                 vec![
-                    strs(&["test", "-p", "math_explorer", "--all-features"]),
+                    strs(&["test", "-p", "oxidizemath", "--all-features"]),
                     strs(&["test", "-p", "math_explorer", "--benches", "--all-features"]),
                     strs(&[
                         "check",
@@ -324,7 +321,7 @@ mod tests {
 
     #[test]
     fn test_ci_feature_matrix_installs_clippy_component() {
-        let ci_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.github/workflows/ci.yml");
+        let ci_path = crate::gates::resolve_workspace_root().join(".github/workflows/ci.yml");
         let ci_yaml = fs::read_to_string(&ci_path)
             .expect("failed to read ci.yml")
             .replace("\r\n", "\n");

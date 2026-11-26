@@ -2,7 +2,7 @@
 # Pre-compress static distribution assets with Gzip and Brotli
 set -euo pipefail
 
-TARGET_DIR="${1:-math_explorer_gui/dist}"
+TARGET_DIR="${1:-apps/math_explorer_gui/dist}"
 
 if [ ! -d "$TARGET_DIR" ]; then
     echo "Directory '$TARGET_DIR' does not exist." >&2

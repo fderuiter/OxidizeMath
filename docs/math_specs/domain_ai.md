@@ -1,6 +1,6 @@
 # Canonical Mathematical Specification: `domain_ai`
 
-Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/domain_ai`](../../crates/domain_ai/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace manuscripts.
+Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/domain_ai`](../../crates/03_domains/domain_ai/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace manuscripts.
 
 ## 1. Deep Learning MLP, Transformer Attention & Self-Calibration (`deep_learning_theory`, `transformer`, `self_calibration`)
 

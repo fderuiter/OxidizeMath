@@ -6,7 +6,7 @@ Welcome to the OxidizeMath documentation directory.
 
 The [Architecture Guide Suite](architecture/README.md) provides centralized blueprints, diagrams, and developer walkthroughs:
 
-- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 26 crates.
+- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 28 crates.
 - **[CERA Framework Guide](architecture/cera_framework.md)**: Climate-invariant Encoding through Representation Alignment and climate modeling pipelines.
 - **[Zero-Allocation Runtime Guide](architecture/zero_allocation_runtime.md)**: NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and verified engine execution rules.
 - **[Interactive Tool Walkthrough](architecture/interactive_tool_walkthrough.md)**: Step-by-step developer guide to implement interactive simulations with `InteractiveTool`.
@@ -142,6 +142,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261124: Optional `#![no_std]` Serde Across Substrate, Plot Outputs, and Facade](adr/20261124-optional-no-std-serde-substrate-and-facade.md)
 - [ADR 20261124: Zero-Allocation Alternate-Kinetics Stepping, 2D CFL Substepping Helpers, and Analytical Bifurcation Minimap](adr/20261124-promote-gray-scott-kinetics-and-2d-cfl-helpers.md)
 - [ADR 20261124: Stack-Allocated Core Errors, Fallible Companion APIs, and AST Error Contract Verification](adr/20261124-stack-core-errors-and-fallible-companion-apis.md)
+- [ADR 20261125: Metadata-Driven Path Abstraction and Five-Tier Workspace Migration](adr/20261125-metadata-driven-tier-migration.md)
 
 ## Contributing
 

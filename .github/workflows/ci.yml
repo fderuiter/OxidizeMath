@@ -123,9 +123,9 @@ jobs:
                     ;;
                 esac
                 case "$file_path" in
-                  crates/markdown_tests/*|crates/unified_verification/*)
+                  crates/04_bindings/markdown_tests/*|apps/unified_verification/*|apps/xtask/*)
                     ;;
-                  crates/*|math_explorer_gui/*|math_explorer/*|egui_plot/*|proofs/*|LICENSE|papers/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|.cargo/*|.github/actions/cargo-cache/*|.github/workflows/ci.yml)
+                  crates/*|apps/*|egui_plot/*|proofs/*|LICENSE|papers/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|.cargo/*|.github/actions/cargo-cache/*|.github/workflows/ci.yml)
                     installer_changed="true"
                     ;;
                 esac
@@ -351,7 +351,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/trunk
-          key: ${{ runner.os }}-trunk-cache-${{ hashFiles('Cargo.lock', 'math_explorer_gui/Trunk.toml') }}
+          key: ${{ runner.os }}-trunk-cache-${{ hashFiles('Cargo.lock', 'apps/math_explorer_gui/Trunk.toml') }}
           restore-keys: |
             ${{ runner.os }}-trunk-cache-
 
@@ -363,12 +363,12 @@ jobs:
 
       - name: Build Web Application
         if: matrix.target == 'wasm32-unknown-unknown'
-        working-directory: math_explorer_gui
+        working-directory: apps/math_explorer_gui
         run: trunk build --release
 
       - name: Verify WebAssembly Size Budget
         if: matrix.target == 'wasm32-unknown-unknown'
-        run: bash scripts/verify_wasm_budget.sh math_explorer_gui/dist
+        run: bash scripts/verify_wasm_budget.sh apps/math_explorer_gui/dist
 
       - name: Run WASM Unit Tests and Chromium Smoke Checks
         if: matrix.target == 'wasm32-unknown-unknown'
@@ -380,9 +380,9 @@ jobs:
         with:
           name: wasm_web_dist
           path: |
-            math_explorer_gui/dist
-            !math_explorer_gui/dist/**/*.gz
-            !math_explorer_gui/dist/**/*.br
+            apps/math_explorer_gui/dist
+            !apps/math_explorer_gui/dist/**/*.gz
+            !apps/math_explorer_gui/dist/**/*.br
           if-no-files-found: error
           retention-days: 7
 
@@ -571,7 +571,7 @@ jobs:
         run: |
           set -euo pipefail
           restore_gui_manifest() {
-            git checkout -- math_explorer_gui/Cargo.toml
+            git checkout -- apps/math_explorer_gui/Cargo.toml
           }
           if [ "$MATRIX_TARGET" = "wix" ] && [ "${IS_PRERELEASE:-false}" = "true" ]; then
             WIX_VER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(0|[1-9][0-9]{0,4})$'
@@ -590,8 +590,8 @@ jobs:
               }
               { print }
               END { if (!inserted) exit 1 }
-            ' math_explorer_gui/Cargo.toml > math_explorer_gui/Cargo.toml.wix-tmp
-            mv math_explorer_gui/Cargo.toml.wix-tmp math_explorer_gui/Cargo.toml
+            ' apps/math_explorer_gui/Cargo.toml > apps/math_explorer_gui/Cargo.toml.wix-tmp
+            mv apps/math_explorer_gui/Cargo.toml.wix-tmp apps/math_explorer_gui/Cargo.toml
           fi
           cargo packager --release -p math_explorer_gui -f "$MATRIX_TARGET"
 
@@ -599,12 +599,12 @@ jobs:
         if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.detect-changes.outputs.installer_changed == 'true'
         shell: bash
         run: |
-          if [ ! -d "math_explorer_gui/dist" ]; then
-            echo "Error: math_explorer_gui/dist directory does not exist" >&2
+          if [ ! -d "apps/math_explorer_gui/dist" ]; then
+            echo "Error: apps/math_explorer_gui/dist directory does not exist" >&2
             exit 1
           fi
 
-          cd math_explorer_gui/dist
+          cd apps/math_explorer_gui/dist
 
           if command -v sha256sum >/dev/null 2>&1; then
             SHACMD="sha256sum"
@@ -638,7 +638,7 @@ jobs:
           done
 
           if [ ${#files[@]} -eq 0 ]; then
-            echo "Error: No build artifacts found in math_explorer_gui/dist" >&2
+            echo "Error: No build artifacts found in apps/math_explorer_gui/dist" >&2
             exit 1
           fi
 
@@ -658,14 +658,14 @@ jobs:
         with:
           name: math_explorer-${{ matrix.target }}
           path: |
-            math_explorer_gui/dist/*.deb
-            math_explorer_gui/dist/*.dmg
-            math_explorer_gui/dist/*.msi
-            math_explorer_gui/dist/*.exe
-            math_explorer_gui/dist/*.wix
-            math_explorer_gui/dist/SHA256SUMS
-            !math_explorer_gui/dist/.*
-            !math_explorer_gui/dist/.*/**
+            apps/math_explorer_gui/dist/*.deb
+            apps/math_explorer_gui/dist/*.dmg
+            apps/math_explorer_gui/dist/*.msi
+            apps/math_explorer_gui/dist/*.exe
+            apps/math_explorer_gui/dist/*.wix
+            apps/math_explorer_gui/dist/SHA256SUMS
+            !apps/math_explorer_gui/dist/.*
+            !apps/math_explorer_gui/dist/.*/**
           if-no-files-found: error
 
   deploy-pages:

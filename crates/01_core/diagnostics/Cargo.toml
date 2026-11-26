@@ -1,0 +1,20 @@
+[package]
+name = "diagnostics"
+version = "0.1.0"
+edition = "2024"
+
+[package.metadata.oxidize]
+tier = "01_core"
+release_role = "internal"
+facade_role = "foundation"
+traceability = false
+
+[dependencies]
+math_diagnostics = { path = "../../00_foundation/math_diagnostics", features = ["std"] }
+
+[dev-dependencies]
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
+

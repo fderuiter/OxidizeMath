@@ -1,6 +1,6 @@
 # Canonical Mathematical Specification: `engine_pde`
 
-Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/engine_pde`](../../crates/engine_pde/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace continuum PDE/SPDE manuscripts.
+Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/engine_pde`](../../crates/02_engines/engine_pde/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace continuum PDE/SPDE manuscripts.
 
 ## 1. Finite-Difference & Operator-Split SPDE Stencil Steppers (`fused_stepper`, `spde_stencil`)
 
@@ -25,6 +25,18 @@ Explicit $d$-dimensional second-order diffusion requires $D\,\Delta t \sum_{k=1}
 ### Domain of Validity
 
 Requires strictly positive finite grid spacings $\Delta x, \Delta y, \Delta z > 0$, non-negative step $\Delta t \ge 0$, non-negative diffusivity/mobility/interfacial stiffness ($D, M, \kappa \ge 0$), and preallocated `SolverWorkspace` capacity matching `scratch_len_1d` / `scratch_len_2d`.
+
+```rust
+use engine_pde::{BoundaryCondition, StencilOperators};
+use math_commons::math_kernel::types::StepSize;
+
+let ops = StencilOperators::new_2d(StepSize(0.5), StepSize(0.5));
+let grid = [0.0_f64; 16];
+assert_eq!(
+    ops.eval_biharmonic_2d(&grid, 4, 4, 1, 1, BoundaryCondition::Periodic),
+    0.0
+);
+```
 
 ## 2. Radix-2 Orszag 2/3-Dealiased Semi-Implicit Fourier SPDE Stepper (`fourier_stepper`)
 
@@ -52,7 +64,7 @@ Valid on periodic domains with power-of-two grid dimensions $N_x, N_y \ge 4$ (`i
 
 ```rust
 use math_explorer::math_kernel::types::SolverWorkspace;
-use math_explorer::pure_math::analysis::pde::fused_stepper::SemiImplicitFourierStepper;
+use math_explorer::engine_pde::SemiImplicitFourierStepper;
 use math_explorer::rng::OxidizeRng;
 
 let stepper = SemiImplicitFourierStepper::new_1d(0.5);

@@ -1,6 +1,6 @@
 # Canonical Mathematical Specification: `domain_climate`
 
-Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/domain_climate`](../../crates/domain_climate/README.md), linked to [`papers/references.bib`](../../papers/references.bib) (`L23-L58`) and [`papers/cera_framework.tex`](../../papers/cera_framework.tex).
+Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/domain_climate`](../../crates/03_domains/domain_climate/README.md), linked to [`papers/references.bib`](../../papers/references.bib) (`L23-L58`) and [`papers/cera_framework.tex`](../../papers/cera_framework.tex).
 
 ## 1. Climate-Invariant Encoding & Representation Alignment (`Cera`, `AutoencoderModel`, `PredictorModel`)
 

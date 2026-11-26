@@ -1,9 +1,0 @@
-[package]
-name = "scientific_metadata"
-version.workspace = true
-edition = "2024"
-
-[dependencies]
-
-[lints]
-workspace = true

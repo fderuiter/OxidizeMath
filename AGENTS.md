@@ -4,7 +4,7 @@ This guide documents repository conventions, local Cargo build and test commands
 
 ## 1. Architecture, Policy & Documentation Rules
 
-All Markdown files in the repository (outside excluded build directories such as `target`, `dist`, and `artifacts`) are compiled by `crates/markdown_tests/build.rs` via `rustdoc`.
+All Markdown files in the repository (outside excluded build directories such as `target`, `dist`, and `artifacts`) are compiled by `crates/04_bindings/markdown_tests/build.rs` via `rustdoc`.
 
 - Always tag non-Rust code blocks with `bash`, `yaml`, or `text` fences so `cargo test --doc` does not attempt to compile shell commands, workflow YAML, or plain text snippets as Rust doctests.
 - Keep core engineering safety rules (such as the NASA Power of 10 standards) in [CONTRIBUTING.md](CONTRIBUTING.md) rather than duplicating them here.
@@ -25,7 +25,7 @@ Markdown verification gates:
 
 Rust jobs in [.github/workflows/ci.yml](.github/workflows/ci.yml) set `CARGO_INCREMENTAL: "0"` (leaving [.cargo/config.toml](.cargo/config.toml) untouched so local developer builds remain incremental), restore Cargo registry sources and filtered profile-scoped `target/` caches (excluding `incremental/`, `doc/`, `llvm-cov-target/`, `package/`, and `tmp/`) via [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml) (`./.github/actions/cargo-cache`), and cache pinned CLI binaries (`cargo-audit`, `cargo-llvm-cov`, `trunk`, `wasm-bindgen-cli`, and `cargo-packager`) under `~/.cache/ci-tools/` outside `~/.cargo/bin` via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml) (`./.github/actions/ci-tool-cache`).
 
-Run workspace builds, fast staged-scoped pre-commit checks (`lint-staged`), offline pre-push reverse-dependent checks (`lint-push`), and the full PR verification suite (`lint-all`) aligned with [CONTRIBUTING.md](CONTRIBUTING.md) and [crates/unified_verification/README.md](crates/unified_verification/README.md) via `xtask` (`xtask` builds `unified_verification` with Cargo's default `dev` profile locally to skip release fat LTO):
+Run workspace builds, fast staged-scoped pre-commit checks (`lint-staged`), offline pre-push reverse-dependent checks (`lint-push`), and the full PR verification suite (`lint-all`) aligned with [CONTRIBUTING.md](CONTRIBUTING.md) and [apps/unified_verification/README.md](apps/unified_verification/README.md) via `xtask` (`xtask` builds `unified_verification` with Cargo's default `dev` profile locally to skip release fat LTO):
 
 ```bash
 # Type-check and build all workspace members
@@ -71,7 +71,7 @@ cargo run -p xtask -- check-release-tag
 cargo run -p unified_verification --release -- check-duplicates
 cargo run -p xtask -- check-duplicates
 
-# Validate reachable public API signatures against crates/unified_verification/api_baseline.json
+# Validate reachable public API signatures against apps/unified_verification/api_baseline.json
 cargo run -p unified_verification --release -- check-api-drift
 cargo run -p xtask -- check-api-drift
 
@@ -138,7 +138,7 @@ run: |
 
 ## 3. Isolated Domain Feature Matrix (`test-features`)
 
-Both `deploy-pages` and `publish-release` in [.github/workflows/ci.yml](.github/workflows/ci.yml) wait for `feature-matrix`, because [math_explorer_gui/Cargo.toml](math_explorer_gui/Cargo.toml) enables all seven scientific domains by default. Verify isolated domain feature compilation and tests locally via `xtask`:
+Both `deploy-pages` and `publish-release` in [.github/workflows/ci.yml](.github/workflows/ci.yml) wait for `feature-matrix`, because [apps/math_explorer_gui/Cargo.toml](apps/math_explorer_gui/Cargo.toml) enables all seven scientific domains by default. Verify isolated domain feature compilation and tests locally via `xtask`:
 
 ```bash
 # Run core-only (--no-default-features), all seven isolated domains, and --all-features sequentially
@@ -155,7 +155,7 @@ In CI, all eight `feature-matrix` legs share a single `features-shared` Linux `d
 
 ## 4. Local WebAssembly (`Web/WASM`) & Pages Bundle Checks
 
-In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` restores pinned `trunk` (`0.22.2`) and `wasm-bindgen-cli` (`0.2.130`) binaries via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml), caches `~/.cache/trunk` (keyed by runner OS, `Cargo.lock`, and [math_explorer_gui/Trunk.toml](math_explorer_gui/Trunk.toml) for `wasm-opt` `version_123`), compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed `traceability_manifest.json`, local paper artifacts when present, and `favicon.ico` without standalone `Verification_Certificate.json` or duplicate `papers/*.pdf`, while running [scripts/compress_dist.sh](scripts/compress_dist.sh) to stamp `WASM_SOURCE_SIZE`, `WASM_BROTLI_SIZE`, and `WASM_GZIP_SIZE` into `bootstrap.js` and generate local `.gz`/`.br` assets for self-hosted servers and Playwright wire-progress smoke checks), enforces the 4 MB compressed bundle budget via temporary `brotli -9` and `gzip -9` streams in [scripts/verify_wasm_budget.sh](scripts/verify_wasm_budget.sh), executes browser `wasm32` unit tests and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, and uploads `wasm_web_dist` (excluding `.gz`/`.br` sidecars) on `refs/heads/main`. Subsequently, `deploy-pages` downloads `wasm_web_dist`, `compiled_papers`, and `verification-certificate-linux_artifact`, validates and injects the live `Verification_Certificate.json` object into `pages_dist/traceability_manifest.json`, strips any residual `.gz`/`.br` or standalone `Verification_Certificate.json` files, stages all 32 root PDFs at `pages_dist/{stem}.pdf` alongside `pages_dist/papers/index.html`, generates and verifies `pages_dist/SHA256SUMS` once across all served files, and publishes the GitHub Pages artifact.
+In [.github/workflows/ci.yml](.github/workflows/ci.yml), the `Web/WASM` leg of `build-and-test` restores pinned `trunk` (`0.22.2`) and `wasm-bindgen-cli` (`0.2.130`) binaries via [.github/actions/ci-tool-cache/action.yml](.github/actions/ci-tool-cache/action.yml), caches `~/.cache/trunk` (keyed by runner OS, `Cargo.lock`, and [apps/math_explorer_gui/Trunk.toml](apps/math_explorer_gui/Trunk.toml) for `wasm-opt` `version_123`), compiles the web application once with `trunk build --release` (which runs [scripts/finalize_web_dist.sh](scripts/finalize_web_dist.sh) during `post_build` to stage precomputed `traceability_manifest.json`, local paper artifacts when present, and `favicon.ico` without standalone `Verification_Certificate.json` or duplicate `papers/*.pdf`, while running [scripts/compress_dist.sh](scripts/compress_dist.sh) to stamp `WASM_SOURCE_SIZE`, `WASM_BROTLI_SIZE`, and `WASM_GZIP_SIZE` into `bootstrap.js` and generate local `.gz`/`.br` assets for self-hosted servers and Playwright wire-progress smoke checks), enforces the 4 MB compressed bundle budget via temporary `brotli -9` and `gzip -9` streams in [scripts/verify_wasm_budget.sh](scripts/verify_wasm_budget.sh), executes browser `wasm32` unit tests and Playwright headless Chromium CSP/fault-injection smoke checks via `cargo run -p xtask -- test-wasm --skip-build`, and uploads `wasm_web_dist` (excluding `.gz`/`.br` sidecars) on `refs/heads/main`. Subsequently, `deploy-pages` downloads `wasm_web_dist`, `compiled_papers`, and `verification-certificate-linux_artifact`, validates and injects the live `Verification_Certificate.json` object into `pages_dist/traceability_manifest.json`, strips any residual `.gz`/`.br` or standalone `Verification_Certificate.json` files, stages all 32 root PDFs at `pages_dist/{stem}.pdf` alongside `pages_dist/papers/index.html`, generates and verifies `pages_dist/SHA256SUMS` once across all served files, and publishes the GitHub Pages artifact.
 
 ```bash
 # 1. Install the WebAssembly Rust target, Trunk, wasm-bindgen-cli, compression utilities, and Playwright Chromium (Ubuntu / Debian)
@@ -171,12 +171,12 @@ cargo check --workspace --target wasm32-unknown-unknown --all-features --verbose
 cargo check --tests --workspace --target wasm32-unknown-unknown --all-features --verbose
 cargo clippy --workspace --lib --bins --tests --target wasm32-unknown-unknown --all-features -- -D warnings
 
-# 3. Run wasm32 browser unit tests, build math_explorer_gui/dist, verify the 4 MB budget, and run Playwright Chromium CSP & fault-injection smoke checks
+# 3. Run wasm32 browser unit tests, build apps/math_explorer_gui/dist, verify the 4 MB budget, and run Playwright Chromium CSP & fault-injection smoke checks
 cargo run -p xtask -- test-wasm
 
 # 4. Generate and verify a SHA256SUMS manifest across served web dist files (excluding local .gz/.br sidecars)
 (
-  cd math_explorer_gui/dist
+  cd apps/math_explorer_gui/dist
   files=()
   while IFS= read -r f; do
     [ -n "$f" ] && files+=("$f")
@@ -192,14 +192,14 @@ cargo run -p xtask -- test-wasm
 The `package` job in [.github/workflows/ci.yml](.github/workflows/ci.yml) defines a static three-OS matrix (`ubuntu-latest`/`deb`, `macos-latest`/`dmg`, and `windows-latest`/`wix`) so every workflow event posts deterministic `Package Installers` check runs across all three operating systems:
 
 - **Linux (`deb`)**: Runs on every `pull_request`, `merge_group`, `push`, and `workflow_dispatch` event.
-- **macOS (`dmg`) & Windows (`wix`)**: Because `pull_request` runs gate direct merges to `main` (without relying solely on `merge_group`), these legs run natively on `merge_group`, `main` pushes, `v*` tag pushes, `workflow_dispatch`, and any `pull_request` where `detect-changes` sets `installer_changed=true` — matching `crates/*` (after ignoring non-linked `crates/markdown_tests/*` and `crates/unified_verification/*`), `math_explorer_gui/*`, `math_explorer/*`, `egui_plot/*`, `proofs/*`, [LICENSE](LICENSE), `papers/*`, [Cargo.toml](Cargo.toml), `Cargo.lock`, [rust-toolchain.toml](rust-toolchain.toml), `.cargo/*`, `.github/actions/cargo-cache/*` (see [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml)), and [.github/workflows/ci.yml](.github/workflows/ci.yml), or when `pull_request` git diff falls back because `BASE_SHA` or `HEAD_SHA` is missing or unreachable. When a `pull_request` touches only paths outside those globs (such as `docs/*`, `AGENTS.md`, [CONTRIBUTING.md](CONTRIBUTING.md), `crates/markdown_tests/*`, or `crates/unified_verification/*`), `installer_changed` is `false` and the `macos-latest` and `windows-latest` legs route to `ubuntu-latest` to post passing check runs while skipping build, manifest, and upload steps via `if:`.
+- **macOS (`dmg`) & Windows (`wix`)**: Because `pull_request` runs gate direct merges to `main` (without relying solely on `merge_group`), these legs run natively on `merge_group`, `main` pushes, `v*` tag pushes, `workflow_dispatch`, and any `pull_request` where `detect-changes` sets `installer_changed=true` — matching `crates/*` and `apps/*` (after ignoring non-linked `crates/04_bindings/markdown_tests/*`, `apps/unified_verification/*`, and `apps/xtask/*`), `egui_plot/*`, `proofs/*`, [LICENSE](LICENSE), `papers/*`, [Cargo.toml](Cargo.toml), `Cargo.lock`, [rust-toolchain.toml](rust-toolchain.toml), `.cargo/*`, `.github/actions/cargo-cache/*` (see [.github/actions/cargo-cache/action.yml](.github/actions/cargo-cache/action.yml)), and [.github/workflows/ci.yml](.github/workflows/ci.yml), or when `pull_request` git diff falls back because `BASE_SHA` or `HEAD_SHA` is missing or unreachable. When a `pull_request` touches only paths outside those globs (such as `docs/*`, `AGENTS.md`, [CONTRIBUTING.md](CONTRIBUTING.md), `crates/04_bindings/markdown_tests/*`, `apps/unified_verification/*`, or `apps/xtask/*`), `installer_changed` is `false` and the `macos-latest` and `windows-latest` legs route to `ubuntu-latest` to post passing check runs while skipping build, manifest, and upload steps via `if:`.
 
 ### Workspace Version Synchronization, Pre-Release Tags & WiX Mapping
 
 Release versioning is centralized in `[workspace.package].version` in root [Cargo.toml](Cargo.toml) per [ADR 20261123](docs/adr/20261123-workspace-release-version-guards-and-wix-mapping.md):
 
-- **15 Release Crates (`version.workspace = true`)**: [math_explorer/Cargo.toml](math_explorer/Cargo.toml), [math_explorer_gui/Cargo.toml](math_explorer_gui/Cargo.toml), and the thirteen `crates/*` library/engine/domain crates (`math_rng`, `engine_linalg`, `math_commons`, `scientific_metadata`, `engine_diffeq`, `engine_pde`, `pure_math`, `domain_ai`, `domain_physics`, `domain_biology`, `domain_applied`, `domain_climate`, and `domain_epidemiology`) inherit `[workspace.package].version`. [math_explorer_gui/Cargo.toml](math_explorer_gui/Cargo.toml) omits `version` under `[package.metadata.packager]` so `cargo-packager` inherits `[package].version` alongside `WorkspaceEnvelope` (`CARGO_PKG_VERSION`). Vendored `egui_plot/Cargo.toml` preserves `version = "0.34.1"` for `[patch.crates-io]`, and the nine internal foundation/tooling crates retain `version = "0.1.0"`.
-- **`README.md` & Manifest Guard (`check-profiles`)**: Updating `[workspace.package].version` requires updating the shields.io version badge and `math_explorer` dependency snippet in [README.md](README.md). `check-profiles` enforces SemVer and WiX numeric bounds (`major <= 255`, `minor <= 255`, `patch <= 65535`, `revision <= 65535`), rejects `+build` metadata, enforces `version.workspace = true`, and rejects duplicate `[package.metadata.packager].version` keys.
+- **17 Release Crates (`version.workspace = true`)**: [crates/04_bindings/oxidizemath/Cargo.toml](crates/04_bindings/oxidizemath/Cargo.toml), [crates/04_bindings/math_explorer/Cargo.toml](crates/04_bindings/math_explorer/Cargo.toml), [apps/oxidize-cli/Cargo.toml](apps/oxidize-cli/Cargo.toml), [apps/math_explorer_gui/Cargo.toml](apps/math_explorer_gui/Cargo.toml), and the thirteen `crates/*` library/engine/domain crates (`math_rng`, `engine_linalg`, `math_commons`, `scientific_metadata`, `engine_diffeq`, `engine_pde`, `pure_math`, `domain_ai`, `domain_physics`, `domain_biology`, `domain_applied`, `domain_climate`, and `domain_epidemiology`) inherit `[workspace.package].version`. [apps/math_explorer_gui/Cargo.toml](apps/math_explorer_gui/Cargo.toml) omits `version` under `[package.metadata.packager]` so `cargo-packager` inherits `[package].version` alongside `WorkspaceEnvelope` (`CARGO_PKG_VERSION`). Vendored `egui_plot/Cargo.toml` preserves `version = "0.34.1"` for `[patch.crates-io]`, and the ten internal foundation/tooling crates retain `version = "0.1.0"`.
+- **`README.md` & Manifest Guard (`check-profiles`)**: Updating `[workspace.package].version` requires updating the shields.io version badge and `oxidizemath` dependency snippet in [README.md](README.md). `check-profiles` enforces SemVer and WiX numeric bounds (`major <= 255`, `minor <= 255`, `patch <= 65535`, `revision <= 65535`), rejects `+build` metadata, enforces `version.workspace = true`, and rejects duplicate `[package.metadata.packager].version` keys.
 - **Tag Parity, Named Pre-Releases & Ephemeral Windows WiX Mapping (`check-release-tag`)**: Both `pre-flight` and `publish-release` run `check-release-tag` (binding `github.ref` and `github.ref_name` through step `env:` blocks) to reject any `v*` tag that diverges from `[workspace.package].version` or carries `+build` metadata, while `detect-changes` emits matching `is_prerelease` and `wix_version` outputs so `package` runs in parallel with `pre-flight`. Named SemVer pre-releases map `alpha.N` to `1000 + N`, `beta.N` to `10000 + N`, and `rc.N` to `20000 + N` (`<= 65535`), emitting `is_prerelease=true` and `wix_version=MAJOR.MINOR.PATCH-<revision>` (for example `0.5.0-rc.1` -> `0.5.0-20001` -> WiX `0.5.0.20001`). Linux `.deb` and macOS `.dmg` retain `0.5.0-rc.1`, while only the ephemeral Windows `wix` job transiently sets `[package.metadata.packager].version` during `cargo packager`.
 - **Staged & Idempotent GitHub Releases (`publish-release`)**: New releases stage assets with `gh release create --draft --verify-tag` (plus `--prerelease` when `is_prerelease=true`) before promoting with `gh release edit --draft=false --verify-tag`; re-runs detect existing draft or published releases with `gh release view` and overwrite assets safely via `gh release upload --clobber`.
 
@@ -233,19 +233,19 @@ cargo binstall --no-confirm --disable-strategies compile cargo-packager@0.11.8
 
 ### Build Linux `.deb` Installer & SHA-256 Manifest
 
-[math_explorer_gui/Cargo.toml](math_explorer_gui/Cargo.toml) configures `before-packaging-command = "cargo build --release -p math_explorer_gui"` and `out-dir = "dist"` under `[package.metadata.packager]`, so `cargo packager` compiles the `--release` binary automatically and writes installers to `math_explorer_gui/dist` alongside a hidden `.cargo-packager` metadata directory. Because `product-name = "Math Explorer"` introduces a space in macOS `.dmg` filenames, normalize spaces to underscores on `*.dmg` files before generating `SHA256SUMS` so `gh release create` does not rewrite spaces to dots and invalidate `SHA256SUMS-dmg`:
+[apps/math_explorer_gui/Cargo.toml](apps/math_explorer_gui/Cargo.toml) configures `before-packaging-command = "cargo build --release -p math_explorer_gui"` and `out-dir = "dist"` under `[package.metadata.packager]`, so `cargo packager` compiles the `--release` binary automatically and writes installers to `apps/math_explorer_gui/dist` alongside a hidden `.cargo-packager` metadata directory. Because `product-name = "Math Explorer"` introduces a space in macOS `.dmg` filenames, normalize spaces to underscores on `*.dmg` files before generating `SHA256SUMS` so `gh release create` does not rewrite spaces to dots and invalidate `SHA256SUMS-dmg`:
 
 ```bash
 # 1. Build release GUI binary (via before-packaging-command) and package Debian installer
 cargo packager --release -p math_explorer_gui -f deb
 
 # 2. Inspect .deb control metadata and simulate installation
-dpkg-deb -I math_explorer_gui/dist/*.deb
-sudo dpkg --simulate -i math_explorer_gui/dist/*.deb
+dpkg-deb -I apps/math_explorer_gui/dist/*.deb
+sudo dpkg --simulate -i apps/math_explorer_gui/dist/*.deb
 
 # 3. Normalize space-containing .dmg filenames and verify SHA256SUMS (skipping .cargo-packager)
 (
-  cd math_explorer_gui/dist
+  cd apps/math_explorer_gui/dist
   shopt -s nullglob
   shopt -u dotglob
   for dmg in *.dmg; do
@@ -267,15 +267,15 @@ sudo dpkg --simulate -i math_explorer_gui/dist/*.deb
 )
 ```
 
-Clean up local `math_explorer_gui/dist` build outputs before committing so untracked web or installer binaries are not left in the workspace:
+Clean up local `apps/math_explorer_gui/dist` build outputs before committing so untracked web or installer binaries are not left in the workspace:
 
 ```bash
-rm -rf math_explorer_gui/dist
+rm -rf apps/math_explorer_gui/dist
 ```
 
 ## 6. Local Academic Paper Compilation Checks
 
-Because `traceability` only checks `.tex` filename presence in `papers/` and `.githooks/pre-commit` omits LaTeX builds so contributors do not need TeXLive for unrelated Rust commits — and because `pull_request` runs gate direct merges to `main` — [.github/workflows/ci.yml](.github/workflows/ci.yml) enforces full paper compilation in the `compile-papers` (`Compile Academic Papers`) job whenever `detect-changes` sets `papers_changed=true` on `pull_request` (diffs touching `papers/*`, `apps/xtask/*`, [traceability.toml](traceability.toml), [Verification_Certificate.json](Verification_Certificate.json), [Cargo.toml](Cargo.toml), `Cargo.lock`, [rust-toolchain.toml](rust-toolchain.toml), `.cargo/*`, `.github/actions/cargo-cache/*`, or [.github/workflows/ci.yml](.github/workflows/ci.yml), or when `pull_request` git diff falls back) and unconditionally on `merge_group`, `push`, and `workflow_dispatch`. Pull requests limited to paths outside those globs (such as `docs/*`, `crates/markdown_tests/*`, or `crates/unified_verification/*`) set `papers_changed=false` and skip `compile-papers`.
+Because `traceability` only checks `.tex` filename presence in `papers/` and `.githooks/pre-commit` omits LaTeX builds so contributors do not need TeXLive for unrelated Rust commits — and because `pull_request` runs gate direct merges to `main` — [.github/workflows/ci.yml](.github/workflows/ci.yml) enforces full paper compilation in the `compile-papers` (`Compile Academic Papers`) job whenever `detect-changes` sets `papers_changed=true` on `pull_request` (diffs touching `papers/*`, `apps/xtask/*`, [traceability.toml](traceability.toml), [Verification_Certificate.json](Verification_Certificate.json), [Cargo.toml](Cargo.toml), `Cargo.lock`, [rust-toolchain.toml](rust-toolchain.toml), `.cargo/*`, `.github/actions/cargo-cache/*`, or [.github/workflows/ci.yml](.github/workflows/ci.yml), or when `pull_request` git diff falls back) and unconditionally on `merge_group`, `push`, and `workflow_dispatch`. Pull requests limited to paths outside those globs (such as `docs/*`, `crates/04_bindings/markdown_tests/*`, or `apps/unified_verification/*`) set `papers_changed=false` and skip `compile-papers`.
 
 ### Prerequisites (Ubuntu / Debian)
 

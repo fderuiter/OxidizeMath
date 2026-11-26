@@ -1,0 +1,498 @@
+mod verify_suite;
+
+#[cfg(test)]
+pub use verify_suite::OptOutAllowEntry;
+pub use verify_suite::VerifySuiteConfig;
+
+use serde::Deserialize;
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+pub(crate) mod debt;
+pub(crate) use debt::VerificationDebtConfig;
+
+pub const WHITELIST_FILE_NAME: &str = "verification_whitelist.toml";
+
+pub const WORKSPACE_WHITELIST_CANDIDATES: &[&str] = &[
+    "verification_whitelist.toml",
+    "../../verification_whitelist.toml",
+];
+
+pub const ROOT_ONLY_WHITELIST_CANDIDATES: &[&str] = &["verification_whitelist.toml"];
+
+/// Unified top-level schema for `verification_whitelist.toml` shared by all verification gates.
+#[derive(Deserialize, Debug, Clone, Default)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct VerificationWhitelist {
+    #[serde(default)]
+    pub adr_verification: Option<AdrVerificationConfig>,
+    #[serde(default)]
+    pub doc_verification: Option<DocVerificationConfig>,
+    #[serde(default)]
+    pub entropy_guard: Option<EntropyGuardConfig>,
+    #[serde(default)]
+    pub missing_docs: Option<MissingDocsConfig>,
+    #[serde(default)]
+    pub verification_debt: Option<VerificationDebtConfig>,
+    #[serde(default)]
+    pub workflow_linter: Option<WorkflowLinterConfig>,
+    #[serde(default)]
+    pub verify_suite: Option<VerifySuiteConfig>,
+    #[serde(default)]
+    pub dead_code: Vec<DeadCodeEntry>,
+    #[serde(default)]
+    pub unused_dependencies: Vec<UnusedDependencyEntry>,
+}
+
+/// Configuration for `missing_docs` ratcheted caps loaded from `[missing_docs]`.
+#[derive(Deserialize, Debug, Clone, Default, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MissingDocsConfig {
+    /// Vendored workspace crates explicitly exempt from `missing_docs` AST checks (e.g., `["egui_plot"]`).
+    #[serde(default, alias = "vendored_allowlist")]
+    pub vendored_crates: Vec<String>,
+    /// Per-file maximum `#[allow(missing_docs)]` counts (`>= 1`).
+    #[serde(default, alias = "caps", alias = "max_counts")]
+    pub files: BTreeMap<String, usize>,
+}
+
+/// Configuration for `records` ADR verification loaded from `[adr_verification]`.
+#[derive(Deserialize, Debug, Clone, Default)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AdrVerificationConfig {
+    #[serde(
+        default,
+        alias = "legacy_allowlist",
+        alias = "duplicate_allowlist",
+        alias = "legacy_duplicate_files"
+    )]
+    pub allowlist: Option<Vec<String>>,
+}
+
+/// Configuration for `doc_audit` loaded from `[doc_verification]`.
+#[derive(Deserialize, Debug, Clone, Default)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DocVerificationConfig {
+    #[serde(default)]
+    pub allowlist: Option<Vec<String>>,
+    #[serde(default, alias = "approved_rust_ignore_fences")]
+    pub approved_ignore_fences: Option<BTreeMap<String, usize>>,
+}
+
+/// Configuration for `entropy_guard` loaded from `[entropy_guard]`.
+#[derive(Deserialize, Debug, Clone, Default)]
+#[serde(deny_unknown_fields)]
+pub struct EntropyGuardConfig {
+    #[serde(default, alias = "targets", alias = "paths", alias = "scan_targets")]
+    pub scan_paths: Option<Vec<String>>,
+    #[serde(default, alias = "extensions", alias = "file_extensions")]
+    pub target_extensions: Option<Vec<String>>,
+    #[serde(default, alias = "exemptions", alias = "path_exemptions")]
+    pub allowlist: Option<Vec<String>>,
+}
+
+/// Configuration for `workflow_linter` loaded from `verification_whitelist.toml`.
+#[derive(Deserialize, Debug, Clone, Default)]
+pub struct WorkflowLinterConfig {
+    /// Explicit job-level write permission exceptions for deployment workflows.
+    #[serde(default, alias = "allowed_job_permissions")]
+    pub exceptions: Vec<JobPermissionException>,
+}
+
+/// Scoped exception allowing specific write permissions on a named job in a specific workflow.
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct JobPermissionException {
+    /// Relative path to the workflow file (e.g., `.github/workflows/pages.yml`).
+    pub workflow: String,
+    /// Job identifier within the `jobs` mapping (e.g., `deploy`).
+    pub job: String,
+    /// Permission scopes explicitly permitted to use `write` on this job (e.g., `["pages", "id-token"]`).
+    #[serde(default, alias = "permissions", alias = "write_scopes")]
+    pub allow_write: Vec<String>,
+    /// Optional human-readable justification for the exception.
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// Authorized dead-code suppression entry loaded from `[[dead_code]]`.
+#[derive(Deserialize, Debug, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct DeadCodeEntry {
+    pub(crate) file: String,
+    pub(crate) identifier: Option<String>,
+}
+
+/// Authorized unused dependency entry loaded from `[[unused_dependencies]]`.
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct UnusedDependencyEntry {
+    #[serde(rename = "crate")]
+    pub(crate) krate: String,
+    pub(crate) dependency: String,
+    pub(crate) reason: String,
+}
+
+/// Resolves the first existing whitelist path from an explicit slice of candidate paths.
+pub(crate) fn resolve_whitelist_path<P: AsRef<Path>>(candidates: &[P]) -> Option<PathBuf> {
+    candidates
+        .iter()
+        .map(AsRef::as_ref)
+        .find(|candidate| candidate.exists())
+        .map(Path::to_path_buf)
+}
+
+/// Locates `verification_whitelist.toml` relative to the current working directory or workspace root.
+pub fn find_whitelist_path() -> Option<PathBuf> {
+    resolve_whitelist_path(WORKSPACE_WHITELIST_CANDIDATES).or_else(|| {
+        oxidize_core::workspace::find_workspace_root()
+            .map(|root| root.join(WHITELIST_FILE_NAME))
+            .filter(|candidate| candidate.exists())
+    })
+}
+
+fn validate_missing_docs_config(cfg: &MissingDocsConfig, path: &Path) -> Result<(), String> {
+    if cfg.vendored_crates.iter().any(|c| c.trim().is_empty()) {
+        return Err(format!(
+            "Invalid [missing_docs] vendored_crates in {}: entries must be non-empty",
+            path.display()
+        ));
+    }
+    for (file, &cap) in &cfg.files {
+        if file.trim().is_empty() || cap == 0 {
+            return Err(format!(
+                "Invalid [missing_docs.files] entry `{file}` in {}: path must be non-empty and cap must be >= 1",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn read_and_parse_whitelist(path: &Path) -> Result<VerificationWhitelist, String> {
+    let content = fs::read_to_string(path)
+        .map_err(|err| format!("Failed to read {}: {}", path.display(), err))?;
+    let parsed = toml::from_str::<VerificationWhitelist>(&content)
+        .map_err(|err| format!("Failed to parse {}: {}", path.display(), err))?;
+    for entry in &parsed.unused_dependencies {
+        if entry.krate.trim().is_empty()
+            || entry.dependency.trim().is_empty()
+            || entry.reason.trim().is_empty()
+        {
+            return Err(format!(
+                "Invalid [[unused_dependencies]] entry in {}: crate, dependency, and reason must be non-empty",
+                path.display()
+            ));
+        }
+    }
+    if let Some(cfg) = &parsed.missing_docs {
+        validate_missing_docs_config(cfg, path)?;
+    }
+    if let Some(cfg) = &parsed.verification_debt {
+        debt::validate_verification_debt_config(cfg, path)?;
+    }
+    if let Some(fences) = parsed
+        .doc_verification
+        .as_ref()
+        .and_then(|d| d.approved_ignore_fences.as_ref())
+    {
+        for (file, &cap) in fences {
+            if file.trim().is_empty() || cap == 0 {
+                return Err(format!(
+                    "Invalid [doc_verification.approved_ignore_fences] entry `{file}` in {}: path must be non-empty and cap must be >= 1",
+                    path.display()
+                ));
+            }
+        }
+    }
+    Ok(parsed)
+}
+
+/// Loads `verification_whitelist.toml` strictly, failing closed on read errors or invalid TOML.
+///
+/// When `explicit_path` is `None` and no path in `candidates` exists, returns default configuration.
+pub(crate) fn load_whitelist_strict<P: AsRef<Path>>(
+    explicit_path: Option<&Path>,
+    candidates: &[P],
+) -> Result<VerificationWhitelist, String> {
+    if let Some(path) = explicit_path {
+        return read_and_parse_whitelist(path);
+    }
+    let Some(resolved) = resolve_whitelist_path(candidates) else {
+        return Ok(VerificationWhitelist::default());
+    };
+    read_and_parse_whitelist(&resolved)
+}
+
+/// Loads `verification_whitelist.toml` with fallback semantics, returning defaults when missing or invalid.
+pub(crate) fn load_whitelist_or_default<P: AsRef<Path>>(
+    explicit_path: Option<&Path>,
+    candidates: &[P],
+) -> VerificationWhitelist {
+    load_whitelist_strict(explicit_path, candidates).unwrap_or_default()
+}
+
+/// Converts a path lossily to UTF-8 and replaces backslashes with forward slashes.
+pub(crate) fn lossy_slash_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+/// Configurable options for lossy path matching across verification gates.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PathMatchOptions {
+    pub trim_dot_slash: bool,
+    pub require_non_empty: bool,
+    pub match_file_name: bool,
+}
+
+/// Resolves `<package_name>:<crate_rel_path>` or bare `<package_name>` to a workspace-relative slash path.
+pub(crate) fn expand_package_pattern_in_ws(ws_root: &Path, pattern: &str) -> Option<String> {
+    if let Some((pkg, rel)) = pattern.split_once(':') {
+        let member_dir =
+            oxidize_core::workspace::find_package_member_path_std(ws_root, pkg.trim())?;
+        let clean_rel = rel.trim().trim_start_matches("./").trim_start_matches('/');
+        if clean_rel.is_empty() {
+            return Some(member_dir);
+        }
+        return Some(format!("{member_dir}/{clean_rel}"));
+    }
+    if !pattern.contains('/') && !pattern.contains('.') && !pattern.trim().is_empty() {
+        return oxidize_core::workspace::find_package_member_path_std(ws_root, pattern.trim());
+    }
+    None
+}
+
+/// Resolves `<package_name>:<crate_rel_path>` or bare `<package_name>` against the active workspace root.
+pub(crate) fn expand_package_pattern(pattern: &str) -> Option<String> {
+    let ws_root = crate::manifest_cache::workspace_root_dir();
+    expand_package_pattern_in_ws(&ws_root, pattern)
+}
+
+/// Matches `path` against `pattern` using lossy slash normalization, package-keyed expansion, and per-gate matching flags.
+pub(crate) fn path_matches_lossy(path: &Path, pattern: &str, opts: PathMatchOptions) -> bool {
+    let raw_actual = lossy_slash_path(path);
+    let norm_actual = if opts.trim_dot_slash {
+        raw_actual.trim_start_matches("./")
+    } else {
+        raw_actual.as_str()
+    };
+
+    let raw_expected = pattern.replace('\\', "/");
+    let norm_expected = if opts.trim_dot_slash {
+        raw_expected.trim_start_matches("./")
+    } else {
+        raw_expected.as_str()
+    };
+
+    if opts.require_non_empty && norm_expected.is_empty() {
+        return false;
+    }
+
+    if norm_actual == norm_expected
+        || norm_actual.ends_with(&format!("/{norm_expected}"))
+        || (opts.match_file_name
+            && path.file_name().and_then(|f| f.to_str()) == Some(norm_expected))
+    {
+        return true;
+    }
+
+    let ws_root = oxidize_core::workspace::find_workspace_root_from(path)
+        .unwrap_or_else(crate::manifest_cache::workspace_root_dir);
+    if let Some(expanded) = expand_package_pattern_in_ws(&ws_root, norm_expected) {
+        let exp_trimmed = expanded.trim_end_matches('/');
+        if norm_actual == exp_trimmed || norm_actual.ends_with(&format!("/{exp_trimmed}")) {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::test_utils::TempTestDir;
+
+    #[test]
+    fn test_resolve_whitelist_path_respects_candidate_order() {
+        let dir = TempTestDir::new("whitelist_candidates");
+        let missing = dir.join("missing.toml");
+        let first = dir.join("first.toml");
+        let second = dir.join("second.toml");
+        fs::write(&second, "").unwrap();
+        assert_eq!(
+            resolve_whitelist_path(&[&missing, &first, &second]),
+            Some(second.clone())
+        );
+
+        fs::write(&first, "").unwrap();
+        assert_eq!(
+            resolve_whitelist_path(&[&missing, &first, &second]),
+            Some(first)
+        );
+        assert_eq!(resolve_whitelist_path(&[&missing]), None);
+    }
+
+    #[test]
+    fn test_strict_and_fallback_loaders_preserve_aliases_and_errors() {
+        let dir = TempTestDir::new("whitelist_loaders");
+        let valid = dir.join("valid.toml");
+        fs::write(
+            &valid,
+            concat!(
+                "[adr_verification]\nallowlist = [\"docs/adr/0002-portable-build-paths.md\"]\n",
+                "[doc_verification]\nallowlist = [\"crates/demo\"]\n",
+                "[entropy_guard]\nscan_targets = [\"crates\"]\n",
+                "file_extensions = [\"rs\"]\npath_exemptions = [\"allow.rs\"]\n",
+                "[missing_docs]\nvendored_crates = [\"egui_plot\"]\n",
+                "[missing_docs.files]\n\"crates/demo/src/lib.rs\" = 2\n",
+                "[[workflow_linter.allowed_job_permissions]]\n",
+                "workflow = \".github/workflows/ci.yml\"\njob = \"deploy\"\nwrite_scopes = [\"pages\"]\n",
+                "[[dead_code]]\nfile = \"crates/demo/src/lib.rs\"\nidentifier = \"Item\"\n",
+                "[[unused_dependencies]]\ncrate = \"crates/demo\"\ndependency = \"getrandom\"\nreason = \"wasm js feature\"\n",
+            ),
+        )
+        .unwrap();
+
+        let parsed = load_whitelist_strict(Some(&valid), &[] as &[&Path]).unwrap();
+        assert_eq!(
+            parsed.adr_verification.unwrap().allowlist,
+            Some(vec!["docs/adr/0002-portable-build-paths.md".to_string()])
+        );
+        assert_eq!(
+            parsed.doc_verification.unwrap().allowlist,
+            Some(vec!["crates/demo".to_string()])
+        );
+        assert_eq!(
+            parsed.entropy_guard.unwrap().allowlist,
+            Some(vec!["allow.rs".to_string()])
+        );
+        assert_eq!(
+            parsed.workflow_linter.unwrap().exceptions[0].allow_write,
+            vec!["pages".to_string()]
+        );
+        assert_eq!(parsed.dead_code.len(), 1);
+        assert_eq!(parsed.unused_dependencies.len(), 1);
+        let md_cfg = parsed.missing_docs.unwrap();
+        assert_eq!(md_cfg.vendored_crates, vec!["egui_plot".to_string()]);
+        assert_eq!(md_cfg.files.get("crates/demo/src/lib.rs"), Some(&2));
+
+        let zero_cap = dir.join("zero_cap.toml");
+        fs::write(
+            &zero_cap,
+            "[missing_docs.files]\n\"crates/demo/src/lib.rs\" = 0\n",
+        )
+        .unwrap();
+        assert!(load_whitelist_strict(Some(&zero_cap), &[] as &[&Path]).is_err());
+
+        let empty_reason = dir.join("empty_reason.toml");
+        fs::write(
+            &empty_reason,
+            "[[unused_dependencies]]\ncrate = \"crates/demo\"\ndependency = \"getrandom\"\nreason = \"   \"\n",
+        )
+        .unwrap();
+        assert!(load_whitelist_strict(Some(&empty_reason), &[] as &[&Path]).is_err());
+
+        let invalid = dir.join("invalid.toml");
+        fs::write(&invalid, "[broken").unwrap();
+        assert!(load_whitelist_strict(Some(&invalid), &[] as &[&Path]).is_err());
+        let fallback = load_whitelist_or_default(Some(&invalid), &[] as &[&Path]);
+        assert!(fallback.doc_verification.is_none());
+        assert!(fallback.dead_code.is_empty());
+    }
+
+    #[test]
+    fn test_path_matches_lossy_per_gate_flags() {
+        let entropy_opts = PathMatchOptions {
+            trim_dot_slash: true,
+            require_non_empty: false,
+            match_file_name: true,
+        };
+        assert!(path_matches_lossy(
+            Path::new("./crates/foo/bar.rs/"),
+            "bar.rs",
+            entropy_opts
+        ));
+
+        let workflow_opts = PathMatchOptions {
+            trim_dot_slash: true,
+            require_non_empty: true,
+            match_file_name: false,
+        };
+        assert!(!path_matches_lossy(
+            Path::new(".github/workflows/ci.yml"),
+            "",
+            workflow_opts
+        ));
+        assert!(!path_matches_lossy(
+            Path::new(".github/workflows/ci.yml"),
+            "./",
+            workflow_opts
+        ));
+        assert!(!path_matches_lossy(
+            Path::new(".github/workflows/ci.yml/"),
+            "ci.yml",
+            workflow_opts
+        ));
+        assert!(path_matches_lossy(
+            Path::new("./.github/workflows/ci.yml"),
+            ".github\\workflows\\ci.yml",
+            workflow_opts
+        ));
+
+        let policy_opts = PathMatchOptions {
+            trim_dot_slash: false,
+            require_non_empty: false,
+            match_file_name: false,
+        };
+        assert!(!path_matches_lossy(
+            Path::new("crates/foo/lib.rs"),
+            "./crates/foo/lib.rs",
+            policy_opts
+        ));
+        assert!(path_matches_lossy(
+            Path::new("root/crates/foo/lib.rs"),
+            "crates\\foo\\lib.rs",
+            policy_opts
+        ));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_path_matches_lossy_preserves_non_utf8_prefix_segments() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let bad_dir = Path::new(OsStr::from_bytes(b"/tmp/non_utf8_\xff_dir"));
+        let full_path = bad_dir.join("crates/demo/src/lib.rs");
+        let opts = PathMatchOptions {
+            trim_dot_slash: true,
+            require_non_empty: true,
+            match_file_name: false,
+        };
+        assert!(path_matches_lossy(
+            &full_path,
+            "crates/demo/src/lib.rs",
+            opts
+        ));
+    }
+
+    #[test]
+    fn test_crate_prefix_for_file_supports_nested_multi_segment_crates() {
+        assert_eq!(
+            debt::crate_prefix_for_file("math_explorer_gui/src/tabs/tests/mod.rs"),
+            "math_explorer_gui"
+        );
+        assert_eq!(
+            debt::crate_prefix_for_file("crates/pure_math/src/pure_math/mod.rs"),
+            "crates/pure_math"
+        );
+        assert_eq!(
+            debt::crate_prefix_for_file("crates/02_engines/engine_linalg/src/lu.rs"),
+            "crates/02_engines/engine_linalg"
+        );
+        assert_eq!(
+            debt::crate_prefix_for_file("crates/02_engines/engine_linalg/src/tests.rs"),
+            "crates/02_engines/engine_linalg"
+        );
+    }
+}
