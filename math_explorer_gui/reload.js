@@ -572,6 +572,9 @@
     const STREAM_TRUNCATION_PATTERN =
         /stream truncated|truncated stream|stream interrupted|stream closed early|ended early|empty response|0 bytes received|unexpected eof|unexpected end of|premature eof|incomplete download|incomplete transfer|err_incomplete_chunked_encoding|err_content_decoding_failed|err_http2_protocol_error|failed to read from a readablestream|buffersource argument is empty|fell off end|extends past end of the module/i;
 
+    const NON_WASM_RESPONSE_PATTERN =
+        /unexpected content-type|unexpected response mime type|unsupported mime type|incorrect response mime type|disallowed mime type|not a valid javascript mime type|mime type of|expected ['"]?application\/wasm['"]?|non-webassembly response|lacks \\0asm binary header/i;
+
     const FIREFOX_INTERNAL_ERROR_PATTERN =
         /internalerror|out of memory|too much recursion|allocation size overflow/i;
 
@@ -595,6 +598,7 @@
         }
         if (
             STREAM_TRUNCATION_PATTERN.test(text) ||
+            NON_WASM_RESPONSE_PATTERN.test(text) ||
             /http\s+[45]\d\d|status code is not ok|failed to fetch|networkerror|network error|load failed|error loading dynamically imported module|importing a module script failed|failed to load module|dynamically imported module|aborted|aborterror|err_aborted|err_failed|err_connection|err_internet|err_content_length_mismatch|failed to load required startup|failed to load startup/i.test(
                 text
             )
