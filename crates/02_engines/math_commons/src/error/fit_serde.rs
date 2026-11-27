@@ -1,7 +1,7 @@
 // [cite:math_commons]
 //! Zero-allocation `#![no_std]` `Deserialize` implementation for [`super::FitError`].
 
-use super::{FitError, LinalgError};
+use super::FitError;
 
 const KNOWN_INVALID_DOMAIN_REASONS: &[&str] = &[
     "non-finite exponential seed parameters",
@@ -74,7 +74,6 @@ enum FitErrorRepr {
     NonConvergence {
         iterations: usize,
     },
-    Linalg(LinalgError),
 }
 
 impl From<FitErrorRepr> for FitError {
@@ -89,7 +88,6 @@ impl From<FitErrorRepr> for FitError {
             } => Self::InvalidDomain { reason },
             FitErrorRepr::SingularMatrix => Self::SingularMatrix,
             FitErrorRepr::NonConvergence { iterations } => Self::NonConvergence { iterations },
-            FitErrorRepr::Linalg(err) => Self::Linalg(err),
         }
     }
 }

@@ -12,6 +12,7 @@ traceability = true
 
 [dependencies]
 math_commons = { path = "../../02_engines/math_commons" }
+math_memory = { path = "../../00_foundation/math_memory", features = ["std"] }
 diagnostics = { path = "../../01_core/diagnostics" }
 engine_diffeq = { path = "../../02_engines/engine_diffeq" }
 engine_linalg = { path = "../../02_engines/engine_linalg" }
@@ -52,6 +53,7 @@ serde = [
     "engine_linalg/serde",
     "engine_pde/serde",
     "math_commons/serde",
+    "math_memory/serde",
     "pure_math?/serde",
     "nalgebra?/serde-serialize",
     "num-complex?/serde",

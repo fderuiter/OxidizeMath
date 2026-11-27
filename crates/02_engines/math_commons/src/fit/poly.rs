@@ -105,6 +105,91 @@ fn scan_poly_domain<P: PointSeries + ?Sized>(
     (finite_count, valid_count, sum_tx, sum_ty, min_tx, max_tx)
 }
 
+struct StackPolyQr {
+    r: [[f64; 5]; 5],
+    qty: [f64; 5],
+    ncols: usize,
+    nrows: usize,
+}
+
+impl StackPolyQr {
+    fn new(ncols: usize) -> Result<Self, FitError> {
+        if ncols == 0 || ncols > 5 {
+            return Err(FitError::SingularMatrix);
+        }
+        Ok(Self {
+            r: [[0.0; 5]; 5],
+            qty: [0.0; 5],
+            ncols,
+            nrows: 0,
+        })
+    }
+
+    fn push_row(&mut self, row: &[f64], rhs: f64) -> Result<(), FitError> {
+        if row.len() != self.ncols || !rhs.is_finite() || row.iter().any(|v| !v.is_finite()) {
+            return Err(FitError::SingularMatrix);
+        }
+        let mut work = [0.0_f64; 5];
+        work[..self.ncols].copy_from_slice(row);
+        let mut y = rhs;
+        for j in 0..self.ncols {
+            let xj = work[j];
+            if xj == 0.0 {
+                continue;
+            }
+            let rjj = self.r[j][j];
+            let hyp = libm::hypot(rjj, xj);
+            let c = rjj / hyp;
+            let s = xj / hyp;
+            self.r[j][j] = hyp;
+            for (r_jk, work_k) in self.r[j][(j + 1)..self.ncols]
+                .iter_mut()
+                .zip(work[(j + 1)..self.ncols].iter_mut())
+            {
+                let old_r = *r_jk;
+                let old_w = *work_k;
+                *r_jk = c * old_r + s * old_w;
+                *work_k = -s * old_r + c * old_w;
+            }
+            let qj = self.qty[j];
+            self.qty[j] = c * qj + s * y;
+            y = -s * qj + c * y;
+        }
+        self.nrows += 1;
+        Ok(())
+    }
+
+    fn solve(&self, rel_tol: f64) -> Result<[f64; 5], FitError> {
+        if self.nrows < self.ncols {
+            return Err(FitError::SingularMatrix);
+        }
+        let mut max_diag = 0.0_f64;
+        for i in 0..self.ncols {
+            max_diag = max_diag.max(Float::abs(self.r[i][i]));
+        }
+        if max_diag == 0.0 {
+            return Err(FitError::SingularMatrix);
+        }
+        let thresh = rel_tol.max((self.nrows as f64) * f64::EPSILON) * max_diag;
+        let mut sol = [0.0_f64; 5];
+        for i in (0..self.ncols).rev() {
+            let diag = self.r[i][i];
+            if Float::abs(diag) <= thresh {
+                return Err(FitError::SingularMatrix);
+            }
+            let mut sum = self.qty[i];
+            for (&rij, &xj) in self.r[i][(i + 1)..self.ncols]
+                .iter()
+                .zip(sol[(i + 1)..self.ncols].iter())
+            {
+                sum -= rij * xj;
+            }
+            sol[i] = sum / diag;
+        }
+        Ok(sol)
+    }
+}
+
 fn solve_centered_poly_system<P: PointSeries + ?Sized>(
     points: &P,
     deg: usize,
@@ -114,7 +199,7 @@ fn solve_centered_poly_system<P: PointSeries + ?Sized>(
     let required = deg + 1;
     let (log_x, log_y) = axes;
     let (u_mean, u_scale) = center_scale;
-    let mut qr = engine_linalg::StreamingQr::<f64, 5>::new(required)?;
+    let mut qr = StackPolyQr::new(required)?;
 
     for idx in 0..points.len() {
         let p = points.point_at(idx);
@@ -136,7 +221,7 @@ fn solve_centered_poly_system<P: PointSeries + ?Sized>(
         qr.push_row(&row[..required], ty)?;
     }
 
-    Ok(qr.solve(1e-13)?)
+    qr.solve(1e-13)
 }
 
 fn uncenter_polynomial_coeffs(
@@ -257,15 +342,60 @@ pub(super) fn solve_dense_n_raw<const N: usize>(
     if n == 0 || n > N || n > 16 {
         return Err(FitError::SingularMatrix);
     }
-    let mut flat = [0.0_f64; 256];
-    for (r, row) in mat.iter().enumerate().take(n) {
-        let dst_start = r * n;
-        flat[dst_start..(dst_start + n)].copy_from_slice(&row[..n]);
+    let mut b = [0.0_f64; 16];
+    let mut max_abs = 0.0_f64;
+    for r in 0..n {
+        if !rhs[r].is_finite() {
+            return Err(FitError::SingularMatrix);
+        }
+        b[r] = rhs[r];
+        for &v in &mat[r][..n] {
+            if !v.is_finite() {
+                return Err(FitError::SingularMatrix);
+            }
+            max_abs = max_abs.max(Float::abs(v));
+        }
     }
-    let mut pivots = [0_usize; 16];
-    engine_linalg::lu_factor_in_place(&mut flat[..(n * n)], n, &mut pivots[..n], 1e-12)?;
+    let eff_tol = 1e-12_f64.max((n as f64) * f64::EPSILON * max_abs);
+    for k in 0..n {
+        let mut piv_row = k;
+        let mut piv_abs = Float::abs(mat[k][k]);
+        for (r, row) in mat.iter().enumerate().take(n).skip(k + 1) {
+            let cand = Float::abs(row[k]);
+            if cand > piv_abs {
+                piv_abs = cand;
+                piv_row = r;
+            }
+        }
+        if piv_abs <= eff_tol || piv_abs == 0.0 {
+            return Err(FitError::SingularMatrix);
+        }
+        if piv_row != k {
+            mat.swap(k, piv_row);
+            b.swap(k, piv_row);
+        }
+        let (piv_part, elim_part) = mat[..n].split_at_mut(k + 1);
+        let piv_slice = &piv_part[k];
+        let piv = piv_slice[k];
+        for (row_offset, row_i) in elim_part.iter_mut().enumerate() {
+            let mult = row_i[k] / piv;
+            b[k + 1 + row_offset] -= mult * b[k];
+            for (rij, &ukj) in row_i[(k + 1)..n]
+                .iter_mut()
+                .zip(piv_slice[(k + 1)..n].iter())
+            {
+                *rij -= mult * ukj;
+            }
+        }
+    }
     let mut x = [0.0_f64; N];
-    engine_linalg::lu_solve_factored(&flat[..(n * n)], n, &pivots[..n], &rhs[..n], &mut x[..n])?;
+    for i in (0..n).rev() {
+        let mut sum = b[i];
+        for j in (i + 1)..n {
+            sum -= mat[i][j] * x[j];
+        }
+        x[i] = sum / mat[i][i];
+    }
     Ok(x)
 }
 

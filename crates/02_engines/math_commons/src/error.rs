@@ -2,8 +2,8 @@
 #[cfg(feature = "std")]
 pub use crate::ast::{EvalError, GlslError, LexError, ParseError, ShaderEmitError};
 use crate::math_kernel::types::Dimension;
-pub use engine_linalg::LinalgError;
 pub use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+pub use math_memory::ArenaError;
 use thiserror::Error;
 
 #[cfg(feature = "serde")]
@@ -250,10 +250,33 @@ pub enum FitError {
         /// Number of iterations executed before termination.
         iterations: usize,
     },
+}
 
-    /// Underlying `#![no_std]` linear algebra engine failure preserving causal `source()`.
-    #[error("{0}")]
-    Linalg(#[from] LinalgError),
+impl From<ArenaError> for MathError {
+    fn from(err: ArenaError) -> Self {
+        match err {
+            ArenaError::InsufficientBytes {
+                required,
+                available,
+                ..
+            } => Self::WorkspaceTooSmall {
+                required,
+                available,
+            },
+            ArenaError::IndexOutOfBounds { index, len } => Self::WorkspaceTooSmall {
+                required: index.saturating_add(1),
+                available: len,
+            },
+            ArenaError::InvalidAlignment { .. }
+            | ArenaError::ArithmeticOverflow
+            | ArenaError::InvalidCheckpoint { .. }
+            | ArenaError::AllocationFailed { .. }
+            | ArenaError::RegionOutOfOrder { .. } => Self::WorkspaceTooSmall {
+                required: usize::MAX,
+                available: 0,
+            },
+        }
+    }
 }
 
 impl Diagnostic for FitError {
@@ -262,9 +285,6 @@ impl Diagnostic for FitError {
     }
 
     fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
-        if let Self::Linalg(linalg_err) = self {
-            linalg_err.visit_fields(visitor);
-        }
         visitor.record_str("error_type", "FitError");
         visitor.record_display("description", self);
         match self {
@@ -287,9 +307,6 @@ impl Diagnostic for FitError {
             Self::NonConvergence { iterations } => {
                 visitor.record_str("code", "MATH-FIT-005");
                 visitor.record_usize("iterations", *iterations);
-            }
-            Self::Linalg(_) => {
-                visitor.record_str("code", "MATH-FIT-006");
             }
         }
     }
@@ -376,26 +393,26 @@ mod tests {
     }
 
     #[test]
-    fn zero_allocation_diagnostic_visitation_for_linalg_math_and_fit() {
-        let linalg_err = LinalgError::WorkspaceTooSmall {
+    fn zero_allocation_diagnostic_visitation_for_arena_math_and_fit() {
+        let arena_err = ArenaError::InsufficientBytes {
             required: 32,
             available: 16,
+            align: 8,
         };
         let math_err = MathError::DimensionMismatch {
             expected: Dimension(3),
             actual: Dimension(2),
         };
-        let fit_err = FitError::from(linalg_err);
-        assert!(fit_err.source().is_some());
+        let fit_err = FitError::SingularMatrix;
 
         let (count, _metrics) = VerifiedEngine::run_verified(|| {
             let mut v = NullVisitor(0);
-            linalg_err.visit_fields(&mut v);
+            arena_err.visit_fields(&mut v);
             math_err.visit_fields(&mut v);
             fit_err.visit_fields(&mut v);
             v.0
         });
-        assert!(count >= 12);
+        assert!(count >= 9);
     }
 
     #[test]
@@ -440,7 +457,7 @@ mod tests {
                 actual: Dimension(3),
             }),
             MathCommonsError::from(FitError::SingularMatrix),
-            MathCommonsError::from(LinalgError::SingularMatrix),
+            MathCommonsError::from(ArenaError::ArithmeticOverflow),
             MathCommonsError::from(lex),
             MathCommonsError::from(parse),
             MathCommonsError::from(unknown_fn),

@@ -200,17 +200,13 @@ mod active {
             },
             FitError::SingularMatrix,
             FitError::NonConvergence { iterations: 200 },
-            FitError::Linalg(crate::error::LinalgError::WorkspaceTooSmall {
-                required: 16,
-                available: 8,
-            }),
         ];
         for err in fit_errors {
             assert_eq!(roundtrip_json(&err), err);
         }
 
         let no_std_umbrella =
-            crate::error::MathCommonsError::from(crate::error::LinalgError::SingularMatrix);
+            crate::error::MathCommonsError::from(crate::error::ArenaError::ArithmeticOverflow);
         assert_eq!(roundtrip_json(&no_std_umbrella), no_std_umbrella);
         assert_eq!(
             roundtrip_json(&crate::error::Severity::Warning),

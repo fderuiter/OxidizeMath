@@ -1,11 +1,11 @@
 // [cite:engine_pde]
 use crate::{
     BoundaryCondition, ExplicitSpdeStencilStepper, FusedStencilStepper, OxidizeRng, PdeError,
-    SemiImplicitFourierStepper, SpdeNoiseKind, SplitStepSpdeStencilStepper, StencilOperators,
-    try_dealias_1d_spectrum, try_fft_1d_inplace, try_inject_additive_noise_1d,
+    ScalarWorkspace, SemiImplicitFourierStepper, SpdeNoiseKind, SplitStepSpdeStencilStepper,
+    StencilOperators, try_dealias_1d_spectrum, try_fft_1d_inplace, try_inject_additive_noise_1d,
 };
 use math_commons::error::MathError;
-use math_commons::math_kernel::types::{SolverWorkspace, StepSize};
+use math_commons::math_kernel::types::StepSize;
 use math_diagnostics::{Diagnostic, Severity};
 
 fn assert_stack_error_traits<
@@ -94,7 +94,7 @@ fn fft_and_fourier_try_companions_validate_radix2_and_workspace() {
     let stepper = SemiImplicitFourierStepper::try_new_1d(0.25).unwrap();
     let mut phi = [0.1_f64; 8];
     let mut tiny_buf = [0.0_f64; 4];
-    let mut ws = SolverWorkspace::new(&mut tiny_buf);
+    let mut ws = ScalarWorkspace::new(&mut tiny_buf);
     let mut rng = OxidizeRng::new(7);
     assert!(matches!(
         stepper.try_step_cahn_hilliard_1d(&mut phi, 1.0, 0.1, 0.0, 0.01, &mut ws, &mut rng),
@@ -109,7 +109,7 @@ fn spde_noise_and_stencil_steppers_validate_inputs() {
         ExplicitSpdeStencilStepper::new(ops, BoundaryCondition::Periodic, SpdeNoiseKind::None);
     let mut u = [1.0_f64; 4];
     let mut scratch = [0.0_f64; 2];
-    let mut ws = SolverWorkspace::new(&mut scratch);
+    let mut ws = ScalarWorkspace::new(&mut scratch);
     let mut rng = OxidizeRng::new(11);
     assert_eq!(
         stepper.try_step_1d(&mut u, -0.1, |_, v, _, _| -v, &mut ws, &mut rng),

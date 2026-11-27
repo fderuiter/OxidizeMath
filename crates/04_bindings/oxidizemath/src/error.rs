@@ -8,6 +8,7 @@ pub use math_commons::error::{
     EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
     ShaderEmitError,
 };
+pub use math_memory::ArenaError;
 
 #[cfg(feature = "ai")]
 pub use domain_ai::error::AIError;
@@ -55,6 +56,8 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum Error {
+    /// Foundational `#![no_std]` byte-arena error.
+    Arena(ArenaError),
     /// Diagnostic bus emission error.
     Diagnostic(DiagnosticError),
     /// Differential-equation and stochastic integrator engine error.

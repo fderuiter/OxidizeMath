@@ -25,9 +25,10 @@ pub mod __doctest_facade {
             QueueingError, RiskError, StochasticError, Su11HyperbolicError, TdaError, TensorError,
             TransformError, ZipError,
         };
+        pub use engine_linalg::LinalgError;
         pub use math_commons::error::{
-            EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError,
-            MathResult, ParseError, ShaderEmitError,
+            EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult,
+            ParseError, ShaderEmitError,
         };
         pub type Result<T, E = Error> = std::result::Result<T, E>;
     }
@@ -51,6 +52,7 @@ pub mod __doctest_facade {
     pub use math_commons::{
         ast, constants, fit, math_kernel, poi, primitives, registry, series, stochastic, wigner,
     };
+    pub use math_memory;
     pub use nalgebra;
     pub use num_complex;
     pub use oxidize_core::{mesh, rng};

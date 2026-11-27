@@ -12,13 +12,11 @@ math_contract = true
 
 [features]
 default = ["std"]
-alloc = ["math_rng/alloc"]
+alloc = ["math_memory/alloc", "math_rng/alloc"]
 serde = [
-    "alloc",
     "dep:serde",
-    "serde/alloc",
-    "engine_linalg/serde",
     "math_diagnostics/serde",
+    "math_memory/serde",
     "math_rng/serde",
     "num-complex/serde",
 ]
@@ -26,6 +24,7 @@ std = [
     "alloc",
     "dep:scientific_metadata",
     "math_diagnostics/std",
+    "math_memory/std",
     "math_rng/std",
     "num-complex/std",
     "num-traits/std",
@@ -35,11 +34,12 @@ std = [
 ]
 
 [dependencies]
-engine_linalg = { path = "../engine_linalg" }
+bytemuck = { workspace = true }
 libm = { workspace = true }
 math_diagnostics = { path = "../../00_foundation/math_diagnostics", default-features = false }
+math_memory = { path = "../../00_foundation/math_memory", default-features = false }
 math_rng = { path = "../../00_foundation/math_rng", default-features = false }
-num-complex = { workspace = true, default-features = false, features = ["libm"] }
+num-complex = { workspace = true, default-features = false, features = ["libm", "bytemuck"] }
 num-traits = { workspace = true, default-features = false, features = ["libm"] }
 rand_core = { workspace = true }
 scientific_metadata = { path = "../../00_foundation/scientific_metadata", optional = true }
@@ -71,14 +71,6 @@ required-features = ["std"]
 [[test]]
 name = "verified_stochastic_kernel"
 required-features = ["std"]
-
-
-
-
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
 
 [lints]
 workspace = true

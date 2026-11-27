@@ -1,5 +1,5 @@
 // [cite:math_commons]
-use super::{Diagnostic, DiagnosticVisitor, FitError, LinalgError, MathError, Severity};
+use super::{ArenaError, Diagnostic, DiagnosticVisitor, FitError, MathError, Severity};
 #[cfg(feature = "std")]
 use super::{EvalError, GlslError, LexError, ParseError, ShaderEmitError};
 use thiserror::Error;
@@ -15,9 +15,9 @@ pub enum MathCommonsError {
     /// Zero-allocation curve-fitting failure.
     #[error("{0}")]
     Fit(#[from] FitError),
-    /// `#![no_std]` linear algebra engine failure.
+    /// Tier 0 `#![no_std]` byte-arena alignment or capacity failure.
     #[error("{0}")]
-    Linalg(#[from] LinalgError),
+    Arena(#[from] ArenaError),
     /// AST lexical analysis failure.
     #[cfg(feature = "std")]
     #[error("{0}")]
@@ -45,7 +45,7 @@ impl MathCommonsError {
         match self {
             Self::Math(err) => err,
             Self::Fit(err) => err,
-            Self::Linalg(err) => err,
+            Self::Arena(err) => err,
             #[cfg(feature = "std")]
             Self::Lex(err) => err,
             #[cfg(feature = "std")]

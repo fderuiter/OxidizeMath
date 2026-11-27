@@ -7,8 +7,9 @@ use super::{
     TensorError, TransformError, ZipError,
 };
 use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use engine_linalg::LinalgError;
 use math_commons::error::{
-    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, ParseError,
+    ArenaError, EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, ParseError,
     ShaderEmitError,
 };
 use thiserror::Error;
@@ -159,10 +160,17 @@ impl From<FitError> for PureMathError {
     }
 }
 
+impl From<ArenaError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: ArenaError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
 impl From<LinalgError> for PureMathError {
     #[verified_engine::verified]
     fn from(err: LinalgError) -> Self {
-        Self::MathCommons(MathCommonsError::from(err))
+        Self::LinearAlgebra(LinearAlgebraError::from(err))
     }
 }
 

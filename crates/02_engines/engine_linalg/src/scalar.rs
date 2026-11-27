@@ -62,6 +62,8 @@ pub fn hypot_f64(x: f64, y: f64) -> f64 {
 pub trait Scalar:
     Copy
     + Clone
+    + bytemuck::Pod
+    + bytemuck::Zeroable
     + PartialEq
     + PartialOrd
     + Debug

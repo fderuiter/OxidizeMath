@@ -5,6 +5,7 @@
 //! satisfying `VerifiedAllocator` post-initialization memory locks.
 
 use crate::error::TdaError;
+use math_memory::{ArenaLayout, ArenaRegion, FlagRegion, OwnedByteArena};
 
 /// Maximum number of boundary faces stored inline for up to 2-simplices (triangles have 3 edges).
 pub const MAX_INLINE_BOUNDARY_FACES: usize = 3;
@@ -38,18 +39,19 @@ pub struct Z2BoundaryWorkspace {
     num_cols: usize,
     words_per_col: usize,
     max_pivots: usize,
-    input_cols: Vec<[u32; MAX_INLINE_BOUNDARY_FACES]>,
-    cleared_cols: Vec<bool>,
-    pivot_words: Vec<u64>,
-    row_to_slot: Vec<usize>,
-    row_to_pivot_col: Vec<usize>,
-    col_pivots: Vec<usize>,
-    work_col: Vec<u64>,
+    arena: OwnedByteArena,
+    input_cols: ArenaRegion<[u32; MAX_INLINE_BOUNDARY_FACES]>,
+    cleared_cols: FlagRegion,
+    pivot_words: ArenaRegion<u64>,
+    row_to_slot: ArenaRegion<usize>,
+    row_to_pivot_col: ArenaRegion<usize>,
+    col_pivots: ArenaRegion<usize>,
+    work_col: ArenaRegion<u64>,
     rank: usize,
 }
 
 impl Z2BoundaryWorkspace {
-    /// Allocates a bounded $\mathbb{Z}_2$ reduction workspace for a `num_rows × num_cols` boundary matrix.
+    /// Allocates a bounded $\mathbb{Z}_2$ reduction workspace in a single [`OwnedByteArena`].
     ///
     /// # Errors
     ///
@@ -69,19 +71,42 @@ impl Z2BoundaryWorkspace {
                 .ok_or_else(|| TdaError::MatrixError {
                     reason: "boundary workspace word capacity overflow".to_string(),
                 })?;
+        let map_layout = |_| TdaError::MatrixError {
+            reason: "boundary workspace byte layout overflow".to_string(),
+        };
+        let mut layout = ArenaLayout::new();
+        let input_cols = layout
+            .reserve::<[u32; MAX_INLINE_BOUNDARY_FACES]>(num_cols)
+            .map_err(map_layout)?;
+        let cleared_cols = layout.reserve_flags(num_cols).map_err(map_layout)?;
+        let pivot_words = layout.reserve::<u64>(pivot_word_len).map_err(map_layout)?;
+        let row_to_slot = layout.reserve::<usize>(num_rows).map_err(map_layout)?;
+        let row_to_pivot_col = layout.reserve::<usize>(num_rows).map_err(map_layout)?;
+        let col_pivots = layout.reserve::<usize>(num_cols).map_err(map_layout)?;
+        let work_col = layout.reserve::<u64>(words_per_col).map_err(map_layout)?;
+        let mut arena = OwnedByteArena::try_from_layout(&layout).map_err(map_layout)?;
+        {
+            let mut cur = arena.raw_cursor();
+            cur.region_mut(input_cols)
+                .fill([EMPTY_FACE; MAX_INLINE_BOUNDARY_FACES]);
+            cur.region_mut(row_to_slot).fill(NO_INDEX);
+            cur.region_mut(row_to_pivot_col).fill(NO_INDEX);
+            cur.region_mut(col_pivots).fill(NO_INDEX);
+        }
 
         Ok(Self {
             num_rows,
             num_cols,
             words_per_col,
             max_pivots,
-            input_cols: vec![[EMPTY_FACE; MAX_INLINE_BOUNDARY_FACES]; num_cols],
-            cleared_cols: vec![false; num_cols],
-            pivot_words: vec![0_u64; pivot_word_len],
-            row_to_slot: vec![NO_INDEX; num_rows],
-            row_to_pivot_col: vec![NO_INDEX; num_rows],
-            col_pivots: vec![NO_INDEX; num_cols],
-            work_col: vec![0_u64; words_per_col],
+            arena,
+            input_cols,
+            cleared_cols,
+            pivot_words,
+            row_to_slot,
+            row_to_pivot_col,
+            col_pivots,
+            work_col,
             rank: 0,
         })
     }
@@ -115,7 +140,7 @@ impl Z2BoundaryWorkspace {
             }
             *slot = row as u32;
         }
-        self.input_cols[col] = packed;
+        self.arena.region_slice_mut(self.input_cols)[col] = packed;
         Ok(())
     }
 
@@ -123,14 +148,14 @@ impl Z2BoundaryWorkspace {
     #[verified_engine::verified]
     pub fn clear_column(&mut self, col: usize) {
         if col < self.num_cols {
-            self.cleared_cols[col] = true;
+            self.arena.flags_mut(self.cleared_cols).set(col, true);
         }
     }
 
     /// Returns `true` if `col` was marked cleared prior to reduction.
     #[verified_engine::verified]
     pub fn is_cleared(&self, col: usize) -> bool {
-        self.cleared_cols.get(col).copied().unwrap_or(false)
+        col < self.num_cols && self.arena.flag_get(self.cleared_cols, col)
     }
 
     /// Returns the $\mathbb{Z}_2$ rank discovered by the most recent [`Self::reduce`] call.
@@ -142,13 +167,18 @@ impl Z2BoundaryWorkspace {
     /// Returns the reduced pivot row (`low(col)`) of `col`, or `None` if `col` reduced to zero.
     #[verified_engine::verified]
     pub fn col_pivot(&self, col: usize) -> Option<usize> {
-        self.col_pivots.get(col).copied().filter(|&r| r != NO_INDEX)
+        self.arena
+            .region_slice(self.col_pivots)
+            .get(col)
+            .copied()
+            .filter(|&r| r != NO_INDEX)
     }
 
     /// Returns the column index whose reduced pivot equals `row`, or `None` if `row` is unpaired.
     #[verified_engine::verified]
     pub fn pivot_col_for_row(&self, row: usize) -> Option<usize> {
-        self.row_to_pivot_col
+        self.arena
+            .region_slice(self.row_to_pivot_col)
             .get(row)
             .copied()
             .filter(|&c| c != NO_INDEX)
@@ -163,10 +193,19 @@ impl Z2BoundaryWorkspace {
 
     #[verified_engine::verified]
     pub(crate) fn reduce_with_max_rank(&mut self, max_rank: usize) -> usize {
-        self.row_to_slot.fill(NO_INDEX);
-        self.row_to_pivot_col.fill(NO_INDEX);
-        self.col_pivots.fill(NO_INDEX);
-        self.work_col.fill(0);
+        {
+            let (rts, rtp, cp, wc) = (
+                self.row_to_slot,
+                self.row_to_pivot_col,
+                self.col_pivots,
+                self.work_col,
+            );
+            let mut cur = self.arena.raw_cursor();
+            cur.region_mut(rts).fill(NO_INDEX);
+            cur.region_mut(rtp).fill(NO_INDEX);
+            cur.region_mut(cp).fill(NO_INDEX);
+            cur.region_mut(wc).fill(0);
+        }
         self.rank = 0;
 
         let target_rank = max_rank.min(self.max_pivots);
@@ -178,7 +217,7 @@ impl Z2BoundaryWorkspace {
             if self.rank >= target_rank {
                 break;
             }
-            if !self.cleared_cols[col] {
+            if !self.arena.flag_get(self.cleared_cols, col) {
                 self.reduce_single_column(col);
             }
         }
@@ -193,11 +232,12 @@ impl Z2BoundaryWorkspace {
         };
 
         for _step in 0..=self.num_rows {
-            let Some((p_word, p_row)) = highest_set_bit(&self.work_col, top_word) else {
+            let p_info = highest_set_bit(self.arena.region_slice(self.work_col), top_word);
+            let Some((p_word, p_row)) = p_info else {
                 break;
             };
             top_word = p_word;
-            let existing_slot = self.row_to_slot[p_row];
+            let existing_slot = self.arena.region_slice(self.row_to_slot)[p_row];
             if existing_slot != NO_INDEX {
                 self.xor_pivot_slot(existing_slot, p_word);
             } else {
@@ -206,11 +246,12 @@ impl Z2BoundaryWorkspace {
             }
         }
 
-        self.work_col[..=top_word].fill(0);
+        self.arena.region_slice_mut(self.work_col)[..=top_word].fill(0);
     }
 
     fn load_input_column(&mut self, col: usize) -> Option<usize> {
-        let faces = self.input_cols[col];
+        let faces = self.arena.region_slice(self.input_cols)[col];
+        let work_col = self.arena.region_slice_mut(self.work_col);
         let mut max_word = 0_usize;
         let mut any_set = false;
         for raw_row in faces {
@@ -218,7 +259,7 @@ impl Z2BoundaryWorkspace {
                 let row = raw_row as usize;
                 let word_idx = row >> 6;
                 let bit_mask = 1_u64 << (row & 63);
-                self.work_col[word_idx] ^= bit_mask;
+                work_col[word_idx] ^= bit_mask;
                 if !any_set || word_idx > max_word {
                     max_word = word_idx;
                     any_set = true;
@@ -231,8 +272,13 @@ impl Z2BoundaryWorkspace {
     fn xor_pivot_slot(&mut self, slot: usize, up_to_word: usize) {
         let start = slot * self.words_per_col;
         let end = start + up_to_word + 1;
-        let pivot_slice = &self.pivot_words[start..end];
-        for (dst, &src) in self.work_col[..=up_to_word].iter_mut().zip(pivot_slice) {
+        let pw_reg = self.pivot_words;
+        let wc_reg = self.work_col;
+        let mut cur = self.arena.raw_cursor();
+        let pivot_words = cur.region_mut(pw_reg);
+        let work_col = cur.region_mut(wc_reg);
+        let pivot_slice = &pivot_words[start..end];
+        for (dst, &src) in work_col[..=up_to_word].iter_mut().zip(pivot_slice) {
             *dst ^= src;
         }
     }
@@ -245,14 +291,28 @@ impl Z2BoundaryWorkspace {
         let active_end = start + top_word + 1;
         let full_end = start + self.words_per_col;
 
-        self.pivot_words[start..active_end].copy_from_slice(&self.work_col[..=top_word]);
+        let (pw_reg, rts_reg, rtp_reg, cp_reg, wc_reg) = (
+            self.pivot_words,
+            self.row_to_slot,
+            self.row_to_pivot_col,
+            self.col_pivots,
+            self.work_col,
+        );
+        let mut cur = self.arena.raw_cursor();
+        let pivot_words = cur.region_mut(pw_reg);
+        let row_to_slot = cur.region_mut(rts_reg);
+        let row_to_pivot_col = cur.region_mut(rtp_reg);
+        let col_pivots = cur.region_mut(cp_reg);
+        let work_col = cur.region_mut(wc_reg);
+
+        pivot_words[start..active_end].copy_from_slice(&work_col[..=top_word]);
         if active_end < full_end {
-            self.pivot_words[active_end..full_end].fill(0);
+            pivot_words[active_end..full_end].fill(0);
         }
 
-        self.row_to_slot[pivot_row] = slot;
-        self.row_to_pivot_col[pivot_row] = col;
-        self.col_pivots[col] = pivot_row;
+        row_to_slot[pivot_row] = slot;
+        row_to_pivot_col[pivot_row] = col;
+        col_pivots[col] = pivot_row;
         self.rank += 1;
     }
 }
@@ -353,80 +413,6 @@ pub(super) fn build_cleared_partial_1_workspace(
         }
     }
     Ok(ws)
-}
-
-#[allow(clippy::too_many_arguments)]
-#[verified_engine::verified]
-pub(super) fn reduce_incremental_triangle(
-    e0: usize,
-    e1: usize,
-    e_max: usize,
-    edge_words: usize,
-    col_scratch: &mut [u64],
-    pivot_for_row: &mut [usize],
-    basis_words: &mut [Vec<u64>],
-    basis_rank: &mut usize,
-) {
-    if pivot_for_row[e_max] == usize::MAX {
-        let slot = *basis_rank;
-        pivot_for_row[e_max] = slot;
-        let row_words = &mut basis_words[slot][..edge_words];
-        row_words.fill(0);
-        row_words[e0 >> 6] ^= 1_u64 << (e0 & 63);
-        row_words[e1 >> 6] ^= 1_u64 << (e1 & 63);
-        row_words[e_max >> 6] ^= 1_u64 << (e_max & 63);
-        *basis_rank += 1;
-        return;
-    }
-
-    let cur_words = (e_max >> 6) + 1;
-    col_scratch[..cur_words].fill(0);
-    col_scratch[e0 >> 6] ^= 1_u64 << (e0 & 63);
-    col_scratch[e1 >> 6] ^= 1_u64 << (e1 & 63);
-    col_scratch[e_max >> 6] ^= 1_u64 << (e_max & 63);
-
-    if reduce_scratch_words(
-        cur_words,
-        edge_words,
-        *basis_rank,
-        col_scratch,
-        pivot_for_row,
-        basis_words,
-    ) {
-        *basis_rank += 1;
-    }
-}
-
-#[verified_engine::verified]
-fn reduce_scratch_words(
-    cur_words: usize,
-    edge_words: usize,
-    basis_idx: usize,
-    col_scratch: &mut [u64],
-    pivot_for_row: &mut [usize],
-    basis_words: &mut [Vec<u64>],
-) -> bool {
-    for wi in (0..cur_words).rev() {
-        while col_scratch[wi] != 0 {
-            let bit = 63 - col_scratch[wi].leading_zeros() as usize;
-            let pivot_row = (wi << 6) | bit;
-            let existing = pivot_for_row[pivot_row];
-            if existing == usize::MAX {
-                pivot_for_row[pivot_row] = basis_idx;
-                let dst = &mut basis_words[basis_idx];
-                dst[..cur_words].copy_from_slice(&col_scratch[..cur_words]);
-                if cur_words < edge_words {
-                    dst[cur_words..edge_words].fill(0);
-                }
-                return true;
-            }
-            let existing_words = &basis_words[existing];
-            for w in 0..=wi {
-                col_scratch[w] ^= existing_words[w];
-            }
-        }
-    }
-    false
 }
 
 // [cite:clinical_trials_statistics]

@@ -22,6 +22,7 @@ macro_rules! impl_error_from {
     };
 }
 
+impl_error_from!(ArenaError => Arena);
 impl_error_from!(DiagnosticError => Diagnostic);
 impl_error_from!(DiffeqError => Diffeq);
 impl_error_from!(PdeError => Pde);

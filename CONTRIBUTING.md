@@ -12,7 +12,7 @@ When you submit a PR, you aren't just merging code; you are merging knowledge. E
 
 Before implementing new features or making structural changes, review our centralized architecture documentation:
 
-- [System Overview & Crate Topology](docs/architecture/system_overview.md): System layers and crate dependencies across all 28 crates.
+- [System Overview & Crate Topology](docs/architecture/system_overview.md): System layers and crate dependencies across all 29 crates.
 - [CERA Framework Guide](docs/architecture/cera_framework.md): Climate-invariant encoding, representation alignment, and modeling pipelines.
 - [Zero-Allocation Runtime Guide](docs/architecture/zero_allocation_runtime.md): NASA Power of 10 Rule 3 enforcement and `VerifiedEngine` runtime rules.
 - [Interactive Tool Walkthrough](docs/architecture/interactive_tool_walkthrough.md): Step-by-step tutorial to implement and register simulation tabs.

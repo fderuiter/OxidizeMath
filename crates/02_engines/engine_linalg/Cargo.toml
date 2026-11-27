@@ -14,11 +14,13 @@ math_contract = true
 
 [features]
 default = []
-alloc = []
-serde = ["dep:serde", "math_diagnostics/serde"]
+alloc = ["math_memory/alloc"]
+serde = ["dep:serde", "math_diagnostics/serde", "math_memory/serde"]
 
 [dependencies]
+bytemuck = { workspace = true }
 math_diagnostics = { path = "../../00_foundation/math_diagnostics", default-features = false }
+math_memory = { path = "../../00_foundation/math_memory", default-features = false }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]

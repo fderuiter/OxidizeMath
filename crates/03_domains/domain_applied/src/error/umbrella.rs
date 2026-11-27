@@ -3,8 +3,9 @@ use super::{
     KalmanError, LoraError, PharmacokineticsError, PortfolioError, VoxelGridError,
 };
 use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use engine_linalg::LinalgError;
 use math_commons::error::{
-    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, ParseError,
+    ArenaError, EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, ParseError,
     ShaderEmitError,
 };
 use pure_math::error::{
@@ -53,6 +54,9 @@ pub enum AppliedError {
     /// Foundational `math_commons` umbrella error.
     #[error("{0}")]
     MathCommons(#[from] MathCommonsError),
+    /// Foundational `#![no_std]` linear algebra engine error.
+    #[error("{0}")]
+    Linalg(#[from] LinalgError),
     /// Foundational `#![no_std]` partial-differential-equation solver error.
     #[error("{0}")]
     Pde(#[from] engine_pde::PdeError),
@@ -124,9 +128,9 @@ impl From<FitError> for AppliedError {
     }
 }
 
-impl From<LinalgError> for AppliedError {
+impl From<ArenaError> for AppliedError {
     #[verified_engine::verified]
-    fn from(err: LinalgError) -> Self {
+    fn from(err: ArenaError) -> Self {
         Self::MathCommons(MathCommonsError::from(err))
     }
 }
@@ -189,6 +193,7 @@ impl AppliedError {
             Self::VoxelGrid(err) => err,
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
+            Self::Linalg(err) => err,
             Self::Pde(err) => err,
             Self::PureMath(err) => err,
         }

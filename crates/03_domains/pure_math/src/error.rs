@@ -1,3 +1,4 @@
+pub use engine_linalg::LinalgError;
 use thiserror::Error;
 
 /// Type alias `Result` used across this module.

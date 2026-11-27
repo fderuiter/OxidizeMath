@@ -284,7 +284,7 @@ impl CausticsRayBenchTool {
         let summary = format!(
             "Scene {}, {} traced rays, {} caustic points, launch {:.2} rad",
             self.state.scene.label(),
-            self.workspace.rays().len(),
+            self.workspace.ray_count(),
             self.caustics.points().len(),
             self.state.launch_angle_rad
         );
@@ -371,7 +371,7 @@ impl CausticsRayBenchTool {
             ],
             Stroke::new(1.3_f32, DARK_PALETTE.success),
         );
-        for (idx, meta) in self.workspace.rays().iter().enumerate() {
+        for (idx, meta) in self.workspace.iter_rays().enumerate() {
             let col = self.state.colormap.ray_stroke_color(meta.wavelength_nm);
             for seg in self.workspace.ray_vertices(idx).windows(2) {
                 painter.line_segment(
