@@ -1,4 +1,4 @@
-//! Zero-allocation borrowed-slice 64D 53-bit [`SobolView`] and optional [`SobolSequence`].
+//! Zero-allocation borrowed-slice 64D 53-bit [`SobolView`] and optional `SobolSequence`.
 // [cite:clinical_trials_statistics]
 #![cfg_attr(any(), verified(opt_out = "no_std_engine"))]
 

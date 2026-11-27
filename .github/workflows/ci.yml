@@ -34,30 +34,11 @@ jobs:
       installer_changed: ${{ steps.detect-changes.outputs.installer_changed }}
       is_prerelease: ${{ steps.release-meta.outputs.is_prerelease }}
       wix_version: ${{ steps.release-meta.outputs.wix_version }}
-      native_matrix: ${{ steps.native-matrix.outputs.native_matrix }}
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
-
-      - name: Resolve Native Build Matrix
-        id: native-matrix
-        shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-          # Linux + WASM gate every event. macOS/Windows desktop legs run on main pushes,
-          # nightly schedules, manual dispatches and release tags, but not on pull requests.
-          core='{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","name":"Linux Native","artifact_name":"linux_artifact","desktop":false},{"os":"ubuntu-latest","target":"wasm32-unknown-unknown","name":"Web/WASM","artifact_name":"wasm_app","desktop":false}'
-          desktop='{"os":"windows-latest","target":"x86_64-pc-windows-msvc","name":"Windows Native","artifact_name":"windows_installer","desktop":true},{"os":"macos-latest","target":"aarch64-apple-darwin","name":"macOS Native","artifact_name":"macos_app","desktop":true}'
-          case "$EVENT_NAME" in
-            pull_request|merge_group) matrix="[${core}]" ;;
-            *) matrix="[${core},${desktop}]" ;;
-          esac
-          echo "native_matrix=${matrix}"
-          printf 'native_matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
 
       - name: Resolve WiX Pre-Release Metadata
         id: release-meta
@@ -168,7 +149,7 @@ jobs:
   pre-flight:
     name: Pre-flight Checks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -179,6 +160,7 @@ jobs:
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: "1.99.1"
+          targets: thumbv7em-none-eabihf
           components: clippy, rustfmt
 
       - name: Cache Cargo dependencies
@@ -234,9 +216,11 @@ jobs:
       - name: Check Markdown Links
         run: cargo run -p xtask -- check-markdown-links
 
+      - name: Check no_std Crates and Bare-Metal Target
+        run: cargo run -p xtask -- check-no-std
+
   build-and-test:
     name: Build and Test (${{ matrix.name }})
-    needs: detect-changes
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     # Desktop (macOS/Windows) legs report failures without blocking the Pages deploy;
@@ -245,7 +229,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.detect-changes.outputs.native_matrix) }}
+        # Linux + WASM gate every event. macOS/Windows desktop legs run on main pushes, nightly
+        # schedules, manual dispatches and release tags, but not on pull requests or merge groups.
+        include: >-
+          ${{ fromJSON((github.event_name == 'pull_request' || github.event_name == 'merge_group') && '[{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","name":"Linux Native","artifact_name":"linux_artifact","desktop":false},{"os":"ubuntu-latest","target":"wasm32-unknown-unknown","name":"Web/WASM","artifact_name":"wasm_app","desktop":false}]' || '[{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","name":"Linux Native","artifact_name":"linux_artifact","desktop":false},{"os":"ubuntu-latest","target":"wasm32-unknown-unknown","name":"Web/WASM","artifact_name":"wasm_app","desktop":false},{"os":"windows-latest","target":"x86_64-pc-windows-msvc","name":"Windows Native","artifact_name":"windows_installer","desktop":true},{"os":"macos-latest","target":"aarch64-apple-darwin","name":"macOS Native","artifact_name":"macos_app","desktop":true}]') }}
 
     steps:
       - name: Free Disk Space

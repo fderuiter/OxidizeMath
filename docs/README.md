@@ -147,6 +147,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261126: Extract Tier 0 `math_scalars` Hierarchy and Tier 2 `engine_opt` Curve-Fitting Engine](adr/20261126-extract-math-scalars-and-engine-opt.md)
 - [ADR 20261126: Fix `math_rng` Probit Tail Inversion, `ln` Truncation, and Open-Unit `f32` Collapse](adr/20261126-fix-rng-tail-inversion-and-float-collapse.md)
 - [ADR 20261126: Preserve Causal Root Diagnostic Metadata, Wire `math_rng` Diagnostics, and Decouple `std` `diagnostics` from Domain Crates](adr/20261126-preserve-root-metadata-and-decouple-diagnostics.md)
+- [ADR 20261127: Dynamic `#![no_std]` Discovery, Bare-Metal `thumbv7em-none-eabihf` CI Gate, and Allocator-Free `OxidizeRng` Serde](adr/20261127-dynamic-no-std-bare-metal-ci-gate.md)
 - [ADR 20261127: Reentrancy-Safe Allocator Trap, Portable Native CI Tests, and Non-Blocking Desktop Legs](adr/20261127-portable-native-ci-tests.md)
 
 ## Contributing
