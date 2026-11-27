@@ -37,9 +37,22 @@ pub fn unlock_allocations() {
     MEMORY_LOCK.store(false, Ordering::SeqCst);
 }
 
+/// Set once a violation starts being reported. Writing the FATAL payload to stderr can itself
+/// allocate (lazy stderr/thread-local setup on macOS), so allocations made while reporting are
+/// passed straight to `System` instead of re-entering the trap and overflowing the stack.
+static REPORTING_VIOLATION: AtomicBool = AtomicBool::new(false);
+
+/// Returns `true` when this allocation must trip the Rule 3 trap, claiming the single report slot.
+#[inline]
+fn should_trap() -> bool {
+    MEMORY_LOCK.load(Ordering::SeqCst)
+        && crate::metrics::is_verification_enabled()
+        && !REPORTING_VIOLATION.swap(true, Ordering::SeqCst)
+}
+
 unsafe impl GlobalAlloc for VerifiedAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        if MEMORY_LOCK.load(Ordering::SeqCst) && crate::metrics::is_verification_enabled() {
+        if should_trap() {
             runtime_violation!("VIOLATION: Dynamic memory allocation after initialization.");
         }
         unsafe { System.alloc(layout) }
@@ -50,14 +63,14 @@ unsafe impl GlobalAlloc for VerifiedAllocator {
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        if MEMORY_LOCK.load(Ordering::SeqCst) && crate::metrics::is_verification_enabled() {
+        if should_trap() {
             runtime_violation!("VIOLATION: Dynamic memory allocation after initialization.");
         }
         unsafe { System.alloc_zeroed(layout) }
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        if MEMORY_LOCK.load(Ordering::SeqCst) && crate::metrics::is_verification_enabled() {
+        if should_trap() {
             runtime_violation!("VIOLATION: Dynamic memory reallocation after initialization.");
         }
         unsafe { System.realloc(ptr, layout, new_size) }
