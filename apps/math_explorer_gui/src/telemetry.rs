@@ -159,7 +159,7 @@ mod tests {
             .join()
             .expect("join foreign diagnostic thread");
 
-        let local_err = math_commons::error::FitError::SingularMatrix;
+        let local_err = engine_opt::error::FitError::SingularMatrix;
         emit_diagnostic("LocalDomainSolver", &local_err);
 
         let events = poll_app_telemetry();

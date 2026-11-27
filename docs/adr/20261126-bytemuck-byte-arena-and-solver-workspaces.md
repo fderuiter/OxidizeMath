@@ -20,16 +20,16 @@ Prior to this decision, zero-allocation memory management across OxidizeMath had
    - Provide safe boolean views `FlagSlice<'a>` (`&mut [u8]`) and `BitSlice<'a>` (`&mut [u64]`) without raw `&mut [bool]` byte reinterpretation, plus `ArenaLayout` / `ArenaRegion<T>` / `RawByteCursor<'a>` for persistent multi-region workspaces.
    - Define the `SolverWorkspace` trait (`byte_capacity`, `remaining_bytes`, `reset`, `reborrow`, `cursor`, `alloc_slice`) and `alloc`-gated `u128`-aligned `OwnedByteArena`.
 
-2. **Decouple `math_commons` from `engine_linalg` and make `alloc` optional across solver engines:**
-   - Solve bounded curve-fit linear systems (`k <= 8`) directly on the stack in `math_commons::fit::lm` (damped Cholesky $LDL^\top$ / Gaussian elimination) and `math_commons::fit::poly` (pivoted stack Householder QR) and remove `engine_linalg` from `math_commons/Cargo.toml`.
-   - Gate `alloc`-requiring modules in `math_commons` and propagate optional `alloc` features from `engine_diffeq` and `engine_pde` to `math_commons` and `math_memory` so `math_memory`, `math_commons`, `engine_linalg`, `engine_diffeq`, and `engine_pde` compile cleanly with `--no-default-features` and zero `alloc` dependencies.
+2. **Compose `math_memory` with `math_scalars` and make `alloc` optional across solver engines:**
+   - Wire `math_scalars` onto `math_memory` (`RealField: bytemuck::Pod + bytemuck::Zeroable`, `ScalarWorkspace<'a, T>` implementing `SolverWorkspace`, and `From<ArenaError> for ScalarError`) while keeping `engine_opt` and `math_commons` `serde` builds free of mandatory `alloc`.
+   - Gate `alloc`-requiring modules in `math_commons` and propagate optional `alloc` features from `engine_diffeq` and `engine_pde` to `math_commons`, `math_scalars`, and `math_memory` so `math_memory`, `math_scalars`, `math_commons`, `engine_linalg`, `engine_opt`, `engine_diffeq`, and `engine_pde` compile cleanly with `--no-default-features` and zero `alloc` dependencies.
 
 3. **Unify workspace naming, re-back `*Workspace*` structs onto `OwnedByteArena`, and add `*_with_workspace` solvers:**
-   - Retire the 3 unused `*OwnedWorkspace` wrappers, disambiguate the 4 former `SolverWorkspace` structs as `LinalgWorkspace<'a, T>`, `ScalarWorkspace<'a, T>`, `StochasticWorkspace`, and `TridiagonalWorkspace`, and re-back multi-buffer `*Workspace*` structs across `math_commons`, `pure_math`, `domain_applied`, `domain_ai`, and `domain_physics` onto single `OwnedByteArena` allocations.
+   - Retire the unused `*OwnedWorkspace` wrappers, disambiguate the former `SolverWorkspace` structs as `LinalgWorkspace<'a, T>`, `ScalarWorkspace<'a, T>`, `StochasticWorkspace`, and `TridiagonalWorkspace`, and re-back multi-buffer `*Workspace*` structs across `math_commons`, `pure_math`, `domain_applied`, `domain_ai`, and `domain_physics` onto single `OwnedByteArena` allocations.
    - Add zero-allocation `*_with_workspace` entry points across `pure_math::algebra::linear_algebra::{numerical, decomposition}`, `pure_math::statistics::copula::CorrelationMatrix::new_with_workspace`, `domain_applied::applied::freesurfer::glm::{estimate_beta_with_workspace, t_statistic_with_workspace}`, and `domain_physics::physics::medical::radar_gating::surface::BiQuadraticSurface::fit_with_workspace`.
 
 ## Consequences
 
-- **Positive:** Firmware and embedded callers can build `math_memory`, `math_commons`, `engine_linalg`, `engine_diffeq`, and `engine_pde` on `#![no_std]` targets without a heap allocator, wrapping stack `&mut [u8]` buffers in `ByteArena`.
+- **Positive:** Firmware and embedded callers can build `math_memory`, `math_scalars`, `math_commons`, `engine_linalg`, `engine_opt`, `engine_diffeq`, and `engine_pde` on `#![no_std]` targets without a heap allocator, wrapping stack `&mut [u8]` buffers in `ByteArena`.
 - **Positive:** Domain workspaces consolidate dozens of separate `Vec` heap allocations into single cache-contiguous `OwnedByteArena` buffers, and all 12 upgraded solvers execute with `0` dynamic heap allocations inside `VerifiedEngine::run_verified` under `VerifiedAllocator`.
-- **Neutral:** Workspace member count increases from `28` to `29` crates, reflected across `Cargo.toml`, `verification_whitelist.toml`, `traceability.toml`, `xtask`, architecture guides, and `api_baseline.json`.
+- **Neutral:** Combined with `math_scalars` and `engine_opt`, workspace member count increases from `30` to `31` crates, reflected across `Cargo.toml`, `verification_whitelist.toml`, `traceability.toml`, `xtask`, architecture guides, and `api_baseline.json`.

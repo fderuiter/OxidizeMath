@@ -300,10 +300,12 @@ fn eval_t_ratio<T: RealField + Scalar>(
     variance_term: T,
 ) -> Result<T, EngineeringError> {
     let scaled_variance = residual_variance * variance_term;
-    if scaled_variance <= <T as Scalar>::ZERO || !<T as Scalar>::is_finite(scaled_variance) {
+    if scaled_variance <= <T as Scalar>::ZERO
+        || !<T as math_scalars::ComplexField>::is_finite(&scaled_variance)
+    {
         return Err(EngineeringError::ZeroContrastVariance);
     }
-    let denominator = <T as Scalar>::sqrt(scaled_variance);
+    let denominator = <T as math_scalars::ComplexField>::sqrt(scaled_variance);
     if denominator == <T as Scalar>::ZERO {
         return Err(EngineeringError::ZeroContrastVariance);
     }

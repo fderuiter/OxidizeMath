@@ -19,15 +19,14 @@ pub mod __doctest_facade {
         pub use crate::error::{
             AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
             EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError,
-            KellyError, KnotError, LinearAlgebraError, MarketPricingError, MarkovError,
-            MatchModelError, MonteCarloError, NumberTheoryError, OptimizationError,
+            KellyError, KnotError, LinalgError, LinearAlgebraError, MarketPricingError,
+            MarkovError, MatchModelError, MonteCarloError, NumberTheoryError, OptimizationError,
             OptionPricingError, OuError, PoissonError, PureMathError, PureMathError as Error,
-            QueueingError, RiskError, StochasticError, Su11HyperbolicError, TdaError, TensorError,
-            TransformError, ZipError,
+            QueueingError, RiskError, ScalarError, StochasticError, Su11HyperbolicError, TdaError,
+            TensorError, TransformError, ZipError,
         };
-        pub use engine_linalg::LinalgError;
         pub use math_commons::error::{
-            EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult,
+            ArenaError, EvalError, GlslError, LexError, MathCommonsError, MathError, MathResult,
             ParseError, ShaderEmitError,
         };
         pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -36,7 +35,6 @@ pub mod __doctest_facade {
         pub use super::error::*;
         pub use crate::math_types::{Float, Integer, Rational};
         pub use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
-        pub use math_commons::fit::FitModel;
         pub use math_commons::primitives::{NonNegativeFloat, PositiveFloat, UnitInterval};
         pub use math_commons::series::{PointSeries, Sample2D};
         pub use nalgebra::{self, DMatrix, DVector};
@@ -50,9 +48,10 @@ pub mod __doctest_facade {
     pub use crate::{math_types, pure_math};
     pub use diagnostics;
     pub use math_commons::{
-        ast, constants, fit, math_kernel, poi, primitives, registry, series, stochastic, wigner,
+        ast, constants, math_kernel, poi, primitives, registry, series, stochastic, wigner,
     };
     pub use math_memory;
+    pub use math_scalars;
     pub use nalgebra;
     pub use num_complex;
     pub use oxidize_core::{mesh, rng};

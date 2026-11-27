@@ -60,7 +60,7 @@ pub enum SandpileError {
     ArithmeticOverflow,
     /// Wrapped curve-fitting solver error.
     #[error("{0}")]
-    Fit(#[from] math_commons::error::FitError),
+    Fit(#[from] engine_opt::error::FitError),
 }
 
 impl Diagnostic for SandpileError {

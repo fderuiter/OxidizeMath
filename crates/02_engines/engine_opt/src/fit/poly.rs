@@ -1,10 +1,10 @@
 //! Stack-allocated centered polynomial ordinary least-squares regression (degrees 1–4).
-// [cite:math_commons]
+// [cite:engine_opt]
 
 use super::{CurveFit, FitModel};
 use crate::error::FitError;
-use crate::series::PointSeries;
-use num_traits::Float;
+use math_scalars::series::PointSeries;
+use math_scalars::{ComplexField, RealField};
 
 /// Fits a polynomial of `degree` (`1..=4`) in linear coordinates with zero heap allocations.
 #[cfg_attr(feature = "std", verified_engine::verified)]
@@ -94,8 +94,16 @@ fn scan_poly_domain<P: PointSeries + ?Sized>(
         if (log_x && p[0] <= 0.0) || (log_y && p[1] <= 0.0) {
             continue;
         }
-        let tx = if log_x { Float::log10(p[0]) } else { p[0] };
-        let ty = if log_y { Float::log10(p[1]) } else { p[1] };
+        let tx = if log_x {
+            ComplexField::log10(p[0])
+        } else {
+            p[0]
+        };
+        let ty = if log_y {
+            ComplexField::log10(p[1])
+        } else {
+            p[1]
+        };
         valid_count += 1;
         sum_tx += tx;
         sum_ty += ty;
@@ -138,7 +146,7 @@ impl StackPolyQr {
                 continue;
             }
             let rjj = self.r[j][j];
-            let hyp = libm::hypot(rjj, xj);
+            let hyp = RealField::hypot(rjj, xj);
             let c = rjj / hyp;
             let s = xj / hyp;
             self.r[j][j] = hyp;
@@ -165,7 +173,7 @@ impl StackPolyQr {
         }
         let mut max_diag = 0.0_f64;
         for i in 0..self.ncols {
-            max_diag = max_diag.max(Float::abs(self.r[i][i]));
+            max_diag = max_diag.max(self.r[i][i].abs());
         }
         if max_diag == 0.0 {
             return Err(FitError::SingularMatrix);
@@ -174,7 +182,7 @@ impl StackPolyQr {
         let mut sol = [0.0_f64; 5];
         for i in (0..self.ncols).rev() {
             let diag = self.r[i][i];
-            if Float::abs(diag) <= thresh {
+            if diag.abs() <= thresh {
                 return Err(FitError::SingularMatrix);
             }
             let mut sum = self.qty[i];
@@ -209,8 +217,16 @@ fn solve_centered_poly_system<P: PointSeries + ?Sized>(
         if (log_x && p[0] <= 0.0) || (log_y && p[1] <= 0.0) {
             continue;
         }
-        let tx = if log_x { Float::log10(p[0]) } else { p[0] };
-        let ty = if log_y { Float::log10(p[1]) } else { p[1] };
+        let tx = if log_x {
+            ComplexField::log10(p[0])
+        } else {
+            p[0]
+        };
+        let ty = if log_y {
+            ComplexField::log10(p[1])
+        } else {
+            p[1]
+        };
         let z = (tx - u_mean) / u_scale;
         let mut row = [0.0_f64; 5];
         let mut zp = 1.0_f64;
@@ -269,8 +285,16 @@ fn compute_poly_metrics<P: PointSeries + ?Sized>(
         if (log_x && p[0] <= 0.0) || (log_y && p[1] <= 0.0) {
             continue;
         }
-        let tx = if log_x { Float::log10(p[0]) } else { p[0] };
-        let ty = if log_y { Float::log10(p[1]) } else { p[1] };
+        let tx = if log_x {
+            ComplexField::log10(p[0])
+        } else {
+            p[0]
+        };
+        let ty = if log_y {
+            ComplexField::log10(p[1])
+        } else {
+            p[1]
+        };
         let z = (tx - u_mean) / u_scale;
         let pred = eval_polynomial_horner_raw(centered_coeffs, z);
         let diff = ty - pred;
@@ -285,7 +309,7 @@ fn compute_poly_metrics<P: PointSeries + ?Sized>(
     } else {
         0.0
     };
-    let rmse = Float::sqrt(ss_res / (valid_count as f64));
+    let rmse = ComplexField::sqrt(ss_res / (valid_count as f64));
     (r_squared, rmse)
 }
 
@@ -293,13 +317,13 @@ fn compute_poly_metrics<P: PointSeries + ?Sized>(
 #[inline]
 #[must_use]
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub fn eval_polynomial_horner(coeffs: &[f64], x: f64) -> f64 {
+pub fn eval_polynomial_horner<T: RealField>(coeffs: &[T], x: T) -> T {
     eval_polynomial_horner_raw(coeffs, x)
 }
 
 #[inline(always)]
-pub(super) fn eval_polynomial_horner_raw(coeffs: &[f64], x: f64) -> f64 {
-    let mut acc = 0.0_f64;
+pub(super) fn eval_polynomial_horner_raw<T: RealField>(coeffs: &[T], x: T) -> T {
+    let mut acc = T::ZERO;
     let mut k = coeffs.len();
     while k > 0 {
         k -= 1;
@@ -353,15 +377,15 @@ pub(super) fn solve_dense_n_raw<const N: usize>(
             if !v.is_finite() {
                 return Err(FitError::SingularMatrix);
             }
-            max_abs = max_abs.max(Float::abs(v));
+            max_abs = max_abs.max(v.abs());
         }
     }
     let eff_tol = 1e-12_f64.max((n as f64) * f64::EPSILON * max_abs);
     for k in 0..n {
         let mut piv_row = k;
-        let mut piv_abs = Float::abs(mat[k][k]);
+        let mut piv_abs = mat[k][k].abs();
         for (r, row) in mat.iter().enumerate().take(n).skip(k + 1) {
-            let cand = Float::abs(row[k]);
+            let cand = row[k].abs();
             if cand > piv_abs {
                 piv_abs = cand;
                 piv_row = r;

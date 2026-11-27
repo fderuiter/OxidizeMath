@@ -9,6 +9,7 @@ use core::marker::PhantomData;
 #[cfg(feature = "alloc")]
 pub use math_memory::OwnedByteArena;
 pub use math_memory::{ArenaCheckpoint, ArenaError, ByteArena, ByteCursor, SolverWorkspace};
+pub use math_scalars::ScalarError;
 
 /// Computes the flat row-major index for `(row, col)` in a matrix with `ncols` columns.
 /// `[cite:engine_linalg]`
@@ -130,6 +131,22 @@ impl From<ArenaError> for LinalgError {
                 required: usize::MAX,
                 available: 0,
             },
+        }
+    }
+}
+
+impl From<ScalarError> for LinalgError {
+    #[inline]
+    fn from(err: ScalarError) -> Self {
+        match err {
+            ScalarError::WorkspaceTooSmall {
+                required,
+                available,
+            } => Self::WorkspaceTooSmall {
+                required,
+                available,
+            },
+            ScalarError::InvalidStepSize { .. } => Self::InvalidInput,
         }
     }
 }

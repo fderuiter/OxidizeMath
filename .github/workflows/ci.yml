@@ -1,6 +1,7 @@
 name: Rust CI
 
-permissions: read-all
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number || github.ref) || github.run_id }}
@@ -506,9 +507,11 @@ jobs:
         run: cargo test -p math_explorer --no-run --all-features
 
       - name: Run Tests
+        env:
+          MATRIX_FEATURE: ${{ matrix.feature }}
         run: |
-          if [ -n "${{ matrix.feature }}" ]; then
-            cargo run -p xtask -- test-features ${{ matrix.feature }}
+          if [ -n "${MATRIX_FEATURE}" ]; then
+            cargo run -p xtask -- test-features "${MATRIX_FEATURE}"
           else
             cargo run -p xtask -- test-features core-only
           fi

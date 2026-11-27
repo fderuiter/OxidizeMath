@@ -9,9 +9,10 @@ use super::{
 use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use engine_linalg::LinalgError;
 use math_commons::error::{
-    ArenaError, EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, ParseError,
+    ArenaError, EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
     ShaderEmitError,
 };
+use math_scalars::ScalarError;
 use thiserror::Error;
 
 /// Extensible crate-level umbrella error for `pure_math` algorithms and foundational math errors.
@@ -123,6 +124,9 @@ pub enum PureMathError {
     /// Foundational `math_commons` umbrella error.
     #[error("{0}")]
     MathCommons(#[from] MathCommonsError),
+    /// Foundational `math_scalars` error.
+    #[error("{0}")]
+    Scalar(#[from] ScalarError),
 }
 
 impl From<EvalError> for PureMathError {
@@ -149,13 +153,6 @@ impl From<LexError> for PureMathError {
 impl From<ParseError> for PureMathError {
     #[verified_engine::verified]
     fn from(err: ParseError) -> Self {
-        Self::MathCommons(MathCommonsError::from(err))
-    }
-}
-
-impl From<FitError> for PureMathError {
-    #[verified_engine::verified]
-    fn from(err: FitError) -> Self {
         Self::MathCommons(MathCommonsError::from(err))
     }
 }
@@ -227,6 +224,7 @@ impl PureMathError {
             Self::Pde(err) => err,
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
+            Self::Scalar(err) => err,
         }
     }
 }

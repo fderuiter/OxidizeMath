@@ -38,7 +38,7 @@ pub use qr::{
     qr_least_squares_workspace_len, qr_solve_least_squares, qr_solve_r_pivoted,
     qr_solve_rt_permuted,
 };
-pub use scalar::{Scalar, hypot_f64, sqrt_f64};
+pub use scalar::{ComplexField, RealField, Scalar, hypot_f32, hypot_f64, sqrt_f32, sqrt_f64};
 pub use sparse::CsrMatrixView;
 pub use svd_bidiag::{svd_bidiagonal, svd_bidiagonal_workspace_len};
 pub use svd_jacobi::{

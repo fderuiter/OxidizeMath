@@ -32,7 +32,18 @@ fn maybe_write_perf_screenshot(output_path: &str) {
         let prms = egui_plot::get_last_plot_primitives();
         let img = egui_plot::render_primitives_image(&prms, &opts).expect("render image");
         let png = egui_plot::color32_image_to_png(&img).expect("encode PNG");
-        std::fs::write(output_path, png).expect("write verification PNG");
+        let target = {
+            let candidate = std::path::PathBuf::from(output_path);
+            if candidate.parent().is_some_and(|dir| dir.exists()) {
+                candidate
+            } else {
+                let file_name = candidate
+                    .file_name()
+                    .unwrap_or_else(|| std::ffi::OsStr::new("perf_screenshot.png"));
+                std::env::temp_dir().join(file_name)
+            }
+        };
+        std::fs::write(&target, png).expect("write verification PNG");
     }
 }
 

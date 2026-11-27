@@ -1144,9 +1144,11 @@ dependencies = [
  "bytemuck",
  "diagnostics",
  "engine_linalg",
+ "engine_opt",
  "engine_pde",
  "math_commons",
  "math_memory",
+ "math_scalars",
  "nalgebra 0.34.2",
  "oxidize_core",
  "proptest",
@@ -1213,6 +1215,7 @@ dependencies = [
  "domain_applied",
  "engine_diffeq",
  "engine_linalg",
+ "engine_opt",
  "engine_pde",
  "math_commons",
  "math_memory",
@@ -1375,6 +1378,7 @@ dependencies = [
  "document-features",
  "egui",
  "emath",
+ "engine_opt",
  "image",
  "js-sys",
  "math_commons",
@@ -1454,8 +1458,23 @@ dependencies = [
  "bytemuck",
  "math_diagnostics",
  "math_memory",
+ "math_scalars",
  "serde",
  "serde_json",
+ "verified_engine",
+]
+
+[[package]]
+name = "engine_opt"
+version = "0.4.0"
+dependencies = [
+ "engine_linalg",
+ "math_diagnostics",
+ "math_scalars",
+ "scientific_metadata",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
  "verified_engine",
 ]
 
@@ -2537,6 +2556,7 @@ dependencies = [
  "domain_physics",
  "engine_diffeq",
  "engine_linalg",
+ "engine_opt",
  "engine_pde",
  "federated_registry",
  "math_commons",
@@ -2544,6 +2564,7 @@ dependencies = [
  "math_explorer",
  "math_memory",
  "math_rng",
+ "math_scalars",
  "nalgebra 0.34.2",
  "oxidize_core",
  "oxidizemath",
@@ -2566,11 +2587,11 @@ dependencies = [
  "math_diagnostics",
  "math_memory",
  "math_rng",
+ "math_scalars",
  "num-complex",
  "num-traits",
  "oxidize_core",
  "rand_core 0.6.4",
- "scientific_metadata",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -2603,6 +2624,7 @@ dependencies = [
  "eframe",
  "egui_plot",
  "engine_linalg",
+ "engine_opt",
  "federated_registry",
  "flate2",
  "futures",
@@ -2645,8 +2667,24 @@ dependencies = [
 name = "math_rng"
 version = "0.4.0"
 dependencies = [
+ "math_scalars",
  "rand_chacha",
  "rand_core 0.6.4",
+ "serde",
+ "serde_json",
+ "verified_engine",
+]
+
+[[package]]
+name = "math_scalars"
+version = "0.4.0"
+dependencies = [
+ "bytemuck",
+ "libm",
+ "math_diagnostics",
+ "math_memory",
+ "num-complex",
+ "num-traits",
  "serde",
  "serde_json",
  "verified_engine",
@@ -3349,9 +3387,11 @@ dependencies = [
  "domain_physics",
  "engine_diffeq",
  "engine_linalg",
+ "engine_opt",
  "engine_pde",
  "math_commons",
  "math_memory",
+ "math_scalars",
  "nalgebra 0.34.2",
  "num-complex",
  "oxidize_core",
@@ -3610,6 +3650,7 @@ dependencies = [
  "math_commons",
  "math_memory",
  "math_rng",
+ "math_scalars",
  "nalgebra 0.34.2",
  "num-complex",
  "num-traits",
@@ -4014,6 +4055,7 @@ dependencies = [
  "domain_climate",
  "domain_epidemiology",
  "domain_physics",
+ "engine_opt",
  "engine_pde",
  "math_commons",
  "nalgebra 0.34.2",

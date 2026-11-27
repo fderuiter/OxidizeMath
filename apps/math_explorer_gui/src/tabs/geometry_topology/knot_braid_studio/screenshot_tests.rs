@@ -156,7 +156,17 @@ fn render_studio_preset_png(preset_json: &str, out_path: &str) {
     }
     let png = egui_plot::export::color32_image_to_png(&fb).expect("encode studio preview PNG");
     assert!(png.len() > 4096);
-    std::fs::write(out_path, png).expect("write studio preview PNG");
+    let candidate = std::path::Path::new(out_path);
+    let target = if candidate.parent().is_some_and(std::path::Path::is_dir) {
+        candidate.to_path_buf()
+    } else {
+        std::env::temp_dir().join(
+            candidate
+                .file_name()
+                .expect("screenshot path must include file name"),
+        )
+    };
+    std::fs::write(target, png).expect("write studio preview PNG");
 }
 
 #[test]

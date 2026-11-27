@@ -4,6 +4,7 @@ pub use crate::ast::{EvalError, GlslError, LexError, ParseError, ShaderEmitError
 use crate::math_kernel::types::Dimension;
 pub use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 pub use math_memory::ArenaError;
+pub use math_scalars::ScalarError;
 use thiserror::Error;
 
 #[cfg(feature = "serde")]
@@ -210,48 +211,6 @@ impl From<&'static str> for MathError {
     }
 }
 
-#[cfg(feature = "serde")]
-mod fit_serde;
-
-/// Typed diagnostic error returned by zero-allocation curve-fitting solvers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Error)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize))]
-pub enum FitError {
-    /// Fewer finite data points were supplied than required by the target model.
-    #[error("Insufficient finite points: required at least {required}, found {actual}")]
-    InsufficientPoints {
-        /// Minimum number of finite observations needed.
-        required: usize,
-        /// Actual number of finite observations found.
-        actual: usize,
-    },
-
-    /// Polynomial regression degree is outside the supported stack-allocated `1..=4` range.
-    #[error("Unsupported polynomial degree {degree}; supported degrees are 1..=4")]
-    UnsupportedDegree {
-        /// Requested polynomial degree.
-        degree: usize,
-    },
-
-    /// Input coordinates violated a model domain requirement (e.g., non-positive log/power inputs).
-    #[error("Invalid curve-fitting domain: {reason}")]
-    InvalidDomain {
-        /// Static description of the violated domain precondition.
-        reason: &'static str,
-    },
-
-    /// Normal equations or damped Jacobian linear system was singular or ill-conditioned.
-    #[error("Singular or ill-conditioned linear system during curve fitting")]
-    SingularMatrix,
-
-    /// Damped Levenberg-Marquardt failed to satisfy optimality tolerances within its budget.
-    #[error("Levenberg-Marquardt failed to converge within {iterations} iterations")]
-    NonConvergence {
-        /// Number of iterations executed before termination.
-        iterations: usize,
-    },
-}
-
 impl From<ArenaError> for MathError {
     fn from(err: ArenaError) -> Self {
         match err {
@@ -279,35 +238,21 @@ impl From<ArenaError> for MathError {
     }
 }
 
-impl Diagnostic for FitError {
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
-        visitor.record_str("error_type", "FitError");
-        visitor.record_display("description", self);
-        match self {
-            Self::InsufficientPoints { required, actual } => {
-                visitor.record_str("code", "MATH-FIT-001");
-                visitor.record_usize("required", *required);
-                visitor.record_usize("actual", *actual);
-            }
-            Self::UnsupportedDegree { degree } => {
-                visitor.record_str("code", "MATH-FIT-002");
-                visitor.record_usize("degree", *degree);
-            }
-            Self::InvalidDomain { reason } => {
-                visitor.record_str("code", "MATH-FIT-003");
-                visitor.record_str("reason", reason);
-            }
-            Self::SingularMatrix => {
-                visitor.record_str("code", "MATH-FIT-004");
-            }
-            Self::NonConvergence { iterations } => {
-                visitor.record_str("code", "MATH-FIT-005");
-                visitor.record_usize("iterations", *iterations);
-            }
+impl From<ScalarError> for MathError {
+    fn from(err: ScalarError) -> Self {
+        match err {
+            ScalarError::InvalidStepSize { value } => Self::StrictlyOutOfBounds {
+                value,
+                min: 0.0,
+                max: f64::MAX,
+            },
+            ScalarError::WorkspaceTooSmall {
+                required,
+                available,
+            } => Self::WorkspaceTooSmall {
+                required,
+                available,
+            },
         }
     }
 }
@@ -393,26 +338,32 @@ mod tests {
     }
 
     #[test]
-    fn zero_allocation_diagnostic_visitation_for_arena_math_and_fit() {
+    fn zero_allocation_diagnostic_visitation_for_arena_scalar_and_math() {
         let arena_err = ArenaError::InsufficientBytes {
             required: 32,
             available: 16,
             align: 8,
         };
+        let scalar_err = ScalarError::WorkspaceTooSmall {
+            required: 32,
+            available: 16,
+        };
         let math_err = MathError::DimensionMismatch {
             expected: Dimension(3),
             actual: Dimension(2),
         };
-        let fit_err = FitError::SingularMatrix;
+        let umbrella_err = MathCommonsError::from(scalar_err);
+        assert!(umbrella_err.source().is_some());
 
         let (count, _metrics) = VerifiedEngine::run_verified(|| {
             let mut v = NullVisitor(0);
             arena_err.visit_fields(&mut v);
+            scalar_err.visit_fields(&mut v);
             math_err.visit_fields(&mut v);
-            fit_err.visit_fields(&mut v);
+            umbrella_err.visit_fields(&mut v);
             v.0
         });
-        assert!(count >= 9);
+        assert!(count >= 12);
     }
 
     #[test]
@@ -456,8 +407,8 @@ mod tests {
                 expected: Dimension(2),
                 actual: Dimension(3),
             }),
-            MathCommonsError::from(FitError::SingularMatrix),
             MathCommonsError::from(ArenaError::ArithmeticOverflow),
+            MathCommonsError::from(ScalarError::InvalidStepSize { value: -0.5 }),
             MathCommonsError::from(lex),
             MathCommonsError::from(parse),
             MathCommonsError::from(unknown_fn),

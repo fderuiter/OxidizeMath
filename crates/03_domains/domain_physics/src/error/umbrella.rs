@@ -5,8 +5,9 @@ use super::{
 use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use domain_applied::error::{AppliedError, KalmanError};
 use engine_linalg::LinalgError;
+use engine_opt::error::FitError;
 use math_commons::error::{
-    ArenaError, EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, ParseError,
+    ArenaError, EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
     ShaderEmitError,
 };
 use pure_math::error::{
@@ -74,6 +75,9 @@ pub enum PhysicsError {
     /// Foundational `math_commons` umbrella error.
     #[error("{0}")]
     MathCommons(#[from] MathCommonsError),
+    /// Foundational `#![no_std]` curve-fitting solver error.
+    #[error("{0}")]
+    Fit(#[from] FitError),
     /// Foundational `#![no_std]` linear algebra engine error.
     #[error("{0}")]
     Linalg(#[from] LinalgError),
@@ -147,13 +151,6 @@ impl From<OptimizationError> for PhysicsError {
     }
 }
 
-impl From<FitError> for PhysicsError {
-    #[verified_engine::verified]
-    fn from(err: FitError) -> Self {
-        Self::MathCommons(MathCommonsError::from(err))
-    }
-}
-
 impl From<ArenaError> for PhysicsError {
     #[verified_engine::verified]
     fn from(err: ArenaError) -> Self {
@@ -221,6 +218,7 @@ impl PhysicsError {
             Self::StatMech(err) => err,
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
+            Self::Fit(err) => err,
             Self::Linalg(err) => err,
             Self::Diffeq(err) => err,
             Self::Pde(err) => err,

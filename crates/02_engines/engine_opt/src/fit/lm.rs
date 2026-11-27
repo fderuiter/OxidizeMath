@@ -1,10 +1,10 @@
 //! Stack-allocated damped Levenberg-Marquardt nonlinear least-squares solvers (`k <= 6`).
-// [cite:math_commons]
+// [cite:engine_opt]
 
 use super::poly::symmetrize_upper;
 use crate::error::FitError;
-use crate::series::PointSeries;
-use num_traits::Float;
+use math_scalars::ComplexField;
+use math_scalars::series::PointSeries;
 
 /// Maximum outer Levenberg-Marquardt iterations before returning [`FitError::NonConvergence`].
 pub const MAX_LM_ITERATIONS: usize = 80;
@@ -338,8 +338,8 @@ where
             step_norm += delta[c] * delta[c];
             param_norm += theta[c] * theta[c];
         }
-        step_norm = Float::sqrt(step_norm);
-        param_norm = Float::sqrt(param_norm);
+        step_norm = ComplexField::sqrt(step_norm);
+        param_norm = ComplexField::sqrt(param_norm);
 
         let new_sse = sum_squared_errors(points, domain_ok, &candidate, eval_val);
         if new_sse.is_finite() && new_sse < *current_sse {
@@ -380,7 +380,7 @@ fn solve_lm_damped_step<const M: usize>(
             damped[r][c] = v;
         }
         let d_rr = damped[r][r];
-        let base = Float::abs(d_rr).max(1e-6);
+        let base = d_rr.abs().max(1e-6);
         damped[r][r] = d_rr + lambda * base;
     }
     let solved = super::poly::solve_dense_n_raw(&mut damped, &rhs, k)?;
@@ -429,10 +429,10 @@ where
     }
     symmetrize_upper(&mut jtj, k);
 
-    let r_norm = Float::sqrt(current_sse).max(1e-15);
+    let r_norm = ComplexField::sqrt(current_sse).max(1e-15);
     let mut scaled_grad = 0.0_f64;
     for row in 0..k {
-        let col_norm = Float::sqrt(jtj[row][row]);
+        let col_norm = ComplexField::sqrt(jtj[row][row]);
         let denom = (col_norm * r_norm).max(1.0);
         scaled_grad = scaled_grad.max(jtr[row].abs() / denom);
     }

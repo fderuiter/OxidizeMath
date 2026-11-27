@@ -116,10 +116,6 @@ pub enum AIError {
     #[error("{0}")]
     Diffeq(#[from] engine_diffeq::DiffeqError),
 
-    /// Foundational curve-fitting solver error.
-    #[error("{0}")]
-    Fit(#[from] math_commons::error::FitError),
-
     /// Upstream numerical optimization error.
     #[error("{0}")]
     Optimization(#[from] pure_math::error::OptimizationError),
@@ -146,7 +142,6 @@ impl Diagnostic for AIError {
             Self::Math(err) => err.severity(),
             Self::Arena(err) => err.severity(),
             Self::Diffeq(err) => err.severity(),
-            Self::Fit(err) => err.severity(),
             Self::Optimization(err) => err.severity(),
             Self::LinearAlgebra(err) => err.severity(),
             _ => Severity::Error,
@@ -159,7 +154,6 @@ impl Diagnostic for AIError {
             Self::Math(err) => err.visit_fields(visitor),
             Self::Arena(err) => err.visit_fields(visitor),
             Self::Diffeq(err) => err.visit_fields(visitor),
-            Self::Fit(err) => err.visit_fields(visitor),
             Self::Optimization(err) => err.visit_fields(visitor),
             Self::LinearAlgebra(err) => err.visit_fields(visitor),
             Self::CellMaskLengthMismatch { expected, actual } => {

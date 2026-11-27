@@ -13,9 +13,11 @@ traceability = true
 [dependencies]
 math_commons = { path = "../../02_engines/math_commons" }
 math_memory = { path = "../../00_foundation/math_memory", features = ["std"] }
+math_scalars = { path = "../../00_foundation/math_scalars" }
 diagnostics = { path = "../../01_core/diagnostics" }
 engine_diffeq = { path = "../../02_engines/engine_diffeq" }
 engine_linalg = { path = "../../02_engines/engine_linalg" }
+engine_opt = { path = "../../02_engines/engine_opt" }
 engine_pde = { path = "../../02_engines/engine_pde" }
 pure_math = { path = "../../03_domains/pure_math", optional = true }
 domain_applied = { path = "../../03_domains/domain_applied", optional = true }
@@ -51,9 +53,11 @@ physics = ["applied", "pure_math", "dep:domain_physics"]
 serde = [
     "engine_diffeq/serde",
     "engine_linalg/serde",
+    "engine_opt/serde",
     "engine_pde/serde",
     "math_commons/serde",
     "math_memory/serde",
+    "math_scalars/serde",
     "pure_math?/serde",
     "nalgebra?/serde-serialize",
     "num-complex?/serde",

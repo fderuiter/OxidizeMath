@@ -1,4 +1,4 @@
-// [cite:math_commons]
+// [cite:engine_opt]
 //! Zero-allocation `#![no_std]` `Deserialize` implementation for [`super::FitError`].
 
 use super::FitError;
@@ -74,6 +74,7 @@ enum FitErrorRepr {
     NonConvergence {
         iterations: usize,
     },
+    Linalg(super::LinalgError),
 }
 
 impl From<FitErrorRepr> for FitError {
@@ -88,6 +89,7 @@ impl From<FitErrorRepr> for FitError {
             } => Self::InvalidDomain { reason },
             FitErrorRepr::SingularMatrix => Self::SingularMatrix,
             FitErrorRepr::NonConvergence { iterations } => Self::NonConvergence { iterations },
+            FitErrorRepr::Linalg(err) => Self::Linalg(err),
         }
     }
 }

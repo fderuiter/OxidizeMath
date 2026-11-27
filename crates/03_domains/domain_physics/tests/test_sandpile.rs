@@ -5,7 +5,7 @@ use domain_physics::physics::stat_mech::sandpile::{
     AvalancheObservable, MAX_STABLE_HEIGHT, SandpileElement, SandpileGrid,
     kirchhoff_determinant_bareiss,
 };
-use math_commons::fit::FitModel;
+use engine_opt::fit::FitModel;
 use pure_math::pure_math::algebra::{Group, Monoid, Semigroup, generate_left_coset, is_subgroup};
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;

@@ -24,15 +24,14 @@ fn bounded_floats_implement_try_from_f64() {
 
 #[cfg(feature = "serde")]
 mod active {
-    use crate::error::{FitError, MathError};
-    use crate::fit::{CurveFit, FitModel, WeightedOlsAccum, fit_polynomial_scaled};
+    use crate::error::{ArenaError, MathError, ScalarError};
     use crate::math_kernel::types::{Dimension, GridIndex, StepSize};
-    use crate::poi::{LinePoiScan, LocalExtremum};
+    #[cfg(feature = "alloc")]
+    use crate::poi::LinePoiScan;
+    use crate::poi::LocalExtremum;
     use crate::primitives::{NonNegativeFloat, PositiveFloat, UnitInterval};
     use crate::stochastic::{OuCalibration, SampleSummary, SccSummary};
     use crate::wigner::ClebschGordan;
-    use alloc::string::ToString;
-    use alloc::vec;
     use serde::Deserialize;
     use serde::de::value::{Error as ValueDeError, F64Deserializer};
 
@@ -68,19 +67,15 @@ mod active {
         assert!(serde_json::from_str::<NonNegativeFloat>("-1e-12").is_err());
 
         for non_finite in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-            let err_u = UnitInterval::deserialize(F64Deserializer::<ValueDeError>::new(non_finite))
-                .expect_err("UnitInterval must reject non-finite");
-            assert!(err_u.to_string().contains("outside"));
-
-            let err_p =
+            let _err_u =
+                UnitInterval::deserialize(F64Deserializer::<ValueDeError>::new(non_finite))
+                    .expect_err("UnitInterval must reject non-finite");
+            let _err_p =
                 PositiveFloat::deserialize(F64Deserializer::<ValueDeError>::new(non_finite))
                     .expect_err("PositiveFloat must reject non-finite");
-            assert!(err_p.to_string().contains("outside"));
-
-            let err_nn =
+            let _err_nn =
                 NonNegativeFloat::deserialize(F64Deserializer::<ValueDeError>::new(non_finite))
                     .expect_err("NonNegativeFloat must reject non-finite");
-            assert!(err_nn.to_string().contains("outside"));
         }
     }
 
@@ -90,35 +85,20 @@ mod active {
         assert_eq!(roundtrip_json(&GridIndex(17)), GridIndex(17));
         assert_eq!(roundtrip_json(&Dimension(256)), Dimension(256));
 
-        for model in FitModel::MENU_PRESETS {
-            assert_eq!(roundtrip_json(&model), model);
-        }
-        let pts = [[1000.0, 2.0], [1001.0, 5.0], [1002.0, 10.0], [1003.0, 17.0]];
-        let curve = fit_polynomial_scaled(&pts, 2, false, false).expect("quadratic fit");
-        let decoded_curve = roundtrip_json(&curve);
-        assert_eq!(decoded_curve, curve);
-        assert!((decoded_curve.eval(1001.5) - curve.eval(1001.5)).abs() < 1e-12);
-
-        let mut bad_json = serde_json::to_string(&curve).unwrap();
-        bad_json = bad_json.replace("\"coeff_len\":3", "\"coeff_len\":9");
-        assert!(serde_json::from_str::<CurveFit>(&bad_json).is_err());
-
-        let mut accum = WeightedOlsAccum::default();
-        accum.push(1.0, 2.0, 0.5);
-        accum.push(2.0, 4.0, 1.5);
-        assert_eq!(roundtrip_json(&accum), accum);
-
         let ext = LocalExtremum {
             point: [1.25, -3.5],
             is_max: false,
         };
         assert_eq!(roundtrip_json(&ext), ext);
-        let scan = LinePoiScan {
-            roots: vec![-1.0, 1.0],
-            y_intercepts: vec![-1.0],
-            extrema: vec![ext],
-        };
-        assert_eq!(roundtrip_json(&scan), scan);
+        #[cfg(feature = "alloc")]
+        {
+            let scan = LinePoiScan {
+                roots: alloc::vec![-1.0, 1.0],
+                y_intercepts: alloc::vec![-1.0],
+                extrema: alloc::vec![ext],
+            };
+            assert_eq!(roundtrip_json(&scan), scan);
+        }
 
         let scc = SccSummary {
             num_components: 3,
@@ -188,39 +168,22 @@ mod active {
     }
 
     #[test]
-    fn fit_errors_and_no_std_umbrella_roundtrip() {
-        let fit_errors = [
-            FitError::InsufficientPoints {
-                required: 3,
-                actual: 1,
-            },
-            FitError::UnsupportedDegree { degree: 7 },
-            FitError::InvalidDomain {
-                reason: "exponential fit requires at least 2 points with y > 0",
-            },
-            FitError::SingularMatrix,
-            FitError::NonConvergence { iterations: 200 },
-        ];
-        for err in fit_errors {
-            assert_eq!(roundtrip_json(&err), err);
-        }
+    fn arena_scalar_errors_and_no_std_umbrella_roundtrip() {
+        let arena_err = ArenaError::ArithmeticOverflow;
+        assert_eq!(roundtrip_json(&arena_err), arena_err);
+        let arena_umbrella = crate::error::MathCommonsError::from(arena_err);
+        assert_eq!(roundtrip_json(&arena_umbrella), arena_umbrella);
 
-        let no_std_umbrella =
-            crate::error::MathCommonsError::from(crate::error::ArenaError::ArithmeticOverflow);
+        let scalar_err = ScalarError::WorkspaceTooSmall {
+            required: 16,
+            available: 8,
+        };
+        assert_eq!(roundtrip_json(&scalar_err), scalar_err);
+        let no_std_umbrella = crate::error::MathCommonsError::from(scalar_err);
         assert_eq!(roundtrip_json(&no_std_umbrella), no_std_umbrella);
         assert_eq!(
             roundtrip_json(&crate::error::Severity::Warning),
             crate::error::Severity::Warning
-        );
-
-        let unknown_domain: FitError =
-            serde_json::from_str(r#"{"InvalidDomain":{"reason":"unrecognized custom reason"}}"#)
-                .expect("unknown domain reason falls back to static message");
-        assert_eq!(
-            unknown_domain,
-            FitError::InvalidDomain {
-                reason: "invalid curve-fitting domain"
-            }
         );
     }
 

@@ -6,7 +6,9 @@ use core::fmt;
 use std::error::Error as StdError;
 
 use oxidizemath::diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
-use oxidizemath::error::{ArenaError, Error, FitError, LinalgError, MathCommonsError, MathError};
+use oxidizemath::error::{
+    ArenaError, Error, FitError, LinalgError, MathCommonsError, MathError, ScalarError,
+};
 use oxidizemath::math_kernel::types::Dimension;
 use oxidizemath::verified_engine::allocator::VerifiedAllocator;
 use oxidizemath::verified_engine::engine::VerifiedEngine;
@@ -53,12 +55,17 @@ fn core_only_zero_alloc_diagnostics_and_linalg_error_wiring() {
         available: 16,
         align: 8,
     };
-    let fit = FitError::SingularMatrix;
+    let fit = FitError::from(linalg);
     let commons = MathCommonsError::from(arena);
+    let commons_scalar = MathCommonsError::from(ScalarError::WorkspaceTooSmall {
+        required: 16,
+        available: 4,
+    });
     let facade = Error::from(linalg);
     let facade_arena = Error::from(arena);
 
     assert!(commons.source().is_some());
+    assert!(commons_scalar.source().is_some());
     assert!(facade.source().is_some());
     assert!(facade_arena.source().is_some());
 
@@ -99,7 +106,9 @@ mod full_domain_wiring {
         let raw = LinalgError::SingularMatrix;
         let arena_raw = ArenaError::ArithmeticOverflow;
         let la = LinearAlgebraError::from(raw);
+        let fit = FitError::from(raw);
         let commons = MathCommonsError::from(arena_raw);
+        let commons_scalar = MathCommonsError::from(ScalarError::InvalidStepSize { value: 0.0 });
         let pm = PureMathError::from(raw);
         let ai = AIError::from(raw);
         let applied = AppliedError::from(raw);
@@ -112,7 +121,9 @@ mod full_domain_wiring {
 
         for has_src in [
             la.source().is_some(),
+            fit.source().is_some(),
             commons.source().is_some(),
+            commons_scalar.source().is_some(),
             pm.source().is_some(),
             ai.source().is_some(),
             applied.source().is_some(),

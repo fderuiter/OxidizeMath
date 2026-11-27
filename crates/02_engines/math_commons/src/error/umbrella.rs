@@ -1,5 +1,5 @@
 // [cite:math_commons]
-use super::{ArenaError, Diagnostic, DiagnosticVisitor, FitError, MathError, Severity};
+use super::{ArenaError, Diagnostic, DiagnosticVisitor, MathError, ScalarError, Severity};
 #[cfg(feature = "std")]
 use super::{EvalError, GlslError, LexError, ParseError, ShaderEmitError};
 use thiserror::Error;
@@ -12,12 +12,12 @@ pub enum MathCommonsError {
     /// Core mathematical validation or dimension failure.
     #[error("{0}")]
     Math(#[from] MathError),
-    /// Zero-allocation curve-fitting failure.
-    #[error("{0}")]
-    Fit(#[from] FitError),
     /// Tier 0 `#![no_std]` byte-arena alignment or capacity failure.
     #[error("{0}")]
     Arena(#[from] ArenaError),
+    /// Tier 0 scalar workspace or step-size validation failure.
+    #[error("{0}")]
+    Scalar(#[from] ScalarError),
     /// AST lexical analysis failure.
     #[cfg(feature = "std")]
     #[error("{0}")]
@@ -44,8 +44,8 @@ impl MathCommonsError {
     fn as_diagnostic(&self) -> &dyn Diagnostic {
         match self {
             Self::Math(err) => err,
-            Self::Fit(err) => err,
             Self::Arena(err) => err,
+            Self::Scalar(err) => err,
             #[cfg(feature = "std")]
             Self::Lex(err) => err,
             #[cfg(feature = "std")]
