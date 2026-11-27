@@ -6,7 +6,7 @@ use core::fmt;
 use std::error::Error as StdError;
 
 use oxidizemath::diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
-use oxidizemath::error::{Error, FitError, LinalgError, MathCommonsError, MathError};
+use oxidizemath::error::{Error, FitError, LinalgError, MathCommonsError, MathError, ScalarError};
 use oxidizemath::math_kernel::types::Dimension;
 use oxidizemath::verified_engine::allocator::VerifiedAllocator;
 use oxidizemath::verified_engine::engine::VerifiedEngine;
@@ -49,7 +49,10 @@ fn core_only_zero_alloc_diagnostics_and_linalg_error_wiring() {
         available: 8,
     };
     let fit = FitError::from(linalg);
-    let commons = MathCommonsError::from(linalg);
+    let commons = MathCommonsError::from(ScalarError::WorkspaceTooSmall {
+        required: 16,
+        available: 4,
+    });
     let facade = Error::from(linalg);
 
     assert!(fit.source().is_some());
@@ -90,7 +93,7 @@ mod full_domain_wiring {
         let raw = LinalgError::SingularMatrix;
         let la = LinearAlgebraError::from(raw);
         let fit = FitError::from(raw);
-        let commons = MathCommonsError::from(raw);
+        let commons = MathCommonsError::from(ScalarError::InvalidStepSize { value: 0.0 });
         let pm = PureMathError::from(raw);
         let ai = AIError::from(raw);
         let applied = AppliedError::from(raw);

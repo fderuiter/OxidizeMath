@@ -255,6 +255,22 @@ impl<T: Ring> Ring for Polynomial<T> {
     fn one() -> Self {
         Polynomial::new(vec![T::one()])
     }
+    #[inline]
+    fn ring_ref_add(&self, rhs: &Self) -> Self {
+        self + rhs
+    }
+    #[inline]
+    fn ring_ref_sub(&self, rhs: &Self) -> Self {
+        self - rhs
+    }
+    #[inline]
+    fn ring_ref_mul(&self, rhs: &Self) -> Self {
+        self * rhs
+    }
+    #[inline]
+    fn ring_ref_neg(&self) -> Self {
+        -self
+    }
 }
 
 impl<T: Ring> AddAssign for Polynomial<T> {

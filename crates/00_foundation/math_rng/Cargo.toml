@@ -12,11 +12,12 @@ traceability = true
 
 [features]
 default = []
-alloc = []
-serde = ["dep:serde", "rand_chacha/serde1"]
-std = ["alloc", "serde?/std"]
+alloc = ["math_scalars/alloc"]
+serde = ["dep:serde", "math_scalars/serde", "rand_chacha/serde1"]
+std = ["alloc", "math_scalars/std", "serde?/std"]
 
 [dependencies]
+math_scalars = { path = "../math_scalars", default-features = false }
 rand_chacha = { workspace = true, default-features = false }
 rand_core = { workspace = true }
 serde = { workspace = true, optional = true }

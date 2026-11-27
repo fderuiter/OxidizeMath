@@ -1,10 +1,10 @@
 //! Zero-allocation closed-form parameter seed estimators for nonlinear curve models.
-// [cite:math_commons]
+// [cite:engine_opt]
 
 use super::poly::{solve_dense_small_raw, symmetrize_upper};
 use crate::error::FitError;
-use crate::series::PointSeries;
-use num_traits::Float;
+use math_scalars::series::PointSeries;
+use math_scalars::{ComplexField, RealField};
 
 const MAX_SIN_SAMPLES: usize = 256;
 
@@ -83,7 +83,7 @@ fn weighted_ols_line_inner(samples: &[[f64; 3]]) -> Result<(f64, f64), FitError>
 #[cfg_attr(feature = "std", verified_engine::verified)]
 pub fn seed_exponential<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2], FitError> {
     let [a_u, b, x0] = seed_exponential_shifted(points)?;
-    let a = a_u * Float::exp((-b * x0).clamp(-700.0, 700.0));
+    let a = a_u * ComplexField::exp((-b * x0).clamp(-700.0, 700.0));
     if a.is_finite() && b.is_finite() {
         Ok([a, b])
     } else {
@@ -116,7 +116,7 @@ pub(super) fn seed_exponential_shifted<P: PointSeries + ?Sized>(
     for i in 0..points.len() {
         let p = points.point_at(i);
         if p[0].is_finite() && p[1].is_finite() && p[1] > 0.0 {
-            acc.push(p[0] - x0, Float::ln(p[1]), p[1] * p[1]);
+            acc.push(p[0] - x0, ComplexField::ln(p[1]), p[1] * p[1]);
         }
     }
     if acc.count < 2 {
@@ -125,7 +125,7 @@ pub(super) fn seed_exponential_shifted<P: PointSeries + ?Sized>(
         });
     }
     let (ln_a, b) = acc.solve()?;
-    let a_u = Float::exp(ln_a);
+    let a_u = ComplexField::exp(ln_a);
     if a_u.is_finite() && b.is_finite() {
         Ok([a_u, b, x0])
     } else {
@@ -151,7 +151,7 @@ fn seed_power_law_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2],
         }
         finite_n += 1;
         if p[0] > 0.0 && p[1] > 0.0 {
-            acc.push(Float::ln(p[0]), Float::ln(p[1]), p[1] * p[1]);
+            acc.push(ComplexField::ln(p[0]), ComplexField::ln(p[1]), p[1] * p[1]);
         }
     }
     if finite_n < 2 {
@@ -166,7 +166,7 @@ fn seed_power_law_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2],
         });
     }
     let (ln_a, b) = acc.solve()?;
-    let a = Float::exp(ln_a);
+    let a = ComplexField::exp(ln_a);
     if a.is_finite() && b.is_finite() {
         Ok([a, b])
     } else {
@@ -192,7 +192,7 @@ fn seed_logarithmic_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 2
         }
         finite_n += 1;
         if p[0] > 0.0 {
-            acc.push(Float::ln(p[0]), p[1], 1.0);
+            acc.push(ComplexField::ln(p[0]), p[1], 1.0);
         }
     }
     if finite_n < 2 {
@@ -236,8 +236,8 @@ fn seed_logistic_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 3], 
         if p[0].is_finite() && p[1].is_finite() && p[1] > 0.0 && p[1] < l_est {
             let ratio = (l_est / p[1]) - 1.0;
             if ratio > 0.0 {
-                let w = Float::powi(p[1] * (l_est - p[1]), 2);
-                acc.push(p[0] - x_min, Float::ln(ratio), w);
+                let w = ComplexField::powi(p[1] * (l_est - p[1]), 2);
+                acc.push(p[0] - x_min, ComplexField::ln(ratio), w);
             }
         }
     }
@@ -311,10 +311,10 @@ fn seed_sinusoidal_inner<P: PointSeries + ?Sized>(points: &P) -> Result<[f64; 4]
     let freqs = candidate_frequencies(sub, mean_y, span_x);
     let (best_b, best_lin) = search_best_harmonic(sub, &freqs, x0);
     if let Some((alpha, beta, d)) = best_lin {
-        let amp = Float::sqrt(alpha * alpha + beta * beta).max(1e-6);
-        let mut phase = num_traits::Euclid::rem_euclid(
-            &(Float::atan2(alpha, beta) - best_b * x0),
-            &core::f64::consts::TAU,
+        let amp = RealField::hypot(alpha, beta).max(1e-6);
+        let mut phase = RealField::rem_euclid(
+            RealField::atan2(alpha, beta) - best_b * x0,
+            core::f64::consts::TAU,
         );
         if phase > core::f64::consts::PI {
             phase -= core::f64::consts::TAU;
@@ -452,7 +452,7 @@ fn jacquelin_frequency(sorted: &[[f64; 2]], mean_y: f64) -> Option<f64> {
     symmetrize_upper(&mut m, 4);
     let sol = solve_dense_small_raw(&mut m, &rhs, 4).ok()?;
     let b_sq = -sol[0];
-    (b_sq.is_finite() && b_sq > 1e-12).then(|| Float::sqrt(b_sq))
+    (b_sq.is_finite() && b_sq > 1e-12).then(|| ComplexField::sqrt(b_sq))
 }
 
 fn solve_harmonic_linear(
@@ -464,7 +464,7 @@ fn solve_harmonic_linear(
     let mut rhs = [0.0_f64; 5];
     let mut sum_y2 = 0.0_f64;
     for &[x, y] in points {
-        let (s, c) = Float::sin_cos(b * (x - x0));
+        let (s, c) = ComplexField::sin_cos(b * (x - x0));
         let basis = [c, s, 1.0];
         sum_y2 += y * y;
         for r in 0..3 {

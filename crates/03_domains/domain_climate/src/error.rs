@@ -1,8 +1,8 @@
 //! Error types for the climate modeling domain.
 
 use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
-use math_commons::error::{FitError, LinalgError, MathError};
-use pure_math::error::{LinearAlgebraError, OptimizationError};
+use math_commons::error::MathError;
+use pure_math::error::{LinalgError, LinearAlgebraError, OptimizationError};
 use thiserror::Error;
 
 /// Domain-specific errors for climate emulation, tensor layers, and loss functions.
@@ -63,10 +63,6 @@ pub enum ClimateError {
     #[error("{0}")]
     Linalg(#[from] LinalgError),
 
-    /// Foundational curve-fitting solver error.
-    #[error("{0}")]
-    Fit(#[from] FitError),
-
     /// Upstream numerical optimization error.
     #[error("{0}")]
     Optimization(#[from] OptimizationError),
@@ -82,7 +78,6 @@ impl Diagnostic for ClimateError {
         match self {
             Self::Math(err) => err.severity(),
             Self::Linalg(err) => err.severity(),
-            Self::Fit(err) => err.severity(),
             Self::Optimization(err) => err.severity(),
             Self::LinearAlgebra(err) => err.severity(),
             _ => Severity::Error,
@@ -94,7 +89,6 @@ impl Diagnostic for ClimateError {
         match self {
             Self::Math(err) => err.visit_fields(visitor),
             Self::Linalg(err) => err.visit_fields(visitor),
-            Self::Fit(err) => err.visit_fields(visitor),
             Self::Optimization(err) => err.visit_fields(visitor),
             Self::LinearAlgebra(err) => err.visit_fields(visitor),
             _ => {

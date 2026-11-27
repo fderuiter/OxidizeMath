@@ -12,9 +12,10 @@ math_contract = true
 
 [features]
 default = []
-alloc = ["math_commons/alloc", "math_rng/alloc"]
+alloc = ["math_scalars/alloc", "math_commons/alloc", "math_rng/alloc"]
 serde = ["dep:serde", "math_commons/serde", "math_diagnostics/serde", "math_rng/serde"]
 std = [
+    "math_scalars/std",
     "alloc",
     "math_commons/std",
     "math_diagnostics/std",
@@ -24,6 +25,7 @@ std = [
 ]
 
 [dependencies]
+math_scalars = { path = "../../00_foundation/math_scalars", default-features = false }
 math_commons = { path = "../math_commons", default-features = false }
 math_diagnostics = { path = "../../00_foundation/math_diagnostics", default-features = false }
 math_rng = { path = "../../00_foundation/math_rng", default-features = false }

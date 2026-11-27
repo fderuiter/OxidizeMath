@@ -34,7 +34,7 @@ fn test_linear_and_polynomial_fits_exact() {
     assert_eq!(res_4.fit_type, FitType::Quartic);
     assert!((res_4.r_squared - 1.0).abs() < 1e-9);
     assert_eq!(
-        math_commons::fit::fit_polynomial(&quartic, 5),
+        engine_opt::fit::fit_polynomial(&quartic, 5),
         Err(FitError::UnsupportedDegree { degree: 5 })
     );
 }

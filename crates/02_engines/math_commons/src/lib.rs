@@ -9,10 +9,8 @@ extern crate alloc;
 #[cfg(feature = "std")]
 pub mod ast;
 pub mod constants;
-/// Shared numerical, bounds, and curve-fitting diagnostic error types.
+/// Shared numerical and bounds diagnostic error types.
 pub mod error;
-/// Stack-allocated polynomial and damped Levenberg-Marquardt curve-fitting solvers.
-pub mod fit;
 /// Colormap gradients and strongly typed grid/step primitives.
 pub mod math_kernel;
 /// Zero-allocation point-of-interest detection (extrema, roots, inflections, intersections).
@@ -26,6 +24,9 @@ pub mod series;
 pub mod stochastic;
 /// Quantum angular-momentum coupling and Wigner $3j$ / Clebsch-Gordan coefficients.
 pub mod wigner;
+
+#[doc(hidden)]
+pub use math_scalars::advance_sample2d_plateau;
 
 #[cfg(test)]
 mod serde_tests;
@@ -64,17 +65,17 @@ theory_verification!(
         PARABOLIC_PEAK_Y = 4.0;
     },
     test = {
-        use crate::fit::{FitModel, fit_model};
-        use crate::poi::parabolic_vertex;
-        use scientific_metadata::theory::{MaturityTier, TheoryDescribable};
+        use crate::poi::{closest_threshold_crossing, parabolic_vertex};
+        use crate::wigner::ClebschGordan;
 
         assert_eq!(constants::C, SPEED_OF_LIGHT_M_S);
         let vertex = parabolic_vertex([1.0, 3.0], [2.0, 4.0], [3.0, 3.0]);
         assert!((vertex[1] - PARABOLIC_PEAK_Y).abs() < 1e-12);
         let xs = [0.0, 1.0, 2.0, 3.0, 4.0];
         let ys = [0.0, 3.0, 4.0, 3.0, 0.0];
-        let fit = fit_model(&(&xs[..], &ys[..]), FitModel::Quadratic, false).unwrap();
-        assert!((fit.eval(2.0) - PARABOLIC_PEAK_Y).abs() < 1e-9);
-        assert_eq!(FitModel::Quadratic.maturity_tier(), MaturityTier::Certified);
+        let root = closest_threshold_crossing(&(&xs[..], &ys[..]), 2.0, 0.5).unwrap();
+        assert!(root > 0.0 && root < 1.0);
+        let cg = ClebschGordan::new(1, 1, 1, -1, 2, 0);
+        assert!((cg.value() - (1.0 / 6.0_f64).sqrt()).abs() < 1e-12);
     }
 );

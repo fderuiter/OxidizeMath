@@ -74,6 +74,8 @@ nalgebra = { workspace = true }
 oxidize_core = { path = "../../crates/01_core/oxidize_core" }
 math_explorer = { path = "../../crates/04_bindings/math_explorer", optional = true }
 engine_linalg = { path = "../../crates/02_engines/engine_linalg" }
+engine_opt = { path = "../../crates/02_engines/engine_opt" }
+math_scalars = { path = "../../crates/00_foundation/math_scalars" }
 math_commons = { path = "../../crates/02_engines/math_commons" }
 scientific_metadata = { path = "../../crates/00_foundation/scientific_metadata" }
 diagnostics = { path = "../../crates/01_core/diagnostics" }
