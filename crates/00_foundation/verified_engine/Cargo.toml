@@ -20,5 +20,13 @@ verified_engine_macros = { version = "0.1.0", path = "../verified_engine_macros"
 [dev-dependencies]
 approx = { workspace = true }
 
+[[test]]
+name = "allocator_trap"
+required-features = ["std"]
+
+[[test]]
+name = "macro_integration"
+required-features = ["std"]
+
 [lints]
 workspace = true

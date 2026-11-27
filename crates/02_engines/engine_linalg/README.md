@@ -10,7 +10,7 @@
 
 ### Key Capabilities
 
-- **Caller-Owned Scratch Memory**: [`SolverWorkspace`], [`ByteArena`], and [`LinalgWorkspace`] partition preallocated stack or [`OwnedByteArena`] buffers deterministically without `std` or a global allocator (`alloc` is strictly optional).
+- **Caller-Owned Scratch Memory**: [`SolverWorkspace`], [`ByteArena`], and [`LinalgWorkspace`] partition preallocated stack or `OwnedByteArena` buffers deterministically without `std` or a global allocator (`alloc` is strictly optional).
 - **Direct Factorizations**:
   - **Householder QR with Column Pivoting** (`qr_factor_pivoted`, `qr_solve_least_squares`, `qr_solve_rt_permuted`, `StreamingQr`) for rank-revealing orthogonal least squares without squaring condition numbers in $A^T A$.
   - **LU with Partial Pivoting** (`lu_factor_in_place`, `lu_solve`, `lu_inverse`, `lu_determinant`) for square nonsingular linear systems.

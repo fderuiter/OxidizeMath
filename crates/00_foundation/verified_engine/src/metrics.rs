@@ -22,9 +22,18 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 /// let snapshot: ComplexityMetrics = get_metrics();
 /// disable_verification();
 ///
-/// assert_eq!(snapshot.function_calls, 1);
-/// assert_eq!(snapshot.arithmetic_ops, 4);
-/// assert_eq!(snapshot.memory_loads, 2);
+/// #[cfg(feature = "std")]
+/// {
+///     assert_eq!(snapshot.function_calls, 1);
+///     assert_eq!(snapshot.arithmetic_ops, 4);
+///     assert_eq!(snapshot.memory_loads, 2);
+/// }
+/// #[cfg(not(feature = "std"))]
+/// {
+///     assert_eq!(snapshot.function_calls, 0);
+///     assert_eq!(snapshot.arithmetic_ops, 0);
+///     assert_eq!(snapshot.memory_loads, 0);
+/// }
 /// ```
 #[derive(Debug, Default, Clone)]
 #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]

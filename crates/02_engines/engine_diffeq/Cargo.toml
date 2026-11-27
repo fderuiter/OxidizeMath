@@ -46,5 +46,9 @@ serde_json = { workspace = true, default-features = false, features = ["alloc", 
 name = "convergence_and_alloc"
 required-features = ["std"]
 
+[[test]]
+name = "test_checked_diffeq"
+required-features = ["std"]
+
 [lints]
 workspace = true

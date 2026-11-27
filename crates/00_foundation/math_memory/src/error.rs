@@ -1,5 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "no_std_engine"))]
-//! Stack-allocated `#![no_std]` error diagnostics for [`crate::ByteArena`] and [`crate::OwnedByteArena`].
+//! Stack-allocated `#![no_std]` error diagnostics for [`crate::ByteArena`] and `OwnedByteArena`.
 
 use core::fmt;
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};

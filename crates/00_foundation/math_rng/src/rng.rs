@@ -17,10 +17,48 @@ pub const BASE_SEED: u64 = 0x0001_D1CE_CAFE_BABE;
 /// Forbids ambient OS entropy calls while exposing ChaCha8's native 64-bit stream selector
 /// ($2^{64}$ orthogonal streams of period $2^{68}$ bytes each) and 128-bit word-offset seeking.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct OxidizeRng {
     inner: ChaCha8Rng,
+}
+
+#[cfg(feature = "serde")]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename = "ChaCha8Rng")]
+struct ChaCha8RngWire {
+    seed: [u8; 32],
+    stream: u64,
+    word_pos: u128,
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for OxidizeRng {
+    #[inline]
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        ChaCha8RngWire {
+            seed: self.inner.get_seed(),
+            stream: self.inner.get_stream(),
+            word_pos: self.inner.get_word_pos(),
+        }
+        .serialize(serializer)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for OxidizeRng {
+    #[inline]
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = ChaCha8RngWire::deserialize(deserializer)?;
+        let mut inner = <ChaCha8Rng as SeedableRng>::from_seed(wire.seed);
+        inner.set_stream(wire.stream);
+        inner.set_word_pos(wire.word_pos);
+        Ok(Self { inner })
+    }
 }
 
 impl OxidizeRng {

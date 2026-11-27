@@ -5,7 +5,7 @@ use crate::error::ArenaError;
 use crate::views::{BitSlice, FlagSlice};
 use bytemuck::{Pod, Zeroable};
 
-/// Saved cursor position inside a [`ByteArena`] or [`crate::OwnedByteArena`].
+/// Saved cursor position inside a [`ByteArena`] or `OwnedByteArena`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ArenaCheckpoint {
     pub(crate) offset: usize,

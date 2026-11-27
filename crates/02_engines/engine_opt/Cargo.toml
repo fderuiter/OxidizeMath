@@ -14,7 +14,7 @@ math_contract = true
 
 [features]
 default = ["std"]
-alloc = ["engine_linalg/alloc", "math_scalars/alloc"]
+alloc = ["engine_linalg/alloc", "math_scalars/alloc", "serde?/alloc"]
 serde = [
     "dep:serde",
     "engine_linalg/serde",

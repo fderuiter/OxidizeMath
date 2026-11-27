@@ -7,10 +7,10 @@ use crate::views::{BitSlice, FlagSlice};
 use bytemuck::{Pod, Zeroable};
 use core::marker::PhantomData;
 
-/// Base alignment guaranteed by [`crate::OwnedByteArena`] (`>= 8` on `wasm32`, `16` on 64-bit targets).
+/// Base alignment guaranteed by `OwnedByteArena` (`>= 8` on `wasm32`, `16` on 64-bit targets).
 pub const MAX_ARENA_ALIGN: usize = core::mem::align_of::<u128>();
 
-/// Typed byte-offset handle for a persistent `[T]` slice inside an [`crate::OwnedByteArena`].
+/// Typed byte-offset handle for a persistent `[T]` slice inside an `OwnedByteArena`.
 pub struct ArenaRegion<T> {
     pub(crate) byte_offset: usize,
     pub(crate) len: usize,
@@ -85,7 +85,7 @@ impl<T> ArenaRegion<T> {
     }
 }
 
-/// Typed byte-offset handle for a persistent [`FlagSlice`] inside an [`crate::OwnedByteArena`].
+/// Typed byte-offset handle for a persistent [`FlagSlice`] inside an `OwnedByteArena`.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct FlagRegion {
     pub(crate) inner: ArenaRegion<u8>,
@@ -116,7 +116,7 @@ impl FlagRegion {
     }
 }
 
-/// Typed byte-offset handle for a persistent [`BitSlice`] inside an [`crate::OwnedByteArena`].
+/// Typed byte-offset handle for a persistent [`BitSlice`] inside an `OwnedByteArena`.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct BitRegion {
     pub(crate) words: ArenaRegion<u64>,

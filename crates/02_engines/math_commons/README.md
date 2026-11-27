@@ -29,7 +29,7 @@ By standardizing universal constants, color mapping formulas, and spatial coordi
 - **`registry`**: Constant lookup and numeric tolerance validation.
 - **`series`**: Zero-copy [`PointSeries`](crate::series::PointSeries) views over `[f64; 2]`, `(f64, f64)`, and paired `(&[f64], &[f64])` coordinate slices.
 - **`poi`**: Zero-allocation sub-segment Hermite threshold crossings, vertical crossings, 3-point Lagrange parabolic extrema, and monotone/general 2D polyline intersections.
-- **`stochastic`**: `#![no_std]` zero-allocation [`StochasticWorkspace`](crate::stochastic::StochasticWorkspace) and [`SolverWorkspace`](math_memory::SolverWorkspace) kernels for iterative Tarjan SCC sink-class decomposition, scale-normalized Householder QR DTMC/CTMC stationary solvers, exact discrete-time AR(1) Ornstein-Uhlenbeck calibration, and quantile summaries.
+- **`stochastic`**: `#![no_std]` zero-allocation `StochasticWorkspace` and [`SolverWorkspace`](math_memory::SolverWorkspace) kernels for iterative Tarjan SCC sink-class decomposition, scale-normalized Householder QR DTMC/CTMC stationary solvers, exact discrete-time AR(1) Ornstein-Uhlenbeck calibration, and quantile summaries.
 - **`wigner`**: Clebsch-Gordan coefficients and quantum angular momentum arithmetic.
 
 `math_commons` enables `default = ["std"]`, supports optional `alloc` and `serde` features (`--no-default-features --features alloc` / `--features serde`), and compiles in bare `#![no_std]` mode (`core` + `libm` only) when built with `--no-default-features`.
@@ -62,6 +62,7 @@ Utilize spatial index flattening and scientific color palette evaluation:
 
 ```rust
 use math_commons::constants::C;
+# #[cfg(feature = "std")]
 use math_commons::math_kernel::colormap::heatmap_color;
 use math_commons::math_kernel::types::flatten_2d_index;
 
@@ -72,12 +73,15 @@ assert_eq!(C, 299_792_458.0);
 let index = flatten_2d_index(3, 2, 10);
 assert_eq!(index, 23);
 
+# #[cfg(feature = "std")]
+# {
 // Evaluate normalized scalar values to RGB heatmaps for visualizers
 let min_color = heatmap_color(0.0);
 assert_eq!(min_color, [0, 0, 255]); // Blue at lower bound
 
 let max_color = heatmap_color(1.0);
 assert_eq!(max_color, [255, 0, 0]); // Red at upper bound
+# }
 ```
 
 ### Iterative AST-to-GLSL Transpilation
@@ -85,6 +89,8 @@ assert_eq!(max_color, [255, 0, 0]); // Red at upper bound
 Compile scalar (`float`) and complex (`vec2`) AST expressions into standalone GLSL ES 3.00 expressions:
 
 ```rust
+# #[cfg(feature = "std")]
+# {
 use math_commons::ast::parse;
 use math_commons::math_kernel::glsl_colormap::glsl_colormap_library;
 
@@ -94,6 +100,7 @@ assert_eq!(glsl, "cpow(z, vec2(3.0, 0.0)) - cdiv(vec2(1.0, 0.0), z)");
 
 let palette_glsl = glsl_colormap_library();
 assert!(palette_glsl.contains("vec3 ensure_dark_canvas_contrast(vec3 srgb)"));
+# }
 ```
 
 Example emitted GLSL helper signature (`text` block):

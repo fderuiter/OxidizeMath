@@ -20,7 +20,7 @@ Because `cargo test` stops at the first failing crate, failure 3 only appeared o
 2. Write the test PNG artifacts to `std::env::temp_dir()`.
 3. Resolve package-keyed `approved_ignore_fences` entries with `expand_package_pattern_in_ws(workspace_root, key)` before falling back to `path_matches_lossy`.
 4. Run the non-Linux `Run Workspace Tests (Native)` step with `--no-fail-fast` so one CI run reports every failing crate.
-5. Take the desktop targets off the web deploy's critical path without serializing `build-and-test` behind `detect-changes`. `build-and-test.strategy.matrix.include` evaluates `github.event_name` directly via `fromJSON(...)`: pull requests and merge groups run only Linux Native and Web/WASM, while main pushes, manual dispatches, release tags and a new nightly `schedule` also run Windows Native and macOS Native. Desktop legs set `continue-on-error` except on `refs/tags/v*`, so a macOS/Windows failure no longer skips `deploy-pages` but still blocks `publish-release`.
+5. Take the desktop targets off the web deploy's critical path. `detect-changes` emits the `build-and-test` matrix: pull requests and merge groups run only Linux Native and Web/WASM, while main pushes, manual dispatches, release tags and a new nightly `schedule` also run Windows Native and macOS Native. Desktop legs set `continue-on-error` except on `refs/tags/v*`, so a macOS/Windows failure no longer skips `deploy-pages` but still blocks `publish-release`.
 
 ## Consequences
 

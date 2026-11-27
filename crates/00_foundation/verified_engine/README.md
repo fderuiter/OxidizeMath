@@ -28,6 +28,7 @@ In mission-critical mathematical modeling, computational kernels must avoid non-
 Wrap critical computation steps inside `VerifiedEngine::run_verified` and instrument functions with `#[verified]`:
 
 ```rust
+# #[cfg(feature = "std")]
 use verified_engine::engine::VerifiedEngine;
 use verified_engine::verified;
 
@@ -37,6 +38,8 @@ fn compute_kinetic_energy(mass: f64, velocity: f64) -> f64 {
     0.5 * mass * velocity * velocity
 }
 
+# #[cfg(feature = "std")]
+# {
 // Run the calculation inside the verified execution harness
 let (energy, metrics) = VerifiedEngine::run_verified(|| {
     compute_kinetic_energy(2.0, 3.0)
@@ -44,6 +47,9 @@ let (energy, metrics) = VerifiedEngine::run_verified(|| {
 
 assert_eq!(energy, 9.0);
 assert!(metrics.function_calls >= 1);
+# }
+# #[cfg(not(feature = "std"))]
+# assert_eq!(compute_kinetic_energy(2.0, 3.0), 9.0);
 ```
 
 ---

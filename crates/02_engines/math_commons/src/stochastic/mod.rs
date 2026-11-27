@@ -1,7 +1,7 @@
 //! Zero-allocation `#![no_std]` stochastic solver kernel (`stochastic`).
 //!
 //! Provides `#![no_std]` [`SolverWorkspace`](math_memory::SolverWorkspace)-driven kernels and
-//! (with `alloc`) a single-arena [`StochasticWorkspace`](crate::stochastic::StochasticWorkspace) backing:
+//! (with `alloc`) a single-arena `StochasticWorkspace` backing:
 //! - Iterative Tarjan strongly connected component (SCC) graph decomposition and closed sink
 //!   class isolation over discrete-time transition ($P$) and continuous-time generator ($G$)
 //!   matrices.
