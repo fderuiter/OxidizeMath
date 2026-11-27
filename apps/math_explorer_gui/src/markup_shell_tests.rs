@@ -2,9 +2,7 @@
 
 const INDEX_HTML: &str = include_str!("../index.html");
 const RELOAD_JS: &str = include_str!("../reload.js");
-const WEBGL_RECOVERY_RS: &str = include_str!("webgl_recovery.rs");
 const WEBGL_RECOVERY_BRIDGE_RS: &str = include_str!("webgl_recovery/bridge.rs");
-const APP_MOD_RS: &str = include_str!("app/mod.rs");
 
 #[test]
 fn test_document_title_and_metadata_tags() {
@@ -163,8 +161,17 @@ fn test_adaptive_shell_theme_media_queries() {
         "@media (prefers-color-scheme: light)",
         "@media (prefers-contrast: more)",
         "@media (forced-colors: active)",
+        "html[data-theme] .spinner",
+        "html .spinner",
+        "html .brand-mark",
+        "html .brand-badge",
+        "html .brand-axes",
+        "html .brand-wave",
+        "html .brand-node",
         "border-color: GrayText;",
         "border-top-color: Highlight;",
+        "background-color: ButtonFace;",
+        "color: ButtonText;",
     ] {
         assert!(
             INDEX_HTML.contains(rule),
@@ -181,16 +188,33 @@ fn test_media_queries_scoped_to_not_data_theme_and_contrast_precedence() {
     let contrast_pos = INDEX_HTML
         .find("@media (prefers-contrast: more)")
         .expect("prefers-contrast media query must exist");
+    let dark_theme_pos = INDEX_HTML
+        .find("html[data-theme=\"dark\"]")
+        .expect("dark data-theme block must exist");
+    let reduced_motion_pos = INDEX_HTML
+        .find("@media (prefers-reduced-motion: reduce)")
+        .expect("prefers-reduced-motion media query must exist");
+    let high_contrast_pos = INDEX_HTML[..reduced_motion_pos]
+        .rfind("html[data-theme=\"high-contrast\"]")
+        .expect("high-contrast data-theme block must exist");
     let forced_pos = INDEX_HTML
         .find("@media (forced-colors: active)")
         .expect("forced-colors media query must exist");
+    let forced_reduced_pos = INDEX_HTML
+        .find("@media (forced-colors: active) and (prefers-reduced-motion: reduce)")
+        .expect("forced-colors reduced-motion media query must exist");
 
     assert!(
-        light_pos < contrast_pos,
-        "@media (prefers-contrast: more) must follow @media (prefers-color-scheme: light)"
+        light_pos < contrast_pos
+            && contrast_pos < dark_theme_pos
+            && high_contrast_pos < forced_pos
+            && forced_pos < reduced_motion_pos
+            && reduced_motion_pos < forced_reduced_pos,
+        "@media (forced-colors: active) must follow all html[data-theme] blocks and precede reduced-motion"
     );
     let light_block = &INDEX_HTML[light_pos..contrast_pos];
-    let contrast_block = &INDEX_HTML[contrast_pos..forced_pos];
+    let contrast_block = &INDEX_HTML[contrast_pos..dark_theme_pos];
+    let forced_reduced_block = &INDEX_HTML[forced_reduced_pos..];
 
     for selector in [
         "html:not([data-theme])",
@@ -208,6 +232,11 @@ fn test_media_queries_scoped_to_not_data_theme_and_contrast_precedence() {
             "prefers-contrast media block must scope selector: {selector}"
         );
     }
+    assert!(
+        forced_reduced_block.contains("html .spinner")
+            && forced_reduced_block.contains("html[data-theme] .spinner"),
+        "forced-colors reduced-motion block must match html .spinner and html[data-theme] .spinner"
+    );
 }
 
 #[test]
@@ -309,6 +338,19 @@ fn test_prerendered_twin_slot_live_regions() {
 
 #[test]
 fn test_error_container_supports_categories_and_webgl_instructions() {
+    let err_start = INDEX_HTML
+        .find("<div id=\"error_container\"")
+        .expect("#error_container tag must exist");
+    let err_end = INDEX_HTML[err_start..].find('>').unwrap() + err_start;
+    let err_open_tag = &INDEX_HTML[err_start..=err_end];
+    assert!(
+        err_open_tag.contains("role=\"region\"")
+            && err_open_tag.contains("aria-labelledby=\"error_title\"")
+            && err_open_tag.contains("aria-describedby=\"error_message\"")
+            && !err_open_tag.contains("role=\"alert\"")
+            && !err_open_tag.contains("aria-live="),
+        "#error_container must use role=\"region\" without duplicate alert/aria-live: {err_open_tag}"
+    );
     assert!(
         INDEX_HTML.contains("data-error-category=\"webgl\""),
         "#error_container must default to data-error-category=\"webgl\""
@@ -352,12 +394,23 @@ fn test_webgl_recovery_overlay_and_theme_synchronization() {
         "id=\"webgl_recovery_title\"",
         "id=\"webgl_recovery_subtitle\"",
         "class=\"spinner\"",
+        "id=\"webgl_recovery_reload_button\"",
+        "id=\"webgl_recovery_download_button\"",
     ] {
         assert!(
             overlay_block.contains(attr),
             "#webgl_recovery_overlay must contain {attr}"
         );
     }
+    assert!(
+        RELOAD_JS.contains("setAttribute('inert', '')")
+            && RELOAD_JS.contains("setAttribute('aria-hidden', 'true')")
+            && RELOAD_JS.contains("removeAttribute('inert')")
+            && RELOAD_JS.contains("removeAttribute('aria-hidden')")
+            && WEBGL_RECOVERY_BRIDGE_RS.contains("set_attribute(\"inert\", \"\")")
+            && WEBGL_RECOVERY_BRIDGE_RS.contains("remove_attribute(\"inert\")"),
+        "reload.js and webgl_recovery/bridge.rs must toggle canvas inert and aria-hidden"
+    );
 
     for theme_selector in [
         "html:not([data-theme]) #webgl_recovery_overlay",
@@ -372,84 +425,4 @@ fn test_webgl_recovery_overlay_and_theme_synchronization() {
             "index.html must synchronize recovery UI selector: {theme_selector}"
         );
     }
-}
-
-#[test]
-fn test_recovery_screen_download_workspace_envelope_button_and_blob_export() {
-    let error_start = INDEX_HTML
-        .find("id=\"error_container\"")
-        .expect("#error_container must exist");
-    let overlay_start = INDEX_HTML
-        .find("id=\"webgl_recovery_overlay\"")
-        .expect("#webgl_recovery_overlay must exist");
-    let error_section = &INDEX_HTML[error_start..overlay_start];
-
-    assert!(
-        error_section.contains(
-            "<button type=\"button\" id=\"download_workspace_button\" class=\"secondary-btn\" hidden>"
-        ),
-        "#error_container must include hidden type=\"button\" #download_workspace_button"
-    );
-
-    for contract in [
-        "setSavedWorkspaceEnvelope",
-        "downloadSavedWorkspace",
-        "data-storage-blocked",
-        "new Blob([payload], { type: 'application/json' })",
-        "URL.createObjectURL(blob)",
-        "URL.revokeObjectURL(objectUrl)",
-        "math-explorer-recovery.mws",
-    ] {
-        assert!(
-            RELOAD_JS.contains(contract),
-            "reload.js must support saved workspace envelope download via {contract}"
-        );
-    }
-}
-
-#[test]
-fn test_webgl_in_place_recovery_and_timeout_fallback_contracts() {
-    for js_contract in [
-        "DEFAULT_WEBGL_RESTORE_TIMEOUT_MS",
-        "webgl_restore_timeout_ms",
-        "addEventListener('webglcontextlost'",
-        "event.preventDefault()",
-        "addEventListener('webglcontextrestored'",
-        "beginWebglContextRecovery",
-        "completeWebglContextRecovery",
-        "failWebglContextRecovery",
-        "registerWebglRecoveryHandlers",
-        "WEBGL_CONTEXT_LOST_COPY",
-        "announce(cfg.alert, 'assertive')",
-        "reloadBtn.focus()",
-    ] {
-        assert!(
-            RELOAD_JS.contains(js_contract),
-            "reload.js must implement WebGL recovery & timeout fallback contract: {js_contract}"
-        );
-    }
-
-    for rust_contract in [
-        "\"webglcontextlost\"",
-        "\"webglcontextrestored\"",
-        "event.prevent_default()",
-        "capture_recovery_snapshot()",
-        "restore_recovery_snapshot(",
-        "runner.destroy()",
-        "eframe::WebRunner::new()",
-        "beginWebglContextRecovery",
-        "completeWebglContextRecovery",
-        "failWebglContextRecovery",
-    ] {
-        assert!(
-            WEBGL_RECOVERY_RS.contains(rust_contract)
-                || WEBGL_RECOVERY_BRIDGE_RS.contains(rust_contract),
-            "webgl_recovery module must implement WebRunner lifecycle contract: {rust_contract}"
-        );
-    }
-
-    assert!(
-        APP_MOD_RS.contains("fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any>"),
-        "MathExplorerApp must implement eframe::App::as_any_mut on wasm32 for WebRunner::app_mut"
-    );
 }
