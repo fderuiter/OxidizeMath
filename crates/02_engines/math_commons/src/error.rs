@@ -379,7 +379,7 @@ mod tests {
                 .metadata()
                 .get("code")
                 .map(String::as_str),
-            Some("MEM-002")
+            Some("MEM-003")
         );
     }
 
