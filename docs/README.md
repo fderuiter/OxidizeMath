@@ -144,6 +144,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261124: Stack-Allocated Core Errors, Fallible Companion APIs, and AST Error Contract Verification](adr/20261124-stack-core-errors-and-fallible-companion-apis.md)
 - [ADR 20261125: CI Tool-Cache Subcommand Probing, Zero-Copy Plateau POI Dispatch, and Thread-Isolated Plot Test Hooks](adr/20261125-ci-llvm-cov-and-zero-copy-plateau-poi.md)
 - [ADR 20261125: Metadata-Driven Path Abstraction and Five-Tier Workspace Migration](adr/20261125-metadata-driven-tier-migration.md)
+- [ADR 20261126: Fix `math_rng` Probit Tail Inversion, `ln` Truncation, and Open-Unit `f32` Collapse](adr/20261126-fix-rng-tail-inversion-and-float-collapse.md)
 
 ## Contributing
 
