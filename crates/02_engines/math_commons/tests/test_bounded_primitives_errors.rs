@@ -140,7 +140,7 @@ fn solver_workspace_try_take_slice_returns_typed_error_without_allocating() {
         );
         let mut v = CountingVisitor(0);
         err.visit_fields(&mut v);
-        assert_eq!(v.0, 4);
+        assert_eq!(v.0, 5);
 
         let tail = ws
             .try_take_slice(2)
