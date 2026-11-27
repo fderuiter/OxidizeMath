@@ -227,6 +227,7 @@ fn assert_parallel_dag_invariants(ci_yaml: &str) {
         );
     }
     assert!(!preflight.contains("\n    outputs:"));
+    assert!(!ci_yaml.contains("needs.detect-changes.outputs.native_matrix"));
     assert!(!build_and_test.contains("needs.detect-changes"));
     assert!(build_and_test.contains(
         "fromJSON((github.event_name == 'pull_request' || github.event_name == 'merge_group')"
