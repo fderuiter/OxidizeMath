@@ -421,7 +421,16 @@ impl MathExplorerApp {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(
+        test,
+        feature = "ai",
+        feature = "applied",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     pub(crate) fn reset_tabs_for_test(&mut self, dirty_indices: &[usize]) {
         for &idx in dirty_indices {
             self.tabs[idx] = crate::tabs::instantiate_tab(idx)
