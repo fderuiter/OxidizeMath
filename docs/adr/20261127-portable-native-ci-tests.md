@@ -1,4 +1,4 @@
-# ADR 20261127: Reentrancy-Safe Allocator Trap and Portable Native CI Tests
+# ADR 20261127: Reentrancy-Safe Allocator Trap, Portable Native CI Tests, and Non-Blocking Desktop Legs
 
 ## Status
 
@@ -20,9 +20,11 @@ Because `cargo test` stops at the first failing crate, failure 3 only appeared o
 2. Write the test PNG artifacts to `std::env::temp_dir()`.
 3. Resolve package-keyed `approved_ignore_fences` entries with `expand_package_pattern_in_ws(workspace_root, key)` before falling back to `path_matches_lossy`.
 4. Run the non-Linux `Run Workspace Tests (Native)` step with `--no-fail-fast` so one CI run reports every failing crate.
+5. Take the desktop targets off the web deploy's critical path. `detect-changes` emits the `build-and-test` matrix: pull requests and merge groups run only Linux Native and Web/WASM, while main pushes, manual dispatches, release tags and a new nightly `schedule` also run Windows Native and macOS Native. Desktop legs set `continue-on-error` except on `refs/tags/v*`, so a macOS/Windows failure no longer skips `deploy-pages` but still blocks `publish-release`.
 
 ## Consequences
 
 - The allocator trap reliably prints `VIOLATION: Dynamic memory allocation after initialization.` before aborting on all native targets.
 - The native test suites no longer depend on Unix-only paths or on the process working directory for documentation gate whitelists.
 - A failing non-Linux native run now lists every failing test binary, at the cost of running the remaining crates after a failure.
+- GitHub Pages deploys from main whenever pre-flight, Linux, WASM, papers and the feature matrix pass. macOS/Windows regressions surface as failed (non-blocking) jobs on main and in the nightly run instead of on pull requests, and must be green before a release tag publishes.

@@ -16,6 +16,9 @@ on:
   merge_group:
     branches: [ "main", "master" ]
   workflow_dispatch:
+  schedule:
+    # Nightly macOS/Windows native coverage (desktop legs are skipped on pull requests).
+    - cron: "17 7 * * *"
 
 env:
   CARGO_TERM_COLOR: always
@@ -31,11 +34,30 @@ jobs:
       installer_changed: ${{ steps.detect-changes.outputs.installer_changed }}
       is_prerelease: ${{ steps.release-meta.outputs.is_prerelease }}
       wix_version: ${{ steps.release-meta.outputs.wix_version }}
+      native_matrix: ${{ steps.native-matrix.outputs.native_matrix }}
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
+
+      - name: Resolve Native Build Matrix
+        id: native-matrix
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          # Linux + WASM gate every event. macOS/Windows desktop legs run on main pushes,
+          # nightly schedules, manual dispatches and release tags, but not on pull requests.
+          core='{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","name":"Linux Native","artifact_name":"linux_artifact","desktop":false},{"os":"ubuntu-latest","target":"wasm32-unknown-unknown","name":"Web/WASM","artifact_name":"wasm_app","desktop":false}'
+          desktop='{"os":"windows-latest","target":"x86_64-pc-windows-msvc","name":"Windows Native","artifact_name":"windows_installer","desktop":true},{"os":"macos-latest","target":"aarch64-apple-darwin","name":"macOS Native","artifact_name":"macos_app","desktop":true}'
+          case "$EVENT_NAME" in
+            pull_request|merge_group) matrix="[${core}]" ;;
+            *) matrix="[${core},${desktop}]" ;;
+          esac
+          echo "native_matrix=${matrix}"
+          printf 'native_matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
 
       - name: Resolve WiX Pre-Release Metadata
         id: release-meta
@@ -214,28 +236,16 @@ jobs:
 
   build-and-test:
     name: Build and Test (${{ matrix.name }})
+    needs: detect-changes
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    # Desktop (macOS/Windows) legs report failures without blocking the Pages deploy;
+    # they stay blocking on release tags so publish-release is still gated on them.
+    continue-on-error: ${{ matrix.desktop && !startsWith(github.ref, 'refs/tags/v') }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            name: Linux Native
-            artifact_name: linux_artifact
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            name: Windows Native
-            artifact_name: windows_installer
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            name: macOS Native
-            artifact_name: macos_app
-          - os: ubuntu-latest
-            target: wasm32-unknown-unknown
-            name: Web/WASM
-            artifact_name: wasm_app
+        include: ${{ fromJSON(needs.detect-changes.outputs.native_matrix) }}
 
     steps:
       - name: Free Disk Space
