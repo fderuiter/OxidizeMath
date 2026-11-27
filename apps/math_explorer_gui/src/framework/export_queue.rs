@@ -31,6 +31,8 @@ pub(crate) enum ExportFormat {
     Obj,
     /// Standalone WebGPU Shading Language fragment shader (`.wgsl`).
     Wgsl,
+    /// Standalone WebGPU `@compute` kernel shader (`.wgsl`).
+    ComputeWgsl,
     /// Standalone GLSL ES 3.00 / Shadertoy fragment shader (`.glsl`).
     Glsl,
     /// Standalone WebGL2 (`#version 300 es`) fragment shader (`.frag`).
@@ -55,6 +57,12 @@ impl ExportFormat {
             Self::Ply => ("ply", "PLY", "PLY 3D Model", "mesh"),
             Self::Obj => ("obj", "OBJ", "Wavefront OBJ Mesh", "mesh"),
             Self::Wgsl => ("wgsl", "WGSL", "WGSL Shader", "shader"),
+            Self::ComputeWgsl => (
+                "wgsl",
+                "Compute WGSL",
+                "WebGPU Compute WGSL Shader",
+                "compute",
+            ),
             Self::Glsl => ("glsl", "GLSL", "GLSL Shader", "shader"),
             Self::GlslWebGl2 => (
                 "frag",
@@ -295,6 +303,7 @@ impl SimulationFramework {
             }
             (
                 ExportFormat::Wgsl
+                | ExportFormat::ComputeWgsl
                 | ExportFormat::Glsl
                 | ExportFormat::GlslWebGl2
                 | ExportFormat::GlslShadertoy,

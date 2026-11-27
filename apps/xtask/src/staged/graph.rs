@@ -3,7 +3,7 @@ use std::collections::{BTreeSet, VecDeque};
 use std::fs;
 use std::path::Path;
 
-const WEB_ROOT_PACKAGE: &str = "math_explorer_gui";
+const WEB_ROOT_PACKAGES: &[&str] = &["math_explorer_gui", "oxidize_wasm"];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DepSection {
@@ -290,14 +290,20 @@ fn parse_workspace_deps(
 
 fn compute_web_package_set(crates: &[WorkspaceCrate]) -> BTreeSet<String> {
     let mut web = BTreeSet::new();
-    let Some(gui) = crates.iter().find(|c| c.package_name == WEB_ROOT_PACKAGE) else {
-        return web;
-    };
     let mut queue = VecDeque::new();
-    web.insert(gui.package_name.clone());
-    for dep in gui.normal_deps.iter().chain(gui.dev_deps.iter()) {
-        if web.insert(dep.clone()) {
-            queue.push_back(dep.clone());
+    for root_pkg in WEB_ROOT_PACKAGES {
+        let Some(root_krate) = crates.iter().find(|c| c.package_name == *root_pkg) else {
+            continue;
+        };
+        web.insert(root_krate.package_name.clone());
+        for dep in root_krate
+            .normal_deps
+            .iter()
+            .chain(root_krate.dev_deps.iter())
+        {
+            if web.insert(dep.clone()) {
+                queue.push_back(dep.clone());
+            }
         }
     }
     while let Some(pkg) = queue.pop_front() {

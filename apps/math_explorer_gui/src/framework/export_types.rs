@@ -62,6 +62,9 @@ const DEFAULT_CODE_DISABLED_REASON: &str =
 const DEFAULT_SHADER_DISABLED_REASON: &str =
     "WGSL and GLSL shader export is unavailable: this tool does not expose a closed-form analytical 2D fragment field.";
 
+const DEFAULT_COMPUTE_SHADER_DISABLED_REASON: &str =
+    "WebGPU compute WGSL export is unavailable: this tool does not expose a 3D volumetric or grid @compute kernel.";
+
 /// Declares dataset, figure, audio, code, 3D mesh/splat, and standalone GPU shader export capabilities for an [`super::InteractiveTool`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExportCapabilities {
@@ -81,6 +84,8 @@ pub struct ExportCapabilities {
     pub obj: bool,
     /// Whether standalone GPU fragment shader exports (`WGSL`, `GLSL`, `WebGL2`, `Shadertoy`) are supported.
     pub shader: bool,
+    /// Whether standalone WebGPU `@compute` WGSL kernel exports are supported.
+    pub compute_shader: bool,
     /// Explanatory hover text shown when `CSV` / `JSON` buttons are disabled.
     pub dataset_disabled_reason: &'static str,
     /// Explanatory hover text shown when `PNG` / `SVG` / `GIF` buttons are disabled.
@@ -97,6 +102,8 @@ pub struct ExportCapabilities {
     pub obj_disabled_reason: &'static str,
     /// Explanatory reason surfaced when WGSL / GLSL shader export is unavailable.
     pub shader_disabled_reason: &'static str,
+    /// Explanatory reason surfaced when WebGPU `@compute` WGSL export is unavailable.
+    pub compute_shader_disabled_reason: &'static str,
 }
 
 /// Default explanation shown on non-sonified tools when `WAV` export is unavailable.
@@ -129,6 +136,7 @@ impl ExportCapabilities {
             ply: false,
             obj: false,
             shader: false,
+            compute_shader: false,
             dataset_disabled_reason: "",
             figure_disabled_reason: "",
             audio_disabled_reason: DEFAULT_AUDIO_DISABLED_REASON,
@@ -137,6 +145,7 @@ impl ExportCapabilities {
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+            compute_shader_disabled_reason: DEFAULT_COMPUTE_SHADER_DISABLED_REASON,
         }
     }
 
@@ -172,6 +181,7 @@ impl ExportCapabilities {
             ply: false,
             obj: false,
             shader: false,
+            compute_shader: false,
             dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool renders a 2D raster field rather than tabular (X, Y) series.",
             figure_disabled_reason: "",
             audio_disabled_reason: DEFAULT_AUDIO_DISABLED_REASON,
@@ -180,6 +190,7 @@ impl ExportCapabilities {
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+            compute_shader_disabled_reason: DEFAULT_COMPUTE_SHADER_DISABLED_REASON,
         }
     }
 
@@ -202,6 +213,7 @@ impl ExportCapabilities {
             ply: false,
             obj: false,
             shader: false,
+            compute_shader: false,
             dataset_disabled_reason: "",
             figure_disabled_reason: "Figure export is unavailable: this tool computes analytical tables rather than an offscreen plot or raster field.",
             audio_disabled_reason: DEFAULT_AUDIO_DISABLED_REASON,
@@ -210,6 +222,7 @@ impl ExportCapabilities {
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+            compute_shader_disabled_reason: DEFAULT_COMPUTE_SHADER_DISABLED_REASON,
         }
     }
 
@@ -225,6 +238,7 @@ impl ExportCapabilities {
             ply: false,
             obj: false,
             shader: false,
+            compute_shader: false,
             dataset_disabled_reason: "CSV and JSON exports are unavailable: this tool does not produce tabular plot series.",
             figure_disabled_reason: "Figure export is unavailable: this tool does not render an offscreen plot or raster field.",
             audio_disabled_reason: DEFAULT_AUDIO_DISABLED_REASON,
@@ -233,6 +247,7 @@ impl ExportCapabilities {
             ply_disabled_reason: DEFAULT_PLY_DISABLED,
             obj_disabled_reason: DEFAULT_OBJ_DISABLED,
             shader_disabled_reason: DEFAULT_SHADER_DISABLED_REASON,
+            compute_shader_disabled_reason: DEFAULT_COMPUTE_SHADER_DISABLED_REASON,
         }
     }
 
@@ -293,6 +308,14 @@ impl ExportCapabilities {
     pub const fn with_shader(mut self) -> Self {
         self.shader = true;
         self.shader_disabled_reason = "";
+        self
+    }
+
+    /// Enables standalone WebGPU `@compute` `.wgsl` kernel export on this capability profile.
+    #[must_use]
+    pub const fn with_compute_shader(mut self) -> Self {
+        self.compute_shader = true;
+        self.compute_shader_disabled_reason = "";
         self
     }
 }

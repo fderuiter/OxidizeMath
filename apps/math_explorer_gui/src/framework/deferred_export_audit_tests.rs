@@ -1,5 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+#[path = "deferred_compute_shader_tests.rs"]
+mod deferred_compute_shader_tests;
+
 use super::*;
 use crate::accessibility::{all_announcements, clear_test_announcements, with_live_region};
 use crate::tabs::geometry_topology::export_utils::{
@@ -232,6 +235,11 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         } else {
             non_shader_tool_count += 1;
         }
+        deferred_compute_shader_tests::verify_compute_shader_capability(
+            meta.id,
+            tool.as_ref(),
+            caps,
+        );
         if !caps.figure {
             verify_non_figure_tool(
                 meta.id,

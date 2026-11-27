@@ -337,6 +337,14 @@ pub trait InteractiveTool {
         ))
     }
 
+    /// Optional hook to generate a standalone WebGPU `@compute` `.wgsl` shader kernel.
+    fn export_compute_shader_wgsl(&self) -> Result<String, String> {
+        Err(format!(
+            "WebGPU compute shader export is not supported for {}",
+            self.name()
+        ))
+    }
+
     /// Optional hook to export tool datasets.
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         egui_plot::get_last_plot_datasets()
