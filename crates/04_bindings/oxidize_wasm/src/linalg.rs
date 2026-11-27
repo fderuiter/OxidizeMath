@@ -4,7 +4,7 @@
 
 use crate::error::WasmSdkError;
 use engine_linalg::{
-    CsrMatrixView, LinalgError, OwnedWorkspace, cg_solve, cg_workspace_len, cholesky_solve,
+    CsrMatrixView, LinalgError, OwnedByteArena, cg_solve, cg_workspace_len, cholesky_solve,
     cholesky_workspace_len, lu_determinant, lu_factor_in_place, lu_inverse_workspace_len, lu_solve,
     qr_least_squares_workspace_len, qr_solve_least_squares, svd_jacobi, svd_jacobi_workspace_len,
     tikhonov_solve, tikhonov_workspace_len,
@@ -39,7 +39,7 @@ fn required_linalg_scratch(max_dim: usize) -> usize {
 #[derive(Debug, Clone)]
 pub struct WasmLinalgWorkspace {
     max_dim: usize,
-    scratch: OwnedWorkspace<f64>,
+    scratch: OwnedByteArena,
     pivots: Vec<usize>,
     mat_buf: Vec<f64>,
     rhs_buf: Vec<f64>,
@@ -62,7 +62,10 @@ impl WasmLinalgWorkspace {
             ));
         }
         let scratch_len = required_linalg_scratch(max_dim);
-        let scratch = OwnedWorkspace::with_capacity(scratch_len);
+        let byte_cap = scratch_len
+            .saturating_add(16)
+            .saturating_mul(std::mem::size_of::<f64>());
+        let scratch = OwnedByteArena::try_with_capacity(byte_cap)?;
         let mat_cap = max_dim * max_dim;
         Ok(Self {
             max_dim,
@@ -129,7 +132,7 @@ impl WasmLinalgWorkspace {
         n: usize,
     ) -> Result<(), WasmSdkError> {
         self.check_dim(n, n)?;
-        let mut ws = self.scratch.as_workspace();
+        let mut ws = self.scratch.as_arena();
         lu_solve(a, b, x_out, n, &mut self.pivots[..n], &mut ws)?;
         self.sol_buf[..n].copy_from_slice(&x_out[..n]);
         Ok(())
@@ -139,7 +142,7 @@ impl WasmLinalgWorkspace {
     #[wasm_bindgen(js_name = solveLuInPlace)]
     pub fn solve_lu_in_place(&mut self, n: usize) -> Result<(), WasmSdkError> {
         self.check_dim(n, n)?;
-        let mut ws = self.scratch.as_workspace();
+        let mut ws = self.scratch.as_arena();
         lu_solve(
             &self.mat_buf[..n * n],
             &self.rhs_buf[..n],
@@ -158,8 +161,8 @@ impl WasmLinalgWorkspace {
         if a.len() != n * n {
             return Err(LinalgError::DimensionMismatch.into());
         }
-        let mut ws = self.scratch.as_workspace();
-        let (lu_buf, _) = ws.try_split(n * n)?;
+        let mut ws = self.scratch.as_arena();
+        let lu_buf = ws.alloc_slice::<f64>(n * n).map_err(LinalgError::from)?;
         lu_buf.copy_from_slice(a);
         match lu_factor_in_place(lu_buf, n, &mut self.pivots[..n], 0.0) {
             Ok(parity) => Ok(lu_determinant(lu_buf, n, parity)?),
@@ -178,7 +181,7 @@ impl WasmLinalgWorkspace {
         n: usize,
     ) -> Result<(), WasmSdkError> {
         self.check_dim(n, n)?;
-        let mut ws = self.scratch.as_workspace();
+        let mut ws = self.scratch.as_arena();
         cholesky_solve(a, b, x_out, n, &mut ws)?;
         self.sol_buf[..n].copy_from_slice(&x_out[..n]);
         Ok(())
@@ -195,7 +198,7 @@ impl WasmLinalgWorkspace {
         x_out: &mut [f64],
     ) -> Result<usize, WasmSdkError> {
         self.check_dim(m, n)?;
-        let mut ws = self.scratch.as_workspace();
+        let mut ws = self.scratch.as_arena();
         let rank = qr_solve_least_squares(a, m, n, b, x_out, &mut self.pivots[..n], &mut ws)?;
         self.sol_buf[..n].copy_from_slice(&x_out[..n]);
         Ok(rank)
@@ -213,7 +216,7 @@ impl WasmLinalgWorkspace {
         x_out: &mut [f64],
     ) -> Result<(), WasmSdkError> {
         self.check_dim(m, n)?;
-        let mut ws = self.scratch.as_workspace();
+        let mut ws = self.scratch.as_arena();
         tikhonov_solve(a, m, n, b, lambda, x_out, &mut ws)?;
         self.sol_buf[..n].copy_from_slice(&x_out[..n]);
         Ok(())
@@ -230,7 +233,7 @@ impl WasmLinalgWorkspace {
     ) -> Result<(), WasmSdkError> {
         self.check_dim(m, n)?;
         let k = m.min(n);
-        let mut ws = self.scratch.as_workspace();
+        let mut ws = self.scratch.as_arena();
         svd_jacobi(
             a,
             (m, n),
@@ -260,7 +263,7 @@ impl WasmLinalgWorkspace {
     ) -> Result<f64, WasmSdkError> {
         self.check_dim(n, n)?;
         let csr = CsrMatrixView::new(n, n, row_ptrs, col_indices, values)?;
-        let mut ws = self.scratch.as_workspace();
+        let mut ws = self.scratch.as_arena();
         let report = cg_solve(&csr, b, x_in_out, tol, max_iter, &mut ws)?;
         self.sol_buf[..n].copy_from_slice(&x_in_out[..n]);
         Ok(report.residual_norm)

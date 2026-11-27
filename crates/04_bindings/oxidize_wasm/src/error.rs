@@ -5,7 +5,7 @@
 // [cite:math_commons]
 
 use engine_diffeq::DiffeqError;
-use engine_linalg::LinalgError;
+use engine_linalg::{ArenaError, LinalgError};
 use engine_pde::PdeError;
 use math_commons::ast::{EvalError, ParseError, ShaderEmitError};
 use math_commons::error::MathError;
@@ -201,6 +201,12 @@ impl From<EvalError> for WasmSdkError {
 impl From<ShaderEmitError> for WasmSdkError {
     fn from(err: ShaderEmitError) -> Self {
         Self::from_diagnostic("E_SHADER_EMIT", "ShaderEmitError", &err)
+    }
+}
+
+impl From<ArenaError> for WasmSdkError {
+    fn from(err: ArenaError) -> Self {
+        Self::from_diagnostic("E_ARENA_WORKSPACE", "ArenaError", &err)
     }
 }
 

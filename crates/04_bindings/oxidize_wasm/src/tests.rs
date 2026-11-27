@@ -6,7 +6,7 @@
 
 use super::*;
 use approx::assert_abs_diff_eq;
-use engine_linalg::{OwnedWorkspace, cholesky_solve, lu_solve, qr_solve_least_squares};
+use engine_linalg::{OwnedByteArena, cholesky_solve, lu_solve, qr_solve_least_squares};
 use math_diagnostics::Diagnostic;
 
 #[test]
@@ -22,9 +22,10 @@ fn test_linalg_workspace_exact_engine_parity_and_zero_copy_in_place() {
     sdk.solve_cholesky(&a_spd, &b, &mut x_sdk, 3)
         .expect("SDK cholesky");
 
-    let mut raw_ws = OwnedWorkspace::with_capacity(64);
+    let mut raw_ws =
+        OwnedByteArena::try_with_capacity(64 * core::mem::size_of::<f64>()).expect("arena");
     let mut x_ref = [0.0; 3];
-    cholesky_solve(&a_spd, &b, &mut x_ref, 3, &mut raw_ws.as_workspace()).expect("ref cholesky");
+    cholesky_solve(&a_spd, &b, &mut x_ref, 3, &mut raw_ws.as_arena()).expect("ref cholesky");
     for i in 0..3 {
         assert_abs_diff_eq!(x_sdk[i], x_ref[i], epsilon = 1e-12);
     }
@@ -46,7 +47,7 @@ fn test_linalg_workspace_exact_engine_parity_and_zero_copy_in_place() {
         &mut x_lu_ref,
         3,
         &mut piv,
-        &mut raw_ws.as_workspace(),
+        &mut raw_ws.as_arena(),
     )
     .expect("ref LU");
     for (&actual, &expected) in sdk.solution_slice(3).iter().zip(x_lu_ref.iter()) {
@@ -71,7 +72,7 @@ fn test_linalg_workspace_exact_engine_parity_and_zero_copy_in_place() {
         &b_tall,
         &mut x_qr_ref,
         &mut col_perm,
-        &mut raw_ws.as_workspace(),
+        &mut raw_ws.as_arena(),
     )
     .expect("ref QR");
     assert_abs_diff_eq!(x_qr_sdk[0], x_qr_ref[0], epsilon = 1e-12);

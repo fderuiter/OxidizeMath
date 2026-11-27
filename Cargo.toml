@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/00_foundation/math_diagnostics",
+    "crates/00_foundation/math_memory",
     "crates/00_foundation/math_rng",
     "crates/00_foundation/math_scalars",
     "crates/00_foundation/scientific_metadata",
@@ -51,6 +52,7 @@ broken_intra_doc_links = "warn"
 [workspace.dependencies]
 approx = "0.5.1"
 arboard = "3.4"
+bytemuck = { version = "1.25.2", default-features = false, features = ["min_const_generics"] }
 chrono = "0.4"
 console_error_panic_hook = "0.1.7"
 dashu = { version = "0.4.4", features = ["num-traits_v02"] }

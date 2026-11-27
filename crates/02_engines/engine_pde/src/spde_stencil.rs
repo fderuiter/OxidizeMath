@@ -1,14 +1,15 @@
 // [cite:engine_pde]
 mod helpers;
 use crate::boundary::BoundaryCondition;
-use crate::error::PdeError;
+use crate::error::{PdeError, carve_f64};
 use crate::fourier_stepper::check_non_neg;
 use crate::spde_noise::{SpdeNoiseKind, try_apply_noise_1d, try_apply_noise_2d};
 use crate::stencil::StencilOperators;
 use helpers::{
     advance_cahn_hilliard_stencil_2d, advance_diffusion_substeps_2d, apply_local_reaction_2d,
 };
-use math_commons::math_kernel::types::{SolverWorkspace, flatten_2d_index};
+use math_commons::math_kernel::types::flatten_2d_index;
+use math_memory::{ByteArena, SolverWorkspace};
 use rand_core::RngCore;
 /// Explicit Euler-Maruyama finite-difference SPDE stepper evolving
 /// $\partial_t u = \mathcal{N}(u, \nabla_h u, \nabla_h^2 u) + \xi$ across Periodic, Neumann, and Dirichlet
@@ -65,7 +66,7 @@ impl ExplicitSpdeStencilStepper {
         u: &mut [f64],
         dt: f64,
         mut deterministic_rhs: F,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) -> Result<(), PdeError>
     where
@@ -78,7 +79,9 @@ impl ExplicitSpdeStencilStepper {
             return Ok(());
         }
         let mut ws = workspace.reborrow();
-        let src = ws.try_take_slice(n)?;
+        let mut cur = ws.cursor();
+        let src = carve_f64(&mut cur, n)?;
+        let mut noise_ws = ByteArena::new(cur.into_bytes());
         src.copy_from_slice(u);
         for x in 0..n {
             if let BoundaryCondition::Dirichlet(val) = self.boundary
@@ -92,7 +95,15 @@ impl ExplicitSpdeStencilStepper {
             u[x] = src[x] + dt * deterministic_rhs(x, src[x], grad, lap);
         }
         debug_assert_eq!(u.len(), n);
-        try_apply_noise_1d(u, *self.ops.dx, dt, self.boundary, self.noise, &mut ws, rng)
+        try_apply_noise_1d(
+            u,
+            *self.ops.dx,
+            dt,
+            self.boundary,
+            self.noise,
+            &mut noise_ws,
+            rng,
+        )
     }
     /// Advances a 1D SPDE $\partial_t u = \mathcal{N}(x, u, \partial_x u, \partial_{xx} u) + \xi$ in-place; prefer [`Self::try_step_1d`].
     #[verified_engine::verified]
@@ -101,7 +112,7 @@ impl ExplicitSpdeStencilStepper {
         u: &mut [f64],
         dt: f64,
         deterministic_rhs: F,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) where
         F: FnMut(usize, f64, f64, f64) -> f64,
@@ -120,7 +131,7 @@ impl ExplicitSpdeStencilStepper {
         height: usize,
         dt: f64,
         mut deterministic_rhs: F,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) -> Result<(), PdeError>
     where
@@ -140,7 +151,9 @@ impl ExplicitSpdeStencilStepper {
             return Ok(());
         }
         let mut ws = workspace.reborrow();
-        let src = ws.try_take_slice(total)?;
+        let mut cur = ws.cursor();
+        let src = carve_f64(&mut cur, total)?;
+        let mut noise_ws = ByteArena::new(cur.into_bytes());
         src.copy_from_slice(&u[..total]);
         for y in 0..height {
             for x in 0..width {
@@ -170,7 +183,7 @@ impl ExplicitSpdeStencilStepper {
             dt,
             self.boundary,
             self.noise,
-            &mut ws,
+            &mut noise_ws,
             rng,
         )
     }
@@ -184,7 +197,7 @@ impl ExplicitSpdeStencilStepper {
         height: usize,
         dt: f64,
         deterministic_rhs: F,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) where
         F: FnMut(usize, usize, f64, (f64, f64), f64) -> f64,
@@ -205,7 +218,7 @@ impl ExplicitSpdeStencilStepper {
         mobility: f64,
         kappa: f64,
         dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) -> Result<(), PdeError> {
         let total = width * height;
@@ -223,9 +236,11 @@ impl ExplicitSpdeStencilStepper {
             return Ok(());
         }
         let mut ws = workspace.reborrow();
-        let src = ws.try_take_slice(total)?;
-        let bulk_mu = ws.try_take_slice(total)?;
-        let lap_phi = ws.try_take_slice(total)?;
+        let mut cur = ws.cursor();
+        let src = carve_f64(&mut cur, total)?;
+        let bulk_mu = carve_f64(&mut cur, total)?;
+        let lap_phi = carve_f64(&mut cur, total)?;
+        let mut noise_ws = ByteArena::new(cur.into_bytes());
         src.copy_from_slice(&phi[..total]);
         for i in 0..total {
             let p = src[i];
@@ -256,7 +271,7 @@ impl ExplicitSpdeStencilStepper {
             dt,
             self.boundary,
             self.noise,
-            &mut ws,
+            &mut noise_ws,
             rng,
         )
     }
@@ -271,7 +286,7 @@ impl ExplicitSpdeStencilStepper {
         mobility: f64,
         kappa: f64,
         dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) {
         self.try_step_cahn_hilliard_2d(phi, width, height, mobility, kappa, dt, workspace, rng)
@@ -340,7 +355,7 @@ impl SplitStepSpdeStencilStepper {
         diffusivity: f64,
         dt: f64,
         mut reaction: F,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) -> Result<(), PdeError>
     where
@@ -361,7 +376,9 @@ impl SplitStepSpdeStencilStepper {
             return Ok(());
         }
         let mut ws = workspace.reborrow();
-        let src = ws.try_take_slice(total)?;
+        let mut cur = ws.cursor();
+        let src = carve_f64(&mut cur, total)?;
+        let mut noise_ws = ByteArena::new(cur.into_bytes());
         let half_dt = 0.5 * dt;
         apply_local_reaction_2d(u, width, height, half_dt, self.boundary, &mut reaction);
         let sub_dt = dt / (self.diffusion_substeps as f64);
@@ -387,7 +404,7 @@ impl SplitStepSpdeStencilStepper {
             dt,
             self.boundary,
             self.noise,
-            &mut ws,
+            &mut noise_ws,
             rng,
         )
     }
@@ -402,7 +419,7 @@ impl SplitStepSpdeStencilStepper {
         diffusivity: f64,
         dt: f64,
         reaction: F,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) where
         F: FnMut(f64) -> f64,

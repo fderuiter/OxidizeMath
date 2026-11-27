@@ -3,7 +3,7 @@
 
 use crate::error::WasmSdkError;
 use engine_pde::{
-    FusedStencilStepper, PdeError, PdeOwnedWorkspace, StencilNeighbors3D, StencilOperators,
+    FusedStencilStepper, OwnedByteArena, PdeError, StencilNeighbors3D, StencilOperators,
     try_fft_1d_inplace, try_fft_2d_inplace,
 };
 use math_commons::math_kernel::types::{StepSize, flatten_3d_index};
@@ -27,7 +27,7 @@ pub struct WasmPdeWorkspace {
     u_next: Vec<f64>,
     v_next: Vec<f64>,
     col_scratch: Vec<f64>,
-    scratch: PdeOwnedWorkspace<f64>,
+    scratch: OwnedByteArena,
 }
 
 #[wasm_bindgen]
@@ -70,7 +70,8 @@ impl WasmPdeWorkspace {
         } else {
             FusedStencilStepper::try_new_3d(sx, sy, sz)?
         };
-        let scratch = PdeOwnedWorkspace::try_with_capacity(cells.min(65_536))?;
+        let scratch_bytes = cells.min(65_536).saturating_mul(std::mem::size_of::<f64>());
+        let scratch = OwnedByteArena::try_with_capacity(scratch_bytes)?;
         let col_cap = ny.max(nx).saturating_mul(2);
         Ok(Self {
             dims: (nx, ny, nz),
@@ -109,7 +110,7 @@ impl WasmPdeWorkspace {
     #[wasm_bindgen(js_name = scratchCapacity)]
     #[must_use]
     pub fn scratch_capacity(&mut self) -> usize {
-        self.scratch.as_workspace().len()
+        self.scratch.byte_capacity() / std::mem::size_of::<f64>()
     }
 
     /// Deterministic steady-state + sinusoidal perturbation seeder for Schnakenberg morphogenesis.

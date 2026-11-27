@@ -464,7 +464,7 @@ fn assert_gui_build_rerun_directives(
 #[cfg(not(target_arch = "wasm32"))]
 fn test_workspace_build_script_outputs_emit_rerun_directives() {
     let build_root = locate_build_root(&std::env::current_exe().expect("current_exe"));
-    let ws_root = crate::manifest_cache::workspace_root_dir();
+    let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
 
     if let Some(md_out) =
         find_latest_build_output(&build_root, "markdown_tests", "generated_tests.rs")

@@ -3,7 +3,7 @@
 
 use crate::error::WasmSdkError;
 use engine_diffeq::{
-    BaoabLangevinSolver, BaoabParams, EulerMaruyamaSolver, LangevinSystem, OwnedWorkspace,
+    BaoabLangevinSolver, BaoabParams, EulerMaruyamaSolver, LangevinSystem, OwnedByteArena,
     OxidizeRng, SdeSystem, StochasticCalculus,
 };
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -97,7 +97,7 @@ pub struct WasmSdeWorkspace {
     state_dim: usize,
     wiener_dim: usize,
     rng: OxidizeRng,
-    scratch: OwnedWorkspace<f64>,
+    scratch: OwnedByteArena,
     state_buf: Vec<f64>,
     momentum_buf: Vec<f64>,
 }
@@ -121,7 +121,11 @@ impl WasmSdeWorkspace {
         let strat = EulerMaruyamaSolver::new(StochasticCalculus::Stratonovich);
         let sde_cap = strat.scratch_len(state_dim, wiener_dim);
         let baoab_cap = BaoabLangevinSolver::<f64>::scratch_len(state_dim);
-        let scratch = OwnedWorkspace::try_with_capacity(sde_cap.max(baoab_cap))?;
+        let byte_cap = sde_cap
+            .max(baoab_cap)
+            .saturating_add(16)
+            .saturating_mul(std::mem::size_of::<f64>());
+        let scratch = OwnedByteArena::try_with_capacity(byte_cap)?;
         Ok(Self {
             state_dim,
             wiener_dim,
@@ -185,7 +189,7 @@ impl WasmSdeWorkspace {
             sigma,
         };
         let solver = EulerMaruyamaSolver::new(StochasticCalculus::Ito);
-        let mut ws = self.scratch.as_workspace();
+        let mut ws = self.scratch.as_arena();
         solver.try_step(&sys, t, dt, state, &mut ws, &mut self.rng)?;
         self.state_buf[..d].copy_from_slice(state);
         Ok(())
@@ -218,7 +222,7 @@ impl WasmSdeWorkspace {
         };
         let sys = GeometricBrownianSystem { dim: d, mu, sigma };
         let solver = EulerMaruyamaSolver::new(calc);
-        let mut ws = self.scratch.as_workspace();
+        let mut ws = self.scratch.as_arena();
         solver.try_step(&sys, t, dt, state, &mut ws, &mut self.rng)?;
         self.state_buf[..d].copy_from_slice(state);
         Ok(())
@@ -255,7 +259,7 @@ impl WasmSdeWorkspace {
         })?;
         let sys = HarmonicPotential { dim: d, omega_sq };
         for _ in 0..steps.max(1) {
-            let mut ws = self.scratch.as_workspace();
+            let mut ws = self.scratch.as_arena();
             solver.try_step(&sys, q, p, &mut ws, &mut self.rng)?;
         }
         self.state_buf[..d].copy_from_slice(q);

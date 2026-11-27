@@ -1,4 +1,7 @@
-use super::{query_browser_media_flags, resolve_startup_theme, sync_document_theme, ThemeMode};
+use super::{
+    query_browser_media_flags, resolve_document_theme_metadata, resolve_startup_theme,
+    sync_document_theme, ThemeMode,
+};
 use wasm_bindgen::JsCast;
 use wasm_bindgen_test::wasm_bindgen_test;
 
@@ -10,6 +13,10 @@ fn wasm_theme_queries_media_flags_and_synchronizes_document_metadata() {
         resolved,
         ThemeMode::Dark | ThemeMode::Light | ThemeMode::HighContrast
     ));
+    assert_eq!(
+        resolve_document_theme_metadata(ThemeMode::HighContrast, true, true),
+        ("high-contrast", None, "dark light", "#f8f8f8")
+    );
 
     let doc = web_sys::window()
         .and_then(|w| w.document())
