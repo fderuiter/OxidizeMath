@@ -14,10 +14,12 @@ math_contract = true
 [features]
 default = []
 alloc = []
+dashu = ["std", "dep:dashu"]
 serde = ["dep:serde", "math_diagnostics/serde", "num-complex/serde"]
 std = ["alloc", "math_diagnostics/std", "num-complex/std", "serde?/std"]
 
 [dependencies]
+dashu = { workspace = true, optional = true }
 libm = { workspace = true }
 math_diagnostics = { path = "../math_diagnostics", default-features = false }
 num-complex = { workspace = true, default-features = false, features = ["libm"] }

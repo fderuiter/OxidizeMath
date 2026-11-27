@@ -1,7 +1,7 @@
 use super::{
     AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
     EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
-    KnotError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
+    KnotError, LaurentError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
     MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError, OuError,
     PoissonError, QueueingError, RiskError, StochasticError, Su11HyperbolicError, TdaError,
     TensorError, TransformError, ZipError,
@@ -81,6 +81,9 @@ pub enum PureMathError {
     /// Knot theory and skein invariant error.
     #[error("{0}")]
     Knot(#[from] KnotError),
+    /// Laurent polynomial exponent, span, or integer coefficient error.
+    #[error("{0}")]
+    Laurent(#[from] LaurentError),
     /// Unified numerical evolution engine error.
     #[error("{0}")]
     Evolution(#[from] EvolutionError),
@@ -200,6 +203,7 @@ impl PureMathError {
             Self::Braid(err) => err,
             Self::EllipticCurve(err) => err,
             Self::Knot(err) => err,
+            Self::Laurent(err) => err,
             Self::Evolution(err) => err,
             Self::Fractran(err) => err,
             Self::GraphTheory(err) => err,

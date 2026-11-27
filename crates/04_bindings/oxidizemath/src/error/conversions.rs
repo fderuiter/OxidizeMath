@@ -113,6 +113,7 @@ impl_error_from!(@cfg "pure_math":
     HyperbolicError => Hyperbolic,
     KellyError => Kelly,
     KnotError => Knot,
+    LaurentError => Laurent,
     LinearAlgebraError => LinearAlgebra,
     MarketPricingError => MarketPricing,
     MarkovError => Markov,

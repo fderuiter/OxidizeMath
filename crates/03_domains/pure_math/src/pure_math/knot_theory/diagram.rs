@@ -133,8 +133,7 @@ impl Crossing {
 pub const MAX_DIAGRAM_CROSSINGS: usize = 128;
 
 /// Oriented planar knot or multi-component link diagram.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct PlanarDiagram {
     /// Ordered crossings of the diagram (`segments.len() == 2 * crossings.len()`).
     pub crossings: Vec<Crossing>,
@@ -185,64 +184,14 @@ impl PlanarDiagram {
         Ok(d)
     }
 
-    /// Verifies 4-valent slot reciprocity, orientation consistency, and size bounds.
+    /// Verifies 4-valent slot reciprocity, orientation consistency, coordinate finiteness,
+    /// size bounds, and Euler rotation-system planarity ($V - E + F = 2$).
     ///
     /// # Errors
-    /// Returns [`KnotError::InvalidDiagram`] if any structural invariant is violated.
+    /// Returns [`KnotError::InvalidDiagram`] if any structural or planarity invariant is violated.
     #[verified_engine::verified]
     pub fn validate(&self) -> Result<(), KnotError> {
-        let c = self.crossings.len();
-        if c > MAX_DIAGRAM_CROSSINGS {
-            return Err(KnotError::InvalidDiagram {
-                reason: "diagram exceeds maximum crossing bound",
-            });
-        }
-        if self.segments.len() != 2 * c {
-            return Err(KnotError::InvalidDiagram {
-                reason: "segment count must equal twice the crossing count",
-            });
-        }
-        if c == 0 && self.free_loops == 0 {
-            return Err(KnotError::InvalidDiagram {
-                reason: "empty diagram must contain at least one free loop",
-            });
-        }
-        for (seg_id, seg) in self.segments.iter().enumerate() {
-            if seg.waypoints.len() > 32 {
-                return Err(KnotError::InvalidDiagram {
-                    reason: "segment waypoint list exceeds maximum bound",
-                });
-            }
-            let Some(tail_c) = self.crossings.get(seg.tail.crossing) else {
-                return Err(KnotError::InvalidDiagram {
-                    reason: "segment tail crossing index out of bounds",
-                });
-            };
-            let Some(head_c) = self.crossings.get(seg.head.crossing) else {
-                return Err(KnotError::InvalidDiagram {
-                    reason: "segment head crossing index out of bounds",
-                });
-            };
-            if seg.tail.slot >= 4 || !tail_c.sign.is_outgoing_slot(seg.tail.slot) {
-                return Err(KnotError::InvalidDiagram {
-                    reason: "segment tail must attach to an outgoing crossing slot",
-                });
-            }
-            if seg.head.slot >= 4 || head_c.sign.is_outgoing_slot(seg.head.slot) {
-                return Err(KnotError::InvalidDiagram {
-                    reason: "segment head must attach to an incoming crossing slot",
-                });
-            }
-            if tail_c.slots[seg.tail.slot as usize] != seg_id
-                || head_c.slots[seg.head.slot as usize] != seg_id
-            {
-                return Err(KnotError::InvalidDiagram {
-                    reason: "crossing slot table does not match segment endpoints",
-                });
-            }
-        }
-        assert_eq!(self.segments.len(), 2 * c);
-        Ok(())
+        diagram_validate::validate_planar_diagram(self)
     }
 
     /// Number of crossings $c$ in the planar projection.
@@ -377,3 +326,4 @@ impl PlanarDiagram {
 }
 
 mod diagram_braid;
+mod diagram_validate;

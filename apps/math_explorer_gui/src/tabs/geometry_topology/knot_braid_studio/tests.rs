@@ -61,7 +61,7 @@ fn chiral_trefoils_borromean_linking_and_fox_burau_parity() {
         .model
         .jones_half_power
         .as_ref()
-        .is_some_and(|j| j.coeffs.len() > 1));
+        .is_some_and(|j| j.coeffs().len() > 1));
 }
 
 #[test]
@@ -207,4 +207,61 @@ fn exported_3d_tubular_mesh_is_watertight_and_orientable() {
 
     let stl_ascii = oxidize_core::mesh::export_mesh_to_stl_ascii(&mesh).expect("ASCII STL export");
     assert!(stl_ascii.starts_with("solid ") && stl_ascii.contains("facet normal"));
+}
+
+#[test]
+fn figure_eight_isotopy_borromean_lift_and_lissajous_5_2_preserve_studio_invariants() {
+    let mut base_fig8 = KnotBraidStudioTool {
+        family: StudioFamily::FigureEight,
+        ..KnotBraidStudioTool::default()
+    };
+    base_fig8.cached_key = 0;
+    base_fig8.sync_model();
+    let mut iso_fig8 = KnotBraidStudioTool::default();
+    iso_fig8
+        .import_preset_json(FIGURE_EIGHT_ISOTOPY_PRESET_JSON)
+        .expect("load figure-eight isotopy preset");
+    assert_eq!(iso_fig8.model.alexander_fox, base_fig8.model.alexander_fox);
+    assert_eq!(
+        iso_fig8.model.jones_half_power,
+        base_fig8.model.jones_half_power
+    );
+    let proj_back =
+        math_explorer::pure_math::knot_theory::PlanarDiagram::from_3d_link(&iso_fig8.model.link_3d)
+            .expect("project lifted figure-eight isotopy");
+    assert_eq!(
+        math_explorer::pure_math::knot_theory::alexander_polynomial_fox(&proj_back).ok(),
+        base_fig8.model.alexander_fox
+    );
+
+    // Borromean rings after an interactive Reidemeister lift still maintain [[0, 0, 0]; 3] linking.
+    let mut borr = KnotBraidStudioTool::default();
+    borr.import_preset_json(BORROMEAN_RINGS_PRESET_JSON)
+        .expect("load Borromean preset");
+    borr.push_reidemeister_op(DiagramEditOp::RiAdd {
+        segment: 0,
+        positive: true,
+    })
+    .expect("R-I on Borromean");
+    assert_eq!(
+        borr.model.linking_matrix,
+        vec![vec![0, 0, 0], vec![0, 0, 0], vec![0, 0, 0]]
+    );
+
+    // Default Lissajous family computes the 7-crossing 5_2 three-twist knot.
+    let mut liss = KnotBraidStudioTool {
+        family: StudioFamily::LissajousKnot,
+        curve_samples: 160,
+        ..KnotBraidStudioTool::default()
+    };
+    liss.cached_key = 0;
+    liss.sync_model();
+    assert_eq!(liss.model.diagram.crossing_count(), 7);
+    assert_eq!(
+        liss.model
+            .alexander_fox
+            .as_ref()
+            .map(|p| p.eval_with_inverse(-1_i64, -1_i64).abs()),
+        Some(7)
+    );
 }

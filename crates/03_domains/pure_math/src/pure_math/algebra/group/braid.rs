@@ -55,6 +55,9 @@ pub enum BraidError {
 ///
 /// Generator `+i` denotes the positive right-handed crossing $\sigma_i$ where strand `i - 1`
 /// passes over strand `i`, and `-i` denotes its inverse $\sigma_i^{-1}$.
+/// Group equality (`PartialEq`, `Eq`) decides the exact word problem in $B_n$ via
+/// Dehornoy handle reduction of $a \cdot b^{-1}$, paired with a group-homomorphic modular
+/// reduced Burau [`Hash`].
 ///
 /// # Example
 /// ```
@@ -66,7 +69,7 @@ pub enum BraidError {
 /// assert_eq!(trefoil.component_count(), 1);
 /// assert!(trefoil.compose(&trefoil.inverse()).unwrap().free_reduce().is_empty());
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct BraidWord {
     strands: usize,
     generators: Vec<i32>,
@@ -192,6 +195,35 @@ impl BraidWord {
         })
     }
 
+    /// Fallibly multiplies `self` and `other` in $B_n$ with free cancellation and [`MAX_BRAID_WORD_LEN`] validation.
+    ///
+    /// # Errors
+    /// Returns [`BraidError::StrandCountMismatch`] if `self.strands != other.strands`, or
+    /// [`BraidError::WordTooLong`] if the freely reduced product exceeds [`MAX_BRAID_WORD_LEN`].
+    #[verified_engine::verified]
+    pub fn try_operate(&self, other: &Self) -> Result<Self, BraidError> {
+        if self.strands != other.strands {
+            return Err(BraidError::StrandCountMismatch {
+                left: self.strands,
+                right: other.strands,
+            });
+        }
+        let mut stack = Vec::with_capacity(self.generators.len() + other.generators.len());
+        for &g in &self.generators {
+            braid_equivalence::push_free_reduced(&mut stack, g);
+        }
+        for &g in &other.generators {
+            braid_equivalence::push_free_reduced(&mut stack, g);
+        }
+        if stack.len() > MAX_BRAID_WORD_LEN {
+            return Err(BraidError::WordTooLong { len: stack.len() });
+        }
+        Ok(Self {
+            strands: self.strands,
+            generators: stack,
+        })
+    }
+
     /// Returns the group inverse $\beta^{-1}$ obtained by reversing and negating all generators.
     #[must_use]
     #[verified_engine::verified]
@@ -238,11 +270,7 @@ impl BraidWord {
         let orig_len = self.generators.len();
         let mut stack = Vec::with_capacity(orig_len);
         for &g in &self.generators {
-            if stack.last().is_some_and(|&top| top == -g) {
-                stack.pop();
-            } else {
-                stack.push(g);
-            }
+            braid_equivalence::push_free_reduced(&mut stack, g);
         }
         self.generators = stack;
         debug_assert!(self.generators.len() <= orig_len);
@@ -285,38 +313,44 @@ impl BraidWord {
         Ok(())
     }
 
-    /// Returns `true` if the Artin Yang-Baxter braid relation
+    /// Returns `true` if either a homogeneous Artin Yang-Baxter triple
     /// $\sigma_i^{\epsilon} \sigma_j^{\epsilon} \sigma_i^{\epsilon} \leftrightarrow \sigma_j^{\epsilon} \sigma_i^{\epsilon} \sigma_j^{\epsilon}$
-    /// (`|i - j| == 1`, $\epsilon \in \{\pm 1\}$) applies at `index..index + 3`.
+    /// or a mixed-sign conjugate triple
+    /// $\sigma_i^{s_0} \sigma_j^{s_1} \sigma_i^{-s_0} \leftrightarrow \sigma_j^{-s_0} \sigma_i^{s_1} \sigma_j^{s_0}$
+    /// (`|i - j| == 1`) applies at `index..index + 3`.
     #[must_use]
     #[verified_engine::verified]
     pub fn can_apply_artin_relation(&self, index: usize) -> bool {
         if index + 2 >= self.generators.len() {
             return false;
         }
-        let (g0, g1, g2) = (
+        braid_equivalence::match_artin_triple(
             self.generators[index],
             self.generators[index + 1],
             self.generators[index + 2],
-        );
-        g0 == g2 && g0.signum() == g1.signum() && g0.unsigned_abs().abs_diff(g1.unsigned_abs()) == 1
+        )
+        .is_some()
     }
 
-    /// Rewrites $\sigma_i^{\epsilon} \sigma_j^{\epsilon} \sigma_i^{\epsilon} \mapsto \sigma_j^{\epsilon} \sigma_i^{\epsilon} \sigma_j^{\epsilon}$
-    /// in place at `index..index + 3`.
+    /// Rewrites a homogeneous or mixed-sign Yang-Baxter triple in place at `index..index + 3`.
     ///
     /// # Errors
-    /// Returns [`BraidError::RelationNotApplicable`] if the triple does not match the Artin relation.
+    /// Returns [`BraidError::RelationNotApplicable`] if the triple does not match an Artin relation.
     #[verified_engine::verified]
     pub fn apply_artin_relation(&mut self, index: usize) -> Result<(), BraidError> {
-        if !self.can_apply_artin_relation(index) {
+        if index + 2 >= self.generators.len() {
             return Err(BraidError::RelationNotApplicable { index });
         }
-        let g0 = self.generators[index];
-        let g1 = self.generators[index + 1];
-        self.generators[index] = g1;
-        self.generators[index + 1] = g0;
-        self.generators[index + 2] = g1;
+        let Some([r0, r1, r2]) = braid_equivalence::match_artin_triple(
+            self.generators[index],
+            self.generators[index + 1],
+            self.generators[index + 2],
+        ) else {
+            return Err(BraidError::RelationNotApplicable { index });
+        };
+        self.generators[index] = r0;
+        self.generators[index + 1] = r1;
+        self.generators[index + 2] = r2;
         Ok(())
     }
 
@@ -373,3 +407,4 @@ impl BraidWord {
 }
 
 mod braid_closure;
+mod braid_equivalence;

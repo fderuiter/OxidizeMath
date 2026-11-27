@@ -88,7 +88,7 @@ pub use group::{
     generate_left_coset, generate_right_coset, is_normal_subgroup, is_subgroup,
 };
 pub use linear_algebra::LinearAlgebraError;
-pub use polynomial::{LaurentPolynomial, Polynomial};
+pub use polynomial::{LaurentError, LaurentPolynomial, MAX_LAURENT_SPAN, Polynomial};
 pub use traits::{
     AbelianGroup, EuclideanDomain, Field, Group, Monoid, RefOps, Ring, Scalar, Semigroup,
 };

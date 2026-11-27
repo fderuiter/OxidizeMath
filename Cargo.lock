@@ -2660,6 +2660,7 @@ dependencies = [
 name = "math_scalars"
 version = "0.4.0"
 dependencies = [
+ "dashu",
  "libm",
  "math_diagnostics",
  "num-complex",
