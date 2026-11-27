@@ -23,9 +23,10 @@ Bit-exact IEEE-754 verification of the Tier 0 `#![no_std]` scalar samplers intro
 3. **`TypeId`-Routed `sample_open_unit<f32>`, Strict SSA Positivity, and Doc Parity:**
    - Route `T = f32` in `math_commons::math_kernel::types::sample_open_unit` directly to `<f32 as RngScalar>::sample_open` via `core::any::TypeId`, enforce `debug_assert!(u > T::ZERO && u < T::ONE)`, and assert `tau > T::ZERO` in `engine_diffeq::jump::ssa_sample_event`.
    - Update stale Box-Muller docstrings in `crates/00_foundation/math_rng/README.md` and `apps/math_explorer_gui/src/tabs/ai/closed_loop_control/plants.rs` to inverse-CDF probit documentation.
-4. **Cross-Platform GUI CI Stability (`math_explorer_gui`):**
+4. **Cross-Platform Native & Coverage CI Determinism (`math_scalars::series`, `math_explorer_gui`):**
+   - Route `T = f64` and `T = f32` in `<[T; 2] as Sample2D<T>>::advance_slice_plateau` and `<(T, T) as Sample2D<T>>::advance_slice_plateau` via `core::any::TypeId` to concrete IEEE-754 slice helpers so `[profile.test]` (`opt-level = 0` with `-C instrument-coverage`) avoids `600,000` uninlined generic `PartialEq`/`PartialOrd` trait calls across `200,000`-point `egui_plot` plateaus (`< 5ms` budget).
    - Deduplicate `logistic_lyapunov` evaluation in `BifurcationDiagram::recompute_default_coupled` and stride attractor scatter points into a preallocated `4,096`-point preview buffer while an animated slider or background sweep generation is in flight (restoring full-resolution borrowed slices once settled), keeping unoptimized/coverage-instrumented UI sweep frames well under the `16.67ms` frame budget.
-   - Fall back from Unix `/tmp/...` screenshot output paths to `std::env::temp_dir()` in `sandpile::tests` and `knot_braid_studio::screenshot_tests` when `/tmp` is absent on Windows runners.
+   - Write GUI test PNG artifacts via `std::env::temp_dir()` in `sandpile::tests` and `knot_braid_studio::screenshot_tests` when `/tmp` is absent on Windows runners.
 
 ## Consequences
 
