@@ -3,26 +3,22 @@ use super::*;
 use std::collections::HashSet;
 
 #[test]
-fn test_cargo_cache_action_pins_v4_node20_and_hashes_cargo_toml() {
+fn test_cargo_cache_action_pins_v5_node24_and_hashes_cargo_toml() {
     let _lock = crate::DIR_LOCK.lock().unwrap();
     let root = crate::manifest_cache::workspace_root_dir();
-    let action_path = root.join(".github/actions/cargo-cache/action.yml");
-    let content =
-        fs::read_to_string(&action_path).expect("cargo-cache action.yml should be readable");
-
-    assert!(
-        !content.contains("6f8efc29b200d32929f49075959781ed54ec270c"),
-        "Deprecated Node 16 actions/cache v3.5.0 SHA must not remain in cargo-cache"
-    );
-
+    let content = fs::read_to_string(root.join(".github/actions/cargo-cache/action.yml"))
+        .expect("cargo-cache action.yml should be readable");
+    for sha in [
+        "6f8efc29b200d32929f49075959781ed54ec270c",
+        "0057852bfaa89a56745cba8c7296529d2fc39830",
+    ] {
+        assert!(!content.contains(sha), "Deprecated cache SHA {sha}");
+    }
     let yaml: Value =
         serde_saphyr::from_str(&content).expect("cargo-cache action.yml must be valid YAML");
-    let steps = yaml
-        .get("runs")
-        .and_then(|r| r.get("steps"))
-        .and_then(Value::as_array)
+    let steps = yaml["runs"]["steps"]
+        .as_array()
         .expect("composite action must define runs.steps");
-
     assert_cargo_cache_inputs_and_env(&yaml, steps);
     assert_cargo_cache_uses_steps(steps);
 }
@@ -125,8 +121,8 @@ fn assert_cargo_cache_uses_steps(steps: &[Value]) {
         assert!(
             matches!(
                 uses_str,
-                "actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830"
-                    | "actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830"
+                "actions/cache@caa296126883cff596d87d8935842f9db880ef25"
+                    | "actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25"
             ),
             "Unexpected action pin in cargo-cache: {uses_str}"
         );
@@ -178,7 +174,7 @@ fn test_ci_tool_cache_action_isolates_binaries_outside_cargo_bin() {
     assert_eq!(uses_steps.len(), 2, "Expected cache and binstall steps");
     assert_eq!(
         uses_steps[0].get("uses").and_then(Value::as_str),
-        Some("actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830")
+        Some("actions/cache@caa296126883cff596d87d8935842f9db880ef25")
     );
     let tool_cache_path = uses_steps[0]
         .get("with")

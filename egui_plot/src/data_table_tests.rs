@@ -1135,3 +1135,139 @@ fn test_copy_to_clipboard_emits_platform_copy_command_and_polite_status() {
     );
     assert_eq!(assertive_live(&ctx), None);
 }
+
+#[test]
+fn test_unshared_series_inline_tabs_up_to_12_and_combobox_above_12_up_to_2500() {
+    let (ctx, c) = (Context::default(), Color32::from_rgb(80, 160, 240));
+    let twelve: Vec<(String, Vec<[f64; 2]>, Color32)> = (0..crate::MAX_INLINE_SERIES_TABS)
+        .map(|i| (format!("S{i}"), vec![[i as f64, (i * 2) as f64]], c))
+        .collect();
+    let (mut open12, mut st12) = (true, DataTableState::default());
+    let id12 = Id::new("twelve_inline_tabs");
+    let _ = run_modal(&ctx, screen_input(), id12, &mut open12, &mut st12, &twelve);
+    let out12 = run_modal(&ctx, screen_input(), id12, &mut open12, &mut st12, &twelve);
+    assert!(find_text_center(&out12, "S11 (1)").is_some());
+    assert!(find_text_center(&out12, "Series (12):").is_none());
+
+    let many: Vec<(String, Vec<[f64; 2]>, Color32)> = (0..2500)
+        .map(|i| {
+            (
+                format!("LossCell {i}"),
+                vec![[i as f64, (i as f64) * 0.5]],
+                c,
+            )
+        })
+        .collect();
+    let (mut open_many, mut st_many) = (true, DataTableState::default());
+    let id_many = Id::new("many_combo_selector");
+    let _ = run_modal(
+        &ctx,
+        screen_input(),
+        id_many,
+        &mut open_many,
+        &mut st_many,
+        &many,
+    );
+    let out_many = run_modal(
+        &ctx,
+        screen_input(),
+        id_many,
+        &mut open_many,
+        &mut st_many,
+        &many,
+    );
+    assert!(find_text_center(&out_many, "Series (2500):").is_some());
+    assert!(find_text_center(&out_many, "1/2500 · LossCell 0 (1)").is_some());
+    assert!(find_text_center(&out_many, "LossCell 2499 (1)").is_none());
+
+    let next_pos = find_text_center(&out_many, "▶").expect("Next series button");
+    let _ = click_at(&ctx, next_pos, PointerButton::Primary, |sub_ctx| {
+        show_data_table_modal_with_pois(
+            sub_ctx,
+            id_many,
+            "Data Table - Many",
+            &mut open_many,
+            &mut st_many,
+            &many,
+            &[],
+        );
+    });
+    assert_eq!(st_many.selected_series, 1);
+}
+
+#[test]
+fn test_combobox_series_selector_supports_keyboard_arrow_stepping() {
+    let (ctx, c) = (Context::default(), Color32::from_rgb(80, 160, 240));
+    let series: Vec<(String, Vec<[f64; 2]>, Color32)> = (0..20)
+        .map(|i| (format!("Unshared {i}"), vec![[i as f64, 1.0]], c))
+        .collect();
+    let (mut open, mut st) = (true, DataTableState::default());
+    let id = Id::new("combo_kbd_nav");
+    let _ = run_modal(&ctx, screen_input(), id, &mut open, &mut st, &series);
+    let _ = run_modal(&ctx, screen_input(), id, &mut open, &mut st, &series);
+    let _ = run_modal(&ctx, key_input(Key::Tab), id, &mut open, &mut st, &series);
+    let _ = run_modal(&ctx, key_input(Key::Tab), id, &mut open, &mut st, &series);
+    let _ = run_modal(
+        &ctx,
+        key_input(Key::ArrowRight),
+        id,
+        &mut open,
+        &mut st,
+        &series,
+    );
+    assert_eq!(st.selected_series, 1);
+    let _ = run_modal(
+        &ctx,
+        key_input(Key::ArrowLeft),
+        id,
+        &mut open,
+        &mut st,
+        &series,
+    );
+    assert_eq!(st.selected_series, 0);
+}
+
+#[test]
+fn test_series_selector_bar_controls_lock_horizontal_arrows_across_tabs() {
+    let (ctx, c) = (Context::default(), Color32::from_rgb(80, 160, 240));
+    let series: Vec<(String, Vec<[f64; 2]>, Color32)> = (0..20)
+        .map(|i| (format!("Unshared {i}"), vec![[i as f64, 1.0]], c))
+        .collect();
+    let (mut open, mut st) = (true, DataTableState::default());
+    let id = Id::new("combo_kbd_all_controls");
+    let _ = run_modal(&ctx, screen_input(), id, &mut open, &mut st, &series);
+    let _ = run_modal(&ctx, screen_input(), id, &mut open, &mut st, &series);
+    let _ = run_modal(&ctx, key_input(Key::Tab), id, &mut open, &mut st, &series);
+    let _ = run_modal(&ctx, key_input(Key::Tab), id, &mut open, &mut st, &series);
+    for expected in [1, 2, 3] {
+        let _ = run_modal(
+            &ctx,
+            key_input(Key::ArrowRight),
+            id,
+            &mut open,
+            &mut st,
+            &series,
+        );
+        assert_eq!(st.selected_series, expected);
+    }
+    let _ = run_modal(&ctx, key_input(Key::Tab), id, &mut open, &mut st, &series);
+    let _ = run_modal(
+        &ctx,
+        key_input(Key::ArrowRight),
+        id,
+        &mut open,
+        &mut st,
+        &series,
+    );
+    assert_eq!(st.selected_series, 4);
+    let _ = run_modal(&ctx, key_input(Key::Tab), id, &mut open, &mut st, &series);
+    let _ = run_modal(
+        &ctx,
+        key_input(Key::ArrowLeft),
+        id,
+        &mut open,
+        &mut st,
+        &series,
+    );
+    assert_eq!(st.selected_series, 3);
+}

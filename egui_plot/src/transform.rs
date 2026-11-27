@@ -633,7 +633,8 @@ impl PlotTransform {
 
     /// Precomputed affine projector for linear (non-logarithmic) axes, avoiding per-point divisions.
     #[inline]
-    pub(crate) fn linear_projector(&self) -> Option<LinearProjector> {
+    #[must_use]
+    pub fn linear_projector(&self) -> Option<LinearProjector> {
         if self.log_axis.x || self.log_axis.y {
             return None;
         }
@@ -831,8 +832,8 @@ impl PlotTransform {
     }
 }
 
-#[derive(Clone, Copy)]
-pub(crate) struct LinearProjector {
+#[derive(Clone, Copy, Debug)]
+pub struct LinearProjector {
     min_x: f64,
     scale_x: f64,
     base_x: f64,
@@ -843,7 +844,8 @@ pub(crate) struct LinearProjector {
 
 impl LinearProjector {
     #[inline(always)]
-    pub(crate) fn project(&self, x: f64, y: f64) -> Pos2 {
+    #[must_use]
+    pub fn project(&self, x: f64, y: f64) -> Pos2 {
         pos2(
             (self.base_x + (x - self.min_x) * self.scale_x) as f32,
             (self.base_y + (y - self.min_y) * self.scale_y) as f32,

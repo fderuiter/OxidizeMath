@@ -290,7 +290,7 @@ impl LegendWidget {
         // to show.
         let mut entries: Vec<LegendEntry> = Vec::new();
         let mut seen: ahash::HashMap<Id, usize> = ahash::HashMap::default();
-        for item in items.iter().filter(|item| !item.name().is_empty()) {
+        for item in items.iter().filter(|item| item.show_in_legend()) {
             let dedup_key = match config.grouping {
                 LegendGrouping::ByName => Id::new(item.name()),
                 LegendGrouping::ById => item.id(),

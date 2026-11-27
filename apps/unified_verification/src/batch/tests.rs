@@ -439,14 +439,12 @@ fn test_batch_static_parses_each_member_manifest_and_checks_lints_once() {
     }
 
     let (_, members) = crate::manifest_cache::discover_workspace();
-    let mut ast_cache = AstCache::new();
-    let mut manifest_cache = crate::manifest_cache::ManifestCache::new();
-
-    assert!(run_batch_static_with_caches(
-        &[],
-        &mut ast_cache,
-        &mut manifest_cache,
-    ));
+    let (passed, manifest_cache) = crate::with_workspace_ast_cache(|ast_cache| {
+        let mut mc = crate::manifest_cache::ManifestCache::new();
+        let ok = run_batch_static_with_caches(&[], ast_cache, &mut mc);
+        (ok, mc)
+    });
+    assert!(passed);
 
     assert_eq!(manifest_cache.lint_check_calls(), members.len());
     assert_eq!(manifest_cache.parse_calls(), members.len() + 1);

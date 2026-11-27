@@ -223,8 +223,40 @@ impl TableView3D<'_> {
         close_clicked
     }
 
+    fn select_series_3d(&mut self, ctx: &Context, idx: usize) {
+        if let Some(item) = self.series.get(idx) {
+            let lbl = format!("{} ({})", item.display_name(idx), item.points.len());
+            self.state.selected_series = idx;
+            self.state.selected_row = self.state.selected_row.min(item.points.len() - 1);
+            self.state.scroll_to_selected = true;
+            emit_plot_live_message(ctx, format!("Selected series tab: {lbl}"), false);
+        }
+    }
+
+    fn render_series_selector_combo_3d(&mut self, ui: &mut Ui) {
+        let series = self.series;
+        let chosen = format::render_series_selector_bar(
+            ui,
+            self.plot_id.with("data_table_3d_series_selector"),
+            series.len(),
+            self.state.selected_series,
+            |idx| {
+                let item = &series[idx];
+                format!("{} ({})", item.display_name(idx), item.points.len())
+            },
+        );
+        if let Some(idx) = chosen {
+            self.select_series_3d(ui.ctx(), idx);
+        }
+    }
+
     fn render_series_tabs(&mut self, ui: &mut Ui) {
         if self.series.len() <= 1 {
+            return;
+        }
+        if self.series.len() > super::MAX_INLINE_SERIES_TABS {
+            self.render_series_selector_combo_3d(ui);
+            ui.separator();
             return;
         }
         ScrollArea::horizontal()
@@ -238,10 +270,7 @@ impl TableView3D<'_> {
                             .selectable_label(self.state.selected_series == idx, lbl)
                             .clicked()
                         {
-                            self.state.selected_series = idx;
-                            self.state.selected_row =
-                                self.state.selected_row.min(item.points.len() - 1);
-                            self.state.scroll_to_selected = true;
+                            self.select_series_3d(ui.ctx(), idx);
                         }
                     }
                 });

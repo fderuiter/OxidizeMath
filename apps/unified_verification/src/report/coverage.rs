@@ -1,10 +1,16 @@
 use super::{ReportMode, VERIFY_SUITE_WRITE_ENV};
 use std::process::Command;
 
-/// Executes `cargo llvm-cov --all-features --workspace --json` and returns process output.
+/// Executes `cargo llvm-cov --all-features --workspace --json --summary-only` and returns process output.
 fn get_llvm_cov_output(mode: ReportMode) -> std::process::Output {
     let mut cmd = Command::new("cargo");
-    cmd.args(["llvm-cov", "--all-features", "--workspace", "--json"]);
+    cmd.args([
+        "llvm-cov",
+        "--all-features",
+        "--workspace",
+        "--json",
+        "--summary-only",
+    ]);
     if mode == ReportMode::Write {
         cmd.env(VERIFY_SUITE_WRITE_ENV, "1");
     }

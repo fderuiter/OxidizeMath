@@ -273,7 +273,8 @@ pub(super) fn assert_detect_changes_invariants(ci_yaml: &str, step: &str) {
         !ci_yaml.contains("No GUI or workspace manifest changes detected"),
         "stale package skip message must be updated"
     );
-    assert!(ci_yaml.contains("skipping ${{ matrix.target }} installer build on pull_request."));
+    assert!(ci_yaml.contains("MATRIX_TARGET: ${{ matrix.target }}"));
+    assert!(ci_yaml.contains("skipping ${MATRIX_TARGET} installer build on pull_request."));
     assert_parallel_dag_invariants(ci_yaml);
 }
 
