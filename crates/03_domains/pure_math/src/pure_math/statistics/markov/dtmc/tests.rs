@@ -409,7 +409,7 @@ fn test_dtmc_serde_roundtrip_and_validation_rejections() {
 
 #[test]
 fn test_periodic_stationary_multi_sink_rejection_and_limiting_distribution() {
-    use math_commons::stochastic::SolverWorkspace;
+    use math_commons::stochastic::StochasticWorkspace;
     use verified_engine::engine::VerifiedEngine;
 
     // Periodic 3-state bipartite chain: 0 <-> {1, 2}, unique stationary = [0.5, 0.25, 0.25].
@@ -431,7 +431,7 @@ fn test_periodic_stationary_multi_sink_rejection_and_limiting_distribution() {
     );
 
     // Zero-allocation workspace solve.
-    let mut ws = SolverWorkspace::new(3, 0);
+    let mut ws = StochasticWorkspace::new(3, 0);
     let mut out = DVector::zeros(3);
     VerifiedEngine::run_verified(|| {
         assert!(periodic_chain.stationary_distribution_with_workspace(&mut ws, &mut out));

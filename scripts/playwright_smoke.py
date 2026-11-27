@@ -1157,7 +1157,14 @@ def verify_error_recovery(
     expect(error_container).to_be_visible(timeout=timeout_ms)
     expect(error_container).to_have_attribute("data-error-active", "true")
     expect(error_container).to_have_attribute("data-error-category", expectation.category)
-    expect(error_container).to_have_attribute("role", "alert")
+    expect(error_container).to_have_attribute("role", "region")
+    expect(error_container).to_have_attribute("aria-labelledby", "error_title")
+    expect(error_container).to_have_attribute("aria-describedby", "error_message")
+    if error_container.get_attribute("aria-live") is not None:
+        raise AssertionError(
+            f"[{scenario}] #error_container must not set aria-live alongside #aria-live-assertive"
+        )
+    expect(page.locator('[role="alert"]')).to_have_count(1)
     expect(page.locator("html")).to_have_attribute("data-boot-initialized", "true")
     expect(page.locator("html")).to_have_attribute("data-boot-failed", "true")
     expect(page.locator("#loading_indicator")).to_be_hidden()
@@ -1626,6 +1633,267 @@ def run_offline_sw_shell_recovery_check(
         context.close()
 
 
+def _parse_css_rgba(raw: str) -> tuple[float, float, float, float]:
+    nums = [float(x) for x in re.findall(r"[0-9]+(?:\.[0-9]+)?", raw)]
+    if len(nums) == 3:
+        return nums[0], nums[1], nums[2], 1.0
+    if len(nums) >= 4:
+        return nums[0], nums[1], nums[2], nums[3]
+    raise AssertionError(f"Unable to parse CSS color value: {raw!r}")
+
+
+def _wcag_contrast(fg_raw: str, bg_raw: str) -> float:
+    fr, fg, fb, fa = _parse_css_rgba(fg_raw)
+    br, bg_g, bb, _ = _parse_css_rgba(bg_raw)
+    cr = fr * fa + br * (1.0 - fa)
+    cg = fg * fa + bg_g * (1.0 - fa)
+    cb = fb * fa + bb * (1.0 - fa)
+
+    def _lum(rgb: tuple[float, float, float]) -> float:
+        vals = []
+        for ch in rgb:
+            s = ch / 255.0
+            vals.append(s / 12.92 if s <= 0.04045 else ((s + 0.055) / 1.055) ** 2.4)
+        return 0.2126 * vals[0] + 0.7152 * vals[1] + 0.0722 * vals[2]
+
+    l1 = _lum((cr, cg, cb))
+    l2 = _lum((br, bg_g, bb))
+    return (max(l1, l2) + 0.05) / (min(l1, l2) + 0.05)
+
+
+def run_forced_colors_and_recovery_overlay_checks(
+    browser: Browser,
+    base_url: str,
+    dist_dir: Path,
+    screenshot_dir: Path | None = None,
+) -> None:
+    _ = dist_dir
+    warm_hc_envelope = (
+        '{"schema_version":"1.0.0","app_version":"0.4.0",'
+        '"timestamp":"2026-11-27T00:00:00Z",'
+        '"app_state":{"theme":"HighContrast","selected_tab":0,"tab_states":{}}}'
+    )
+
+    for label, scheme, warm, reduced in (
+        ("cold_light_forced_colors", "light", False, "no-preference"),
+        ("warm_light_forced_colors", "light", True, "no-preference"),
+        ("warm_light_forced_colors_reduced_motion", "light", True, "reduce"),
+        ("warm_dark_forced_colors", "dark", True, "no-preference"),
+    ):
+        ctx = browser.new_context(
+            viewport={"width": 1280, "height": 800},
+            forced_colors="active",
+            color_scheme=scheme,
+            reduced_motion=reduced,
+        )
+        try:
+            pg = ctx.new_page()
+            csp_violations: list[str] = []
+            aborted_unrouted: list[str] = []
+            attach_csp_observer(pg, csp_violations)
+            attach_unrouted_script_abort_observer(pg, aborted_unrouted)
+            pg.add_init_script(
+                """(() => {
+                    let releaseFn = null;
+                    const gate = new Promise((resolve) => { releaseFn = resolve; });
+                    window.__releaseWasmGate = () => { if (releaseFn) releaseFn(); };
+                    const origFetch = window.fetch.bind(window);
+                    window.fetch = async (input, init) => {
+                        const url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+                        if (url.includes('math_explorer_gui_bg.wasm')) {
+                            await gate;
+                        }
+                        return origFetch(input, init);
+                    };
+                })();"""
+            )
+            if warm:
+                pg.add_init_script(
+                    f"window.localStorage.setItem('app', {warm_hc_envelope!r});"
+                )
+
+            pg.goto(f"{base_url}/", wait_until="domcontentloaded")
+            expect(pg.locator("#loading_indicator")).to_be_visible()
+
+            preboot = pg.evaluate(
+                """() => {
+                    const cs = (sel) => {
+                        const el = document.querySelector(sel);
+                        const st = getComputedStyle(el);
+                        return {
+                            bg: st.backgroundColor,
+                            fg: st.color,
+                            btc: st.borderTopColor,
+                            brc: st.borderRightColor,
+                            fill: st.fill,
+                            stroke: st.stroke,
+                            anim: st.animationName,
+                        };
+                    };
+                    return {
+                        loading: cs('#loading_indicator'),
+                        spinner: cs('.spinner'),
+                        badge: cs('.brand-badge'),
+                        wave: cs('.brand-wave'),
+                        progress: cs('#loading_progress'),
+                        metaScheme: document.querySelector('meta[name="color-scheme"]')?.getAttribute('content'),
+                        metaTheme: document.querySelector('meta[name="theme-color"]')?.getAttribute('content'),
+                    };
+                }"""
+            )
+            if screenshot_dir is not None and label == "warm_light_forced_colors":
+                pg.screenshot(path=str(screenshot_dir / "smoke_forced_colors_light_startup.png"))
+
+            pg.evaluate("window.__releaseWasmGate && window.__releaseWasmGate()")
+
+            canvas_bg = preboot["loading"]["bg"]
+            if scheme == "light":
+                if canvas_bg == "rgb(0, 0, 0)":
+                    raise AssertionError(f"[{label}] Light forced-colors Canvas turned black: {preboot}")
+                if preboot["spinner"]["btc"] == "rgb(255, 255, 0)":
+                    raise AssertionError(f"[{label}] Dark #ffff00 leaked onto light forced-colors spinner: {preboot}")
+                if preboot["wave"]["stroke"] == "rgb(255, 255, 0)":
+                    raise AssertionError(f"[{label}] Dark #ffff00 leaked onto light forced-colors brand-wave: {preboot}")
+            spinner_ratio = _wcag_contrast(preboot["spinner"]["btc"], canvas_bg)
+            if spinner_ratio < 3.0:
+                raise AssertionError(
+                    f"[{label}] Spinner active indicator contrast {spinner_ratio:.2f}:1 < 3:1 ({preboot})"
+                )
+            wave_ratio = _wcag_contrast(preboot["wave"]["stroke"], preboot["badge"]["fill"])
+            if wave_ratio < 3.0:
+                raise AssertionError(
+                    f"[{label}] Brand wave contrast {wave_ratio:.2f}:1 < 3:1 ({preboot})"
+                )
+            progress_border_ratio = _wcag_contrast(preboot["progress"]["btc"], canvas_bg)
+            if progress_border_ratio < 3.0:
+                raise AssertionError(
+                    f"[{label}] Progress border contrast {progress_border_ratio:.2f}:1 < 3:1 ({preboot})"
+                )
+            if reduced == "reduce" and preboot["spinner"]["anim"] != "none":
+                raise AssertionError(f"[{label}] Reduced-motion spinner still animating: {preboot}")
+
+            try:
+                expect(pg.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+                expect(pg.locator("#the_canvas_id")).to_be_focused()
+            except AssertionError as exc:
+                if aborted_unrouted:
+                    raise TransientBrowserCrashError(
+                        f"[{label}] Unrouted script aborted by Chromium NetworkService: {aborted_unrouted}"
+                    ) from exc
+                raise
+
+            postboot_meta = pg.evaluate(
+                """() => ({
+                    inlineScheme: document.documentElement.style.getPropertyValue('color-scheme'),
+                    metaScheme: document.querySelector('meta[name="color-scheme"]')?.getAttribute('content'),
+                    metaTheme: document.querySelector('meta[name="theme-color"]')?.getAttribute('content'),
+                })"""
+            )
+            if postboot_meta["metaScheme"] != "dark light" or postboot_meta["inlineScheme"] != "":
+                raise AssertionError(
+                    f"[{label}] Forced-colors color-scheme metadata clobbered: {postboot_meta}"
+                )
+            if scheme == "light" and postboot_meta["metaTheme"] == "#000000":
+                raise AssertionError(
+                    f"[{label}] Light forced-colors theme-color clobbered to #000000: {postboot_meta}"
+                )
+            assert_zero_csp_violations(label, csp_violations)
+        finally:
+            ctx.close()
+
+    # Verify #webgl_recovery_overlay canvas inertness, button focus, Tab traversal,
+    # WebGL restoration refocus, and QuotaExceededError .mws focus priority.
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800})
+    try:
+        pg = ctx.new_page()
+        csp_violations = []
+        aborted_unrouted = []
+        attach_csp_observer(pg, csp_violations)
+        attach_unrouted_script_abort_observer(pg, aborted_unrouted)
+
+        pg.goto(f"{base_url}/", wait_until="domcontentloaded")
+        try:
+            expect(pg.locator("#loading_indicator")).to_be_hidden(timeout=20_000)
+            expect(pg.locator("#the_canvas_id")).to_be_focused()
+        except AssertionError as exc:
+            if aborted_unrouted:
+                raise TransientBrowserCrashError(
+                    f"[webgl_recovery_focus] Unrouted script aborted: {aborted_unrouted}"
+                ) from exc
+            raise
+
+        pg.evaluate(
+            """() => {
+                const c = document.getElementById('the_canvas_id');
+                c.dispatchEvent(new Event('webglcontextlost', { cancelable: true }));
+            }"""
+        )
+        overlay = pg.locator("#webgl_recovery_overlay")
+        expect(overlay).to_be_visible()
+        expect(overlay).to_have_attribute("aria-busy", "true")
+        expect(pg.locator("#the_canvas_id")).to_have_attribute("aria-hidden", "true")
+        if not pg.evaluate("() => document.getElementById('the_canvas_id').inert === true"):
+            raise AssertionError("[webgl_recovery_focus] Expected #the_canvas_id.inert === true during recovery")
+        expect(pg.locator("#webgl_recovery_reload_button")).to_be_visible()
+        expect(pg.locator("#webgl_recovery_reload_button")).to_be_focused()
+        expect(pg.locator("#webgl_recovery_download_button")).to_be_visible()
+
+        if screenshot_dir is not None:
+            pg.screenshot(path=str(screenshot_dir / "smoke_webgl_recovery_overlay_focus.png"))
+
+        # Tab across #webgl_recovery_overlay controls and verify focus never lands on inert canvas.
+        pg.keyboard.press("Tab")
+        expect(pg.locator("#webgl_recovery_download_button")).to_be_focused()
+
+        # Dispatch webglcontextrestored while user is focused inside #webgl_recovery_overlay.
+        pg.evaluate(
+            """() => {
+                const c = document.getElementById('the_canvas_id');
+                c.dispatchEvent(new Event('webglcontextrestored'));
+            }"""
+        )
+        expect(overlay).to_be_hidden(timeout=15_000)
+        expect(pg.locator("#the_canvas_id")).to_be_focused()
+        restored_canvas = pg.evaluate(
+            """() => {
+                const c = document.getElementById('the_canvas_id');
+                return {
+                    inertProp: Boolean(c.inert),
+                    inertAttr: c.hasAttribute('inert'),
+                    ariaHidden: c.getAttribute('aria-hidden'),
+                };
+            }"""
+        )
+        if restored_canvas["inertProp"] or restored_canvas["inertAttr"] or restored_canvas["ariaHidden"] is not None:
+            raise AssertionError(
+                f"[webgl_recovery_focus] Expected inert/aria-hidden cleared after restore: {restored_canvas}"
+            )
+
+        # Simulate QuotaExceededError on localStorage.setItem during webglcontextlost:
+        # #webgl_recovery_download_button must immediately expose and receive focus.
+        pg.evaluate(
+            """() => {
+                Storage.prototype.setItem = function () {
+                    throw new DOMException('Quota exceeded', 'QuotaExceededError');
+                };
+                const c = document.getElementById('the_canvas_id');
+                c.dispatchEvent(new Event('webglcontextlost', { cancelable: true }));
+            }"""
+        )
+        expect(overlay).to_be_visible()
+        dl_btn = pg.locator("#webgl_recovery_download_button")
+        expect(dl_btn).to_be_visible()
+        expect(dl_btn).to_have_attribute("data-storage-blocked", "true")
+        expect(dl_btn).to_be_focused()
+        assert_zero_csp_violations("webgl_recovery_focus", csp_violations)
+    finally:
+        ctx.close()
+
+    print(
+        "[PASS] forced_colors_and_recovery_overlay: cold/warm light & dark forced-colors >=3:1 contrast, inert canvas, overlay focus, and restore refocus verified"
+    )
+
+
 def run_smoke_suite(
     dist_dir: Path,
     trunk_toml: Path,
@@ -1661,6 +1929,14 @@ def run_smoke_suite(
                     webgl_pool,
                     "happy_path",
                     lambda b: run_happy_path_check(b, base_url, csp, screenshot_dir),
+                )
+
+                run_with_crash_retry(
+                    webgl_pool,
+                    "forced_colors_and_recovery_overlay",
+                    lambda b: run_forced_colors_and_recovery_overlay_checks(
+                        b, base_url, dist_dir, screenshot_dir
+                    ),
                 )
 
                 run_with_crash_retry(

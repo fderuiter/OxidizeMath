@@ -376,11 +376,11 @@ pub(crate) fn audit_file_missing_docs(
     ok
 }
 
-fn crate_prefix_of_whitelist_key(key: &str) -> Option<String> {
+fn crate_prefix_of_whitelist_key(key: &str, ws_root: &Path) -> Option<String> {
     let norm = key.trim().replace('\\', "/");
     let trimmed = norm.trim_start_matches("./");
     if let Some((pkg, _)) = trimmed.split_once(':') {
-        return crate::whitelist::expand_package_pattern(pkg.trim());
+        return crate::whitelist::expand_package_pattern_in_ws(ws_root, pkg.trim());
     }
     let segs: Vec<&str> = trimmed.split('/').filter(|s| !s.is_empty()).collect();
     if segs.len() < 2 {
@@ -408,9 +408,11 @@ pub(crate) fn check_stale_member_missing_docs_caps(
     let Some(cfg) = &whitelist.missing_docs else {
         return true;
     };
+    let ws_root = oxidize_core::workspace::find_workspace_root_from(member_dir)
+        .unwrap_or_else(crate::manifest_cache::workspace_root_dir);
     let mut ok = true;
     for (key, &cap) in &cfg.files {
-        let Some(crate_prefix) = crate_prefix_of_whitelist_key(key) else {
+        let Some(crate_prefix) = crate_prefix_of_whitelist_key(key, &ws_root) else {
             continue;
         };
         if path_matches_lossy(member_dir, &crate_prefix, PATH_MATCH_OPTS)

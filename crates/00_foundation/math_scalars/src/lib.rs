@@ -20,7 +20,7 @@ pub mod ieee;
 pub mod series;
 /// Unified [`RefOps`], [`Scalar`], [`Ring`], [`Field`], [`ComplexField`], and [`RealField`] traits.
 pub mod traits;
-/// Caller-owned [`SolverWorkspace`], [`StepSize`], [`GridIndex`], [`Dimension`], and indexers.
+/// Caller-owned [`ScalarWorkspace`], [`SolverWorkspace`], [`StepSize`], [`GridIndex`], [`Dimension`], and indexers.
 pub mod workspace;
 
 pub use complex::{Complex, Complex32, Complex64};
@@ -30,9 +30,10 @@ pub use ieee::{hypot_f32, hypot_f64, sqrt_f32, sqrt_f64};
 pub use series::{PointSeries, Sample2D};
 pub use traits::{ComplexField, Field, RealField, RefOps, Ring, Scalar};
 #[cfg(feature = "alloc")]
-pub use workspace::OwnedWorkspace;
+pub use workspace::OwnedByteArena;
 pub use workspace::{
-    Dimension, GridIndex, SolverWorkspace, StepSize, flatten_2d_index, flatten_3d_index,
+    ArenaCheckpoint, ArenaError, ByteArena, ByteCursor, Dimension, GridIndex, ScalarWorkspace,
+    SolverWorkspace, StepSize, flatten_2d_index, flatten_3d_index,
 };
 
 #[cfg(test)]

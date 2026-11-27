@@ -1,11 +1,10 @@
 // [cite:engine_diffeq]
-use crate::error::DiffeqError;
+use crate::error::{DiffeqError, carve_scalars};
 use crate::system::{
     SdeSystem, StochasticCalculus, ito_drift_scratch_len, try_eval_ito_effective_drift,
 };
-use math_commons::math_kernel::types::{
-    Scalar, SolverWorkspace, flatten_2d_index, sample_standard_normal_pair,
-};
+use math_commons::math_kernel::types::{Scalar, flatten_2d_index, sample_standard_normal_pair};
+use math_memory::{ByteArena, SolverWorkspace};
 use rand_core::RngCore;
 
 /// Correlated Gaussian increments $(\Delta W_j, \Delta Z_j)$ for strong-order-1.5 Stochastic Runge-Kutta,
@@ -88,7 +87,7 @@ impl Sriw1Solver {
         t: T,
         dt: T,
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) -> Result<(), DiffeqError> {
         let d = system.state_dim();
@@ -108,15 +107,17 @@ impl Sriw1Solver {
         }
 
         let mut ws = workspace.reborrow();
-        let dw = ws.try_take_slice(m)?;
-        let dz = ws.try_take_slice(m)?;
+        let mut cur = ws.cursor();
+        let dw = carve_scalars::<T>(&mut cur, m)?;
+        let dz = carve_scalars::<T>(&mut cur, m)?;
+        let mut inner_ws = ByteArena::new(cur.into_bytes());
         for j in 0..m {
             let inc = CorrelatedWienerIncrement::sample(dt, rng);
             dw[j] = inc.dw;
             dz[j] = inc.dz;
         }
         debug_assert_eq!(dw.len(), m);
-        self.try_step_with_correlated_increments(system, t, dt, dw, dz, state, &mut ws)
+        self.try_step_with_correlated_increments(system, t, dt, dw, dz, state, &mut inner_ws)
     }
 
     /// Advances `state` by one step `dt` drawing correlated $(\Delta W, \Delta Z)$ pairs from `rng`.
@@ -130,7 +131,7 @@ impl Sriw1Solver {
         t: T,
         dt: T,
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) {
         self.try_step(system, t, dt, state, workspace, rng)
@@ -152,7 +153,7 @@ impl Sriw1Solver {
         dw: &[T],
         dz: &[T],
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
     ) -> Result<(), DiffeqError> {
         let d = system.state_dim();
         let m = system.wiener_dim();
@@ -163,17 +164,19 @@ impl Sriw1Solver {
 
         let dm = d * m;
         let mut ws = workspace.reborrow();
-        let a1 = ws.try_take_slice(d)?;
-        let a2 = ws.try_take_slice(d)?;
-        let h0 = ws.try_take_slice(d)?;
-        let y_plus = ws.try_take_slice(d)?;
-        let y_minus = ws.try_take_slice(d)?;
-        let psi_plus = ws.try_take_slice(d)?;
-        let delta_x = ws.try_take_slice(d)?;
-        let g1 = ws.try_take_slice(dm)?;
-        let g_yp = ws.try_take_slice(dm)?;
-        let g_ym = ws.try_take_slice(dm)?;
-        let g_phi = ws.try_take_slice(dm)?;
+        let mut cur = ws.cursor();
+        let a1 = carve_scalars::<T>(&mut cur, d)?;
+        let a2 = carve_scalars::<T>(&mut cur, d)?;
+        let h0 = carve_scalars::<T>(&mut cur, d)?;
+        let y_plus = carve_scalars::<T>(&mut cur, d)?;
+        let y_minus = carve_scalars::<T>(&mut cur, d)?;
+        let psi_plus = carve_scalars::<T>(&mut cur, d)?;
+        let delta_x = carve_scalars::<T>(&mut cur, d)?;
+        let g1 = carve_scalars::<T>(&mut cur, dm)?;
+        let g_yp = carve_scalars::<T>(&mut cur, dm)?;
+        let g_ym = carve_scalars::<T>(&mut cur, dm)?;
+        let g_phi = carve_scalars::<T>(&mut cur, dm)?;
+        let mut drift_ws = ByteArena::new(cur.into_bytes());
 
         eval_sriw1_drift_stages(
             system,
@@ -187,7 +190,7 @@ impl Sriw1Solver {
             h0,
             g1,
             delta_x,
-            &mut ws,
+            &mut drift_ws,
         )?;
 
         accumulate_sriw1_diffusion(
@@ -216,7 +219,7 @@ impl Sriw1Solver {
         dw: &[T],
         dz: &[T],
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
     ) {
         self.try_step_with_correlated_increments(system, t, dt, dw, dz, state, workspace)
             .expect("Sriw1Solver::step_with_correlated_increments preconditions violated");
@@ -274,7 +277,7 @@ fn eval_sriw1_drift_stages<T: Scalar, S: SdeSystem<T> + ?Sized>(
     h0: &mut [T],
     g1: &mut [T],
     delta_x: &mut [T],
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut (impl SolverWorkspace + ?Sized),
 ) -> Result<(), DiffeqError> {
     let d = system.state_dim();
     let m = system.wiener_dim();

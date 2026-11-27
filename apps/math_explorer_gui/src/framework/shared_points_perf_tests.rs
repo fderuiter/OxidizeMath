@@ -22,7 +22,19 @@ fn frame_input() -> egui::RawInput {
     }
 }
 
-fn maybe_write_perf_screenshot(file_name: &str) {
+fn resolve_perf_screenshot_path(output_path: &str) -> std::path::PathBuf {
+    let candidate = std::path::PathBuf::from(output_path);
+    if candidate.parent().is_some_and(|dir| dir.exists()) {
+        candidate
+    } else {
+        let file_name = candidate
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new("perf_screenshot.png"));
+        std::env::temp_dir().join(file_name)
+    }
+}
+
+fn maybe_write_perf_screenshot(output_path: &str) {
     if std::env::var_os("OXIDIZE_GENERATE_PERF_SCREENSHOTS").is_some() {
         let opts = egui_plot::export::ExportOptions {
             width: 1000,
@@ -32,9 +44,17 @@ fn maybe_write_perf_screenshot(file_name: &str) {
         let prms = egui_plot::get_last_plot_primitives();
         let img = egui_plot::render_primitives_image(&prms, &opts).expect("render image");
         let png = egui_plot::color32_image_to_png(&img).expect("encode PNG");
-        let output_path = std::env::temp_dir().join(file_name);
-        std::fs::write(&output_path, png).expect("write verification PNG");
+        let target = resolve_perf_screenshot_path(output_path);
+        std::fs::write(&target, png).expect("write verification PNG");
     }
+}
+
+#[test]
+fn test_resolve_perf_screenshot_path_falls_back_when_parent_missing() {
+    assert_eq!(
+        resolve_perf_screenshot_path("/nonexistent_windows_tmp_dir/perf_probe.png"),
+        std::env::temp_dir().join("perf_probe.png")
+    );
 }
 
 #[cfg(feature = "epidemiology")]
@@ -113,7 +133,7 @@ fn test_idle_frames_zero_series_clones_400k_borrowed_points() {
             "Idle 400,002-point frame took {avg_ms:.3} ms (>= 16.67 ms)"
         );
     }
-    maybe_write_perf_screenshot("sir_shared_series_verification.png");
+    maybe_write_perf_screenshot("/tmp/sir_shared_series_verification.png");
 }
 
 #[cfg(feature = "pure_math")]
@@ -219,7 +239,7 @@ fn test_idle_frames_zero_series_clones_three_200k_ode_comparison_series() {
             "Idle 3x200,002 ODE frame took {avg_ms:.3} ms (>= 16.67 ms)"
         );
     }
-    maybe_write_perf_screenshot("ode_shared_comparison_verification.png");
+    maybe_write_perf_screenshot("/tmp/ode_shared_comparison_verification.png");
 }
 
 #[cfg(feature = "pure_math")]

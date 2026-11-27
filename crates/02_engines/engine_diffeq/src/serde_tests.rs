@@ -56,8 +56,7 @@ fn diffeq_sde_steppers_roundtrip_no_std() {
 #[cfg(feature = "serde")]
 #[test]
 fn diffeq_baoab_roundtrips_and_validates_params_no_std() {
-    use crate::{BaoabLangevinSolver, BaoabParams, LangevinSystem};
-    use math_commons::math_kernel::types::SolverWorkspace;
+    use crate::{BaoabLangevinSolver, BaoabParams, LangevinSystem, ScalarWorkspace};
     use math_rng::OxidizeRng;
 
     struct Harmonic1D;
@@ -95,14 +94,14 @@ fn diffeq_baoab_roundtrips_and_validates_params_no_std() {
         &Harmonic1D,
         &mut q1,
         &mut p1,
-        &mut SolverWorkspace::new(&mut buf1),
+        &mut ScalarWorkspace::new(&mut buf1),
         &mut rng1,
     );
     decoded_solver.step(
         &Harmonic1D,
         &mut q2,
         &mut p2,
-        &mut SolverWorkspace::new(&mut buf2),
+        &mut ScalarWorkspace::new(&mut buf2),
         &mut rng2,
     );
     assert_eq!((q1, p1), (q2, p2));
