@@ -1,4 +1,4 @@
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::pure_math::analysis::roots::AnalysisError;
 use thiserror::Error;
 

@@ -195,6 +195,34 @@ pub enum DeferredPlotPrimitive {
     },
     /// Pre-built export primitives (e.g., bars, box plots, or explicit caller primitives).
     Eager(Vec<ExportPrimitive>),
+    /// Zero-allocation callback handle materialized only when offscreen export runs.
+    Lazy(LazyPlotPrimitives),
+}
+
+type LazyPlotPrimitivesFn = dyn Fn(&mut Vec<ExportPrimitive>) + Send + Sync;
+
+/// Reference-counted callback producing [`ExportPrimitive`] items on cold offscreen export paths.
+#[derive(Clone)]
+pub struct LazyPlotPrimitives(Arc<LazyPlotPrimitivesFn>);
+
+impl LazyPlotPrimitives {
+    /// Wraps a lazy primitive emitter closure in a shared handle.
+    #[must_use]
+    pub fn new(emitter: impl Fn(&mut Vec<ExportPrimitive>) + Send + Sync + 'static) -> Self {
+        Self(Arc::new(emitter))
+    }
+
+    fn materialize_into(&self, out: &mut Vec<ExportPrimitive>) {
+        (self.0)(out);
+    }
+}
+
+impl std::fmt::Debug for LazyPlotPrimitives {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("LazyPlotPrimitives")
+            .field(&(Arc::as_ptr(&self.0) as *const () as usize))
+            .finish()
+    }
 }
 
 impl DeferredPlotPrimitive {
@@ -303,6 +331,7 @@ impl DeferredPlotPrimitive {
                 }
             }
             Self::Eager(items) => out.extend(items.iter().cloned()),
+            Self::Lazy(lazy) => lazy.materialize_into(out),
         }
     }
 }

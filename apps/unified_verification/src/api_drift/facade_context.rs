@@ -7,9 +7,13 @@ const DEFAULT_REACHABLE_PKGS: &[&str] = &[
     "oxidizemath",
     "math_explorer",
     "math_diagnostics",
+    "math_memory",
+    "math_rng",
+    "math_scalars",
     "diagnostics",
     "math_commons",
     "engine_linalg",
+    "engine_opt",
     "engine_diffeq",
     "engine_pde",
     "pure_math",
@@ -21,7 +25,8 @@ const DEFAULT_REACHABLE_PKGS: &[&str] = &[
     "domain_physics",
 ];
 
-const DEFAULT_TIER2_ENGINES: &[&str] = &["engine_linalg", "engine_diffeq", "engine_pde"];
+const DEFAULT_TIER2_ENGINES: &[&str] =
+    &["engine_linalg", "engine_opt", "engine_diffeq", "engine_pde"];
 
 pub(crate) struct FacadeContext {
     pub has_manifest: bool,

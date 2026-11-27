@@ -2,7 +2,6 @@ use super::{
     ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
     QuantumError, RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError,
 };
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use domain_applied::error::{AppliedError, KalmanError};
 use engine_linalg::LinalgError;
 use engine_opt::error::FitError;
@@ -10,6 +9,7 @@ use math_commons::error::{
     ArenaError, EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
     ShaderEmitError,
 };
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::error::{
     AnalysisError, EvolutionError, LinearAlgebraError, MonteCarloError, OptimizationError,
     PureMathError, TensorError, TransformError,

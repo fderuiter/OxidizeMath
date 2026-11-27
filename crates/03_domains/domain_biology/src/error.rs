@@ -1,4 +1,4 @@
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use thiserror::Error;
 
 /// Biophysical parameter validation errors for Hodgkin-Huxley membrane conductance models.

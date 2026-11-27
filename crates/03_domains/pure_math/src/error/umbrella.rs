@@ -6,12 +6,12 @@ use super::{
     PoissonError, QueueingError, RiskError, StochasticError, Su11HyperbolicError, TdaError,
     TensorError, TransformError, ZipError,
 };
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use engine_linalg::LinalgError;
 use math_commons::error::{
     ArenaError, EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
     ShaderEmitError,
 };
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_scalars::ScalarError;
 use thiserror::Error;
 

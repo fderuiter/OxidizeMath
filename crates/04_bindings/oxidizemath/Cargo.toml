@@ -19,6 +19,7 @@ engine_diffeq = { path = "../../02_engines/engine_diffeq" }
 engine_linalg = { path = "../../02_engines/engine_linalg" }
 engine_opt = { path = "../../02_engines/engine_opt" }
 engine_pde = { path = "../../02_engines/engine_pde" }
+math_rng = { path = "../../00_foundation/math_rng", features = ["std"] }
 pure_math = { path = "../../03_domains/pure_math", optional = true }
 domain_applied = { path = "../../03_domains/domain_applied", optional = true }
 domain_ai = { path = "../../03_domains/domain_ai", optional = true }
@@ -57,6 +58,7 @@ serde = [
     "engine_pde/serde",
     "math_commons/serde",
     "math_memory/serde",
+    "math_rng/serde",
     "math_scalars/serde",
     "pure_math?/serde",
     "nalgebra?/serde-serialize",

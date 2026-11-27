@@ -14,13 +14,8 @@ use crate::framework::{Plot3DViewport, CAMERA_3D_HELPER_TEXT};
 use crate::tabs::geometry_topology::custom_surface::SurfaceType;
 use crate::tabs::geometry_topology::export_utils::{MAX_WALL_THICKNESS, MIN_WALL_THICKNESS};
 use eframe::egui;
-use egui_plot::{LineStyle, MarkerShape, PlotPoints, Points};
-use math_commons::math_kernel::colormap::mapped_gradient;
-use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::pure_math::differential_geometry::buckled_flow::SurfaceTopology;
+use egui_plot::{MarkerShape, PlotPoints, Points};
 use nalgebra::Point3;
-
-const COLOR_BINS: usize = 24;
 
 impl SurfaceMorphogenesisTool {
     pub(super) fn draw_side_panel(&mut self, parent_ui: &mut egui::Ui) {
@@ -274,6 +269,7 @@ impl SurfaceMorphogenesisTool {
         if let Some(mut eng) = self.engine.take() {
             eng.reseed(self, phase);
             self.engine = Some(eng);
+            self.scene_mutation_epoch = self.scene_mutation_epoch.wrapping_add(1);
         }
     }
 
@@ -388,99 +384,7 @@ impl SurfaceMorphogenesisTool {
         if let Some(mut eng) = self.engine.take() {
             eng.apply_3d_pulse(world_pt, radius, strength, action, self);
             self.engine = Some(eng);
+            self.scene_mutation_epoch = self.scene_mutation_epoch.wrapping_add(1);
         }
     }
-
-    pub(super) fn populate_scene(&mut self, series_color: egui::Color32) {
-        let Some(eng) = self.engine.as_ref() else {
-            return;
-        };
-        let pts = eng.flow.points();
-        let scalars = eng.overlay_field(self.overlay_mode);
-        let (min_s, max_s, lut) = build_overlay_lut(scalars);
-        let (nu, nv) = (eng.nu, eng.nv);
-        let wrap_u = matches!(
-            eng.topology,
-            SurfaceTopology::PeriodicTorus | SurfaceTopology::TwistedKlein
-        );
-        let wrap_v = matches!(
-            eng.topology,
-            SurfaceTopology::PeriodicTorus | SurfaceTopology::TwistedKlein
-        );
-        let wrap_sphere_u = eng.topology == SurfaceTopology::PolarSphere;
-
-        self.scene_builder.begin(self.camera);
-        for i in 0..nu {
-            for j in 0..nv {
-                let idx = flatten_2d_index(j, i, nv);
-                let p0 = pts[idx];
-                let s0 = scalars[idx];
-                if j + 1 < nv || wrap_v {
-                    let j_next = (j + 1) % nv;
-                    let idx_v = flatten_2d_index(j_next, i, nv);
-                    let col = lut[quantize_bin(0.5 * (s0 + scalars[idx_v]), min_s, max_s)];
-                    self.scene_builder.add_styled_segment(
-                        "Surface Morphogenesis",
-                        [p0, pts[idx_v]],
-                        egui::Stroke::new(1.35_f32, col),
-                        LineStyle::Solid,
-                        true,
-                        false,
-                    );
-                }
-                if i + 1 < nu || wrap_u || wrap_sphere_u {
-                    let i_next = (i + 1) % nu;
-                    let j_seam = if eng.topology == SurfaceTopology::TwistedKlein && i + 1 >= nu {
-                        eng.flow.seam_forward_map()[j]
-                    } else {
-                        j
-                    };
-                    let idx_u = flatten_2d_index(j_seam, i_next, nv);
-                    let col = lut[quantize_bin(0.5 * (s0 + scalars[idx_u]), min_s, max_s)];
-                    self.scene_builder.add_styled_segment(
-                        "Surface Morphogenesis",
-                        [p0, pts[idx_u]],
-                        egui::Stroke::new(1.35_f32, col),
-                        LineStyle::Solid,
-                        true,
-                        false,
-                    );
-                }
-            }
-        }
-        self.scene_builder
-            .record_series("Surface Morphogenesis", pts, series_color);
-        self.scene_builder.ensure_sorted();
-    }
-}
-
-fn build_overlay_lut(values: &[f64]) -> (f64, f64, [egui::Color32; COLOR_BINS]) {
-    let mut min_v = f64::INFINITY;
-    let mut max_v = f64::NEG_INFINITY;
-    for &v in values {
-        if v.is_finite() {
-            min_v = min_v.min(v);
-            max_v = max_v.max(v);
-        }
-    }
-    if !min_v.is_finite() || !max_v.is_finite() {
-        min_v = 0.0;
-        max_v = 1.0;
-    }
-    let mut lut = [egui::Color32::WHITE; COLOR_BINS];
-    for (idx, slot) in lut.iter_mut().enumerate() {
-        let t = idx as f64 / (COLOR_BINS - 1) as f64;
-        let rgb = mapped_gradient(t, 0.0, 1.0);
-        *slot = egui::Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
-    }
-    (min_v, max_v, lut)
-}
-
-fn quantize_bin(val: f64, min_v: f64, max_v: f64) -> usize {
-    let span = max_v - min_v;
-    if !val.is_finite() || span.abs() < 1e-10 {
-        return COLOR_BINS / 2;
-    }
-    let norm = ((val - min_v) / span).clamp(0.0, 1.0);
-    ((norm * (COLOR_BINS - 1) as f64).round() as usize).min(COLOR_BINS - 1)
 }

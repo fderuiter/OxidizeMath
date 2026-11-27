@@ -13,6 +13,10 @@ pub mod __macro_deps {
     pub use verified_engine;
 }
 
+#[cfg(not(test))]
+#[doc(hidden)]
+pub extern crate math_diagnostics as diagnostics;
+
 #[doc(hidden)]
 pub mod __doctest_facade {
     pub mod error {
@@ -29,6 +33,7 @@ pub mod __doctest_facade {
             ArenaError, EvalError, GlslError, LexError, MathCommonsError, MathError, MathResult,
             ParseError, ShaderEmitError,
         };
+        pub use math_rng::{QmcError, RngError};
         pub type Result<T, E = Error> = std::result::Result<T, E>;
     }
     pub mod prelude {

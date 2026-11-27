@@ -177,6 +177,8 @@ impl Error {
             Self::MathCommons(err) => Some(InnerErrorRef::Domain(err)),
             Self::Scalar(err) => Some(InnerErrorRef::Domain(err)),
             Self::Parse(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Qmc(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Rng(err) => Some(InnerErrorRef::Domain(err)),
             Self::ShaderEmit(err) => Some(InnerErrorRef::Domain(err)),
             Self::Io(err) => Some(InnerErrorRef::Io(err)),
             #[cfg(any(

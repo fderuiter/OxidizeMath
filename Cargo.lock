@@ -1124,9 +1124,9 @@ version = "0.4.0"
 dependencies = [
  "approx",
  "bytemuck",
- "diagnostics",
  "engine_diffeq",
  "math_commons",
+ "math_diagnostics",
  "math_memory",
  "nalgebra 0.34.2",
  "oxidize_core",
@@ -1147,6 +1147,7 @@ dependencies = [
  "engine_opt",
  "engine_pde",
  "math_commons",
+ "math_diagnostics",
  "math_memory",
  "math_scalars",
  "nalgebra 0.34.2",
@@ -1167,6 +1168,7 @@ dependencies = [
  "domain_applied",
  "engine_pde",
  "math_commons",
+ "math_diagnostics",
  "nalgebra 0.34.2",
  "num-complex",
  "oxidize_core",
@@ -1182,8 +1184,8 @@ dependencies = [
 name = "domain_climate"
 version = "0.4.0"
 dependencies = [
- "diagnostics",
  "math_commons",
+ "math_diagnostics",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -1198,6 +1200,7 @@ version = "0.4.0"
 dependencies = [
  "diagnostics",
  "math_commons",
+ "math_diagnostics",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -1218,6 +1221,7 @@ dependencies = [
  "engine_opt",
  "engine_pde",
  "math_commons",
+ "math_diagnostics",
  "math_memory",
  "nalgebra 0.34.2",
  "num-complex",
@@ -2667,6 +2671,7 @@ dependencies = [
 name = "math_rng"
 version = "0.4.0"
 dependencies = [
+ "math_diagnostics",
  "math_scalars",
  "rand_chacha",
  "rand_core 0.6.4",
@@ -3391,6 +3396,7 @@ dependencies = [
  "engine_pde",
  "math_commons",
  "math_memory",
+ "math_rng",
  "math_scalars",
  "nalgebra 0.34.2",
  "num-complex",
@@ -3648,6 +3654,7 @@ dependencies = [
  "engine_linalg",
  "engine_pde",
  "math_commons",
+ "math_diagnostics",
  "math_memory",
  "math_rng",
  "math_scalars",

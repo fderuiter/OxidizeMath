@@ -1,7 +1,7 @@
 //! Error types for the climate modeling domain.
 
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_commons::error::{ArenaError, MathError};
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::error::{LinearAlgebraError, OptimizationError};
 use thiserror::Error;
 

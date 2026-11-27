@@ -206,3 +206,142 @@ pub fn format_pois_csv(pois: &[crate::poi::CriticalPoint]) -> String {
     }
     out
 }
+
+fn step_series_index(active_idx: usize, count: usize, forward: bool) -> usize {
+    if forward {
+        (active_idx + 1) % count
+    } else if active_idx == 0 {
+        count.saturating_sub(1)
+    } else {
+        active_idx - 1
+    }
+}
+
+fn render_virtualized_series_combo(
+    ui: &mut egui::Ui,
+    combo_id: egui::Id,
+    count: usize,
+    active_idx: usize,
+    active_label: &str,
+    format_item: &mut impl FnMut(usize) -> String,
+) -> (Option<usize>, Option<egui::Id>) {
+    let mut chosen = None;
+    let combo_resp = egui::ComboBox::from_id_salt(combo_id)
+        .selected_text(active_label)
+        .width(240.0)
+        .show_ui(ui, |ui| {
+            let row_h = ui.spacing().interact_size.y.max(18.0);
+            egui::ScrollArea::vertical().max_height(240.0).show_rows(
+                ui,
+                row_h,
+                count,
+                |ui, range| {
+                    for idx in range {
+                        if ui
+                            .selectable_label(active_idx == idx, format_item(idx))
+                            .clicked()
+                        {
+                            chosen = Some(idx);
+                        }
+                    }
+                },
+            );
+        });
+    let btn_id = combo_resp.response.id;
+    ui.ctx().accesskit_node_builder(btn_id, |builder| {
+        builder.set_label(format!("Select plot series, current {active_label}"));
+    });
+    let closed_focused_id =
+        (combo_resp.response.has_focus() && combo_resp.inner.is_none()).then_some(btn_id);
+    (chosen, closed_focused_id)
+}
+
+fn step_selector_bar_arrows(
+    ui: &egui::Ui,
+    focused_id: egui::Id,
+    active_idx: usize,
+    count: usize,
+) -> Option<usize> {
+    crate::a11y::lock_horizontal_arrows_for_tab(ui.ctx(), focused_id);
+    let forward = if ui
+        .ctx()
+        .input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight))
+    {
+        true
+    } else if ui
+        .ctx()
+        .input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft))
+    {
+        false
+    } else {
+        return None;
+    };
+    ui.ctx()
+        .memory_mut(|m| m.move_focus(egui::FocusDirection::None));
+    ui.ctx().request_repaint();
+    Some(step_series_index(active_idx, count, forward))
+}
+
+/// Renders a compact, virtualized, keyboard-accessible [`egui::ComboBox`] series selector bar.
+pub(crate) fn render_series_selector_bar(
+    ui: &mut egui::Ui,
+    combo_id: egui::Id,
+    count: usize,
+    active_idx: usize,
+    mut format_item: impl FnMut(usize) -> String,
+) -> Option<usize> {
+    if count == 0 {
+        return None;
+    }
+    let active_idx = active_idx.min(count - 1);
+    let active_label = format!("{}/{count} · {}", active_idx + 1, format_item(active_idx));
+    let mut chosen = None;
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new(format!("Series ({count}):"))
+                .small()
+                .weak(),
+        );
+        let prev_resp = crate::a11y::focusable_action_button(
+            ui,
+            count > 1,
+            egui::Button::new("◀").small(),
+            Some("Previous series"),
+        );
+        if prev_resp.clicked() {
+            chosen = Some(step_series_index(active_idx, count, false));
+        }
+        let (combo_chosen, combo_focused_id) = render_virtualized_series_combo(
+            ui,
+            combo_id,
+            count,
+            active_idx,
+            &active_label,
+            &mut format_item,
+        );
+        if let Some(idx) = combo_chosen {
+            chosen = Some(idx);
+        }
+        let next_resp = crate::a11y::focusable_action_button(
+            ui,
+            count > 1,
+            egui::Button::new("▶").small(),
+            Some("Next series"),
+        );
+        if next_resp.clicked() {
+            chosen = Some(step_series_index(active_idx, count, true));
+        }
+        let focused_bar_id = prev_resp
+            .has_focus()
+            .then_some(prev_resp.id)
+            .or(combo_focused_id)
+            .or_else(|| next_resp.has_focus().then_some(next_resp.id));
+        if count > 1
+            && chosen.is_none()
+            && let Some(fid) = focused_bar_id
+        {
+            chosen = step_selector_bar_arrows(ui, fid, active_idx, count);
+        }
+    });
+    chosen.filter(|&idx| idx != active_idx && idx < count)
+}

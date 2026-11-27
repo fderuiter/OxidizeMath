@@ -156,3 +156,30 @@ fn test_diffeq_error_copy_and_fallible_companions() {
         .is_err()
     );
 }
+
+#[cfg(feature = "std")]
+#[test]
+#[verified_engine::verified]
+fn test_diffeq_error_preserves_root_math_error_code_and_type() {
+    let wrapped = DiffeqError::from(MathError::WorkspaceTooSmall {
+        required: 8,
+        available: 2,
+    });
+    let meta = wrapped.metadata();
+    assert_eq!(
+        meta.get("code").map(std::string::String::as_str),
+        Some("MATH-005")
+    );
+    assert_eq!(
+        meta.get("wrapper_code").map(std::string::String::as_str),
+        Some("DIFFEQ-005")
+    );
+    assert_eq!(
+        meta.get("root_error_type").map(std::string::String::as_str),
+        Some("MathError")
+    );
+    assert_eq!(
+        meta.get("error_type").map(std::string::String::as_str),
+        Some("DiffeqError")
+    );
+}

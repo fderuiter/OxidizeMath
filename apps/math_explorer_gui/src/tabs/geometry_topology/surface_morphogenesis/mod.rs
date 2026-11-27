@@ -5,6 +5,7 @@
 
 mod export;
 mod presets;
+mod scene_cache;
 mod solver;
 mod state;
 mod ui;
@@ -137,6 +138,8 @@ pub struct SurfaceMorphogenesisTool {
     custom_sandbox: CustomSurfaceSandbox,
     engine: Option<MorphogenesisSurfaceEngine>,
     reseed_counter: u64,
+    scene_mutation_epoch: u64,
+    cached_scene_key: Option<scene_cache::MorphogenesisSceneKey>,
 }
 
 impl Default for SurfaceMorphogenesisTool {
@@ -175,6 +178,8 @@ impl Default for SurfaceMorphogenesisTool {
             custom_sandbox: CustomSurfaceSandbox::default(),
             engine: None,
             reseed_counter: 0,
+            scene_mutation_epoch: 0,
+            cached_scene_key: None,
         }
     }
 }
@@ -244,6 +249,7 @@ impl SurfaceMorphogenesisTool {
         };
         if rebuild {
             self.engine = Some(MorphogenesisSurfaceEngine::build(self));
+            self.scene_mutation_epoch = self.scene_mutation_epoch.wrapping_add(1);
         }
     }
 

@@ -136,3 +136,29 @@ fn spde_noise_and_stencil_steppers_validate_inputs() {
         Err(PdeError::InvalidParameter { parameter: "dx" })
     );
 }
+
+#[cfg(feature = "std")]
+#[test]
+fn pde_error_preserves_root_math_error_code_and_type() {
+    let wrapped = PdeError::from(MathError::WorkspaceTooSmall {
+        required: 16,
+        available: 4,
+    });
+    let meta = wrapped.metadata();
+    assert_eq!(
+        meta.get("code").map(std::string::String::as_str),
+        Some("MATH-005")
+    );
+    assert_eq!(
+        meta.get("wrapper_code").map(std::string::String::as_str),
+        Some("PDE-007")
+    );
+    assert_eq!(
+        meta.get("root_error_type").map(std::string::String::as_str),
+        Some("MathError")
+    );
+    assert_eq!(
+        meta.get("error_type").map(std::string::String::as_str),
+        Some("PdeError")
+    );
+}

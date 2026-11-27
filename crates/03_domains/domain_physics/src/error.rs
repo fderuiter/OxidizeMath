@@ -1,4 +1,4 @@
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use thiserror::Error;
 
 use crate::physics::solid_state::types::ElectronVolts;

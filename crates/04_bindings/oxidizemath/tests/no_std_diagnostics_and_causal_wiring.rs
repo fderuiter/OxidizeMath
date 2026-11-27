@@ -7,7 +7,8 @@ use std::error::Error as StdError;
 
 use oxidizemath::diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use oxidizemath::error::{
-    ArenaError, Error, FitError, LinalgError, MathCommonsError, MathError, ScalarError,
+    ArenaError, DiffeqError, Error, FitError, LinalgError, MathCommonsError, MathError, PdeError,
+    QmcError, RngError, ScalarError,
 };
 use oxidizemath::math_kernel::types::Dimension;
 use oxidizemath::verified_engine::allocator::VerifiedAllocator;
@@ -63,11 +64,18 @@ fn core_only_zero_alloc_diagnostics_and_linalg_error_wiring() {
     });
     let facade = Error::from(linalg);
     let facade_arena = Error::from(arena);
+    let rng_facade = Error::from(RngError::ZeroUpperBound);
+    let qmc_facade = Error::from(QmcError::InvalidDimension {
+        dimension: 0,
+        max_supported: 64,
+    });
 
     assert!(commons.source().is_some());
     assert!(commons_scalar.source().is_some());
     assert!(facade.source().is_some());
     assert!(facade_arena.source().is_some());
+    assert!(rng_facade.source().is_some());
+    assert!(qmc_facade.source().is_some());
 
     let (total_fields, _metrics) = VerifiedEngine::run_verified(|| {
         assert_eq!(linalg.severity(), Severity::Error);
@@ -80,8 +88,46 @@ fn core_only_zero_alloc_diagnostics_and_linalg_error_wiring() {
             + count_visited_fields(&commons)
             + count_visited_fields(&facade)
             + count_visited_fields(&facade_arena)
+            + count_visited_fields(&rng_facade)
+            + count_visited_fields(&qmc_facade)
     });
-    assert!(total_fields >= 22);
+    assert!(total_fields >= 32);
+}
+
+#[test]
+fn root_metadata_preserved_across_engine_and_facade_wrappers() {
+    let ws = MathError::WorkspaceTooSmall {
+        required: 32,
+        available: 8,
+    };
+    let fit_meta = Error::from(FitError::from(LinalgError::SingularMatrix)).metadata();
+    assert_eq!(fit_meta.get("code").map(String::as_str), Some("LINALG-004"));
+    assert_eq!(
+        fit_meta.get("wrapper_code").map(String::as_str),
+        Some("MATH-FIT-006")
+    );
+    assert_eq!(
+        fit_meta.get("root_error_type").map(String::as_str),
+        Some("LinalgError")
+    );
+    assert_eq!(
+        fit_meta.get("error_type").map(String::as_str),
+        Some("FitError")
+    );
+    assert_eq!(
+        DiffeqError::from(ws)
+            .metadata()
+            .get("code")
+            .map(String::as_str),
+        Some("MATH-005")
+    );
+    assert_eq!(
+        PdeError::from(ws)
+            .metadata()
+            .get("code")
+            .map(String::as_str),
+        Some("MATH-005")
+    );
 }
 
 #[cfg(all(

@@ -99,6 +99,22 @@ pub enum RngError {
     ZeroUpperBound,
 }
 
+impl RngError {
+    /// Returns the static type identifier `"RngError"`.
+    #[inline]
+    pub const fn error_type(&self) -> &'static str {
+        "RngError"
+    }
+
+    /// Returns the stable diagnostic error code (`RNG-001`).
+    #[inline]
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::ZeroUpperBound => "RNG-001",
+        }
+    }
+}
+
 impl core::fmt::Display for RngError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match *self {
@@ -108,6 +124,18 @@ impl core::fmt::Display for RngError {
 }
 
 impl core::error::Error for RngError {}
+
+impl math_diagnostics::Diagnostic for RngError {
+    fn severity(&self) -> math_diagnostics::Severity {
+        math_diagnostics::Severity::Error
+    }
+
+    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
+        visitor.record_str("error_type", self.error_type());
+        visitor.record_str("code", self.code());
+        visitor.record_display("description", self);
+    }
+}
 
 /// Fallible companion to [`sample_bounded_u64`] returning [`RngError::ZeroUpperBound`] if `upper == 0`.
 #[inline]

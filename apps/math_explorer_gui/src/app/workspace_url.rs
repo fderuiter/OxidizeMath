@@ -420,4 +420,30 @@ impl MathExplorerApp {
             }
         }
     }
+
+    #[cfg(all(
+        test,
+        feature = "ai",
+        feature = "applied",
+        feature = "biology",
+        feature = "climate",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
+    pub(crate) fn reset_tabs_for_test(&mut self, dirty_indices: &[usize]) {
+        for &idx in dirty_indices {
+            self.tabs[idx] = crate::tabs::instantiate_tab(idx)
+                .unwrap_or_else(|| panic!("Failed to re-instantiate tab index {idx}"));
+            self.tab_state_cache.invalidate_tab(self.tabs[idx].name());
+        }
+        self.selected_tab = 0;
+        self.focused_pane = 0;
+        self.theme = super::ThemeMode::Dark;
+        self.set_layout(ViewportLayout::Single);
+        self.pipeline_dag.clear();
+        self.data_bus = Default::default();
+        self.session_manager.clear_toast();
+        self.url_sync = Default::default();
+    }
 }

@@ -1,8 +1,8 @@
 use super::{EpidemiologyError, NetworkModelError};
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_commons::error::{
     ArenaError, EvalError, GlslError, LexError, MathCommonsError, ParseError, ShaderEmitError,
 };
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::error::{LinearAlgebraError, MonteCarloError, OptimizationError, TensorError};
 
 /// Extensible crate-level umbrella error for `domain_epidemiology` models and upstream math errors.

@@ -121,6 +121,10 @@ fn save_upscaled_color_image(img: &egui::ColorImage, scale: usize, path: &str) {
 
 #[test]
 fn deferred_exports_and_visual_artifacts_succeed() {
+    assert_eq!(
+        resolve_artifact_path("/nonexistent_windows_tmp_dir/sandpile_fallback_probe.png"),
+        std::env::temp_dir().join("sandpile_fallback_probe.png")
+    );
     let mut studio = AbelianSandpileStudio::default();
     let opts = egui_plot::export::ExportOptions::default();
     let plot_png = egui_plot::export::export_custom_png(&studio.export_datasets(), &opts)

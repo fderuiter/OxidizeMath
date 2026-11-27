@@ -2,13 +2,13 @@ use super::{
     BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError, IsosurfaceError,
     KalmanError, LoraError, PharmacokineticsError, PortfolioError, VoxelGridError,
 };
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use engine_linalg::LinalgError;
 use engine_opt::error::FitError;
 use math_commons::error::{
     ArenaError, EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
     ShaderEmitError,
 };
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::error::{
     AnalysisError, EvolutionError, LinearAlgebraError, MonteCarloError, OptimizationError,
     PureMathError, RiskError, StochasticError, TensorError,

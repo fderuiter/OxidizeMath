@@ -4,7 +4,7 @@
 //! and latency compensation to control the LINAC beam-off switch via a formal
 //! finite state machine with validation guards.
 
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 
 /// Operational lifecycle states for the radiation beam gating controller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
