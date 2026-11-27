@@ -29,7 +29,9 @@ serde_json = { workspace = true }
 verified_engine = { path = "../../00_foundation/verified_engine" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+oxidize_core = { path = "../../01_core/oxidize_core", features = ["ast-analysis"] }
 proptest = { workspace = true }
+syn = { workspace = true, features = ["full", "visit"] }
 
 [lints]
 workspace = true

@@ -86,9 +86,10 @@ fn check_float_eq(field: &str, actual: f64, cert_val: f64, eps: f64, diffs: &mut
     }
 }
 
-const REQUIRED_CERT_KEYS: [&str; 14] = [
+const REQUIRED_CERT_KEYS: [&str; 15] = [
     "certified_solvers",
     "interval_bounds",
+    "lean4_proof_bindings",
     "lean4_proof_digests",
     "max_interval_width",
     "native_execution_coverage_pct",
@@ -103,7 +104,7 @@ const REQUIRED_CERT_KEYS: [&str; 14] = [
     "wasm_path_coverage_pct",
 ];
 
-fn parse_certificate_strict_14_keys(
+fn parse_certificate_strict_15_keys(
     raw: &str,
     cert_path: &Path,
 ) -> Result<IntegrityReport, Vec<String>> {
@@ -119,7 +120,7 @@ fn parse_certificate_strict_14_keys(
     keys.sort_unstable();
     if keys != REQUIRED_CERT_KEYS {
         return Err(vec![format!(
-            "Invalid 14-key schema in {}: expected keys {:?}, found {:?}",
+            "Invalid 15-key schema in {}: expected keys {:?}, found {:?}",
             cert_path.display(),
             REQUIRED_CERT_KEYS,
             keys
@@ -183,7 +184,7 @@ fn load_and_validate_certificate(
             cert_path.display()
         )]
     })?;
-    let cert = parse_certificate_strict_14_keys(&raw, cert_path)?;
+    let cert = parse_certificate_strict_15_keys(&raw, cert_path)?;
 
     let mut diffs = Vec::new();
     validate_certificate_bounds(&cert, cert_path, &mut diffs);
@@ -195,6 +196,7 @@ fn load_and_validate_certificate(
     {
         check_readme_badge(&cert, readme_path, &mut diffs);
     }
+    check_deterministic_fields(expected, &cert, &mut diffs);
 
     if diffs.is_empty() {
         Ok(cert)
@@ -235,7 +237,6 @@ pub fn verify_certificate_strict_parity(
             &mut diffs,
         );
     }
-    check_deterministic_fields(expected, &cert, &mut diffs);
     if diffs.is_empty() { Ok(()) } else { Err(diffs) }
 }
 
@@ -381,10 +382,7 @@ pub fn check_ast_certificate_parity_with_cache(members: &[String], cache: &mut A
     sync_ast_certificate_with_cache(members, ReportMode::Check, cache)
 }
 
-fn resolve_static_cert_coverage(cert_path: &Path, mode: ReportMode) -> f64 {
-    if mode != ReportMode::Write && std::env::var_os(super::VERIFY_SUITE_WRITE_ENV).is_some() {
-        return 100.0;
-    }
+fn resolve_static_cert_coverage(cert_path: &Path) -> f64 {
     fs::read_to_string(cert_path)
         .ok()
         .and_then(|raw| serde_json::from_str::<IntegrityReport>(&raw).ok())
@@ -399,15 +397,12 @@ fn apply_static_certificate_mode(
     cert_path: &Path,
     readme_path: &Path,
 ) -> bool {
-    if mode != ReportMode::Write && std::env::var_os(super::VERIFY_SUITE_WRITE_ENV).is_some() {
-        return true;
-    }
     match mode {
         ReportMode::Check => run_check_certificate_io(
             report,
             cert_path,
             readme_path,
-            "Verification_Certificate.json schema and [verify_suite] quality floors verified.",
+            "Verification_Certificate.json schema, deterministic/pyramid parity, and [verify_suite] quality floors verified.",
         ),
         ReportMode::StrictParity => {
             run_strict_parity_io(report, None, tolerance_pct, cert_path, readme_path)
@@ -436,7 +431,7 @@ pub fn sync_ast_certificate_with_cache(
     };
     let cert_path = Path::new(CERT_FILE_NAME);
     let readme_path = Path::new(README_FILE_NAME);
-    let cert_cov = resolve_static_cert_coverage(cert_path, mode);
+    let cert_cov = resolve_static_cert_coverage(cert_path);
 
     let rs_files = collect_rs_files();
     let metrics = analyze_files_with_cache(&rs_files, cache);

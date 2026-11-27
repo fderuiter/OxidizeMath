@@ -237,7 +237,8 @@ fn run_cov_only_suite(args: &[&str], members: &[String], covered: u64) -> bool {
 }
 
 #[test]
-fn test_verify_suite_check_allows_metric_shifts_and_emits_9_key_artifact() {
+fn test_verify_suite_check_allows_coverage_shifts_enforces_deterministic_parity_and_emits_15_keys()
+{
     let _lock = crate::DIR_LOCK.lock().unwrap();
     let _guard = CurrentDirGuard(env::current_dir().unwrap());
     let temp = TempTestDir::new("verify_suite_ratchet_check");
@@ -245,44 +246,17 @@ fn test_verify_suite_check_allows_metric_shifts_and_emits_9_key_artifact() {
     env::set_current_dir(&*temp).unwrap();
 
     let members = vec!["crates/demo".to_string()];
-    assert!(run_cov_only_suite(
-        &["--write", "--coverage-only"],
-        &members,
-        820
-    ));
+    let write_args = ["--write", "--coverage-only"];
+    assert!(run_cov_only_suite(&write_args, &members, 820));
     let cert_before = fs::read_to_string("Verification_Certificate.json").unwrap();
     let readme_before = fs::read_to_string("README.md").unwrap();
 
-    fs::write(
-        "crates/demo/src/lib.rs",
-        concat!(
-            "#[verified_engine::verified]\n",
-            "pub fn step(x: f64) -> f64 { assert!(x.is_finite()); assert!(x >= 0.0); x }\n",
-            "theory_verification! { module = \"demo\", test = { assert_eq!(step(1.0), 1.0); assert_eq!(step(2.0), 2.0); } }\n",
-        ),
-    )
-    .unwrap();
-    fs::write(
-        "verification_whitelist.toml",
-        concat!(
-            "[verify_suite]\n",
-            "min_native_execution_coverage_pct = 80.0\n",
-            "min_total_assertion_density = 1.50\n",
-            "min_verified_assertion_density = 0.40\n",
-            "min_total_production_density = 0.20\n",
-            "min_verified_production_density = 0.20\n",
-            "min_test_assertion_density = 1.50\n",
-            "coverage_tolerance_pct = 1.5\n",
-        ),
-    )
-    .unwrap();
+    let wl = "[verify_suite]\nmin_native_execution_coverage_pct = 80.0\nmin_total_assertion_density = 0.80\nmin_verified_assertion_density = 0.40\nmin_total_production_density = 0.20\nmin_verified_production_density = 0.20\nmin_test_assertion_density = 0.80\ncoverage_tolerance_pct = 1.5\n";
+    fs::write("verification_whitelist.toml", wl).unwrap();
 
     let out_cert = "target/verification/Verification_Certificate.json";
-    assert!(run_cov_only_suite(
-        &["--coverage-only", "--check", "--output-cert", out_cert],
-        &members,
-        910,
-    ));
+    let check_out = ["--coverage-only", "--check", "--output-cert", out_cert];
+    assert!(run_cov_only_suite(&check_out, &members, 910));
     assert_eq!(
         fs::read_to_string("Verification_Certificate.json").unwrap(),
         cert_before
@@ -290,13 +264,15 @@ fn test_verify_suite_check_allows_metric_shifts_and_emits_9_key_artifact() {
     assert_eq!(fs::read_to_string("README.md").unwrap(), readme_before);
     let live_val: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(out_cert).unwrap()).unwrap();
-    assert_eq!(live_val.as_object().unwrap().len(), 14);
+    assert_eq!(live_val.as_object().unwrap().len(), 15);
     assert_eq!(live_val["native_execution_coverage_pct"], 91.0);
-    assert!(!run_cov_only_suite(
-        &["--coverage-only", "--strict-parity"],
-        &members,
-        910
-    ));
+    let strict_args = ["--coverage-only", "--strict-parity"];
+    assert!(!run_cov_only_suite(&strict_args, &members, 910));
+
+    let drifted_rs = "#[verified_engine::verified]\npub fn step(x: f64) -> f64 { assert!(x.is_finite()); assert!(x >= 0.0); x }\ntheory_verification! { module = \"demo\", test = { assert_eq!(step(1.0), 1.0); assert_eq!(step(2.0), 2.0); } }\n";
+    fs::write("crates/demo/src/lib.rs", drifted_rs).unwrap();
+    let check_only = ["--coverage-only", "--check"];
+    assert!(!run_cov_only_suite(&check_only, &members, 910));
 }
 
 #[test]

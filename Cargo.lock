@@ -4071,6 +4071,7 @@ dependencies = [
  "pure_math",
  "serde",
  "serde_json",
+ "syn 2.0.119",
  "verified_engine",
 ]
 
