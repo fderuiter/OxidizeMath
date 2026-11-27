@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use math_commons::fit::FitModel;
+use engine_opt::fit::FitModel;
 use pure_math::pure_math::algebra::{
     AbelianGroup, Group, Monoid, Semigroup, Zn, generate_left_coset, is_subgroup,
 };

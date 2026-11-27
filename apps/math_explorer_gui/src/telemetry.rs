@@ -149,7 +149,7 @@ mod tests {
         std::thread::Builder::new()
             .name("foreign_domain_diag_thread".to_string())
             .spawn(|| {
-                let foreign_err = math_commons::error::LinalgError::WorkspaceTooSmall {
+                let foreign_err = engine_linalg::LinalgError::WorkspaceTooSmall {
                     required: 16,
                     available: 4,
                 };
@@ -160,7 +160,7 @@ mod tests {
             .expect("join foreign diagnostic thread");
 
         let local_err =
-            math_commons::error::FitError::from(math_commons::error::LinalgError::SingularMatrix);
+            engine_opt::error::FitError::from(engine_linalg::LinalgError::SingularMatrix);
         emit_diagnostic("LocalDomainSolver", &local_err);
 
         let events = poll_app_telemetry();

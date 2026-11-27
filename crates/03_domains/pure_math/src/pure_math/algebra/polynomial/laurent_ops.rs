@@ -24,6 +24,23 @@ impl<T: Ring> Ring for LaurentPolynomial<T> {
         debug_assert_eq!(u.min_exp, 0);
         u
     }
+
+    #[inline]
+    fn ring_ref_add(&self, rhs: &Self) -> Self {
+        self + rhs
+    }
+    #[inline]
+    fn ring_ref_sub(&self, rhs: &Self) -> Self {
+        self - rhs
+    }
+    #[inline]
+    fn ring_ref_mul(&self, rhs: &Self) -> Self {
+        self * rhs
+    }
+    #[inline]
+    fn ring_ref_neg(&self) -> Self {
+        -self
+    }
 }
 
 #[verified_engine::verified]

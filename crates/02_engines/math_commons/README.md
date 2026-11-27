@@ -4,7 +4,7 @@
 
 Standardized mathematical constants, spatial indexing, colormaps, zero-allocation curve solvers, and primitive geometry.
 
-> **Maturity Tier:** `Certified` — stack-allocated `FitModel` and `poi` solvers, non-vacuous `theory_verification!` contracts, `VerifiedAllocator` zero-heap-allocation proofs, and SemVer signature locks.
+> **Maturity Tier:** `Certified` — stack-allocated `poi` solvers, non-vacuous `theory_verification!` contracts, `VerifiedAllocator` zero-heap-allocation proofs, and SemVer signature locks.
 
 ## 1. Overview & Architecture
 
@@ -28,7 +28,6 @@ By standardizing universal constants, color mapping formulas, and spatial coordi
 - **`primitives`**: Basic geometric constructs and coordinate structures.
 - **`registry`**: Constant lookup and numeric tolerance validation.
 - **`series`**: Zero-copy [`PointSeries`](crate::series::PointSeries) views over `[f64; 2]`, `(f64, f64)`, and paired `(&[f64], &[f64])` coordinate slices.
-- **`fit`**: Stack-allocated polynomial ordinary least squares (`1..=4`), damped Levenberg-Marquardt nonlinear regression, closed-form seed estimators, canonical [`FitModel`](crate::fit::FitModel) presets, and typed [`FitError`](crate::error::FitError) diagnostics.
 - **`poi`**: Zero-allocation sub-segment Hermite threshold crossings, vertical crossings, 3-point Lagrange parabolic extrema, and monotone/general 2D polyline intersections.
 - **`stochastic`**: `#![no_std]` zero-allocation [`SolverWorkspace`](crate::stochastic::SolverWorkspace) for iterative Tarjan SCC sink-class decomposition, scale-normalized Householder QR DTMC/CTMC stationary solvers, exact discrete-time AR(1) Ornstein-Uhlenbeck calibration, and quantile summaries.
 - **`wigner`**: Clebsch-Gordan coefficients and quantum angular momentum arithmetic.
@@ -39,20 +38,16 @@ By standardizing universal constants, color mapping formulas, and spatial coordi
 
 ## 2. Developer Instructions
 
-### Zero-Allocation Curve Fitting and Critical-Point Queries
+### Zero-Allocation Critical-Point Queries
 
-Fit canonical polynomial or nonlinear curves and query sub-segment crossings directly over paired slices:
+Query sub-segment crossings and parabolic vertices directly over paired slices:
 
 ```rust
-use math_commons::fit::{FitModel, fit_model};
 use math_commons::poi::{closest_threshold_crossing, parabolic_vertex};
 
 let xs = [0.0, 1.0, 2.0, 3.0, 4.0];
 let ys = [0.0, 3.0, 4.0, 3.0, 0.0];
 let series = (&xs[..], &ys[..]);
-
-let fit = fit_model(&series, FitModel::Quadratic, false).expect("quadratic fit");
-assert!((fit.eval(2.0) - 4.0).abs() < 1e-9);
 
 let root = closest_threshold_crossing(&series, 2.0, 0.5).expect("crossing");
 assert!(root > 0.0 && root < 1.0);

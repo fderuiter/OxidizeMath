@@ -386,19 +386,27 @@ impl<T: Scalar, const MAX_P: usize> StreamingQr<T, MAX_P> {
             let hyp = rjj.hypot(xj);
             let c = rjj / hyp;
             let s = xj / hyp;
+            let safe = hyp > T::from_f64(1.0e-140) && hyp < T::from_f64(1.0e140);
             self.r[j][j] = hyp;
             for (rk, wk) in self.r[j][(j + 1)..self.ncols]
                 .iter_mut()
                 .zip(&mut work[(j + 1)..self.ncols])
             {
-                let old_r = *rk;
-                let old_w = *wk;
+                let (old_r, old_w) = (*rk, *wk);
                 *rk = c * old_r + s * old_w;
-                *wk = -s * old_r + c * old_w;
+                *wk = if safe {
+                    T::diff_of_products(rjj, old_w, xj, old_r) / hyp
+                } else {
+                    T::diff_of_products(c, old_w, s, old_r)
+                };
             }
             let qj = self.qty[j];
             self.qty[j] = c * qj + s * y;
-            y = -s * qj + c * y;
+            y = if safe {
+                T::diff_of_products(rjj, y, xj, qj) / hyp
+            } else {
+                T::diff_of_products(c, y, s, qj)
+            };
         }
         self.nrows += 1;
         Ok(())

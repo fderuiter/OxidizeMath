@@ -140,8 +140,18 @@ impl<const P: i64> Div for Fp<P> {
 }
 
 impl<const P: i64> Field for Fp<P> {
+    #[inline]
+    fn ref_div(&self, rhs: &Self) -> Self {
+        *self / *rhs
+    }
+
+    #[inline]
+    fn try_inv(&self) -> Option<Self> {
+        self.checked_inverse().ok()
+    }
+
     #[verified_engine::verified]
-    fn multiplicative_inverse(&self) -> Self {
+    fn inv(&self) -> Self {
         match self.checked_inverse() {
             Ok(inv) => inv,
             Err(NumberTheoryError::DivisionByZeroFieldElement) => {

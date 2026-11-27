@@ -1,4 +1,4 @@
-//! UI presentation adapter over `math_commons::fit` zero-allocation curve solvers and custom
+//! UI presentation adapter over `engine_opt::fit` zero-allocation curve solvers and custom
 //! callback-compiled regression models.
 
 mod custom;
@@ -12,9 +12,9 @@ mod tests;
 pub use custom::{
     CustomEvaluatorHandle, CustomFitCallback, CustomFitEvaluator, fit_custom_evaluator,
 };
-pub use math_commons::error::FitError;
-pub use math_commons::fit::MAX_FIT_PARAMS;
-use math_commons::fit::{CurveFit, FitModel};
+pub use engine_opt::error::FitError;
+pub use engine_opt::fit::MAX_FIT_PARAMS;
+use engine_opt::fit::{CurveFit, FitModel};
 use math_commons::series::PointSeries;
 
 thread_local! {
@@ -227,7 +227,7 @@ impl FitResult {
                     return f64::NAN;
                 }
                 let tx = if self.log_x { x.log10() } else { x };
-                let ty = math_commons::fit::eval_polynomial_horner(&self.coefficients, tx);
+                let ty = engine_opt::fit::eval_polynomial_horner(&self.coefficients, tx);
                 let out = if self.log_y {
                     10.0_f64.powf(ty.clamp(-300.0, 300.0)).clamp(1e-300, 1e300)
                 } else {
@@ -239,9 +239,7 @@ impl FitResult {
             | FitModel::PowerLaw
             | FitModel::Logarithmic
             | FitModel::Logistic
-            | FitModel::Sinusoidal => {
-                math_commons::fit::eval_nonlinear(model, &self.coefficients, x)
-            }
+            | FitModel::Sinusoidal => engine_opt::fit::eval_nonlinear(model, &self.coefficients, x),
         }
     }
 }
@@ -261,6 +259,6 @@ pub fn fit_model_with_axes<P: PointSeries + ?Sized>(
             reason: "custom formula requires fit_custom_evaluator",
         });
     };
-    let curve = math_commons::fit::fit_model_with_axes(points, model, log_mode, log_x, log_y)?;
+    let curve = engine_opt::fit::fit_model_with_axes(points, model, log_mode, log_x, log_y)?;
     Ok(FitResult::from_curve_fit(curve, points, dataset_name))
 }

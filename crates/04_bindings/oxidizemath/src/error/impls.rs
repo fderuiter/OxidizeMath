@@ -174,6 +174,7 @@ impl Error {
             Self::Linalg(err) => Some(InnerErrorRef::Domain(err)),
             Self::Math(err) => Some(InnerErrorRef::Domain(err)),
             Self::MathCommons(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Scalar(err) => Some(InnerErrorRef::Domain(err)),
             Self::Parse(err) => Some(InnerErrorRef::Domain(err)),
             Self::Qmc(err) => Some(InnerErrorRef::Domain(err)),
             Self::Rng(err) => Some(InnerErrorRef::Domain(err)),

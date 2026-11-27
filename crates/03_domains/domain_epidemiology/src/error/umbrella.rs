@@ -1,10 +1,11 @@
 use super::{EpidemiologyError, NetworkModelError};
 use math_commons::error::{
-    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, ParseError,
-    ShaderEmitError,
+    EvalError, GlslError, LexError, MathCommonsError, ParseError, ShaderEmitError,
 };
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
-use pure_math::error::{LinearAlgebraError, MonteCarloError, OptimizationError, TensorError};
+use pure_math::error::{
+    LinalgError, LinearAlgebraError, MonteCarloError, OptimizationError, TensorError,
+};
 
 /// Extensible crate-level umbrella error for `domain_epidemiology` models and upstream math errors.
 #[non_exhaustive]
@@ -135,14 +136,7 @@ impl From<TensorError> for EpidemiologyDomainError {
 impl From<LinalgError> for EpidemiologyDomainError {
     #[verified_engine::verified]
     fn from(err: LinalgError) -> Self {
-        Self::MathCommons(MathCommonsError::from(err))
-    }
-}
-
-impl From<FitError> for EpidemiologyDomainError {
-    #[verified_engine::verified]
-    fn from(err: FitError) -> Self {
-        Self::MathCommons(MathCommonsError::from(err))
+        Self::PureMath(pure_math::error::PureMathError::from(err))
     }
 }
 

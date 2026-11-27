@@ -1,10 +1,11 @@
 use super::{BotanicalError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError};
 use math_commons::error::{
-    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, ParseError,
-    ShaderEmitError,
+    EvalError, GlslError, LexError, MathCommonsError, ParseError, ShaderEmitError,
 };
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
-use pure_math::error::{LinearAlgebraError, MonteCarloError, OptimizationError, TensorError};
+use pure_math::error::{
+    LinalgError, LinearAlgebraError, MonteCarloError, OptimizationError, TensorError,
+};
 use thiserror::Error;
 
 /// Extensible crate-level umbrella error for `domain_biology` models and upstream math/applied errors.
@@ -99,14 +100,7 @@ impl From<TensorError> for BiologyError {
 impl From<LinalgError> for BiologyError {
     #[verified_engine::verified]
     fn from(err: LinalgError) -> Self {
-        Self::MathCommons(MathCommonsError::from(err))
-    }
-}
-
-impl From<FitError> for BiologyError {
-    #[verified_engine::verified]
-    fn from(err: FitError) -> Self {
-        Self::MathCommons(MathCommonsError::from(err))
+        Self::PureMath(pure_math::error::PureMathError::from(err))
     }
 }
 

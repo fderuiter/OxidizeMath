@@ -3,8 +3,8 @@
 
 use super::model::{ElectrochemicalAgingModel, MAX_EXPONENT_Z, MIN_EXPONENT_Z};
 use super::types::DepthOfDischarge;
-use math_commons::error::FitError;
-use math_commons::fit::{levenberg_marquardt_numeric, sum_squared_errors_numeric};
+use engine_opt::error::FitError;
+use engine_opt::fit::{levenberg_marquardt_numeric, sum_squared_errors_numeric};
 use math_commons::series::PointSeries;
 
 const Z_SPAN: f64 = MAX_EXPONENT_Z - MIN_EXPONENT_Z;
