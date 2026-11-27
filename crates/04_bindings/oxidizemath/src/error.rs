@@ -3,11 +3,13 @@
 pub use diagnostics::DiagnosticError;
 pub use engine_diffeq::DiffeqError;
 pub use engine_linalg::LinalgError;
+pub use engine_opt::error::FitError;
 pub use engine_pde::PdeError;
 pub use math_commons::error::{
-    EvalError, FitError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
+    EvalError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
     ShaderEmitError,
 };
+pub use math_scalars::ScalarError;
 
 #[cfg(feature = "ai")]
 pub use domain_ai::error::AIError;
@@ -75,6 +77,8 @@ pub enum Error {
     Math(MathError),
     /// Foundational `math_commons` umbrella error.
     MathCommons(MathCommonsError),
+    /// Foundational `math_scalars` error.
+    Scalar(ScalarError),
     /// AST parser error.
     Parse(ParseError),
     /// AST-to-WGSL/GLSL shader emission error.

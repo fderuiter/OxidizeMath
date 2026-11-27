@@ -1,4 +1,4 @@
-// [cite:math_commons]
+// [cite:engine_opt]
 //! Zero-allocation `#![no_std]` `Deserialize` implementation for [`super::FitError`].
 
 use super::{FitError, LinalgError};

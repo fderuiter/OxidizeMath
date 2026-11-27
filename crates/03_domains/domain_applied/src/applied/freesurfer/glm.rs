@@ -151,10 +151,12 @@ impl<T: RealField + Scalar> GlmDesignQr<T> {
         }
         let variance_term = self.contrast_variance_factor(c)?;
         let scaled_variance = residual_variance * variance_term;
-        if scaled_variance <= <T as Scalar>::ZERO || !<T as Scalar>::is_finite(scaled_variance) {
+        if scaled_variance <= <T as Scalar>::ZERO
+            || !<T as math_scalars::ComplexField>::is_finite(&scaled_variance)
+        {
             return Err(EngineeringError::ZeroContrastVariance);
         }
-        let denominator = <T as Scalar>::sqrt(scaled_variance);
+        let denominator = <T as math_scalars::ComplexField>::sqrt(scaled_variance);
         if denominator == <T as Scalar>::ZERO {
             return Err(EngineeringError::ZeroContrastVariance);
         }

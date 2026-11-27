@@ -21,7 +21,9 @@ verified_engine_macros = { path = "../../00_foundation/verified_engine_macros" }
 diagnostics = { path = "../../01_core/diagnostics" }
 math_diagnostics = { path = "../../00_foundation/math_diagnostics" }
 math_rng = { path = "../../00_foundation/math_rng", features = ["alloc", "serde"] }
+math_scalars = { path = "../../00_foundation/math_scalars" }
 engine_linalg = { path = "../../02_engines/engine_linalg" }
+engine_opt = { path = "../../02_engines/engine_opt" }
 engine_diffeq = { path = "../../02_engines/engine_diffeq" }
 engine_pde = { path = "../../02_engines/engine_pde" }
 math_commons = { path = "../../02_engines/math_commons" }
