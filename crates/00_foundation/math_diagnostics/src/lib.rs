@@ -49,6 +49,21 @@ pub trait DiagnosticVisitor {
         self.record_display(key, &value);
     }
 
+    /// Records a signed pointer-sized integer attribute under `key`.
+    fn record_isize(&mut self, key: &str, value: isize) {
+        self.record_display(key, &value);
+    }
+
+    /// Records an unsigned 32-bit integer attribute under `key`.
+    fn record_u32(&mut self, key: &str, value: u32) {
+        self.record_display(key, &value);
+    }
+
+    /// Records a signed 32-bit integer attribute under `key`.
+    fn record_i32(&mut self, key: &str, value: i32) {
+        self.record_display(key, &value);
+    }
+
     /// Records an unsigned 64-bit integer attribute under `key`.
     fn record_u64(&mut self, key: &str, value: u64) {
         self.record_display(key, &value);
@@ -56,6 +71,11 @@ pub trait DiagnosticVisitor {
 
     /// Records a signed 64-bit integer attribute under `key`.
     fn record_i64(&mut self, key: &str, value: i64) {
+        self.record_display(key, &value);
+    }
+
+    /// Records a 32-bit floating-point attribute under `key`.
+    fn record_f32(&mut self, key: &str, value: f32) {
         self.record_display(key, &value);
     }
 
@@ -76,19 +96,46 @@ struct HashMapVisitor {
 }
 
 #[cfg(feature = "std")]
+impl HashMapVisitor {
+    fn insert_field(&mut self, key: &str, value: std::string::String) {
+        use std::string::String;
+        match key {
+            "code" => {
+                if self.map.contains_key("code") {
+                    self.map.insert(String::from("wrapper_code"), value);
+                } else {
+                    self.map.insert(String::from("code"), value);
+                }
+            }
+            "error_type" => {
+                if let Some(prev) = self.map.insert(String::from("error_type"), value) {
+                    self.map
+                        .entry(String::from("root_error_type"))
+                        .or_insert(prev);
+                }
+            }
+            "description" => {
+                if let Some(prev) = self.map.insert(String::from("description"), value) {
+                    self.map
+                        .entry(String::from("root_description"))
+                        .or_insert(prev);
+                }
+            }
+            _ => {
+                self.map.insert(String::from(key), value);
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
 impl DiagnosticVisitor for HashMapVisitor {
     fn record_str(&mut self, key: &str, value: &str) {
-        self.map.insert(
-            std::string::ToString::to_string(key),
-            std::string::ToString::to_string(value),
-        );
+        self.insert_field(key, std::string::ToString::to_string(value));
     }
 
     fn record_display(&mut self, key: &str, value: &dyn fmt::Display) {
-        self.map.insert(
-            std::string::ToString::to_string(key),
-            std::string::ToString::to_string(value),
-        );
+        self.insert_field(key, std::string::ToString::to_string(value));
     }
 }
 
@@ -162,6 +209,10 @@ mod tests {
             visitor.record_f64("tol", self.tol);
             visitor.record_u64("u64_val", 7);
             visitor.record_i64("i64_val", -3);
+            visitor.record_u32("u32_val", 11);
+            visitor.record_i32("i32_val", -5);
+            visitor.record_isize("isize_val", -9);
+            visitor.record_f32("f32_val", 1.5);
             visitor.record_bool("fatal", false);
         }
     }
@@ -211,7 +262,7 @@ mod tests {
             });
         assert_eq!(sev, Severity::Warning);
         assert_eq!(str_count, 1);
-        assert_eq!(display_count, 6);
+        assert_eq!(display_count, 10);
         assert_eq!(last_usize, 32);
     }
 
@@ -229,7 +280,7 @@ mod tests {
         err.visit_fields(&mut visitor);
         assert_eq!(err.severity(), Severity::Warning);
         assert_eq!(visitor.str_count, 1);
-        assert_eq!(visitor.display_count, 6);
+        assert_eq!(visitor.display_count, 10);
         assert_eq!(visitor.last_usize, 8);
         assert_ne!(Severity::Info, Severity::Fatal);
     }
@@ -259,8 +310,83 @@ mod tests {
             Some("-3")
         );
         assert_eq!(
+            meta.get("u32_val").map(std::string::String::as_str),
+            Some("11")
+        );
+        assert_eq!(
+            meta.get("i32_val").map(std::string::String::as_str),
+            Some("-5")
+        );
+        assert_eq!(
+            meta.get("isize_val").map(std::string::String::as_str),
+            Some("-9")
+        );
+        assert_eq!(
+            meta.get("f32_val").map(std::string::String::as_str),
+            Some("1.5")
+        );
+        assert_eq!(
             meta.get("fatal").map(std::string::String::as_str),
             Some("false")
+        );
+    }
+
+    #[cfg(feature = "std")]
+    #[derive(Debug)]
+    struct LayeredDiagnostic;
+
+    #[cfg(feature = "std")]
+    impl fmt::Display for LayeredDiagnostic {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("outer wrapper description")
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl core::error::Error for LayeredDiagnostic {}
+
+    #[cfg(feature = "std")]
+    impl Diagnostic for LayeredDiagnostic {
+        fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+            visitor.record_str("error_type", "RootError");
+            visitor.record_str("code", "ROOT-001");
+            visitor.record_str("description", "root cause message");
+            visitor.record_str("error_type", "MiddleWrapper");
+            visitor.record_str("code", "MID-002");
+            visitor.record_str("description", "middle wrapper message");
+            visitor.record_str("error_type", "OuterWrapper");
+            visitor.record_display("description", self);
+        }
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn hashmap_visitor_preserves_root_metadata_across_causal_wrappers() {
+        let meta = LayeredDiagnostic.metadata();
+        assert_eq!(
+            meta.get("code").map(std::string::String::as_str),
+            Some("ROOT-001")
+        );
+        assert_eq!(
+            meta.get("wrapper_code").map(std::string::String::as_str),
+            Some("MID-002")
+        );
+        assert_eq!(
+            meta.get("root_error_type").map(std::string::String::as_str),
+            Some("RootError")
+        );
+        assert_eq!(
+            meta.get("error_type").map(std::string::String::as_str),
+            Some("OuterWrapper")
+        );
+        assert_eq!(
+            meta.get("root_description")
+                .map(std::string::String::as_str),
+            Some("root cause message")
+        );
+        assert_eq!(
+            meta.get("description").map(std::string::String::as_str),
+            Some("outer wrapper description")
         );
     }
 }

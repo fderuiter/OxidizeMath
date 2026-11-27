@@ -3,6 +3,7 @@
 #![cfg_attr(any(), verified(opt_out = "no_std_engine"))]
 
 use core::fmt;
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 
 /// Typed error returned by [`super::SobolView`], [`super::HaltonView`], and [`super::NiederreiterView`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +37,25 @@ pub enum QmcError {
     },
 }
 
+impl QmcError {
+    /// Returns the static type identifier `"QmcError"`.
+    #[inline]
+    pub const fn error_type(&self) -> &'static str {
+        "QmcError"
+    }
+
+    /// Returns the stable diagnostic error code (`QMC-001`..`QMC-004`).
+    #[inline]
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::InvalidDimension { .. } => "QMC-001",
+            Self::InvalidBase { .. } => "QMC-002",
+            Self::BufferLengthMismatch { .. } => "QMC-003",
+            Self::StateLengthMismatch { .. } => "QMC-004",
+        }
+    }
+}
+
 impl fmt::Display for QmcError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
@@ -62,3 +82,32 @@ impl fmt::Display for QmcError {
 }
 
 impl core::error::Error for QmcError {}
+
+impl Diagnostic for QmcError {
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        visitor.record_str("error_type", self.error_type());
+        visitor.record_str("code", self.code());
+        visitor.record_display("description", self);
+        match *self {
+            Self::InvalidDimension {
+                dimension,
+                max_supported,
+            } => {
+                visitor.record_usize("dimension", dimension);
+                visitor.record_usize("max_supported", max_supported);
+            }
+            Self::InvalidBase { base } => {
+                visitor.record_u32("base", base);
+            }
+            Self::BufferLengthMismatch { expected, actual }
+            | Self::StateLengthMismatch { expected, actual } => {
+                visitor.record_usize("expected", expected);
+                visitor.record_usize("actual", actual);
+            }
+        }
+    }
+}

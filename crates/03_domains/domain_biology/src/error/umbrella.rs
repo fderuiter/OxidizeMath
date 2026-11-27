@@ -1,9 +1,9 @@
 use super::{BotanicalError, HodgkinHuxleyError, KineticsError, ReactionDiffusionError};
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_commons::error::{
     EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, ParseError,
     ShaderEmitError,
 };
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::error::{LinearAlgebraError, MonteCarloError, OptimizationError, TensorError};
 use thiserror::Error;
 

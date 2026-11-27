@@ -1,4 +1,4 @@
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use thiserror::Error;
 
 /// Error variants produced by AI architectures, optimizers, and training loops.

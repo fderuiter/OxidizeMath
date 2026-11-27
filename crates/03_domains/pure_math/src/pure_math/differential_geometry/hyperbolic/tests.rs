@@ -1,6 +1,6 @@
 use super::*;
 use approx::assert_relative_eq;
-use diagnostics::{Diagnostic, Severity};
+use math_diagnostics::{Diagnostic, Severity};
 use num_complex::Complex64;
 use std::f64::consts::PI;
 

@@ -2,11 +2,11 @@ use super::{
     BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError, IsosurfaceError,
     KalmanError, LoraError, PharmacokineticsError, PortfolioError, VoxelGridError,
 };
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_commons::error::{
     EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, ParseError,
     ShaderEmitError,
 };
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::error::{
     AnalysisError, EvolutionError, LinearAlgebraError, MonteCarloError, OptimizationError,
     PureMathError, RiskError, StochasticError, TensorError,

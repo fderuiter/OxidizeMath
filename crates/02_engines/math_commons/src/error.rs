@@ -170,6 +170,7 @@ impl Diagnostic for MathError {
 
     fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         visitor.record_str("error_type", "MathError");
+        visitor.record_str("code", self.code());
         visitor.record_display("description", self);
         match self {
             Self::DimensionMismatch { expected, actual } => {
@@ -395,7 +396,27 @@ mod tests {
             fit_err.visit_fields(&mut v);
             v.0
         });
-        assert!(count >= 12);
+        assert!(count >= 13);
+
+        assert_eq!(
+            math_err.metadata().get("code").map(String::as_str),
+            Some("MATH-001")
+        );
+        let singular_fit = FitError::from(LinalgError::SingularMatrix);
+        let fit_meta = singular_fit.metadata();
+        assert_eq!(fit_meta.get("code").map(String::as_str), Some("LINALG-004"));
+        assert_eq!(
+            fit_meta.get("wrapper_code").map(String::as_str),
+            Some("MATH-FIT-006")
+        );
+        assert_eq!(
+            fit_meta.get("root_error_type").map(String::as_str),
+            Some("LinalgError")
+        );
+        assert_eq!(
+            fit_meta.get("error_type").map(String::as_str),
+            Some("FitError")
+        );
     }
 
     #[test]

@@ -33,6 +33,8 @@ impl_error_from!(LinalgError => Linalg);
 impl_error_from!(MathError => Math);
 impl_error_from!(MathCommonsError => MathCommons);
 impl_error_from!(ParseError => Parse);
+impl_error_from!(QmcError => Qmc);
+impl_error_from!(RngError => Rng);
 impl_error_from!(ShaderEmitError => ShaderEmit);
 impl_error_from!(std::io::Error => Io);
 

@@ -6,11 +6,11 @@ use super::{
     PoissonError, QueueingError, RiskError, StochasticError, Su11HyperbolicError, TdaError,
     TensorError, TransformError, ZipError,
 };
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_commons::error::{
     EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, ParseError,
     ShaderEmitError,
 };
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use thiserror::Error;
 
 /// Extensible crate-level umbrella error for `pure_math` algorithms and foundational math errors.

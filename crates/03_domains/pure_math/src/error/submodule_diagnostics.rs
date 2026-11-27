@@ -19,7 +19,7 @@ use crate::pure_math::{
     },
     tensor::types::TensorError,
 };
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 
 #[verified_engine::verified]
 fn visit_named_error<D: core::fmt::Display>(
