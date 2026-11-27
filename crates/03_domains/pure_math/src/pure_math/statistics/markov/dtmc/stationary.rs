@@ -4,7 +4,7 @@ use super::{MarkovChain, Result};
 use crate::error::MarkovError;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::{Dimension, flatten_2d_index};
-use math_commons::stochastic::SolverWorkspace;
+use math_commons::stochastic::StochasticWorkspace;
 use nalgebra::{DVector, RealField};
 use num_traits::ToPrimitive;
 
@@ -20,7 +20,7 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
                 reason: "MarkovChain state space must be non-empty",
             });
         }
-        let mut ws = SolverWorkspace::new(n, 0);
+        let mut ws = StochasticWorkspace::new(n, 0);
         let mut out = DVector::zeros(n);
         debug_assert!(n > 0);
         Ok(self
@@ -59,12 +59,12 @@ impl<T: RealField + Copy + ToPrimitive> MarkovChain<T> {
             .expect("stationary_distribution preconditions must hold")
     }
 
-    /// Computes the unique stationary distribution into `out` using preallocated [`SolverWorkspace`]
+    /// Computes the unique stationary distribution into `out` using preallocated [`StochasticWorkspace`]
     /// buffers with zero heap allocations when `ws.state_capacity() >= self.num_states()`.
     #[verified_engine::verified]
     pub fn stationary_distribution_with_workspace(
         &self,
-        ws: &mut SolverWorkspace,
+        ws: &mut StochasticWorkspace,
         out: &mut DVector<T>,
     ) -> bool {
         let n = self.num_states();

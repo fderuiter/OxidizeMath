@@ -1,7 +1,7 @@
 // [cite:math_commons]
 use super::{
-    Scalar, SolverWorkspace, fill_standard_normal, sample_open_unit, sample_standard_normal,
-    sample_standard_normal_pair,
+    Scalar, ScalarWorkspace, SolverWorkspace, fill_standard_normal, sample_open_unit,
+    sample_standard_normal, sample_standard_normal_pair,
 };
 use math_rng::OxidizeRng;
 
@@ -23,15 +23,15 @@ fn test_scalar_f64_and_f32_identities() {
 
 #[test]
 #[verified_engine::verified]
-fn test_solver_workspace_reborrow_and_partition() {
+fn test_scalar_workspace_reborrow_and_partition() {
     let mut backing = [1.0_f64; 10];
-    let mut ws = SolverWorkspace::new(&mut backing);
+    let mut ws = ScalarWorkspace::new(&mut backing);
     assert_eq!(ws.len(), 10);
     ws.zero_fill();
     assert!(ws.as_slice().iter().all(|&v| v == 0.0));
 
     for iter in 0..3 {
-        let mut step_ws = ws.reborrow();
+        let mut step_ws = ws.reborrow_scalars();
         let a = step_ws.take_slice(4);
         let b = step_ws.take_slice(6);
         assert_eq!(step_ws.len(), 0);
@@ -39,6 +39,14 @@ fn test_solver_workspace_reborrow_and_partition() {
         a.fill(iter as f64 + 1.0);
         b.fill(iter as f64 + 10.0);
         assert_eq!(a[3] + b[5], 2.0 * (iter as f64) + 11.0);
+    }
+    assert_eq!(ws.len(), 10);
+
+    {
+        let mut byte_sub = SolverWorkspace::reborrow(&mut ws);
+        let ints = byte_sub.alloc_slice::<usize>(4).expect("usize scratch");
+        ints[3] = 42;
+        assert_eq!(ints[3], 42);
     }
     assert_eq!(ws.len(), 10);
 }

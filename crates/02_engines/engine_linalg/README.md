@@ -6,11 +6,11 @@
 
 ## 1. Overview & Architecture
 
-`engine_linalg` is the foundational `#![no_std]` numerical linear algebra engine for the OxidizeMath workspace (`crates/02_engines/engine_linalg`). It executes dense factorizations, singular value decompositions, sparse CSR Krylov iterations, matrix norm and condition-number estimators, and Tikhonov regularization over generic IEEE-754 [`Scalar`] types (`f32`, `f64`) using caller-owned [`SolverWorkspace`] scratch slices with zero heap allocations.
+`engine_linalg` is the foundational `#![no_std]` numerical linear algebra engine for the OxidizeMath workspace (`crates/02_engines/engine_linalg`). It executes dense factorizations, singular value decompositions, sparse CSR Krylov iterations, matrix norm and condition-number estimators, and Tikhonov regularization over generic IEEE-754 [`Scalar`] types (`f32`, `f64`) using caller-owned [`SolverWorkspace`] arenas and [`LinalgWorkspace`] slice wrappers with zero heap allocations.
 
 ### Key Capabilities
 
-- **Caller-Owned Scratch Memory**: [`SolverWorkspace`] partitions preallocated stack or arena buffers deterministically without `std` or a global allocator (`alloc` is strictly optional for `OwnedWorkspace` convenience wrappers).
+- **Caller-Owned Scratch Memory**: [`SolverWorkspace`], [`ByteArena`], and [`LinalgWorkspace`] partition preallocated stack or `OwnedByteArena` buffers deterministically without `std` or a global allocator (`alloc` is strictly optional).
 - **Direct Factorizations**:
   - **Householder QR with Column Pivoting** (`qr_factor_pivoted`, `qr_solve_least_squares`, `qr_solve_rt_permuted`, `StreamingQr`) for rank-revealing orthogonal least squares without squaring condition numbers in $A^T A$.
   - **LU with Partial Pivoting** (`lu_factor_in_place`, `lu_solve`, `lu_inverse`, `lu_determinant`) for square nonsingular linear systems.
@@ -26,7 +26,7 @@
 ### Example
 
 ```rust
-use engine_linalg::{SolverWorkspace, qr_least_squares_workspace_len, qr_solve_least_squares};
+use engine_linalg::{LinalgWorkspace, qr_least_squares_workspace_len, qr_solve_least_squares};
 
 // Overdetermined 3x2 linear least-squares problem A x ≈ b
 let a = [1.0_f64, 0.0, 1.0, 1.0, 1.0, 2.0];
@@ -35,7 +35,7 @@ let mut x = [0.0_f64; 2];
 let mut perm = [0_usize; 2];
 let mut scratch = [0.0_f64; 32];
 assert!(scratch.len() >= qr_least_squares_workspace_len(3, 2));
-let mut ws = SolverWorkspace::new(&mut scratch);
+let mut ws = LinalgWorkspace::new(&mut scratch);
 
 let rank = qr_solve_least_squares(&a, 3, 2, &b, &mut x, &mut perm, &mut ws).unwrap();
 assert_eq!(rank, 2);

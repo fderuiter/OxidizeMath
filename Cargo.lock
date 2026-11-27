@@ -1123,9 +1123,11 @@ name = "domain_ai"
 version = "0.4.0"
 dependencies = [
  "approx",
+ "bytemuck",
  "engine_diffeq",
  "math_commons",
  "math_diagnostics",
+ "math_memory",
  "nalgebra 0.34.2",
  "oxidize_core",
  "pure_math",
@@ -1139,12 +1141,14 @@ name = "domain_applied"
 version = "0.4.0"
 dependencies = [
  "approx",
+ "bytemuck",
  "diagnostics",
  "engine_linalg",
  "engine_opt",
  "engine_pde",
  "math_commons",
  "math_diagnostics",
+ "math_memory",
  "math_scalars",
  "nalgebra 0.34.2",
  "oxidize_core",
@@ -1218,6 +1222,7 @@ dependencies = [
  "engine_pde",
  "math_commons",
  "math_diagnostics",
+ "math_memory",
  "nalgebra 0.34.2",
  "num-complex",
  "oxidize_core",
@@ -1442,6 +1447,7 @@ version = "0.4.0"
 dependencies = [
  "math_commons",
  "math_diagnostics",
+ "math_memory",
  "math_rng",
  "rand_core 0.6.4",
  "serde",
@@ -1453,7 +1459,9 @@ dependencies = [
 name = "engine_linalg"
 version = "0.4.0"
 dependencies = [
+ "bytemuck",
  "math_diagnostics",
+ "math_memory",
  "math_scalars",
  "serde",
  "serde_json",
@@ -1480,6 +1488,7 @@ version = "0.4.0"
 dependencies = [
  "math_commons",
  "math_diagnostics",
+ "math_memory",
  "math_rng",
  "rand_core 0.6.4",
  "serde",
@@ -2557,6 +2566,7 @@ dependencies = [
  "math_commons",
  "math_diagnostics",
  "math_explorer",
+ "math_memory",
  "math_rng",
  "math_scalars",
  "nalgebra 0.34.2",
@@ -2575,9 +2585,11 @@ dependencies = [
 name = "math_commons"
 version = "0.4.0"
 dependencies = [
+ "bytemuck",
  "diagnostics",
  "libm",
  "math_diagnostics",
+ "math_memory",
  "math_rng",
  "math_scalars",
  "num-complex",
@@ -2644,6 +2656,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "math_memory"
+version = "0.4.0"
+dependencies = [
+ "bytemuck",
+ "math_diagnostics",
+ "num-complex",
+ "serde",
+ "serde_json",
+ "verified_engine",
+]
+
+[[package]]
 name = "math_rng"
 version = "0.4.0"
 dependencies = [
@@ -2660,8 +2684,10 @@ dependencies = [
 name = "math_scalars"
 version = "0.4.0"
 dependencies = [
+ "bytemuck",
  "libm",
  "math_diagnostics",
+ "math_memory",
  "num-complex",
  "num-traits",
  "serde",
@@ -2923,6 +2949,7 @@ version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73f88a1307638156682bada9d7604135552957b7818057dcef22705b4d509495"
 dependencies = [
+ "bytemuck",
  "num-traits",
  "serde",
 ]
@@ -3368,6 +3395,7 @@ dependencies = [
  "engine_opt",
  "engine_pde",
  "math_commons",
+ "math_memory",
  "math_rng",
  "math_scalars",
  "nalgebra 0.34.2",
@@ -3619,6 +3647,7 @@ name = "pure_math"
 version = "0.4.0"
 dependencies = [
  "approx",
+ "bytemuck",
  "dashu",
  "diagnostics",
  "engine_diffeq",
@@ -3626,6 +3655,7 @@ dependencies = [
  "engine_pde",
  "math_commons",
  "math_diagnostics",
+ "math_memory",
  "math_rng",
  "math_scalars",
  "nalgebra 0.34.2",

@@ -7,12 +7,13 @@
 // [cite:optics]
 
 mod surfaces;
+mod workspace;
 
-use pure_math::pure_math::analysis::ode::{ArrayState, OdeSystem, RungeKutta4};
+use pure_math::pure_math::analysis::ode::{ArrayState, OdeSystem};
 use serde::{Deserialize, Serialize};
 
 use super::refraction::GlassMaterial;
-use surfaces::{RayStepCtx, trace_single_ray};
+pub use workspace::{RayFanWorkspace, trace_ray_fan};
 
 /// Continuous graded-index (GRIN) refractive index profiles $n(x, y)$.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -270,105 +271,6 @@ pub struct TracedRayMeta {
     pub total_internal_reflection: bool,
 }
 
-/// Pre-allocated workspace for zero-allocation ray-fan integration and surface tracing.
-pub struct RayFanWorkspace {
-    rk4: RungeKutta4<ArrayState<4>>,
-    points: Vec<[f64; 2]>,
-    rays: Vec<TracedRayMeta>,
-    active_rays: usize,
-    max_points_per_ray: usize,
-}
-
-impl RayFanWorkspace {
-    /// Allocates a workspace capable of storing `max_rays` polylines with `max_points_per_ray` vertices each.
-    #[must_use]
-    pub fn new(max_rays: usize, max_points_per_ray: usize) -> Self {
-        let caps_r = max_rays.max(1);
-        let caps_p = max_points_per_ray.max(4);
-        Self {
-            rk4: RungeKutta4::new(&ArrayState([0.0; 4])),
-            points: vec![[0.0; 2]; caps_r * caps_p],
-            rays: vec![TracedRayMeta::default(); caps_r],
-            active_rays: 0,
-            max_points_per_ray: caps_p,
-        }
-    }
-
-    /// Slice of active traced ray metadata records from the most recent [`trace_ray_fan`] call.
-    #[must_use]
-    pub fn rays(&self) -> &[TracedRayMeta] {
-        &self.rays[..self.active_rays]
-    }
-
-    /// Returns the vertex slice for traced ray `index`.
-    #[must_use]
-    pub fn ray_vertices(&self, index: usize) -> &[[f64; 2]] {
-        let meta = &self.rays[index];
-        &self.points[meta.point_start..meta.point_start + meta.point_len]
-    }
-}
-
-const POLY_BANDS_NM: [f64; 5] = [420.0, 480.0, 540.0, 600.0, 670.0];
-
-/// Traces a ray fan across the configured optical bench scene into `workspace` with zero heap allocations.
-#[verified_engine::verified]
-pub fn trace_ray_fan(config: &RayFanConfig, workspace: &mut RayFanWorkspace) -> usize {
-    let bands: &[f64] = if config.polychromatic {
-        &POLY_BANDS_NM
-    } else {
-        std::slice::from_ref(&config.wavelength_nm)
-    };
-    let max_rays = workspace.rays.len();
-    let spatial_n = (config.ray_count.max(1))
-        .min(max_rays / bands.len().max(1))
-        .max(1);
-    let (sin_a, cos_a) = config.launch_angle_rad.sin_cos();
-    let dir0 = [cos_a, sin_a];
-    let normal_perp = [-sin_a, cos_a];
-
-    let mut out_idx = 0usize;
-    for (b_idx, &wl_nm) in bands.iter().enumerate() {
-        for r_idx in 0..spatial_n {
-            if out_idx >= max_rays {
-                break;
-            }
-            let u = if spatial_n <= 1 {
-                0.0
-            } else {
-                2.0 * (r_idx as f64) / ((spatial_n - 1) as f64) - 1.0
-            };
-            let offset = u * config.beam_half_width;
-            let origin = [
-                config.source_x + offset * normal_perp[0],
-                config.source_y + offset * normal_perp[1],
-            ];
-            let p_start = out_idx * workspace.max_points_per_ray;
-            let p_slice = &mut workspace.points[p_start..p_start + workspace.max_points_per_ray];
-            let mut meta = TracedRayMeta {
-                point_start: p_start,
-                point_len: 0,
-                wavelength_nm: wl_nm,
-                power: 1.0,
-                exit_origin: origin,
-                exit_dir: dir0,
-                spectral_band: b_idx as u8,
-                total_internal_reflection: false,
-            };
-            let ctx = RayStepCtx {
-                cfg: config,
-                origin,
-                dir0,
-                wl_nm,
-            };
-            trace_single_ray(&ctx, &mut workspace.rk4, p_slice, &mut meta);
-            workspace.rays[out_idx] = meta;
-            out_idx += 1;
-        }
-    }
-    workspace.active_rays = out_idx;
-    out_idx
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -395,7 +297,7 @@ mod tests {
         };
         let n = trace_ray_fan(&cfg, &mut ws);
         assert_eq!(n, 9);
-        for (i, meta) in ws.rays().iter().enumerate() {
+        for (i, meta) in ws.iter_rays().enumerate() {
             let rim_err =
                 ((meta.exit_origin[0] - 1.0).powi(2) + meta.exit_origin[1].powi(2)).sqrt();
             assert!(rim_err < 1.0e-6, "ray {i} Luneburg rim error = {rim_err}");
@@ -423,7 +325,11 @@ mod tests {
             polarization: PolarizationMode::Unpolarized,
             bench_half_extent: 4.0,
         };
-        trace_ray_fan(&wg, &mut ws);
+        let alloc_guard = crate::VERIFIED_ALLOC_TEST_MUTEX.lock().unwrap();
+        let ((), _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
+            trace_ray_fan(&wg, &mut ws);
+        });
+        drop(alloc_guard);
         let end_pt = ws.ray_vertices(0)[steps];
         let tau = (steps as f64) * dt;
         let expected_y = y0 * (n0 * g * tau).cos();
@@ -442,7 +348,7 @@ mod tests {
             ..wg
         };
         trace_ray_fan(&eaton, &mut ws);
-        assert!(ws.rays()[0].exit_dir[0] < -0.85);
+        assert!(ws.ray_meta(0).exit_dir[0] < -0.85);
     }
 
     #[test]
@@ -467,7 +373,7 @@ mod tests {
             bench_half_extent: 2.0,
         };
         assert_eq!(trace_ray_fan(&prism, &mut ws), 5);
-        assert!(ws.rays()[0].exit_dir[1] < ws.rays()[4].exit_dir[1] - 0.05);
+        assert!(ws.ray_meta(0).exit_dir[1] < ws.ray_meta(4).exit_dir[1] - 0.05);
 
         let fisheye = RayFanConfig {
             scene: OpticalBenchScene::ContinuousGrin {

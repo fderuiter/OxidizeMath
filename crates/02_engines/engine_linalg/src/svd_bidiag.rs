@@ -5,7 +5,7 @@
 
 use crate::scalar::Scalar;
 use crate::svd_jacobi::sort_thin_svd;
-use crate::types::{LinalgError, SolverWorkspace, check_all_finite, mat_idx};
+use crate::types::{LinalgError, SolverWorkspace, carve_scalars, check_all_finite, mat_idx};
 
 /// Workspace scalar capacity required by [`svd_bidiagonal`] for an `m x n` matrix.
 /// `[cite:engine_linalg]`
@@ -390,13 +390,15 @@ fn svd_bidiagonal_tall<T: Scalar>(
     u: &mut [T],
     s: &mut [T],
     vt: &mut [T],
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut (impl SolverWorkspace + ?Sized),
 ) -> Result<(), LinalgError> {
-    let (work_a, mut r1) = ws.try_split(m * n)?;
-    let (v_mat, mut r2) = r1.try_split(n * n)?;
-    let (tau_u, mut r3) = r2.try_split(n)?;
-    let (tau_v, mut r4) = r3.try_split(n)?;
-    let (e, _) = r4.try_split(n)?;
+    let mut sub = ws.reborrow();
+    let mut cur = sub.cursor();
+    let work_a = carve_scalars::<T>(&mut cur, m * n)?;
+    let v_mat = carve_scalars::<T>(&mut cur, n * n)?;
+    let tau_u = carve_scalars::<T>(&mut cur, n)?;
+    let tau_v = carve_scalars::<T>(&mut cur, n)?;
+    let e = carve_scalars::<T>(&mut cur, n)?;
 
     work_a.copy_from_slice(a);
     bidiagonalize_tall(work_a, m, n, tau_u, tau_v, s, e);
@@ -425,7 +427,7 @@ pub fn svd_bidiagonal<T: Scalar>(
     u: &mut [T],
     s: &mut [T],
     vt: &mut [T],
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut (impl SolverWorkspace + ?Sized),
 ) -> Result<(), LinalgError> {
     let k = m.min(n);
     if m.checked_mul(n) != Some(a.len())
@@ -443,9 +445,12 @@ pub fn svd_bidiagonal<T: Scalar>(
         return svd_bidiagonal_tall(a, m, n, u, s, vt, ws);
     }
 
-    let (at, mut r1) = ws.try_split(n * m)?;
-    let (u_at, mut r2) = r1.try_split(n * m)?;
-    let (vt_at, mut inner_ws) = r2.try_split(m * m)?;
+    let mut sub = ws.reborrow();
+    let mut cur = sub.cursor();
+    let at = carve_scalars::<T>(&mut cur, n * m)?;
+    let u_at = carve_scalars::<T>(&mut cur, n * m)?;
+    let vt_at = carve_scalars::<T>(&mut cur, m * m)?;
+    let mut inner_ws = cur.reborrow();
     for r in 0..m {
         for c in 0..n {
             at[mat_idx(c, r, m)] = a[mat_idx(r, c, n)];

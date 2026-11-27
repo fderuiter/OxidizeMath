@@ -115,7 +115,7 @@ impl WinRatioStressTesterTool {
                 theoretical_uncensored_wr: win_ratio_parameter(&self.params),
                 representative_summary,
                 representative_tiers,
-                points: ws.points_buf[..count].to_vec(),
+                points: ws.collect_points(count),
             };
             self.cached_report = OnceLock::from(next_report);
         }
