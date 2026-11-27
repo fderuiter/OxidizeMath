@@ -5,6 +5,9 @@
 
 use crate::scalar::Scalar;
 use core::fmt;
+#[cfg(feature = "alloc")]
+pub use math_scalars::OwnedWorkspace;
+pub use math_scalars::{ScalarError, SolverWorkspace};
 
 /// Computes the flat row-major index for `(row, col)` in a matrix with `ncols` columns.
 /// `[cite:engine_linalg]`
@@ -111,74 +114,19 @@ impl math_diagnostics::Diagnostic for LinalgError {
     }
 }
 
-/// Caller-owned mutable scratch slice used by `#![no_std]` solvers without heap allocation.
-pub struct SolverWorkspace<'a, T> {
-    buf: &'a mut [T],
-}
-
-impl<'a, T: Scalar> SolverWorkspace<'a, T> {
-    /// Wraps a caller-owned mutable slice as a reusable solver workspace.
+impl From<ScalarError> for LinalgError {
     #[inline]
-    pub fn new(buf: &'a mut [T]) -> Self {
-        Self { buf }
-    }
-
-    /// Creates an empty zero-capacity workspace for routines that operate strictly in-place.
-    #[inline]
-    pub fn empty() -> Self {
-        Self { buf: &mut [] }
-    }
-
-    /// Returns the number of scalar elements available in this workspace.
-    #[inline]
-    pub const fn len(&self) -> usize {
-        self.buf.len()
-    }
-
-    /// Returns `true` if the workspace holds zero scalar elements.
-    #[inline]
-    pub const fn is_empty(&self) -> bool {
-        self.buf.is_empty()
-    }
-
-    /// Splits off `count` zero-initialized scalar elements and returns the remaining sub-workspace.
-    #[inline]
-    pub fn try_split(
-        &mut self,
-        count: usize,
-    ) -> Result<(&mut [T], SolverWorkspace<'_, T>), LinalgError> {
-        let available = self.buf.len();
-        if available < count {
-            return Err(LinalgError::WorkspaceTooSmall {
-                required: count,
+    fn from(err: ScalarError) -> Self {
+        match err {
+            ScalarError::WorkspaceTooSmall {
+                required,
                 available,
-            });
+            } => Self::WorkspaceTooSmall {
+                required,
+                available,
+            },
+            ScalarError::InvalidStepSize { .. } => Self::InvalidInput,
         }
-        let (head, tail) = self.buf.split_at_mut(count);
-        head.fill(T::ZERO);
-        Ok((head, SolverWorkspace { buf: tail }))
-    }
-}
-
-/// Optional heap-backed workspace convenience wrapper enabled by the `alloc` Cargo feature.
-#[cfg(feature = "alloc")]
-pub struct OwnedWorkspace<T> {
-    buf: alloc::vec::Vec<T>,
-}
-
-#[cfg(feature = "alloc")]
-impl<T: Scalar> OwnedWorkspace<T> {
-    /// Allocates a workspace of `capacity` zeroed scalars once for repeated zero-alloc solver calls.
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            buf: alloc::vec![T::ZERO; capacity],
-        }
-    }
-
-    /// Borrows the owned buffer as a [`SolverWorkspace`].
-    #[inline]
-    pub fn as_workspace(&mut self) -> SolverWorkspace<'_, T> {
-        SolverWorkspace::new(&mut self.buf)
     }
 }
 

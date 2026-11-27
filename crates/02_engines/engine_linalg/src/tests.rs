@@ -19,7 +19,7 @@ fn test_scalar_sqrt_and_hypot_f32_f64() {
         ((hypot_f64(3.0e200, 4.0e200) - 5.0e200) / 5.0e200).abs() < 1e-15,
         "hypot_f64 overflow scaling inaccurate"
     );
-    assert!((<f32 as Scalar>::sqrt(25.0_f32) - 5.0_f32).abs() < 1e-6);
+    assert!((<f32 as ComplexField>::sqrt(25.0_f32) - 5.0_f32).abs() < 1e-6);
 }
 
 #[test]
