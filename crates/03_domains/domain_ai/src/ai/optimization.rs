@@ -11,6 +11,37 @@ use crate::error::AIError;
 /// Specialized [`GenericAdam`] optimizer keyed by `(layer_index, ParamType)` for neural layers.
 pub type Adam<T> = GenericAdam<T, (usize, ParamType)>;
 
+fn validate_mse_inputs<T: RealField + Copy>(
+    y_pred: &DVector<T>,
+    y_true: &DVector<T>,
+) -> Result<T, AIError> {
+    if y_pred.len() != y_true.len() {
+        return Err(math_commons::error::MathError::DimensionMismatch {
+            expected: math_commons::math_kernel::types::Dimension(y_true.len()),
+            actual: math_commons::math_kernel::types::Dimension(y_pred.len()),
+        }
+        .into());
+    }
+    if y_pred.is_empty() {
+        return Err(math_commons::error::MathError::NumericalError {
+            reason: "MSE loss requires non-empty vectors",
+        }
+        .into());
+    }
+    if !y_pred.iter().all(|v| v.is_finite()) || !y_true.iter().all(|v| v.is_finite()) {
+        return Err(math_commons::error::MathError::NumericalError {
+            reason: "MSE loss inputs must be finite",
+        }
+        .into());
+    }
+    T::from_usize(y_pred.len()).ok_or_else(|| {
+        math_commons::error::MathError::ConversionError {
+            reason: "Failed to convert usize to T",
+        }
+        .into()
+    })
+}
+
 /// Mean Squared Error (MSE) Loss function.
 /// Used primarily for Regression.
 ///
@@ -20,11 +51,20 @@ pub fn mean_squared_error<T: RealField + Copy>(
     y_pred: &DVector<T>,
     y_true: &DVector<T>,
 ) -> Result<T, AIError> {
-    let diff = y_pred - y_true;
-    let n = T::from_usize(y_pred.len()).ok_or(math_commons::error::MathError::ConversionError {
-        reason: "Failed to convert usize to T",
-    })?;
-    Ok(diff.dot(&diff) / n)
+    let n = validate_mse_inputs(y_pred, y_true)?;
+    let mut sum_sq = T::zero();
+    for (&yp, &yt) in y_pred.iter().zip(y_true.iter()) {
+        let diff = yp - yt;
+        sum_sq += diff * diff;
+    }
+    let mse = sum_sq / n;
+    if !mse.is_finite() {
+        return Err(math_commons::error::MathError::NumericalError {
+            reason: "MSE loss overflowed to non-finite value",
+        }
+        .into());
+    }
+    Ok(mse)
 }
 
 /// Derivative of MSE with respect to y_pred.
@@ -34,13 +74,18 @@ pub fn mse_prime<T: RealField + Copy>(
     y_pred: &DVector<T>,
     y_true: &DVector<T>,
 ) -> Result<DVector<T>, AIError> {
-    let n = T::from_usize(y_pred.len()).ok_or(math_commons::error::MathError::ConversionError {
-        reason: "Failed to convert usize to T",
-    })?;
+    let n = validate_mse_inputs(y_pred, y_true)?;
     let two = T::from_f64(2.0).ok_or(math_commons::error::MathError::ConversionError {
         reason: "Failed to convert 2.0 to T",
     })?;
-    Ok((y_pred - y_true) * (two / n))
+    let grad = (y_pred - y_true) * (two / n);
+    if !grad.iter().all(|v| v.is_finite()) {
+        return Err(math_commons::error::MathError::NumericalError {
+            reason: "MSE gradient overflowed to non-finite value",
+        }
+        .into());
+    }
+    Ok(grad)
 }
 
 fn validate_probability_vector<T: RealField + Copy>(values: &DVector<T>) -> Result<(), AIError> {
@@ -126,21 +171,85 @@ pub fn cross_entropy_loss<T: RealField + Copy>(
 
 /// Derivative of Cross-Entropy Loss combined with Softmax.
 ///
-/// If output layer is Softmax and Loss is Cross-Entropy, the gradient w.r.t the logits z is:
-/// \frac{\partial L}{\partial z} = \hat{y} - y
+/// For $L(\mathbf{z}) = -\sum_j y_j \ln \hat{y}_j$ with $\hat{\mathbf{y}} = \operatorname{softmax}(\mathbf{z})$,
+/// the analytical gradient with respect to $\mathbf{z}$ is:
+/// $$\nabla_{\mathbf{z}} L = \left(\sum_j y_j\right)\hat{\mathbf{y}} - \mathbf{y}$$
 #[verified_engine::verified]
 pub fn cross_entropy_softmax_prime<T: RealField + Copy>(
     z_logits: &DVector<T>,
     y_true: &DVector<T>,
 ) -> DVector<T> {
+    if z_logits.is_empty()
+        || z_logits.len() != y_true.len()
+        || !y_true.iter().all(|v| v.is_finite())
+    {
+        return DVector::zeros(z_logits.len());
+    }
     let y_pred = crate::ai::activation_kernels::softmax(z_logits);
-    y_pred - y_true
+    let target_sum = y_true.iter().copied().fold(T::zero(), |acc, v| acc + v);
+    if !target_sum.is_finite() {
+        return DVector::zeros(z_logits.len());
+    }
+    y_pred * target_sum - y_true
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_mse_and_mse_prime_reject_empty_mismatch_and_nan() {
+        let empty = DVector::<f64>::zeros(0);
+        assert!(mean_squared_error(&empty, &empty).is_err());
+        assert!(mse_prime(&empty, &empty).is_err());
+
+        let pred = DVector::from_vec(vec![1.0_f64, 2.0_f64]);
+        let short = DVector::from_vec(vec![1.0_f64]);
+        assert!(mean_squared_error(&pred, &short).is_err());
+        assert!(mse_prime(&pred, &short).is_err());
+
+        let nan_vec = DVector::from_vec(vec![1.0_f64, f64::NAN]);
+        assert!(mean_squared_error(&nan_vec, &pred).is_err());
+        assert!(mean_squared_error(&pred, &nan_vec).is_err());
+        assert!(mse_prime(&nan_vec, &pred).is_err());
+        assert!(mse_prime(&pred, &nan_vec).is_err());
+
+        let target = DVector::from_vec(vec![0.0_f64, 4.0_f64]);
+        let mse = mean_squared_error(&pred, &target).expect("valid mse");
+        assert_relative_eq!(mse, 2.5, epsilon = 1e-12);
+        let grad = mse_prime(&pred, &target).expect("valid mse_prime");
+        assert_relative_eq!(grad[0], 1.0, epsilon = 1e-12);
+        assert_relative_eq!(grad[1], -2.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_cross_entropy_softmax_prime_matches_finite_differences_for_non_simplex_targets() {
+        let logits = DVector::from_vec(vec![0.4_f64, -0.7_f64, 1.1_f64]);
+        // Non-simplex multi-label / unnormalized target within [0, 1] per component (sum = 1.65 != 1.0)
+        let y_non_simplex = DVector::from_vec(vec![0.9_f64, 0.25_f64, 0.5_f64]);
+        let analytical = cross_entropy_softmax_prime(&logits, &y_non_simplex);
+
+        let eps = 1e-7_f64;
+        for i in 0..logits.len() {
+            let mut z_plus = logits.clone();
+            let mut z_minus = logits.clone();
+            z_plus[i] += eps;
+            z_minus[i] -= eps;
+            let p_plus = crate::ai::activation_kernels::softmax(&z_plus);
+            let p_minus = crate::ai::activation_kernels::softmax(&z_minus);
+            let loss_plus = cross_entropy_loss(&p_plus, &y_non_simplex).expect("loss_plus");
+            let loss_minus = cross_entropy_loss(&p_minus, &y_non_simplex).expect("loss_minus");
+            let fd = (loss_plus - loss_minus) / (2.0 * eps);
+            assert!(
+                (analytical[i] - fd).abs() < 1e-6,
+                "component {i} mismatch: analytical={}, fd={fd}",
+                analytical[i]
+            );
+        }
+    }
 
     #[test]
     #[verified_engine::verified]

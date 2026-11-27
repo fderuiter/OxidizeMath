@@ -181,32 +181,94 @@ fn finalize_episode_if_done(
     }
 }
 
-fn flush_reinforce_episode_in_place(ws: &mut DenseRlWorkspace, gamma: f64, lr: f64) {
+/// Flushes a buffered episode trajectory using batch discounted `REINFORCE` with baseline
+/// (Williams, 1992; Sutton & Barto, 2018) and partial-episode timeout bootstrapping
+/// `bootstrap_value` ($0$ on true terminal states, $V(s_T)$ on step-limit truncation per Pardo et al., 2018).
+///
+/// Accumulates all $\gamma^t$-weighted policy and critic updates against frozen pre-flush parameters
+/// before mutating `theta_logits` or `state_values`, and leaves `ws.q_table` untouched.
+/// Returns the final-step advantage $A_{T-1} = \operatorname{clamp}(G_{T-1} - V(s_{T-1}), -25, 25)$.
+#[verified_engine::verified]
+pub fn flush_reinforce_episode_in_place(
+    ws: &mut DenseRlWorkspace,
+    gamma: f64,
+    lr: f64,
+    bootstrap_value: f64,
+) -> f64 {
     let len = ws.ep_rewards.len();
     if len == 0 {
-        return;
+        return 0.0;
     }
-    let critic_lr = (lr * 0.5).clamp(0.01, 0.5);
-    let mut g_t = 0.0_f64;
+    let state_count = ws.state_values.len();
+    debug_assert_eq!(ws.pg_delta_buf.len(), state_count);
+    debug_assert_eq!(ws.critic_delta_buf.len(), state_count);
+
+    let safe_gamma = if gamma.is_finite() {
+        gamma.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let safe_lr = if lr.is_finite() {
+        lr.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let critic_lr = (safe_lr * 0.5).clamp(0.0, 0.5);
+    let mut g_t = if bootstrap_value.is_finite() {
+        bootstrap_value
+    } else {
+        0.0
+    };
+    let mut final_step_advantage = 0.0_f64;
+
     for t in (0..len).rev() {
         let s_idx = ws.ep_states[t];
         let a_idx = ws.ep_actions[t] & 3;
-        g_t = ws.ep_rewards[t] + gamma * g_t;
+        g_t = ws.ep_rewards[t] + safe_gamma * g_t;
+        if s_idx >= state_count {
+            continue;
+        }
         let baseline = ws.state_values[s_idx];
-        let advantage = (g_t - baseline).clamp(-25.0, 25.0);
-        ws.state_values[s_idx] = baseline + critic_lr * (g_t - baseline);
+        let raw_delta = g_t - baseline;
+        let advantage = raw_delta.clamp(-25.0, 25.0);
+        if t + 1 == len {
+            final_step_advantage = advantage;
+        }
+        let discount_t = if t == 0 {
+            1.0
+        } else {
+            safe_gamma.powi(t as i32)
+        };
         let probs = softmax_action_probs(ws.theta_logits[s_idx]);
         for (k, &prob) in probs.iter().enumerate() {
             let indicator = if k == a_idx { 1.0 } else { 0.0 };
             let grad = indicator - prob;
-            ws.theta_logits[s_idx][k] =
-                (ws.theta_logits[s_idx][k] + lr * advantage * grad).clamp(-20.0, 20.0);
-            ws.q_table[s_idx][k] = ws.state_values[s_idx] + 0.25 * ws.theta_logits[s_idx][k];
+            ws.pg_delta_buf[s_idx][k] += safe_lr * discount_t * advantage * grad;
+        }
+        ws.critic_delta_buf[s_idx] += critic_lr * raw_delta;
+    }
+
+    for i in 0..len {
+        let s_idx = ws.ep_states[i];
+        if s_idx >= state_count {
+            continue;
+        }
+        let c_delta = ws.critic_delta_buf[s_idx];
+        let pg_delta = ws.pg_delta_buf[s_idx];
+        if c_delta != 0.0 || pg_delta != [0.0; 4] {
+            ws.state_values[s_idx] += c_delta;
+            ws.critic_delta_buf[s_idx] = 0.0;
+            for (logit, &d) in ws.theta_logits[s_idx].iter_mut().zip(pg_delta.iter()) {
+                *logit = (*logit + d).clamp(-20.0, 20.0);
+            }
+            ws.pg_delta_buf[s_idx] = [0.0; 4];
         }
     }
+
     ws.ep_states.clear();
     ws.ep_actions.clear();
     ws.ep_rewards.clear();
+    final_step_advantage
 }
 
 /// Advances one zero-allocation REINFORCE softmax policy-gradient step using [`DenseRlWorkspace`].
@@ -253,7 +315,7 @@ pub fn step_softmax_pg_into(
     ws.episode_return += reward;
     let episode_finished = next_terminal || ws.episode_steps >= ws.max_episode_steps;
     if episode_finished {
-        flush_reinforce_episode_in_place(ws, gamma, learning_rate.value());
+        let _ = flush_reinforce_episode_in_place(ws, gamma, learning_rate.value(), next_val);
     }
     let completed_episode_return = finalize_episode_if_done(mdp, ws, episode_finished);
 

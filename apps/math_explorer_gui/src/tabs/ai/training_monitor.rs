@@ -1,11 +1,49 @@
+#[path = "training_monitor/canvas.rs"]
+mod canvas;
+#[cfg(test)]
+#[path = "training_monitor/tests.rs"]
+mod tests;
+
+use crate::app::SemanticPalette;
 use crate::framework::{InteractiveTool, PlaybackAction, PlaybackTransport};
 use eframe::egui;
-use egui_plot::{Line, Plot, Points};
 use math_explorer::ai::deep_learning_theory::cycle::TrainingLoop;
 use math_explorer::ai::deep_learning_theory::linear_algebra::Vector;
 use math_explorer::ai::deep_learning_theory::model::TwoLayerMLP;
-use math_explorer::ai::optimization::Adam;
+use math_explorer::ai::optimization::{cross_entropy_softmax_prime, Adam, Optimizer, SGD};
 use std::f64::consts::PI;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum OptimizerChoice {
+    Sgd,
+    #[default]
+    Adam,
+}
+
+impl OptimizerChoice {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Sgd => "SGD",
+            Self::Adam => "Adam",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum WeightInitChoice {
+    #[default]
+    HeRelu,
+    XavierGlorot,
+}
+
+impl WeightInitChoice {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::HeRelu => "He (ReLU)",
+            Self::XavierGlorot => "Xavier / Glorot",
+        }
+    }
+}
 
 pub struct TrainingMonitorTool {
     training_loop: TrainingLoop<TwoLayerMLP>,
@@ -14,49 +52,81 @@ pub struct TrainingMonitorTool {
     epoch: usize,
     learning_rate: f64,
     hidden_dim: usize,
+    optimizer_choice: OptimizerChoice,
+    weight_init: WeightInitChoice,
+    last_grad_norm: f64,
     loss_history: Vec<[f64; 2]>,
     accuracy_history: Vec<[f64; 2]>,
+    model_revision: u64,
+    boundary_cache: canvas::DecisionBoundaryCache,
 }
 
 impl Default for TrainingMonitorTool {
     fn default() -> Self {
         let hidden_dim = 16;
         let learning_rate = 0.01;
-        let optimizer: Box<dyn math_explorer::ai::optimization::Optimizer<f64>> =
-            match Adam::new(learning_rate) {
-                Ok(adam) => Box::new(adam),
-                Err(_) => Box::new(math_explorer::ai::optimization::SGD::new(learning_rate)),
-            };
+        let optimizer_choice = OptimizerChoice::default();
+        let weight_init = WeightInitChoice::default();
+        let model = build_mlp_model(hidden_dim, weight_init);
+        let optimizer = build_optimizer(optimizer_choice, learning_rate);
 
         Self {
-            training_loop: TrainingLoop::new(2, hidden_dim, 2, optimizer),
+            training_loop: TrainingLoop::new_with_model(model, optimizer),
             data: generate_spiral_data(100),
             is_training: false,
             epoch: 0,
             learning_rate,
             hidden_dim,
+            optimizer_choice,
+            weight_init,
+            last_grad_norm: 0.0,
             loss_history: Vec::new(),
             accuracy_history: Vec::new(),
+            model_revision: 1,
+            boundary_cache: canvas::DecisionBoundaryCache::default(),
         }
     }
 }
 
-impl TrainingMonitorTool {
-    fn reinit_model(&mut self) {
-        let optimizer: Box<dyn math_explorer::ai::optimization::Optimizer<f64>> =
-            match Adam::new(self.learning_rate) {
-                Ok(adam) => Box::new(adam),
-                Err(_) => Box::new(math_explorer::ai::optimization::SGD::new(
-                    self.learning_rate,
-                )),
-            };
+fn build_mlp_model(hidden_dim: usize, weight_init: WeightInitChoice) -> TwoLayerMLP {
+    match weight_init {
+        WeightInitChoice::HeRelu => TwoLayerMLP::new(2, hidden_dim, 2),
+        WeightInitChoice::XavierGlorot => TwoLayerMLP::new_xavier(2, hidden_dim, 2),
+    }
+}
 
-        self.training_loop = TrainingLoop::new(2, self.hidden_dim, 2, optimizer);
+fn build_optimizer(choice: OptimizerChoice, learning_rate: f64) -> Box<dyn Optimizer<f64>> {
+    let lr = if learning_rate.is_finite() && learning_rate > 0.0 {
+        learning_rate
+    } else {
+        0.01
+    };
+    match choice {
+        OptimizerChoice::Sgd => Box::new(SGD::new(lr)),
+        OptimizerChoice::Adam => match Adam::new(lr) {
+            Ok(adam) => Box::new(adam),
+            Err(_) => Box::new(SGD::new(lr)),
+        },
+    }
+}
+
+impl TrainingMonitorTool {
+    fn rebuild_optimizer(&mut self) {
+        self.training_loop.optimizer = build_optimizer(self.optimizer_choice, self.learning_rate);
+    }
+
+    fn reinit_model(&mut self) {
+        let model = build_mlp_model(self.hidden_dim, self.weight_init);
+        let optimizer = build_optimizer(self.optimizer_choice, self.learning_rate);
+        self.training_loop = TrainingLoop::new_with_model(model, optimizer);
         self.epoch = 0;
+        self.last_grad_norm = 0.0;
         self.loss_history.clear();
         self.accuracy_history.clear();
         self.is_training = false;
         self.data = generate_spiral_data(100);
+        self.model_revision = self.model_revision.wrapping_add(1);
+        self.boundary_cache.invalidate();
     }
 
     pub fn reset(&mut self) {
@@ -82,12 +152,54 @@ impl TrainingMonitorTool {
             }
         }
 
-        let avg_loss = epoch_loss / self.data.len() as f64;
-        let accuracy = correct as f64 / self.data.len() as f64;
+        let count = self.data.len().max(1) as f64;
+        let avg_loss = epoch_loss / count;
+        let accuracy = correct as f64 / count;
 
+        self.last_grad_norm = self.compute_empirical_grad_norm();
         self.loss_history.push([self.epoch as f64, avg_loss]);
         self.accuracy_history.push([self.epoch as f64, accuracy]);
         self.epoch += 1;
+        self.model_revision = self.model_revision.wrapping_add(1);
+    }
+
+    fn compute_empirical_grad_norm(&self) -> f64 {
+        if self.data.is_empty() {
+            return 0.0;
+        }
+        let m = &self.training_loop.model;
+        let h_dim = m.layer1.bias.len();
+        let mut gw1 = vec![0.0_f64; h_dim * 2];
+        let mut gb1 = vec![0.0_f64; h_dim];
+        let mut gw2 = vec![0.0_f64; 2 * h_dim];
+        let mut gb2 = [0.0_f64; 2];
+        let scale = 1.0 / (self.data.len() as f64);
+
+        for (x, y_true) in &self.data {
+            let z1 = m.layer1.forward(x);
+            let a1 = z1.map(|v| v.max(0.0));
+            let logits = m.layer2.forward(&a1);
+            let d_logits = cross_entropy_softmax_prime(&logits, y_true);
+            gb2[0] += d_logits[0] * scale;
+            gb2[1] += d_logits[1] * scale;
+            for j in 0..h_dim {
+                gw2[j] += d_logits[0] * a1[j] * scale;
+                gw2[h_dim + j] += d_logits[1] * a1[j] * scale;
+            }
+            let d_a1 = m.layer2.weights.transpose() * &d_logits;
+            for i in 0..h_dim {
+                let dz1 = if z1[i] > 0.0 { d_a1[i] * scale } else { 0.0 };
+                gb1[i] += dz1;
+                gw1[i * 2] += dz1 * x[0];
+                gw1[i * 2 + 1] += dz1 * x[1];
+            }
+        }
+        let sq = gb2[0].powi(2)
+            + gb2[1].powi(2)
+            + gw2.iter().map(|v| v * v).sum::<f64>()
+            + gw1.iter().map(|v| v * v).sum::<f64>()
+            + gb1.iter().map(|v| v * v).sum::<f64>();
+        sq.sqrt()
     }
 
     fn draw_controls(&mut self, parent_ui: &mut egui::Ui) {
@@ -115,87 +227,76 @@ impl TrainingMonitorTool {
             }
 
             ui.separator();
-            ui.heading("Hyperparameters");
-
-            if ui
-                .add(
-                    egui::Slider::new(&mut self.learning_rate, 0.001..=0.1)
-                        .logarithmic(true)
-                        .text("Learning Rate"),
-                )
-                .changed()
-            {
-                self.reinit_model();
-            }
-
-            if ui
-                .add(egui::Slider::new(&mut self.hidden_dim, 2..=64).text("Hidden Neurons"))
-                .changed()
-            {
-                self.reinit_model();
-            }
-
+            self.draw_hyperparameters(ui);
             ui.separator();
-            ui.label(format!("Epoch: {}", self.epoch));
-            if let Some(last_loss) = self.loss_history.last() {
-                ui.label(format!("Loss: {:.4}", last_loss[1]));
-            }
-            if let Some(last_acc) = self.accuracy_history.last() {
-                ui.label(format!("Accuracy: {:.1}%", last_acc[1] * 100.0));
-            }
+            self.draw_runtime_metrics(ui);
         });
     }
 
-    fn draw_plots(&self, parent_ui: &mut egui::Ui) {
-        egui::CentralPanel::default().show_inside(parent_ui, |ui| {
-            ui.columns(2, |columns| {
-                columns[0].heading("Loss History");
-                Plot::new("loss_plot")
-                    .height(200.0)
-                    .show(&mut columns[0], |plot_ui| {
-                        plot_ui.line(Line::new("Loss", self.loss_history.clone()));
-                    });
-
-                let palette = crate::app::SemanticPalette::from_visuals(columns[1].visuals());
-                columns[1].heading("Accuracy History");
-                Plot::new("accuracy_plot")
-                    .height(200.0)
-                    .show(&mut columns[1], |plot_ui| {
-                        plot_ui.line(
-                            Line::new("Accuracy", self.accuracy_history.clone())
-                                .color(palette.success),
-                        );
-                    });
+    fn draw_hyperparameters(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Hyperparameters");
+        if ui
+            .add(
+                egui::Slider::new(&mut self.learning_rate, 0.001..=0.5)
+                    .logarithmic(true)
+                    .text("Learning Rate"),
+            )
+            .changed()
+        {
+            self.rebuild_optimizer();
+        }
+        if ui
+            .add(egui::Slider::new(&mut self.hidden_dim, 2..=64).text("Hidden Neurons"))
+            .changed()
+        {
+            self.reinit_model();
+        }
+        let prev_opt = self.optimizer_choice;
+        egui::ComboBox::from_label("Optimizer")
+            .selected_text(self.optimizer_choice.label())
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut self.optimizer_choice, OptimizerChoice::Sgd, "SGD");
+                ui.selectable_value(&mut self.optimizer_choice, OptimizerChoice::Adam, "Adam");
             });
-
-            ui.separator();
-
-            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-            ui.heading("Decision Boundary Visualization");
-            Plot::new("data_plot").data_aspect(1.0).show(ui, |plot_ui| {
-                let mut class_0_points = Vec::new();
-                let mut class_1_points = Vec::new();
-
-                for (x, y) in &self.data {
-                    let point = [x[0], x[1]];
-                    if y[0] > 0.5 {
-                        class_0_points.push(point);
-                    } else {
-                        class_1_points.push(point);
-                    }
-                }
-
-                plot_ui.points(
-                    Points::new("Class 0", class_0_points)
-                        .color(palette.axis_x)
-                        .radius(4.0_f32),
-                );
-                plot_ui.points(
-                    Points::new("Class 1", class_1_points)
-                        .color(palette.axis_z)
-                        .radius(4.0_f32),
+        if self.optimizer_choice != prev_opt {
+            self.rebuild_optimizer();
+        }
+        let prev_init = self.weight_init;
+        egui::ComboBox::from_label("Weight Init")
+            .selected_text(self.weight_init.label())
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut self.weight_init, WeightInitChoice::HeRelu, "He (ReLU)");
+                ui.selectable_value(
+                    &mut self.weight_init,
+                    WeightInitChoice::XavierGlorot,
+                    "Xavier / Glorot",
                 );
             });
+        if self.weight_init != prev_init {
+            self.reinit_model();
+        }
+    }
+
+    fn draw_runtime_metrics(&self, ui: &mut egui::Ui) {
+        let palette = SemanticPalette::from_visuals(ui.visuals());
+        ui.strong("RUNTIME METRICS");
+        egui::Frame::group(ui.style()).show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            ui.label(format!("Epoch: {}", self.epoch));
+            if let Some(last_loss) = self.loss_history.last() {
+                ui.colored_label(palette.info, format!("Loss: {:.4}", last_loss[1]));
+            } else {
+                ui.colored_label(palette.muted_text, "Loss: —");
+            }
+            if let Some(last_acc) = self.accuracy_history.last() {
+                ui.colored_label(
+                    palette.success,
+                    format!("Accuracy: {:.1}%", last_acc[1] * 100.0),
+                );
+            } else {
+                ui.colored_label(palette.muted_text, "Accuracy: —");
+            }
+            ui.monospace(format!("Grad Norm: {:.4}", self.last_grad_norm));
         });
     }
 }
@@ -205,6 +306,10 @@ impl TrainingMonitorTool {
 struct TrainingMonitorState {
     learning_rate: f64,
     hidden_dim: usize,
+    #[serde(default)]
+    optimizer: OptimizerChoice,
+    #[serde(default)]
+    weight_init: WeightInitChoice,
     #[serde(default)]
     is_training: bool,
 }
@@ -224,6 +329,8 @@ impl InteractiveTool for TrainingMonitorTool {
         serde_json::to_string(&TrainingMonitorState {
             learning_rate: self.learning_rate,
             hidden_dim: self.hidden_dim,
+            optimizer: self.optimizer_choice,
+            weight_init: self.weight_init,
             is_training: self.is_training,
         })
         .ok()
@@ -233,13 +340,15 @@ impl InteractiveTool for TrainingMonitorTool {
         let parsed: TrainingMonitorState = serde_json::from_str(state)
             .map_err(|e| format!("Invalid training monitor state: {e}"))?;
         if !parsed.learning_rate.is_finite()
-            || !(0.001..=0.1).contains(&parsed.learning_rate)
+            || !(0.001..=0.5).contains(&parsed.learning_rate)
             || !(2..=64).contains(&parsed.hidden_dim)
         {
             return Err("Training monitor learning_rate or hidden_dim out of bounds".into());
         }
         self.learning_rate = parsed.learning_rate;
         self.hidden_dim = parsed.hidden_dim;
+        self.optimizer_choice = parsed.optimizer;
+        self.weight_init = parsed.weight_init;
         self.reinit_model();
         self.is_training = parsed.is_training;
         Ok(())
@@ -312,71 +421,21 @@ inventory::submit! {
 impl scientific_metadata::theory::TheoryDescribable for TrainingMonitorTool {
     fn theory_description(&self) -> String {
         format!(
-            "Neural network training dynamics for a two-layer MLP with hidden dimension {} and learning rate $\\alpha = {:.4}$: gradient descent update $\\theta_{{t+1}} = \\theta_t - \\alpha \\nabla L(\\theta_t)$ tracking empirical risk minimization.",
-            self.hidden_dim, self.learning_rate
+            "Neural network training dynamics for a two-layer MLP with hidden dimension {}, {} initialization, and {} optimizer ($\\alpha = {:.4}$): empirical risk minimization with live $p(y=0 \\mid x) = 0.50$ decision-boundary contour.",
+            self.hidden_dim,
+            self.weight_init.label(),
+            self.optimizer_choice.label(),
+            self.learning_rate
         )
     }
     fn phonetic_description(&self) -> String {
         "Neural network training monitor and optimization theory".into()
     }
     fn theory_citation(&self) -> String {
-        "Adam: A Method for Stochastic Optimization (Kingma & Ba, 2014); Deep Learning (Goodfellow et al., 2016)".into()
+        "Adam: A Method for Stochastic Optimization (Kingma & Ba, 2014); Delving Deep into Rectifiers (He et al., 2015); Deep Learning (Goodfellow et al., 2016)".into()
     }
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_training_monitor_reset_and_step_once() {
-        let mut tool = TrainingMonitorTool {
-            learning_rate: 0.05,
-            hidden_dim: 32,
-            epoch: 10,
-            is_training: true,
-            ..Default::default()
-        };
-        tool.loss_history.push([1.0, 0.5]);
-        tool.accuracy_history.push([1.0, 0.8]);
-
-        tool.reset();
-
-        assert_eq!(tool.learning_rate, 0.05);
-        assert_eq!(tool.hidden_dim, 32);
-        assert_eq!(tool.epoch, 0);
-        assert!(!tool.is_training);
-        assert!(tool.loss_history.is_empty());
-        assert!(tool.accuracy_history.is_empty());
-
-        tool.step_once();
-        assert!(!tool.is_training);
-        assert_eq!(tool.epoch, 1);
-        assert_eq!(tool.loss_history.len(), 1);
-    }
-
-    #[test]
-    fn test_training_monitor_learning_rate_reinit_applies_immediately() {
-        let mut slow = TrainingMonitorTool {
-            learning_rate: 0.001,
-            ..Default::default()
-        };
-        slow.reinit_model();
-        slow.step_once();
-        slow.step_once();
-
-        let mut fast = TrainingMonitorTool {
-            learning_rate: 0.08,
-            ..Default::default()
-        };
-        fast.reinit_model();
-        fast.step_once();
-        fast.step_once();
-
-        assert_ne!(slow.loss_history[1][1], fast.loss_history[1][1]);
     }
 }
 
@@ -390,6 +449,8 @@ const STARTER_PRESET_JSON: &str = r#"{
   "config": {
     "learning_rate": 0.02,
     "hidden_dim": 32,
+    "optimizer": "Adam",
+    "weight_init": "HeRelu",
     "is_training": false
   }
 }"#;
@@ -398,7 +459,7 @@ inventory::submit! {
     crate::starter_gallery::StarterPresetMetadata {
         id: "training_monitor_starter",
         title: "Training Monitor",
-        description: "Two-layer MLP spiral classification training monitor tracking live loss and accuracy curves.",
+        description: "Two-layer MLP spiral classification training monitor tracking live loss, accuracy, and decision-boundary contours.",
         category: "Deep Learning",
         icon: "📈",
         domain: "ai",

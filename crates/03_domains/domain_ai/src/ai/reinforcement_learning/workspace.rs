@@ -56,6 +56,10 @@ pub struct DenseRlWorkspace {
     pub ep_actions: Vec<usize>,
     /// Pre-allocated episode reward trajectory buffer.
     pub ep_rewards: Vec<f64>,
+    /// Pre-allocated per-state policy-gradient accumulation scratch buffer for batch episodic REINFORCE.
+    pub(crate) pg_delta_buf: Vec<[f64; 4]>,
+    /// Pre-allocated per-state critic accumulation scratch buffer for batch episodic REINFORCE.
+    pub(crate) critic_delta_buf: Vec<f64>,
     /// Maximum steps per episode before automatic episode truncation (`>= 4`).
     pub max_episode_steps: usize,
     /// Current agent grid coordinate.
@@ -98,6 +102,8 @@ impl DenseRlWorkspace {
             ep_states: Vec::with_capacity(cap),
             ep_actions: Vec::with_capacity(cap),
             ep_rewards: Vec::with_capacity(cap),
+            pg_delta_buf: vec![[0.0; 4]; count],
+            critic_delta_buf: vec![0.0; count],
             max_episode_steps: cap,
             current_state: GridState { x: 0, y: 0 },
             episode_steps: 0,
@@ -115,6 +121,8 @@ impl DenseRlWorkspace {
         self.ep_states.clear();
         self.ep_actions.clear();
         self.ep_rewards.clear();
+        self.pg_delta_buf.fill([0.0; 4]);
+        self.critic_delta_buf.fill(0.0);
         self.current_state = start;
         self.episode_steps = 0;
         self.episode_return = 0.0;

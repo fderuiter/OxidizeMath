@@ -2,19 +2,93 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{q_value_cell_color, HeatmapView, QTableInspectorTool};
+use super::{HeatmapView, QTableInspectorTool};
 use crate::accessibility::{register_canvas_accessibility, AccessibleHoverText};
 use crate::app::{contrasting_text_color, SemanticPalette};
 use crate::async_sim::ui::render_empty_plot_guidance;
 use crate::framework::{BrushMode, InteractionContext, InteractiveTool};
-use crate::tabs::ai::rl_sculpt::{paint_policy_arrow, role_base_fill, role_glyph};
+use crate::tabs::ai::rl_sculpt::{paint_policy_arrow, role_base_fill, role_glyph, RlSolverMode};
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::ai::reinforcement_learning::{
-    GridCellRole, GridState, MarkovDecisionProcess, Move,
+    move_to_index, GridCellRole, GridState, MarkovDecisionProcess, Move,
 };
 
+fn lerp_q_channel(a: u8, b: u8, t: f64) -> u8 {
+    (f64::from(a) + (f64::from(b) - f64::from(a)) * t.clamp(0.0, 1.0)).round() as u8
+}
+
+pub(crate) fn q_value_cell_color(normalized: f64, palette: &SemanticPalette) -> egui::Color32 {
+    let low = palette.axis_z;
+    let high = palette.accent;
+    egui::Color32::from_rgb(
+        lerp_q_channel(low.r(), high.r(), normalized),
+        lerp_q_channel(low.g(), high.g(), normalized),
+        lerp_q_channel(low.b(), high.b(), normalized),
+    )
+}
+
 impl QTableInspectorTool {
+    pub(super) fn get_q(&self, state: &GridState, action: &Move) -> f64 {
+        if !self.mdp.in_bounds(*state) {
+            return 0.0;
+        }
+        match self.solver_mode {
+            RlSolverMode::TabularQ => {
+                let idx =
+                    flatten_2d_index(state.x as usize, state.y as usize, self.mdp.width as usize);
+                self.latest_snap
+                    .q_table
+                    .get(idx)
+                    .map_or(0.0, |row| row[move_to_index(*action)])
+            }
+            RlSolverMode::PolicyGradient => {
+                self.latest_snap.bellman.q_pi_at(&self.mdp, *state, *action)
+            }
+        }
+    }
+
+    pub(super) fn get_q_value_for_view(&self, state: &GridState) -> f64 {
+        if !self.mdp.in_bounds(*state) {
+            return 0.0;
+        }
+        let idx = flatten_2d_index(state.x as usize, state.y as usize, self.mdp.width as usize);
+        match self.view {
+            HeatmapView::MaxQ => match self.solver_mode {
+                RlSolverMode::TabularQ => self.latest_snap.q_table.get(idx).map_or(0.0, |row| {
+                    row.iter().copied().fold(0.0_f64.min(row[0]), f64::max)
+                }),
+                RlSolverMode::PolicyGradient => self
+                    .latest_snap
+                    .state_values
+                    .get(idx)
+                    .copied()
+                    .unwrap_or(0.0),
+            },
+            HeatmapView::Up => self.get_q(state, &Move::Up),
+            HeatmapView::Down => self.get_q(state, &Move::Down),
+            HeatmapView::Left => self.get_q(state, &Move::Left),
+            HeatmapView::Right => self.get_q(state, &Move::Right),
+            HeatmapView::BellmanVStar => self.latest_snap.bellman.v_star_at(*state),
+            HeatmapView::PolicyVPi => self.latest_snap.bellman.v_pi_at(*state),
+            HeatmapView::BellmanResidual => {
+                let emp = match self.solver_mode {
+                    RlSolverMode::TabularQ => self
+                        .latest_snap
+                        .q_table
+                        .get(idx)
+                        .map_or(0.0, |row| row.iter().copied().fold(row[0], f64::max)),
+                    RlSolverMode::PolicyGradient => self
+                        .latest_snap
+                        .state_values
+                        .get(idx)
+                        .copied()
+                        .unwrap_or(0.0),
+                };
+                (emp - self.latest_snap.bellman.v_star_at(*state)).abs()
+            }
+        }
+    }
     pub(super) fn draw_view_and_legend(&mut self, ui: &mut egui::Ui, legend_size: f32) {
         ui.separator();
         ui.heading("Heatmap View");

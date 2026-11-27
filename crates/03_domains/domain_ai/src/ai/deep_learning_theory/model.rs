@@ -35,12 +35,27 @@ pub struct TwoLayerMLP {
 }
 
 impl TwoLayerMLP {
-    /// Constructs a two-layer MLP initialized from the default uniform random generator.
+    /// Constructs a two-layer MLP initialized on distinct `OxidizeRng` streams with He et al. (2015) scaling.
     #[verified_engine::verified]
     pub fn new(input_dim: usize, hidden_dim: usize, output_dim: usize) -> Self {
+        let base_rng = oxidize_core::rng::OxidizeRng::default();
+        let mut rng1 = base_rng.split_stream(0);
+        let mut rng2 = base_rng.split_stream(1);
         Self {
-            layer1: DenseLayer::new(input_dim, hidden_dim),
-            layer2: DenseLayer::new(hidden_dim, output_dim),
+            layer1: DenseLayer::new_with_rng(input_dim, hidden_dim, &mut rng1),
+            layer2: DenseLayer::new_with_rng(hidden_dim, output_dim, &mut rng2),
+        }
+    }
+
+    /// Constructs a two-layer MLP initialized on distinct `OxidizeRng` streams with Xavier/Glorot scaling.
+    #[verified_engine::verified]
+    pub fn new_xavier(input_dim: usize, hidden_dim: usize, output_dim: usize) -> Self {
+        let base_rng = oxidize_core::rng::OxidizeRng::default();
+        let mut rng1 = base_rng.split_stream(0);
+        let mut rng2 = base_rng.split_stream(1);
+        Self {
+            layer1: DenseLayer::new_with_xavier_rng(input_dim, hidden_dim, &mut rng1),
+            layer2: DenseLayer::new_with_xavier_rng(hidden_dim, output_dim, &mut rng2),
         }
     }
 

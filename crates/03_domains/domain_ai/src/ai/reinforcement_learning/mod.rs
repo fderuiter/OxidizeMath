@@ -100,8 +100,9 @@ pub mod workspace;
 
 // Re-exports for ease of use
 pub use algorithms::{
-    QLearningAgent, RlStepOutcome, TabularQAgent, compute_softmax_pg_delta, softmax_action_probs,
-    step_softmax_pg_into, step_tabular_q_into,
+    QLearningAgent, RlStepOutcome, TabularQAgent, compute_softmax_pg_delta,
+    flush_reinforce_episode_in_place, softmax_action_probs, step_softmax_pg_into,
+    step_tabular_q_into,
 };
 pub use bellman_solver::{BellmanSolution, TabularGridPolicy};
 pub use maze::{

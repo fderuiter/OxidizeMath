@@ -12,13 +12,30 @@ use super::maze::{
 use super::types::{MarkovDecisionProcess, Policy};
 use super::{GridState, Move};
 use math_commons::math_kernel::types::flatten_2d_index;
+use oxidize_core::rng::OxidizeRng;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Maximum safety sweep ceiling for large high-$\gamma$ grids (`20x20`, $\gamma \le 0.999$).
+pub const MAX_BELLMAN_SWEEPS: usize = 20_000;
 
 /// Dense 4-action stochastic policy $\pi(a \mid s)$ over a 2D [`SculptedGridMdp`].
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct TabularGridPolicy {
     width: usize,
     height: usize,
     probs: Vec<[f64; 4]>,
+    sample_seq: AtomicUsize,
+}
+
+impl Clone for TabularGridPolicy {
+    fn clone(&self) -> Self {
+        Self {
+            width: self.width,
+            height: self.height,
+            probs: self.probs.clone(),
+            sample_seq: AtomicUsize::new(self.sample_seq.load(Ordering::Relaxed)),
+        }
+    }
 }
 
 impl TabularGridPolicy {
@@ -29,6 +46,7 @@ impl TabularGridPolicy {
             width,
             height,
             probs: vec![[0.25; 4]; width * height],
+            sample_seq: AtomicUsize::new(0),
         }
     }
 
@@ -60,6 +78,7 @@ impl TabularGridPolicy {
             width,
             height,
             probs,
+            sample_seq: AtomicUsize::new(0),
         }
     }
 
@@ -75,6 +94,7 @@ impl TabularGridPolicy {
             width,
             height,
             probs,
+            sample_seq: AtomicUsize::new(0),
         }
     }
 
@@ -91,6 +111,34 @@ impl TabularGridPolicy {
         }
         self.probs[flatten_2d_index(state.x as usize, state.y as usize, self.width)]
     }
+
+    /// Samples an action from $\pi(\cdot \mid s)$ using a caller-provided [`OxidizeRng`].
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn sample_with_rng(&self, state: &GridState, rng: &mut OxidizeRng) -> Move {
+        let dist = self.action_probabilities(*state);
+        let total: f64 = dist
+            .iter()
+            .copied()
+            .filter(|p| p.is_finite() && *p > 0.0)
+            .sum();
+        if total <= 0.0 {
+            return ALL_MOVES[rng.bounded_usize(4)];
+        }
+        let u = rng.uniform_closed_open::<f64>() * total;
+        let mut cdf = 0.0_f64;
+        let mut last_pos = 0usize;
+        for (idx, &p) in dist.iter().enumerate() {
+            if p.is_finite() && p > 0.0 {
+                last_pos = idx;
+                cdf += p;
+                if u < cdf {
+                    return index_to_move(idx);
+                }
+            }
+        }
+        index_to_move(last_pos)
+    }
 }
 
 impl Policy<GridState, Move> for TabularGridPolicy {
@@ -101,14 +149,11 @@ impl Policy<GridState, Move> for TabularGridPolicy {
 
     #[verified_engine::verified]
     fn sample(&self, state: &GridState) -> Move {
-        let dist = self.action_probabilities(*state);
-        let mut best_idx = 0usize;
-        for idx in 1..4 {
-            if dist[idx] > dist[best_idx] {
-                best_idx = idx;
-            }
-        }
-        index_to_move(best_idx)
+        let seq = self.sample_seq.fetch_add(1, Ordering::Relaxed) as u64;
+        let state_stream = (u64::from(state.x as u32) << 32) | u64::from(state.y as u32);
+        let mut rng = OxidizeRng::default().with_stream(state_stream);
+        rng.set_word_pos(u128::from(seq) * 4);
+        self.sample_with_rng(state, &mut rng)
     }
 }
 
@@ -134,8 +179,28 @@ pub struct BellmanSolution {
 }
 
 impl BellmanSolution {
-    /// Solves $V^*(s)$ and $Q^*(s, a)$ via value iteration calling [`bellman_optimality_value`]
-    /// and [`action_value_bellman_equation`], plus uniform baseline $V_\pi(s)$ via [`state_value_bellman_equation`].
+    /// Computes a contraction-scaled sweep budget $\lceil \ln(\text{tol}) / \ln(\gamma) \rceil + 2(W + H)$
+    /// bounded within `[250, MAX_BELLMAN_SWEEPS]` for large high-$\gamma$ grids.
+    #[must_use]
+    pub fn recommended_sweeps(mdp: &SculptedGridMdp, tolerance: f64) -> usize {
+        let gamma = mdp.gamma.clamp(0.0, 0.9999);
+        let tol = tolerance.clamp(1e-12, 1e-1);
+        let diam = (mdp.width as usize)
+            .saturating_add(mdp.height as usize)
+            .max(4);
+        let contraction_horizon = if gamma <= 1e-6 {
+            diam * 2
+        } else {
+            (tol.ln() / gamma.ln()).ceil().max(1.0) as usize
+        };
+        contraction_horizon
+            .saturating_add(diam * 2)
+            .clamp(250, MAX_BELLMAN_SWEEPS)
+    }
+
+    /// Solves $V^*(s)$ and $Q^*(s, a)$ via symmetric Gauss-Seidel value iteration calling
+    /// [`bellman_optimality_value`] and [`action_value_bellman_equation`], plus uniform baseline
+    /// $V_\pi(s)$ via [`state_value_bellman_equation`].
     #[must_use]
     #[verified_engine::verified]
     pub fn solve(mdp: &SculptedGridMdp, tolerance: f64, max_sweeps: usize) -> Self {
@@ -143,24 +208,26 @@ impl BellmanSolution {
         let h = mdp.height as usize;
         let count = w * h;
         let tol = tolerance.max(1e-12);
-        let cap_sweeps = max_sweeps.clamp(1, 1_000);
+        let cap_sweeps = max_sweeps.clamp(1, MAX_BELLMAN_SWEEPS);
 
         let mut v_curr = vec![0.0_f64; count];
-        let mut v_next = vec![0.0_f64; count];
         let mut sweeps = 0usize;
         let mut max_delta = 0.0_f64;
 
         for sweep in 0..cap_sweeps {
             max_delta = 0.0;
-            for y in 0..h {
-                for x in 0..w {
+            let reverse = sweep % 2 == 1;
+            for step_y in 0..h {
+                let y = if reverse { h - 1 - step_y } else { step_y };
+                for step_x in 0..w {
+                    let x = if reverse { w - 1 - step_x } else { step_x };
                     let st = GridState {
                         x: x as i32,
                         y: y as i32,
                     };
                     let idx = flatten_2d_index(x, y, w);
                     if mdp.is_terminal(&st) || mdp.cell_role(st) == GridCellRole::SolidWall {
-                        v_next[idx] = 0.0;
+                        v_curr[idx] = 0.0;
                         continue;
                     }
                     let (reach, len) = mdp.reachable_next_states(st);
@@ -168,10 +235,9 @@ impl BellmanSolution {
                         v_curr[flatten_2d_index(ns.x as usize, ns.y as usize, w)]
                     });
                     max_delta = max_delta.max((updated - v_curr[idx]).abs());
-                    v_next[idx] = updated;
+                    v_curr[idx] = updated;
                 }
             }
-            std::mem::swap(&mut v_curr, &mut v_next);
             sweeps = sweep + 1;
             if max_delta <= tol {
                 break;
@@ -190,11 +256,11 @@ impl BellmanSolution {
             max_delta,
         };
         let uniform = TabularGridPolicy::uniform(w, h);
-        sol.evaluate_policy(mdp, &uniform, tol, cap_sweeps.min(150));
+        sol.evaluate_policy(mdp, &uniform, tol, cap_sweeps);
         sol
     }
 
-    /// Evaluates $V_\pi(s)$ in place for `policy` by iterating [`state_value_bellman_equation`].
+    /// Evaluates $V_\pi(s)$ in place for `policy` via symmetric Gauss-Seidel sweeps of [`state_value_bellman_equation`].
     #[verified_engine::verified]
     pub fn evaluate_policy(
         &mut self,
@@ -210,21 +276,23 @@ impl BellmanSolution {
             self.v_pi.resize(count, 0.0);
         }
         self.v_pi.fill(0.0);
-        let mut next = vec![0.0_f64; count];
         let tol = tolerance.max(1e-12);
-        let cap_sweeps = max_sweeps.clamp(1, 1_000);
+        let cap_sweeps = max_sweeps.clamp(1, MAX_BELLMAN_SWEEPS);
 
-        for _ in 0..cap_sweeps {
+        for sweep in 0..cap_sweeps {
             let mut max_delta = 0.0_f64;
-            for y in 0..h {
-                for x in 0..w {
+            let reverse = sweep % 2 == 1;
+            for step_y in 0..h {
+                let y = if reverse { h - 1 - step_y } else { step_y };
+                for step_x in 0..w {
+                    let x = if reverse { w - 1 - step_x } else { step_x };
                     let st = GridState {
                         x: x as i32,
                         y: y as i32,
                     };
                     let idx = flatten_2d_index(x, y, w);
                     if mdp.is_terminal(&st) || mdp.cell_role(st) == GridCellRole::SolidWall {
-                        next[idx] = 0.0;
+                        self.v_pi[idx] = 0.0;
                         continue;
                     }
                     let (reach, len) = mdp.reachable_next_states(st);
@@ -232,14 +300,29 @@ impl BellmanSolution {
                         self.v_pi[flatten_2d_index(ns.x as usize, ns.y as usize, w)]
                     });
                     max_delta = max_delta.max((val - self.v_pi[idx]).abs());
-                    next[idx] = val;
+                    self.v_pi[idx] = val;
                 }
             }
-            self.v_pi.copy_from_slice(&next);
             if max_delta <= tol {
                 break;
             }
         }
+    }
+
+    /// Evaluates $Q_\pi(s, a) = \sum_{s'} P(s' \mid s, a)[R(s, a, s') + \gamma V_\pi(s')]$ from `v_pi`.
+    #[must_use]
+    pub fn q_pi_at(&self, mdp: &SculptedGridMdp, state: GridState, action: Move) -> f64 {
+        if state.x < 0
+            || state.y < 0
+            || (state.x as usize) >= self.width
+            || (state.y as usize) >= self.height
+            || mdp.is_terminal(&state)
+            || mdp.cell_role(state) == GridCellRole::SolidWall
+        {
+            return 0.0;
+        }
+        let (reach, len) = mdp.reachable_next_states(state);
+        action_value_bellman_equation(mdp, &state, &action, &reach[..len], |ns| self.v_pi_at(*ns))
     }
 
     /// Reads $V^*(s)$ at `state`.

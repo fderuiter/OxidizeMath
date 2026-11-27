@@ -24,5 +24,5 @@ let mut sgd = SGD::new(0.1_f64);
 let mut params = DVector::from_vec(vec![2.0_f64, -1.0_f64]);
 let grads = DVector::from_vec(vec![0.5_f64, -0.25_f64]);
 sgd.update_vector(0_u64, &mut params, &grads).unwrap();
-assert!((params[0] - 1.995).abs() < 1e-12);
+assert!((params[0] - 1.95).abs() < 1e-12);
 ```

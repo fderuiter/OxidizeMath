@@ -84,16 +84,16 @@ fn test_initialized_adam_and_sgd_updates_zero_heap_allocations() {
     assert!(adam_mat[(0, 0)] < 1.0 && adam_vec[0] > -0.5);
     assert!(evo_adam_mat[(0, 0)] < 0.75 && evo_adam_vec[0] < 0.4);
 
-    // Verify SGD::update_matrix and SGD::update_vector preserve the exact 0.01 step rate:
-    // 16 steps * 0.01 * grad.
+    // Verify SGD::update_matrix and SGD::update_vector apply the configured 0.25 step rate:
+    // 16 steps * 0.25 * grad.
     assert_relative_eq!(
         sgd_mat[(0, 0)],
-        2.0 - 16.0 * 0.01 * 0.5,
+        2.0 - 16.0 * 0.25 * 0.5,
         epsilon = math_commons::registry::TOLERANCE_FAST
     );
     assert_relative_eq!(
         sgd_vec[0],
-        1.5 - 16.0 * 0.01 * 0.4,
+        1.5 - 16.0 * 0.25 * 0.4,
         epsilon = math_commons::registry::TOLERANCE_FAST
     );
     assert_relative_eq!(

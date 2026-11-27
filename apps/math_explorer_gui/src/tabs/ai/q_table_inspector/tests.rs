@@ -3,7 +3,7 @@
 use super::*;
 use crate::framework::{BrushMode, BrushStroke};
 use crate::url_state::MAX_DECODED_URL_STATE_BYTES;
-use math_explorer::ai::reinforcement_learning::GridCellRole;
+use math_explorer::ai::reinforcement_learning::{GridCellRole, GridState};
 
 #[test]
 fn test_q_table_inspector_initial_state() {
@@ -80,4 +80,62 @@ fn test_q_table_inspector_sculpt_sync_and_rle_roundtrip() {
         .expect("restore QTableInspectorState");
     assert_eq!(restored.mdp, tool.mdp);
     assert_eq!(restored.view, HeatmapView::BellmanVStar);
+}
+
+#[test]
+fn test_q_table_inspector_policy_gradient_20x20_preserves_v_pi_across_sculpting() {
+    let mut mdp = SculptedGridMdp::default_with_traps(20, 20, 0.95);
+    mdp.wind_slip_prob = 0.1;
+    let runner = SculptedQTableRunner::from_mdp(mdp.clone(), RlSolverMode::PolicyGradient);
+    let latest_snap = runner.build_q_snapshot();
+    let mut tool = QTableInspectorTool {
+        mdp,
+        solver_mode: RlSolverMode::PolicyGradient,
+        view: HeatmapView::PolicyVPi,
+        latest_snap,
+        worker: BackgroundWorker::new(runner),
+        ..Default::default()
+    };
+
+    tool.train(30);
+    assert!(
+        tool.latest_snap
+            .theta_logits
+            .iter()
+            .any(|row| row.iter().any(|&v| v.abs() > 1e-6)),
+        "Expected trained PolicyGradient logits to be non-zero"
+    );
+    let pre_sculpt_logits = tool.latest_snap.theta_logits.clone();
+
+    let stroke = BrushStroke {
+        start: [10.5, 10.5],
+        end: [10.5, 6.5],
+        radius: 0.5,
+        mode: BrushMode::Solid,
+        drag_vector: [0.0, -4.0],
+    };
+    let _ = apply_rl_brush_stroke(&mut tool.mdp, &stroke);
+    tool.sync_sculpt_to_worker();
+
+    for y in 0..20 {
+        for x in 0..20 {
+            let idx = (y * 20 + x) as usize;
+            let st = GridState { x, y };
+            if tool.mdp.cell_role(st) == GridCellRole::SolidWall {
+                assert_eq!(tool.latest_snap.theta_logits[idx], [0.0; 4]);
+            } else {
+                assert_eq!(
+                    tool.latest_snap.theta_logits[idx], pre_sculpt_logits[idx],
+                    "Sculpting a 20x20 grid must preserve learned PolicyGradient theta_logits at {st:?}"
+                );
+            }
+        }
+    }
+    let near_goal = tool.get_q_value_for_view(&GridState { x: 18, y: 19 });
+    let start_val = tool.get_q_value_for_view(&GridState { x: 0, y: 0 });
+    assert!(near_goal.is_finite() && start_val.is_finite());
+    assert!(
+        (near_goal - start_val).abs() > 1e-4,
+        "Expected non-degenerate V_pi values across 20x20 grid after sculpting, got start={start_val}, near_goal={near_goal}"
+    );
 }

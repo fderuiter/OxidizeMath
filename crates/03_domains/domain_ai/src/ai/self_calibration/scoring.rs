@@ -12,6 +12,19 @@ use std::collections::HashMap;
 /// A vector of scores corresponding to each response.
 #[verified_engine::verified]
 pub fn calculate_soft_self_consistency_scores(responses: &[Response]) -> Vec<f64> {
+    if responses.is_empty() {
+        return Vec::new();
+    }
+    if responses
+        .iter()
+        .any(|r| !r.probability.is_finite() || r.probability < 0.0)
+    {
+        return vec![0.0; responses.len()];
+    }
+    let total_prob: f64 = responses.iter().map(|r| r.probability).sum();
+    if !total_prob.is_finite() || total_prob <= 0.0 {
+        return vec![0.0; responses.len()];
+    }
     let mut answer_probabilities: HashMap<&Answer, f64> = HashMap::new();
     for response in responses {
         *answer_probabilities.entry(&response.answer).or_insert(0.0) += response.probability;
@@ -19,10 +32,11 @@ pub fn calculate_soft_self_consistency_scores(responses: &[Response]) -> Vec<f64
     responses
         .iter()
         .map(|response| {
-            answer_probabilities
+            let cluster_sum = answer_probabilities
                 .get(&response.answer)
-                .cloned()
-                .unwrap_or(0.0)
+                .copied()
+                .unwrap_or(0.0);
+            (cluster_sum / total_prob).clamp(0.0, 1.0)
         })
         .collect()
 }
@@ -62,5 +76,21 @@ mod tests {
         for (score, expected) in scores.iter().zip(expected_scores.iter()) {
             assert!((score - expected).abs() < math_commons::registry::TOLERANCE_STANDARD);
         }
+
+        // Duplicate unnormalized answer clusters must be normalized and bounded to [0.0, 1.0].
+        let duplicate_cluster = vec![
+            Response {
+                text: "chain 1".to_string(),
+                probability: 0.85,
+                answer: "42".to_string(),
+            },
+            Response {
+                text: "chain 2".to_string(),
+                probability: 0.90,
+                answer: "42".to_string(),
+            },
+        ];
+        let dup_scores = calculate_soft_self_consistency_scores(&duplicate_cluster);
+        assert_eq!(dup_scores, vec![1.0, 1.0]);
     }
 }

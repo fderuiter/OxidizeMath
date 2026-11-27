@@ -58,19 +58,43 @@ impl DenseLayer {
         Self::new_with_rng(input_dim, output_dim, &mut rng)
     }
 
-    /// Creates a new dense layer with random initialization using the provided RNG.
+    /// Creates a new dense layer initialized on ChaCha8 `stream` with He et al. (2015) scaling.
+    #[verified_engine::verified]
+    pub fn new_on_stream(input_dim: usize, output_dim: usize, stream: u64) -> Self {
+        let mut rng = oxidize_core::rng::OxidizeRng::default().with_stream(stream);
+        Self::new_with_rng(input_dim, output_dim, &mut rng)
+    }
+
+    /// Creates a new dense layer with He et al. (2015) variance scaling ($\operatorname{Var}(W) = 2 / d_{\mathrm{in}}$).
     #[verified_engine::verified]
     pub fn new_with_rng<R: rand::Rng + ?Sized>(
         input_dim: usize,
         output_dim: usize,
         rng: &mut R,
     ) -> Self {
-        // He initialization or simple uniform can be used.
-        // Using Uniform(-0.1, 0.1) for simplicity in this theory module.
-        let dist = Uniform::new(-0.1, 0.1);
+        let fan_in = input_dim.max(1) as f64;
+        let limit = (6.0 / fan_in).sqrt();
+        let dist = Uniform::new(-limit, limit);
 
         let weights = DMatrix::from_fn(output_dim, input_dim, |_, _| dist.sample(rng));
-        let bias = DVector::from_fn(output_dim, |_, _| dist.sample(rng));
+        let bias = DVector::zeros(output_dim);
+
+        Self { weights, bias }
+    }
+
+    /// Creates a new dense layer with Glorot / Xavier uniform scaling ($\operatorname{Var}(W) = 2 / (d_{\mathrm{in}} + d_{\mathrm{out}})$).
+    #[verified_engine::verified]
+    pub fn new_with_xavier_rng<R: rand::Rng + ?Sized>(
+        input_dim: usize,
+        output_dim: usize,
+        rng: &mut R,
+    ) -> Self {
+        let fan_sum = input_dim.saturating_add(output_dim).max(1) as f64;
+        let limit = (6.0 / fan_sum).sqrt();
+        let dist = Uniform::new(-limit, limit);
+
+        let weights = DMatrix::from_fn(output_dim, input_dim, |_, _| dist.sample(rng));
+        let bias = DVector::zeros(output_dim);
 
         Self { weights, bias }
     }

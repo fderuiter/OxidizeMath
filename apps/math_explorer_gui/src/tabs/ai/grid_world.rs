@@ -150,6 +150,8 @@ impl GridWorldTool {
     pub(super) fn reset_agent(&mut self) {
         self.is_playing = false;
         self.mdp.gamma = self.discount_factor.clamp(0.0, 1.0);
+        self.workspace.max_episode_steps =
+            ((self.mdp.width as usize) * (self.mdp.height as usize) * 4).max(100);
         self.workspace
             .resize_and_clear(self.mdp.width as usize, self.mdp.height as usize);
         self.workspace.reset_episode(&self.mdp);
@@ -175,7 +177,8 @@ impl GridWorldTool {
     }
 
     pub(super) fn step_agent(&mut self) {
-        if self.mdp.is_terminal(&self.current_state) {
+        let max_steps = self.workspace.max_episode_steps.max(4);
+        if self.mdp.is_terminal(&self.current_state) || (self.steps as usize) >= max_steps {
             self.reset_episode();
             return;
         }
@@ -187,6 +190,7 @@ impl GridWorldTool {
         };
 
         self.workspace.current_state = self.current_state;
+        self.workspace.episode_steps = self.steps as usize;
         let outcome = match self.solver_mode {
             RlSolverMode::TabularQ => step_tabular_q_into(&self.mdp, &mut self.workspace, lr, eps),
             RlSolverMode::PolicyGradient => {
@@ -199,9 +203,6 @@ impl GridWorldTool {
             }
         };
 
-        self.current_state = outcome.next_state;
-        self.total_reward += outcome.reward;
-        self.steps += 1;
         self.last_td_error = outcome.td_error;
         self.latest_audio = rl_td_surprise_frame(
             outcome.state_value,
@@ -209,18 +210,38 @@ impl GridWorldTool {
             outcome.reward,
             outcome.wind_pan,
         );
+
+        let next_steps = self.steps.saturating_add(1);
+        let timed_out = !self.mdp.is_terminal(&outcome.next_state)
+            && (outcome.episode_finished || (next_steps as usize) >= max_steps);
+        if timed_out {
+            self.reset_episode();
+        } else {
+            self.current_state = outcome.next_state;
+            self.total_reward += outcome.reward;
+            self.steps = next_steps;
+            self.bellman_dirty = true;
+        }
     }
 
     pub(super) fn train_batch(&mut self) {
         self.is_playing = false;
+        let max_steps = self.workspace.max_episode_steps.max(4);
         for _ in 0..100 {
-            for _ in 0..100 {
+            let ep_before = self.episodes;
+            for _ in 0..max_steps {
                 if self.mdp.is_terminal(&self.current_state) {
+                    self.reset_episode();
                     break;
                 }
                 self.step_agent();
+                if self.episodes > ep_before {
+                    break;
+                }
             }
-            self.reset_episode();
+            if self.episodes == ep_before {
+                self.reset_episode();
+            }
         }
     }
 

@@ -43,12 +43,18 @@ impl Predictor {
     /// A new `Predictor` instance.
     #[verified_engine::verified]
     pub fn new(input_size: usize, output_size: usize) -> Self {
+        let base_rng = oxidize_core::rng::OxidizeRng::default();
+        let mut rng0 = base_rng.split_stream(10);
+        let mut rng1 = base_rng.split_stream(11);
+        let mut rng2 = base_rng.split_stream(12);
+        let mut rng3 = base_rng.split_stream(13);
+        let mut rng4 = base_rng.split_stream(14);
         let layers = [
-            ConvLayer::new(input_size, 128),
-            ConvLayer::new(128, 128),
-            ConvLayer::new(128, 128),
-            ConvLayer::new(128, 128),
-            ConvLayer::new(128, output_size), // No activation on the final layer
+            ConvLayer::new_with_rng(input_size, 128, &mut rng0),
+            ConvLayer::new_with_rng(128, 128, &mut rng1),
+            ConvLayer::new_with_rng(128, 128, &mut rng2),
+            ConvLayer::new_with_rng(128, 128, &mut rng3),
+            ConvLayer::new_with_rng(128, output_size, &mut rng4), // No activation on the final layer
         ];
         Self::new_from_layers(layers)
     }
