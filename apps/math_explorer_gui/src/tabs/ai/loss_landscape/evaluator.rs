@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Unified surface evaluator combining analytical potentials, empirical regression objectives
 //! (`MSE`, `MAE`, `Huber`) over preset/formula/table targets, custom compiled `CompiledExpr`
 //! predictors, central finite-difference gradients, and sculpted Gaussian barriers/wells.
@@ -152,3 +150,5 @@ impl<'a> SurfaceEvaluator<'a> {
         grad
     }
 }
+
+// [cite:modular_polynomials_review]

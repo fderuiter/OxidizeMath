@@ -232,8 +232,9 @@ impl AstVisitor {
             self.record_module(module_name, line);
         }
 
-        let effective_opt_out = self.in_opt_out_scope || fn_has_opt_out;
-        let is_verified = scanned.is_verified && !effective_opt_out;
+        let is_verified = scanned.is_verified && !fn_has_opt_out;
+        let effective_opt_out = fn_has_opt_out || (self.in_opt_out_scope && !is_verified);
+        let child_opt_out_scope = self.in_opt_out_scope || fn_has_opt_out;
         if !fn_in_test && !effective_opt_out && !is_verified && self.first_unverified_fn.is_none() {
             self.first_unverified_fn = Some((fn_name, span_line(fn_ident.span())));
         }
@@ -245,7 +246,7 @@ impl AstVisitor {
             is_verified,
             fn_in_test,
         );
-        (effective_opt_out, fn_in_test)
+        (child_opt_out_scope, fn_in_test)
     }
 }
 

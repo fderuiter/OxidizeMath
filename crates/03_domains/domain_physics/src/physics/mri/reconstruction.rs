@@ -5,6 +5,11 @@ use num_complex::Complex;
 use rustfft::{Fft, FftDirection, FftPlanner};
 use std::sync::Arc;
 
+/// Zero-allocation masked 2D k-space Fourier reconstruction workspace and radial PSNR metrics.
+#[path = "reconstruction_kspace.rs"]
+pub mod kspace;
+pub use kspace::*;
+
 /// Pre-planned 2D Fast Fourier Transform workspace for zero-allocation MRI simulation and reconstruction.
 ///
 /// Caches forward and inverse 1D `rustfft` row and column plans alongside a reusable

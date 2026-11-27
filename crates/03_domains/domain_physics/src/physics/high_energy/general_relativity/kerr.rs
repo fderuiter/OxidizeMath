@@ -115,17 +115,50 @@ impl KerrEquatorialMetric {
     /// if the specified angular rate yields a null or spacelike worldline.
     #[verified_engine::verified]
     pub fn clock_dilation(&self, r: f64, dphi_dct: f64) -> Result<f64, HighEnergyError> {
+        self.worldline_clock_dilation(r, 0.0, dphi_dct)
+    }
+
+    /// Evaluates exact equatorial proper-to-coordinate clock dilation $d\tau / dt$ for a general
+    /// non-circular worldline with coordinate radial rate `dr_dct` ($dr / d(ct)$) and coordinate
+    /// angular rate `dphi_dct` ($\Omega = d\varphi / d(ct)$):
+    ///
+    /// $$\left(\frac{d\tau}{dt}\right)^2 = \frac{\Delta}{g_{33}}
+    ///   - g_{33}\left(\Omega - \omega(r)\right)^2
+    ///   - \frac{r^2}{\Delta}\left(\frac{dr}{d(ct)}\right)^2$$
+    ///
+    /// # Examples
+    /// ```
+    /// # use domain_physics::__doctest_facade as math_explorer;
+    /// use math_explorer::physics::high_energy::KerrEquatorialMetric;
+    ///
+    /// let kerr = KerrEquatorialMetric::new(2.0, 0.6).unwrap();
+    /// let circular = kerr.clock_dilation(6.0, 0.05).unwrap();
+    /// let infalling = kerr.worldline_clock_dilation(6.0, -0.25, 0.05).unwrap();
+    /// assert!(infalling < circular && infalling > 0.0);
+    /// ```
+    ///
+    /// # Errors
+    /// Returns [`HighEnergyError::InvalidRadius`] if $r \le r_+$ or [`HighEnergyError::InvalidVelocity`]
+    /// if the worldline is null or spacelike.
+    #[verified_engine::verified]
+    pub fn worldline_clock_dilation(
+        &self,
+        r: f64,
+        dr_dct: f64,
+        dphi_dct: f64,
+    ) -> Result<f64, HighEnergyError> {
         let omega_zamo = self.frame_dragging_omega(r)?;
-        if !dphi_dct.is_finite() {
+        if !dr_dct.is_finite() || !dphi_dct.is_finite() {
             return Err(HighEnergyError::InvalidVelocity { v: f64::NAN });
         }
         let r_ergo = self.ergosphere_radius();
         let a = self.spin_a;
         let delta = r * r - r_ergo * r + a * a;
+        let g11 = (r * r) / delta;
         let g33 = r * r + a * a + (a * a * r_ergo) / r;
         let zamo_lapse_sq = delta / g33;
         let rel_omega = dphi_dct - omega_zamo;
-        let dtau_dt_sq = zamo_lapse_sq - g33 * rel_omega * rel_omega;
+        let dtau_dt_sq = zamo_lapse_sq - g33 * rel_omega * rel_omega - g11 * dr_dct * dr_dct;
         if dtau_dt_sq <= 0.0 {
             return Err(HighEnergyError::InvalidVelocity { v: C });
         }

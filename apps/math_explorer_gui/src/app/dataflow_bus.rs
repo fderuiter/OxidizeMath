@@ -3,8 +3,6 @@
 //! Routes typed graph topologies, 3D chaotic landmark clouds, and 2D scalar fields
 //! across multi-pane viewports without holding any mutex across `ExplorerTab::show_inside`.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 #[path = "dataflow_bus_staging.rs"]
 mod staging;
 

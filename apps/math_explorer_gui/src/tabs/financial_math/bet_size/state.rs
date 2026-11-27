@@ -1,7 +1,5 @@
 //! Serializable configuration state, bounds, and odds-sync helpers for [`super::BetSizeCalculatorTool`].
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use math_explorer::error::KellyError;
 use math_explorer::pure_math::statistics::kelly::Odds;
 

@@ -286,3 +286,46 @@ fn separates_production_and_test_assertions_and_detects_legacy_fns() {
         "crates/foo/src/testing_utils.rs"
     )));
 }
+
+#[test]
+fn counts_explicit_verified_items_inside_file_opt_out_scope_including_elliptic_atlas() {
+    let synthetic = visit_src(
+        r#"
+        #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+        pub fn draw_panel() {}
+
+        #[verified_engine::verified]
+        pub fn evaluate_cell(x: f64) -> f64 {
+            fn unannotated_inner(v: f64) -> f64 { v }
+            assert!(x.is_finite());
+            unannotated_inner(x) * 2.0
+        }
+
+        #[verified(opt_out = "gui_tool")]
+        pub fn explicit_item_opt_out() {}
+        "#,
+    );
+    assert!(synthetic.opted_out);
+    assert_eq!(synthetic.total_funcs, 4);
+    assert_eq!(synthetic.verified_funcs, 1);
+    assert_eq!(synthetic.verified_prod_funcs, 1);
+    assert_eq!(synthetic.verified_asserts, 1);
+    assert_eq!(synthetic.verified_prod_asserts, 1);
+    assert_eq!(synthetic.opted_out_funcs, 3);
+    assert_eq!(synthetic.active_funcs, 1);
+    assert!(synthetic.first_unverified_fn.is_none());
+
+    let ws_root = crate::workspace::find_workspace_root().expect("workspace root");
+    let gui_dir = crate::workspace::find_package_member_path_std(&ws_root, "math_explorer_gui")
+        .expect("math_explorer_gui member path");
+    let atlas_src = std::fs::read_to_string(
+        ws_root.join(format!("{gui_dir}/src/tabs/elliptic_curves/atlas.rs")),
+    )
+    .expect("read elliptic_curves/atlas.rs");
+    let atlas_visitor = visit_src(&atlas_src);
+    assert!(atlas_visitor.opted_out);
+    assert!(atlas_visitor.verified_funcs >= 4);
+    assert!(atlas_visitor.verified_prod_funcs >= 4);
+    assert!(atlas_visitor.first_unverified_fn.is_none());
+}

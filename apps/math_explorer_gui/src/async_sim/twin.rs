@@ -1,7 +1,5 @@
 //! Lockstep counterfactual twin slice budgeting (`4ms + 4ms` inside `8ms` WASM frame cap).
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use std::time::Duration;
 
 /// Cooperative frame budget (`8ms`) per browser animation tick on `wasm32`.

@@ -1,7 +1,5 @@
 //! Born probability R/B/T integration and pre-wall scattering latch updates for [`super::WaveRunner`].
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::{
     compute_tunneling_observables_slice, TunnelingObservables, WaveRunner,
     BARRIER_TRANSIT_THRESHOLD, WALL_ARRIVAL_THRESHOLD,
@@ -79,3 +77,5 @@ impl WaveRunner {
         }
     }
 }
+
+// [cite:quantum_mechanics]

@@ -48,7 +48,7 @@ pub use pure_math::error::{
     KnotError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
     MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError, OuError,
     PoissonError, PureMathError, QueueingError, RiskError, StochasticError, Su11HyperbolicError,
-    TdaError, TensorError, TransformError, ZipError,
+    TdaError, TensorError, TransformError, WardropError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -235,6 +235,9 @@ pub enum Error {
     /// Graph theory solver or interchange error.
     #[cfg(feature = "pure_math")]
     GraphTheory(GraphTheoryError),
+    /// Wardrop congestion routing equilibrium error.
+    #[cfg(feature = "pure_math")]
+    Wardrop(WardropError),
     /// Hyperbolic geometry and geodesic billiard error.
     #[cfg(feature = "pure_math")]
     Hyperbolic(HyperbolicError),

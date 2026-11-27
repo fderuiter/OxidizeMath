@@ -6,54 +6,12 @@
 use super::atlas::{default_auction_atlas_axes, is_default_auction_atlas_axes};
 use super::MyersonAuctionTool;
 use crate::framework::TraceSnapshotManager;
+pub use math_explorer::applied::game_theory::mechanism_design::{
+    AuctionDistributionKind, AuctionRuleMode,
+};
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-/// Supported bidder valuation distributions in [`super::MyersonAuctionTool`].
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum AuctionDistributionKind {
-    /// Continuous uniform distribution $U(v_{\min}, v_{\max})$.
-    #[default]
-    Uniform,
-    /// Exponential distribution $\text{Exp}(\lambda)$ on $[0, \infty)$.
-    Exp,
-    /// Beta distribution $\text{Beta}(\alpha, \beta)$ on $[0, 1]$.
-    Beta,
-}
-
-impl AuctionDistributionKind {
-    /// Human-readable distribution label.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Uniform => "Uniform(min, max)",
-            Self::Exp => "Exponential(λ)",
-            Self::Beta => "Beta(α, β)",
-        }
-    }
-}
-
-/// Auction payment and bidding rule mode.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum AuctionRuleMode {
-    /// Second-price sealed-bid (Vickrey) auction with truthful dominant strategy $b(v) = v$.
-    #[default]
-    SecondPrice,
-    /// First-price sealed-bid auction with symmetric Bayes-Nash shading $b^*(v; r, n)$.
-    FirstPrice,
-}
-
-impl AuctionRuleMode {
-    /// Human-readable auction format label.
-    #[must_use]
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::SecondPrice => "Second-Price (Vickrey)",
-            Self::FirstPrice => "First-Price Sealed-Bid",
-        }
-    }
-}
 
 /// Active curve family rendered in the central plot of [`super::MyersonAuctionTool`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]

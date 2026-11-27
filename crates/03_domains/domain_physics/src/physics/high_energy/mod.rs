@@ -97,11 +97,22 @@ pub use math_commons::constants::{C, G, SIGMA_T, SOLAR_MASS};
 
 // Re-export SchwarzschildBlackHole, lensing deflection tables, geodesic bundle, and jet beaming helpers
 pub use general_relativity::{
-    DEFAULT_DEFLECTION_BINS, DeflectionSample, DeflectionTable, EINSTEIN_RING_IMPACT_FACTOR,
-    GeodesicKind, GeodesicTrajectoryState, KerrEquatorialMetric, LensedRayHit, LensingMetricSpec,
-    MAX_GEODESIC_TRAJECTORIES, MorrisThorneWormhole, NewtonianOrbitState, SchwarzschildBlackHole,
-    SchwarzschildGeodesicBundle, combined_clock_rate, critical_impact_parameter,
-    effective_potential, flamm_paraboloid_z, newtonian_periapsis_radius, photon_sphere_radius,
+    BundleRay, DEFAULT_DEFLECTION_BINS, DeflectionSample, DeflectionTable,
+    EINSTEIN_RING_IMPACT_FACTOR, GeodesicKind, GeodesicTrajectoryState, KerrEquatorialMetric,
+    KerrRadialOrbitParams, LensedRayHit, LensingMetricSpec, LensingRegime, MAX_BUNDLE_RAYS,
+    MAX_GEODESIC_TRAJECTORIES, MAX_TRAJECTORY_SAMPLES, MIN_REGULAR_LAPSE, MIN_REGULAR_THROAT,
+    MorrisThorneWormhole, NewtonianOrbitState, RadialAtlasSummary, SchwarzschildBlackHole,
+    SchwarzschildGeodesicBundle, TrajectorySample, WorldlineLaunchSpec, build_lapse_static_metric,
+    build_wormhole_static_metric, combined_clock_rate, compute_4d_clock_factors,
+    critical_impact_parameter, effective_potential, estimate_compiled_lapse_horizon,
+    eval_custom_lapse_lensing_cell, eval_kerr_lensing_cell, eval_wormhole_lensing_cell,
+    flamm_paraboloid_z, initial_diagonal_4d_state, initial_kerr_4d_state,
+    integrate_custom_lapse_worldline_into, integrate_custom_wormhole_worldline_into,
+    integrate_kerr_worldline_into, integrate_photon_fan_bundle_into,
+    integrate_schwarzschild_worldline_into, integrate_wormhole_worldline_into, kerr_bpt_isco,
+    kerr_prograde_critical_b, kerr_radial_acc_and_dphi, kerr_radial_rk4_step, kerr_veff,
+    newtonian_periapsis_radius, photon_sphere_radius, planar_velocity_beta, refine_halt_4d,
+    wormhole_initial_vel,
 };
 pub use observer::{
     FourVector, apparent_superluminal_beta, calculate_lorentz_factor_from_beta,

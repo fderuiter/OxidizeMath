@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Multi-physics simulation engine over [`ManifoldGeometry`] coupling:
 //! - `CotangentLaplacian`, `HeatEquationSolver`, and `laplace_beltrami`
 //! - `MeanCurvatureFlow`
@@ -411,3 +409,5 @@ impl RiemannianSimulationEngine {
             .write_overlay(cfg.overlay, &mut self.scalar_field);
     }
 }
+
+// [cite:graph_parameters_rust]

@@ -10,7 +10,7 @@ use math_commons::error::{
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::error::{
     AnalysisError, EvolutionError, LinearAlgebraError, MonteCarloError, OptimizationError,
-    PureMathError, RiskError, StochasticError, TensorError,
+    PureMathError, RiskError, StochasticError, TensorError, WardropError,
 };
 use thiserror::Error;
 
@@ -120,6 +120,13 @@ impl From<MonteCarloError> for AppliedError {
 impl From<TensorError> for AppliedError {
     #[verified_engine::verified]
     fn from(err: TensorError) -> Self {
+        Self::PureMath(PureMathError::from(err))
+    }
+}
+
+impl From<WardropError> for AppliedError {
+    #[verified_engine::verified]
+    fn from(err: WardropError) -> Self {
         Self::PureMath(PureMathError::from(err))
     }
 }

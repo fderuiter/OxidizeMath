@@ -110,6 +110,7 @@ impl_error_from!(@cfg "pure_math":
     FractranError => Fractran,
     Glicko2Error => Glicko2,
     GraphTheoryError => GraphTheory,
+    WardropError => Wardrop,
     HyperbolicError => Hyperbolic,
     KellyError => Kelly,
     KnotError => Knot,

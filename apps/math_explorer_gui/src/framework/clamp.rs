@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use scientific_metadata::theory::ParameterConstraint;
 use serde_json::{Map, Number, Value};
 use std::collections::HashMap;

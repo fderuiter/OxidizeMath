@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
@@ -76,3 +74,5 @@ inventory::submit! {
         preset_generator: || crate::starter_gallery::PRESET_MRI_SPIN_ECHO_REFOCUSING,
     }
 }
+
+// [cite:graph_parameters_rust]

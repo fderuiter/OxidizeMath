@@ -1,8 +1,6 @@
 // [cite:modular_polynomials_review]
 //! Watertight buckled 3D `.stl`, `.ply`, and `.obj` mesh builders with vertex-colored overlays.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::solver::MorphogenesisSurfaceEngine;
 use super::{SurfaceMorphogenesisTool, SurfaceOverlayMode};
 use crate::tabs::geometry_topology::export_utils::{

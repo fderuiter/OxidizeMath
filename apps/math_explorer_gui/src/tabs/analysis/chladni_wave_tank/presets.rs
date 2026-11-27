@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 // [cite:graph_parameters_rust]
 
 use math_explorer::pure_math::analysis::pde::wave_2d::{

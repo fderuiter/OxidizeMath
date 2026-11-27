@@ -1,7 +1,5 @@
 //! Synchronized explicit `RungeKutta4` comparator twin stepping and energy-drift history.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::simulation::{push_capped_ring, push_sliding_trail};
 use super::{
     GhostComparator, HamiltonianChaosLab, OrbitSlot, MAX_DRIFT_SAMPLES, MAX_GHOST_SECTION_POINTS,
@@ -156,3 +154,5 @@ impl HamiltonianChaosLab {
         }
     }
 }
+
+// [cite:algorithmic_information_rust]

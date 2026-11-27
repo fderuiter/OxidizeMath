@@ -2,8 +2,6 @@
 //! encoding, startup hydration parsing, 300 ms debounced `History::replaceState` sync,
 //! and cross-platform clipboard share-link helpers.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 mod base64url;
 mod browser;
 mod codec;
