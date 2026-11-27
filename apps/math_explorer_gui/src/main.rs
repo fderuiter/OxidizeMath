@@ -69,6 +69,8 @@ use app::MathExplorerApp;
 
 #[cfg(test)]
 pub(crate) mod test_alloc;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub(crate) mod test_rasterizer;
 
 #[cfg(test)]
 #[global_allocator]

@@ -192,7 +192,7 @@ impl scientific_metadata::theory::TheoryDescribable for FitModel {
     }
 
     fn maturity_tier(&self) -> scientific_metadata::theory::MaturityTier {
-        scientific_metadata::theory::MaturityTier::Certified
+        scientific_metadata::theory::MaturityTier::Validated
     }
 }
 

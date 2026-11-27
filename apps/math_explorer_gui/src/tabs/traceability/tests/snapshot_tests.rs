@@ -145,8 +145,14 @@ fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
     assert!(cert.tier_counts.values().all(|&c| c > 0));
     assert!(!cert.interval_bounds.is_empty());
     assert!(cert.lean4_proof_digests.len() >= 6);
+    assert!(cert.lean4_proof_bindings.len() >= 6);
+    assert!(cert
+        .lean4_proof_bindings
+        .values()
+        .all(|b| b.kernel_verified && !b.rust_modules.is_empty() && !b.theorems.is_empty()));
     assert_eq!(manifest_report.tier_counts.len(), 6);
     assert!(manifest_report.tier_counts.values().all(|&c| c > 0));
+    assert_eq!(manifest_report.lean4_proof_bindings.len(), 6);
     assert_eq!(
         web_snapshot::lean_proof_url("IntervalSoundness.lean"),
         Some(
@@ -154,4 +160,122 @@ fn test_generated_manifest_matches_live_workspace_scan_for_all_28_papers() {
                 .to_string()
         )
     );
+}
+
+fn append_shape_text(shape: &egui::epaint::Shape, dst: &mut String) {
+    match shape {
+        egui::epaint::Shape::Text(t) => {
+            dst.push_str(t.galley.text());
+            dst.push('\n');
+        }
+        egui::epaint::Shape::Vec(items) => {
+            for s in items {
+                append_shape_text(s, dst);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_certificate_panel_text(cert: &web_snapshot::VerificationCertificate) -> String {
+    let ctx = egui::Context::default();
+    let raw = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1024.0, 768.0),
+        )),
+        ..Default::default()
+    };
+    let live_bindings = std::collections::BTreeMap::new();
+    let out = ctx.run(raw, |ctx| {
+        ctx.enable_accesskit();
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+            web_snapshot::render_certificate_metrics(ui, Some(cert), &live_bindings, &palette);
+        });
+    });
+    let mut rendered = String::new();
+    for cs in &out.shapes {
+        append_shape_text(&cs.shape, &mut rendered);
+    }
+    rendered
+}
+
+#[test]
+fn test_proof_panel_renders_kernel_verified_vs_unverified_and_expandable_theorems() {
+    use oxidize_core::traceability::LeanProofBinding;
+
+    let embedded_json = include_str!(concat!(env!("OUT_DIR"), "/traceability_manifest.json"));
+    let mut cert = web_snapshot::parse_manifest_json(embedded_json)
+        .expect("valid manifest JSON")
+        .1
+        .expect("embedded certificate");
+    cert.lean4_proof_digests.clear();
+    cert.lean4_proof_bindings.clear();
+    cert.lean4_proof_digests
+        .insert("IntervalSoundness.lean".to_string(), "a".repeat(64));
+    cert.lean4_proof_digests
+        .insert("UnprovenDraft.lean".to_string(), "b".repeat(64));
+    cert.lean4_proof_bindings.insert(
+        "IntervalSoundness.lean".to_string(),
+        LeanProofBinding {
+            kernel_verified: true,
+            rust_modules: vec!["math_commons".to_string()],
+            theorems: vec![
+                "add_outward_sound".to_string(),
+                "sub_outward_sound".to_string(),
+            ],
+        },
+    );
+
+    assert!(super::proof_panel::is_proof_kernel_verified(
+        &cert,
+        "IntervalSoundness.lean"
+    ));
+    assert!(!super::proof_panel::is_proof_kernel_verified(
+        &cert,
+        "UnprovenDraft.lean"
+    ));
+
+    let rendered = collect_certificate_panel_text(&cert);
+    for expected in [
+        "[Kernel Verified]",
+        "[Unverified]",
+        "math_commons",
+        "Theorem Bindings (2)",
+        "add_outward_sound",
+        "sub_outward_sound",
+    ] {
+        assert!(rendered.contains(expected), "missing `{expected}`");
+    }
+    assert!(!rendered.contains("sorry-free"));
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn generate_traceability_proof_verification_screenshots() {
+    use crate::app::theme::ThemeMode;
+
+    let mut tab = TraceabilityTab::default();
+    let (report, cert) = web_snapshot::embedded_traceability().expect("embedded traceability");
+    tab.apply_scan_report(report);
+    tab.certificate = cert;
+    tab.has_initial_scan = true;
+    assert!(matches!(tab.state, TraceabilityScanState::Ready));
+
+    for (theme, out_path) in [
+        (
+            ThemeMode::Dark,
+            "/tmp/traceability_kernel_verified_dark.png",
+        ),
+        (
+            ThemeMode::Light,
+            "/tmp/traceability_kernel_verified_light.png",
+        ),
+    ] {
+        let mut frame = eframe::Frame::_new_kittest();
+        crate::test_rasterizer::render_ui_to_png(theme, [1280, 1080], out_path, |ui| {
+            tab.show_inside(ui, &mut frame);
+        });
+    }
 }

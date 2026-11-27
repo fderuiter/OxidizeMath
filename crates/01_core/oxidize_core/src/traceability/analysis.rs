@@ -351,6 +351,24 @@ pub(super) fn analyze_parsed_ast(
     for (tier, &count) in &visitor.tier_counts {
         *report.tier_counts.entry(tier.clone()).or_insert(0) += count;
     }
+    for fb in &visitor.formal_proof_bindings {
+        if !fb.proof.is_empty() {
+            let entry = report
+                .lean4_proof_bindings
+                .entry(fb.proof.clone())
+                .or_default();
+            if !entry.rust_modules.contains(&fb.module) {
+                entry.rust_modules.push(fb.module.clone());
+                entry.rust_modules.sort();
+            }
+            for thm in &fb.theorems {
+                if !entry.theorems.contains(thm) {
+                    entry.theorems.push(thm.clone());
+                }
+            }
+            entry.theorems.sort();
+        }
+    }
     report
         .deterministic_contract_modules
         .extend(visitor.non_vacuous_deterministic_modules.iter().cloned());

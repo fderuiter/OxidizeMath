@@ -45,6 +45,8 @@ pub struct IntegrityReport {
     pub interval_bounds: BTreeMap<String, [f64; 2]>,
     #[serde(default)]
     pub lean4_proof_digests: BTreeMap<String, String>,
+    #[serde(default)]
+    pub lean4_proof_bindings: BTreeMap<String, oxidize_core::traceability::LeanProofBinding>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -88,8 +90,6 @@ pub(crate) fn load_suite_and_debt_configs_strict(
     load_whitelist_strict(explicit_whitelist, WORKSPACE_WHITELIST_CANDIDATES)
         .map(|wl| (wl.verify_suite.unwrap_or_default(), wl.verification_debt))
 }
-
-pub const VERIFY_SUITE_WRITE_ENV: &str = "OXIDIZE_VERIFY_SUITE_WRITE";
 
 pub fn collect_rs_files() -> Vec<PathBuf> {
     crate::utils::collect_rs_files_filtered(&[Path::new(".")], &["target", ".git"])
@@ -361,6 +361,7 @@ pub fn evaluate_integrity_gates(
         tier_counts: BTreeMap::new(),
         interval_bounds: BTreeMap::new(),
         lean4_proof_digests: BTreeMap::new(),
+        lean4_proof_bindings: BTreeMap::new(),
     };
 
     let (unauthorized_debt, authorized_opt_outs, authorized_unverified_crates) =
@@ -372,6 +373,7 @@ pub fn evaluate_integrity_gates(
     report.tier_counts = pyramid.tier_counts;
     report.interval_bounds = pyramid.interval_bounds;
     report.lean4_proof_digests = pyramid.lean4_proof_digests;
+    report.lean4_proof_bindings = pyramid.lean4_proof_bindings;
     report.passed = gate_errors.is_empty() && unauthorized_debt.is_empty();
 
     GateEvaluation {
@@ -468,23 +470,6 @@ pub fn run_report_with_options(
 }
 
 #[cfg(test)]
-pub fn print_report(
-    native_cov_pct: f64,
-    wasm_cov_pct: f64,
-    m: &FileMetrics,
-    debt_items: &[String],
-) -> bool {
-    let cfg = VerifySuiteConfig::default();
-    let debt = DebtSources {
-        unverified_crates: &[],
-        file_length_debt: &[],
-        entropy_debt: &[],
-        extra_debt: debt_items,
-    };
-    let eval = evaluate_integrity_gates(native_cov_pct, wasm_cov_pct, m, &debt, &cfg);
-    print_dashboard(&eval);
-    eval.report.passed
-}
-
+mod certificate_tests;
 #[cfg(test)]
 mod tests;

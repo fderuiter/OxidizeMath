@@ -13,6 +13,8 @@ pub struct PyramidTelemetry {
     pub interval_bounds: BTreeMap<String, [f64; 2]>,
     /// Deterministic SHA-256 digests of `sorry`-free Lean 4 proof modules.
     pub lean4_proof_digests: BTreeMap<String, String>,
+    /// Kernel-verified Lean 4 proof bindings mapping `.lean` files to Rust modules and theorems.
+    pub lean4_proof_bindings: BTreeMap<String, oxidize_core::traceability::LeanProofBinding>,
 }
 
 /// Returns `true` when `cmd` is one of the scientific verification pyramid CLI subcommands.
@@ -105,6 +107,7 @@ mod imp {
                     tier_counts: s.tier_counts,
                     interval_bounds: s.interval_bounds,
                     lean4_proof_digests: s.lean4_proof_digests,
+                    lean4_proof_bindings: s.lean4_proof_bindings,
                 })
             })
             .clone()
@@ -158,6 +161,7 @@ mod imp {
             tier_counts,
             interval_bounds: std::collections::BTreeMap::new(),
             lean4_proof_digests: std::collections::BTreeMap::new(),
+            lean4_proof_bindings: std::collections::BTreeMap::new(),
         })
     }
 
@@ -214,6 +218,17 @@ pub(crate) fn validate_pyramid_certificate_bounds(
     if cert.lean4_proof_digests.len() < 6 {
         diffs.push("Certificate lean4_proof_digests must record at least 6 proofs".into());
     }
+    if cert.lean4_proof_bindings.len() < 6
+        || cert
+            .lean4_proof_bindings
+            .values()
+            .any(|b| !b.kernel_verified || b.rust_modules.is_empty() || b.theorems.is_empty())
+    {
+        diffs.push(
+            "Certificate lean4_proof_bindings must record at least 6 kernel-verified proofs with non-empty rust_modules and theorems"
+                .into(),
+        );
+    }
 }
 
 /// Compares deterministic pyramid fields between workspace evaluation and `Verification_Certificate.json`.
@@ -237,6 +252,9 @@ pub(crate) fn check_pyramid_strict_parity(
     }
     if expected.lean4_proof_digests != cert.lean4_proof_digests {
         diffs.push("lean4_proof_digests drift against workspace proofs/".to_string());
+    }
+    if expected.lean4_proof_bindings != cert.lean4_proof_bindings {
+        diffs.push("lean4_proof_bindings drift against workspace theorem bindings".to_string());
     }
     if expected.interval_bounds.len() != cert.interval_bounds.len()
         || expected.interval_bounds.iter().any(|(k, [lo, hi])| {

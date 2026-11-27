@@ -120,6 +120,11 @@ pure_math::property_invariant_verification!(
 pure_math::formal_proof_verification!(
     module = "clinical_trials",
     proof = "SurvivalBounds.lean",
+    theorems = [
+        "km_factor_bounded",
+        "km_step_antitone_and_nonneg",
+        "km_outward_slack_enclosure",
+    ],
     test = {
         let obs = [survival_analysis::Observation {
             time: types::SurvivalTime::new(3.0).unwrap(),

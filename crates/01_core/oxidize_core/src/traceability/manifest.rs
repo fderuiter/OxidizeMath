@@ -1,8 +1,89 @@
 //! Serializable manifest envelope and verification certificate schemas for traceability snapshots.
 
-use super::TraceabilityReport;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+
+/// Kernel verification status, bound Rust modules, and theorem names for a Lean 4 proof module.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeanProofBinding {
+    /// Whether `leanprover/lean4:v4.14.0` kernel-checked this proof with zero banned axioms.
+    #[serde(default)]
+    pub kernel_verified: bool,
+    /// Sorted workspace Rust module keys bound to this proof via `formal_proof_verification!`.
+    #[serde(default)]
+    pub rust_modules: Vec<String>,
+    /// Sorted Lean 4 theorem identifiers verified and bound by Rust modules.
+    #[serde(default)]
+    pub theorems: Vec<String>,
+}
+
+/// Summary report produced by scanning workspace Rust modules against `traceability.toml` and `papers/*.tex`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TraceabilityReport {
+    /// Total active Rust source files scanned.
+    pub scanned_files: usize,
+    /// `(source, target)` pairs referencing non-existent registry modules or LaTeX papers.
+    pub invalid_links: Vec<(String, String)>,
+    /// Manuscript `.tex` files unreferenced by any active entry in `traceability.toml`.
+    pub orphaned_papers: Vec<String>,
+    /// Formatted module paths lacking `[cite:...]` traceability annotations.
+    pub unlinked_code: Vec<String>,
+    /// Detailed `(module_path, file_path, line)` tuples for unlinked modules.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unlinked_module_details: Vec<(String, String, usize)>,
+    /// Module files containing unverified functions without an explicit opt-out.
+    pub unverified_modules: Vec<String>,
+    /// Mapping from manuscript `.tex` filename to citing source files.
+    pub paper_coverage: HashMap<String, Vec<String>>,
+    /// Total functions discovered across scanned files.
+    pub total_funcs: usize,
+    /// Total assertions discovered across scanned files.
+    pub total_asserts: usize,
+    /// Total verified functions across scanned files.
+    pub verified_funcs: usize,
+    /// Total verified assertions across scanned files.
+    pub verified_asserts: usize,
+    /// Registry entries declaring an invalid verification tier mismatch.
+    pub invalid_tiers: Vec<String>,
+    /// Files where stochastic verification blocks used vacuous zero-initialized inputs.
+    pub vacuous_bypasses: Vec<String>,
+    /// Semantic integrity status per manuscript `.tex` file.
+    pub semantic_integrity_status: HashMap<String, String>,
+    /// Source line numbers for invalid `[cite:...]` links.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub invalid_link_lines: BTreeMap<String, usize>,
+    /// First unverified `(fn_name, line)` span per unverified module file.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub unverified_module_spans: BTreeMap<String, (String, usize)>,
+    /// Source line numbers for vacuous stochastic bypasses.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vacuous_bypass_spans: BTreeMap<String, usize>,
+    /// Per-file `[verified_funcs, total_funcs]` counts.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub file_verified_counts: BTreeMap<String, [usize; 2]>,
+    /// Explicit crate-level maturity tiers loaded from `[crates]` in `traceability.toml`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub crate_maturity_tiers: BTreeMap<String, String>,
+    /// Explicit module-level maturity tiers loaded from `[modules]` in `traceability.toml`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub module_maturity_tiers: BTreeMap<String, String>,
+    /// Registered modules with non-vacuous deterministic `theory_verification!` contracts.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deterministic_contract_modules: Vec<String>,
+    /// Registered modules with `VerifiedAllocator` or `VerifiedEngine::run_verified` proofs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub zero_alloc_modules: Vec<String>,
+    /// Per-tier maturity violations detected during AST traceability scanning.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub maturity_violations: Vec<String>,
+    /// Per-tier verification macro invocation counts across the 6-tier scientific verification pyramid.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tier_counts: BTreeMap<String, usize>,
+    /// AST-discovered Lean 4 proof bindings (`proof.lean` -> linked Rust modules and theorem names).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub lean4_proof_bindings: BTreeMap<String, LeanProofBinding>,
+}
 
 /// Deserializable schema matching `Verification_Certificate.json`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -43,6 +124,9 @@ pub struct VerificationCertificate {
     /// Deterministic SHA-256 digests of committed `sorry`-free Lean 4 proof modules (Tier 6).
     #[serde(default)]
     pub lean4_proof_digests: BTreeMap<String, String>,
+    /// Kernel verification status, bound Rust modules, and theorem names per Lean 4 proof module.
+    #[serde(default)]
+    pub lean4_proof_bindings: BTreeMap<String, LeanProofBinding>,
 }
 
 /// Deserializable web and desktop manifest envelope flattening [`TraceabilityReport`] with optional certificate metadata.
@@ -84,6 +168,7 @@ mod core_tests {
                 tier_counts: Default::default(),
                 interval_bounds: Default::default(),
                 lean4_proof_digests: Default::default(),
+                lean4_proof_bindings: Default::default(),
             }),
         };
         assert_eq!(payload.report.scanned_files, 2);
@@ -192,6 +277,7 @@ mod tests {
                 tier_counts,
                 interval_bounds,
                 lean4_proof_digests,
+                lean4_proof_bindings: Default::default(),
             }),
         };
         let encoded_cert = toml::to_string(&with_cert).expect("serialize certified payload");

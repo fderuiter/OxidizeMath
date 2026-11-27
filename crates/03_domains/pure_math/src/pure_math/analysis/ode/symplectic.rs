@@ -385,6 +385,27 @@ impl<State: VectorOperations> Solver<State> for GaussLegendre4<State> {
     }
 }
 
+crate::formal_proof_verification!(
+    module = "pure_math",
+    proof = "SymplecticComposition.lean",
+    theorems = [
+        "drift_det_scaled_unit",
+        "kick_det_scaled_unit",
+        "det2_mul",
+        "symplectic_composition_preserves_scaled_unit_det",
+        "symplectic_det_rounding_slack",
+    ],
+    test = {
+        use crate::pure_math::analysis::ode::{ArrayState, HamiltonianSystem};
+        let sys = super::tests::QuarticOscillator;
+        let mut state = ArrayState([1.0_f64, 0.0_f64]);
+        let e0 = sys.hamiltonian(&state);
+        let mut verlet = StormerVerlet::new(&ArrayState([0.0_f64]));
+        verlet.step_separable(&sys, &mut state, 0.05);
+        assert!(sys.relative_energy_error(&state, e0) < 5e-3);
+    }
+);
+
 #[cfg(test)]
 #[path = "symplectic_tests.rs"]
 mod tests;

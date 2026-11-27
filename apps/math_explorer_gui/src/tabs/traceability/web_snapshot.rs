@@ -139,6 +139,10 @@ pub async fn fetch_web_traceability(
 pub fn render_certificate_metrics(
     ui: &mut egui::Ui,
     cert: Option<&VerificationCertificate>,
+    live_proof_bindings: &std::collections::BTreeMap<
+        String,
+        oxidize_core::traceability::LeanProofBinding,
+    >,
     palette: &crate::app::SemanticPalette,
 ) {
     let Some(cert) = cert else {
@@ -161,12 +165,16 @@ pub fn render_certificate_metrics(
         cert.verified_modules_density,
         cert.unverified_modules_density
     ));
-    render_pyramid_summary(ui, cert, palette);
+    render_pyramid_summary(ui, cert, live_proof_bindings, palette);
 }
 
 fn render_pyramid_summary(
     ui: &mut egui::Ui,
     cert: &VerificationCertificate,
+    live_proof_bindings: &std::collections::BTreeMap<
+        String,
+        oxidize_core::traceability::LeanProofBinding,
+    >,
     palette: &crate::app::SemanticPalette,
 ) {
     if cert.certified_solvers == 0 && cert.tier_counts.is_empty() {
@@ -193,57 +201,7 @@ fn render_pyramid_summary(
             );
         }
     });
-    render_interval_and_proof_details(ui, cert, palette);
-}
-
-fn render_interval_and_proof_details(
-    ui: &mut egui::Ui,
-    cert: &VerificationCertificate,
-    palette: &crate::app::SemanticPalette,
-) {
-    if !cert.interval_bounds.is_empty() {
-        let header = format!(
-            "Tier 5 Outward-Rounded Interval Enclosures ({})",
-            cert.interval_bounds.len()
-        );
-        egui::CollapsingHeader::new(header)
-            .default_open(true)
-            .show(ui, |ui| {
-                for (kernel, bounds) in &cert.interval_bounds {
-                    let width = (bounds[1] - bounds[0]).max(0.0);
-                    ui.monospace(format!(
-                        "{kernel}: [{:.12e}, {:.12e}] (w={width:.2e})",
-                        bounds[0], bounds[1]
-                    ));
-                }
-            });
-    }
-    if !cert.lean4_proof_digests.is_empty() {
-        let header = format!(
-            "Tier 6 Lean 4 Formal Proof Digests ({})",
-            cert.lean4_proof_digests.len()
-        );
-        egui::CollapsingHeader::new(header)
-            .default_open(true)
-            .show(ui, |ui| {
-                for (module_name, sha256) in &cert.lean4_proof_digests {
-                    let short_sha = sha256.get(..16).unwrap_or(sha256.as_str());
-                    ui.horizontal_wrapped(|ui| {
-                        if let Some(url) = lean_proof_url(module_name) {
-                            ui.hyperlink_to(module_name, url);
-                        } else {
-                            ui.label(module_name);
-                        }
-                        ui.label(
-                            egui::RichText::new("sorry-free")
-                                .color(palette.success)
-                                .small(),
-                        );
-                        ui.monospace(format!("sha256:{short_sha}…"));
-                    });
-                }
-            });
-    }
+    super::proof_panel::render_interval_and_proof_details(ui, cert, live_proof_bindings);
 }
 
 /// Renders both the hosted PDF link and canonical GitHub `.tex` source fallback link.
@@ -276,6 +234,8 @@ pub(super) struct ReadyReportData<'a> {
         &'a std::collections::BTreeMap<String, scientific_metadata::theory::MaturityTier>,
     pub module_maturity_tiers:
         &'a std::collections::BTreeMap<String, scientific_metadata::theory::MaturityTier>,
+    pub live_proof_bindings:
+        &'a std::collections::BTreeMap<String, oxidize_core::traceability::LeanProofBinding>,
     pub certificate: Option<&'a VerificationCertificate>,
 }
 
@@ -375,7 +335,12 @@ pub(super) fn render_ready_report(
                 }
                 ui.label(format!("Total Papers: {}", data.papers_map.len()));
                 render_maturity_summary(ui, data);
-                render_certificate_metrics(ui, data.certificate, &palette);
+                render_certificate_metrics(
+                    ui,
+                    data.certificate,
+                    data.live_proof_bindings,
+                    &palette,
+                );
             });
 
         render_crate_maturity_section(ui, data.crate_maturity_tiers);
