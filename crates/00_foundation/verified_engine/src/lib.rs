@@ -54,8 +54,29 @@ pub use scientific_metadata;
 /// assert_eq!(spring.theory_description(), "Hookean spring law");
 /// assert_eq!(spring.theory_parameters()["stiffness"].min, 0.1);
 /// ```
+#[cfg(feature = "std")]
 pub use verified_engine_macros::Theory;
 
 /// Attribute macro embedding labeled LaTeX equations from `papers/*.tex` into item docstrings
 /// while verifying AST operator semantic alignment at compile time.
 pub use verified_engine_macros::embed_theory;
+
+#[cfg(test)]
+mod no_std_tests {
+    use super::{metrics, verified};
+
+    #[verified]
+    fn affine_step(scale: f64, x: f64, bias: f64) -> f64 {
+        scale * x + bias
+    }
+
+    #[test]
+    fn verified_macro_and_metrics_work_in_all_feature_modes() {
+        metrics::reset_metrics();
+        assert_eq!(affine_step(2.0, 3.5, 1.0), 8.0);
+        let zero = metrics::ComplexityMetrics::new();
+        assert_eq!(zero.function_calls, 0);
+        assert_eq!(zero.arithmetic_ops, 0);
+        assert_eq!(zero.memory_loads, 0);
+    }
+}

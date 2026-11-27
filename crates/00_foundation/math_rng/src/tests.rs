@@ -167,6 +167,22 @@ fn test_serde_roundtrip_preserves_exact_stream_and_position() {
         serde_json::from_str::<QmcError>(&err_json).expect("deserialize QmcError"),
         err
     );
+
+    let golden = r#"{"seed":[4,8,15,16,23,42,4,8,15,16,23,42,4,8,15,16,23,42,4,8,15,16,23,42,4,8,15,16,23,42,4,8],"stream":27182818284,"word_pos":314159265359}"#;
+    let mut from_golden: OxidizeRng =
+        serde_json::from_str(golden).expect("deserialize golden rand_chacha payload");
+    assert_eq!(from_golden.stream(), 27_182_818_284);
+    assert_eq!(from_golden.word_pos(), 314_159_265_359);
+    assert_eq!(
+        serde_json::to_string(&from_golden).expect("re-serialize golden OxidizeRng"),
+        golden
+    );
+
+    let seq_payload = r#"[[4,8,15,16,23,42,4,8,15,16,23,42,4,8,15,16,23,42,4,8,15,16,23,42,4,8,15,16,23,42,4,8],27182818284,314159265359]"#;
+    let mut from_seq: OxidizeRng =
+        serde_json::from_str(seq_payload).expect("deserialize positional ChaCha8Rng tuple");
+    assert_eq!(from_golden, from_seq);
+    assert_eq!(from_golden.next_u64(), from_seq.next_u64());
 }
 
 struct StackDiagRecorder {

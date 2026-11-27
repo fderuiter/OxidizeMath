@@ -227,6 +227,7 @@ fn assert_parallel_dag_invariants(ci_yaml: &str) {
         );
     }
     assert!(!preflight.contains("\n    outputs:"));
+    assert!(!ci_yaml.contains("needs.detect-changes.outputs.native_matrix"));
     assert!(compile_papers.contains("\n    needs: detect-changes\n"));
     assert!(compile_papers.contains("needs.detect-changes.outputs.papers_changed == 'true'"));
     assert!(package.contains("\n    needs: detect-changes\n"));

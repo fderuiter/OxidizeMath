@@ -13,7 +13,7 @@ traceability = true
 [features]
 default = []
 alloc = ["math_scalars/alloc"]
-serde = ["dep:serde", "math_diagnostics/serde", "math_scalars/serde", "rand_chacha/serde1"]
+serde = ["dep:serde", "math_diagnostics/serde", "math_scalars/serde"]
 std = ["alloc", "math_diagnostics/std", "math_scalars/std", "serde?/std"]
 
 [dependencies]
