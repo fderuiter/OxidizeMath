@@ -116,7 +116,7 @@ fn rasterize_triangle(
     }
 }
 
-fn render_studio_preset_png(preset_json: &str, out_path: &str) {
+fn render_studio_preset_png(preset_json: &str, file_name: &str) {
     let (w, h) = (1320_usize, 820_usize);
     let mut tool = KnotBraidStudioTool::default();
     tool.import_preset_json(preset_json).expect("preset json");
@@ -156,39 +156,18 @@ fn render_studio_preset_png(preset_json: &str, out_path: &str) {
     }
     let png = egui_plot::export::color32_image_to_png(&fb).expect("encode studio preview PNG");
     assert!(png.len() > 4096);
-    let target = resolve_screenshot_path(out_path);
-    std::fs::write(target, png).expect("write studio preview PNG");
-}
-
-fn resolve_screenshot_path(out_path: &str) -> std::path::PathBuf {
-    let candidate = std::path::Path::new(out_path);
-    if candidate.parent().is_some_and(std::path::Path::is_dir) {
-        candidate.to_path_buf()
-    } else {
-        std::env::temp_dir().join(
-            candidate
-                .file_name()
-                .expect("screenshot path must include file name"),
-        )
-    }
+    std::fs::write(std::env::temp_dir().join(file_name), png).expect("write studio preview PNG");
 }
 
 #[test]
 fn generate_knot_braid_studio_verification_screenshots() {
-    assert_eq!(
-        resolve_screenshot_path("/nonexistent_windows_tmp_dir/knot_studio_probe.png"),
-        std::env::temp_dir().join("knot_studio_probe.png")
-    );
-    render_studio_preset_png(
-        CHIRAL_TREFOIL_PRESET_JSON,
-        "/tmp/knot_studio_chiral_trefoil.png",
-    );
+    render_studio_preset_png(CHIRAL_TREFOIL_PRESET_JSON, "knot_studio_chiral_trefoil.png");
     render_studio_preset_png(
         FIGURE_EIGHT_ISOTOPY_PRESET_JSON,
-        "/tmp/knot_studio_figure_eight_reidemeister.png",
+        "knot_studio_figure_eight_reidemeister.png",
     );
     render_studio_preset_png(
         BORROMEAN_RINGS_PRESET_JSON,
-        "/tmp/knot_studio_borromean_rings.png",
+        "knot_studio_borromean_rings.png",
     );
 }

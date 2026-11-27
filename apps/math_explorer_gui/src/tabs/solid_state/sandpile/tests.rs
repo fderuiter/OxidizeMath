@@ -87,19 +87,7 @@ fn sonification_frame_respects_minus_three_dbfs_ceiling_and_renders_headless_ui(
     assert!(studio.texture.is_some());
 }
 
-fn resolve_artifact_path(unix_tmp_path: &str) -> std::path::PathBuf {
-    let candidate = std::path::Path::new(unix_tmp_path);
-    if candidate.parent().is_some_and(std::path::Path::is_dir) {
-        candidate.to_path_buf()
-    } else {
-        let file_name = candidate
-            .file_name()
-            .expect("artifact path must include file name");
-        std::env::temp_dir().join(file_name)
-    }
-}
-
-fn save_upscaled_color_image(img: &egui::ColorImage, scale: usize, path: &str) {
+fn save_upscaled_color_image(img: &egui::ColorImage, scale: usize, file_name: &str) {
     let w = img.size[0] * scale;
     let h = img.size[1] * scale;
     let mut rgba = Vec::with_capacity(w * h * 4);
@@ -110,8 +98,8 @@ fn save_upscaled_color_image(img: &egui::ColorImage, scale: usize, path: &str) {
             rgba.extend_from_slice(&[c.r(), c.g(), c.b(), c.a()]);
         }
     }
-    let out_path = resolve_artifact_path(path);
-    let file = std::fs::File::create(&out_path).expect("create PNG artifact");
+    let file =
+        std::fs::File::create(std::env::temp_dir().join(file_name)).expect("create PNG artifact");
     let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
     enc.set_color(png::ColorType::Rgba);
     enc.set_depth(png::BitDepth::Eight);
@@ -121,28 +109,24 @@ fn save_upscaled_color_image(img: &egui::ColorImage, scale: usize, path: &str) {
 
 #[test]
 fn deferred_exports_and_visual_artifacts_succeed() {
-    assert_eq!(
-        resolve_artifact_path("/nonexistent_windows_tmp_dir/sandpile_fallback_probe.png"),
-        std::env::temp_dir().join("sandpile_fallback_probe.png")
-    );
     let mut studio = AbelianSandpileStudio::default();
     let opts = egui_plot::export::ExportOptions::default();
     let plot_png = egui_plot::export::export_custom_png(&studio.export_datasets(), &opts)
         .expect("power-law plot PNG export");
     std::fs::write(
-        resolve_artifact_path("/tmp/sandpile_avalanche_power_law.png"),
+        std::env::temp_dir().join("sandpile_avalanche_power_law.png"),
         &plot_png,
     )
     .expect("write plot PNG");
 
     studio.apply_preset(SandpilePreset::CreutzIdentityCrystal63);
     let crystal = studio.export_raster_image().expect("63x63 crystal image");
-    save_upscaled_color_image(&crystal, 8, "/tmp/sandpile_creutz_identity_63x63.png");
+    save_upscaled_color_image(&crystal, 8, "sandpile_creutz_identity_63x63.png");
 
     studio.state.view_mode = SandpileViewMode::DharBurningWaves;
     studio.state.colormap = SandpileColormap::BurningWavePhase;
     let burn_img = studio.export_raster_image().expect("burning wave image");
-    save_upscaled_color_image(&burn_img, 8, "/tmp/sandpile_dhar_burning_waves.png");
+    save_upscaled_color_image(&burn_img, 8, "sandpile_dhar_burning_waves.png");
 
     let mut fw = crate::framework::SimulationFramework::new("solid_state");
     fw.active_tool = Some(Box::new(studio));

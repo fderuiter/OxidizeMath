@@ -362,30 +362,29 @@ fn solve_lm_damped_step<const M: usize>(
     k: usize,
     lambda: f64,
 ) -> Result<[f64; M], FitError> {
-    if k == 0 || k > M || k > 8 || !lambda.is_finite() || lambda < 0.0 {
+    if k == 0 || k > M || k > 8 {
         return Err(FitError::SingularMatrix);
     }
-    let mut damped = [[0.0_f64; 8]; 8];
-    let mut rhs = [0.0_f64; 8];
-    for r in 0..k {
-        if !jtr[r].is_finite() {
-            return Err(FitError::SingularMatrix);
-        }
-        rhs[r] = jtr[r];
-        for c in 0..k {
-            let v = jtj[r][c];
-            if !v.is_finite() {
-                return Err(FitError::SingularMatrix);
-            }
-            damped[r][c] = v;
-        }
-        let d_rr = damped[r][r];
-        let base = d_rr.abs().max(1e-6);
-        damped[r][r] = d_rr + lambda * base;
+    let mut flat_jtj = [0.0_f64; 64];
+    for (r, row) in jtj.iter().enumerate().take(k) {
+        let start = r * k;
+        flat_jtj[start..(start + k)].copy_from_slice(&row[..k]);
     }
-    let solved = super::poly::solve_dense_n_raw(&mut damped, &rhs, k)?;
     let mut delta = [0.0_f64; M];
-    delta[..k].copy_from_slice(&solved[..k]);
+    let mut pivots = [0_usize; 8];
+    let mut scratch = [0.0_f64; 128];
+    engine_linalg::solve_damped_normal(
+        &flat_jtj[..(k * k)],
+        &jtr[..k],
+        k,
+        engine_linalg::DampingStyle::Marquardt {
+            lambda,
+            diag_floor: 1e-6,
+        },
+        &mut delta[..k],
+        &mut pivots[..k],
+        &mut engine_linalg::LinalgWorkspace::new(&mut scratch),
+    )?;
     Ok(delta)
 }
 
