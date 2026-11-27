@@ -129,7 +129,7 @@ jobs:
                 case "$file_path" in
                   crates/04_bindings/markdown_tests/*|apps/unified_verification/*|apps/xtask/*)
                     ;;
-                  crates/*|apps/*|egui_plot/*|proofs/*|LICENSE|papers/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|.cargo/*|.github/actions/cargo-cache/*|.github/workflows/ci.yml)
+                  crates/*|apps/*|egui_plot/*|proofs/*|LICENSE|papers/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|.cargo/*|.github/actions/cargo-cache/*|.github/actions/ci-tool-cache/*|.github/workflows/ci.yml)
                     installer_changed="true"
                     ;;
                 esac
