@@ -96,16 +96,14 @@ pub use wasm_file_io::{
 };
 
 #[cfg(test)]
-static TEST_IMPORT_DIALOG_TRIGGERS: std::sync::Mutex<Vec<egui::Id>> =
-    std::sync::Mutex::new(Vec::new());
+std::thread_local! {
+    static TEST_IMPORT_DIALOG_TRIGGERS: std::cell::RefCell<Vec<egui::Id>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
 
 #[cfg(test)]
 pub(crate) fn take_test_import_triggers() -> Vec<egui::Id> {
-    std::mem::take(
-        &mut *TEST_IMPORT_DIALOG_TRIGGERS
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner),
-    )
+    TEST_IMPORT_DIALOG_TRIGGERS.with(|triggers| std::mem::take(&mut *triggers.borrow_mut()))
 }
 
 /// Triggers a CSV/TSV file import dialog scoped to a specific target `plot_id`.
@@ -114,10 +112,7 @@ pub fn trigger_import_csv_for_plot(ctx: &egui::Context, plot_id: egui::Id) {
     {
         #[cfg(not(target_arch = "wasm32"))]
         let _ = ctx;
-        TEST_IMPORT_DIALOG_TRIGGERS
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(plot_id);
+        TEST_IMPORT_DIALOG_TRIGGERS.with(|triggers| triggers.borrow_mut().push(plot_id));
     }
 
     #[cfg(all(not(test), not(target_arch = "wasm32")))]

@@ -4,7 +4,7 @@ This document guides developers and researchers through creating a new interacti
 
 ## Overview
 
-The `math_explorer_gui` crate combines static `inventory` [`ExplorerTab`](../../math_explorer_gui/src/tabs/mod.rs) registration (`TabDescriptor`) with a federated tool catalog backed by [`SimulationFramework`](../../math_explorer_gui/src/framework/mod.rs). Each interactive simulation implements [`TheoryDescribable`](../../crates/scientific_metadata/src/theory.rs) and [`InteractiveTool`](../../math_explorer_gui/src/framework/mod.rs), renders inside scoped multi-pane viewports via [`InteractiveTool::show_inside`](../../math_explorer_gui/src/framework/mod.rs), and registers itself at startup using [`inventory::submit!`](../../math_explorer_gui/src/framework/mod.rs).
+The `math_explorer_gui` crate combines static `inventory` [`ExplorerTab`](../../apps/math_explorer_gui/src/tabs/mod.rs) registration (`TabDescriptor`) with a federated tool catalog backed by [`SimulationFramework`](../../apps/math_explorer_gui/src/framework/mod.rs). Each interactive simulation implements [`TheoryDescribable`](../../crates/00_foundation/scientific_metadata/src/theory.rs) and [`InteractiveTool`](../../apps/math_explorer_gui/src/framework/mod.rs), renders inside scoped multi-pane viewports via [`InteractiveTool::show_inside`](../../apps/math_explorer_gui/src/framework/mod.rs), and registers itself at startup using [`inventory::submit!`](../../apps/math_explorer_gui/src/framework/mod.rs).
 
 ```mermaid
 graph TD
@@ -116,7 +116,7 @@ assert!(oscillator.restore_state_json(r#"{"mass":1.0,"spring_k":10.0,"damping":0
 
 ### Step 2: Implement the `TheoryDescribable` Trait
 
-Each tool exposes verified theoretical descriptions, accessible phonetic descriptions, literature citations, governing LaTeX formulas, and parameter bounds via [`TheoryDescribable`](../../crates/scientific_metadata/src/theory.rs). All methods return owned `String` and `HashMap` values (`theory_description`, `phonetic_description`, `theory_citation`, `available_descriptions`, `theory_parameters`, and `theory_latex_equation`):
+Each tool exposes verified theoretical descriptions, accessible phonetic descriptions, literature citations, governing LaTeX formulas, and parameter bounds via [`TheoryDescribable`](../../crates/00_foundation/scientific_metadata/src/theory.rs). All methods return owned `String` and `HashMap` values (`theory_description`, `phonetic_description`, `theory_citation`, `available_descriptions`, `theory_parameters`, and `theory_latex_equation`):
 
 ```rust
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
@@ -206,7 +206,7 @@ assert!(tool.theory_latex_equation().is_some());
 
 ### Step 3: Implement the `InteractiveTool` Trait (`show_inside`)
 
-Because `math_explorer_gui` is a binary package (`src/main.rs`), import GUI framework types via crate-relative `crate::` paths (never `math_explorer_gui::`). `InteractiveTool::show` delegates to [`InteractiveTool::show_inside`](../../math_explorer_gui/src/framework/mod.rs) so tools render cleanly inside single-pane and multi-pane split viewports. Use `PaneSidePanel::left(scoped_panel_id(parent_ui, ...)).show_inside(parent_ui, ...)` for controls and `egui::CentralPanel::default().show_inside(parent_ui, ...)` for the visualization canvas (or rely on the default `show_inside` helper by overriding `show_ui` and `draw`).
+Because `math_explorer_gui` is a binary package (`src/main.rs`), import GUI framework types via crate-relative `crate::` paths (never `math_explorer_gui::`). `InteractiveTool::show` delegates to [`InteractiveTool::show_inside`](../../apps/math_explorer_gui/src/framework/mod.rs) so tools render cleanly inside single-pane and multi-pane split viewports. Use `PaneSidePanel::left(scoped_panel_id(parent_ui, ...)).show_inside(parent_ui, ...)` for controls and `egui::CentralPanel::default().show_inside(parent_ui, ...)` for the visualization canvas (or rely on the default `show_inside` helper by overriding `show_ui` and `draw`).
 
 Note that the interactive frame loop invokes `show_inside()` every frame (never `step_simulation()`). Interactive controls advance state inside `show_inside()` (or background `async_sim` workers), whereas `step_simulation()` is an optional offscreen hook invoked **only** during multi-frame GIF animation export (`InteractiveTool::sample_animation_frames`), after which `SimulationFramework` restores the tool's saved state:
 
@@ -414,30 +414,30 @@ if response.has_focus() {
 
 ## Dual-Backend Sonification Integration
 
-Interactive tools can map live mathematical invariants to real-time audio and `.wav` exports through [`math_explorer_gui/src/audio/`](../../math_explorer_gui/src/audio/mod.rs):
+Interactive tools can map live mathematical invariants to real-time audio and `.wav` exports through [`math_explorer_gui/src/audio/`](../../apps/math_explorer_gui/src/audio/mod.rs):
 
-- **Stack-Allocated `SonificationFrame`**: Compute a `Copy`, zero-allocation [`SonificationFrame`](../../math_explorer_gui/src/audio/frame.rs) (up to 8 polyphonic voices, `20.0..=8000.0 Hz` frequency clamp, stereo pan, FM modulation, and Fourier `PeriodicWave` harmonic weights derived via `calculate_fourier_coefficients_real`). Asynchronous `SimRunner` implementations attach `Some(frame)` to `StateSnapshot::sonification`, and [`UnifiedSimTool`](../../math_explorer_gui/src/async_sim/unified/tool.rs) renders the sonification controls automatically.
-- **Synchronous Tool Integration**: Immediate-mode tools pass their current [`SonificationFrame`](../../math_explorer_gui/src/audio/frame.rs) to [`crate::audio::render_sonification_panel`](../../math_explorer_gui/src/audio/ui.rs), which renders the user-gesture **Enable Audio** / **Mute Audio** toggle, `.wav` export button, timbre selector, and WCAG AA `Role::Meter` visual `dBFS` + `Hz` readout.
-- **Lifecycle and Autoplay Safety**: [`WebAudioNodeBackend`](../../math_explorer_gui/src/audio/web_audio.rs) (`wasm32`) never constructs or resumes an `AudioContext` until an explicit user click or keypress, enforces a `-3.0 dBFS` limiter ceiling with `15 ms` `AudioParam::set_target_at_time` smoothing, and ramps to silence within `<= 30 ms` on pause, solver divergence, WebGL context loss, or window blur. [`OfflinePcmSynthesizer`](../../math_explorer_gui/src/audio/synth.rs) mirrors the same `SonificationBackend` contract for deterministic `rustfft` tests and RIFF `.wav` export.
+- **Stack-Allocated `SonificationFrame`**: Compute a `Copy`, zero-allocation [`SonificationFrame`](../../apps/math_explorer_gui/src/audio/frame.rs) (up to 8 polyphonic voices, `20.0..=8000.0 Hz` frequency clamp, stereo pan, FM modulation, and Fourier `PeriodicWave` harmonic weights derived via `calculate_fourier_coefficients_real`). Asynchronous `SimRunner` implementations attach `Some(frame)` to `StateSnapshot::sonification`, and [`UnifiedSimTool`](../../apps/math_explorer_gui/src/async_sim/unified/tool.rs) renders the sonification controls automatically.
+- **Synchronous Tool Integration**: Immediate-mode tools pass their current [`SonificationFrame`](../../apps/math_explorer_gui/src/audio/frame.rs) to [`crate::audio::render_sonification_panel`](../../apps/math_explorer_gui/src/audio/ui.rs), which renders the user-gesture **Enable Audio** / **Mute Audio** toggle, `.wav` export button, timbre selector, and WCAG AA `Role::Meter` visual `dBFS` + `Hz` readout.
+- **Lifecycle and Autoplay Safety**: [`WebAudioNodeBackend`](../../apps/math_explorer_gui/src/audio/web_audio.rs) (`wasm32`) never constructs or resumes an `AudioContext` until an explicit user click or keypress, enforces a `-3.0 dBFS` limiter ceiling with `15 ms` `AudioParam::set_target_at_time` smoothing, and ramps to silence within `<= 30 ms` on pause, solver divergence, WebGL context loss, or window blur. [`OfflinePcmSynthesizer`](../../apps/math_explorer_gui/src/audio/synth.rs) mirrors the same `SonificationBackend` contract for deterministic `rustfft` tests and RIFF `.wav` export.
 
 ## Shared Simulation Topology & Point-Cloud Bus
 
-Multi-pane tools that operate on graphs or 3D landmark point clouds can subscribe to the workspace-scoped [`SharedSimulationBus`](../../math_explorer_gui/src/app/sim_bus.rs) without modifying the `InteractiveTool` or `ExplorerTab` trait signatures:
+Multi-pane tools that operate on graphs or 3D landmark point clouds can subscribe to the workspace-scoped [`SharedSimulationBus`](../../apps/math_explorer_gui/src/app/sim_bus.rs) without modifying the `InteractiveTool` or `ExplorerTab` trait signatures:
 
 - **Workspace Isolation via `egui::Context`**: `MathExplorerApp` owns an `Arc`-backed `SharedSimulationBus` and installs it into `egui::Context` every frame alongside `ComparisonSyncConfig::link_topology` (`View -> Multi-Pane Sync -> Link Topology`). Never store cross-tool payloads in process-global `OnceLock` or `Mutex` statics.
 - **Copy-on-Write CSR Graph Ingestion (`SharedGraphTopology`)**: Add a `TopologySource` field (`SharedBus` default, `LocalPreset` per-pane opt-out) annotated with `#[serde(default, skip_serializing_if = "TopologySource::is_default")]` on your `#[serde(deny_unknown_fields)]` state struct so `.mws`, `.json`, and `#tab=...&state=...` URL links remain compact inside `URL_JSON_BOUNDS` (`4 KiB`) without duplicating full vertex/edge buffers.
-- **Accessible Control Bar & Clamping Badges**: Call [`crate::app::render_topology_source_bar`](../../math_explorer_gui/src/app/sim_bus.rs) in your side panel and poll `SharedSimulationBus::active_graph_for(ctx, self.topology_source)` at the top of `show_inside`. When a solver enforces a domain cap stricter than the bus ceiling (`256` nodes, `2,048` edges)—such as `NeuralNetworkVizTool` clamping coupled Hodgkin-Huxley circuits to `32` neurons—pass `Some("Clamped N -> 32 neurons")` so the status bar renders a WCAG 2.2 AA contrast pill and polite `TwinSlotLiveRegion` announcements.
+- **Accessible Control Bar & Clamping Badges**: Call [`crate::app::render_topology_source_bar`](../../apps/math_explorer_gui/src/app/sim_bus.rs) in your side panel and poll `SharedSimulationBus::active_graph_for(ctx, self.topology_source)` at the top of `show_inside`. When a solver enforces a domain cap stricter than the bus ceiling (`256` nodes, `2,048` edges)—such as `NeuralNetworkVizTool` clamping coupled Hodgkin-Huxley circuits to `32` neurons—pass `Some("Clamped N -> 32 neurons")` so the status bar renders a WCAG 2.2 AA contrast pill and polite `TwinSlotLiveRegion` announcements.
 - **3D Point-Cloud Streaming (`SharedPointCloud3D`)**: Producers such as `AttractorRunner` publish `Arc<SharedPointCloud3D>` frames (`<= 128` landmarks) onto their workspace `SharedSimulationBus`, and consumers such as `VietorisRipsTool` poll newer revisions via `latest_point_cloud_3d_since`.
 
 ## Related References
 
-- Interactive tool trait definition: [`math_explorer_gui/src/framework/mod.rs`](../../math_explorer_gui/src/framework/mod.rs)
-- Shared simulation topology & point-cloud bus: [`math_explorer_gui/src/app/sim_bus.rs`](../../math_explorer_gui/src/app/sim_bus.rs) and [ADR 20261123: SharedSimulationBus and Zero-Allocation CSR Kernels](../adr/20261123-shared-simulation-topology-bus.md)
-- Static inventory tab registration: [`math_explorer_gui/src/tabs/mod.rs`](../../math_explorer_gui/src/tabs/mod.rs) and [ADR 20261123: Static Inventory Tab Registration and Scoped Build Scripts](../adr/20261123-inventory-tabs-and-scoped-build-scripts.md)
-- Spatial brush kit & field sculpting: [`math_explorer_gui/src/framework/spatial_brush.rs`](../../math_explorer_gui/src/framework/spatial_brush.rs) and [ADR 0045: SpatialBrushKit and Multi-Domain Field Sculpting](../adr/0045-spatial-brush-kit-and-field-sculpting.md)
-- Raster brush canvas & RLE spatial masks: [`math_explorer_gui/src/framework/raster_brush/mod.rs`](../../math_explorer_gui/src/framework/raster_brush/mod.rs) and [ADR 20261123: Shared `RasterBrushCanvas`, Pre-Allocation RLE `base64url` Spatial Masks, and Live 2D Field Sculpting](../adr/20261123-raster-brush-canvas-and-spatial-masks.md)
+- Interactive tool trait definition: [`math_explorer_gui/src/framework/mod.rs`](../../apps/math_explorer_gui/src/framework/mod.rs)
+- Shared simulation topology & point-cloud bus: [`math_explorer_gui/src/app/sim_bus.rs`](../../apps/math_explorer_gui/src/app/sim_bus.rs) and [ADR 20261123: SharedSimulationBus and Zero-Allocation CSR Kernels](../adr/20261123-shared-simulation-topology-bus.md)
+- Static inventory tab registration: [`math_explorer_gui/src/tabs/mod.rs`](../../apps/math_explorer_gui/src/tabs/mod.rs) and [ADR 20261123: Static Inventory Tab Registration and Scoped Build Scripts](../adr/20261123-inventory-tabs-and-scoped-build-scripts.md)
+- Spatial brush kit & field sculpting: [`math_explorer_gui/src/framework/spatial_brush.rs`](../../apps/math_explorer_gui/src/framework/spatial_brush.rs) and [ADR 0045: SpatialBrushKit and Multi-Domain Field Sculpting](../adr/0045-spatial-brush-kit-and-field-sculpting.md)
+- Raster brush canvas & RLE spatial masks: [`math_explorer_gui/src/framework/raster_brush/mod.rs`](../../apps/math_explorer_gui/src/framework/raster_brush/mod.rs) and [ADR 20261123: Shared `RasterBrushCanvas`, Pre-Allocation RLE `base64url` Spatial Masks, and Live 2D Field Sculpting](../adr/20261123-raster-brush-canvas-and-spatial-masks.md)
 - Dual-backend sonification architecture: [ADR 0040](../adr/0040-dual-backend-web-audio-sonification.md)
-- Example tool implementation (CERA): [`math_explorer_gui/src/tabs/climate/cera.rs`](../../math_explorer_gui/src/tabs/climate/cera.rs)
-- Example tool implementation (Radiation Dose): [`math_explorer_gui/src/tabs/medical/dose/mod.rs`](../../math_explorer_gui/src/tabs/medical/dose/mod.rs)
+- Example tool implementation (CERA): [`math_explorer_gui/src/tabs/climate/cera.rs`](../../apps/math_explorer_gui/src/tabs/climate/cera.rs)
+- Example tool implementation (Radiation Dose): [`math_explorer_gui/src/tabs/medical/dose/mod.rs`](../../apps/math_explorer_gui/src/tabs/medical/dose/mod.rs)
 - [System Overview](system_overview.md)
 - [Contributing Guide](../../CONTRIBUTING.md)

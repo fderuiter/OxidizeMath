@@ -1,0 +1,493 @@
+//! Automated Crate Documentation Verification Gate
+//!
+//! Enforces active documentation standards across workspace crates:
+//! 1. Every workspace crate in `Cargo.toml` contains a localized `README.md`.
+//! 2. Prohibited placeholder strings (e.g., `Legacy crate.`) are detected and rejected.
+//! 3. Content thresholds (minimum line count and mandatory architectural headings) are enforced.
+//! 4. Crate root entrypoints (`src/lib.rs` or `src/main.rs`) include localized documentation
+//!    via `#![doc = include_str!("../README.md")]`.
+//! 5. Documented allowlist and staging flag support for transitional legacy crates.
+//! 6. Static guide and manifest gates blocking unapproved `rust,ignore` fences, invalid
+//!    binary-only `math_explorer_gui::` imports, retired `Tectonic` instructions, and stale
+//!    workspace crate counts (excluding historical `docs/adr/` records).
+
+use regex::Regex;
+use std::collections::HashSet;
+use std::fs;
+use std::path::Path;
+
+pub mod cargo_cli_checks;
+mod cargo_cli_parser;
+pub mod catalog_and_guide_checks;
+pub mod facade_imports;
+pub mod manifest_model;
+pub mod math_contracts;
+mod math_contracts_parser;
+pub mod staged_guides;
+pub mod static_gates;
+pub mod toml_dep_checks;
+pub mod trait_contracts;
+
+#[cfg(test)]
+mod guide_gate_tests;
+#[cfg(test)]
+mod math_contracts_tests;
+#[cfg(test)]
+mod static_gates_tests;
+#[cfg(test)]
+mod tests;
+
+/// Default allowlist of vendored workspace crates exempt from
+/// standardized OxidizeMath architectural headings.
+pub const DEFAULT_LEGACY_ALLOWLIST: &[&str] = &["egui_plot"];
+
+/// Minimum required lines for a standard crate README.
+pub const MIN_README_LINES: usize = 30;
+
+/// Mandatory architectural section headings for standard library crates.
+pub const MANDATORY_HEADINGS: &[(&str, &str)] = &[
+    ("## 1. Overview", "## 1. Overview & Architecture"),
+    (
+        "## 2. Developer Instructions",
+        "## 2. Developer Instructions",
+    ),
+];
+
+/// Prohibited placeholder patterns that indicate unauthored stubs.
+pub const PROHIBITED_PLACEHOLDERS: &[&str] = &[
+    "Legacy crate.",
+    "Legacy crate",
+    "Placeholder crate",
+    "Placeholder documentation",
+    "Under construction",
+    "TODO: Add documentation",
+    "TBD: Document",
+];
+
+/// Audit report containing all found documentation violations.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct AuditReport {
+    pub violations: Vec<String>,
+}
+
+impl AuditReport {
+    pub fn new() -> Self {
+        Self {
+            violations: Vec::new(),
+        }
+    }
+    pub fn is_success(&self) -> bool {
+        self.violations.is_empty()
+    }
+    pub fn add(&mut self, violation: String) {
+        self.violations.push(violation);
+    }
+    pub fn extend(&mut self, violations: Vec<String>) {
+        self.violations.extend(violations);
+    }
+}
+
+/// Loads configured allowlist from `verification_whitelist.toml` if available,
+/// merging with `DEFAULT_LEGACY_ALLOWLIST`.
+pub fn load_allowlist(whitelist_path: &Path) -> HashSet<String> {
+    let mut allowlist: HashSet<String> = DEFAULT_LEGACY_ALLOWLIST
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+
+    let cfg = crate::whitelist::load_whitelist_or_default(None, &[whitelist_path]);
+    if let Some(crates) = cfg.doc_verification.and_then(|d| d.allowlist) {
+        allowlist.extend(crates);
+    }
+
+    allowlist
+}
+
+struct DocAuditPatterns {
+    entrypoint_doc_re: Regex,
+}
+
+impl DocAuditPatterns {
+    fn new() -> Self {
+        Self {
+            entrypoint_doc_re: Regex::new(
+                r#"^#!\[doc\s*=\s*include_str!\(\s*"(\.\./)?README\.md"\s*\)\]"#,
+            )
+            .expect("Valid regex"),
+        }
+    }
+}
+
+fn check_entrypoint_attribute_with_regex(
+    entry_path: &Path,
+    doc_regex: &Regex,
+) -> Result<(), String> {
+    let content = fs::read_to_string(entry_path)
+        .map_err(|e| format!("{}: Could not read entrypoint: {}", entry_path.display(), e))?;
+
+    let has_doc_attr = content
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.starts_with("//") && !l.starts_with("/*") && !l.starts_with('*'))
+        .any(|l| doc_regex.is_match(l));
+
+    if !has_doc_attr {
+        return Err(format!(
+            "{}: Missing required crate-level documentation attribute '#![doc = include_str!(\"../README.md\")]'",
+            entry_path.display()
+        ));
+    }
+
+    Ok(())
+}
+
+/// Checks an entrypoint file (`lib.rs` or `main.rs`) for the required active doc attribute.
+#[cfg(test)]
+pub fn check_entrypoint_attribute(entry_path: &Path) -> Result<(), String> {
+    let patterns = DocAuditPatterns::new();
+    check_entrypoint_attribute_with_regex(entry_path, &patterns.entrypoint_doc_re)
+}
+
+/// Scans a crate README file for prohibited placeholder strings.
+pub fn check_prohibited_placeholders(readme_path: &Path, content: &str) -> Vec<String> {
+    let mut violations = Vec::new();
+
+    for (line_idx, line) in content.lines().enumerate() {
+        let line_num = line_idx + 1;
+        let line_trimmed = line.trim();
+
+        for &placeholder in PROHIBITED_PLACEHOLDERS {
+            if line_trimmed.contains(placeholder) {
+                violations.push(format!(
+                    "{}:{}: Prohibited placeholder string found: \"{}\"",
+                    readme_path.display(),
+                    line_num,
+                    placeholder
+                ));
+                break;
+            }
+        }
+    }
+
+    violations
+}
+
+/// Checks minimum line count and required architectural headings.
+pub fn check_content_thresholds(
+    readme_path: &Path,
+    content: &str,
+    is_allowlisted: bool,
+) -> Vec<String> {
+    if is_allowlisted {
+        return Vec::new();
+    }
+
+    let mut violations = Vec::new();
+    let lines: Vec<&str> = content.lines().collect();
+    let line_count = lines.len();
+
+    if line_count < MIN_README_LINES {
+        violations.push(format!(
+            "{}: README.md content below minimum threshold (has {} lines, minimum required is {})",
+            readme_path.display(),
+            line_count,
+            MIN_README_LINES
+        ));
+    }
+
+    for (prefix, full_name) in MANDATORY_HEADINGS {
+        let has_heading = lines.iter().any(|l| l.trim().starts_with(prefix));
+        if !has_heading {
+            violations.push(format!(
+                "{}: README.md missing mandatory architectural heading '{}'",
+                readme_path.display(),
+                full_name
+            ));
+        }
+    }
+
+    violations
+}
+
+/// Performs documentation audit on a single workspace crate directory.
+#[cfg(test)]
+pub fn audit_crate(crate_name: &str, crate_dir: &Path, is_allowlisted: bool) -> AuditReport {
+    let patterns = DocAuditPatterns::new();
+    audit_crate_with_patterns(crate_name, crate_dir, is_allowlisted, &patterns)
+}
+
+fn audit_crate_with_patterns(
+    crate_name: &str,
+    crate_dir: &Path,
+    is_allowlisted: bool,
+    patterns: &DocAuditPatterns,
+) -> AuditReport {
+    let mut report = AuditReport::new();
+
+    // 1. Verify localized README.md exists
+    let readme_path = crate_dir.join("README.md");
+    if !readme_path.is_file() {
+        report.add(format!(
+            "{}: Missing localized README.md at {}",
+            crate_name,
+            readme_path.display()
+        ));
+        return report;
+    }
+
+    // Read README.md content
+    let readme_content = match fs::read_to_string(&readme_path) {
+        Ok(c) => c,
+        Err(e) => {
+            report.add(format!(
+                "{}: Failed to read README.md: {}",
+                readme_path.display(),
+                e
+            ));
+            return report;
+        }
+    };
+
+    // 2. Reject prohibited placeholder strings across ALL crates
+    report.extend(check_prohibited_placeholders(&readme_path, &readme_content));
+
+    // 3. Enforce content thresholds and architectural headings (unless allowlisted)
+    report.extend(check_content_thresholds(
+        &readme_path,
+        &readme_content,
+        is_allowlisted,
+    ));
+
+    // 4. Verify crate root entrypoints include active doc attribute
+    let mut checked_entrypoint = false;
+    for entry_rs in [crate_dir.join("src/lib.rs"), crate_dir.join("src/main.rs")] {
+        if entry_rs.is_file() {
+            checked_entrypoint = true;
+            if let Err(e) =
+                check_entrypoint_attribute_with_regex(&entry_rs, &patterns.entrypoint_doc_re)
+            {
+                report.add(e);
+            }
+        }
+    }
+    if !checked_entrypoint {
+        report.add(format!(
+            "{}: No root entrypoint found (neither src/lib.rs nor src/main.rs exists)",
+            crate_name
+        ));
+    }
+
+    report
+}
+
+/// Prints sorted registered `[[example]]` target names from the CLI examples crate (one per line).
+pub fn list_registered_examples_cli() -> bool {
+    let workspace_root = crate::manifest_cache::workspace_root_dir();
+    let model = match manifest_model::WorkspaceManifestModel::load(&workspace_root) {
+        Ok(m) => m,
+        Err(err) => {
+            eprintln!("{err}");
+            return false;
+        }
+    };
+    let Some(pkg) = model.cli_examples_pkg() else {
+        eprintln!("Workspace manifest model is missing CLI examples package.");
+        return false;
+    };
+    if pkg.examples.is_empty() {
+        eprintln!(
+            "`{}/Cargo.toml` declares zero `[[example]]` targets.",
+            pkg.member_dir
+        );
+        return false;
+    }
+    for name in pkg.examples.keys() {
+        println!("{name}");
+    }
+    true
+}
+
+/// Main entrypoint to audit all discovered workspace crates.
+pub fn run_doc_audit(args: &[String]) -> bool {
+    let (workspace_root, members) = crate::manifest_cache::discover_workspace();
+    let mut cache = oxidize_core::traceability::AstCache::new();
+    run_doc_audit_in_base(&workspace_root, &members, args, &mut cache)
+}
+
+/// Audits an explicit slice of `members` sharing an existing single-pass `AstCache`.
+pub fn run_doc_audit_for_members_with_cache(
+    members: &[String],
+    args: &[String],
+    cache: &mut oxidize_core::traceability::AstCache,
+) -> bool {
+    let workspace_root = crate::manifest_cache::workspace_root_dir();
+    run_doc_audit_in_base(&workspace_root, members, args, cache)
+}
+
+fn count_registered_examples(workspace_root: &Path) -> usize {
+    manifest_model::WorkspaceManifestModel::load(workspace_root)
+        .ok()
+        .and_then(|m| m.cli_examples_pkg().map(|p| p.examples.len()))
+        .unwrap_or(0)
+}
+
+fn member_is_allowlisted(member: &str, allowlist: &HashSet<String>) -> bool {
+    let opts = crate::whitelist::PathMatchOptions {
+        trim_dot_slash: true,
+        require_non_empty: true,
+        match_file_name: false,
+    };
+    allowlist.contains(member)
+        || allowlist
+            .iter()
+            .any(|pat| crate::whitelist::path_matches_lossy(Path::new(member), pat, opts))
+}
+
+fn run_doc_audit_in_base(
+    workspace_root: &Path,
+    members: &[String],
+    args: &[String],
+    cache: &mut oxidize_core::traceability::AstCache,
+) -> bool {
+    println!("=== Automated Crate Documentation Verification Gate ===");
+
+    let staging_mode = args
+        .iter()
+        .any(|a| a == "--staging" || a == "--allow-legacy");
+    let strict_mode = args.iter().any(|a| a == "--strict");
+
+    if staging_mode {
+        println!("Running in staging mode (legacy allowlist enabled).");
+    }
+    if strict_mode {
+        println!("Running in strict mode (all crates must satisfy full architecture headings).");
+    }
+    if members.is_empty() {
+        eprintln!("[!] No workspace members discovered.");
+        return false;
+    }
+
+    let candidate = crate::manifest_cache::resolve_workspace_path_from(
+        workspace_root,
+        crate::whitelist::WHITELIST_FILE_NAME,
+    );
+    let allowlist = if strict_mode {
+        HashSet::new()
+    } else {
+        let whitelist_file =
+            crate::whitelist::resolve_whitelist_path(&[candidate.as_path()]).unwrap_or(candidate);
+        load_allowlist(&whitelist_file)
+    };
+
+    let patterns = DocAuditPatterns::new();
+    let mut report = AuditReport::new();
+    for member in members {
+        let crate_dir = crate::manifest_cache::resolve_workspace_path_from(workspace_root, member);
+        let is_allowlisted = member_is_allowlisted(member, &allowlist) || staging_mode;
+        report.extend(
+            audit_crate_with_patterns(member, &crate_dir, is_allowlisted, &patterns).violations,
+        );
+    }
+
+    report.extend(facade_imports::audit_facade_import_hygiene(workspace_root));
+    report.extend(facade_imports::audit_workspace_guides_and_manifests(
+        workspace_root,
+    ));
+    report.extend(math_contracts::audit_math_contracts_with_cache(
+        workspace_root,
+        members,
+        cache,
+    ));
+
+    let example_count = count_registered_examples(workspace_root);
+    print_doc_audit_summary(&report, members.len(), example_count)
+}
+
+/// Audits only touched crates and staged active guides/facade files for `batch-staged`.
+pub fn run_staged_doc_audit(
+    touched_members: &[String],
+    all_staged: &[String],
+    existing_staged: &[String],
+    workspace_members: &[String],
+    cache: &mut oxidize_core::traceability::AstCache,
+) -> bool {
+    let workspace_root = crate::manifest_cache::workspace_root_dir();
+    let mut report = AuditReport::new();
+
+    if !touched_members.is_empty() {
+        let candidate = crate::manifest_cache::resolve_workspace_path_from(
+            &workspace_root,
+            crate::whitelist::WHITELIST_FILE_NAME,
+        );
+        let whitelist_file =
+            crate::whitelist::resolve_whitelist_path(&[candidate.as_path()]).unwrap_or(candidate);
+        let allowlist = load_allowlist(&whitelist_file);
+        let patterns = DocAuditPatterns::new();
+        for member in touched_members {
+            let crate_dir =
+                crate::manifest_cache::resolve_workspace_path_from(&workspace_root, member);
+            let is_allowlisted = member_is_allowlisted(member, &allowlist);
+            report.extend(
+                audit_crate_with_patterns(member, &crate_dir, is_allowlisted, &patterns).violations,
+            );
+        }
+    }
+
+    report.extend(staged_guides::audit_staged_facade_import_hygiene(
+        &workspace_root,
+        existing_staged,
+    ));
+    report.extend(staged_guides::audit_staged_guides_and_manifests(
+        &workspace_root,
+        all_staged,
+        existing_staged,
+    ));
+    let math_targets = if all_staged
+        .iter()
+        .any(|p| p.trim_start_matches("./").starts_with("docs/math_specs/"))
+    {
+        workspace_members
+    } else {
+        touched_members
+    };
+    if !math_targets.is_empty() {
+        report.extend(math_contracts::audit_math_contracts_with_cache(
+            &workspace_root,
+            math_targets,
+            cache,
+        ));
+    }
+
+    if report.is_success() {
+        println!(
+            "[OK] Scoped documentation verification passed ({} touched crate(s)).",
+            touched_members.len()
+        );
+        true
+    } else {
+        print_doc_audit_summary(&report, touched_members.len(), 0)
+    }
+}
+
+fn print_doc_audit_summary(
+    report: &AuditReport,
+    member_count: usize,
+    example_count: usize,
+) -> bool {
+    if report.is_success() {
+        println!(
+            "[OK] All {} workspace crates and {}/{} registered CLI examples passed documentation verification.",
+            member_count, example_count, example_count
+        );
+        true
+    } else {
+        eprintln!(
+            "\n[!] Documentation Verification Failed: {} violation(s) found:\n",
+            report.violations.len()
+        );
+        for v in &report.violations {
+            eprintln!("  - {}", v);
+        }
+        false
+    }
+}

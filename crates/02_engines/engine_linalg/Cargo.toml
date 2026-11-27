@@ -5,6 +5,13 @@ edition = "2024"
 description = "Zero-allocation #![no_std] dense and sparse numerical linear algebra engine"
 license = "MIT OR Apache-2.0"
 
+[package.metadata.oxidize]
+tier = "02_engines"
+release_role = "release"
+facade_role = "engine"
+traceability = true
+math_contract = true
+
 [features]
 default = []
 alloc = []
@@ -16,7 +23,7 @@ serde = { workspace = true, optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true, default-features = false, features = ["alloc", "float_roundtrip"] }
-verified_engine = { path = "../../verified_engine" }
+verified_engine = { path = "../../00_foundation/verified_engine" }
 
 [lints]
 workspace = true

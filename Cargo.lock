@@ -2526,13 +2526,17 @@ dependencies = [
  "domain_climate",
  "domain_epidemiology",
  "domain_physics",
+ "engine_diffeq",
  "engine_linalg",
+ "engine_pde",
  "federated_registry",
  "math_commons",
+ "math_diagnostics",
  "math_explorer",
  "math_rng",
  "nalgebra 0.34.2",
  "oxidize_core",
+ "oxidizemath",
  "pure_math",
  "scientific_metadata",
  "serde",
@@ -2553,6 +2557,7 @@ dependencies = [
  "math_rng",
  "num-complex",
  "num-traits",
+ "oxidize_core",
  "rand_core 0.6.4",
  "scientific_metadata",
  "serde",
@@ -2573,27 +2578,8 @@ dependencies = [
 name = "math_explorer"
 version = "0.4.0"
 dependencies = [
- "approx",
  "criterion",
- "diagnostics",
- "domain_ai",
- "domain_applied",
- "domain_biology",
- "domain_climate",
- "domain_epidemiology",
- "domain_physics",
- "engine_diffeq",
- "engine_pde",
- "math_commons",
- "nalgebra 0.34.2",
- "num-complex",
- "oxidize_core",
- "petgraph",
- "pure_math",
- "rand 0.8.8",
- "scientific_metadata",
- "serde_json",
- "verified_engine",
+ "oxidizemath",
 ]
 
 [[package]]
@@ -3300,6 +3286,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxidize-cli"
+version = "0.4.0"
+dependencies = [
+ "oxidizemath",
+]
+
+[[package]]
 name = "oxidize_core"
 version = "0.1.0"
 dependencies = [
@@ -3316,6 +3309,33 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
  "web-sys",
+]
+
+[[package]]
+name = "oxidizemath"
+version = "0.4.0"
+dependencies = [
+ "approx",
+ "diagnostics",
+ "domain_ai",
+ "domain_applied",
+ "domain_biology",
+ "domain_climate",
+ "domain_epidemiology",
+ "domain_physics",
+ "engine_diffeq",
+ "engine_linalg",
+ "engine_pde",
+ "math_commons",
+ "nalgebra 0.34.2",
+ "num-complex",
+ "oxidize_core",
+ "petgraph",
+ "pure_math",
+ "rand 0.8.8",
+ "scientific_metadata",
+ "serde_json",
+ "verified_engine",
 ]
 
 [[package]]
@@ -3967,6 +3987,7 @@ dependencies = [
  "domain_climate",
  "domain_epidemiology",
  "domain_physics",
+ "engine_pde",
  "math_commons",
  "nalgebra 0.34.2",
  "num-complex",

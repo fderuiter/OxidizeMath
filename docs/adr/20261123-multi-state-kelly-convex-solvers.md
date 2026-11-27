@@ -8,7 +8,7 @@ Previously, `pure_math::statistics::kelly` modeled only binary two-outcome wager
 
 ## Decision
 1. **Modular Zero-Allocation Solvers in `crates/pure_math`**:
-   - Decompose [`crates/pure_math/src/pure_math/statistics/kelly/`](../../crates/pure_math/src/pure_math/statistics/kelly/mod.rs) into focused submodules (`core`, `push`, `quarter_line`, `market`, `slate_eval`, `slate`, `drawdown`, `tests`) while keeping all legacy binary APIs unbroken.
+   - Decompose [`crates/pure_math/src/pure_math/statistics/kelly/`](../../crates/03_domains/pure_math/src/pure_math/statistics/kelly/mod.rs) into focused submodules (`core`, `push`, `quarter_line`, `market`, `slate_eval`, `slate`, `drawdown`, `tests`) while keeping all legacy binary APIs unbroken.
    - Implement closed-form `push_kelly_fraction` ($f^* = (b p_{\text{win}} - p_{\text{loss}}) / (b (1 - p_{\text{push}}))$) and bracketed 1D root-finding `quarter_line_kelly_fraction` reusing `Bisection` from `pure_math::analysis::roots`.
    - Implement Smoczynski-Tomkins (2010) active-set allocation `solve_mutually_exclusive_market` with caller-supplied `MarketScratch` (`MAX_MARKET_OUTCOMES = 32`).
    - Implement projected FISTA + Barzilai-Borwein simplex solver `solve_simultaneous_slate` (`MAX_SLATE_WAGERS = 64`) using exact state convolution for $K \le 10$ and 128-node 1D Frullani/Gamma Laplace quadrature ($O(Q \cdot K)$) for $K > 10$ via caller-supplied `SlateScratch`.

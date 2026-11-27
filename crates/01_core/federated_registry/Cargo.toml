@@ -1,0 +1,16 @@
+[package]
+name = "federated_registry"
+version = "0.1.0"
+edition = "2021"
+
+[package.metadata.oxidize]
+tier = "01_core"
+release_role = "internal"
+facade_role = "none"
+traceability = false
+
+[dependencies]
+diagnostics = { path = "../diagnostics" }
+
+[lints]
+workspace = true

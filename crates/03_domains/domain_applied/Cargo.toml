@@ -1,0 +1,35 @@
+[package]
+name = "domain_applied"
+version.workspace = true
+edition = "2024"
+
+[package.metadata.oxidize]
+tier = "03_domains"
+release_role = "release"
+facade_role = "domain"
+facade_module = "applied"
+traceability = true
+math_contract = true
+
+[dependencies]
+nalgebra = { workspace = true }
+rand = { workspace = true }
+statrs = { workspace = true }
+thiserror = { workspace = true }
+oxidize_core = { path = "../../01_core/oxidize_core" }
+verified_engine = { version = "0.1.0", path = "../../00_foundation/verified_engine" }
+
+math_commons = { path = "../../02_engines/math_commons" }
+engine_linalg = { path = "../../02_engines/engine_linalg" }
+engine_pde = { path = "../../02_engines/engine_pde", features = ["std"] }
+diagnostics = { path = "../../01_core/diagnostics" }
+pure_math = { path = "../pure_math" }
+
+[dev-dependencies]
+approx = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true

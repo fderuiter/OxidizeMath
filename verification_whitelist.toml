@@ -7,14 +7,12 @@ allowlist = [
 [doc_verification.approved_ignore_fences]
 # Binary-only math_explorer_gui crate::, out-of-line tab mod, and egui widget snippets that cannot link into library doctests
 "docs/architecture/interactive_tool_walkthrough.md" = 6
-"math_explorer_gui/README.md" = 3
+"math_explorer_gui:README.md" = 3
 
 [entropy_guard]
 scan_paths = [
     "crates",
     "apps",
-    "math_explorer",
-    "math_explorer_gui",
     "egui_plot",
     ".github",
     ".githooks",
@@ -27,8 +25,8 @@ scan_paths = [
 ]
 target_extensions = ["rs", "toml", "yml", "yaml", "json", "sh", "js", "html"]
 allowlist = [
-    "crates/unified_verification/src/entropy_guard/tests.rs",
-    "crates/unified_verification/api_baseline.json",
+    "unified_verification:src/entropy_guard/tests.rs",
+    "unified_verification:api_baseline.json",
 ]
 
 [[workflow_linter.exceptions]]
@@ -53,148 +51,150 @@ min_verified_production_density = 0.0490
 min_test_assertion_density = 3.00
 coverage_tolerance_pct = 1.5
 unverified_modules = [
-    "apps/xtask",
-    "crates/00_foundation/math_diagnostics",
-    "crates/00_foundation/math_rng",
-    "crates/02_engines/engine_linalg",
-    "crates/diagnostics",
-    "crates/engine_diffeq",
-    "crates/engine_pde",
-    "crates/federated_registry",
-    "crates/markdown_tests",
-    "crates/math_commons",
-    "crates/oxidize_core",
-    "crates/scientific_metadata",
-    "crates/scientific_verification",
-    "crates/unified_verification",
-    "crates/verified_engine",
-    "crates/verified_engine_macros",
+    "diagnostics",
+    "engine_diffeq",
+    "engine_linalg",
+    "engine_pde",
+    "federated_registry",
+    "markdown_tests",
+    "math_commons",
+    "math_diagnostics",
     "math_explorer",
     "math_explorer_gui",
+    "math_rng",
+    "oxidize-cli",
+    "oxidize_core",
+    "oxidizemath",
+    "scientific_metadata",
+    "scientific_verification",
+    "unified_verification",
+    "verified_engine",
+    "verified_engine_macros",
+    "xtask",
 ]
 
 [[verify_suite.opt_outs]]
-path = "crates/00_foundation/math_rng/src/"
+path = "math_rng:src/"
 reason = "no_std_engine"
 
 [[verify_suite.opt_outs]]
-path = "crates/00_foundation/math_rng/src/"
+path = "math_rng:src/"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/02_engines/engine_linalg/src/"
+path = "engine_linalg:src/"
 reason = "no_std_engine"
 
 [[verify_suite.opt_outs]]
-path = "crates/02_engines/engine_linalg/src/"
+path = "engine_linalg:src/"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/domain_applied/src/applied/freesurfer/thickness_tests.rs"
+path = "domain_applied:src/applied/freesurfer/thickness_tests.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/domain_biology/tests/test_kuramoto_zero_alloc.rs"
+path = "domain_biology:tests/test_kuramoto_zero_alloc.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/domain_epidemiology/tests/test_network_step_zero_alloc.rs"
+path = "domain_epidemiology:tests/test_network_step_zero_alloc.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/domain_physics/src/physics/stat_mech/sandpile/tests.rs"
+path = "domain_physics:src/physics/stat_mech/sandpile/tests.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/domain_physics/tests/test_sandpile.rs"
+path = "domain_physics:tests/test_sandpile.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/math_commons/src/ast/arity_tests.rs"
+path = "math_commons:src/ast/arity_tests.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/math_commons/src/ast/limit_tests.rs"
+path = "math_commons:src/ast/limit_tests.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/pure_math/src/pure_math/analysis/evolution.rs"
+path = "pure_math:src/pure_math/analysis/evolution.rs"
 reason = "infrastructure"
 
 [[verify_suite.opt_outs]]
-path = "crates/pure_math/src/pure_math/analysis/pde/fused_stepper_tests.rs"
+path = "pure_math:src/pure_math/analysis/pde/fused_stepper_tests.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/pure_math/src/pure_math/analysis/pde/wave_fdtd_tests.rs"
+path = "pure_math:src/pure_math/analysis/pde/wave_fdtd_tests.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/pure_math/src/pure_math/analysis/stochastic.rs"
+path = "pure_math:src/pure_math/analysis/stochastic.rs"
 reason = "Legacy missing assertions"
 
 [[verify_suite.opt_outs]]
-path = "crates/pure_math/src/pure_math/differential_geometry/buckled_flow_tests.rs"
+path = "pure_math:src/pure_math/differential_geometry/buckled_flow_tests.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/pure_math/src/pure_math/elliptic_curves/singular_tests.rs"
+path = "pure_math:src/pure_math/elliptic_curves/singular_tests.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/pure_math/src/pure_math/hyperbolic/tests.rs"
+path = "pure_math:src/pure_math/hyperbolic/tests.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/pure_math/src/pure_math/statistics/kelly/core_tests.rs"
+path = "pure_math:src/pure_math/statistics/kelly/core_tests.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/pure_math/tests/algorithmic_information.rs"
+path = "pure_math:tests/algorithmic_information.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/pure_math/tests/test_hyperbolic_zero_alloc.rs"
+path = "pure_math:tests/test_hyperbolic_zero_alloc.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/pure_math/tests/test_markov_zero_alloc.rs"
+path = "pure_math:tests/test_markov_zero_alloc.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/pure_math/tests/test_tda_zero_alloc.rs"
+path = "pure_math:tests/test_tda_zero_alloc.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "crates/scientific_metadata/src/citation_registry.rs"
+path = "scientific_metadata:src/citation_registry.rs"
 reason = "metadata"
 
 [[verify_suite.opt_outs]]
-path = "crates/scientific_metadata/src/theory.rs"
+path = "scientific_metadata:src/theory.rs"
 reason = "metadata"
 
 [[verify_suite.opt_outs]]
-path = "egui_plot/src/sidecar_3d_tests.rs"
+path = "egui_plot:src/sidecar_3d_tests.rs"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "math_explorer_gui/build_snapshot.rs"
+path = "math_explorer_gui:build_snapshot.rs"
 reason = "gui_tool"
 
 [[verify_suite.opt_outs]]
-path = "math_explorer_gui/build_stage.rs"
+path = "math_explorer_gui:build_stage.rs"
 reason = "gui_tool"
 
 [[verify_suite.opt_outs]]
-path = "math_explorer_gui/src/"
+path = "math_explorer_gui:src/"
 reason = "gui_tool"
 
 [[verify_suite.opt_outs]]
-path = "math_explorer_gui/src/"
+path = "math_explorer_gui:src/"
 reason = "infrastructure"
 
 [[verify_suite.opt_outs]]
-path = "math_explorer_gui/src/"
+path = "math_explorer_gui:src/"
 reason = "tests"
 
 [adr_verification]
@@ -313,32 +313,34 @@ allowlist = [
 ]
 
 [[unused_dependencies]]
-crate = "crates/oxidize_core"
+crate = "oxidize_core"
 dependency = "getrandom"
 reason = "Activates the getrandom js backend feature on wasm32-unknown-unknown for rand without direct Rust imports"
 
 [verification_debt]
 # Non-domain infrastructure, tooling, facade, GUI, and vendored crates exempt from theory_verification!
 exempt_crates = [
-    "apps/xtask",
-    "crates/00_foundation/math_diagnostics",
-    "crates/00_foundation/math_rng",
-    "crates/02_engines/engine_linalg",
-    "crates/diagnostics",
-    "crates/engine_diffeq",
-    "crates/engine_pde",
-    "crates/federated_registry",
-    "crates/markdown_tests",
-    "crates/math_commons",
-    "crates/oxidize_core",
-    "crates/scientific_metadata",
-    "crates/scientific_verification",
-    "crates/unified_verification",
-    "crates/verified_engine",
-    "crates/verified_engine_macros",
+    "diagnostics",
     "egui_plot",
+    "engine_diffeq",
+    "engine_linalg",
+    "engine_pde",
+    "federated_registry",
+    "markdown_tests",
+    "math_commons",
+    "math_diagnostics",
     "math_explorer",
     "math_explorer_gui",
+    "math_rng",
+    "oxidize-cli",
+    "oxidize_core",
+    "oxidizemath",
+    "scientific_metadata",
+    "scientific_verification",
+    "unified_verification",
+    "verified_engine",
+    "verified_engine_macros",
+    "xtask",
 ]
 max_opt_outs_per_file = 1
 min_verified_density = 0.300
@@ -353,22 +355,22 @@ min_total_density = 0.120
 "tests" = 250
 
 [verification_debt.crate_opt_out_caps]
-"crates/00_foundation/math_rng" = 14
-"crates/02_engines/engine_linalg" = 15
-"crates/domain_applied" = 1
-"crates/domain_biology" = 1
-"crates/domain_epidemiology" = 1
-"crates/domain_physics" = 2
-"crates/math_commons" = 2
-"crates/pure_math" = 12
-"crates/scientific_metadata" = 2
+"math_rng" = 14
+"engine_linalg" = 15
+"domain_applied" = 1
+"domain_biology" = 1
+"domain_epidemiology" = 1
+"domain_physics" = 2
+"math_commons" = 2
+"pure_math" = 12
+"scientific_metadata" = 2
 "egui_plot" = 1
 "math_explorer_gui" = 997
 
 [verification_debt.file_opt_out_caps]
-"math_explorer_gui/src/tabs/optics_waves/tool.rs" = 2
-"math_explorer_gui/src/tabs/paradox_lab/mod.rs" = 3
-"math_explorer_gui/src/tabs/solid_state/crystal_viewer.rs" = 2
+"math_explorer_gui:src/tabs/optics_waves/tool.rs" = 2
+"math_explorer_gui:src/tabs/paradox_lab/mod.rs" = 3
+"math_explorer_gui:src/tabs/solid_state/crystal_viewer.rs" = 2
 
 [missing_docs]
 # Only vendored crates may use crate-level #![allow(missing_docs)]
@@ -378,23 +380,23 @@ vendored_crates = [
 
 [missing_docs.files]
 # Per-file outer #[allow(missing_docs)] caps; ratchets strictly downward via test-policy-audit
-"math_explorer_gui/src/accessibility.rs" = 7
-"math_explorer_gui/src/async_sim/mod.rs" = 22
-"math_explorer_gui/src/async_sim/registry.rs" = 7
-"math_explorer_gui/src/async_sim/state.rs" = 29
-"math_explorer_gui/src/async_sim/unified/mod.rs" = 2
-"math_explorer_gui/src/async_sim/unified/tool.rs" = 3
-"math_explorer_gui/src/camera/mod.rs" = 1
-"math_explorer_gui/src/framework/mod.rs" = 7
-"math_explorer_gui/src/framework/ui.rs" = 2
-"math_explorer_gui/src/main.rs" = 5
-"math_explorer_gui/src/tabs/ai/q_table_inspector/runner.rs" = 2
-"math_explorer_gui/src/tabs/chaos/attractors/runner.rs" = 3
-"math_explorer_gui/src/tabs/epidemiology/sir.rs" = 2
-"math_explorer_gui/src/tabs/morphogenesis/tool.rs" = 2
-"math_explorer_gui/src/tabs/mri/runner.rs" = 3
-"math_explorer_gui/src/tabs/neuroscience/hodgkin_huxley.rs" = 1
-"math_explorer_gui/src/tabs/solid_state/ising.rs" = 2
-"math_explorer_gui/src/tabs/solid_state/ising/runner.rs" = 2
-"math_explorer_gui/src/tabs/traceability.rs" = 1
-"math_explorer_gui/src/tabs/traceability/presets.rs" = 2
+"math_explorer_gui:src/accessibility.rs" = 7
+"math_explorer_gui:src/async_sim/mod.rs" = 22
+"math_explorer_gui:src/async_sim/registry.rs" = 7
+"math_explorer_gui:src/async_sim/state.rs" = 29
+"math_explorer_gui:src/async_sim/unified/mod.rs" = 2
+"math_explorer_gui:src/async_sim/unified/tool.rs" = 3
+"math_explorer_gui:src/camera/mod.rs" = 1
+"math_explorer_gui:src/framework/mod.rs" = 7
+"math_explorer_gui:src/framework/ui.rs" = 2
+"math_explorer_gui:src/main.rs" = 5
+"math_explorer_gui:src/tabs/ai/q_table_inspector/runner.rs" = 2
+"math_explorer_gui:src/tabs/chaos/attractors/runner.rs" = 3
+"math_explorer_gui:src/tabs/epidemiology/sir.rs" = 2
+"math_explorer_gui:src/tabs/morphogenesis/tool.rs" = 2
+"math_explorer_gui:src/tabs/mri/runner.rs" = 3
+"math_explorer_gui:src/tabs/neuroscience/hodgkin_huxley.rs" = 1
+"math_explorer_gui:src/tabs/solid_state/ising.rs" = 2
+"math_explorer_gui:src/tabs/solid_state/ising/runner.rs" = 2
+"math_explorer_gui:src/tabs/traceability.rs" = 1
+"math_explorer_gui:src/tabs/traceability/presets.rs" = 2

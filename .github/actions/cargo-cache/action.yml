@@ -40,7 +40,7 @@ runs:
         INPUT_EXTRA_FILES: ${{ inputs.extra-files }}
         LOCK_AND_CONFIG_HASH: ${{ hashFiles('Cargo.lock', '**/Cargo.lock', '.cargo/config.toml') }}
         MANIFEST_FILES_HASH: ${{ inputs.manifest-files != '' && hashFiles(inputs.manifest-files) || '' }}
-        TRUNK_CONFIG_HASH: ${{ inputs.target == 'wasm32-unknown-unknown' && hashFiles('math_explorer_gui/Trunk.toml') || '' }}
+        TRUNK_CONFIG_HASH: ${{ inputs.target == 'wasm32-unknown-unknown' && hashFiles('apps/math_explorer_gui/Trunk.toml') || '' }}
         EXTRA_FILES_HASH: ${{ inputs.extra-files != '' && hashFiles(inputs.extra-files) || '' }}
       run: |
         set -euo pipefail
@@ -81,7 +81,7 @@ runs:
         fi
 
         if [ "$resolved_target" = "wasm32-unknown-unknown" ] && [ -z "${TRUNK_CONFIG_HASH:-}" ]; then
-          echo "Error: Failed to hash math_explorer_gui/Trunk.toml for wasm32-unknown-unknown target" >&2
+          echo "Error: Failed to hash apps/math_explorer_gui/Trunk.toml for wasm32-unknown-unknown target" >&2
           exit 1
         fi
 

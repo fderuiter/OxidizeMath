@@ -12,7 +12,7 @@ When you submit a PR, you aren't just merging code; you are merging knowledge. E
 
 Before implementing new features or making structural changes, review our centralized architecture documentation:
 
-- [System Overview & Crate Topology](docs/architecture/system_overview.md): System layers and crate dependencies across all 26 crates.
+- [System Overview & Crate Topology](docs/architecture/system_overview.md): System layers and crate dependencies across all 28 crates.
 - [CERA Framework Guide](docs/architecture/cera_framework.md): Climate-invariant encoding, representation alignment, and modeling pipelines.
 - [Zero-Allocation Runtime Guide](docs/architecture/zero_allocation_runtime.md): NASA Power of 10 Rule 3 enforcement and `VerifiedEngine` runtime rules.
 - [Interactive Tool Walkthrough](docs/architecture/interactive_tool_walkthrough.md): Step-by-step tutorial to implement and register simulation tabs.
@@ -91,7 +91,7 @@ cargo run -p xtask -- setup
 
 ### Pre-PR Full Verification (`xtask lint-all`)
 
-Before opening or updating a pull request, run the full workspace verification suite (aligned with [crates/unified_verification/README.md](crates/unified_verification/README.md) and `.github/workflows/ci.yml`):
+Before opening or updating a pull request, run the full workspace verification suite (aligned with [apps/unified_verification/README.md](apps/unified_verification/README.md) and `.github/workflows/ci.yml`):
 
 ```bash
 cargo run -p xtask -- lint-all
@@ -105,7 +105,7 @@ This command builds `unified_verification` once with Cargo's development profile
    - **File Length Constraints** (`check-file-lengths`): enforces the 500-line ceiling per source file.
    - **CI Workflows** (`lint-workflows`): validates GitHub Actions workflows, local reusable workflows, and `.github/actions` composite actions for read-only permissions, concurrency controls, job timeouts, commit-pinned actions, and safe `run` expressions.
    - **Crate Documentation Audit** (`check-docs`): verifies README files and entrypoint docs.
-   - **Single-Pass AST Verification** (`batch-ast`): parses each unique workspace `.rs` file at most once with `syn::parse_file` and runs AST clone detection (`check-duplicates`), public API drift against `crates/unified_verification/api_baseline.json` (`check-api-drift`), in-process literature/test traceability (`traceability`), entropy/secret scanning (`check-entropy`), and lint-bypass/unused-dependency policy auditing (`test-policy-audit`).
+   - **Single-Pass AST Verification** (`batch-ast`): parses each unique workspace `.rs` file at most once with `syn::parse_file` and runs AST clone detection (`check-duplicates`), public API drift against `apps/unified_verification/api_baseline.json` (`check-api-drift`), in-process literature/test traceability (`traceability`), entropy/secret scanning (`check-entropy`), and lint-bypass/unused-dependency policy auditing (`test-policy-audit`).
    - **Verification Certificate & Quality Floors** (`check-certificate`): verifies the checked-in 14-key `Verification_Certificate.json` schema and `README.md` coverage badge alongside workspace AST/WASM/pyramid metrics, ratcheted `[verify_suite]` assertion density and WASM path coverage floors, and whitelist debt rules without invoking `cargo llvm-cov` or failing when live PR metrics shift above ratcheted floors.
 3. **Clippy Lints (Host & WebAssembly)**:
    ```bash
@@ -187,8 +187,8 @@ If you add new functionality, **you must add tests**.
 The `math_explorer_gui` crate is built with **egui** and **eframe**. For a complete walkthrough on creating and registering new interactive simulation tools, follow the [Interactive Tool Walkthrough](docs/architecture/interactive_tool_walkthrough.md).
 
 *   **Structure:**
-    *   UI code resides in `math_explorer_gui/src`.
-    *   The GUI should primarily visualize and control logic defined in domain crates or the core `math_explorer` library. Avoid implementing heavy mathematical logic directly in the GUI crate.
+    *   UI code resides in `apps/math_explorer_gui/src`.
+    *   The GUI should primarily visualize and control logic defined in domain crates or the core `oxidizemath` library. Avoid implementing heavy mathematical logic directly in the GUI crate.
 *   **Dependencies:** We maintain strict version compatibility between `egui`, `eframe`, and `egui_plot`. Check `Cargo.toml` before updating dependencies.
 
 ##  Documentation Style Guide

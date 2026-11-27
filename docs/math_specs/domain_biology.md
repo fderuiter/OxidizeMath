@@ -1,6 +1,6 @@
 # Canonical Mathematical Specification: `domain_biology`
 
-Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/domain_biology`](../../crates/domain_biology/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace manuscripts.
+Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/domain_biology`](../../crates/03_domains/domain_biology/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace manuscripts.
 
 ## 1. Reaction-Diffusion Morphogenesis, 2D Finite-Difference Diffusion & FFT Lenia (`morphogenesis`, `reaction_diffusion`, `diffusion`, `lenia`)
 
