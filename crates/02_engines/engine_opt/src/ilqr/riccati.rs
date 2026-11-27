@@ -3,7 +3,7 @@
 
 use super::StageCost;
 use crate::error::OptError;
-use engine_linalg::{cholesky_solve, cholesky_workspace_len};
+use engine_linalg::{cholesky_solve, cholesky_workspace_len, mat_idx};
 use math_scalars::workspace::SolverWorkspace;
 
 /// Workspace slices used inside the backward Riccati recursion.
@@ -192,14 +192,14 @@ fn assemble_q_blocks(
     for i in 0..nx {
         let mut s = sc.lx[i];
         for r in 0..nx {
-            s += fx[r * nx + i] * sc.vx[r];
+            s += fx[mat_idx(r, i, nx)] * sc.vx[r];
         }
         sc.qx[i] = s;
     }
     for j in 0..nu {
         let mut s = sc.lu[j];
         for r in 0..nx {
-            s += fu[r * nu + j] * sc.vx[r];
+            s += fu[mat_idx(r, j, nu)] * sc.vx[r];
         }
         sc.qu[j] = s;
     }
@@ -208,42 +208,42 @@ fn assemble_q_blocks(
         for c in 0..nx {
             let mut s = 0.0;
             for p in 0..nx {
-                s += sc.vxx[r * nx + p] * fx[p * nx + c];
+                s += sc.vxx[mat_idx(r, p, nx)] * fx[mat_idx(p, c, nx)];
             }
-            sc.tmp_nx_nx[r * nx + c] = s;
+            sc.tmp_nx_nx[mat_idx(r, c, nx)] = s;
         }
     }
     for i in 0..nx {
         for j in 0..nx {
-            let mut s = sc.lxx[i * nx + j];
+            let mut s = sc.lxx[mat_idx(i, j, nx)];
             for r in 0..nx {
-                s += fx[r * nx + i] * sc.tmp_nx_nx[r * nx + j];
+                s += fx[mat_idx(r, i, nx)] * sc.tmp_nx_nx[mat_idx(r, j, nx)];
             }
-            sc.qxx[i * nx + j] = s;
+            sc.qxx[mat_idx(i, j, nx)] = s;
         }
     }
     for j in 0..nu {
         for c in 0..nx {
-            let mut s = sc.lux[j * nx + c];
+            let mut s = sc.lux[mat_idx(j, c, nx)];
             for r in 0..nx {
-                s += fu[r * nu + j] * sc.tmp_nx_nx[r * nx + c];
+                s += fu[mat_idx(r, j, nu)] * sc.tmp_nx_nx[mat_idx(r, c, nx)];
             }
-            sc.qux[j * nx + c] = s;
+            sc.qux[mat_idx(j, c, nx)] = s;
         }
     }
     for j1 in 0..nu {
         for j2 in 0..nu {
-            let mut s = sc.luu[j1 * nu + j2];
+            let mut s = sc.luu[mat_idx(j1, j2, nu)];
             for r in 0..nx {
                 for p in 0..nx {
-                    let v_rp = sc.vxx[r * nx + p] + if r == p { reg } else { 0.0 };
-                    s += fu[r * nu + j1] * v_rp * fu[p * nu + j2];
+                    let v_rp = sc.vxx[mat_idx(r, p, nx)] + if r == p { reg } else { 0.0 };
+                    s += fu[mat_idx(r, j1, nu)] * v_rp * fu[mat_idx(p, j2, nu)];
                 }
             }
             if j1 == j2 {
                 s += reg;
             }
-            sc.quu[j1 * nu + j2] = s;
+            sc.quu[mat_idx(j1, j2, nu)] = s;
         }
     }
     symmetrize_in_place(sc.quu, nu);
@@ -269,12 +269,12 @@ fn solve_stage_gains(
 
     for c in 0..nx {
         for j in 0..nu {
-            sc.rhs_u[j] = -sc.qux[j * nx + c];
+            sc.rhs_u[j] = -sc.qux[mat_idx(j, c, nx)];
         }
         let mut col_ws = sc.chol_ws.reborrow();
         cholesky_solve(sc.quu, sc.rhs_u, sc.sol_u, nu, &mut col_ws).ok()?;
         for j in 0..nu {
-            fb_k[j * nx + c] = sc.sol_u[j];
+            fb_k[mat_idx(j, c, nx)] = sc.sol_u[j];
         }
     }
 
@@ -316,14 +316,15 @@ fn update_value_function(
     for j1 in 0..nu {
         let mut s = 0.0;
         for (j2, &ff_j2) in ff_k.iter().enumerate().take(nu) {
-            s += sc.quu[j1 * nu + j2] * ff_j2;
+            s += sc.quu[mat_idx(j1, j2, nu)] * ff_j2;
         }
         sc.rhs_u[j1] = s;
     }
     for i in 0..nx {
         let mut g = sc.qx[i];
-        for j in 0..nu {
-            g += fb_k[j * nx + i] * (sc.rhs_u[j] + sc.qu[j]) + sc.qux[j * nx + i] * ff_k[j];
+        for (j, &ff_j) in ff_k.iter().enumerate().take(nu) {
+            let ji = mat_idx(j, i, nx);
+            g += fb_k[ji] * (sc.rhs_u[j] + sc.qu[j]) + sc.qux[ji] * ff_j;
         }
         sc.vx_next[i] = g;
     }
@@ -332,20 +333,20 @@ fn update_value_function(
         for c in 0..nx {
             let mut s = 0.0;
             for j2 in 0..nu {
-                s += sc.quu[j1 * nu + j2] * fb_k[j2 * nx + c];
+                s += sc.quu[mat_idx(j1, j2, nu)] * fb_k[mat_idx(j2, c, nx)];
             }
-            sc.tmp_nu_nx[j1 * nx + c] = s;
+            sc.tmp_nu_nx[mat_idx(j1, c, nx)] = s;
         }
     }
     for i in 0..nx {
         for c in 0..nx {
-            let mut h = sc.qxx[i * nx + c];
+            let mut h = sc.qxx[mat_idx(i, c, nx)];
             for j in 0..nu {
-                h += fb_k[j * nx + i] * sc.tmp_nu_nx[j * nx + c]
-                    + fb_k[j * nx + i] * sc.qux[j * nx + c]
-                    + sc.qux[j * nx + i] * fb_k[j * nx + c];
+                let ji = mat_idx(j, i, nx);
+                let jc = mat_idx(j, c, nx);
+                h += fb_k[ji] * (sc.tmp_nu_nx[jc] + sc.qux[jc]) + sc.qux[ji] * fb_k[jc];
             }
-            sc.vxx_next[i * nx + c] = h;
+            sc.vxx_next[mat_idx(i, c, nx)] = h;
         }
     }
     symmetrize_in_place(sc.vxx_next, nx);
@@ -357,9 +358,11 @@ fn update_value_function(
 fn symmetrize_in_place(mat: &mut [f64], n: usize) {
     for i in 0..n {
         for j in (i + 1)..n {
-            let avg = 0.5 * (mat[i * n + j] + mat[j * n + i]);
-            mat[i * n + j] = avg;
-            mat[j * n + i] = avg;
+            let ij = mat_idx(i, j, n);
+            let ji = mat_idx(j, i, n);
+            let avg = 0.5 * (mat[ij] + mat[ji]);
+            mat[ij] = avg;
+            mat[ji] = avg;
         }
     }
 }

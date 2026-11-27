@@ -2,6 +2,7 @@
 //! Control model and twice-differentiable stage/terminal cost abstractions for `iLQR` and `MPC`.
 
 use crate::error::OptError;
+use engine_linalg::mat_idx;
 
 /// Nonlinear discrete-time state-space dynamics $x_{k+1} = f_k(x_k, u_k)$ with exact Jacobians.
 ///
@@ -120,7 +121,7 @@ impl StageCost for QuadraticBoxCost<'_> {
         lux.fill(0.0);
         for j in 0..nu {
             lu[j] = self.r_diag[j] * (u[j] - self.u_ref[j]);
-            luu[j * nu + j] = self.r_diag[j];
+            luu[mat_idx(j, j, nu)] = self.r_diag[j];
         }
     }
 
@@ -212,6 +213,6 @@ fn state_quad_and_barrier_derivs(
             h += bound_weight;
         }
         lx[i] = g;
-        lxx[i * nx + i] = h;
+        lxx[mat_idx(i, i, nx)] = h;
     }
 }

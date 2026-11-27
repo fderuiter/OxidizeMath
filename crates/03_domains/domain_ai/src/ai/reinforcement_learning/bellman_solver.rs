@@ -312,7 +312,7 @@ impl BellmanSolution {
         let eff_gamma = mdp.gamma.clamp(0.0, 1.0 - 1.0e-9);
 
         for s in 0..n {
-            sys[s * n + s] = 1.0;
+            sys[flatten_2d_index(s, s, n)] = 1.0;
             if adapter.is_terminal(s) {
                 continue;
             }
@@ -331,7 +331,7 @@ impl BellmanSolution {
                         flatten_2d_index(next_st.x as usize, next_st.y as usize, adapter.width);
                     rhs[s] += pa * p * mdp.reward(&st, &act, &next_st);
                     if !adapter.is_terminal(next_idx) {
-                        sys[s * n + next_idx] -= eff_gamma * pa * p;
+                        sys[flatten_2d_index(next_idx, s, n)] -= eff_gamma * pa * p;
                     }
                 }
             }

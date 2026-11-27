@@ -2,6 +2,7 @@
 //! Lexicographic Lemke-Howson complementary pivoting for two-player bimatrix Nash equilibria.
 
 use crate::error::OptError;
+use engine_linalg::mat_idx;
 use math_scalars::workspace::SolverWorkspace;
 
 const PIVOT_COL_TOL: f64 = 1.0e-11;
@@ -145,21 +146,21 @@ fn init_shifted_tableaux(
 
     tab1.fill(0.0);
     for i in 0..m {
-        tab1[i * cols] = 1.0;
-        tab1[i * cols + 1 + i] = 1.0;
+        tab1[mat_idx(i, 0, cols)] = 1.0;
+        tab1[mat_idx(i, 1 + i, cols)] = 1.0;
         for j in 0..n {
-            tab1[i * cols + 1 + m + j] = payoff_a[i * n + j] + shift;
+            tab1[mat_idx(i, 1 + m + j, cols)] = payoff_a[mat_idx(i, j, n)] + shift;
         }
         basis1[i] = i as f64;
     }
 
     tab2.fill(0.0);
     for j in 0..n {
-        tab2[j * cols] = 1.0;
+        tab2[mat_idx(j, 0, cols)] = 1.0;
         for i in 0..m {
-            tab2[j * cols + 1 + i] = payoff_b[i * n + j] + shift;
+            tab2[mat_idx(j, 1 + i, cols)] = payoff_b[mat_idx(i, j, n)] + shift;
         }
-        tab2[j * cols + 1 + m + j] = 1.0;
+        tab2[mat_idx(j, 1 + m + j, cols)] = 1.0;
         basis2[j] = (m + j) as f64;
     }
 }
@@ -176,7 +177,7 @@ fn pivot_tableau(
     let enter_col = 1 + enter_label;
     let mut best_row: Option<usize> = None;
     for r in 0..rows {
-        let a_r = tab[r * cols + enter_col];
+        let a_r = tab[mat_idx(r, enter_col, cols)];
         if a_r <= PIVOT_COL_TOL {
             continue;
         }
@@ -189,23 +190,23 @@ fn pivot_tableau(
         }
     }
     let piv_r = best_row.ok_or(OptError::NumericalInstability)?;
-    let piv_val = tab[piv_r * cols + enter_col];
+    let piv_val = tab[mat_idx(piv_r, enter_col, cols)];
     let inv_piv = 1.0 / piv_val;
     for c in 0..cols {
-        tab[piv_r * cols + c] *= inv_piv;
+        tab[mat_idx(piv_r, c, cols)] *= inv_piv;
     }
-    tab[piv_r * cols + enter_col] = 1.0;
+    tab[mat_idx(piv_r, enter_col, cols)] = 1.0;
 
     for r in 0..rows {
         if r == piv_r {
             continue;
         }
-        let factor = tab[r * cols + enter_col];
+        let factor = tab[mat_idx(r, enter_col, cols)];
         if factor.abs() > 0.0 {
             for c in 0..cols {
-                tab[r * cols + c] -= factor * tab[piv_r * cols + c];
+                tab[mat_idx(r, c, cols)] -= factor * tab[mat_idx(piv_r, c, cols)];
             }
-            tab[r * cols + enter_col] = 0.0;
+            tab[mat_idx(r, enter_col, cols)] = 0.0;
         }
     }
 
@@ -224,18 +225,18 @@ fn is_lex_smaller(
     cand: usize,
     best: usize,
 ) -> bool {
-    let a_c = tab[cand * cols + enter_col];
-    let a_b = tab[best * cols + enter_col];
-    let lhs0 = tab[cand * cols] * a_b;
-    let rhs0 = tab[best * cols] * a_c;
+    let a_c = tab[mat_idx(cand, enter_col, cols)];
+    let a_b = tab[mat_idx(best, enter_col, cols)];
+    let lhs0 = tab[mat_idx(cand, 0, cols)] * a_b;
+    let rhs0 = tab[mat_idx(best, 0, cols)] * a_c;
     let scale0 = 1.0_f64.max(lhs0.abs()).max(rhs0.abs());
     if (lhs0 - rhs0).abs() > LEX_TIE_TOL * scale0 {
         return lhs0 < rhs0;
     }
     for q in 0..rows {
         let col = lex_start + q;
-        let lhs = tab[cand * cols + col] * a_b;
-        let rhs = tab[best * cols + col] * a_c;
+        let lhs = tab[mat_idx(cand, col, cols)] * a_b;
+        let rhs = tab[mat_idx(best, col, cols)] * a_c;
         let scale = 1.0_f64.max(lhs.abs()).max(rhs.abs());
         if (lhs - rhs).abs() > LEX_TIE_TOL * scale {
             return lhs < rhs;
@@ -303,7 +304,7 @@ fn compute_bimatrix_stats(
     for i in 0..m {
         let mut row_u = 0.0;
         for j in 0..n {
-            row_u += payoff_a[i * n + j] * strat_b[j];
+            row_u += payoff_a[mat_idx(i, j, n)] * strat_b[j];
         }
         best_a = best_a.max(row_u);
         exp_a += strat_a[i] * row_u;
@@ -314,7 +315,7 @@ fn compute_bimatrix_stats(
     for j in 0..n {
         let mut col_u = 0.0;
         for i in 0..m {
-            col_u += strat_a[i] * payoff_b[i * n + j];
+            col_u += strat_a[i] * payoff_b[mat_idx(i, j, n)];
         }
         best_b = best_b.max(col_u);
         exp_b += strat_b[j] * col_u;

@@ -1,6 +1,6 @@
+// [cite:ai]
+// [cite:pharmacokinetics]
 //! Zero-allocation receding-horizon projected `MPC` controller (`MpcController`) for `PkPlantTwin`.
-
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
 use super::super::ekf::{pk_rhs_and_jac, rk4_step_with_jacobian, FastEkf};
 use super::super::state::{ClosedLoopState, PlantKind};
@@ -9,6 +9,7 @@ use engine_opt::mpc::{
     mpc_workspace_len, solve_mpc, warm_start_shift_controls, MpcConfig, MpcProblem, MpcStats,
 };
 use engine_opt::{OptError, SolverWorkspace};
+use math_commons::math_kernel::types::flatten_2d_index;
 
 /// Receding prediction horizon $N = 12$ steps (`6.0 h` at $\Delta t = 0.5\text{ h}$) for ADME `MPC`.
 pub const MPC_PK_HORIZON: usize = 12;
@@ -55,6 +56,7 @@ impl ControlModel for PkMpcModel {
         PK_NU
     }
 
+    #[verified_engine::verified]
     fn step_and_linearize(
         &self,
         _step: usize,
@@ -81,7 +83,7 @@ impl ControlModel for PkMpcModel {
         x_next.copy_from_slice(&nx_arr);
         for row in 0..PK_NX {
             for col in 0..PK_NX {
-                fx[row * PK_NX + col] = jac[row][col];
+                fx[flatten_2d_index(col, row, PK_NX)] = jac[row][col];
             }
             fu[row] = self.bioavail * jac[row][0];
         }
@@ -128,6 +130,7 @@ impl MpcController {
     }
 
     /// Resets warm-start trajectories and telemetry in place without heap allocations.
+    #[verified_engine::verified]
     pub fn reset_in_place(&mut self) {
         self.u_warm = [0.0; MPC_PK_HORIZON];
         self.x_pred = [0.0; PK_NX * (MPC_PK_HORIZON + 1)];
@@ -142,6 +145,7 @@ impl MpcController {
     }
 
     /// Computes optimal bounded oral dose $u_0^* \in [0, D_{\max}]$ (mg) from posterior `FastEkf<3>` state and covariance.
+    #[verified_engine::verified]
     pub fn solve_pk_dose_mg(&mut self, ekf: &FastEkf<3>, cfg: &ClosedLoopState) -> f64 {
         let dt = PlantKind::Pharmacokinetics.dt();
         let d_max = 42.0 * cfg.actuation_budget.max(0.0);
@@ -206,6 +210,7 @@ impl MpcController {
     }
 
     /// Maps the optimal receding-horizon oral dose $u_0^*$ into normalized `[-1.0, 1.0]` actuation for `PkPlantTwin::step`.
+    #[verified_engine::verified]
     pub fn act_pk_normalized(&mut self, ekf: &FastEkf<3>, cfg: &ClosedLoopState) -> f64 {
         let d_max = 42.0 * cfg.actuation_budget.max(0.0);
         if d_max <= 1.0e-9 {
@@ -217,6 +222,7 @@ impl MpcController {
     }
 
     /// Evaluates normalized actuation in `[-1.0, 1.0]` for the active `PlantKind`.
+    #[verified_engine::verified]
     pub fn act_for_plant(
         &mut self,
         cfg: &ClosedLoopState,
@@ -232,6 +238,7 @@ impl MpcController {
     }
 }
 
+#[verified_engine::verified]
 fn build_pk_tube_targets(
     ekf: &FastEkf<3>,
     cfg: &ClosedLoopState,

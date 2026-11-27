@@ -240,7 +240,7 @@ impl StencilOperators {
     /// $$
     ///
     /// Reference: Achdou & Capuzzo-Dolcetta (2010), DOI: 10.1137/090758477;
-    /// [`docs/math_specs/engine_pde.md`](../../../docs/math_specs/engine_pde.md).
+    /// [`docs/math_specs/engine_pde.md`](../../../../docs/math_specs/engine_pde.md).
     ///
     /// # Stability
     /// Monotone donor-cell flux splitting preserves non-negativity under explicit forward stepping

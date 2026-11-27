@@ -7,6 +7,7 @@ mod riccati;
 pub use cost::{ControlModel, QuadraticBoxCost, StageCost};
 
 use crate::error::OptError;
+use engine_linalg::mat_idx;
 use math_scalars::workspace::SolverWorkspace;
 use riccati::{RiccatiScratch, backward_riccati_pass};
 
@@ -402,7 +403,7 @@ fn try_single_shoot<M: ControlModel, C: StageCost>(
         for j in 0..nu {
             let mut val = u_bar[j] + alpha * ff_k[j];
             for i in 0..nx {
-                val += fb_k[j * nx + i] * (x_k[i] - x_bar[i]);
+                val += fb_k[mat_idx(j, i, nx)] * (x_k[i] - x_bar[i]);
             }
             if let Some(lo) = u_min
                 && lo[j].is_finite()

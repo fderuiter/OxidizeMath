@@ -1,7 +1,5 @@
 //! Analytical Jacobian parity, therapeutic window retention, cold-start safety, and zero-alloc tests for `MpcController`.
 
-#![cfg_attr(any(), verified(opt_out = "tests"))]
-
 use super::controllers::mpc::PkMpcModel;
 use super::state::{ClosedLoopState, ControllerKind, PlantKind};
 use super::ClosedLoopControlTool;

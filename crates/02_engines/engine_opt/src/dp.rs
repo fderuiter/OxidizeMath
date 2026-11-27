@@ -2,7 +2,7 @@
 //! Finite-horizon backward induction and infinite-horizon Howard policy iteration (`lu_solve`) over `SolverWorkspace`.
 
 use crate::error::OptError;
-use engine_linalg::{lu_solve, lu_workspace_len};
+use engine_linalg::{lu_solve, lu_workspace_len, mat_idx};
 use math_scalars::workspace::SolverWorkspace;
 
 const STACK_PIVOT_CAP: usize = 512;
@@ -306,7 +306,7 @@ pub fn solve_finite_horizon_dp<M: DiscreteMdp>(
     values_out[horizon * n..(horizon + 1) * n].copy_from_slice(terminal_values);
     for s in 0..n {
         if mdp.is_terminal(s) {
-            values_out[horizon * n + s] = 0.0;
+            values_out[mat_idx(horizon, s, n)] = 0.0;
         }
     }
 
@@ -325,7 +325,7 @@ pub fn solve_finite_horizon_dp<M: DiscreteMdp>(
             let mut best_q = f64::NEG_INFINITY;
             for a in 0..na {
                 let q = action_q_value(mdp, gamma, v_next, s, a);
-                q_stage[s * na + a] = q;
+                q_stage[mat_idx(s, a, na)] = q;
                 if q > best_q {
                     best_q = q;
                     best_a = a;
@@ -411,7 +411,7 @@ fn evaluate_policy_linear_system<M: DiscreteMdp>(
     sys_mat.fill(0.0);
     rhs.fill(0.0);
     for s in 0..n {
-        sys_mat[s * n + s] = 1.0;
+        sys_mat[mat_idx(s, s, n)] = 1.0;
         if mdp.is_terminal(s) {
             continue;
         }
@@ -419,7 +419,7 @@ fn evaluate_policy_linear_system<M: DiscreteMdp>(
         mdp.visit_transitions(s, a, |prob, next_s, reward, done| {
             rhs[s] += prob * reward;
             if !done && !mdp.is_terminal(next_s) {
-                sys_mat[s * n + next_s] -= gamma * prob;
+                sys_mat[mat_idx(s, next_s, n)] -= gamma * prob;
             }
         });
     }
@@ -452,7 +452,7 @@ fn improve_policy_greedy<M: DiscreteMdp>(
         let mut best_q = action_q_value(mdp, gamma, values, s, curr_a);
         for a in 0..na {
             let q = action_q_value(mdp, gamma, values, s, a);
-            q_table[s * na + a] = q;
+            q_table[mat_idx(s, a, na)] = q;
             if q > best_q + POLICY_TIE_EPS {
                 best_q = q;
                 best_a = a;

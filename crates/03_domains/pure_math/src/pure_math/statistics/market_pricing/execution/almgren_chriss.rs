@@ -15,7 +15,7 @@ use engine_opt::{OptError, SolverWorkspace};
 ///
 /// Reference: Almgren & Chriss (2001), *Journal of Risk* 3(2), 5–39, DOI: 10.21314/JOR.2001.041;
 /// Lucia et al. (`do-mpc`, 2017), DOI: 10.1016/j.conengprac.2017.02.002;
-/// [`docs/math_specs/pure_math.md`](../../../../../../../docs/math_specs/pure_math.md).
+/// [`docs/math_specs/pure_math.md`](../../../../../../../../docs/math_specs/pure_math.md).
 ///
 /// # Stability
 /// Strictly positive temporary-impact curvature $\eta / \tau > 0$ guarantees SPD Riccati $Q_{uu}$
