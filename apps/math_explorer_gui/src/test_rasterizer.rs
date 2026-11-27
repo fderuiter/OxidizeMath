@@ -119,7 +119,7 @@ fn rasterize_triangle(
 pub(crate) fn render_ui_to_png(
     theme: ThemeMode,
     size: [usize; 2],
-    out_path: &str,
+    out_path: impl AsRef<std::path::Path>,
     mut render_fn: impl FnMut(&mut egui::Ui),
 ) {
     let [w, h] = size;

@@ -49,7 +49,7 @@ pub enum PdeError {
         parameter: &'static str,
     },
 
-    /// Heap scratch allocation for [`crate::PdeOwnedWorkspace`] failed.
+    /// Heap scratch allocation for `PdeOwnedWorkspace` failed.
     WorkspaceAllocationFailed {
         /// Requested scalar capacity.
         capacity: usize,

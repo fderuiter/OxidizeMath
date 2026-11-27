@@ -263,18 +263,13 @@ fn generate_traceability_proof_verification_screenshots() {
     tab.has_initial_scan = true;
     assert!(matches!(tab.state, TraceabilityScanState::Ready));
 
-    for (theme, out_path) in [
-        (
-            ThemeMode::Dark,
-            "/tmp/traceability_kernel_verified_dark.png",
-        ),
-        (
-            ThemeMode::Light,
-            "/tmp/traceability_kernel_verified_light.png",
-        ),
+    for (theme, file_name) in [
+        (ThemeMode::Dark, "traceability_kernel_verified_dark.png"),
+        (ThemeMode::Light, "traceability_kernel_verified_light.png"),
     ] {
+        let out_path = std::env::temp_dir().join(file_name);
         let mut frame = eframe::Frame::_new_kittest();
-        crate::test_rasterizer::render_ui_to_png(theme, [1280, 1080], out_path, |ui| {
+        crate::test_rasterizer::render_ui_to_png(theme, [1280, 1080], &out_path, |ui| {
             tab.show_inside(ui, &mut frame);
         });
     }
