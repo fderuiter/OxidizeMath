@@ -13202,6 +13202,9 @@
       "signature": "impl Expr { pub fn to_wgsl_complex (& self) -> Result < String , ShaderEmitError > }"
     },
     {
+      "signature": "impl Expr { pub fn to_wgsl_with_vars (& self , _ : & [& str]) -> Result < String , ShaderEmitError > }"
+    },
+    {
       "signature": "pub enum ShaderEmitError"
     },
     {
@@ -15778,7 +15781,13 @@
       "signature": "pub use linalg :: WasmLinalgWorkspace"
     },
     {
+      "signature": "pub use memory :: MAX_WASM_F32_BUFFER_LEN"
+    },
+    {
       "signature": "pub use memory :: MAX_WASM_F64_BUFFER_LEN"
+    },
+    {
+      "signature": "pub use memory :: WasmF32Buffer"
     },
     {
       "signature": "pub use memory :: WasmF64Buffer"
@@ -15848,6 +15857,33 @@
   ],
   "oxidize_wasm:src/memory.rs": [
     {
+      "signature": "impl WasmF32Buffer { pub fn as_mut_slice (& mut self) -> & mut [f32] }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn as_slice (& self) -> & [f32] }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn byte_offset (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn copy_from_slice (& mut self , _ : & [f32]) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn copy_into_slice (& self , _ : & mut [f32]) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn fill (& mut self , _ : f32) }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn try_new (_ : usize) -> Result < Self , WasmSdkError > }"
+    },
+    {
       "signature": "impl WasmF64Buffer { pub fn as_mut_slice (& mut self) -> & mut [f64] }"
     },
     {
@@ -15875,7 +15911,13 @@
       "signature": "impl WasmF64Buffer { pub fn try_new (_ : usize) -> Result < Self , WasmSdkError > }"
     },
     {
+      "signature": "pub const MAX_WASM_F32_BUFFER_LEN : usize"
+    },
+    {
       "signature": "pub const MAX_WASM_F64_BUFFER_LEN : usize"
+    },
+    {
+      "signature": "pub struct WasmF32Buffer"
     },
     {
       "signature": "pub struct WasmF64Buffer"

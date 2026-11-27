@@ -146,3 +146,158 @@ inventory::submit! {
         preset_generator: || crate::starter_gallery::PRESET_EXPONENTIAL_DECAY,
     }
 }
+
+struct ResolvedOdeComputeAst {
+    vars: [&'static str; 2],
+    dy: math_commons::ast::Expr,
+    dv: Option<math_commons::ast::Expr>,
+    params: Vec<(String, f64)>,
+}
+
+impl super::OdeSolverTool {
+    pub(super) fn build_ode_compute_wgsl(&self) -> Result<String, String> {
+        use crate::framework::shader_foundry::{
+            emit_ode_rollout_compute_wgsl, OdeRolloutComputeSpec,
+        };
+        use crate::framework::InteractiveTool as _;
+        if !self.has_finite_parameters() {
+            return Err("ODE parameters must be finite for Compute WGSL export".to_string());
+        }
+        let steps = crate::presets::checked_ode_step_count(self.dt, self.total_time)
+            .unwrap_or(200)
+            .clamp(1, 4_096) as u32;
+        let resolved = self.resolve_compute_ode_ast()?;
+        emit_ode_rollout_compute_wgsl(&OdeRolloutComputeSpec {
+            dy_expr: &resolved.dy,
+            dv_expr: resolved.dv.as_ref(),
+            state_vars: resolved.vars,
+            dt: self.dt,
+            steps,
+            initial_state: [self.ic_y0, self.ic_v0],
+            params: resolved.params,
+        })
+    }
+
+    fn resolve_compute_ode_ast(&self) -> Result<ResolvedOdeComputeAst, String> {
+        use crate::presets::OdePreset;
+        let mut base_params: Vec<(String, f64)> = self.active_param_map().into_iter().collect();
+        base_params.sort_by(|a, b| a.0.cmp(&b.0));
+        match self.preset {
+            OdePreset::PlanarCustom | OdePreset::Custom => self.resolve_custom_ode_ast(base_params),
+            _ => self.resolve_preset_ode_ast(base_params),
+        }
+    }
+
+    fn resolve_preset_ode_ast(
+        &self,
+        base_params: Vec<(String, f64)>,
+    ) -> Result<ResolvedOdeComputeAst, String> {
+        use crate::presets::OdePreset;
+        let parse_rhs = |s: &str| {
+            math_commons::ast::parse_equation(s)
+                .map(|(_, e)| e)
+                .map_err(|e| format!("ODE AST parse error: {e}"))
+        };
+        match self.preset {
+            OdePreset::Exponential => Ok(ResolvedOdeComputeAst {
+                vars: ["y", "v"],
+                dy: parse_rhs("k * y")?,
+                dv: None,
+                params: base_params,
+            }),
+            OdePreset::LogisticGrowth => Ok(ResolvedOdeComputeAst {
+                vars: ["y", "v"],
+                dy: parse_rhs("r * y * (1 - y / cap_k)")?,
+                dv: None,
+                params: base_params,
+            }),
+            OdePreset::HarmonicOscillator => Ok(ResolvedOdeComputeAst {
+                vars: ["y", "v"],
+                dy: parse_rhs("v")?,
+                dv: Some(parse_rhs("-k * y")?),
+                params: vec![("k".to_string(), self.param_k)],
+            }),
+            _ => {
+                let [[a11, a12], [a21, a22]] = self.matrix_a;
+                Ok(ResolvedOdeComputeAst {
+                    vars: ["x", "y"],
+                    dy: parse_rhs("a11 * x + a12 * y")?,
+                    dv: Some(parse_rhs("a21 * x + a22 * y")?),
+                    params: vec![
+                        ("a11".into(), a11),
+                        ("a12".into(), a12),
+                        ("a21".into(), a21),
+                        ("a22".into(), a22),
+                    ],
+                })
+            }
+        }
+    }
+
+    fn resolve_custom_ode_ast(
+        &self,
+        base_params: Vec<(String, f64)>,
+    ) -> Result<ResolvedOdeComputeAst, String> {
+        use crate::presets::OdePreset;
+        if self.preset == OdePreset::PlanarCustom {
+            let dx = self
+                .planar_x_input
+                .expr()
+                .cloned()
+                .ok_or_else(|| "Invalid planar x' expression".to_string())?;
+            let dy = self
+                .planar_y_input
+                .expr()
+                .cloned()
+                .ok_or_else(|| "Invalid planar y' expression".to_string())?;
+            return Ok(ResolvedOdeComputeAst {
+                vars: ["x", "y"],
+                dy: dx,
+                dv: Some(dy),
+                params: filter_ode_params(base_params, &["t", "x", "y"]),
+            });
+        }
+        if self.custom_coupled {
+            let dy = self
+                .coupled_bank
+                .bars()
+                .first()
+                .and_then(|b| b.expr())
+                .cloned()
+                .ok_or_else(|| "Invalid coupled y' expression".to_string())?;
+            let dv = self
+                .coupled_bank
+                .bars()
+                .get(1)
+                .and_then(|b| b.expr())
+                .cloned()
+                .ok_or_else(|| "Invalid coupled v' expression".to_string())?;
+            return Ok(ResolvedOdeComputeAst {
+                vars: ["y", "v"],
+                dy,
+                dv: Some(dv),
+                params: filter_ode_params(self.coupled_bank.params_map(), &["t", "y", "v"]),
+            });
+        }
+        let dy = self
+            .math_input
+            .expr()
+            .cloned()
+            .ok_or_else(|| "Invalid scalar y' expression".to_string())?;
+        Ok(ResolvedOdeComputeAst {
+            vars: ["y", "v"],
+            dy,
+            dv: None,
+            params: filter_ode_params(base_params, &["t", "y", "v"]),
+        })
+    }
+}
+
+fn filter_ode_params<I>(raw: I, state_vars: &[&str]) -> Vec<(String, f64)>
+where
+    I: IntoIterator<Item = (String, f64)>,
+{
+    raw.into_iter()
+        .filter(|(k, _)| !state_vars.contains(&k.as_str()))
+        .collect()
+}

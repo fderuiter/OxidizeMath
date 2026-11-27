@@ -1,6 +1,6 @@
 {
   "name": "@oxidizemath/wasm",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "description": "Standalone zero-allocation WebAssembly and TypeScript numerical SDK for OxidizeMath (#![no_std] linear algebra, SDE/Langevin, continuum PDE/FFT, and symbolic AST/WGSL engines).",
   "type": "module",
   "main": "./oxidize_wasm.js",

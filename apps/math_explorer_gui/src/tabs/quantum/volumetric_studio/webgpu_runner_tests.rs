@@ -69,6 +69,57 @@ fn test_compute_and_fragment_wgsl_emission_across_all_four_volumetric_modes() {
     }
 }
 
+#[test]
+fn test_missing_navigator_gpu_clamps_to_48_cubed_cpu_and_keeps_wgsl_export_enabled() {
+    let mut tool = VolumetricFieldStudioTool::default();
+    tool.webgpu_runner.adapter_status = WebGpuAdapterStatus::BrowserWorkerFallback;
+    tool.config.compute_backend = ComputeBackend::WebGpuCompute;
+    tool.config.grid_resolution = 128;
+    assert!(tool
+        .webgpu_runner
+        .enforce_navigator_gpu_fallback(&mut tool.config));
+    assert_eq!(tool.config.compute_backend, ComputeBackend::CpuZeroAlloc);
+    assert_eq!(tool.config.grid_resolution, 48);
+    assert!(tool.export_capabilities().compute_shader);
+    let wgsl = tool
+        .export_compute_shader_wgsl()
+        .expect("wgsl still exports");
+    assert!(wgsl.contains("@compute @workgroup_size(4, 4, 4)"));
+}
+
+#[test]
+fn test_webgpu_uniform_packing_and_interleaved_uv_staging_roundtrip() {
+    use super::webgpu_dispatch::{
+        deinterleave_uv_into, interleave_uv_into, pack_orbital_uniform_bytes,
+        pack_turing_uniform_bytes, pack_volume_ast_uniform_bytes,
+    };
+    let cfg = VolumetricStudioConfig {
+        compute_backend: ComputeBackend::WebGpuCompute,
+        grid_resolution: 128,
+        ..Default::default()
+    };
+    let turing_u = pack_turing_uniform_bytes(128, &cfg);
+    assert_eq!(u32::from_le_bytes(turing_u[0..4].try_into().unwrap()), 128);
+    assert_eq!(turing_u.len(), 32);
+    let orbital_u = pack_orbital_uniform_bytes(96, 1.25, &cfg);
+    assert_eq!(u32::from_le_bytes(orbital_u[0..4].try_into().unwrap()), 96);
+    assert_eq!(orbital_u.len(), 32);
+    let ast_u = pack_volume_ast_uniform_bytes(64);
+    assert_eq!(u32::from_le_bytes(ast_u[0..4].try_into().unwrap()), 64);
+    assert_eq!(ast_u.len(), 48);
+
+    let u_in = [0.25_f32, 0.5, 0.75, 1.0];
+    let v_in = [2.0_f32, 3.0, 4.0, 5.0];
+    let mut staged = [0.0_f32; 8];
+    interleave_uv_into(&u_in, &v_in, &mut staged);
+    assert_eq!(staged, [0.25, 2.0, 0.5, 3.0, 0.75, 4.0, 1.0, 5.0]);
+    let mut u_out = [0.0_f32; 4];
+    let mut v_out = [0.0_f32; 4];
+    deinterleave_uv_into(&staged, &mut u_out, &mut v_out);
+    assert_eq!(u_out, u_in);
+    assert_eq!(v_out, v_in);
+}
+
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen_test]
 fn wasm_probe_webgpu_and_run_64_cubed_volumetric_step() {

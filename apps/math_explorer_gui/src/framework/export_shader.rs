@@ -94,7 +94,7 @@ impl ExportFormat {
     const fn clipboard_item_noun(self) -> &'static str {
         match self {
             Self::Wgsl
-            | Self::ComputeWgsl
+            | Self::WgslCompute
             | Self::Glsl
             | Self::GlslWebGl2
             | Self::GlslShadertoy => "shader",
@@ -108,13 +108,13 @@ const COMPUTE_SHADER_EXPORT_ACTIONS: [(&str, &str, ExportFormat, ExportTarget); 
     (
         "Export Compute WGSL",
         "Export standalone WebGPU @compute WGSL kernel (.wgsl)",
-        ExportFormat::ComputeWgsl,
+        ExportFormat::WgslCompute,
         ExportTarget::File,
     ),
     (
         "Copy Compute WGSL",
         "Copy standalone WebGPU @compute WGSL kernel to clipboard",
-        ExportFormat::ComputeWgsl,
+        ExportFormat::WgslCompute,
         ExportTarget::Clipboard,
     ),
 ];
@@ -266,7 +266,7 @@ impl SimulationFramework {
             return;
         };
         let caps = tool.export_capabilities();
-        if format == ExportFormat::ComputeWgsl {
+        if format == ExportFormat::WgslCompute {
             if !caps.compute_shader {
                 self.set_export_status(
                     ExportStatusSeverity::Warning,
@@ -281,7 +281,7 @@ impl SimulationFramework {
         let tool_name = tool.name().to_string();
         let shader_res = match format {
             ExportFormat::Wgsl => tool.export_shader_source(ShaderExportFormat::Wgsl),
-            ExportFormat::ComputeWgsl => tool.export_compute_shader_wgsl(),
+            ExportFormat::WgslCompute => tool.export_compute_shader_wgsl(),
             ExportFormat::Glsl => tool.export_shader_source(ShaderExportFormat::Glsl),
             ExportFormat::GlslWebGl2 => tool.export_glsl_shader(ShaderDialect::WebGl2Es300),
             ExportFormat::GlslShadertoy => tool.export_glsl_shader(ShaderDialect::Shadertoy),

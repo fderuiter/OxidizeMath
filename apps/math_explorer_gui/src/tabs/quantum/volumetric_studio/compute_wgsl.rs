@@ -207,7 +207,7 @@ pub fn draw_gpu_shader_preview_section(
                 ShaderPreviewKind::ComputeWgsl => build_volumetric_compute_wgsl(cfg),
                 ShaderPreviewKind::FragmentWgsl => build_volumetric_fragment_wgsl(cfg),
             };
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.radio_value(preview_kind, ShaderPreviewKind::ComputeWgsl, "Compute WGSL");
                 ui.radio_value(
                     preview_kind,
@@ -216,7 +216,7 @@ pub fn draw_gpu_shader_preview_section(
                 );
                 if let Ok(ref full_wgsl) = wgsl_res {
                     if ui
-                        .small_button("Copy")
+                        .small_button("Copy WGSL")
                         .on_hover_text("Copy active WGSL shader source to clipboard")
                         .clicked()
                     {
@@ -244,16 +244,21 @@ fn render_six_line_snippet(ui: &mut egui::Ui, wgsl: &str, palette: &SemanticPale
         .position(|l| l.starts_with("@compute") || l.starts_with("@fragment"))
         .unwrap_or(0);
     for line in wgsl.lines().skip(entry_idx).take(6) {
-        let trimmed = if line.len() > 54 { &line[..54] } else { line };
-        let color = if trimmed.starts_with("@compute") || trimmed.starts_with("@fragment") {
+        let display_line = if line.chars().count() > 38 {
+            let prefix: String = line.chars().take(37).collect();
+            format!("{prefix}…")
+        } else {
+            line.to_string()
+        };
+        let color = if line.starts_with("@compute") || line.starts_with("@fragment") {
             palette.info
-        } else if trimmed.trim_start().starts_with("//") {
+        } else if line.trim_start().starts_with("//") {
             palette.muted_text
         } else {
             ui.visuals().text_color()
         };
         ui.label(
-            egui::RichText::new(trimmed)
+            egui::RichText::new(display_line)
                 .monospace()
                 .size(10.5)
                 .color(color),

@@ -32,6 +32,19 @@ fn wasm_zero_copy_float64array_linear_memory_views_and_typed_js_errors() {
     view.set_index(1, 42.0);
     assert_eq!(buf.as_slice()[1], 42.0);
 
+    let mut buf_f32 = WasmF32Buffer::try_new(4).expect("f32 buffer");
+    buf_f32
+        .copy_from_slice(&[0.5_f32, 1.5, 2.5, 3.5])
+        .expect("copy f32");
+    let view_f32 = js_sys::Float32Array::new_with_byte_offset_and_length(
+        &array_buf,
+        buf_f32.byte_offset() as u32,
+        buf_f32.len() as u32,
+    );
+    assert_eq!(view_f32.get_index(0), 0.5_f32);
+    view_f32.set_index(2, 9.25_f32);
+    assert_eq!(buf_f32.as_slice()[2], 9.25_f32);
+
     // Verify structured JS Error object emitted by WasmSdkError::into(JsValue).
     let mut linalg = WasmLinalgWorkspace::try_new(4).expect("linalg");
     let singular = [1.0, 0.0, 0.0, 0.0];

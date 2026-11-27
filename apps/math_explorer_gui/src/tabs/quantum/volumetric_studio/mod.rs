@@ -345,6 +345,12 @@ impl InteractiveTool for VolumetricFieldStudioTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
+        if self
+            .webgpu_runner
+            .enforce_navigator_gpu_fallback(&mut self.config)
+        {
+            self.refresh_zero_alloc();
+        }
         self.poll_async_and_playback(ui.ctx());
         self.draw_side_panel(ui);
         self.draw_viewport(ui);

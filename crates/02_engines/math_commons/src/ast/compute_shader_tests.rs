@@ -37,6 +37,16 @@ fn test_to_wgsl_3d_rejects_undeclared_or_reserved_variables() {
     let valid_expr = parse("x + y + z").expect("valid syntax");
     let res = emit_wgsl_3d_compute_kernel(&valid_expr, &reserved_cfg);
     assert!(matches!(res, Err(ShaderEmitError::InvalidIdentifier(_))));
+
+    let ode_expr = parse("-k * y * sin(t)").expect("valid ode syntax");
+    let lowered = ode_expr
+        .to_wgsl_with_vars(&["t", "y", "k"])
+        .expect("allowed ode identifiers");
+    assert!(lowered.contains("sin("));
+    assert_eq!(
+        ode_expr.to_wgsl_with_vars(&["t", "y"]),
+        Err(ShaderEmitError::InvalidIdentifier("k".to_string()))
+    );
 }
 
 #[test]

@@ -217,7 +217,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
     let (mut dataset_only_tool_count, mut unsupported_tool_count) = (0usize, 0usize);
     let (mut solid_3d_count, mut splat_3d_count) = (0usize, 0usize);
     let (mut shader_tool_count, mut non_shader_tool_count) = (0usize, 0usize);
-    let mut audio_tool_count = 0usize;
+    let (mut audio_tool_count, mut compute_shader_count) = (0usize, 0usize);
 
     for meta in inventory::iter::<crate::framework::ToolMetadata> {
         let tool = (meta.build)();
@@ -235,11 +235,9 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         } else {
             non_shader_tool_count += 1;
         }
-        deferred_compute_shader_tests::verify_compute_shader_capability(
-            meta.id,
-            tool.as_ref(),
-            caps,
-        );
+        if deferred_compute_shader_tests::verify_compute_shader_capability(meta.id, &*tool, caps) {
+            compute_shader_count += 1;
+        }
         if !caps.figure {
             verify_non_figure_tool(
                 meta.id,
@@ -269,6 +267,7 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
         non_shader_tool_count,
         audio_tool_count,
     ]);
+    deferred_compute_shader_tests::assert_expected_compute_shader_count(compute_shader_count);
 }
 
 fn assert_expected_capability_counts(counts: [usize; 9]) {

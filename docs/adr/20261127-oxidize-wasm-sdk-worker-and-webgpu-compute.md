@@ -16,16 +16,17 @@ Following the `#![no_std]` Tier 0 and Tier 2 extraction milestones ([ADR 2026112
 
 1. **Standalone Tier 4 [`oxidize_wasm`](../../crates/04_bindings/oxidize_wasm/README.md) WebAssembly SDK (`@oxidizemath/wasm`)**:
    - Create `crates/04_bindings/oxidize_wasm` (`crate-type = ["cdylib", "rlib"]`) wrapping `engine_linalg`, `engine_diffeq`, `engine_pde`, and `math_commons::ast` with zero GUI or Tier 3 domain dependencies.
-   - Provide pre-allocated workspace handles (`WasmF64Buffer`, `WasmLinalgWorkspace`, `WasmSdeWorkspace`, `WasmPdeWorkspace`, `WasmAstKernel`) supporting both caller `Float64Array` slices and zero-copy `WebAssembly.Memory` byte-offset descriptors (`wasmLinearMemory()`, `byteOffset()`, `matrixPtr()`, `solutionPtr()`, `uPtr()`, `vPtr()`).
+   - Provide pre-allocated workspace handles (`WasmF64Buffer`, `WasmF32Buffer`, `WasmLinalgWorkspace`, `WasmSdeWorkspace`, `WasmPdeWorkspace`, `WasmAstKernel`) supporting both caller `Float32Array` / `Float64Array` slices and zero-copy `WebAssembly.Memory` byte-offset descriptors (`wasmLinearMemory()`, `byteOffset()`, `matrixPtr()`, `solutionPtr()`, `uPtr()`, `vPtr()`).
    - Lower `math_diagnostics::Diagnostic` visitor metadata (`code`, `errorType`, `severity`, `fields`) into structured JavaScript `Error` objects via `WasmSdkError` instead of panicking across the WASM boundary, and enforce a `<= 250 KB` (`256,000`-byte) Brotli `.wasm` budget in [`scripts/verify_wasm_budget.sh`](../../scripts/verify_wasm_budget.sh) and CI release artifacts (`oxidize-wasm-npm-sdk.tar.gz`).
 
-2. **Dual-Path Off-Main-Thread Web Worker Simulation Bridge (`apps/math_explorer_gui/src/async_sim/web_worker.rs`)**:
+2. **Dual-Path Off-Main-Thread Web Worker Bridge & Thin `web-sys` WebGPU `@compute` Dispatcher (`apps/math_explorer_gui/src/async_sim/{web_worker,webgpu}.rs`)**:
    - Probe `crossOriginIsolated` and `SharedArrayBuffer` availability at runtime on `wasm32`: select zero-copy `SharedArrayBuffer` double-buffered ring transport when cross-origin isolated, degrade gracefully to a dedicated `Blob` `web_sys::Worker` (`worker-src 'self' blob:`) exchanging transferable `ArrayBuffer` frames via `postMessage` on standard static hosts (including GitHub Pages without COOP/COEP headers), and retain cooperative `wasm_scheduler` fallback in headless environments without `Worker`.
+   - Implement a thin `wasm-bindgen` / `web-sys` WebGPU `@compute` dispatcher (`GpuAdapter`, `GpuDevice`, `GpuComputePipeline`, and double-buffered `MAP_READ` staging `GpuBuffer`s) alongside `async_sim/wasm.rs` without adding `wgpu` or `naga` to the WASM bundle while keeping `eframe::WebRunner` on WebGL2.
 
-3. **3D `@compute` WGSL Foundry and `128^3` WebGPU Volumetric Studio**:
-   - Extend `math_commons::ast` (`compute_shader.rs`) with 3D `(x, y, z, t)` scope validation and standalone `@compute @workgroup_size(4, 4, 4)` WGSL kernel generation (`@group(0) @binding(0..2)` uniform and ping-pong storage buffers).
-   - Add `ExportCapabilities::with_compute_shader()`, `ExportFormat::ComputeWgsl`, and `"Export Compute WGSL"` / `"Copy Compute WGSL"` toolbar actions to `SimulationFramework`.
-   - Upgrade `VolumetricFieldStudioTool` with a `ComputeBackend` (`WebGpuCompute` vs `CpuZeroAlloc`) selector (`#[serde(default)]` for backward-compatible preset loading), scaling grid resolution up to `128^3` (`2,097,152` voxels) in `WebGpuCompute` mode with runtime `navigator.gpu` capability probing, CPU parity fallback, collapsible `GPU Shader Preview` (`Compute WGSL` / `Fragment WGSL`), and `SemanticPalette` viewport HUD overlays.
+3. **Bounded `@compute` WGSL Foundry and `128^3` WebGPU Volumetric Studio**:
+   - Extend `math_commons::ast` (`shader.rs`, `compute_shader.rs`) and `framework/shader_foundry.rs` (`shader_foundry_compute.rs`) with bounded (`MAX_EVAL_DEPTH = 64`, `MAX_AST_NODES = 256`, `MAX_GLSL_OUTPUT_BYTES = 16_384`) `@compute @workgroup_size(...)` WGSL emitters across 3D volumetric fields, 2D PDE stencils (`MorphogenesisTool`), 1D quantum wavepackets (`WaveSimulatorTool`), ODE RK4 rollouts (`OdeSolverTool`), and Monte Carlo payoff ensembles (`MonteCarloWorkbenchTool`).
+   - Add `ExportCapabilities::with_compute_shader()`, `ExportFormat::WgslCompute`, and `"Export Compute WGSL"` / `"Copy Compute WGSL"` toolbar actions to `SimulationFramework`.
+   - Upgrade `VolumetricFieldStudioTool` with a `ComputeBackend` (`WebGpuCompute` vs `CpuZeroAlloc`) selector (`#[serde(default)]` for backward-compatible preset loading) and inline step-latency telemetry, scaling grid resolution up to `128^3` (`2,097,152` voxels) in `WebGpuCompute` mode and automatically clamping to `<= 48^3` CPU zero-alloc stepping while keeping `.wgsl` exports enabled when `navigator.gpu` is unavailable.
 
 ## Consequences
 

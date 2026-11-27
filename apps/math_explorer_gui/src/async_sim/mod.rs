@@ -452,6 +452,8 @@ impl SimulationController {
 mod registry;
 /// Dedicated Web Worker (`SharedArrayBuffer` + transferable `postMessage`) volumetric runtime bridge.
 pub mod web_worker;
+/// Thin `web-sys` / `wasm-bindgen` WebGPU `@compute` pipeline and double-buffered `MAP_READ` staging dispatcher.
+pub mod webgpu;
 #[cfg(target_arch = "wasm32")]
 use registry::{
     register_worker_context, take_worker_context, unregister_worker_context, WorkerContext,

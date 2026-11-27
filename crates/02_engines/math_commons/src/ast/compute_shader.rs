@@ -100,7 +100,10 @@ fn is_valid_compute_param_ident(ident: &str) -> bool {
         && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
-fn validate_expr_allowed_vars(expr: &Expr, allowed_vars: &[&str]) -> Result<(), ShaderEmitError> {
+pub(super) fn validate_expr_allowed_vars(
+    expr: &Expr,
+    allowed_vars: &[&str],
+) -> Result<(), ShaderEmitError> {
     let mut visited = 0usize;
     let mut stack = Vec::with_capacity(16);
     stack.push((expr, 0usize));

@@ -114,6 +114,22 @@ fn test_structured_diagnostic_error_fields_without_panic() {
     assert_eq!(readback, [2.5; 4]);
     assert_eq!(sdk.max_dim(), 4);
     assert!(sdk.rhs_ptr() != 0);
+
+    let mut f32_buf = WasmF32Buffer::try_new(4).expect("f32 buffer");
+    assert_eq!(f32_buf.len(), 4);
+    assert!(!f32_buf.is_empty());
+    assert!(f32_buf.byte_offset() != 0);
+    f32_buf.fill(1.5_f32);
+    assert_eq!(f32_buf.as_slice(), &[1.5_f32; 4]);
+    let f32_ovf = f32_buf
+        .copy_from_slice(&[0.0_f32; 5])
+        .expect_err("f32 overflow must fail cleanly");
+    assert_eq!(f32_ovf.code, "E_BUFFER_OVERFLOW");
+    let mut f32_back = [0.0_f32; 4];
+    f32_buf
+        .copy_into_slice(&mut f32_back)
+        .expect("f32 copy back");
+    assert_eq!(f32_back, [1.5_f32; 4]);
 }
 
 #[test]

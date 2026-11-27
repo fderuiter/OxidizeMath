@@ -21,7 +21,7 @@ pub use ast_eval::WasmAstKernel;
 pub use diffeq::{MAX_SDE_DIM, WasmSdeWorkspace};
 pub use error::{DiagnosticField, WasmSdkError, WasmSdkResult};
 pub use linalg::{MAX_LINALG_DIM, WasmLinalgWorkspace};
-pub use memory::{MAX_WASM_F64_BUFFER_LEN, WasmF64Buffer};
+pub use memory::{MAX_WASM_F32_BUFFER_LEN, MAX_WASM_F64_BUFFER_LEN, WasmF32Buffer, WasmF64Buffer};
 pub use pde::{MAX_PDE_CELLS, WasmPdeWorkspace};
 
 use wasm_bindgen::prelude::*;
@@ -34,6 +34,12 @@ export interface OxidizeDiagnosticError extends Error {
     readonly errorType: string;
     readonly severity: "Info" | "Warning" | "Error" | "Fatal";
     readonly fields: Readonly<Record<string, string>>;
+}
+
+/** Zero-copy Float32Array descriptor into `wasmLinearMemory().buffer` for WebGPU staging. */
+export interface LinearMemoryF32View {
+    readonly byteOffset: number;
+    readonly length: number;
 }
 
 /** Zero-copy Float64Array descriptor into `wasmLinearMemory().buffer`. */

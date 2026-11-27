@@ -280,7 +280,13 @@ impl InteractiveTool for WaveSimulatorTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot().with_audio()
+        ExportCapabilities::plot()
+            .with_audio()
+            .with_compute_shader()
+    }
+
+    fn export_compute_shader_wgsl(&self) -> Result<String, String> {
+        self.build_wave_compute_wgsl()
     }
 
     fn on_brush(&mut self, ctx: &InteractionContext) {

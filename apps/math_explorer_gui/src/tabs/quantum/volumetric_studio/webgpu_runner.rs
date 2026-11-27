@@ -2,21 +2,31 @@
 //! `128^3` (`2,097,152`-voxel) WebGPU compute & off-main-thread Web Worker volumetric runner
 //! with `navigator.gpu` runtime capability probing and zero-allocation extraction downsampling.
 
+#[path = "webgpu_dispatch.rs"]
+mod webgpu_dispatch;
+
 use super::ast_field::PREVIEW_DRAG_GRID;
 use super::compute_wgsl::ShaderPreviewKind;
 use super::engine::VolumetricEngine;
 use super::state::{
-    FieldSourceMode, QuantumObservableChoice, VolumetricStudioConfig, MAX_VOLUMETRIC_GRID,
-    MAX_WEBGPU_VOLUMETRIC_GRID, MIN_VOLUMETRIC_GRID,
+    FieldSourceMode, VolumetricStudioConfig, MAX_VOLUMETRIC_GRID, MAX_WEBGPU_VOLUMETRIC_GRID,
+    MIN_VOLUMETRIC_GRID,
 };
 use crate::async_sim::web_worker::{
     step_schnakenberg_3d_f32, VolumetricStepJob, VolumetricWorkerBridge,
 };
+use crate::async_sim::webgpu::WebGpuComputeDispatcher;
 use crate::web_io::PlatformInstant;
-use math_commons::math_kernel::types::flatten_3d_index;
-use math_explorer::applied::isosurface::{Point3D, VoxelGrid};
-use math_explorer::physics::quantum::{HydrogenicSuperposition3D, OrbitalQuantumNumbers};
+use math_explorer::applied::isosurface::VoxelGrid;
+use math_explorer::physics::quantum::{
+    HydrogenicSuperposition3D, OrbitalQuantumNumbers, QuantumFieldObservable,
+};
 use serde::{Deserialize, Serialize};
+pub use webgpu_dispatch::downsample_or_copy;
+use webgpu_dispatch::{
+    deinterleave_uv_into, interleave_uv_into, seed_gyroid_buffers_f32, step_and_origin,
+    PendingGpuReadback,
+};
 
 /// Execution backend selected in `VolumetricStudioConfig`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -87,7 +97,7 @@ impl WebGpuAdapterStatus {
 pub fn probe_webgpu_adapter_status() -> WebGpuAdapterStatus {
     #[cfg(target_arch = "wasm32")]
     {
-        wasm_gpu_probe::probe_navigator_gpu()
+        WebGpuAdapterStatus::from_browser_probe(WebGpuComputeDispatcher::has_navigator_gpu())
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -96,22 +106,6 @@ pub fn probe_webgpu_adapter_status() -> WebGpuAdapterStatus {
             Some("worker") => WebGpuAdapterStatus::from_browser_probe(false),
             _ => WebGpuAdapterStatus::NativeHostWorker,
         }
-    }
-}
-
-#[cfg(target_arch = "wasm32")]
-mod wasm_gpu_probe {
-    use super::WebGpuAdapterStatus;
-    use wasm_bindgen::{JsCast, JsValue};
-
-    pub(super) fn probe_navigator_gpu() -> WebGpuAdapterStatus {
-        let global = js_sys::global();
-        let has_gpu = global
-            .dyn_into::<web_sys::Window>()
-            .ok()
-            .and_then(|win| js_sys::Reflect::get(&win.navigator(), &JsValue::from_str("gpu")).ok())
-            .is_some_and(|gpu| !gpu.is_undefined() && !gpu.is_null());
-        WebGpuAdapterStatus::from_browser_probe(has_gpu)
     }
 }
 
@@ -139,14 +133,19 @@ pub struct WebGpuVolumetricRunner {
     pub last_step_ms: f64,
     /// High-resolution cubic `VoxelGrid` (`dim^3`, up to `128^3 = 2,097,152` voxels) when active.
     pub high_res_grid: Option<VoxelGrid>,
+    /// Thin `web-sys` WebGPU `@compute` pipeline and double-buffered `MAP_READ` staging dispatcher.
+    pub gpu_dispatcher: WebGpuComputeDispatcher,
     worker: VolumetricWorkerBridge,
+    pending_readback: PendingGpuReadback,
     u_buf: Vec<f32>,
     v_buf: Vec<f32>,
     u_scratch: Vec<f32>,
     v_scratch: Vec<f32>,
+    uv_staging: Vec<f32>,
+    quantum_basis_uv: Vec<f32>,
     turing_seeded_dim: usize,
     quantum_hi: Option<HydrogenicSuperposition3D>,
-    quantum_key: (u32, u32, i32, u32, u32, i32, usize, u64),
+    quantum_key: ([u32; 4], [i32; 2], usize, u64),
 }
 
 impl Default for WebGpuVolumetricRunner {
@@ -157,19 +156,35 @@ impl Default for WebGpuVolumetricRunner {
             nav_mode: ViewportNavMode::Orbit,
             last_step_ms: 0.4,
             high_res_grid: None,
+            gpu_dispatcher: WebGpuComputeDispatcher::new(),
             worker: VolumetricWorkerBridge::new(),
+            pending_readback: PendingGpuReadback::ScalarField,
             u_buf: Vec::new(),
             v_buf: Vec::new(),
             u_scratch: Vec::new(),
             v_scratch: Vec::new(),
+            uv_staging: Vec::new(),
+            quantum_basis_uv: Vec::new(),
             turing_seeded_dim: 0,
             quantum_hi: None,
-            quantum_key: (0, 0, 0, 0, 0, 0, 0, 0),
+            quantum_key: ([0; 4], [0; 2], 0, 0),
         }
     }
 }
 
 impl WebGpuVolumetricRunner {
+    /// Clamps `cfg` down to `<= 48^3` `CpuZeroAlloc` stepping when the browser lacks `navigator.gpu`.
+    pub fn enforce_navigator_gpu_fallback(&self, cfg: &mut VolumetricStudioConfig) -> bool {
+        if self.adapter_status == WebGpuAdapterStatus::BrowserWorkerFallback
+            && cfg.compute_backend == ComputeBackend::WebGpuCompute
+        {
+            cfg.compute_backend = ComputeBackend::CpuZeroAlloc;
+            cfg.clamp_in_place();
+            return true;
+        }
+        false
+    }
+
     /// Returns `true` when `high_res_grid` is active and holds finite values.
     #[must_use]
     pub fn is_finite(&self) -> bool {
@@ -187,6 +202,9 @@ impl WebGpuVolumetricRunner {
             self.v_buf.reserve(cap_len - self.v_buf.len());
             self.u_scratch.reserve(cap_len - self.u_scratch.len());
             self.v_scratch.reserve(cap_len - self.v_scratch.len());
+        }
+        if self.uv_staging.capacity() < cap_len * 2 {
+            self.uv_staging.reserve(cap_len * 2 - self.uv_staging.len());
         }
         if self
             .high_res_grid
@@ -214,15 +232,38 @@ impl WebGpuVolumetricRunner {
         }
     }
 
-    /// Polls any completed off-thread Web Worker 3D Turing step, returning `true` if new voxels arrived.
+    /// Polls any completed WebGPU staging readback or off-thread Web Worker 3D Turing step.
     pub fn poll_worker_into(
         &mut self,
         cfg: &VolumetricStudioConfig,
         extract_grid: &mut VoxelGrid,
     ) -> bool {
-        if cfg.compute_backend != ComputeBackend::WebGpuCompute
-            || cfg.source != FieldSourceMode::TuringMorphogenesis
-        {
+        if cfg.compute_backend != ComputeBackend::WebGpuCompute {
+            return false;
+        }
+        match self.pending_readback {
+            PendingGpuReadback::TuringInterleavedUv(total) => {
+                if self.uv_staging.len() < total * 2 {
+                    self.uv_staging.resize(total * 2, 0.0);
+                }
+                if let Some(gpu_ms) = self.gpu_dispatcher.poll_readback(&mut self.uv_staging) {
+                    self.last_step_ms = gpu_ms.max(0.05);
+                    deinterleave_uv_into(&self.uv_staging, &mut self.u_buf, &mut self.v_buf);
+                    self.write_turing_to_grids(cfg, extract_grid);
+                    return true;
+                }
+            }
+            PendingGpuReadback::ScalarField => {
+                if let Some(hi) = &mut self.high_res_grid {
+                    if let Some(gpu_ms) = self.gpu_dispatcher.poll_readback(hi.data_mut()) {
+                        self.last_step_ms = gpu_ms.max(0.05);
+                        downsample_or_copy(hi, extract_grid);
+                        return true;
+                    }
+                }
+            }
+        }
+        if cfg.source != FieldSourceMode::TuringMorphogenesis {
             return false;
         }
         let Some(ms) = self
@@ -278,15 +319,19 @@ impl WebGpuVolumetricRunner {
             }
             FieldSourceMode::CustomImplicit => {
                 engine.implicit_eval.sync_zero_alloc(cfg);
-                if let Some(hi) = &mut self.high_res_grid {
-                    engine.implicit_eval.populate_grid_in_place(cfg, hi);
-                    downsample_or_copy(hi, &mut engine.voxel_grid);
+                if !self.try_dispatch_formula_gpu(cfg, target_dim) {
+                    if let Some(hi) = &mut self.high_res_grid {
+                        engine.implicit_eval.populate_grid_in_place(cfg, hi);
+                        downsample_or_copy(hi, &mut engine.voxel_grid);
+                    }
                 }
             }
             FieldSourceMode::CustomImplicitAst => {
-                if let Some(hi) = &mut self.high_res_grid {
-                    engine.ast_kernel.populate_voxel_grid_in_place(hi);
-                    downsample_or_copy(hi, &mut engine.voxel_grid);
+                if !self.try_dispatch_formula_gpu(cfg, target_dim) {
+                    if let Some(hi) = &mut self.high_res_grid {
+                        engine.ast_kernel.populate_voxel_grid_in_place(hi);
+                        downsample_or_copy(hi, &mut engine.voxel_grid);
+                    }
                 }
             }
         }
@@ -315,7 +360,7 @@ impl WebGpuVolumetricRunner {
             );
             self.turing_seeded_dim = dim;
         }
-        if !advance_time {
+        if !advance_time || self.try_dispatch_turing_gpu(cfg, dim) {
             return;
         }
         let job = VolumetricStepJob {
@@ -359,104 +404,51 @@ impl WebGpuVolumetricRunner {
 
     fn eval_quantum_hi(&mut self, cfg: &VolumetricStudioConfig, dim: usize, advance_time: bool) {
         let key = (
-            cfg.n1,
-            cfg.l1,
-            cfg.m1,
-            cfg.n2,
-            cfg.l2,
-            cfg.m2,
+            [cfg.n1, cfg.l1, cfg.n2, cfg.l2],
+            [cfg.m1, cfg.m2],
             dim,
             cfg.quantum_dt.to_bits(),
         );
         let q1 = OrbitalQuantumNumbers::clamped(cfg.n1, cfg.l1, cfg.m1);
         let q2 = OrbitalQuantumNumbers::clamped(cfg.n2, cfg.l2, cfg.m2);
         if self.quantum_hi.is_none() || self.quantum_key != key {
-            let mut q = HydrogenicSuperposition3D::new(
-                q1,
-                q2,
-                dim,
-                dim,
-                cfg.physical_quantum_extent(),
-                cfg.quantum_dt,
+            let ext = cfg.physical_quantum_extent();
+            let mut q = HydrogenicSuperposition3D::new(q1, q2, dim, dim, ext, cfg.quantum_dt);
+            let total = dim * dim * dim;
+            self.u_scratch.resize(total, 0.0);
+            self.v_scratch.resize(total, 0.0);
+            self.quantum_basis_uv.resize(total * 2, 0.0);
+            q.set_superposition(0.0, 0.0);
+            q.write_field_into(
+                QuantumFieldObservable::SignedRealWavefunction,
+                &mut self.u_scratch,
             );
+            q.set_superposition(1.0, 0.0);
+            q.write_field_into(
+                QuantumFieldObservable::SignedRealWavefunction,
+                &mut self.v_scratch,
+            );
+            interleave_uv_into(&self.u_scratch, &self.v_scratch, &mut self.quantum_basis_uv);
             q.set_superposition(cfg.superposition_mix, cfg.relative_phase);
             self.quantum_hi = Some(q);
             self.quantum_key = key;
         }
+        let mut elapsed = 0.0;
         if let Some(q) = &mut self.quantum_hi {
             if !advance_time {
                 q.set_superposition(cfg.superposition_mix, cfg.relative_phase);
             } else {
                 q.step_in_place();
             }
-            if let Some(hi) = &mut self.high_res_grid {
-                let obs = match cfg.observable {
-                    QuantumObservableChoice::SignedWavefunction => cfg.observable.to_physics(),
-                    QuantumObservableChoice::ProbabilityDensity => cfg.observable.to_physics(),
-                };
-                q.write_field_into(obs, hi.data_mut());
-            }
+            elapsed = q.elapsed_time();
+        }
+        if self.try_dispatch_quantum_gpu(cfg, dim, elapsed) {
+            return;
+        }
+        if let (Some(q), Some(hi)) = (&self.quantum_hi, &mut self.high_res_grid) {
+            q.write_field_into(cfg.observable.to_physics(), hi.data_mut());
         }
     }
-}
-
-fn seed_gyroid_buffers_f32(dim: usize, a: f32, b: f32, u: &mut [f32], v: &mut [f32]) {
-    let u0 = a + b;
-    let v0 = b / (u0 * u0).max(1e-4);
-    let scale = std::f32::consts::TAU / (dim.max(2) as f32);
-    for z in 0..dim {
-        let zf = (z as f32) * scale;
-        for y in 0..dim {
-            let yf = (y as f32) * scale;
-            for x in 0..dim {
-                let xf = (x as f32) * scale;
-                let g = xf.sin() * yf.cos() + yf.sin() * zf.cos() + zf.sin() * xf.cos();
-                let idx = flatten_3d_index(x, y, z, dim, dim);
-                u[idx] = (u0 + 0.18 * g).clamp(0.05, 8.0);
-                v[idx] = (v0 - 0.12 * g).clamp(0.05, 8.0);
-            }
-        }
-    }
-}
-
-/// Copies `src` directly when dimensions match, or downsamples `src` (`<= 128^3`) into `dst` (`48^3`)
-/// with zero heap allocations.
-pub fn downsample_or_copy(src: &VoxelGrid, dst: &mut VoxelGrid) {
-    let s_dim = src.width();
-    let d_dim = dst.width();
-    if s_dim == d_dim && src.data().len() == dst.data().len() {
-        dst.data_mut().copy_from_slice(src.data());
-        return;
-    }
-    if s_dim < 2 || d_dim < 2 {
-        return;
-    }
-    let ratio = ((s_dim - 1) as f64) / ((d_dim - 1) as f64);
-    let src_slice = src.data();
-    let dst_slice = dst.data_mut();
-    for z in 0..d_dim {
-        let sz = (((z as f64) * ratio).round() as usize).min(s_dim - 1);
-        for y in 0..d_dim {
-            let sy = (((y as f64) * ratio).round() as usize).min(s_dim - 1);
-            for x in 0..d_dim {
-                let sx = (((x as f64) * ratio).round() as usize).min(s_dim - 1);
-                let s_idx = flatten_3d_index(sx, sy, sz, s_dim, s_dim);
-                let d_idx = flatten_3d_index(x, y, z, d_dim, d_dim);
-                dst_slice[d_idx] = src_slice[s_idx];
-            }
-        }
-    }
-}
-
-fn step_and_origin(dim: usize, ext: [f64; 3]) -> (Point3D, Point3D) {
-    let s = 2.0 / ((dim.max(2) - 1) as f64);
-    let step = Point3D::new(
-        (ext[0] * s) as f32,
-        (ext[1] * s) as f32,
-        (ext[2] * s) as f32,
-    );
-    let orig = Point3D::new(-(ext[0] as f32), -(ext[1] as f32), -(ext[2] as f32));
-    (step, orig)
 }
 
 #[cfg(test)]

@@ -114,53 +114,46 @@ pub(super) struct WasmVolumetricWorker {
     fallback_u: Vec<f32>,
     fallback_v: Vec<f32>,
     in_flight: bool,
+    worker_attempted: bool,
     transport: WorkerTransportMode,
 }
 
 impl WasmVolumetricWorker {
-    pub(super) fn spawn(mut caps: WebWorkerCapabilities) -> (WebWorkerCapabilities, Self) {
-        let completed = Rc::new(RefCell::new(None));
-        let worker_opt = if caps.dedicated_worker_available {
-            build_blob_worker().ok()
-        } else {
-            None
-        };
-        let Some(worker) = worker_opt else {
-            caps.dedicated_worker_available = false;
-            caps.selected_transport = WorkerTransportMode::CooperativeMainThread;
-            return (
-                caps,
-                Self {
-                    worker: None,
-                    _onmessage: None,
-                    completed,
-                    sab: None,
-                    fallback_u: Vec::new(),
-                    fallback_v: Vec::new(),
-                    in_flight: false,
-                    transport: WorkerTransportMode::CooperativeMainThread,
-                },
-            );
-        };
-        let slot = Rc::clone(&completed);
-        let onmsg = Closure::wrap(Box::new(move |ev: web_sys::MessageEvent| {
-            handle_worker_message(&slot, ev);
-        }) as Box<dyn FnMut(web_sys::MessageEvent)>);
-        worker.set_onmessage(Some(onmsg.as_ref().unchecked_ref()));
+    pub(super) fn spawn(caps: WebWorkerCapabilities) -> (WebWorkerCapabilities, Self) {
+        let worker_attempted = !caps.dedicated_worker_available;
         let transport = caps.selected_transport;
         (
             caps,
             Self {
-                worker: Some(worker),
-                _onmessage: Some(onmsg),
-                completed,
+                worker: None,
+                _onmessage: None,
+                completed: Rc::new(RefCell::new(None)),
                 sab: None,
                 fallback_u: Vec::new(),
                 fallback_v: Vec::new(),
                 in_flight: false,
+                worker_attempted,
                 transport,
             },
         )
+    }
+
+    fn ensure_worker_spawned(&mut self) {
+        if self.worker_attempted {
+            return;
+        }
+        self.worker_attempted = true;
+        let Ok(worker) = build_blob_worker() else {
+            self.transport = WorkerTransportMode::CooperativeMainThread;
+            return;
+        };
+        let slot = Rc::clone(&self.completed);
+        let onmsg = Closure::wrap(Box::new(move |ev: web_sys::MessageEvent| {
+            handle_worker_message(&slot, ev);
+        }) as Box<dyn FnMut(web_sys::MessageEvent)>);
+        worker.set_onmessage(Some(onmsg.as_ref().unchecked_ref()));
+        self.worker = Some(worker);
+        self._onmessage = Some(onmsg);
     }
 
     pub(super) const fn is_in_flight(&self) -> bool {
@@ -171,6 +164,7 @@ impl WasmVolumetricWorker {
         if self.in_flight || u.len() != v.len() || u.is_empty() {
             return false;
         }
+        self.ensure_worker_spawned();
         if self.worker.is_none() {
             return self.run_cooperative_fallback(job, u, v);
         }

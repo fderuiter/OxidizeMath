@@ -9,7 +9,7 @@ use super::state::{
     FieldSourceMode, QuantumObservableChoice, SliceAxis, VolumetricRenderMode, MAX_EXPORT_SIZE_MM,
     MIN_EXPORT_SIZE_MM, MIN_VOLUMETRIC_GRID,
 };
-use super::webgpu_runner::ComputeBackend;
+use super::webgpu_runner::{ComputeBackend, WebGpuAdapterStatus};
 use super::VolumetricFieldStudioTool;
 use crate::app::SemanticPalette;
 use crate::framework::{scoped_panel_id, PaneSidePanel, PlaybackAction, PlaybackTransport};
@@ -283,14 +283,7 @@ impl VolumetricFieldStudioTool {
                 .text("Grid Voxels³"),
             )
             .changed();
-        if self.config.compute_backend == ComputeBackend::WebGpuCompute {
-            let vox = self.config.grid_resolution.pow(3);
-            let palette = SemanticPalette::from_visuals(ui.visuals());
-            ui.colored_label(
-                palette.muted_text,
-                format!("16³ .. 128³  ({vox} active voxels)"),
-            );
-        }
+        self.draw_voxel_latency_caption(ui);
         if self.config.source != FieldSourceMode::CustomImplicit {
             c |= ui
                 .add(
@@ -306,6 +299,28 @@ impl VolumetricFieldStudioTool {
         ui.separator();
         c |= self.draw_cutting_plane_controls(ui);
         c
+    }
+
+    fn draw_voxel_latency_caption(&self, ui: &mut egui::Ui) {
+        let palette = SemanticPalette::from_visuals(ui.visuals());
+        let active_dim = self.active_voxel_dimension();
+        let backend_tag = self
+            .webgpu_runner
+            .adapter_status
+            .hud_backend_label(self.config.compute_backend);
+        let msg = if self.config.compute_backend == ComputeBackend::WebGpuCompute {
+            let vox = self.config.grid_resolution.pow(3);
+            format!(
+                "16³ .. 128³  ({vox} voxels) · {:.1} ms",
+                self.webgpu_runner.last_step_ms
+            )
+        } else {
+            format!(
+                "Latency: {:.1} ms ({backend_tag} {active_dim}³)",
+                self.webgpu_runner.last_step_ms
+            )
+        };
+        ui.colored_label(palette.muted_text, msg);
     }
 
     fn draw_cutting_plane_controls(&mut self, ui: &mut egui::Ui) -> bool {
@@ -393,19 +408,29 @@ impl VolumetricFieldStudioTool {
 
     fn draw_compute_backend_toggle(&mut self, ui: &mut egui::Ui) -> bool {
         let prev = self.config.compute_backend;
+        let gpu_available =
+            self.webgpu_runner.adapter_status != WebGpuAdapterStatus::BrowserWorkerFallback;
         ui.label("Compute Backend");
         ui.horizontal(|ui| {
-            ui.selectable_value(
-                &mut self.config.compute_backend,
-                ComputeBackend::WebGpuCompute,
-                ComputeBackend::WebGpuCompute.label(),
-            );
+            ui.add_enabled_ui(gpu_available, |ui| {
+                ui.selectable_value(
+                    &mut self.config.compute_backend,
+                    ComputeBackend::WebGpuCompute,
+                    ComputeBackend::WebGpuCompute.label(),
+                )
+                .on_disabled_hover_text(
+                    "navigator.gpu unavailable in this browser; clamped to <= 48³ CPU Zero-Alloc",
+                );
+            });
             ui.selectable_value(
                 &mut self.config.compute_backend,
                 ComputeBackend::CpuZeroAlloc,
                 ComputeBackend::CpuZeroAlloc.label(),
             );
         });
+        if !gpu_available {
+            self.config.compute_backend = ComputeBackend::CpuZeroAlloc;
+        }
         if self.config.compute_backend != prev {
             self.config.clamp_in_place();
             true
