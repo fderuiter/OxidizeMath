@@ -10,6 +10,7 @@ mod custom_spec;
 mod persistence;
 pub mod phase;
 pub mod phase_plane;
+mod planar_spec;
 pub mod poincare_map;
 pub mod recovery;
 mod series_cache;
@@ -20,7 +21,9 @@ pub mod ui;
 #[cfg(test)]
 use comparison::simulate_preset;
 use comparison::{simulate_ode, SolverDiscrepancy, SolverTrajectory};
-use phase_plane::{DEFAULT_PLANAR_X_EXPR, DEFAULT_PLANAR_Y_EXPR, DEFAULT_QUIVER_GRID};
+use phase_plane::DEFAULT_QUIVER_GRID;
+pub(super) use planar_spec::default_ode_math_inputs;
+use planar_spec::PlanarCustomBank;
 use poincare_map::{trace_det_from_matrix, DEFAULT_MATRIX_A};
 use systems::{default_coupled_ode_bank, CustomOdeSpec};
 
@@ -64,6 +67,7 @@ pub struct OdeSolverTool {
     pub(crate) coupled_bank: CoupledExpressionBank,
     pub(crate) planar_x_input: MathExpressionInputBar,
     pub(crate) planar_y_input: MathExpressionInputBar,
+    pub(crate) planar_bank: PlanarCustomBank,
     pub(crate) matrix_a: [[f64; 2]; 2],
     pub(crate) phase_plane_mode: bool,
     pub(crate) show_quiver: bool,
@@ -120,43 +124,10 @@ pub(super) fn default_scalar_ode_input() -> MathExpressionInputBar {
     .with_param_spec("K", "K (Carrying Capacity)", 1.0..=100.0, 10.0)
 }
 
-pub(super) fn default_ode_math_inputs() -> (
-    MathExpressionInputBar,
-    MathExpressionInputBar,
-    MathExpressionInputBar,
-) {
-    let scalar = default_scalar_ode_input();
-    let planar_x = MathExpressionInputBar::new(
-        "x'",
-        DEFAULT_PLANAR_X_EXPR,
-        vec![
-            ("x' = y (Second-Order Velocity)", "y"),
-            ("x' = r*x - k*x*y (Lotka-Volterra)", "r * x - k * x * y"),
-            ("x' = y - 0.2*x (Damped Rotation)", "y - 0.2 * x"),
-        ],
-    );
-    let planar_y = MathExpressionInputBar::new(
-        "y'",
-        DEFAULT_PLANAR_Y_EXPR,
-        vec![
-            (
-                "y' = k*(1 - x^2)*y - x (Van der Pol)",
-                "k * (1 - x^2) * y - x",
-            ),
-            ("y' = k*x*y - y (Lotka-Volterra)", "k * x * y - y"),
-            (
-                "y' = -k*sin(x) - 0.25*y (Pendulum)",
-                "-k * sin(x) - 0.25 * y",
-            ),
-            ("y' = x - x^3 - 0.3*k*y (Duffing)", "x - x^3 - 0.3 * k * y"),
-        ],
-    );
-    (scalar, planar_x, planar_y)
-}
-
 impl Default for OdeSolverTool {
     fn default() -> Self {
         let (math_input, planar_x_input, planar_y_input) = default_ode_math_inputs();
+        let planar_bank = PlanarCustomBank::new(&planar_x_input, &planar_y_input);
         let mut tool = Self {
             preset: OdePreset::Exponential,
             method: IntegrationMethod::RungeKutta4,
@@ -185,6 +156,7 @@ impl Default for OdeSolverTool {
             coupled_bank: default_coupled_ode_bank(),
             planar_x_input,
             planar_y_input,
+            planar_bank,
             matrix_a: DEFAULT_MATRIX_A,
             phase_plane_mode: false,
             show_quiver: true,
@@ -246,26 +218,31 @@ impl OdeSolverTool {
         match self.preset {
             OdePreset::Custom if self.custom_coupled => !self.coupled_bank.is_valid(),
             OdePreset::Custom => !self.math_input.is_valid(),
-            OdePreset::PlanarCustom => {
-                !self.planar_x_input.is_valid() || !self.planar_y_input.is_valid()
-            }
+            OdePreset::PlanarCustom => !self
+                .planar_bank
+                .is_valid(&self.planar_x_input, &self.planar_y_input),
             _ => false,
         }
     }
 
     pub(crate) fn build_custom_ode_spec(&self) -> Option<CustomOdeSpec> {
-        if self.preset != OdePreset::Custom {
-            return None;
-        }
-        if self.custom_coupled {
-            CustomOdeSpec::from_coupled_bank(&self.coupled_bank)
-        } else {
-            CustomOdeSpec::from_scalar_bar(
+        match self.preset {
+            OdePreset::Custom if self.custom_coupled => {
+                CustomOdeSpec::from_coupled_bank(&self.coupled_bank)
+            }
+            OdePreset::Custom => CustomOdeSpec::from_scalar_bar(
                 &self.math_input,
                 self.param_k,
                 self.param_r,
                 self.param_cap_k,
-            )
+            ),
+            OdePreset::PlanarCustom => Some(self.planar_bank.to_coupled_spec(
+                &self.planar_x_input,
+                &self.planar_y_input,
+                [self.param_k, self.param_r, self.param_cap_k],
+                self.synced_legacy_params,
+            )),
+            _ => None,
         }
     }
 
@@ -282,10 +259,7 @@ impl OdeSolverTool {
                 let (tau, delta) = trace_det_from_matrix(self.matrix_a);
                 format!(r"\tau={tau:.2}, \Delta={delta:.2}, \Delta t={:.2}", self.dt)
             }
-            OdePreset::PlanarCustom => format!(
-                r"k={:.2}, r={:.2}, \Delta t={:.2}",
-                self.param_k, self.param_r, self.dt
-            ),
+            OdePreset::PlanarCustom => self.planar_param_summary(),
             OdePreset::Custom if self.custom_coupled => self.coupled_param_summary(),
             OdePreset::Custom => self.custom_param_summary(),
         }
@@ -477,6 +451,8 @@ mod custom_tests;
 
 #[cfg(test)]
 mod ode_tests;
+#[cfg(test)]
+mod planar_custom_tests;
 #[cfg(test)]
 mod planar_poincare_tests;
 #[cfg(test)]

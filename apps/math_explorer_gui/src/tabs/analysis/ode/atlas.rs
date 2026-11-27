@@ -14,7 +14,7 @@ use crate::async_sim::atlas::{
 use crate::framework::math_input::MAX_SYNTHESIZED_PARAMS;
 use crate::presets::OdePreset;
 use eframe::egui;
-use kernel::{classify_stack_dynamics, compile_planar_expr_pair, StackOdeDynamics};
+use kernel::{classify_stack_dynamics, StackOdeDynamics};
 use math_commons::ast::CompiledExpr;
 use math_explorer::pure_math::analysis::ode::{ArrayState, IntegrationMethod};
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
@@ -124,6 +124,10 @@ pub struct OdeRegimeCartographer {
     matrix_a: [[f64; 2]; 2],
     planar_dx: Option<CompiledExpr>,
     planar_dy: Option<CompiledExpr>,
+    planar_params: [f64; MAX_SYNTHESIZED_PARAMS],
+    planar_len: usize,
+    planar_slot_x: Option<usize>,
+    planar_slot_y: Option<usize>,
     scalar_expr: Option<CompiledExpr>,
     scalar_params: [f64; MAX_SYNTHESIZED_PARAMS],
     scalar_len: usize,
@@ -137,8 +141,59 @@ pub struct OdeRegimeCartographer {
     coupled_slot_y: Option<usize>,
 }
 
-fn find_param_slot(names: &[String], len: usize, target: &str) -> Option<usize> {
-    names.iter().take(len).position(|n| n == target)
+pub(super) fn find_param_slot(names: &[String], len: usize, target: &str) -> Option<usize> {
+    names
+        .iter()
+        .take(len)
+        .position(|n| n == target || (target == "cap_k" && n == "K"))
+}
+
+fn apply_axis_slots(
+    mut base: [f64; MAX_SYNTHESIZED_PARAMS],
+    slots: (Option<usize>, Option<usize>),
+    vals: (f64, f64),
+) -> [f64; MAX_SYNTHESIZED_PARAMS] {
+    if let Some(sx) = slots.0 {
+        base[sx] = vals.0;
+    }
+    if let Some(sy) = slots.1 {
+        base[sy] = vals.1;
+    }
+    base
+}
+
+struct PlanarCartographerSnapshot {
+    dx: Option<CompiledExpr>,
+    dy: Option<CompiledExpr>,
+    params: [f64; MAX_SYNTHESIZED_PARAMS],
+    len: usize,
+    slot_x: Option<usize>,
+    slot_y: Option<usize>,
+    base_c: f64,
+}
+
+fn snapshot_planar_expr(
+    tool: &OdeSolverTool,
+    axis_keys: (&str, &str),
+) -> PlanarCartographerSnapshot {
+    let (dx, dy, params, len) = tool.planar_bank.snapshot_compiled_and_params(
+        &tool.planar_x_input,
+        &tool.planar_y_input,
+        [tool.param_k, tool.param_r, tool.param_cap_k],
+        tool.synced_legacy_params,
+    );
+    let slot_x = find_param_slot(dx.param_names(), len, axis_keys.0);
+    let slot_y = find_param_slot(dx.param_names(), len, axis_keys.1);
+    let base_c = find_param_slot(dx.param_names(), len, "c").map_or(0.0, |idx| params[idx]);
+    PlanarCartographerSnapshot {
+        dx: Some(dx),
+        dy: Some(dy),
+        params,
+        len,
+        slot_x,
+        slot_y,
+        base_c,
+    }
 }
 
 fn snapshot_scalar_expr(
@@ -179,18 +234,18 @@ impl OdeRegimeCartographer {
         };
         let (scalar_expr, scalar_params, scalar_len, scalar_slot_x, scalar_slot_y) =
             snapshot_scalar_expr(tool, axis_keys);
-        let (planar_dx, planar_dy) = compile_planar_expr_pair(
-            tool.planar_x_input.cached_expr(),
-            tool.planar_y_input.cached_expr(),
-        );
+        let planar = snapshot_planar_expr(tool, axis_keys);
         let compiled = tool.coupled_bank.active_compiled();
         let c_slice = tool.coupled_bank.param_slice();
         let coupled_len = c_slice.len().min(MAX_SYNTHESIZED_PARAMS);
         let mut coupled_params = [0.0; MAX_SYNTHESIZED_PARAMS];
         coupled_params[..coupled_len].copy_from_slice(&c_slice[..coupled_len]);
         let names = tool.coupled_bank.param_names();
-        let base_c =
-            find_param_slot(names, coupled_len, "c").map_or(0.0, |idx| coupled_params[idx]);
+        let base_c = if tool.preset == OdePreset::PlanarCustom {
+            planar.base_c
+        } else {
+            find_param_slot(names, coupled_len, "c").map_or(0.0, |idx| coupled_params[idx])
+        };
 
         Self {
             axes,
@@ -205,8 +260,12 @@ impl OdeRegimeCartographer {
             base_y0: tool.ic_y0,
             base_v0: tool.ic_v0,
             matrix_a: tool.matrix_a,
-            planar_dx,
-            planar_dy,
+            planar_dx: planar.dx,
+            planar_dy: planar.dy,
+            planar_params: planar.params,
+            planar_len: planar.len,
+            planar_slot_x: planar.slot_x,
+            planar_slot_y: planar.slot_y,
             scalar_expr,
             scalar_params,
             scalar_len,
@@ -224,13 +283,11 @@ impl OdeRegimeCartographer {
     fn resolve_custom_dynamics(&self, p1: f64, p2: f64, k: f64, c: f64) -> StackOdeDynamics<'_> {
         if self.custom_coupled {
             if let (Some(dy), Some(dv)) = (&self.coupled_dy, &self.coupled_dv) {
-                let mut params = self.coupled_params;
-                if let Some(sx) = self.coupled_slot_x {
-                    params[sx] = p1;
-                }
-                if let Some(sy) = self.coupled_slot_y {
-                    params[sy] = p2;
-                }
+                let params = apply_axis_slots(
+                    self.coupled_params,
+                    (self.coupled_slot_x, self.coupled_slot_y),
+                    (p1, p2),
+                );
                 return StackOdeDynamics::CoupledExpr {
                     dy,
                     dv,
@@ -240,13 +297,11 @@ impl OdeRegimeCartographer {
             }
             StackOdeDynamics::DampedHarmonic { k, c }
         } else if let Some(expr) = &self.scalar_expr {
-            let mut params = self.scalar_params;
-            if let Some(sx) = self.scalar_slot_x {
-                params[sx] = p1;
-            }
-            if let Some(sy) = self.scalar_slot_y {
-                params[sy] = p2;
-            }
+            let params = apply_axis_slots(
+                self.scalar_params,
+                (self.scalar_slot_x, self.scalar_slot_y),
+                (p1, p2),
+            );
             StackOdeDynamics::ScalarExpr {
                 expr,
                 params,
@@ -282,16 +337,16 @@ impl OdeRegimeCartographer {
             },
             OdePreset::PlanarCustom => {
                 if let (Some(dy), Some(dv)) = (&self.planar_dx, &self.planar_dy) {
-                    let mut params = [0.0; MAX_SYNTHESIZED_PARAMS];
-                    params[0] = k;
-                    params[1] = r;
-                    params[2] = cap_k;
-                    params[3] = cap_k;
+                    let params = apply_axis_slots(
+                        self.planar_params,
+                        (self.planar_slot_x, self.planar_slot_y),
+                        (p1, p2),
+                    );
                     StackOdeDynamics::CoupledExpr {
                         dy,
                         dv,
                         params,
-                        param_len: 4,
+                        param_len: self.planar_len,
                     }
                 } else {
                     StackOdeDynamics::DampedHarmonic { k, c }

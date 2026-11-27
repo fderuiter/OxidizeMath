@@ -1,9 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::phase_plane::{
-    DEFAULT_PLANAR_X_EXPR, DEFAULT_PLANAR_Y_EXPR, DEFAULT_QUIVER_GRID, MAX_QUIVER_GRID,
-    MAX_SEEDED_ORBITS,
-};
+use super::phase_plane::{DEFAULT_QUIVER_GRID, MAX_QUIVER_GRID, MAX_SEEDED_ORBITS};
 use super::poincare_map::DEFAULT_MATRIX_A;
 use super::systems::default_coupled_ode_bank;
 use super::OdeSolverTool;
@@ -44,6 +41,7 @@ impl OdeSolverTool {
 
     /// Clamps unstable or non-finite parameters, custom slider maps, planar matrix/orbits, and step settings.
     pub fn clamp_instability_parameters(&mut self) {
+        self.sync_custom_params();
         clamp_ode_parameters(
             self.preset,
             &mut self.param_k,
@@ -54,6 +52,7 @@ impl OdeSolverTool {
         );
         self.math_input.clamp_active_params(-10.0..=10.0);
         self.coupled_bank.clamp_active_params(-10.0..=10.0);
+        self.planar_bank.clamp_active_params(-10.0..=10.0);
         self.push_clamped_legacy_params_to_bar();
 
         clamp_planar_state(
@@ -89,12 +88,7 @@ impl OdeSolverTool {
                 self.ic_v0 = 0.0;
             }
             OdePreset::PlanarCustom => {
-                self.param_k = 1.0;
-                self.param_r = 1.0;
-                self.ic_y0 = 1.0;
-                self.ic_v0 = 0.0;
-                self.planar_x_input.set_expression(DEFAULT_PLANAR_X_EXPR);
-                self.planar_y_input.set_expression(DEFAULT_PLANAR_Y_EXPR);
+                self.reset_planar_custom_parameters();
             }
             OdePreset::Custom if self.custom_coupled => {
                 self.ic_y0 = 1.0;
@@ -150,7 +144,11 @@ pub(super) fn is_finite_ode_state(tool: &OdeSolverTool) -> bool {
             tool.ic_v0.is_finite() && tool.matrix_a.iter().flatten().all(|v| v.is_finite())
         }
         OdePreset::PlanarCustom => {
-            tool.param_k.is_finite() && tool.param_r.is_finite() && tool.ic_v0.is_finite()
+            tool.param_k.is_finite()
+                && tool.param_r.is_finite()
+                && tool.param_cap_k.is_finite()
+                && tool.ic_v0.is_finite()
+                && tool.planar_bank.param_slice().iter().all(|v| v.is_finite())
         }
     };
     if tool.diverged

@@ -36,7 +36,6 @@ oxidizemath = { path = "../oxidizemath", features = ["pure_math", "applied", "ai
 math_explorer = { path = "../math_explorer", features = ["pure_math", "applied", "ai", "biology", "climate", "epidemiology", "physics"] }
 
 nalgebra = { workspace = true }
-rand = { workspace = true }
 serde = { workspace = true, features = ["std", "derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

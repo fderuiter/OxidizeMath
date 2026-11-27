@@ -223,6 +223,8 @@ class ReusableThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPSe
 
 
 class WasmTestRequestHandler(http.server.SimpleHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def do_GET(self) -> None:
         parsed = urllib.parse.urlsplit(self.path)
         if parsed.path == "/__test_vfs_fixture.txt":
@@ -671,16 +673,24 @@ def _launch_chromium_suite(out_dir: Path) -> tuple[str | None, str, list[str], l
                         page.goto(url, wait_until="domcontentloaded")
                         page.locator("#output[data-test-status]").wait_for(
                             state="attached",
-                            timeout=90_000,
+                            timeout=30_000 if attempt < 2 else 90_000,
                         )
                         status = page.locator("#output").get_attribute("data-test-status")
                         rendered_output = page.locator("#output").inner_text()
                     finally:
                         browser.close()
+                if (
+                    attempt < 2
+                    and status == "failed"
+                    and "Runner fatal error: TypeError: Failed to fetch" in rendered_output
+                    and not csp_errors
+                ):
+                    continue
                 break
             except PlaywrightError as exc:
                 if attempt < 2 and any(
-                    t in str(exc) for t in ("Page crashed", "Target crashed", "net::ERR_ABORTED")
+                    t in str(exc)
+                    for t in ("Page crashed", "Target crashed", "net::ERR_ABORTED", "Timeout")
                 ):
                     continue
                 raise

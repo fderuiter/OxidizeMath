@@ -3,11 +3,9 @@
 #[cfg(test)]
 use super::poincare_map::DEFAULT_MATRIX_A;
 use super::systems::{
-    build_ode_param_map, CustomOdeSpec, ExponentialOde, HarmonicOscillatorOde, Linear2DOde,
-    LogisticGrowthOde, PlanarAstOde,
+    CustomOdeSpec, ExponentialOde, HarmonicOscillatorOde, Linear2DOde, LogisticGrowthOde,
 };
 use crate::presets::OdePreset;
-use math_commons::ast::Expr;
 use math_explorer::pure_math::analysis::ode::{
     ArrayState, Euler, GaussLegendre4, Heun, ImplicitMidpoint, IntegrationMethod, OdeSystem,
     RungeKutta4, Solver,
@@ -45,8 +43,6 @@ pub struct OdeSimSpec<'a> {
     pub ic_v0: f64,
     pub matrix_a: [[f64; 2]; 2],
     pub custom_spec: Option<&'a CustomOdeSpec>,
-    pub planar_x_expr: Option<&'a Expr>,
-    pub planar_y_expr: Option<&'a Expr>,
 }
 
 impl OdeSimSpec<'_> {
@@ -96,8 +92,6 @@ pub fn simulate_preset(
         ic_v0,
         matrix_a: DEFAULT_MATRIX_A,
         custom_spec,
-        planar_x_expr: None,
-        planar_y_expr: None,
     })
 }
 
@@ -201,16 +195,11 @@ fn dispatch_sim_2d(traj: &mut SolverTrajectory, spec: &OdeSimSpec<'_>, dt: f64, 
             );
         }
         OdePreset::PlanarCustom => {
-            if let (Some(x_expr), Some(y_expr)) = (spec.planar_x_expr, spec.planar_y_expr) {
-                let dyn_sys = PlanarAstOde {
-                    x_expr,
-                    y_expr,
-                    params: build_ode_param_map(spec.param_k, spec.param_r, spec.param_cap_k),
-                };
+            if let Some(cspec) = spec.custom_spec {
                 run_loop_2d(
                     traj,
                     init_2d,
-                    &dyn_sys,
+                    cspec,
                     spec.method,
                     dt,
                     num_steps,

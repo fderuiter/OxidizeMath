@@ -97,6 +97,8 @@ struct OdeStateRef<'a> {
     custom_params: BTreeMap<String, f64>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     coupled_params: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    planar_params: BTreeMap<String, f64>,
     #[serde(skip_serializing_if = "skip_empty_snapshots")]
     snapshot_manager: Option<&'a TraceSnapshotManager>,
     callout_manager: &'a CalloutManager,
@@ -152,6 +154,8 @@ pub(super) struct OdeState {
     #[serde(default)]
     pub(super) coupled_params: BTreeMap<String, f64>,
     #[serde(default)]
+    pub(super) planar_params: BTreeMap<String, f64>,
+    #[serde(default)]
     snapshot_manager: TraceSnapshotManager,
     #[serde(default)]
     callout_manager: CalloutManager,
@@ -175,6 +179,7 @@ struct CustomSerializationMaps<'a> {
     coupled_exprs: Option<[&'a str; 2]>,
     custom_params: BTreeMap<String, f64>,
     coupled_params: BTreeMap<String, f64>,
+    planar_params: BTreeMap<String, f64>,
 }
 
 fn hash_callout_entry(c: &crate::framework::CalloutData, hasher: &mut impl Hasher) {
@@ -193,6 +198,14 @@ impl OdeSolverTool {
     fn hash_planar_ode_parameters(&self, hasher: &mut impl Hasher) {
         self.planar_x_input.raw_text.hash(hasher);
         self.planar_y_input.raw_text.hash(hasher);
+        if self.preset == OdePreset::PlanarCustom {
+            self.planar_bank.param_names().hash(hasher);
+            let planar_slice = self.planar_bank.param_slice();
+            planar_slice.len().hash(hasher);
+            for &v in planar_slice {
+                v.to_bits().hash(hasher);
+            }
+        }
         for val in self.matrix_a.iter().flatten() {
             val.to_bits().hash(hasher);
         }
@@ -272,11 +285,32 @@ impl OdeSolverTool {
     }
 
     fn custom_serialization_maps(&self) -> CustomSerializationMaps<'_> {
+        if self.preset == OdePreset::PlanarCustom {
+            let (dx, _, vals, len) = self.planar_bank.snapshot_compiled_and_params(
+                &self.planar_x_input,
+                &self.planar_y_input,
+                [self.param_k, self.param_r, self.param_cap_k],
+                self.synced_legacy_params,
+            );
+            let mut planar_params = BTreeMap::new();
+            for (name, &val) in dx.param_names().iter().take(len).zip(&vals[..len]) {
+                if val.is_finite() {
+                    planar_params.insert(name.clone(), val.clamp(-1e4, 1e4));
+                }
+            }
+            return CustomSerializationMaps {
+                coupled_exprs: None,
+                custom_params: BTreeMap::new(),
+                coupled_params: BTreeMap::new(),
+                planar_params,
+            };
+        }
         if self.preset != OdePreset::Custom {
             return CustomSerializationMaps {
                 coupled_exprs: None,
                 custom_params: BTreeMap::new(),
                 coupled_params: BTreeMap::new(),
+                planar_params: BTreeMap::new(),
             };
         }
         if self.custom_coupled {
@@ -284,12 +318,14 @@ impl OdeSolverTool {
                 coupled_exprs: Some([self.coupled_bank.raw_text(0), self.coupled_bank.raw_text(1)]),
                 custom_params: BTreeMap::new(),
                 coupled_params: self.coupled_bank.params_map(),
+                planar_params: BTreeMap::new(),
             }
         } else {
             CustomSerializationMaps {
                 coupled_exprs: None,
                 custom_params: self.math_input.params_map(),
                 coupled_params: BTreeMap::new(),
+                planar_params: BTreeMap::new(),
             }
         }
     }
@@ -299,6 +335,7 @@ impl OdeSolverTool {
             coupled_exprs,
             custom_params,
             coupled_params,
+            planar_params,
         } = self.custom_serialization_maps();
         let (ax, ay) = self.atlas.axis_keys();
         serde_json::to_string(&OdeStateRef {
@@ -323,6 +360,7 @@ impl OdeSolverTool {
             coupled_exprs,
             custom_params,
             coupled_params,
+            planar_params,
             snapshot_manager: include_snapshots.then_some(&self.snapshot_manager),
             callout_manager: &self.callout_manager,
             method: self.method,
@@ -364,6 +402,13 @@ impl OdeSolverTool {
         }
         self.planar_x_input.set_expression(&s.planar_x_expr);
         self.planar_y_input.set_expression(&s.planar_y_expr);
+        let mut merged_planar =
+            default_ode_custom_params(self.param_k, self.param_r, self.param_cap_k);
+        for (k, &v) in &s.planar_params {
+            merged_planar.insert(k.clone(), v);
+        }
+        self.planar_bank
+            .load_state(&self.planar_x_input, &self.planar_y_input, &merged_planar);
     }
 
     pub(crate) fn deserialize_state(
@@ -385,12 +430,16 @@ impl OdeSolverTool {
         }
         self.dt = s.dt;
         self.total_time = s.total_time;
-        self.param_k = s.custom_params.get("k").copied().unwrap_or(s.param_k);
-        self.param_r = s.custom_params.get("r").copied().unwrap_or(s.param_r);
-        self.param_cap_k = s
-            .custom_params
+        let legacy_map = if self.preset == OdePreset::PlanarCustom {
+            &s.planar_params
+        } else {
+            &s.custom_params
+        };
+        self.param_k = legacy_map.get("k").copied().unwrap_or(s.param_k);
+        self.param_r = legacy_map.get("r").copied().unwrap_or(s.param_r);
+        self.param_cap_k = legacy_map
             .get("cap_k")
-            .or_else(|| s.custom_params.get("K"))
+            .or_else(|| legacy_map.get("K"))
             .copied()
             .unwrap_or(s.param_cap_k);
         self.ic_y0 = s.ic_y0;

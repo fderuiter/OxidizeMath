@@ -220,14 +220,7 @@ impl OdeSolverTool {
                     self.matrix_a[0][0] * x + self.matrix_a[0][1] * y,
                     self.matrix_a[1][0] * x + self.matrix_a[1][1] * y,
                 ],
-                OdePreset::PlanarCustom => {
-                    let params = super::systems::build_ode_param_map(
-                        self.param_k,
-                        self.param_r,
-                        self.param_cap_k,
-                    );
-                    self.eval_planar_rhs_at(t, x, y, &params)
-                }
+                OdePreset::PlanarCustom => self.eval_planar_rhs_at(t, x, y, custom_spec),
                 OdePreset::Custom => {
                     if let Some(CustomOdeSpec::Coupled {
                         dy,
@@ -288,6 +281,10 @@ impl OdeSolverTool {
         if self.preset == OdePreset::PlanarCustom {
             self.planar_x_input.raw_text.hash(&mut h);
             self.planar_y_input.raw_text.hash(&mut h);
+            self.planar_bank.param_names().hash(&mut h);
+            for &v in self.planar_bank.param_slice() {
+                v.to_bits().hash(&mut h);
+            }
         }
         if self.preset == OdePreset::Custom {
             if self.custom_coupled {
