@@ -12,11 +12,9 @@ math_contract = true
 
 [features]
 default = ["std"]
-alloc = ["math_rng/alloc", "math_scalars/alloc"]
+alloc = ["math_rng/alloc", "math_scalars/alloc", "serde?/alloc"]
 serde = [
-    "alloc",
     "dep:serde",
-    "serde/alloc",
     "math_diagnostics/serde",
     "math_rng/serde",
     "math_scalars/serde",

@@ -26,14 +26,52 @@ fn bounded_floats_implement_try_from_f64() {
 mod active {
     use crate::error::{MathError, ScalarError};
     use crate::math_kernel::types::{Dimension, GridIndex, StepSize};
-    use crate::poi::{LinePoiScan, LocalExtremum};
+    #[cfg(feature = "alloc")]
+    use crate::poi::LinePoiScan;
+    use crate::poi::LocalExtremum;
     use crate::primitives::{NonNegativeFloat, PositiveFloat, UnitInterval};
+    #[cfg(feature = "alloc")]
     use crate::stochastic::{OuCalibration, SampleSummary, SccSummary};
     use crate::wigner::ClebschGordan;
-    use alloc::string::ToString;
+    #[cfg(feature = "alloc")]
     use alloc::vec;
     use serde::Deserialize;
     use serde::de::value::{Error as ValueDeError, F64Deserializer};
+
+    struct StackBuf {
+        bytes: [u8; 256],
+        len: usize,
+    }
+
+    impl StackBuf {
+        const fn new() -> Self {
+            Self {
+                bytes: [0; 256],
+                len: 0,
+            }
+        }
+
+        fn as_str(&self) -> &str {
+            core::str::from_utf8(&self.bytes[..self.len]).unwrap_or("")
+        }
+    }
+
+    impl core::fmt::Write for StackBuf {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            let rem = self.bytes.len().saturating_sub(self.len);
+            let copy_len = rem.min(s.len());
+            self.bytes[self.len..self.len + copy_len].copy_from_slice(&s.as_bytes()[..copy_len]);
+            self.len += copy_len;
+            Ok(())
+        }
+    }
+
+    fn display_contains(val: &dyn core::fmt::Display, needle: &str) -> bool {
+        use core::fmt::Write as _;
+        let mut buf = StackBuf::new();
+        let _ = write!(&mut buf, "{val}");
+        buf.as_str().contains(needle)
+    }
 
     fn roundtrip_json<T>(val: &T) -> T
     where
@@ -69,17 +107,17 @@ mod active {
         for non_finite in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             let err_u = UnitInterval::deserialize(F64Deserializer::<ValueDeError>::new(non_finite))
                 .expect_err("UnitInterval must reject non-finite");
-            assert!(err_u.to_string().contains("outside"));
+            assert!(display_contains(&err_u, "outside"));
 
             let err_p =
                 PositiveFloat::deserialize(F64Deserializer::<ValueDeError>::new(non_finite))
                     .expect_err("PositiveFloat must reject non-finite");
-            assert!(err_p.to_string().contains("outside"));
+            assert!(display_contains(&err_p, "outside"));
 
             let err_nn =
                 NonNegativeFloat::deserialize(F64Deserializer::<ValueDeError>::new(non_finite))
                     .expect_err("NonNegativeFloat must reject non-finite");
-            assert!(err_nn.to_string().contains("outside"));
+            assert!(display_contains(&err_nn, "outside"));
         }
     }
 
@@ -94,34 +132,37 @@ mod active {
             is_max: false,
         };
         assert_eq!(roundtrip_json(&ext), ext);
-        let scan = LinePoiScan {
-            roots: vec![-1.0, 1.0],
-            y_intercepts: vec![-1.0],
-            extrema: vec![ext],
-        };
-        assert_eq!(roundtrip_json(&scan), scan);
+        #[cfg(feature = "alloc")]
+        {
+            let scan = LinePoiScan {
+                roots: vec![-1.0, 1.0],
+                y_intercepts: vec![-1.0],
+                extrema: vec![ext],
+            };
+            assert_eq!(roundtrip_json(&scan), scan);
 
-        let scc = SccSummary {
-            num_components: 3,
-            num_sink_components: 1,
-            unique_sink_size: 4,
-        };
-        assert_eq!(roundtrip_json(&scc), scc);
-        let ou = OuCalibration {
-            mu: 0.5,
-            theta: 1.2,
-            sigma: 0.3,
-        };
-        assert_eq!(roundtrip_json(&ou), ou);
-        let summary = SampleSummary {
-            mean: 1.0,
-            std_dev: 0.2,
-            median: 0.98,
-            percentile_05: 0.65,
-            percentile_95: 1.35,
-            prob_above_threshold: 0.45,
-        };
-        assert_eq!(roundtrip_json(&summary), summary);
+            let scc = SccSummary {
+                num_components: 3,
+                num_sink_components: 1,
+                unique_sink_size: 4,
+            };
+            assert_eq!(roundtrip_json(&scc), scc);
+            let ou = OuCalibration {
+                mu: 0.5,
+                theta: 1.2,
+                sigma: 0.3,
+            };
+            assert_eq!(roundtrip_json(&ou), ou);
+            let summary = SampleSummary {
+                mean: 1.0,
+                std_dev: 0.2,
+                median: 0.98,
+                percentile_05: 0.65,
+                percentile_95: 1.35,
+                prob_above_threshold: 0.45,
+            };
+            assert_eq!(roundtrip_json(&summary), summary);
+        }
 
         let cg = ClebschGordan {
             tj1: 3,
