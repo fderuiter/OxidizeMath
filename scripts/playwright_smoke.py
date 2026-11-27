@@ -1883,13 +1883,13 @@ def main() -> int:
     parser.add_argument(
         "--dist",
         type=Path,
-        default=repo_root / "math_explorer_gui" / "dist",
+        default=repo_root / "apps" / "math_explorer_gui" / "dist",
         help="Path to built Trunk web distribution directory",
     )
     parser.add_argument(
         "--trunk-toml",
         type=Path,
-        default=repo_root / "math_explorer_gui" / "Trunk.toml",
+        default=repo_root / "apps" / "math_explorer_gui" / "Trunk.toml",
         help="Path to Trunk.toml defining production CSP headers",
     )
     parser.add_argument(
