@@ -115,7 +115,9 @@ pub use bateman::{BatemanModel, calibrate_ka_from_half_life, half_life, solve_ka
 pub use enantiomer::EnantiomerModel;
 pub use parameters::{PKParameters, PKParametersBuilder};
 pub use regimen::{
-    DoseEvent, MAX_REGIMEN_EVENTS, RegimenModel, RegimenSuperposition, ReleaseFormulation,
+    DoseEvent, MAX_OPTIMIZED_DOSES, MAX_REGIMEN_EVENTS, RegimenModel, RegimenMpcConfig,
+    RegimenSuperposition, ReleaseFormulation, populate_ir_dose_events_into,
+    regimen_mpc_workspace_len, solve_regimen_mpc_into,
 };
 pub use superposition::SuperpositionModel;
 pub use traits::PharmacokineticModel;

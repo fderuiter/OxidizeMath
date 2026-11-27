@@ -1124,6 +1124,8 @@ version = "0.4.0"
 dependencies = [
  "approx",
  "engine_diffeq",
+ "engine_linalg",
+ "engine_opt",
  "math_commons",
  "math_diagnostics",
  "nalgebra 0.34.2",
@@ -1465,6 +1467,7 @@ name = "engine_opt"
 version = "0.4.0"
 dependencies = [
  "engine_linalg",
+ "engine_pde",
  "math_diagnostics",
  "math_scalars",
  "scientific_metadata",
@@ -3623,6 +3626,7 @@ dependencies = [
  "diagnostics",
  "engine_diffeq",
  "engine_linalg",
+ "engine_opt",
  "engine_pde",
  "math_commons",
  "math_diagnostics",

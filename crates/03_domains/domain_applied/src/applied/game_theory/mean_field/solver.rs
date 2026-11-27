@@ -1,8 +1,33 @@
 use super::physics::{Hamiltonian, QuadraticHamiltonian};
 use super::types::{Density, MFGConfig, Position};
-use engine_pde::FusedStencilStepper;
-use math_commons::math_kernel::types::StepSize;
-use nalgebra::{DMatrix, DVector};
+use engine_opt::mfg::{MfgConfig1D, MfgHamiltonian, MfgStats, mfg_1d_workspace_len, solve_mfg_1d};
+use engine_opt::{OptError, SolverWorkspace};
+use nalgebra::DMatrix;
+
+const DEFAULT_MANN_DAMPING: f64 = 0.5;
+const DEFAULT_L1_TOLERANCE: f64 = 1.0e-8;
+
+struct DomainHamiltonianAdapter<'a, H: Hamiltonian>(&'a H);
+
+impl<H: Hamiltonian> MfgHamiltonian for DomainHamiltonianAdapter<'_, H> {
+    #[inline]
+    fn eval(&self, p: f64) -> f64 {
+        self.0.evaluate(p)
+    }
+
+    #[inline]
+    fn deriv(&self, p: f64) -> f64 {
+        self.0.derivative(p)
+    }
+}
+
+/// Returns the `SolverWorkspace<f64>` capacity required by [`FixedPointSolver::solve_into`].
+#[inline]
+#[must_use]
+#[verified_engine::verified]
+pub fn mfg_workspace_len(config: &MFGConfig) -> usize {
+    mfg_1d_workspace_len(config.grid_points.get(), config.time_steps.get())
+}
 
 /// Strategy trait for solving coupled Hamilton-Jacobi-Bellman / Fokker-Planck Mean Field Games.
 ///
@@ -15,7 +40,7 @@ use nalgebra::{DMatrix, DVector};
 ///
 /// # Stability
 /// Implementations must preserve non-negativity and unit mass $\int m(x, t)\,dx = 1$ across forward sweeps
-/// while respecting parabolic CFL bounds when explicit time-stepping is used.
+/// while respecting parabolic/hyperbolic CFL bounds via monotone flux splitting.
 ///
 /// # Domain of Validity
 /// Valid for viscosity $\nu \ge 0$, positive horizon $T > 0$, and $N_x \ge 2$ spatial nodes.
@@ -40,46 +65,108 @@ pub trait MFGSolver {
     ) -> (DMatrix<f64>, DMatrix<f64>);
 }
 
-/// Fixed-point Picard iteration solver for 1D Mean Field Games.
+/// Mann-damped monotone fixed-point solver for 1D Mean Field Games routed through [`engine_opt::mfg`].
 ///
-/// Alternates backward HJB sweeps ($u^{n}$ from $u^{n+1}$) and forward upwind Fokker-Planck sweeps
-/// ($m^{n+1}$ from $m^n$) for `-\partial_t u + H(\partial_x u) - \nu \partial_{xx} u = F(x, m)`.
+/// Alternates backward Engquist-Osher HJB sweeps ($u^n$ from $u^{n+1}$) and forward conservative
+/// donor-cell Fokker-Planck sweeps ($m^{n+1}$ from $m^n$) with Mann damping $m^{(k+1)} = (1 - \alpha)m^{(k)} + \alpha \tilde{m}$.
 ///
 /// Reference: Lasry & Lions (2007), DOI: 10.1007/s11537-007-0657-8; Achdou & Capuzzo-Dolcetta (2010),
 /// DOI: 10.1137/090758477; [`docs/math_specs/domain_applied.md`](../../../../../../../docs/math_specs/domain_applied.md).
 ///
 /// # Stability
-/// Explicit stencil stepping requires $\Delta t \le \Delta x^2 / (2\nu + |v|_{\max}\Delta x)$ and normalizes
-/// discrete mass after each forward step under homogeneous Neumann boundary conditions.
+/// Adaptive CFL substepping paired with `H(D^+ u_i, D^- u_i)` and donor-cell fluxes preserves non-negativity,
+/// continuous unit mass $\sum_i m_i \Delta x = 1$, and inviscid stability down to $\nu = 0$.
 ///
 /// # Domain of Validity
-/// Valid on bounded 1D intervals $x_{\min} < x_{\max}$ with $\nu \ge 0$ and convex differentiable Hamiltonians $H(p)$.
+/// Valid on bounded 1D intervals $x_{\min} < x_{\max}$ with $\nu \ge 0$, $\alpha \in (0, 1]$, and convex Hamiltonians $H(p)$.
 pub struct FixedPointSolver<H: Hamiltonian> {
-    /// Number of backward-HJB / forward-FP fixed-point iterations to execute.
+    /// Maximum number of backward-HJB / forward-FP Mann iterations to execute.
     pub iterations: usize,
     /// Hamiltonian strategy $H(p)$ governing optimal agent drift $-H'(p)$.
     pub hamiltonian: H,
+    /// Mann fixed-point damping weight $\alpha \in (0, 1]$.
+    pub mann_alpha: f64,
+    /// $L^1$ density residual convergence threshold.
+    pub l1_tolerance: f64,
 }
 
 impl FixedPointSolver<QuadraticHamiltonian> {
-    /// Creates a new solver with a default Quadratic Hamiltonian ($H = p^2/2$).
+    /// Creates a new solver with a default Quadratic Hamiltonian ($H = p^2/2$) and Mann damping $\alpha = 0.5$.
     #[verified_engine::verified]
     pub fn new(iterations: usize) -> Self {
         Self {
             iterations,
             hamiltonian: QuadraticHamiltonian::default(),
+            mann_alpha: DEFAULT_MANN_DAMPING,
+            l1_tolerance: DEFAULT_L1_TOLERANCE,
         }
     }
 }
 
 impl<H: Hamiltonian> FixedPointSolver<H> {
-    /// Creates a new solver with a custom Hamiltonian strategy.
+    /// Creates a new solver with a custom Hamiltonian strategy and Mann damping $\alpha = 0.5$.
     #[verified_engine::verified]
     pub fn new_with_hamiltonian(iterations: usize, hamiltonian: H) -> Self {
         Self {
             iterations,
             hamiltonian,
+            mann_alpha: DEFAULT_MANN_DAMPING,
+            l1_tolerance: DEFAULT_L1_TOLERANCE,
         }
+    }
+
+    /// Configures Mann fixed-point damping $\alpha \in (0, 1]$ and $L^1$ residual stopping tolerance.
+    #[verified_engine::verified]
+    pub fn with_mann_damping(mut self, alpha: f64, l1_tolerance: f64) -> Self {
+        self.mann_alpha = alpha;
+        self.l1_tolerance = l1_tolerance;
+        self
+    }
+
+    /// Solves the 1D Mean Field Game with zero heap allocations into column-major `u_grid` and `m_grid` slices.
+    ///
+    /// $$
+    /// m_i^{(k+1)} = (1 - \alpha)m_i^{(k)} + \alpha \tilde{m}_i^{(k)}, \qquad \sum_{i=0}^{N_x - 1} m_i^n \Delta x = 1
+    /// $$
+    ///
+    /// Reference: Achdou & Capuzzo-Dolcetta (2010), DOI: 10.1137/090758477;
+    /// [`docs/math_specs/domain_applied.md`](../../../../../../../docs/math_specs/domain_applied.md).
+    ///
+    /// # Stability
+    /// Slices all HJB and Fokker-Planck scratch arrays from `ws` without touching the global allocator.
+    ///
+    /// # Domain of Validity
+    /// Requires `u_grid.len() == m_grid.len() == nx * (nt + 1)` and `ws.len() >= mfg_workspace_len(config)`.
+    #[allow(clippy::too_many_arguments)]
+    #[verified_engine::verified]
+    pub fn solve_into(
+        &self,
+        config: &MFGConfig,
+        cost_function: &impl Fn(Position, Density) -> f64,
+        terminal_cost: &impl Fn(Position, Density) -> f64,
+        initial_distribution: &impl Fn(Position) -> f64,
+        u_grid: &mut [f64],
+        m_grid: &mut [f64],
+        ws: &mut SolverWorkspace<'_, f64>,
+    ) -> Result<MfgStats, OptError> {
+        let mfg_cfg = MfgConfig1D {
+            space_min: config.space_min,
+            dx: config.dx,
+            dt: config.dt,
+            viscosity: config.viscosity,
+            nx: config.grid_points.get(),
+            nt: config.time_steps.get(),
+            max_iterations: self.iterations,
+            mann_alpha: self.mann_alpha,
+            l1_tolerance: self.l1_tolerance,
+        };
+        let adapter = DomainHamiltonianAdapter(&self.hamiltonian);
+        let run_fn = |x: f64, m: f64| cost_function(Position(x), Density(m));
+        let term_fn = |x: f64, m: f64| terminal_cost(Position(x), Density(m));
+        let init_fn = |x: f64| initial_distribution(Position(x));
+        solve_mfg_1d(
+            &mfg_cfg, &adapter, &run_fn, &term_fn, &init_fn, u_grid, m_grid, ws,
+        )
     }
 }
 
@@ -93,101 +180,20 @@ impl<H: Hamiltonian> MFGSolver for FixedPointSolver<H> {
         initial_distribution: &impl Fn(Position) -> f64,
     ) -> (DMatrix<f64>, DMatrix<f64>) {
         let nx = config.grid_points.get();
-        let nt = config.time_steps.get();
-
-        // Initialize m (density) and u (value)
-        let mut m = DMatrix::zeros(nx, nt + 1);
-        let mut u = DMatrix::zeros(nx, nt + 1);
-
-        // Precompute x values
-        let xs: Vec<f64> = (0..nx)
-            .map(|i| config.space_min + (i as f64) * config.dx)
-            .collect();
-
-        // Initialize m at t=0
-        for i in 0..nx {
-            m[(i, 0)] = initial_distribution(Position(xs[i]));
-        }
-
-        // Normalize initial distribution
-        let sum_0: f64 = m.column(0).sum();
-        if sum_0 > math_commons::registry::TOLERANCE_STANDARD {
-            m.column_mut(0).scale_mut(1.0 / sum_0);
-        }
-
-        // Make an initial guess for m for all t (copy m0)
-        let m0 = m.column(0).clone_owned();
-        for n in 1..=nt {
-            m.column_mut(n).copy_from(&m0);
-        }
-
-        let stepper = FusedStencilStepper::new(StepSize(config.dx));
-        let mut scratch = DVector::zeros(nx);
-
-        for _iter in 0..self.iterations {
-            // 1. Solve HJB Backward
-            // Terminal condition
-            for i in 0..nx {
-                u[(i, nt)] = terminal_cost(Position(xs[i]), Density(m[(i, nt)]));
-            }
-
-            // Backward in time
-            for n in (0..nt).rev() {
-                stepper.step_1d_slice(
-                    u.column(n + 1).as_slice(),
-                    scratch.as_mut_slice(),
-                    config.dt,
-                    -1.0, // Backward
-                    |i, prev, curr, next, ops| {
-                        let du_dx = ops.central_diff_1st(prev, next);
-                        let d2u_dx2 = ops.central_diff_2nd(prev, curr, next);
-                        let hamiltonian = self.hamiltonian.evaluate(du_dx);
-                        let running_cost = cost_function(Position(xs[i]), Density(m[(i, n + 1)]));
-                        hamiltonian - config.viscosity * d2u_dx2 - running_cost
-                    },
-                );
-
-                // Boundary conditions (Neumann 0)
-                scratch[0] = scratch[1];
-                scratch[nx - 1] = scratch[nx - 2];
-                u.column_mut(n).copy_from(&scratch);
-            }
-
-            // 2. Solve Fokker-Planck Forward
-            for n in 0..nt {
-                let u_col = u.column(n);
-                let u_curr = u_col.as_slice();
-
-                stepper.step_1d_slice(
-                    m.column(n).as_slice(),
-                    scratch.as_mut_slice(),
-                    config.dt,
-                    1.0, // Forward
-                    |i, prev, curr, next, ops| {
-                        let u_prev = u_curr[i - 1];
-                        let u_next = u_curr[i + 1];
-                        let du_dx = ops.central_diff_1st(u_prev, u_next);
-                        let v = -self.hamiltonian.derivative(du_dx);
-                        let drift_flux = ops.upwind_flux(v, prev, curr, next);
-                        let d2m_dx2 = ops.central_diff_2nd(prev, curr, next);
-                        -drift_flux + config.viscosity * d2m_dx2
-                    },
-                );
-
-                // Boundary conditions
-                scratch[0] = scratch[1];
-                scratch[nx - 1] = scratch[nx - 2];
-
-                // Normalize mass to prevent explosion/vanishing
-                let sum: f64 = scratch.sum();
-                if sum > math_commons::registry::TOLERANCE_STANDARD {
-                    scratch.scale_mut(1.0 / sum);
-                }
-
-                m.column_mut(n + 1).copy_from(&scratch);
-            }
-        }
-
+        let cols = config.time_steps.get() + 1;
+        let mut u = DMatrix::zeros(nx, cols);
+        let mut m = DMatrix::zeros(nx, cols);
+        let mut ws_buf = vec![0.0_f64; mfg_workspace_len(config)];
+        let mut ws = SolverWorkspace::new(&mut ws_buf);
+        let _ = self.solve_into(
+            config,
+            cost_function,
+            terminal_cost,
+            initial_distribution,
+            u.as_mut_slice(),
+            m.as_mut_slice(),
+            &mut ws,
+        );
         (u, m)
     }
 }

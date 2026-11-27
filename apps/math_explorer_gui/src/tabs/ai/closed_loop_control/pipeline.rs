@@ -2,7 +2,9 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::controllers::{DiscreteQController, GrpoController, GRPO_GROUP_SIZE, ROLLOUT_HORIZON};
+use super::controllers::{
+    DiscreteQController, GrpoController, MpcController, GRPO_GROUP_SIZE, ROLLOUT_HORIZON,
+};
 use super::plants::{
     sample_standard_normal, LorenzPlantTwin, PkPlantTwin, PlantStepOutput, SeirPlantTwin,
 };
@@ -32,6 +34,8 @@ pub struct ClosedLoopPipeline {
     pub grpo: GrpoController,
     /// Discretized Q-learning controller (`FixedArrayQFunction<64, 7>`).
     pub q_ctrl: DiscreteQController,
+    /// Receding-horizon projected `MPC` controller coupled to `FastEkf<3>`.
+    pub mpc_ctrl: MpcController,
     live_rng: OxidizeRng,
     train_rng: OxidizeRng,
     /// Total completed training episodes for the active configuration.
@@ -84,6 +88,7 @@ impl ClosedLoopPipeline {
             rollout_pk: PkPlantTwin::new(cfg),
             grpo: GrpoController::new_untrained(),
             q_ctrl: DiscreteQController::new(cfg),
+            mpc_ctrl: MpcController::new(),
             live_rng: OxidizeRng::new(cfg.rng_seed),
             train_rng: OxidizeRng::new(cfg.rng_seed).with_stream(1),
             episodes_trained: 0,
@@ -125,6 +130,7 @@ impl ClosedLoopPipeline {
     pub fn reset_untrained(&mut self, cfg: &ClosedLoopState) {
         self.grpo.reset_untrained();
         self.q_ctrl.reset_untrained(cfg);
+        self.mpc_ctrl.reset_in_place();
         self.train_rng = OxidizeRng::new(cfg.rng_seed).with_stream(1);
         self.episodes_trained = 0;
         self.return_history.clear();
@@ -136,6 +142,7 @@ impl ClosedLoopPipeline {
         self.live_lorenz.reset_in_place([0.0, 0.0, 0.0]);
         self.live_seir.reset_in_place(0.0);
         self.live_pk.reset_in_place(0.0);
+        self.mpc_ctrl.reset_in_place();
         self.live_rng = OxidizeRng::new(cfg.rng_seed);
         self.last_kick_vec = None;
         self.clear_trace_buffers();
@@ -164,6 +171,7 @@ impl ClosedLoopPipeline {
         let raw_action = match cfg.controller {
             ControllerKind::GrpoPolicy => self.grpo.act_deterministic(&phi),
             ControllerKind::DiscreteQLearning => self.q_ctrl.act_greedy(bin),
+            ControllerKind::MpcPolicy => self.mpc_ctrl.act_for_plant(cfg, &self.live_pk.ekf, &phi),
         };
         let (out, open_latent) = match cfg.plant {
             PlantKind::LorenzChaos => {
@@ -234,6 +242,7 @@ impl ClosedLoopPipeline {
         let ep_return = match cfg.controller {
             ControllerKind::GrpoPolicy => self.run_grpo_group_episode(cfg),
             ControllerKind::DiscreteQLearning => self.run_q_learning_episode(cfg),
+            ControllerKind::MpcPolicy => self.run_mpc_eval_episode(cfg),
         };
         self.episodes_trained += 1;
         push_ring(
@@ -278,6 +287,20 @@ impl ClosedLoopPipeline {
             bin = next_bin;
         }
         self.q_ctrl.last_episode_return = total_r;
+        total_r
+    }
+
+    fn run_mpc_eval_episode(&mut self, cfg: &ClosedLoopState) -> f64 {
+        let j0 = 0.15 * sample_standard_normal(&mut self.train_rng);
+        let j1 = 0.15 * sample_standard_normal(&mut self.train_rng);
+        self.reset_rollout_plant(cfg.plant, j0, j1);
+        let mut mpc = MpcController::new();
+        let mut total_r = 0.0;
+        for _ in 0..ROLLOUT_HORIZON {
+            let (phi, _) = self.rollout_features_and_bin(cfg);
+            let act = mpc.act_for_plant(cfg, &self.rollout_pk.ekf, &phi);
+            total_r += self.step_rollout_plant(act, cfg).reward;
+        }
         total_r
     }
 

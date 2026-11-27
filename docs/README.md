@@ -145,6 +145,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261125: CI Tool-Cache Subcommand Probing, Zero-Copy Plateau POI Dispatch, and Thread-Isolated Plot Test Hooks](adr/20261125-ci-llvm-cov-and-zero-copy-plateau-poi.md)
 - [ADR 20261125: Metadata-Driven Path Abstraction and Five-Tier Workspace Migration](adr/20261125-metadata-driven-tier-migration.md)
 - [ADR 20261126: Preserve Causal Root Diagnostic Metadata, Wire `math_rng` Diagnostics, and Decouple `std` `diagnostics` from Domain Crates](adr/20261126-preserve-root-metadata-and-decouple-diagnostics.md)
+- [ADR 20261127: Tier 2 Shooting Control, Howard Policy Iteration, Mann Mean-Field Games, and Zero-Allocation Nash Equilibrium Solvers in `engine_opt`](adr/20261127-shooting-control-howard-dp-mann-mfg-nash-engine.md)
 
 ## Contributing
 

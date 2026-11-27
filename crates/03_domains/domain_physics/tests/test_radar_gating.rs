@@ -18,6 +18,8 @@ use verified_engine::engine::VerifiedEngine;
 #[global_allocator]
 static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
+static VERIFIED_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 #[verified_engine::verified]
 fn test_radar_physics() {
@@ -139,12 +141,15 @@ fn test_weighted_average_height_parity_and_zero_allocation() {
         Point3::new(2.0, -1.0, 1.6),
     ];
 
-    let ((wah_radar, wah_optical, wah_empty), metrics) = VerifiedEngine::run_verified(|| {
-        let wah_radar = weighted_average_height(&vertices);
-        let wah_optical = optical_weighted_average_height(&vertices);
-        let wah_empty = weighted_average_height(&[]);
-        (wah_radar, wah_optical, wah_empty)
-    });
+    let ((wah_radar, wah_optical, wah_empty), metrics) = {
+        let _guard = VERIFIED_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        VerifiedEngine::run_verified(|| {
+            let wah_radar = weighted_average_height(&vertices);
+            let wah_optical = optical_weighted_average_height(&vertices);
+            let wah_empty = weighted_average_height(&[]);
+            (wah_radar, wah_optical, wah_empty)
+        })
+    };
 
     assert!(metrics.function_calls >= 6);
     assert_eq!(wah_empty, 0.0);
@@ -315,4 +320,51 @@ fn test_gating_invalid_transitions() {
 
     // Reset back to Standby
     assert_eq!(gating.reset_interlock().unwrap(), BeamState::Standby);
+}
+
+#[test]
+fn test_harmonic_mpc_600ms_turnaround_error_below_half_mm_zero_alloc() {
+    let baseline_mm = 10.0;
+    let amp_mm = 6.0;
+    let freq_hz = 0.25; // 4.0 s respiratory period
+    let omega = std::f64::consts::TAU * freq_hz;
+    let latency_s = 0.600; // 600 ms hardware latency
+
+    let mut linear_gate = GatingLogic::new(8.0, 0.5, latency_s);
+    let mut mpc_gate =
+        GatingLogic::new(8.0, 0.5, latency_s).with_harmonic_mpc(freq_hz, baseline_mm);
+    linear_gate.arm().unwrap();
+    mpc_gate.arm().unwrap();
+
+    // Evaluate across the entire exhalation turnaround region t in [1.2 s, 2.4 s] (peak exhalation at t = 2.0 s).
+    let ((max_mpc_err_mm, max_lin_err_mm), _) = {
+        let _guard = VERIFIED_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        VerifiedEngine::run_verified(|| {
+            let mut mpc_err = 0.0_f64;
+            let mut lin_err = 0.0_f64;
+            for step in 0..=24 {
+                let t = 1.2 + (step as f64) * 0.05;
+                let z_now = baseline_mm + amp_mm * (omega * t).cos();
+                let v_now = -amp_mm * omega * (omega * t).sin();
+                let z_true_future = baseline_mm + amp_mm * (omega * (t + latency_s)).cos();
+
+                let z_lin = linear_gate.predict_amplitude(z_now, v_now);
+                let z_mpc = mpc_gate.predict_amplitude(z_now, v_now);
+                let _ = mpc_gate.evaluate(z_now, v_now);
+
+                lin_err = lin_err.max((z_lin - z_true_future).abs());
+                mpc_err = mpc_err.max((z_mpc - z_true_future).abs());
+            }
+            (mpc_err, lin_err)
+        })
+    };
+
+    assert!(
+        max_lin_err_mm > 2.0,
+        "Linear extrapolation must exhibit turnaround overshoot > 2 mm at 600 ms latency (got {max_lin_err_mm})"
+    );
+    assert!(
+        max_mpc_err_mm < 0.5,
+        "Harmonic MPC 600 ms turnaround error ({max_mpc_err_mm} mm) must stay below 0.5 mm"
+    );
 }

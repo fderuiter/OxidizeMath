@@ -109,6 +109,12 @@ fn render_transport_and_telemetry(tool: &mut ClosedLoopControlTool, ui: &mut egu
             tool.pipeline.q_ctrl.last_episode_return,
             tool.last_frame_ms
         ),
+        ControllerKind::MpcPolicy => format!(
+            "MPC Iter: {} | J*: {:.2} | Dose: {:.1} mg",
+            tool.pipeline.mpc_ctrl.last_stats.iterations,
+            tool.pipeline.mpc_ctrl.last_stats.optimal_cost,
+            tool.pipeline.mpc_ctrl.last_dose_mg
+        ),
     };
     ui.label(rl_summary);
 }
@@ -138,6 +144,7 @@ fn render_plant_and_controller_selectors(state: &mut ClosedLoopState, ui: &mut e
             for candidate in [
                 ControllerKind::GrpoPolicy,
                 ControllerKind::DiscreteQLearning,
+                ControllerKind::MpcPolicy,
             ] {
                 if ui
                     .selectable_value(&mut state.controller, candidate, candidate.label())
@@ -201,6 +208,7 @@ fn render_rl_hyperparameters(state: &mut ClosedLoopState, ui: &mut egui::Ui) -> 
             changed |= drag_f64_row(ui, "Discount γ:", &mut state.q_gamma, 0.50..=0.995, 0.005);
             changed |= drag_f64_row(ui, "Explore ε:", &mut state.q_epsilon, 0.0..=0.80, 0.01);
         }
+        ControllerKind::MpcPolicy => {}
     }
     let mut seed_f = state.rng_seed as f64;
     if drag_f64_row(ui, "OxidizeRng Seed:", &mut seed_f, 1.0..=1_000_000.0, 1.0) {

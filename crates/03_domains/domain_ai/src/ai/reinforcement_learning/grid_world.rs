@@ -132,10 +132,14 @@ mod tests {
             gamma: 0.9,
         };
         let origin = GridState { x: 0, y: 0 };
-        let (blocked_right, metrics) =
+        let (blocked_right, metrics) = {
+            let _guard = crate::VERIFIED_TEST_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             verified_engine::engine::VerifiedEngine::run_verified(|| {
                 env.step(&origin, &Move::Right)
-            });
+            })
+        };
         assert!(metrics.function_calls > 0);
         assert_eq!(blocked_right, origin);
         assert_eq!(env.step(&origin, &Move::Down), origin);

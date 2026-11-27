@@ -408,6 +408,8 @@ pub use crate::pure_math::{
     tensor::types::TensorError,
 };
 pub use engine_linalg::LinalgError;
+pub use engine_opt::error::{FitError, OptError};
+pub use engine_pde::PdeError;
 pub use math_scalars::ScalarError;
 pub use sports::{EloError, MatchModelError};
 pub use stochastic::{CopulaError, MarkovError, OuError, TdaError, ZipError};

@@ -5,6 +5,8 @@
 pub mod canvas;
 pub mod controllers;
 pub mod ekf;
+#[cfg(test)]
+mod mpc_tests;
 pub mod pipeline;
 pub mod plants;
 pub mod plants_pk;

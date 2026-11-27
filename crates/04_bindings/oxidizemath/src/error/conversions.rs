@@ -27,6 +27,7 @@ impl_error_from!(DiffeqError => Diffeq);
 impl_error_from!(PdeError => Pde);
 impl_error_from!(EvalError => Eval);
 impl_error_from!(FitError => Fit);
+impl_error_from!(OptError => Opt);
 impl_error_from!(GlslError => Glsl);
 impl_error_from!(LexError => Lex);
 impl_error_from!(LinalgError => Linalg);

@@ -105,17 +105,17 @@ graph TD
     Facade --> AI & Phys & Bio & App & Clim & Epi & Pure
     Facade --> Commons & Linalg & Opt & DiffEq & Pde & Scalars & Diag & Meta & Engine & CoreCrate
 
-    AI --> Commons & Engine & DiffEq & Pure & CoreCrate & Diag
+    AI --> Commons & Engine & DiffEq & Linalg & Opt & Pure & CoreCrate & Diag
     Phys --> Commons & Engine & Meta & Pure & App & DiffEq & Pde & Linalg & Opt & CoreCrate & Diag
     Bio --> Commons & Engine & Meta & Pure & App & Pde & CoreCrate & Diag
     App --> Commons & Engine & Pure & Pde & Linalg & Opt & Scalars & CoreCrate & Diag
     Clim --> Commons & Engine & Pure & CoreCrate & Diag
     Epi --> Commons & Engine & Pure & CoreCrate & Diag
 
-    Pure --> Commons & Meta & Engine & DiffEq & Pde & Linalg & Rng & Scalars & CoreCrate & Diag
+    Pure --> Commons & Meta & Engine & DiffEq & Pde & Linalg & Opt & Rng & Scalars & CoreCrate & Diag
     DiffEq --> Commons & Engine & Rng & MathDiag
     Pde --> Commons & Engine & Rng & MathDiag
-    Opt --> Linalg & Scalars & Meta & MathDiag & Engine
+    Opt --> Linalg & Pde & Scalars & Meta & MathDiag & Engine
     Commons --> Scalars & Rng & MathDiag & Engine
     Linalg --> Scalars & MathDiag & Engine
     Rng --> Scalars
@@ -149,7 +149,7 @@ The workspace contains all 30 member crates declared in `Cargo.toml`:
 | `crates/01_core/federated_registry` | Distributed model discovery and registration | [federated_registry](../../crates/01_core/federated_registry/README.md) |
 | `crates/01_core/oxidize_core` | Core utilities, file systems, and traceability | [oxidize_core](../../crates/01_core/oxidize_core/README.md) |
 | `crates/02_engines/engine_linalg` | `#![no_std]` numerical linear algebra engine | [engine_linalg](../../crates/02_engines/engine_linalg/README.md) |
-| `crates/02_engines/engine_opt` | `#![no_std]` zero-allocation polynomial and damped Levenberg-Marquardt curve-fitting engine | [engine_opt](../../crates/02_engines/engine_opt/README.md) |
+| `crates/02_engines/engine_opt` | `#![no_std]` zero-allocation curve-fitting, shooting `iLQR`/`MPC`, Howard `DP`, Mann `MFG`, and Nash equilibrium engine | [engine_opt](../../crates/02_engines/engine_opt/README.md) |
 | `crates/02_engines/math_commons` | Tolerances, constant registries, numeric traits | [math_commons](../../crates/02_engines/math_commons/README.md) |
 | `crates/02_engines/engine_diffeq` | `#![no_std]` Itô/Stratonovich SDE and BAOAB Langevin solvers | [engine_diffeq](../../crates/02_engines/engine_diffeq/README.md) |
 | `crates/02_engines/engine_pde` | `#![no_std]` 1D/2D/3D stencils, SPDE steppers, and radix-2 Fourier solvers | [engine_pde](../../crates/02_engines/engine_pde/README.md) |

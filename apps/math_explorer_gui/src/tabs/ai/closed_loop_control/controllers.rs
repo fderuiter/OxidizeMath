@@ -1,6 +1,10 @@
-//! Zero-allocation critic-free `GRPO` Gaussian policy and `QLearningAgent` controllers.
+//! Zero-allocation critic-free `GRPO` Gaussian policy, `QLearningAgent`, and receding-horizon `MpcController`.
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
+
+pub mod mpc;
+
+pub use mpc::MpcController;
 
 use super::plants::sample_standard_normal;
 use super::state::ClosedLoopState;

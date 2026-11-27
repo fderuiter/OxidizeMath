@@ -7,8 +7,9 @@ use math_explorer::applied::game_theory::equilibrium::{
     is_fixed_point, BestResponseCorrespondence, BoxSet, ConvexSet,
 };
 use math_explorer::applied::game_theory::mean_field::{
-    Density, FixedPointSolver, MFGConfigBuilder, MFGSolver, Position,
+    mfg_workspace_len, Density, FixedPointSolver, MFGConfigBuilder, Position,
 };
+use math_explorer::engine_opt::SolverWorkspace;
 use math_explorer::nalgebra::DVector;
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroUsize;
@@ -66,7 +67,7 @@ impl BraessState {
             && self.shortcut_toll.is_finite()
             && (0.0..=1.5).contains(&self.shortcut_toll);
         let ok_mfg = self.mfg_viscosity.is_finite()
-            && (0.02..=0.25).contains(&self.mfg_viscosity)
+            && (0.0..=0.25).contains(&self.mfg_viscosity)
             && (17..=65).contains(&self.mfg_grid_points);
         if !ok_net || !ok_short || !ok_mfg {
             return Err("Braess state parameter out of bounds".into());
@@ -111,6 +112,9 @@ pub struct BraessNetworkParadoxTool {
     pub(super) mfg_m0: Vec<[f64; 2]>,
     pub(super) mfg_m_mid: Vec<[f64; 2]>,
     pub(super) mfg_m_final: Vec<[f64; 2]>,
+    mfg_u_buf: Vec<f64>,
+    mfg_m_buf: Vec<f64>,
+    mfg_ws_buf: Vec<f64>,
     /// Progressive 2D parameter regime atlas controller.
     pub atlas: ParameterAtlasController,
     /// Plot callout overlay manager synchronized with stories, challenges, and atlas teleports.
@@ -204,10 +208,13 @@ impl Default for BraessNetworkParadoxTool {
             curve_wardrop: Vec::new(),
             curve_closed: Vec::new(),
             curve_pigou: Vec::new(),
-            mfg_u0: Vec::new(),
-            mfg_m0: Vec::new(),
-            mfg_m_mid: Vec::new(),
-            mfg_m_final: Vec::new(),
+            mfg_u0: Vec::with_capacity(65),
+            mfg_m0: Vec::with_capacity(65),
+            mfg_m_mid: Vec::with_capacity(65),
+            mfg_m_final: Vec::with_capacity(65),
+            mfg_u_buf: Vec::new(),
+            mfg_m_buf: Vec::new(),
+            mfg_ws_buf: Vec::new(),
             atlas: ParameterAtlasController::new(vec![
                 ("demand", "shortcut_cost"),
                 ("demand", "shortcut_toll"),
@@ -308,7 +315,7 @@ impl BraessNetworkParadoxTool {
 
     fn recompute_mfg_profiles(&mut self) -> f64 {
         let nx = self.state.mfg_grid_points.clamp(17, 65);
-        let nu = self.state.mfg_viscosity.clamp(0.02, 0.25);
+        let nu = self.state.mfg_viscosity.clamp(0.0, 0.25);
         let dx = 2.0 / ((nx - 1) as f64);
         let nt = (((nu * 1.0) / (0.20 * dx * dx)).ceil() as usize + 2).max(40);
         let cfg = MFGConfigBuilder::new()
@@ -332,13 +339,33 @@ impl BraessNetworkParadoxTool {
         let terminal = |p: Position, d: Density| 0.4 * beta * p.0 * p.0 + 0.2 * alpha * d.0;
         let bimodal =
             |x: f64| (-((x + 0.42).powi(2)) / 0.06).exp() + (-((x - 0.42).powi(2)) / 0.06).exp();
-        let mass = (0..nx)
-            .map(|i| bimodal(cfg.space_min + (i as f64) * cfg.dx))
-            .sum::<f64>()
-            * cfg.dx;
-        let init = |p: Position| bimodal(p.0) / mass.max(1e-9);
+        let init = |p: Position| bimodal(p.0);
 
-        let (u, m) = FixedPointSolver::new(10).solve(&cfg, &running, &terminal, &init);
+        let grid_len = nx * (nt + 1);
+        let ws_len = mfg_workspace_len(&cfg);
+        if self.mfg_u_buf.len() < grid_len {
+            self.mfg_u_buf.resize(grid_len, 0.0);
+            self.mfg_m_buf.resize(grid_len, 0.0);
+        }
+        if self.mfg_ws_buf.len() < ws_len {
+            self.mfg_ws_buf.resize(ws_len, 0.0);
+        }
+        let mut ws = SolverWorkspace::new(&mut self.mfg_ws_buf[..ws_len]);
+        let solver = FixedPointSolver::new(10).with_mann_damping(0.5, 1.0e-6);
+        let _ = solver.solve_into(
+            &cfg,
+            &running,
+            &terminal,
+            &init,
+            &mut self.mfg_u_buf[..grid_len],
+            &mut self.mfg_m_buf[..grid_len],
+            &mut ws,
+        );
+        self.populate_mfg_plot_traces(cfg.space_min, cfg.dx, nx, nt);
+        cfg.viscosity * cfg.dt / (cfg.dx * cfg.dx)
+    }
+
+    fn populate_mfg_plot_traces(&mut self, space_min: f64, dx: f64, nx: usize, nt: usize) {
         for buf in [
             &mut self.mfg_u0,
             &mut self.mfg_m0,
@@ -347,14 +374,15 @@ impl BraessNetworkParadoxTool {
         ] {
             buf.clear();
         }
+        let mid_off = (nt / 2) * nx;
+        let end_off = nt * nx;
         for i in 0..nx {
-            let x = cfg.space_min + (i as f64) * cfg.dx;
-            self.mfg_u0.push([x, u[(i, 0)]]);
-            self.mfg_m0.push([x, m[(i, 0)]]);
-            self.mfg_m_mid.push([x, m[(i, nt / 2)]]);
-            self.mfg_m_final.push([x, m[(i, nt)]]);
+            let x = space_min + (i as f64) * dx;
+            self.mfg_u0.push([x, self.mfg_u_buf[i]]);
+            self.mfg_m0.push([x, self.mfg_m_buf[i]]);
+            self.mfg_m_mid.push([x, self.mfg_m_buf[mid_off + i]]);
+            self.mfg_m_final.push([x, self.mfg_m_buf[end_off + i]]);
         }
-        cfg.viscosity * cfg.dt / (cfg.dx * cfg.dx)
     }
 }
 
@@ -398,7 +426,7 @@ impl InteractiveTool for BraessNetworkParadoxTool {
         self.state.bypass_latency = self.state.bypass_latency.clamp(0.2, 3.0);
         self.state.shortcut_cost = self.state.shortcut_cost.clamp(0.0, 1.5);
         self.state.shortcut_toll = self.state.shortcut_toll.clamp(0.0, 1.5);
-        self.state.mfg_viscosity = self.state.mfg_viscosity.clamp(0.02, 0.25);
+        self.state.mfg_viscosity = self.state.mfg_viscosity.clamp(0.0, 0.25);
         self.state.mfg_grid_points = self.state.mfg_grid_points.clamp(17, 65);
         self.recompute_all();
         true

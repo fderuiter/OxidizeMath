@@ -169,6 +169,7 @@ impl Error {
             Self::Pde(err) => Some(InnerErrorRef::Domain(err)),
             Self::Eval(err) => Some(InnerErrorRef::Domain(err)),
             Self::Fit(err) => Some(InnerErrorRef::Domain(err)),
+            Self::Opt(err) => Some(InnerErrorRef::Domain(err)),
             Self::Glsl(err) => Some(InnerErrorRef::Domain(err)),
             Self::Lex(err) => Some(InnerErrorRef::Domain(err)),
             Self::Linalg(err) => Some(InnerErrorRef::Domain(err)),
