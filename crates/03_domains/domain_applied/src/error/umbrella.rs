@@ -57,6 +57,9 @@ pub enum AppliedError {
     /// Foundational `#![no_std]` curve-fitting solver error.
     #[error("{0}")]
     Fit(#[from] FitError),
+    /// Foundational `#![no_std]` differential-equation solver error.
+    #[error("{0}")]
+    Diffeq(#[from] engine_diffeq::DiffeqError),
     /// Foundational `#![no_std]` linear algebra engine error.
     #[error("{0}")]
     Linalg(#[from] LinalgError),
@@ -183,6 +186,7 @@ impl AppliedError {
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
             Self::Fit(err) => err,
+            Self::Diffeq(err) => err,
             Self::Linalg(err) => err,
             Self::Pde(err) => err,
             Self::PureMath(err) => err,

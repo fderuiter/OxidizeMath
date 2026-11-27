@@ -25,7 +25,6 @@ math_diagnostics = { path = "../../00_foundation/math_diagnostics" }
 engine_pde = { path = "../../02_engines/engine_pde", features = ["std"] }
 scientific_metadata = { path = "../../00_foundation/scientific_metadata" }
 pure_math = { path = "../pure_math" }
-domain_applied = { path = "../domain_applied" }
 
 [dev-dependencies]
 diagnostics = { path = "../../01_core/diagnostics" }

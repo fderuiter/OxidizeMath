@@ -1,7 +1,7 @@
 use super::*;
 use crate::physics::stat_mech::KB;
-use domain_applied::applied::game_theory::evolutionary::ReplicatorDynamics;
 use nalgebra::{DMatrix, DVector};
+use pure_math::pure_math::game_theory::evolutionary::ReplicatorDynamics;
 use verified_engine::engine::VerifiedEngine;
 
 fn seeded_droplet(r: i32, seed: u64) -> SpinLattice {

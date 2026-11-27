@@ -16,6 +16,7 @@ use crate::framework::recovery::FiniteStateGuard;
 use math_explorer::biology::diffusion::{FiniteDifference2D, MaskedFiniteDifference2D};
 use math_explorer::biology::morphogenesis::{DiffusionCoeff, FusedEulerSolver, TuringSystem};
 use math_explorer::math_kernel::types::{Dimension, StepSize};
+#[cfg(feature = "physics")]
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::LatticeBoltzmannD2Q9;
 use math_explorer::pure_math::analysis::pde::advection_2d::advection_diffusion_cfl_limit;
 use oxidize_core::rng::OxidizeRng;
@@ -42,15 +43,22 @@ pub(super) fn clone_turing_system(
 
 impl MorphoWindTunnel {
     pub(crate) fn clone_outside_step(&self) -> Self {
-        let mut solver = LatticeBoltzmannD2Q9::new(
-            self.solver.width(),
-            self.solver.height(),
-            self.solver.collision_model.tau,
-        );
-        solver.state = self.solver.state.clone();
-        solver.collision_model = self.solver.collision_model;
+        #[cfg(feature = "physics")]
+        let solver = {
+            let mut s = LatticeBoltzmannD2Q9::new(
+                self.solver.width(),
+                self.solver.height(),
+                self.solver.collision_model.tau,
+            );
+            s.state = self.solver.state.clone();
+            s.collision_model = self.solver.collision_model;
+            s
+        };
         Self {
+            #[cfg(feature = "physics")]
             solver,
+            #[cfg(not(feature = "physics"))]
+            dims: self.dims,
             ux_buf: self.ux_buf.clone(),
             uy_buf: self.uy_buf.clone(),
             obstacle_buf: self.obstacle_buf.clone(),

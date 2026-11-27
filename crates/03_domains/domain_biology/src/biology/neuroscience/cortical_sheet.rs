@@ -253,7 +253,7 @@ impl CorticalSheetRunner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use domain_applied::applied::freesurfer::{Surface, cortical_thickness_batch};
+    use oxidize_core::mesh::{Surface, cortical_thickness_batch};
     use std::f64::consts::PI;
     use verified_engine::engine::VerifiedEngine;
 

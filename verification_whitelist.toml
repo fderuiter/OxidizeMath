@@ -92,10 +92,6 @@ path = "engine_linalg:src/"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "domain_applied:src/applied/freesurfer/thickness_tests.rs"
-reason = "tests"
-
-[[verify_suite.opt_outs]]
 path = "domain_biology:tests/test_kuramoto_zero_alloc.rs"
 reason = "tests"
 
@@ -122,10 +118,6 @@ reason = "tests"
 [[verify_suite.opt_outs]]
 path = "pure_math:src/pure_math/analysis/evolution.rs"
 reason = "infrastructure"
-
-[[verify_suite.opt_outs]]
-path = "pure_math:src/pure_math/analysis/pde/fused_stepper_tests.rs"
-reason = "tests"
 
 [[verify_suite.opt_outs]]
 path = "pure_math:src/pure_math/analysis/pde/wave_fdtd_tests.rs"

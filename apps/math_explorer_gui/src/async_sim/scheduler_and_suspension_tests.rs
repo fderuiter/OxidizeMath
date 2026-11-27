@@ -1,5 +1,6 @@
 //! Unit and integration tests for demand-driven snapshots, sub-step slice budgets,
 //! zero-allocation stepping, and native worker visibility suspension.
+#![cfg(feature = "physics")]
 
 #[cfg(feature = "physics")]
 use super::unified::{UnifiedModel, UnifiedSimRunner};

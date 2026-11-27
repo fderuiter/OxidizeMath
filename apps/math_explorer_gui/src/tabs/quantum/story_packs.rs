@@ -2,6 +2,12 @@
 //! Guided `PresetStoryMetadata` tours and `GoalChallengeMetadata` AST target cards for `QuantumTab`.
 // [cite:quantum_mechanics]
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "physics"
+))]
 use super::volumetric_studio::presets::{
     PRESET_1S_2PZ_DIPOLE_JSON, PRESET_3D_IMPLICIT_GYROID_AST_JSON,
 };
@@ -28,6 +34,12 @@ const FABRY_GROUND_RESONANCE_JSON: &str = r#"{"metadata":{"schema_version":"1.0"
 
 const FABRY_EXCITED_RESONANCE_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"Excited Fabry-Perot Resonance","domain":"quantum","timestamp":"2026-11-23T00:00:00Z"},"config":{"preset":"DoubleBarrier","x0":-2.5,"k0":5.671,"sigma":0.5,"v0":28.0,"width":0.8,"dt":0.02,"steps_per_frame":2,"custom_expr":"v0 * exp(-(x / width)^4)","atlas_visible":true,"atlas_axes":["k0","v0"]}}"#;
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "physics"
+))]
 const VOLUMETRIC_4F_XYZ_AST_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"4f_xyz Octant Nodal Orbital","domain":"quantum","timestamp":"2026-11-23T00:00:00Z"},"config":{"source":"custom_implicit_ast","render_mode":"hybrid_shell_and_cloud","grid_resolution":32,"n1":1,"l1":0,"m1":0,"n2":2,"l2":1,"m2":0,"superposition_mix":0.5,"relative_phase":0.0,"quantum_dt":0.08,"observable":"signed_wavefunction","iso_threshold":0.045,"splat_scale":0.95,"turing_a":0.1,"turing_b":0.9,"turing_du":1.0,"turing_dv":18.0,"turing_dt":0.008,"custom_expr":"x * y * z * exp(-a * sqrt(x^2 + y^2 + z^2))","custom_params":{"a":1.45},"cut_enabled":true,"cut_axis":"z","cut_offset":0.35,"probe_brush_enabled":true,"running":false,"camera":{"pitch":0.48,"yaw":0.62,"zoom":1.06}}}"#;
 
 const SPIN_AXIAL_BASELINE_JSON: &str = r#"{"metadata":{"schema_version":"1.0","title":"Axial Zeeman Baseline","domain":"quantum","timestamp":"2026-11-23T00:00:00Z"},"config":{"b_field":[0.0,0.0,1.0],"paused":true,"camera":{"pitch":0.5,"yaw":0.5,"zoom":1.0}}}"#;
@@ -85,6 +97,12 @@ const FABRY_PEROT_STEPS: &[StoryStep] = &[
     },
 ];
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "physics"
+))]
 const VOLUMETRIC_MANIFOLD_STEPS: &[StoryStep] = &[
     StoryStep {
         title: "1s + 2pz Electric-Dipole Lobes",
@@ -137,6 +155,12 @@ inventory::submit! {
     }
 }
 
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "physics"
+))]
 inventory::submit! {
     PresetStoryMetadata {
         id: "quantum_3d_nodal_manifolds_tour",

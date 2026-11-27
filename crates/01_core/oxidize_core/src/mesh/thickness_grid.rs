@@ -1,7 +1,7 @@
 //! CSR spatial uniform grids (`FlatSpatialGrid`, `SpatialGrid`) and `ThicknessWorkspace`.
 
 use super::Surface;
-use math_commons::math_kernel::types::flatten_3d_index;
+use math_scalars::flatten_3d_index;
 
 #[verified_engine::verified]
 fn grid_axis_dim(vertex_count: usize) -> usize {
@@ -306,8 +306,7 @@ impl<'a> FlatSpatialGrid<'a> {
 ///
 /// # Example
 /// ```rust
-/// # use domain_applied::__doctest_facade as math_explorer;
-/// use math_explorer::applied::freesurfer::{SpatialGrid, Surface};
+/// use oxidize_core::mesh::{SpatialGrid, Surface};
 ///
 /// let surface = Surface::from_vertices(vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]]);
 /// let grid = SpatialGrid::from_surface(&surface);

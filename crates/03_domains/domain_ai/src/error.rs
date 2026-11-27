@@ -116,6 +116,10 @@ pub enum AIError {
     #[error("{0}")]
     Diffeq(#[from] engine_diffeq::DiffeqError),
 
+    /// Foundational `#![no_std]` Kalman filter tracking error.
+    #[error("{0}")]
+    Kalman(#[from] engine_diffeq::KalmanError),
+
     /// Upstream numerical optimization error.
     #[error("{0}")]
     Optimization(#[from] pure_math::error::OptimizationError),
@@ -135,6 +139,7 @@ impl Diagnostic for AIError {
             Self::Math(err) => err.severity(),
             Self::Linalg(err) => err.severity(),
             Self::Diffeq(err) => err.severity(),
+            Self::Kalman(err) => err.severity(),
             Self::Optimization(err) => err.severity(),
             Self::LinearAlgebra(err) => err.severity(),
             _ => Severity::Error,
@@ -147,6 +152,7 @@ impl Diagnostic for AIError {
             Self::Math(err) => err.visit_fields(visitor),
             Self::Linalg(err) => err.visit_fields(visitor),
             Self::Diffeq(err) => err.visit_fields(visitor),
+            Self::Kalman(err) => err.visit_fields(visitor),
             Self::Optimization(err) => err.visit_fields(visitor),
             Self::LinearAlgebra(err) => err.visit_fields(visitor),
             Self::CellMaskLengthMismatch { expected, actual } => {

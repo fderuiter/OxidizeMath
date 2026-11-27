@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "tests"))]
-
 use super::*;
 
 fn naive_point_to_surface_distance(point: &[f64; 3], surface: &Surface) -> f64 {

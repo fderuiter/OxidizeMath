@@ -2,7 +2,7 @@ use super::{
     ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
     QuantumError, RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError,
 };
-use domain_applied::error::{AppliedError, KalmanError};
+use engine_diffeq::KalmanError;
 use engine_linalg::LinalgError;
 use engine_opt::error::FitError;
 use math_commons::error::{
@@ -28,7 +28,7 @@ impl Diagnostic for NuclearError {
     }
 }
 
-/// Extensible crate-level umbrella error for `domain_physics` models and upstream math/applied errors.
+/// Extensible crate-level umbrella error for `domain_physics` models and upstream math errors.
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum PhysicsError {
@@ -83,22 +83,15 @@ pub enum PhysicsError {
     /// Foundational `#![no_std]` differential-equation solver error.
     #[error("{0}")]
     Diffeq(#[from] engine_diffeq::DiffeqError),
+    /// Foundational `#![no_std]` Kalman filter tracking error.
+    #[error("{0}")]
+    Kalman(#[from] KalmanError),
     /// Foundational `#![no_std]` partial-differential-equation solver error.
     #[error("{0}")]
     Pde(#[from] engine_pde::PdeError),
     /// Upstream `pure_math` umbrella error.
     #[error("{0}")]
     PureMath(#[from] PureMathError),
-    /// Upstream `domain_applied` umbrella error.
-    #[error("{0}")]
-    Applied(#[from] AppliedError),
-}
-
-impl From<KalmanError> for PhysicsError {
-    #[verified_engine::verified]
-    fn from(err: KalmanError) -> Self {
-        Self::Applied(AppliedError::from(err))
-    }
 }
 
 impl From<EvolutionError> for PhysicsError {
@@ -213,9 +206,9 @@ impl PhysicsError {
             Self::Fit(err) => err,
             Self::Linalg(err) => err,
             Self::Diffeq(err) => err,
+            Self::Kalman(err) => err,
             Self::Pde(err) => err,
             Self::PureMath(err) => err,
-            Self::Applied(err) => err,
         }
     }
 }

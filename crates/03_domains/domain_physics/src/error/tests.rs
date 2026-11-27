@@ -1,6 +1,6 @@
 use super::*;
 use diagnostics::{Diagnostic, DiagnosticBus, Severity};
-use domain_applied::error::KalmanError;
+use engine_diffeq::KalmanError;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
 use std::error::Error as StdError;

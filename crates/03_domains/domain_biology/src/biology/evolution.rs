@@ -49,11 +49,11 @@
 //! assert!((hawk_freq.value() - 0.2).abs() < 0.05);
 //! ```
 
-use domain_applied::applied::game_theory::evolutionary::ReplicatorDynamics;
-use domain_applied::error::GameTheoryError;
 use math_commons::primitives::UnitInterval;
 use nalgebra::{DMatrix, DVector};
+use pure_math::error::GameTheoryError;
 use pure_math::pure_math::analysis::ode::{ArrayState, Euler, OdeSystem, Solver, SolverExt};
+use pure_math::pure_math::game_theory::evolutionary::ReplicatorDynamics;
 
 /// Represents a population playing the Hawk-Dove game.
 pub struct HawkDovePopulation {

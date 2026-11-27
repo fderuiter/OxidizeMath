@@ -4,13 +4,12 @@
 //!
 //! $$\frac{n(x, y)^2}{c_0^2} \frac{\partial^2 u}{\partial t^2} + \sigma(x, y)\frac{n(x, y)^2}{c_0^2}\frac{\partial u}{\partial t} = \nabla^2 u + S(x, y, t)$$
 //!
-//! using [`engine_pde::StencilOperators::central_diff_2nd_2d`]
-//! in positive-index media and a passive
+//! using 5-point second-order central finite differences in positive-index media and a passive
 //! matched-Drude auxiliary formulation when negative-index metamaterial cells ($n < 0$) are
 //! present. All grid and auxiliary buffers are allocated once at construction so stepping runs
 //! with zero dynamic heap allocations under `VerifiedAllocator`.
 
-use engine_pde::StencilOperators;
+use super::grid_2d::GridSpacing2D;
 use math_commons::math_kernel::types::{StepSize, flatten_2d_index};
 
 // [cite:optics]
@@ -136,7 +135,7 @@ impl Default for WaveFieldConfig2D {
 #[derive(Debug, Clone)]
 pub struct WaveField2D {
     config: WaveFieldConfig2D,
-    ops: StencilOperators,
+    ops: GridSpacing2D,
     u_prev: Vec<f64>,
     u_curr: Vec<f64>,
     u_next: Vec<f64>,
@@ -167,7 +166,7 @@ impl WaveField2D {
                 reason: "new: precondition or invariant violated",
             });
         }
-        let ops = StencilOperators::try_new_2d(StepSize(config.dx), StepSize(config.dy))?;
+        let ops = GridSpacing2D::try_new_2d(StepSize(config.dx), StepSize(config.dy))?;
         let len = config.width * config.height;
         let c0_sq = config.c0 * config.c0;
         let mut solver = Self {

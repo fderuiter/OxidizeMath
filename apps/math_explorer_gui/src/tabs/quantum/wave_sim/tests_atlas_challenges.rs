@@ -11,10 +11,14 @@ use crate::async_sim::atlas::{
 use crate::async_sim::SimulationRunner;
 use crate::framework::{InteractiveTool, SimulationFramework};
 use crate::starter_gallery::find_challenge_metadata;
-use crate::tabs::quantum::{
-    clebsch::ClebschGordanTool, spin_viz::SpinVisualizer,
-    volumetric_studio::VolumetricFieldStudioTool,
-};
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "physics"
+))]
+use crate::tabs::quantum::volumetric_studio::VolumetricFieldStudioTool;
+use crate::tabs::quantum::{clebsch::ClebschGordanTool, spin_viz::SpinVisualizer};
 use eframe::egui::{self, Color32};
 use std::sync::{Arc, RwLock};
 
@@ -277,8 +281,14 @@ fn test_subbarrier_50_split_and_double_barrier_challenge_hud_and_url_clamping() 
 
 #[test]
 fn test_all_four_quantum_tab_tools_expose_finite_named_observables() {
-    let tools: [Box<dyn InteractiveTool>; 4] = [
+    let tools: Vec<Box<dyn InteractiveTool>> = vec![
         Box::new(WaveSimulatorTool::new()),
+        #[cfg(all(
+            feature = "ai",
+            feature = "applied",
+            feature = "biology",
+            feature = "physics"
+        ))]
         Box::new(VolumetricFieldStudioTool::default()),
         Box::new(SpinVisualizer::default()),
         Box::new(ClebschGordanTool::default()),

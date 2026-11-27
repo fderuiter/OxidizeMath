@@ -1,4 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
+#![cfg(feature = "physics")]
 
 use std::sync::{Arc, RwLock};
 

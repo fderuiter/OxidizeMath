@@ -1,17 +1,16 @@
 use super::{
     AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
-    EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
-    KnotError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
-    MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError, OuError,
-    PoissonError, QueueingError, RiskError, StochasticError, Su11HyperbolicError, TdaError,
-    TensorError, TransformError, ZipError,
+    EvolutionError, FractranError, GameTheoryError, Glicko2Error, GraphTheoryError,
+    HyperbolicError, KellyError, KnotError, LinearAlgebraError, MarketPricingError, MarkovError,
+    MatchModelError, MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError,
+    OuError, PoissonError, QueueingError, RiskError, StochasticError, Su11HyperbolicError,
+    TdaError, TensorError, TransformError, ZipError,
 };
-use engine_linalg::LinalgError;
 use math_commons::error::{
     EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError, ShaderEmitError,
 };
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
-use math_scalars::ScalarError;
+use math_scalars::{LinalgError, ScalarError};
 use thiserror::Error;
 
 /// Extensible crate-level umbrella error for `pure_math` algorithms and foundational math errors.
@@ -24,6 +23,9 @@ pub enum PureMathError {
     /// Sports Elo rating error.
     #[error("{0}")]
     Elo(#[from] EloError),
+    /// Evolutionary and game-theoretic solver error.
+    #[error("{0}")]
+    GameTheory(#[from] GameTheoryError),
     /// Glicko-2 rating error.
     #[error("{0}")]
     Glicko2(#[from] Glicko2Error),
@@ -111,12 +113,6 @@ pub enum PureMathError {
     /// Spectral transform error.
     #[error("{0}")]
     Transform(#[from] TransformError),
-    /// Foundational `#![no_std]` differential-equation engine error.
-    #[error("{0}")]
-    Diffeq(#[from] engine_diffeq::DiffeqError),
-    /// Foundational `#![no_std]` PDE and SPDE engine error.
-    #[error("{0}")]
-    Pde(#[from] engine_pde::PdeError),
     /// Foundational mathematical kernel error.
     #[error("{0}")]
     Math(#[from] MathError),
@@ -183,6 +179,7 @@ impl PureMathError {
         match self {
             Self::Copula(err) => err,
             Self::Elo(err) => err,
+            Self::GameTheory(err) => err,
             Self::Glicko2(err) => err,
             Self::Kelly(err) => err,
             Self::MarketPricing(err) => err,
@@ -212,8 +209,6 @@ impl PureMathError {
             Self::Stochastic(err) => err,
             Self::Tensor(err) => err,
             Self::Transform(err) => err,
-            Self::Diffeq(err) => err,
-            Self::Pde(err) => err,
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
             Self::Scalar(err) => err,

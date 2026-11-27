@@ -138,6 +138,11 @@ pub(crate) fn run_batch_static_with_caches(
         passed = false;
     }
 
+    println!("\n--- Static Gate 8: Workspace Tier DAG & Feature Isolation ---");
+    if !crate::dag_gate::check_dag_in_dir(Path::new(".")) {
+        passed = false;
+    }
+
     passed
 }
 
@@ -377,6 +382,10 @@ pub(crate) fn run_batch_staged_for_paths_in_dir(
     let escalate = all_staged.iter().any(|p| is_root_escalation_path(p));
     let touched_members = select_touched_members(all_staged, workspace_members);
     let mut manifest_cache = crate::manifest_cache::ManifestCache::new();
+
+    if !workspace_members.is_empty() && !crate::dag_gate::check_dag_in_dir(repo_dir) {
+        passed = false;
+    }
 
     if !run_staged_profile_and_length_gates(
         all_staged,

@@ -1,6 +1,6 @@
 //! Integration tests for `ChallengeMetadata`, `StarterGallery` Challenges tab, Challenge HUD,
 //! WCAG 2.2 AA contrast, `CalloutManager` >= 5 tools adoption, and stateless challenge URLs.
-
+#![cfg(feature = "epidemiology")]
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use crate::app::{MathExplorerApp, SemanticPalette, ThemeMode};

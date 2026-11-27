@@ -65,6 +65,6 @@ pub use surface::BiQuadraticSurface;
 pub use tracking::{ConstantVelocityModel, TrackingFilter};
 
 // Re-export the core KalmanModel so users can implement their own models if needed
-pub use domain_applied::applied::algorithms::kalman::KalmanModel;
+pub use engine_diffeq::kalman::KalmanModel;
 
 // [cite:clinical_trials_statistics]

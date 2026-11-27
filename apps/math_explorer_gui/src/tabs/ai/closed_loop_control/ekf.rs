@@ -6,7 +6,7 @@ use engine_linalg::{
     add_scaled_vec_array, identity_array, identity_plus_scaled_array, mat_mul_array,
     mat_mul_transpose_right_array,
 };
-use math_explorer::applied::algorithms::kalman::{KalmanFilter, KalmanSystem};
+use math_explorer::engine_diffeq::kalman::{KalmanFilter, KalmanSystem};
 use math_explorer::nalgebra::{DMatrix, DVector};
 
 /// Minimum scalar measurement variance floor preventing singular innovation covariance when `sensor_noise == 0.0`.

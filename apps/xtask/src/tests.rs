@@ -167,6 +167,7 @@ fn test_verification_gates() {
         "check-api-drift",
         "check-benches",
         "check-certificate",
+        "check-dag",
         "check-duplicates",
         "check-maturity",
         "check-profiles",

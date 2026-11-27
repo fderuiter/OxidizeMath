@@ -1,9 +1,8 @@
 //! Integration tests for checked APIs and typed `NumberTheoryError` / `MathError`
 //! return values across `pure_math`.
 
-use engine_pde::{FusedStencilStepper, StencilOperators};
 use math_commons::error::MathError;
-use math_commons::math_kernel::types::{Dimension, StepSize};
+use math_commons::math_kernel::types::Dimension;
 use num_complex::Complex64;
 use pure_math::error::NumberTheoryError;
 use pure_math::math_types::Integer;
@@ -121,13 +120,5 @@ fn group_complex_and_pde_try_constructors_reject_invalid_parameters() {
             Complex64::new(0.0, 0.0),
         ),
         Err(MathError::DimensionMismatch { .. })
-    ));
-    assert!(matches!(
-        StencilOperators::try_new(StepSize(0.0)),
-        Err(MathError::StrictlyOutOfBounds { .. })
-    ));
-    assert!(matches!(
-        FusedStencilStepper::try_new_2d(StepSize(0.1), StepSize(-0.1)),
-        Err(MathError::StrictlyOutOfBounds { .. })
     ));
 }

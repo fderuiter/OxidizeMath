@@ -10,8 +10,8 @@ use crate::app::data_bus::{
 };
 use crate::app::{SharedGraphTopology, SharedSimulationBus, TopologySource};
 use eframe::egui;
-use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
 use math_explorer::physics::stat_mech::{GraphSpinSystem, KB};
+use math_explorer::pure_math::game_theory::evolutionary::MatrixPayoff;
 use nalgebra::DMatrix;
 use std::sync::Arc;
 
@@ -119,7 +119,14 @@ impl IsingModelTool {
     }
 
     /// Returns the currently synced `SharedSimulationBus` revision, if active.
-    #[cfg(test)]
+    #[cfg(all(
+        test,
+        feature = "biology",
+        feature = "applied",
+        feature = "epidemiology",
+        feature = "physics",
+        feature = "pure_math"
+    ))]
     #[must_use]
     pub fn synced_bus_revision(&self) -> Option<u64> {
         self.synced_bus_revision

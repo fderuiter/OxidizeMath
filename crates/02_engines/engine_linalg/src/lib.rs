@@ -10,6 +10,8 @@ extern crate alloc;
 pub mod cholesky;
 pub mod krylov;
 pub mod lu;
+#[cfg(feature = "nalgebra")]
+pub mod nalgebra_ops;
 pub mod norms;
 pub mod qr;
 pub mod scalar;
@@ -55,8 +57,8 @@ pub use tikhonov::{
 #[cfg(feature = "alloc")]
 pub use types::OwnedWorkspace;
 pub use types::{
-    DenseView, LinalgError, SolverWorkspace, add_scaled_vec_array, check_all_finite,
-    identity_array, identity_plus_scaled_array, mat_idx, mat_mul, mat_mul_array,
+    DenseView, LinalgError, LinearAlgebraError, SolverWorkspace, add_scaled_vec_array,
+    check_all_finite, identity_array, identity_plus_scaled_array, mat_idx, mat_mul, mat_mul_array,
     mat_mul_transpose_right, mat_mul_transpose_right_array, mat_vec_mul,
 };
 

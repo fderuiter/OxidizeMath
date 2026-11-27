@@ -362,6 +362,11 @@ pub fn check_profiles() {
     run_verification("check-profiles");
 }
 
+pub fn check_dag() {
+    println!("=== Check Workspace Tier DAG ===");
+    run_verification("check-dag");
+}
+
 pub fn check_release_tag(args: &[String]) {
     println!("=== Check Release Tag Parity ===");
     let extra: Vec<&str> = args.iter().map(String::as_str).collect();

@@ -3,11 +3,14 @@
 //! Implements a **Discrete Kalman Filter** using the **Strategy Pattern** to allow interchangeable
 //! physics models (e.g., Constant Velocity, Constant Acceleration).
 //!
-//! **Update (2026-06-XX):** This module now uses the generic `KalmanFilter` implementation from
-//! `applied::algorithms::kalman`, adapted for the specific domain of Radar Gating.
+//! **Update (2026-11-27):** This module uses the generic `KalmanFilter` implementation from
+//! `engine_diffeq::kalman`, adapted for the specific domain of Radar Gating.
 
 use crate::error::RadarError;
-use domain_applied::applied::algorithms::kalman::{KalmanError, KalmanFilter, KalmanModel};
+use engine_diffeq::{
+    KalmanError,
+    kalman::{KalmanFilter, KalmanModel},
+};
 use nalgebra::{DMatrix, DVector};
 
 /// 1D discrete-time Constant-Velocity (CV) state-space model for respiratory radar gating:

@@ -6,6 +6,12 @@ use eframe::egui;
 pub mod clebsch;
 pub mod spin_viz;
 pub mod story_packs;
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "physics"
+))]
 pub mod volumetric_studio;
 pub mod wave_sim;
 

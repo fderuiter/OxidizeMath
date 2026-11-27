@@ -5,6 +5,8 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+/// Conservative 2D donor-cell upwind advection, Courant/Péclet diagnostics, and combined CFL bounds.
+pub mod advection_2d;
 /// Boundary condition specifications and ghost-cell lookup helpers for 1D, 2D, and 3D grids.
 pub mod boundary;
 /// Stack-allocated `#![no_std]` error types for continuum PDE and SPDE solvers.

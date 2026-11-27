@@ -49,6 +49,8 @@ pub mod analysis;
 /// Submodule providing `differential_geometry` types, traits, and algorithms.
 pub mod differential_geometry;
 pub mod elliptic_curves;
+/// Evolutionary game theory and payoff matrix primitives.
+pub mod game_theory;
 /// Submodule providing `graph_theory` types, traits, and algorithms.
 pub mod graph_theory;
 pub mod hyperbolic;

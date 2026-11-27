@@ -24,8 +24,9 @@ use super::{
     splat_stroke_color, VolumetricSplatWorkspace,
 };
 
-/// Number of vertices in closed circular critical/shadow/caustic overlay rings.
-pub const CAUSTIC_RING_POINTS: usize = 65;
+pub use crate::tabs::astrophysics::galactic_orbits_relativity::{
+    build_circle_ring, CAUSTIC_RING_POINTS,
+};
 
 /// Gravitational thin-lens model applied to projected 3D Gaussian splats.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -458,17 +459,4 @@ fn populate_ellipse_overlays(ws: &mut VolumetricSplatWorkspace, max_rings: usize
             ));
         }
     }
-}
-
-/// Builds a stack-allocated closed circle polyline centered at `center` with `radius`.
-pub fn build_circle_ring(center: [f64; 2], radius: f64) -> [[f64; 2]; CAUSTIC_RING_POINTS] {
-    let r = radius.max(0.0);
-    let mut pts = [[0.0_f64; 2]; CAUSTIC_RING_POINTS];
-    let segs = (CAUSTIC_RING_POINTS - 1) as f64;
-    for (idx, slot) in pts.iter_mut().enumerate() {
-        let theta = (idx as f64) * std::f64::consts::TAU / segs;
-        let (sin_t, cos_t) = theta.sin_cos();
-        *slot = [center[0] + r * cos_t, center[1] + r * sin_t];
-    }
-    pts
 }

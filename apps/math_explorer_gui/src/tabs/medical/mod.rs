@@ -7,6 +7,7 @@ pub mod beam_profiling;
 pub mod dose;
 pub mod imrt;
 pub mod link_bus;
+#[cfg(feature = "applied")]
 pub mod pharmacokinetic_regimen;
 pub mod radar_gating;
 

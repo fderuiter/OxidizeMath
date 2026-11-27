@@ -1,4 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
+#![cfg(feature = "climate")]
 
 use crate::app::MathExplorerApp;
 use crate::framework::ToolMetadata;

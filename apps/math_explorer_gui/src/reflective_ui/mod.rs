@@ -5,7 +5,12 @@ pub mod slider;
 pub use slider::AnimatedSlider;
 #[cfg(all(test, feature = "physics"))]
 pub use slider::AnimatedSliderState;
-#[cfg(feature = "ai")]
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "physics"
+))]
 pub use slider::SweepMode;
 
 #[cfg(any(

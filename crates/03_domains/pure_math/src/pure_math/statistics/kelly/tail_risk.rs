@@ -6,8 +6,8 @@ use super::portfolio::{
 };
 use crate::error::KellyError;
 use crate::pure_math::statistics::copula::transforms::{fast_norm_cdf, fast_norm_inv};
-use engine_linalg::mat_idx;
 use math_rng::sample_open;
+use math_scalars::mat_idx;
 use nalgebra::DMatrix;
 use oxidize_core::rng::OxidizeRng;
 

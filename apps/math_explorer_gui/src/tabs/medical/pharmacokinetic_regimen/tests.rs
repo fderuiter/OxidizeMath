@@ -1,5 +1,5 @@
 //! Unit and URL-state contract tests for [`super::PharmacokineticRegimenTool`].
-
+#![cfg(feature = "applied")]
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use egui_plot::export::ExportOptions;

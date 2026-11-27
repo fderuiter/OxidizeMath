@@ -8,7 +8,7 @@ use pure_math::error::{
 };
 use thiserror::Error;
 
-/// Extensible crate-level umbrella error for `domain_biology` models and upstream math/applied errors.
+/// Extensible crate-level umbrella error for `domain_biology` models and upstream math errors.
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum BiologyError {
@@ -36,15 +36,12 @@ pub enum BiologyError {
     /// Upstream `pure_math` umbrella error.
     #[error("{0}")]
     PureMath(#[from] pure_math::error::PureMathError),
-    /// Upstream `domain_applied` umbrella error.
-    #[error("{0}")]
-    Applied(#[from] domain_applied::error::AppliedError),
 }
 
-impl From<domain_applied::error::GameTheoryError> for BiologyError {
+impl From<pure_math::error::GameTheoryError> for BiologyError {
     #[verified_engine::verified]
-    fn from(err: domain_applied::error::GameTheoryError) -> Self {
-        Self::Applied(domain_applied::error::AppliedError::from(err))
+    fn from(err: pure_math::error::GameTheoryError) -> Self {
+        Self::PureMath(pure_math::error::PureMathError::from(err))
     }
 }
 
@@ -158,7 +155,6 @@ impl BiologyError {
             Self::MathCommons(err) => err,
             Self::Pde(err) => err,
             Self::PureMath(err) => err,
-            Self::Applied(err) => err,
         }
     }
 }

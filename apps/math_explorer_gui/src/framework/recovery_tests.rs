@@ -1,4 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
+#![cfg(feature = "biology")]
 
 use super::recovery::*;
 use eframe::egui;

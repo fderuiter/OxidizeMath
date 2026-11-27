@@ -13,6 +13,9 @@ pub mod error;
 pub mod euler_maruyama;
 /// Zero-allocation discrete stochastic jump (Gillespie SSA) selection helpers.
 pub mod jump;
+/// Generic discrete-time linear and Extended Kalman Filter (`EKF`) state estimation.
+#[cfg(feature = "nalgebra")]
+pub mod kalman;
 /// Multivariate Itô and Stratonovich Milstein strong-order-1.0 SDE solver.
 pub mod milstein;
 /// Derivative-free strong-order-1.5 Stochastic Runge-Kutta (`SRIW1`) SDE solver.
@@ -21,9 +24,11 @@ pub mod sriw1;
 pub mod system;
 
 pub use baoab::{BaoabLangevinSolver, BaoabParams};
-pub use error::DiffeqError;
+pub use error::{DiffeqError, KalmanError};
 pub use euler_maruyama::EulerMaruyamaSolver;
 pub use jump::ssa_sample_event;
+#[cfg(feature = "nalgebra")]
+pub use kalman::{KalmanFilter, KalmanFilterBuilder, KalmanModel, KalmanSystem};
 pub use math_rng::{BASE_SEED, OxidizeRng};
 pub use milstein::MilsteinSolver;
 pub use sriw1::{CorrelatedWienerIncrement, Sriw1Solver};

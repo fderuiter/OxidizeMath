@@ -3,31 +3,9 @@
 use super::core::OuParams;
 pub use super::exact_solver::ExactOuSolver;
 use crate::error::OuError;
-use engine_diffeq::{EulerMaruyamaSolver, SdeSystem, StochasticCalculus};
-use math_commons::math_kernel::types::SolverWorkspace;
+use math_commons::math_kernel::types::sample_standard_normal;
 use oxidize_core::rng::OxidizeRng;
 use rand::Rng;
-
-struct ScalarOuSde {
-    mu: f64,
-    theta: f64,
-    sigma: f64,
-}
-
-impl SdeSystem<f64> for ScalarOuSde {
-    fn state_dim(&self) -> usize {
-        1
-    }
-    fn wiener_dim(&self) -> usize {
-        1
-    }
-    fn drift(&self, _t: f64, x: &[f64], out_drift: &mut [f64]) {
-        out_drift[0] = self.theta * (self.mu - x[0]);
-    }
-    fn diffusion(&self, _t: f64, _x: &[f64], out_diffusion: &mut [f64]) {
-        out_diffusion[0] = self.sigma;
-    }
-}
 
 /// Time step for numerical integration (Δt).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -60,8 +38,7 @@ impl TimeStep {
 
 /// Euler-Maruyama solver for the scalar Ornstein-Uhlenbeck SDE
 /// $dX_t = \theta(\mu - X_t)\,dt + \sigma\,dW_t$, advancing
-/// $X_{t+\Delta t} = X_t + \theta(\mu - X_t)\Delta t + \sigma\sqrt{\Delta t}\,Z$ with $Z \sim \mathcal{N}(0, 1)$
-/// via [`engine_diffeq::EulerMaruyamaSolver`].
+/// $X_{t+\Delta t} = X_t + \theta(\mu - X_t)\Delta t + \sigma\sqrt{\Delta t}\,Z$ with $Z \sim \mathcal{N}(0, 1)$.
 ///
 /// Reference: Kloeden & Platen (1992), *Numerical Solution of Stochastic Differential Equations*,
 /// DOI: 10.1007/978-3-662-12616-5; [`docs/math_specs/pure_math.md`](../../../../../../../docs/math_specs/pure_math.md).
@@ -76,7 +53,6 @@ impl TimeStep {
 pub struct EulerMaruyama {
     params: OuParams,
     dt: TimeStep,
-    engine: EulerMaruyamaSolver,
 }
 
 impl EulerMaruyama {
@@ -102,11 +78,7 @@ impl EulerMaruyama {
     #[verified_engine::verified]
     pub fn new(params: OuParams, dt: TimeStep) -> Self {
         debug_assert!(dt.value() > 0.0);
-        Self {
-            params,
-            dt,
-            engine: EulerMaruyamaSolver::new(StochasticCalculus::Ito),
-        }
+        Self { params, dt }
     }
 
     /// Performs a single Euler-Maruyama step.
@@ -140,18 +112,12 @@ impl EulerMaruyama {
     /// ```
     #[verified_engine::verified]
     pub fn step<R: Rng>(&self, x_current: f64, rng: &mut R) -> f64 {
-        let sde = ScalarOuSde {
-            mu: self.params.mu.value(),
-            theta: self.params.theta.value(),
-            sigma: self.params.sigma.value(),
-        };
-        let mut state = [x_current];
-        let mut scratch = [0.0_f64; 4];
-        let mut ws = SolverWorkspace::new(&mut scratch);
-        self.engine
-            .step(&sde, 0.0, self.dt.value(), &mut state, &mut ws, rng);
-        debug_assert!(state[0].is_finite() || !x_current.is_finite());
-        state[0]
+        let dt = self.dt.value();
+        let drift = self.params.theta.value() * (self.params.mu.value() - x_current);
+        let z = sample_standard_normal::<f64, R>(rng);
+        let next = x_current + drift * dt + self.params.sigma.value() * dt.sqrt() * z;
+        debug_assert!(next.is_finite() || !x_current.is_finite());
+        next
     }
 
     /// Simulates a trajectory of the OU process.

@@ -1,3 +1,4 @@
+#![cfg(feature = "physics")]
 use wasm_bindgen_test::wasm_bindgen_test;
 
 use super::{

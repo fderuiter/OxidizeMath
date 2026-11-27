@@ -1,4 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
+#![cfg(feature = "biology")]
 
 use super::wcag_contrast_on_black;
 #[cfg(any(feature = "applied", feature = "biology", feature = "physics"))]

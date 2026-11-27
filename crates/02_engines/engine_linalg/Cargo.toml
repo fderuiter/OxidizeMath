@@ -15,11 +15,13 @@ math_contract = true
 [features]
 default = []
 alloc = ["math_scalars/alloc"]
-serde = ["dep:serde", "math_diagnostics/serde", "math_scalars/serde"]
+nalgebra = ["alloc", "dep:nalgebra", "nalgebra/alloc"]
+serde = ["dep:serde", "math_scalars/serde", "nalgebra?/serde-serialize-no-std"]
+std = ["alloc", "math_scalars/std", "nalgebra?/std", "serde?/std"]
 
 [dependencies]
-math_diagnostics = { path = "../../00_foundation/math_diagnostics", default-features = false }
 math_scalars = { path = "../../00_foundation/math_scalars", default-features = false }
+nalgebra = { workspace = true, default-features = false, features = ["alloc", "libm"], optional = true }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]

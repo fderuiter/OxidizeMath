@@ -3,6 +3,115 @@ use core::fmt;
 use math_commons::error::MathError;
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 
+/// Stack-allocated `#![no_std]` errors returned during Kalman filter initialization and updates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub enum KalmanError {
+    /// Innovation covariance matrix $\mathbf{S}_k = \mathbf{H}_k \mathbf{P}_{k|k-1} \mathbf{H}_k^\top + \mathbf{R}_k$ was singular.
+    MatrixInversionError,
+    /// Underlying dimension mismatch or linear algebra error from `math_commons`.
+    Math(MathError),
+    /// Required builder field (`initial_state` or `initial_covariance`) was omitted.
+    InitializationError(&'static str),
+}
+
+impl fmt::Display for KalmanError {
+    #[verified_engine::verified]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MatrixInversionError => {
+                f.write_str("Failed to invert innovation covariance matrix (singular)")
+            }
+            Self::Math(err) => write!(f, "Mathematical error: {err}"),
+            Self::InitializationError(field) => {
+                write!(f, "Missing required initialization field: {field}")
+            }
+        }
+    }
+}
+
+impl core::error::Error for KalmanError {
+    #[verified_engine::verified]
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
+        match self {
+            Self::Math(err) => Some(err),
+            Self::MatrixInversionError | Self::InitializationError(_) => None,
+        }
+    }
+}
+
+impl From<MathError> for KalmanError {
+    #[inline]
+    #[verified_engine::verified]
+    fn from(err: MathError) -> Self {
+        Self::Math(err)
+    }
+}
+
+impl Diagnostic for KalmanError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        Severity::Error
+    }
+
+    #[verified_engine::verified]
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        if let Self::Math(math_err) = self {
+            math_err.visit_fields(visitor);
+        }
+        visitor.record_str("error_type", "KalmanError");
+        visitor.record_display("description", self);
+    }
+}
+
+#[cfg(feature = "serde")]
+mod kalman_serde {
+    use super::KalmanError;
+    use math_commons::error::MathError;
+
+    const KNOWN_FIELDS: &[&str] = &["initial_state", "initial_covariance", "field"];
+
+    struct StaticField(&'static str);
+
+    fn de_field<'de, D: serde::Deserializer<'de>>(d: D) -> Result<StaticField, D::Error> {
+        struct Visitor;
+        impl serde::de::Visitor<'_> for Visitor {
+            type Value = StaticField;
+            fn expecting(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.write_str("a Kalman builder field name")
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                for &known in KNOWN_FIELDS {
+                    if known == v {
+                        return Ok(StaticField(known));
+                    }
+                }
+                Ok(StaticField("field"))
+            }
+        }
+        d.deserialize_str(Visitor)
+    }
+
+    #[derive(serde::Deserialize)]
+    enum KalmanErrorRepr {
+        MatrixInversionError,
+        Math(MathError),
+        InitializationError(#[serde(deserialize_with = "de_field")] StaticField),
+    }
+
+    impl<'de> serde::Deserialize<'de> for KalmanError {
+        fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            Ok(match KalmanErrorRepr::deserialize(deserializer)? {
+                KalmanErrorRepr::MatrixInversionError => Self::MatrixInversionError,
+                KalmanErrorRepr::Math(err) => Self::Math(err),
+                KalmanErrorRepr::InitializationError(StaticField(field)) => {
+                    Self::InitializationError(field)
+                }
+            })
+        }
+    }
+}
+
 /// Stack-allocated `#![no_std]` error type for differential and stochastic equation solvers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]

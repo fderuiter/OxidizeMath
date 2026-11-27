@@ -24,6 +24,7 @@ macro_rules! impl_error_from {
 
 impl_error_from!(DiagnosticError => Diagnostic);
 impl_error_from!(DiffeqError => Diffeq);
+impl_error_from!(KalmanError => Kalman);
 impl_error_from!(PdeError => Pde);
 impl_error_from!(EvalError => Eval);
 impl_error_from!(FitError => Fit);
@@ -55,9 +56,7 @@ impl_error_from!(@cfg "applied":
     BatteryError => Battery,
     ClinicalTrialError => ClinicalTrial,
     EngineeringError => Engineering,
-    GameTheoryError => GameTheory,
     IsosurfaceError => Isosurface,
-    KalmanError => Kalman,
     LoraError => Lora,
     PharmacokineticsError => Pharmacokinetics,
     PortfolioError => Portfolio,
@@ -108,6 +107,7 @@ impl_error_from!(@cfg "pure_math":
     EloError => Elo,
     EvolutionError => Evolution,
     FractranError => Fractran,
+    GameTheoryError => GameTheory,
     Glicko2Error => Glicko2,
     GraphTheoryError => GraphTheory,
     HyperbolicError => Hyperbolic,

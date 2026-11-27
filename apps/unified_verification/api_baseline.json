@@ -1342,61 +1342,19 @@
   ],
   "domain_applied:src/applied/algorithms/kalman.rs": [
     {
-      "signature": "impl < T : RealField + Copy , M : KalmanSystem < T > > KalmanFilter < T , M > { pub fn builder (_ : M , _ : T) -> KalmanFilterBuilder < T , M > }"
+      "signature": "pub use engine_diffeq :: KalmanError"
     },
     {
-      "signature": "impl < T : RealField + Copy , M : KalmanSystem < T > > KalmanFilter < T , M > { pub fn predict (& mut self) }"
+      "signature": "pub use engine_diffeq :: kalman :: KalmanFilter"
     },
     {
-      "signature": "impl < T : RealField + Copy , M : KalmanSystem < T > > KalmanFilter < T , M > { pub fn update (& mut self , _ : & DVector < T >) -> Result < () , KalmanError > }"
+      "signature": "pub use engine_diffeq :: kalman :: KalmanFilterBuilder"
     },
     {
-      "signature": "impl < T : RealField + Copy , M : KalmanSystem < T > > KalmanFilterBuilder < T , M > { pub fn build (self) -> Result < KalmanFilter < T , M > , KalmanError > }"
+      "signature": "pub use engine_diffeq :: kalman :: KalmanModel"
     },
     {
-      "signature": "impl < T : RealField + Copy , M : KalmanSystem < T > > KalmanFilterBuilder < T , M > { pub fn initial_covariance (self , _ : DMatrix < T >) -> Self }"
-    },
-    {
-      "signature": "impl < T : RealField + Copy , M : KalmanSystem < T > > KalmanFilterBuilder < T , M > { pub fn initial_state (self , _ : DVector < T >) -> Self }"
-    },
-    {
-      "signature": "pub enum KalmanError"
-    },
-    {
-      "signature": "pub struct KalmanFilter < T : RealField + Copy , M : KalmanSystem < T > >"
-    },
-    {
-      "signature": "pub struct KalmanFilterBuilder < T : RealField + Copy , M : KalmanSystem < T > >"
-    },
-    {
-      "signature": "pub trait KalmanModel < T : RealField + Copy >"
-    },
-    {
-      "signature": "pub trait KalmanModel < T : RealField + Copy > { fn measurement_matrix (& self) -> DMatrix < T > }"
-    },
-    {
-      "signature": "pub trait KalmanModel < T : RealField + Copy > { fn measurement_noise (& self) -> DMatrix < T > }"
-    },
-    {
-      "signature": "pub trait KalmanModel < T : RealField + Copy > { fn process_noise (& self , _ : T) -> DMatrix < T > }"
-    },
-    {
-      "signature": "pub trait KalmanModel < T : RealField + Copy > { fn transition_matrix (& self , _ : T) -> DMatrix < T > }"
-    },
-    {
-      "signature": "pub trait KalmanSystem < T : RealField + Copy >"
-    },
-    {
-      "signature": "pub trait KalmanSystem < T : RealField + Copy > { fn measurement_noise (& self) -> DMatrix < T > }"
-    },
-    {
-      "signature": "pub trait KalmanSystem < T : RealField + Copy > { fn predict_measurement (& self , _ : & DVector < T >) -> (DVector < T > , DMatrix < T >) }"
-    },
-    {
-      "signature": "pub trait KalmanSystem < T : RealField + Copy > { fn predict_state (& self , _ : & DVector < T > , _ : T) -> (DVector < T > , DMatrix < T >) }"
-    },
-    {
-      "signature": "pub trait KalmanSystem < T : RealField + Copy > { fn process_noise (& self , _ : T) -> DMatrix < T > }"
+      "signature": "pub use engine_diffeq :: kalman :: KalmanSystem"
     }
   ],
   "domain_applied:src/applied/algorithms/mod.rs": [
@@ -2593,12 +2551,6 @@
       "signature": "impl MriVolume { pub fn voxel (& self , _ : usize , _ : usize , _ : usize) -> f64 }"
     },
     {
-      "signature": "impl Surface { pub fn from_vertices (_ : Vec < [f64 ; 3] >) -> Self }"
-    },
-    {
-      "signature": "impl Surface { pub fn new (_ : Vec < [f64 ; 3] > , _ : Vec < [usize ; 3] >) -> Self }"
-    },
-    {
       "signature": "pub fn evolve_surface (_ : & mut Surface , _ : f64 , _ : f64)"
     },
     {
@@ -2617,45 +2569,45 @@
       "signature": "pub struct MriVolume"
     },
     {
-      "signature": "pub struct Surface"
+      "signature": "pub use oxidize_core :: mesh :: Surface"
     }
   ],
   "domain_applied:src/applied/freesurfer/thickness.rs": [
     {
-      "signature": "pub fn cortical_thickness (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & Surface , _ : & Surface ,) -> f64"
+      "signature": "pub use oxidize_core :: mesh :: FlatSpatialGrid"
     },
     {
-      "signature": "pub fn cortical_thickness_batch (_ : & Surface , _ : & Surface) -> Vec < f64 >"
+      "signature": "pub use oxidize_core :: mesh :: SpatialGrid"
     },
     {
-      "signature": "pub fn cortical_thickness_batch_into (_ : & Surface , _ : & Surface , _ : & mut [f64] ,)"
+      "signature": "pub use oxidize_core :: mesh :: ThicknessWorkspace"
     },
     {
-      "signature": "pub fn cortical_thickness_indexed (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & FlatSpatialGrid < '_ > , _ : & FlatSpatialGrid < '_ > ,) -> f64"
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness"
     },
     {
-      "signature": "pub fn cortical_thickness_into (_ : & Surface , _ : & Surface , _ : & SpatialGrid , _ : & SpatialGrid , _ : & mut [f64] ,)"
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_batch"
     },
     {
-      "signature": "pub fn cortical_thickness_map (_ : & Surface , _ : & Surface) -> Vec < f64 >"
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_batch_into"
     },
     {
-      "signature": "pub fn cortical_thickness_map_into (_ : & Surface , _ : & Surface , _ : & mut ThicknessWorkspace , _ : & mut [f64] ,) -> usize"
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_indexed"
     },
     {
-      "signature": "pub fn cortical_thickness_mesh (_ : & Surface , _ : & Surface) -> Vec < f64 >"
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_into"
     },
     {
-      "signature": "pub fn cortical_thickness_with_grid (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & SpatialGrid , _ : & SpatialGrid ,) -> f64"
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_map"
     },
     {
-      "signature": "pub use thickness_grid :: FlatSpatialGrid"
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_map_into"
     },
     {
-      "signature": "pub use thickness_grid :: SpatialGrid"
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_mesh"
     },
     {
-      "signature": "pub use thickness_grid :: ThicknessWorkspace"
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_with_grid"
     }
   ],
   "domain_applied:src/applied/game_theory/equilibrium.rs": [
@@ -2780,55 +2732,18 @@
       "signature": "pub use graph_replicator_system :: GraphReplicatorSystem"
     },
     {
+      "signature": "pub use pure_math :: pure_math :: game_theory :: evolutionary :: FitnessStrategy"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: game_theory :: evolutionary :: MatrixPayoff"
+    },
+    {
       "signature": "pub use replicator :: ReplicatorDynamics"
-    },
-    {
-      "signature": "pub use strategies :: MatrixPayoff"
-    },
-    {
-      "signature": "pub use traits :: FitnessStrategy"
     }
   ],
   "domain_applied:src/applied/game_theory/evolutionary/replicator.rs": [
     {
-      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn derivative (& self , _ : & DVector < f64 >) -> DVector < f64 > }"
-    },
-    {
-      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn new_with_fitness (_ : S) -> Self }"
-    },
-    {
-      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn simulate (& self , _ : DVector < f64 > , _ : f64 , _ : f64 ,) -> Vec < (f64 , DVector < f64 >) > }"
-    },
-    {
-      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn simulate_with_strategy < Solve > (& self , _ : DVector < f64 > , _ : f64 , _ : f64 , _ : & mut Solve ,) -> Vec < (f64 , DVector < f64 >) > where Solve : Solver < DVector < f64 > > , }"
-    },
-    {
-      "signature": "impl ReplicatorDynamics < MatrixPayoff > { pub fn new (_ : DMatrix < f64 >) -> Result < Self , GameTheoryError > }"
-    },
-    {
-      "signature": "impl ReplicatorDynamics < MatrixPayoff > { pub fn payoff_matrix (& self) -> & DMatrix < f64 > }"
-    },
-    {
-      "signature": "pub struct ReplicatorDynamics < S : FitnessStrategy = MatrixPayoff >"
-    }
-  ],
-  "domain_applied:src/applied/game_theory/evolutionary/strategies.rs": [
-    {
-      "signature": "impl MatrixPayoff { pub fn new (_ : DMatrix < f64 >) -> Result < Self , GameTheoryError > }"
-    },
-    {
-      "signature": "impl MatrixPayoff { pub fn payoff_matrix (& self) -> & DMatrix < f64 > }"
-    },
-    {
-      "signature": "pub struct MatrixPayoff"
-    }
-  ],
-  "domain_applied:src/applied/game_theory/evolutionary/traits.rs": [
-    {
-      "signature": "pub trait FitnessStrategy"
-    },
-    {
-      "signature": "pub trait FitnessStrategy { fn fitness (& self , _ : & DVector < f64 > , _ : & mut DVector < f64 >) }"
+      "signature": "pub use pure_math :: pure_math :: game_theory :: evolutionary :: ReplicatorDynamics"
     }
   ],
   "domain_applied:src/applied/game_theory/mean_field/mod.rs": [
@@ -4186,9 +4101,6 @@
       "signature": "pub enum EngineeringError"
     },
     {
-      "signature": "pub enum GameTheoryError"
-    },
-    {
       "signature": "pub enum IsosurfaceError"
     },
     {
@@ -4208,6 +4120,9 @@
     },
     {
       "signature": "pub use crate :: applied :: portfolio :: PortfolioError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: GameTheoryError"
     },
     {
       "signature": "pub use umbrella :: AppliedError"
@@ -6026,7 +5941,7 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ReactionDiffusionError } }"
     },
     {
-      "signature": "pub mod __doctest_facade { pub mod error { pub use domain_applied :: __doctest_facade :: error :: * } }"
+      "signature": "pub mod __doctest_facade { pub mod error { pub use pure_math :: __doctest_facade :: error :: * } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error }"
@@ -6047,7 +5962,7 @@
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: ReactionDiffusionError } }"
     },
     {
-      "signature": "pub mod __doctest_facade { pub mod prelude { pub use domain_applied :: __doctest_facade :: prelude :: * } }"
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use pure_math :: __doctest_facade :: prelude :: * } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude }"
@@ -6056,13 +5971,10 @@
       "signature": "pub mod __doctest_facade { pub use crate :: biology }"
     },
     {
-      "signature": "pub mod __doctest_facade { pub use domain_applied :: __doctest_facade :: fit }"
-    },
-    {
-      "signature": "pub mod __doctest_facade { pub use domain_applied :: applied }"
-    },
-    {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: ast }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: bootstrap }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
@@ -6078,6 +5990,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: mesh }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: monte_carlo }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: nalgebra }"
@@ -6096,6 +6011,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: pure_math }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: qmc }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rand }"
@@ -6905,7 +6823,13 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: StatMechError } }"
     },
     {
-      "signature": "pub mod __doctest_facade { pub mod error { pub use domain_applied :: __doctest_facade :: error :: * } }"
+      "signature": "pub mod __doctest_facade { pub mod error { pub use engine_diffeq :: KalmanError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use engine_opt :: error :: FitError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use pure_math :: __doctest_facade :: error :: * } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error }"
@@ -6944,7 +6868,13 @@
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: StatMechError } }"
     },
     {
-      "signature": "pub mod __doctest_facade { pub mod prelude { pub use domain_applied :: __doctest_facade :: prelude :: * } }"
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use engine_diffeq :: KalmanError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use engine_opt :: fit :: FitModel } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use pure_math :: __doctest_facade :: prelude :: * } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude }"
@@ -6953,13 +6883,13 @@
       "signature": "pub mod __doctest_facade { pub use crate :: physics }"
     },
     {
-      "signature": "pub mod __doctest_facade { pub use domain_applied :: applied }"
-    },
-    {
       "signature": "pub mod __doctest_facade { pub use engine_opt :: fit }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: ast }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: bootstrap }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
@@ -6975,6 +6905,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: mesh }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: monte_carlo }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: nalgebra }"
@@ -6993,6 +6926,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: pure_math }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: qmc }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rand }"
@@ -8887,7 +8823,7 @@
       "signature": "pub use czt :: chirp_z_transform"
     },
     {
-      "signature": "pub use domain_applied :: applied :: algorithms :: kalman :: KalmanModel"
+      "signature": "pub use engine_diffeq :: kalman :: KalmanModel"
     },
     {
       "signature": "pub use gating :: BeamState"
@@ -11301,6 +11237,9 @@
     },
     {
       "signature": "pub enum DiffeqError"
+    },
+    {
+      "signature": "pub enum KalmanError"
     }
   ],
   "engine_diffeq:src/euler_maruyama.rs": [
@@ -11331,7 +11270,63 @@
   ],
   "engine_diffeq:src/jump.rs": [
     {
-      "signature": "pub fn ssa_sample_event < T : Scalar , R : RngCore + ? Sized > (_ : & [T] , _ : & mut R ,) -> Option < (T , usize) >"
+      "signature": "pub use math_commons :: math_kernel :: types :: ssa_sample_event"
+    }
+  ],
+  "engine_diffeq:src/kalman.rs": [
+    {
+      "signature": "impl < T : RealField + Copy , M : KalmanSystem < T > > KalmanFilter < T , M > { pub fn builder (_ : M , _ : T) -> KalmanFilterBuilder < T , M > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy , M : KalmanSystem < T > > KalmanFilter < T , M > { pub fn predict (& mut self) }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy , M : KalmanSystem < T > > KalmanFilter < T , M > { pub fn update (& mut self , _ : & DVector < T >) -> Result < () , KalmanError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy , M : KalmanSystem < T > > KalmanFilterBuilder < T , M > { pub fn build (self) -> Result < KalmanFilter < T , M > , KalmanError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy , M : KalmanSystem < T > > KalmanFilterBuilder < T , M > { pub fn initial_covariance (self , _ : DMatrix < T >) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy , M : KalmanSystem < T > > KalmanFilterBuilder < T , M > { pub fn initial_state (self , _ : DVector < T >) -> Self }"
+    },
+    {
+      "signature": "pub struct KalmanFilter < T : RealField + Copy , M : KalmanSystem < T > >"
+    },
+    {
+      "signature": "pub struct KalmanFilterBuilder < T : RealField + Copy , M : KalmanSystem < T > >"
+    },
+    {
+      "signature": "pub trait KalmanModel < T : RealField + Copy >"
+    },
+    {
+      "signature": "pub trait KalmanModel < T : RealField + Copy > { fn measurement_matrix (& self) -> DMatrix < T > }"
+    },
+    {
+      "signature": "pub trait KalmanModel < T : RealField + Copy > { fn measurement_noise (& self) -> DMatrix < T > }"
+    },
+    {
+      "signature": "pub trait KalmanModel < T : RealField + Copy > { fn process_noise (& self , _ : T) -> DMatrix < T > }"
+    },
+    {
+      "signature": "pub trait KalmanModel < T : RealField + Copy > { fn transition_matrix (& self , _ : T) -> DMatrix < T > }"
+    },
+    {
+      "signature": "pub trait KalmanSystem < T : RealField + Copy >"
+    },
+    {
+      "signature": "pub trait KalmanSystem < T : RealField + Copy > { fn measurement_noise (& self) -> DMatrix < T > }"
+    },
+    {
+      "signature": "pub trait KalmanSystem < T : RealField + Copy > { fn predict_measurement (& self , _ : & DVector < T >) -> (DVector < T > , DMatrix < T >) }"
+    },
+    {
+      "signature": "pub trait KalmanSystem < T : RealField + Copy > { fn predict_state (& self , _ : & DVector < T > , _ : T) -> (DVector < T > , DMatrix < T >) }"
+    },
+    {
+      "signature": "pub trait KalmanSystem < T : RealField + Copy > { fn process_noise (& self , _ : T) -> DMatrix < T > }"
     }
   ],
   "engine_diffeq:src/lib.rs": [
@@ -11357,10 +11352,25 @@
       "signature": "pub use error :: DiffeqError"
     },
     {
+      "signature": "pub use error :: KalmanError"
+    },
+    {
       "signature": "pub use euler_maruyama :: EulerMaruyamaSolver"
     },
     {
       "signature": "pub use jump :: ssa_sample_event"
+    },
+    {
+      "signature": "pub use kalman :: KalmanFilter"
+    },
+    {
+      "signature": "pub use kalman :: KalmanFilterBuilder"
+    },
+    {
+      "signature": "pub use kalman :: KalmanModel"
+    },
+    {
+      "signature": "pub use kalman :: KalmanSystem"
     },
     {
       "signature": "pub use math_rng :: BASE_SEED"
@@ -11723,6 +11733,9 @@
       "signature": "pub use types :: LinalgError"
     },
     {
+      "signature": "pub use types :: LinearAlgebraError"
+    },
+    {
       "signature": "pub use types :: OwnedWorkspace"
     },
     {
@@ -11783,6 +11796,84 @@
     },
     {
       "signature": "pub fn lu_solve_transpose_factored < T : Scalar > (_ : & [T] , _ : usize , _ : & [usize] , _ : & [T] , _ : & mut [T] , _ : & mut [T] ,) -> Result < () , LinalgError >"
+    }
+  ],
+  "engine_linalg:src/nalgebra_ops/decomposition.rs": [
+    {
+      "signature": "pub fn effective_rank (_ : & DMatrix < f64 > , _ : Option < f64 >) -> usize"
+    },
+    {
+      "signature": "pub fn low_rank_approximation (_ : & DMatrix < f64 > , _ : usize) -> DMatrix < f64 >"
+    },
+    {
+      "signature": "pub fn try_low_rank_approximation (_ : & DMatrix < f64 > , _ : usize ,) -> Result < DMatrix < f64 > , LinearAlgebraError >"
+    }
+  ],
+  "engine_linalg:src/nalgebra_ops/mod.rs": [
+    {
+      "signature": "pub use decomposition :: effective_rank"
+    },
+    {
+      "signature": "pub use decomposition :: low_rank_approximation"
+    },
+    {
+      "signature": "pub use decomposition :: try_low_rank_approximation"
+    },
+    {
+      "signature": "pub use numerical :: LinearAlgebraError"
+    },
+    {
+      "signature": "pub use numerical :: moore_penrose_pseudoinverse"
+    },
+    {
+      "signature": "pub use numerical :: solve_cholesky_system"
+    },
+    {
+      "signature": "pub use numerical :: solve_conjugate_gradient"
+    },
+    {
+      "signature": "pub use numerical :: solve_gmres_restarted"
+    },
+    {
+      "signature": "pub use numerical :: solve_linear_system"
+    },
+    {
+      "signature": "pub use numerical :: solve_normal_equation"
+    },
+    {
+      "signature": "pub use numerical :: solve_tikhonov_system"
+    },
+    {
+      "signature": "pub use numerical :: try_moore_penrose_pseudoinverse"
+    }
+  ],
+  "engine_linalg:src/nalgebra_ops/numerical.rs": [
+    {
+      "signature": "pub fn moore_penrose_pseudoinverse (_ : & DMatrix < f64 > , _ : f64) -> DMatrix < f64 >"
+    },
+    {
+      "signature": "pub fn solve_cholesky_system (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Result < DVector < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn solve_conjugate_gradient (_ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : f64 , _ : usize ,) -> Result < DVector < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn solve_gmres_restarted (_ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : usize , _ : f64 , _ : usize ,) -> Result < DVector < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn solve_linear_system (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Result < DVector < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn solve_normal_equation (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Result < DVector < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn solve_tikhonov_system (_ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : f64 ,) -> Result < DVector < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn try_moore_penrose_pseudoinverse (_ : & DMatrix < f64 > , _ : f64 ,) -> Result < DMatrix < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub use math_scalars :: LinearAlgebraError"
     }
   ],
   "engine_linalg:src/norms.rs": [
@@ -11986,12 +12077,6 @@
       "signature": "impl < 'a , T : Scalar > DenseView < 'a , T > { pub fn new (_ : & 'a [T] , _ : usize , _ : usize) -> Result < Self , LinalgError > }"
     },
     {
-      "signature": "pub const fn mat_idx (_ : usize , _ : usize , _ : usize) -> usize"
-    },
-    {
-      "signature": "pub enum LinalgError"
-    },
-    {
       "signature": "pub fn add_scaled_vec_array < T : Scalar , const N : usize > (_ : & [T ; N] , _ : & [T ; N] , _ : T ,) -> [T ; N]"
     },
     {
@@ -12022,6 +12107,12 @@
       "signature": "pub struct DenseView < 'a , T >"
     },
     {
+      "signature": "pub use math_scalars :: LinalgError"
+    },
+    {
+      "signature": "pub use math_scalars :: LinearAlgebraError"
+    },
+    {
       "signature": "pub use math_scalars :: OwnedWorkspace"
     },
     {
@@ -12029,6 +12120,9 @@
     },
     {
       "signature": "pub use math_scalars :: SolverWorkspace"
+    },
+    {
+      "signature": "pub use math_scalars :: mat_idx"
     }
   ],
   "engine_opt:src/error.rs": [
@@ -12259,6 +12353,29 @@
     },
     {
       "signature": "pub use math_scalars :: series :: Sample2D"
+    }
+  ],
+  "engine_pde:src/advection_2d.rs": [
+    {
+      "signature": "pub fn advection_courant_number (_ : f64 , _ : StepSize , _ : StepSize , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn advection_diffusion_cfl_limit (_ : StepSize , _ : StepSize , _ : f64 , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn donor_cell_face_flux (_ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn grid_peclet_number (_ : f64 , _ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub fn try_upwind_advection_2d (_ : (usize , usize) , _ : & [f64] , _ : & [f64] , _ : & [f64] , _ : & mut [f64] , _ : & StencilOperators ,) -> Result < () , MathError >"
+    },
+    {
+      "signature": "pub fn upwind_advection_2d (_ : (usize , usize) , _ : & [f64] , _ : & [f64] , _ : & [f64] , _ : & mut [f64] , _ : & StencilOperators ,)"
+    },
+    {
+      "signature": "pub fn upwind_advection_cell_2d (_ : f64 , _ : [f64 ; 4] , _ : [f64 ; 4] , _ : f64 , _ : f64 ,) -> f64"
     }
   ],
   "engine_pde:src/boundary.rs": [
@@ -13394,6 +13511,9 @@
     },
     {
       "signature": "pub fn sample_standard_normal_pair < T : Scalar , R : RngCore + ? Sized > (_ : & mut R) -> (T , T)"
+    },
+    {
+      "signature": "pub fn ssa_sample_event < T : Scalar , R : RngCore + ? Sized > (_ : & [T] , _ : & mut R ,) -> Option < (T , usize) >"
     },
     {
       "signature": "pub struct Dimension"
@@ -14565,6 +14685,15 @@
       "signature": "pub use ieee :: sqrt_f64"
     },
     {
+      "signature": "pub use linalg_error :: LinalgError"
+    },
+    {
+      "signature": "pub use linalg_error :: LinearAlgebraError"
+    },
+    {
+      "signature": "pub use linalg_error :: mat_idx"
+    },
+    {
       "signature": "pub use series :: PointSeries"
     },
     {
@@ -14608,6 +14737,17 @@
     },
     {
       "signature": "pub use workspace :: flatten_3d_index"
+    }
+  ],
+  "math_scalars:src/linalg_error.rs": [
+    {
+      "signature": "pub const fn mat_idx (_ : usize , _ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub enum LinalgError"
+    },
+    {
+      "signature": "pub enum LinearAlgebraError"
     }
   ],
   "math_scalars:src/series.rs": [
@@ -15119,6 +15259,12 @@
       "signature": "pub use primitives :: *"
     },
     {
+      "signature": "pub use surface :: *"
+    },
+    {
+      "signature": "pub use thickness :: *"
+    },
+    {
       "signature": "pub use types :: *"
     }
   ],
@@ -15149,6 +15295,55 @@
     },
     {
       "signature": "pub fn extrude_polyline_tube (_ : & [Point3D] , _ : f32 , _ : usize , _ : bool ,) -> Result < Mesh , Error >"
+    }
+  ],
+  "oxidize_core:src/mesh/surface.rs": [
+    {
+      "signature": "impl Surface { pub fn from_vertices (_ : Vec < [f64 ; 3] >) -> Self }"
+    },
+    {
+      "signature": "impl Surface { pub fn new (_ : Vec < [f64 ; 3] > , _ : Vec < [usize ; 3] >) -> Self }"
+    },
+    {
+      "signature": "pub struct Surface"
+    }
+  ],
+  "oxidize_core:src/mesh/thickness.rs": [
+    {
+      "signature": "pub fn cortical_thickness (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & Surface , _ : & Surface ,) -> f64"
+    },
+    {
+      "signature": "pub fn cortical_thickness_batch (_ : & Surface , _ : & Surface) -> Vec < f64 >"
+    },
+    {
+      "signature": "pub fn cortical_thickness_batch_into (_ : & Surface , _ : & Surface , _ : & mut [f64] ,)"
+    },
+    {
+      "signature": "pub fn cortical_thickness_indexed (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & FlatSpatialGrid < '_ > , _ : & FlatSpatialGrid < '_ > ,) -> f64"
+    },
+    {
+      "signature": "pub fn cortical_thickness_into (_ : & Surface , _ : & Surface , _ : & SpatialGrid , _ : & SpatialGrid , _ : & mut [f64] ,)"
+    },
+    {
+      "signature": "pub fn cortical_thickness_map (_ : & Surface , _ : & Surface) -> Vec < f64 >"
+    },
+    {
+      "signature": "pub fn cortical_thickness_map_into (_ : & Surface , _ : & Surface , _ : & mut ThicknessWorkspace , _ : & mut [f64] ,) -> usize"
+    },
+    {
+      "signature": "pub fn cortical_thickness_mesh (_ : & Surface , _ : & Surface) -> Vec < f64 >"
+    },
+    {
+      "signature": "pub fn cortical_thickness_with_grid (_ : & [f64 ; 3] , _ : & [f64 ; 3] , _ : & SpatialGrid , _ : & SpatialGrid ,) -> f64"
+    },
+    {
+      "signature": "pub use thickness_grid :: FlatSpatialGrid"
+    },
+    {
+      "signature": "pub use thickness_grid :: SpatialGrid"
+    },
+    {
+      "signature": "pub use thickness_grid :: ThicknessWorkspace"
     }
   ],
   "oxidize_core:src/mesh/types.rs": [
@@ -15659,13 +15854,7 @@
       "signature": "pub use domain_applied :: error :: EngineeringError"
     },
     {
-      "signature": "pub use domain_applied :: error :: GameTheoryError"
-    },
-    {
       "signature": "pub use domain_applied :: error :: IsosurfaceError"
-    },
-    {
-      "signature": "pub use domain_applied :: error :: KalmanError"
     },
     {
       "signature": "pub use domain_applied :: error :: LoraError"
@@ -15749,6 +15938,9 @@
       "signature": "pub use engine_diffeq :: DiffeqError"
     },
     {
+      "signature": "pub use engine_diffeq :: KalmanError"
+    },
+    {
       "signature": "pub use engine_linalg :: LinalgError"
     },
     {
@@ -15813,6 +16005,9 @@
     },
     {
       "signature": "pub use pure_math :: error :: FractranError"
+    },
+    {
+      "signature": "pub use pure_math :: error :: GameTheoryError"
     },
     {
       "signature": "pub use pure_math :: error :: Glicko2Error"
@@ -15973,9 +16168,6 @@
       "signature": "pub use pure_math :: math_types"
     },
     {
-      "signature": "pub use pure_math :: pure_math"
-    },
-    {
       "signature": "pub use pure_math :: pure_math :: statistics :: bootstrap"
     },
     {
@@ -16006,9 +16198,6 @@
     },
     {
       "signature": "pub use diagnostics :: Severity"
-    },
-    {
-      "signature": "pub use domain_applied :: applied :: freesurfer :: cortical_thickness_batch"
     },
     {
       "signature": "pub use domain_biology :: biology :: diffusion :: CotangentMeshDiffusion"
@@ -16089,6 +16278,9 @@
       "signature": "pub use oxidize_core :: mesh :: VertexColor"
     },
     {
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_batch"
+    },
+    {
       "signature": "pub use oxidize_core :: rng :: BASE_SEED"
     },
     {
@@ -16128,7 +16320,285 @@
       "signature": "pub use scientific_metadata :: theory :: TheoryDescribable"
     }
   ],
+  "oxidizemath:src/pure_math_facade.rs": [
+    {
+      "signature": "pub mod algebra"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use engine_linalg :: nalgebra_ops :: decomposition } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use engine_linalg :: nalgebra_ops :: effective_rank } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use engine_linalg :: nalgebra_ops :: low_rank_approximation } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use engine_linalg :: nalgebra_ops :: moore_penrose_pseudoinverse } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use engine_linalg :: nalgebra_ops :: numerical } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use engine_linalg :: nalgebra_ops :: solve_cholesky_system } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use engine_linalg :: nalgebra_ops :: solve_conjugate_gradient } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use engine_linalg :: nalgebra_ops :: solve_gmres_restarted } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use engine_linalg :: nalgebra_ops :: solve_linear_system } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use engine_linalg :: nalgebra_ops :: solve_normal_equation } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use engine_linalg :: nalgebra_ops :: solve_tikhonov_system } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use engine_linalg :: nalgebra_ops :: try_low_rank_approximation } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use engine_linalg :: nalgebra_ops :: try_moore_penrose_pseudoinverse } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use pure_math :: pure_math :: algebra :: linear_algebra :: LinearAlgebraError } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use pure_math :: pure_math :: algebra :: linear_algebra :: canonical } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra { pub use pure_math :: pure_math :: algebra :: linear_algebra :: eigen } }"
+    },
+    {
+      "signature": "pub mod algebra { pub mod linear_algebra }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: AbelianGroup }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: BraidError }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: BraidWord }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: CyclicElement }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: EuclideanDomain }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: Field }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: Fp }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: Group }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: LaurentPolynomial }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: LinearAlgebraError }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: MAX_BRAID_STRANDS }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: MAX_BRAID_WORD_LEN }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: Monoid }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: Permutation }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: Polynomial }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: RefOps }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: Ring }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: Scalar }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: Semigroup }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: Zn }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: fields }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: generate_left_coset }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: generate_right_coset }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: group }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: is_normal_subgroup }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: is_subgroup }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: polynomial }"
+    },
+    {
+      "signature": "pub mod algebra { pub use pure_math :: pure_math :: algebra :: traits }"
+    },
+    {
+      "signature": "pub mod analysis"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde { pub mod fused_stepper { pub use engine_pde :: * } } }"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde { pub mod fused_stepper } }"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde { pub use engine_pde :: advection_2d } }"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde { pub use pure_math :: pure_math :: analysis :: pde :: BoundaryCondition } }"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde { pub use pure_math :: pure_math :: analysis :: pde :: DirichletBoundary } }"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde { pub use pure_math :: pure_math :: analysis :: pde :: NeumannBoundary } }"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde { pub use pure_math :: pure_math :: analysis :: pde :: PdeClassification } }"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde { pub use pure_math :: pure_math :: analysis :: pde :: SecondOrderLinearPde2D } }"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde { pub use pure_math :: pure_math :: analysis :: pde :: greens } }"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde { pub use pure_math :: pure_math :: analysis :: pde :: heat } }"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde { pub use pure_math :: pure_math :: analysis :: pde :: laplace } }"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde { pub use pure_math :: pure_math :: analysis :: pde :: tridiagonal } }"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde { pub use pure_math :: pure_math :: analysis :: pde :: wave } }"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde { pub use pure_math :: pure_math :: analysis :: pde :: wave_2d } }"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde { pub use pure_math :: pure_math :: analysis :: pde :: wave_fdtd } }"
+    },
+    {
+      "signature": "pub mod analysis { pub mod pde }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: AnalysisError }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: EvolutionError }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: OptimizationError }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: StochasticError }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: TransformError }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: complex }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: evolution }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: integration }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: momentum_dynamics }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: ode }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: optimization }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: roots }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: stochastic }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: transforms }"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: algorithmic_information"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: differential_geometry"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: elliptic_curves"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: error"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: game_theory"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: graph_theory"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: hyperbolic"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: knot_theory"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: logic"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: number_theory"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: special_functions"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: statistics"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: tensor"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: vector_calculus"
+    }
+  ],
   "pure_math:src/error.rs": [
+    {
+      "signature": "pub enum GameTheoryError"
+    },
     {
       "signature": "pub enum Glicko2Error"
     },
@@ -16146,9 +16616,6 @@
     },
     {
       "signature": "pub use crate :: pure_math :: algebra :: BraidError"
-    },
-    {
-      "signature": "pub use crate :: pure_math :: algebra :: linear_algebra :: numerical :: LinearAlgebraError"
     },
     {
       "signature": "pub use crate :: pure_math :: algorithmic_information :: FractranError"
@@ -16205,7 +16672,10 @@
       "signature": "pub use crate :: pure_math :: tensor :: types :: TensorError"
     },
     {
-      "signature": "pub use engine_linalg :: LinalgError"
+      "signature": "pub use math_scalars :: LinalgError"
+    },
+    {
+      "signature": "pub use math_scalars :: LinearAlgebraError"
     },
     {
       "signature": "pub use math_scalars :: ScalarError"
@@ -16295,6 +16765,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: FractranError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: GameTheoryError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: Glicko2Error } }"
@@ -16820,17 +17293,6 @@
       "signature": "pub struct JordanBlock"
     }
   ],
-  "pure_math:src/pure_math/algebra/linear_algebra/decomposition.rs": [
-    {
-      "signature": "pub fn effective_rank (_ : & DMatrix < f64 > , _ : Option < f64 >) -> usize"
-    },
-    {
-      "signature": "pub fn low_rank_approximation (_ : & DMatrix < f64 > , _ : usize) -> DMatrix < f64 >"
-    },
-    {
-      "signature": "pub fn try_low_rank_approximation (_ : & DMatrix < f64 > , _ : usize ,) -> Result < DMatrix < f64 > , LinearAlgebraError >"
-    }
-  ],
   "pure_math:src/pure_math/algebra/linear_algebra/eigen.rs": [
     {
       "signature": "pub fn is_stable (_ : & DMatrix < f64 >) -> bool"
@@ -16841,69 +17303,7 @@
   ],
   "pure_math:src/pure_math/algebra/linear_algebra/mod.rs": [
     {
-      "signature": "pub use decomposition :: effective_rank"
-    },
-    {
-      "signature": "pub use decomposition :: low_rank_approximation"
-    },
-    {
-      "signature": "pub use decomposition :: try_low_rank_approximation"
-    },
-    {
-      "signature": "pub use numerical :: LinearAlgebraError"
-    },
-    {
-      "signature": "pub use numerical :: moore_penrose_pseudoinverse"
-    },
-    {
-      "signature": "pub use numerical :: solve_cholesky_system"
-    },
-    {
-      "signature": "pub use numerical :: solve_conjugate_gradient"
-    },
-    {
-      "signature": "pub use numerical :: solve_gmres_restarted"
-    },
-    {
-      "signature": "pub use numerical :: solve_linear_system"
-    },
-    {
-      "signature": "pub use numerical :: solve_normal_equation"
-    },
-    {
-      "signature": "pub use numerical :: solve_tikhonov_system"
-    },
-    {
-      "signature": "pub use numerical :: try_moore_penrose_pseudoinverse"
-    }
-  ],
-  "pure_math:src/pure_math/algebra/linear_algebra/numerical.rs": [
-    {
-      "signature": "pub enum LinearAlgebraError"
-    },
-    {
-      "signature": "pub fn moore_penrose_pseudoinverse (_ : & DMatrix < f64 > , _ : f64) -> DMatrix < f64 >"
-    },
-    {
-      "signature": "pub fn solve_cholesky_system (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Result < DVector < f64 > , LinearAlgebraError >"
-    },
-    {
-      "signature": "pub fn solve_conjugate_gradient (_ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : f64 , _ : usize ,) -> Result < DVector < f64 > , LinearAlgebraError >"
-    },
-    {
-      "signature": "pub fn solve_gmres_restarted (_ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : usize , _ : f64 , _ : usize ,) -> Result < DVector < f64 > , LinearAlgebraError >"
-    },
-    {
-      "signature": "pub fn solve_linear_system (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Result < DVector < f64 > , LinearAlgebraError >"
-    },
-    {
-      "signature": "pub fn solve_normal_equation (_ : & DMatrix < f64 > , _ : & DVector < f64 > ,) -> Result < DVector < f64 > , LinearAlgebraError >"
-    },
-    {
-      "signature": "pub fn solve_tikhonov_system (_ : & DMatrix < f64 > , _ : & DVector < f64 > , _ : f64 ,) -> Result < DVector < f64 > , LinearAlgebraError >"
-    },
-    {
-      "signature": "pub fn try_moore_penrose_pseudoinverse (_ : & DMatrix < f64 > , _ : f64 ,) -> Result < DMatrix < f64 > , LinearAlgebraError >"
+      "signature": "pub use math_scalars :: LinearAlgebraError"
     }
   ],
   "pure_math:src/pure_math/algebra/mod.rs": [
@@ -17984,34 +18384,6 @@
     },
     {
       "signature": "pub trait Trainable < T : nalgebra :: RealField + Copy = f64 > { fn forward (& self , _ : & nalgebra :: DVector < T >) -> nalgebra :: DVector < T > }"
-    }
-  ],
-  "pure_math:src/pure_math/analysis/pde/advection_2d.rs": [
-    {
-      "signature": "pub fn advection_courant_number (_ : f64 , _ : StepSize , _ : StepSize , _ : f64 , _ : f64 ,) -> f64"
-    },
-    {
-      "signature": "pub fn advection_diffusion_cfl_limit (_ : StepSize , _ : StepSize , _ : f64 , _ : f64 , _ : f64 ,) -> f64"
-    },
-    {
-      "signature": "pub fn donor_cell_face_flux (_ : f64 , _ : f64 , _ : f64) -> f64"
-    },
-    {
-      "signature": "pub fn grid_peclet_number (_ : f64 , _ : f64 , _ : f64) -> f64"
-    },
-    {
-      "signature": "pub fn try_upwind_advection_2d (_ : (usize , usize) , _ : & [f64] , _ : & [f64] , _ : & [f64] , _ : & mut [f64] , _ : & StencilOperators ,) -> Result < () , math_commons :: error :: MathError >"
-    },
-    {
-      "signature": "pub fn upwind_advection_2d (_ : (usize , usize) , _ : & [f64] , _ : & [f64] , _ : & [f64] , _ : & mut [f64] , _ : & StencilOperators ,)"
-    },
-    {
-      "signature": "pub fn upwind_advection_cell_2d (_ : f64 , _ : [f64 ; 4] , _ : [f64 ; 4] , _ : f64 , _ : f64 ,) -> f64"
-    }
-  ],
-  "pure_math:src/pure_math/analysis/pde/fused_stepper.rs": [
-    {
-      "signature": "pub use engine_pde :: *"
     }
   ],
   "pure_math:src/pure_math/analysis/pde/greens.rs": [
@@ -19682,6 +20054,44 @@
     },
     {
       "signature": "pub struct WeierstrassCurve"
+    }
+  ],
+  "pure_math:src/pure_math/game_theory/evolutionary.rs": [
+    {
+      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn derivative (& self , _ : & DVector < f64 >) -> DVector < f64 > }"
+    },
+    {
+      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn new_with_fitness (_ : S) -> Self }"
+    },
+    {
+      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn simulate (& self , _ : DVector < f64 > , _ : f64 , _ : f64 ,) -> Vec < (f64 , DVector < f64 >) > }"
+    },
+    {
+      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn simulate_with_strategy < Solve > (& self , _ : DVector < f64 > , _ : f64 , _ : f64 , _ : & mut Solve ,) -> Vec < (f64 , DVector < f64 >) > where Solve : Solver < DVector < f64 > > , }"
+    },
+    {
+      "signature": "impl MatrixPayoff { pub fn new (_ : DMatrix < f64 >) -> Result < Self , GameTheoryError > }"
+    },
+    {
+      "signature": "impl MatrixPayoff { pub fn payoff_matrix (& self) -> & DMatrix < f64 > }"
+    },
+    {
+      "signature": "impl ReplicatorDynamics < MatrixPayoff > { pub fn new (_ : DMatrix < f64 >) -> Result < Self , GameTheoryError > }"
+    },
+    {
+      "signature": "impl ReplicatorDynamics < MatrixPayoff > { pub fn payoff_matrix (& self) -> & DMatrix < f64 > }"
+    },
+    {
+      "signature": "pub struct MatrixPayoff"
+    },
+    {
+      "signature": "pub struct ReplicatorDynamics < S : FitnessStrategy = MatrixPayoff >"
+    },
+    {
+      "signature": "pub trait FitnessStrategy"
+    },
+    {
+      "signature": "pub trait FitnessStrategy { fn fitness (& self , _ : & DVector < f64 > , _ : & mut DVector < f64 >) }"
     }
   ],
   "pure_math:src/pure_math/graph_theory/dijkstra.rs": [

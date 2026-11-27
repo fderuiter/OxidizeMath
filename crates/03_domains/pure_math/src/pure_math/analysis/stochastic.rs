@@ -96,7 +96,7 @@ impl<R: Rng> GillespieSolver<R> {
         system.propensities(state, &mut self.buffer);
 
         let Some((tau, reaction_index)) =
-            engine_diffeq::ssa_sample_event(&self.buffer, &mut self.rng)
+            math_commons::math_kernel::types::ssa_sample_event(&self.buffer, &mut self.rng)
         else {
             return Ok(f64::INFINITY);
         };

@@ -1,7 +1,7 @@
 //! Unified feature-gated error re-exports and facade umbrella error across all OxidizeMath domains.
 
 pub use diagnostics::DiagnosticError;
-pub use engine_diffeq::DiffeqError;
+pub use engine_diffeq::{DiffeqError, KalmanError};
 pub use engine_linalg::LinalgError;
 pub use engine_opt::error::FitError;
 pub use engine_pde::PdeError;
@@ -17,8 +17,8 @@ pub use domain_ai::error::AIError;
 
 #[cfg(feature = "applied")]
 pub use domain_applied::error::{
-    AppliedError, BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError,
-    IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, PortfolioError, VoxelGridError,
+    AppliedError, BatteryError, ClinicalTrialError, EngineeringError, IsosurfaceError, LoraError,
+    PharmacokineticsError, PortfolioError, VoxelGridError,
 };
 
 #[cfg(feature = "biology")]
@@ -44,11 +44,11 @@ pub use domain_physics::error::{
 #[cfg(feature = "pure_math")]
 pub use pure_math::error::{
     AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
-    EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
-    KnotError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
-    MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError, OuError,
-    PoissonError, PureMathError, QueueingError, RiskError, StochasticError, Su11HyperbolicError,
-    TdaError, TensorError, TransformError, ZipError,
+    EvolutionError, FractranError, GameTheoryError, Glicko2Error, GraphTheoryError,
+    HyperbolicError, KellyError, KnotError, LinearAlgebraError, MarketPricingError, MarkovError,
+    MatchModelError, MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError,
+    OuError, PoissonError, PureMathError, QueueingError, RiskError, StochasticError,
+    Su11HyperbolicError, TdaError, TensorError, TransformError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -62,6 +62,8 @@ pub enum Error {
     Diagnostic(DiagnosticError),
     /// Differential-equation and stochastic integrator engine error.
     Diffeq(DiffeqError),
+    /// Kalman filter tracking error.
+    Kalman(KalmanError),
     /// Partial differential equation and SPDE engine error.
     Pde(PdeError),
     /// AST evaluation error.
@@ -107,15 +109,9 @@ pub enum Error {
     /// Engineering calculation error.
     #[cfg(feature = "applied")]
     Engineering(EngineeringError),
-    /// Game theory modeling error.
-    #[cfg(feature = "applied")]
-    GameTheory(GameTheoryError),
     /// Isosurface extraction error.
     #[cfg(feature = "applied")]
     Isosurface(IsosurfaceError),
-    /// Kalman filter tracking error.
-    #[cfg(feature = "applied")]
-    Kalman(KalmanError),
     /// LoRA module ensemble error.
     #[cfg(feature = "applied")]
     Lora(LoraError),
@@ -229,6 +225,9 @@ pub enum Error {
     /// Prime-exponent FRACTRAN register machine error.
     #[cfg(feature = "pure_math")]
     Fractran(FractranError),
+    /// Game theory modeling error.
+    #[cfg(feature = "pure_math")]
+    GameTheory(GameTheoryError),
     /// Glicko-2 rating error.
     #[cfg(feature = "pure_math")]
     Glicko2(Glicko2Error),

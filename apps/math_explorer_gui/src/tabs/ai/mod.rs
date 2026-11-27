@@ -6,9 +6,22 @@ use eframe::egui;
 pub mod activation_functions;
 pub mod attention_maps;
 pub mod calibration_workbench;
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "epidemiology",
+    feature = "physics"
+))]
 pub mod closed_loop_control;
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "physics"
+))]
 pub mod gaussian_splatting;
 pub mod grid_world;
+#[cfg(all(feature = "ai", feature = "applied", feature = "physics"))]
 pub mod loss_landscape;
 pub mod q_table_inspector;
 pub mod reward_plots;

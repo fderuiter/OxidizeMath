@@ -1,7 +1,7 @@
 //! Metropolis-Hastings and pairwise Fermi evolutionary game kernels for [`super::GraphSpinSystem`].
 
 use super::{GraphSpinSystem, KB};
-use domain_applied::applied::game_theory::evolutionary::MatrixPayoff;
+use pure_math::pure_math::game_theory::evolutionary::MatrixPayoff;
 use rand::Rng;
 
 impl GraphSpinSystem {

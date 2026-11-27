@@ -257,35 +257,6 @@ fn test_associated_laguerre_and_spherical_harmonics() {
 
 #[test]
 #[verified_engine::verified]
-fn test_3d_coupled_neumann_mass_conservation() {
-    use engine_pde::FusedStencilStepper;
-    use math_commons::math_kernel::types::StepSize;
-
-    let stepper = FusedStencilStepper::new_3d(StepSize(0.5), StepSize(0.5), StepSize(0.5));
-    let mut src = vec![0.0; 6 * 6 * 6];
-    let mut dst = vec![0.0; 6 * 6 * 6];
-    src[math_commons::math_kernel::types::flatten_3d_index(2, 3, 2, 6, 6)] = 8.0;
-    let initial_mass: f64 = src.iter().sum();
-
-    stepper.step_3d_coupled_neumann(
-        (6, 6, 6),
-        [&src],
-        [&mut dst],
-        0.02,
-        1.0,
-        |_idx, curr, nb, ops| {
-            [ops.central_diff_2nd_3d(
-                curr[0],
-                [nb.xm[0], nb.xp[0], nb.ym[0], nb.yp[0], nb.zm[0], nb.zp[0]],
-            )]
-        },
-    );
-    let final_mass: f64 = dst.iter().sum();
-    assert_abs_diff_eq!(initial_mass, final_mass, epsilon = 1e-11);
-}
-
-#[test]
-#[verified_engine::verified]
 fn test_bessel_large_argument_asymptotic_accuracy() {
     assert_abs_diff_eq!(
         bessel::bessel_j(0.0, 40.0),

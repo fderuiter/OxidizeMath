@@ -1,10 +1,11 @@
-#![cfg_attr(any(), verified(opt_out = "tests"))]
+//! Integration tests for `StencilOperators` and `FusedStencilStepper` migrated from `pure_math`.
 
-use super::*;
-use math_commons::math_kernel::types::StepSize;
+use engine_pde::{FusedStencilStepper, StencilOperators};
+use math_commons::error::MathError;
+use math_commons::math_kernel::types::{StepSize, flatten_3d_index};
 
 #[test]
-fn test_stencil_operators_precomputation() {
+fn test_stencil_operators_precomputation_and_try_constructors() {
     let ops = StencilOperators::new_2d(StepSize(0.5), StepSize(0.25));
     assert!((ops.inv_dx - 2.0).abs() < 1e-12);
     assert!((ops.inv_dy - 4.0).abs() < 1e-12);
@@ -18,6 +19,14 @@ fn test_stencil_operators_precomputation() {
     assert!((ops_3d.inv_dy - 4.0).abs() < 1e-12);
     assert!((ops_3d.inv_dz_sq - 25.0).abs() < 1e-12);
     assert!(FusedStencilStepper::try_new_3d(StepSize(1.0), StepSize(1.0), StepSize(0.0)).is_err());
+    assert!(matches!(
+        StencilOperators::try_new(StepSize(0.0)),
+        Err(MathError::StrictlyOutOfBounds { .. })
+    ));
+    assert!(matches!(
+        FusedStencilStepper::try_new_2d(StepSize(0.1), StepSize(-0.1)),
+        Err(MathError::StrictlyOutOfBounds { .. })
+    ));
 
     let ops_1d = StencilOperators::new(StepSize(2.0));
     assert!((ops_1d.inv_dx - 0.5).abs() < 1e-12);
@@ -65,4 +74,29 @@ fn test_stencil_operator_evaluations() {
     let flux_neg = ops.upwind_flux(-2.0, 1.0, 3.0, 5.0);
     let flux_neg_expected = (5.0 * (-2.0) - 3.0 * (-2.0)) / dx;
     assert!((flux_neg - flux_neg_expected).abs() < 1e-12);
+}
+
+#[test]
+fn test_3d_coupled_neumann_mass_conservation() {
+    let stepper = FusedStencilStepper::new_3d(StepSize(0.5), StepSize(0.5), StepSize(0.5));
+    let mut src = [0.0; 6 * 6 * 6];
+    let mut dst = [0.0; 6 * 6 * 6];
+    src[flatten_3d_index(2, 3, 2, 6, 6)] = 8.0;
+    let initial_mass: f64 = src.iter().sum();
+
+    stepper.step_3d_coupled_neumann(
+        (6, 6, 6),
+        [&src],
+        [&mut dst],
+        0.02,
+        1.0,
+        |_idx, curr, nb, ops| {
+            [ops.central_diff_2nd_3d(
+                curr[0],
+                [nb.xm[0], nb.xp[0], nb.ym[0], nb.yp[0], nb.zm[0], nb.zp[0]],
+            )]
+        },
+    );
+    let final_mass: f64 = dst.iter().sum();
+    assert!((initial_mass - final_mass).abs() < 1e-11);
 }

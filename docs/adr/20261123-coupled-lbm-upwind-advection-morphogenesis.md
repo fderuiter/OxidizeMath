@@ -18,8 +18,8 @@ In addition, `domain_biology` and `domain_physics` are independent domain crates
 ## Decision
 
 1. **`#![no_std]` Stencil Reciprocal & Pure-Math 2D Donor-Cell Upwind Advection** (`engine_pde`, `pure_math`):
-   - Added `inv_dy: f64` (`1.0 / *dy`) to `StencilOperators` in [stencil.rs](../../crates/02_engines/engine_pde/src/stencil.rs) (re-exported via [fused_stepper.rs](../../crates/03_domains/pure_math/src/pure_math/analysis/pde/fused_stepper.rs)) and reused `self.inv_dy` across `upwind_2d_at` and `upwind_3d_at`.
-   - Created [advection_2d.rs](../../crates/03_domains/pure_math/src/pure_math/analysis/pde/advection_2d.rs) providing conservative face-velocity donor-cell upwind divergence (`-∇ · (v c)`), `advection_courant_number`, `advection_diffusion_cfl_limit`, and `grid_peclet_number`, all verified zero-allocation under `#[verified_engine::verified]`.
+   - Added `inv_dy: f64` (`1.0 / *dy`) to `StencilOperators` in [stencil.rs](../../crates/02_engines/engine_pde/src/stencil.rs) (re-exported via [pure_math_facade.rs](../../crates/04_bindings/oxidizemath/src/pure_math_facade.rs)) and reused `self.inv_dy` across `upwind_2d_at` and `upwind_3d_at`.
+   - Created [advection_2d.rs](../../crates/02_engines/engine_pde/src/advection_2d.rs) providing conservative face-velocity donor-cell upwind divergence (`-∇ · (v c)`), `advection_courant_number`, `advection_diffusion_cfl_limit`, and `grid_peclet_number`, all verified zero-allocation under `#[verified_engine::verified]`.
 
 2. **Wall-Aware Patankar Advection-Diffusion-Reaction Stepping** (`domain_biology`):
    - Created [advection.rs](../../crates/03_domains/domain_biology/src/biology/diffusion/fd2d/advection.rs) defining `AdvectedSpatialDiffusion<N>` for `FiniteDifference2D` and `MaskedFiniteDifference2D`.

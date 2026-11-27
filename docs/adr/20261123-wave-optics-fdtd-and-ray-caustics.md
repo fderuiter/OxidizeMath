@@ -16,7 +16,7 @@ Bridging physical wave diffraction and geometric-optics caustics across desktop 
 ## Decision
 1. **Zero-Allocation 2D FDTD Solver (`WaveField2D`) in `pure_math`**:
    - Add [`wave_fdtd.rs`](../../crates/03_domains/pure_math/src/pure_math/analysis/pde/wave_fdtd.rs) and re-export `WaveField2D`, `WaveFieldConfig2D`, `WaveSource2D`, and `WaveSourceKind` from [`wave.rs`](../../crates/03_domains/pure_math/src/pure_math/analysis/pde/wave.rs).
-   - Step positive-index inhomogeneous media via centered leapfrog using [`StencilOperators::central_diff_2nd_2d`](../../crates/03_domains/pure_math/src/pure_math/analysis/pde/fused_stepper.rs), quadratic sponge absorbing boundaries, Dirichlet obstacle masks, and 2D Courant-Friedrichs-Lewy (`cfl_dt`) clamping.
+   - Step positive-index inhomogeneous media via centered leapfrog using [`GridSpacing2D::central_diff_2nd_2d`](../../crates/03_domains/pure_math/src/pure_math/analysis/pde/grid_2d.rs), quadratic sponge absorbing boundaries, Dirichlet obstacle masks, and 2D Courant-Friedrichs-Lewy (`cfl_dt`) clamping.
    - Pre-allocate passive matched-Drude auxiliary fields (`hx`, `hy`, `jz`, `mx`, `my`, `omega_p_sq`) activated automatically when negative-index cells ($n < 0$) are configured, reproducing backward phase fronts and Veselago superlens focusing with zero heap allocation during `step`.
 2. **Optical Media, RK4 Hamiltonian Caustics, and Virtual Detector Readouts in `domain_physics`**:
    - Add [`refraction.rs`](../../crates/03_domains/domain_physics/src/physics/optics/refraction.rs) providing `OpticsPreset` (`DoubleSlit`, `LuneburgLens`, `MaxwellFishEye`, `BiconvexDroplet`, and `VeselagoLens`), `OpticalMediumConfig`, `snell_refracted_angle`, and `snell_refract_vector`.

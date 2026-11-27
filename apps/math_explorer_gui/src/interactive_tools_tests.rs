@@ -72,10 +72,13 @@ mod tests {
             check_one::<crate::tabs::ai::attention_maps::AttentionMapsTool>(ctx);
             check_one::<crate::tabs::ai::tokenization::TokenizationTool>(ctx);
             check_one::<crate::tabs::ai::activation_functions::ActivationFunctionsTool>(ctx);
+            #[cfg(all(feature = "applied", feature = "biology", feature = "physics"))]
             check_one::<crate::tabs::ai::gaussian_splatting::GaussianSplattingTool>(ctx);
             check_one::<crate::tabs::ai::training_monitor::TrainingMonitorTool>(ctx);
+            #[cfg(all(feature = "applied", feature = "physics"))]
             check_one::<crate::tabs::ai::loss_landscape::LossLandscapeTool>(ctx);
             check_one::<crate::tabs::ai::grid_world::GridWorldTool>(ctx);
+            #[cfg(all(feature = "applied", feature = "epidemiology", feature = "physics"))]
             check_one::<crate::tabs::ai::closed_loop_control::ClosedLoopControlTool>(ctx);
         }
         #[cfg(feature = "physics")]
@@ -90,6 +93,7 @@ mod tests {
             check_one::<crate::tabs::fluid_dynamics::turbulence::TurbulenceTool>(ctx);
             check_one::<crate::tabs::medical::beam_profiling::BeamProfilingTool>(ctx);
             check_one::<crate::tabs::medical::dose::DoseCalculationTool>(ctx);
+            #[cfg(feature = "applied")]
             check_one::<crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool>(
                 ctx,
             );
@@ -109,6 +113,7 @@ mod tests {
             check_one::<crate::tabs::morphogenesis::lenia::LeniaTool>(ctx);
             check_one::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(ctx);
             check_one::<crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool>(ctx);
+            #[cfg(feature = "applied")]
             check_one::<crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool>(
                 ctx,
             );

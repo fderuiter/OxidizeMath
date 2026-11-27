@@ -1,8 +1,6 @@
 //! Core types for copula operations.
 
 use crate::error::CopulaError;
-use crate::pure_math::algebra::linear_algebra::numerical::dmatrix_to_row_major;
-use engine_linalg::{SolverWorkspace, cholesky_semidefinite, cholesky_semidefinite_workspace_len};
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
 use math_commons::registry::TOLERANCE_HIGH;
@@ -124,19 +122,51 @@ fn validate_entries_and_symmetry(matrix: &DMatrix<f64>) -> Result<DMatrix<f64>, 
 
 fn compute_psd_factor(sym: DMatrix<f64>) -> Result<DMatrix<f64>, CopulaError> {
     let n = sym.nrows();
-    let sym_row = dmatrix_to_row_major(&sym);
-    let mut lower = vec![0.0_f64; n * n];
-    let mut scratch = vec![0.0_f64; cholesky_semidefinite_workspace_len(n)];
-    cholesky_semidefinite(
-        &sym_row,
-        &mut lower,
-        n,
-        TOLERANCE_HIGH,
-        TOLERANCE_HIGH,
-        &mut SolverWorkspace::new(&mut scratch),
-    )
-    .map_err(|_| CopulaError::NotPositiveDefinite)?;
-    Ok(DMatrix::from_row_slice(n, n, &lower))
+    let eigs = sym.clone().symmetric_eigenvalues();
+    if eigs
+        .iter()
+        .any(|&ev| !ev.is_finite() || ev < -TOLERANCE_HIGH)
+    {
+        return Err(CopulaError::NotPositiveDefinite);
+    }
+    let mut lower = DMatrix::zeros(n, n);
+    for i in 0..n {
+        for j in 0..i {
+            let l_jj = lower[(j, j)];
+            if l_jj > TOLERANCE_HIGH {
+                let mut sum = sym[(i, j)];
+                for k in 0..j {
+                    sum -= lower[(i, k)] * lower[(j, k)];
+                }
+                lower[(i, j)] = sum / l_jj;
+            }
+        }
+        let mut diag_sq = sym[(i, i)];
+        for k in 0..i {
+            diag_sq -= lower[(i, k)] * lower[(i, k)];
+        }
+        if diag_sq < -TOLERANCE_HIGH {
+            return Err(CopulaError::NotPositiveDefinite);
+        }
+        if diag_sq > TOLERANCE_HIGH * TOLERANCE_HIGH {
+            lower[(i, i)] = diag_sq.sqrt();
+        }
+    }
+    let recon = &lower * lower.transpose();
+    if (&recon - &sym).amax() <= 1e-7 {
+        return Ok(lower);
+    }
+    let se = sym.symmetric_eigen();
+    let sqrt_d = DMatrix::from_diagonal(&se.eigenvalues.map(|v| v.max(0.0).sqrt()));
+    let mut r = (se.eigenvectors * sqrt_d).transpose().qr().r();
+    for i in 0..n {
+        if r[(i, i)] < 0.0 {
+            for j in i..n {
+                r[(i, j)] = -r[(i, j)];
+            }
+        }
+    }
+    Ok(r.transpose())
 }
 
 impl CorrelationMatrix {

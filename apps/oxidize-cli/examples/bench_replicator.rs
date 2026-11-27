@@ -1,8 +1,8 @@
 //! Example target for bench replicator.
 #![cfg_attr(not(target_arch = "wasm32"), allow(clippy::disallowed_methods))]
-use oxidizemath::applied::game_theory::evolutionary::ReplicatorDynamics;
 use oxidizemath::nalgebra::{DMatrix, DVector};
 use oxidizemath::pure_math::analysis::ode::RungeKutta4;
+use oxidizemath::pure_math::game_theory::evolutionary::ReplicatorDynamics;
 use std::time::Instant;
 
 fn main() {

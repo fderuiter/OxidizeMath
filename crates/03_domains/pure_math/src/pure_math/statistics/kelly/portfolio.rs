@@ -1,11 +1,14 @@
 //! Multi-asset covariance Kelly (`Sigma^-1 (mu - r * 1)`), diagonal independent Kelly,
 //! and zero-allocation projected-gradient long-only Kelly solvers.
 
+#[path = "cholesky.rs"]
+mod cholesky;
+
 use crate::error::KellyError;
-use engine_linalg::{cholesky_factor, cholesky_solve_factored, mat_idx};
+pub(crate) use cholesky::cholesky_into_flat;
+use cholesky::cholesky_solve_flat;
 use nalgebra::DMatrix;
 
-const CHOL_PIVOT_TOL: f64 = 1e-12;
 const PG_CONVERGENCE_TOL: f64 = 1e-10;
 const DEFAULT_PG_MAX_ITERS: usize = 400;
 
@@ -117,32 +120,6 @@ pub(crate) fn validate_covariance_inputs(
     Ok(n)
 }
 
-/// Computes in-place lower-triangular Cholesky factor `L` into row-major `chol_flat[..n*n]`
-/// via [`engine_linalg::cholesky_factor`].
-pub(crate) fn cholesky_into_flat(
-    covariance: &DMatrix<f64>,
-    n: usize,
-    sym_flat: &mut [f64],
-    chol_flat: &mut [f64],
-) -> Result<(), KellyError> {
-    for i in 0..n {
-        sym_flat[mat_idx(i, i, n)] = covariance[(i, i)];
-        for j in (i + 1)..n {
-            let avg = 0.5 * (covariance[(i, j)] + covariance[(j, i)]);
-            sym_flat[mat_idx(i, j, n)] = avg;
-            sym_flat[mat_idx(j, i, n)] = avg;
-        }
-    }
-    cholesky_factor(&sym_flat[..n * n], &mut chol_flat[..n * n], n)
-        .map_err(|_| KellyError::NotPositiveDefinite)?;
-    for i in 0..n {
-        if chol_flat[mat_idx(i, i, n)] <= CHOL_PIVOT_TOL {
-            return Err(KellyError::NotPositiveDefinite);
-        }
-    }
-    Ok(())
-}
-
 /// Evaluates leverage, variance, and continuous-time log-growth metrics for arbitrary weights `w`.
 #[verified_engine::verified]
 pub fn evaluate_portfolio_kelly_metrics(
@@ -233,13 +210,12 @@ pub fn solve_unconstrained_kelly_into(
     for (dst, &mu_i) in workspace.excess[..n].iter_mut().zip(expected_returns) {
         *dst = mu_i - risk_free_rate;
     }
-    cholesky_solve_factored(
+    cholesky_solve_flat(
         &workspace.chol_flat[..n * n],
         &workspace.excess[..n],
         out_weights,
         n,
-    )
-    .map_err(|_| KellyError::NotPositiveDefinite)?;
+    )?;
 
     Ok(compute_metrics_unchecked(
         out_weights,

@@ -13,12 +13,14 @@ math_contract = true
 [features]
 default = []
 alloc = ["math_commons/alloc", "math_rng/alloc"]
+nalgebra = ["alloc", "dep:nalgebra"]
 serde = ["dep:serde", "math_commons/serde", "math_diagnostics/serde", "math_rng/serde"]
 std = [
     "alloc",
     "math_commons/std",
     "math_diagnostics/std",
     "math_rng/std",
+    "nalgebra?/std",
     "serde?/std",
     "verified_engine/std",
 ]
@@ -27,6 +29,7 @@ std = [
 math_commons = { path = "../math_commons", default-features = false }
 math_diagnostics = { path = "../../00_foundation/math_diagnostics", default-features = false }
 math_rng = { path = "../../00_foundation/math_rng", default-features = false }
+nalgebra = { workspace = true, default-features = false, features = ["alloc", "libm"], optional = true }
 rand_core = { workspace = true }
 serde = { workspace = true, optional = true }
 verified_engine = { version = "0.1.0", path = "../../00_foundation/verified_engine", default-features = false }

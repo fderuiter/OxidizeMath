@@ -53,6 +53,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "check-duplicates" => gates::check_duplicates(),
         "check-api-drift" => gates::check_api_drift(),
         "check-maturity" => gates::check_maturity(rest),
+        "check-dag" => gates::check_dag(),
         "check-profiles" => gates::check_profiles(),
         "check-release-tag" => gates::check_release_tag(rest),
         "check-staged-duplicates" => gates::check_staged_duplicates(),
@@ -83,6 +84,9 @@ fn print_help() {
     );
     println!(
         "  check-certificate        - Verify Verification_Certificate.json schema and [verify_suite] floors"
+    );
+    println!(
+        "  check-dag                - Verify strict 5-tier DAG and isolated single-domain feature closures"
     );
     println!("  check-docs               - Run crate documentation audit");
     println!("  check-duplicates         - Run AST-level code clone detector across crates");

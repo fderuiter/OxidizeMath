@@ -7,9 +7,9 @@ use super::preset::{FermiGamePreset, IsingInteractionMode};
 use super::runner::{apply_circular_droplet, DropletSeed, MAX_DROPLET_SEEDS};
 use super::{IsingModelTool, IsingState, DEFAULT_ISING_SIZE};
 use crate::framework::{ChallengeEvaluation, ChallengeMetadata, InteractiveTool};
-use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
 use math_explorer::physics::stat_mech::KB;
+use math_explorer::pure_math::game_theory::evolutionary::MatrixPayoff;
 use nalgebra::DMatrix;
 
 /// Classical Becker-Döring critical droplet nucleation challenge ID.
