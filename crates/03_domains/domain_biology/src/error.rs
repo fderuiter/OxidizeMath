@@ -152,8 +152,7 @@ mod tests {
             KineticsError::NegativeSubstrateConcentration.into(),
             rd.into(),
             sample_math.into(),
-            domain_applied::error::GameTheoryError::NonSquarePayoffMatrix { rows: 1, cols: 2 }
-                .into(),
+            pure_math::error::GameTheoryError::NonSquarePayoffMatrix { rows: 1, cols: 2 }.into(),
         ];
 
         let bus = DiagnosticBus::new();

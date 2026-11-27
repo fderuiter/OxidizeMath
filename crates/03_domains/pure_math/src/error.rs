@@ -392,8 +392,9 @@ pub use crate::pure_math::{
     algebra::{BraidError, linear_algebra::numerical::LinearAlgebraError},
     algorithmic_information::FractranError,
     analysis::{
-        evolution::EvolutionError, optimization::OptimizationError, roots::AnalysisError,
-        stochastic::StochasticError, transforms::TransformError,
+        evolution::EvolutionError, evolutionary::GameTheoryError, kalman::KalmanError,
+        optimization::OptimizationError, roots::AnalysisError, stochastic::StochasticError,
+        transforms::TransformError,
     },
     differential_geometry::hyperbolic::Su11HyperbolicError,
     elliptic_curves::EllipticCurveError,

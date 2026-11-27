@@ -1161,7 +1161,6 @@ name = "domain_biology"
 version = "0.4.0"
 dependencies = [
  "diagnostics",
- "domain_applied",
  "engine_pde",
  "math_commons",
  "math_diagnostics",
@@ -1191,6 +1190,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "domain_engineering"
+version = "0.4.0"
+dependencies = [
+ "approx",
+ "diagnostics",
+ "engine_linalg",
+ "engine_opt",
+ "math_commons",
+ "math_diagnostics",
+ "nalgebra 0.34.2",
+ "num-complex",
+ "pure_math",
+ "rustfft",
+ "thiserror 2.0.21",
+ "verified_engine",
+]
+
+[[package]]
 name = "domain_epidemiology"
 version = "0.4.0"
 dependencies = [
@@ -1211,7 +1228,6 @@ version = "0.4.0"
 dependencies = [
  "approx",
  "diagnostics",
- "domain_applied",
  "engine_diffeq",
  "engine_linalg",
  "engine_opt",
@@ -2547,6 +2563,7 @@ dependencies = [
  "domain_applied",
  "domain_biology",
  "domain_climate",
+ "domain_engineering",
  "domain_epidemiology",
  "domain_physics",
  "engine_diffeq",
@@ -3361,6 +3378,7 @@ dependencies = [
  "domain_applied",
  "domain_biology",
  "domain_climate",
+ "domain_engineering",
  "domain_epidemiology",
  "domain_physics",
  "engine_diffeq",
@@ -4030,6 +4048,7 @@ dependencies = [
  "domain_applied",
  "domain_biology",
  "domain_climate",
+ "domain_engineering",
  "domain_epidemiology",
  "domain_physics",
  "engine_opt",

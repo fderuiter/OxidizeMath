@@ -30,7 +30,6 @@ rand_core = { workspace = true }
 scientific_metadata = { path = "../../00_foundation/scientific_metadata" }
 math_diagnostics = { path = "../../00_foundation/math_diagnostics" }
 pure_math = { path = "../pure_math" }
-domain_applied = { path = "../domain_applied" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 

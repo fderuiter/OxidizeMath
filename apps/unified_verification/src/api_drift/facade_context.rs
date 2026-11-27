@@ -20,6 +20,7 @@ const DEFAULT_REACHABLE_PKGS: &[&str] = &[
     "domain_applied",
     "domain_biology",
     "domain_climate",
+    "domain_engineering",
     "domain_epidemiology",
     "domain_physics",
 ];

@@ -92,10 +92,6 @@ path = "engine_linalg:src/"
 reason = "tests"
 
 [[verify_suite.opt_outs]]
-path = "domain_applied:src/applied/freesurfer/thickness_tests.rs"
-reason = "tests"
-
-[[verify_suite.opt_outs]]
 path = "domain_biology:tests/test_kuramoto_zero_alloc.rs"
 reason = "tests"
 
@@ -356,12 +352,11 @@ min_total_density = 0.120
 "infrastructure" = 2
 "metadata" = 2
 "no_std_engine" = 25
-"tests" = 250
+"tests" = 249
 
 [verification_debt.crate_opt_out_caps]
 "math_rng" = 14
 "engine_linalg" = 15
-"domain_applied" = 1
 "domain_biology" = 1
 "domain_epidemiology" = 1
 "domain_physics" = 2

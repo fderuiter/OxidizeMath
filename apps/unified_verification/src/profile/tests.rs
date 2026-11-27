@@ -340,3 +340,59 @@ fn test_workspace_root_dev_and_test_profiles_configured() {
     );
     assert_eq!(release.get("lto").and_then(Value::as_bool), Some(true));
 }
+
+#[test]
+fn test_cross_domain_dependency_ban_rejects_sibling_domain_edges() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let temp_dir = TempTestDir::new("unified_verification_cross_domain_ban");
+    let _cwd_guard = CurrentDirGuard(env::current_dir().unwrap());
+    env::set_current_dir(&*temp_dir).unwrap();
+
+    fs::write(
+        "Cargo.toml",
+        "[workspace]\nmembers = [\"crates/03_domains/pure_math\", \"crates/03_domains/domain_applied\", \"crates/03_domains/domain_physics\"]\n[workspace.package]\nversion = \"0.4.0\"\n[profile.release]\noverflow-checks = true\n",
+    )
+    .unwrap();
+    for dir in [
+        "crates/03_domains/pure_math",
+        "crates/03_domains/domain_applied",
+        "crates/03_domains/domain_physics",
+    ] {
+        fs::create_dir_all(dir).unwrap();
+    }
+    fs::write(
+        "crates/03_domains/pure_math/Cargo.toml",
+        "[package]\nname = \"pure_math\"\nversion.workspace = true\n[package.metadata.oxidize]\ntier = \"03_domains\"\nrelease_role = \"release\"\n[lints]\nworkspace = true\n",
+    )
+    .unwrap();
+    fs::write(
+        "crates/03_domains/domain_applied/Cargo.toml",
+        "[package]\nname = \"domain_applied\"\nversion.workspace = true\n[package.metadata.oxidize]\ntier = \"03_domains\"\nrelease_role = \"release\"\n[dependencies]\npure_math = { path = \"../pure_math\" }\n[lints]\nworkspace = true\n",
+    )
+    .unwrap();
+    fs::write(
+        "crates/03_domains/domain_physics/Cargo.toml",
+        "[package]\nname = \"domain_physics\"\nversion.workspace = true\n[package.metadata.oxidize]\ntier = \"03_domains\"\nrelease_role = \"release\"\n[dependencies]\npure_math = { path = \"../pure_math\" }\n[lints]\nworkspace = true\n",
+    )
+    .unwrap();
+
+    let members = [
+        "crates/03_domains/pure_math",
+        "crates/03_domains/domain_applied",
+        "crates/03_domains/domain_physics",
+    ];
+    assert!(
+        check_profiles(&members, false),
+        "domain_* -> pure_math downward dependency must pass"
+    );
+
+    fs::write(
+        "crates/03_domains/domain_physics/Cargo.toml",
+        "[package]\nname = \"domain_physics\"\nversion.workspace = true\n[package.metadata.oxidize]\ntier = \"03_domains\"\nrelease_role = \"release\"\n[dependencies]\npure_math = { path = \"../pure_math\" }\ndomain_applied = { path = \"../domain_applied\" }\n[lints]\nworkspace = true\n",
+    )
+    .unwrap();
+    assert!(
+        !check_profiles(&members, false),
+        "domain_physics -> domain_applied sibling edge must be rejected"
+    );
+}

@@ -326,17 +326,25 @@ impl WorkspaceManifestModel {
                     if dep_pkg.effective_release_role == Some(ReleaseRole::Vendored) {
                         continue;
                     }
-                    if let Some(dep_tier) = dep_pkg.effective_tier
-                        && dep_tier > pkg_tier
-                    {
-                        violations.push(format!(
-                            "{}/Cargo.toml: Tier violation in [{kind}]: `{}` ({}) cannot depend on higher-tier `{}` ({})",
-                            pkg.member_dir,
-                            pkg.name,
-                            pkg_tier.as_str(),
-                            dep_pkg.name,
-                            dep_tier.as_str()
-                        ));
+                    if let Some(dep_tier) = dep_pkg.effective_tier {
+                        if dep_tier > pkg_tier {
+                            violations.push(format!(
+                                "{}/Cargo.toml: Tier violation in [{kind}]: `{}` ({}) cannot depend on higher-tier `{}` ({})",
+                                pkg.member_dir,
+                                pkg.name,
+                                pkg_tier.as_str(),
+                                dep_pkg.name,
+                                dep_tier.as_str()
+                            ));
+                        } else if pkg_tier == TierKind::Domains03
+                            && dep_tier == TierKind::Domains03
+                            && dep_pkg.name.starts_with("domain_")
+                        {
+                            violations.push(format!(
+                                "{}/Cargo.toml: Cross-domain dependency violation in [{kind}]: Tier 3 crate `{}` cannot depend on sibling domain crate `{}` (promote shared math primitives to `pure_math` or lower-tier engines instead)",
+                                pkg.member_dir, pkg.name, dep_pkg.name
+                            ));
+                        }
                     }
                 }
             }

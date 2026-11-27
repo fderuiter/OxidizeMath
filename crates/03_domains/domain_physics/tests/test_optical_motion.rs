@@ -18,9 +18,9 @@ use domain_physics::physics::medical::{
             root_mean_square_error, time_shift_error,
         },
     },
-    radar_gating::surface::weighted_average_height as radar_weighted_average_height,
 };
 use nalgebra::Point3;
+use pure_math::pure_math::differential_geometry::mean_vertex_height;
 use std::f64::consts::PI;
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
@@ -233,17 +233,17 @@ fn test_optical_motion_kernels_zero_allocation() {
     let x = [1.0e8 + 2.0, 1.0e8 + 4.0, 1.0e8 + 6.0, 1.0e8 + 8.0];
     let y = [1.0e8 + 1.0, 1.0e8 + 2.0, 1.0e8 + 3.0, 1.0e8 + 4.0, 99.0];
 
-    let ((wah_opt, wah_rad, pe, rmse, corr), metrics) = VerifiedEngine::run_verified(|| {
+    let ((wah_opt, wah_shared, pe, rmse, corr), metrics) = VerifiedEngine::run_verified(|| {
         let wah_opt = weighted_average_height(&vertices);
-        let wah_rad = radar_weighted_average_height(&vertices);
+        let wah_shared = mean_vertex_height(&vertices);
         let pe = percentage_error(25.0, 20.0);
         let rmse = root_mean_square_error(&x, &y);
         let corr = pearson_correlation(&x, &y);
-        (wah_opt, wah_rad, pe, rmse, corr)
+        (wah_opt, wah_shared, pe, rmse, corr)
     });
 
-    assert!(metrics.function_calls >= 10);
-    assert_eq!(wah_opt, wah_rad);
+    assert!(metrics.function_calls >= 9);
+    assert_eq!(wah_opt, wah_shared);
     assert!((wah_opt - 10.0).abs() < math_commons::registry::TOLERANCE_FAST);
     assert_eq!(weighted_average_height(&[]), 0.0);
     assert!((pe - 20.0).abs() < 1.0e-12);

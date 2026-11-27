@@ -20,7 +20,17 @@ pub use verified_engine;
 pub use domain_ai::ai;
 
 #[cfg(feature = "applied")]
-pub use domain_applied::applied;
+pub mod applied {
+    //! Applied mathematics, scientific computing, finance, and clinical statistics.
+    pub use ::domain_applied::applied::*;
+    #[cfg(feature = "engineering")]
+    pub use ::domain_engineering::engineering::battery_degradation;
+    /// Legacy re-export of manufacturing and embedded calculators from `domain_engineering`.
+    #[cfg(feature = "engineering")]
+    pub mod engineering {
+        pub use ::domain_engineering::engineering::{cnc, uart};
+    }
+}
 
 #[cfg(feature = "biology")]
 pub use domain_biology::biology;
@@ -28,11 +38,33 @@ pub use domain_biology::biology;
 #[cfg(feature = "climate")]
 pub use domain_climate::climate;
 
+#[cfg(feature = "engineering")]
+pub use domain_engineering::engineering;
+
 #[cfg(feature = "epidemiology")]
 pub use domain_epidemiology::epidemiology;
 
 #[cfg(feature = "physics")]
-pub use domain_physics::physics;
+pub mod physics {
+    //! Classical, quantum, relativistic, statistical, and medical physics.
+    pub use ::domain_physics::physics::{
+        astrophysics, chaos, error, fluid_dynamics, high_energy, mri, nuclear, optics, quantum,
+        solid_state, standard_model, stat_mech,
+    };
+    /// Medical physics, dosimetry, optical motion, and clinical respiratory gating.
+    pub mod medical {
+        pub use ::domain_physics::physics::medical::{
+            GatingError, accelerator, calibration, dose, evaluation, imaging, optical_motion,
+            optimization, signal, thermodynamics,
+        };
+        /// Clinical respiratory beam gating and (with `engineering`) RF/mmWave radar solvers.
+        pub mod radar_gating {
+            #[cfg(feature = "engineering")]
+            pub use ::domain_engineering::engineering::radar::*;
+            pub use ::domain_physics::physics::medical::radar_gating::*;
+        }
+    }
+}
 
 #[cfg(feature = "pure_math")]
 pub use ::pure_math::pure_math::statistics::{bootstrap, monte_carlo, qmc};

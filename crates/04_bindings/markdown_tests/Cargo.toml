@@ -33,9 +33,10 @@ domain_physics = { path = "../../03_domains/domain_physics" }
 domain_biology = { path = "../../03_domains/domain_biology" }
 domain_applied = { path = "../../03_domains/domain_applied" }
 domain_climate = { path = "../../03_domains/domain_climate" }
+domain_engineering = { path = "../../03_domains/domain_engineering" }
 domain_epidemiology = { path = "../../03_domains/domain_epidemiology" }
-oxidizemath = { path = "../oxidizemath", features = ["pure_math", "applied", "ai", "biology", "climate", "epidemiology", "physics"] }
-math_explorer = { path = "../math_explorer", features = ["pure_math", "applied", "ai", "biology", "climate", "epidemiology", "physics"] }
+oxidizemath = { path = "../oxidizemath", features = ["pure_math", "applied", "ai", "biology", "climate", "engineering", "epidemiology", "physics"] }
+math_explorer = { path = "../math_explorer", features = ["pure_math", "applied", "ai", "biology", "climate", "engineering", "epidemiology", "physics"] }
 
 nalgebra = { workspace = true }
 serde = { workspace = true, features = ["std", "derive"] }

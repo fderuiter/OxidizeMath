@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 30 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 31 workspace crates:
 
 ```mermaid
 graph TD
@@ -67,6 +67,7 @@ graph TD
         Bio[domain_biology]
         App[domain_applied]
         Clim[domain_climate]
+        Eng[domain_engineering]
         Epi[domain_epidemiology]
     end
 
@@ -95,22 +96,23 @@ graph TD
 
     Xtask -.-> Verify
     Verify -.-> SciVerify & CoreCrate
-    SciVerify -.-> AI & Phys & Bio & App & Clim & Epi & Pure & Pde & Opt & Commons & CoreCrate & Engine
+    SciVerify -.-> AI & Phys & Bio & App & Clim & Eng & Epi & Pure & Pde & Opt & Commons & CoreCrate & Engine
     MdTests -.-> Facade & Explorer & Meta & CoreCrate & Registry & Linalg & Opt & DiffEq & Pde & Rng & Scalars
 
     Cli --> Facade
     GUI --> Explorer & Plot & Meta & Registry & Diag & Linalg & Opt & Commons & CoreCrate & Engine
     Plot --> Opt & Commons
     Explorer --> Facade
-    Facade --> AI & Phys & Bio & App & Clim & Epi & Pure
+    Facade --> AI & Phys & Bio & App & Clim & Eng & Epi & Pure
     Facade --> Commons & Linalg & Opt & DiffEq & Pde & Scalars & Diag & Meta & Engine & CoreCrate
 
-    AI --> Commons & Engine & DiffEq & Pure & CoreCrate & Diag
-    Phys --> Commons & Engine & Meta & Pure & App & DiffEq & Pde & Linalg & Opt & CoreCrate & Diag
-    Bio --> Commons & Engine & Meta & Pure & App & Pde & CoreCrate & Diag
-    App --> Commons & Engine & Pure & Pde & Linalg & Opt & Scalars & CoreCrate & Diag
-    Clim --> Commons & Engine & Pure & CoreCrate & Diag
-    Epi --> Commons & Engine & Pure & CoreCrate & Diag
+    AI --> Commons & Engine & DiffEq & Pure & MathDiag
+    Phys --> Commons & Engine & Meta & Pure & DiffEq & Pde & Linalg & Opt & MathDiag
+    Bio --> Commons & Engine & Meta & Pure & Pde & MathDiag
+    App --> Commons & Engine & Pure & Pde & Linalg & Opt & Scalars & MathDiag
+    Clim --> Commons & Engine & Pure & MathDiag
+    Eng --> Commons & Engine & Pure & Linalg & Opt & MathDiag
+    Epi --> Commons & Engine & Pure & MathDiag
 
     Pure --> Commons & Meta & Engine & DiffEq & Pde & Linalg & Rng & Scalars & CoreCrate & Diag
     DiffEq --> Commons & Engine & Rng & MathDiag
@@ -135,7 +137,7 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 30 member crates declared in `Cargo.toml`:
+The workspace contains all 31 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
@@ -155,9 +157,10 @@ The workspace contains all 30 member crates declared in `Cargo.toml`:
 | `crates/02_engines/engine_pde` | `#![no_std]` 1D/2D/3D stencils, SPDE steppers, and radix-2 Fourier solvers | [engine_pde](../../crates/02_engines/engine_pde/README.md) |
 | `crates/03_domains/pure_math` | Pure mathematics and numerical algorithms | [pure_math](../../crates/03_domains/pure_math/README.md) |
 | `crates/03_domains/domain_ai` | Neural networks, transformers, and RL models | [domain_ai](../../crates/03_domains/domain_ai/README.md) |
-| `crates/03_domains/domain_applied` | Clinical trials, battery degradation, isosurfaces | [domain_applied](../../crates/03_domains/domain_applied/README.md) |
+| `crates/03_domains/domain_applied` | Clinical trials, portfolio QP, mean-field games, isosurfaces | [domain_applied](../../crates/03_domains/domain_applied/README.md) |
 | `crates/03_domains/domain_biology` | Neuroscience, morphogenesis, and kinetics | [domain_biology](../../crates/03_domains/domain_biology/README.md) |
 | `crates/03_domains/domain_climate` | Climate modeling and CERA framework | [cera_framework](cera_framework.md) |
+| `crates/03_domains/domain_engineering` | FMCW/MUSIC radar, battery degradation, and CNC/UART calculators | [domain_engineering](../../crates/03_domains/domain_engineering/README.md) |
 | `crates/03_domains/domain_epidemiology` | Compartmental disease transmission models | [domain_epidemiology](../../crates/03_domains/domain_epidemiology/README.md) |
 | `crates/03_domains/domain_physics` | Fluid dynamics, quantum, and MRI models | [domain_physics](../../crates/03_domains/domain_physics/README.md) |
 | `crates/04_bindings/oxidizemath` | Primary `default = []` library facade unifying engines and domain modules | [oxidizemath](../../crates/04_bindings/oxidizemath/README.md) |

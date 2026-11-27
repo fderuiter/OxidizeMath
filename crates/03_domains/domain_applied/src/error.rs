@@ -14,73 +14,7 @@ pub enum PharmacokineticsError {
     AnalysisError(#[from] AnalysisError),
 }
 
-/// Errors returned when constructing bounded battery state-of-health quantities.
-#[derive(Debug, Clone, PartialEq, Error)]
-pub enum BatteryError {
-    /// Depth of Discharge must be between 0.0 and 100.0.
-    #[error("DepthOfDischarge must be between 0.0 and 100.0, got {0}")]
-    InvalidDepthOfDischarge(f64),
-    /// Capacity must be between 0.0 and 1.0.
-    #[error("Capacity must be between 0.0 and 1.0, got {0}")]
-    InvalidCapacity(f64),
-    /// Cycles cannot be negative.
-    #[error("Cycles cannot be negative, got {0}")]
-    NegativeCycles(f64),
-    /// Wrapped curve-fitting solver error.
-    #[error("{0}")]
-    Fit(#[from] engine_opt::error::FitError),
-}
-
-/// Errors returned by game-theoretic equilibrium and mean-field solvers.
-#[derive(Debug, Clone, PartialEq, Error)]
-pub enum GameTheoryError {
-    /// Payoff matrix is not square.
-    #[error("Payoff matrix must be square, got {rows}x{cols}")]
-    NonSquarePayoffMatrix {
-        /// Actual row count.
-        rows: usize,
-        /// Actual column count.
-        cols: usize,
-    },
-    /// Invalid parameter value (e.g. frequency outside [0, 1]).
-    #[error("Invalid game theory parameter {name}: {value}")]
-    InvalidParameter {
-        /// Parameter identifier.
-        name: String,
-        /// Rejected numeric value.
-        value: f64,
-    },
-    /// Lower and upper bound vectors had different lengths.
-    #[error(
-        "Box constraint bound lengths must match: min has {min_len} elements, max has {max_len}"
-    )]
-    BoundsDimensionMismatch {
-        /// Length of the lower-bound vector.
-        min_len: usize,
-        /// Length of the upper-bound vector.
-        max_len: usize,
-    },
-    /// Lower bound exceeded upper bound or was non-finite along a dimension.
-    #[error(
-        "Invalid box bounds at dimension {dimension}: min ({min}) must be finite and <= max ({max})"
-    )]
-    InvalidBoxBounds {
-        /// Zero-based coordinate index with invalid bounds.
-        dimension: usize,
-        /// Lower bound at `dimension`.
-        min: f64,
-        /// Upper bound at `dimension`.
-        max: f64,
-    },
-    /// Wrapped centralized mathematical error.
-    #[error("{0}")]
-    Math(#[from] math_commons::error::MathError),
-    /// Wrapped Monte Carlo estimation error.
-    #[error("{0}")]
-    MonteCarlo(#[from] pure_math::error::MonteCarloError),
-}
-
-/// Errors returned by engineering, CNC, UART, and FreeSurfer GLM solvers.
+/// Errors returned by FreeSurfer GLM and MRI volumetric solvers.
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum EngineeringError {
     /// Invalid parameter value (e.g. TotalBits = 0).
@@ -192,45 +126,6 @@ impl Diagnostic for PharmacokineticsError {
     }
 }
 
-impl Diagnostic for BatteryError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        match self {
-            Self::Fit(err) => err.severity(),
-            _ => Severity::Error,
-        }
-    }
-    #[verified_engine::verified]
-    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
-        if let Self::Fit(fit_err) = self {
-            fit_err.visit_fields(visitor);
-        }
-        visitor.record_str("error_type", "BatteryError");
-        visitor.record_display("description", self);
-    }
-}
-
-impl Diagnostic for GameTheoryError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        match self {
-            Self::Math(err) => err.severity(),
-            Self::MonteCarlo(err) => err.severity(),
-            _ => Severity::Error,
-        }
-    }
-    #[verified_engine::verified]
-    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
-        match self {
-            Self::Math(math_err) => math_err.visit_fields(visitor),
-            Self::MonteCarlo(mc_err) => mc_err.visit_fields(visitor),
-            _ => {}
-        }
-        visitor.record_str("error_type", "GameTheoryError");
-        visitor.record_display("description", self);
-    }
-}
-
 impl Diagnostic for EngineeringError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
@@ -282,9 +177,10 @@ mod submodule_diagnostics;
 mod umbrella;
 
 pub use crate::applied::{
-    algorithms::kalman::KalmanError, clinical_trials::types::ClinicalTrialError,
-    isosurface::types::VoxelGridError, portfolio::PortfolioError,
+    clinical_trials::types::ClinicalTrialError, isosurface::types::VoxelGridError,
+    portfolio::PortfolioError,
 };
+pub use pure_math::error::{GameTheoryError, KalmanError};
 pub use umbrella::AppliedError;
 
 #[cfg(test)]

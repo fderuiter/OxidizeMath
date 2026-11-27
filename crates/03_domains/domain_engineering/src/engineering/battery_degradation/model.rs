@@ -30,7 +30,7 @@ pub const MAX_EXPONENT_Z: f64 = 2.0;
 /// $$C(N, D) = 1 - \Delta C_{\mathrm{cyc}}\!\left(\frac{N}{N_{70}(D)}\right), \qquad C(N_{70}(D), D) = 0.7$$
 ///
 /// Reference: Wang et al. (2011), DOI: 10.1016/j.jpowsour.2010.11.134; see
-/// [`docs/math_specs/domain_applied.md`](../../../../../../docs/math_specs/domain_applied.md).
+/// [`docs/math_specs/domain_engineering.md`](../../../../../../docs/math_specs/domain_engineering.md).
 ///
 /// # Stability
 /// Implementations clamp non-positive $N_{70}$ denominators and out-of-range capacities into
@@ -59,7 +59,7 @@ pub trait DegradationModel {
 /// $$N_{70}(D) = \alpha D^{\beta}, \qquad C(N, D) = 0.7^{\,N / N_{70}(D)}$$
 ///
 /// Reference: Wang et al. (2011), DOI: 10.1016/j.jpowsour.2010.11.134; see
-/// [`docs/math_specs/domain_applied.md`](../../../../../../docs/math_specs/domain_applied.md).
+/// [`docs/math_specs/domain_engineering.md`](../../../../../../docs/math_specs/domain_engineering.md).
 ///
 /// # Stability
 /// Degenerate $N_{70}(D) = 0$ returns `Capacity(0.0)` without division by zero, and inverse cycle
@@ -160,7 +160,7 @@ fn sanitize_bounded(val: f64, min: f64, max: f64, fallback: f64) -> f64 {
 /// $$C(N, D, t) = 1 - 0.3\left(\frac{N}{N_{70}(D, T, I_c)}\right)^z - k_{\mathrm{SEI}}\exp\!\left[\frac{E_a}{R}\left(\frac{1}{T_{\mathrm{ref}}} - \frac{1}{T}\right)\right]\sqrt{t}$$
 ///
 /// Reference: Wang et al. (2011), DOI: 10.1016/j.jpowsour.2010.11.134; see
-/// [`docs/math_specs/domain_applied.md`](../../../../../../docs/math_specs/domain_applied.md).
+/// [`docs/math_specs/domain_engineering.md`](../../../../../../docs/math_specs/domain_engineering.md).
 ///
 /// # Stability
 /// Builder setters clamp temperature to $[-20, 60]\,^\circ\text{C}$, C-rate to $[0.05, 10]\,\text{h}^{-1}$,

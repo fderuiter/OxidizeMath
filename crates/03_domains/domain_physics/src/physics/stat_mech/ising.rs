@@ -13,8 +13,8 @@
 
 use super::KB;
 pub use super::graph_ising::GraphSpinSystem;
-use domain_applied::applied::game_theory::evolutionary::MatrixPayoff;
 use math_commons::math_kernel::types::flatten_2d_index;
+use pure_math::pure_math::analysis::evolutionary::MatrixPayoff;
 use rand::Rng;
 
 #[inline]
@@ -399,9 +399,9 @@ impl SpinLattice {
     ///
     /// ```
     /// # use domain_physics::__doctest_facade as math_explorer;
-    /// use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
     /// use math_explorer::nalgebra::DMatrix;
     /// use math_explorer::physics::stat_mech::ising::SpinLattice;
+    /// use math_explorer::pure_math::analysis::evolutionary::MatrixPayoff;
     ///
     /// let payoff = MatrixPayoff::new(DMatrix::from_row_slice(2, 2, &[1.0, -0.1, 1.25, 0.0])).unwrap();
     /// let mut lattice = SpinLattice::new(20, 20, Some(42));
@@ -424,9 +424,9 @@ impl SpinLattice {
     ///
     /// ```
     /// # use domain_physics::__doctest_facade as math_explorer;
-    /// use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
     /// use math_explorer::nalgebra::DMatrix;
     /// use math_explorer::physics::stat_mech::ising::SpinLattice;
+    /// use math_explorer::pure_math::analysis::evolutionary::MatrixPayoff;
     ///
     /// let harmony = MatrixPayoff::new(DMatrix::from_row_slice(2, 2, &[1.5, 0.5, 0.5, 0.0])).unwrap();
     /// let mut lattice = SpinLattice::new(16, 16, Some(9));

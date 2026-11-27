@@ -6,16 +6,16 @@ Welcome to the OxidizeMath documentation directory.
 
 The [Architecture Guide Suite](architecture/README.md) provides centralized blueprints, diagrams, and developer walkthroughs:
 
-- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 30 crates.
+- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 31 crates.
 - **[CERA Framework Guide](architecture/cera_framework.md)**: Climate-invariant Encoding through Representation Alignment and climate modeling pipelines.
 - **[Zero-Allocation Runtime Guide](architecture/zero_allocation_runtime.md)**: NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and verified engine execution rules.
 - **[Interactive Tool Walkthrough](architecture/interactive_tool_walkthrough.md)**: Step-by-step developer guide to implement interactive simulations with `InteractiveTool`.
 
 ## Mathematical Specifications
 
-The [Canonical Mathematical Specifications](math_specs/README.md) document governing equations, bibliography citations, numerical stability bounds, and domains of validity across the 11 mathematical and solver crates:
+The [Canonical Mathematical Specifications](math_specs/README.md) document governing equations, bibliography citations, numerical stability bounds, and domains of validity across the 12 mathematical and solver crates:
 
-- **[`math_commons`](math_specs/math_commons.md)**, **[`engine_linalg`](math_specs/engine_linalg.md)**, **[`engine_diffeq`](math_specs/engine_diffeq.md)**, **[`engine_pde`](math_specs/engine_pde.md)**, **[`pure_math`](math_specs/pure_math.md)**, **[`domain_ai`](math_specs/domain_ai.md)**, **[`domain_applied`](math_specs/domain_applied.md)**, **[`domain_biology`](math_specs/domain_biology.md)**, **[`domain_climate`](math_specs/domain_climate.md)**, **[`domain_epidemiology`](math_specs/domain_epidemiology.md)**, and **[`domain_physics`](math_specs/domain_physics.md)**.
+- **[`math_commons`](math_specs/math_commons.md)**, **[`engine_linalg`](math_specs/engine_linalg.md)**, **[`engine_diffeq`](math_specs/engine_diffeq.md)**, **[`engine_pde`](math_specs/engine_pde.md)**, **[`pure_math`](math_specs/pure_math.md)**, **[`domain_ai`](math_specs/domain_ai.md)**, **[`domain_applied`](math_specs/domain_applied.md)**, **[`domain_biology`](math_specs/domain_biology.md)**, **[`domain_climate`](math_specs/domain_climate.md)**, **[`domain_engineering`](math_specs/domain_engineering.md)**, **[`domain_epidemiology`](math_specs/domain_epidemiology.md)**, and **[`domain_physics`](math_specs/domain_physics.md)**.
 
 ## Architectural Decision Records (ADRs)
 
@@ -144,7 +144,9 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261124: Stack-Allocated Core Errors, Fallible Companion APIs, and AST Error Contract Verification](adr/20261124-stack-core-errors-and-fallible-companion-apis.md)
 - [ADR 20261125: CI Tool-Cache Subcommand Probing, Zero-Copy Plateau POI Dispatch, and Thread-Isolated Plot Test Hooks](adr/20261125-ci-llvm-cov-and-zero-copy-plateau-poi.md)
 - [ADR 20261125: Metadata-Driven Path Abstraction and Five-Tier Workspace Migration](adr/20261125-metadata-driven-tier-migration.md)
+- [ADR 20261126: Extract Tier 0 `math_scalars` Hierarchy and Tier 2 `engine_opt` Curve-Fitting Engine](adr/20261126-extract-math-scalars-and-engine-opt.md)
 - [ADR 20261126: Preserve Causal Root Diagnostic Metadata, Wire `math_rng` Diagnostics, and Decouple `std` `diagnostics` from Domain Crates](adr/20261126-preserve-root-metadata-and-decouple-diagnostics.md)
+- [ADR 20261127: Create Tier 3 `domain_engineering`, Promote Shared Math Primitives to `pure_math`, and Enforce Zero Cross-Domain Dependencies](adr/20261127-create-domain-engineering-and-decouple-domains.md)
 
 ## Contributing
 

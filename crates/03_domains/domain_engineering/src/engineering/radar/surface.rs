@@ -10,7 +10,6 @@
 //! Consumers of this module should map their axes accordingly (e.g., using $y$ from geometry as "lateral" if needed,
 //! or if the patient is lying down, $z$ (vertical) is the height).
 
-use crate::physics::medical::signal;
 use engine_linalg::{SolverWorkspace, svd_ops_workspace_len, svd_solve_least_squares};
 use nalgebra::{DVector, Point3};
 
@@ -118,5 +117,5 @@ impl BiQuadraticSurface {
 /// * `f64` - The WAH value.
 #[verified_engine::verified]
 pub fn weighted_average_height(vertices: &[Point3<f64>]) -> f64 {
-    signal::mean_vertex_height(vertices)
+    pure_math::pure_math::differential_geometry::mean_vertex_height(vertices)
 }

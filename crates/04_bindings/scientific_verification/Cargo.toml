@@ -15,6 +15,7 @@ domain_ai = { path = "../../03_domains/domain_ai" }
 domain_applied = { path = "../../03_domains/domain_applied" }
 domain_biology = { path = "../../03_domains/domain_biology" }
 domain_climate = { path = "../../03_domains/domain_climate" }
+domain_engineering = { path = "../../03_domains/domain_engineering" }
 domain_epidemiology = { path = "../../03_domains/domain_epidemiology" }
 domain_physics = { path = "../../03_domains/domain_physics" }
 engine_opt = { path = "../../02_engines/engine_opt" }

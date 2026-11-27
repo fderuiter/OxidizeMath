@@ -10,7 +10,7 @@ Run any example using Cargo by passing its required domain feature flag:
 ```bash
 # Quickstart Quantum Mechanics and mmWave radiotherapy examples
 cargo run --package oxidize-cli --features physics --example hello_world
-cargo run --package oxidize-cli --features physics --example mmwave_setup
+cargo run --package oxidize-cli --features engineering,physics --example mmwave_setup
 
 # Hodgkin-Huxley neuron simulation
 cargo run --package oxidize-cli --features biology --example hodgkin_huxley_demo
@@ -27,7 +27,7 @@ cargo run -p xtask -- smoke-examples
 - `transformer_simple`: End-to-end Transformer encoder-decoder assembly and forward pass.
 
 ### 🧮 Applied (`--features applied`)
-- `battery_degradation_demo`: Li-ion battery health and cycle life modeling.
+- `battery_degradation_demo`: Li-ion battery health and cycle life modeling (`--features applied,engineering`).
 - `bench_lorahub`: LoRA module ensemble linear combination benchmark.
 - `bench_mfg`: Mean-field game fixed-point solver benchmark.
 - `bench_replicator`: Evolutionary game theory replicator dynamics benchmark.
@@ -46,16 +46,18 @@ cargo run -p xtask -- smoke-examples
 ### 🌍 Climate (`--features climate`)
 - `cera_demo`: Climate-invariant Encoding through Representation Alignment (CERA).
 
+### ⚙️ Engineering (`--features engineering`)
+- `bench_music`: MUSIC super-resolution radar spectrum estimation benchmark (`--features engineering,physics`).
+- `mmwave_setup`: Verified FMCW mmWave radiotherapy radar displacement pipeline (`--features engineering,physics`).
+
 ### 🦠 Epidemiology (`--features epidemiology`)
 - `bench_stochastic`: Zero-allocation Gillespie stochastic SIR simulation benchmark.
 
 ### 🔬 Physics (`--features physics`)
 - `bench_ising_custom`: Ising model spin lattice phase transition benchmark.
 - `bench_lbm_custom`: D2Q9 Lattice Boltzmann Method fluid dynamics benchmark.
-- `bench_music`: MUSIC super-resolution radar spectrum estimation benchmark.
 - `hello_world`: Quantum Mechanics Clebsch-Gordan coefficient calculation.
 - `lorenz_chaos`: Lorenz chaotic attractor simulation and trajectory divergence.
-- `mmwave_setup`: Verified FMCW mmWave radiotherapy radar displacement pipeline.
 - `security_repro_lbm`: Lattice Boltzmann state encapsulation and invariant verification.
 
 ### 📐 Pure Math (`--features pure_math`)

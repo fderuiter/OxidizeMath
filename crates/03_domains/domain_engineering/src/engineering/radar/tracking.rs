@@ -3,18 +3,18 @@
 //! Implements a **Discrete Kalman Filter** using the **Strategy Pattern** to allow interchangeable
 //! physics models (e.g., Constant Velocity, Constant Acceleration).
 //!
-//! **Update (2026-06-XX):** This module now uses the generic `KalmanFilter` implementation from
-//! `applied::algorithms::kalman`, adapted for the specific domain of Radar Gating.
+//! **Update (2026-11-27):** This module uses the generic `KalmanFilter` implementation from
+//! `pure_math::pure_math::analysis::kalman`, adapted for 1D radar target tracking.
 
 use crate::error::RadarError;
-use domain_applied::applied::algorithms::kalman::{KalmanError, KalmanFilter, KalmanModel};
 use nalgebra::{DMatrix, DVector};
+use pure_math::pure_math::analysis::kalman::{KalmanError, KalmanFilter, KalmanModel};
 
-/// 1D discrete-time Constant-Velocity (CV) state-space model for respiratory radar gating:
+/// 1D discrete-time Constant-Velocity (CV) state-space model for mmWave radar tracking:
 /// $$\mathbf{x}_{k+1} = \begin{pmatrix} 1 & \Delta t \\ 0 & 1 \end{pmatrix} \mathbf{x}_k + \mathbf{w}_k, \qquad z_k = \begin{pmatrix} 1 & 0 \end{pmatrix} \mathbf{x}_k + v_k$$
 ///
 /// Reference: Kalman (1960), DOI: `10.1115/1.3662552`; see
-/// [`docs/math_specs/domain_physics.md`](../../../../../../../docs/math_specs/domain_physics.md).
+/// [`docs/math_specs/domain_engineering.md`](../../../../../../docs/math_specs/domain_engineering.md).
 ///
 /// # Stability
 /// Detectable and stabilizable for $\Delta t > 0$ with $Q = \sigma_w^2 I_2 \succeq 0$ and
