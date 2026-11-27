@@ -224,3 +224,58 @@ fn test_3d_data_table_and_exports_format_world_xyz() {
         .expect("ArrowDown in 3D Table View should announce X, Y, Z");
     assert!(row_msg.contains("Z = 24.8"), "Got: {row_msg}");
 }
+
+#[test]
+fn test_plot3d_series_sidecar_cow_arc_sharing_and_mutation_detach() {
+    let mut sidecar = Plot3DSeriesSidecar::new();
+    sidecar.push_series(Plot3DSeries::new(
+        "Surface",
+        vec![[0.1, 0.2]],
+        vec![[1.0, 2.0, 3.0]],
+        Color32::BLUE,
+    ));
+    let idle_clone = sidecar.clone();
+    assert_eq!(sidecar.shared_ptr(), idle_clone.shared_ptr());
+    assert!(sidecar.shares_allocation_with(&idle_clone));
+
+    let mut mutated = idle_clone.clone();
+    mutated.register_item_vertices(Id::new("mesh"), vec![[4.0, 5.0, 6.0]]);
+    assert_ne!(sidecar.shared_ptr(), mutated.shared_ptr());
+    assert_eq!(sidecar.series().len(), 1);
+    assert!(
+        sidecar
+            .world_point(Id::new("mesh"), 0, [99.0, 99.0])
+            .is_none()
+    );
+    assert_eq!(
+        mutated.world_point(Id::new("mesh"), 0, [99.0, 99.0]),
+        Some([4.0, 5.0, 6.0])
+    );
+}
+
+#[test]
+fn test_3d_data_table_uses_combobox_when_series_exceed_12() {
+    let series: Vec<Plot3DSeries> = (0..18)
+        .map(|i| {
+            Plot3DSeries::new(
+                format!("Mode {i}"),
+                vec![[i as f64, 0.0]],
+                vec![[i as f64, 1.0, 2.0 * (i as f64)]],
+                Color32::LIGHT_BLUE,
+            )
+        })
+        .collect();
+    let ctx = Context::default();
+    let mut show_table = true;
+    let mut state = DataTableState::default();
+    let plot_id = Id::new("combo_3d_table_test");
+    let out = ctx.run(frame_input(Vec::new()), |c| {
+        show_data_table_modal_3d(c, plot_id, "Modes", &mut show_table, &mut state, &series);
+    });
+    assert!(
+        out.shapes.len() < 120,
+        "Virtualized ComboBox header must keep shape count compact, got {}",
+        out.shapes.len()
+    );
+    assert_eq!(state.selected_series, 0);
+}

@@ -2,6 +2,7 @@
 members = [
     "crates/00_foundation/math_diagnostics",
     "crates/00_foundation/math_rng",
+    "crates/00_foundation/math_scalars",
     "crates/00_foundation/scientific_metadata",
     "crates/00_foundation/verified_engine_macros",
     "crates/00_foundation/verified_engine",
@@ -9,6 +10,7 @@ members = [
     "crates/01_core/federated_registry",
     "crates/01_core/oxidize_core",
     "crates/02_engines/engine_linalg",
+    "crates/02_engines/engine_opt",
     "crates/02_engines/math_commons",
     "crates/02_engines/engine_diffeq",
     "crates/02_engines/engine_pde",

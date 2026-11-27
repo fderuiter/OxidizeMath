@@ -57,31 +57,31 @@ pub enum QuantumError {
     Math(#[from] math_commons::error::MathError),
 }
 
-impl diagnostics::Diagnostic for QuantumError {
+impl math_diagnostics::Diagnostic for QuantumError {
     #[verified_engine::verified]
-    fn severity(&self) -> diagnostics::Severity {
+    fn severity(&self) -> math_diagnostics::Severity {
         match self {
             Self::Math(err) => err.severity(),
-            _ => diagnostics::Severity::Error,
+            _ => math_diagnostics::Severity::Error,
         }
     }
 
     #[verified_engine::verified]
-    fn visit_fields(&self, visitor: &mut dyn diagnostics::DiagnosticVisitor) {
+    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
         match self {
             Self::Math(math_err) => math_err.visit_fields(visitor),
             Self::InvalidPrincipalQuantumNumber { n, min, max } => {
-                visitor.record_u64("n", u64::from(*n));
-                visitor.record_u64("min", u64::from(*min));
-                visitor.record_u64("max", u64::from(*max));
+                visitor.record_u32("n", *n);
+                visitor.record_u32("min", *min);
+                visitor.record_u32("max", *max);
             }
             Self::InvalidOrbitalQuantumNumber { l, n } => {
-                visitor.record_u64("l", u64::from(*l));
-                visitor.record_u64("n", u64::from(*n));
+                visitor.record_u32("l", *l);
+                visitor.record_u32("n", *n);
             }
             Self::InvalidMagneticQuantumNumber { m, l } => {
-                visitor.record_i64("m", i64::from(*m));
-                visitor.record_u64("l", u64::from(*l));
+                visitor.record_i32("m", *m);
+                visitor.record_u32("l", *l);
             }
             Self::DimensionMismatch {
                 context,

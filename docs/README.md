@@ -6,7 +6,7 @@ Welcome to the OxidizeMath documentation directory.
 
 The [Architecture Guide Suite](architecture/README.md) provides centralized blueprints, diagrams, and developer walkthroughs:
 
-- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 28 crates.
+- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 30 crates.
 - **[CERA Framework Guide](architecture/cera_framework.md)**: Climate-invariant Encoding through Representation Alignment and climate modeling pipelines.
 - **[Zero-Allocation Runtime Guide](architecture/zero_allocation_runtime.md)**: NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and verified engine execution rules.
 - **[Interactive Tool Walkthrough](architecture/interactive_tool_walkthrough.md)**: Step-by-step developer guide to implement interactive simulations with `InteractiveTool`.
@@ -145,6 +145,9 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261125: CI Tool-Cache Subcommand Probing, Zero-Copy Plateau POI Dispatch, and Thread-Isolated Plot Test Hooks](adr/20261125-ci-llvm-cov-and-zero-copy-plateau-poi.md)
 - [ADR 20261125: Metadata-Driven Path Abstraction and Five-Tier Workspace Migration](adr/20261125-metadata-driven-tier-migration.md)
 - [ADR 20261126: Typed Export Adapters, Build-Time WASM TrueType Compaction, and CI Pipeline Hardening](adr/20261126-export-adapters-wasm-font-compaction-and-ci-hardening.md)
+- [ADR 20261126: Extract Tier 0 `math_scalars` Hierarchy and Tier 2 `engine_opt` Curve-Fitting Engine](adr/20261126-extract-math-scalars-and-engine-opt.md)
+- [ADR 20261126: Preserve Causal Root Diagnostic Metadata, Wire `math_rng` Diagnostics, and Decouple `std` `diagnostics` from Domain Crates](adr/20261126-preserve-root-metadata-and-decouple-diagnostics.md)
+- [ADR 20261127: Reentrancy-Safe Allocator Trap and Portable Native CI Tests](adr/20261127-portable-native-ci-tests.md)
 
 ## Contributing
 

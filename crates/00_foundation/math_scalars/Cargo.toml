@@ -1,0 +1,32 @@
+[package]
+name = "math_scalars"
+version.workspace = true
+edition = "2024"
+description = "Tier 0 no_std algebraic scalar hierarchy, 0-ULP libm IEEE-754 kernels, dual numbers, and solver workspace primitives."
+
+[package.metadata.oxidize]
+tier = "00_foundation"
+release_role = "release"
+facade_role = "foundation"
+traceability = true
+math_contract = true
+
+[features]
+default = []
+alloc = []
+serde = ["dep:serde", "math_diagnostics/serde", "num-complex/serde"]
+std = ["alloc", "math_diagnostics/std", "num-complex/std", "serde?/std"]
+
+[dependencies]
+libm = { workspace = true }
+math_diagnostics = { path = "../math_diagnostics", default-features = false }
+num-complex = { workspace = true, default-features = false, features = ["libm"] }
+num-traits = { workspace = true, default-features = false }
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true, default-features = false, features = ["alloc", "float_roundtrip"] }
+verified_engine = { path = "../verified_engine" }
+
+[lints]
+workspace = true

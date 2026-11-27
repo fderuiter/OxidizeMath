@@ -3,7 +3,7 @@
 use crate::math_types::Rational;
 use dashu::base::Sign;
 use dashu::integer::UBig;
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use std::fmt;
 
 /// First 64 prime numbers ($p_0 = 2$ through $p_{63} = 311$) indexing zero-allocation registers.

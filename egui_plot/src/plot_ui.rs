@@ -36,6 +36,12 @@ impl<'a> PlotUi<'a> {
         self.plot_id
     }
 
+    /// Number of plot items submitted to this plot in the current frame.
+    #[must_use]
+    pub fn item_count(&self) -> usize {
+        self.items.len()
+    }
+
     /// Attaches a world-coordinate 3D series sidecar to this plot frame.
     pub fn set_3d_sidecar(&mut self, sidecar: crate::Plot3DSeriesSidecar) {
         self.sidecar_3d = Some(sidecar);
@@ -259,6 +265,14 @@ impl<'a> PlotUi<'a> {
     /// Add an image.
     pub fn image(&mut self, image: crate::PlotImage) {
         self.items.push(Box::new(image));
+    }
+
+    /// Add a non-visual shared tabular dataset series for `Data Table` and CSV/JSON exports.
+    pub fn tabular_series(&mut self, series: crate::TabularSeries) {
+        if !series.has_any_points() {
+            return;
+        }
+        self.items.push(Box::new(series));
     }
 
     /// Add a horizontal line.

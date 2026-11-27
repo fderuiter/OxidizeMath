@@ -356,3 +356,103 @@ fn test_scene3d_builder_axes_and_floor_grid_project_in_parallel_and_perspective(
     let segs_persp = builder_persp.sorted_projected_segments();
     assert_ne!(segs_persp[0].0, segs_persp[0].1);
 }
+
+#[cfg(feature = "pure_math")]
+fn run_builder_viewport_frame(
+    ctx: &egui::Context,
+    id: &'static str,
+    mut cam: Camera3D,
+    builder: &mut Scene3DBuilder,
+) -> (usize, usize) {
+    let mut item_count = 0;
+    let mut sidecar_ptr = 0;
+    let _ = ctx.run(egui::RawInput::default(), |c| {
+        egui::CentralPanel::default().show(c, |ui| {
+            Plot3DViewport::new(id, 4.0).show(ui, &mut cam, |plot_ui| {
+                builder.finish(plot_ui);
+                item_count = plot_ui.item_count();
+                sidecar_ptr = plot_ui.sidecar_3d().unwrap().shared_ptr();
+            });
+        });
+    });
+    (item_count, sidecar_ptr)
+}
+
+#[cfg(feature = "pure_math")]
+#[test]
+fn test_120x120_surfaces_batch_into_single_item_share_sidecar_and_preserve_occlusion() {
+    use crate::framework::InteractiveTool;
+    use crate::tabs::geometry_topology::{
+        curvature_heatmap::CurvatureHeatmap, surface_viewer::SurfaceViewer,
+    };
+
+    let mut surface = SurfaceViewer::default();
+    let mut s_json: serde_json::Value =
+        serde_json::from_str(&surface.save_state().unwrap()).unwrap();
+    s_json["u_resolution"] = serde_json::json!(120);
+    s_json["v_resolution"] = serde_json::json!(120);
+    surface.try_load_state(&s_json.to_string()).unwrap();
+    surface.populate_scene(egui::Color32::WHITE);
+    let surf_segs = surface.scene_builder.sorted_projected_segments();
+    assert_eq!(surf_segs.len(), 29_040);
+    assert_eq!(count_rear_over_front_overdraws(&surf_segs), 0);
+
+    let ctx = egui::Context::default();
+    let (items_f1, ptr_f1) =
+        run_builder_viewport_frame(&ctx, "surf_120", surface.camera, &mut surface.scene_builder);
+    let (items_f2, ptr_f2) =
+        run_builder_viewport_frame(&ctx, "surf_120", surface.camera, &mut surface.scene_builder);
+    assert_eq!((items_f1, items_f2), (1, 1));
+    assert_eq!(ptr_f1, ptr_f2);
+
+    let mut curvature = CurvatureHeatmap::default();
+    let mut c_json: serde_json::Value =
+        serde_json::from_str(&curvature.save_state().unwrap()).unwrap();
+    c_json["u_resolution"] = serde_json::json!(120);
+    c_json["v_resolution"] = serde_json::json!(120);
+    curvature.try_load_state(&c_json.to_string()).unwrap();
+    curvature.populate_scene(egui::Color32::WHITE);
+    let curv_segs = curvature.scene_builder.sorted_projected_segments();
+    assert_eq!(curv_segs.len(), 28_800);
+    assert_eq!(count_rear_over_front_overdraws(&curv_segs), 0);
+    let (c_i1, c_p1) = run_builder_viewport_frame(
+        &ctx,
+        "curv_120",
+        curvature.camera,
+        &mut curvature.scene_builder,
+    );
+    let (c_i2, c_p2) = run_builder_viewport_frame(
+        &ctx,
+        "curv_120",
+        curvature.camera,
+        &mut curvature.scene_builder,
+    );
+    assert_eq!((c_i1, c_i2, c_p1), (1, 1, c_p2));
+}
+
+#[cfg(all(feature = "pure_math", feature = "biology"))]
+#[test]
+fn test_120x120_surface_morphogenesis_batches_single_item_and_caches_idle_scene() {
+    use crate::framework::InteractiveTool;
+    use crate::tabs::geometry_topology::surface_morphogenesis::SurfaceMorphogenesisTool;
+
+    let mut morpho = SurfaceMorphogenesisTool::default();
+    let mut m_json: serde_json::Value =
+        serde_json::from_str(&morpho.save_state().unwrap()).unwrap();
+    m_json["u_resolution"] = serde_json::json!(120);
+    m_json["v_resolution"] = serde_json::json!(120);
+    morpho.try_load_state(&m_json.to_string()).unwrap();
+    let ctx = egui::Context::default();
+    let screen = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(960.0, 720.0),
+        )),
+        ..Default::default()
+    };
+    let _ = ctx.run(screen.clone(), |c| morpho.show(c));
+    assert_eq!(morpho.scene_builder.primitive_count(), 28_800);
+    let ptr_1 = morpho.scene_builder.sidecar().shared_ptr();
+    let _ = ctx.run(screen, |c| morpho.show(c));
+    assert_eq!(ptr_1, morpho.scene_builder.sidecar().shared_ptr());
+}

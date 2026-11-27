@@ -2,65 +2,25 @@
 
 //! Depth-sorted 3D primitive collector and sidecar emitter for [`super::Plot3DViewport`].
 
+#[path = "scene_batch.rs"]
+mod scene_batch;
+#[path = "scene_decor.rs"]
+mod scene_decor;
+
 use eframe::egui;
-use egui_plot::{
-    Line, LineStyle, MarkerShape, Plot3DSeries, Plot3DSeriesSidecar, PlotPoint, PlotPoints, PlotUi,
-    Points, Text,
-};
+use egui_plot::{LineStyle, MarkerShape, Plot3DSeries, Plot3DSeriesSidecar, PlotUi};
 use nalgebra::Point3;
 
 use super::Camera3D;
-
-#[derive(Clone, Debug)]
-struct SegmentPrimitive3D {
-    name: String,
-    p0_proj: [f64; 2],
-    p1_proj: [f64; 2],
-    p0_world: [f64; 3],
-    p1_world: [f64; 3],
-    viewer_z: f64,
-    stroke: egui::Stroke,
-    style: LineStyle,
-    allow_hover: bool,
-}
-
-#[derive(Clone, Debug)]
-struct PointPrimitive3D {
-    name: String,
-    proj: [f64; 2],
-    world: [f64; 3],
-    viewer_z: f64,
-    radius: f32,
-    color: egui::Color32,
-    shape: MarkerShape,
-    allow_hover: bool,
-}
-
-#[derive(Clone, Debug)]
-enum Drawable3D {
-    Segment(SegmentPrimitive3D),
-    Point(PointPrimitive3D),
-}
-
-impl Drawable3D {
-    fn viewer_z(&self) -> f64 {
-        match self {
-            Self::Segment(s) => s.viewer_z,
-            Self::Point(p) => p.viewer_z,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-struct LabelPrimitive3D {
-    proj: [f64; 2],
-    text: String,
-    color: egui::Color32,
-}
+use scene_batch::{
+    batch_item_id, compile_sorted_scene, CompiledScene3D, Drawable3D, LabelPrimitive3D,
+    PointPrimitive3D, Scene3DBatchItem, SegmentPrimitive3D,
+};
 
 /// Reusable 3D scene builder that projects world `Point3<f64>` primitives through [`Camera3D`],
 /// splits polylines into 2-point segments, sorts primitives back-to-front by `viewer_z`,
-/// and attaches a [`Plot3DSeriesSidecar`] with immutable world `(x, y, z)` coordinates.
+/// compiles a single cached [`PlotItem`](egui_plot::PlotItem), and attaches a shared
+/// [`Plot3DSeriesSidecar`] with immutable world `(x, y, z)` coordinates.
 #[derive(Clone, Debug, Default)]
 pub struct Scene3DBuilder {
     camera: Camera3D,
@@ -70,6 +30,10 @@ pub struct Scene3DBuilder {
     sorted: bool,
     labels: Vec<LabelPrimitive3D>,
     sidecar: Plot3DSeriesSidecar,
+    compiled: Option<CompiledScene3D>,
+    registered_plot_id: Option<egui::Id>,
+    hover_world_vertices: Vec<[f64; 3]>,
+    generation: u64,
     proj_scratch: Vec<[f64; 2]>,
     vz_scratch: Vec<f64>,
     world_scratch: Vec<[f64; 3]>,
@@ -94,6 +58,22 @@ impl Scene3DBuilder {
         self.sorted = false;
         self.labels.clear();
         self.sidecar.clear();
+        self.compiled = None;
+        self.registered_plot_id = None;
+        self.hover_world_vertices.clear();
+        self.generation = self.generation.wrapping_add(1);
+    }
+
+    /// Returns a reference to the shared [`Plot3DSeriesSidecar`] attached by this scene builder.
+    #[must_use]
+    pub fn sidecar(&self) -> &Plot3DSeriesSidecar {
+        &self.sidecar
+    }
+
+    /// Number of 3D primitives collected in this scene builder.
+    #[must_use]
+    pub fn primitive_count(&self) -> usize {
+        self.primitives.len()
     }
 
     /// Sets a visual centering offset subtracted before camera rotation while keeping true world
@@ -117,6 +97,12 @@ impl Scene3DBuilder {
         ];
         let (proj, vz) = self.camera.project_with_depth(&centered);
         (proj, vz, [w.x, w.y, w.z])
+    }
+
+    fn mark_dirty(&mut self) {
+        self.sorted = false;
+        self.compiled = None;
+        self.registered_plot_id = None;
     }
 
     /// Adds a 2-point 3D segment, optionally recording its endpoints in a logical 3D series.
@@ -148,25 +134,44 @@ impl Scene3DBuilder {
         allow_hover: bool,
         record_series: bool,
     ) {
+        let w0 = [endpoints[0].x, endpoints[0].y, endpoints[0].z];
+        let w1 = [endpoints[1].x, endpoints[1].y, endpoints[1].z];
+        self.add_styled_segment_with_world(
+            name,
+            (endpoints, [w0, w1]),
+            stroke,
+            style,
+            allow_hover,
+            record_series,
+        );
+    }
+
+    /// Adds a 2-point 3D segment projecting `coords.0` while recording `coords.1` world endpoints
+    /// in hover readouts and [`Plot3DSeriesSidecar`].
+    pub fn add_styled_segment_with_world(
+        &mut self,
+        name: impl Into<String>,
+        coords: ([Point3<f64>; 2], [[f64; 3]; 2]),
+        stroke: egui::Stroke,
+        style: LineStyle,
+        allow_hover: bool,
+        record_series: bool,
+    ) {
+        let (render_endpoints, world_endpoints) = coords;
         let name = name.into();
-        let (p0_proj, vz0, p0_world) = self.project_world(endpoints[0]);
-        let (p1_proj, vz1, p1_world) = self.project_world(endpoints[1]);
+        let (p0_proj, vz0, _) = self.project_world(render_endpoints[0]);
+        let (p1_proj, vz1, _) = self.project_world(render_endpoints[1]);
         if record_series {
-            self.append_segment_to_series(
-                &name,
-                [p0_proj, p1_proj],
-                [p0_world, p1_world],
-                stroke.color,
-            );
+            self.append_segment_to_series(&name, [p0_proj, p1_proj], world_endpoints, stroke.color);
         }
-        self.sorted = false;
+        self.mark_dirty();
         self.primitives
             .push(Drawable3D::Segment(SegmentPrimitive3D {
                 name,
                 p0_proj,
                 p1_proj,
-                p0_world,
-                p1_world,
+                p0_world: world_endpoints[0],
+                p1_world: world_endpoints[1],
                 viewer_z: 0.5 * (vz0 + vz1),
                 stroke,
                 style,
@@ -212,8 +217,46 @@ impl Scene3DBuilder {
             self.vz_scratch.push(vz);
             self.world_scratch.push(world);
         }
-        self.sorted = false;
-        for i in 0..points.len().saturating_sub(1) {
+        self.emit_polyline_from_scratch(name, stroke, style, record_series);
+    }
+
+    /// Splits a 3D polyline whose render coordinates are normalized separately from true `world_points`.
+    pub fn add_polyline_with_world(
+        &mut self,
+        name: impl Into<String>,
+        render_points: &[Point3<f64>],
+        world_points: &[[f64; 3]],
+        stroke: egui::Stroke,
+        style: LineStyle,
+        record_series: bool,
+    ) {
+        let count = render_points.len().min(world_points.len());
+        if count == 0 {
+            return;
+        }
+        let name = name.into();
+        self.proj_scratch.clear();
+        self.vz_scratch.clear();
+        self.world_scratch.clear();
+        for i in 0..count {
+            let (proj, vz, _) = self.project_world(render_points[i]);
+            self.proj_scratch.push(proj);
+            self.vz_scratch.push(vz);
+            self.world_scratch.push(world_points[i]);
+        }
+        self.emit_polyline_from_scratch(name, stroke, style, record_series);
+    }
+
+    fn emit_polyline_from_scratch(
+        &mut self,
+        name: String,
+        stroke: egui::Stroke,
+        style: LineStyle,
+        record_series: bool,
+    ) {
+        self.mark_dirty();
+        let n = self.proj_scratch.len();
+        for i in 0..n.saturating_sub(1) {
             self.primitives
                 .push(Drawable3D::Segment(SegmentPrimitive3D {
                     name: name.clone(),
@@ -248,16 +291,32 @@ impl Scene3DBuilder {
         shape: MarkerShape,
         record_series: bool,
     ) {
-        if points.is_empty() {
+        let world: Vec<[f64; 3]> = points.iter().map(|p| [p.x, p.y, p.z]).collect();
+        self.add_points_with_world(name, (points, &world), radius, color, shape, record_series);
+    }
+
+    /// Adds a 3D point cloud with separate normalized `coords.0` and true `coords.1` world coordinates.
+    pub fn add_points_with_world(
+        &mut self,
+        name: impl Into<String>,
+        coords: (&[Point3<f64>], &[[f64; 3]]),
+        radius: f32,
+        color: egui::Color32,
+        shape: MarkerShape,
+        record_series: bool,
+    ) {
+        let (render_points, world_points) = coords;
+        let count = render_points.len().min(world_points.len());
+        if count == 0 {
             return;
         }
         let name = name.into();
-        let mut proj_vec = Vec::with_capacity(points.len());
-        let mut world_vec = Vec::with_capacity(points.len());
-        let allow_hover = true;
-        self.sorted = false;
-        for &pt in points {
-            let (proj, viewer_z, world) = self.project_world(pt);
+        let mut proj_vec = Vec::with_capacity(count);
+        let mut world_vec = Vec::with_capacity(count);
+        self.mark_dirty();
+        for i in 0..count {
+            let (proj, viewer_z, _) = self.project_world(render_points[i]);
+            let world = world_points[i];
             proj_vec.push(proj);
             world_vec.push(world);
             self.primitives.push(Drawable3D::Point(PointPrimitive3D {
@@ -268,7 +327,7 @@ impl Scene3DBuilder {
                 radius,
                 color,
                 shape,
-                allow_hover,
+                allow_hover: true,
             }));
         }
         if record_series {
@@ -298,97 +357,32 @@ impl Scene3DBuilder {
             .push_series(Plot3DSeries::new(name, proj_vec, world_vec, color));
     }
 
-    /// Adds projected 3D X, Y, and Z coordinate reference axes with endpoint labels.
-    pub fn add_axes(&mut self, length: f64, dark_mode: bool) {
-        let palette = if dark_mode {
-            &crate::app::palette::DARK_PALETTE
-        } else {
-            &crate::app::palette::LIGHT_PALETTE
-        };
-        let axes = [
-            ("X Axis", "X", Point3::new(length, 0.0, 0.0), palette.axis_x),
-            ("Y Axis", "Y", Point3::new(0.0, length, 0.0), palette.axis_y),
-            ("Z Axis", "Z", Point3::new(0.0, 0.0, length), palette.axis_z),
-        ];
-        let origin = Point3::new(
-            self.origin_offset[0],
-            self.origin_offset[1],
-            self.origin_offset[2],
-        );
-        for (axis_name, short, dir, color) in axes {
-            let tip = Point3::new(origin.x + dir.x, origin.y + dir.y, origin.z + dir.z);
-            self.add_styled_segment(
-                axis_name,
-                [origin, tip],
-                egui::Stroke::new(1.75_f32, color),
-                LineStyle::Solid,
-                true,
-                false,
-            );
-            let label_tip = Point3::new(
-                origin.x + dir.x * 1.08,
-                origin.y + dir.y * 1.08,
-                origin.z + dir.z * 1.08,
-            );
-            let (proj, _, _) = self.project_world(label_tip);
-            self.labels.push(LabelPrimitive3D {
-                proj,
-                text: short.to_owned(),
-                color,
-            });
-        }
-    }
-
-    /// Adds a projected 3D text label anchored at world coordinate `pos`.
-    pub fn add_label(&mut self, pos: Point3<f64>, text: impl Into<String>, color: egui::Color32) {
-        let (proj, _, _) = self.project_world(pos);
-        self.labels.push(LabelPrimitive3D {
-            proj,
-            text: text.into(),
-            color,
-        });
-    }
-
-    /// Adds a decorative projected `xOy` floor grid at `z_plane` sorted alongside scene geometry.
-    pub fn add_floor_grid(
+    /// Explicitly records a logical 3D series pairing normalized `render_points` with true `world_points`.
+    pub fn record_series_with_world(
         &mut self,
-        half_extent: f64,
-        divisions: usize,
-        z_plane: f64,
-        stroke: egui::Stroke,
+        name: impl Into<String>,
+        render_points: &[Point3<f64>],
+        world_points: &[[f64; 3]],
+        color: egui::Color32,
     ) {
-        let divs = divisions.max(1);
-        let step = (2.0 * half_extent) / (divs as f64);
-        let ox = self.origin_offset[0];
-        let oy = self.origin_offset[1];
-        for i in 0..=divs {
-            let offset = -half_extent + (i as f64) * step;
-            self.add_styled_segment(
-                "",
-                [
-                    Point3::new(ox - half_extent, oy + offset, z_plane),
-                    Point3::new(ox + half_extent, oy + offset, z_plane),
-                ],
-                stroke,
-                LineStyle::Solid,
-                false,
-                false,
-            );
-            self.add_styled_segment(
-                "",
-                [
-                    Point3::new(ox + offset, oy - half_extent, z_plane),
-                    Point3::new(ox + offset, oy + half_extent, z_plane),
-                ],
-                stroke,
-                LineStyle::Solid,
-                false,
-                false,
-            );
+        let count = render_points.len().min(world_points.len());
+        if count == 0 {
+            return;
         }
+        let mut proj_vec = Vec::with_capacity(count);
+        for &pt in &render_points[..count] {
+            let (proj, _, _) = self.project_world(pt);
+            proj_vec.push(proj);
+        }
+        self.sidecar.push_series(Plot3DSeries::new(
+            name,
+            proj_vec,
+            world_points[..count].to_vec(),
+            color,
+        ));
     }
 
-    /// Sorts buffered primitives back-to-front by `viewer_z` if not already sorted.
+    /// Sorts buffered primitives back-to-front by `viewer_z` and compiles the cached batch if dirty.
     pub fn ensure_sorted(&mut self) {
         if self.sorted {
             return;
@@ -398,6 +392,16 @@ impl Scene3DBuilder {
         let prims = &self.primitives;
         self.order
             .sort_by(|&a, &b| prims[a].viewer_z().total_cmp(&prims[b].viewer_z()));
+        if let Some((compiled, world_verts)) =
+            compile_sorted_scene(&self.primitives, &self.order, &self.labels, self.generation)
+        {
+            self.compiled = Some(compiled);
+            self.hover_world_vertices = world_verts;
+        } else {
+            self.compiled = None;
+            self.hover_world_vertices.clear();
+        }
+        self.registered_plot_id = None;
         self.sorted = true;
     }
 
@@ -414,55 +418,22 @@ impl Scene3DBuilder {
             .collect()
     }
 
-    /// Sorts all collected 3D primitives back-to-front by `viewer_z`, emits them into `plot_ui`,
-    /// and attaches the populated [`Plot3DSeriesSidecar`].
+    /// Sorts all collected 3D primitives back-to-front by `viewer_z`, emits one cached batched
+    /// [`PlotItem`](egui_plot::PlotItem) into `plot_ui`, and attaches the shared [`Plot3DSeriesSidecar`].
     pub fn finish(&mut self, plot_ui: &mut PlotUi<'_>) {
         self.ensure_sorted();
         let plot_id = plot_ui.plot_id();
-        for (draw_rank, &idx) in self.order.iter().enumerate() {
-            match &self.primitives[idx] {
-                Drawable3D::Segment(seg) => {
-                    let item_id = plot_id.with(("scene3d_seg", draw_rank));
-                    if seg.allow_hover {
-                        self.sidecar
-                            .register_item_vertices(item_id, vec![seg.p0_world, seg.p1_world]);
-                    }
-                    plot_ui.line(
-                        Line::new(
-                            seg.name.clone(),
-                            PlotPoints::new(vec![seg.p0_proj, seg.p1_proj]),
-                        )
-                        .id(item_id)
-                        .stroke(seg.stroke)
-                        .style(seg.style)
-                        .allow_hover(seg.allow_hover),
-                    );
-                }
-                Drawable3D::Point(pt) => {
-                    let item_id = plot_id.with(("scene3d_pt", draw_rank));
-                    if pt.allow_hover {
-                        self.sidecar.register_item_vertices(item_id, vec![pt.world]);
-                    }
-                    plot_ui.points(
-                        Points::new(pt.name.clone(), vec![pt.proj])
-                            .id(item_id)
-                            .radius(pt.radius)
-                            .color(pt.color)
-                            .shape(pt.shape)
-                            .allow_hover(pt.allow_hover),
-                    );
-                }
+        if self.registered_plot_id != Some(plot_id) {
+            if !self.hover_world_vertices.is_empty() {
+                self.sidecar.register_item_vertices(
+                    batch_item_id(plot_id),
+                    self.hover_world_vertices.clone(),
+                );
             }
+            self.registered_plot_id = Some(plot_id);
         }
-        for lbl in &self.labels {
-            plot_ui.text(
-                Text::new(
-                    "",
-                    PlotPoint::new(lbl.proj[0], lbl.proj[1]),
-                    egui::RichText::new(&lbl.text).strong().color(lbl.color),
-                )
-                .allow_hover(false),
-            );
+        if let Some(ref compiled) = self.compiled {
+            plot_ui.add(Scene3DBatchItem::new(plot_id, compiled.clone()));
         }
         plot_ui.set_3d_sidecar(self.sidecar.clone());
     }

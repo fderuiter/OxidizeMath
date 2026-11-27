@@ -604,7 +604,13 @@ impl TableView<'_> {
         }
         close_clicked
     }
+}
 
+/// Maximum number of unshared series rendered as inline horizontal tab buttons before switching
+/// to a compact, virtualized [`egui::ComboBox`] selector.
+pub const MAX_INLINE_SERIES_TABS: usize = 12;
+
+impl TableView<'_> {
     fn select_series_tab(&mut self, ctx: &Context, idx: usize, label: &str) {
         if let Some(item) = self.series.get(idx) {
             self.state.selected_series = idx;
@@ -614,7 +620,30 @@ impl TableView<'_> {
         }
     }
 
+    fn render_series_selector_combo(&mut self, ui: &mut Ui) {
+        let series = self.series;
+        let chosen = format::render_series_selector_bar(
+            ui,
+            self.plot_id.with("data_table_series_selector"),
+            series.len(),
+            self.state.selected_series,
+            |idx| {
+                let item = &series[idx];
+                format!("{} ({})", item.display_name(idx), item.points.len())
+            },
+        );
+        if let Some(idx) = chosen {
+            let item = &self.series[idx];
+            let lbl = format!("{} ({})", item.display_name(idx), item.points.len());
+            self.select_series_tab(ui.ctx(), idx, &lbl);
+        }
+    }
+
     fn render_series_tabs(&mut self, ui: &mut Ui) {
+        if self.series.len() > MAX_INLINE_SERIES_TABS {
+            self.render_series_selector_combo(ui);
+            return;
+        }
         ScrollArea::horizontal()
             .id_salt(self.plot_id.with("data_table_series_tabs"))
             .show(ui, |ui| {
@@ -659,7 +688,9 @@ impl TableView<'_> {
                 });
             });
     }
+}
 
+impl TableView<'_> {
     fn render_body(&mut self, ui: &mut Ui) -> bool {
         if self.series.is_empty() {
             self.clamp(0);

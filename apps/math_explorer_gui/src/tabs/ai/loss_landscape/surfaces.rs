@@ -6,7 +6,6 @@
 pub use super::evaluator::SurfaceEvaluator;
 use crate::camera::Camera3D;
 use eframe::egui::{self, Color32};
-use egui_plot::Points;
 use nalgebra::Vector2;
 
 pub const MAX_SCULPT_BUMPS: usize = 32;
@@ -313,77 +312,28 @@ impl SurfaceGrid {
     }
 
     #[must_use]
-    pub fn wireframe_polylines(&self, camera: &Camera3D) -> Vec<(f64, Vec<[f64; 2]>)> {
-        let num_rows = self.rows.len();
-        if num_rows == 0 {
-            return Vec::new();
-        }
-        let num_cols = self.rows[0].len();
-        let mut lines = Vec::with_capacity(num_rows + num_cols);
-        for row in &self.rows {
-            let mut pts = Vec::with_capacity(num_cols);
-            let mut h_sum = 0.0;
-            for &[w, b, loss] in row {
-                h_sum += self.normalized_height(loss);
-                pts.push(camera.project(&self.world_point(w, b, loss, 0.0)));
-            }
-            lines.push((h_sum / (num_cols.max(1) as f64), pts));
-        }
-        for col in 0..num_cols {
-            let mut pts = Vec::with_capacity(num_rows);
-            let mut h_sum = 0.0;
-            for row in &self.rows {
-                let [w, b, loss] = row[col];
-                h_sum += self.normalized_height(loss);
-                pts.push(camera.project(&self.world_point(w, b, loss, 0.0)));
-            }
-            lines.push((h_sum / (num_rows.max(1) as f64), pts));
-        }
-        lines
-    }
-
-    #[must_use]
-    pub fn heatmap_points(&self, low: Color32, high: Color32) -> Vec<Points<'static>> {
-        let mut out = Vec::with_capacity(self.rows.len() * self.rows.first().map_or(0, Vec::len));
-        for row in &self.rows {
-            for &[w, b, loss] in row {
-                if w.is_finite() && b.is_finite() && loss.is_finite() {
-                    out.push(
-                        Points::new(format!("Loss: {loss:.4}"), vec![[w, b]])
-                            .color(lerp_color(low, high, self.normalized_height(loss)))
-                            .radius(3.0_f32),
-                    );
-                }
-            }
-        }
-        out
-    }
-
-    #[must_use]
-    pub fn contour_segments(&self, num_levels: usize) -> Vec<(f64, Vec<[[f64; 2]; 2]>)> {
+    pub fn contour_segments_fixed(&self, num_levels: usize) -> Vec<(f64, Vec<[[f64; 2]; 2]>)> {
         let levels = num_levels.clamp(2, 16);
         let mut result = Vec::with_capacity(levels);
-        if self.rows.len() < 2 || self.rows[0].len() < 2 {
-            return result;
-        }
+        let valid_grid = self.rows.len() >= 2 && self.rows[0].len() >= 2;
         for lvl_idx in 1..=levels {
             let iso = (lvl_idx as f64) / ((levels + 1) as f64);
             let mut segs = Vec::new();
-            for r in 0..(self.rows.len() - 1) {
-                for c in 0..(self.rows[r].len() - 1) {
-                    let cells = [
-                        self.rows[r][c],
-                        self.rows[r][c + 1],
-                        self.rows[r + 1][c + 1],
-                        self.rows[r + 1][c],
-                    ];
-                    let h = cells.map(|pt| self.normalized_height(pt[2]));
-                    collect_cell_iso_segments(cells, h, iso, &mut segs);
+            if valid_grid {
+                for r in 0..(self.rows.len() - 1) {
+                    for c in 0..(self.rows[r].len() - 1) {
+                        let cells = [
+                            self.rows[r][c],
+                            self.rows[r][c + 1],
+                            self.rows[r + 1][c + 1],
+                            self.rows[r + 1][c],
+                        ];
+                        let h = cells.map(|pt| self.normalized_height(pt[2]));
+                        collect_cell_iso_segments(cells, h, iso, &mut segs);
+                    }
                 }
             }
-            if !segs.is_empty() {
-                result.push((iso, segs));
-            }
+            result.push((iso, segs));
         }
         result
     }

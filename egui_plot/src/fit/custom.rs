@@ -1,8 +1,8 @@
-//! Callback-driven custom nonlinear regression up to 6 free parameters backed by `math_commons::fit`.
+//! Callback-driven custom nonlinear regression up to 6 free parameters backed by `engine_opt::fit`.
 
 use std::sync::Arc;
 
-use math_commons::fit::{MAX_FIT_PARAMS, levenberg_marquardt_numeric, sum_squared_errors_numeric};
+use engine_opt::fit::{MAX_FIT_PARAMS, levenberg_marquardt_numeric, sum_squared_errors_numeric};
 
 use crate::fit::{FitResult, FitType};
 
@@ -64,7 +64,7 @@ pub type CustomFitCallback =
     Arc<dyn Fn(&str) -> Result<Arc<dyn CustomFitEvaluator>, String> + Send + Sync>;
 
 /// Fits a pre-compiled [`CustomFitEvaluator`] (up to [`MAX_FIT_PARAMS`] parameters) to `points`
-/// using damped 6-parameter Levenberg-Marquardt from `math_commons::fit`.
+/// using damped 6-parameter Levenberg-Marquardt from `engine_opt::fit`.
 pub fn fit_custom_evaluator(
     points: &[[f64; 2]],
     evaluator: Arc<dyn CustomFitEvaluator>,

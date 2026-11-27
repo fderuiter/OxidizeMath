@@ -32,12 +32,14 @@ pub const EXPECTED_WORKSPACE_CRATES: &[&str] = &[
     "domain_physics",
     "engine_diffeq",
     "engine_linalg",
+    "engine_opt",
     "engine_pde",
     "federated_registry",
     "math_commons",
     "math_diagnostics",
     "math_explorer",
     "math_rng",
+    "math_scalars",
     "oxidize_core",
     "oxidizemath",
     "pure_math",
@@ -264,24 +266,37 @@ impl MaturityRegistry {
         if body_after_pkg.contains("/tests/") || body_after_pkg.starts_with("tests/") {
             self.append_test_stem_modules(trimmed, stem, &mut out);
         }
-        if let Some(m) = Self::crate_for_repo_path(trimmed).and_then(|c| match c {
+        if let Some(m) = Self::crate_for_repo_path(trimmed).and_then(Self::crate_owned_module)
+            && self.modules.contains_key(m)
+            && !out.iter().any(|x| x == m)
+        {
+            out.push(m.to_string());
+        }
+        if out.is_empty() {
+            self.append_gui_tab_module(trimmed, &mut out);
+        }
+        out
+    }
+
+    fn crate_owned_module(crate_name: &str) -> Option<&'static str> {
+        match crate_name {
             "domain_biology" => Some("biology"),
             "domain_epidemiology" => Some("epidemiology"),
             "domain_climate" => Some("climate"),
             "pure_math" => Some("pure_math"),
             "math_commons" => Some("math_commons"),
+            "engine_opt" => Some("engine_opt"),
+            "math_scalars" => Some("math_scalars"),
             _ => None,
-        }) && self.modules.contains_key(m)
-            && !out.iter().any(|x| x == m)
-        {
-            out.push(m.to_string());
         }
+    }
+
+    fn append_gui_tab_module(&self, trimmed: &str, out: &mut Vec<String>) {
         let gui_tabs_rest = trimmed
             .strip_prefix("math_explorer_gui/src/tabs/")
             .or_else(|| trimmed.strip_prefix("apps/math_explorer_gui/src/tabs/"))
             .or_else(|| trimmed.strip_prefix("math_explorer_gui:src/tabs/"));
-        if out.is_empty()
-            && let Some(rest) = gui_tabs_rest
+        if let Some(rest) = gui_tabs_rest
             && let Some(tab_domain) = rest.split('/').next()
         {
             let gui_mod = match tab_domain {
@@ -297,7 +312,6 @@ impl MaturityRegistry {
                 out.push(m.to_string());
             }
         }
-        out
     }
 
     fn append_test_stem_modules(&self, norm_path: &str, stem: &str, out: &mut Vec<String>) {

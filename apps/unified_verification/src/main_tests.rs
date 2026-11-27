@@ -399,18 +399,20 @@ fn test_verify_suite_security_checks_parse_each_member_manifest_once() {
     }
 
     let (_, members) = manifest_cache::discover_workspace();
-    let member_refs: Vec<&str> = members.iter().map(String::as_str).collect();
-    let mut ast_cache = oxidize_core::traceability::AstCache::new();
-    let mut manifests = manifest_cache::ManifestCache::new();
-
-    let (passed, entropy_debt) = run_security_checks_with_hooks(
-        &member_refs,
-        false,
-        &mut ast_cache,
-        &mut manifests,
-        || true,
-        || true,
-    );
+    let members_for_job = members.clone();
+    let (passed, entropy_debt, manifests) = crate::with_workspace_ast_cache(move |ast_cache| {
+        let member_refs: Vec<&str> = members_for_job.iter().map(String::as_str).collect();
+        let mut mc = manifest_cache::ManifestCache::new();
+        let (ok, debt) = run_security_checks_with_hooks(
+            &member_refs,
+            false,
+            ast_cache,
+            &mut mc,
+            || true,
+            || true,
+        );
+        (ok, debt, mc)
+    });
     assert!(passed);
     assert!(entropy_debt.is_empty());
     assert_eq!(manifests.lint_check_calls(), members.len());
@@ -430,9 +432,10 @@ fn test_workspace_opt_out_caps_enforce_reason_crate_and_file_ceilings() {
         env::set_current_dir(root).unwrap();
     }
 
-    let mut cache = oxidize_core::traceability::AstCache::new();
     let rs_files = report::collect_rs_files();
-    let suite_metrics = report::analyze_files_with_cache(&rs_files, &mut cache);
+    let suite_metrics = crate::with_workspace_ast_cache(move |cache| {
+        report::analyze_files_with_cache(&rs_files, cache)
+    });
     let pure_dir = oxidize_core::workspace::find_package_member_path_std(
         &manifest_cache::workspace_root_dir(),
         "pure_math",

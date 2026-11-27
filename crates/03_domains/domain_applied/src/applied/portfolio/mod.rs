@@ -135,14 +135,14 @@ pub enum PortfolioError {
     },
 }
 
-impl diagnostics::Diagnostic for PortfolioError {
+impl math_diagnostics::Diagnostic for PortfolioError {
     #[verified_engine::verified]
-    fn severity(&self) -> diagnostics::Severity {
-        diagnostics::Severity::Error
+    fn severity(&self) -> math_diagnostics::Severity {
+        math_diagnostics::Severity::Error
     }
 
     #[verified_engine::verified]
-    fn visit_fields(&self, visitor: &mut dyn diagnostics::DiagnosticVisitor) {
+    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
         visitor.record_str("error_type", "PortfolioError");
         visitor.record_display("description", self);
     }

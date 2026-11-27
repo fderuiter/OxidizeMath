@@ -1,4 +1,4 @@
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::pure_math::analysis::roots::AnalysisError;
 use thiserror::Error;
 
@@ -28,7 +28,7 @@ pub enum BatteryError {
     NegativeCycles(f64),
     /// Wrapped curve-fitting solver error.
     #[error("{0}")]
-    Fit(#[from] math_commons::error::FitError),
+    Fit(#[from] engine_opt::error::FitError),
 }
 
 /// Errors returned by game-theoretic equilibrium and mean-field solvers.

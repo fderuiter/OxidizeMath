@@ -2,10 +2,10 @@
 //!
 //! Accumulates exact integer avalanche histograms on stack/fixed-size buffers during critical
 //! sandpile cascades and fits parameter-free `1/f` scaling laws via
-//! [`math_commons::fit::FitModel::PowerLaw`] without heap allocation.
+//! [`engine_opt::fit::FitModel::PowerLaw`] without heap allocation.
 
-use math_commons::error::FitError;
-use math_commons::fit::{CurveFit, FitModel, fit_model};
+use engine_opt::error::FitError;
+use engine_opt::fit::{CurveFit, FitModel, fit_model};
 use serde::{Deserialize, Serialize};
 
 /// Maximum exact integer bucket tracked before accumulating into the overflow tail counter.

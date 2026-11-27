@@ -6,7 +6,7 @@
 //! Exposes canonical [`crate::fit::FitModel`] presets (degrees 1–4 polynomial OLS plus Exponential,
 //! Power-Law, Logarithmic, Logistic, and Sinusoidal damped Levenberg-Marquardt regression)
 //! backed by fixed stack buffers and typed [`crate::error::FitError`] diagnostics.
-// [cite:math_commons]
+// [cite:engine_opt]
 
 #[cfg(feature = "alloc")]
 mod format;
@@ -19,13 +19,14 @@ mod seeds;
 mod tests;
 
 use crate::error::FitError;
-use crate::series::PointSeries;
+#[cfg(feature = "alloc")]
+use alloc::format;
 #[cfg(feature = "alloc")]
 use alloc::string::String;
 #[cfg(feature = "alloc")]
 use alloc::{vec, vec::Vec};
-#[allow(unused_imports)]
-use num_traits::Float;
+use math_scalars::ComplexField;
+use math_scalars::series::PointSeries;
 
 pub use lm::{
     MAX_FIT_PARAMS, MAX_LM_ITERATIONS, levenberg_marquardt, levenberg_marquardt_filtered,
@@ -179,13 +180,14 @@ impl scientific_metadata::theory::TheoryDescribable for FitModel {
     }
 
     fn theory_citation(&self) -> String {
-        "Levenberg (1944); Marquardt (1963); Press et al. (2007), Numerical Recipes, Ch. 15."
-            .to_string()
+        String::from(
+            "Levenberg (1944); Marquardt (1963); Press et al. (2007), Numerical Recipes, Ch. 15.",
+        )
     }
 
     fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
         let mut map = std::collections::HashMap::new();
-        map.insert("default".to_string(), self.label().to_string());
+        map.insert(String::from("default"), String::from(self.label()));
         map
     }
 
@@ -311,7 +313,11 @@ impl CurveFit {
                 if self.log_x && x <= 0.0 {
                     return f64::NAN;
                 }
-                let tx = if self.log_x { Float::log10(x) } else { x };
+                let tx = if self.log_x {
+                    ComplexField::log10(x)
+                } else {
+                    x
+                };
                 let ty = if let Some((u_mean, u_scale, ref centered)) = self.poly_center_scale {
                     let z = (tx - u_mean) / u_scale;
                     poly::eval_polynomial_horner_raw(&centered[..self.coeff_len], z)
@@ -319,7 +325,7 @@ impl CurveFit {
                     poly::eval_polynomial_horner_raw(&self.coeffs[..self.coeff_len], tx)
                 };
                 let out = if self.log_y {
-                    Float::powf(10.0_f64, ty.clamp(-300.0, 300.0)).clamp(1e-300, 1e300)
+                    ComplexField::powf(10.0_f64, ty.clamp(-300.0, 300.0)).clamp(1e-300, 1e300)
                 } else {
                     ty
                 };

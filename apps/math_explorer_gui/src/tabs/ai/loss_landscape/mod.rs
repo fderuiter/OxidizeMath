@@ -3,6 +3,7 @@
 //! 3D and 2D Hamiltonian Loss Landscape Arena (`LossLandscapeTool`).
 
 pub mod arena;
+pub(crate) mod cache;
 mod canvas;
 pub mod data;
 pub mod evaluator;
@@ -11,6 +12,8 @@ pub mod presets;
 pub mod surfaces;
 mod ui;
 
+#[cfg(test)]
+mod perf_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(all(test, target_arch = "wasm32"))]
@@ -34,8 +37,8 @@ use evaluator::EmpiricalConfig;
 use presets::DEFAULT_LOSS_EXPR;
 use surfaces::{
     map_2d_rect_pos, push_sculpt_bump, unproject_3d_rect_pos, LandscapeSurface, SculptBump,
-    SurfaceEvaluator, SurfaceGrid, MAX_SCULPT_BUMPS, SCULPT_AMP_MAX, SCULPT_AMP_MIN,
-    SCULPT_SIGMA_MAX, SCULPT_SIGMA_MIN,
+    SurfaceEvaluator, MAX_SCULPT_BUMPS, SCULPT_AMP_MAX, SCULPT_AMP_MIN, SCULPT_SIGMA_MAX,
+    SCULPT_SIGMA_MIN,
 };
 
 pub(crate) const LOSS_PARAM_MIN_BOUND: f64 = -100.0;
@@ -97,6 +100,8 @@ pub struct LossLandscapeTool {
     pub(super) slingshot_anchor: Option<[f64; 2]>,
     pub(super) slingshot_current: Option<[f64; 2]>,
     pub(super) last_brush_wb: Option<[f64; 2]>,
+    pub(super) last_hover_wb: Option<[f64; 2]>,
+    pub(crate) cache: cache::LossLandscapeCache,
 }
 
 impl Default for LossLandscapeTool {
@@ -141,6 +146,8 @@ impl Default for LossLandscapeTool {
             slingshot_anchor: None,
             slingshot_current: None,
             last_brush_wb: None,
+            last_hover_wb: None,
+            cache: cache::LossLandscapeCache::default(),
         };
         tool.reset_arena();
         tool
@@ -423,6 +430,14 @@ impl InteractiveTool for LossLandscapeTool {
         }
     }
 
+    fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
+        self.resolve_export_datasets_2d()
+    }
+
+    fn export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
+        self.resolve_export_datasets_3d()
+    }
+
     fn save_state(&self) -> Option<String> {
         persistence::save_tool_state(self)
     }
@@ -451,14 +466,10 @@ impl InteractiveTool for LossLandscapeTool {
             if !self.has_finite_parameters() {
                 return;
             }
-            let grid = SurfaceGrid::sample_eval(
-                self.surface_evaluator(),
-                self.domain_bounds(),
-                self.resolution,
-            );
+            self.ensure_surface_cache();
             match self.view_mode {
-                LandscapeViewMode::View3D => self.show_3d_arena(ui, &grid),
-                LandscapeViewMode::Contour2D => self.show_2d_contours(ui, &grid),
+                LandscapeViewMode::View3D => self.show_3d_arena(ui),
+                LandscapeViewMode::Contour2D => self.show_2d_contours(ui),
             }
         });
     }

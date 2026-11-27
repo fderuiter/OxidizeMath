@@ -2,29 +2,14 @@
 // [cite:clinical_trials_statistics]
 #![cfg_attr(any(), verified(opt_out = "no_std_engine"))]
 
+use math_scalars::RealField;
 use rand_core::RngCore;
 
-const INV_TWO_POW_24_F32: f32 = 1.0 / ((1_u32 << 24) as f32);
 const INV_TWO_POW_53_F64: f64 = 1.0 / ((1_u64 << 53) as f64);
-const F32_MAX_BELOW_ONE: f32 = f32::from_bits(0x3f7f_ffff);
-const F32_MIN_ABOVE_ZERO: f32 = 1.0e-7_f32;
-const F64_MAX_BELOW_ONE: f64 = 1.0 - 1.0e-15_f64;
-const F64_MIN_ABOVE_ZERO: f64 = 1.0e-15_f64;
 
-mod private {
-    pub trait Sealed {}
-    impl Sealed for f32 {}
-    impl Sealed for f64 {}
-}
-
-/// Sealed IEEE-754 floating-point scalar contract (`f32` and `f64`) compatible with
-/// `engine_linalg::Scalar` for deterministic PRNG and QMC point generation.
-pub trait RngScalar: Copy + PartialOrd + private::Sealed {
-    /// Additive identity `0.0`.
-    const ZERO: Self;
-    /// Multiplicative identity `1.0`.
-    const ONE: Self;
-
+/// Real floating-point scalar contract unified with [`math_scalars::RealField`] for deterministic
+/// PRNG and QMC point generation across all `RealField` types (`f32`, `f64`, etc.).
+pub trait RngScalar: RealField {
     /// Converts an `f64` value in `[0, 1]` into `Self`.
     fn from_unit_f64(value: f64) -> Self;
 
@@ -44,104 +29,46 @@ pub trait RngScalar: Copy + PartialOrd + private::Sealed {
     fn sample_symmetric_open<R: RngCore + ?Sized>(rng: &mut R) -> Self;
 }
 
-impl RngScalar for f32 {
-    const ZERO: Self = 0.0;
-    const ONE: Self = 1.0;
-
+impl<T: RealField> RngScalar for T {
     #[inline]
     fn from_unit_f64(value: f64) -> Self {
         debug_assert!(value.is_finite());
-        value as f32
+        T::from_f64(value)
     }
 
     #[inline]
     fn clamp_open_unit_f64(value: f64) -> Self {
-        let cast = (value as f32).clamp(F32_MIN_ABOVE_ZERO, F32_MAX_BELOW_ONE);
-        debug_assert!(cast > 0.0 && cast < 1.0);
-        cast
-    }
-
-    #[inline]
-    fn from_dyadic_53_open(raw_53: u64) -> Self {
-        debug_assert!(raw_53 < (1_u64 << 53));
-        let unit = ((raw_53 as f64) + 0.5) * INV_TWO_POW_53_F64;
-        Self::clamp_open_unit_f64(unit)
-    }
-
-    #[inline]
-    fn sample_closed_open<R: RngCore + ?Sized>(rng: &mut R) -> Self {
-        let bits = (rng.next_u64() >> 40) as u32;
-        let u = (bits as f32) * INV_TWO_POW_24_F32;
-        debug_assert!((0.0..1.0).contains(&u));
-        u
-    }
-
-    #[inline]
-    fn sample_open<R: RngCore + ?Sized>(rng: &mut R) -> Self {
-        let bits = (rng.next_u64() >> 40) as u32;
-        let u = (((bits as f32) + 0.5) * INV_TWO_POW_24_F32)
-            .clamp(F32_MIN_ABOVE_ZERO, F32_MAX_BELOW_ONE);
-        debug_assert!(u > 0.0 && u < 1.0);
-        u
-    }
-
-    #[inline]
-    fn sample_symmetric_open<R: RngCore + ?Sized>(rng: &mut R) -> Self {
-        let u = Self::sample_open(rng);
-        let sym = 2.0 * u - 1.0;
-        debug_assert!(sym > -1.0 && sym < 1.0);
-        sym
-    }
-}
-
-impl RngScalar for f64 {
-    const ZERO: Self = 0.0;
-    const ONE: Self = 1.0;
-
-    #[inline]
-    fn from_unit_f64(value: f64) -> Self {
-        debug_assert!(value.is_finite());
-        value
-    }
-
-    #[inline]
-    fn clamp_open_unit_f64(value: f64) -> Self {
-        let clamped = value.clamp(F64_MIN_ABOVE_ZERO, F64_MAX_BELOW_ONE);
-        debug_assert!(clamped > 0.0 && clamped < 1.0);
+        let clamped = T::open_unit_from_f64(value);
+        debug_assert!(clamped > T::ZERO && clamped < T::ONE);
         clamped
     }
 
     #[inline]
     fn from_dyadic_53_open(raw_53: u64) -> Self {
         debug_assert!(raw_53 < (1_u64 << 53));
-        let unit = (((raw_53 as f64) + 0.5) * INV_TWO_POW_53_F64)
-            .clamp(F64_MIN_ABOVE_ZERO, F64_MAX_BELOW_ONE);
-        debug_assert!(unit > 0.0 && unit < 1.0);
-        unit
+        let unit = ((raw_53 as f64) + 0.5) * INV_TWO_POW_53_F64;
+        T::open_unit_from_f64(unit)
     }
 
     #[inline]
     fn sample_closed_open<R: RngCore + ?Sized>(rng: &mut R) -> Self {
-        let bits = rng.next_u64() >> 11;
-        let u = (bits as f64) * INV_TWO_POW_53_F64;
-        debug_assert!((0.0..1.0).contains(&u));
+        let u = T::uniform_closed_open_from_u64(rng.next_u64());
+        debug_assert!(u >= T::ZERO && u < T::ONE);
         u
     }
 
     #[inline]
     fn sample_open<R: RngCore + ?Sized>(rng: &mut R) -> Self {
-        let bits = rng.next_u64() >> 11;
-        let u = (((bits as f64) + 0.5) * INV_TWO_POW_53_F64)
-            .clamp(F64_MIN_ABOVE_ZERO, F64_MAX_BELOW_ONE);
-        debug_assert!(u > 0.0 && u < 1.0);
+        let u = T::uniform_open_from_u64(rng.next_u64());
+        debug_assert!(u > T::ZERO && u < T::ONE);
         u
     }
 
     #[inline]
     fn sample_symmetric_open<R: RngCore + ?Sized>(rng: &mut R) -> Self {
         let u = Self::sample_open(rng);
-        let sym = 2.0 * u - 1.0;
-        debug_assert!(sym > -1.0 && sym < 1.0);
+        let sym = T::TWO * u - T::ONE;
+        debug_assert!(sym > -T::ONE && sym < T::ONE);
         sym
     }
 }
@@ -172,6 +99,22 @@ pub enum RngError {
     ZeroUpperBound,
 }
 
+impl RngError {
+    /// Returns the static type identifier `"RngError"`.
+    #[inline]
+    pub const fn error_type(&self) -> &'static str {
+        "RngError"
+    }
+
+    /// Returns the stable diagnostic error code (`RNG-001`).
+    #[inline]
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::ZeroUpperBound => "RNG-001",
+        }
+    }
+}
+
 impl core::fmt::Display for RngError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match *self {
@@ -181,6 +124,18 @@ impl core::fmt::Display for RngError {
 }
 
 impl core::error::Error for RngError {}
+
+impl math_diagnostics::Diagnostic for RngError {
+    fn severity(&self) -> math_diagnostics::Severity {
+        math_diagnostics::Severity::Error
+    }
+
+    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
+        visitor.record_str("error_type", self.error_type());
+        visitor.record_str("code", self.code());
+        visitor.record_display("description", self);
+    }
+}
 
 /// Fallible companion to [`sample_bounded_u64`] returning [`RngError::ZeroUpperBound`] if `upper == 0`.
 #[inline]
@@ -253,7 +208,7 @@ pub fn fill_cranley_patterson_shifts<T: RngScalar, R: RngCore + ?Sized>(
 }
 
 /// Draws a standard normal $\mathcal{N}(0, 1)$ `f64` variate via a deterministic Rational/Acklam
-/// inverse-normal transform on a single open-unit uniform draw (100% `libm`-free `#![no_std]`).
+/// inverse-normal transform on a single open-unit uniform draw (`0`-ULP `libm::sqrt` `#![no_std]`).
 #[inline]
 pub fn sample_standard_normal_f64<R: RngCore + ?Sized>(rng: &mut R) -> f64 {
     let u: f64 = sample_open(rng);
@@ -288,15 +243,10 @@ fn ln_open_unit_f64(u: f64) -> f64 {
 #[inline]
 fn sqrt_pos_f64(x: f64) -> f64 {
     if x <= 0.0 {
-        return 0.0;
+        0.0
+    } else {
+        math_scalars::sqrt_f64(x)
     }
-    let mut g = f64::from_bits((x.to_bits() >> 1) + (0x3ff0_0000_0000_0000_u64 >> 1));
-    let mut iter = 0_u32;
-    while iter < 6 {
-        g = 0.5 * (g + x / g);
-        iter += 1;
-    }
-    g
 }
 
 #[inline]

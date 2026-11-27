@@ -14,6 +14,7 @@ pub mod __doctest_facade {
             VoxelGridError,
         };
         pub use ::pure_math::__doctest_facade::error::*;
+        pub use engine_opt::error::FitError;
     }
     /// Doctest prelude re-exports.
     pub mod prelude {
@@ -23,11 +24,13 @@ pub mod __doctest_facade {
             VoxelGridError,
         };
         pub use ::pure_math::__doctest_facade::prelude::*;
+        pub use engine_opt::fit::FitModel;
     }
     pub use crate::applied;
     pub use ::pure_math::__doctest_facade::{
-        ast, bootstrap, constants, diagnostics, fit, math_kernel, math_types, mesh, monte_carlo,
+        ast, bootstrap, constants, diagnostics, math_kernel, math_types, mesh, monte_carlo,
         nalgebra, num_complex, petgraph, poi, primitives, pure_math, qmc, rand, registry, rng,
         series, wigner,
     };
+    pub use engine_opt::fit;
 }

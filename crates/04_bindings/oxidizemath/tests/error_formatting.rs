@@ -19,9 +19,9 @@ use oxidizemath::error::{
     HodgkinHuxleyError, HyperbolicError, IsosurfaceError, KellyError, KnotError, LoraError,
     MarketPricingError, MarkovError, MatchModelError, MathError, MonteCarloError,
     NumberTheoryError, OptionPricingError, OuError, PdeError, PharmacokineticsError, PoissonError,
-    PortfolioError, QuantumError, QueueingError, RadarError, ReactionDiffusionError, RiskError,
-    SandpileError, ShaderEmitError, SolidStateError, StandardModelError, StatMechError,
-    Su11HyperbolicError, TdaError, ZipError,
+    PortfolioError, QmcError, QuantumError, QueueingError, RadarError, ReactionDiffusionError,
+    RiskError, RngError, SandpileError, ShaderEmitError, SolidStateError, StandardModelError,
+    StatMechError, Su11HyperbolicError, TdaError, ZipError,
 };
 use oxidizemath::math_kernel::types::Dimension;
 
@@ -76,6 +76,8 @@ fn core_and_engine_errors_emit_readable_display_and_metadata() {
         "PdeError",
         &PdeError::InvalidGridDimension { axis: "x", size: 0 },
     );
+    assert_readable_diagnostic("QmcError", &QmcError::InvalidBase { base: 1 });
+    assert_readable_diagnostic("RngError", &RngError::ZeroUpperBound);
     assert_readable_diagnostic(
         "ShaderEmitError",
         &ShaderEmitError::RecursionLimitExceeded(64),
