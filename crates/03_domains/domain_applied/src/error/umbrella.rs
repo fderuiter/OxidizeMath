@@ -2,11 +2,12 @@ use super::{
     BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError, IsosurfaceError,
     KalmanError, LoraError, PharmacokineticsError, PortfolioError, VoxelGridError,
 };
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use engine_linalg::LinalgError;
+use engine_opt::error::FitError;
 use math_commons::error::{
-    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, ParseError,
-    ShaderEmitError,
+    EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError, ShaderEmitError,
 };
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::error::{
     AnalysisError, EvolutionError, LinearAlgebraError, MonteCarloError, OptimizationError,
     PureMathError, RiskError, StochasticError, TensorError,
@@ -53,6 +54,12 @@ pub enum AppliedError {
     /// Foundational `math_commons` umbrella error.
     #[error("{0}")]
     MathCommons(#[from] MathCommonsError),
+    /// Foundational `#![no_std]` curve-fitting solver error.
+    #[error("{0}")]
+    Fit(#[from] FitError),
+    /// Foundational `#![no_std]` linear algebra engine error.
+    #[error("{0}")]
+    Linalg(#[from] LinalgError),
     /// Foundational `#![no_std]` partial-differential-equation solver error.
     #[error("{0}")]
     Pde(#[from] engine_pde::PdeError),
@@ -117,20 +124,6 @@ impl From<TensorError> for AppliedError {
     }
 }
 
-impl From<FitError> for AppliedError {
-    #[verified_engine::verified]
-    fn from(err: FitError) -> Self {
-        Self::MathCommons(MathCommonsError::from(err))
-    }
-}
-
-impl From<LinalgError> for AppliedError {
-    #[verified_engine::verified]
-    fn from(err: LinalgError) -> Self {
-        Self::MathCommons(MathCommonsError::from(err))
-    }
-}
-
 impl From<ShaderEmitError> for AppliedError {
     #[verified_engine::verified]
     fn from(err: ShaderEmitError) -> Self {
@@ -189,6 +182,8 @@ impl AppliedError {
             Self::VoxelGrid(err) => err,
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
+            Self::Fit(err) => err,
+            Self::Linalg(err) => err,
             Self::Pde(err) => err,
             Self::PureMath(err) => err,
         }

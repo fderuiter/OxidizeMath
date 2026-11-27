@@ -1,6 +1,6 @@
 //! Nonlinear parametric curve-fitting dispatch and metrics (`Exponential`, `PowerLaw`,
 //! `Logarithmic`, `Logistic`, and `Sinusoidal`).
-// [cite:math_commons]
+// [cite:engine_opt]
 
 #[cfg(feature = "alloc")]
 pub use super::format::format_nonlinear_formula;
@@ -11,8 +11,8 @@ use super::seeds::{
 };
 use super::{CurveFit, FitModel};
 use crate::error::FitError;
-use crate::series::PointSeries;
-use num_traits::Float;
+use math_scalars::series::PointSeries;
+use math_scalars::{ComplexField, RealField};
 
 /// Fits a nonlinear [`FitModel`] to `points` on the stack, returning [`FitError`] on failure.
 #[cfg_attr(feature = "std", verified_engine::verified)]
@@ -37,7 +37,7 @@ pub fn fit_nonlinear<P: PointSeries + ?Sized>(
 
 fn pack_exponential_coeffs(a_u: f64, b: f64, x0: f64) -> ([f64; 5], usize) {
     if x0 == 0.0 || (x0.abs() <= 50.0 && (-b * x0).abs() <= 20.0) {
-        let a = a_u * Float::exp(-b * x0);
+        let a = a_u * ComplexField::exp(-b * x0);
         if a.is_finite() && a > 0.0 {
             return ([a, b, 0.0, 0.0, 0.0], 2);
         }
@@ -56,7 +56,7 @@ fn fit_exponential<P: PointSeries + ?Sized>(
     let refined = levenberg_marquardt(points, &[a0, b0], |x, p| {
         let u = x - x0;
         let arg = (p[1] * u).clamp(-700.0, 700.0);
-        let e = Float::exp(arg);
+        let e = ComplexField::exp(arg);
         (p[0] * e, [e, p[0] * u * e, 0.0, 0.0])
     })?;
     let (coeffs, coeff_len) = pack_exponential_coeffs(refined[0], refined[1], x0);
@@ -101,7 +101,7 @@ fn fit_exponential_log_mode<P: PointSeries + ?Sized>(points: &P) -> Result<Curve
     for i in 0..points.len() {
         let p = points.point_at(i);
         if p[0].is_finite() && p[1].is_finite() && p[1] > 0.0 {
-            acc.push(p[0] - x0, Float::ln(p[1]), 1.0);
+            acc.push(p[0] - x0, ComplexField::ln(p[1]), 1.0);
         }
     }
     if acc.sample_count() < 2 {
@@ -110,7 +110,7 @@ fn fit_exponential_log_mode<P: PointSeries + ?Sized>(points: &P) -> Result<Curve
         });
     }
     let (ln_a, b) = acc.solve()?;
-    let (coeffs, coeff_len) = pack_exponential_coeffs(Float::exp(ln_a), b, x0);
+    let (coeffs, coeff_len) = pack_exponential_coeffs(ComplexField::exp(ln_a), b, x0);
     let (r_squared, rmse, valid_n) = compute_nonlinear_metrics(
         points,
         FitModel::Exponential,
@@ -140,9 +140,9 @@ fn fit_power_law<P: PointSeries + ?Sized>(
     }
     let seed = seed_power_law(points)?;
     let refined = levenberg_marquardt_filtered(points, &seed, positive_x_xy, |x, p| {
-        let xb = Float::powf(x, p[1]);
+        let xb = ComplexField::powf(x, p[1]);
         let f_hat = p[0] * xb;
-        (f_hat, [xb, f_hat * Float::ln(x), 0.0, 0.0])
+        (f_hat, [xb, f_hat * ComplexField::ln(x), 0.0, 0.0])
     })?;
     let coeffs = [refined[0], refined[1], 0.0, 0.0, 0.0];
     let (r_squared, rmse, valid_n) =
@@ -171,7 +171,7 @@ fn fit_power_law_log_mode<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFi
         }
         finite_n += 1;
         if p[0] > 0.0 && p[1] > 0.0 {
-            acc.push(Float::ln(p[0]), Float::ln(p[1]), 1.0);
+            acc.push(ComplexField::ln(p[0]), ComplexField::ln(p[1]), 1.0);
         }
     }
     if finite_n < 2 {
@@ -186,7 +186,7 @@ fn fit_power_law_log_mode<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFi
         });
     }
     let (ln_a, b) = acc.solve()?;
-    let coeffs = [Float::exp(ln_a), b, 0.0, 0.0, 0.0];
+    let coeffs = [ComplexField::exp(ln_a), b, 0.0, 0.0, 0.0];
     let (r_squared, rmse, valid_n) =
         compute_nonlinear_metrics(points, FitModel::PowerLaw, &coeffs[..2], positive_x_xy);
     Ok(CurveFit::new(
@@ -226,7 +226,7 @@ fn fit_logistic<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitErro
     let seed = seed_logistic(points)?;
     let refined = levenberg_marquardt(points, &seed, |x, p| {
         let z = (-p[1] * (x - p[2])).clamp(-500.0, 500.0);
-        let ez = Float::exp(z);
+        let ez = ComplexField::exp(z);
         let denom = 1.0 + ez;
         let inv = 1.0 / denom;
         let factor = p[0] * ez * inv * inv;
@@ -263,15 +263,14 @@ fn min_finite_x<P: PointSeries + ?Sized>(points: &P) -> f64 {
 fn fit_sinusoidal<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitError> {
     let seed = seed_sinusoidal(points)?;
     let x0 = min_finite_x(points);
-    let mut phase_u =
-        num_traits::Euclid::rem_euclid(&(seed[2] + seed[1] * x0), &core::f64::consts::TAU);
+    let mut phase_u = RealField::rem_euclid(seed[2] + seed[1] * x0, core::f64::consts::TAU);
     if phase_u > core::f64::consts::PI {
         phase_u -= core::f64::consts::TAU;
     }
     let shifted_seed = [seed[0], seed[1], phase_u, seed[3]];
     let refined = levenberg_marquardt(points, &shifted_seed, |x, p| {
         let u = x - x0;
-        let (s, c) = Float::sin_cos(p[1] * u + p[2]);
+        let (s, c) = ComplexField::sin_cos(p[1] * u + p[2]);
         (p[0] * s + p[3], [s, p[0] * u * c, p[0] * c, 1.0])
     })?;
     let mut amp = refined[0];
@@ -280,7 +279,7 @@ fn fit_sinusoidal<P: PointSeries + ?Sized>(points: &P) -> Result<CurveFit, FitEr
         amp = -amp;
         phase += core::f64::consts::PI;
     }
-    phase = num_traits::Euclid::rem_euclid(&phase, &core::f64::consts::TAU);
+    phase = RealField::rem_euclid(phase, core::f64::consts::TAU);
     if phase > core::f64::consts::PI {
         phase -= core::f64::consts::TAU;
     }
@@ -352,7 +351,11 @@ fn compute_nonlinear_metrics<P: PointSeries + ?Sized>(
     } else {
         0.0
     };
-    (r_squared, Float::sqrt(ss_res / (count as f64)), count)
+    (
+        r_squared,
+        ComplexField::sqrt(ss_res / (count as f64)),
+        count,
+    )
 }
 
 /// Evaluates nonlinear [`FitModel`] `model` with `params` at horizontal coordinate `x`.
@@ -374,29 +377,29 @@ pub(super) fn eval_nonlinear_raw(model: FitModel, params: &[f64], x: f64) -> f64
             } else if arg > 709.0 {
                 f64::NAN
             } else {
-                params[0] * Float::exp(arg)
+                params[0] * ComplexField::exp(arg)
             }
         }
         FitModel::PowerLaw if params.len() >= 2 => {
             if x <= 0.0 {
                 f64::NAN
             } else {
-                params[0] * Float::powf(x, params[1])
+                params[0] * ComplexField::powf(x, params[1])
             }
         }
         FitModel::Logarithmic if params.len() >= 2 => {
             if x <= 0.0 {
                 f64::NAN
             } else {
-                params[0] + params[1] * Float::ln(x)
+                params[0] + params[1] * ComplexField::ln(x)
             }
         }
         FitModel::Logistic if params.len() >= 3 => {
             let z = (-params[1] * (x - params[2])).clamp(-500.0, 500.0);
-            params[0] / (1.0 + Float::exp(z))
+            params[0] / (1.0 + ComplexField::exp(z))
         }
         FitModel::Sinusoidal if params.len() >= 4 => {
-            params[0] * Float::sin(params[1] * x + params[2]) + params[3]
+            params[0] * ComplexField::sin(params[1] * x + params[2]) + params[3]
         }
         _ => f64::NAN,
     }

@@ -89,6 +89,8 @@ pub use group::{
 };
 pub use linear_algebra::LinearAlgebraError;
 pub use polynomial::{LaurentPolynomial, Polynomial};
-pub use traits::{AbelianGroup, EuclideanDomain, Field, Group, Monoid, Ring, Semigroup};
+pub use traits::{
+    AbelianGroup, EuclideanDomain, Field, Group, Monoid, RefOps, Ring, Scalar, Semigroup,
+};
 
 // [cite:advanced_linear_algebra]

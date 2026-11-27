@@ -1,5 +1,5 @@
 use crate::mms::{SolverCertificate, ols_convergence_order};
-use math_commons::fit::{WeightedOlsAccum, solve_dense_small};
+use engine_opt::fit::{WeightedOlsAccum, solve_dense_small};
 use nalgebra::Vector2;
 use oxidize_core::rng::OxidizeRng;
 use pure_math::pure_math::analysis::momentum_dynamics::{

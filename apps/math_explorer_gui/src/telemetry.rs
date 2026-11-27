@@ -149,7 +149,7 @@ mod tests {
         std::thread::Builder::new()
             .name("foreign_domain_diag_thread".to_string())
             .spawn(|| {
-                let foreign_err = math_commons::error::LinalgError::WorkspaceTooSmall {
+                let foreign_err = engine_linalg::LinalgError::WorkspaceTooSmall {
                     required: 16,
                     available: 4,
                 };
@@ -160,7 +160,7 @@ mod tests {
             .expect("join foreign diagnostic thread");
 
         let local_err =
-            math_commons::error::FitError::from(math_commons::error::LinalgError::SingularMatrix);
+            engine_opt::error::FitError::from(engine_linalg::LinalgError::SingularMatrix);
         emit_diagnostic("LocalDomainSolver", &local_err);
 
         let events = poll_app_telemetry();
@@ -175,12 +175,21 @@ mod tests {
         assert_eq!(local_ev.severity, Severity::Error);
         assert_eq!(
             local_ev.metadata.get("code").map(String::as_str),
+            Some("LINALG-004")
+        );
+        assert_eq!(
+            local_ev.metadata.get("wrapper_code").map(String::as_str),
             Some("MATH-FIT-006")
+        );
+        assert_eq!(
+            local_ev.metadata.get("root_error_type").map(String::as_str),
+            Some("LinalgError")
         );
         assert_eq!(
             local_ev.metadata.get("error_type").map(String::as_str),
             Some("FitError")
         );
+        assert!(local_ev.metadata.contains_key("root_description"));
         assert_eq!(local_ev.thread_name, current_thread_label());
 
         let requeued = global_registry().try_recv_all();

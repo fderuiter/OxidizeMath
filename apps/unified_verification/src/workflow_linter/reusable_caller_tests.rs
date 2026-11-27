@@ -232,3 +232,67 @@ fn test_local_reusable_workflow_forwards_exceptions_and_detects_cycles() {
 
     let _ = fs::remove_dir_all(&repo);
 }
+
+#[test]
+fn test_repo_workflows_enforce_least_privilege_node24_pins_and_env_bound_runs() {
+    let _lock = crate::DIR_LOCK.lock().unwrap();
+    let root = crate::manifest_cache::workspace_root_dir();
+    let ci_raw =
+        fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("ci.yml readable");
+    for deprecated_node20_or_branch_sha in [
+        "11bd71901bbe5b1630ceea73d27597364c9af683",
+        "0057852bfaa89a56745cba8c7296529d2fc39830",
+        "ea165f8d65b6e75b540449e92b4886f43607fa02",
+        "cc203385981b70ca67e1cc392babf9cc229d5806",
+        "56afc609e74202658d3ffba0e8f6dda462b719fa",
+        "d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e",
+        "cf4ad43b2ea507679a5c66685b7225ca7510eafc",
+    ] {
+        assert!(
+            !ci_raw.contains(deprecated_node20_or_branch_sha),
+            "Deprecated Node 20 or untagged branch SHA must not appear in ci.yml: {deprecated_node20_or_branch_sha}"
+        );
+    }
+
+    let ci_yaml: Value = serde_saphyr::from_str(&ci_raw).expect("valid ci.yml");
+    let root_perms = ci_yaml["permissions"]
+        .as_object()
+        .expect("ci.yml root permissions must be a least-privilege scope mapping, not read-all");
+    assert_eq!(root_perms.len(), 1);
+    assert_eq!(
+        root_perms.get("contents").and_then(Value::as_str),
+        Some("read")
+    );
+
+    for (job_name, job_val) in ci_yaml["jobs"].as_object().expect("jobs mapping") {
+        if let Some(steps) = job_val.get("steps").and_then(Value::as_array) {
+            for step in steps {
+                if let Some(run_script) = step.get("run").and_then(Value::as_str) {
+                    assert!(
+                        !run_script.contains("${{"),
+                        "Job '{job_name}' run script must bind dynamic values via env: instead of interpolating '${{{{' directly:\n{run_script}"
+                    );
+                }
+            }
+        }
+    }
+
+    for action_rel in [
+        ".github/actions/cargo-cache/action.yml",
+        ".github/actions/ci-tool-cache/action.yml",
+    ] {
+        let act_raw = fs::read_to_string(root.join(action_rel)).expect("action.yml readable");
+        let act_yaml: Value = serde_saphyr::from_str(&act_raw).expect("valid action.yml");
+        for step in act_yaml["runs"]["steps"]
+            .as_array()
+            .expect("composite steps")
+        {
+            if let Some(run_script) = step.get("run").and_then(Value::as_str) {
+                assert!(
+                    !run_script.contains("${{"),
+                    "{action_rel} run script must not interpolate '${{{{' directly:\n{run_script}"
+                );
+            }
+        }
+    }
+}

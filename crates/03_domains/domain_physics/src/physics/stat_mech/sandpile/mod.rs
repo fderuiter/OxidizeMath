@@ -9,7 +9,7 @@
 //! - **Zero-allocation hot paths**: [`SandpileGrid`] pre-allocates integer wavefront ring
 //!   buffers, epoch markers, Dhar burning queues, and power-law histogram buckets at
 //!   construction time so grain drops, wavefront stabilization, Creutz identity steps,
-//!   Dhar burning tests, and [`math_commons::fit::FitModel::PowerLaw`] fits perform zero heap
+//!   Dhar burning tests, and [`engine_opt::fit::FitModel::PowerLaw`] fits perform zero heap
 //!   allocations.
 //! - **Abelian order independence**: Forward lexicographic sweeps, reverse lexicographic
 //!   sweeps, and synchronous wavefront ring-buffer stabilization produce identical final
@@ -23,8 +23,8 @@ mod wavefront;
 #[cfg(test)]
 mod tests;
 
-use math_commons::error::FitError;
-use math_commons::fit::CurveFit;
+use engine_opt::error::FitError;
+use engine_opt::fit::CurveFit;
 use math_commons::math_kernel::types::flatten_2d_index;
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
@@ -343,7 +343,7 @@ impl SandpileGrid {
         }
     }
 
-    /// Fits [`math_commons::fit::FitModel::PowerLaw`] to the accumulated avalanche survival distribution.
+    /// Fits [`engine_opt::fit::FitModel::PowerLaw`] to the accumulated avalanche survival distribution.
     #[verified_engine::verified]
     pub fn fit_avalanche_power_law(
         &self,

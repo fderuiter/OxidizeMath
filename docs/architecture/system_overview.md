@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 28 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 30 workspace crates:
 
 ```mermaid
 graph TD
@@ -72,6 +72,7 @@ graph TD
 
     subgraph Tier_02_Engines["crates/02_engines"]
         Linalg[engine_linalg]
+        Opt[engine_opt]
         Commons[math_commons]
         DiffEq[engine_diffeq]
         Pde[engine_pde]
@@ -85,6 +86,7 @@ graph TD
 
     subgraph Tier_00_Foundation["crates/00_foundation"]
         MathDiag[math_diagnostics]
+        Scalars[math_scalars]
         Rng[math_rng]
         Meta[scientific_metadata]
         Macros[verified_engine_macros]
@@ -93,27 +95,31 @@ graph TD
 
     Xtask -.-> Verify
     Verify -.-> SciVerify & CoreCrate
-    SciVerify -.-> AI & Phys & Bio & App & Clim & Epi & Pure & Pde & Commons & CoreCrate & Engine
-    MdTests -.-> Facade & Explorer & Meta & CoreCrate & Registry & Linalg & DiffEq & Pde & Rng
+    SciVerify -.-> AI & Phys & Bio & App & Clim & Epi & Pure & Pde & Opt & Commons & CoreCrate & Engine
+    MdTests -.-> Facade & Explorer & Meta & CoreCrate & Registry & Linalg & Opt & DiffEq & Pde & Rng & Scalars
 
     Cli --> Facade
-    GUI --> Explorer & Plot & Meta & Registry & Diag & Linalg & Commons & CoreCrate & Engine
+    GUI --> Explorer & Plot & Meta & Registry & Diag & Linalg & Opt & Commons & CoreCrate & Engine
+    Plot --> Opt & Commons
     Explorer --> Facade
     Facade --> AI & Phys & Bio & App & Clim & Epi & Pure
-    Facade --> Commons & Linalg & DiffEq & Pde & Diag & Meta & Engine & CoreCrate
+    Facade --> Commons & Linalg & Opt & DiffEq & Pde & Scalars & Diag & Meta & Engine & CoreCrate
 
     AI --> Commons & Engine & DiffEq & Pure & CoreCrate & Diag
-    Phys --> Commons & Engine & Meta & Pure & App & DiffEq & Pde & Linalg & CoreCrate & Diag
+    Phys --> Commons & Engine & Meta & Pure & App & DiffEq & Pde & Linalg & Opt & CoreCrate & Diag
     Bio --> Commons & Engine & Meta & Pure & App & Pde & CoreCrate & Diag
-    App --> Commons & Engine & Pure & Pde & Linalg & CoreCrate & Diag
+    App --> Commons & Engine & Pure & Pde & Linalg & Opt & Scalars & CoreCrate & Diag
     Clim --> Commons & Engine & Pure & CoreCrate & Diag
     Epi --> Commons & Engine & Pure & CoreCrate & Diag
 
-    Pure --> Commons & Meta & Engine & DiffEq & Pde & Linalg & Rng & CoreCrate & Diag
+    Pure --> Commons & Meta & Engine & DiffEq & Pde & Linalg & Rng & Scalars & CoreCrate & Diag
     DiffEq --> Commons & Engine & Rng & MathDiag
     Pde --> Commons & Engine & Rng & MathDiag
-    Commons --> Linalg & Rng & MathDiag & Meta & Engine & Diag
-    Linalg --> MathDiag & Engine
+    Opt --> Linalg & Scalars & Meta & MathDiag & Engine
+    Commons --> Scalars & Rng & MathDiag & Engine
+    Linalg --> Scalars & MathDiag & Engine
+    Rng --> Scalars
+    Scalars --> MathDiag
     Registry --> Diag
     Diag --> MathDiag
     CoreCrate --> Rng & Meta
@@ -129,11 +135,12 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 28 member crates declared in `Cargo.toml`:
+The workspace contains all 30 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
 | `crates/00_foundation/math_diagnostics` | `#![no_std]` zero-allocation diagnostic visitor contract | [math_diagnostics](../../crates/00_foundation/math_diagnostics/README.md) |
+| `crates/00_foundation/math_scalars` | `#![no_std]` algebraic scalar traits, `0`-ULP `libm` IEEE-754 kernels, dual numbers, and workspace slices | [math_scalars](../../crates/00_foundation/math_scalars/README.md) |
 | `crates/00_foundation/math_rng` | `#![no_std]` ChaCha8 stream PRNG, generic float/index samplers, and 64D QMC views | [math_rng](../../crates/00_foundation/math_rng/README.md) |
 | `crates/00_foundation/scientific_metadata` | Theory descriptors and citation metadata | [scientific_metadata](../../crates/00_foundation/scientific_metadata/README.md) |
 | `crates/00_foundation/verified_engine_macros` | Attribute macros (`#[theory]`, `#[verified]`, `#[embed_theory]`) | [verified_engine_macros](../../crates/00_foundation/verified_engine_macros/README.md) |
@@ -142,6 +149,7 @@ The workspace contains all 28 member crates declared in `Cargo.toml`:
 | `crates/01_core/federated_registry` | Distributed model discovery and registration | [federated_registry](../../crates/01_core/federated_registry/README.md) |
 | `crates/01_core/oxidize_core` | Core utilities, file systems, and traceability | [oxidize_core](../../crates/01_core/oxidize_core/README.md) |
 | `crates/02_engines/engine_linalg` | `#![no_std]` numerical linear algebra engine | [engine_linalg](../../crates/02_engines/engine_linalg/README.md) |
+| `crates/02_engines/engine_opt` | `#![no_std]` zero-allocation polynomial and damped Levenberg-Marquardt curve-fitting engine | [engine_opt](../../crates/02_engines/engine_opt/README.md) |
 | `crates/02_engines/math_commons` | Tolerances, constant registries, numeric traits | [math_commons](../../crates/02_engines/math_commons/README.md) |
 | `crates/02_engines/engine_diffeq` | `#![no_std]` Itô/Stratonovich SDE and BAOAB Langevin solvers | [engine_diffeq](../../crates/02_engines/engine_diffeq/README.md) |
 | `crates/02_engines/engine_pde` | `#![no_std]` 1D/2D/3D stencils, SPDE steppers, and radix-2 Fourier solvers | [engine_pde](../../crates/02_engines/engine_pde/README.md) |

@@ -34,7 +34,7 @@
 //! assert!((gb.area - gb.angular_defect).abs() < 1e-12);
 //! ```
 
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 
 /// Exact analytical geodesic billiards and finite-time Lyapunov divergence inside $\{p, q\}$ polygons.
 pub mod billiards;

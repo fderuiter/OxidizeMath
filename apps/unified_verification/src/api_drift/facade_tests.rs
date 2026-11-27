@@ -282,3 +282,47 @@ fn detects_missing_umbrella_from_for_domain_and_cross_crate_errors() {
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn detects_unreexported_tier0_math_rng_errors_and_missing_facade_from() {
+    let dir = crate::utils::test_utils::create_temp_test_dir("facade_math_rng_error_gap");
+    write_minimal_facade_fixture(&dir, true, "");
+    let rng_dir = dir.join("crates/00_foundation/math_rng/src");
+    fs::create_dir_all(&rng_dir).unwrap();
+    fs::write(rng_dir.join("lib.rs"), "pub mod scalar;\npub mod qmc;\n").unwrap();
+    fs::write(
+        rng_dir.join("scalar.rs"),
+        "mod private { pub trait Sealed {} }\npub trait RngScalar: private::Sealed {}\npub enum RngError { Zero }\n",
+    )
+    .unwrap();
+    fs::write(rng_dir.join("qmc.rs"), "pub enum QmcError { BadDim }\n").unwrap();
+    let conv_dir = dir.join("math_explorer/src/error");
+    fs::create_dir_all(&conv_dir).unwrap();
+    fs::write(
+        conv_dir.join("conversions.rs"),
+        "impl_error_from!(AIError => AI);\n",
+    )
+    .unwrap();
+
+    let apis = extract_apis_in_dir(&dir);
+    let violations = check_facade_completeness_in_dir(&dir, &apis);
+    assert!(
+        !violations.iter().any(|v| v.contains("Sealed")),
+        "private::Sealed supertrait must not be flagged as unexported: {violations:?}"
+    );
+    for err_ident in ["RngError", "QmcError"] {
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("Facade error gap") && v.contains(err_ident)),
+            "Expected math_rng facade error gap for {err_ident}, got: {violations:?}"
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|v| v.contains("conversions.rs") && v.contains(&format!("From<{err_ident}>"))),
+            "Expected facade conversions.rs From<{err_ident}> gap, got: {violations:?}"
+        );
+    }
+    let _ = fs::remove_dir_all(&dir);
+}

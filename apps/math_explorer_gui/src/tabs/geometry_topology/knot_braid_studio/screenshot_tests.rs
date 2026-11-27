@@ -116,6 +116,19 @@ fn rasterize_triangle(
     }
 }
 
+fn resolve_studio_png_path(out_path: &str) -> std::path::PathBuf {
+    let candidate = std::path::Path::new(out_path);
+    if candidate.parent().is_some_and(std::path::Path::is_dir) {
+        candidate.to_path_buf()
+    } else {
+        let name = candidate
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("knot_studio_preview.png");
+        std::env::temp_dir().join(name)
+    }
+}
+
 fn render_studio_preset_png(preset_json: &str, out_path: &str) {
     let (w, h) = (1320_usize, 820_usize);
     let mut tool = KnotBraidStudioTool::default();
@@ -156,11 +169,15 @@ fn render_studio_preset_png(preset_json: &str, out_path: &str) {
     }
     let png = egui_plot::export::color32_image_to_png(&fb).expect("encode studio preview PNG");
     assert!(png.len() > 4096);
-    std::fs::write(out_path, png).expect("write studio preview PNG");
+    std::fs::write(resolve_studio_png_path(out_path), png).expect("write studio preview PNG");
 }
 
 #[test]
 fn generate_knot_braid_studio_verification_screenshots() {
+    assert_eq!(
+        resolve_studio_png_path("/nonexistent_drive_tmp_dir/knot_studio_fallback_check.png"),
+        std::env::temp_dir().join("knot_studio_fallback_check.png")
+    );
     render_studio_preset_png(
         CHIRAL_TREFOIL_PRESET_JSON,
         "/tmp/knot_studio_chiral_trefoil.png",

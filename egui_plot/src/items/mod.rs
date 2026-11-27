@@ -46,6 +46,20 @@ impl PlotItemBase {
             companion_visual_only: false,
         }
     }
+
+    #[inline]
+    #[must_use]
+    pub fn with_id(mut self, id: impl Into<Id>) -> Self {
+        self.id = id.into();
+        self
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn with_allow_hover(mut self, allow_hover: bool) -> Self {
+        self.allow_hover = allow_hover;
+        self
+    }
 }
 
 macro_rules! builder_methods_for_base {
@@ -87,6 +101,14 @@ macro_rules! builder_methods_for_base {
         #[inline]
         pub fn id(mut self, id: impl Into<Id>) -> Self {
             self.base_mut().id = id.into();
+            self
+        }
+
+        /// Marks this item as visual-only so it renders on canvas, hover, legend, and figure
+        /// exports while skipping `Data Table`, POI scans, and 2D CSV/JSON dataset extraction.
+        #[inline]
+        pub fn companion_visual_only(mut self, companion: bool) -> Self {
+            self.base_mut().companion_visual_only = companion;
             self
         }
     };
@@ -258,6 +280,11 @@ pub trait PlotItem {
         self.base().allow_hover
     }
 
+    /// Whether this item should appear as an interactive legend entry when named.
+    fn show_in_legend(&self) -> bool {
+        !self.name().is_empty()
+    }
+
     fn geometry(&self) -> PlotGeometry<'_>;
 
     fn bounds(&self) -> PlotBounds;
@@ -381,7 +408,30 @@ pub(crate) fn render_snapped_hover_point<T: PlotItem + ?Sized>(
     plot: &PlotConfig<'_>,
     label_formatter: &LabelFormatter<'_>,
 ) -> PlotPoint {
-    let raw_color = item.color();
+    render_snapped_hover_point_named(
+        item.name(),
+        item.color(),
+        plot_area_response,
+        value,
+        shapes,
+        cursors,
+        plot,
+        label_formatter,
+    )
+}
+
+/// Renders the snapped hover marker, callout box, rulers, and tooltip for a named primitive.
+#[allow(clippy::too_many_arguments)]
+pub fn render_snapped_hover_point_named(
+    name: &str,
+    raw_color: Color32,
+    plot_area_response: &egui::Response,
+    value: PlotPoint,
+    shapes: &mut Vec<Shape>,
+    cursors: &mut Vec<Cursor>,
+    plot: &PlotConfig<'_>,
+    label_formatter: &LabelFormatter<'_>,
+) -> PlotPoint {
     let item_color = if raw_color != Color32::TRANSPARENT {
         raw_color
     } else if plot.ui.visuals().dark_mode {
@@ -409,7 +459,7 @@ pub(crate) fn render_snapped_hover_point<T: PlotItem + ?Sized>(
     rulers_and_tooltip_at_value(
         plot_area_response,
         value,
-        item.name(),
+        name,
         plot,
         cursors,
         label_formatter,
@@ -712,12 +762,6 @@ pub struct Line<'a> {
 }
 
 impl<'a> Line<'a> {
-    #[inline]
-    pub(crate) fn companion_visual_only(mut self, companion: bool) -> Self {
-        self.base.companion_visual_only = companion;
-        self
-    }
-
     pub fn new(name: impl Into<String>, series: impl Into<PlotPoints<'a>>) -> Self {
         Self {
             base: PlotItemBase::new(name.into()),
@@ -2278,6 +2322,7 @@ pub struct PlotImage {
     pub(crate) rotation: f64,
     pub(super) bg_fill: Color32,
     pub(super) tint: Color32,
+    pub(super) export_image: Option<(Arc<egui::ColorImage>, [f64; 4])>,
 }
 
 impl PlotImage {
@@ -2297,7 +2342,16 @@ impl PlotImage {
             rotation: 0.0,
             bg_fill: Default::default(),
             tint: Color32::WHITE,
+            export_image: None,
         }
+    }
+
+    /// Attaches a shared [`egui::ColorImage`] and `[min_x, max_x, min_y, max_y]` plot bounds so
+    /// offscreen PNG/SVG/GIF exports include this raster layer underneath subsequent plot items.
+    #[inline]
+    pub fn with_export_image(mut self, image: Arc<egui::ColorImage>, bounds: [f64; 4]) -> Self {
+        self.export_image = Some((image, bounds));
+        self
     }
 
     /// Select UV range. Default is (0,0) in top-left, (1,1) bottom right.
@@ -2402,6 +2456,22 @@ impl PlotItem for PlotImage {
 
     fn matches_cached_shared_points(&self, cached: &SharedPoints) -> bool {
         cached.is_empty()
+    }
+
+    fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
+        let Some((ref image, bounds)) = self.export_image else {
+            return vec![];
+        };
+        let label = if self.name().is_empty() {
+            "PlotImage".to_owned()
+        } else {
+            self.name().to_owned()
+        };
+        vec![crate::export_primitives::ExportPrimitive::RasterImage {
+            name: label,
+            image: Arc::clone(image),
+            bounds: Some(bounds),
+        }]
     }
 
     fn bounds(&self) -> PlotBounds {
@@ -3039,4 +3109,123 @@ where
             ClosestElem { index, dist_sq }
         })
         .min_by_key(|e| e.dist_sq.ord())
+}
+
+/// Zero-draw tabular dataset series backed by [`SharedPoints`] for `Data Table` and CSV/JSON exports.
+///
+/// Contributes no canvas shapes, legend entries, hover targets, auto-bounds, or visual offscreen
+/// primitives, allowing 2D raster/contour plots to expose aligned numeric slice datasets without
+/// distorting viewport bounds or canvas rendering.
+#[derive(Clone)]
+pub struct TabularSeries {
+    base: PlotItemBase,
+    points: SharedPoints,
+    color: Color32,
+}
+
+impl TabularSeries {
+    /// Creates a non-visual tabular dataset series backed by shared `[x, y]` coordinates.
+    #[must_use]
+    pub fn new(name: impl Into<String>, points: SharedPoints, color: Color32) -> Self {
+        let mut base = PlotItemBase::new(name.into());
+        base.allow_hover = false;
+        Self {
+            base,
+            points,
+            color,
+        }
+    }
+}
+
+impl PlotItem for TabularSeries {
+    fn shapes(&self, _ui: &Ui, _transform: &PlotTransform, _shapes: &mut Vec<Shape>) {}
+
+    fn initialize(&mut self, _x_range: RangeInclusive<f64>) {}
+
+    fn color(&self) -> Color32 {
+        self.color
+    }
+
+    fn show_in_legend(&self) -> bool {
+        false
+    }
+
+    fn geometry(&self) -> PlotGeometry<'_> {
+        PlotGeometry::None
+    }
+
+    fn bounds(&self) -> PlotBounds {
+        PlotBounds::NOTHING
+    }
+
+    fn has_any_points(&self) -> bool {
+        !self.points.is_empty()
+    }
+
+    fn extract_points(&self) -> Vec<[f64; 2]> {
+        self.points.to_vec()
+    }
+
+    fn extract_shared_points(&self) -> SharedPoints {
+        self.points.clone()
+    }
+
+    fn matches_cached_shared_points(&self, cached: &SharedPoints) -> bool {
+        std::ptr::eq(self.points.as_slice(), cached.as_slice())
+    }
+
+    fn matches_cached_series(&self, cached: &SharedPoints, _cached_vec_ptr: Option<usize>) -> bool {
+        std::ptr::eq(self.points.as_slice(), cached.as_slice())
+    }
+
+    fn extract_export_primitives(&self) -> Vec<crate::export_primitives::ExportPrimitive> {
+        Vec::new()
+    }
+
+    fn extract_export_primitives_shared(
+        &self,
+        _points: &SharedPoints,
+    ) -> Vec<crate::export_primitives::ExportPrimitive> {
+        Vec::new()
+    }
+
+    fn append_deferred_export(
+        &mut self,
+        datasets: &mut Vec<crate::DeferredDatasetEntry>,
+        _primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
+    ) {
+        if !self.points.is_empty() {
+            datasets.push(crate::DeferredDatasetEntry::SharedCoords {
+                name: self.base.name.clone(),
+                points: self.points.clone(),
+            });
+        }
+    }
+
+    fn append_deferred_export_with_cached(
+        &mut self,
+        _cached_points: Option<&SharedPoints>,
+        datasets: &mut Vec<crate::DeferredDatasetEntry>,
+        primitives: &mut Vec<crate::export_primitives::DeferredPlotPrimitive>,
+    ) {
+        self.append_deferred_export(datasets, primitives);
+    }
+
+    fn item_content_hash(&self) -> u64 {
+        use std::hash::{Hash as _, Hasher as _};
+        let mut hasher = ahash::AHasher::default();
+        self.id().hash(&mut hasher);
+        self.name().hash(&mut hasher);
+        (self.points.as_ptr() as usize).hash(&mut hasher);
+        self.points.len().hash(&mut hasher);
+        hasher.finish()
+    }
+
+    fn base(&self) -> &PlotItemBase {
+        &self.base
+    }
+
+    fn base_mut(&mut self) -> &mut PlotItemBase {
+        &mut self.base
+    }
 }

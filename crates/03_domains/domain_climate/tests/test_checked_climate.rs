@@ -1,6 +1,5 @@
 //! Integration tests for `ClimateError` and checked constructors/kernels in `domain_climate`.
 
-use diagnostics::{Diagnostic, Severity};
 use domain_climate::climate::cera::Cera;
 use domain_climate::climate::config::CeraConfig;
 use domain_climate::climate::loss::{
@@ -11,6 +10,7 @@ use domain_climate::climate::tensor_ops::{
 };
 use domain_climate::error::ClimateError;
 use math_commons::error::MathError;
+use math_diagnostics::{Diagnostic, Severity};
 use nalgebra::{DMatrix, DVector};
 
 fn base_config() -> CeraConfig {

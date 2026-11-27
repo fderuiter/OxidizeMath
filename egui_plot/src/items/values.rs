@@ -103,7 +103,7 @@ impl LineStyle {
         Self::Dotted { spacing: 5.0 }
     }
 
-    pub(super) fn style_line(
+    pub fn style_line(
         &self,
         line: Vec<Pos2>,
         mut stroke: PathStroke,

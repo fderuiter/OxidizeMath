@@ -12,21 +12,21 @@ math_contract = true
 
 [features]
 default = ["std"]
-alloc = ["math_rng/alloc"]
+alloc = ["math_rng/alloc", "math_scalars/alloc"]
 serde = [
     "alloc",
     "dep:serde",
     "serde/alloc",
-    "engine_linalg/serde",
     "math_diagnostics/serde",
     "math_rng/serde",
+    "math_scalars/serde",
     "num-complex/serde",
 ]
 std = [
     "alloc",
-    "dep:scientific_metadata",
     "math_diagnostics/std",
     "math_rng/std",
+    "math_scalars/std",
     "num-complex/std",
     "num-traits/std",
     "serde?/std",
@@ -35,14 +35,13 @@ std = [
 ]
 
 [dependencies]
-engine_linalg = { path = "../engine_linalg" }
 libm = { workspace = true }
 math_diagnostics = { path = "../../00_foundation/math_diagnostics", default-features = false }
 math_rng = { path = "../../00_foundation/math_rng", default-features = false }
+math_scalars = { path = "../../00_foundation/math_scalars", default-features = false }
 num-complex = { workspace = true, default-features = false, features = ["libm"] }
 num-traits = { workspace = true, default-features = false, features = ["libm"] }
 rand_core = { workspace = true }
-scientific_metadata = { path = "../../00_foundation/scientific_metadata", optional = true }
 serde = { workspace = true, optional = true }
 thiserror = { workspace = true, default-features = false }
 verified_engine = { version = "0.1.0", path = "../../00_foundation/verified_engine", default-features = false }

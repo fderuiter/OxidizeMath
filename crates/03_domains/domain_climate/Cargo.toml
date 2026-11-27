@@ -12,7 +12,7 @@ traceability = true
 math_contract = true
 
 [dependencies]
-diagnostics = { path = "../../01_core/diagnostics" }
+math_diagnostics = { path = "../../00_foundation/math_diagnostics" }
 nalgebra = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }

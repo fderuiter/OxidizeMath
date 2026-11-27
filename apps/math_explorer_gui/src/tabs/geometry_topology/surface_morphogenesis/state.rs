@@ -213,6 +213,8 @@ impl SurfaceMorphogenesisTool {
                     .all(|p| p.x.is_finite() && p.y.is_finite() && p.z.is_finite());
             if !finite_fields {
                 eng.rollback_to_last_valid();
+                self.scene_mutation_epoch = self.scene_mutation_epoch.wrapping_add(1);
+                self.cached_scene_key = None;
             }
         }
     }
@@ -321,6 +323,8 @@ impl SurfaceMorphogenesisTool {
             &s.custom_params,
         );
         self.engine = None;
+        self.scene_mutation_epoch = self.scene_mutation_epoch.wrapping_add(1);
+        self.cached_scene_key = None;
         Ok(())
     }
 }

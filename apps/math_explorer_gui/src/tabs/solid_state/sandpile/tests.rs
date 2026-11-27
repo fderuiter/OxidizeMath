@@ -87,6 +87,19 @@ fn sonification_frame_respects_minus_three_dbfs_ceiling_and_renders_headless_ui(
     assert!(studio.texture.is_some());
 }
 
+fn resolve_artifact_path(unix_tmp_path: &str) -> std::path::PathBuf {
+    let candidate = std::path::Path::new(unix_tmp_path);
+    if candidate.parent().is_some_and(std::path::Path::is_dir) {
+        candidate.to_path_buf()
+    } else {
+        let name = candidate
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("sandpile_artifact.png");
+        std::env::temp_dir().join(name)
+    }
+}
+
 fn save_upscaled_color_image(img: &egui::ColorImage, scale: usize, path: &str) {
     let w = img.size[0] * scale;
     let h = img.size[1] * scale;
@@ -98,7 +111,8 @@ fn save_upscaled_color_image(img: &egui::ColorImage, scale: usize, path: &str) {
             rgba.extend_from_slice(&[c.r(), c.g(), c.b(), c.a()]);
         }
     }
-    let file = std::fs::File::create(path).expect("create PNG artifact");
+    let resolved = resolve_artifact_path(path);
+    let file = std::fs::File::create(resolved).expect("create PNG artifact");
     let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
     enc.set_color(png::ColorType::Rgba);
     enc.set_depth(png::BitDepth::Eight);
@@ -108,11 +122,16 @@ fn save_upscaled_color_image(img: &egui::ColorImage, scale: usize, path: &str) {
 
 #[test]
 fn deferred_exports_and_visual_artifacts_succeed() {
+    assert_eq!(
+        resolve_artifact_path("/nonexistent_drive_tmp_dir/sandpile_fallback_check.png"),
+        std::env::temp_dir().join("sandpile_fallback_check.png")
+    );
     let mut studio = AbelianSandpileStudio::default();
     let opts = egui_plot::export::ExportOptions::default();
     let plot_png = egui_plot::export::export_custom_png(&studio.export_datasets(), &opts)
         .expect("power-law plot PNG export");
-    std::fs::write("/tmp/sandpile_avalanche_power_law.png", &plot_png).expect("write plot PNG");
+    let plot_path = resolve_artifact_path("/tmp/sandpile_avalanche_power_law.png");
+    std::fs::write(plot_path, &plot_png).expect("write plot PNG");
 
     studio.apply_preset(SandpilePreset::CreutzIdentityCrystal63);
     let crystal = studio.export_raster_image().expect("63x63 crystal image");

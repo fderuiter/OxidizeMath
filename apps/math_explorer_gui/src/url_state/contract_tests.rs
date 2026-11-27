@@ -99,6 +99,10 @@ fn seed_custom_tab_states(app: &mut MathExplorerApp) {
     }
 }
 
+fn reset_app_tabs(app: &mut MathExplorerApp, dirty_indices: &[usize]) {
+    app.reset_tabs_for_test(dirty_indices);
+}
+
 #[test]
 fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
     let _guard = crate::reflective_ui::tests::lock_test_mutex();
@@ -115,6 +119,7 @@ fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
     }
     seed_custom_tab_states(&mut source_app);
 
+    let mut dest_app = MathExplorerApp::default();
     for target_idx in 0..source_app.tabs.len() {
         source_app.selected_tab = target_idx;
         let share_url = source_app.encode_current_share_url().unwrap();
@@ -124,7 +129,6 @@ fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
         let (hash, search) = split_share_url(&share_url);
 
         // Build destination app with HighContrast theme, SplitHorizontal layout, and cached tab state
-        let mut dest_app = MathExplorerApp::default();
         dest_app.theme = ThemeMode::HighContrast;
         dest_app.set_layout(ViewportLayout::SplitHorizontal);
         let other_idx = (target_idx + 1) % dest_app.tabs.len();
@@ -144,6 +148,7 @@ fn test_contract_all_21_tabs_unique_slugs_and_session_preserving_roundtrip() {
             "Tab '{}' failed lossless URL round-trip",
             dest_app.tabs[target_idx].name()
         );
+        reset_app_tabs(&mut dest_app, &[target_idx, 1]);
     }
 }
 
@@ -158,6 +163,7 @@ fn test_contract_all_55_tools_lossless_url_roundtrip() {
     );
 
     let mut source_app = MathExplorerApp::default();
+    let mut dest_app = MathExplorerApp::default();
     for meta in tools {
         let tab_idx = source_app
             .tabs
@@ -190,7 +196,6 @@ fn test_contract_all_55_tools_lossless_url_roundtrip() {
         let (hash, _) = split_share_url(&share_url);
         assert!(hash.len() <= MAX_URL_FRAGMENT_BYTES);
 
-        let mut dest_app = MathExplorerApp::default();
         assert!(dest_app
             .apply_share_location_strings(hash, "", None)
             .unwrap());
@@ -205,6 +210,8 @@ fn test_contract_all_55_tools_lossless_url_roundtrip() {
             "Tool '{}' in domain '{}' failed lossless URL round-trip",
             meta.id, meta.domain
         );
+        reset_app_tabs(&mut source_app, &[tab_idx]);
+        reset_app_tabs(&mut dest_app, &[tab_idx]);
     }
 }
 
@@ -220,8 +227,9 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
         "Expected all 222 StarterPresetMetadata entries"
     );
 
+    let mut source_app = MathExplorerApp::default();
+    let mut dest_app = MathExplorerApp::default();
     for preset in presets {
-        let mut source_app = MathExplorerApp::default();
         let tab_idx = source_app
             .tabs
             .iter()
@@ -250,7 +258,6 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
         // Test both hash and query-parameter fallback round-trips
         let query = format!("?stall_timeout_ms=6000&{}", hash.strip_prefix('#').unwrap());
         for (h, q) in [(hash, ""), ("", query.as_str())] {
-            let mut dest_app = MathExplorerApp::default();
             assert!(dest_app.apply_share_location_strings(h, q, None).unwrap());
             assert_eq!(dest_app.selected_tab, tab_idx);
             assert_eq!(
@@ -259,7 +266,9 @@ fn test_contract_all_59_starter_presets_lossless_url_roundtrip() {
                 "Starter preset '{}' failed lossless URL round-trip",
                 preset.id
             );
+            reset_app_tabs(&mut dest_app, &[tab_idx]);
         }
+        reset_app_tabs(&mut source_app, &[tab_idx]);
     }
 }
 

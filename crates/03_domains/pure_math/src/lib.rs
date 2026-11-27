@@ -13,29 +13,33 @@ pub mod __macro_deps {
     pub use verified_engine;
 }
 
+#[cfg(not(test))]
+#[doc(hidden)]
+pub extern crate math_diagnostics as diagnostics;
+
 #[doc(hidden)]
 pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{
             AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
             EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError,
-            KellyError, KnotError, LinearAlgebraError, MarketPricingError, MarkovError,
-            MatchModelError, MonteCarloError, NumberTheoryError, OptimizationError,
+            KellyError, KnotError, LinalgError, LinearAlgebraError, MarketPricingError,
+            MarkovError, MatchModelError, MonteCarloError, NumberTheoryError, OptimizationError,
             OptionPricingError, OuError, PoissonError, PureMathError, PureMathError as Error,
-            QueueingError, RiskError, StochasticError, Su11HyperbolicError, TdaError, TensorError,
-            TransformError, ZipError,
+            QueueingError, RiskError, ScalarError, StochasticError, Su11HyperbolicError, TdaError,
+            TensorError, TransformError, ZipError,
         };
         pub use math_commons::error::{
-            EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError,
-            MathResult, ParseError, ShaderEmitError,
+            EvalError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
+            ShaderEmitError,
         };
+        pub use math_rng::{QmcError, RngError};
         pub type Result<T, E = Error> = std::result::Result<T, E>;
     }
     pub mod prelude {
         pub use super::error::*;
         pub use crate::math_types::{Float, Integer, Rational};
         pub use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
-        pub use math_commons::fit::FitModel;
         pub use math_commons::primitives::{NonNegativeFloat, PositiveFloat, UnitInterval};
         pub use math_commons::series::{PointSeries, Sample2D};
         pub use nalgebra::{self, DMatrix, DVector};
@@ -49,7 +53,7 @@ pub mod __doctest_facade {
     pub use crate::{math_types, pure_math};
     pub use diagnostics;
     pub use math_commons::{
-        ast, constants, fit, math_kernel, poi, primitives, registry, series, stochastic, wigner,
+        ast, constants, math_kernel, poi, primitives, registry, series, stochastic, wigner,
     };
     pub use nalgebra;
     pub use num_complex;

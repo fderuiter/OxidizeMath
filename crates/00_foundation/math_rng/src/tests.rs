@@ -343,3 +343,85 @@ fn test_serde_roundtrip_preserves_exact_stream_and_position() {
         err
     );
 }
+
+struct StackDiagRecorder {
+    str_fields: usize,
+    display_fields: usize,
+    last_u32: u32,
+    last_usize: usize,
+}
+
+impl math_diagnostics::DiagnosticVisitor for StackDiagRecorder {
+    fn record_str(&mut self, _key: &str, _value: &str) {
+        self.str_fields += 1;
+    }
+
+    fn record_display(&mut self, _key: &str, _value: &dyn core::fmt::Display) {
+        self.display_fields += 1;
+    }
+
+    fn record_u32(&mut self, _key: &str, value: u32) {
+        self.last_u32 = value;
+        self.display_fields += 1;
+    }
+
+    fn record_usize(&mut self, _key: &str, value: usize) {
+        self.last_usize = value;
+        self.display_fields += 1;
+    }
+}
+
+#[test]
+fn test_rng_and_qmc_errors_visit_diagnostic_fields_with_zero_allocations() {
+    use crate::{QmcError, RngError};
+    use math_diagnostics::{Diagnostic, Severity};
+
+    let rng_err = RngError::ZeroUpperBound;
+    let qmc_variants = [
+        QmcError::InvalidDimension {
+            dimension: 0,
+            max_supported: 64,
+        },
+        QmcError::InvalidBase { base: 1 },
+        QmcError::BufferLengthMismatch {
+            expected: 8,
+            actual: 4,
+        },
+        QmcError::StateLengthMismatch {
+            expected: 16,
+            actual: 9,
+        },
+    ];
+
+    let ((str_fields, display_fields, last_u32, last_usize), _) =
+        VerifiedEngine::run_verified(|| {
+            let mut rec = StackDiagRecorder {
+                str_fields: 0,
+                display_fields: 0,
+                last_u32: 0,
+                last_usize: 0,
+            };
+            assert_eq!(rng_err.severity(), Severity::Error);
+            rng_err.visit_fields(&mut rec);
+            for err in &qmc_variants {
+                assert_eq!(err.severity(), Severity::Error);
+                err.visit_fields(&mut rec);
+            }
+            (
+                rec.str_fields,
+                rec.display_fields,
+                rec.last_u32,
+                rec.last_usize,
+            )
+        });
+
+    assert_eq!(str_fields, 10);
+    assert_eq!(display_fields, 12);
+    assert_eq!(last_u32, 1);
+    assert_eq!(last_usize, 9);
+    assert_eq!(rng_err.code(), "RNG-001");
+    assert_eq!(qmc_variants[0].code(), "QMC-001");
+    assert_eq!(qmc_variants[1].code(), "QMC-002");
+    assert_eq!(qmc_variants[2].code(), "QMC-003");
+    assert_eq!(qmc_variants[3].code(), "QMC-004");
+}

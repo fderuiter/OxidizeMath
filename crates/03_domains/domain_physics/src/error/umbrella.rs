@@ -2,12 +2,13 @@ use super::{
     ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
     QuantumError, RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError,
 };
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use domain_applied::error::{AppliedError, KalmanError};
+use engine_linalg::LinalgError;
+use engine_opt::error::FitError;
 use math_commons::error::{
-    EvalError, FitError, GlslError, LexError, LinalgError, MathCommonsError, MathError, ParseError,
-    ShaderEmitError,
+    EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError, ShaderEmitError,
 };
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::error::{
     AnalysisError, EvolutionError, LinearAlgebraError, MonteCarloError, OptimizationError,
     PureMathError, TensorError, TransformError,
@@ -73,6 +74,12 @@ pub enum PhysicsError {
     /// Foundational `math_commons` umbrella error.
     #[error("{0}")]
     MathCommons(#[from] MathCommonsError),
+    /// Foundational `#![no_std]` curve-fitting solver error.
+    #[error("{0}")]
+    Fit(#[from] FitError),
+    /// Foundational `#![no_std]` linear algebra engine error.
+    #[error("{0}")]
+    Linalg(#[from] LinalgError),
     /// Foundational `#![no_std]` differential-equation solver error.
     #[error("{0}")]
     Diffeq(#[from] engine_diffeq::DiffeqError),
@@ -143,20 +150,6 @@ impl From<OptimizationError> for PhysicsError {
     }
 }
 
-impl From<FitError> for PhysicsError {
-    #[verified_engine::verified]
-    fn from(err: FitError) -> Self {
-        Self::MathCommons(MathCommonsError::from(err))
-    }
-}
-
-impl From<LinalgError> for PhysicsError {
-    #[verified_engine::verified]
-    fn from(err: LinalgError) -> Self {
-        Self::MathCommons(MathCommonsError::from(err))
-    }
-}
-
 impl From<ShaderEmitError> for PhysicsError {
     #[verified_engine::verified]
     fn from(err: ShaderEmitError) -> Self {
@@ -217,6 +210,8 @@ impl PhysicsError {
             Self::StatMech(err) => err,
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
+            Self::Fit(err) => err,
+            Self::Linalg(err) => err,
             Self::Diffeq(err) => err,
             Self::Pde(err) => err,
             Self::PureMath(err) => err,

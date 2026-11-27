@@ -27,6 +27,35 @@ use utils::{check_file_lengths, check_staged_duplicates};
 /// Test mutex to synchronize tests that modify process working directory.
 pub static DIR_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+#[cfg(test)]
+/// Executes `f` against a shared read-only workspace `AstCache` owned by a dedicated worker
+/// thread so `!Send` `syn::File` spans never cross threads while avoiding repeated re-parses.
+pub(crate) fn with_workspace_ast_cache<R: Send + 'static>(
+    f: impl FnOnce(&mut oxidize_core::traceability::AstCache) -> R + Send + 'static,
+) -> R {
+    type Job = Box<dyn FnOnce(&mut oxidize_core::traceability::AstCache) + Send>;
+    static WORKER: std::sync::OnceLock<std::sync::Mutex<std::sync::mpsc::SyncSender<Job>>> =
+        std::sync::OnceLock::new();
+    let tx = WORKER.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::sync_channel::<Job>(0);
+        std::thread::spawn(move || {
+            let mut cache = oxidize_core::traceability::AstCache::new();
+            while let Ok(job) = rx.recv() {
+                job(&mut cache);
+            }
+        });
+        std::sync::Mutex::new(tx)
+    });
+    let (res_tx, res_rx) = std::sync::mpsc::sync_channel(1);
+    tx.lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .send(Box::new(move |cache| {
+            let _ = res_tx.send(f(cache));
+        }))
+        .expect("workspace AST cache worker exited");
+    res_rx.recv().expect("workspace AST cache job panicked")
+}
+
 fn run_check_profiles_cli() {
     let (_, members) = oxidize_core::workspace::get_workspace_members();
     let member_refs: Vec<&str> = members.iter().map(String::as_str).collect();

@@ -1,4 +1,4 @@
-// [cite:math_commons]
+// [cite:engine_opt]
 use super::*;
 use std::collections::HashSet;
 
@@ -167,4 +167,7 @@ fn test_vandermonde_qr_conditioning_at_eps_1e8() {
         "Vandermonde QR relative L2 error {rel_l2:e} exceeded 1.7e-8"
     );
     assert!((c[2] - 0.4).abs() <= 2e-8);
+    assert!(
+        (eval_polynomial_horner(&[1.0_f32, 2.0_f32, 3.0_f32], 2.0_f32) - 17.0_f32).abs() < 1e-6
+    );
 }
