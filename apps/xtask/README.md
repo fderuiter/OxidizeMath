@@ -13,13 +13,13 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | `check-api-drift` | Validates public API surface against `api_baseline.json`. | Active |
 | `check-benches` | Builds and runs all workspace benchmark targets in test mode (`cargo test --workspace --benches --all-features`). | Active |
 | `check-cargo-docs` | Verifies workspace documentation builds with `--all-features` and zero warnings. | Active |
-| `check-certificate` | Verifies `Verification_Certificate.json` 14-key schema, `README.md` badge validity, and ratcheted `[verify_suite]` quality floors (`--strict-parity` and `--write` supported). | Active |
+| `check-certificate` | Verifies `Verification_Certificate.json` 15-key schema, deterministic/pyramid/theorem-binding parity, `README.md` badge validity, and ratcheted `[verify_suite]` quality floors (`--strict-parity` and `--write` supported). | Active |
 | `check-docs` | Runs crate documentation audit across all workspace crates. | Active |
 | `check-duplicates` | Runs AST-level code clone detector across first-party crates. | Active |
 | `check-entropy` | Scans codebase for high entropy strings and unseeded RNG usage. | Active |
 | `check-file-lengths` | Verifies the 500-line source file limit across first-party crates. | Active |
 | `check-markdown-links` | Checks all internal relative Markdown documentation links. | Active |
-| `check-maturity` | Verifies workspace compile health plus `Experimental`, `Validated`, and `Certified` qualification gates against `traceability.toml`. | Active |
+| `check-maturity` | Verifies workspace compile health plus `Experimental`, `Validated`, and `Certified` (`Tier6_Formal` Lean 4 theorem binding) qualification gates against `traceability.toml`. | Active |
 | `check-no-std` | Dynamically discovers all `#![no_std]` workspace library crates and verifies `thumbv7em-none-eabihf` bare-metal `--lib` compilation, `-D warnings` rustdoc, host tests, doctests, and `std`/`alloc`-free `serde` dependency graphs across `default`, `--no-default-features`, `alloc`, and `serde`. | Active |
 | `check-profiles` | Verifies Cargo `[profile.release]` `overflow-checks = true`, `[workspace.package].version` inheritance/bounds, absence of `[package.metadata.packager].version`, `README.md` parity, and member `[lints]` inheritance. | Active |
 | `check-release-tag` | Verifies `refs/tags/v*` / `RELEASE_TAG` parity against `[workspace.package].version` and emits WiX pre-release version mappings. | Active |
@@ -45,7 +45,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | Command | Operational Role | Status |
 |---|---|---|
 | `regenerate-baseline` | Regenerates `apps/unified_verification/api_baseline.json`. | Maintenance |
-| `setup` | Configures `.githooks/pre-commit` and `.githooks/pre-push` (`0755` executable permissions) first, then (unless `--hooks-only`) adds `wasm32-unknown-unknown`, checks `wasm-bindgen` `0.2.130`, `trunk`, `brotli`, and Playwright Chromium prerequisites (warning by default or enforcing with `--web`), and runs `cargo check --workspace` (unless `--check-only`). | Maintenance |
+| `setup` | Configures `.githooks/pre-commit` and `.githooks/pre-push` (`0755` executable permissions) first, then (unless `--hooks-only`) probes pinned Lean 4 (`elan`, `lean`, `lake` `4.14.0`, enforceable with `--lean`), adds `wasm32-unknown-unknown`, checks `wasm-bindgen` `0.2.130`, `trunk`, `brotli`, and Playwright Chromium prerequisites (warning by default or enforcing with `--web`), and runs `cargo check --workspace` (unless `--check-only`). | Maintenance |
 
 ---
 

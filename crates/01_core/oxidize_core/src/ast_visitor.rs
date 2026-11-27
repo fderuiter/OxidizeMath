@@ -6,6 +6,7 @@ mod vacuous;
 
 pub use attrs::{attrs_mark_test_fn, attrs_require_cfg_test, extract_opt_out_reasons_from_attr};
 pub use debt::collect_ast_file_debt;
+pub use pyramid::FormalProofMacroBinding;
 
 use attrs::{
     attrs_require_cfg_test_filtered, count_block_assertions, extract_opt_outs_filtered,
@@ -41,6 +42,8 @@ pub struct AstVisitor {
     pub module_tiers: HashMap<String, String>,
     /// Per-tier verification macro counts across the 6-tier scientific pyramid.
     pub tier_counts: BTreeMap<String, usize>,
+    /// Structured `Tier6_Formal` proof and theorem bindings extracted from `formal_proof_verification!`.
+    pub formal_proof_bindings: Vec<FormalProofMacroBinding>,
     /// First 1-indexed source line recorded for each verified module key.
     pub module_spans: HashMap<String, usize>,
     /// Modules with a non-vacuous `theory_verification!` deterministic contract (`test = { ... }`).
@@ -129,6 +132,7 @@ impl AstVisitor {
             verified_modules: Vec::new(),
             module_tiers: HashMap::new(),
             tier_counts: BTreeMap::new(),
+            formal_proof_bindings: Vec::new(),
             module_spans: HashMap::new(),
             non_vacuous_deterministic_modules: Vec::new(),
             vacuous_deterministic_modules: Vec::new(),

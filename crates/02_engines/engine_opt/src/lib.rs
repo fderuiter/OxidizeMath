@@ -55,6 +55,6 @@ theory_verification!(
         let ys = [0.0, 3.0, 4.0, 3.0, 0.0];
         let fit = fit_model(&(&xs[..], &ys[..]), FitModel::Quadratic, false).unwrap();
         assert!((fit.eval(2.0) - PARABOLIC_PEAK_Y).abs() < 1e-9);
-        assert_eq!(FitModel::Quadratic.maturity_tier(), MaturityTier::Certified);
+        assert_eq!(FitModel::Quadratic.maturity_tier(), MaturityTier::Validated);
     }
 );

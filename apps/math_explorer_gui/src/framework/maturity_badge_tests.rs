@@ -71,7 +71,7 @@ fn test_tool_maturity_resolution_distinguishes_certified_and_experimental_models
     );
     assert_eq!(
         resolve_tool_maturity_tier("RiemannianPdeStudio", "geometry_topology", None),
-        MaturityTier::Certified
+        MaturityTier::Validated
     );
     assert_eq!(
         resolve_tool_maturity_tier("DtmcTensorWorkbenchTool", "stochastic_processes", None),
@@ -79,7 +79,7 @@ fn test_tool_maturity_resolution_distinguishes_certified_and_experimental_models
     );
     assert_eq!(
         resolve_tool_maturity_tier("CausticsRayBenchTool", "optics", None),
-        MaturityTier::Certified
+        MaturityTier::Validated
     );
     assert_eq!(
         resolve_tool_maturity_tier("PortfolioCopulaWorkbenchTool", "financial_math", None),

@@ -5,6 +5,21 @@ use super::AstVisitor;
 use super::maturity::inspect_theory_verification_macro;
 use super::vacuous::{find_stochastic_zero_init_line, span_line};
 
+/// Structured `Tier6_Formal` proof and theorem binding extracted from `formal_proof_verification!`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FormalProofMacroBinding {
+    /// Registered `traceability.toml` module key (`module = "..."`).
+    pub module: String,
+    /// Lean 4 proof filename under `proofs/OxidizeMath/` (`proof = "..."`).
+    pub proof: String,
+    /// Bound Lean 4 theorem identifiers (`theorems = ["...", ...]`).
+    pub theorems: Vec<String>,
+    /// Whether the companion `test = { ... }` block contains at least one assertion.
+    pub has_assertions: bool,
+    /// 1-indexed Rust source line of the macro invocation.
+    pub line: usize,
+}
+
 pub(super) fn classify_verification_macro(name: &str) -> Option<&'static str> {
     match name {
         "theory_verification" | "mms_convergence_verification" => Some("Tier1_Convergence"),
@@ -47,6 +62,16 @@ pub(super) fn record_verification_macro(visitor: &mut AstVisitor, node: &ItemMac
     let Some(module_name) = parsed.module_name else {
         return;
     };
+
+    if name == "formal_proof_verification" {
+        visitor.formal_proof_bindings.push(FormalProofMacroBinding {
+            module: module_name.clone(),
+            proof: parsed.proof_path.unwrap_or_default(),
+            theorems: parsed.theorems,
+            has_assertions: parsed.assert_count > 0,
+            line: macro_line,
+        });
+    }
 
     visitor.record_module(module_name.clone(), macro_line);
     visitor

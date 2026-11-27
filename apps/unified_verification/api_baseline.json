@@ -15735,6 +15735,9 @@
     },
     {
       "signature": "pub use debt :: collect_ast_file_debt"
+    },
+    {
+      "signature": "pub use pyramid :: FormalProofMacroBinding"
     }
   ],
   "oxidize_core:src/ast_visitor/attrs.rs": [
@@ -15751,6 +15754,11 @@
   "oxidize_core:src/ast_visitor/debt.rs": [
     {
       "signature": "pub fn collect_ast_file_debt (_ : & syn :: File) -> Vec < String >"
+    }
+  ],
+  "oxidize_core:src/ast_visitor/pyramid.rs": [
+    {
+      "signature": "pub struct FormalProofMacroBinding"
     }
   ],
   "oxidize_core:src/boundary.rs": [
@@ -15972,9 +15980,6 @@
       "signature": "pub struct TraceabilityEngine < V : VirtualFileSystem >"
     },
     {
-      "signature": "pub struct TraceabilityReport"
-    },
-    {
       "signature": "pub use cache :: AstCache"
     },
     {
@@ -15993,7 +15998,13 @@
       "signature": "pub use debt_floors :: parse_density_floors_toml"
     },
     {
+      "signature": "pub use manifest :: LeanProofBinding"
+    },
+    {
       "signature": "pub use manifest :: TraceabilityManifestPayload"
+    },
+    {
+      "signature": "pub use manifest :: TraceabilityReport"
     },
     {
       "signature": "pub use manifest :: VerificationCertificate"
@@ -16015,6 +16026,12 @@
     },
     {
       "signature": "pub use proof_digest :: collect_lean4_proof_digests"
+    },
+    {
+      "signature": "pub use proof_digest :: collect_lean4_proof_theorems"
+    },
+    {
+      "signature": "pub use proof_digest :: extract_lean_theorem_names"
     },
     {
       "signature": "pub use proof_digest :: sha256_hex"
@@ -16131,7 +16148,13 @@
   ],
   "oxidize_core:src/traceability/manifest.rs": [
     {
+      "signature": "pub struct LeanProofBinding"
+    },
+    {
       "signature": "pub struct TraceabilityManifestPayload"
+    },
+    {
+      "signature": "pub struct TraceabilityReport"
     },
     {
       "signature": "pub struct VerificationCertificate"
@@ -16181,6 +16204,12 @@
     },
     {
       "signature": "pub fn collect_lean4_proof_digests (_ : & Path ,) -> Result < BTreeMap < String , String > , ProofDigestError >"
+    },
+    {
+      "signature": "pub fn collect_lean4_proof_theorems (_ : & Path ,) -> Result < BTreeMap < String , Vec < String > > , ProofDigestError >"
+    },
+    {
+      "signature": "pub fn extract_lean_theorem_names (_ : & str) -> Vec < String >"
     },
     {
       "signature": "pub fn sha256_hex (_ : & [u8]) -> String"
@@ -26943,6 +26972,15 @@
   "scientific_verification:src/lean_proofs.rs": [
     {
       "signature": "pub fn verify_and_digest_lean_proofs () -> Result < BTreeMap < String , String > , String >"
+    },
+    {
+      "signature": "pub fn verify_lean_proofs () -> Result < LeanVerificationSummary , String >"
+    },
+    {
+      "signature": "pub fn verify_lean_proofs_in_workspace (_ : & Path , _ : & str , _ : usize ,) -> Result < LeanVerificationSummary , String >"
+    },
+    {
+      "signature": "pub struct LeanVerificationSummary"
     }
   ],
   "scientific_verification:src/lib.rs": [

@@ -67,7 +67,7 @@ use oxidizemath::fit::{FitModel, fit_model};
 use oxidizemath::poi::{closest_threshold_crossing, intersect_polylines};
 use oxidizemath::prelude::{MaturityTier, TheoryDescribable};
 
-assert_eq!(FitModel::Exponential.maturity_tier(), MaturityTier::Certified);
+assert_eq!(FitModel::Exponential.maturity_tier(), MaturityTier::Validated);
 
 let xs = [0.0, 1.0, 2.0, 3.0, 4.0];
 let ys = [1.0, 2.7182818, 7.3890561, 20.085537, 54.59815];

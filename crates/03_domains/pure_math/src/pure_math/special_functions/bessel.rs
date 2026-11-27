@@ -370,19 +370,13 @@ crate::golden_fixture_verification!(
 crate::interval_enclosure_verification!(
     module = "pure_math",
     test = {
-        let iv = math_commons::primitives::Interval::point(1.0)
+        let j0_unit = bessel_j(0.0, 1.0);
+        let iv = math_commons::primitives::Interval::from_approx(j0_unit).unwrap();
+        assert!(iv.contains(j0_unit));
+        let exp_iv = math_commons::primitives::Interval::point(1.0)
             .unwrap()
             .exp();
-        assert!(iv.contains(std::f64::consts::E));
-    }
-);
-crate::formal_proof_verification!(
-    module = "pure_math",
-    proof = "IntervalSoundness.lean",
-    test = {
-        let a = math_commons::primitives::Interval::new(1.0, 2.0).unwrap();
-        let b = math_commons::primitives::Interval::new(0.5, 1.5).unwrap();
-        assert!((a - b).contains(0.5));
+        assert!(exp_iv.contains(std::f64::consts::E));
     }
 );
 
