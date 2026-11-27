@@ -83,26 +83,51 @@
         }
     }
 
+    function matchesMediaQuery(query) {
+        try {
+            return Boolean(
+                typeof window.matchMedia === 'function' && window.matchMedia(query).matches
+            );
+        } catch (_err) {
+            return false;
+        }
+    }
+
     function syncShellThemeFromStorage() {
         const savedTheme = readSavedThemeFromStorage();
+        const forcedColors = matchesMediaQuery('(forced-colors: active)');
+        const prefersLight = matchesMediaQuery('(prefers-color-scheme: light)');
         const tokens = savedTheme && SHELL_THEME_TOKENS[savedTheme];
-        if (!tokens) {
+        if (!tokens && !forcedColors) {
             return null;
         }
         const root = document.documentElement;
         if (root) {
-            root.dataset.theme = savedTheme;
-            if (root.style && typeof root.style.setProperty === 'function') {
-                root.style.setProperty('color-scheme', tokens.colorScheme);
+            if (tokens) {
+                root.dataset.theme = savedTheme;
+            }
+            if (root.style) {
+                if (forcedColors) {
+                    if (typeof root.style.removeProperty === 'function') {
+                        root.style.removeProperty('color-scheme');
+                    }
+                } else if (tokens && typeof root.style.setProperty === 'function') {
+                    root.style.setProperty('color-scheme', tokens.colorScheme);
+                }
             }
         }
         const schemeMeta = document.querySelector('meta[name="color-scheme"]');
         if (schemeMeta) {
-            schemeMeta.setAttribute('content', tokens.colorScheme);
+            schemeMeta.setAttribute('content', forcedColors ? 'dark light' : tokens.colorScheme);
         }
+        const resolvedThemeColor = forcedColors
+            ? prefersLight
+                ? SHELL_THEME_TOKENS.light.themeColor
+                : SHELL_THEME_TOKENS['high-contrast'].themeColor
+            : tokens.themeColor;
         const themeMetas = document.querySelectorAll('meta[name="theme-color"]');
         for (let i = 0; i < themeMetas.length; i += 1) {
-            themeMetas[i].setAttribute('content', tokens.themeColor);
+            themeMetas[i].setAttribute('content', resolvedThemeColor);
         }
         return savedTheme;
     }
@@ -386,15 +411,22 @@
     }
 
     function syncDownloadWorkspaceButton() {
-        const btn = document.getElementById('download_workspace_button');
-        if (!btn) {
-            return null;
-        }
         const payload = resolveSavedWorkspaceEnvelope();
         const hasPayload = payload.length > 0;
-        btn.hidden = !hasPayload;
-        btn.setAttribute('data-storage-blocked', storageWriteBlocked ? 'true' : 'false');
-        return btn;
+        const blockedValue = storageWriteBlocked ? 'true' : 'false';
+        const ids = ['download_workspace_button', 'webgl_recovery_download_button'];
+        let primaryBtn = null;
+        for (let i = 0; i < ids.length; i += 1) {
+            const btn = document.getElementById(ids[i]);
+            if (btn) {
+                btn.hidden = !hasPayload;
+                btn.setAttribute('data-storage-blocked', blockedValue);
+                if (i === 0) {
+                    primaryBtn = btn;
+                }
+            }
+        }
+        return primaryBtn;
     }
 
     function setSavedWorkspaceEnvelope(envelopeJson, filename, storageBlocked) {
@@ -437,33 +469,46 @@
         return true;
     }
 
-    function bindDownloadWorkspaceButton() {
-        const downloadButton = document.getElementById('download_workspace_button');
-        if (downloadButton && !downloadButton.dataset.downloadBound) {
-            downloadButton.dataset.downloadBound = 'true';
-            downloadButton.addEventListener('click', function (event) {
+    function bindDownloadButtonById(buttonId) {
+        const btn = document.getElementById(buttonId);
+        if (btn && !btn.dataset.downloadBound) {
+            btn.dataset.downloadBound = 'true';
+            btn.addEventListener('click', function (event) {
                 if (event && typeof event.preventDefault === 'function') {
                     event.preventDefault();
                 }
                 downloadSavedWorkspace();
             });
         }
+        return btn;
+    }
+
+    function bindDownloadWorkspaceButton() {
+        const downloadButton = bindDownloadButtonById('download_workspace_button');
+        bindDownloadButtonById('webgl_recovery_download_button');
         return downloadButton;
+    }
+
+    function bindReloadElement(button) {
+        if (button && !button.dataset.reloadBound) {
+            button.dataset.reloadBound = 'true';
+            button.addEventListener('click', function (event) {
+                if (event && typeof event.preventDefault === 'function') {
+                    event.preventDefault();
+                }
+                clearWebglRestoreTimer();
+                window.location.reload();
+            });
+        }
+        return button;
     }
 
     function bindReloadButton() {
         const reloadButton =
             document.getElementById('webgl_reload_button') ||
             document.querySelector('.reload-btn');
-        if (reloadButton && !reloadButton.dataset.reloadBound) {
-            reloadButton.dataset.reloadBound = 'true';
-            reloadButton.addEventListener('click', function (event) {
-                if (event && typeof event.preventDefault === 'function') {
-                    event.preventDefault();
-                }
-                window.location.reload();
-            });
-        }
+        bindReloadElement(reloadButton);
+        bindReloadElement(document.getElementById('webgl_recovery_reload_button'));
         return reloadButton;
     }
 
@@ -658,14 +703,54 @@
         return ERROR_CATEGORIES[resolvedCategory];
     }
 
+    function setCanvasInertForRecovery(canvas, isInert) {
+        if (!canvas) {
+            return;
+        }
+        if (isInert) {
+            canvas.inert = true;
+            canvas.setAttribute('inert', '');
+            canvas.setAttribute('aria-hidden', 'true');
+            if (document.activeElement === canvas && typeof canvas.blur === 'function') {
+                canvas.blur();
+            }
+        } else {
+            canvas.inert = false;
+            canvas.removeAttribute('inert');
+            canvas.removeAttribute('aria-hidden');
+        }
+    }
+
+    function focusActiveRecoveryOverlayControl() {
+        const downloadBtn = document.getElementById('webgl_recovery_download_button');
+        const reloadBtn = document.getElementById('webgl_recovery_reload_button');
+        const preferred =
+            storageWriteBlocked && downloadBtn && !downloadBtn.hidden
+                ? downloadBtn
+                : reloadBtn && !reloadBtn.hidden
+                  ? reloadBtn
+                  : downloadBtn && !downloadBtn.hidden
+                    ? downloadBtn
+                    : null;
+        if (preferred && typeof preferred.focus === 'function') {
+            preferred.focus();
+        }
+    }
+
     function showWebglRecoveryOverlay() {
         runWhenDomReady(function () {
+            const canvas = document.getElementById('the_canvas_id');
+            setCanvasInertForRecovery(canvas, true);
+            bindReloadButton();
+            bindDownloadWorkspaceButton();
+            syncDownloadWorkspaceButton();
             const overlay = document.getElementById('webgl_recovery_overlay');
             if (overlay) {
                 overlay.hidden = false;
                 overlay.setAttribute('aria-busy', 'true');
                 overlay.style.display = 'flex';
             }
+            focusActiveRecoveryOverlayControl();
         });
     }
 
@@ -727,6 +812,7 @@
         runWhenDomReady(function () {
             const canvas = document.getElementById('the_canvas_id');
             if (canvas) {
+                setCanvasInertForRecovery(canvas, false);
                 canvas.style.display = '';
                 if (typeof canvas.focus === 'function') {
                     canvas.focus();
@@ -761,7 +847,7 @@
             ? category
             : 'network';
 
-        if (bootFailed && resolvedCategory !== 'webgl') {
+        if (bootFailed || (!bootCompleted && !webglContextLostOccurred && isBootFailed())) {
             const extraDetail = formatReason(details);
             if (extraDetail && /http\s+[45]\d\d/i.test(extraDetail)) {
                 runWhenDomReady(function () {
@@ -817,11 +903,14 @@
 
             const canvas = document.getElementById('the_canvas_id');
             if (canvas) {
+                setCanvasInertForRecovery(canvas, true);
                 canvas.style.display = 'none';
             }
 
             const errorContainer = document.getElementById('error_container');
             if (errorContainer) {
+                errorContainer.setAttribute('role', 'region');
+                errorContainer.removeAttribute('aria-live');
                 errorContainer.setAttribute('data-error-category', resolvedCategory);
                 errorContainer.setAttribute('data-error-active', 'true');
                 errorContainer.setAttribute(
