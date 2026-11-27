@@ -13875,13 +13875,25 @@
       "signature": "pub trait DiagnosticVisitor { fn record_display (& mut self , _ : & str , _ : & dyn fmt :: Display) }"
     },
     {
+      "signature": "pub trait DiagnosticVisitor { fn record_f32 (& mut self , _ : & str , _ : f32) }"
+    },
+    {
       "signature": "pub trait DiagnosticVisitor { fn record_f64 (& mut self , _ : & str , _ : f64) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_i32 (& mut self , _ : & str , _ : i32) }"
     },
     {
       "signature": "pub trait DiagnosticVisitor { fn record_i64 (& mut self , _ : & str , _ : i64) }"
     },
     {
+      "signature": "pub trait DiagnosticVisitor { fn record_isize (& mut self , _ : & str , _ : isize) }"
+    },
+    {
       "signature": "pub trait DiagnosticVisitor { fn record_str (& mut self , _ : & str , _ : & str) }"
+    },
+    {
+      "signature": "pub trait DiagnosticVisitor { fn record_u32 (& mut self , _ : & str , _ : u32) }"
     },
     {
       "signature": "pub trait DiagnosticVisitor { fn record_u64 (& mut self , _ : & str , _ : u64) }"
@@ -14000,6 +14012,12 @@
     }
   ],
   "math_rng:src/qmc/error.rs": [
+    {
+      "signature": "impl QmcError { pub const fn code (& self) -> & 'static str }"
+    },
+    {
+      "signature": "impl QmcError { pub const fn error_type (& self) -> & 'static str }"
+    },
     {
       "signature": "pub enum QmcError"
     }
@@ -14393,6 +14411,12 @@
     }
   ],
   "math_rng:src/scalar.rs": [
+    {
+      "signature": "impl RngError { pub const fn code (& self) -> & 'static str }"
+    },
+    {
+      "signature": "impl RngError { pub const fn error_type (& self) -> & 'static str }"
+    },
     {
       "signature": "pub enum RngError"
     },
@@ -15758,6 +15782,12 @@
       "signature": "pub use math_commons :: error :: ShaderEmitError"
     },
     {
+      "signature": "pub use math_rng :: QmcError"
+    },
+    {
+      "signature": "pub use math_rng :: RngError"
+    },
+    {
       "signature": "pub use math_scalars :: ScalarError"
     },
     {
@@ -16370,6 +16400,12 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: ShaderEmitError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use math_rng :: QmcError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use math_rng :: RngError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error }"

@@ -1,8 +1,8 @@
 //! Dedicated integration tests for typed `AIError` returns on `SculptedGridMdp::apply_cells_u8`.
 
-use diagnostics::Diagnostic;
 use domain_ai::ai::reinforcement_learning::maze::SculptedGridMdp;
 use domain_ai::error::AIError;
+use math_diagnostics::Diagnostic;
 
 #[test]
 fn sculpted_grid_mdp_apply_cells_u8_returns_typed_ai_errors_and_diagnostics() {

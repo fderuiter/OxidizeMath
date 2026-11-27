@@ -170,6 +170,7 @@ impl Diagnostic for MathError {
 
     fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         visitor.record_str("error_type", "MathError");
+        visitor.record_str("code", self.code());
         visitor.record_display("description", self);
         match self {
             Self::DimensionMismatch { expected, actual } => {
@@ -329,7 +330,16 @@ mod tests {
             umbrella_err.visit_fields(&mut v);
             v.0
         });
-        assert!(count >= 10);
+        assert!(count >= 13);
+
+        assert_eq!(
+            math_err.metadata().get("code").map(String::as_str),
+            Some("MATH-001")
+        );
+        assert_eq!(
+            umbrella_err.metadata().get("code").map(String::as_str),
+            Some("SCALAR-002")
+        );
     }
 
     #[test]

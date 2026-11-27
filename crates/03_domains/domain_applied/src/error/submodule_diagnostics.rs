@@ -2,7 +2,7 @@ use crate::applied::{
     algorithms::kalman::KalmanError, clinical_trials::types::ClinicalTrialError,
     isosurface::types::VoxelGridError,
 };
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 
 impl Diagnostic for ClinicalTrialError {
     #[verified_engine::verified]

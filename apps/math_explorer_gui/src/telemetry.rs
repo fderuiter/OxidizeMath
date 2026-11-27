@@ -175,12 +175,21 @@ mod tests {
         assert_eq!(local_ev.severity, Severity::Error);
         assert_eq!(
             local_ev.metadata.get("code").map(String::as_str),
+            Some("LINALG-004")
+        );
+        assert_eq!(
+            local_ev.metadata.get("wrapper_code").map(String::as_str),
             Some("MATH-FIT-006")
+        );
+        assert_eq!(
+            local_ev.metadata.get("root_error_type").map(String::as_str),
+            Some("LinalgError")
         );
         assert_eq!(
             local_ev.metadata.get("error_type").map(String::as_str),
             Some("FitError")
         );
+        assert!(local_ev.metadata.contains_key("root_description"));
         assert_eq!(local_ev.thread_name, current_thread_label());
 
         let requeued = global_registry().try_recv_all();

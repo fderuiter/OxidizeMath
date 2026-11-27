@@ -28,7 +28,7 @@ engine_opt = { path = "../../02_engines/engine_opt" }
 engine_pde = { path = "../../02_engines/engine_pde", features = ["std"] }
 rand_core = { workspace = true }
 scientific_metadata = { path = "../../00_foundation/scientific_metadata" }
-diagnostics = { path = "../../01_core/diagnostics" }
+math_diagnostics = { path = "../../00_foundation/math_diagnostics" }
 pure_math = { path = "../pure_math" }
 domain_applied = { path = "../domain_applied" }
 
@@ -38,6 +38,7 @@ domain_applied = { path = "../domain_applied" }
 
 [dev-dependencies]
 approx = { workspace = true }
+diagnostics = { path = "../../01_core/diagnostics" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 proptest = { workspace = true }

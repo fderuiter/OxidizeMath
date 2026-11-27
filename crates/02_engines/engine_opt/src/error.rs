@@ -139,5 +139,24 @@ mod tests {
                 available: 2,
             })
         );
+
+        #[cfg(feature = "std")]
+        {
+            let singular_fit = FitError::from(LinalgError::SingularMatrix);
+            let fit_meta = singular_fit.metadata();
+            assert_eq!(fit_meta.get("code").map(String::as_str), Some("LINALG-004"));
+            assert_eq!(
+                fit_meta.get("wrapper_code").map(String::as_str),
+                Some("MATH-FIT-006")
+            );
+            assert_eq!(
+                fit_meta.get("root_error_type").map(String::as_str),
+                Some("LinalgError")
+            );
+            assert_eq!(
+                fit_meta.get("error_type").map(String::as_str),
+                Some("FitError")
+            );
+        }
     }
 }

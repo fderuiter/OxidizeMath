@@ -9,6 +9,7 @@ pub use math_commons::error::{
     EvalError, GlslError, LexError, MathCommonsError, MathError, MathResult, ParseError,
     ShaderEmitError,
 };
+pub use math_rng::{QmcError, RngError};
 pub use math_scalars::ScalarError;
 
 #[cfg(feature = "ai")]
@@ -81,6 +82,10 @@ pub enum Error {
     Scalar(ScalarError),
     /// AST parser error.
     Parse(ParseError),
+    /// Quasi-Monte Carlo sequence configuration or slice length error.
+    Qmc(QmcError),
+    /// Bounded or scalar PRNG sampling error.
+    Rng(RngError),
     /// AST-to-WGSL/GLSL shader emission error.
     ShaderEmit(ShaderEmitError),
     /// Standard I/O error (e.g., mesh export or file serialization).

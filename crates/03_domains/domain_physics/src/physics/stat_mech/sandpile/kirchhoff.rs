@@ -5,8 +5,8 @@
 //! grids via fraction-free Bareiss Gaussian elimination, alongside stack-resident
 //! toppling, Creutz identity, and Dhar burning kernels for [`super::SandpileElement`].
 
-use diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_commons::math_kernel::types::flatten_2d_index;
+use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use thiserror::Error;
 
 use super::{CRITICAL_HEIGHT, MAX_STABLE_HEIGHT};
