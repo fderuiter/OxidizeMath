@@ -191,15 +191,17 @@ impl QTableInspectorTool {
             100,
             Some(seed),
         );
-        if self.latest_snap.q_table.len() == runner.workspace.q_table.len() {
+        if self.latest_snap.q_table.len() == runner.workspace.q_table().len()
+            && self.latest_snap.state_values.len() == runner.workspace.state_values().len()
+        {
             runner
                 .workspace
-                .q_table
-                .clone_from(&self.latest_snap.q_table);
+                .q_table_mut()
+                .copy_from_slice(&self.latest_snap.q_table);
             runner
                 .workspace
-                .state_values
-                .clone_from(&self.latest_snap.state_values);
+                .state_values_mut()
+                .copy_from_slice(&self.latest_snap.state_values);
         }
         runner.episodes_trained = self.episodes_trained;
         runner.run_one_episode();

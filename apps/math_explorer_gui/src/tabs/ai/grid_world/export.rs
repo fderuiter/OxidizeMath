@@ -116,7 +116,7 @@ impl GridWorldTool {
                 let s_idx = self.mdp.cell_index(state);
                 let q_row = self
                     .workspace
-                    .q_table
+                    .q_table()
                     .get(s_idx)
                     .copied()
                     .unwrap_or([0.0; 4]);
