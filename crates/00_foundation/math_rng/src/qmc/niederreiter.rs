@@ -1,4 +1,4 @@
-//! Zero-allocation borrowed-slice 64D 53-bit base-2 [`NiederreiterView`] and [`NiederreiterSequence`].
+//! Zero-allocation borrowed-slice 64D 53-bit base-2 [`NiederreiterView`] and `NiederreiterSequence`.
 // [cite:clinical_trials_statistics]
 #![cfg_attr(any(), verified(opt_out = "no_std_engine"))]
 
