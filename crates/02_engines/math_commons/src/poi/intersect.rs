@@ -5,7 +5,7 @@ use crate::series::PointSeries;
 #[cfg(feature = "alloc")]
 use alloc::vec::Vec;
 
-/// Default maximum intersections collected by [`intersect_polylines`].
+/// Default maximum intersections collected by `intersect_polylines`.
 pub const MAX_POLYLINE_INTERSECTIONS: usize = 256;
 
 /// Writes intersections `[x, y]` between polylines `a` and `b` within `x_bounds` into `out`.

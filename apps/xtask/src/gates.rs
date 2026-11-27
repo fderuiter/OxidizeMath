@@ -263,6 +263,9 @@ fn run_compile_and_doc_gates() {
     println!("\n--- Step 5: Doc Tests ---");
     run_cmd("cargo", &["test", "--doc", "--workspace", "--all-features"]);
 
+    println!("\n--- Step 5b: #![no_std] & Bare-Metal Verification ---");
+    crate::no_std::check_no_std(&[]);
+
     println!("\n--- Step 6: Markdown Documentation Links ---");
     check_markdown_links();
 }

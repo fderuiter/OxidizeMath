@@ -135,7 +135,7 @@ pub enum DiffeqError {
         actual: usize,
     },
 
-    /// Heap scratch allocation for [`crate::OwnedWorkspace`] failed.
+    /// Heap scratch allocation for `OwnedWorkspace` failed.
     WorkspaceAllocationFailed {
         /// Requested scalar capacity.
         capacity: usize,

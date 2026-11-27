@@ -2,6 +2,7 @@
 mod features;
 mod gates;
 mod markdown_links;
+mod no_std;
 mod papers;
 mod pyramid;
 mod setup;
@@ -52,12 +53,13 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "check-file-lengths" => gates::check_file_lengths(),
         "check-duplicates" => gates::check_duplicates(),
         "check-api-drift" => gates::check_api_drift(),
-        "check-maturity" => gates::check_maturity(rest),
+        "check-markdown-links" => check_markdown_links(),
         "check-dag" => gates::check_dag(),
+        "check-maturity" => gates::check_maturity(rest),
+        "check-no-std" => no_std::check_no_std(rest),
         "check-profiles" => gates::check_profiles(),
         "check-release-tag" => gates::check_release_tag(rest),
         "check-staged-duplicates" => gates::check_staged_duplicates(),
-        "check-markdown-links" => check_markdown_links(),
         "check-vulnerabilities" => gates::check_vulnerabilities(),
         "test-policy-audit" => gates::test_policy_audit(),
         "test-wasm" => gates::test_wasm(rest),
@@ -74,9 +76,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
     }
 }
 
-fn print_help() {
-    println!("Usage: xtask <command> [args...]\n");
-    println!("Active Quality Gates:");
+fn print_check_gates_help() {
     println!("  check-api-drift          - Validate public API surface against baseline");
     println!("  check-benches            - Build and run workspace benchmark targets in test mode");
     println!(
@@ -100,12 +100,18 @@ fn print_help() {
     println!(
         "  check-maturity           - Verify Experimental, Validated, and Certified maturity qualification gates"
     );
+    println!(
+        "  check-no-std             - Dynamically verify #![no_std] crates across non-std features and thumbv7em-none-eabihf"
+    );
     println!("  check-profiles           - Verify Cargo release profile invariants");
     println!(
         "  check-release-tag        - Verify git release tag parity and WiX pre-release mapping"
     );
     println!("  check-staged-duplicates  - Run staged duplicates check");
     println!("  check-vulnerabilities    - Scan workspace dependencies for known vulnerabilities");
+}
+
+fn print_workflow_gates_help() {
     println!(
         "  compile-papers           - Compile academic papers with TeXLive (pdflatex and BibTeX)"
     );
@@ -132,6 +138,13 @@ fn print_help() {
         "  verify-records           - Verify architectural decision records (--staged supported)"
     );
     println!("  verify-suite             - Run high-integrity verified suite");
+}
+
+fn print_help() {
+    println!("Usage: xtask <command> [args...]\n");
+    println!("Active Quality Gates:");
+    print_check_gates_help();
+    print_workflow_gates_help();
     pyramid::print_pyramid_help();
     print_legacy_help();
 }

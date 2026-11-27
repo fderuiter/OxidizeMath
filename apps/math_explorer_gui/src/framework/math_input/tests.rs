@@ -326,6 +326,7 @@ fn test_pure_math_and_geometry_sandboxes_retain_custom_bounds_across_formula_edi
 #[test]
 fn test_ai_and_game_theory_sandboxes_retain_custom_bounds_across_formula_edits() {
     use crate::tabs::ai::activation_functions::ActivationFunctionsTool;
+    #[cfg(feature = "physics")]
     use crate::tabs::ai::loss_landscape::LossLandscapeTool;
     use crate::tabs::game_theory::replicator::ReplicatorDynamicsTool;
 
@@ -349,13 +350,16 @@ fn test_ai_and_game_theory_sandboxes_retain_custom_bounds_across_formula_edits()
         12.0
     );
 
-    let mut loss = LossLandscapeTool::default();
-    loss.math_input.set_expression("a * x^2 + b * y^2");
-    loss.math_input
-        .slider_bank_mut()
-        .set_param_bounds("a", 0.5, 50.0, 1.0);
-    loss.math_input.set_expression("a * (x - 1)^2 + c * y^2");
-    assert_eq!(loss.math_input.slider_bank().param_bounds("a").max, 50.0);
+    #[cfg(feature = "physics")]
+    {
+        let mut loss = LossLandscapeTool::default();
+        loss.math_input.set_expression("a * x^2 + b * y^2");
+        loss.math_input
+            .slider_bank_mut()
+            .set_param_bounds("a", 0.5, 50.0, 1.0);
+        loss.math_input.set_expression("a * (x - 1)^2 + c * y^2");
+        assert_eq!(loss.math_input.slider_bank().param_bounds("a").max, 50.0);
+    }
 
     let mut rep = ReplicatorDynamicsTool::default();
     rep.symbolic_sliders.set_param_bounds("V", 0.0, 25.0, 0.5);

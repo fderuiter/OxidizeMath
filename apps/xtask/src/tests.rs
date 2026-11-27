@@ -170,6 +170,7 @@ fn test_verification_gates() {
         "check-dag",
         "check-duplicates",
         "check-maturity",
+        "check-no-std",
         "check-profiles",
         "check-release-tag",
         "lint-workflows",
