@@ -1,6 +1,7 @@
 name: Rust CI
 
-permissions: read-all
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number || github.ref) || github.run_id }}
@@ -182,11 +183,14 @@ jobs:
           RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
         run: cargo run -p unified_verification -- check-release-tag
 
-      - name: Check Unused Dependencies
-        uses: bnjbvr/cargo-machete@cf4ad43b2ea507679a5c66685b7225ca7510eafc # main
+      - name: Install cargo-machete
+        uses: ./.github/actions/ci-tool-cache
+        with:
+          tool: cargo-machete
+          version: "0.9.1"
 
-      - name: Clean up machete artifacts
-        run: rm -rf cargo-machete*
+      - name: Check Unused Dependencies
+        run: cargo machete
 
       - name: Install cargo-audit
         uses: ./.github/actions/ci-tool-cache
@@ -506,9 +510,11 @@ jobs:
         run: cargo test -p math_explorer --no-run --all-features
 
       - name: Run Tests
+        env:
+          MATRIX_FEATURE: ${{ matrix.feature }}
         run: |
-          if [ -n "${{ matrix.feature }}" ]; then
-            cargo run -p xtask -- test-features ${{ matrix.feature }}
+          if [ -n "${MATRIX_FEATURE}" ]; then
+            cargo run -p xtask -- test-features "${MATRIX_FEATURE}"
           else
             cargo run -p xtask -- test-features core-only
           fi
@@ -532,7 +538,9 @@ jobs:
     steps:
       - name: Skip Unchanged Cross-OS Installer Build
         if: matrix.os != 'ubuntu-latest' && github.event_name == 'pull_request' && needs.detect-changes.outputs.installer_changed != 'true'
-        run: echo "No GUI, linked crate, packaging input, toolchain, cache action, or workflow changes detected; skipping ${{ matrix.target }} installer build on pull_request."
+        env:
+          MATRIX_TARGET: ${{ matrix.target }}
+        run: echo "No GUI, linked crate, packaging input, toolchain, cache action, or workflow changes detected; skipping ${MATRIX_TARGET} installer build on pull_request."
 
       - name: Checkout code
         if: matrix.os == 'ubuntu-latest' || github.event_name != 'pull_request' || needs.detect-changes.outputs.installer_changed == 'true'

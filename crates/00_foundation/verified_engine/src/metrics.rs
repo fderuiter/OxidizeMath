@@ -153,7 +153,6 @@ pub fn increment_calls() {
 #[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
-    use crate::engine::VerifiedEngine;
     use std::sync::Mutex;
 
     static TEST_SERIAL_LOCK: Mutex<()> = Mutex::new(());
@@ -184,8 +183,10 @@ mod tests {
         assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 0);
     }
 
+    #[cfg(panic = "unwind")]
     #[test]
     fn test_run_verified_panic_unwind_preserves_atomic_count() {
+        use crate::engine::VerifiedEngine;
         let _guard = TEST_SERIAL_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         disable_verification();
         assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 0);

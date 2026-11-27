@@ -467,11 +467,14 @@ pub fn test_wasm(args: &[String]) {
     }
 
     println!("\n--- Step 3: Headless Chromium CSP & Fault-Injection Smoke Checks ---");
+    let gui_trunk_toml = format!("{gui_rel}/Trunk.toml");
     let screenshot_str = screenshot_dir.map(|p| p.to_string_lossy().into_owned());
     let mut smoke_args = vec![
         "scripts/playwright_smoke.py",
         "--dist",
         &gui_dist,
+        "--trunk-toml",
+        &gui_trunk_toml,
         "--verify-regression-detection",
     ];
     if let Some(dir) = screenshot_str.as_deref() {
