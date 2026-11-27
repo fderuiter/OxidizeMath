@@ -26,33 +26,35 @@ impl MonteCarloWorkspace {
         let reps = DEFAULT_QMC_REPLICATES;
         let base_pts = n_samples / reps;
         let rem = n_samples % reps;
+        let conf = self.confidence_level;
+        let dim = self.dimension;
+        let pt_reg = self.point_buf;
+        let bm_reg = self.batch_means_buf;
         let halton = self
             .halton
             .as_mut()
             .ok_or(MonteCarloError::InvalidDimension {
-                dimension: self.dimension,
+                dimension: dim,
                 max_dimension: MAX_HALTON_DIM,
             })?;
-        for r in 0..reps {
+        let mut cur = self.arena.raw_cursor();
+        let point_buf = cur.region_mut(pt_reg);
+        let batch_means_buf = cur.region_mut(bm_reg);
+        for (r, bm_slot) in batch_means_buf.iter_mut().enumerate().take(reps) {
             let pts = base_pts + usize::from(r < rem);
             halton.apply_cranley_patterson_shift(rng);
             let mut batch_sum = 0.0;
             for _ in 0..pts {
-                halton.next_point(&mut self.point_buf)?;
-                let val = integrand(&self.point_buf);
+                halton.next_point(point_buf)?;
+                let val = integrand(point_buf);
                 if !val.is_finite() {
                     return Err(MonteCarloError::NonFiniteEvaluation);
                 }
                 batch_sum += val;
             }
-            self.batch_means_buf[r] = batch_sum / (pts as f64);
+            *bm_slot = batch_sum / (pts as f64);
         }
-        estimate_from_qmc_batches(
-            &self.batch_means_buf[..reps],
-            n_samples,
-            self.confidence_level,
-            z,
-        )
+        estimate_from_qmc_batches(&batch_means_buf[..reps], n_samples, conf, z)
     }
 
     #[verified_engine::verified]
@@ -65,23 +67,30 @@ impl MonteCarloWorkspace {
     where
         F: FnMut(&[f64]) -> f64,
     {
+        let conf = self.confidence_level;
+        let dim = self.dimension;
+        let pt_reg = self.point_buf;
+        let val_reg = self.values_buf;
         let halton = self
             .halton
             .as_mut()
             .ok_or(MonteCarloError::InvalidDimension {
-                dimension: self.dimension,
+                dimension: dim,
                 max_dimension: MAX_HALTON_DIM,
             })?;
+        let mut cur = self.arena.raw_cursor();
+        let point_buf = cur.region_mut(pt_reg);
+        let values_buf = cur.region_mut(val_reg);
         halton.apply_cranley_patterson_shift(rng);
-        for idx in 0..n_samples {
-            halton.next_point(&mut self.point_buf)?;
-            let val = integrand(&self.point_buf);
+        for slot in values_buf.iter_mut().take(n_samples) {
+            halton.next_point(point_buf)?;
+            let val = integrand(point_buf);
             if !val.is_finite() {
                 return Err(MonteCarloError::NonFiniteEvaluation);
             }
-            self.values_buf[idx] = val;
+            *slot = val;
         }
-        MonteCarloEstimate::from_samples(&self.values_buf[..n_samples], self.confidence_level)
+        MonteCarloEstimate::from_samples(&values_buf[..n_samples], conf)
     }
 
     /// Cranley-Patterson randomized Joe-Kuo Sobol quasi-Monte Carlo estimator over `(0, 1)^d`.
@@ -109,33 +118,35 @@ impl MonteCarloWorkspace {
         let reps = DEFAULT_QMC_REPLICATES;
         let base_pts = n_samples / reps;
         let rem = n_samples % reps;
+        let conf = self.confidence_level;
+        let dim = self.dimension;
+        let pt_reg = self.point_buf;
+        let bm_reg = self.batch_means_buf;
         let sobol = self
             .sobol
             .as_mut()
             .ok_or(MonteCarloError::InvalidDimension {
-                dimension: self.dimension,
+                dimension: dim,
                 max_dimension: MAX_SOBOL_DIM,
             })?;
-        for r in 0..reps {
+        let mut cur = self.arena.raw_cursor();
+        let point_buf = cur.region_mut(pt_reg);
+        let batch_means_buf = cur.region_mut(bm_reg);
+        for (r, bm_slot) in batch_means_buf.iter_mut().enumerate().take(reps) {
             let pts = base_pts + usize::from(r < rem);
             sobol.apply_cranley_patterson_shift(rng);
             let mut batch_sum = 0.0;
             for _ in 0..pts {
-                sobol.next_point(&mut self.point_buf)?;
-                let val = integrand(&self.point_buf);
+                sobol.next_point(point_buf)?;
+                let val = integrand(point_buf);
                 if !val.is_finite() {
                     return Err(MonteCarloError::NonFiniteEvaluation);
                 }
                 batch_sum += val;
             }
-            self.batch_means_buf[r] = batch_sum / (pts as f64);
+            *bm_slot = batch_sum / (pts as f64);
         }
-        estimate_from_qmc_batches(
-            &self.batch_means_buf[..reps],
-            n_samples,
-            self.confidence_level,
-            z,
-        )
+        estimate_from_qmc_batches(&batch_means_buf[..reps], n_samples, conf, z)
     }
 
     #[verified_engine::verified]
@@ -148,23 +159,30 @@ impl MonteCarloWorkspace {
     where
         F: FnMut(&[f64]) -> f64,
     {
+        let conf = self.confidence_level;
+        let dim = self.dimension;
+        let pt_reg = self.point_buf;
+        let val_reg = self.values_buf;
         let sobol = self
             .sobol
             .as_mut()
             .ok_or(MonteCarloError::InvalidDimension {
-                dimension: self.dimension,
+                dimension: dim,
                 max_dimension: MAX_SOBOL_DIM,
             })?;
+        let mut cur = self.arena.raw_cursor();
+        let point_buf = cur.region_mut(pt_reg);
+        let values_buf = cur.region_mut(val_reg);
         sobol.apply_cranley_patterson_shift(rng);
-        for idx in 0..n_samples {
-            sobol.next_point(&mut self.point_buf)?;
-            let val = integrand(&self.point_buf);
+        for slot in values_buf.iter_mut().take(n_samples) {
+            sobol.next_point(point_buf)?;
+            let val = integrand(point_buf);
             if !val.is_finite() {
                 return Err(MonteCarloError::NonFiniteEvaluation);
             }
-            self.values_buf[idx] = val;
+            *slot = val;
         }
-        MonteCarloEstimate::from_samples(&self.values_buf[..n_samples], self.confidence_level)
+        MonteCarloEstimate::from_samples(&values_buf[..n_samples], conf)
     }
 
     /// Scrambled + Cranley-Patterson randomized 64D base-2 Niederreiter QMC estimator over `(0, 1)^d`.
@@ -192,33 +210,35 @@ impl MonteCarloWorkspace {
         let reps = DEFAULT_QMC_REPLICATES;
         let base_pts = n_samples / reps;
         let rem = n_samples % reps;
+        let conf = self.confidence_level;
+        let dim = self.dimension;
+        let pt_reg = self.point_buf;
+        let bm_reg = self.batch_means_buf;
         let nied = self
             .niederreiter
             .as_mut()
             .ok_or(MonteCarloError::InvalidDimension {
-                dimension: self.dimension,
+                dimension: dim,
                 max_dimension: MAX_NIEDERREITER_DIM,
             })?;
-        for r in 0..reps {
+        let mut cur = self.arena.raw_cursor();
+        let point_buf = cur.region_mut(pt_reg);
+        let batch_means_buf = cur.region_mut(bm_reg);
+        for (r, bm_slot) in batch_means_buf.iter_mut().enumerate().take(reps) {
             let pts = base_pts + usize::from(r < rem);
             nied.apply_cranley_patterson_shift(rng);
             let mut batch_sum = 0.0;
             for _ in 0..pts {
-                nied.next_point(&mut self.point_buf)?;
-                let val = integrand(&self.point_buf);
+                nied.next_point(point_buf)?;
+                let val = integrand(point_buf);
                 if !val.is_finite() {
                     return Err(MonteCarloError::NonFiniteEvaluation);
                 }
                 batch_sum += val;
             }
-            self.batch_means_buf[r] = batch_sum / (pts as f64);
+            *bm_slot = batch_sum / (pts as f64);
         }
-        estimate_from_qmc_batches(
-            &self.batch_means_buf[..reps],
-            n_samples,
-            self.confidence_level,
-            z,
-        )
+        estimate_from_qmc_batches(&batch_means_buf[..reps], n_samples, conf, z)
     }
 
     #[verified_engine::verified]
@@ -231,23 +251,30 @@ impl MonteCarloWorkspace {
     where
         F: FnMut(&[f64]) -> f64,
     {
+        let conf = self.confidence_level;
+        let dim = self.dimension;
+        let pt_reg = self.point_buf;
+        let val_reg = self.values_buf;
         let nied = self
             .niederreiter
             .as_mut()
             .ok_or(MonteCarloError::InvalidDimension {
-                dimension: self.dimension,
+                dimension: dim,
                 max_dimension: MAX_NIEDERREITER_DIM,
             })?;
+        let mut cur = self.arena.raw_cursor();
+        let point_buf = cur.region_mut(pt_reg);
+        let values_buf = cur.region_mut(val_reg);
         nied.apply_cranley_patterson_shift(rng);
-        for idx in 0..n_samples {
-            nied.next_point(&mut self.point_buf)?;
-            let val = integrand(&self.point_buf);
+        for slot in values_buf.iter_mut().take(n_samples) {
+            nied.next_point(point_buf)?;
+            let val = integrand(point_buf);
             if !val.is_finite() {
                 return Err(MonteCarloError::NonFiniteEvaluation);
             }
-            self.values_buf[idx] = val;
+            *slot = val;
         }
-        MonteCarloEstimate::from_samples(&self.values_buf[..n_samples], self.confidence_level)
+        MonteCarloEstimate::from_samples(&values_buf[..n_samples], conf)
     }
 }
 

@@ -268,8 +268,8 @@ impl SculptedQTableRunner {
 
     pub(super) fn build_q_snapshot(&self) -> QTableSnapshot {
         let bellman = solve_bellman_with_policy(&self.mdp, &self.workspace, self.solver_mode);
-        let mut greedy_actions = Vec::with_capacity(self.workspace.states.len());
-        for &st in &self.workspace.states {
+        let mut greedy_actions = Vec::with_capacity(self.workspace.states().len());
+        for &st in self.workspace.states() {
             let act = match self.solver_mode {
                 RlSolverMode::TabularQ => self.workspace.greedy_q_action(st),
                 RlSolverMode::PolicyGradient => self.workspace.greedy_policy_action(st),
@@ -280,8 +280,8 @@ impl SculptedQTableRunner {
             episodes_trained: self.episodes_trained,
             mdp: self.mdp.clone(),
             solver_mode: self.solver_mode,
-            q_table: self.workspace.q_table.clone(),
-            state_values: self.workspace.state_values.clone(),
+            q_table: self.workspace.q_table().to_vec(),
+            state_values: self.workspace.state_values().to_vec(),
             greedy_actions,
             bellman,
         }

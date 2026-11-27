@@ -331,7 +331,7 @@ fn count_registered_examples(workspace_root: &Path) -> usize {
         .unwrap_or(0)
 }
 
-fn member_is_allowlisted(member: &str, allowlist: &HashSet<String>) -> bool {
+fn member_is_allowlisted(member: &str, crate_dir: &Path, allowlist: &HashSet<String>) -> bool {
     let opts = crate::whitelist::PathMatchOptions {
         trim_dot_slash: true,
         require_non_empty: true,
@@ -340,7 +340,7 @@ fn member_is_allowlisted(member: &str, allowlist: &HashSet<String>) -> bool {
     allowlist.contains(member)
         || allowlist
             .iter()
-            .any(|pat| crate::whitelist::path_matches_lossy(Path::new(member), pat, opts))
+            .any(|pat| crate::whitelist::path_matches_lossy(crate_dir, pat, opts))
 }
 
 fn run_doc_audit_in_base(
@@ -383,7 +383,7 @@ fn run_doc_audit_in_base(
     let mut report = AuditReport::new();
     for member in members {
         let crate_dir = crate::manifest_cache::resolve_workspace_path_from(workspace_root, member);
-        let is_allowlisted = member_is_allowlisted(member, &allowlist) || staging_mode;
+        let is_allowlisted = member_is_allowlisted(member, &crate_dir, &allowlist) || staging_mode;
         report.extend(
             audit_crate_with_patterns(member, &crate_dir, is_allowlisted, &patterns).violations,
         );
@@ -426,7 +426,7 @@ pub fn run_staged_doc_audit(
         for member in touched_members {
             let crate_dir =
                 crate::manifest_cache::resolve_workspace_path_from(&workspace_root, member);
-            let is_allowlisted = member_is_allowlisted(member, &allowlist);
+            let is_allowlisted = member_is_allowlisted(member, &crate_dir, &allowlist);
             report.extend(
                 audit_crate_with_patterns(member, &crate_dir, is_allowlisted, &patterns).violations,
             );

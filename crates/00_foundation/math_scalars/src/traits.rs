@@ -237,6 +237,8 @@ pub trait ComplexField: Field + DivAssign {
 pub trait RealField:
     ComplexField<Real = Self>
     + Copy
+    + bytemuck::Pod
+    + bytemuck::Zeroable
     + PartialOrd
     + Default
     + Display

@@ -1,14 +1,15 @@
 //! Preallocated zero-allocation workspace for Vietoris-Rips filtration and Z₂ 1-homology.
 
-use super::boundary::FilteredEdge;
 use super::core::Point2D;
-use super::filtration::{append_edge_triangles_and_reduce, prepare_sorted_workspace_edges};
-use super::homology::{UnionFind, betti_1_from_counts};
-use super::persistence::PersistenceInterval;
+use super::filtration::{
+    IncrementalReductionCtx, append_edge_triangles_and_reduce, prepare_sorted_workspace_edges,
+};
+use super::homology::{betti_1_from_counts, uf_reset_slices, uf_union_slices};
+use super::persistence::{PersistenceInterval, flush_essential_births, update_births_and_deaths};
 use super::space3d::Point3D;
+use super::workspace_layout::{TdaRegions, allocate_tda_arena};
 use crate::error::TdaError;
-
-const DEFAULT_RADII_SCRATCH_CAP: usize = 512;
+use math_memory::OwnedByteArena;
 
 /// Summary of simplex counts and Betti numbers at a single filtration radius.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,24 +26,22 @@ pub struct FiltrationStepSummary {
     pub triangles: usize,
 }
 
-/// Preallocated scratch buffers enabling zero-allocation Vietoris-Rips filtration sweeps
-/// and `ℤ₂` boundary-matrix column reduction up to `max_points` vertices.
+/// Preallocated scratch buffers in a single [`OwnedByteArena`] enabling zero-allocation
+/// Vietoris-Rips filtration sweeps and `ℤ₂` boundary-matrix column reduction up to `max_points`.
 #[derive(Debug, Clone)]
 pub struct TdaFiltrationWorkspace {
     max_points: usize,
-    dist: Vec<Vec<f64>>,
-    sorted_edges: Vec<FilteredEdge>,
-    adj_words: Vec<Vec<u64>>,
-    uf: UnionFind,
-    edges: Vec<[usize; 2]>,
-    edge_lookup: Vec<Vec<usize>>,
-    triangles: Vec<[usize; 3]>,
-    pivot_for_row: Vec<usize>,
-    basis_words: Vec<Vec<u64>>,
-    col_scratch: Vec<u64>,
-    component_births: Vec<f64>,
-    hole_births: Vec<f64>,
-    radii_scratch: Vec<f64>,
+    max_vertex_words: usize,
+    max_edge_words: usize,
+    arena: OwnedByteArena,
+    regions: TdaRegions,
+    sorted_edges_len: usize,
+    edges_len: usize,
+    triangles_len: usize,
+    uf_components: usize,
+    comp_births_len: usize,
+    hole_births_len: usize,
+    radii_scratch_len: usize,
     active_n: usize,
     edges_prepared: bool,
     edge_cursor: usize,
@@ -51,7 +50,7 @@ pub struct TdaFiltrationWorkspace {
 }
 
 impl TdaFiltrationWorkspace {
-    /// Allocates reusable filtration and `ℤ₂` reduction buffers for up to `max_points` vertices.
+    /// Allocates reusable filtration and `ℤ₂` reduction buffers in one [`OwnedByteArena`] for up to `max_points` vertices.
     ///
     /// # Example
     ///
@@ -72,29 +71,20 @@ impl TdaFiltrationWorkspace {
     /// ```
     #[verified_engine::verified]
     pub fn with_capacity(max_points: usize) -> Self {
-        let cap = max_points.max(1);
-        let max_edges = cap.saturating_mul(cap.saturating_sub(1)) / 2;
-        let max_tris = cap
-            .saturating_mul(cap.saturating_sub(1))
-            .saturating_mul(cap.saturating_sub(2))
-            / 6;
-        let max_edge_words = max_edges.div_ceil(64).max(1);
-        let max_vertex_words = cap.div_ceil(64).max(1);
+        let alloc = allocate_tda_arena(max_points);
         Self {
-            max_points: cap,
-            dist: vec![vec![0.0; cap]; cap],
-            sorted_edges: Vec::with_capacity(max_edges),
-            adj_words: vec![vec![0; max_vertex_words]; cap],
-            uf: UnionFind::new(cap),
-            edges: Vec::with_capacity(max_edges),
-            edge_lookup: vec![vec![usize::MAX; cap]; cap],
-            triangles: Vec::with_capacity(max_tris),
-            pivot_for_row: vec![usize::MAX; max_edges.max(1)],
-            basis_words: vec![vec![0; max_edge_words]; max_edges.max(1)],
-            col_scratch: vec![0; max_edge_words],
-            component_births: Vec::with_capacity(cap),
-            hole_births: Vec::with_capacity(max_edges.max(1)),
-            radii_scratch: Vec::with_capacity(DEFAULT_RADII_SCRATCH_CAP),
+            max_points: alloc.cap,
+            max_vertex_words: alloc.max_vertex_words,
+            max_edge_words: alloc.max_edge_words,
+            arena: alloc.arena,
+            regions: alloc.regions,
+            sorted_edges_len: 0,
+            edges_len: 0,
+            triangles_len: 0,
+            uf_components: alloc.cap,
+            comp_births_len: 0,
+            hole_births_len: 0,
+            radii_scratch_len: 0,
             active_n: 0,
             edges_prepared: false,
             edge_cursor: 0,
@@ -125,19 +115,21 @@ impl TdaFiltrationWorkspace {
                 reason: "Point count exceeds workspace capacity".to_string(),
             });
         }
+        let stride = self.max_points;
+        let dist = self.arena.region_slice_mut(self.regions.dist);
         for (i, pi) in points.iter().enumerate() {
             if !pi.x.is_finite() || !pi.y.is_finite() {
                 return Err(TdaError::MatrixError {
                     reason: "Non-finite 2D coordinate".to_string(),
                 });
             }
-            self.dist[i][i] = 0.0;
+            dist[math_commons::math_kernel::types::flatten_2d_index(i, i, stride)] = 0.0;
             for (j, pj) in points.iter().enumerate().skip(i + 1) {
                 let dx = pi.x - pj.x;
                 let dy = pi.y - pj.y;
                 let d = (dx * dx + dy * dy).sqrt();
-                self.dist[i][j] = d;
-                self.dist[j][i] = d;
+                dist[math_commons::math_kernel::types::flatten_2d_index(j, i, stride)] = d;
+                dist[math_commons::math_kernel::types::flatten_2d_index(i, j, stride)] = d;
             }
         }
         self.prepare_edges_for_n(n);
@@ -160,20 +152,22 @@ impl TdaFiltrationWorkspace {
                 reason: "Point count exceeds workspace capacity".to_string(),
             });
         }
+        let stride = self.max_points;
+        let dist = self.arena.region_slice_mut(self.regions.dist);
         for (i, pi) in points.iter().enumerate() {
             if !pi.x.is_finite() || !pi.y.is_finite() || !pi.z.is_finite() {
                 return Err(TdaError::MatrixError {
                     reason: "Non-finite 3D coordinate".to_string(),
                 });
             }
-            self.dist[i][i] = 0.0;
+            dist[math_commons::math_kernel::types::flatten_2d_index(i, i, stride)] = 0.0;
             for (j, pj) in points.iter().enumerate().skip(i + 1) {
                 let dx = pi.x - pj.x;
                 let dy = pi.y - pj.y;
                 let dz = pi.z - pj.z;
                 let d = (dx * dx + dy * dy + dz * dz).sqrt();
-                self.dist[i][j] = d;
-                self.dist[j][i] = d;
+                dist[math_commons::math_kernel::types::flatten_2d_index(j, i, stride)] = d;
+                dist[math_commons::math_kernel::types::flatten_2d_index(i, j, stride)] = d;
             }
         }
         self.prepare_edges_for_n(n);
@@ -182,7 +176,13 @@ impl TdaFiltrationWorkspace {
 
     #[verified_engine::verified]
     fn prepare_edges_for_n(&mut self, n: usize) {
-        prepare_sorted_workspace_edges(&self.dist, n, &mut self.sorted_edges);
+        let stride = self.max_points;
+        let d_reg = self.regions.dist;
+        let se_reg = self.regions.sorted_edges;
+        let mut cur = self.arena.raw_cursor();
+        let dist = cur.region_mut(d_reg);
+        let sorted_edges = cur.region_mut(se_reg);
+        self.sorted_edges_len = prepare_sorted_workspace_edges(dist, stride, n, sorted_edges);
         self.active_n = n;
         self.edges_prepared = true;
         self.prev_radius = None;
@@ -192,25 +192,22 @@ impl TdaFiltrationWorkspace {
     #[verified_engine::verified]
     pub fn distance(&self, n: usize, i: usize, j: usize) -> f64 {
         debug_assert!(i < n && j < n);
-        self.dist[i][j]
+        self.arena.region_slice(self.regions.dist)[i * self.max_points + j]
     }
 
     /// Returns the canonical `[i, j]` 1-simplices from the most recent [`Self::evaluate_radius`] call.
     #[verified_engine::verified]
     pub fn active_edges(&self) -> &[[usize; 2]] {
-        &self.edges
+        &self.arena.region_slice(self.regions.edges)[..self.edges_len]
     }
 
     /// Returns the canonical `[i, j, k]` 2-simplices from the most recent [`Self::evaluate_radius`] call.
     #[verified_engine::verified]
     pub fn active_triangles(&self) -> &[[usize; 3]] {
-        &self.triangles
+        &self.arena.region_slice(self.regions.triangles)[..self.triangles_len]
     }
 
     /// Evaluates simplex counts and exact `(β₀, β₁)` over `ℤ₂` at `radius` with zero allocations.
-    ///
-    /// Advances incrementally from the previous radius when `radius >= prev_radius`, and resets
-    /// in-place when `radius < prev_radius`.
     ///
     /// # Errors
     ///
@@ -237,28 +234,35 @@ impl TdaFiltrationWorkspace {
         self.advance_filtration_to(n, radius);
         self.prev_radius = Some(radius);
 
-        let beta0 = self.uf.count_components();
-        let e = self.edges.len();
+        let beta0 = self.uf_components;
+        let e = self.edges_len;
         Ok(FiltrationStepSummary {
             beta0,
             beta1: betti_1_from_counts(n, e, beta0, self.basis_rank),
             vertices: n,
             edges: e,
-            triangles: self.triangles.len(),
+            triangles: self.triangles_len,
         })
     }
 
     #[verified_engine::verified]
     fn reset_filtration_state(&mut self, n: usize) {
         let n_words = n.div_ceil(64).max(1);
+        let adj_stride = self.max_vertex_words;
         let total_edges = n.saturating_mul(n.saturating_sub(1)) / 2;
-        self.uf.reset_prefix(n);
-        for row in self.adj_words.iter_mut().take(n) {
-            row[..n_words].fill(0);
+        let r = self.regions;
+        let mut cur = self.arena.raw_cursor();
+        let adj_words = cur.region_mut(r.adj_words);
+        for u in 0..n {
+            adj_words[u * adj_stride..u * adj_stride + n_words].fill(0);
         }
-        self.edges.clear();
-        self.triangles.clear();
-        self.pivot_for_row[..total_edges.max(1)].fill(usize::MAX);
+        let uf_p = cur.region_mut(r.uf_parent);
+        let uf_r = cur.region_mut(r.uf_rank);
+        self.uf_components = uf_reset_slices(uf_p, uf_r, n);
+        let pivot_for_row = cur.region_mut(r.pivot_for_row);
+        pivot_for_row[..total_edges.max(1)].fill(usize::MAX);
+        self.edges_len = 0;
+        self.triangles_len = 0;
         self.edge_cursor = 0;
         self.basis_rank = 0;
     }
@@ -268,42 +272,62 @@ impl TdaFiltrationWorkspace {
         let n_words = n.div_ceil(64).max(1);
         let total_edges = n.saturating_mul(n.saturating_sub(1)) / 2;
         let edge_words = total_edges.div_ceil(64).max(1);
+        let adj_stride = self.max_vertex_words;
+        let basis_stride = self.max_edge_words;
+        let lookup_stride = self.max_points;
+        let r = self.regions;
 
-        while self.edge_cursor < self.sorted_edges.len() {
-            let edge = self.sorted_edges[self.edge_cursor];
-            if edge.diameter > radius {
+        let mut cur = self.arena.raw_cursor();
+        let sorted_edges = &cur.region_mut(r.sorted_edges)[..self.sorted_edges_len];
+        let adj_words = cur.region_mut(r.adj_words);
+        let uf_parent = cur.region_mut(r.uf_parent);
+        let uf_rank = cur.region_mut(r.uf_rank);
+        let edges = cur.region_mut(r.edges);
+        let edge_lookup = cur.region_mut(r.edge_lookup);
+        let triangles = cur.region_mut(r.triangles);
+        let pivot_for_row = cur.region_mut(r.pivot_for_row);
+        let basis_words = cur.region_mut(r.basis_words);
+        let col_scratch = cur.region_mut(r.col_scratch);
+
+        while self.edge_cursor < sorted_edges.len() {
+            let [diam_bits, uv_packed] = sorted_edges[self.edge_cursor];
+            if f64::from_bits(diam_bits) > radius {
                 break;
             }
             self.edge_cursor += 1;
-            let u = edge.u as usize;
-            let v = edge.v as usize;
-            let e_uv = self.edges.len();
-            self.edges.push([u, v]);
-            self.edge_lookup[u][v] = e_uv;
-            self.edge_lookup[v][u] = e_uv;
+            let u = (uv_packed >> 32) as usize;
+            let v = (uv_packed & 0xFFFF_FFFF) as usize;
+            let e_uv = self.edges_len;
+            edges[e_uv] = [u, v];
+            self.edges_len += 1;
+            edge_lookup[math_commons::math_kernel::types::flatten_2d_index(v, u, lookup_stride)] =
+                e_uv;
+            edge_lookup[math_commons::math_kernel::types::flatten_2d_index(u, v, lookup_stride)] =
+                e_uv;
 
-            let merged = self.uf.union(u, v);
+            let merged = uf_union_slices(uf_parent, uf_rank, &mut self.uf_components, u, v);
             if !merged {
-                let curr_cycles =
-                    betti_1_from_counts(n, self.edges.len(), self.uf.count_components(), 0);
-                append_edge_triangles_and_reduce(
-                    u,
-                    v,
-                    e_uv,
+                let curr_cycles = betti_1_from_counts(n, self.edges_len, self.uf_components, 0);
+                let mut ctx = IncrementalReductionCtx {
                     n_words,
+                    adj_stride,
                     edge_words,
+                    basis_stride,
+                    lookup_stride,
                     curr_cycles,
-                    &self.adj_words,
-                    &self.edge_lookup,
-                    &mut self.triangles,
-                    &mut self.col_scratch,
-                    &mut self.pivot_for_row,
-                    &mut self.basis_words,
-                    &mut self.basis_rank,
-                );
+                    adj_words,
+                    edge_lookup,
+                    triangles,
+                    triangles_len: &mut self.triangles_len,
+                    col_scratch,
+                    pivot_for_row,
+                    basis_words,
+                    basis_rank: &mut self.basis_rank,
+                };
+                append_edge_triangles_and_reduce(u, v, e_uv, &mut ctx);
             }
-            self.adj_words[u][v >> 6] |= 1_u64 << (v & 63);
-            self.adj_words[v][u >> 6] |= 1_u64 << (u & 63);
+            adj_words[u * adj_stride + (v >> 6)] |= 1_u64 << (v & 63);
+            adj_words[v * adj_stride + (u >> 6)] |= 1_u64 << (u & 63);
         }
     }
 
@@ -337,22 +361,58 @@ impl TdaFiltrationWorkspace {
         }
 
         out.clear();
-        self.component_births.clear();
-        self.hole_births.clear();
+        self.comp_births_len = 0;
+        self.hole_births_len = 0;
         self.prev_radius = None;
 
         if sorted {
             self.sweep_monotonic_radii(n, radii, out)
-        } else if radii.len() <= self.radii_scratch.capacity() {
-            self.radii_scratch.clear();
-            self.radii_scratch.extend_from_slice(radii);
-            self.radii_scratch.sort_unstable_by(f64::total_cmp);
+        } else if radii.len() <= self.regions.radii_scratch.len() {
+            let len = radii.len();
+            let scratch = &mut self.arena.region_slice_mut(self.regions.radii_scratch)[..len];
+            scratch.copy_from_slice(radii);
+            scratch.sort_unstable_by(f64::total_cmp);
+            self.radii_scratch_len = len;
             self.sweep_scratch_radii(n, out)
         } else {
             let mut owned = radii.to_vec();
             owned.sort_unstable_by(f64::total_cmp);
             self.sweep_monotonic_radii(n, &owned, out)
         }
+    }
+
+    #[verified_engine::verified]
+    fn record_step_births_deaths(
+        &mut self,
+        prev_b0: usize,
+        prev_b1: usize,
+        step: FiltrationStepSummary,
+        r: f64,
+        out: &mut Vec<PersistenceInterval>,
+    ) -> Result<(), TdaError> {
+        let cb_reg = self.regions.component_births;
+        let hb_reg = self.regions.hole_births;
+        let mut cur = self.arena.raw_cursor();
+        let comp_births = cur.region_mut(cb_reg);
+        let hole_births = cur.region_mut(hb_reg);
+        update_births_and_deaths(
+            comp_births,
+            &mut self.comp_births_len,
+            prev_b0,
+            step.beta0,
+            r,
+            0,
+            out,
+        )?;
+        update_births_and_deaths(
+            hole_births,
+            &mut self.hole_births_len,
+            prev_b1,
+            step.beta1,
+            r,
+            1,
+            out,
+        )
     }
 
     #[verified_engine::verified]
@@ -366,17 +426,13 @@ impl TdaFiltrationWorkspace {
         let mut prev_b1 = 0usize;
         for &r in radii {
             let step = self.evaluate_radius(n, r)?;
-            update_births_and_deaths(&mut self.component_births, prev_b0, step.beta0, r, 0, out)?;
-            update_births_and_deaths(&mut self.hole_births, prev_b1, step.beta1, r, 1, out)?;
+            self.record_step_births_deaths(prev_b0, prev_b1, step, r, out)?;
             prev_b0 = step.beta0;
             prev_b1 = step.beta1;
         }
-        flush_essential_births(
-            &self.component_births,
-            &self.hole_births,
-            radii[radii.len() - 1],
-            out,
-        )
+        let comp = &self.arena.region_slice(self.regions.component_births)[..self.comp_births_len];
+        let hole = &self.arena.region_slice(self.regions.hole_births)[..self.hole_births_len];
+        flush_essential_births(comp, hole, radii[radii.len() - 1], out)
     }
 
     #[verified_engine::verified]
@@ -385,68 +441,21 @@ impl TdaFiltrationWorkspace {
         n: usize,
         out: &mut Vec<PersistenceInterval>,
     ) -> Result<(), TdaError> {
-        let len = self.radii_scratch.len();
+        let len = self.radii_scratch_len;
         let mut prev_b0 = 0usize;
         let mut prev_b1 = 0usize;
         for idx in 0..len {
-            let r = self.radii_scratch[idx];
+            let r = self.arena.region_slice(self.regions.radii_scratch)[idx];
             let step = self.evaluate_radius(n, r)?;
-            update_births_and_deaths(&mut self.component_births, prev_b0, step.beta0, r, 0, out)?;
-            update_births_and_deaths(&mut self.hole_births, prev_b1, step.beta1, r, 1, out)?;
+            self.record_step_births_deaths(prev_b0, prev_b1, step, r, out)?;
             prev_b0 = step.beta0;
             prev_b1 = step.beta1;
         }
-        flush_essential_births(
-            &self.component_births,
-            &self.hole_births,
-            self.radii_scratch[len - 1],
-            out,
-        )
+        let final_r = self.arena.region_slice(self.regions.radii_scratch)[len - 1];
+        let comp = &self.arena.region_slice(self.regions.component_births)[..self.comp_births_len];
+        let hole = &self.arena.region_slice(self.regions.hole_births)[..self.hole_births_len];
+        flush_essential_births(comp, hole, final_r, out)
     }
-}
-
-#[verified_engine::verified]
-fn flush_essential_births(
-    comp_births: &[f64],
-    hole_births: &[f64],
-    final_r: f64,
-    out: &mut Vec<PersistenceInterval>,
-) -> Result<(), TdaError> {
-    for &birth in comp_births {
-        if birth < final_r {
-            out.push(PersistenceInterval::new(birth, final_r, 0)?);
-        }
-    }
-    for &birth in hole_births {
-        if birth < final_r {
-            out.push(PersistenceInterval::new(birth, final_r, 1)?);
-        }
-    }
-    Ok(())
-}
-
-fn update_births_and_deaths(
-    births: &mut Vec<f64>,
-    prev_betti: usize,
-    curr_betti: usize,
-    radius: f64,
-    dim: usize,
-    out: &mut Vec<PersistenceInterval>,
-) -> Result<(), TdaError> {
-    if curr_betti > prev_betti {
-        for _ in 0..(curr_betti - prev_betti) {
-            births.push(radius);
-        }
-    } else if curr_betti < prev_betti {
-        for _ in 0..(prev_betti - curr_betti) {
-            if let Some(birth) = births.pop()
-                && birth < radius
-            {
-                out.push(PersistenceInterval::new(birth, radius, dim)?);
-            }
-        }
-    }
-    Ok(())
 }
 
 // [cite:clinical_trials_statistics]

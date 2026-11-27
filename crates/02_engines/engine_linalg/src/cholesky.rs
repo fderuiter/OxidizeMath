@@ -5,7 +5,7 @@
 
 use crate::scalar::Scalar;
 use crate::svd_jacobi::{symmetric_eigen_jacobi, symmetric_eigen_workspace_len};
-use crate::types::{LinalgError, SolverWorkspace, check_all_finite, mat_idx};
+use crate::types::{LinalgError, SolverWorkspace, carve_scalars, check_all_finite, mat_idx};
 
 /// Workspace scalar capacity required by [`cholesky_solve`] for an `n x n` SPD matrix.
 /// `[cite:engine_linalg]`
@@ -130,12 +130,14 @@ pub fn cholesky_solve<T: Scalar>(
     b: &[T],
     x: &mut [T],
     n: usize,
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut (impl SolverWorkspace + ?Sized),
 ) -> Result<(), LinalgError> {
     if n.checked_mul(n) != Some(a.len()) || b.len() != n || x.len() != n {
         return Err(LinalgError::DimensionMismatch);
     }
-    let (l_buf, _) = ws.try_split(cholesky_workspace_len(n))?;
+    let mut sub = ws.reborrow();
+    let mut cur = sub.cursor();
+    let l_buf = carve_scalars::<T>(&mut cur, cholesky_workspace_len(n))?;
     cholesky_factor(a, l_buf, n)?;
     cholesky_solve_factored(l_buf, b, x, n)
 }
@@ -152,7 +154,7 @@ pub fn cholesky_semidefinite<T: Scalar>(
     n: usize,
     sym_tol: T,
     psd_tol: T,
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut (impl SolverWorkspace + ?Sized),
 ) -> Result<(), LinalgError> {
     if n.checked_mul(n) != Some(a.len()) || l.len() != a.len() {
         return Err(LinalgError::DimensionMismatch);
@@ -163,8 +165,11 @@ pub fn cholesky_semidefinite<T: Scalar>(
     check_all_finite(a)?;
     check_symmetric(a, n, sym_tol)?;
 
-    let (eigvals, mut rest) = ws.try_split(n)?;
-    let (eigvecs, mut eig_ws) = rest.try_split(n * n)?;
+    let mut sub = ws.reborrow();
+    let mut cur = sub.cursor();
+    let eigvals = carve_scalars::<T>(&mut cur, n)?;
+    let eigvecs = carve_scalars::<T>(&mut cur, n * n)?;
+    let mut eig_ws = cur.reborrow();
     symmetric_eigen_jacobi(a, n, eigvals, eigvecs, 64, &mut eig_ws)?;
     for &ev in eigvals.iter() {
         if ev < -psd_tol {

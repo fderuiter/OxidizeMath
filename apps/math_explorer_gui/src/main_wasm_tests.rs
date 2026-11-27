@@ -36,7 +36,9 @@ fn reset_startup_dom() -> (web_sys::Window, web_sys::Document) {
 
     let err_box = doc.create_element("div").unwrap();
     err_box.set_id("error_container");
-    let _ = err_box.set_attribute("role", "alert");
+    let _ = err_box.set_attribute("role", "region");
+    let _ = err_box.set_attribute("aria-labelledby", "error_title");
+    let _ = err_box.set_attribute("aria-describedby", "error_message");
     let _ = err_box.set_attribute("style", "display: none;");
     err_box.set_inner_html(
         "<h1 id=\"error_title\"></h1><p id=\"error_message\"></p>\
@@ -115,7 +117,9 @@ fn wasm_handle_webgl_failure_renders_accessible_alert_and_focuses_reload() {
     assert!(is_error_boundary_active(&doc));
 
     let (_window, doc) = reset_startup_dom();
+    crate::accessibility::clear_test_announcements();
     handle_webgl_failure(Some(&doc), "WebGL2 context unavailable");
+    handle_webgl_failure(Some(&doc), "Duplicate WebGL2 context error");
 
     assert!(is_error_boundary_active(&doc));
     assert!(doc.get_element_by_id("loading_indicator").is_none());
@@ -126,6 +130,16 @@ fn wasm_handle_webgl_failure_renders_accessible_alert_and_focuses_reload() {
         Some("true")
     );
     let err_box = doc.get_element_by_id("error_container").unwrap();
+    assert_eq!(err_box.get_attribute("role").as_deref(), Some("region"));
+    assert!(!err_box.has_attribute("aria-live"));
+    assert_eq!(
+        crate::accessibility::all_announcements()
+            .iter()
+            .filter(|(_, p)| p == "assertive")
+            .count(),
+        1,
+        "handle_webgl_failure must emit exactly one assertive announcement"
+    );
     assert_eq!(
         err_box.get_attribute("data-error-category").as_deref(),
         Some("webgl")
@@ -199,10 +213,7 @@ fn wasm_finish_startup_focuses_canvas_on_ok_and_respects_active_error_boundary()
         .map(|c| c.blur());
 }
 
-#[wasm_bindgen_test]
-fn wasm_webgl_context_lost_prevents_default_and_reveals_recovery_overlay() {
-    let (window, doc) = reset_startup_dom();
-    let body = doc.body().unwrap();
+fn mount_test_recovery_overlay(doc: &web_sys::Document) -> web_sys::Element {
     if let Some(prev) = doc.get_element_by_id("webgl_recovery_overlay") {
         prev.remove();
     }
@@ -210,8 +221,18 @@ fn wasm_webgl_context_lost_prevents_default_and_reveals_recovery_overlay() {
     overlay.set_id("webgl_recovery_overlay");
     let _ = overlay.set_attribute("hidden", "");
     let _ = overlay.set_attribute("aria-busy", "false");
-    let _ = body.append_child(&overlay);
+    overlay.set_inner_html(
+        "<button id=\"webgl_recovery_reload_button\" type=\"button\">Reload Page</button>\
+         <button id=\"webgl_recovery_download_button\" type=\"button\" hidden>Download (.mws)</button>",
+    );
+    let _ = doc.body().unwrap().append_child(&overlay);
+    overlay
+}
 
+#[wasm_bindgen_test]
+fn wasm_webgl_context_lost_prevents_default_and_reveals_recovery_overlay() {
+    let (window, doc) = reset_startup_dom();
+    let overlay = mount_test_recovery_overlay(&doc);
     let canvas = doc
         .get_element_by_id("the_canvas_id")
         .unwrap()
@@ -219,6 +240,10 @@ fn wasm_webgl_context_lost_prevents_default_and_reveals_recovery_overlay() {
         .unwrap();
     let runner = eframe::WebRunner::new();
     finish_wasm_startup(&doc, Some(&window), &canvas, runner, Ok(()));
+    assert_eq!(
+        doc.active_element().map(|el| el.id()).as_deref(),
+        Some("the_canvas_id")
+    );
 
     let init = web_sys::EventInit::new();
     init.set_cancelable(true);
@@ -234,6 +259,42 @@ fn wasm_webgl_context_lost_prevents_default_and_reveals_recovery_overlay() {
         "#webgl_recovery_overlay must unhide while awaiting WebGL context restoration"
     );
     assert_eq!(overlay.get_attribute("aria-busy").as_deref(), Some("true"));
+    assert!(canvas.has_attribute("inert"));
+    assert_eq!(canvas.get_attribute("aria-hidden").as_deref(), Some("true"));
+    assert_eq!(
+        doc.active_element().map(|el| el.id()).as_deref(),
+        Some("webgl_recovery_reload_button")
+    );
+
+    canvas.remove();
+    overlay.remove();
+}
+
+#[wasm_bindgen_test]
+fn wasm_webgl_recovery_overlay_focuses_download_when_storage_blocked_and_restores_canvas() {
+    let (window, doc) = reset_startup_dom();
+    let overlay = mount_test_recovery_overlay(&doc);
+    let canvas = doc.get_element_by_id("the_canvas_id").unwrap();
+
+    crate::webgl_recovery::sync_fallback_download_buttons(&doc, "{\"theme\":\"Dark\"}", true);
+    crate::webgl_recovery::set_overlay_visible(&doc, true);
+    assert!(canvas.has_attribute("inert"));
+    assert_eq!(canvas.get_attribute("aria-hidden").as_deref(), Some("true"));
+    assert_eq!(
+        doc.active_element().map(|el| el.id()).as_deref(),
+        Some("webgl_recovery_download_button"),
+        "storage-blocked recovery must expose and focus the .mws download button"
+    );
+
+    crate::webgl_recovery::notify_recovery_completed(Some(&window), &doc);
+    assert!(overlay.has_attribute("hidden"));
+    assert!(!canvas.has_attribute("inert"));
+    assert!(!canvas.has_attribute("aria-hidden"));
+    assert_eq!(
+        doc.active_element().map(|el| el.id()).as_deref(),
+        Some("the_canvas_id")
+    );
+
     canvas.remove();
     overlay.remove();
 }
