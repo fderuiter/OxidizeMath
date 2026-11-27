@@ -9,7 +9,7 @@ use engine_pde::{
     SpdeNoiseKind, StencilOperators,
 };
 use math_commons::error::MathError;
-use math_commons::math_kernel::types::{Dimension, SolverWorkspace, StepSize};
+use math_commons::math_kernel::types::{Dimension, ScalarWorkspace, StepSize};
 use rand_core::RngCore;
 
 /// 1D Kardar-Parisi-Zhang (KPZ) nonlinear interface growth solver evolving
@@ -170,7 +170,7 @@ impl KpzModel1D {
         );
         let nu = self.nu;
         let half_lambda = 0.5 * self.lambda;
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ScalarWorkspace::new(&mut self.scratch);
         stepper.try_step_1d(
             &mut self.h,
             dt,
@@ -203,7 +203,7 @@ impl KpzModel1D {
             .into());
         }
         let stepper = SemiImplicitFourierStepper::try_new_1d(self.dx)?;
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ScalarWorkspace::new(&mut self.scratch);
         stepper.try_step_kpz_1d(
             &mut self.h,
             self.nu,
@@ -370,7 +370,7 @@ impl KpzModel2D {
         );
         let nu = self.nu;
         let half_lambda = 0.5 * self.lambda;
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ScalarWorkspace::new(&mut self.scratch);
         stepper.try_step_2d(
             &mut self.h,
             self.width,
@@ -405,7 +405,7 @@ impl KpzModel2D {
             .into());
         }
         let stepper = SemiImplicitFourierStepper::try_new_2d(self.dx, self.dy)?;
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ScalarWorkspace::new(&mut self.scratch);
         stepper.try_step_kpz_2d(
             &mut self.h,
             self.width,

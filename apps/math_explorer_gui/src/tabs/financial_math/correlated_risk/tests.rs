@@ -121,7 +121,7 @@ fn test_ou_summary_stats_match_shared_solver_workspace_across_updates() {
     tool.recalculate_if_needed();
 
     let stats = tool.ou_stats.expect("expected populated OU summary stats");
-    let mut ref_ws = math_explorer::stochastic::SolverWorkspace::new(0, 32);
+    let mut ref_ws = math_explorer::stochastic::StochasticWorkspace::new(0, 32);
     let ref_summary = ref_ws
         .summarize_samples(&tool.ou_finals_scratch, None)
         .expect("expected non-empty terminal samples");

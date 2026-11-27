@@ -159,7 +159,8 @@ impl OutcomeComparator<Observation> for RightCensoredComparator {
 }
 
 /// Pairwise win, loss, and remaining-tie counts resolved at a single priority tier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct TierCount {
     /// Zero-based index of the endpoint tier in the composite hierarchy.
     pub tier_index: usize,

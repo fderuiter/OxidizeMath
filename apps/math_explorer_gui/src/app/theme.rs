@@ -195,6 +195,34 @@ pub fn detect_startup_theme(cc: &eframe::CreationContext<'_>) -> ThemeMode {
     )
 }
 
+/// Computes `(data-theme, inline color-scheme, meta color-scheme, meta theme-color)` tokens
+/// while preserving system `Canvas` metadata under `(forced-colors: active)`.
+#[inline]
+#[must_use]
+pub(crate) const fn resolve_document_theme_metadata(
+    theme: ThemeMode,
+    forced_colors: bool,
+    prefers_light: bool,
+) -> (
+    &'static str,
+    Option<&'static str>,
+    &'static str,
+    &'static str,
+) {
+    let data_theme = theme.data_theme();
+    if forced_colors {
+        let theme_color = if prefers_light {
+            ThemeMode::Light.theme_color_hex()
+        } else {
+            ThemeMode::HighContrast.theme_color_hex()
+        };
+        (data_theme, None, "dark light", theme_color)
+    } else {
+        let scheme = theme.color_scheme();
+        (data_theme, Some(scheme), scheme, theme.theme_color_hex())
+    }
+}
+
 /// Synchronizes `html[data-theme]`, `color-scheme`, and `<meta name="theme-color">` on `wasm32`.
 #[cfg(target_arch = "wasm32")]
 pub fn sync_document_theme(theme: ThemeMode) {
@@ -203,19 +231,26 @@ pub fn sync_document_theme(theme: ThemeMode) {
     let Some(document) = web_sys::window().and_then(|w| w.document()) else {
         return;
     };
-    let data_theme = theme.data_theme();
-    let color_scheme = theme.color_scheme();
-    let theme_color = theme.theme_color_hex();
+    let (forced_colors, _prefers_more_contrast, prefers_light) = query_browser_media_flags();
+    let (data_theme, inline_scheme, meta_scheme, theme_color) =
+        resolve_document_theme_metadata(theme, forced_colors, prefers_light);
 
     if let Some(root) = document.document_element() {
         let _ = root.set_attribute("data-theme", data_theme);
         if let Ok(html_root) = root.dyn_into::<web_sys::HtmlElement>() {
-            let _ = html_root.style().set_property("color-scheme", color_scheme);
+            match inline_scheme {
+                Some(scheme) => {
+                    let _ = html_root.style().set_property("color-scheme", scheme);
+                }
+                None => {
+                    let _ = html_root.style().remove_property("color-scheme");
+                }
+            }
         }
     }
 
     if let Ok(Some(scheme_meta)) = document.query_selector("meta[name=\"color-scheme\"]") {
-        let _ = scheme_meta.set_attribute("content", color_scheme);
+        let _ = scheme_meta.set_attribute("content", meta_scheme);
     }
 
     if let Ok(nodes) = document.query_selector_all("meta[name=\"theme-color\"]") {
@@ -243,11 +278,7 @@ pub fn sync_document_theme(theme: ThemeMode) {
 /// Host no-op stub for [`sync_document_theme`] outside `wasm32`.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn sync_document_theme(theme: ThemeMode) {
-    let _ = (
-        theme.data_theme(),
-        theme.color_scheme(),
-        theme.theme_color_hex(),
-    );
+    let _ = resolve_document_theme_metadata(theme, false, false);
 }
 
 /// Extracts an explicit [`ThemeMode`] from valid raw `AppState` or versioned `WorkspaceEnvelope` JSON.
@@ -373,122 +404,8 @@ pub fn contrasting_text_color(bg: egui::Color32) -> egui::Color32 {
 mod palette_tests;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::app::MathExplorerApp;
-    use eframe::{App, Storage};
-    use std::collections::HashMap;
-
-    #[derive(Default)]
-    pub(super) struct TestStorage {
-        entries: HashMap<String, String>,
-        pub(super) flushes: usize,
-    }
-
-    impl Storage for TestStorage {
-        fn get_string(&self, key: &str) -> Option<String> {
-            self.entries.get(key).cloned()
-        }
-        fn set_string(&mut self, key: &str, value: String) {
-            self.entries.insert(key.to_string(), value);
-        }
-        fn flush(&mut self) {
-            self.flushes += 1;
-        }
-    }
-
-    #[test]
-    fn test_theme_mode_roundtrips_through_visuals_and_dom_tokens() {
-        let cases = [
-            (ThemeMode::Dark, "dark", "dark", "#121214"),
-            (ThemeMode::Light, "light", "light", "#f8f8f8"),
-            (ThemeMode::HighContrast, "high-contrast", "dark", "#000000"),
-        ];
-        for (mode, data_tok, scheme, hex) in cases {
-            let visuals = mode.visuals();
-            assert_eq!(ThemeMode::from_visuals(&visuals), mode);
-            assert_eq!(SemanticPalette::from_visuals(&visuals), mode.palette());
-            assert_eq!(mode.data_theme(), data_tok);
-            assert_eq!(mode.color_scheme(), scheme);
-            assert_eq!(mode.theme_color_hex(), hex);
-            assert_eq!(ThemeMode::from_token(data_tok), Some(mode));
-            assert_eq!(ThemeMode::from_token(&format!("{mode:?}")), Some(mode));
-        }
-        assert_eq!(ThemeMode::from_token("unknown"), None);
-    }
-
-    #[test]
-    fn test_startup_media_query_precedence() {
-        use egui::Theme::{Dark, Light};
-        use ThemeMode::{Dark as TD, HighContrast as THC, Light as TL};
-        for (fc, mc, pl, sys, expected) in [
-            (true, false, true, Some(Light), THC),
-            (false, true, true, Some(Light), THC),
-            (false, false, true, None, TL),
-            (false, false, false, Some(Light), TL),
-            (false, false, false, Some(Dark), TD),
-            (false, false, false, None, TD),
-        ] {
-            assert_eq!(resolve_startup_theme(fc, mc, pl, sys), expected);
-        }
-    }
-
-    #[test]
-    fn test_immediate_storage_writes_on_switch_undo_redo_and_session_open() {
-        let _guard = crate::reflective_ui::tests::TEST_MUTEX.lock().unwrap();
-        let ctx = egui::Context::default();
-        let mut app = MathExplorerApp::default();
-        let mut frame = eframe::Frame::_new_kittest();
-        let mut storage = TestStorage::default();
-        let _ = ctx.run(egui::RawInput::default(), |ctx| app.update(ctx, &mut frame));
-        let saved_theme = |s: &TestStorage| {
-            extract_explicit_theme_from_json(&s.get_string(eframe::APP_KEY).unwrap())
-        };
-
-        app.theme = ThemeMode::Light;
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            let mut mgr = std::mem::take(&mut app.session_manager);
-            mgr.track_frame_changes(ctx, &app);
-            app.session_manager = mgr;
-            sync_theme_with_storage(&mut app, ctx, Some(&mut storage));
-        });
-        assert_eq!(
-            (saved_theme(&storage), storage.flushes),
-            (Some(ThemeMode::Light), 1)
-        );
-
-        app.split_ratio = 0.62;
-        let _ = ctx.run(egui::RawInput::default(), |ctx| {
-            let mut mgr = std::mem::take(&mut app.session_manager);
-            mgr.track_frame_changes(ctx, &app);
-            app.session_manager = mgr;
-        });
-        app.undo();
-        sync_theme_with_storage(&mut app, &ctx, Some(&mut storage));
-        assert_eq!(saved_theme(&storage), Some(ThemeMode::Light));
-
-        app.redo();
-        sync_theme_with_storage(&mut app, &ctx, Some(&mut storage));
-        assert_eq!(saved_theme(&storage), Some(ThemeMode::Light));
-
-        let (tx, rx) = std::sync::mpsc::channel();
-        app.session_manager.open_rx = Some(rx);
-        app.session_manager.lifecycle_state = crate::app::SessionLifecycleState::AwaitingFileDialog;
-        let mut hc_state = app.get_app_state();
-        hc_state.theme = ThemeMode::HighContrast;
-        tx.send(Ok((
-            "hc.mws".into(),
-            app.session_manager.create_envelope(hc_state),
-        )))
-        .unwrap();
-        let mut mgr = std::mem::take(&mut app.session_manager);
-        mgr.poll(&mut app, &ctx);
-        app.session_manager = mgr;
-        sync_theme_with_storage(&mut app, &ctx, Some(&mut storage));
-        assert_eq!(saved_theme(&storage), Some(ThemeMode::HighContrast));
-        assert_eq!(ctx.style().visuals, ThemeMode::HighContrast.visuals());
-    }
-}
+#[path = "theme_tests.rs"]
+mod tests;
 
 #[cfg(all(test, target_arch = "wasm32"))]
 #[path = "theme_wasm_tests.rs"]

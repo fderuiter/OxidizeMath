@@ -383,7 +383,7 @@ fn solve_lm_damped_step<const M: usize>(
         },
         &mut delta[..k],
         &mut pivots[..k],
-        &mut engine_linalg::SolverWorkspace::new(&mut scratch),
+        &mut engine_linalg::LinalgWorkspace::new(&mut scratch),
     )?;
     Ok(delta)
 }

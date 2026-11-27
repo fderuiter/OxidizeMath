@@ -24,7 +24,7 @@ fn bounded_floats_implement_try_from_f64() {
 
 #[cfg(feature = "serde")]
 mod active {
-    use crate::error::{MathError, ScalarError};
+    use crate::error::{ArenaError, MathError, ScalarError};
     use crate::math_kernel::types::{Dimension, GridIndex, StepSize};
     #[cfg(feature = "alloc")]
     use crate::poi::LinePoiScan;
@@ -210,7 +210,12 @@ mod active {
     }
 
     #[test]
-    fn scalar_errors_and_no_std_umbrella_roundtrip() {
+    fn arena_scalar_errors_and_no_std_umbrella_roundtrip() {
+        let arena_err = ArenaError::ArithmeticOverflow;
+        assert_eq!(roundtrip_json(&arena_err), arena_err);
+        let arena_umbrella = crate::error::MathCommonsError::from(arena_err);
+        assert_eq!(roundtrip_json(&arena_umbrella), arena_umbrella);
+
         let scalar_err = ScalarError::WorkspaceTooSmall {
             required: 16,
             available: 8,

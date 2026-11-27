@@ -1,0 +1,35 @@
+[package]
+name = "math_memory"
+version.workspace = true
+edition = "2024"
+description = "Zero-unsafe #![no_std] bytemuck byte arena, boolean views, and unified SolverWorkspace substrate"
+license = "MIT OR Apache-2.0"
+
+[package.metadata.oxidize]
+tier = "00_foundation"
+release_role = "release"
+facade_role = "foundation"
+traceability = true
+
+[features]
+default = []
+alloc = []
+serde = ["dep:serde", "math_diagnostics/serde"]
+std = ["alloc", "math_diagnostics/std", "serde?/std"]
+
+[dependencies]
+bytemuck = { workspace = true }
+math_diagnostics = { path = "../math_diagnostics", default-features = false }
+num-complex = { workspace = true, default-features = false, features = ["bytemuck"] }
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true, default-features = false, features = ["alloc"] }
+verified_engine = { path = "../verified_engine" }
+
+[[test]]
+name = "zero_alloc_arena"
+required-features = ["std"]
+
+[lints]
+workspace = true

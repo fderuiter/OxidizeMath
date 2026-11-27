@@ -20,8 +20,6 @@ mod tests;
 
 use crate::error::FitError;
 #[cfg(feature = "alloc")]
-use alloc::format;
-#[cfg(feature = "alloc")]
 use alloc::string::String;
 #[cfg(feature = "alloc")]
 use alloc::{vec, vec::Vec};

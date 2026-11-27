@@ -1,6 +1,7 @@
 // [cite:engine_diffeq]
-use crate::error::DiffeqError;
-use math_commons::math_kernel::types::{Scalar, SolverWorkspace, flatten_2d_index};
+use crate::error::{DiffeqError, carve_scalars};
+use math_commons::math_kernel::types::{Scalar, flatten_2d_index};
+use math_memory::SolverWorkspace;
 
 /// Stochastic integral interpretation governing drift-diffusion coupling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -108,7 +109,7 @@ pub fn try_eval_ito_effective_drift<T: Scalar, S: SdeSystem<T> + ?Sized>(
     t: T,
     x: &[T],
     out_drift: &mut [T],
-    workspace: &mut SolverWorkspace<'_, T>,
+    workspace: &mut (impl SolverWorkspace + ?Sized),
 ) -> Result<(), DiffeqError> {
     let d = system.state_dim();
     let m = system.wiener_dim();
@@ -134,12 +135,13 @@ pub fn try_eval_ito_effective_drift<T: Scalar, S: SdeSystem<T> + ?Sized>(
 
     let dm = d * m;
     let mut ws = workspace.reborrow();
-    let g_base = ws.try_take_slice(dm)?;
-    let g_plus = ws.try_take_slice(dm)?;
-    let g_minus = ws.try_take_slice(dm)?;
-    let col_vec = ws.try_take_slice(d)?;
-    let dg_vec = ws.try_take_slice(d)?;
-    let x_tmp = ws.try_take_slice(d)?;
+    let mut cur = ws.cursor();
+    let g_base = carve_scalars::<T>(&mut cur, dm)?;
+    let g_plus = carve_scalars::<T>(&mut cur, dm)?;
+    let g_minus = carve_scalars::<T>(&mut cur, dm)?;
+    let col_vec = carve_scalars::<T>(&mut cur, d)?;
+    let dg_vec = carve_scalars::<T>(&mut cur, d)?;
+    let x_tmp = carve_scalars::<T>(&mut cur, d)?;
 
     system.diffusion(t, x, g_base);
     for j in 0..m {
@@ -170,7 +172,7 @@ pub fn eval_ito_effective_drift<T: Scalar, S: SdeSystem<T> + ?Sized>(
     t: T,
     x: &[T],
     out_drift: &mut [T],
-    workspace: &mut SolverWorkspace<'_, T>,
+    workspace: &mut (impl SolverWorkspace + ?Sized),
 ) {
     try_eval_ito_effective_drift(system, calculus, t, x, out_drift, workspace)
         .expect("eval_ito_effective_drift preconditions violated");

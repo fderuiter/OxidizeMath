@@ -1,13 +1,13 @@
 // [cite:engine_pde]
 use crate::boundary::BoundaryCondition;
-use crate::error::PdeError;
+use crate::error::{PdeError, carve_f64};
 use crate::fft::{try_fft_1d_inplace, try_fft_2d_inplace};
 use crate::fourier_kernels::{
     pack_real, try_eval_dealiased_cubic_1d, try_eval_dealiased_cubic_2d, unpack_real,
     update_cahn_hilliard_1d_modes, update_cahn_hilliard_2d_modes,
 };
 use crate::spde_noise::{try_inject_conserved_flux_noise_1d, try_inject_conserved_flux_noise_2d};
-use math_commons::math_kernel::types::SolverWorkspace;
+use math_memory::{ByteArena, SolverWorkspace};
 use rand_core::RngCore;
 
 /// Kardar-Parisi-Zhang (KPZ) and Edwards-Wilkinson semi-implicit Fourier steppers.
@@ -123,7 +123,7 @@ impl SemiImplicitFourierStepper {
         kappa: f64,
         mobility_temp: f64,
         dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) -> Result<(), PdeError> {
         let n = phi.len();
@@ -136,10 +136,12 @@ impl SemiImplicitFourierStepper {
         }
 
         let mut ws = workspace.reborrow();
-        let phi_hat = ws.try_take_slice(2 * n)?;
-        let deal_buf = ws.try_take_slice(2 * n)?;
-        let noise_spec = ws.try_take_slice(2 * n)?;
-        let noise_phys = ws.try_take_slice(n)?;
+        let mut cur = ws.cursor();
+        let phi_hat = carve_f64(&mut cur, 2 * n)?;
+        let deal_buf = carve_f64(&mut cur, 2 * n)?;
+        let noise_spec = carve_f64(&mut cur, 2 * n)?;
+        let noise_phys = carve_f64(&mut cur, n)?;
+        let mut noise_ws = ByteArena::new(cur.into_bytes());
 
         pack_real(phi, phi_hat, n);
         try_fft_1d_inplace(phi_hat, n, false)?;
@@ -153,7 +155,7 @@ impl SemiImplicitFourierStepper {
                 dt,
                 mobility_temp,
                 BoundaryCondition::Periodic,
-                &mut ws,
+                &mut noise_ws,
                 rng,
             )?;
             pack_real(noise_phys, noise_spec, n);
@@ -183,7 +185,7 @@ impl SemiImplicitFourierStepper {
         kappa: f64,
         mobility_temp: f64,
         dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) {
         self.try_step_cahn_hilliard_1d(phi, mobility, kappa, mobility_temp, dt, workspace, rng)
@@ -202,7 +204,7 @@ impl SemiImplicitFourierStepper {
         kappa: f64,
         mobility_temp: f64,
         dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) -> Result<(), PdeError> {
         check_radix2_min4("width", width)?;
@@ -223,11 +225,13 @@ impl SemiImplicitFourierStepper {
         }
 
         let mut ws = workspace.reborrow();
-        let phi_hat = ws.try_take_slice(2 * total)?;
-        let deal_buf = ws.try_take_slice(2 * total)?;
-        let noise_spec = ws.try_take_slice(2 * total)?;
-        let col_scratch = ws.try_take_slice(2 * height)?;
-        let noise_phys = ws.try_take_slice(total)?;
+        let mut cur = ws.cursor();
+        let phi_hat = carve_f64(&mut cur, 2 * total)?;
+        let deal_buf = carve_f64(&mut cur, 2 * total)?;
+        let noise_spec = carve_f64(&mut cur, 2 * total)?;
+        let col_scratch = carve_f64(&mut cur, 2 * height)?;
+        let noise_phys = carve_f64(&mut cur, total)?;
+        let mut noise_ws = ByteArena::new(cur.into_bytes());
 
         pack_real(&phi[..total], phi_hat, total);
         try_fft_2d_inplace(phi_hat, width, height, col_scratch, false)?;
@@ -244,7 +248,7 @@ impl SemiImplicitFourierStepper {
                 dt,
                 mobility_temp,
                 BoundaryCondition::Periodic,
-                &mut ws,
+                &mut noise_ws,
                 rng,
             )?;
             pack_real(noise_phys, noise_spec, total);
@@ -276,7 +280,7 @@ impl SemiImplicitFourierStepper {
         kappa: f64,
         mobility_temp: f64,
         dt: f64,
-        workspace: &mut SolverWorkspace<'_, f64>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) {
         self.try_step_cahn_hilliard_2d(

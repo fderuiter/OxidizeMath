@@ -4,75 +4,122 @@ use super::boundary::Z2BoundaryWorkspace;
 use super::complex::SimplicialComplex;
 use super::core::Simplex;
 use crate::error::TdaError;
+use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
 use std::collections::{HashMap, HashSet};
 
-/// Union-Find data structure for connected component tracking.
+#[verified_engine::verified]
+pub(super) fn uf_reset_slices(parent: &mut [usize], rank: &mut [usize], n: usize) -> usize {
+    let limit = n.min(parent.len());
+    for (i, slot) in parent.iter_mut().enumerate().take(limit) {
+        *slot = i;
+    }
+    rank[..limit].fill(0);
+    limit
+}
+
+#[verified_engine::verified]
+pub(super) fn uf_find_slice(parent: &mut [usize], x: usize) -> usize {
+    let mut root = x;
+    while parent[root] != root {
+        root = parent[root];
+    }
+    let mut curr = x;
+    while curr != root {
+        let next = parent[curr];
+        parent[curr] = root;
+        curr = next;
+    }
+    root
+}
+
+#[verified_engine::verified]
+pub(super) fn uf_union_slices(
+    parent: &mut [usize],
+    rank: &mut [usize],
+    components: &mut usize,
+    x: usize,
+    y: usize,
+) -> bool {
+    let root_x = uf_find_slice(parent, x);
+    let root_y = uf_find_slice(parent, y);
+    if root_x == root_y {
+        return false;
+    }
+    if rank[root_x] < rank[root_y] {
+        parent[root_x] = root_y;
+    } else if rank[root_x] > rank[root_y] {
+        parent[root_y] = root_x;
+    } else {
+        parent[root_y] = root_x;
+        rank[root_x] += 1;
+    }
+    *components -= 1;
+    true
+}
+
+/// Union-Find data structure for connected component tracking backed by a single [`OwnedByteArena`].
 #[derive(Debug, Clone)]
 pub(crate) struct UnionFind {
-    parent: Vec<usize>,
-    rank: Vec<usize>,
+    arena: OwnedByteArena,
+    parent: ArenaRegion<usize>,
+    rank: ArenaRegion<usize>,
     components: usize,
 }
 
 impl UnionFind {
     #[verified_engine::verified]
     pub(crate) fn new(n: usize) -> Self {
+        let mut layout = ArenaLayout::new();
+        let parent = layout.reserve::<usize>(n).expect("UnionFind parent layout");
+        let rank = layout.reserve::<usize>(n).expect("UnionFind rank layout");
+        let mut arena = OwnedByteArena::from_layout(&layout);
+        for (i, slot) in arena.region_slice_mut(parent).iter_mut().enumerate() {
+            *slot = i;
+        }
         Self {
-            parent: (0..n).collect(),
-            rank: vec![0; n],
+            arena,
+            parent,
+            rank,
             components: n,
         }
     }
 
+    #[cfg(test)]
     #[verified_engine::verified]
     pub(crate) fn reset(&mut self) {
-        let n = self.parent.len();
-        self.reset_prefix(n);
+        let cap = self.arena.region_slice(self.parent).len();
+        self.reset_prefix(cap);
     }
 
+    #[cfg(test)]
     #[verified_engine::verified]
     pub(crate) fn reset_prefix(&mut self, n: usize) {
-        let limit = n.min(self.parent.len());
-        for (i, slot) in self.parent.iter_mut().enumerate().take(limit) {
-            *slot = i;
-        }
-        self.rank[..limit].fill(0);
-        self.components = limit;
+        let p_reg = self.parent;
+        let r_reg = self.rank;
+        let mut cur = self.arena.raw_cursor();
+        let parent = cur.region_mut(p_reg);
+        let rank = cur.region_mut(r_reg);
+        self.components = uf_reset_slices(parent, rank, n);
     }
 
     #[verified_engine::verified]
     pub(crate) fn find(&mut self, x: usize) -> usize {
-        let mut root = x;
-        while self.parent[root] != root {
-            root = self.parent[root];
-        }
-        let mut curr = x;
-        while curr != root {
-            let next = self.parent[curr];
-            self.parent[curr] = root;
-            curr = next;
-        }
-        root
+        uf_find_slice(self.arena.region_slice_mut(self.parent), x)
     }
 
     #[verified_engine::verified]
     pub(crate) fn union(&mut self, x: usize, y: usize) -> bool {
-        let root_x = self.find(x);
-        let root_y = self.find(y);
-        if root_x == root_y {
-            return false;
-        }
-
-        if self.rank[root_x] < self.rank[root_y] {
-            self.parent[root_x] = root_y;
-        } else if self.rank[root_x] > self.rank[root_y] {
-            self.parent[root_y] = root_x;
-        } else {
-            self.parent[root_y] = root_x;
-            self.rank[root_x] += 1;
-        }
-        self.components -= 1;
-        true
+        let p_reg = self.parent;
+        let r_reg = self.rank;
+        let mut comps = self.components;
+        let merged = {
+            let mut cur = self.arena.raw_cursor();
+            let parent = cur.region_mut(p_reg);
+            let rank = cur.region_mut(r_reg);
+            uf_union_slices(parent, rank, &mut comps, x, y)
+        };
+        self.components = comps;
+        merged
     }
 
     #[verified_engine::verified]

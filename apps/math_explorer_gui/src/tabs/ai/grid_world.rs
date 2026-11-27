@@ -194,7 +194,7 @@ impl GridWorldTool {
             RlSolverMode::TabularQ => step_tabular_q_into(&self.mdp, &mut self.workspace, lr, eps),
             RlSolverMode::PolicyGradient => {
                 let s_idx = self.mdp.cell_index(self.current_state);
-                let logits = self.workspace.theta_logits[s_idx];
+                let logits = self.workspace.theta_logits()[s_idx];
                 let out = step_softmax_pg_into(&self.mdp, &mut self.workspace, lr);
                 let delta = compute_softmax_pg_delta(logits, out.action, out.td_error, lr);
                 self.last_pg_grad_norm = delta.iter().map(|d| d * d).sum::<f64>().sqrt();
