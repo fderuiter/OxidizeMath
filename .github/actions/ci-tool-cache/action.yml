@@ -135,9 +135,7 @@ runs:
           exit 1
         fi
 
-        if "$bin_path" --version >/dev/null 2>&1; then
-          "$bin_path" --version
-        elif [[ "$BIN_NAME" == cargo-* ]]; then
+        if [[ "$BIN_NAME" == cargo-* ]] && ! "$bin_path" --version >/dev/null 2>&1; then
           "$bin_path" "${BIN_NAME#cargo-}" --version
         else
           "$bin_path" --version

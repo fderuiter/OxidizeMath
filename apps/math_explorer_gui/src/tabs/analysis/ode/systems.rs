@@ -1,12 +1,12 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-//! ODE model definitions and planar AST evaluation helpers.
+//! ODE model definitions and compiled planar/coupled evaluation helpers.
 
 pub use super::custom_spec::{default_coupled_ode_bank, CustomOdeSpec};
 
 use super::OdeSolverTool;
 use crate::presets::OdePreset;
-use math_commons::ast::{CompiledExpr, Expr, Instruction};
+use math_commons::ast::{CompiledExpr, Instruction};
 use math_explorer::pure_math::analysis::ode::{
     ArrayState, Euler, GaussLegendre4, Heun, ImplicitMidpoint, IntegrationMethod, OdeSystem,
     RungeKutta4, Solver,
@@ -56,17 +56,6 @@ fn hash_instruction<H: Hasher>(inst: Instruction, state: &mut H) {
     }
 }
 
-/// Builds the parameter lookup map shared across planar AST ODE evaluations.
-#[must_use]
-pub fn build_ode_param_map(param_k: f64, param_r: f64, param_cap_k: f64) -> HashMap<String, f64> {
-    let mut p_map = HashMap::with_capacity(4);
-    p_map.insert("k".to_string(), param_k);
-    p_map.insert("r".to_string(), param_r);
-    p_map.insert("cap_k".to_string(), param_cap_k);
-    p_map.insert("K".to_string(), param_cap_k);
-    p_map
-}
-
 impl OdeSolverTool {
     /// Evaluates the instantaneous 2D right-hand side `[dx/dt, dy/dt]` at `(t, x, y)`.
     #[must_use]
@@ -75,7 +64,7 @@ impl OdeSolverTool {
         t: f64,
         x: f64,
         y: f64,
-        params: &HashMap<String, f64>,
+        custom_spec: Option<&CustomOdeSpec>,
     ) -> [f64; 2] {
         match self.preset {
             OdePreset::HarmonicOscillator => [y, -self.param_k * x],
@@ -84,23 +73,42 @@ impl OdeSolverTool {
                 self.matrix_a[1][0] * x + self.matrix_a[1][1] * y,
             ],
             OdePreset::PlanarCustom => {
-                match (
-                    self.planar_x_input.cached_expr(),
-                    self.planar_y_input.cached_expr(),
-                ) {
-                    (Some(fx), Some(fy)) => [
-                        fx.eval_planar(t, x, y, params),
-                        fy.eval_planar(t, x, y, params),
-                    ],
-                    _ => [f64::NAN, f64::NAN],
+                if let Some(CustomOdeSpec::Coupled {
+                    dy,
+                    dv,
+                    params,
+                    param_len,
+                }) = custom_spec
+                {
+                    let p = &params[..*param_len];
+                    [dy.eval_3d(t, x, y, p), dv.eval_3d(t, x, y, p)]
+                } else {
+                    let spec = self.planar_bank.to_coupled_spec(
+                        &self.planar_x_input,
+                        &self.planar_y_input,
+                        [self.param_k, self.param_r, self.param_cap_k],
+                        self.synced_legacy_params,
+                    );
+                    self.eval_planar_rhs_at(t, x, y, Some(&spec))
                 }
             }
             OdePreset::Custom if self.custom_coupled => {
-                let compiled = self.coupled_bank.active_compiled();
-                let p = self.coupled_bank.param_slice();
-                match (compiled.first(), compiled.get(1)) {
-                    (Some(dy), Some(dv)) => [dy.eval_3d(t, x, y, p), dv.eval_3d(t, x, y, p)],
-                    _ => [f64::NAN, f64::NAN],
+                if let Some(CustomOdeSpec::Coupled {
+                    dy,
+                    dv,
+                    params,
+                    param_len,
+                }) = custom_spec
+                {
+                    let p = &params[..*param_len];
+                    [dy.eval_3d(t, x, y, p), dv.eval_3d(t, x, y, p)]
+                } else {
+                    let compiled = self.coupled_bank.active_compiled();
+                    let p = self.coupled_bank.param_slice();
+                    match (compiled.first(), compiled.get(1)) {
+                        (Some(dy), Some(dv)) => [dy.eval_3d(t, x, y, p), dv.eval_3d(t, x, y, p)],
+                        _ => [f64::NAN, f64::NAN],
+                    }
                 }
             }
             OdePreset::Exponential | OdePreset::LogisticGrowth | OdePreset::Custom => [0.0, 0.0],
@@ -174,28 +182,6 @@ impl OdeSystem<ArrayState<2>> for Linear2DOde {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct PlanarAstOde<'a> {
-    pub x_expr: &'a Expr,
-    pub y_expr: &'a Expr,
-    pub params: HashMap<String, f64>,
-}
-
-impl OdeSystem<ArrayState<2>> for PlanarAstOde<'_> {
-    fn derivative(&self, t: f64, state: &ArrayState<2>) -> ArrayState<2> {
-        let [x, y] = state.0;
-        ArrayState([
-            self.x_expr.eval_planar(t, x, y, &self.params),
-            self.y_expr.eval_planar(t, x, y, &self.params),
-        ])
-    }
-    fn derivative_in_place(&self, t: f64, state: &ArrayState<2>, out: &mut ArrayState<2>) {
-        let [x, y] = state.0;
-        out.0[0] = self.x_expr.eval_planar(t, x, y, &self.params);
-        out.0[1] = self.y_expr.eval_planar(t, x, y, &self.params);
-    }
-}
-
 #[cfg(test)]
 pub fn eval_ode_final_state(
     preset: OdePreset,
@@ -221,8 +207,6 @@ pub fn eval_ode_final_state(
         ic_v0: p_map.get("v0").copied().unwrap_or(0.0),
         matrix_a: super::poincare_map::DEFAULT_MATRIX_A,
         custom_spec,
-        planar_x_expr: None,
-        planar_y_expr: None,
     };
     eval_ode_final_state_planar(&spec, p_map)
 }
@@ -283,10 +267,9 @@ pub fn eval_ode_final_state_planar(
             };
             step_final(ArrayState([y0, v0]), &dyn_sys, spec.method, eff_dt, steps)
         }
-        OdePreset::PlanarCustom => {
-            eval_planar_custom_final([y0, v0], cap_k, spec, p_map, eff_dt, steps)
+        OdePreset::PlanarCustom | OdePreset::Custom => {
+            eval_custom_spec_final([y0, v0], spec, p_map, eff_dt, steps)
         }
-        OdePreset::Custom => eval_custom_spec_final([y0, v0], spec, p_map, eff_dt, steps),
     }
 }
 
@@ -306,28 +289,6 @@ fn eval_custom_spec_final(
     } else {
         step_final(ArrayState([ic[0]]), &dynamics, spec.method, dt, steps)
     }
-}
-
-fn eval_planar_custom_final(
-    ic: [f64; 2],
-    cap_k: f64,
-    spec: &super::comparison::OdeSimSpec<'_>,
-    p_map: &HashMap<String, f64>,
-    dt: f64,
-    steps: usize,
-) -> f64 {
-    let (Some(x_expr), Some(y_expr)) = (spec.planar_x_expr, spec.planar_y_expr) else {
-        return f64::NAN;
-    };
-    let mut params = p_map.clone();
-    params.entry("cap_k".to_string()).or_insert(cap_k);
-    params.insert("K".to_string(), cap_k);
-    let dyn_sys = PlanarAstOde {
-        x_expr,
-        y_expr,
-        params,
-    };
-    step_final(ArrayState(ic), &dyn_sys, spec.method, dt, steps)
 }
 
 fn step_single_solver<const N: usize, D, S>(
@@ -422,7 +383,7 @@ impl OdeSolverTool {
         if self.active_baseline_hash != Some(self.compute_active_baseline_hash(custom_spec)) {
             return None;
         }
-        if self.preset == OdePreset::Custom
+        if matches!(self.preset, OdePreset::Custom | OdePreset::PlanarCustom)
             && !custom_spec.is_some_and(|spec| spec.matches_baseline_params(param_refs))
         {
             return None;
@@ -435,6 +396,7 @@ impl OdeSolverTool {
             self.sensitivity_engine.defer_for_gesture();
             return;
         }
+        self.sync_custom_params();
 
         use crate::sensitivity::canonical_f64_bits;
 
@@ -463,22 +425,15 @@ impl OdeSolverTool {
             ic_v0: self.ic_v0,
             matrix_a: self.matrix_a,
             custom_spec: custom_spec.as_ref(),
-            planar_x_expr: self.planar_x_input.cached_expr(),
-            planar_y_expr: self.planar_y_input.cached_expr(),
         };
-        let custom_ctx =
-            (self.preset == OdePreset::Custom).then_some(CustomOdeContext(custom_spec.as_ref()));
-        let planar_ctx = (self.preset == OdePreset::PlanarCustom).then_some((
-            self.planar_x_input.raw_text.as_str(),
-            self.planar_y_input.raw_text.as_str(),
-        ));
+        let custom_ctx = matches!(self.preset, OdePreset::Custom | OdePreset::PlanarCustom)
+            .then_some(CustomOdeContext(custom_spec.as_ref()));
         let context = (
             base_spec.preset as u8,
             base_spec.method as u8,
             canonical_f64_bits(base_spec.dt),
             canonical_f64_bits(base_spec.total_time),
             custom_ctx,
-            planar_ctx,
         );
 
         self.sensitivity_engine.compute_budgeted_with_baseline(

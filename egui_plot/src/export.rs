@@ -854,13 +854,14 @@ where
 }
 
 #[cfg(test)]
-static TEST_CLIPBOARD_READ_OVERRIDE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+std::thread_local! {
+    static TEST_CLIPBOARD_READ_OVERRIDE: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
 
 #[cfg(test)]
 pub(crate) fn set_test_clipboard_read_override(text: Option<String>) {
-    *TEST_CLIPBOARD_READ_OVERRIDE
-        .lock()
-        .unwrap_or_else(|p| p.into_inner()) = text;
+    TEST_CLIPBOARD_READ_OVERRIDE.with(|slot| *slot.borrow_mut() = text);
 }
 
 /// Read UTF-8 text from the system clipboard, enforcing [`MAX_CSV_IMPORT_BYTES`] and invoking `on_complete`.
@@ -869,11 +870,7 @@ where
     F: FnOnce(Result<String, String>) + 'static,
 {
     #[cfg(test)]
-    if let Some(mock_text) = TEST_CLIPBOARD_READ_OVERRIDE
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .clone()
-    {
+    if let Some(mock_text) = TEST_CLIPBOARD_READ_OVERRIDE.with(|slot| slot.borrow().clone()) {
         if mock_text.len() > MAX_CSV_IMPORT_BYTES {
             let err = format!(
                 "Clipboard payload ({:.2} MiB) exceeds maximum allowed size of 2.0 MiB.",

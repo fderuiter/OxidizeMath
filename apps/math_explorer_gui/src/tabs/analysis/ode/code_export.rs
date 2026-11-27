@@ -38,6 +38,20 @@ struct CoupledOdeExportSpec<'a> {
 
 impl OdeSolverTool {
     pub(super) fn active_param_map(&self) -> HashMap<String, f64> {
+        if self.preset == OdePreset::PlanarCustom {
+            let mut params: HashMap<String, f64> =
+                self.planar_bank.params_map().into_iter().collect();
+            let (dx, _, vals, len) = self.planar_bank.snapshot_compiled_and_params(
+                &self.planar_x_input,
+                &self.planar_y_input,
+                [self.param_k, self.param_r, self.param_cap_k],
+                self.synced_legacy_params,
+            );
+            for (name, &val) in dx.param_names().iter().take(len).zip(&vals[..len]) {
+                params.insert(name.clone(), val);
+            }
+            return params;
+        }
         let mut params: HashMap<String, f64> = self.math_input.params_map().into_iter().collect();
         if self.preset != OdePreset::Custom
             || self.param_k.to_bits() != self.synced_legacy_params[0].to_bits()
@@ -132,6 +146,12 @@ impl OdeSolverTool {
         params: &HashMap<String, f64>,
         steps: usize,
     ) -> Option<CodeArtifact> {
+        if !self
+            .planar_bank
+            .is_valid(&self.planar_x_input, &self.planar_y_input)
+        {
+            return None;
+        }
         let dx_expr = self.planar_x_input.expr()?;
         let dy_expr = self.planar_y_input.expr()?;
         let vars = ["t", "x", "y"];

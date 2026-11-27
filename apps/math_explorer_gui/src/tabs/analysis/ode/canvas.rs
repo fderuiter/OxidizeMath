@@ -182,8 +182,6 @@ impl OdeSolverTool {
             ic_v0: self.ic_v0,
             matrix_a: self.matrix_a,
             custom_spec,
-            planar_x_expr: self.planar_x_input.cached_expr(),
-            planar_y_expr: self.planar_y_input.cached_expr(),
         }
     }
 

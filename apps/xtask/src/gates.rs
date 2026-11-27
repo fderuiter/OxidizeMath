@@ -456,6 +456,7 @@ pub fn test_wasm(args: &[String]) {
     let gui_rel = workspace_wasm::find_package_member_path_std(&ws_root, "math_explorer_gui")
         .unwrap_or_else(|| "apps/math_explorer_gui".to_string());
     let gui_dist = format!("{gui_rel}/dist");
+    let gui_trunk = format!("{gui_rel}/Trunk.toml");
     if !skip_build {
         println!("\n--- Step 2: Build Release Web Bundle & Verify Budget ---");
         run_cmd_in_path("trunk", &["build", "--release"], &ws_root.join(&gui_rel));
@@ -467,14 +468,13 @@ pub fn test_wasm(args: &[String]) {
     }
 
     println!("\n--- Step 3: Headless Chromium CSP & Fault-Injection Smoke Checks ---");
-    let gui_trunk_toml = format!("{gui_rel}/Trunk.toml");
     let screenshot_str = screenshot_dir.map(|p| p.to_string_lossy().into_owned());
     let mut smoke_args = vec![
         "scripts/playwright_smoke.py",
         "--dist",
         &gui_dist,
         "--trunk-toml",
-        &gui_trunk_toml,
+        &gui_trunk,
         "--verify-regression-detection",
     ];
     if let Some(dir) = screenshot_str.as_deref() {

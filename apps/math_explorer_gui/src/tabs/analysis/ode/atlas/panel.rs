@@ -20,6 +20,18 @@ impl OdeSolverTool {
             "v0" => self.ic_v0,
             "dt" => self.dt,
             _ => {
+                if self.preset == OdePreset::PlanarCustom {
+                    let (dx, _, vals, len) = self.planar_bank.snapshot_compiled_and_params(
+                        &self.planar_x_input,
+                        &self.planar_y_input,
+                        [self.param_k, self.param_r, self.param_cap_k],
+                        self.synced_legacy_params,
+                    );
+                    if let Some(pos) = super::find_param_slot(dx.param_names(), len, key) {
+                        return vals[pos];
+                    }
+                    return self.planar_bank.active_value(key).unwrap_or(1.0);
+                }
                 if self.custom_coupled {
                     if let Some(pos) = self
                         .coupled_bank
@@ -41,11 +53,20 @@ impl OdeSolverTool {
     }
 
     fn apply_single_atlas_key(&mut self, key: &str, val: f64) {
+        if self.preset == OdePreset::PlanarCustom
+            && !self
+                .planar_bank
+                .is_synced(&self.planar_x_input, &self.planar_y_input)
+        {
+            self.planar_bank
+                .recompile(&self.planar_x_input, &self.planar_y_input);
+        }
         match key {
             "k" => {
                 self.param_k = val;
                 self.math_input.set_param("k", val);
                 self.coupled_bank.set_param("k", val);
+                self.planar_bank.set_param("k", val);
             }
             "c" => {
                 if self.preset == OdePreset::HarmonicOscillator && val.abs() > 1e-6 {
@@ -56,16 +77,20 @@ impl OdeSolverTool {
                     self.coupled_bank.set_param("k", self.param_k);
                 }
                 self.coupled_bank.set_param("c", val);
+                self.planar_bank.set_param("c", val);
             }
             "r" => {
                 self.param_r = val;
                 self.math_input.set_param("r", val);
                 self.coupled_bank.set_param("r", val);
+                self.planar_bank.set_param("r", val);
             }
             "cap_k" => {
                 self.param_cap_k = val;
                 self.math_input.set_param("cap_k", val);
                 self.math_input.set_param("K", val);
+                self.planar_bank.set_param("cap_k", val);
+                self.planar_bank.set_param("K", val);
             }
             "y0" => self.ic_y0 = val,
             "v0" => self.ic_v0 = val,
@@ -77,6 +102,7 @@ impl OdeSolverTool {
             _ => {
                 self.coupled_bank.set_param(key, val);
                 self.math_input.set_param(key, val);
+                self.planar_bank.set_param(key, val);
             }
         }
     }
@@ -117,6 +143,17 @@ impl OdeSolverTool {
         if self.preset == OdePreset::PlanarCustom {
             self.planar_x_input.raw_text.hash(&mut h);
             self.planar_y_input.raw_text.hash(&mut h);
+            for (name, &val) in self
+                .planar_bank
+                .param_names()
+                .iter()
+                .zip(self.planar_bank.param_slice())
+            {
+                if name != xk && name != yk {
+                    name.hash(&mut h);
+                    val.to_bits().hash(&mut h);
+                }
+            }
         }
         if self.preset == OdePreset::Custom {
             self.math_input.raw_text.hash(&mut h);

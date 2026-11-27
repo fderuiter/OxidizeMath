@@ -1,6 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::phase_plane::PLANAR_COUPLED_PRESETS;
 use super::OdeSolverTool;
 use crate::framework::TraceSeries;
 use crate::presets::OdePreset;
@@ -116,23 +115,14 @@ impl OdeSolverTool {
                 changed |= self.render_custom_ode_editor(ui);
             }
             OdePreset::PlanarCustom => {
-                ui.add_space(6.0);
-                egui::ComboBox::from_id_salt("ode_planar_coupled_preset")
-                    .selected_text("Coupled System Templates...")
-                    .show_ui(ui, |ui| {
-                        for (title, fx, fy) in PLANAR_COUPLED_PRESETS {
-                            if ui.button(*title).clicked() {
-                                self.planar_x_input.set_expression(fx);
-                                self.planar_y_input.set_expression(fy);
-                                changed = true;
-                                ui.close();
-                            }
-                        }
-                    });
-                ui.add_space(4.0);
-                changed |= self.planar_x_input.ui(ui);
-                ui.add_space(4.0);
-                changed |= self.planar_y_input.ui(ui);
+                if self.planar_bank.ui_editor(
+                    ui,
+                    &mut self.planar_x_input,
+                    &mut self.planar_y_input,
+                ) {
+                    self.sync_legacy_params_from_planar_bank();
+                    changed = true;
+                }
             }
             OdePreset::Exponential => {
                 crate::reflective_ui::render_formula_with_export(
@@ -191,8 +181,25 @@ impl OdeSolverTool {
         changed
     }
 
-    fn render_parameter_inputs(&mut self, ui: &mut egui::Ui) -> bool {
+    fn prepare_parameter_section(&mut self) -> bool {
         if self.preset == OdePreset::Custom && !self.custom_coupled {
+            return false;
+        }
+        if self.preset == OdePreset::PlanarCustom {
+            if !self
+                .planar_bank
+                .is_synced(&self.planar_x_input, &self.planar_y_input)
+            {
+                self.planar_bank
+                    .recompile(&self.planar_x_input, &self.planar_y_input);
+            }
+            return !self.planar_bank.param_names().is_empty();
+        }
+        true
+    }
+
+    fn render_parameter_inputs(&mut self, ui: &mut egui::Ui) -> bool {
+        if !self.prepare_parameter_section() {
             return false;
         }
         let mut changed = false;
@@ -240,14 +247,10 @@ impl OdeSolverTool {
                 changed |= self.render_matrix_inputs(ui);
             }
             OdePreset::PlanarCustom => {
-                let sk = AnimatedSlider::new(&mut self.param_k, -5.0..=5.0)
-                    .text("k (Coupling / Damping)")
-                    .id_salt("ode_param_k_planar");
-                let sr = AnimatedSlider::new(&mut self.param_r, -5.0..=5.0)
-                    .text("r (Growth / Forcing)")
-                    .id_salt("ode_param_r_planar");
-                changed |= ui.add(sk).changed();
-                changed |= ui.add(sr).changed();
+                if self.planar_bank.sliders_ui(ui, "ode_planar_params") {
+                    self.sync_legacy_params_from_planar_bank();
+                    changed = true;
+                }
             }
         }
         changed
@@ -353,20 +356,29 @@ impl OdeSolverTool {
     }
 
     fn push_coupled_sensitivity_params(&self, out: &mut Vec<(String, f64)>) {
-        for (name, &val) in self
-            .coupled_bank
-            .param_names()
-            .iter()
-            .zip(self.coupled_bank.param_slice())
-        {
-            out.push((name.clone(), val));
-        }
-        if !out.iter().any(|(name, _)| name == "y0") {
-            out.push(("y0".to_string(), self.ic_y0));
-        }
-        if !out.iter().any(|(name, _)| name == "v0") {
-            out.push(("v0".to_string(), self.ic_v0));
-        }
+        push_2d_bank_sensitivity_params(
+            self.coupled_bank.param_names(),
+            self.coupled_bank.param_slice(),
+            self.ic_y0,
+            self.ic_v0,
+            out,
+        );
+    }
+
+    fn push_planar_sensitivity_params(&self, out: &mut Vec<(String, f64)>) {
+        let (dx, _, vals, len) = self.planar_bank.snapshot_compiled_and_params(
+            &self.planar_x_input,
+            &self.planar_y_input,
+            [self.param_k, self.param_r, self.param_cap_k],
+            self.synced_legacy_params,
+        );
+        push_2d_bank_sensitivity_params(
+            dx.param_names(),
+            &vals[..len],
+            self.ic_y0,
+            self.ic_v0,
+            out,
+        );
     }
 
     fn push_scalar_custom_sensitivity_params(&self, out: &mut Vec<(String, f64)>) {
@@ -418,20 +430,32 @@ impl OdeSolverTool {
                     ("v0", self.ic_v0),
                 ],
             ),
-            OdePreset::PlanarCustom => push_pairs(
-                &mut out,
-                &[
-                    ("k", self.param_k),
-                    ("r", self.param_r),
-                    ("y0", self.ic_y0),
-                    ("v0", self.ic_v0),
-                ],
-            ),
+            OdePreset::PlanarCustom => {
+                self.push_planar_sensitivity_params(&mut out);
+            }
             OdePreset::Custom if self.custom_coupled => {
                 self.push_coupled_sensitivity_params(&mut out);
             }
             OdePreset::Custom => self.push_scalar_custom_sensitivity_params(&mut out),
         }
         out
+    }
+}
+
+fn push_2d_bank_sensitivity_params(
+    names: &[String],
+    vals: &[f64],
+    ic_y0: f64,
+    ic_v0: f64,
+    out: &mut Vec<(String, f64)>,
+) {
+    for (name, &val) in names.iter().zip(vals) {
+        out.push((name.clone(), val));
+    }
+    if !out.iter().any(|(name, _)| name == "y0") {
+        out.push(("y0".to_string(), ic_y0));
+    }
+    if !out.iter().any(|(name, _)| name == "v0") {
+        out.push(("v0".to_string(), ic_v0));
     }
 }

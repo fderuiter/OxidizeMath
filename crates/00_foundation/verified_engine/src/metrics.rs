@@ -183,7 +183,7 @@ mod tests {
         assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 0);
     }
 
-    #[cfg(panic = "unwind")]
+    #[cfg(all(not(target_arch = "wasm32"), panic = "unwind"))]
     #[test]
     fn test_run_verified_panic_unwind_preserves_atomic_count() {
         use crate::engine::VerifiedEngine;
