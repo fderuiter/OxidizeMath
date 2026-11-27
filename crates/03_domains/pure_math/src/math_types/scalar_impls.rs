@@ -1,4 +1,5 @@
 //! Unified [`math_scalars`] algebraic trait implementations for arbitrary-precision `dashu` types.
+// [cite:math_scalars]
 
 use super::{Float, Integer, Rational};
 use crate::pure_math::algebra::traits::{EuclideanDomain, Field, Ring};
@@ -140,9 +141,14 @@ impl Field for Rational {
     fn ref_div(&self, rhs: &Self) -> Self {
         Self(&self.0 / &rhs.0)
     }
-    #[inline]
+    #[verified_engine::verified]
     fn try_inv(&self) -> Option<Self> {
-        (!self.0.is_zero()).then(|| Self(&RBig::ONE / &self.0))
+        if self.0.is_zero() {
+            return None;
+        }
+        let inv = Self(&RBig::ONE / &self.0);
+        debug_assert!(!inv.0.is_zero());
+        Some(inv)
     }
 }
 
@@ -214,9 +220,14 @@ impl Field for Float {
     fn ref_div(&self, rhs: &Self) -> Self {
         self / rhs
     }
-    #[inline]
+    #[verified_engine::verified]
     fn try_inv(&self) -> Option<Self> {
-        (!self.is_zero()).then(|| Self::one().ref_div(self))
+        if self.is_zero() {
+            return None;
+        }
+        let inv = Self::one().ref_div(self);
+        debug_assert!(!inv.is_zero());
+        Some(inv)
     }
 }
 

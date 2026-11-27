@@ -1,7 +1,6 @@
 // [cite:math_scalars]
 #![no_std]
 #![doc = include_str!("../README.md")]
-#![cfg_attr(any(), verified(opt_out = "no_std_engine"))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

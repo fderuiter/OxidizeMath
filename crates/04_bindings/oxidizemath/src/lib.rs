@@ -6,7 +6,8 @@ pub mod prelude;
 pub use diagnostics;
 pub use engine_diffeq;
 pub use engine_linalg;
-pub use engine_opt::{self, fit};
+pub use engine_opt;
+pub use engine_opt::fit;
 pub use engine_pde;
 pub use math_commons::{
     ast, constants, math_kernel, poi, primitives, registry, series, stochastic, wigner,

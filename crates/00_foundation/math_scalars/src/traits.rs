@@ -138,7 +138,7 @@ pub trait ComplexField: Field + DivAssign {
     /// Embeds a real value $x \in \mathbb{R}$ into `Self` ($x + 0i$ or $x + 0\varepsilon$).
     fn from_real(re: Self::Real) -> Self;
 
-    /// Embeds an `f64` literal into `Self` via [`Self::Real::from_f64`].
+    /// Embeds an `f64` literal into `Self` via [`Self::from_real`] and [`ComplexField::from_f64`].
     #[inline]
     fn from_f64(val: f64) -> Self {
         Self::from_real(<Self::Real as ComplexField>::from_f64(val))

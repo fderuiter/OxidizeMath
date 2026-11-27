@@ -75,7 +75,14 @@ theory_verification!(
         let ys = [0.0, 3.0, 4.0, 3.0, 0.0];
         let root = closest_threshold_crossing(&(&xs[..], &ys[..]), 2.0, 0.5).unwrap();
         assert!(root > 0.0 && root < 1.0);
-        let cg = ClebschGordan::new(1, 1, 1, -1, 2, 0);
+        let cg = ClebschGordan {
+            tj1: 2,
+            tm1: 2,
+            tj2: 2,
+            tm2: -2,
+            tj12: 4,
+            tm12: 0,
+        };
         assert!((cg.value() - (1.0 / 6.0_f64).sqrt()).abs() < 1e-12);
     }
 );

@@ -25,7 +25,6 @@ num-traits = { workspace = true, default-features = false }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]
-rand_core = { workspace = true }
 serde_json = { workspace = true, default-features = false, features = ["alloc", "float_roundtrip"] }
 verified_engine = { path = "../verified_engine" }
 
