@@ -2,6 +2,7 @@
 //! imports (`math_explorer_gui::`), and stale workspace crate counts.
 
 use super::manifest_model::WorkspaceManifestModel;
+use crate::whitelist::{expand_package_pattern_in_ws, path_matches_lossy};
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -89,7 +90,9 @@ pub fn check_markdown_ignore_fences(
             approved_caps
                 .iter()
                 .find(|(k, _)| {
-                    crate::whitelist::path_matches_lossy(Path::new(&rel), k, IGNORE_MATCH_OPTS)
+                    expand_package_pattern_in_ws(workspace_root, k)
+                        .is_some_and(|e| e.trim_end_matches('/') == rel)
+                        || path_matches_lossy(Path::new(&rel), k, IGNORE_MATCH_OPTS)
                 })
                 .map(|(_, &c)| c)
         })

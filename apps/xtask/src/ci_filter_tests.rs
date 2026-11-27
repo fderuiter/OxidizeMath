@@ -218,7 +218,6 @@ fn assert_parallel_dag_invariants(ci_yaml: &str) {
 
     for (job_name, block) in [
         ("pre-flight", preflight),
-        ("build-and-test", build_and_test),
         ("feature-matrix", feature_matrix),
     ] {
         assert!(
@@ -227,6 +226,8 @@ fn assert_parallel_dag_invariants(ci_yaml: &str) {
         );
     }
     assert!(!preflight.contains("\n    outputs:"));
+    assert!(build_and_test.contains("\n    needs: detect-changes\n"));
+    assert!(build_and_test.contains("fromJSON(needs.detect-changes.outputs.native_matrix)"));
     assert!(compile_papers.contains("\n    needs: detect-changes\n"));
     assert!(compile_papers.contains("needs.detect-changes.outputs.papers_changed == 'true'"));
     assert!(package.contains("\n    needs: detect-changes\n"));
