@@ -258,3 +258,30 @@ fn point_series_supports_f32_and_f64_with_zero_allocations() {
     });
     assert!((s32 - 8.5_f32).abs() < 1e-6);
 }
+
+#[test]
+fn real_field_open_unit_endpoints_and_f32_upper_half_bijection() {
+    use crate::RealField;
+
+    let min64 = <f64 as RealField>::open_unit_from_f64(0.0);
+    let max64 = <f64 as RealField>::open_unit_from_f64(1.0);
+    assert_eq!(min64, 2.0_f64.powi(-54));
+    assert_eq!(max64, 1.0 - 2.0_f64.powi(-53));
+    assert_eq!(<f64 as RealField>::uniform_open_from_u64(0), min64);
+    assert_eq!(<f64 as RealField>::uniform_open_from_u64(u64::MAX), max64);
+
+    let min32 = <f32 as RealField>::open_unit_from_f64(0.0);
+    let max32 = <f32 as RealField>::open_unit_from_f64(1.0);
+    assert_eq!(min32, 2.0_f32.powi(-25));
+    assert_eq!(max32.to_bits(), 0x3f7f_ffff);
+    assert_eq!(<f32 as RealField>::uniform_open_from_u64(0), min32);
+    assert_eq!(
+        <f32 as RealField>::uniform_open_from_u64(1_u64 << 40),
+        2.0_f32.powi(-24)
+    );
+    assert_eq!(<f32 as RealField>::uniform_open_from_u64(u64::MAX), max32);
+
+    let half_even = <f32 as RealField>::uniform_open_from_u64((1_u64 << 23) << 40);
+    let half_odd = <f32 as RealField>::uniform_open_from_u64(((1_u64 << 23) + 1) << 40);
+    assert!(half_even == 0.5_f32 && half_odd > half_even && half_odd < 1.0_f32);
+}

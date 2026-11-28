@@ -12,7 +12,7 @@ use egui_plot::{Line, Plot, PlotPoints};
 use math_explorer::biology::neuroscience::HodgkinHuxleyNeuron;
 use std::f64::consts::TAU;
 
-fn phase_to_color(phase: f64, palette: &SemanticPalette) -> Color32 {
+pub(super) fn phase_to_color(phase: f64, palette: &SemanticPalette) -> Color32 {
     let t = (phase.rem_euclid(TAU) / TAU) as f32;
     let idx = ((t * 6.0).floor() as usize) % 6;
     let next_idx = (idx + 1) % 6;

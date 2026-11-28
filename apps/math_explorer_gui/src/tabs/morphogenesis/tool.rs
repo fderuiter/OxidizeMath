@@ -166,37 +166,15 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        let base = if self.is_forked() {
-            ExportCapabilities::plot()
-        } else {
-            ExportCapabilities::raster_only()
-        };
-        base.with_compute_shader()
+        ExportCapabilities::plot().with_compute_shader()
+    }
+
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_morphogenesis_export_tables()
     }
 
     fn export_compute_shader_wgsl(&self) -> Result<String, String> {
-        use crate::framework::shader_foundry::{
-            emit_pde_stencil_compute_wgsl, PdeComputeKinetics, PdeStencilComputeSpec,
-        };
-        use crate::presets::MorphogenesisKineticsMode;
-        let ks = *self
-            .kinetics_state
-            .read()
-            .unwrap_or_else(|e| e.into_inner());
-        let p = self.params.read().unwrap_or_else(|e| e.into_inner());
-        let (kinetics, rate_primary, rate_secondary) = match ks.mode {
-            MorphogenesisKineticsMode::Schnakenberg => (PdeComputeKinetics::Schnakenberg, p.a, p.b),
-            MorphogenesisKineticsMode::GrayScott => (PdeComputeKinetics::GrayScott, ks.f, ks.k),
-        };
-        emit_pde_stencil_compute_wgsl(&PdeStencilComputeSpec {
-            grid_dims: [self.width.max(4) as u32, self.height.max(4) as u32],
-            dt: p.dt,
-            d_u: p.d_u,
-            d_v: p.d_v,
-            rate_primary,
-            rate_secondary,
-            kinetics,
-        })
+        self.build_morphogenesis_compute_shader_wgsl()
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {

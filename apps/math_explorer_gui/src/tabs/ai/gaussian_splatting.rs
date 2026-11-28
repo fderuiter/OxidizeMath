@@ -306,13 +306,23 @@ impl InteractiveTool for GaussianSplattingTool {
         "Gaussian Splatting"
     }
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::splat_ply_only()
+        ExportCapabilities::plot().with_3d_splat_ply()
     }
     fn export_splat_ply_3d(&self) -> Option<Result<Vec<u8>, String>> {
         Some(self.serialize_splats_ply_binary())
     }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_lensed_figure_primitives()
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_splat_export_tables()
+    }
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
         Some(self.render_current_splat_image())
+    }
+    fn step_simulation(&mut self) {
+        self.camera.yaw += 0.16;
+        self.invalidate_render_cache();
     }
     fn domain(&self) -> &'static str {
         "ai"

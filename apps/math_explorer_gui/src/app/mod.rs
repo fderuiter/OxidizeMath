@@ -24,6 +24,8 @@ pub mod theme;
 pub(crate) mod ui_panels;
 pub(crate) mod viewport;
 mod visibility;
+#[cfg(target_arch = "wasm32")]
+mod wasm_fonts;
 mod workspace_url;
 mod workspace_url_pipeline;
 
@@ -240,6 +242,8 @@ impl Default for MathExplorerApp {
 
 impl MathExplorerApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        #[cfg(target_arch = "wasm32")]
+        wasm_fonts::install_compact_fonts(&cc.egui_ctx);
         let mut app = Self::default();
         let restored = theme::init_startup_theme(&mut app, cc);
         let hydrated = app.hydrate_from_browser_url(&cc.egui_ctx, restored);

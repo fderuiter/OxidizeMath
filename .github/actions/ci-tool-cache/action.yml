@@ -3,7 +3,7 @@ description: Restore and cache pinned Cargo CLI binaries outside ~/.cargo/bin wi
 
 inputs:
   tool:
-    description: Cargo CLI crate name to cache and install (for example cargo-audit, cargo-llvm-cov, trunk, wasm-bindgen-cli, or cargo-packager).
+    description: Cargo CLI crate name to cache and install (for example cargo-machete, cargo-audit, cargo-llvm-cov, trunk, wasm-bindgen-cli, or cargo-packager).
     required: true
   version:
     description: Explicit pinned semantic version of the tool.
@@ -92,6 +92,8 @@ runs:
     - name: Install cargo-binstall on cache miss
       if: steps.tool-cache.outputs.cache-hit != 'true'
       uses: cargo-bins/cargo-binstall@5885714d0a40a14b2535c6ffc051fd8e49aa9665 # v1.27.0
+      with:
+        version: "1.17.9"
 
     - name: Install pinned tool binary on cache miss
       if: steps.tool-cache.outputs.cache-hit != 'true'

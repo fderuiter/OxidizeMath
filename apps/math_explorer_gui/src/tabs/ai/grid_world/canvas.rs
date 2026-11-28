@@ -36,7 +36,7 @@ impl GridWorldTool {
         }
     }
 
-    fn overlay_bounds(&self) -> (f64, f64) {
+    pub(super) fn overlay_bounds(&self) -> (f64, f64) {
         let mut lo = f64::INFINITY;
         let mut hi = f64::NEG_INFINITY;
         for y in 0..self.mdp.height {
@@ -58,7 +58,7 @@ impl GridWorldTool {
         (lo, hi)
     }
 
-    fn cell_fill(
+    pub(super) fn cell_fill(
         &self,
         state: GridState,
         bounds: (f64, f64),

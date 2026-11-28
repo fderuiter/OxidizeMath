@@ -5,6 +5,7 @@ use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
+mod export;
 pub mod overlays;
 pub mod presets;
 pub mod runner;

@@ -331,3 +331,16 @@ pub(crate) mod deferred_export_tests;
 ))]
 #[path = "deferred_export_audit_tests.rs"]
 mod deferred_export_audit_tests;
+
+#[cfg(all(
+    test,
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "climate",
+    feature = "epidemiology",
+    feature = "physics",
+    feature = "pure_math"
+))]
+#[path = "deferred_export_adapters_tests.rs"]
+mod deferred_export_adapters_tests;
