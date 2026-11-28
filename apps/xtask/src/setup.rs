@@ -1,4 +1,8 @@
-//! Workspace setup verification for Git hooks, WebAssembly build, and Playwright browser prerequisites.
+//! Workspace setup verification for Git hooks, Lean 4 formal proofs, WebAssembly build, and Playwright browser prerequisites.
+
+#[path = "setup_lean.rs"]
+mod setup_lean;
+use setup_lean::verify_lean_tools;
 
 use crate::gates::run_cmd_in_path;
 use std::fs;
@@ -17,10 +21,12 @@ pub struct SetupOptions {
     pub check_only: bool,
     /// Require all WebAssembly and Playwright browser prerequisites (exit `1` when missing).
     pub web: bool,
+    /// Require pinned Lean 4 (`elan`, `lean`, `lake`) prerequisites (exit `1` when missing).
+    pub lean: bool,
 }
 
 impl SetupOptions {
-    /// Parses `xtask setup` CLI arguments (`--hooks-only`, `--check-only`, `--web`).
+    /// Parses `xtask setup` CLI arguments (`--hooks-only`, `--check-only`, `--web`, `--lean`).
     pub fn parse(args: &[String]) -> Result<Self, String> {
         let mut opts = Self::default();
         for arg in args {
@@ -28,9 +34,10 @@ impl SetupOptions {
                 "--hooks-only" => opts.hooks_only = true,
                 "--check-only" => opts.check_only = true,
                 "--web" => opts.web = true,
+                "--lean" => opts.lean = true,
                 other => {
                     return Err(format!(
-                        "Unknown setup argument: `{other}` (expected `--hooks-only`, `--check-only`, or `--web`)"
+                        "Unknown setup argument: `{other}` (expected `--hooks-only`, `--check-only`, `--web`, or `--lean`)"
                     ));
                 }
             }
@@ -359,11 +366,12 @@ pub fn run_setup(args: &[String], ws_root: &Path) {
     });
 
     configure_git_hooks_in_dir(ws_root);
-    if opts.hooks_only && !opts.web {
+    if opts.hooks_only && !opts.web && !opts.lean {
         println!("=== Setup Complete ===");
         return;
     }
 
+    verify_lean_tools(ws_root, opts.lean);
     ensure_wasm_rustup_target(ws_root, opts.web);
     verify_browser_tools(ws_root, opts.web);
 
@@ -385,6 +393,7 @@ mod tests {
                 hooks_only: false,
                 check_only: false,
                 web: false,
+                lean: false,
             }
         );
         assert_eq!(
@@ -392,12 +401,14 @@ mod tests {
                 "--hooks-only".to_string(),
                 "--check-only".to_string(),
                 "--web".to_string(),
+                "--lean".to_string(),
             ])
             .unwrap(),
             SetupOptions {
                 hooks_only: true,
                 check_only: true,
                 web: true,
+                lean: true,
             }
         );
         let err = SetupOptions::parse(&["--invalid-flag".to_string()]).unwrap_err();

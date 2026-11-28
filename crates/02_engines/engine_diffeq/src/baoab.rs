@@ -1,7 +1,8 @@
 // [cite:engine_diffeq]
-use crate::error::DiffeqError;
+use crate::error::{DiffeqError, carve_scalars};
 use crate::system::LangevinSystem;
-use math_commons::math_kernel::types::{Scalar, SolverWorkspace, fill_standard_normal};
+use math_commons::math_kernel::types::{Scalar, fill_standard_normal};
+use math_memory::SolverWorkspace;
 use rand_core::RngCore;
 
 /// Physical parameters for underdamped Langevin dynamics
@@ -150,7 +151,7 @@ impl<T: Scalar> BaoabLangevinSolver<T> {
         system: &S,
         q: &mut [T],
         p: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) -> Result<(), DiffeqError> {
         let d = system.dim();
@@ -170,8 +171,9 @@ impl<T: Scalar> BaoabLangevinSolver<T> {
         }
 
         let mut ws = workspace.reborrow();
-        let grad = ws.try_take_slice(d)?;
-        let noise = ws.try_take_slice(d)?;
+        let mut cur = ws.cursor();
+        let grad = carve_scalars::<T>(&mut cur, d)?;
+        let noise = carve_scalars::<T>(&mut cur, d)?;
         debug_assert_eq!(grad.len(), d);
 
         system.grad_potential(q, grad);
@@ -215,7 +217,7 @@ impl<T: Scalar> BaoabLangevinSolver<T> {
         system: &S,
         q: &mut [T],
         p: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) {
         self.try_step(system, q, p, workspace, rng)

@@ -2,6 +2,7 @@
 use core::fmt;
 use math_commons::error::MathError;
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use math_memory::{ArenaError, ByteCursor};
 
 /// Stack-allocated `#![no_std]` error type for partial and stochastic partial differential equation solvers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,7 +50,7 @@ pub enum PdeError {
         parameter: &'static str,
     },
 
-    /// Heap scratch allocation for `PdeOwnedWorkspace` failed.
+    /// Heap scratch allocation for an arena workspace failed.
     WorkspaceAllocationFailed {
         /// Requested scalar capacity.
         capacity: usize,
@@ -132,6 +133,35 @@ impl From<MathError> for PdeError {
     fn from(err: MathError) -> Self {
         Self::Math(err)
     }
+}
+
+impl From<ArenaError> for PdeError {
+    #[inline]
+    fn from(err: ArenaError) -> Self {
+        Self::Math(MathError::from(err))
+    }
+}
+
+/// Carves `count` zeroed `f64` elements from `cur`, mapping byte exhaustion to scalar counts.
+#[inline]
+#[verified_engine::verified]
+pub(crate) fn carve_f64<'a>(
+    cur: &mut ByteCursor<'a>,
+    count: usize,
+) -> Result<&'a mut [f64], PdeError> {
+    let elem_size = core::mem::size_of::<f64>();
+    cur.alloc_slice::<f64>(count).map_err(|err| match err {
+        ArenaError::InsufficientBytes { available, .. } => {
+            PdeError::Math(MathError::WorkspaceTooSmall {
+                required: count,
+                available: available
+                    .checked_div(elem_size)
+                    .unwrap_or(0)
+                    .min(count.saturating_sub(1)),
+            })
+        }
+        other => PdeError::from(other),
+    })
 }
 
 impl Diagnostic for PdeError {

@@ -12,6 +12,7 @@ fn discovers_all_workspace_no_std_crates_and_feature_capabilities() {
 
     for expected in [
         "math_diagnostics",
+        "math_memory",
         "math_rng",
         "math_scalars",
         "verified_engine",

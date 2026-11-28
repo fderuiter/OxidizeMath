@@ -1,7 +1,6 @@
 // [cite:engine_diffeq]
 use super::*;
 use math_commons::error::MathError;
-use math_commons::math_kernel::types::SolverWorkspace;
 use math_diagnostics::Diagnostic;
 
 struct Harmonic1D;
@@ -80,7 +79,7 @@ fn test_diffeq_error_copy_and_fallible_companions() {
             &Harmonic1D,
             &mut q,
             &mut p,
-            &mut SolverWorkspace::new(&mut tiny_buf),
+            &mut ScalarWorkspace::new(&mut tiny_buf),
             &mut rng,
         )
         .expect_err("workspace of len 2 < 4 should fail");
@@ -101,7 +100,7 @@ fn test_diffeq_error_copy_and_fallible_companions() {
             &Harmonic1D,
             &mut q,
             &mut p,
-            &mut SolverWorkspace::new(&mut ok_buf),
+            &mut ScalarWorkspace::new(&mut ok_buf),
             &mut rng,
         )
         .expect("sufficient workspace succeeds");
@@ -118,7 +117,7 @@ fn test_diffeq_error_copy_and_fallible_companions() {
             0.0,
             -0.1,
             &mut sde_state,
-            &mut SolverWorkspace::new(&mut short_buf),
+            &mut ScalarWorkspace::new(&mut short_buf),
             &mut rng
         ),
         Err(DiffeqError::InvalidStepSize)
@@ -129,7 +128,7 @@ fn test_diffeq_error_copy_and_fallible_companions() {
             0.0,
             0.01,
             &mut sde_state,
-            &mut SolverWorkspace::new(&mut short_buf),
+            &mut ScalarWorkspace::new(&mut short_buf),
             &mut rng
         )
         .is_err()
@@ -140,7 +139,7 @@ fn test_diffeq_error_copy_and_fallible_companions() {
             0.0,
             0.01,
             &mut sde_state,
-            &mut SolverWorkspace::new(&mut short_buf),
+            &mut ScalarWorkspace::new(&mut short_buf),
             &mut rng
         )
         .is_err()
@@ -152,7 +151,7 @@ fn test_diffeq_error_copy_and_fallible_companions() {
             0.0,
             &sde_state,
             &mut [0.0; 1],
-            &mut SolverWorkspace::new(&mut short_buf),
+            &mut ScalarWorkspace::new(&mut short_buf),
         )
         .is_err()
     );

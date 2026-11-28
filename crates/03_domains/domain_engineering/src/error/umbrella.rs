@@ -2,7 +2,8 @@ use super::{BatteryError, HardwareError, RadarError};
 use engine_linalg::LinalgError;
 use engine_opt::error::FitError;
 use math_commons::error::{
-    EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError, ShaderEmitError,
+    ArenaError, EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
+    ShaderEmitError,
 };
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::error::{
@@ -73,6 +74,13 @@ impl From<TransformError> for EngineeringDomainError {
     #[verified_engine::verified]
     fn from(err: TransformError) -> Self {
         Self::PureMath(PureMathError::from(err))
+    }
+}
+
+impl From<ArenaError> for EngineeringDomainError {
+    #[verified_engine::verified]
+    fn from(err: ArenaError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
     }
 }
 

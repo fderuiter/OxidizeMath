@@ -98,3 +98,22 @@ pub use transforms::{
 };
 
 // [cite:clinical_trials_statistics]
+
+crate::formal_proof_verification!(
+    module = "clinical_trials_statistics",
+    proof = "CopulaFrechet.lean",
+    theorems = [
+        "frechet_bounds_ordered",
+        "frechet_unit_range",
+        "frechet_outward_enclosure_sound",
+    ],
+    test = {
+        let u = Probability::new(0.4).unwrap();
+        let v = Probability::new(0.7).unwrap();
+        let corr = CorrelationMatrix::bivariate(Correlation::new(0.5).unwrap()).unwrap();
+        let c = sgp_joint_probability(&[u, v], &corr).unwrap().value();
+        let lower = (u.value() + v.value() - 1.0).max(0.0);
+        let upper = u.value().min(v.value());
+        assert!(c >= lower - 1e-12 && c <= upper + 1e-12);
+    }
+);

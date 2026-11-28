@@ -2,9 +2,12 @@
 //! `internal_energy`, `external_energy`, and `evolve_surface` under `VerifiedAllocator` across 100 steps.
 
 use domain_applied::applied::freesurfer::{
-    Surface, ThicknessWorkspace, cortical_thickness_batch, cortical_thickness_map_into,
-    evolve_surface, external_energy, internal_energy,
+    GlmDesignQr, Surface, ThicknessWorkspace, cortical_thickness_batch,
+    cortical_thickness_map_into, estimate_beta_with_workspace, evolve_surface, external_energy,
+    glm_workspace_bytes, internal_energy, t_statistic_with_workspace,
 };
+use math_memory::OwnedByteArena;
+use nalgebra::{DMatrix, DVector};
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
 
@@ -52,4 +55,32 @@ fn test_freesurfer_internal_energy_and_surface_evolution_100_steps_verified_allo
 
     assert!(energy_accum.is_finite());
     assert!(metrics.function_calls >= 300);
+}
+
+#[test]
+fn test_glm_with_workspace_zero_heap_allocations() {
+    let x = DMatrix::from_row_slice(5, 2, &[1.0, 0.0, 1.0, 1.0, 1.0, 2.0, 1.0, 3.0, 1.0, 4.0]);
+    let y = DVector::from_column_slice(&[2.0, 3.5, 5.0, 6.5, 8.0]);
+    let c = DVector::from_column_slice(&[0.0, 1.0]);
+    let mut out_beta = DVector::zeros(2);
+    let mut design_qr = GlmDesignQr::<f64>::with_capacity(5, 2);
+    let mut arena = OwnedByteArena::with_capacity(glm_workspace_bytes::<f64>(5, 2));
+
+    let ((t_direct, t_cached), _) = VerifiedEngine::run_verified(|| {
+        estimate_beta_with_workspace(&x, &y, &mut out_beta, &mut arena).unwrap();
+        let t_direct = t_statistic_with_workspace(&c, &out_beta, &x, 0.01, &mut arena).unwrap();
+        design_qr
+            .factor_into_with_workspace(&x, &mut arena)
+            .unwrap();
+        design_qr
+            .estimate_beta_with_workspace(&y, &mut out_beta, &mut arena)
+            .unwrap();
+        let t_cached = design_qr
+            .t_statistic_with_workspace(&c, &out_beta, 0.01, &mut arena)
+            .unwrap();
+        (t_direct, t_cached)
+    });
+    assert!((out_beta[0] - 2.0).abs() < 1e-12);
+    assert!((out_beta[1] - 1.5).abs() < 1e-12);
+    assert!((t_direct - t_cached).abs() < 1e-12);
 }

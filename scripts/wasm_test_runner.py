@@ -53,7 +53,7 @@ INDEX_HTML = """<!DOCTYPE html>
 <body>
     <div id="loading_indicator" role="status" aria-live="polite" aria-busy="true">Loading...</div>
     <canvas id="the_canvas_id" tabindex="0"></canvas>
-    <div id="error_container" role="alert" aria-live="assertive" style="display: none;">
+    <div id="error_container" role="region" aria-labelledby="error_title" aria-describedby="error_message" style="display: none;">
         <h1 id="error_title">Error</h1>
         <p id="error_message"></p>
         <div id="webgl_instructions"></div>

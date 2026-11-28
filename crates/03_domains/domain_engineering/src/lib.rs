@@ -27,9 +27,9 @@ pub mod __doctest_facade {
     }
     pub use crate::engineering;
     pub use ::pure_math::__doctest_facade::{
-        ast, bootstrap, constants, diagnostics, math_kernel, math_types, mesh, monte_carlo,
-        nalgebra, num_complex, petgraph, poi, primitives, pure_math, qmc, rand, registry, rng,
-        series, wigner,
+        ast, bootstrap, constants, diagnostics, math_kernel, math_memory, math_scalars, math_types,
+        mesh, monte_carlo, nalgebra, num_complex, petgraph, poi, primitives, pure_math, qmc, rand,
+        registry, rng, series, wigner,
     };
     pub use engine_opt::fit;
 }
@@ -38,3 +38,6 @@ pub mod __doctest_facade {
 #[global_allocator]
 static TEST_ALLOCATOR: verified_engine::allocator::VerifiedAllocator =
     verified_engine::allocator::VerifiedAllocator;
+
+#[cfg(test)]
+pub(crate) static VERIFIED_ALLOC_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());

@@ -7,6 +7,7 @@ const DEFAULT_REACHABLE_PKGS: &[&str] = &[
     "oxidizemath",
     "math_explorer",
     "math_diagnostics",
+    "math_memory",
     "math_rng",
     "math_scalars",
     "diagnostics",

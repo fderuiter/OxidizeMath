@@ -263,9 +263,20 @@ function showBootstrapRecovery(err, assetPath) {
 
         const errorContainer = document.getElementById('error_container');
         if (errorContainer) {
+            errorContainer.setAttribute('role', 'region');
+            errorContainer.removeAttribute('aria-live');
             errorContainer.setAttribute('data-error-category', category);
             errorContainer.setAttribute('data-error-active', 'true');
             errorContainer.setAttribute('style', 'display: flex;');
+        }
+
+        const assertiveSlot0 = document.getElementById('aria-live-assertive-slot-0');
+        const assertiveSlot1 = document.getElementById('aria-live-assertive-slot-1');
+        if (assertiveSlot1) {
+            assertiveSlot1.textContent = '';
+        }
+        if (assertiveSlot0) {
+            assertiveSlot0.textContent = `${copy.title}. ${copy.message}`;
         }
 
         const titleEl = document.getElementById('error_title');

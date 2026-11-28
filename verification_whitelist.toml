@@ -62,6 +62,7 @@ unverified_modules = [
     "math_diagnostics",
     "math_explorer",
     "math_explorer_gui",
+    "math_memory",
     "math_rng",
     "math_scalars",
     "oxidize-cli",
@@ -74,6 +75,10 @@ unverified_modules = [
     "verified_engine_macros",
     "xtask",
 ]
+
+[[verify_suite.opt_outs]]
+path = "math_memory:src/"
+reason = "no_std_engine"
 
 [[verify_suite.opt_outs]]
 path = "math_rng:src/"
@@ -330,6 +335,7 @@ exempt_crates = [
     "math_diagnostics",
     "math_explorer",
     "math_explorer_gui",
+    "math_memory",
     "math_rng",
     "math_scalars",
     "oxidize-cli",
@@ -351,10 +357,11 @@ min_total_density = 0.120
 "gui_tool" = 768
 "infrastructure" = 2
 "metadata" = 2
-"no_std_engine" = 25
+"no_std_engine" = 32
 "tests" = 249
 
 [verification_debt.crate_opt_out_caps]
+"math_memory" = 7
 "math_rng" = 14
 "engine_linalg" = 15
 "domain_biology" = 1

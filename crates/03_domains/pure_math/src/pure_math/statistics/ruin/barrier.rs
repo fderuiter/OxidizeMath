@@ -230,4 +230,64 @@ pub fn portfolio_kelly_barrier_risk(
     })
 }
 
+pub(super) fn sorted_quantile(sorted: &[f64], q: f64) -> f64 {
+    if sorted.is_empty() {
+        return 0.0;
+    }
+    if sorted.len() == 1 {
+        return sorted[0];
+    }
+    let pos = q.clamp(0.0, 1.0) * ((sorted.len() - 1) as f64);
+    let lo = pos.floor() as usize;
+    let hi = pos.ceil() as usize;
+    let frac = pos - (lo as f64);
+    sorted[lo] * (1.0 - frac) + sorted[hi] * frac
+}
+
+pub(super) fn validate_wealth_and_barrier(
+    initial_wealth: f64,
+    barrier_floor: f64,
+) -> Result<(), KellyError> {
+    if !initial_wealth.is_finite() || initial_wealth <= 0.0 {
+        return Err(KellyError::InvalidBankroll {
+            value: initial_wealth,
+        });
+    }
+    if !barrier_floor.is_finite() || barrier_floor < 0.0 || barrier_floor >= initial_wealth {
+        return Err(KellyError::InvalidBarrier {
+            floor: barrier_floor,
+            initial_wealth,
+        });
+    }
+    Ok(())
+}
+
+pub(super) fn pick_weighted_prop_bet(
+    portfolio: &[ProportionalPortfolioBet],
+    target_w: f64,
+) -> &ProportionalPortfolioBet {
+    let mut acc = 0.0;
+    for item in portfolio {
+        acc += item.weight;
+        if target_w <= acc {
+            return item;
+        }
+    }
+    &portfolio[portfolio.len() - 1]
+}
+
+pub(super) fn pick_weighted_fixed_bet(
+    portfolio: &[super::analytical::PortfolioBet],
+    target_w: f64,
+) -> &super::analytical::PortfolioBet {
+    let mut acc = 0.0;
+    for item in portfolio {
+        acc += item.weight;
+        if target_w <= acc {
+            return item;
+        }
+    }
+    &portfolio[portfolio.len() - 1]
+}
+
 // [cite:clinical_trials_statistics]

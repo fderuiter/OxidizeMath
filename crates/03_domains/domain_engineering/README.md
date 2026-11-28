@@ -4,7 +4,7 @@
 
 RF/mmWave radar signal processing, coupled electrochemical battery degradation, CNC tool-life prognostics, and serial communication throughput solvers.
 
-> **Maturity Tier:** `Validated` — deterministic numerical and analytical engineering solvers backed by canonical mathematical specifications (`docs/math_specs/domain_engineering.md`), zero-allocation hot paths, and `Certified` radar and battery aging verification suites.
+> **Maturity Tier:** `Validated` — deterministic numerical and analytical engineering solvers backed by canonical mathematical specifications (`docs/math_specs/domain_engineering.md`), zero-allocation hot paths, and `Validated` radar and battery aging verification suites.
 
 ## 1. Overview & Architecture
 

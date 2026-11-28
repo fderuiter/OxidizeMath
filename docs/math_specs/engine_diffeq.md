@@ -39,7 +39,7 @@ assert!(x1.is_finite());
 
 ```rust
 use engine_diffeq::{EulerMaruyamaSolver, SdeSystem, StochasticCalculus};
-use math_commons::math_kernel::types::SolverWorkspace;
+use math_commons::math_kernel::types::ScalarWorkspace;
 use math_rng::OxidizeRng;
 
 struct LinearOu;
@@ -53,7 +53,7 @@ impl SdeSystem<f64> for LinearOu {
 let solver = EulerMaruyamaSolver::new(StochasticCalculus::Ito);
 let mut x = [1.0_f64];
 let mut buf = [0.0_f64; 8];
-let mut ws = SolverWorkspace::new(&mut buf);
+let mut ws = ScalarWorkspace::new(&mut buf);
 let mut rng = OxidizeRng::new(7);
 solver.step(&LinearOu, 0.0, 0.01, &mut x, &mut ws, &mut rng);
 assert!(x[0].is_finite());

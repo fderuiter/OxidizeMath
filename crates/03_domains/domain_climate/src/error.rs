@@ -1,8 +1,8 @@
 //! Error types for the climate modeling domain.
 
-use math_commons::error::MathError;
+use math_commons::error::{ArenaError, MathError};
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
-use pure_math::error::{LinalgError, LinearAlgebraError, OptimizationError};
+use pure_math::error::{LinearAlgebraError, OptimizationError};
 use thiserror::Error;
 
 /// Domain-specific errors for climate emulation, tensor layers, and loss functions.
@@ -59,9 +59,9 @@ pub enum ClimateError {
     #[error("{0}")]
     Math(#[from] MathError),
 
-    /// Foundational `#![no_std]` linear algebra engine error.
+    /// Foundational `#![no_std]` byte-arena error.
     #[error("{0}")]
-    Linalg(#[from] LinalgError),
+    Arena(#[from] ArenaError),
 
     /// Upstream numerical optimization error.
     #[error("{0}")]
@@ -72,12 +72,19 @@ pub enum ClimateError {
     LinearAlgebra(#[from] LinearAlgebraError),
 }
 
+impl From<pure_math::error::LinalgError> for ClimateError {
+    #[verified_engine::verified]
+    fn from(err: pure_math::error::LinalgError) -> Self {
+        Self::LinearAlgebra(LinearAlgebraError::from(err))
+    }
+}
+
 impl Diagnostic for ClimateError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
         match self {
             Self::Math(err) => err.severity(),
-            Self::Linalg(err) => err.severity(),
+            Self::Arena(err) => err.severity(),
             Self::Optimization(err) => err.severity(),
             Self::LinearAlgebra(err) => err.severity(),
             _ => Severity::Error,
@@ -88,7 +95,7 @@ impl Diagnostic for ClimateError {
     fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         match self {
             Self::Math(err) => err.visit_fields(visitor),
-            Self::Linalg(err) => err.visit_fields(visitor),
+            Self::Arena(err) => err.visit_fields(visitor),
             Self::Optimization(err) => err.visit_fields(visitor),
             Self::LinearAlgebra(err) => err.visit_fields(visitor),
             _ => {

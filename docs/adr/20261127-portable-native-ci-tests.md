@@ -17,10 +17,10 @@ Because `cargo test` stops at the first failing crate, failure 3 only appeared o
 ## Decision
 
 1. Guard `VerifiedAllocator` with a process-wide `REPORTING_VIOLATION` `AtomicBool`. The first trapped allocation claims it with `swap(true)`, so allocations made while the FATAL payload is written fall through to `System`. The process still aborts after the report, so Rule 3 enforcement is unchanged.
-2. Write the test PNG artifacts to `std::env::temp_dir()`.
+2. Write test PNG artifacts (including `knot_braid_studio::screenshot_tests`, `sandpile::tests`, and `framework::shared_points_perf_tests` via `resolve_perf_screenshot_path`) to `std::env::temp_dir()` when `/tmp` is absent.
 3. Resolve package-keyed `approved_ignore_fences` entries with `expand_package_pattern_in_ws(workspace_root, key)` before falling back to `path_matches_lossy`.
 4. Run the non-Linux `Run Workspace Tests (Native)` step with `--no-fail-fast` so one CI run reports every failing crate.
-5. Take the desktop targets off the web deploy's critical path. `detect-changes` emits the `build-and-test` matrix: pull requests and merge groups run only Linux Native and Web/WASM, while main pushes, manual dispatches, release tags and a new nightly `schedule` also run Windows Native and macOS Native. Desktop legs set `continue-on-error` except on `refs/tags/v*`, so a macOS/Windows failure no longer skips `deploy-pages` but still blocks `publish-release`.
+5. Take the desktop targets off the web deploy's critical path. `build-and-test` computes its matrix inline from `github.event_name` (keeping the job free of `needs:` so it starts immediately, enforced by `xtask::ci_filter_tests`): pull requests and merge groups run only Linux Native and Web/WASM, while main pushes, manual dispatches, release tags and a new nightly `schedule` also run Windows Native and macOS Native. Desktop legs set `continue-on-error` except on `refs/tags/v*`, so a macOS/Windows failure no longer skips `deploy-pages` but still blocks `publish-release`. Include `.github/actions/ci-tool-cache/*` alongside `.github/actions/cargo-cache/*` in the `detect-changes` `installer_changed` glob so PR edits to the tool-cache composite action trigger cross-OS `cargo-packager` installer verification.
 
 ## Consequences
 

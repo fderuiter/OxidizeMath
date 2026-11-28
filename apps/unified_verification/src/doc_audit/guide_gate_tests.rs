@@ -28,6 +28,29 @@ fn real_workspace_passes_all_static_guide_and_manifest_gates() {
 }
 
 #[test]
+fn real_workspace_guide_gates_ignore_foreign_current_dir() {
+    let root = workspace_root();
+    let synthetic_ws = crate::utils::test_utils::TempTestDir::new("guide_gate_foreign_cwd");
+    fs::write(
+        synthetic_ws.join("Cargo.toml"),
+        "[workspace]\nmembers = []\n",
+    )
+    .unwrap();
+
+    let violations = {
+        let _lock = crate::DIR_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _cwd = crate::utils::test_utils::CurrentDirGuard(std::env::current_dir().unwrap());
+        std::env::set_current_dir(&*synthetic_ws).unwrap();
+        audit_workspace_guides_and_manifests(&root)
+    };
+    assert!(
+        violations.is_empty(),
+        "Expected zero violations under foreign current_dir, got:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn cargo_cli_check_flags_missing_example_features_and_virtual_manifest_test() {
     let root = workspace_root();
     let model = WorkspaceManifestModel::load(&root).expect("load manifests");

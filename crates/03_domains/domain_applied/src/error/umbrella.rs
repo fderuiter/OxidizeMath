@@ -5,7 +5,8 @@ use super::{
 use engine_linalg::LinalgError;
 use engine_opt::error::FitError;
 use math_commons::error::{
-    EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError, ShaderEmitError,
+    ArenaError, EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
+    ShaderEmitError,
 };
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::error::{
@@ -126,6 +127,13 @@ impl From<TensorError> for AppliedError {
     #[verified_engine::verified]
     fn from(err: TensorError) -> Self {
         Self::PureMath(PureMathError::from(err))
+    }
+}
+
+impl From<ArenaError> for AppliedError {
+    #[verified_engine::verified]
+    fn from(err: ArenaError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
     }
 }
 

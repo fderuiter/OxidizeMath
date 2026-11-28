@@ -108,9 +108,9 @@ pub enum AIError {
     #[error("{0}")]
     Math(#[from] math_commons::error::MathError),
 
-    /// Foundational `#![no_std]` linear algebra engine error.
+    /// Foundational `#![no_std]` byte-arena error.
     #[error("{0}")]
-    Linalg(#[from] pure_math::error::LinalgError),
+    Arena(#[from] math_commons::error::ArenaError),
 
     /// Foundational `#![no_std]` differential-equation solver error.
     #[error("{0}")]
@@ -128,12 +128,19 @@ pub enum AIError {
 /// Standard result alias used across `domain_ai` computations.
 pub type Result<T> = math_commons::error::MathResult<T>;
 
+impl From<pure_math::error::LinalgError> for AIError {
+    #[verified_engine::verified]
+    fn from(err: pure_math::error::LinalgError) -> Self {
+        Self::LinearAlgebra(pure_math::error::LinearAlgebraError::from(err))
+    }
+}
+
 impl Diagnostic for AIError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
         match self {
             Self::Math(err) => err.severity(),
-            Self::Linalg(err) => err.severity(),
+            Self::Arena(err) => err.severity(),
             Self::Diffeq(err) => err.severity(),
             Self::Optimization(err) => err.severity(),
             Self::LinearAlgebra(err) => err.severity(),
@@ -145,7 +152,7 @@ impl Diagnostic for AIError {
     fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         match self {
             Self::Math(err) => err.visit_fields(visitor),
-            Self::Linalg(err) => err.visit_fields(visitor),
+            Self::Arena(err) => err.visit_fields(visitor),
             Self::Diffeq(err) => err.visit_fields(visitor),
             Self::Optimization(err) => err.visit_fields(visitor),
             Self::LinearAlgebra(err) => err.visit_fields(visitor),

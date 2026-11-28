@@ -7,8 +7,8 @@ use std::error::Error as StdError;
 
 use oxidizemath::diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use oxidizemath::error::{
-    DiffeqError, Error, FitError, LinalgError, MathCommonsError, MathError, PdeError, QmcError,
-    RngError, ScalarError,
+    ArenaError, DiffeqError, Error, FitError, LinalgError, MathCommonsError, MathError, PdeError,
+    QmcError, RngError, ScalarError,
 };
 use oxidizemath::math_kernel::types::Dimension;
 use oxidizemath::verified_engine::allocator::VerifiedAllocator;
@@ -51,32 +51,43 @@ fn core_only_zero_alloc_diagnostics_and_linalg_error_wiring() {
         required: 32,
         available: 8,
     };
+    let arena = ArenaError::InsufficientBytes {
+        required: 64,
+        available: 16,
+        align: 8,
+    };
     let fit = FitError::from(linalg);
-    let commons = MathCommonsError::from(ScalarError::WorkspaceTooSmall {
+    let commons = MathCommonsError::from(arena);
+    let commons_scalar = MathCommonsError::from(ScalarError::WorkspaceTooSmall {
         required: 16,
         available: 4,
     });
     let facade = Error::from(linalg);
+    let facade_arena = Error::from(arena);
     let rng_facade = Error::from(RngError::ZeroUpperBound);
     let qmc_facade = Error::from(QmcError::InvalidDimension {
         dimension: 0,
         max_supported: 64,
     });
 
-    assert!(fit.source().is_some());
     assert!(commons.source().is_some());
+    assert!(commons_scalar.source().is_some());
     assert!(facade.source().is_some());
+    assert!(facade_arena.source().is_some());
     assert!(rng_facade.source().is_some());
     assert!(qmc_facade.source().is_some());
 
     let (total_fields, _metrics) = VerifiedEngine::run_verified(|| {
         assert_eq!(linalg.severity(), Severity::Error);
+        assert_eq!(arena.severity(), Severity::Error);
         count_visited_fields(&linalg)
+            + count_visited_fields(&arena)
             + count_visited_fields(&math)
             + count_visited_fields(&ws)
             + count_visited_fields(&fit)
             + count_visited_fields(&commons)
             + count_visited_fields(&facade)
+            + count_visited_fields(&facade_arena)
             + count_visited_fields(&rng_facade)
             + count_visited_fields(&qmc_facade)
     });
@@ -139,9 +150,11 @@ mod full_domain_wiring {
     #[test]
     fn all_umbrellas_implement_from_linalg_error_and_retain_source() {
         let raw = LinalgError::SingularMatrix;
+        let arena_raw = ArenaError::ArithmeticOverflow;
         let la = LinearAlgebraError::from(raw);
         let fit = FitError::from(raw);
-        let commons = MathCommonsError::from(ScalarError::InvalidStepSize { value: 0.0 });
+        let commons = MathCommonsError::from(arena_raw);
+        let commons_scalar = MathCommonsError::from(ScalarError::InvalidStepSize { value: 0.0 });
         let pm = PureMathError::from(raw);
         let ai = AIError::from(raw);
         let applied = AppliedError::from(raw);
@@ -150,11 +163,13 @@ mod full_domain_wiring {
         let epi = EpidemiologyDomainError::from(raw);
         let phys = PhysicsError::from(raw);
         let facade = Error::from(raw);
+        let facade_arena = Error::from(arena_raw);
 
         for has_src in [
             la.source().is_some(),
             fit.source().is_some(),
             commons.source().is_some(),
+            commons_scalar.source().is_some(),
             pm.source().is_some(),
             ai.source().is_some(),
             applied.source().is_some(),
@@ -163,6 +178,7 @@ mod full_domain_wiring {
             epi.source().is_some(),
             phys.source().is_some(),
             facade.source().is_some(),
+            facade_arena.source().is_some(),
         ] {
             assert!(has_src);
         }

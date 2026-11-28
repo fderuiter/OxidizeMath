@@ -319,7 +319,7 @@ fn test_zero_churn_when_crate_directory_moves_across_tiers() {
 
 #[test]
 fn test_all_workspace_crates_reside_in_tiered_or_apps_directories() {
-    let ws_root = crate::manifest_cache::workspace_root_dir();
+    let ws_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let model = crate::doc_audit::manifest_model::WorkspaceManifestModel::load(&ws_root)
         .expect("workspace manifest model must load");
     assert!(

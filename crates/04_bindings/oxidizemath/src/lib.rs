@@ -12,6 +12,7 @@ pub use engine_pde;
 pub use math_commons::{
     ast, constants, math_kernel, poi, primitives, registry, series, stochastic, wigner,
 };
+pub use math_memory;
 pub use math_scalars;
 pub use scientific_metadata;
 pub use verified_engine;

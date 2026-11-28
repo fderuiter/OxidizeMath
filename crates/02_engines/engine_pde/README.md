@@ -6,7 +6,7 @@
 
 ## 1. Overview & Architecture
 
-`engine_pde` is OxidizeMath's Tier 2 `#![no_std]` continuum partial differential equation (PDE) and stochastic partial differential equation (SPDE) solver crate. It unifies 1D, 2D, and 3D finite-difference stencils, boundary-value operators, conserved-flux stochastic noise, and radix-2 pseudo-spectral Fourier steppers over [`Scalar`](math_commons::math_kernel::types::Scalar), [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace), and `rand_core::RngCore`.
+`engine_pde` is OxidizeMath's Tier 2 `#![no_std]` continuum partial differential equation (PDE) and stochastic partial differential equation (SPDE) solver crate. It unifies 1D, 2D, and 3D finite-difference stencils, boundary-value operators, conserved-flux stochastic noise, and radix-2 pseudo-spectral Fourier steppers over [`Scalar`](math_commons::math_kernel::types::Scalar), [`SolverWorkspace`], and `rand_core::RngCore`.
 
 Core capabilities:
 - **Unified Finite-Difference Stencils**: [`StencilOperators`] exposes 1D, 2D, and 3D central Laplacians, central gradients, squared gradients ($|\nabla h|^2$), first-order and semi-Lagrangian characteristic upwind operators, and public 2D Biharmonic ($\nabla^4 u$) evaluation across [`BoundaryCondition`] (`Periodic`, `Neumann`, `SymmetricNeumann`, and `Dirichlet`).

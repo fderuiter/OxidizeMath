@@ -12,9 +12,11 @@ use crate::accessibility;
 use crate::app::session::WorkspaceRecoverySnapshot;
 use crate::app::MathExplorerApp;
 use bridge::{
-    bind_fallback_download_listener, notify_js_begin_recovery, notify_recovery_completed,
-    notify_recovery_failed, persist_envelope_to_local_storage, register_js_timeout_bridge,
-    set_overlay_visible, LOSS_STATUS_MSG,
+    bind_fallback_download_listener, notify_js_begin_recovery, notify_recovery_failed,
+    persist_envelope_to_local_storage, register_js_timeout_bridge, LOSS_STATUS_MSG,
+};
+pub(crate) use bridge::{
+    notify_recovery_completed, set_overlay_visible, sync_fallback_download_buttons,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -183,6 +185,7 @@ fn on_context_lost(event: &web_sys::Event, runtime_rc: &Rc<RefCell<RecoveryRunti
 
     bind_download_button(&doc, runtime_rc);
     if !notify_js_begin_recovery(window.as_ref(), &envelope_json, &filename, storage_blocked) {
+        sync_fallback_download_buttons(&doc, &envelope_json, storage_blocked);
         set_overlay_visible(&doc, true);
         accessibility::announce_status_with_priority(LOSS_STATUS_MSG, "polite");
         arm_fallback_restore_timer(window.as_ref(), runtime_rc, epoch);

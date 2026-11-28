@@ -1,9 +1,10 @@
 // [cite:engine_diffeq]
-use crate::error::DiffeqError;
+use crate::error::{DiffeqError, carve_scalars};
 use crate::system::{SdeSystem, StochasticCalculus};
 use math_commons::math_kernel::types::{
-    Scalar, SolverWorkspace, fill_standard_normal, flatten_2d_index, sample_standard_normal_pair,
+    Scalar, fill_standard_normal, flatten_2d_index, sample_standard_normal_pair,
 };
+use math_memory::{ByteCursor, SolverWorkspace};
 use rand_core::RngCore;
 
 /// Multivariate strong-order-1.0 Milstein SDE solver supporting both Itô and Stratonovich calculi:
@@ -83,7 +84,7 @@ impl MilsteinSolver {
         t: T,
         dt: T,
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) -> Result<(), DiffeqError> {
         let d = system.state_dim();
@@ -100,17 +101,18 @@ impl MilsteinSolver {
         }
 
         let mut ws = workspace.reborrow();
-        let dw = ws.try_take_slice(m)?;
+        let mut cur = ws.cursor();
+        let dw = carve_scalars::<T>(&mut cur, m)?;
         let levy_slices = if self.levy_truncation > 0 && m > 1 {
-            let area = ws.try_take_slice(m * m)?;
-            let xi = ws.try_take_slice(m)?;
-            let zeta = ws.try_take_slice(m)?;
+            let area = carve_scalars::<T>(&mut cur, m * m)?;
+            let xi = carve_scalars::<T>(&mut cur, m)?;
+            let zeta = carve_scalars::<T>(&mut cur, m)?;
             Some((area, xi, zeta))
         } else {
             None
         };
         let (f0, g0, g_plus, g_minus, col_vec, dg_a, dg_b, x_tmp) =
-            take_milstein_slices(&mut ws, d, d * m)?;
+            take_milstein_slices(&mut cur, d, d * m)?;
 
         fill_standard_normal(dw, rng);
         let sqrt_dt = dt.sqrt();
@@ -159,7 +161,7 @@ impl MilsteinSolver {
         t: T,
         dt: T,
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) {
         self.try_step(system, t, dt, state, workspace, rng)
@@ -179,7 +181,7 @@ impl MilsteinSolver {
         dt: T,
         dw: &[T],
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
     ) -> Result<(), DiffeqError> {
         let d = system.state_dim();
         let m = system.wiener_dim();
@@ -201,8 +203,9 @@ impl MilsteinSolver {
             });
         }
         let mut ws = workspace.reborrow();
+        let mut cur = ws.cursor();
         let (f0, g0, g_plus, g_minus, col_vec, dg_a, dg_b, x_tmp) =
-            take_milstein_slices(&mut ws, d, d * m)?;
+            take_milstein_slices(&mut cur, d, d * m)?;
         system.drift(t, state, f0);
         system.diffusion(t, state, g0);
         accumulate_milstein_update(
@@ -238,7 +241,7 @@ impl MilsteinSolver {
         dt: T,
         dw: &[T],
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
     ) {
         self.try_step_with_increments(system, t, dt, dw, state, workspace)
             .expect("MilsteinSolver::step_with_increments preconditions violated");
@@ -258,18 +261,18 @@ type MilsteinScratch<'a, T> = (
 
 #[verified_engine::verified]
 fn take_milstein_slices<'a, T: Scalar>(
-    ws: &mut SolverWorkspace<'a, T>,
+    cur: &mut ByteCursor<'a>,
     d: usize,
     dm: usize,
 ) -> Result<MilsteinScratch<'a, T>, DiffeqError> {
-    let f0 = ws.try_take_slice(d)?;
-    let g0 = ws.try_take_slice(dm)?;
-    let g_plus = ws.try_take_slice(dm)?;
-    let g_minus = ws.try_take_slice(dm)?;
-    let col_vec = ws.try_take_slice(d)?;
-    let dg_a = ws.try_take_slice(d)?;
-    let dg_b = ws.try_take_slice(d)?;
-    let x_tmp = ws.try_take_slice(d)?;
+    let f0 = carve_scalars::<T>(cur, d)?;
+    let g0 = carve_scalars::<T>(cur, dm)?;
+    let g_plus = carve_scalars::<T>(cur, dm)?;
+    let g_minus = carve_scalars::<T>(cur, dm)?;
+    let col_vec = carve_scalars::<T>(cur, d)?;
+    let dg_a = carve_scalars::<T>(cur, d)?;
+    let dg_b = carve_scalars::<T>(cur, d)?;
+    let x_tmp = carve_scalars::<T>(cur, d)?;
     debug_assert_eq!(f0.len(), d);
     Ok((f0, g0, g_plus, g_minus, col_vec, dg_a, dg_b, x_tmp))
 }

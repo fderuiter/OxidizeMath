@@ -13,6 +13,7 @@ math_contract = true
 
 [dependencies]
 math_diagnostics = { path = "../../00_foundation/math_diagnostics" }
+math_memory = { path = "../../00_foundation/math_memory", features = ["std"] }
 nalgebra = { workspace = true }
 num-complex = { workspace = true }
 rustfft = { workspace = true }

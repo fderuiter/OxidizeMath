@@ -813,6 +813,21 @@
   ],
   "domain_ai:src/ai/reinforcement_learning/workspace.rs": [
     {
+      "signature": "impl DenseRlWorkspace { pub const fn ep_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn clear_episode_trajectory (& mut self) }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn ep_actions (& self) -> & [usize] }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn ep_rewards (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn ep_states (& self) -> & [usize] }"
+    },
+    {
       "signature": "impl DenseRlWorkspace { pub fn greedy_policy_action (& self , _ : GridState) -> Option < Move > }"
     },
     {
@@ -831,6 +846,15 @@
       "signature": "impl DenseRlWorkspace { pub fn new (_ : usize , _ : usize , _ : usize , _ : Option < u64 >) -> Self }"
     },
     {
+      "signature": "impl DenseRlWorkspace { pub fn push_episode_step (& mut self , _ : usize , _ : usize , _ : f64) }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn q_table (& self) -> & [[f64 ; 4]] }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn q_table_mut (& mut self) -> & mut [[f64 ; 4]] }"
+    },
+    {
       "signature": "impl DenseRlWorkspace { pub fn q_value (& self , _ : GridState , _ : Move) -> f64 }"
     },
     {
@@ -846,7 +870,22 @@
       "signature": "impl DenseRlWorkspace { pub fn state_value_at (& self , _ : GridState) -> f64 }"
     },
     {
+      "signature": "impl DenseRlWorkspace { pub fn state_values (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn state_values_mut (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn states (& self) -> & [GridState] }"
+    },
+    {
       "signature": "impl DenseRlWorkspace { pub fn sync_topology (& mut self , _ : & SculptedGridMdp) }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn theta_logits (& self) -> & [[f64 ; 4]] }"
+    },
+    {
+      "signature": "impl DenseRlWorkspace { pub fn theta_logits_mut (& mut self) -> & mut [[f64 ; 4]] }"
     },
     {
       "signature": "pub const ALL_MOVES : [Move ; 4]"
@@ -1978,7 +2017,16 @@
       "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn contrast_variance_factor (& self , _ : & DVector < T >) -> Result < T , EngineeringError > }"
     },
     {
+      "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn contrast_variance_factor_with_workspace (& self , _ : & DVector < T > , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < T , EngineeringError > }"
+    },
+    {
       "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn estimate_beta (& self , _ : & DVector < T >) -> Result < DVector < T > , EngineeringError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn estimate_beta_with_workspace (& self , _ : & DVector < T > , _ : & mut DVector < T > , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , EngineeringError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn factor_into_with_workspace (& mut self , _ : & DMatrix < T > , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , EngineeringError > }"
     },
     {
       "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn ncols (& self) -> usize }"
@@ -1990,13 +2038,34 @@
       "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn t_statistic (& self , _ : & DVector < T > , _ : & DVector < T > , _ : T ,) -> Result < T , EngineeringError > }"
     },
     {
+      "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn t_statistic_with_workspace (& self , _ : & DVector < T > , _ : & DVector < T > , _ : T , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < T , EngineeringError > }"
+    },
+    {
       "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn try_new (_ : & DMatrix < T >) -> Result < Self , EngineeringError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn try_new_with_workspace (_ : & DMatrix < T > , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < Self , EngineeringError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn try_with_capacity (_ : usize , _ : usize) -> Result < Self , ArenaError > }"
+    },
+    {
+      "signature": "impl < T : RealField + Scalar > GlmDesignQr < T > { pub fn with_capacity (_ : usize , _ : usize) -> Self }"
     },
     {
       "signature": "pub fn estimate_beta < T : RealField + Scalar > (_ : & DMatrix < T > , _ : & DVector < T > ,) -> Result < DVector < T > , EngineeringError >"
     },
     {
+      "signature": "pub fn estimate_beta_with_workspace < T : RealField + Scalar > (_ : & DMatrix < T > , _ : & DVector < T > , _ : & mut DVector < T > , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , EngineeringError >"
+    },
+    {
+      "signature": "pub fn glm_workspace_bytes < T : Scalar > (_ : usize , _ : usize) -> usize"
+    },
+    {
       "signature": "pub fn t_statistic < T : RealField + Scalar > (_ : & DVector < T > , _ : & DVector < T > , _ : & DMatrix < T > , _ : T ,) -> Result < T , EngineeringError >"
+    },
+    {
+      "signature": "pub fn t_statistic_with_workspace < T : RealField + Scalar > (_ : & DVector < T > , _ : & DVector < T > , _ : & DMatrix < T > , _ : T , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < T , EngineeringError >"
     },
     {
       "signature": "pub struct GlmDesignQr < T : RealField + Scalar >"
@@ -2010,7 +2079,16 @@
       "signature": "pub use glm :: estimate_beta"
     },
     {
+      "signature": "pub use glm :: estimate_beta_with_workspace"
+    },
+    {
+      "signature": "pub use glm :: glm_workspace_bytes"
+    },
+    {
       "signature": "pub use glm :: t_statistic"
+    },
+    {
+      "signature": "pub use glm :: t_statistic_with_workspace"
     },
     {
       "signature": "pub use segmentation :: MAX_TISSUE_CLASSES"
@@ -3454,6 +3532,12 @@
       "signature": "impl PowerSweepConfig { pub fn validate (& self) -> Result < () , ClinicalTrialError > }"
     },
     {
+      "signature": "impl PowerSweepWorkspace { pub fn collect_points (& self , _ : usize) -> Vec < SampleSizePowerPoint > }"
+    },
+    {
+      "signature": "impl PowerSweepWorkspace { pub fn point_at (& self , _ : usize) -> SampleSizePowerPoint }"
+    },
+    {
       "signature": "impl PowerSweepWorkspace { pub fn with_capacity (_ : usize , _ : usize) -> Self }"
     },
     {
@@ -3645,7 +3729,22 @@
       "signature": "impl < T > WinRatioAnalysis < T > { pub fn evaluate_unmatched_into < S1 , S2 > (& self , _ : & [S1] , _ : & [S2] , _ : f64 , _ : & mut UnmatchedScratch ,) -> Option < UnmatchedWinRatioSummary > where S1 : AsRef < [T] > , S2 : AsRef < [T] > , }"
     },
     {
+      "signature": "impl UnmatchedScratch { pub const fn max_control (& self) -> usize }"
+    },
+    {
+      "signature": "impl UnmatchedScratch { pub const fn max_tiers (& self) -> usize }"
+    },
+    {
+      "signature": "impl UnmatchedScratch { pub const fn max_treatment (& self) -> usize }"
+    },
+    {
       "signature": "impl UnmatchedScratch { pub fn marginals (& self , _ : usize , _ : usize) -> SubjectMarginals < '_ > }"
+    },
+    {
+      "signature": "impl UnmatchedScratch { pub fn tier_counts (& self) -> & [TierCount] }"
+    },
+    {
+      "signature": "impl UnmatchedScratch { pub fn try_with_capacity (_ : usize , _ : usize , _ : usize ,) -> Result < Self , math_memory :: ArenaError > }"
     },
     {
       "signature": "impl UnmatchedScratch { pub fn with_capacity (_ : usize , _ : usize , _ : usize) -> Self }"
@@ -6430,7 +6529,19 @@
       "signature": "impl BiQuadraticSurface { pub fn fit (_ : & [Point3 < f64 >]) -> Option < Self > }"
     },
     {
+      "signature": "impl BiQuadraticSurface { pub fn fit_into_with_workspace (& mut self , _ : & [Point3 < f64 >] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> bool }"
+    },
+    {
+      "signature": "impl BiQuadraticSurface { pub fn fit_with_workspace (_ : & [Point3 < f64 >] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Option < [f64 ; 6] > }"
+    },
+    {
       "signature": "impl BiQuadraticSurface { pub fn generate_mesh (& self , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize ,) -> Vec < Point3 < f64 > > }"
+    },
+    {
+      "signature": "impl BiQuadraticSurface { pub fn zeros () -> Self }"
+    },
+    {
+      "signature": "pub fn radar_surface_workspace_bytes (_ : usize) -> usize"
     },
     {
       "signature": "pub fn weighted_average_height (_ : & [Point3 < f64 >]) -> f64"
@@ -6588,6 +6699,12 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_kernel }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_memory }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_scalars }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_types }"
@@ -9221,6 +9338,9 @@
       "signature": "impl Fft2dWorkspace { pub fn try_forward_transposed_in_place (& mut self , _ : & mut DMatrix < Complex < f64 > > , _ : & mut [Complex < f64 >] ,) -> Result < () , math_commons :: error :: MathError > }"
     },
     {
+      "signature": "impl Fft2dWorkspace { pub fn try_new (_ : usize , _ : usize) -> Result < Self , math_memory :: ArenaError > }"
+    },
+    {
       "signature": "pub fn fftshift_2d_into (_ : & DMatrix < Complex < f64 > > , _ : & mut DMatrix < Complex < f64 > >)"
     },
     {
@@ -9640,15 +9760,6 @@
       "signature": "impl PolarizationMode { pub const fn label (self) -> & 'static str }"
     },
     {
-      "signature": "impl RayFanWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
-    },
-    {
-      "signature": "impl RayFanWorkspace { pub fn ray_vertices (& self , _ : usize) -> & [[f64 ; 2]] }"
-    },
-    {
-      "signature": "impl RayFanWorkspace { pub fn rays (& self) -> & [TracedRayMeta] }"
-    },
-    {
       "signature": "pub enum GrinMedium"
     },
     {
@@ -9658,19 +9769,51 @@
       "signature": "pub enum PolarizationMode"
     },
     {
-      "signature": "pub fn trace_ray_fan (_ : & RayFanConfig , _ : & mut RayFanWorkspace) -> usize"
-    },
-    {
       "signature": "pub struct EikonalRaySystem"
     },
     {
       "signature": "pub struct RayFanConfig"
     },
     {
-      "signature": "pub struct RayFanWorkspace"
+      "signature": "pub struct TracedRayMeta"
     },
     {
-      "signature": "pub struct TracedRayMeta"
+      "signature": "pub use workspace :: RayFanWorkspace"
+    },
+    {
+      "signature": "pub use workspace :: trace_ray_fan"
+    }
+  ],
+  "domain_physics:src/physics/optics/ray_tracing/workspace.rs": [
+    {
+      "signature": "impl RayFanWorkspace { pub const fn ray_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl RayFanWorkspace { pub fn iter_rays (& self) -> impl ExactSizeIterator < Item = TracedRayMeta > + '_ }"
+    },
+    {
+      "signature": "impl RayFanWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl RayFanWorkspace { pub fn ray_meta (& self , _ : usize) -> TracedRayMeta }"
+    },
+    {
+      "signature": "impl RayFanWorkspace { pub fn ray_vertices (& self , _ : usize) -> & [[f64 ; 2]] }"
+    },
+    {
+      "signature": "impl RayFanWorkspace { pub fn try_new (_ : usize , _ : usize) -> Result < Self , ArenaError > }"
+    },
+    {
+      "signature": "impl RayFanWorkspace { pub fn try_ray_meta (& self , _ : usize) -> Result < TracedRayMeta , ArenaError > }"
+    },
+    {
+      "signature": "impl RayFanWorkspace { pub fn try_ray_vertices (& self , _ : usize) -> Result < & [[f64 ; 2]] , ArenaError > }"
+    },
+    {
+      "signature": "pub fn trace_ray_fan (_ : & RayFanConfig , _ : & mut RayFanWorkspace) -> usize"
+    },
+    {
+      "signature": "pub struct RayFanWorkspace"
     }
   ],
   "domain_physics:src/physics/optics/refraction.rs": [
@@ -9901,10 +10044,10 @@
       "signature": "impl CrankNicolson1D { pub fn with_capacity (_ : usize) -> Self }"
     },
     {
-      "signature": "impl CrankNicolson1D { pub fn workspace (& self) -> & SolverWorkspace }"
+      "signature": "impl CrankNicolson1D { pub fn workspace (& self) -> & TridiagonalWorkspace }"
     },
     {
-      "signature": "impl CrankNicolson1D { pub fn workspace_mut (& mut self) -> & mut SolverWorkspace }"
+      "signature": "impl CrankNicolson1D { pub fn workspace_mut (& mut self) -> & mut TridiagonalWorkspace }"
     },
     {
       "signature": "pub struct CrankNicolson1D"
@@ -10104,10 +10247,10 @@
       "signature": "pub use tridiagonal :: CrankNicolsonPropagator1D"
     },
     {
-      "signature": "pub use tridiagonal :: SolverWorkspace"
+      "signature": "pub use tridiagonal :: TridiagonalHamiltonian1D"
     },
     {
-      "signature": "pub use tridiagonal :: TridiagonalHamiltonian1D"
+      "signature": "pub use tridiagonal :: TridiagonalWorkspace"
     },
     {
       "signature": "pub use types :: QuantumOperator"
@@ -10277,7 +10420,7 @@
       "signature": "pub use crate :: physics :: quantum :: crank_nicolson :: CrankNicolson1D"
     },
     {
-      "signature": "pub use workspace :: SolverWorkspace"
+      "signature": "pub use workspace :: TridiagonalWorkspace"
     }
   ],
   "domain_physics:src/physics/quantum/types.rs": [
@@ -11330,13 +11473,13 @@
       "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn new (_ : BaoabParams < T >) -> Self }"
     },
     {
-      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn step < S : LangevinSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : & mut [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
+      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn step < S : LangevinSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : & mut [T] , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) }"
     },
     {
       "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn try_new (_ : BaoabParams < T >) -> Result < Self , math_commons :: error :: MathError > }"
     },
     {
-      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn try_step < S : LangevinSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : & mut [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , DiffeqError > }"
+      "signature": "impl < T : Scalar > BaoabLangevinSolver < T > { pub fn try_step < S : LangevinSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : & mut [T] , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , DiffeqError > }"
     },
     {
       "signature": "pub struct BaoabLangevinSolver < T : Scalar >"
@@ -11367,16 +11510,16 @@
       "signature": "impl EulerMaruyamaSolver { pub const fn scratch_len (& self , _ : usize , _ : usize) -> usize }"
     },
     {
-      "signature": "impl EulerMaruyamaSolver { pub fn step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
+      "signature": "impl EulerMaruyamaSolver { pub fn step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) }"
     },
     {
-      "signature": "impl EulerMaruyamaSolver { pub fn step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) }"
+      "signature": "impl EulerMaruyamaSolver { pub fn step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) ,) }"
     },
     {
-      "signature": "impl EulerMaruyamaSolver { pub fn try_step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , DiffeqError > }"
+      "signature": "impl EulerMaruyamaSolver { pub fn try_step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , DiffeqError > }"
     },
     {
-      "signature": "impl EulerMaruyamaSolver { pub fn try_step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , DiffeqError > }"
+      "signature": "impl EulerMaruyamaSolver { pub fn try_step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , DiffeqError > }"
     },
     {
       "signature": "pub struct EulerMaruyamaSolver"
@@ -11388,18 +11531,6 @@
     }
   ],
   "engine_diffeq:src/lib.rs": [
-    {
-      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > OwnedWorkspace < T > { pub fn as_workspace (& mut self) -> math_commons :: math_kernel :: types :: SolverWorkspace < '_ , T > }"
-    },
-    {
-      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > OwnedWorkspace < T > { pub fn try_with_capacity (_ : usize) -> Result < Self , DiffeqError > }"
-    },
-    {
-      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > OwnedWorkspace < T > { pub fn with_capacity (_ : usize) -> Self }"
-    },
-    {
-      "signature": "pub struct OwnedWorkspace < T : math_commons :: math_kernel :: types :: Scalar >"
-    },
     {
       "signature": "pub use baoab :: BaoabLangevinSolver"
     },
@@ -11414,6 +11545,27 @@
     },
     {
       "signature": "pub use jump :: ssa_sample_event"
+    },
+    {
+      "signature": "pub use math_commons :: math_kernel :: types :: ScalarWorkspace"
+    },
+    {
+      "signature": "pub use math_memory :: ArenaCheckpoint"
+    },
+    {
+      "signature": "pub use math_memory :: ArenaError"
+    },
+    {
+      "signature": "pub use math_memory :: ByteArena"
+    },
+    {
+      "signature": "pub use math_memory :: ByteCursor"
+    },
+    {
+      "signature": "pub use math_memory :: OwnedByteArena"
+    },
+    {
+      "signature": "pub use math_memory :: SolverWorkspace"
     },
     {
       "signature": "pub use math_rng :: BASE_SEED"
@@ -11460,16 +11612,16 @@
       "signature": "impl MilsteinSolver { pub const fn with_levy_truncation (self , _ : usize) -> Self }"
     },
     {
-      "signature": "impl MilsteinSolver { pub fn step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
+      "signature": "impl MilsteinSolver { pub fn step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) }"
     },
     {
-      "signature": "impl MilsteinSolver { pub fn step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) }"
+      "signature": "impl MilsteinSolver { pub fn step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) ,) }"
     },
     {
-      "signature": "impl MilsteinSolver { pub fn try_step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , DiffeqError > }"
+      "signature": "impl MilsteinSolver { pub fn try_step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , DiffeqError > }"
     },
     {
-      "signature": "impl MilsteinSolver { pub fn try_step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , DiffeqError > }"
+      "signature": "impl MilsteinSolver { pub fn try_step_with_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , DiffeqError > }"
     },
     {
       "signature": "pub struct MilsteinSolver"
@@ -11489,16 +11641,16 @@
       "signature": "impl Sriw1Solver { pub const fn scratch_len (& self , _ : usize , _ : usize) -> usize }"
     },
     {
-      "signature": "impl Sriw1Solver { pub fn step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) }"
+      "signature": "impl Sriw1Solver { pub fn step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) }"
     },
     {
-      "signature": "impl Sriw1Solver { pub fn step_with_correlated_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) }"
+      "signature": "impl Sriw1Solver { pub fn step_with_correlated_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & [T] , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) ,) }"
     },
     {
-      "signature": "impl Sriw1Solver { pub fn try_step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > , _ : & mut R ,) -> Result < () , DiffeqError > }"
+      "signature": "impl Sriw1Solver { pub fn try_step < T : Scalar , S : SdeSystem < T > + ? Sized , R : RngCore + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , DiffeqError > }"
     },
     {
-      "signature": "impl Sriw1Solver { pub fn try_step_with_correlated_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , DiffeqError > }"
+      "signature": "impl Sriw1Solver { pub fn try_step_with_correlated_increments < T : Scalar , S : SdeSystem < T > + ? Sized > (& self , _ : & S , _ : T , _ : T , _ : & [T] , _ : & [T] , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , DiffeqError > }"
     },
     {
       "signature": "pub struct CorrelatedWienerIncrement < T : Scalar >"
@@ -11515,10 +11667,10 @@
       "signature": "pub enum StochasticCalculus"
     },
     {
-      "signature": "pub fn eval_ito_effective_drift < T : Scalar , S : SdeSystem < T > + ? Sized > (_ : & S , _ : StochasticCalculus , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,)"
+      "signature": "pub fn eval_ito_effective_drift < T : Scalar , S : SdeSystem < T > + ? Sized > (_ : & S , _ : StochasticCalculus , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) ,)"
     },
     {
-      "signature": "pub fn try_eval_ito_effective_drift < T : Scalar , S : SdeSystem < T > + ? Sized > (_ : & S , _ : StochasticCalculus , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , DiffeqError >"
+      "signature": "pub fn try_eval_ito_effective_drift < T : Scalar , S : SdeSystem < T > + ? Sized > (_ : & S , _ : StochasticCalculus , _ : T , _ : & [T] , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , DiffeqError >"
     },
     {
       "signature": "pub trait LangevinSystem < T : Scalar >"
@@ -11559,10 +11711,10 @@
       "signature": "pub fn cholesky_factor < T : Scalar > (_ : & [T] , _ : & mut [T] , _ : usize) -> Result < () , LinalgError >"
     },
     {
-      "signature": "pub fn cholesky_semidefinite < T : Scalar > (_ : & [T] , _ : & mut [T] , _ : usize , _ : T , _ : T , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+      "signature": "pub fn cholesky_semidefinite < T : Scalar > (_ : & [T] , _ : & mut [T] , _ : usize , _ : T , _ : T , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , LinalgError >"
     },
     {
-      "signature": "pub fn cholesky_solve < T : Scalar > (_ : & [T] , _ : & [T] , _ : & mut [T] , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+      "signature": "pub fn cholesky_solve < T : Scalar > (_ : & [T] , _ : & [T] , _ : & mut [T] , _ : usize , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , LinalgError >"
     },
     {
       "signature": "pub fn cholesky_solve_factored < T : Scalar > (_ : & [T] , _ : & [T] , _ : & mut [T] , _ : usize ,) -> Result < () , LinalgError >"
@@ -11576,10 +11728,10 @@
       "signature": "pub const fn gmres_workspace_len (_ : usize , _ : usize) -> usize"
     },
     {
-      "signature": "pub fn cg_solve < T : Scalar > (_ : & CsrMatrixView < '_ , T > , _ : & [T] , _ : & mut [T] , _ : T , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < KrylovReport < T > , LinalgError >"
+      "signature": "pub fn cg_solve < T : Scalar > (_ : & CsrMatrixView < '_ , T > , _ : & [T] , _ : & mut [T] , _ : T , _ : usize , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < KrylovReport < T > , LinalgError >"
     },
     {
-      "signature": "pub fn gmres_solve < T : Scalar > (_ : & CsrMatrixView < '_ , T > , _ : & [T] , _ : & mut [T] , _ : usize , _ : T , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < KrylovReport < T > , LinalgError >"
+      "signature": "pub fn gmres_solve < T : Scalar > (_ : & CsrMatrixView < '_ , T > , _ : & [T] , _ : & mut [T] , _ : usize , _ : T , _ : usize , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < KrylovReport < T > , LinalgError >"
     },
     {
       "signature": "pub struct KrylovReport < T >"
@@ -11770,13 +11922,28 @@
       "signature": "pub use tikhonov :: tikhonov_workspace_len"
     },
     {
+      "signature": "pub use types :: ArenaCheckpoint"
+    },
+    {
+      "signature": "pub use types :: ArenaError"
+    },
+    {
+      "signature": "pub use types :: ByteArena"
+    },
+    {
+      "signature": "pub use types :: ByteCursor"
+    },
+    {
       "signature": "pub use types :: DenseView"
     },
     {
       "signature": "pub use types :: LinalgError"
     },
     {
-      "signature": "pub use types :: OwnedWorkspace"
+      "signature": "pub use types :: LinalgWorkspace"
+    },
+    {
+      "signature": "pub use types :: OwnedByteArena"
     },
     {
       "signature": "pub use types :: SolverWorkspace"
@@ -11826,10 +11993,10 @@
       "signature": "pub fn lu_factor_in_place < T : Scalar > (_ : & mut [T] , _ : usize , _ : & mut [usize] , _ : T ,) -> Result < i32 , LinalgError >"
     },
     {
-      "signature": "pub fn lu_inverse < T : Scalar > (_ : & [T] , _ : & mut [T] , _ : usize , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+      "signature": "pub fn lu_inverse < T : Scalar > (_ : & [T] , _ : & mut [T] , _ : usize , _ : & mut [usize] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , LinalgError >"
     },
     {
-      "signature": "pub fn lu_solve < T : Scalar > (_ : & [T] , _ : & [T] , _ : & mut [T] , _ : usize , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+      "signature": "pub fn lu_solve < T : Scalar > (_ : & [T] , _ : & [T] , _ : & mut [T] , _ : usize , _ : & mut [usize] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , LinalgError >"
     },
     {
       "signature": "pub fn lu_solve_factored < T : Scalar > (_ : & [T] , _ : usize , _ : & [usize] , _ : & [T] , _ : & mut [T] ,) -> Result < () , LinalgError >"
@@ -11846,10 +12013,10 @@
       "signature": "pub const fn spectral_workspace_len (_ : usize , _ : usize) -> usize"
     },
     {
-      "signature": "pub fn cond_l1 < T : Scalar > (_ : & [T] , _ : usize , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < T , LinalgError >"
+      "signature": "pub fn cond_l1 < T : Scalar > (_ : & [T] , _ : usize , _ : & mut [usize] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < T , LinalgError >"
     },
     {
-      "signature": "pub fn cond_spectral < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < T , LinalgError >"
+      "signature": "pub fn cond_spectral < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < T , LinalgError >"
     },
     {
       "signature": "pub fn norm_frobenius < T : Scalar > (_ : & [T] , _ : usize , _ : usize) -> Result < T , LinalgError >"
@@ -11861,7 +12028,7 @@
       "signature": "pub fn norm_linf < T : Scalar > (_ : & [T] , _ : usize , _ : usize) -> Result < T , LinalgError >"
     },
     {
-      "signature": "pub fn norm_spectral < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < T , LinalgError >"
+      "signature": "pub fn norm_spectral < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < T , LinalgError >"
     }
   ],
   "engine_linalg:src/qr.rs": [
@@ -11884,10 +12051,10 @@
       "signature": "pub fn qr_apply_qt < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : & mut [T] ,) -> Result < () , LinalgError >"
     },
     {
-      "signature": "pub fn qr_factor_pivoted < T : Scalar > (_ : & mut [T] , _ : usize , _ : usize , _ : & mut [T] , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < usize , LinalgError >"
+      "signature": "pub fn qr_factor_pivoted < T : Scalar > (_ : & mut [T] , _ : usize , _ : usize , _ : & mut [T] , _ : & mut [usize] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < usize , LinalgError >"
     },
     {
-      "signature": "pub fn qr_solve_least_squares < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : & mut [T] , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < usize , LinalgError >"
+      "signature": "pub fn qr_solve_least_squares < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : & mut [T] , _ : & mut [usize] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < usize , LinalgError >"
     },
     {
       "signature": "pub fn qr_solve_r_pivoted < T : Scalar > (_ : & [T] , _ : (usize , usize) , _ : usize , _ : & [usize] , _ : & [T] , _ : & mut [T] , _ : & mut [T] ,) -> Result < () , LinalgError >"
@@ -11965,7 +12132,7 @@
       "signature": "pub const fn svd_bidiagonal_workspace_len (_ : usize , _ : usize) -> usize"
     },
     {
-      "signature": "pub fn svd_bidiagonal < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & mut [T] , _ : & mut [T] , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+      "signature": "pub fn svd_bidiagonal < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & mut [T] , _ : & mut [T] , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , LinalgError >"
     }
   ],
   "engine_linalg:src/svd_jacobi.rs": [
@@ -11976,10 +12143,10 @@
       "signature": "pub const fn symmetric_eigen_workspace_len (_ : usize) -> usize"
     },
     {
-      "signature": "pub fn svd_jacobi < T : Scalar > (_ : & [T] , _ : (usize , usize) , _ : & mut [T] , _ : & mut [T] , _ : & mut [T] , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+      "signature": "pub fn svd_jacobi < T : Scalar > (_ : & [T] , _ : (usize , usize) , _ : & mut [T] , _ : & mut [T] , _ : & mut [T] , _ : usize , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , LinalgError >"
     },
     {
-      "signature": "pub fn symmetric_eigen_jacobi < T : Scalar > (_ : & [T] , _ : usize , _ : & mut [T] , _ : & mut [T] , _ : usize , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+      "signature": "pub fn symmetric_eigen_jacobi < T : Scalar > (_ : & [T] , _ : usize , _ : & mut [T] , _ : & mut [T] , _ : usize , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , LinalgError >"
     }
   ],
   "engine_linalg:src/svd_ops.rs": [
@@ -11990,19 +12157,19 @@
       "signature": "pub const fn svd_ops_workspace_len (_ : usize , _ : usize) -> usize"
     },
     {
-      "signature": "pub fn qr_or_svd_solve < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : & mut [T] , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < usize , LinalgError >"
+      "signature": "pub fn qr_or_svd_solve < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : & mut [T] , _ : & mut [usize] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < usize , LinalgError >"
     },
     {
-      "signature": "pub fn svd_effective_rank < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : T , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < usize , LinalgError >"
+      "signature": "pub fn svd_effective_rank < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : T , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < usize , LinalgError >"
     },
     {
-      "signature": "pub fn svd_low_rank_approx < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : usize , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+      "signature": "pub fn svd_low_rank_approx < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : usize , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , LinalgError >"
     },
     {
-      "signature": "pub fn svd_pseudoinverse < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+      "signature": "pub fn svd_pseudoinverse < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : T , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , LinalgError >"
     },
     {
-      "signature": "pub fn svd_solve_least_squares < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < usize , LinalgError >"
+      "signature": "pub fn svd_solve_least_squares < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : T , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < usize , LinalgError >"
     }
   ],
   "engine_linalg:src/tikhonov.rs": [
@@ -12016,10 +12183,10 @@
       "signature": "pub enum DampingStyle < T >"
     },
     {
-      "signature": "pub fn solve_damped_normal < T : Scalar > (_ : & [T] , _ : & [T] , _ : usize , _ : DampingStyle < T > , _ : & mut [T] , _ : & mut [usize] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+      "signature": "pub fn solve_damped_normal < T : Scalar > (_ : & [T] , _ : & [T] , _ : usize , _ : DampingStyle < T > , _ : & mut [T] , _ : & mut [usize] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , LinalgError >"
     },
     {
-      "signature": "pub fn tikhonov_solve < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : T , _ : & mut [T] , _ : & mut SolverWorkspace < '_ , T > ,) -> Result < () , LinalgError >"
+      "signature": "pub fn tikhonov_solve < T : Scalar > (_ : & [T] , _ : usize , _ : usize , _ : & [T] , _ : T , _ : & mut [T] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , LinalgError >"
     }
   ],
   "engine_linalg:src/types.rs": [
@@ -12037,6 +12204,21 @@
     },
     {
       "signature": "impl < 'a , T : Scalar > DenseView < 'a , T > { pub fn new (_ : & 'a [T] , _ : usize , _ : usize) -> Result < Self , LinalgError > }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > LinalgWorkspace < 'a , T > { pub fn empty () -> Self }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > LinalgWorkspace < 'a , T > { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > LinalgWorkspace < 'a , T > { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > LinalgWorkspace < 'a , T > { pub fn new (_ : & 'a mut [T]) -> Self }"
+    },
+    {
+      "signature": "impl < 'a , T : Scalar > LinalgWorkspace < 'a , T > { pub fn try_split (& mut self , _ : usize ,) -> Result < (& mut [T] , LinalgWorkspace < '_ , T >) , LinalgError > }"
     },
     {
       "signature": "pub const fn mat_idx (_ : usize , _ : usize , _ : usize) -> usize"
@@ -12075,13 +12257,28 @@
       "signature": "pub struct DenseView < 'a , T >"
     },
     {
-      "signature": "pub use math_scalars :: OwnedWorkspace"
+      "signature": "pub struct LinalgWorkspace < 'a , T : Scalar >"
+    },
+    {
+      "signature": "pub use math_memory :: ArenaCheckpoint"
+    },
+    {
+      "signature": "pub use math_memory :: ArenaError"
+    },
+    {
+      "signature": "pub use math_memory :: ByteArena"
+    },
+    {
+      "signature": "pub use math_memory :: ByteCursor"
+    },
+    {
+      "signature": "pub use math_memory :: OwnedByteArena"
+    },
+    {
+      "signature": "pub use math_memory :: SolverWorkspace"
     },
     {
       "signature": "pub use math_scalars :: ScalarError"
-    },
-    {
-      "signature": "pub use math_scalars :: SolverWorkspace"
     }
   ],
   "engine_opt:src/error.rs": [
@@ -12388,10 +12585,10 @@
       "signature": "impl SemiImplicitFourierStepper { pub fn new_2d (_ : f64 , _ : f64) -> Self }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn step_cahn_hilliard_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+      "signature": "impl SemiImplicitFourierStepper { pub fn step_cahn_hilliard_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+      "signature": "impl SemiImplicitFourierStepper { pub fn step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) }"
     },
     {
       "signature": "impl SemiImplicitFourierStepper { pub fn try_new_1d (_ : f64) -> Result < Self , math_commons :: error :: MathError > }"
@@ -12400,10 +12597,10 @@
       "signature": "impl SemiImplicitFourierStepper { pub fn try_new_2d (_ : f64 , _ : f64) -> Result < Self , math_commons :: error :: MathError > }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_cahn_hilliard_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > }"
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_cahn_hilliard_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , PdeError > }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > }"
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , PdeError > }"
     },
     {
       "signature": "pub struct SemiImplicitFourierStepper"
@@ -12411,28 +12608,28 @@
   ],
   "engine_pde:src/fourier_stepper/kpz.rs": [
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn step_edwards_wilkinson_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+      "signature": "impl SemiImplicitFourierStepper { pub fn step_edwards_wilkinson_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn step_edwards_wilkinson_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+      "signature": "impl SemiImplicitFourierStepper { pub fn step_edwards_wilkinson_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn step_kpz_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+      "signature": "impl SemiImplicitFourierStepper { pub fn step_kpz_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn step_kpz_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+      "signature": "impl SemiImplicitFourierStepper { pub fn step_kpz_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_edwards_wilkinson_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > }"
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_edwards_wilkinson_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , PdeError > }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_edwards_wilkinson_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > }"
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_edwards_wilkinson_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , PdeError > }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_kpz_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > }"
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_kpz_1d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , PdeError > }"
     },
     {
-      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_kpz_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > }"
+      "signature": "impl SemiImplicitFourierStepper { pub fn try_step_kpz_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , PdeError > }"
     }
   ],
   "engine_pde:src/fused_stepper.rs": [
@@ -12472,18 +12669,6 @@
   ],
   "engine_pde:src/lib.rs": [
     {
-      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > PdeOwnedWorkspace < T > { pub fn as_workspace (& mut self) -> math_commons :: math_kernel :: types :: SolverWorkspace < '_ , T > }"
-    },
-    {
-      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > PdeOwnedWorkspace < T > { pub fn try_with_capacity (_ : usize) -> Result < Self , PdeError > }"
-    },
-    {
-      "signature": "impl < T : math_commons :: math_kernel :: types :: Scalar > PdeOwnedWorkspace < T > { pub fn with_capacity (_ : usize) -> Self }"
-    },
-    {
-      "signature": "pub struct PdeOwnedWorkspace < T : math_commons :: math_kernel :: types :: Scalar >"
-    },
-    {
       "signature": "pub use boundary :: BoundaryCondition"
     },
     {
@@ -12518,6 +12703,27 @@
     },
     {
       "signature": "pub use fused_stepper :: FusedStencilStepper"
+    },
+    {
+      "signature": "pub use math_commons :: math_kernel :: types :: ScalarWorkspace"
+    },
+    {
+      "signature": "pub use math_memory :: ArenaCheckpoint"
+    },
+    {
+      "signature": "pub use math_memory :: ArenaError"
+    },
+    {
+      "signature": "pub use math_memory :: ByteArena"
+    },
+    {
+      "signature": "pub use math_memory :: ByteCursor"
+    },
+    {
+      "signature": "pub use math_memory :: OwnedByteArena"
+    },
+    {
+      "signature": "pub use math_memory :: SolverWorkspace"
     },
     {
       "signature": "pub use math_rng :: BASE_SEED"
@@ -12570,28 +12776,28 @@
       "signature": "pub enum SpdeNoiseKind"
     },
     {
-      "signature": "pub fn inject_additive_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,)"
+      "signature": "pub fn inject_additive_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,)"
     },
     {
-      "signature": "pub fn inject_additive_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,)"
+      "signature": "pub fn inject_additive_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,)"
     },
     {
-      "signature": "pub fn inject_conserved_flux_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,)"
+      "signature": "pub fn inject_conserved_flux_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,)"
     },
     {
-      "signature": "pub fn inject_conserved_flux_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,)"
+      "signature": "pub fn inject_conserved_flux_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,)"
     },
     {
-      "signature": "pub fn try_inject_additive_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError >"
+      "signature": "pub fn try_inject_additive_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , PdeError >"
     },
     {
-      "signature": "pub fn try_inject_additive_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError >"
+      "signature": "pub fn try_inject_additive_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , PdeError >"
     },
     {
-      "signature": "pub fn try_inject_conserved_flux_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError >"
+      "signature": "pub fn try_inject_conserved_flux_noise_1d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , PdeError >"
     },
     {
-      "signature": "pub fn try_inject_conserved_flux_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError >"
+      "signature": "pub fn try_inject_conserved_flux_noise_2d < R : RngCore + ? Sized > (_ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : BoundaryCondition , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , PdeError >"
     }
   ],
   "engine_pde:src/spde_stencil.rs": [
@@ -12605,22 +12811,22 @@
       "signature": "impl ExplicitSpdeStencilStepper { pub const fn scratch_len_2d (_ : usize , _ : usize) -> usize }"
     },
     {
-      "signature": "impl ExplicitSpdeStencilStepper { pub fn step_1d < F , R > (& self , _ : & mut [f64] , _ : f64 , _ : F , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) where F : FnMut (usize , f64 , f64 , f64) -> f64 , R : RngCore + ? Sized , }"
+      "signature": "impl ExplicitSpdeStencilStepper { pub fn step_1d < F , R > (& self , _ : & mut [f64] , _ : f64 , _ : F , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) where F : FnMut (usize , f64 , f64 , f64) -> f64 , R : RngCore + ? Sized , }"
     },
     {
-      "signature": "impl ExplicitSpdeStencilStepper { pub fn step_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : F , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) where F : FnMut (usize , usize , f64 , (f64 , f64) , f64) -> f64 , R : RngCore + ? Sized , }"
+      "signature": "impl ExplicitSpdeStencilStepper { pub fn step_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : F , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) where F : FnMut (usize , usize , f64 , (f64 , f64) , f64) -> f64 , R : RngCore + ? Sized , }"
     },
     {
-      "signature": "impl ExplicitSpdeStencilStepper { pub fn step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) }"
+      "signature": "impl ExplicitSpdeStencilStepper { pub fn step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) }"
     },
     {
-      "signature": "impl ExplicitSpdeStencilStepper { pub fn try_step_1d < F , R > (& self , _ : & mut [f64] , _ : f64 , _ : F , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > where F : FnMut (usize , f64 , f64 , f64) -> f64 , R : RngCore + ? Sized , }"
+      "signature": "impl ExplicitSpdeStencilStepper { pub fn try_step_1d < F , R > (& self , _ : & mut [f64] , _ : f64 , _ : F , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , PdeError > where F : FnMut (usize , f64 , f64 , f64) -> f64 , R : RngCore + ? Sized , }"
     },
     {
-      "signature": "impl ExplicitSpdeStencilStepper { pub fn try_step_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : F , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > where F : FnMut (usize , usize , f64 , (f64 , f64) , f64) -> f64 , R : RngCore + ? Sized , }"
+      "signature": "impl ExplicitSpdeStencilStepper { pub fn try_step_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : F , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , PdeError > where F : FnMut (usize , usize , f64 , (f64 , f64) , f64) -> f64 , R : RngCore + ? Sized , }"
     },
     {
-      "signature": "impl ExplicitSpdeStencilStepper { pub fn try_step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > }"
+      "signature": "impl ExplicitSpdeStencilStepper { pub fn try_step_cahn_hilliard_2d < R : RngCore + ? Sized > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , PdeError > }"
     },
     {
       "signature": "impl SplitStepSpdeStencilStepper { pub const fn new (_ : StencilOperators , _ : BoundaryCondition , _ : SpdeNoiseKind , _ : usize ,) -> Self }"
@@ -12629,10 +12835,10 @@
       "signature": "impl SplitStepSpdeStencilStepper { pub const fn scratch_len_2d (_ : usize , _ : usize) -> usize }"
     },
     {
-      "signature": "impl SplitStepSpdeStencilStepper { pub fn step_reaction_diffusion_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : F , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) where F : FnMut (f64) -> f64 , R : RngCore + ? Sized , }"
+      "signature": "impl SplitStepSpdeStencilStepper { pub fn step_reaction_diffusion_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : F , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) where F : FnMut (f64) -> f64 , R : RngCore + ? Sized , }"
     },
     {
-      "signature": "impl SplitStepSpdeStencilStepper { pub fn try_step_reaction_diffusion_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : F , _ : & mut SolverWorkspace < '_ , f64 > , _ : & mut R ,) -> Result < () , PdeError > where F : FnMut (f64) -> f64 , R : RngCore + ? Sized , }"
+      "signature": "impl SplitStepSpdeStencilStepper { pub fn try_step_reaction_diffusion_2d < F , R > (& self , _ : & mut [f64] , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : F , _ : & mut (impl SolverWorkspace + ? Sized) , _ : & mut R ,) -> Result < () , PdeError > where F : FnMut (f64) -> f64 , R : RngCore + ? Sized , }"
     },
     {
       "signature": "pub struct ExplicitSpdeStencilStepper"
@@ -13349,6 +13555,9 @@
       "signature": "pub use math_diagnostics :: Severity"
     },
     {
+      "signature": "pub use math_memory :: ArenaError"
+    },
+    {
       "signature": "pub use math_scalars :: ScalarError"
     },
     {
@@ -13404,31 +13613,31 @@
   ],
   "math_commons:src/math_kernel/types.rs": [
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn as_mut_slice (& mut self) -> & mut [T] }"
+      "signature": "impl < 'a , T : Scalar > ScalarWorkspace < 'a , T > { pub fn as_mut_slice (& mut self) -> & mut [T] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn as_slice (& self) -> & [T] }"
+      "signature": "impl < 'a , T : Scalar > ScalarWorkspace < 'a , T > { pub fn as_slice (& self) -> & [T] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn is_empty (& self) -> bool }"
+      "signature": "impl < 'a , T : Scalar > ScalarWorkspace < 'a , T > { pub fn is_empty (& self) -> bool }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn len (& self) -> usize }"
+      "signature": "impl < 'a , T : Scalar > ScalarWorkspace < 'a , T > { pub fn len (& self) -> usize }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn new (_ : & 'a mut [T]) -> Self }"
+      "signature": "impl < 'a , T : Scalar > ScalarWorkspace < 'a , T > { pub fn new (_ : & 'a mut [T]) -> Self }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn reborrow (& mut self) -> SolverWorkspace < '_ , T > }"
+      "signature": "impl < 'a , T : Scalar > ScalarWorkspace < 'a , T > { pub fn reborrow_scalars (& mut self) -> ScalarWorkspace < '_ , T > }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn take_slice (& mut self , _ : usize) -> & 'a mut [T] }"
+      "signature": "impl < 'a , T : Scalar > ScalarWorkspace < 'a , T > { pub fn take_slice (& mut self , _ : usize) -> & 'a mut [T] }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn try_take_slice (& mut self , _ : usize) -> Result < & 'a mut [T] , crate :: error :: MathError > }"
+      "signature": "impl < 'a , T : Scalar > ScalarWorkspace < 'a , T > { pub fn try_take_slice (& mut self , _ : usize) -> Result < & 'a mut [T] , crate :: error :: MathError > }"
     },
     {
-      "signature": "impl < 'a , T : Scalar > SolverWorkspace < 'a , T > { pub fn zero_fill (& mut self) }"
+      "signature": "impl < 'a , T : Scalar > ScalarWorkspace < 'a , T > { pub fn zero_fill (& mut self) }"
     },
     {
       "signature": "pub fn fill_standard_normal < T : Scalar , R : RngCore + ? Sized > (_ : & mut [T] , _ : & mut R)"
@@ -13455,13 +13664,13 @@
       "signature": "pub struct GridIndex"
     },
     {
-      "signature": "pub struct SolverWorkspace < 'a , T : Scalar >"
+      "signature": "pub struct ScalarWorkspace < 'a , T : Scalar >"
     },
     {
       "signature": "pub struct StepSize"
     },
     {
-      "signature": "pub trait Scalar : Copy + Clone + PartialEq + PartialOrd + Debug + Default + Send + Sync + 'static + Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + Div < Output = Self > + Neg < Output = Self > + AddAssign + SubAssign + MulAssign + DivAssign"
+      "signature": "pub trait Scalar : Copy + Clone + bytemuck :: Pod + bytemuck :: Zeroable + PartialEq + PartialOrd + Debug + Default + Send + Sync + 'static + Add < Output = Self > + Sub < Output = Self > + Mul < Output = Self > + Div < Output = Self > + Neg < Output = Self > + AddAssign + SubAssign + MulAssign + DivAssign"
     },
     {
       "signature": "pub trait Scalar { const EPSILON : Self }"
@@ -13519,6 +13728,24 @@
     },
     {
       "signature": "pub trait Scalar { fn to_f64 (self) -> f64 }"
+    },
+    {
+      "signature": "pub use math_memory :: ArenaCheckpoint"
+    },
+    {
+      "signature": "pub use math_memory :: ArenaError"
+    },
+    {
+      "signature": "pub use math_memory :: ByteArena"
+    },
+    {
+      "signature": "pub use math_memory :: ByteCursor"
+    },
+    {
+      "signature": "pub use math_memory :: OwnedByteArena"
+    },
+    {
+      "signature": "pub use math_memory :: SolverWorkspace"
     }
   ],
   "math_commons:src/poi/extrema.rs": [
@@ -13811,52 +14038,64 @@
   ],
   "math_commons:src/stochastic/mod.rs": [
     {
-      "signature": "impl SolverWorkspace { pub fn analyze_scc (& mut self , _ : & [f64] , _ : usize) -> Option < SccSummary > }"
+      "signature": "impl StochasticWorkspace { pub const fn sample_capacity (& self) -> usize }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn calibrate_ou (& self , _ : & [f64] , _ : f64) -> Option < OuCalibration > }"
+      "signature": "impl StochasticWorkspace { pub const fn state_capacity (& self) -> usize }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn ensure_sample_capacity (& mut self , _ : usize) }"
+      "signature": "impl StochasticWorkspace { pub fn analyze_scc (& mut self , _ : & [f64] , _ : usize) -> Option < SccSummary > }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn ensure_state_capacity (& mut self , _ : usize) }"
+      "signature": "impl StochasticWorkspace { pub fn calibrate_ou (& self , _ : & [f64] , _ : f64) -> Option < OuCalibration > }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
+      "signature": "impl StochasticWorkspace { pub fn ensure_sample_capacity (& mut self , _ : usize) }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn operator_staging_mut (& mut self , _ : usize) -> & mut [f64] }"
+      "signature": "impl StochasticWorkspace { pub fn ensure_state_capacity (& mut self , _ : usize) }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn sample_capacity (& self) -> usize }"
+      "signature": "impl StochasticWorkspace { pub fn new (_ : usize , _ : usize) -> Self }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn solve_ctmc_steady_state (& mut self , _ : & [f64] , _ : usize , _ : & mut [f64] ,) -> bool }"
+      "signature": "impl StochasticWorkspace { pub fn operator_staging_mut (& mut self , _ : usize) -> & mut [f64] }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn solve_dtmc_stationary (& mut self , _ : & [f64] , _ : usize , _ : & mut [f64] ,) -> bool }"
+      "signature": "impl StochasticWorkspace { pub fn solve_ctmc_steady_state (& mut self , _ : & [f64] , _ : usize , _ : & mut [f64] ,) -> bool }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn solve_staged_ctmc_steady_state (& mut self , _ : usize , _ : & mut [f64] ,) -> bool }"
+      "signature": "impl StochasticWorkspace { pub fn solve_dtmc_stationary (& mut self , _ : & [f64] , _ : usize , _ : & mut [f64] ,) -> bool }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn solve_staged_ctmc_steady_state_slice (& mut self , _ : usize) -> Option < & [f64] > }"
+      "signature": "impl StochasticWorkspace { pub fn solve_staged_ctmc_steady_state (& mut self , _ : usize , _ : & mut [f64] ,) -> bool }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn solve_staged_dtmc_stationary (& mut self , _ : usize , _ : & mut [f64]) -> bool }"
+      "signature": "impl StochasticWorkspace { pub fn solve_staged_ctmc_steady_state_slice (& mut self , _ : usize) -> Option < & [f64] > }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn solve_staged_dtmc_stationary_slice (& mut self , _ : usize) -> Option < & [f64] > }"
+      "signature": "impl StochasticWorkspace { pub fn solve_staged_dtmc_stationary (& mut self , _ : usize , _ : & mut [f64]) -> bool }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn state_capacity (& self) -> usize }"
+      "signature": "impl StochasticWorkspace { pub fn solve_staged_dtmc_stationary_slice (& mut self , _ : usize) -> Option < & [f64] > }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn summarize_samples (& mut self , _ : & [f64] , _ : Option < f64 > ,) -> Option < SampleSummary > }"
+      "signature": "impl StochasticWorkspace { pub fn summarize_samples (& mut self , _ : & [f64] , _ : Option < f64 > ,) -> Option < SampleSummary > }"
     },
     {
-      "signature": "impl SolverWorkspace { pub fn unique_sink_members (& self , _ : usize) -> & [usize] }"
+      "signature": "impl StochasticWorkspace { pub fn try_ensure_sample_capacity (& mut self , _ : usize) -> Result < () , ArenaError > }"
+    },
+    {
+      "signature": "impl StochasticWorkspace { pub fn try_ensure_state_capacity (& mut self , _ : usize) -> Result < () , ArenaError > }"
+    },
+    {
+      "signature": "impl StochasticWorkspace { pub fn try_new (_ : usize , _ : usize) -> Result < Self , ArenaError > }"
+    },
+    {
+      "signature": "impl StochasticWorkspace { pub fn unique_sink_members (& self , _ : usize) -> & [usize] }"
+    },
+    {
+      "signature": "pub fn analyze_scc_with_workspace (_ : & [f64] , _ : usize , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < Option < SccSummary > , ArenaError >"
     },
     {
       "signature": "pub fn ctmc_steady_state (_ : & [f64] , _ : usize) -> Option < Vec < f64 > >"
@@ -13865,10 +14104,19 @@
       "signature": "pub fn dtmc_stationary_distribution (_ : & [f64] , _ : usize) -> Option < Vec < f64 > >"
     },
     {
+      "signature": "pub fn solve_ctmc_steady_state_with_workspace (_ : & [f64] , _ : usize , _ : & mut [f64] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < bool , ArenaError >"
+    },
+    {
+      "signature": "pub fn solve_dtmc_stationary_with_workspace (_ : & [f64] , _ : usize , _ : & mut [f64] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < bool , ArenaError >"
+    },
+    {
+      "signature": "pub fn summarize_samples_with_workspace (_ : & [f64] , _ : Option < f64 > , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < Option < SampleSummary > , ArenaError >"
+    },
+    {
       "signature": "pub struct SccSummary"
     },
     {
-      "signature": "pub struct SolverWorkspace"
+      "signature": "pub struct StochasticWorkspace"
     },
     {
       "signature": "pub use ou :: OuCalibration"
@@ -13958,6 +14206,437 @@
   "math_explorer:src/lib.rs": [
     {
       "signature": "pub use oxidizemath :: *"
+    }
+  ],
+  "math_memory:src/arena.rs": [
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub const fn byte_capacity (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub const fn checkpoint (& self) -> ArenaCheckpoint }"
+    },
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub const fn remaining_bytes (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub const fn used_bytes (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub fn alloc_bits (& mut self , _ : usize) -> Result < BitSlice < '_ > , ArenaError > }"
+    },
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub fn alloc_flags (& mut self , _ : usize) -> Result < FlagSlice < '_ > , ArenaError > }"
+    },
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub fn alloc_slice < T : Pod + Zeroable > (& mut self , _ : usize) -> Result < & mut [T] , ArenaError > }"
+    },
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub fn cursor (& mut self) -> ByteCursor < '_ > }"
+    },
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub fn empty () -> Self }"
+    },
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub fn from_pod_slice < T : Pod > (_ : & 'a mut [T]) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub fn into_cursor (self) -> ByteCursor < 'a > }"
+    },
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub fn new (_ : & 'a mut [u8]) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub fn reborrow (& mut self) -> ByteArena < '_ > }"
+    },
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub fn rewind (& mut self , _ : ArenaCheckpoint) -> Result < () , ArenaError > }"
+    },
+    {
+      "signature": "impl < 'a > ByteArena < 'a > { pub fn split_slice < T : Pod + Zeroable > (& mut self , _ : usize ,) -> Result < (& mut [T] , ByteArena < '_ >) , ArenaError > }"
+    },
+    {
+      "signature": "impl < 'a > ByteCursor < 'a > { pub const fn remaining_bytes (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > ByteCursor < 'a > { pub fn alloc_bits (& mut self , _ : usize) -> Result < BitSlice < 'a > , ArenaError > }"
+    },
+    {
+      "signature": "impl < 'a > ByteCursor < 'a > { pub fn alloc_flags (& mut self , _ : usize) -> Result < FlagSlice < 'a > , ArenaError > }"
+    },
+    {
+      "signature": "impl < 'a > ByteCursor < 'a > { pub fn alloc_slice < T : Pod + Zeroable > (& mut self , _ : usize ,) -> Result < & 'a mut [T] , ArenaError > }"
+    },
+    {
+      "signature": "impl < 'a > ByteCursor < 'a > { pub fn into_arena (self) -> ByteArena < 'a > }"
+    },
+    {
+      "signature": "impl < 'a > ByteCursor < 'a > { pub fn into_bytes (self) -> & 'a mut [u8] }"
+    },
+    {
+      "signature": "impl < 'a > ByteCursor < 'a > { pub fn new (_ : & 'a mut [u8]) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > ByteCursor < 'a > { pub fn reborrow (& mut self) -> ByteArena < '_ > }"
+    },
+    {
+      "signature": "impl ArenaCheckpoint { pub const fn byte_offset (self) -> usize }"
+    },
+    {
+      "signature": "pub const fn padded_slice_bytes < T > (_ : usize) -> Option < usize >"
+    },
+    {
+      "signature": "pub struct ArenaCheckpoint"
+    },
+    {
+      "signature": "pub struct ByteArena < 'a >"
+    },
+    {
+      "signature": "pub struct ByteCursor < 'a >"
+    }
+  ],
+  "math_memory:src/error.rs": [
+    {
+      "signature": "pub enum ArenaError"
+    }
+  ],
+  "math_memory:src/lib.rs": [
+    {
+      "signature": "pub use arena :: ArenaCheckpoint"
+    },
+    {
+      "signature": "pub use arena :: ByteArena"
+    },
+    {
+      "signature": "pub use arena :: ByteCursor"
+    },
+    {
+      "signature": "pub use arena :: padded_slice_bytes"
+    },
+    {
+      "signature": "pub use bytemuck :: Pod"
+    },
+    {
+      "signature": "pub use bytemuck :: Zeroable"
+    },
+    {
+      "signature": "pub use error :: ArenaError"
+    },
+    {
+      "signature": "pub use owned :: OwnedByteArena"
+    },
+    {
+      "signature": "pub use region :: ArenaLayout"
+    },
+    {
+      "signature": "pub use region :: ArenaRegion"
+    },
+    {
+      "signature": "pub use region :: BitRegion"
+    },
+    {
+      "signature": "pub use region :: FlagRegion"
+    },
+    {
+      "signature": "pub use region :: MAX_ARENA_ALIGN"
+    },
+    {
+      "signature": "pub use region :: RawByteCursor"
+    },
+    {
+      "signature": "pub use views :: BitSlice"
+    },
+    {
+      "signature": "pub use views :: FlagSlice"
+    },
+    {
+      "signature": "pub use workspace :: SolverWorkspace"
+    }
+  ],
+  "math_memory:src/owned.rs": [
+    {
+      "signature": "impl OwnedByteArena { pub const fn byte_capacity (& self) -> usize }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub const fn checkpoint (& self) -> ArenaCheckpoint }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub const fn remaining_bytes (& self) -> usize }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub const fn used_bytes (& self) -> usize }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn as_arena (& mut self) -> ByteArena < '_ > }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn as_bytes (& self) -> & [u8] }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn as_bytes_mut (& mut self) -> & mut [u8] }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn bit_words (& self , _ : BitRegion) -> & [u64] }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn bits_mut (& mut self , _ : BitRegion) -> BitSlice < '_ > }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn clear_zero (& mut self) }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn ensure_capacity (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn flag_get (& self , _ : FlagRegion , _ : usize) -> bool }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn flags_mut (& mut self , _ : FlagRegion) -> FlagSlice < '_ > }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn from_layout (_ : & ArenaLayout) -> Self }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn raw_cursor (& mut self) -> RawByteCursor < '_ > }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn region_slice < T : Pod > (& self , _ : ArenaRegion < T >) -> & [T] }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn region_slice_mut < T : Pod > (& mut self , _ : ArenaRegion < T >) -> & mut [T] }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn rewind (& mut self , _ : ArenaCheckpoint) -> Result < () , ArenaError > }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn try_ensure_capacity (& mut self , _ : usize) -> Result < () , ArenaError > }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn try_from_layout (_ : & ArenaLayout) -> Result < Self , ArenaError > }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn try_with_capacity (_ : usize) -> Result < Self , ArenaError > }"
+    },
+    {
+      "signature": "impl OwnedByteArena { pub fn with_capacity (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub struct OwnedByteArena"
+    }
+  ],
+  "math_memory:src/region.rs": [
+    {
+      "signature": "impl < 'a > RawByteCursor < 'a > { pub fn bits_mut (& mut self , _ : BitRegion) -> BitSlice < 'a > }"
+    },
+    {
+      "signature": "impl < 'a > RawByteCursor < 'a > { pub fn flags_mut (& mut self , _ : FlagRegion) -> FlagSlice < 'a > }"
+    },
+    {
+      "signature": "impl < 'a > RawByteCursor < 'a > { pub fn into_trailing_arena (self) -> ByteArena < 'a > }"
+    },
+    {
+      "signature": "impl < 'a > RawByteCursor < 'a > { pub fn new (_ : & 'a mut [u8]) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > RawByteCursor < 'a > { pub fn region_mut < T : Pod > (& mut self , _ : ArenaRegion < T >) -> & 'a mut [T] }"
+    },
+    {
+      "signature": "impl < 'a > RawByteCursor < 'a > { pub fn try_region_mut < T : Pod > (& mut self , _ : ArenaRegion < T > ,) -> Result < & 'a mut [T] , ArenaError > }"
+    },
+    {
+      "signature": "impl < T > ArenaRegion < T > { pub const fn byte_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < T > ArenaRegion < T > { pub const fn empty () -> Self }"
+    },
+    {
+      "signature": "impl < T > ArenaRegion < T > { pub const fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl < T > ArenaRegion < T > { pub const fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl ArenaLayout { pub const fn new () -> Self }"
+    },
+    {
+      "signature": "impl ArenaLayout { pub const fn total_bytes (& self) -> usize }"
+    },
+    {
+      "signature": "impl ArenaLayout { pub fn reserve < T : Pod + Zeroable > (& mut self , _ : usize) -> Result < ArenaRegion < T > , ArenaError > }"
+    },
+    {
+      "signature": "impl ArenaLayout { pub fn reserve_bits (& mut self , _ : usize) -> Result < BitRegion , ArenaError > }"
+    },
+    {
+      "signature": "impl ArenaLayout { pub fn reserve_flags (& mut self , _ : usize) -> Result < FlagRegion , ArenaError > }"
+    },
+    {
+      "signature": "impl BitRegion { pub const fn empty () -> Self }"
+    },
+    {
+      "signature": "impl BitRegion { pub const fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl BitRegion { pub const fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl FlagRegion { pub const fn empty () -> Self }"
+    },
+    {
+      "signature": "impl FlagRegion { pub const fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl FlagRegion { pub const fn len (& self) -> usize }"
+    },
+    {
+      "signature": "pub const MAX_ARENA_ALIGN : usize"
+    },
+    {
+      "signature": "pub struct ArenaLayout"
+    },
+    {
+      "signature": "pub struct ArenaRegion < T >"
+    },
+    {
+      "signature": "pub struct BitRegion"
+    },
+    {
+      "signature": "pub struct FlagRegion"
+    },
+    {
+      "signature": "pub struct RawByteCursor < 'a >"
+    }
+  ],
+  "math_memory:src/views.rs": [
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub const fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub const fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub const fn required_words (_ : usize) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub const fn words (& self) -> & [u64] }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub fn clear (& mut self) }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub fn count_ones (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub fn fill (& mut self , _ : bool) }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub fn from_existing_words (_ : & 'a mut [u64] , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub fn get (& self , _ : usize) -> bool }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub fn new_zeroed (_ : & 'a mut [u64] , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub fn set (& mut self , _ : usize , _ : bool) }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub fn toggle (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub fn try_get (& self , _ : usize) -> Result < bool , ArenaError > }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub fn try_set (& mut self , _ : usize , _ : bool) -> Result < () , ArenaError > }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub fn try_toggle (& mut self , _ : usize) -> Result < () , ArenaError > }"
+    },
+    {
+      "signature": "impl < 'a > BitSlice < 'a > { pub fn words_mut (& mut self) -> & mut [u64] }"
+    },
+    {
+      "signature": "impl < 'a > FlagSlice < 'a > { pub const fn as_bytes (& self) -> & [u8] }"
+    },
+    {
+      "signature": "impl < 'a > FlagSlice < 'a > { pub const fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl < 'a > FlagSlice < 'a > { pub const fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl < 'a > FlagSlice < 'a > { pub fn clear (& mut self) }"
+    },
+    {
+      "signature": "impl < 'a > FlagSlice < 'a > { pub fn fill (& mut self , _ : bool) }"
+    },
+    {
+      "signature": "impl < 'a > FlagSlice < 'a > { pub fn from_existing_bytes (_ : & 'a mut [u8]) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > FlagSlice < 'a > { pub fn get (& self , _ : usize) -> bool }"
+    },
+    {
+      "signature": "impl < 'a > FlagSlice < 'a > { pub fn into_prefix (self , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > FlagSlice < 'a > { pub fn iter (& self) -> impl ExactSizeIterator < Item = bool > + '_ }"
+    },
+    {
+      "signature": "impl < 'a > FlagSlice < 'a > { pub fn new_zeroed (_ : & 'a mut [u8]) -> Self }"
+    },
+    {
+      "signature": "impl < 'a > FlagSlice < 'a > { pub fn set (& mut self , _ : usize , _ : bool) }"
+    },
+    {
+      "signature": "impl < 'a > FlagSlice < 'a > { pub fn try_get (& self , _ : usize) -> Result < bool , ArenaError > }"
+    },
+    {
+      "signature": "impl < 'a > FlagSlice < 'a > { pub fn try_into_prefix (self , _ : usize) -> Result < Self , ArenaError > }"
+    },
+    {
+      "signature": "impl < 'a > FlagSlice < 'a > { pub fn try_set (& mut self , _ : usize , _ : bool) -> Result < () , ArenaError > }"
+    },
+    {
+      "signature": "pub struct BitSlice < 'a >"
+    },
+    {
+      "signature": "pub struct FlagSlice < 'a >"
+    }
+  ],
+  "math_memory:src/workspace.rs": [
+    {
+      "signature": "pub trait SolverWorkspace"
+    },
+    {
+      "signature": "pub trait SolverWorkspace { fn alloc_bits (& mut self , _ : usize) -> Result < BitSlice < '_ > , ArenaError > }"
+    },
+    {
+      "signature": "pub trait SolverWorkspace { fn alloc_flags (& mut self , _ : usize) -> Result < FlagSlice < '_ > , ArenaError > }"
+    },
+    {
+      "signature": "pub trait SolverWorkspace { fn alloc_slice < T : Pod + Zeroable > (& mut self , _ : usize) -> Result < & mut [T] , ArenaError > }"
+    },
+    {
+      "signature": "pub trait SolverWorkspace { fn byte_capacity (& self) -> usize }"
+    },
+    {
+      "signature": "pub trait SolverWorkspace { fn cursor (& mut self) -> ByteCursor < '_ > }"
+    },
+    {
+      "signature": "pub trait SolverWorkspace { fn reborrow (& mut self) -> ByteArena < '_ > }"
+    },
+    {
+      "signature": "pub trait SolverWorkspace { fn remaining_bytes (& self) -> usize }"
+    },
+    {
+      "signature": "pub trait SolverWorkspace { fn reset (& mut self) }"
     }
   ],
   "math_rng:src/lib.rs": [
@@ -14642,13 +15321,28 @@
       "signature": "pub use traits :: Scalar"
     },
     {
+      "signature": "pub use workspace :: ArenaCheckpoint"
+    },
+    {
+      "signature": "pub use workspace :: ArenaError"
+    },
+    {
+      "signature": "pub use workspace :: ByteArena"
+    },
+    {
+      "signature": "pub use workspace :: ByteCursor"
+    },
+    {
       "signature": "pub use workspace :: Dimension"
     },
     {
       "signature": "pub use workspace :: GridIndex"
     },
     {
-      "signature": "pub use workspace :: OwnedWorkspace"
+      "signature": "pub use workspace :: OwnedByteArena"
+    },
+    {
+      "signature": "pub use workspace :: ScalarWorkspace"
     },
     {
       "signature": "pub use workspace :: SolverWorkspace"
@@ -14811,7 +15505,7 @@
       "signature": "pub trait Field { fn try_inv (& self) -> Option < Self > }"
     },
     {
-      "signature": "pub trait RealField : ComplexField < Real = Self > + Copy + PartialOrd + Default + Display + Sum + Rem < Output = Self > + RemAssign"
+      "signature": "pub trait RealField : ComplexField < Real = Self > + Copy + bytemuck :: Pod + bytemuck :: Zeroable + PartialOrd + Default + Display + Sum + Rem < Output = Self > + RemAssign"
     },
     {
       "signature": "pub trait RealField { const DEFAULT_TOL_SCALE : Self }"
@@ -14966,43 +15660,37 @@
   ],
   "math_scalars:src/workspace.rs": [
     {
-      "signature": "impl < 'a , T : RealField > SolverWorkspace < 'a , T > { pub fn try_split (& mut self , _ : usize ,) -> Result < (& mut [T] , SolverWorkspace < '_ , T >) , ScalarError > }"
+      "signature": "impl < 'a , T : RealField > ScalarWorkspace < 'a , T > { pub fn try_split (& mut self , _ : usize ,) -> Result < (& mut [T] , ScalarWorkspace < '_ , T >) , ScalarError > }"
     },
     {
-      "signature": "impl < 'a , T : RealField > SolverWorkspace < 'a , T > { pub fn zero_fill (& mut self) }"
+      "signature": "impl < 'a , T : RealField > ScalarWorkspace < 'a , T > { pub fn zero_fill (& mut self) }"
     },
     {
-      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub const fn is_empty (& self) -> bool }"
+      "signature": "impl < 'a , T > ScalarWorkspace < 'a , T > { pub const fn is_empty (& self) -> bool }"
     },
     {
-      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub const fn len (& self) -> usize }"
+      "signature": "impl < 'a , T > ScalarWorkspace < 'a , T > { pub const fn len (& self) -> usize }"
     },
     {
-      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn as_mut_slice (& mut self) -> & mut [T] }"
+      "signature": "impl < 'a , T > ScalarWorkspace < 'a , T > { pub fn as_mut_slice (& mut self) -> & mut [T] }"
     },
     {
-      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn as_slice (& self) -> & [T] }"
+      "signature": "impl < 'a , T > ScalarWorkspace < 'a , T > { pub fn as_slice (& self) -> & [T] }"
     },
     {
-      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn empty () -> Self }"
+      "signature": "impl < 'a , T > ScalarWorkspace < 'a , T > { pub fn empty () -> Self }"
     },
     {
-      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn new (_ : & 'a mut [T]) -> Self }"
+      "signature": "impl < 'a , T > ScalarWorkspace < 'a , T > { pub fn new (_ : & 'a mut [T]) -> Self }"
     },
     {
-      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn reborrow (& mut self) -> SolverWorkspace < '_ , T > }"
+      "signature": "impl < 'a , T > ScalarWorkspace < 'a , T > { pub fn reborrow_scalars (& mut self) -> ScalarWorkspace < '_ , T > }"
     },
     {
-      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn take_slice (& mut self , _ : usize) -> & 'a mut [T] }"
+      "signature": "impl < 'a , T > ScalarWorkspace < 'a , T > { pub fn take_slice (& mut self , _ : usize) -> & 'a mut [T] }"
     },
     {
-      "signature": "impl < 'a , T > SolverWorkspace < 'a , T > { pub fn try_take_slice (& mut self , _ : usize) -> Result < & 'a mut [T] , ScalarError > }"
-    },
-    {
-      "signature": "impl < T : RealField > OwnedWorkspace < T > { pub fn as_workspace (& mut self) -> SolverWorkspace < '_ , T > }"
-    },
-    {
-      "signature": "impl < T : RealField > OwnedWorkspace < T > { pub fn with_capacity (_ : usize) -> Self }"
+      "signature": "impl < 'a , T > ScalarWorkspace < 'a , T > { pub fn try_take_slice (& mut self , _ : usize) -> Result < & 'a mut [T] , ScalarError > }"
     },
     {
       "signature": "impl < T : RealField > StepSize < T > { pub const fn value (& self) -> T }"
@@ -15026,13 +15714,28 @@
       "signature": "pub struct GridIndex"
     },
     {
-      "signature": "pub struct OwnedWorkspace < T >"
-    },
-    {
-      "signature": "pub struct SolverWorkspace < 'a , T >"
+      "signature": "pub struct ScalarWorkspace < 'a , T >"
     },
     {
       "signature": "pub struct StepSize < T = f64 >"
+    },
+    {
+      "signature": "pub use math_memory :: ArenaCheckpoint"
+    },
+    {
+      "signature": "pub use math_memory :: ArenaError"
+    },
+    {
+      "signature": "pub use math_memory :: ByteArena"
+    },
+    {
+      "signature": "pub use math_memory :: ByteCursor"
+    },
+    {
+      "signature": "pub use math_memory :: OwnedByteArena"
+    },
+    {
+      "signature": "pub use math_memory :: SolverWorkspace"
     }
   ],
   "oxidize_core:src/ast_visitor.rs": [
@@ -15059,6 +15762,9 @@
     },
     {
       "signature": "pub use debt :: collect_ast_file_debt"
+    },
+    {
+      "signature": "pub use pyramid :: FormalProofMacroBinding"
     }
   ],
   "oxidize_core:src/ast_visitor/attrs.rs": [
@@ -15075,6 +15781,11 @@
   "oxidize_core:src/ast_visitor/debt.rs": [
     {
       "signature": "pub fn collect_ast_file_debt (_ : & syn :: File) -> Vec < String >"
+    }
+  ],
+  "oxidize_core:src/ast_visitor/pyramid.rs": [
+    {
+      "signature": "pub struct FormalProofMacroBinding"
     }
   ],
   "oxidize_core:src/boundary.rs": [
@@ -15296,9 +16007,6 @@
       "signature": "pub struct TraceabilityEngine < V : VirtualFileSystem >"
     },
     {
-      "signature": "pub struct TraceabilityReport"
-    },
-    {
       "signature": "pub use cache :: AstCache"
     },
     {
@@ -15317,7 +16025,13 @@
       "signature": "pub use debt_floors :: parse_density_floors_toml"
     },
     {
+      "signature": "pub use manifest :: LeanProofBinding"
+    },
+    {
       "signature": "pub use manifest :: TraceabilityManifestPayload"
+    },
+    {
+      "signature": "pub use manifest :: TraceabilityReport"
     },
     {
       "signature": "pub use manifest :: VerificationCertificate"
@@ -15339,6 +16053,12 @@
     },
     {
       "signature": "pub use proof_digest :: collect_lean4_proof_digests"
+    },
+    {
+      "signature": "pub use proof_digest :: collect_lean4_proof_theorems"
+    },
+    {
+      "signature": "pub use proof_digest :: extract_lean_theorem_names"
     },
     {
       "signature": "pub use proof_digest :: sha256_hex"
@@ -15455,7 +16175,13 @@
   ],
   "oxidize_core:src/traceability/manifest.rs": [
     {
+      "signature": "pub struct LeanProofBinding"
+    },
+    {
       "signature": "pub struct TraceabilityManifestPayload"
+    },
+    {
+      "signature": "pub struct TraceabilityReport"
     },
     {
       "signature": "pub struct VerificationCertificate"
@@ -15505,6 +16231,12 @@
     },
     {
       "signature": "pub fn collect_lean4_proof_digests (_ : & Path ,) -> Result < BTreeMap < String , String > , ProofDigestError >"
+    },
+    {
+      "signature": "pub fn collect_lean4_proof_theorems (_ : & Path ,) -> Result < BTreeMap < String , Vec < String > > , ProofDigestError >"
+    },
+    {
+      "signature": "pub fn extract_lean_theorem_names (_ : & str) -> Vec < String >"
     },
     {
       "signature": "pub fn sha256_hex (_ : & [u8]) -> String"
@@ -15835,6 +16567,9 @@
       "signature": "pub use math_commons :: error :: ShaderEmitError"
     },
     {
+      "signature": "pub use math_memory :: ArenaError"
+    },
+    {
       "signature": "pub use math_rng :: QmcError"
     },
     {
@@ -16107,6 +16842,9 @@
       "signature": "pub use math_commons :: wigner"
     },
     {
+      "signature": "pub use math_memory"
+    },
+    {
       "signature": "pub use math_scalars"
     },
     {
@@ -16197,6 +16935,24 @@
     },
     {
       "signature": "pub use math_commons :: series :: Sample2D"
+    },
+    {
+      "signature": "pub use math_memory :: ArenaCheckpoint"
+    },
+    {
+      "signature": "pub use math_memory :: BitSlice"
+    },
+    {
+      "signature": "pub use math_memory :: ByteArena"
+    },
+    {
+      "signature": "pub use math_memory :: FlagSlice"
+    },
+    {
+      "signature": "pub use math_memory :: OwnedByteArena"
+    },
+    {
+      "signature": "pub use math_memory :: SolverWorkspace"
     },
     {
       "signature": "pub use math_scalars :: ComplexField"
@@ -16545,6 +17301,9 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ZipError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: ArenaError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use math_commons :: error :: EvalError } }"
     },
     {
@@ -16687,6 +17446,12 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use math_commons :: wigner }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use math_memory }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use math_scalars }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use nalgebra }"
@@ -16992,10 +17757,19 @@
       "signature": "pub fn effective_rank (_ : & DMatrix < f64 > , _ : Option < f64 >) -> usize"
     },
     {
+      "signature": "pub fn effective_rank_with_workspace (_ : & DMatrix < f64 > , _ : Option < f64 > , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < usize , LinearAlgebraError >"
+    },
+    {
       "signature": "pub fn low_rank_approximation (_ : & DMatrix < f64 > , _ : usize) -> DMatrix < f64 >"
     },
     {
+      "signature": "pub fn svd_decomposition_workspace_bytes (_ : usize , _ : usize) -> usize"
+    },
+    {
       "signature": "pub fn try_low_rank_approximation (_ : & DMatrix < f64 > , _ : usize ,) -> Result < DMatrix < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub fn try_low_rank_approximation_with_workspace (_ : & DMatrix < f64 > , _ : usize , _ : & mut DMatrix < f64 > , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < () , LinearAlgebraError >"
     }
   ],
   "pure_math:src/pure_math/algebra/linear_algebra/eigen.rs": [
@@ -17011,13 +17785,25 @@
       "signature": "pub use decomposition :: effective_rank"
     },
     {
+      "signature": "pub use decomposition :: effective_rank_with_workspace"
+    },
+    {
       "signature": "pub use decomposition :: low_rank_approximation"
+    },
+    {
+      "signature": "pub use decomposition :: svd_decomposition_workspace_bytes"
     },
     {
       "signature": "pub use decomposition :: try_low_rank_approximation"
     },
     {
+      "signature": "pub use decomposition :: try_low_rank_approximation_with_workspace"
+    },
+    {
       "signature": "pub use numerical :: LinearAlgebraError"
+    },
+    {
+      "signature": "pub use numerical :: linalg_solve_workspace_bytes"
     },
     {
       "signature": "pub use numerical :: moore_penrose_pseudoinverse"
@@ -17026,22 +17812,43 @@
       "signature": "pub use numerical :: solve_cholesky_system"
     },
     {
+      "signature": "pub use numerical :: solve_cholesky_system_with_workspace"
+    },
+    {
       "signature": "pub use numerical :: solve_conjugate_gradient"
+    },
+    {
+      "signature": "pub use numerical :: solve_conjugate_gradient_with_workspace"
     },
     {
       "signature": "pub use numerical :: solve_gmres_restarted"
     },
     {
+      "signature": "pub use numerical :: solve_gmres_restarted_with_workspace"
+    },
+    {
       "signature": "pub use numerical :: solve_linear_system"
+    },
+    {
+      "signature": "pub use numerical :: solve_linear_system_with_workspace"
     },
     {
       "signature": "pub use numerical :: solve_normal_equation"
     },
     {
+      "signature": "pub use numerical :: solve_normal_equation_with_workspace"
+    },
+    {
       "signature": "pub use numerical :: solve_tikhonov_system"
     },
     {
+      "signature": "pub use numerical :: solve_tikhonov_system_with_workspace"
+    },
+    {
       "signature": "pub use numerical :: try_moore_penrose_pseudoinverse"
+    },
+    {
+      "signature": "pub use numerical :: try_moore_penrose_pseudoinverse_with_workspace"
     }
   ],
   "pure_math:src/pure_math/algebra/linear_algebra/numerical.rs": [
@@ -17071,6 +17878,30 @@
     },
     {
       "signature": "pub fn try_moore_penrose_pseudoinverse (_ : & DMatrix < f64 > , _ : f64 ,) -> Result < DMatrix < f64 > , LinearAlgebraError >"
+    },
+    {
+      "signature": "pub use workspace :: linalg_solve_workspace_bytes"
+    },
+    {
+      "signature": "pub use workspace :: solve_cholesky_system_with_workspace"
+    },
+    {
+      "signature": "pub use workspace :: solve_conjugate_gradient_with_workspace"
+    },
+    {
+      "signature": "pub use workspace :: solve_gmres_restarted_with_workspace"
+    },
+    {
+      "signature": "pub use workspace :: solve_linear_system_with_workspace"
+    },
+    {
+      "signature": "pub use workspace :: solve_normal_equation_with_workspace"
+    },
+    {
+      "signature": "pub use workspace :: solve_tikhonov_system_with_workspace"
+    },
+    {
+      "signature": "pub use workspace :: try_moore_penrose_pseudoinverse_with_workspace"
     }
   ],
   "pure_math:src/pure_math/algebra/mod.rs": [
@@ -21941,6 +22772,12 @@
       "signature": "impl CorrelationMatrix { pub fn new (_ : DMatrix < f64 >) -> Result < Self , CopulaError > }"
     },
     {
+      "signature": "impl CorrelationMatrix { pub fn new_with_workspace (_ : DMatrix < f64 > , _ : DMatrix < f64 > , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Result < Self , CopulaError > }"
+    },
+    {
+      "signature": "impl CorrelationMatrix { pub fn workspace_bytes (_ : usize) -> usize }"
+    },
+    {
       "signature": "impl Probability { pub fn new (_ : f64) -> Result < Self , CopulaError > }"
     },
     {
@@ -22094,6 +22931,9 @@
   "pure_math:src/pure_math/statistics/copula/qmc.rs": [
     {
       "signature": "impl CopulaQmcWorkspace { pub fn ensure_capacity (& mut self , _ : usize) }"
+    },
+    {
+      "signature": "impl CopulaQmcWorkspace { pub fn try_with_capacity (_ : usize) -> Result < Self , math_memory :: ArenaError > }"
     },
     {
       "signature": "impl CopulaQmcWorkspace { pub fn with_capacity (_ : usize) -> Self }"
@@ -22908,6 +23748,9 @@
   ],
   "pure_math:src/pure_math/statistics/kelly/portfolio.rs": [
     {
+      "signature": "impl PortfolioKellyWorkspace { pub fn try_with_capacity (_ : usize) -> Result < Self , math_memory :: ArenaError > }"
+    },
+    {
       "signature": "impl PortfolioKellyWorkspace { pub fn with_capacity (_ : usize) -> Self }"
     },
     {
@@ -23413,7 +24256,7 @@
       "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn steady_state (& self) -> Option < DVector < T > > }"
     },
     {
-      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn steady_state_with_workspace (& self , _ : & mut SolverWorkspace , _ : & mut DVector < T > ,) -> bool }"
+      "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn steady_state_with_workspace (& self , _ : & mut StochasticWorkspace , _ : & mut DVector < T > ,) -> bool }"
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > ContinuousMarkovChain < T > { pub fn try_steady_state (& self ,) -> core :: result :: Result < Option < DVector < T > > , math_commons :: error :: MathError > }"
@@ -23527,7 +24370,7 @@
       "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn stationary_distribution (& self) -> Option < DVector < T > > }"
     },
     {
-      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn stationary_distribution_with_workspace (& self , _ : & mut SolverWorkspace , _ : & mut DVector < T > ,) -> bool }"
+      "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn stationary_distribution_with_workspace (& self , _ : & mut StochasticWorkspace , _ : & mut DVector < T > ,) -> bool }"
     },
     {
       "signature": "impl < T : RealField + Copy + ToPrimitive > MarkovChain < T > { pub fn try_stationary_distribution (& self ,) -> core :: result :: Result < Option < DVector < T > > , math_commons :: error :: MathError > }"
@@ -23540,10 +24383,10 @@
   ],
   "pure_math:src/pure_math/statistics/markov/hmm/baum_welch.rs": [
     {
-      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn fit_baum_welch (& mut self , _ : & [usize] , _ : & BaumWelchConfig < T > ,) -> Result < (BaumWelchReport < T > , Vec < T >) , MarkovError > }"
+      "signature": "impl < T : RealField + Copy + ToPrimitive + Pod + Zeroable > HiddenMarkovModel < T > { pub fn fit_baum_welch (& mut self , _ : & [usize] , _ : & BaumWelchConfig < T > ,) -> Result < (BaumWelchReport < T > , Vec < T >) , MarkovError > }"
     },
     {
-      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn fit_baum_welch_into (& mut self , _ : & [usize] , _ : & BaumWelchConfig < T > , _ : & mut BaumWelchWorkspace < T > , _ : & mut [T] ,) -> Result < BaumWelchReport < T > , MarkovError > }"
+      "signature": "impl < T : RealField + Copy + ToPrimitive + Pod + Zeroable > HiddenMarkovModel < T > { pub fn fit_baum_welch_into (& mut self , _ : & [usize] , _ : & BaumWelchConfig < T > , _ : & mut BaumWelchWorkspace < T > , _ : & mut [T] ,) -> Result < BaumWelchReport < T > , MarkovError > }"
     },
     {
       "signature": "pub use super :: baum_welch_types :: BaumWelchResult"
@@ -23551,13 +24394,16 @@
   ],
   "pure_math:src/pure_math/statistics/markov/hmm/baum_welch_types.rs": [
     {
+      "signature": "impl < T : RealField + Copy + Pod + Zeroable > BaumWelchWorkspace < T > { pub fn ensure_capacity (& mut self , _ : usize , _ : usize , _ : usize) }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + Pod + Zeroable > BaumWelchWorkspace < T > { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + Pod + Zeroable > BaumWelchWorkspace < T > { pub fn try_new (_ : usize , _ : usize , _ : usize ,) -> Result < Self , math_memory :: ArenaError > }"
+    },
+    {
       "signature": "impl < T : RealField + Copy + ToPrimitive > BaumWelchConfig < T > { pub fn new (_ : usize , _ : T , _ : T ,) -> Result < Self , MarkovError > }"
-    },
-    {
-      "signature": "impl < T : RealField + Copy > BaumWelchWorkspace < T > { pub fn ensure_capacity (& mut self , _ : usize , _ : usize , _ : usize) }"
-    },
-    {
-      "signature": "impl < T : RealField + Copy > BaumWelchWorkspace < T > { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
     },
     {
       "signature": "pub struct BaumWelchConfig < T >"
@@ -23648,25 +24494,28 @@
   ],
   "pure_math:src/pure_math/statistics/markov/hmm/viterbi.rs": [
     {
-      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn viterbi (& self , _ : & [usize]) -> Result < Vec < usize > > }"
+      "signature": "impl < T : RealField + Copy + Pod + Zeroable > ViterbiWorkspace < T > { pub fn ensure_capacity (& mut self , _ : usize , _ : usize , _ : usize) }"
     },
     {
-      "signature": "impl < T : RealField + Copy + ToPrimitive > HiddenMarkovModel < T > { pub fn viterbi_into (& self , _ : & [usize] , _ : & mut ViterbiWorkspace < T > , _ : & mut [usize] ,) -> Result < () > }"
+      "signature": "impl < T : RealField + Copy + Pod + Zeroable > ViterbiWorkspace < T > { pub fn max_len (& self) -> usize }"
     },
     {
-      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn ensure_capacity (& mut self , _ : usize , _ : usize , _ : usize) }"
+      "signature": "impl < T : RealField + Copy + Pod + Zeroable > ViterbiWorkspace < T > { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
     },
     {
-      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn max_len (& self) -> usize }"
+      "signature": "impl < T : RealField + Copy + Pod + Zeroable > ViterbiWorkspace < T > { pub fn num_observations (& self) -> usize }"
     },
     {
-      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn new (_ : usize , _ : usize , _ : usize) -> Self }"
+      "signature": "impl < T : RealField + Copy + Pod + Zeroable > ViterbiWorkspace < T > { pub fn num_states (& self) -> usize }"
     },
     {
-      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn num_observations (& self) -> usize }"
+      "signature": "impl < T : RealField + Copy + Pod + Zeroable > ViterbiWorkspace < T > { pub fn try_new (_ : usize , _ : usize , _ : usize ,) -> core :: result :: Result < Self , math_memory :: ArenaError > }"
     },
     {
-      "signature": "impl < T : RealField + Copy > ViterbiWorkspace < T > { pub fn num_states (& self) -> usize }"
+      "signature": "impl < T : RealField + Copy + ToPrimitive + Pod + Zeroable > HiddenMarkovModel < T > { pub fn viterbi (& self , _ : & [usize]) -> Result < Vec < usize > > }"
+    },
+    {
+      "signature": "impl < T : RealField + Copy + ToPrimitive + Pod + Zeroable > HiddenMarkovModel < T > { pub fn viterbi_into (& self , _ : & [usize] , _ : & mut ViterbiWorkspace < T > , _ : & mut [usize] ,) -> Result < () > }"
     },
     {
       "signature": "pub struct ViterbiWorkspace < T >"
@@ -23713,7 +24562,7 @@
       "signature": "pub use hmm :: ViterbiWorkspace"
     },
     {
-      "signature": "pub use math_commons :: stochastic :: SolverWorkspace"
+      "signature": "pub use math_commons :: stochastic :: StochasticWorkspace"
     },
     {
       "signature": "pub use num_traits :: ToPrimitive"
@@ -24434,7 +25283,7 @@
       "signature": "pub fn estimate_ou_params (_ : & [f64] , _ : f64) -> Result < OuParams , OuError >"
     },
     {
-      "signature": "pub fn summarize_terminal_values_with_workspace (_ : & mut math_commons :: stochastic :: SolverWorkspace , _ : & [f64] , _ : Option < f64 > ,) -> Option < PerformanceStats >"
+      "signature": "pub fn summarize_terminal_values_with_workspace (_ : & mut math_commons :: stochastic :: StochasticWorkspace , _ : & [f64] , _ : Option < f64 > ,) -> Option < PerformanceStats >"
     },
     {
       "signature": "pub struct OuAnalyzer"
@@ -26195,6 +27044,15 @@
   "scientific_verification:src/lean_proofs.rs": [
     {
       "signature": "pub fn verify_and_digest_lean_proofs () -> Result < BTreeMap < String , String > , String >"
+    },
+    {
+      "signature": "pub fn verify_lean_proofs () -> Result < LeanVerificationSummary , String >"
+    },
+    {
+      "signature": "pub fn verify_lean_proofs_in_workspace (_ : & Path , _ : & str , _ : usize ,) -> Result < LeanVerificationSummary , String >"
+    },
+    {
+      "signature": "pub struct LeanVerificationSummary"
     }
   ],
   "scientific_verification:src/lib.rs": [
