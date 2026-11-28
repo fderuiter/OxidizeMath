@@ -29,6 +29,7 @@ mod tests {
         let text = summary_banner();
         assert!(text.contains("oxidize-cli v"));
         assert!(text.contains("--package oxidize-cli"));
-        assert!(text.contains("Validated"));
+        let tier = oxidizemath::fit::FitModel::Linear.maturity_tier();
+        assert!(text.contains(&format!("tier: {tier:?}")));
     }
 }

@@ -112,6 +112,8 @@ web-sys = { workspace = true, features = [
     "BaseAudioContext",
     "BiquadFilterNode",
     "BiquadFilterType",
+    "Blob",
+    "BlobPropertyBag",
     "CssStyleDeclaration",
     "Document",
     "DynamicsCompressorNode",
@@ -125,6 +127,8 @@ web-sys = { workspace = true, features = [
     "HtmlElement",
     "Location",
     "MediaQueryList",
+    "MessageEvent",
+    "Navigator",
     "Node",
     "NodeList",
     "OscillatorNode",
@@ -134,7 +138,11 @@ web-sys = { workspace = true, features = [
     "Response",
     "StereoPannerNode",
     "Storage",
+    "Url",
     "Window",
+    "Worker",
+    "WorkerOptions",
+    "WorkerType",
 ] }
 
 [target.wasm32-unknown-unknown.dependencies]

@@ -43,6 +43,7 @@ pub const EXPECTED_WORKSPACE_CRATES: &[&str] = &[
     "math_rng",
     "math_scalars",
     "oxidize_core",
+    "oxidize_wasm",
     "oxidizemath",
     "pure_math",
     "scientific_metadata",

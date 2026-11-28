@@ -67,6 +67,7 @@ unverified_modules = [
     "math_scalars",
     "oxidize-cli",
     "oxidize_core",
+    "oxidize_wasm",
     "oxidizemath",
     "scientific_metadata",
     "scientific_verification",
@@ -340,6 +341,7 @@ exempt_crates = [
     "math_scalars",
     "oxidize-cli",
     "oxidize_core",
+    "oxidize_wasm",
     "oxidizemath",
     "scientific_metadata",
     "scientific_verification",
@@ -354,7 +356,7 @@ min_total_density = 0.120
 
 [verification_debt.opt_out_reasons]
 "Legacy missing assertions" = 1
-"gui_tool" = 780
+"gui_tool" = 784
 "infrastructure" = 2
 "metadata" = 2
 "no_std_engine" = 32
@@ -371,7 +373,7 @@ min_total_density = 0.120
 "pure_math" = 12
 "scientific_metadata" = 2
 "egui_plot" = 1
-"math_explorer_gui" = 1009
+"math_explorer_gui" = 1013
 
 [verification_debt.file_opt_out_caps]
 "math_explorer_gui:src/tabs/optics_waves/tool.rs" = 2

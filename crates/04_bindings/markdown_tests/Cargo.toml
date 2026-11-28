@@ -37,6 +37,7 @@ domain_climate = { path = "../../03_domains/domain_climate" }
 domain_engineering = { path = "../../03_domains/domain_engineering" }
 domain_epidemiology = { path = "../../03_domains/domain_epidemiology" }
 oxidizemath = { path = "../oxidizemath", features = ["pure_math", "applied", "ai", "biology", "climate", "engineering", "epidemiology", "physics"] }
+oxidize_wasm = { path = "../oxidize_wasm" }
 math_explorer = { path = "../math_explorer", features = ["pure_math", "applied", "ai", "biology", "climate", "engineering", "epidemiology", "physics"] }
 
 nalgebra = { workspace = true }

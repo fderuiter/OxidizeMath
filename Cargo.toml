@@ -24,6 +24,7 @@ members = [
     "crates/03_domains/domain_epidemiology",
     "crates/03_domains/domain_physics",
     "crates/04_bindings/oxidizemath",
+    "crates/04_bindings/oxidize_wasm",
     "crates/04_bindings/math_explorer",
     "crates/04_bindings/markdown_tests",
     "crates/04_bindings/scientific_verification",
