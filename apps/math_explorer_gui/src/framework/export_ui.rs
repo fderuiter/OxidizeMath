@@ -60,6 +60,7 @@ impl SimulationFramework {
         (tool_name.to_lowercase().replace(' ', "_"), caps)
     }
 
+    /// Renders dataset, figure, audio, code, 3D mesh, fragment shader, and [`ExportFormat::WgslCompute`] actions.
     fn render_export_action_items(
         &mut self,
         ui: &mut egui::Ui,

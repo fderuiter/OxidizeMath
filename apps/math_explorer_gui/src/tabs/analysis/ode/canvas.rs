@@ -42,7 +42,11 @@ impl InteractiveTool for OdeSolverTool {
     }
 
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::plot_with_code()
+        crate::framework::ExportCapabilities::plot_with_code().with_compute_shader()
+    }
+
+    fn export_compute_shader_wgsl(&self) -> Result<String, String> {
+        self.build_ode_compute_wgsl()
     }
 
     fn export_code_artifact(&self) -> Option<crate::framework::CodeArtifact> {

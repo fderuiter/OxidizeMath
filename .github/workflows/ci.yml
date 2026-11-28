@@ -431,6 +431,40 @@ jobs:
         if: matrix.target == 'wasm32-unknown-unknown'
         run: bash scripts/verify_wasm_budget.sh apps/math_explorer_gui/dist
 
+      - name: Build and Package oxidize_wasm JS/TS SDK (250 KB Budget)
+        if: matrix.target == 'wasm32-unknown-unknown'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --target wasm32-unknown-unknown --release -p oxidize_wasm
+          rm -rf target/wasm-sdk-pkg target/wasm-sdk-release
+          mkdir -p target/wasm-sdk-pkg target/wasm-sdk-release
+          wasm-bindgen --target web --typescript \
+            --out-dir target/wasm-sdk-pkg \
+            --out-name oxidize_wasm \
+            target/wasm32-unknown-unknown/release/oxidize_wasm.wasm
+          cp crates/04_bindings/oxidize_wasm/package.json target/wasm-sdk-pkg/package.json
+          cp crates/04_bindings/oxidize_wasm/README.md target/wasm-sdk-pkg/README.md
+          cp LICENSE target/wasm-sdk-pkg/LICENSE
+          bash scripts/verify_wasm_budget.sh --sdk target/wasm-sdk-pkg 256000
+          tar -C target/wasm-sdk-pkg -czf target/wasm-sdk-release/oxidize-wasm-npm-sdk.tar.gz .
+          (
+            cd target/wasm-sdk-release
+            sha256sum oxidize-wasm-npm-sdk.tar.gz > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+
+      - name: Upload oxidize_wasm JS/TS SDK Artifact
+        if: matrix.target == 'wasm32-unknown-unknown'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: oxidize-wasm-sdk
+          path: |
+            target/wasm-sdk-release/oxidize-wasm-npm-sdk.tar.gz
+            target/wasm-sdk-release/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Run WASM Unit Tests and Chromium Smoke Checks
         if: matrix.target == 'wasm32-unknown-unknown'
         run: cargo run -p xtask -- test-wasm --skip-build
@@ -1020,11 +1054,17 @@ jobs:
             find artifacts/papers-release-bundle -type f -name "papers-bundle.tar.gz" -exec cp {} release-assets/ \;
           fi
 
+          # Copy standalone oxidize_wasm JS/TS WebAssembly SDK bundle
+          if [ -d artifacts/oxidize-wasm-sdk ]; then
+            find artifacts/oxidize-wasm-sdk -type f -name "oxidize-wasm-npm-sdk.tar.gz" -exec cp {} release-assets/ \;
+          fi
+
           # Attach component-specific checksum manifests to avoid filename collision
           [ -f artifacts/math_explorer-deb/SHA256SUMS ] && cp artifacts/math_explorer-deb/SHA256SUMS release-assets/SHA256SUMS-deb
           [ -f artifacts/math_explorer-dmg/SHA256SUMS ] && cp artifacts/math_explorer-dmg/SHA256SUMS release-assets/SHA256SUMS-dmg
           [ -f artifacts/math_explorer-wix/SHA256SUMS ] && cp artifacts/math_explorer-wix/SHA256SUMS release-assets/SHA256SUMS-wix
           [ -f artifacts/papers-release-bundle/SHA256SUMS ] && cp artifacts/papers-release-bundle/SHA256SUMS release-assets/SHA256SUMS-papers
+          [ -f artifacts/oxidize-wasm-sdk/SHA256SUMS ] && cp artifacts/oxidize-wasm-sdk/SHA256SUMS release-assets/SHA256SUMS-wasm-sdk
 
           # Generate consolidated SHA-256 checksum manifest
           cd release-assets

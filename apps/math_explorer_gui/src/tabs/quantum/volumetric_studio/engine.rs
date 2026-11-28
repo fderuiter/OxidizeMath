@@ -241,6 +241,11 @@ impl VolumetricEngine {
             }
         }
         self.populate_voxel_grid_in_place(cfg);
+        self.extract_current_grid_zero_alloc(cfg);
+    }
+
+    /// Runs `MarchingCubes`, `Gaussian3D`, and slice contours on the populated `voxel_grid`.
+    pub fn extract_current_grid_zero_alloc(&mut self, cfg: &VolumetricStudioConfig) {
         if !self.voxel_grid.data().iter().all(|v| v.is_finite()) {
             self.diverged = true;
             self.diagnostic_report = Some(DiagnosticReport::new(
