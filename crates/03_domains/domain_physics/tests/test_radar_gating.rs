@@ -7,10 +7,11 @@ use domain_physics::physics::medical::{
         gating::{BeamState, GatingError, GatingLogic},
         geometry::{AngleFftConfig, SphericalPoint},
         physics::FmcwConfig,
-        surface::{BiQuadraticSurface, weighted_average_height},
+        surface::{BiQuadraticSurface, radar_surface_workspace_bytes, weighted_average_height},
         tracking::{ConstantVelocityModel, TrackingFilter},
     },
 };
+use math_memory::OwnedByteArena;
 use nalgebra::Point3;
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
@@ -367,4 +368,33 @@ fn test_harmonic_mpc_600ms_turnaround_error_below_half_mm_zero_alloc() {
         max_mpc_err_mm < 0.5,
         "Harmonic MPC 600 ms turnaround error ({max_mpc_err_mm} mm) must stay below 0.5 mm"
     );
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_surface_fitting_with_workspace_zero_heap_allocations() {
+    let mut points = Vec::new();
+    for x in -2..=2 {
+        for y in -2..=2 {
+            let xf = x as f64;
+            let yf = y as f64;
+            points.push(Point3::new(xf, yf, 1.25 + 0.15 * xf * xf + 0.05 * yf * yf));
+        }
+    }
+    let mut surface = BiQuadraticSurface::zeros();
+    let mut ws = OwnedByteArena::with_capacity(radar_surface_workspace_bytes(points.len()));
+
+    let ((coeffs, ok), _) = {
+        let _guard = VERIFIED_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        VerifiedEngine::run_verified(|| {
+            let coeffs = BiQuadraticSurface::fit_with_workspace(&points, &mut ws).unwrap();
+            let ok = surface.fit_into_with_workspace(&points, &mut ws);
+            (coeffs, ok)
+        })
+    };
+    assert!(ok);
+    assert_relative_eq!(coeffs[0], 1.25, epsilon = 1e-6);
+    assert_relative_eq!(coeffs[4], 0.15, epsilon = 1e-6);
+    assert_relative_eq!(coeffs[5], 0.05, epsilon = 1e-6);
+    assert_relative_eq!(surface.coefficients[0], 1.25, epsilon = 1e-6);
 }

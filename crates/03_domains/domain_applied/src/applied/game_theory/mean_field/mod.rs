@@ -60,7 +60,7 @@ pub use types::{Density, MFGConfig, MFGConfigBuilder, Position};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine_opt::SolverWorkspace;
+    use engine_opt::ScalarWorkspace;
     use std::num::NonZeroUsize;
     use verified_engine::engine::VerifiedEngine;
 
@@ -120,7 +120,7 @@ mod tests {
                     .lock()
                     .unwrap_or_else(|e| e.into_inner());
                 VerifiedEngine::run_verified(|| {
-                    let mut ws = SolverWorkspace::new(&mut ws_buf);
+                    let mut ws = ScalarWorkspace::new(&mut ws_buf);
                     solver
                         .solve_into(
                             &cfg,

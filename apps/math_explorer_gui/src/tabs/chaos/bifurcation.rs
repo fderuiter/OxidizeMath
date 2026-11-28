@@ -52,6 +52,7 @@ pub(crate) const CUSTOM_BURN_IN: usize = 200;
 pub(crate) const CUSTOM_ORBIT_SAMPLES: usize = 100;
 pub(crate) const CUSTOM_ESCAPE_GUARD: f64 = 1e6;
 pub(crate) const CUSTOM_R_BOUND: f64 = 20.0;
+pub(crate) const MAX_SWEEP_PREVIEW_POINTS: usize = 4_096;
 
 /// Map family evaluated by [`BifurcationDiagram`].
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -100,6 +101,7 @@ pub struct BifurcationDiagram {
     pub custom_eval_error: Option<String>,
     pub(crate) custom_diverged: bool,
     pub(crate) points: Vec<PlotPoint>,
+    pub(crate) sweep_preview_points: Vec<PlotPoint>,
     pub(crate) lyapunov_points: Vec<PlotPoint>,
     /// Lyapunov exponent `λ` evaluated at `(selected_r, x0)`.
     pub selected_lyapunov: f64,
@@ -160,6 +162,7 @@ impl Default for BifurcationDiagram {
             custom_eval_error: None,
             custom_diverged: false,
             points: Vec::new(),
+            sweep_preview_points: Vec::with_capacity(MAX_SWEEP_PREVIEW_POINTS),
             lyapunov_points: Vec::new(),
             selected_lyapunov: 0.0,
             cobweb_points: Vec::new(),

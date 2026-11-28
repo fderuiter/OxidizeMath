@@ -313,7 +313,7 @@ impl BifurcationDiagram {
             safe_x0,
             LYAPUNOV_ITERATIONS,
         ));
-        self.ensure_selected_r_on_default_lyapunov(safe_x0);
+        self.ensure_selected_r_on_default_lyapunov();
 
         reset_plot_buf(&mut self.cobweb_curve, 129);
         for i in 0..=128 {
@@ -385,15 +385,11 @@ impl BifurcationDiagram {
             .collect();
     }
 
-    fn ensure_selected_r_on_default_lyapunov(&mut self, safe_x0: f64) {
+    fn ensure_selected_r_on_default_lyapunov(&mut self) {
         if !(self.r_min..=self.r_max).contains(&self.selected_r) {
             return;
         }
-        let exact = clamp_lyapunov_value(logistic_lyapunov(
-            self.selected_r,
-            safe_x0,
-            LYAPUNOV_ITERATIONS,
-        ));
+        let exact = self.selected_lyapunov;
         match self.lyapunov_points.binary_search_by(|p| {
             p.x.partial_cmp(&self.selected_r)
                 .unwrap_or(std::cmp::Ordering::Equal)

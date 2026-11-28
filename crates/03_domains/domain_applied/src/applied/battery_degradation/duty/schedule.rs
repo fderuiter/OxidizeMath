@@ -8,7 +8,7 @@ use crate::applied::battery_degradation::types::DepthOfDischarge;
 use engine_opt::ilqr::{
     ControlModel, IlqrConfig, IlqrStats, StageCost, ilqr_workspace_len, solve_ilqr,
 };
-use engine_opt::{OptError, SolverWorkspace};
+use engine_opt::{OptError, ScalarWorkspace};
 
 /// Maximum number of charging/duty slots optimized on stack buffers.
 pub const MAX_SCHEDULE_SLOTS: usize = 16;
@@ -212,7 +212,7 @@ pub fn solve_duty_schedule_mpc_into(
     cfg: &DutyScheduleConfig,
     c_rates_out: &mut [f64],
     soc_traj_out: &mut [f64],
-    ws: &mut SolverWorkspace<'_, f64>,
+    ws: &mut ScalarWorkspace<'_, f64>,
 ) -> Result<IlqrStats, OptError> {
     let n = slot_hours.len();
     if n == 0
@@ -395,7 +395,7 @@ mod tests {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
             let (s, _) = VerifiedEngine::run_verified(|| {
-                let mut ws = SolverWorkspace::new(&mut ws_buf);
+                let mut ws = ScalarWorkspace::new(&mut ws_buf);
                 solve_duty_schedule_mpc_into(
                     &model,
                     &hours,

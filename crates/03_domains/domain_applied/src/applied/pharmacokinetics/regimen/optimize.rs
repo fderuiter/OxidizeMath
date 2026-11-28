@@ -4,7 +4,7 @@ use super::{DoseEvent, ReleaseFormulation};
 use crate::applied::pharmacokinetics::{PKParameters, t_max};
 use engine_opt::ilqr::ControlModel;
 use engine_opt::mpc::{MpcConfig, MpcProblem, MpcStats, mpc_workspace_len, solve_mpc};
-use engine_opt::{OptError, SolverWorkspace};
+use engine_opt::{OptError, ScalarWorkspace};
 
 /// Upper bound on doses optimized in a single stack-resident Bateman MPC horizon.
 pub const MAX_OPTIMIZED_DOSES: usize = 32;
@@ -167,7 +167,7 @@ pub fn solve_regimen_mpc_into(
     dose_times_h: &[f64],
     cfg: &RegimenMpcConfig,
     doses_mg_out: &mut [f64],
-    ws: &mut SolverWorkspace<'_, f64>,
+    ws: &mut ScalarWorkspace<'_, f64>,
 ) -> Result<MpcStats, OptError> {
     let n = dose_times_h.len();
     if n == 0 || n > MAX_OPTIMIZED_DOSES || doses_mg_out.len() != n {
@@ -340,7 +340,7 @@ mod tests {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
             let (res, _) = VerifiedEngine::run_verified(|| {
-                let mut ws = SolverWorkspace::new(&mut ws_buf);
+                let mut ws = ScalarWorkspace::new(&mut ws_buf);
                 let s = solve_regimen_mpc_into(&params, &times, &cfg, &mut doses, &mut ws)
                     .expect("regimen MPC must succeed");
                 let _ = populate_ir_dose_events_into(&times, &doses, &mut events)

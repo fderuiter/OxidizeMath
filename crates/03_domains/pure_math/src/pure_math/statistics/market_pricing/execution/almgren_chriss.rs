@@ -2,7 +2,7 @@
 
 use engine_opt::ilqr::ControlModel;
 use engine_opt::mpc::{MpcConfig, MpcProblem, MpcStats, mpc_workspace_len, solve_mpc};
-use engine_opt::{OptError, SolverWorkspace};
+use engine_opt::{OptError, ScalarWorkspace};
 
 /// Parameters for multi-period mean-variance Almgren-Chriss optimal trade execution.
 ///
@@ -150,7 +150,7 @@ pub fn solve_almgren_chriss_mpc_into(
     periods: usize,
     inventory_out: &mut [f64],
     trades_out: &mut [f64],
-    ws: &mut SolverWorkspace<'_, f64>,
+    ws: &mut ScalarWorkspace<'_, f64>,
 ) -> Result<MpcStats, OptError> {
     validate_ac_cfg(cfg, periods)?;
     if inventory_out.len() != periods + 1 || trades_out.len() != periods {
@@ -264,7 +264,7 @@ mod tests {
             let _g = AC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             let (s, _) = VerifiedEngine::run_verified(|| {
                 let _ = almgren_chriss_analytical_trajectory_into(&cfg, N, &mut inv_exact).unwrap();
-                let mut ws = SolverWorkspace::new(&mut ws_buf);
+                let mut ws = ScalarWorkspace::new(&mut ws_buf);
                 solve_almgren_chriss_mpc_into(&cfg, N, &mut inv_mpc, &mut trades_mpc, &mut ws)
                     .unwrap()
             });
@@ -297,7 +297,7 @@ mod tests {
         let stats = {
             let _g = AC_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             let (s, _) = VerifiedEngine::run_verified(|| {
-                let mut ws = SolverWorkspace::new(&mut ws_buf);
+                let mut ws = ScalarWorkspace::new(&mut ws_buf);
                 solve_almgren_chriss_mpc_into(&cfg, N, &mut inv_cap, &mut trades_cap, &mut ws)
                     .unwrap()
             });

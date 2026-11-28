@@ -17,12 +17,12 @@ Prior to this decision, constrained optimal control, dynamic programming, mean-f
 1. **Conservative Upwind Transport in [`engine_pde`](../../crates/02_engines/engine_pde/README.md)**:
    - Add `StencilOperators::try_new_1d_f64` and `StencilOperators::conservative_upwind_flux` computing discrete conservative flux divergence $-\nabla \cdot (v m)$ for spatially varying face velocities `(v_left, v_right)`.
 
-2. **Expand `#![no_std]` [`engine_opt`](../../crates/02_engines/engine_opt/README.md) with `SolverWorkspace` Solvers and Typed [`OptError`](../../crates/02_engines/engine_opt/src/error.rs)**:
+2. **Expand `#![no_std]` [`engine_opt`](../../crates/02_engines/engine_opt/README.md) with `ScalarWorkspace` Solvers and Typed [`OptError`](../../crates/02_engines/engine_opt/src/error.rs)**:
    - Introduce `#![no_std]` `Copy` `OptError` implementing `math_diagnostics::Diagnostic` and wire `Error::Opt(OptError)` into the [`oxidizemath`](../../crates/04_bindings/oxidizemath/README.md) umbrella facade.
    - Implement `engine_opt::mfg` (`solve_mfg_1d`, `mfg_1d_workspace_len`) per Achdou & Capuzzo-Dolcetta (2010) using monotone Engquist-Osher Hamiltonians, adaptive CFL advection-diffusion substeps down to `viscosity = 0.0`, quadrature normalization `1.0 / (sum * dx)`, and Mann fixed-point damping with $L^1$ residual tracking.
    - Implement single-shooting box-projected `engine_opt::ilqr` (`solve_ilqr`, `ilqr_workspace_len`) and receding-horizon `engine_opt::mpc` (`solve_mpc`, `mpc_workspace_len`, `warm_start_shift_controls`) backed by `engine_linalg::cholesky_solve` Riccati sweeps and Armijo backtracking.
    - Implement `engine_opt::dp` (`solve_infinite_horizon_dp`, `solve_finite_horizon_dp`) using exact Howard policy iteration via `engine_linalg::lu_solve`.
-   - Implement `engine_opt::nash` (`solve_bimatrix_lemke_howson`, `solve_polymatrix_regret_matching`) providing lexicographic complementary pivoting and polymatrix `CFR+` regret matching over `SolverWorkspace`.
+   - Implement `engine_opt::nash` (`solve_bimatrix_lemke_howson`, `solve_polymatrix_regret_matching`) providing lexicographic complementary pivoting and polymatrix `CFR+` regret matching over `ScalarWorkspace`.
 
 3. **Unify Downstream Domain Solvers and Closed-Loop Controllers**:
    - Route `FixedPointSolver` (`domain_applied`) and Braess congestion profiles (`apps/math_explorer_gui/src/tabs/paradox_lab/braess.rs`) through `engine_opt::mfg`.

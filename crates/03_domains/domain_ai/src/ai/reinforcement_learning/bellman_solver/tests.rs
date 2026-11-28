@@ -16,7 +16,7 @@ fn test_howard_bellman_solver_zero_alloc_converges_at_gamma_0_999_under_20_sweep
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let (s, _) = VerifiedEngine::run_verified(|| {
-            let mut ws = SolverWorkspace::new(&mut ws_buf);
+            let mut ws = ScalarWorkspace::new(&mut ws_buf);
             let st = sol
                 .solve_into(&mdp, 1.0e-11, 20, &mut ws)
                 .expect("Howard policy iteration must succeed");

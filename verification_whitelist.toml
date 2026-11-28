@@ -62,6 +62,7 @@ unverified_modules = [
     "math_diagnostics",
     "math_explorer",
     "math_explorer_gui",
+    "math_memory",
     "math_rng",
     "math_scalars",
     "oxidize-cli",
@@ -74,6 +75,10 @@ unverified_modules = [
     "verified_engine_macros",
     "xtask",
 ]
+
+[[verify_suite.opt_outs]]
+path = "math_memory:src/"
+reason = "no_std_engine"
 
 [[verify_suite.opt_outs]]
 path = "math_rng:src/"
@@ -334,6 +339,7 @@ exempt_crates = [
     "math_diagnostics",
     "math_explorer",
     "math_explorer_gui",
+    "math_memory",
     "math_rng",
     "math_scalars",
     "oxidize-cli",
@@ -352,13 +358,14 @@ min_total_density = 0.120
 
 [verification_debt.opt_out_reasons]
 "Legacy missing assertions" = 1
-"gui_tool" = 768
+"gui_tool" = 780
 "infrastructure" = 2
 "metadata" = 2
-"no_std_engine" = 25
+"no_std_engine" = 32
 "tests" = 250
 
 [verification_debt.crate_opt_out_caps]
+"math_memory" = 7
 "math_rng" = 14
 "engine_linalg" = 15
 "domain_applied" = 1
@@ -369,7 +376,7 @@ min_total_density = 0.120
 "pure_math" = 12
 "scientific_metadata" = 2
 "egui_plot" = 1
-"math_explorer_gui" = 997
+"math_explorer_gui" = 1009
 
 [verification_debt.file_opt_out_caps]
 "math_explorer_gui:src/tabs/optics_waves/tool.rs" = 2

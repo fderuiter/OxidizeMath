@@ -276,7 +276,7 @@ mod tests {
 
     #[test]
     fn test_lemke_howson_exact_fixed_point_and_polymatrix_regret_zero_alloc() {
-        use engine_opt::SolverWorkspace;
+        use engine_opt::ScalarWorkspace;
 
         // Asymmetric inspection / Battle-of-Sexes-style 2x3 bimatrix game + 3x3 Rock-Paper-Scissors.
         let a_asym = [3.0, 0.0, 1.0, 0.0, 2.0, 1.0];
@@ -300,12 +300,12 @@ mod tests {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
             VerifiedEngine::run_verified(|| {
-                let mut ws1 = SolverWorkspace::new(&mut lh_ws_buf);
+                let mut ws1 = ScalarWorkspace::new(&mut lh_ws_buf);
                 let s1 =
                     solve_bimatrix_nash_into(&a_asym, &b_asym, 2, 3, &mut sa, &mut sb, &mut ws1)
                         .expect("lemke-howson must succeed");
 
-                let mut ws2 = SolverWorkspace::new(&mut poly_ws_buf);
+                let mut ws2 = ScalarWorkspace::new(&mut poly_ws_buf);
                 let s2 = solve_polymatrix_nash_into(
                     &counts,
                     &poly,

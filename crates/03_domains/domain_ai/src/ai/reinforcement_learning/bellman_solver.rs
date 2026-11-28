@@ -18,7 +18,7 @@ use engine_linalg::lu_solve;
 use engine_opt::dp::{
     DiscreteMdp, DpStats, HowardDpConfig, dp_infinite_workspace_len, solve_infinite_horizon_dp,
 };
-use engine_opt::{OptError, SolverWorkspace};
+use engine_opt::{OptError, ScalarWorkspace};
 use math_commons::math_kernel::types::flatten_2d_index;
 
 /// Maximum number of grid cells (`20 x 20 = 400`) stored inline without heap `Vec` buffers.
@@ -185,7 +185,7 @@ impl BellmanSolution {
         mdp: &SculptedGridMdp,
         tolerance: f64,
         max_sweeps: usize,
-        ws: &mut SolverWorkspace<'_, f64>,
+        ws: &mut ScalarWorkspace<'_, f64>,
     ) -> Result<DpStats, OptError> {
         let adapter = GridDiscreteMdp::new(mdp);
         let count = adapter.count;
@@ -250,13 +250,13 @@ impl BellmanSolution {
         Ok(stats)
     }
 
-    /// Constructs a solved `BellmanSolution` over caller-provided `SolverWorkspace` with zero heap allocations.
+    /// Constructs a solved `BellmanSolution` over caller-provided `ScalarWorkspace` with zero heap allocations.
     #[verified_engine::verified]
     pub fn solve_with_workspace(
         mdp: &SculptedGridMdp,
         tolerance: f64,
         max_sweeps: usize,
-        ws: &mut SolverWorkspace<'_, f64>,
+        ws: &mut ScalarWorkspace<'_, f64>,
     ) -> Result<Self, OptError> {
         let mut sol = Self::empty(mdp.width.max(0) as usize, mdp.height.max(0) as usize);
         sol.solve_into(mdp, tolerance, max_sweeps, ws)?;
@@ -274,11 +274,11 @@ impl BellmanSolution {
         let mut sol = Self::empty(w, h);
         if w * h <= INLINE_STACK_STATES {
             let mut stack_buf = [0.0_f64; INLINE_STACK_WS_LEN];
-            let mut ws = SolverWorkspace::new(&mut stack_buf);
+            let mut ws = ScalarWorkspace::new(&mut stack_buf);
             let _ = sol.solve_into(mdp, tolerance, max_sweeps, &mut ws);
         } else {
             let mut heap_buf = vec![0.0_f64; bellman_grid_workspace_len(w, h)];
-            let mut ws = SolverWorkspace::new(&mut heap_buf);
+            let mut ws = ScalarWorkspace::new(&mut heap_buf);
             let _ = sol.solve_into(mdp, tolerance, max_sweeps, &mut ws);
         }
         sol
@@ -290,7 +290,7 @@ impl BellmanSolution {
         &mut self,
         mdp: &SculptedGridMdp,
         policy: &TabularGridPolicy,
-        ws: &mut SolverWorkspace<'_, f64>,
+        ws: &mut ScalarWorkspace<'_, f64>,
     ) -> Result<(), OptError> {
         let adapter = GridDiscreteMdp::new(mdp);
         let n = adapter.count;
@@ -361,11 +361,11 @@ impl BellmanSolution {
         let h = mdp.height.max(0) as usize;
         if w * h <= INLINE_STACK_STATES {
             let mut stack_buf = [0.0_f64; INLINE_STACK_WS_LEN];
-            let mut ws = SolverWorkspace::new(&mut stack_buf);
+            let mut ws = ScalarWorkspace::new(&mut stack_buf);
             let _ = self.evaluate_policy_with_workspace(mdp, policy, &mut ws);
         } else {
             let mut heap_buf = vec![0.0_f64; bellman_grid_workspace_len(w, h)];
-            let mut ws = SolverWorkspace::new(&mut heap_buf);
+            let mut ws = ScalarWorkspace::new(&mut heap_buf);
             let _ = self.evaluate_policy_with_workspace(mdp, policy, &mut ws);
         }
     }

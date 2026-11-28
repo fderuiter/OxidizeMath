@@ -21,6 +21,8 @@ use math_explorer::ai::reinforcement_learning::{move_to_index, DenseRlWorkspace,
 
 #[path = "q_table_inspector/canvas.rs"]
 mod canvas;
+#[path = "q_table_inspector/export.rs"]
+mod export;
 #[path = "q_table_inspector/preset.rs"]
 mod preset;
 #[path = "q_table_inspector/runner.rs"]
@@ -136,18 +138,24 @@ impl QTableInspectorTool {
         }
     }
 
-    fn sync_sculpt_to_worker(&mut self) {
-        let mut temp_ws =
-            DenseRlWorkspace::new(self.mdp.width as usize, self.mdp.height as usize, 100, None);
-        if self.latest_snap.q_table.len() == temp_ws.q_table.len() {
-            temp_ws.q_table.clone_from(&self.latest_snap.q_table);
+    fn refresh_snapshot_bellman(&mut self) {
+        let (w, h) = (self.mdp.width as usize, self.mdp.height as usize);
+        let mut temp_ws = DenseRlWorkspace::new(w, h, 100, None);
+        if self.latest_snap.q_table.len() == temp_ws.q_table().len() {
             temp_ws
-                .state_values
-                .clone_from(&self.latest_snap.state_values);
+                .q_table_mut()
+                .copy_from_slice(&self.latest_snap.q_table);
+            temp_ws
+                .state_values_mut()
+                .copy_from_slice(&self.latest_snap.state_values);
         }
         self.latest_snap.mdp = self.mdp.clone();
         self.latest_snap.solver_mode = self.solver_mode;
         self.latest_snap.bellman = solve_bellman_with_policy(&self.mdp, &temp_ws, self.solver_mode);
+    }
+
+    fn sync_sculpt_to_worker(&mut self) {
+        self.refresh_snapshot_bellman();
         let payload = build_rl_sculpt_payload(&self.mdp, self.solver_mode);
         let _ = self
             .worker
@@ -171,9 +179,9 @@ impl QTableInspectorTool {
             episodes_trained: 0,
             mdp: self.mdp.clone(),
             solver_mode: self.solver_mode,
-            q_table: ws.q_table.clone(),
-            state_values: ws.state_values.clone(),
-            greedy_actions: vec![None; ws.q_table.len()],
+            q_table: ws.q_table().to_vec(),
+            state_values: ws.state_values().to_vec(),
+            greedy_actions: vec![None; ws.q_table().len()],
             bellman: solve_bellman_with_policy(&self.mdp, &ws, self.solver_mode),
         };
         self.episodes_trained = 0;
@@ -393,7 +401,16 @@ impl InteractiveTool for QTableInspectorTool {
         "Q-Table Inspector"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_q_table_primitives()
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_q_table_export_tables()
+    }
+    fn step_simulation(&mut self) {
+        self.step_q_table_episode();
     }
     fn domain(&self) -> &'static str {
         "ai"
@@ -409,17 +426,7 @@ impl InteractiveTool for QTableInspectorTool {
             return;
         };
         if apply_rl_brush_stroke(&mut self.mdp, &stroke) {
-            let mut temp_ws =
-                DenseRlWorkspace::new(self.mdp.width as usize, self.mdp.height as usize, 100, None);
-            if self.latest_snap.q_table.len() == temp_ws.q_table.len() {
-                temp_ws.q_table.clone_from(&self.latest_snap.q_table);
-                temp_ws
-                    .state_values
-                    .clone_from(&self.latest_snap.state_values);
-            }
-            self.latest_snap.mdp = self.mdp.clone();
-            self.latest_snap.bellman =
-                solve_bellman_with_policy(&self.mdp, &temp_ws, self.solver_mode);
+            self.refresh_snapshot_bellman();
             let _ = self
                 .worker
                 .send_command(SimCommand::ApplyBrushStroke(stroke));
@@ -477,20 +484,5 @@ inventory::submit! {
             "sonification",
         ],
         build: || Box::new(QTableInspectorTool::default()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for QTableInspectorTool {
-    fn theory_description(&self) -> String {
-        "Bellman optimality $V^*(s) = \\max_a \\sum_{s'} P(s'|s,a)[R + \\gamma V^*(s')]$ compared against empirical temporal-difference $Q(s,a)$ and policy-gradient $V_\\pi(s)$ value tables.".into()
-    }
-    fn phonetic_description(&self) -> String {
-        "Q-learning and Bellman optimality equation theory".into()
-    }
-    fn theory_citation(&self) -> String {
-        "Reinforcement Learning: An Introduction (Sutton & Barto, 2018)".into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        std::collections::HashMap::new()
     }
 }

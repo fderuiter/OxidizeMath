@@ -4,7 +4,7 @@
 use super::StageCost;
 use crate::error::OptError;
 use engine_linalg::{cholesky_solve, cholesky_workspace_len, mat_idx};
-use math_scalars::workspace::SolverWorkspace;
+use math_scalars::workspace::{ScalarWorkspace, SolverWorkspace};
 
 /// Workspace slices used inside the backward Riccati recursion.
 pub(super) struct RiccatiScratch<'a> {
@@ -26,7 +26,7 @@ pub(super) struct RiccatiScratch<'a> {
     pub tmp_nu_nx: &'a mut [f64],
     pub rhs_u: &'a mut [f64],
     pub sol_u: &'a mut [f64],
-    pub chol_ws: SolverWorkspace<'a, f64>,
+    pub chol_ws: ScalarWorkspace<'a, f64>,
 }
 
 #[inline]
@@ -97,7 +97,7 @@ impl<'a> RiccatiScratch<'a> {
             tmp_nu_nx,
             rhs_u,
             sol_u,
-            chol_ws: SolverWorkspace::new(chol_buf),
+            chol_ws: ScalarWorkspace::new(chol_buf),
         })
     }
 }

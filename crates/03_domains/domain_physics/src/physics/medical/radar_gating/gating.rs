@@ -6,7 +6,7 @@
 
 use engine_opt::ilqr::ControlModel;
 use engine_opt::mpc::{MpcConfig, MpcProblem, mpc_workspace_len, solve_mpc};
-use engine_opt::{OptError, SolverWorkspace};
+use engine_opt::{OptError, ScalarWorkspace};
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 
 /// Receding horizon step count used for stack-allocated harmonic respiratory `MPC` lookahead.
@@ -185,7 +185,7 @@ impl GatingLogic {
         &self,
         amplitude: f64,
         velocity: f64,
-        ws: &mut SolverWorkspace<'_, f64>,
+        ws: &mut ScalarWorkspace<'_, f64>,
     ) -> Result<f64, OptError> {
         if !amplitude.is_finite() || !velocity.is_finite() || !self.system_latency.is_finite() {
             return Err(OptError::NonFiniteInput);
@@ -249,7 +249,7 @@ impl GatingLogic {
     pub fn predict_amplitude(&self, amplitude: f64, velocity: f64) -> f64 {
         if self.harmonic_omega_rad_s.is_some() && self.system_latency > 1.0e-9 {
             let mut ws_buf = [0.0_f64; STACK_MPC_WS_LEN];
-            let mut ws = SolverWorkspace::new(&mut ws_buf);
+            let mut ws = ScalarWorkspace::new(&mut ws_buf);
             self.solve_harmonic_lookahead_mpc(amplitude, velocity, &mut ws)
                 .unwrap_or(f64::NAN)
         } else {

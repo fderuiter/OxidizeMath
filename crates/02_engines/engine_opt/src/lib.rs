@@ -24,7 +24,7 @@ pub use dp::{dp_finite_workspace_len, dp_infinite_workspace_len};
 pub use error::{FitError, LinalgError, OptError};
 pub use ilqr::ilqr_workspace_len;
 pub use math_scalars::series::{PointSeries, Sample2D};
-pub use math_scalars::workspace::SolverWorkspace;
+pub use math_scalars::workspace::{ScalarWorkspace, SolverWorkspace};
 pub use mfg::mfg_1d_workspace_len;
 pub use mpc::mpc_workspace_len;
 pub use nash::{nash_bimatrix_workspace_len, nash_polymatrix_workspace_len};
@@ -71,6 +71,6 @@ theory_verification!(
         let ys = [0.0, 3.0, 4.0, 3.0, 0.0];
         let fit = fit_model(&(&xs[..], &ys[..]), FitModel::Quadratic, false).unwrap();
         assert!((fit.eval(2.0) - PARABOLIC_PEAK_Y).abs() < 1e-9);
-        assert_eq!(FitModel::Quadratic.maturity_tier(), MaturityTier::Certified);
+        assert_eq!(FitModel::Quadratic.maturity_tier(), MaturityTier::Validated);
     }
 );

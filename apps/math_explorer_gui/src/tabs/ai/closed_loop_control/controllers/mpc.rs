@@ -8,7 +8,7 @@ use engine_opt::ilqr::ControlModel;
 use engine_opt::mpc::{
     mpc_workspace_len, solve_mpc, warm_start_shift_controls, MpcConfig, MpcProblem, MpcStats,
 };
-use engine_opt::{OptError, SolverWorkspace};
+use engine_opt::{OptError, ScalarWorkspace};
 use math_commons::math_kernel::types::flatten_2d_index;
 
 /// Receding prediction horizon $N = 12$ steps (`6.0 h` at $\Delta t = 0.5\text{ h}$) for ADME `MPC`.
@@ -191,7 +191,7 @@ impl MpcController {
 
         let mut u0_out = [u_ss];
         let mut ws_buf = [0.0_f64; MPC_PK_WS_LEN];
-        let mut ws = SolverWorkspace::new(&mut ws_buf);
+        let mut ws = ScalarWorkspace::new(&mut ws_buf);
         if let Ok(stats) = solve_mpc(
             &model,
             &prob,

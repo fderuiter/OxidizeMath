@@ -1,7 +1,8 @@
 use super::{Action, MarkovDecisionProcess, State};
 
 /// Discrete 2D integer cell coordinate in [`GridWorldEnv`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct GridState {
     /// Horizontal column index ($0 \le x < \text{width}$).
     pub x: i32,

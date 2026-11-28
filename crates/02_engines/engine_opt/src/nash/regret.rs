@@ -2,7 +2,7 @@
 //! Deterministic regret matching (`CFR+` / Hart-Mas-Colell) for $N$-player polymatrix games over `SolverWorkspace`.
 
 use crate::error::OptError;
-use math_scalars::workspace::SolverWorkspace;
+use math_scalars::workspace::ScalarWorkspace;
 
 /// Configuration for polymatrix regret-matching equilibrium computation.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -68,7 +68,7 @@ pub fn solve_polymatrix_regret_matching(
     payoff_matrix: &[f64],
     cfg: &PolymatrixConfig,
     avg_strategies_out: &mut [f64],
-    ws: &mut SolverWorkspace<'_, f64>,
+    ws: &mut ScalarWorkspace<'_, f64>,
 ) -> Result<PolymatrixNashStats, OptError> {
     let m_total =
         validate_polymatrix_inputs(action_counts, payoff_matrix, cfg, avg_strategies_out.len())?;

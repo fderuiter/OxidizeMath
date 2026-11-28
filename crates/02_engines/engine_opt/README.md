@@ -6,7 +6,7 @@
 
 ## 1. Overview & Architecture
 
-`engine_opt` (`crates/02_engines/engine_opt`) is the `#![no_std]` Tier 2 optimization, optimal control, dynamic programming, and game-theoretic equilibrium engine for the OxidizeMath workspace. Every iterative solver operates over caller-supplied `math_scalars::workspace::SolverWorkspace` slices (with deterministic `*_workspace_len` sizing helpers) and optional `alloc` support while preserving downward Tier 2 dependencies (`engine_linalg`, `engine_pde`, `math_scalars`, `math_diagnostics`).
+`engine_opt` (`crates/02_engines/engine_opt`) is the `#![no_std]` Tier 2 optimization, optimal control, dynamic programming, and game-theoretic equilibrium engine for the OxidizeMath workspace. Every iterative solver operates over caller-supplied `math_scalars::workspace::ScalarWorkspace` slices (with deterministic `*_workspace_len` sizing helpers) and optional `alloc` support while preserving downward Tier 2 dependencies (`engine_linalg`, `engine_pde`, `math_scalars`, `math_diagnostics`).
 
 ### Key Capabilities
 

@@ -1,9 +1,9 @@
 // [cite:engine_opt]
-//! Finite-horizon backward induction and infinite-horizon Howard policy iteration (`lu_solve`) over `SolverWorkspace`.
+//! Finite-horizon backward induction and infinite-horizon Howard policy iteration (`lu_solve`) over `ScalarWorkspace`.
 
 use crate::error::OptError;
 use engine_linalg::{lu_solve, lu_workspace_len, mat_idx};
-use math_scalars::workspace::SolverWorkspace;
+use math_scalars::workspace::{ScalarWorkspace, SolverWorkspace};
 
 const STACK_PIVOT_CAP: usize = 512;
 const POLICY_TIE_EPS: f64 = 1.0e-13;
@@ -157,7 +157,7 @@ pub fn solve_infinite_horizon_dp<M: DiscreteMdp>(
     values_out: &mut [f64],
     q_table_out: &mut [f64],
     policy_out: &mut [usize],
-    ws: &mut SolverWorkspace<'_, f64>,
+    ws: &mut ScalarWorkspace<'_, f64>,
 ) -> Result<DpStats, OptError> {
     let n = mdp.num_states();
     if n > STACK_PIVOT_CAP {
@@ -198,7 +198,7 @@ pub fn solve_infinite_horizon_dp_with_pivots<M: DiscreteMdp>(
     q_table_out: &mut [f64],
     policy_out: &mut [usize],
     pivots: &mut [usize],
-    ws: &mut SolverWorkspace<'_, f64>,
+    ws: &mut ScalarWorkspace<'_, f64>,
 ) -> Result<DpStats, OptError> {
     let n = mdp.num_states();
     let na = mdp.num_actions();
@@ -275,7 +275,7 @@ pub fn solve_finite_horizon_dp<M: DiscreteMdp>(
     terminal_values: &[f64],
     values_out: &mut [f64],
     policy_out: &mut [usize],
-    ws: &mut SolverWorkspace<'_, f64>,
+    ws: &mut ScalarWorkspace<'_, f64>,
 ) -> Result<DpStats, OptError> {
     let n = mdp.num_states();
     let na = mdp.num_actions();
@@ -405,7 +405,7 @@ fn evaluate_policy_linear_system<M: DiscreteMdp>(
     rhs: &mut [f64],
     values_out: &mut [f64],
     pivots: &mut [usize],
-    lu_ws: &mut SolverWorkspace<'_, f64>,
+    lu_ws: &mut ScalarWorkspace<'_, f64>,
 ) -> Result<(), OptError> {
     let n = mdp.num_states();
     sys_mat.fill(0.0);

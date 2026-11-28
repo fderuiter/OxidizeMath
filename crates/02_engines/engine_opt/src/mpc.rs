@@ -3,7 +3,7 @@
 
 use crate::error::OptError;
 use crate::ilqr::{ControlModel, IlqrConfig, QuadraticBoxCost, ilqr_workspace_len, solve_ilqr};
-use math_scalars::workspace::SolverWorkspace;
+use math_scalars::workspace::ScalarWorkspace;
 
 /// Hard control box bounds $[u_{\min}, u_{\max}]$ and tightened state window $[x_{\min}, x_{\max}]$ for [`solve_mpc`].
 #[derive(Debug, Clone, Copy)]
@@ -117,7 +117,7 @@ pub fn solve_mpc<M: ControlModel>(
     x_traj: &mut [f64],
     u_traj: &mut [f64],
     u0_out: &mut [f64],
-    ws: &mut SolverWorkspace<'_, f64>,
+    ws: &mut ScalarWorkspace<'_, f64>,
 ) -> Result<MpcStats, OptError> {
     let nx = model.state_dim();
     let nu = model.control_dim();

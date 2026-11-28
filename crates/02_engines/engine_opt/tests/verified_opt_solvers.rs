@@ -13,7 +13,7 @@ use engine_opt::nash::{
     PolymatrixConfig, nash_bimatrix_workspace_len, nash_polymatrix_workspace_len,
     solve_bimatrix_lemke_howson, solve_polymatrix_regret_matching,
 };
-use engine_opt::{OptError, SolverWorkspace};
+use engine_opt::{OptError, ScalarWorkspace};
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
 
@@ -72,7 +72,7 @@ fn verified_mfg_zero_alloc_mass_and_inviscid_stability() {
     let ham = QuadraticMfgHamiltonian::default();
 
     let (stats, _) = VerifiedEngine::run_verified(|| {
-        let mut ws = SolverWorkspace::new(&mut ws_buf);
+        let mut ws = ScalarWorkspace::new(&mut ws_buf);
         solve_mfg_1d(
             &cfg,
             &ham,
@@ -131,7 +131,7 @@ fn verified_mpc_zero_alloc_respects_bounds() {
     };
 
     let (stats, _) = VerifiedEngine::run_verified(|| {
-        let mut ws = SolverWorkspace::new(&mut ws_buf);
+        let mut ws = ScalarWorkspace::new(&mut ws_buf);
         solve_mpc(
             &model,
             &prob,
@@ -172,7 +172,7 @@ fn verified_ilqr_zero_alloc_converges() {
         bound_weight: 0.0,
     };
     let (ilqr_stats, _) = VerifiedEngine::run_verified(|| {
-        let mut ws = SolverWorkspace::new(&mut ilqr_ws_buf);
+        let mut ws = ScalarWorkspace::new(&mut ilqr_ws_buf);
         solve_ilqr(
             &model,
             &cost,
@@ -226,7 +226,7 @@ fn verified_howard_and_finite_dp_zero_alloc_high_discount() {
     };
 
     let (stats, _) = VerifiedEngine::run_verified(|| {
-        let mut ws = SolverWorkspace::new(&mut ws_buf);
+        let mut ws = ScalarWorkspace::new(&mut ws_buf);
         solve_infinite_horizon_dp(&mdp, &cfg, &mut values, &mut q_table, &mut policy, &mut ws)
             .expect("howard dp must succeed")
     });
@@ -241,7 +241,7 @@ fn verified_howard_and_finite_dp_zero_alloc_high_discount() {
     let mut fh_policy = [0usize; 8 * N];
     let mut fh_ws_buf = [0.0; dp_finite_workspace_len(N, A)];
     let _ = VerifiedEngine::run_verified(|| {
-        let mut ws = SolverWorkspace::new(&mut fh_ws_buf);
+        let mut ws = ScalarWorkspace::new(&mut fh_ws_buf);
         solve_finite_horizon_dp(
             &mdp,
             8,
@@ -266,7 +266,7 @@ fn verified_nash_lemke_howson_and_polymatrix_zero_alloc() {
     let mut lh_ws_buf = [0.0; nash_bimatrix_workspace_len(3, 3)];
 
     let (lh_stats, _) = VerifiedEngine::run_verified(|| {
-        let mut ws = SolverWorkspace::new(&mut lh_ws_buf);
+        let mut ws = ScalarWorkspace::new(&mut lh_ws_buf);
         solve_bimatrix_lemke_howson(&a, &b, 3, 3, &mut sa, &mut sb, &mut ws)
             .expect("lemke-howson must succeed")
     });
@@ -287,7 +287,7 @@ fn verified_nash_lemke_howson_and_polymatrix_zero_alloc() {
     let mut avg_strat = [0.0; 6];
     let mut poly_ws_buf = [0.0; nash_polymatrix_workspace_len(6)];
     let (poly_stats, _) = VerifiedEngine::run_verified(|| {
-        let mut ws = SolverWorkspace::new(&mut poly_ws_buf);
+        let mut ws = ScalarWorkspace::new(&mut poly_ws_buf);
         solve_polymatrix_regret_matching(
             &counts,
             &poly,

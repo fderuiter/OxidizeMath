@@ -178,59 +178,105 @@ fn test_bar_and_arrow_csv_json_and_figure_exports() {
     );
 }
 
+fn verify_single_raster_case(tool_name: &str, screenshot_path: Option<&str>) {
+    let tool = build_registered_tool(tool_name);
+    let caps = tool.export_capabilities();
+    assert!(caps.dataset && caps.dataset_disabled_reason.is_empty());
+    assert!(caps.figure, "{tool_name} should support figure exports");
+
+    let mut framework = new_framework_with_tool(tool);
+    framework.export_options.width = 320;
+    framework.export_options.height = 180;
+    framework.export_gif_frames = 5;
+    run_deferred_frame(&mut framework, ExportFormat::Png);
+    let png = framework
+        .export_queue
+        .last_exported_bytes
+        .clone()
+        .unwrap_or_else(|| panic!("{tool_name} PNG missing"));
+    assert!(count_distinct_colors(&png) >= 2);
+    if let Some(path) = screenshot_path {
+        let _ = std::fs::write(path, &png);
+    }
+
+    run_deferred_frame(&mut framework, ExportFormat::Svg);
+    let svg = framework
+        .export_queue
+        .last_exported_content
+        .as_deref()
+        .unwrap_or_else(|| panic!("{tool_name} SVG missing"));
+    assert!(svg.contains("data:image/png;base64,"));
+
+    run_deferred_frame(&mut framework, ExportFormat::Gif);
+    let gif = framework
+        .export_queue
+        .last_exported_bytes
+        .as_deref()
+        .unwrap_or_else(|| panic!("{tool_name} GIF missing"));
+    assert!(gif.starts_with(b"GIF89a"));
+
+    run_deferred_frame(&mut framework, ExportFormat::Csv);
+    assert_eq!(
+        framework.export_status_severity,
+        ExportStatusSeverity::Success
+    );
+    assert!(framework
+        .export_queue
+        .last_exported_content
+        .as_deref()
+        .is_some_and(|c| c.lines().count() >= 2));
+
+    run_deferred_frame(&mut framework, ExportFormat::Json);
+    assert_eq!(
+        framework.export_status_severity,
+        ExportStatusSeverity::Success
+    );
+    let json = framework
+        .export_queue
+        .last_exported_content
+        .as_deref()
+        .unwrap_or_else(|| panic!("{tool_name} JSON missing"));
+    assert!(serde_json::from_str::<serde_json::Value>(json).is_ok());
+}
+
 #[test]
 fn test_raster_texture_tools_png_svg_gif_exports() {
-    let cases = [
+    for (tool_name, screenshot_path) in [
         ("DoseCalculationTool", Some("/tmp/dose_raster_heatmap.png")),
         ("LatticeBoltzmannTool", None),
         ("FractalViewer", Some("/tmp/fractal_mandelbrot_raster.png")),
         ("IsingModelTool", None),
-    ];
-
-    for (tool_name, screenshot_path) in cases {
-        let tool = build_registered_tool(tool_name);
-        let caps = tool.export_capabilities();
-        assert!(!caps.dataset, "{tool_name} should disable dataset exports");
-        assert!(!caps.dataset_disabled_reason.is_empty());
-        assert!(caps.figure, "{tool_name} should support figure exports");
-
-        let mut framework = new_framework_with_tool(tool);
-        framework.export_options.width = 320;
-        framework.export_options.height = 180;
-        framework.export_gif_frames = 5;
-        run_deferred_frame(&mut framework, ExportFormat::Png);
-        let png = framework
-            .export_queue
-            .last_exported_bytes
-            .clone()
-            .unwrap_or_else(|| panic!("{tool_name} PNG missing"));
-        assert!(
-            count_distinct_colors(&png) >= 2,
-            "{tool_name} PNG should render non-blank raster field"
-        );
-        if let Some(path) = screenshot_path {
-            let _ = std::fs::write(path, &png);
-        }
-
-        run_deferred_frame(&mut framework, ExportFormat::Svg);
-        let svg = framework
-            .export_queue
-            .last_exported_content
-            .as_deref()
-            .unwrap_or_else(|| panic!("{tool_name} SVG missing"));
-        assert!(
-            svg.contains("data:image/png;base64,"),
-            "{tool_name} SVG should embed raster PNG"
-        );
-
-        run_deferred_frame(&mut framework, ExportFormat::Gif);
-        let gif = framework
-            .export_queue
-            .last_exported_bytes
-            .as_deref()
-            .unwrap_or_else(|| panic!("{tool_name} GIF missing"));
-        assert!(gif.starts_with(b"GIF89a"), "{tool_name} invalid GIF header");
+    ] {
+        verify_single_raster_case(tool_name, screenshot_path);
     }
+}
+
+struct UnsupportedFixtureTool;
+impl scientific_metadata::theory::TheoryDescribable for UnsupportedFixtureTool {
+    fn theory_description(&self) -> String {
+        "Unsupported fixture".into()
+    }
+    fn phonetic_description(&self) -> String {
+        "Unsupported fixture".into()
+    }
+    fn theory_citation(&self) -> String {
+        "Test".into()
+    }
+    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
+        std::collections::HashMap::new()
+    }
+}
+impl InteractiveTool for UnsupportedFixtureTool {
+    fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {
+        self
+    }
+    fn name(&self) -> &'static str {
+        "Unsupported Fixture Tool"
+    }
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::none()
+    }
+    fn show(&mut self, _ctx: &egui::Context) {}
 }
 
 struct EmptyPlotTool;
@@ -265,7 +311,7 @@ fn test_empty_payload_rejection_status_colors_and_live_region() {
     let _ = std::fs::remove_dir_all(&temp_dir);
     std::fs::create_dir_all(&temp_dir).expect("temp dir created");
 
-    let unsupported = build_registered_tool("Gaussian Splatting");
+    let unsupported: Box<dyn InteractiveTool> = Box::new(UnsupportedFixtureTool);
     let caps = unsupported.export_capabilities();
     assert!(!caps.dataset && !caps.figure);
     assert!(!caps.dataset_disabled_reason.is_empty());
@@ -348,7 +394,17 @@ fn test_deferred_png_clipboard_and_raster_csv_clipboard_capability_guard() {
     raster_fw.dispatch_pending_exports_with_ctx(&ctx);
     assert_eq!(
         raster_fw.export_status_severity,
+        ExportStatusSeverity::Success
+    );
+    assert!(raster_fw.export_queue.last_clipboard_content.is_some());
+
+    let mut calc_fw = new_framework_with_tool(build_registered_tool("FactorizationTool"));
+    calc_fw
+        .export_queue
+        .push_target(ExportFormat::Png, ExportTarget::Clipboard);
+    calc_fw.dispatch_pending_exports_with_ctx(&ctx);
+    assert_eq!(
+        calc_fw.export_status_severity,
         ExportStatusSeverity::Warning
     );
-    assert!(raster_fw.export_queue.last_clipboard_content.is_none());
 }

@@ -346,9 +346,9 @@ pub fn solve_bellman_with_policy(
     let mut sol = BellmanSolution::solve(mdp, 1e-7, 160);
     let (w, h) = (mdp.width as usize, mdp.height as usize);
     let policy = match solver {
-        RlSolverMode::TabularQ => TabularGridPolicy::from_q_table(w, h, &ws.q_table),
+        RlSolverMode::TabularQ => TabularGridPolicy::from_q_table(w, h, ws.q_table()),
         RlSolverMode::PolicyGradient => {
-            TabularGridPolicy::from_softmax_logits(w, h, &ws.theta_logits)
+            TabularGridPolicy::from_softmax_logits(w, h, ws.theta_logits())
         }
     };
     sol.evaluate_policy(mdp, &policy, 1e-7, 120);

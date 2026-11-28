@@ -5,7 +5,7 @@ use engine_opt::nash::{
     BimatrixNashStats, PolymatrixConfig, PolymatrixNashStats, nash_bimatrix_workspace_len,
     nash_polymatrix_workspace_len, solve_bimatrix_lemke_howson, solve_polymatrix_regret_matching,
 };
-use engine_opt::{OptError, SolverWorkspace};
+use engine_opt::{OptError, ScalarWorkspace};
 use nalgebra::DVector;
 
 /// Returns the `SolverWorkspace<f64>` capacity required by [`solve_bimatrix_nash_into`].
@@ -49,7 +49,7 @@ pub fn solve_bimatrix_nash_into(
     cols: usize,
     strat_a: &mut [f64],
     strat_b: &mut [f64],
-    ws: &mut SolverWorkspace<'_, f64>,
+    ws: &mut ScalarWorkspace<'_, f64>,
 ) -> Result<BimatrixNashStats, OptError> {
     solve_bimatrix_lemke_howson(payoff_a, payoff_b, rows, cols, strat_a, strat_b, ws)
 }
@@ -76,7 +76,7 @@ pub fn solve_polymatrix_nash_into(
     payoff_matrix: &[f64],
     cfg: &PolymatrixConfig,
     avg_strategies_out: &mut [f64],
-    ws: &mut SolverWorkspace<'_, f64>,
+    ws: &mut ScalarWorkspace<'_, f64>,
 ) -> Result<PolymatrixNashStats, OptError> {
     solve_polymatrix_regret_matching(action_counts, payoff_matrix, cfg, avg_strategies_out, ws)
 }

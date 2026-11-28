@@ -21,6 +21,8 @@ use math_explorer::ai::reinforcement_learning::{
 
 #[path = "grid_world/canvas.rs"]
 mod canvas;
+#[path = "grid_world/export.rs"]
+pub(super) mod export;
 #[path = "grid_world/preset.rs"]
 mod preset;
 #[cfg(test)]
@@ -172,6 +174,7 @@ impl GridWorldTool {
         self.steps = 0;
         self.bellman_dirty = true;
         self.ensure_bellman_up_to_date();
+        self.revision = self.revision.wrapping_add(1);
     }
 
     pub(super) fn step_agent(&mut self) {
@@ -191,7 +194,7 @@ impl GridWorldTool {
             RlSolverMode::TabularQ => step_tabular_q_into(&self.mdp, &mut self.workspace, lr, eps),
             RlSolverMode::PolicyGradient => {
                 let s_idx = self.mdp.cell_index(self.current_state);
-                let logits = self.workspace.theta_logits[s_idx];
+                let logits = self.workspace.theta_logits()[s_idx];
                 let out = step_softmax_pg_into(&self.mdp, &mut self.workspace, lr);
                 let delta = compute_softmax_pg_delta(logits, out.action, out.td_error, lr);
                 self.last_pg_grad_norm = delta.iter().map(|d| d * d).sum::<f64>().sqrt();
@@ -209,6 +212,7 @@ impl GridWorldTool {
             outcome.reward,
             outcome.wind_pan,
         );
+        self.revision = self.revision.wrapping_add(1);
     }
 
     pub(super) fn train_batch(&mut self) {
@@ -312,7 +316,17 @@ impl InteractiveTool for GridWorldTool {
         "Grid World (RL)"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_grid_world_primitives()
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_grid_world_tables()
+    }
+    fn step_simulation(&mut self) {
+        self.ensure_bellman_up_to_date();
+        self.step_agent();
     }
     fn domain(&self) -> &'static str {
         "ai"

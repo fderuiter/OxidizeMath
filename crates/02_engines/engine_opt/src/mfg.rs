@@ -6,7 +6,7 @@ mod fp;
 use crate::error::OptError;
 use engine_pde::StencilOperators;
 use fp::{compute_substeps, forward_fp_sweep, mann_blend_and_normalize};
-use math_scalars::workspace::SolverWorkspace;
+use math_scalars::workspace::ScalarWorkspace;
 
 const CFL_SAFETY: f64 = 0.45;
 const MAX_SUBSTEPS: usize = 65_536;
@@ -134,7 +134,7 @@ pub fn solve_mfg_1d<H, C, G, M0>(
     initial_density: &M0,
     u_grid: &mut [f64],
     m_grid: &mut [f64],
-    ws: &mut SolverWorkspace<'_, f64>,
+    ws: &mut ScalarWorkspace<'_, f64>,
 ) -> Result<MfgStats, OptError>
 where
     H: MfgHamiltonian,

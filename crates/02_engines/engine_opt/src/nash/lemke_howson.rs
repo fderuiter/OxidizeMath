@@ -3,7 +3,7 @@
 
 use crate::error::OptError;
 use engine_linalg::mat_idx;
-use math_scalars::workspace::SolverWorkspace;
+use math_scalars::workspace::ScalarWorkspace;
 
 const PIVOT_COL_TOL: f64 = 1.0e-11;
 const LEX_TIE_TOL: f64 = 1.0e-12;
@@ -57,7 +57,7 @@ pub fn solve_bimatrix_lemke_howson(
     n: usize,
     strat_a: &mut [f64],
     strat_b: &mut [f64],
-    ws: &mut SolverWorkspace<'_, f64>,
+    ws: &mut ScalarWorkspace<'_, f64>,
 ) -> Result<BimatrixNashStats, OptError> {
     validate_bimatrix_inputs(payoff_a, payoff_b, m, n, strat_a.len(), strat_b.len())?;
     let req = nash_bimatrix_workspace_len(m, n);

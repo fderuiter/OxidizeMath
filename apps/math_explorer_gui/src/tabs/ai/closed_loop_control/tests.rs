@@ -163,36 +163,29 @@ fn test_bateman_analytical_parity_and_pk_hidden_clearance_convergence() {
 
 #[test]
 fn test_grpo_lorenz_ogy_stabilization() {
-    let mut lorenz_tool = ClosedLoopControlTool::default();
-    lorenz_tool
-        .import_preset_json(STARTER_LORENZ_OGY_JSON)
+    let mut t = ClosedLoopControlTool::default();
+    t.import_preset_json(STARTER_LORENZ_OGY_JSON)
         .expect("Lorenz preset loads");
-    lorenz_tool.reset_untrained_policy();
-    let r0 = lorenz_tool
-        .pipeline
-        .train_episode_zero_alloc(&lorenz_tool.state);
+    t.reset_untrained_policy();
+    let r0 = t.pipeline.train_episode_zero_alloc(&t.state);
     assert!(
-        lorenz_tool.pipeline.grpo.last_surrogate_after
-            >= lorenz_tool.pipeline.grpo.last_surrogate_before - 1.0e-12
+        t.pipeline.grpo.last_surrogate_after >= t.pipeline.grpo.last_surrogate_before - 1.0e-12
     );
     for _ in 0..11 {
-        let _ = lorenz_tool
-            .pipeline
-            .train_episode_zero_alloc(&lorenz_tool.state);
+        let _ = t.pipeline.train_episode_zero_alloc(&t.state);
     }
-    assert!(lorenz_tool.pipeline.grpo.last_mean_return > r0);
+    let late_sum: f64 = t.pipeline.return_history[6..].iter().map(|p| p[1]).sum();
+    assert!(late_sum > 6.0 * r0);
 
-    lorenz_tool
-        .pipeline
-        .reset_live_traces_only(&lorenz_tool.state);
+    t.pipeline.reset_live_traces_only(&t.state);
     let mut ctrl_tube_sum = 0.0;
     let mut open_tube_sum = 0.0;
     for k in 0..220 {
-        let out = lorenz_tool.step_closed_loop();
+        let out = t.step_closed_loop();
         if k >= 60 {
             ctrl_tube_sum += out.tracking_metric;
-            let ov = lorenz_tool.pipeline.live_lorenz.uncontrolled.state.vec;
-            let (_, open_d) = lorenz_tool
+            let ov = t.pipeline.live_lorenz.uncontrolled.state.vec;
+            let (_, open_d) = t
                 .pipeline
                 .live_lorenz
                 .nearest_upo_index(&[ov.x, ov.y, ov.z]);

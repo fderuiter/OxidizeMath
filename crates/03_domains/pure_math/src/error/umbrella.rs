@@ -9,7 +9,8 @@ use super::{
 use engine_linalg::LinalgError;
 use engine_opt::error::{FitError, OptError};
 use math_commons::error::{
-    EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError, ShaderEmitError,
+    ArenaError, EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
+    ShaderEmitError,
 };
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_scalars::ScalarError;
@@ -159,6 +160,13 @@ impl From<LexError> for PureMathError {
 impl From<ParseError> for PureMathError {
     #[verified_engine::verified]
     fn from(err: ParseError) -> Self {
+        Self::MathCommons(MathCommonsError::from(err))
+    }
+}
+
+impl From<ArenaError> for PureMathError {
+    #[verified_engine::verified]
+    fn from(err: ArenaError) -> Self {
         Self::MathCommons(MathCommonsError::from(err))
     }
 }

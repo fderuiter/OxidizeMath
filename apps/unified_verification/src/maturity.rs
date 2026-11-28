@@ -40,9 +40,33 @@ pub fn print_maturity_gate_report(report: &MaturityGateReport) -> bool {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn append_lean_kernel_violations(workspace_root: &Path, report: &mut MaturityGateReport) {
+    if !workspace_root
+        .join("proofs")
+        .join("lakefile.lean")
+        .is_file()
+    {
+        return;
+    }
+    if let Err(err) = scientific_verification::lean_proofs::verify_lean_proofs_in_workspace(
+        workspace_root,
+        "lake",
+        6,
+    ) {
+        report
+            .violations
+            .push(format!("Tier6_Formal kernel verification failed: {err}"));
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn append_lean_kernel_violations(_workspace_root: &Path, _report: &mut MaturityGateReport) {}
+
 /// Evaluates workspace maturity qualification in `workspace_root` reusing `cache`.
 pub fn check_maturity_in_dir_with_cache(workspace_root: &Path, cache: &mut AstCache) -> bool {
-    let report = evaluate_workspace_maturity_with_cache(workspace_root, cache);
+    let mut report = evaluate_workspace_maturity_with_cache(workspace_root, cache);
+    append_lean_kernel_violations(workspace_root, &mut report);
     print_maturity_gate_report(&report)
 }
 
@@ -76,7 +100,8 @@ pub fn check_maturity(args: &[String]) -> bool {
         idx += 1;
     }
     if let Some(reg) = custom_registry {
-        let report = evaluate_maturity_with_registry_and_cache(Path::new("."), reg, &mut cache);
+        let mut report = evaluate_maturity_with_registry_and_cache(Path::new("."), reg, &mut cache);
+        append_lean_kernel_violations(Path::new("."), &mut report);
         print_maturity_gate_report(&report)
     } else {
         check_maturity_in_dir_with_cache(Path::new("."), &mut cache)

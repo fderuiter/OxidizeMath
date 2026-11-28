@@ -1,3 +1,4 @@
+pub use engine_linalg::LinalgError;
 use thiserror::Error;
 
 /// Type alias `Result` used across this module.
@@ -407,7 +408,6 @@ pub use crate::pure_math::{
     },
     tensor::types::TensorError,
 };
-pub use engine_linalg::LinalgError;
 pub use engine_opt::error::{FitError, OptError};
 pub use engine_pde::PdeError;
 pub use math_scalars::ScalarError;

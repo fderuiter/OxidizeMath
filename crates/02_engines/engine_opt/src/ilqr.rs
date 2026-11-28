@@ -8,7 +8,7 @@ pub use cost::{ControlModel, QuadraticBoxCost, StageCost};
 
 use crate::error::OptError;
 use engine_linalg::mat_idx;
-use math_scalars::workspace::SolverWorkspace;
+use math_scalars::workspace::ScalarWorkspace;
 use riccati::{RiccatiScratch, backward_riccati_pass};
 
 const BACKTRACK_STEPS: usize = 12;
@@ -106,7 +106,7 @@ pub fn solve_ilqr<M: ControlModel, C: StageCost>(
     u_max: Option<&[f64]>,
     x_traj: &mut [f64],
     u_traj: &mut [f64],
-    ws: &mut SolverWorkspace<'_, f64>,
+    ws: &mut ScalarWorkspace<'_, f64>,
 ) -> Result<IlqrStats, OptError> {
     let nx = model.state_dim();
     let nu = model.control_dim();

@@ -1,7 +1,7 @@
 use super::physics::{Hamiltonian, QuadraticHamiltonian};
 use super::types::{Density, MFGConfig, Position};
 use engine_opt::mfg::{MfgConfig1D, MfgHamiltonian, MfgStats, mfg_1d_workspace_len, solve_mfg_1d};
-use engine_opt::{OptError, SolverWorkspace};
+use engine_opt::{OptError, ScalarWorkspace};
 use nalgebra::DMatrix;
 
 const DEFAULT_MANN_DAMPING: f64 = 0.5;
@@ -147,7 +147,7 @@ impl<H: Hamiltonian> FixedPointSolver<H> {
         initial_distribution: &impl Fn(Position) -> f64,
         u_grid: &mut [f64],
         m_grid: &mut [f64],
-        ws: &mut SolverWorkspace<'_, f64>,
+        ws: &mut ScalarWorkspace<'_, f64>,
     ) -> Result<MfgStats, OptError> {
         let mfg_cfg = MfgConfig1D {
             space_min: config.space_min,
@@ -184,7 +184,7 @@ impl<H: Hamiltonian> MFGSolver for FixedPointSolver<H> {
         let mut u = DMatrix::zeros(nx, cols);
         let mut m = DMatrix::zeros(nx, cols);
         let mut ws_buf = vec![0.0_f64; mfg_workspace_len(config)];
-        let mut ws = SolverWorkspace::new(&mut ws_buf);
+        let mut ws = ScalarWorkspace::new(&mut ws_buf);
         let _ = self.solve_into(
             config,
             cost_function,

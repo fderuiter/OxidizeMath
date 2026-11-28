@@ -87,9 +87,7 @@ fn ensure_active_episode(mdp: &SculptedGridMdp, ws: &mut DenseRlWorkspace) {
         || ws.episode_steps >= ws.max_episode_steps
     {
         ws.current_state = mdp.start;
-        ws.ep_states.clear();
-        ws.ep_actions.clear();
-        ws.ep_rewards.clear();
+        ws.clear_episode_trajectory();
         ws.episode_steps = 0;
         ws.episode_return = 0.0;
     }
@@ -120,7 +118,8 @@ pub fn step_tabular_q_into(
     ensure_active_episode(mdp, ws);
     let prev_state = ws.current_state;
     let s_idx = flatten_2d_index(prev_state.x as usize, prev_state.y as usize, ws.width);
-    let a_idx = select_eps_greedy_action_index(ws.q_table[s_idx], epsilon.value(), &mut ws.rng);
+    let prev_q_row = ws.q_table()[s_idx];
+    let a_idx = select_eps_greedy_action_index(prev_q_row, epsilon.value(), &mut ws.rng);
     let action = index_to_move(a_idx);
     let (next_state, reward, wind_slipped, wind_pan) =
         mdp.sample_step(prev_state, action, &mut ws.rng);
@@ -129,15 +128,15 @@ pub fn step_tabular_q_into(
     let max_next_q = if next_terminal {
         0.0
     } else {
-        ws.q_table[ns_idx]
+        ws.q_table()[ns_idx]
             .iter()
             .copied()
             .fold(f64::NEG_INFINITY, f64::max)
     };
-    let current_q = ws.q_table[s_idx][a_idx];
+    let current_q = ws.q_table()[s_idx][a_idx];
     let gamma = mdp.gamma.clamp(0.0, 1.0);
     let td_error = reward + gamma * max_next_q - current_q;
-    ws.q_table[s_idx][a_idx] = current_q + alpha.value() * td_error;
+    ws.q_table_mut()[s_idx][a_idx] = current_q + alpha.value() * td_error;
 
     ws.current_state = next_state;
     ws.episode_steps += 1;
@@ -182,31 +181,31 @@ fn finalize_episode_if_done(
 }
 
 fn flush_reinforce_episode_in_place(ws: &mut DenseRlWorkspace, gamma: f64, lr: f64) {
-    let len = ws.ep_rewards.len();
+    let len = ws.ep_len();
     if len == 0 {
         return;
     }
     let critic_lr = (lr * 0.5).clamp(0.01, 0.5);
+    let (q_table, theta_logits, state_values, ep_states, ep_actions, ep_rewards) =
+        ws.split_reinforce_buffers_mut();
     let mut g_t = 0.0_f64;
     for t in (0..len).rev() {
-        let s_idx = ws.ep_states[t];
-        let a_idx = ws.ep_actions[t] & 3;
-        g_t = ws.ep_rewards[t] + gamma * g_t;
-        let baseline = ws.state_values[s_idx];
+        let s_idx = ep_states[t];
+        let a_idx = ep_actions[t] & 3;
+        g_t = ep_rewards[t] + gamma * g_t;
+        let baseline = state_values[s_idx];
         let advantage = (g_t - baseline).clamp(-25.0, 25.0);
-        ws.state_values[s_idx] = baseline + critic_lr * (g_t - baseline);
-        let probs = softmax_action_probs(ws.theta_logits[s_idx]);
+        state_values[s_idx] = baseline + critic_lr * (g_t - baseline);
+        let probs = softmax_action_probs(theta_logits[s_idx]);
         for (k, &prob) in probs.iter().enumerate() {
             let indicator = if k == a_idx { 1.0 } else { 0.0 };
             let grad = indicator - prob;
-            ws.theta_logits[s_idx][k] =
-                (ws.theta_logits[s_idx][k] + lr * advantage * grad).clamp(-20.0, 20.0);
-            ws.q_table[s_idx][k] = ws.state_values[s_idx] + 0.25 * ws.theta_logits[s_idx][k];
+            theta_logits[s_idx][k] =
+                (theta_logits[s_idx][k] + lr * advantage * grad).clamp(-20.0, 20.0);
+            q_table[s_idx][k] = state_values[s_idx] + 0.25 * theta_logits[s_idx][k];
         }
     }
-    ws.ep_states.clear();
-    ws.ep_actions.clear();
-    ws.ep_rewards.clear();
+    ws.clear_episode_trajectory();
 }
 
 /// Advances one zero-allocation REINFORCE softmax policy-gradient step using [`DenseRlWorkspace`].
@@ -218,7 +217,7 @@ pub fn step_softmax_pg_into(
     ensure_active_episode(mdp, ws);
     let prev_state = ws.current_state;
     let s_idx = flatten_2d_index(prev_state.x as usize, prev_state.y as usize, ws.width);
-    let probs = softmax_action_probs(ws.theta_logits[s_idx]);
+    let probs = softmax_action_probs(ws.theta_logits()[s_idx]);
     let u = next_uniform_f64(&mut ws.rng);
     let mut cdf = 0.0_f64;
     let mut a_idx = 3usize;
@@ -238,15 +237,11 @@ pub fn step_softmax_pg_into(
     let next_val = if next_terminal {
         0.0
     } else {
-        ws.state_values[ns_idx]
+        ws.state_values()[ns_idx]
     };
-    let td_error = reward + gamma * next_val - ws.state_values[s_idx];
+    let td_error = reward + gamma * next_val - ws.state_values()[s_idx];
 
-    if ws.ep_rewards.len() < ws.ep_rewards.capacity() {
-        ws.ep_states.push(s_idx);
-        ws.ep_actions.push(a_idx);
-        ws.ep_rewards.push(reward);
-    }
+    ws.push_episode_step(s_idx, a_idx, reward);
 
     ws.current_state = next_state;
     ws.episode_steps += 1;

@@ -237,6 +237,8 @@ pub trait ComplexField: Field + DivAssign {
 pub trait RealField:
     ComplexField<Real = Self>
     + Copy
+    + bytemuck::Pod
+    + bytemuck::Zeroable
     + PartialOrd
     + Default
     + Display
@@ -336,7 +338,10 @@ pub trait RealField:
     /// Converts an `f64` value in `[0, 1]` into a strictly open `(0, 1)` scalar safe for `ln`/`probit`.
     #[inline]
     fn open_unit_from_f64(value: f64) -> Self {
-        <Self as ComplexField>::from_f64(value.clamp(1.0e-15_f64, 1.0 - 1.0e-15_f64))
+        const INV_2POW53: f64 = 1.0 / ((1_u64 << 53) as f64);
+        const F64_MIN_ABOVE_ZERO: f64 = 1.0 / ((1_u64 << 54) as f64);
+        const F64_MAX_BELOW_ONE: f64 = 1.0 - INV_2POW53;
+        <Self as ComplexField>::from_f64(value.clamp(F64_MIN_ABOVE_ZERO, F64_MAX_BELOW_ONE))
     }
 
     /// Converts a raw 64-bit PRNG word into a uniform sample in $[0, 1)$.

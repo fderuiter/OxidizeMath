@@ -9,7 +9,7 @@ use math_explorer::applied::game_theory::equilibrium::{
 use math_explorer::applied::game_theory::mean_field::{
     mfg_workspace_len, Density, FixedPointSolver, MFGConfigBuilder, Position,
 };
-use math_explorer::engine_opt::SolverWorkspace;
+use math_explorer::engine_opt::ScalarWorkspace;
 use math_explorer::nalgebra::DVector;
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroUsize;
@@ -350,7 +350,7 @@ impl BraessNetworkParadoxTool {
         if self.mfg_ws_buf.len() < ws_len {
             self.mfg_ws_buf.resize(ws_len, 0.0);
         }
-        let mut ws = SolverWorkspace::new(&mut self.mfg_ws_buf[..ws_len]);
+        let mut ws = ScalarWorkspace::new(&mut self.mfg_ws_buf[..ws_len]);
         let solver = FixedPointSolver::new(10).with_mann_damping(0.5, 1.0e-6);
         let _ = solver.solve_into(
             &cfg,

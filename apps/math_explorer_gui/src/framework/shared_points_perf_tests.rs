@@ -22,6 +22,18 @@ fn frame_input() -> egui::RawInput {
     }
 }
 
+fn resolve_perf_screenshot_path(output_path: &str) -> std::path::PathBuf {
+    let candidate = std::path::PathBuf::from(output_path);
+    if candidate.parent().is_some_and(|dir| dir.exists()) {
+        candidate
+    } else {
+        let file_name = candidate
+            .file_name()
+            .unwrap_or_else(|| std::ffi::OsStr::new("perf_screenshot.png"));
+        std::env::temp_dir().join(file_name)
+    }
+}
+
 fn maybe_write_perf_screenshot(output_path: &str) {
     if std::env::var_os("OXIDIZE_GENERATE_PERF_SCREENSHOTS").is_some() {
         let opts = egui_plot::export::ExportOptions {
@@ -32,8 +44,17 @@ fn maybe_write_perf_screenshot(output_path: &str) {
         let prms = egui_plot::get_last_plot_primitives();
         let img = egui_plot::render_primitives_image(&prms, &opts).expect("render image");
         let png = egui_plot::color32_image_to_png(&img).expect("encode PNG");
-        std::fs::write(output_path, png).expect("write verification PNG");
+        let target = resolve_perf_screenshot_path(output_path);
+        std::fs::write(&target, png).expect("write verification PNG");
     }
+}
+
+#[test]
+fn test_resolve_perf_screenshot_path_falls_back_when_parent_missing() {
+    assert_eq!(
+        resolve_perf_screenshot_path("/nonexistent_windows_tmp_dir/perf_probe.png"),
+        std::env::temp_dir().join("perf_probe.png")
+    );
 }
 
 #[cfg(feature = "epidemiology")]

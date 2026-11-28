@@ -4,7 +4,7 @@
 //! LU decomposition with partial pivoting, linear system solvers, determinant, and matrix inverse.
 
 use crate::scalar::Scalar;
-use crate::types::{LinalgError, SolverWorkspace, check_all_finite, mat_idx};
+use crate::types::{LinalgError, SolverWorkspace, carve_scalars, check_all_finite, mat_idx};
 
 /// Workspace scalar capacity required by [`lu_solve`] for an `n x n` matrix.
 /// `[cite:engine_linalg]`
@@ -211,12 +211,14 @@ pub fn lu_solve<T: Scalar>(
     x: &mut [T],
     n: usize,
     pivots: &mut [usize],
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut (impl SolverWorkspace + ?Sized),
 ) -> Result<(), LinalgError> {
     if n.checked_mul(n) != Some(a.len()) || b.len() != n || x.len() != n || pivots.len() != n {
         return Err(LinalgError::DimensionMismatch);
     }
-    let (lu_buf, _) = ws.try_split(lu_workspace_len(n))?;
+    let mut sub = ws.reborrow();
+    let mut cur = sub.cursor();
+    let lu_buf = carve_scalars::<T>(&mut cur, lu_workspace_len(n))?;
     lu_buf.copy_from_slice(a);
     lu_factor_in_place(lu_buf, n, pivots, T::ZERO)?;
     lu_solve_factored(lu_buf, n, pivots, b, x)
@@ -242,14 +244,16 @@ pub fn lu_inverse<T: Scalar>(
     inv: &mut [T],
     n: usize,
     pivots: &mut [usize],
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut (impl SolverWorkspace + ?Sized),
 ) -> Result<(), LinalgError> {
     if n.checked_mul(n) != Some(a.len()) || inv.len() != a.len() || pivots.len() != n {
         return Err(LinalgError::DimensionMismatch);
     }
-    let (lu_buf, mut rest) = ws.try_split(n * n)?;
-    let (rhs, mut rest2) = rest.try_split(n)?;
-    let (col, _) = rest2.try_split(n)?;
+    let mut sub = ws.reborrow();
+    let mut cur = sub.cursor();
+    let lu_buf = carve_scalars::<T>(&mut cur, n * n)?;
+    let rhs = carve_scalars::<T>(&mut cur, n)?;
+    let col = carve_scalars::<T>(&mut cur, n)?;
     lu_buf.copy_from_slice(a);
     lu_factor_in_place(lu_buf, n, pivots, T::ZERO)?;
 
