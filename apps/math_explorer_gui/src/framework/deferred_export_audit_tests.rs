@@ -1,5 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+#[path = "deferred_compute_shader_tests.rs"]
+mod deferred_compute_shader_tests;
+
 use super::*;
 use crate::accessibility::{all_announcements, clear_test_announcements, with_live_region};
 use crate::tabs::geometry_topology::export_utils::{
@@ -181,36 +184,31 @@ fn verify_non_figure_tool(
 
 #[test]
 fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
-    let (mut plot_tool_count, mut raster_tool_count) = (0usize, 0usize);
-    let (mut dataset_only_tool_count, mut unsupported_tool_count) = (0usize, 0usize);
-    let (mut solid_3d_count, mut splat_3d_count) = (0usize, 0usize);
-    let (mut shader_tool_count, mut non_shader_tool_count) = (0usize, 0usize);
-    let mut audio_tool_count = 0usize;
+    let mut counts = [0usize; 9];
+    let mut compute_shader_count = 0usize;
 
     for meta in inventory::iter::<crate::framework::ToolMetadata> {
         let tool = (meta.build)();
         let caps = tool.export_capabilities();
-        if verify_audio_capability(meta.id, caps) {
-            audio_tool_count += 1;
-        }
+        counts[8] += usize::from(verify_audio_capability(meta.id, caps));
         if caps.stl && caps.ply && caps.obj {
-            solid_3d_count += 1;
+            counts[4] += 1;
         } else if caps.ply {
-            splat_3d_count += 1;
+            counts[5] += 1;
         }
         if verify_shader_capability(meta.id, tool.as_ref(), caps) {
-            shader_tool_count += 1;
+            counts[6] += 1;
         } else {
-            non_shader_tool_count += 1;
+            counts[7] += 1;
+        }
+        if deferred_compute_shader_tests::verify_compute_shader_capability(meta.id, &*tool, caps) {
+            compute_shader_count += 1;
         }
         if !caps.figure {
-            verify_non_figure_tool(
-                meta.id,
-                tool,
-                caps,
-                &mut dataset_only_tool_count,
-                &mut unsupported_tool_count,
-            );
+            let (mut ds_only, mut unsup) = (0usize, 0usize);
+            verify_non_figure_tool(meta.id, tool, caps, &mut ds_only, &mut unsup);
+            counts[2] += ds_only;
+            counts[3] += unsup;
             continue;
         }
         assert!(
@@ -224,24 +222,15 @@ fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
                 "{} advertises dataset export but has non-empty disabled reason",
                 meta.id
             );
-            plot_tool_count += 1;
+            counts[0] += 1;
         } else {
-            raster_tool_count += 1;
+            counts[1] += 1;
         }
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_expected_capability_counts([
-        plot_tool_count,
-        raster_tool_count,
-        dataset_only_tool_count,
-        unsupported_tool_count,
-        solid_3d_count,
-        splat_3d_count,
-        shader_tool_count,
-        non_shader_tool_count,
-        audio_tool_count,
-    ]);
+    assert_expected_capability_counts(counts);
+    deferred_compute_shader_tests::assert_expected_compute_shader_count(compute_shader_count);
 }
 
 fn assert_expected_capability_counts(counts: [usize; 9]) {

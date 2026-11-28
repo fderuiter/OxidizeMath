@@ -4,6 +4,7 @@
 // [cite:isosurface_extraction]
 
 use super::ast_field::DEFAULT_CUSTOM_3D_EXPR;
+use super::webgpu_runner::ComputeBackend;
 use crate::camera::Camera3D;
 use crate::volumetric_scene::VolumeCutFilter;
 use math_explorer::physics::quantum::{OrbitalQuantumNumbers, QuantumFieldObservable};
@@ -12,8 +13,10 @@ use std::collections::BTreeMap;
 
 /// Minimum interactive 3D voxel grid dimension (`16^3 = 4,096` voxels).
 pub const MIN_VOLUMETRIC_GRID: usize = 16;
-/// Maximum interactive 3D voxel grid dimension (`48^3 = 110,592` voxels).
+/// Maximum CPU zero-alloc 3D voxel grid dimension (`48^3 = 110,592` voxels).
 pub const MAX_VOLUMETRIC_GRID: usize = 48;
+/// Maximum WebGPU compute 3D voxel grid dimension (`128^3 = 2,097,152` voxels).
+pub const MAX_WEBGPU_VOLUMETRIC_GRID: usize = 128;
 /// World-space half-extent of the normalized 3D studio box `[-2.5, +2.5]^3`.
 pub const STUDIO_VIEWPORT_EXTENT: f64 = 2.5;
 /// Camera distance used for perspective splat covariance projection.
@@ -211,7 +214,10 @@ pub struct VolumetricStudioConfig {
     pub source: FieldSourceMode,
     /// Active 3D surface/splat renderer.
     pub render_mode: VolumetricRenderMode,
-    /// Cubic voxel resolution (`16..=48`).
+    /// Execution backend (`cpu_zero_alloc` up to `48^3` or `web_gpu_compute` up to `128^3`).
+    #[serde(default, skip_serializing_if = "ComputeBackend::is_cpu_default")]
+    pub compute_backend: ComputeBackend,
+    /// Cubic voxel resolution (`16..=48` on CPU, `16..=128` on WebGPU Compute).
     pub grid_resolution: usize,
     /// State 1 principal quantum number (`1..=6`).
     pub n1: u32,
@@ -305,6 +311,7 @@ impl Default for VolumetricStudioConfig {
         Self {
             source: FieldSourceMode::QuantumSuperposition,
             render_mode: VolumetricRenderMode::HybridShellAndCloud,
+            compute_backend: ComputeBackend::CpuZeroAlloc,
             grid_resolution: 28,
             n1: 1,
             l1: 0,
@@ -345,6 +352,15 @@ impl Default for VolumetricStudioConfig {
 }
 
 impl VolumetricStudioConfig {
+    /// Maximum cubic grid dimension permitted by `self.compute_backend` (`48` CPU, `128` WebGPU).
+    #[must_use]
+    pub const fn max_grid_resolution(&self) -> usize {
+        match self.compute_backend {
+            ComputeBackend::CpuZeroAlloc => MAX_VOLUMETRIC_GRID,
+            ComputeBackend::WebGpuCompute => MAX_WEBGPU_VOLUMETRIC_GRID,
+        }
+    }
+
     /// Physical Bohr-radius box half-extent auto-scaled to fit principal quantum numbers `max(n1, n2)`.
     pub fn physical_quantum_extent(&self) -> f64 {
         let n_max = self.n1.max(self.n2).clamp(1, 6) as f64;
@@ -379,9 +395,10 @@ impl VolumetricStudioConfig {
 
     /// Strictly validates quantum numbers, PDE rates, implicit CAD/AST formulas, and `Camera3D` pose.
     pub fn validate(&self) -> Result<(), String> {
-        if !(MIN_VOLUMETRIC_GRID..=MAX_VOLUMETRIC_GRID).contains(&self.grid_resolution) {
+        let max_grid = self.max_grid_resolution();
+        if !(MIN_VOLUMETRIC_GRID..=max_grid).contains(&self.grid_resolution) {
             return Err(format!(
-                "grid_resolution={} must be in {MIN_VOLUMETRIC_GRID}..={MAX_VOLUMETRIC_GRID}",
+                "grid_resolution={} must be in {MIN_VOLUMETRIC_GRID}..={max_grid}",
                 self.grid_resolution
             ));
         }
@@ -435,9 +452,8 @@ impl VolumetricStudioConfig {
 
     /// Clamps any out-of-range or non-finite fields back into safe physical bounds.
     pub fn clamp_in_place(&mut self) {
-        self.grid_resolution = self
-            .grid_resolution
-            .clamp(MIN_VOLUMETRIC_GRID, MAX_VOLUMETRIC_GRID);
+        let max_grid = self.max_grid_resolution();
+        self.grid_resolution = self.grid_resolution.clamp(MIN_VOLUMETRIC_GRID, max_grid);
         let q1 = OrbitalQuantumNumbers::clamped(self.n1, self.l1, self.m1);
         (self.n1, self.l1, self.m1) = (q1.n, q1.l, q1.m);
         let q2 = OrbitalQuantumNumbers::clamped(self.n2, self.l2, self.m2);
