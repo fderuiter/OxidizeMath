@@ -93,12 +93,31 @@ pub(crate) fn compile_complex_bar_glsl(
 impl ExportFormat {
     const fn clipboard_item_noun(self) -> &'static str {
         match self {
-            Self::Wgsl | Self::Glsl | Self::GlslWebGl2 | Self::GlslShadertoy => "shader",
+            Self::Wgsl
+            | Self::WgslCompute
+            | Self::Glsl
+            | Self::GlslWebGl2
+            | Self::GlslShadertoy => "shader",
             Self::Tex | Self::Rust | Self::Python => "model",
             _ => "dataset",
         }
     }
 }
+
+const COMPUTE_SHADER_EXPORT_ACTIONS: [(&str, &str, ExportFormat, ExportTarget); 2] = [
+    (
+        "Export Compute WGSL",
+        "Export standalone WebGPU @compute WGSL kernel (.wgsl)",
+        ExportFormat::WgslCompute,
+        ExportTarget::File,
+    ),
+    (
+        "Copy Compute WGSL",
+        "Copy standalone WebGPU @compute WGSL kernel to clipboard",
+        ExportFormat::WgslCompute,
+        ExportTarget::Clipboard,
+    ),
+];
 
 const SHADER_EXPORT_ACTIONS: [(&str, &str, ExportFormat, ExportTarget); 8] = [
     (
@@ -205,30 +224,38 @@ impl SimulationFramework {
         ctx.request_repaint();
     }
 
-    /// Renders WGSL, GLSL, WebGL2 (`.frag`), and Shadertoy (`.frag`) download and clipboard actions
-    /// when the active tool advertises `caps.shader`.
+    /// Renders WGSL, GLSL, WebGL2 (`.frag`), Shadertoy (`.frag`), and WebGPU `@compute` WGSL actions
+    /// when the active tool advertises `caps.shader` or `caps.compute_shader`.
     pub(super) fn render_shader_export_items(
         &mut self,
         ui: &mut egui::Ui,
         caps: ExportCapabilities,
         close_on_click: bool,
     ) {
-        if !caps.shader {
-            return;
+        if caps.shader {
+            for (label, tip, format, target) in SHADER_EXPORT_ACTIONS {
+                if export_action_button(ui, true, label, tip, close_on_click) {
+                    self.enqueue_shader_action(format, target);
+                }
+            }
         }
-        for (label, tip, format, target) in SHADER_EXPORT_ACTIONS {
-            if export_action_button(ui, true, label, tip, close_on_click) {
-                match target {
-                    ExportTarget::File => self.queue_export(format),
-                    ExportTarget::Clipboard => {
-                        self.queue_shader_clipboard_export(format);
-                    }
+        if caps.compute_shader {
+            for (label, tip, format, target) in COMPUTE_SHADER_EXPORT_ACTIONS {
+                if export_action_button(ui, true, label, tip, close_on_click) {
+                    self.enqueue_shader_action(format, target);
                 }
             }
         }
     }
 
-    /// Dispatches a queued WGSL, GLSL, WebGL2, or Shadertoy shader export request.
+    fn enqueue_shader_action(&mut self, format: ExportFormat, target: ExportTarget) {
+        match target {
+            ExportTarget::File => self.queue_export(format),
+            ExportTarget::Clipboard => self.queue_shader_clipboard_export(format),
+        }
+    }
+
+    /// Dispatches a queued WGSL, Compute WGSL, GLSL, WebGL2, or Shadertoy shader export request.
     pub(super) fn dispatch_shader_export(
         &mut self,
         format: ExportFormat,
@@ -239,13 +266,22 @@ impl SimulationFramework {
             return;
         };
         let caps = tool.export_capabilities();
-        if !caps.shader {
+        if format == ExportFormat::WgslCompute {
+            if !caps.compute_shader {
+                self.set_export_status(
+                    ExportStatusSeverity::Warning,
+                    caps.compute_shader_disabled_reason,
+                );
+                return;
+            }
+        } else if !caps.shader {
             self.set_export_status(ExportStatusSeverity::Warning, caps.shader_disabled_reason);
             return;
         }
         let tool_name = tool.name().to_string();
         let shader_res = match format {
             ExportFormat::Wgsl => tool.export_shader_source(ShaderExportFormat::Wgsl),
+            ExportFormat::WgslCompute => tool.export_compute_shader_wgsl(),
             ExportFormat::Glsl => tool.export_shader_source(ShaderExportFormat::Glsl),
             ExportFormat::GlslWebGl2 => tool.export_glsl_shader(ShaderDialect::WebGl2Es300),
             ExportFormat::GlslShadertoy => tool.export_glsl_shader(ShaderDialect::Shadertoy),

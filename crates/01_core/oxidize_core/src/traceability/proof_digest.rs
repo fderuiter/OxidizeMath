@@ -201,29 +201,90 @@ pub fn strip_lean_comments(src: &str) -> String {
     out
 }
 
-/// Validates that a Lean 4 source file contains at least one `theorem` or `lemma` and zero
-/// `sorry`, `admit`, or `axiom` tokens outside comments.
+/// Extracts sorted, deduplicated public `theorem` and `lemma` names declared outside comments.
+#[must_use]
+pub fn extract_lean_theorem_names(src: &str) -> Vec<String> {
+    let stripped = strip_lean_comments(src);
+    let mut names = Vec::new();
+    let mut prev_tok: Option<&str> = None;
+    let mut expect_name = false;
+    for tok in stripped.split(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '\'') {
+        if tok.is_empty() {
+            continue;
+        }
+        if expect_name {
+            names.push(tok.to_string());
+            expect_name = false;
+            prev_tok = Some(tok);
+            continue;
+        }
+        if matches!(tok, "theorem" | "lemma") && prev_tok != Some("private") {
+            expect_name = true;
+        }
+        prev_tok = Some(tok);
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
+/// Validates that a Lean 4 source file contains at least one public `theorem` or `lemma` and zero
+/// `sorry`, `sorryAx`, `admit`, `axiom`, `opaque`, `extern`, or `implemented_by` tokens outside comments.
 pub fn validate_lean_proof_source(filename: &str, src: &str) -> Result<(), ProofDigestError> {
     let stripped = strip_lean_comments(src);
-    let mut has_theorem = false;
-    for tok in stripped.split(|c: char| !c.is_ascii_alphanumeric() && c != '_') {
-        match tok {
-            "sorry" | "admit" | "axiom" => {
-                return Err(ProofDigestError::ForbiddenKeyword {
-                    filename: filename.to_string(),
-                    keyword: tok.to_string(),
-                });
-            }
-            "theorem" | "lemma" => has_theorem = true,
-            _ => {}
+    for tok in stripped.split(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '\'') {
+        if matches!(
+            tok,
+            "sorry" | "sorryAx" | "admit" | "axiom" | "opaque" | "extern" | "implemented_by"
+        ) {
+            return Err(ProofDigestError::ForbiddenKeyword {
+                filename: filename.to_string(),
+                keyword: tok.to_string(),
+            });
         }
     }
-    if !has_theorem {
+    if extract_lean_theorem_names(src).is_empty() {
         return Err(ProofDigestError::MissingTheoremDeclaration {
             filename: filename.to_string(),
         });
     }
     Ok(())
+}
+
+/// Scans `proofs/OxidizeMath/*.lean` under `workspace_root`, validates every proof file, and
+/// returns exported public theorem names keyed by `.lean` file name.
+pub fn collect_lean4_proof_theorems(
+    workspace_root: &Path,
+) -> Result<BTreeMap<String, Vec<String>>, ProofDigestError> {
+    let dir = workspace_root.join("proofs").join("OxidizeMath");
+    let entries = fs::read_dir(&dir).map_err(|err| ProofDigestError::ReadProofDirectory {
+        path: dir.display().to_string(),
+        reason: err.to_string(),
+    })?;
+    let mut theorems = BTreeMap::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("lean") {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let normalized = fs::read_to_string(&path)
+            .map_err(|err| ProofDigestError::ReadProofFile {
+                path: path.display().to_string(),
+                reason: err.to_string(),
+            })?
+            .replace("\r\n", "\n");
+        validate_lean_proof_source(name, &normalized)?;
+        theorems.insert(name.to_string(), extract_lean_theorem_names(&normalized));
+    }
+    if theorems.is_empty() {
+        return Err(ProofDigestError::EmptyProofDirectory {
+            path: dir.display().to_string(),
+        });
+    }
+    Ok(theorems)
 }
 
 /// Scans `proofs/OxidizeMath/*.lean` under `workspace_root`, validates every proof file is free

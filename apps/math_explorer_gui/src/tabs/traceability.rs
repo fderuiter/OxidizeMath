@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 mod presets;
 pub use presets::*;
+pub(crate) mod proof_panel;
 mod scanner;
 mod web_snapshot;
 
@@ -24,6 +25,8 @@ pub struct TraceabilityTab {
         std::collections::BTreeMap<String, scientific_metadata::theory::MaturityTier>,
     module_maturity_tiers:
         std::collections::BTreeMap<String, scientific_metadata::theory::MaturityTier>,
+    live_proof_bindings:
+        std::collections::BTreeMap<String, oxidize_core::traceability::LeanProofBinding>,
     repo_path: Option<String>,
     user_picked_repo: bool,
     report_rx: Option<
@@ -44,6 +47,7 @@ impl Default for TraceabilityTab {
             invalid_links: Vec::new(),
             crate_maturity_tiers: std::collections::BTreeMap::new(),
             module_maturity_tiers: std::collections::BTreeMap::new(),
+            live_proof_bindings: std::collections::BTreeMap::new(),
             repo_path: None,
             user_picked_repo: false,
             report_rx: None,
@@ -146,6 +150,7 @@ impl TraceabilityTab {
         self.invalid_links.clear();
         self.crate_maturity_tiers.clear();
         self.module_maturity_tiers.clear();
+        self.live_proof_bindings.clear();
         self.certificate = None;
     }
 
@@ -212,6 +217,7 @@ impl TraceabilityTab {
                 )
             })
             .collect();
+        self.live_proof_bindings = report.lean4_proof_bindings;
 
         for (paper_name, linked_code) in report.paper_coverage {
             if !paper_name.starts_with("spec:") && !paper_name.starts_with("registry:") {
@@ -438,6 +444,7 @@ impl ExplorerTab for TraceabilityTab {
                         invalid_links: &self.invalid_links,
                         crate_maturity_tiers: &self.crate_maturity_tiers,
                         module_maturity_tiers: &self.module_maturity_tiers,
+                        live_proof_bindings: &self.live_proof_bindings,
                         certificate: self.certificate.as_ref(),
                     },
                     Self::paper_url,

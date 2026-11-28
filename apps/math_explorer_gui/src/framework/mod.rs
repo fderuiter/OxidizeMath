@@ -47,6 +47,7 @@ pub(crate) mod export_shader;
     feature = "pure_math"
 ))]
 mod export_shader_tests;
+pub mod export_tables;
 pub mod export_types;
 mod export_ui;
 #[cfg(test)]
@@ -134,6 +135,7 @@ pub use counterfactual::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
+pub use export_tables::*;
 pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use history_ui::render_workspace_history_buttons;
@@ -313,22 +315,18 @@ pub trait InteractiveTool {
     fn export_preset_json(&self) -> Result<String, String> {
         export_persistence::export_tool_preset_json(self)
     }
-
     /// Parses and validates a JSON preset string against this tool's domain, applying configuration if valid.
     fn import_preset_json(&mut self, json_str: &str) -> Result<(), String> {
         export_persistence::import_tool_preset_json(self, json_str)
     }
-
     /// Declares which dataset, figure, and code export formats this tool supports.
     fn export_capabilities(&self) -> ExportCapabilities {
         ExportCapabilities::plot()
     }
-
     /// Optional cold-path hook returning calibrated LaTeX, Rust, and Python code artifacts.
     fn export_code_artifact(&self) -> Option<CodeArtifact> {
         None
     }
-
     /// Optional hook to generate standalone `.wgsl` or `.glsl` fragment shader source code.
     fn export_shader_source(&self, _format: ShaderExportFormat) -> Result<String, String> {
         Err(format!(
@@ -336,47 +334,49 @@ pub trait InteractiveTool {
             self.name()
         ))
     }
-
+    /// Optional hook to generate a standalone WebGPU `@compute` `.wgsl` shader kernel.
+    fn export_compute_shader_wgsl(&self) -> Result<String, String> {
+        Err(format!(
+            "WebGPU compute shader export is not supported for {}",
+            self.name()
+        ))
+    }
+    /// Optional hook to export multi-column tables and stride-bounded 2D matrices for CSV and JSON exports.
+    fn export_tables(&self) -> Vec<ExportTable> {
+        Vec::new()
+    }
     /// Optional hook to export tool datasets.
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         egui_plot::get_last_plot_datasets()
     }
-
     /// Optional hook to export 3D world-coordinate `(X, Y, Z)` datasets.
     fn export_datasets_3d(&self) -> Vec<(String, Vec<[f64; 3]>)> {
         egui_plot::get_last_plot_datasets_3d()
     }
-
     /// Optional hook to extract offscreen drawable plot primitives (`Bar`, `Arrow`, `BoxElem`, `Polyline`, `Points`).
     fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
         egui_plot::get_last_plot_primitives()
     }
-
     /// Optional hook for texture-backed tools to expose their rendered 2D raster field for PNG, SVG, and GIF exports.
     fn export_raster_image(&self) -> Option<egui::ColorImage> {
         None
     }
-
     /// Optional hook to provide custom figure export options.
     fn export_figure_options(&self) -> Option<egui_plot::export::ExportOptions> {
         None
     }
-
     /// Optional cold-path hook to build a watertight 3D triangle [`oxidize_core::mesh::Mesh`] for `.stl`, `.ply`, and `.obj` exports.
     fn export_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::Mesh, String>> {
         None
     }
-
     /// Optional cold-path hook to build a per-vertex colored 3D [`oxidize_core::mesh::ColoredMesh`] for `.ply` exports.
     fn export_colored_mesh_3d(&self) -> Option<Result<oxidize_core::mesh::ColoredMesh, String>> {
         None
     }
-
     /// Optional cold-path hook to serialize an INRIA-standard 3D Gaussian Splatting binary `.ply` scene.
     fn export_splat_ply_3d(&self) -> Option<Result<Vec<u8>, String>> {
         None
     }
-
     /// Optional hook to emit a standalone GLSL fragment shader for the requested [`ShaderDialect`].
     fn export_glsl_shader(&self, _dialect: ShaderDialect) -> Result<String, String> {
         Err(format!(
@@ -384,18 +384,14 @@ pub trait InteractiveTool {
             self.name()
         ))
     }
-
     /// Optional hook to step simulation logic during frame sampling for GIF animation export.
     fn step_simulation(&mut self) {}
-
     /// Suspends or resumes background simulation workers when this tool enters or leaves an active viewport.
     fn set_suspended(&mut self, _suspended: bool) {}
-
     /// Optional hook returning the active counterfactual divergence snapshot for `SimulationFramework`.
     fn counterfactual_snapshot(&self) -> Option<DivergenceSnapshot> {
         None
     }
-
     /// Optional hook applying a `CounterfactualBranchEngine` action (`Fork`, `Swap`, `Clear`, `SetPerturbation`).
     fn apply_counterfactual_action(&mut self, _action: BranchControlAction) -> bool {
         false

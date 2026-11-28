@@ -219,6 +219,24 @@ impl MonteCarloWorkbenchTool {
                 .width(1.8_f32),
         );
     }
+
+    pub(super) fn build_mc_compute_wgsl(&self) -> Result<String, String> {
+        use super::WorkbenchBenchmark;
+        use crate::framework::shader_foundry::{
+            emit_monte_carlo_compute_wgsl, MonteCarloComputeSpec, MonteCarloPayoffKind,
+        };
+        let payoff = match self.benchmark {
+            WorkbenchBenchmark::DiscountedBasketCall4D => MonteCarloPayoffKind::BasketCall4D,
+            WorkbenchBenchmark::SmoothSeparable3D => MonteCarloPayoffKind::SmoothExpProduct3D,
+            WorkbenchBenchmark::SkewedWealthReturn => MonteCarloPayoffKind::SkewedLognormal1D,
+        };
+        emit_monte_carlo_compute_wgsl(&MonteCarloComputeSpec {
+            num_samples: self.num_samples.max(32) as u32,
+            importance_tilt: self.importance_tilt,
+            seed: self.seed,
+            payoff,
+        })
+    }
 }
 
 // [cite:clinical_trials_statistics]

@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 31 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 32 workspace crates:
 
 ```mermaid
 graph TD
@@ -55,6 +55,7 @@ graph TD
 
     subgraph Tier_04_Bindings["crates/04_bindings"]
         Facade[oxidizemath]
+        WasmSdk[oxidize_wasm]
         Explorer[math_explorer]
         SciVerify[scientific_verification]
         MdTests[markdown_tests]
@@ -97,12 +98,13 @@ graph TD
     Xtask -.-> Verify
     Verify -.-> SciVerify & CoreCrate
     SciVerify -.-> AI & Phys & Bio & App & Clim & Epi & Pure & Pde & Opt & Commons & CoreCrate & Engine
-    MdTests -.-> Facade & Explorer & Meta & CoreCrate & Registry & Linalg & Opt & DiffEq & Pde & Mem & Rng & Scalars
+    MdTests -.-> Facade & WasmSdk & Explorer & Meta & CoreCrate & Registry & Linalg & Opt & DiffEq & Pde & Mem & Rng & Scalars
 
     Cli --> Facade
     GUI --> Explorer & Plot & Meta & Registry & Diag & Linalg & Opt & Commons & CoreCrate & Engine & Mem
     Plot --> Opt & Commons
     Explorer --> Facade
+    WasmSdk --> Commons & Linalg & DiffEq & Pde & Scalars & Rng & MathDiag & Engine
     Facade --> AI & Phys & Bio & App & Clim & Epi & Pure
     Facade --> Commons & Linalg & Opt & DiffEq & Pde & Mem & Scalars & Diag & Meta & Engine & CoreCrate
 
@@ -129,6 +131,7 @@ graph TD
 
     style GUI fill:#cde,stroke:#333
     style Facade fill:#cde,stroke:#333
+    style WasmSdk fill:#cde,stroke:#333
     style Explorer fill:#cde,stroke:#333
     style Engine fill:#fed,stroke:#333
     style Clim fill:#dfd,stroke:#333
@@ -137,7 +140,7 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 31 member crates declared in `Cargo.toml`:
+The workspace contains all 32 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
@@ -164,6 +167,7 @@ The workspace contains all 31 member crates declared in `Cargo.toml`:
 | `crates/03_domains/domain_epidemiology` | Compartmental disease transmission models | [domain_epidemiology](../../crates/03_domains/domain_epidemiology/README.md) |
 | `crates/03_domains/domain_physics` | Fluid dynamics, quantum, and MRI models | [domain_physics](../../crates/03_domains/domain_physics/README.md) |
 | `crates/04_bindings/oxidizemath` | Primary `default = []` library facade unifying engines and domain modules | [oxidizemath](../../crates/04_bindings/oxidizemath/README.md) |
+| `crates/04_bindings/oxidize_wasm` | Standalone `wasm-bindgen` JS/TS WebAssembly numerical SDK wrapping Tier 2 engines | [oxidize_wasm](../../crates/04_bindings/oxidize_wasm/README.md) |
 | `crates/04_bindings/math_explorer` | Transitional compatibility facade re-exporting `oxidizemath` | [math_explorer](../../crates/04_bindings/math_explorer/README.md) |
 | `crates/04_bindings/markdown_tests` | Markdown test harness and doctest validation | [markdown_tests](../../crates/04_bindings/markdown_tests/README.md) |
 | `crates/04_bindings/scientific_verification` | 6-tier scientific verification pyramid and proof certificates | [scientific_verification](../../crates/04_bindings/scientific_verification/README.md) |

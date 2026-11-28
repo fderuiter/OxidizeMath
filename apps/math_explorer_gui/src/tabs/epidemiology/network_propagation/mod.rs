@@ -6,6 +6,7 @@ mod canvas;
 pub mod challenge;
 mod controls;
 mod dataflow;
+mod export;
 mod presets;
 #[cfg(test)]
 mod tests;
@@ -13,6 +14,7 @@ mod topology_sync;
 
 #[cfg(test)]
 pub(crate) use analytics::compute_network_analytics;
+use presets::NetPropState;
 
 use crate::app::data_bus::{SharedGraph, MAX_EPIDEMIC_NODE_BUDGET};
 use crate::app::dataflow_bus::MAX_DATAFLOW_GRAPH_NODES;
@@ -20,7 +22,6 @@ use crate::app::{SharedSimulationBus, TopologySource, MAX_SHARED_GRAPH_NODES};
 use crate::framework::InteractiveTool;
 use eframe::egui;
 use math_explorer::epidemiology::networks::{NetworkEpidemicModel, NodeState};
-use presets::NetPropState;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
@@ -331,7 +332,13 @@ impl InteractiveTool for NetworkPropagationTool {
         "epidemiology"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_epi_plot_primitives()
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_epi_export_tables()
     }
     fn observables(&self) -> Vec<(&'static str, f64)> {
         self.topology_observables()
@@ -368,56 +375,7 @@ impl InteractiveTool for NetworkPropagationTool {
         h.finish().max(1)
     }
     fn save_state(&self) -> Option<String> {
-        let (num_nodes, vaccinated_nodes, quarantined_edges, frozen_graph) =
-            if self.last_upstream_graph_rev != 0 {
-                (
-                    self.model.num_nodes().clamp(10, 200),
-                    Vec::new(),
-                    Vec::new(),
-                    None,
-                )
-            } else if self.synced_bus_revision.is_some() {
-                (self.local_num_nodes, Vec::new(), Vec::new(), None)
-            } else {
-                let frozen = (!self.follow_workspace_graph)
-                    .then(|| self.active_shared_graph.as_deref().cloned())
-                    .flatten();
-                let nodes = if self.active_shared_graph.is_some()
-                    && self.seeded_graph.is_none()
-                    && frozen.is_none()
-                {
-                    self.local_num_nodes
-                } else {
-                    self.model.num_nodes()
-                };
-                let (vax, quar) = if self.active_shared_graph.is_some()
-                    && self.seeded_graph.is_none()
-                    && frozen.is_none()
-                {
-                    (Vec::new(), Vec::new())
-                } else {
-                    (
-                        self.vaccinated_nodes.clone(),
-                        self.quarantined_edges.clone(),
-                    )
-                };
-                (nodes, vax, quar, frozen)
-            };
-        serde_json::to_string(&NetPropState {
-            num_nodes,
-            beta: self.model.beta(),
-            gamma: self.model.gamma(),
-            seed: self.seed,
-            budget: self.budget,
-            vaccinated_nodes,
-            quarantined_edges,
-            is_running: self.is_running,
-            topology_source: self.topology_source,
-            follow_workspace_graph: self.follow_workspace_graph,
-            seeded_graph: self.seeded_graph.clone(),
-            frozen_graph,
-        })
-        .ok()
+        self.serialize_net_prop_state()
     }
 
     #[cfg(test)]

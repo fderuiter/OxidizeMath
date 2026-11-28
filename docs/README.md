@@ -6,7 +6,7 @@ Welcome to the OxidizeMath documentation directory.
 
 The [Architecture Guide Suite](architecture/README.md) provides centralized blueprints, diagrams, and developer walkthroughs:
 
-- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 31 crates.
+- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 32 crates.
 - **[CERA Framework Guide](architecture/cera_framework.md)**: Climate-invariant Encoding through Representation Alignment and climate modeling pipelines.
 - **[Zero-Allocation Runtime Guide](architecture/zero_allocation_runtime.md)**: NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and verified engine execution rules.
 - **[Interactive Tool Walkthrough](architecture/interactive_tool_walkthrough.md)**: Step-by-step developer guide to implement interactive simulations with `InteractiveTool`.
@@ -145,9 +145,14 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261125: CI Tool-Cache Subcommand Probing, Zero-Copy Plateau POI Dispatch, and Thread-Isolated Plot Test Hooks](adr/20261125-ci-llvm-cov-and-zero-copy-plateau-poi.md)
 - [ADR 20261125: Metadata-Driven Path Abstraction and Five-Tier Workspace Migration](adr/20261125-metadata-driven-tier-migration.md)
 - [ADR 20261126: Tier 0 `math_memory` ByteArena, Optional `alloc` Engines, and Arena-Backed Solver Workspaces](adr/20261126-bytemuck-byte-arena-and-solver-workspaces.md)
+- [ADR 20261126: Typed Export Adapters, Build-Time WASM TrueType Compaction, and CI Pipeline Hardening](adr/20261126-export-adapters-wasm-font-compaction-and-ci-hardening.md)
 - [ADR 20261126: Extract Tier 0 `math_scalars` Hierarchy and Tier 2 `engine_opt` Curve-Fitting Engine](adr/20261126-extract-math-scalars-and-engine-opt.md)
+- [ADR 20261126: Fix `math_rng` Probit Tail Inversion, `ln` Truncation, and Open-Unit `f32` Collapse](adr/20261126-fix-rng-tail-inversion-and-float-collapse.md)
 - [ADR 20261126: Preserve Causal Root Diagnostic Metadata, Wire `math_rng` Diagnostics, and Decouple `std` `diagnostics` from Domain Crates](adr/20261126-preserve-root-metadata-and-decouple-diagnostics.md)
 - [ADR 20261127: Dynamic `#![no_std]` Discovery, Bare-Metal `thumbv7em-none-eabihf` CI Gate, and Allocator-Free `OxidizeRng` Serde](adr/20261127-dynamic-no-std-bare-metal-ci-gate.md)
+- [ADR 20261127: Gate Mandatory Lake Builds, Scaled-Rational Lean 4 Proofs, and Certified Theorem Bindings](adr/20261127-gate-lake-builds-and-theorem-bindings.md)
+- [ADR 20261127: Harden AI Solvers, RNG Stream Scaling, and Decision-Boundary Views in Place](adr/20261127-harden-ai-solvers-and-views.md)
+- [ADR 20261127: Standalone `oxidize_wasm` SDK, Off-Main-Thread Web Worker Runtime, and WebGPU `128^3` Volumetric Compute Foundry](adr/20261127-oxidize-wasm-sdk-worker-and-webgpu-compute.md)
 - [ADR 20261127: Reentrancy-Safe Allocator Trap, Portable Native CI Tests, and Non-Blocking Desktop Legs](adr/20261127-portable-native-ci-tests.md)
 
 ## Contributing

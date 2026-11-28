@@ -450,6 +450,16 @@ fn verify_suite(args: &[String]) {
     let _root_guard = manifest_cache::WorkspaceRootGuard::enter();
     let (_, members) = manifest_cache::discover_workspace();
     let mut cache = oxidize_core::traceability::AstCache::new();
+    if opts.mode == report::ReportMode::Write
+        && !opts.coverage_only
+        && !report::certificate::sync_ast_certificate_with_cache(
+            &members,
+            report::ReportMode::Write,
+            &mut cache,
+        )
+    {
+        std::process::exit(1);
+    }
     let passed = match run_verify_suite_with(
         opts,
         &members,

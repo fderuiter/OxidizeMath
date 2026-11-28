@@ -1,5 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
+#[path = "deferred_compute_shader_tests.rs"]
+mod deferred_compute_shader_tests;
+
 use super::*;
 use crate::accessibility::{all_announcements, clear_test_announcements, with_live_region};
 use crate::tabs::geometry_topology::export_utils::{
@@ -7,6 +10,9 @@ use crate::tabs::geometry_topology::export_utils::{
 };
 use eframe::egui;
 use std::collections::HashSet;
+
+#[path = "deferred_export_audit_helpers.rs"]
+mod audit_helpers;
 
 fn run_deferred_export_frame(
     framework: &mut SimulationFramework,
@@ -71,6 +77,7 @@ fn verify_single_figure_tool(meta_name: &str, tool: Box<dyn InteractiveTool>) {
         svg.contains("<svg") && svg.len() > 250,
         "Deferred modal SVG for {meta_name} was empty"
     );
+    audit_helpers::verify_tool_csv_and_json_exports(meta_name, &mut framework, true);
 }
 
 fn verify_shader_capability(
@@ -138,40 +145,7 @@ fn verify_audio_capability(meta_id: &str, caps: ExportCapabilities) -> bool {
 fn verify_dataset_only_tool(meta_name: &str, tool: Box<dyn InteractiveTool>) {
     let mut framework = SimulationFramework::new("__audit_dataset_only__");
     framework.active_tool = Some(tool);
-
-    run_deferred_export_frame(&mut framework, ExportFormat::Csv, false);
-    assert_eq!(
-        framework.export_status_severity,
-        ExportStatusSeverity::Success,
-        "Deferred CSV failed for {meta_name}: {:?}",
-        framework.export_status_message
-    );
-    let csv = framework
-        .export_queue
-        .last_exported_content
-        .as_deref()
-        .unwrap_or_else(|| panic!("Missing CSV content for {meta_name}"));
-    assert!(
-        csv.starts_with("Dataset,X,Y\n") && csv.lines().count() >= 2,
-        "Invalid CSV content for {meta_name}: {csv}"
-    );
-
-    run_deferred_export_frame(&mut framework, ExportFormat::Json, false);
-    assert_eq!(
-        framework.export_status_severity,
-        ExportStatusSeverity::Success,
-        "Deferred JSON failed for {meta_name}: {:?}",
-        framework.export_status_message
-    );
-    let json = framework
-        .export_queue
-        .last_exported_content
-        .as_deref()
-        .unwrap_or_else(|| panic!("Missing JSON content for {meta_name}"));
-    assert!(
-        json.contains("\"dataset\":") && !json.contains("NaN"),
-        "Invalid JSON content for {meta_name}: {json}"
-    );
+    audit_helpers::verify_tool_csv_and_json_exports(meta_name, &mut framework, false);
 
     run_deferred_export_frame(&mut framework, ExportFormat::Png, false);
     assert_eq!(
@@ -210,57 +184,53 @@ fn verify_non_figure_tool(
 
 #[test]
 fn test_all_registered_tools_capabilities_and_deferred_modal_exports() {
-    let (mut plot_tool_count, mut raster_tool_count) = (0usize, 0usize);
-    let (mut dataset_only_tool_count, mut unsupported_tool_count) = (0usize, 0usize);
-    let (mut solid_3d_count, mut splat_3d_count) = (0usize, 0usize);
-    let (mut shader_tool_count, mut non_shader_tool_count) = (0usize, 0usize);
-    let mut audio_tool_count = 0usize;
+    let mut counts = [0usize; 9];
+    let mut compute_shader_count = 0usize;
 
     for meta in inventory::iter::<crate::framework::ToolMetadata> {
         let tool = (meta.build)();
         let caps = tool.export_capabilities();
-        if verify_audio_capability(meta.id, caps) {
-            audio_tool_count += 1;
-        }
+        counts[8] += usize::from(verify_audio_capability(meta.id, caps));
         if caps.stl && caps.ply && caps.obj {
-            solid_3d_count += 1;
+            counts[4] += 1;
         } else if caps.ply {
-            splat_3d_count += 1;
+            counts[5] += 1;
         }
         if verify_shader_capability(meta.id, tool.as_ref(), caps) {
-            shader_tool_count += 1;
+            counts[6] += 1;
         } else {
-            non_shader_tool_count += 1;
+            counts[7] += 1;
+        }
+        if deferred_compute_shader_tests::verify_compute_shader_capability(meta.id, &*tool, caps) {
+            compute_shader_count += 1;
         }
         if !caps.figure {
-            verify_non_figure_tool(
-                meta.id,
-                tool,
-                caps,
-                &mut dataset_only_tool_count,
-                &mut unsupported_tool_count,
-            );
+            let (mut ds_only, mut unsup) = (0usize, 0usize);
+            verify_non_figure_tool(meta.id, tool, caps, &mut ds_only, &mut unsup);
+            counts[2] += ds_only;
+            counts[3] += unsup;
             continue;
         }
+        assert!(
+            caps.figure_disabled_reason.is_empty(),
+            "{} advertises figure export but has non-empty disabled reason",
+            meta.id
+        );
         if caps.dataset {
-            plot_tool_count += 1;
+            assert!(
+                caps.dataset_disabled_reason.is_empty(),
+                "{} advertises dataset export but has non-empty disabled reason",
+                meta.id
+            );
+            counts[0] += 1;
         } else {
-            raster_tool_count += 1;
+            counts[1] += 1;
         }
         verify_single_figure_tool(meta.id, tool);
     }
 
-    assert_expected_capability_counts([
-        plot_tool_count,
-        raster_tool_count,
-        dataset_only_tool_count,
-        unsupported_tool_count,
-        solid_3d_count,
-        splat_3d_count,
-        shader_tool_count,
-        non_shader_tool_count,
-        audio_tool_count,
-    ]);
+    assert_expected_capability_counts(counts);
+    deferred_compute_shader_tests::assert_expected_compute_shader_count(compute_shader_count);
 }
 
 fn assert_expected_capability_counts(counts: [usize; 9]) {
@@ -291,10 +261,10 @@ fn assert_expected_capability_counts(counts: [usize; 9]) {
         + usize::from(has_ai)
         + fin_extra;
     for (actual, exp, label) in [
-        (plot, 78 + extra + bonus, "Plot dataset+figure"),
-        (raster, 8, "raster figure"),
-        (dataset_only, 0, "dataset-only registered"),
-        (unsupported, 9, "non-figure"),
+        (plot, 92 + extra + bonus, "Plot dataset+figure"),
+        (raster, 0, "raster figure"),
+        (dataset_only, 3, "dataset-only registered"),
+        (unsupported, 0, "non-figure"),
         (solid_3d, 7 + extra, "solid 3D geometric"),
         (splat_3d, 1, "3DGS splat PLY"),
         (shader, 3 + phys_shader, "analytical GPU shader"),

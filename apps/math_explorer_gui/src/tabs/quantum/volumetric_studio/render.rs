@@ -3,6 +3,7 @@
 // [cite:isosurface_extraction]
 // [cite:gaussian_splatting]
 
+use super::hud::draw_viewport_hud_overlays;
 use super::state::{
     SliceAxis, VolumetricRenderMode, VolumetricStudioConfig, STUDIO_VIEWPORT_EXTENT,
 };
@@ -39,11 +40,13 @@ impl VolumetricFieldStudioTool {
                     })
                     .response;
 
-            let cam_changed = camera != self.config.camera;
+            let mut cam_changed = camera != self.config.camera;
             self.config.camera = camera;
+            cam_changed |= draw_viewport_hud_overlays(ui, response.rect, self, &palette);
             if cam_changed {
-                self.engine.step_and_extract_zero_alloc(&self.config, false);
+                self.engine.extract_current_grid_zero_alloc(&self.config);
                 self.splat_dirty = true;
+                ui.ctx().request_repaint();
             }
             if response.clicked() && !response.dragged() {
                 if let Some(pt2d) = hover_plot_coord {

@@ -21,6 +21,8 @@ use math_explorer::ai::reinforcement_learning::{
 
 #[path = "grid_world/canvas.rs"]
 mod canvas;
+#[path = "grid_world/export.rs"]
+pub(super) mod export;
 #[path = "grid_world/preset.rs"]
 mod preset;
 #[cfg(test)]
@@ -174,6 +176,7 @@ impl GridWorldTool {
         self.steps = 0;
         self.bellman_dirty = true;
         self.ensure_bellman_up_to_date();
+        self.revision = self.revision.wrapping_add(1);
     }
 
     pub(super) fn step_agent(&mut self) {
@@ -210,7 +213,6 @@ impl GridWorldTool {
             outcome.reward,
             outcome.wind_pan,
         );
-
         let next_steps = self.steps.saturating_add(1);
         let timed_out = !self.mdp.is_terminal(&outcome.next_state)
             && (outcome.episode_finished || (next_steps as usize) >= max_steps);
@@ -221,6 +223,7 @@ impl GridWorldTool {
             self.total_reward += outcome.reward;
             self.steps = next_steps;
             self.bellman_dirty = true;
+            self.revision = self.revision.wrapping_add(1);
         }
     }
 
@@ -333,7 +336,17 @@ impl InteractiveTool for GridWorldTool {
         "Grid World (RL)"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_grid_world_primitives()
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_grid_world_tables()
+    }
+    fn step_simulation(&mut self) {
+        self.ensure_bellman_up_to_date();
+        self.step_agent();
     }
     fn domain(&self) -> &'static str {
         "ai"

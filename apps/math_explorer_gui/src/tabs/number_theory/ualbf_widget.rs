@@ -1,4 +1,5 @@
 use crate::accessibility::AccessibleHoverText;
+use crate::framework::{ExportCapabilities, ExportCell, ExportTable, InteractiveTool};
 use eframe::egui;
 use math_explorer::pure_math::number_theory::ualbf::{ualbf_search, UalbfSearchResult};
 
@@ -22,8 +23,6 @@ impl Default for UalbfWidget {
     }
 }
 
-use crate::framework::InteractiveTool;
-
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct UalbfState {
@@ -39,8 +38,11 @@ impl InteractiveTool for UalbfWidget {
     fn name(&self) -> &'static str {
         "UALBF"
     }
-    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::dataset_only()
+    }
+    fn export_tables(&self) -> Vec<ExportTable> {
+        self.build_ualbf_tables()
     }
     fn domain(&self) -> &'static str {
         "number_theory"
@@ -73,7 +75,6 @@ impl InteractiveTool for UalbfWidget {
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_inside(&mut self, ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
             ui.heading("UALBF: Unified Algebraic-Lattice Bipartition Framework");
@@ -81,78 +82,131 @@ impl InteractiveTool for UalbfWidget {
                 "A synthesis of ALCF and AMBS for proving lower bounds on quasiperfect numbers.",
             );
             ui.add_space(10.0);
-
-            ui.group(|ui| {
-                ui.label(egui::RichText::new("UALBF Parameters").strong());
-
-                let mut limit_p_f = self.limit_p as f64;
-                ui.add(egui::Slider::new(&mut limit_p_f, 100.0..=10000.0).text("Prime limit"));
-                self.limit_p = limit_p_f as u64;
-
-                let mut max_exp_f = self.max_exponent as f64;
-                ui.add(
-                    egui::Slider::new(&mut max_exp_f, 1.0..=4.0)
-                        .text("Max exponent")
-                        .step_by(1.0),
-                );
-                self.max_exponent = max_exp_f as u32;
-
-                ui.add(
-                    egui::Slider::new(&mut self.stop_threshold_log, 10.0..=15.0)
-                        .text("Stop threshold (10^x)"),
-                );
-
-                if ui
-                    .button("▶ Run UALBF Pipeline")
-                    .accessible_hover_text("Execute the Unified Algebraic-Lattice Bipartition Framework search pipeline")
-                    .clicked()
-                {
-                    let threshold_str = format!("{:.0}", 10f64.powf(self.stop_threshold_log));
-                    let target_max = "1000000000000";
-                    match ualbf_search(self.limit_p, self.max_exponent, &threshold_str, target_max) {
-                        Ok(result) => {
-                            self.status_message = format!(
-                                "Done. Valid: {}, Pruned: {}, Prefixes: {}, Rejected: {}, Candidates: {}",
-                                result.valid_components,
-                                result.pruned_components,
-                                result.prefix_count,
-                                result.rejected_by_lattice,
-                                result.candidates_checked,
-                            );
-                            self.result = Some(result);
-                        }
-                        Err(e) => {
-                            self.status_message = format!("Error: {}", e);
-                            self.result = None;
-                        }
-                    }
-                }
-            });
-
+            self.render_parameters_group(ui);
             ui.label(&self.status_message);
+            self.render_results_panel(ui);
+        });
+    }
+}
 
-            if let Some(ref result) = self.result {
-                ui.separator();
-                ui.label(egui::RichText::new("Results").strong());
-                ui.label(format!(
-                    "Phase 1 — Valid components: {}",
-                    result.valid_components
-                ));
-                ui.label(format!(
-                    "Phase 1 — Pruned components: {}",
-                    result.pruned_components
-                ));
-                ui.label(format!("Phase 2 — Prefix count: {}", result.prefix_count));
-                ui.label(format!(
-                    "Phase 3 — Rejected by lattice oracle: {}",
-                    result.rejected_by_lattice
-                ));
-                ui.label(format!(
-                    "Phase 4 — Candidates checked: {}",
-                    result.candidates_checked
-                ));
+impl UalbfWidget {
+    fn build_ualbf_tables(&self) -> Vec<ExportTable> {
+        let (status, valid, pruned, prefixes, rejected, checked) = match &self.result {
+            Some(r) => (
+                "completed",
+                r.valid_components as i64,
+                r.pruned_components as i64,
+                r.prefix_count as i64,
+                r.rejected_by_lattice as i64,
+                r.candidates_checked as i64,
+            ),
+            None => ("starter_summary", 0, 0, 0, 0, 0),
+        };
+        let row = vec![
+            ExportCell::Int(self.limit_p as i64),
+            ExportCell::Int(i64::from(self.max_exponent)),
+            ExportCell::Float(self.stop_threshold_log),
+            ExportCell::text(status),
+            ExportCell::Int(valid),
+            ExportCell::Int(pruned),
+            ExportCell::Int(prefixes),
+            ExportCell::Int(rejected),
+            ExportCell::Int(checked),
+        ];
+        vec![ExportTable::new(
+            "UALBF Search Summary",
+            vec![
+                "limit_p".into(),
+                "max_exponent".into(),
+                "stop_threshold_log".into(),
+                "status".into(),
+                "valid_components".into(),
+                "pruned_components".into(),
+                "prefix_count".into(),
+                "rejected_by_lattice".into(),
+                "candidates_checked".into(),
+            ],
+            vec![row],
+        )]
+    }
+
+    fn render_parameters_group(&mut self, ui: &mut egui::Ui) {
+        ui.group(|ui| {
+            ui.label(egui::RichText::new("UALBF Parameters").strong());
+            let mut limit_p_f = self.limit_p as f64;
+            ui.add(egui::Slider::new(&mut limit_p_f, 100.0..=10000.0).text("Prime limit"));
+            self.limit_p = limit_p_f as u64;
+
+            let mut max_exp_f = self.max_exponent as f64;
+            ui.add(
+                egui::Slider::new(&mut max_exp_f, 1.0..=4.0)
+                    .text("Max exponent")
+                    .step_by(1.0),
+            );
+            self.max_exponent = max_exp_f as u32;
+
+            ui.add(
+                egui::Slider::new(&mut self.stop_threshold_log, 10.0..=15.0)
+                    .text("Stop threshold (10^x)"),
+            );
+
+            if ui
+                .button("▶ Run UALBF Pipeline")
+                .accessible_hover_text(
+                    "Execute the Unified Algebraic-Lattice Bipartition Framework search pipeline",
+                )
+                .clicked()
+            {
+                self.execute_pipeline();
             }
         });
+    }
+
+    fn execute_pipeline(&mut self) {
+        let threshold_str = format!("{:.0}", 10f64.powf(self.stop_threshold_log));
+        let target_max = "1000000000000";
+        match ualbf_search(self.limit_p, self.max_exponent, &threshold_str, target_max) {
+            Ok(result) => {
+                self.status_message = format!(
+                    "Done. Valid: {}, Pruned: {}, Prefixes: {}, Rejected: {}, Candidates: {}",
+                    result.valid_components,
+                    result.pruned_components,
+                    result.prefix_count,
+                    result.rejected_by_lattice,
+                    result.candidates_checked,
+                );
+                self.result = Some(result);
+            }
+            Err(e) => {
+                self.status_message = format!("Error: {e}");
+                self.result = None;
+            }
+        }
+    }
+
+    fn render_results_panel(&self, ui: &mut egui::Ui) {
+        let Some(ref result) = self.result else {
+            return;
+        };
+        ui.separator();
+        ui.label(egui::RichText::new("Results").strong());
+        ui.label(format!(
+            "Phase 1 — Valid components: {}",
+            result.valid_components
+        ));
+        ui.label(format!(
+            "Phase 1 — Pruned components: {}",
+            result.pruned_components
+        ));
+        ui.label(format!("Phase 2 — Prefix count: {}", result.prefix_count));
+        ui.label(format!(
+            "Phase 3 — Rejected by lattice oracle: {}",
+            result.rejected_by_lattice
+        ));
+        ui.label(format!(
+            "Phase 4 — Candidates checked: {}",
+            result.candidates_checked
+        ));
     }
 }
 
