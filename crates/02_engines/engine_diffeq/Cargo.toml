@@ -12,12 +12,19 @@ math_contract = true
 
 [features]
 default = []
-alloc = ["math_commons/alloc", "math_rng/alloc"]
-serde = ["dep:serde", "math_commons/serde", "math_diagnostics/serde", "math_rng/serde"]
+alloc = ["math_commons/alloc", "math_memory/alloc", "math_rng/alloc"]
+serde = [
+    "dep:serde",
+    "math_commons/serde",
+    "math_diagnostics/serde",
+    "math_memory/serde",
+    "math_rng/serde",
+]
 std = [
     "alloc",
     "math_commons/std",
     "math_diagnostics/std",
+    "math_memory/std",
     "math_rng/std",
     "serde?/std",
     "verified_engine/std",
@@ -26,6 +33,7 @@ std = [
 [dependencies]
 math_commons = { path = "../math_commons", default-features = false }
 math_diagnostics = { path = "../../00_foundation/math_diagnostics", default-features = false }
+math_memory = { path = "../../00_foundation/math_memory", default-features = false }
 math_rng = { path = "../../00_foundation/math_rng", default-features = false }
 rand_core = { workspace = true }
 serde = { workspace = true, optional = true }
@@ -36,6 +44,10 @@ serde_json = { workspace = true, default-features = false, features = ["alloc", 
 
 [[test]]
 name = "convergence_and_alloc"
+required-features = ["std"]
+
+[[test]]
+name = "test_checked_diffeq"
 required-features = ["std"]
 
 [lints]

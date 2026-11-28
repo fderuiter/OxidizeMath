@@ -124,6 +124,11 @@ pure_math::mms_convergence_verification!(
 pure_math::formal_proof_verification!(
     module = "epidemiology",
     proof = "CompartmentalConservation.lean",
+    theorems = [
+        "forced_seir_exact_conservation",
+        "forced_seir_rounding_drift_bound",
+        "forced_seir_nonneg",
+    ],
     test = {
         let mut model = SEIRModel::new(1000.0, 15.0, 0.4, 0.2, 0.1).unwrap();
         model.step(0.1);

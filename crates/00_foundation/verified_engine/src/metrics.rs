@@ -22,9 +22,18 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 /// let snapshot: ComplexityMetrics = get_metrics();
 /// disable_verification();
 ///
-/// assert_eq!(snapshot.function_calls, 1);
-/// assert_eq!(snapshot.arithmetic_ops, 4);
-/// assert_eq!(snapshot.memory_loads, 2);
+/// #[cfg(feature = "std")]
+/// {
+///     assert_eq!(snapshot.function_calls, 1);
+///     assert_eq!(snapshot.arithmetic_ops, 4);
+///     assert_eq!(snapshot.memory_loads, 2);
+/// }
+/// #[cfg(not(feature = "std"))]
+/// {
+///     assert_eq!(snapshot.function_calls, 0);
+///     assert_eq!(snapshot.arithmetic_ops, 0);
+///     assert_eq!(snapshot.memory_loads, 0);
+/// }
 /// ```
 #[derive(Debug, Default, Clone)]
 #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
@@ -183,7 +192,7 @@ mod tests {
         assert_eq!(ACTIVE_VERIFIERS.load(Ordering::SeqCst), 0);
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(not(target_arch = "wasm32"), panic = "unwind"))]
     #[test]
     fn test_run_verified_panic_unwind_preserves_atomic_count() {
         use crate::engine::VerifiedEngine;

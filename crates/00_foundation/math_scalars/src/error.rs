@@ -3,8 +3,9 @@
 
 use core::fmt;
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
+use math_memory::ArenaError;
 
-/// Stack-allocated `#![no_std]` error returned by [`crate::SolverWorkspace`] and [`crate::StepSize`].
+/// Stack-allocated `#![no_std]` error returned by [`crate::ScalarWorkspace`] and [`crate::StepSize`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ScalarError {
@@ -14,7 +15,7 @@ pub enum ScalarError {
         value: f64,
     },
 
-    /// Caller-supplied [`crate::SolverWorkspace`] lacked capacity for a requested slice.
+    /// Caller-supplied [`crate::ScalarWorkspace`] lacked capacity for a requested slice.
     WorkspaceTooSmall {
         /// Requested slice length in scalars.
         required: usize,
@@ -56,8 +57,27 @@ impl fmt::Display for ScalarError {
                 available,
             } => write!(
                 f,
-                "SolverWorkspace exhausted: requested {required} scalars, only {available} available"
+                "ScalarWorkspace exhausted: requested {required} scalars, only {available} available"
             ),
+        }
+    }
+}
+
+impl From<ArenaError> for ScalarError {
+    fn from(err: ArenaError) -> Self {
+        match err {
+            ArenaError::InsufficientBytes {
+                required,
+                available,
+                ..
+            } => Self::WorkspaceTooSmall {
+                required,
+                available,
+            },
+            _ => Self::WorkspaceTooSmall {
+                required: usize::MAX,
+                available: 0,
+            },
         }
     }
 }

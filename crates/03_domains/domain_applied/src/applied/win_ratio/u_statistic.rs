@@ -1,5 +1,6 @@
 //! Pocock/Bebu-Lachin two-sample U-statistic variance estimation for unmatched win ratios.
 
+use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
 use statrs::distribution::{ContinuousCDF, Normal};
 
 use super::censoring::TierCount;
@@ -18,33 +19,104 @@ pub struct SubjectMarginals<'a> {
     pub col_losses: &'a [u32],
 }
 
-/// Preallocated scratch buffers for zero-allocation unmatched U-statistic evaluation.
+pub(super) type UnmatchedMutSlices<'a> = (
+    &'a mut [u32],
+    &'a mut [u32],
+    &'a mut [u32],
+    &'a mut [u32],
+    &'a mut [TierCount],
+);
+
+/// Preallocated scratch buffers backed by one [`OwnedByteArena`] for zero-allocation unmatched U-statistic evaluation.
 #[derive(Debug, Clone, Default)]
 pub struct UnmatchedScratch {
-    /// Per-subject win counts for treatment arm (`len >= n_treatment`).
-    pub row_wins: Vec<u32>,
-    /// Per-subject loss counts for treatment arm (`len >= n_treatment`).
-    pub row_losses: Vec<u32>,
-    /// Per-subject treatment-win counts against each control subject (`len >= n_control`).
-    pub col_wins: Vec<u32>,
-    /// Per-subject treatment-loss counts against each control subject (`len >= n_control`).
-    pub col_losses: Vec<u32>,
-    /// Per-tier win/loss/tie counters (`len >= num_tiers`).
-    pub tier_counts: Vec<TierCount>,
+    arena: OwnedByteArena,
+    row_wins: ArenaRegion<u32>,
+    row_losses: ArenaRegion<u32>,
+    col_wins: ArenaRegion<u32>,
+    col_losses: ArenaRegion<u32>,
+    tier_counts: ArenaRegion<TierCount>,
 }
 
 impl UnmatchedScratch {
+    /// Fallibly preallocates scratch slices sized for up to `max_n1` treatment subjects,
+    /// `max_n2` control subjects, and `max_tiers` prioritized endpoints.
+    ///
+    /// # Errors
+    /// Returns [`math_memory::ArenaError`] on capacity arithmetic overflow or allocation failure.
+    pub fn try_with_capacity(
+        max_n1: usize,
+        max_n2: usize,
+        max_tiers: usize,
+    ) -> Result<Self, math_memory::ArenaError> {
+        let mut layout = ArenaLayout::new();
+        let row_wins = layout.reserve::<u32>(max_n1)?;
+        let row_losses = layout.reserve::<u32>(max_n1)?;
+        let col_wins = layout.reserve::<u32>(max_n2)?;
+        let col_losses = layout.reserve::<u32>(max_n2)?;
+        let tier_counts = layout.reserve::<TierCount>(max_tiers)?;
+        Ok(Self {
+            arena: OwnedByteArena::try_from_layout(&layout)?,
+            row_wins,
+            row_losses,
+            col_wins,
+            col_losses,
+            tier_counts,
+        })
+    }
+
     /// Preallocates scratch slices sized for up to `max_n1` treatment subjects,
     /// `max_n2` control subjects, and `max_tiers` prioritized endpoints.
     #[must_use]
     pub fn with_capacity(max_n1: usize, max_n2: usize, max_tiers: usize) -> Self {
-        Self {
-            row_wins: vec![0; max_n1],
-            row_losses: vec![0; max_n1],
-            col_wins: vec![0; max_n2],
-            col_losses: vec![0; max_n2],
-            tier_counts: vec![TierCount::default(); max_tiers],
-        }
+        Self::try_with_capacity(max_n1, max_n2, max_tiers)
+            .expect("UnmatchedScratch::with_capacity failed")
+    }
+
+    /// Treatment capacity reserved in `row_wins` / `row_losses`.
+    #[inline]
+    #[must_use]
+    pub const fn max_treatment(&self) -> usize {
+        self.row_wins.len()
+    }
+
+    /// Control capacity reserved in `col_wins` / `col_losses`.
+    #[inline]
+    #[must_use]
+    pub const fn max_control(&self) -> usize {
+        self.col_wins.len()
+    }
+
+    /// Tier capacity reserved in `tier_counts`.
+    #[inline]
+    #[must_use]
+    pub const fn max_tiers(&self) -> usize {
+        self.tier_counts.len()
+    }
+
+    /// Immutable view of per-tier win/loss/tie counters.
+    #[inline]
+    #[must_use]
+    pub fn tier_counts(&self) -> &[TierCount] {
+        self.arena.region_slice(self.tier_counts)
+    }
+
+    #[inline]
+    pub(super) fn split_slices_mut(&mut self) -> UnmatchedMutSlices<'_> {
+        let (rw, rl, cw, cl, tc) = (
+            self.row_wins,
+            self.row_losses,
+            self.col_wins,
+            self.col_losses,
+            self.tier_counts,
+        );
+        let mut cursor = self.arena.raw_cursor();
+        let row_wins = cursor.region_mut(rw);
+        let row_losses = cursor.region_mut(rl);
+        let col_wins = cursor.region_mut(cw);
+        let col_losses = cursor.region_mut(cl);
+        let tier_counts = cursor.region_mut(tc);
+        (row_wins, row_losses, col_wins, col_losses, tier_counts)
     }
 
     /// Borrows the first `n1` treatment and `n2` control marginal slices.
@@ -52,10 +124,10 @@ impl UnmatchedScratch {
     #[must_use]
     pub fn marginals(&self, n1: usize, n2: usize) -> SubjectMarginals<'_> {
         SubjectMarginals {
-            row_wins: &self.row_wins[..n1],
-            row_losses: &self.row_losses[..n1],
-            col_wins: &self.col_wins[..n2],
-            col_losses: &self.col_losses[..n2],
+            row_wins: &self.arena.region_slice(self.row_wins)[..n1],
+            row_losses: &self.arena.region_slice(self.row_losses)[..n1],
+            col_wins: &self.arena.region_slice(self.col_wins)[..n2],
+            col_losses: &self.arena.region_slice(self.col_losses)[..n2],
         }
     }
 }
@@ -292,12 +364,18 @@ fn finite_log_wr_inference(
     ))
 }
 
-fn reset_unmatched_scratch(scratch: &mut UnmatchedScratch, n1: usize, n2: usize, n_tiers: usize) {
-    scratch.row_wins[..n1].fill(0);
-    scratch.row_losses[..n1].fill(0);
-    scratch.col_wins[..n2].fill(0);
-    scratch.col_losses[..n2].fill(0);
-    for (k, tier) in scratch.tier_counts.iter_mut().enumerate().take(n_tiers) {
+fn reset_unmatched_slices(
+    row_wins: &mut [u32],
+    row_losses: &mut [u32],
+    col_wins: &mut [u32],
+    col_losses: &mut [u32],
+    tier_counts: &mut [TierCount],
+) {
+    row_wins.fill(0);
+    row_losses.fill(0);
+    col_wins.fill(0);
+    col_losses.fill(0);
+    for (k, tier) in tier_counts.iter_mut().enumerate() {
         *tier = TierCount {
             tier_index: k,
             wins: 0,
@@ -323,15 +401,17 @@ impl<T> WinRatioAnalysis<T> {
         S2: AsRef<[T]>,
     {
         let (n1, n2, n_tiers) = (group1.len(), group2.len(), self.num_tiers());
-        if scratch.row_wins.len() < n1
-            || scratch.row_losses.len() < n1
-            || scratch.col_wins.len() < n2
-            || scratch.col_losses.len() < n2
-            || scratch.tier_counts.len() < n_tiers
+        if scratch.max_treatment() < n1
+            || scratch.max_control() < n2
+            || scratch.max_tiers() < n_tiers
         {
             return None;
         }
-        reset_unmatched_scratch(scratch, n1, n2, n_tiers);
+        let (rw, rl, cw, cl, tc) = scratch.split_slices_mut();
+        let (row_wins, row_losses) = (&mut rw[..n1], &mut rl[..n1]);
+        let (col_wins, col_losses) = (&mut cw[..n2], &mut cl[..n2]);
+        let tier_counts = &mut tc[..n_tiers];
+        reset_unmatched_slices(row_wins, row_losses, col_wins, col_losses, tier_counts);
 
         let (mut total_wins, mut total_losses) = (0usize, 0usize);
         for (i, subj1) in group1.iter().enumerate() {
@@ -340,26 +420,31 @@ impl<T> WinRatioAnalysis<T> {
                 match self.compare_subjects_with_tier(s1, subj2.as_ref()) {
                     (ComparisonResult::Win, Some(k)) => {
                         total_wins += 1;
-                        scratch.row_wins[i] += 1;
-                        scratch.col_wins[j] += 1;
-                        scratch.tier_counts[k].wins += 1;
+                        row_wins[i] += 1;
+                        col_wins[j] += 1;
+                        tier_counts[k].wins += 1;
                     }
                     (ComparisonResult::Loss, Some(k)) => {
                         total_losses += 1;
-                        scratch.row_losses[i] += 1;
-                        scratch.col_losses[j] += 1;
-                        scratch.tier_counts[k].losses += 1;
+                        row_losses[i] += 1;
+                        col_losses[j] += 1;
+                        tier_counts[k].losses += 1;
                     }
                     _ => {}
                 }
             }
         }
         let mut remaining = n1.saturating_mul(n2);
-        for tier in scratch.tier_counts.iter_mut().take(n_tiers) {
+        for tier in tier_counts.iter_mut() {
             remaining = remaining.saturating_sub(tier.wins + tier.losses);
             tier.ties_remaining = remaining;
         }
-        let marginals = scratch.marginals(n1, n2);
+        let marginals = SubjectMarginals {
+            row_wins,
+            row_losses,
+            col_wins,
+            col_losses,
+        };
         compute_unmatched_u_statistics(n1, n2, total_wins, total_losses, &marginals, alpha)
     }
 
@@ -379,7 +464,7 @@ impl<T> WinRatioAnalysis<T> {
         let n_tiers = self.num_tiers();
         let mut scratch = UnmatchedScratch::with_capacity(group1.len(), group2.len(), n_tiers);
         let summary = self.evaluate_unmatched_into(group1, group2, alpha, &mut scratch)?;
-        scratch.tier_counts.truncate(n_tiers);
-        Some((summary, scratch.tier_counts))
+        let tiers = scratch.tier_counts()[..n_tiers].to_vec();
+        Some((summary, tiers))
     }
 }

@@ -16,6 +16,9 @@ on:
   merge_group:
     branches: [ "main", "master" ]
   workflow_dispatch:
+  schedule:
+    # Nightly macOS/Windows native coverage (desktop legs are skipped on pull requests).
+    - cron: "17 7 * * *"
 
 env:
   CARGO_TERM_COLOR: always
@@ -126,7 +129,7 @@ jobs:
                 case "$file_path" in
                   crates/04_bindings/markdown_tests/*|apps/unified_verification/*|apps/xtask/*)
                     ;;
-                  crates/*|apps/*|egui_plot/*|proofs/*|LICENSE|papers/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|.cargo/*|.github/actions/cargo-cache/*|.github/workflows/ci.yml)
+                  crates/*|apps/*|egui_plot/*|proofs/*|LICENSE|papers/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|.cargo/*|.github/actions/cargo-cache/*|.github/actions/ci-tool-cache/*|.github/workflows/ci.yml)
                     installer_changed="true"
                     ;;
                 esac
@@ -146,7 +149,7 @@ jobs:
   pre-flight:
     name: Pre-flight Checks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -157,6 +160,7 @@ jobs:
         uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
           toolchain: "1.99.1"
+          targets: thumbv7em-none-eabihf
           components: clippy, rustfmt
 
       - name: Cache Cargo dependencies
@@ -164,6 +168,35 @@ jobs:
         with:
           scope: preflight
           profile: dev
+
+      - name: Cache Lean 4 elan toolchain
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.elan
+          key: ${{ runner.os }}-${{ runner.arch }}-elan-${{ hashFiles('proofs/lean-toolchain') }}
+
+      - name: Set up Lean 4 toolchain and build proofs
+        shell: bash
+        env:
+          RUNNER_OS_NAME: ${{ runner.os }}
+        run: |
+          set -euo pipefail
+          TOOLCHAIN="$(tr -d '\r\n' < proofs/lean-toolchain)"
+          RAW_HOME="${USERPROFILE:-${HOME:-}}"
+          ELAN_BIN="${RAW_HOME//\\//}/.elan/bin"
+          export PATH="${ELAN_BIN}:${PATH}"
+          if ! command -v elan >/dev/null 2>&1; then
+            curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o /tmp/elan-init.sh
+            sh /tmp/elan-init.sh -y --no-modify-path --default-toolchain "$TOOLCHAIN"
+            rm -f /tmp/elan-init.sh
+          fi
+          elan toolchain install "$TOOLCHAIN"
+          if [ "${RUNNER_OS_NAME:-}" = "Windows" ]; then
+            printf '%s\\.elan\\bin\n' "${RAW_HOME//\//\\}" >> "$GITHUB_PATH"
+          else
+            printf '%s\n' "$ELAN_BIN" >> "$GITHUB_PATH"
+          fi
+          (cd proofs && lake build)
 
       - name: Build Unified Verification Tool
         run: cargo build -p unified_verification
@@ -183,11 +216,14 @@ jobs:
           RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
         run: cargo run -p unified_verification -- check-release-tag
 
-      - name: Check Unused Dependencies
-        uses: bnjbvr/cargo-machete@ac30a525c0a8d163a92d727b3ff079ee3f6ecb08 # v0.9.2
+      - name: Install cargo-machete
+        uses: ./.github/actions/ci-tool-cache
+        with:
+          tool: cargo-machete
+          version: "0.9.1"
 
-      - name: Clean up machete artifacts
-        run: rm -rf cargo-machete*
+      - name: Check Unused Dependencies
+        run: cargo machete
 
       - name: Install cargo-audit
         uses: ./.github/actions/ci-tool-cache
@@ -212,30 +248,23 @@ jobs:
       - name: Check Markdown Links
         run: cargo run -p xtask -- check-markdown-links
 
+      - name: Check no_std Crates and Bare-Metal Target
+        run: cargo run -p xtask -- check-no-std
+
   build-and-test:
     name: Build and Test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+    # Desktop (macOS/Windows) legs report failures without blocking the Pages deploy;
+    # they stay blocking on release tags so publish-release is still gated on them.
+    continue-on-error: ${{ matrix.desktop && !startsWith(github.ref, 'refs/tags/v') }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            name: Linux Native
-            artifact_name: linux_artifact
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            name: Windows Native
-            artifact_name: windows_installer
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            name: macOS Native
-            artifact_name: macos_app
-          - os: ubuntu-latest
-            target: wasm32-unknown-unknown
-            name: Web/WASM
-            artifact_name: wasm_app
+        # Linux + WASM gate every event. macOS/Windows desktop legs run on main pushes, nightly
+        # schedules, manual dispatches and release tags, but not on pull requests or merge groups.
+        include: >-
+          ${{ fromJSON((github.event_name == 'pull_request' || github.event_name == 'merge_group') && '[{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","name":"Linux Native","artifact_name":"linux_artifact","desktop":false},{"os":"ubuntu-latest","target":"wasm32-unknown-unknown","name":"Web/WASM","artifact_name":"wasm_app","desktop":false}]' || '[{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","name":"Linux Native","artifact_name":"linux_artifact","desktop":false},{"os":"ubuntu-latest","target":"wasm32-unknown-unknown","name":"Web/WASM","artifact_name":"wasm_app","desktop":false},{"os":"windows-latest","target":"x86_64-pc-windows-msvc","name":"Windows Native","artifact_name":"windows_installer","desktop":true},{"os":"macos-latest","target":"aarch64-apple-darwin","name":"macOS Native","artifact_name":"macos_app","desktop":true}]') }}
 
     steps:
       - name: Free Disk Space
@@ -264,6 +293,37 @@ jobs:
           profile: mixed
           target: ${{ matrix.target }}
 
+      - name: Cache Lean 4 elan toolchain
+        if: matrix.target != 'wasm32-unknown-unknown'
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.elan
+          key: ${{ runner.os }}-${{ runner.arch }}-elan-${{ hashFiles('proofs/lean-toolchain') }}
+
+      - name: Set up Lean 4 toolchain and build proofs
+        if: matrix.target != 'wasm32-unknown-unknown'
+        shell: bash
+        env:
+          RUNNER_OS_NAME: ${{ runner.os }}
+        run: |
+          set -euo pipefail
+          TOOLCHAIN="$(tr -d '\r\n' < proofs/lean-toolchain)"
+          RAW_HOME="${USERPROFILE:-${HOME:-}}"
+          ELAN_BIN="${RAW_HOME//\\//}/.elan/bin"
+          export PATH="${ELAN_BIN}:${PATH}"
+          if ! command -v elan >/dev/null 2>&1; then
+            curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o /tmp/elan-init.sh
+            sh /tmp/elan-init.sh -y --no-modify-path --default-toolchain "$TOOLCHAIN"
+            rm -f /tmp/elan-init.sh
+          fi
+          elan toolchain install "$TOOLCHAIN"
+          if [ "${RUNNER_OS_NAME:-}" = "Windows" ]; then
+            printf '%s\\.elan\\bin\n' "${RAW_HOME//\//\\}" >> "$GITHUB_PATH"
+          else
+            printf '%s\n' "$ELAN_BIN" >> "$GITHUB_PATH"
+          fi
+          (cd proofs && lake build)
+
       - name: Build Unified Verification Tool
         if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
         run: cargo build -p unified_verification
@@ -285,7 +345,7 @@ jobs:
 
       - name: Run Workspace Tests (Native)
         if: runner.os != 'Linux' && matrix.target != 'wasm32-unknown-unknown'
-        run: cargo test --workspace --lib --tests --all-features
+        run: cargo test --workspace --lib --tests --all-features --no-fail-fast
 
       - name: Check Workspace Benchmarks (Native)
         if: matrix.target != 'wasm32-unknown-unknown'
@@ -739,6 +799,7 @@ jobs:
             and (keys | sort) == [
               "certified_solvers",
               "interval_bounds",
+              "lean4_proof_bindings",
               "lean4_proof_digests",
               "max_interval_width",
               "native_execution_coverage_pct",
@@ -772,6 +833,7 @@ jobs:
             ] and ([.[]] | all(type == "number" and . > 0)))
             and (.interval_bounds | type == "object" and length > 0 and ([.[]] | all(type == "array" and length == 2 and .[0] <= .[1])))
             and (.lean4_proof_digests | type == "object" and length >= 6 and ([.[]] | all(type == "string" and test("^[0-9a-f]{64}$"))))
+            and (.lean4_proof_bindings | type == "object" and length >= 6 and ([.[]] | all(type == "object" and .kernel_verified == true and (.rust_modules | type == "array" and length > 0) and (.theorems | type == "array" and length > 0))))
             and (.passed | type == "boolean")
             and .passed == true
           ' "$CERT_FILE" >/dev/null; then

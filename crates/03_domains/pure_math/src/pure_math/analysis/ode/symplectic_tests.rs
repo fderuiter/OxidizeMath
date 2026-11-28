@@ -1,7 +1,7 @@
 use super::*;
 use crate::pure_math::analysis::ode::{ArrayState, HamiltonianSystem, RungeKutta4};
 
-struct QuarticOscillator;
+pub(super) struct QuarticOscillator;
 
 impl OdeSystem<ArrayState<2>> for QuarticOscillator {
     #[verified_engine::verified]

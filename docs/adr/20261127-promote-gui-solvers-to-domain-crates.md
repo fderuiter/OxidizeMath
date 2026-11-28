@@ -31,7 +31,7 @@ Following [ADR 20261123](20261123-unify-ast-metrics-and-ratcheted-debt-caps.md) 
 4. **AST Verification Counting, Headless `gui_tool` Policy Enforcement, and Debt Ratchet (`oxidize_core`, `unified_verification`, `verification_whitelist.toml`)**:
    - Update `AstVisitor::record_fn_metrics` so explicit `#[verified]` / `#[verified_engine::verified]` annotations on functions inside an `opt_out` scope count toward `verified_funcs`, `verified_prod_funcs` / `verified_test_funcs`, `verified_asserts`, and `active_funcs` while leaving unannotated functions opted out.
    - Add `gui_opt_out` inspection to `unified_verification::policy_audit` (both full and staged runs) to fail closed when any production file under `apps/math_explorer_gui/src/` declares `opt_out = "gui_tool"` without referencing UI symbols, directing contributors to `pure_math` or `domain_*`.
-   - Remove `opt_out = "gui_tool"` from all headless helper modules in `apps/math_explorer_gui/src/` and ratchet `verification_whitelist.toml` caps down (`"gui_tool"` `768 -> 674`, `"math_explorer_gui"` `997 -> 903`).
+   - Remove `opt_out = "gui_tool"` from all headless helper modules in `apps/math_explorer_gui/src/` and ratchet `verification_whitelist.toml` caps down (`"gui_tool"` `780 -> 686`, `"math_explorer_gui"` `1009 -> 915`).
 
 ## Consequences
 

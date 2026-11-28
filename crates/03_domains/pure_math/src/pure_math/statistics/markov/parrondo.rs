@@ -19,7 +19,7 @@
 //! ```
 
 use crate::error::MarkovError;
-use math_commons::stochastic::SolverWorkspace;
+use math_commons::stochastic::StochasticWorkspace;
 use nalgebra::{DMatrix, DVector};
 use serde::{Deserialize, Serialize};
 
@@ -425,7 +425,7 @@ pub fn solve_parrondo_ratchet(
     );
     let p_mix = build_mixture_matrix(&p_a, &p_b)?;
     let p_schedule = build_schedule_matrix(&p_a, &p_b, schedule)?;
-    let mut ws = SolverWorkspace::new(m, 0);
+    let mut ws = StochasticWorkspace::new(m, 0);
     let pi_a = solve_stationary_exact(&mut ws, &p_a)?;
     let pi_b = solve_stationary_exact(&mut ws, &p_b)?;
     let pi_mix = solve_stationary_exact(&mut ws, &p_mix)?;

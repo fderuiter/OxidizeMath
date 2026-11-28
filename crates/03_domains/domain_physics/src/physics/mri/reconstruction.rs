@@ -1,5 +1,6 @@
 //! Image Reconstruction algorithms and pre-planned zero-allocation 2D FFT workspaces.
 
+use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
 use nalgebra::DMatrix;
 use num_complex::Complex;
 use rustfft::{Fft, FftDirection, FftPlanner};
@@ -42,49 +43,60 @@ pub struct Fft2dWorkspace {
     fwd_col_fft: Option<Arc<dyn Fft<f64>>>,
     inv_row_fft: Option<Arc<dyn Fft<f64>>>,
     inv_col_fft: Option<Arc<dyn Fft<f64>>>,
-    scratch: Vec<Complex<f64>>,
-    transposed: DMatrix<Complex<f64>>,
+    arena: OwnedByteArena,
+    scratch: ArenaRegion<Complex<f64>>,
+    transposed: ArenaRegion<Complex<f64>>,
 }
 
 impl Fft2dWorkspace {
-    /// Creates a pre-planned 2D FFT workspace for `rows x cols` complex matrices.
-    #[must_use]
-    pub fn new(rows: usize, cols: usize) -> Self {
+    /// Fallibly creates a pre-planned 2D FFT workspace for `rows x cols` complex matrices.
+    pub fn try_new(rows: usize, cols: usize) -> Result<Self, math_memory::ArenaError> {
         if rows == 0 || cols == 0 {
-            return Self {
+            return Ok(Self {
                 rows,
                 cols,
                 fwd_row_fft: None,
                 fwd_col_fft: None,
                 inv_row_fft: None,
                 inv_col_fft: None,
-                scratch: Vec::new(),
-                transposed: DMatrix::zeros(cols, rows),
-            };
+                arena: OwnedByteArena::new(),
+                scratch: ArenaRegion::empty(),
+                transposed: ArenaRegion::empty(),
+            });
         }
-
+        let rc = rows
+            .checked_mul(cols)
+            .ok_or(math_memory::ArenaError::ArithmeticOverflow)?;
         let mut planner = FftPlanner::new();
         let fwd_row = planner.plan_fft(cols, FftDirection::Forward);
         let fwd_col = planner.plan_fft(rows, FftDirection::Forward);
         let inv_row = planner.plan_fft(cols, FftDirection::Inverse);
         let inv_col = planner.plan_fft(rows, FftDirection::Inverse);
-
         let scratch_len = fwd_row
             .get_inplace_scratch_len()
             .max(fwd_col.get_inplace_scratch_len())
             .max(inv_row.get_inplace_scratch_len())
             .max(inv_col.get_inplace_scratch_len());
-
-        Self {
+        let mut layout = ArenaLayout::new();
+        let scratch = layout.reserve::<Complex<f64>>(scratch_len)?;
+        let transposed = layout.reserve::<Complex<f64>>(rc)?;
+        Ok(Self {
             rows,
             cols,
             fwd_row_fft: Some(fwd_row),
             fwd_col_fft: Some(fwd_col),
             inv_row_fft: Some(inv_row),
             inv_col_fft: Some(inv_col),
-            scratch: vec![Complex::new(0.0, 0.0); scratch_len],
-            transposed: DMatrix::zeros(cols, rows),
-        }
+            arena: OwnedByteArena::try_from_layout(&layout)?,
+            scratch,
+            transposed,
+        })
+    }
+
+    /// Creates a pre-planned 2D FFT workspace for `rows x cols` complex matrices.
+    #[must_use]
+    pub fn new(rows: usize, cols: usize) -> Self {
+        Self::try_new(rows, cols).expect("Fft2dWorkspace::new failed")
     }
 
     /// Returns the configured row count `R` of this workspace.
@@ -135,23 +147,16 @@ impl Fft2dWorkspace {
             (self.fwd_row_fft.as_ref(), self.fwd_col_fft.as_ref())
         };
 
-        transpose_blocked(
-            input.as_slice(),
-            self.transposed.as_mut_slice(),
-            self.rows,
-            self.cols,
-        );
+        let mut cur = self.arena.raw_cursor();
+        let scratch = cur.region_mut(self.scratch);
+        let transposed = cur.region_mut(self.transposed);
+        transpose_blocked(input.as_slice(), transposed, self.rows, self.cols);
         if let Some(fft_r) = row_plan {
-            fft_r.process_with_scratch(self.transposed.as_mut_slice(), &mut self.scratch);
+            fft_r.process_with_scratch(transposed, scratch);
         }
-        transpose_blocked(
-            self.transposed.as_slice(),
-            output.as_mut_slice(),
-            self.cols,
-            self.rows,
-        );
+        transpose_blocked(transposed, output.as_mut_slice(), self.cols, self.rows);
         if let Some(fft_c) = col_plan {
-            fft_c.process_with_scratch(output.as_mut_slice(), &mut self.scratch);
+            fft_c.process_with_scratch(output.as_mut_slice(), scratch);
         }
     }
 
@@ -217,35 +222,30 @@ impl Fft2dWorkspace {
             return Ok(());
         }
         out_image.copy_from(density);
-        if let Some(ref fwd_c) = self.fwd_col_fft {
-            fwd_c.process_with_scratch(out_image.as_mut_slice(), &mut self.scratch);
+        let fwd_col = self.fwd_col_fft.as_ref();
+        let fwd_row = self.fwd_row_fft.as_ref();
+        let inv_row = self.inv_row_fft.as_ref();
+        let inv_col = self.inv_col_fft.as_ref();
+        let s_reg = self.scratch;
+        let t_reg = self.transposed;
+        let (rows, cols) = (self.rows, self.cols);
+        let mut cur = self.arena.raw_cursor();
+        let scratch = cur.region_mut(s_reg);
+        let transposed = cur.region_mut(t_reg);
+        if let Some(fwd_c) = fwd_col {
+            fwd_c.process_with_scratch(out_image.as_mut_slice(), scratch);
         }
-        transpose_blocked(
-            out_image.as_slice(),
-            self.transposed.as_mut_slice(),
-            self.rows,
-            self.cols,
-        );
-        if let Some(ref fwd_r) = self.fwd_row_fft {
-            fwd_r.process_with_scratch(self.transposed.as_mut_slice(), &mut self.scratch);
+        transpose_blocked(out_image.as_slice(), transposed, rows, cols);
+        if let Some(fwd_r) = fwd_row {
+            fwd_r.process_with_scratch(transposed, scratch);
         }
-        apply_kspace_modulation(
-            self.transposed.as_mut_slice(),
-            dft_mask,
-            dft_spikes,
-            out_kspace,
-        );
-        if let Some(ref inv_r) = self.inv_row_fft {
-            inv_r.process_with_scratch(self.transposed.as_mut_slice(), &mut self.scratch);
+        apply_kspace_modulation(transposed, dft_mask, dft_spikes, out_kspace);
+        if let Some(inv_r) = inv_row {
+            inv_r.process_with_scratch(transposed, scratch);
         }
-        transpose_blocked(
-            self.transposed.as_slice(),
-            out_image.as_mut_slice(),
-            self.cols,
-            self.rows,
-        );
-        if let Some(ref inv_c) = self.inv_col_fft {
-            inv_c.process_with_scratch(out_image.as_mut_slice(), &mut self.scratch);
+        transpose_blocked(transposed, out_image.as_mut_slice(), cols, rows);
+        if let Some(inv_c) = inv_col {
+            inv_c.process_with_scratch(out_image.as_mut_slice(), scratch);
         }
         scale_complex_slice(out_image.as_mut_slice(), 1.0 / (total as f64));
         debug_assert_eq!(out_kspace.len(), total);
@@ -288,12 +288,16 @@ impl Fft2dWorkspace {
         if total == 0 {
             return Ok(());
         }
-        if let Some(ref fwd_c) = self.fwd_col_fft {
-            fwd_c.process_with_scratch(density.as_mut_slice(), &mut self.scratch);
+        let fwd_col = self.fwd_col_fft.as_ref();
+        let fwd_row = self.fwd_row_fft.as_ref();
+        let (rows, cols) = (self.rows, self.cols);
+        let scratch = self.arena.region_slice_mut(self.scratch);
+        if let Some(fwd_c) = fwd_col {
+            fwd_c.process_with_scratch(density.as_mut_slice(), scratch);
         }
-        transpose_blocked(density.as_slice(), out_kspace, self.rows, self.cols);
-        if let Some(ref fwd_r) = self.fwd_row_fft {
-            fwd_r.process_with_scratch(out_kspace, &mut self.scratch);
+        transpose_blocked(density.as_slice(), out_kspace, rows, cols);
+        if let Some(fwd_r) = fwd_row {
+            fwd_r.process_with_scratch(out_kspace, scratch);
         }
         debug_assert_eq!(out_kspace.len(), total);
         Ok(())
@@ -315,15 +319,21 @@ impl Fft2dWorkspace {
         density: &DMatrix<Complex<f64>>,
         out_kspace: &mut [Complex<f64>],
     ) {
-        self.transposed
-            .as_mut_slice()
-            .copy_from_slice(density.as_slice());
-        if let Some(ref fwd_c) = self.fwd_col_fft {
-            fwd_c.process_with_scratch(self.transposed.as_mut_slice(), &mut self.scratch);
+        let fwd_col = self.fwd_col_fft.as_ref();
+        let fwd_row = self.fwd_row_fft.as_ref();
+        let s_reg = self.scratch;
+        let t_reg = self.transposed;
+        let (rows, cols) = (self.rows, self.cols);
+        let mut cur = self.arena.raw_cursor();
+        let scratch = cur.region_mut(s_reg);
+        let transposed = cur.region_mut(t_reg);
+        transposed.copy_from_slice(density.as_slice());
+        if let Some(fwd_c) = fwd_col {
+            fwd_c.process_with_scratch(transposed, scratch);
         }
-        transpose_blocked(self.transposed.as_slice(), out_kspace, self.rows, self.cols);
-        if let Some(ref fwd_r) = self.fwd_row_fft {
-            fwd_r.process_with_scratch(out_kspace, &mut self.scratch);
+        transpose_blocked(transposed, out_kspace, rows, cols);
+        if let Some(fwd_r) = fwd_row {
+            fwd_r.process_with_scratch(out_kspace, scratch);
         }
     }
 }
@@ -463,34 +473,17 @@ fn separable_transform(matrix: &DMatrix<Complex<f64>>, inverse: bool) -> DMatrix
     out
 }
 
-/// Simulates the raw signal $S(k)$ measured from a 2D slice of spin density.
-///
-/// Computes $S(k_x, k_y) = \sum_{x,y} \rho(x,y) e^{-i 2\pi (k_x x / R + k_y y / C)}$
-///
-/// **Optimization:** Uses transposed unit-stride 1D FFT passes ($O(R \cdot C \log(R \cdot C))$).
-///
-/// # Arguments
-/// * `density` - 2D matrix representing the spin density $\rho(x,y)$.
-///
-/// # Returns
-/// * 2D matrix of k-space samples (raw signal), same dimensions as density.
+/// Simulates the raw signal $S(k)$ measured from a 2D slice of spin density via transposed
+/// unit-stride 1D FFT passes ($O(R \cdot C \log(R \cdot C))$):
+/// $S(k_x, k_y) = \sum_{x,y} \rho(x,y) e^{-i 2\pi (k_x x / R + k_y y / C)}$.
 #[verified_engine::verified]
 pub fn simulate_signal_2d(density: &DMatrix<Complex<f64>>) -> DMatrix<Complex<f64>> {
     separable_transform(density, false)
 }
 
-/// Performs a 2D Inverse Discrete Fourier Transform (IDFT) to reconstruct the image.
-///
-/// Computes $\rho(x,y) = \sum_{k_x, k_y} S(k_x, k_y) e^{+i 2\pi (k_x x / R + k_y y / C)}$
-///
-/// **Optimization:** Uses transposed unit-stride 1D IFFT passes ($O(R \cdot C \log(R \cdot C))$).
-///
-/// # Arguments
-/// * `k_space` - 2D matrix of k-space samples $S(k_x, k_y)$.
-///
-/// # Returns
-/// * Reconstructed image density matrix $\rho(x,y)$.
-/// * Note: This implementation does not normalize by $1/(R \cdot C)$. Scale depends on definition.
+/// Performs an unnormalized 2D Inverse Discrete Fourier Transform (IDFT) via transposed
+/// unit-stride 1D IFFT passes ($O(R \cdot C \log(R \cdot C))$):
+/// $\rho(x,y) = \sum_{k_x, k_y} S(k_x, k_y) e^{+i 2\pi (k_x x / R + k_y y / C)}$.
 #[verified_engine::verified]
 pub fn inverse_dft_2d(k_space: &DMatrix<Complex<f64>>) -> DMatrix<Complex<f64>> {
     separable_transform(k_space, true)

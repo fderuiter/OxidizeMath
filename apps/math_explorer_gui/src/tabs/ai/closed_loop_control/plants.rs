@@ -27,7 +27,7 @@ const SEIR_BETA0: f64 = 0.78;
 const SEIR_SIGMA: f64 = 0.25;
 const SEIR_GAMMA: f64 = 0.12;
 
-/// Generates a deterministic standard normal sample $\mathcal{N}(0, 1)$ via `OxidizeRng`.
+/// Generates a deterministic standard normal sample $\mathcal{N}(0, 1)$ via the inverse-CDF probit transform using `OxidizeRng`.
 pub fn sample_standard_normal(rng: &mut OxidizeRng) -> f64 {
     sample_standard_normal_f64(rng)
 }

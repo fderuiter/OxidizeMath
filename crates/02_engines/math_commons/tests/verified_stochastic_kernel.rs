@@ -1,8 +1,10 @@
 //! Zero-allocation and numerical accuracy verification for `math_commons::stochastic`.
 #![cfg(feature = "std")]
 
+use math_commons::math_kernel::types::ByteArena;
 use math_commons::stochastic::{
-    SolverWorkspace, calibrate_ou, ctmc_steady_state, dtmc_stationary_distribution,
+    StochasticWorkspace, calibrate_ou, ctmc_steady_state, dtmc_stationary_distribution,
+    solve_ctmc_steady_state_with_workspace, solve_dtmc_stationary_with_workspace,
 };
 use std::hint::black_box;
 use verified_engine::allocator::VerifiedAllocator;
@@ -65,7 +67,9 @@ fn periodic_three_state_dtmc_and_multi_sink_rejection_are_zero_alloc() {
         0.0, 1.0, 0.0, //
     ];
 
-    let mut ws = SolverWorkspace::new(4, 0);
+    let mut ws = StochasticWorkspace::new(4, 0);
+    let mut stack_buf = [0_u8; 2048];
+    let mut stack_arena = ByteArena::new(&mut stack_buf);
     let mut pi3 = [0.0_f64; 3];
     let mut pi4 = [0.0_f64; 4];
 
@@ -75,6 +79,18 @@ fn periodic_three_state_dtmc_and_multi_sink_rejection_are_zero_alloc() {
         assert!((pi3[0] - 0.5).abs() < 1e-12);
         assert!((pi3[1] - 0.25).abs() < 1e-12);
         assert!((pi3[2] - 0.25).abs() < 1e-12);
+
+        let mut stack_pi = [0.0_f64; 3];
+        assert!(
+            solve_dtmc_stationary_with_workspace(
+                black_box(&periodic),
+                3,
+                &mut stack_pi,
+                &mut stack_arena
+            )
+            .expect("stack ByteArena DTMC solve")
+        );
+        assert_eq!(pi3, stack_pi);
 
         ws.operator_staging_mut(3).copy_from_slice(&periodic);
         let mut staged_pi = [0.0_f64; 3];
@@ -98,7 +114,9 @@ fn periodic_three_state_dtmc_and_multi_sink_rejection_are_zero_alloc() {
 #[test]
 fn slow_ctmc_rates_solve_accurately_with_zero_allocations() {
     let g_slow = [-1e-7, 1e-7, 3e-7, -3e-7];
-    let mut ws = SolverWorkspace::new(4, 0);
+    let mut ws = StochasticWorkspace::new(4, 0);
+    let mut stack_buf = [0_u8; 1024];
+    let mut stack_arena = ByteArena::new(&mut stack_buf);
     let mut pi = [0.0_f64; 2];
 
     VerifiedEngine::run_verified(|| {
@@ -106,6 +124,18 @@ fn slow_ctmc_rates_solve_accurately_with_zero_allocations() {
         assert!(solved);
         assert!((pi[0] - 0.75).abs() < 1e-12);
         assert!((pi[1] - 0.25).abs() < 1e-12);
+
+        let mut stack_pi = [0.0_f64; 2];
+        assert!(
+            solve_ctmc_steady_state_with_workspace(
+                black_box(&g_slow),
+                2,
+                &mut stack_pi,
+                &mut stack_arena
+            )
+            .expect("stack ByteArena CTMC solve")
+        );
+        assert_eq!(pi, stack_pi);
 
         ws.operator_staging_mut(2).copy_from_slice(&g_slow);
         let mut staged_pi = [0.0_f64; 2];
@@ -131,7 +161,7 @@ fn ou_calibration_and_quantile_summary_are_zero_alloc_and_accurate() {
     let slow_obs = simulate_exact_ou(2.0, 0.08, 0.35, 2.0, 0.02, 4_000, 0xCAFE_BABE_1234_5678);
     let fast_obs = simulate_exact_ou(-1.2, 6.0, 0.45, -1.2, 0.05, 4_000, 0xDEAD_BEEF_8765_4321);
 
-    let mut ws = SolverWorkspace::new(0, 4_096);
+    let mut ws = StochasticWorkspace::new(0, 4_096);
 
     VerifiedEngine::run_verified(|| {
         let slow_cal = ws

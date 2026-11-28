@@ -1,9 +1,8 @@
 // [cite:engine_pde]
 use crate::boundary::BoundaryCondition;
-use crate::error::PdeError;
-use math_commons::math_kernel::types::{
-    Scalar, SolverWorkspace, fill_standard_normal, flatten_2d_index,
-};
+use crate::error::{PdeError, carve_f64};
+use math_commons::math_kernel::types::{Scalar, fill_standard_normal, flatten_2d_index};
+use math_memory::SolverWorkspace;
 use rand_core::RngCore;
 
 /// Spatio-temporal stochastic forcing structure for continuum SPDE steppers.
@@ -87,7 +86,7 @@ pub fn try_inject_additive_noise_1d<R: RngCore + ?Sized>(
     dt: f64,
     intensity: f64,
     bc: BoundaryCondition,
-    workspace: &mut SolverWorkspace<'_, f64>,
+    workspace: &mut (impl SolverWorkspace + ?Sized),
     rng: &mut R,
 ) -> Result<(), PdeError> {
     let n = field.len();
@@ -102,7 +101,8 @@ pub fn try_inject_additive_noise_1d<R: RngCore + ?Sized>(
     }
     let scale = <f64 as Scalar>::sqrt(2.0 * intensity * dt / dx);
     let mut ws = workspace.reborrow();
-    let z = ws.try_take_slice(n)?;
+    let mut cur = ws.cursor();
+    let z = carve_f64(&mut cur, n)?;
     fill_standard_normal(z, rng);
     for i in 0..n {
         if let BoundaryCondition::Dirichlet(val) = bc
@@ -128,7 +128,7 @@ pub fn inject_additive_noise_1d<R: RngCore + ?Sized>(
     dt: f64,
     intensity: f64,
     bc: BoundaryCondition,
-    workspace: &mut SolverWorkspace<'_, f64>,
+    workspace: &mut (impl SolverWorkspace + ?Sized),
     rng: &mut R,
 ) {
     try_inject_additive_noise_1d(field, dx, dt, intensity, bc, workspace, rng)
@@ -150,7 +150,7 @@ pub fn try_inject_additive_noise_2d<R: RngCore + ?Sized>(
     dt: f64,
     intensity: f64,
     bc: BoundaryCondition,
-    workspace: &mut SolverWorkspace<'_, f64>,
+    workspace: &mut (impl SolverWorkspace + ?Sized),
     rng: &mut R,
 ) -> Result<(), PdeError> {
     let total = validate_noise_2d_params(field.len(), width, height, dx, dy, dt)?;
@@ -164,7 +164,8 @@ pub fn try_inject_additive_noise_2d<R: RngCore + ?Sized>(
     }
     let scale = <f64 as Scalar>::sqrt(2.0 * intensity * dt / (dx * dy));
     let mut ws = workspace.reborrow();
-    let z = ws.try_take_slice(total)?;
+    let mut cur = ws.cursor();
+    let z = carve_f64(&mut cur, total)?;
     fill_standard_normal(z, rng);
     for y in 0..height {
         for x in 0..width {
@@ -197,7 +198,7 @@ pub fn inject_additive_noise_2d<R: RngCore + ?Sized>(
     dt: f64,
     intensity: f64,
     bc: BoundaryCondition,
-    workspace: &mut SolverWorkspace<'_, f64>,
+    workspace: &mut (impl SolverWorkspace + ?Sized),
     rng: &mut R,
 ) {
     try_inject_additive_noise_2d(
@@ -217,7 +218,7 @@ pub fn try_inject_conserved_flux_noise_1d<R: RngCore + ?Sized>(
     dt: f64,
     mobility_temp: f64,
     bc: BoundaryCondition,
-    workspace: &mut SolverWorkspace<'_, f64>,
+    workspace: &mut (impl SolverWorkspace + ?Sized),
     rng: &mut R,
 ) -> Result<(), PdeError> {
     let n = field.len();
@@ -232,7 +233,8 @@ pub fn try_inject_conserved_flux_noise_1d<R: RngCore + ?Sized>(
     }
     let flux_scale = <f64 as Scalar>::sqrt(2.0 * mobility_temp * dt / dx) / dx;
     let mut ws = workspace.reborrow();
-    let faces = ws.try_take_slice(n)?;
+    let mut cur = ws.cursor();
+    let faces = carve_f64(&mut cur, n)?;
     fill_standard_normal(faces, rng);
     for f in faces.iter_mut() {
         *f *= flux_scale;
@@ -273,7 +275,7 @@ pub fn inject_conserved_flux_noise_1d<R: RngCore + ?Sized>(
     dt: f64,
     mobility_temp: f64,
     bc: BoundaryCondition,
-    workspace: &mut SolverWorkspace<'_, f64>,
+    workspace: &mut (impl SolverWorkspace + ?Sized),
     rng: &mut R,
 ) {
     try_inject_conserved_flux_noise_1d(field, dx, dt, mobility_temp, bc, workspace, rng)
@@ -295,7 +297,7 @@ pub fn try_inject_conserved_flux_noise_2d<R: RngCore + ?Sized>(
     dt: f64,
     mobility_temp: f64,
     bc: BoundaryCondition,
-    workspace: &mut SolverWorkspace<'_, f64>,
+    workspace: &mut (impl SolverWorkspace + ?Sized),
     rng: &mut R,
 ) -> Result<(), PdeError> {
     let total = validate_noise_2d_params(field.len(), width, height, dx, dy, dt)?;
@@ -311,8 +313,9 @@ pub fn try_inject_conserved_flux_noise_2d<R: RngCore + ?Sized>(
     let scale_x = amp / dx;
     let scale_y = amp / dy;
     let mut ws = workspace.reborrow();
-    let fx = ws.try_take_slice(total)?;
-    let fy = ws.try_take_slice(total)?;
+    let mut cur = ws.cursor();
+    let fx = carve_f64(&mut cur, total)?;
+    let fy = carve_f64(&mut cur, total)?;
     fill_standard_normal(fx, rng);
     fill_standard_normal(fy, rng);
 
@@ -342,7 +345,7 @@ pub fn inject_conserved_flux_noise_2d<R: RngCore + ?Sized>(
     dt: f64,
     mobility_temp: f64,
     bc: BoundaryCondition,
-    workspace: &mut SolverWorkspace<'_, f64>,
+    workspace: &mut (impl SolverWorkspace + ?Sized),
     rng: &mut R,
 ) {
     try_inject_conserved_flux_noise_2d(
@@ -418,7 +421,7 @@ pub(crate) fn try_apply_noise_1d<R: RngCore + ?Sized>(
     dt: f64,
     bc: BoundaryCondition,
     noise: SpdeNoiseKind,
-    workspace: &mut SolverWorkspace<'_, f64>,
+    workspace: &mut (impl SolverWorkspace + ?Sized),
     rng: &mut R,
 ) -> Result<(), PdeError> {
     match noise {
@@ -442,7 +445,7 @@ pub(crate) fn try_apply_noise_2d<R: RngCore + ?Sized>(
     dt: f64,
     bc: BoundaryCondition,
     noise: SpdeNoiseKind,
-    workspace: &mut SolverWorkspace<'_, f64>,
+    workspace: &mut (impl SolverWorkspace + ?Sized),
     rng: &mut R,
 ) -> Result<(), PdeError> {
     match noise {

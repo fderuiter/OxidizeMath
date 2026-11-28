@@ -3,12 +3,12 @@
 
 use super::{ALLOWED_MODULI, MAX_MODULUS, ParrondoGame, ParrondoSchedule, Result};
 use crate::error::MarkovError;
-use math_commons::stochastic::SolverWorkspace;
+use math_commons::stochastic::StochasticWorkspace;
 use nalgebra::{DMatrix, DVector};
 
 #[verified_engine::verified]
 pub(super) fn solve_stationary_exact(
-    ws: &mut SolverWorkspace,
+    ws: &mut StochasticWorkspace,
     transition: &DMatrix<f64>,
 ) -> Result<DVector<f64>> {
     let m = transition.nrows();

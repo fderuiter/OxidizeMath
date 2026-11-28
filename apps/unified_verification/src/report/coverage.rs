@@ -1,8 +1,8 @@
-use super::{ReportMode, VERIFY_SUITE_WRITE_ENV};
+use super::ReportMode;
 use std::process::Command;
 
 /// Executes `cargo llvm-cov --all-features --workspace --json --summary-only` and returns process output.
-fn get_llvm_cov_output(mode: ReportMode) -> std::process::Output {
+fn get_llvm_cov_output(_mode: ReportMode) -> std::process::Output {
     let mut cmd = Command::new("cargo");
     cmd.args([
         "llvm-cov",
@@ -11,9 +11,6 @@ fn get_llvm_cov_output(mode: ReportMode) -> std::process::Output {
         "--json",
         "--summary-only",
     ]);
-    if mode == ReportMode::Write {
-        cmd.env(VERIFY_SUITE_WRITE_ENV, "1");
-    }
     cmd.output().expect("Failed to run cargo llvm-cov")
 }
 

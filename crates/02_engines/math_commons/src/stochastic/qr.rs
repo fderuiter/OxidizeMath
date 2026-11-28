@@ -1,7 +1,8 @@
 //! Zero-allocation Householder QR constrained stationary/steady-state linear solver.
 // [cite:math_commons]
 
-use super::{SolverWorkspace, tarjan};
+use super::tarjan;
+use super::views::StochasticViews;
 use crate::math_kernel::types::flatten_2d_index;
 
 const NEGATIVE_CLAMP_TOL: f64 = -1e-10;
@@ -11,7 +12,7 @@ const DIAG_PIVOT_TOL: f64 = 1e-14;
 /// Solves for the unique stationary/steady-state distribution on a slice `matrix` ($n \times n$).
 #[cfg_attr(feature = "std", verified_engine::verified)]
 pub(super) fn solve_stationary_slice(
-    ws: &mut SolverWorkspace,
+    ws: &mut StochasticViews<'_>,
     matrix: &[f64],
     n: usize,
     is_generator: bool,
@@ -35,65 +36,9 @@ pub(super) fn solve_stationary_slice(
     )
 }
 
-/// Solves for the unique stationary/steady-state distribution on `ws.operator_buf[..n*n]`.
-#[cfg_attr(feature = "std", verified_engine::verified)]
-pub(super) fn solve_staged_stationary(
-    ws: &mut SolverWorkspace,
-    n: usize,
-    is_generator: bool,
-    out_pi: &mut [f64],
-) -> bool {
-    debug_assert!(ws.operator_buf.len() >= n * n && out_pi.len() == n);
-    if !ws.operator_buf[..n * n].iter().all(|x| x.is_finite()) {
-        return false;
-    }
-    // Temporarily swap out operator_buf slice reference via indices without allocating.
-    let summary = decompose_staged(ws, n);
-    if summary.num_sink_components != 1 || summary.unique_sink_size == 0 {
-        return false;
-    }
-    let m = summary.unique_sink_size;
-    out_pi.fill(0.0);
-    if m == 1 {
-        let s = ws.sink_members[0];
-        out_pi[s] = 1.0;
-        return verify_residual(&ws.operator_buf[..n * n], n, is_generator, 1.0, out_pi);
-    }
-    let Some(scale) = assemble_qr_from_buf(
-        &ws.operator_buf[..n * n],
-        n,
-        &ws.sink_members[..m],
-        is_generator,
-        &mut ws.qr_matrix[..(m + 1) * m],
-        &mut ws.qr_rhs[..m + 1],
-    ) else {
-        return false;
-    };
-    if !householder_qr_solve(
-        &mut ws.qr_matrix[..(m + 1) * m],
-        &mut ws.qr_rhs[..m + 1],
-        &mut ws.qr_sol[..m],
-        m + 1,
-        m,
-    ) {
-        return false;
-    }
-    if !normalize_and_scatter(&ws.sink_members[..m], &ws.qr_sol[..m], out_pi) {
-        return false;
-    }
-    verify_residual(&ws.operator_buf[..n * n], n, is_generator, scale, out_pi)
-}
-
-fn decompose_staged(ws: &mut SolverWorkspace, n: usize) -> super::SccSummary {
-    let mut buf = core::mem::take(&mut ws.operator_buf);
-    let summary = tarjan::decompose_tarjan(ws, &buf[..n * n], n);
-    ws.operator_buf = core::mem::take(&mut buf);
-    summary
-}
-
 #[cfg_attr(feature = "std", verified_engine::verified)]
 fn solve_on_unique_sink(
-    ws: &mut SolverWorkspace,
+    ws: &mut StochasticViews<'_>,
     matrix: &[f64],
     n: usize,
     m: usize,

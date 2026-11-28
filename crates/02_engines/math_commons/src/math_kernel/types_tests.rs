@@ -1,7 +1,7 @@
 // [cite:math_commons]
 use super::{
-    Scalar, SolverWorkspace, fill_standard_normal, sample_open_unit, sample_standard_normal,
-    sample_standard_normal_pair,
+    Scalar, ScalarWorkspace, SolverWorkspace, fill_standard_normal, sample_open_unit,
+    sample_standard_normal, sample_standard_normal_pair,
 };
 use math_rng::OxidizeRng;
 
@@ -23,15 +23,15 @@ fn test_scalar_f64_and_f32_identities() {
 
 #[test]
 #[verified_engine::verified]
-fn test_solver_workspace_reborrow_and_partition() {
+fn test_scalar_workspace_reborrow_and_partition() {
     let mut backing = [1.0_f64; 10];
-    let mut ws = SolverWorkspace::new(&mut backing);
+    let mut ws = ScalarWorkspace::new(&mut backing);
     assert_eq!(ws.len(), 10);
     ws.zero_fill();
     assert!(ws.as_slice().iter().all(|&v| v == 0.0));
 
     for iter in 0..3 {
-        let mut step_ws = ws.reborrow();
+        let mut step_ws = ws.reborrow_scalars();
         let a = step_ws.take_slice(4);
         let b = step_ws.take_slice(6);
         assert_eq!(step_ws.len(), 0);
@@ -41,6 +41,45 @@ fn test_solver_workspace_reborrow_and_partition() {
         assert_eq!(a[3] + b[5], 2.0 * (iter as f64) + 11.0);
     }
     assert_eq!(ws.len(), 10);
+
+    {
+        let mut byte_sub = SolverWorkspace::reborrow(&mut ws);
+        let ints = byte_sub.alloc_slice::<usize>(4).expect("usize scratch");
+        ints[3] = 42;
+        assert_eq!(ints[3], 42);
+    }
+    assert_eq!(ws.len(), 10);
+}
+
+struct FixedWordRng(u64);
+
+impl rand_core::RngCore for FixedWordRng {
+    #[verified_engine::verified]
+    fn next_u32(&mut self) -> u32 {
+        let v = self.0 as u32;
+        debug_assert_eq!(v as u64, self.0 & 0xffff_ffff);
+        v
+    }
+
+    #[verified_engine::verified]
+    fn next_u64(&mut self) -> u64 {
+        let v = self.0;
+        debug_assert_eq!(v, self.0);
+        v
+    }
+
+    #[verified_engine::verified]
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        dest.fill(0);
+        debug_assert!(dest.first().is_none_or(|&b| b == 0));
+    }
+
+    #[verified_engine::verified]
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
+        self.fill_bytes(dest);
+        debug_assert!(dest.first().is_none_or(|&b| b == 0));
+        Ok(())
+    }
 }
 
 #[test]
@@ -49,8 +88,16 @@ fn test_box_muller_moments_and_open_unit_bounds() {
     let mut rng = OxidizeRng::new(0xDEC0_DED0_1234_5678);
     for _ in 0..256 {
         let u: f64 = sample_open_unit(&mut rng);
-        assert!(u > 0.0 && u <= 1.0);
+        assert!(u > 0.0 && u < 1.0);
+        let u32_draw: f32 = sample_open_unit(&mut rng);
+        assert!(u32_draw > 0.0_f32 && u32_draw < 1.0_f32);
     }
+
+    let min_f32: f32 = sample_open_unit(&mut FixedWordRng(0));
+    let max_f32: f32 = sample_open_unit(&mut FixedWordRng(u64::MAX));
+    assert_eq!(min_f32.to_bits(), 0x3300_0000);
+    assert_eq!(max_f32.to_bits(), 0x3f7f_ffff);
+    assert!(min_f32 > 0.0_f32 && max_f32 < 1.0_f32);
 
     let mut samples = [0.0_f64; 4095];
     fill_standard_normal(&mut samples, &mut rng);

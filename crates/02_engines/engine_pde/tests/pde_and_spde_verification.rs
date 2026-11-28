@@ -2,13 +2,11 @@
 //! Stencil, boundary, conserved-flux noise, radix-2 2/3-dealiased Fourier, Cahn-Hilliard, and zero-alloc tests.
 
 use engine_pde::{
-    BoundaryCondition, ExplicitSpdeStencilStepper, PdeOwnedWorkspace, SemiImplicitFourierStepper,
-    SpdeNoiseKind, SplitStepSpdeStencilStepper, StencilOperators, dealias_1d_spectrum,
-    fft_1d_inplace, fft_2d_inplace,
+    BoundaryCondition, ExplicitSpdeStencilStepper, OwnedByteArena, ScalarWorkspace,
+    SemiImplicitFourierStepper, SpdeNoiseKind, SplitStepSpdeStencilStepper, StencilOperators,
+    dealias_1d_spectrum, fft_1d_inplace, fft_2d_inplace,
 };
-use math_commons::math_kernel::types::{
-    SolverWorkspace, StepSize, flatten_2d_index, flatten_3d_index,
-};
+use math_commons::math_kernel::types::{StepSize, flatten_2d_index, flatten_3d_index};
 use math_commons::registry::TOLERANCE_STANDARD;
 use math_rng::OxidizeRng;
 use verified_engine::engine::VerifiedEngine;
@@ -101,7 +99,7 @@ fn test_boundary_steppers_and_conserved_flux_noise_mean_invariance() {
     let ops = StencilOperators::new_2d(StepSize(0.5), StepSize(0.5));
     let mut rng = OxidizeRng::new(0xC095_E27E_D000_1111);
     let mut scratch = vec![0.0_f64; ExplicitSpdeStencilStepper::scratch_len_2d(w, h)];
-    let mut ws = SolverWorkspace::new(&mut scratch);
+    let mut ws = ScalarWorkspace::new(&mut scratch);
 
     // Periodic & Neumann conserved-flux noise must preserve spatial mean within TOLERANCE_STANDARD
     for bc in [BoundaryCondition::Periodic, BoundaryCondition::Neumann] {
@@ -190,7 +188,7 @@ fn test_cahn_hilliard_fourier_spinodal_coarsening() {
     }
     let mean_0 = phi.iter().sum::<f64>() / ((w * h) as f64);
     let mut scratch = vec![0.0_f64; SemiImplicitFourierStepper::scratch_len_2d(w, h)];
-    let mut ws = SolverWorkspace::new(&mut scratch);
+    let mut ws = ScalarWorkspace::new(&mut scratch);
 
     let e0 = ginzburg_landau_energy_2d(&phi, w, h, &ops, kappa, BoundaryCondition::Periodic);
     for _ in 0..30 {
@@ -226,14 +224,15 @@ fn test_engine_pde_steppers_zero_heap_allocations_under_verified_lock() {
         },
     );
     let fourier = SemiImplicitFourierStepper::new_2d(1.0, 1.0);
-    let mut owned =
-        PdeOwnedWorkspace::<f64>::with_capacity(SemiImplicitFourierStepper::scratch_len_2d(w, h));
+    let mut owned = OwnedByteArena::with_capacity(
+        SemiImplicitFourierStepper::scratch_len_2d(w, h) * core::mem::size_of::<f64>(),
+    );
     let mut phi = [0.1_f64; 64];
     let mut height_field = [0.0_f64; 64];
     let mut rng = OxidizeRng::new(0x0A11_0C00_F00D_CAFE);
 
     let ((), metrics) = VerifiedEngine::run_verified(|| {
-        let mut ws = owned.as_workspace();
+        let mut ws = owned.as_arena();
         for _ in 0..6 {
             stencil_ch.step_cahn_hilliard_2d(&mut phi, w, h, 0.2, 0.5, 0.002, &mut ws, &mut rng);
             fourier.step_cahn_hilliard_2d(&mut phi, w, h, 0.5, 0.5, 0.02, 0.02, &mut ws, &mut rng);

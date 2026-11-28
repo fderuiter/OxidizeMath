@@ -204,7 +204,7 @@ impl OuAnalyzer {
                 if last.is_finite() { last } else { fallback }
             })
             .collect();
-        let mut ws = math_commons::stochastic::SolverWorkspace::new(0, final_values.len());
+        let mut ws = math_commons::stochastic::StochasticWorkspace::new(0, final_values.len());
         summarize_terminal_values_with_workspace(&mut ws, &final_values, valid_threshold)
             .unwrap_or_else(fallback_stats)
     }
@@ -279,11 +279,11 @@ impl OuAnalyzer {
 }
 
 /// Summarizes terminal Monte Carlo observations into [`PerformanceStats`] using a preallocated
-/// [`math_commons::stochastic::SolverWorkspace`] with zero heap allocations.
+/// [`math_commons::stochastic::StochasticWorkspace`] with zero heap allocations.
 #[must_use]
 #[verified_engine::verified]
 pub fn summarize_terminal_values_with_workspace(
-    ws: &mut math_commons::stochastic::SolverWorkspace,
+    ws: &mut math_commons::stochastic::StochasticWorkspace,
     final_values: &[f64],
     threshold: Option<f64>,
 ) -> Option<PerformanceStats> {

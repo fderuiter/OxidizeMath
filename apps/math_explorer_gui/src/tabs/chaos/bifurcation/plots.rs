@@ -1,6 +1,8 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::{BifurcationDiagram, BifurcationMapMode, CUSTOM_ESCAPE_GUARD};
+use super::{
+    BifurcationDiagram, BifurcationMapMode, CUSTOM_ESCAPE_GUARD, MAX_SWEEP_PREVIEW_POINTS,
+};
 use crate::accessibility::{
     announce_live_status, lock_canvas_arrow_keys, paint_canvas_focus_ring,
     register_canvas_accessibility, AccessibleTheoryHover,
@@ -155,6 +157,20 @@ impl BifurcationDiagram {
         (r_changed, x0_changed, r_changed || x0_changed || enter)
     }
 
+    fn sync_sweep_preview_points(&mut self, ctx: &egui::Context) -> bool {
+        let previewing = self.completed_generation != self.request_generation
+            || crate::reflective_ui::slider::has_active_sweeps(ctx);
+        if !previewing || self.points.len() <= MAX_SWEEP_PREVIEW_POINTS {
+            return false;
+        }
+        let stride = self.points.len().div_ceil(MAX_SWEEP_PREVIEW_POINTS);
+        self.sweep_preview_points.clear();
+        for pt in self.points.iter().step_by(stride) {
+            self.sweep_preview_points.push(*pt);
+        }
+        true
+    }
+
     fn draw_bifurcation_plot(
         &mut self,
         ui: &mut egui::Ui,
@@ -163,6 +179,7 @@ impl BifurcationDiagram {
         height: f32,
         link_id: egui::Id,
     ) {
+        let use_preview = self.sync_sweep_preview_points(ui.ctx());
         let mut should_announce = false;
         let response = Plot::new(ui.id().with("bifurcation_plot"))
             .width(width)
@@ -172,8 +189,13 @@ impl BifurcationDiagram {
             .y_axis_label("Attractor (x)")
             .show(ui, |plot_ui| {
                 should_announce = self.apply_r_plot_interaction(plot_ui);
+                let attractor_pts = if use_preview {
+                    &self.sweep_preview_points[..]
+                } else {
+                    &self.points[..]
+                };
                 plot_ui.points(
-                    Points::new("Attractor", &self.points[..])
+                    Points::new("Attractor", attractor_pts)
                         .radius(1.0_f32)
                         .color(palette.series_color(0)),
                 );
@@ -201,6 +223,15 @@ impl BifurcationDiagram {
             })
             .response;
 
+        self.finish_bifurcation_canvas(ui, response, should_announce);
+    }
+
+    fn finish_bifurcation_canvas(
+        &self,
+        ui: &mut egui::Ui,
+        response: egui::Response,
+        should_announce: bool,
+    ) {
         lock_canvas_arrow_keys(ui, &response);
         paint_canvas_focus_ring(ui, &response);
         let status = format!(
