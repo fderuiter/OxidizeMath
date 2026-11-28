@@ -6,16 +6,16 @@ Welcome to the OxidizeMath documentation directory.
 
 The [Architecture Guide Suite](architecture/README.md) provides centralized blueprints, diagrams, and developer walkthroughs:
 
-- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 32 crates.
+- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 33 crates.
 - **[CERA Framework Guide](architecture/cera_framework.md)**: Climate-invariant Encoding through Representation Alignment and climate modeling pipelines.
 - **[Zero-Allocation Runtime Guide](architecture/zero_allocation_runtime.md)**: NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and verified engine execution rules.
 - **[Interactive Tool Walkthrough](architecture/interactive_tool_walkthrough.md)**: Step-by-step developer guide to implement interactive simulations with `InteractiveTool`.
 
 ## Mathematical Specifications
 
-The [Canonical Mathematical Specifications](math_specs/README.md) document governing equations, bibliography citations, numerical stability bounds, and domains of validity across the 11 mathematical and solver crates:
+The [Canonical Mathematical Specifications](math_specs/README.md) document governing equations, bibliography citations, numerical stability bounds, and domains of validity across the 12 mathematical and solver crates:
 
-- **[`math_commons`](math_specs/math_commons.md)**, **[`engine_linalg`](math_specs/engine_linalg.md)**, **[`engine_diffeq`](math_specs/engine_diffeq.md)**, **[`engine_pde`](math_specs/engine_pde.md)**, **[`pure_math`](math_specs/pure_math.md)**, **[`domain_ai`](math_specs/domain_ai.md)**, **[`domain_applied`](math_specs/domain_applied.md)**, **[`domain_biology`](math_specs/domain_biology.md)**, **[`domain_climate`](math_specs/domain_climate.md)**, **[`domain_epidemiology`](math_specs/domain_epidemiology.md)**, and **[`domain_physics`](math_specs/domain_physics.md)**.
+- **[`math_commons`](math_specs/math_commons.md)**, **[`engine_linalg`](math_specs/engine_linalg.md)**, **[`engine_diffeq`](math_specs/engine_diffeq.md)**, **[`engine_pde`](math_specs/engine_pde.md)**, **[`pure_math`](math_specs/pure_math.md)**, **[`domain_ai`](math_specs/domain_ai.md)**, **[`domain_applied`](math_specs/domain_applied.md)**, **[`domain_biology`](math_specs/domain_biology.md)**, **[`domain_climate`](math_specs/domain_climate.md)**, **[`domain_engineering`](math_specs/domain_engineering.md)**, **[`domain_epidemiology`](math_specs/domain_epidemiology.md)**, and **[`domain_physics`](math_specs/domain_physics.md)**.
 
 ## Architectural Decision Records (ADRs)
 
@@ -150,6 +150,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261126: Fix `math_rng` Probit Tail Inversion, `ln` Truncation, and Open-Unit `f32` Collapse](adr/20261126-fix-rng-tail-inversion-and-float-collapse.md)
 - [ADR 20261126: Preserve Causal Root Diagnostic Metadata, Wire `math_rng` Diagnostics, and Decouple `std` `diagnostics` from Domain Crates](adr/20261126-preserve-root-metadata-and-decouple-diagnostics.md)
 - [ADR 20261127: Interpolating Catmull-Rom Diagram Lifts, Euler Planarity, Dehornoy Braid Equality, and `IBig` Bareiss Solvers](adr/20261127-catmull-rom-lifts-and-ibig-bareiss-solvers.md)
+- [ADR 20261127: Create Tier 3 `domain_engineering`, Promote Shared Math Primitives to `pure_math`, and Enforce Zero Cross-Domain Dependencies](adr/20261127-create-domain-engineering-and-decouple-domains.md)
 - [ADR 20261127: Dynamic `#![no_std]` Discovery, Bare-Metal `thumbv7em-none-eabihf` CI Gate, and Allocator-Free `OxidizeRng` Serde](adr/20261127-dynamic-no-std-bare-metal-ci-gate.md)
 - [ADR 20261127: Gate Mandatory Lake Builds, Scaled-Rational Lean 4 Proofs, and Certified Theorem Bindings](adr/20261127-gate-lake-builds-and-theorem-bindings.md)
 - [ADR 20261127: Harden AI Solvers, RNG Stream Scaling, and Decision-Boundary Views in Place](adr/20261127-harden-ai-solvers-and-views.md)

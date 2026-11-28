@@ -28,6 +28,7 @@ pub const EXPECTED_WORKSPACE_CRATES: &[&str] = &[
     "domain_applied",
     "domain_biology",
     "domain_climate",
+    "domain_engineering",
     "domain_epidemiology",
     "domain_physics",
     "engine_diffeq",
@@ -38,9 +39,11 @@ pub const EXPECTED_WORKSPACE_CRATES: &[&str] = &[
     "math_commons",
     "math_diagnostics",
     "math_explorer",
+    "math_memory",
     "math_rng",
     "math_scalars",
     "oxidize_core",
+    "oxidize_wasm",
     "oxidizemath",
     "pure_math",
     "scientific_metadata",
@@ -281,6 +284,7 @@ impl MaturityRegistry {
     fn crate_owned_module(crate_name: &str) -> Option<&'static str> {
         match crate_name {
             "domain_biology" => Some("biology"),
+            "domain_engineering" => Some("engineering"),
             "domain_epidemiology" => Some("epidemiology"),
             "domain_climate" => Some("climate"),
             "pure_math" => Some("pure_math"),
@@ -320,6 +324,7 @@ impl MaturityRegistry {
             "bench_lbm_custom" => Some("fluid_dynamics"),
             "test_sandpile" => Some("stat_mech"),
             "test_optical_motion" | "test_radar_gating" => Some("medical"),
+            "test_music_safety" => Some("radar"),
             "test_hydrogenic_3d" => Some("quantum"),
             _ => None,
         };

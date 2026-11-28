@@ -113,8 +113,8 @@ impl MusicEstimator {
     /// # Examples
     ///
     /// ```rust
-    /// # use domain_physics::__doctest_facade as math_explorer;
-    /// use math_explorer::physics::medical::radar_gating::super_resolution::MusicEstimator;
+    /// # use domain_engineering::__doctest_facade as math_explorer;
+    /// use math_explorer::engineering::radar::super_resolution::MusicEstimator;
     /// use math_explorer::num_complex::Complex;
     ///
     /// // Initialize estimator for 1 target with 4 samples per chirp and 2 snapshots smoothing.

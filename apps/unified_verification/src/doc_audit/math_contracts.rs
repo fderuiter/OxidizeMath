@@ -1,5 +1,5 @@
 //! Single-pass `syn` AST gate enforcing the 4-part mathematical docstring contract
-//! across public mathematical models, steppers, and solvers in all `11` mathematical crates.
+//! across public mathematical models, steppers, and solvers in all `12` mathematical crates.
 
 use super::manifest_model::WorkspaceManifestModel;
 use super::math_contracts_parser::{
@@ -25,6 +25,7 @@ const FALLBACK_MATH_CRATE_NAMES: &[&str] = &[
     "domain_applied",
     "domain_biology",
     "domain_climate",
+    "domain_engineering",
     "domain_epidemiology",
     "domain_physics",
 ];
@@ -103,7 +104,7 @@ fn is_math_contract_member(trimmed: &str, model_dirs: Option<&BTreeSet<String>>)
     FALLBACK_MATH_CRATE_NAMES.contains(&leaf)
 }
 
-/// Audits all `11` mathematical and solver crates present in `members` using the shared single-pass `AstCache`.
+/// Audits all `12` mathematical and solver crates present in `members` using the shared single-pass `AstCache`.
 pub fn audit_math_contracts_with_cache(
     workspace_root: &Path,
     members: &[String],

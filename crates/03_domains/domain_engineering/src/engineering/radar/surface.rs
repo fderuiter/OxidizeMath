@@ -5,7 +5,6 @@
 //! # Model
 //! $$ z = c_0 + c_1 x + c_2 y + c_3 xy + c_4 x^2 + c_5 y^2 $$
 
-use crate::physics::medical::signal;
 use engine_linalg::{SolverWorkspace, svd_ops_workspace_len, svd_solve_least_squares};
 use math_memory::{ArenaLayout, OwnedByteArena};
 use nalgebra::{DVector, Point3};
@@ -129,7 +128,7 @@ impl BiQuadraticSurface {
 /// $$ V_{resp}(t) = \frac{1}{\text{Area}} \iint_{ROI} Z_{mesh}(x,y,t) dx dy $$
 #[verified_engine::verified]
 pub fn weighted_average_height(vertices: &[Point3<f64>]) -> f64 {
-    signal::mean_vertex_height(vertices)
+    pure_math::pure_math::differential_geometry::mean_vertex_height(vertices)
 }
 
 #[cfg(test)]

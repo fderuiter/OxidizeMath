@@ -7,6 +7,7 @@
     feature = "applied",
     feature = "biology",
     feature = "climate",
+    feature = "engineering",
     feature = "epidemiology",
     feature = "physics"
 ))]

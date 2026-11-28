@@ -20,6 +20,7 @@ members = [
     "crates/03_domains/domain_applied",
     "crates/03_domains/domain_biology",
     "crates/03_domains/domain_climate",
+    "crates/03_domains/domain_engineering",
     "crates/03_domains/domain_epidemiology",
     "crates/03_domains/domain_physics",
     "crates/04_bindings/oxidizemath",

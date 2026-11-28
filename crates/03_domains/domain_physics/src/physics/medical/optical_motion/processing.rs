@@ -2,8 +2,8 @@
 //!
 //! Methodologies to enhance signal-to-noise ratio and extract respiratory signals.
 
-use crate::physics::medical::signal;
 use nalgebra::Point3;
+use pure_math::pure_math::differential_geometry::mean_vertex_height;
 use rustfft::{FftPlanner, num_complex::Complex};
 
 /// Calculates the Weighted Average Height (WAH) for a set of vertices.
@@ -23,7 +23,7 @@ use rustfft::{FftPlanner, num_complex::Complex};
 /// $V_{resp}(t) \approx \frac{1}{N_{mesh}} \sum_{i=1}^{N_{mesh}} Z_{i}(t)$
 #[verified_engine::verified]
 pub fn weighted_average_height(vertices: &[Point3<f64>]) -> f64 {
-    signal::mean_vertex_height(vertices)
+    mean_vertex_height(vertices)
 }
 
 /// Calculates the theoretical SNR improvement factor due to spatial averaging.

@@ -6,6 +6,7 @@ pub(crate) const DOMAIN_FEATURES: &[&str] = &[
     "ai",
     "biology",
     "climate",
+    "engineering",
     "epidemiology",
     "physics",
 ];

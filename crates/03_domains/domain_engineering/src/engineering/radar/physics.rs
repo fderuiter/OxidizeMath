@@ -72,7 +72,7 @@ impl FmcwConfig {
     ///
     /// Reference: Richards (2014), *Fundamentals of Radar Signal Processing*; Stove (1992), DOI:
     /// `10.1049/ip-f-2.1992.0048`; see
-    /// [`docs/math_specs/domain_physics.md`](../../../../../../../docs/math_specs/domain_physics.md).
+    /// [`docs/math_specs/domain_engineering.md`](../../../../../../docs/math_specs/domain_engineering.md).
     ///
     /// # Stability
     /// Direct linear scaling in floating-point arithmetic; well-conditioned whenever sweep

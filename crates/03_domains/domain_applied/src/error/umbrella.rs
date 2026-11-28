@@ -1,6 +1,6 @@
 use super::{
-    BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError, IsosurfaceError,
-    KalmanError, LoraError, PharmacokineticsError, PortfolioError, VoxelGridError,
+    ClinicalTrialError, EngineeringError, GameTheoryError, IsosurfaceError, KalmanError, LoraError,
+    PharmacokineticsError, PortfolioError, VoxelGridError,
 };
 use engine_linalg::LinalgError;
 use engine_opt::error::FitError;
@@ -19,24 +19,15 @@ use thiserror::Error;
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum AppliedError {
-    /// Battery degradation modeling error.
-    #[error("{0}")]
-    Battery(#[from] BatteryError),
     /// Clinical trial design or analysis error.
     #[error("{0}")]
     ClinicalTrial(#[from] ClinicalTrialError),
     /// Engineering calculation error.
     #[error("{0}")]
     Engineering(#[from] EngineeringError),
-    /// Game theory modeling error.
-    #[error("{0}")]
-    GameTheory(#[from] GameTheoryError),
     /// Isosurface extraction error.
     #[error("{0}")]
     Isosurface(#[from] IsosurfaceError),
-    /// Kalman filter tracking error.
-    #[error("{0}")]
-    Kalman(#[from] KalmanError),
     /// LoRA module ensemble error.
     #[error("{0}")]
     Lora(#[from] LoraError),
@@ -67,6 +58,20 @@ pub enum AppliedError {
     /// Upstream `pure_math` umbrella error.
     #[error("{0}")]
     PureMath(#[from] PureMathError),
+}
+
+impl From<GameTheoryError> for AppliedError {
+    #[verified_engine::verified]
+    fn from(err: GameTheoryError) -> Self {
+        Self::PureMath(PureMathError::from(err))
+    }
+}
+
+impl From<KalmanError> for AppliedError {
+    #[verified_engine::verified]
+    fn from(err: KalmanError) -> Self {
+        Self::PureMath(PureMathError::from(err))
+    }
 }
 
 impl From<AnalysisError> for AppliedError {
@@ -185,12 +190,9 @@ impl AppliedError {
     #[verified_engine::verified]
     fn as_diagnostic(&self) -> &dyn Diagnostic {
         match self {
-            Self::Battery(err) => err,
             Self::ClinicalTrial(err) => err,
             Self::Engineering(err) => err,
-            Self::GameTheory(err) => err,
             Self::Isosurface(err) => err,
-            Self::Kalman(err) => err,
             Self::Lora(err) => err,
             Self::Pharmacokinetics(err) => err,
             Self::Portfolio(err) => err,

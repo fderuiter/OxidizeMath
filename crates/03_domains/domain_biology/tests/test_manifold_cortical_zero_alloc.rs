@@ -2,7 +2,6 @@
 //! across 100 steps of `CotangentMeshDiffusion` (`SchnakenbergKinetics` & `GrayScottKinetics`)
 //! and `CorticalSheetRunner` (`HodgkinHuxleyNeuron` + FreeSurfer `cortical_thickness_batch`).
 
-use domain_applied::applied::freesurfer::{Surface, cortical_thickness_batch};
 use domain_biology::biology::diffusion::{CotangentMeshDiffusion, SpatialDiffusion};
 use domain_biology::biology::morphogenesis::{
     DiffusionCoeff, GrayScottKinetics, SchnakenbergKinetics, TuringSystem,
@@ -10,7 +9,9 @@ use domain_biology::biology::morphogenesis::{
 use domain_biology::biology::neuroscience::CorticalSheetRunner;
 use domain_biology::biology::reaction_diffusion::{ChemicalState, DiffusionModel};
 use math_commons::math_kernel::types::Dimension;
-use pure_math::pure_math::differential_geometry::CotangentLaplacian;
+use pure_math::pure_math::differential_geometry::{
+    CotangentLaplacian, Surface, cortical_thickness_batch,
+};
 use std::f64::consts::PI;
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
