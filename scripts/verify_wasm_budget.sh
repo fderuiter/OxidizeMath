@@ -2,8 +2,21 @@
 # Verify that compressed WebAssembly binaries satisfy size budget constraints
 set -euo pipefail
 
-DIST_DIR="${1:-apps/math_explorer_gui/dist}"
-MAX_BYTES="${2:-5242880}" # 5 MB default threshold
+if [ "${1:-}" = "--sdk" ]; then
+    DIST_DIR="${2:-target/wasm-sdk-pkg}"
+    MAX_BYTES="${3:-256000}" # 250 KB strict SDK budget (250 * 1024 = 256,000 bytes)
+else
+    DIST_DIR="${1:-apps/math_explorer_gui/dist}"
+    MAX_BYTES="${2:-5242880}" # 5 MB default GUI threshold
+fi
+
+if [ "$MAX_BYTES" -eq 5242880 ]; then
+    BUDGET_LABEL="5 MB"
+elif [ "$MAX_BYTES" -eq 256000 ]; then
+    BUDGET_LABEL="250 KB"
+else
+    BUDGET_LABEL="${MAX_BYTES} bytes"
+fi
 
 if [ ! -d "$DIST_DIR" ]; then
     echo "Error: Directory '$DIST_DIR' not found." >&2
@@ -20,7 +33,7 @@ if ! command -v gzip >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "Checking WebAssembly size budget against maximum threshold: $MAX_BYTES bytes (5 MB)..."
+echo "Checking WebAssembly size budget in '$DIST_DIR' against maximum threshold: $MAX_BYTES bytes ($BUDGET_LABEL)..."
 
 shopt -s nullglob
 wasm_files=("$DIST_DIR"/*.wasm)
@@ -45,16 +58,16 @@ for wasm in "${wasm_files[@]}"; do
     echo "  - Gzip compressed size:   $gz_size bytes"
 
     if [ "$br_size" -gt "$MAX_BYTES" ]; then
-        echo "Error: Brotli compressed size ($br_size bytes) exceeds 5MB limit ($MAX_BYTES bytes)" >&2
+        echo "Error: Brotli compressed size ($br_size bytes) exceeds $BUDGET_LABEL limit ($MAX_BYTES bytes)" >&2
         exit 1
     fi
 
     if [ "$gz_size" -gt "$MAX_BYTES" ]; then
-        echo "Error: Gzip compressed size ($gz_size bytes) exceeds 5MB limit ($MAX_BYTES bytes)" >&2
+        echo "Error: Gzip compressed size ($gz_size bytes) exceeds $BUDGET_LABEL limit ($MAX_BYTES bytes)" >&2
         exit 1
     fi
 
     passed=$((passed + 1))
 done
 
-echo "Success: All $passed WebAssembly bundle(s) passed the 5MB compressed size budget verification."
+echo "Success: All $passed WebAssembly bundle(s) passed the $BUDGET_LABEL compressed size budget verification."

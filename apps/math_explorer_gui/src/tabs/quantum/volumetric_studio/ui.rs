@@ -4,11 +4,14 @@
 // [cite:quantum_mechanics]
 // [cite:isosurface_extraction]
 
+use super::compute_wgsl::draw_gpu_shader_preview_section;
 use super::state::{
     FieldSourceMode, QuantumObservableChoice, SliceAxis, VolumetricRenderMode, MAX_EXPORT_SIZE_MM,
-    MAX_VOLUMETRIC_GRID, MIN_EXPORT_SIZE_MM, MIN_VOLUMETRIC_GRID,
+    MIN_EXPORT_SIZE_MM, MIN_VOLUMETRIC_GRID,
 };
+use super::webgpu_runner::{ComputeBackend, WebGpuAdapterStatus};
 use super::VolumetricFieldStudioTool;
+use crate::app::SemanticPalette;
 use crate::framework::{scoped_panel_id, PaneSidePanel, PlaybackAction, PlaybackTransport};
 use crate::volumetric_scene::OPACITY_THRESHOLD;
 use crate::web_io::PlatformInstant;
@@ -20,12 +23,19 @@ const FRAME_STEP_INTERVAL: Duration = Duration::from_millis(28);
 
 impl VolumetricFieldStudioTool {
     pub(super) fn poll_async_and_playback(&mut self, ctx: &egui::Context) {
+        if self
+            .webgpu_runner
+            .poll_worker_into(&self.config, &mut self.engine.voxel_grid)
+        {
+            self.engine.extract_current_grid_zero_alloc(&self.config);
+            self.splat_dirty = true;
+            ctx.request_repaint();
+        }
         if self.config.running && !self.engine.diverged {
             let now = PlatformInstant::now();
             if now.duration_since(self.last_step_tick) >= FRAME_STEP_INTERVAL {
                 self.last_step_tick = now;
-                self.engine.step_and_extract_zero_alloc(&self.config, true);
-                self.splat_dirty = true;
+                self.step_playback_frame();
             }
             ctx.request_repaint();
         }
@@ -59,13 +69,19 @@ impl VolumetricFieldStudioTool {
             ui.separator();
             self.draw_probe_and_export_section(ui);
             ui.separator();
+            draw_gpu_shader_preview_section(
+                ui,
+                &self.config,
+                &mut self.webgpu_runner.shader_preview,
+            );
+            ui.separator();
             egui::CollapsingHeader::new("View")
-                .default_open(true)
+                .default_open(false)
                 .show(ui, |ui| {
                     let prev_cam = self.config.camera;
                     self.config.camera.ui(ui);
                     if self.config.camera != prev_cam {
-                        self.engine.step_and_extract_zero_alloc(&self.config, false);
+                        self.engine.extract_current_grid_zero_alloc(&self.config);
                         self.splat_dirty = true;
                     }
                 });
@@ -90,14 +106,14 @@ impl VolumetricFieldStudioTool {
                 }
                 PlaybackAction::Step => {
                     self.config.running = false;
-                    self.engine.step_and_extract_zero_alloc(&self.config, true);
-                    self.splat_dirty = true;
+                    self.step_zero_alloc();
                 }
                 PlaybackAction::StepBack | PlaybackAction::ScrubTo(_) => {}
                 PlaybackAction::Reset => {
                     self.config.running = false;
+                    self.webgpu_runner.reset();
                     self.engine.reset_simulation(&self.config);
-                    self.splat_dirty = true;
+                    self.refresh_zero_alloc();
                 }
             }
         }
@@ -239,7 +255,7 @@ impl VolumetricFieldStudioTool {
     }
 
     fn draw_render_and_slice_controls(&mut self, ui: &mut egui::Ui) -> bool {
-        let mut c = false;
+        let mut c = self.draw_compute_backend_toggle(ui);
         let prev_mode = self.config.render_mode;
         egui::ComboBox::from_label("3D Renderer")
             .selected_text(self.config.render_mode.label())
@@ -253,15 +269,21 @@ impl VolumetricFieldStudioTool {
                 }
             });
         c |= self.config.render_mode != prev_mode;
+        let max_grid = self.config.max_grid_resolution();
+        self.config.grid_resolution = self
+            .config
+            .grid_resolution
+            .clamp(MIN_VOLUMETRIC_GRID, max_grid);
         c |= ui
             .add(
                 egui::Slider::new(
                     &mut self.config.grid_resolution,
-                    MIN_VOLUMETRIC_GRID..=MAX_VOLUMETRIC_GRID,
+                    MIN_VOLUMETRIC_GRID..=max_grid,
                 )
                 .text("Grid Voxels³"),
             )
             .changed();
+        self.draw_voxel_latency_caption(ui);
         if self.config.source != FieldSourceMode::CustomImplicit {
             c |= ui
                 .add(
@@ -275,7 +297,34 @@ impl VolumetricFieldStudioTool {
             .add(egui::Slider::new(&mut self.config.splat_scale, 0.2..=4.0).text("Splat Scale"))
             .changed();
         ui.separator();
-        c |= ui
+        c |= self.draw_cutting_plane_controls(ui);
+        c
+    }
+
+    fn draw_voxel_latency_caption(&self, ui: &mut egui::Ui) {
+        let palette = SemanticPalette::from_visuals(ui.visuals());
+        let active_dim = self.active_voxel_dimension();
+        let backend_tag = self
+            .webgpu_runner
+            .adapter_status
+            .hud_backend_label(self.config.compute_backend);
+        let msg = if self.config.compute_backend == ComputeBackend::WebGpuCompute {
+            let vox = self.config.grid_resolution.pow(3);
+            format!(
+                "16³ .. 128³  ({vox} voxels) · {:.1} ms",
+                self.webgpu_runner.last_step_ms
+            )
+        } else {
+            format!(
+                "Latency: {:.1} ms ({backend_tag} {active_dim}³)",
+                self.webgpu_runner.last_step_ms
+            )
+        };
+        ui.colored_label(palette.muted_text, msg);
+    }
+
+    fn draw_cutting_plane_controls(&mut self, ui: &mut egui::Ui) -> bool {
+        let mut c = ui
             .checkbox(&mut self.config.cut_enabled, "Enable 3D Cutting Plane")
             .changed();
         if self.config.cut_enabled {
@@ -355,6 +404,39 @@ impl VolumetricFieldStudioTool {
         self.config.m2 = q2.2;
         self.config.superposition_mix = mix;
         self.config.iso_threshold = iso;
+    }
+
+    fn draw_compute_backend_toggle(&mut self, ui: &mut egui::Ui) -> bool {
+        let prev = self.config.compute_backend;
+        let gpu_available =
+            self.webgpu_runner.adapter_status != WebGpuAdapterStatus::BrowserWorkerFallback;
+        ui.label("Compute Backend");
+        ui.horizontal(|ui| {
+            ui.add_enabled_ui(gpu_available, |ui| {
+                ui.selectable_value(
+                    &mut self.config.compute_backend,
+                    ComputeBackend::WebGpuCompute,
+                    ComputeBackend::WebGpuCompute.label(),
+                )
+                .on_disabled_hover_text(
+                    "navigator.gpu unavailable in this browser; clamped to <= 48³ CPU Zero-Alloc",
+                );
+            });
+            ui.selectable_value(
+                &mut self.config.compute_backend,
+                ComputeBackend::CpuZeroAlloc,
+                ComputeBackend::CpuZeroAlloc.label(),
+            );
+        });
+        if !gpu_available {
+            self.config.compute_backend = ComputeBackend::CpuZeroAlloc;
+        }
+        if self.config.compute_backend != prev {
+            self.config.clamp_in_place();
+            true
+        } else {
+            false
+        }
     }
 }
 

@@ -13805,6 +13805,26 @@
       "signature": "pub struct CompiledExpr"
     }
   ],
+  "math_commons:src/ast/compute_shader.rs": [
+    {
+      "signature": "impl ComputeKernelConfig { pub fn new_3d (_ : u32 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ComputeKernelConfig { pub fn with_param (self , _ : impl Into < String > , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_wgsl_3d_with_vars (& self , _ : & [& str]) -> Result < String , ShaderEmitError > }"
+    },
+    {
+      "signature": "pub const DEFAULT_COMPUTE_WORKGROUP_3D : [u32 ; 3]"
+    },
+    {
+      "signature": "pub fn emit_wgsl_3d_compute_kernel (_ : & Expr , _ : & ComputeKernelConfig ,) -> Result < String , ShaderEmitError >"
+    },
+    {
+      "signature": "pub struct ComputeKernelConfig"
+    }
+  ],
   "math_commons:src/ast/eval.rs": [
     {
       "signature": "impl Expr { pub fn eval (& self , _ : & HashMap < String , f64 >) -> Result < f64 , EvalError > }"
@@ -13981,6 +14001,15 @@
       "signature": "pub use compiled :: Instruction"
     },
     {
+      "signature": "pub use compute_shader :: ComputeKernelConfig"
+    },
+    {
+      "signature": "pub use compute_shader :: DEFAULT_COMPUTE_WORKGROUP_3D"
+    },
+    {
+      "signature": "pub use compute_shader :: emit_wgsl_3d_compute_kernel"
+    },
+    {
       "signature": "pub use eval :: EvalError"
     },
     {
@@ -14130,6 +14159,9 @@
     },
     {
       "signature": "impl Expr { pub fn to_wgsl_complex (& self) -> Result < String , ShaderEmitError > }"
+    },
+    {
+      "signature": "impl Expr { pub fn to_wgsl_with_vars (& self , _ : & [& str]) -> Result < String , ShaderEmitError > }"
     },
     {
       "signature": "pub enum ShaderEmitError"
@@ -17116,6 +17148,314 @@
     },
     {
       "signature": "pub use workspace_wasm :: parse_workspace_members_std"
+    }
+  ],
+  "oxidize_wasm:src/ast_eval.rs": [
+    {
+      "signature": "impl WasmAstKernel { pub fn eval_1d_batch (& self , _ : & [f64] , _ : & mut [f64]) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmAstKernel { pub fn eval_3d_grid (& self , _ : usize , _ : f64 , _ : & mut [f64] ,) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmAstKernel { pub fn eval_3d_point (& self , _ : f64 , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl WasmAstKernel { pub fn param_count (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmAstKernel { pub fn set_param (& mut self , _ : & str , _ : f64) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmAstKernel { pub fn to_compute_wgsl (& self , _ : u32 , _ : f64) -> Result < String , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmAstKernel { pub fn to_wgsl_expr (& self) -> Result < String , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmAstKernel { pub fn try_compile_1d (_ : & str) -> Result < Self , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmAstKernel { pub fn try_compile_3d (_ : & str) -> Result < Self , WasmSdkError > }"
+    },
+    {
+      "signature": "pub struct WasmAstKernel"
+    }
+  ],
+  "oxidize_wasm:src/diffeq.rs": [
+    {
+      "signature": "impl WasmSdeWorkspace { pub fn momentum_ptr (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmSdeWorkspace { pub fn reseed (& mut self , _ : u64) }"
+    },
+    {
+      "signature": "impl WasmSdeWorkspace { pub fn state_dim (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmSdeWorkspace { pub fn state_ptr (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmSdeWorkspace { pub fn step_baoab_harmonic (& mut self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : usize , _ : & mut [f64] , _ : & mut [f64] ,) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmSdeWorkspace { pub fn step_geometric_brownian (& mut self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : bool , _ : & mut [f64] ,) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmSdeWorkspace { pub fn step_ou (& mut self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : & mut [f64] ,) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmSdeWorkspace { pub fn try_new (_ : usize , _ : usize , _ : u64) -> Result < Self , WasmSdkError > }"
+    },
+    {
+      "signature": "pub const MAX_SDE_DIM : usize"
+    },
+    {
+      "signature": "pub struct WasmSdeWorkspace"
+    }
+  ],
+  "oxidize_wasm:src/error.rs": [
+    {
+      "signature": "impl WasmSdkError { pub fn field_value (& self , _ : & str) -> Option < & str > }"
+    },
+    {
+      "signature": "impl WasmSdkError { pub fn from_diagnostic < D : Diagnostic + fmt :: Display > (_ : & 'static str , _ : & 'static str , _ : & D ,) -> Self }"
+    },
+    {
+      "signature": "impl WasmSdkError { pub fn invalid_argument (_ : & 'static str , _ : impl Into < String > , _ : usize , _ : usize ,) -> Self }"
+    },
+    {
+      "signature": "pub struct DiagnosticField"
+    },
+    {
+      "signature": "pub struct WasmSdkError"
+    },
+    {
+      "signature": "pub type WasmSdkResult < T > = Result < T , WasmSdkError >"
+    }
+  ],
+  "oxidize_wasm:src/lib.rs": [
+    {
+      "signature": "pub fn sdk_version () -> String"
+    },
+    {
+      "signature": "pub fn wasm_linear_memory () -> JsValue"
+    },
+    {
+      "signature": "pub use ast_eval :: WasmAstKernel"
+    },
+    {
+      "signature": "pub use diffeq :: MAX_SDE_DIM"
+    },
+    {
+      "signature": "pub use diffeq :: WasmSdeWorkspace"
+    },
+    {
+      "signature": "pub use error :: DiagnosticField"
+    },
+    {
+      "signature": "pub use error :: WasmSdkError"
+    },
+    {
+      "signature": "pub use error :: WasmSdkResult"
+    },
+    {
+      "signature": "pub use linalg :: MAX_LINALG_DIM"
+    },
+    {
+      "signature": "pub use linalg :: WasmLinalgWorkspace"
+    },
+    {
+      "signature": "pub use memory :: MAX_WASM_F32_BUFFER_LEN"
+    },
+    {
+      "signature": "pub use memory :: MAX_WASM_F64_BUFFER_LEN"
+    },
+    {
+      "signature": "pub use memory :: WasmF32Buffer"
+    },
+    {
+      "signature": "pub use memory :: WasmF64Buffer"
+    },
+    {
+      "signature": "pub use pde :: MAX_PDE_CELLS"
+    },
+    {
+      "signature": "pub use pde :: WasmPdeWorkspace"
+    }
+  ],
+  "oxidize_wasm:src/linalg.rs": [
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn determinant (& mut self , _ : & [f64] , _ : usize) -> Result < f64 , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn matrix_ptr (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn matrix_slice_mut (& mut self , _ : usize) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn max_dim (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn rhs_ptr (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn rhs_slice_mut (& mut self , _ : usize) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn singular_values_jacobi (& mut self , _ : & [f64] , _ : usize , _ : usize , _ : & mut [f64] ,) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn solution_ptr (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn solution_slice (& self , _ : usize) -> & [f64] }"
+    },
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn solve_cg_csr (& mut self , _ : usize , _ : & [usize] , _ : & [usize] , _ : & [f64] , _ : & [f64] , _ : & mut [f64] , _ : f64 , _ : usize ,) -> Result < f64 , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn solve_cholesky (& mut self , _ : & [f64] , _ : & [f64] , _ : & mut [f64] , _ : usize ,) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn solve_lu (& mut self , _ : & [f64] , _ : & [f64] , _ : & mut [f64] , _ : usize ,) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn solve_lu_in_place (& mut self , _ : usize) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn solve_qr_least_squares (& mut self , _ : & [f64] , _ : usize , _ : usize , _ : & [f64] , _ : & mut [f64] ,) -> Result < usize , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn solve_tikhonov (& mut self , _ : & [f64] , _ : usize , _ : usize , _ : & [f64] , _ : f64 , _ : & mut [f64] ,) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmLinalgWorkspace { pub fn try_new (_ : usize) -> Result < Self , WasmSdkError > }"
+    },
+    {
+      "signature": "pub const MAX_LINALG_DIM : usize"
+    },
+    {
+      "signature": "pub struct WasmLinalgWorkspace"
+    }
+  ],
+  "oxidize_wasm:src/memory.rs": [
+    {
+      "signature": "impl WasmF32Buffer { pub fn as_mut_slice (& mut self) -> & mut [f32] }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn as_slice (& self) -> & [f32] }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn byte_offset (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn copy_from_slice (& mut self , _ : & [f32]) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn copy_into_slice (& self , _ : & mut [f32]) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn fill (& mut self , _ : f32) }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmF32Buffer { pub fn try_new (_ : usize) -> Result < Self , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmF64Buffer { pub fn as_mut_slice (& mut self) -> & mut [f64] }"
+    },
+    {
+      "signature": "impl WasmF64Buffer { pub fn as_slice (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl WasmF64Buffer { pub fn byte_offset (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmF64Buffer { pub fn copy_from_slice (& mut self , _ : & [f64]) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmF64Buffer { pub fn copy_into_slice (& self , _ : & mut [f64]) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmF64Buffer { pub fn fill (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl WasmF64Buffer { pub fn is_empty (& self) -> bool }"
+    },
+    {
+      "signature": "impl WasmF64Buffer { pub fn len (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmF64Buffer { pub fn try_new (_ : usize) -> Result < Self , WasmSdkError > }"
+    },
+    {
+      "signature": "pub const MAX_WASM_F32_BUFFER_LEN : usize"
+    },
+    {
+      "signature": "pub const MAX_WASM_F64_BUFFER_LEN : usize"
+    },
+    {
+      "signature": "pub struct WasmF32Buffer"
+    },
+    {
+      "signature": "pub struct WasmF64Buffer"
+    }
+  ],
+  "oxidize_wasm:src/pde.rs": [
+    {
+      "signature": "impl WasmPdeWorkspace { pub fn fft_1d_interleaved (& mut self , _ : & mut [f64] , _ : bool ,) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmPdeWorkspace { pub fn fft_2d_interleaved (& mut self , _ : usize , _ : usize , _ : & mut [f64] , _ : bool ,) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmPdeWorkspace { pub fn grid_len (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmPdeWorkspace { pub fn load_species (& mut self , _ : & [f64] , _ : & [f64]) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmPdeWorkspace { pub fn scratch_capacity (& mut self) -> usize }"
+    },
+    {
+      "signature": "impl WasmPdeWorkspace { pub fn seed_schnakenberg_steady_state (& mut self , _ : f64 , _ : f64 , _ : f64) }"
+    },
+    {
+      "signature": "impl WasmPdeWorkspace { pub fn step_schnakenberg_2d_in_place (& mut self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : usize ,) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmPdeWorkspace { pub fn step_schnakenberg_3d_in_place (& mut self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : usize ,) -> Result < () , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmPdeWorkspace { pub fn try_new_2d (_ : usize , _ : usize , _ : f64 , _ : f64) -> Result < Self , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmPdeWorkspace { pub fn try_new_3d (_ : usize , _ : usize , _ : usize , _ : f64 , _ : f64 , _ : f64 ,) -> Result < Self , WasmSdkError > }"
+    },
+    {
+      "signature": "impl WasmPdeWorkspace { pub fn u_ptr (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmPdeWorkspace { pub fn u_slice (& self) -> & [f64] }"
+    },
+    {
+      "signature": "impl WasmPdeWorkspace { pub fn v_ptr (& self) -> usize }"
+    },
+    {
+      "signature": "impl WasmPdeWorkspace { pub fn v_slice (& self) -> & [f64] }"
+    },
+    {
+      "signature": "pub const MAX_PDE_CELLS : usize"
+    },
+    {
+      "signature": "pub struct WasmPdeWorkspace"
     }
   ],
   "oxidizemath:src/error.rs": [

@@ -7,13 +7,16 @@
 // [cite:favorite_child]
 
 pub mod ast_field;
+pub mod compute_wgsl;
 pub mod engine;
 mod export_3d;
+mod hud;
 pub mod implicit;
 pub mod presets;
 mod render;
 pub mod state;
 mod ui;
+pub mod webgpu_runner;
 
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::framework::{ExportCapabilities, InteractiveTool, ToolMetadata, ToolStateBounds};
@@ -26,6 +29,7 @@ use oxidize_core::mesh::{ColoredMesh, Mesh};
 use scientific_metadata::theory::TheoryDescribable;
 use state::{FieldSourceMode, VolumetricRenderMode, VolumetricStudioConfig};
 use std::hash::{Hash, Hasher};
+use webgpu_runner::{ComputeBackend, WebGpuVolumetricRunner};
 
 /// Interactive 3D volumetric field and implicit CAD studio uniting $f(x, y, z) = c$ solids,
 /// signed 3D AST formulas, quantum eigenstates, 3D Turing PDEs, watertight `.stl`/`.ply`/`.obj`
@@ -35,6 +39,8 @@ pub struct VolumetricFieldStudioTool {
     pub config: VolumetricStudioConfig,
     /// Pre-allocated zero-allocation 3D PDE, implicit, AST, isosurface, and splatting workspace.
     pub engine: VolumetricEngine,
+    /// `128^3` WebGPU `@compute` / off-main-thread Web Worker volumetric pipeline.
+    pub webgpu_runner: WebGpuVolumetricRunner,
     /// Formula bar & synthesized `ParameterSliderBank` for `FieldSourceMode::CustomImplicitAst`.
     pub ast_controller: CustomAstFieldController,
     pub(super) implicit_ui: ImplicitFormulaUi,
@@ -53,6 +59,7 @@ impl Default for VolumetricFieldStudioTool {
         Self {
             config,
             engine,
+            webgpu_runner: WebGpuVolumetricRunner::default(),
             ast_controller,
             implicit_ui,
             splat_texture: None,
@@ -63,10 +70,26 @@ impl Default for VolumetricFieldStudioTool {
 }
 
 impl VolumetricFieldStudioTool {
-    /// Advances the active 3D simulation and re-extracts surfaces/splats with zero heap allocations.
+    /// Active cubic voxel grid side length (`16..=48` on CPU, `16..=128` on WebGPU Compute).
+    #[must_use]
+    pub fn active_voxel_dimension(&self) -> usize {
+        if self.config.compute_backend == ComputeBackend::WebGpuCompute {
+            self.webgpu_runner
+                .high_res_grid
+                .as_ref()
+                .map_or(self.config.grid_resolution, |g| g.width())
+        } else {
+            self.engine.voxel_grid.width()
+        }
+    }
+
+    /// Advances the active 3D simulation synchronously and re-extracts surfaces/splats.
     pub fn step_zero_alloc(&mut self) {
-        self.engine.step_and_extract_zero_alloc(&self.config, true);
-        self.splat_dirty = true;
+        self.run_step_internal(true, false, false);
+    }
+
+    pub(super) fn step_playback_frame(&mut self) {
+        self.run_step_internal(true, false, true);
     }
 
     /// Re-extracts `MarchingCubes` and `Gaussian3D` outputs at the current `config` without advancing time.
@@ -84,9 +107,31 @@ impl VolumetricFieldStudioTool {
                     .sync_from_bar(compiled, self.ast_controller.bar.param_slice());
             }
         }
-        self.engine
-            .sync_structural_config_with_preview(&self.config, drag_preview);
-        self.engine.step_and_extract_zero_alloc(&self.config, false);
+        self.run_step_internal(false, drag_preview, false);
+    }
+
+    fn run_step_internal(&mut self, advance_time: bool, drag_preview: bool, async_playback: bool) {
+        if self.config.compute_backend == ComputeBackend::WebGpuCompute {
+            let preview = drag_preview && self.config.source == FieldSourceMode::CustomImplicitAst;
+            self.engine.preview_drag_active = preview;
+            self.webgpu_runner.evaluate_and_sync(
+                &self.config,
+                advance_time,
+                preview,
+                async_playback,
+                &mut self.engine,
+            );
+            self.engine.extract_current_grid_zero_alloc(&self.config);
+        } else {
+            let t0 = PlatformInstant::now();
+            if !advance_time {
+                self.engine
+                    .sync_structural_config_with_preview(&self.config, drag_preview);
+            }
+            self.engine
+                .step_and_extract_zero_alloc(&self.config, advance_time);
+            self.webgpu_runner.last_step_ms = (t0.elapsed().as_secs_f64() * 1_000.0).max(0.05);
+        }
         self.splat_dirty = true;
     }
 
@@ -144,6 +189,7 @@ impl FiniteStateGuard for VolumetricFieldStudioTool {
         !self.engine.diverged
             && self.config.validate().is_ok()
             && self.engine.voxel_grid.data().iter().all(|v| v.is_finite())
+            && self.webgpu_runner.is_finite()
     }
 
     fn diagnostic_report(&self) -> Option<&DiagnosticReport> {
@@ -157,6 +203,7 @@ impl FiniteStateGuard for VolumetricFieldStudioTool {
     fn reset_parameters(&mut self) {
         self.config = VolumetricStudioConfig::default();
         self.sync_ui_controllers_from_config();
+        self.webgpu_runner.reset();
         self.engine.reset_simulation(&self.config);
         self.splat_dirty = true;
     }
@@ -176,11 +223,16 @@ impl InteractiveTool for VolumetricFieldStudioTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        if self.config.render_mode == VolumetricRenderMode::GaussianRadianceCloud {
+        let base = if self.config.render_mode == VolumetricRenderMode::GaussianRadianceCloud {
             ExportCapabilities::plot().with_3d_splat_ply()
         } else {
             ExportCapabilities::plot().with_3d_solid()
-        }
+        };
+        base.with_compute_shader()
+    }
+
+    fn export_compute_shader_wgsl(&self) -> Result<String, String> {
+        compute_wgsl::build_volumetric_compute_wgsl(&self.config)
     }
 
     fn export_mesh_3d(&self) -> Option<Result<Mesh, String>> {
@@ -210,6 +262,7 @@ impl InteractiveTool for VolumetricFieldStudioTool {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         self.config.source.hash(&mut h);
         self.config.render_mode.hash(&mut h);
+        self.config.compute_backend.hash(&mut h);
         self.config.grid_resolution.hash(&mut h);
         (self.config.n1, self.config.l1, self.config.m1).hash(&mut h);
         (self.config.n2, self.config.l2, self.config.m2).hash(&mut h);
@@ -277,7 +330,7 @@ impl InteractiveTool for VolumetricFieldStudioTool {
         let splats = self.engine.splat_ws.scene.gaussians.len();
         let radial_nodes = self.engine.count_cutting_plane_radial_nodes(&self.config);
         vec![
-            ("grid_resolution", self.engine.voxel_grid.width() as f64),
+            ("grid_resolution", self.active_voxel_dimension() as f64),
             ("iso_threshold", self.config.iso_threshold),
             ("mesh_triangles", tris as f64),
             ("active_splats", splats as f64),
@@ -292,6 +345,12 @@ impl InteractiveTool for VolumetricFieldStudioTool {
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {
+        if self
+            .webgpu_runner
+            .enforce_navigator_gpu_fallback(&mut self.config)
+        {
+            self.refresh_zero_alloc();
+        }
         self.poll_async_and_playback(ui.ctx());
         self.draw_side_panel(ui);
         self.draw_viewport(ui);

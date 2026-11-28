@@ -127,6 +127,13 @@ impl Expr {
         self.to_shader(ShaderTarget::Glsl)
     }
 
+    /// Lowers `self` iteratively to a real scalar (`f32`) WGSL expression after verifying every
+    /// non-constant variable identifier appears in `allowed_vars`.
+    pub fn to_wgsl_with_vars(&self, allowed_vars: &[&str]) -> Result<String, ShaderEmitError> {
+        super::compute_shader::validate_expr_allowed_vars(self, allowed_vars)?;
+        self.to_wgsl()
+    }
+
     /// Lowers `self` iteratively to a complex (`vec2<f32>`) WGSL expression string.
     ///
     /// Pair with [`super::wgsl_complex_prelude`] for `c_*` complex arithmetic and elementary helpers.
