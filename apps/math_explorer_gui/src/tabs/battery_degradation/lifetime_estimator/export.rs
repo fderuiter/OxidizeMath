@@ -1,8 +1,6 @@
 //! Yearly SOH warranty `.csv` schedule formatter (`80%` and `70%` milestones)
 //! for [`super::LifetimeEstimatorTool`].
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 // [cite:battery_degradation]
 
 use super::LifetimeEstimatorTool;

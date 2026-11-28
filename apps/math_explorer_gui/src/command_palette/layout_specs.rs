@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Viewport layout, multi-pane focus, synchronization, export, and preset command specs.
 
 use super::actions::{cmd_key, spec, BuiltinCommandSpec, PaletteAction as A};

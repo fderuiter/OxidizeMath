@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::runner::WaveData;
 use math_commons::ast::{parse_equation, Expr};
 use nalgebra::DVector;
@@ -475,3 +473,5 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
+
+// [cite:quantum_mechanics]

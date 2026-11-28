@@ -2,7 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
-use super::pipeline::{FastCvKalman, SIM_DT};
+use super::pipeline::SIM_DT;
 use super::state::{RadarGatingState, MAX_SAMPLES_PER_CHIRP, MAX_SNAPSHOTS, MAX_SWEEP_BINS};
 use super::{RadarGatingTool, STARTER_PRESET_JSON};
 use crate::framework::{InteractiveTool, SimulationFramework};
@@ -135,7 +135,7 @@ fn test_kalman_parity_and_zero_heap_allocations_under_verified_allocator() {
     let q = 2.0e-4;
     let r = 2.0e-5;
     let mut tf = TrackingFilter::new(0.001, SIM_DT, ConstantVelocityModel::new(q, r));
-    let mut fast = FastCvKalman::from_tracking_filter(&tf, SIM_DT, q, r);
+    let mut fast = super::challenge::fast_cv_from_tracking_filter(&tf, SIM_DT, q, r);
 
     for step in 0..64 {
         let z = 0.005 * (step as f64 * 0.11).sin() + 0.0003 * (step as f64 * 0.7).cos();

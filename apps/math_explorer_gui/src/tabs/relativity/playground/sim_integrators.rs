@@ -9,23 +9,6 @@ use crate::audio::mappings::{geodesic_bundle_frame, GeodesicVoiceSample};
 use super::sim::MAX_BUNDLE_RAYS;
 use super::{GeodesicMode, GeodesicPlaygroundTool};
 
-/// Converts coordinate radial and angular velocities into a bounded planar three-velocity $\boldsymbol{\beta} = \mathbf{v} / c$.
-#[inline]
-pub(super) fn planar_velocity_beta(r: f64, phi: f64, dr_dct: f64, dphi_dct: f64) -> [f64; 3] {
-    let (sin_p, cos_p) = phi.sin_cos();
-    let v_rad = dr_dct.clamp(-0.92, 0.92);
-    let v_tan = (r * dphi_dct).clamp(-0.92, 0.92);
-    let vx = v_rad * cos_p - v_tan * sin_p;
-    let vy = v_rad * sin_p + v_tan * cos_p;
-    let mag_sq = vx * vx + vy * vy;
-    if mag_sq > 0.90 {
-        let s = 0.948 / mag_sq.sqrt();
-        [vx * s, vy * s, 0.0]
-    } else {
-        [vx, vy, 0.0]
-    }
-}
-
 impl GeodesicPlaygroundTool {
     /// Builds a zero-allocation polyphonic [`SonificationFrame`] across active geodesic rays.
     pub fn build_audio_frame(&self) -> SonificationFrame {

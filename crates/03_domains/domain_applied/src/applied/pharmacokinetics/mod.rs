@@ -95,6 +95,8 @@
 pub mod analytics;
 /// Single-dose one-compartment Bateman absorption-elimination model and $k_a$ calibration.
 pub mod bateman;
+/// Closed-loop ADME pharmacokinetic twin coupled to `FastEkf<3>`.
+pub mod closed_loop;
 /// Chiral two-enantiomer pharmacokinetic mixture model.
 pub mod enantiomer;
 /// Validated ADME parameter types and builders.
@@ -112,6 +114,7 @@ pub use analytics::{
     summarize_exposure, trapezoidal_auc, trough_concentration,
 };
 pub use bateman::{BatemanModel, calibrate_ka_from_half_life, half_life, solve_ka, t_max};
+pub use closed_loop::{PkClosedLoopConfig, PkClosedLoopTwin};
 pub use enantiomer::EnantiomerModel;
 pub use parameters::{PKParameters, PKParametersBuilder};
 pub use regimen::{

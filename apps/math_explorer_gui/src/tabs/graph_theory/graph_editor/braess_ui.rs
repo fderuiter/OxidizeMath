@@ -63,7 +63,7 @@ impl BraessCongestionLab {
         self.equilibrium_flows.resize(m, 0.0);
         self.equilibrium_latencies.resize(m, 0.0);
         self.scratch
-            .prepare_topology(node_positions, edges, &self.edge_latencies);
+            .prepare_topology(node_positions.keys().copied(), edges, &self.edge_latencies);
 
         let shortcut_idx = edges.iter().position(|&(u, v, _)| u == 1 && v == 2);
         self.config.shortcut_enabled = shortcut_idx.is_some();

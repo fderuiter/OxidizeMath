@@ -6,7 +6,10 @@ use super::MorphogenesisTool;
 use crate::app::{SemanticPalette, ThemeMode};
 use crate::presets::MorphogenesisKineticsMode;
 use eframe::egui::{self, Color32, ColorImage, Pos2, Rect, Stroke};
-use math_explorer::biology::morphogenesis::FusedEulerSolver;
+pub use math_explorer::biology::morphogenesis::{
+    classify_gray_scott, classify_schnakenberg, gray_scott_fold_k, gray_scott_hopf_f,
+    FusedEulerSolver, GrayScottMinimapRegime, SchnakenbergRegime,
+};
 use std::sync::atomic::Ordering;
 
 /// Axis range for Schnakenberg activator rate `a`.
@@ -20,112 +23,6 @@ pub const GRAY_SCOTT_K_RANGE: (f64, f64) = (0.030, 0.070);
 
 const ATLAS_TEX_W: usize = 96;
 const ATLAS_TEX_H: usize = 72;
-
-/// Linear stability classification for Schnakenberg `(a, b)` parameters at `(D_u, D_v)`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SchnakenbergRegime {
-    /// Diffusion-driven Turing instability (`tr < 0`, `det > 0`, dispersion threshold exceeded).
-    TuringUnstable,
-    /// Homogeneous Hopf oscillatory instability (`tr >= 0`, `det > 0`).
-    HopfOscillatory,
-    /// Uniform stable steady state with no spatial pattern growth.
-    UniformStable,
-}
-
-/// Bifurcation and pattern-forming classification for Gray-Scott `(F, k)` parameters on the sidebar minimap.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum GrayScottMinimapRegime {
-    /// Turing or Hopf pattern-forming instability inside the saddle-node fold `F >= 4(F + k)^2`.
-    BifurcationUnstable,
-    /// Subcritical excitable pulse/mitosis/soliton band adjacent to the fold curve.
-    SubcriticalPattern,
-    /// Uniform high-catalyst or trivial substrate-only equilibrium.
-    UniformStable,
-}
-
-/// Classifies Schnakenberg `(a, b)` stability analytically for diffusion rates `(d_u, d_v)`.
-#[must_use]
-pub fn classify_schnakenberg(a: f64, b: f64, d_u: f64, d_v: f64) -> SchnakenbergRegime {
-    let sum = a + b;
-    if !a.is_finite()
-        || !b.is_finite()
-        || !d_u.is_finite()
-        || !d_v.is_finite()
-        || a < 0.0
-        || b <= 0.0
-        || sum <= 1e-9
-        || d_u <= 0.0
-        || d_v <= 0.0
-    {
-        return SchnakenbergRegime::UniformStable;
-    }
-    let f_u = (b - a) / sum;
-    let f_v = sum * sum;
-    let g_u = -2.0 * b / sum;
-    let g_v = -(sum * sum);
-    let trace = f_u + g_v;
-    let det = f_u * g_v - f_v * g_u;
-    if trace < 0.0 && det > 0.0 && (d_v * f_u + d_u * g_v) > 2.0 * (d_u * d_v * det).sqrt() {
-        SchnakenbergRegime::TuringUnstable
-    } else if trace >= 0.0 && det > 0.0 {
-        SchnakenbergRegime::HopfOscillatory
-    } else {
-        SchnakenbergRegime::UniformStable
-    }
-}
-
-/// Saddle-node fold curve `k_fold(F) = sqrt(F) / 2 - F` solving `F = 4 * (F + k)^2`.
-#[must_use]
-pub fn gray_scott_fold_k(f: f64) -> Option<f64> {
-    (f.is_finite() && (0.0..=0.25).contains(&f)).then(|| 0.5 * f.sqrt() - f)
-}
-
-/// Hopf curve `F_hopf(k)` solving `(F + k)^2 = F * sqrt(k)` on the upper catalyst branch (`k <= 1/16`).
-#[must_use]
-pub fn gray_scott_hopf_f(k: f64) -> Option<f64> {
-    if !k.is_finite() || !(0.0..=0.0625).contains(&k) {
-        return None;
-    }
-    let sqrt_k = k.sqrt();
-    let disc = (k * (1.0 - 4.0 * sqrt_k)).max(0.0);
-    Some(0.5 * ((sqrt_k - 2.0 * k) - disc.sqrt()))
-}
-
-/// Classifies Gray-Scott `(f, k)` parameters relative to the fold `F = 4(F + k)^2` and Hopf curve.
-#[must_use]
-pub fn classify_gray_scott(f: f64, k: f64, d_u: f64, d_v: f64) -> GrayScottMinimapRegime {
-    if !f.is_finite()
-        || !k.is_finite()
-        || !d_u.is_finite()
-        || !d_v.is_finite()
-        || f <= 0.0
-        || k <= 0.0
-        || d_u <= 0.0
-        || d_v <= 0.0
-    {
-        return GrayScottMinimapRegime::UniformStable;
-    }
-    let sum = f + k;
-    let fold_rhs = 4.0 * sum * sum;
-    if f >= fold_rhs {
-        let disc = (f * (f - fold_rhs)).max(0.0).sqrt();
-        let v_plus = (f + disc) / (2.0 * sum);
-        let f_u = -(v_plus * v_plus) - f;
-        let g_v = sum;
-        let det = sum * (v_plus * v_plus - f);
-        let turing = det > 0.0 && (d_v * f_u + d_u * g_v) > 2.0 * (d_u * d_v * det).sqrt();
-        if f_u + g_v >= 0.0 || turing {
-            return GrayScottMinimapRegime::BifurcationUnstable;
-        }
-        return GrayScottMinimapRegime::UniformStable;
-    }
-    if let Some(k_fold) = gray_scott_fold_k(f) {
-        if (0.018..=0.0625).contains(&f) && k > k_fold && k <= k_fold + 0.0065 {
-            return GrayScottMinimapRegime::SubcriticalPattern;
-        }
-    }
-    GrayScottMinimapRegime::UniformStable
-}
 
 /// Cached texture state for the sidebar 2D stability minimap.
 #[derive(Default)]

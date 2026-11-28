@@ -1,8 +1,6 @@
 //! Presets, URL-safe state schema, [`TheoryDescribable`], and `StarterPresetMetadata` cards
 //! for [`super::PhyllotaxisLSystemTool`].
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use math_explorer::biology::lsystem::BotanicalLSystemPreset;
 use math_explorer::biology::phyllotaxis::{DivergenceAnglePreset, GOLDEN_ANGLE_DEG, MAX_PRIMORDIA};
 use scientific_metadata::theory::TheoryDescribable;
@@ -322,3 +320,5 @@ inventory::submit! {
         preset_generator: || PRESET_PARAMETRIC_CANOPY,
     }
 }
+
+// [cite:biology]

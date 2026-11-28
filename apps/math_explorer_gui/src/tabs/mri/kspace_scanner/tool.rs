@@ -4,9 +4,8 @@
 
 use super::phantom::synthesize_phantom;
 use super::recon::{
-    compose_quad_export_image, compute_forward_kspace, reconstruct_from_forward_cache,
-    render_error_panel, render_grayscale_panel, render_kspace_panel, ForwardKSpaceCache,
-    ReconOutput,
+    compose_quad_export_image, compute_forward_kspace, render_error_panel, render_grayscale_panel,
+    render_kspace_panel, ForwardKSpaceCache, KSpaceReconWorkspace, ReconOutput,
 };
 use super::state::{
     decode_mask_hex, encode_mask_hex, KSpaceBrushMode, KSpaceMaskFilter, KSpaceTrajectory,
@@ -19,7 +18,6 @@ use crate::framework::{ExportCapabilities, InteractiveTool, ToolStateBounds};
 use crate::web_io::PlatformInstant;
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::physics::mri::reconstruction::Fft2dWorkspace;
 use scientific_metadata::theory::TheoryDescribable;
 use std::hash::{Hash, Hasher};
 
@@ -29,7 +27,7 @@ pub struct MriKSpaceScannerTool {
     pub state: MriKSpaceScannerState,
     pub(crate) ground_truth: Vec<f64>,
     pub(crate) forward_cache: ForwardKSpaceCache,
-    pub(crate) fft_workspace: Fft2dWorkspace,
+    pub(crate) recon_workspace: KSpaceReconWorkspace,
     pub(crate) parametric_mask: Vec<bool>,
     pub(crate) active_mask: Vec<bool>,
     pub(crate) recon: ReconOutput,
@@ -53,14 +51,15 @@ impl Default for MriKSpaceScannerTool {
         let start = PlatformInstant::now();
         let ground_truth = synthesize_phantom(&state);
         let forward_cache = compute_forward_kspace(&ground_truth);
-        let mut fft_workspace = Fft2dWorkspace::new(KSPACE_DIM, KSPACE_DIM);
+        let mut recon_workspace = KSpaceReconWorkspace::new(KSPACE_DIM);
         let parametric_mask = build_parametric_mask(&state);
         let active_mask = parametric_mask.clone();
-        let recon = reconstruct_from_forward_cache(
+        let mut recon = ReconOutput::with_dim(KSPACE_DIM);
+        recon_workspace.reconstruct_from_forward_cache_into(
             &ground_truth,
             &forward_cache,
             &active_mask,
-            &mut fft_workspace,
+            &mut recon,
         );
         let last_recon_ms = start.elapsed().as_secs_f64() * 1000.0;
         let cached_images = [
@@ -73,7 +72,7 @@ impl Default for MriKSpaceScannerTool {
             state,
             ground_truth,
             forward_cache,
-            fft_workspace,
+            recon_workspace,
             parametric_mask,
             active_mask,
             recon,
@@ -131,11 +130,11 @@ impl MriKSpaceScannerTool {
         }
         if self.recon_dirty {
             let start = PlatformInstant::now();
-            self.recon = reconstruct_from_forward_cache(
+            self.recon_workspace.reconstruct_from_forward_cache_into(
                 &self.ground_truth,
                 &self.forward_cache,
                 &self.active_mask,
-                &mut self.fft_workspace,
+                &mut self.recon,
             );
             self.recon_dirty = false;
             self.last_recon_ms = start.elapsed().as_secs_f64() * 1000.0;

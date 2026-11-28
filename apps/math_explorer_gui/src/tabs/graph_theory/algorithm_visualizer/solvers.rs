@@ -1,7 +1,5 @@
 //! Predecessor-tree, Edmonds-Karp max-flow/min-cut, and Kruskal MST solvers for `AlgorithmVisualizerTool`.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::{Algorithm, AlgorithmVisualizerTool};
 use math_explorer::pure_math::graph_theory::{
     dijkstra::dijkstra,
