@@ -87,17 +87,26 @@ fn test_q_table_inspector_policy_gradient_20x20_preserves_v_pi_across_sculpting(
     let mut mdp = SculptedGridMdp::default_with_traps(20, 20, 0.95);
     mdp.wind_slip_prob = 0.1;
     let runner = SculptedQTableRunner::from_mdp(mdp.clone(), RlSolverMode::PolicyGradient);
-    let latest_snap = runner.build_q_snapshot();
+    let worker = BackgroundWorker::new(runner);
+    let latest_snap = worker
+        .latest_snapshot()
+        .and_then(|s| extract_snapshot_parts(s).1)
+        .expect("seeded initial QTableSnapshot");
     let mut tool = QTableInspectorTool {
         mdp,
         solver_mode: RlSolverMode::PolicyGradient,
-        view: HeatmapView::PolicyVPi,
+        maze_preset: RlMazePreset::BaselineTraps,
+        brush_kit: new_rl_brush_kit(),
         latest_snap,
-        worker: BackgroundWorker::new(runner),
-        ..Default::default()
+        episodes_trained: 0,
+        view: HeatmapView::PolicyVPi,
+        latest_audio: SonificationFrame::silent(),
+        revision: 0,
+        worker,
     };
 
     tool.train(30);
+    assert_eq!(tool.episodes_trained, 30);
     assert!(
         tool.latest_snap
             .theta_logits

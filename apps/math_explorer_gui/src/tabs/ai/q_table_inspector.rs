@@ -218,7 +218,8 @@ impl QTableInspectorTool {
         let _ = self
             .worker
             .send_command(SimCommand::TrainEpisodes(episodes as usize));
-        for _ in 0..400 {
+        let start = crate::web_io::PlatformInstant::now();
+        while start.elapsed() < std::time::Duration::from_secs(60) {
             let parts = self.worker.update().map(extract_snapshot_parts);
             if let Some((audio, data)) = parts {
                 self.apply_snapshot_parts(audio, data);
@@ -226,6 +227,10 @@ impl QTableInspectorTool {
                     break;
                 }
             }
+            if self.worker.state().is_faulted() || self.worker.state().is_terminated() {
+                break;
+            }
+            #[cfg(not(target_arch = "wasm32"))]
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
     }
