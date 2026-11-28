@@ -52,6 +52,12 @@ pub enum AppliedError {
     /// Foundational `#![no_std]` optimization, control, DP, MFG, and Nash engine error.
     #[error("{0}")]
     Opt(#[from] OptError),
+    /// Foundational `#![no_std]` differential-equation solver error.
+    #[error("{0}")]
+    Diffeq(#[from] engine_diffeq::DiffeqError),
+    /// Foundational `#![no_std]` Kalman filter state-estimation error.
+    #[error("{0}")]
+    Kalman(#[from] KalmanError),
     /// Foundational `#![no_std]` linear algebra engine error.
     #[error("{0}")]
     Linalg(#[from] LinalgError),
@@ -66,13 +72,6 @@ pub enum AppliedError {
 impl From<GameTheoryError> for AppliedError {
     #[verified_engine::verified]
     fn from(err: GameTheoryError) -> Self {
-        Self::PureMath(PureMathError::from(err))
-    }
-}
-
-impl From<KalmanError> for AppliedError {
-    #[verified_engine::verified]
-    fn from(err: KalmanError) -> Self {
         Self::PureMath(PureMathError::from(err))
     }
 }
@@ -204,6 +203,8 @@ impl AppliedError {
             Self::MathCommons(err) => err,
             Self::Fit(err) => err,
             Self::Opt(err) => err,
+            Self::Diffeq(err) => err,
+            Self::Kalman(err) => err,
             Self::Linalg(err) => err,
             Self::Pde(err) => err,
             Self::PureMath(err) => err,

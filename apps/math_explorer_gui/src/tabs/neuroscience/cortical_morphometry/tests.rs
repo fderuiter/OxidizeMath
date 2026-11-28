@@ -1,4 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
+#![cfg(feature = "applied")]
 
 use super::presets::{
     PRESET_GLM_ATROPHY_JSON, PRESET_MRF_DEFORMABLE_JSON, PRESET_SULCAL_THICKNESS_JSON,

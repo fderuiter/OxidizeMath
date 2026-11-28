@@ -1,20 +1,17 @@
 use super::{
     AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
     EvolutionError, FractranError, GameTheoryError, Glicko2Error, GraphTheoryError,
-    HyperbolicError, KalmanError, KellyError, KnotError, LaurentError, LinearAlgebraError,
-    MarketPricingError, MarkovError, MatchModelError, MonteCarloError, NumberTheoryError,
-    OptimizationError, OptionPricingError, OuError, PoissonError, QueueingError, RiskError,
-    StochasticError, Su11HyperbolicError, TdaError, TensorError, TransformError, WardropError,
-    ZipError,
+    HyperbolicError, KellyError, KnotError, LaurentError, LinearAlgebraError, MarketPricingError,
+    MarkovError, MatchModelError, MonteCarloError, NumberTheoryError, OptimizationError,
+    OptionPricingError, OuError, PoissonError, QueueingError, RiskError, StochasticError,
+    Su11HyperbolicError, TdaError, TensorError, TransformError, WardropError, ZipError,
 };
-use engine_linalg::LinalgError;
-use engine_opt::error::{FitError, OptError};
 use math_commons::error::{
     ArenaError, EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
     ShaderEmitError,
 };
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
-use math_scalars::ScalarError;
+use math_scalars::{LinalgError, ScalarError};
 use thiserror::Error;
 
 /// Extensible crate-level umbrella error for `pure_math` algorithms and foundational math errors.
@@ -27,6 +24,9 @@ pub enum PureMathError {
     /// Sports Elo rating error.
     #[error("{0}")]
     Elo(#[from] EloError),
+    /// Evolutionary and game-theoretic solver error.
+    #[error("{0}")]
+    GameTheory(#[from] GameTheoryError),
     /// Glicko-2 rating error.
     #[error("{0}")]
     Glicko2(#[from] Glicko2Error),
@@ -93,9 +93,6 @@ pub enum PureMathError {
     /// Prime-exponent FRACTRAN register machine error.
     #[error("{0}")]
     Fractran(#[from] FractranError),
-    /// Evolutionary game theory and equilibrium solver error.
-    #[error("{0}")]
-    GameTheory(#[from] GameTheoryError),
     /// Graph theory solver or interchange error.
     #[error("{0}")]
     GraphTheory(#[from] GraphTheoryError),
@@ -105,9 +102,6 @@ pub enum PureMathError {
     /// Hyperbolic geometry and geodesic billiard error.
     #[error("{0}")]
     Hyperbolic(#[from] HyperbolicError),
-    /// Discrete-time linear or Extended Kalman Filter error.
-    #[error("{0}")]
-    Kalman(#[from] KalmanError),
     /// Intrinsic `SU(1,1)` hyperbolic geometry error.
     #[error("{0}")]
     Su11Hyperbolic(#[from] Su11HyperbolicError),
@@ -126,18 +120,6 @@ pub enum PureMathError {
     /// Spectral transform error.
     #[error("{0}")]
     Transform(#[from] TransformError),
-    /// Foundational `#![no_std]` differential-equation engine error.
-    #[error("{0}")]
-    Diffeq(#[from] engine_diffeq::DiffeqError),
-    /// Foundational `#![no_std]` PDE and SPDE engine error.
-    #[error("{0}")]
-    Pde(#[from] engine_pde::PdeError),
-    /// Foundational `#![no_std]` curve-fitting solver error.
-    #[error("{0}")]
-    Fit(#[from] FitError),
-    /// Foundational `#![no_std]` optimization, control, DP, MFG, and Nash engine error.
-    #[error("{0}")]
-    Opt(#[from] OptError),
     /// Foundational mathematical kernel error.
     #[error("{0}")]
     Math(#[from] MathError),
@@ -211,6 +193,7 @@ impl PureMathError {
         match self {
             Self::Copula(err) => err,
             Self::Elo(err) => err,
+            Self::GameTheory(err) => err,
             Self::Glicko2(err) => err,
             Self::Kelly(err) => err,
             Self::MarketPricing(err) => err,
@@ -231,11 +214,9 @@ impl PureMathError {
             Self::Laurent(err) => err,
             Self::Evolution(err) => err,
             Self::Fractran(err) => err,
-            Self::GameTheory(err) => err,
             Self::GraphTheory(err) => err,
             Self::Wardrop(err) => err,
             Self::Hyperbolic(err) => err,
-            Self::Kalman(err) => err,
             Self::Su11Hyperbolic(err) => err,
             Self::LinearAlgebra(err) => err,
             Self::MonteCarlo(err) => err,
@@ -244,10 +225,6 @@ impl PureMathError {
             Self::Stochastic(err) => err,
             Self::Tensor(err) => err,
             Self::Transform(err) => err,
-            Self::Diffeq(err) => err,
-            Self::Pde(err) => err,
-            Self::Fit(err) => err,
-            Self::Opt(err) => err,
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
             Self::Scalar(err) => err,

@@ -8,7 +8,7 @@ mod tests;
 mod ui;
 pub mod wedge_interaction;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "biology"))]
 pub use atlas::solve_parrondo_ratchet_stack;
 pub use atlas::{ParrondoCartographer, PARRONDO_ATLAS_AXIS_PAIRS};
 use state::ParrondoToolState;

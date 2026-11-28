@@ -3,11 +3,10 @@ use super::{
     MatchModelError, NumberTheoryError, OuError, TdaError, ZipError,
 };
 use crate::pure_math::{
-    algebra::{BraidError, LaurentError, linear_algebra::numerical::LinearAlgebraError},
+    algebra::{BraidError, LaurentError},
     analysis::{
-        evolution::EvolutionError, evolutionary::GameTheoryError, kalman::KalmanError,
-        optimization::OptimizationError, roots::AnalysisError, stochastic::StochasticError,
-        transforms::TransformError,
+        evolution::EvolutionError, evolutionary::GameTheoryError, optimization::OptimizationError,
+        roots::AnalysisError, stochastic::StochasticError, transforms::TransformError,
     },
     elliptic_curves::EllipticCurveError,
     graph_theory::{GraphTheoryError, wardrop::WardropError},
@@ -242,21 +241,6 @@ impl Diagnostic for EvolutionError {
     }
 }
 
-impl Diagnostic for LinearAlgebraError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        Severity::Error
-    }
-
-    #[verified_engine::verified]
-    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
-        if let Self::Linalg(linalg_err) = self {
-            linalg_err.visit_fields(visitor);
-        }
-        visit_named_error(visitor, "LinearAlgebraError", self);
-    }
-}
-
 impl Diagnostic for OptimizationError {
     #[verified_engine::verified]
     fn severity(&self) -> Severity {
@@ -422,23 +406,5 @@ impl Diagnostic for GameTheoryError {
             _ => {}
         }
         visit_named_error(visitor, "GameTheoryError", self);
-    }
-}
-
-impl Diagnostic for KalmanError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        match self {
-            Self::Math(err) => err.severity(),
-            _ => Severity::Error,
-        }
-    }
-
-    #[verified_engine::verified]
-    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
-        if let Self::Math(math_err) = self {
-            math_err.visit_fields(visitor);
-        }
-        visit_named_error(visitor, "KalmanError", self);
     }
 }

@@ -19,8 +19,9 @@ pub mod __doctest_facade {
     }
     pub use crate::biology;
     pub use ::pure_math::__doctest_facade::{
-        ast, constants, diagnostics, math_kernel, math_types, mesh, nalgebra, num_complex,
-        petgraph, poi, primitives, pure_math, rand, registry, rng, series, wigner,
+        ast, bootstrap, constants, diagnostics, math_kernel, math_types, mesh, monte_carlo,
+        nalgebra, num_complex, petgraph, poi, primitives, pure_math, qmc, rand, registry, rng,
+        series, wigner,
     };
 }
 

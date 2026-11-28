@@ -1,4 +1,7 @@
+// [cite:engine_diffeq]
 use super::*;
+use alloc::vec;
+use nalgebra::ComplexField;
 
 #[derive(Debug)]
 struct MockCvModel {
@@ -43,8 +46,8 @@ fn test_kalman_predict_logic() -> Result<(), KalmanError> {
         .initial_covariance(p_init)
         .build()?;
     kf.predict();
-    assert!((kf.state[0] - 10.0).abs() < math_commons::registry::TOLERANCE_FAST);
-    assert!((kf.state[1] - 10.0).abs() < math_commons::registry::TOLERANCE_FAST);
+    assert!(ComplexField::abs(kf.state[0] - 10.0) < math_commons::registry::TOLERANCE_FAST);
+    assert!(ComplexField::abs(kf.state[1] - 10.0) < math_commons::registry::TOLERANCE_FAST);
     Ok(())
 }
 
@@ -56,8 +59,8 @@ fn test_extended_kalman_filter() -> Result<(), KalmanError> {
         #[verified_engine::verified]
         fn predict_state(&self, state: &DVector<f64>, _dt: f64) -> (DVector<f64>, DMatrix<f64>) {
             let x = state[0];
-            let x_pred = x.sqrt();
-            let f_jacobian = 0.5 / x.sqrt();
+            let x_pred = ComplexField::sqrt(x);
+            let f_jacobian = 0.5 / x_pred;
             (
                 DVector::from_element(1, x_pred),
                 DMatrix::from_element(1, 1, f_jacobian),
@@ -67,7 +70,7 @@ fn test_extended_kalman_filter() -> Result<(), KalmanError> {
         #[verified_engine::verified]
         fn predict_measurement(&self, state: &DVector<f64>) -> (DVector<f64>, DMatrix<f64>) {
             let x = state[0];
-            let z_pred = x.powi(2);
+            let z_pred = x * x;
             let h_jacobian = 2.0 * x;
             (
                 DVector::from_element(1, z_pred),
@@ -92,13 +95,13 @@ fn test_extended_kalman_filter() -> Result<(), KalmanError> {
         .build()?;
     kf.predict();
     assert!(
-        (kf.state[0] - 10.0).abs() < math_commons::registry::TOLERANCE_FAST,
+        ComplexField::abs(kf.state[0] - 10.0) < math_commons::registry::TOLERANCE_FAST,
         "Prediction step failed"
     );
     let measurement = DVector::from_element(1, 100.0);
     kf.update(&measurement)?;
     assert!(
-        (kf.state[0] - 10.0).abs() < 0.5,
+        ComplexField::abs(kf.state[0] - 10.0) < 0.5,
         "Update step diverged: {}",
         kf.state[0]
     );
@@ -143,7 +146,7 @@ fn test_singular_covariance_error() -> Result<(), KalmanError> {
 
 #[test]
 #[verified_engine::verified]
-fn test_dimension_mismatch_and_missing_fields() {
+fn test_dimension_mismatch() {
     let model = MockCvModel {
         process_noise: 0.0,
         measurement_noise: 1.0,
@@ -162,19 +165,22 @@ fn test_dimension_mismatch_and_missing_fields() {
             assert_eq!(expected.0, 2);
             assert_eq!(actual.0, 9);
         }
-        _ => panic!("Expected Math::DimensionMismatch error, got {:?}", result),
+        _ => panic!("Expected Math::DimensionMismatch error, got {result:?}"),
     }
+}
 
-    let missing = KalmanFilter::builder(
-        MockCvModel {
-            process_noise: 0.0,
-            measurement_noise: 1.0,
-        },
-        1.0,
-    )
-    .build();
-    assert!(matches!(
-        missing,
-        Err(KalmanError::InitializationError(ref field)) if field == "initial_state"
-    ));
+#[test]
+#[verified_engine::verified]
+fn test_builder_missing_fields() {
+    let model = MockCvModel {
+        process_noise: 0.0,
+        measurement_noise: 1.0,
+    };
+    let result = KalmanFilter::builder(model, 1.0).build();
+    match result {
+        Err(KalmanError::InitializationError(field)) => {
+            assert_eq!(field, "initial_state");
+        }
+        _ => panic!("Expected InitializationError, got {result:?}"),
+    }
 }

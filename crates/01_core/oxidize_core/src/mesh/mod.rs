@@ -8,6 +8,10 @@ pub mod export_splat_ply;
 pub mod export_stl;
 /// Parametric 3D mesh primitive generators.
 pub mod primitives;
+/// Triangulated 3D surface mesh primitive.
+pub mod surface;
+/// Zero-allocation CSR spatial uniform grids and symmetric cortical thickness kernels.
+pub mod thickness;
 /// Core 3D point, indexed triangle mesh, and vertex-color types.
 pub mod types;
 
@@ -16,6 +20,8 @@ pub use export_ply::*;
 pub use export_splat_ply::*;
 pub use export_stl::*;
 pub use primitives::*;
+pub use surface::*;
+pub use thickness::*;
 pub use types::*;
 
 #[cfg(test)]

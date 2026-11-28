@@ -425,7 +425,7 @@ pub(super) fn read_detector_profile_into(
 pub(super) fn eval_boundary_laplacian_2d(
     u_curr: &[f64],
     wall_mask: &[f64],
-    ops: &engine_pde::StencilOperators,
+    ops: &super::super::grid_2d::GridSpacing2D,
     w: usize,
     h: usize,
     x: usize,

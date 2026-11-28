@@ -13,10 +13,26 @@ use math_explorer::physics::astrophysics::{
 };
 
 use crate::reflective_ui::render_copyable_metric;
-use crate::volumetric_scene::lensing::build_circle_ring;
 
 use super::clamp_finite;
 use super::galactic_orbits_tool::GalacticOrbitSimulator;
+
+/// Number of vertices in closed circular critical/shadow/caustic overlay rings.
+pub const CAUSTIC_RING_POINTS: usize = 65;
+
+/// Builds a closed `CAUSTIC_RING_POINTS` polyline circle centered at `center` with `radius`.
+#[must_use]
+pub fn build_circle_ring(center: [f64; 2], radius: f64) -> [[f64; 2]; CAUSTIC_RING_POINTS] {
+    let r = radius.max(0.0);
+    let mut pts = [[0.0_f64; 2]; CAUSTIC_RING_POINTS];
+    let segs = (CAUSTIC_RING_POINTS - 1) as f64;
+    for (idx, slot) in pts.iter_mut().enumerate() {
+        let theta = (idx as f64) * std::f64::consts::TAU / segs;
+        let (sin_t, cos_t) = theta.sin_cos();
+        *slot = [center[0] + r * cos_t, center[1] + r * sin_t];
+    }
+    pts
+}
 
 /// Interactive `NfwCusp` vs. `BurkertCore` gravitational caustic overlay state on the orbit plane.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]

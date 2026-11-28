@@ -1,9 +1,9 @@
 use super::*;
 use diagnostics::{Diagnostic, DiagnosticBus, Severity};
-use engine_opt::error::{FitError, OptError};
+use engine_diffeq::{DiffeqError, KalmanError};
+use engine_opt::error::{FitError, OptError, PdeError};
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
-use pure_math::error::{KalmanError, PdeError};
 use std::error::Error as StdError;
 
 fn sample_math_err() -> MathError {
@@ -40,6 +40,7 @@ fn test_engineering_umbrella_variants_preserve_source_and_diagnostics() {
         FitError::SingularMatrix.into(),
         OptError::InvalidDimension.into(),
         PdeError::InvalidGridDimension { axis: "x", size: 0 }.into(),
+        DiffeqError::InvalidStepSize.into(),
         sample_math_err().into(),
         KalmanError::MatrixInversionError.into(),
     ];

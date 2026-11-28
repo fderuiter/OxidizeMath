@@ -141,4 +141,19 @@ fn diffeq_error_roundtrips_no_std() {
         let decoded: DiffeqError = serde_json::from_str(&json).expect("deserialize DiffeqError");
         assert_eq!(decoded, sample);
     }
+
+    let kalman_samples = [
+        crate::KalmanError::MatrixInversionError,
+        crate::KalmanError::InitializationError("initial_state"),
+        crate::KalmanError::Math(MathError::WorkspaceTooSmall {
+            required: 4,
+            available: 1,
+        }),
+    ];
+    for sample in kalman_samples {
+        let json = serde_json::to_string(&sample).expect("serialize KalmanError");
+        let decoded: crate::KalmanError =
+            serde_json::from_str(&json).expect("deserialize KalmanError");
+        assert_eq!(decoded, sample);
+    }
 }

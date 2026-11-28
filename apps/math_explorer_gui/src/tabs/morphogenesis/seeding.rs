@@ -2,7 +2,7 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-#[cfg(test)]
+#[cfg(all(test, feature = "physics"))]
 use super::advection::MorphogenesisAdvectionState;
 use super::presets::MorphogenesisToolState;
 use super::runner::{MorphogenesisKineticsAdapter, MorphogenesisKineticsRunner};
@@ -61,7 +61,7 @@ impl MorphogenesisTool {
         )
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "physics"))]
     pub(crate) fn create_kinetics_runner_with_advection(
         params: &Arc<std::sync::RwLock<MorphogenesisSharedParams>>,
         kinetics_state: &Arc<std::sync::RwLock<MorphogenesisKineticsState>>,

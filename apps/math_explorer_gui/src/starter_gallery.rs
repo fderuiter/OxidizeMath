@@ -405,6 +405,7 @@ mod tests;
     feature = "applied",
     feature = "biology",
     feature = "climate",
+    feature = "engineering",
     feature = "epidemiology",
     feature = "physics",
     feature = "pure_math"

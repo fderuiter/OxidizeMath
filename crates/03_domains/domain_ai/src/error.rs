@@ -116,6 +116,10 @@ pub enum AIError {
     #[error("{0}")]
     Diffeq(#[from] engine_diffeq::DiffeqError),
 
+    /// Foundational `#![no_std]` Kalman filter tracking error.
+    #[error("{0}")]
+    Kalman(#[from] engine_diffeq::KalmanError),
+
     /// Foundational `#![no_std]` curve-fitting solver error.
     #[error("{0}")]
     Fit(#[from] engine_opt::error::FitError),
@@ -126,7 +130,7 @@ pub enum AIError {
 
     /// Foundational `#![no_std]` partial-differential-equation solver error.
     #[error("{0}")]
-    Pde(#[from] pure_math::error::PdeError),
+    Pde(#[from] engine_opt::PdeError),
 
     /// Upstream numerical optimization error.
     #[error("{0}")]
@@ -154,6 +158,7 @@ impl Diagnostic for AIError {
             Self::Math(err) => err.severity(),
             Self::Arena(err) => err.severity(),
             Self::Diffeq(err) => err.severity(),
+            Self::Kalman(err) => err.severity(),
             Self::Fit(err) => err.severity(),
             Self::Opt(err) => err.severity(),
             Self::Pde(err) => err.severity(),
@@ -169,6 +174,7 @@ impl Diagnostic for AIError {
             Self::Math(err) => err.visit_fields(visitor),
             Self::Arena(err) => err.visit_fields(visitor),
             Self::Diffeq(err) => err.visit_fields(visitor),
+            Self::Kalman(err) => err.visit_fields(visitor),
             Self::Fit(err) => err.visit_fields(visitor),
             Self::Opt(err) => err.visit_fields(visitor),
             Self::Pde(err) => err.visit_fields(visitor),

@@ -45,6 +45,8 @@ pure_math = [
     "dep:oxidize_core",
     "dep:petgraph",
     "dep:rand",
+    "engine_diffeq/nalgebra",
+    "engine_linalg/nalgebra",
 ]
 applied = ["pure_math", "dep:domain_applied"]
 ai = ["pure_math", "dep:domain_ai"]

@@ -7,7 +7,7 @@
 
 use super::CapacityFadeTool;
 use crate::web_io::strip_utf8_bom;
-use math_explorer::applied::battery_degradation::DepthOfDischarge;
+use math_explorer::engineering::battery_degradation::DepthOfDischarge;
 
 /// Maximum finite `(cycles, capacity)` rows imported from a lab `.csv` file.
 pub const MAX_CALIBRATION_CSV_ROWS: usize = 2_000;

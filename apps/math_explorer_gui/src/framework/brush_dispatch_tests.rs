@@ -5,7 +5,7 @@
 //! `[-500, 500]` freehand quantum potential sculpting + Web Audio sonification,
 //! `[-50, 50]` Potential Flow singularity handles + GLSL shader sync, and
 //! `focused_canvas_id()` workspace shortcut preservation.
-
+#![cfg(feature = "biology")]
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use crate::app::MathExplorerApp;

@@ -224,6 +224,12 @@ pub(crate) fn draw_morpho_sculpt_controls(
 }
 
 pub(crate) fn draw_morpho_3d_bridges(tool: &super::MorphogenesisTool, ui: &mut egui::Ui) {
+    #[cfg(all(
+        feature = "ai",
+        feature = "applied",
+        feature = "biology",
+        feature = "physics"
+    ))]
     if let Some(snapshot) = tool.worker.latest_snapshot() {
         if let Some(u_data) = snapshot.structured_data.as_ref().and_then(|d| {
             d.downcast_ref::<super::counterfactual::MorphogenesisSnapshotData>()
@@ -241,8 +247,15 @@ pub(crate) fn draw_morpho_3d_bridges(tool: &super::MorphogenesisTool, ui: &mut e
             ui.small(format!("Extruded 3D Gaussian splats: {splat_count}"));
         }
     }
+    #[cfg(not(all(
+        feature = "ai",
+        feature = "applied",
+        feature = "biology",
+        feature = "physics"
+    )))]
+    let _ = tool;
     ui.separator();
-    #[cfg(feature = "pure_math")]
+    #[cfg(all(feature = "applied", feature = "pure_math"))]
     {
         use crate::accessibility::AccessibleHoverText;
         if ui

@@ -17,12 +17,14 @@ pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{BatteryError, EngineeringDomainError, HardwareError, RadarError};
         pub use ::pure_math::__doctest_facade::error::*;
-        pub use engine_opt::error::{FitError, OptError};
+        pub use engine_diffeq::{DiffeqError, KalmanError};
+        pub use engine_opt::error::{FitError, OptError, PdeError};
     }
     /// Doctest prelude re-exports.
     pub mod prelude {
         pub use crate::error::{BatteryError, EngineeringDomainError, HardwareError, RadarError};
         pub use ::pure_math::__doctest_facade::prelude::*;
+        pub use engine_diffeq::{DiffeqError, KalmanError};
         pub use engine_opt::fit::FitModel;
     }
     pub use crate::engineering;

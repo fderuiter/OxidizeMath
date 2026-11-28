@@ -4,8 +4,8 @@
 //! Implements stack-allocated phase-space integrators unified under [`EvolutionEngine`]:
 //! - [`PhasePoint2D`]: Canonical 2D coordinates $q = (w, b)$ and conjugate momenta $p = (p_w, p_b)$.
 //! - [`HamiltonianLeapfrog2D`]: Conformal symplectic Störmer-Verlet (kick-drift-kick) integrator.
-//! - [`LangevinBaoab2D`]: Second-order BAOAB Langevin thermostat splitting delegating to
-//!   [`engine_diffeq::BaoabLangevinSolver`] and Tier 0 Box-Muller Gaussian sampling.
+//! - [`LangevinBaoab2D`]: Second-order BAOAB Langevin thermostat splitting using
+//!   stack-allocated phase-space updates and Tier 0 Box-Muller Gaussian sampling.
 //!
 //! # Example
 //!
@@ -27,9 +27,7 @@
 //! ```
 
 use super::evolution::{EvolutionEngine, EvolutionError};
-use core::cell::RefCell;
-use engine_diffeq::{BaoabLangevinSolver, BaoabParams, LangevinSystem};
-use math_commons::math_kernel::types::{ScalarWorkspace, sample_standard_normal_pair};
+use math_commons::math_kernel::types::sample_standard_normal_pair;
 use nalgebra::Vector2;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -396,31 +394,6 @@ impl LangevinBaoab2D {
     }
 }
 
-struct GradFnAdapter<'a, G> {
-    grad_fn: RefCell<&'a mut G>,
-    non_finite: RefCell<bool>,
-}
-
-impl<G: FnMut(Vector2<f64>) -> Vector2<f64>> LangevinSystem<f64> for GradFnAdapter<'_, G> {
-    fn dim(&self) -> usize {
-        2
-    }
-    fn grad_potential(&self, q: &[f64], out_grad: &mut [f64]) {
-        let &[qx, qy, ..] = q else {
-            return;
-        };
-        let [gx, gy, ..] = out_grad else {
-            return;
-        };
-        let g = (self.grad_fn.borrow_mut())(Vector2::new(qx, qy));
-        if !g.x.is_finite() || !g.y.is_finite() {
-            *self.non_finite.borrow_mut() = true;
-        }
-        *gx = g.x;
-        *gy = g.y;
-    }
-}
-
 impl<G> EvolutionEngine<PhasePoint2D, G> for LangevinBaoab2D
 where
     G: FnMut(Vector2<f64>) -> Vector2<f64>,
@@ -433,42 +406,8 @@ where
         rng: &mut R,
         dt: f64,
     ) -> Result<(), EvolutionError> {
-        if !state.is_finite()
-            || !dt.is_finite()
-            || dt <= 0.0
-            || !self.mass.is_finite()
-            || !self.damping.is_finite()
-            || !self.temperature.is_finite()
-        {
-            return Err(EvolutionError::InvalidState);
-        }
-        let solver = BaoabLangevinSolver::new(BaoabParams {
-            mass: clamp_mass(self.mass),
-            friction: clamp_damping(self.damping),
-            temperature: clamp_temperature(self.temperature),
-            dt: clamp_dt(dt),
-        });
-        let adapter = GradFnAdapter {
-            grad_fn: RefCell::new(aux),
-            non_finite: RefCell::new(false),
-        };
-        let mut q = [state.q.x, state.q.y];
-        let mut p = [state.p.x, state.p.y];
-        let mut scratch = [0.0_f64; 4];
-        let mut ws = ScalarWorkspace::new(&mut scratch);
-        solver.step(&adapter, &mut q, &mut p, &mut ws, rng);
-        let [qx, qy] = q;
-        let [px, py] = p;
-        if *adapter.non_finite.borrow()
-            || !qx.is_finite()
-            || !qy.is_finite()
-            || !px.is_finite()
-            || !py.is_finite()
-        {
-            return Err(EvolutionError::InvalidState);
-        }
-        state.q = Vector2::new(qx, qy);
-        state.p = Vector2::new(px, py);
-        Ok(())
+        let inv_m = 1.0 / clamp_mass(self.mass);
+        let mut kinetic_deriv = |p_axis: f64| p_axis * inv_m;
+        self.step_with_kinetic(state, aux, &mut kinetic_deriv, rng, dt)
     }
 }

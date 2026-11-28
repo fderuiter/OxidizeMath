@@ -2,8 +2,8 @@
 
 use super::advection::{
     default_morpho_inlet_u, default_morpho_viscosity, is_default_morpho_inlet_u,
-    is_default_morpho_viscosity, MorphogenesisAdvectionState, MAX_MORPHO_VISCOSITY,
-    MIN_MORPHO_VISCOSITY,
+    is_default_morpho_viscosity, MorphogenesisAdvectionState, MAX_LATTICE_JET_SPEED,
+    MAX_MORPHO_VISCOSITY, MIN_MORPHO_VISCOSITY,
 };
 use super::tool::MorphogenesisTool;
 use crate::async_sim::SimWorkerState;
@@ -11,7 +11,6 @@ use crate::framework::decode_rle_mask;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard};
 use crate::presets::MorphogenesisKineticsMode;
 use math_explorer::biology::morphogenesis::{GrayScottKinetics, SchnakenbergKinetics};
-use math_explorer::physics::fluid_dynamics::lattice_boltzmann::MAX_LATTICE_JET_SPEED;
 use scientific_metadata::theory::TheoryDescribable;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -292,7 +291,33 @@ impl MorphogenesisToolState {
     }
 }
 
-pub use crate::volumetric_scene::presets::SimpleRng;
+/// Deterministic PCG-style PRNG used to seed reproducible initial perturbations across 2D/3D grids.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SimpleRng {
+    state: u64,
+}
+
+impl SimpleRng {
+    /// Creates a new deterministic PRNG seeded with `seed`.
+    pub const fn new(seed: u64) -> Self {
+        Self { state: seed }
+    }
+
+    /// Samples a uniform `f64` in `[0.0, 1.0]`.
+    pub fn next_f64(&mut self) -> f64 {
+        self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1);
+        let x = self.state;
+        let x = x ^ (x >> 18);
+        let rot = (x >> 27) as u32;
+        let val = (x as u32).rotate_right(rot);
+        (val as f64) / (u32::MAX as f64)
+    }
+
+    /// Samples a uniform `f64` in `[min, max]`.
+    pub fn range(&mut self, min: f64, max: f64) -> f64 {
+        min + self.next_f64() * (max - min)
+    }
+}
 
 /// GUI [`TheoryDescribable`] wrapper around [`SchnakenbergKinetics`] and [`GrayScottKinetics`].
 #[derive(Clone, Debug)]

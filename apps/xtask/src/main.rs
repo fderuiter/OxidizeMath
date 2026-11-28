@@ -54,6 +54,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
         "check-duplicates" => gates::check_duplicates(),
         "check-api-drift" => gates::check_api_drift(),
         "check-markdown-links" => check_markdown_links(),
+        "check-dag" => gates::check_dag(),
         "check-maturity" => gates::check_maturity(rest),
         "check-no-std" => no_std::check_no_std(rest),
         "check-profiles" => gates::check_profiles(),
@@ -75,9 +76,7 @@ fn dispatch_command(cmd: &str, rest: &[String]) {
     }
 }
 
-fn print_help() {
-    println!("Usage: xtask <command> [args...]\n");
-    println!("Active Quality Gates:");
+fn print_check_gates_help() {
     println!("  check-api-drift          - Validate public API surface against baseline");
     println!("  check-benches            - Build and run workspace benchmark targets in test mode");
     println!(
@@ -85,6 +84,9 @@ fn print_help() {
     );
     println!(
         "  check-certificate        - Verify Verification_Certificate.json schema and [verify_suite] floors"
+    );
+    println!(
+        "  check-dag                - Verify strict 5-tier DAG and isolated single-domain feature closures"
     );
     println!("  check-docs               - Run crate documentation audit");
     println!("  check-duplicates         - Run AST-level code clone detector across crates");
@@ -107,6 +109,9 @@ fn print_help() {
     );
     println!("  check-staged-duplicates  - Run staged duplicates check");
     println!("  check-vulnerabilities    - Scan workspace dependencies for known vulnerabilities");
+}
+
+fn print_workflow_gates_help() {
     println!(
         "  compile-papers           - Compile academic papers with TeXLive (pdflatex and BibTeX)"
     );
@@ -133,6 +138,13 @@ fn print_help() {
         "  verify-records           - Verify architectural decision records (--staged supported)"
     );
     println!("  verify-suite             - Run high-integrity verified suite");
+}
+
+fn print_help() {
+    println!("Usage: xtask <command> [args...]\n");
+    println!("Active Quality Gates:");
+    print_check_gates_help();
+    print_workflow_gates_help();
     pyramid::print_pyramid_help();
     print_legacy_help();
 }

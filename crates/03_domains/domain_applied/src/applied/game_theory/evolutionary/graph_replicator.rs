@@ -4,7 +4,7 @@
 //! for evolutionary games on contact graphs of mean active degree $k$, following
 //! Ohtsuki & Nowak (2006), *Nature* 441, 502–505.
 
-use super::traits::FitnessStrategy;
+use super::FitnessStrategy;
 use crate::error::GameTheoryError;
 use nalgebra::{DMatrix, DVector};
 use verified_engine::Theory;

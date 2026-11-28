@@ -7,7 +7,9 @@ pub mod beam_profiling;
 pub mod dose;
 pub mod imrt;
 pub mod link_bus;
+#[cfg(feature = "applied")]
 pub mod pharmacokinetic_regimen;
+#[cfg(feature = "engineering")]
 pub mod radar_gating;
 
 pub struct MedicalTab {

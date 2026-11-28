@@ -1,7 +1,7 @@
 //! Multi-domain GUI integration tests verifying `InteractiveTool::on_brush`,
 //! pixel-to-solver Y-coordinate alignment, physics/biology invariants, and
 //! compact URL share-link round-trips (`< 4 KiB` JSON) across all four tools.
-
+#![cfg(feature = "physics")]
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};

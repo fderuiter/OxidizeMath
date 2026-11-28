@@ -7,7 +7,7 @@ use super::pipeline::{RadarPipeline, BEAM_DELAY_RING_LEN, SIM_DT};
 use super::state::{RadarGatingState, ScattererPoint};
 use super::RadarGatingTool;
 use crate::framework::{ChallengeEvaluation, ChallengeMetadata, InteractiveTool};
-pub use math_explorer::applied::algorithms::kalman::FastCvKalman;
+pub use math_explorer::engine_diffeq::FastCvKalman;
 use math_explorer::physics::medical::radar_gating::TrackingFilter;
 
 /// Initializes a [`FastCvKalman`] mirror directly from a verified [`TrackingFilter`] instance.

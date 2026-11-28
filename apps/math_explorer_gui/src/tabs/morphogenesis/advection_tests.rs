@@ -1,3 +1,4 @@
+#![cfg(feature = "physics")]
 use super::advection::{
     MorphogenesisAdvectionState, MAX_MORPHO_VISCOSITY, MIN_MORPHO_VISCOSITY,
     PRESET_VORTEX_WAKE_MORPHOGENESIS,
@@ -443,11 +444,14 @@ fn test_high_contrast_keyboard_cfl_stabilize_live_region_and_png_exports() {
 
     let mut frame = eframe::Frame::_new_kittest();
     crate::app::ThemeMode::HighContrast.apply_to_context(&ctx);
-    let out = ctx.run(raw_input(1400.0, 900.0, Vec::new()), |ctx| {
-        CentralPanel::default()
-            .frame(Frame::NONE)
-            .show(ctx, |ui| tab.show_inside(ui, &mut frame));
-    });
+    let mut run_frame = |events: Vec<egui::Event>| {
+        ctx.run(raw_input(1400.0, 900.0, events), |ctx| {
+            CentralPanel::default()
+                .frame(Frame::NONE)
+                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
+        })
+    };
+    let out = run_frame(Vec::new());
     let target_node_id = out
         .platform_output
         .accesskit_update
@@ -466,24 +470,13 @@ fn test_high_contrast_keyboard_cfl_stabilize_live_region_and_png_exports() {
         if ctx.memory(|m| m.focused().map(|id| id.value())) == Some(target_node_id) {
             break;
         }
-        let _ = ctx.run(raw_input(1400.0, 900.0, vec![key_press(Key::Tab)]), |ctx| {
-            CentralPanel::default()
-                .frame(Frame::NONE)
-                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
-        });
+        let _ = run_frame(vec![key_press(Key::Tab)]);
     }
     assert_eq!(
         ctx.memory(|m| m.focused().map(|id| id.value())),
         Some(target_node_id)
     );
-    let _ = ctx.run(
-        raw_input(1400.0, 900.0, vec![key_press(Key::Enter)]),
-        |ctx| {
-            CentralPanel::default()
-                .frame(Frame::NONE)
-                .show(ctx, |ui| tab.show_inside(ui, &mut frame));
-        },
-    );
+    let _ = run_frame(vec![key_press(Key::Enter)]);
     let live_msg = crate::accessibility::with_live_region(|r| r.slots[r.active_slot].clone());
     assert!(live_msg.starts_with("Time step stabilized to CFL bound dt ="));
     let tool = tab

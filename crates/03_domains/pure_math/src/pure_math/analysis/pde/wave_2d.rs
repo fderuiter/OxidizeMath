@@ -1,7 +1,7 @@
 //! Zero-allocation 2D Störmer-Verlet wave tank and Kirchhoff-Love biharmonic Chladni plate solver.
 //!
 //! Evaluates 2D wave propagation and thin-plate bending dynamics on pre-allocated contiguous
-//! `Vec<f64>` grids using [`engine_pde::StencilOperators::new_2d`] without post-initialization heap allocations.
+//! `Vec<f64>` grids using 5-point central finite differences without post-initialization heap allocations.
 //!
 //! # Example
 //!
@@ -32,7 +32,7 @@ use std::f64::consts::PI;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::{Dimension, StepSize, flatten_2d_index};
 
-use engine_pde::{BoundaryCondition, StencilOperators};
+use super::grid_2d::GridSpacing2D;
 
 /// Configuration enums, parameter structs, and analytic reference formulas.
 pub mod config;
@@ -74,7 +74,7 @@ pub use spectral::{SpectralAnalyzer2D, SpectralMode2D, SpectralPeak2D};
 pub struct Wave2DSolver {
     width: usize,
     height: usize,
-    ops: StencilOperators,
+    ops: GridSpacing2D,
     time: f64,
     last_dt: f64,
     u_prev: Vec<f64>,
@@ -103,7 +103,7 @@ impl Wave2DSolver {
                 reason: "Wave2DSolver grid dimensions must be >= 4",
             });
         }
-        let ops = StencilOperators::try_new_2d(StepSize(dx), StepSize(dy))?;
+        let ops = GridSpacing2D::try_new_2d(StepSize(dx), StepSize(dy))?;
         let len = width * height;
         debug_assert!(width >= 4 && height >= 4 && len >= 16);
         Ok(Self {
@@ -406,19 +406,13 @@ impl Wave2DSolver {
     #[inline]
     #[verified_engine::verified]
     fn eval_biharmonic_at(&self, x: usize, y: usize, _idx: usize, boundary: BoundaryMode2D) -> f64 {
-        let bc = match boundary {
-            BoundaryMode2D::Neumann => BoundaryCondition::SymmetricNeumann,
-            BoundaryMode2D::Dirichlet | BoundaryMode2D::Clamped | BoundaryMode2D::Sponge => {
-                BoundaryCondition::Dirichlet(0.0)
-            }
-        };
         self.ops.eval_biharmonic_2d_from_laplacian(
             &self.laplacian_buf,
             self.width,
             self.height,
             x,
             y,
-            bc,
+            matches!(boundary, BoundaryMode2D::Neumann),
         )
     }
 

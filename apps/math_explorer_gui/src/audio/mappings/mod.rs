@@ -3,7 +3,7 @@
 #[cfg(feature = "pure_math")]
 pub mod acoustics;
 pub mod medical;
-#[cfg(feature = "physics")]
+#[cfg(all(feature = "physics", feature = "engineering"))]
 pub mod medical_radar;
 #[cfg(feature = "physics")]
 pub mod mri;
@@ -22,7 +22,7 @@ pub mod wave_plate;
 #[cfg(feature = "pure_math")]
 pub use acoustics::chladni_plate_frame;
 pub use medical::{imrt_delivery_frame, radar_linac_frame, LinacGatePhase};
-#[cfg(feature = "physics")]
+#[cfg(all(feature = "physics", feature = "engineering"))]
 pub use medical_radar::{
     doppler_shift_60ghz_hz, medical_radar_frame, RadarDopplerAudioInput, RADAR_CARRIER_60GHZ_HZ,
 };

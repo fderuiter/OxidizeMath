@@ -61,8 +61,7 @@ graph TD
         MdTests[markdown_tests]
     end
 
-    subgraph Tier_03_Domains["crates/03_domains"]
-        Pure[pure_math]
+    subgraph Tier_03_Domains["03_domains (Isolated Scientific Domains)"]
         AI[domain_ai]
         Phys[domain_physics]
         Bio[domain_biology]
@@ -72,21 +71,22 @@ graph TD
         Epi[domain_epidemiology]
     end
 
-    subgraph Tier_02_Engines["crates/02_engines"]
-        Linalg[engine_linalg]
-        Opt[engine_opt]
-        Commons[math_commons]
+    subgraph Tier_02_Engines["02_engines (#![no_std] Solver Engines)"]
         DiffEq[engine_diffeq]
         Pde[engine_pde]
+        Opt[engine_opt]
+        Linalg[engine_linalg]
     end
 
-    subgraph Tier_01_Core["crates/01_core"]
+    subgraph Tier_01_Pure["01_pure (Core Infrastructure & Pure Mathematics)"]
+        Pure[pure_math]
+        Commons[math_commons]
         Diag[diagnostics]
         Registry[federated_registry]
         CoreCrate[oxidize_core]
     end
 
-    subgraph Tier_00_Foundation["crates/00_foundation"]
+    subgraph Tier_00_Foundation["00_foundation (#![no_std] Primitives & Verification)"]
         MathDiag[math_diagnostics]
         Mem[math_memory]
         Scalars[math_scalars]
@@ -109,26 +109,27 @@ graph TD
     Facade --> AI & Phys & Bio & App & Clim & Eng & Epi & Pure
     Facade --> Commons & Linalg & Opt & DiffEq & Pde & Mem & Scalars & Diag & Meta & Engine & CoreCrate
 
-    AI --> Commons & Engine & DiffEq & Linalg & Opt & Pure & CoreCrate & MathDiag & Mem
-    Phys --> Commons & Engine & Meta & Pure & DiffEq & Pde & Linalg & Opt & CoreCrate & MathDiag & Mem
-    Bio --> Commons & Engine & Meta & Pure & Pde & MathDiag
-    App --> Commons & Engine & Pure & Pde & Linalg & Opt & Scalars & CoreCrate & MathDiag & Mem
-    Clim --> Commons & Engine & Pure & CoreCrate & MathDiag
-    Eng --> Commons & Engine & Pure & Linalg & Opt & MathDiag & Mem
-    Epi --> Commons & Engine & Pure & CoreCrate & MathDiag
+    AI --> DiffEq & Linalg & Opt & Pure & Commons & CoreCrate & Mem & MathDiag & Engine
+    Phys --> DiffEq & Pde & Opt & Linalg & Pure & Commons & CoreCrate & Meta & Mem & MathDiag & Engine
+    Bio --> Pde & Pure & Commons & CoreCrate & Meta & Mem & MathDiag & Engine
+    App --> DiffEq & Pde & Opt & Linalg & Pure & Commons & CoreCrate & Scalars & Mem & MathDiag & Engine
+    Clim --> Pure & Commons & CoreCrate & MathDiag & Engine
+    Eng --> DiffEq & Opt & Linalg & Pure & Commons & Mem & MathDiag & Engine
+    Epi --> Pure & Commons & CoreCrate & MathDiag & Engine
 
-    Pure --> Commons & Meta & Engine & DiffEq & Pde & Linalg & Opt & Mem & Rng & Scalars & CoreCrate & Diag
-    DiffEq --> Commons & Engine & Mem & Rng & MathDiag
-    Pde --> Commons & Engine & Mem & Rng & MathDiag
+    DiffEq --> Commons & Mem & Rng & MathDiag & Engine
+    Pde --> Commons & Mem & Rng & MathDiag & Engine
     Opt --> Linalg & Pde & Scalars & Meta & MathDiag & Engine
+    Linalg --> Mem & Scalars & Engine
+
+    Pure --> Commons & CoreCrate & Mem & Scalars & Rng & Meta & MathDiag & Engine
     Commons --> Mem & Scalars & Rng & MathDiag & Engine
-    Linalg --> Mem & Scalars & MathDiag & Engine
-    Rng --> Scalars
-    Scalars --> Mem & MathDiag
-    Mem --> MathDiag
     Registry --> Diag
     Diag --> MathDiag
-    CoreCrate --> Rng & Meta
+    CoreCrate --> Mem & Scalars & Rng & Meta & Engine
+    Rng --> Scalars & MathDiag
+    Scalars --> Mem & MathDiag
+    Mem --> MathDiag
     Engine --> Macros & Meta
 
     style GUI fill:#cde,stroke:#333

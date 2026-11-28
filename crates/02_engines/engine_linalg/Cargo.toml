@@ -15,18 +15,26 @@ math_contract = true
 [features]
 default = []
 alloc = ["math_memory/alloc", "math_scalars/alloc"]
+nalgebra = ["alloc", "dep:nalgebra", "nalgebra/alloc"]
 serde = [
     "dep:serde",
-    "math_diagnostics/serde",
     "math_memory/serde",
     "math_scalars/serde",
+    "nalgebra?/serde-serialize-no-std",
+]
+std = [
+    "alloc",
+    "math_memory/std",
+    "math_scalars/std",
+    "nalgebra?/std",
+    "serde?/std",
 ]
 
 [dependencies]
 bytemuck = { workspace = true }
-math_diagnostics = { path = "../../00_foundation/math_diagnostics", default-features = false }
 math_memory = { path = "../../00_foundation/math_memory", default-features = false }
 math_scalars = { path = "../../00_foundation/math_scalars", default-features = false }
+nalgebra = { workspace = true, default-features = false, features = ["alloc", "libm"], optional = true }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]

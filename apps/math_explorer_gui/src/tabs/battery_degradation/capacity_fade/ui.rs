@@ -12,7 +12,7 @@ use crate::reflective_ui::{render_copyable_metric, AnimatedSlider};
 use crate::tabs::battery_degradation::cell_card::ChemistryChoice;
 use eframe::egui;
 use egui_plot::{HLine, Line, Plot, PlotPoints, Points};
-use math_explorer::applied::battery_degradation::{
+use math_explorer::engineering::battery_degradation::{
     MAX_C_RATE, MAX_EXPONENT_Z, MAX_TEMPERATURE_C, MIN_C_RATE, MIN_EXPONENT_Z, MIN_TEMPERATURE_C,
 };
 

@@ -2,6 +2,7 @@ use super::{
     ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
     QuantumError, SandpileError, SolidStateError, StandardModelError, StatMechError,
 };
+use engine_diffeq::KalmanError;
 use engine_linalg::LinalgError;
 use engine_opt::error::{FitError, OptError};
 use math_commons::error::{
@@ -10,8 +11,8 @@ use math_commons::error::{
 };
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::error::{
-    AnalysisError, EvolutionError, GameTheoryError, KalmanError, LinearAlgebraError,
-    MonteCarloError, OptimizationError, PureMathError, TensorError, TransformError,
+    AnalysisError, EvolutionError, GameTheoryError, LinearAlgebraError, MonteCarloError,
+    OptimizationError, PureMathError, TensorError, TransformError,
 };
 use thiserror::Error;
 
@@ -28,7 +29,7 @@ impl Diagnostic for NuclearError {
     }
 }
 
-/// Extensible crate-level umbrella error for `domain_physics` models and upstream math/applied errors.
+/// Extensible crate-level umbrella error for `domain_physics` models and upstream math errors.
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum PhysicsError {
@@ -83,6 +84,9 @@ pub enum PhysicsError {
     /// Foundational `#![no_std]` differential-equation solver error.
     #[error("{0}")]
     Diffeq(#[from] engine_diffeq::DiffeqError),
+    /// Foundational `#![no_std]` Kalman filter tracking error.
+    #[error("{0}")]
+    Kalman(#[from] KalmanError),
     /// Foundational `#![no_std]` partial-differential-equation solver error.
     #[error("{0}")]
     Pde(#[from] engine_pde::PdeError),
@@ -94,13 +98,6 @@ pub enum PhysicsError {
 impl From<GameTheoryError> for PhysicsError {
     #[verified_engine::verified]
     fn from(err: GameTheoryError) -> Self {
-        Self::PureMath(PureMathError::from(err))
-    }
-}
-
-impl From<KalmanError> for PhysicsError {
-    #[verified_engine::verified]
-    fn from(err: KalmanError) -> Self {
         Self::PureMath(PureMathError::from(err))
     }
 }
@@ -224,6 +221,7 @@ impl PhysicsError {
             Self::Opt(err) => err,
             Self::Linalg(err) => err,
             Self::Diffeq(err) => err,
+            Self::Kalman(err) => err,
             Self::Pde(err) => err,
             Self::PureMath(err) => err,
         }

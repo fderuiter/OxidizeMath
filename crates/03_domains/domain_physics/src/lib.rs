@@ -18,6 +18,7 @@ pub mod __doctest_facade {
             StatMechError,
         };
         pub use ::pure_math::__doctest_facade::error::*;
+        pub use engine_diffeq::KalmanError;
         pub use engine_opt::error::FitError;
     }
     pub mod prelude {
@@ -27,6 +28,7 @@ pub mod __doctest_facade {
             StatMechError,
         };
         pub use ::pure_math::__doctest_facade::prelude::*;
+        pub use engine_diffeq::KalmanError;
         pub use engine_opt::fit::FitModel;
     }
     pub use crate::physics;

@@ -25,6 +25,7 @@ macro_rules! impl_error_from {
 impl_error_from!(ArenaError => Arena);
 impl_error_from!(DiagnosticError => Diagnostic);
 impl_error_from!(DiffeqError => Diffeq);
+impl_error_from!(KalmanError => Kalman);
 impl_error_from!(PdeError => Pde);
 impl_error_from!(EvalError => Eval);
 impl_error_from!(FitError => Fit);
@@ -118,7 +119,6 @@ impl_error_from!(@cfg "pure_math":
     GraphTheoryError => GraphTheory,
     WardropError => Wardrop,
     HyperbolicError => Hyperbolic,
-    KalmanError => Kalman,
     KellyError => Kelly,
     KnotError => Knot,
     LaurentError => Laurent,

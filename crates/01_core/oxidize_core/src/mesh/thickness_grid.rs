@@ -2,8 +2,8 @@
 // [cite:pure_math]
 
 use super::Surface;
-use math_commons::math_kernel::types::flatten_3d_index;
 use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
+use math_scalars::flatten_3d_index;
 
 #[verified_engine::verified]
 fn grid_axis_dim(vertex_count: usize) -> usize {
@@ -308,8 +308,7 @@ impl<'a> FlatSpatialGrid<'a> {
 ///
 /// # Example
 /// ```rust
-/// # use pure_math::__doctest_facade as math_explorer;
-/// use math_explorer::pure_math::differential_geometry::{SpatialGrid, Surface};
+/// use oxidize_core::mesh::{SpatialGrid, Surface};
 ///
 /// let surface = Surface::from_vertices(vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]]);
 /// let grid = SpatialGrid::from_surface(&surface);

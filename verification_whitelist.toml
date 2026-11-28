@@ -126,10 +126,6 @@ path = "pure_math:src/pure_math/analysis/evolution.rs"
 reason = "infrastructure"
 
 [[verify_suite.opt_outs]]
-path = "pure_math:src/pure_math/analysis/pde/fused_stepper_tests.rs"
-reason = "tests"
-
-[[verify_suite.opt_outs]]
 path = "pure_math:src/pure_math/analysis/pde/wave_fdtd_tests.rs"
 reason = "tests"
 

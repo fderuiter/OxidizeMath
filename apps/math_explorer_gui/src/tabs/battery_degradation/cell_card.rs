@@ -8,7 +8,7 @@
 use crate::web_io::{
     spawn_open_file_dialog, spawn_save_as_file_dialog, OpenDialogConfig, SaveAsDialogConfig,
 };
-use math_explorer::applied::battery_degradation::{
+use math_explorer::engineering::battery_degradation::{
     Capacity, ChemistryPreset, DepthOfDischarge, ElectrochemicalAgingModel,
 };
 use std::sync::mpsc::{channel, Receiver, TryRecvError};

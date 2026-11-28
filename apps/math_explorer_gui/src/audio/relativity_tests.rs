@@ -1,4 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
+#![cfg(feature = "physics")]
 
 //! Unit and 1,000-step zero-allocation verification tests for relativistic Doppler, synchrotron
 //! beaming, and horizon-guard sonification in `relativity_astrophysics`.

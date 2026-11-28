@@ -76,12 +76,10 @@ impl BoundaryCondition for NeumannBoundary {
     }
 }
 
-/// Conservative 2D donor-cell upwind advection, Courant/Péclet diagnostics, and combined CFL bounds.
-pub mod advection_2d;
-/// Submodule providing `fused_stepper` types, traits, and algorithms.
-pub mod fused_stepper;
 /// Submodule providing `greens` types, traits, and algorithms.
 pub mod greens;
+/// Local 2D grid spacing and Laplacian/biharmonic stencil helper.
+pub(crate) mod grid_2d;
 /// Submodule providing `heat` types, traits, and algorithms.
 pub mod heat;
 /// Submodule providing `laplace` types, traits, and algorithms.

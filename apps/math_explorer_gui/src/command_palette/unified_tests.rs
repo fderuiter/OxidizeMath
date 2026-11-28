@@ -15,6 +15,7 @@ fn test_zero_prefix_palette_unifies_tabs_tools_presets_and_commands() {
         feature = "applied",
         feature = "biology",
         feature = "climate",
+        feature = "engineering",
         feature = "epidemiology",
         feature = "physics",
         feature = "pure_math"
@@ -38,6 +39,7 @@ fn test_all_registered_tools_have_rich_descriptive_tags() {
         feature = "applied",
         feature = "biology",
         feature = "climate",
+        feature = "engineering",
         feature = "epidemiology",
         feature = "physics",
         feature = "pure_math"

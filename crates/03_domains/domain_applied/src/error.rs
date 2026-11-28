@@ -177,10 +177,10 @@ mod submodule_diagnostics;
 mod umbrella;
 
 pub use crate::applied::{
-    clinical_trials::types::ClinicalTrialError, isosurface::types::VoxelGridError,
-    portfolio::PortfolioError,
+    algorithms::kalman::KalmanError, clinical_trials::types::ClinicalTrialError,
+    isosurface::types::VoxelGridError, portfolio::PortfolioError,
 };
-pub use pure_math::error::{GameTheoryError, KalmanError};
+pub use pure_math::error::GameTheoryError;
 pub use umbrella::AppliedError;
 
 #[cfg(test)]

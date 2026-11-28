@@ -17,7 +17,7 @@ use crate::async_sim::atlas::{AtlasTeleportEvent, RegimeCartographer};
 use crate::framework::{CodeArtifact, ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use io::CalibratedLabSummary;
-use math_explorer::applied::battery_degradation::{
+use math_explorer::engineering::battery_degradation::{
     Capacity, ChemistryPreset, Cycles, DepthOfDischarge, ElectrochemicalAgingModel, MAX_C_RATE,
     MAX_EXPONENT_Z, MAX_TEMPERATURE_C, MIN_C_RATE, MIN_EXPONENT_Z, MIN_TEMPERATURE_C,
 };

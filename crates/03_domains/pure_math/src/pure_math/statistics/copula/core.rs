@@ -1,12 +1,15 @@
 //! Core types for copula operations.
 
+#[path = "psd_cholesky.rs"]
+mod psd_cholesky;
+
 use crate::error::CopulaError;
-use engine_linalg::{SolverWorkspace, cholesky_semidefinite, cholesky_semidefinite_workspace_len};
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
 use math_commons::registry::TOLERANCE_HIGH;
-use math_memory::{ArenaLayout, OwnedByteArena};
+use math_memory::{ArenaLayout, OwnedByteArena, SolverWorkspace};
 use nalgebra::DMatrix;
+use psd_cholesky::{factor_psd_cholesky_in_workspace, psd_cholesky_scratch_len};
 
 /// A probability value in `[0, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -134,7 +137,7 @@ impl CorrelationMatrix {
         let mut layout = ArenaLayout::new();
         let _ = layout.reserve::<f64>(
             nn.saturating_mul(2)
-                .saturating_add(cholesky_semidefinite_workspace_len(n)),
+                .saturating_add(psd_cholesky_scratch_len(n)),
         );
         layout.total_bytes().saturating_add(64)
     }
@@ -174,8 +177,7 @@ impl CorrelationMatrix {
             .alloc_slice::<f64>(n.saturating_mul(n))
             .map_err(|_| CopulaError::NotPositiveDefinite)?;
         let mut sub = cur.into_arena();
-        cholesky_semidefinite(sym_row, lower, n, TOLERANCE_HIGH, TOLERANCE_HIGH, &mut sub)
-            .map_err(|_| CopulaError::NotPositiveDefinite)?;
+        factor_psd_cholesky_in_workspace(sym_row, lower, n, TOLERANCE_HIGH, &mut sub)?;
         for r in 0..n {
             for c in 0..n {
                 cholesky_buf[(r, c)] =

@@ -2,7 +2,6 @@
 //!
 //! Implementations of regression analysis techniques.
 
-use crate::pure_math::algebra::linear_algebra::numerical::solve_normal_equation;
 use nalgebra::{DMatrix, DVector};
 
 /// Multivariate Linear Regression.
@@ -24,8 +23,38 @@ pub fn multivariate_linear_regression(
     features: &DMatrix<f64>,
     targets: &DVector<f64>,
 ) -> Option<DVector<f64>> {
-    // This is mathematically equivalent to solving the Normal Equation for B.
-    solve_normal_equation(features, targets).ok()
+    let m = features.nrows();
+    let n = features.ncols();
+    if m == 0
+        || n == 0
+        || m != targets.len()
+        || features.iter().any(|v| !v.is_finite())
+        || targets.iter().any(|v| !v.is_finite())
+    {
+        return None;
+    }
+    if m >= n {
+        let qr = features.clone().qr();
+        let r = qr.r();
+        let mut max_diag = 0.0_f64;
+        for i in 0..n {
+            max_diag = max_diag.max(r[(i, i)].abs());
+        }
+        let r_tol = max_diag * f64::EPSILON * (m.max(n) as f64);
+        if max_diag > 0.0 && (0..n).all(|i| r[(i, i)].abs() > r_tol) {
+            let qtb = qr.q().tr_mul(targets);
+            if let Some(sol) = r.solve_upper_triangular(&qtb) {
+                return Some(sol);
+            }
+        }
+    }
+    let svd = features.clone().svd(true, true);
+    let max_sv = svd.singular_values.iter().copied().fold(0.0_f64, f64::max);
+    if max_sv <= 0.0 {
+        return None;
+    }
+    let tol = max_sv * f64::EPSILON * (m.max(n) as f64);
+    svd.solve(targets, tol).ok()
 }
 
 #[cfg(test)]

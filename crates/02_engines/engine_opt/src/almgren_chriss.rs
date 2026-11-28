@@ -1,8 +1,11 @@
-//! Multi-period Almgren-Chriss optimal market execution over `engine_opt::mpc`.
+// [cite:engine_opt]
+//! Multi-period Almgren-Chriss optimal market execution over [`crate::mpc`].
 
-use engine_opt::ilqr::ControlModel;
-use engine_opt::mpc::{MpcConfig, MpcProblem, MpcStats, mpc_workspace_len, solve_mpc};
-use engine_opt::{OptError, ScalarWorkspace};
+use crate::error::OptError;
+use crate::ilqr::ControlModel;
+use crate::mpc::{MpcConfig, MpcProblem, MpcStats, mpc_workspace_len, solve_mpc};
+use math_scalars::ComplexField;
+use math_scalars::workspace::ScalarWorkspace;
 
 /// Parameters for multi-period mean-variance Almgren-Chriss optimal trade execution.
 ///
@@ -15,7 +18,7 @@ use engine_opt::{OptError, ScalarWorkspace};
 ///
 /// Reference: Almgren & Chriss (2001), *Journal of Risk* 3(2), 5–39, DOI: 10.21314/JOR.2001.041;
 /// Lucia et al. (`do-mpc`, 2017), DOI: 10.1016/j.conengprac.2017.02.002;
-/// [`docs/math_specs/pure_math.md`](../../../../../../../../docs/math_specs/pure_math.md).
+/// [`docs/math_specs/pure_math.md`](../../../../docs/math_specs/pure_math.md).
 ///
 /// # Stability
 /// Strictly positive temporary-impact curvature $\eta / \tau > 0$ guarantees SPD Riccati $Q_{uu}$
@@ -24,7 +27,8 @@ use engine_opt::{OptError, ScalarWorkspace};
 ///
 /// # Domain of Validity
 /// Requires $X_0 > 0$, $T > 0$, $\sigma \ge 0$, $\lambda \ge 0$, $\eta > 0$, and $u_{\max} \ge X_0 / N$.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct AlmgrenChrissConfig {
     /// Initial share or notional inventory $X_0 > 0$ to liquidate.
     pub initial_inventory: f64,
@@ -86,7 +90,7 @@ impl ControlModel for InventoryDepletionModel {
 /// $$
 ///
 /// Reference: Almgren & Chriss (2001), DOI: 10.21314/JOR.2001.041;
-/// [`docs/math_specs/pure_math.md`](../../../../../../../../docs/math_specs/pure_math.md).
+/// [`docs/math_specs/pure_math.md`](../../../../docs/math_specs/pure_math.md).
 ///
 /// # Stability
 /// Switches to exact linear TWAP $X_0(1 - k/N)$ when $\kappa T < 10^{-6}$ to avoid $\sinh(\kappa T)$ underflow.
@@ -106,7 +110,9 @@ pub fn almgren_chriss_analytical_trajectory_into(
     let tau = cfg.horizon_time / (periods as f64);
     let half_ratio = 0.5 * cfg.risk_aversion * cfg.volatility * cfg.volatility * tau * tau
         / cfg.temporary_impact;
-    let kappa = (1.0 + half_ratio).acosh() / tau;
+    let acosh_arg =
+        1.0 + half_ratio + ComplexField::sqrt((half_ratio * (2.0 + half_ratio)).max(0.0));
+    let kappa = ComplexField::ln(acosh_arg) / tau;
     let kt_total = kappa * cfg.horizon_time;
 
     if kt_total < 1.0e-6 {
@@ -114,17 +120,17 @@ pub fn almgren_chriss_analytical_trajectory_into(
             *slot = cfg.initial_inventory * (1.0 - (k as f64) / (periods as f64));
         }
     } else {
-        let denom = kt_total.sinh();
+        let denom = ComplexField::sinh(kt_total);
         for (k, slot) in inventory_out.iter_mut().enumerate() {
             let rem_t = cfg.horizon_time - (k as f64) * tau;
-            *slot = cfg.initial_inventory * (kappa * rem_t).sinh() / denom;
+            *slot = cfg.initial_inventory * ComplexField::sinh(kappa * rem_t) / denom;
         }
         inventory_out[periods] = 0.0;
     }
     Ok(kappa)
 }
 
-/// Solves constrained multi-period Almgren-Chriss trade execution via `engine_opt::mpc`.
+/// Solves constrained multi-period Almgren-Chriss trade execution via [`crate::mpc`].
 ///
 /// Computes optimal child-order sizes `trades_out` (`len == periods`) and remaining inventory
 /// `inventory_out` (`len == periods + 1`) over caller `SolverWorkspace` with zero heap allocations:
@@ -135,7 +141,7 @@ pub fn almgren_chriss_analytical_trajectory_into(
 ///
 /// Reference: Almgren & Chriss (2001), DOI: 10.21314/JOR.2001.041; Lucia et al. (`do-mpc`, 2017),
 /// DOI: 10.1016/j.conengprac.2017.02.002;
-/// [`docs/math_specs/pure_math.md`](../../../../../../../../docs/math_specs/pure_math.md).
+/// [`docs/math_specs/pure_math.md`](../../../../docs/math_specs/pure_math.md).
 ///
 /// # Stability
 /// Recovers the exact discrete hyperbolic schedule $\sinh(\kappa(T - t_k))/\sinh(\kappa T)$ when
@@ -237,7 +243,7 @@ fn validate_ac_cfg(cfg: &AlmgrenChrissConfig, periods: usize) -> Result<(), OptE
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
     use verified_engine::engine::VerifiedEngine;

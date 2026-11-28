@@ -1,14 +1,14 @@
 use super::{BatteryError, HardwareError, RadarError};
+use engine_diffeq::{DiffeqError, KalmanError};
 use engine_linalg::LinalgError;
-use engine_opt::error::{FitError, OptError};
+use engine_opt::error::{FitError, OptError, PdeError};
 use math_commons::error::{
     ArenaError, EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
     ShaderEmitError,
 };
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::error::{
-    AnalysisError, KalmanError, LinearAlgebraError, OptimizationError, PdeError, PureMathError,
-    TransformError,
+    AnalysisError, LinearAlgebraError, OptimizationError, PureMathError, TransformError,
 };
 use thiserror::Error;
 
@@ -37,19 +37,21 @@ pub enum EngineeringDomainError {
     /// Foundational `#![no_std]` optimization, control, DP, MFG, and Nash engine error.
     #[error("{0}")]
     Opt(#[from] OptError),
+    /// Foundational `#![no_std]` differential-equation solver error.
+    #[error("{0}")]
+    Diffeq(#[from] DiffeqError),
+    /// Foundational `#![no_std]` Kalman filter tracking error.
+    #[error("{0}")]
+    Kalman(#[from] KalmanError),
     /// Foundational `#![no_std]` linear algebra engine error.
     #[error("{0}")]
     Linalg(#[from] LinalgError),
+    /// Foundational `#![no_std]` partial-differential-equation solver error.
+    #[error("{0}")]
+    Pde(#[from] PdeError),
     /// Upstream `pure_math` umbrella error.
     #[error("{0}")]
     PureMath(#[from] PureMathError),
-}
-
-impl From<KalmanError> for EngineeringDomainError {
-    #[verified_engine::verified]
-    fn from(err: KalmanError) -> Self {
-        Self::PureMath(PureMathError::from(err))
-    }
 }
 
 impl From<AnalysisError> for EngineeringDomainError {
@@ -76,13 +78,6 @@ impl From<OptimizationError> for EngineeringDomainError {
 impl From<TransformError> for EngineeringDomainError {
     #[verified_engine::verified]
     fn from(err: TransformError) -> Self {
-        Self::PureMath(PureMathError::from(err))
-    }
-}
-
-impl From<PdeError> for EngineeringDomainError {
-    #[verified_engine::verified]
-    fn from(err: PdeError) -> Self {
         Self::PureMath(PureMathError::from(err))
     }
 }
@@ -147,7 +142,10 @@ impl EngineeringDomainError {
             Self::MathCommons(err) => err,
             Self::Fit(err) => err,
             Self::Opt(err) => err,
+            Self::Diffeq(err) => err,
+            Self::Kalman(err) => err,
             Self::Linalg(err) => err,
+            Self::Pde(err) => err,
             Self::PureMath(err) => err,
         }
     }

@@ -240,7 +240,7 @@ impl crate::async_sim::unified::UnifiedUiExtension for HodgkinHuxleyUiExtension 
         ui: &mut egui::Ui,
         _latest_snapshot: Option<&crate::async_sim::StateSnapshot>,
     ) -> Vec<crate::async_sim::SimCommand> {
-        #[cfg(feature = "pure_math")]
+        #[cfg(all(feature = "applied", feature = "pure_math"))]
         {
             use crate::accessibility::AccessibleHoverText;
             ui.separator();
@@ -257,7 +257,7 @@ impl crate::async_sim::unified::UnifiedUiExtension for HodgkinHuxleyUiExtension 
                 );
             }
         }
-        #[cfg(not(feature = "pure_math"))]
+        #[cfg(not(all(feature = "applied", feature = "pure_math")))]
         let _ = ui;
         Vec::new()
     }

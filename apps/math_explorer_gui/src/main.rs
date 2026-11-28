@@ -30,6 +30,7 @@ mod interactive_tools_tests;
 #[cfg(all(
     test,
     feature = "applied",
+    feature = "engineering",
     feature = "physics",
     feature = "epidemiology"
 ))]
@@ -55,7 +56,12 @@ pub mod starter_gallery;
 mod tabs;
 mod telemetry;
 pub mod url_state;
-#[cfg(any(feature = "ai", feature = "biology", feature = "physics"))]
+#[cfg(all(
+    feature = "ai",
+    feature = "applied",
+    feature = "biology",
+    feature = "physics"
+))]
 pub mod volumetric_scene;
 #[cfg(test)]
 mod walkthrough_tool_tests;

@@ -1,6 +1,6 @@
 //! Contract tests for the 5 large-state tools (`4 KiB < state <= 32 KiB`) compressing into
 //! `#ws=<base64url>` (`<= 8 KiB` fragment) and `> 32 KiB` overflow clearing + `.mws` guidance.
-
+#![cfg(feature = "applied")]
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::{

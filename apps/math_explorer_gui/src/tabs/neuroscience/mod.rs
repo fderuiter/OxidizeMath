@@ -3,6 +3,7 @@
 use crate::tabs::{ExplorerTab, TabDescriptor};
 use eframe::egui;
 
+#[cfg(feature = "applied")]
 pub mod cortical_morphometry;
 pub mod hodgkin_huxley;
 pub mod neural_network_viz;

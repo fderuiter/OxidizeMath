@@ -5,7 +5,7 @@ use super::{ising_spin_color, IsingModelTool, DEFAULT_ISING_SIZE, MAX_SPATIAL_HI
 use crate::async_sim::SimCommand;
 use eframe::egui;
 use egui_plot::{Legend, Line, LineStyle, Plot, PlotPoints};
-use math_explorer::applied::game_theory::evolutionary::ReplicatorDynamics;
+use math_explorer::pure_math::game_theory::evolutionary::ReplicatorDynamics;
 use nalgebra::{DMatrix, DVector};
 use std::sync::atomic::Ordering;
 

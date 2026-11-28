@@ -1,8 +1,9 @@
 use super::*;
 use diagnostics::{Diagnostic, DiagnosticBus, Severity};
+use engine_diffeq::KalmanError;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
-use pure_math::error::{GameTheoryError, KalmanError};
+use pure_math::error::GameTheoryError;
 use std::error::Error as StdError;
 
 fn sample_math_err() -> MathError {

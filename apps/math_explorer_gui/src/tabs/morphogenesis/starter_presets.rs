@@ -195,3 +195,42 @@ inventory::submit! {
         preset_generator: || PRESET_GRAY_SCOTT_SOLITONS,
     }
 }
+
+/// JSON preset envelope coupling Lattice Boltzmann cylinder vortex shedding with Gray-Scott mitosis.
+pub const PRESET_VORTEX_WAKE_MORPHOGENESIS: &str = r#"{
+  "metadata": {
+    "schema_version": "1.0",
+    "title": "Vortex Wake Morphogenesis",
+    "domain": "biology",
+    "timestamp": "2026-11-23T00:00:00Z"
+  },
+  "config": {
+    "a": 0.1,
+    "b": 0.9,
+    "d_u": 0.16,
+    "d_v": 0.08,
+    "dt": 0.9,
+    "width": 100,
+    "height": 100,
+    "kinetics_mode": "GrayScott",
+    "f": 0.0367,
+    "k": 0.0649,
+    "mask_rle": [[0,4622],[1,1],[0,97],[1,5],[0,94],[1,7],[0,93],[1,7],[0,92],[1,9],[0,92],[1,7],[0,93],[1,7],[0,94],[1,5],[0,97],[1,1],[0,4577]],
+    "advection_enabled": true,
+    "inlet_u": 0.12,
+    "viscosity": 0.015
+  }
+}"#;
+
+inventory::submit! {
+    crate::starter_gallery::StarterPresetMetadata {
+        id: "vortex_wake_morphogenesis",
+        title: "Vortex Wake Morphogenesis",
+        description: "∂v/∂t + ∇·(uv) = D_v∇²v + R(u,v): Kármán vortex shedding behind a sculpted cylinder braiding Gray-Scott spots.",
+        category: "Multiphysics",
+        icon: "🌀",
+        domain: "biology",
+        tool_name: Some("MorphogenesisTool"),
+        preset_generator: || PRESET_VORTEX_WAKE_MORPHOGENESIS,
+    }
+}

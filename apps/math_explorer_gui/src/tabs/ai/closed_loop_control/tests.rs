@@ -1,5 +1,5 @@
 //! Numerical Jacobian, EKF parity, GRPO/Q-learning convergence, zero-allocation, and UI contract tests.
-
+#![cfg(all(feature = "applied", feature = "epidemiology", feature = "physics"))]
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use super::ekf::{FastEkf, LorenzKalmanModel, PkKalmanModel, SeirKalmanModel};
@@ -14,8 +14,8 @@ use crate::async_sim::SimulationRunner;
 use crate::framework::{InteractiveTool, SimulationFramework};
 use crate::url_state::{MAX_DECODED_URL_STATE_BYTES, MAX_URL_FRAGMENT_BYTES, URL_JSON_BOUNDS};
 use eframe::egui::{self, vec2, Event, Key, Modifiers, PointerButton, Pos2, RawInput, Rect};
-use math_explorer::applied::algorithms::kalman::{KalmanFilter, KalmanSystem};
 use math_explorer::applied::pharmacokinetics::PharmacokineticModel;
+use math_explorer::engine_diffeq::kalman::{KalmanFilter, KalmanSystem};
 use math_explorer::nalgebra::{DMatrix, DVector};
 
 fn assert_finite_diff_jacobian<M: KalmanSystem<f64>>(model: &M, x0: &[f64], dt: f64) {

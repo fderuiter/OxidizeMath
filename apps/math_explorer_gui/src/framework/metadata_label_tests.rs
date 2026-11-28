@@ -1,4 +1,5 @@
 #![cfg_attr(any(), verified(opt_out = "tests"))]
+#![cfg(feature = "physics")]
 
 use super::{SimulationFramework, ToolMetadata};
 use crate::async_sim::unified::{UnifiedModel, UnifiedSimTool};

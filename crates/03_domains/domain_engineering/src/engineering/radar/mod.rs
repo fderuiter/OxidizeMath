@@ -13,7 +13,7 @@
 //! - **[`clutter`]**: CA-CFAR noise floor estimation and sliding-window `EllipticalFilter` static clutter rejection.
 //! - **[`phase`]**: Continuous $2\pi$ phase unwrapping (`PhaseUnwrapper`) for sub-millimeter motion tracking.
 //! - **[`surface`]**: SVD least-squares `BiQuadraticSurface` fitting and weighted average height (`weighted_average_height`).
-//! - **[`tracking`]**: 1D `ConstantVelocityModel` discrete Kalman `TrackingFilter` backed by `pure_math`.
+//! - **[`tracking`]**: 1D `ConstantVelocityModel` discrete Kalman `TrackingFilter` backed by `engine_diffeq`.
 
 /// CA-CFAR background noise estimation and sliding-window static clutter rejection.
 pub mod clutter;
@@ -46,8 +46,8 @@ pub use super_resolution::MusicEstimator;
 pub use surface::BiQuadraticSurface;
 pub use tracking::{ConstantVelocityModel, TrackingFilter};
 
-// Re-export the core KalmanModel trait from pure_math so callers can implement custom motion models.
-pub use pure_math::pure_math::analysis::kalman::KalmanModel;
+// Re-export the core KalmanModel trait from engine_diffeq so callers can implement custom motion models.
+pub use engine_diffeq::kalman::KalmanModel;
 
 // [cite:mmwave_radiotherapy_setup]
 

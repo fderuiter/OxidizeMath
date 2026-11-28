@@ -16,6 +16,8 @@ pub mod dual;
 pub mod error;
 /// `0`-ULP `libm`-backed IEEE-754 kernels (`f32`, `f64`) and primitive integer [`Ring`] impls.
 pub mod ieee;
+/// Stack-allocated `#![no_std]` [`LinalgError`], [`LinearAlgebraError`], and [`mat_idx`].
+pub mod linalg_error;
 /// Zero-copy 2D `(x, y)` coordinate series traits [`Sample2D`] and [`PointSeries`].
 pub mod series;
 /// Unified [`RefOps`], [`Scalar`], [`Ring`], [`Field`], [`ComplexField`], and [`RealField`] traits.
@@ -27,6 +29,7 @@ pub use complex::{Complex, Complex32, Complex64};
 pub use dual::Dual;
 pub use error::ScalarError;
 pub use ieee::{hypot_f32, hypot_f64, sqrt_f32, sqrt_f64};
+pub use linalg_error::{LinalgError, LinearAlgebraError, mat_idx};
 pub use series::{PointSeries, Sample2D};
 pub use traits::{ComplexField, Field, RealField, RefOps, Ring, Scalar};
 #[cfg(feature = "alloc")]

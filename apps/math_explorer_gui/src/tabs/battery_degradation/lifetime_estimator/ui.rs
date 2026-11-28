@@ -13,7 +13,7 @@ use crate::reflective_ui::{render_copyable_metric, AnimatedSlider};
 use crate::tabs::battery_degradation::cell_card::ChemistryChoice;
 use eframe::egui;
 use egui_plot::{HLine, Line, Plot, PlotPoints};
-use math_explorer::applied::battery_degradation::{
+use math_explorer::engineering::battery_degradation::{
     MAX_C_RATE, MAX_DUTY_SEGMENTS, MAX_EXPONENT_Z, MAX_TEMPERATURE_C, MIN_C_RATE, MIN_EXPONENT_Z,
     MIN_TEMPERATURE_C,
 };
@@ -234,7 +234,7 @@ impl LifetimeEstimatorTool {
     fn render_milestone_cards(
         &self,
         ui: &mut egui::Ui,
-        s: &math_explorer::applied::battery_degradation::DutyLifetimeSummary,
+        s: &math_explorer::engineering::battery_degradation::DutyLifetimeSummary,
     ) {
         ui.horizontal_wrapped(|ui| {
             render_copyable_metric(

@@ -11,9 +11,9 @@ use crate::framework::{
 };
 use eframe::egui;
 use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::applied::game_theory::evolutionary::MatrixPayoff;
 use math_explorer::physics::stat_mech::ising::SpinLattice;
 use math_explorer::physics::stat_mech::KB;
+use math_explorer::pure_math::game_theory::evolutionary::MatrixPayoff;
 use nalgebra::DMatrix;
 
 /// Applies an RLE-encoded pin mask (`0`=unpinned, `1`=pinned `+1`, `2`=pinned `-1`) to `lattice`.

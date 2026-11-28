@@ -7,7 +7,7 @@ use topology::{
     sequential_internal_energy,
 };
 
-pub use pure_math::pure_math::differential_geometry::Surface;
+pub use oxidize_core::mesh::Surface;
 
 /// Three-dimensional structural MRI intensity volume on an isotropic physical grid.
 #[derive(Clone, Debug, PartialEq)]

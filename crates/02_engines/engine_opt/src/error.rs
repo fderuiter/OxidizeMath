@@ -2,6 +2,7 @@
 //! Typed `#![no_std]` curve-fitting, optimal-control, dynamic-programming, MFG, and Nash error diagnostics.
 
 pub use engine_linalg::LinalgError;
+pub use engine_pde::PdeError;
 pub use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use math_scalars::ScalarError;
 use thiserror::Error;

@@ -136,6 +136,7 @@ fn root_metadata_preserved_across_engine_and_facade_wrappers() {
     feature = "applied",
     feature = "biology",
     feature = "climate",
+    feature = "engineering",
     feature = "epidemiology",
     feature = "physics"
 ))]
@@ -143,8 +144,9 @@ mod full_domain_wiring {
     use super::*;
     use oxidizemath::error::{
         AIError, AppliedError, BatteryError, BiologyError, BraidError, ClimateError,
-        EpidemiologyDomainError, GameTheoryError, HighEnergyError, KnotError, LinearAlgebraError,
-        PhysicsError, PureMathError, QuantumError, SandpileError, Su11HyperbolicError,
+        EngineeringDomainError, EpidemiologyDomainError, GameTheoryError, HighEnergyError,
+        KnotError, LinearAlgebraError, PhysicsError, PureMathError, QuantumError, SandpileError,
+        Su11HyperbolicError,
     };
 
     #[test]
@@ -160,6 +162,7 @@ mod full_domain_wiring {
         let applied = AppliedError::from(raw);
         let bio = BiologyError::from(raw);
         let climate = ClimateError::from(raw);
+        let eng = EngineeringDomainError::from(raw);
         let epi = EpidemiologyDomainError::from(raw);
         let phys = PhysicsError::from(raw);
         let facade = Error::from(raw);
@@ -175,6 +178,7 @@ mod full_domain_wiring {
             applied.source().is_some(),
             bio.source().is_some(),
             climate.source().is_some(),
+            eng.source().is_some(),
             epi.source().is_some(),
             phys.source().is_some(),
             facade.source().is_some(),
@@ -193,6 +197,7 @@ mod full_domain_wiring {
                 + count_visited_fields(&applied)
                 + count_visited_fields(&bio)
                 + count_visited_fields(&climate)
+                + count_visited_fields(&eng)
                 + count_visited_fields(&epi)
                 + count_visited_fields(&phys)
                 + count_visited_fields(&su11)
@@ -299,13 +304,13 @@ mod full_domain_wiring {
 
     #[test]
     fn applied_battery_and_mechanism_methods_convert_via_question_mark() {
-        use oxidizemath::applied::battery_degradation::{
-            ChemistryPreset, DepthOfDischarge, ElectrochemicalAgingModel,
-            calibrate_electrochemical_model,
-        };
         use oxidizemath::applied::game_theory::mechanism_design::{
             distribution::Uniform, simulate_optimal_revenue_stats,
             simulate_optimal_revenue_stats_with_rng,
+        };
+        use oxidizemath::engineering::battery_degradation::{
+            ChemistryPreset, DepthOfDischarge, ElectrochemicalAgingModel,
+            calibrate_electrochemical_model,
         };
         use oxidizemath::rng::OxidizeRng;
 
@@ -317,9 +322,10 @@ mod full_domain_wiring {
             Ok(calibrate_electrochemical_model(&model, &too_few, dod)?)
         })()
         .unwrap_err();
-        let b2 =
-            (|| -> Result<_, AppliedError> { Ok(model.calibrate_from_cycles(&too_few, dod)?) })()
-                .unwrap_err();
+        let b2 = (|| -> Result<_, EngineeringDomainError> {
+            Ok(model.calibrate_from_cycles(&too_few, dod)?)
+        })()
+        .unwrap_err();
         assert!(b1.source().is_some() && b2.source().is_some());
 
         let dist = Uniform::new(0.0, 1.0).unwrap();

@@ -64,7 +64,6 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         GameTheoryError::NonSquarePayoffMatrix { rows: 2, cols: 3 }.into(),
         GraphTheoryError::UnknownEndpoint { node: 9 }.into(),
         HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 }.into(),
-        KalmanError::MatrixInversionError.into(),
         Su11HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 }.into(),
         LinearAlgebraError::SingularMatrix.into(),
         OptimizationError::from(EvolutionError::ConversionError).into(),

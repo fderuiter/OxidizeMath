@@ -1,3 +1,4 @@
+#![cfg(feature = "physics")]
 use super::*;
 #[cfg(feature = "physics")]
 use crate::tabs::chaos::attractors::{AttractorMode, AttractorRunner, AttractorSharedParams};

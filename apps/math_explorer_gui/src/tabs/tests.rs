@@ -47,6 +47,7 @@ fn test_inventory_tabs_preserve_deterministic_slug_order() {
         feature = "ai",
         feature = "biology",
         feature = "climate",
+        feature = "engineering",
         feature = "epidemiology",
         feature = "physics"
     ))]

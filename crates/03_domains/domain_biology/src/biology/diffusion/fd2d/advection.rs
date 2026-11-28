@@ -4,8 +4,8 @@
 use super::{FiniteDifference2D, MaskedFiniteDifference2D, ReactionCellRole, SpatialDiffusion};
 use crate::biology::diffusion::fd2d::geometry::GeometryStrategy;
 use crate::biology::morphogenesis::reaction::ReactionKinetics;
+use engine_pde::advection_2d::upwind_advection_cell_2d;
 use math_commons::math_kernel::types::flatten_2d_index;
-use pure_math::pure_math::analysis::pde::advection_2d::upwind_advection_cell_2d;
 
 /// Extension of [`SpatialDiffusion`] supporting 2D conservative upwind advection
 /// driven by row-major horizontal (`ux`) and vertical (`uy`) velocity slices.

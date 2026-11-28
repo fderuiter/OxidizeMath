@@ -5,6 +5,7 @@ mod tests {
         feature = "applied",
         feature = "biology",
         feature = "climate",
+        feature = "engineering",
         feature = "epidemiology",
         feature = "physics",
         feature = "pure_math"
@@ -20,7 +21,7 @@ mod tests {
         });
     }
 
-    #[cfg(any(feature = "applied", feature = "pure_math"))]
+    #[cfg(any(feature = "applied", feature = "engineering", feature = "pure_math"))]
     fn check_math_and_applied_tools(ctx: &eframe::egui::Context) {
         #[cfg(feature = "pure_math")]
         {
@@ -41,12 +42,10 @@ mod tests {
         }
         #[cfg(feature = "applied")]
         {
-            use crate::tabs::{battery_degradation as bd, clinical_trials as ct, game_theory};
+            use crate::tabs::{clinical_trials as ct, game_theory};
             check_one::<game_theory::auction::MyersonAuctionTool>(ctx);
             check_one::<game_theory::glicko2::Glicko2TournamentTool>(ctx);
             check_one::<game_theory::markov::MarkovSequenceWorkbenchTool>(ctx);
-            check_one::<bd::lifetime_estimator::LifetimeEstimatorTool>(ctx);
-            check_one::<bd::capacity_fade::CapacityFadeTool>(ctx);
             check_one::<ct::pharmacokinetics::PharmacokineticsTool>(ctx);
             check_one::<ct::survival::SurvivalAnalysisTool>(ctx);
             check_one::<ct::sample_size::SampleSizeCalculatorTool>(ctx);
@@ -54,6 +53,12 @@ mod tests {
             check_one::<ct::win_ratio::WinRatioStressTesterTool>(ctx);
             check_one::<ct::composite_win_ratio::WinRatioTool>(ctx);
             check_one::<ct::win_ratio_workbench::WinRatioWorkbenchTool>(ctx);
+        }
+        #[cfg(feature = "engineering")]
+        {
+            use crate::tabs::battery_degradation as bd;
+            check_one::<bd::lifetime_estimator::LifetimeEstimatorTool>(ctx);
+            check_one::<bd::capacity_fade::CapacityFadeTool>(ctx);
         }
     }
 
@@ -72,10 +77,13 @@ mod tests {
             check_one::<crate::tabs::ai::attention_maps::AttentionMapsTool>(ctx);
             check_one::<crate::tabs::ai::tokenization::TokenizationTool>(ctx);
             check_one::<crate::tabs::ai::activation_functions::ActivationFunctionsTool>(ctx);
+            #[cfg(all(feature = "applied", feature = "biology", feature = "physics"))]
             check_one::<crate::tabs::ai::gaussian_splatting::GaussianSplattingTool>(ctx);
             check_one::<crate::tabs::ai::training_monitor::TrainingMonitorTool>(ctx);
+            #[cfg(all(feature = "applied", feature = "physics"))]
             check_one::<crate::tabs::ai::loss_landscape::LossLandscapeTool>(ctx);
             check_one::<crate::tabs::ai::grid_world::GridWorldTool>(ctx);
+            #[cfg(all(feature = "applied", feature = "epidemiology", feature = "physics"))]
             check_one::<crate::tabs::ai::closed_loop_control::ClosedLoopControlTool>(ctx);
         }
         #[cfg(feature = "physics")]
@@ -90,9 +98,11 @@ mod tests {
             check_one::<crate::tabs::fluid_dynamics::turbulence::TurbulenceTool>(ctx);
             check_one::<crate::tabs::medical::beam_profiling::BeamProfilingTool>(ctx);
             check_one::<crate::tabs::medical::dose::DoseCalculationTool>(ctx);
+            #[cfg(feature = "applied")]
             check_one::<crate::tabs::medical::pharmacokinetic_regimen::PharmacokineticRegimenTool>(
                 ctx,
             );
+            #[cfg(feature = "engineering")]
             check_one::<crate::tabs::medical::radar_gating::RadarGatingTool>(ctx);
             check_one::<crate::tabs::chaos::hamiltonian::HamiltonianChaosLab>(ctx);
         }
@@ -109,6 +119,7 @@ mod tests {
             check_one::<crate::tabs::morphogenesis::lenia::LeniaTool>(ctx);
             check_one::<crate::tabs::neuroscience::spike_analysis::SpikeAnalysisTool>(ctx);
             check_one::<crate::tabs::neuroscience::neural_network_viz::NeuralNetworkVizTool>(ctx);
+            #[cfg(feature = "applied")]
             check_one::<crate::tabs::neuroscience::cortical_morphometry::CorticalMorphometryTool>(
                 ctx,
             );
@@ -124,6 +135,7 @@ mod tests {
         feature = "applied",
         feature = "biology",
         feature = "climate",
+        feature = "engineering",
         feature = "epidemiology",
         feature = "physics",
         feature = "pure_math"
@@ -131,7 +143,7 @@ mod tests {
     #[test]
     fn test_additional_interactive_tools() {
         let ctx = eframe::egui::Context::default();
-        #[cfg(any(feature = "applied", feature = "pure_math"))]
+        #[cfg(any(feature = "applied", feature = "engineering", feature = "pure_math"))]
         check_math_and_applied_tools(&ctx);
         #[cfg(any(
             feature = "ai",
@@ -148,6 +160,7 @@ mod tests {
         feature = "applied",
         feature = "biology",
         feature = "climate",
+        feature = "engineering",
         feature = "epidemiology",
         feature = "physics",
         feature = "pure_math"
@@ -158,54 +171,23 @@ mod tests {
         for meta in inventory::iter::<crate::framework::ToolMetadata> {
             let tool = (meta.build)();
             let theory = tool.theory();
-            let desc = theory.theory_description();
-            let phonetic = theory.phonetic_description();
+            let id = meta.id;
+            for (field, val) in [
+                ("theory_description", theory.theory_description()),
+                ("phonetic_description", theory.phonetic_description()),
+            ] {
+                assert!(!val.trim().is_empty(), "Tool {id} has empty {field}");
+                assert!(
+                    !val.contains("Theoretical context not available"),
+                    "Tool {id} still has placeholder {field}: {val}"
+                );
+            }
             let citation = theory.theory_citation();
-
-            assert!(
-                !desc.trim().is_empty(),
-                "Tool {} has empty theory_description",
-                meta.id
-            );
-            assert!(
-                !desc.contains("Theoretical context not available"),
-                "Tool {} still has placeholder theory_description: {}",
-                meta.id,
-                desc
-            );
-
-            assert!(
-                !phonetic.trim().is_empty(),
-                "Tool {} has empty phonetic_description",
-                meta.id
-            );
-            assert!(
-                !phonetic.contains("Theoretical context not available"),
-                "Tool {} still has placeholder phonetic_description: {}",
-                meta.id,
-                phonetic
-            );
-
-            assert!(
-                !citation.trim().is_empty(),
-                "Tool {} has empty theory_citation",
-                meta.id
-            );
-            assert_ne!(
-                citation.trim(),
-                "Uncited",
-                "Tool {} has placeholder citation 'Uncited'",
-                meta.id
-            );
-
+            assert!(!citation.trim().is_empty(), "Tool {id} empty citation");
+            assert_ne!(citation.trim(), "Uncited", "Tool {id} citation 'Uncited'");
             count += 1;
         }
-
-        assert!(
-            count >= 40,
-            "Expected at least 40 registered tools, got {}",
-            count
-        );
+        assert!(count >= 40, "Expected >= 40 tools, got {count}");
     }
 
     #[test]
@@ -338,6 +320,7 @@ mod tests {
         feature = "pure_math",
         feature = "applied",
         feature = "climate",
+        feature = "engineering",
         feature = "physics"
     ))]
     fn test_hoisted_domain_tools_state_roundtrip_part_1() {

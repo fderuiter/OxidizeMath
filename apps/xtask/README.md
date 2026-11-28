@@ -14,6 +14,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | `check-benches` | Builds and runs all workspace benchmark targets in test mode (`cargo test --workspace --benches --all-features`). | Active |
 | `check-cargo-docs` | Verifies workspace documentation builds with `--all-features` and zero warnings. | Active |
 | `check-certificate` | Verifies `Verification_Certificate.json` 15-key schema, deterministic/pyramid/theorem-binding parity, `README.md` badge validity, and ratcheted `[verify_suite]` quality floors (`--strict-parity` and `--write` supported). | Active |
+| `check-dag` | Enforces the strict downward five-tier dependency DAG (`04_bindings -> 03_domains -> 02_engines -> 01_pure -> 00_foundation`), zero peer `domain_*` edges, and single-domain Cargo feature closures. | Active |
 | `check-docs` | Runs crate documentation audit across all workspace crates. | Active |
 | `check-duplicates` | Runs AST-level code clone detector across first-party crates. | Active |
 | `check-entropy` | Scans codebase for high entropy strings and unseeded RNG usage. | Active |

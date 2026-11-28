@@ -121,6 +121,7 @@ pub fn poll_cross_tab_tool_handoffs(app: &mut MathExplorerApp, ctx: &egui::Conte
                 let _ = app.tabs[tab_idx].select_tool_by_name("VietorisRipsTool");
             }
         }
+        #[cfg(all(feature = "applied", feature = "biology"))]
         if let Some(target) =
             crate::tabs::geometry_topology::riemannian_studio::handoff::take_open_riemannian_preset(
                 ctx,

@@ -1,4 +1,3 @@
-pub use engine_linalg::LinalgError;
 use thiserror::Error;
 
 /// Type alias `Result` used across this module.
@@ -387,15 +386,14 @@ mod sports;
 mod stochastic;
 mod submodule_diagnostics;
 mod umbrella;
-pub(crate) use helpers::{IntoMathResult, ensure_math};
+pub(crate) use helpers::ensure_math;
 
 pub use crate::pure_math::{
-    algebra::{BraidError, LaurentError, linear_algebra::numerical::LinearAlgebraError},
+    algebra::{BraidError, LaurentError},
     algorithmic_information::FractranError,
     analysis::{
-        evolution::EvolutionError, evolutionary::GameTheoryError, kalman::KalmanError,
-        optimization::OptimizationError, roots::AnalysisError, stochastic::StochasticError,
-        transforms::TransformError,
+        evolution::EvolutionError, evolutionary::GameTheoryError, optimization::OptimizationError,
+        roots::AnalysisError, stochastic::StochasticError, transforms::TransformError,
     },
     differential_geometry::hyperbolic::Su11HyperbolicError,
     elliptic_curves::EllipticCurveError,
@@ -409,9 +407,7 @@ pub use crate::pure_math::{
     },
     tensor::types::TensorError,
 };
-pub use engine_opt::error::{FitError, OptError};
-pub use engine_pde::PdeError;
-pub use math_scalars::ScalarError;
+pub use math_scalars::{LinalgError, LinearAlgebraError, ScalarError};
 pub use sports::{EloError, MatchModelError};
 pub use stochastic::{CopulaError, MarkovError, OuError, TdaError, ZipError};
 pub use umbrella::PureMathError;

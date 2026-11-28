@@ -4,6 +4,7 @@ mod api_drift;
 mod ast_helpers;
 mod ast_visitor;
 mod batch;
+mod dag_gate;
 mod doc_audit;
 mod entropy_guard;
 mod error_contracts;
@@ -255,6 +256,7 @@ fn main() {
         "batch-ast" | "check-ast-batch" => exit_if_failed(batch::run_batch_ast()),
         "batch-static" => exit_if_failed(batch::run_batch_static(&args[2..])),
         "batch-staged" | "lint-staged" => exit_if_failed(batch::run_batch_staged()),
+        "check-dag" => exit_if_failed(dag_gate::run_check_dag_cli()),
         "verify-suite" => verify_suite(&args[2..]),
         "check-certificate" => exit_if_failed(run_check_certificate_cli(&args[2..])),
         "regenerate-baseline" => api_drift::regenerate_baseline_with_args(&args[2..]),

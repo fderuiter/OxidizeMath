@@ -10,10 +10,16 @@ use crate::app::SemanticPalette;
 use eframe::egui;
 use math_commons::math_kernel::types::{flatten_2d_index, StepSize};
 use math_explorer::biology::diffusion::{CellMask2D, ReactionCellRole};
+#[cfg(feature = "physics")]
+pub use math_explorer::physics::fluid_dynamics::lattice_boltzmann::MAX_LATTICE_JET_SPEED;
+#[cfg(feature = "physics")]
 use math_explorer::physics::fluid_dynamics::lattice_boltzmann::{
     advance_wind_tunnel_step, project_velocity_row_major_into, sync_obstacles_row_major,
-    BgkCollision, LatticeBoltzmannD2Q9, MAX_LATTICE_JET_SPEED,
+    BgkCollision, LatticeBoltzmannD2Q9,
 };
+#[cfg(not(feature = "physics"))]
+/// Maximum interactive Lattice Boltzmann freestream inflow speed in lattice units.
+pub const MAX_LATTICE_JET_SPEED: f64 = 0.16;
 use math_explorer::pure_math::analysis::pde::advection_2d::{
     advection_courant_number, advection_diffusion_cfl_limit, grid_peclet_number,
 };
@@ -74,7 +80,10 @@ impl Default for MorphogenesisAdvectionState {
 
 /// Pre-allocated `D2Q9` Lattice Boltzmann wind tunnel and row-major velocity/obstacle buffers.
 pub struct MorphoWindTunnel {
+    #[cfg(feature = "physics")]
     pub(crate) solver: LatticeBoltzmannD2Q9<BgkCollision>,
+    #[cfg(not(feature = "physics"))]
+    pub(crate) dims: (usize, usize),
     pub(crate) ux_buf: Vec<f64>,
     pub(crate) uy_buf: Vec<f64>,
     pub(crate) obstacle_buf: Vec<bool>,
@@ -83,6 +92,7 @@ pub struct MorphoWindTunnel {
     pub(crate) twin_step_ready: bool,
 }
 
+#[cfg(feature = "physics")]
 fn detect_serpentine_baffles(mask: &CellMask2D) -> Option<(usize, usize)> {
     let w = mask.width();
     let h = mask.height();
@@ -117,10 +127,13 @@ impl MorphoWindTunnel {
     #[must_use]
     pub fn new(width: usize, height: usize, viscosity: f64) -> Self {
         let safe_v = viscosity.clamp(MIN_MORPHO_VISCOSITY, MAX_MORPHO_VISCOSITY);
-        let tau = (3.0 * safe_v + 0.5).max(0.515);
+        let _tau = (3.0 * safe_v + 0.5).max(0.515);
         let total = width * height;
         Self {
-            solver: LatticeBoltzmannD2Q9::new(width, height, tau),
+            #[cfg(feature = "physics")]
+            solver: LatticeBoltzmannD2Q9::new(width, height, _tau),
+            #[cfg(not(feature = "physics"))]
+            dims: (width, height),
             ux_buf: vec![0.0; total],
             uy_buf: vec![0.0; total],
             obstacle_buf: vec![false; total],
@@ -133,53 +146,71 @@ impl MorphoWindTunnel {
     /// Returns `true` when all Lattice Boltzmann density and velocity cells are finite.
     #[must_use]
     pub fn is_finite_state(&self) -> bool {
-        self.solver.state.density().iter().all(|&d| d.is_finite())
-            && self
-                .solver
-                .state
-                .velocity_x()
-                .iter()
-                .all(|&u| u.is_finite())
-            && self
-                .solver
-                .state
-                .velocity_y()
-                .iter()
-                .all(|&v| v.is_finite())
+        #[cfg(feature = "physics")]
+        {
+            self.solver.state.density().iter().all(|&d| d.is_finite())
+                && self
+                    .solver
+                    .state
+                    .velocity_x()
+                    .iter()
+                    .all(|&u| u.is_finite())
+                && self
+                    .solver
+                    .state
+                    .velocity_y()
+                    .iter()
+                    .all(|&v| v.is_finite())
+        }
+        #[cfg(not(feature = "physics"))]
+        {
+            self.dims.0 > 0
+                && self.dims.1 > 0
+                && self.ux_buf.iter().all(|&u| u.is_finite())
+                && self.uy_buf.iter().all(|&v| v.is_finite())
+        }
     }
 
     /// Synchronizes `ReactionCellRole::ZeroFluxWall` cells from `mask` into `D2Q9` bounce-back
     /// obstacles with zero heap allocations.
     pub fn sync_from_cell_mask(&mut self, mask: &CellMask2D) {
-        let w = self.solver.width();
-        let h = self.solver.height();
-        if mask.width() != w || mask.height() != h {
-            return;
-        }
-        let roles = mask.roles();
-        for y in 0..h {
-            for x in 0..w {
-                let idx = flatten_2d_index(x, y, w);
-                self.obstacle_buf[idx] = roles[idx] == ReactionCellRole::ZeroFluxWall as u8;
+        #[cfg(feature = "physics")]
+        {
+            let (w, h) = (self.solver.width(), self.solver.height());
+            if mask.width() != w || mask.height() != h {
+                return;
             }
-        }
-        if let Some((y_top, y_bot)) = detect_serpentine_baffles(mask) {
-            for y in y_top..h {
-                for x in 0..2.min(w) {
-                    self.obstacle_buf[flatten_2d_index(x, y, w)] = true;
+            let roles = mask.roles();
+            for y in 0..h {
+                for x in 0..w {
+                    let idx = flatten_2d_index(x, y, w);
+                    self.obstacle_buf[idx] = roles[idx] == ReactionCellRole::ZeroFluxWall as u8;
                 }
             }
-            for y in 0..=y_bot.min(h - 1) {
-                self.obstacle_buf[flatten_2d_index(w - 1, y, w)] = true;
+            if let Some((y_top, y_bot)) = detect_serpentine_baffles(mask) {
+                for y in y_top..h {
+                    for x in 0..2.min(w) {
+                        self.obstacle_buf[flatten_2d_index(x, y, w)] = true;
+                    }
+                }
+                for y in 0..=y_bot.min(h - 1) {
+                    self.obstacle_buf[flatten_2d_index(w - 1, y, w)] = true;
+                }
+            }
+            sync_obstacles_row_major(&mut self.solver, &self.obstacle_buf);
+            for i in 0..self.obstacle_buf.len() {
+                if self.obstacle_buf[i] {
+                    self.ux_buf[i] = 0.0;
+                    self.uy_buf[i] = 0.0;
+                }
             }
         }
-        sync_obstacles_row_major(&mut self.solver, &self.obstacle_buf);
-        for i in 0..self.obstacle_buf.len() {
-            if self.obstacle_buf[i] {
-                self.ux_buf[i] = 0.0;
-                self.uy_buf[i] = 0.0;
-            }
-        }
+        #[cfg(not(feature = "physics"))]
+        let _ = (
+            mask,
+            flatten_2d_index(0, 0, 1),
+            ReactionCellRole::ZeroFluxWall,
+        );
     }
 
     /// Resets `D2Q9` populations to rest equilibrium while preserving sculpted wall obstacles.
@@ -189,9 +220,13 @@ impl MorphoWindTunnel {
         } else {
             DEFAULT_MORPHO_VISCOSITY
         };
-        self.solver.collision_model.tau = (3.0 * safe_v + 0.5).max(0.515);
-        self.solver.clear_obstacles();
-        self.solver.init_equilibrium();
+        let _tau = (3.0 * safe_v + 0.5).max(0.515);
+        #[cfg(feature = "physics")]
+        {
+            self.solver.collision_model.tau = _tau;
+            self.solver.clear_obstacles();
+            self.solver.init_equilibrium();
+        }
         self.ux_buf.fill(0.0);
         self.uy_buf.fill(0.0);
         self.max_abs_ux = 0.0;
@@ -208,16 +243,21 @@ impl MorphoWindTunnel {
         } else {
             DEFAULT_MORPHO_VISCOSITY
         };
-        self.solver.collision_model.tau = (3.0 * safe_v + 0.5).max(0.515);
+        let _tau = (3.0 * safe_v + 0.5).max(0.515);
         let safe_u = if inlet_u.is_finite() {
             inlet_u.clamp(0.0, MAX_LATTICE_JET_SPEED)
         } else {
             0.0
         };
-        advance_wind_tunnel_step(&mut self.solver, safe_u);
-        project_velocity_row_major_into(&self.solver, &mut self.ux_buf, &mut self.uy_buf);
-        let mut peak_x = 0.0_f64;
-        let mut peak_y = 0.0_f64;
+        #[cfg(feature = "physics")]
+        {
+            self.solver.collision_model.tau = _tau;
+            advance_wind_tunnel_step(&mut self.solver, safe_u);
+            project_velocity_row_major_into(&self.solver, &mut self.ux_buf, &mut self.uy_buf);
+        }
+        #[cfg(not(feature = "physics"))]
+        self.ux_buf.fill(safe_u);
+        let (mut peak_x, mut peak_y) = (0.0_f64, 0.0_f64);
         for (&vx, &vy) in self.ux_buf.iter().zip(self.uy_buf.iter()) {
             peak_x = peak_x.max(vx.abs());
             peak_y = peak_y.max(vy.abs());
@@ -447,41 +487,5 @@ impl MorphogenesisTool {
     }
 }
 
-/// JSON preset envelope coupling Lattice Boltzmann cylinder vortex shedding with Gray-Scott mitosis.
-pub const PRESET_VORTEX_WAKE_MORPHOGENESIS: &str = r#"{
-  "metadata": {
-    "schema_version": "1.0",
-    "title": "Vortex Wake Morphogenesis",
-    "domain": "biology",
-    "timestamp": "2026-11-23T00:00:00Z"
-  },
-  "config": {
-    "a": 0.1,
-    "b": 0.9,
-    "d_u": 0.16,
-    "d_v": 0.08,
-    "dt": 0.9,
-    "width": 100,
-    "height": 100,
-    "kinetics_mode": "GrayScott",
-    "f": 0.0367,
-    "k": 0.0649,
-    "mask_rle": [[0,4622],[1,1],[0,97],[1,5],[0,94],[1,7],[0,93],[1,7],[0,92],[1,9],[0,92],[1,7],[0,93],[1,7],[0,94],[1,5],[0,97],[1,1],[0,4577]],
-    "advection_enabled": true,
-    "inlet_u": 0.12,
-    "viscosity": 0.015
-  }
-}"#;
-
-inventory::submit! {
-    crate::starter_gallery::StarterPresetMetadata {
-        id: "vortex_wake_morphogenesis",
-        title: "Vortex Wake Morphogenesis",
-        description: "∂v/∂t + ∇·(uv) = D_v∇²v + R(u,v): Kármán vortex shedding behind a sculpted cylinder braiding Gray-Scott spots.",
-        category: "Multiphysics",
-        icon: "🌀",
-        domain: "biology",
-        tool_name: Some("MorphogenesisTool"),
-        preset_generator: || PRESET_VORTEX_WAKE_MORPHOGENESIS,
-    }
-}
+#[cfg(all(test, feature = "physics"))]
+pub use super::starter_presets::PRESET_VORTEX_WAKE_MORPHOGENESIS;

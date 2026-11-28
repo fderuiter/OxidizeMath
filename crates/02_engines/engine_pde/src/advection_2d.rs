@@ -1,8 +1,10 @@
+// [cite:engine_pde]
 //! Conservative 2D donor-cell upwind advection, dimensionless Courant and Péclet
 //! diagnostics, and combined advective-diffusive explicit CFL stability bounds.
 
-use engine_pde::StencilOperators;
-use math_commons::math_kernel::types::{StepSize, flatten_2d_index};
+use crate::StencilOperators;
+use math_commons::error::MathError;
+use math_commons::math_kernel::types::{Dimension, StepSize, flatten_2d_index};
 
 /// Evaluates the conservative donor-cell flux across a single interface from the
 /// upstream (`c_minus`) to the downstream (`c_plus`) cell given normal velocity `u_face`.
@@ -50,8 +52,9 @@ fn safe_face_avg(va: f64, vb: f64) -> f64 {
 /// walls ($\mathbf{u} \cdot \mathbf{n} = 0$ on domain boundaries) and zero heap allocations.
 ///
 /// # Errors
-/// Returns [`math_commons::error::MathError::DimensionMismatch`] if `width * height` overflows
-/// or any slice (`src`, `ux`, `uy`, `out`) is shorter than `width * height`.
+/// Returns [`math_commons::error::MathError::DimensionMismatch`] if any slice (`src`, `ux`, `uy`,
+/// `out`) is shorter than `width * height`, or [`math_commons::error::MathError::NumericalError`]
+/// if `width * height` overflows `usize`.
 #[verified_engine::verified]
 pub fn try_upwind_advection_2d(
     dim: (usize, usize),
@@ -60,15 +63,11 @@ pub fn try_upwind_advection_2d(
     uy: &[f64],
     out: &mut [f64],
     ops: &StencilOperators,
-) -> Result<(), math_commons::error::MathError> {
-    use crate::error::IntoMathResult;
-    use math_commons::error::MathError;
-    use math_commons::math_kernel::types::Dimension;
-
+) -> Result<(), MathError> {
     let (width, height) = dim;
-    let total = width
-        .checked_mul(height)
-        .into_math_result("2D upwind advection grid dimensions overflow usize")?;
+    let total = width.checked_mul(height).ok_or(MathError::NumericalError {
+        reason: "2D upwind advection grid dimensions overflow usize",
+    })?;
     if total == 0 {
         return Ok(());
     }
@@ -221,9 +220,10 @@ pub fn grid_peclet_number(speed: f64, grid_spacing: f64, diffusivity: f64) -> f6
     (speed.abs() * grid_spacing) / diffusivity.max(1e-12)
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
+    use std::vec;
 
     #[test]
     fn test_anisotropic_upwind_and_zero_velocity() {
@@ -243,7 +243,6 @@ mod tests {
         let ux = vec![1.5; w * h];
         let uy = vec![-0.8; w * h];
         upwind_advection_2d((w, h), &src, &ux, &uy, &mut out, &ops);
-        // Interior cell (2, 2): -ux * dc/dx - uy * dc/dy = -1.5 * 2.0 - (-0.8) * 3.0 = -0.6
         let interior = out[flatten_2d_index(2, 2, w)];
         assert!((interior - (-0.6)).abs() < 1e-12, "got {interior}");
     }
@@ -306,5 +305,3 @@ mod tests {
         );
     }
 }
-
-// [cite:graph_parameters_rust]

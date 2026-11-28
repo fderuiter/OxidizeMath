@@ -407,6 +407,7 @@ fn assert_verified_tool_count(verified_tools: usize) {
         feature = "applied",
         feature = "biology",
         feature = "climate",
+        feature = "engineering",
         feature = "epidemiology",
         feature = "physics",
         feature = "pure_math",

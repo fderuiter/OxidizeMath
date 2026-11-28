@@ -7,7 +7,13 @@ use core::ops::{
 #[cfg(feature = "alloc")]
 pub use math_memory::OwnedByteArena;
 pub use math_memory::{ArenaCheckpoint, ArenaError, ByteArena, ByteCursor, SolverWorkspace};
-use rand_core::RngCore;
+
+#[path = "sampling.rs"]
+mod sampling;
+pub use sampling::{
+    fill_standard_normal, sample_open_unit, sample_standard_normal, sample_standard_normal_pair,
+    ssa_sample_event,
+};
 
 /// A physical step size, typically used for grid spacing.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Default)]
@@ -430,61 +436,6 @@ impl<T: Scalar> SolverWorkspace for ScalarWorkspace<'_, T> {
             }
         }
     }
-}
-
-/// Samples a deterministic uniform variate strictly in `(0, 1)` via [`math_rng::sample_open`],
-/// avoiding `0.0` and `1.0` so `ln(u)` in Box-Muller and Gillespie SSA sampling is strictly negative and finite.
-#[inline]
-#[verified_engine::verified]
-pub fn sample_open_unit<T: Scalar, R: RngCore + ?Sized>(rng: &mut R) -> T {
-    let u = if core::any::TypeId::of::<T>() == core::any::TypeId::of::<f32>() {
-        let u_f32: f32 = math_rng::sample_open(rng);
-        T::from_f64(f64::from(u_f32))
-    } else {
-        let u_f64: f64 = math_rng::sample_open(rng);
-        T::from_f64(u_f64)
-    };
-    debug_assert!(u > T::ZERO && u < T::ONE);
-    u
-}
-
-/// Samples an independent pair of standard normal $\mathcal{N}(0, 1)$ variates via the Box-Muller transform.
-#[inline]
-#[verified_engine::verified]
-pub fn sample_standard_normal_pair<T: Scalar, R: RngCore + ?Sized>(rng: &mut R) -> (T, T) {
-    let u1 = sample_open_unit::<T, R>(rng);
-    let u2 = sample_open_unit::<T, R>(rng);
-    let neg_two_ln = -(T::TWO * u1.ln());
-    let radius = neg_two_ln.max(T::ZERO).sqrt();
-    let theta = T::TAU * u2;
-    let z0 = radius * theta.cos();
-    let z1 = radius * theta.sin();
-    debug_assert!(z0.is_finite() && z1.is_finite());
-    (z0, z1)
-}
-
-/// Samples a single standard normal $\mathcal{N}(0, 1)$ variate from `rng` via Box-Muller.
-#[inline]
-#[verified_engine::verified]
-pub fn sample_standard_normal<T: Scalar, R: RngCore + ?Sized>(rng: &mut R) -> T {
-    let (z0, _) = sample_standard_normal_pair::<T, R>(rng);
-    debug_assert!(z0.is_finite());
-    z0
-}
-
-/// Fills `out` in-place with independent standard normal $\mathcal{N}(0, 1)$ samples drawn from `rng`.
-#[verified_engine::verified]
-pub fn fill_standard_normal<T: Scalar, R: RngCore + ?Sized>(out: &mut [T], rng: &mut R) {
-    let (pairs, rem) = out.as_chunks_mut::<2>();
-    for [p0, p1] in pairs {
-        let (z0, z1) = sample_standard_normal_pair::<T, R>(rng);
-        *p0 = z0;
-        *p1 = z1;
-    }
-    if let Some(last) = rem.first_mut() {
-        *last = sample_standard_normal::<T, R>(rng);
-    }
-    debug_assert!(out.iter().all(|v| v.is_finite()));
 }
 
 #[cfg(test)]

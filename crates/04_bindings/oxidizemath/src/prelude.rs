@@ -17,7 +17,7 @@ pub use scientific_metadata::theory::{MaturityTier, ParameterConstraint, TheoryD
 #[cfg(feature = "pure_math")]
 pub use nalgebra::{self, DMatrix, DVector};
 #[cfg(feature = "pure_math")]
-pub use oxidize_core::mesh::{ColoredMesh, Mesh, Point3D, VertexColor};
+pub use oxidize_core::mesh::{ColoredMesh, Mesh, Point3D, VertexColor, cortical_thickness_batch};
 #[cfg(feature = "pure_math")]
 pub use oxidize_core::rng::{
     BASE_SEED, HaltonView, NiederreiterView, OxidizeRng, RngScalar, SobolView,
@@ -25,9 +25,7 @@ pub use oxidize_core::rng::{
 #[cfg(feature = "pure_math")]
 pub use pure_math::math_types::{Float, Integer, Rational};
 #[cfg(feature = "pure_math")]
-pub use pure_math::pure_math::differential_geometry::{
-    CotangentLaplacian, cortical_thickness_batch,
-};
+pub use pure_math::pure_math::differential_geometry::CotangentLaplacian;
 
 #[cfg(feature = "biology")]
 pub use domain_biology::biology::diffusion::CotangentMeshDiffusion;

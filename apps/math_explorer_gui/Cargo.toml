@@ -59,13 +59,13 @@ depends = [
 [features]
 default = ["math_explorer", "ai", "applied", "biology", "climate", "engineering", "epidemiology", "physics", "pure_math"]
 pure_math = ["math_explorer/pure_math"]
-applied = ["math_explorer/applied", "pure_math", "engineering"]
-ai = ["math_explorer/ai", "math_explorer/biology", "math_explorer/epidemiology", "math_explorer/physics", "applied", "pure_math"]
-biology = ["math_explorer/biology", "math_explorer/ai", "math_explorer/physics", "applied", "pure_math"]
-climate = ["math_explorer/climate", "ai"]
+applied = ["math_explorer/applied", "pure_math"]
+ai = ["math_explorer/ai", "pure_math"]
+biology = ["math_explorer/biology", "pure_math"]
+climate = ["math_explorer/climate", "pure_math"]
 engineering = ["math_explorer/engineering", "pure_math"]
 epidemiology = ["math_explorer/epidemiology", "pure_math"]
-physics = ["math_explorer/physics", "math_explorer/ai", "math_explorer/biology", "applied", "engineering", "pure_math"]
+physics = ["math_explorer/physics", "pure_math"]
 
 [dependencies]
 federated_registry = { path = "../../crates/01_core/federated_registry" }

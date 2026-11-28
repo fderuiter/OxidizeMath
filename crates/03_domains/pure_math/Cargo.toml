@@ -15,10 +15,6 @@ math_contract = true
 default = []
 serde = [
     "dashu/serde",
-    "engine_diffeq/serde",
-    "engine_linalg/serde",
-    "engine_opt/serde",
-    "engine_pde/serde",
     "math_commons/serde",
     "math_diagnostics/serde",
     "math_rng/serde",
@@ -51,10 +47,6 @@ math_commons = { path = "../../02_engines/math_commons" }
 math_diagnostics = { path = "../../00_foundation/math_diagnostics" }
 math_rng = { path = "../../00_foundation/math_rng", features = ["alloc", "serde"] }
 math_scalars = { path = "../../00_foundation/math_scalars", features = ["std", "dashu"] }
-engine_diffeq = { path = "../../02_engines/engine_diffeq", features = ["std"] }
-engine_linalg = { path = "../../02_engines/engine_linalg" }
-engine_opt = { path = "../../02_engines/engine_opt" }
-engine_pde = { path = "../../02_engines/engine_pde", features = ["std"] }
 dashu = { workspace = true, features = ["num-traits_v02"] }
 
 [dev-dependencies]

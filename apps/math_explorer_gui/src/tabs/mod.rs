@@ -10,7 +10,7 @@ pub mod algorithmic_information;
 pub mod analysis;
 #[cfg(feature = "physics")]
 pub mod astrophysics;
-#[cfg(feature = "applied")]
+#[cfg(feature = "engineering")]
 pub mod battery_degradation;
 #[cfg(feature = "biology")]
 pub mod biochemical;

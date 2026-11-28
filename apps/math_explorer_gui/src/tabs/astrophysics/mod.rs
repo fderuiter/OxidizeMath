@@ -7,7 +7,7 @@ use math_explorer::physics::astrophysics::HaloProfile;
 pub mod black_hole_geodesic_tool;
 mod black_hole_geodesic_ui;
 pub mod challenge;
-mod galactic_orbits_relativity;
+pub(crate) mod galactic_orbits_relativity;
 mod galactic_orbits_shader;
 pub mod galactic_orbits_tool;
 mod galactic_orbits_ui;

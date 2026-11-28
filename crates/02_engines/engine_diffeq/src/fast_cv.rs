@@ -1,4 +1,5 @@
 //! Zero-allocation 2-state Constant-Velocity scalar Kalman filter (`FastCvKalman`).
+// [cite:engine_diffeq]
 
 /// Stack-resident 2-state Constant-Velocity Kalman filter for real-time respiratory and kinematic tracking.
 ///
@@ -7,8 +8,7 @@
 ///
 /// # Examples
 /// ```rust
-/// # use domain_applied::__doctest_facade as math_explorer;
-/// use math_explorer::applied::algorithms::kalman::FastCvKalman;
+/// use engine_diffeq::FastCvKalman;
 ///
 /// let mut kf = FastCvKalman::with_unit_covariance(0.0, 0.025, 3.0e-4, 2.0e-5);
 /// kf.predict();
@@ -90,7 +90,7 @@ impl FastCvKalman {
     #[verified_engine::verified]
     pub fn update(&mut self, z_m: f64) {
         let s = self.cov[0][0] + self.meas_var;
-        if !z_m.is_finite() || !s.is_finite() || s.abs() <= 1.0e-18 {
+        if !z_m.is_finite() || !s.is_finite() || (-1.0e-18..=1.0e-18).contains(&s) {
             return;
         }
         let y = z_m - self.state[0];
@@ -121,23 +121,19 @@ impl FastCvKalman {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use verified_engine::engine::VerifiedEngine;
 
     #[test]
-    fn fast_cv_kalman_tracks_linear_ramp_zero_alloc() {
-        let _guard = crate::VERIFIED_ENGINE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+    #[verified_engine::verified]
+    fn fast_cv_kalman_tracks_linear_ramp() {
         let mut kf = FastCvKalman::with_unit_covariance(0.0, 0.025, 3.0e-4, 2.0e-5);
-        let (pred, _) = VerifiedEngine::run_verified(|| {
-            for k in 1..=40 {
-                let z = 0.02 * f64::from(k) * 0.025;
-                kf.predict();
-                kf.update(z);
-            }
-            kf.predict_ahead(0.05)
-        });
-        assert!((kf.state[1] - 0.02).abs() < 2.0e-3);
+        for k in 1..=40 {
+            let z = 0.02 * f64::from(k) * 0.025;
+            kf.predict();
+            kf.update(z);
+        }
+        let pred = kf.predict_ahead(0.05);
+        let vel_err = kf.state[1] - 0.02;
+        assert!((-2.0e-3..=2.0e-3).contains(&vel_err));
         assert!(pred > kf.state[0]);
     }
 }

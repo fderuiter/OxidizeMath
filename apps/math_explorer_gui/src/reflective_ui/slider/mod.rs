@@ -88,7 +88,15 @@ impl<'a> AnimatedSlider<'a> {
     }
 
     /// Sets custom animation sweep speed in parameter units per second.
-    #[cfg(any(test, feature = "ai"))]
+    #[cfg(any(
+        test,
+        all(
+            feature = "ai",
+            feature = "applied",
+            feature = "biology",
+            feature = "physics"
+        )
+    ))]
     pub fn speed(mut self, speed: f64) -> Self {
         if speed.is_finite() && speed > 0.0 {
             self.speed = Some(speed);
@@ -97,7 +105,15 @@ impl<'a> AnimatedSlider<'a> {
     }
 
     /// Sets the default animation repeat mode (`Oscillate`, `Increasing`, `Decreasing`, or `Once`).
-    #[cfg(any(test, feature = "ai"))]
+    #[cfg(any(
+        test,
+        all(
+            feature = "ai",
+            feature = "applied",
+            feature = "biology",
+            feature = "physics"
+        )
+    ))]
     pub fn sweep_mode(mut self, mode: SweepMode) -> Self {
         self.default_sweep_mode = mode;
         self

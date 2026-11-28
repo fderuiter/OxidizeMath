@@ -1,6 +1,6 @@
 //! Ground-truth solver verification, keyboard accessibility, and `VerifiedAllocator` zero-heap-allocation
 //! tests across MRI Bloch pulses, pharmacokinetic superposition, Lattice Boltzmann fairings, and IMRT beams.
-
+#![cfg(all(feature = "applied", feature = "physics"))]
 #![cfg_attr(any(), verified(opt_out = "tests"))]
 
 use crate::async_sim::unified::UnifiedSimRunner;

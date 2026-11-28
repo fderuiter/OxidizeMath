@@ -4,19 +4,11 @@
 //! Error types, caller-owned [`LinalgWorkspace`] and [`SolverWorkspace`] buffers, row-major views, and stack array kernels.
 
 use crate::scalar::Scalar;
-use core::fmt;
 use core::marker::PhantomData;
 #[cfg(feature = "alloc")]
 pub use math_memory::OwnedByteArena;
 pub use math_memory::{ArenaCheckpoint, ArenaError, ByteArena, ByteCursor, SolverWorkspace};
-pub use math_scalars::ScalarError;
-
-/// Computes the flat row-major index for `(row, col)` in a matrix with `ncols` columns.
-/// `[cite:engine_linalg]`
-#[inline]
-pub const fn mat_idx(row: usize, col: usize, ncols: usize) -> usize {
-    row * ncols + col
-}
+pub use math_scalars::{LinalgError, LinearAlgebraError, ScalarError, mat_idx};
 
 /// Validates that every element in `slice` is finite (`!is_nan()` and `!is_infinite()`).
 /// `[cite:engine_linalg]`
@@ -28,127 +20,6 @@ pub fn check_all_finite<T: Scalar>(slice: &[T]) -> Result<(), LinalgError> {
         }
     }
     Ok(())
-}
-
-/// Typed `#![no_std]` error returned by [`crate`] factorizations and iterative solvers.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum LinalgError {
-    /// Matrix or vector dimensions do not conform to the requested operation.
-    DimensionMismatch,
-    /// Caller-supplied [`SolverWorkspace`] slice does not have enough capacity.
-    WorkspaceTooSmall {
-        /// Minimum scalar elements required by the routine.
-        required: usize,
-        /// Available scalar elements in the workspace.
-        available: usize,
-    },
-    /// Input contains `NaN`, `Infinity`, or an out-of-domain parameter (such as negative ridge $\lambda$).
-    InvalidInput,
-    /// Matrix is numerically singular or rank-deficient beyond the solver's requirements.
-    SingularMatrix,
-    /// Matrix is asymmetric or fails positive-definite / positive-semidefinite checks.
-    NotPositiveDefinite,
-    /// Iterative decomposition or Krylov solver exceeded its iteration budget without converging.
-    NonConvergence,
-}
-
-impl fmt::Display for LinalgError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::DimensionMismatch => f.write_str("matrix or vector dimensions do not match"),
-            Self::WorkspaceTooSmall {
-                required,
-                available,
-            } => write!(
-                f,
-                "solver workspace too small: required {required} scalars, available {available}"
-            ),
-            Self::InvalidInput => {
-                f.write_str("linear algebra input contains non-finite values or invalid parameters")
-            }
-            Self::SingularMatrix => f.write_str("matrix is numerically singular or rank-deficient"),
-            Self::NotPositiveDefinite => {
-                f.write_str("matrix is not symmetric positive-definite or positive-semidefinite")
-            }
-            Self::NonConvergence => {
-                f.write_str("iterative linear algebra algorithm failed to converge within budget")
-            }
-        }
-    }
-}
-
-impl core::error::Error for LinalgError {}
-
-impl math_diagnostics::Diagnostic for LinalgError {
-    fn severity(&self) -> math_diagnostics::Severity {
-        math_diagnostics::Severity::Error
-    }
-
-    fn visit_fields(&self, visitor: &mut dyn math_diagnostics::DiagnosticVisitor) {
-        visitor.record_str("error_type", "LinalgError");
-        visitor.record_display("description", self);
-        match self {
-            Self::DimensionMismatch => {
-                visitor.record_str("code", "LINALG-001");
-            }
-            Self::WorkspaceTooSmall {
-                required,
-                available,
-            } => {
-                visitor.record_str("code", "LINALG-002");
-                visitor.record_usize("required", *required);
-                visitor.record_usize("available", *available);
-            }
-            Self::InvalidInput => {
-                visitor.record_str("code", "LINALG-003");
-            }
-            Self::SingularMatrix => {
-                visitor.record_str("code", "LINALG-004");
-            }
-            Self::NotPositiveDefinite => {
-                visitor.record_str("code", "LINALG-005");
-            }
-            Self::NonConvergence => {
-                visitor.record_str("code", "LINALG-006");
-            }
-        }
-    }
-}
-
-impl From<ArenaError> for LinalgError {
-    fn from(err: ArenaError) -> Self {
-        match err {
-            ArenaError::InsufficientBytes {
-                required,
-                available,
-                ..
-            } => Self::WorkspaceTooSmall {
-                required,
-                available,
-            },
-            _ => Self::WorkspaceTooSmall {
-                required: usize::MAX,
-                available: 0,
-            },
-        }
-    }
-}
-
-impl From<ScalarError> for LinalgError {
-    #[inline]
-    fn from(err: ScalarError) -> Self {
-        match err {
-            ScalarError::WorkspaceTooSmall {
-                required,
-                available,
-            } => Self::WorkspaceTooSmall {
-                required,
-                available,
-            },
-            ScalarError::InvalidStepSize { .. } => Self::InvalidInput,
-        }
-    }
 }
 
 /// Carves `count` zeroed scalar `T` elements from `cur`, mapping byte exhaustion to scalar counts.

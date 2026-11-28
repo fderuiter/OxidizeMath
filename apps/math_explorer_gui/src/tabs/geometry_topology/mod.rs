@@ -8,8 +8,11 @@ pub mod custom_surface;
 pub mod export_utils;
 pub mod hyperbolic_geometry;
 pub mod knot_braid_studio;
+#[cfg(all(feature = "applied", feature = "biology"))]
 pub mod riemannian_studio;
+#[cfg(all(feature = "applied", feature = "biology"))]
 pub mod surface_brush;
+#[cfg(all(feature = "applied", feature = "biology"))]
 pub mod surface_brush_kernel;
 #[cfg(feature = "biology")]
 pub mod surface_morphogenesis;

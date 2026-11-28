@@ -5,6 +5,8 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+/// Multi-period Almgren-Chriss optimal market execution over projected `MPC`.
+pub mod almgren_chriss;
 /// Finite-horizon backward induction and infinite-horizon Howard policy iteration (`lu_solve`) solvers.
 pub mod dp;
 /// Typed `#![no_std]` curve-fitting, optimal-control, dynamic-programming, MFG, and Nash error diagnostics.
@@ -20,8 +22,12 @@ pub mod mpc;
 /// Lemke-Howson bimatrix complementary pivoting and polymatrix regret-matching Nash solvers.
 pub mod nash;
 
+pub use almgren_chriss::{
+    AlmgrenChrissConfig, almgren_chriss_analytical_trajectory_into, almgren_chriss_workspace_len,
+    solve_almgren_chriss_mpc_into,
+};
 pub use dp::{dp_finite_workspace_len, dp_infinite_workspace_len};
-pub use error::{FitError, LinalgError, OptError};
+pub use error::{FitError, LinalgError, OptError, PdeError};
 pub use ilqr::ilqr_workspace_len;
 pub use math_scalars::series::{PointSeries, Sample2D};
 pub use math_scalars::workspace::{ScalarWorkspace, SolverWorkspace};
