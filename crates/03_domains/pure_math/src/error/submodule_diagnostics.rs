@@ -5,8 +5,9 @@ use super::{
 use crate::pure_math::{
     algebra::{BraidError, LaurentError, linear_algebra::numerical::LinearAlgebraError},
     analysis::{
-        evolution::EvolutionError, optimization::OptimizationError, roots::AnalysisError,
-        stochastic::StochasticError, transforms::TransformError,
+        evolution::EvolutionError, evolutionary::GameTheoryError, kalman::KalmanError,
+        optimization::OptimizationError, roots::AnalysisError, stochastic::StochasticError,
+        transforms::TransformError,
     },
     elliptic_curves::EllipticCurveError,
     graph_theory::{GraphTheoryError, wardrop::WardropError},
@@ -400,5 +401,44 @@ impl Diagnostic for QueueingError {
     #[verified_engine::verified]
     fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
         visit_named_error(visitor, "QueueingError", self);
+    }
+}
+
+impl Diagnostic for GameTheoryError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        match self {
+            Self::Math(err) => err.severity(),
+            Self::MonteCarlo(err) => err.severity(),
+            _ => Severity::Error,
+        }
+    }
+
+    #[verified_engine::verified]
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        match self {
+            Self::Math(math_err) => math_err.visit_fields(visitor),
+            Self::MonteCarlo(mc_err) => mc_err.visit_fields(visitor),
+            _ => {}
+        }
+        visit_named_error(visitor, "GameTheoryError", self);
+    }
+}
+
+impl Diagnostic for KalmanError {
+    #[verified_engine::verified]
+    fn severity(&self) -> Severity {
+        match self {
+            Self::Math(err) => err.severity(),
+            _ => Severity::Error,
+        }
+    }
+
+    #[verified_engine::verified]
+    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
+        if let Self::Math(math_err) = self {
+            math_err.visit_fields(visitor);
+        }
+        visit_named_error(visitor, "KalmanError", self);
     }
 }

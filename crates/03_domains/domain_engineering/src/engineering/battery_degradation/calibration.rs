@@ -1,4 +1,4 @@
-//! Stack-allocated Levenberg-Marquardt calibration for [`crate::applied::battery_degradation::ElectrochemicalAgingModel`].
+//! Stack-allocated Levenberg-Marquardt calibration for [`crate::engineering::battery_degradation::ElectrochemicalAgingModel`].
 // [cite:battery_degradation]
 
 use super::model::{ElectrochemicalAgingModel, MAX_EXPONENT_Z, MIN_EXPONENT_Z};

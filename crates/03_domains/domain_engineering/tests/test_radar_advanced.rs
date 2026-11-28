@@ -1,5 +1,5 @@
 //! Integration tests for test radar gating advanced.
-use domain_physics::physics::medical::radar_gating::{
+use domain_engineering::engineering::radar::{
     clutter::EllipticalFilter, czt::SpatialCztConfig, mimo::Beamformer, phase::PhaseUnwrapper,
     super_resolution::MusicEstimator,
 };

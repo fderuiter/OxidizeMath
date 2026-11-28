@@ -1,4 +1,4 @@
-use crate::error::EngineeringError;
+use crate::error::HardwareError;
 
 /// The cutting speed ($V$) in meters per minute (m/min).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
@@ -8,11 +8,11 @@ impl CuttingSpeed {
     /// Creates a new `CuttingSpeed`.
     ///
     /// # Errors
-    /// Returns `EngineeringError` if `value` is negative or zero.
+    /// Returns `HardwareError` if `value` is negative or zero.
     #[verified_engine::verified]
-    pub fn new(value: f64) -> Result<Self, EngineeringError> {
+    pub fn new(value: f64) -> Result<Self, HardwareError> {
         if value <= 0.0 {
-            return Err(EngineeringError::InvalidParameter {
+            return Err(HardwareError::InvalidParameter {
                 name: "CuttingSpeed".to_string(),
                 value,
             });
@@ -35,11 +35,11 @@ impl MaterialConstant {
     /// Creates a new `MaterialConstant`.
     ///
     /// # Errors
-    /// Returns `EngineeringError` if `value` is negative.
+    /// Returns `HardwareError` if `value` is negative.
     #[verified_engine::verified]
-    pub fn new(value: f64) -> Result<Self, EngineeringError> {
+    pub fn new(value: f64) -> Result<Self, HardwareError> {
         if value < 0.0 {
-            return Err(EngineeringError::InvalidParameter {
+            return Err(HardwareError::InvalidParameter {
                 name: "MaterialConstant".to_string(),
                 value,
             });
@@ -62,11 +62,11 @@ impl ToolExponent {
     /// Creates a new `ToolExponent`.
     ///
     /// # Errors
-    /// Returns `EngineeringError` if `value` is zero, to prevent division by zero in the exponent.
+    /// Returns `HardwareError` if `value` is zero, to prevent division by zero in the exponent.
     #[verified_engine::verified]
-    pub fn new(value: f64) -> Result<Self, EngineeringError> {
+    pub fn new(value: f64) -> Result<Self, HardwareError> {
         if value == 0.0 {
-            return Err(EngineeringError::InvalidParameter {
+            return Err(HardwareError::InvalidParameter {
                 name: "ToolExponent".to_string(),
                 value,
             });
@@ -122,8 +122,8 @@ impl ToolLife {
 /// # Example
 ///
 /// ```
-/// # use domain_applied::__doctest_facade as math_explorer;
-/// use math_explorer::applied::engineering::{calculate_taylor_tool_life, CuttingSpeed, MaterialConstant, ToolExponent};
+/// # use domain_engineering::__doctest_facade as math_explorer;
+/// use math_explorer::engineering::{calculate_taylor_tool_life, CuttingSpeed, MaterialConstant, ToolExponent};
 ///
 /// // High Speed Steel (HSS) tool cutting steel
 /// let life = calculate_taylor_tool_life(

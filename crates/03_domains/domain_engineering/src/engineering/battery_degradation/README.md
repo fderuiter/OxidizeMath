@@ -1,7 +1,7 @@
 # Battery Degradation Modeling
 
 ![Status](https://img.shields.io/badge/status-stable-brightgreen)
-![Domain](https://img.shields.io/badge/domain-applied-blue)
+![Domain](https://img.shields.io/badge/domain-engineering-blue)
 
 A zero-allocation framework for Li-ion battery cycle-life projection, coupled electrochemical aging, stack-allocated Levenberg-Marquardt CSV calibration, and multi-segment duty warranty analysis.
 
@@ -15,7 +15,7 @@ This module is part of the `math_explorer` core library. To use it, include the 
 
 ```toml
 [dependencies]
-math_explorer = { path = "path/to/math_explorer", features = ["applied"] }
+math_explorer = { path = "path/to/math_explorer", features = ["engineering"] }
 ```
 
 ---
@@ -25,18 +25,18 @@ math_explorer = { path = "path/to/math_explorer", features = ["applied"] }
 You can see these models in action by running the standalone, fully executable example:
 
 ```bash
-cargo run --release --package oxidize-cli --features applied --example battery_degradation_demo
+cargo run --release --package oxidize-cli --features applied,engineering --example battery_degradation_demo
 ```
 
 *(See `apps/oxidize-cli/examples/battery_degradation_demo.rs` for implementation details)*
 
 ### Quick Start: Coupled Electrochemical Aging & Duty Profiles
 
-`ElectrochemicalAgingModel` couples Depth-of-Discharge stress $d^\beta$, stretched exponent $z \in [0.1, 2.0]$, Arrhenius thermal acceleration $\exp\left(\frac{E_a}{R}\left(\frac{1}{T_{\text{ref}}} - \frac{1}{T}\right)\right)$ normalized at $25\,^\circ\text{C}$, C-rate mechanical stress $I_c^{\gamma_c}$, and parabolic $\sqrt{t}$ SEI calendar fade across [`ChemistryPreset`](crate::applied::battery_degradation::ChemistryPreset) profiles (`Nmc811`, `Lfp`, `Nca`, `Lto`), while preserving [`PowerLawModel`](crate::applied::battery_degradation::PowerLawModel) for isothermal DoD baselines:
+`ElectrochemicalAgingModel` couples Depth-of-Discharge stress $d^\beta$, stretched exponent $z \in [0.1, 2.0]$, Arrhenius thermal acceleration $\exp\left(\frac{E_a}{R}\left(\frac{1}{T_{\text{ref}}} - \frac{1}{T}\right)\right)$ normalized at $25\,^\circ\text{C}$, C-rate mechanical stress $I_c^{\gamma_c}$, and parabolic $\sqrt{t}$ SEI calendar fade across [`ChemistryPreset`](crate::engineering::battery_degradation::ChemistryPreset) profiles (`Nmc811`, `Lfp`, `Nca`, `Lto`), while preserving [`PowerLawModel`](crate::engineering::battery_degradation::PowerLawModel) for isothermal DoD baselines:
 
 ```rust
-# use domain_applied::__doctest_facade as math_explorer;
-use math_explorer::applied::battery_degradation::{
+# use domain_engineering::__doctest_facade as math_explorer;
+use math_explorer::engineering::battery_degradation::{
     Capacity, ChemistryPreset, Cycles, DepthOfDischarge, DutySegment, ElectrochemicalAgingModel,
     PowerLawModel, estimate_duty_lifetime,
 };
@@ -69,10 +69,10 @@ fn main() {
 
 ## Config
 
-- [`model`](crate::applied::battery_degradation::model): `PowerLawModel`, `ChemistryPreset`, and `ElectrochemicalAgingModel`.
-- [`calibration`](crate::applied::battery_degradation::calibration): Stack-allocated Levenberg-Marquardt `(cycles, capacity)` fitter.
-- [`duty`](crate::applied::battery_degradation::duty): Multi-segment duty profile evaluation and `80%` / `70%` SOH warranty solvers.
-- [`types`](crate::applied::battery_degradation::types): Type-safe wrappers for `Capacity`, `Cycles`, and `DepthOfDischarge`.
+- [`model`](crate::engineering::battery_degradation::model): `PowerLawModel`, `ChemistryPreset`, and `ElectrochemicalAgingModel`.
+- [`calibration`](crate::engineering::battery_degradation::calibration): Stack-allocated Levenberg-Marquardt `(cycles, capacity)` fitter.
+- [`duty`](crate::engineering::battery_degradation::duty): Multi-segment duty profile evaluation and `80%` / `70%` SOH warranty solvers.
+- [`types`](crate::engineering::battery_degradation::types): Type-safe wrappers for `Capacity`, `Cycles`, and `DepthOfDischarge`.
 
 ---
 

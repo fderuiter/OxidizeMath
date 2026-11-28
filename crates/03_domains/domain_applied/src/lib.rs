@@ -12,9 +12,8 @@ pub mod __doctest_facade {
     /// Doctest error re-exports.
     pub mod error {
         pub use crate::error::{
-            AppliedError, BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError,
-            IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, PortfolioError,
-            VoxelGridError,
+            AppliedError, ClinicalTrialError, EngineeringError, IsosurfaceError, LoraError,
+            PharmacokineticsError, PortfolioError, VoxelGridError,
         };
         pub use ::pure_math::__doctest_facade::error::*;
         pub use engine_opt::error::FitError;
@@ -22,9 +21,8 @@ pub mod __doctest_facade {
     /// Doctest prelude re-exports.
     pub mod prelude {
         pub use crate::error::{
-            AppliedError, BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError,
-            IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, PortfolioError,
-            VoxelGridError,
+            AppliedError, ClinicalTrialError, EngineeringError, IsosurfaceError, LoraError,
+            PharmacokineticsError, PortfolioError, VoxelGridError,
         };
         pub use ::pure_math::__doctest_facade::prelude::*;
         pub use engine_opt::fit::FitModel;

@@ -4,6 +4,13 @@ mod host_sweeps {
         Observation, kaplan_meier, log_rank_test,
     };
     use domain_applied::applied::clinical_trials::types::SurvivalTime;
+    use domain_engineering::engineering::battery_degradation::{
+        Cycles, DepthOfDischarge, PowerLawModel,
+    };
+    use domain_engineering::engineering::radar::FmcwConfig;
+    use domain_engineering::engineering::{
+        CuttingSpeed, MaterialConstant, ToolExponent, calculate_taylor_tool_life,
+    };
     use domain_physics::physics::fluid_dynamics::lattice_boltzmann::{
         BgkCollision, CollisionModel, D2Q9, Lattice2D, LatticeBoltzmannD2Q9,
     };
@@ -153,12 +160,40 @@ mod host_sweeps {
         Ok(1)
     }
 
+    fn sweep_engineering() -> Result<usize, String> {
+        let mut eng_runner = seeded_runner(48);
+        eng_runner
+            .run(
+                &(0.25f64..3.5f64, 20.0f64..95.0f64, 25.0f64..90.0f64),
+                |(range_m, dod_pct, speed_v)| {
+                    let cfg = FmcwConfig::iwr6843_default();
+                    let fb = FmcwConfig::beat_frequency(cfg.bandwidth / cfg.chirp_time, range_m);
+                    prop_assert!((cfg.range_from_beat_frequency(fb) - range_m).abs() < 1e-11);
+
+                    let battery = PowerLawModel::standard();
+                    let dod = DepthOfDischarge::new_clamped(dod_pct);
+                    let c10 = f64::from(battery.capacity(Cycles::new_clamped(10.0), dod));
+                    let c200 = f64::from(battery.capacity(Cycles::new_clamped(200.0), dod));
+                    prop_assert!(c200 <= c10 + 1e-12 && c200 >= 0.0 && c10 <= 1.0);
+
+                    let c_mat = MaterialConstant::new(120.0).unwrap();
+                    let n_exp = ToolExponent::new(0.25).unwrap();
+                    let v = CuttingSpeed::new(speed_v).unwrap();
+                    let t = calculate_taylor_tool_life(v, c_mat, n_exp).value();
+                    prop_assert!((v.value() * t.powf(n_exp.value()) - c_mat.value()).abs() < 1e-9);
+                    Ok(())
+                },
+            )
+            .map_err(|e| format!("Engineering proptest failed: {e}"))?;
+        Ok(1)
+    }
+
     pub fn sweep_quantum_lbm_and_survival() -> Result<usize, String> {
-        Ok(sweep_quantum_and_lbm()? + sweep_survival()?)
+        Ok(sweep_quantum_and_lbm()? + sweep_survival()? + sweep_engineering()?)
     }
 }
 
-/// Executes all 5 seeded deterministic Tier 2 property suites on host targets, returning `5`.
+/// Executes all 6 seeded deterministic Tier 2 property suites on host targets, returning `6`.
 pub fn verify_property_sweeps() -> Result<usize, String> {
     #[cfg(not(target_arch = "wasm32"))]
     {

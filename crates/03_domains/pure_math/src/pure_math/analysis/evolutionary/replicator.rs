@@ -1,33 +1,36 @@
+// [cite:pure_math]
 use super::strategies::MatrixPayoff;
-use super::traits::FitnessStrategy;
-use crate::error::GameTheoryError;
+use super::traits::{FitnessStrategy, GameTheoryError};
+use crate::pure_math::analysis::ode::{OdeSystem, RungeKutta4, Solver};
 use nalgebra::{DMatrix, DVector};
-use pure_math::pure_math::analysis::ode::{OdeSystem, RungeKutta4, Solver};
 
-/// Represents an Evolutionary Game solved via **Replicator Dynamics**.
+/// Continuous-time evolutionary game ODE system governed by **Replicator Dynamics**.
 ///
-/// In evolutionary game theory, we study how the composition of a population changes over time
-/// based on the fitness of different strategies. The governing equation is the Replicator Equation:
+/// Evolves strategy frequencies $\mathbf{x}(t) \in \Delta^{n-1}$ according to excess fitness over the
+/// population mean $\bar{f}(\mathbf{x}) = \mathbf{x}^\top \mathbf{f}(\mathbf{x})$:
 ///
-/// $$ \dot{x}_i = x_i \left( f_i(x) - \bar{f}(x) \right) $$
+/// $$\dot{x}_i = x_i \left( f_i(\mathbf{x}) - \bar{f}(\mathbf{x}) \right), \quad \bar{f}(\mathbf{x}) = \sum_{j=1}^{n} x_j f_j(\mathbf{x})$$
 ///
-/// Where:
-/// - $x_i$ is the proportion of the population playing strategy $i$.
-/// - $f_i(x)$ is the fitness of strategy $i$ against population state $x$.
-/// - $\bar{f}(x) = \sum x_j f_j(x)$ is the average fitness of the population.
+/// Reference: Taylor & Jonker (1978), *Math. Biosci.* 40(1–2), 145–156, DOI: 10.1016/0025-5564(78)90077-9; see
+/// [`docs/math_specs/pure_math.md`](../../../../../../../docs/math_specs/pure_math.md).
 ///
-/// This struct uses the **Strategy Pattern** for fitness calculation, allowing
-/// for both standard Matrix Games (linear) and complex Non-Linear Games.
+/// # Stability
+/// The probability simplex $\Delta^{n-1} = \{\mathbf{x} \ge 0 : \sum_i x_i = 1\}$ and its faces are
+/// forward-invariant; explicit RK4 stepping re-normalizes $\sum_i x_i = 1$ when rounding drift exceeds
+/// `TOLERANCE_STANDARD` and caps total steps at `200_000`.
+///
+/// # Domain of Validity
+/// Non-negative population vector $\mathbf{x} \in \Delta^{n-1}$ summing to $1$ with finite fitness
+/// evaluations and positive finite `time_horizon` and `dt`.
 pub struct ReplicatorDynamics<S: FitnessStrategy = MatrixPayoff> {
-    /// The strategy used to compute fitness values.
     strategy: S,
 }
 
 impl ReplicatorDynamics<MatrixPayoff> {
-    /// Creates a new system with the given payoff matrix $A$.
+    /// Creates a [`ReplicatorDynamics`] system backed by a linear [`MatrixPayoff`] matrix $\mathbf{A}$.
     ///
-    /// This constructor is preserved for backward compatibility.
-    /// It instantiates the default `MatrixPayoff` strategy.
+    /// # Errors
+    /// Returns [`GameTheoryError::NonSquarePayoffMatrix`] if `payoff_matrix` is not square.
     #[verified_engine::verified]
     pub fn new(payoff_matrix: DMatrix<f64>) -> Result<Self, GameTheoryError> {
         Ok(Self {
@@ -35,9 +38,8 @@ impl ReplicatorDynamics<MatrixPayoff> {
         })
     }
 
-    /// Accessor for the underlying payoff matrix.
-    ///
-    /// Useful for inspecting the game structure.
+    /// Returns a reference to the underlying payoff matrix $\mathbf{A}$.
+    #[must_use]
     #[verified_engine::verified]
     pub fn payoff_matrix(&self) -> &DMatrix<f64> {
         self.strategy.payoff_matrix()
@@ -47,29 +49,22 @@ impl ReplicatorDynamics<MatrixPayoff> {
 const MAX_REPLICATOR_STEPS: usize = 200_000;
 
 impl<S: FitnessStrategy> ReplicatorDynamics<S> {
-    /// Creates a new system with a custom fitness strategy.
+    /// Creates a [`ReplicatorDynamics`] system with a custom [`FitnessStrategy`].
+    #[must_use]
     #[verified_engine::verified]
     pub fn new_with_fitness(strategy: S) -> Self {
         Self { strategy }
     }
 
-    /// Computes the time derivative $\dot{x}$ for the population state $x$.
-    ///
-    /// This is a helper method that delegates to the `OdeSystem` implementation.
+    /// Computes the instantaneous replicator time derivative $\dot{\mathbf{x}}$ at state `x`.
+    #[must_use]
     #[verified_engine::verified]
     pub fn derivative(&self, x: &DVector<f64>) -> DVector<f64> {
         <Self as OdeSystem<DVector<f64>>>::derivative(self, 0.0, x)
     }
 
-    /// Simulates the dynamics over time using the **Runge-Kutta 4** method by default.
-    ///
-    /// # Parameters
-    /// - `initial_population`: Vector of proportions summing to 1.0.
-    /// - `time_horizon`: Total time to simulate.
-    /// - `dt`: Time step size.
-    ///
-    /// # Returns
-    /// A time-series of population states: `Vec<(Time, State)>`.
+    /// Simulates replicator trajectories over `time_horizon` with step `dt` using 4th-order Runge-Kutta.
+    #[must_use]
     #[verified_engine::verified]
     pub fn simulate(
         &self,
@@ -77,21 +72,11 @@ impl<S: FitnessStrategy> ReplicatorDynamics<S> {
         time_horizon: f64,
         dt: f64,
     ) -> Vec<(f64, DVector<f64>)> {
-        // Create a solver initialized with the structure of the population vector
         let mut solver = RungeKutta4::new(&initial_population);
         self.simulate_with_strategy(initial_population, time_horizon, dt, &mut solver)
     }
 
-    /// Simulates the dynamics over time using a provided **Solver** strategy.
-    ///
-    /// This allows for different integration schemes (e.g., Euler vs Runge-Kutta)
-    /// to be used based on accuracy or performance requirements.
-    ///
-    /// # Parameters
-    /// - `initial_population`: Vector of proportions summing to 1.0.
-    /// - `time_horizon`: Total time to simulate.
-    /// - `dt`: Time step size.
-    /// - `solver`: The numerical integrator to use.
+    /// Simulates replicator trajectories over `time_horizon` with step `dt` using `solver`.
     #[verified_engine::verified]
     pub fn simulate_with_strategy<Solve>(
         &self,
@@ -123,11 +108,9 @@ impl<S: FitnessStrategy> ReplicatorDynamics<S> {
         trajectory.push((current_t, current_x.clone()));
 
         for _ in 0..steps {
-            // Bolt Optimization: Use step in-place to avoid the allocation inside solve()
             solver.step(self, current_t, &mut current_x, dt);
             current_t += dt;
 
-            // Normalize to prevent numerical drift from simplex
             let sum = current_x.sum();
             if sum.is_finite()
                 && sum > 0.0
@@ -153,16 +136,8 @@ impl<S: FitnessStrategy> OdeSystem<DVector<f64>> for ReplicatorDynamics<S> {
 
     #[verified_engine::verified]
     fn derivative_in_place(&self, _t: f64, x: &DVector<f64>, out: &mut DVector<f64>) {
-        // 1. Calculate Fitness Vector f(x)
-        // Store directly in 'out' to avoid allocation
         self.strategy.fitness(x, out);
-
-        // 2. Calculate Average Fitness \bar{f} = x . f(x)
-        // 'out' holds f(x), so we dot with x
         let average_fitness = x.dot(out);
-
-        // 3. Calculate Replicator Equation: dx_i/dt = x_i * (f_i - \bar{f})
-        // 'out' holds f_i, so we update it in-place.
         for (o, xi) in out.iter_mut().zip(x.iter()) {
             *o = *xi * (*o - average_fitness);
         }
@@ -176,18 +151,14 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_rock_paper_scissors() {
-        // Rock Paper Scissors matrix (Zero-Sum)
         let payoff =
             DMatrix::from_row_slice(3, 3, &[0.0, -1.0, 1.0, 1.0, 0.0, -1.0, -1.0, 1.0, 0.0]);
-
         let system = ReplicatorDynamics::new(payoff).unwrap();
 
-        // Equilibrium check
         let equilibrium = DVector::from_vec(vec![1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0]);
         let deriv = system.derivative(&equilibrium);
         assert!(deriv.norm() < math_commons::registry::TOLERANCE_STANDARD);
 
-        // Simulation check
         let init = DVector::from_vec(vec![0.4, 0.3, 0.3]);
         let trajectory = system.simulate(init, 10.0, 0.01);
         let last_state = &trajectory.last().unwrap().1;
@@ -197,30 +168,17 @@ mod tests {
     #[test]
     #[verified_engine::verified]
     fn test_non_linear_fitness() {
-        // Implement a custom non-linear strategy
-        // Example: Frequency-dependent selection where fitness depends on x squared.
         struct QuadraticFitness;
         impl FitnessStrategy for QuadraticFitness {
             #[verified_engine::verified]
             fn fitness(&self, x: &DVector<f64>, out: &mut DVector<f64>) {
-                // f_i = x_i
                 out.copy_from(x);
             }
         }
 
         let system = ReplicatorDynamics::new_with_fitness(QuadraticFitness);
-        let init = DVector::from_vec(vec![0.8, 0.2]); // x1 > x2 implies f1 > f2
-
-        // Replicator eq: dx1/dt = x1 * (x1 - (x1^2 + x2^2))
-        // Since x1 > x2, x1 should grow (if x1 > 0.5 in this case? No wait.)
-        // Avg fitness = x1^2 + x2^2.
-        // f1 - avg = x1 - (x1^2 + x2^2).
-
+        let init = DVector::from_vec(vec![0.8, 0.2]);
         let deriv = system.derivative(&init);
-        // x1=0.8, x2=0.2. Avg = 0.64 + 0.04 = 0.68.
-        // f1 = 0.8. f1 - avg = 0.12. dx1 = 0.8 * 0.12 = 0.096.
-        // f2 = 0.2. f2 - avg = 0.2 - 0.68 = -0.48. dx2 = 0.2 * -0.48 = -0.096.
-
         assert!((deriv[0] - 0.096).abs() < math_commons::registry::TOLERANCE_FAST);
         assert!((deriv[1] - -0.096).abs() < math_commons::registry::TOLERANCE_FAST);
     }
@@ -248,7 +206,6 @@ mod tests {
             assert_eq!(traj[0].1, init);
         }
 
-        // Extreme step ratio exceeding u32::MAX must cap at MAX_REPLICATOR_STEPS without overflow
         let capped = system.simulate(init, 20.0, 1e-12);
         assert_eq!(capped.len(), MAX_REPLICATOR_STEPS + 1);
         let last = &capped.last().unwrap().1;

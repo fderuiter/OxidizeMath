@@ -1,4 +1,5 @@
 //! CSR spatial uniform grids (`FlatSpatialGrid`, `SpatialGrid`) and `ThicknessWorkspace`.
+// [cite:pure_math]
 
 use super::Surface;
 use math_commons::math_kernel::types::flatten_3d_index;
@@ -307,8 +308,8 @@ impl<'a> FlatSpatialGrid<'a> {
 ///
 /// # Example
 /// ```rust
-/// # use domain_applied::__doctest_facade as math_explorer;
-/// use math_explorer::applied::freesurfer::{SpatialGrid, Surface};
+/// # use pure_math::__doctest_facade as math_explorer;
+/// use math_explorer::pure_math::differential_geometry::{SpatialGrid, Surface};
 ///
 /// let surface = Surface::from_vertices(vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]]);
 /// let grid = SpatialGrid::from_surface(&surface);

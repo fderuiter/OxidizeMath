@@ -17,17 +17,14 @@
 
 mod graph_replicator;
 mod graph_replicator_system;
-mod replicator;
-mod strategies;
-mod traits;
 
 pub use graph_replicator::{
     GraphReplicatorFitness, GraphUpdateRule, MIN_REGULARIZED_GRAPH_DEGREE,
     mean_active_degree_from_csr,
 };
 pub use graph_replicator_system::GraphReplicatorSystem;
-pub use replicator::ReplicatorDynamics;
-pub use strategies::MatrixPayoff;
-pub use traits::FitnessStrategy;
+pub use pure_math::pure_math::analysis::evolutionary::{
+    FitnessStrategy, MatrixPayoff, ReplicatorDynamics, replicator, strategies, traits,
+};
 
 // [cite:graph_parameters_rust]

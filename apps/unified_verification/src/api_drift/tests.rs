@@ -256,7 +256,8 @@ fn test_check_api_drift_runs_and_verifies_workspace_invariants() {
         );
     }
 
-    assert!(apis.contains_key("domain_applied:src/applied/game_theory/evolutionary/replicator.rs"));
+    assert!(apis.contains_key("pure_math:src/pure_math/analysis/evolutionary/replicator.rs"));
+    assert!(apis.contains_key("domain_engineering:src/engineering/radar/physics.rs"));
     assert!(apis.contains_key("pure_math:src/pure_math/statistics/markov/dtmc/types.rs"));
 }
 

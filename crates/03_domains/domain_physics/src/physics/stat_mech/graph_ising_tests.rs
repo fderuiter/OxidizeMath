@@ -1,6 +1,6 @@
 use super::*;
-use domain_applied::applied::game_theory::evolutionary::MatrixPayoff;
 use nalgebra::DMatrix;
+use pure_math::pure_math::analysis::evolutionary::MatrixPayoff;
 use verified_engine::engine::VerifiedEngine;
 
 #[verified_engine::verified]

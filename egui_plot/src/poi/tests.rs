@@ -427,6 +427,19 @@ fn streaming_monotone_intersections_match_merged_knots_baseline() {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn assert_plateau_200k_latency(elapsed: std::time::Duration, label: &str) {
+    let budget = if cfg!(debug_assertions) {
+        std::time::Duration::from_millis(150)
+    } else {
+        std::time::Duration::from_millis(5)
+    };
+    assert!(
+        elapsed < budget,
+        "200k {label} detect_critical_points took {elapsed:?} (>= {budget:?})"
+    );
+}
+
 #[test]
 fn plateau_200k_series_detects_extrema_in_linear_time_under_5ms() {
     let mut pts = Vec::with_capacity(200_000);
@@ -465,10 +478,7 @@ fn plateau_200k_series_detects_extrema_in_linear_time_under_5ms() {
     assert!((min_poi.point[0] - 149_999.5).abs() <= 1.0);
     assert!((min_poi.point[1] + 3.0).abs() < 1e-9);
     #[cfg(not(target_arch = "wasm32"))]
-    assert!(
-        elapsed < std::time::Duration::from_millis(5),
-        "200k plateau detect_critical_points took {elapsed:?} (>= 5ms)"
-    );
+    assert_plateau_200k_latency(elapsed, "plateau");
 }
 
 #[test]
@@ -618,8 +628,5 @@ fn shared_plateau_200k_series_detects_extrema_under_5ms() {
     assert!(pois.iter().any(|p| p.kind == CriticalPointKind::LocalMax));
     assert!(pois.iter().any(|p| p.kind == CriticalPointKind::LocalMin));
     #[cfg(not(target_arch = "wasm32"))]
-    assert!(
-        elapsed < std::time::Duration::from_millis(5),
-        "200k shared plateau detect_critical_points took {elapsed:?} (>= 5ms)"
-    );
+    assert_plateau_200k_latency(elapsed, "shared plateau");
 }

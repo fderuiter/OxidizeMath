@@ -1,4 +1,4 @@
-use crate::error::EngineeringError;
+use crate::error::HardwareError;
 
 /// A baud rate in symbols per second.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -44,11 +44,11 @@ impl TotalBits {
     /// Creates a new `TotalBits`.
     ///
     /// # Errors
-    /// Returns `EngineeringError` if `value` is 0, since a frame cannot have 0 bits.
+    /// Returns `HardwareError` if `value` is 0, since a frame cannot have 0 bits.
     #[verified_engine::verified]
-    pub fn new(value: u32) -> Result<Self, EngineeringError> {
+    pub fn new(value: u32) -> Result<Self, HardwareError> {
         if value == 0 {
-            return Err(EngineeringError::InvalidParameter {
+            return Err(HardwareError::InvalidParameter {
                 name: "TotalBits".to_string(),
                 value: 0.0,
             });
@@ -83,8 +83,8 @@ impl TotalBits {
 /// # Example
 ///
 /// ```
-/// # use domain_applied::__doctest_facade as math_explorer;
-/// use math_explorer::applied::engineering::{calculate_uart_throughput, BaudRate, DataBits, TotalBits};
+/// # use domain_engineering::__doctest_facade as math_explorer;
+/// use math_explorer::engineering::{calculate_uart_throughput, BaudRate, DataBits, TotalBits};
 ///
 /// // Standard 9600 8N1
 /// let throughput = calculate_uart_throughput(
