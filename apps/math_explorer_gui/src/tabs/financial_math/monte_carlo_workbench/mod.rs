@@ -402,7 +402,11 @@ impl InteractiveTool for MonteCarloWorkbenchTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::plot()
+        ExportCapabilities::plot().with_compute_shader()
+    }
+
+    fn export_compute_shader_wgsl(&self) -> Result<String, String> {
+        self.build_mc_compute_wgsl()
     }
 
     fn has_finite_parameters(&self) -> bool {

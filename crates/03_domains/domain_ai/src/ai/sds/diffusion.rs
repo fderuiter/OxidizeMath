@@ -1,5 +1,5 @@
 use engine_diffeq::{EulerMaruyamaSolver, SdeSystem, StochasticCalculus};
-use math_commons::math_kernel::types::{SolverWorkspace, fill_standard_normal};
+use math_commons::math_kernel::types::{ScalarWorkspace, fill_standard_normal};
 use nalgebra::DMatrix;
 use rand::Rng;
 
@@ -158,7 +158,7 @@ pub fn try_step_vp_sde_in_place<R: Rng + ?Sized>(
     let sde = VariancePreservingPixelSde { beta };
     let solver = EulerMaruyamaSolver::new(StochasticCalculus::Ito);
     let mut scratch = [0.0_f64; 4];
-    let mut ws = SolverWorkspace::new(&mut scratch);
+    let mut ws = ScalarWorkspace::new(&mut scratch);
     for px in latent.as_mut_slice() {
         let mut state = [*px];
         solver.try_step(&sde, 0.0, dt, &mut state, &mut ws, rng)?;

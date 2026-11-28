@@ -9,7 +9,7 @@ use engine_pde::{
     SplitStepSpdeStencilStepper, StencilOperators,
 };
 use math_commons::error::MathError;
-use math_commons::math_kernel::types::{Dimension, SolverWorkspace, StepSize, flatten_2d_index};
+use math_commons::math_kernel::types::{Dimension, ScalarWorkspace, StepSize, flatten_2d_index};
 use rand_core::RngCore;
 
 /// Fallibly evaluates the discrete 2D Ginzburg-Landau free-energy Lyapunov functional
@@ -263,7 +263,7 @@ impl AllenCahn2D {
         );
         let m = self.mobility;
         let kappa = self.kappa;
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ScalarWorkspace::new(&mut self.scratch);
         stepper.try_step_2d(
             &mut self.phi,
             self.width,
@@ -302,7 +302,7 @@ impl AllenCahn2D {
         );
         let m = self.mobility;
         let diffusivity = m * self.kappa;
-        let mut ws = SolverWorkspace::new(&mut self.scratch);
+        let mut ws = ScalarWorkspace::new(&mut self.scratch);
         stepper.try_step_reaction_diffusion_2d(
             &mut self.phi,
             self.width,

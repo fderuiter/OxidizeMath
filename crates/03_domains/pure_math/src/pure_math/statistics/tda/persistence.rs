@@ -402,6 +402,56 @@ fn map_rips_intervals_to_radii(
     Ok(barcode)
 }
 
+#[verified_engine::verified]
+pub(super) fn flush_essential_births(
+    comp_births: &[f64],
+    hole_births: &[f64],
+    final_r: f64,
+    out: &mut Vec<PersistenceInterval>,
+) -> Result<(), TdaError> {
+    for &birth in comp_births {
+        if birth < final_r {
+            out.push(PersistenceInterval::new(birth, final_r, 0)?);
+        }
+    }
+    for &birth in hole_births {
+        if birth < final_r {
+            out.push(PersistenceInterval::new(birth, final_r, 1)?);
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn update_births_and_deaths(
+    births: &mut [f64],
+    births_len: &mut usize,
+    prev_betti: usize,
+    curr_betti: usize,
+    radius: f64,
+    dim: usize,
+    out: &mut Vec<PersistenceInterval>,
+) -> Result<(), TdaError> {
+    if curr_betti > prev_betti {
+        for _ in 0..(curr_betti - prev_betti) {
+            if *births_len < births.len() {
+                births[*births_len] = radius;
+                *births_len += 1;
+            }
+        }
+    } else if curr_betti < prev_betti {
+        for _ in 0..(prev_betti - curr_betti) {
+            if *births_len > 0 {
+                *births_len -= 1;
+                let birth = births[*births_len];
+                if birth < radius {
+                    out.push(PersistenceInterval::new(birth, radius, dim)?);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 // [cite:clinical_trials_statistics]
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/00_foundation/math_diagnostics",
+    "crates/00_foundation/math_memory",
     "crates/00_foundation/math_rng",
     "crates/00_foundation/math_scalars",
     "crates/00_foundation/scientific_metadata",
@@ -22,6 +23,7 @@ members = [
     "crates/03_domains/domain_epidemiology",
     "crates/03_domains/domain_physics",
     "crates/04_bindings/oxidizemath",
+    "crates/04_bindings/oxidize_wasm",
     "crates/04_bindings/math_explorer",
     "crates/04_bindings/markdown_tests",
     "crates/04_bindings/scientific_verification",
@@ -50,10 +52,12 @@ broken_intra_doc_links = "warn"
 [workspace.dependencies]
 approx = "0.5.1"
 arboard = "3.4"
+bytemuck = { version = "1.25.2", default-features = false, features = ["min_const_generics"] }
 chrono = "0.4"
 console_error_panic_hook = "0.1.7"
 dashu = { version = "0.4.4", features = ["num-traits_v02"] }
-eframe = "0.33.3"
+eframe = { version = "0.33.3", default-features = false, features = ["accesskit", "glow", "web_screen_reader"] }
+epaint_default_fonts = "0.33.3"
 futures = "0.3"
 getrandom = { version = "0.2.17", features = ["js"] }
 inventory = "0.3.24"

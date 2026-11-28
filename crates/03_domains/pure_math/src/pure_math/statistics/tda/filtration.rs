@@ -2,11 +2,12 @@
 
 use super::boundary::{
     FilteredEdge, FilteredTriangle, Z2BoundaryWorkspace, build_cleared_partial_1_workspace,
-    build_partial_2_workspace, reduce_incremental_triangle,
+    build_partial_2_workspace,
 };
 use super::complex::validate_distance_matrix;
 use super::homology::UnionFind;
 use super::persistence::{RipsInterval, RipsPersistenceResult};
+use super::workspace_layout::reduce_incremental_triangle;
 use crate::error::TdaError;
 
 pub(super) struct FilteredSimplexSet {
@@ -184,64 +185,77 @@ fn scan_common_forward_neighbors(
 
 #[verified_engine::verified]
 pub(super) fn prepare_sorted_workspace_edges(
-    dist: &[Vec<f64>],
+    dist: &[f64],
+    stride: usize,
     n: usize,
-    out: &mut Vec<FilteredEdge>,
-) {
-    out.clear();
-    for (i, row) in dist.iter().enumerate().take(n) {
-        for (j, &d) in row.iter().enumerate().take(n).skip(i + 1) {
-            out.push(FilteredEdge {
-                diameter: d,
-                u: i as u16,
-                v: j as u16,
-            });
+    out: &mut [[u64; 2]],
+) -> usize {
+    let mut count = 0_usize;
+    for i in 0..n {
+        let row = &dist[i * stride..i * stride + n];
+        for (j, &d) in row.iter().enumerate().skip(i + 1) {
+            out[count] = [d.to_bits(), ((i as u64) << 32) | (j as u64)];
+            count += 1;
         }
     }
-    out.sort_unstable_by(FilteredEdge::cmp_filtration);
+    out[..count].sort_unstable_by(|a, b| {
+        f64::from_bits(a[0])
+            .total_cmp(&f64::from_bits(b[0]))
+            .then_with(|| a[1].cmp(&b[1]))
+    });
+    count
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(super) struct IncrementalReductionCtx<'a> {
+    pub(super) n_words: usize,
+    pub(super) adj_stride: usize,
+    pub(super) edge_words: usize,
+    pub(super) basis_stride: usize,
+    pub(super) lookup_stride: usize,
+    pub(super) curr_cycles: usize,
+    pub(super) adj_words: &'a [u64],
+    pub(super) edge_lookup: &'a [usize],
+    pub(super) triangles: &'a mut [[usize; 3]],
+    pub(super) triangles_len: &'a mut usize,
+    pub(super) col_scratch: &'a mut [u64],
+    pub(super) pivot_for_row: &'a mut [usize],
+    pub(super) basis_words: &'a mut [u64],
+    pub(super) basis_rank: &'a mut usize,
+}
+
 #[verified_engine::verified]
 pub(super) fn append_edge_triangles_and_reduce(
     u: usize,
     v: usize,
     e_uv: usize,
-    n_words: usize,
-    edge_words: usize,
-    curr_cycles: usize,
-    adj_words: &[Vec<u64>],
-    edge_lookup: &[Vec<usize>],
-    triangles: &mut Vec<[usize; 3]>,
-    col_scratch: &mut [u64],
-    pivot_for_row: &mut [usize],
-    basis_words: &mut [Vec<u64>],
-    basis_rank: &mut usize,
+    ctx: &mut IncrementalReductionCtx<'_>,
 ) {
-    let bits_u = &adj_words[u];
-    let bits_v = &adj_words[v];
-    for w_idx in 0..n_words {
+    let bits_u = &ctx.adj_words[u * ctx.adj_stride..u * ctx.adj_stride + ctx.n_words];
+    let bits_v = &ctx.adj_words[v * ctx.adj_stride..v * ctx.adj_stride + ctx.n_words];
+    for w_idx in 0..ctx.n_words {
         let mut common = bits_u[w_idx] & bits_v[w_idx];
         while common != 0 {
             let tz = common.trailing_zeros() as usize;
             common &= common - 1;
             let w = (w_idx << 6) | tz;
-            let tri = canonical_triple(u, v, w);
-            triangles.push(tri);
-            if *basis_rank < curr_cycles
-                && !has_earlier_common_apex(bits_u, bits_v, &adj_words[w], w_idx, tz)
+            ctx.triangles[*ctx.triangles_len] = canonical_triple(u, v, w);
+            *ctx.triangles_len += 1;
+            let bits_w = &ctx.adj_words[w * ctx.adj_stride..w * ctx.adj_stride + ctx.n_words];
+            if *ctx.basis_rank < ctx.curr_cycles
+                && !has_earlier_common_apex(bits_u, bits_v, bits_w, w_idx, tz)
             {
-                let e_uw = edge_lookup[u][w];
-                let e_vw = edge_lookup[v][w];
+                let e_uw = ctx.edge_lookup[u * ctx.lookup_stride + w];
+                let e_vw = ctx.edge_lookup[v * ctx.lookup_stride + w];
                 reduce_incremental_triangle(
                     e_uw,
                     e_vw,
                     e_uv,
-                    edge_words,
-                    col_scratch,
-                    pivot_for_row,
-                    basis_words,
-                    basis_rank,
+                    ctx.edge_words,
+                    ctx.basis_stride,
+                    ctx.col_scratch,
+                    ctx.pivot_for_row,
+                    ctx.basis_words,
+                    ctx.basis_rank,
                 );
             }
         }

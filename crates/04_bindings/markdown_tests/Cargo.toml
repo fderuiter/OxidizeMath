@@ -20,6 +20,7 @@ verified_engine = { path = "../../00_foundation/verified_engine" }
 verified_engine_macros = { path = "../../00_foundation/verified_engine_macros" }
 diagnostics = { path = "../../01_core/diagnostics" }
 math_diagnostics = { path = "../../00_foundation/math_diagnostics" }
+math_memory = { path = "../../00_foundation/math_memory", features = ["std", "serde"] }
 math_rng = { path = "../../00_foundation/math_rng", features = ["alloc", "serde"] }
 math_scalars = { path = "../../00_foundation/math_scalars" }
 engine_linalg = { path = "../../02_engines/engine_linalg" }
@@ -35,6 +36,7 @@ domain_applied = { path = "../../03_domains/domain_applied" }
 domain_climate = { path = "../../03_domains/domain_climate" }
 domain_epidemiology = { path = "../../03_domains/domain_epidemiology" }
 oxidizemath = { path = "../oxidizemath", features = ["pure_math", "applied", "ai", "biology", "climate", "epidemiology", "physics"] }
+oxidize_wasm = { path = "../oxidize_wasm" }
 math_explorer = { path = "../math_explorer", features = ["pure_math", "applied", "ai", "biology", "climate", "epidemiology", "physics"] }
 
 nalgebra = { workspace = true }

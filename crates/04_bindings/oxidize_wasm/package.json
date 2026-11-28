@@ -1,0 +1,41 @@
+{
+  "name": "@oxidizemath/wasm",
+  "version": "0.4.0",
+  "description": "Standalone zero-allocation WebAssembly and TypeScript numerical SDK for OxidizeMath (#![no_std] linear algebra, SDE/Langevin, continuum PDE/FFT, and symbolic AST/WGSL engines).",
+  "type": "module",
+  "main": "./oxidize_wasm.js",
+  "module": "./oxidize_wasm.js",
+  "types": "./oxidize_wasm.d.ts",
+  "exports": {
+    ".": {
+      "types": "./oxidize_wasm.d.ts",
+      "import": "./oxidize_wasm.js",
+      "default": "./oxidize_wasm.js"
+    }
+  },
+  "files": [
+    "oxidize_wasm_bg.wasm",
+    "oxidize_wasm_bg.wasm.d.ts",
+    "oxidize_wasm.js",
+    "oxidize_wasm.d.ts",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fderuiter/OxidizeMath.git",
+    "directory": "crates/04_bindings/oxidize_wasm"
+  },
+  "keywords": [
+    "webassembly",
+    "wasm",
+    "linear-algebra",
+    "sde",
+    "pde",
+    "fft",
+    "wgsl",
+    "webgpu",
+    "scientific-computing"
+  ]
+}

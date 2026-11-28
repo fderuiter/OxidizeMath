@@ -218,6 +218,7 @@ fn assert_parallel_dag_invariants(ci_yaml: &str) {
 
     for (job_name, block) in [
         ("pre-flight", preflight),
+        ("build-and-test", build_and_test),
         ("feature-matrix", feature_matrix),
     ] {
         assert!(
@@ -226,8 +227,11 @@ fn assert_parallel_dag_invariants(ci_yaml: &str) {
         );
     }
     assert!(!preflight.contains("\n    outputs:"));
-    assert!(build_and_test.contains("\n    needs: detect-changes\n"));
-    assert!(build_and_test.contains("fromJSON(needs.detect-changes.outputs.native_matrix)"));
+    assert!(!ci_yaml.contains("needs.detect-changes.outputs.native_matrix"));
+    assert!(!build_and_test.contains("needs.detect-changes"));
+    assert!(build_and_test.contains(
+        "fromJSON((github.event_name == 'pull_request' || github.event_name == 'merge_group')"
+    ));
     assert!(compile_papers.contains("\n    needs: detect-changes\n"));
     assert!(compile_papers.contains("needs.detect-changes.outputs.papers_changed == 'true'"));
     assert!(package.contains("\n    needs: detect-changes\n"));
@@ -314,41 +318,43 @@ pub(super) fn assert_workspace_members_parity(blocks: &[Vec<CaseArm>], root_toml
     );
 }
 
+const EXPECTED_SCOPED_CASES: &[(&str, bool, bool)] = &[
+    ("LICENSE", false, true),
+    ("apps/math_explorer_gui/src/main.rs", false, true),
+    ("apps/oxidize-cli/src/main.rs", false, true),
+    ("crates/04_bindings/oxidizemath/src/lib.rs", false, true),
+    ("crates/04_bindings/math_explorer/src/lib.rs", false, true),
+    ("egui_plot/src/lib.rs", false, true),
+    ("crates/01_core/oxidize_core/build.rs", false, true),
+    (
+        "crates/00_foundation/verified_engine_macros/src/embed_theory.rs",
+        false,
+        true,
+    ),
+    ("papers/cera_framework.tex", true, true),
+    ("apps/xtask/Cargo.toml", true, false),
+    ("apps/xtask/README.md", true, false),
+    ("apps/xtask/src/main.rs", true, false),
+    ("apps/xtask/src/papers/bundle.rs", true, false),
+    ("traceability.toml", true, false),
+    ("Verification_Certificate.json", true, false),
+    ("Cargo.toml", true, true),
+    ("Cargo.lock", true, true),
+    ("rust-toolchain.toml", true, true),
+    (".cargo/config.toml", true, true),
+    (".github/actions/cargo-cache/action.yml", true, true),
+    (".github/actions/ci-tool-cache/action.yml", false, true),
+    (".github/workflows/ci.yml", true, true),
+    ("docs/README.md", false, false),
+    ("docs/adr/0001-dynamic-workspace-discovery.md", false, false),
+    ("AGENTS.md", false, false),
+    ("CONTRIBUTING.md", false, false),
+    ("apps/unified_verification/src/main.rs", false, false),
+    ("crates/04_bindings/markdown_tests/build.rs", false, false),
+];
+
 pub(super) fn assert_scoped_triggers_and_skips(blocks: &[Vec<CaseArm>]) {
-    let expected_cases: &[(&str, bool, bool)] = &[
-        ("LICENSE", false, true),
-        ("apps/math_explorer_gui/src/main.rs", false, true),
-        ("apps/oxidize-cli/src/main.rs", false, true),
-        ("crates/04_bindings/oxidizemath/src/lib.rs", false, true),
-        ("crates/04_bindings/math_explorer/src/lib.rs", false, true),
-        ("egui_plot/src/lib.rs", false, true),
-        ("crates/01_core/oxidize_core/build.rs", false, true),
-        (
-            "crates/00_foundation/verified_engine_macros/src/embed_theory.rs",
-            false,
-            true,
-        ),
-        ("papers/cera_framework.tex", true, true),
-        ("apps/xtask/Cargo.toml", true, false),
-        ("apps/xtask/README.md", true, false),
-        ("apps/xtask/src/main.rs", true, false),
-        ("apps/xtask/src/papers/bundle.rs", true, false),
-        ("traceability.toml", true, false),
-        ("Verification_Certificate.json", true, false),
-        ("Cargo.toml", true, true),
-        ("Cargo.lock", true, true),
-        ("rust-toolchain.toml", true, true),
-        (".cargo/config.toml", true, true),
-        (".github/actions/cargo-cache/action.yml", true, true),
-        (".github/workflows/ci.yml", true, true),
-        ("docs/README.md", false, false),
-        ("docs/adr/0001-dynamic-workspace-discovery.md", false, false),
-        ("AGENTS.md", false, false),
-        ("CONTRIBUTING.md", false, false),
-        ("apps/unified_verification/src/main.rs", false, false),
-        ("crates/04_bindings/markdown_tests/build.rs", false, false),
-    ];
-    for &(path, exp_papers, exp_installer) in expected_cases {
+    for &(path, exp_papers, exp_installer) in EXPECTED_SCOPED_CASES {
         assert_eq!(
             evaluate_pull_request_diff(blocks, &[path]),
             (exp_papers, exp_installer),
@@ -395,6 +401,7 @@ fn test_glob_matcher_and_agents_md_parity() {
         "rust-toolchain.toml",
         ".cargo/*",
         ".github/actions/cargo-cache/*",
+        ".github/actions/ci-tool-cache/*",
         "direct merges to `main`",
     ] {
         assert!(
@@ -439,6 +446,7 @@ fn test_detect_changes_bash_case_equivalence() {
         "Verification_Certificate.json",
         ".cargo/config.toml",
         ".github/actions/cargo-cache/action.yml",
+        ".github/actions/ci-tool-cache/action.yml",
         "docs/README.md",
         "crates/03_domains/pure_math/src/lib.rs\napps/unified_verification/src/main.rs",
     ] {

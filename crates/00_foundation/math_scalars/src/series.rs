@@ -126,6 +126,62 @@ pub trait Sample2D<T: RealField = f64> {
     }
 }
 
+#[inline(always)]
+fn advance_f64_array_plateau(
+    slice: &[[f64; 2]],
+    start: usize,
+    end: usize,
+    flat_y: f64,
+    x_min: f64,
+    x_max: f64,
+) -> usize {
+    advance_sample2d_plateau!(slice, start, end, flat_y, x_min, x_max, |[px, py]| (
+        *px, *py
+    ))
+}
+
+#[inline(always)]
+fn advance_f32_array_plateau(
+    slice: &[[f32; 2]],
+    start: usize,
+    end: usize,
+    flat_y: f32,
+    x_min: f32,
+    x_max: f32,
+) -> usize {
+    advance_sample2d_plateau!(slice, start, end, flat_y, x_min, x_max, |[px, py]| (
+        *px, *py
+    ))
+}
+
+#[inline(always)]
+fn advance_f64_tuple_plateau(
+    slice: &[(f64, f64)],
+    start: usize,
+    end: usize,
+    flat_y: f64,
+    x_min: f64,
+    x_max: f64,
+) -> usize {
+    advance_sample2d_plateau!(slice, start, end, flat_y, x_min, x_max, |(px, py)| (
+        *px, *py
+    ))
+}
+
+#[inline(always)]
+fn advance_f32_tuple_plateau(
+    slice: &[(f32, f32)],
+    start: usize,
+    end: usize,
+    flat_y: f32,
+    x_min: f32,
+    x_max: f32,
+) -> usize {
+    advance_sample2d_plateau!(slice, start, end, flat_y, x_min, x_max, |(px, py)| (
+        *px, *py
+    ))
+}
+
 impl<T: RealField> Sample2D<T> for [T; 2] {
     #[inline(always)]
     fn sample_x(&self) -> T {
@@ -146,6 +202,34 @@ impl<T: RealField> Sample2D<T> for [T; 2] {
         x_min: T,
         x_max: T,
     ) -> usize {
+        if core::any::TypeId::of::<T>() == core::any::TypeId::of::<f64>() {
+            debug_assert_eq!(
+                core::mem::size_of::<Self>(),
+                core::mem::size_of::<[f64; 2]>()
+            );
+            // SAFETY: `TypeId` proves `T` is `f64`, so `[T; 2]` and `T` have identical layout to `[f64; 2]` and `f64`.
+            let s = unsafe {
+                core::slice::from_raw_parts(slice.as_ptr().cast::<[f64; 2]>(), slice.len())
+            };
+            let fy = unsafe { core::ptr::read((&raw const flat_y).cast::<f64>()) };
+            let xmin = unsafe { core::ptr::read((&raw const x_min).cast::<f64>()) };
+            let xmax = unsafe { core::ptr::read((&raw const x_max).cast::<f64>()) };
+            return advance_f64_array_plateau(s, start, end, fy, xmin, xmax);
+        }
+        if core::any::TypeId::of::<T>() == core::any::TypeId::of::<f32>() {
+            debug_assert_eq!(
+                core::mem::size_of::<Self>(),
+                core::mem::size_of::<[f32; 2]>()
+            );
+            // SAFETY: `TypeId` proves `T` is `f32`, so `[T; 2]` and `T` have identical layout to `[f32; 2]` and `f32`.
+            let s = unsafe {
+                core::slice::from_raw_parts(slice.as_ptr().cast::<[f32; 2]>(), slice.len())
+            };
+            let fy = unsafe { core::ptr::read((&raw const flat_y).cast::<f32>()) };
+            let xmin = unsafe { core::ptr::read((&raw const x_min).cast::<f32>()) };
+            let xmax = unsafe { core::ptr::read((&raw const x_max).cast::<f32>()) };
+            return advance_f32_array_plateau(s, start, end, fy, xmin, xmax);
+        }
         advance_sample2d_plateau!(slice, start, end, flat_y, x_min, x_max, |[px, py]| (
             *px, *py
         ))
@@ -172,6 +256,34 @@ impl<T: RealField> Sample2D<T> for (T, T) {
         x_min: T,
         x_max: T,
     ) -> usize {
+        if core::any::TypeId::of::<T>() == core::any::TypeId::of::<f64>() {
+            debug_assert_eq!(
+                core::mem::size_of::<Self>(),
+                core::mem::size_of::<(f64, f64)>()
+            );
+            // SAFETY: `TypeId` proves `T` is `f64`, so `(T, T)` is identical to `(f64, f64)`.
+            let s = unsafe {
+                core::slice::from_raw_parts(slice.as_ptr().cast::<(f64, f64)>(), slice.len())
+            };
+            let fy = unsafe { core::ptr::read((&raw const flat_y).cast::<f64>()) };
+            let xmin = unsafe { core::ptr::read((&raw const x_min).cast::<f64>()) };
+            let xmax = unsafe { core::ptr::read((&raw const x_max).cast::<f64>()) };
+            return advance_f64_tuple_plateau(s, start, end, fy, xmin, xmax);
+        }
+        if core::any::TypeId::of::<T>() == core::any::TypeId::of::<f32>() {
+            debug_assert_eq!(
+                core::mem::size_of::<Self>(),
+                core::mem::size_of::<(f32, f32)>()
+            );
+            // SAFETY: `TypeId` proves `T` is `f32`, so `(T, T)` is identical to `(f32, f32)`.
+            let s = unsafe {
+                core::slice::from_raw_parts(slice.as_ptr().cast::<(f32, f32)>(), slice.len())
+            };
+            let fy = unsafe { core::ptr::read((&raw const flat_y).cast::<f32>()) };
+            let xmin = unsafe { core::ptr::read((&raw const x_min).cast::<f32>()) };
+            let xmax = unsafe { core::ptr::read((&raw const x_max).cast::<f32>()) };
+            return advance_f32_tuple_plateau(s, start, end, fy, xmin, xmax);
+        }
         advance_sample2d_plateau!(slice, start, end, flat_y, x_min, x_max, |(px, py)| (
             *px, *py
         ))

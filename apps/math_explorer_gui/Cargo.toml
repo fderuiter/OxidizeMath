@@ -89,6 +89,7 @@ chrono = { workspace = true }
 flate2 = { version = "1.1.9", default-features = false, features = ["rust_backend"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+eframe = { workspace = true, default-features = true }
 futures = { workspace = true }
 oxidize_core = { path = "../../crates/01_core/oxidize_core", features = ["ast-analysis"] }
 rfd = { workspace = true }
@@ -110,6 +111,8 @@ web-sys = { workspace = true, features = [
     "BaseAudioContext",
     "BiquadFilterNode",
     "BiquadFilterType",
+    "Blob",
+    "BlobPropertyBag",
     "CssStyleDeclaration",
     "Document",
     "DynamicsCompressorNode",
@@ -123,6 +126,8 @@ web-sys = { workspace = true, features = [
     "HtmlElement",
     "Location",
     "MediaQueryList",
+    "MessageEvent",
+    "Navigator",
     "Node",
     "NodeList",
     "OscillatorNode",
@@ -132,7 +137,11 @@ web-sys = { workspace = true, features = [
     "Response",
     "StereoPannerNode",
     "Storage",
+    "Url",
     "Window",
+    "Worker",
+    "WorkerOptions",
+    "WorkerType",
 ] }
 
 [target.wasm32-unknown-unknown.dependencies]
@@ -143,9 +152,11 @@ png = { workspace = true }
 rustfft = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+eframe = { workspace = true, features = ["default_fonts"] }
 wasm-bindgen-test = { workspace = true }
 
 [build-dependencies]
+epaint_default_fonts = { workspace = true }
 futures = { workspace = true }
 oxidize_core = { path = "../../crates/01_core/oxidize_core", features = ["ast-analysis"] }
 serde_json = { workspace = true }

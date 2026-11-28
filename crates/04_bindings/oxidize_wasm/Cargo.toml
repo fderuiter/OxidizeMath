@@ -1,0 +1,37 @@
+[package]
+name = "oxidize_wasm"
+version.workspace = true
+edition = "2024"
+description = "Standalone zero-allocation WebAssembly and TypeScript numerical SDK for OxidizeMath engines"
+license = "AGPL-3.0-or-later"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.oxidize]
+tier = "04_bindings"
+release_role = "release"
+facade_role = "none"
+traceability = true
+
+[dependencies]
+engine_diffeq = { path = "../../02_engines/engine_diffeq", default-features = false, features = ["std"] }
+engine_linalg = { path = "../../02_engines/engine_linalg", default-features = false, features = ["alloc"] }
+engine_pde = { path = "../../02_engines/engine_pde", default-features = false, features = ["std"] }
+math_commons = { path = "../../02_engines/math_commons", default-features = false, features = ["std"] }
+math_diagnostics = { path = "../../00_foundation/math_diagnostics", default-features = false, features = ["std"] }
+math_scalars = { path = "../../00_foundation/math_scalars", default-features = false, features = ["alloc"] }
+thiserror = { workspace = true }
+wasm-bindgen = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = { workspace = true }
+
+[dev-dependencies]
+approx = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = { workspace = true }
+
+[lints]
+workspace = true

@@ -34,30 +34,11 @@ jobs:
       installer_changed: ${{ steps.detect-changes.outputs.installer_changed }}
       is_prerelease: ${{ steps.release-meta.outputs.is_prerelease }}
       wix_version: ${{ steps.release-meta.outputs.wix_version }}
-      native_matrix: ${{ steps.native-matrix.outputs.native_matrix }}
     steps:
       - name: Checkout code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
-
-      - name: Resolve Native Build Matrix
-        id: native-matrix
-        shell: bash
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-          # Linux + WASM gate every event. macOS/Windows desktop legs run on main pushes,
-          # nightly schedules, manual dispatches and release tags, but not on pull requests.
-          core='{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","name":"Linux Native","artifact_name":"linux_artifact","desktop":false},{"os":"ubuntu-latest","target":"wasm32-unknown-unknown","name":"Web/WASM","artifact_name":"wasm_app","desktop":false}'
-          desktop='{"os":"windows-latest","target":"x86_64-pc-windows-msvc","name":"Windows Native","artifact_name":"windows_installer","desktop":true},{"os":"macos-latest","target":"aarch64-apple-darwin","name":"macOS Native","artifact_name":"macos_app","desktop":true}'
-          case "$EVENT_NAME" in
-            pull_request|merge_group) matrix="[${core}]" ;;
-            *) matrix="[${core},${desktop}]" ;;
-          esac
-          echo "native_matrix=${matrix}"
-          printf 'native_matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
 
       - name: Resolve WiX Pre-Release Metadata
         id: release-meta
@@ -148,7 +129,7 @@ jobs:
                 case "$file_path" in
                   crates/04_bindings/markdown_tests/*|apps/unified_verification/*|apps/xtask/*)
                     ;;
-                  crates/*|apps/*|egui_plot/*|proofs/*|LICENSE|papers/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|.cargo/*|.github/actions/cargo-cache/*|.github/workflows/ci.yml)
+                  crates/*|apps/*|egui_plot/*|proofs/*|LICENSE|papers/*|Cargo.toml|Cargo.lock|rust-toolchain.toml|.cargo/*|.github/actions/cargo-cache/*|.github/actions/ci-tool-cache/*|.github/workflows/ci.yml)
                     installer_changed="true"
                     ;;
                 esac
@@ -188,6 +169,35 @@ jobs:
           scope: preflight
           profile: dev
 
+      - name: Cache Lean 4 elan toolchain
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.elan
+          key: ${{ runner.os }}-${{ runner.arch }}-elan-${{ hashFiles('proofs/lean-toolchain') }}
+
+      - name: Set up Lean 4 toolchain and build proofs
+        shell: bash
+        env:
+          RUNNER_OS_NAME: ${{ runner.os }}
+        run: |
+          set -euo pipefail
+          TOOLCHAIN="$(tr -d '\r\n' < proofs/lean-toolchain)"
+          RAW_HOME="${USERPROFILE:-${HOME:-}}"
+          ELAN_BIN="${RAW_HOME//\\//}/.elan/bin"
+          export PATH="${ELAN_BIN}:${PATH}"
+          if ! command -v elan >/dev/null 2>&1; then
+            curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o /tmp/elan-init.sh
+            sh /tmp/elan-init.sh -y --no-modify-path --default-toolchain "$TOOLCHAIN"
+            rm -f /tmp/elan-init.sh
+          fi
+          elan toolchain install "$TOOLCHAIN"
+          if [ "${RUNNER_OS_NAME:-}" = "Windows" ]; then
+            printf '%s\\.elan\\bin\n' "${RAW_HOME//\//\\}" >> "$GITHUB_PATH"
+          else
+            printf '%s\n' "$ELAN_BIN" >> "$GITHUB_PATH"
+          fi
+          (cd proofs && lake build)
+
       - name: Build Unified Verification Tool
         run: cargo build -p unified_verification
 
@@ -206,11 +216,14 @@ jobs:
           RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
         run: cargo run -p unified_verification -- check-release-tag
 
-      - name: Check Unused Dependencies
-        uses: bnjbvr/cargo-machete@ac30a525c0a8d163a92d727b3ff079ee3f6ecb08 # v0.9.2
+      - name: Install cargo-machete
+        uses: ./.github/actions/ci-tool-cache
+        with:
+          tool: cargo-machete
+          version: "0.9.1"
 
-      - name: Clean up machete artifacts
-        run: rm -rf cargo-machete*
+      - name: Check Unused Dependencies
+        run: cargo machete
 
       - name: Install cargo-audit
         uses: ./.github/actions/ci-tool-cache
@@ -240,7 +253,6 @@ jobs:
 
   build-and-test:
     name: Build and Test (${{ matrix.name }})
-    needs: detect-changes
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     # Desktop (macOS/Windows) legs report failures without blocking the Pages deploy;
@@ -249,7 +261,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.detect-changes.outputs.native_matrix) }}
+        # Linux + WASM gate every event. macOS/Windows desktop legs run on main pushes, nightly
+        # schedules, manual dispatches and release tags, but not on pull requests or merge groups.
+        include: >-
+          ${{ fromJSON((github.event_name == 'pull_request' || github.event_name == 'merge_group') && '[{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","name":"Linux Native","artifact_name":"linux_artifact","desktop":false},{"os":"ubuntu-latest","target":"wasm32-unknown-unknown","name":"Web/WASM","artifact_name":"wasm_app","desktop":false}]' || '[{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","name":"Linux Native","artifact_name":"linux_artifact","desktop":false},{"os":"ubuntu-latest","target":"wasm32-unknown-unknown","name":"Web/WASM","artifact_name":"wasm_app","desktop":false},{"os":"windows-latest","target":"x86_64-pc-windows-msvc","name":"Windows Native","artifact_name":"windows_installer","desktop":true},{"os":"macos-latest","target":"aarch64-apple-darwin","name":"macOS Native","artifact_name":"macos_app","desktop":true}]') }}
 
     steps:
       - name: Free Disk Space
@@ -277,6 +292,37 @@ jobs:
           scope: build-and-test
           profile: mixed
           target: ${{ matrix.target }}
+
+      - name: Cache Lean 4 elan toolchain
+        if: matrix.target != 'wasm32-unknown-unknown'
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: ~/.elan
+          key: ${{ runner.os }}-${{ runner.arch }}-elan-${{ hashFiles('proofs/lean-toolchain') }}
+
+      - name: Set up Lean 4 toolchain and build proofs
+        if: matrix.target != 'wasm32-unknown-unknown'
+        shell: bash
+        env:
+          RUNNER_OS_NAME: ${{ runner.os }}
+        run: |
+          set -euo pipefail
+          TOOLCHAIN="$(tr -d '\r\n' < proofs/lean-toolchain)"
+          RAW_HOME="${USERPROFILE:-${HOME:-}}"
+          ELAN_BIN="${RAW_HOME//\\//}/.elan/bin"
+          export PATH="${ELAN_BIN}:${PATH}"
+          if ! command -v elan >/dev/null 2>&1; then
+            curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o /tmp/elan-init.sh
+            sh /tmp/elan-init.sh -y --no-modify-path --default-toolchain "$TOOLCHAIN"
+            rm -f /tmp/elan-init.sh
+          fi
+          elan toolchain install "$TOOLCHAIN"
+          if [ "${RUNNER_OS_NAME:-}" = "Windows" ]; then
+            printf '%s\\.elan\\bin\n' "${RAW_HOME//\//\\}" >> "$GITHUB_PATH"
+          else
+            printf '%s\n' "$ELAN_BIN" >> "$GITHUB_PATH"
+          fi
+          (cd proofs && lake build)
 
       - name: Build Unified Verification Tool
         if: runner.os == 'Linux' && matrix.target != 'wasm32-unknown-unknown'
@@ -384,6 +430,40 @@ jobs:
       - name: Verify WebAssembly Size Budget
         if: matrix.target == 'wasm32-unknown-unknown'
         run: bash scripts/verify_wasm_budget.sh apps/math_explorer_gui/dist
+
+      - name: Build and Package oxidize_wasm JS/TS SDK (250 KB Budget)
+        if: matrix.target == 'wasm32-unknown-unknown'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build --target wasm32-unknown-unknown --release -p oxidize_wasm
+          rm -rf target/wasm-sdk-pkg target/wasm-sdk-release
+          mkdir -p target/wasm-sdk-pkg target/wasm-sdk-release
+          wasm-bindgen --target web --typescript \
+            --out-dir target/wasm-sdk-pkg \
+            --out-name oxidize_wasm \
+            target/wasm32-unknown-unknown/release/oxidize_wasm.wasm
+          cp crates/04_bindings/oxidize_wasm/package.json target/wasm-sdk-pkg/package.json
+          cp crates/04_bindings/oxidize_wasm/README.md target/wasm-sdk-pkg/README.md
+          cp LICENSE target/wasm-sdk-pkg/LICENSE
+          bash scripts/verify_wasm_budget.sh --sdk target/wasm-sdk-pkg 256000
+          tar -C target/wasm-sdk-pkg -czf target/wasm-sdk-release/oxidize-wasm-npm-sdk.tar.gz .
+          (
+            cd target/wasm-sdk-release
+            sha256sum oxidize-wasm-npm-sdk.tar.gz > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+
+      - name: Upload oxidize_wasm JS/TS SDK Artifact
+        if: matrix.target == 'wasm32-unknown-unknown'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: oxidize-wasm-sdk
+          path: |
+            target/wasm-sdk-release/oxidize-wasm-npm-sdk.tar.gz
+            target/wasm-sdk-release/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Run WASM Unit Tests and Chromium Smoke Checks
         if: matrix.target == 'wasm32-unknown-unknown'
@@ -753,6 +833,7 @@ jobs:
             and (keys | sort) == [
               "certified_solvers",
               "interval_bounds",
+              "lean4_proof_bindings",
               "lean4_proof_digests",
               "max_interval_width",
               "native_execution_coverage_pct",
@@ -786,6 +867,7 @@ jobs:
             ] and ([.[]] | all(type == "number" and . > 0)))
             and (.interval_bounds | type == "object" and length > 0 and ([.[]] | all(type == "array" and length == 2 and .[0] <= .[1])))
             and (.lean4_proof_digests | type == "object" and length >= 6 and ([.[]] | all(type == "string" and test("^[0-9a-f]{64}$"))))
+            and (.lean4_proof_bindings | type == "object" and length >= 6 and ([.[]] | all(type == "object" and .kernel_verified == true and (.rust_modules | type == "array" and length > 0) and (.theorems | type == "array" and length > 0))))
             and (.passed | type == "boolean")
             and .passed == true
           ' "$CERT_FILE" >/dev/null; then
@@ -972,11 +1054,17 @@ jobs:
             find artifacts/papers-release-bundle -type f -name "papers-bundle.tar.gz" -exec cp {} release-assets/ \;
           fi
 
+          # Copy standalone oxidize_wasm JS/TS WebAssembly SDK bundle
+          if [ -d artifacts/oxidize-wasm-sdk ]; then
+            find artifacts/oxidize-wasm-sdk -type f -name "oxidize-wasm-npm-sdk.tar.gz" -exec cp {} release-assets/ \;
+          fi
+
           # Attach component-specific checksum manifests to avoid filename collision
           [ -f artifacts/math_explorer-deb/SHA256SUMS ] && cp artifacts/math_explorer-deb/SHA256SUMS release-assets/SHA256SUMS-deb
           [ -f artifacts/math_explorer-dmg/SHA256SUMS ] && cp artifacts/math_explorer-dmg/SHA256SUMS release-assets/SHA256SUMS-dmg
           [ -f artifacts/math_explorer-wix/SHA256SUMS ] && cp artifacts/math_explorer-wix/SHA256SUMS release-assets/SHA256SUMS-wix
           [ -f artifacts/papers-release-bundle/SHA256SUMS ] && cp artifacts/papers-release-bundle/SHA256SUMS release-assets/SHA256SUMS-papers
+          [ -f artifacts/oxidize-wasm-sdk/SHA256SUMS ] && cp artifacts/oxidize-wasm-sdk/SHA256SUMS release-assets/SHA256SUMS-wasm-sdk
 
           # Generate consolidated SHA-256 checksum manifest
           cd release-assets

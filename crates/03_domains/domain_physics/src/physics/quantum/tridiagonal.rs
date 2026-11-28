@@ -1,5 +1,5 @@
 // [cite:quantum_mechanics]
-//! # Tridiagonal 1D Quantum Hamiltonian, `SolverWorkspace`, & Propagators
+//! # Tridiagonal 1D Quantum Hamiltonian, `TridiagonalWorkspace`, & Propagators
 //!
 //! Provides $O(N)$-memory tridiagonal representations of 1D finite-difference Schrödinger
 //! Hamiltonians and zero-allocation, strictly unitary Crank-Nicolson (Cayley transform)
@@ -16,7 +16,7 @@ use crate::physics::quantum::{QuantumError, QuantumState};
 use nalgebra::DVector;
 #[cfg(test)]
 use num_complex::Complex;
-pub use workspace::SolverWorkspace;
+pub use workspace::TridiagonalWorkspace;
 
 #[inline]
 #[verified_engine::verified]
@@ -217,7 +217,7 @@ impl TridiagonalHamiltonian1D {
 /// `h_bar > 0`, and `state.vector.len() == self.len()`.
 #[derive(Clone, Debug)]
 pub struct CrankNicolsonPropagator1D {
-    workspace: SolverWorkspace,
+    workspace: TridiagonalWorkspace,
     n_points: usize,
     configured_dt: Option<f64>,
     configured_h_bar: Option<f64>,
@@ -229,7 +229,7 @@ impl CrankNicolsonPropagator1D {
     #[must_use]
     pub fn with_capacity(max_points: usize) -> Self {
         Self {
-            workspace: SolverWorkspace::with_capacity(max_points),
+            workspace: TridiagonalWorkspace::with_capacity(max_points),
             n_points: 0,
             configured_dt: None,
             configured_h_bar: None,

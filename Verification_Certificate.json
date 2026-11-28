@@ -1,12 +1,12 @@
 {
   "native_execution_coverage_pct": 84.44307966417406,
-  "wasm_path_coverage_pct": 72.32142857142857,
-  "total_assertion_density": 0.7019921802271458,
-  "verified_modules_density": 0.6776686523909193,
-  "unverified_modules_density": 0.70931021119938,
-  "total_production_assertion_density": 0.038303693570451436,
-  "verified_production_assertion_density": 0.13075108139992137,
-  "test_assertion_density": 3.1895332390381896,
+  "wasm_path_coverage_pct": 73.84615384615385,
+  "total_assertion_density": 0.6968545263691317,
+  "verified_modules_density": 0.6759126414793559,
+  "unverified_modules_density": 0.7030064624894633,
+  "total_production_assertion_density": 0.03786700814049209,
+  "verified_production_assertion_density": 0.12940947183784837,
+  "test_assertion_density": 3.198055893074119,
   "passed": true,
   "certified_solvers": 55,
   "max_interval_width": 7.958078640513122e-13,
@@ -41,11 +41,85 @@
     ]
   },
   "lean4_proof_digests": {
-    "CompartmentalConservation.lean": "fcd9ae3a95781914fb8a9e1fcd07677d933579278cb1792921d14444236d6f0d",
-    "CopulaFrechet.lean": "2821baa2ef66647a3a18981b0b93e3facf097e371d0a70c219822db04e9bdcb5",
-    "IntervalSoundness.lean": "8e11884048f13c335363a1ee3328cb2b48932cda3ab75e740f09eb9c7b8f7ecd",
-    "QuantumUnitarity.lean": "fb0e0c33eadc32077619eefad7e983fc1734466b181ffce5969942ad920c7e3c",
-    "SurvivalBounds.lean": "a339a078c0076534970d7d859c4a2c9dceac16969f43f314dac32d4e4b8609ca",
-    "SymplecticComposition.lean": "376d26d76d882bd5e4ae018de1ba128c6d0638c3d68bdca3a6a0229ae059feb4"
+    "CompartmentalConservation.lean": "080f92d05a20ef73fba8dabac19ba8c6c5ba5b5ddf9de01e5c0560f0e28a5e6c",
+    "CopulaFrechet.lean": "2b33b7681ec88500a613305f7b10b2e1de26c618ecd63d6785dc31f9a93247ed",
+    "IntervalSoundness.lean": "b39829b2348bc028e8e7889bd5c860a614dc841f777981268b334138f45e65db",
+    "QuantumUnitarity.lean": "e7ed375ddcf8918c897e76dc97c981fad919785966d19f7317e53966ae673277",
+    "SurvivalBounds.lean": "275b6298cf2f7c19a905cee010a5c9464c75537b4a20a413c787bbaa69a96bcb",
+    "SymplecticComposition.lean": "19cddf27732a4a7680065b1ff1b8de7360825f76a7fdea165165932776705b61"
+  },
+  "lean4_proof_bindings": {
+    "CompartmentalConservation.lean": {
+      "kernel_verified": true,
+      "rust_modules": [
+        "epidemiology"
+      ],
+      "theorems": [
+        "forced_seir_exact_conservation",
+        "forced_seir_nonneg",
+        "forced_seir_rounding_drift_bound"
+      ]
+    },
+    "CopulaFrechet.lean": {
+      "kernel_verified": true,
+      "rust_modules": [
+        "clinical_trials_statistics"
+      ],
+      "theorems": [
+        "frechet_bounds_ordered",
+        "frechet_outward_enclosure_sound",
+        "frechet_unit_range"
+      ]
+    },
+    "IntervalSoundness.lean": {
+      "kernel_verified": true,
+      "rust_modules": [
+        "math_commons"
+      ],
+      "theorems": [
+        "add_outward_sound",
+        "hull_sound_left",
+        "hull_sound_right",
+        "neg_sound",
+        "point_enclosure_contains",
+        "sub_outward_sound"
+      ]
+    },
+    "QuantumUnitarity.lean": {
+      "kernel_verified": true,
+      "rust_modules": [
+        "quantum"
+      ],
+      "theorems": [
+        "normSq_nonneg",
+        "phase_rotate_norm_identity",
+        "unitary_rounding_slack_bound",
+        "unitary_scaled_norm_preserved"
+      ]
+    },
+    "SurvivalBounds.lean": {
+      "kernel_verified": true,
+      "rust_modules": [
+        "clinical_trials"
+      ],
+      "theorems": [
+        "km_factor_bounded",
+        "km_outward_slack_enclosure",
+        "km_step_antitone_and_nonneg"
+      ]
+    },
+    "SymplecticComposition.lean": {
+      "kernel_verified": true,
+      "rust_modules": [
+        "pure_math"
+      ],
+      "theorems": [
+        "det2_mul",
+        "drift_det_scaled_unit",
+        "kick_det_scaled_unit",
+        "symplectic_composition_preserves_scaled_unit_det",
+        "symplectic_det_rounding_slack"
+      ]
+    }
   }
 }

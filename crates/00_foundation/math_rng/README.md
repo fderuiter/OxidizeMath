@@ -12,7 +12,7 @@ Zero-allocation Tier 0 `#![no_std]` foundation crate providing deterministic Cha
 
 Key components:
 - **`OxidizeRng` (`rng`)**: Deterministic `ChaCha8Rng` wrapper implementing `RngCore`, `CryptoRng`, and `SeedableRng`, with orthogonal ChaCha8 stream splitting (`with_stream`, `set_stream`, `split_stream`) and 128-bit word-position seeking (`jump_words`, `set_word_pos`, `word_pos`).
-- **Generic Scalar & Index Samplers (`scalar`)**: `RngScalar` trait for `f32` and `f64` supporting half-open `[0, 1)`, strictly open `(0, 1)`, symmetric `(-1, 1)`, Box-Muller normal draws, Cranley-Patterson shift generation, and architecture-invariant unbiased bounded index draws (`sample_bounded_u64`, `sample_bounded_usize`).
+- **Generic Scalar & Index Samplers (`scalar`)**: `RngScalar` trait for `f32` and `f64` supporting half-open `[0, 1)`, strictly open `(0, 1)`, symmetric `(-1, 1)`, inverse-CDF probit normal draws, Cranley-Patterson shift generation, and architecture-invariant unbiased bounded index draws (`sample_bounded_u64`, `sample_bounded_usize`).
 - **Static-Table 64D QMC Views (`qmc`)**:
   - `SobolView`: 64D 53-bit Joe-Kuo direction tables with $O(d)$ Gray-code XOR stepping, optional 53-bit nested hash Owen scrambling, and Cranley-Patterson torus shifts.
   - `HaltonView`: 64D prime-radix sampling combining static Faure permutations (`FIRST_64_PRIMES`, $p_1 = 2 \dots p_{64} = 311$) with stateless hash Owen digit scrambling to eliminate high-dimensional collinearity.

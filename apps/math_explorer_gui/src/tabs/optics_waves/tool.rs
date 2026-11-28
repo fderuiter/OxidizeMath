@@ -226,7 +226,11 @@ impl InteractiveTool for OpticsWaveTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        ExportCapabilities::raster_only()
+        ExportCapabilities::plot()
+    }
+
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_optics_export_tables()
     }
 
     fn export_raster_image(&self) -> Option<ColorImage> {
@@ -285,6 +289,12 @@ impl InteractiveTool for OpticsWaveTool {
         let snap = runner.get_snapshot();
         let px = snap.pixels.read().unwrap_or_else(|e| e.into_inner());
         self.stepped_pixels = Some((snap.width, snap.height, px.clone()));
+        if let Some(frame) = snap
+            .structured_data
+            .and_then(|b| b.downcast::<OpticsFrameData>().ok().map(|d| *d))
+        {
+            self.latest_frame = Some(frame);
+        }
     }
 
     fn show_inside(&mut self, ui: &mut egui::Ui) {

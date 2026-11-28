@@ -41,7 +41,7 @@ graph TD
 
 ## Crate Dependency Topology
 
-The following Mermaid diagram shows the primary dependency graph across all 30 workspace crates:
+The following Mermaid diagram shows the primary dependency graph across all 32 workspace crates:
 
 ```mermaid
 graph TD
@@ -55,6 +55,7 @@ graph TD
 
     subgraph Tier_04_Bindings["crates/04_bindings"]
         Facade[oxidizemath]
+        WasmSdk[oxidize_wasm]
         Explorer[math_explorer]
         SciVerify[scientific_verification]
         MdTests[markdown_tests]
@@ -86,6 +87,7 @@ graph TD
 
     subgraph Tier_00_Foundation["crates/00_foundation"]
         MathDiag[math_diagnostics]
+        Mem[math_memory]
         Scalars[math_scalars]
         Rng[math_rng]
         Meta[scientific_metadata]
@@ -96,30 +98,32 @@ graph TD
     Xtask -.-> Verify
     Verify -.-> SciVerify & CoreCrate
     SciVerify -.-> AI & Phys & Bio & App & Clim & Epi & Pure & Pde & Opt & Commons & CoreCrate & Engine
-    MdTests -.-> Facade & Explorer & Meta & CoreCrate & Registry & Linalg & Opt & DiffEq & Pde & Rng & Scalars
+    MdTests -.-> Facade & WasmSdk & Explorer & Meta & CoreCrate & Registry & Linalg & Opt & DiffEq & Pde & Mem & Rng & Scalars
 
     Cli --> Facade
-    GUI --> Explorer & Plot & Meta & Registry & Diag & Linalg & Opt & Commons & CoreCrate & Engine
+    GUI --> Explorer & Plot & Meta & Registry & Diag & Linalg & Opt & Commons & CoreCrate & Engine & Mem
     Plot --> Opt & Commons
     Explorer --> Facade
+    WasmSdk --> Commons & Linalg & DiffEq & Pde & Scalars & Rng & MathDiag & Engine
     Facade --> AI & Phys & Bio & App & Clim & Epi & Pure
-    Facade --> Commons & Linalg & Opt & DiffEq & Pde & Scalars & Diag & Meta & Engine & CoreCrate
+    Facade --> Commons & Linalg & Opt & DiffEq & Pde & Mem & Scalars & Diag & Meta & Engine & CoreCrate
 
-    AI --> Commons & Engine & DiffEq & Pure & CoreCrate & Diag
-    Phys --> Commons & Engine & Meta & Pure & App & DiffEq & Pde & Linalg & Opt & CoreCrate & Diag
+    AI --> Commons & Engine & DiffEq & Pure & CoreCrate & Diag & Mem
+    Phys --> Commons & Engine & Meta & Pure & App & DiffEq & Pde & Linalg & Opt & CoreCrate & Diag & Mem
     Bio --> Commons & Engine & Meta & Pure & App & Pde & CoreCrate & Diag
-    App --> Commons & Engine & Pure & Pde & Linalg & Opt & Scalars & CoreCrate & Diag
+    App --> Commons & Engine & Pure & Pde & Linalg & Opt & Scalars & CoreCrate & Diag & Mem
     Clim --> Commons & Engine & Pure & CoreCrate & Diag
     Epi --> Commons & Engine & Pure & CoreCrate & Diag
 
-    Pure --> Commons & Meta & Engine & DiffEq & Pde & Linalg & Rng & Scalars & CoreCrate & Diag
-    DiffEq --> Commons & Engine & Rng & MathDiag
-    Pde --> Commons & Engine & Rng & MathDiag
+    Pure --> Commons & Meta & Engine & DiffEq & Pde & Linalg & Mem & Rng & Scalars & CoreCrate & Diag
+    DiffEq --> Commons & Engine & Mem & Rng & MathDiag
+    Pde --> Commons & Engine & Mem & Rng & MathDiag
     Opt --> Linalg & Scalars & Meta & MathDiag & Engine
-    Commons --> Scalars & Rng & MathDiag & Engine
-    Linalg --> Scalars & MathDiag & Engine
+    Commons --> Mem & Scalars & Rng & MathDiag & Engine
+    Linalg --> Mem & Scalars & MathDiag & Engine
     Rng --> Scalars
-    Scalars --> MathDiag
+    Scalars --> Mem & MathDiag
+    Mem --> MathDiag
     Registry --> Diag
     Diag --> MathDiag
     CoreCrate --> Rng & Meta
@@ -127,6 +131,7 @@ graph TD
 
     style GUI fill:#cde,stroke:#333
     style Facade fill:#cde,stroke:#333
+    style WasmSdk fill:#cde,stroke:#333
     style Explorer fill:#cde,stroke:#333
     style Engine fill:#fed,stroke:#333
     style Clim fill:#dfd,stroke:#333
@@ -135,11 +140,12 @@ graph TD
 
 ## Workspace Crate Catalog
 
-The workspace contains all 30 member crates declared in `Cargo.toml`:
+The workspace contains all 32 member crates declared in `Cargo.toml`:
 
 | Crate Directory | Primary Role | Documentation Reference |
 | :--- | :--- | :--- |
 | `crates/00_foundation/math_diagnostics` | `#![no_std]` zero-allocation diagnostic visitor contract | [math_diagnostics](../../crates/00_foundation/math_diagnostics/README.md) |
+| `crates/00_foundation/math_memory` | `#![no_std]` `bytemuck`-backed `ByteArena`, `FlagSlice`/`BitSlice`, and `SolverWorkspace` trait | [math_memory](../../crates/00_foundation/math_memory/README.md) |
 | `crates/00_foundation/math_scalars` | `#![no_std]` algebraic scalar traits, `0`-ULP `libm` IEEE-754 kernels, dual numbers, and workspace slices | [math_scalars](../../crates/00_foundation/math_scalars/README.md) |
 | `crates/00_foundation/math_rng` | `#![no_std]` ChaCha8 stream PRNG, generic float/index samplers, and 64D QMC views | [math_rng](../../crates/00_foundation/math_rng/README.md) |
 | `crates/00_foundation/scientific_metadata` | Theory descriptors and citation metadata | [scientific_metadata](../../crates/00_foundation/scientific_metadata/README.md) |
@@ -161,6 +167,7 @@ The workspace contains all 30 member crates declared in `Cargo.toml`:
 | `crates/03_domains/domain_epidemiology` | Compartmental disease transmission models | [domain_epidemiology](../../crates/03_domains/domain_epidemiology/README.md) |
 | `crates/03_domains/domain_physics` | Fluid dynamics, quantum, and MRI models | [domain_physics](../../crates/03_domains/domain_physics/README.md) |
 | `crates/04_bindings/oxidizemath` | Primary `default = []` library facade unifying engines and domain modules | [oxidizemath](../../crates/04_bindings/oxidizemath/README.md) |
+| `crates/04_bindings/oxidize_wasm` | Standalone `wasm-bindgen` JS/TS WebAssembly numerical SDK wrapping Tier 2 engines | [oxidize_wasm](../../crates/04_bindings/oxidize_wasm/README.md) |
 | `crates/04_bindings/math_explorer` | Transitional compatibility facade re-exporting `oxidizemath` | [math_explorer](../../crates/04_bindings/math_explorer/README.md) |
 | `crates/04_bindings/markdown_tests` | Markdown test harness and doctest validation | [markdown_tests](../../crates/04_bindings/markdown_tests/README.md) |
 | `crates/04_bindings/scientific_verification` | 6-tier scientific verification pyramid and proof certificates | [scientific_verification](../../crates/04_bindings/scientific_verification/README.md) |

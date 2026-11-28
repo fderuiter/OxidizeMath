@@ -3,7 +3,7 @@
 
 use diagnostics::{Diagnostic, DiagnosticVisitor};
 use math_commons::error::MathError;
-use math_commons::math_kernel::types::{Dimension, SolverWorkspace};
+use math_commons::math_kernel::types::{Dimension, ScalarWorkspace};
 use math_commons::primitives::{NonNegativeFloat, PositiveFloat, UnitInterval};
 use verified_engine::allocator::VerifiedAllocator;
 use verified_engine::engine::VerifiedEngine;
@@ -125,7 +125,7 @@ fn dimension_mismatch_display_omits_debug_wrappers_and_failures_do_not_allocate(
 fn solver_workspace_try_take_slice_returns_typed_error_without_allocating() {
     let mut backing = [0.0_f64; 6];
     let (ok, _) = VerifiedEngine::run_verified(|| {
-        let mut ws = SolverWorkspace::new(&mut backing);
+        let mut ws = ScalarWorkspace::new(&mut backing);
         let first = ws.try_take_slice(4).expect("first slice fits");
         first[0] = 3.5;
         let err = ws

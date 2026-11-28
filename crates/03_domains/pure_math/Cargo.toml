@@ -29,6 +29,8 @@ serde = [
 ]
 
 [dependencies]
+bytemuck = { workspace = true, features = ["derive"] }
+math_memory = { path = "../../00_foundation/math_memory", features = ["std"] }
 rustfft = { workspace = true }
 nalgebra = { workspace = true }
 quadrature = { workspace = true }

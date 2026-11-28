@@ -345,7 +345,7 @@ fn test_gaussian_splatting_exports_valid_inria_3dgs_ply_binary() {
         ..Default::default()
     };
     let caps = tool.export_capabilities();
-    assert!(!caps.dataset && !caps.figure);
+    assert!(caps.dataset && caps.figure);
     assert!(caps.ply && !caps.stl && !caps.obj);
 
     let ply_bytes = tool

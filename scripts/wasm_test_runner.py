@@ -53,7 +53,7 @@ INDEX_HTML = """<!DOCTYPE html>
 <body>
     <div id="loading_indicator" role="status" aria-live="polite" aria-busy="true">Loading...</div>
     <canvas id="the_canvas_id" tabindex="0"></canvas>
-    <div id="error_container" role="alert" aria-live="assertive" style="display: none;">
+    <div id="error_container" role="region" aria-labelledby="error_title" aria-describedby="error_message" style="display: none;">
         <h1 id="error_title">Error</h1>
         <p id="error_message"></p>
         <div id="webgl_instructions"></div>
@@ -216,7 +216,7 @@ class TestRunnerOptions:
     show_help: bool = False
 
 
-class ReusableThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+class ReusableThreadingTCPServer(http.server.ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
     request_queue_size = 128
@@ -227,21 +227,26 @@ class WasmTestRequestHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urllib.parse.urlsplit(self.path)
-        if parsed.path == "/__test_vfs_fixture.txt":
-            body = b"oxidize-wasm-vfs-ok\n"
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-        if parsed.path == "/__missing_vfs_fixture_404.txt":
-            self.send_response(404)
-            self.send_header("Content-Type", "text/plain; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(b"not found")
-            return
-        super().do_GET()
+        try:
+            if parsed.path == "/__test_vfs_fixture.txt":
+                body = b"oxidize-wasm-vfs-ok\n"
+                self.send_response(200)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            if parsed.path == "/__missing_vfs_fixture_404.txt":
+                body = b"not found"
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            super().do_GET()
+        except OSError:
+            self.close_connection = True
 
     def end_headers(self) -> None:
         self.send_header("Content-Security-Policy", PRODUCTION_CSP)

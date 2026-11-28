@@ -52,7 +52,7 @@ pub struct CorrelatedRiskScenarioTool {
 
     // Cached OU Monte Carlo trajectories & summary
     pub(crate) last_ou_key: Option<OuCacheKey>,
-    pub(crate) ou_workspace: math_explorer::stochastic::SolverWorkspace,
+    pub(crate) ou_workspace: math_explorer::stochastic::StochasticWorkspace,
     pub(crate) ou_finals_scratch: Vec<f64>,
     pub(crate) ou_sample_paths: Vec<(String, Vec<PlotPoint>)>,
     pub(crate) ou_mean_path: Vec<PlotPoint>,
@@ -91,7 +91,10 @@ impl Default for CorrelatedRiskScenarioTool {
             active_sgp_prob: 0.33,
             copula_error: None,
             last_ou_key: None,
-            ou_workspace: math_explorer::stochastic::SolverWorkspace::new(0, engine::MAX_OU_PATHS),
+            ou_workspace: math_explorer::stochastic::StochasticWorkspace::new(
+                0,
+                engine::MAX_OU_PATHS,
+            ),
             ou_finals_scratch: Vec::with_capacity(engine::MAX_OU_PATHS),
             ou_sample_paths: Vec::new(),
             ou_mean_path: Vec::new(),

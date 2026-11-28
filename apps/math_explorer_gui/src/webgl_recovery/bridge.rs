@@ -1,6 +1,7 @@
 //! DOM, `localStorage`, and `window.__mathExplorerBoot` bridge helpers for [`super`].
 
 use crate::accessibility;
+use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::{JsCast, JsValue};
 
@@ -32,26 +33,80 @@ pub(super) fn persist_envelope_to_local_storage(
     storage.set_item(eframe::APP_KEY, envelope_json).is_ok()
 }
 
-pub(super) fn set_overlay_visible(doc: &web_sys::Document, visible: bool) {
-    let Some(overlay) = doc.get_element_by_id("webgl_recovery_overlay") else {
+pub(super) fn set_canvas_inert(doc: &web_sys::Document, inert: bool) {
+    let Some(canvas) = doc.get_element_by_id("the_canvas_id") else {
         return;
     };
-    if visible {
-        let _ = overlay.remove_attribute("hidden");
-        let _ = overlay.set_attribute("aria-busy", "true");
-        let _ = overlay.set_attribute("style", "display: flex;");
+    if inert {
+        let _ = canvas.set_attribute("inert", "");
+        let _ = canvas.set_attribute("aria-hidden", "true");
+        if let Ok(html_canvas) = canvas.dyn_into::<web_sys::HtmlElement>() {
+            let _ = html_canvas.blur();
+        }
     } else {
-        let _ = overlay.set_attribute("aria-busy", "false");
-        let _ = overlay.set_attribute("hidden", "");
-        let _ = overlay.set_attribute("style", "display: none;");
+        let _ = canvas.remove_attribute("inert");
+        let _ = canvas.remove_attribute("aria-hidden");
     }
 }
 
-pub(super) fn bind_fallback_download_listener<F>(doc: &web_sys::Document, read_snapshot: F)
+fn focus_active_overlay_control(doc: &web_sys::Document) {
+    let download_btn = doc.get_element_by_id("webgl_recovery_download_button");
+    let reload_btn = doc.get_element_by_id("webgl_recovery_reload_button");
+    let storage_blocked = download_btn
+        .as_ref()
+        .and_then(|b| b.get_attribute("data-storage-blocked"))
+        .as_deref()
+        == Some("true");
+    let preferred = if storage_blocked
+        && download_btn
+            .as_ref()
+            .is_some_and(|b| !b.has_attribute("hidden"))
+    {
+        download_btn
+    } else if reload_btn
+        .as_ref()
+        .is_some_and(|b| !b.has_attribute("hidden"))
+    {
+        reload_btn
+    } else if download_btn
+        .as_ref()
+        .is_some_and(|b| !b.has_attribute("hidden"))
+    {
+        download_btn
+    } else {
+        None
+    };
+    if let Some(el) = preferred.and_then(|b| b.dyn_into::<web_sys::HtmlElement>().ok()) {
+        let _ = el.focus();
+    }
+}
+
+pub(crate) fn set_overlay_visible(doc: &web_sys::Document, visible: bool) {
+    if visible {
+        set_canvas_inert(doc, true);
+        crate::bind_fallback_reload_listener(doc);
+    }
+    if let Some(overlay) = doc.get_element_by_id("webgl_recovery_overlay") {
+        if visible {
+            let _ = overlay.remove_attribute("hidden");
+            let _ = overlay.set_attribute("aria-busy", "true");
+            let _ = overlay.set_attribute("style", "display: flex;");
+        } else {
+            let _ = overlay.set_attribute("aria-busy", "false");
+            let _ = overlay.set_attribute("hidden", "");
+            let _ = overlay.set_attribute("style", "display: none;");
+        }
+    }
+    if visible {
+        focus_active_overlay_control(doc);
+    }
+}
+
+fn bind_download_button_by_id<F>(doc: &web_sys::Document, id: &str, read_snapshot: Rc<F>)
 where
     F: Fn() -> (String, String) + 'static,
 {
-    let Some(btn) = doc.get_element_by_id("download_workspace_button") else {
+    let Some(btn) = doc.get_element_by_id(id) else {
         return;
     };
     if btn.get_attribute("data-download-bound").as_deref() == Some("true") {
@@ -69,18 +124,33 @@ where
     listener.forget();
 }
 
-fn reveal_fallback_download_button(
+pub(super) fn bind_fallback_download_listener<F>(doc: &web_sys::Document, read_snapshot: F)
+where
+    F: Fn() -> (String, String) + 'static,
+{
+    let shared = Rc::new(read_snapshot);
+    bind_download_button_by_id(doc, "download_workspace_button", Rc::clone(&shared));
+    bind_download_button_by_id(doc, "webgl_recovery_download_button", shared);
+}
+
+pub(crate) fn sync_fallback_download_buttons(
     doc: &web_sys::Document,
     envelope_json: &str,
     storage_blocked: bool,
 ) {
-    let Some(btn) = doc.get_element_by_id("download_workspace_button") else {
-        return;
-    };
     let blocked_str = if storage_blocked { "true" } else { "false" };
-    let _ = btn.set_attribute("data-storage-blocked", blocked_str);
-    if !envelope_json.is_empty() {
-        let _ = btn.remove_attribute("hidden");
+    for id in [
+        "download_workspace_button",
+        "webgl_recovery_download_button",
+    ] {
+        if let Some(btn) = doc.get_element_by_id(id) {
+            let _ = btn.set_attribute("data-storage-blocked", blocked_str);
+            if envelope_json.is_empty() {
+                let _ = btn.set_attribute("hidden", "");
+            } else {
+                let _ = btn.remove_attribute("hidden");
+            }
+        }
     }
 }
 
@@ -124,7 +194,7 @@ pub(super) fn notify_js_begin_recovery(
     func.call1(&boot, &opts).is_ok()
 }
 
-pub(super) fn notify_recovery_completed(window: Option<&web_sys::Window>, doc: &web_sys::Document) {
+pub(crate) fn notify_recovery_completed(window: Option<&web_sys::Window>, doc: &web_sys::Document) {
     if let Some(boot) = boot_api(window) {
         if let Ok(func_val) =
             js_sys::Reflect::get(&boot, &JsValue::from_str("completeWebglContextRecovery"))
@@ -134,12 +204,14 @@ pub(super) fn notify_recovery_completed(window: Option<&web_sys::Window>, doc: &
                     .call1(&boot, &JsValue::from_str(RESTORED_STATUS_MSG))
                     .is_ok()
                 {
+                    set_canvas_inert(doc, false);
                     return;
                 }
             }
         }
     }
     set_overlay_visible(doc, false);
+    set_canvas_inert(doc, false);
     if let Some(canvas) = doc
         .get_element_by_id("the_canvas_id")
         .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok())
@@ -183,7 +255,7 @@ pub(super) fn notify_recovery_failed(
         }
     }
     crate::handle_webgl_failure(Some(doc), detail);
-    reveal_fallback_download_button(doc, envelope_json, storage_blocked);
+    sync_fallback_download_buttons(doc, envelope_json, storage_blocked);
 }
 
 pub(super) fn register_js_timeout_bridge<F>(window: Option<&web_sys::Window>, mut on_timeout: F)

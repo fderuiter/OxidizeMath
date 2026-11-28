@@ -13,16 +13,18 @@ math_contract = true
 
 [features]
 default = []
-alloc = []
+alloc = ["math_memory/alloc"]
 dashu = ["std", "dep:dashu"]
-serde = ["dep:serde", "math_diagnostics/serde", "num-complex/serde"]
-std = ["alloc", "math_diagnostics/std", "num-complex/std", "serde?/std"]
+serde = ["dep:serde", "math_diagnostics/serde", "math_memory/serde", "num-complex/serde"]
+std = ["alloc", "math_diagnostics/std", "math_memory/std", "num-complex/std", "serde?/std"]
 
 [dependencies]
+bytemuck = { workspace = true }
 dashu = { workspace = true, optional = true }
 libm = { workspace = true }
 math_diagnostics = { path = "../math_diagnostics", default-features = false }
-num-complex = { workspace = true, default-features = false, features = ["libm"] }
+math_memory = { path = "../math_memory", default-features = false }
+num-complex = { workspace = true, default-features = false, features = ["libm", "bytemuck"] }
 num-traits = { workspace = true, default-features = false }
 serde = { workspace = true, optional = true }
 

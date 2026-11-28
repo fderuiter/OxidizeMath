@@ -365,12 +365,28 @@ fn count_top_level_semicolons(stream: TokenStream) -> usize {
 
 pub(super) struct ParsedVerificationMacro {
     pub module_name: Option<String>,
+    pub proof_path: Option<String>,
+    pub theorems: Vec<String>,
     pub assert_count: usize,
+}
+
+fn parse_bracketed_string_list(stream: TokenStream) -> Vec<String> {
+    let mut values = Vec::new();
+    for tt in stream {
+        if let TokenTree::Literal(_) = &tt
+            && let Ok(lit_str) = syn::parse2::<syn::LitStr>(TokenStream::from(tt))
+        {
+            values.push(lit_str.value());
+        }
+    }
+    values
 }
 
 pub(super) fn parse_verification_macro_tokens(tokens: &TokenStream) -> ParsedVerificationMacro {
     let items: Vec<TokenTree> = tokens.clone().into_iter().collect();
     let mut module_name = None;
+    let mut proof_path = None;
+    let mut theorems = Vec::new();
     let mut assert_count = 0usize;
     let mut idx = 0usize;
 
@@ -379,11 +395,23 @@ pub(super) fn parse_verification_macro_tokens(tokens: &TokenStream) -> ParsedVer
             && matches!(&items[idx + 1], TokenTree::Punct(p) if p.as_char() == '=')
         {
             let key = key_ident.to_string();
-            if key == "module" {
+            if key == "module" || key == "proof" {
                 let lit_tt = items[idx + 2].clone();
                 if let Ok(lit_str) = syn::parse2::<syn::LitStr>(TokenStream::from(lit_tt)) {
-                    module_name = Some(lit_str.value());
+                    if key == "module" {
+                        module_name = Some(lit_str.value());
+                    } else {
+                        proof_path = Some(lit_str.value());
+                    }
                 }
+                idx += 3;
+                continue;
+            }
+            if key == "theorems"
+                && let TokenTree::Group(group) = &items[idx + 2]
+                && group.delimiter() == Delimiter::Bracket
+            {
+                theorems = parse_bracketed_string_list(group.stream());
                 idx += 3;
                 continue;
             }
@@ -409,6 +437,8 @@ pub(super) fn parse_verification_macro_tokens(tokens: &TokenStream) -> ParsedVer
 
     ParsedVerificationMacro {
         module_name,
+        proof_path,
+        theorems,
         assert_count,
     }
 }

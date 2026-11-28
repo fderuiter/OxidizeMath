@@ -375,7 +375,7 @@ impl<const N: usize, S: Solver<TuringState<N>>> TuringSolverStrategy<N>
 }
 
 use engine_pde::{BoundaryCondition, inject_additive_noise_1d};
-use math_commons::math_kernel::types::SolverWorkspace;
+use math_commons::math_kernel::types::ScalarWorkspace;
 use pure_math::pure_math::analysis::evolution::{EvolutionEngine, EvolutionError};
 use rand::RngCore;
 
@@ -464,7 +464,7 @@ impl<'a, const N: usize, K: ReactionKinetics<N>, D: SpatialDiffusion<N>>
             let mut stack_scratch = [0.0_f64; 64];
             for species in &mut state.concentrations {
                 for chunk in species.chunks_mut(64) {
-                    let mut ws = SolverWorkspace::new(&mut stack_scratch);
+                    let mut ws = ScalarWorkspace::new(&mut stack_scratch);
                     inject_additive_noise_1d(
                         chunk,
                         dx,

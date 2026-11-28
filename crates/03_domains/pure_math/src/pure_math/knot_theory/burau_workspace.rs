@@ -5,6 +5,7 @@
 use super::KnotError;
 use crate::pure_math::algebra::{BraidWord, MAX_BRAID_STRANDS};
 use math_commons::math_kernel::types::flatten_2d_index;
+use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
 use math_scalars::Dual;
 
 /// Pre-allocated $(n - 1) \times (n - 1)$ reduced Burau matrix workspace enabling
@@ -14,9 +15,10 @@ use math_scalars::Dual;
 pub struct BurauWorkspace {
     strands: usize,
     dim: usize,
-    matrix: Vec<f64>,
-    scratch: Vec<f64>,
-    dual_scratch: Vec<Dual<f64>>,
+    arena: OwnedByteArena,
+    matrix: ArenaRegion<f64>,
+    scratch: ArenaRegion<f64>,
+    dual_scratch: ArenaRegion<[f64; 2]>,
 }
 
 impl BurauWorkspace {
@@ -33,28 +35,42 @@ impl BurauWorkspace {
             });
         }
         let dim = strands - 1;
+        let len = dim * dim;
+        let mut layout = ArenaLayout::new();
+        let matrix = layout
+            .reserve::<f64>(len)
+            .expect("Burau matrix region layout valid");
+        let scratch = layout
+            .reserve::<f64>(len)
+            .expect("Burau scratch region layout valid");
+        let dual_scratch = layout
+            .reserve::<[f64; 2]>(len)
+            .expect("Burau dual scratch region layout valid");
         let mut ws = Self {
             strands,
             dim,
-            matrix: vec![0.0; dim * dim],
-            scratch: vec![0.0; dim * dim],
-            dual_scratch: vec![Dual::new(0.0, 0.0); dim * dim],
+            arena: OwnedByteArena::from_layout(&layout),
+            matrix,
+            scratch,
+            dual_scratch,
         };
         ws.reset_identity();
-        assert_eq!(ws.matrix.len(), dim * dim);
-        assert_eq!(ws.scratch.len(), dim * dim);
-        assert_eq!(ws.dual_scratch.len(), dim * dim);
+        assert_eq!(ws.arena.region_slice(ws.matrix).len(), len);
+        assert_eq!(ws.arena.region_slice(ws.scratch).len(), len);
+        assert_eq!(ws.arena.region_slice(ws.dual_scratch).len(), len);
         Ok(ws)
     }
 
     /// Resets the internal $(n - 1) \times (n - 1)$ matrix to $I_{n-1}$ with zero heap allocations.
     #[verified_engine::verified]
     pub fn reset_identity(&mut self) {
-        self.matrix.fill(0.0);
-        for i in 0..self.dim {
-            self.matrix[flatten_2d_index(i, i, self.dim)] = 1.0;
+        let dim = self.dim;
+        let matrix = self.arena.region_slice_mut(self.matrix);
+        matrix.fill(0.0);
+        for i in 0..dim {
+            matrix[flatten_2d_index(i, i, dim)] = 1.0;
         }
-        debug_assert!(self.dim == 0 || self.matrix[0] == 1.0);
+        debug_assert!(dim == 0 || matrix[0] == 1.0);
     }
 
     /// Dimension $n - 1$ of the reduced Burau representation.
@@ -68,7 +84,7 @@ impl BurauWorkspace {
     #[must_use]
     #[verified_engine::verified]
     pub fn matrix_slice(&self) -> &[f64] {
-        &self.matrix
+        self.arena.region_slice(self.matrix)
     }
 
     /// Multiplies the current matrix on the right by $\bar{\psi}(\sigma_i^{\pm 1})(t)$ in place
@@ -92,28 +108,29 @@ impl BurauWorkspace {
         let k = idx - 1;
         let dim = self.dim;
         let inv_t = 1.0 / t;
+        let matrix = self.arena.region_slice_mut(self.matrix);
 
         for r in 0..dim {
             let rk = flatten_2d_index(k, r, dim);
-            let m_rk = self.matrix[rk];
+            let m_rk = matrix[rk];
             if m_rk == 0.0 {
                 continue;
             }
             if generator > 0 {
                 if k > 0 {
-                    self.matrix[flatten_2d_index(k - 1, r, dim)] += t * m_rk;
+                    matrix[flatten_2d_index(k - 1, r, dim)] += t * m_rk;
                 }
-                self.matrix[rk] = -t * m_rk;
+                matrix[rk] = -t * m_rk;
                 if k + 1 < dim {
-                    self.matrix[flatten_2d_index(k + 1, r, dim)] += m_rk;
+                    matrix[flatten_2d_index(k + 1, r, dim)] += m_rk;
                 }
             } else {
                 if k > 0 {
-                    self.matrix[flatten_2d_index(k - 1, r, dim)] += m_rk;
+                    matrix[flatten_2d_index(k - 1, r, dim)] += m_rk;
                 }
-                self.matrix[rk] = -inv_t * m_rk;
+                matrix[rk] = -inv_t * m_rk;
                 if k + 1 < dim {
-                    self.matrix[flatten_2d_index(k + 1, r, dim)] += inv_t * m_rk;
+                    matrix[flatten_2d_index(k + 1, r, dim)] += inv_t * m_rk;
                 }
             }
         }
@@ -158,17 +175,23 @@ impl BurauWorkspace {
             assert!(val.is_finite());
             return Ok(val);
         }
-        for i in 0..self.dim {
-            for j in 0..self.dim {
-                let ij = flatten_2d_index(j, i, self.dim);
-                self.scratch[ij] = if i == j {
-                    1.0 - self.matrix[ij]
+        let dim = self.dim;
+        let mat_reg = self.matrix;
+        let scr_reg = self.scratch;
+        let mut cur = self.arena.raw_cursor();
+        let matrix = cur.region_mut(mat_reg);
+        let scratch = cur.region_mut(scr_reg);
+        for i in 0..dim {
+            for j in 0..dim {
+                let ij = flatten_2d_index(j, i, dim);
+                scratch[ij] = if i == j {
+                    1.0 - matrix[ij]
                 } else {
-                    -self.matrix[ij]
+                    -matrix[ij]
                 };
             }
         }
-        let val = gaussian_det_in_place(&mut self.scratch, self.dim) / denom;
+        let val = gaussian_det_in_place(scratch, dim) / denom;
         assert!(val.is_finite());
         Ok(val)
     }
@@ -176,60 +199,83 @@ impl BurauWorkspace {
     #[verified_engine::verified]
     fn eval_singular_det_deriv_in_place(&mut self, braid: &BraidWord, t: f64) -> f64 {
         let dim = self.dim;
-        self.dual_scratch.fill(Dual::new(0.0, 0.0));
+        let dual_buf = self.arena.region_slice_mut(self.dual_scratch);
+        dual_buf.fill([0.0, 0.0]);
         for i in 0..dim {
-            self.dual_scratch[flatten_2d_index(i, i, dim)] = Dual::new(1.0, 0.0);
+            dual_buf[flatten_2d_index(i, i, dim)] = [1.0, 0.0];
         }
         let t_dual = Dual::new(t, 1.0);
-        let neg_t = -t_dual;
         let inv_t = Dual::new(1.0, 0.0) / t_dual;
-        let neg_inv_t = -inv_t;
 
         for &g in braid.generators() {
-            let k = (g.unsigned_abs() as usize) - 1;
-            for r in 0..dim {
-                let rk = flatten_2d_index(k, r, dim);
-                let m_rk = self.dual_scratch[rk];
-                if m_rk.re == 0.0 && m_rk.eps == 0.0 {
-                    continue;
-                }
-                if g > 0 {
-                    if k > 0 {
-                        let idx_l = flatten_2d_index(k - 1, r, dim);
-                        self.dual_scratch[idx_l] += t_dual * m_rk;
-                    }
-                    self.dual_scratch[rk] = neg_t * m_rk;
-                    if k + 1 < dim {
-                        let idx_r = flatten_2d_index(k + 1, r, dim);
-                        self.dual_scratch[idx_r] += m_rk;
-                    }
-                } else {
-                    if k > 0 {
-                        let idx_l = flatten_2d_index(k - 1, r, dim);
-                        self.dual_scratch[idx_l] += m_rk;
-                    }
-                    self.dual_scratch[rk] = neg_inv_t * m_rk;
-                    if k + 1 < dim {
-                        let idx_r = flatten_2d_index(k + 1, r, dim);
-                        self.dual_scratch[idx_r] += inv_t * m_rk;
-                    }
-                }
-            }
+            step_dual_generator_in_place(dual_buf, dim, g, t_dual, inv_t);
         }
         let mut norm = 1.0_f64;
         for i in 0..dim {
             for j in 0..dim {
                 let ij = flatten_2d_index(j, i, dim);
+                let cur = to_dual(dual_buf[ij]);
                 let v = if i == j {
-                    Dual::new(1.0, 0.0) - self.dual_scratch[ij]
+                    Dual::new(1.0, 0.0) - cur
                 } else {
-                    -self.dual_scratch[ij]
+                    -cur
                 };
                 norm = norm.max(v.re.abs());
-                self.dual_scratch[ij] = v;
+                dual_buf[ij] = from_dual(v);
             }
         }
-        dual_gaussian_det_deriv_in_place(&mut self.dual_scratch, dim, 1e-11 * norm)
+        dual_gaussian_det_deriv_in_place(dual_buf, dim, 1e-11 * norm)
+    }
+}
+
+#[inline]
+const fn to_dual(pair: [f64; 2]) -> Dual<f64> {
+    Dual::new(pair[0], pair[1])
+}
+
+#[inline]
+const fn from_dual(d: Dual<f64>) -> [f64; 2] {
+    [d.re, d.eps]
+}
+
+#[verified_engine::verified]
+fn step_dual_generator_in_place(
+    buf: &mut [[f64; 2]],
+    dim: usize,
+    g: i32,
+    t_dual: Dual<f64>,
+    inv_t: Dual<f64>,
+) {
+    let k = (g.unsigned_abs() as usize) - 1;
+    let neg_t = -t_dual;
+    let neg_inv_t = -inv_t;
+    for r in 0..dim {
+        let rk = flatten_2d_index(k, r, dim);
+        let m_rk = to_dual(buf[rk]);
+        if m_rk.re == 0.0 && m_rk.eps == 0.0 {
+            continue;
+        }
+        if g > 0 {
+            if k > 0 {
+                let idx_l = flatten_2d_index(k - 1, r, dim);
+                buf[idx_l] = from_dual(to_dual(buf[idx_l]) + t_dual * m_rk);
+            }
+            buf[rk] = from_dual(neg_t * m_rk);
+            if k + 1 < dim {
+                let idx_r = flatten_2d_index(k + 1, r, dim);
+                buf[idx_r] = from_dual(to_dual(buf[idx_r]) + m_rk);
+            }
+        } else {
+            if k > 0 {
+                let idx_l = flatten_2d_index(k - 1, r, dim);
+                buf[idx_l] = from_dual(to_dual(buf[idx_l]) + m_rk);
+            }
+            buf[rk] = from_dual(neg_inv_t * m_rk);
+            if k + 1 < dim {
+                let idx_r = flatten_2d_index(k + 1, r, dim);
+                buf[idx_r] = from_dual(to_dual(buf[idx_r]) + inv_t * m_rk);
+            }
+        }
     }
 }
 
@@ -246,7 +292,7 @@ fn eval_cyclotomic_with_deriv(strands: usize, t: f64) -> (f64, f64) {
 }
 
 #[verified_engine::verified]
-fn dual_gaussian_det_deriv_in_place(buf: &mut [Dual<f64>], n: usize, tol: f64) -> f64 {
+fn dual_gaussian_det_deriv_in_place(buf: &mut [[f64; 2]], n: usize, tol: f64) -> f64 {
     let mut det_sign = 1.0_f64;
     for k in 0..n {
         let (piv_r, piv_c, max_re) = find_full_dual_pivot(buf, n, k);
@@ -256,46 +302,54 @@ fn dual_gaussian_det_deriv_in_place(buf: &mut [Dual<f64>], n: usize, tol: f64) -
             }
             let mut primal_prod = det_sign;
             for i in 0..(n - 1) {
-                primal_prod *= buf[flatten_2d_index(i, i, n)].re;
+                primal_prod *= buf[flatten_2d_index(i, i, n)][0];
             }
-            return primal_prod * buf[flatten_2d_index(n - 1, n - 1, n)].eps;
+            return primal_prod * buf[flatten_2d_index(n - 1, n - 1, n)][1];
         }
-        if piv_r != k {
-            for c in k..n {
-                buf.swap(flatten_2d_index(c, k, n), flatten_2d_index(c, piv_r, n));
-            }
-            det_sign = -det_sign;
-        }
-        if piv_c != k {
-            for r in k..n {
-                buf.swap(flatten_2d_index(k, r, n), flatten_2d_index(piv_c, r, n));
-            }
-            det_sign = -det_sign;
-        }
-        let piv = buf[flatten_2d_index(k, k, n)];
+        det_sign *= swap_dual_pivot(buf, n, k, piv_r, piv_c);
+        let piv = to_dual(buf[flatten_2d_index(k, k, n)]);
         for r in (k + 1)..n {
-            let factor = buf[flatten_2d_index(k, r, n)] / piv;
+            let factor = to_dual(buf[flatten_2d_index(k, r, n)]) / piv;
             for c in (k + 1)..n {
-                let kc = buf[flatten_2d_index(c, k, n)];
-                buf[flatten_2d_index(c, r, n)] -= factor * kc;
+                let kc = to_dual(buf[flatten_2d_index(c, k, n)]);
+                let idx = flatten_2d_index(c, r, n);
+                buf[idx] = from_dual(to_dual(buf[idx]) - factor * kc);
             }
         }
     }
     let mut prod = Dual::new(det_sign, 0.0);
     for i in 0..n {
-        prod *= buf[flatten_2d_index(i, i, n)];
+        prod *= to_dual(buf[flatten_2d_index(i, i, n)]);
     }
     prod.eps
 }
 
 #[verified_engine::verified]
-fn find_full_dual_pivot(buf: &[Dual<f64>], n: usize, k: usize) -> (usize, usize, f64) {
+fn swap_dual_pivot(buf: &mut [[f64; 2]], n: usize, k: usize, piv_r: usize, piv_c: usize) -> f64 {
+    let mut sign = 1.0_f64;
+    if piv_r != k {
+        for c in k..n {
+            buf.swap(flatten_2d_index(c, k, n), flatten_2d_index(c, piv_r, n));
+        }
+        sign = -sign;
+    }
+    if piv_c != k {
+        for r in k..n {
+            buf.swap(flatten_2d_index(k, r, n), flatten_2d_index(piv_c, r, n));
+        }
+        sign = -sign;
+    }
+    sign
+}
+
+#[verified_engine::verified]
+fn find_full_dual_pivot(buf: &[[f64; 2]], n: usize, k: usize) -> (usize, usize, f64) {
     let mut piv_r = k;
     let mut piv_c = k;
-    let mut max_re = buf[flatten_2d_index(k, k, n)].re.abs();
+    let mut max_re = buf[flatten_2d_index(k, k, n)][0].abs();
     for r in k..n {
         for c in k..n {
-            let v = buf[flatten_2d_index(c, r, n)].re.abs();
+            let v = buf[flatten_2d_index(c, r, n)][0].abs();
             if v > max_re {
                 max_re = v;
                 piv_r = r;

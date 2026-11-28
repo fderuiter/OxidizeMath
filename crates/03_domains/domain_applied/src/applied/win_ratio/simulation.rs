@@ -215,3 +215,135 @@ pub fn pdf_x_given_t_control(x: f64, c: f64, params: &SimulationParams) -> f64 {
 pub fn pdf_x_given_t_treatment(x: f64, c: f64, params: &SimulationParams) -> f64 {
     params.treatment_model().pdf_x_given_t(x, c)
 }
+
+#[inline]
+pub(super) fn compare_simulated_pair(
+    cmp: &super::censoring::RightCensoredComparator,
+    trt_t: [f64; 2],
+    trt_e: [u8; 2],
+    ctrl_t: [f64; 2],
+    ctrl_e: [u8; 2],
+) -> (super::pair_comparison::ComparisonResult, usize) {
+    let fatal = cmp.compare_raw(trt_t[0], trt_e[0] != 0, ctrl_t[0], ctrl_e[0] != 0);
+    if fatal != super::pair_comparison::ComparisonResult::Tie {
+        return (fatal, 0);
+    }
+    (
+        cmp.compare_raw(trt_t[1], trt_e[1] != 0, ctrl_t[1], ctrl_e[1] != 0),
+        1,
+    )
+}
+
+fn build_two_tier_counts(
+    n1: usize,
+    n2: usize,
+    tier_wins: [usize; 2],
+    tier_losses: [usize; 2],
+) -> [super::censoring::TierCount; 2] {
+    use super::censoring::TierCount;
+    let total_pairs = n1.saturating_mul(n2);
+    let rem1 = total_pairs.saturating_sub(tier_wins[0] + tier_losses[0]);
+    let rem2 = rem1.saturating_sub(tier_wins[1] + tier_losses[1]);
+    [
+        TierCount {
+            tier_index: 0,
+            wins: tier_wins[0],
+            losses: tier_losses[0],
+            ties_remaining: rem1,
+        },
+        TierCount {
+            tier_index: 1,
+            wins: tier_wins[1],
+            losses: tier_losses[1],
+            ties_remaining: rem2,
+        },
+    ]
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn evaluate_simulated_cohorts_into(
+    trt_times: &[[f64; 2]],
+    trt_events: &[[u8; 2]],
+    ctrl_times: &[[f64; 2]],
+    ctrl_events: &[[u8; 2]],
+    row_wins: &mut [u32],
+    row_losses: &mut [u32],
+    col_wins: &mut [u32],
+    col_losses: &mut [u32],
+    sig_alpha: f64,
+) -> (
+    Option<super::u_statistic::UnmatchedWinRatioSummary>,
+    [super::censoring::TierCount; 2],
+) {
+    use super::censoring::RightCensoredComparator;
+    use super::pair_comparison::ComparisonResult;
+    use super::u_statistic::{SubjectMarginals, compute_unmatched_u_statistics};
+
+    let (n1, n2) = (trt_times.len(), ctrl_times.len());
+    row_wins[..n1].fill(0);
+    row_losses[..n1].fill(0);
+    col_wins[..n2].fill(0);
+    col_losses[..n2].fill(0);
+
+    let cmp = RightCensoredComparator::new();
+    let mut tier_wins = [0usize; 2];
+    let mut tier_losses = [0usize; 2];
+    for i in 0..n1 {
+        for j in 0..n2 {
+            match compare_simulated_pair(
+                &cmp,
+                trt_times[i],
+                trt_events[i],
+                ctrl_times[j],
+                ctrl_events[j],
+            ) {
+                (ComparisonResult::Win, k) => {
+                    tier_wins[k] += 1;
+                    row_wins[i] += 1;
+                    col_wins[j] += 1;
+                }
+                (ComparisonResult::Loss, k) => {
+                    tier_losses[k] += 1;
+                    row_losses[i] += 1;
+                    col_losses[j] += 1;
+                }
+                (ComparisonResult::Tie, _) => {}
+            }
+        }
+    }
+
+    let tiers = build_two_tier_counts(n1, n2, tier_wins, tier_losses);
+    let marginals = SubjectMarginals {
+        row_wins: &row_wins[..n1],
+        row_losses: &row_losses[..n1],
+        col_wins: &col_wins[..n2],
+        col_losses: &col_losses[..n2],
+    };
+    let w_sum = tier_wins[0] + tier_wins[1];
+    let l_sum = tier_losses[0] + tier_losses[1];
+    (
+        compute_unmatched_u_statistics(n1, n2, w_sum, l_sum, &marginals, sig_alpha),
+        tiers,
+    )
+}
+
+#[verified_engine::verified]
+pub(super) fn tie_fallback_summary(n_arm: usize) -> super::u_statistic::UnmatchedWinRatioSummary {
+    let pairs = n_arm * n_arm;
+    super::u_statistic::UnmatchedWinRatioSummary {
+        n_treatment: n_arm,
+        n_control: n_arm,
+        total_pairs: pairs,
+        wins: 0,
+        losses: 0,
+        ties: pairs,
+        win_ratio: 1.0,
+        win_odds: 1.0,
+        net_benefit: 0.0,
+        ci_low: 1.0,
+        ci_high: 1.0,
+        log_wr_se: 0.0,
+        z_score: 0.0,
+        p_value: 1.0,
+    }
+}

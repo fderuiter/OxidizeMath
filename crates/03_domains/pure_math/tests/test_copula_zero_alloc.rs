@@ -427,3 +427,51 @@ fn test_copula_and_parlay_hot_paths_zero_heap_allocations() {
         simulate_correlated_parlay(&legs_20, &corr_20, 2_000, &mut rng_outside).unwrap();
     assert!(sim20_conv.fair_decimal_odds > 1.0);
 }
+
+#[test]
+#[verified_engine::verified]
+fn test_correlation_matrix_and_linalg_with_workspace_zero_heap_allocations() {
+    use math_memory::OwnedByteArena;
+    use nalgebra::DVector;
+    use pure_math::pure_math::algebra::linear_algebra::decomposition::{
+        effective_rank_with_workspace, svd_decomposition_workspace_bytes,
+        try_low_rank_approximation_with_workspace,
+    };
+    use pure_math::pure_math::algebra::linear_algebra::numerical::{
+        linalg_solve_workspace_bytes, solve_cholesky_system_with_workspace,
+        solve_conjugate_gradient_with_workspace, solve_gmres_restarted_with_workspace,
+        solve_linear_system_with_workspace, solve_normal_equation_with_workspace,
+        solve_tikhonov_system_with_workspace, try_moore_penrose_pseudoinverse_with_workspace,
+    };
+
+    let spd = DMatrix::from_row_slice(3, 3, &[4.0, 1.0, 0.2, 1.0, 3.0, 0.5, 0.2, 0.5, 2.5]);
+    let b = DVector::from_column_slice(&[5.2, 4.5, 3.2]);
+    let corr_in = DMatrix::from_row_slice(3, 3, &[1.0, 0.3, 0.1, 0.3, 1.0, 0.2, 0.1, 0.2, 1.0]);
+    let chol_buf = DMatrix::zeros(3, 3);
+    let mut out_x = DVector::zeros(3);
+    let mut out_pinv = DMatrix::zeros(3, 3);
+    let mut out_approx = DMatrix::zeros(3, 3);
+    let ws_bytes = linalg_solve_workspace_bytes(3, 3, 3)
+        .max(svd_decomposition_workspace_bytes(3, 3))
+        .max(CorrelationMatrix::workspace_bytes(3));
+    let mut ws = OwnedByteArena::with_capacity(ws_bytes);
+
+    let ((corr, rank), _) = VerifiedEngine::run_verified(|| {
+        solve_linear_system_with_workspace(&spd, &b, &mut out_x, &mut ws).unwrap();
+        solve_normal_equation_with_workspace(&spd, &b, &mut out_x, &mut ws).unwrap();
+        try_moore_penrose_pseudoinverse_with_workspace(&spd, 1e-10, &mut out_pinv, &mut ws)
+            .unwrap();
+        solve_cholesky_system_with_workspace(&spd, &b, &mut out_x, &mut ws).unwrap();
+        solve_tikhonov_system_with_workspace(&spd, &b, 1e-4, &mut out_x, &mut ws).unwrap();
+        solve_conjugate_gradient_with_workspace(&spd, &b, 1e-10, 32, &mut out_x, &mut ws).unwrap();
+        solve_gmres_restarted_with_workspace(&spd, &b, 3, 1e-10, 4, &mut out_x, &mut ws).unwrap();
+        let rank = effective_rank_with_workspace(&spd, Some(1e-8), &mut ws).unwrap();
+        try_low_rank_approximation_with_workspace(&spd, 2, &mut out_approx, &mut ws).unwrap();
+        let corr = CorrelationMatrix::new_with_workspace(corr_in, chol_buf, &mut ws).unwrap();
+        (corr, rank)
+    });
+    assert_eq!(rank, 3);
+    assert_eq!(corr.dimension(), 3);
+    assert_relative_eq!((&spd * &out_x - &b).norm(), 0.0, epsilon = 1e-8);
+    assert_relative_eq!((&spd * &out_pinv * &spd - &spd).norm(), 0.0, epsilon = 1e-8);
+}
