@@ -268,10 +268,16 @@ impl VirtualFileSystem for RootedVfs {
     }
 }
 
+// Standalone workspace crates outside `math_explorer_gui`'s transitive dependency
+// graph (`compute_gui_snapshot_code_dirs`), excluded so native live workspace
+// scans match the build-time `traceability_manifest.json` snapshot.
 #[cfg(not(target_arch = "wasm32"))]
+/// Workspace crates outside the GUI's dependency closure, which the build-time snapshot
+/// (`build_snapshot.rs`) never scans. `oxidize_wasm` is the standalone npm SDK.
 const HOST_ONLY_WORKSPACE_CRATES: &[&str] = &[
     "markdown_tests",
     "math_explorer",
+    "oxidize_wasm",
     "scientific_verification",
     "unified_verification",
     "verified_engine",

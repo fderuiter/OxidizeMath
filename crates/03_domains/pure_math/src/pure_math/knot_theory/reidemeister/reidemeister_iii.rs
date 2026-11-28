@@ -88,36 +88,48 @@ fn match_riii_triangle(
     let cr_tm = &diagram.crossings[c_tm];
     let cr_mb = &diagram.crossings[c_mb];
 
-    let (s_tm, slot_tb_o, slot_tm_o) = find_shared_slot(cr_tb, &[1, 3], cr_tm, &[1, 3])?;
-    let (s_mb, slot_tm_u, slot_mb_o) = find_shared_slot(cr_tm, &[0, 2], cr_mb, &[1, 3])?;
-    let (s_tb, slot_mb_u, slot_tb_u) = find_shared_slot(cr_mb, &[0, 2], cr_tb, &[0, 2])?;
+    let shared_tm = collect_shared_slots(cr_tb, &[1, 3], cr_tm, &[1, 3]);
+    let shared_mb = collect_shared_slots(cr_tm, &[0, 2], cr_mb, &[1, 3]);
+    let shared_tb = collect_shared_slots(cr_mb, &[0, 2], cr_tb, &[0, 2]);
 
-    let step_tb = (slot_tb_o + 4 - slot_tb_u) % 4;
-    let step_tm = (slot_tm_u + 4 - slot_tm_o) % 4;
-    let step_mb = (slot_mb_u + 4 - slot_mb_o) % 4;
-    if (step_tb == 1 || step_tb == 3) && step_tb == step_tm && step_tm == step_mb {
-        Some((s_tm, s_mb, s_tb))
-    } else {
-        None
-    }
-}
-
-#[verified_engine::verified]
-fn find_shared_slot(
-    ca: &Crossing,
-    slots_a: &[u8],
-    cb: &Crossing,
-    slots_b: &[u8],
-) -> Option<(usize, u8, u8)> {
-    for &sa in slots_a {
-        let seg_a = ca.slots[sa as usize];
-        for &sb in slots_b {
-            if cb.slots[sb as usize] == seg_a {
-                return Some((seg_a, sa, sb));
+    for &(s_tm, slot_tb_o, slot_tm_o) in &shared_tm {
+        for &(s_mb, slot_tm_u, slot_mb_o) in &shared_mb {
+            if s_tm == s_mb {
+                continue;
+            }
+            for &(s_tb, slot_mb_u, slot_tb_u) in &shared_tb {
+                if s_tb == s_tm || s_tb == s_mb {
+                    continue;
+                }
+                let step_tb = (slot_tb_o + 4 - slot_tb_u) % 4;
+                let step_tm = (slot_tm_u + 4 - slot_tm_o) % 4;
+                let step_mb = (slot_mb_u + 4 - slot_mb_o) % 4;
+                if (step_tb == 1 || step_tb == 3) && step_tb == step_tm && step_tm == step_mb {
+                    return Some((s_tm, s_mb, s_tb));
+                }
             }
         }
     }
     None
+}
+
+#[verified_engine::verified]
+fn collect_shared_slots(
+    ca: &Crossing,
+    slots_a: &[u8],
+    cb: &Crossing,
+    slots_b: &[u8],
+) -> Vec<(usize, u8, u8)> {
+    let mut out = Vec::with_capacity(2);
+    for &sa in slots_a {
+        let seg_a = ca.slots[sa as usize];
+        for &sb in slots_b {
+            if cb.slots[sb as usize] == seg_a {
+                out.push((seg_a, sa, sb));
+            }
+        }
+    }
+    out
 }
 
 #[verified_engine::verified]
