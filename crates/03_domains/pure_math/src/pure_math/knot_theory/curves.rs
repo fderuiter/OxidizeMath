@@ -295,13 +295,13 @@ impl LissajousKnot {
         })
     }
 
-    /// Classic $5_2$ three-twist Lissajous knot $(3, 4, 7)$.
+    /// Classic $5_2$ three-twist Lissajous knot $(3, 2, 7)$.
     #[must_use]
     #[verified_engine::verified]
     pub fn three_twist() -> Self {
         Self {
-            frequencies: (3, 4, 7),
-            phases: (0.1, 0.7, 0.0),
+            frequencies: (3, 2, 7),
+            phases: (0.7, 0.2, 0.0),
             scale: 1.8,
         }
     }

@@ -2,6 +2,7 @@
 
 // [cite:knot_braid_topology]
 
+pub use super::laurent_checked::{LaurentError, MAX_LAURENT_SPAN};
 use crate::pure_math::algebra::polynomial::Polynomial;
 use crate::pure_math::algebra::traits::Ring;
 use std::fmt;
@@ -24,12 +25,12 @@ use std::fmt;
 /// assert_eq!(trefoil.max_degree(), Some(1));
 /// assert!(trefoil.is_reciprocal());
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct LaurentPolynomial<T: Ring> {
     /// Lowest exponent $m \in \mathbb{Z}$ with non-zero coefficient (`0` when identically zero).
-    pub min_exp: i32,
+    pub(crate) min_exp: i32,
     /// Contiguous coefficient slice where `coeffs[i]` multiplies $t^{\text{min\_exp} + i}$.
-    pub coeffs: Vec<T>,
+    pub(crate) coeffs: Vec<T>,
 }
 
 impl<T: Ring> Default for LaurentPolynomial<T> {
@@ -39,48 +40,79 @@ impl<T: Ring> Default for LaurentPolynomial<T> {
 }
 
 impl<T: Ring> LaurentPolynomial<T> {
+    /// Returns the lowest stored exponent (`0` for the zero polynomial).
+    #[must_use]
+    #[verified_engine::verified]
+    pub const fn min_exp(&self) -> i32 {
+        self.min_exp
+    }
+
+    /// Returns a read-only slice of contiguous coefficients starting at [`Self::min_exp`].
+    #[must_use]
+    #[verified_engine::verified]
+    pub fn coeffs(&self) -> &[T] {
+        &self.coeffs
+    }
+
+    /// Fallibly constructs and normalizes a [`LaurentPolynomial`] starting at `min_exp`.
+    ///
+    /// # Errors
+    /// Returns [`LaurentError::ExponentOverflow`] if trimming or `max_degree` overflows `i32`,
+    /// or [`LaurentError::SpanTooLarge`] if the trimmed dense support exceeds [`MAX_LAURENT_SPAN`].
+    #[verified_engine::verified]
+    pub fn try_new(min_exp: i32, coeffs: Vec<T>) -> Result<Self, LaurentError> {
+        super::laurent_checked::try_new_impl(min_exp, coeffs)
+    }
+
     /// Constructs a canonicalized Laurent polynomial starting at `min_exp`.
+    ///
+    /// # Panics
+    /// Panics if exponents overflow `i32` or the trimmed span exceeds [`MAX_LAURENT_SPAN`];
+    /// prefer [`Self::try_new`] in fallible contexts.
     #[must_use]
     #[verified_engine::verified]
     pub fn new(min_exp: i32, coeffs: Vec<T>) -> Self {
-        let mut poly = Self { min_exp, coeffs };
-        poly.normalize_trim();
-        debug_assert!(poly.coeffs.is_empty() || !poly.coeffs[0].is_zero());
-        poly
+        Self::try_new(min_exp, coeffs).expect("LaurentPolynomial::new exponent or span overflow")
+    }
+
+    /// Fallibly constructs a [`LaurentPolynomial`] by summing `(exponent, coefficient)` terms.
+    ///
+    /// # Errors
+    /// Returns [`LaurentError`] if the resulting exponent span exceeds [`MAX_LAURENT_SPAN`] or `i32`.
+    #[verified_engine::verified]
+    pub fn try_from_terms(terms: &[(i32, T)]) -> Result<Self, LaurentError> {
+        super::laurent_checked::try_from_terms_impl(terms)
     }
 
     /// Constructs a Laurent polynomial by summing `(exponent, coefficient)` terms.
+    ///
+    /// # Panics
+    /// Panics if the resulting degree span exceeds [`MAX_LAURENT_SPAN`] or `i32`;
+    /// prefer [`Self::try_from_terms`] in fallible contexts.
     #[must_use]
     #[verified_engine::verified]
     pub fn from_terms(terms: &[(i32, T)]) -> Self {
-        let mut non_zero_bounds: Option<(i32, i32)> = None;
-        for (exp, coeff) in terms {
-            if !coeff.is_zero() {
-                non_zero_bounds = Some(match non_zero_bounds {
-                    None => (*exp, *exp),
-                    Some((lo, hi)) => (lo.min(*exp), hi.max(*exp)),
-                });
-            }
-        }
-        let Some((lo, hi)) = non_zero_bounds else {
-            return Self::zero();
-        };
-        let len = (hi - lo) as usize + 1;
-        let mut coeffs = vec![T::zero(); len];
-        for (exp, coeff) in terms {
-            if !coeff.is_zero() {
-                let idx = (*exp - lo) as usize;
-                coeffs[idx] += coeff.clone();
-            }
-        }
-        Self::new(lo, coeffs)
+        Self::try_from_terms(terms)
+            .expect("LaurentPolynomial::from_terms exponent or span overflow")
+    }
+
+    /// Fallibly embeds a non-negative-degree [`Polynomial`] into $R[t, t^{-1}]$.
+    ///
+    /// # Errors
+    /// Propagates [`LaurentError`] from [`Self::try_new`].
+    #[verified_engine::verified]
+    pub fn try_from_polynomial(poly: Polynomial<T>) -> Result<Self, LaurentError> {
+        Self::try_new(0, poly.coeffs)
     }
 
     /// Embeds a non-negative-degree [`Polynomial`] into $R[t, t^{-1}]$.
+    ///
+    /// # Panics
+    /// Panics if `poly` exceeds [`MAX_LAURENT_SPAN`]; prefer [`Self::try_from_polynomial`].
     #[must_use]
     #[verified_engine::verified]
     pub fn from_polynomial(poly: Polynomial<T>) -> Self {
-        Self::new(0, poly.coeffs)
+        Self::try_from_polynomial(poly).expect("LaurentPolynomial::from_polynomial span overflow")
     }
 
     /// Constructs a single monomial $c \cdot t^e$.
@@ -104,26 +136,6 @@ impl<T: Ring> LaurentPolynomial<T> {
         Self::monomial(coeff, 0)
     }
 
-    /// Strips leading and trailing zero coefficients while preserving exponent alignment.
-    #[verified_engine::verified]
-    pub(crate) fn normalize_trim(&mut self) {
-        while self.coeffs.last().is_some_and(Ring::is_zero) {
-            self.coeffs.pop();
-        }
-        let lead_zeros = self.coeffs.iter().take_while(|c| c.is_zero()).count();
-        if lead_zeros > 0 {
-            self.coeffs.drain(..lead_zeros);
-            self.min_exp = self.min_exp.saturating_add(lead_zeros as i32);
-        }
-        if self.coeffs.is_empty() {
-            self.min_exp = 0;
-        }
-        debug_assert!(
-            (self.coeffs.is_empty() && self.min_exp == 0)
-                || (!self.coeffs[0].is_zero() && !self.coeffs[self.coeffs.len() - 1].is_zero())
-        );
-    }
-
     /// Lowest exponent with a non-zero coefficient, or `None` for the zero polynomial.
     #[must_use]
     #[verified_engine::verified]
@@ -135,7 +147,9 @@ impl<T: Ring> LaurentPolynomial<T> {
     #[must_use]
     #[verified_engine::verified]
     pub fn max_degree(&self) -> Option<i32> {
-        (!self.coeffs.is_empty()).then(|| self.min_exp + (self.coeffs.len() as i32) - 1)
+        let last_offset = self.coeffs.len().checked_sub(1)?;
+        let delta = i32::try_from(last_offset).ok()?;
+        self.min_exp.checked_add(delta)
     }
 
     /// Exponent breadth `max_degree - min_degree` (`0` for zero or single-monomial polynomials).
@@ -152,48 +166,65 @@ impl<T: Ring> LaurentPolynomial<T> {
         if exp < self.min_exp {
             return T::zero();
         }
-        let offset = (exp - self.min_exp) as usize;
-        self.coeffs.get(offset).cloned().unwrap_or_else(T::zero)
+        let diff = i64::from(exp) - i64::from(self.min_exp);
+        usize::try_from(diff)
+            .ok()
+            .and_then(|offset| self.coeffs.get(offset))
+            .cloned()
+            .unwrap_or_else(T::zero)
+    }
+
+    /// Fallibly multiplies by $t^{\Delta}$, shifting all exponents by `delta_exp`.
+    ///
+    /// # Errors
+    /// Returns [`LaurentError::ExponentOverflow`] if `min_degree` or `max_degree` overflows `i32`.
+    #[verified_engine::verified]
+    pub fn try_shift(&self, delta_exp: i32) -> Result<Self, LaurentError> {
+        super::laurent_checked::try_shift_impl(self, delta_exp)
     }
 
     /// Multiplies by $t^{\Delta}$, shifting all exponents by `delta_exp`.
+    ///
+    /// # Panics
+    /// Panics if the shifted exponents overflow `i32`; prefer [`Self::try_shift`].
     #[must_use]
     #[verified_engine::verified]
     pub fn shift(&self, delta_exp: i32) -> Self {
-        let out = if self.coeffs.is_empty() {
-            Self::zero()
-        } else {
-            Self {
-                min_exp: self.min_exp.saturating_add(delta_exp),
-                coeffs: self.coeffs.clone(),
-            }
-        };
-        debug_assert_eq!(out.coeffs.len(), self.coeffs.len());
-        out
+        self.try_shift(delta_exp)
+            .expect("LaurentPolynomial::shift exponent overflow")
+    }
+
+    /// Fallibly substitutes $t \mapsto t^{-1}$, sending $\sum c_k t^k$ to $\sum c_k t^{-k}$.
+    ///
+    /// # Errors
+    /// Returns [`LaurentError::ExponentOverflow`] when `-min_degree` or `-max_degree` overflows `i32`.
+    #[verified_engine::verified]
+    pub fn try_invert_variable(&self) -> Result<Self, LaurentError> {
+        super::laurent_checked::try_invert_variable_impl(self)
     }
 
     /// Substitutes $t \mapsto t^{-1}$, sending $\sum c_k t^k$ to $\sum c_k t^{-k}$.
+    ///
+    /// # Panics
+    /// Panics if `-min_degree` or `-max_degree` overflows `i32`; prefer [`Self::try_invert_variable`].
     #[must_use]
     #[verified_engine::verified]
     pub fn invert_variable(&self) -> Self {
-        let Some(max_deg) = self.max_degree() else {
-            return Self::zero();
-        };
-        let mut rev = self.coeffs.clone();
-        rev.reverse();
-        let out = Self {
-            min_exp: -max_deg,
-            coeffs: rev,
-        };
-        debug_assert_eq!(out.span(), self.span());
-        out
+        self.try_invert_variable()
+            .expect("LaurentPolynomial::invert_variable exponent overflow")
     }
 
     /// Returns `true` when $P(t) = P(t^{-1})$ identically (palindromic around degree `0`).
     #[must_use]
     #[verified_engine::verified]
     pub fn is_reciprocal(&self) -> bool {
-        *self == self.invert_variable()
+        if self.coeffs.is_empty() {
+            return true;
+        }
+        let Some(max_deg) = self.max_degree() else {
+            return false;
+        };
+        i64::from(self.min_exp) + i64::from(max_deg) == 0 && self.is_reciprocal_up_to_shift()
     }
 
     /// Returns `true` when $P(t^{-1}) = t^k P(t)$ for some integer shift $k \in \mathbb{Z}$.
@@ -216,11 +247,7 @@ impl<T: Ring> LaurentPolynomial<T> {
         if self.coeffs.is_empty() || scalar.is_zero() {
             return Self::zero();
         }
-        let scaled = self
-            .coeffs
-            .iter()
-            .map(|c| c.clone() * scalar.clone())
-            .collect();
+        let scaled = self.coeffs.iter().map(|c| c.ring_ref_mul(scalar)).collect();
         Self::new(self.min_exp, scaled)
     }
 
@@ -233,30 +260,48 @@ impl<T: Ring> LaurentPolynomial<T> {
         }
         let mut horner = T::zero();
         for c in self.coeffs.iter().rev() {
-            horner = horner * x.clone() + c.clone();
+            horner = horner.ring_ref_mul(&x).ring_ref_add(c);
         }
-        if self.min_exp >= 0 {
-            let mut pow = T::one();
-            for _ in 0..self.min_exp {
-                pow *= x.clone();
-            }
-            horner * pow
-        } else {
-            let mut pow_inv = T::one();
-            for _ in 0..(-self.min_exp) {
-                pow_inv *= x_inv.clone();
-            }
-            horner * pow_inv
-        }
+        let base = if self.min_exp >= 0 { x } else { x_inv };
+        let factor = pow_ring_u32(base, self.min_exp.unsigned_abs());
+        horner * factor
     }
 }
 
+#[verified_engine::verified]
+fn pow_ring_u32<T: Ring>(mut base: T, mut exp: u32) -> T {
+    let mut acc = T::one();
+    while exp > 0 {
+        if (exp & 1) == 1 {
+            acc = acc.ring_ref_mul(&base);
+        }
+        exp >>= 1;
+        if exp > 0 {
+            base = base.ring_ref_mul(&base);
+        }
+    }
+    acc
+}
+
 impl LaurentPolynomial<i64> {
+    /// Evaluates $P(1) = \sum_k c_k$ using checked `i64` addition.
+    ///
+    /// # Errors
+    /// Returns [`LaurentError::CoefficientOverflow`] if any partial sum overflows `i64`.
+    #[verified_engine::verified]
+    pub fn try_eval_at_one(&self) -> Result<i64, LaurentError> {
+        super::laurent_checked::try_eval_at_one_impl(self)
+    }
+
     /// Evaluates $P(1) = \sum_k c_k$ over `i64`.
+    ///
+    /// # Panics
+    /// Panics if the sum overflows `i64`; prefer [`Self::try_eval_at_one`].
     #[must_use]
     #[verified_engine::verified]
     pub fn eval_at_one(&self) -> i64 {
-        self.coeffs.iter().copied().sum()
+        self.try_eval_at_one()
+            .expect("LaurentPolynomial::eval_at_one coefficient sum overflow")
     }
 
     /// Returns `true` when $P(t^{-1}) = \pm t^k P(t)$ for some unit $\pm t^k \in \mathbb{Z}[t, t^{-1}]$.
@@ -267,33 +312,30 @@ impl LaurentPolynomial<i64> {
             return true;
         }
         let n = self.coeffs.len();
-        (0..n).all(|i| self.coeffs[i] == -self.coeffs[n - 1 - i])
+        (0..n).all(|i| self.coeffs[n - 1 - i].checked_neg() == Some(self.coeffs[i]))
+    }
+
+    /// Fallibly normalizes a Laurent polynomial modulo units $\pm t^k \in \mathbb{Z}[t, t^{-1}]$.
+    ///
+    /// # Errors
+    /// Returns [`LaurentError::CoefficientOverflow`] if sign canonicalization requires negating `i64::MIN`.
+    #[verified_engine::verified]
+    pub fn try_normalize_alexander(&self) -> Result<Self, LaurentError> {
+        super::laurent_checked::try_normalize_alexander_impl(self)
     }
 
     /// Normalizes a Laurent polynomial modulo units $\pm t^k \in \mathbb{Z}[t, t^{-1}]$.
     ///
     /// Centers the support at `min_exp = -(span / 2)` and fixes the global sign so
     /// $P(1) > 0$ (or, when $P(1) = 0$, the highest-degree non-zero coefficient is positive).
+    ///
+    /// # Panics
+    /// Panics if negating a `i64::MIN` coefficient overflows; prefer [`Self::try_normalize_alexander`].
     #[must_use]
     #[verified_engine::verified]
     pub fn normalize_alexander(&self) -> Self {
-        if self.coeffs.is_empty() {
-            return Self::zero();
-        }
-        let target_min = -((self.span() as i32) / 2);
-        let mut centered = self.shift(target_min - self.min_exp);
-        let sum = centered.eval_at_one();
-        let negate = if sum != 0 {
-            sum < 0
-        } else {
-            centered.coeffs.last().is_some_and(|&c| c < 0)
-        };
-        if negate {
-            centered = -centered;
-        }
-        debug_assert_eq!(centered.min_exp, target_min);
-        debug_assert!(centered.eval_at_one() >= 0);
-        centered
+        self.try_normalize_alexander()
+            .expect("LaurentPolynomial::normalize_alexander coefficient overflow")
     }
 
     /// Formats the Laurent polynomial in ascending powers of `var` (e.g. `"t^-1 - 1 + t"`).
@@ -318,7 +360,7 @@ fn format_integer_laurent(coeffs: &[i64], min_exp: i32, var: &str, half_powers: 
         if c == 0 {
             continue;
         }
-        let exp = min_exp + idx as i32;
+        let exp = i64::from(min_exp) + (idx as i64);
         let abs_c = c.unsigned_abs();
         if out.is_empty() {
             if c < 0 {
@@ -334,7 +376,7 @@ fn format_integer_laurent(coeffs: &[i64], min_exp: i32, var: &str, half_powers: 
     out
 }
 
-fn append_laurent_term(out: &mut String, abs_c: u64, exp: i32, var: &str, half_powers: bool) {
+fn append_laurent_term(out: &mut String, abs_c: u64, exp: i64, var: &str, half_powers: bool) {
     if exp == 0 {
         out.push_str(&abs_c.to_string());
         return;

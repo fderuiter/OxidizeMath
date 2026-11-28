@@ -29,7 +29,7 @@
 
 // [cite:knot_braid_topology]
 
-use crate::pure_math::algebra::BraidError;
+use crate::pure_math::algebra::{BraidError, LaurentError};
 use thiserror::Error;
 
 /// Exact $O(2^c)$ state-sum expansion ceiling for Kauffman bracket and Jones polynomials
@@ -48,6 +48,12 @@ pub enum KnotError {
     /// Underlying Artin braid group error.
     #[error("{0}")]
     Braid(#[from] BraidError),
+    /// Underlying Laurent polynomial exponent, span, or integer coefficient error.
+    #[error("{0}")]
+    Laurent(#[from] LaurentError),
+    /// Exact invariant coefficient or loop-power exceeded signed 64-bit integer bounds.
+    #[error("knot polynomial coefficient or loop power overflowed signed 64-bit integer bounds")]
+    CoefficientOverflow,
     /// Link contained zero curve components.
     #[error("spatial link must contain at least one closed curve component")]
     EmptyCurve,
@@ -138,7 +144,10 @@ pub use gauss::{
     gauss_linking_number, gauss_linking_quadrature, gauss_writhe_quadrature,
     pairwise_linking_matrix, pairwise_linking_numbers_in_place,
 };
-pub use invariants::{alexander_polynomial_burau, alexander_polynomial_fox, reduced_burau_matrix};
+pub use invariants::{
+    alexander_polynomial_burau, alexander_polynomial_fox, reduced_burau_matrix,
+    try_reduced_burau_matrix,
+};
 pub use kauffman_jones::{
     format_jones_polynomial, is_chiral_by_jones, jones_polynomial, jones_polynomial_half_power,
     kauffman_bracket, normalized_kauffman_polynomial,

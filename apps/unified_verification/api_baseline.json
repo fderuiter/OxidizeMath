@@ -17658,6 +17658,9 @@
       "signature": "pub use pure_math :: error :: KnotError"
     },
     {
+      "signature": "pub use pure_math :: error :: LaurentError"
+    },
+    {
       "signature": "pub use pure_math :: error :: LinearAlgebraError"
     },
     {
@@ -18000,6 +18003,9 @@
       "signature": "pub use crate :: pure_math :: algebra :: BraidError"
     },
     {
+      "signature": "pub use crate :: pure_math :: algebra :: LaurentError"
+    },
+    {
       "signature": "pub use crate :: pure_math :: algebra :: linear_algebra :: numerical :: LinearAlgebraError"
     },
     {
@@ -18165,6 +18171,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: KnotError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: LaurentError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: LinalgError } }"
@@ -18652,6 +18661,9 @@
       "signature": "impl BraidWord { pub fn strand_permutation (& self) -> Permutation }"
     },
     {
+      "signature": "impl BraidWord { pub fn try_operate (& self , _ : & Self) -> Result < Self , BraidError > }"
+    },
+    {
       "signature": "impl BraidWord { pub fn writhe (& self) -> i64 }"
     },
     {
@@ -18880,7 +18892,13 @@
       "signature": "pub use linear_algebra :: LinearAlgebraError"
     },
     {
+      "signature": "pub use polynomial :: LaurentError"
+    },
+    {
       "signature": "pub use polynomial :: LaurentPolynomial"
+    },
+    {
+      "signature": "pub use polynomial :: MAX_LAURENT_SPAN"
     },
     {
       "signature": "pub use polynomial :: Polynomial"
@@ -18930,12 +18948,24 @@
       "signature": "pub struct Polynomial < T : Ring >"
     },
     {
+      "signature": "pub use laurent :: LaurentError"
+    },
+    {
       "signature": "pub use laurent :: LaurentPolynomial"
+    },
+    {
+      "signature": "pub use laurent :: MAX_LAURENT_SPAN"
     }
   ],
   "pure_math:src/pure_math/algebra/polynomial/laurent.rs": [
     {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub const fn min_exp (& self) -> i32 }"
+    },
+    {
       "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn coeff (& self , _ : i32) -> T }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn coeffs (& self) -> & [T] }"
     },
     {
       "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn constant (_ : T) -> Self }"
@@ -18980,6 +19010,21 @@
       "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn span (& self) -> usize }"
     },
     {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn try_from_polynomial (_ : Polynomial < T >) -> Result < Self , LaurentError > }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn try_from_terms (_ : & [(i32 , T)]) -> Result < Self , LaurentError > }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn try_invert_variable (& self) -> Result < Self , LaurentError > }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn try_new (_ : i32 , _ : Vec < T >) -> Result < Self , LaurentError > }"
+    },
+    {
+      "signature": "impl < T : Ring > LaurentPolynomial < T > { pub fn try_shift (& self , _ : i32) -> Result < Self , LaurentError > }"
+    },
+    {
       "signature": "impl LaurentPolynomial < i64 > { pub fn eval_at_one (& self) -> i64 }"
     },
     {
@@ -18995,7 +19040,19 @@
       "signature": "impl LaurentPolynomial < i64 > { pub fn normalize_alexander (& self) -> Self }"
     },
     {
+      "signature": "impl LaurentPolynomial < i64 > { pub fn try_eval_at_one (& self) -> Result < i64 , LaurentError > }"
+    },
+    {
+      "signature": "impl LaurentPolynomial < i64 > { pub fn try_normalize_alexander (& self) -> Result < Self , LaurentError > }"
+    },
+    {
       "signature": "pub struct LaurentPolynomial < T : Ring >"
+    },
+    {
+      "signature": "pub use super :: laurent_checked :: LaurentError"
+    },
+    {
+      "signature": "pub use super :: laurent_checked :: MAX_LAURENT_SPAN"
     }
   ],
   "pure_math:src/pure_math/algebra/traits.rs": [
@@ -22724,9 +22781,15 @@
     },
     {
       "signature": "pub fn reduced_burau_matrix (_ : & BraidWord) -> Vec < Vec < LaurentPolynomial < i64 > > >"
+    },
+    {
+      "signature": "pub fn try_reduced_burau_matrix (_ : & BraidWord ,) -> Result < Vec < Vec < LaurentPolynomial < i64 > > > , KnotError >"
     }
   ],
   "pure_math:src/pure_math/knot_theory/kauffman_jones.rs": [
+    {
+      "signature": "pub const MAX_SAFE_KAUFFMAN_LOOPS : usize"
+    },
     {
       "signature": "pub fn format_jones_polynomial (_ : & PlanarDiagram) -> Result < String , KnotError >"
     },
@@ -22829,6 +22892,9 @@
     },
     {
       "signature": "pub use invariants :: reduced_burau_matrix"
+    },
+    {
+      "signature": "pub use invariants :: try_reduced_burau_matrix"
     },
     {
       "signature": "pub use kauffman_jones :: format_jones_polynomial"

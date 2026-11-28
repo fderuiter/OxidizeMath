@@ -4,8 +4,11 @@
 
 use super::diagram::PlanarDiagram;
 use super::{KnotError, MAX_KAUFFMAN_CROSSINGS};
-use crate::pure_math::algebra::LaurentPolynomial;
 use crate::pure_math::algebra::traits::Ring;
+use crate::pure_math::algebra::{LaurentError, LaurentPolynomial};
+
+/// Maximum loop exponent $k$ for $d^k = (-A^2 - A^{-2})^k$ before signed 64-bit binomial / evaluation bounds overflow.
+pub const MAX_SAFE_KAUFFMAN_LOOPS: usize = 62;
 
 /// Computes the Kauffman bracket $\langle D \rangle \in \mathbb{Z}[A, A^{-1}]$ by exact state-sum
 /// expansion over all $2^c$ smoothings, guarded by [`MAX_KAUFFMAN_CROSSINGS`] (`16`).
@@ -16,6 +19,7 @@ use crate::pure_math::algebra::traits::Ring;
 ///
 /// # Errors
 /// Returns [`KnotError::CrossingCapExceeded`] if `diagram.crossing_count() > MAX_KAUFFMAN_CROSSINGS`,
+/// [`KnotError::CoefficientOverflow`] above `62` loops or on `i64` state-sum overflow,
 /// or [`KnotError::InvalidDiagram`] if `diagram.validate()` fails.
 #[verified_engine::verified]
 pub fn kauffman_bracket(diagram: &PlanarDiagram) -> Result<LaurentPolynomial<i64>, KnotError> {
@@ -28,15 +32,16 @@ pub fn kauffman_bracket(diagram: &PlanarDiagram) -> Result<LaurentPolynomial<i64
         });
     }
 
-    let d_powers = precompute_loop_powers(c + diagram.free_loops);
+    let max_loops = c
+        .checked_add(diagram.free_loops)
+        .ok_or(KnotError::CoefficientOverflow)?;
+    let d_powers = precompute_loop_powers(max_loops)?;
     if c == 0 {
         return Ok(d_powers[diagram.free_loops.saturating_sub(1)].clone());
     }
 
     let m = diagram.segments.len();
     let half_edges = 2 * m;
-    // Map each crossing slot (cid, slot) to its unique segment half-edge index:
-    // even index `2 * seg` = tail of `seg`, odd index `2 * seg + 1` = head of `seg`.
     let mut slot_half = vec![[0_usize; 4]; c];
     for (seg_id, seg) in diagram.segments.iter().enumerate() {
         slot_half[seg.tail.crossing][seg.tail.slot as usize] = 2 * seg_id;
@@ -65,8 +70,11 @@ pub fn kauffman_bracket(diagram: &PlanarDiagram) -> Result<LaurentPolynomial<i64
         let state_loops = count_smoothed_loops(half_edges, &crossing_partner, &mut visited);
         let total_loops = state_loops + diagram.free_loops;
         debug_assert!(total_loops >= 1);
-        let term = d_powers[total_loops - 1].shift(a_minus_b);
-        total += term;
+        let term = d_powers[total_loops - 1].try_shift(a_minus_b)?;
+        total = total.checked_add(&term).map_err(|e| match e {
+            LaurentError::CoefficientOverflow => KnotError::CoefficientOverflow,
+            other => KnotError::Laurent(other),
+        })?;
     }
     assert!(!total.coeffs.is_empty());
     Ok(total)
@@ -76,7 +84,7 @@ pub fn kauffman_bracket(diagram: &PlanarDiagram) -> Result<LaurentPolynomial<i64
 /// $$X_L(A) = (-A^3)^{-w(D)} \langle D \rangle \in \mathbb{Z}[A, A^{-1}].$$
 ///
 /// # Errors
-/// Propagates [`KnotError`] from [`kauffman_bracket`].
+/// Propagates [`KnotError`] from [`kauffman_bracket`] or checked exponent/sign arithmetic.
 #[verified_engine::verified]
 pub fn normalized_kauffman_polynomial(
     diagram: &PlanarDiagram,
@@ -84,30 +92,56 @@ pub fn normalized_kauffman_polynomial(
     let bracket = kauffman_bracket(diagram)?;
     let w = diagram.writhe();
     let sign = if w.rem_euclid(2) == 0 { 1_i64 } else { -1_i64 };
-    let shifted = bracket.shift((-3 * w) as i32);
-    Ok(if sign < 0 { -shifted } else { shifted })
+    let shift_i64 = w.checked_mul(-3).ok_or(LaurentError::ExponentOverflow)?;
+    let shift_i32 = i32::try_from(shift_i64).map_err(|_| LaurentError::ExponentOverflow)?;
+    let shifted = bracket.try_shift(shift_i32)?;
+    if sign < 0 {
+        shifted.checked_neg().map_err(|e| match e {
+            LaurentError::CoefficientOverflow => KnotError::CoefficientOverflow,
+            other => KnotError::Laurent(other),
+        })
+    } else {
+        Ok(shifted)
+    }
 }
 
 /// Computes the Jones polynomial $V_L(t) = X_L(t^{-1/4})$ in **half-powers** $q = t^{1/2} = A^{-2}$,
-/// well-defined as a [`LaurentPolynomial<i64>`] for **every** knot and multi-component link.
+/// well-defined as a [`LaurentPolynomial<i64>`] for **every** classical knot and multi-component link.
 ///
 /// Format human-readable $t$-expressions via [`LaurentPolynomial::format_half_power_in_var`]`("t")`.
 ///
 /// # Errors
-/// Propagates [`KnotError`] from [`normalized_kauffman_polynomial`].
+/// Returns [`KnotError::InvalidDiagram`] if any non-zero $A$-exponent is odd, or propagates [`KnotError`].
 #[verified_engine::verified]
 pub fn jones_polynomial_half_power(
     diagram: &PlanarDiagram,
 ) -> Result<LaurentPolynomial<i64>, KnotError> {
     let x_poly = normalized_kauffman_polynomial(diagram)?;
+    half_powers_from_kauffman_x(&x_poly)
+}
+
+#[verified_engine::verified]
+fn half_powers_from_kauffman_x(
+    x_poly: &LaurentPolynomial<i64>,
+) -> Result<LaurentPolynomial<i64>, KnotError> {
     let mut terms = Vec::with_capacity(x_poly.coeffs.len());
     for (idx, &coeff) in x_poly.coeffs.iter().enumerate() {
         if coeff != 0 {
-            let exp_a = x_poly.min_exp + idx as i32;
-            terms.push((-exp_a / 2, coeff));
+            let idx_i32 = i32::try_from(idx).map_err(|_| LaurentError::ExponentOverflow)?;
+            let exp_a = x_poly
+                .min_exp
+                .checked_add(idx_i32)
+                .ok_or(LaurentError::ExponentOverflow)?;
+            if exp_a % 2 != 0 {
+                return Err(KnotError::InvalidDiagram {
+                    reason: "normalized Kauffman polynomial produced an odd A-exponent on a non-classical diagram",
+                });
+            }
+            let neg_exp_a = exp_a.checked_neg().ok_or(LaurentError::ExponentOverflow)?;
+            terms.push((neg_exp_a / 2, coeff));
         }
     }
-    Ok(LaurentPolynomial::from_terms(&terms))
+    Ok(LaurentPolynomial::checked_from_terms(&terms)?)
 }
 
 /// Computes the Jones polynomial $V_L(t)$:
@@ -117,21 +151,38 @@ pub fn jones_polynomial_half_power(
 ///   half-powers $q = t^{1/2} = A^{-2}$.
 ///
 /// # Errors
-/// Propagates [`KnotError`] from [`normalized_kauffman_polynomial`].
+/// Returns [`KnotError::InvalidDiagram`] if an odd-component diagram produces odd half-powers `exp_q % 2 != 0`,
+/// or propagates [`KnotError`] from [`jones_polynomial_half_power`].
 #[verified_engine::verified]
 pub fn jones_polynomial(diagram: &PlanarDiagram) -> Result<LaurentPolynomial<i64>, KnotError> {
     let q_poly = jones_polynomial_half_power(diagram)?;
     if diagram.component_count().is_multiple_of(2) {
         return Ok(q_poly);
     }
+    whole_powers_from_half_q(&q_poly)
+}
+
+#[verified_engine::verified]
+fn whole_powers_from_half_q(
+    q_poly: &LaurentPolynomial<i64>,
+) -> Result<LaurentPolynomial<i64>, KnotError> {
     let mut terms = Vec::with_capacity(q_poly.coeffs.len());
     for (idx, &coeff) in q_poly.coeffs.iter().enumerate() {
         if coeff != 0 {
-            let exp_q = q_poly.min_exp + idx as i32;
+            let idx_i32 = i32::try_from(idx).map_err(|_| LaurentError::ExponentOverflow)?;
+            let exp_q = q_poly
+                .min_exp
+                .checked_add(idx_i32)
+                .ok_or(LaurentError::ExponentOverflow)?;
+            if exp_q % 2 != 0 {
+                return Err(KnotError::InvalidDiagram {
+                    reason: "odd-component link produced fractional Jones half-power; diagram is non-planar",
+                });
+            }
             terms.push((exp_q / 2, coeff));
         }
     }
-    Ok(LaurentPolynomial::from_terms(&terms))
+    Ok(LaurentPolynomial::checked_from_terms(&terms)?)
 }
 
 /// Formats the normalized Jones polynomial in variable `"t"`, rendering fractional exponents
@@ -180,7 +231,6 @@ fn count_smoothed_loops(
         let mut guard = 0;
         while !visited[cur] && guard <= half_edges {
             visited[cur] = true;
-            // Traverse along the segment (`2*s <-> 2*s + 1`), then across the smoothed crossing!
             let other_end = cur ^ 1;
             visited[other_end] = true;
             cur = crossing_partner[other_end];
@@ -192,14 +242,39 @@ fn count_smoothed_loops(
 }
 
 #[verified_engine::verified]
-fn precompute_loop_powers(max_power: usize) -> Vec<LaurentPolynomial<i64>> {
-    let d = LaurentPolynomial::new(-2, vec![-1_i64, 0, 0, 0, -1]);
+fn precompute_loop_powers(max_power: usize) -> Result<Vec<LaurentPolynomial<i64>>, KnotError> {
+    if max_power > MAX_SAFE_KAUFFMAN_LOOPS {
+        return Err(KnotError::CoefficientOverflow);
+    }
+    let d = LaurentPolynomial::try_new(-2, vec![-1_i64, 0, 0, 0, -1])?;
     let mut powers = Vec::with_capacity(max_power + 1);
     powers.push(LaurentPolynomial::one());
     for k in 1..=max_power {
-        let next = &powers[k - 1] * &d;
+        let next = powers[k - 1].checked_mul(&d).map_err(|e| match e {
+            LaurentError::CoefficientOverflow => KnotError::CoefficientOverflow,
+            other => KnotError::Laurent(other),
+        })?;
         powers.push(next);
     }
     assert_eq!(powers.len(), max_power + 1);
-    powers
+    Ok(powers)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn odd_exponents_in_kauffman_and_half_power_jones_return_invalid_diagram() {
+        let odd_a = LaurentPolynomial::new(-1, vec![1_i64]);
+        assert!(matches!(
+            half_powers_from_kauffman_x(&odd_a),
+            Err(KnotError::InvalidDiagram { .. })
+        ));
+        let odd_q = LaurentPolynomial::new(3, vec![1_i64]);
+        assert!(matches!(
+            whole_powers_from_half_q(&odd_q),
+            Err(KnotError::InvalidDiagram { .. })
+        ));
+    }
 }

@@ -46,7 +46,7 @@ pub use domain_physics::error::{
 pub use pure_math::error::{
     AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
     EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
-    KnotError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
+    KnotError, LaurentError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
     MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError, OuError,
     PoissonError, PureMathError, QueueingError, RiskError, StochasticError, Su11HyperbolicError,
     TdaError, TensorError, TransformError, WardropError, ZipError,
@@ -226,6 +226,9 @@ pub enum Error {
     /// Knot theory and skein invariant error.
     #[cfg(feature = "pure_math")]
     Knot(KnotError),
+    /// Laurent polynomial exponent, span, or integer coefficient error.
+    #[cfg(feature = "pure_math")]
+    Laurent(LaurentError),
     /// Unified numerical evolution engine error.
     #[cfg(feature = "pure_math")]
     Evolution(EvolutionError),
