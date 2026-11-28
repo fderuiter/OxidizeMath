@@ -66,7 +66,6 @@ impl Default for GatingTelemetry {
 struct LinkBusRing {
     slots: [GatingTelemetry; GATING_RING_CAPACITY],
     write_seq: u64,
-    latest: GatingTelemetry,
 }
 
 impl LinkBusRing {
@@ -74,7 +73,6 @@ impl LinkBusRing {
         Self {
             slots: [GatingTelemetry::empty(); GATING_RING_CAPACITY],
             write_seq: 0,
-            latest: GatingTelemetry::empty(),
         }
     }
 }
@@ -84,13 +82,13 @@ thread_local! {
 }
 
 /// Publishes a `GatingTelemetry` snapshot into the thread-local ring with zero heap allocations.
+#[cfg(feature = "engineering")]
 pub fn publish_gating_telemetry(mut snapshot: GatingTelemetry) -> GatingTelemetry {
     MEDICAL_LINK_BUS.with(|cell| {
         let mut bus = cell.get();
         bus.write_seq = bus.write_seq.saturating_add(1);
         snapshot.seq = bus.write_seq;
         bus.slots[((snapshot.seq - 1) as usize) % GATING_RING_CAPACITY] = snapshot;
-        bus.latest = snapshot;
         cell.set(bus);
     });
     snapshot
@@ -103,12 +101,13 @@ pub fn current_write_seq() -> u64 {
 }
 
 /// Returns the most recently published `GatingTelemetry` snapshot, if any.
-#[cfg(test)]
+#[cfg(all(test, feature = "engineering"))]
 #[must_use]
 pub fn latest_gating_telemetry() -> Option<GatingTelemetry> {
     MEDICAL_LINK_BUS.with(|cell| {
         let bus = cell.get();
-        (bus.write_seq > 0).then_some(bus.latest)
+        (bus.write_seq > 0)
+            .then(|| bus.slots[((bus.write_seq - 1) as usize) % GATING_RING_CAPACITY])
     })
 }
 

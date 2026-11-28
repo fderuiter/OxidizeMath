@@ -4,7 +4,14 @@ use nalgebra::DVector;
 /// Unified Braess Wardrop Frank-Wolfe and Smith route-switching congestion solvers.
 #[path = "equilibrium_braess.rs"]
 pub mod braess;
+mod nash_solvers;
+
 pub use braess::*;
+pub use engine_opt::nash::{BimatrixNashStats, PolymatrixConfig, PolymatrixNashStats};
+pub use nash_solvers::{
+    BimatrixBestResponse, bimatrix_nash_workspace_len, polymatrix_nash_workspace_len,
+    solve_bimatrix_nash_into, solve_polymatrix_nash_into,
+};
 
 /// Represents a compact, convex subset of Euclidean space.
 ///
@@ -221,8 +228,6 @@ mod tests {
     use super::*;
     use verified_engine::engine::VerifiedEngine;
 
-    static VERIFIED_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
     #[test]
     #[verified_engine::verified]
     fn test_box_set_contains() {
@@ -257,7 +262,9 @@ mod tests {
         let shaded_off = DVector::from_vec(vec![100.0]);
         let wrong_dim = DVector::from_vec(vec![62.5, 62.5]);
 
-        let _guard = VERIFIED_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::VERIFIED_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let ((ok_eq, ok_off, ok_dim), metrics) = VerifiedEngine::run_verified(|| {
             let br = ScalarBestResponse::new(|b| 0.5 * b + 31.25, 1e-6);
             (
@@ -270,5 +277,72 @@ mod tests {
         assert!(!ok_off);
         assert!(!ok_dim);
         assert!(metrics.function_calls >= 3);
+    }
+
+    #[test]
+    fn test_lemke_howson_exact_fixed_point_and_polymatrix_regret_zero_alloc() {
+        use engine_opt::ScalarWorkspace;
+
+        // Asymmetric inspection / Battle-of-Sexes-style 2x3 bimatrix game + 3x3 Rock-Paper-Scissors.
+        let a_asym = [3.0, 0.0, 1.0, 0.0, 2.0, 1.0];
+        let b_asym = [2.0, 0.0, 3.0, 0.0, 3.0, 1.0];
+        let mut sa = [0.0; 2];
+        let mut sb = [0.0; 3];
+        let mut lh_ws_buf = [0.0; bimatrix_nash_workspace_len(2, 3)];
+
+        let counts = [2usize, 2, 2];
+        let mut poly = [0.0; 36];
+        // 3-player coordination network game with unique pure/mixed equilibria.
+        for (p, q) in [(0usize, 1usize), (1, 2), (2, 0)] {
+            poly[(2 * p) * 6 + (2 * q)] = 2.0;
+            poly[(2 * p + 1) * 6 + (2 * q + 1)] = 1.0;
+        }
+        let mut poly_strat = [0.0; 6];
+        let mut poly_ws_buf = [0.0; polymatrix_nash_workspace_len(6)];
+
+        let ((lh_stats, poly_stats), _) = {
+            let _guard = crate::VERIFIED_TEST_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            VerifiedEngine::run_verified(|| {
+                let mut ws1 = ScalarWorkspace::new(&mut lh_ws_buf);
+                let s1 =
+                    solve_bimatrix_nash_into(&a_asym, &b_asym, 2, 3, &mut sa, &mut sb, &mut ws1)
+                        .expect("lemke-howson must succeed");
+
+                let mut ws2 = ScalarWorkspace::new(&mut poly_ws_buf);
+                let s2 = solve_polymatrix_nash_into(
+                    &counts,
+                    &poly,
+                    &PolymatrixConfig {
+                        max_iterations: 2_500,
+                        tolerance: 1.0e-6,
+                        cfr_plus: true,
+                    },
+                    &mut poly_strat,
+                    &mut ws2,
+                )
+                .expect("polymatrix regret matching must succeed");
+                (s1, s2)
+            })
+        };
+
+        assert!(lh_stats.max_regret < 1.0e-10);
+        let joint = DVector::from_iterator(5, sa.iter().chain(sb.iter()).copied());
+        let br = BimatrixBestResponse {
+            payoff_a: &a_asym,
+            payoff_b: &b_asym,
+            rows: 2,
+            cols: 3,
+            tolerance: 1.0e-10,
+        };
+        assert!(is_fixed_point(&br, &joint));
+        assert!(br.unilateral_regret(&sa, &sb) < 1.0e-10);
+
+        let non_eq = DVector::from_vec(vec![0.5, 0.5, 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0]);
+        assert!(!is_fixed_point(&br, &non_eq));
+
+        assert!(poly_stats.converged);
+        assert!(poly_stats.exploitability < 1.0e-5);
     }
 }

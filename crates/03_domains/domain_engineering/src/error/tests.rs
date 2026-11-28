@@ -1,7 +1,7 @@
 use super::*;
 use diagnostics::{Diagnostic, DiagnosticBus, Severity};
-use engine_diffeq::KalmanError;
-use engine_opt::error::FitError;
+use engine_diffeq::{DiffeqError, KalmanError};
+use engine_opt::error::{FitError, OptError, PdeError};
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
 use std::error::Error as StdError;
@@ -38,6 +38,9 @@ fn test_engineering_umbrella_variants_preserve_source_and_diagnostics() {
         .into(),
         RadarError::from(sample_math_err()).into(),
         FitError::SingularMatrix.into(),
+        OptError::InvalidDimension.into(),
+        PdeError::InvalidGridDimension { axis: "x", size: 0 }.into(),
+        DiffeqError::InvalidStepSize.into(),
         sample_math_err().into(),
         KalmanError::MatrixInversionError.into(),
     ];

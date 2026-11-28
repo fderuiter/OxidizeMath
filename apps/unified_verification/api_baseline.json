@@ -471,12 +471,24 @@
       "signature": "pub fn bellman_optimality_value < M > (_ : & M , _ : & M :: S , _ : & [M :: S] , _ : impl Fn (& M :: S) -> f64 ,) -> f64 where M : MarkovDecisionProcess ,"
     },
     {
+      "signature": "pub fn bellman_optimality_value_slice < M > (_ : & M , _ : & M :: S , _ : & [M :: A] , _ : & [M :: S] , _ : impl Fn (& M :: S) -> f64 ,) -> f64 where M : MarkovDecisionProcess ,"
+    },
+    {
       "signature": "pub fn state_value_bellman_equation < M > (_ : & M , _ : & impl Policy < M :: S , M :: A > , _ : & M :: S , _ : & [M :: S] , _ : impl Fn (& M :: S) -> f64 ,) -> f64 where M : MarkovDecisionProcess ,"
+    },
+    {
+      "signature": "pub fn state_value_bellman_slice < M > (_ : & M , _ : & impl Policy < M :: S , M :: A > , _ : & M :: S , _ : & [M :: A] , _ : & [M :: S] , _ : impl Fn (& M :: S) -> f64 ,) -> f64 where M : MarkovDecisionProcess ,"
     }
   ],
   "domain_ai:src/ai/reinforcement_learning/bellman_solver.rs": [
     {
+      "signature": "impl BellmanSolution { pub const fn empty (_ : usize , _ : usize) -> Self }"
+    },
+    {
       "signature": "impl BellmanSolution { pub fn evaluate_policy (& mut self , _ : & SculptedGridMdp , _ : & TabularGridPolicy , _ : f64 , _ : usize ,) }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn evaluate_policy_with_workspace (& mut self , _ : & SculptedGridMdp , _ : & TabularGridPolicy , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < () , OptError > }"
     },
     {
       "signature": "impl BellmanSolution { pub fn optimal_action_at (& self , _ : GridState) -> Option < Move > }"
@@ -492,6 +504,12 @@
     },
     {
       "signature": "impl BellmanSolution { pub fn solve (_ : & SculptedGridMdp , _ : f64 , _ : usize) -> Self }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn solve_into (& mut self , _ : & SculptedGridMdp , _ : f64 , _ : usize , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < DpStats , OptError > }"
+    },
+    {
+      "signature": "impl BellmanSolution { pub fn solve_with_workspace (_ : & SculptedGridMdp , _ : f64 , _ : usize , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < Self , OptError > }"
     },
     {
       "signature": "impl BellmanSolution { pub fn v_pi_at (& self , _ : GridState) -> f64 }"
@@ -510,6 +528,12 @@
     },
     {
       "signature": "impl TabularGridPolicy { pub fn uniform (_ : usize , _ : usize) -> Self }"
+    },
+    {
+      "signature": "pub const MAX_RL_GRID_CELLS : usize"
+    },
+    {
+      "signature": "pub const fn bellman_grid_workspace_len (_ : usize , _ : usize) -> usize"
     },
     {
       "signature": "pub struct BellmanSolution"
@@ -638,7 +662,13 @@
       "signature": "pub use bellman_solver :: BellmanSolution"
     },
     {
+      "signature": "pub use bellman_solver :: MAX_RL_GRID_CELLS"
+    },
+    {
       "signature": "pub use bellman_solver :: TabularGridPolicy"
+    },
+    {
+      "signature": "pub use bellman_solver :: bellman_grid_workspace_len"
     },
     {
       "signature": "pub use grid_world :: *"
@@ -1317,6 +1347,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use crate :: ai }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use engine_opt }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: ast }"
@@ -2459,6 +2492,50 @@
     },
     {
       "signature": "pub use braess :: *"
+    },
+    {
+      "signature": "pub use engine_opt :: nash :: BimatrixNashStats"
+    },
+    {
+      "signature": "pub use engine_opt :: nash :: PolymatrixConfig"
+    },
+    {
+      "signature": "pub use engine_opt :: nash :: PolymatrixNashStats"
+    },
+    {
+      "signature": "pub use nash_solvers :: BimatrixBestResponse"
+    },
+    {
+      "signature": "pub use nash_solvers :: bimatrix_nash_workspace_len"
+    },
+    {
+      "signature": "pub use nash_solvers :: polymatrix_nash_workspace_len"
+    },
+    {
+      "signature": "pub use nash_solvers :: solve_bimatrix_nash_into"
+    },
+    {
+      "signature": "pub use nash_solvers :: solve_polymatrix_nash_into"
+    }
+  ],
+  "domain_applied:src/applied/game_theory/equilibrium/nash_solvers.rs": [
+    {
+      "signature": "impl < 'a > BimatrixBestResponse < 'a > { pub fn unilateral_regret (& self , _ : & [f64] , _ : & [f64]) -> f64 }"
+    },
+    {
+      "signature": "pub const fn bimatrix_nash_workspace_len (_ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub const fn polymatrix_nash_workspace_len (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn solve_bimatrix_nash_into (_ : & [f64] , _ : & [f64] , _ : usize , _ : usize , _ : & mut [f64] , _ : & mut [f64] , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < BimatrixNashStats , OptError >"
+    },
+    {
+      "signature": "pub fn solve_polymatrix_nash_into (_ : & [usize] , _ : & [f64] , _ : & PolymatrixConfig , _ : & mut [f64] , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < PolymatrixNashStats , OptError >"
+    },
+    {
+      "signature": "pub struct BimatrixBestResponse < 'a >"
     }
   ],
   "domain_applied:src/applied/game_theory/evolutionary/graph_replicator.rs": [
@@ -2574,6 +2651,9 @@
       "signature": "pub use solver :: MFGSolver"
     },
     {
+      "signature": "pub use solver :: mfg_workspace_len"
+    },
+    {
       "signature": "pub use types :: Density"
     },
     {
@@ -2608,7 +2688,16 @@
       "signature": "impl < H : Hamiltonian > FixedPointSolver < H > { pub fn new_with_hamiltonian (_ : usize , _ : H) -> Self }"
     },
     {
+      "signature": "impl < H : Hamiltonian > FixedPointSolver < H > { pub fn solve_into (& self , _ : & MFGConfig , _ : & impl Fn (Position , Density) -> f64 , _ : & impl Fn (Position , Density) -> f64 , _ : & impl Fn (Position) -> f64 , _ : & mut [f64] , _ : & mut [f64] , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < MfgStats , OptError > }"
+    },
+    {
+      "signature": "impl < H : Hamiltonian > FixedPointSolver < H > { pub fn with_mann_damping (self , _ : f64 , _ : f64) -> Self }"
+    },
+    {
       "signature": "impl FixedPointSolver < QuadraticHamiltonian > { pub fn new (_ : usize) -> Self }"
+    },
+    {
+      "signature": "pub fn mfg_workspace_len (_ : & MFGConfig) -> usize"
     },
     {
       "signature": "pub struct FixedPointSolver < H : Hamiltonian >"
@@ -3327,16 +3416,31 @@
       "signature": "pub use regimen :: DoseEvent"
     },
     {
+      "signature": "pub use regimen :: MAX_OPTIMIZED_DOSES"
+    },
+    {
       "signature": "pub use regimen :: MAX_REGIMEN_EVENTS"
     },
     {
       "signature": "pub use regimen :: RegimenModel"
     },
     {
+      "signature": "pub use regimen :: RegimenMpcConfig"
+    },
+    {
       "signature": "pub use regimen :: RegimenSuperposition"
     },
     {
       "signature": "pub use regimen :: ReleaseFormulation"
+    },
+    {
+      "signature": "pub use regimen :: populate_ir_dose_events_into"
+    },
+    {
+      "signature": "pub use regimen :: regimen_mpc_workspace_len"
+    },
+    {
+      "signature": "pub use regimen :: solve_regimen_mpc_into"
     },
     {
       "signature": "pub use superposition :: SuperpositionModel"
@@ -3458,6 +3562,41 @@
     },
     {
       "signature": "pub trait RegimenModel { fn with_event_dose (& self , _ : f64) -> Result < Self , PharmacokineticsError > }"
+    },
+    {
+      "signature": "pub use optimize :: MAX_OPTIMIZED_DOSES"
+    },
+    {
+      "signature": "pub use optimize :: RegimenMpcConfig"
+    },
+    {
+      "signature": "pub use optimize :: populate_ir_dose_events_into"
+    },
+    {
+      "signature": "pub use optimize :: regimen_mpc_workspace_len"
+    },
+    {
+      "signature": "pub use optimize :: solve_regimen_mpc_into"
+    }
+  ],
+  "domain_applied:src/applied/pharmacokinetics/regimen/optimize.rs": [
+    {
+      "signature": "impl RegimenMpcConfig { pub const fn cold_start (_ : f64 , _ : f64 , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "pub const MAX_OPTIMIZED_DOSES : usize"
+    },
+    {
+      "signature": "pub const fn regimen_mpc_workspace_len (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn populate_ir_dose_events_into (_ : & [f64] , _ : & [f64] , _ : & mut [DoseEvent] ,) -> Result < usize , OptError >"
+    },
+    {
+      "signature": "pub fn solve_regimen_mpc_into (_ : & PKParameters , _ : & [f64] , _ : & RegimenMpcConfig , _ : & mut [f64] , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < MpcStats , OptError >"
+    },
+    {
+      "signature": "pub struct RegimenMpcConfig"
     }
   ],
   "domain_applied:src/applied/pharmacokinetics/superposition.rs": [
@@ -4078,6 +4217,9 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use engine_opt :: error :: FitError } }"
     },
     {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use engine_opt :: error :: OptError } }"
+    },
+    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use pure_math :: __doctest_facade :: error :: * } }"
     },
     {
@@ -4124,6 +4266,9 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub use engine_opt :: fit }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use engine_opt }"
     },
     {
       "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: ast }"
@@ -6351,6 +6496,38 @@
     },
     {
       "signature": "pub struct DutySegment"
+    },
+    {
+      "signature": "pub use schedule :: DutyScheduleConfig"
+    },
+    {
+      "signature": "pub use schedule :: MAX_SCHEDULE_SLOTS"
+    },
+    {
+      "signature": "pub use schedule :: apply_scheduled_c_rates_into"
+    },
+    {
+      "signature": "pub use schedule :: duty_schedule_workspace_len"
+    },
+    {
+      "signature": "pub use schedule :: solve_duty_schedule_mpc_into"
+    }
+  ],
+  "domain_engineering:src/engineering/battery_degradation/duty/schedule.rs": [
+    {
+      "signature": "pub const MAX_SCHEDULE_SLOTS : usize"
+    },
+    {
+      "signature": "pub const fn duty_schedule_workspace_len (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn apply_scheduled_c_rates_into (_ : & [f64] , _ : & [f64] , _ : & mut [DutySegment] ,) -> Result < () , OptError >"
+    },
+    {
+      "signature": "pub fn solve_duty_schedule_mpc_into (_ : & ElectrochemicalAgingModel , _ : & [f64] , _ : & [f64] , _ : & DutyScheduleConfig , _ : & mut [f64] , _ : & mut [f64] , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < IlqrStats , OptError >"
+    },
+    {
+      "signature": "pub struct DutyScheduleConfig"
     }
   ],
   "domain_engineering:src/engineering/battery_degradation/mod.rs": [
@@ -6370,16 +6547,31 @@
       "signature": "pub use duty :: DutyPointBreakdown"
     },
     {
+      "signature": "pub use duty :: DutyScheduleConfig"
+    },
+    {
       "signature": "pub use duty :: DutySegment"
     },
     {
       "signature": "pub use duty :: MAX_DUTY_SEGMENTS"
     },
     {
+      "signature": "pub use duty :: MAX_SCHEDULE_SLOTS"
+    },
+    {
+      "signature": "pub use duty :: apply_scheduled_c_rates_into"
+    },
+    {
+      "signature": "pub use duty :: duty_schedule_workspace_len"
+    },
+    {
       "signature": "pub use duty :: estimate_duty_lifetime"
     },
     {
       "signature": "pub use duty :: evaluate_duty_point"
+    },
+    {
+      "signature": "pub use duty :: solve_duty_schedule_mpc_into"
     },
     {
       "signature": "pub use model :: ChemistryPreset"
@@ -7012,6 +7204,12 @@
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use engine_opt :: error :: FitError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use engine_opt :: error :: OptError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use engine_opt :: error :: PdeError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use pure_math :: __doctest_facade :: error :: * } }"
@@ -9878,13 +10076,28 @@
       "signature": "impl GatingLogic { pub fn new (_ : f64 , _ : f64 , _ : f64) -> Self }"
     },
     {
+      "signature": "impl GatingLogic { pub fn predict_amplitude (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
       "signature": "impl GatingLogic { pub fn reset_interlock (& mut self) -> Result < BeamState , GatingError > }"
+    },
+    {
+      "signature": "impl GatingLogic { pub fn solve_harmonic_lookahead_mpc (& self , _ : f64 , _ : f64 , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < f64 , OptError > }"
     },
     {
       "signature": "impl GatingLogic { pub fn state (& self) -> BeamState }"
     },
     {
       "signature": "impl GatingLogic { pub fn trigger_interlock (& mut self) -> BeamState }"
+    },
+    {
+      "signature": "impl GatingLogic { pub fn with_harmonic_mpc (self , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "pub const HARMONIC_MPC_HORIZON : usize"
+    },
+    {
+      "signature": "pub const fn harmonic_gating_mpc_workspace_len (_ : usize) -> usize"
     },
     {
       "signature": "pub enum BeamState"
@@ -13308,12 +13521,73 @@
       "signature": "pub use math_scalars :: mat_idx"
     }
   ],
+  "engine_opt:src/almgren_chriss.rs": [
+    {
+      "signature": "pub const fn almgren_chriss_workspace_len (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn almgren_chriss_analytical_trajectory_into (_ : & AlmgrenChrissConfig , _ : usize , _ : & mut [f64] ,) -> Result < f64 , OptError >"
+    },
+    {
+      "signature": "pub fn solve_almgren_chriss_mpc_into (_ : & AlmgrenChrissConfig , _ : usize , _ : & mut [f64] , _ : & mut [f64] , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < MpcStats , OptError >"
+    },
+    {
+      "signature": "pub struct AlmgrenChrissConfig"
+    }
+  ],
+  "engine_opt:src/dp.rs": [
+    {
+      "signature": "pub const fn dp_finite_workspace_len (_ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub const fn dp_infinite_workspace_len (_ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn solve_finite_horizon_dp < M : DiscreteMdp > (_ : & M , _ : usize , _ : f64 , _ : & [f64] , _ : & mut [f64] , _ : & mut [usize] , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < DpStats , OptError >"
+    },
+    {
+      "signature": "pub fn solve_infinite_horizon_dp < M : DiscreteMdp > (_ : & M , _ : & HowardDpConfig , _ : & mut [f64] , _ : & mut [f64] , _ : & mut [usize] , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < DpStats , OptError >"
+    },
+    {
+      "signature": "pub fn solve_infinite_horizon_dp_with_pivots < M : DiscreteMdp > (_ : & M , _ : & HowardDpConfig , _ : & mut [f64] , _ : & mut [f64] , _ : & mut [usize] , _ : & mut [usize] , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < DpStats , OptError >"
+    },
+    {
+      "signature": "pub struct DenseTabularMdp < 'a >"
+    },
+    {
+      "signature": "pub struct DpStats"
+    },
+    {
+      "signature": "pub struct HowardDpConfig"
+    },
+    {
+      "signature": "pub trait DiscreteMdp"
+    },
+    {
+      "signature": "pub trait DiscreteMdp { fn is_terminal (& self , _ : usize) -> bool }"
+    },
+    {
+      "signature": "pub trait DiscreteMdp { fn num_actions (& self) -> usize }"
+    },
+    {
+      "signature": "pub trait DiscreteMdp { fn num_states (& self) -> usize }"
+    },
+    {
+      "signature": "pub trait DiscreteMdp { fn visit_transitions < F > (& self , _ : usize , _ : usize , _ : F) where F : FnMut (f64 , usize , f64 , bool) }"
+    }
+  ],
   "engine_opt:src/error.rs": [
     {
       "signature": "pub enum FitError"
     },
     {
+      "signature": "pub enum OptError"
+    },
+    {
       "signature": "pub use engine_linalg :: LinalgError"
+    },
+    {
+      "signature": "pub use engine_pde :: PdeError"
     },
     {
       "signature": "pub use math_diagnostics :: Diagnostic"
@@ -13524,7 +13798,80 @@
       "signature": "pub struct WeightedOlsAccum"
     }
   ],
+  "engine_opt:src/ilqr.rs": [
+    {
+      "signature": "pub const fn ilqr_workspace_len (_ : usize , _ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn solve_ilqr < M : ControlModel , C : StageCost > (_ : & M , _ : & C , _ : & IlqrConfig , _ : & [f64] , _ : Option < & [f64] > , _ : Option < & [f64] > , _ : & mut [f64] , _ : & mut [f64] , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < IlqrStats , OptError >"
+    },
+    {
+      "signature": "pub struct IlqrConfig"
+    },
+    {
+      "signature": "pub struct IlqrStats"
+    },
+    {
+      "signature": "pub use cost :: ControlModel"
+    },
+    {
+      "signature": "pub use cost :: QuadraticBoxCost"
+    },
+    {
+      "signature": "pub use cost :: StageCost"
+    }
+  ],
+  "engine_opt:src/ilqr/cost.rs": [
+    {
+      "signature": "pub struct QuadraticBoxCost < 'a >"
+    },
+    {
+      "signature": "pub trait ControlModel"
+    },
+    {
+      "signature": "pub trait ControlModel { fn control_dim (& self) -> usize }"
+    },
+    {
+      "signature": "pub trait ControlModel { fn state_dim (& self) -> usize }"
+    },
+    {
+      "signature": "pub trait ControlModel { fn step_and_linearize (& self , _ : usize , _ : & [f64] , _ : & [f64] , _ : & mut [f64] , _ : & mut [f64] , _ : & mut [f64] ,) -> Result < () , OptError > }"
+    },
+    {
+      "signature": "pub trait StageCost"
+    },
+    {
+      "signature": "pub trait StageCost { fn stage_cost (& self , _ : usize , _ : & [f64] , _ : & [f64]) -> f64 }"
+    },
+    {
+      "signature": "pub trait StageCost { fn stage_derivatives (& self , _ : usize , _ : & [f64] , _ : & [f64] , _ : & mut [f64] , _ : & mut [f64] , _ : & mut [f64] , _ : & mut [f64] , _ : & mut [f64] ,) }"
+    },
+    {
+      "signature": "pub trait StageCost { fn terminal_cost (& self , _ : & [f64]) -> f64 }"
+    },
+    {
+      "signature": "pub trait StageCost { fn terminal_derivatives (& self , _ : & [f64] , _ : & mut [f64] , _ : & mut [f64]) }"
+    }
+  ],
   "engine_opt:src/lib.rs": [
+    {
+      "signature": "pub use almgren_chriss :: AlmgrenChrissConfig"
+    },
+    {
+      "signature": "pub use almgren_chriss :: almgren_chriss_analytical_trajectory_into"
+    },
+    {
+      "signature": "pub use almgren_chriss :: almgren_chriss_workspace_len"
+    },
+    {
+      "signature": "pub use almgren_chriss :: solve_almgren_chriss_mpc_into"
+    },
+    {
+      "signature": "pub use dp :: dp_finite_workspace_len"
+    },
+    {
+      "signature": "pub use dp :: dp_infinite_workspace_len"
+    },
     {
       "signature": "pub use error :: FitError"
     },
@@ -13532,10 +13879,131 @@
       "signature": "pub use error :: LinalgError"
     },
     {
+      "signature": "pub use error :: OptError"
+    },
+    {
+      "signature": "pub use error :: PdeError"
+    },
+    {
+      "signature": "pub use ilqr :: ilqr_workspace_len"
+    },
+    {
       "signature": "pub use math_scalars :: series :: PointSeries"
     },
     {
       "signature": "pub use math_scalars :: series :: Sample2D"
+    },
+    {
+      "signature": "pub use math_scalars :: workspace :: ScalarWorkspace"
+    },
+    {
+      "signature": "pub use math_scalars :: workspace :: SolverWorkspace"
+    },
+    {
+      "signature": "pub use mfg :: mfg_1d_workspace_len"
+    },
+    {
+      "signature": "pub use mpc :: mpc_workspace_len"
+    },
+    {
+      "signature": "pub use nash :: nash_bimatrix_workspace_len"
+    },
+    {
+      "signature": "pub use nash :: nash_polymatrix_workspace_len"
+    }
+  ],
+  "engine_opt:src/mfg.rs": [
+    {
+      "signature": "pub const fn mfg_1d_workspace_len (_ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn solve_mfg_1d < H , C , G , M0 > (_ : & MfgConfig1D , _ : & H , _ : & C , _ : & G , _ : & M0 , _ : & mut [f64] , _ : & mut [f64] , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < MfgStats , OptError > where H : MfgHamiltonian , C : Fn (f64 , f64) -> f64 , G : Fn (f64 , f64) -> f64 , M0 : Fn (f64) -> f64 ,"
+    },
+    {
+      "signature": "pub struct MfgConfig1D"
+    },
+    {
+      "signature": "pub struct MfgStats"
+    },
+    {
+      "signature": "pub struct QuadraticMfgHamiltonian"
+    },
+    {
+      "signature": "pub trait MfgHamiltonian"
+    },
+    {
+      "signature": "pub trait MfgHamiltonian { fn deriv (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "pub trait MfgHamiltonian { fn eval (& self , _ : f64) -> f64 }"
+    }
+  ],
+  "engine_opt:src/mpc.rs": [
+    {
+      "signature": "pub const fn mpc_workspace_len (_ : usize , _ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn solve_mpc < M : ControlModel > (_ : & M , _ : & MpcProblem < '_ > , _ : & MpcConfig , _ : & [f64] , _ : & mut [f64] , _ : & mut [f64] , _ : & mut [f64] , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < MpcStats , OptError >"
+    },
+    {
+      "signature": "pub fn warm_start_shift_controls (_ : & mut [f64] , _ : usize , _ : usize)"
+    },
+    {
+      "signature": "pub struct MpcConfig"
+    },
+    {
+      "signature": "pub struct MpcProblem < 'a >"
+    },
+    {
+      "signature": "pub struct MpcStats"
+    }
+  ],
+  "engine_opt:src/nash.rs": [
+    {
+      "signature": "pub use lemke_howson :: BimatrixNashStats"
+    },
+    {
+      "signature": "pub use lemke_howson :: nash_bimatrix_workspace_len"
+    },
+    {
+      "signature": "pub use lemke_howson :: solve_bimatrix_lemke_howson"
+    },
+    {
+      "signature": "pub use regret :: PolymatrixConfig"
+    },
+    {
+      "signature": "pub use regret :: PolymatrixNashStats"
+    },
+    {
+      "signature": "pub use regret :: nash_polymatrix_workspace_len"
+    },
+    {
+      "signature": "pub use regret :: solve_polymatrix_regret_matching"
+    }
+  ],
+  "engine_opt:src/nash/lemke_howson.rs": [
+    {
+      "signature": "pub const fn nash_bimatrix_workspace_len (_ : usize , _ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn solve_bimatrix_lemke_howson (_ : & [f64] , _ : & [f64] , _ : usize , _ : usize , _ : & mut [f64] , _ : & mut [f64] , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < BimatrixNashStats , OptError >"
+    },
+    {
+      "signature": "pub struct BimatrixNashStats"
+    }
+  ],
+  "engine_opt:src/nash/regret.rs": [
+    {
+      "signature": "pub const fn nash_polymatrix_workspace_len (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn solve_polymatrix_regret_matching (_ : & [usize] , _ : & [f64] , _ : & PolymatrixConfig , _ : & mut [f64] , _ : & mut ScalarWorkspace < '_ , f64 > ,) -> Result < PolymatrixNashStats , OptError >"
+    },
+    {
+      "signature": "pub struct PolymatrixConfig"
+    },
+    {
+      "signature": "pub struct PolymatrixNashStats"
     }
   ],
   "engine_pde:src/advection_2d.rs": [
@@ -13911,6 +14379,9 @@
       "signature": "impl StencilOperators { pub fn central_diff_2nd_3d (& self , _ : f64 , _ : [f64 ; 6]) -> f64 }"
     },
     {
+      "signature": "impl StencilOperators { pub fn conservative_upwind_flux (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> f64 }"
+    },
+    {
       "signature": "impl StencilOperators { pub fn new (_ : StepSize) -> Self }"
     },
     {
@@ -13921,6 +14392,9 @@
     },
     {
       "signature": "impl StencilOperators { pub fn try_new (_ : StepSize) -> Result < Self , MathError > }"
+    },
+    {
+      "signature": "impl StencilOperators { pub fn try_new_1d_f64 (_ : f64) -> Option < Self > }"
     },
     {
       "signature": "impl StencilOperators { pub fn try_new_2d (_ : StepSize , _ : StepSize) -> Result < Self , MathError > }"
@@ -18011,6 +18485,9 @@
       "signature": "pub use engine_opt :: error :: FitError"
     },
     {
+      "signature": "pub use engine_opt :: error :: OptError"
+    },
+    {
       "signature": "pub use engine_pde :: PdeError"
     },
     {
@@ -18860,6 +19337,225 @@
       "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: transforms }"
     },
     {
+      "signature": "pub mod statistics"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub mod execution { pub use engine_opt :: almgren_chriss :: AlmgrenChrissConfig } } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub mod execution { pub use engine_opt :: almgren_chriss :: almgren_chriss_analytical_trajectory_into } } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub mod execution { pub use engine_opt :: almgren_chriss :: almgren_chriss_workspace_len } } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub mod execution { pub use engine_opt :: almgren_chriss :: solve_almgren_chriss_mpc_into } } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub mod execution { pub use pure_math :: pure_math :: statistics :: market_pricing :: execution :: * } } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub mod execution } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use engine_opt :: almgren_chriss :: AlmgrenChrissConfig } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use engine_opt :: almgren_chriss :: almgren_chriss_analytical_trajectory_into } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use engine_opt :: almgren_chriss :: almgren_chriss_workspace_len } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use engine_opt :: almgren_chriss :: solve_almgren_chriss_mpc_into } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: AllMethodsEvReport } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: ArbitrageReport } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: DevigMetadata } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: DevigMethod } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: DutchingMode } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: DutchingReport } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: EvEvaluation } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: HedgeMode } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: HedgeReport } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: MAX_MARKET_OUTCOMES } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: MarketOverround } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: MarketPricingError } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: MiddleReport } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: SimplexViolationDiagnostic } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: booksum } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: compare_outcome_ev_all_methods } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: devig } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: devig_additive_detailed_into } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: devig_additive_into } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: devig_into } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: devig_multiplicative_into } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: devig_power_into } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: devig_shin_into } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: dutch_outcomes_into } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: dutch_subset_into } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: dutching } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: ev } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: evaluate_arbitrage_into } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: evaluate_ev_from_probability } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: evaluate_hedge } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: evaluate_middle } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: evaluate_middle_custom_stakes } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: evaluate_outcome_ev } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: evaluate_two_way_arbitrage } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: fair_decimal_odds_into } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: fair_odds_from_probabilities_into } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: implied_probabilities_into } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: is_arbitrage } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: market_overround } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: overround } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing { pub use pure_math :: pure_math :: statistics :: market_pricing :: turnover_margin } }"
+    },
+    {
+      "signature": "pub mod statistics { pub mod market_pricing }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: black_scholes }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: bootstrap }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: calibration }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: copula }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: elo }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: glicko2 }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: kelly }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: markov }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: match_models }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: monte_carlo }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: ou_process }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: poisson }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: qmc }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: queueing }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: regression }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: risk }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: ruin }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: tda }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: validation }"
+    },
+    {
+      "signature": "pub mod statistics { pub use pure_math :: pure_math :: statistics :: zip_regression }"
+    },
+    {
       "signature": "pub use pure_math :: pure_math :: algorithmic_information"
     },
     {
@@ -18891,9 +19587,6 @@
     },
     {
       "signature": "pub use pure_math :: pure_math :: special_functions"
-    },
-    {
-      "signature": "pub use pure_math :: pure_math :: statistics"
     },
     {
       "signature": "pub use pure_math :: pure_math :: tensor"

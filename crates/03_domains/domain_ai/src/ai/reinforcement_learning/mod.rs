@@ -103,7 +103,9 @@ pub use algorithms::{
     QLearningAgent, RlStepOutcome, TabularQAgent, compute_softmax_pg_delta, softmax_action_probs,
     step_softmax_pg_into, step_tabular_q_into,
 };
-pub use bellman_solver::{BellmanSolution, TabularGridPolicy};
+pub use bellman_solver::{
+    BellmanSolution, MAX_RL_GRID_CELLS, TabularGridPolicy, bellman_grid_workspace_len,
+};
 pub use maze::{
     ALL_MOVES, DenseRlWorkspace, GridCellRole, MAX_RL_GRID_DIM, MIN_RL_GRID_DIM, SculptedGridMdp,
     index_to_move, move_to_index,

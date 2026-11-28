@@ -144,8 +144,8 @@ mod full_domain_wiring {
     use super::*;
     use oxidizemath::error::{
         AIError, AppliedError, BatteryError, BiologyError, BraidError, ClimateError,
-        EngineeringError, EpidemiologyDomainError, GameTheoryError, HighEnergyError, KnotError,
-        LinearAlgebraError, PhysicsError, PureMathError, QuantumError, SandpileError,
+        EngineeringDomainError, EpidemiologyDomainError, GameTheoryError, HighEnergyError,
+        KnotError, LinearAlgebraError, PhysicsError, PureMathError, QuantumError, SandpileError,
         Su11HyperbolicError,
     };
 
@@ -162,7 +162,7 @@ mod full_domain_wiring {
         let applied = AppliedError::from(raw);
         let bio = BiologyError::from(raw);
         let climate = ClimateError::from(raw);
-        let eng = EngineeringError::from(raw);
+        let eng = EngineeringDomainError::from(raw);
         let epi = EpidemiologyDomainError::from(raw);
         let phys = PhysicsError::from(raw);
         let facade = Error::from(raw);
@@ -197,6 +197,7 @@ mod full_domain_wiring {
                 + count_visited_fields(&applied)
                 + count_visited_fields(&bio)
                 + count_visited_fields(&climate)
+                + count_visited_fields(&eng)
                 + count_visited_fields(&epi)
                 + count_visited_fields(&phys)
                 + count_visited_fields(&su11)
@@ -321,7 +322,7 @@ mod full_domain_wiring {
             Ok(calibrate_electrochemical_model(&model, &too_few, dod)?)
         })()
         .unwrap_err();
-        let b2 = (|| -> Result<_, EngineeringError> {
+        let b2 = (|| -> Result<_, EngineeringDomainError> {
             Ok(model.calibrate_from_cycles(&too_few, dod)?)
         })()
         .unwrap_err();

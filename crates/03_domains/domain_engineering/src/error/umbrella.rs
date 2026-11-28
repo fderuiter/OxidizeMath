@@ -1,7 +1,7 @@
 use super::{BatteryError, HardwareError, RadarError};
 use engine_diffeq::{DiffeqError, KalmanError};
 use engine_linalg::LinalgError;
-use engine_opt::error::FitError;
+use engine_opt::error::{FitError, OptError, PdeError};
 use math_commons::error::{
     ArenaError, EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
     ShaderEmitError,
@@ -34,6 +34,9 @@ pub enum EngineeringDomainError {
     /// Foundational `#![no_std]` curve-fitting solver error.
     #[error("{0}")]
     Fit(#[from] FitError),
+    /// Foundational `#![no_std]` optimization, control, DP, MFG, and Nash engine error.
+    #[error("{0}")]
+    Opt(#[from] OptError),
     /// Foundational `#![no_std]` differential-equation solver error.
     #[error("{0}")]
     Diffeq(#[from] DiffeqError),
@@ -43,6 +46,9 @@ pub enum EngineeringDomainError {
     /// Foundational `#![no_std]` linear algebra engine error.
     #[error("{0}")]
     Linalg(#[from] LinalgError),
+    /// Foundational `#![no_std]` partial-differential-equation solver error.
+    #[error("{0}")]
+    Pde(#[from] PdeError),
     /// Upstream `pure_math` umbrella error.
     #[error("{0}")]
     PureMath(#[from] PureMathError),
@@ -135,9 +141,11 @@ impl EngineeringDomainError {
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
             Self::Fit(err) => err,
+            Self::Opt(err) => err,
             Self::Diffeq(err) => err,
             Self::Kalman(err) => err,
             Self::Linalg(err) => err,
+            Self::Pde(err) => err,
             Self::PureMath(err) => err,
         }
     }

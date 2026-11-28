@@ -120,6 +120,18 @@ pub enum AIError {
     #[error("{0}")]
     Kalman(#[from] engine_diffeq::KalmanError),
 
+    /// Foundational `#![no_std]` curve-fitting solver error.
+    #[error("{0}")]
+    Fit(#[from] engine_opt::error::FitError),
+
+    /// Foundational `#![no_std]` optimization, control, DP, MFG, and Nash engine error.
+    #[error("{0}")]
+    Opt(#[from] engine_opt::error::OptError),
+
+    /// Foundational `#![no_std]` partial-differential-equation solver error.
+    #[error("{0}")]
+    Pde(#[from] engine_opt::PdeError),
+
     /// Upstream numerical optimization error.
     #[error("{0}")]
     Optimization(#[from] pure_math::error::OptimizationError),
@@ -147,6 +159,9 @@ impl Diagnostic for AIError {
             Self::Arena(err) => err.severity(),
             Self::Diffeq(err) => err.severity(),
             Self::Kalman(err) => err.severity(),
+            Self::Fit(err) => err.severity(),
+            Self::Opt(err) => err.severity(),
+            Self::Pde(err) => err.severity(),
             Self::Optimization(err) => err.severity(),
             Self::LinearAlgebra(err) => err.severity(),
             _ => Severity::Error,
@@ -160,6 +175,9 @@ impl Diagnostic for AIError {
             Self::Arena(err) => err.visit_fields(visitor),
             Self::Diffeq(err) => err.visit_fields(visitor),
             Self::Kalman(err) => err.visit_fields(visitor),
+            Self::Fit(err) => err.visit_fields(visitor),
+            Self::Opt(err) => err.visit_fields(visitor),
+            Self::Pde(err) => err.visit_fields(visitor),
             Self::Optimization(err) => err.visit_fields(visitor),
             Self::LinearAlgebra(err) => err.visit_fields(visitor),
             Self::CellMaskLengthMismatch { expected, actual } => {

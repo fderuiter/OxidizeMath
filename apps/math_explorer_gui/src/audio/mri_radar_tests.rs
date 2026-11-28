@@ -12,7 +12,8 @@ use rustfft::FftPlanner;
 use verified_engine::engine::VerifiedEngine;
 
 #[cfg(feature = "engineering")]
-use super::backend::{MuteReason, SonificationBackend};
+use super::backend::MuteReason;
+use super::backend::SonificationBackend;
 use super::frame::{LIMITER_CEILING_DBFS, LIMITER_CEILING_LINEAR};
 #[cfg(feature = "engineering")]
 use super::mappings::{
@@ -23,7 +24,6 @@ use super::mappings::{
 };
 use super::synth::OfflinePcmSynthesizer;
 use crate::async_sim::{SimCommand, SimulationRunner};
-#[cfg(feature = "engineering")]
 use crate::framework::InteractiveTool;
 #[cfg(feature = "engineering")]
 use crate::tabs::medical::radar_gating::{RadarGatingTool, STARTER_PRESET_JSON};
@@ -79,13 +79,16 @@ fn sample_zero_alloc_step_frame(
     pulse_cfg: &RfPulseConfig,
 ) -> super::frame::SonificationFrame {
     let ph = (step as f64) * 0.04;
-    match step % 4 {
-        0 => mri_bloch_frame(
+    let bloch = || {
+        mri_bloch_frame(
             Vector3::new(ph.cos(), ph.sin(), -0.3),
             1.0,
             Vector3::new(1.0e-5, 0.0, 1.5),
             180.0 * ph.sin(),
-        ),
+        )
+    };
+    match step % 4 {
+        0 => bloch(),
         1 => mri_pulse_playhead_frame(
             MriPulseMode::HahnSpinEcho,
             0.020 + 0.020 * ph.sin(),
@@ -111,35 +114,24 @@ fn sample_zero_alloc_step_frame(
             selected_grad_phase_rad: ph,
             rf_spike_triggered: step.is_multiple_of(64),
         }),
-        _ => {
-            #[cfg(feature = "engineering")]
-            {
-                medical_radar_frame(&RadarDopplerAudioInput {
-                    velocity_m_s: 0.018 * ph.sin(),
-                    amplitude_m: 0.004 * ph.cos(),
-                    bandwidth_ghz: 4.0,
-                    coarse_peak_count: 1,
-                    music_peak_count: 2,
-                    primary_beam_gain: 0.92,
-                    secondary_beam_gain: 0.81,
-                    cough_timer_s: if step.is_multiple_of(100) { 0.30 } else { 0.0 },
-                    beam_state: if step.is_multiple_of(8) {
-                        BeamState::BeamHold
-                    } else {
-                        BeamState::BeamActive
-                    },
-                })
-            }
-            #[cfg(not(feature = "engineering"))]
-            {
-                mri_bloch_frame(
-                    Vector3::new(ph.cos(), ph.sin(), -0.3),
-                    1.0,
-                    Vector3::new(1.0e-5, 0.0, 1.5),
-                    180.0 * ph.sin(),
-                )
-            }
-        }
+        #[cfg(feature = "engineering")]
+        _ => medical_radar_frame(&RadarDopplerAudioInput {
+            velocity_m_s: 0.018 * ph.sin(),
+            amplitude_m: 0.004 * ph.cos(),
+            bandwidth_ghz: 4.0,
+            coarse_peak_count: 1,
+            music_peak_count: 2,
+            primary_beam_gain: 0.92,
+            secondary_beam_gain: 0.81,
+            cough_timer_s: if step.is_multiple_of(100) { 0.30 } else { 0.0 },
+            beam_state: if step.is_multiple_of(8) {
+                BeamState::BeamHold
+            } else {
+                BeamState::BeamActive
+            },
+        }),
+        #[cfg(not(feature = "engineering"))]
+        _ => bloch(),
     }
 }
 

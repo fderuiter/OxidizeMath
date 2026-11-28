@@ -1,4 +1,8 @@
-//! Zero-allocation `GRPO` re-exports from `domain_applied` and `QLearningAgent` wrapper.
+//! Zero-allocation `GRPO` re-exports from `domain_applied`, `QLearningAgent` wrapper, and receding-horizon `MpcController`.
+
+pub mod mpc;
+
+pub use mpc::MpcController;
 
 use super::state::ClosedLoopState;
 use math_explorer::ai::reinforcement_learning::{

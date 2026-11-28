@@ -6,6 +6,12 @@ use super::model::{
 };
 use super::types::{Capacity, DepthOfDischarge};
 
+mod schedule;
+pub use schedule::{
+    DutyScheduleConfig, MAX_SCHEDULE_SLOTS, apply_scheduled_c_rates_into,
+    duty_schedule_workspace_len, solve_duty_schedule_mpc_into,
+};
+
 /// Maximum number of duty-profile segments supported on stack buffers and URL state.
 pub const MAX_DUTY_SEGMENTS: usize = 8;
 

@@ -102,6 +102,12 @@ pub struct StencilOperators {
 }
 
 impl StencilOperators {
+    /// Creates 1D stencil operators directly from raw `f64` spacing `dx` in `#![no_std]` callers, returning `None` if `dx <= 0.0` or non-finite.
+    #[verified_engine::verified]
+    pub fn try_new_1d_f64(dx: f64) -> Option<Self> {
+        Self::try_new(StepSize(dx)).ok()
+    }
+
     /// Creates stencil operators in `#![no_std]` contexts, returning `None` if any step is `<= 0` or non-finite.
     #[verified_engine::verified]
     pub fn try_new_checked(dx: StepSize, dy: StepSize, dz: StepSize) -> Option<Self> {
@@ -224,5 +230,76 @@ impl StencilOperators {
         } else {
             (next * v - curr * v) * self.inv_dx
         }
+    }
+
+    /// First-order conservative donor-cell flux divergence $(F_{i+1/2} - F_{i-1/2}) / \Delta x$
+    /// for spatially varying interface velocities `v_left` ($v_{i-1/2}$) and `v_right` ($v_{i+1/2}$).
+    ///
+    /// $$
+    /// F_{i+1/2} = \max(v_{i+1/2}, 0)\,m_i + \min(v_{i+1/2}, 0)\,m_{i+1}
+    /// $$
+    ///
+    /// Reference: Achdou & Capuzzo-Dolcetta (2010), DOI: 10.1137/090758477;
+    /// [`docs/math_specs/engine_pde.md`](../../../../docs/math_specs/engine_pde.md).
+    ///
+    /// # Stability
+    /// Monotone donor-cell flux splitting preserves non-negativity under explicit forward stepping
+    /// when $\Delta t (\max(v_{i+1/2}, 0) - \min(v_{i-1/2}, 0)) \le \Delta x$ and conserves discrete
+    /// mass $\sum_i m_i \Delta x$ by telescoping across interior interfaces.
+    ///
+    /// # Domain of Validity
+    /// Requires positive spatial step $\Delta x > 0$ and finite interface velocities and cell densities.
+    #[inline(always)]
+    #[verified_engine::verified]
+    pub fn conservative_upwind_flux(
+        &self,
+        v_left: f64,
+        v_right: f64,
+        prev: f64,
+        curr: f64,
+        next: f64,
+    ) -> f64 {
+        debug_assert!(self.inv_dx > 0.0);
+        let flux_left = v_left.max(0.0) * prev + v_left.min(0.0) * curr;
+        let flux_right = v_right.max(0.0) * curr + v_right.min(0.0) * next;
+        (flux_right - flux_left) * self.inv_dx
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn conservative_upwind_flux_compresses_uniform_density_and_conserves_mass() {
+        let ops = StencilOperators::new(StepSize(0.25));
+        // Constant velocity matches upwind_flux identically.
+        assert!(
+            (ops.conservative_upwind_flux(1.5, 1.5, 0.2, 0.6, 0.9)
+                - ops.upwind_flux(1.5, 0.2, 0.6, 0.9))
+            .abs()
+                < 1e-15
+        );
+        assert!(
+            (ops.conservative_upwind_flux(-1.5, -1.5, 0.2, 0.6, 0.9)
+                - ops.upwind_flux(-1.5, 0.2, 0.6, 0.9))
+            .abs()
+                < 1e-15
+        );
+
+        // Uniform m0 = 0.5 under converging drift (v_left > 0 > v_right) yields negative divergence (-dm/dt < 0 => dm/dt > 0).
+        let div_center = ops.conservative_upwind_flux(1.0, -1.0, 0.5, 0.5, 0.5);
+        assert!((div_center - (-4.0)).abs() < 1e-15);
+
+        // Telescoping sum over a closed 5-cell grid with v_{-1/2} = v_{4+1/2} = 0 vanishes to machine precision.
+        let m = [0.5_f64; 5];
+        let v_faces = [0.0, 0.8, 0.3, -0.4, -0.9, 0.0];
+        let mut total_div = 0.0;
+        for i in 0..5 {
+            let prev = if i == 0 { m[0] } else { m[i - 1] };
+            let next = if i == 4 { m[4] } else { m[i + 1] };
+            total_div += ops.conservative_upwind_flux(v_faces[i], v_faces[i + 1], prev, m[i], next);
+        }
+        assert!(total_div.abs() < 1e-15);
     }
 }
