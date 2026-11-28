@@ -3,8 +3,8 @@
 
 use crate::{
     Complex32, Complex64, ComplexField, Dimension, Dual, Field, GridIndex, RefOps, Ring, Scalar,
-    ScalarError, SolverWorkspace, StepSize, flatten_2d_index, flatten_3d_index, hypot_f32,
-    hypot_f64, sqrt_f32, sqrt_f64,
+    ScalarError, ScalarWorkspace, SolverWorkspace, StepSize, flatten_2d_index, flatten_3d_index,
+    hypot_f32, hypot_f64, sqrt_f32, sqrt_f64,
 };
 
 #[global_allocator]
@@ -188,12 +188,17 @@ fn workspace_and_primitives_execute_with_zero_heap_allocations() {
 
     let mut raw = [1.0_f64; 16];
     let (rem, _) = verified_engine::engine::VerifiedEngine::run_verified(|| {
-        let mut ws = SolverWorkspace::new(&mut raw);
+        let mut ws = ScalarWorkspace::new(&mut raw);
         ws.zero_fill();
         let a = ws.try_take_slice(6).expect("slice a");
         a[0] = 3.5;
         let (b, mut rest) = ws.try_split(4).expect("split b");
         b[1] = -2.0;
+        {
+            let mut sub_arena = rest.reborrow();
+            let sub_slice = sub_arena.alloc_slice::<f64>(2).expect("sub arena slice");
+            assert_eq!(sub_slice.len(), 2);
+        }
         let len = rest.len();
         let err = rest.try_take_slice(7).unwrap_err();
         assert_eq!(

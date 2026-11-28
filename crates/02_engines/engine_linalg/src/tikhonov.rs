@@ -6,7 +6,9 @@
 use crate::lu::{lu_solve, lu_workspace_len};
 use crate::scalar::Scalar;
 use crate::svd_bidiag::{svd_bidiagonal, svd_bidiagonal_workspace_len};
-use crate::types::{LinalgError, SolverWorkspace, check_all_finite, mat_idx};
+use crate::types::{
+    ByteArena, LinalgError, SolverWorkspace, carve_scalars, check_all_finite, mat_idx,
+};
 
 /// Workspace scalar capacity required by [`tikhonov_solve`] for an `m x n` matrix.
 /// `[cite:engine_linalg]`
@@ -44,7 +46,7 @@ pub fn tikhonov_solve<T: Scalar>(
     b: &[T],
     lambda: T,
     x: &mut [T],
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut (impl SolverWorkspace + ?Sized),
 ) -> Result<(), LinalgError> {
     if !lambda.is_finite() || lambda < T::ZERO {
         return Err(LinalgError::InvalidInput);
@@ -61,26 +63,28 @@ pub fn tikhonov_solve<T: Scalar>(
         return Ok(());
     }
 
-    let (u, mut r1) = ws.try_split(m * k)?;
-    let (s, mut r2) = r1.try_split(k)?;
-    let (vt, mut inner_ws) = r2.try_split(k * n)?;
+    let mut sub = ws.reborrow();
+    let mut cur = sub.cursor();
+    let u = carve_scalars::<T>(&mut cur, m * k)?;
+    let s = carve_scalars::<T>(&mut cur, k)?;
+    let vt = carve_scalars::<T>(&mut cur, k * n)?;
+    let mut inner_ws = ByteArena::new(cur.into_bytes());
     svd_bidiagonal(a, m, n, u, s, vt, &mut inner_ws)?;
 
     let lam_sq = lambda * lambda;
     let zero_cut = T::from_usize(m.max(n)) * T::EPSILON * s[0];
-    for idx in 0..k {
-        let sigma = s[idx];
+    for (idx, &sigma) in s.iter().enumerate().take(k) {
         let denom = sigma * sigma + lam_sq;
         if denom == T::ZERO || (lambda == T::ZERO && sigma <= zero_cut) {
             continue;
         }
         let mut ut_b = T::ZERO;
-        for r in 0..m {
-            ut_b += u[mat_idx(r, idx, k)] * b[r];
+        for (r, &br) in b.iter().enumerate().take(m) {
+            ut_b += u[mat_idx(r, idx, k)] * br;
         }
         let weight = (sigma * ut_b) / denom;
-        for c in 0..n {
-            x[c] += weight * vt[mat_idx(idx, c, n)];
+        for (c, xc) in x.iter_mut().enumerate().take(n) {
+            *xc += weight * vt[mat_idx(idx, c, n)];
         }
     }
     Ok(())
@@ -121,7 +125,7 @@ pub fn solve_damped_normal<T: Scalar>(
     damping: DampingStyle<T>,
     delta: &mut [T],
     pivots: &mut [usize],
-    ws: &mut SolverWorkspace<'_, T>,
+    ws: &mut (impl SolverWorkspace + ?Sized),
 ) -> Result<(), LinalgError> {
     match damping {
         DampingStyle::Isotropic(lambda) => {
@@ -149,7 +153,10 @@ pub fn solve_damped_normal<T: Scalar>(
     check_all_finite(jtj)?;
     check_all_finite(jtr)?;
 
-    let (damped, mut lu_ws) = ws.try_split(n * n)?;
+    let mut sub = ws.reborrow();
+    let mut cur = sub.cursor();
+    let damped = carve_scalars::<T>(&mut cur, n * n)?;
+    let mut lu_ws = ByteArena::new(cur.into_bytes());
     damped.copy_from_slice(jtj);
     for i in 0..n {
         let ii = mat_idx(i, i, n);

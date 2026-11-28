@@ -1,7 +1,8 @@
 //! Iterative zero-allocation Tarjan strongly connected component (SCC) decomposition.
 // [cite:math_commons]
 
-use super::{SccSummary, SolverWorkspace};
+use super::SccSummary;
+use super::views::StochasticViews;
 use crate::math_kernel::types::flatten_2d_index;
 
 const UNVISITED: usize = usize::MAX;
@@ -33,15 +34,19 @@ fn has_directed_edge(matrix: &[f64], row_scales: &[f64], n: usize, u: usize, v: 
     u != v && scale > 0.0 && matrix[flatten_2d_index(v, u, n)] > scale * EDGE_REL_TOL
 }
 
-/// Runs iterative Tarjan SCC traversal on `matrix` ($n \times n$) using `ws` buffers and
+/// Runs iterative Tarjan SCC traversal on `matrix` ($n \times n$) using `ws` views and
 /// identifies closed sink components.
 #[cfg_attr(feature = "std", verified_engine::verified)]
-pub(super) fn decompose_tarjan(ws: &mut SolverWorkspace, matrix: &[f64], n: usize) -> SccSummary {
+pub(super) fn decompose_tarjan(
+    ws: &mut StochasticViews<'_>,
+    matrix: &[f64],
+    n: usize,
+) -> SccSummary {
     debug_assert!(n > 0 && matrix.len() >= n * n);
     compute_off_diagonal_scales(matrix, n, &mut ws.row_scales[..n]);
     ws.tarjan_index[..n].fill(UNVISITED);
     ws.tarjan_lowlink[..n].fill(0);
-    ws.tarjan_on_stack[..n].fill(false);
+    ws.tarjan_on_stack.fill(false);
     ws.component_id[..n].fill(UNVISITED);
 
     let mut next_index = 0usize;
@@ -68,7 +73,7 @@ pub(super) fn decompose_tarjan(ws: &mut SolverWorkspace, matrix: &[f64], n: usiz
 
 #[cfg_attr(feature = "std", verified_engine::verified)]
 fn tarjan_visit_root(
-    ws: &mut SolverWorkspace,
+    ws: &mut StochasticViews<'_>,
     matrix: &[f64],
     n: usize,
     start: usize,
@@ -93,7 +98,7 @@ fn tarjan_visit_root(
             if ws.tarjan_index[v] == UNVISITED {
                 push_tarjan_node(ws, v, call_sp, next_index, tarjan_sp);
                 call_sp += 1;
-            } else if ws.tarjan_on_stack[v] && ws.tarjan_index[v] < ws.tarjan_lowlink[u] {
+            } else if ws.tarjan_on_stack.get(v) && ws.tarjan_index[v] < ws.tarjan_lowlink[u] {
                 ws.tarjan_lowlink[u] = ws.tarjan_index[v];
             }
         } else {
@@ -105,7 +110,7 @@ fn tarjan_visit_root(
 
 #[inline]
 fn push_tarjan_node(
-    ws: &mut SolverWorkspace,
+    ws: &mut StochasticViews<'_>,
     node: usize,
     call_sp: usize,
     next_index: &mut usize,
@@ -116,14 +121,14 @@ fn push_tarjan_node(
     *next_index += 1;
     ws.tarjan_stack[*tarjan_sp] = node;
     *tarjan_sp += 1;
-    ws.tarjan_on_stack[node] = true;
+    ws.tarjan_on_stack.set(node, true);
     ws.call_node[call_sp] = node;
     ws.call_next_edge[call_sp] = 0;
 }
 
 #[inline]
 fn finish_tarjan_node(
-    ws: &mut SolverWorkspace,
+    ws: &mut StochasticViews<'_>,
     u: usize,
     call_sp: usize,
     num_components: &mut usize,
@@ -141,7 +146,7 @@ fn finish_tarjan_node(
         loop {
             *tarjan_sp -= 1;
             let w = ws.tarjan_stack[*tarjan_sp];
-            ws.tarjan_on_stack[w] = false;
+            ws.tarjan_on_stack.set(w, false);
             ws.component_id[w] = cid;
             if w == u {
                 break;
@@ -152,22 +157,22 @@ fn finish_tarjan_node(
 
 #[cfg_attr(feature = "std", verified_engine::verified)]
 fn classify_closed_sinks(
-    ws: &mut SolverWorkspace,
+    ws: &mut StochasticViews<'_>,
     matrix: &[f64],
     n: usize,
     num_components: usize,
 ) -> SccSummary {
     debug_assert!(num_components >= 1 && num_components <= n);
-    ws.component_is_sink[..num_components].fill(true);
+    ws.component_is_sink.fill(true);
 
     for u in 0..n {
         let cu = ws.component_id[u];
-        if !ws.component_is_sink[cu] {
+        if !ws.component_is_sink.get(cu) {
             continue;
         }
         for v in 0..n {
             if ws.component_id[v] != cu && has_directed_edge(matrix, &ws.row_scales[..n], n, u, v) {
-                ws.component_is_sink[cu] = false;
+                ws.component_is_sink.set(cu, false);
                 break;
             }
         }
@@ -175,8 +180,8 @@ fn classify_closed_sinks(
 
     let mut num_sink_components = 0usize;
     let mut unique_sink_cid = 0usize;
-    for (cid, &is_sink) in ws.component_is_sink[..num_components].iter().enumerate() {
-        if is_sink {
+    for cid in 0..num_components {
+        if ws.component_is_sink.get(cid) {
             num_sink_components += 1;
             unique_sink_cid = cid;
         }

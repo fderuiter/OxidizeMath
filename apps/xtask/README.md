@@ -20,6 +20,7 @@ The `xtask` binary (`apps/xtask`) implements the cargo-xtask automation pattern 
 | `check-file-lengths` | Verifies the 500-line source file limit across first-party crates. | Active |
 | `check-markdown-links` | Checks all internal relative Markdown documentation links. | Active |
 | `check-maturity` | Verifies workspace compile health plus `Experimental`, `Validated`, and `Certified` qualification gates against `traceability.toml`. | Active |
+| `check-no-std` | Dynamically discovers all `#![no_std]` workspace library crates and verifies `thumbv7em-none-eabihf` bare-metal `--lib` compilation, `-D warnings` rustdoc, host tests, doctests, and `std`/`alloc`-free `serde` dependency graphs across `default`, `--no-default-features`, `alloc`, and `serde`. | Active |
 | `check-profiles` | Verifies Cargo `[profile.release]` `overflow-checks = true`, `[workspace.package].version` inheritance/bounds, absence of `[package.metadata.packager].version`, `README.md` parity, and member `[lints]` inheritance. | Active |
 | `check-release-tag` | Verifies `refs/tags/v*` / `RELEASE_TAG` parity against `[workspace.package].version` and emits WiX pre-release version mappings. | Active |
 | `check-staged-duplicates` | Checks for duplicated patterns in git staging (non-blocking helper). | Active |

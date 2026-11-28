@@ -124,6 +124,18 @@ pub const HIGH_CONTRAST_PALETTE: SemanticPalette = SemanticPalette {
     ],
 };
 
+/// Theme-resolved background surface endpoints and `p = 0.50` iso-contour stroke
+/// for 2D binary classification decision boundaries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DecisionBoundaryColors {
+    /// Class 0 (`p = 1.0`) background raster endpoint color.
+    pub class_0_bg: Color32,
+    /// Class 1 (`p = 0.0`) background raster endpoint color.
+    pub class_1_bg: Color32,
+    /// High-contrast `p = 0.50` decision-boundary contour stroke (`>= 4.5:1`).
+    pub contour: Color32,
+}
+
 impl SemanticPalette {
     /// Returns the constant semantic palette corresponding to `mode` with zero heap allocations.
     #[inline]
@@ -132,6 +144,30 @@ impl SemanticPalette {
             ThemeMode::Dark => DARK_PALETTE,
             ThemeMode::Light => LIGHT_PALETTE,
             ThemeMode::HighContrast => HIGH_CONTRAST_PALETTE,
+        }
+    }
+
+    /// Returns theme-resolved binary decision-boundary surface and `p = 0.50` contour colors
+    /// preserving `>= 4.5:1` WCAG 2.2 AA contrast for class scatter points and contour strokes.
+    #[inline]
+    #[must_use]
+    pub const fn decision_boundary_colors(mode: ThemeMode) -> DecisionBoundaryColors {
+        match mode {
+            ThemeMode::Light => DecisionBoundaryColors {
+                class_0_bg: Color32::from_rgb(254, 232, 232),
+                class_1_bg: Color32::from_rgb(226, 238, 254),
+                contour: Color32::from_rgb(24, 34, 52),
+            },
+            ThemeMode::Dark => DecisionBoundaryColors {
+                class_0_bg: Color32::from_rgb(54, 22, 28),
+                class_1_bg: Color32::from_rgb(20, 34, 58),
+                contour: Color32::from_rgb(241, 245, 249),
+            },
+            ThemeMode::HighContrast => DecisionBoundaryColors {
+                class_0_bg: Color32::from_rgb(36, 8, 12),
+                class_1_bg: Color32::from_rgb(6, 18, 38),
+                contour: Color32::WHITE,
+            },
         }
     }
 

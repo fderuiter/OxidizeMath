@@ -6,6 +6,7 @@ use crate::pure_math::statistics::qmc::{
     HaltonSequence, MAX_HALTON_DIM, MAX_NIEDERREITER_DIM, MAX_SOBOL_DIM, NiederreiterSequence,
     SobolSequence,
 };
+use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
 use math_rng::{sample_bounded_usize, sample_open};
 use oxidize_core::rng::OxidizeRng;
 
@@ -56,21 +57,22 @@ pub struct MonteCarloWorkspace {
     pub(super) max_samples: usize,
     pub(super) dimension: usize,
     pub(super) confidence_level: f64,
-    pub(super) point_buf: Vec<f64>,
-    pub(super) anti_point_buf: Vec<f64>,
-    pub(super) values_buf: Vec<f64>,
-    pub(super) control_buf: Vec<f64>,
-    pub(super) weights_buf: Vec<f64>,
-    pub(super) lhs_grid: Vec<f64>,
-    pub(super) perm_buf: Vec<usize>,
-    pub(super) batch_means_buf: Vec<f64>,
+    pub(super) arena: OwnedByteArena,
+    pub(super) point_buf: ArenaRegion<f64>,
+    pub(super) anti_point_buf: ArenaRegion<f64>,
+    pub(super) values_buf: ArenaRegion<f64>,
+    pub(super) control_buf: ArenaRegion<f64>,
+    pub(super) weights_buf: ArenaRegion<f64>,
+    pub(super) lhs_grid: ArenaRegion<f64>,
+    pub(super) perm_buf: ArenaRegion<usize>,
+    pub(super) batch_means_buf: ArenaRegion<f64>,
     pub(super) halton: Option<HaltonSequence>,
     pub(super) sobol: Option<SobolSequence>,
     pub(super) niederreiter: Option<NiederreiterSequence>,
 }
 
 impl MonteCarloWorkspace {
-    /// Preallocates all sample, weight, permutation, and QMC buffers for `max_samples` and `dimension`.
+    /// Preallocates all sample, weight, permutation, and QMC buffers in a single [`OwnedByteArena`].
     #[verified_engine::verified]
     pub fn new(max_samples: usize, dimension: usize) -> Result<Self, MonteCarloError> {
         if max_samples == 0 {
@@ -82,12 +84,30 @@ impl MonteCarloWorkspace {
                 max_dimension: MAX_HALTON_DIM,
             });
         }
+        let map_layout = |_| MonteCarloError::InvalidSampleCount {
+            samples: max_samples,
+        };
         let grid_len =
             max_samples
                 .checked_mul(dimension)
                 .ok_or(MonteCarloError::InvalidSampleCount {
                     samples: max_samples,
                 })?;
+        let mut layout = ArenaLayout::new();
+        let point_buf = layout.reserve::<f64>(dimension).map_err(map_layout)?;
+        let anti_point_buf = layout.reserve::<f64>(dimension).map_err(map_layout)?;
+        let values_buf = layout.reserve::<f64>(max_samples).map_err(map_layout)?;
+        let control_buf = layout.reserve::<f64>(max_samples).map_err(map_layout)?;
+        let weights_buf = layout.reserve::<f64>(max_samples).map_err(map_layout)?;
+        let lhs_grid = layout.reserve::<f64>(grid_len).map_err(map_layout)?;
+        let perm_buf = layout.reserve::<usize>(max_samples).map_err(map_layout)?;
+        let batch_means_buf = layout
+            .reserve::<f64>(DEFAULT_QMC_REPLICATES)
+            .map_err(map_layout)?;
+        let mut arena = OwnedByteArena::try_from_layout(&layout).map_err(map_layout)?;
+        for (i, slot) in arena.region_slice_mut(perm_buf).iter_mut().enumerate() {
+            *slot = i;
+        }
         let halton = HaltonSequence::new(dimension).ok();
         let sobol = (dimension <= MAX_SOBOL_DIM)
             .then(|| SobolSequence::new(dimension).ok())
@@ -99,14 +119,15 @@ impl MonteCarloWorkspace {
             max_samples,
             dimension,
             confidence_level: 0.95,
-            point_buf: vec![0.0; dimension],
-            anti_point_buf: vec![0.0; dimension],
-            values_buf: vec![0.0; max_samples],
-            control_buf: vec![0.0; max_samples],
-            weights_buf: vec![0.0; max_samples],
-            lhs_grid: vec![0.0; grid_len],
-            perm_buf: (0..max_samples).collect(),
-            batch_means_buf: vec![0.0; DEFAULT_QMC_REPLICATES],
+            arena,
+            point_buf,
+            anti_point_buf,
+            values_buf,
+            control_buf,
+            weights_buf,
+            lhs_grid,
+            perm_buf,
+            batch_means_buf,
             halton,
             sobol,
             niederreiter,
@@ -189,17 +210,23 @@ impl MonteCarloWorkspace {
         F: FnMut(&[f64]) -> f64,
     {
         self.check_budget(n_samples)?;
-        for idx in 0..n_samples {
-            for coord in &mut self.point_buf {
+        let conf = self.confidence_level;
+        let pt_reg = self.point_buf;
+        let val_reg = self.values_buf;
+        let mut cur = self.arena.raw_cursor();
+        let point_buf = cur.region_mut(pt_reg);
+        let values_buf = cur.region_mut(val_reg);
+        for slot in values_buf.iter_mut().take(n_samples) {
+            for coord in point_buf.iter_mut() {
                 *coord = draw_open_unit(rng);
             }
-            let val = integrand(&self.point_buf);
+            let val = integrand(point_buf);
             if !val.is_finite() {
                 return Err(MonteCarloError::NonFiniteEvaluation);
             }
-            self.values_buf[idx] = val;
+            *slot = val;
         }
-        MonteCarloEstimate::from_samples(&self.values_buf[..n_samples], self.confidence_level)
+        MonteCarloEstimate::from_samples(&values_buf[..n_samples], conf)
     }
 
     /// Paired antithetic-variates estimator evaluating `(u, 1 - u)` pairs within `n_samples` budget.
@@ -218,21 +245,28 @@ impl MonteCarloWorkspace {
             return Err(MonteCarloError::InvalidSampleCount { samples: n_samples });
         }
         let n_pairs = n_samples / 2;
-        for pair_idx in 0..n_pairs {
-            for (u_slot, anti_slot) in self.point_buf.iter_mut().zip(&mut self.anti_point_buf) {
+        let conf = self.confidence_level;
+        let pt_reg = self.point_buf;
+        let anti_reg = self.anti_point_buf;
+        let val_reg = self.values_buf;
+        let mut cur = self.arena.raw_cursor();
+        let point_buf = cur.region_mut(pt_reg);
+        let anti_point_buf = cur.region_mut(anti_reg);
+        let values_buf = cur.region_mut(val_reg);
+        for slot in values_buf.iter_mut().take(n_pairs) {
+            for (u_slot, anti_slot) in point_buf.iter_mut().zip(anti_point_buf.iter_mut()) {
                 let u = draw_open_unit(rng);
                 *u_slot = u;
                 *anti_slot = (1.0 - u).clamp(OPEN_EPS, 1.0 - OPEN_EPS);
             }
-            let y1 = integrand(&self.point_buf);
-            let y2 = integrand(&self.anti_point_buf);
+            let y1 = integrand(point_buf);
+            let y2 = integrand(anti_point_buf);
             if !y1.is_finite() || !y2.is_finite() {
                 return Err(MonteCarloError::NonFiniteEvaluation);
             }
-            self.values_buf[pair_idx] = 0.5 * (y1 + y2);
+            *slot = 0.5 * (y1 + y2);
         }
-        let mut est =
-            MonteCarloEstimate::from_samples(&self.values_buf[..n_pairs], self.confidence_level)?;
+        let mut est = MonteCarloEstimate::from_samples(&values_buf[..n_pairs], conf)?;
         est.samples = 2 * n_pairs;
         est.effective_sample_size = (2 * n_pairs) as f64;
         Ok(est)
@@ -254,28 +288,37 @@ impl MonteCarloWorkspace {
         if !control_mean.is_finite() {
             return Err(MonteCarloError::NonFiniteEvaluation);
         }
-        for idx in 0..n_samples {
-            for coord in &mut self.point_buf {
+        let conf = self.confidence_level;
+        let pt_reg = self.point_buf;
+        let val_reg = self.values_buf;
+        let ctrl_reg = self.control_buf;
+        let mut cur = self.arena.raw_cursor();
+        let point_buf = cur.region_mut(pt_reg);
+        let values_buf = cur.region_mut(val_reg);
+        let control_buf = cur.region_mut(ctrl_reg);
+        for (val_slot, ctrl_slot) in values_buf
+            .iter_mut()
+            .zip(control_buf.iter_mut())
+            .take(n_samples)
+        {
+            for coord in point_buf.iter_mut() {
                 *coord = draw_open_unit(rng);
             }
-            let (f_val, g_val) = eval_pair(&self.point_buf);
+            let (f_val, g_val) = eval_pair(point_buf);
             if !f_val.is_finite() || !g_val.is_finite() {
                 return Err(MonteCarloError::NonFiniteEvaluation);
             }
-            self.values_buf[idx] = f_val;
-            self.control_buf[idx] = g_val;
+            *val_slot = f_val;
+            *ctrl_slot = g_val;
         }
-        let beta = optimal_control_beta(
-            &self.values_buf[..n_samples],
-            &self.control_buf[..n_samples],
-        );
-        for (f_slot, &g_val) in self.values_buf[..n_samples]
+        let beta = optimal_control_beta(&values_buf[..n_samples], &control_buf[..n_samples]);
+        for (f_slot, &g_val) in values_buf[..n_samples]
             .iter_mut()
-            .zip(&self.control_buf[..n_samples])
+            .zip(&control_buf[..n_samples])
         {
             *f_slot -= beta * (g_val - control_mean);
         }
-        MonteCarloEstimate::from_samples(&self.values_buf[..n_samples], self.confidence_level)
+        MonteCarloEstimate::from_samples(&values_buf[..n_samples], conf)
     }
 
     /// Self-normalized importance sampling returning calibrated SE and Kong's exact `ESS`.
@@ -292,20 +335,32 @@ impl MonteCarloWorkspace {
         S: FnMut(&[f64]) -> (f64, f64),
     {
         self.check_budget(n_samples)?;
-        let z = two_sided_normal_z(self.confidence_level)?;
-        for idx in 0..n_samples {
-            for coord in &mut self.point_buf {
+        let conf = self.confidence_level;
+        let z = two_sided_normal_z(conf)?;
+        let pt_reg = self.point_buf;
+        let val_reg = self.values_buf;
+        let wt_reg = self.weights_buf;
+        let mut cur = self.arena.raw_cursor();
+        let point_buf = cur.region_mut(pt_reg);
+        let values_buf = cur.region_mut(val_reg);
+        let weights_buf = cur.region_mut(wt_reg);
+        for (val_slot, wt_slot) in values_buf
+            .iter_mut()
+            .zip(weights_buf.iter_mut())
+            .take(n_samples)
+        {
+            for coord in point_buf.iter_mut() {
                 *coord = draw_open_unit(rng);
             }
-            let (val, weight) = sampler(&self.point_buf);
+            let (val, weight) = sampler(point_buf);
             if !val.is_finite() || !weight.is_finite() || weight < 0.0 {
                 return Err(MonteCarloError::NonFiniteEvaluation);
             }
-            self.values_buf[idx] = val;
-            self.weights_buf[idx] = weight;
+            *val_slot = val;
+            *wt_slot = weight;
         }
-        let weights = &self.weights_buf[..n_samples];
-        let values = &self.values_buf[..n_samples];
+        let weights = &weights_buf[..n_samples];
+        let values = &values_buf[..n_samples];
         let ess = effective_sample_size(weights)?;
         let sum_w: f64 = weights.iter().sum();
         let mean: f64 = values
@@ -322,7 +377,7 @@ impl MonteCarloWorkspace {
             standard_error: se,
             ci_lower: mean - half,
             ci_upper: mean + half,
-            confidence_level: self.confidence_level,
+            confidence_level: conf,
             samples: n_samples,
             effective_sample_size: ess,
         })
@@ -341,32 +396,44 @@ impl MonteCarloWorkspace {
     {
         self.check_budget(n_samples)?;
         let dim = self.dimension;
+        let conf = self.confidence_level;
         let inv_n = 1.0 / (n_samples as f64);
-        let active_grid = &mut self.lhs_grid[..n_samples * dim];
+        let val_reg = self.values_buf;
+        let grid_reg = self.lhs_grid;
+        let perm_reg = self.perm_buf;
+        let mut cur = self.arena.raw_cursor();
+        let values_buf = cur.region_mut(val_reg);
+        let lhs_grid = cur.region_mut(grid_reg);
+        let perm_buf = cur.region_mut(perm_reg);
+        let active_grid = &mut lhs_grid[..n_samples * dim];
 
         for axis in 0..dim {
-            for idx in 0..n_samples {
-                self.perm_buf[idx] = idx;
+            for (idx, slot) in perm_buf.iter_mut().enumerate().take(n_samples) {
+                *slot = idx;
             }
             for idx in (1..n_samples).rev() {
                 let swap_idx = draw_bounded_index(rng, idx + 1);
-                self.perm_buf.swap(idx, swap_idx);
+                perm_buf.swap(idx, swap_idx);
             }
             for (row_idx, point_row) in active_grid.chunks_exact_mut(dim).enumerate() {
-                let stratum = self.perm_buf[row_idx] as f64;
+                let stratum = perm_buf[row_idx] as f64;
                 let jitter = draw_open_unit(rng);
                 point_row[axis] = ((stratum + jitter) * inv_n).clamp(OPEN_EPS, 1.0 - OPEN_EPS);
             }
         }
 
-        for (idx, point_row) in active_grid.chunks_exact(dim).enumerate() {
+        for (val_slot, point_row) in values_buf
+            .iter_mut()
+            .zip(active_grid.chunks_exact(dim))
+            .take(n_samples)
+        {
             let val = integrand(point_row);
             if !val.is_finite() {
                 return Err(MonteCarloError::NonFiniteEvaluation);
             }
-            self.values_buf[idx] = val;
+            *val_slot = val;
         }
-        MonteCarloEstimate::from_samples(&self.values_buf[..n_samples], self.confidence_level)
+        MonteCarloEstimate::from_samples(&values_buf[..n_samples], conf)
     }
 }
 

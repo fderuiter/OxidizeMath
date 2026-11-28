@@ -195,21 +195,15 @@ fn test_1000_steps_dense_rl_workspace_zero_heap_allocations() {
 #[test]
 fn test_reinforce_discounted_batch_equivalence_and_no_q_table_fabrication() {
     let mut ws = DenseRlWorkspace::new(4, 4, 16, Some(42));
-    ws.theta_logits[0] = [0.4, -0.2, 0.1, 0.3];
-    ws.theta_logits[1] = [-0.1, 0.2, -0.3, 0.5];
-    ws.state_values[0] = 0.8;
-    ws.state_values[1] = 1.4;
+    ws.theta_logits_mut()[0] = [0.4, -0.2, 0.1, 0.3];
+    ws.theta_logits_mut()[1] = [-0.1, 0.2, -0.3, 0.5];
+    ws.state_values_mut()[0] = 0.8;
+    ws.state_values_mut()[1] = 1.4;
 
     // Repeated state-action visits within one episode: s=0 (Right), s=0 (Left), s=1 (Right)
-    ws.ep_states.push(0);
-    ws.ep_actions.push(move_to_index(Move::Right));
-    ws.ep_rewards.push(-0.2);
-    ws.ep_states.push(0);
-    ws.ep_actions.push(move_to_index(Move::Left));
-    ws.ep_rewards.push(0.3);
-    ws.ep_states.push(1);
-    ws.ep_actions.push(move_to_index(Move::Right));
-    ws.ep_rewards.push(1.0);
+    ws.push_episode_step(0, move_to_index(Move::Right), -0.2);
+    ws.push_episode_step(0, move_to_index(Move::Left), 0.3);
+    ws.push_episode_step(1, move_to_index(Move::Right), 1.0);
     ws.episode_steps = 3;
 
     let gamma = 0.9;
@@ -222,10 +216,10 @@ fn test_reinforce_discounted_batch_equivalence_and_no_q_table_fabrication() {
     let adv1 = g1 - 0.8;
     let adv2 = g2 - 1.4;
 
-    let probs_s0 = softmax_action_probs(ws.theta_logits[0]);
-    let probs_s1 = softmax_action_probs(ws.theta_logits[1]);
-    let mut expected_theta_s0 = ws.theta_logits[0];
-    let mut expected_theta_s1 = ws.theta_logits[1];
+    let probs_s0 = softmax_action_probs(ws.theta_logits()[0]);
+    let probs_s1 = softmax_action_probs(ws.theta_logits()[1]);
+    let mut expected_theta_s0 = ws.theta_logits()[0];
+    let mut expected_theta_s1 = ws.theta_logits()[1];
     for (k, (&p0, &p1)) in probs_s0.iter().zip(probs_s1.iter()).enumerate() {
         let ind_right = f64::from(u8::from(k == move_to_index(Move::Right)));
         let ind_left = f64::from(u8::from(k == move_to_index(Move::Left)));
@@ -240,11 +234,11 @@ fn test_reinforce_discounted_batch_equivalence_and_no_q_table_fabrication() {
         VerifiedEngine::run_verified(|| flush_reinforce_episode_in_place(&mut ws, gamma, lr, 0.0));
     assert!((last_adv - adv2).abs() < 1e-12);
     for k in 0..4 {
-        assert!((ws.theta_logits[0][k] - expected_theta_s0[k]).abs() < 1e-12);
-        assert!((ws.theta_logits[1][k] - expected_theta_s1[k]).abs() < 1e-12);
+        assert!((ws.theta_logits()[0][k] - expected_theta_s0[k]).abs() < 1e-12);
+        assert!((ws.theta_logits()[1][k] - expected_theta_s1[k]).abs() < 1e-12);
     }
-    assert!((ws.state_values[0] - expected_v0).abs() < 1e-12);
-    assert!((ws.state_values[1] - expected_v1).abs() < 1e-12);
+    assert!((ws.state_values()[0] - expected_v0).abs() < 1e-12);
+    assert!((ws.state_values()[1] - expected_v1).abs() < 1e-12);
 
     let mdp = SculptedGridMdp::default_with_traps(4, 4, 0.9);
     let mut ws_pg = DenseRlWorkspace::new(4, 4, 64, Some(7));
@@ -252,7 +246,7 @@ fn test_reinforce_discounted_batch_equivalence_and_no_q_table_fabrication() {
     for _ in 0..200 {
         let _ = step_softmax_pg_into(&mdp, &mut ws_pg, pg_lr);
     }
-    assert!(ws_pg.q_table.iter().all(|q| q.iter().all(|&v| v == 0.0)));
+    assert!(ws_pg.q_table().iter().all(|q| q.iter().all(|&v| v == 0.0)));
 }
 
 #[test]
@@ -263,19 +257,17 @@ fn test_reinforce_timeout_truncation_bootstrap_and_20x20_bellman_convergence() {
     mdp.set_cell_role(GridState { x: 0, y: 1 }, GridCellRole::SolidWall);
 
     let mut ws = DenseRlWorkspace::new(4, 4, 4, Some(123));
-    ws.state_values[0] = 1.5;
+    ws.state_values_mut()[0] = 1.5;
     for _ in 0..4 {
         let out_trunc = step_softmax_pg_into(&mdp, &mut ws, UnitInterval::new(0.1).unwrap());
         assert!(out_trunc.td_error.is_finite());
     }
 
     let mut ws_distinct = DenseRlWorkspace::new(4, 4, 4, Some(123));
-    ws_distinct.ep_states.push(0);
-    ws_distinct.ep_actions.push(move_to_index(Move::Right));
-    ws_distinct.ep_rewards.push(-0.1);
+    ws_distinct.push_episode_step(0, move_to_index(Move::Right), -0.1);
     ws_distinct.episode_steps = 1;
-    ws_distinct.state_values[0] = 1.5;
-    ws_distinct.state_values[1] = 3.0;
+    ws_distinct.state_values_mut()[0] = 1.5;
+    ws_distinct.state_values_mut()[1] = 3.0;
     let adv_trunc = flush_reinforce_episode_in_place(&mut ws_distinct, 0.9, 0.1, 3.0);
     assert!((adv_trunc - 1.10).abs() < 1e-12);
 

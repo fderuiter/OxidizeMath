@@ -134,7 +134,7 @@ impl QTableInspectorTool {
         }
     }
 
-    fn rebuild_local_bellman(&mut self) {
+    fn refresh_snapshot_bellman(&mut self) {
         let step_budget = episode_step_budget(&self.mdp);
         let mut temp_ws = DenseRlWorkspace::new(
             self.mdp.width as usize,
@@ -142,27 +142,27 @@ impl QTableInspectorTool {
             step_budget,
             None,
         );
-        if self.latest_snap.q_table.len() == temp_ws.q_table.len() {
-            temp_ws.q_table.clone_from(&self.latest_snap.q_table);
+        if self.latest_snap.q_table.len() == temp_ws.q_table().len() {
             temp_ws
-                .theta_logits
-                .clone_from(&self.latest_snap.theta_logits);
+                .q_table_mut()
+                .copy_from_slice(&self.latest_snap.q_table);
+            if self.latest_snap.theta_logits.len() == temp_ws.theta_logits().len() {
+                temp_ws
+                    .theta_logits_mut()
+                    .copy_from_slice(&self.latest_snap.theta_logits);
+            }
             temp_ws
-                .state_values
-                .clone_from(&self.latest_snap.state_values);
+                .state_values_mut()
+                .copy_from_slice(&self.latest_snap.state_values);
             temp_ws.sync_topology(&self.mdp);
-            self.latest_snap.q_table.clone_from(&temp_ws.q_table);
-            self.latest_snap
-                .theta_logits
-                .clone_from(&temp_ws.theta_logits);
-            self.latest_snap
-                .state_values
-                .clone_from(&temp_ws.state_values);
+            self.latest_snap.q_table = temp_ws.q_table().to_vec();
+            self.latest_snap.theta_logits = temp_ws.theta_logits().to_vec();
+            self.latest_snap.state_values = temp_ws.state_values().to_vec();
         } else {
-            self.latest_snap.q_table = temp_ws.q_table.clone();
-            self.latest_snap.theta_logits = temp_ws.theta_logits.clone();
-            self.latest_snap.state_values = temp_ws.state_values.clone();
-            self.latest_snap.greedy_actions = vec![None; temp_ws.q_table.len()];
+            self.latest_snap.q_table = temp_ws.q_table().to_vec();
+            self.latest_snap.theta_logits = temp_ws.theta_logits().to_vec();
+            self.latest_snap.state_values = temp_ws.state_values().to_vec();
+            self.latest_snap.greedy_actions = vec![None; temp_ws.q_table().len()];
         }
         self.latest_snap.mdp = self.mdp.clone();
         self.latest_snap.solver_mode = self.solver_mode;
@@ -170,7 +170,7 @@ impl QTableInspectorTool {
     }
 
     fn sync_sculpt_to_worker(&mut self) {
-        self.rebuild_local_bellman();
+        self.refresh_snapshot_bellman();
         let payload = build_rl_sculpt_payload(&self.mdp, self.solver_mode);
         let _ = self
             .worker
@@ -199,10 +199,10 @@ impl QTableInspectorTool {
             episodes_trained: 0,
             mdp: self.mdp.clone(),
             solver_mode: self.solver_mode,
-            q_table: ws.q_table.clone(),
-            theta_logits: ws.theta_logits.clone(),
-            state_values: ws.state_values.clone(),
-            greedy_actions: vec![None; ws.q_table.len()],
+            q_table: ws.q_table().to_vec(),
+            theta_logits: ws.theta_logits().to_vec(),
+            state_values: ws.state_values().to_vec(),
+            greedy_actions: vec![None; ws.q_table().len()],
             bellman: solve_bellman_with_policy(&self.mdp, &ws, self.solver_mode),
         };
         self.episodes_trained = 0;
@@ -370,7 +370,7 @@ impl InteractiveTool for QTableInspectorTool {
             return;
         };
         if apply_rl_brush_stroke(&mut self.mdp, &stroke) {
-            self.rebuild_local_bellman();
+            self.refresh_snapshot_bellman();
             let _ = self
                 .worker
                 .send_command(SimCommand::ApplyBrushStroke(stroke));

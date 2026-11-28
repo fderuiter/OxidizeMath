@@ -1,10 +1,11 @@
-//! Pre-allocated dense RL workspace tables for zero-allocation tabular and softmax rollouts.
+//! Pre-allocated dense RL workspace tables backed by a single [`OwnedByteArena`].
 
 // [cite:algorithmic_information_rust]
 
 use super::maze::{GridCellRole, MAX_RL_GRID_DIM, MIN_RL_GRID_DIM, SculptedGridMdp};
 use super::{GridState, Move};
 use math_commons::math_kernel::types::flatten_2d_index;
+use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
 use oxidize_core::rng::OxidizeRng;
 use rand::RngCore;
 
@@ -35,31 +36,73 @@ pub const fn index_to_move(idx: usize) -> Move {
     }
 }
 
-/// Pre-allocated dense RL buffers enabling `0`-allocation Q-learning and policy-gradient rollouts.
+#[derive(Copy, Clone, Debug)]
+struct DenseRlRegions {
+    states: ArenaRegion<GridState>,
+    q_table: ArenaRegion<[f64; 4]>,
+    theta_logits: ArenaRegion<[f64; 4]>,
+    state_values: ArenaRegion<f64>,
+    pg_delta_buf: ArenaRegion<[f64; 4]>,
+    critic_delta_buf: ArenaRegion<f64>,
+    ep_states: ArenaRegion<usize>,
+    ep_actions: ArenaRegion<usize>,
+    ep_rewards: ArenaRegion<f64>,
+}
+
+fn build_dense_rl_arena(count: usize, cap: usize) -> (OwnedByteArena, DenseRlRegions) {
+    let mut layout = ArenaLayout::new();
+    let states = layout.reserve::<GridState>(count).expect("states layout");
+    let q_table = layout.reserve::<[f64; 4]>(count).expect("q_table layout");
+    let theta_logits = layout
+        .reserve::<[f64; 4]>(count)
+        .expect("theta_logits layout");
+    let state_values = layout.reserve::<f64>(count).expect("state_values layout");
+    let pg_delta_buf = layout
+        .reserve::<[f64; 4]>(count)
+        .expect("pg_delta_buf layout");
+    let critic_delta_buf = layout
+        .reserve::<f64>(count)
+        .expect("critic_delta_buf layout");
+    let ep_states = layout.reserve::<usize>(cap).expect("ep_states layout");
+    let ep_actions = layout.reserve::<usize>(cap).expect("ep_actions layout");
+    let ep_rewards = layout.reserve::<f64>(cap).expect("ep_rewards layout");
+    let arena = OwnedByteArena::from_layout(&layout);
+    (
+        arena,
+        DenseRlRegions {
+            states,
+            q_table,
+            theta_logits,
+            state_values,
+            pg_delta_buf,
+            critic_delta_buf,
+            ep_states,
+            ep_actions,
+            ep_rewards,
+        },
+    )
+}
+
+pub(super) type ReinforceMutSlices<'a> = (
+    &'a mut [[f64; 4]],
+    &'a mut [f64],
+    &'a mut [[f64; 4]],
+    &'a mut [f64],
+    &'a [usize],
+    &'a [usize],
+    &'a [f64],
+);
+
+/// Pre-allocated dense RL buffers backed by one [`OwnedByteArena`] for `0`-allocation rollouts.
 #[derive(Clone, Debug)]
 pub struct DenseRlWorkspace {
     /// Active grid column count.
     pub width: usize,
     /// Active grid row count.
     pub height: usize,
-    /// Row-major `GridState` lookup table of length `width * height`.
-    pub states: Vec<GridState>,
-    /// Dense action-value table $Q(s, a)$ indexed by `flatten_2d_index(x, y, width)` and `move_to_index(a)`.
-    pub q_table: Vec<[f64; 4]>,
-    /// Dense softmax policy preferences $\theta(s, a)$ for REINFORCE policy gradients.
-    pub theta_logits: Vec<[f64; 4]>,
-    /// Baseline state-value critic $V(s)$ used for low-variance REINFORCE advantage estimation.
-    pub state_values: Vec<f64>,
-    /// Pre-allocated episode state-index trajectory buffer.
-    pub ep_states: Vec<usize>,
-    /// Pre-allocated episode action-index trajectory buffer.
-    pub ep_actions: Vec<usize>,
-    /// Pre-allocated episode reward trajectory buffer.
-    pub ep_rewards: Vec<f64>,
-    /// Pre-allocated per-state policy-gradient accumulation scratch buffer for batch episodic REINFORCE.
-    pub(crate) pg_delta_buf: Vec<[f64; 4]>,
-    /// Pre-allocated per-state critic accumulation scratch buffer for batch episodic REINFORCE.
-    pub(crate) critic_delta_buf: Vec<f64>,
+    arena: OwnedByteArena,
+    regions: DenseRlRegions,
+    ep_len: usize,
     /// Maximum steps per episode before automatic episode truncation (`>= 4`).
     pub max_episode_steps: usize,
     /// Current agent grid coordinate.
@@ -75,17 +118,18 @@ pub struct DenseRlWorkspace {
 }
 
 impl DenseRlWorkspace {
-    /// Allocates all dense RL tables and episode trajectory buffers up front.
+    /// Allocates all dense RL tables and episode trajectory buffers up front in one [`OwnedByteArena`].
     #[must_use]
     pub fn new(width: usize, height: usize, max_episode_steps: usize, seed: Option<u64>) -> Self {
         let w = width.clamp(MIN_RL_GRID_DIM as usize, MAX_RL_GRID_DIM as usize);
         let h = height.clamp(MIN_RL_GRID_DIM as usize, MAX_RL_GRID_DIM as usize);
         let cap = max_episode_steps.max(4);
         let count = w * h;
-        let mut states = vec![GridState { x: 0, y: 0 }; count];
+        let (mut arena, regions) = build_dense_rl_arena(count, cap);
+        let states_slice = arena.region_slice_mut(regions.states);
         for y in 0..h {
             for x in 0..w {
-                states[flatten_2d_index(x, y, w)] = GridState {
+                states_slice[flatten_2d_index(x, y, w)] = GridState {
                     x: x as i32,
                     y: y as i32,
                 };
@@ -95,15 +139,9 @@ impl DenseRlWorkspace {
         Self {
             width: w,
             height: h,
-            states,
-            q_table: vec![[0.0; 4]; count],
-            theta_logits: vec![[0.0; 4]; count],
-            state_values: vec![0.0; count],
-            ep_states: Vec::with_capacity(cap),
-            ep_actions: Vec::with_capacity(cap),
-            ep_rewards: Vec::with_capacity(cap),
-            pg_delta_buf: vec![[0.0; 4]; count],
-            critic_delta_buf: vec![0.0; count],
+            arena,
+            regions,
+            ep_len: 0,
             max_episode_steps: cap,
             current_state: GridState { x: 0, y: 0 },
             episode_steps: 0,
@@ -113,16 +151,167 @@ impl DenseRlWorkspace {
         }
     }
 
+    /// Row-major `GridState` lookup table of length `width * height`.
+    #[inline]
+    #[must_use]
+    pub fn states(&self) -> &[GridState] {
+        self.arena.region_slice(self.regions.states)
+    }
+
+    /// Immutable view of dense action-value table $Q(s, a)$.
+    #[inline]
+    #[must_use]
+    pub fn q_table(&self) -> &[[f64; 4]] {
+        self.arena.region_slice(self.regions.q_table)
+    }
+
+    /// Mutable view of dense action-value table $Q(s, a)$.
+    #[inline]
+    pub fn q_table_mut(&mut self) -> &mut [[f64; 4]] {
+        self.arena.region_slice_mut(self.regions.q_table)
+    }
+
+    /// Immutable view of dense softmax policy preferences $\theta(s, a)$.
+    #[inline]
+    #[must_use]
+    pub fn theta_logits(&self) -> &[[f64; 4]] {
+        self.arena.region_slice(self.regions.theta_logits)
+    }
+
+    /// Mutable view of dense softmax policy preferences $\theta(s, a)$.
+    #[inline]
+    pub fn theta_logits_mut(&mut self) -> &mut [[f64; 4]] {
+        self.arena.region_slice_mut(self.regions.theta_logits)
+    }
+
+    /// Immutable view of critic baseline state values $V(s)$.
+    #[inline]
+    #[must_use]
+    pub fn state_values(&self) -> &[f64] {
+        self.arena.region_slice(self.regions.state_values)
+    }
+
+    /// Mutable view of critic baseline state values $V(s)$.
+    #[inline]
+    pub fn state_values_mut(&mut self) -> &mut [f64] {
+        self.arena.region_slice_mut(self.regions.state_values)
+    }
+
+    /// Active trajectory step count recorded in the current episode.
+    #[inline]
+    #[must_use]
+    pub const fn ep_len(&self) -> usize {
+        self.ep_len
+    }
+
+    /// Recorded episode state indices for the active episode (`len == ep_len()`).
+    #[inline]
+    #[must_use]
+    pub fn ep_states(&self) -> &[usize] {
+        &self.arena.region_slice(self.regions.ep_states)[..self.ep_len]
+    }
+
+    /// Recorded episode action indices for the active episode (`len == ep_len()`).
+    #[inline]
+    #[must_use]
+    pub fn ep_actions(&self) -> &[usize] {
+        &self.arena.region_slice(self.regions.ep_actions)[..self.ep_len]
+    }
+
+    /// Recorded episode scalar rewards for the active episode (`len == ep_len()`).
+    #[inline]
+    #[must_use]
+    pub fn ep_rewards(&self) -> &[f64] {
+        &self.arena.region_slice(self.regions.ep_rewards)[..self.ep_len]
+    }
+
+    /// Clears recorded episode trajectory slices in O(1) without touching capacity.
+    #[inline]
+    pub fn clear_episode_trajectory(&mut self) {
+        self.ep_len = 0;
+    }
+
+    /// Appends `(state_idx, action_idx, reward)` if `ep_len() < max_episode_steps`.
+    #[inline]
+    pub fn push_episode_step(&mut self, state_idx: usize, action_idx: usize, reward: f64) {
+        let cap = self.arena.region_slice(self.regions.ep_states).len();
+        if self.ep_len < self.max_episode_steps.min(cap) {
+            let t = self.ep_len;
+            self.arena.region_slice_mut(self.regions.ep_states)[t] = state_idx;
+            self.arena.region_slice_mut(self.regions.ep_actions)[t] = action_idx;
+            self.arena.region_slice_mut(self.regions.ep_rewards)[t] = reward;
+            self.ep_len = t + 1;
+        }
+    }
+
+    /// Updates [`Self::max_episode_steps`] and grows arena trajectory buffers if needed while preserving learned parameters.
+    pub fn ensure_episode_capacity(&mut self, max_episode_steps: usize) {
+        let cap = max_episode_steps.max(4);
+        self.max_episode_steps = cap;
+        if cap <= self.arena.region_slice(self.regions.ep_states).len() {
+            self.ep_len = self.ep_len.min(cap);
+            return;
+        }
+        let (mut next_arena, next_regs) = build_dense_rl_arena(self.width * self.height, cap);
+        next_arena
+            .region_slice_mut(next_regs.states)
+            .copy_from_slice(self.states());
+        next_arena
+            .region_slice_mut(next_regs.q_table)
+            .copy_from_slice(self.q_table());
+        next_arena
+            .region_slice_mut(next_regs.theta_logits)
+            .copy_from_slice(self.theta_logits());
+        next_arena
+            .region_slice_mut(next_regs.state_values)
+            .copy_from_slice(self.state_values());
+        let keep = self.ep_len.min(cap);
+        next_arena.region_slice_mut(next_regs.ep_states)[..keep]
+            .copy_from_slice(&self.ep_states()[..keep]);
+        next_arena.region_slice_mut(next_regs.ep_actions)[..keep]
+            .copy_from_slice(&self.ep_actions()[..keep]);
+        next_arena.region_slice_mut(next_regs.ep_rewards)[..keep]
+            .copy_from_slice(&self.ep_rewards()[..keep]);
+        self.arena = next_arena;
+        self.regions = next_regs;
+        self.ep_len = keep;
+    }
+
+    #[inline]
+    pub(super) fn split_reinforce_buffers_mut(&mut self) -> ReinforceMutSlices<'_> {
+        let len = self.ep_len;
+        let regs = self.regions;
+        let mut cursor = self.arena.raw_cursor();
+        let theta_logits = cursor.region_mut(regs.theta_logits);
+        let state_values = cursor.region_mut(regs.state_values);
+        let pg_delta_buf = cursor.region_mut(regs.pg_delta_buf);
+        let critic_delta_buf = cursor.region_mut(regs.critic_delta_buf);
+        let ep_states = &cursor.region_mut(regs.ep_states)[..len];
+        let ep_actions = &cursor.region_mut(regs.ep_actions)[..len];
+        let ep_rewards = &cursor.region_mut(regs.ep_rewards)[..len];
+        (
+            theta_logits,
+            state_values,
+            pg_delta_buf,
+            critic_delta_buf,
+            ep_states,
+            ep_actions,
+            ep_rewards,
+        )
+    }
+
     /// Clears learned parameters and episode counters in place without reallocating buffers.
     pub fn reset_learning(&mut self, start: GridState) {
-        self.q_table.fill([0.0; 4]);
-        self.theta_logits.fill([0.0; 4]);
-        self.state_values.fill(0.0);
-        self.ep_states.clear();
-        self.ep_actions.clear();
-        self.ep_rewards.clear();
-        self.pg_delta_buf.fill([0.0; 4]);
-        self.critic_delta_buf.fill(0.0);
+        self.q_table_mut().fill([0.0; 4]);
+        self.theta_logits_mut().fill([0.0; 4]);
+        self.state_values_mut().fill(0.0);
+        self.arena
+            .region_slice_mut(self.regions.pg_delta_buf)
+            .fill([0.0; 4]);
+        self.arena
+            .region_slice_mut(self.regions.critic_delta_buf)
+            .fill(0.0);
+        self.ep_len = 0;
         self.current_state = start;
         self.episode_steps = 0;
         self.episode_return = 0.0;
@@ -147,9 +336,9 @@ impl DenseRlWorkspace {
                 };
                 if mdp.cell_role(st) == GridCellRole::SolidWall {
                     let idx = flatten_2d_index(x, y, w);
-                    self.q_table[idx] = [0.0; 4];
-                    self.theta_logits[idx] = [0.0; 4];
-                    self.state_values[idx] = 0.0;
+                    self.q_table_mut()[idx] = [0.0; 4];
+                    self.theta_logits_mut()[idx] = [0.0; 4];
+                    self.state_values_mut()[idx] = 0.0;
                 }
             }
         }
@@ -157,9 +346,7 @@ impl DenseRlWorkspace {
             || mdp.cell_role(self.current_state) == GridCellRole::SolidWall
         {
             self.current_state = mdp.start;
-            self.ep_states.clear();
-            self.ep_actions.clear();
-            self.ep_rewards.clear();
+            self.ep_len = 0;
             self.episode_steps = 0;
             self.episode_return = 0.0;
         }
@@ -177,7 +364,7 @@ impl DenseRlWorkspace {
             return 0.0;
         }
         let idx = flatten_2d_index(state.x as usize, state.y as usize, self.width);
-        self.q_table[idx][move_to_index(action)]
+        self.q_table()[idx][move_to_index(action)]
     }
 
     /// Returns $\max_a Q(s, a)$ for `state`.
@@ -192,7 +379,7 @@ impl DenseRlWorkspace {
             return 0.0;
         }
         let idx = flatten_2d_index(state.x as usize, state.y as usize, self.width);
-        self.q_table[idx]
+        self.q_table()[idx]
             .iter()
             .copied()
             .fold(f64::NEG_INFINITY, f64::max)
@@ -216,16 +403,20 @@ impl DenseRlWorkspace {
         {
             return 0.0;
         }
-        self.state_values[flatten_2d_index(state.x as usize, state.y as usize, self.width)]
+        self.state_values()[flatten_2d_index(state.x as usize, state.y as usize, self.width)]
     }
 
     /// Resizes workspace buffers if dimensions changed and clears all learned parameters.
     pub fn resize_and_clear(&mut self, width: usize, height: usize) {
         let w = width.clamp(MIN_RL_GRID_DIM as usize, MAX_RL_GRID_DIM as usize);
         let h = height.clamp(MIN_RL_GRID_DIM as usize, MAX_RL_GRID_DIM as usize);
-        if w != self.width || h != self.height {
+        let cap = self.max_episode_steps.max(4);
+        if w != self.width
+            || h != self.height
+            || cap > self.arena.region_slice(self.regions.ep_states).len()
+        {
             let seed_next = self.rng.next_u64();
-            *self = Self::new(w, h, self.max_episode_steps, Some(seed_next));
+            *self = Self::new(w, h, cap, Some(seed_next));
         } else {
             self.reset_learning(GridState { x: 0, y: 0 });
         }
@@ -235,9 +426,7 @@ impl DenseRlWorkspace {
     pub fn reset_episode(&mut self, mdp: &SculptedGridMdp) {
         self.sync_topology(mdp);
         self.current_state = mdp.start;
-        self.ep_states.clear();
-        self.ep_actions.clear();
-        self.ep_rewards.clear();
+        self.ep_len = 0;
         self.episode_steps = 0;
         self.episode_return = 0.0;
     }
@@ -252,7 +441,7 @@ impl DenseRlWorkspace {
         {
             return None;
         }
-        let row = self.q_table[flatten_2d_index(state.x as usize, state.y as usize, self.width)];
+        let row = self.q_table()[flatten_2d_index(state.x as usize, state.y as usize, self.width)];
         if row.iter().all(|v| v.abs() <= 1e-12) {
             return None;
         }
@@ -276,7 +465,7 @@ impl DenseRlWorkspace {
             return None;
         }
         let row =
-            self.theta_logits[flatten_2d_index(state.x as usize, state.y as usize, self.width)];
+            self.theta_logits()[flatten_2d_index(state.x as usize, state.y as usize, self.width)];
         if row.iter().all(|v| v.abs() <= 1e-12) {
             return None;
         }
@@ -294,13 +483,13 @@ impl DenseRlWorkspace {
     pub fn is_finite_state(&self) -> bool {
         self.episode_return.is_finite()
             && self
-                .q_table
+                .q_table()
                 .iter()
                 .all(|row| row.iter().all(|v| v.is_finite()))
             && self
-                .theta_logits
+                .theta_logits()
                 .iter()
                 .all(|row| row.iter().all(|v| v.is_finite()))
-            && self.state_values.iter().all(|v| v.is_finite())
+            && self.state_values().iter().all(|v| v.is_finite())
     }
 }

@@ -69,6 +69,11 @@ fn test_unused_dependency_tables_derives_doctests_and_whitelist() {
 fn test_markdown_tests_audits_workspace_markdown_fences() {
     let dir = TempTestDir::new("policy_audit_md_tests");
     let whitelist_file = dir.join("verification_whitelist.toml");
+    fs::write(
+        dir.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"crates/markdown_tests\"]\n\n[workspace.lints.rust]\nmissing_docs = \"warn\"\n",
+    )
+    .unwrap();
     let md_member = write_member_crate(
         &dir,
         "crates/markdown_tests",

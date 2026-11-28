@@ -265,6 +265,7 @@ pub mod homology;
 pub mod persistence;
 pub mod space3d;
 pub mod workspace;
+mod workspace_layout;
 
 // Re-export main types and functions
 pub use boundary::{Z2BoundaryWorkspace, rank_z2_boundary};

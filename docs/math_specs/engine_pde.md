@@ -63,14 +63,14 @@ Implicit treatment of $+M\kappa |\mathbf{k}|^4$ and $+\nu |\mathbf{k}|^2$ remove
 Valid on periodic domains with power-of-two grid dimensions $N_x, N_y \ge 4$ (`is_power_of_two()`), positive spacings $\Delta x, \Delta y > 0$, non-negative parameters $M, \kappa, \nu, \Delta t \ge 0$, and `SolverWorkspace` capacity `scratch_len_1d(N)` / `scratch_len_2d(W, H)`.
 
 ```rust
-use math_explorer::math_kernel::types::SolverWorkspace;
+use math_explorer::math_kernel::types::ScalarWorkspace;
 use math_explorer::engine_pde::SemiImplicitFourierStepper;
 use math_explorer::rng::OxidizeRng;
 
 let stepper = SemiImplicitFourierStepper::new_1d(0.5);
 let mut phi = [0.1_f64, -0.1, 0.05, -0.05, 0.08, -0.08, 0.02, -0.02];
 let mut scratch = vec![0.0_f64; SemiImplicitFourierStepper::scratch_len_1d(phi.len())];
-let mut ws = SolverWorkspace::new(&mut scratch);
+let mut ws = ScalarWorkspace::new(&mut scratch);
 let mut rng = OxidizeRng::new(11);
 stepper.step_cahn_hilliard_1d(&mut phi, 1.0, 0.5, 0.0, 0.05, &mut ws, &mut rng);
 assert!(phi.iter().sum::<f64>().abs() < 1e-12);

@@ -251,15 +251,7 @@ impl SculptedQTableRunner {
         let eps = UnitInterval::new(0.15).unwrap();
         let pg_lr = UnitInterval::new(0.06).unwrap();
         let step_budget = episode_step_budget(&self.mdp);
-        if self.workspace.max_episode_steps != step_budget {
-            self.workspace.max_episode_steps = step_budget;
-            if self.workspace.ep_rewards.capacity() < step_budget {
-                let extra = step_budget - self.workspace.ep_rewards.len();
-                self.workspace.ep_states.reserve(extra);
-                self.workspace.ep_actions.reserve(extra);
-                self.workspace.ep_rewards.reserve(extra);
-            }
-        }
+        self.workspace.ensure_episode_capacity(step_budget);
         self.workspace.reset_episode(&self.mdp);
         for _ in 0..step_budget {
             let outcome = match self.solver_mode {
@@ -285,8 +277,8 @@ impl SculptedQTableRunner {
 
     pub(super) fn build_q_snapshot(&self) -> QTableSnapshot {
         let bellman = solve_bellman_with_policy(&self.mdp, &self.workspace, self.solver_mode);
-        let mut greedy_actions = Vec::with_capacity(self.workspace.states.len());
-        for &st in &self.workspace.states {
+        let mut greedy_actions = Vec::with_capacity(self.workspace.states().len());
+        for &st in self.workspace.states() {
             let act = match self.solver_mode {
                 RlSolverMode::TabularQ => self.workspace.greedy_q_action(st),
                 RlSolverMode::PolicyGradient => self.workspace.greedy_policy_action(st),
@@ -297,9 +289,9 @@ impl SculptedQTableRunner {
             episodes_trained: self.episodes_trained,
             mdp: self.mdp.clone(),
             solver_mode: self.solver_mode,
-            q_table: self.workspace.q_table.clone(),
-            theta_logits: self.workspace.theta_logits.clone(),
-            state_values: self.workspace.state_values.clone(),
+            q_table: self.workspace.q_table().to_vec(),
+            theta_logits: self.workspace.theta_logits().to_vec(),
+            state_values: self.workspace.state_values().to_vec(),
             greedy_actions,
             bellman,
         }
@@ -336,14 +328,16 @@ impl SimulationRunner for SculptedQTableRunner {
             }
             SimCommand::SyncSculptState(payload) => {
                 if apply_rl_sculpt_payload(&mut self.mdp, &mut self.solver_mode, &payload).is_ok() {
-                    self.workspace.max_episode_steps = episode_step_budget(&self.mdp);
+                    let step_budget = episode_step_budget(&self.mdp);
                     if self.workspace.width != self.mdp.width as usize
                         || self.workspace.height != self.mdp.height as usize
                     {
+                        self.workspace.max_episode_steps = step_budget;
                         self.workspace
                             .resize_and_clear(self.mdp.width as usize, self.mdp.height as usize);
                         self.workspace.reset_episode(&self.mdp);
                     } else {
+                        self.workspace.ensure_episode_capacity(step_budget);
                         self.workspace.sync_topology(&self.mdp);
                     }
                 }

@@ -87,9 +87,7 @@ fn ensure_active_episode(mdp: &SculptedGridMdp, ws: &mut DenseRlWorkspace) {
         || ws.episode_steps >= ws.max_episode_steps
     {
         ws.current_state = mdp.start;
-        ws.ep_states.clear();
-        ws.ep_actions.clear();
-        ws.ep_rewards.clear();
+        ws.clear_episode_trajectory();
         ws.episode_steps = 0;
         ws.episode_return = 0.0;
     }
@@ -120,7 +118,8 @@ pub fn step_tabular_q_into(
     ensure_active_episode(mdp, ws);
     let prev_state = ws.current_state;
     let s_idx = flatten_2d_index(prev_state.x as usize, prev_state.y as usize, ws.width);
-    let a_idx = select_eps_greedy_action_index(ws.q_table[s_idx], epsilon.value(), &mut ws.rng);
+    let prev_q_row = ws.q_table()[s_idx];
+    let a_idx = select_eps_greedy_action_index(prev_q_row, epsilon.value(), &mut ws.rng);
     let action = index_to_move(a_idx);
     let (next_state, reward, wind_slipped, wind_pan) =
         mdp.sample_step(prev_state, action, &mut ws.rng);
@@ -129,15 +128,15 @@ pub fn step_tabular_q_into(
     let max_next_q = if next_terminal {
         0.0
     } else {
-        ws.q_table[ns_idx]
+        ws.q_table()[ns_idx]
             .iter()
             .copied()
             .fold(f64::NEG_INFINITY, f64::max)
     };
-    let current_q = ws.q_table[s_idx][a_idx];
+    let current_q = ws.q_table()[s_idx][a_idx];
     let gamma = mdp.gamma.clamp(0.0, 1.0);
     let td_error = reward + gamma * max_next_q - current_q;
-    ws.q_table[s_idx][a_idx] = current_q + alpha.value() * td_error;
+    ws.q_table_mut()[s_idx][a_idx] = current_q + alpha.value() * td_error;
 
     ws.current_state = next_state;
     ws.episode_steps += 1;
@@ -181,12 +180,38 @@ fn finalize_episode_if_done(
     }
 }
 
+#[inline]
+fn apply_reinforce_deltas(
+    ep_states: &[usize],
+    state_values: &mut [f64],
+    theta_logits: &mut [[f64; 4]],
+    pg_delta_buf: &mut [[f64; 4]],
+    critic_delta_buf: &mut [f64],
+) {
+    let state_count = state_values.len();
+    for &s_idx in ep_states {
+        if s_idx >= state_count {
+            continue;
+        }
+        let c_delta = critic_delta_buf[s_idx];
+        let pg_delta = pg_delta_buf[s_idx];
+        if c_delta != 0.0 || pg_delta != [0.0; 4] {
+            state_values[s_idx] += c_delta;
+            critic_delta_buf[s_idx] = 0.0;
+            for (logit, &d) in theta_logits[s_idx].iter_mut().zip(pg_delta.iter()) {
+                *logit = (*logit + d).clamp(-20.0, 20.0);
+            }
+            pg_delta_buf[s_idx] = [0.0; 4];
+        }
+    }
+}
+
 /// Flushes a buffered episode trajectory using batch discounted `REINFORCE` with baseline
 /// (Williams, 1992; Sutton & Barto, 2018) and partial-episode timeout bootstrapping
 /// `bootstrap_value` ($0$ on true terminal states, $V(s_T)$ on step-limit truncation per Pardo et al., 2018).
 ///
 /// Accumulates all $\gamma^t$-weighted policy and critic updates against frozen pre-flush parameters
-/// before mutating `theta_logits` or `state_values`, and leaves `ws.q_table` untouched.
+/// before mutating `theta_logits` or `state_values`, and leaves `ws.q_table()` untouched.
 /// Returns the final-step advantage $A_{T-1} = \operatorname{clamp}(G_{T-1} - V(s_{T-1}), -25, 25)$.
 #[verified_engine::verified]
 pub fn flush_reinforce_episode_in_place(
@@ -195,14 +220,10 @@ pub fn flush_reinforce_episode_in_place(
     lr: f64,
     bootstrap_value: f64,
 ) -> f64 {
-    let len = ws.ep_rewards.len();
+    let len = ws.ep_len();
     if len == 0 {
         return 0.0;
     }
-    let state_count = ws.state_values.len();
-    debug_assert_eq!(ws.pg_delta_buf.len(), state_count);
-    debug_assert_eq!(ws.critic_delta_buf.len(), state_count);
-
     let safe_gamma = if gamma.is_finite() {
         gamma.clamp(0.0, 1.0)
     } else {
@@ -220,16 +241,25 @@ pub fn flush_reinforce_episode_in_place(
         0.0
     };
     let mut final_step_advantage = 0.0_f64;
+    let (
+        theta_logits,
+        state_values,
+        pg_delta_buf,
+        critic_delta_buf,
+        ep_states,
+        ep_actions,
+        ep_rewards,
+    ) = ws.split_reinforce_buffers_mut();
+    let state_count = state_values.len();
 
     for t in (0..len).rev() {
-        let s_idx = ws.ep_states[t];
-        let a_idx = ws.ep_actions[t] & 3;
-        g_t = ws.ep_rewards[t] + safe_gamma * g_t;
+        let s_idx = ep_states[t];
+        let a_idx = ep_actions[t] & 3;
+        g_t = ep_rewards[t] + safe_gamma * g_t;
         if s_idx >= state_count {
             continue;
         }
-        let baseline = ws.state_values[s_idx];
-        let raw_delta = g_t - baseline;
+        let raw_delta = g_t - state_values[s_idx];
         let advantage = raw_delta.clamp(-25.0, 25.0);
         if t + 1 == len {
             final_step_advantage = advantage;
@@ -239,35 +269,22 @@ pub fn flush_reinforce_episode_in_place(
         } else {
             safe_gamma.powi(t as i32)
         };
-        let probs = softmax_action_probs(ws.theta_logits[s_idx]);
+        let probs = softmax_action_probs(theta_logits[s_idx]);
         for (k, &prob) in probs.iter().enumerate() {
-            let indicator = if k == a_idx { 1.0 } else { 0.0 };
-            let grad = indicator - prob;
-            ws.pg_delta_buf[s_idx][k] += safe_lr * discount_t * advantage * grad;
+            let grad = if k == a_idx { 1.0 - prob } else { -prob };
+            pg_delta_buf[s_idx][k] += safe_lr * discount_t * advantage * grad;
         }
-        ws.critic_delta_buf[s_idx] += critic_lr * raw_delta;
+        critic_delta_buf[s_idx] += critic_lr * raw_delta;
     }
 
-    for i in 0..len {
-        let s_idx = ws.ep_states[i];
-        if s_idx >= state_count {
-            continue;
-        }
-        let c_delta = ws.critic_delta_buf[s_idx];
-        let pg_delta = ws.pg_delta_buf[s_idx];
-        if c_delta != 0.0 || pg_delta != [0.0; 4] {
-            ws.state_values[s_idx] += c_delta;
-            ws.critic_delta_buf[s_idx] = 0.0;
-            for (logit, &d) in ws.theta_logits[s_idx].iter_mut().zip(pg_delta.iter()) {
-                *logit = (*logit + d).clamp(-20.0, 20.0);
-            }
-            ws.pg_delta_buf[s_idx] = [0.0; 4];
-        }
-    }
-
-    ws.ep_states.clear();
-    ws.ep_actions.clear();
-    ws.ep_rewards.clear();
+    apply_reinforce_deltas(
+        ep_states,
+        state_values,
+        theta_logits,
+        pg_delta_buf,
+        critic_delta_buf,
+    );
+    ws.clear_episode_trajectory();
     final_step_advantage
 }
 
@@ -280,7 +297,7 @@ pub fn step_softmax_pg_into(
     ensure_active_episode(mdp, ws);
     let prev_state = ws.current_state;
     let s_idx = flatten_2d_index(prev_state.x as usize, prev_state.y as usize, ws.width);
-    let probs = softmax_action_probs(ws.theta_logits[s_idx]);
+    let probs = softmax_action_probs(ws.theta_logits()[s_idx]);
     let u = next_uniform_f64(&mut ws.rng);
     let mut cdf = 0.0_f64;
     let mut a_idx = 3usize;
@@ -300,15 +317,11 @@ pub fn step_softmax_pg_into(
     let next_val = if next_terminal {
         0.0
     } else {
-        ws.state_values[ns_idx]
+        ws.state_values()[ns_idx]
     };
-    let td_error = reward + gamma * next_val - ws.state_values[s_idx];
+    let td_error = reward + gamma * next_val - ws.state_values()[s_idx];
 
-    if ws.ep_rewards.len() < ws.ep_rewards.capacity() {
-        ws.ep_states.push(s_idx);
-        ws.ep_actions.push(a_idx);
-        ws.ep_rewards.push(reward);
-    }
+    ws.push_episode_step(s_idx, a_idx, reward);
 
     ws.current_state = next_state;
     ws.episode_steps += 1;

@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use crate::accessibility::register_canvas_accessibility;
+use crate::app::palette::DecisionBoundaryColors;
 use crate::app::{SemanticPalette, ThemeMode};
 use eframe::egui::{self, Color32, Stroke};
 use egui_plot::{Corner, Legend, Line, Plot, PlotBounds, PlotImage, PlotPoint, Points};
@@ -24,30 +25,8 @@ const GRID_ROWS: usize = 52;
 const RASTER_W: usize = 168;
 const RASTER_H: usize = 104;
 
-pub(crate) struct DecisionBoundaryColors {
-    pub(crate) class_0_bg: Color32,
-    pub(crate) class_1_bg: Color32,
-    pub(crate) contour: Color32,
-}
-
 pub(crate) const fn boundary_colors_for_theme(theme: ThemeMode) -> DecisionBoundaryColors {
-    match theme {
-        ThemeMode::Light => DecisionBoundaryColors {
-            class_0_bg: Color32::from_rgb(254, 232, 232),
-            class_1_bg: Color32::from_rgb(226, 238, 254),
-            contour: Color32::from_rgb(24, 34, 52),
-        },
-        ThemeMode::Dark => DecisionBoundaryColors {
-            class_0_bg: Color32::from_rgb(54, 22, 28),
-            class_1_bg: Color32::from_rgb(20, 34, 58),
-            contour: Color32::from_rgb(241, 245, 249),
-        },
-        ThemeMode::HighContrast => DecisionBoundaryColors {
-            class_0_bg: Color32::from_rgb(36, 8, 12),
-            class_1_bg: Color32::from_rgb(6, 18, 38),
-            contour: Color32::WHITE,
-        },
-    }
+    SemanticPalette::decision_boundary_colors(theme)
 }
 
 pub(crate) fn lerp_class_bg(colors: &DecisionBoundaryColors, p_class_0: f64) -> Color32 {

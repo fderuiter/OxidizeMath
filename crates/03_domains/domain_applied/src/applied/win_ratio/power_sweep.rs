@@ -2,15 +2,14 @@
 //! [`super::simulation::SimulationParams`].
 
 use crate::applied::clinical_trials::types::ClinicalTrialError;
+use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};
 use oxidize_core::rng::OxidizeRng;
 
-use super::censoring::{RightCensoredComparator, TierCount};
-use super::pair_comparison::ComparisonResult;
-use super::simulation::SimulationParams;
-use super::u_statistic::{
-    UnmatchedScratch, UnmatchedWinRatioSummary, compute_unmatched_u_statistics,
+use super::censoring::TierCount;
+use super::simulation::{
+    SimulationParams, evaluate_simulated_cohorts_into, tie_fallback_summary, win_ratio_parameter,
 };
-use super::weibull_sampler::SimulatedSubject;
+use super::u_statistic::UnmatchedWinRatioSummary;
 
 /// Maximum per-arm sample size permitted in WebAssembly and interactive sweeps.
 pub const MAX_ARM_SIZE: usize = 500;
@@ -141,29 +140,97 @@ pub struct PowerSweepReport {
     pub points: Vec<SampleSizePowerPoint>,
 }
 
-/// Preallocated buffers enabling zero-allocation execution under `VerifiedAllocator`.
+#[derive(Copy, Clone, Debug)]
+struct PowerSweepRegions {
+    trt_times: ArenaRegion<[f64; 2]>,
+    trt_events: ArenaRegion<[u8; 2]>,
+    ctrl_times: ArenaRegion<[f64; 2]>,
+    ctrl_events: ArenaRegion<[u8; 2]>,
+    row_wins: ArenaRegion<u32>,
+    row_losses: ArenaRegion<u32>,
+    col_wins: ArenaRegion<u32>,
+    col_losses: ArenaRegion<u32>,
+    points_n: ArenaRegion<usize>,
+    points_metrics: ArenaRegion<[f64; 7]>,
+}
+
+fn build_power_sweep_arena(
+    max_arm: usize,
+    max_steps: usize,
+) -> (OwnedByteArena, PowerSweepRegions) {
+    let mut l = ArenaLayout::new();
+    let regs = PowerSweepRegions {
+        trt_times: l.reserve::<[f64; 2]>(max_arm).expect("trt_times"),
+        trt_events: l.reserve::<[u8; 2]>(max_arm).expect("trt_events"),
+        ctrl_times: l.reserve::<[f64; 2]>(max_arm).expect("ctrl_times"),
+        ctrl_events: l.reserve::<[u8; 2]>(max_arm).expect("ctrl_events"),
+        row_wins: l.reserve::<u32>(max_arm).expect("row_wins"),
+        row_losses: l.reserve::<u32>(max_arm).expect("row_losses"),
+        col_wins: l.reserve::<u32>(max_arm).expect("col_wins"),
+        col_losses: l.reserve::<u32>(max_arm).expect("col_losses"),
+        points_n: l.reserve::<usize>(max_steps).expect("points_n"),
+        points_metrics: l.reserve::<[f64; 7]>(max_steps).expect("points_metrics"),
+    };
+    (OwnedByteArena::from_layout(&l), regs)
+}
+
+/// Preallocated buffers backed by one [`OwnedByteArena`] enabling zero-allocation execution under `VerifiedAllocator`.
 #[derive(Debug, Clone)]
 pub struct PowerSweepWorkspace {
-    /// Preallocated treatment cohort buffer (`len >= MAX_ARM_SIZE`).
-    pub treatment_buf: Vec<SimulatedSubject>,
-    /// Preallocated control cohort buffer (`len >= MAX_ARM_SIZE`).
-    pub control_buf: Vec<SimulatedSubject>,
-    /// Preallocated U-statistic row/column/tier scratch buffers.
-    pub scratch: UnmatchedScratch,
-    /// Preallocated output power-curve slice (`len >= MAX_SWEEP_STEPS`).
-    pub points_buf: Vec<SampleSizePowerPoint>,
+    arena: OwnedByteArena,
+    regions: PowerSweepRegions,
+    max_arm: usize,
+    max_steps: usize,
 }
 
 impl PowerSweepWorkspace {
     /// Allocates buffers sized for up to `max_arm` subjects per arm and `max_steps` grid points.
     #[must_use]
     pub fn with_capacity(max_arm: usize, max_steps: usize) -> Self {
+        let (arena, regions) = build_power_sweep_arena(max_arm, max_steps);
         Self {
-            treatment_buf: vec![SimulatedSubject::default(); max_arm],
-            control_buf: vec![SimulatedSubject::default(); max_arm],
-            scratch: UnmatchedScratch::with_capacity(max_arm, max_arm, 2),
-            points_buf: vec![SampleSizePowerPoint::default(); max_steps],
+            arena,
+            regions,
+            max_arm,
+            max_steps,
         }
+    }
+
+    /// Reads the `idx`-th computed [`SampleSizePowerPoint`] from the arena.
+    #[must_use]
+    pub fn point_at(&self, idx: usize) -> SampleSizePowerPoint {
+        let n_per_arm = self.arena.region_slice(self.regions.points_n)[idx];
+        let m = self.arena.region_slice(self.regions.points_metrics)[idx];
+        SampleSizePowerPoint {
+            n_per_arm,
+            empirical_power: m[0],
+            mean_win_ratio: m[1],
+            tier1_win_fraction: m[2],
+            tier1_loss_fraction: m[3],
+            tier2_win_fraction: m[4],
+            tier2_loss_fraction: m[5],
+            tie_fraction: m[6],
+        }
+    }
+
+    /// Collects the first `count` computed [`SampleSizePowerPoint`]s into an owned `Vec`.
+    #[must_use]
+    pub fn collect_points(&self, count: usize) -> Vec<SampleSizePowerPoint> {
+        let cap = count.min(self.max_steps);
+        (0..cap).map(|idx| self.point_at(idx)).collect()
+    }
+
+    fn set_point(&mut self, idx: usize, pt: SampleSizePowerPoint) {
+        self.arena.region_slice_mut(self.regions.points_n)[idx] = pt.n_per_arm;
+        self.arena.region_slice_mut(self.regions.points_metrics)[idx] = [
+            pt.empirical_power,
+            pt.mean_win_ratio,
+            pt.tier1_win_fraction,
+            pt.tier1_loss_fraction,
+            pt.tier2_win_fraction,
+            pt.tier2_loss_fraction,
+            pt.tie_fraction,
+        ];
     }
 }
 
@@ -171,92 +238,6 @@ impl Default for PowerSweepWorkspace {
     fn default() -> Self {
         Self::with_capacity(MAX_ARM_SIZE, MAX_SWEEP_STEPS)
     }
-}
-
-#[inline]
-fn compare_simulated_pair(
-    cmp: &RightCensoredComparator,
-    trt: &SimulatedSubject,
-    ctrl: &SimulatedSubject,
-) -> (ComparisonResult, usize) {
-    let fatal_res = cmp.compare_raw(
-        trt.fatal.time.as_f64(),
-        trt.fatal.event_occurred,
-        ctrl.fatal.time.as_f64(),
-        ctrl.fatal.event_occurred,
-    );
-    if fatal_res != ComparisonResult::Tie {
-        return (fatal_res, 0);
-    }
-    let nonfatal_res = cmp.compare_raw(
-        trt.nonfatal.time.as_f64(),
-        trt.nonfatal.event_occurred,
-        ctrl.nonfatal.time.as_f64(),
-        ctrl.nonfatal.event_occurred,
-    );
-    (nonfatal_res, 1)
-}
-
-fn evaluate_simulated_cohorts_into(
-    treatment: &[SimulatedSubject],
-    control: &[SimulatedSubject],
-    sig_alpha: f64,
-    scratch: &mut UnmatchedScratch,
-) -> (Option<UnmatchedWinRatioSummary>, [TierCount; 2]) {
-    let (n1, n2) = (treatment.len(), control.len());
-    scratch.row_wins[..n1].fill(0);
-    scratch.row_losses[..n1].fill(0);
-    scratch.col_wins[..n2].fill(0);
-    scratch.col_losses[..n2].fill(0);
-
-    let cmp = RightCensoredComparator::new();
-    let mut tier_wins = [0usize; 2];
-    let mut tier_losses = [0usize; 2];
-    for (i, trt) in treatment.iter().enumerate() {
-        for (j, ctrl) in control.iter().enumerate() {
-            match compare_simulated_pair(&cmp, trt, ctrl) {
-                (ComparisonResult::Win, k) => {
-                    tier_wins[k] += 1;
-                    scratch.row_wins[i] += 1;
-                    scratch.col_wins[j] += 1;
-                }
-                (ComparisonResult::Loss, k) => {
-                    tier_losses[k] += 1;
-                    scratch.row_losses[i] += 1;
-                    scratch.col_losses[j] += 1;
-                }
-                (ComparisonResult::Tie, _) => {}
-            }
-        }
-    }
-
-    let total_pairs = n1.saturating_mul(n2);
-    let rem1 = total_pairs.saturating_sub(tier_wins[0] + tier_losses[0]);
-    let rem2 = rem1.saturating_sub(tier_wins[1] + tier_losses[1]);
-    let tiers = [
-        TierCount {
-            tier_index: 0,
-            wins: tier_wins[0],
-            losses: tier_losses[0],
-            ties_remaining: rem1,
-        },
-        TierCount {
-            tier_index: 1,
-            wins: tier_wins[1],
-            losses: tier_losses[1],
-            ties_remaining: rem2,
-        },
-    ];
-    let marginals = scratch.marginals(n1, n2);
-    let summary = compute_unmatched_u_statistics(
-        n1,
-        n2,
-        tier_wins[0] + tier_wins[1],
-        tier_losses[0] + tier_losses[1],
-        &marginals,
-        sig_alpha,
-    );
-    (summary, tiers)
 }
 
 /// Evaluates a single simulated two-arm trial of size `n_per_arm` in-place with zero heap allocation.
@@ -271,21 +252,61 @@ pub fn simulate_weibull_trial_into(
     workspace: &mut PowerSweepWorkspace,
 ) -> Result<(Option<UnmatchedWinRatioSummary>, [TierCount; 2]), ClinicalTrialError> {
     params.validate()?;
+    if workspace.max_arm < n_per_arm {
+        return Err(ClinicalTrialError::InvalidData(
+            "PowerSweepWorkspace arm capacity is smaller than n_per_arm".to_string(),
+        ));
+    }
     let trt_model = params.treatment_model();
     let ctrl_model = params.control_model();
-    for slot in workspace.treatment_buf.iter_mut().take(n_per_arm) {
-        *slot = trt_model.try_sample_censored_subject(rng, censor_horizon, dropout_rate)?;
+    let regs = workspace.regions;
+    let mut cursor = workspace.arena.raw_cursor();
+    let trt_times = &mut cursor.region_mut(regs.trt_times)[..n_per_arm];
+    let trt_events = &mut cursor.region_mut(regs.trt_events)[..n_per_arm];
+    let ctrl_times = &mut cursor.region_mut(regs.ctrl_times)[..n_per_arm];
+    let ctrl_events = &mut cursor.region_mut(regs.ctrl_events)[..n_per_arm];
+    let row_wins = &mut cursor.region_mut(regs.row_wins)[..n_per_arm];
+    let row_losses = &mut cursor.region_mut(regs.row_losses)[..n_per_arm];
+    let col_wins = &mut cursor.region_mut(regs.col_wins)[..n_per_arm];
+    let col_losses = &mut cursor.region_mut(regs.col_losses)[..n_per_arm];
+
+    for i in 0..n_per_arm {
+        let s = trt_model.try_sample_censored_subject(rng, censor_horizon, dropout_rate)?;
+        trt_times[i] = [s.fatal.time.as_f64(), s.nonfatal.time.as_f64()];
+        trt_events[i] = [
+            u8::from(s.fatal.event_occurred),
+            u8::from(s.nonfatal.event_occurred),
+        ];
     }
-    for slot in workspace.control_buf.iter_mut().take(n_per_arm) {
-        *slot = ctrl_model.try_sample_censored_subject(rng, censor_horizon, dropout_rate)?;
+    for i in 0..n_per_arm {
+        let s = ctrl_model.try_sample_censored_subject(rng, censor_horizon, dropout_rate)?;
+        ctrl_times[i] = [s.fatal.time.as_f64(), s.nonfatal.time.as_f64()];
+        ctrl_events[i] = [
+            u8::from(s.fatal.event_occurred),
+            u8::from(s.nonfatal.event_occurred),
+        ];
     }
     Ok(evaluate_simulated_cohorts_into(
-        &workspace.treatment_buf[..n_per_arm],
-        &workspace.control_buf[..n_per_arm],
+        trt_times,
+        trt_events,
+        ctrl_times,
+        ctrl_events,
+        row_wins,
+        row_losses,
+        col_wins,
+        col_losses,
         sig_alpha,
-        &mut workspace.scratch,
     ))
 }
+
+type SweepStepResult = Result<
+    (
+        SampleSizePowerPoint,
+        Option<UnmatchedWinRatioSummary>,
+        [TierCount; 2],
+    ),
+    ClinicalTrialError,
+>;
 
 fn sweep_single_arm_size(
     params: &SimulationParams,
@@ -293,14 +314,7 @@ fn sweep_single_arm_size(
     n_arm: usize,
     rng: &mut OxidizeRng,
     workspace: &mut PowerSweepWorkspace,
-) -> Result<
-    (
-        SampleSizePowerPoint,
-        Option<UnmatchedWinRatioSummary>,
-        [TierCount; 2],
-    ),
-    ClinicalTrialError,
-> {
+) -> SweepStepResult {
     let (mut rejections, mut sum_ln_wr, mut finite_cnt) = (0usize, 0.0, 0usize);
     let mut frac_acc = [0.0_f64; 5];
     let mut last_summary = None;
@@ -337,7 +351,7 @@ fn sweep_single_arm_size(
     let mean_win_ratio = if finite_cnt > 0 {
         (sum_ln_wr / (finite_cnt as f64)).exp()
     } else {
-        super::simulation::win_ratio_parameter(params)
+        win_ratio_parameter(params)
     };
     let pt = SampleSizePowerPoint {
         n_per_arm: n_arm,
@@ -363,12 +377,7 @@ pub fn run_power_sweep_into(
 ) -> Result<(usize, UnmatchedWinRatioSummary, [TierCount; 2]), ClinicalTrialError> {
     params.validate()?;
     cfg.validate()?;
-    if workspace.treatment_buf.len() < cfg.n_max
-        || workspace.control_buf.len() < cfg.n_max
-        || workspace.scratch.row_wins.len() < cfg.n_max
-        || workspace.scratch.col_wins.len() < cfg.n_max
-        || workspace.points_buf.len() < cfg.n_steps
-    {
+    if workspace.max_arm < cfg.n_max || workspace.max_steps < cfg.n_steps {
         return Err(ClinicalTrialError::InvalidData(
             "PowerSweepWorkspace capacity is smaller than requested sweep bounds".to_string(),
         ));
@@ -381,7 +390,7 @@ pub fn run_power_sweep_into(
         let n_arm = cfg.sample_size_at(step_idx);
         let (pt, last_sum, last_tiers) =
             sweep_single_arm_size(params, cfg, n_arm, &mut rng, workspace)?;
-        workspace.points_buf[step_idx] = pt;
+        workspace.set_point(step_idx, pt);
         if let Some(s) = last_sum {
             rep_summary = Some(s);
             rep_tiers = last_tiers;
@@ -390,27 +399,6 @@ pub fn run_power_sweep_into(
 
     let summary = rep_summary.unwrap_or_else(|| tie_fallback_summary(cfg.n_max));
     Ok((cfg.n_steps, summary, rep_tiers))
-}
-
-#[verified_engine::verified]
-fn tie_fallback_summary(n_arm: usize) -> UnmatchedWinRatioSummary {
-    let pairs = n_arm * n_arm;
-    UnmatchedWinRatioSummary {
-        n_treatment: n_arm,
-        n_control: n_arm,
-        total_pairs: pairs,
-        wins: 0,
-        losses: 0,
-        ties: pairs,
-        win_ratio: 1.0,
-        win_odds: 1.0,
-        net_benefit: 0.0,
-        ci_low: 1.0,
-        ci_high: 1.0,
-        log_wr_se: 0.0,
-        z_score: 0.0,
-        p_value: 1.0,
-    }
 }
 
 /// Preallocates a [`PowerSweepWorkspace`] and executes a seeded `BivariateWeibullModel` power sweep.
@@ -424,11 +412,10 @@ pub fn run_weibull_power_sweep(
     let mut workspace = PowerSweepWorkspace::with_capacity(cfg.n_max, cfg.n_steps);
     let (count, representative_summary, representative_tiers) =
         run_power_sweep_into(params, cfg, seed, &mut workspace)?;
-    workspace.points_buf.truncate(count);
     Ok(PowerSweepReport {
-        theoretical_uncensored_wr: super::simulation::win_ratio_parameter(params),
+        theoretical_uncensored_wr: win_ratio_parameter(params),
         representative_summary,
         representative_tiers,
-        points: workspace.points_buf,
+        points: workspace.collect_points(count),
     })
 }

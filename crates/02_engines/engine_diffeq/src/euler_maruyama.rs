@@ -1,9 +1,8 @@
 // [cite:engine_diffeq]
-use crate::error::DiffeqError;
+use crate::error::{DiffeqError, carve_scalars};
 use crate::system::{SdeSystem, StochasticCalculus};
-use math_commons::math_kernel::types::{
-    Scalar, SolverWorkspace, fill_standard_normal, flatten_2d_index,
-};
+use math_commons::math_kernel::types::{Scalar, fill_standard_normal, flatten_2d_index};
+use math_memory::{ByteArena, SolverWorkspace};
 use rand_core::RngCore;
 
 /// Multivariate Euler-Maruyama (Itô) and Euler-Heun (Stratonovich) stochastic integrator for
@@ -61,7 +60,7 @@ impl EulerMaruyamaSolver {
         t: T,
         dt: T,
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) -> Result<(), DiffeqError> {
         let d = system.state_dim();
@@ -78,14 +77,16 @@ impl EulerMaruyamaSolver {
         }
 
         let mut ws = workspace.reborrow();
-        let dw = ws.try_take_slice(m)?;
+        let mut cur = ws.cursor();
+        let dw = carve_scalars::<T>(&mut cur, m)?;
+        let mut inner_ws = ByteArena::new(cur.into_bytes());
         fill_standard_normal(dw, rng);
         let sqrt_dt = dt.sqrt();
         for w in dw.iter_mut() {
             *w *= sqrt_dt;
         }
         debug_assert!(sqrt_dt >= T::ZERO);
-        self.try_step_with_increments(system, t, dt, dw, state, &mut ws)
+        self.try_step_with_increments(system, t, dt, dw, state, &mut inner_ws)
     }
 
     /// Advances `state` by one step `dt` using freshly sampled Wiener increments from `rng`.
@@ -99,7 +100,7 @@ impl EulerMaruyamaSolver {
         t: T,
         dt: T,
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
         rng: &mut R,
     ) {
         self.try_step(system, t, dt, state, workspace, rng)
@@ -119,7 +120,7 @@ impl EulerMaruyamaSolver {
         dt: T,
         dw: &[T],
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
     ) -> Result<(), DiffeqError> {
         let d = system.state_dim();
         let m = system.wiener_dim();
@@ -143,12 +144,13 @@ impl EulerMaruyamaSolver {
 
         let dm = d * m;
         let mut ws = workspace.reborrow();
-        let f0 = ws.try_take_slice(d)?;
-        let g0 = ws.try_take_slice(dm)?;
+        let mut cur = ws.cursor();
+        let f0 = carve_scalars::<T>(&mut cur, d)?;
+        let g0 = carve_scalars::<T>(&mut cur, dm)?;
         let euler_heun_slices = if self.calculus == StochasticCalculus::Stratonovich {
-            let xp = ws.try_take_slice(d)?;
-            let f1 = ws.try_take_slice(d)?;
-            let g1 = ws.try_take_slice(dm)?;
+            let xp = carve_scalars::<T>(&mut cur, d)?;
+            let f1 = carve_scalars::<T>(&mut cur, d)?;
+            let g1 = carve_scalars::<T>(&mut cur, dm)?;
             Some((xp, f1, g1))
         } else {
             None
@@ -173,7 +175,7 @@ impl EulerMaruyamaSolver {
         dt: T,
         dw: &[T],
         state: &mut [T],
-        workspace: &mut SolverWorkspace<'_, T>,
+        workspace: &mut (impl SolverWorkspace + ?Sized),
     ) {
         self.try_step_with_increments(system, t, dt, dw, state, workspace)
             .expect("EulerMaruyamaSolver::step_with_increments preconditions violated");

@@ -6,10 +6,10 @@
 
 ## 1. Overview & Architecture
 
-`engine_diffeq` is OxidizeMath's Tier 2 `#![no_std]` ordinary, stochastic, and geometric Langevin differential equation solver crate. It consolidates 0D stochastic differential equation (SDE) integrators, underdamped Hamiltonian/Langevin splittings, and discrete jump propensities over the Tier 0 [`Scalar`](math_commons::math_kernel::types::Scalar), [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace), and `rand_core::RngCore` contracts.
+`engine_diffeq` is OxidizeMath's Tier 2 `#![no_std]` ordinary, stochastic, and geometric Langevin differential equation solver crate. It consolidates 0D stochastic differential equation (SDE) integrators, underdamped Hamiltonian/Langevin splittings, and discrete jump propensities over the Tier 0 [`Scalar`](math_commons::math_kernel::types::Scalar), [`SolverWorkspace`], and `rand_core::RngCore` contracts.
 
 Core design invariants:
-- **`#![no_std]` First with Optional `alloc`**: Compiles with `--no-default-features` on bare-metal and `wasm32-unknown-unknown` targets. Enabling `alloc` adds optional heap-backed workspace wrappers while all stepping loops remain strictly zero-allocation over caller-borrowed [`SolverWorkspace`](math_commons::math_kernel::types::SolverWorkspace) slices.
+- **`#![no_std]` First with Optional `alloc`**: Compiles with `--no-default-features` on bare-metal and `wasm32-unknown-unknown` targets. Enabling `alloc` re-exports `OwnedByteArena` while all stepping loops remain strictly zero-allocation over any [`SolverWorkspace`] implementation ([`ByteArena`] or [`ScalarWorkspace`]).
 - **Multivariate Itô & Stratonovich Calculi**: [`StochasticCalculus`] selects either Itô ($\int G \, dW_t$) or Stratonovich ($\int G \circ dW_t$) integration across [`EulerMaruyamaSolver`] (strong order $0.5$ / Euler-Heun), [`MilsteinSolver`] (strong order $1.0$ with optional truncated Karhunen-Loève Lévy area), and [`Sriw1Solver`] (Rössler-type derivative-free strong-order-$1.5$ Stochastic Runge-Kutta).
 - **Geometric Langevin Splitting**: [`BaoabLangevinSolver`] implements Leimkuhler-Matthews symmetric `B-A-O-A-B` splitting with exact Ornstein-Uhlenbeck fluctuation-dissipation thermostatting.
 - **Stack-Allocated Fallible Companions**: [`DiffeqError`] implements `Copy`, `Eq`, `core::error::Error`, and [`math_diagnostics::Diagnostic`] without `alloc` or `std`, backing `try_*` companions across all solver constructors, stepping routines, and [`try_eval_ito_effective_drift`].
@@ -17,9 +17,8 @@ Core design invariants:
 
 ```rust
 use engine_diffeq::{
-    EulerMaruyamaSolver, SdeSystem, StochasticCalculus,
+    ByteArena, EulerMaruyamaSolver, SdeSystem, StochasticCalculus,
 };
-use math_commons::math_kernel::types::SolverWorkspace;
 use math_rng::OxidizeRng;
 
 struct OrnsteinUhlenbeck;
@@ -37,8 +36,8 @@ impl SdeSystem<f64> for OrnsteinUhlenbeck {
 
 let solver = EulerMaruyamaSolver::new(StochasticCalculus::Ito);
 let mut state = [1.0_f64];
-let mut scratch = [0.0_f64; 8];
-let mut ws = SolverWorkspace::new(&mut scratch);
+let mut raw = [0_u8; 128];
+let mut ws = ByteArena::new(&mut raw);
 let mut rng = OxidizeRng::new(42);
 solver.step(&OrnsteinUhlenbeck, 0.0, 0.01, &mut state, &mut ws, &mut rng);
 assert!(state[0].is_finite());

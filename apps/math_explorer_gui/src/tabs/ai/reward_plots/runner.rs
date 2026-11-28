@@ -80,15 +80,7 @@ impl RewardPlotsRunner {
         let eps = UnitInterval::new(0.12).unwrap();
         let pg_lr = UnitInterval::new(0.06).unwrap();
         let step_budget = ((self.mdp.width as usize) * (self.mdp.height as usize) * 4).max(100);
-        if self.workspace.max_episode_steps != step_budget {
-            self.workspace.max_episode_steps = step_budget;
-            if self.workspace.ep_rewards.capacity() < step_budget {
-                let extra = step_budget - self.workspace.ep_rewards.len();
-                self.workspace.ep_states.reserve(extra);
-                self.workspace.ep_actions.reserve(extra);
-                self.workspace.ep_rewards.reserve(extra);
-            }
-        }
+        self.workspace.ensure_episode_capacity(step_budget);
 
         self.workspace.reset_episode(&self.mdp);
         let mut episode_reward = 0.0;
@@ -154,15 +146,17 @@ impl SimulationRunner for RewardPlotsRunner {
             }
             SimCommand::SyncSculptState(payload) => {
                 if apply_rl_sculpt_payload(&mut self.mdp, &mut self.solver_mode, &payload).is_ok() {
-                    self.workspace.max_episode_steps =
+                    let step_budget =
                         ((self.mdp.width as usize) * (self.mdp.height as usize) * 4).max(100);
                     if self.workspace.width != self.mdp.width as usize
                         || self.workspace.height != self.mdp.height as usize
                     {
+                        self.workspace.max_episode_steps = step_budget;
                         self.workspace
                             .resize_and_clear(self.mdp.width as usize, self.mdp.height as usize);
                         self.workspace.reset_episode(&self.mdp);
                     } else {
+                        self.workspace.ensure_episode_capacity(step_budget);
                         self.workspace.sync_topology(&self.mdp);
                     }
                     let sweeps = BellmanSolution::recommended_sweeps(&self.mdp, 1e-7);
