@@ -434,8 +434,10 @@ fn test_correlation_matrix_with_workspace_zero_heap_allocations() {
     use math_memory::OwnedByteArena;
 
     let corr_in = DMatrix::from_row_slice(3, 3, &[1.0, 0.3, 0.1, 0.3, 1.0, 0.2, 0.1, 0.2, 1.0]);
+    let corr_expected = corr_in.clone();
     let chol_buf = DMatrix::zeros(3, 3);
     let boundary_in = DMatrix::from_row_slice(2, 2, &[1.0, 1.0, 1.0, 1.0]);
+    let boundary_expected = boundary_in.clone();
     let boundary_buf = DMatrix::zeros(2, 2);
     let indefinite_in =
         DMatrix::from_row_slice(3, 3, &[1.0, 0.9, 0.9, 0.9, 1.0, -0.9, 0.9, -0.9, 1.0]);
@@ -443,20 +445,18 @@ fn test_correlation_matrix_with_workspace_zero_heap_allocations() {
     let mut ws = OwnedByteArena::with_capacity(CorrelationMatrix::workspace_bytes(3));
 
     let ((corr, boundary, bad), _) = VerifiedEngine::run_verified(|| {
-        let corr =
-            CorrelationMatrix::new_with_workspace(corr_in.clone(), chol_buf, &mut ws).unwrap();
+        let corr = CorrelationMatrix::new_with_workspace(corr_in, chol_buf, &mut ws).unwrap();
         let boundary =
-            CorrelationMatrix::new_with_workspace(boundary_in.clone(), boundary_buf, &mut ws)
-                .unwrap();
+            CorrelationMatrix::new_with_workspace(boundary_in, boundary_buf, &mut ws).unwrap();
         let bad = CorrelationMatrix::new_with_workspace(indefinite_in, indefinite_buf, &mut ws);
         (corr, boundary, bad)
     });
     assert_eq!(corr.dimension(), 3);
     let recon = corr.cholesky_factor() * corr.cholesky_factor().transpose();
-    assert_relative_eq!((&recon - &corr_in).norm(), 0.0, epsilon = 1e-12);
+    assert_relative_eq!((&recon - &corr_expected).norm(), 0.0, epsilon = 1e-12);
     let recon_boundary = boundary.cholesky_factor() * boundary.cholesky_factor().transpose();
     assert_relative_eq!(
-        (&recon_boundary - &boundary_in).norm(),
+        (&recon_boundary - &boundary_expected).norm(),
         0.0,
         epsilon = 1e-12
     );

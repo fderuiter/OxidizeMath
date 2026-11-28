@@ -47,7 +47,9 @@ impl<T: RealField> RngScalar for T {
     fn from_dyadic_53_open(raw_53: u64) -> Self {
         debug_assert!(raw_53 < (1_u64 << 53));
         let unit = ((raw_53 as f64) + 0.5) * INV_TWO_POW_53_F64;
-        T::open_unit_from_f64(unit)
+        let clamped = T::open_unit_from_f64(unit);
+        debug_assert!(clamped > T::ZERO && clamped < T::ONE);
+        clamped
     }
 
     #[inline]
@@ -207,8 +209,8 @@ pub fn fill_cranley_patterson_shifts<T: RngScalar, R: RngCore + ?Sized>(
     }
 }
 
-/// Draws a standard normal $\mathcal{N}(0, 1)$ `f64` variate via a deterministic Rational/Acklam
-/// inverse-normal transform on a single open-unit uniform draw (`0`-ULP `libm::sqrt` `#![no_std]`).
+/// Draws a standard normal $\mathcal{N}(0, 1)$ `f64` variate via Wichura's AS 241 minimax
+/// rational inverse-CDF (`probit`) transform on a single open-unit uniform draw (`0`-ULP `libm::sqrt` `#![no_std]`).
 #[inline]
 pub fn sample_standard_normal_f64<R: RngCore + ?Sized>(rng: &mut R) -> f64 {
     let u: f64 = sample_open(rng);
@@ -222,22 +224,39 @@ pub fn sample_standard_normal<T: RngScalar, R: RngCore + ?Sized>(rng: &mut R) ->
 }
 
 #[inline]
-fn ln_open_unit_f64(u: f64) -> f64 {
+pub(crate) fn ln_open_unit_f64(u: f64) -> f64 {
+    const LN2_HI: f64 = 6.931_471_803_691_238e-1;
+    const LN2_LO: f64 = 1.908_214_929_270_587_7e-10;
+    const MIN_NORMAL_F64: f64 = 2.225_073_858_507_201_4e-308;
+    const TWO_POW_54: f64 = (1_u64 << 54) as f64;
+
     debug_assert!(u > 0.0 && u < 1.0);
-    let bits = u.to_bits();
-    let exp = ((bits >> 52) & 0x7ff) as i64 - 1023;
-    let m = f64::from_bits((bits & 0x000f_ffff_ffff_ffff) | 0x3ff0_0000_0000_0000);
-    let y = (m - 1.0) / (m + 1.0);
-    let y2 = y * y;
-    let mut term = y;
-    let mut sum = y;
-    let mut k = 3_i32;
-    while k <= 21 {
-        term *= y2;
-        sum += term / (k as f64);
-        k += 2;
+    let (bits, mut exp) = if u < MIN_NORMAL_F64 {
+        let b = (u * TWO_POW_54).to_bits();
+        (b, ((b >> 52) & 0x7ff) as i64 - 1023 - 54)
+    } else {
+        let b = u.to_bits();
+        (b, ((b >> 52) & 0x7ff) as i64 - 1023)
+    };
+    let mut m = f64::from_bits((bits & 0x000f_ffff_ffff_ffff) | 0x3ff0_0000_0000_0000);
+    if m >= core::f64::consts::SQRT_2 {
+        m *= 0.5;
+        exp += 1;
     }
-    2.0 * sum + (exp as f64) * core::f64::consts::LN_2
+    let f = m - 1.0;
+    let s = f / (2.0 + f);
+    let z = s * s;
+    let w = z * z;
+    let t1 = w
+        * (3.999_999_999_940_942e-1
+            + w * (2.222_219_843_214_978_4e-1 + w * 1.531_383_769_920_937_3e-1));
+    let t2 = z
+        * (6.666_666_666_666_735e-1
+            + w * (2.857_142_874_366_239e-1
+                + w * (1.818_357_216_161_805e-1 + w * 1.479_819_860_511_658_6e-1)));
+    let hfsq = 0.5 * f * f;
+    let dk = exp as f64;
+    dk * LN2_HI - ((hfsq - (s * (hfsq + t2 + t1) + dk * LN2_LO)) - f)
 }
 
 #[inline]
@@ -249,48 +268,88 @@ fn sqrt_pos_f64(x: f64) -> f64 {
     }
 }
 
+const WICHURA_A: [f64; 8] = [
+    3.387_132_872_796_366_5,
+    1.331_416_678_917_843_8e2,
+    1.971_590_950_306_551_4e3,
+    1.373_169_376_550_946e4,
+    4.592_195_393_154_987e4,
+    6.726_577_092_700_87e4,
+    3.343_057_558_358_813e4,
+    2.509_080_928_730_122_7e3,
+];
+const WICHURA_B: [f64; 8] = [
+    1.0,
+    4.231_333_070_160_091e1,
+    6.871_870_074_920_579e2,
+    5.394_196_021_424_751e3,
+    2.121_379_430_158_659_7e4,
+    3.930_789_580_009_271e4,
+    2.872_908_573_572_194_3e4,
+    5.226_495_278_852_854e3,
+];
+const WICHURA_C: [f64; 8] = [
+    1.423_437_110_749_683_5,
+    4.630_337_846_156_546,
+    5.769_497_221_460_691,
+    3.647_848_324_763_204_5,
+    1.270_458_252_452_368_4,
+    2.417_807_251_774_506e-1,
+    2.272_384_498_926_918_4e-2,
+    7.745_450_142_783_414e-4,
+];
+const WICHURA_D: [f64; 8] = [
+    1.0,
+    2.053_191_626_637_759,
+    1.676_384_830_183_803_8,
+    6.897_673_349_851e-1,
+    1.481_039_764_274_800_8e-1,
+    1.519_866_656_361_645_8e-2,
+    5.475_938_084_995_345e-4,
+    1.050_750_071_644_416_9e-9,
+];
+const WICHURA_E: [f64; 8] = [
+    6.657_904_643_501_104,
+    5.463_784_911_164_114,
+    1.784_826_539_917_291_3,
+    2.965_605_718_285_049e-1,
+    2.653_218_952_657_612_4e-2,
+    1.242_660_947_388_078_4e-3,
+    2.711_555_568_743_487_6e-5,
+    2.010_334_399_292_288e-7,
+];
+const WICHURA_F: [f64; 8] = [
+    1.0,
+    5.998_322_065_558_88e-1,
+    1.369_298_809_227_358e-1,
+    1.487_536_129_085_061_5e-2,
+    7.868_691_311_456_133e-4,
+    1.846_318_317_510_054_8e-5,
+    1.421_511_758_316_446e-7,
+    2.044_263_103_389_939_7e-15,
+];
+
 #[inline]
-fn acklam_probit_f64(p: f64) -> f64 {
-    const A: [f64; 6] = [
-        -3.969_683_028_665_376e1,
-        2.209_460_984_245_205e2,
-        -2.759_285_104_469_687e2,
-        1.383_577_518_672_69e2,
-        -3.066_479_806_614_716e1,
-        2.506_628_277_459_239,
-    ];
-    const B: [f64; 5] = [
-        -5.447_609_879_822_406e1,
-        1.615_858_368_580_409e2,
-        -1.556_989_798_598_866e2,
-        6.680_131_188_771_972e1,
-        -1.328_068_155_288_572e1,
-    ];
-    const C: [f64; 6] = [
-        -7.784_894_002_430_293e-3,
-        -3.223_964_580_411_365e-1,
-        -2.400_758_277_161_838,
-        -2.549_732_539_343_734,
-        4.374_664_141_464_968,
-        2.938_163_982_698_783,
-    ];
-    const D: [f64; 4] = [
-        7.784_695_709_041_462e-3,
-        3.224_671_290_700_398e-1,
-        2.445_134_137_142_996,
-        3.754_408_661_907_416,
-    ];
-    if !(0.02425..=0.97575).contains(&p) {
-        let sign = if p < 0.5 { -1.0 } else { 1.0 };
-        let tail = if p < 0.5 { p } else { 1.0 - p };
-        let q = sqrt_pos_f64(-2.0 * ln_open_unit_f64(tail));
-        let num = ((((C[0] * q + C[1]) * q + C[2]) * q + C[3]) * q + C[4]) * q + C[5];
-        let den = (((D[0] * q + D[1]) * q + D[2]) * q + D[3]) * q + 1.0;
-        return sign * (num / den);
-    }
+fn eval_poly8(c: &[f64; 8], x: f64) -> f64 {
+    ((((((c[7] * x + c[6]) * x + c[5]) * x + c[4]) * x + c[3]) * x + c[2]) * x + c[1]) * x + c[0]
+}
+
+#[inline]
+pub(crate) fn acklam_probit_f64(p: f64) -> f64 {
+    debug_assert!(p > 0.0 && p < 1.0);
     let q = p - 0.5;
-    let r = q * q;
-    let num = (((((A[0] * r + A[1]) * r + A[2]) * r + A[3]) * r + A[4]) * r + A[5]) * q;
-    let den = ((((B[0] * r + B[1]) * r + B[2]) * r + B[3]) * r + B[4]) * r + 1.0;
-    num / den
+    if q.abs() <= 0.425 {
+        let r = 0.180_625 - q * q;
+        return q * eval_poly8(&WICHURA_A, r) / eval_poly8(&WICHURA_B, r);
+    }
+    let r = if q < 0.0 { p } else { 1.0 - p };
+    let s = sqrt_pos_f64(-ln_open_unit_f64(r));
+    let mag = if s <= 5.0 {
+        let t = s - 1.6;
+        eval_poly8(&WICHURA_C, t) / eval_poly8(&WICHURA_D, t)
+    } else {
+        let t = s - 5.0;
+        eval_poly8(&WICHURA_E, t) / eval_poly8(&WICHURA_F, t)
+    };
+    if q < 0.0 { -mag } else { mag }
 }

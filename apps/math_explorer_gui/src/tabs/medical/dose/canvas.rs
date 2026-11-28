@@ -60,7 +60,7 @@ pub(crate) fn compute_dose_image_for_contrast(
     ColorImage::new([width, height], pixels)
 }
 
-fn active_imrt_dose_slice(tool: &DoseCalculationTool) -> &[f64] {
+pub(super) fn active_imrt_dose_slice(tool: &DoseCalculationTool) -> &[f64] {
     if !tool.gating_4d_enabled {
         return tool.imrt_workspace.dose_vec.as_slice();
     }

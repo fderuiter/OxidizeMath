@@ -2683,6 +2683,7 @@ dependencies = [
  "egui_plot",
  "engine_linalg",
  "engine_opt",
+ "epaint_default_fonts",
  "federated_registry",
  "flate2",
  "futures",

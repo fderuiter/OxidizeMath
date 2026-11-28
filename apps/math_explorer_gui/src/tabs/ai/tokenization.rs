@@ -1,5 +1,5 @@
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::InteractiveTool;
+use crate::framework::{ExportCapabilities, ExportCell, ExportTable, InteractiveTool};
 use eframe::egui;
 use math_explorer::ai::transformer::tokenization::{
     CharTokenizer, PseudoEmbedding, Tokenizer, WordTokenizer,
@@ -52,6 +52,150 @@ impl TokenizationTool {
             })
             .collect();
     }
+
+    fn strategy_label(&self) -> &'static str {
+        if self.use_subword {
+            "character"
+        } else {
+            "word"
+        }
+    }
+
+    fn build_embedding_table(&self) -> Vec<ExportTable> {
+        if self.tokens.is_empty() {
+            return Vec::new();
+        }
+        let mut headers = Vec::with_capacity(3 + self.d_model);
+        headers.push("token_index".to_string());
+        headers.push("token".to_string());
+        headers.push("strategy".to_string());
+        for dim in 0..self.d_model {
+            headers.push(format!("dim_{dim}"));
+        }
+        let strategy = self.strategy_label();
+        let mut rows = Vec::with_capacity(self.tokens.len());
+        for (idx, token) in self.tokens.iter().enumerate() {
+            let mut row = Vec::with_capacity(3 + self.d_model);
+            row.push(ExportCell::Int(idx as i64));
+            row.push(ExportCell::text(&token.text));
+            row.push(ExportCell::text(strategy));
+            for dim in 0..self.d_model {
+                let val = token.embedding.get(dim).copied().unwrap_or(0.0);
+                row.push(ExportCell::Float(val));
+            }
+            rows.push(row);
+        }
+        vec![ExportTable::new("Token Embeddings", headers, rows)]
+    }
+
+    fn render_controls_panel(&mut self, ui: &mut egui::Ui) {
+        let mut changed = false;
+        ui.horizontal(|ui| {
+            ui.group(|ui| {
+                ui.vertical(|ui| {
+                    ui.label(egui::RichText::new("Input Text").strong());
+                    changed |= ui
+                        .add_sized(
+                            [400.0, 60.0],
+                            egui::TextEdit::multiline(&mut self.input_text)
+                                .hint_text("Type a sentence here..."),
+                        )
+                        .changed();
+                });
+            });
+            ui.group(|ui| {
+                ui.vertical(|ui| {
+                    ui.label(egui::RichText::new("Parameters").strong());
+                    changed |= ui
+                        .add(
+                            egui::Slider::new(&mut self.d_model, 4..=32)
+                                .text("Embedding Dimension (d_model)"),
+                        )
+                        .changed();
+                    ui.horizontal(|ui| {
+                        ui.label("Tokenizer Strategy:");
+                        changed |= ui
+                            .radio_value(&mut self.use_subword, false, "Word/Punctuation")
+                            .changed();
+                        changed |= ui
+                            .radio_value(&mut self.use_subword, true, "Character-level")
+                            .changed();
+                    });
+                });
+            });
+        });
+        if changed {
+            self.recalculate_tokens();
+        }
+    }
+
+    fn render_tokens_panel(&self, ui: &mut egui::Ui) {
+        ui.heading(format!("Tokens (Count: {})", self.tokens.len()));
+        egui::ScrollArea::vertical()
+            .id_salt("tokens_scroll")
+            .max_height(100.0)
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
+                    for token in &self.tokens {
+                        let rect = egui::Frame::NONE
+                            .fill(ui.visuals().widgets.inactive.bg_fill)
+                            .stroke(ui.visuals().widgets.inactive.bg_stroke)
+                            .corner_radius(4.0)
+                            .inner_margin(6.0)
+                            .show(ui, |ui| {
+                                ui.label(
+                                    egui::RichText::new(&token.text)
+                                        .monospace()
+                                        .color(ui.visuals().strong_text_color()),
+                                );
+                            });
+                        rect.response
+                            .accessible_hover_text(format!("Token ID: Hash of '{}'", token.text));
+                    }
+                });
+            });
+    }
+
+    fn render_embeddings_matrix(&self, ui: &mut egui::Ui) {
+        ui.heading("Embedding Matrix");
+        ui.label("Visual representation of the pseudo-embeddings mapped to each token. Red is negative, Green is positive.");
+        egui::ScrollArea::both()
+            .id_salt("embeddings_scroll")
+            .show(ui, |ui| {
+                egui::Grid::new("embeddings_grid")
+                    .striped(true)
+                    .num_columns(self.d_model + 1)
+                    .spacing([8.0, 8.0])
+                    .show(ui, |ui| {
+                        ui.label(egui::RichText::new("Token").strong());
+                        for i in 0..self.d_model {
+                            ui.label(egui::RichText::new(format!("Dim {i}")).strong().small());
+                        }
+                        ui.end_row();
+                        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
+                        for token in &self.tokens {
+                            ui.label(egui::RichText::new(&token.text).monospace());
+                            for &val in &token.embedding {
+                                let color = embedding_cell_color(val, &palette);
+                                let text_color = crate::app::contrasting_text_color(color);
+                                egui::Frame::NONE
+                                    .fill(color)
+                                    .corner_radius(2.0)
+                                    .inner_margin(4.0)
+                                    .show(ui, |ui| {
+                                        ui.label(
+                                            egui::RichText::new(format!("{val:.2}"))
+                                                .color(text_color)
+                                                .small(),
+                                        );
+                                    });
+                            }
+                            ui.end_row();
+                        }
+                    });
+            });
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -69,8 +213,11 @@ impl InteractiveTool for TokenizationTool {
     fn name(&self) -> &'static str {
         "Tokenization & Embeddings"
     }
-    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::dataset_only()
+    }
+    fn export_tables(&self) -> Vec<ExportTable> {
+        self.build_embedding_table()
     }
     fn domain(&self) -> &'static str {
         "ai"
@@ -98,7 +245,6 @@ impl InteractiveTool for TokenizationTool {
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
     fn show_inside(&mut self, parent_ui: &mut egui::Ui) {
         egui::CentralPanel::default().show_inside(parent_ui, |ui| {
             ui.heading("Tokenization & Input Embeddings");
@@ -107,127 +253,13 @@ impl InteractiveTool for TokenizationTool {
                  to high-dimensional continuous vectors (embeddings) before entering a Transformer.",
             );
             ui.separator();
-
-            let mut text_changed = false;
-            let mut params_changed = false;
-
-            // --- Controls Panel ---
-            ui.horizontal(|ui| {
-                ui.group(|ui| {
-                    ui.vertical(|ui| {
-                        ui.label(egui::RichText::new("Input Text").strong());
-                        if ui
-                            .add_sized(
-                                [400.0, 60.0],
-                                egui::TextEdit::multiline(&mut self.input_text)
-                                    .hint_text("Type a sentence here..."),
-                            )
-                            .changed()
-                        {
-                            text_changed = true;
-                        }
-                    });
-                });
-
-                ui.group(|ui| {
-                    ui.vertical(|ui| {
-                        ui.label(egui::RichText::new("Parameters").strong());
-
-                        ui.horizontal(|ui| {
-                            if ui.add(egui::Slider::new(&mut self.d_model, 4..=32).text("Embedding Dimension (d_model)"))
-                                .changed()
-                            {
-                                params_changed = true;
-                            }
-                        });
-
-                        ui.horizontal(|ui| {
-                            ui.label("Tokenizer Strategy:");
-                            if ui.radio_value(&mut self.use_subword, false, "Word/Punctuation").changed() {
-                                params_changed = true;
-                            }
-                            if ui.radio_value(&mut self.use_subword, true, "Character-level").changed() {
-                                params_changed = true;
-                            }
-                        });
-                    });
-                });
-            });
-
-            if text_changed || params_changed {
-                self.recalculate_tokens();
-            }
-
+            self.render_controls_panel(ui);
             ui.add_space(10.0);
             ui.separator();
-
-            // --- Tokens Display Panel ---
-            ui.heading(format!("Tokens (Count: {})", self.tokens.len()));
-            egui::ScrollArea::vertical().id_salt("tokens_scroll").max_height(100.0).show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.spacing_mut().item_spacing = egui::vec2(8.0, 8.0);
-                    for token in &self.tokens {
-                        // Render each token as a distinct visual block
-                        let rect = egui::Frame::NONE
-                            .fill(ui.visuals().widgets.inactive.bg_fill)
-                            .stroke(ui.visuals().widgets.inactive.bg_stroke)
-                            .corner_radius(4.0)
-                            .inner_margin(6.0)
-                            .show(ui, |ui| {
-                                ui.label(egui::RichText::new(&token.text).monospace().color(ui.visuals().strong_text_color()));
-                            });
-
-                        rect.response.accessible_hover_text(format!("Token ID: Hash of '{}'", token.text));
-                    }
-                });
-            });
-
+            self.render_tokens_panel(ui);
             ui.add_space(10.0);
             ui.separator();
-
-            // --- Embeddings Matrix Panel ---
-            ui.heading("Embedding Matrix");
-            ui.label("Visual representation of the pseudo-embeddings mapped to each token. Red is negative, Green is positive.");
-
-            egui::ScrollArea::both().id_salt("embeddings_scroll").show(ui, |ui| {
-                egui::Grid::new("embeddings_grid")
-                    .striped(true)
-                    .num_columns(self.d_model + 1)
-                    .spacing([8.0, 8.0])
-                    .show(ui, |ui| {
-                        // Header row
-                        ui.label(egui::RichText::new("Token").strong());
-                        for i in 0..self.d_model {
-                            ui.label(egui::RichText::new(format!("Dim {}", i)).strong().small());
-                        }
-                        ui.end_row();
-
-                        let palette = crate::app::SemanticPalette::from_visuals(ui.visuals());
-
-                        // Data rows
-                        for token in &self.tokens {
-                            ui.label(egui::RichText::new(&token.text).monospace());
-
-                            for &val in &token.embedding {
-                                let color = embedding_cell_color(val, &palette);
-                                let text_color = crate::app::contrasting_text_color(color);
-
-                                egui::Frame::NONE
-                                    .fill(color)
-                                    .corner_radius(2.0)
-                                    .inner_margin(4.0)
-                                    .show(ui, |ui| {
-                                        ui.label(
-                                            egui::RichText::new(format!("{:.2}", val))
-                                                .color(text_color)
-                                                .small(),
-                                        );
-                                    });
-                            }
-                            ui.end_row();
-                        }
-                    });
-            });
+            self.render_embeddings_matrix(ui);
         });
     }
 }

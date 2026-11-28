@@ -47,6 +47,7 @@ pub(crate) mod export_shader;
     feature = "pure_math"
 ))]
 mod export_shader_tests;
+pub mod export_tables;
 pub mod export_types;
 mod export_ui;
 #[cfg(test)]
@@ -134,6 +135,7 @@ pub use counterfactual::*;
 pub use decimate::*;
 pub use egui_plot::{ModalFrameContext, ModalLifecycle};
 pub(crate) use export_queue::*;
+pub use export_tables::*;
 pub use export_types::*;
 pub use fit_bridge::ensure_custom_fit_bridge;
 pub use history_ui::render_workspace_history_buttons;
@@ -337,6 +339,10 @@ pub trait InteractiveTool {
         ))
     }
 
+    /// Optional hook to export multi-column tables and stride-bounded 2D matrices for CSV and JSON exports.
+    fn export_tables(&self) -> Vec<ExportTable> {
+        Vec::new()
+    }
     /// Optional hook to export tool datasets.
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {
         egui_plot::get_last_plot_datasets()

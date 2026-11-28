@@ -2,6 +2,8 @@
 
 #[path = "neural_network_viz/bus_sync.rs"]
 mod bus_sync;
+#[path = "neural_network_viz/export.rs"]
+mod export;
 #[path = "kuramoto_ui.rs"]
 mod kuramoto_ui;
 #[path = "neural_network_viz/presets.rs"]
@@ -181,6 +183,7 @@ impl NeuralNetworkVizTool {
     pub(crate) fn step_once(&mut self) {
         self.is_running = false;
         self.step();
+        self.bump_revision();
     }
 
     /// Advances either Hodgkin-Huxley or Kuramoto dynamics by one `dt` step with zero heap allocations.
@@ -226,7 +229,16 @@ impl InteractiveTool for NeuralNetworkVizTool {
         "Neural Network Viz"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_nn_plot_primitives()
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_nn_export_tables()
+    }
+    fn step_simulation(&mut self) {
+        self.step_once();
     }
     fn domain(&self) -> &'static str {
         "neuroscience"

@@ -1,5 +1,5 @@
 use crate::accessibility::AccessibleHoverText;
-use crate::framework::InteractiveTool;
+use crate::framework::{ExportCapabilities, ExportCell, ExportTable, InteractiveTool};
 use eframe::egui;
 use math_explorer::pure_math::number_theory::ambs::prime_factors;
 use math_explorer::pure_math::number_theory::primes::is_prime;
@@ -29,6 +29,14 @@ pub struct FactorizationTool {
     results: Option<FactorizationResult>,
 }
 
+impl FactorizationTool {
+    #[cfg(test)]
+    pub(crate) fn set_test_input(&mut self, input: &str) {
+        self.input_text = input.to_string();
+        self.results = None;
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FactorizationState {
@@ -42,8 +50,11 @@ impl InteractiveTool for FactorizationTool {
     fn name(&self) -> &'static str {
         "Factorization Tool"
     }
-    fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+    fn export_capabilities(&self) -> ExportCapabilities {
+        ExportCapabilities::dataset_only()
+    }
+    fn export_tables(&self) -> Vec<ExportTable> {
+        self.build_factorization_tables()
     }
     fn domain(&self) -> &'static str {
         "number_theory"
@@ -90,6 +101,59 @@ impl InteractiveTool for FactorizationTool {
 }
 
 impl FactorizationTool {
+    fn build_factorization_tables(&self) -> Vec<ExportTable> {
+        let resolved = match &self.results {
+            Some(Ok((num, prime_check, factors))) => {
+                Some((*num, *prime_check, factors.clone(), "analyzed"))
+            }
+            Some(Err(_)) => None,
+            None => {
+                let trimmed = self.input_text.trim();
+                if trimmed.is_empty() {
+                    factorize_bounded(42)
+                        .ok()
+                        .map(|(n, p, f)| (n, p, f, "starter_preview"))
+                } else {
+                    trimmed
+                        .parse::<u64>()
+                        .ok()
+                        .and_then(|n| factorize_bounded(n).ok())
+                        .map(|(n, p, f)| (n, p, f, "evaluated_input"))
+                }
+            }
+        };
+        let Some((num, prime_check, factors, status)) = resolved else {
+            return Vec::new();
+        };
+        let mut rows = Vec::with_capacity(factors.len().max(1));
+        for &(p, exp) in &factors {
+            let ratio = crate::audio::mappings::just_intonation_ratio(p);
+            let power = p.saturating_pow(exp);
+            rows.push(vec![
+                ExportCell::Int(num as i64),
+                ExportCell::text(status),
+                ExportCell::Bool(prime_check),
+                ExportCell::Int(p as i64),
+                ExportCell::Int(i64::from(exp)),
+                ExportCell::Int(power as i64),
+                ExportCell::Float(f64::from(ratio)),
+            ]);
+        }
+        vec![ExportTable::new(
+            "Prime Factorization",
+            vec![
+                "input".into(),
+                "status".into(),
+                "is_prime".into(),
+                "prime_factor".into(),
+                "exponent".into(),
+                "prime_power".into(),
+                "just_intonation_ratio".into(),
+            ],
+            rows,
+        )]
+    }
+
     fn analyze_current_input(&mut self) {
         self.results = Some(match self.input_text.trim().parse::<u64>() {
             Ok(num) => factorize_bounded(num),
@@ -348,5 +412,10 @@ mod tests {
         ctx.enable_accesskit();
         click_analyze_button(&ctx, &mut tool);
         assert!(matches!(tool.results, Some(Err(_))));
+
+        tool.set_test_input("60");
+        assert_eq!(tool.export_tables()[0].rows.len(), 3);
+        tool.set_test_input("invalid");
+        assert!(tool.export_tables().is_empty());
     }
 }
