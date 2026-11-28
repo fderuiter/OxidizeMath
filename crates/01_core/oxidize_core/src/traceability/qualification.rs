@@ -1,5 +1,8 @@
 //! Qualification gates verifying AST evidence for `Experimental`, `Validated`, and `Certified` tiers.
 
+#[path = "qualification_proof.rs"]
+mod proof_gate;
+
 use super::AstCache;
 use super::analysis::extract_citations_with_lines;
 use super::maturity::{EXPECTED_WORKSPACE_CRATES, MaturityRegistry};
@@ -38,6 +41,8 @@ pub struct MaturityEvidence {
     pub has_unseeded_rng: bool,
     /// Whether golden reference constants, equality fixtures, or embedded test vectors exist.
     pub has_golden_fixture: bool,
+    /// Whether a valid `Tier6_Formal` `formal_proof_verification!` binding to a compiled Lean theorem exists.
+    pub has_formal_proof: bool,
 }
 
 impl MaturityEvidence {
@@ -175,7 +180,11 @@ fn check_registry_completeness(registry: &MaturityRegistry, violations: &mut Vec
     }
 }
 
-fn record_visitor_into_crate(ev: &mut MaturityEvidence, visitor: &AstVisitor) {
+fn record_visitor_into_crate(
+    ev: &mut MaturityEvidence,
+    visitor: &AstVisitor,
+    has_valid_formal_proof: bool,
+) {
     ev.files_scanned += 1;
     ev.total_funcs += visitor.active_funcs;
     ev.raw_funcs += visitor.total_funcs;
@@ -187,6 +196,7 @@ fn record_visitor_into_crate(ev: &mut MaturityEvidence, visitor: &AstVisitor) {
     ev.has_seeded_determinism |= visitor.has_seeded_rng || !visitor.has_unseeded_rng;
     ev.has_unseeded_rng |= visitor.has_unseeded_rng;
     ev.has_golden_fixture |= visitor.has_golden_fixture;
+    ev.has_formal_proof |= has_valid_formal_proof;
 }
 
 fn record_visitor_into_module(
@@ -194,6 +204,7 @@ fn record_visitor_into_module(
     mod_name: &str,
     path_mods: &[String],
     visitor: &AstVisitor,
+    valid_formal_modules: &BTreeSet<String>,
 ) {
     ev.files_scanned += 1;
     ev.total_funcs += visitor.active_funcs;
@@ -222,6 +233,36 @@ fn record_visitor_into_module(
     ev.has_seeded_determinism |= visitor.has_seeded_rng || !visitor.has_unseeded_rng;
     ev.has_unseeded_rng |= visitor.has_unseeded_rng;
     ev.has_golden_fixture |= visitor.has_golden_fixture;
+    if valid_formal_modules.contains(mod_name) {
+        ev.has_formal_proof = true;
+    }
+}
+
+fn audit_file_items_and_proofs(
+    rel_path: &str,
+    visitor: &AstVisitor,
+    registry: &MaturityRegistry,
+    proof_catalog: &proof_gate::WorkspaceProofCatalog,
+    violations: &mut Vec<String>,
+) -> BTreeSet<String> {
+    let mut valid_formal_modules = BTreeSet::new();
+    if rel_path.contains("/tests/") {
+        return valid_formal_modules;
+    }
+    let enclosing_tier = registry.tier_for_repo_path(rel_path);
+    for (item_name, item_tier, line) in &visitor.declared_item_maturities {
+        if *item_tier > enclosing_tier {
+            violations.push(format!(
+                "{rel_path}:{line}: `{item_name}` declares `{item_tier}` maturity inside `{enclosing_tier}` module; promote the module in `traceability.toml` with required qualification proofs first."
+            ));
+        }
+    }
+    for binding in &visitor.formal_proof_bindings {
+        if proof_catalog.validate_binding(rel_path, binding, violations) {
+            valid_formal_modules.insert(binding.module.clone());
+        }
+    }
+    valid_formal_modules
 }
 
 fn accumulate_file_evidence(
@@ -229,6 +270,7 @@ fn accumulate_file_evidence(
     content: &str,
     ast: Option<&syn::File>,
     registry: &MaturityRegistry,
+    proof_catalog: &proof_gate::WorkspaceProofCatalog,
     report: &mut MaturityGateReport,
 ) {
     let crate_name = MaturityRegistry::crate_for_repo_path(rel_path).map(str::to_string);
@@ -262,16 +304,13 @@ fn accumulate_file_evidence(
         }
     }
 
-    if !rel_path.contains("/tests/") {
-        let enclosing_tier = registry.tier_for_repo_path(rel_path);
-        for (item_name, item_tier, line) in &visitor.declared_item_maturities {
-            if *item_tier > enclosing_tier {
-                report.violations.push(format!(
-                    "{rel_path}:{line}: `{item_name}` declares `{item_tier}` maturity inside `{enclosing_tier}` module; promote the module in `traceability.toml` with required qualification proofs first."
-                ));
-            }
-        }
-    }
+    let valid_formal_modules = audit_file_items_and_proofs(
+        rel_path,
+        &visitor,
+        registry,
+        proof_catalog,
+        &mut report.violations,
+    );
 
     if crate_name.as_deref() == Some("math_explorer_gui")
         || rel_path.starts_with("math_explorer_gui/")
@@ -280,7 +319,11 @@ fn accumulate_file_evidence(
         return;
     }
     if let Some(c) = crate_name {
-        record_visitor_into_crate(report.crate_evidence.entry(c).or_default(), &visitor);
+        record_visitor_into_crate(
+            report.crate_evidence.entry(c).or_default(),
+            &visitor,
+            !valid_formal_modules.is_empty(),
+        );
     }
     for m in &all_mods {
         record_visitor_into_module(
@@ -288,6 +331,7 @@ fn accumulate_file_evidence(
             m,
             &path_mods,
             &visitor,
+            &valid_formal_modules,
         );
     }
 }
@@ -349,6 +393,11 @@ fn verify_target_qualification(
                 "[{kind} `{name}` (Certified)]: missing zero-allocation proof (`VerifiedAllocator` / `VerifiedEngine::run_verified`)."
             ));
         }
+        if !ev.has_formal_proof {
+            violations.push(format!(
+                "[{kind} `{name}` (Certified)]: missing valid `Tier6_Formal` `formal_proof_verification!` binding to a compiled Lean 4 theorem."
+            ));
+        }
     }
 }
 
@@ -364,6 +413,7 @@ pub fn evaluate_maturity_with_registry_and_cache(
     };
     check_registry_completeness(&report.registry, &mut report.violations);
 
+    let proof_catalog = proof_gate::WorkspaceProofCatalog::load(workspace_root);
     let files = discover_maturity_scan_files(workspace_root);
     cache.preload_sources(&files);
     let registry_snapshot = report.registry.clone();
@@ -380,6 +430,7 @@ pub fn evaluate_maturity_with_registry_and_cache(
                 &content,
                 ast_clone.as_ref(),
                 &registry_snapshot,
+                &proof_catalog,
                 &mut report,
             );
         }

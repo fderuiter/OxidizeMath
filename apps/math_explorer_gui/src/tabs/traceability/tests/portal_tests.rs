@@ -52,28 +52,30 @@ fn test_packaged_desktop_outside_workspace_renders_embedded_28_papers() {
     assert_eq!(tab.papers.len(), 32);
     assert!(tab.orphaned_papers.is_empty());
     assert!(tab.certificate.as_ref().is_some_and(|c| c.passed));
-    assert!(render_tab_text_hit(&mut tab, "100% Parity Achieved"));
-    assert!(render_tab_text_hit(&mut tab, "Total Papers: 32"));
-    assert!(render_tab_text_hit(
-        &mut tab,
-        "Verification Certificate: Passed"
-    ));
-    assert!(render_tab_text_hit(
-        &mut tab,
-        "Maturity Qualification Tiers"
-    ));
-    assert!(render_tab_text_hit(&mut tab, "[CERT]"));
-    assert!(render_tab_text_hit(&mut tab, "[VAL]"));
-    assert!(render_tab_text_hit(&mut tab, "[EXP]"));
-    assert!(render_tab_text_hit(
-        &mut tab,
-        "6-Tier Scientific Verification Pyramid"
-    ));
-    assert!(render_tab_text_hit(&mut tab, "Certified Solvers: 55"));
-    assert!(render_tab_text_hit(&mut tab, "Tier1_Convergence:"));
-    assert!(render_tab_text_hit(&mut tab, "Tier5_Interval:"));
-    assert!(render_tab_text_hit(&mut tab, "Tier6_Formal:"));
-    assert!(render_tab_text_hit(&mut tab, "IntervalSoundness.lean"));
+    for expected in [
+        "100% Parity Achieved",
+        "Total Papers: 32",
+        "Verification Certificate: Passed",
+        "Maturity Qualification Tiers",
+        "[CERT]",
+        "[VAL]",
+        "[EXP]",
+        "6-Tier Scientific Verification Pyramid",
+        "Certified Solvers: 55",
+        "Tier1_Convergence:",
+        "Tier5_Interval:",
+        "Tier6_Formal:",
+        "IntervalSoundness.lean",
+        "[Kernel Verified]",
+        "math_commons",
+        "add_outward_sound",
+    ] {
+        assert!(
+            render_tab_text_hit(&mut tab, expected),
+            "missing `{expected}`"
+        );
+    }
+    assert!(!render_tab_text_hit(&mut tab, "sorry-free"));
     assert!(tab.online_document_url("cera_framework.tex").is_some());
 }
 

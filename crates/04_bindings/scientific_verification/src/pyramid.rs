@@ -1,10 +1,10 @@
 use crate::golden::verify_golden_fixtures;
 use crate::intervals::compute_certified_interval_enclosures;
-use crate::lean_proofs::verify_and_digest_lean_proofs;
+use crate::lean_proofs::verify_lean_proofs;
 use crate::proptest_sweeps::verify_property_sweeps;
 use crate::solvers::verify_all_solvers;
 use crate::stochastic::verify_stochastic_moments;
-use oxidize_core::traceability::CERTIFIED_SOLVER_COUNT;
+use oxidize_core::traceability::{CERTIFIED_SOLVER_COUNT, LeanProofBinding};
 use std::collections::BTreeMap;
 
 /// Outcome of executing a single tier of the 6-tier scientific verification pyramid.
@@ -29,6 +29,8 @@ pub struct PyramidSummary {
     pub interval_bounds: BTreeMap<String, [f64; 2]>,
     /// Deterministic SHA-256 digests of all committed `sorry`-free Lean 4 proof modules.
     pub lean4_proof_digests: BTreeMap<String, String>,
+    /// Kernel verification status, bound Rust modules, and theorem names per Lean 4 proof module.
+    pub lean4_proof_bindings: BTreeMap<String, LeanProofBinding>,
 }
 
 /// Executes Tier 1: Manufactured-Solution & Grid-Refinement Convergence across all 55 solvers.
@@ -82,12 +84,12 @@ pub fn run_tier5() -> Result<TierReport, String> {
     })
 }
 
-/// Executes Tier 6: Lean 4 mechanized proof certificate & SHA-256 digest verification.
+/// Executes Tier 6: Lean 4 mechanized proof certificate, `lake build`, and kernel axiom verification.
 pub fn run_tier6() -> Result<TierReport, String> {
-    let digests = verify_and_digest_lean_proofs()?;
+    let summary = verify_lean_proofs()?;
     Ok(TierReport {
         tier_name: "Tier6_Formal",
-        passed_checks: digests.len(),
+        passed_checks: summary.digests.len(),
     })
 }
 
@@ -98,7 +100,7 @@ pub fn run_full_pyramid() -> Result<PyramidSummary, String> {
     let t3 = run_tier3()?;
     let t4 = run_tier4()?;
     let intervals = compute_certified_interval_enclosures()?;
-    let lean_digests = verify_and_digest_lean_proofs()?;
+    let lean = verify_lean_proofs()?;
 
     let mut tier_counts = BTreeMap::new();
     tier_counts.insert(t1.tier_name.to_string(), t1.passed_checks);
@@ -106,14 +108,15 @@ pub fn run_full_pyramid() -> Result<PyramidSummary, String> {
     tier_counts.insert(t3.tier_name.to_string(), t3.passed_checks);
     tier_counts.insert(t4.tier_name.to_string(), t4.passed_checks);
     tier_counts.insert("Tier5_Interval".to_string(), intervals.bounds.len());
-    tier_counts.insert("Tier6_Formal".to_string(), lean_digests.len());
+    tier_counts.insert("Tier6_Formal".to_string(), lean.digests.len());
 
     Ok(PyramidSummary {
         tier_counts,
         certified_solvers: t1.passed_checks,
         max_interval_width: intervals.max_width,
         interval_bounds: intervals.bounds,
-        lean4_proof_digests: lean_digests,
+        lean4_proof_digests: lean.digests,
+        lean4_proof_bindings: lean.bindings,
     })
 }
 

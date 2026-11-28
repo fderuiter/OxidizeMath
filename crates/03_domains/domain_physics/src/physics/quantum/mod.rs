@@ -141,6 +141,12 @@ pure_math::property_invariant_verification!(
 pure_math::formal_proof_verification!(
     module = "quantum",
     proof = "QuantumUnitarity.lean",
+    theorems = [
+        "normSq_nonneg",
+        "phase_rotate_norm_identity",
+        "unitary_scaled_norm_preserved",
+        "unitary_rounding_slack_bound",
+    ],
     test = {
         let h = construct_two_state_eigen_hamiltonian(-0.5, 1.5, 0.25);
         let psi0 = QuantumState::new(nalgebra::DVector::from_vec(vec![

@@ -432,14 +432,19 @@ impl<T: Scalar> SolverWorkspace for ScalarWorkspace<'_, T> {
     }
 }
 
-/// Samples a deterministic uniform variate strictly in `(0, 1)` (clamped `<= 1.0` after `f32` cast)
-/// via [`math_rng::sample_open`], avoiding `0.0` so `ln(u)` in Box-Muller sampling never overflows.
+/// Samples a deterministic uniform variate strictly in `(0, 1)` via [`math_rng::sample_open`],
+/// avoiding `0.0` and `1.0` so `ln(u)` in Box-Muller and Gillespie SSA sampling is strictly negative and finite.
 #[inline]
 #[verified_engine::verified]
 pub fn sample_open_unit<T: Scalar, R: RngCore + ?Sized>(rng: &mut R) -> T {
-    let u_f64: f64 = math_rng::sample_open(rng);
-    let u = T::from_f64(u_f64);
-    debug_assert!(u > T::ZERO && u <= T::ONE);
+    let u = if core::any::TypeId::of::<T>() == core::any::TypeId::of::<f32>() {
+        let u_f32: f32 = math_rng::sample_open(rng);
+        T::from_f64(f64::from(u_f32))
+    } else {
+        let u_f64: f64 = math_rng::sample_open(rng);
+        T::from_f64(u_f64)
+    };
+    debug_assert!(u > T::ZERO && u < T::ONE);
     u
 }
 

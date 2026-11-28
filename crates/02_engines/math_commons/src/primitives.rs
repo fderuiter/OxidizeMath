@@ -323,3 +323,57 @@ interval_enclosure_verification!(
         assert!(sum.width() > 0.0 && sum.width() < 1e-14);
     }
 );
+
+macro_rules! formal_proof_verification {
+    (
+        module = $module_name:expr,
+        proof = $proof_file:literal,
+        theorems = [ $( $theorem_name:literal ),+ $(,)? ],
+        test = $test_body:block
+    ) => {
+        #[cfg(test)]
+        mod formal_proof_verification {
+            use super::*;
+
+            #[test]
+            #[verified_engine::verified]
+            fn test_formal_proof_verification() {
+                assert!(!$proof_file.is_empty());
+                let bound_theorems: &[&str] = &[ $( $theorem_name ),+ ];
+                assert!(!bound_theorems.is_empty());
+                for thm in bound_theorems {
+                    assert!(!thm.trim().is_empty());
+                }
+                assert!(
+                    oxidize_core::traceability::TraceabilityEngine::<
+                        oxidize_core::vfs::DefaultVfs,
+                    >::verify_module_registered($module_name),
+                    "Traceability mismatch: module '{}' is not registered",
+                    $module_name
+                );
+                $test_body
+            }
+        }
+    };
+}
+
+formal_proof_verification!(
+    module = "math_commons",
+    proof = "IntervalSoundness.lean",
+    theorems = [
+        "point_enclosure_contains",
+        "add_outward_sound",
+        "neg_sound",
+        "sub_outward_sound",
+        "hull_sound_left",
+        "hull_sound_right",
+    ],
+    test = {
+        let a = Interval::new(1.0, 2.0).unwrap();
+        let b = Interval::new(0.5, 1.5).unwrap();
+        let diff = a - b;
+        assert!(diff.contains(0.5));
+        let hull = a.hull(b);
+        assert!(hull.encloses(a) && hull.encloses(b));
+    }
+);

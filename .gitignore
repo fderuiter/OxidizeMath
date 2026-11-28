@@ -1,5 +1,7 @@
-# Rust
+# Rust & Lean Build Artifacts
 target/
+proofs/.lake/
+.lake/
 **/*.rs.bk
 **/Cargo.lock
 !/Cargo.lock

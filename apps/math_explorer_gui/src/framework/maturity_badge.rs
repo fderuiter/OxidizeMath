@@ -65,7 +65,7 @@ pub const fn badge_display_text(tier: MaturityTier, compact: bool) -> &'static s
 pub const fn tier_qualification_summary(tier: MaturityTier) -> &'static str {
     match tier {
         MaturityTier::Certified => {
-            "Deterministic theory_verification! contract, zero-allocation proof, and SemVer signature lock."
+            "Deterministic theory_verification! contract, zero-allocation proof, Tier 6 Lean 4 theorem binding, and SemVer signature lock."
         }
         MaturityTier::Validated => {
             "Seeded deterministic execution, golden reference fixtures, and >= 0.40 assertion density."

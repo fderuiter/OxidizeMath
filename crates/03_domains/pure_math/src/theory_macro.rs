@@ -134,7 +134,12 @@ macro_rules! interval_enclosure_verification {
 /// Tier 6 (Lean 4 Mechanized Proof Certificate) verification registration macro.
 #[macro_export]
 macro_rules! formal_proof_verification {
-    (module = $module_name:expr, proof = $proof_file:literal, test = $test_body:block) => {
+    (
+        module = $module_name:expr,
+        proof = $proof_file:literal,
+        theorems = [ $( $theorem_name:literal ),+ $(,)? ],
+        test = $test_body:block
+    ) => {
         #[cfg(test)]
         #[allow(unused_imports)]
         mod formal_proof_verification {
@@ -144,6 +149,11 @@ macro_rules! formal_proof_verification {
             #[$crate::__macro_deps::verified_engine::verified]
             fn test_formal_proof_verification() {
                 assert!(!$proof_file.is_empty());
+                let bound_theorems: &[&str] = &[ $( $theorem_name ),+ ];
+                assert!(!bound_theorems.is_empty());
+                for thm in bound_theorems {
+                    assert!(!thm.trim().is_empty());
+                }
                 assert!(
                     $crate::__macro_deps::oxidize_core::traceability::TraceabilityEngine::<
                         $crate::__macro_deps::oxidize_core::vfs::DefaultVfs,
