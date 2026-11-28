@@ -71,14 +71,16 @@ graph TD
     Root --> Applied[ Applied]
     Root --> Bio[ Biology]
     Root --> Climate[ Climate]
+    Root --> Eng[ Engineering]
     Root --> Epi[ Epidemiology]
     Root --> Phys[ Physics]
     Root --> Pure[ Pure Math]
     Root --> GUI[ GUI]
 
     AI --> Trans[Transformers] & NeRF[NeRF-Diffusion]
-    Applied --> Fav[Favoritism] & Clinical[Clinical Trials] & Battery[Battery Degradation] & NeuroImg[Neuroimaging] & GRPO[GRPO]
+    Applied --> Fav[Favoritism] & Clinical[Clinical Trials] & NeuroImg[Neuroimaging] & GRPO[GRPO]
     Bio --> Neuro[Neuroscience] & Morph[Morphogenesis]
+    Eng --> Radar[FMCW Radar] & Battery[Battery Degradation] & Hardware[CNC & UART]
     Epi --> SIR[SIR/SEIR Models] & Net[Network Spread]
     Phys --> Quant[Quantum] & Chaos[Chaos Theory]
     Pure --> Num[Number Theory] & Geo[Diff Geometry] & Alg[Algebra]
@@ -90,9 +92,10 @@ graph TD
 | Domain | Module | Maturity | Description |
 | :--- | :--- | :--- | :--- |
 | ** AI** | `math_explorer::ai` | `Validated` | Transformers (Attention, Encoders), **Reinforcement Learning** (Q-Learning), NeRF-Diffusion (SDS — `Experimental`), and Self-Calibration loops. |
-| ** Applied** | `math_explorer::applied` | `Validated` | **Clinical Trials** & **Pharmacokinetics** (`Certified`); **Win Ratio**, **Battery Degradation**, **Isosurface**, & **Neuroimaging** (`Validated`); **Favoritism**, **LoraHub**, & **GRPO** (`Experimental`). |
+| ** Applied** | `math_explorer::applied` | `Validated` | **Clinical Trials** & **Pharmacokinetics** (`Certified`); **Win Ratio**, **Isosurface**, & **Neuroimaging** (`Validated`); **Favoritism**, **LoraHub**, & **GRPO** (`Experimental`). |
 | ** Biology** | `math_explorer::biology` | `Validated` | **Neuroscience** (Hodgkin-Huxley) & **Morphogenesis** (`Certified`); **Reaction-Diffusion** & **Evolutionary Dynamics** (`Validated`). |
 | ** Climate** | `math_explorer::climate` | `Experimental` | **CERA Framework** (Climate-invariant Encoding through Representation Alignment research prototype). |
+| ** Engineering** | `math_explorer::engineering` | `Validated` | **FMCW / MIMO / MUSIC Radar** (`Certified`); **Coupled Battery Degradation**, **CNC Taylor Tool Life**, & **UART Throughput** (`Validated`). |
 | ** Epidemiology** | `math_explorer::epidemiology` | `Validated` | **Compartmental Models** (SIR/SEIR), **Network Spread**, and **Stochastic Dynamics**. |
 | ** Physics** | `math_explorer::physics` | `Validated` | **Quantum Mechanics**, **Chaos Theory**, & **Abelian Sandpile** (`Certified`); **Astrophysics**, **Fluid Dynamics**, **MRI**, & **Optics** (`Validated`); **Nuclear** & **Solid State** (`Experimental`). |
 | ** Pure Math** | `math_explorer::pure_math` | `Certified` | **ODE / Root / Wave2D Solvers**, **Abstract Algebra**, **Number Theory**, & **Elliptic Curves** (`Certified`); **Statistics** & **Differential Geometry** (`Validated`). |
@@ -162,7 +165,7 @@ To selectively compile domains (e.g., `physics` and `ai`), update your `Cargo.to
 oxidizemath = { version = "0.4.0", features = ["physics", "ai"] }
 ```
 
-Available feature flags include: `ai`, `applied`, `biology`, `climate`, `epidemiology`, `physics`, and `pure_math`.
+Available feature flags include: `ai`, `applied`, `biology`, `climate`, `engineering`, `epidemiology`, `physics`, and `pure_math`.
 
 
 ---
@@ -171,7 +174,7 @@ Available feature flags include: `ai`, `applied`, `biology`, `climate`, `epidemi
 
 For detailed system architecture, runtime constraints, and simulation guides, explore the [Centralized Architecture Guide Suite](docs/architecture/README.md):
 
-*   **[System Overview & Crate Topology](docs/architecture/system_overview.md):** 5-layer system design, crate dependency graphs, and catalog of all 32 crates.
+*   **[System Overview & Crate Topology](docs/architecture/system_overview.md):** 5-layer system design, crate dependency graphs, and catalog of all 33 crates.
 *   **[CERA Framework Guide](docs/architecture/cera_framework.md):** Climate-invariant encoding, representation alignment pipelines, and Earth Mover's Distance loss.
 *   **[Zero-Allocation Runtime Guide](docs/architecture/zero_allocation_runtime.md):** NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and `VerifiedEngine` runtime metrics.
 *   **[Interactive Tool Walkthrough](docs/architecture/interactive_tool_walkthrough.md):** Contributor onboarding tutorial to build and register interactive simulation tabs.

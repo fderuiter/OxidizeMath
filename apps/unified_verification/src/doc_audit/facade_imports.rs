@@ -10,6 +10,7 @@ pub(super) const FALLBACK_DOMAIN_NAMES: &[&str] = &[
     "domain_applied",
     "domain_biology",
     "domain_climate",
+    "domain_engineering",
     "domain_epidemiology",
     "domain_physics",
 ];

@@ -13,6 +13,7 @@ fn heading_to_domain_feature(heading_line: &str) -> Option<&'static str> {
         ("climate", "climate"),
         ("biology", "biology"),
         ("applied", "applied"),
+        ("engineering", "engineering"),
         ("physics", "physics"),
     ] {
         if lower.contains(needle) {

@@ -38,15 +38,17 @@ let fe56 = model
 assert!(fe56 > 8.0 && fe56 < 9.5);
 ```
 
-## 2. FMCW Radar Gating, Bluestein Chirp Z-Transform & Dose Kernels (`medical`)
+## 2. Clinical Respiratory Beam Gating, Optical Motion & Radiotherapy Dose Kernels (`medical`)
 
 ### Governing Equations
 
-Millimeter-wave radiotherapy gating (`FmcwConfig::range_from_beat_frequency`, `chirp_z_transform`, `ConstantVelocityModel`) relates beat frequency $\hat{f}_{\text{FFT}}$ to target range $R$ and evaluates narrowband zoom spectra via Bluestein convolution:
+Clinical linear-accelerator respiratory gating (`GatingLogic`, `BeamState`, `GatingError`) predicts latency-compensated chest-wall excursion $\hat{A}(t + \tau_{\text{lat}})$ and applies Schmidt-trigger hysteresis around threshold $A_{\text{th}}$ with safety interlocks, alongside TERMA/point-spread dose convolution (`dose`) and stereoscopic SGRT optical flow (`optical_motion`):
 
 $$
-R = \frac{c\,T_c\,\hat{f}_{\text{FFT}}}{2 B}, \qquad X_k = \sum_{n=0}^{N-1} x_n \exp\!\left(-j 2\pi \frac{f_0 + k\,\Delta f}{f_s} n\right)
+\hat{A}(t + \tau_{\text{lat}}) = A(t) + v(t)\,\tau_{\text{lat}}, \qquad \text{BeamActive} \iff |\hat{A}| \le A_{\text{th}}, \qquad \text{BeamHold} \iff |\hat{A}| > A_{\text{th}} + h
 $$
+
+Raw millimeter-wave FMCW radar physics, Bluestein Chirp Z-Transform zoom spectra, MIMO/MUSIC super-resolution, and Kalman tracking reside in [`domain_engineering`](domain_engineering.md).
 
 ### Citations
 
@@ -55,11 +57,11 @@ $$
 
 ### Stability
 
-Power-of-two zero-padded FFT convolution (`conv_len >= N + K - 1`) eliminates circular aliasing and executes in $O((N + K)\log(N + K))$ operations with bounded floating-point phase drift, falling back to exact Horner/phasor summation for $N \le 4$ or $K \le 4$.
+Schmidt-trigger deadband $h \ge 0$ prevents chattering across noisy respiratory zero-crossings, while non-finite (`NaN`/`Inf`) amplitude or velocity samples immediately latch `BeamState::SafetyInterlock` until an explicit clinical reset.
 
 ### Domain of Validity
 
-Requires sweep bandwidth $B > 0$, chirp duration $T_c > 0$, sampling rate $f_s > 0$ satisfying Nyquist bounds ($|f_0| + |B| \le f_s / 2$ for unaliased real targets), and finite time step $\Delta t > 0$ for `ConstantVelocityModel`.
+Requires positive gating window $A_{\text{th}} > 0$, non-negative hysteresis band $h \ge 0$, non-negative hardware latency $\tau_{\text{lat}} \ge 0$, and an explicit `GatingLogic::arm()` transition prior to beam activation.
 
 ## 3. Unitary 1D Quantum Cayley Propagation & Continuum Statistical Mechanics SPDEs (`quantum`, `stat_mech`)
 

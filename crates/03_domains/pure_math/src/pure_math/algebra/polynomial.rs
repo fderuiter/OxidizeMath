@@ -6,9 +6,10 @@ use crate::pure_math::algebra::traits::Ring;
 use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 pub mod laurent;
+mod laurent_checked;
 mod laurent_ops;
 
-pub use laurent::LaurentPolynomial;
+pub use laurent::{LaurentError, LaurentPolynomial, MAX_LAURENT_SPAN};
 
 /// A polynomial with coefficients in a Ring T.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -6,11 +6,16 @@
     feature = "applied",
     feature = "biology",
     feature = "climate",
+    feature = "engineering",
     feature = "epidemiology",
     feature = "physics"
 ))]
 #[path = "facade_exports/umbrella_checks.rs"]
 mod umbrella_checks;
+
+#[cfg(feature = "engineering")]
+#[path = "facade_exports/engineering_checks.rs"]
+mod engineering_checks;
 
 #[cfg(feature = "pure_math")]
 #[path = "facade_exports/kelly_checks.rs"]
@@ -274,31 +279,15 @@ fn ai_facade_exports_adam_and_ai_error_without_internal_crate_imports() {
 #[cfg(feature = "applied")]
 #[test]
 fn applied_facade_exports_all_nine_errors_and_umbrella() {
-    use oxidizemath::applied::battery_degradation::{
-        BatteryError as SubBatteryError, Capacity, ChemistryPreset, Cycles, DepthOfDischarge,
-        ElectrochemicalAgingModel, PowerLawModel,
-    };
     use oxidizemath::applied::error as inner_error;
     use oxidizemath::applied::game_theory::mechanism_design::{ContinuousCDF, Distribution};
     use oxidizemath::applied::portfolio::{PortfolioSpec, long_only_tangency};
     use oxidizemath::diagnostics::{Diagnostic, Severity};
     use oxidizemath::error::{
-        AppliedError, BatteryError, ClinicalTrialError, EngineeringError, Error, GameTheoryError,
+        AppliedError, ClinicalTrialError, EngineeringError, Error, GameTheoryError,
         IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, PortfolioError,
         VoxelGridError,
     };
-
-    let model = PowerLawModel::standard();
-    let cap = model.capacity(
-        Cycles::new_clamped(100.0),
-        DepthOfDischarge::new_clamped(0.8),
-    );
-    assert!(cap / Capacity::new_clamped(1.0) > 0.0);
-    let coupled = ElectrochemicalAgingModel::from_preset(ChemistryPreset::Lfp);
-    assert!(coupled.n70(DepthOfDischarge::new_clamped(60.0)).as_f64() > 0.0);
-    let bad_err: SubBatteryError = Cycles::new(-1.0).expect_err("negative cycles must fail");
-    let root_err: BatteryError = bad_err;
-    assert_eq!(root_err.severity(), Severity::Error);
 
     let dist =
         oxidizemath::applied::game_theory::mechanism_design::distribution::Uniform::new(0.0, 1.0)
@@ -309,7 +298,6 @@ fn applied_facade_exports_all_nine_errors_and_umbrella() {
     let umbrella = AppliedError::from(VoxelGridError::InvalidDimensions);
     let _facade: Error = umbrella.into();
     let severities = [
-        BatteryError::InvalidCapacity(1.5).severity(),
         ClinicalTrialError::ZeroTotalCount.severity(),
         EngineeringError::InvalidParameter {
             name: "bits".to_string(),
@@ -329,6 +317,12 @@ fn applied_facade_exports_all_nine_errors_and_umbrella() {
     let spec =
         PortfolioSpec::from_upper_correlations(&[0.10, 0.06], &[0.18, 0.10], &[0.2]).unwrap();
     assert!(long_only_tangency(&spec, 0.02).unwrap().sharpe_ratio > 0.0);
+}
+
+#[cfg(feature = "engineering")]
+#[test]
+fn engineering_facade_exports_radar_battery_hardware_and_umbrella() {
+    engineering_checks::assert_engineering_facade_exports();
 }
 
 #[cfg(feature = "biology")]
@@ -441,8 +435,8 @@ fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
     use oxidizemath::diagnostics::{Diagnostic, Severity};
     use oxidizemath::error::{
         ChaosError, DoseFluenceError, Error, FluidError, GatingError, HighEnergyError,
-        NuclearError, PhysicsError, QuantumError, RadarError, SolidStateError, StandardModelError,
-        StatMechError,
+        NuclearError, PhysicsError, QuantumError, SandpileError, SolidStateError,
+        StandardModelError, StatMechError,
     };
     use oxidizemath::physics::error as inner_error;
 
@@ -460,7 +454,12 @@ fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
             max: 6,
         }
         .severity(),
-        RadarError::InvalidConfiguration("antennas".to_string()).severity(),
+        SandpileError::InvalidDimensions {
+            width: 0,
+            height: 8,
+            max_dim: 128,
+        }
+        .severity(),
         SolidStateError::InvalidParameter("gap".to_string()).severity(),
         StandardModelError::LandauPole { scale: 1e12 }.severity(),
         StatMechError::InvalidTemperature(-1.0).severity(),
@@ -475,6 +474,7 @@ fn physics_facade_exports_all_ten_physics_errors_and_umbrella() {
     feature = "applied",
     feature = "biology",
     feature = "climate",
+    feature = "engineering",
     feature = "epidemiology",
     feature = "physics"
 ))]

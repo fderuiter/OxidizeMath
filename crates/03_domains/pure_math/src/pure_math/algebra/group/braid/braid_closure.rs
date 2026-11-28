@@ -128,17 +128,8 @@ impl BraidWord {
 impl Semigroup for BraidWord {
     #[verified_engine::verified]
     fn operate(a: &Self, b: &Self) -> Self {
-        assert_eq!(
-            a.strands, b.strands,
-            "BraidWord::operate requires equal strand counts"
-        );
-        let mut gens = Vec::with_capacity(a.generators.len() + b.generators.len());
-        gens.extend_from_slice(&a.generators);
-        gens.extend_from_slice(&b.generators);
-        Self {
-            strands: a.strands,
-            generators: gens,
-        }
+        a.try_operate(b)
+            .expect("BraidWord::operate failed strand count or MAX_BRAID_WORD_LEN validation")
     }
 }
 

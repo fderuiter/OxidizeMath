@@ -37,12 +37,15 @@ impl Error {
             Self::Elo(err) => Some(err),
             Self::Evolution(err) => Some(err),
             Self::Fractran(err) => Some(err),
+            Self::GameTheory(err) => Some(err),
             Self::Glicko2(err) => Some(err),
             Self::GraphTheory(err) => Some(err),
             Self::Wardrop(err) => Some(err),
             Self::Hyperbolic(err) => Some(err),
+            Self::Kalman(err) => Some(err),
             Self::Kelly(err) => Some(err),
             Self::Knot(err) => Some(err),
+            Self::Laurent(err) => Some(err),
             Self::LinearAlgebra(err) => Some(err),
             Self::MarketPricing(err) => Some(err),
             Self::Markov(err) => Some(err),
@@ -70,12 +73,9 @@ impl Error {
     fn applied_inner(&self) -> Option<&dyn FacadeInnerError> {
         match self {
             Self::Applied(err) => Some(err),
-            Self::Battery(err) => Some(err),
             Self::ClinicalTrial(err) => Some(err),
             Self::Engineering(err) => Some(err),
-            Self::GameTheory(err) => Some(err),
             Self::Isosurface(err) => Some(err),
-            Self::Kalman(err) => Some(err),
             Self::Lora(err) => Some(err),
             Self::Pharmacokinetics(err) => Some(err),
             Self::Portfolio(err) => Some(err),
@@ -96,7 +96,6 @@ impl Error {
             Self::HighEnergy(err) => Some(err),
             Self::Nuclear(err) => Some(err),
             Self::Quantum(err) => Some(err),
-            Self::Radar(err) => Some(err),
             Self::Sandpile(err) => Some(err),
             Self::SolidState(err) => Some(err),
             Self::StandardModel(err) => Some(err),
@@ -111,6 +110,7 @@ impl Error {
         feature = "applied",
         feature = "biology",
         feature = "climate",
+        feature = "engineering",
         feature = "epidemiology",
         feature = "physics"
     ))]
@@ -131,6 +131,14 @@ impl Error {
             Self::ReactionDiffusion(err) => Some(err),
             #[cfg(feature = "climate")]
             Self::Climate(err) => Some(err),
+            #[cfg(feature = "engineering")]
+            Self::EngineeringDomain(err) => Some(err),
+            #[cfg(feature = "engineering")]
+            Self::Battery(err) => Some(err),
+            #[cfg(feature = "engineering")]
+            Self::Hardware(err) => Some(err),
+            #[cfg(feature = "engineering")]
+            Self::Radar(err) => Some(err),
             #[cfg(feature = "epidemiology")]
             Self::EpidemiologyDomain(err) => Some(err),
             #[cfg(feature = "epidemiology")]
@@ -147,6 +155,7 @@ impl Error {
         feature = "applied",
         feature = "biology",
         feature = "climate",
+        feature = "engineering",
         feature = "epidemiology",
         feature = "physics"
     ))]
@@ -189,6 +198,7 @@ impl Error {
                 feature = "applied",
                 feature = "biology",
                 feature = "climate",
+                feature = "engineering",
                 feature = "epidemiology",
                 feature = "physics"
             ))]

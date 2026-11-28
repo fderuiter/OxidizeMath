@@ -18,8 +18,8 @@ pub use domain_ai::error::AIError;
 
 #[cfg(feature = "applied")]
 pub use domain_applied::error::{
-    AppliedError, BatteryError, ClinicalTrialError, EngineeringError, GameTheoryError,
-    IsosurfaceError, KalmanError, LoraError, PharmacokineticsError, PortfolioError, VoxelGridError,
+    AppliedError, ClinicalTrialError, EngineeringError, IsosurfaceError, LoraError,
+    PharmacokineticsError, PortfolioError, VoxelGridError,
 };
 
 #[cfg(feature = "biology")]
@@ -29,6 +29,10 @@ pub use domain_biology::error::{
 
 #[cfg(feature = "climate")]
 pub use domain_climate::error::ClimateError;
+#[cfg(feature = "engineering")]
+pub use domain_engineering::error::{
+    BatteryError, EngineeringDomainError, HardwareError, RadarError,
+};
 
 #[cfg(feature = "epidemiology")]
 pub use domain_epidemiology::error::{
@@ -38,18 +42,18 @@ pub use domain_epidemiology::error::{
 #[cfg(feature = "physics")]
 pub use domain_physics::error::{
     ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
-    PhysicsError, QuantumError, RadarError, SandpileError, SolidStateError, StandardModelError,
-    StatMechError,
+    PhysicsError, QuantumError, SandpileError, SolidStateError, StandardModelError, StatMechError,
 };
 
 #[cfg(feature = "pure_math")]
 pub use pure_math::error::{
     AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
-    EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
-    KnotError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
-    MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError, OuError,
-    PoissonError, PureMathError, QueueingError, RiskError, StochasticError, Su11HyperbolicError,
-    TdaError, TensorError, TransformError, WardropError, ZipError,
+    EvolutionError, FractranError, GameTheoryError, Glicko2Error, GraphTheoryError,
+    HyperbolicError, KalmanError, KellyError, KnotError, LaurentError, LinearAlgebraError,
+    MarketPricingError, MarkovError, MatchModelError, MonteCarloError, NumberTheoryError,
+    OptimizationError, OptionPricingError, OuError, PoissonError, PureMathError, QueueingError,
+    RiskError, StochasticError, Su11HyperbolicError, TdaError, TensorError, TransformError,
+    WardropError, ZipError,
 };
 
 /// Unified result alias defaulting to [`Error`] across active `math_explorer` features.
@@ -103,9 +107,15 @@ pub enum Error {
     /// Applied mathematics crate umbrella error.
     #[cfg(feature = "applied")]
     Applied(AppliedError),
+    /// Engineering domain crate umbrella error.
+    #[cfg(feature = "engineering")]
+    EngineeringDomain(EngineeringDomainError),
     /// Battery degradation error.
-    #[cfg(feature = "applied")]
+    #[cfg(feature = "engineering")]
     Battery(BatteryError),
+    /// CNC manufacturing and UART serial calculator error.
+    #[cfg(feature = "engineering")]
+    Hardware(HardwareError),
     /// Clinical trial design or analysis error.
     #[cfg(feature = "applied")]
     ClinicalTrial(ClinicalTrialError),
@@ -113,13 +123,13 @@ pub enum Error {
     #[cfg(feature = "applied")]
     Engineering(EngineeringError),
     /// Game theory modeling error.
-    #[cfg(feature = "applied")]
+    #[cfg(feature = "pure_math")]
     GameTheory(GameTheoryError),
     /// Isosurface extraction error.
     #[cfg(feature = "applied")]
     Isosurface(IsosurfaceError),
     /// Kalman filter tracking error.
-    #[cfg(feature = "applied")]
+    #[cfg(feature = "pure_math")]
     Kalman(KalmanError),
     /// LoRA module ensemble error.
     #[cfg(feature = "applied")]
@@ -189,7 +199,7 @@ pub enum Error {
     #[cfg(feature = "physics")]
     Quantum(QuantumError),
     /// Radar array estimation error.
-    #[cfg(feature = "physics")]
+    #[cfg(feature = "engineering")]
     Radar(RadarError),
     /// Abelian sandpile lattice and group error.
     #[cfg(feature = "physics")]
@@ -228,6 +238,9 @@ pub enum Error {
     /// Knot theory and skein invariant error.
     #[cfg(feature = "pure_math")]
     Knot(KnotError),
+    /// Laurent polynomial exponent, span, or integer coefficient error.
+    #[cfg(feature = "pure_math")]
+    Laurent(LaurentError),
     /// Unified numerical evolution engine error.
     #[cfg(feature = "pure_math")]
     Evolution(EvolutionError),

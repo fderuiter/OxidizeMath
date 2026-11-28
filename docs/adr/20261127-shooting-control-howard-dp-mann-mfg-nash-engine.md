@@ -10,7 +10,7 @@ Prior to this decision, constrained optimal control, dynamic programming, mean-f
 
 1. **Degenerate Viscous Mean-Field Games and Upwind Transport**: `domain_applied::applied::game_theory::mean_field` relied on un-damped fixed-point sweeps that diverged at small congestion viscosity and normalized discrete densities by element sum rather than spatial quadrature $\sum_i m_i \Delta x = 1$. Meanwhile, `engine_pde::StencilOperators` lacked a conservative face-flux operator for spatially varying drift fields.
 2. **Heap-Allocating Synchronous Value Iteration**: `domain_ai::ai::reinforcement_learning::bellman_solver::BellmanSolution` allocated seven heap `Vec` buffers per solve and relied on synchronous value iteration, requiring thousands of sweeps near $\gamma = 0.999$.
-3. **Missing Constrained Trajectory Optimization and Zero-Allocation Finite-Game Solvers**: Receding-horizon control across `ClosedLoopControlTool`, 4D respiratory radar gating (`domain_physics`), multi-dose pharmacokinetics (`domain_applied`), battery duty scheduling (`domain_applied`), and Almgren-Chriss execution (`pure_math`) lacked a shared `#![no_std]` single-shooting `iLQR` and projected `MPC` engine, while `domain_applied::applied::game_theory::equilibrium` only exposed pure-strategy enumeration without mixed-strategy bimatrix or polymatrix solvers.
+3. **Missing Constrained Trajectory Optimization and Zero-Allocation Finite-Game Solvers**: Receding-horizon control across `ClosedLoopControlTool`, 4D respiratory radar gating (`domain_physics`), multi-dose pharmacokinetics (`domain_applied`), battery duty scheduling (`domain_engineering`), and Almgren-Chriss execution (`pure_math`) lacked a shared `#![no_std]` single-shooting `iLQR` and projected `MPC` engine, while `domain_applied::applied::game_theory::equilibrium` only exposed pure-strategy enumeration without mixed-strategy bimatrix or polymatrix solvers.
 
 ## Decision
 
@@ -27,7 +27,7 @@ Prior to this decision, constrained optimal control, dynamic programming, mean-f
 3. **Unify Downstream Domain Solvers and Closed-Loop Controllers**:
    - Route `FixedPointSolver` (`domain_applied`) and Braess congestion profiles (`apps/math_explorer_gui/src/tabs/paradox_lab/braess.rs`) through `engine_opt::mfg`.
    - Refactor `BellmanSolution` and `TabularGridPolicy` (`domain_ai`) onto inline stack buffers backed by `solve_infinite_horizon_dp` and `lu_solve`.
-   - Add `MpcController` (`apps/math_explorer_gui/src/tabs/ai/closed_loop_control/controllers/mpc.rs`) reusing analytical RK4 Jacobians (`rk4_step_with_jacobian`, `pk_rhs_and_jac`), alongside harmonic radar lookahead (`domain_physics`), pharmacokinetic regimen `MPC` (`domain_applied`), battery duty scheduling (`domain_applied`), Almgren-Chriss execution `MPC` (`pure_math`), and zero-allocation Nash solvers (`domain_applied`).
+   - Add `MpcController` (`apps/math_explorer_gui/src/tabs/ai/closed_loop_control/controllers/mpc.rs`) reusing analytical RK4 Jacobians (`rk4_step_with_jacobian`, `pk_rhs_and_jac`), alongside harmonic radar lookahead (`domain_physics`), pharmacokinetic regimen `MPC` (`domain_applied`), battery duty scheduling (`domain_engineering`), Almgren-Chriss execution `MPC` (`pure_math`), and zero-allocation Nash solvers (`domain_applied`).
 
 ## Consequences
 

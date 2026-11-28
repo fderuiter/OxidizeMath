@@ -4,12 +4,12 @@ Host-only 6-tier scientific verification harness, solver convergence engine, and
 
 ## 1. Overview & Architecture
 
-The `scientific_verification` crate provides shared numerical certification harnesses executed by `unified_verification` and `xtask` across all eight mathematical crates (`math_commons`, `pure_math`, `domain_ai`, `domain_physics`, `domain_biology`, `domain_applied`, `domain_climate`, and `domain_epidemiology`) while staying strictly excluded from `wasm32` runtime bundles.
+The `scientific_verification` crate provides shared numerical certification harnesses executed by `unified_verification` and `xtask` across all nine mathematical crates (`math_commons`, `pure_math`, `domain_ai`, `domain_physics`, `domain_biology`, `domain_applied`, `domain_climate`, `domain_engineering`, and `domain_epidemiology`) while staying strictly excluded from `wasm32` runtime bundles.
 
 ### Verification Pyramid Tiers
 
 - **Tier 1 — Manufactured-Solution & Grid-Refinement Convergence (`mms`, `solvers`)**: Certifies all 55 differential, quadrature, optimization, stochastic, calibration, and linear solvers using log-log ordinary least-squares convergence slopes and zero-heap-allocation hot-loop assertions.
-- **Tier 2 — Deterministic Property & Conservation Sweeps (`proptest_sweeps`)**: Executes ChaCha-seeded deterministic `proptest` suites across copula monotonicity/bounds, unitary Crank-Nicolson quantum propagation, `LatticeBoltzmann` mass/momentum conservation, Kaplan-Meier survival probabilities, and Bessel Wronskians/recurrences.
+- **Tier 2 — Deterministic Property & Conservation Sweeps (`proptest_sweeps`)**: Executes ChaCha-seeded deterministic `proptest` suites across copula monotonicity/bounds, unitary Crank-Nicolson quantum propagation, `LatticeBoltzmann` mass/momentum conservation, Kaplan-Meier survival probabilities, FMCW radar/battery/machining invariants, and Bessel Wronskians/recurrences.
 - **Tier 3 — Offline High-Precision Golden Fixtures (`golden`)**: Validates special functions (`bessel_j`, `bessel_y`, `spherical_bessel_j` including asymptotic arguments $x = 40, 50, 100$, `legendre_p`, `hermite`, `associated_laguerre`, `gamma_function`, `beta_function`) and `GaussianCopula` against 150-digit offline fixtures within `< 1e-12`.
 - **Tier 4 — Seeded Stochastic Moment & Confidence Bounds (`stochastic`)**: Verifies deterministic ChaCha-seeded Ornstein-Uhlenbeck stationary and exact large-step Gaussian transition moments, homogeneous Poisson arrival counts, $M/M/1$ truncated-CTMC steady-state occupancy, and Monte Carlo parlay pricing confidence intervals.
 - **Tier 5 — IEEE-754 Outward-Rounded Interval Enclosures (`intervals`)**: Evaluates rigorous outward-rounded `Interval` enclosures for special-function and ODE kernels and records maximum enclosure widths.

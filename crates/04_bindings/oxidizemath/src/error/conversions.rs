@@ -54,12 +54,9 @@ impl_error_from!(@cfg "ai":
 
 impl_error_from!(@cfg "applied":
     AppliedError => Applied,
-    BatteryError => Battery,
     ClinicalTrialError => ClinicalTrial,
     EngineeringError => Engineering,
-    GameTheoryError => GameTheory,
     IsosurfaceError => Isosurface,
-    KalmanError => Kalman,
     LoraError => Lora,
     PharmacokineticsError => Pharmacokinetics,
     PortfolioError => Portfolio,
@@ -78,6 +75,13 @@ impl_error_from!(@cfg "climate":
     ClimateError => Climate,
 );
 
+impl_error_from!(@cfg "engineering":
+    EngineeringDomainError => EngineeringDomain,
+    BatteryError => Battery,
+    HardwareError => Hardware,
+    RadarError => Radar,
+);
+
 impl_error_from!(@cfg "epidemiology":
     EpidemiologyDomainError => EpidemiologyDomain,
     EpidemiologyError => Epidemiology,
@@ -93,7 +97,6 @@ impl_error_from!(@cfg "physics":
     HighEnergyError => HighEnergy,
     NuclearError => Nuclear,
     QuantumError => Quantum,
-    RadarError => Radar,
     SandpileError => Sandpile,
     SolidStateError => SolidState,
     StandardModelError => StandardModel,
@@ -110,12 +113,15 @@ impl_error_from!(@cfg "pure_math":
     EloError => Elo,
     EvolutionError => Evolution,
     FractranError => Fractran,
+    GameTheoryError => GameTheory,
     Glicko2Error => Glicko2,
     GraphTheoryError => GraphTheory,
     WardropError => Wardrop,
     HyperbolicError => Hyperbolic,
+    KalmanError => Kalman,
     KellyError => Kelly,
     KnotError => Knot,
+    LaurentError => Laurent,
     LinearAlgebraError => LinearAlgebra,
     MarketPricingError => MarketPricing,
     MarkovError => Markov,

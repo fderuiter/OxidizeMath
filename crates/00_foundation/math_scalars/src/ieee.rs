@@ -168,6 +168,38 @@ macro_rules! impl_signed_int_ring {
 
 impl_signed_int_ring!(i32, i64, i128, isize);
 
+#[cfg(feature = "dashu")]
+impl Ring for dashu::integer::IBig {
+    #[inline]
+    fn zero() -> Self {
+        Self::ZERO
+    }
+    #[inline]
+    fn one() -> Self {
+        Self::ONE
+    }
+    #[inline]
+    fn is_zero(&self) -> bool {
+        Self::is_zero(self)
+    }
+    #[inline]
+    fn ring_ref_add(&self, rhs: &Self) -> Self {
+        self + rhs
+    }
+    #[inline]
+    fn ring_ref_sub(&self, rhs: &Self) -> Self {
+        self - rhs
+    }
+    #[inline]
+    fn ring_ref_mul(&self, rhs: &Self) -> Self {
+        self * rhs
+    }
+    #[inline]
+    fn ring_ref_neg(&self) -> Self {
+        -self
+    }
+}
+
 impl Ring for f64 {
     #[inline]
     fn zero() -> Self {

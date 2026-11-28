@@ -569,6 +569,7 @@ jobs:
           - ai
           - biology
           - climate
+          - engineering
           - epidemiology
           - physics
           - '' # This tests --no-default-features

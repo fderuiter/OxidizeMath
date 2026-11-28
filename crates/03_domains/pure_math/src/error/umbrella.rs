@@ -1,10 +1,11 @@
 use super::{
     AmbsError, AnalysisError, BraidError, CopulaError, EllipticCurveError, EloError,
-    EvolutionError, FractranError, Glicko2Error, GraphTheoryError, HyperbolicError, KellyError,
-    KnotError, LinearAlgebraError, MarketPricingError, MarkovError, MatchModelError,
-    MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError, OuError,
-    PoissonError, QueueingError, RiskError, StochasticError, Su11HyperbolicError, TdaError,
-    TensorError, TransformError, WardropError, ZipError,
+    EvolutionError, FractranError, GameTheoryError, Glicko2Error, GraphTheoryError,
+    HyperbolicError, KalmanError, KellyError, KnotError, LaurentError, LinearAlgebraError,
+    MarketPricingError, MarkovError, MatchModelError, MonteCarloError, NumberTheoryError,
+    OptimizationError, OptionPricingError, OuError, PoissonError, QueueingError, RiskError,
+    StochasticError, Su11HyperbolicError, TdaError, TensorError, TransformError, WardropError,
+    ZipError,
 };
 use engine_linalg::LinalgError;
 use engine_opt::error::{FitError, OptError};
@@ -83,12 +84,18 @@ pub enum PureMathError {
     /// Knot theory and skein invariant error.
     #[error("{0}")]
     Knot(#[from] KnotError),
+    /// Laurent polynomial exponent, span, or integer coefficient error.
+    #[error("{0}")]
+    Laurent(#[from] LaurentError),
     /// Unified numerical evolution engine error.
     #[error("{0}")]
     Evolution(#[from] EvolutionError),
     /// Prime-exponent FRACTRAN register machine error.
     #[error("{0}")]
     Fractran(#[from] FractranError),
+    /// Evolutionary game theory and equilibrium solver error.
+    #[error("{0}")]
+    GameTheory(#[from] GameTheoryError),
     /// Graph theory solver or interchange error.
     #[error("{0}")]
     GraphTheory(#[from] GraphTheoryError),
@@ -98,6 +105,9 @@ pub enum PureMathError {
     /// Hyperbolic geometry and geodesic billiard error.
     #[error("{0}")]
     Hyperbolic(#[from] HyperbolicError),
+    /// Discrete-time linear or Extended Kalman Filter error.
+    #[error("{0}")]
+    Kalman(#[from] KalmanError),
     /// Intrinsic `SU(1,1)` hyperbolic geometry error.
     #[error("{0}")]
     Su11Hyperbolic(#[from] Su11HyperbolicError),
@@ -218,11 +228,14 @@ impl PureMathError {
             Self::Braid(err) => err,
             Self::EllipticCurve(err) => err,
             Self::Knot(err) => err,
+            Self::Laurent(err) => err,
             Self::Evolution(err) => err,
             Self::Fractran(err) => err,
+            Self::GameTheory(err) => err,
             Self::GraphTheory(err) => err,
             Self::Wardrop(err) => err,
             Self::Hyperbolic(err) => err,
+            Self::Kalman(err) => err,
             Self::Su11Hyperbolic(err) => err,
             Self::LinearAlgebra(err) => err,
             Self::MonteCarlo(err) => err,
