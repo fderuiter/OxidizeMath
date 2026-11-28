@@ -1,6 +1,6 @@
 use super::types::{Action, State};
 use math_commons::primitives::UnitInterval;
-use rand::Rng;
+use oxidize_core::rng::{sample_bounded_usize, sample_closed_open};
 
 /// Strategy for selecting an action based on Q-values.
 pub trait ExplorationStrategy<S, A>: Send {
@@ -49,22 +49,65 @@ where
             return None;
         }
 
-        if rng.r#gen::<f64>() < self.epsilon.value() {
-            // Explore: Random action
-            let index = rng.gen_range(0..available_actions.len());
-            Some(available_actions[index].clone())
-        } else {
-            // Exploit: Best action
-            // Find index of max q_value
-            let (best_idx, _) = q_values
-                .iter()
-                .enumerate()
-                .max_by(|(_, a_val), (_, b_val)| {
-                    a_val
-                        .partial_cmp(b_val)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })?;
-            Some(available_actions[best_idx].clone())
+        if sample_closed_open::<f64, _>(rng) < self.epsilon.value() {
+            let index = sample_bounded_usize(rng, available_actions.len());
+            return Some(available_actions[index].clone());
         }
+
+        let bound = available_actions.len().min(q_values.len());
+        if bound == 0 {
+            let index = sample_bounded_usize(rng, available_actions.len());
+            return Some(available_actions[index].clone());
+        }
+
+        let mut best_idx = 0usize;
+        let mut best_val = f64::NEG_INFINITY;
+        for (idx, &val) in q_values.iter().take(bound).enumerate() {
+            if val.is_finite() && val > best_val {
+                best_val = val;
+                best_idx = idx;
+            }
+        }
+        debug_assert!(best_idx < available_actions.len());
+        Some(available_actions[best_idx].clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai::reinforcement_learning::{GridState, Move};
+    use oxidize_core::rng::OxidizeRng;
+
+    #[test]
+    #[verified_engine::verified]
+    fn test_epsilon_greedy_bounds_oversized_nan_and_empty_q_slices() {
+        let greedy = EpsilonGreedy::new(UnitInterval::new(0.0).expect("zero eps"));
+        let mut rng = OxidizeRng::new(7);
+        let state = GridState { x: 0, y: 0 };
+
+        // Oversized q_values where max lies past available_actions.len() must stay in bounds.
+        let actions = [Move::Up, Move::Down];
+        let oversized_q = [0.2_f64, 0.5, 99.0, 120.0];
+        assert_eq!(
+            greedy.select_action(&state, &actions, &oversized_q, &mut rng),
+            Some(Move::Down)
+        );
+
+        // NaN entries must not shadow finite action values or panic.
+        let nan_q = [f64::NAN, -0.5_f64];
+        assert_eq!(
+            greedy.select_action(&state, &actions, &nan_q, &mut rng),
+            Some(Move::Down)
+        );
+
+        // Empty q_values with non-empty available_actions still returns a valid bounded action.
+        let picked = greedy.select_action(&state, &actions, &[], &mut rng);
+        assert!(picked == Some(Move::Up) || picked == Some(Move::Down));
+        let empty_actions: &[Move] = &[];
+        assert_eq!(
+            greedy.select_action(&state, empty_actions, &oversized_q, &mut rng),
+            None
+        );
     }
 }

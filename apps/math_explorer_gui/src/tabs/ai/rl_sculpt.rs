@@ -343,7 +343,8 @@ pub fn solve_bellman_with_policy(
     ws: &DenseRlWorkspace,
     solver: RlSolverMode,
 ) -> BellmanSolution {
-    let mut sol = BellmanSolution::solve(mdp, 1e-7, 160);
+    let sweeps = BellmanSolution::recommended_sweeps(mdp, 1e-7);
+    let mut sol = BellmanSolution::solve(mdp, 1e-7, sweeps);
     let (w, h) = (mdp.width as usize, mdp.height as usize);
     let policy = match solver {
         RlSolverMode::TabularQ => TabularGridPolicy::from_q_table(w, h, ws.q_table()),
@@ -351,7 +352,7 @@ pub fn solve_bellman_with_policy(
             TabularGridPolicy::from_softmax_logits(w, h, ws.theta_logits())
         }
     };
-    sol.evaluate_policy(mdp, &policy, 1e-7, 120);
+    sol.evaluate_policy(mdp, &policy, 1e-7, sweeps);
     sol
 }
 

@@ -184,11 +184,12 @@ impl QTableInspectorTool {
 
     pub(super) fn step_q_table_episode(&mut self) {
         let seed = 0x517A_B1E0_u64.wrapping_add(u64::from(self.episodes_trained));
+        let step_budget = super::episode_step_budget(&self.mdp);
         let mut runner = SculptedQTableRunner::from_mdp(self.mdp.clone(), self.solver_mode);
         runner.workspace = DenseRlWorkspace::new(
             self.mdp.width as usize,
             self.mdp.height as usize,
-            100,
+            step_budget,
             Some(seed),
         );
         if self.latest_snap.q_table.len() == runner.workspace.q_table().len()
@@ -198,6 +199,12 @@ impl QTableInspectorTool {
                 .workspace
                 .q_table_mut()
                 .copy_from_slice(&self.latest_snap.q_table);
+            if self.latest_snap.theta_logits.len() == runner.workspace.theta_logits().len() {
+                runner
+                    .workspace
+                    .theta_logits_mut()
+                    .copy_from_slice(&self.latest_snap.theta_logits);
+            }
             runner
                 .workspace
                 .state_values_mut()

@@ -231,6 +231,6 @@ pub fn policy_gradient_step(
 }
 
 pub use super::rollouts::{
-    RlStepOutcome, compute_softmax_pg_delta, softmax_action_probs, step_softmax_pg_into,
-    step_tabular_q_into,
+    RlStepOutcome, compute_softmax_pg_delta, flush_reinforce_episode_in_place,
+    softmax_action_probs, step_softmax_pg_into, step_tabular_q_into,
 };

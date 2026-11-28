@@ -206,3 +206,23 @@ fn test_grid_world_sculpt_rle_roundtrip_and_bellman_update() {
     assert_eq!(restored.overlay_mode, RlOverlayMode::BellmanVStar);
     assert_eq!(restored.bellman.v_star, tool.bellman.v_star);
 }
+
+#[test]
+fn test_grid_world_step_limit_timeout_resets_episode() {
+    let mut tool = GridWorldTool::default();
+    tool.mdp
+        .set_cell_role(GridState { x: 1, y: 0 }, GridCellRole::SolidWall);
+    tool.mdp
+        .set_cell_role(GridState { x: 0, y: 1 }, GridCellRole::SolidWall);
+    let limit = (tool.workspace.max_episode_steps.max(4)) as u32;
+    for step_idx in 0..limit {
+        tool.step_agent();
+        if step_idx + 1 < limit {
+            assert_eq!(tool.episodes, 0);
+            assert_eq!(tool.steps, step_idx + 1);
+        }
+    }
+    assert_eq!(tool.current_state, tool.mdp.start);
+    assert_eq!(tool.steps, 0);
+    assert_eq!(tool.episodes, 1);
+}

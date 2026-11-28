@@ -77,7 +77,8 @@ pub(crate) fn gelu_prime(x: f64) -> f64 {
 }
 
 /// Computes numerically stable softmax from `src` into `dst` in place,
-/// enforcing empty-input and non-positive/`NaN` sum zero-output guards.
+/// guarding `NaN` at any index, splitting uniform mass across `+Inf` logits,
+/// and zeroing `dst` when all logits are `-Inf`.
 #[inline]
 #[verified_engine::verified]
 pub(crate) fn softmax_into<T, R1, C1, S1, R2, C2, S2>(
@@ -97,27 +98,60 @@ pub(crate) fn softmax_into<T, R1, C1, S1, R2, C2, S2>(
         dst.len(),
         "softmax_into source and destination lengths must match"
     );
-    let mut src_iter = src.iter();
-    let Some(&first) = src_iter.next() else {
+    if src.is_empty() {
         return;
-    };
-
-    let mut max_val = first;
-    for &val in src_iter {
-        if val > max_val {
-            max_val = val;
-        }
     }
 
     let zero = T::zero();
+    let mut pos_inf_count = 0usize;
+    let mut max_finite: Option<T> = None;
+
+    for &val in src.iter() {
+        if val.partial_cmp(&val).is_none() {
+            dst.fill(zero);
+            return;
+        }
+        if val.is_finite() {
+            max_finite = Some(match max_finite {
+                Some(cur) if val <= cur => cur,
+                _ => val,
+            });
+        } else if val > zero {
+            pos_inf_count += 1;
+        }
+    }
+
+    if pos_inf_count > 0 {
+        let inv = T::from_usize(pos_inf_count)
+            .map(|k| T::one() / k)
+            .unwrap_or(zero);
+        for (&val, out) in src.iter().zip(dst.iter_mut()) {
+            *out = if !val.is_finite() && val > zero {
+                inv
+            } else {
+                zero
+            };
+        }
+        return;
+    }
+
+    let Some(max_val) = max_finite else {
+        dst.fill(zero);
+        return;
+    };
+
     let mut sum_exps = zero;
     for (&val, out) in src.iter().zip(dst.iter_mut()) {
-        let exp_val = (val - max_val).exp();
+        let exp_val = if val.is_finite() {
+            (val - max_val).exp()
+        } else {
+            zero
+        };
         *out = exp_val;
         sum_exps += exp_val;
     }
 
-    if sum_exps > zero {
+    if sum_exps.is_finite() && sum_exps > zero {
         for out in dst.iter_mut() {
             *out /= sum_exps;
         }
@@ -187,6 +221,21 @@ mod tests {
 
         let nan_vec = DVector::from_vec(vec![0.5, f64::NAN, -1.0]);
         assert_eq!(softmax(&nan_vec), DVector::zeros(3));
+
+        let leading_nan = DVector::from_vec(vec![f64::NAN, 1.0, 2.0]);
+        assert_eq!(softmax(&leading_nan), DVector::zeros(3));
+
+        let single_pos_inf = DVector::from_vec(vec![f64::INFINITY, 1.0, -2.0]);
+        let single_inf_probs = softmax(&single_pos_inf);
+        assert_relative_eq!(single_inf_probs[0], 1.0, epsilon = 1e-12);
+        assert_relative_eq!(single_inf_probs[1], 0.0, epsilon = 1e-12);
+        assert_relative_eq!(single_inf_probs[2], 0.0, epsilon = 1e-12);
+
+        let dual_pos_inf = DVector::from_vec(vec![f64::INFINITY, 3.0, f64::INFINITY]);
+        let dual_inf_probs = softmax(&dual_pos_inf);
+        assert_relative_eq!(dual_inf_probs[0], 0.5, epsilon = 1e-12);
+        assert_relative_eq!(dual_inf_probs[1], 0.0, epsilon = 1e-12);
+        assert_relative_eq!(dual_inf_probs[2], 0.5, epsilon = 1e-12);
 
         let neg_inf_vec = DVector::from_vec(vec![f64::NEG_INFINITY, f64::NEG_INFINITY]);
         assert_eq!(softmax(&neg_inf_vec), DVector::zeros(2));

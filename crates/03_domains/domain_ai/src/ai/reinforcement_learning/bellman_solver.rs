@@ -3,16 +3,19 @@
 // [cite:algorithmic_information_rust]
 
 mod adapter;
+mod policy;
 #[cfg(test)]
 mod tests;
 
+pub use self::policy::TabularGridPolicy;
+
 use self::adapter::GridDiscreteMdp;
-use super::algorithms::softmax_action_probs;
+use super::bellman::action_value_bellman_equation;
 use super::maze::{
     ALL_MOVES, DenseRlWorkspace, GridCellRole, MAX_RL_GRID_DIM, SculptedGridMdp, index_to_move,
     move_to_index,
 };
-use super::types::{MarkovDecisionProcess, Policy};
+use super::types::MarkovDecisionProcess;
 use super::{GridState, Move};
 use engine_linalg::lu_solve;
 use engine_opt::dp::{
@@ -20,6 +23,9 @@ use engine_opt::dp::{
 };
 use engine_opt::{OptError, ScalarWorkspace};
 use math_commons::math_kernel::types::flatten_2d_index;
+
+/// Maximum safety sweep ceiling for large high-$\gamma$ grids (`20x20`, $\gamma \le 0.999$).
+pub const MAX_BELLMAN_SWEEPS: usize = 20_000;
 
 /// Maximum number of grid cells (`20 x 20 = 400`) stored inline without heap `Vec` buffers.
 pub const MAX_RL_GRID_CELLS: usize = (MAX_RL_GRID_DIM as usize) * (MAX_RL_GRID_DIM as usize);
@@ -33,109 +39,6 @@ const INLINE_STACK_WS_LEN: usize = dp_infinite_workspace_len(INLINE_STACK_STATES
 #[verified_engine::verified]
 pub const fn bellman_grid_workspace_len(width: usize, height: usize) -> usize {
     dp_infinite_workspace_len(width.saturating_mul(height), 4)
-}
-
-/// Dense 4-action stochastic policy $\pi(a \mid s)$ over a 2D [`SculptedGridMdp`] stored inline without heap allocations.
-#[derive(Clone, Copy, Debug)]
-pub struct TabularGridPolicy {
-    width: usize,
-    height: usize,
-    probs: [[f64; 4]; MAX_RL_GRID_CELLS],
-}
-
-impl TabularGridPolicy {
-    /// Builds a uniform random policy ($\pi(a \mid s) = 0.25$) across `width x height` cells with zero heap allocations.
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn uniform(width: usize, height: usize) -> Self {
-        Self {
-            width,
-            height,
-            probs: [[0.25; 4]; MAX_RL_GRID_CELLS],
-        }
-    }
-
-    /// Builds a greedy policy with tie-splitting from dense action values $Q(s, a)$ with zero heap allocations.
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn from_q_table(width: usize, height: usize, q_table: &[[f64; 4]]) -> Self {
-        let count = (width * height).min(MAX_RL_GRID_CELLS);
-        let mut probs = [[0.25; 4]; MAX_RL_GRID_CELLS];
-        for (i, q_row) in q_table.iter().take(count).enumerate() {
-            let max_q = q_row.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-            let mut ties = 0usize;
-            for &q in q_row {
-                if (q - max_q).abs() <= 1e-12 {
-                    ties += 1;
-                }
-            }
-            if ties > 0 {
-                let share = 1.0 / (ties as f64);
-                let mut dist = [0.0; 4];
-                for k in 0..4 {
-                    if (q_row[k] - max_q).abs() <= 1e-12 {
-                        dist[k] = share;
-                    }
-                }
-                probs[i] = dist;
-            }
-        }
-        Self {
-            width,
-            height,
-            probs,
-        }
-    }
-
-    /// Builds a Boltzmann softmax policy $\pi_\theta(a \mid s)$ from dense preference logits with zero heap allocations.
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn from_softmax_logits(width: usize, height: usize, logits: &[[f64; 4]]) -> Self {
-        let count = (width * height).min(MAX_RL_GRID_CELLS);
-        let mut probs = [[0.25; 4]; MAX_RL_GRID_CELLS];
-        for (i, row) in logits.iter().take(count).enumerate() {
-            probs[i] = softmax_action_probs(*row);
-        }
-        Self {
-            width,
-            height,
-            probs,
-        }
-    }
-
-    /// Returns the 4-action probability distribution at `state`.
-    #[inline]
-    #[must_use]
-    #[verified_engine::verified]
-    pub fn action_probabilities(&self, state: GridState) -> [f64; 4] {
-        if state.x < 0
-            || state.y < 0
-            || (state.x as usize) >= self.width
-            || (state.y as usize) >= self.height
-        {
-            return [0.25; 4];
-        }
-        self.probs[flatten_2d_index(state.x as usize, state.y as usize, self.width)]
-    }
-}
-
-impl Policy<GridState, Move> for TabularGridPolicy {
-    #[verified_engine::verified]
-    fn probability(&self, state: &GridState, action: &Move) -> f64 {
-        self.action_probabilities(*state)[move_to_index(*action)]
-    }
-
-    #[verified_engine::verified]
-    fn sample(&self, state: &GridState) -> Move {
-        let dist = self.action_probabilities(*state);
-        let mut best_idx = 0usize;
-        for idx in 1..4 {
-            if dist[idx] > dist[best_idx] {
-                best_idx = idx;
-            }
-        }
-        index_to_move(best_idx)
-    }
 }
 
 /// Exact Howard policy-iteration optimality and LU policy-evaluation fields over a [`SculptedGridMdp`].
@@ -176,6 +79,25 @@ impl BellmanSolution {
             sweeps: 0,
             max_delta: 0.0,
         }
+    }
+
+    /// Computes a contraction-scaled sweep budget $\lceil \ln(\text{tol}) / \ln(\gamma) \rceil + 2(W + H)$
+    /// bounded within `[250, MAX_BELLMAN_SWEEPS]` for large high-$\gamma$ grids.
+    #[must_use]
+    pub fn recommended_sweeps(mdp: &SculptedGridMdp, tolerance: f64) -> usize {
+        let gamma = mdp.gamma.clamp(0.0, 0.9999);
+        let tol = tolerance.clamp(1e-12, 1e-1);
+        let diam = (mdp.width as usize)
+            .saturating_add(mdp.height as usize)
+            .max(4);
+        let contraction_horizon = if gamma <= 1e-6 {
+            diam * 2
+        } else {
+            (tol.ln() / gamma.ln()).ceil().max(1.0) as usize
+        };
+        contraction_horizon
+            .saturating_add(diam * 2)
+            .clamp(250, MAX_BELLMAN_SWEEPS)
     }
 
     /// Solves $V^*(s)$, $Q^*(s, a)$, and uniform $V_\pi(s)$ into `self` via Howard policy iteration over `ws` with zero heap allocations.
@@ -368,6 +290,22 @@ impl BellmanSolution {
             let mut ws = ScalarWorkspace::new(&mut heap_buf);
             let _ = self.evaluate_policy_with_workspace(mdp, policy, &mut ws);
         }
+    }
+
+    /// Evaluates $Q_\pi(s, a) = \sum_{s'} P(s' \mid s, a)[R(s, a, s') + \gamma V_\pi(s')]$ from `v_pi`.
+    #[must_use]
+    pub fn q_pi_at(&self, mdp: &SculptedGridMdp, state: GridState, action: Move) -> f64 {
+        if state.x < 0
+            || state.y < 0
+            || (state.x as usize) >= self.width
+            || (state.y as usize) >= self.height
+            || mdp.is_terminal(&state)
+            || mdp.cell_role(state) == GridCellRole::SolidWall
+        {
+            return 0.0;
+        }
+        let (reach, len) = mdp.reachable_next_states(state);
+        action_value_bellman_equation(mdp, &state, &action, &reach[..len], |ns| self.v_pi_at(*ns))
     }
 
     /// Reads $V^*(s)$ at `state`.

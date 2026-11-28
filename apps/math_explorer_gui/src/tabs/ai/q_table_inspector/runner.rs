@@ -26,9 +26,15 @@ pub struct QTableSnapshot {
     pub mdp: SculptedGridMdp,
     pub solver_mode: RlSolverMode,
     pub q_table: Vec<[f64; 4]>,
+    pub theta_logits: Vec<[f64; 4]>,
     pub state_values: Vec<f64>,
     pub greedy_actions: Vec<Option<Move>>,
     pub bellman: BellmanSolution,
+}
+
+#[inline]
+pub(crate) fn episode_step_budget(mdp: &SculptedGridMdp) -> usize {
+    ((mdp.width as usize) * (mdp.height as usize) * 4).max(100)
 }
 
 #[cfg(test)]
@@ -225,8 +231,9 @@ impl SculptedQTableRunner {
 
     /// Creates a sculpted Q-table runner from an explicit `mdp` and `solver_mode`.
     pub fn from_mdp(mdp: SculptedGridMdp, solver_mode: RlSolverMode) -> Self {
+        let step_budget = episode_step_budget(&mdp);
         let mut workspace =
-            DenseRlWorkspace::new(mdp.width as usize, mdp.height as usize, 100, None);
+            DenseRlWorkspace::new(mdp.width as usize, mdp.height as usize, step_budget, None);
         workspace.reset_episode(&mdp);
         Self {
             mdp,
@@ -243,8 +250,10 @@ impl SculptedQTableRunner {
         let alpha = UnitInterval::new(0.15).unwrap();
         let eps = UnitInterval::new(0.15).unwrap();
         let pg_lr = UnitInterval::new(0.06).unwrap();
+        let step_budget = episode_step_budget(&self.mdp);
+        self.workspace.ensure_episode_capacity(step_budget);
         self.workspace.reset_episode(&self.mdp);
-        for _ in 0..100 {
+        for _ in 0..step_budget {
             let outcome = match self.solver_mode {
                 RlSolverMode::TabularQ => {
                     step_tabular_q_into(&self.mdp, &mut self.workspace, alpha, eps)
@@ -281,6 +290,7 @@ impl SculptedQTableRunner {
             mdp: self.mdp.clone(),
             solver_mode: self.solver_mode,
             q_table: self.workspace.q_table().to_vec(),
+            theta_logits: self.workspace.theta_logits().to_vec(),
             state_values: self.workspace.state_values().to_vec(),
             greedy_actions,
             bellman,
@@ -302,6 +312,7 @@ impl SimulationRunner for SculptedQTableRunner {
             }
             SimCommand::Pause => self.is_training = false,
             SimCommand::Reset => {
+                self.workspace.max_episode_steps = episode_step_budget(&self.mdp);
                 self.workspace
                     .resize_and_clear(self.mdp.width as usize, self.mdp.height as usize);
                 self.workspace.reset_episode(&self.mdp);
@@ -311,17 +322,24 @@ impl SimulationRunner for SculptedQTableRunner {
                 self.latest_audio = SonificationFrame::silent();
             }
             SimCommand::ApplyBrushStroke(stroke) => {
-                let _ = apply_rl_brush_stroke(&mut self.mdp, &stroke);
+                if apply_rl_brush_stroke(&mut self.mdp, &stroke) {
+                    self.workspace.sync_topology(&self.mdp);
+                }
             }
             SimCommand::SyncSculptState(payload) => {
                 if apply_rl_sculpt_payload(&mut self.mdp, &mut self.solver_mode, &payload).is_ok() {
+                    let step_budget = episode_step_budget(&self.mdp);
                     if self.workspace.width != self.mdp.width as usize
                         || self.workspace.height != self.mdp.height as usize
                     {
+                        self.workspace.max_episode_steps = step_budget;
                         self.workspace
                             .resize_and_clear(self.mdp.width as usize, self.mdp.height as usize);
+                        self.workspace.reset_episode(&self.mdp);
+                    } else {
+                        self.workspace.ensure_episode_capacity(step_budget);
+                        self.workspace.sync_topology(&self.mdp);
                     }
-                    self.workspace.reset_episode(&self.mdp);
                 }
             }
             SimCommand::ClearObstacles => {
@@ -330,6 +348,7 @@ impl SimulationRunner for SculptedQTableRunner {
                     self.mdp.height,
                     self.mdp.gamma,
                 );
+                self.workspace.sync_topology(&self.mdp);
             }
             _ => {}
         }

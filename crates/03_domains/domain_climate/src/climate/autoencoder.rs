@@ -11,7 +11,7 @@ use pure_math::pure_math::analysis::optimization::{ModelOptimizer as Optimizer, 
 /// [domain_climate specification](../../../../../docs/math_specs/domain_climate.md).
 ///
 /// # Stability
-/// Glorot-initialized 1D convolutions and leaky-ReLU activations avoid dead-neuron saturation during reconstruction training.
+/// He-initialized 1D convolutions and leaky-ReLU activations avoid dead-neuron saturation and variance collapse during reconstruction training.
 ///
 /// # Domain of Validity
 /// Finite `f32` atmospheric profile matrices compatible with the configured channel and vertical-level dimensions.
@@ -64,14 +64,31 @@ impl ConvLayer {
     /// A new `ConvLayer`.
     #[verified_engine::verified]
     pub fn new(in_channels: usize, out_channels: usize) -> Self {
-        let mut rng = oxidize_core::rng::OxidizeRng::default();
-        let fan_sum = in_channels.saturating_add(out_channels).max(1) as f32;
-        let limit = (6.0 / fan_sum).sqrt();
+        Self::new_on_stream(in_channels, out_channels, 0)
+    }
+
+    /// Creates a new convolutional layer initialized on ChaCha8 `stream` with He et al. (2015) leaky-ReLU scaling.
+    #[verified_engine::verified]
+    pub fn new_on_stream(in_channels: usize, out_channels: usize, stream: u64) -> Self {
+        let mut rng = oxidize_core::rng::OxidizeRng::default().with_stream(stream);
+        Self::new_with_rng(in_channels, out_channels, &mut rng)
+    }
+
+    /// Creates a new convolutional layer with He et al. (2015) leaky-ReLU ($\alpha = 0.01$) scaling using `rng`.
+    #[verified_engine::verified]
+    pub fn new_with_rng<R: Rng + ?Sized>(
+        in_channels: usize,
+        out_channels: usize,
+        rng: &mut R,
+    ) -> Self {
+        let fan_in = in_channels.max(1) as f32;
+        let alpha = 0.01_f32;
+        let limit = (6.0 / ((1.0 + alpha * alpha) * fan_in)).sqrt();
         let kernel = DMatrix::from_fn(out_channels, in_channels, |_, _| {
             (rng.r#gen::<f32>() * 2.0 - 1.0) * limit
         });
         let bias = DVector::from_fn(out_channels, |_, _| {
-            (rng.r#gen::<f32>() * 2.0 - 1.0) * 0.1 * limit
+            (rng.r#gen::<f32>() * 2.0 - 1.0) * 0.01 * limit
         });
         Self { kernel, bias }
     }
@@ -123,13 +140,17 @@ pub struct Encoder {
 }
 
 impl Encoder {
-    /// Creates a new encoder with a hardcoded architecture: Input (2 channels) -> 64 -> 64 -> Latent (3 channels).
+    /// Creates a new encoder with architecture: Input (`in_channels`) -> 64 -> 64 -> Latent (`latent_channels`).
     #[verified_engine::verified]
     pub fn new(in_channels: usize, latent_channels: usize) -> Self {
+        let base_rng = oxidize_core::rng::OxidizeRng::default();
+        let mut rng0 = base_rng.split_stream(0);
+        let mut rng1 = base_rng.split_stream(1);
+        let mut rng2 = base_rng.split_stream(2);
         let layers = [
-            ConvLayer::new(in_channels, 64),
-            ConvLayer::new(64, 64),
-            ConvLayer::new(64, latent_channels),
+            ConvLayer::new_with_rng(in_channels, 64, &mut rng0),
+            ConvLayer::new_with_rng(64, 64, &mut rng1),
+            ConvLayer::new_with_rng(64, latent_channels, &mut rng2),
         ];
         Self::new_from_layers(layers)
     }
@@ -165,13 +186,17 @@ pub struct Decoder {
 }
 
 impl Decoder {
-    /// Creates a new decoder with architecture: Latent (3 channels) -> 64 -> 64 -> Output (2 channels).
+    /// Creates a new decoder with architecture: Latent (`latent_channels`) -> 64 -> 64 -> Output (`out_channels`).
     #[verified_engine::verified]
     pub fn new(latent_channels: usize, out_channels: usize) -> Self {
+        let base_rng = oxidize_core::rng::OxidizeRng::default();
+        let mut rng3 = base_rng.split_stream(3);
+        let mut rng4 = base_rng.split_stream(4);
+        let mut rng5 = base_rng.split_stream(5);
         let layers = [
-            ConvLayer::new(latent_channels, 64),
-            ConvLayer::new(64, 64),
-            ConvLayer::new(64, out_channels),
+            ConvLayer::new_with_rng(latent_channels, 64, &mut rng3),
+            ConvLayer::new_with_rng(64, 64, &mut rng4),
+            ConvLayer::new_with_rng(64, out_channels, &mut rng5),
         ];
         Self::new_from_layers(layers)
     }
@@ -408,9 +433,18 @@ mod tests {
         assert_ne!(layer.kernel[(0, 0)], layer.kernel[(0, 1)]);
         assert_ne!(layer.bias[0], layer.bias[1]);
 
-        let autoencoder = Autoencoder::new(2, 4);
+        let autoencoder = Autoencoder::new(2, 3);
+        assert_ne!(
+            autoencoder.encoder.layers[1].kernel, autoencoder.decoder.layers[1].kernel,
+            "Autoencoder::new(2, 3) 64x64 encoder and decoder layers must use distinct RNG streams"
+        );
+        let predictor = crate::climate::predictor::Predictor::new(16, 8);
+        assert_ne!(predictor.layers[1].kernel, predictor.layers[2].kernel);
+        assert_ne!(predictor.layers[2].kernel, predictor.layers[3].kernel);
+
+        let autoencoder4 = Autoencoder::new(2, 4);
         let input = DMatrix::from_row_slice(2, 2, &[0.4, -0.2, 0.8, 0.1]);
-        let (latent, recon) = autoencoder.forward(&input);
+        let (latent, recon) = autoencoder4.forward(&input);
         assert_ne!(latent.column(0), latent.column(1));
         assert_ne!(recon[(0, 0)], recon[(0, 1)]);
     }

@@ -42,6 +42,8 @@ struct DenseRlRegions {
     q_table: ArenaRegion<[f64; 4]>,
     theta_logits: ArenaRegion<[f64; 4]>,
     state_values: ArenaRegion<f64>,
+    pg_delta_buf: ArenaRegion<[f64; 4]>,
+    critic_delta_buf: ArenaRegion<f64>,
     ep_states: ArenaRegion<usize>,
     ep_actions: ArenaRegion<usize>,
     ep_rewards: ArenaRegion<f64>,
@@ -55,6 +57,12 @@ fn build_dense_rl_arena(count: usize, cap: usize) -> (OwnedByteArena, DenseRlReg
         .reserve::<[f64; 4]>(count)
         .expect("theta_logits layout");
     let state_values = layout.reserve::<f64>(count).expect("state_values layout");
+    let pg_delta_buf = layout
+        .reserve::<[f64; 4]>(count)
+        .expect("pg_delta_buf layout");
+    let critic_delta_buf = layout
+        .reserve::<f64>(count)
+        .expect("critic_delta_buf layout");
     let ep_states = layout.reserve::<usize>(cap).expect("ep_states layout");
     let ep_actions = layout.reserve::<usize>(cap).expect("ep_actions layout");
     let ep_rewards = layout.reserve::<f64>(cap).expect("ep_rewards layout");
@@ -66,6 +74,8 @@ fn build_dense_rl_arena(count: usize, cap: usize) -> (OwnedByteArena, DenseRlReg
             q_table,
             theta_logits,
             state_values,
+            pg_delta_buf,
+            critic_delta_buf,
             ep_states,
             ep_actions,
             ep_rewards,
@@ -75,6 +85,7 @@ fn build_dense_rl_arena(count: usize, cap: usize) -> (OwnedByteArena, DenseRlReg
 
 pub(super) type ReinforceMutSlices<'a> = (
     &'a mut [[f64; 4]],
+    &'a mut [f64],
     &'a mut [[f64; 4]],
     &'a mut [f64],
     &'a [usize],
@@ -223,7 +234,8 @@ impl DenseRlWorkspace {
     /// Appends `(state_idx, action_idx, reward)` if `ep_len() < max_episode_steps`.
     #[inline]
     pub fn push_episode_step(&mut self, state_idx: usize, action_idx: usize, reward: f64) {
-        if self.ep_len < self.max_episode_steps {
+        let cap = self.arena.region_slice(self.regions.ep_states).len();
+        if self.ep_len < self.max_episode_steps.min(cap) {
             let t = self.ep_len;
             self.arena.region_slice_mut(self.regions.ep_states)[t] = state_idx;
             self.arena.region_slice_mut(self.regions.ep_actions)[t] = action_idx;
@@ -232,22 +244,56 @@ impl DenseRlWorkspace {
         }
     }
 
+    /// Updates [`Self::max_episode_steps`] and grows arena trajectory buffers if needed while preserving learned parameters.
+    pub fn ensure_episode_capacity(&mut self, max_episode_steps: usize) {
+        let cap = max_episode_steps.max(4);
+        self.max_episode_steps = cap;
+        if cap <= self.arena.region_slice(self.regions.ep_states).len() {
+            self.ep_len = self.ep_len.min(cap);
+            return;
+        }
+        let (mut next_arena, next_regs) = build_dense_rl_arena(self.width * self.height, cap);
+        next_arena
+            .region_slice_mut(next_regs.states)
+            .copy_from_slice(self.states());
+        next_arena
+            .region_slice_mut(next_regs.q_table)
+            .copy_from_slice(self.q_table());
+        next_arena
+            .region_slice_mut(next_regs.theta_logits)
+            .copy_from_slice(self.theta_logits());
+        next_arena
+            .region_slice_mut(next_regs.state_values)
+            .copy_from_slice(self.state_values());
+        let keep = self.ep_len.min(cap);
+        next_arena.region_slice_mut(next_regs.ep_states)[..keep]
+            .copy_from_slice(&self.ep_states()[..keep]);
+        next_arena.region_slice_mut(next_regs.ep_actions)[..keep]
+            .copy_from_slice(&self.ep_actions()[..keep]);
+        next_arena.region_slice_mut(next_regs.ep_rewards)[..keep]
+            .copy_from_slice(&self.ep_rewards()[..keep]);
+        self.arena = next_arena;
+        self.regions = next_regs;
+        self.ep_len = keep;
+    }
+
     #[inline]
     pub(super) fn split_reinforce_buffers_mut(&mut self) -> ReinforceMutSlices<'_> {
         let len = self.ep_len;
         let regs = self.regions;
         let mut cursor = self.arena.raw_cursor();
-        let _states = cursor.region_mut(regs.states);
-        let q_table = cursor.region_mut(regs.q_table);
         let theta_logits = cursor.region_mut(regs.theta_logits);
         let state_values = cursor.region_mut(regs.state_values);
+        let pg_delta_buf = cursor.region_mut(regs.pg_delta_buf);
+        let critic_delta_buf = cursor.region_mut(regs.critic_delta_buf);
         let ep_states = &cursor.region_mut(regs.ep_states)[..len];
         let ep_actions = &cursor.region_mut(regs.ep_actions)[..len];
         let ep_rewards = &cursor.region_mut(regs.ep_rewards)[..len];
         (
-            q_table,
             theta_logits,
             state_values,
+            pg_delta_buf,
+            critic_delta_buf,
             ep_states,
             ep_actions,
             ep_rewards,
@@ -259,6 +305,12 @@ impl DenseRlWorkspace {
         self.q_table_mut().fill([0.0; 4]);
         self.theta_logits_mut().fill([0.0; 4]);
         self.state_values_mut().fill(0.0);
+        self.arena
+            .region_slice_mut(self.regions.pg_delta_buf)
+            .fill([0.0; 4]);
+        self.arena
+            .region_slice_mut(self.regions.critic_delta_buf)
+            .fill(0.0);
         self.ep_len = 0;
         self.current_state = start;
         self.episode_steps = 0;
@@ -358,9 +410,13 @@ impl DenseRlWorkspace {
     pub fn resize_and_clear(&mut self, width: usize, height: usize) {
         let w = width.clamp(MIN_RL_GRID_DIM as usize, MAX_RL_GRID_DIM as usize);
         let h = height.clamp(MIN_RL_GRID_DIM as usize, MAX_RL_GRID_DIM as usize);
-        if w != self.width || h != self.height {
+        let cap = self.max_episode_steps.max(4);
+        if w != self.width
+            || h != self.height
+            || cap > self.arena.region_slice(self.regions.ep_states).len()
+        {
             let seed_next = self.rng.next_u64();
-            *self = Self::new(w, h, self.max_episode_steps, Some(seed_next));
+            *self = Self::new(w, h, cap, Some(seed_next));
         } else {
             self.reset_learning(GridState { x: 0, y: 0 });
         }

@@ -180,32 +180,112 @@ fn finalize_episode_if_done(
     }
 }
 
-fn flush_reinforce_episode_in_place(ws: &mut DenseRlWorkspace, gamma: f64, lr: f64) {
+#[inline]
+fn apply_reinforce_deltas(
+    ep_states: &[usize],
+    state_values: &mut [f64],
+    theta_logits: &mut [[f64; 4]],
+    pg_delta_buf: &mut [[f64; 4]],
+    critic_delta_buf: &mut [f64],
+) {
+    let state_count = state_values.len();
+    for &s_idx in ep_states {
+        if s_idx >= state_count {
+            continue;
+        }
+        let c_delta = critic_delta_buf[s_idx];
+        let pg_delta = pg_delta_buf[s_idx];
+        if c_delta != 0.0 || pg_delta != [0.0; 4] {
+            state_values[s_idx] += c_delta;
+            critic_delta_buf[s_idx] = 0.0;
+            for (logit, &d) in theta_logits[s_idx].iter_mut().zip(pg_delta.iter()) {
+                *logit = (*logit + d).clamp(-20.0, 20.0);
+            }
+            pg_delta_buf[s_idx] = [0.0; 4];
+        }
+    }
+}
+
+/// Flushes a buffered episode trajectory using batch discounted `REINFORCE` with baseline
+/// (Williams, 1992; Sutton & Barto, 2018) and partial-episode timeout bootstrapping
+/// `bootstrap_value` ($0$ on true terminal states, $V(s_T)$ on step-limit truncation per Pardo et al., 2018).
+///
+/// Accumulates all $\gamma^t$-weighted policy and critic updates against frozen pre-flush parameters
+/// before mutating `theta_logits` or `state_values`, and leaves `ws.q_table()` untouched.
+/// Returns the final-step advantage $A_{T-1} = \operatorname{clamp}(G_{T-1} - V(s_{T-1}), -25, 25)$.
+#[verified_engine::verified]
+pub fn flush_reinforce_episode_in_place(
+    ws: &mut DenseRlWorkspace,
+    gamma: f64,
+    lr: f64,
+    bootstrap_value: f64,
+) -> f64 {
     let len = ws.ep_len();
     if len == 0 {
-        return;
+        return 0.0;
     }
-    let critic_lr = (lr * 0.5).clamp(0.01, 0.5);
-    let (q_table, theta_logits, state_values, ep_states, ep_actions, ep_rewards) =
-        ws.split_reinforce_buffers_mut();
-    let mut g_t = 0.0_f64;
+    let safe_gamma = if gamma.is_finite() {
+        gamma.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let safe_lr = if lr.is_finite() {
+        lr.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    let critic_lr = (safe_lr * 0.5).clamp(0.0, 0.5);
+    let mut g_t = if bootstrap_value.is_finite() {
+        bootstrap_value
+    } else {
+        0.0
+    };
+    let mut final_step_advantage = 0.0_f64;
+    let (
+        theta_logits,
+        state_values,
+        pg_delta_buf,
+        critic_delta_buf,
+        ep_states,
+        ep_actions,
+        ep_rewards,
+    ) = ws.split_reinforce_buffers_mut();
+    let state_count = state_values.len();
+
     for t in (0..len).rev() {
         let s_idx = ep_states[t];
         let a_idx = ep_actions[t] & 3;
-        g_t = ep_rewards[t] + gamma * g_t;
-        let baseline = state_values[s_idx];
-        let advantage = (g_t - baseline).clamp(-25.0, 25.0);
-        state_values[s_idx] = baseline + critic_lr * (g_t - baseline);
+        g_t = ep_rewards[t] + safe_gamma * g_t;
+        if s_idx >= state_count {
+            continue;
+        }
+        let raw_delta = g_t - state_values[s_idx];
+        let advantage = raw_delta.clamp(-25.0, 25.0);
+        if t + 1 == len {
+            final_step_advantage = advantage;
+        }
+        let discount_t = if t == 0 {
+            1.0
+        } else {
+            safe_gamma.powi(t as i32)
+        };
         let probs = softmax_action_probs(theta_logits[s_idx]);
         for (k, &prob) in probs.iter().enumerate() {
-            let indicator = if k == a_idx { 1.0 } else { 0.0 };
-            let grad = indicator - prob;
-            theta_logits[s_idx][k] =
-                (theta_logits[s_idx][k] + lr * advantage * grad).clamp(-20.0, 20.0);
-            q_table[s_idx][k] = state_values[s_idx] + 0.25 * theta_logits[s_idx][k];
+            let grad = if k == a_idx { 1.0 - prob } else { -prob };
+            pg_delta_buf[s_idx][k] += safe_lr * discount_t * advantage * grad;
         }
+        critic_delta_buf[s_idx] += critic_lr * raw_delta;
     }
+
+    apply_reinforce_deltas(
+        ep_states,
+        state_values,
+        theta_logits,
+        pg_delta_buf,
+        critic_delta_buf,
+    );
     ws.clear_episode_trajectory();
+    final_step_advantage
 }
 
 /// Advances one zero-allocation REINFORCE softmax policy-gradient step using [`DenseRlWorkspace`].
@@ -248,7 +328,7 @@ pub fn step_softmax_pg_into(
     ws.episode_return += reward;
     let episode_finished = next_terminal || ws.episode_steps >= ws.max_episode_steps;
     if episode_finished {
-        flush_reinforce_episode_in_place(ws, gamma, learning_rate.value());
+        let _ = flush_reinforce_episode_in_place(ws, gamma, learning_rate.value(), next_val);
     }
     let completed_episode_return = finalize_episode_if_done(mdp, ws, episode_finished);
 

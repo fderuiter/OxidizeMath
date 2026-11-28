@@ -232,7 +232,7 @@ fn certify_cera_conv() -> Result<SolverCertificate, String> {
         kernel: DMatrix::from_element(1, 1, 0.0_f32),
         bias: DVector::from_element(1, 0.0_f32),
     };
-    let mut sgd = SGD::new(0.15_f32);
+    let mut sgd = SGD::new(0.01_f32);
     let x_in = DMatrix::from_column_slice(4, 1, &[-1.0_f32, -0.5, 0.5, 1.0]);
     let y_true = DMatrix::from_column_slice(4, 1, &[0.5_f32, 1.5, 3.5, 4.5]);
     let mut step_losses = [0.0_f64; 3];

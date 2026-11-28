@@ -15,9 +15,7 @@ use crate::framework::{
     SpatialBrushKit,
 };
 use eframe::egui;
-use math_commons::math_kernel::types::flatten_2d_index;
-use math_explorer::ai::reinforcement_learning::grid_world::{GridState, Move};
-use math_explorer::ai::reinforcement_learning::{move_to_index, DenseRlWorkspace, SculptedGridMdp};
+use math_explorer::ai::reinforcement_learning::{DenseRlWorkspace, SculptedGridMdp};
 
 #[path = "q_table_inspector/canvas.rs"]
 mod canvas;
@@ -139,15 +137,34 @@ impl QTableInspectorTool {
     }
 
     fn refresh_snapshot_bellman(&mut self) {
-        let (w, h) = (self.mdp.width as usize, self.mdp.height as usize);
-        let mut temp_ws = DenseRlWorkspace::new(w, h, 100, None);
+        let step_budget = episode_step_budget(&self.mdp);
+        let mut temp_ws = DenseRlWorkspace::new(
+            self.mdp.width as usize,
+            self.mdp.height as usize,
+            step_budget,
+            None,
+        );
         if self.latest_snap.q_table.len() == temp_ws.q_table().len() {
             temp_ws
                 .q_table_mut()
                 .copy_from_slice(&self.latest_snap.q_table);
+            if self.latest_snap.theta_logits.len() == temp_ws.theta_logits().len() {
+                temp_ws
+                    .theta_logits_mut()
+                    .copy_from_slice(&self.latest_snap.theta_logits);
+            }
             temp_ws
                 .state_values_mut()
                 .copy_from_slice(&self.latest_snap.state_values);
+            temp_ws.sync_topology(&self.mdp);
+            self.latest_snap.q_table = temp_ws.q_table().to_vec();
+            self.latest_snap.theta_logits = temp_ws.theta_logits().to_vec();
+            self.latest_snap.state_values = temp_ws.state_values().to_vec();
+        } else {
+            self.latest_snap.q_table = temp_ws.q_table().to_vec();
+            self.latest_snap.theta_logits = temp_ws.theta_logits().to_vec();
+            self.latest_snap.state_values = temp_ws.state_values().to_vec();
+            self.latest_snap.greedy_actions = vec![None; temp_ws.q_table().len()];
         }
         self.latest_snap.mdp = self.mdp.clone();
         self.latest_snap.solver_mode = self.solver_mode;
@@ -173,13 +190,19 @@ impl QTableInspectorTool {
         let _ = self
             .worker
             .send_command(SimCommand::SyncSculptState(payload));
-        let ws =
-            DenseRlWorkspace::new(self.mdp.width as usize, self.mdp.height as usize, 100, None);
+        let step_budget = episode_step_budget(&self.mdp);
+        let ws = DenseRlWorkspace::new(
+            self.mdp.width as usize,
+            self.mdp.height as usize,
+            step_budget,
+            None,
+        );
         self.latest_snap = QTableSnapshot {
             episodes_trained: 0,
             mdp: self.mdp.clone(),
             solver_mode: self.solver_mode,
             q_table: ws.q_table().to_vec(),
+            theta_logits: ws.theta_logits().to_vec(),
             state_values: ws.state_values().to_vec(),
             greedy_actions: vec![None; ws.q_table().len()],
             bellman: solve_bellman_with_policy(&self.mdp, &ws, self.solver_mode),
@@ -195,7 +218,8 @@ impl QTableInspectorTool {
         let _ = self
             .worker
             .send_command(SimCommand::TrainEpisodes(episodes as usize));
-        for _ in 0..200 {
+        let start = crate::web_io::PlatformInstant::now();
+        while start.elapsed() < std::time::Duration::from_secs(60) {
             let parts = self.worker.update().map(extract_snapshot_parts);
             if let Some((audio, data)) = parts {
                 self.apply_snapshot_parts(audio, data);
@@ -203,60 +227,11 @@ impl QTableInspectorTool {
                     break;
                 }
             }
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
-    }
-
-    pub(super) fn get_q(&self, state: &GridState, action: &Move) -> f64 {
-        if !self.mdp.in_bounds(*state) {
-            return 0.0;
-        }
-        let idx = flatten_2d_index(state.x as usize, state.y as usize, self.mdp.width as usize);
-        self.latest_snap
-            .q_table
-            .get(idx)
-            .map_or(0.0, |row| row[move_to_index(*action)])
-    }
-
-    pub(super) fn get_q_value_for_view(&self, state: &GridState) -> f64 {
-        if !self.mdp.in_bounds(*state) {
-            return 0.0;
-        }
-        let idx = flatten_2d_index(state.x as usize, state.y as usize, self.mdp.width as usize);
-        match self.view {
-            HeatmapView::MaxQ => match self.solver_mode {
-                RlSolverMode::TabularQ => self.latest_snap.q_table.get(idx).map_or(0.0, |row| {
-                    row.iter().copied().fold(0.0_f64.min(row[0]), f64::max)
-                }),
-                RlSolverMode::PolicyGradient => self
-                    .latest_snap
-                    .state_values
-                    .get(idx)
-                    .copied()
-                    .unwrap_or(0.0),
-            },
-            HeatmapView::Up => self.get_q(state, &Move::Up),
-            HeatmapView::Down => self.get_q(state, &Move::Down),
-            HeatmapView::Left => self.get_q(state, &Move::Left),
-            HeatmapView::Right => self.get_q(state, &Move::Right),
-            HeatmapView::BellmanVStar => self.latest_snap.bellman.v_star_at(*state),
-            HeatmapView::PolicyVPi => self.latest_snap.bellman.v_pi_at(*state),
-            HeatmapView::BellmanResidual => {
-                let emp = match self.solver_mode {
-                    RlSolverMode::TabularQ => self
-                        .latest_snap
-                        .q_table
-                        .get(idx)
-                        .map_or(0.0, |row| row.iter().copied().fold(row[0], f64::max)),
-                    RlSolverMode::PolicyGradient => self
-                        .latest_snap
-                        .state_values
-                        .get(idx)
-                        .copied()
-                        .unwrap_or(0.0),
-                };
-                (emp - self.latest_snap.bellman.v_star_at(*state)).abs()
+            if self.worker.state().is_faulted() || self.worker.state().is_terminated() {
+                break;
             }
+            #[cfg(not(target_arch = "wasm32"))]
+            std::thread::sleep(std::time::Duration::from_millis(5));
         }
     }
 
@@ -376,22 +351,7 @@ impl QTableInspectorTool {
     }
 }
 
-fn lerp_q_channel(a: u8, b: u8, t: f64) -> u8 {
-    (f64::from(a) + (f64::from(b) - f64::from(a)) * t.clamp(0.0, 1.0)).round() as u8
-}
-
-pub(crate) fn q_value_cell_color(
-    normalized: f64,
-    palette: &crate::app::SemanticPalette,
-) -> egui::Color32 {
-    let low = palette.axis_z;
-    let high = palette.accent;
-    egui::Color32::from_rgb(
-        lerp_q_channel(low.r(), high.r(), normalized),
-        lerp_q_channel(low.g(), high.g(), normalized),
-        lerp_q_channel(low.b(), high.b(), normalized),
-    )
-}
+pub(crate) use canvas::q_value_cell_color;
 
 impl InteractiveTool for QTableInspectorTool {
     fn theory(&self) -> &dyn scientific_metadata::theory::TheoryDescribable {

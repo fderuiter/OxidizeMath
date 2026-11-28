@@ -46,9 +46,8 @@ fn test_autoencoder_gradient_finite_difference() {
     let mut opt = SGD::new(lr);
     model.backward_update(&x, &loss_grad, &mut opt).unwrap();
 
-    let effective_lr = 0.01;
-    let analytical_grad_enc0_k = (&init_enc_k[0] - &model.encoder.layers[0].kernel) / effective_lr;
-    let analytical_grad_dec2_k = (&init_dec_k[2] - &model.decoder.layers[2].kernel) / effective_lr;
+    let analytical_grad_enc0_k = (&init_enc_k[0] - &model.encoder.layers[0].kernel) / lr;
+    let analytical_grad_dec2_k = (&init_dec_k[2] - &model.decoder.layers[2].kernel) / lr;
 
     // Restore model weights to initial state
     for i in 0..3 {
@@ -156,4 +155,41 @@ fn test_conv_layer_edge_cases() {
     assert!(res_nan.is_ok());
     assert_eq!(layer.kernel, initial_kernel);
     assert_eq!(layer.bias, initial_bias);
+}
+
+#[test]
+#[verified_engine::verified]
+fn test_autoencoder_and_predictor_distinct_layer_streams() {
+    use domain_climate::climate::predictor::Predictor;
+
+    let ae = Autoencoder::new(2, 3);
+    // Encoder layer 1 (64 -> 64) and Decoder layer 1 (64 -> 64) have identical shapes
+    // and must receive independent RNG streams.
+    assert_ne!(ae.encoder.layers[1].kernel, ae.decoder.layers[1].kernel);
+    assert_ne!(ae.encoder.layers[1].bias, ae.decoder.layers[1].bias);
+
+    let sym_ae = Autoencoder::new(64, 64);
+    for i in 0..3 {
+        for j in (i + 1)..3 {
+            assert_ne!(
+                sym_ae.encoder.layers[i].kernel,
+                sym_ae.encoder.layers[j].kernel
+            );
+            assert_ne!(
+                sym_ae.decoder.layers[i].kernel,
+                sym_ae.decoder.layers[j].kernel
+            );
+        }
+        assert_ne!(
+            sym_ae.encoder.layers[i].kernel,
+            sym_ae.decoder.layers[i].kernel
+        );
+    }
+
+    let pred = Predictor::new(128, 128);
+    for i in 0..5 {
+        for j in (i + 1)..5 {
+            assert_ne!(pred.layers[i].kernel, pred.layers[j].kernel);
+        }
+    }
 }

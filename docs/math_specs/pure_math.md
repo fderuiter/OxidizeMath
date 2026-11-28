@@ -69,5 +69,5 @@ let mut sgd = SGD::new(0.1_f64);
 let mut theta = DVector::from_vec(vec![2.0, -4.0]);
 let grad = DVector::from_vec(vec![4.0, -8.0]);
 sgd.update_vector(0, &mut theta, &grad).unwrap();
-assert!((theta[0] - 1.96).abs() < 1e-12);
+assert!((theta[0] - 1.6).abs() < 1e-12);
 ```
