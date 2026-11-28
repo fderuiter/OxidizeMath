@@ -184,7 +184,10 @@ fn crate_touches_wasm32_sources(
     if !krate.is_web {
         return false;
     }
-    if krate.package_name == "math_explorer_gui" {
+    if matches!(
+        krate.package_name.as_str(),
+        "math_explorer_gui" | "oxidize_wasm"
+    ) {
         return true;
     }
     let manifest = format!("{}/Cargo.toml", krate.dir);

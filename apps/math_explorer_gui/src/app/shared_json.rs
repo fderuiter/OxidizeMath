@@ -1,4 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 //! Reference-counted immutable JSON string for zero-copy workspace state snapshots.
 
 use std::borrow::Borrow;

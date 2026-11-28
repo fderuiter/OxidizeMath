@@ -1,7 +1,5 @@
 //! Seeded point-cloud shape generators and starter gallery presets for the Vietoris-Rips TDA workbench.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use math_explorer::pure_math::statistics::tda::core::Point2D;
 use math_explorer::pure_math::statistics::tda::MAX_TDA_POINTS;
 use rand::Rng;

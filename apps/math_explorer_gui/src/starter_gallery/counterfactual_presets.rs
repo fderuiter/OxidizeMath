@@ -1,7 +1,5 @@
 //! Starter counterfactual shadow twin preset payloads for the four pilot simulation tools.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 /// JSON preset envelope for Lorenz Butterfly Perturbation (`AttractorPlotter`).
 pub const PRESET_LORENZ_BUTTERFLY_PERTURBATION: &str = r#"{
   "metadata": {

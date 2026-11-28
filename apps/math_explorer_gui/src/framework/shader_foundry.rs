@@ -68,7 +68,15 @@ impl ShaderPreviewState {
     }
 }
 
+#[path = "shader_foundry_compute.rs"]
+mod compute;
+
 pub use super::shader_params::{bind_complex_shader_params, validate_complex_shader_vars};
+pub use compute::{
+    emit_monte_carlo_compute_wgsl, emit_ode_rollout_compute_wgsl, emit_pde_stencil_compute_wgsl,
+    emit_quantum_wave_compute_wgsl, MonteCarloComputeSpec, MonteCarloPayoffKind,
+    OdeRolloutComputeSpec, PdeComputeKinetics, PdeStencilComputeSpec, QuantumWaveComputeSpec,
+};
 
 struct FormattedDefaults {
     res_w: String,

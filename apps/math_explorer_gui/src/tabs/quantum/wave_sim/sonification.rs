@@ -50,6 +50,45 @@ impl WaveSimulatorTool {
         }
         out
     }
+
+    pub(super) fn build_wave_compute_wgsl(&self) -> Result<String, String> {
+        use super::presets::{WavePotentialPreset, GRID_POINTS, GRID_X_MAX, GRID_X_MIN};
+        use crate::framework::shader_foundry::{
+            emit_quantum_wave_compute_wgsl, QuantumWaveComputeSpec,
+        };
+        use math_commons::ast::{parse_equation, Expr};
+        let owned_expr: Option<Expr> = match self.preset {
+            WavePotentialPreset::InfiniteWell => parse_equation("0.0").ok().map(|(_, e)| e),
+            WavePotentialPreset::HarmonicOscillator => {
+                parse_equation("0.5 * x^2").ok().map(|(_, e)| e)
+            }
+            _ => None,
+        };
+        let mut params = Vec::new();
+        let potential_expr = match self.preset {
+            WavePotentialPreset::InfiniteWell | WavePotentialPreset::HarmonicOscillator => {
+                owned_expr.as_ref()
+            }
+            WavePotentialPreset::RectangularBarrier | WavePotentialPreset::DoubleBarrier => None,
+            WavePotentialPreset::Custom => {
+                for (name, val) in self.math_input.params_map() {
+                    if !matches!(name.as_str(), "x" | "v0" | "width") {
+                        params.push((name, val));
+                    }
+                }
+                Some(self.math_input.expr().unwrap_or(&self.last_valid_expr))
+            }
+        };
+        emit_quantum_wave_compute_wgsl(&QuantumWaveComputeSpec {
+            grid_points: GRID_POINTS as u32,
+            domain: [GRID_X_MIN, GRID_X_MAX],
+            dt: self.dt,
+            v0: self.v0,
+            width: self.width,
+            potential_expr,
+            params,
+        })
+    }
 }
 
 #[cfg(test)]

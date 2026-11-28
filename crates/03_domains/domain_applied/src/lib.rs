@@ -3,6 +3,9 @@ pub mod applied;
 /// Domain-specific error types and diagnostic implementations for applied models.
 pub mod error;
 
+#[cfg(test)]
+pub(crate) static VERIFIED_ENGINE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Hidden facade re-exporting workspace modules under `math_explorer` for doctests.
 #[doc(hidden)]
 pub mod __doctest_facade {

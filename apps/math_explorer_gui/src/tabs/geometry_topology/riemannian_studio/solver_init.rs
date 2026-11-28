@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Initial condition builders and analytical chart verification helpers for [`super::solver::RiemannianSimulationEngine`].
 
 use super::mesh_gen::ManifoldGeometry;
@@ -159,3 +157,5 @@ pub(super) fn build_cortical_sheet(
     }
     runner
 }
+
+// [cite:graph_parameters_rust]

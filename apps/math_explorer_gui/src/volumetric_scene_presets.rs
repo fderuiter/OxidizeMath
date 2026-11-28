@@ -1,4 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 //! Shared dynamic volumetric `Scene` builders for `QuantumTab`, `AiTab`, and `MorphogenesisTab`.
 // [cite:gaussian_splatting]
 // [cite:quantum_mechanics]

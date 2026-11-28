@@ -1,8 +1,6 @@
 //! Preset configuration models and validation routines for `MarkovSequenceWorkbenchTool`.
 // [cite:clinical_trials_statistics]
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use serde::{Deserialize, Serialize};
 
 /// Maximum number of states permitted in interactive Markov presets.

@@ -39,6 +39,7 @@ impl Error {
             Self::Fractran(err) => Some(err),
             Self::Glicko2(err) => Some(err),
             Self::GraphTheory(err) => Some(err),
+            Self::Wardrop(err) => Some(err),
             Self::Hyperbolic(err) => Some(err),
             Self::Kelly(err) => Some(err),
             Self::Knot(err) => Some(err),

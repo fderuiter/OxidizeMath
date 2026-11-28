@@ -2,7 +2,6 @@
 // [cite:pharmacokinetics]
 //! Zero-allocation receding-horizon projected `MPC` controller (`MpcController`) for `PkPlantTwin`.
 
-use super::super::ekf::{pk_rhs_and_jac, rk4_step_with_jacobian, FastEkf};
 use super::super::state::{ClosedLoopState, PlantKind};
 use engine_opt::ilqr::ControlModel;
 use engine_opt::mpc::{
@@ -10,6 +9,7 @@ use engine_opt::mpc::{
 };
 use engine_opt::{OptError, ScalarWorkspace};
 use math_commons::math_kernel::types::flatten_2d_index;
+use math_explorer::applied::algorithms::kalman::{pk_rhs_and_jac, rk4_step_with_jacobian, FastEkf};
 
 /// Receding prediction horizon $N = 12$ steps (`6.0 h` at $\Delta t = 0.5\text{ h}$) for ADME `MPC`.
 pub const MPC_PK_HORIZON: usize = 12;

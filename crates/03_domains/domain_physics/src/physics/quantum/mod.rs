@@ -79,6 +79,8 @@ pub mod fourier;
 /// 1D finite-difference Hamiltonian builders and Gaussian wavepacket initializers.
 pub mod hamiltonian;
 pub mod hydrogenic;
+/// Zero-allocation 1D tridiagonal tight-binding lattice scattering recurrence and resonance evaluators.
+pub mod lattice_scattering;
 pub mod scattering;
 pub mod schrodinger;
 /// Spin-$1/2$ Pauli matrices ($\sigma_x, \sigma_y, \sigma_z$) and Bloch-sphere state constructors.
@@ -98,6 +100,12 @@ pub use hamiltonian::{
 pub use hydrogenic::{
     HydrogenicSuperposition3D, OrbitalQuantumNumbers, QuantumError, QuantumFieldObservable,
     hydrogenic_energy_au, hydrogenic_orbital_cartesian, hydrogenic_radial_wavefunction,
+};
+pub use lattice_scattering::{
+    DEFAULT_PIXEL_K_SUPERSAMPLES, LatticePotentialKind, ROUNDING_K_MICRO_DELTA,
+    classify_lattice_scattering_regime, compute_lattice_steady_transmission_from_slice,
+    exact_single_k_lattice_transmission, populate_lattice_potential_into,
+    supersampled_lattice_transmission,
 };
 pub use scattering::{
     TransferMatrix2x2, compiled_barrier_transmission, compiled_barrier_transmission_with_overrides,

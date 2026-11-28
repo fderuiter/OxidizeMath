@@ -1,8 +1,6 @@
 // [cite:modular_polynomials_review]
 //! Coupled Laplace-Beltrami Turing solver, 3D pulse brush, and `FiniteStateGuard` rollback engine.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::{
     MorphogenesisKineticsKind, PulseBrushAction, SurfaceMorphogenesisTool, SurfaceOverlayMode,
 };

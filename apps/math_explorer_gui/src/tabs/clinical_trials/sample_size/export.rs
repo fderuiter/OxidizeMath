@@ -1,7 +1,5 @@
 //! Protocol sample-size sizing table `.csv`/`.md` formatters and plot dataset exporters.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::{CalculationMode, SampleSizeCalculatorTool};
 use std::fmt::Write as _;
 

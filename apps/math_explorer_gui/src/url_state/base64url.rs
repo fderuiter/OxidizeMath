@@ -1,7 +1,5 @@
 //! Pure-Rust RFC 4648 §5 URL-safe unpadded Base64 (`base64url`) encoder and strict decoder.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 /// Encodes arbitrary bytes as unpadded URL-safe Base64 (RFC 4648 §5).

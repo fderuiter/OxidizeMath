@@ -6,8 +6,14 @@
 pub mod atlas;
 #[path = "auction/challenge.rs"]
 pub mod challenge;
-#[path = "auction/math.rs"]
-pub mod math;
+/// Re-exported verified mechanism-design quadrature and Bayes-Nash evaluators.
+pub mod math {
+    pub use super::presets::AuctionPlotView;
+    pub use math_explorer::applied::game_theory::mechanism_design::{
+        AuctionDistEval, AuctionDistributionKind, AuctionEvalInputs, AuctionEvalWorkspace,
+        AuctionRuleMode, AuctionSummaryMetrics,
+    };
+}
 #[path = "auction/presets.rs"]
 mod presets;
 #[path = "auction/ui.rs"]

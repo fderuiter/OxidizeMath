@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 pub(super) const STARTER_PRESET_JSON: &str = r#"{
   "metadata": {
     "schema_version": "1.0",
@@ -76,3 +74,5 @@ inventory::submit! {
         preset_generator: || CUSTOM_RIPPLE_MANIFOLD_PRESET_JSON,
     }
 }
+
+// [cite:graph_parameters_rust]

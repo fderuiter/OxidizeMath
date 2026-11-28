@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 #[cfg(not(target_arch = "wasm32"))]
 use oxidize_core::vfs::VirtualFileSystem;
 #[cfg(not(target_arch = "wasm32"))]
@@ -9,6 +7,7 @@ use std::path::{Path, PathBuf};
 #[cfg(not(target_arch = "wasm32"))]
 use std::pin::Pin;
 
+#[verified_engine::verified]
 pub(super) fn has_traversal_sequence(raw: &str) -> bool {
     raw.contains('\0')
         || raw.split(['/', '\\']).any(|seg| seg == "..")
@@ -270,9 +269,12 @@ impl VirtualFileSystem for RootedVfs {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+/// Workspace crates outside the GUI's dependency closure, which the build-time snapshot
+/// (`build_snapshot.rs`) never scans. `oxidize_wasm` is the standalone npm SDK.
 const HOST_ONLY_WORKSPACE_CRATES: &[&str] = &[
     "markdown_tests",
     "math_explorer",
+    "oxidize_wasm",
     "scientific_verification",
     "unified_verification",
     "verified_engine",

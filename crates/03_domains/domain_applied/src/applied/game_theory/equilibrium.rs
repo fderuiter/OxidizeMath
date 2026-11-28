@@ -1,7 +1,12 @@
 use crate::error::GameTheoryError;
 use nalgebra::DVector;
 
+/// Unified Braess Wardrop Frank-Wolfe and Smith route-switching congestion solvers.
+#[path = "equilibrium_braess.rs"]
+pub mod braess;
 mod nash_solvers;
+
+pub use braess::*;
 pub use engine_opt::nash::{BimatrixNashStats, PolymatrixConfig, PolymatrixNashStats};
 pub use nash_solvers::{
     BimatrixBestResponse, bimatrix_nash_workspace_len, polymatrix_nash_workspace_len,

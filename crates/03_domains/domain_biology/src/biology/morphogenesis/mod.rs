@@ -66,6 +66,8 @@
 //! ```
 
 pub mod advection;
+/// Zero-allocation Schnakenberg and Gray-Scott Turing dispersion, fold, and Euler CFL classifiers.
+pub mod dispersion;
 /// Local N-species autocatalytic reaction kinetics (Schnakenberg and Gray-Scott).
 pub mod reaction;
 /// Fused forward-Euler and generic ODE-adapter Turing time-stepping strategies.
@@ -78,6 +80,13 @@ pub mod state;
 use crate::biology::diffusion::{FiniteDifference1D, SpatialDiffusion};
 use pure_math::pure_math::analysis::ode::{OdeSystem, TimeStepper};
 
+pub use dispersion::{
+    DispersionCell, GrayScottMinimapRegime, GrayScottRegime, MorphogenesisRegime,
+    SchnakenbergRegime, WASHOUT_VARIANCE_THRESHOLD, classify_gray_scott,
+    classify_gray_scott_dispersion, classify_schnakenberg, classify_schnakenberg_dispersion,
+    gray_scott_fold_k, gray_scott_hopf_f, grid_u_variance, is_gray_scott_pattern_viable,
+    is_gray_scott_v_washed_out, is_pattern_forming_regime, mode_growth_and_euler_amp,
+};
 pub use reaction::{GrayScottKinetics, ReactionKinetics, SchnakenbergKinetics};
 pub use solvers::{FusedEulerSolver, StandardSolverAdapter, TuringDynamics, TuringSolverStrategy};
 pub use spatial_reaction::SpatialSchnakenbergKinetics;

@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Synthetic 3D T1 MRI volume generator, Potts MRF gray-matter posterior sampler,
 //! and multi-subject general linear model (GLM) cohort contrast evaluator.
 
@@ -210,3 +208,5 @@ pub(crate) fn evaluate_cohort_glm(
     }
     (t_map, peak_abs, None)
 }
+
+// [cite:freesurfer]

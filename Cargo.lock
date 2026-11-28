@@ -1157,6 +1157,7 @@ dependencies = [
  "proptest",
  "pure_math",
  "rand 0.8.8",
+ "serde",
  "statrs",
  "thiserror 2.0.21",
  "verified_engine",
@@ -2574,6 +2575,7 @@ dependencies = [
  "math_scalars",
  "nalgebra 0.34.2",
  "oxidize_core",
+ "oxidize_wasm",
  "oxidizemath",
  "pure_math",
  "scientific_metadata",
@@ -3380,6 +3382,23 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-bindgen-test",
  "web-sys",
+]
+
+[[package]]
+name = "oxidize_wasm"
+version = "0.4.0"
+dependencies = [
+ "approx",
+ "engine_diffeq",
+ "engine_linalg",
+ "engine_pde",
+ "js-sys",
+ "math_commons",
+ "math_diagnostics",
+ "math_scalars",
+ "thiserror 2.0.21",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
 ]
 
 [[package]]

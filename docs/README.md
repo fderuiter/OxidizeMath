@@ -6,7 +6,7 @@ Welcome to the OxidizeMath documentation directory.
 
 The [Architecture Guide Suite](architecture/README.md) provides centralized blueprints, diagrams, and developer walkthroughs:
 
-- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 31 crates.
+- **[System Overview & Crate Topology](architecture/system_overview.md)**: Architectural layers, crate dependency graphs, and catalog across all 32 crates.
 - **[CERA Framework Guide](architecture/cera_framework.md)**: Climate-invariant Encoding through Representation Alignment and climate modeling pipelines.
 - **[Zero-Allocation Runtime Guide](architecture/zero_allocation_runtime.md)**: NASA Power of 10 Rule 3 enforcement, `VerifiedAllocator`, and verified engine execution rules.
 - **[Interactive Tool Walkthrough](architecture/interactive_tool_walkthrough.md)**: Step-by-step developer guide to implement interactive simulations with `InteractiveTool`.
@@ -151,7 +151,9 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261126: Preserve Causal Root Diagnostic Metadata, Wire `math_rng` Diagnostics, and Decouple `std` `diagnostics` from Domain Crates](adr/20261126-preserve-root-metadata-and-decouple-diagnostics.md)
 - [ADR 20261127: Dynamic `#![no_std]` Discovery, Bare-Metal `thumbv7em-none-eabihf` CI Gate, and Allocator-Free `OxidizeRng` Serde](adr/20261127-dynamic-no-std-bare-metal-ci-gate.md)
 - [ADR 20261127: Gate Mandatory Lake Builds, Scaled-Rational Lean 4 Proofs, and Certified Theorem Bindings](adr/20261127-gate-lake-builds-and-theorem-bindings.md)
+- [ADR 20261127: Standalone `oxidize_wasm` SDK, Off-Main-Thread Web Worker Runtime, and WebGPU `128^3` Volumetric Compute Foundry](adr/20261127-oxidize-wasm-sdk-worker-and-webgpu-compute.md)
 - [ADR 20261127: Reentrancy-Safe Allocator Trap, Portable Native CI Tests, and Non-Blocking Desktop Legs](adr/20261127-portable-native-ci-tests.md)
+- [ADR 20261127: Promote Standalone GUI Solvers into Domain Crates and Enforce Headless GUI Opt-Out Guards](adr/20261127-promote-gui-solvers-to-domain-crates.md)
 - [ADR 20261127: Tier 2 Shooting Control, Howard Policy Iteration, Mann Mean-Field Games, and Zero-Allocation Nash Equilibrium Solvers in `engine_opt`](adr/20261127-shooting-control-howard-dp-mann-mfg-nash-engine.md)
 
 ## Contributing

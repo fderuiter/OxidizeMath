@@ -1,7 +1,5 @@
 //! Zero-allocation composite `WinRatioAnalysis`, `BivariateWeibullModel` `PR(c)`, and `TTestIndependent` engine.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::cohort::{ComparatorKind, PairingMode, DEFAULT_PRC_SAMPLES, MAX_PRC_SAMPLES};
 use super::WinRatioTool;
 use math_commons::registry::TOLERANCE_FAST;
