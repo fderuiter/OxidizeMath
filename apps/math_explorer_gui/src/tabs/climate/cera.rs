@@ -1,3 +1,6 @@
+#[path = "cera_export.rs"]
+mod export;
+
 use crate::accessibility::AccessibleHoverText;
 use crate::framework::recovery::{DiagnosticReport, FiniteStateGuard, RecoveryAction};
 use crate::framework::InteractiveTool;
@@ -73,7 +76,7 @@ impl CeraTool {
         self.epochs_trained = 0;
     }
 
-    fn build_training_batches(&self) -> (DMatrix<f32>, DMatrix<f32>, DMatrix<f32>) {
+    pub(super) fn build_training_batches(&self) -> (DMatrix<f32>, DMatrix<f32>, DMatrix<f32>) {
         let mut rng = oxidize_core::rng::OxidizeRng::new(0x00CE_2A13_2026_0001);
         let rows = TRAIN_SAMPLES * self.num_levels;
         let levels = self.num_levels.max(1) as f32;
@@ -317,7 +320,31 @@ impl InteractiveTool for CeraTool {
         "climate"
     }
     fn export_capabilities(&self) -> crate::framework::ExportCapabilities {
-        crate::framework::ExportCapabilities::none()
+        crate::framework::ExportCapabilities::plot()
+    }
+    fn export_plot_primitives(&self) -> Vec<egui_plot::ExportPrimitive> {
+        self.build_cera_plot_primitives()
+    }
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_cera_export_tables()
+    }
+    fn step_simulation(&mut self) {
+        if !self.diverged {
+            self.train_epochs(1);
+        }
+    }
+    fn state_revision(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        self.in_channels.hash(&mut h);
+        self.latent_channels.hash(&mut h);
+        self.aligned_channels.hash(&mut h);
+        self.num_levels.hash(&mut h);
+        self.output_size.hash(&mut h);
+        self.epochs_trained.hash(&mut h);
+        self.loss_history.len().hash(&mut h);
+        self.diverged.hash(&mut h);
+        h.finish().max(1)
     }
     fn has_finite_parameters(&self) -> bool {
         FiniteStateGuard::is_finite_state(self)
@@ -405,40 +432,6 @@ inventory::submit! {
         domain: "climate",
         tags: &["cera", "climate", "earth mover", "autoencoder", "alignment"],
         build: || Box::new(CeraTool::default()),
-    }
-}
-
-impl scientific_metadata::theory::TheoryDescribable for CeraTool {
-    fn maturity_tier(&self) -> scientific_metadata::theory::MaturityTier {
-        scientific_metadata::theory::MaturityTier::Experimental
-    }
-    fn theory_description(&self) -> String {
-        format!(
-            "Climate-invariant Encoding through Representation Alignment (CERA) optimizing $L = (1 - \\lambda_{{\\text{{pred}}}} - \\lambda_{{\\text{{emd}}}}) L_{{\\text{{recon}}}} + \\lambda_{{\\text{{pred}}}} L_{{\\text{{pred}}}} + \\lambda_{{\\text{{emd}}}} \\text{{EMD}}(Z_c, Z_w)$ across {} input channels, {} latent ({} aligned) channels, and {} pressure levels.",
-            self.in_channels, self.latent_channels, self.aligned_channels, self.num_levels
-        )
-    }
-    fn phonetic_description(&self) -> String {
-        "Climate-invariant Encoding through Representation Alignment autoencoder and Earth Mover Distance alignment theory.".into()
-    }
-    fn theory_citation(&self) -> String {
-        "CERA: A Framework for Improved Generalization of Machine Learning Models to Changed Climates (Liu et al., 2025)".into()
-    }
-    fn available_descriptions(&self) -> std::collections::HashMap<String, String> {
-        let mut map = std::collections::HashMap::new();
-        map.insert(
-            "in_channels".into(),
-            "Number of atmospheric input variables per vertical level.".into(),
-        );
-        map.insert(
-            "latent_channels".into(),
-            "Total compressed autoencoder latent channels.".into(),
-        );
-        map.insert(
-            "aligned_channels".into(),
-            "Subset of latent channels aligned via Earth Mover's Distance.".into(),
-        );
-        map
     }
 }
 

@@ -12,6 +12,7 @@ pub mod brush;
 pub mod counterfactual;
 mod counterfactual_tool;
 mod dataflow;
+mod export;
 pub mod gray_scott_atlas;
 pub mod kinetics;
 #[cfg(test)]

@@ -30,6 +30,7 @@ impl GifFrameCursor {
             GifJobPayload::Raster { grids, .. } => grids.len(),
             GifJobPayload::Datasets { frames, .. } => frames.len(),
             GifJobPayload::ProgressivePrimitives { total_steps, .. } => *total_steps,
+            GifJobPayload::PrimitiveFrames { frames, .. } => frames.len(),
         };
         Self {
             payload,
@@ -73,6 +74,14 @@ impl GifFrameCursor {
                 *total_steps,
                 &self.options,
             ),
+            GifJobPayload::PrimitiveFrames { frames, bounds } => {
+                let frame = std::mem::take(&mut frames[idx]);
+                egui_plot::export_primitives::render_primitives_image_with_bounds(
+                    &frame,
+                    &self.options,
+                    *bounds,
+                )
+            }
         };
         Some(res)
     }

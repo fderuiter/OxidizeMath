@@ -216,11 +216,14 @@ jobs:
           RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
         run: cargo run -p unified_verification -- check-release-tag
 
-      - name: Check Unused Dependencies
-        uses: bnjbvr/cargo-machete@ac30a525c0a8d163a92d727b3ff079ee3f6ecb08 # v0.9.2
+      - name: Install cargo-machete
+        uses: ./.github/actions/ci-tool-cache
+        with:
+          tool: cargo-machete
+          version: "0.9.1"
 
-      - name: Clean up machete artifacts
-        run: rm -rf cargo-machete*
+      - name: Check Unused Dependencies
+        run: cargo machete
 
       - name: Install cargo-audit
         uses: ./.github/actions/ci-tool-cache

@@ -55,7 +55,8 @@ bytemuck = { version = "1.25.2", default-features = false, features = ["min_cons
 chrono = "0.4"
 console_error_panic_hook = "0.1.7"
 dashu = { version = "0.4.4", features = ["num-traits_v02"] }
-eframe = "0.33.3"
+eframe = { version = "0.33.3", default-features = false, features = ["accesskit", "glow", "web_screen_reader"] }
+epaint_default_fonts = "0.33.3"
 futures = "0.3"
 getrandom = { version = "0.2.17", features = ["js"] }
 inventory = "0.3.24"

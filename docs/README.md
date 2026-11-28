@@ -145,6 +145,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261125: CI Tool-Cache Subcommand Probing, Zero-Copy Plateau POI Dispatch, and Thread-Isolated Plot Test Hooks](adr/20261125-ci-llvm-cov-and-zero-copy-plateau-poi.md)
 - [ADR 20261125: Metadata-Driven Path Abstraction and Five-Tier Workspace Migration](adr/20261125-metadata-driven-tier-migration.md)
 - [ADR 20261126: Tier 0 `math_memory` ByteArena, Optional `alloc` Engines, and Arena-Backed Solver Workspaces](adr/20261126-bytemuck-byte-arena-and-solver-workspaces.md)
+- [ADR 20261126: Typed Export Adapters, Build-Time WASM TrueType Compaction, and CI Pipeline Hardening](adr/20261126-export-adapters-wasm-font-compaction-and-ci-hardening.md)
 - [ADR 20261126: Extract Tier 0 `math_scalars` Hierarchy and Tier 2 `engine_opt` Curve-Fitting Engine](adr/20261126-extract-math-scalars-and-engine-opt.md)
 - [ADR 20261126: Fix `math_rng` Probit Tail Inversion, `ln` Truncation, and Open-Unit `f32` Collapse](adr/20261126-fix-rng-tail-inversion-and-float-collapse.md)
 - [ADR 20261126: Preserve Causal Root Diagnostic Metadata, Wire `math_rng` Diagnostics, and Decouple `std` `diagnostics` from Domain Crates](adr/20261126-preserve-root-metadata-and-decouple-diagnostics.md)

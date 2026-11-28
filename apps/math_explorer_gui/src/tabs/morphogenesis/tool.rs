@@ -166,11 +166,11 @@ impl InteractiveTool for MorphogenesisTool {
     }
 
     fn export_capabilities(&self) -> ExportCapabilities {
-        if self.is_forked() {
-            ExportCapabilities::plot()
-        } else {
-            ExportCapabilities::raster_only()
-        }
+        ExportCapabilities::plot()
+    }
+
+    fn export_tables(&self) -> Vec<crate::framework::ExportTable> {
+        self.build_morphogenesis_export_tables()
     }
 
     fn export_datasets(&self) -> Vec<(String, Vec<[f64; 2]>)> {

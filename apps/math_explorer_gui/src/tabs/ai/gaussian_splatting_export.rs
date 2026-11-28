@@ -20,7 +20,7 @@ use super::scene::{
     GRAD_THRESHOLD_MIN, OPACITY_THRESHOLD_MAX, OPACITY_THRESHOLD_MIN, SPLAT_GRID_SIZE,
 };
 use super::GaussianSplattingTool;
-use crate::framework::{Camera3D, InteractiveTool};
+use crate::framework::{Camera3D, ExportCell, ExportTable, InteractiveTool};
 
 const fn default_grad_threshold() -> f64 {
     DEFAULT_GRAD_THRESHOLD
@@ -168,7 +168,7 @@ impl GaussianSplattingTool {
         export_primitives_svg(&prims, &opts)
     }
 
-    fn build_lensed_figure_primitives(&self) -> Vec<ExportPrimitive> {
+    pub(super) fn build_lensed_figure_primitives(&self) -> Vec<ExportPrimitive> {
         let dual_cap = self.scene.gaussians.len().saturating_mul(2).max(16);
         let mut projected = Vec::with_capacity(dual_cap);
         let mut rings = Vec::with_capacity(64);
@@ -301,4 +301,106 @@ impl GaussianSplattingTool {
         }
         Ok(csv)
     }
+
+    fn build_projected_splats_table(&self) -> ExportTable {
+        let dual_cap = self.scene.gaussians.len().saturating_mul(2).max(16);
+        let mut projected = Vec::with_capacity(dual_cap);
+        let (mut rings, mut rings_3d) = (Vec::new(), Vec::new());
+        let mut centers = Vec::with_capacity(dual_cap);
+        let telemetry = self.project_into(&mut projected, &mut rings, &mut rings_3d, &mut centers);
+        let mode_str = match self.lens.mode {
+            SplatLensMode::Off => "off",
+            SplatLensMode::Schwarzschild => "schwarzschild",
+            SplatLensMode::NfwCusp => "nfw_cusp",
+            SplatLensMode::BurkertCore => "burkert_core",
+        };
+        let (nfw_r, burk_r) = (
+            telemetry.nfw_critical_radius.unwrap_or(0.0),
+            telemetry.burkert_critical_radius.unwrap_or(0.0),
+        );
+        let splat_rows = projected
+            .iter()
+            .enumerate()
+            .map(|(idx, g)| {
+                vec![
+                    ExportCell::Int(idx as i64),
+                    ExportCell::Text(mode_str.to_string()),
+                    ExportCell::Float(g.mean.x),
+                    ExportCell::Float(g.mean.y),
+                    ExportCell::Float(g.depth),
+                    ExportCell::Float(g.opacity),
+                    ExportCell::Float(g.color.x),
+                    ExportCell::Float(g.color.y),
+                    ExportCell::Float(g.color.z),
+                    ExportCell::Float(g.conic[(0, 0)]),
+                    ExportCell::Float(g.conic[(0, 1)]),
+                    ExportCell::Float(g.conic[(1, 1)]),
+                    ExportCell::Float(telemetry.shadow_radius),
+                    ExportCell::Float(nfw_r),
+                    ExportCell::Float(burk_r),
+                ]
+            })
+            .collect();
+        let headers = [
+            "index",
+            "lens_mode",
+            "mean_x",
+            "mean_y",
+            "depth",
+            "opacity",
+            "color_r",
+            "color_g",
+            "color_b",
+            "conic_xx",
+            "conic_xy",
+            "conic_yy",
+            "shadow_radius",
+            "nfw_crit_r",
+            "burkert_crit_r",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        ExportTable::new("Projected Splats", headers, splat_rows)
+    }
+
+    pub(super) fn build_splat_export_tables(&self) -> Vec<ExportTable> {
+        let counts = evaluate_density_summary(self);
+        let summary_headers = [
+            "scale",
+            "grad_threshold",
+            "opacity_threshold",
+            "split_count",
+            "clone_count",
+            "keep_count",
+            "prune_count",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        let summary_table = ExportTable::new(
+            "Adaptive Density Summary",
+            summary_headers,
+            vec![vec![
+                ExportCell::Float(self.scale),
+                ExportCell::Float(self.grad_threshold),
+                ExportCell::Float(self.opacity_threshold),
+                ExportCell::Int(counts.split as i64),
+                ExportCell::Int(counts.clone as i64),
+                ExportCell::Int(counts.keep as i64),
+                ExportCell::Int(counts.prune as i64),
+            ]],
+        );
+        vec![self.build_projected_splats_table(), summary_table]
+    }
+}
+
+fn evaluate_density_summary(tool: &GaussianSplattingTool) -> super::DensityActionCounts {
+    super::scene::evaluate_scene_density_counts_with_thresholds(
+        &tool.scene,
+        &tool.grad_magnitudes,
+        tool.scale,
+        tool.grad_threshold,
+        tool.opacity_threshold,
+    )
 }
