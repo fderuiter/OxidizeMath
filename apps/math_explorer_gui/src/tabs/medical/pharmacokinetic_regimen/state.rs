@@ -1,7 +1,5 @@
 //! Compact URL-bounded state and clinical scenario builders for [`super::PharmacokineticRegimenTool`].
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use math_explorer::applied::pharmacokinetics::{
     DoseEvent, ReleaseFormulation, TherapeuticWindow, MAX_REGIMEN_EVENTS,
 };
@@ -355,3 +353,5 @@ impl RegimenState {
         Ok(out)
     }
 }
+
+// [cite:pharmacokinetics]

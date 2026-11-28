@@ -7,78 +7,25 @@ use super::pipeline::{RadarPipeline, BEAM_DELAY_RING_LEN, SIM_DT};
 use super::state::{RadarGatingState, ScattererPoint};
 use super::RadarGatingTool;
 use crate::framework::{ChallengeEvaluation, ChallengeMetadata, InteractiveTool};
+pub use math_explorer::applied::algorithms::kalman::FastCvKalman;
 use math_explorer::physics::medical::radar_gating::TrackingFilter;
 
-/// Stack-resident 2-state Constant-Velocity Kalman filter matching `TrackingFilter` algebra.
-#[derive(Debug, Clone, Copy)]
-pub struct FastCvKalman {
-    /// State vector `[amplitude_m, velocity_m_s]`.
-    pub state: [f64; 2],
-    /// State error covariance `[[p00, p01], [p10, p11]]`.
-    pub cov: [[f64; 2]; 2],
-    /// Discretization interval in seconds.
-    pub dt: f64,
-    /// Process noise variance $Q$.
-    pub process_var: f64,
-    /// Measurement noise variance $R$.
-    pub meas_var: f64,
-}
-
-impl FastCvKalman {
-    /// Initializes stack state directly from a verified `TrackingFilter` instance.
-    pub fn from_tracking_filter(
-        tf: &TrackingFilter,
-        dt: f64,
-        process_var: f64,
-        meas_var: f64,
-    ) -> Self {
-        let p = tf.covariance();
-        Self {
-            state: [tf.amplitude(), tf.velocity()],
-            cov: [[p[(0, 0)], p[(0, 1)]], [p[(1, 0)], p[(1, 1)]]],
-            dt,
-            process_var,
-            meas_var,
-        }
-    }
-
-    /// Executes the exact `ConstantVelocityModel` predict step on stack scalars.
-    pub fn predict(&mut self) {
-        let dt = self.dt;
-        self.state[0] += dt * self.state[1];
-        let (p00, p01, p10, p11) = (
-            self.cov[0][0],
-            self.cov[0][1],
-            self.cov[1][0],
-            self.cov[1][1],
-        );
-        self.cov[0][0] = p00 + dt * (p10 + p01) + dt * dt * p11 + self.process_var;
-        self.cov[0][1] = p01 + dt * p11;
-        self.cov[1][0] = p10 + dt * p11;
-        self.cov[1][1] = p11 + self.process_var;
-    }
-
-    /// Executes the exact scalar position measurement update (`H = [1, 0]`) on stack scalars.
-    pub fn update(&mut self, z_m: f64) {
-        let s = self.cov[0][0] + self.meas_var;
-        if !s.is_finite() || s.abs() <= 1.0e-18 {
-            return;
-        }
-        let y = z_m - self.state[0];
-        let (k0, k1) = (self.cov[0][0] / s, self.cov[1][0] / s);
-        self.state[0] += k0 * y;
-        self.state[1] += k1 * y;
-        let (p00, p01, p10, p11) = (
-            self.cov[0][0],
-            self.cov[0][1],
-            self.cov[1][0],
-            self.cov[1][1],
-        );
-        self.cov[0][0] = (1.0 - k0) * p00;
-        self.cov[0][1] = (1.0 - k0) * p01;
-        self.cov[1][0] = p10 - k1 * p00;
-        self.cov[1][1] = p11 - k1 * p01;
-    }
+/// Initializes a [`FastCvKalman`] mirror directly from a verified [`TrackingFilter`] instance.
+#[must_use]
+pub fn fast_cv_from_tracking_filter(
+    tf: &TrackingFilter,
+    dt: f64,
+    process_var: f64,
+    meas_var: f64,
+) -> FastCvKalman {
+    let p = tf.covariance();
+    FastCvKalman::new(
+        [tf.amplitude(), tf.velocity()],
+        [[p[(0, 0)], p[(0, 1)]], [p[(1, 0)], p[(1, 1)]]],
+        dt,
+        process_var,
+        meas_var,
+    )
 }
 
 /// Canonical challenge ID for preventing LINAC geographic misses during a 60 ms delayed cough.

@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Parallel and pinhole perspective 3D projection mathematics for [`super::Camera3D`].
 
 use super::{Camera3D, ProjectionMode};

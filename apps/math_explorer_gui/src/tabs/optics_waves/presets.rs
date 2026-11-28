@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
@@ -167,3 +165,5 @@ inventory::submit! {
         preset_generator: || PRESET_OPTICS_VESELAGO,
     }
 }
+
+// [cite:optics]

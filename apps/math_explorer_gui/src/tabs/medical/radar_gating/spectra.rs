@@ -1,7 +1,5 @@
 //! Coarse FFT, `SpatialCztConfig` zoom, and `MusicEstimator` super-resolution range spectra.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::state::RadarGatingState;
 use math_commons::constants::C;
 use math_explorer::physics::medical::radar_gating::geometry::angle_resolution;

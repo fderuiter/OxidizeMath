@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Starter presets, state bounds validation, and theoretical metadata for `AbelianSandpileStudio`.
 
 use math_explorer::physics::stat_mech::sandpile::{AvalancheObservable, MAX_SANDPILE_DIM};
@@ -227,3 +225,5 @@ inventory::submit! {
         preset_generator: || PRESET_ABELIAN_GROUP_PROOF_JSON,
     }
 }
+
+// [cite:mmwave_radiotherapy_setup]

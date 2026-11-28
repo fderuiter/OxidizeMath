@@ -1,7 +1,5 @@
 //! Federated inverse challenge metadata registry and gallery card types.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 /// Renderable inverse challenge card displayed in the `StarterGallery` Challenges tab.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChallengeCard {

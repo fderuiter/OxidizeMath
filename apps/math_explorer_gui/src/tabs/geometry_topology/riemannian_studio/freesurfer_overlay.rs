@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! FreeSurfer cortical morphometry (`Surface`, `cortical_thickness_batch`, `cortical_thickness`,
 //! `bayesian_classification`, `internal_energy`, `external_energy`, `evolve_surface`) and
 //! mass-univariate group GLM (`estimate_beta`, `t_statistic`) overlays.
@@ -231,3 +229,5 @@ fn compute_cohort_glm(geom: &ManifoldGeometry, thickness_mm: &[f64]) -> (Vec<f64
     }
     (betas, t_stats)
 }
+
+// [cite:graph_parameters_rust]

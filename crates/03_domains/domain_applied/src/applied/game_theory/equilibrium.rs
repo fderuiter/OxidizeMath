@@ -1,6 +1,11 @@
 use crate::error::GameTheoryError;
 use nalgebra::DVector;
 
+/// Unified Braess Wardrop Frank-Wolfe and Smith route-switching congestion solvers.
+#[path = "equilibrium_braess.rs"]
+pub mod braess;
+pub use braess::*;
+
 /// Represents a compact, convex subset of Euclidean space.
 ///
 /// In Game Theory, the strategy space of a player is often modeled as a convex set.

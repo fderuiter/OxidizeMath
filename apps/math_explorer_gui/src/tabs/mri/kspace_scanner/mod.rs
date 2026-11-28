@@ -6,8 +6,6 @@
 //! `LorenzSystem` compressed-sensing paths, tactile 2D k-space brushes, and separable 2D
 //! Fourier reconstruction (`simulate_signal_2d`, `inverse_dft_2d`).
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 pub mod canvas;
 pub mod phantom;
 pub mod recon;

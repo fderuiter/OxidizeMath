@@ -9,110 +9,12 @@ use std::sync::Arc;
 
 use crate::async_sim::atlas::AtlasTeleportEvent;
 use eframe::egui;
-use math_commons::ast::CompiledExpr;
 use math_explorer::physics::high_energy::{
-    photon_sphere_radius, KerrEquatorialMetric, SchwarzschildBlackHole,
+    kerr_bpt_isco, photon_sphere_radius, KerrEquatorialMetric, SchwarzschildBlackHole,
 };
-use math_explorer::pure_math::analysis::ode::ArrayState;
 use scientific_metadata::theory::ParameterConstraint;
 
-use super::sim_integrators::planar_velocity_beta;
-use super::{
-    kerr_prograde_critical_b, GeodesicMode, GeodesicPlaygroundTool, SpacetimePreset,
-    TrajectorySample, MAX_TRAJECTORY_SAMPLES,
-};
-
-#[derive(Clone, Copy)]
-pub(crate) struct CustomSampleCtx<'a> {
-    pub(crate) mode: GeodesicMode,
-    pub(crate) compiled: &'a CompiledExpr,
-    pub(crate) scale: f64,
-    pub(crate) params: &'a [f64],
-}
-
-pub(crate) fn push_custom_lapse_sample(
-    buf: &mut Vec<TrajectorySample>,
-    ctx: CustomSampleCtx<'_>,
-    proper_tau: f64,
-    state: &ArrayState<8>,
-    metric_norm: f64,
-) {
-    if buf.len() > MAX_TRAJECTORY_SAMPLES {
-        return;
-    }
-    let r = state.0[1].max(0.08);
-    let phi = state.0[3];
-    let f = ctx.compiled.eval_2d(r, ctx.scale, ctx.params).max(0.0);
-    let r_eff = (r * (1.0 - f)).clamp(0.0, r);
-    let z = 2.0 * (r_eff * (r - r_eff).max(0.0)).sqrt();
-    let (sin_p, cos_p) = phi.sin_cos();
-    let grav = f.sqrt();
-    let ut = state.0[4].max(1e-6);
-    let dphi_dct = state.0[7] / ut;
-    let velocity_beta = planar_velocity_beta(r, phi, state.0[5] / ut, dphi_dct);
-    let dtau_dt = match ctx.mode {
-        GeodesicMode::NullPhoton => 0.0,
-        GeodesicMode::TimelikeParticle => (1.0 / ut).clamp(0.0, 1.0),
-    };
-    let gamma = if grav > 1e-6 && dtau_dt > 0.0 {
-        (grav / dtau_dt).max(1.0)
-    } else {
-        1.0
-    };
-    buf.push(TrajectorySample {
-        coord_ct: state.0[0],
-        proper_tau,
-        radial_coord: r,
-        phi,
-        radial_vel: state.0[5],
-        dphi_dct,
-        velocity_beta,
-        embed_xyz: [r * cos_p, r * sin_p, z],
-        metric_norm,
-        clock_rate: dtau_dt,
-        grav_dilation: grav,
-        lorentz_gamma: gamma,
-    });
-}
-
-pub(crate) fn push_custom_wormhole_sample(
-    buf: &mut Vec<TrajectorySample>,
-    ctx: CustomSampleCtx<'_>,
-    proper_tau: f64,
-    state: &ArrayState<6>,
-    metric_norm: f64,
-) {
-    if buf.len() > MAX_TRAJECTORY_SAMPLES {
-        return;
-    }
-    let l = state.0[1];
-    let phi = state.0[2];
-    let b0 = ctx.scale.max(0.1);
-    let r = ctx.compiled.eval_2d(l, ctx.scale, ctx.params).max(0.1);
-    let z = b0 * (l / b0).asinh();
-    let (sin_p, cos_p) = phi.sin_cos();
-    let ut = state.0[3].max(1.0);
-    let dphi_dct = state.0[5] / ut;
-    let velocity_beta = planar_velocity_beta(r, phi, state.0[4] / ut, dphi_dct);
-    let clock_rate = match ctx.mode {
-        GeodesicMode::NullPhoton => 0.0,
-        GeodesicMode::TimelikeParticle => (1.0 / ut).clamp(0.0, 1.0),
-    };
-    buf.push(TrajectorySample {
-        coord_ct: state.0[0],
-        proper_tau,
-        radial_coord: l,
-        phi,
-        radial_vel: state.0[4],
-        dphi_dct,
-        velocity_beta,
-        embed_xyz: [r * cos_p, r * sin_p, z],
-        metric_norm,
-        clock_rate,
-        grav_dilation: 1.0,
-        lorentz_gamma: ut,
-    });
-}
+use super::{kerr_prograde_critical_b, GeodesicPlaygroundTool, SpacetimePreset, TrajectorySample};
 
 impl GeodesicPlaygroundTool {
     /// Teleports parameters from a 2D atlas click/Enter activation and rebuilds both worldlines.
@@ -398,23 +300,6 @@ impl GeodesicPlaygroundTool {
 
 const fn p_bounds(min: f64, max: f64, step: f64) -> ParameterConstraint {
     ParameterConstraint { min, max, step }
-}
-
-#[inline]
-fn kerr_bpt_isco(m_geom: f64, chi: f64, impact_or_momentum: f64) -> f64 {
-    if chi.abs() <= 1e-9 {
-        return 6.0 * m_geom;
-    }
-    let c = chi.clamp(-0.99, 0.99);
-    let factor = (1.0 - c * c).max(0.0).cbrt();
-    let z1 = 1.0 + factor * ((1.0 + c).max(0.0).cbrt() + (1.0 - c).max(0.0).cbrt());
-    let z2 = (3.0 * c * c + z1 * z1).sqrt();
-    let root = ((3.0 - z1) * (3.0 + z1 + 2.0 * z2)).max(0.0).sqrt();
-    if c * impact_or_momentum >= 0.0 {
-        m_geom * (3.0 + z2 - root)
-    } else {
-        m_geom * (3.0 + z2 + root)
-    }
 }
 
 #[inline]

@@ -1,7 +1,5 @@
 //! Cross-domain `64x64` MRI phantom synthesis weighted by [`BlochSimulator`] spin-echo dynamics.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::state::{MriKSpaceScannerState, PhantomSource};
 use super::{KSPACE_DIM, KSPACE_LEN};
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -318,3 +316,5 @@ pub fn synthesize_phantom(state: &MriKSpaceScannerState) -> Vec<f64> {
         }
     }
 }
+
+// [cite:favorite_child]

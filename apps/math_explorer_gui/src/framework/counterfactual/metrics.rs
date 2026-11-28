@@ -1,7 +1,5 @@
 //! Pure numerical divergence metrics for counterfactual shadow twin comparisons.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 /// Minimum positive separation threshold used as reference baseline for logarithmic slope.
 const MIN_LOG_SLOPE_REFERENCE: f64 = 1e-30;
 

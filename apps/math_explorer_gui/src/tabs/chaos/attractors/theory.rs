@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::AttractorMode;
 
 impl scientific_metadata::theory::TheoryDescribable for super::AttractorPlotter {
@@ -109,3 +107,5 @@ inventory::submit! {
         preset_generator: || crate::starter_gallery::PRESET_3D_ATTRACTOR_TWIN,
     }
 }
+
+// [cite:algorithmic_information_rust]

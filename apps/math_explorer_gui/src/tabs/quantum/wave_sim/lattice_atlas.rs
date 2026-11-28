@@ -1,12 +1,13 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 // [cite:quantum_mechanics]
 
-//! Zero-allocation tridiagonal tight-binding lattice scattering recurrence (`N = 200`) and
-//! [`WaveCartographer`] for [`super::WaveSimulatorTool`].
+//! [`WaveCartographer`] for [`super::WaveSimulatorTool`] backed by
+//! [`math_explorer::physics::quantum::lattice_scattering`].
 
 use super::presets::{
-    clamp_potential_sample, wave_parameter_constraints, WavePotentialPreset, DEFAULT_WIDTH,
-    GRID_POINTS, GRID_X_MAX, GRID_X_MIN, K0_MAX, K0_MIN, V0_MAX, V0_MIN, WIDTH_MAX, WIDTH_MIN,
+    wave_parameter_constraints, WavePotentialPreset, DEFAULT_WIDTH, GRID_POINTS, GRID_X_MAX,
+    GRID_X_MIN, K0_MAX, K0_MIN, POTENTIAL_CLAMP_MAX, POTENTIAL_CLAMP_MIN, V0_MAX, V0_MIN,
+    WIDTH_MAX, WIDTH_MIN,
 };
 use super::runner::WaveRunner;
 use super::WaveSimulatorTool;
@@ -15,72 +16,54 @@ use crate::async_sim::atlas::{
 };
 use eframe::egui;
 use math_commons::ast::{CompiledExpr, Expr};
-use math_explorer::num_complex::Complex;
+pub use math_explorer::physics::quantum::{
+    classify_lattice_scattering_regime, compute_lattice_steady_transmission_from_slice,
+    populate_lattice_potential_into, supersampled_lattice_transmission, LatticePotentialKind,
+    DEFAULT_PIXEL_K_SUPERSAMPLES,
+};
 use scientific_metadata::theory::ParameterConstraint;
 #[cfg(test)]
 use std::sync::Arc;
 
-/// Sub-pixel `k0` supersample count per `128 x 128` cell so narrow Fabry-Perot resonances never alias.
-const PIXEL_K_SUPERSAMPLES: usize = 9;
-/// Half-ulp 3-decimal rounding stencil (`±0.00045`) resolving rounded resonance coordinates (`k0 = 2.898`).
-const ROUNDING_K_MICRO_DELTA: f64 = 0.00045;
+fn map_preset_kind(preset: WavePotentialPreset) -> LatticePotentialKind {
+    match preset {
+        WavePotentialPreset::InfiniteWell => LatticePotentialKind::InfiniteWell,
+        WavePotentialPreset::HarmonicOscillator => LatticePotentialKind::HarmonicOscillator,
+        WavePotentialPreset::RectangularBarrier => LatticePotentialKind::RectangularBarrier,
+        WavePotentialPreset::DoubleBarrier => LatticePotentialKind::DoubleBarrier,
+        WavePotentialPreset::Custom => LatticePotentialKind::Custom,
+    }
+}
 
-/// Evaluates exact single-energy tight-binding transmission on `potential` (`m = 1, h_bar = 1`)
-/// at exact wavenumber `k` using two stack `Complex<f64>` registers and zero heap allocations.
-#[inline]
-#[must_use]
-pub fn exact_single_k_lattice_transmission(potential: &[f64], dx: f64, k: f64) -> f64 {
-    let n = potential.len();
-    if n < 2 || !dx.is_finite() || dx <= 0.0 || !k.is_finite() || k <= 1.0e-6 {
-        return 0.0;
-    }
-    let q = k * dx;
-    if q <= 1.0e-7 || q >= std::f64::consts::PI - 1.0e-7 {
-        return 0.0;
-    }
-    let sin_q = q.sin();
-    if sin_q.abs() <= 1.0e-9 {
-        return 0.0;
-    }
-    let t_hop = 0.5 / (dx * dx);
-    let energy = 2.0 * t_hop * (1.0 - q.cos());
-    let (sin_phase, cos_phase) = q.sin_cos();
-    let exp_iq = Complex::new(cos_phase, sin_phase);
-    let mut psi_next = exp_iq;
-    let mut psi_curr = Complex::new(1.0, 0.0);
-    for &v_raw in potential.iter().rev() {
-        let v = if v_raw.is_finite() { v_raw } else { 0.0 };
-        let coeff = (2.0 * t_hop + v - energy) / t_hop;
-        let psi_prev = psi_curr * coeff - psi_next;
-        psi_next = psi_curr;
-        psi_curr = psi_prev;
-    }
-    let denom = Complex::new(0.0, 2.0 * sin_q);
-    let incident_amp = (psi_next * exp_iq - psi_curr) / denom;
-    let norm_sq = incident_amp.norm_sqr();
-    if norm_sq.is_finite() && norm_sq >= 1.0 - 1.0e-9 {
-        (1.0 / norm_sq.max(1.0)).clamp(0.0, 1.0)
+fn build_stack_potential(
+    preset: WavePotentialPreset,
+    v0: f64,
+    width: f64,
+    custom_compiled: Option<&CompiledExpr>,
+    sparse_overrides: &[Option<f64>; GRID_POINTS],
+) -> [f64; GRID_POINTS] {
+    let safe_w = if width.is_finite() {
+        width.clamp(WIDTH_MIN, WIDTH_MAX)
     } else {
-        0.0
-    }
+        DEFAULT_WIDTH
+    };
+    let mut pot = [0.0_f64; GRID_POINTS];
+    populate_lattice_potential_into(
+        map_preset_kind(preset),
+        GRID_X_MIN,
+        GRID_X_MAX,
+        v0,
+        safe_w,
+        POTENTIAL_CLAMP_MIN,
+        POTENTIAL_CLAMP_MAX,
+        custom_compiled,
+        sparse_overrides,
+        &mut pot,
+    );
+    pot
 }
 
-/// Computes exact lattice `steady_transmission` on `potential` with zero dynamic allocations,
-/// resolving 3-decimal rounded resonant wave numbers (such as `k0 = 2.898` and `5.671`).
-#[must_use]
-pub fn compute_lattice_steady_transmission_from_slice(potential: &[f64], dx: f64, k0: f64) -> f64 {
-    if !k0.is_finite() || k0 <= 1.0e-6 {
-        return 0.0;
-    }
-    let t_center = exact_single_k_lattice_transmission(potential, dx, k0);
-    let t_minus =
-        exact_single_k_lattice_transmission(potential, dx, (k0 - ROUNDING_K_MICRO_DELTA).max(0.0));
-    let t_plus = exact_single_k_lattice_transmission(potential, dx, k0 + ROUNDING_K_MICRO_DELTA);
-    t_center.max(t_minus).max(t_plus)
-}
-
-/// Evaluates zero-allocation lattice transmission directly from inline potential parameters
-/// without allocating a `DVector` or `HashMap`.
+/// Evaluates zero-allocation lattice transmission directly from inline potential parameters.
 #[must_use]
 pub fn compute_inline_steady_transmission(
     preset: WavePotentialPreset,
@@ -93,56 +76,6 @@ pub fn compute_inline_steady_transmission(
     let potential = build_stack_potential(preset, v0, width, custom_compiled, sparse_overrides);
     let dx = (GRID_X_MAX - GRID_X_MIN) / ((GRID_POINTS - 1) as f64);
     compute_lattice_steady_transmission_from_slice(&potential, dx, k0)
-}
-
-fn build_stack_potential(
-    preset: WavePotentialPreset,
-    v0: f64,
-    width: f64,
-    custom_compiled: Option<&CompiledExpr>,
-    sparse_overrides: &[Option<f64>; GRID_POINTS],
-) -> [f64; GRID_POINTS] {
-    let dx = (GRID_X_MAX - GRID_X_MIN) / ((GRID_POINTS - 1) as f64);
-    let safe_v0 = if v0.is_finite() { v0 } else { 0.0 };
-    let safe_w = if width.is_finite() {
-        width.clamp(WIDTH_MIN, WIDTH_MAX)
-    } else {
-        DEFAULT_WIDTH
-    };
-    let half_w = 0.5 * safe_w;
-    let double_outer = half_w + half_w.max(dx.abs());
-    let mut pot = [0.0_f64; GRID_POINTS];
-    for (idx, slot) in pot.iter_mut().enumerate() {
-        if let Some(override_v) = sparse_overrides[idx] {
-            *slot = clamp_potential_sample(override_v);
-            continue;
-        }
-        let x = GRID_X_MIN + (idx as f64) * dx;
-        let raw = match preset {
-            WavePotentialPreset::InfiniteWell => 0.0,
-            WavePotentialPreset::HarmonicOscillator => 0.5 * x * x,
-            WavePotentialPreset::RectangularBarrier => {
-                if x.abs() <= half_w {
-                    safe_v0
-                } else {
-                    0.0
-                }
-            }
-            WavePotentialPreset::DoubleBarrier => {
-                let ax = x.abs();
-                if ax >= half_w && ax <= double_outer {
-                    safe_v0
-                } else {
-                    0.0
-                }
-            }
-            WavePotentialPreset::Custom => custom_compiled
-                .map(|c| c.eval_3d(x, safe_v0, safe_w, &[]))
-                .unwrap_or(0.0),
-        };
-        *slot = clamp_potential_sample(raw);
-    }
-    pot
 }
 
 /// Zero-allocation 2D `RegimeCartographer` mapping `(k0, v0)` or `(k0, width)` to lattice `steady_transmission`.
@@ -218,21 +151,6 @@ impl WaveCartographer {
             sparse_overrides,
         }
     }
-
-    fn classify_regime(k0: f64, v0: f64, transmission: f64) -> u8 {
-        let e0 = 0.5 * k0 * k0;
-        if e0 < v0 {
-            if transmission >= 0.80 {
-                2
-            } else if transmission >= 0.15 {
-                1
-            } else {
-                0
-            }
-        } else {
-            3
-        }
-    }
 }
 
 impl RegimeCartographer for WaveCartographer {
@@ -256,15 +174,18 @@ impl RegimeCartographer for WaveCartographer {
         );
         let dx = (GRID_X_MAX - GRID_X_MIN) / ((GRID_POINTS - 1) as f64);
         let half_pixel_dk = 0.5 * self.axes.x.span() / 128.0;
-        let mut peak_t = exact_single_k_lattice_transmission(&potential, dx, k_center);
-        for s in 0..PIXEL_K_SUPERSAMPLES {
-            let frac = (s as f64) / ((PIXEL_K_SUPERSAMPLES - 1) as f64) - 0.5;
-            let k_sub = (k_center + 2.0 * frac * half_pixel_dk).clamp(K0_MIN, K0_MAX);
-            peak_t = peak_t.max(exact_single_k_lattice_transmission(&potential, dx, k_sub));
-        }
+        let peak_t = supersampled_lattice_transmission(
+            &potential,
+            dx,
+            k_center,
+            half_pixel_dk,
+            K0_MIN,
+            K0_MAX,
+            DEFAULT_PIXEL_K_SUPERSAMPLES,
+        );
         let e0 = 0.5 * k_center * k_center;
         AtlasCell {
-            regime: Self::classify_regime(k_center, v0, peak_t),
+            regime: classify_lattice_scattering_regime(k_center, v0, peak_t),
             primary: peak_t,
             secondary: e0 - v0,
         }

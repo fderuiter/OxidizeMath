@@ -1,7 +1,5 @@
 //! Physics evaluation pipeline for `BcsSuperconductivityTool`.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::{BcsSummaryMetrics, BcsSuperconductivityTool};
 use math_explorer::physics::solid_state::bcs::{
     coherence_factors_normal_limit, dynes_dos_ratio, nis_tunneling_conductance,

@@ -1,7 +1,5 @@
 //! State, benchmark generation, and evaluation pipeline for `CalibrationWorkbenchTool`.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use math_explorer::primitives::{PositiveFloat, UnitInterval};
 use math_explorer::pure_math::statistics::calibration::{
     binary_log_loss, brier_score, dataset_gaussian_crps, ensemble_crps_sorted,

@@ -1,7 +1,5 @@
 //! Cold-path watertight Bloch sphere + 3D spin arrow builder for [`super::SpinVisualizer`].
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::SpinVisualizer;
 use oxidize_core::mesh::{
     append_colored_part, build_arrow, build_uv_sphere, extrude_polyline_tube, ColoredMesh, Mesh,
@@ -89,3 +87,5 @@ impl SpinVisualizer {
         Ok(combined)
     }
 }
+
+// [cite:quantum_mechanics]

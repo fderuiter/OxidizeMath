@@ -1,7 +1,5 @@
 //! 2D k-Space trajectory generators, chaotic [`math_explorer::physics::chaos::lorenz::LorenzSystem`] projection, and physical gradient mapping.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::state::{KSpaceMaskFilter, KSpaceTrajectory, MriKSpaceScannerState};
 use super::{DEFAULT_FOV_METERS, KSPACE_CENTER, KSPACE_DIM, KSPACE_LEN};
 use math_commons::math_kernel::types::flatten_2d_index;
@@ -242,3 +240,5 @@ pub fn apply_brush_stroke(
     }
     changed
 }
+
+// [cite:favorite_child]
