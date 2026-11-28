@@ -4,7 +4,7 @@ use super::{
     HyperbolicError, KellyError, KnotError, LinearAlgebraError, MarketPricingError, MarkovError,
     MatchModelError, MonteCarloError, NumberTheoryError, OptimizationError, OptionPricingError,
     OuError, PoissonError, QueueingError, RiskError, StochasticError, Su11HyperbolicError,
-    TdaError, TensorError, TransformError, ZipError,
+    TdaError, TensorError, TransformError, WardropError, ZipError,
 };
 use math_commons::error::{
     ArenaError, EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
@@ -93,6 +93,9 @@ pub enum PureMathError {
     /// Graph theory solver or interchange error.
     #[error("{0}")]
     GraphTheory(#[from] GraphTheoryError),
+    /// Wardrop congestion routing equilibrium error.
+    #[error("{0}")]
+    Wardrop(#[from] WardropError),
     /// Hyperbolic geometry and geodesic billiard error.
     #[error("{0}")]
     Hyperbolic(#[from] HyperbolicError),
@@ -208,6 +211,7 @@ impl PureMathError {
             Self::Evolution(err) => err,
             Self::Fractran(err) => err,
             Self::GraphTheory(err) => err,
+            Self::Wardrop(err) => err,
             Self::Hyperbolic(err) => err,
             Self::Su11Hyperbolic(err) => err,
             Self::LinearAlgebra(err) => err,

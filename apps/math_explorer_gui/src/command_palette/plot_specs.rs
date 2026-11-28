@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Playback, 3D camera, plot viewport, accessibility, and curve-fitting command specs.
 
 use super::actions::{spec, BuiltinCommandSpec, PaletteAction as A};

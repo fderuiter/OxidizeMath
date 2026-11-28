@@ -1,6 +1,6 @@
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-//! Zero-allocation 2D lensing and orbital regime cartographer for [`GeodesicPlaygroundTool`].
+//! Zero-allocation 2D lensing and orbital regime cartographer UI adapter over `domain_physics`.
 
 use std::collections::HashMap;
 
@@ -9,12 +9,15 @@ use crate::async_sim::atlas::{
 };
 use eframe::egui;
 use math_commons::ast::CompiledExpr;
+use math_explorer::physics::high_energy::{
+    eval_custom_lapse_lensing_cell, eval_kerr_lensing_cell, eval_wormhole_lensing_cell,
+    RadialAtlasSummary,
+};
+pub use math_explorer::physics::high_energy::{kerr_prograde_critical_b, LensingRegime};
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 
+use super::sim::to_geodesic_kind;
 use super::{GeodesicMode, GeodesicPlaygroundTool, SpacetimePreset};
-
-#[path = "atlas_eval.rs"]
-mod atlas_eval;
 
 /// Supported `(x, y)` parameter axis pairs for [`RelativityCartographer`].
 pub const RELATIVITY_ATLAS_AXIS_PAIRS: &[(&str, &str)] = &[
@@ -28,57 +31,6 @@ pub(crate) fn default_relativity_atlas_axes() -> [String; 2] {
 
 pub(crate) fn is_default_relativity_atlas_axes(axes: &[String; 2]) -> bool {
     axes[0] == "impact_or_momentum" && axes[1] == "initial_radius"
-}
-
-/// Discrete relativistic lensing and orbital regimes mapped across 2D parameter slices.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub enum LensingRegime {
-    /// Trajectory plunges across the event horizon (or transits through the wormhole throat).
-    HorizonCaptureOrTransit = 0,
-    /// Multi-radian strong-field photon-ring winding or bound relativistic rosette.
-    PhotonRingWinding = 1,
-    /// Clean radial turning point with weak/moderate asymptotic deflection.
-    WeakDeflectionEscape = 2,
-    /// Launch radius lies inside the classical centrifugal barrier ($V_{\text{eff}}(r_0) > \frac{1}{2}e^2$).
-    CentrifugalBarrier = 3,
-}
-
-impl LensingRegime {
-    /// Converts a raw `u8` regime index into [`Self`].
-    #[inline]
-    #[must_use]
-    pub const fn from_u8(code: u8) -> Self {
-        match code {
-            0 => Self::HorizonCaptureOrTransit,
-            1 => Self::PhotonRingWinding,
-            2 => Self::WeakDeflectionEscape,
-            _ => Self::CentrifugalBarrier,
-        }
-    }
-
-    /// Human-readable dynamical regime label.
-    #[inline]
-    #[must_use]
-    pub const fn label(self, is_wormhole: bool) -> &'static str {
-        match (self, is_wormhole) {
-            (Self::HorizonCaptureOrTransit, true) => "Throat Transit (Crosses l = 0)",
-            (Self::HorizonCaptureOrTransit, false) => "Horizon Capture (Plunge into r+)",
-            (Self::PhotonRingWinding, _) => "Photon-Ring Winding / Rosette",
-            (Self::WeakDeflectionEscape, true) => "Same-Sheet Reflection",
-            (Self::WeakDeflectionEscape, false) => "Weak-Field Deflection Escape",
-            (Self::CentrifugalBarrier, _) => "Turning-Point Barrier",
-        }
-    }
-}
-
-/// Exact prograde equatorial Kerr critical photon impact parameter $b_{\text{crit}}^+(\chi)$.
-#[inline]
-#[must_use]
-pub fn kerr_prograde_critical_b(rs: f64, spin_chi: f64) -> f64 {
-    let m = 0.5 * rs.max(0.1);
-    let chi = spin_chi.clamp(-0.98, 0.98);
-    -m * chi + 6.0 * m * ((-chi).acos() / 3.0).cos()
 }
 
 #[derive(Clone, Debug)]
@@ -104,10 +56,10 @@ enum CartographerMetric {
 pub struct RelativityCartographer {
     axes: AtlasAxisPair,
     metric: CartographerMetric,
-    pub(super) mode: GeodesicMode,
+    mode: GeodesicMode,
     base_r0: f64,
     base_b: f64,
-    pub(super) radial_bias: f64,
+    radial_bias: f64,
 }
 
 fn copy_fixed_params(slice: &[f64]) -> ([f64; 8], usize) {
@@ -115,6 +67,15 @@ fn copy_fixed_params(slice: &[f64]) -> ([f64; 8], usize) {
     let n = slice.len().min(8);
     buf[..n].copy_from_slice(&slice[..n]);
     (buf, n)
+}
+
+#[inline]
+const fn summary_to_cell(s: RadialAtlasSummary) -> AtlasCell {
+    AtlasCell {
+        regime: s.regime as u8,
+        primary: s.primary,
+        secondary: s.secondary,
+    }
 }
 
 fn build_axis_spec(
@@ -186,20 +147,36 @@ impl RegimeCartographer for RelativityCartographer {
                 _ => {}
             }
         }
-        match &self.metric {
-            CartographerMetric::BlackHole4D { rs, base_chi } => {
-                self.eval_black_hole_cell(*rs, chi_override.unwrap_or(*base_chi), r0_val, b_val)
-            }
+        let kind = to_geodesic_kind(self.mode);
+        let summary = match &self.metric {
+            CartographerMetric::BlackHole4D { rs, base_chi } => eval_kerr_lensing_cell(
+                kind,
+                self.radial_bias,
+                *rs,
+                chi_override.unwrap_or(*base_chi),
+                r0_val,
+                b_val,
+            ),
             CartographerMetric::CustomLapse4D {
                 rs,
                 compiled,
                 params,
                 param_len,
-            } => self.eval_custom_lapse_cell(*rs, compiled, &params[..*param_len], r0_val, b_val),
+            } => eval_custom_lapse_lensing_cell(
+                kind,
+                self.radial_bias,
+                *rs,
+                compiled,
+                &params[..*param_len],
+                r0_val,
+                b_val,
+            ),
             CartographerMetric::Wormhole3D { b0, custom_b } => {
-                self.eval_wormhole_cell(*b0, custom_b.as_ref(), r0_val, b_val)
+                let custom_ref = custom_b.as_ref().map(|(c, p, n)| (c, &p[..*n]));
+                eval_wormhole_lensing_cell(kind, self.radial_bias, *b0, custom_ref, r0_val, b_val)
             }
-        }
+        };
+        summary_to_cell(summary)
     }
 
     fn color_for_cell(&self, cell: AtlasCell, high_contrast: bool) -> egui::Color32 {

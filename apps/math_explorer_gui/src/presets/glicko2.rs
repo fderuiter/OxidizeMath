@@ -1,7 +1,5 @@
 //! Preset configuration models and validation routines for `Glicko2TournamentTool`.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 

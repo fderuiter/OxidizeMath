@@ -5,6 +5,7 @@
 // [cite:engine_diffeq]
 
 use crate::error::KalmanError;
+pub use crate::fast_cv::FastCvKalman;
 use nalgebra::{DMatrix, DVector, RealField};
 
 /// Defines the linear state-space dynamics model for the discrete-time Kalman Filter.

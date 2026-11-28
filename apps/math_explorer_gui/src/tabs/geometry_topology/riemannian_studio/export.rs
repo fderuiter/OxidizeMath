@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Watertight 3D [`ColoredMesh`] builder for `.ply`, `.obj`, and `.stl` exports from
 //! [`super::RiemannianPdeStudio`].
 
@@ -243,3 +241,5 @@ fn ensure_positive_signed_volume(mesh: &mut Mesh) {
         }
     }
 }
+
+// [cite:graph_parameters_rust]

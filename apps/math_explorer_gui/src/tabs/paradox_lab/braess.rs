@@ -4,12 +4,12 @@ use crate::async_sim::atlas::ParameterAtlasController;
 use crate::framework::{CalloutManager, CalloutSpec, ExportCapabilities, InteractiveTool};
 use eframe::egui;
 use math_explorer::applied::game_theory::equilibrium::{
-    is_fixed_point, BestResponseCorrespondence, BoxSet, ConvexSet,
+    braess_avg_physical_latency, braess_optimal_pigou_toll, check_braess_wardrop_fixed_point,
+    smith_route_step, solve_braess_wheatstone_flows, BraessWheatstoneParams,
 };
 use math_explorer::applied::game_theory::mean_field::{
     Density, FixedPointSolver, MFGConfigBuilder, MFGSolver, Position,
 };
-use math_explorer::nalgebra::DVector;
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroUsize;
 
@@ -54,6 +54,17 @@ impl Default for BraessState {
 }
 
 impl BraessState {
+    pub(super) fn wheatstone_params(&self) -> BraessWheatstoneParams {
+        BraessWheatstoneParams {
+            demand: self.demand,
+            congestion_slope: self.congestion_slope,
+            bypass_latency: self.bypass_latency,
+            shortcut_cost: self.shortcut_cost,
+            shortcut_toll: self.shortcut_toll,
+            shortcut_open: self.shortcut_open,
+        }
+    }
+
     pub(super) fn validate(&self) -> Result<(), String> {
         let ok_net = self.demand.is_finite()
             && (0.2..=2.0).contains(&self.demand)
@@ -117,81 +128,18 @@ pub struct BraessNetworkParadoxTool {
     pub callouts: CalloutManager,
 }
 
-fn route_costs(flow: [f64; 3], s: &BraessState, include_toll: bool) -> [f64; 3] {
-    let (f_sa, f_bt) = (flow[0] + flow[2], flow[1] + flow[2]);
-    let toll = if include_toll { s.shortcut_toll } else { 0.0 };
-    [
-        s.congestion_slope * f_sa + s.bypass_latency,
-        s.bypass_latency + s.congestion_slope * f_bt,
-        s.congestion_slope * (f_sa + f_bt) + s.shortcut_cost + toll,
-    ]
-}
-
 pub(super) fn avg_physical_latency(flow: [f64; 3], s: &BraessState) -> f64 {
-    let c = route_costs(flow, s, false);
-    (flow[0] * c[0] + flow[1] * c[1] + flow[2] * c[2]) / s.demand.max(1e-9)
+    braess_avg_physical_latency(flow, &s.wheatstone_params())
 }
 
 pub(super) fn solve_flows_for_demand(s: &BraessState, demand: f64) -> ([f64; 3], [f64; 3], f64) {
-    let closed_lat = 0.5 * s.congestion_slope * demand + s.bypass_latency;
-    if !s.shortcut_open {
-        let half = [0.5 * demand, 0.5 * demand, 0.0];
-        return (half, half, closed_lat);
-    }
-    let x2_w = ((2.0 * (s.bypass_latency - s.shortcut_cost - s.shortcut_toll)
-        / s.congestion_slope)
-        - demand)
-        .clamp(0.0, demand);
-    let wardrop = [0.5 * (demand - x2_w), 0.5 * (demand - x2_w), x2_w];
-    let x2_p =
-        (((s.bypass_latency - s.shortcut_cost) / s.congestion_slope) - demand).clamp(0.0, demand);
-    let pigou = [0.5 * (demand - x2_p), 0.5 * (demand - x2_p), x2_p];
-    (wardrop, pigou, closed_lat)
-}
-
-fn smith_step_array(flow: [f64; 3], s: &BraessState) -> [f64; 3] {
-    let k = if s.shortcut_open { 3 } else { 2 };
-    let costs = route_costs(flow, s, true);
-    let eta = 0.25 / (s.congestion_slope * s.demand + s.bypass_latency + 1.0);
-    let mut next = [0.0; 3];
-    for i in 0..k {
-        let mut delta = 0.0;
-        for j in 0..k {
-            delta +=
-                flow[j] * (costs[j] - costs[i]).max(0.0) - flow[i] * (costs[i] - costs[j]).max(0.0);
-        }
-        next[i] = (flow[i] + eta * delta).max(0.0);
-    }
-    let sum: f64 = next[..k].iter().sum();
-    if sum > 0.0 {
-        for val in &mut next[..k] {
-            *val *= s.demand / sum;
-        }
-    }
-    next
+    solve_braess_wheatstone_flows(&s.wheatstone_params(), demand)
 }
 
 /// Checks whether `candidate` is a Nash / Wardrop fixed point using `BoxSet` and `BestResponseCorrespondence`.
+#[cfg(test)]
 pub fn check_braess_fixed_point(state: &BraessState, candidate: [f64; 3]) -> bool {
-    let k = if state.shortcut_open { 3 } else { 2 };
-    let strategy_box = BoxSet::new(vec![0.0; k], vec![state.demand; k]);
-    let point = DVector::from_column_slice(&candidate[..k]);
-    if !strategy_box.is_convex() || !strategy_box.contains(&point) {
-        return false;
-    }
-    let st = state.clone();
-    let correspondence = BestResponseCorrespondence {
-        mapping: Box::new(move |x: &DVector<f64>| {
-            let mut arr = [0.0; 3];
-            for i in 0..k.min(x.len()) {
-                arr[i] = x[i];
-            }
-            let stepped = smith_step_array(arr, &st);
-            DVector::from_column_slice(&stepped[..k])
-        }),
-        tolerance: 1e-5,
-    };
-    is_fixed_point(&correspondence, &point)
+    check_braess_wardrop_fixed_point(&state.wheatstone_params(), candidate)
 }
 
 impl Default for BraessNetworkParadoxTool {
@@ -251,23 +199,27 @@ impl BraessNetworkParadoxTool {
 
     /// Advances zero-allocation Smith route-switching flow toward the Wardrop equilibrium.
     pub fn step_braess_zero_alloc(&mut self) {
-        self.dynamic_flow = smith_step_array(self.dynamic_flow, &self.state);
+        self.dynamic_flow = smith_route_step(self.dynamic_flow, &self.state.wheatstone_params());
     }
 
     pub(super) fn recompute_all(&mut self) {
         let demand = self.state.demand;
         let (wardrop, pigou, closed_lat, wardrop_lat, pigou_lat, opt_toll, nash_ok) = {
             let s = &self.state;
-            let (w, p, cl) = solve_flows_for_demand(s, demand);
-            let wl = avg_physical_latency(w, s);
-            let pl = avg_physical_latency(p, s);
-            let toll = if s.shortcut_open {
-                (s.bypass_latency - s.shortcut_cost - 0.5 * s.congestion_slope * (demand + p[2]))
-                    .max(0.0)
-            } else {
-                0.0
-            };
-            (w, p, cl, wl, pl, toll, check_braess_fixed_point(s, w))
+            let params = s.wheatstone_params();
+            let (w, p, cl) = solve_braess_wheatstone_flows(&params, demand);
+            let wl = braess_avg_physical_latency(w, &params);
+            let pl = braess_avg_physical_latency(p, &params);
+            let toll = braess_optimal_pigou_toll(&params, demand, p[2]);
+            (
+                w,
+                p,
+                cl,
+                wl,
+                pl,
+                toll,
+                check_braess_wardrop_fixed_point(&params, w),
+            )
         };
         let cfl = self.recompute_mfg_profiles();
         self.recompute_demand_curves();

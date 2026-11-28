@@ -1,8 +1,6 @@
 //! Compact `URL_JSON_BOUNDS`-safe duty-mission segment types (`1..=8` segments)
 //! supporting commute, fast-charge, and zero-cycle calendar storage phases.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 // [cite:battery_degradation]
 
 use math_explorer::applied::battery_degradation::{

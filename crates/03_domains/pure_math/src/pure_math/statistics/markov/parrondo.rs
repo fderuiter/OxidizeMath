@@ -24,9 +24,22 @@ use nalgebra::{DMatrix, DVector};
 use serde::{Deserialize, Serialize};
 
 mod ensemble;
+/// Capital- and history-dependent jump-ratchet Gillespie SSA and stack drift solvers.
+pub mod jump_ssa;
+/// Bounded periodic game schedules and zero-allocation 9-state stack Markov solver.
+pub mod stack;
+
 pub use ensemble::{
     ParrondoEnsemble, ParrondoPhaseGridConfig, ParrondoPhasePoint, scan_parrondo_phase_region,
 };
+pub use jump_ssa::{
+    ParrondoGillespieSystem, ParrondoJumpMetrics, ParrondoSsaState, ParrondoVariant,
+    ParrondoWalker, advance_parrondo_mix_walkers, advance_parrondo_walkers,
+    compute_abb_tensor_metrics, compute_parrondo_jump_metrics, evaluate_jump_ratchet_stack,
+    next_parrondo_state, parrondo_variant_win_probs,
+};
+pub use stack::{StackParrondoSummary, solve_parrondo_ratchet_stack};
+use stack::{evaluate_schedule_cycle, solve_stationary_exact};
 
 /// Result alias for Parrondo Markov ratchet operations.
 pub type Result<T> = std::result::Result<T, MarkovError>;
@@ -384,28 +397,6 @@ pub fn build_schedule_matrix(
     Ok(product)
 }
 
-#[verified_engine::verified]
-fn solve_stationary_exact(
-    ws: &mut StochasticWorkspace,
-    transition: &DMatrix<f64>,
-) -> Result<DVector<f64>> {
-    let m = transition.nrows();
-    debug_assert_eq!(m, transition.ncols());
-    let staged = ws.operator_staging_mut(m);
-    for r in 0..m {
-        for c in 0..m {
-            staged[math_commons::math_kernel::types::flatten_2d_index(c, r, m)] =
-                transition[(r, c)];
-        }
-    }
-    ws.solve_staged_dtmc_stationary_slice(m)
-        .map(DVector::from_column_slice)
-        .ok_or_else(|| MarkovError::SingularMatrix {
-            context: "Parrondo transition matrix lacks a unique stationary distribution"
-                .to_string(),
-        })
-}
-
 /// Computes the maximum pairwise detailed-balance flux violation $\max_{i,j} |\pi_i P_{ij} - \pi_j P_{ji}|$.
 #[must_use]
 #[verified_engine::verified]
@@ -419,30 +410,6 @@ pub fn detailed_balance_violation(transition: &DMatrix<f64>, pi: &DVector<f64>) 
         }
     }
     max_violation
-}
-
-#[verified_engine::verified]
-fn evaluate_schedule_cycle(
-    p_a: &DMatrix<f64>,
-    p_b: &DMatrix<f64>,
-    gain_vec_a: &DVector<f64>,
-    gain_vec_b: &DVector<f64>,
-    pi_cycle_start: &DVector<f64>,
-    schedule: &ParrondoSchedule,
-) -> (f64, DVector<f64>) {
-    let (mut dist, mut accum_pi) = (pi_cycle_start.clone(), DVector::zeros(pi_cycle_start.len()));
-    let (mut total_gain, p_a_t, p_b_t) = (0.0, p_a.transpose(), p_b.transpose());
-    for &step in schedule.steps() {
-        accum_pi += &dist;
-        let (gain_v, p_t) = match step {
-            ParrondoGame::GameA => (gain_vec_a, &p_a_t),
-            ParrondoGame::GameB => (gain_vec_b, &p_b_t),
-        };
-        total_gain += dist.dot(gain_v);
-        dist = p_t * &dist;
-    }
-    let inv_len = 1.0 / (schedule.len() as f64);
-    (total_gain * inv_len, accum_pi * inv_len)
 }
 
 #[doc = include_str!("../../../../../../../docs/math_specs/snippets/parrondo_ratchet.md")]

@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::bresenham::bresenham_line;
 
 /// Preset geometric brush and obstacle stencils for 2D raster sculpting.

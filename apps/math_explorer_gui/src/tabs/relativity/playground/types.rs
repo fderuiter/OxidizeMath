@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Spacetime geometry, worldline causality, gesture, viewport, and lensing source enums
 //! for [`super::GeodesicPlaygroundTool`].
 
@@ -183,3 +181,5 @@ impl LensingBackgroundKind {
         }
     }
 }
+
+// [cite:general_relativity_geodesics]

@@ -1,7 +1,5 @@
 //! Parameter binding and variable validation for symbolic complex WGSL/GLSL shaders.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use math_commons::ast::{
     is_universal_constant, BinaryOp, Expr, Func, ShaderEmitError, UnaryOp, MAX_EVAL_DEPTH,
 };

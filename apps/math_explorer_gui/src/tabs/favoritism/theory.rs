@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use scientific_metadata::theory::TheoryDescribable;
 use std::collections::HashMap;
 
@@ -55,3 +53,5 @@ impl TheoryDescribable for FavoritismTheory {
         scientific_metadata::theory::MaturityTier::Experimental
     }
 }
+
+// [cite:graph_parameters_rust]

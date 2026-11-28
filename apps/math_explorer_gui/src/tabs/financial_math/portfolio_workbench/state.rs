@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use math_explorer::nalgebra::DMatrix;
 use math_explorer::pure_math::statistics::copula::{Correlation, CorrelationMatrix};
 

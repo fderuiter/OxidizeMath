@@ -2,8 +2,6 @@
 //! for [`super::MarkovSequenceWorkbenchTool`].
 // [cite:clinical_trials_statistics]
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::MarkovSequenceWorkbenchTool;
 
 fn csv_escape_field(text: &str) -> String {

@@ -1156,6 +1156,7 @@ dependencies = [
  "proptest",
  "pure_math",
  "rand 0.8.8",
+ "serde",
  "statrs",
  "thiserror 2.0.21",
  "verified_engine",

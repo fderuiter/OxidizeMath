@@ -9,9 +9,12 @@
 pub mod cnc;
 /// Baud-rate clock tolerance and frame-drift error budgets for asynchronous UART links.
 pub mod uart;
+/// Viswanath UPO reference trajectory and OGY Rayleigh-parameter EKF control primitives.
+pub mod upo_control;
 
 pub use cnc::*;
 pub use uart::*;
+pub use upo_control::*;
 
 // [cite:graph_parameters_rust]
 

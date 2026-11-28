@@ -1,7 +1,5 @@
 //! Cold-path watertight 3D Bravais unit-cell mesh builder for [`super::CrystalViewer`].
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::CrystalViewer;
 use nalgebra::Vector3;
 use oxidize_core::mesh::{
@@ -89,3 +87,5 @@ impl CrystalViewer {
         Ok(())
     }
 }
+
+// [cite:mmwave_radiotherapy_setup]

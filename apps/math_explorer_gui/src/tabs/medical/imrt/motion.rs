@@ -1,15 +1,15 @@
 //! Zero-allocation 4D respiratory tissue-shift dosimetry, `beam_loading_energy` scaling,
 //! and single-pane standalone Kalman gating stepper.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::contours::compute_isodose_dice;
 use super::{
     voxel_coord_cm, IMRT_GRID_DIM, IMRT_OAR_CENTER, IMRT_PHANTOM_SIZE_CM, IMRT_VOXEL_COUNT,
 };
 use crate::tabs::medical::link_bus::GatingTelemetry;
-use crate::tabs::medical::radar_gating::pipeline::{FastCvKalman, HISTORY_LEN, SIM_DT};
+use crate::tabs::medical::radar_gating::challenge::fast_cv_from_tracking_filter;
+use crate::tabs::medical::radar_gating::pipeline::{HISTORY_LEN, SIM_DT};
 use math_commons::math_kernel::types::flatten_2d_index;
+use math_explorer::engine_diffeq::FastCvKalman;
 use math_explorer::nalgebra::DVector;
 use math_explorer::physics::medical::accelerator::beam_loading_energy;
 use math_explorer::physics::medical::evaluation::{
@@ -448,7 +448,7 @@ impl Standalone4dStepper {
 fn new_standalone_kalman() -> FastCvKalman {
     let model = ConstantVelocityModel::new(3.0e-4, 2.0e-5);
     let tf = TrackingFilter::new(0.0, SIM_DT, model);
-    FastCvKalman::from_tracking_filter(&tf, SIM_DT, 3.0e-4, 2.0e-5)
+    fast_cv_from_tracking_filter(&tf, SIM_DT, 3.0e-4, 2.0e-5)
 }
 
 fn new_standalone_gating() -> GatingLogic {
