@@ -67,8 +67,9 @@ pub use ev::{
     evaluate_outcome_ev,
 };
 pub use execution::{
-    HedgeMode, HedgeReport, MiddleReport, evaluate_hedge, evaluate_middle,
-    evaluate_middle_custom_stakes,
+    AlmgrenChrissConfig, HedgeMode, HedgeReport, MiddleReport,
+    almgren_chriss_analytical_trajectory_into, almgren_chriss_workspace_len, evaluate_hedge,
+    evaluate_middle, evaluate_middle_custom_stakes, solve_almgren_chriss_mpc_into,
 };
 pub use overround::{
     MarketOverround, booksum, implied_probabilities_into, market_overround, overround,

@@ -9,6 +9,8 @@ pub mod controllers;
 pub mod ekf {
     pub use math_explorer::applied::algorithms::kalman::*;
 }
+#[cfg(test)]
+mod mpc_tests;
 pub mod pipeline;
 pub mod plants;
 pub mod runner;

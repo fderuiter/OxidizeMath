@@ -8,6 +8,7 @@ use super::{
     ZipError,
 };
 use engine_linalg::LinalgError;
+use engine_opt::error::{FitError, OptError};
 use math_commons::error::{
     ArenaError, EvalError, GlslError, LexError, MathCommonsError, MathError, ParseError,
     ShaderEmitError,
@@ -131,6 +132,12 @@ pub enum PureMathError {
     /// Foundational `#![no_std]` PDE and SPDE engine error.
     #[error("{0}")]
     Pde(#[from] engine_pde::PdeError),
+    /// Foundational `#![no_std]` curve-fitting solver error.
+    #[error("{0}")]
+    Fit(#[from] FitError),
+    /// Foundational `#![no_std]` optimization, control, DP, MFG, and Nash engine error.
+    #[error("{0}")]
+    Opt(#[from] OptError),
     /// Foundational mathematical kernel error.
     #[error("{0}")]
     Math(#[from] MathError),
@@ -239,6 +246,8 @@ impl PureMathError {
             Self::Transform(err) => err,
             Self::Diffeq(err) => err,
             Self::Pde(err) => err,
+            Self::Fit(err) => err,
+            Self::Opt(err) => err,
             Self::Math(err) => err,
             Self::MathCommons(err) => err,
             Self::Scalar(err) => err,

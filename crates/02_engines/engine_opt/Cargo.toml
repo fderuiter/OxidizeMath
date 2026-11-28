@@ -14,16 +14,18 @@ math_contract = true
 
 [features]
 default = ["std"]
-alloc = ["engine_linalg/alloc", "math_scalars/alloc", "serde?/alloc"]
+alloc = ["engine_linalg/alloc", "engine_pde/alloc", "math_scalars/alloc", "serde?/alloc"]
 serde = [
     "dep:serde",
     "engine_linalg/serde",
+    "engine_pde/serde",
     "math_diagnostics/serde",
     "math_scalars/serde",
 ]
 std = [
     "alloc",
     "dep:scientific_metadata",
+    "engine_pde/std",
     "math_diagnostics/std",
     "math_scalars/std",
     "serde?/std",
@@ -33,6 +35,7 @@ std = [
 
 [dependencies]
 engine_linalg = { path = "../engine_linalg", default-features = false }
+engine_pde = { path = "../engine_pde", default-features = false }
 math_diagnostics = { path = "../../00_foundation/math_diagnostics", default-features = false }
 math_scalars = { path = "../../00_foundation/math_scalars", default-features = false }
 scientific_metadata = { path = "../../00_foundation/scientific_metadata", optional = true }
@@ -45,6 +48,10 @@ serde_json = { workspace = true, default-features = false, features = ["alloc", 
 
 [[test]]
 name = "verified_curve_solvers"
+required-features = ["std"]
+
+[[test]]
+name = "verified_opt_solvers"
 required-features = ["std"]
 
 [lints]

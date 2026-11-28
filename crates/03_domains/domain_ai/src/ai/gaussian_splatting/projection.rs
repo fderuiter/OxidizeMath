@@ -312,27 +312,32 @@ mod tests {
         let mut out_splats = Vec::with_capacity(2 * scene.gaussians.len());
         let shear = Matrix2::new(1.8, 0.25, 0.25, 0.65);
 
-        let ((), metrics) = verified_engine::engine::VerifiedEngine::run_verified(|| {
-            project_scene_lensed_into(
-                &scene,
-                &cam,
-                |_idx, _g, _cam_vec, beta| LensedProjectionOutcome {
-                    primary: Some(LensedSplatImageSpec {
-                        mean: Point2::new(beta.x * 1.4, beta.y * 1.4),
-                        lens_jacobian: shear,
-                        radiance_weight: 1.5,
-                        opacity_weight: 1.0,
-                    }),
-                    secondary: Some(LensedSplatImageSpec {
-                        mean: Point2::new(-beta.x * 0.6, -beta.y * 0.6),
-                        lens_jacobian: Matrix2::new(-0.5, 0.0, 0.0, 1.4),
-                        radiance_weight: 0.7,
-                        opacity_weight: 0.8,
-                    }),
-                },
-                &mut out_splats,
-            );
-        });
+        let ((), metrics) = {
+            let _guard = crate::VERIFIED_TEST_LOCK
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            verified_engine::engine::VerifiedEngine::run_verified(|| {
+                project_scene_lensed_into(
+                    &scene,
+                    &cam,
+                    |_idx, _g, _cam_vec, beta| LensedProjectionOutcome {
+                        primary: Some(LensedSplatImageSpec {
+                            mean: Point2::new(beta.x * 1.4, beta.y * 1.4),
+                            lens_jacobian: shear,
+                            radiance_weight: 1.5,
+                            opacity_weight: 1.0,
+                        }),
+                        secondary: Some(LensedSplatImageSpec {
+                            mean: Point2::new(-beta.x * 0.6, -beta.y * 0.6),
+                            lens_jacobian: Matrix2::new(-0.5, 0.0, 0.0, 1.4),
+                            radiance_weight: 0.7,
+                            opacity_weight: 0.8,
+                        }),
+                    },
+                    &mut out_splats,
+                );
+            })
+        };
         assert!(metrics.function_calls > 0);
         assert_eq!(out_splats.len(), 2);
         assert!(out_splats[0].color.x > out_splats[1].color.x);
