@@ -1,7 +1,5 @@
 //! Cold-path rotation-minimizing tube extrusion for [`super::AttractorPlotter`] 3D exports.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::{AttractorMode, AttractorPlotter, CompiledFlowJob};
 use math_commons::math_kernel::colormap::mapped_gradient;
 use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
@@ -191,3 +189,5 @@ impl AttractorPlotter {
         out
     }
 }
+
+// [cite:algorithmic_information_rust]

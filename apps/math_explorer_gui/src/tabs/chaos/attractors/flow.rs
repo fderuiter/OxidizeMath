@@ -2,6 +2,7 @@
 
 use crate::framework::{CoupledExpressionBank, MAX_SYNTHESIZED_PARAMS};
 use math_commons::ast::CompiledExpr;
+use math_explorer::pure_math::analysis::ode::{OdeSystem, RungeKutta4, Solver};
 use nalgebra::Vector3;
 
 pub const DEFAULT_FLOW_EXPRS: [&str; 3] = ["-y - z", "x + a * y", "b + z * (x - c)"];
@@ -61,15 +62,14 @@ impl CompiledFlowJob {
         )
     }
 
-    /// Advances `pos` by one classical 4th-order Runge-Kutta step of size `dt` without heap allocation.
+    /// Advances `pos` by one classical 4th-order Runge-Kutta step of size `dt` via [`RungeKutta4`].
     #[inline]
     #[must_use]
     pub fn rk4_step(&self, pos: Vector3<f64>, dt: f64) -> Vector3<f64> {
-        let k1 = self.eval_rhs(pos);
-        let k2 = self.eval_rhs(pos + k1 * (0.5 * dt));
-        let k3 = self.eval_rhs(pos + k2 * (0.5 * dt));
-        let k4 = self.eval_rhs(pos + k3 * dt);
-        pos + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (dt / 6.0)
+        let mut next = pos;
+        let mut solver = RungeKutta4::new(&pos);
+        solver.step(self, 0.0, &mut next, dt);
+        next
     }
 
     /// Creates a zero-allocation stack view overriding selected parameter slots.
@@ -86,7 +86,7 @@ impl CompiledFlowJob {
     }
 }
 
-impl math_explorer::pure_math::analysis::ode::OdeSystem<Vector3<f64>> for CompiledFlowJob {
+impl OdeSystem<Vector3<f64>> for CompiledFlowJob {
     fn derivative(&self, _t: f64, state: &Vector3<f64>) -> Vector3<f64> {
         self.eval_rhs(*state)
     }
@@ -112,19 +112,18 @@ impl BoundFlowView<'_> {
         )
     }
 
-    /// Advances `pos` by one 4th-order Runge-Kutta step of size `dt` on stack buffers.
+    /// Advances `pos` by one 4th-order Runge-Kutta step of size `dt` via [`RungeKutta4`].
     #[inline]
     #[must_use]
     pub fn rk4_step(&self, pos: Vector3<f64>, dt: f64) -> Vector3<f64> {
-        let k1 = self.eval_rhs(pos);
-        let k2 = self.eval_rhs(pos + k1 * (0.5 * dt));
-        let k3 = self.eval_rhs(pos + k2 * (0.5 * dt));
-        let k4 = self.eval_rhs(pos + k3 * dt);
-        pos + (k1 + k2 * 2.0 + k3 * 2.0 + k4) * (dt / 6.0)
+        let mut next = pos;
+        let mut solver = RungeKutta4::new(&pos);
+        solver.step(self, 0.0, &mut next, dt);
+        next
     }
 }
 
-impl math_explorer::pure_math::analysis::ode::OdeSystem<Vector3<f64>> for BoundFlowView<'_> {
+impl OdeSystem<Vector3<f64>> for BoundFlowView<'_> {
     fn derivative(&self, _t: f64, state: &Vector3<f64>) -> Vector3<f64> {
         self.eval_rhs(*state)
     }

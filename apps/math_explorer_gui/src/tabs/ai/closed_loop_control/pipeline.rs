@@ -1,8 +1,8 @@
 //! Preallocated zero-allocation simulation pipeline and cooperative `SimulationRunner` for `ClosedLoopControlTool`.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
-use super::controllers::{DiscreteQController, GrpoController, GRPO_GROUP_SIZE, ROLLOUT_HORIZON};
+use super::controllers::{
+    DiscreteQController, GrpoController, GrpoUpdateParams, GRPO_GROUP_SIZE, ROLLOUT_HORIZON,
+};
 use super::plants::{
     sample_standard_normal, LorenzPlantTwin, PkPlantTwin, PlantStepOutput, SeirPlantTwin,
 };
@@ -258,7 +258,11 @@ impl ClosedLoopPipeline {
             }
             self.grpo.group_returns[g] = total_r;
         }
-        self.grpo.finish_group_update(cfg);
+        self.grpo.finish_group_update(GrpoUpdateParams {
+            lr: cfg.grpo_lr,
+            clip_eps: cfg.grpo_clip_eps,
+            kl_beta: cfg.grpo_kl_beta,
+        });
         self.grpo.last_mean_return
     }
 

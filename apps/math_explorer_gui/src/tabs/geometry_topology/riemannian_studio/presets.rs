@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Curated `< 1 KiB` Starter Gallery presets for [`super::RiemannianPdeStudio`].
 
 use super::handoff::RiemannianPresetTarget;
@@ -170,3 +168,5 @@ inventory::submit! {
         preset_generator: || PRESET_FREESURFER_GLM_CONTRAST_JSON,
     }
 }
+
+// [cite:graph_parameters_rust]

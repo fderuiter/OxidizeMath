@@ -1,7 +1,5 @@
 //! Compact RLE URL/preset serialization for [`super::RewardPlotsTool`].
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::RewardPlotsTool;
 use crate::tabs::ai::rl_sculpt::{
     apply_rle_to_mdp, encode_custom_cells_rle, is_zero_f64, RlSolverMode,
@@ -110,3 +108,5 @@ inventory::submit! {
         preset_generator: || STARTER_PRESET_JSON,
     }
 }
+
+// [cite:algorithmic_information_rust]

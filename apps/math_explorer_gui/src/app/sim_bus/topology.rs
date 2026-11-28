@@ -1,7 +1,5 @@
 //! Data models (`TopologySource`, `SharedGraphTopology`, `SharedPointCloud3D`) for [`super::SharedSimulationBus`].
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use serde::{Deserialize, Serialize};
 
 /// Maximum node count published in [`SharedGraphTopology`].

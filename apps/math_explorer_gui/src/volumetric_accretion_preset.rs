@@ -1,4 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 //! Relativistic Shakura-Sunyaev accretion disk & bipolar corona `Gaussian3D` preset builder.
 // [cite:gaussian_splatting]
 // [cite:general_relativity_geodesics]

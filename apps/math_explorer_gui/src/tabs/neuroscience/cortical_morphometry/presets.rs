@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 //! Curated starter gallery presets for [`super::CorticalMorphometryTool`].
 
 pub(super) const PRESET_SULCAL_THICKNESS_JSON: &str = r#"{
@@ -136,3 +134,5 @@ inventory::submit! {
         preset_generator: || PRESET_MRF_DEFORMABLE_JSON,
     }
 }
+
+// [cite:freesurfer]

@@ -122,16 +122,21 @@ impl VrChaosState {
         self.trajectory_buf.clear();
         self.scalar_trace.clear();
         let dt = self.dt.clamp(0.001, 0.05);
-        let mut pt = Point3D::new(1.0, 1.0, 1.0);
+        let mut stepper = LorenzTrajectoryStepper::new(
+            Point3D::new(1.0, 1.0, 1.0),
+            self.sigma,
+            self.rho,
+            self.beta,
+        );
         for _ in 0..WARMUP_STEPS {
-            pt = step_lorenz_point(pt, dt, self.sigma, self.rho, self.beta);
+            let pt = stepper.step(dt);
             if !pt.is_finite() {
-                pt = Point3D::new(1.0, 1.0, 1.0);
+                stepper.reset_origin();
                 break;
             }
         }
         for _ in 0..TRACE_LEN {
-            pt = step_lorenz_point(pt, dt, self.sigma, self.rho, self.beta);
+            let pt = stepper.step(dt);
             if !pt.is_finite() {
                 break;
             }
@@ -149,8 +154,10 @@ impl VrChaosState {
     pub fn advance_live_steps(&mut self, steps: usize) {
         self.last_stream_tick = PlatformInstant::now();
         let dt = self.dt.clamp(0.001, 0.05);
+        let mut stepper =
+            LorenzTrajectoryStepper::new(self.current_state, self.sigma, self.rho, self.beta);
         for _ in 0..steps.clamp(1, 32) {
-            let next = step_lorenz_point(self.current_state, dt, self.sigma, self.rho, self.beta);
+            let next = stepper.step(dt);
             if !next.is_finite() {
                 self.playing = false;
                 break;
@@ -232,25 +239,94 @@ impl VrChaosState {
     }
 }
 
-fn step_lorenz_point(s: Point3D, dt: f64, sigma: f64, rho: f64, beta: f64) -> Point3D {
-    let deriv = |p: Point3D| {
-        Point3D::new(
-            sigma * (p.y - p.x),
-            p.x * (rho - p.z) - p.y,
-            p.x * p.y - beta * p.z,
-        )
-    };
-    let add =
-        |a: Point3D, b: Point3D, w: f64| Point3D::new(a.x + w * b.x, a.y + w * b.y, a.z + w * b.z);
-    let k1 = deriv(s);
-    let k2 = deriv(add(s, k1, 0.5 * dt));
-    let k3 = deriv(add(s, k2, 0.5 * dt));
-    let k4 = deriv(add(s, k3, dt));
-    Point3D::new(
-        s.x + (dt / 6.0) * (k1.x + 2.0 * k2.x + 2.0 * k3.x + k4.x),
-        s.y + (dt / 6.0) * (k1.y + 2.0 * k2.y + 2.0 * k3.y + k4.y),
-        s.z + (dt / 6.0) * (k1.z + 2.0 * k2.z + 2.0 * k3.z + k4.z),
-    )
+#[cfg(feature = "physics")]
+struct LorenzTrajectoryStepper {
+    sys: math_explorer::physics::chaos::lorenz::LorenzSystem,
+    solver: math_explorer::pure_math::analysis::ode::RungeKutta4<nalgebra::Vector3<f64>>,
+}
+
+#[cfg(feature = "physics")]
+impl LorenzTrajectoryStepper {
+    fn new(init: Point3D, sigma: f64, rho: f64, beta: f64) -> Self {
+        use math_explorer::physics::chaos::lorenz::{LorenzBuilder, LorenzState};
+        use math_explorer::pure_math::analysis::ode::RungeKutta4;
+        let sys = LorenzBuilder::new()
+            .sigma(sigma)
+            .rho(rho)
+            .beta(beta)
+            .build(LorenzState::new(init.x, init.y, init.z));
+        let solver = RungeKutta4::new(&sys.state.vec);
+        Self { sys, solver }
+    }
+
+    fn reset_origin(&mut self) {
+        self.sys.state.vec = nalgebra::Vector3::new(1.0, 1.0, 1.0);
+    }
+
+    fn step(&mut self, dt: f64) -> Point3D {
+        self.sys.step_with(&mut self.solver, dt);
+        let v = self.sys.state.vec;
+        Point3D::new(v.x, v.y, v.z)
+    }
+}
+
+#[cfg(not(feature = "physics"))]
+struct LorenzFallbackRhs {
+    sigma: f64,
+    rho: f64,
+    beta: f64,
+}
+
+#[cfg(not(feature = "physics"))]
+impl
+    math_explorer::pure_math::analysis::ode::OdeSystem<
+        math_explorer::pure_math::analysis::ode::ArrayState<3>,
+    > for LorenzFallbackRhs
+{
+    fn derivative(
+        &self,
+        _t: f64,
+        s: &math_explorer::pure_math::analysis::ode::ArrayState<3>,
+    ) -> math_explorer::pure_math::analysis::ode::ArrayState<3> {
+        let [x, y, z] = s.0;
+        math_explorer::pure_math::analysis::ode::ArrayState([
+            self.sigma * (y - x),
+            x * (self.rho - z) - y,
+            x * y - self.beta * z,
+        ])
+    }
+}
+
+#[cfg(not(feature = "physics"))]
+struct LorenzTrajectoryStepper {
+    rhs: LorenzFallbackRhs,
+    state: math_explorer::pure_math::analysis::ode::ArrayState<3>,
+    solver: math_explorer::pure_math::analysis::ode::RungeKutta4<
+        math_explorer::pure_math::analysis::ode::ArrayState<3>,
+    >,
+}
+
+#[cfg(not(feature = "physics"))]
+impl LorenzTrajectoryStepper {
+    fn new(init: Point3D, sigma: f64, rho: f64, beta: f64) -> Self {
+        use math_explorer::pure_math::analysis::ode::{ArrayState, RungeKutta4};
+        let state = ArrayState([init.x, init.y, init.z]);
+        Self {
+            rhs: LorenzFallbackRhs { sigma, rho, beta },
+            solver: RungeKutta4::new(&state),
+            state,
+        }
+    }
+
+    fn reset_origin(&mut self) {
+        self.state = math_explorer::pure_math::analysis::ode::ArrayState([1.0, 1.0, 1.0]);
+    }
+
+    fn step(&mut self, dt: f64) -> Point3D {
+        use math_explorer::pure_math::analysis::ode::Solver;
+        self.solver.step(&self.rhs, 0.0, &mut self.state, dt);
+        Point3D::new(self.state.0[0], self.state.0[1], self.state.0[2])
+    }
 }
 
 #[cfg(feature = "physics")]

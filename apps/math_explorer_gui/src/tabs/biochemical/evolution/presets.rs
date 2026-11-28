@@ -1,8 +1,6 @@
 //! Presets, URL-safe state schema, [`TheoryDescribable`], and `StarterPresetMetadata` cards
 //! for [`super::EvolutionaryBiologyTool`].
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use scientific_metadata::theory::TheoryDescribable;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -203,3 +201,5 @@ inventory::submit! {
         preset_generator: || PRESET_HAWK_ESCALATION,
     }
 }
+
+// [cite:biology]

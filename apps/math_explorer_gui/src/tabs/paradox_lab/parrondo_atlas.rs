@@ -2,15 +2,13 @@
 
 #![cfg_attr(any(), verified(opt_out = "gui_tool"))]
 
-use super::parrondo::{next_markov_state, win_probs, ParrondoParadoxTool, ParrondoVariant};
+use super::parrondo::{ParrondoParadoxTool, ParrondoVariant};
 use crate::async_sim::atlas::{
     atlas_regime_color, AtlasAxisPair, AtlasAxisSpec, AtlasCell, AtlasTeleportEvent,
     RegimeCartographer,
 };
 use eframe::egui;
-use math_explorer::nalgebra::DMatrix;
-use math_explorer::pure_math::statistics::markov::dtmc::{MarkovChain, StateType};
-use math_explorer::pure_math::statistics::markov::tensor::{TimeIndex, TransitionTensor};
+pub use math_explorer::pure_math::statistics::markov::parrondo::evaluate_jump_ratchet_stack;
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -52,40 +50,6 @@ impl ParrondoJumpRegime {
             Self::DirectPositiveDrift => "Unbiased / Direct Positive Drift",
         }
     }
-}
-
-pub(super) fn compute_abb_tensor_metrics(
-    p_a: &DMatrix<f64>,
-    p_b: &DMatrix<f64>,
-    win_a: &[f64; 4],
-    win_b: &[f64; 4],
-) -> (f64, f64, f64) {
-    let n = p_a.nrows();
-    let (t_min, t_mid, t_one, t_max) = (
-        TimeIndex::new(0.0).unwrap(),
-        TimeIndex::new(0.5).unwrap(),
-        TimeIndex::new(1.0).unwrap(),
-        TimeIndex::new(2.0).unwrap(),
-    );
-    let mut tensor = TransitionTensor::new(n, t_min, t_max);
-    tensor.add_time_slice(t_min, p_a.clone()).unwrap();
-    tensor.add_time_slice(t_one, p_b.clone()).unwrap();
-    tensor.add_time_slice(t_max, p_b.clone()).unwrap();
-
-    let s0 = tensor.transition_matrix_at(t_min).unwrap();
-    let s1 = tensor.transition_matrix_at(t_one).unwrap();
-    let s2 = tensor.transition_matrix_at(t_max).unwrap();
-    let chain_abb = MarkovChain::new(&s0 * &s1 * &s2, vec![StateType::Transient; n]).unwrap();
-    let pi0 = chain_abb.stationary_distribution().unwrap();
-    let pi1 = s0.transpose() * &pi0;
-    let pi2 = s1.transpose() * &pi1;
-    let gain = |pi: &math_explorer::nalgebra::DVector<f64>, w: &[f64; 4]| -> f64 {
-        (0..n).map(|s| pi[s] * (2.0 * w[s] - 1.0)).sum()
-    };
-    let drift_abb = (gain(&pi0, win_a) + gain(&pi1, win_b) + gain(&pi2, win_b)) / 3.0;
-    let avg = tensor.average_transition(t_min, t_max, 3).unwrap();
-    let mid = tensor.transition_matrix_at(t_mid).unwrap();
-    (drift_abb, avg[(0, 1)], mid[(0, 1)])
 }
 
 /// Stack-allocated 2D cartographer for discrete convex mixtures and continuous-time jump ratchets.
@@ -158,175 +122,6 @@ fn jump_axis_spec(
             },
         ),
     }
-}
-
-/// Evaluates `(drift_a, drift_b, drift_mix, drift_abb, drift_ssa)` strictly on `[f64; 8]` stack arrays.
-#[must_use]
-pub fn evaluate_jump_ratchet_stack(
-    variant: ParrondoVariant,
-    eps: f64,
-    gamma: f64,
-    lambda: f64,
-) -> (f64, f64, f64, f64, f64) {
-    let (win_a, win_b, n) = win_probs(variant, eps.clamp(0.0, 0.20));
-    let g = gamma.clamp(0.0, 1.0);
-    let mut win_mix = [0.0; 4];
-    for s in 0..n {
-        win_mix[s] = g * win_a[s] + (1.0 - g) * win_b[s];
-    }
-    let pa = build_dtmc_4(variant, &win_a, n);
-    let pb = build_dtmc_4(variant, &win_b, n);
-    let pmix = build_dtmc_4(variant, &win_mix, n);
-    let drift_a = 2.0 * win_a[0] - 1.0;
-    let pi_b = solve_linear_8(&dtmc_to_generator_8(&pb, n), n);
-    let pi_mix = solve_linear_8(&dtmc_to_generator_8(&pmix, n), n);
-    let drift_b: f64 = (0..n).map(|s| pi_b[s] * (2.0 * win_b[s] - 1.0)).sum();
-    let drift_mix: f64 = (0..n).map(|s| pi_mix[s] * (2.0 * win_mix[s] - 1.0)).sum();
-
-    let p_abb = mul_4(&mul_4(&pa, &pb, n), &pb, n);
-    let pi0 = solve_linear_8(&dtmc_to_generator_8(&p_abb, n), n);
-    let pi1 = step_4(&pa, &pi0, n);
-    let pi2 = step_4(&pb, &pi1, n);
-    let g0: f64 = (0..n).map(|s| pi0[s] * (2.0 * win_a[s] - 1.0)).sum();
-    let g1: f64 = (0..n).map(|s| pi1[s] * (2.0 * win_b[s] - 1.0)).sum();
-    let g2: f64 = (0..n).map(|s| pi2[s] * (2.0 * win_b[s] - 1.0)).sum();
-    let drift_abb = (g0 + g1 + g2) / 3.0;
-
-    let q_ssa = build_ssa_generator_8(variant, &win_a, &win_b, n, lambda.clamp(0.05, 10.0));
-    let pi_ssa = solve_linear_8(&q_ssa, 2 * n);
-    let mut drift_ssa = 0.0;
-    for s in 0..n {
-        drift_ssa += pi_ssa[s] * (2.0 * win_a[s] - 1.0);
-        drift_ssa += pi_ssa[n + s] * (2.0 * win_b[s] - 1.0);
-    }
-    (drift_a, drift_b, drift_mix, drift_abb, drift_ssa)
-}
-
-fn build_dtmc_4(variant: ParrondoVariant, probs: &[f64; 4], n: usize) -> [[f64; 4]; 4] {
-    let mut mat = [[0.0; 4]; 4];
-    for s in 0..n {
-        mat[s][next_markov_state(variant, s, true)] += probs[s];
-        mat[s][next_markov_state(variant, s, false)] += 1.0 - probs[s];
-    }
-    mat
-}
-
-fn mul_4(lhs: &[[f64; 4]; 4], rhs: &[[f64; 4]; 4], n: usize) -> [[f64; 4]; 4] {
-    let mut out = [[0.0; 4]; 4];
-    for i in 0..n {
-        for k in 0..n {
-            for j in 0..n {
-                out[i][j] += lhs[i][k] * rhs[k][j];
-            }
-        }
-    }
-    out
-}
-
-fn step_4(mat: &[[f64; 4]; 4], dist: &[f64; 8], n: usize) -> [f64; 8] {
-    let mut next = [0.0; 8];
-    for i in 0..n {
-        for j in 0..n {
-            next[j] += dist[i] * mat[i][j];
-        }
-    }
-    next
-}
-
-fn dtmc_to_generator_8(p: &[[f64; 4]; 4], n: usize) -> [[f64; 8]; 8] {
-    let mut q = [[0.0; 8]; 8];
-    for i in 0..n {
-        for j in 0..n {
-            q[i][j] = p[i][j] - if i == j { 1.0 } else { 0.0 };
-        }
-    }
-    q
-}
-
-fn build_ssa_generator_8(
-    variant: ParrondoVariant,
-    win_a: &[f64; 4],
-    win_b: &[f64; 4],
-    n: usize,
-    lambda: f64,
-) -> [[f64; 8]; 8] {
-    let mut q = [[0.0; 8]; 8];
-    let sw_ab = lambda * 1.6;
-    let sw_ba = lambda * 0.8;
-    for s in 0..n {
-        let win_s = next_markov_state(variant, s, true);
-        let loss_s = next_markov_state(variant, s, false);
-        q[s][s] -= 1.0 + sw_ab;
-        q[s][win_s] += win_a[s];
-        q[s][loss_s] += 1.0 - win_a[s];
-        q[s][n + s] += sw_ab;
-
-        let b_idx = n + s;
-        q[b_idx][b_idx] -= 1.0 + sw_ba;
-        q[b_idx][n + win_s] += win_b[s];
-        q[b_idx][n + loss_s] += 1.0 - win_b[s];
-        q[b_idx][s] += sw_ba;
-    }
-    q
-}
-
-fn solve_linear_8(q: &[[f64; 8]; 8], m: usize) -> [f64; 8] {
-    let mut aug = [[0.0_f64; 9]; 8];
-    for r in 0..(m - 1) {
-        for c in 0..m {
-            aug[r][c] = q[c][r];
-        }
-    }
-    for val in aug[m - 1].iter_mut().take(m) {
-        *val = 1.0;
-    }
-    aug[m - 1][m] = 1.0;
-
-    for col in 0..m {
-        let mut pivot = col;
-        let mut best = aug[col][col].abs();
-        for (row, candidate) in aug.iter().enumerate().take(m).skip(col + 1) {
-            let mag = candidate[col].abs();
-            if mag > best {
-                best = mag;
-                pivot = row;
-            }
-        }
-        if best <= 1e-14 {
-            let mut uni = [0.0; 8];
-            for v in uni.iter_mut().take(m) {
-                *v = 1.0 / (m as f64);
-            }
-            return uni;
-        }
-        if pivot != col {
-            aug.swap(col, pivot);
-        }
-        let inv = 1.0 / aug[col][col];
-        let pivot_row = aug[col];
-        for row_vals in aug.iter_mut().take(m).skip(col + 1) {
-            let factor = row_vals[col] * inv;
-            for (dst, &src) in row_vals[col..=m].iter_mut().zip(&pivot_row[col..=m]) {
-                *dst -= factor * src;
-            }
-        }
-    }
-
-    let mut pi = [0.0; 8];
-    for r in (0..m).rev() {
-        let mut rhs = aug[r][m];
-        for c in (r + 1)..m {
-            rhs -= aug[r][c] * pi[c];
-        }
-        pi[r] = (rhs / aug[r][r]).max(0.0);
-    }
-    let sum: f64 = pi.iter().take(m).sum();
-    if sum > 1e-12 && sum.is_finite() {
-        for val in pi.iter_mut().take(m) {
-            *val /= sum;
-        }
-    }
-    pi
 }
 
 impl RegimeCartographer for ParrondoJumpCartographer {

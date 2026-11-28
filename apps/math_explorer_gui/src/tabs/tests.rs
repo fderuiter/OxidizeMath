@@ -1,5 +1,3 @@
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::{instantiate_tab, instantiate_tabs};
 use std::collections::HashSet;
 use std::fs;

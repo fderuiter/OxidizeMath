@@ -1,7 +1,5 @@
 //! HIPAA-safe Markdown and CSV composite Win Ratio report generators and plot dataset exporters.
 
-#![cfg_attr(any(), verified(opt_out = "gui_tool"))]
-
 use super::cohort::WinRatioPlotMode;
 use super::WinRatioTool;
 use std::fmt::Write as _;

@@ -154,6 +154,7 @@ The [`docs/adr/`](adr/0001-dynamic-workspace-discovery.md) directory documents a
 - [ADR 20261127: Harden AI Solvers, RNG Stream Scaling, and Decision-Boundary Views in Place](adr/20261127-harden-ai-solvers-and-views.md)
 - [ADR 20261127: Standalone `oxidize_wasm` SDK, Off-Main-Thread Web Worker Runtime, and WebGPU `128^3` Volumetric Compute Foundry](adr/20261127-oxidize-wasm-sdk-worker-and-webgpu-compute.md)
 - [ADR 20261127: Reentrancy-Safe Allocator Trap, Portable Native CI Tests, and Non-Blocking Desktop Legs](adr/20261127-portable-native-ci-tests.md)
+- [ADR 20261127: Promote Standalone GUI Solvers into Domain Crates and Enforce Headless GUI Opt-Out Guards](adr/20261127-promote-gui-solvers-to-domain-crates.md)
 
 ## Contributing
 
