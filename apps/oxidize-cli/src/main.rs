@@ -16,7 +16,7 @@ fn main() {
     println!("{}", summary_banner());
     debug_assert_eq!(
         oxidizemath::fit::FitModel::Linear.maturity_tier(),
-        MaturityTier::Certified
+        MaturityTier::Validated
     );
 }
 
@@ -29,6 +29,6 @@ mod tests {
         let text = summary_banner();
         assert!(text.contains("oxidize-cli v"));
         assert!(text.contains("--package oxidize-cli"));
-        assert!(text.contains("Certified"));
+        assert!(text.contains("Validated"));
     }
 }
