@@ -6,7 +6,7 @@ use super::io::{parse_calibration_csv, MAX_CALIBRATION_CSV_ROWS};
 use super::*;
 use crate::framework::InteractiveTool;
 use crate::tabs::battery_degradation::cell_card::ChemistryChoice;
-use math_explorer::applied::battery_degradation::{Cycles, DepthOfDischarge};
+use math_explorer::engineering::battery_degradation::{Cycles, DepthOfDischarge};
 
 #[test]
 fn test_first_life_80_threshold_error_and_power_law_fit() {

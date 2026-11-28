@@ -17,6 +17,7 @@ const SINGLE_DOMAIN_FEATURES: &[&str] = &[
     "applied",
     "biology",
     "climate",
+    "engineering",
     "epidemiology",
     "physics",
 ];

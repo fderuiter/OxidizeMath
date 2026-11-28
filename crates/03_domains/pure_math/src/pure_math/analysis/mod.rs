@@ -1,6 +1,8 @@
 /// Submodule providing `complex` types, traits, and algorithms.
 pub mod complex;
 pub mod evolution;
+/// Evolutionary game theory (`FitnessStrategy`, `MatrixPayoff`, `ReplicatorDynamics`).
+pub mod evolutionary;
 pub mod integration;
 pub mod momentum_dynamics;
 pub mod ode;
@@ -13,6 +15,7 @@ pub mod stochastic;
 pub mod transforms;
 
 pub use evolution::EvolutionError;
+pub use evolutionary::{FitnessStrategy, GameTheoryError, MatrixPayoff, ReplicatorDynamics};
 pub use optimization::OptimizationError;
 pub use roots::AnalysisError;
 pub use stochastic::StochasticError;

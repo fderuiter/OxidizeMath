@@ -381,55 +381,6 @@ pub enum Glicko2Error {
     },
 }
 
-/// Errors returned by game-theoretic equilibrium, evolutionary, and mean-field solvers.
-#[derive(Debug, Clone, PartialEq, Error)]
-pub enum GameTheoryError {
-    /// Payoff matrix is not square.
-    #[error("Payoff matrix must be square, got {rows}x{cols}")]
-    NonSquarePayoffMatrix {
-        /// Actual row count.
-        rows: usize,
-        /// Actual column count.
-        cols: usize,
-    },
-    /// Invalid parameter value (e.g. frequency outside `[0, 1]`).
-    #[error("Invalid game theory parameter {name}: {value}")]
-    InvalidParameter {
-        /// Parameter identifier.
-        name: String,
-        /// Rejected numeric value.
-        value: f64,
-    },
-    /// Lower and upper bound vectors had different lengths.
-    #[error(
-        "Box constraint bound lengths must match: min has {min_len} elements, max has {max_len}"
-    )]
-    BoundsDimensionMismatch {
-        /// Length of the lower-bound vector.
-        min_len: usize,
-        /// Length of the upper-bound vector.
-        max_len: usize,
-    },
-    /// Lower bound exceeded upper bound or was non-finite along a dimension.
-    #[error(
-        "Invalid box bounds at dimension {dimension}: min ({min}) must be finite and <= max ({max})"
-    )]
-    InvalidBoxBounds {
-        /// Zero-based coordinate index with invalid bounds.
-        dimension: usize,
-        /// Lower bound at `dimension`.
-        min: f64,
-        /// Upper bound at `dimension`.
-        max: f64,
-    },
-    /// Wrapped centralized mathematical error.
-    #[error("{0}")]
-    Math(#[from] math_commons::error::MathError),
-    /// Wrapped Monte Carlo estimation error.
-    #[error("{0}")]
-    MonteCarlo(#[from] MonteCarloError),
-}
-
 mod helpers;
 mod sports;
 mod stochastic;
@@ -441,8 +392,8 @@ pub use crate::pure_math::{
     algebra::{BraidError, LaurentError},
     algorithmic_information::FractranError,
     analysis::{
-        evolution::EvolutionError, optimization::OptimizationError, roots::AnalysisError,
-        stochastic::StochasticError, transforms::TransformError,
+        evolution::EvolutionError, evolutionary::GameTheoryError, optimization::OptimizationError,
+        roots::AnalysisError, stochastic::StochasticError, transforms::TransformError,
     },
     differential_geometry::hyperbolic::Su11HyperbolicError,
     elliptic_curves::EllipticCurveError,

@@ -2,42 +2,41 @@
 
 Canonical governing equations, bibliography references, stability bounds, and validity domains for [`crates/domain_applied`](../../crates/03_domains/domain_applied/README.md), linked to [`papers/references.bib`](../../papers/references.bib) and workspace manuscripts.
 
-## 1. Kalman Filtering, Markowitz Portfolio QP, Battery Aging, Mean-Field Games, GRPO & LoRAHub (`algorithms`, `portfolio`, `battery_degradation`, `game_theory`, `grpo`, `lorahub`)
+## 1. Markowitz Portfolio QP, Mean-Field & Spatial Games, FreeSurfer MRI/GLM, GRPO & LoRAHub (`algorithms`, `portfolio`, `freesurfer`, `game_theory`, `grpo`, `lorahub`)
 
 ### Governing Equations
 
-Discrete-time `KalmanFilter` (`KalmanModel`) propagates state mean and Joseph-stabilized covariance:
+`PortfolioSpec` solves analytical Merton two-fund Lagrangian and primal-dual active-set box-simplex Markowitz quadratic programs (`long_only_tangency`, `constrained_frontier_in_place`):
 
 $$
-\hat{x}_{k|k-1} = F \hat{x}_{k-1|k-1} + B u_k, \qquad K_k = P_{k|k-1} H^T (H P_{k|k-1} H^T + R)^{-1}, \qquad \hat{x}_{k|k} = \hat{x}_{k|k-1} + K_k (z_k - H \hat{x}_{k|k-1})
+\min_{\mathbf{0} \le \mathbf{w} \le \mathbf{u}} \frac{1}{2}\mathbf{w}^T \Sigma \mathbf{w} - \lambda \boldsymbol{\mu}^T \mathbf{w} \quad \text{subject to} \quad \mathbf{1}^T \mathbf{w} = 1
 $$
 
-Electrochemical SEI/plating degradation (`PowerLawModel`, `ElectrochemicalAgingModel`, `DegradationModel`) tracks Arrhenius capacity fade $Q_{\text{loss}}(N) = a N^b$, `PortfolioSpec` solves analytical Merton two-fund Lagrangian and primal-dual active-set box-simplex Markowitz quadratic programs $\min_{0 \le w_i \le u_i} \frac{1}{2} w^T \Sigma w$ subject to $\mathbf{1}^T w = 1$ (`long_only_tangency`, `constrained_frontier_in_place`, DOI: `10.2307/2975974`, DOI: `10.2307/2329621`), `FixedPointSolver` (`MFGSolver`) and CSR-backed `GraphReplicatorSystem` couple backward Hamilton-Jacobi-Bellman / spatial replicator imitation with forward density transport, and LoRAHub/GRPO normalize group advantages and convex adapter mixtures.
+`FixedPointSolver` (`MFGSolver`) and CSR-backed `GraphReplicatorSystem` / `SpatialReplicatorGrid` couple backward Hamilton-Jacobi-Bellman or Fermi pairwise imitation ($P_{i \to j} = [1 + \exp((f_i - f_j)/\kappa)]^{-1}$) with forward density transport (building on `FitnessStrategy`, `MatrixPayoff`, and `ReplicatorDynamics` promoted to [`pure_math`](pure_math.md), with compatibility re-exports in `applied::game_theory::evolutionary` and `applied::algorithms::kalman`). FreeSurfer deformable cortical reconstruction (`evolve_surface_deformable`), Potts Markov Random Field segmentation, and `CorticalGlm` evaluate surface-based neuroimaging statistics (re-exporting triangulated `Surface` and `cortical_thickness_batch` from [`pure_math`](pure_math.md)), while LoRAHub and GRPO normalize group advantages and convex adapter mixtures. Rechargeable battery aging and CNC/UART calculators reside in [`domain_engineering`](domain_engineering.md).
 
 ### Citations
 
 - BibTeX keys: [`huang2023lorahub`](../../papers/references.bib#huang2023lorahub) (`arXiv:2307.13269`), [`R-Zero-paper`](../../papers/references.bib#R-Zero-paper), [`Rubner2000TheRetrieval`](../../papers/references.bib#Rubner2000TheRetrieval) (DOI: `10.1023/A:1026543900054`), [`boisvert1997`](../../papers/references.bib#boisvert1997).
-- Manuscripts: [`papers/grpo.tex`](../../papers/grpo.tex), [`papers/lorahub.tex`](../../papers/lorahub.tex), [`papers/dijkstra.tex`](../../papers/dijkstra.tex), [`papers/self_calibration_paper.tex`](../../papers/self_calibration_paper.tex).
+- Literature: Markowitz (1952), DOI: `10.2307/2975974`; Merton (1972), DOI: `10.2307/2329621`; Fischl & Dale (2000), `freesurfer.tex`.
+- Manuscripts: [`papers/grpo.tex`](../../papers/grpo.tex), [`papers/lorahub.tex`](../../papers/lorahub.tex), [`papers/dijkstra.tex`](../../papers/dijkstra.tex), [`papers/freesurfer.tex`](../../papers/freesurfer.tex), [`papers/self_calibration_paper.tex`](../../papers/self_calibration_paper.tex).
 
 ### Stability
 
-Kalman innovation inversion checks matrix invertibility (`KalmanError::SingularMatrix`) before updating covariance; mean-field fixed-point damping $\alpha \in (0, 1]$ prevents policy-density oscillation; electrochemical aging clamps remaining capacity to non-negative physical bounds.
+Active-set box-simplex projection enforces exact simplex normalization ($\sum_i w_i = 1$) with Cholesky/SVD conditioning checks; mean-field fixed-point damping $\alpha \in (0, 1]$ prevents policy-density oscillation; `CorticalGlm` uses pivoted Householder QR (`engine_linalg`) for rank-safe contrast estimation.
 
 ### Domain of Validity
 
-Requires matching state/observation matrix dimensions, symmetric positive semi-definite process covariance $Q \succeq 0$, symmetric positive definite measurement noise $R \succ 0$, positive absolute temperature $T > 0\,\text{K}$ for Arrhenius kinetics, and finite cycle counts $N \ge 0$.
+Requires matching return/covariance dimensions with symmetric positive definite $\Sigma \succ 0$ and feasible upper bounds $\sum_i u_i \ge 1$, positive Fermi noise temperature $\kappa > 0$, non-empty 3D MRI voxel volumes, and full-column-rank GLM design matrices.
 
 ```rust
-use math_explorer::applied::battery_degradation::{
-    Cycles, DegradationModel, DepthOfDischarge, PowerLawModel,
+use math_explorer::applied::pharmacokinetics::{
+    BatemanModel, PKParameters, PharmacokineticModel,
 };
 
-let model = PowerLawModel::standard();
-let soh = f64::from(model.capacity(
-    Cycles::new_clamped(100.0),
-    DepthOfDischarge::new_clamped(80.0),
-));
-assert!(soh > 0.7 && soh < 1.0);
+let params = PKParameters::new(1.0, 100.0, 1.2, 0.3, 10.0).unwrap();
+let model = BatemanModel::new(params);
+let conc = model.concentration(1.0);
+assert!(conc > 0.0 && conc < 10.0);
 ```
 
 ## 2. Pharmacokinetics, Clinical Win-Ratio, Cannibalism PDEs, Favoritism & Isosurfaces (`pharmacokinetics`, `clinical_trials`, `win_ratio`, `cannibalism`, `favoritism`, `isosurface`)

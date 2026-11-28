@@ -1,5 +1,5 @@
 //! Integration tests for battery degradation.
-use domain_applied::applied::battery_degradation::{
+use domain_engineering::engineering::battery_degradation::{
     Capacity, ChemistryPreset, Cycles, DegradationModel, DepthOfDischarge, DutySegment,
     ElectrochemicalAgingModel, MAX_C_RATE, MAX_EXPONENT_Z, MAX_TEMPERATURE_C, MIN_C_RATE,
     MIN_EXPONENT_Z, MIN_TEMPERATURE_C, PowerLawModel, calibrate_electrochemical_model,

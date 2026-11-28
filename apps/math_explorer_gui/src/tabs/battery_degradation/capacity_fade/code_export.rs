@@ -5,7 +5,9 @@
 use super::CapacityFadeTool;
 use crate::framework::{CodeArtifact, InteractiveTool};
 use math_commons::ast::{format_latex_scalar, format_python_float, format_rust_f64};
-use math_explorer::applied::battery_degradation::{DepthOfDischarge, ElectrochemicalAgingModel};
+use math_explorer::engineering::battery_degradation::{
+    DepthOfDischarge, ElectrochemicalAgingModel,
+};
 
 impl CapacityFadeTool {
     pub(super) fn build_code_artifact(&self) -> Option<CodeArtifact> {

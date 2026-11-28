@@ -72,7 +72,6 @@ impl Error {
     fn applied_inner(&self) -> Option<&dyn FacadeInnerError> {
         match self {
             Self::Applied(err) => Some(err),
-            Self::Battery(err) => Some(err),
             Self::ClinicalTrial(err) => Some(err),
             Self::Engineering(err) => Some(err),
             Self::Isosurface(err) => Some(err),
@@ -96,7 +95,6 @@ impl Error {
             Self::HighEnergy(err) => Some(err),
             Self::Nuclear(err) => Some(err),
             Self::Quantum(err) => Some(err),
-            Self::Radar(err) => Some(err),
             Self::Sandpile(err) => Some(err),
             Self::SolidState(err) => Some(err),
             Self::StandardModel(err) => Some(err),
@@ -111,6 +109,7 @@ impl Error {
         feature = "applied",
         feature = "biology",
         feature = "climate",
+        feature = "engineering",
         feature = "epidemiology",
         feature = "physics"
     ))]
@@ -131,6 +130,14 @@ impl Error {
             Self::ReactionDiffusion(err) => Some(err),
             #[cfg(feature = "climate")]
             Self::Climate(err) => Some(err),
+            #[cfg(feature = "engineering")]
+            Self::EngineeringDomain(err) => Some(err),
+            #[cfg(feature = "engineering")]
+            Self::Battery(err) => Some(err),
+            #[cfg(feature = "engineering")]
+            Self::Hardware(err) => Some(err),
+            #[cfg(feature = "engineering")]
+            Self::Radar(err) => Some(err),
             #[cfg(feature = "epidemiology")]
             Self::EpidemiologyDomain(err) => Some(err),
             #[cfg(feature = "epidemiology")]
@@ -147,6 +154,7 @@ impl Error {
         feature = "applied",
         feature = "biology",
         feature = "climate",
+        feature = "engineering",
         feature = "epidemiology",
         feature = "physics"
     ))]
@@ -189,6 +197,7 @@ impl Error {
                 feature = "applied",
                 feature = "biology",
                 feature = "climate",
+                feature = "engineering",
                 feature = "epidemiology",
                 feature = "physics"
             ))]

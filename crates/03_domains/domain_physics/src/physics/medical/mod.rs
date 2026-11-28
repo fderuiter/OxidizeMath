@@ -42,17 +42,23 @@ pub mod thermodynamics;
 
 pub use radar_gating::GatingError;
 
-// [cite:favorite_child]
+// [cite:medical]
 
 use pure_math::theory_verification;
 
 theory_verification!(
     module = "medical",
-    constants = {
-        DUMMY = 1.0;
-    },
+    constants = {},
     test = {
-        use approx::assert_relative_eq;
-        assert_relative_eq!(DUMMY, 1.0, epsilon = math_commons::registry::TOLERANCE_FAST);
+        use radar_gating::{BeamState, GatingLogic};
+
+        // Clinical Safety Invariant: Latency-compensated predicted amplitude A + v * tau_lat
+        // triggers BeamHold above threshold + hysteresis and latches SafetyInterlock on NaN.
+        let mut gate = GatingLogic::new(5.0, 1.0, 0.060);
+        assert_eq!(gate.arm().unwrap(), BeamState::Armed);
+        assert_eq!(gate.evaluate(3.5, 0.0), BeamState::BeamActive);
+        // Predicted = 5.5 + 10.0 * 0.060 = 6.1 > 5.0 + 1.0 -> BeamHold
+        assert_eq!(gate.evaluate(5.5, 10.0), BeamState::BeamHold);
+        assert_eq!(gate.evaluate(f64::NAN, 0.0), BeamState::SafetyInterlock);
     }
 );

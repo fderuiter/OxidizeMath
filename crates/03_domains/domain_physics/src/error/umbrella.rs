@@ -1,6 +1,6 @@
 use super::{
     ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
-    QuantumError, RadarError, SandpileError, SolidStateError, StandardModelError, StatMechError,
+    QuantumError, SandpileError, SolidStateError, StandardModelError, StatMechError,
 };
 use engine_diffeq::KalmanError;
 use engine_linalg::LinalgError;
@@ -11,8 +11,8 @@ use math_commons::error::{
 };
 use math_diagnostics::{Diagnostic, DiagnosticVisitor, Severity};
 use pure_math::error::{
-    AnalysisError, EvolutionError, LinearAlgebraError, MonteCarloError, OptimizationError,
-    PureMathError, TensorError, TransformError,
+    AnalysisError, EvolutionError, GameTheoryError, LinearAlgebraError, MonteCarloError,
+    OptimizationError, PureMathError, TensorError, TransformError,
 };
 use thiserror::Error;
 
@@ -54,9 +54,6 @@ pub enum PhysicsError {
     /// Hydrogenic orbital and quantum mechanics error.
     #[error("{0}")]
     Quantum(#[from] QuantumError),
-    /// Radar array and MUSIC estimation error.
-    #[error("{0}")]
-    Radar(#[from] RadarError),
     /// Abelian sandpile lattice and Kirchhoff Bareiss error.
     #[error("{0}")]
     Sandpile(#[from] SandpileError),
@@ -93,6 +90,13 @@ pub enum PhysicsError {
     /// Upstream `pure_math` umbrella error.
     #[error("{0}")]
     PureMath(#[from] PureMathError),
+}
+
+impl From<GameTheoryError> for PhysicsError {
+    #[verified_engine::verified]
+    fn from(err: GameTheoryError) -> Self {
+        Self::PureMath(PureMathError::from(err))
+    }
 }
 
 impl From<EvolutionError> for PhysicsError {
@@ -204,7 +208,6 @@ impl PhysicsError {
             Self::HighEnergy(err) => err,
             Self::Nuclear(err) => err,
             Self::Quantum(err) => err,
-            Self::Radar(err) => err,
             Self::Sandpile(err) => err,
             Self::SolidState(err) => err,
             Self::StandardModel(err) => err,

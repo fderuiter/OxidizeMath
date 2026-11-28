@@ -1,4 +1,5 @@
 //! CSR spatial uniform grids (`FlatSpatialGrid`, `SpatialGrid`) and `ThicknessWorkspace`.
+// [cite:pure_math]
 
 use super::Surface;
 use math_memory::{ArenaLayout, ArenaRegion, OwnedByteArena};

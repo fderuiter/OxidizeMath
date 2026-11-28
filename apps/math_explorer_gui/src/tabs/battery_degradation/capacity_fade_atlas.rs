@@ -11,7 +11,7 @@ use crate::async_sim::atlas::{
     RegimeCartographer,
 };
 use eframe::egui;
-use math_explorer::applied::battery_degradation::{
+use math_explorer::engineering::battery_degradation::{
     Capacity, Cycles, DepthOfDischarge, ElectrochemicalAgingModel,
 };
 use scientific_metadata::theory::{ParameterConstraint, TheoryDescribable};

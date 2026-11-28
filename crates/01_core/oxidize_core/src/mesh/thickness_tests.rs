@@ -1,5 +1,6 @@
 use super::*;
 
+#[verified_engine::verified]
 fn naive_point_to_surface_distance(point: &[f64; 3], surface: &Surface) -> f64 {
     surface
         .vertices
@@ -12,6 +13,7 @@ fn naive_point_to_surface_distance(point: &[f64; 3], surface: &Surface) -> f64 {
 }
 
 #[test]
+#[verified_engine::verified]
 fn test_empty_surface_and_nan_queries() {
     let empty = Surface::from_vertices(vec![]);
     let point = [1.0, 2.0, 3.0];
@@ -30,6 +32,7 @@ fn test_empty_surface_and_nan_queries() {
 }
 
 #[test]
+#[verified_engine::verified]
 fn test_single_and_zero_extent_bounds() {
     let surface = Surface::from_vertices(vec![[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]]);
     let mut offsets = vec![0_usize; FlatSpatialGrid::required_offsets_len(2)];
@@ -41,6 +44,7 @@ fn test_single_and_zero_extent_bounds() {
 }
 
 #[test]
+#[verified_engine::verified]
 fn test_insufficient_capacity_returns_none_and_zero() {
     let white = Surface::from_vertices(vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
     let pial = Surface::from_vertices(vec![[0.0, 2.0, 0.0], [1.0, 2.0, 0.0], [2.0, 2.0, 0.0]]);
@@ -66,6 +70,7 @@ fn test_insufficient_capacity_returns_none_and_zero() {
 }
 
 #[test]
+#[verified_engine::verified]
 fn test_exact_distance_equivalence_random_and_sparse() {
     let vertices: Vec<[f64; 3]> = (0..100)
         .map(|i| {
@@ -118,6 +123,7 @@ fn test_exact_distance_equivalence_random_and_sparse() {
 }
 
 #[test]
+#[verified_engine::verified]
 fn test_cortical_thickness_batch_matches_scalar_queries() {
     let mut white = Vec::new();
     let mut pial = Vec::new();

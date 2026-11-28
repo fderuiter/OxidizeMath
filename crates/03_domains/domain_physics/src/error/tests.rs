@@ -3,6 +3,7 @@ use diagnostics::{Diagnostic, DiagnosticBus, Severity};
 use engine_diffeq::KalmanError;
 use math_commons::error::MathError;
 use math_commons::math_kernel::types::Dimension;
+use pure_math::error::GameTheoryError;
 use std::error::Error as StdError;
 
 fn sample_math_err() -> MathError {
@@ -17,9 +18,6 @@ fn sample_math_err() -> MathError {
 fn test_physics_leaf_wrappers_preserve_source_chain() {
     let chaos = ChaosError::from(sample_math_err());
     assert!(chaos.source().is_some());
-
-    let radar = RadarError::from(sample_math_err());
-    assert!(radar.source().is_some());
 
     let he = HighEnergyError::from(sample_math_err());
     assert!(he.source().is_some());
@@ -47,11 +45,11 @@ fn test_physics_umbrella_variants_preserve_source_and_diagnostics() {
             max: 6,
         }
         .into(),
-        RadarError::from(sample_math_err()).into(),
         SolidStateError::InvalidParameter("band".to_string()).into(),
         StandardModelError::LandauPole { scale: 100.0 }.into(),
         StatMechError::InvalidTemperature(-5.0).into(),
         sample_math_err().into(),
+        GameTheoryError::NonSquarePayoffMatrix { rows: 2, cols: 3 }.into(),
         KalmanError::MatrixInversionError.into(),
     ];
 

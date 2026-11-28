@@ -7,20 +7,32 @@
 
 use super::canvas::gantry_handle_pos_cm;
 use super::{CanvasKeyTarget, DoseCalculationTool, DoseDisplayMode};
+#[cfg(feature = "engineering")]
 use crate::app::{MathExplorerApp, ViewportLayout, WorkspaceSessionManager};
 use crate::audio::backend::{MuteReason, SonificationBackend};
-use crate::audio::mappings::{imrt_delivery_frame, radar_linac_frame};
+use crate::audio::mappings::imrt_delivery_frame;
+#[cfg(feature = "engineering")]
+use crate::audio::mappings::radar_linac_frame;
 use crate::audio::synth::OfflinePcmSynthesizer;
 use crate::framework::{BrushMode, BrushStroke, InteractionContext, InteractiveTool};
-use crate::tabs::medical::imrt::{CHALLENGE_IMRT_OAR_LIMIT_GY, CHALLENGE_IMRT_OAR_SPARING};
-use crate::tabs::medical::link_bus::{clear_link_bus, current_write_seq, latest_gating_telemetry};
+#[cfg(feature = "engineering")]
+use crate::tabs::medical::imrt::CHALLENGE_IMRT_OAR_LIMIT_GY;
+use crate::tabs::medical::imrt::CHALLENGE_IMRT_OAR_SPARING;
+use crate::tabs::medical::link_bus::clear_link_bus;
+#[cfg(feature = "engineering")]
+use crate::tabs::medical::link_bus::{current_write_seq, latest_gating_telemetry};
+#[cfg(feature = "engineering")]
 use crate::tabs::medical::radar_gating::RadarGatingTool;
 use crate::url_state::{encode_share_fragment, parse_share_location, URL_JSON_BOUNDS};
-use eframe::egui::{self, Event, Key, Modifiers, PointerButton, Pos2, RawInput, Rect};
+#[cfg(feature = "engineering")]
+use eframe::egui::PointerButton;
+use eframe::egui::{self, Event, Key, Modifiers, Pos2, RawInput, Rect};
+#[cfg(feature = "engineering")]
 use math_explorer::physics::medical::accelerator::beam_loading_energy;
 use math_explorer::physics::medical::radar_gating::BeamState;
 use verified_engine::engine::VerifiedEngine;
 
+#[cfg(feature = "engineering")]
 #[test]
 fn test_all_six_radar_gating_sites_publish_link_bus_telemetry() {
     let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
@@ -69,6 +81,7 @@ fn test_all_six_radar_gating_sites_publish_link_bus_telemetry() {
     assert!(current_write_seq() > before_step);
 }
 
+#[cfg(feature = "engineering")]
 fn click_button_by_label(ctx: &egui::Context, tool: &mut dyn InteractiveTool, needle: &str) {
     ctx.enable_accesskit();
     let rect = Rect::from_min_size(Pos2::ZERO, egui::vec2(1280.0, 900.0));
@@ -117,6 +130,7 @@ fn click_button_by_label(ctx: &egui::Context, tool: &mut dyn InteractiveTool, ne
     );
 }
 
+#[cfg(feature = "engineering")]
 #[test]
 fn test_coupled_4d_cough_sparing_and_zero_heap_allocations() {
     let _guard = crate::VERIFIED_ALLOC_TEST_MUTEX
@@ -163,6 +177,7 @@ fn test_coupled_4d_cough_sparing_and_zero_heap_allocations() {
     assert_coupled_4d_metrics(&dose);
 }
 
+#[cfg(feature = "engineering")]
 fn assert_coupled_4d_metrics(dose: &DoseCalculationTool) {
     let m = &dose.imrt_workspace.motion;
     assert!(m.gated_steps > 0 && m.ungated_steps > m.gated_steps);
@@ -243,6 +258,7 @@ fn test_brush_sculpt_rle_url_bounds_and_mws_split_session_roundtrip() {
         tool.imrt_workspace.organ_indices
     );
 
+    #[cfg(feature = "engineering")]
     verify_split_horizontal_mws_roundtrip(&saved);
     tool.apply_challenge(Some(CHALLENGE_IMRT_OAR_SPARING))
         .expect("apply challenge");
@@ -272,6 +288,7 @@ fn sculpt_sample_contours(tool: &mut DoseCalculationTool) {
     }
 }
 
+#[cfg(feature = "engineering")]
 fn verify_split_horizontal_mws_roundtrip(sculpted_dose_json: &str) {
     let mut app = MathExplorerApp::default();
     let med_idx = app

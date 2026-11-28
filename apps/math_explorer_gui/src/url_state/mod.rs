@@ -17,6 +17,7 @@ mod workspace_codec;
     feature = "applied",
     feature = "biology",
     feature = "climate",
+    feature = "engineering",
     feature = "epidemiology",
     feature = "physics",
     feature = "pure_math"
@@ -32,6 +33,7 @@ mod tests;
     feature = "applied",
     feature = "biology",
     feature = "climate",
+    feature = "engineering",
     feature = "epidemiology",
     feature = "physics",
     feature = "pure_math"
@@ -43,6 +45,7 @@ mod workspace_contract_tests;
     feature = "applied",
     feature = "biology",
     feature = "climate",
+    feature = "engineering",
     feature = "epidemiology",
     feature = "physics",
     feature = "pure_math"

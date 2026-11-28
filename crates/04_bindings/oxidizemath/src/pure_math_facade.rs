@@ -31,12 +31,17 @@ pub mod algebra {
     }
 }
 
-/// Real/complex analysis, integration, root-finding, transforms, ODEs, and PDEs.
+/// Real/complex analysis, integration, root-finding, transforms, ODEs, PDEs, and Kalman/evolutionary systems.
 pub mod analysis {
     pub use ::pure_math::pure_math::analysis::{
-        AnalysisError, EvolutionError, OptimizationError, StochasticError, TransformError, complex,
-        evolution, integration, momentum_dynamics, ode, optimization, roots, stochastic,
+        AnalysisError, EvolutionError, FitnessStrategy, GameTheoryError, MatrixPayoff,
+        OptimizationError, ReplicatorDynamics, StochasticError, TransformError, complex, evolution,
+        evolutionary, integration, momentum_dynamics, ode, optimization, roots, stochastic,
         transforms,
+    };
+    pub use engine_diffeq::{
+        KalmanError, kalman,
+        kalman::{KalmanFilter, KalmanFilterBuilder, KalmanModel, KalmanSystem},
     };
 
     /// Partial differential equation classification, analytical/grid solvers, and stencil engines.

@@ -3,7 +3,7 @@
 
 // [cite:battery_degradation]
 
-use math_explorer::applied::battery_degradation::{
+use math_explorer::engineering::battery_degradation::{
     DutySegment, MAX_C_RATE, MAX_DUTY_SEGMENTS, MAX_TEMPERATURE_C, MIN_C_RATE, MIN_TEMPERATURE_C,
 };
 

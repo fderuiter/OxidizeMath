@@ -89,7 +89,7 @@ fn wasm_scoped_controller_divergence_and_webgl_epoch_guard() {
     );
 }
 
-#[cfg(feature = "physics")]
+#[cfg(all(feature = "physics", feature = "engineering"))]
 #[wasm_bindgen_test]
 fn wasm_mri_kspace_and_60ghz_radar_sonification_lifecycle() {
     use math_explorer::physics::medical::radar_gating::BeamState;

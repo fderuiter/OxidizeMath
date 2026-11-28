@@ -14,7 +14,8 @@ pub mod __doctest_facade {
     pub mod error {
         pub use crate::error::{
             ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
-            PhysicsError, RadarError, SolidStateError, StandardModelError, StatMechError,
+            PhysicsError, QuantumError, SandpileError, SolidStateError, StandardModelError,
+            StatMechError,
         };
         pub use ::pure_math::__doctest_facade::error::*;
         pub use engine_diffeq::KalmanError;
@@ -23,7 +24,8 @@ pub mod __doctest_facade {
     pub mod prelude {
         pub use crate::error::{
             ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
-            PhysicsError, RadarError, SolidStateError, StandardModelError, StatMechError,
+            PhysicsError, QuantumError, SandpileError, SolidStateError, StandardModelError,
+            StatMechError,
         };
         pub use ::pure_math::__doctest_facade::prelude::*;
         pub use engine_diffeq::KalmanError;

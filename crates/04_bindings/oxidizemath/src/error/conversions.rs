@@ -54,7 +54,6 @@ impl_error_from!(@cfg "ai":
 
 impl_error_from!(@cfg "applied":
     AppliedError => Applied,
-    BatteryError => Battery,
     ClinicalTrialError => ClinicalTrial,
     EngineeringError => Engineering,
     IsosurfaceError => Isosurface,
@@ -76,6 +75,13 @@ impl_error_from!(@cfg "climate":
     ClimateError => Climate,
 );
 
+impl_error_from!(@cfg "engineering":
+    EngineeringDomainError => EngineeringDomain,
+    BatteryError => Battery,
+    HardwareError => Hardware,
+    RadarError => Radar,
+);
+
 impl_error_from!(@cfg "epidemiology":
     EpidemiologyDomainError => EpidemiologyDomain,
     EpidemiologyError => Epidemiology,
@@ -91,7 +97,6 @@ impl_error_from!(@cfg "physics":
     HighEnergyError => HighEnergy,
     NuclearError => Nuclear,
     QuantumError => Quantum,
-    RadarError => Radar,
     SandpileError => Sandpile,
     SolidStateError => SolidState,
     StandardModelError => StandardModel,

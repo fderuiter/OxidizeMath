@@ -15,7 +15,7 @@ use super::cell_card::{BatteryCellCard, BatteryDialogIo, ChemistryChoice};
 use crate::framework::{ExportCapabilities, InteractiveTool};
 use duty::{validate_duty_segments, DutyPhaseKind, DutySegmentSpec};
 use eframe::egui;
-use math_explorer::applied::battery_degradation::{
+use math_explorer::engineering::battery_degradation::{
     estimate_duty_lifetime, evaluate_duty_point, Capacity, ChemistryPreset, DutyLifetimeSummary,
     DutySegment, ElectrochemicalAgingModel, DAYS_PER_YEAR, MAX_C_RATE, MAX_DUTY_SEGMENTS,
     MAX_EXPONENT_Z, MAX_TEMPERATURE_C, MIN_C_RATE, MIN_EXPONENT_Z, MIN_TEMPERATURE_C,

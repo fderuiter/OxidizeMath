@@ -5,7 +5,7 @@
 
 use super::LifetimeEstimatorTool;
 use crate::tabs::battery_degradation::cell_card::sanitize_csv_text_cell;
-use math_explorer::applied::battery_degradation::{
+use math_explorer::engineering::battery_degradation::{
     evaluate_duty_point, DutyPointBreakdown, DAYS_PER_YEAR,
 };
 

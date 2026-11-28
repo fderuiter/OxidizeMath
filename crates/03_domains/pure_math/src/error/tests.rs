@@ -61,6 +61,7 @@ fn test_pure_math_umbrella_variants_preserve_source_and_diagnostics() {
         KnotError::EmptyCurve.into(),
         EvolutionError::InvalidState.into(),
         FractranError::InvalidFractionSyntax.into(),
+        GameTheoryError::NonSquarePayoffMatrix { rows: 2, cols: 3 }.into(),
         GraphTheoryError::UnknownEndpoint { node: 9 }.into(),
         HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 }.into(),
         Su11HyperbolicError::NonHyperbolicSchlafli { p: 4, q: 4 }.into(),

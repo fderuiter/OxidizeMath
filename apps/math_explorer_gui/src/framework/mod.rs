@@ -19,6 +19,7 @@ pub mod code_export_modal;
     feature = "pure_math",
     feature = "physics",
     feature = "applied",
+    feature = "engineering",
     feature = "epidemiology"
 ))]
 mod code_export_tests;

@@ -14,24 +14,7 @@ pub enum PharmacokineticsError {
     AnalysisError(#[from] AnalysisError),
 }
 
-/// Errors returned when constructing bounded battery state-of-health quantities.
-#[derive(Debug, Clone, PartialEq, Error)]
-pub enum BatteryError {
-    /// Depth of Discharge must be between 0.0 and 100.0.
-    #[error("DepthOfDischarge must be between 0.0 and 100.0, got {0}")]
-    InvalidDepthOfDischarge(f64),
-    /// Capacity must be between 0.0 and 1.0.
-    #[error("Capacity must be between 0.0 and 1.0, got {0}")]
-    InvalidCapacity(f64),
-    /// Cycles cannot be negative.
-    #[error("Cycles cannot be negative, got {0}")]
-    NegativeCycles(f64),
-    /// Wrapped curve-fitting solver error.
-    #[error("{0}")]
-    Fit(#[from] engine_opt::error::FitError),
-}
-
-/// Errors returned by engineering, CNC, UART, and FreeSurfer GLM solvers.
+/// Errors returned by FreeSurfer GLM and MRI volumetric solvers.
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum EngineeringError {
     /// Invalid parameter value (e.g. TotalBits = 0).
@@ -139,24 +122,6 @@ impl Diagnostic for PharmacokineticsError {
             err.visit_fields(visitor);
         }
         visitor.record_str("error_type", "PharmacokineticsError");
-        visitor.record_display("description", self);
-    }
-}
-
-impl Diagnostic for BatteryError {
-    #[verified_engine::verified]
-    fn severity(&self) -> Severity {
-        match self {
-            Self::Fit(err) => err.severity(),
-            _ => Severity::Error,
-        }
-    }
-    #[verified_engine::verified]
-    fn visit_fields(&self, visitor: &mut dyn DiagnosticVisitor) {
-        if let Self::Fit(fit_err) = self {
-            fit_err.visit_fields(visitor);
-        }
-        visitor.record_str("error_type", "BatteryError");
         visitor.record_display("description", self);
     }
 }

@@ -1616,339 +1616,6 @@
       "signature": "pub fn stirling_approximation_ln_factorial (_ : u64) -> f64"
     }
   ],
-  "domain_applied:src/applied/battery_degradation/calibration.rs": [
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn calibrate_from_cycles < P : PointSeries + ? Sized > (& self , _ : & P , _ : DepthOfDischarge ,) -> Result < CalibratedAgingFit , FitError > }"
-    },
-    {
-      "signature": "pub fn calibrate_electrochemical_model < P : PointSeries + ? Sized > (_ : & ElectrochemicalAgingModel , _ : & P , _ : DepthOfDischarge ,) -> Result < CalibratedAgingFit , FitError >"
-    },
-    {
-      "signature": "pub struct CalibratedAgingFit"
-    }
-  ],
-  "domain_applied:src/applied/battery_degradation/duty.rs": [
-    {
-      "signature": "impl DutySegment { pub fn commute () -> Self }"
-    },
-    {
-      "signature": "impl DutySegment { pub fn fast_charge () -> Self }"
-    },
-    {
-      "signature": "impl DutySegment { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
-    },
-    {
-      "signature": "impl DutySegment { pub fn storage (_ : f64 , _ : f64) -> Self }"
-    },
-    {
-      "signature": "pub const DAYS_PER_YEAR : f64"
-    },
-    {
-      "signature": "pub const MAX_DUTY_SEGMENTS : usize"
-    },
-    {
-      "signature": "pub fn estimate_duty_lifetime (_ : & ElectrochemicalAgingModel , _ : & [DutySegment] , _ : Capacity ,) -> DutyLifetimeSummary"
-    },
-    {
-      "signature": "pub fn evaluate_duty_point (_ : & ElectrochemicalAgingModel , _ : & [DutySegment] , _ : f64 ,) -> DutyPointBreakdown"
-    },
-    {
-      "signature": "pub struct DutyLifetimeSummary"
-    },
-    {
-      "signature": "pub struct DutyPointBreakdown"
-    },
-    {
-      "signature": "pub struct DutySegment"
-    }
-  ],
-  "domain_applied:src/applied/battery_degradation/mod.rs": [
-    {
-      "signature": "pub use calibration :: CalibratedAgingFit"
-    },
-    {
-      "signature": "pub use calibration :: calibrate_electrochemical_model"
-    },
-    {
-      "signature": "pub use duty :: DAYS_PER_YEAR"
-    },
-    {
-      "signature": "pub use duty :: DutyLifetimeSummary"
-    },
-    {
-      "signature": "pub use duty :: DutyPointBreakdown"
-    },
-    {
-      "signature": "pub use duty :: DutySegment"
-    },
-    {
-      "signature": "pub use duty :: MAX_DUTY_SEGMENTS"
-    },
-    {
-      "signature": "pub use duty :: estimate_duty_lifetime"
-    },
-    {
-      "signature": "pub use duty :: evaluate_duty_point"
-    },
-    {
-      "signature": "pub use model :: ChemistryPreset"
-    },
-    {
-      "signature": "pub use model :: DegradationModel"
-    },
-    {
-      "signature": "pub use model :: ElectrochemicalAgingModel"
-    },
-    {
-      "signature": "pub use model :: MAX_C_RATE"
-    },
-    {
-      "signature": "pub use model :: MAX_EXPONENT_Z"
-    },
-    {
-      "signature": "pub use model :: MAX_TEMPERATURE_C"
-    },
-    {
-      "signature": "pub use model :: MIN_C_RATE"
-    },
-    {
-      "signature": "pub use model :: MIN_EXPONENT_Z"
-    },
-    {
-      "signature": "pub use model :: MIN_TEMPERATURE_C"
-    },
-    {
-      "signature": "pub use model :: PowerLawModel"
-    },
-    {
-      "signature": "pub use types :: BatteryError"
-    },
-    {
-      "signature": "pub use types :: Capacity"
-    },
-    {
-      "signature": "pub use types :: Cycles"
-    },
-    {
-      "signature": "pub use types :: DepthOfDischarge"
-    }
-  ],
-  "domain_applied:src/applied/battery_degradation/model.rs": [
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub const fn activation_energy (& self) -> f64 }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub const fn alpha (& self) -> f64 }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub const fn beta (& self) -> f64 }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub const fn c_rate (& self) -> f64 }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub const fn c_rate_exponent (& self) -> f64 }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub const fn exponent_z (& self) -> f64 }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub const fn preset (& self) -> ChemistryPreset }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub const fn sei_rate (& self) -> f64 }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub const fn temperature_c (& self) -> f64 }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn arrhenius_factor (& self) -> f64 }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn c_rate_stress_factor (& self) -> f64 }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn capacity (& self , _ : Cycles , _ : DepthOfDischarge) -> Capacity }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn coupled_capacity (& self , _ : Cycles , _ : DepthOfDischarge , _ : f64) -> Capacity }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn cycles_to_capacity (& self , _ : Capacity , _ : DepthOfDischarge) -> Cycles }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn cycling_loss (& self , _ : Cycles , _ : DepthOfDischarge) -> f64 }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn from_preset (_ : ChemistryPreset) -> Self }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn n70 (& self , _ : DepthOfDischarge) -> Cycles }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn new (_ : ChemistryPreset , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn sei_calendar_loss (& self , _ : f64) -> f64 }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn temperature_k (& self) -> f64 }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn with_c_rate (self , _ : f64) -> Self }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn with_dod_law (self , _ : f64 , _ : f64) -> Self }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn with_exponent_z (self , _ : f64) -> Self }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn with_kinetics (self , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn with_sei_rate (self , _ : f64) -> Self }"
-    },
-    {
-      "signature": "impl ElectrochemicalAgingModel { pub fn with_temperature_c (self , _ : f64) -> Self }"
-    },
-    {
-      "signature": "impl PowerLawModel { pub fn capacity (& self , _ : Cycles , _ : DepthOfDischarge) -> Capacity }"
-    },
-    {
-      "signature": "impl PowerLawModel { pub fn cycles_to_capacity (& self , _ : Capacity , _ : DepthOfDischarge) -> Cycles }"
-    },
-    {
-      "signature": "impl PowerLawModel { pub fn n70 (& self , _ : DepthOfDischarge) -> Cycles }"
-    },
-    {
-      "signature": "impl PowerLawModel { pub fn new (_ : f64 , _ : f64) -> Self }"
-    },
-    {
-      "signature": "impl PowerLawModel { pub fn standard () -> Self }"
-    },
-    {
-      "signature": "pub const CELSIUS_TO_KELVIN : f64"
-    },
-    {
-      "signature": "pub const GAS_CONSTANT_R : f64"
-    },
-    {
-      "signature": "pub const MAX_C_RATE : f64"
-    },
-    {
-      "signature": "pub const MAX_EXPONENT_Z : f64"
-    },
-    {
-      "signature": "pub const MAX_TEMPERATURE_C : f64"
-    },
-    {
-      "signature": "pub const MIN_C_RATE : f64"
-    },
-    {
-      "signature": "pub const MIN_EXPONENT_Z : f64"
-    },
-    {
-      "signature": "pub const MIN_TEMPERATURE_C : f64"
-    },
-    {
-      "signature": "pub const REFERENCE_TEMPERATURE_K : f64"
-    },
-    {
-      "signature": "pub struct ElectrochemicalAgingModel"
-    },
-    {
-      "signature": "pub struct PowerLawModel"
-    },
-    {
-      "signature": "pub trait DegradationModel"
-    },
-    {
-      "signature": "pub trait DegradationModel { fn capacity (& self , _ : Cycles , _ : DepthOfDischarge) -> Capacity }"
-    },
-    {
-      "signature": "pub trait DegradationModel { fn cycles_to_capacity (& self , _ : Capacity , _ : DepthOfDischarge) -> Cycles }"
-    },
-    {
-      "signature": "pub trait DegradationModel { fn n70 (& self , _ : DepthOfDischarge) -> Cycles }"
-    },
-    {
-      "signature": "pub use preset :: ChemistryPreset"
-    }
-  ],
-  "domain_applied:src/applied/battery_degradation/model/preset.rs": [
-    {
-      "signature": "impl ChemistryPreset { pub const ALL : [Self ; 4] }"
-    },
-    {
-      "signature": "impl ChemistryPreset { pub const fn default_activation_energy (self) -> f64 }"
-    },
-    {
-      "signature": "impl ChemistryPreset { pub const fn default_alpha (self) -> f64 }"
-    },
-    {
-      "signature": "impl ChemistryPreset { pub const fn default_beta (self) -> f64 }"
-    },
-    {
-      "signature": "impl ChemistryPreset { pub const fn default_c_rate_exponent (self) -> f64 }"
-    },
-    {
-      "signature": "impl ChemistryPreset { pub const fn default_exponent_z (self) -> f64 }"
-    },
-    {
-      "signature": "impl ChemistryPreset { pub const fn default_sei_rate (self) -> f64 }"
-    },
-    {
-      "signature": "impl ChemistryPreset { pub const fn description (self) -> & 'static str }"
-    },
-    {
-      "signature": "impl ChemistryPreset { pub const fn label (self) -> & 'static str }"
-    },
-    {
-      "signature": "pub enum ChemistryPreset"
-    }
-  ],
-  "domain_applied:src/applied/battery_degradation/types.rs": [
-    {
-      "signature": "impl Capacity { pub fn as_f64 (& self) -> f64 }"
-    },
-    {
-      "signature": "impl Capacity { pub fn new (_ : f64) -> Result < Self , BatteryError > }"
-    },
-    {
-      "signature": "impl Capacity { pub fn new_clamped (_ : f64) -> Self }"
-    },
-    {
-      "signature": "impl Cycles { pub fn as_f64 (& self) -> f64 }"
-    },
-    {
-      "signature": "impl Cycles { pub fn new (_ : f64) -> Result < Self , BatteryError > }"
-    },
-    {
-      "signature": "impl Cycles { pub fn new_clamped (_ : f64) -> Self }"
-    },
-    {
-      "signature": "impl DepthOfDischarge { pub fn as_f64 (& self) -> f64 }"
-    },
-    {
-      "signature": "impl DepthOfDischarge { pub fn new (_ : f64) -> Result < Self , BatteryError > }"
-    },
-    {
-      "signature": "impl DepthOfDischarge { pub fn new_clamped (_ : f64) -> Self }"
-    },
-    {
-      "signature": "pub struct Capacity"
-    },
-    {
-      "signature": "pub struct Cycles"
-    },
-    {
-      "signature": "pub struct DepthOfDischarge"
-    },
-    {
-      "signature": "pub use crate :: error :: BatteryError"
-    }
-  ],
   "domain_applied:src/applied/cannibalism/death_rate.rs": [
     {
       "signature": "impl CannibalismKernel { pub fn fertility_at (& self , _ : f64 , _ : f64) -> f64 }"
@@ -2309,88 +1976,9 @@
       "signature": "pub struct SurvivalTime"
     }
   ],
-  "domain_applied:src/applied/engineering/cnc.rs": [
-    {
-      "signature": "impl CuttingSpeed { pub fn new (_ : f64) -> Result < Self , EngineeringError > }"
-    },
-    {
-      "signature": "impl CuttingSpeed { pub fn value (& self) -> f64 }"
-    },
-    {
-      "signature": "impl MaterialConstant { pub fn new (_ : f64) -> Result < Self , EngineeringError > }"
-    },
-    {
-      "signature": "impl MaterialConstant { pub fn value (& self) -> f64 }"
-    },
-    {
-      "signature": "impl ToolExponent { pub fn new (_ : f64) -> Result < Self , EngineeringError > }"
-    },
-    {
-      "signature": "impl ToolExponent { pub fn value (& self) -> f64 }"
-    },
-    {
-      "signature": "impl ToolLife { pub fn new (_ : f64) -> Self }"
-    },
-    {
-      "signature": "impl ToolLife { pub fn value (& self) -> f64 }"
-    },
-    {
-      "signature": "pub fn calculate_taylor_tool_life (_ : CuttingSpeed , _ : MaterialConstant , _ : ToolExponent ,) -> ToolLife"
-    },
-    {
-      "signature": "pub struct CuttingSpeed"
-    },
-    {
-      "signature": "pub struct MaterialConstant"
-    },
-    {
-      "signature": "pub struct ToolExponent"
-    },
-    {
-      "signature": "pub struct ToolLife"
-    }
-  ],
   "domain_applied:src/applied/engineering/mod.rs": [
     {
-      "signature": "pub use cnc :: *"
-    },
-    {
-      "signature": "pub use uart :: *"
-    },
-    {
       "signature": "pub use upo_control :: *"
-    }
-  ],
-  "domain_applied:src/applied/engineering/uart.rs": [
-    {
-      "signature": "impl BaudRate { pub fn new (_ : u32) -> Self }"
-    },
-    {
-      "signature": "impl BaudRate { pub fn value (& self) -> u32 }"
-    },
-    {
-      "signature": "impl DataBits { pub fn new (_ : u32) -> Self }"
-    },
-    {
-      "signature": "impl DataBits { pub fn value (& self) -> u32 }"
-    },
-    {
-      "signature": "impl TotalBits { pub fn new (_ : u32) -> Result < Self , EngineeringError > }"
-    },
-    {
-      "signature": "impl TotalBits { pub fn value (& self) -> u32 }"
-    },
-    {
-      "signature": "pub fn calculate_uart_throughput (_ : BaudRate , _ : DataBits , _ : TotalBits ,) -> f64"
-    },
-    {
-      "signature": "pub struct BaudRate"
-    },
-    {
-      "signature": "pub struct DataBits"
-    },
-    {
-      "signature": "pub struct TotalBits"
     }
   ],
   "domain_applied:src/applied/engineering/upo_control.rs": [
@@ -2954,18 +2542,22 @@
       "signature": "pub use graph_replicator_system :: GraphReplicatorSystem"
     },
     {
-      "signature": "pub use pure_math :: pure_math :: game_theory :: evolutionary :: FitnessStrategy"
+      "signature": "pub use pure_math :: pure_math :: analysis :: evolutionary :: FitnessStrategy"
     },
     {
-      "signature": "pub use pure_math :: pure_math :: game_theory :: evolutionary :: MatrixPayoff"
+      "signature": "pub use pure_math :: pure_math :: analysis :: evolutionary :: MatrixPayoff"
     },
     {
-      "signature": "pub use replicator :: ReplicatorDynamics"
-    }
-  ],
-  "domain_applied:src/applied/game_theory/evolutionary/replicator.rs": [
+      "signature": "pub use pure_math :: pure_math :: analysis :: evolutionary :: ReplicatorDynamics"
+    },
     {
-      "signature": "pub use pure_math :: pure_math :: game_theory :: evolutionary :: ReplicatorDynamics"
+      "signature": "pub use pure_math :: pure_math :: analysis :: evolutionary :: replicator"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: evolutionary :: strategies"
+    },
+    {
+      "signature": "pub use pure_math :: pure_math :: analysis :: evolutionary :: traits"
     }
   ],
   "domain_applied:src/applied/game_theory/mean_field/mod.rs": [
@@ -4416,9 +4008,6 @@
   ],
   "domain_applied:src/error.rs": [
     {
-      "signature": "pub enum BatteryError"
-    },
-    {
       "signature": "pub enum EngineeringError"
     },
     {
@@ -4462,16 +4051,10 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: AppliedError } }"
     },
     {
-      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: BatteryError } }"
-    },
-    {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: ClinicalTrialError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: EngineeringError } }"
-    },
-    {
-      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: GameTheoryError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: IsosurfaceError } }"
@@ -4504,16 +4087,10 @@
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: AppliedError } }"
     },
     {
-      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: BatteryError } }"
-    },
-    {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: ClinicalTrialError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: EngineeringError } }"
-    },
-    {
-      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: GameTheoryError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: IsosurfaceError } }"
@@ -6730,6 +6307,827 @@
       "signature": "pub mod prelude { pub use crate :: error :: ClimateError }"
     }
   ],
+  "domain_engineering:src/engineering/battery_degradation/calibration.rs": [
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn calibrate_from_cycles < P : PointSeries + ? Sized > (& self , _ : & P , _ : DepthOfDischarge ,) -> Result < CalibratedAgingFit , FitError > }"
+    },
+    {
+      "signature": "pub fn calibrate_electrochemical_model < P : PointSeries + ? Sized > (_ : & ElectrochemicalAgingModel , _ : & P , _ : DepthOfDischarge ,) -> Result < CalibratedAgingFit , FitError >"
+    },
+    {
+      "signature": "pub struct CalibratedAgingFit"
+    }
+  ],
+  "domain_engineering:src/engineering/battery_degradation/duty.rs": [
+    {
+      "signature": "impl DutySegment { pub fn commute () -> Self }"
+    },
+    {
+      "signature": "impl DutySegment { pub fn fast_charge () -> Self }"
+    },
+    {
+      "signature": "impl DutySegment { pub fn new (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl DutySegment { pub fn storage (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "pub const DAYS_PER_YEAR : f64"
+    },
+    {
+      "signature": "pub const MAX_DUTY_SEGMENTS : usize"
+    },
+    {
+      "signature": "pub fn estimate_duty_lifetime (_ : & ElectrochemicalAgingModel , _ : & [DutySegment] , _ : Capacity ,) -> DutyLifetimeSummary"
+    },
+    {
+      "signature": "pub fn evaluate_duty_point (_ : & ElectrochemicalAgingModel , _ : & [DutySegment] , _ : f64 ,) -> DutyPointBreakdown"
+    },
+    {
+      "signature": "pub struct DutyLifetimeSummary"
+    },
+    {
+      "signature": "pub struct DutyPointBreakdown"
+    },
+    {
+      "signature": "pub struct DutySegment"
+    }
+  ],
+  "domain_engineering:src/engineering/battery_degradation/mod.rs": [
+    {
+      "signature": "pub use calibration :: CalibratedAgingFit"
+    },
+    {
+      "signature": "pub use calibration :: calibrate_electrochemical_model"
+    },
+    {
+      "signature": "pub use duty :: DAYS_PER_YEAR"
+    },
+    {
+      "signature": "pub use duty :: DutyLifetimeSummary"
+    },
+    {
+      "signature": "pub use duty :: DutyPointBreakdown"
+    },
+    {
+      "signature": "pub use duty :: DutySegment"
+    },
+    {
+      "signature": "pub use duty :: MAX_DUTY_SEGMENTS"
+    },
+    {
+      "signature": "pub use duty :: estimate_duty_lifetime"
+    },
+    {
+      "signature": "pub use duty :: evaluate_duty_point"
+    },
+    {
+      "signature": "pub use model :: ChemistryPreset"
+    },
+    {
+      "signature": "pub use model :: DegradationModel"
+    },
+    {
+      "signature": "pub use model :: ElectrochemicalAgingModel"
+    },
+    {
+      "signature": "pub use model :: MAX_C_RATE"
+    },
+    {
+      "signature": "pub use model :: MAX_EXPONENT_Z"
+    },
+    {
+      "signature": "pub use model :: MAX_TEMPERATURE_C"
+    },
+    {
+      "signature": "pub use model :: MIN_C_RATE"
+    },
+    {
+      "signature": "pub use model :: MIN_EXPONENT_Z"
+    },
+    {
+      "signature": "pub use model :: MIN_TEMPERATURE_C"
+    },
+    {
+      "signature": "pub use model :: PowerLawModel"
+    },
+    {
+      "signature": "pub use types :: BatteryError"
+    },
+    {
+      "signature": "pub use types :: Capacity"
+    },
+    {
+      "signature": "pub use types :: Cycles"
+    },
+    {
+      "signature": "pub use types :: DepthOfDischarge"
+    }
+  ],
+  "domain_engineering:src/engineering/battery_degradation/model.rs": [
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn activation_energy (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn alpha (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn beta (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn c_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn c_rate_exponent (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn exponent_z (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn preset (& self) -> ChemistryPreset }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn sei_rate (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub const fn temperature_c (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn arrhenius_factor (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn c_rate_stress_factor (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn capacity (& self , _ : Cycles , _ : DepthOfDischarge) -> Capacity }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn coupled_capacity (& self , _ : Cycles , _ : DepthOfDischarge , _ : f64) -> Capacity }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn cycles_to_capacity (& self , _ : Capacity , _ : DepthOfDischarge) -> Cycles }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn cycling_loss (& self , _ : Cycles , _ : DepthOfDischarge) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn from_preset (_ : ChemistryPreset) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn n70 (& self , _ : DepthOfDischarge) -> Cycles }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn new (_ : ChemistryPreset , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn sei_calendar_loss (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn temperature_k (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_c_rate (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_dod_law (self , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_exponent_z (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_kinetics (self , _ : f64 , _ : f64 , _ : f64 ,) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_sei_rate (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ElectrochemicalAgingModel { pub fn with_temperature_c (self , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl PowerLawModel { pub fn capacity (& self , _ : Cycles , _ : DepthOfDischarge) -> Capacity }"
+    },
+    {
+      "signature": "impl PowerLawModel { pub fn cycles_to_capacity (& self , _ : Capacity , _ : DepthOfDischarge) -> Cycles }"
+    },
+    {
+      "signature": "impl PowerLawModel { pub fn n70 (& self , _ : DepthOfDischarge) -> Cycles }"
+    },
+    {
+      "signature": "impl PowerLawModel { pub fn new (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl PowerLawModel { pub fn standard () -> Self }"
+    },
+    {
+      "signature": "pub const CELSIUS_TO_KELVIN : f64"
+    },
+    {
+      "signature": "pub const GAS_CONSTANT_R : f64"
+    },
+    {
+      "signature": "pub const MAX_C_RATE : f64"
+    },
+    {
+      "signature": "pub const MAX_EXPONENT_Z : f64"
+    },
+    {
+      "signature": "pub const MAX_TEMPERATURE_C : f64"
+    },
+    {
+      "signature": "pub const MIN_C_RATE : f64"
+    },
+    {
+      "signature": "pub const MIN_EXPONENT_Z : f64"
+    },
+    {
+      "signature": "pub const MIN_TEMPERATURE_C : f64"
+    },
+    {
+      "signature": "pub const REFERENCE_TEMPERATURE_K : f64"
+    },
+    {
+      "signature": "pub struct ElectrochemicalAgingModel"
+    },
+    {
+      "signature": "pub struct PowerLawModel"
+    },
+    {
+      "signature": "pub trait DegradationModel"
+    },
+    {
+      "signature": "pub trait DegradationModel { fn capacity (& self , _ : Cycles , _ : DepthOfDischarge) -> Capacity }"
+    },
+    {
+      "signature": "pub trait DegradationModel { fn cycles_to_capacity (& self , _ : Capacity , _ : DepthOfDischarge) -> Cycles }"
+    },
+    {
+      "signature": "pub trait DegradationModel { fn n70 (& self , _ : DepthOfDischarge) -> Cycles }"
+    },
+    {
+      "signature": "pub use preset :: ChemistryPreset"
+    }
+  ],
+  "domain_engineering:src/engineering/battery_degradation/model/preset.rs": [
+    {
+      "signature": "impl ChemistryPreset { pub const ALL : [Self ; 4] }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_activation_energy (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_alpha (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_beta (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_c_rate_exponent (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_exponent_z (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn default_sei_rate (self) -> f64 }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn description (self) -> & 'static str }"
+    },
+    {
+      "signature": "impl ChemistryPreset { pub const fn label (self) -> & 'static str }"
+    },
+    {
+      "signature": "pub enum ChemistryPreset"
+    }
+  ],
+  "domain_engineering:src/engineering/battery_degradation/types.rs": [
+    {
+      "signature": "impl Capacity { pub fn as_f64 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Capacity { pub fn new (_ : f64) -> Result < Self , BatteryError > }"
+    },
+    {
+      "signature": "impl Capacity { pub fn new_clamped (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl Cycles { pub fn as_f64 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl Cycles { pub fn new (_ : f64) -> Result < Self , BatteryError > }"
+    },
+    {
+      "signature": "impl Cycles { pub fn new_clamped (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl DepthOfDischarge { pub fn as_f64 (& self) -> f64 }"
+    },
+    {
+      "signature": "impl DepthOfDischarge { pub fn new (_ : f64) -> Result < Self , BatteryError > }"
+    },
+    {
+      "signature": "impl DepthOfDischarge { pub fn new_clamped (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub struct Capacity"
+    },
+    {
+      "signature": "pub struct Cycles"
+    },
+    {
+      "signature": "pub struct DepthOfDischarge"
+    },
+    {
+      "signature": "pub use crate :: error :: BatteryError"
+    }
+  ],
+  "domain_engineering:src/engineering/cnc.rs": [
+    {
+      "signature": "impl CuttingSpeed { pub fn new (_ : f64) -> Result < Self , HardwareError > }"
+    },
+    {
+      "signature": "impl CuttingSpeed { pub fn value (& self) -> f64 }"
+    },
+    {
+      "signature": "impl MaterialConstant { pub fn new (_ : f64) -> Result < Self , HardwareError > }"
+    },
+    {
+      "signature": "impl MaterialConstant { pub fn value (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ToolExponent { pub fn new (_ : f64) -> Result < Self , HardwareError > }"
+    },
+    {
+      "signature": "impl ToolExponent { pub fn value (& self) -> f64 }"
+    },
+    {
+      "signature": "impl ToolLife { pub fn new (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl ToolLife { pub fn value (& self) -> f64 }"
+    },
+    {
+      "signature": "pub fn calculate_taylor_tool_life (_ : CuttingSpeed , _ : MaterialConstant , _ : ToolExponent ,) -> ToolLife"
+    },
+    {
+      "signature": "pub struct CuttingSpeed"
+    },
+    {
+      "signature": "pub struct MaterialConstant"
+    },
+    {
+      "signature": "pub struct ToolExponent"
+    },
+    {
+      "signature": "pub struct ToolLife"
+    }
+  ],
+  "domain_engineering:src/engineering/mod.rs": [
+    {
+      "signature": "pub use cnc :: *"
+    },
+    {
+      "signature": "pub use crate :: error"
+    },
+    {
+      "signature": "pub use uart :: *"
+    }
+  ],
+  "domain_engineering:src/engineering/radar/clutter.rs": [
+    {
+      "signature": "impl EllipticalFilter { pub fn filter (& mut self , _ : Complex < f64 >) -> Complex < f64 > }"
+    },
+    {
+      "signature": "impl EllipticalFilter { pub fn get_clutter_estimate (& self) -> Complex < f64 > }"
+    },
+    {
+      "signature": "impl EllipticalFilter { pub fn new (_ : f64) -> Self }"
+    },
+    {
+      "signature": "pub fn ca_cfar_noise_level (_ : & [f64]) -> f64"
+    },
+    {
+      "signature": "pub struct EllipticalFilter"
+    }
+  ],
+  "domain_engineering:src/engineering/radar/czt.rs": [
+    {
+      "signature": "impl SpatialCztConfig { pub fn process (& self , _ : & [Complex < f64 >] , _ : f64) -> Vec < Complex < f64 > > }"
+    },
+    {
+      "signature": "pub fn chirp_z_transform (_ : & [Complex < f64 >] , _ : f64 , _ : f64 , _ : f64 , _ : usize ,) -> Vec < Complex < f64 > >"
+    },
+    {
+      "signature": "pub struct SpatialCztConfig"
+    }
+  ],
+  "domain_engineering:src/engineering/radar/geometry.rs": [
+    {
+      "signature": "impl AngleFftConfig { pub fn spherical_to_cartesian (& self , _ : & SphericalPoint) -> Point3 < f64 > }"
+    },
+    {
+      "signature": "impl SensorToPatientTransform { pub fn new (_ : Rotation3 < f64 > , _ : Translation3 < f64 >) -> Self }"
+    },
+    {
+      "signature": "impl SensorToPatientTransform { pub fn transform_point (& self , _ : & Point3 < f64 >) -> Point3 < f64 > }"
+    },
+    {
+      "signature": "pub fn angle_of_arrival (_ : f64 , _ : f64 , _ : f64 ,) -> Option < f64 >"
+    },
+    {
+      "signature": "pub fn angle_resolution (_ : f64 , _ : usize , _ : f64 , _ : f64 ,) -> f64"
+    },
+    {
+      "signature": "pub fn required_angular_separation (_ : f64 , _ : f64) -> f64"
+    },
+    {
+      "signature": "pub struct AngleFftConfig"
+    },
+    {
+      "signature": "pub struct SensorToPatientTransform"
+    },
+    {
+      "signature": "pub struct SphericalPoint"
+    }
+  ],
+  "domain_engineering:src/engineering/radar/mimo.rs": [
+    {
+      "signature": "impl Beamformer { pub fn new_ula (_ : usize , _ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl Beamformer { pub fn set_weights (& mut self , _ : & [f64]) -> Result < () , RadarError > }"
+    },
+    {
+      "signature": "impl Beamformer { pub fn steer (& self , _ : & [Complex < f64 >] , _ : f64) -> Complex < f64 > }"
+    },
+    {
+      "signature": "pub struct Beamformer"
+    }
+  ],
+  "domain_engineering:src/engineering/radar/mod.rs": [
+    {
+      "signature": "pub use clutter :: EllipticalFilter"
+    },
+    {
+      "signature": "pub use czt :: SpatialCztConfig"
+    },
+    {
+      "signature": "pub use czt :: chirp_z_transform"
+    },
+    {
+      "signature": "pub use engine_diffeq :: kalman :: KalmanModel"
+    },
+    {
+      "signature": "pub use geometry :: AngleFftConfig"
+    },
+    {
+      "signature": "pub use geometry :: SensorToPatientTransform"
+    },
+    {
+      "signature": "pub use geometry :: SphericalPoint"
+    },
+    {
+      "signature": "pub use math_commons :: constants :: C"
+    },
+    {
+      "signature": "pub use mimo :: Beamformer"
+    },
+    {
+      "signature": "pub use phase :: PhaseUnwrapper"
+    },
+    {
+      "signature": "pub use physics :: FmcwConfig"
+    },
+    {
+      "signature": "pub use super_resolution :: MusicEstimator"
+    },
+    {
+      "signature": "pub use surface :: BiQuadraticSurface"
+    },
+    {
+      "signature": "pub use tracking :: ConstantVelocityModel"
+    },
+    {
+      "signature": "pub use tracking :: TrackingFilter"
+    }
+  ],
+  "domain_engineering:src/engineering/radar/phase.rs": [
+    {
+      "signature": "impl PhaseUnwrapper { pub fn new (_ : f64) -> Self }"
+    },
+    {
+      "signature": "impl PhaseUnwrapper { pub fn process (& mut self , _ : Complex < f64 >) -> f64 }"
+    },
+    {
+      "signature": "impl PhaseUnwrapper { pub fn reset (& mut self) }"
+    },
+    {
+      "signature": "pub struct PhaseUnwrapper"
+    }
+  ],
+  "domain_engineering:src/engineering/radar/physics.rs": [
+    {
+      "signature": "impl FmcwConfig { pub fn beat_frequency (_ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl FmcwConfig { pub fn chirp_frequency (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl FmcwConfig { pub fn dielectric_phase_delay (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl FmcwConfig { pub fn displacement_from_phase (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl FmcwConfig { pub fn iwr6843_default () -> Self }"
+    },
+    {
+      "signature": "impl FmcwConfig { pub fn max_unambiguous_velocity (& self) -> f64 }"
+    },
+    {
+      "signature": "impl FmcwConfig { pub fn mixer_output (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl FmcwConfig { pub fn range_from_beat_frequency (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl FmcwConfig { pub fn range_resolution (& self) -> f64 }"
+    },
+    {
+      "signature": "impl FmcwConfig { pub fn velocity_from_phase (& self , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl FmcwConfig { pub fn wavelength (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct FmcwConfig"
+    }
+  ],
+  "domain_engineering:src/engineering/radar/super_resolution.rs": [
+    {
+      "signature": "impl MusicEstimator { pub fn add_snapshot (& mut self , _ : & [Complex < f64 >]) -> Result < () , RadarError > }"
+    },
+    {
+      "signature": "impl MusicEstimator { pub fn compute_spectrum (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Result < Vec < (f64 , f64) > , RadarError > }"
+    },
+    {
+      "signature": "impl MusicEstimator { pub fn new (_ : usize , _ : usize , _ : usize ,) -> Result < Self , RadarError > }"
+    },
+    {
+      "signature": "pub struct MusicEstimator"
+    }
+  ],
+  "domain_engineering:src/engineering/radar/surface.rs": [
+    {
+      "signature": "impl BiQuadraticSurface { pub fn evaluate (& self , _ : f64 , _ : f64) -> f64 }"
+    },
+    {
+      "signature": "impl BiQuadraticSurface { pub fn fit (_ : & [Point3 < f64 >]) -> Option < Self > }"
+    },
+    {
+      "signature": "impl BiQuadraticSurface { pub fn fit_into_with_workspace (& mut self , _ : & [Point3 < f64 >] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> bool }"
+    },
+    {
+      "signature": "impl BiQuadraticSurface { pub fn fit_with_workspace (_ : & [Point3 < f64 >] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Option < [f64 ; 6] > }"
+    },
+    {
+      "signature": "impl BiQuadraticSurface { pub fn generate_mesh (& self , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize ,) -> Vec < Point3 < f64 > > }"
+    },
+    {
+      "signature": "impl BiQuadraticSurface { pub fn zeros () -> Self }"
+    },
+    {
+      "signature": "pub fn radar_surface_workspace_bytes (_ : usize) -> usize"
+    },
+    {
+      "signature": "pub fn weighted_average_height (_ : & [Point3 < f64 >]) -> f64"
+    },
+    {
+      "signature": "pub struct BiQuadraticSurface"
+    }
+  ],
+  "domain_engineering:src/engineering/radar/tracking.rs": [
+    {
+      "signature": "impl ConstantVelocityModel { pub fn new (_ : f64 , _ : f64) -> Self }"
+    },
+    {
+      "signature": "impl TrackingFilter { pub fn amplitude (& self) -> f64 }"
+    },
+    {
+      "signature": "impl TrackingFilter { pub fn covariance (& self) -> & DMatrix < f64 > }"
+    },
+    {
+      "signature": "impl TrackingFilter { pub fn new (_ : f64 , _ : f64 , _ : ConstantVelocityModel) -> Self }"
+    },
+    {
+      "signature": "impl TrackingFilter { pub fn predict (& mut self) }"
+    },
+    {
+      "signature": "impl TrackingFilter { pub fn try_new (_ : f64 , _ : f64 , _ : ConstantVelocityModel ,) -> Result < Self , RadarError > }"
+    },
+    {
+      "signature": "impl TrackingFilter { pub fn update (& mut self , _ : f64) }"
+    },
+    {
+      "signature": "impl TrackingFilter { pub fn velocity (& self) -> f64 }"
+    },
+    {
+      "signature": "pub struct ConstantVelocityModel"
+    },
+    {
+      "signature": "pub struct TrackingFilter"
+    }
+  ],
+  "domain_engineering:src/engineering/uart.rs": [
+    {
+      "signature": "impl BaudRate { pub fn new (_ : u32) -> Self }"
+    },
+    {
+      "signature": "impl BaudRate { pub fn value (& self) -> u32 }"
+    },
+    {
+      "signature": "impl DataBits { pub fn new (_ : u32) -> Self }"
+    },
+    {
+      "signature": "impl DataBits { pub fn value (& self) -> u32 }"
+    },
+    {
+      "signature": "impl TotalBits { pub fn new (_ : u32) -> Result < Self , HardwareError > }"
+    },
+    {
+      "signature": "impl TotalBits { pub fn value (& self) -> u32 }"
+    },
+    {
+      "signature": "pub fn calculate_uart_throughput (_ : BaudRate , _ : DataBits , _ : TotalBits ,) -> f64"
+    },
+    {
+      "signature": "pub struct BaudRate"
+    },
+    {
+      "signature": "pub struct DataBits"
+    },
+    {
+      "signature": "pub struct TotalBits"
+    }
+  ],
+  "domain_engineering:src/error.rs": [
+    {
+      "signature": "pub enum BatteryError"
+    },
+    {
+      "signature": "pub enum HardwareError"
+    },
+    {
+      "signature": "pub enum RadarError"
+    },
+    {
+      "signature": "pub use umbrella :: EngineeringDomainError"
+    }
+  ],
+  "domain_engineering:src/error/umbrella.rs": [
+    {
+      "signature": "pub enum EngineeringDomainError"
+    }
+  ],
+  "domain_engineering:src/lib.rs": [
+    {
+      "signature": "pub mod __doctest_facade"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: BatteryError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: EngineeringDomainError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: HardwareError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: RadarError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use engine_diffeq :: DiffeqError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use engine_diffeq :: KalmanError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use engine_opt :: error :: FitError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use pure_math :: __doctest_facade :: error :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: BatteryError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: EngineeringDomainError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: HardwareError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: RadarError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use engine_diffeq :: DiffeqError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use engine_diffeq :: KalmanError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use engine_opt :: fit :: FitModel } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use pure_math :: __doctest_facade :: prelude :: * } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use crate :: engineering }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use engine_opt :: fit }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: ast }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: bootstrap }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: constants }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: diagnostics }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_kernel }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_memory }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_scalars }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: math_types }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: mesh }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: monte_carlo }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: nalgebra }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: num_complex }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: petgraph }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: poi }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: primitives }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: pure_math }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: qmc }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rand }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: registry }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: rng }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: series }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub use pure_math :: __doctest_facade :: wigner }"
+    },
+    {
+      "signature": "pub mod prelude"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: engineering :: * }"
+    },
+    {
+      "signature": "pub mod prelude { pub use crate :: error :: * }"
+    }
+  ],
   "domain_epidemiology:src/epidemiology/analytics.rs": [
     {
       "signature": "pub fn calculate_final_size (_ : f64 , _ : f64 , _ : f64) -> Result < f64 , EpidemiologyError >"
@@ -7190,9 +7588,6 @@
       "signature": "pub enum HighEnergyError"
     },
     {
-      "signature": "pub enum RadarError"
-    },
-    {
       "signature": "pub enum SolidStateError"
     },
     {
@@ -7248,7 +7643,10 @@
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: PhysicsError } }"
     },
     {
-      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: RadarError } }"
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: QuantumError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: SandpileError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod error { pub use crate :: error :: SolidStateError } }"
@@ -7293,7 +7691,10 @@
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: PhysicsError } }"
     },
     {
-      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: RadarError } }"
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: QuantumError } }"
+    },
+    {
+      "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: SandpileError } }"
     },
     {
       "signature": "pub mod __doctest_facade { pub mod prelude { pub use crate :: error :: SolidStateError } }"
@@ -9460,34 +9861,6 @@
       "signature": "pub fn update_weights (_ : & DVector < f64 > , _ : & DVector < f64 > , _ : f64 ,) -> DVector < f64 >"
     }
   ],
-  "domain_physics:src/physics/medical/radar_gating/clutter.rs": [
-    {
-      "signature": "impl EllipticalFilter { pub fn filter (& mut self , _ : Complex < f64 >) -> Complex < f64 > }"
-    },
-    {
-      "signature": "impl EllipticalFilter { pub fn get_clutter_estimate (& self) -> Complex < f64 > }"
-    },
-    {
-      "signature": "impl EllipticalFilter { pub fn new (_ : f64) -> Self }"
-    },
-    {
-      "signature": "pub fn ca_cfar_noise_level (_ : & [f64]) -> f64"
-    },
-    {
-      "signature": "pub struct EllipticalFilter"
-    }
-  ],
-  "domain_physics:src/physics/medical/radar_gating/czt.rs": [
-    {
-      "signature": "impl SpatialCztConfig { pub fn process (& self , _ : & [Complex < f64 >] , _ : f64) -> Vec < Complex < f64 > > }"
-    },
-    {
-      "signature": "pub fn chirp_z_transform (_ : & [Complex < f64 >] , _ : f64 , _ : f64 , _ : f64 , _ : usize ,) -> Vec < Complex < f64 > >"
-    },
-    {
-      "signature": "pub struct SpatialCztConfig"
-    }
-  ],
   "domain_physics:src/physics/medical/radar_gating/gating.rs": [
     {
       "signature": "impl GatingLogic { pub fn arm (& mut self) -> Result < BeamState , GatingError > }"
@@ -9523,62 +9896,7 @@
       "signature": "pub struct GatingLogic"
     }
   ],
-  "domain_physics:src/physics/medical/radar_gating/geometry.rs": [
-    {
-      "signature": "impl AngleFftConfig { pub fn spherical_to_cartesian (& self , _ : & SphericalPoint) -> Point3 < f64 > }"
-    },
-    {
-      "signature": "impl SensorToPatientTransform { pub fn new (_ : Rotation3 < f64 > , _ : Translation3 < f64 >) -> Self }"
-    },
-    {
-      "signature": "impl SensorToPatientTransform { pub fn transform_point (& self , _ : & Point3 < f64 >) -> Point3 < f64 > }"
-    },
-    {
-      "signature": "pub fn angle_of_arrival (_ : f64 , _ : f64 , _ : f64 ,) -> Option < f64 >"
-    },
-    {
-      "signature": "pub fn angle_resolution (_ : f64 , _ : usize , _ : f64 , _ : f64 ,) -> f64"
-    },
-    {
-      "signature": "pub fn required_angular_separation (_ : f64 , _ : f64) -> f64"
-    },
-    {
-      "signature": "pub struct AngleFftConfig"
-    },
-    {
-      "signature": "pub struct SensorToPatientTransform"
-    },
-    {
-      "signature": "pub struct SphericalPoint"
-    }
-  ],
-  "domain_physics:src/physics/medical/radar_gating/mimo.rs": [
-    {
-      "signature": "impl Beamformer { pub fn new_ula (_ : usize , _ : f64 , _ : f64) -> Self }"
-    },
-    {
-      "signature": "impl Beamformer { pub fn set_weights (& mut self , _ : & [f64]) -> Result < () , RadarError > }"
-    },
-    {
-      "signature": "impl Beamformer { pub fn steer (& self , _ : & [Complex < f64 >] , _ : f64) -> Complex < f64 > }"
-    },
-    {
-      "signature": "pub struct Beamformer"
-    }
-  ],
   "domain_physics:src/physics/medical/radar_gating/mod.rs": [
-    {
-      "signature": "pub use clutter :: EllipticalFilter"
-    },
-    {
-      "signature": "pub use czt :: SpatialCztConfig"
-    },
-    {
-      "signature": "pub use czt :: chirp_z_transform"
-    },
-    {
-      "signature": "pub use engine_diffeq :: kalman :: KalmanModel"
-    },
     {
       "signature": "pub use gating :: BeamState"
     },
@@ -9587,166 +9905,6 @@
     },
     {
       "signature": "pub use gating :: GatingLogic"
-    },
-    {
-      "signature": "pub use geometry :: AngleFftConfig"
-    },
-    {
-      "signature": "pub use geometry :: SensorToPatientTransform"
-    },
-    {
-      "signature": "pub use geometry :: SphericalPoint"
-    },
-    {
-      "signature": "pub use math_commons :: constants :: C"
-    },
-    {
-      "signature": "pub use mimo :: Beamformer"
-    },
-    {
-      "signature": "pub use phase :: PhaseUnwrapper"
-    },
-    {
-      "signature": "pub use physics :: FmcwConfig"
-    },
-    {
-      "signature": "pub use super_resolution :: MusicEstimator"
-    },
-    {
-      "signature": "pub use surface :: BiQuadraticSurface"
-    },
-    {
-      "signature": "pub use tracking :: ConstantVelocityModel"
-    },
-    {
-      "signature": "pub use tracking :: TrackingFilter"
-    }
-  ],
-  "domain_physics:src/physics/medical/radar_gating/phase.rs": [
-    {
-      "signature": "impl PhaseUnwrapper { pub fn new (_ : f64) -> Self }"
-    },
-    {
-      "signature": "impl PhaseUnwrapper { pub fn process (& mut self , _ : Complex < f64 >) -> f64 }"
-    },
-    {
-      "signature": "impl PhaseUnwrapper { pub fn reset (& mut self) }"
-    },
-    {
-      "signature": "pub struct PhaseUnwrapper"
-    }
-  ],
-  "domain_physics:src/physics/medical/radar_gating/physics.rs": [
-    {
-      "signature": "impl FmcwConfig { pub fn beat_frequency (_ : f64 , _ : f64) -> f64 }"
-    },
-    {
-      "signature": "impl FmcwConfig { pub fn chirp_frequency (& self , _ : f64) -> f64 }"
-    },
-    {
-      "signature": "impl FmcwConfig { pub fn dielectric_phase_delay (& self , _ : f64 , _ : f64) -> f64 }"
-    },
-    {
-      "signature": "impl FmcwConfig { pub fn displacement_from_phase (& self , _ : f64) -> f64 }"
-    },
-    {
-      "signature": "impl FmcwConfig { pub fn iwr6843_default () -> Self }"
-    },
-    {
-      "signature": "impl FmcwConfig { pub fn max_unambiguous_velocity (& self) -> f64 }"
-    },
-    {
-      "signature": "impl FmcwConfig { pub fn mixer_output (_ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64) -> f64 }"
-    },
-    {
-      "signature": "impl FmcwConfig { pub fn range_from_beat_frequency (& self , _ : f64) -> f64 }"
-    },
-    {
-      "signature": "impl FmcwConfig { pub fn range_resolution (& self) -> f64 }"
-    },
-    {
-      "signature": "impl FmcwConfig { pub fn velocity_from_phase (& self , _ : f64) -> f64 }"
-    },
-    {
-      "signature": "impl FmcwConfig { pub fn wavelength (& self) -> f64 }"
-    },
-    {
-      "signature": "pub struct FmcwConfig"
-    }
-  ],
-  "domain_physics:src/physics/medical/radar_gating/super_resolution.rs": [
-    {
-      "signature": "impl MusicEstimator { pub fn add_snapshot (& mut self , _ : & [Complex < f64 >]) -> Result < () , RadarError > }"
-    },
-    {
-      "signature": "impl MusicEstimator { pub fn compute_spectrum (& self , _ : f64 , _ : f64 , _ : f64 , _ : f64 , _ : f64 ,) -> Result < Vec < (f64 , f64) > , RadarError > }"
-    },
-    {
-      "signature": "impl MusicEstimator { pub fn new (_ : usize , _ : usize , _ : usize ,) -> Result < Self , RadarError > }"
-    },
-    {
-      "signature": "pub struct MusicEstimator"
-    }
-  ],
-  "domain_physics:src/physics/medical/radar_gating/surface.rs": [
-    {
-      "signature": "impl BiQuadraticSurface { pub fn evaluate (& self , _ : f64 , _ : f64) -> f64 }"
-    },
-    {
-      "signature": "impl BiQuadraticSurface { pub fn fit (_ : & [Point3 < f64 >]) -> Option < Self > }"
-    },
-    {
-      "signature": "impl BiQuadraticSurface { pub fn fit_into_with_workspace (& mut self , _ : & [Point3 < f64 >] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> bool }"
-    },
-    {
-      "signature": "impl BiQuadraticSurface { pub fn fit_with_workspace (_ : & [Point3 < f64 >] , _ : & mut (impl SolverWorkspace + ? Sized) ,) -> Option < [f64 ; 6] > }"
-    },
-    {
-      "signature": "impl BiQuadraticSurface { pub fn generate_mesh (& self , _ : (f64 , f64) , _ : (f64 , f64) , _ : usize ,) -> Vec < Point3 < f64 > > }"
-    },
-    {
-      "signature": "impl BiQuadraticSurface { pub fn zeros () -> Self }"
-    },
-    {
-      "signature": "pub fn radar_surface_workspace_bytes (_ : usize) -> usize"
-    },
-    {
-      "signature": "pub fn weighted_average_height (_ : & [Point3 < f64 >]) -> f64"
-    },
-    {
-      "signature": "pub struct BiQuadraticSurface"
-    }
-  ],
-  "domain_physics:src/physics/medical/radar_gating/tracking.rs": [
-    {
-      "signature": "impl ConstantVelocityModel { pub fn new (_ : f64 , _ : f64) -> Self }"
-    },
-    {
-      "signature": "impl TrackingFilter { pub fn amplitude (& self) -> f64 }"
-    },
-    {
-      "signature": "impl TrackingFilter { pub fn covariance (& self) -> & DMatrix < f64 > }"
-    },
-    {
-      "signature": "impl TrackingFilter { pub fn new (_ : f64 , _ : f64 , _ : ConstantVelocityModel) -> Self }"
-    },
-    {
-      "signature": "impl TrackingFilter { pub fn predict (& mut self) }"
-    },
-    {
-      "signature": "impl TrackingFilter { pub fn try_new (_ : f64 , _ : f64 , _ : ConstantVelocityModel ,) -> Result < Self , RadarError > }"
-    },
-    {
-      "signature": "impl TrackingFilter { pub fn update (& mut self , _ : f64) }"
-    },
-    {
-      "signature": "impl TrackingFilter { pub fn velocity (& self) -> f64 }"
-    },
-    {
-      "signature": "pub struct ConstantVelocityModel"
-    },
-    {
-      "signature": "pub struct TrackingFilter"
     }
   ],
   "domain_physics:src/physics/medical/signal.rs": [
@@ -17745,9 +17903,6 @@
       "signature": "pub use domain_applied :: error :: AppliedError"
     },
     {
-      "signature": "pub use domain_applied :: error :: BatteryError"
-    },
-    {
       "signature": "pub use domain_applied :: error :: ClinicalTrialError"
     },
     {
@@ -17787,6 +17942,18 @@
       "signature": "pub use domain_climate :: error :: ClimateError"
     },
     {
+      "signature": "pub use domain_engineering :: error :: BatteryError"
+    },
+    {
+      "signature": "pub use domain_engineering :: error :: EngineeringDomainError"
+    },
+    {
+      "signature": "pub use domain_engineering :: error :: HardwareError"
+    },
+    {
+      "signature": "pub use domain_engineering :: error :: RadarError"
+    },
+    {
       "signature": "pub use domain_epidemiology :: error :: EpidemiologyDomainError"
     },
     {
@@ -17818,9 +17985,6 @@
     },
     {
       "signature": "pub use domain_physics :: error :: QuantumError"
-    },
-    {
-      "signature": "pub use domain_physics :: error :: RadarError"
     },
     {
       "signature": "pub use domain_physics :: error :: SandpileError"
@@ -17993,13 +18157,154 @@
   ],
   "oxidizemath:src/lib.rs": [
     {
+      "signature": "pub mod applied"
+    },
+    {
+      "signature": "pub mod applied { pub mod engineering { pub use domain_applied :: applied :: engineering :: * } }"
+    },
+    {
+      "signature": "pub mod applied { pub mod engineering { pub use domain_engineering :: engineering :: cnc :: * } }"
+    },
+    {
+      "signature": "pub mod applied { pub mod engineering { pub use domain_engineering :: engineering :: cnc } }"
+    },
+    {
+      "signature": "pub mod applied { pub mod engineering { pub use domain_engineering :: engineering :: uart :: * } }"
+    },
+    {
+      "signature": "pub mod applied { pub mod engineering { pub use domain_engineering :: engineering :: uart } }"
+    },
+    {
+      "signature": "pub mod applied { pub mod engineering }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: algorithms }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: cannibalism }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: clinical_trials }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: error }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: favoritism }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: freesurfer }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: game_theory }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: grpo }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: isosurface }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: lorahub }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: pharmacokinetics }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: portfolio }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_applied :: applied :: win_ratio }"
+    },
+    {
+      "signature": "pub mod applied { pub use domain_engineering :: engineering :: battery_degradation }"
+    },
+    {
+      "signature": "pub mod physics"
+    },
+    {
+      "signature": "pub mod physics { pub mod medical { pub mod radar_gating { pub use domain_engineering :: engineering :: radar :: * } } }"
+    },
+    {
+      "signature": "pub mod physics { pub mod medical { pub mod radar_gating { pub use domain_physics :: physics :: medical :: radar_gating :: * } } }"
+    },
+    {
+      "signature": "pub mod physics { pub mod medical { pub mod radar_gating } }"
+    },
+    {
+      "signature": "pub mod physics { pub mod medical { pub use domain_physics :: physics :: medical :: GatingError } }"
+    },
+    {
+      "signature": "pub mod physics { pub mod medical { pub use domain_physics :: physics :: medical :: accelerator } }"
+    },
+    {
+      "signature": "pub mod physics { pub mod medical { pub use domain_physics :: physics :: medical :: calibration } }"
+    },
+    {
+      "signature": "pub mod physics { pub mod medical { pub use domain_physics :: physics :: medical :: dose } }"
+    },
+    {
+      "signature": "pub mod physics { pub mod medical { pub use domain_physics :: physics :: medical :: evaluation } }"
+    },
+    {
+      "signature": "pub mod physics { pub mod medical { pub use domain_physics :: physics :: medical :: imaging } }"
+    },
+    {
+      "signature": "pub mod physics { pub mod medical { pub use domain_physics :: physics :: medical :: optical_motion } }"
+    },
+    {
+      "signature": "pub mod physics { pub mod medical { pub use domain_physics :: physics :: medical :: optimization } }"
+    },
+    {
+      "signature": "pub mod physics { pub mod medical { pub use domain_physics :: physics :: medical :: signal } }"
+    },
+    {
+      "signature": "pub mod physics { pub mod medical { pub use domain_physics :: physics :: medical :: thermodynamics } }"
+    },
+    {
+      "signature": "pub mod physics { pub mod medical }"
+    },
+    {
+      "signature": "pub mod physics { pub use domain_physics :: physics :: astrophysics }"
+    },
+    {
+      "signature": "pub mod physics { pub use domain_physics :: physics :: chaos }"
+    },
+    {
+      "signature": "pub mod physics { pub use domain_physics :: physics :: error }"
+    },
+    {
+      "signature": "pub mod physics { pub use domain_physics :: physics :: fluid_dynamics }"
+    },
+    {
+      "signature": "pub mod physics { pub use domain_physics :: physics :: high_energy }"
+    },
+    {
+      "signature": "pub mod physics { pub use domain_physics :: physics :: mri }"
+    },
+    {
+      "signature": "pub mod physics { pub use domain_physics :: physics :: nuclear }"
+    },
+    {
+      "signature": "pub mod physics { pub use domain_physics :: physics :: optics }"
+    },
+    {
+      "signature": "pub mod physics { pub use domain_physics :: physics :: quantum }"
+    },
+    {
+      "signature": "pub mod physics { pub use domain_physics :: physics :: solid_state }"
+    },
+    {
+      "signature": "pub mod physics { pub use domain_physics :: physics :: standard_model }"
+    },
+    {
+      "signature": "pub mod physics { pub use domain_physics :: physics :: stat_mech }"
+    },
+    {
       "signature": "pub use diagnostics"
     },
     {
       "signature": "pub use domain_ai :: ai"
-    },
-    {
-      "signature": "pub use domain_applied :: applied"
     },
     {
       "signature": "pub use domain_biology :: biology"
@@ -18008,10 +18313,10 @@
       "signature": "pub use domain_climate :: climate"
     },
     {
-      "signature": "pub use domain_epidemiology :: epidemiology"
+      "signature": "pub use domain_engineering :: engineering"
     },
     {
-      "signature": "pub use domain_physics :: physics"
+      "signature": "pub use domain_epidemiology :: epidemiology"
     },
     {
       "signature": "pub use engine_diffeq"
@@ -18480,13 +18785,43 @@
       "signature": "pub mod analysis { pub mod pde }"
     },
     {
+      "signature": "pub mod analysis { pub use engine_diffeq :: KalmanError }"
+    },
+    {
+      "signature": "pub mod analysis { pub use engine_diffeq :: kalman :: KalmanFilter }"
+    },
+    {
+      "signature": "pub mod analysis { pub use engine_diffeq :: kalman :: KalmanFilterBuilder }"
+    },
+    {
+      "signature": "pub mod analysis { pub use engine_diffeq :: kalman :: KalmanModel }"
+    },
+    {
+      "signature": "pub mod analysis { pub use engine_diffeq :: kalman :: KalmanSystem }"
+    },
+    {
+      "signature": "pub mod analysis { pub use engine_diffeq :: kalman }"
+    },
+    {
       "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: AnalysisError }"
     },
     {
       "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: EvolutionError }"
     },
     {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: FitnessStrategy }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: GameTheoryError }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: MatrixPayoff }"
+    },
+    {
       "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: OptimizationError }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: ReplicatorDynamics }"
     },
     {
       "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: StochasticError }"
@@ -18499,6 +18834,9 @@
     },
     {
       "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: evolution }"
+    },
+    {
+      "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: evolutionary }"
     },
     {
       "signature": "pub mod analysis { pub use pure_math :: pure_math :: analysis :: integration }"
@@ -18566,9 +18904,6 @@
   ],
   "pure_math:src/error.rs": [
     {
-      "signature": "pub enum GameTheoryError"
-    },
-    {
       "signature": "pub enum Glicko2Error"
     },
     {
@@ -18594,6 +18929,9 @@
     },
     {
       "signature": "pub use crate :: pure_math :: analysis :: evolution :: EvolutionError"
+    },
+    {
+      "signature": "pub use crate :: pure_math :: analysis :: evolutionary :: GameTheoryError"
     },
     {
       "signature": "pub use crate :: pure_math :: analysis :: optimization :: OptimizationError"
@@ -19890,6 +20228,65 @@
       "signature": "pub trait EvolutionEngine < State , AuxState > { fn step < R : RngCore + ? Sized > (& mut self , _ : & mut State , _ : & mut AuxState , _ : & mut R , _ : f64 ,) -> Result < () , EvolutionError > }"
     }
   ],
+  "pure_math:src/pure_math/analysis/evolutionary/mod.rs": [
+    {
+      "signature": "pub use replicator :: ReplicatorDynamics"
+    },
+    {
+      "signature": "pub use strategies :: MatrixPayoff"
+    },
+    {
+      "signature": "pub use traits :: FitnessStrategy"
+    },
+    {
+      "signature": "pub use traits :: GameTheoryError"
+    }
+  ],
+  "pure_math:src/pure_math/analysis/evolutionary/replicator.rs": [
+    {
+      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn derivative (& self , _ : & DVector < f64 >) -> DVector < f64 > }"
+    },
+    {
+      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn new_with_fitness (_ : S) -> Self }"
+    },
+    {
+      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn simulate (& self , _ : DVector < f64 > , _ : f64 , _ : f64 ,) -> Vec < (f64 , DVector < f64 >) > }"
+    },
+    {
+      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn simulate_with_strategy < Solve > (& self , _ : DVector < f64 > , _ : f64 , _ : f64 , _ : & mut Solve ,) -> Vec < (f64 , DVector < f64 >) > where Solve : Solver < DVector < f64 > > , }"
+    },
+    {
+      "signature": "impl ReplicatorDynamics < MatrixPayoff > { pub fn new (_ : DMatrix < f64 >) -> Result < Self , GameTheoryError > }"
+    },
+    {
+      "signature": "impl ReplicatorDynamics < MatrixPayoff > { pub fn payoff_matrix (& self) -> & DMatrix < f64 > }"
+    },
+    {
+      "signature": "pub struct ReplicatorDynamics < S : FitnessStrategy = MatrixPayoff >"
+    }
+  ],
+  "pure_math:src/pure_math/analysis/evolutionary/strategies.rs": [
+    {
+      "signature": "impl MatrixPayoff { pub fn new (_ : DMatrix < f64 >) -> Result < Self , GameTheoryError > }"
+    },
+    {
+      "signature": "impl MatrixPayoff { pub fn payoff_matrix (& self) -> & DMatrix < f64 > }"
+    },
+    {
+      "signature": "pub struct MatrixPayoff"
+    }
+  ],
+  "pure_math:src/pure_math/analysis/evolutionary/traits.rs": [
+    {
+      "signature": "pub enum GameTheoryError"
+    },
+    {
+      "signature": "pub trait FitnessStrategy"
+    },
+    {
+      "signature": "pub trait FitnessStrategy { fn fitness (& self , _ : & DVector < f64 > , _ : & mut DVector < f64 >) }"
+    }
+  ],
   "pure_math:src/pure_math/analysis/integration.rs": [
     {
       "signature": "impl MultivariateIntegrator { pub fn dimension (& self) -> usize }"
@@ -19952,6 +20349,18 @@
   "pure_math:src/pure_math/analysis/mod.rs": [
     {
       "signature": "pub use evolution :: EvolutionError"
+    },
+    {
+      "signature": "pub use evolutionary :: FitnessStrategy"
+    },
+    {
+      "signature": "pub use evolutionary :: GameTheoryError"
+    },
+    {
+      "signature": "pub use evolutionary :: MatrixPayoff"
+    },
+    {
+      "signature": "pub use evolutionary :: ReplicatorDynamics"
     },
     {
       "signature": "pub use optimization :: OptimizationError"
@@ -21208,6 +21617,14 @@
       "signature": "pub struct BuckledSurfaceFlow"
     }
   ],
+  "pure_math:src/pure_math/differential_geometry/cortical_mesh.rs": [
+    {
+      "signature": "pub fn mean_vertex_height (_ : & [Point3 < f64 >]) -> f64"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: Surface"
+    }
+  ],
   "pure_math:src/pure_math/differential_geometry/cotangent_mesh.rs": [
     {
       "signature": "impl CotangentLaplacian { pub fn apply (& self , _ : & [f64] , _ : & mut [f64]) }"
@@ -21637,7 +22054,49 @@
   ],
   "pure_math:src/pure_math/differential_geometry/mod.rs": [
     {
+      "signature": "pub use cortical_mesh :: Surface"
+    },
+    {
+      "signature": "pub use cortical_mesh :: mean_vertex_height"
+    },
+    {
       "signature": "pub use cotangent_mesh :: CotangentLaplacian"
+    },
+    {
+      "signature": "pub use thickness :: FlatSpatialGrid"
+    },
+    {
+      "signature": "pub use thickness :: SpatialGrid"
+    },
+    {
+      "signature": "pub use thickness :: ThicknessWorkspace"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_batch"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_batch_into"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_indexed"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_into"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_map"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_map_into"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_mesh"
+    },
+    {
+      "signature": "pub use thickness :: cortical_thickness_with_grid"
     }
   ],
   "pure_math:src/pure_math/differential_geometry/operators.rs": [
@@ -21708,6 +22167,44 @@
     },
     {
       "signature": "pub trait SurfaceAnalysis { fn unit_normal (& self , _ : f64 , _ : f64) -> Vector3 < f64 > }"
+    }
+  ],
+  "pure_math:src/pure_math/differential_geometry/thickness.rs": [
+    {
+      "signature": "pub use oxidize_core :: mesh :: FlatSpatialGrid"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: SpatialGrid"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: ThicknessWorkspace"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_batch"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_batch_into"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_indexed"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_into"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_map"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_map_into"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_mesh"
+    },
+    {
+      "signature": "pub use oxidize_core :: mesh :: cortical_thickness_with_grid"
     }
   ],
   "pure_math:src/pure_math/elliptic_curves/mod.rs": [
@@ -22096,40 +22593,25 @@
   ],
   "pure_math:src/pure_math/game_theory/evolutionary.rs": [
     {
-      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn derivative (& self , _ : & DVector < f64 >) -> DVector < f64 > }"
+      "signature": "pub use crate :: pure_math :: analysis :: evolutionary :: FitnessStrategy"
     },
     {
-      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn new_with_fitness (_ : S) -> Self }"
+      "signature": "pub use crate :: pure_math :: analysis :: evolutionary :: GameTheoryError"
     },
     {
-      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn simulate (& self , _ : DVector < f64 > , _ : f64 , _ : f64 ,) -> Vec < (f64 , DVector < f64 >) > }"
+      "signature": "pub use crate :: pure_math :: analysis :: evolutionary :: MatrixPayoff"
     },
     {
-      "signature": "impl < S : FitnessStrategy > ReplicatorDynamics < S > { pub fn simulate_with_strategy < Solve > (& self , _ : DVector < f64 > , _ : f64 , _ : f64 , _ : & mut Solve ,) -> Vec < (f64 , DVector < f64 >) > where Solve : Solver < DVector < f64 > > , }"
+      "signature": "pub use crate :: pure_math :: analysis :: evolutionary :: ReplicatorDynamics"
     },
     {
-      "signature": "impl MatrixPayoff { pub fn new (_ : DMatrix < f64 >) -> Result < Self , GameTheoryError > }"
+      "signature": "pub use crate :: pure_math :: analysis :: evolutionary :: replicator"
     },
     {
-      "signature": "impl MatrixPayoff { pub fn payoff_matrix (& self) -> & DMatrix < f64 > }"
+      "signature": "pub use crate :: pure_math :: analysis :: evolutionary :: strategies"
     },
     {
-      "signature": "impl ReplicatorDynamics < MatrixPayoff > { pub fn new (_ : DMatrix < f64 >) -> Result < Self , GameTheoryError > }"
-    },
-    {
-      "signature": "impl ReplicatorDynamics < MatrixPayoff > { pub fn payoff_matrix (& self) -> & DMatrix < f64 > }"
-    },
-    {
-      "signature": "pub struct MatrixPayoff"
-    },
-    {
-      "signature": "pub struct ReplicatorDynamics < S : FitnessStrategy = MatrixPayoff >"
-    },
-    {
-      "signature": "pub trait FitnessStrategy"
-    },
-    {
-      "signature": "pub trait FitnessStrategy { fn fitness (& self , _ : & DVector < f64 > , _ : & mut DVector < f64 >) }"
+      "signature": "pub use crate :: pure_math :: analysis :: evolutionary :: traits"
     }
   ],
   "pure_math:src/pure_math/graph_theory/dijkstra.rs": [

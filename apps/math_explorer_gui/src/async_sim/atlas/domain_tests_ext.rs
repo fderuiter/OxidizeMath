@@ -467,7 +467,7 @@ fn test_pharmacokinetics_cartographer_and_challenge_locks() {
     assert!((pk.dose_mg - 180.0).abs() < 1e-12);
 }
 
-#[cfg(feature = "applied")]
+#[cfg(feature = "engineering")]
 #[test]
 fn test_capacity_fade_cartographer_and_teleport() {
     use crate::tabs::battery_degradation::capacity_fade::CapacityFadeTool;

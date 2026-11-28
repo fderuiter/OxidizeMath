@@ -271,6 +271,7 @@ fn test_sir_15_runs_exports_url_under_4kib_and_1ms_and_skips_pin_sync() {
     feature = "applied",
     feature = "biology",
     feature = "climate",
+    feature = "engineering",
     feature = "epidemiology",
     feature = "physics",
     feature = "pure_math"

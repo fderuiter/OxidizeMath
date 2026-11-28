@@ -1,6 +1,6 @@
 //! Integration tests for test music safety.
-use domain_physics::error::RadarError;
-use domain_physics::physics::medical::radar_gating::super_resolution::MusicEstimator;
+use domain_engineering::engineering::radar::super_resolution::MusicEstimator;
+use domain_engineering::error::RadarError;
 use nalgebra::{DMatrix, DVector};
 use num_complex::Complex;
 use std::f64::consts::PI;

@@ -64,7 +64,7 @@ fn direct_chirp_z_transform(
 ///
 /// Reference: Rabiner, Schafer & Rader (1969), DOI: `10.1109/TAU.1969.1162034`; Bluestein (1970),
 /// DOI: `10.1109/TAU.1970.1162132`; see
-/// [`docs/math_specs/domain_physics.md`](../../../../../../../docs/math_specs/domain_physics.md).
+/// [`docs/math_specs/domain_engineering.md`](../../../../../../docs/math_specs/domain_engineering.md).
 ///
 /// # Stability
 /// Unitary-modulus chirp phase factors lie strictly on the unit circle $|W^{n^2/2}| = 1$, avoiding

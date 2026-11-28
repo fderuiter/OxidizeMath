@@ -6,8 +6,6 @@ use super::{
     voxel_coord_cm, IMRT_GRID_DIM, IMRT_OAR_CENTER, IMRT_PHANTOM_SIZE_CM, IMRT_VOXEL_COUNT,
 };
 use crate::tabs::medical::link_bus::GatingTelemetry;
-use crate::tabs::medical::radar_gating::challenge::fast_cv_from_tracking_filter;
-use crate::tabs::medical::radar_gating::pipeline::{HISTORY_LEN, SIM_DT};
 use math_commons::math_kernel::types::flatten_2d_index;
 use math_explorer::engine_diffeq::FastCvKalman;
 use math_explorer::nalgebra::DVector;
@@ -16,10 +14,11 @@ use math_explorer::physics::medical::evaluation::{
     pearson_correlation, root_mean_square_error, spatial_accuracy_error,
 };
 use math_explorer::physics::medical::optical_motion::simulation::cosine_respiratory_curve;
-use math_explorer::physics::medical::radar_gating::{
-    BeamState, ConstantVelocityModel, GatingLogic, TrackingFilter,
-};
+use math_explorer::physics::medical::radar_gating::{BeamState, GatingLogic};
 use std::f64::consts::PI;
+
+const HISTORY_LEN: usize = 200;
+const SIM_DT: f64 = 0.025;
 
 /// Nominal LINAC pulse gun current in milliamps (`5.925 MeV` loaded energy).
 pub const NOMINAL_BEAM_CURRENT_MA: f64 = 50.0;
@@ -446,9 +445,7 @@ impl Standalone4dStepper {
 }
 
 fn new_standalone_kalman() -> FastCvKalman {
-    let model = ConstantVelocityModel::new(3.0e-4, 2.0e-5);
-    let tf = TrackingFilter::new(0.0, SIM_DT, model);
-    fast_cv_from_tracking_filter(&tf, SIM_DT, 3.0e-4, 2.0e-5)
+    FastCvKalman::with_unit_covariance(0.0, SIM_DT, 3.0e-4, 2.0e-5)
 }
 
 fn new_standalone_gating() -> GatingLogic {

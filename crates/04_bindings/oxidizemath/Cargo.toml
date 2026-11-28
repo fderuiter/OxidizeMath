@@ -26,6 +26,7 @@ domain_ai = { path = "../../03_domains/domain_ai", optional = true }
 domain_physics = { path = "../../03_domains/domain_physics", optional = true }
 domain_biology = { path = "../../03_domains/domain_biology", optional = true }
 domain_climate = { path = "../../03_domains/domain_climate", optional = true }
+domain_engineering = { path = "../../03_domains/domain_engineering", optional = true }
 domain_epidemiology = { path = "../../03_domains/domain_epidemiology", optional = true }
 nalgebra = { workspace = true, optional = true }
 num-complex = { workspace = true, optional = true }
@@ -51,6 +52,7 @@ applied = ["pure_math", "dep:domain_applied"]
 ai = ["pure_math", "dep:domain_ai"]
 biology = ["pure_math", "dep:domain_biology"]
 climate = ["pure_math", "dep:domain_climate"]
+engineering = ["pure_math", "dep:domain_engineering"]
 epidemiology = ["pure_math", "dep:domain_epidemiology"]
 physics = ["pure_math", "dep:domain_physics"]
 serde = [

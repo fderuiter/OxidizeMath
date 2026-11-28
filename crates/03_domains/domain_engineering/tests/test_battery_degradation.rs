@@ -1,7 +1,7 @@
 //! Integration tests for test battery degradation.
 #[cfg(test)]
 mod tests {
-    use domain_applied::applied::battery_degradation::{
+    use domain_engineering::engineering::battery_degradation::{
         Capacity, Cycles, DepthOfDischarge, PowerLawModel,
     };
 

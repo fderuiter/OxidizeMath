@@ -29,7 +29,6 @@ fn test_applied_leaf_wrappers_preserve_source_chain() {
 #[verified_engine::verified]
 fn test_applied_umbrella_variants_preserve_source_and_diagnostics() {
     let cases: Vec<AppliedError> = vec![
-        BatteryError::NegativeCycles(-1.0).into(),
         ClinicalTrialError::ZeroTotalCount.into(),
         EngineeringError::InvalidParameter {
             name: "bits".to_string(),

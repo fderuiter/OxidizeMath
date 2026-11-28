@@ -52,8 +52,8 @@
 use math_commons::primitives::UnitInterval;
 use nalgebra::{DMatrix, DVector};
 use pure_math::error::GameTheoryError;
+use pure_math::pure_math::analysis::evolutionary::ReplicatorDynamics;
 use pure_math::pure_math::analysis::ode::{ArrayState, Euler, OdeSystem, Solver, SolverExt};
-use pure_math::pure_math::game_theory::evolutionary::ReplicatorDynamics;
 
 /// Represents a population playing the Hawk-Dove game.
 pub struct HawkDovePopulation {

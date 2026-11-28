@@ -11,7 +11,7 @@ mod evolution;
 use super::KB;
 use math_commons::error::MathError;
 use oxidize_core::rng::OxidizeRng;
-use pure_math::pure_math::game_theory::evolutionary::MatrixPayoff;
+use pure_math::pure_math::analysis::evolutionary::MatrixPayoff;
 use rand::Rng;
 use verified_engine::Theory;
 

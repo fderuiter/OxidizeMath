@@ -1,16 +1,11 @@
 //! Integration tests for checked constructors and typed error enums across `domain_physics`.
 
 use domain_physics::error::{
-    DoseFluenceError, FluidError, QuantumError, RadarError, SolidStateError, StandardModelError,
-    StatMechError,
+    DoseFluenceError, FluidError, QuantumError, SolidStateError, StandardModelError, StatMechError,
 };
 use domain_physics::physics::fluid_dynamics::lattice_boltzmann::state::LatticeState;
 use domain_physics::physics::medical::calibration::hu_to_density;
 use domain_physics::physics::medical::optical_motion::calibration::LinearCalibrator;
-use domain_physics::physics::medical::radar_gating::mimo::Beamformer;
-use domain_physics::physics::medical::radar_gating::tracking::{
-    ConstantVelocityModel, TrackingFilter,
-};
 use domain_physics::physics::mri::proton::boltzmann_ratio;
 use domain_physics::physics::quantum::OrbitalQuantumNumbers;
 use domain_physics::physics::solid_state::bcs::coherence_factors_strong;
@@ -24,7 +19,7 @@ use verified_engine::engine::VerifiedEngine;
 static ALLOCATOR: VerifiedAllocator = VerifiedAllocator;
 
 #[test]
-fn fluid_and_radar_checked_apis_reject_invalid_configurations() {
+fn fluid_checked_apis_reject_invalid_configurations() {
     assert!(matches!(
         LatticeState::<9>::try_new(usize::MAX, 2),
         Err(FluidError::GridDimensionsOverflow {
@@ -33,25 +28,6 @@ fn fluid_and_radar_checked_apis_reject_invalid_configurations() {
         })
     ));
     assert!(LatticeState::<9>::try_new(4, 4).is_ok());
-
-    let model = ConstantVelocityModel::new(0.01, 0.1);
-    assert!(matches!(
-        TrackingFilter::try_new(1.0, 0.0, model.clone()),
-        Err(RadarError::InvalidTrackingParameter {
-            parameter: "dt",
-            ..
-        })
-    ));
-    assert!(TrackingFilter::try_new(1.0, 0.05, model).is_ok());
-
-    let mut beamformer = Beamformer::new_ula(4, 0.01, 0.02);
-    assert_eq!(
-        beamformer.set_weights(&[1.0, 1.0]),
-        Err(RadarError::AntennaWeightCountMismatch {
-            expected: 4,
-            actual: 2,
-        })
-    );
 }
 
 #[test]

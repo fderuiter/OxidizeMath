@@ -38,20 +38,23 @@ pub trait KalmanModel<T: RealField + Copy> {
     fn measurement_noise(&self) -> DMatrix<T>;
 }
 
-/// Defines a generalized Kalman System (Linear or Non-Linear).
+/// Defines a generalized linear or nonlinear Extended Kalman Filter (`EKF`) state-space system.
 ///
-/// This trait supports both Standard Kalman Filters (Linear) and Extended Kalman Filters (EKF).
+/// Propagates nonlinear dynamics $\mathbf{x}_k = f(\mathbf{x}_{k-1}) + \mathbf{w}_k$ and observations
+/// $\mathbf{z}_k = h(\mathbf{x}_k) + \mathbf{v}_k$ via first-order Jacobians
+/// $\mathbf{F}_k = \left.\frac{\partial f}{\partial \mathbf{x}}\right|_{\hat{\mathbf{x}}_{k-1|k-1}}$
+/// and $\mathbf{H}_k = \left.\frac{\partial h}{\partial \mathbf{x}}\right|_{\hat{\mathbf{x}}_{k|k-1}}$.
 ///
-/// # Mathematical Model
+/// Reference: Kalman (1960), DOI: 10.1115/1.3662552 (`kalman1960new`); see
+/// [`docs/math_specs/domain_applied.md`](../../../../docs/math_specs/domain_applied.md).
 ///
-/// State Evolution: $x_k = f(x_{k-1}) + w_k$
-/// Measurement: $z_k = h(x_k) + v_k$
+/// # Stability
+/// Local EKF covariance propagation remains accurate when higher-order Hessian terms of $f$ and $h$
+/// are small over the uncertainty ellipsoid $\mathbf{P}_{k|k-1}$ and step `dt`.
 ///
-/// Where:
-/// - $f(x)$: State Transition Function
-/// - $h(x)$: Measurement Function
-/// - $F_k = \frac{\partial f}{\partial x}$: Jacobian of State Transition
-/// - $H_k = \frac{\partial h}{\partial x}$: Jacobian of Measurement
+/// # Domain of Validity
+/// Differentiable state transition $f: \mathbb{R}^n \to \mathbb{R}^n$ and measurement map
+/// $h: \mathbb{R}^n \to \mathbb{R}^m$ with finite Jacobians and positive-definite innovation covariance.
 pub trait KalmanSystem<T: RealField + Copy> {
     /// Predicts the next state $x_k$ and returns the transition Jacobian $F_k$.
     ///

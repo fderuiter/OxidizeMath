@@ -4,21 +4,28 @@
 use std::sync::{Arc, RwLock};
 
 use eframe::egui;
+#[cfg(feature = "engineering")]
 use math_explorer::physics::medical::radar_gating::{BeamState, C};
 use nalgebra::Vector3;
 use num_complex::Complex;
 use rustfft::FftPlanner;
 use verified_engine::engine::VerifiedEngine;
 
+#[cfg(feature = "engineering")]
 use super::backend::{MuteReason, SonificationBackend};
 use super::frame::{LIMITER_CEILING_DBFS, LIMITER_CEILING_LINEAR};
+#[cfg(feature = "engineering")]
 use super::mappings::{
-    doppler_shift_60ghz_hz, medical_radar_frame, mri_bloch_frame, mri_kspace_frame,
-    mri_pulse_playhead_frame, MriKSpaceAudioInput, RadarDopplerAudioInput, RADAR_CARRIER_60GHZ_HZ,
+    doppler_shift_60ghz_hz, medical_radar_frame, RadarDopplerAudioInput, RADAR_CARRIER_60GHZ_HZ,
+};
+use super::mappings::{
+    mri_bloch_frame, mri_kspace_frame, mri_pulse_playhead_frame, MriKSpaceAudioInput,
 };
 use super::synth::OfflinePcmSynthesizer;
 use crate::async_sim::{SimCommand, SimulationRunner};
+#[cfg(feature = "engineering")]
 use crate::framework::InteractiveTool;
+#[cfg(feature = "engineering")]
 use crate::tabs::medical::radar_gating::{RadarGatingTool, STARTER_PRESET_JSON};
 use crate::tabs::mri::kspace_runner::MriKSpaceRunner;
 use crate::tabs::mri::kspace_types::{
@@ -104,21 +111,35 @@ fn sample_zero_alloc_step_frame(
             selected_grad_phase_rad: ph,
             rf_spike_triggered: step.is_multiple_of(64),
         }),
-        _ => medical_radar_frame(&RadarDopplerAudioInput {
-            velocity_m_s: 0.018 * ph.sin(),
-            amplitude_m: 0.004 * ph.cos(),
-            bandwidth_ghz: 4.0,
-            coarse_peak_count: 1,
-            music_peak_count: 2,
-            primary_beam_gain: 0.92,
-            secondary_beam_gain: 0.81,
-            cough_timer_s: if step.is_multiple_of(100) { 0.30 } else { 0.0 },
-            beam_state: if step.is_multiple_of(8) {
-                BeamState::BeamHold
-            } else {
-                BeamState::BeamActive
-            },
-        }),
+        _ => {
+            #[cfg(feature = "engineering")]
+            {
+                medical_radar_frame(&RadarDopplerAudioInput {
+                    velocity_m_s: 0.018 * ph.sin(),
+                    amplitude_m: 0.004 * ph.cos(),
+                    bandwidth_ghz: 4.0,
+                    coarse_peak_count: 1,
+                    music_peak_count: 2,
+                    primary_beam_gain: 0.92,
+                    secondary_beam_gain: 0.81,
+                    cough_timer_s: if step.is_multiple_of(100) { 0.30 } else { 0.0 },
+                    beam_state: if step.is_multiple_of(8) {
+                        BeamState::BeamHold
+                    } else {
+                        BeamState::BeamActive
+                    },
+                })
+            }
+            #[cfg(not(feature = "engineering"))]
+            {
+                mri_bloch_frame(
+                    Vector3::new(ph.cos(), ph.sin(), -0.3),
+                    1.0,
+                    Vector3::new(1.0e-5, 0.0, 1.5),
+                    180.0 * ph.sin(),
+                )
+            }
+        }
     }
 }
 
@@ -290,6 +311,7 @@ fn test_kspace_turing_delta_b0_detuning_echo_recovery_chirp_and_rf_spike() {
     assert!(spiked.voices[1].transient_impulse >= 0.9);
 }
 
+#[cfg(feature = "engineering")]
 #[test]
 fn test_radar_60ghz_doppler_music_scatterers_cough_and_30ms_interlock_mute() {
     let expected_fd = (2.0 * RADAR_CARRIER_60GHZ_HZ * 0.015) / C;
@@ -460,13 +482,16 @@ fn test_ui_export_wav_buttons_across_mri_kspace_and_radar_tools() {
     assert_valid_non_silent_stereo_wav(&wav_ks, "mri_kspace_sonification.wav", &name_ks);
 
     // 3. RadarGatingTool
-    let ctx_rad = egui::Context::default();
-    ctx_rad.enable_accesskit();
-    let mut rad_tool = RadarGatingTool::default();
-    let _ = rad_tool.step_gating();
-    click_export_wav_button(&ctx_rad, |ctx| rad_tool.show(ctx));
-    let (name_rad, wav_rad) =
-        super::take_last_exported_wav().expect("RadarGatingTool wav exported");
-    assert_valid_non_silent_stereo_wav(&wav_rad, "radar_gating_sonification.wav", &name_rad);
+    #[cfg(feature = "engineering")]
+    {
+        let ctx_rad = egui::Context::default();
+        ctx_rad.enable_accesskit();
+        let mut rad_tool = RadarGatingTool::default();
+        let _ = rad_tool.step_gating();
+        click_export_wav_button(&ctx_rad, |ctx| rad_tool.show(ctx));
+        let (name_rad, wav_rad) =
+            super::take_last_exported_wav().expect("RadarGatingTool wav exported");
+        assert_valid_non_silent_stereo_wav(&wav_rad, "radar_gating_sonification.wav", &name_rad);
+    }
     ensure_controller_muted();
 }

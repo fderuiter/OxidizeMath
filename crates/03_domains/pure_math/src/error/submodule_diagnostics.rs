@@ -1,12 +1,12 @@
 use super::{
-    CopulaError, EloError, GameTheoryError, Glicko2Error, KellyError, MarketPricingError,
-    MarkovError, MatchModelError, NumberTheoryError, OuError, TdaError, ZipError,
+    CopulaError, EloError, Glicko2Error, KellyError, MarketPricingError, MarkovError,
+    MatchModelError, NumberTheoryError, OuError, TdaError, ZipError,
 };
 use crate::pure_math::{
     algebra::{BraidError, LaurentError},
     analysis::{
-        evolution::EvolutionError, optimization::OptimizationError, roots::AnalysisError,
-        stochastic::StochasticError, transforms::TransformError,
+        evolution::EvolutionError, evolutionary::GameTheoryError, optimization::OptimizationError,
+        roots::AnalysisError, stochastic::StochasticError, transforms::TransformError,
     },
     elliptic_curves::EllipticCurveError,
     graph_theory::{GraphTheoryError, wardrop::WardropError},

@@ -18,7 +18,7 @@ pub use domain_ai::error::AIError;
 
 #[cfg(feature = "applied")]
 pub use domain_applied::error::{
-    AppliedError, BatteryError, ClinicalTrialError, EngineeringError, IsosurfaceError, LoraError,
+    AppliedError, ClinicalTrialError, EngineeringError, IsosurfaceError, LoraError,
     PharmacokineticsError, PortfolioError, VoxelGridError,
 };
 
@@ -29,6 +29,10 @@ pub use domain_biology::error::{
 
 #[cfg(feature = "climate")]
 pub use domain_climate::error::ClimateError;
+#[cfg(feature = "engineering")]
+pub use domain_engineering::error::{
+    BatteryError, EngineeringDomainError, HardwareError, RadarError,
+};
 
 #[cfg(feature = "epidemiology")]
 pub use domain_epidemiology::error::{
@@ -38,8 +42,7 @@ pub use domain_epidemiology::error::{
 #[cfg(feature = "physics")]
 pub use domain_physics::error::{
     ChaosError, DoseFluenceError, FluidError, GatingError, HighEnergyError, NuclearError,
-    PhysicsError, QuantumError, RadarError, SandpileError, SolidStateError, StandardModelError,
-    StatMechError,
+    PhysicsError, QuantumError, SandpileError, SolidStateError, StandardModelError, StatMechError,
 };
 
 #[cfg(feature = "pure_math")]
@@ -104,9 +107,15 @@ pub enum Error {
     /// Applied mathematics crate umbrella error.
     #[cfg(feature = "applied")]
     Applied(AppliedError),
+    /// Engineering domain crate umbrella error.
+    #[cfg(feature = "engineering")]
+    EngineeringDomain(EngineeringDomainError),
     /// Battery degradation error.
-    #[cfg(feature = "applied")]
+    #[cfg(feature = "engineering")]
     Battery(BatteryError),
+    /// CNC manufacturing and UART serial calculator error.
+    #[cfg(feature = "engineering")]
+    Hardware(HardwareError),
     /// Clinical trial design or analysis error.
     #[cfg(feature = "applied")]
     ClinicalTrial(ClinicalTrialError),
@@ -184,7 +193,7 @@ pub enum Error {
     #[cfg(feature = "physics")]
     Quantum(QuantumError),
     /// Radar array estimation error.
-    #[cfg(feature = "physics")]
+    #[cfg(feature = "engineering")]
     Radar(RadarError),
     /// Abelian sandpile lattice and group error.
     #[cfg(feature = "physics")]

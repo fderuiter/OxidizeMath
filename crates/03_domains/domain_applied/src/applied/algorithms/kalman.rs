@@ -3,6 +3,7 @@
 //! Re-exports [`FastCvKalman`], [`KalmanError`], [`KalmanFilter`], [`KalmanFilterBuilder`],
 //! [`KalmanModel`], and [`KalmanSystem`] from Tier 2 `engine_diffeq` alongside stack `FastEkf`
 //! and nonlinear ODE observer models.
+// [cite:algorithms]
 
 /// Zero-allocation stack Extended Kalman Filter (`FastEkf`) and RK4 variational tangent integrator.
 pub mod ekf;

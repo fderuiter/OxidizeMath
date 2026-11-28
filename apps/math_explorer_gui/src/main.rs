@@ -30,6 +30,7 @@ mod interactive_tools_tests;
 #[cfg(all(
     test,
     feature = "applied",
+    feature = "engineering",
     feature = "physics",
     feature = "epidemiology"
 ))]
